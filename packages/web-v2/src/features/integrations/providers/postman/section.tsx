@@ -36,6 +36,7 @@ import type { AgentAccess } from "../../types";
 import { ConnectionOwnerField } from "../../components/connection-owner-field";
 import { postman } from "./index";
 import { IntegrationEnabledControl } from "../../components/integration-enabled-control";
+import { STATE_WORDS } from "../../derive";
 
 const DEFAULT_WORKSPACE = "Forge Integration";
 
@@ -170,7 +171,7 @@ export function PostmanSection({ projectId }: { projectId: string }) {
           <CardTitle>Postman</CardTitle>
           {existing && (
             <Badge tone={existing.active ? "green" : "neutral"}>
-              {existing.active ? "Active" : "Disabled"}
+              {existing.active ? "Active" : STATE_WORDS.off}
             </Badge>
           )}
         </div>

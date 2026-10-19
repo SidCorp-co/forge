@@ -26,8 +26,10 @@ import { useOrgScopedProjects } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
+import { stuckClause } from "@forge/contracts/stuck-words";
+import { failedJobClause, failedJobWords } from "../failed-job-words";
 import { useAttention } from "../hooks";
-import type { AttentionItem, AttentionKind } from "../types";
+import type { AttentionBucket, AttentionItem, AttentionKind } from "../types";
 import { PageTitle, SectionTitle } from "@/design/primitives/heading";
 
 /** Per-kind presentation. ISS-509: color resolves through the semantic tone
@@ -80,15 +82,28 @@ function KindTag({ kind }: { kind: AttentionKind }) {
 }
 
 function AttentionRow({ item, onOpen }: { item: AttentionItem; onOpen: (link: string) => void }) {
+  const said = item.kind === "failed_job" ? failedJobWords(item) : item.title;
+  const lower = item.failedJob
+    ? failedJobClause(item.failedJob)
+    : item.stuckKind
+      ? stuckClause(item.stuckKind, item.stuckOwedBy)
+      : null;
+  const under = item.issueTitle ? (lower ? `${said.replace(/[.]?$/, ".")} ${lower}` : said) : lower;
   return (
     <button
       type="button"
       onClick={() => onOpen(item.link)}
-      className="flex w-full items-center gap-3 rounded-md border border-line bg-surface px-3 py-2.5 text-left transition-colors hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)] max-md:min-h-[44px]"
+      className="flex w-full flex-wrap items-center gap-x-3 gap-y-1.5 px-1 py-2.5 text-left transition-colors hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)] max-md:min-h-[44px] sm:flex-nowrap"
     >
       <KindTag kind={item.kind} />
       {item.questionId && <MonoTag hue="flame">Decision</MonoTag>}
-      <span className="fg-body-sm min-w-0 flex-1 truncate text-fg">{item.title}</span>
+      {/* At phone width the tags take the row, so the title gets a line of its own and wraps there
+          rather than being cut to a word (ISS-1229 r13). */}
+      <span className="fg-body-sm order-last min-w-0 basis-full text-fg sm:order-none sm:flex-1 sm:basis-auto sm:truncate">
+        {item.issueTitle ?? said}
+        {/* A failed job is named by its issue; what failed is read under it, in words (ISS-1229 r14). */}
+        {under && <span className="fg-caption block text-subtle sm:truncate">{under}</span>}
+      </span>
       {item.issueRef && <MonoTag>{item.issueRef}</MonoTag>}
       {item.projectName && (
         <span className="fg-caption hidden truncate text-muted sm:inline">{item.projectName}</span>
@@ -114,18 +129,31 @@ function CountBadge({ children }: { children: ReactNode }) {
  *  must be countable without pushing every other bucket off the screen. */
 const COLLAPSE_ABOVE = 5;
 
+/** The bell and a project's headline count only parks past six hours; this group counts every one. */
+export const AWAITING_NOTE =
+  "Assigned to you, or filed by you and assigned to nobody, however long each has waited. The bell tells a project's admins of those at Waiting after six hours.";
+
 function Group({
   title,
   items,
   onOpen,
   total,
+  note,
+  onListAll,
+  listing = false,
   collapsible: mayCollapse = false,
 }: {
   title: string;
+  /** What the group counts, where another surface counts the same things differently. */
+  note?: string;
   items: AttentionItem[];
   onOpen: (link: string) => void;
-  /** Unclipped match count when the API capped `items`. Defaults to items.length. */
+  /** Every item the group holds, listed or not: what its heading says. Defaults to items.length. */
   total?: number;
+  /** Lists the group whole where its list is capped; absent once it has been asked for. */
+  onListAll?: () => void;
+  /** Asked for whole and not yet read. */
+  listing?: boolean;
   collapsible?: boolean;
 }) {
   const matched = total ?? items.length;
@@ -159,14 +187,25 @@ function Group({
           </span>
         )}
       </SectionTitle>
+      {note && <p className="fg-caption -mt-1 px-0.5 text-muted">{note}</p>}
       {expanded && (
-        <div className="flex flex-col gap-1.5">
-          {items.map((it, i) => (
-            <AttentionRow key={`${it.kind}-${it.link}-${i}`} item={it} onOpen={onOpen} />
-          ))}
+        <div>
+          {/* Flush rows divided by hairlines, never boxed: the owner's flat rule (ISS-1229 r13). */}
+          <ul className="flex flex-col divide-y divide-line-subtle border-y border-line-subtle">
+            {items.map((it, i) => (
+              <li key={`${it.kind}-${it.link}-${i}`}>
+                <AttentionRow item={it} onOpen={onOpen} />
+              </li>
+            ))}
+          </ul>
           {matched > items.length && (
-            <p className="fg-caption px-0.5 text-muted">
+            <p className="fg-caption mt-1.5 flex flex-wrap items-center gap-2 px-0.5 text-muted">
               Showing {items.length} of {matched}, highest priority first.
+              {(onListAll || listing) && (
+                <Button size="sm" variant="secondary" onClick={onListAll} disabled={listing}>
+                  {listing ? `Listing all ${matched}…` : `Show all ${matched}`}
+                </Button>
+              )}
             </p>
           )}
         </div>
@@ -177,33 +216,18 @@ function Group({
 
 export function AttentionScreen() {
   const router = useRouter();
-  const { view, read, devicesRead, error, devicesError, refetch } = useAttention();
-  // ISS-477 — scope the inbox to the active org's projects. Items carrying a
-  // `projectSlug` outside the active org are dropped; items without one (e.g.
-  // offline runners) are kept so device-level alerts never silently vanish.
-  const { projects, projectSlugs } = useOrgScopedProjects();
-  const keep = (it: AttentionItem) => !it.projectSlug || projectSlugs.has(it.projectSlug);
-  const scoped = {
-    needsReview: view.needsReview.filter(keep),
-    awaitingInput: view.awaitingInput.filter(keep),
-    mentions: view.mentions.filter(keep),
-    failedJobs: view.failedJobs.filter(keep),
-    pendingSkillUpdates: view.pendingSkillUpdates.filter(keep),
-    unseenDrafts: view.unseenDrafts.filter(keep),
-    offlineRunners: view.offlineRunners.filter(keep),
-  };
-  const unseenDraftsTotal =
-    scoped.unseenDrafts.length === view.unseenDrafts.length
-      ? view.unseenDraftsTotal
-      : scoped.unseenDrafts.length;
-  const total =
-    scoped.needsReview.length +
-    scoped.awaitingInput.length +
-    scoped.mentions.length +
-    scoped.failedJobs.length +
-    scoped.pendingSkillUpdates.length +
-    scoped.unseenDrafts.length +
-    scoped.offlineRunners.length;
+  // A capped group the person asked to see whole is read whole; the others keep their caps.
+  const [expand, setExpand] = useState<AttentionBucket[]>([]);
+  const { view, read, devicesRead, expanding, error, devicesError, refetch } = useAttention({
+    expand,
+  });
+  const listAll = (bucket: AttentionBucket) =>
+    expand.includes(bucket) ? undefined : () => setExpand([...expand, bucket]);
+  // ISS-477 scoped the inbox to the active org by dropping other orgs' rows here, after the route's
+  // caps; ISS-1229 r13 moved that cut into the route, before them. Offline runners are the box's own.
+  const { projects } = useOrgScopedProjects();
+  // Every item the page holds, listed or not: what the rail badge says too (ISS-1229 r14).
+  const total = view.total + view.offlineRunners.length;
 
   const open = (link: string) => router.push(link);
 
@@ -263,19 +287,57 @@ export function AttentionScreen() {
         </div>
       ) : (
         <div className="flex flex-col gap-6">
-          <Group title="Needs review" items={scoped.needsReview} onOpen={open} />
-          <Group title="Awaiting input" items={scoped.awaitingInput} onOpen={open} />
-          <Group title="Mentions" items={scoped.mentions} onOpen={open} />
-          <Group title="Failed jobs" items={scoped.failedJobs} onOpen={open} />
-          <Group title="Skill updates" items={scoped.pendingSkillUpdates} onOpen={open} />
+          <Group
+            title="Needs review"
+            items={view.needsReview}
+            total={view.bucketTotals.needsReview}
+            onListAll={listAll("needsReview")}
+            listing={expanding && expand.includes("needsReview")}
+            onOpen={open}
+          />
+          <Group
+            title="Awaiting input"
+            note={AWAITING_NOTE}
+            items={view.awaitingInput}
+            total={view.bucketTotals.awaitingInput}
+            onListAll={listAll("awaitingInput")}
+            listing={expanding && expand.includes("awaitingInput")}
+            onOpen={open}
+          />
+          <Group
+            title="Mentions"
+            items={view.mentions}
+            total={view.bucketTotals.mentions}
+            onListAll={listAll("mentions")}
+            listing={expanding && expand.includes("mentions")}
+            onOpen={open}
+          />
+          <Group
+            title="Failed jobs"
+            items={view.failedJobs}
+            total={view.bucketTotals.failedJobs}
+            onListAll={listAll("failedJobs")}
+            listing={expanding && expand.includes("failedJobs")}
+            onOpen={open}
+          />
+          <Group
+            title="Skill updates"
+            items={view.pendingSkillUpdates}
+            total={view.bucketTotals.pendingSkillUpdates}
+            onListAll={listAll("pendingSkillUpdates")}
+            listing={expanding && expand.includes("pendingSkillUpdates")}
+            onOpen={open}
+          />
           <Group
             title="Unseen drafts"
-            items={scoped.unseenDrafts}
+            items={view.unseenDrafts}
             onOpen={open}
-            total={unseenDraftsTotal}
+            total={view.bucketTotals.unseenDrafts}
+            onListAll={listAll("unseenDrafts")}
+            listing={expanding && expand.includes("unseenDrafts")}
             collapsible
           />
-          <Group title="Offline runners" items={scoped.offlineRunners} onOpen={open} />
+          <Group title="Offline runners" items={view.offlineRunners} onOpen={open} />
         </div>
       )}
     </PageContainer>

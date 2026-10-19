@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useMemo } from "react";
+import { createContext, useContext, useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/providers/toast-provider";
 import { formatApiError } from "@/lib/api/error";
@@ -22,12 +22,19 @@ export function sortOrgs(orgs: OrgListItem[]): OrgListItem[] {
 interface ActiveOrgContextValue {
   /** All orgs the caller belongs to, personal-first then alphabetical. */
   orgs: OrgListItem[];
-  /** The resolved active org (null only while orgs are still loading). */
+  /** The resolved active org (null while the orgs or the stored preference are still being read). */
   activeOrg: OrgListItem | null;
   /** Convenience: `activeOrg?.id ?? null`. Drives the projects-console scope. */
   activeOrgId: string | null;
-  /** Switch the active org (persists server-side, optimistic). */
+  /** The orgs and the stored choice have both been read, so a null `activeOrgId` means no org, not "not yet". */
+  scopeRead: boolean;
+  /** Why the orgs could not be read, where they could not: no scope is known, so nothing scoped is read. */
+  scopeError: Error | null;
+  retryScope: () => void;
+  /** Switch the active org (persists server-side, optimistic): the org switcher's act, and only its. */
   setActiveOrg: (orgId: string) => void;
+  /** Scope this tab's view to an org, as opening one of its projects does, writing nothing. */
+  viewOrg: (orgId: string) => void;
   /** True when the caller has at most one org → render a static label. */
   isSingle: boolean;
 }
@@ -37,20 +44,30 @@ const ActiveOrgContext = createContext<ActiveOrgContextValue | null>(null);
 export function ActiveOrgProvider({ children }: { children: React.ReactNode }) {
   const qc = useQueryClient();
   const { toast } = useToast();
-  const { data: orgsData } = useOrgs();
-  const { data: prefs } = usePreferences();
+  const orgsQ = useOrgs();
+  const orgsData = orgsQ.data;
+  const prefsQ = usePreferences();
+  const prefs = prefsQ.data;
+  // No active org until the stored choice is read: a stand-in it replaced would read as a switch.
+  const prefsRead = prefsQ.isSuccess || prefsQ.isError;
+  const scopeRead = prefsRead && orgsQ.data !== undefined;
+  const scopeError = orgsQ.data === undefined && orgsQ.isError ? orgsQ.error : null;
+  const { refetch: refetchOrgs } = orgsQ;
 
   const orgs = useMemo(() => sortOrgs(orgsData ?? []), [orgsData]);
+  // The org this tab is viewing where a visit chose one other than the stored choice; never stored.
+  const [viewing, setViewing] = useState<string | null>(null);
 
   const activeOrg = useMemo(() => {
-    if (orgs.length === 0) return null;
+    if (orgs.length === 0 || !prefsRead) return null;
     const stored = prefs?.activeOrgId ?? null;
     return (
+      (viewing ? orgs.find((o) => o.id === viewing) : undefined) ??
       (stored ? orgs.find((o) => o.id === stored) : undefined) ??
       orgs.find((o) => o.isPersonal) ??
       orgs[0]
     );
-  }, [orgs, prefs?.activeOrgId]);
+  }, [orgs, prefsRead, prefs?.activeOrgId, viewing]);
 
   const mutation = useMutation({
     mutationFn: (orgId: string) => settingsApi.updatePreferences({ activeOrgId: orgId }),
@@ -76,12 +93,21 @@ export function ActiveOrgProvider({ children }: { children: React.ReactNode }) {
       orgs,
       activeOrg,
       activeOrgId: activeOrg?.id ?? null,
+      scopeRead,
+      scopeError,
+      retryScope: () => {
+        void refetchOrgs();
+      },
       setActiveOrg: (orgId: string) => {
-        if (orgId !== activeOrg?.id) mutate(orgId);
+        setViewing(null);
+        if (orgId !== (prefs?.activeOrgId ?? null)) mutate(orgId);
+      },
+      viewOrg: (orgId: string) => {
+        if (orgId !== activeOrg?.id) setViewing(orgId);
       },
       isSingle: orgs.length <= 1,
     }),
-    [orgs, activeOrg, mutate],
+    [orgs, activeOrg, scopeRead, scopeError, refetchOrgs, mutate, prefs?.activeOrgId],
   );
 
   return <ActiveOrgContext.Provider value={value}>{children}</ActiveOrgContext.Provider>;
@@ -92,5 +118,12 @@ export function ActiveOrgProvider({ children }: { children: React.ReactNode }) {
 export function useActiveOrg(): ActiveOrgContextValue {
   const ctx = useContext(ActiveOrgContext);
   if (ctx) return ctx;
-  return { orgs: [], activeOrg: null, activeOrgId: null, setActiveOrg: () => {}, isSingle: true };
+  return { orgs: [], activeOrg: null, activeOrgId: null,
+    scopeRead: true,
+    scopeError: null,
+    retryScope: () => {},
+    setActiveOrg: () => {},
+    viewOrg: () => {},
+    isSingle: true,
+  };
 }

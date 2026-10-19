@@ -68,10 +68,8 @@ export async function runBacklogIndexTickOnce(): Promise<string[]> {
 
 export async function registerBacklogIndexSweeper(): Promise<void> {
   if (registered) return;
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).createQueue(BACKLOG_INDEX_QUEUE);
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).work(BACKLOG_INDEX_QUEUE, async () => {
+  await boss.createQueue(BACKLOG_INDEX_QUEUE);
+  await boss.work(BACKLOG_INDEX_QUEUE, async () => {
     try {
       await runBacklogIndexTickOnce();
     } catch (err) {
@@ -79,16 +77,14 @@ export async function registerBacklogIndexSweeper(): Promise<void> {
       throw err;
     }
   });
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).schedule(BACKLOG_INDEX_QUEUE, BACKLOG_INDEX_CRON, {});
+  await boss.schedule(BACKLOG_INDEX_QUEUE, BACKLOG_INDEX_CRON, {});
   registered = true;
 }
 
 export async function unregisterBacklogIndexSweeper(): Promise<void> {
   if (!registered) return;
   try {
-    // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-    await (boss as any).unschedule?.(BACKLOG_INDEX_QUEUE);
+    await boss.unschedule?.(BACKLOG_INDEX_QUEUE);
   } catch {
     // best-effort: a schedule that never existed has nothing to remove
   }

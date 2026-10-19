@@ -59,9 +59,21 @@ updates:
     # down. Traded: dependency-cruiser's fixes after 18.2.0. Ends when archmap
     # releases its ISS-10 fix (on archmap master since 2026-09-18, in no tag):
     # run `archmap install --force`, then remove this entry and the exact pin.
+    # Amnesty (ISS-1342): typescript is held at 5.9.3, exact, in every package.json.
+    # typescript-eslint 8.71.2 throws "typescript-eslint does not support TS 7.0", and
+    # TypeScript 7 exports no compiler API, which scripts/check-lazy-module-init.mjs and
+    # core's fixtures read. Traded: TypeScript 7's compiler speed. Ends when
+    # typescript-eslint ships TS 7 support (typescript-eslint issue 10940): bump all four
+    # manifests, then remove this entry.
+    # pg-boss-v10 is core's test-only alias of pg-boss 10.4.2, which seeds the schema the
+    # v10 carry (packages/core/src/queue/v10-carry.ts) reads; both leave at the next pg-boss
+    # major, which a pg-boss 10 database reaches only through this release.
     ignore:
       - dependency-name: "dependency-cruiser"
         versions: [">18.2.0"]
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "pg-boss-v10"
     groups:
       minor-and-patch:
         update-types: ["minor", "patch"]

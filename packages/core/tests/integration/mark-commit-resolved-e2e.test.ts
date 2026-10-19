@@ -41,7 +41,7 @@ describe("ISS-1350 — every git mark's commit is one the repository holds (real
       const refused = await refusal(() => mark(issue, ISS_578_PAIR, agency));
       expect(refused.code).toBe('COMMIT_NOT_IN_REPOSITORY');
       expect(refused.message).toContain(
-        `GitHub finds no commit ${ISS_578_PAIR} in ${repo.fullName}`,
+        `The repository ${repo.fullName} holds no commit ${ISS_578_PAIR.slice(0, 7)}.`,
       );
       expect(await row(issue.id)).toMatchObject({ merged_at: null, merged_commit_sha: null });
       expect(await comments(issue.id)).toEqual([]);
@@ -71,7 +71,7 @@ describe("ISS-1350 — every git mark's commit is one the repository holds (real
   it.each([
     ['no_binding', 'names no repository URL, so there is no repository to read'],
     ['read', 'HTTP 502'],
-    ['mint', 'minting an installation token: HTTP 404'],
+    ['mint', 'Minting an installation token: HTTP 404.'],
   ] as const)(
     "refuses a person's mark COMMIT_UNVERIFIED when the repository cannot be read (%s) (criterion 4)",
     async (down, says) => {
@@ -80,10 +80,13 @@ describe("ISS-1350 — every git mark's commit is one the repository holds (real
       const refused = await refusal(() => mark(issue, OWN, 'human'));
       expect(refused.code).toBe('COMMIT_UNVERIFIED');
       expect(refused.message).toContain(says);
-      expect(refused.message).toContain('not recorded naming it unchecked');
-      expect(refused.message).toContain(
-        'mark it naming no commit, which records a claim that names none',
-      );
+      expect(
+        refused.message.startsWith(
+          `Nothing was marked, because Forge could not check commit ${OWN.slice(0, 7)} against the repository.`,
+        ),
+      ).toBe(true);
+      // ISS-1421 r8, criterion 124: offered only here, on an issue not yet marked.
+      expect(refused.message).toContain('Or mark it naming no commit, which records a claim.');
       expect(await row(issue.id)).toMatchObject({ merged_at: null, merged_commit_sha: null });
     },
   );
@@ -92,66 +95,54 @@ describe("ISS-1350 — every git mark's commit is one the repository holds (real
     const issue = await seed({ sessionContext: { branch: 'ISS-1350-x' } });
     const short = OWN.slice(0, 9);
     const res = await mark(issue, short, 'human');
-    expect(res.markDetail).toContain(`commit ${OWN} is recorded here as this call's claim`);
+    // ISS-1421 — a person reads seven characters of the resolved commit; the row keeps all forty.
+    expect(res.markDetail).toContain(
+      `Commit ${OWN.slice(0, 7)} is in ${repo.fullName}, and is noted in the comment only.`,
+    );
+    expect(res.namedCommit).toBe(OWN);
     const audit = (await comments(issue.id)).at(-1) ?? '';
-    expect(audit).toContain(`commit=${OWN}`);
-    expect(audit).not.toContain(`commit=${short} `);
+    expect(audit).toBe(`Marked merged into main.\n${res.markDetail}`);
+    expect(audit).not.toMatch(/\b[0-9a-f]{40}\b/);
+    // ISS-1421 r4 — a person reads this thread: no action or field name an agent sends.
+    expect(audit).not.toMatch(/mark_merged|\b(target|commit)=|`(un)?mark`/);
+    expect(audit).not.toContain(`at commit ${short}.`);
   });
 
-  it("keeps a person's resolved commit a claim, and says the repository holds it (criteria 6, 7)", async () => {
+  it("keeps a person's resolved commit out of the row, and says the repository holds it (criteria 6, 7; ISS-1421 r8)", async () => {
     const issue = await seed({ sessionContext: {} });
     const res = await mark(issue, OWN, 'human');
     expect(res.mark).toBe('asserted');
-    expect((await row(issue.id)).merged_commit_sha).toBeNull();
-    expect(res.markDetail).toContain(`${repo.fullName} holds commit ${OWN}`);
+    // Neither column keeps it: the answer says the comment alone holds it, and the row agrees.
+    expect(await row(issue.id)).toMatchObject({
+      merged_commit_sha: null,
+      merged_claimed_commit: null,
+    });
+    expect(res.markDetail).toBe(
+      `Commit ${OWN.slice(0, 7)} is in ${repo.fullName}, and is noted in the comment only. Forge did not see this merge, so the mark is a claim that names no commit.`,
+    );
   });
 
-  it.each([
-    [
-      'the repository does not hold it',
-      null,
-      FABRICATED,
-      'SidCorp-co/specimen does not resolve it',
-    ],
-    ['the repository cannot be read', 'read', OWN, 'the repository could not be read'],
-  ] as const)(
-    'leaves out a handoff commit when %s, and says which and why (criterion 8)',
-    async (_case, down, recorded, why) => {
-      const issue = await seed({ sessionContext: { branch: 'ISS-1350-x' } });
-      await handoff(issue.id, recorded);
-      repo.down = down;
-      const res = await mark(issue, undefined, 'human');
-      expect(res.mark).toBe('asserted');
-      expect(res.markDetail).toContain('no commit is recorded in `merged_commit_sha`');
-      expect(res.markDetail).toContain(
-        `commit ${recorded} this issue's implementation handoff recorded`,
-      );
-      expect(res.markDetail).toContain(why);
-      const audit = (await comments(issue.id)).at(-1) ?? '';
-      expect(audit).not.toContain(`commit=${recorded}`);
-      expect(audit).toContain(why);
-    },
-  );
+  it('records no commit from a handoff on a mark naming none, even one the repository holds (ISS-1133 criterion 5)', async () => {
+    const issue = await seed({ sessionContext: { branch: 'ISS-1350-x' } });
+    await handoff(issue.id, OWN.slice(0, 10));
+    const res = await mark(issue, undefined, 'human');
+    expect(res.mark).toBe('asserted');
+    expect((await row(issue.id)).merged_commit_sha).toBeNull();
+    expect(res.markDetail).toContain('No commit was named.');
+    expect(res.markDetail).not.toContain(OWN.slice(0, 10));
+    expect(repo.reads).toEqual([]);
+    expect((await comments(issue.id)).at(-1)).not.toMatch(/^Marked merged[^\n]*at commit/);
+  });
 
-  it('says a handoff commit was left out on a mark that repeats one Forge observed (criterion 8)', async () => {
+  it('names no handoff commit on a mark that repeats one Forge observed (ISS-1133 criterion 5)', async () => {
     const issue = await seed();
     expect((await mark(issue, OWN)).mark).toBe('observed');
     await handoff(issue.id, FABRICATED);
     const res = await mark(issue, undefined, 'human');
     expect(res.action).toBe('already_merged');
     expect(res.mark).toBe('observed');
-    const why = 'SidCorp-co/specimen does not resolve it';
-    expect(res.markDetail).toContain(`commit ${FABRICATED} this issue's implementation handoff`);
-    expect(res.markDetail).toContain(why);
-    expect((await comments(issue.id)).at(-1)).toContain(why);
-  });
-
-  it('records a handoff commit the repository holds by its full sha (criterion 9)', async () => {
-    const issue = await seed({ sessionContext: { branch: 'ISS-1350-x' } });
-    await handoff(issue.id, OWN.slice(0, 10));
-    const res = await mark(issue, undefined, 'human');
-    expect(res.markDetail).toContain(`commit ${OWN} is recorded here as this call's claim`);
-    expect((await comments(issue.id)).at(-1)).toContain(`commit=${OWN}`);
+    expect(res.markDetail).not.toContain(FABRICATED);
+    expect((await comments(issue.id)).at(-1)).not.toContain(FABRICATED);
   });
 
   it('reads nothing from the repository on an outside_git project (criterion 10)', async () => {

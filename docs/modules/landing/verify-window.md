@@ -118,14 +118,17 @@ one pull request.
 ## How it composes with `ci.yml`
 
 Nothing in `.github/workflows/ci.yml` changes. The window's pull request is an ordinary
-`pull_request` run, so every job its paths select runs and `ci-passed` gates it as any other.
+`pull_request` run, so every job a pull request runs and its paths select runs, and `ci-passed`
+gates it as any other.
 
 Its merge commit's push to `main` is what the changes job's step *Whether a pull_request run
 already proved this exact tree* reads (ISS-1340): two parents off the commit object, a tree equal
 to the second parent's, and that parent's latest `ci-passed` concluded `success`. `land`'s
-`gh pr merge --merge --match-head-commit <chain head>`, on a window branch `strict` has kept up to
-date, gives all three, so that push skips `core`, `core-integration`, `web`, `runner`, `images`
-and `whole-tree`. A merge taken any other way, or past red, re-proves the tree as any push does.
+`gh pr merge --merge --match-head-commit <chain head>`, on a window branch `land` has found
+current with the base (it refuses where the base moved since assembly), gives all three, so that
+push skips `core`, `web` and `runner`. `core-integration`, `images`, `whole-tree` and
+`runner-platforms` do not read the step: a pull request never runs them, so the push is the run
+that does. A merge taken any other way, or past red, re-proves the tree as any push does.
 
 ## Migrations
 
@@ -134,7 +137,9 @@ lower one silently and for ever (ISS-807). As each member enters, its new journa
 numbers only where the first clears the base, the combination so far and every open branch outside
 the window — `checkSet`'s `next` in `scripts/lib/migration-order.mjs`, the number
 `scripts/check-migration-order.mjs` prints as `Next free:`, read through the same `readOpenSet`.
-Otherwise they take consecutive numbers from it, their `.sql` and snapshot files are renamed, and
+The checker sets aside an open branch that lands on another gated line (`dev`), because that
+line renumbers above this base when it merges it; the window sets none aside and counts every
+open branch outside it. Otherwise they take consecutive numbers from it, their `.sql` and snapshot files are renamed, and
 every line the member's merge adds that names an old tag — its own, or one an earlier member was
 moved off — is rewritten, all of its tags in one pass, and no line already in the combination is
 read again, so a tag moved onto another's old number is never moved twice; the ledger lists each renumbering and each

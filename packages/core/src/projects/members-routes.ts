@@ -17,6 +17,7 @@ import { assertProjectRole, loadOrgRole, loadProjectAccess } from '../lib/authz.
 import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { emitNotification } from '../notifications/emit.js';
+import { refuseNonPersonAsMember } from '../orgs/service.js';
 import { sendInvitationEmail } from './invitation-email.js';
 import { issueInvitationToken } from './invitation-token.js';
 import {
@@ -166,6 +167,7 @@ memberRoutes.post(
 
     const access = await loadProjectAccess(projectId, callerId);
     assertProjectRole(access, 'admin', 'requires project admin');
+    await refuseNonPersonAsMember({ userId: targetUserId });
 
     // Same-org guard: direct-add skips the email handshake, which is only
     // safe for someone the org has already vetted.
@@ -222,6 +224,7 @@ memberRoutes.post(
 
     const access = await loadProjectAccess(projectId, inviterId);
     assertProjectRole(access, 'admin', 'requires project admin');
+    await refuseNonPersonAsMember({ email });
     const [project] = await db
       .select({ name: projects.name })
       .from(projects)

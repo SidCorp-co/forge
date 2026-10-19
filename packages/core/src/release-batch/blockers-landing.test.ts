@@ -76,8 +76,9 @@ const QUESTION = {
 };
 const DECLARED = {
   code: 'ENTRY_CRITERIA_UNMET',
-  reason: 'missing what this project requires to close: plan',
-  clears: 'Write each missing record on the issue.',
+  reason: 'missing a plan, which this project requires before a close',
+  clears:
+    "An agent writes them through Forge's issue tools. To start one, press Open session at the top of the issue's page.",
   detail: 'x',
   details: { unmet: ['plan'] },
 };
@@ -173,9 +174,9 @@ describe('RELEASE_ISSUES_UNCLOSABLE, before the press at either door', () => {
       expect(unclosable?.message).toContain('`ISS-1` holds 1 open question (OPEN_QUESTIONS)');
       expect(unclosable?.message).toContain('Answer it');
       expect(unclosable?.message).toContain(
-        '`ISS-2` missing what this project requires to close: plan',
+        '`ISS-2` missing a plan, which this project requires before a close',
       );
-      expect(unclosable?.message).toContain('leave the issue off this release');
+      expect(unclosable?.message).toContain('leave each such issue off this release');
     },
   );
 

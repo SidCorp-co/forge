@@ -42,8 +42,10 @@ describe('a landing sent over a mark that stands is refused by name, never dropp
     expect(res.status).toBe(422);
     const body = await res.json();
     expect(body.code).toBe('MARK_ALREADY_STANDS');
-    expect(body.message).toContain(`names ${TYPO} as where the work landed`);
-    expect(body.message).toContain('`unmark`');
+    expect(body.message).toContain(`already says it landed at ${TYPO}`);
+    expect(body.message).toMatch(/^This issue's mark/);
+    expect(body.message).toContain('use Unmark, then Mark merged');
+    expect(body.message).not.toContain('`unmark`');
     expect(body.details).toMatchObject({ heldLanding: TYPO, sentLanding: LANDING });
     expect(await snapshot(id)).toEqual(before);
   });
@@ -94,7 +96,7 @@ describe('a landing sent over a mark that stands is refused by name, never dropp
     const [last] = await harness.db.execute<{ body: string }>(
       sql`SELECT body FROM comments WHERE issue_id = ${id} ORDER BY created_at DESC LIMIT 1`,
     );
-    expect(last?.body).toContain('NOT stamped by this call');
+    expect(last?.body).toMatch(/^Already marked merged on .+, so this call changed nothing/);
   });
 
   it('records the correction once the standing mark is unmarked, which is the route it names', async () => {
@@ -127,16 +129,26 @@ describe('target is owed where the project moves branches, and only there', () =
     expect(marked.json().mark).toBe('landed');
   });
 
-  it('refuses a standard mark with no target at both doors in the words it always used', async () => {
+  it('refuses a standard mark with no target at both doors, the page door in a sentence', async () => {
     const w = await world('standard');
     const id = await seedIssue(w);
     const res = await rest('POST', `/api/issues/${id}/merge`, w.token, {});
     expect(res.status).toBe(400);
-    expect(JSON.stringify(await res.json())).toContain('target is required');
+    // ISS-1421 r9, criterion 131: one capitalised, stopped sentence naming the field to fill in.
+    expect(((await res.json()) as { message: string }).message).toBe(
+      'Name the branch the work merged into as `target`.',
+    );
+    const blank = await rest('POST', `/api/issues/${id}/merge`, w.token, { target: '  ' });
+    expect(blank.status).toBe(400);
+    expect(((await blank.json()) as { message: string }).message).toBe(
+      'Name the branch the work merged into as `target`.',
+    );
 
     const viaTool = await tool(w.pat, { action: 'mark_merged', data: { issueId: id } });
     expect(viaTool.isError).toBe(true);
-    expect(viaTool.text).toContain('data.target is required for mark_merged');
+    expect(viaTool.text).toContain(
+      'Name where the work merged as `data.target`: base, prod or feature.',
+    );
     expect((await stored(id)).merged_at).toBeNull();
   });
 

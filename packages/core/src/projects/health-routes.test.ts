@@ -44,6 +44,18 @@ function makeChain() {
   return chain;
 }
 
+/** The captured SQL as text; a column it embeds refers back to its table, so a repeat is skipped. */
+function sqlText(captured: unknown): string {
+  const seen = new WeakSet<object>();
+  return JSON.stringify(captured, (_key, value: unknown) => {
+    if (value && typeof value === 'object') {
+      if (seen.has(value)) return undefined;
+      seen.add(value);
+    }
+    return value;
+  });
+}
+
 vi.mock('../db/client.js', () => ({
   db: {
     select: () => makeChain(),
@@ -206,7 +218,7 @@ describe('GET /api/projects/health', () => {
     expect(body[0]?.throughput).toBe(0);
   });
 
-  it('200 with additive rollups (liveRuns / runners / spend24h / members / lastActivityAt)', async () => {
+  it('200 with additive rollups (liveRuns / liveSessions / runners / spend24h / members / lastActivityAt)', async () => {
     authVerified();
     queryQueue.push([{ id: PROJECT_A_ID }, { id: PROJECT_B_ID }]); // loadVisibleProjectIds
     queryQueue.push([
@@ -240,6 +252,7 @@ describe('GET /api/projects/health', () => {
     ]); // memberRows
     queryQueue.push([{ projectId: PROJECT_A_ID, lastAt: '2026-05-30T10:00:00.000Z' }]); // issueActivityRows
     queryQueue.push([{ projectId: PROJECT_A_ID, lastAt: '2026-05-31T12:00:00.000Z' }]); // runActivityRows
+    queryQueue.push([{ projectId: PROJECT_A_ID, n: 1 }]); // liveSessionRows
 
     const res = await buildApp().request('/api/projects/health', {
       headers: { authorization: `Bearer ${await token()}` },
@@ -264,14 +277,14 @@ describe('GET /api/projects/health', () => {
     expect(alpha?.id).toBe(PROJECT_A_ID);
     expect(alpha?.description).toBe('Alpha project');
     expect(alpha?.repoPath).toBe('org/alpha');
-    expect(alpha?.liveRuns).toBe(3);
     expect(alpha?.runnerCount).toBe(2);
     expect(alpha?.spend24hUsd).toBeCloseTo(13.38);
     expect(alpha?.memberCount).toBe(2);
     expect(alpha?.members).toEqual(['AD', 'BO']); // email-derived initials
     expect(alpha?.lastActivityAt).toBe('2026-05-31T12:00:00.000Z'); // max(issue, run)
     // Project with no rollup rows falls back to safe defaults.
-    expect(beta?.liveRuns).toBe(0);
+    const counts = body.map((p) => [p.liveRuns, (p as { liveSessions?: number }).liveSessions]);
+    expect(counts.flat()).toEqual([3, 1, 0, 0]); // open runs and live sessions: two counts, never one
     expect(beta?.runnerCount).toBe(0);
     expect(beta?.spend24hUsd).toBe(0);
     expect(beta?.memberCount).toBe(0);
@@ -306,7 +319,7 @@ describe('GET /api/projects/health', () => {
 
     expect(res.status).toBe(200);
     // The captured sql template serializes its literal chunks.
-    const serialized = JSON.stringify(executedSql);
+    const serialized = sqlText(executedSql);
     expect(serialized).toContain('pipeline_run_step_durations');
     expect(serialized).toContain('IN (');
     expect(serialized).not.toContain('ANY(');
@@ -365,5 +378,70 @@ describe('GET /api/projects/health, the parked list', () => {
     const body = (await res.json()) as Array<{ blockers: unknown[]; blockersTotal: number }>;
     expect(body[0]?.blockers).toHaveLength(5);
     expect(body[0]?.blockersTotal).toBe(9);
+  });
+});
+
+describe('GET /api/projects/health, the stuck issues (ISS-1229 r12)', () => {
+  it('counts each project issue with a stuck-issue notice standing, as every stuck-issue sweep raises it', async () => {
+    authVerified();
+    queryQueue.push([{ id: PROJECT_A_ID }, { id: PROJECT_B_ID }]); // loadVisibleProjectIds
+    queryQueue.push([
+      { id: PROJECT_A_ID, slug: 'alpha', name: 'Alpha', agentConfig: null },
+      { id: PROJECT_B_ID, slug: 'beta', name: 'Beta', agentConfig: null },
+    ]); // visibleProjects
+    for (let i = 0; i < 11; i++) queryQueue.push([]); // the eleven reads before it
+    const byKind = { waiting: 3, idle: 5 };
+    queryQueue.push([
+      {
+        projectId: PROJECT_A_ID,
+        id: 'i-3',
+        title: 'Pick a carrier',
+        issSeq: 3,
+        issuePrefix: 'ALP',
+        kind: 'waiting',
+        total: 7,
+        byKind,
+      },
+      {
+        projectId: PROJECT_A_ID,
+        id: 'i-9',
+        title: 'Export invoices',
+        issSeq: 9,
+        issuePrefix: 'ALP',
+        kind: 'idle',
+        total: 7,
+        byKind,
+      },
+    ]); // stuckIssueRows: the first five of a project, each carrying the project's total
+
+    const res = await buildApp().request('/api/projects/health', {
+      headers: { authorization: `Bearer ${await token()}` },
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Array<{
+      projectSlug: string;
+      stuckIssues: number;
+      stuckIssuesByKind: Record<string, number>;
+      stuckIssueRefs: Array<{ issueId: string; documentId: string; kind: string }>;
+    }>;
+    const alpha = body.find((p) => p.projectSlug === 'alpha');
+    expect(alpha?.stuckIssues).toBe(7);
+    expect(alpha?.stuckIssuesByKind).toEqual(byKind);
+    expect(alpha?.stuckIssueRefs).toEqual([
+      { issueId: 'ALP-3', documentId: 'i-3', title: 'Pick a carrier', kind: 'waiting' },
+      { issueId: 'ALP-9', documentId: 'i-9', title: 'Export invoices', kind: 'idle' },
+    ]);
+    expect(body.find((p) => p.projectSlug === 'beta')).toMatchObject({
+      stuckIssues: 0,
+      stuckIssuesByKind: {},
+      stuckIssueRefs: [],
+    });
+    const stuckRead = sqlText(executedSql).replace(/\\n\s*/g, ' ');
+    expect(stuckRead).toContain("n.type = 'issue_stranded'");
+    expect(stuckRead).toContain("n.state = 'firing'");
+    expect(stuckRead).toContain('n.resolved_at IS NULL');
+    expect(stuckRead).toContain('count(*) OVER (PARTITION BY f.project_id)');
+    expect(stuckRead).toContain('ORDER BY f.created_at, f.id');
   });
 });

@@ -4,8 +4,10 @@
 > shipped. It is one of four documentation homes, and which page belongs in which is stated once,
 > in [modules/guides/where-a-page-lives.md](modules/guides/where-a-page-lives.md).
 
-One folder carries the system's description, and it is the only one. The per-domain module docs,
-the architecture set, the RFC folder and the loose proposal notes were deleted on 2026-09-20: they
+One folder carries the system's description: [proposals/destination/](proposals/destination/).
+Beside it, [modules/](modules/) holds a page per mechanism whose reasoning outlives the issue that
+built it, and [adr/](adr/) holds the decisions. The earlier per-domain module docs, the
+architecture set, the RFC folder and the loose proposal notes were deleted on 2026-09-20: they
 were written once and consulted rarely, drifted from the code without anything noticing, and
 answered the same question in several places at once. Better no document than a wrong one.
 

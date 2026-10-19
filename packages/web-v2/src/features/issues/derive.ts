@@ -1,4 +1,5 @@
 
+import { jobKindLabel } from "@/features/overview/job-kinds";
 import {
 	AUTONOMOUS_LABELS,
 	type AutonomousLabel,
@@ -27,6 +28,7 @@ import {
 	STATUS_KEY_TONE,
 	type StatusKey,
 } from "@/design/status";
+import { STALLED_THRESHOLD_MS } from "@/features/sessions/types";
 import { gateView, pausedRunView } from "./waiting";
 import type {
 	CommentKind,
@@ -45,8 +47,8 @@ import type {
 	IssueStatus,
 	ParkOwes,
 	PipelineHealth,
-	StepDurationRow,
-	StepHandoffRow,
+	JournalAttempt,
+	JournalRun,
 } from "./types";
 
 export const STATUS_LABELS: Record<IssueStatus, string> = ISSUE_STATUS_LABELS;
@@ -178,6 +180,9 @@ export function statusToTone(status: IssueStatus): SemanticTone {
 	return STATUS_KEY_TONE[statusToChip(status)];
 }
 
+/** No menu enters or leaves these: only a release run does, and core refuses every other door (ISS-1421). */
+const RELEASE_ONLY_TARGETS: ReadonlySet<IssueStatus> = new Set(["releasing"]);
+
 /**
  * The targets a rung may move to, read off core's exits table as the pipeline
  * registry served it (`useStatusExits`). The row arrives in its declared
@@ -192,8 +197,12 @@ export function allowedTransitions(
 	exits: StatusExits | undefined,
 	from: IssueStatus,
 ): IssueStatus[] {
-	return [...(exits?.[from] ?? [])];
+	if (RELEASE_ONLY_TARGETS.has(from)) return [];
+	return (exits?.[from] ?? []).filter((to) => !RELEASE_ONLY_TARGETS.has(to));
 }
+
+export const RELEASING_HAS_NO_MOVE =
+	"A release is carrying this issue — it leaves Releasing when that release finishes or is aborted";
 
 /** How a target reads against the rung it is offered from. */
 export type TransitionKind = "forward" | "bounce" | "discard";
@@ -215,10 +224,8 @@ const DISCARD_TARGETS = new Set<IssueStatus>(["closed", "dropped"]);
 const KIND_ORDER: TransitionKind[] = ["forward", "bounce", "discard"];
 
 /**
- * The rung's targets as the menu draws them: forward first, then the bounces,
- * then the discards, each group in the order core declared it. A row's FIRST
- * exit is its forward move whatever set it belongs to, which is what keeps
- * `releasing → closed` out of the discard group.
+ * The rung's targets as the menu draws them: forward, bounces, discards, each in core's order.
+ * A row's FIRST exit is forward unless it is a bounce (`awaiting_release → needs_info`).
  */
 export function groupedTransitions(
 	exits: StatusExits | undefined,
@@ -226,8 +233,8 @@ export function groupedTransitions(
 ): GroupedTransition[] {
 	const row = allowedTransitions(exits, from);
 	const kindOf = (to: IssueStatus, i: number): TransitionKind => {
-		if (i === 0) return "forward";
 		if (BOUNCE_TARGETS.has(to)) return "bounce";
+		if (i === 0) return "forward";
 		if (DISCARD_TARGETS.has(to)) return "discard";
 		return "forward";
 	};
@@ -267,8 +274,11 @@ export function bulkAllowedStatuses(
 	return (common ?? []).filter((s) => !BULK_HAS_NO_REASON_TO_COLLECT.has(s));
 }
 
+/** The statuses a bulk move may name though they need a reason: one reason is asked for the whole selection and goes with each issue. */
+export const BULK_SHARES_ONE_REASON: ReadonlySet<string> = new Set(["on_hold"]);
+
 const BULK_HAS_NO_REASON_TO_COLLECT: ReadonlySet<string> = new Set(
-	REASON_REQUIRED_ISSUE_STATUSES,
+	REASON_REQUIRED_ISSUE_STATUSES.filter((s) => !BULK_SHARES_ONE_REASON.has(s)),
 );
 
 export interface DepCounts {
@@ -461,16 +471,18 @@ export function groupRows(rows: IssueRow[], groupBy: GroupBy): IssueGroup[] {
 	return groups;
 }
 
+function openingLine(body: string): string {
+	const text = body.replace(/<[^>]*>/g, " ").replace(/(\*\*|__|[*_`~])/g, "");
+	return text.split("\n").map((line) => line.trim()).find((line) => line !== "") ?? "";
+}
+
 /**
- * Lifecycle-kind for a comment, read from the prose markers the pipeline
- * writes. Order matters — more specific markers first.
- *
- * It read `template` (the root component name) first until 2026-09-14, when
- * the component vocabulary and that column were removed. The prose regex this
- * was meant to replace is the only reader again.
+ * Lifecycle-kind for a comment other than Released, read from the prose markers the pipeline
+ * writes. Order matters — more specific markers first. Only the opening line is read, markup
+ * stripped: a badge says what the comment IS.
  */
 function prefixKind(body: string): CommentKind {
-	const b = body.toLowerCase();
+	const b = openingLine(body).toLowerCase();
 	if (/^#+\s*triage|triage (report|summary)|\btriaged\b/.test(b))
 		return "triage";
 	if (/request changes|requesting changes|changes requested/.test(b))
@@ -484,8 +496,6 @@ function prefixKind(body: string): CommentKind {
 		)
 	)
 		return "qa";
-	if (/released|release note|published release|shipped/.test(b))
-		return "released";
 	if (
 		/forge-code|plan implemented|implementation complete|code complete|pushed .* branch/.test(
 			b,
@@ -499,21 +509,28 @@ function prefixKind(body: string): CommentKind {
 	return "comment";
 }
 
-/**
- * Which body form answered. `component` was the other value until the
- * vocabulary was removed on 2026-09-14; the union is kept at one member rather
- * than deleted because callers report it, and a field that silently stops
- * being reported is harder to notice than one that reports the same thing.
- */
-export type CommentBodyForm = "prefix";
+/** What a comment says it records, as core's own writer stamped it (`comments.announces`). */
+export type CommentAnnouncement = "release";
 
-export interface DerivedCommentKind {
-	kind: CommentKind;
-	form: CommentBodyForm;
+/** The live step in the dashboard's words: its job kind, else the skill it runs. */
+export function liveStepWords(
+  active: { skill: string; jobType?: string | null } | null | undefined,
+): string | null {
+  const kind = active?.jobType || active?.skill;
+  return kind ? jobKindLabel(kind) : null;
 }
 
-export function deriveCommentKind(comment: { body: string }): DerivedCommentKind {
-	return { kind: prefixKind(comment.body), form: "prefix" };
+/**
+ * The comment's lifecycle badge. Released is a fact core records when its release flow writes the
+ * comment (ISS-1228): no words a person or agent types earn it, and a comment the release flow
+ * marked carries it whatever it says. Every other kind is read off the opening line.
+ */
+export function deriveCommentKind(comment: {
+	body: string;
+	announces?: CommentAnnouncement | null;
+}): CommentKind {
+	if (comment.announces === "release") return "released";
+	return prefixKind(comment.body);
 }
 
 export interface ChecklistItem {
@@ -553,12 +570,8 @@ export function parseChecklist(
 	return items;
 }
 
-/** Heartbeat staleness threshold. Mirrors core's sweeper
- *  `HEARTBEAT_TIMEOUT_MS_DEFAULT = 3*60_000` (`pipeline/sweeper.ts`, env
- *  `PIPELINE_HEARTBEAT_TIMEOUT_MS`). Not env-readable from the FE, so kept in
- *  lockstep here; a session whose last heartbeat is older than this is the same
- *  "stale" the server uses before marking it failed. */
-export const HEARTBEAT_STALE_MS = 3 * 60_000;
+/** A session unheard past this reads as quiet: the one line every screen draws (ISS-1228). */
+export const HEARTBEAT_STALE_MS = STALLED_THRESHOLD_MS;
 
 export type HeartbeatState = "alive" | "stale" | "unknown";
 
@@ -733,6 +746,18 @@ const releasesDependent = (edge: IssueDependencyEdge): boolean => {
 	return Boolean(edge.fromStatus && releasing.has(edge.fromStatus));
 };
 
+/** Incoming `blocks` edges split by whether the blocker still holds the issue. */
+export function splitBlockedBy(incoming: readonly IssueDependencyEdge[]): {
+	holding: IssueDependencyEdge[];
+	settled: IssueDependencyEdge[];
+} {
+	const blocks = incoming.filter((e) => e.kind === "blocks");
+	return {
+		holding: blocks.filter((e) => !releasesDependent(e)),
+		settled: blocks.filter(releasesDependent),
+	};
+}
+
 /** Incoming `blocks` edges whose blocker core has not settled — i.e. this issue is genuinely
  *  blocked-by one Forge will not dispatch past. Exported so list/board rows can flag a
  *  genuinely-stuck issue (danger chip) without re-deriving the rule. */
@@ -750,6 +775,27 @@ export function openBlockingRefs(
 			title: e.fromTitle ?? null,
 			status: e.fromStatus ?? null,
 		}));
+}
+
+function listInWords(items: readonly string[]): string {
+	if (items.length <= 1) return items[0] ?? "";
+	return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
+}
+
+function blockerWithStatus(ref: BlockingRef): string {
+	return ref.status ? `${ref.displayId} (${statusLabel(ref.status)})` : `${ref.displayId} (status not read)`;
+}
+
+/** A dropped blocker never finishes, and core's dispatcher holds a dependent behind it until the edge goes. */
+function blockerRemedy(refs: readonly BlockingRef[]): string {
+	const dropped = refs.filter((r) => r.status === "dropped").map((r) => r.displayId);
+	const live = refs.filter((r) => r.status !== "dropped").map((r) => r.displayId);
+	const finish = live.length > 0 ? `Finish ${listInWords(live)} first.` : "";
+	const remove =
+		dropped.length > 0
+			? `A dropped issue never finishes, so ${listInWords(dropped)} holds this one until somebody removes the dependency.`
+			: "";
+	return [finish, remove].filter(Boolean).join(" ");
 }
 
 /**
@@ -828,8 +874,8 @@ export function deriveBlockerState(
 	if (blockingRefs.length) {
 		return {
 			tone: "info",
-			reason: `Blocked by ${blockingRefs.length} open issue${blockingRefs.length > 1 ? "s" : ""}.`,
-			whoMustAct: "Finish the blocking issue(s) first.",
+			reason: `Blocked by ${listInWords(blockingRefs.map(blockerWithStatus))}.`,
+			whoMustAct: blockerRemedy(blockingRefs),
 			cta: { label: "Open blocking issue", kind: "open-blocker" },
 			blockingRefs,
 		};
@@ -838,36 +884,21 @@ export function deriveBlockerState(
 	return null;
 }
 
-export type StepState = "done" | "running" | "failed";
-
-/** One step an issue ACTUALLY ran, rolled up for the detail screen's steps card. */
-export interface StepOutcome {
-	/** The job type exactly as the kernel recorded it — never folded onto another name. */
-	step: string;
-	state: StepState;
-	outcomeLabel?: string;
-	durationSeconds?: number;
-	costUsd?: number;
-	handoff?: StepHandoffRow;
-	/** When this step last ran, for ordering. */
-	ranAt: string;
-}
-
 function truncate(s: string, max: number): string {
 	const t = s.replace(/\s+/g, " ").trim();
 	return t.length > max ? `${t.slice(0, max - 1)}…` : t;
 }
 
 /** Pull a short, human one-liner from a free-form handoff payload. Tries the
- *  stable fields first, then any string field; never throws on a missing/odd
- *  shape (AC#4 graceful fallback). */
+ *  stable fields first — the summary sentence ahead of a one-word outcome —
+ *  then any string field; never throws on a missing/odd shape. */
 export function handoffOutcomeLabel(
 	payload: Record<string, unknown> | null | undefined,
 ): string | undefined {
 	if (!payload || typeof payload !== "object") return undefined;
 	const preferred = [
-		"outcome",
 		"summary",
+		"outcome",
 		"verdict",
 		"result",
 		"planSummary",
@@ -883,91 +914,123 @@ export function handoffOutcomeLabel(
 	return undefined;
 }
 
-/**
- * The step an issue is RUNNING right now, read off the kernel's own active session — or `null`.
- *
- * A session the kernel calls `queued` names a step nobody has started, so it names no running step.
- */
-export function runningStepOf(
-	health: PipelineHealth | null | undefined,
-): string | null {
-	const session = health?.activeSession;
-	return session?.status === "running" ? session.skill : null;
+/** Where an attempt stands: how it ended, or — while it is open — whether its run still is. */
+export type AttemptState = "done" | "failed" | "abandoned" | "running" | "left-open";
+
+/** One attempt of the run view, with what a person reads first already worked out. */
+export interface AttemptView {
+	key: string;
+	phase: string;
+	attempt: number;
+	/** Whether the run made more than one attempt at this phase, so the number tells them apart. */
+	numbered: boolean;
+	state: AttemptState;
+	durationSeconds: number | null;
+	/** One line of what the attempt did: its handoff's own summary, or the artifact it ended with. */
+	summary: string | null;
+	handoff: Record<string, unknown> | null;
+	artifact: Record<string, unknown> | null;
+	startedAt: string;
+	endedAt: string | null;
+	handoffAt: string | null;
+}
+
+/** One run of the issue as the run view draws it. */
+export interface RunView {
+	runId: string;
+	/** 1 for the issue's first run; the view lists the newest first. */
+	ordinal: number;
+	status: JournalRun["status"];
+	/** The other issues a group run was opened over; empty for a run of this issue alone. */
+	alongside: string[];
+	startedAt: string;
+	finishedAt: string | null;
+	costUsd: number | null;
+	sessionId: string | null;
+	attempts: AttemptView[];
+	/** The agent sessions that ran it, oldest first, with whether each resumed or started fresh. */
+	sessions: SessionTimelineEntry[];
 }
 
 /**
- * The steps this issue ran, from the rows that record them.
- *
- * One entry per job type carried on a `step_handoffs` or `step_durations` row, ordered by when it
- * last ran. A job type outside the seven staged names keeps its own name; `drive` is one, and on an
- * autonomous project it is the only one. Durations and cost are summed across the attempts of the
- * most recent RUN of that step, and the latest attempt's handoff is attached.
+ * The session the issue page's Open session opens: one holding the issue now, else the newest
+ * session of the newest run that had one, or `null` for an issue no session has run. `runs` are
+ * newest first, as `deriveRunView` gives them.
  */
-export function deriveStepOutcomes(
-	handoffs: StepHandoffRow[] | undefined,
-	durations: StepDurationRow[] | undefined,
-	live?: { activeStep?: string | null; failedStep?: string | null },
-): StepOutcome[] {
-	const handoffByStep = new Map<string, StepHandoffRow>();
-	for (const row of handoffs ?? []) {
-		const prev = handoffByStep.get(row.step);
-		if (
-			!prev ||
-			row.updatedAt > prev.updatedAt ||
-			(row.updatedAt === prev.updatedAt && row.attempt > prev.attempt)
-		) {
-			handoffByStep.set(row.step, row);
-		}
-	}
+export function issueSessionId(
+	holding: readonly string[],
+	runs: readonly Pick<RunView, "sessionId">[],
+): string | null {
+	return holding[0] ?? runs.find((run) => run.sessionId)?.sessionId ?? null;
+}
 
-	const byStepRun = new Map<
-		string,
-		Map<string, { durationSeconds: number; costUsd: number; latest: string }>
-	>();
-	for (const row of durations ?? []) {
-		const runs = byStepRun.get(row.step) ?? new Map();
-		const acc = runs.get(row.runId) ?? {
-			durationSeconds: 0,
-			costUsd: 0,
-			latest: "",
+const LIVE_RUN = new Set<JournalRun["status"]>(["running", "paused"]);
+
+function attemptState(a: JournalAttempt, run: JournalRun): AttemptState {
+	if (a.outcome === "ok") return "done";
+	if (a.outcome) return a.outcome;
+	return LIVE_RUN.has(run.status) ? "running" : "left-open";
+}
+
+function artifactLine(artifact: Record<string, unknown> | null): string | null {
+	if (!artifact) return null;
+	if (artifact.kind === "commit" && typeof artifact.sha === "string") {
+		const message = typeof artifact.message === "string" ? ` ${artifact.message}` : "";
+		return truncate(`${artifact.sha.slice(0, 9)}${message}`, 90);
+	}
+	if (artifact.kind === "note" && typeof artifact.text === "string") return truncate(artifact.text, 90);
+	return null;
+}
+
+/**
+ * The issue's runs as one view: each run with the attempts its journal recorded and the sessions
+ * that ran it. An open attempt reads `running` only while its run is live; on a run that ended it
+ * reads `left-open`, which is what the journal says, and not `done`.
+ */
+export function deriveRunView(
+	runs: JournalRun[] | undefined,
+	sessions: IssueAgentSession[] | null | undefined,
+	issueKey?: string | null,
+): RunView[] {
+	if (!runs || runs.length === 0) return [];
+	const own = issueKey ?? null;
+	const timeline = deriveSessionTimeline(sessions);
+	const runOf = new Map((sessions ?? []).map((s) => [s.id, s.pipelineRunId ?? null]));
+	const byRun = new Map<string, SessionTimelineEntry[]>();
+	for (const entry of timeline) {
+		const runId = runOf.get(entry.id);
+		if (!runId) continue;
+		byRun.set(runId, [...(byRun.get(runId) ?? []), entry]);
+	}
+	return runs.map((run) => {
+		const tries = new Map<string, number>();
+		for (const a of run.attempts) tries.set(a.phase, (tries.get(a.phase) ?? 0) + 1);
+		return {
+			runId: run.runId,
+			ordinal: run.ordinal,
+			status: run.status,
+			alongside: (run.group ?? []).filter((key) => key !== own),
+			startedAt: run.startedAt,
+			finishedAt: run.finishedAt,
+			costUsd: run.costUsd,
+			sessionId: run.sessionId,
+			sessions: byRun.get(run.runId) ?? [],
+			attempts: run.attempts.map((a) => ({
+				key: `${a.phase}#${a.attempt}`,
+				phase: a.phase,
+				attempt: a.attempt,
+				numbered: (tries.get(a.phase) ?? 0) > 1,
+				state: attemptState(a, run),
+				durationSeconds: a.durationSeconds,
+				summary: handoffOutcomeLabel(a.handoff) ?? artifactLine(a.artifact),
+				handoff: a.handoff,
+				artifact: a.artifact,
+				startedAt: a.startedAt,
+				endedAt: a.endedAt,
+				handoffAt: a.handoffAt,
+			})),
 		};
-		acc.durationSeconds += row.durationSeconds ?? 0;
-		acc.costUsd += row.costUsd ?? 0;
-		if ((row.finishedAt ?? row.startedAt ?? "") > acc.latest)
-			acc.latest = row.finishedAt ?? row.startedAt ?? "";
-		runs.set(row.runId, acc);
-		byStepRun.set(row.step, runs);
-	}
-
-	const outcomes: StepOutcome[] = [];
-	for (const step of new Set([...handoffByStep.keys(), ...byStepRun.keys()])) {
-		const handoff = handoffByStep.get(step);
-		let pick:
-			| { durationSeconds: number; costUsd: number; latest: string }
-			| undefined;
-		for (const acc of byStepRun.get(step)?.values() ?? []) {
-			if (!pick || acc.latest > pick.latest) pick = acc;
-		}
-		const state: StepState =
-			live?.failedStep === step
-				? "failed"
-				: live?.activeStep === step
-					? "running"
-					: "done";
-		outcomes.push({
-			step,
-			state,
-			ranAt: pick?.latest || handoff?.updatedAt || "",
-			...(handoff
-				? { handoff, outcomeLabel: handoffOutcomeLabel(handoff.payload) }
-				: {}),
-			...(pick && pick.durationSeconds > 0
-				? { durationSeconds: pick.durationSeconds }
-				: {}),
-			...(pick && pick.costUsd > 0 ? { costUsd: pick.costUsd } : {}),
-		});
-	}
-	return outcomes.sort((a, b) => a.ranAt.localeCompare(b.ranAt));
+	});
 }
 
 /** Known session-group keys → humanized labels. The label set is data-driven:

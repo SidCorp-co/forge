@@ -20,9 +20,8 @@ vi.mock('../logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-const { collectWorkEvidence, hasCodeEvidence, findMissingWorkEvidence } = await import(
-  './work-evidence.js'
-);
+const { collectWorkEvidence, hasCodeEvidence, findMissingWorkEvidence, noWorkEvidenceDetail } =
+  await import('./work-evidence.js');
 
 function setup(...batches: unknown[][]) {
   queue.length = 0;
@@ -32,8 +31,6 @@ function setup(...batches: unknown[][]) {
 describe('the refusal names the lane that decided it', () => {
   it("names the issue's own declaration, not the project's kind, where the issue declared outside git", async () => {
     setup(
-      [],
-      [],
       [],
       [
         {
@@ -54,11 +51,9 @@ describe('the refusal names the lane that decided it', () => {
   it('tells a git lane how an issue whose change lands no file declares it', async () => {
     setup(
       [],
-      [],
-      [],
       [{ sessionContext: null, baseBranch: 'main', releaseChain: [], projectKind: 'standard' }],
     );
-    expect(await findMissingWorkEvidence('iss-1')).toContain('`landingShape: outside_git`');
+    expect(await findMissingWorkEvidence('iss-1')).toContain('Set `landingShape` to `outside_git`');
   });
 });
 
@@ -73,25 +68,39 @@ describe('a landing on an outside-git lane (ISS-1384)', () => {
       { projectKind: 'standard', declaredLandingShape: 'outside_git' },
     ],
   ])('counts as evidence on %s', async (_where, lane) => {
-    setup([], [], [{ ...marked, baseBranch: 'main', releaseChain: [], ...lane }]);
+    setup([{ ...marked, baseBranch: 'main', releaseChain: [], ...lane }]);
     const evidence = await collectWorkEvidence('iss-1');
     expect(evidence.mergedLanding).toBe(LANDING);
     expect(hasCodeEvidence(evidence)).toBe(true);
   });
 
   it('is no evidence on a git lane, which records a commit and never a landing', async () => {
-    setup([], [], [{ ...marked, baseBranch: 'main', releaseChain: [], projectKind: 'standard' }]);
+    setup([{ ...marked, baseBranch: 'main', releaseChain: [], projectKind: 'standard' }]);
     const evidence = await collectWorkEvidence('iss-1');
     expect(evidence.mergedLanding).toBeNull();
     expect(hasCodeEvidence(evidence)).toBe(false);
   });
 
   it('is no evidence where merged_at is empty: a landing with no mark is no mark', async () => {
-    setup(
-      [],
-      [],
-      [{ ...marked, mergedAt: null, baseBranch: 'main', releaseChain: [], projectKind: 'website' }],
-    );
+    setup([
+      { ...marked, mergedAt: null, baseBranch: 'main', releaseChain: [], projectKind: 'website' },
+    ]);
     expect(hasCodeEvidence(await collectWorkEvidence('iss-1'))).toBe(false);
+  });
+});
+
+describe('the refusal names only routes the issue row can carry (ISS-1133 criterion 4)', () => {
+  const lanes = [
+    { shape: 'git', declared: false },
+    { shape: 'outside_git', declared: true },
+    null,
+  ] as const;
+  const doors = ['advance', 'mark', 'criterion'] as const;
+
+  it.each(
+    lanes.flatMap((lane) => doors.map((door) => [lane?.shape ?? 'unknown', door, lane] as const)),
+  )('names no handoff on a %s lane at the %s door', (_shape, door, lane) => {
+    const detail = noWorkEvidenceDetail(lane, door);
+    expect(detail).not.toMatch(/handoff|commitSha|filesModified/);
   });
 });

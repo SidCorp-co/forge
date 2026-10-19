@@ -142,6 +142,19 @@ describe("Table — size changes without a scroll", () => {
   });
 });
 
+// ISS-1228 round 12: the frame drew a rounded, bordered white box around every table at md+, which
+// read as a card under the flat box strip on Agents > Sessions (owner's flat-UI rule).
+describe("Table — drawn flush on the page", () => {
+  it("draws no frame, corner or fill of its own, only the hairline that ends it", () => {
+    Object.assign(geometry, { scrollWidth: 800, clientWidth: 800 });
+    const { container } = render(<Sample />);
+    const frame = container.firstElementChild as HTMLElement;
+    for (const boxy of ["rounded-lg", "border", "bg-surface"]) expect(frame).not.toHaveClass(boxy);
+    expect(frame).toHaveClass("border-b", "border-line");
+    expect(frame.className).not.toMatch(/(^|\s)rounded/);
+  });
+});
+
 describe("Table — the table element", () => {
   it("still receives className and every other prop", () => {
     Object.assign(geometry, { scrollWidth: 800, clientWidth: 800 });
@@ -179,7 +192,7 @@ describe("Table — a sticky first column holds the start edge", () => {
   it("gives the sticky cells, and only them, the classes that pin them to the start edge", () => {
     render(<Stuck />);
     for (const name of ["Name", "first"]) {
-      expect(screen.getByText(name)).toHaveClass("sticky", "left-0", "bg-surface");
+      expect(screen.getByText(name)).toHaveClass("sticky", "left-0", "bg-app");
     }
     for (const name of ["Other", "second"]) expect(screen.getByText(name)).not.toHaveClass("sticky");
   });

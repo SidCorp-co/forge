@@ -96,7 +96,7 @@ function OptionRow({
         )}
       </div>
       {answerable && option.locked && (
-        <p className="fg-caption mt-1 text-danger">
+        <p className="fg-caption mt-1 fg-danger">
           Needs the &quot;{option.authority}&quot; authority
         </p>
       )}
@@ -156,7 +156,7 @@ function FreeTextAnswer({
 
   if (locked) {
     return (
-      <p className="fg-caption text-danger">
+      <p className="fg-caption fg-danger">
         Answering this needs access to the project this issue belongs to.
       </p>
     );

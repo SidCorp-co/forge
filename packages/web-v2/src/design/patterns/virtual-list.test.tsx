@@ -155,9 +155,39 @@ describe("the keyboard", () => {
     expect(document.activeElement).toHaveAttribute("data-index", "0");
   });
 
-  it("leaves a plain End to the browser", async () => {
+  it("takes a plain End to the last row as Ctrl+End does, since the browser's own End rests short of rows not yet measured", async () => {
     const first = await opened();
-    expect(fireEvent.keyDown(first, { key: "End" })).toBe(true);
+    await act(async () => void fireEvent.keyDown(first, { key: "End" }));
+    expect(indexes()).toContain(1299);
+    expect(document.activeElement).toHaveAttribute("data-index", "1299");
+  });
+
+  it("takes a plain Home back to the first row, as Ctrl+Home does, so focus is not left on a row scrolled out of view", async () => {
+    const first = await opened();
+    await act(async () => void fireEvent.keyDown(first, { key: "End" }));
+    expect(document.activeElement).toHaveAttribute("data-index", "1299");
+    await act(async () => void fireEvent.keyDown(document.activeElement as Element, { key: "Home" }));
+    expect(document.activeElement).toHaveAttribute("data-index", "0");
+    expect(indexes()).toContain(0);
+  });
+
+  it("leaves Shift, Alt and Meta with End or Home to the browser, which selects or navigates with them", async () => {
+    const first = await opened();
+    for (const key of ["End", "Home"]) {
+      for (const modifier of [{ shiftKey: true }, { altKey: true }, { metaKey: true }]) {
+        expect(fireEvent.keyDown(first, { key, ...modifier })).toBe(true);
+        expect(document.activeElement).toBe(first);
+      }
+    }
+  });
+
+  it("leaves End alone inside a text field in a row", async () => {
+    list(items(5), { renderRow: (r) => <input aria-label={`note ${r.id}`} /> });
+    await act(async () => {});
+    const field = screen.getByLabelText("note n0");
+    act(() => field.focus());
+    expect(fireEvent.keyDown(field, { key: "End" })).toBe(true);
+    expect(document.activeElement).toBe(field);
   });
 
   it("leaves PageDown alone inside a text field in a row", async () => {
@@ -274,5 +304,72 @@ describe("loading more", () => {
     list(items(4));
     await act(async () => {});
     expect(screen.queryByRole("status")).toBeNull();
+  });
+});
+
+describe("the focus ring on a row (ISS-1228 criterion 47)", () => {
+  // Round 7 drew the ring inside the row over content that ran to the row's edge, so it covered each
+  // line's first character ("ISS-9" read "SS-9"). The ring stays on the row's own edge, where neither
+  // the frame nor the next row covers it, and the row's content is inset wider than the ring.
+  it("draws the focused row's ring along the row's edge, in the focus-ring token, with no outer shadow", () => {
+    list(items(3));
+    const row = screen.getByRole("article", { name: "Row 1" });
+    const classes = row.className.split(/\s+/);
+    expect(classes).toEqual(
+      expect.arrayContaining([
+        "focus-visible:outline-2",
+        "focus-visible:-outline-offset-2",
+        "focus-visible:outline-solid",
+        "focus-visible:outline-[var(--focus-ring)]",
+        "focus-visible:shadow-none",
+      ]),
+    );
+    expect(classes.filter((c) => /^focus-visible:(outline-none|shadow-\[)/.test(c))).toEqual([]);
+  });
+
+  it("insets the row's content wider than the ring on every side, so the ring covers none of its text", () => {
+    list(items(3));
+    const classes = screen.getByRole("article", { name: "Row 1" }).className.split(/\s+/);
+    const ring = Number(classes.find((c) => /^focus-visible:outline-\d+$/.test(c))?.split("-").pop());
+    const inset = Number(classes.find((c) => /^p-\[\d+px\]$/.test(c))?.match(/\d+/)?.[0]);
+    expect(ring).toBe(2);
+    expect(inset).toBeGreaterThan(ring);
+  });
+});
+
+describe("the arrow keys (ISS-1228 criterion 48)", () => {
+  async function opened() {
+    list(items(1300));
+    await act(async () => {});
+    const first = articles()[0] as HTMLElement;
+    act(() => first.focus());
+    return first;
+  }
+
+  it("moves focus to the next row on ArrowDown and back on ArrowUp, instead of scrolling the frame", async () => {
+    const first = await opened();
+    const outcome = { notPrevented: true };
+    await act(async () => {
+      outcome.notPrevented = fireEvent.keyDown(first, { key: "ArrowDown" });
+    });
+    expect(outcome.notPrevented).toBe(false);
+    expect(document.activeElement).toHaveAttribute("data-index", "1");
+    await act(async () => void fireEvent.keyDown(document.activeElement as Element, { key: "ArrowUp" }));
+    expect(document.activeElement).toHaveAttribute("data-index", "0");
+  });
+
+  it("walks past the rows in view, drawing each row it reaches", async () => {
+    await opened();
+    for (let i = 0; i < 12; i++) {
+      await act(async () => void fireEvent.keyDown(document.activeElement as Element, { key: "ArrowDown" }));
+    }
+    expect(document.activeElement).toHaveAttribute("data-index", "12");
+  });
+
+  it("leaves ArrowDown alone inside a text field in a row", async () => {
+    list(items(3), { renderRow: (r) => <input aria-label={`field ${r.id}`} /> });
+    await act(async () => {});
+    const field = screen.getByLabelText("field n0");
+    expect(fireEvent.keyDown(field, { key: "ArrowDown" })).toBe(true);
   });
 });

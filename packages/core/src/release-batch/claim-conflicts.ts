@@ -4,6 +4,7 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { type IssueStatus, issues, pipelineRuns, projects } from '../db/schema.js';
+import { statusLabel } from '../issues/status-sets.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { TERMINAL_PIPELINE_RUN_STATUSES } from '../pipeline/status-sets.js';
 import { ClaimConflictError } from './errors.js';
@@ -124,7 +125,7 @@ function claimedSentences(projectId: string, runId: string, list: Standing<'clai
   if (held.length > 0) {
     const them = held.length === 1 ? 'it' : 'them';
     out.push(
-      `${keys(held)} ${isAre(held)} at \`releasing\`, still claimed by release batch ${runId}, which has ended: abort it with POST /api/projects/${projectId}/release-batches/${runId}/abort and a body of {"promotedRoster":"return-to-gate"}, which releases the claim and puts ${them} back at the release gate, then send ${them} again.`,
+      `${keys(held)} ${isAre(held)} at Releasing, still claimed by release batch ${runId}, which has ended: Forge's releasing sweep settles ${them} within a minute, closing ${them} by a release record where production carries ${them} and otherwise returning ${them} to the release gate, so send ${them} again after it has run.`,
     );
   }
   if (stale.length > 0) {
@@ -138,7 +139,7 @@ function claimedSentences(projectId: string, runId: string, list: Standing<'clai
 }
 
 function statusSentence(status: string, gateStatus: string, list: ClaimConflict[]): string {
-  const subject = `${keys(list)} ${isAre(list)} at \`${status}\``;
+  const subject = `${keys(list)} ${isAre(list)} at ${statusLabel(status)}`;
   if (status === 'closed') {
     const it = list.length === 1 ? 'one' : 'any of them';
     return `${subject}: already shipped, and a release carries an issue once. If ${it} has to ship again, reopen it and bring it back through the pipeline to the release gate.`;
@@ -146,7 +147,7 @@ function statusSentence(status: string, gateStatus: string, list: ClaimConflict[
   if (status === 'dropped') {
     return `${subject}: set down as not work, so no release carries ${list.length === 1 ? 'it' : 'them'}.`;
   }
-  return `${subject}, not \`${gateStatus}\`: a release carries an issue only once it reaches the release gate.`;
+  return `${subject}, not ${statusLabel(gateStatus)}: a release carries an issue only once it reaches the release gate.`;
 }
 
 /** The refusal, one sentence per reason, each naming its issues by key. */

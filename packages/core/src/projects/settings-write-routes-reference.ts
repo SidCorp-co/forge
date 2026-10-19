@@ -59,7 +59,8 @@ export const writeEnvironments = describeOperation({
     200: json(environmentsWrittenSchema, 'The merged environments'),
     400: fail({
       ENVIRONMENTS_WRITE_SHAPE: 'the body is not `{ base, patch }`',
-      ENVIRONMENTS_INVALID: 'the merged environments are not valid',
+      ENVIRONMENTS_INVALID:
+        'the merged environments are not valid, or the credentials the patch writes hold a row with no password or a second row for a label or login already listed; `details.conflicts` names each path and its `rule`',
     }),
     403: NEEDS_ORG_ADMIN,
     404: fail('NOT_FOUND', 'the project does not exist'),

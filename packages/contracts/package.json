@@ -3,7 +3,7 @@
   "version": "0.3.0",
   "private": true,
   "license": "Apache-2.0",
-  "description": "Shared TypeScript types + request schemas derived from @forge/core (Drizzle rows + Zod schemas). Type-only surface \u2014 no runtime coupling.",
+  "description": "Shared TypeScript types, registries and Zod schemas that clients and @forge/core read alike. Core's own shapes are imported as types only; the constants and schemas shipped here declare their own values.",
   "type": "module",
   "exports": {
     ".": {
@@ -30,6 +30,18 @@
       "types": "./dist/attachments.d.ts",
       "default": "./dist/attachments.js"
     },
+    "./mark-merged-words": {
+      "types": "./dist/mark-merged-words.d.ts",
+      "default": "./dist/mark-merged-words.js"
+    },
+    "./health-words": {
+      "types": "./dist/health-words.d.ts",
+      "default": "./dist/health-words.js"
+    },
+    "./stuck-words": {
+      "types": "./dist/stuck-words.d.ts",
+      "default": "./dist/stuck-words.js"
+    },
     "./deploy-capability": {
       "types": "./src/deploy-capability.ts",
       "default": "./src/deploy-capability.ts"
@@ -41,6 +53,10 @@
     "./work-state": {
       "types": "./src/work-state.ts",
       "default": "./src/work-state.ts"
+    },
+    "./test-credentials": {
+      "types": "./src/test-credentials.ts",
+      "default": "./src/test-credentials.ts"
     },
     "./document-patch": {
       "types": "./dist/document-patch.d.ts",
@@ -54,12 +70,12 @@
   ],
   "dependencies": {
     "@forge/core": "workspace:*",
-    "drizzle-orm": "^0.45.3",
-    "zod": "^4.6.5"
+    "drizzle-orm": "^0.45.4",
+    "zod": "^4.6.6"
   },
   "devDependencies": {
-    "typescript": "^5.7.2",
-    "vitest": "^5.0.3"
+    "typescript": "5.9.3",
+    "vitest": "^5.0.4"
   },
   "scripts": {
     "build": "tsc -p tsconfig.emit.json && tsc --noEmit -p tsconfig.build.json",

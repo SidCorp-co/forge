@@ -190,6 +190,8 @@ export const addOrgMember = describeOperation({
     409: fail({
       PERSONAL_ORG_IMMUTABLE: 'a personal organization takes no other members',
       ALREADY_MEMBER: 'the account is already a member',
+      FORGE_IS_NOT_A_MEMBER: "the address is Forge's own account, which is never a member",
+      AGENT_ADDRESS_RESERVED: 'the address is on the domain Forge mints agent accounts on',
     }),
   },
 });

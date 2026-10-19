@@ -14,6 +14,8 @@ import {
   terminalAgentSessionStatuses,
   usageRecords,
 } from '../db/schema.js';
+import { silenceLimitFrom } from '../devices/session-silence.js';
+import { loadSilenceDeadlines } from '../devices/session-silence-read.js';
 import { isPipelineSessionKind } from '../jobs/session-kinds.js';
 import { assertProjectRole, loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
 import { fromPage, listResponse } from '../lib/pagination.js';
@@ -31,11 +33,14 @@ import {
   usageSessionMatch,
   usageTotalsSelection,
 } from '../usage-records/rollup.js';
+import { boxOnlineOf, loadBoxStatuses } from './box-online.js';
+import { loadSessionReports } from './box-report.js';
 import { broadcastSession, broadcastTurnAppended, broadcastTurnTruncated } from './broadcast.js';
 import { extractTurnPreview } from './chat-preview.js';
 import { syncRunnerHealthFromChatTerminal } from './chat-runner-health.js';
 import { createChatSessionRow } from './chat-turn.js';
 import { agentSessionEventsRoutes } from './events-routes.js';
+import { loadSessionIssues } from './held-issues.js';
 import { agentSessionInboxRoutes } from './inbox-routes.js';
 import { assertCallerDeclaresNoKind, kindFromQuery } from './kind-query.js';
 import { agentSessionLifecycleRoutes } from './lifecycle-routes.js';
@@ -379,10 +384,23 @@ agentSessionRoutes.get(
       }
     }
 
+    const reportById = await loadSessionReports(pageIds);
+    const deadlineById = await loadSilenceDeadlines(pageIds);
+    const issuesById = await loadSessionIssues(pageIds);
+    const boxStatus = await loadBoxStatuses(rows.map((r) => r.deviceId));
     const items = rows.map((r) => ({
       ...r,
+      boxOnline: boxOnlineOf(r.deviceId ? boxStatus.get(r.deviceId) : null),
+      issues: issuesById.get(r.id) ?? [],
       estimatedCost: costById.get(r.id) ?? 0,
       lastMessagePreview: previewById.get(r.id) ?? null,
+      report: reportById.get(r.id) ?? null,
+      silenceLimitMs: silenceLimitFrom(
+        deadlineById.get(r.id) ?? null,
+        r.lastHeartbeatAt,
+        r.startedAt,
+        r.updatedAt,
+      ),
     }));
     return c.json(
       answer(
@@ -457,7 +475,22 @@ agentSessionRoutes.get(
       assertAgentChatOwner(row, access, userId);
     }
 
-    return c.json(answer(ref.sessionSchema, row));
+    const reports = await loadSessionReports([row.id]);
+    const deadlines = await loadSilenceDeadlines([row.id]);
+    const boxStatus = await loadBoxStatuses([row.deviceId]);
+    return c.json(
+      answer(ref.sessionReadSchema, {
+        ...row,
+        boxOnline: boxOnlineOf(row.deviceId ? boxStatus.get(row.deviceId) : null),
+        report: reports.get(row.id) ?? null,
+        silenceLimitMs: silenceLimitFrom(
+          deadlines.get(row.id) ?? null,
+          row.lastHeartbeatAt,
+          row.startedAt,
+          row.updatedAt,
+        ),
+      }),
+    );
   },
 );
 

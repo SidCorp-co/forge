@@ -8,7 +8,6 @@
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { KanbanCard } from "@/design";
 import { StatusCell } from "./issue-row-actions";
 import type { IssueRow, PipelineHealth } from "../types";
 
@@ -58,6 +57,7 @@ const row = (
     mergedAt: null,
     createdAt: QUEUED_AT,
     updatedAt: QUEUED_AT,
+    statusEnteredAt: QUEUED_AT,
     agentStatus,
     ...(pipelineHealth ? { pipelineHealth } : {}),
   }) as IssueRow;
@@ -159,39 +159,5 @@ describe("issue list row · queued chip", () => {
     unmount();
     const live = render(<StatusCell row={row(undefined, "running")} />);
     expect(live.container.textContent).not.toMatch(/\d+\s*\/\s*7/);
-  });
-});
-
-describe("board card · queued chip", () => {
-  it("carries the gate reason instead of the run's Running", () => {
-    render(
-      <KanbanCard
-        id="ISS-903"
-        title="A queued issue"
-        status="waiting"
-        statusDomain="session"
-        statusLabel="No runner online"
-        waitingReason="No runner is online for this project."
-      />,
-    );
-    expect(screen.getByText("No runner online")).toBeInTheDocument();
-    expect(screen.queryByText("Running")).not.toBeInTheDocument();
-    expect(screen.queryByText("Waiting for me")).not.toBeInTheDocument();
-  });
-
-  it("reaches the reason without opening the drawer", () => {
-    render(
-      <KanbanCard
-        id="ISS-903"
-        title="A queued issue"
-        status="waiting"
-        statusDomain="session"
-        statusLabel="No runner online"
-        waitingReason="No runner is online for this project."
-      />,
-    );
-    expect(
-      screen.getByRole("button", { name: /waiting: No runner is online for this project\./ }),
-    ).toBeInTheDocument();
   });
 });

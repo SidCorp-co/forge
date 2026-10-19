@@ -2,10 +2,13 @@
 // needs anyone" is a claim about every read, so a read that is pending, failed or refused makes the
 // project unread, never quiet.
 
+import { STUCK_ISSUE_KINDS, type StuckIssueKind } from "@forge/contracts/notifications";
+import { stuckCountSentence } from "@forge/contracts/stuck-words";
 import { formatElapsed } from "@/features/overview/derive";
+import { formatApiError } from "@/lib/api/error";
 import type { IssueRow } from "@/features/issues/types";
-import type { PipelineRunListItem, ThroughputRow } from "@/features/pipeline/types";
-import type { AttentionCut, DashboardAttentionItem, ParkedAge } from "./derive";
+import type { PipelineRunListItem, ThroughputRow } from "@/features/runs/types";
+import type { AttentionCut, DashboardAttentionItem } from "./derive";
 
 /** A question or an attention item that has waited this long on a person makes the project degraded. */
 export const OVERDUE_WAIT_SECONDS = 14 * 86_400;
@@ -25,12 +28,11 @@ export function ageBand(seconds: number): AgeBand {
   return "overdue";
 }
 
-/** The parked issues' ages by issue id: the open question's wait where there is one, else the last write. */
-export function parkedAges(rows: readonly IssueRow[] | undefined): Map<string, ParkedAge> {
-  const out = new Map<string, ParkedAge>();
+/** When each parked issue began to wait: its open question to a person, else when it entered its status. */
+export function parkedAges(rows: readonly IssueRow[] | undefined): Map<string, string> {
+  const out = new Map<string, string>();
   for (const r of rows ?? []) {
-    if (r.waitingOnPersonSince) out.set(r.id, { since: r.waitingOnPersonSince, basis: "entered" });
-    else if (r.updatedAt) out.set(r.id, { since: r.updatedAt, basis: "last-write" });
+    out.set(r.id, r.waitingOnPersonSince ?? r.statusEnteredAt);
   }
   return out;
 }
@@ -53,17 +55,30 @@ export function stuckRuns(idle: readonly PipelineRunListItem[], now: number): Pi
 /** One read the page depends on: where it stands, and why when it did not arrive. */
 export type ReadState = { read: "pending" } | { read: "failed"; reason: string } | { read: "ok" };
 
+/** Where one query stands: a read that failed (even over an earlier answer) or has not arrived is never an empty one. */
+export function readOf(q: { isError: boolean; error: unknown; data: unknown }): ReadState {
+  if (q.isError) return { read: "failed", reason: formatApiError(q.error) };
+  return q.data === undefined ? { read: "pending" } : { read: "ok" };
+}
+
+/** One state for several queries a figure depends on: failed if any failed, else pending if any is. */
+export function readOfAll(...qs: Array<{ isError: boolean; error: unknown; data: unknown }>): ReadState {
+  const states = qs.map(readOf);
+  return states.find((r) => r.read === "failed") ?? states.find((r) => r.read === "pending") ?? { read: "ok" };
+}
+
 export type ProjectShape = "quiet" | "working" | "degraded" | "unread";
 
 export interface ShapeInput {
   attention: ReadState;
   runs: ReadState;
+  sessions: ReadState;
   /** `ok` where the page asks for no parked ages, because the health row lists no parked issue. */
   parked: ReadState;
   items: readonly DashboardAttentionItem[];
   cut: AttentionCut | null;
   slug: string;
-  liveRuns: number;
+  liveSessions: number;
   stuckRuns: readonly PipelineRunListItem[];
   /** Failed jobs the attention response counts for this project, listed or not: the list is capped. */
   failedJobs: number;
@@ -71,6 +86,12 @@ export interface ShapeInput {
   releaseRuns: number;
   /** Issues in the Awaiting release state, which have no release run at the gate to show for them. */
   releaseIssues: number;
+  /** The health row this project's stuck-issue count comes from: no row is a read that did not arrive. */
+  stuck: ReadState;
+  /** Issues a stuck-issue notice stands for, and the first few of them, longest-standing first. */
+  stuckIssues: number;
+  stuckIssuesByKind: Partial<Record<StuckIssueKind, number>>;
+  stuckIssueRefs: readonly { issueId: string; documentId: string; kind: StuckIssueKind }[];
   now: number;
 }
 
@@ -113,7 +134,9 @@ function unreadLines(input: ShapeInput): string[] {
   return [
     unreadStatement("What needs you", input.attention),
     unreadStatement("The project's runs", input.runs, true),
+    unreadStatement("The project's live sessions", input.sessions, true),
     unreadStatement("How long parked issues have waited", input.parked),
+    unreadStatement("The stuck-issue count", input.stuck),
   ].filter((line): line is string => line !== null);
 }
 
@@ -131,27 +154,42 @@ function qualifiers(input: ShapeInput): Qualifier[] {
     const seconds = secondsSince(item.since, input.now);
     if (item.actionKind === "retry") {
       out.push({ item, seconds, kind: "failed" });
-    } else if (item.sinceBasis === "entered" && seconds !== null && seconds >= OVERDUE_WAIT_SECONDS) {
+    } else if (seconds !== null && seconds >= OVERDUE_WAIT_SECONDS) {
       out.push({ item, seconds, kind: "overdue" });
     }
   }
   return out;
 }
 
+function stuckSentences(byKind: ShapeInput["stuckIssuesByKind"], total: number): string[] {
+  const said = STUCK_ISSUE_KINDS.filter((k) => (byKind[k] ?? 0) > 0);
+  // A read that names no kind still says how many: the count is whole even where its split is not.
+  if (said.length === 0) return [stuckCountSentence("other", total)];
+  return said.map((k) => stuckCountSentence(k, byKind[k] ?? 0));
+}
+
+function stuckIssuesOf(input: ShapeInput): number {
+  return input.stuck.read === "ok" ? input.stuckIssues : 0;
+}
+
+function stuckEntry(slug: string, count: number, first: { issueId: string; documentId: string } | undefined): BandEntry {
+  if (!first) return { label: "Action needed — open the issues", href: `/projects/${slug}/issues` };
+  const which = count === 1 ? first.issueId : `${first.issueId}, stuck longest`;
+  return { label: `Action needed — open ${which}`, href: `/projects/${slug}/issues/${first.documentId}` };
+}
+
 function degradedBand(input: ShapeInput, quals: readonly Qualifier[], stuck: readonly PipelineRunListItem[], failed: number) {
   const overdue = quals.filter((q) => q.kind === "overdue").length;
+  const stuckIssues = stuckIssuesOf(input);
   const parts: string[] = [];
-  if (failed > 0) parts.push(plural(failed, "failed job", "failed jobs"));
-  if (stuck.length > 0) parts.push(`${plural(stuck.length, "run", "runs")} stuck with no job running`);
-  if (overdue > 0) {
-    parts.push(`${plural(overdue, "item", "items")} waiting on a person for over ${OVERDUE_WAIT_SECONDS / DAY} days`);
+  if (failed > 0) parts.push(`${plural(failed, "job", "jobs")} failed.`);
+  if (stuck.length > 0) {
+    parts.push(`${plural(stuck.length, "run has", "runs have")} not been heard from for an hour.`);
   }
-  const lead =
-    failed > 0 && (stuck.length > 0 || overdue > 0)
-      ? "Work is blocked and failing"
-      : failed > 0
-        ? "Work is failing"
-        : "Work is blocked";
+  if (stuckIssues > 0) parts.push(...stuckSentences(input.stuckIssuesByKind, stuckIssues));
+  if (overdue > 0) {
+    parts.push(`${plural(overdue, "item has", "items have")} waited on a person for over ${OVERDUE_WAIT_SECONDS / DAY} days.`);
+  }
 
   const oldest = input.cut ? "oldest listed item" : "oldest item";
   const aged = quals.reduce<(typeof quals)[number] | undefined>(
@@ -165,9 +203,11 @@ function degradedBand(input: ShapeInput, quals: readonly Qualifier[], stuck: rea
   } else if (quals[0]) {
     entry = { label: "Action needed — open the first failed job", href: quals[0].item.link };
   } else if (stuck.length > 0 || failed > 0) {
-    entry = { label: "Action needed — open the pipeline", href: `/projects/${input.slug}/pipeline` };
+    entry = { label: "Action needed — open the runs", href: `/projects/${input.slug}/agents` };
+  } else if (stuckIssues > 0) {
+    entry = stuckEntry(input.slug, stuckIssues, input.stuckIssueRefs[0]);
   }
-  return { text: `${lead} — ${parts.join(" · ")}`, entry };
+  return { text: parts.join(" "), entry };
 }
 
 /** The one reading of what this project is doing. */
@@ -181,15 +221,16 @@ export function projectShape(input: ShapeInput): ProjectReading {
       ? Math.max(input.failedJobs, quals.filter((q) => q.kind === "failed").length)
       : 0;
 
-  // Degraded stands on the reads that did arrive: a failed job is a failed job whether or not the
-  // parked ages did.
-  if (quals.length > 0 || stuck.length > 0 || failed > 0) {
+  // Degraded stands on the reads that did arrive, whether or not the parked ages did.
+  if (quals.length > 0 || stuck.length > 0 || failed > 0 || stuckIssuesOf(input) > 0) {
     const band = degradedBand(input, quals, stuck, failed);
     return { shape: "degraded", headline: band.text, detail: null, band, unread };
   }
 
   if (unread.length > 0) {
-    const failed = [input.attention, input.runs, input.parked].some((s) => s.read === "failed");
+    const failed = [input.attention, input.runs, input.sessions, input.parked, input.stuck].some(
+      (s) => s.read === "failed",
+    );
     return {
       shape: "unread",
       headline: failed ? "Part of this page could not be read." : "Reading what is going on…",
@@ -200,13 +241,10 @@ export function projectShape(input: ShapeInput): ProjectReading {
   }
 
   const parts: string[] = [];
-  if (input.liveRuns > 0) parts.push(`${plural(input.liveRuns, "run is", "runs are")} live`);
+  if (input.liveSessions > 0) parts.push(`${plural(input.liveSessions, "session is", "sessions are")} live`);
   if (input.items.length > 0 || input.cut) {
-    parts.push(
-      input.cut
-        ? `at least ${plural(input.cut.atLeast, "item needs", "items need")} a person`
-        : `${plural(input.items.length, "item needs", "items need")} a person`,
-    );
+    const whole = input.cut ? input.cut.whole : input.items.length;
+    parts.push(`${plural(whole, "item needs", "items need")} a person`);
   }
   if (input.releaseRuns > 0) {
     parts.push(`${plural(input.releaseRuns, "run waits", "runs wait")} on a release decision`);
@@ -219,7 +257,7 @@ export function projectShape(input: ShapeInput): ProjectReading {
   return {
     shape: "quiet",
     headline: "Nothing needs anyone.",
-    detail: "No run is live, no run waits on a release, and nothing is waiting on a person.",
+    detail: "No session is live, no run waits on a release, and nothing is waiting on a person.",
     band: null,
     unread: [],
   };

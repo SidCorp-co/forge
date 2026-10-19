@@ -25,6 +25,8 @@ const NOT_DISCOVERY: Record<string, string> = {
   'admin/pipeline-health-routes.ts': 'reads only `waiting`',
   'agent-sessions/lifecycle-routes.ts': "titles of the session's own issue ids",
   'agent-sessions/routes.ts': 'the one issue a session names',
+  'agent-sessions/held-issues.ts':
+    'the issues named sessions hold; each caller decides archived ones in the where it passes, and the sessions list keeps them: archived, they were still worked',
   'assistant/tools/issue-dedup.ts':
     'reads only `draft` and `open`, which an archived issue never is',
   'assistant/weekly/read-rows.ts':
@@ -34,6 +36,7 @@ const NOT_DISCOVERY: Record<string, string> = {
   'comments/routes.ts': 'by issue or comment id',
   'comments/service.ts': 'by issue or comment id',
   'devices/admissible.ts': 'reads only backlog-admissible statuses; relations by edge',
+  'devices/run-ledger.ts': 'titles of the issue keys a run reports',
   'devices/claim.ts': 'the issue of the claimed job',
   'devices/pool.ts': 'issues of queued jobs on live runs; relations by edge',
   'devices/run-evidence.ts': 'the seqs a run names',
@@ -49,10 +52,10 @@ const NOT_DISCOVERY: Record<string, string> = {
   'integrations/rocketchat/question-delivery.ts': 'the issue an owed question names',
   'integrations/sentry/intake-issue.ts':
     'by the Sentry external id; a regression on an archived issue is refused by name',
-  'issues/apply-transition.ts': 'by issue id',
   'issues/attachment-routes.ts': 'by issue or attachment id',
   'issues/attributes/read.ts': 'the ids attribute values reference',
   'issues/attributes/routes.ts': 'by issue id',
+  'issues/draft-entry.ts': 'by issue id',
   'issues/backlog/rank-chain.ts':
     'walks edges to dependents that are not in an ended status, which an archived issue always is (archiving takes closed and dropped only)',
   'issues/live-blockers-sql.ts':
@@ -83,6 +86,7 @@ const NOT_DISCOVERY: Record<string, string> = {
   'issues/pipeline-health.ts': 'the ids passed in',
   'issues/read-service.ts': 'retrieval by id or key, which answers an archived issue by design',
   'issues/release-record-required.ts': 'the ids passed in',
+  'issues/releasing-door.ts': 'by issue id',
   'issues/release-tag-close.ts':
     'by issue id, the landing commit of the issue a close names; an archived issue is refused before this runs',
   'issues/search-term.ts': 'whether the project holds the key a search typed, retrieval by key',
@@ -90,13 +94,15 @@ const NOT_DISCOVERY: Record<string, string> = {
   'issues/transition.ts': 'dependents over edges of the issues being moved',
   'issues/update-service.ts': 'guards by issue id inside a write',
   'jobs/agent-session-link.ts': 'the issue of the job',
-  'jobs/budget-check.ts': 'by issue id',
   'jobs/finalize-failure.ts': 'the issue of the job',
   'jobs/prepare-claimed-job.ts': 'the issue of the job',
   'jobs/queued-gates.ts': 'queued jobs only',
+  'jobs/retry-failed-job.ts': 'the issue of the job, by id; an archived one is refused by name',
   'jobs/routes.ts': 'by issue id',
   'jobs/turn-verdict-routes.ts': 'the issue of the job',
   'labels/module-rollup.ts': 'per-module counts, no issue identity',
+  'me/attention-totals.ts':
+    'counts over the attention buckets; reads only statuses an archived issue never holds, and failed jobs compose the predicate through failedJobIssueWhere',
   'me/pulse-flow.ts': 'weekly counts, no issue identity',
   'me/pulse-live.ts':
     'work merged and not yet on live, keyed by base-branch commits; hiding it would hide code not deployed',
@@ -104,24 +110,33 @@ const NOT_DISCOVERY: Record<string, string> = {
   'me/pulse-quality.ts': 'counts, no issue identity',
   'me/pulse-work.ts': 'reads only in-flight and release statuses, and counts',
   'memory/chunk-writer.ts': 'the issue a memory row names',
-  'memory/extraction.ts': 'by issue id',
   'messaging/gather.ts': 'the ids and seqs a message cites',
   'metrics/queries.ts': 'throughput and cycle-time aggregates, no issue identity',
+  'notifications/deliver.ts': 'by issue id',
   'notifications/notify-mentions.ts': 'by issue id',
   'notifications/notify-transitions.ts': 'by issue id',
+  'notifications/waiting-titles.ts':
+    'by notification id: the issue a waiting-park notice already names',
+  'notifications/routes.ts':
+    'the issue a stuck-issue record names, through heldAsFailedJobWhere, which composes the predicate',
   'jobs/loop-monitor-axis.ts':
     'one count of the claims the job axis cannot reach; an archived issue a live claim holds is still outside that axis, so hiding it would understate the blind spot',
   'pipeline/analytics-routes.ts':
     'run timings carrying an issue id and no content; the issue page reads its own through here',
   'pipeline/answer-resume.ts': 'reads only the question status',
-  'pipeline/autonomous-rescue-cap.ts': 'by issue id',
+  'pipeline/archived-project-notices.ts': 'resolves open notices by their key, whatever the issue',
   'pipeline/ci-fix-pattern-learn.ts': 'by issue id',
   'pipeline/driver-comparison.ts': 'per-project and per-driver counts, no issue identity',
+  'pipeline/idle-candidates.ts': 'reads only non-terminal statuses on live projects',
   'pipeline/idle-issues.ts': 'reads only non-terminal statuses',
   'pipeline/inv7-alarms.ts': 'held or queued jobs and running runs',
   'pipeline/issue-context-store.ts': 'by issue id, a guard that the issue is in the project',
   'pipeline/issue-run-invariant.ts': 'reads only work-in-progress statuses',
   'pipeline/pipeline-config-service.ts': 'reads only stage statuses, all non-terminal',
+  'pipeline/run-journal-routes.ts':
+    "the canonical key of the one issue the caller named, so an archived issue's page still shows its runs",
+  'pipeline/runs-of-issue.ts':
+    'by the id of the one issue a caller already holds, so an archived issue still reads its own runs',
   'pipeline/shipped-at.ts':
     'the first shipped moment per issue, read only into counts and timings; an archived issue still shipped on its day',
   'pipeline/reconciler.ts': 'reads only entry and in-flight statuses',
@@ -132,6 +147,7 @@ const NOT_DISCOVERY: Record<string, string> = {
   'pipeline/release-sweep.ts': 'reads only `awaiting_release`, or the ids passed in',
   'pipeline/retention/statements.ts': 'a NOT EXISTS guard keyed by entity id',
   'pipeline/runs-control.ts': 'the issue of the run',
+  'pipeline/runs-group-titles.ts': 'titles of the issue keys a run was opened over',
   'pipeline/runs-rollup.ts': 'the issues of the runs',
   'pipeline/stranded-issues.ts': 'reads only `waiting` and non-terminal merged rows',
   'pipeline/sweeper.ts': 'reaps runs still running on closed or dropped issues, a write path',
@@ -146,6 +162,9 @@ const NOT_DISCOVERY: Record<string, string> = {
     "which issue a waiting commit is the work of; an archived issue still owns its commits, or they would read as nobody's",
   'projects/routes.ts': 'by issue id',
   'projects/service.ts': 'by issue id',
+  'projects/stuck-issue-kinds.ts': 'by issue id: who owes the park a notice stands for',
+  'projects/stranded-work.ts':
+    'reads only `awaiting_release` or unclosed issues, and only a closed or dropped issue can be archived',
   'prompt/issue-snapshot.ts':
     'the one issue a job runs on, by id; an archived issue is terminal and runs no job',
   'questions/issue-coupling.ts': 'locks the one issue a transition moves',

@@ -60,14 +60,14 @@ const liveSession: IssueAgentSession = {
 };
 
 function renderPanel(state: Parameters<typeof LiveAgentPanel>[0]["state"]) {
-  return render(<LiveAgentPanel state={state} step="code" slug="forge-dev" issueId="iss-903" />);
+  return render(<LiveAgentPanel state={state} step="code" slug="forge-dev" />);
 }
 
 describe("LiveAgentPanel — queued arm (ISS-903)", () => {
   it("says Agent queued, names the step, and states the gate in plain words", () => {
     renderPanel({ kind: "queued", step: gatedStep });
     expect(screen.getByText("Agent queued")).toBeInTheDocument();
-    expect(screen.getByText("drive")).toBeInTheDocument();
+    expect(screen.getByText("Issue work")).toBeInTheDocument();
     expect(screen.getByText(/No runner is online for this project/)).toBeInTheDocument();
     expect(screen.getByText(/Bring a runner back/)).toBeInTheDocument();
   });
@@ -100,11 +100,13 @@ describe("LiveAgentPanel — queued arm (ISS-903)", () => {
     expect(screen.queryByText(/Heartbeat/)).not.toBeInTheDocument();
   });
 
-  it("still deep-links to the timeline", () => {
+  // ISS-1228 round 14: "View timeline" went to the runs list, which reads no `?issue=`. A queued
+  // step has no session to open, so it opens the Pipeline page, where its hold is listed.
+  it("links to the Pipeline page, there being no session to open", () => {
     renderPanel({ kind: "queued", step: gatedStep });
-    expect(screen.getByText("View timeline").closest("a")).toHaveAttribute(
+    expect(screen.getByText("Open pipeline").closest("a")).toHaveAttribute(
       "href",
-      "/projects/forge-dev/agents?issue=iss-903",
+      "/projects/forge-dev/pipeline",
     );
   });
 });
@@ -116,6 +118,14 @@ describe("LiveAgentPanel — live arm (unchanged)", () => {
     expect(screen.getByText("code")).toBeInTheDocument();
     expect(screen.getByText("0629f109")).toBeInTheDocument();
     expect(screen.getByText("Heartbeat alive")).toBeInTheDocument();
+  });
+
+  it("opens its session's page", () => {
+    renderPanel({ kind: "live", session: liveSession });
+    expect(screen.getByText("Open session").closest("a")).toHaveAttribute(
+      "href",
+      "/projects/forge-dev/agents/sess-1",
+    );
   });
 
   it("exposes the raw ids behind an operator expand", () => {

@@ -1,11 +1,31 @@
-import { and, asc, eq, isNotNull, notInArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, isNotNull, isNull, notInArray, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issueStatuses, issues, projects } from '../db/schema.js';
+import { statusEnteredAtSql } from '../issues/status-entered-at.js';
+import { statusLabel } from '../issues/status-sets.js';
+import { elapsedWords } from '../lib/elapsed-words.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../logger.js';
 import { emitNotification } from '../notifications/emit.js';
-import { projectAdminUserIdsFor } from '../notifications/project-admins.js';
+import { type SweepDetector, sweepGroup } from '../notifications/explanations.js';
+import { projectAdminUserIdsFor, projectHasAdminSql } from '../notifications/project-admins.js';
+import { waitingParkTitle } from '../notifications/waiting-titles.js';
+import { parkOwerNameSql } from '../projects/stuck-issue-kinds.js';
+import { resolveArchivedProjectNotices } from './archived-project-notices.js';
+import {
+  FRESH_SIGHTING_LIMIT,
+  pendingConditionSql,
+  pendingSightingLimit,
+  pendingSinceSql,
+  unraisedConditionSql,
+  withOwed,
+} from './owed-sighting.js';
 import { isTerminalPlacement } from './status-assertions.js';
+import {
+  outrankedSql,
+  retireOutrankedNotices,
+  type StuckNoticeSuffix,
+} from './stuck-precedence.js';
 import { advanceSweep, type SweepPosition, sweepWindow } from './sweep-cursor.js';
 
 /**
@@ -37,24 +57,15 @@ export interface StrandedIssuesResult {
   notified: number;
 }
 
-export function strandedResolutionKey(issueId: string): string {
-  return `issue:${issueId}:stranded`;
-}
+const STRANDED_KEY_SUFFIX = ':stranded';
+const OWED_CLOSE_KEY_SUFFIX = ':owed-close' satisfies StuckNoticeSuffix;
 
-/**
- * ISS-1063 — the grouping key: one evaluation of one detector.
- *
- * Alertmanager's `group_by`. Every strand this sweep tick finds shares it, so a reader is
- * told once about the sweep rather than once per issue it named. The tick is truncated to
- * the evaluation interval so the passes inside one `runPipelineSweep` agree on it without
- * having to pass a value between them.
- */
-export function sweepGroupKey(detector: string, now: Date): string {
-  return `sweep:${detector}:${Math.floor(now.getTime() / 60_000)}`;
+export function strandedResolutionKey(issueId: string): string {
+  return `issue:${issueId}${STRANDED_KEY_SUFFIX}`;
 }
 
 export function owedCloseResolutionKey(issueId: string): string {
-  return `issue:${issueId}:owed-close`;
+  return `issue:${issueId}${OWED_CLOSE_KEY_SUFFIX}`;
 }
 
 /**
@@ -71,23 +82,101 @@ async function surfaceOnce(args: {
   resolutionKey: string;
   title: string;
   body: string;
-  groupKey: string;
-  groupTitle: string;
+  detector: SweepDetector;
 }): Promise<number> {
   const adminIds = args.admins.get(args.projectId) ?? [];
   if (adminIds.length === 0) return -1;
-  const sent = await emitNotification({
-    recipients: adminIds,
-    projectId: args.projectId,
-    issueId: args.issueId,
-    type: 'issue_stranded',
-    title: args.title,
-    body: args.body,
-    resolutionKey: args.resolutionKey,
-    groupKey: args.groupKey,
-    groupTitle: args.groupTitle,
-  });
+  const sent = await emitNotification(
+    {
+      recipients: adminIds,
+      projectId: args.projectId,
+      issueId: args.issueId,
+      type: 'issue_stranded',
+      title: args.title,
+      body: args.body,
+      resolutionKey: args.resolutionKey,
+      ...sweepGroup(args.detector, args.now),
+    },
+    args.now,
+  );
   return sent?.delivered ?? 0;
+}
+
+/** When the issue was parked: the row's own `updated_at` moves on any write (ISS-1229). */
+const PARKED_AT = statusEnteredAtSql({
+  id: sql`"issues"."id"`,
+  status: sql`"issues"."status"`,
+  createdAt: sql`"issues"."created_at"`,
+});
+
+type Scope = { projectId?: string };
+
+/** One read of waiting parks on live projects, `where` narrowing it, oldest or newest park first. */
+function readParks(args: { scope: Scope; where: SQL[]; order: SQL[]; limit: number }) {
+  return db
+    .select({
+      id: issues.id,
+      projectId: issues.projectId,
+      issuePrefix: projects.issuePrefix,
+      issSeq: issues.issSeq,
+      title: issues.title,
+      mergedAt: issues.mergedAt,
+      parkedAt: sql<string>`${PARKED_AT}::text`,
+      waitingKind: issues.waitingKind,
+      owedBy: sql<string | null>`${parkOwerNameSql(sql`"issues"."id"`)}`,
+      cursorTs: sql<string>`${PARKED_AT}::text`,
+      projectName: projects.name,
+    })
+    .from(issues)
+    .innerJoin(projects, eq(projects.id, issues.projectId))
+    .where(
+      and(
+        eq(issues.status, 'waiting'),
+        isNull(projects.archivedAt),
+        ...(args.scope.projectId ? [eq(issues.projectId, args.scope.projectId)] : []),
+        ...args.where,
+      ),
+    )
+    .orderBy(...args.order)
+    .limit(args.limit);
+}
+
+const TERMINAL = issueStatuses.filter(isTerminalPlacement);
+
+/** When the merge mark was set; a mark made before that was stored counts from the merge (ISS-1229 r16). */
+const MARKED_AT = sql`coalesce("issues"."merge_marked_at", "issues"."merged_at")`;
+
+/** One read of merged issues still open with nothing running, `where` narrowing it, by merge time. */
+function readOwedCloses(args: { scope: Scope; where: SQL[]; order: SQL[]; limit: number }) {
+  return db
+    .select({
+      id: issues.id,
+      projectId: issues.projectId,
+      issuePrefix: projects.issuePrefix,
+      issSeq: issues.issSeq,
+      status: issues.status,
+      title: issues.title,
+      markedAt: sql<Date>`${MARKED_AT}`.mapWith(issues.mergedAt),
+      cursorTs: sql<string>`${MARKED_AT}::text`,
+      projectName: projects.name,
+    })
+    .from(issues)
+    .innerJoin(projects, eq(projects.id, issues.projectId))
+    .where(
+      and(
+        isNotNull(issues.mergedAt),
+        isNull(projects.archivedAt),
+        notInArray(issues.status, TERMINAL),
+        sql`not exists (select 1 from jobs j where j.issue_id = issues.id and j.status in ('queued','dispatched','running'))`,
+        sql`not exists (select 1 from pipeline_runs r where r.issue_id = issues.id and r.status = 'running')`,
+        // One issue, one stuck reason: a park waiting for a person is told as that (ISS-1229 r14).
+        sql`not ${outrankedSql(sql`"issues"."id"`, OWED_CLOSE_KEY_SUFFIX)}`,
+        ...(args.scope.projectId ? [eq(issues.projectId, args.scope.projectId)] : []),
+        ...args.where,
+      ),
+    )
+    .orderBy(...args.order)
+    .limit(args.limit);
 }
 
 /**
@@ -100,6 +189,7 @@ export async function detectStrandedIssues(
   scope: { projectId?: string } = {},
 ): Promise<StrandedIssuesResult> {
   try {
+    await resolveArchivedProjectNotices(STRANDED_KEY_SUFFIX);
     const cutoff = new Date(now.getTime() - STRANDED_GRACE_MS);
 
     const cursorKey = `stranded:${scope.projectId ?? '*'}`;
@@ -108,39 +198,44 @@ export async function detectStrandedIssues(
     // makes the set finite and the wrap reachable.
     const window = sweepWindow(cursorKey, cutoff.toISOString());
 
-    const rows = await db
-      .select({
-        id: issues.id,
-        projectId: issues.projectId,
-        issuePrefix: projects.issuePrefix,
-        issSeq: issues.issSeq,
-        title: issues.title,
-        mergedAt: issues.mergedAt,
-        updatedAt: issues.updatedAt,
-        cursorTs: sql<string>`"issues"."updated_at"::text`,
-        projectName: projects.name,
-      })
-      .from(issues)
-      .innerJoin(projects, eq(projects.id, issues.projectId))
-      .where(
-        and(
-          eq(issues.status, 'waiting'),
-          sql`"issues"."updated_at" < ${window.until}::timestamptz`,
-          ...(scope.projectId ? [eq(issues.projectId, scope.projectId)] : []),
-          ...(window.after
-            ? [
-                sql`("issues"."updated_at", "issues"."id") > (${window.after.ts}::timestamptz, ${window.after.id}::uuid)`,
-              ]
-            : []),
-        ),
-      )
-      .orderBy(asc(issues.updatedAt), asc(issues.id))
-      .limit(STRANDED_SCAN_LIMIT);
+    const page = await readParks({
+      scope,
+      where: [
+        sql`${PARKED_AT} < ${window.until}::timestamptz`,
+        ...(window.after
+          ? [
+              sql`(${PARKED_AT}, "issues"."id") > (${window.after.ts}::timestamptz, ${window.after.id}::uuid)`,
+            ]
+          : []),
+      ],
+      order: [asc(PARKED_AT), asc(issues.id)],
+      limit: STRANDED_SCAN_LIMIT,
+    });
 
-    const filled = rows.length === STRANDED_SCAN_LIMIT;
-    const lastRow = rows.at(-1);
+    const filled = page.length === STRANDED_SCAN_LIMIT;
+    const lastRow = page.at(-1);
     const last: SweepPosition | null = lastRow ? { ts: lastRow.cursorTs, id: lastRow.id } : null;
     advanceSweep(cursorKey, window, last, filled);
+
+    const rows = withOwed(
+      page,
+      await readParks({
+        scope,
+        where: [pendingConditionSql(sql`"issues"."id"`, STRANDED_KEY_SUFFIX)],
+        order: [asc(pendingSinceSql(sql`"issues"."id"`, STRANDED_KEY_SUFFIX)), asc(issues.id)],
+        limit: pendingSightingLimit(STRANDED_SCAN_LIMIT),
+      }),
+      await readParks({
+        scope,
+        where: [
+          unraisedConditionSql(sql`"issues"."id"`, STRANDED_KEY_SUFFIX),
+          sql`${PARKED_AT} < ${cutoff.toISOString()}::timestamptz`,
+          projectHasAdminSql(sql`"issues"."project_id"`),
+        ],
+        order: [desc(PARKED_AT), desc(issues.id)],
+        limit: FRESH_SIGHTING_LIMIT,
+      }),
+    );
 
     const admins = await projectAdminUserIdsFor(rows.map((r) => r.projectId));
 
@@ -148,23 +243,26 @@ export async function detectStrandedIssues(
     let unreachable = 0;
     for (const row of rows) {
       const ref = row.issSeq !== null ? formatIssueRef(row.issuePrefix, row.issSeq) : 'An issue';
-      const since = row.mergedAt ?? row.updatedAt;
-      const days = Math.floor((now.getTime() - since.getTime()) / 86_400_000);
-      const age = days >= 1 ? `${days} day${days === 1 ? '' : 's'}` : 'hours';
+      const age = elapsedWords(row.mergedAt ?? row.parkedAt, now);
       const lead = row.mergedAt
-        ? `Its code merged ${age} ago but the issue is still parked`
-        : `It has been parked ${age}`;
+        ? `its code merged ${age} ago but the issue is still parked`
+        : `it has been parked for ${age}`;
 
       const sent = await surfaceOnce({
         now,
         admins,
-        groupKey: sweepGroupKey('stranded', now),
-        groupTitle: 'Issues are parked with nothing coming for them',
+        detector: 'stranded',
         projectId: row.projectId,
         issueId: row.id,
         resolutionKey: strandedResolutionKey(row.id),
-        title: `${ref} is waiting on you — ${row.projectName}`,
-        body: `${lead}, so nothing will move it forward until you decide. Open it and read the last comment: a step that could not finish its checks leaves the decision here.`,
+        // Stored in the third person; each reader's bell reads it back as theirs where they owe it.
+        title: waitingParkTitle({
+          ref,
+          waitingKind: row.waitingKind,
+          owedBy: { you: false, name: row.owedBy },
+          projectName: row.projectName,
+        }),
+        body: `${ref} "${row.title}": ${lead}.`,
       });
       if (sent < 0) unreachable += 1;
       else notified += sent;
@@ -184,6 +282,7 @@ export async function detectStrandedIssues(
       );
     }
 
+    await retireOutrankedNotices();
     return { detected: rows.length, notified };
   } catch (err) {
     logger.error({ err }, 'stranded-issues: detection failed');
@@ -196,47 +295,50 @@ export async function detectOwedCloses(
   scope: { projectId?: string } = {},
 ): Promise<StrandedIssuesResult> {
   try {
+    await resolveArchivedProjectNotices(OWED_CLOSE_KEY_SUFFIX);
     const cutoff = new Date(now.getTime() - STRANDED_GRACE_MS);
-    const terminal = issueStatuses.filter(isTerminalPlacement);
 
     const cursorKey = `owed-close:${scope.projectId ?? '*'}`;
     const window = sweepWindow(cursorKey, cutoff.toISOString());
 
-    const rows = await db
-      .select({
-        id: issues.id,
-        projectId: issues.projectId,
-        issuePrefix: projects.issuePrefix,
-        issSeq: issues.issSeq,
-        status: issues.status,
-        mergedAt: issues.mergedAt,
-        cursorTs: sql<string>`"issues"."merged_at"::text`,
-        projectName: projects.name,
-      })
-      .from(issues)
-      .innerJoin(projects, eq(projects.id, issues.projectId))
-      .where(
-        and(
-          isNotNull(issues.mergedAt),
-          sql`"issues"."merged_at" < ${window.until}::timestamptz`,
-          notInArray(issues.status, terminal),
-          ...(window.after
-            ? [
-                sql`("issues"."merged_at", "issues"."id") > (${window.after.ts}::timestamptz, ${window.after.id}::uuid)`,
-              ]
-            : []),
-          sql`not exists (select 1 from jobs j where j.issue_id = issues.id and j.status in ('queued','dispatched','running'))`,
-          sql`not exists (select 1 from pipeline_runs r where r.issue_id = issues.id and r.status = 'running')`,
-          ...(scope.projectId ? [eq(issues.projectId, scope.projectId)] : []),
-        ),
-      )
-      .orderBy(asc(issues.mergedAt), asc(issues.id))
-      .limit(STRANDED_SCAN_LIMIT);
+    const page = await readOwedCloses({
+      scope,
+      where: [
+        sql`${MARKED_AT} < ${window.until}::timestamptz`,
+        ...(window.after
+          ? [
+              sql`(${MARKED_AT}, "issues"."id") > (${window.after.ts}::timestamptz, ${window.after.id}::uuid)`,
+            ]
+          : []),
+      ],
+      order: [asc(MARKED_AT), asc(issues.id)],
+      limit: STRANDED_SCAN_LIMIT,
+    });
 
-    const filled = rows.length === STRANDED_SCAN_LIMIT;
-    const lastRow = rows.at(-1);
+    const filled = page.length === STRANDED_SCAN_LIMIT;
+    const lastRow = page.at(-1);
     const last: SweepPosition | null = lastRow ? { ts: lastRow.cursorTs, id: lastRow.id } : null;
     advanceSweep(cursorKey, window, last, filled);
+
+    const rows = withOwed(
+      page,
+      await readOwedCloses({
+        scope,
+        where: [pendingConditionSql(sql`"issues"."id"`, OWED_CLOSE_KEY_SUFFIX)],
+        order: [asc(pendingSinceSql(sql`"issues"."id"`, OWED_CLOSE_KEY_SUFFIX)), asc(issues.id)],
+        limit: pendingSightingLimit(STRANDED_SCAN_LIMIT),
+      }),
+      await readOwedCloses({
+        scope,
+        where: [
+          unraisedConditionSql(sql`"issues"."id"`, OWED_CLOSE_KEY_SUFFIX),
+          sql`${MARKED_AT} < ${cutoff.toISOString()}::timestamptz`,
+          projectHasAdminSql(sql`"issues"."project_id"`),
+        ],
+        order: [desc(MARKED_AT), desc(issues.id)],
+        limit: FRESH_SIGHTING_LIMIT,
+      }),
+    );
 
     const admins = await projectAdminUserIdsFor(rows.map((r) => r.projectId));
 
@@ -244,18 +346,17 @@ export async function detectOwedCloses(
     let unreachable = 0;
     for (const row of rows) {
       const ref = row.issSeq !== null ? formatIssueRef(row.issuePrefix, row.issSeq) : 'An issue';
-      const days = Math.floor((now.getTime() - (row.mergedAt?.getTime() ?? 0)) / 86_400_000);
-      const age = days >= 1 ? `${days} day${days === 1 ? '' : 's'}` : 'hours';
+      // The query admits only rows carrying a merge mark, so `markedAt` is never null here.
+      const age = elapsedWords(row.markedAt, now);
       const sent = await surfaceOnce({
         now,
         admins,
-        groupKey: sweepGroupKey('owed-close', now),
-        groupTitle: 'Issues whose code shipped and whose close was never written',
+        detector: 'owed-close',
         projectId: row.projectId,
         issueId: row.id,
         resolutionKey: owedCloseResolutionKey(row.id),
         title: `${ref} shipped but never closed — ${row.projectName}`,
-        body: `Its code has carried a merge mark for ${age} while the issue still reads \`${row.status}\`, and nothing is running on it. The step that owed the close did not write it. Read the branch, then close it — or, if it never landed, clear the mark with \`unmark\` and move the issue to \`dropped\`.`,
+        body: `${ref} "${row.title}" has carried a merge mark for ${age} while it still reads ${statusLabel(row.status)}, with nothing running on it.`,
       });
       if (sent < 0) unreachable += 1;
       else notified += sent;
@@ -275,6 +376,7 @@ export async function detectOwedCloses(
       );
     }
 
+    await retireOutrankedNotices();
     return { detected: rows.length, notified };
   } catch (err) {
     logger.error({ err }, 'stranded-issues: owed-close detection failed');

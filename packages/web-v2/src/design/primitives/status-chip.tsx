@@ -1,36 +1,69 @@
-import { STATUS_META, type StatusKey } from "@/design/status";
-import { Icon } from "@/design/icons/icon";
+import { BLOCKED_TONE, STATUS_META, STOPPED_WORD, type StatusKey, TONE_META } from "@/design/status";
+import { Icon, type IconName } from "@/design/icons/icon";
 
 export type StatusDomain = "issue" | "session";
 
 export interface StatusChipProps {
   status: StatusKey;
-  /** When running, append the active pipeline stage, e.g. `running · code`. */
+  /** When running, append the step the session is on, e.g. `Running · Issue work`, after `label` where one is given. */
   stage?: string;
   size?: "sm" | "md";
   /** Status vocabulary this chip belongs to. Defaults to `issue`. */
   domain?: StatusDomain;
   label?: string;
+  /** A session chip's mark where its word is not its status's: one mark per word a session shows. */
+  icon?: IconName;
 }
 
 /** Execution-vocabulary overrides for the `session` domain so an agent run reads
- *  as "Completed / Stalled / Idle" rather than the issue-lifecycle "Done /
- *  Zombie / Paused". Keys not listed fall back to the shared `STATUS_META`. */
+ *  as "Completed / Idle" rather than the issue-lifecycle "Done / Paused". Keys not
+ *  listed fall back to the shared `STATUS_META`. */
 const SESSION_LABELS: Partial<Record<StatusKey, string>> = {
   done: "Completed",
-  zombie: "Stalled",
   paused: "Idle",
   passed: "Verified",
   waiting: "Waiting for me",
+  archived: STOPPED_WORD,
 };
 
-export function StatusChip({ status, stage, size = "md", domain = "issue", label }: StatusChipProps) {
-  const m = STATUS_META[status] ?? STATUS_META.queued;
+export function sessionStatusLabel(status: StatusKey): string {
+  return SESSION_LABELS[status] ?? (STATUS_META[status] ?? STATUS_META.queued).label;
+}
+
+/** In the session domain `blocked` is a running session its box reports blocked: it waits on
+ *  someone, so it takes the blocked-session tone rather than a parked issue's. */
+const SESSION_TONES: Partial<Record<StatusKey, (typeof TONE_META)[keyof typeof TONE_META]>> = {
+  blocked: TONE_META[BLOCKED_TONE],
+};
+
+/** A session chip's mark says which state it is in, one mark per status, so no two are told apart
+ *  by colour alone. */
+export const SESSION_ICONS: Readonly<Record<StatusKey, IconName>> = {
+  running: "agent",
+  queued: "clock",
+  blocked: "pause",
+  waiting: "bell",
+  passed: "shield",
+  failed: "alert",
+  paused: "dot",
+  done: "check",
+  shipped: "arrowRight",
+  archived: "stop",
+  review: "search",
+  zombie: "quiet",
+  swept: "archive",
+};
+
+export function StatusChip({ status, stage, size = "md", domain = "issue", label, icon }: StatusChipProps) {
+  const base = STATUS_META[status] ?? STATUS_META.queued;
+  const tone = domain === "session" ? SESSION_TONES[status] : undefined;
+  const m = tone ? { ...base, fg: tone.fg, bg: tone.bg, dot: tone.dot } : base;
   const isRunning = status === "running";
   const isSession = domain === "session";
   const baseLabel = isSession ? (label ?? SESSION_LABELS[status] ?? m.label) : (label ?? m.label);
-  const text = stage && isRunning ? `running · ${stage}` : baseLabel;
+  const text = stage && isRunning ? `${baseLabel} · ${stage}` : baseLabel;
   const mono = isSession || (stage && isRunning);
+  const mark = icon ?? SESSION_ICONS[status] ?? SESSION_ICONS.queued;
   return (
     <span
       className={`inline-flex items-center gap-1.5 whitespace-nowrap font-semibold ${
@@ -47,9 +80,9 @@ export function StatusChip({ status, stage, size = "md", domain = "issue", label
     >
       {isSession ? (
         <Icon
-          name="agent"
+          name={mark}
           size={size === "sm" ? 11 : 12}
-          className={isRunning ? "forge-pulse" : ""}
+          className={isRunning && mark === SESSION_ICONS.running ? "forge-pulse" : ""}
           style={{ color: m.dot }}
         />
       ) : (
@@ -64,7 +97,7 @@ export function StatusChip({ status, stage, size = "md", domain = "issue", label
           }}
         />
       )}
-      <span className="max-w-[16ch] truncate" title={text}>
+      <span className="max-w-[28ch] truncate" title={text}>
         {text}
       </span>
     </span>

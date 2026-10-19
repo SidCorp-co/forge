@@ -32,6 +32,14 @@ licence travels with the files — `OFL-hanken-grotesk.txt` and `OFL-jetbrains-m
 verbatim from `google/fonts/ofl/<family>/OFL.txt`. Each binary also carries
 `https://scripts.sil.org/OFL` in its own `name` id 14.
 
+## The copy under `public/`
+
+`../../../public/fonts/` holds a second copy of the Hanken Grotesk binary and its licence. The 404
+documents the middleware writes (`../../features/guides/missing-document.ts`) cannot name the
+hashed address `next/font` serves this file at, so they name this one. A test beside them
+(`../../features/guides/missing-document.test.ts`) fails when the two differ, so refreshing the
+binary below means copying it to both.
+
 ## Refreshing them
 
 Ask Google for the CSS the build would have asked for, take the `/* latin */` block's URL,

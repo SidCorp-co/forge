@@ -8,7 +8,7 @@ import type { ActorAgency } from '../issues/actor-agency.js';
 import { userRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { parseBearerHeader } from './bearer.js';
-import { getClientIp } from './rate-limit.js';
+import { clientIpOf } from './client-ip.js';
 
 export type PatPrincipal = {
   kind: 'pat';
@@ -189,7 +189,7 @@ export async function authenticatePat(
         tool: 'rate_limit',
         action: `${c.req.method} ${c.req.path}`,
         resultCode: 'rate_limited',
-        ip: getClientIp(c) ?? null,
+        ip: clientIpOf(c) ?? null,
         userAgent: c.req.header('user-agent') ?? null,
       });
     }
@@ -213,7 +213,7 @@ export async function authenticatePat(
     });
   }
 
-  touchPatUsage(row.id, getClientIp(c));
+  touchPatUsage(row.id, clientIpOf(c));
   maybeEmitPatUsed(row.id, row.userId);
   return {
     kind: 'pat',

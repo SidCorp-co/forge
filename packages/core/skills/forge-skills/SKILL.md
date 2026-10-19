@@ -9,14 +9,17 @@ arguments: "[skill-name]"
 
 A Forge **skill** is an instruction set an AI agent runs on a project. This meta-skill explains how Forge executes skills and the standard for writing/customizing them so they run correctly and don't waste tokens. Read it before touching a project's skills.
 
-Since ISS-895 there is **no status → skill ladder**. One job type is dispatched, `drive`, and it runs `issue-flow` from the `forge` Claude Code plugin — not from the skill store. What you author here is a **user-invocable** skill an agent or an operator calls by name.
+No status dispatches a skill. One job type is dispatched, `drive`, and it runs `issue-flow` from the `forge` Claude Code plugin — not from the skill store. What you author here is a **user-invocable** skill an agent or an operator calls by name.
 
 ## 1. What Forge does with a skill (runtime model)
 
 - **One job type, one skill.** A `drive` job loads `issue-flow` (plugin-delivered) as its instructions — never all skills at once, and never one resolved from a status.
 - **Per job the agent gets:** the skill body + a **shared preamble** (status ladder, complexity/priority enums, relation kinds, handoff schema, `branchConfig`, creds-as-pointer) that Forge injects and **prompt-caches** + a check-in bundle from `forge_step_start`. `references/*.md` load **only when the agent reads them** (lazy) — so they cost nothing until needed.
 - **Scope & shadowing (ISS-388):** global skills are **read-only templates**. A project customizes one by creating a **same-name project skill**, which **shadows** the global for that project. There is no fork/override — just shadow-by-name. `forge_skills_effective` dedups by name (one row per name + `shadowsGlobal`).
-- **Server-side + explicit sync:** skills live in the Forge cloud per project. Edit = `forge_skills_update` (server) → `forge_skills_push` (signals devices) → each device pulls and writes `.claude/skills/<name>/`. Nothing auto-syncs.
+- **Three channels deliver a skill to a box, and only the first is yours to author.**
+  - *A project skill in the Forge store:* edit = `forge_skills_update` (server) → `forge_skills_push` (signals devices) → each device pulls and writes `.claude/skills/<name>/`. Nothing auto-syncs.
+  - *A plugin skill* (`issue-flow`): delivered by the `forge` plugin that the project's `plugins` designation names, never through the store.
+  - *`forge-master`:* compiled into the `forge-runner` binary and written into a bound repo when the project is bound and when a master is placed. Nothing in the store edits it.
 
 ## 2. Decision tree — do you even need to touch a skill?
 
@@ -49,7 +52,7 @@ Need different pipeline behaviour for THIS project?
 
 1. Hardcoding mechanics (build/test/deploy commands) → breaks when the repo changes; violates rule 1.
 2. Restating preamble content → silent drift.
-3. **Double-merge:** the skill `git merge`s AND server `mergeStates` merges the same branch → empty-commit loop. Pick ONE merge mechanism.
+3. **Double-merge:** the skill `git merge`s a branch the driver's own landing also merges → empty-commit loop. Pick ONE merge mechanism.
 4. **Files without `encoding`:** when adding `references` via MCP, set `encoding:"utf8"` (or base64) — a missing encoding can break the runner's skill sync.
 5. Secrets inline; or putting a per-project value in the body instead of a knowledge entry.
 6. Over-splitting: moving decision logic into a reference the agent may skip. Keep gates inline.
@@ -58,26 +61,28 @@ Need different pipeline behaviour for THIS project?
 
 1. **Read what's live:** `forge_skills_effective` (catalog + which are shadowed) and the global body you're customizing. **Reconcile first** — the server may have diverged from any local copy.
 2. **Draft** from `references/authoring-template.md`; run it through `references/authoring-checklist.md`.
-3. **Ship server-first:** `forge_skills_update` (existing project skill) or `forge_skills_create` (new shadow). Set `installOnly: true` so it force-syncs to runners as a user-invocable skill — there are no stages left to bind to.
+3. **Ship server-first:** `forge_skills_update` (existing project skill), or `forge_skills_create` (new shadow) and then `forge_skills_update` on the returned skill with `installOnly: true` — create does not take that flag. `installOnly` is what force-syncs it to runners as a user-invocable skill.
 4. **Sync + verify:** `forge_skills_push` → then **verify ON DISK** (`md5`/grep the marker in `.claude/skills/<name>/SKILL.md`). The WS sync-status dashboard is unreliable (false-negatives) — trust the disk.
 
 ## 6. What ships where
 
-ISS-895 deleted the staged lane and the eight stage-bound `forge-*` skills with it. There is one
-dispatched job type, `drive`, and the skill it runs — `issue-flow` — is delivered by the `forge`
+One job type is dispatched, `drive`, and the skill it runs — `issue-flow` — is delivered by the `forge`
 Claude Code plugin, never from this table and never as a DB row. Nothing you author here is
 dispatched by a status.
 
 | Skill | Delivered as | Owns |
 |---|---|---|
-| issue-flow | plugin (`pipelineConfig.plugins`) | the whole walk from `open` to `closed` |
-| forge-onboard · forge-product-map | project copy, `installOnly` | survey the repo, seed knowledge / the product map |
+| issue-flow | plugin (the project's `plugins` designation) | the whole walk from `open` to `closed` |
+| forge-master | compiled into `forge-runner`, written at bind and when a master is placed | the resident master's method |
+| forge-onboard | project copy, `installOnly`, adopted from the global skill when a domain template is applied; the name is reserved, so `forge_skills_create` and a rename onto it are refused | survey the repo, seed knowledge |
+| forge-product-map | project copy, `installOnly` | seed the product map |
 | forge-reconcile · forge-verify-skill | Forge-owned, name-reserved | police skill updates; verify a skill installed |
-| forge-skills | this one | author and ship project skills |
+| forge-message-shape | Forge-owned meta prompt, served live over MCP | the shape of a message to a person |
+| forge-skills | this one, served live over MCP | author and ship project skills |
 
 ## 7. Non-standard project patterns
 
-- **MCP-driven build/deploy** (e.g. a storefront that publishes `{theme}.liquid` via a vendor MCP): "build/deploy" is **MCP tool calls, not a repo build**; the local dir is docs + code backup; git is for versioning/backup only. Write skills so: *implement* edits the source then **publishes via the vendor MCP**; *test* verifies on the **live service** (preview/theme URL), not localhost; *release* publishes + snapshots a backup. Keep **durable invariants** in the skill (backup-before-publish, verify-live, build-on-draft) and **defer tool mechanics** (tool names, traps) to the live vendor MCP playbook so they auto-track. Check whether a builtin family already fits (e.g. the `shop-*` Epodsystem skills) and **adopt/shadow those** rather than bending the git-centric defaults.
+- **MCP-driven build/deploy** (e.g. a storefront that publishes `{theme}.liquid` via a vendor MCP): "build/deploy" is **MCP tool calls, not a repo build**; the local dir is docs + code backup; git is for versioning/backup only. Write skills so: changes edit the source then **publish via the vendor MCP**; verification happens on the **live service** (preview/theme URL), not localhost; a release publishes + snapshots a backup. Keep **durable invariants** in the skill (backup-before-publish, verify-live, build-on-draft) and **defer tool mechanics** (tool names, traps) to the live vendor MCP playbook so they auto-track.
 - **Single-branch (base==production):** there is no separate release step, so the driver merges the feature branch to that one branch and deploys from it — a skill written for this project must not describe a second merge, which would empty-commit-loop.
 - **Docs-only / decision projects:** the deliverable is a committed markdown artifact; build/test is "the doc exists and is substantive", not a compile.
 - **Local-only (no Coolify/preview):** there is nowhere to deploy, so the driver's evidence is the local gate output and it says so in its QA report rather than claiming a live verification.

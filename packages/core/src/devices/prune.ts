@@ -39,11 +39,8 @@ let registered = false;
 
 export async function registerDevicePrune(): Promise<void> {
   if (registered) return;
-  // pg-boss v10 requires explicit createQueue before schedule/work can reference it.
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).createQueue(DEVICE_PRUNE_QUEUE);
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).work(DEVICE_PRUNE_QUEUE, async () => {
+  await boss.createQueue(DEVICE_PRUNE_QUEUE);
+  await boss.work(DEVICE_PRUNE_QUEUE, async () => {
     try {
       const result = await runDevicePrune();
       logger.info(result, 'device-offline-prune: sweep complete');
@@ -53,8 +50,7 @@ export async function registerDevicePrune(): Promise<void> {
     }
   });
   // Daily at 04:00 (after the 03:00 retention sweep).
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).schedule(DEVICE_PRUNE_QUEUE, '0 4 * * *');
+  await boss.schedule(DEVICE_PRUNE_QUEUE, '0 4 * * *');
   registered = true;
 }
 

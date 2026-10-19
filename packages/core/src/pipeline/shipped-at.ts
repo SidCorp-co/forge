@@ -18,6 +18,7 @@ export interface FirstShippedWindow {
 /**
  * One row per issue whose FIRST shipped transition ever falls in `[from, until)`, over `projectIds`
  * or every project when null. First rather than last, so a day's figure never moves (ISS-1270).
+ * Only an issue carrying a merge shipped, as a close requires, and none now `dropped`.
  */
 export function firstShipped(window: FirstShippedWindow): SQL {
   const scope =
@@ -33,6 +34,8 @@ export function firstShipped(window: FirstShippedWindow): SQL {
     FROM activity_log al
     JOIN issues i ON i.id = al.issue_id
     WHERE ${shippedTransition('al')}
+      AND i.status <> 'dropped'
+      AND i.merged_at IS NOT NULL
       AND al.created_at >= ${window.from}
       ${upper}
       ${scope}

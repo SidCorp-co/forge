@@ -15,6 +15,82 @@ export const testCredentialSchema = z
   })
   .catchall(z.unknown());
 
+/** Why a written credential is refused: no password to log in with, or a second row for a label or login already listed. */
+export type CredentialRule = 'password-required' | 'duplicate-label' | 'duplicate-login';
+
+export interface CredentialFault {
+  index: number;
+  field: 'label' | 'username' | 'password';
+  rule: CredentialRule;
+  /** The earlier row a repeat repeats. */
+  sameAs?: number;
+  /** The document path of the field at fault, e.g. `testCredentials.1.password`. */
+  path: string;
+  message: string;
+}
+
+const text = (value: unknown) => (typeof value === 'string' ? value : '');
+
+/**
+ * The credential rows a write may not store: core's copy of `@forge/contracts/test-credentials`
+ * `findCredentialFaults`, which core cannot import at runtime; `test-credentials-parity.test.ts`
+ * holds the two equal. Each rule is judged on its own, and the earlier row of a repeat is kept.
+ */
+export function credentialFaults(rows: unknown): CredentialFault[] {
+  if (!Array.isArray(rows)) return [];
+  const faults: CredentialFault[] = [];
+  const labels = new Map<string, number>();
+  const logins = new Map<string, number>();
+  /** Every row a message names, named one way: its path and its label. */
+  const named = (index: number) => {
+    const row = rows[index] as Record<string, unknown> | null;
+    return `testCredentials[${index}] ('${text(row?.label).trim()}')`;
+  };
+  const fault = (f: Omit<CredentialFault, 'path'>) =>
+    faults.push({ ...f, path: `testCredentials.${f.index}.${f.field}` });
+  rows.forEach((raw: unknown, index) => {
+    if (typeof raw !== 'object' || raw === null) return;
+    const row = raw as Record<string, unknown>;
+    const shown = text(row.label).trim();
+    const label = shown.toLowerCase();
+    if (label === '') return;
+    const password = text(row.password);
+    const labelled = labels.get(label);
+    if (labelled === undefined) labels.set(label, index);
+    else {
+      fault({
+        index,
+        field: 'label',
+        rule: 'duplicate-label',
+        sameAs: labelled,
+        message: `${named(index)} has the label ${named(labelled)} already has, and a run picks a login by its label. Rename one of them, or remove the repeat.`,
+      });
+    }
+    if (password.trim() === '') {
+      fault({
+        index,
+        field: 'password',
+        rule: 'password-required',
+        message: `${named(index)} has no password, so nobody can log in with it. Give it the password, or remove the row.`,
+      });
+      return;
+    }
+    const login = `${text(row.username).trim().toLowerCase()}\0${password}`;
+    const listed = logins.get(login);
+    if (listed === undefined) logins.set(login, index);
+    else {
+      fault({
+        index,
+        field: 'username',
+        rule: 'duplicate-login',
+        sameAs: listed,
+        message: `${named(index)} is the same username and password as ${named(listed)}, so it lists one login twice. Remove the repeat.`,
+      });
+    }
+  });
+  return faults;
+}
+
 export type TestingUrl = z.infer<typeof testingUrlSchema>;
 export type TestCredential = z.infer<typeof testCredentialSchema>;
 

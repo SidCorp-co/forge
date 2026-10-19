@@ -23,11 +23,10 @@ import {
   type CommitLookup,
   type Containment,
   type FoundCommit,
+  inClause,
   MARK_WITH_WHOLE_SHA,
   overlongCommitName,
   overlongLookup,
-  RANGE_COMMIT_LIMIT,
-  type RangeCommit,
   type RangeRead,
   type Refused,
   type RepositoryReader,
@@ -45,6 +44,7 @@ import {
   readingEnv,
   refusedNamingTheHost,
 } from './bounded-fetch.js';
+import { rangeIn } from './repository-range.js';
 import type { PinnedSshHost } from './ssh-host-guard.js';
 
 const execFileAsync = promisify(execFile);
@@ -64,17 +64,8 @@ type Resolved =
   | { ok: true; commit: FoundCommit }
   | { ok: false; lookup: CommitLookup; why: string };
 
-function splitEntry(entry: string): RangeCommit | null {
-  const at = entry.indexOf('\n');
-  if (at < 0) return null;
-  const message = entry.slice(at + 1);
-  const [sha = '', ...parents] = entry.slice(0, at).trim().split(' ');
-  if (!sha) return null;
-  return { sha, parents, message: message.endsWith('\n') ? message.slice(0, -1) : message };
-}
-
 /** One reading: the two bare repositories, what has been fetched into them, and git run on them. */
-class GitReading {
+export class GitReading {
   readonly history: string;
   private readonly trees: string;
   private readonly env: NodeJS.ProcessEnv;
@@ -215,7 +206,7 @@ class GitReading {
       );
       return true;
     } catch (err) {
-      if (err instanceof GitRefusal && err.message === ABSENT) return false;
+      if (err instanceof GitRefusal && err.refused.cause === ABSENT) return false;
       throw err;
     }
   }
@@ -333,8 +324,8 @@ class GitReading {
     const named = (r: Refused) => (this.opts.pin ? refusedNamingTheHost(r, this.opts.pin) : r);
     if (err instanceof GitRefusal) return named(err.refused);
     const stderr = hostSaid(((err as GitFailure).stderr ?? '').toString());
-    const cause = stderr || (err instanceof Error ? err.message : String(err));
-    return named({ cause: `reading ${this.remote} failed: ${cause}` });
+    const said = stderr || (err instanceof Error ? err.message : String(err));
+    return named({ cause: `reading ${this.remote} failed`, ...(said ? { said } : {}) });
   }
 
   /** `refusedBy` as one sentence. */
@@ -372,40 +363,6 @@ async function changedIn(g: GitReading, landing: string): Promise<ChangedPaths> 
   const parent = read.commit.parents[0];
   if (!parent) return { kind: 'unread', why: `${landing} has no parent to diff it against` };
   return { kind: 'read', paths: [...new Set(await g.differ(parent, read.commit.sha))].sort() };
-}
-
-async function rangeIn(g: GitReading, base: string, headRef: string): Promise<RangeRead> {
-  const overlong = await g.overlong(headRef);
-  if (overlong) return { why: overlong };
-  const tip = await g.head(base);
-  if ('why' in tip) return { why: tip.why };
-  const to = await g.resolve(headRef);
-  if (!to.ok) return { why: to.why };
-  const span = `${tip.sha}..${to.commit.sha}`;
-  const count = Number((await g.git(['-C', g.history, 'rev-list', '--count', span])).trim());
-  if (count > RANGE_COMMIT_LIMIT) {
-    return {
-      why: `${base}...${headRef} holds more than ${RANGE_COMMIT_LIMIT} commits, more than one release range is read for`,
-    };
-  }
-  const log = await g.git([
-    '-C',
-    g.history,
-    'log',
-    '-z',
-    '--reverse',
-    '--topo-order',
-    '--format=%H %P%n%B',
-    span,
-  ]);
-  const commits = log
-    .split('\0')
-    .map(splitEntry)
-    .filter((c): c is RangeCommit => c !== null);
-  if (commits.length !== count) {
-    return { why: `${g.remote} listed ${commits.length} of the ${count} commits in ${span}` };
-  }
-  return { commits };
 }
 
 /** The reader for `remote`, fetched as `env` (the deploy key's ssh command) allows, under `dir`. */
@@ -450,6 +407,20 @@ export function gitRepositoryReader(
       }
     },
 
+    async descends(ancestor: string, head: string): Promise<Containment> {
+      try {
+        const ends = [await g.resolve(ancestor), await g.resolve(head)];
+        const failed = ends.find((end) => !end.ok);
+        if (failed && !failed.ok) return { why: failed.why };
+        const [a = '', h = ''] = ends.map((end) => (end.ok ? end.commit.sha : ''));
+        return {
+          contains: (await g.status(['-C', g.history, 'merge-base', '--is-ancestor', a, h])) === 0,
+        };
+      } catch (err) {
+        return { why: g.failed(err) };
+      }
+    },
+
     async tagsContaining(commit: string, pattern: string): Promise<TagContainment> {
       try {
         const found = await g.resolve(commit);
@@ -470,8 +441,8 @@ export function gitRepositoryReader(
       try {
         return await carriageIn(g, judged, served);
       } catch (err) {
-        const { cause, clears } = g.refusedBy(err);
-        const why = `${remote} could not compare ${judged} with ${served}: ${cause}`;
+        const { clears, ...refused } = g.refusedBy(err);
+        const why = `${remote} could not compare ${judged} with ${served}: ${inClause(refused)}`;
         return clears === undefined ? { kind: 'unread', why } : { kind: 'unread', why, clears };
       }
     },
@@ -480,8 +451,8 @@ export function gitRepositoryReader(
       try {
         return await changedIn(g, landing);
       } catch (err) {
-        const { cause, clears } = g.refusedBy(err);
-        const why = `${remote} could not read what ${landing} changed: ${cause}`;
+        const { clears, ...refused } = g.refusedBy(err);
+        const why = `${remote} could not read what ${landing} changed: ${inClause(refused)}`;
         return clears === undefined ? { kind: 'unread', why } : { kind: 'unread', why, clears };
       }
     },
@@ -490,7 +461,7 @@ export function gitRepositoryReader(
       try {
         return await rangeIn(g, base, headRef);
       } catch (err) {
-        return { why: `${remote} could not compare ${base} with ${headRef}: ${g.failed(err)}` };
+        return { why: `${remote} could not compare ${base} with ${headRef}. ${g.failed(err)}` };
       }
     },
   };

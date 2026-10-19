@@ -2,14 +2,13 @@
    touch data; features wire data into them. Import from "@/design". */
 
 export { Icon, type IconName, type IconProps } from "./icons/icon";
-export { STAGES, stageColor, type StageKey } from "./stages";
 export {
-  STATUS_META, HEALTH_META, AVATAR_HUE,
+  STATUS_META, HEALTH_META, AVATAR_HUE, SILENCE_WORD, SILENCE_TONE, WORKING_WORD, BLOCKED_WORD, STOPPED_WORD, BLOCKED_TONE, lastReported,
   type StatusKey, type HealthKey, type AvatarHue, type ColorMeta,
 } from "./status";
 
-export { Button, type ButtonProps } from "./primitives/button";
-export { StatusChip, type StatusChipProps } from "./primitives/status-chip";
+export { Button, ButtonLink, type ButtonLinkProps, type ButtonProps } from "./primitives/button";
+export { sessionStatusLabel, StatusChip, type StatusChipProps } from "./primitives/status-chip";
 export { MonoTag, type MonoTagProps } from "./primitives/mono-tag";
 export { Avatar, type AvatarProps } from "./primitives/avatar";
 export { ProjectMark, type ProjectMarkProps } from "./primitives/project-mark";
@@ -28,7 +27,6 @@ export { Waffle, type WaffleProps, type WaffleCategory } from "./primitives/waff
 export { DotStrip, type DotStripProps, type DotStripItem } from "./primitives/dot-strip";
 export { BulletBar, type BulletBarProps } from "./primitives/bullet-bar";
 export { StreamBand, type StreamBandProps, type StreamWeek } from "./primitives/stream-band";
-export { SankeyFlow, type SankeyFlowProps, type SankeyNode } from "./primitives/sankey-flow";
 export { EmptyState, type EmptyStateProps } from "./primitives/empty-state";
 export { EmptyPanelLine, type EmptyPanelLineProps } from "./primitives/empty-panel-line";
 export { ComingSoon, type ComingSoonProps } from "./primitives/coming-soon";
@@ -83,9 +81,6 @@ export {
   HelpButton, type HelpButtonProps, type HelpContent, type HelpShortcut,
 } from "./primitives/help-button";
 
-export { KanbanCard, type KanbanCardProps } from "./patterns/kanban-card";
-export { KanbanBoard, type KanbanBoardProps } from "./patterns/kanban-board";
-export { KanbanColumn, type KanbanColumnProps } from "./patterns/kanban-column";
 export { NavRail, type NavRailProps, type NavItem, type NavCluster } from "./patterns/nav-rail";
 export { BottomTabBar, type BottomTabBarProps, type BottomTabItem } from "./patterns/bottom-tab-bar";
 export { TopBar, type TopBarProps, type TopBarDensity } from "./patterns/top-bar";
@@ -109,12 +104,12 @@ export { ForgeMascot, type ForgeMascotProps, STAGE_RING } from "./patterns/forge
 export { ProjectLoader, ColdBoot, AgentWorking, ReconnectingBanner } from "./patterns/mascot-loaders";
 
 export {
-  BoardRowSkeleton, KanbanCardSkeleton, KanbanColumnSkeleton,
+  BoardRowSkeleton,
   SessionRowSkeleton, ProjectCardSkeleton,
 } from "./skeletons";
 
 export { useDebounced } from "./hooks/use-debounced";
-export { useElapsed } from "./hooks/use-elapsed";
+export { formatElapsed, useElapsed } from "./hooks/use-elapsed";
 export { useNow } from "./hooks/use-now";
 export { useAnimatedNumber } from "./hooks/use-animated-number";
 export { useMediaQuery } from "./hooks/use-media-query";

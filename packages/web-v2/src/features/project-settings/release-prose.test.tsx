@@ -10,7 +10,7 @@
 
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { LeaveGuardProvider, useSettingsForm } from "@/design";
@@ -19,6 +19,9 @@ import { readPipeline } from "./pipeline-form";
 import type { ReleaseReadiness } from "./types";
 
 expect.extend(matchers);
+
+/** What core sends an API caller beside the reader sentence these fixtures plant; never drawn. */
+const CALLER_SENTENCE = "The caller's sentence, which this screen does not draw.";
 
 const readiness = vi.fn();
 vi.mock("./hooks", async (importActual) => {
@@ -35,7 +38,17 @@ vi.mock("@/features/runners/hooks", async (importActual) => {
 	return { ...actual, useProjectRunners: () => projectRunners() };
 });
 
-const { ReleaseSection } = await import("./components/release-section");
+const { ReleaseAnswer, ReleaseDetails } = await import("./components/release-section");
+
+/** The two halves as Shape & release draws them: the answer at the top, the details at the foot. */
+function ReleaseSection({ projectId }: { projectId: string }) {
+	return (
+		<>
+			<ReleaseAnswer projectId={projectId} slug="desk" />
+			<ReleaseDetails projectId={projectId} />
+		</>
+	);
+}
 const { RunnerPoolsSection } = await import("./components/runner-pools-section");
 
 function draw(node: ReactElement) {
@@ -115,7 +128,8 @@ describe("the Release section's prose", () => {
 					{
 						code: "RELEASE_ROSTER_EMPTY",
 						evaluated: true,
-						message: "Nothing waits at `awaiting_release`, and 3 stand at `testing`.",
+						message: CALLER_SENTENCE,
+			reader: "Nothing waits at `awaiting_release`, and 3 stand at `testing`.",
 					},
 				],
 			}),
@@ -130,6 +144,84 @@ describe("the Release section's prose", () => {
 		]);
 	});
 
+	it("lists what stops a release apart from what is only undeclared, and names a missing target once", () => {
+		readiness.mockReturnValue({
+			isLoading: false,
+			error: null,
+			data: ready({
+				providers: [],
+				blockers: [
+					{ code: "RELEASE_TARGET_UNDECLARED", evaluated: true, message: CALLER_SENTENCE,
+			reader: "Nothing serves Live." },
+				],
+				gaps: ["release-target", "rollback"],
+			}),
+		});
+
+		draw(<ReleaseSection projectId={PROJECT_ID} />);
+
+		const stops = screen.getByRole("list", { name: "What stops a release" });
+		const undeclared = screen.getByRole("list", { name: "What is not declared" });
+		const [target] = stops.querySelectorAll("li");
+		expect(target.textContent?.startsWith("This project declares a release but has no live deploy target")).toBe(true);
+		expect(target.textContent).not.toContain("RELEASE_TARGET_UNDECLARED");
+		expect(target.getAttribute("data-code")).toBe("RELEASE_TARGET_UNDECLARED");
+		expect(within(target).getByRole("link", { name: "Add a live deploy target" })).toHaveAttribute(
+			"href",
+			"/projects/desk/settings?tab=integrations&add=live-deploy-target",
+		);
+		expect(undeclared.querySelectorAll("li")).toHaveLength(1);
+		expect(undeclared.textContent).toContain("No rollback declared");
+		expect(undeclared.textContent).not.toContain("no live deploy binding");
+		expect(screen.getByText(/none of these stops a release/)).toBeInTheDocument();
+	});
+
+	const RUNNERS_READ =
+		"Live bindings name 3 different release runners (box-a, box-b, box-c) — a release is refused rather than sent to whichever was created first. Give them the same label, or retire all but one.";
+
+	it("lists two release runners as stopping a release, never as only undeclared", () => {
+		readiness.mockReturnValue({
+			isLoading: false,
+			error: null,
+			data: ready({
+				blockers: [{ code: "RELEASE_RUNNER_AMBIGUOUS", evaluated: true, message: CALLER_SENTENCE,
+			reader: RUNNERS_READ, details: { labels: ["box-a", "box-b", "box-c"] } }],
+				gaps: ["release-runner-ambiguous", "rollback"],
+			}),
+		});
+
+		draw(<ReleaseSection projectId={PROJECT_ID} />);
+
+		const stops = screen.getByRole("list", { name: "What stops a release" });
+		expect(stops.querySelector("li")?.getAttribute("data-code")).toBe("RELEASE_RUNNER_AMBIGUOUS");
+		// ISS-1229 r11, judge-25: the line names which labels disagree, as the caller's sentence does.
+		expect(stops.textContent).toContain("Live bindings name 3 different release runners (box-a, box-b, box-c)");
+		expect(stops.textContent).not.toContain("RELEASE_RUNNER_AMBIGUOUS");
+		expect(screen.getByRole("list", { name: "What is not declared" }).textContent).not.toContain(
+			"Live bindings name different release runners",
+		);
+	});
+
+	// ISS-1229 round 5 — judge-15 read "No build-commands fact": the key a gap is stored under, and
+	// the word an agent uses for it, where the reader wants what is missing.
+	it("names an unwritten build, test or release instruction by what it is, never by its stored key", () => {
+		readiness.mockReturnValue({
+			isLoading: false,
+			error: null,
+			data: ready({ gaps: ["build-commands", "test-commands", "release-procedure"] }),
+		});
+
+		draw(<ReleaseSection projectId={PROJECT_ID} />);
+
+		const undeclared = screen.getByRole("list", { name: "What is not declared" });
+		expect([...undeclared.querySelectorAll("li")].map((li) => li.textContent?.split(" — ")[0])).toEqual([
+			"No build commands written",
+			"No test commands written",
+			"No release instructions written",
+		]);
+		expect(undeclared.textContent).not.toMatch(/\bfact\b|build-commands|test-commands|release-procedure|\brepo\b/);
+	});
+
 	it("renders a warning's code spans the same way, not only a blocker's", () => {
 		readiness.mockReturnValue({
 			isLoading: false,
@@ -138,7 +230,8 @@ describe("the Release section's prose", () => {
 				warnings: [
 					{
 						code: "RELEASE_RUNNER_PREFERENCE_UNMET",
-						message: "No box carries `release`.",
+						message: CALLER_SENTENCE,
+			reader: "No box carries `release`.",
 					},
 				],
 			}),
@@ -161,7 +254,8 @@ describe("the Release section's prose", () => {
 					{
 						code: "RELEASE_POOL_EMPTY",
 						evaluated: true,
-						message: "A stray ` and then some words that must survive it.",
+						message: CALLER_SENTENCE,
+			reader: "A stray ` and then some words that must survive it.",
 					},
 				],
 			}),
@@ -266,6 +360,18 @@ describe("the Release section's prose", () => {
 });
 
 describe("the Runner pools matrix", () => {
+	// ISS-1171: a control whose prerequisite is missing is shown disabled with that prerequisite named.
+	it("shows each stage's pool control disabled, naming the runner it needs, where none is paired", () => {
+		projectRunners.mockReturnValue({ data: [], isLoading: false, isPending: false });
+
+		draw(<Pools canEdit />);
+
+		expect(screen.getByTestId("runner-pools-unavailable")).toHaveTextContent(/Pair a runner with this project first/);
+		const pins = screen.getAllByRole("checkbox");
+		expect(pins.length).toBeGreaterThan(0);
+		for (const pin of pins) expect(pin).toBeDisabled();
+	});
+
 	it("calls a draining box out of the pool, not offline, because it is up", () => {
 		projectRunners.mockReturnValue({
 			data: [runner({ runnerStatus: "draining" })],

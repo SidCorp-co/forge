@@ -119,7 +119,7 @@ async function lastComment(issueId: string): Promise<string> {
 }
 
 describe('a release finish that cannot close an issue', () => {
-  it('names the refusal, each open question and what clears it, and the other issues close', async () => {
+  it('names the refusal, counts the open questions and says what clears it, and the other issues close', async () => {
     const { finishReleaseBatch } = await import('../../src/release-batch/service.js');
     const held = await fx.insertIssue();
     const free = await fx.insertIssue();
@@ -134,8 +134,9 @@ describe('a release finish that cannot close an issue', () => {
     expect((await fx.stored(held)).status).toBe('awaiting_release');
     const said = await lastComment(held);
     expect(said).toContain('`OPEN_QUESTIONS`');
-    expect(said).toContain(`open question ${first}`);
-    expect(said).toContain(`open question ${second}`);
+    expect(said).toContain('Blocking it: 2 open questions.');
+    expect(said).not.toContain(first);
+    expect(said).not.toContain(second);
     expect(said).toContain('"Decision waiting" card');
     expect(said).toContain(`shipped as version ${version}`);
     expect(said).toContain('Release now');
@@ -198,13 +199,16 @@ describe('a release finish that cannot close an issue', () => {
     expect((await fx.stored(held)).status).toBe('releasing');
     const said = await lastComment(held);
     expect(said).toContain('`OPEN_QUESTIONS`');
-    expect(said).toContain(`open question ${question}`);
+    expect(said).toContain('Blocking it: 1 open question.');
     expect(said).toContain(
       'What clears it: answer each open question in its "Decision waiting" card',
     );
     expect(said).toContain(`shipped as version ${version}`);
-    expect(said).toContain('stay at `releasing`');
-    expect(said).toContain(`/release-batches/${runId}/abort`);
+    expect(said).toContain('stay at Releasing and claimed while its run is live');
+    expect(said).toContain("Forge's releasing sweep settles them within a minute");
+    expect(said).toContain('View release on the issue shows where its run stands.');
+    expect(said).not.toMatch(/\/api\/|\/abort/);
+    expect(said).not.toContain(question);
   });
 
   it('writes the comment as the device owner when a device finished the batch', async () => {
@@ -217,7 +221,8 @@ describe('a release finish that cannot close an issue', () => {
 
     const said = await lastComment(held);
     expect(said).toContain('`OPEN_QUESTIONS`');
-    expect(said).toContain(`open question ${question}`);
+    expect(said).toContain('Blocking it: 1 open question.');
+    expect(said).not.toContain(question);
   });
 });
 

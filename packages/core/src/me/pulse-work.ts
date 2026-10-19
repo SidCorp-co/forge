@@ -1,6 +1,7 @@
 import { and, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
+import { statusEnteredAtSql } from '../issues/status-entered-at.js';
 import { foldWorkStates, openWorkCountsOf, type WorkStateRow } from '../issues/work-state.js';
 import { readWorkStateRows, workStateCondition } from '../issues/work-state-read.js';
 import { LIVE_JOB_STATUSES } from '../jobs/status-sets.js';
@@ -18,6 +19,14 @@ import type {
 
 const LIVE = [...LIVE_JOB_STATUSES];
 
+/** When `i` entered its status: every age below counts from it, never `updated_at`, which a title
+ *  edit or a claim moves (ISS-1229 r8). */
+const ENTERED = statusEnteredAtSql({
+  id: sql`i.id`,
+  status: sql`i.status`,
+  createdAt: sql`i.created_at`,
+});
+
 /**
  * Issues the tracker calls in flight that nothing is working.
  */
@@ -30,7 +39,7 @@ async function selectAbandoned(
     WITH stale AS (
       SELECT i.id, i.iss_seq, i.title, i.status, i.project_id,
              p.slug AS project_slug, p.issue_prefix,
-             coalesce(
+             GREATEST(
                (SELECT max(seen) FROM (
                   SELECT max(coalesce(j.finished_at, j.acked_at, j.dispatched_at, j.queued_at)) AS seen
                   FROM jobs j WHERE j.issue_id = i.id
@@ -39,7 +48,7 @@ async function selectAbandoned(
                   FROM jobs j JOIN pipeline_runs r ON r.id = j.pipeline_run_id
                   WHERE r.issue_id = i.id
                 ) arms),
-               i.updated_at
+               ${ENTERED}
              ) AS idle_since
       FROM issues i
       JOIN projects p ON p.id = i.project_id
@@ -108,18 +117,20 @@ async function selectReleaseWaiting(
 ): Promise<{ total: number; shown: PulseIssueIdentity[] }> {
   const [row] = (await db.execute(sql`
     WITH waiting AS (
-      SELECT i.id, i.iss_seq, i.title, i.status, i.updated_at,
-             p.slug AS project_slug, p.issue_prefix
-      FROM issues i JOIN projects p ON p.id = i.project_id
-      WHERE i.project_id IN (${idList(projectIds)})
-        AND i.status IN ('awaiting_release', 'releasing')
-        AND i.updated_at < ${now.toISOString()}::timestamptz
+      SELECT * FROM (
+        SELECT i.id, i.iss_seq, i.title, i.status, ${ENTERED} AS entered_at,
+               p.slug AS project_slug, p.issue_prefix
+        FROM issues i JOIN projects p ON p.id = i.project_id
+        WHERE i.project_id IN (${idList(projectIds)})
+          AND i.status IN ('awaiting_release', 'releasing')
+      ) w
+      WHERE w.entered_at < ${now.toISOString()}::timestamptz
                            - (${thresholds.releaseWaitingSeconds}::int * interval '1 second')
     )
     SELECT
       (SELECT count(*)::int FROM waiting) AS total,
-      (SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY t.updated_at ASC), '[]'::jsonb)
-         FROM (SELECT * FROM waiting ORDER BY updated_at ASC LIMIT ${thresholds.identityCap}) t) AS shown
+      (SELECT coalesce(jsonb_agg(to_jsonb(t) ORDER BY t.entered_at ASC), '[]'::jsonb)
+         FROM (SELECT * FROM waiting ORDER BY entered_at ASC LIMIT ${thresholds.identityCap}) t) AS shown
   `)) as unknown as Array<{
     total: number;
     shown: Array<{
@@ -127,7 +138,7 @@ async function selectReleaseWaiting(
       iss_seq: number;
       title: string;
       status: string;
-      updated_at: string;
+      entered_at: string;
       project_slug: string;
       issue_prefix: string | null;
     }>;
@@ -140,7 +151,7 @@ async function selectReleaseWaiting(
       title: r.title,
       status: r.status,
       projectSlug: r.project_slug,
-      ageSeconds: ageSeconds(r.updated_at, now) ?? 0,
+      ageSeconds: ageSeconds(r.entered_at, now) ?? 0,
     })),
   };
 }
@@ -150,13 +161,18 @@ async function selectBlockedOnPersonAges(
   cap: number,
   now: Date,
 ): Promise<number[]> {
+  const entered = statusEnteredAtSql({
+    id: sql`${issues.id}`,
+    status: sql`${issues.status}`,
+    createdAt: sql`${issues.createdAt}`,
+  });
   const rows = await db
-    .select({ updatedAt: issues.updatedAt })
+    .select({ enteredAt: sql<Date>`${entered}`.mapWith(issues.createdAt) })
     .from(issues)
     .where(and(inArray(issues.projectId, projectIds), workStateCondition('blocked_on_person')))
-    .orderBy(sql`${issues.updatedAt} ASC`)
+    .orderBy(sql`${entered} ASC`)
     .limit(cap * 10);
-  return rows.map((r) => ageSeconds(r.updatedAt, now) ?? 0);
+  return rows.map((r) => ageSeconds(r.enteredAt, now) ?? 0);
 }
 
 async function selectProjectRuns(projectIds: string[]) {

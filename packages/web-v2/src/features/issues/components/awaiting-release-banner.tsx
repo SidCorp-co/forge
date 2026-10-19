@@ -33,18 +33,23 @@ export function AwaitingReleaseBanner({
 		return <Banner tone="info">{`${merged} — it is in a release, whose run says whether a box has started it`}</Banner>;
 	}
 
-	// A release would hand this issue straight back, so it offers none and says what clears it (ISS-1337).
+	// A release would hand this issue straight back, so it offers none and says what is missing and
+	// what clears it (ISS-1337): one line per shortfall, each naming its door on this page (ISS-1421).
 	if (entry.closeRefusals.length > 0) {
 		return (
 			<Banner tone="attention">
-				<span className="font-medium">A release could not close this issue yet:</span>{" "}
-				{entry.closeRefusals.map((r) => `${r.reason}. ${r.clears}`).join(" ")}
+				<p className="font-medium">Not ready to release.</p>
+				<ul className="mt-1 flex flex-col gap-1" aria-label="What is missing">
+					{entry.closeRefusals.map((r) => (
+						<li key={r.code}>{r.saidHere}</li>
+					))}
+				</ul>
 			</Banner>
 		);
 	}
 
 	const action = canWrite ? (
-		<Button size="sm" disabled={batch.isPending} onClick={() => batch.mutate({ issueIds: [issueId] })}>
+		<Button variant="primary" size="sm" disabled={batch.isPending} onClick={() => batch.mutate({ issueIds: [issueId] })}>
 			Release now
 		</Button>
 	) : undefined;

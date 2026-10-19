@@ -7,7 +7,11 @@
 // nothing. Each is a different stored byte sequence and all of them are the same ANSWER.
 
 import { describe, expect, it } from 'vitest';
-import { environmentsPatchSchema, normalizeEnvironments } from './environments.js';
+import {
+  credentialFaults,
+  environmentsPatchSchema,
+  normalizeEnvironments,
+} from './environments.js';
 
 const EMPTY = {
   preview: null,
@@ -245,5 +249,69 @@ describe('environmentsPatchSchema — the values it refuses, and the field each 
     const out = environmentsPatchSchema.safeParse(environments);
     expect(out.success).toBe(false);
     expect(out.error?.issues.flatMap((i) => i.path.map(String)).join('.')).toContain(names);
+  });
+});
+
+describe('credentialFaults — a credential a write may not store', () => {
+  const row = (label: string, username: string, password: string) => ({
+    label,
+    username,
+    password,
+  });
+
+  it('names a row with no password, at its password', () => {
+    expect(credentialFaults([row('QA', 'qa@example.com', '')])).toEqual([
+      expect.objectContaining({ path: 'testCredentials.0.password', rule: 'password-required' }),
+    ]);
+  });
+
+  it('counts a password of spaces as none', () => {
+    expect(credentialFaults([row('QA', 'qa@example.com', '   ')]).map((f) => f.rule)).toEqual([
+      'password-required',
+    ]);
+  });
+
+  it('names the later of two rows sharing a label, whatever its case', () => {
+    const faults = credentialFaults([
+      row('QA', 'a@example.com', 'one'),
+      row(' qa ', 'b@example.com', 'two'),
+    ]);
+    expect(faults).toEqual([
+      expect.objectContaining({ path: 'testCredentials.1.label', rule: 'duplicate-label' }),
+    ]);
+    expect(faults[0]?.message).toMatch(
+      /^testCredentials\[1\] \('qa'\) has the label testCredentials\[0\] \('QA'\) already has/,
+    );
+  });
+
+  it('names one login listed twice under two labels', () => {
+    expect(
+      credentialFaults([
+        row('Admin', 'qa@example.com', 's3cret'),
+        row('Owner', 'QA@example.com', 's3cret'),
+      ]),
+    ).toEqual([
+      expect.objectContaining({
+        path: 'testCredentials.1.username',
+        rule: 'duplicate-login',
+        message: expect.stringMatching(
+          /^testCredentials\[1\] \('Owner'\) is the same username and password as testCredentials\[0\] \('Admin'\)/,
+        ),
+      }),
+    ]);
+  });
+
+  it('keeps one username with two passwords, which are two logins', () => {
+    expect(
+      credentialFaults([
+        row('Preview admin', 'qa@example.com', 'one'),
+        row('Live admin', 'qa@example.com', 'two'),
+      ]),
+    ).toEqual([]);
+  });
+
+  it('refuses nothing in a list of distinct logins, or in no list at all', () => {
+    expect(credentialFaults([row('A', 'a', 'x'), row('B', 'b', 'y')])).toEqual([]);
+    expect(credentialFaults(undefined)).toEqual([]);
   });
 });

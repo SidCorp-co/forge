@@ -42,6 +42,9 @@ export const FAILURE_CAUSES = [
   'session_lost',
   /** heartbeat hop reaped it. 91 sessions all-time. */
   'heartbeat_timeout',
+  /** a session stopped checking in while its box kept answering, so the box was not unreachable.
+   *  Writers: devices/run-session-reaper.ts, devices/master-reaper.ts, pipeline/sweeper.ts (ISS-1228). */
+  'session_stopped_checking_in',
   /** nobody picked it up. 20 sessions all-time. */
   'queue_timeout',
   'turn_never_reported',
@@ -122,6 +125,7 @@ export const FAILURE_CAUSE_PRESENTATION: Record<FailureCause, FailureCausePresen
   duplex_channel_failed: 'failure',
   session_lost: 'failure',
   heartbeat_timeout: 'swept',
+  session_stopped_checking_in: 'failure',
   queue_timeout: 'swept',
   turn_never_reported: 'failure',
   no_client_ack: 'swept',

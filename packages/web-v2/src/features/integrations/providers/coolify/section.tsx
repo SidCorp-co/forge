@@ -45,24 +45,25 @@ import type {
   IntegrationTestResult,
 } from "../../types";
 import type { CoolifyReadConfig } from "./config";
+import { STATE_WORDS } from "../../derive";
 
 interface BadgeView {
   label: string;
   tone: NonNullable<BadgeProps["tone"]>;
 }
 
-function badgeFor(existing: IntegrationSummary | undefined): BadgeView {
+/** What the binding's own fields hold: a health check is not a deploy, and turned off is not a breaker. */
+export function badgeFor(existing: IntegrationSummary | undefined): BadgeView {
   if (!existing) return { label: "Not configured", tone: "amber" };
-  if (!existing.active) return { label: "Breaker open", tone: "red" };
-  if (existing.lastHealthStatus === "ok")
-    return { label: "Connected", tone: "green" };
-  if (existing.lastHealthStatus === "error")
-    return { label: "Last deploy failed", tone: "red" };
-  return { label: "Untested", tone: "neutral" };
+  if (!existing.active) return { label: STATE_WORDS.off, tone: "neutral" };
+  if (existing.breakerOpenedAt !== null) return { label: "Degraded", tone: "amber" };
+  if (existing.lastHealthStatus === "ok") return { label: "Connected", tone: "green" };
+  if (existing.lastHealthStatus === "error") return { label: STATE_WORDS.failed, tone: "red" };
+  return { label: STATE_WORDS.unchecked, tone: "neutral" };
 }
 
-export function CoolifySection({ projectId }: { projectId: string }) {
-  const [stage, setStage] = useState<DeployStage>("preview");
+export function CoolifySection({ projectId, stage: openedAt }: { projectId: string; stage?: DeployStage }) {
+  const [stage, setStage] = useState<DeployStage>(openedAt ?? "preview");
   const list = useIntegrationsList(projectId);
   const rows = useMemo(
     () => (list.data?.items ?? []).filter((i) => i.provider === "coolify"),
@@ -77,7 +78,7 @@ export function CoolifySection({ projectId }: { projectId: string }) {
     <SettingsSection>
       <div className="mb-4 flex items-center justify-between gap-3">
         <div className="flex items-center justify-between gap-2">
-          <CardTitle>Coolify deploy</CardTitle>
+          <CardTitle>Coolify</CardTitle>
           <Badge tone={badgeFor(existing).tone}>
             {badgeFor(existing).label}
           </Badge>

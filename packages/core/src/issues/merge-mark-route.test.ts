@@ -70,7 +70,6 @@ vi.mock('../middleware/auth.js', () => ({
 }));
 vi.mock('../pipeline/work-evidence.js', () => ({
   findMissingWorkEvidence: async () => null,
-  collectWorkEvidence: async () => ({ handoffCommitSha: null }),
 }));
 vi.mock('../pipeline/hooks.js', () => ({ hooks: { emit: async () => undefined } }));
 /** The shape `landing-evidence.ts` reads off the project's kind, set per case. */
@@ -83,6 +82,14 @@ vi.mock('./commit-landing.js', async (original) => ({
     ok: true as const,
     sha: commit.toLowerCase().padEnd(40, '0'),
     repository: 'SidCorp-co/specimen',
+  }),
+  // A commit named over a witnessed merge is read as this issue's landing (ISS-1421 round 7); this
+  // repository says it is another issue's.
+  readCommitLanding: async ({ commit }: { commit: string }) => ({
+    ok: false as const,
+    code: 'COMMIT_NOT_THIS_ISSUE' as const,
+    detail: `commit ${commit} in SidCorp-co/specimen is not ISS-7's landing`,
+    details: { commit },
   }),
 }));
 vi.mock('./landing-evidence.js', async (importOriginal) => ({
@@ -167,16 +174,17 @@ describe('POST /api/issues/:id/merge', () => {
 
   it('tells a caller whose merge was not witnessed that what it wrote is a claim', async () => {
     const claimed = await mark({ target: 'main', commit: 'abc1234' });
-    expect(claimed.detail).toContain('CLAIM Forge did not observe');
+    expect(claimed.detail).toContain('Forge did not see this merge');
     expect(claimed.detail).toContain('abc1234');
-    expect(claimed.detail).toContain('NOT in `merged_commit_sha`');
+    expect(claimed.detail).toContain('so the mark is a claim that names no commit');
   });
 
-  it('carries the sha it witnessed in the answer, so the word can be checked', async () => {
+  it('names the sha it witnessed in seven characters, so a person can read it (ISS-1421)', async () => {
     asObserved();
     const witnessed = await mark();
-    expect(witnessed.detail).toContain(OBSERVED_SHA);
-    expect(witnessed.detail).not.toContain('CLAIM Forge did not observe');
+    expect(witnessed.detail).toContain(`commit ${OBSERVED_SHA.slice(0, 7)},`);
+    expect(witnessed.detail).not.toContain(OBSERVED_SHA);
+    expect(witnessed.detail).not.toContain('Forge did not see this merge');
   });
 
   it('calls a stamp of the empty string a claim, not a merge it witnessed', async () => {
@@ -187,14 +195,14 @@ describe('POST /api/issues/:id/merge', () => {
   it('does not tell a caller its own commit was overruled when the column holds it', async () => {
     asObserved();
     const agreeing = await mark({ target: 'main', commit: OBSERVED_SHA.toUpperCase() });
-    expect(agreeing.detail).not.toContain('is not what the column holds');
+    expect(agreeing.detail).not.toContain('is not the merge commit Forge holds');
   });
 
   it('tells a caller that named a different commit that the column holds another', async () => {
     asObserved();
     const disagreeing = await mark({ target: 'main', commit: 'abc1234' });
     expect(disagreeing.detail).toContain('abc1234');
-    expect(disagreeing.detail).toContain('is not what the column holds');
+    expect(disagreeing.detail).toContain('named in this mark, was not recorded');
   });
 });
 
@@ -218,14 +226,18 @@ describe('a second mark over a row that already holds a merge Forge witnessed', 
   it('does not tell a caller its commit was overruled by the very commit it named', async () => {
     alreadyObserved();
     const answer = await mark({ target: 'main', commit: OBSERVED_SHA });
-    expect(answer.detail).not.toContain('is not what the column holds');
+    expect(answer.detail).not.toContain('is not the merge commit Forge holds');
   });
 
-  it('still tells a caller that named a different commit which one the column holds', async () => {
+  // Before round 7 this answered 200 "kept as a claim only" and left the mark at the first merge:
+  // a later commit is now read as this issue's landing, and refused by name where it is not.
+  it("refuses a different commit that is not this issue's landing, by the repository's own refusal", async () => {
     alreadyObserved();
-    const answer = await mark({ target: 'main', commit: 'abc1234' });
-    expect(answer.detail).toContain('abc1234');
-    expect(answer.detail).toContain('is not what the column holds');
+    const res = await call('POST', { target: 'main', commit: 'abc1234' });
+    expect(res.status).toBe(422);
+    const body = (await res.json()) as { code: string; message: string };
+    expect(body.code).toBe('COMMIT_NOT_THIS_ISSUE');
+    expect(body.message).toContain('abc1234');
   });
 });
 
@@ -238,7 +250,7 @@ describe('DELETE /api/issues/:id/merge', () => {
     expect(res.status).toBe(200);
     const cleared = (await res.json()) as Answer;
     expect(cleared.mark).toBe('unmarked');
-    expect(cleared.detail).toContain('no merged mark');
+    expect(cleared.detail).toContain('not marked merged');
   });
 });
 
@@ -282,5 +294,64 @@ describe('a landing outside git, at the REST door (ISS-1327)', () => {
     const res = await call('POST', { target: 'ISS-38', landing });
     expect(res.status).toBe(400);
     expect(JSON.stringify(await res.json())).toContain('landing');
+  });
+});
+
+// ISS-1421 r9, criteria 63 and 131: judge-43 read "Invalid input" and zod's "Too small: expected
+// string to have >=1 characters" for a mark with no target or a blank one. Every refusal of this
+// door's own input is one capitalised sentence, stopped, naming what the mark needs.
+describe("the merge door's refusals of its own input (ISS-1421 r9)", () => {
+  function oneSentence(message: string): void {
+    expect(message).not.toBe('Invalid input');
+    expect(message, message).toMatch(/^[A-Z]/);
+    expect(message, message).toMatch(/\.$/);
+    expect(message.split(/(?<=\.)\s+(?=[A-Z])/).length, message).toBe(1);
+    expect(message.split(/\s+/).length, message).toBeLessThanOrEqual(20);
+  }
+
+  it.each([
+    ['no target', {}],
+    ['a blank target', { target: '' }],
+    ['an all-spaces target', { target: '   ' }],
+    ['a commit and no target', { commit: 'abc1234' }],
+  ])('refuses %s on a git project naming `target`', async (_what, body) => {
+    const res = await call('POST', body);
+    expect(res.status).toBe(400);
+    const answer = (await res.json()) as { code: string; message: string };
+    expect(answer.code).toBe('BAD_REQUEST');
+    expect(answer.message).toBe('Name the branch the work merged into as `target`.');
+    oneSentence(answer.message);
+  });
+
+  it.each([
+    ['a target past 200 characters', { target: 'x'.repeat(201) }, '`target`'],
+    ['a blank note', { target: 'main', note: '  ' }, '`note`'],
+    ['a commit that is not a sha', { target: 'main', commit: 'not-a-sha' }, '`commit`'],
+    ['a blank landing', { target: 'main', landing: ' ' }, '`landing`'],
+    ['a mergedAt that is not a time', { target: 'main', mergedAt: 'yesterday' }, '`mergedAt`'],
+    ['a field a mark does not take', { target: 'main', branch: 'main' }, '`branch`'],
+    [
+      'ten fields a mark does not take',
+      Object.fromEntries([
+        ['target', 'main'],
+        ...Array.from({ length: 10 }, (_, i) => [`k${i}`, 1]),
+      ]),
+      '`k0` and 9 more',
+    ],
+    ['a field named in a sentence', { target: 'main', 'Stop. Do this.': 1 }, 'Leave out fields,'],
+  ])('refuses %s in one sentence naming the field', async (_what, body, field) => {
+    const res = await call('POST', body);
+    expect(res.status).toBe(400);
+    const answer = (await res.json()) as { message: string };
+    expect(answer.message).toContain(field);
+    oneSentence(answer.message);
+  });
+
+  it('takes a blank target as no target where the project owes none', async () => {
+    shape = 'outside_git';
+    asLanded('https://shop.example.com/p/1');
+    expect((await mark({ target: ' ', landing: 'https://shop.example.com/p/1' })).mark).toBe(
+      'landed',
+    );
   });
 });

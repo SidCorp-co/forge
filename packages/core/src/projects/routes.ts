@@ -21,14 +21,12 @@ import {
 import {
   assertOrgAccess,
   assertOrgRoleOnProject,
-  assertProjectRole,
   loadPersonalOrgId,
   loadProjectAccess,
   maxProjectRole,
   orgDerivedProjectRole,
   visibleProjectsWhere,
 } from '../lib/authz.js';
-import { isUniqueViolation } from '../lib/db-errors.js';
 import { isEnabled } from '../lib/feature-flags.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import {
@@ -44,7 +42,7 @@ import { ENVIRONMENTS_MOVED_MESSAGE } from './environments.js';
 import { applyIssuePrefixPatch } from './issue-prefix-patch.js';
 import { projectOnboardRoutes } from './onboard-routes.js';
 import { projectFactsRoutes } from './project-facts-routes.js';
-import { PATCHED_PROJECT, PROJECT_DETAIL } from './projections.js';
+import { ARCHIVED_PROJECT, PATCHED_PROJECT, PROJECT_DETAIL, PROJECT_LIST } from './projections.js';
 import {
   chainLiveBranch,
   releaseChainGapFor,
@@ -80,13 +78,12 @@ import {
   pluginsWrittenSchema,
   projectDetailSchema,
   projectListSchema,
-  rotatedApiKeySchema,
-  rotateProjectApiKey,
   unarchiveProject,
 } from './routes-reference.js';
 import { projectRunnerRoutes } from './runners-routes.js';
-import { createProject, generateApiKey, ProjectSlugTakenError } from './service.js';
+import { createProject, ProjectSlugTakenError } from './service.js';
 import { projectSettingsWriteRoutes } from './settings-write-routes.js';
+import { strandedWorkFor } from './stranded-work.js';
 
 export const createProjectSchema = z.object({
   slug: z
@@ -198,21 +195,7 @@ projectRoutes.get('/', listProjects, declaresInput('query', listProjectsQuerySch
   // Visible = explicit membership (any role) OR org owner/admin on the
   // project's org (implicit admin) — same rule as lib/authz.ts.
   const rows = await db
-    .selectDistinctOn([projects.id], {
-      id: projects.id,
-      slug: projects.slug,
-      name: projects.name,
-      orgId: projects.orgId,
-      orgName: organizations.name,
-      orgIsPersonal: organizations.isPersonal,
-      createdBy: projects.createdBy,
-      memberRole: projectMembers.role,
-      orgRole: organizationMembers.role,
-      apiKey: projects.apiKey,
-      issuePrefix: projects.issuePrefix,
-      archivedAt: projects.archivedAt,
-      createdAt: projects.createdAt,
-    })
+    .selectDistinctOn([projects.id], PROJECT_LIST)
     .from(projects)
     .innerJoin(organizations, eq(organizations.id, projects.orgId))
     .leftJoin(
@@ -233,18 +216,13 @@ projectRoutes.get('/', listProjects, declaresInput('query', listProjectsQuerySch
     // the new list[0] at once. Console display is unaffected (client-sorted).
     .orderBy(projects.id);
 
-  // apiKey is returned as-is — the caller has effective access (ADR 0013
-  // documents the key is embedded in the widget page anyway). Redacting broke
-  // the desktop MCP install (key.length < 16 → 401) and the web widget
-  // snippet generator.
   return c.json(
     answer(
       projectListSchema,
-      rows.map(({ memberRole, orgRole, apiKey, ...row }) => {
+      rows.map(({ memberRole, orgRole, ...row }) => {
         const role = maxProjectRole(memberRole ?? null, orgDerivedProjectRole(orgRole ?? null));
         return {
           ...row,
-          apiKey: role === 'viewer' ? null : apiKey,
           role,
           orgRole: orgRole ?? null,
         };
@@ -299,12 +277,9 @@ projectRoutes.get(
       .innerJoin(devices, eq(devices.id, runners.deviceId))
       .where(and(eq(runners.projectId, id), eq(runners.type, 'claude-code')));
 
-    // apiKey is returned for member+ (ADR 0013); the viewer tier is read-only
-    // and the key is execution-grade (MCP pairing / widget), so it's withheld.
     return c.json(
       answer(projectDetailSchema, {
         ...withRetiredReleaseAxes(project),
-        apiKey: access.role === 'viewer' ? null : project.apiKey,
         role: access.role,
         orgRole: access.orgRole,
         members,
@@ -312,56 +287,6 @@ projectRoutes.get(
         devicePool,
       }),
     );
-  },
-);
-
-projectRoutes.post(
-  '/:id/api-key/rotate',
-  rotateProjectApiKey,
-  zValidator('param', idParamSchema, (result) => {
-    if (!result.success) throw badRequest(flatten(result.error));
-  }),
-  async (c) => {
-    const { id } = c.req.valid('param');
-    const userId = c.get('userId');
-
-    const access = await loadProjectAccess(id, userId);
-    assertProjectRole(access, 'admin', 'project admin required');
-
-    // Retry on the partial unique index violation. With 192 bits of
-    // entropy a collision is astronomical, but the `create` path already
-    // wraps inserts in `isUniqueViolation`; mirror the pattern so a freak
-    // collision presents as a 503 rather than an opaque 500.
-    let updated: { id: string; apiKey: string | null } | undefined;
-    let lastErr: unknown;
-    for (let attempt = 0; attempt < 3; attempt++) {
-      try {
-        const apiKey = generateApiKey();
-        [updated] = await db
-          .update(projects)
-          .set({ apiKey })
-          .where(eq(projects.id, id))
-          .returning({ id: projects.id, apiKey: projects.apiKey });
-        break;
-      } catch (err) {
-        if (isUniqueViolation(err)) {
-          lastErr = err;
-          continue;
-        }
-        throw err;
-      }
-    }
-    if (!updated) {
-      if (lastErr) {
-        throw new HTTPException(503, {
-          message: 'failed to mint a unique api key — try again',
-          cause: { code: 'API_KEY_COLLISION' },
-        });
-      }
-      throw notFound();
-    }
-
-    return c.json(answer(rotatedApiKeySchema, { id: updated.id, apiKey: updated.apiKey }));
   },
 );
 
@@ -401,6 +326,25 @@ projectRoutes.patch(
     if (patch.releaseChain !== undefined) updates.releaseChain = patch.releaseChain;
     const gap = await releaseChainGapFor(id, patch);
     if (gap) throw new HTTPException(400, { message: gap.message, cause: { code: gap.code } });
+    const stranded = await strandedWorkFor(id, patch);
+    // Each code written out, so the API reference reads which this route answers with.
+    if (stranded) {
+      switch (stranded.code) {
+        case 'RELEASE_CHAIN_STRANDS_WORK':
+          throw new HTTPException(409, {
+            message: stranded.message,
+            cause: { code: 'RELEASE_CHAIN_STRANDS_WORK', details: stranded.details },
+          });
+        case 'PROJECT_KIND_STRANDS_WORK':
+          throw new HTTPException(409, {
+            message: stranded.message,
+            cause: { code: 'PROJECT_KIND_STRANDS_WORK', details: stranded.details },
+          });
+        default:
+          // A third refusal code fails to compile here rather than letting the write through.
+          stranded.code satisfies never;
+      }
+    }
     if (patch.defaultDeviceId !== undefined) updates.defaultDeviceId = patch.defaultDeviceId;
 
     const agentConfigPatch: AgentConfigKeyPatch = {};
@@ -468,17 +412,6 @@ projectRoutes.delete(
 // dispatching new auto-pipeline jobs (see orchestrator.loadPipelineConfig);
 // in-flight jobs are unaffected. The hard DELETE /:id route above is unchanged.
 
-const ARCHIVE_PROJECTION = {
-  id: projects.id,
-  slug: projects.slug,
-  name: projects.name,
-  orgId: projects.orgId,
-  createdBy: projects.createdBy,
-  apiKey: projects.apiKey,
-  archivedAt: projects.archivedAt,
-  createdAt: projects.createdAt,
-} as const;
-
 projectRoutes.post(
   '/:id/archive',
   archiveProject,
@@ -496,7 +429,7 @@ projectRoutes.post(
       .update(projects)
       .set({ archivedAt: sql`coalesce(${projects.archivedAt}, now())` })
       .where(eq(projects.id, id))
-      .returning(ARCHIVE_PROJECTION);
+      .returning(ARCHIVED_PROJECT);
     if (!updated) throw notFound();
     return c.json(answer(archivedProjectSchema, updated));
   },
@@ -519,7 +452,7 @@ projectRoutes.post(
       .update(projects)
       .set({ archivedAt: null })
       .where(eq(projects.id, id))
-      .returning(ARCHIVE_PROJECTION);
+      .returning(ARCHIVED_PROJECT);
     if (!updated) throw notFound();
     return c.json(answer(archivedProjectSchema, updated));
   },

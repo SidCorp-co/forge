@@ -7,6 +7,7 @@
 // `verify.ts:readingSatisfies`, which is the rule the polling loop applied; what is new is that the
 // reads it was applied to were taken when the agent asked, and are kept.
 
+import { agree, counted } from './counted.js';
 import type { BindingReading, CommitsBefore, ReleaseReading } from './readings.js';
 import { failureFor, NOTHING_TO_COMPARE, readingSatisfies } from './verify.js';
 
@@ -76,7 +77,7 @@ function judgeBinding(
       live: null,
       reason:
         elsewhere > 0
-          ? `the probes declared for ${name} are not the ones its ${elsewhere} recorded reading(s) were taken with, so they say nothing about what these serve — call \`look\`, then finish`
+          ? `the probes declared for ${name} are not the ones its ${counted(elsewhere, 'recorded reading')} ${agree(elsewhere, 'was', 'were')} taken with, so they say nothing about what these serve — call \`look\`, then finish`
           : `no reading of ${name} is recorded on this batch, so nothing says what it is serving — call \`look\` once the deploy has landed, then finish`,
     };
   }

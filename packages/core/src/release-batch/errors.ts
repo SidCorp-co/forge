@@ -1,4 +1,5 @@
 import type { ClaimConflictDetails } from './claim-conflicts.js';
+import { agree, counted } from './counted.js';
 
 export class NoReleaseGateError extends Error {
   constructor() {
@@ -137,6 +138,17 @@ export class ReleaseBatchAbortedError extends Error {
 }
 
 /**
+ * An abort asked to stamp a run only while a condition held, and the condition no longer did: the
+ * run was paused, finished or aborted between the read that chose it and the write.
+ */
+export class ReleaseBatchNotAbortableError extends Error {
+  constructor(public readonly runId: string) {
+    super(`release batch ${runId} is no longer one this abort may stamp`);
+    this.name = 'ReleaseBatchNotAbortableError';
+  }
+}
+
+/**
  * A finish is already running on this batch for another commit. A second commit
  * is a different claim about what shipped, not a retry of the first.
  */
@@ -189,12 +201,32 @@ export class ClaimConflictError extends Error {
 }
 
 /**
+ * An issue on the roster could not enter Releasing, so no issue on it did and the run was cancelled
+ * (ISS-1421): the roster enters in one transaction, never part of it.
+ */
+export class ReleaseRosterRefusedError extends Error {
+  readonly code = 'RELEASE_ROSTER_REFUSED';
+  constructor(
+    readonly issueId: string,
+    readonly refusedWith: string,
+    readonly detail: string,
+  ) {
+    super(
+      `RELEASE_ROSTER_REFUSED: issue ${issueId} could not enter Releasing (${refusedWith}: ${detail}), so no issue on this roster was claimed or moved and the release was cancelled. Clear that, or leave the issue off the roster, and start the release again.`,
+    );
+    this.name = 'ReleaseRosterRefusedError';
+  }
+}
+
+/**
  * One or more issues in the batch have no release note, so the batch would
  * close them claiming a ship nobody wrote anything about.
  */
 export class ReleaseRecordMissingError extends Error {
   constructor(public readonly issueIds: string[]) {
-    super(`RELEASE_RECORD_MISSING: ${issueIds.length} issue(s) have no release note`);
+    super(
+      `RELEASE_RECORD_MISSING: ${counted(issueIds.length, 'issue')} ${agree(issueIds.length, 'has', 'have')} no release note`,
+    );
     this.name = 'ReleaseRecordMissingError';
   }
 }
@@ -282,7 +314,9 @@ export class ReleaseVersionExhaustedError extends Error {
 /** One or more issues a release names would be refused their close at its finish (ISS-1337). */
 export class ReleaseIssuesUnclosableError extends Error {
   constructor(public readonly issueIds: string[]) {
-    super(`RELEASE_ISSUES_UNCLOSABLE: ${issueIds.length} issue(s) would be refused their close`);
+    super(
+      `RELEASE_ISSUES_UNCLOSABLE: ${counted(issueIds.length, 'issue')} would be refused ${agree(issueIds.length, 'its', 'their')} close`,
+    );
     this.name = 'ReleaseIssuesUnclosableError';
   }
 }
@@ -297,7 +331,9 @@ export class ReleaseIssuesUnclosableError extends Error {
  */
 export class ReleaseWorkUnmergedError extends Error {
   constructor(public readonly issueIds: string[]) {
-    super(`RELEASE_WORK_UNMERGED: ${issueIds.length} issue(s) have no merge Forge watched land`);
+    super(
+      `RELEASE_WORK_UNMERGED: ${counted(issueIds.length, 'issue')} ${agree(issueIds.length, 'has', 'have')} no merge Forge watched land`,
+    );
     this.name = 'ReleaseWorkUnmergedError';
   }
 }

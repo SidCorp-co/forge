@@ -147,7 +147,7 @@ describe('a release batch names every issue its range carries', () => {
       [closedId, 'closed'],
       [unnamedId, 'awaiting_release'],
     ]);
-    expect(JSON.stringify(res.body)).toContain(`\`${parkedId}\` at \`needs_info\``);
+    expect(JSON.stringify(res.body)).toContain(`\`${parkedId}\` at Needs info`);
     const titled = (res.body.details?.carried ?? []) as Array<{ issueId: string; title?: string }>;
     const titles = await harness.db.execute(sql`SELECT title FROM issues WHERE id = ${parked}`);
     expect(titled.find((i) => i.issueId === parked)?.title).toBe(String(titles[0]?.title));
@@ -184,7 +184,7 @@ describe('a release batch names every issue its range carries', () => {
       sql`SELECT body FROM comments WHERE issue_id = ${parked}`,
     );
     const body = String(said.at(-1)?.body ?? '');
-    expect(body).toContain(runId);
+    expect(body).not.toContain(runId);
     expect(body).toContain(String(res.body.version));
     expect(body).toContain(why);
     expect(body).toContain(ownerEmail);
@@ -304,7 +304,9 @@ describe('where the range is not read', () => {
     const warned = (res.body.warnings as Array<{ code: string; message: string }>).find(
       (w) => w.code === 'RELEASE_CARRIED_UNREAD',
     );
-    expect(warned?.message).toContain('set an SSH clone URL and a deploy key');
+    expect(warned?.message).toContain(
+      "Set an SSH clone URL under the project's Settings → Shape & release → Repository. Then attach a deploy key under the project's Settings → Runners → Git access.",
+    );
     expect(warned?.message).not.toMatch(/Bind the repository|Integrations/);
   });
 

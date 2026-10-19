@@ -1,6 +1,6 @@
 import { and, eq, isNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { notifications, projects } from '../db/schema.js';
+import { agentSessions, devices, jobs, notifications, projects, runners } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { resolveNotifications } from '../notifications/auto-resolve.js';
 import { createNotification } from '../notifications/routes.js';
@@ -44,7 +44,7 @@ export interface PipelineWedgeEvent {
   issueId?: string | null;
   /** WHERE — which loop hop missed. */
   hop: WedgeHop;
-  entity: 'job' | 'session' | 'run' | 'outbox' | 'issue' | 'capacity' | 'runner';
+  entity: 'job' | 'session' | 'run' | 'outbox' | 'capacity' | 'runner';
   entityId: string;
   /** WHY — what the detector saw (technical; logged, and used as the body fallback). */
   reason: string;
@@ -59,8 +59,96 @@ export interface PipelineWedgeEvent {
   secondaryIssueId?: string | null;
 }
 
+/**
+ * ISS-1168 — what a wedge that names no issue is about, in the words a person already knows it by.
+ *
+ * A runner is the device the Runners page lists, so it is named by that device's name; a session by
+ * its title (or its kind) and the device it ran on; a job by its step. Anything else is the
+ * project's own, which the notification door names. Null where the row is gone or the wedge has an
+ * issue, so the issue's reference leads instead.
+ */
+export async function wedgeSubjectName(
+  ev: Pick<PipelineWedgeEvent, 'entity' | 'entityId' | 'issueId'>,
+): Promise<string | null> {
+  if (ev.issueId) return null;
+  if (ev.entity === 'runner') {
+    const [row] = await db
+      .select({ device: devices.name, runner: runners.name })
+      .from(runners)
+      .leftJoin(devices, eq(devices.id, runners.deviceId))
+      .where(eq(runners.id, ev.entityId))
+      .limit(1);
+    return row ? (row.device ?? row.runner) : null;
+  }
+  if (ev.entity === 'session') {
+    const [row] = await db
+      .select({ title: agentSessions.title, kind: agentSessions.kind, device: devices.name })
+      .from(agentSessions)
+      .leftJoin(devices, eq(devices.id, agentSessions.deviceId))
+      .where(eq(agentSessions.id, ev.entityId))
+      .limit(1);
+    if (!row) return null;
+    const what = row.title?.trim() || `${row.kind} session`;
+    return row.device ? `${what} on ${row.device}` : what;
+  }
+  if (ev.entity === 'job') {
+    const [row] = await db
+      .select({ type: jobs.type })
+      .from(jobs)
+      .where(eq(jobs.id, ev.entityId))
+      .limit(1);
+    return row ? `${row.type} step` : null;
+  }
+  return null;
+}
+
+/**
+ * ISS-1229 r16 — what a wedge is keyed on. Each kind has the one resolver `reevaluate-conditions.ts`
+ * runs to end it once its subject is over, because a firing wedge holds every stuck-issue notice of
+ * its project (`INHIBIT_RULES`) and one that nothing ends holds them for ever.
+ */
+export const WEDGE_KEY_KINDS = [
+  'job',
+  'session',
+  'runner',
+  'outbox',
+  'capacity',
+  'paused_run',
+  'review_rounds',
+] as const;
+export type WedgeKeyKind = (typeof WEDGE_KEY_KINDS)[number];
+
+const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
+
+/** The id shape each kind's key carries after `wedge:`, which its resolver reads back. */
+export const WEDGE_KEY_SHAPES: Readonly<Record<WedgeKeyKind, RegExp>> = {
+  job: new RegExp(`^${UUID}$`),
+  session: new RegExp(`^${UUID}$`),
+  runner: new RegExp(`^${UUID}$`),
+  outbox: new RegExp(`^${UUID}$`),
+  capacity: new RegExp(`^capacity:${UUID}:[a-z_]+$`),
+  paused_run: new RegExp(`^paused:${UUID}$`),
+  review_rounds: new RegExp(`^rounds:${UUID}$`),
+};
+
+/** The kind a wedge's entity and id key it as, or null where no resolver could ever end it. */
+export function wedgeKeyKind(
+  ev: Pick<PipelineWedgeEvent, 'entity' | 'entityId'>,
+): WedgeKeyKind | null {
+  const candidates: readonly WedgeKeyKind[] =
+    ev.entity === 'run' ? ['paused_run', 'review_rounds'] : [ev.entity];
+  return candidates.find((kind) => WEDGE_KEY_SHAPES[kind].test(ev.entityId)) ?? null;
+}
+
 export async function emitPipelineWedge(ev: PipelineWedgeEvent): Promise<void> {
   try {
+    if (wedgeKeyKind(ev) === null) {
+      logger.error(
+        { projectId: ev.projectId, entity: ev.entity, entityId: ev.entityId, hop: ev.hop },
+        `wedge: refused — no resolver ends a wedge keyed on ${ev.entity} "${ev.entityId}", and a wedge nothing ends holds its project's stuck-issue notices for ever`,
+      );
+      return;
+    }
     const resolutionKey = wedgeResolutionKey(ev.entityId);
 
     const [existing] = await db
@@ -102,6 +190,7 @@ export async function emitPipelineWedge(ev: PipelineWedgeEvent): Promise<void> {
       title,
       body,
       issueId: ev.issueId ?? null,
+      subject: await wedgeSubjectName(ev),
       secondaryIssueId: ev.secondaryIssueId ?? null,
       resolutionKey,
       agentSessionId: ev.entity === 'session' ? ev.entityId : null,

@@ -1,13 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import { useMediaQuery } from "@/design/hooks/use-media-query";
 import { formatRelativeTime } from "@/lib/utils/format";
 import {
   Button,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
   EmptyState,
   ErrorState,
   HealthDot,
@@ -35,6 +32,7 @@ import { RevokeDeviceControl } from "./revoke-device-control";
 import {
   deviceBuildChip,
   deviceHealth,
+  deviceStatusWord,
   deviceVersionLabel,
   type DeviceRow,
   type OrgDeviceRow,
@@ -82,9 +80,11 @@ function PairPanel() {
     : "";
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Pair a device</CardTitle>
+    <section aria-labelledby="pair-a-device" className="flex flex-col gap-4 border-t border-line pt-5">
+      <div className="flex items-center justify-between gap-3">
+        <h2 id="pair-a-device" className="fg-h3">
+          Pair a device
+        </h2>
         <HelpButton
           summary="Pair a headless runner with your account using a browser-approved device login (like `claude login`). Run the CLI command on the runner machine — it prints a code to approve here, then writes a device-scoped token locally."
           actions={[
@@ -93,9 +93,8 @@ function PairPanel() {
             "Revoke a device below to cut off its access immediately",
           ]}
         />
-      </CardHeader>
-      <CardContent>
-        <div className="flex flex-col gap-4">
+      </div>
+      <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
             <span className="fg-label">Recommended — run on the runner machine</span>
             <div className="flex items-center justify-between gap-2 rounded-md border border-line bg-sunken px-3 py-2">
@@ -131,7 +130,7 @@ function PairPanel() {
             </div>
 
             {code && (
-              <div className="mt-3 flex flex-col gap-2 rounded-lg border border-line bg-surface p-3">
+              <div className="mt-3 flex flex-col gap-2">
                 <div className="flex items-center justify-center rounded-md border border-line bg-sunken py-3">
                   <span className="font-mono text-xl font-semibold tracking-[0.25em] text-fg">
                     {code.pairing_code}
@@ -155,9 +154,8 @@ function PairPanel() {
               </div>
             )}
           </div>
-        </div>
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   );
 }
 
@@ -235,6 +233,96 @@ function DeviceNameCell({ device }: { device: DeviceRow | OrgDeviceRow }) {
   );
 }
 
+function DeviceStatus({ device }: { device: DeviceRow | OrgDeviceRow }) {
+  return device.disabledAt ? (
+    <span
+      className="inline-flex items-center gap-1.5 rounded px-1.5 py-0.5 text-12 font-medium text-muted bg-sunken"
+      title="Turned off — ignored by every project until turned back on"
+    >
+      <Icon name="pause" size={12} />
+      Off
+    </span>
+  ) : (
+    <HealthDot health={deviceHealth(device.status)} label={deviceStatusWord(device.status)} />
+  );
+}
+
+/** `named` where no column heading says what the value is of. */
+function GitPush({ device, named = false }: { device: DeviceRow | OrgDeviceRow; named?: boolean }) {
+  const prefix = named ? "Git push " : "";
+  return device.gitCredentialRef ? (
+    <span className="inline-flex items-center gap-1.5 text-13 text-fg">
+      <Icon name="check" size={14} className="text-[color:var(--green-600)]" />
+      {prefix}provisioned
+    </span>
+  ) : (
+    <span className="inline-flex items-center gap-1.5 text-13 text-subtle">
+      <Icon name="dot" size={14} />
+      {prefix}none
+    </span>
+  );
+}
+
+/** Manage, Turn off or on, and Revoke, where the viewer owns the device; else why they cannot. */
+function DeviceActions({
+  device: d,
+  scope,
+  confirming,
+  toggling,
+  onManage,
+  onAskRevoke,
+  onRevokeDone,
+  onToggle,
+}: {
+  device: DeviceRow | OrgDeviceRow;
+  scope: DeviceScope;
+  confirming: string | null;
+  toggling: string | null;
+  onManage: (id: string) => void;
+  onAskRevoke: (id: string) => void;
+  onRevokeDone: () => void;
+  onToggle: (id: string, disabled: boolean) => void;
+}) {
+  const revoked = d.status === "revoked";
+  const disabled = !!d.disabledAt;
+  const actionNote = rowActionNote(scope, d.ownedByMe);
+  if (actionNote !== null) return <span className="fg-body-sm text-subtle">{actionNote}</span>;
+  if (confirming === d.id) {
+    return <RevokeDeviceControl deviceId={d.id} deviceName={d.name} onDone={onRevokeDone} />;
+  }
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1">
+      <Button variant="ghost" size="sm" icon="settings" onClick={() => onManage(d.id)}>
+        Manage
+      </Button>
+      {!revoked && (
+        <Button
+          variant="ghost"
+          size="sm"
+          icon={disabled ? "play" : "pause"}
+          loading={toggling === d.id}
+          title={
+            disabled
+              ? "Turn on — let every project dispatch to this device again"
+              : "Turn off — ignore this device across every project (reversible, keeps it paired)"
+          }
+          onClick={() => onToggle(d.id, !disabled)}
+        >
+          {disabled ? "Turn on" : "Turn off"}
+        </Button>
+      )}
+      {!revoked && (
+        <Button variant="ghost" size="sm" icon="trash" onClick={() => onAskRevoke(d.id)}>
+          Revoke
+        </Button>
+      )}
+    </span>
+  );
+}
+
+/** Below Tailwind's `sm`, where the device table's six columns cannot all be in view. */
+const PHONE_WIDTH = "not all and (min-width: 40rem)";
+
 export function RunnersScreen() {
   const { user } = useAuth();
   // Live pending→approved + revoke ride the owner's user room.
@@ -268,6 +356,19 @@ export function RunnersScreen() {
   // scope alone, and re-deriving here keeps rename and status live in the panel.
   const detailDevice = mine.data?.find((d) => d.id === detailId) ?? null;
   const empty = emptyState(scope, counts);
+  const phone = useMediaQuery(PHONE_WIDTH);
+  const actionProps = {
+    scope,
+    confirming: confirmId,
+    toggling: toggleDisabled.isPending ? togglingId : null,
+    onManage: setDetailId,
+    onAskRevoke: setConfirmId,
+    onRevokeDone: () => setConfirmId(null),
+    onToggle: (id: string, disabled: boolean) => {
+      setTogglingId(id);
+      toggleDisabled.mutate({ id, disabled });
+    },
+  };
 
   return (
     <PageContainer className="flex flex-col gap-5">
@@ -291,12 +392,14 @@ export function RunnersScreen() {
 
       <PairPanel />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Devices</CardTitle>
+      <section aria-labelledby="devices" className="flex flex-col gap-3 border-t border-line pt-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 id="devices" className="fg-h3">
+            Devices
+          </h2>
           <ScopeTabs scope={scope} counts={counts} onChange={setScope} />
-        </CardHeader>
-        <CardContent>
+        </div>
+        <div>
           <p className="mb-3 fg-body-sm text-muted">
             {populationLine(scope)}
             {bridge ? ` ${bridge}` : null}
@@ -315,118 +418,66 @@ export function RunnersScreen() {
           ) : rows.length === 0 ? (
             <EmptyState title={empty.title} message={empty.message} mascot={false} />
           ) : (
-            <Table>
-              <THead>
-                <TR>
-                  <TH>Device</TH>
-                  <TH>Status</TH>
-                  <TH>Platform</TH>
-                  <TH>Git push</TH>
-                  <TH>Last seen</TH>
-                  <TH className="text-right">Actions</TH>
-                </TR>
-              </THead>
-              <TBody>
-                {rows.map((d) => {
-                  const revoked = d.status === "revoked";
-                  const disabled = !!d.disabledAt;
-                  const actionNote = rowActionNote(scope, d.ownedByMe);
-                  return (
+            /* At phone width each device stacks as flush rows under hairlines, its actions in view
+               rather than past the right edge of a table scrolled sideways; from `sm` up, a table. */
+            phone ? (
+              <ul aria-label="Devices" className="flex flex-col divide-y divide-line border-y border-line">
+                {rows.map((d) => (
+                  <li key={d.id} className="flex flex-col gap-2 py-3">
+                    <DeviceNameCell device={d} />
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                      <DeviceStatus device={d} />
+                      <MonoTag>{d.platform}</MonoTag>
+                      <GitPush device={d} named />
+                      <span className="fg-body-sm text-muted">
+                        Last seen {formatRelativeTime(d.lastSeenAt, { emptyLabel: "never" })}
+                      </span>
+                    </div>
+                    <DeviceActions device={d} {...actionProps} />
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <Table>
+                <THead>
+                  <TR>
+                    <TH>Device</TH>
+                    <TH>Status</TH>
+                    <TH>Platform</TH>
+                    <TH>Git push</TH>
+                    <TH>Last seen</TH>
+                    <TH className="text-right">Actions</TH>
+                  </TR>
+                </THead>
+                <TBody>
+                  {rows.map((d) => (
                     <TR key={d.id}>
                       <TD>
                         <DeviceNameCell device={d} />
                       </TD>
                       <TD>
-                        {disabled ? (
-                          <span
-                            className="inline-flex items-center gap-1.5 rounded px-1.5 py-0.5 text-12 font-medium text-muted bg-sunken"
-                            title="Turned off — ignored by every project until turned back on"
-                          >
-                            <Icon name="pause" size={12} />
-                            Off
-                          </span>
-                        ) : (
-                          <HealthDot health={deviceHealth(d.status)} />
-                        )}
+                        <DeviceStatus device={d} />
                       </TD>
                       <TD>
                         <MonoTag>{d.platform}</MonoTag>
                       </TD>
                       <TD>
-                        {d.gitCredentialRef ? (
-                          <span className="inline-flex items-center gap-1.5 text-13 text-fg">
-                            <Icon name="check" size={14} className="text-[color:var(--green-600)]" />
-                            provisioned
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1.5 text-13 text-subtle">
-                            <Icon name="dot" size={14} />
-                            none
-                          </span>
-                        )}
+                        <GitPush device={d} />
                       </TD>
                       <TD>
                         <span className="text-muted">{formatRelativeTime(d.lastSeenAt, { emptyLabel: "never" })}</span>
                       </TD>
                       <TD className="text-right">
-                        {actionNote !== null ? (
-                          <span className="fg-body-sm text-subtle">{actionNote}</span>
-                        ) : confirmId === d.id ? (
-                          <RevokeDeviceControl
-                            deviceId={d.id}
-                            deviceName={d.name}
-                            onDone={() => setConfirmId(null)}
-                          />
-                        ) : (
-                          <span className="inline-flex items-center gap-1">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              icon="settings"
-                              onClick={() => setDetailId(d.id)}
-                            >
-                              Manage
-                            </Button>
-                            {!revoked && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                icon={disabled ? "play" : "pause"}
-                                loading={toggleDisabled.isPending && togglingId === d.id}
-                                title={
-                                  disabled
-                                    ? "Turn on — let every project dispatch to this device again"
-                                    : "Turn off — ignore this device across every project (reversible, keeps it paired)"
-                                }
-                                onClick={() => {
-                                  setTogglingId(d.id);
-                                  toggleDisabled.mutate({ id: d.id, disabled: !disabled });
-                                }}
-                              >
-                                {disabled ? "Turn on" : "Turn off"}
-                              </Button>
-                            )}
-                            {!revoked && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                icon="trash"
-                                onClick={() => setConfirmId(d.id)}
-                              >
-                                Revoke
-                              </Button>
-                            )}
-                          </span>
-                        )}
+                        <DeviceActions device={d} {...actionProps} />
                       </TD>
                     </TR>
-                  );
-                })}
-              </TBody>
-            </Table>
+                  ))}
+                </TBody>
+              </Table>
+            )
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </section>
 
       <DeviceDetail device={detailDevice} onClose={() => setDetailId(null)} />
     </PageContainer>

@@ -2,22 +2,37 @@
 
 // Settings → Notifications. Delivery preferences (the `@mention` opt-out, the
 // only user-initiated notification type produced) persist via
-// `/api/auth/me/preferences`; the feed below lists in-app notifications with
-// mark-all-read. Only real, server-enforced controls are shown — no fake
-// toggles for unimplemented delivery channels.
+// `/api/auth/me/preferences`; the inbox below lists in-app notifications, narrowed by
+// type and by unread on the server before a page is cut, with mark-all-read. A row
+// names what it is about and opens it; a sweep's row expands to the records it
+// carries, each of which opens its own. Only real, server-enforced controls are
+// shown — no fake toggles for unimplemented delivery channels.
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import {
   Badge,
   Button,
   EmptyState,
   ErrorState,
+  NativeSelect,
   SectionTitle,
   Skeleton,
   Toggle,
   SettingsSection,
   VirtualList,
 } from "@/design";
+import type { InboxFilter } from "@/features/notifications/api";
+import {
+  useMarkAllRead,
+  useMarkRead,
+  useNotificationInbox,
+  useNotificationMembers,
+} from "@/features/notifications/hooks";
+import { TYPE_FILTER_OPTIONS, TYPE_NAMES } from "@/features/notifications/map";
+import { memberTexts, secondaryHref, subjectHref } from "@/features/notifications/subject";
+import type { NotificationRow, NotificationType } from "@/features/notifications/types";
 import { formatApiError } from "@/lib/api/error";
+import { useToast } from "@/providers/toast-provider";
 import {
   type BrowserPermission,
   getPermission,
@@ -33,13 +48,7 @@ import {
   primeAudio,
   setEnabled as setSoundEnabled,
 } from "@/lib/notifications/sound";
-import {
-  useMarkAllRead,
-  useNotificationFeed,
-  usePreferences,
-  useUpdatePreferences,
-} from "../hooks";
-import type { NotificationRow } from "../types";
+import { usePreferences, useUpdatePreferences } from "../hooks";
 
 function fmtTime(iso: string): string {
   const d = new Date(iso);
@@ -48,15 +57,37 @@ function fmtTime(iso: string): string {
     : d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
+const ALL_TYPES = "";
+
 export function NotificationsTab() {
-  const feedQ = useNotificationFeed();
+  const [filter, setFilter] = useState<InboxFilter>({ type: null, unreadOnly: false });
+  const feedQ = useNotificationInbox(filter);
   const markAll = useMarkAllRead();
+  const { toast } = useToast();
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
 
   const rows = feedQ.data?.rows ?? [];
   const totalCount = feedQ.data?.totalCount ?? 0;
-  const hasUnread = rows.some((n) => n.readAt === null);
+  const hasUnread = rows.some((n) => n.unread);
+  const narrowed = filter.type !== null || filter.unreadOnly;
   // A failed refresh keeps the rows already read; only a first load that failed has nothing to show.
   const failedToLoad = feedQ.isError && !feedQ.data;
+
+  function toggle(id: string) {
+    setExpanded((held) => {
+      const next = new Set(held);
+      if (!next.delete(id)) next.add(id);
+      return next;
+    });
+  }
+
+  function markAllRead() {
+    markAll.mutate(undefined, {
+      onSuccess: (res) => toast({ title: `Marked ${res.updated} read`, tone: "success" }),
+      onError: (err) =>
+        toast({ title: "Action failed", description: formatApiError(err), tone: "error" }),
+    });
+  }
 
   return (
     <div className="space-y-6">
@@ -67,7 +98,9 @@ export function NotificationsTab() {
           <SectionTitle className="fg-h3">Notifications</SectionTitle>
           {totalCount > 0 && (
             <p className="fg-caption mt-0.5">
-              {totalCount === 1 ? "1 notification" : `${totalCount.toLocaleString("en-US")} notifications`}
+              {totalCount === 1
+                ? "1 notification"
+                : `${totalCount.toLocaleString("en-US")} notifications`}
             </p>
           )}
         </div>
@@ -77,12 +110,14 @@ export function NotificationsTab() {
           icon="check"
           disabled={!hasUnread || markAll.isPending}
           loading={markAll.isPending}
-          onClick={() => markAll.mutate()}
+          onClick={markAllRead}
           className="min-h-11"
         >
           Mark all read
         </Button>
       </div>
+
+      <InboxFilterBar filter={filter} onChange={setFilter} />
 
       {feedQ.isLoading && (
         <div className="space-y-2.5">
@@ -101,7 +136,14 @@ export function NotificationsTab() {
       )}
 
       {!feedQ.isLoading && !failedToLoad && rows.length === 0 && (
-        <EmptyState title="All caught up" message="You have no notifications." />
+        <EmptyState
+          title={narrowed ? "Nothing matches" : "All caught up"}
+          message={
+            narrowed
+              ? "No notification matches this filter."
+              : "You have no notifications."
+          }
+        />
       )}
 
       {rows.length > 0 && (
@@ -111,8 +153,10 @@ export function NotificationsTab() {
           totalCount={totalCount}
           getRowId={(n) => n.id}
           getRowLabel={(n) => n.title}
-          estimateRowHeight={72}
-          renderRow={(n) => <NotificationItem row={n} />}
+          estimateRowHeight={96}
+          renderRow={(n) => (
+            <NotificationItem row={n} open={expanded.has(n.id)} onToggle={() => toggle(n.id)} />
+          )}
           more={
             feedQ.hasNextPage
               ? {
@@ -125,6 +169,52 @@ export function NotificationsTab() {
         />
       )}
     </div>
+  );
+}
+
+/** Which notifications the inbox shows: all or unread, and one type or every type. The server
+ *  narrows before it pages, so the count above and every page below are of the matches. */
+function InboxFilterBar({
+  filter,
+  onChange,
+}: {
+  filter: InboxFilter;
+  onChange: (next: InboxFilter) => void;
+}) {
+  return (
+    <fieldset aria-label="Filter notifications" className="m-0 flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2 border-0 p-0">
+      <div className="flex items-center gap-1">
+        {([false, true] as const).map((unreadOnly) => (
+          <button
+            key={String(unreadOnly)}
+            type="button"
+            aria-pressed={filter.unreadOnly === unreadOnly}
+            onClick={() => onChange({ ...filter, unreadOnly })}
+            className={
+              filter.unreadOnly === unreadOnly
+                ? "fg-body-sm min-h-11 min-w-11 border-b-2 border-fg px-3 font-medium text-fg focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+                : "fg-body-sm min-h-11 min-w-11 border-b-2 border-transparent px-3 text-muted hover:text-fg focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+            }
+          >
+            {unreadOnly ? "Unread" : "All"}
+          </button>
+        ))}
+      </div>
+      <div className="w-full sm:w-52">
+        <NativeSelect
+          aria-label="Type"
+          className="min-h-11"
+          value={filter.type ?? ALL_TYPES}
+          onChange={(e) =>
+            onChange({
+              ...filter,
+              type: e.target.value === ALL_TYPES ? null : (e.target.value as NotificationType),
+            })
+          }
+          options={[{ value: ALL_TYPES, label: "All types" }, ...TYPE_FILTER_OPTIONS]}
+        />
+      </div>
+    </fieldset>
   );
 }
 
@@ -288,26 +378,136 @@ function SoundNotificationsToggle() {
   );
 }
 
-function NotificationItem({ row }: { row: NotificationRow }) {
+const linkClass =
+  "fg-body-sm inline-flex min-h-11 items-center font-medium text-fg hover:underline focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]";
+const toggleClass =
+  "fg-caption inline-flex min-h-11 items-center text-link hover:underline focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]";
+
+/**
+ * One delivery. A row carrying a single record is titled by that record and opens its subject; one
+ * carrying several is titled by the cause with its count and opens nothing itself, because its
+ * records are the subjects. What a sweep means is said once, in the disclosure, not on every row.
+ */
+function NotificationItem({
+  row,
+  open,
+  onToggle,
+}: {
+  row: NotificationRow;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  const markRead = useMarkRead();
+  const grouped = row.members > 1;
+  const href = grouped ? null : subjectHref(row);
+  const also = grouped ? null : secondaryHref(row);
+  const opened = () => {
+    if (row.readAt === null) markRead.mutate(row.id);
+  };
+  const caption = [row.projectName, TYPE_NAMES[row.type as NotificationType]]
+    .filter((part): part is string => Boolean(part))
+    .join(" · ");
+  const disclosed = grouped || row.explanation !== null;
+
   return (
-    <div className="py-3">
+    <div className="py-1.5">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            {row.readAt === null && <Badge tone="accent">new</Badge>}
-            <p className="fg-body-sm font-medium text-fg">{row.title}</p>
+          <div className="flex items-start gap-2">
+            {row.unread && (
+              <span className="mt-3">
+                <Badge tone="accent">new</Badge>
+              </span>
+            )}
+            {href ? (
+              <Link href={href} onClick={opened} className={linkClass}>
+                {row.title}
+              </Link>
+            ) : (
+              <p className="fg-body-sm py-3 font-medium text-fg">{row.title}</p>
+            )}
           </div>
+          {caption && <p className="fg-caption text-muted">{caption}</p>}
           {row.body && <p className="fg-caption mt-1">{row.body}</p>}
-          {row.members > 1 && (
-            <p className="fg-caption mt-1 text-muted">
-              {`${row.openMembers} of ${row.members} still open`}
-            </p>
+          {also && (
+            <div>
+              <Link href={also} onClick={opened} className={toggleClass}>
+                Open the issue it waits on
+              </Link>
+            </div>
+          )}
+          {disclosed && (
+            <div>
+              <button
+                type="button"
+                aria-expanded={open}
+                onClick={onToggle}
+                className={toggleClass}
+              >
+                {grouped
+                  ? `${row.openMembers} of ${row.members} still open — ${open ? "hide" : "show"}`
+                  : open
+                    ? "Hide what this means"
+                    : "What this means"}
+              </button>
+            </div>
           )}
         </div>
-        <span className="fg-caption flex-none whitespace-nowrap font-mono">
-          {fmtTime(row.createdAt)}
+        <span className="fg-caption mt-3 flex-none whitespace-nowrap font-mono">
+          {fmtTime(row.toldAt)}
         </span>
       </div>
+      {open && (
+        <div className="pb-2 pl-0">
+          {row.explanation && <p className="fg-caption max-w-prose text-muted">{row.explanation}</p>}
+          {grouped && <MemberList deliveryId={row.id} onOpened={opened} />}
+        </div>
+      )}
     </div>
+  );
+}
+
+/** The records behind a grouped row, still-true ones first, each opening its own subject. */
+function MemberList({ deliveryId, onOpened }: { deliveryId: string; onOpened: () => void }) {
+  const membersQ = useNotificationMembers(deliveryId);
+  if (membersQ.isLoading) return <p className="fg-caption py-2 text-muted">Loading…</p>;
+  if (membersQ.isError) {
+    return (
+      <p className="fg-caption py-2">
+        Couldn&apos;t load these.{" "}
+        <button type="button" onClick={() => membersQ.refetch()} className="text-link hover:underline">
+          Retry
+        </button>
+      </p>
+    );
+  }
+  const members = membersQ.data ?? [];
+  const texts = memberTexts(members);
+  return (
+    <ul className="mt-1 divide-y divide-line-subtle border-t border-line-subtle">
+      {members.map((m, i) => {
+        const href = subjectHref(m);
+        const text = (
+          <span className="flex flex-col">
+            <span className={m.open ? "text-fg" : "text-muted line-through"}>{texts[i] ?? m.title}</span>
+            {m.body && <span className="fg-caption text-muted">{m.body}</span>}
+          </span>
+        );
+        return (
+          <li key={m.id} className="flex items-center justify-between gap-3">
+            {href ? (
+              <Link href={href} onClick={onOpened} className={`${linkClass} min-w-0 font-normal`}>
+                {text}
+              </Link>
+            ) : (
+              <span className="fg-body-sm py-3">{text}</span>
+            )}
+            <span className="fg-caption flex-none whitespace-nowrap font-mono">
+              {fmtTime(m.deliveredAt)}
+            </span>
+          </li>
+        );
+      })}
+    </ul>
   );
 }

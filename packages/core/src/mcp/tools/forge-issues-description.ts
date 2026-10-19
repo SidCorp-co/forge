@@ -60,7 +60,9 @@ export function forgeIssuesDescription(refClause: string): string {
     'relations.blocks (this blocks them) and relations.blockedBy (they block this), each ' +
     'reporting its holdsUntil and flagged expired when its validUntil has passed and it no ' +
     'longer gates dispatch.\n' +
-    'TRANSITION. on_hold is a deliberate pause, waiting parks the issue for human review, and ' +
+    'TRANSITION. on_hold is a deliberate pause, and like waiting, needs_info and reopen it is ' +
+    'refused without a reason (data.reason or data.note), which is posted on the thread as the ' +
+    "entry's announcement. waiting parks the issue for human review, and " +
     'closed means the work shipped: a close on an issue with no merged_at is refused ' +
     '(CLOSE_REQUIRES_SHIPPED), and work that turned out not to be work leaves by dropped. On a ' +
     'project whose release chain names a tag, a close is also refused (CLOSE_REQUIRES_RELEASE_TAG, ' +
@@ -72,7 +74,11 @@ export function forgeIssuesDescription(refClause: string): string {
     "or, where a rule stored another status than the one asked (an agent's waiting stored as " +
     "needs_info on an autonomous project, an agent's closed held at awaiting_release by the " +
     'release gate), rewritten { requested, stored, rule: autonomous_driver | release_gate, ' +
-    'waitingKind { sent, stored }, detail }; update answers it whenever it moved the status.\n' +
+    'waitingKind { sent, stored }, detail }; update answers it whenever it moved the status. ' +
+    'An update writes its fields, labels, relations and any status move in one transaction: ' +
+    'refused for any reason (NO_OP for the status already held, an illegal move, a close with ' +
+    'nothing shipped, a relation naming the issue itself, an unknown label) it writes nothing ' +
+    'it carried, and the refusal says so in its first sentence, after its code.\n' +
     "LANDING SHAPE. get and every write's answer carry landingShape (git | outside_git), the one " +
     "field saying where THIS issue's work lands and so what its mark and close accept, and " +
     "declaredLandingShape, the issue's own declaration, null where its project's kind answers " +
@@ -102,9 +108,12 @@ export function forgeIssuesDescription(refClause: string): string {
     'Anywhere else your commit never reaches the column: it ' +
     'reaches the audit trail as YOUR CLAIM, and on a git issue only once the repository ' +
     'resolves it, recorded by the full sha it resolves to - refused COMMIT_NOT_IN_REPOSITORY ' +
-    'where the repository holds no such commit, and COMMIT_UNVERIFIED where it cannot be read, ' +
-    'in which case mark naming no commit. A person marking with data.commit is held to this: ' +
-    'COMMIT_UNVERIFIED stands for a person. The answer, and every row this tool returns, ' +
+    'where the repository holds no such commit, and COMMIT_UNVERIFIED where it cannot be read on ' +
+    'an issue not yet marked, in which case mark naming no commit; on an issue already marked the ' +
+    'call changes nothing and its detail says where the mark stays. A person marking with ' +
+    'data.commit is held to this, and the commit stays in the audit comment, never a column. ' +
+    'data.target base, prod or feature is written in the comment as the branch it means. ' +
+    'The answer, and every row this tool returns, ' +
     'carries mark/mergeMark (observed | landed | asserted | unmarked) plus detail - observed means ' +
     'Forge witnessed the merge itself, asserted means it witnessed none and took your word ' +
     "for it. Marking unblocks nothing: a blocks edge is released by the blocker's STATUS " +

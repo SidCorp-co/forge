@@ -7,6 +7,10 @@ export const mergeMarkAnswerSchema = z.object({
   action: z.enum(['merged', 'already_merged', 'unmarked']),
   mark: mergeMarkSchema,
   detail: z.string(),
+  /** The commit the landing moved forward from, where this mark moved it; null on every other answer. */
+  movedFrom: z.string().nullable(),
+  /** The whole commit this mark named where the row's columns do not keep it; the detail shows seven. */
+  namedCommit: z.string().nullable(),
 });
 
 export const mergePullRequestAnswerSchema = z.object({
@@ -24,6 +28,7 @@ const NOT_A_WRITER = fail('FORBIDDEN', 'the caller is not a project member with 
 const MARK_REFUSALS = {
   NO_WORK_EVIDENCE: 'the issue holds no evidence of work to mark as shipped',
   UNMARK_REQUIRES_NOT_CLOSED: 'a closed issue cannot be unmarked',
+  NOT_MARKED_MERGED: 'the issue holds no merge mark, so an unmark has nothing to remove',
   LANDING_REQUIRED:
     'the work lands outside git, Forge holds no merged pull request, and `landing` was not sent',
   LANDING_NOT_THIS_SHAPE: '`landing` was sent for an issue whose work lands in git',
@@ -34,6 +39,8 @@ const MARK_REFUSALS = {
   COMMIT_NOT_THIS_ISSUE: "the commit is not this issue's work",
   COMMIT_NOT_LANDED: 'the commit has not landed on the base branch',
   COMMIT_UNVERIFIED: 'Forge cannot read the repository to check the commit',
+  LANDING_NOT_DESCENDANT:
+    "the commit does not descend from the one the issue's mark holds, so it is a different landing",
 };
 
 const describeMark = (summary: string, description: string) =>

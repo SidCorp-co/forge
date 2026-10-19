@@ -14,7 +14,9 @@
 import { sql } from 'drizzle-orm';
 import { postSystemComments } from '../comments/system-write.js';
 import { db } from '../db/client.js';
+import type { IssueStatus } from '../db/schema.js';
 import { issueDisplayIds } from '../issues/display-ids.js';
+import { ISSUE_STATUS_LABELS } from '../issues/status-sets.js';
 import type { RangeCommit } from '../projects/repository-reader.js';
 import { readProjectBranches } from '../projects/service.js';
 import { type CutRangeDeps, type ReadRange, readRangeTo } from './cut-range.js';
@@ -296,12 +298,11 @@ export function carriedRecord(check: CarriedCheck | undefined): CarriedRecord | 
 
 /** The decision, written on each issue that ships unverified, naming the batch that ships it. */
 export async function noteShipUnverified(args: {
-  runId: string;
   version: string;
   check: CarriedCheck | undefined;
   userId: string;
 }): Promise<void> {
-  const { runId, version, check, userId } = args;
+  const { version, check, userId } = args;
   if (check?.kind !== 'read') return;
   const shipped = check.carried.filter((i) => i.decision === 'ship-unverified');
   if (shipped.length === 0) return;
@@ -311,8 +312,8 @@ export async function noteShipUnverified(args: {
       issueId: i.issueId,
       authorId: userId,
       body:
-        `Release ${version} (run ${runId}) ships this issue's landing ${short(i.landing)} ` +
-        `while it stands at \`${i.status}\` and off the release's roster. ${decider} decided, ` +
+        `Release ${version} ships this issue's landing ${short(i.landing)} ` +
+        `while it stands at ${ISSUE_STATUS_LABELS[i.status as IssueStatus] ?? i.status} and off the release's roster. ${decider} decided, ` +
         `when pressing the release, to ship it unverified: ${i.why ?? ''}`,
     })),
   );

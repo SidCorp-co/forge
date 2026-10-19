@@ -9,7 +9,7 @@ import * as matchers from "@testing-library/jest-dom/matchers";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProjectConsoleItem } from "../types";
-import { ProjectsConsole } from "./projects-console";
+import { PROJECTS_VIEW_KEY, ProjectsConsole } from "./projects-console";
 
 expect.extend(matchers);
 
@@ -38,7 +38,7 @@ Element.prototype.scrollIntoView = vi.fn();
 const project = (name: string, over: Partial<ProjectConsoleItem> = {}): ProjectConsoleItem => ({
   id: name, slug: name, name, orgId: "o1", orgName: "Org", orgIsPersonal: false, role: "admin",
   createdAt: "2026-10-01T00:00:00Z", description: `${name} desc`, repoPath: `repo/${name}`, healthRead: "read",
-  health: "healthy", liveRuns: 0, openIssues: 1, runnerCount: 1, spend24hUsd: 1, memberCount: 1, members: ["AB"],
+  health: "healthy", liveSessions: 0, openIssues: 1, runnerCount: 1, spend24hUsd: 1, memberCount: 1, members: ["AB"],
   lastActivityAt: "2026-10-02T00:00:00Z", pinned: false, ...over,
 });
 
@@ -52,6 +52,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  window.localStorage.clear();
 });
 
 const showList = () => fireEvent.click(screen.getByRole("button", { name: "List" }));
@@ -275,5 +276,69 @@ describe("the view the console opens in", () => {
     await act(async () => {});
     showList();
     expect(table()).toBeInTheDocument();
+  });
+
+  it("marks the view in use as pressed, whichever way it was chosen, and moves the mark with a pick", async () => {
+    atWidth(true);
+    render(<ProjectsConsole />);
+    await act(async () => {});
+    expect(screen.getByRole("button", { name: "List" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Cards" })).toHaveAttribute("aria-pressed", "false");
+    showCards();
+    expect(screen.getByRole("button", { name: "Cards" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "List" })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("is the view a person picked, after a reload, on a phone and on a wide screen", async () => {
+    atWidth(true);
+    const phone = render(<ProjectsConsole />);
+    await act(async () => {});
+    showCards();
+    expect(window.localStorage.getItem(PROJECTS_VIEW_KEY)).toBe('"cards"');
+    phone.unmount();
+    render(<ProjectsConsole />);
+    await act(async () => {});
+    expect(table()).toBeNull();
+    expect(cardNames()).toHaveLength(3);
+    cleanup();
+
+    atWidth(false);
+    const wide = render(<ProjectsConsole />);
+    await act(async () => {});
+    showList();
+    wide.unmount();
+    render(<ProjectsConsole />);
+    await act(async () => {});
+    expect(table()).toBeInTheDocument();
+  });
+
+  it("falls back to the breakpoint when no pick was made, or the stored one is not a view", async () => {
+    atWidth(true);
+    window.localStorage.setItem(PROJECTS_VIEW_KEY, '"grid"');
+    const bad = render(<ProjectsConsole />);
+    await act(async () => {});
+    expect(table()).toBeInTheDocument();
+    bad.unmount();
+
+    window.localStorage.setItem(PROJECTS_VIEW_KEY, "not json {");
+    render(<ProjectsConsole />);
+    await act(async () => {});
+    expect(table()).toBeInTheDocument();
+  });
+
+  it("renders, and honours a pick for the page, where storage cannot be read or written", async () => {
+    const refuse = () => {
+      throw new DOMException("storage is blocked", "SecurityError");
+    };
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(refuse);
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(refuse);
+    atWidth(true);
+    render(<ProjectsConsole />);
+    await act(async () => {});
+    expect(table()).toBeInTheDocument();
+    showCards();
+    expect(table()).toBeNull();
+    expect(cardNames()).toHaveLength(3);
+    vi.restoreAllMocks();
   });
 });

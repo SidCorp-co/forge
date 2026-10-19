@@ -146,7 +146,9 @@ describe('findUnmetEntryCriteria', () => {
     expect(shortfall?.unmet.find((u) => u.key === 'release_note')?.detail).toContain(
       '`releaseNotes`',
     );
-    expect(shortfall?.unmet.find((u) => u.key === 'merged_mark')?.detail).toContain('merged mark');
+    expect(shortfall?.unmet.find((u) => u.key === 'merged_mark')?.detail).toContain(
+      'not marked merged',
+    );
   });
 
   it('fails merged_mark on a website project whose mark names no landing', async () => {
@@ -157,7 +159,9 @@ describe('findUnmetEntryCriteria', () => {
     });
     const detail = shortfall?.unmet.find((u) => u.key === 'merged_mark')?.detail ?? '';
     expect(detail).toContain('names no landing');
-    expect(detail).not.toMatch(/merged pull request|merged_commit_sha|CLAIM Forge did not observe/);
+    expect(detail).not.toMatch(
+      /merged pull request|merged_commit_sha|Forge did not see this merge/,
+    );
     expect(detail).toContain('lands outside git accepts `landed` or `observed`');
   });
 
@@ -178,7 +182,7 @@ describe('findUnmetEntryCriteria', () => {
   });
 
   it('delegates `work_evidence` to the work-evidence reader and carries its detail through', async () => {
-    findMissingWorkEvidenceMock.mockResolvedValue('no branch, commit or code handoff is recorded');
+    findMissingWorkEvidenceMock.mockResolvedValue('no branch or commit is recorded');
     const shortfall = await findUnmetEntryCriteria({
       issueId: ISSUE_ID,
       declared: ['work_evidence'],
@@ -189,7 +193,7 @@ describe('findUnmetEntryCriteria', () => {
       'criterion',
     );
     expect(shortfall?.unmet).toEqual([
-      { key: 'work_evidence', detail: 'no branch, commit or code handoff is recorded' },
+      { key: 'work_evidence', detail: 'no branch or commit is recorded' },
     ]);
   });
 
@@ -309,7 +313,7 @@ describe('readEntryCriteriaStrict', () => {
     readPipelineConfigMock.mockResolvedValue({
       statusEntryCriteria: { developed: ['work_evidence'] },
     });
-    missingWorkEvidenceStrictMock.mockResolvedValue('no branch, commit or code handoff');
+    missingWorkEvidenceStrictMock.mockResolvedValue('no branch or commit is recorded');
     const reading = await readEntryCriteriaStrict({
       projectId: PROJECT_ID,
       issueId: ISSUE_ID,
@@ -322,7 +326,7 @@ describe('readEntryCriteriaStrict', () => {
     );
     expect(findMissingWorkEvidenceMock).not.toHaveBeenCalled();
     expect(reading.unmet).toEqual([
-      { key: 'work_evidence', detail: 'no branch, commit or code handoff' },
+      { key: 'work_evidence', detail: 'no branch or commit is recorded' },
     ]);
   });
 

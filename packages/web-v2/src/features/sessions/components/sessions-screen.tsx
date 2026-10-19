@@ -2,16 +2,13 @@
 
 // web-v2 shared Sessions index — used at BOTH the workspace tier
 // (`/sessions`, cross-project, no `scope.projectId`) and the project tier
-// (under the Agents shell, scoped + Sweep zombies). ISS-291. Rows link to the
+// (under the Agents shell, scoped + End silent sessions). ISS-291. Rows link to the
 // session detail (`/projects/:slug/agents/:id`) and back to their issue
 // (ISS-331); the project slug is resolved per row from the projects list.
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Badge,
-  Button,
-  Card,
-  CardContent,
   EmptyState,
   ErrorState,
   HealthDot,
@@ -23,7 +20,8 @@ import {
   PageTitle,
   SegmentedControl,
   SessionRowSkeleton,
-  StatusChip,
+  SILENCE_TONE,
+  SILENCE_WORD,
   Table,
   TBody,
   TD,
@@ -32,15 +30,23 @@ import {
   Tooltip,
   TR,
   type MenuItem,
+  formatElapsed,
   type SegmentOption,
-  useElapsed,
+  WORKING_WORD,
 } from "@/design";
+import { TONE_META } from "@/design/status";
+import { SessionChip } from "./session-chip";
+import { useSessionDuration } from "../session-duration";
+import { CHAT_TAG_HOVER, coreNoteText, ENDS_AS_FAILED_HOVER, leaseDisagreementText } from "../status-sentences";
+import { StopSessionConfirm } from "./stop-session-confirm";
+import { isWaitingForInput, sessionWord } from "../session-word";
 import { useOrgScopedProjects, useProject, useProjects } from "@/features/projects/hooks";
 import { useDevices } from "@/features/runners/hooks";
 import { IssueRefBadge } from "@/features/issues/components/issue-ref-badge";
 import { formatApiError } from "@/lib/api/error";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
+import { EndSilentSessions } from "./end-silent-sessions";
 import { FleetStrip } from "./fleet-strip";
 import { SessionReplyPanel } from "./session-reply-panel";
 import {
@@ -49,19 +55,25 @@ import {
   useRerunSession,
   useRetrySession,
   useSessions,
-  useSweepZombies,
 } from "../hooks";
 import {
+  boxDotOf,
   deriveLiveness,
+  isLiveDisplay,
   deriveSessionDisplayStatus,
   sessionStep,
+  sessionTitle,
   isAwaitingReply,
+  isInteractiveSession,
+  isWaitingForABox,
   isRetryable,
   sessionKind,
-  statusToChip,
+  sessionChipStatusOf,
+  sessionEndText,
   classifySessionOutcome,
   isRealFailure,
   failureReasonLabel,
+  quietEndText,
   AGENT_SESSION_KINDS,
   SESSION_KIND_LABEL,
   type AgentSessionDisplayStatus,
@@ -76,24 +88,6 @@ interface SessionsScreenProps {
    *  `issueId` (when set) filters the list to one issue's sessions — used by
    *  the issue-detail "Open sessions" deep-link (`?issue=<uuid>`). */
   scope?: { projectId?: string; issueId?: string };
-}
-
-/** Mirror of `useElapsed`'s formatter for static (terminal) durations. */
-function formatDuration(ms: number): string {
-  const s = Math.max(0, Math.floor(ms / 1000));
-  const m = Math.floor(s / 60);
-  const h = Math.floor(m / 60);
-  if (h > 0) return `${h}h ${String(m % 60).padStart(2, "0")}m`;
-  if (m > 0) return `${m}m ${String(s % 60).padStart(2, "0")}s`;
-  return `${s}s`;
-}
-
-/** `m ss` / `s` countdown for the reap-window label. */
-function formatCountdown(ms: number): string {
-  const s = Math.max(0, Math.ceil(ms / 1000));
-  const m = Math.floor(s / 60);
-  if (m > 0) return `${m}m ${String(s % 60).padStart(2, "0")}s`;
-  return `${s}s`;
 }
 
 /** Short absolute timestamp for the Started column, or "—" when absent/invalid.
@@ -124,7 +118,7 @@ const FILTERS: SessionFilter[] = ["all", "waiting", "running", "queued", "attent
 const FILTER_LABEL: Record<SessionFilter, string> = {
   all: "All",
   waiting: "Waiting for me",
-  running: "Running",
+  running: WORKING_WORD,
   queued: "Queued",
   attention: "Attention",
 };
@@ -144,23 +138,31 @@ function matchesKind(kind: KindFilter, row: SessionRow): boolean {
   return sessionKind(row) === kind;
 }
 
-function matchesFilter(filter: SessionFilter, row: SessionRow, display: AgentSessionDisplayStatus): boolean {
+function matchesFilter(
+  filter: SessionFilter,
+  row: SessionRow,
+  display: AgentSessionDisplayStatus,
+  now: number,
+): boolean {
   switch (filter) {
     case "waiting":
-      // ISS-664 — a finished interactive chat awaiting the owner's reply.
-      // Deliberately distinct from `queued` (a pipeline session awaiting a
-      // runner also carries `status:'idle'` in some capacity-blocked states,
-      // but `isAwaitingReply` only matches interactive chats).
-      return isAwaitingReply(row);
-    case "running":
-      return display === "running" || display === "stalled";
+      // A chat awaiting the owner's reply (ISS-664), and every session the Pipeline page calls
+      // Waiting for input (ISS-1228): both wait on a person's next message.
+      return isAwaitingReply(row) || isWaitingForInput(row, now);
+    case "running": {
+      // The sessions this list calls Working, which the header's Working figure counts too: never a
+      // quiet one, nor one doing something it has its own word for. A chat has no session word,
+      // and its chip says Working while it runs.
+      const word = sessionWord(row, now);
+      return word ? word.label === WORKING_WORD : display === "running";
+    }
     case "queued":
-      return row.status === "queued" || row.status === "idle";
+      return isWaitingForABox(row);
     case "attention":
-      // ISS-322 — only GENUINE failures + live-stalled (about-to-be-reaped)
-      // sessions need attention. A terminal `cancelled_stale`/lifecycle cancel
-      // is benign cleanup (`swept`), so it no longer lands here.
-      return isRealFailure(display, row.failureReason) || display === "stalled";
+      // ISS-322 — only GENUINE failures, live-stalled (about-to-be-reaped) sessions and sessions
+      // their box reports blocked need attention. A terminal `cancelled_stale`/lifecycle cancel is
+      // benign cleanup (`swept`), so it no longer lands here.
+      return isRealFailure(display, row.failureReason) || display === "stalled" || display === "blocked";
     default:
       return true;
   }
@@ -215,7 +217,6 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
   const retry = useRetrySession();
   const rerun = useRerunSession();
   const abort = useAbortSession();
-  const sweep = useSweepZombies();
 
   const rows = useMemo(() => {
     const all = sessionsQ.data?.items ?? [];
@@ -237,14 +238,12 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
   );
 
   const stats = useMemo(() => {
-    let active = 0;
     let queued = 0;
     let zombies = 0;
     const waits: number[] = [];
     rows.forEach((r, i) => {
       const d = displays[i];
-      if (d === "running") active += 1;
-      if (r.status === "queued" || r.status === "idle") {
+      if (isWaitingForABox(r)) {
         queued += 1;
         // Time a still-queued session has been waiting for a runner.
         const since = r.dispatchedAt ?? r.createdAt;
@@ -260,7 +259,7 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
       const mid = Math.floor(waits.length / 2);
       medianWaitMs = waits.length % 2 ? waits[mid] : Math.round((waits[mid - 1] + waits[mid]) / 2);
     }
-    return { active, queued, zombies, medianWaitMs };
+    return { queued, zombies, medianWaitMs };
   }, [rows, displays, now]);
 
   const counts = useMemo(() => {
@@ -273,18 +272,18 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
     };
     rows.forEach((r, i) => {
       for (const f of FILTERS) {
-        if (f !== "all" && matchesFilter(f, r, displays[i])) c[f] += 1;
+        if (f !== "all" && matchesFilter(f, r, displays[i], now)) c[f] += 1;
       }
     });
     return c;
-  }, [rows, displays]);
+  }, [rows, displays, now]);
 
   const visibleRows = useMemo(() => {
     return rows
       .map((r, i) => ({ row: r, display: displays[i] }))
-      .filter(({ row, display }) => matchesFilter(filter, row, display))
+      .filter(({ row, display }) => matchesFilter(filter, row, display, now))
       .map(({ row }) => row);
-  }, [rows, displays, filter]);
+  }, [rows, displays, filter, now]);
 
   // A pure derivation so it can be tested without a browser; session-tree.ts
   // says what happens to a row whose owner a filter excluded.
@@ -316,50 +315,51 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
     label: `${KIND_LABEL[k]} ${kindCounts[k]}`,
   }));
 
-  const actions = { cancel, retry, rerun, abort };
+  // A stop is asked about before it is made: the menu names the act, the confirmation which session.
+  const [stopAsked, setStopAsked] = useState<SessionRow | null>(null);
+  const askStop = { mutate: (id: string) => setStopAsked(rows.find((r) => r.id === id) ?? null) };
+  const actions = { cancel: askStop, retry, rerun, abort };
 
   return (
     <PageContainer className="min-h-dvh">
+      <StopSessionConfirm
+        target={
+          stopAsked
+            ? {
+                name: sessionTitle(stopAsked) ?? `Session ${stopAsked.id.slice(0, 8)}`,
+                box: stopAsked.deviceId ? deviceNameById.get(stopAsked.deviceId) : null,
+              }
+            : null
+        }
+        loading={cancel.isPending}
+        onClose={() => setStopAsked(null)}
+        onConfirm={() => stopAsked && cancel.mutate(stopAsked.id, { onSuccess: () => setStopAsked(null) })}
+      />
       {/* Workspace tier: subscribe to every active-org project room for live updates. */}
       {!projectId && orgProjects.map((p) => <RoomSub key={p.id} projectId={p.id} />)}
 
       {/* Compact header (ISS-391): title + the four headline metrics collapsed
           into a single inline summary strip (was a 4-card grid that ate a tall
-          band of mostly 0/— on quiet projects), with Sweep on the same row. */}
+          band of mostly 0/— on quiet projects), with End silent sessions on the same row. */}
       <header className="mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
         <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1.5">
           <PageTitle className="fg-h2">Sessions</PageTitle>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            <StatPill label="Active" value={String(stats.active)} />
+            <StatPill label={WORKING_WORD} value={String(counts.running)} />
             <StatPill label="Queued" value={String(stats.queued)} />
             <StatPill
-              label="Zombie jobs"
+              label={SILENCE_WORD}
               value={String(stats.zombies)}
-              tone={stats.zombies > 0 ? "alert" : "default"}
+              ink={stats.zombies > 0 ? TONE_META[SILENCE_TONE].fg : undefined}
             />
             <StatPill
               label="Median wait"
-              value={stats.queued > 0 ? formatDuration(stats.medianWaitMs) : "—"}
+              value={stats.queued > 0 ? formatElapsed(stats.medianWaitMs) : "—"}
             />
           </div>
         </div>
-        {projectId ? (
-          <Button
-            variant="secondary"
-            size="sm"
-            icon="trash"
-            loading={sweep.isPending}
-            onClick={() => sweep.mutate(projectId)}
-          >
-            Sweep zombies
-          </Button>
-        ) : (
-          <Tooltip label="Available on a project's sessions page (owner/admin).">
-            <Button variant="secondary" size="sm" icon="trash" disabled>
-              Sweep zombies
-            </Button>
-          </Tooltip>
-        )}
+        <EndSilentSessions projectId={projectId ?? null} />
+
       </header>
 
       {/* Fleet-runner rollup (ISS-378) — per-device chips + the no-runner
@@ -377,9 +377,9 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
       </div>
 
       {sessionsQ.isLoading && (
-        <div className="overflow-hidden rounded-lg border border-line bg-surface">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <SessionRowSkeleton key={i} />
+        <div className="border-y border-line">
+          {SKELETON_ROWS.map((key) => (
+            <SessionRowSkeleton key={key} />
           ))}
         </div>
       )}
@@ -420,9 +420,10 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
 
       {!sessionsQ.isLoading && !sessionsQ.isError && visibleRows.length > 0 && (
         <>
-          {/* Desktop / tablet: dense table. */}
+          {/* Desktop / tablet: dense table. Its nine columns fit the content column at 1280: cells keep a
+              12px side, and the issue column takes what the others leave, cutting its title to fit. */}
           <div className="hidden md:block">
-            <Table>
+            <Table className="[&_td]:px-3 [&_th]:px-3">
               <THead>
                 <TR>
                   <TH>Session</TH>
@@ -455,10 +456,10 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
             </Table>
           </div>
 
-          {/* Mobile: stacked cards — no horizontal page scroll. */}
-          <div className="space-y-2.5 md:hidden">
+          {/* Mobile: flush rows under hairlines — no horizontal page scroll, no card per session. */}
+          <ul aria-label="Sessions" className="divide-y divide-line border-y border-line md:hidden">
             {treeRows.map(({ row, depth }) => (
-              <SessionMobileCard
+              <SessionMobileRow
                 key={row.id}
                 row={row}
                 depth={depth}
@@ -470,7 +471,7 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
                 onInlineOpen={setOpenSessionId}
               />
             ))}
-          </div>
+          </ul>
         </>
       )}
 
@@ -491,31 +492,24 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
 interface MutationLike {
   mutate: (id: string) => void;
 }
-interface RowActions {
+/** The placeholder rows drawn while the list is read, each with a key of its own. */
+const SKELETON_ROWS = ["s1", "s2", "s3", "s4", "s5", "s6"] as const;
+
+export interface RowActions {
   cancel: MutationLike;
   retry: MutationLike;
   rerun: MutationLike;
   abort: MutationLike;
 }
 
-/** Compact inline metric (ISS-391) — replaces the old big-number StatCard grid.
- *  `label: value` on one line; the value turns red in `alert` tone (e.g. zombie
- *  jobs > 0). */
-function StatPill({
-  label,
-  value,
-  tone = "default",
-}: {
-  label: string;
-  value: string;
-  tone?: "default" | "alert";
-}) {
+/** Compact inline metric (ISS-391): `label: value` on one line, the value in the ink its state takes. */
+function StatPill({ label, value, ink }: { label: string; value: string; ink?: string }) {
   return (
     <span className="inline-flex items-baseline gap-1.5 whitespace-nowrap">
       <span className="fg-overline">{label}</span>
       <span
         className="fg-body-sm font-semibold tabular-nums"
-        style={tone === "alert" ? { color: "var(--color-red)" } : undefined}
+        style={ink ? { color: ink } : undefined}
       >
         {value}
       </span>
@@ -523,10 +517,12 @@ function StatPill({
   );
 }
 
-/** Build the contextual row-action menu, choosing items by display status. */
-function buildMenuItems(row: SessionRow, display: AgentSessionDisplayStatus, a: RowActions): MenuItem[] {
+/** Build the contextual row-action menu, choosing items by display status. Ending the current turn
+ *  leaves the session open, so it is named for that and kept apart from Stop session, and is offered
+ *  only on a chat whose turn is running: a box ends a chat's turn and nothing else (ISS-1228). */
+export function buildMenuItems(row: SessionRow, display: AgentSessionDisplayStatus, a: RowActions): MenuItem[] {
   const items: MenuItem[] = [];
-  const isLive = display === "running" || display === "stalled";
+  const isLive = isLiveDisplay(display);
   const isQueued = row.status === "queued" || row.status === "idle";
   const isTerminal =
     display === "completed" ||
@@ -534,11 +530,17 @@ function buildMenuItems(row: SessionRow, display: AgentSessionDisplayStatus, a: 
     display === "failed" ||
     display === "cancelled_stale";
 
-  if (isLive || isQueued) {
-    items.push({ label: "Cancel", icon: "x", danger: true, onSelect: () => a.cancel.mutate(row.id) });
+  if (isInteractiveSession(row) && row.status === "running") {
+    items.push({ label: "End this turn", icon: "pause", onSelect: () => a.abort.mutate(row.id) });
   }
-  if (isLive || display === "idle") {
-    items.push({ label: "Abort", icon: "stop", onSelect: () => a.abort.mutate(row.id) });
+  if (isLive || isQueued) {
+    items.push({
+      label: "Stop session",
+      icon: "stop",
+      danger: true,
+      separatorBefore: items.length > 0,
+      onSelect: () => a.cancel.mutate(row.id),
+    });
   }
   if ((display === "failed" || display === "cancelled_stale") && isRetryable(row)) {
     items.push({ label: "Retry", icon: "rerun", onSelect: () => a.retry.mutate(row.id) });
@@ -584,9 +586,9 @@ function SessionIdentity({
   onOpen?: () => void;
 }) {
   const router = useRouter();
-  const issueId = row.metadata?.issueId;
-  const kind = sessionKind(row);
-  const title = row.title ?? "Untitled session";
+  const issues = row.issues ?? [];
+  const title = sessionTitle(row) ?? "Untitled session";
+  const disagreement = leaseDisagreementText(issues.filter((i) => i.boxReturned).map((i) => i.displayId));
   return (
     <div className="min-w-0">
       {onOpen ? (
@@ -595,29 +597,31 @@ function SessionIdentity({
           onClick={onOpen}
           className="block w-full text-left focus-visible:outline-none"
         >
-          <span className="fg-body-sm block truncate text-fg hover:text-accent-text">{title}</span>
+          <span title={title} className="fg-body-sm block break-words text-fg hover:text-accent-text sm:truncate">
+            {title}
+          </span>
         </button>
       ) : (
-        <p className="fg-body-sm truncate text-fg">{title}</p>
+        <p title={title} className="fg-body-sm break-words text-fg sm:truncate">
+          {title}
+        </p>
       )}
       <div className="mt-1 flex flex-wrap items-center gap-1.5">
-        {/* Pipeline (job-driven) vs interactive chat — a running chat spawns no
-            job, so it is NOT a wedged runner (ISS-378 AC#4). */}
-        <Tooltip
-          label={
-            kind === "chat"
-              ? "Interactive chat — spawns no pipeline job, so a running chat is not a wedged runner."
-              : "Pipeline session — driven by a pipeline job on a runner."
-          }
-        >
-          <MonoTag hue={kind === "chat" ? "flame" : "cobalt"}>{kind}</MonoTag>
-        </Tooltip>
-        {issueId &&
-          (slug ? (
-            <IssueRefBadge id={issueId} slug={slug} />
+        {issues.map((issue) =>
+          slug ? (
+            <IssueRefBadge
+              key={issue.id}
+              id={issue.id}
+              slug={slug}
+              displayId={issue.displayId}
+              title={issue.title}
+            />
           ) : (
-            <span className="fg-caption truncate">{issueId}</span>
-          ))}
+            <span key={issue.id} className="fg-caption truncate" title={issue.title}>
+              {issue.displayId}
+            </span>
+          ),
+        )}
         {/* Jump to the pipeline-run timeline (ISS-378 AC#3). */}
         {row.pipelineRunId && (
           <Tooltip label="Open pipeline run timeline">
@@ -633,6 +637,7 @@ function SessionIdentity({
           </Tooltip>
         )}
       </div>
+      {disagreement && <p className="fg-caption mt-1 break-words text-muted">{disagreement}</p>}
     </div>
   );
 }
@@ -642,26 +647,21 @@ function SessionIdentity({
 function RunnerCell({
   row,
   deviceName,
-  display,
   now,
 }: {
   row: SessionRow;
   deviceName?: string;
-  display: AgentSessionDisplayStatus;
   now: number;
 }) {
   if (!row.deviceId) return <span className="fg-caption text-subtle">—</span>;
-  const live = display === "running" || display === "stalled";
-  const liveness = live ? deriveLiveness(row, now) : null;
-  const health =
-    liveness?.state === "stale" || liveness?.state === "reaping"
-      ? "attention"
-      : liveness?.state === "alive"
-        ? "healthy"
-        : null;
+  const health = boxDotOf(row, now);
   return (
     <div className="flex items-center gap-1.5 overflow-hidden">
-      {health && <HealthDot health={health} withLabel={false} />}
+      {health && (
+        <span data-testid="box-dot" data-health={health} className="inline-flex">
+          <HealthDot health={health} withLabel={false} />
+        </span>
+      )}
       {deviceName ? (
         <span className="truncate fg-body-sm text-muted" title={deviceName}>
           {deviceName}
@@ -685,56 +685,51 @@ function StatusCell({
   now: number;
 }) {
   const liveness = deriveLiveness(row, now);
+  const word = sessionWord(row, now);
+  const endText = quietEndText(liveness);
   // ISS-664 — a finished interactive chat awaiting the owner's reply gets its
   // own distinct chip (the `waiting` StatusKey — amber "a human must act"),
   // taking priority over the generic idle→paused mapping used everywhere else
   // (ChatScreen/SessionScreen keep that mapping unchanged; this is list-only).
   const awaitingReply = isAwaitingReply(row);
-  const outcome = classifySessionOutcome(display, row.failureReason);
-  const chipStatus = awaitingReply
-    ? "waiting"
-    : outcome.bucket === "active"
-      ? statusToChip(display)
-      : outcome.statusKey;
+  const outcome = classifySessionOutcome(display, row.failureReason, row.startedAt != null);
+  const chipStatus = sessionChipStatusOf(row, display);
   const reason = failureReasonLabel(row.failureReason) ?? row.failureReason ?? null;
-  const showReason =
-    !!reason && (display === "failed" || display === "stalled" || display === "cancelled_stale");
-  const subLine = showReason ? reason : display === "cancelled" ? outcome.label : null;
+  // Why it ended, or core's note on one it has not, in the sentences the session page and runs tab say.
+  const subLine =
+    display === "failed" || display === "cancelled_stale"
+      ? sessionEndText(row.failureReason)
+      : display === "stalled" && reason
+        ? coreNoteText(reason)
+        : null;
   // Red reason text only for a genuine failure; swept/cleanup reads subtle.
   const reasonColor = outcome.bucket === "failed" ? "var(--amberw-600)" : "var(--fg-subtle)";
   return (
     <div className="flex flex-col items-start gap-1">
       {!awaitingReply && outcome.tooltip ? (
         <Tooltip label={outcome.tooltip}>
-          <StatusChip status={chipStatus} stage={stage} domain="session" />
+          <SessionChip status={chipStatus} stage={stage} session={row} now={now} />
         </Tooltip>
       ) : (
-        <StatusChip status={chipStatus} stage={stage} domain="session" />
+        <SessionChip status={chipStatus} stage={stage} session={row} now={now} />
       )}
       {subLine && (
         <span className="fg-caption" style={{ color: reasonColor }}>
           {subLine}
         </span>
       )}
-      {liveness.state === "stale" && liveness.reapInMs != null && (
-        <span className="fg-caption text-subtle" title="Time until the server auto-recovers this session">
-          auto-recovers in {formatCountdown(liveness.reapInMs)}
+      {word?.quiet && <span className="fg-caption text-subtle">{word.label}</span>}
+      {endText && (
+        <span className="fg-caption text-subtle" title={ENDS_AS_FAILED_HOVER}>
+          {endText}
         </span>
-      )}
-      {liveness.state === "reaping" && (
-        <span className="fg-caption text-subtle">awaiting auto-recovery…</span>
       )}
     </div>
   );
 }
 
 function useRowDuration(row: SessionRow, display: AgentSessionDisplayStatus): string {
-  const live = display === "running" || display === "stalled";
-  const startMs = row.startedAt ? new Date(row.startedAt).getTime() : undefined;
-  const elapsed = useElapsed(startMs, live);
-  if (!startMs) return "—";
-  if (live) return elapsed;
-  return formatDuration(new Date(row.updatedAt).getTime() - startMs);
+  return useSessionDuration(row, isLiveDisplay(display));
 }
 
 function SessionTableRow({
@@ -796,17 +791,17 @@ function SessionTableRow({
           )}
           <SessionKindTag row={row} />
           {hasChildren && (
-            <span className="text-11 text-muted" title="this session owns others in this list">
+            <span className="text-11 text-muted" title="This session owns others in this list.">
               &#8226;
             </span>
           )}
         </div>
       </TD>
-      <TD className="max-w-[260px]">
+      <TD className="w-full min-w-[200px] max-w-0">
         <SessionIdentity row={row} slug={slug} onOpen={open} />
       </TD>
       <TD className="max-w-[160px]">
-        <RunnerCell row={row} deviceName={deviceName} display={display} now={now} />
+        <RunnerCell row={row} deviceName={deviceName} now={now} />
       </TD>
       <TD className="whitespace-nowrap font-mono text-muted">{fmtTime(row.startedAt ?? row.dispatchedAt)}</TD>
       <TD className="text-right font-mono text-muted">{row.usage?.turns ?? "—"}</TD>
@@ -831,12 +826,15 @@ const KIND_TONE = {
   chat: "neutral",
 } as const satisfies Record<AgentSessionKind, "neutral" | "accent" | "cobalt">;
 
+/** A running chat spawns no job, so it is not a wedged runner (ISS-378 AC#4); the kind says which. */
 function SessionKindTag({ row }: { row: SessionRow }) {
   const kind = sessionKind(row);
-  return <Badge tone={KIND_TONE[kind]}>{SESSION_KIND_LABEL[kind]}</Badge>;
+  const tag = <Badge tone={KIND_TONE[kind]}>{SESSION_KIND_LABEL[kind]}</Badge>;
+  if (kind !== "chat") return tag;
+  return <Tooltip label={CHAT_TAG_HOVER}>{tag}</Tooltip>;
 }
 
-function SessionMobileCard({
+function SessionMobileRow({
   row,
   slug,
   deviceName,
@@ -867,8 +865,7 @@ function SessionMobileCard({
   return (
     // The same edge the table shows, at a width a phone can carry: the nesting
     // has to survive the narrow layout or the tree is a desktop-only claim.
-    <Card>
-      <CardContent>
+    <li className="py-3">
         <div
           className="flex items-start justify-between gap-3"
           style={depth > 0 ? { paddingLeft: depth * OWNER_INDENT_PX } : undefined}
@@ -897,10 +894,9 @@ function SessionMobileCard({
         <div className="fg-caption mt-1.5 text-subtle">Started {fmtTime(row.startedAt ?? row.dispatchedAt)}</div>
         {row.deviceId && (
           <div className="mt-2.5">
-            <RunnerCell row={row} deviceName={deviceName} display={display} now={now} />
+            <RunnerCell row={row} deviceName={deviceName} now={now} />
           </div>
         )}
-      </CardContent>
-    </Card>
+    </li>
   );
 }

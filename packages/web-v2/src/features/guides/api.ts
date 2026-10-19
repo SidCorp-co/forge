@@ -15,17 +15,18 @@ export interface Guide {
 
 export type GuideSummary = Omit<Guide, "body">;
 
-class GuideFetchError extends Error {
+export class GuideFetchError extends Error {
   constructor(what: string, url: string, detail: string) {
     super(`${what} (${url}): ${detail}`);
     this.name = "GuideFetchError";
   }
 }
 
-async function readJson(url: string, what: string): Promise<unknown> {
+async function readJson(url: string, what: string, { live = false } = {}): Promise<unknown> {
   let res: Response;
   try {
-    res = await fetch(url, { headers: { accept: "application/json" }, next: { revalidate: 300 } });
+    const caching: RequestInit = live ? { cache: "no-store" } : { next: { revalidate: 300 } };
+    res = await fetch(url, { headers: { accept: "application/json" }, ...caching });
   } catch (cause) {
     throw new GuideFetchError(what, url, `the Forge API could not be reached — ${String(cause)}`);
   }
@@ -51,7 +52,8 @@ export interface GuideScope {
 
 const readIndex = cache(async (): Promise<{ url: string; body: { guides?: unknown; corpus?: unknown } }> => {
   const url = `${resolveServerApiBase()}/guides`;
-  return { url, body: ((await readJson(url, "reading the guide index")) ?? {}) as { guides?: unknown; corpus?: unknown } };
+  const body = await readJson(url, "reading the guide index", { live: true });
+  return { url, body: (body ?? {}) as { guides?: unknown; corpus?: unknown } };
 });
 
 /** Every guide Forge publishes, in registry order. Throws by name when core is

@@ -5,14 +5,17 @@
 
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { RunGate } from "@/features/pipeline/types";
+import type { RunGate } from "@/features/runs/types";
 import type { SessionRow } from "@/features/sessions/types";
 
 const useRun = vi.fn();
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 vi.mock("@/features/runners/hooks", () => ({ useDevices: () => ({ data: [] }) }));
-vi.mock("@/features/pipeline/hooks", () => ({ useRun }));
+vi.mock("@/features/project-dashboard/runner-fleet", () => ({
+	useRunnerFleet: () => ({ summary: { lines: [] }, activity: { read: "pending" } }),
+}));
+vi.mock("@/features/runs/hooks", () => ({ useRun }));
 vi.mock("@/features/sessions/hooks", () => ({
 	useSessionCost: () => ({ data: undefined }),
 	useSessions: () => ({ data: { items: [] } }),
@@ -75,8 +78,8 @@ describe("the gate a run session opened under, on the session rail", () => {
 
 		expect(screen.getByText("Declaration gate")).toBeTruthy();
 		expect(screen.getByText(/gate was failing open when this run opened/)).toBeTruthy();
-		expect(screen.getByText(/^295 dispatch\(es\) admitted without a decision, 71\/day over 100h 17m$/)).toBeTruthy();
-		expect(screen.getByText(/^281 of 295: this pane carries no control capability/)).toBeTruthy();
+		expect(screen.getByText("295 dispatches were admitted without a decision, 71/day over 100h 17m.")).toBeTruthy();
+		expect(screen.getByText(/^281 of 295: this pane carries no control capability.*\.$/)).toBeTruthy();
 		expect(useRun).toHaveBeenCalledWith(RUN_ID, true);
 	});
 

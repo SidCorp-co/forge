@@ -188,7 +188,7 @@ describe('the wedge net reads the lease (ISS-1317)', () => {
     await reconciler.resetAutonomousWedgesOnce();
     expect(await statusOf(id)).toBe('open');
     const [body] = await commentsOn(id);
-    expect(body).toContain('could not be read (renewedAt is not a parseable timestamp)');
+    expect(body).toContain('the claim on it could not be read, so it holds nothing');
   });
 
   it('is not held by an unexpired lease whose holder stopped beating', async () => {
@@ -198,7 +198,7 @@ describe('the wedge net reads the lease (ISS-1317)', () => {
     expect(await statusOf(id)).toBe('open');
     const [body] = await commentsOn(id);
     expect(body).toContain("its holder's heartbeat has been silent for");
-    expect(body).toContain('past the 90s it tolerates');
+    expect(body).toContain('past the 90 seconds it is allowed');
   });
 
   it('keeps an issue whose lease was renewed after the pass chose it, and says nothing', async () => {
@@ -256,9 +256,12 @@ describe('a reset the wedge net makes is on the issue (ISS-1317)', () => {
     await reconciler.resetAutonomousWedgesOnce();
     const bodies = await commentsOn(id);
     expect(bodies).toHaveLength(1);
-    expect(bodies[0]).toContain('**Moved by the reconciler: `in_progress` -> `open`**');
+    expect(bodies[0]).toContain('**Moved by the reconciler: In progress -> Open**');
     expect(bodies[0]).toContain('not a person');
-    expect(bodies[0]).toMatch(/the lease held by `iss-run-1` lapsed at \d{4}-\d\d-\d\dT/);
+    expect(bodies[0]).toMatch(
+      /the claim iss-run-1 held on it ran out at \d{1,2} [A-Z][a-z]{2} \d{4}, \d\d:\d\d UTC/,
+    );
+    expect(bodies[0]).not.toMatch(/`|\d{4}-\d\d-\d\dT/);
   });
 
   it('says no lease was held when the issue carries none', async () => {
@@ -267,7 +270,7 @@ describe('a reset the wedge net makes is on the issue (ISS-1317)', () => {
     expect(await statusOf(id)).toBe('open');
     const bodies = await commentsOn(id);
     expect(bodies).toHaveLength(1);
-    expect(bodies[0]).toContain('no run held a lease on it');
+    expect(bodies[0]).toContain('no agent held a claim on it');
   });
 
   it('leaves no comment when the status write is refused after the comment was drafted', async () => {

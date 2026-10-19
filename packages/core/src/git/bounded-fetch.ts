@@ -4,8 +4,9 @@ import { join } from 'node:path';
 import { type Refused, saying } from '../projects/repository-reader.js';
 import type { PinnedSshHost } from './ssh-host-guard.js';
 
-/** Where in Forge a project's deploy key is attached, for a sentence telling an operator to fix it. */
+/** Where a project's deploy key is attached, and its SSH clone URL set, for an operator's fix. */
 export const GIT_ACCESS = "the project's Settings → Runners → Git access";
+export const REPO_URL_AT = "the project's Settings → Shape & release → Repository";
 
 /**
  * What every sentence asks the git host to give the key attached under Git access, and why. Write,
@@ -13,8 +14,7 @@ export const GIT_ACCESS = "the project's Settings → Runners → Git access";
  * pushes with, so a key given read alone clears a read and breaks the next push.
  */
 export const KEY_ACCESS = 'write access';
-export const WHY_KEY_ACCESS =
-  "since Forge reads the repository with it and the project's runner pushes with it";
+export const WHY_KEY_ACCESS = "since the project's runner pushes with it";
 
 /** The host a remote names, for a sentence; the URL itself where no host can be read from it. */
 export function hostOf(repoUrl: string): string {
@@ -116,29 +116,32 @@ export function readingEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
  *  from it the act that clears it, so a sentence naming several causes gives that act once. */
 export function hostRefusal(err: GitFailure, remote: string): Refused {
   const answer = readHostRefusal((err.stderr ?? '').toString());
-  const { said } = answer;
+  const said = answer.said ? { said: answer.said } : {};
   switch (answer.kind) {
     case 'no_branch':
       return { cause: `the repository has no branch ${answer.branch}, so it cannot be compared` };
     case 'key_refused':
       return {
-        cause: `the git host refused the deploy key attached to this project (${said})`,
-        clears: `give its public key ${KEY_ACCESS} to ${remote}, ${WHY_KEY_ACCESS}; the key is the one attached under ${GIT_ACCESS}`,
+        cause: "the git host refused this project's deploy key",
+        clears: `give the key ${KEY_ACCESS} to ${remote}, ${WHY_KEY_ACCESS}. It is under ${GIT_ACCESS}`,
+        ...said,
       };
     case 'no_access':
       return {
-        cause: `the git host took the deploy key attached to this project but will not let it read ${remote} (${said})`,
-        clears: `on the git host, give the deploy key attached under ${GIT_ACCESS} ${KEY_ACCESS} to that repository, ${WHY_KEY_ACCESS}; if no repository lives at that URL, correct the SSH clone URL set there`,
+        cause: `the git host took this project's deploy key but will not let it read ${remote}`,
+        clears: `give that key ${KEY_ACCESS} to the repository, ${WHY_KEY_ACCESS}. If none lives there, fix the SSH clone URL under ${REPO_URL_AT}`,
+        ...said,
       };
     case 'unreachable':
       return {
-        cause: `the git host ${hostOf(remote)} could not be reached (${said}), so the deploy key was never offered`,
-        clears: `check that the SSH clone URL ${remote}, set under ${GIT_ACCESS}, names the right host and that the host is up`,
+        cause: `the git host ${hostOf(remote)} could not be reached, so the deploy key was never offered`,
+        clears: `check that the SSH clone URL ${remote} names the right host, and that the host is up. It is set under ${REPO_URL_AT}`,
+        ...said,
       };
     default:
-      return {
-        cause: `the git host answered the fetch with: ${said || `git exited ${String(err.code ?? 'abnormally')}`}`,
-      };
+      return answer.said
+        ? { cause: 'the git host refused the fetch', ...said }
+        : { cause: `the fetch failed, and git exited ${String(err.code ?? 'abnormally')}` };
   }
 }
 
@@ -146,7 +149,7 @@ export function hostRefusal(err: GitFailure, remote: string): Refused {
 export function unresolvedHostRefusal(remote: string): Refused {
   return {
     cause: `the git host ${hostOf(remote)} could not be resolved, so the deploy key was never offered`,
-    clears: `check that the SSH clone URL ${remote}, set under ${GIT_ACCESS}, names the right host and that its name resolves`,
+    clears: `check that the SSH clone URL ${remote} names the right host, and that its name resolves. It is set under ${REPO_URL_AT}`,
   };
 }
 
@@ -160,10 +163,11 @@ export function namingTheHost(reason: string, pin: PinnedSshHost): string {
 }
 
 export function refusedNamingTheHost(refused: Refused, pin: PinnedSshHost): Refused {
-  const cause = namingTheHost(refused.cause, pin);
-  return refused.clears === undefined
-    ? { cause }
-    : { cause, clears: namingTheHost(refused.clears, pin) };
+  return {
+    cause: namingTheHost(refused.cause, pin),
+    ...(refused.clears === undefined ? {} : { clears: namingTheHost(refused.clears, pin) }),
+    ...(refused.said === undefined ? {} : { said: namingTheHost(refused.said, pin) }),
+  };
 }
 
 async function largestFile(dir: string): Promise<number> {
@@ -200,7 +204,7 @@ export function boundedFetch(
   limits: FetchLimits,
 ): Promise<void> {
   const { what, repo, filter } = fetch;
-  const overBudget = `${what} passed ${Math.round(limits.maxBytes / 1024)} KiB, the most one reading may fetch — the host may not honour the ${filter} filter`;
+  const overBudget = `${what} passed ${Math.round(limits.maxBytes / 1024)} KiB, the most one reading may fetch. The host may not honour the ${filter} filter`;
   const blocks = Math.max(1, Math.floor(limits.maxBytes / PER_FILE_SHARE / 512));
   return new Promise((resolve, reject) => {
     const child = spawn(

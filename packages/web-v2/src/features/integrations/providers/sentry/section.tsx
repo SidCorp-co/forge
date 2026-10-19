@@ -40,6 +40,7 @@ import {
   type TargetRow,
   toTargets,
 } from "./targets-field";
+import { STATE_WORDS } from "../../derive";
 
 interface FormState {
   authToken: string;
@@ -164,7 +165,7 @@ export function SentrySection({ projectId }: { projectId: string }) {
           <CardTitle>Sentry</CardTitle>
           {existing && (
             <Badge tone={existing.active ? "green" : "neutral"}>
-              {existing.active ? "Active" : "Disabled"}
+              {existing.active ? "Active" : STATE_WORDS.off}
             </Badge>
           )}
         </div>

@@ -1,4 +1,6 @@
 
+import type { StuckIssueKind } from "@forge/contracts/notifications";
+
 export type AttentionKind =
   | "needs_review"
   | "awaiting_input"
@@ -15,6 +17,14 @@ export interface AttentionItem {
   /** ISO timestamp the item entered this state (sorts/relative-time). */
   since: string;
   issueRef?: string;
+  issueTitle?: string;
+  jobId?: string;
+  /** Failed job only: its kind of work, as stored; `failedJobWords` says it in words. */
+  jobType?: string;
+  failure?: string | null;
+  stuckKind?: StuckIssueKind;
+  stuckOwedBy?: string;
+  failedJob?: { jobType: string; failure: string | null };
   status?: string;
   projectSlug?: string;
   projectName?: string;
@@ -22,6 +32,16 @@ export interface AttentionItem {
   questionId?: string | null;
   cost?: { claimsHeld: number; workspacesPinned: number; dependents: number };
 }
+
+export const ATTENTION_BUCKETS = [
+  "needsReview",
+  "awaitingInput",
+  "mentions",
+  "failedJobs",
+  "pendingSkillUpdates",
+  "unseenDrafts",
+] as const;
+export type AttentionBucket = (typeof ATTENTION_BUCKETS)[number];
 
 /** Shape of `GET /api/me/attention` (verbatim from the core route). */
 export interface AttentionResponse {
@@ -34,21 +54,27 @@ export interface AttentionResponse {
   unseenDrafts: AttentionItem[];
   /** Unclipped count behind `unseenDrafts` — render it, don't recompute it. */
   unseenDraftsTotal: number;
-  /** Per project slug, the unclipped count behind the three capped lists; none of them, no key. */
+  /** Each bucket counted whole before its cap: the number a heading or badge says (ISS-1229 r14). */
+  bucketTotals: Record<AttentionBucket, number>;
+  /** Per project slug, the whole counts the project's Needs you list is made of; none of them, no key. */
   projectTotals: Record<
     string,
     {
       needsReview: number;
       awaitingInput: number;
-      /** The part of `awaitingInput` the project health row's parked list does not hold. */
-      awaitingOutsideBlockers: number;
+      awaitingAsked: number;
       failedJobs: number;
+      /** Parked issues the health row's list holds that no bucket lists, counted once each. */
+      parkedOnly: number;
+      parkedAsked: number;
+      /** Issues a stuck-issue notice stands for that none of the counts above holds (ISS-1229 r15). */
+      stuckOnly: number;
     }
   >;
   total: number;
 }
 
-export interface AttentionView extends Omit<AttentionResponse, "total"> {
+export interface AttentionView extends AttentionResponse {
   offlineRunners: AttentionItem[];
 }
 

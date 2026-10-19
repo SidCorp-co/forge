@@ -26,6 +26,16 @@ vi.mock('../db/client.js', () => ({
   db: { insert: dbInsert, update: dbUpdate, select: () => dbSelect() },
 }));
 
+// The successor is written through the admission door; its run lock is proved against Postgres in
+// `tests/integration/job-admission-race-e2e.test.ts`, so here the door writes through the insert mock.
+vi.mock('./admit.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./admit.js')>()),
+  admitJob: async (_executor: unknown, values: unknown) => {
+    const rows = (await dbInsert().values(values).returning()) as { id: string }[];
+    return rows[0];
+  },
+}));
+
 vi.mock('../notifications/emit.js', () => ({ emitNotification: vi.fn() }));
 vi.mock('../notifications/auto-resolve.js', () => ({ resolveNotifications: vi.fn() }));
 
@@ -149,6 +159,13 @@ describe('scheduleAutoRetryWithVerify — per-class policy (ISS-450)', () => {
     // born NULL so ensureAgentSessionForJob re-links + resets at dispatch.
     expect(inserted.agentSessionId).toBeUndefined();
     expect(inserted.retryAfterAt).toEqual(new Date(FIXED_NOW + RETRY_COOLDOWN_MS));
+  });
+
+  it('schedules no retry where the run closed before the successor was admitted', async () => {
+    const { RunClosedToJobs } = await import('./admit.js');
+    insertReturning.mockRejectedValueOnce(new RunClosedToJobs('run-1', 'cancelled'));
+    const result = await run({}, 'crashed');
+    expect(result).toEqual({ scheduled: false, reason: 'run_closed' });
   });
 
   it('ISS-434 — clone never inherits a (terminal) session even though stats still use the parent link', async () => {
@@ -302,12 +319,14 @@ describe('scheduleAutoRetryWithVerify — per-class policy (ISS-450)', () => {
     expect(markSessionTerminalMock).toHaveBeenCalledWith('s1', 'completed_via_recovery');
   });
 
-  it('skips retry + marks cancelled_stale when verifier says reverted', async () => {
-    verifyRecoveryMock.mockResolvedValueOnce('reverted');
+  it('an unresolved issue goes on to the retry path and never ends the session cancelled_stale (ISS-1229)', async () => {
+    verifyRecoveryMock.mockResolvedValueOnce('pending');
+    insertReturning.mockResolvedValueOnce([{ id: 'j2' }]);
     const result = await run({}, 'crashed');
-    expect(result.scheduled).toBe(false);
-    expect(result.reason).toBe('cancelled_stale');
-    expect(markSessionTerminalMock).toHaveBeenCalledWith('s1', 'cancelled_stale');
+    expect(result.scheduled).toBe(true);
+    expect(result.reason).not.toBe('cancelled_stale');
+    expect(result.reason).not.toBe('completed_via_recovery');
+    expect(markSessionTerminalMock).not.toHaveBeenCalled();
   });
 
   it('ISS-702: fails safe to verify_unavailable (no retry) when verifyRecovery throws', async () => {

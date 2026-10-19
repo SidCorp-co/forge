@@ -65,9 +65,9 @@ describe('refuseUnshippedClose — a close on a project that lands in git', () =
     const refusal = await refuseUnshippedClose(executor, { issueId: 'iss-1', toStatus: 'closed' });
     expect(refusal).not.toBeNull();
     expect(refusal?.detail).toContain('nothing on it shows the work shipped');
-    expect(refusal?.detail).toContain('`dropped`');
+    expect(refusal?.detail).toContain('Dropped');
     expect(refusal?.detail).toContain('`data.commit`');
-    expect(refusal?.detail).toContain('`landingShape: outside_git`');
+    expect(refusal?.detail).toContain('Set `landingShape` to `outside_git`');
     expect(refusal?.detail).not.toContain('naming where it landed');
     expect(refusal?.details).toEqual({ requires: 'mergedAt', useInstead: 'dropped' });
   });
@@ -113,7 +113,7 @@ describe('refuseUnshippedClose — a close on a project whose work lands outside
     const refusal = await refuseUnshippedClose(executor, { issueId: 'iss-1', toStatus: 'closed' });
     expect(refusal?.detail).toContain('names no landing');
     expect(refusal?.detail).not.toMatch(
-      /merged pull request|merged_commit_sha|CLAIM Forge did not observe/,
+      /merged pull request|merged_commit_sha|Forge did not see this merge/,
     );
     expect(refusal?.detail).toContain('`data.landing`');
     expect(refusal?.details).toEqual({
@@ -128,7 +128,7 @@ describe('refuseUnshippedClose — a close on a project whose work lands outside
   it('refuses no mark at all with the same route', async () => {
     const { executor } = buildMockExecutor(mark('website'));
     const refusal = await refuseUnshippedClose(executor, { issueId: 'iss-1', toStatus: 'closed' });
-    expect(refusal?.detail).toContain('no merged mark');
+    expect(refusal?.detail).toContain('not marked merged');
     expect(refusal?.detail).toContain('`data.landing`');
     expect(refusal?.details).toMatchObject({ requires: 'mergedLanding', held: 'unmarked' });
   });

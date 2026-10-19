@@ -21,7 +21,7 @@ const EVENT_ROWS = 1_200_000;
 const LIVE_JOBS = 48;
 /** CHOSEN — a long tail is what makes `(job_id, seq)` the wrong index for `max(ts)`. */
 const BUSIEST_JOB_EVENTS = 4_000;
-/** CHOSEN — the driver declares nine phases and `phase_journal` is unique on (run, phase, attempt). */
+/** CHOSEN — the driver declares nine phases and `run_journal` is unique on (run, phase, attempt). */
 const PHASES_PER_RUN = 12;
 /** Terminal jobs carrying the bulk of the history, as a real deployment's do. */
 const ARCHIVE_JOBS = 600;
@@ -39,7 +39,7 @@ const REPLACED_CTE_QUERY = (projectId: string, quietMinutes: number) => sql`
     GROUP BY job_id
   ), last_phase AS (
     SELECT run_id, MAX(GREATEST(started_at, COALESCE(ended_at, started_at))) AS max_ts
-    FROM phase_journal GROUP BY run_id
+    FROM run_journal GROUP BY run_id
   )
   SELECT j.id
   FROM jobs j
@@ -127,7 +127,7 @@ async function seedLiveJobs(
       // case 3: the run carries ONE started phase that never ended. The
       // lateral's COALESCE(ended_at, started_at) is what has to see it.
       await db.execute(sql`
-        INSERT INTO phase_journal (id, project_id, run_id, phase, attempt, source, started_at)
+        INSERT INTO run_journal (id, project_id, run_id, phase, attempt, source, started_at)
         VALUES (${randomUUID()}, ${projectId}, ${runId}, 'phase-4', 1, 'agent',
                 now() - interval '4 hours')
       `);
@@ -136,9 +136,9 @@ async function seedLiveJobs(
       // case 4: an OLD phase that ENDED recently — greatest(started, ended)
       // is the live signal, and ordering by started_at would miss it.
       await db.execute(sql`
-        INSERT INTO phase_journal (id, project_id, run_id, phase, attempt, source,
+        INSERT INTO run_journal (id, project_id, run_id, phase, attempt, source, outcome,
                                    started_at, ended_at)
-        VALUES (${randomUUID()}, ${projectId}, ${runId}, 'phase-2', 1, 'agent',
+        VALUES (${randomUUID()}, ${projectId}, ${runId}, 'phase-2', 1, 'agent', 'ok',
                 now() - interval '4 hours', now() - interval '2 minutes')
       `);
     }
@@ -171,9 +171,9 @@ async function seedLiveJobs(
       // Old, and ended: this run has declared phases and has still gone quiet, so it stays a
       // candidate. Cases 1-5 above keep the phase shapes they are named for.
       await db.execute(sql`
-        INSERT INTO phase_journal (id, project_id, run_id, phase, attempt, source,
+        INSERT INTO run_journal (id, project_id, run_id, phase, attempt, source, outcome,
                                    started_at, ended_at)
-        SELECT gen_random_uuid(), ${projectId}, ${runId}, 'phase-' || p, 1, 'agent',
+        SELECT gen_random_uuid(), ${projectId}, ${runId}, 'phase-' || p, 1, 'agent', 'ok',
                now() - interval '4 hours' + (p * interval '1 minute'),
                now() - interval '4 hours' + (p * interval '1 minute') + interval '30 seconds'
         FROM generate_series(1, ${PHASES_PER_RUN}) p
@@ -284,8 +284,8 @@ beforeAll(async () => {
     FROM generate_series(1, ${BUSIEST_JOB_EVENTS}) g
   `);
   await harness.db.execute(sql`
-    INSERT INTO phase_journal (id, project_id, run_id, phase, attempt, source, started_at, ended_at)
-    SELECT gen_random_uuid(), ${projectId}, pr.id, 'phase-' || p, 1, 'agent',
+    INSERT INTO run_journal (id, project_id, run_id, phase, attempt, source, outcome, started_at, ended_at)
+    SELECT gen_random_uuid(), ${projectId}, pr.id, 'phase-' || p, 1, 'agent', 'ok',
            pr.started_at + (p * interval '1 minute'),
            pr.started_at + (p * interval '1 minute') + interval '30 seconds'
     FROM pipeline_runs pr, generate_series(1, ${PHASES_PER_RUN}) p
@@ -325,7 +325,7 @@ describe('ISS-1013 · the quiet-job candidate query is bounded by live jobs', ()
       SELECT count(p.id)::text AS c
       FROM pipeline_runs r
       JOIN jobs j ON j.pipeline_run_id = r.id AND j.status IN ('dispatched', 'running')
-      LEFT JOIN phase_journal p ON p.run_id = r.id
+      LEFT JOIN run_journal p ON p.run_id = r.id
       WHERE r.project_id = ${projectId}
       GROUP BY r.id
     `);
@@ -354,15 +354,15 @@ describe('ISS-1013 · the quiet-job candidate query is bounded by live jobs', ()
     expect(names).toContain('job_events_result_idx');
   });
 
-  it('reaches phase_journal only by an index condition on the driving run', async () => {
+  it('reaches run_journal only by an index condition on the driving run', async () => {
     const { nodes } = await planOf(resultMissCandidateQuery({ projectId }));
-    const phases = nodesOn(nodes, 'phase_journal');
+    const phases = nodesOn(nodes, 'run_journal');
 
     expect(phases.length).toBeGreaterThan(0);
     for (const node of phases) {
       expect(boundBy(node)).toMatch(/run_id/);
     }
-    expect(nodes.some((n) => (n['Index Name'] ?? '').startsWith('phase_journal_run'))).toBe(true);
+    expect(nodes.some((n) => (n['Index Name'] ?? '').startsWith('run_journal_run'))).toBe(true);
   });
 
   it('reads a number of job_events rows set by the live jobs, not by the table', async () => {
@@ -415,7 +415,7 @@ describe('ISS-1013 · the rewritten query picks what the CTE picked, and the ala
 
     const [recentPhase] = await harness.db.execute<{ id: string }>(sql`
       SELECT j.id FROM jobs j
-      JOIN phase_journal p ON p.run_id = j.pipeline_run_id
+      JOIN run_journal p ON p.run_id = j.pipeline_run_id
       WHERE j.project_id = ${projectId} AND j.status = 'running'
         AND p.ended_at > now() - interval '10 minutes'
     `);
@@ -476,7 +476,7 @@ describe('ISS-1013 · the rewritten query picks what the CTE picked, and the ala
 
     const [recentPhase] = await harness.db.execute<{ id: string }>(sql`
       SELECT j.id FROM jobs j
-      JOIN phase_journal p ON p.run_id = j.pipeline_run_id
+      JOIN run_journal p ON p.run_id = j.pipeline_run_id
       WHERE j.project_id = ${projectId} AND j.status = 'running'
         AND p.ended_at > now() - interval '10 minutes'
     `);

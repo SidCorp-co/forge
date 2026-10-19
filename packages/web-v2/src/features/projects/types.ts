@@ -1,3 +1,4 @@
+import type { StuckIssueKind } from "@forge/contracts/notifications";
 import type { HealthKey } from '@/design';
 import type { QueryRead } from '@/design/patterns/badge-read';
 import type { Project, ProjectMember } from '@forge/contracts';
@@ -17,14 +18,13 @@ export interface ProjectListItem {
   role: ProjectMember['role'] | null;
   /** Caller's role in the project's org — null when not an org member. */
   orgRole: 'owner' | 'admin' | 'member' | null;
-  /** null for the read-only viewer tier (execution-grade key is withheld). */
-  apiKey: string | null;
   /** Non-null when the project is archived (rows appear via `?archived=1`). */
   archivedAt: string | null;
   createdAt: string;
 }
 
-export interface ProjectDetail extends Project {
+/** No project read answers the webhook secret: the inbound webhook check is its one reader. */
+export interface ProjectDetail extends Omit<Project, 'webhookSecret'> {
   members: Array<Pick<ProjectMember, 'userId' | 'role'>>;
   labels: Array<{ id: string; name: string; color: string | null }>;
   devicePool: Array<{
@@ -50,13 +50,24 @@ export interface ProjectHealthRow {
   /** Issues in each work state, counted by core's one fold. */
   work: Record<WorkState, number>;
   /** The most recently updated parked issues, a capped list. */
-  blockers: Array<{ issueId: string; documentId: string; status: string }>;
+  blockers: Array<{
+    issueId: string;
+    documentId: string;
+    title: string;
+    status: string;
+    /** The reason a stuck-issue notice tells this parked issue by, where one stands. */
+    stuckKind?: StuckIssueKind;
+    /** `waiting_on_others` only: the person the park waits for. */
+    stuckOwedBy?: string;
+  }>;
   /** Every parked issue: the count behind the capped `blockers`. */
   blockersTotal: number;
   pendingEscalations: number;
   avgCycleTimeDays: number;
-  /** Pipeline runs currently running or paused. */
+  /** Pipeline runs currently running or paused: open runs, not proof anything works them. */
   liveRuns: number;
+  /** Agent sessions live by the condition the Pipeline page lists them by; what "live" counts everywhere. */
+  liveSessions: number;
   /** Runners in the `online` state. */
   runnerCount: number;
   /** Trailing-24h spend (USD). */
@@ -67,6 +78,19 @@ export interface ProjectHealthRow {
   members: string[];
   /** ISO timestamp of the most recent issue/run activity, or `null`. */
   lastActivityAt: string | null;
+  /** Issues with a stuck-issue notice standing, each counted once whichever sweep raised it. */
+  stuckIssues: number;
+  /** Up to five of them, longest-standing first. */
+  /** The same issues, each once under its most specific reason, so the kinds add up to `stuckIssues`. */
+  stuckIssuesByKind: Partial<Record<StuckIssueKind, number>>;
+  stuckIssueRefs: Array<{
+    issueId: string;
+    documentId: string;
+    title: string;
+    kind: StuckIssueKind;
+    /** `waiting_on_others` only: the person the park waits for. */
+    owedBy?: string;
+  }>;
 }
 
 export interface CreateProjectInput {
@@ -83,7 +107,6 @@ export interface CreatedProject {
   name: string;
   orgId: string;
   createdBy: string;
-  apiKey: string;
   createdAt: string;
 }
 
@@ -123,7 +146,7 @@ export interface ProjectConsoleItem {
   /** What `GET /api/projects/health` answered; the rollup's figures below are stated only where `read`. */
   healthRead: QueryRead;
   health: HealthKey | null;
-  liveRuns: number | null;
+  liveSessions: number | null;
   openIssues: number | null;
   runnerCount: number | null;
   spend24hUsd: number | null;
@@ -137,7 +160,7 @@ export interface ProjectConsoleItem {
 export interface WorkspaceTotals {
   projects: number;
   healthRead: QueryRead;
-  liveRuns: number | null;
+  liveSessions: number | null;
   openIssues: number | null;
   runners: number | null;
   spend24hUsd: number | null;

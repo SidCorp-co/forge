@@ -1,18 +1,17 @@
-// create: opens a system run, atomically claims N gate-status issues, moves each
-// to `releasing`, enqueues one release_batch job. finish: closes every claimed
-// issue and completes the run. abort: cancels the run and every job under it
-// and closes no issue.
+// create: opens a system run, claims its roster and moves it to `releasing` in one transaction,
+// enqueues one release_batch job. finish: closes every claimed issue and completes the run.
+// abort: cancels the run and every job under it and closes no issue.
 //
 // Both outcomes take the run terminal, and by different outcomes: `completed`
 // for a finish, `cancelled` for an abort. That is what stops
 // `getActiveReleaseBatch` answering a batch whose work is over, and what
 // keeps a finish from reading like an abort.
 //
-// finish and abort are the only writers that leave `releasing`. Both hand the
-// claim release to `releasing-recovery.ts`, which is also what a batch that
-// died without either outcome goes through.
+// finish and abort leave `releasing` while a run is live, through `releasing-recovery.ts`, as a
+// batch that died without either does; `releasing-settle.ts` settles a row its ended run left.
 
-import { eq, inArray, sql } from 'drizzle-orm';
+import { eq, inArray, type SQL } from 'drizzle-orm';
+import { userActor } from '../comments/forge-author.js';
 import { db, type Tx } from '../db/client.js';
 import { type IssueStatus, issues, type PipelineRunStatus } from '../db/schema.js';
 import type { TransitionActor } from '../issues/actor-agency.js';
@@ -44,10 +43,11 @@ import {
   type ReleaseVerification,
   resolveReleasePlan,
 } from './channel.js';
-import { claimConflictAt } from './claim-conflicts.js';
+import { enterReleasing } from './enter-releasing.js';
 import {
   BatchInFlightError,
   NoReleaseGateError,
+  ReleaseBatchNotAbortableError,
   ReleaseFinishFenceLostError,
   ReleaseIssuesUnnamedError,
   ReleaseNotVerifiedError,
@@ -192,38 +192,7 @@ export async function createReleaseBatch(
   });
   await announceOneShotRun(run.id, runSpec);
 
-  const claimed = await db.execute<{ id: string }>(sql`
-    UPDATE issues
-    SET release_batch_run_id = ${run.id}, updated_at = now()
-    WHERE project_id = ${projectId}
-      AND id IN (${sql.join(
-        issueIds.map((id) => sql`${id}`),
-        sql`, `,
-      )})
-      AND status = ${gateStatus}
-      AND release_batch_run_id IS NULL
-    RETURNING id
-  `);
-
-  if (claimed.length !== issueIds.length) {
-    await closeRunIfOneShot(run.id, 'cancelled');
-    throw await claimConflictAt(projectId, gateStatus, issueIds, claimed);
-  }
-
-  for (const id of claimed.map((r) => r.id)) {
-    try {
-      await transitionIssueStatus(
-        { id, projectId, status: gateStatus, reopenCount: 0 },
-        'releasing',
-        { type: 'user', id: userId },
-        { viaReleasePath: true },
-      );
-    } catch (err) {
-      if (!(err instanceof TransitionError && err.code === 'NO_OP')) {
-        logger.warn({ err, issueId: id, runId: run.id }, 'release-batch: could not mark releasing');
-      }
-    }
-  }
+  await enterReleasing({ projectId, gateStatus, issueIds, runId: run.id, userId });
 
   const batchPrefix = await activeIssuePrefix(projectId);
   const promptString = buildReleaseBatchPrompt({
@@ -263,7 +232,7 @@ export async function createReleaseBatch(
     if (err instanceof ActiveJobConflictError) {
       await recoverStrandedReleasing(run.id, {
         reason: 'another batch was already in flight, so this one never started',
-        actorUserId: userId,
+        actor: userActor(userId),
       });
       await closeRunIfOneShot(run.id, 'cancelled');
       throw new BatchInFlightError(err.existingJobId);
@@ -271,7 +240,7 @@ export async function createReleaseBatch(
     throw err;
   }
 
-  await noteShipUnverified({ runId: run.id, version, check: report.carried, userId });
+  await noteShipUnverified({ version, check: report.carried, userId });
   return {
     runId: run.id,
     jobId,
@@ -410,8 +379,7 @@ export async function finishReleaseBatch(
   await options.onRosterClosed?.({ closed, failed });
   await recoverStrandedReleasing(runId, {
     reason: 'the release finished but this issue could not be closed',
-    actorUserId: actor.type === 'user' ? actor.id : undefined,
-    commentAuthorId: actor.type === 'device' ? actor.ownerId : undefined,
+    actor,
     comment: true,
     refusals,
     version: run?.releaseVersion ?? null,
@@ -450,9 +418,9 @@ export interface AbortReleaseBatchResult extends RecoverStrandedReleasingResult 
 /**
  * What an abort does with a roster whose run already promoted.
  *
- * `hold` is the default: the code is on production and no status here is true
- * except `releasing`. `return-to-gate` is the operator's route to terminal for
- * a batch that promoted and cannot verify, putting the roster back where
+ * `hold` is the default: the roster stays at `releasing`, claimed, until the run
+ * has ended and the releasing sweep reads what production serves and closes or
+ * returns each issue (ISS-1421). `return-to-gate` puts it back at once, where
  * `POST /release-records` closes it against what production serves, with an
  * account (ISS-1199).
  */
@@ -460,25 +428,33 @@ export type PromotedRosterSettlement = 'hold' | 'return-to-gate';
 
 export interface AbortReleaseBatchOptions {
   promotedRoster?: PromotedRosterSettlement | undefined;
+  /** Abort only while this holds on the run row at the stamp; otherwise `ReleaseBatchNotAbortableError`. */
+  onlyWhen?: SQL | undefined;
   /** Test seam: runs after the roster is recovered and before its account is settled. */
   afterRosterRecovered?: (() => Promise<void>) | undefined;
 }
 
+/**
+ * Cancel a release batch and put its roster back. `actorUserId` is the person who asked, or `null`
+ * for a sweep, in which case the stamp names no person and Forge writes the roster's comments.
+ */
 export async function abortReleaseBatch(
   runId: string,
   reason: string,
-  actorUserId: string,
+  actorUserId: string | null,
   options: AbortReleaseBatchOptions = {},
 ): Promise<AbortReleaseBatchResult> {
   // First, so a finish sees the abort before the recovery and the cancel below (abort-stamp.ts).
   const stampId = await stampAbort(runId, {
     reason,
-    by: actorUserId,
+    by: actorUserId ?? '',
     holdPromotedRoster: options.promotedRoster !== 'return-to-gate',
+    ...(options.onlyWhen ? { when: options.onlyWhen } : {}),
   });
+  if (stampId === null) throw new ReleaseBatchNotAbortableError(runId);
   const recovery = await recoverStrandedReleasing(runId, {
     reason: `batch release aborted: ${reason}`,
-    actorUserId,
+    ...(actorUserId === null ? {} : { actor: userActor(actorUserId) }),
     comment: true,
     settlePromotedRoster: options.promotedRoster === 'return-to-gate',
   });

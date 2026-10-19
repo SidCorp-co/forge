@@ -1,6 +1,6 @@
 // The refusal that stops a close claiming a ship nobody wrote anything about.
 //
-// `closed` is "this shipped" to every downstream reader, and until this rule
+// Closed is "this shipped" to every downstream reader, and until this rule
 // nothing asked whether a line existed. Four issues closed that way on
 // 2026-08-27 alone. These tests pin the three exemptions — drop one and a
 // legitimate path breaks; add a fourth and the silent close comes back.
@@ -146,7 +146,7 @@ describe('an agent close', () => {
     expect(err).toBeInstanceOf(TransitionError);
     expect((err as InstanceType<typeof TransitionError>).code).toBe('RELEASE_RECORD_REQUIRED');
     expect((err as InstanceType<typeof TransitionError>).detail).toContain('releaseNotes');
-    expect((err as InstanceType<typeof TransitionError>).detail).toContain('dropped');
+    expect((err as InstanceType<typeof TransitionError>).detail).toContain('Dropped');
   });
 
   it('is refused from `released` as well, which is the staged path the release step closes on', async () => {

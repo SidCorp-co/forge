@@ -1,15 +1,23 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { type QueryClient, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/providers/toast-provider";
+import { moveSessionInLiveReads } from "@/features/pipeline/live-read";
 import { formatApiError } from "@/lib/api/error";
 import { type ListSessionsOpts, sessionsApi } from "./api";
+import { endedSilentText } from "./status-sentences";
+import { isInteractiveSession, LIVE_READ_POLL_MS } from "./types";
 
-/** Sessions list. Keyed `['agent-sessions','list',opts]` — WS-invalidated. */
+/** Sessions list. Keyed `['agent-sessions','list',opts]` — WS-invalidated, and re-read on the live
+ *  period while it shows a running session, whose check-ins move no event. */
 export function useSessions(opts: ListSessionsOpts) {
   return useQuery({
     queryKey: ["agent-sessions", "list", opts],
     queryFn: () => sessionsApi.list(opts),
+    refetchInterval: (query) =>
+      query.state.data?.items.some((row) => row.status === "running" && !isInteractiveSession(row))
+        ? LIVE_READ_POLL_MS
+        : false,
   });
 }
 
@@ -35,7 +43,12 @@ export function useSessionCost(sessionId: string | undefined) {
 /** Shared mutation factory: invalidate the list on success, toast on error. */
 function useSessionMutation<TArgs, TData>(
   fn: (args: TArgs) => Promise<TData>,
-  opts: { successMessage?: (data: TData) => string; alsoInvalidateQueueStats?: boolean } = {},
+  opts: {
+    successMessage?: (data: TData) => string;
+    alsoInvalidateQueueStats?: boolean;
+    /** What else the act changed, re-read at once. */
+    refresh?: (qc: QueryClient, data: TData) => void;
+  } = {},
 ) {
   const qc = useQueryClient();
   const { toast } = useToast();
@@ -43,6 +56,7 @@ function useSessionMutation<TArgs, TData>(
     mutationFn: fn,
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["agent-sessions"] });
+      opts.refresh?.(qc, data);
       if (opts.alsoInvalidateQueueStats) {
         qc.invalidateQueries({ queryKey: ["agent-sessions", "queue-stats"] });
       }
@@ -56,9 +70,34 @@ function useSessionMutation<TArgs, TData>(
   });
 }
 
+/** Every read a stop changes, re-read at once rather than on its next poll: the session itself, the
+ *  lists naming it, the holds it kept, the runs it ran and the issue pages showing them, whose run
+ *  core closed with it (ISS-1228). */
+export function refreshAfterStop(qc: QueryClient, stopped?: { id: string; status: string }): void {
+  // A box's count of live sessions drops at once, before the re-read lands.
+  if (stopped) moveSessionInLiveReads(qc, stopped.id, stopped.status);
+  for (const queryKey of [
+    ["agent-sessions"],
+    ["agent-session"],
+    ["sessions-and-holds"],
+    ["run-sessions"],
+    ["issue"],
+    ["run-journal"],
+  ]) {
+    void qc.invalidateQueries({ queryKey });
+  }
+}
+
+/** What every surface that stops a session says once it has (ISS-1228). */
+export const SESSION_STOPPED = "Session stopped";
+
+/** What ending only the current turn says: the session itself stays open (ISS-1228). */
+export const TURN_ENDED = "Turn ended. The session stays open.";
+
 export function useCancelSession() {
   return useSessionMutation((id: string) => sessionsApi.cancel(id), {
-    successMessage: () => "Session cancelled",
+    successMessage: () => SESSION_STOPPED,
+    refresh: refreshAfterStop,
   });
 }
 
@@ -76,16 +115,13 @@ export function useRerunSession() {
 
 export function useAbortSession() {
   return useSessionMutation((sessionId: string) => sessionsApi.abort(sessionId), {
-    successMessage: () => "Session aborted",
+    successMessage: () => TURN_ENDED,
   });
 }
 
 export function useSweepZombies() {
   return useSessionMutation((projectId: string) => sessionsApi.sweepZombies(projectId), {
     alsoInvalidateQueueStats: true,
-    successMessage: (d) =>
-      `Swept ${d.queueTimedOut + d.heartbeatTimedOut} zombie${
-        d.queueTimedOut + d.heartbeatTimedOut === 1 ? "" : "s"
-      }`,
+    successMessage: endedSilentText,
   });
 }

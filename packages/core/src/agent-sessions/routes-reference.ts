@@ -3,6 +3,7 @@ import { describeOperation, empty, fail, json } from '../api-reference/declare/d
 import { tableRow } from '../api-reference/declare/rows.js';
 import { agentSessionStatuses, agentSessions, sessionRuntimeStates } from '../db/schema.js';
 import { sessionTranscripts } from '../db/session-vocabulary.js';
+import { sessionReportSchema } from './box-report.js';
 
 export const listQuerySchema = z
   .object({
@@ -58,12 +59,38 @@ export const sweepQuerySchema = z.object({ projectId: z.uuid() }).strict();
 /** A whole session, transcript included. */
 export const sessionSchema = tableRow(agentSessions);
 
-/** A session as a list shows it: no transcript, with its cost and the last line said. */
+/** How long core lets this session go unheard before it ends it; `null` where no silence does. */
+const silenceLimitMsSchema = z.number().int().nonnegative().nullable();
+
+/** Whether core holds the session's box online; `null` where it names no box core still holds. */
+const boxOnlineSchema = z.boolean().nullable();
+
+/** A session as a reader sees it: the row, what its box last reported about it, and core's silence limit. */
+export const sessionReadSchema = sessionSchema.extend({
+  report: sessionReportSchema,
+  silenceLimitMs: silenceLimitMsSchema,
+  boxOnline: boxOnlineSchema,
+});
+
+/** A session as a list shows it: no transcript, with its cost, the last line said and every issue
+ *  it holds, named (its leases and its job's issue, as `held-issues.ts` reads them; empty where it
+ *  holds none), each saying whether its run reports it returned while core still holds it. */
 export const sessionListItemSchema = sessionSchema.omit({ messages: true }).extend({
+  issues: z.array(
+    z.object({
+      id: z.string(),
+      displayId: z.string(),
+      title: z.string(),
+      boxReturned: z.boolean(),
+    }),
+  ),
   messageCount: z.number().nullable(),
   transcript: z.enum(sessionTranscripts),
   estimatedCost: z.number(),
   lastMessagePreview: z.string().nullable(),
+  report: sessionReportSchema,
+  silenceLimitMs: silenceLimitMsSchema,
+  boxOnline: boxOnlineSchema,
 });
 
 export const sessionListSchema = z.object({
@@ -137,11 +164,11 @@ export const createSession = describeOperation({
 });
 
 export const readSession = describeOperation({
-  summary: 'Read one agent session with its transcript',
+  summary: 'Read one agent session with its transcript and what its box last reported about it',
   description:
     'A device may read only the session dispatched to it, which is how a runner fetches the baseline its patch appends onto.',
   responses: {
-    200: json(sessionSchema),
+    200: json(sessionReadSchema),
     403: fail(
       'FORBIDDEN',
       'not a project member, not the conversation owner, or a device that does not own the session',

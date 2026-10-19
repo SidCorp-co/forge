@@ -119,7 +119,7 @@ describe('runStaleSweep (alarm-only)', () => {
       /LEFT\s+JOIN\s+LATERAL[\s\S]*job_events\s+e\s+WHERE\s+e\.job_id\s*=\s*j\.id[\s\S]*\)\s*le\s+ON\s+true/,
     );
     expect(text).toMatch(
-      /LEFT\s+JOIN\s+LATERAL[\s\S]*phase_journal\s+p\s+WHERE\s+p\.run_id\s*=\s*j\.pipeline_run_id[\s\S]*\)\s*lp\s+ON\s+true/,
+      /LEFT\s+JOIN\s+LATERAL[\s\S]*run_journal\s+p\s+WHERE\s+p\.run_id\s*=\s*j\.pipeline_run_id[\s\S]*\)\s*lp\s+ON\s+true/,
     );
     expect(text).not.toMatch(/GROUP\s+BY\s+job_id/);
     expect(text).not.toMatch(/GROUP\s+BY\s+run_id/);

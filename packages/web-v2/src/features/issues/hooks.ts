@@ -6,7 +6,7 @@ import { useCallback, useMemo, useRef } from "react";
 import { ApiError } from "@/lib/api/client";
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
-import { type CreateIssueInput, type PatchIssueInput, type CarriedDecisionBody, type CreateReleaseBatchResult, type LabelAttach, type MarkMergedBody, issuesApi, modulesApi, releaseBatchApi } from "./api";
+import { type CreateIssueInput, type PatchIssueInput, type CarriedDecisionBody, type CreateReleaseBatchResult, type LabelAttach, type MarkMergedBody, type RunAnswer, issuesApi, modulesApi, releaseBatchApi } from "./api";
 import { registryApi } from "./registry-api";
 import type {
   IssueLabel,
@@ -14,6 +14,7 @@ import type {
   CreatedIssue,
   IssueSearchOpts,
   IssueStatus,
+  LandingShape,
   WaitingCause,
 } from "./types";
 
@@ -285,13 +286,37 @@ export function useTransitionIssue() {
  * held by the issue's STATUS (ISS-1100). Both directions refresh the single-issue and activity
  * caches, because the server writes an audit comment on each call.
  */
+/** A mark's answer as a toast or alert shows it: a quoted "> " reason on a line of its own. */
+export function answerShown(text: string): string {
+  return text
+    .split("\n")
+    .flatMap((line) => {
+      if (!line.startsWith(">")) return [line];
+      const said = line.replace(/^> ?/, "").replace(/^`(.*)`$/, "$1");
+      return said ? [said] : [];
+    })
+    .join("\n");
+}
+
+/** A toast keeps the quoted reason to its first clause; the comment the mark wrote holds it whole. */
+export function answerInBrief(text: string): string {
+  const [ours, why] = text.split("\n> ");
+  if (!why) return text;
+  const clause = why.split(/\n| \(| — |, so |; |: |\. /)[0]?.replace(/[.,]$/, "") ?? why;
+  return `${ours}\n${clause}.`;
+}
+
 export function useMergeMarker(issueId: string) {
   const qc = useQueryClient();
   const { toast } = useToast();
+  // Everything a mark changes (ISS-1421 r4): the gate banner reads the roster, and the mark's own
+  // comment, with the park keyed beside it, lands in the thread.
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["issue", issueId] });
     qc.invalidateQueries({ queryKey: ["activities", issueId] });
     qc.invalidateQueries({ queryKey: ["issues"] });
+    qc.invalidateQueries({ queryKey: ["comments", issueId] });
+    qc.invalidateQueries({ queryKey: ["release-roster"] });
   };
   // ISS-1327 — the answer says whether this call moved the row; a toast that ignores it tells a
   // person their landing was recorded when the mark that stood was kept.
@@ -300,11 +325,17 @@ export function useMergeMarker(issueId: string) {
     onSuccess: (answer) => {
       refresh();
       if (answer.action === "already_merged") {
+        // The answer says why nothing moved; its opening sentence is the title's, so it is dropped.
         toast({
           title: "Already marked merged — nothing changed",
-          description: "The mark that stands was kept. To change it, press Unmark, then Mark merged again.",
+          description: answer.detail
+            ? answerInBrief(answer.detail.replace(/^Already marked merged[^.]*\.\s*/, ""))
+            : "The mark that stands was kept. To change it, press Unmark, then Mark merged again.",
           tone: "info",
         });
+      } else if (answer.movedFrom) {
+        // A later landing of the same issue moves the mark (ISS-1421 round 7); the sentence names both commits.
+        toast({ title: "Landing moved", description: answerInBrief(answer.detail ?? ""), tone: "success" });
       } else {
         toast({ title: "Marked merged", tone: "success" });
       }
@@ -323,15 +354,55 @@ export function useMergeMarker(issueId: string) {
   };
 }
 
+/** Declares where this issue's own work lands, through the same door an agent uses. A refusal is
+ *  handed to the caller, which says it beside the control rather than in a toast. */
+export function useDeclareLandingShape(issueId: string) {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: (landingShape: LandingShape | null) => issuesApi.patch(issueId, { landingShape }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["issue", issueId] });
+      qc.invalidateQueries({ queryKey: ["activities", issueId] });
+      qc.invalidateQueries({ queryKey: ["issues"] });
+      toast({ title: "Where its work lands is saved", tone: "success" });
+    },
+  });
+}
+
+/** What a press of Run did, in short sentences: it offers the issue and queues nothing, and a box
+ *  hearing the offer is not a box taking it (ISS-1228). */
+export function runAnswerText(a: RunAnswer): string {
+  const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+  const outcome =
+    a.taken > 0
+      ? `${plural(a.taken, "run has", "runs have")} taken it.`
+      : a.boxesHeard === 0
+        ? "No box has picked it up yet. A master reads it on its next pass."
+        : `${plural(a.boxesHeard, "box", "boxes")} heard it. Nothing has taken it yet. A master takes it on its next pass.`;
+  return `${a.released ? "Released past the entry gate" : "Offered to this project's masters"}. ${outcome}`;
+}
+
 export function useRunPipelineStep() {
-  return useIssueMutation((args: { id: string }) =>
-    issuesApi.runPipelineStep(args.id), { successMessage: "Pipeline step queued" });
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: issuesApi.runPipelineStep,
+    onSuccess: (answer) => {
+      qc.invalidateQueries({ queryKey: ["issues"] });
+      // Only a run holding the issue means something started; an offer heard and not taken is neutral.
+      toast({ title: runAnswerText(answer), tone: answer.taken > 0 ? "success" : "default" });
+    },
+    onError: (err) => {
+      toast({ title: "Run refused", description: formatApiError(err), tone: "error" });
+    },
+  });
 }
 
 
 /** A single field to apply across many issues. */
 export type BulkUpdate =
-  | { kind: "status"; toStatus: IssueStatus }
+  | { kind: "status"; toStatus: IssueStatus; reason?: string }
   | { kind: "priority"; priority: IssuePriority };
 
 /**
@@ -439,7 +510,7 @@ export function useBulkUpdateIssues() {
       const summary: BulkSummary = { updated: 0, skipped: 0, failed: 0 };
       const apply = (id: string) =>
         update.kind === "status"
-          ? issuesApi.transition(id, update.toStatus)
+          ? issuesApi.transition(id, update.toStatus, { reason: update.reason })
           : issuesApi.patch(id, { priority: update.priority });
       for (let i = 0; i < ids.length; i += BULK_CHUNK) {
         const results = await Promise.allSettled(ids.slice(i, i + BULK_CHUNK).map(apply));

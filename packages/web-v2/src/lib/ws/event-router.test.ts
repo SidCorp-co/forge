@@ -1,4 +1,4 @@
-import type { QueryClient } from "@tanstack/react-query";
+import { QueryClient } from "@tanstack/react-query";
 import { afterEach, describe, expect, it } from "vitest";
 import { routeEvent } from "./event-router";
 import { flushInvalidations } from "./invalidation-coalescer";
@@ -9,6 +9,7 @@ function capture() {
     invalidateQueries: ({ queryKey }: { queryKey?: unknown[] }) => {
       keys.push(JSON.stringify(queryKey));
     },
+    setQueriesData: () => [],
     getQueryCache: () => ({
       findAll: () => [],
       subscribe: () => () => {},
@@ -82,6 +83,28 @@ describe("a device event reaches the organisation's list as well as the caller's
 	});
 });
 
+// ISS-1228 round 15 repair: the box strip and the session rows each read a box's state on their own poll,
+// so a box gone offline read Offline in one and Working in the other until both polled again.
+describe("a box going offline or coming back reaches every surface that states its state", () => {
+  it.each(["offline", "online"])("a box reported %s refreshes its project's runners and every session read", (status) => {
+    const c = send("device.status", { deviceId: "d1", projectId: "p1", status });
+    for (const key of [
+      ["projects", "p1", "runners"],
+      ["projects", "p1", "active-runners"],
+      ["agent-sessions"],
+      ["agent-session"],
+      ["sessions-and-holds"],
+      ["run-sessions"],
+    ]) {
+      expect(c.has(key), JSON.stringify(key)).toBe(true);
+    }
+  });
+
+  it("refreshes nothing for a box state that names no project", () => {
+    expect(send("device.status", { deviceId: "d1", status: "offline" }).keys).toEqual([]);
+  });
+});
+
 describe("routeEvent", () => {
   it("ignores an event it does not know rather than throwing", () => {
     expect(() => send("nothing.likeThis")).not.toThrow();
@@ -115,6 +138,9 @@ describe("a reconnect still repairs every prefix it repaired before", () => {
 
     for (const key of [
       ["issues"],
+      ["run-journal"],
+      ["run-sessions"],
+      ["sessions-and-holds"],
       ["jobs"],
       ["projects"],
       ["agent-sessions"],
@@ -134,7 +160,7 @@ describe("a reconnect still repairs every prefix it repaired before", () => {
     ]) {
       expect(c.has(key)).toBe(true);
     }
-    expect(c.keys).toHaveLength(17);
+    expect(c.keys).toHaveLength(20);
   });
 });
 
@@ -288,5 +314,147 @@ describe("an accepted message is filed under the token its tab minted (ISS-1078)
     c.frame({ conversationId: "c1", messageId: "m0", seq: 0 });
     expect(c.at(["conversations", "c1", "accepted"])).toBeUndefined();
     expect(c.invalidated(["conversations", "c1"])).toBe(true);
+  });
+});
+
+describe("the pipeline page's sessions and holds follow the events that move them (ISS-1228)", () => {
+  it.each([
+    ["agent-session.created", { sessionId: "s1" }],
+    ["agent-session.status", { sessionId: "s1" }],
+    ["agent-session.deleted", { sessionId: "s1" }],
+    ["issue.statusChanged", { issueId: "i1" }],
+    ["issue.updated", { issueId: "i1" }],
+  ])("%s refreshes it", (event, data) => {
+    expect(send(event, data).has(["sessions-and-holds"])).toBe(true);
+  });
+
+  it("a comment, which moves neither, does not", () => {
+    expect(send("comment.created", { issueId: "i1" }).has(["sessions-and-holds"])).toBe(false);
+  });
+});
+
+describe("the rail's live-session figure follows a session starting or ending (ISS-1228)", () => {
+  it.each([
+    ["agent-session.created", { sessionId: "s1" }],
+    ["agent-session.status", { sessionId: "s1" }],
+    ["agent-session.deleted", { sessionId: "s1" }],
+  ])("%s refreshes the health rollup it reads", (event, data) => {
+    expect(send(event, data).has(["projects", "health"])).toBe(true);
+  });
+});
+
+describe("an open issue page's runs follow a stop made anywhere (ISS-1228 round 14)", () => {
+  // Judge-36: an issue page left open while its session was stopped from the sessions list in
+  // another tab read "Run 1 · Running" for 90 seconds; a session's events name no issue.
+  it.each([
+    ["agent-session.status", { sessionId: "s1", status: "failed", failureReason: "user_cancelled" }],
+    ["agent-session.updated", { sessionId: "s1" }],
+    ["pipeline_run.status_changed", { runId: "r1", status: "cancelled" }],
+  ])("%s re-reads the run journal of every open issue page", async (event, data) => {
+    const { QueryClient } = await import("@tanstack/react-query");
+    const { runJournalKey } = await import("@/features/issues/detail-hooks");
+    const qc = new QueryClient();
+    qc.setQueryData(runJournalKey("i3"), { runs: [] });
+    routeEvent({ event, data, timestamp: "2026-10-18T12:00:00.000Z" }, qc);
+    flushInvalidations();
+    expect(qc.getQueryState(runJournalKey("i3"))?.isInvalidated).toBe(true);
+  });
+
+  it("an issue's own event re-reads that issue's runs and no other's", async () => {
+    const { QueryClient } = await import("@tanstack/react-query");
+    const { runJournalKey } = await import("@/features/issues/detail-hooks");
+    const qc = new QueryClient();
+    qc.setQueryData(runJournalKey("i3"), { runs: [] });
+    qc.setQueryData(runJournalKey("i4"), { runs: [] });
+    routeEvent({ event: "issue.statusChanged", data: { issueId: "i3" }, timestamp: "2026-10-18T12:00:00.000Z" }, qc);
+    flushInvalidations();
+    expect(qc.getQueryState(runJournalKey("i3"))?.isInvalidated).toBe(true);
+    expect(qc.getQueryState(runJournalKey("i4"))?.isInvalidated).toBe(false);
+  });
+
+  it("a reconnect repairs it", async () => {
+    const c = capture();
+    const { replayOnReconnect } = await import("./event-router");
+    replayOnReconnect(c.qc);
+    expect(c.has(["run-journal"])).toBe(true);
+  });
+});
+
+describe("an open runs tab follows a stop made anywhere (ISS-1228 round 15)", () => {
+  // Judge-39: the Agents runs tab open in another tab read a stopped run as Working, or waiting on a
+  // person, for 3 to 13 seconds, until its 20-second poll; a stop never re-read its query.
+  it.each([
+    ["agent-session.status", { sessionId: "s1", status: "failed", failureReason: "user_cancelled" }],
+    ["agent-session.updated", { sessionId: "s1" }],
+    ["agent-session.created", { sessionId: "s2" }],
+    ["pipeline_run.status_changed", { runId: "r1", status: "cancelled" }],
+  ])("%s re-reads the runs tab of every open project", async (event, data) => {
+    const { QueryClient } = await import("@tanstack/react-query");
+    const { runSessionsKey } = await import("@/features/agents/hooks");
+    const qc = new QueryClient();
+    qc.setQueryData(runSessionsKey("p1"), { runs: [] });
+    routeEvent({ event, data, timestamp: "2026-10-18T12:00:00.000Z" }, qc);
+    flushInvalidations();
+    expect(qc.getQueryState(runSessionsKey("p1"))?.isInvalidated).toBe(true);
+  });
+
+  it("a comment, which moves no run, does not", () => {
+    expect(send("comment.created", { issueId: "i1" }).has(["run-sessions"])).toBe(false);
+  });
+
+  it("a reconnect repairs it, and the Pipeline page's read with it", async () => {
+    const c = capture();
+    const { replayOnReconnect } = await import("./event-router");
+    replayOnReconnect(c.qc);
+    expect(c.has(["run-sessions"])).toBe(true);
+    expect(c.has(["sessions-and-holds"])).toBe(true);
+  });
+});
+
+// ISS-1228 round 16 (judge-42): an open session page's rail counted "Busy · 3 live sessions" a second
+// after a stop on another tab, then 2 on its next read. The stop's event takes the session out of the
+// live read at once, as it arrives, before the re-read lands.
+describe("a session's stop reaches the live read the box counts at once", () => {
+  const read = () => ({
+    sessions: [
+      { id: "s1", deviceId: "d1" },
+      { id: "s2", deviceId: "d1" },
+    ],
+    holds: [
+      { issueId: "i1", holders: [{ by: "session", sessionId: "s1" }] },
+      { issueId: "i2", holders: [{ by: "session", sessionId: "s1" }, { by: "person", status: "on_hold" }] },
+    ],
+    runningChats: [{ id: "c1", deviceId: "d1" }],
+    readAt: "2026-10-18T15:00:00.000Z",
+  });
+
+  const afterEvent = (data: Record<string, unknown>) => {
+    const qc = new QueryClient();
+    qc.setQueryData(["sessions-and-holds", "p1"], read());
+    routeEvent({ event: "agent-session.status", data, timestamp: "2026-10-18T15:00:01.000Z" }, qc);
+    return qc.getQueryData(["sessions-and-holds", "p1"]) as ReturnType<typeof read>;
+  };
+
+  it("drops a stopped session, and the holds only it kept, before any re-read", () => {
+    const out = afterEvent({ sessionId: "s1", status: "failed", failureReason: "user_cancelled" });
+    expect(out.sessions.map((s) => s.id)).toEqual(["s2"]);
+    expect(out.holds).toEqual([{ issueId: "i2", holders: [{ by: "person", status: "on_hold" }] }]);
+  });
+
+  it("drops a chat whose turn ended from the running chats, and keeps it no longer counted", () => {
+    expect(afterEvent({ sessionId: "c1", status: "idle" }).runningChats).toEqual([]);
+  });
+
+  it("leaves the read as it was for a session still running", () => {
+    expect(afterEvent({ sessionId: "s1", status: "running" })).toEqual(read());
+  });
+});
+
+// ISS-1229 r16: a person retrying a failed job takes the failure off every open Needs you list.
+describe("a failed job retried by a person", () => {
+  it("refreshes the attention read and the job lists", () => {
+    const c = send("job.retried", { jobId: "j2", retryOf: "j1" });
+    expect(c.has(["attention"])).toBe(true);
+    expect(c.has(["jobs", "list"])).toBe(true);
   });
 });

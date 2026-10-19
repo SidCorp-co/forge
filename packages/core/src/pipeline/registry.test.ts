@@ -11,6 +11,7 @@ import {
 } from '@forge/contracts';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
+import { RETIRED_JOB_TYPES } from '../db/job-vocabulary.js';
 import {
   issueComplexities,
   issuePriorities,
@@ -25,18 +26,6 @@ import { BACKLOG_ADMISSIBLE_STATUSES } from './autonomous-mode.js';
 import { getPipelineRegistry, PIPELINE_REGISTRY_VERSION, RUNNER_CAPABILITIES } from './registry.js';
 import { transitions } from './state-machine.js';
 
-const STAGED_JOB_TYPES: readonly JobType[] = [
-  'triage',
-  'clarify',
-  'plan',
-  'code',
-  'review',
-  'test',
-  'staging',
-  'fix',
-  'release',
-];
-
 describe('contracts ↔ core enum parity', () => {
   it('REGISTRY_BACKLOG_ADMISSIBLE_STATUSES mirrors core BACKLOG_ADMISSIBLE_STATUSES', () => {
     expect([...REGISTRY_BACKLOG_ADMISSIBLE_STATUSES]).toEqual([...BACKLOG_ADMISSIBLE_STATUSES]);
@@ -48,6 +37,21 @@ describe('contracts ↔ core enum parity', () => {
 
   it('REGISTRY_JOB_TYPES mirrors core jobTypes', () => {
     expect([...REGISTRY_JOB_TYPES]).toEqual([...jobTypes]);
+  });
+
+  it('jobTypes holds the seven live types and none of the retired staged stages (ISS-1229)', () => {
+    expect([...jobTypes]).toEqual([
+      'custom',
+      'pm',
+      'smoke',
+      'release_batch',
+      'reconcile',
+      'verify_skill',
+      'drive',
+    ]);
+    expect(jobTypes.filter((t) => (RETIRED_JOB_TYPES as readonly string[]).includes(t))).toEqual(
+      [],
+    );
   });
 
   it('REGISTRY_RUNNER_TYPES mirrors core runnerTypes', () => {
@@ -163,15 +167,8 @@ describe('RUNNER_CAPABILITIES', () => {
   it('every job type is claimable by some runner, or explicitly unenqueueable', () => {
     const EXEMPT: readonly JobType[] = ['pm', 'custom'];
     const claimable = new Set(Object.values(RUNNER_CAPABILITIES).flat());
-    const orphans = jobTypes.filter(
-      (t) => !claimable.has(t) && !EXEMPT.includes(t) && !STAGED_JOB_TYPES.includes(t),
-    );
+    const orphans = jobTypes.filter((t) => !claimable.has(t) && !EXEMPT.includes(t));
     expect(orphans).toEqual([]);
-  });
-
-  it('no staged job type is claimable by any runner', () => {
-    const claimable = new Set(Object.values(RUNNER_CAPABILITIES).flat());
-    expect(STAGED_JOB_TYPES.filter((t) => claimable.has(t))).toEqual([]);
   });
 
   it('the autonomous driver runs on claude-code', () => {

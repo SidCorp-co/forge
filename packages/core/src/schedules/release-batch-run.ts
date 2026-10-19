@@ -11,6 +11,7 @@
 import { logger } from '../logger.js';
 import { blockersOf, RELEASE_ROSTER_LIMIT } from '../release-batch/blocker-sentences.js';
 import { shortfallLine } from '../release-batch/close-shortfall.js';
+import { counted } from '../release-batch/counted.js';
 import { loadReleaseRoster } from '../release-batch/queries.js';
 import {
   BatchInFlightError,
@@ -20,6 +21,7 @@ import {
   NoRunnerOnlineError,
   ReleasePoolEmptyError,
   ReleaseRecordMissingError,
+  ReleaseRosterRefusedError,
 } from '../release-batch/service.js';
 
 export interface ScheduledCutOutcome {
@@ -44,6 +46,7 @@ const CLASSIFIED_REFUSALS: ReadonlyArray<readonly [new (...args: never[]) => Err
   [ReleasePoolEmptyError, 'RELEASE_POOL_EMPTY'],
   [NoReleaseGateError, 'NO_RELEASE_GATE'],
   [ReleaseRecordMissingError, 'RELEASE_RECORD_MISSING'],
+  [ReleaseRosterRefusedError, 'RELEASE_ROSTER_REFUSED'],
 ];
 
 function reasonsOf(err: unknown): string[] {
@@ -71,7 +74,7 @@ export async function cutWaitingRelease(args: {
     });
     return {
       status: 'success',
-      output: `cut ${result.issueIds.length} issue(s) as run ${result.runId}`,
+      output: `cut ${counted(result.issueIds.length, 'issue')} as run ${result.runId}`,
       named,
     };
   } catch (err) {
@@ -116,7 +119,7 @@ export async function runScheduledReleaseCut(args: {
   if (leftOff.length === 0) {
     return cutWaitingRelease({ projectId: args.projectId, userId: args.userId, issueIds: waiting });
   }
-  const said = `left off ${leftOff.length} issue(s) whose close a release would refuse — ${leftOff.join(' ')}`;
+  const said = `left off ${counted(leftOff.length, 'issue')} whose close a release would refuse — ${leftOff.join(' ')}`;
   if (waiting.length === 0) {
     return { status: 'skipped', output: `nothing this cut can close: ${said}`, named: [], leftOff };
   }

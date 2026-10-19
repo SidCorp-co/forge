@@ -15,14 +15,14 @@ export interface Preferences {
   language: LanguagePref;
   notifyOnMention: boolean;
   lastSeenWhatsNew: string | null;
-  /** The org the user is currently "working in" (ISS-469 global org switcher);
-   *  null = no explicit choice (client resolves to the personal org). */
+  /** The org worked in; null resolves to the personal org. */
   activeOrgId: string | null;
   updatedAt: string | null;
 }
 
 export type PatScope = "read" | "write" | "admin";
 export const PAT_SCOPES: PatScope[] = ["read", "write", "admin"];
+export const PAT_NAME_IN_USE = "An active token already uses this name.";
 
 export type PatGrant = "legacy" | "full" | "named";
 
@@ -40,8 +40,7 @@ export interface PatToken {
   projectIds: string[] | null;
   permissions: string[] | null;
   grant: PatGrant;
-  /** ISS-497 — non-null = project-level token bound to exactly this project
-   *  (X-Forge-Project-Slug header optional); null = user-level token. */
+  /** The one project a project-level token is bound to; null = user-level. */
   boundProjectId: string | null;
   expiresAt: string | null;
   createdAt: string;
@@ -63,21 +62,4 @@ export interface CreatePatInput {
   /** ISS-497 — bind the token to a single project (project-level token).
    *  null/omitted = user-level (all the user's projects). */
   boundProjectId?: string | null;
-}
-
-export interface NotificationRow {
-  id: string;
-  notificationId: string;
-  projectId: string | null;
-  type: string;
-  kind: string;
-  title: string;
-  body: string | null;
-  readAt: string | null;
-  members: number;
-  openMembers: number;
-  resolvedNotice: boolean;
-  issueId: string | null;
-  agentSessionId: string | null;
-  createdAt: string;
 }

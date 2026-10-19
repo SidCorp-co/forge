@@ -118,6 +118,7 @@ import { requestLogger } from './middleware/logger.js';
 import { PAT_ACCEPTED_PERMISSIONS_HEADER } from './middleware/pat-rest-surface.js';
 import { type RequestIdVars, requestId } from './middleware/request-id.js';
 import { requirePat } from './middleware/require-pat.js';
+import { answerUnservedPath } from './middleware/unserved-path.js';
 import { notificationRoutes } from './notifications/routes.js';
 import { orgInvitationRoutes } from './orgs/invitations-routes.js';
 import { orgRoutes } from './orgs/routes.js';
@@ -132,14 +133,15 @@ import { hooks } from './pipeline/hooks.js';
 import { registerPipelineOrchestrator } from './pipeline/orchestrator.js';
 import { registerOutboxWorker, stopOutboxWorker } from './pipeline/outbox-worker.js';
 import { registerPausedRunWedgeResolve } from './pipeline/paused-run-wedge-resolve.js';
-import { registerPhaseJournalBackfill } from './pipeline/phase-journal-backfill.js';
 import { registerPhaseJournalClose } from './pipeline/phase-journal-close.js';
 import { phaseRoutes } from './pipeline/phase-routes.js';
 import { registerReconciler } from './pipeline/reconciler.js';
 import { pipelineRegistryRoutes } from './pipeline/registry-routes.js';
 import { registerRetentionSweeper } from './pipeline/retention/sweep.js';
+import { runJournalRoutes } from './pipeline/run-journal-routes.js';
 import { pipelineRunProjectRoutes, pipelineRunReadRoutes } from './pipeline/runs-read-routes.js';
 import { pipelineRunRoutes } from './pipeline/runs-routes.js';
+import { sessionsAndHoldsRoutes } from './pipeline/sessions-and-holds-routes.js';
 import { stepHandoffRoutes } from './pipeline/step-handoff-routes.js';
 import { registerPipelineSweeper } from './pipeline/sweeper.js';
 import { registerPmCadenceTicker, unregisterPmCadenceTicker } from './pm/cadence.js';
@@ -214,6 +216,10 @@ const corsMiddleware = cors({
 });
 app.use('/api/*', corsMiddleware);
 app.use('/mcp', corsMiddleware);
+app.use(
+  '/api/*',
+  answerUnservedPath(() => app),
+);
 
 const apiReference = referenceOf(() => app);
 app.use('/api/*', responseConformance(apiReference));
@@ -269,11 +275,9 @@ registerEagerSubscribers(hooks);
 app.use('/mcp', mcpRequestClass(), requirePat());
 app.route('/mcp', mcpRoutes);
 
-app.route('/', describedInstallRoutes());
-app.route('/api', describedInstallRoutes());
+for (const at of ['/', '/api']) app.route(at, describedInstallRoutes());
 
-app.route('/', guideRoutes);
-app.route('/api', guideRoutes);
+for (const at of ['/', '/api']) app.route(at, guideRoutes);
 
 app.route('/api', referenceRoutes(apiReference));
 
@@ -310,6 +314,7 @@ app.route('/api/me', collaboratorsMeRoutes);
 app.route('/api/projects', projectMetricsRoutes);
 app.route('/api/projects', gitCredentialRoutes);
 app.route('/api/projects', runLedgerRoutes);
+app.route('/api/projects', sessionsAndHoldsRoutes);
 app.route('/api/projects', masterCharterRoutes);
 app.route('/api/projects', projectRoutes);
 app.route('/api/projects', assistantWeeklyRoutes);
@@ -363,6 +368,7 @@ app.route('/api/memory', memoryMineRoutes);
 app.route('/api/memory', memoryListRoutes);
 app.route('/api/memory', memoryWriteRoutes);
 app.route('/api/issue-step-contexts', stepHandoffRoutes);
+app.route('/api/run-journal', runJournalRoutes);
 app.route('/api/prompts', promptRoutes);
 app.route('/api/skill-facts', skillFactsRoutes);
 app.route('/api/skill-activity', skillActivityRoutes);
@@ -457,7 +463,6 @@ if (isMain) {
   await registerRetentionSweeper();
   await registerPipelineSweeper();
   await registerReleaseUnstartedRecovery();
-  await registerPhaseJournalBackfill();
   await registerPgBossHealthProbe();
   await registerOutboundDeliveryWorker();
   await registerScheduleTicker();

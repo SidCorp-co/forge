@@ -39,6 +39,10 @@ export const acceptOrgInvitation = describeOperation({
     200: json(acceptedInvitationSchema, 'The organization joined and the role held'),
     403: fail('INVITATION_EMAIL_MISMATCH', 'the invitation was sent to another email address'),
     404: fail('INVITATION_NOT_FOUND', 'no invitation has this token'),
+    409: fail({
+      FORGE_IS_NOT_A_MEMBER: "the signed-in account is Forge's own, which is never a member",
+      AGENT_ADDRESS_RESERVED: 'the signed-in account is an agent account, which no invitation adds',
+    }),
     410: fail({ ALREADY_ACCEPTED, EXPIRED_TOKEN: EXPIRED }),
   },
 });

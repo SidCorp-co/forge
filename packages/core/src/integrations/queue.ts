@@ -42,20 +42,12 @@ let workerId: string | null = null;
  */
 export async function registerIntegrationsWorker(): Promise<void> {
   if (workerId) return;
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).createQueue(INTEGRATIONS_QUEUE_NAME);
-  // biome-ignore lint/suspicious/noExplicitAny: handler arity / arg shape stabilised at runtime
-  const id = (await (boss as any).work(
+  await boss.createQueue(INTEGRATIONS_QUEUE_NAME);
+  const id = await boss.work<OutboundDispatchJob | CoolifyConfirmJob | CoolifyHealthGateJob>(
     INTEGRATIONS_QUEUE_NAME,
     { batchSize: 1 },
-    async (arg: any) => {
-      const entries = Array.isArray(arg) ? arg : [arg];
-      for (const entry of entries) {
-        const data = entry?.data as
-          | OutboundDispatchJob
-          | CoolifyConfirmJob
-          | CoolifyHealthGateJob
-          | undefined;
+    async (jobs) => {
+      for (const { data } of jobs) {
         if (!data) continue;
         try {
           if (data.jobKind === 'coolify.dispatch') {
@@ -86,7 +78,7 @@ export async function registerIntegrationsWorker(): Promise<void> {
         }
       }
     },
-  )) as string;
+  );
   workerId = id;
   logger.info({ workerId, queue: INTEGRATIONS_QUEUE_NAME }, 'integrations worker registered');
 }
@@ -161,13 +153,11 @@ export interface EnqueueOptions {
 export async function enqueueOutboundDispatch(
   job: OutboundDispatchJob,
   opts: EnqueueOptions = {},
-): Promise<string> {
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss send signature varies
-  const id = (await (boss as any).send(INTEGRATIONS_QUEUE_NAME, job, {
+): Promise<string | null> {
+  return boss.send(INTEGRATIONS_QUEUE_NAME, job, {
     retryLimit: opts.retryLimit ?? 5,
     retryBackoff: opts.retryBackoff ?? true,
     retryDelay: opts.retryDelay ?? 30,
-    singletonKey: job.requestId,
-  })) as string;
-  return id;
+    ...(job.requestId ? { singletonKey: job.requestId } : {}),
+  });
 }

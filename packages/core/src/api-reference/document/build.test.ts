@@ -279,3 +279,78 @@ describe('buildReference over a planted app', () => {
     expect(JSON.stringify(a.document)).toBe(JSON.stringify(b.document));
   });
 });
+
+describe('what a caller sends, read from the gates a route runs', () => {
+  const described = (summary: string, description?: string) =>
+    describeOperation({
+      summary,
+      ...(description ? { description } : {}),
+      responses: { 200: json(z.object({})) },
+    });
+
+  function door() {
+    const app = new Hono();
+    app.post('/api/devices/login/init', described('Start a login', 'Public.'), (c) => c.json({}));
+    app.get('/api/devices/me', gate as never, described('This box'), (c) => c.json({}));
+    app.post('/mcp', described('MCP'), (c) => c.json({}));
+    return app;
+  }
+
+  it('asks for no bearer on a route its door admits to a box when none of its gates read one', async () => {
+    const { document } = await buildReference(door(), { version: 't' });
+    const login = document.paths['/api/devices/login/init']?.post as Record<string, unknown>;
+    expect(login.security).toEqual([]);
+    expect(login.description).toContain(
+      '**Bearer:** not read. This route takes no bearer token; any other credential it reads is named in its inputs.',
+    );
+    const credentialRefusals = JSON.stringify(
+      responsesAt(document, '/api/devices/login/init', 'post'),
+    );
+    expect(credentialRefusals).not.toContain('INVALID_TOKEN');
+  });
+
+  it('asks for a bearer where a gate reads one, and by name on the MCP door, which declares none', async () => {
+    const { document } = await buildReference(door(), { version: 't' });
+    expect(document.paths['/api/devices/me']?.get?.security).toEqual([{ bearerAuth: [] }]);
+    expect(document.paths['/mcp']?.post?.security).toEqual([{ bearerAuth: [] }]);
+    expect(String(document.paths['/api/devices/me']?.get?.description)).not.toContain('Bearer:');
+  });
+
+  it('names no permission in x-forge-access on a route the grant map files but whose gates read no bearer', async () => {
+    const app = new Hono();
+    app.get('/api/invitations/:token', described('Preview an invitation'), (c) => c.json({}));
+    app.get('/api/issues', gate as never, described('List'), (c) => c.json({}));
+    const { document } = await buildReference(app, { version: 't' });
+    const preview = document.paths['/api/invitations/{token}']?.get as Record<string, unknown>;
+    expect(preview['x-forge-access']).toEqual({ door: 'none', reason: expect.any(String) });
+    expect(preview.security).toEqual([]);
+    expect(document.paths['/api/issues']?.get?.['x-forge-access']).toMatchObject({
+      door: 'token',
+      permission: 'issues:read',
+    });
+  });
+
+  it('does not read a gate registered after the route, which never runs for it', async () => {
+    const app = new Hono();
+    app.get('/api/issues', described('List'), (c) => c.json({}));
+    app.use('/api/issues', gate as never);
+    const { document, routes } = await buildReference(app, { version: 't' });
+    expect(routes[0]?.takesBearer).toBe(false);
+    expect(JSON.stringify(responsesAt(document, '/api/issues', 'get'))).not.toContain(
+      'UNAUTHENTICATED',
+    );
+  });
+
+  it("prints the permission or the door at the head of the description, ahead of the route's own words", async () => {
+    const { document } = await buildReference(planted(), { version: 't' });
+    const read = String(document.paths['/api/issues/{id}']?.get?.description);
+    expect(read).toMatch(/^\*\*Permission:\*\* `issues:read`\./);
+    const pair = String(document.paths['/pair']?.get?.description);
+    expect(pair).toMatch(/^\*\*Door:\*\* `public`\./);
+    const login = String(
+      (await buildReference(door(), { version: 't' })).document.paths['/api/devices/login/init']
+        ?.post?.description,
+    );
+    expect(login.endsWith('Public.')).toBe(true);
+  });
+});

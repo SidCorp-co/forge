@@ -13,7 +13,7 @@ const nullableIso = z.string().nullable();
 
 const runStepSchema = z.union([
   z.object({ source: z.literal('run_column'), step: z.string(), detail: z.null() }),
-  z.object({ source: z.literal('phase_journal'), step: z.string(), detail: z.null() }),
+  z.object({ source: z.literal('run_journal'), step: z.string(), detail: z.null() }),
   z.object({ source: z.literal('none'), step: z.null(), detail: z.string() }),
 ]);
 
@@ -48,6 +48,9 @@ export const pipelineRunListItemSchema = z.object({
   runIssues: z.array(z.string()),
   issueRef: z.string().nullable(),
   issueTitle: z.string().nullable(),
+  groupTitles: z
+    .record(z.string(), z.string())
+    .describe("each `group` issue's title by its key; a key no issue of the project has is absent"),
   kind: z.enum(pipelineRunKinds),
   status: z.enum(pipelineRunStatuses),
   currentStep: z.string().nullable(),

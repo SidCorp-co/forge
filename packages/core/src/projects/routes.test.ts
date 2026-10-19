@@ -92,16 +92,36 @@ const insertValues = vi.fn((..._args: unknown[]) => ({
 }));
 const dbInsert = vi.fn(() => ({ values: insertValues }));
 
+const dbSelect = vi.fn((_projection?: Record<string, unknown>) => ({ from: selectFrom }));
+const dbSelectDistinctOn = vi.fn((_on: unknown, _projection: Record<string, unknown>) => ({
+  from: distinctFrom,
+}));
+
+/** The keys of the projection each read or `returning` handed the database; null where it named none. */
+const projectionsAsked = (fn: { mock: { calls: unknown[][] } }, at: number) =>
+  fn.mock.calls.map((call) => {
+    const projection = call[at] as Record<string, unknown> | undefined;
+    return projection ? Object.keys(projection) : null;
+  });
+
 vi.mock('../db/client.js', () => ({
   db: {
-    select: vi.fn(() => ({ from: selectFrom })),
-    selectDistinctOn: vi.fn(() => ({ from: distinctFrom })),
+    select: (projection?: Record<string, unknown>) => dbSelect(projection),
+    selectDistinctOn: (on: unknown, projection: Record<string, unknown>) =>
+      dbSelectDistinctOn(on, projection),
     transaction,
     update: dbUpdate,
     delete: dbDelete,
     insert: dbInsert,
     execute: dbExecute,
   },
+}));
+
+// The stranding rule reads the project's issues; its reads are proved against Postgres in
+// tests/integration/release-chain-strands-work-e2e.test.ts, and here it answers what a case plants.
+const strandedWorkFor = vi.fn(async (..._args: unknown[]): Promise<unknown> => null);
+vi.mock('./stranded-work.js', () => ({
+  strandedWorkFor: (...args: unknown[]) => strandedWorkFor(...args),
 }));
 
 const projectAccess = vi.fn();
@@ -158,6 +178,8 @@ beforeEach(() => {
   insertReturning.mockReset();
   projectAccess.mockReset();
   personalOrg.mockReset();
+  strandedWorkFor.mockReset();
+  strandedWorkFor.mockResolvedValue(null);
   personalOrg.mockResolvedValue(ORG_ID);
   let callIdx = 0;
   txInsert.mockImplementation(() => {
@@ -210,7 +232,6 @@ describe('POST /api/projects', () => {
         name: 'My Project',
         orgId: ORG_ID,
         createdBy: 'uuid-owner',
-        apiKey: 'fk_x',
         createdAt,
       },
     ]);
@@ -218,6 +239,9 @@ describe('POST /api/projects', () => {
     const res = await post({ slug: 'my-proj', name: 'My Project' }, token);
     expect(res.status).toBe(201);
     const body = (await res.json()) as { id: string; slug: string; createdBy: string };
+    expect(projectionsAsked(txInsertProjectReturning, 0)).toEqual([
+      ['id', 'slug', 'name', 'orgId', 'createdBy', 'createdAt'],
+    ]);
     expect(body).toMatchObject({
       id: 'proj-1',
       slug: 'my-proj',
@@ -234,7 +258,6 @@ describe('POST /api/projects', () => {
         name: 'My Project',
         orgId: ORG_ID,
         createdBy: 'uuid-owner',
-        apiKey: expect.stringMatching(/^fk_[0-9a-f]{48}$/),
         // ISS-274 — `baseBranch` is defaulted at create time so the resolver
         // never surfaces a null-base misconfig for new projects.
         baseBranch: 'main',
@@ -272,7 +295,7 @@ describe('POST /api/projects', () => {
 
   it.each([
     ['projects_slug_unique', 409],
-    ['projects_api_key_unique', 500],
+    ['projects_issue_prefix_unique', 500],
   ])('maps a %s violation to %i', async (constraint_name, status) => {
     const token = await signUserToken('uuid-owner');
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
@@ -295,7 +318,6 @@ describe('GET /api/projects', () => {
         createdBy: 'uuid-user',
         memberRole: 'admin',
         orgRole: 'owner',
-        apiKey: 'fk_x',
         archivedAt: null,
         createdAt: new Date('2026-04-01T00:00:00Z'),
       },
@@ -320,7 +342,6 @@ describe('GET /api/projects', () => {
         createdBy: 'uuid-other',
         memberRole: null,
         orgRole: 'admin',
-        apiKey: 'fk_y',
         archivedAt: null,
         createdAt: new Date('2026-04-01T00:00:00Z'),
       },
@@ -330,6 +351,31 @@ describe('GET /api/projects', () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as Array<{ id: string; role: string; orgRole: string }>;
     expect(body[0]).toMatchObject({ id: 'p2', role: 'admin', orgRole: 'admin' });
+  });
+
+  it('ISS-1389: a listing asks for no webhook secret, whatever the role', async () => {
+    const token = await signUserToken('uuid-user');
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    distinctOrderBy.mockResolvedValueOnce([
+      {
+        id: 'p1',
+        slug: 'p-one',
+        name: 'P One',
+        orgId: ORG_ID,
+        createdBy: 'uuid-user',
+        memberRole: 'admin',
+        orgRole: 'owner',
+        archivedAt: null,
+        createdAt: new Date('2026-04-01T00:00:00Z'),
+      },
+    ]);
+
+    const res = await req('', { token });
+    expect(res.status).toBe(200);
+    const [asked] = projectionsAsked(dbSelectDistinctOn, 1);
+    expect(asked).not.toContain('webhookSecret');
+    const [row] = (await res.json()) as Array<Record<string, unknown>>;
+    expect(row).not.toHaveProperty('webhookSecret');
   });
 });
 
@@ -380,7 +426,6 @@ describe('GET /api/projects/:id', () => {
         releaseChain: [{ branch: 'main' }, { branch: 'master', from: 'merge-branch' }],
         defaultDeviceId: null,
         agentConfig: null,
-        webhookSecret: null,
         createdAt: new Date('2026-04-01T00:00:00Z'),
       },
     ]);
@@ -425,10 +470,9 @@ describe('GET /api/projects/:id', () => {
     expect(body.devicePool[0]?.runnerId).toBe('r1');
   });
 
-  it('returns the full apiKey to project members (no redaction)', async () => {
+  it('ISS-1389: the detail asks for no webhook secret, even for an admin', async () => {
     const token = await signUserToken('uuid-user');
-    const fullKey = 'fk_aaaabbbbccccddddeeeeffff00001111222233334444555566667777';
-    projectAccess.mockResolvedValueOnce(access('member'));
+    projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]).mockResolvedValueOnce([
       {
         id: 'p1',
@@ -442,31 +486,27 @@ describe('GET /api/projects/:id', () => {
         releaseChain: [],
         defaultDeviceId: null,
         agentConfig: null,
-        webhookSecret: null,
-        apiKey: fullKey,
         createdAt: new Date('2026-04-01T00:00:00Z'),
       },
     ]);
     selectWhere
       .mockReturnValueOnce({ limit: selectLimit })
       .mockReturnValueOnce({ limit: selectLimit })
-      .mockResolvedValueOnce([{ userId: 'uuid-user', role: 'member' }])
-      .mockResolvedValueOnce([{ id: 'l1', name: 'bug', color: '#f00' }])
-      .mockResolvedValueOnce([
-        {
-          id: 'd1',
-          name: 'Beta-Linux',
-          platform: 'linux',
-          status: 'online',
-          lastSeenAt: null,
-          runnerId: 'r1',
-        },
-      ]);
+      .mockResolvedValueOnce([{ userId: 'uuid-user', role: 'admin' }])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
 
     const res = await req('/11111111-1111-4111-8111-111111111111', { token });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { apiKey: string };
-    expect(body.apiKey).toBe(fullKey);
+    // A read that names no projection is every column, so it counts as asking for the secret.
+    const asked = projectionsAsked(dbSelect, 0);
+    expect(asked).not.toContain(null);
+    expect(asked.some((keys) => keys?.includes('releaseChain'))).toBe(true);
+    for (const keys of asked) {
+      expect(keys).not.toContain('webhookSecret');
+    }
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body).not.toHaveProperty('webhookSecret');
   });
 });
 
@@ -530,12 +570,7 @@ describe('PATCH /api/projects/:id', () => {
     const token = await signUserToken('uuid-owner');
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
     projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
-    updateReturning.mockResolvedValueOnce([
-      patchedRow({
-        name: 'New Name',
-        webhookSecret: 'secret-of-at-least-16-chars',
-      }),
-    ]);
+    updateReturning.mockResolvedValueOnce([patchedRow({ name: 'New Name' })]);
 
     const res = await req('/11111111-1111-4111-8111-111111111111', {
       method: 'PATCH',
@@ -550,6 +585,11 @@ describe('PATCH /api/projects/:id', () => {
       name: 'New Name',
       webhookSecret: 'secret-of-at-least-16-chars',
     });
+    // ISS-1389 — the secret is written and never read back: the inbound webhook check is its one reader.
+    const [asked] = projectionsAsked(updateReturning, 0);
+    expect(asked).toContain('name');
+    expect(asked).not.toContain('webhookSecret');
+    expect(await res.json()).not.toHaveProperty('webhookSecret');
   });
 
   it('200 updates new settings fields (description, repoPath, branches, defaultDeviceId)', async () => {
@@ -564,7 +604,6 @@ describe('PATCH /api/projects/:id', () => {
         releaseChain: [{ branch: 'staging' }, { branch: 'main', from: 'merge-branch' }],
         defaultDeviceId: '22222222-2222-4222-8222-222222222222',
         agentConfig: null,
-        webhookSecret: null,
       }),
     ]);
 
@@ -601,7 +640,6 @@ describe('PATCH /api/projects/:id', () => {
       patchedRow({
         kind: 'website',
         agentConfig: null,
-        webhookSecret: null,
       }),
     ]);
 
@@ -612,6 +650,34 @@ describe('PATCH /api/projects/:id', () => {
     });
     expect(res.status).toBe(200);
     expect(updateSet).toHaveBeenCalledWith({ kind: 'website' });
+  });
+
+  it('409 names the stranding refusal by its own code and carries its keys, writing nothing', async () => {
+    const token = await signUserToken('uuid-owner');
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
+    // releaseChainGapFor's read of the stored pair: an empty chain matches any base.
+    selectLimit.mockResolvedValueOnce([{ baseBranch: 'main', releaseChain: [{ branch: 'main' }] }]);
+    strandedWorkFor.mockResolvedValueOnce({
+      code: 'RELEASE_CHAIN_STRANDS_WORK',
+      message: 'RELEASE_CHAIN_STRANDS_WORK: planted',
+      details: { issues: ['ISS-3'], total: 1, status: 'awaiting_release' },
+    });
+
+    const res = await req('/11111111-1111-4111-8111-111111111111', {
+      method: 'PATCH',
+      body: JSON.stringify({ releaseChain: [] }),
+      token,
+    });
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { code: string; details: unknown };
+    expect(body.code).toBe('RELEASE_CHAIN_STRANDS_WORK');
+    expect(body.details).toEqual({ issues: ['ISS-3'], total: 1, status: 'awaiting_release' });
+    expect(strandedWorkFor).toHaveBeenCalledWith(
+      '11111111-1111-4111-8111-111111111111',
+      expect.objectContaining({ releaseChain: [] }),
+    );
+    expect(updateSet).not.toHaveBeenCalled();
   });
 
   it('400 BAD_REQUEST on an unknown kind, so a typo never turns the git preflight off', async () => {
@@ -640,7 +706,6 @@ describe('PATCH /api/projects/:id', () => {
         releaseChain: [],
         defaultDeviceId: null,
         agentConfig: null,
-        webhookSecret: null,
       }),
     ]);
 
@@ -937,36 +1002,6 @@ describe('PATCH /api/projects/:id · retired keys and the agentConfig doors', ()
   });
 });
 
-describe('POST /api/projects/:id/api-key/rotate', () => {
-  const ID = '11111111-1111-4111-8111-111111111111';
-
-  it('403 FORBIDDEN for non-admin member', async () => {
-    const token = await signUserToken('uuid-member');
-    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
-    projectAccess.mockResolvedValueOnce(access('member'));
-
-    const res = await req(`/${ID}/api-key/rotate`, { method: 'POST', token });
-    expect(res.status).toBe(403);
-    expect(updateSet).not.toHaveBeenCalled();
-  });
-
-  it('200 with fresh fk_-prefixed key for admin', async () => {
-    const token = await signUserToken('uuid-admin');
-    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
-    projectAccess.mockResolvedValueOnce(access('admin'));
-    updateReturning.mockImplementationOnce(async () => {
-      const setArg = updateSet.mock.calls[0]?.[0] as { apiKey: string };
-      return [{ id: 'p1', apiKey: setArg.apiKey }];
-    });
-
-    const res = await req(`/${ID}/api-key/rotate`, { method: 'POST', token });
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as { id: string; apiKey: string };
-    expect(body.id).toBe('p1');
-    expect(body.apiKey).toMatch(/^fk_[0-9a-f]{48}$/);
-  });
-});
-
 describe('GET /api/projects/:id/issues/:issueId/branch-config (ISS-135 PR-A)', () => {
   const PID = '11111111-1111-4111-8111-111111111111';
   const IID = '22222222-2222-4222-8222-222222222222';
@@ -1110,7 +1145,6 @@ describe('POST /api/projects/:id/archive (ISS-353)', () => {
         name: 'P One',
         orgId: ORG_ID,
         createdBy: 'uuid-owner',
-        apiKey: 'fk_x',
         archivedAt: new Date('2026-06-02T00:00:00Z'),
         createdAt: new Date(),
       },
@@ -1152,7 +1186,6 @@ describe('POST /api/projects/:id/unarchive (ISS-353)', () => {
         name: 'P One',
         orgId: ORG_ID,
         createdBy: 'uuid-owner',
-        apiKey: 'fk_x',
         archivedAt: null,
         createdAt: new Date(),
       },
@@ -1505,9 +1538,7 @@ describe('PATCH /api/projects/:id — contractInputChanged', () => {
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
     projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
     selectLimit.mockResolvedValue([{ baseBranch: 'release/next', releaseChain: [] }]);
-    updateReturning.mockResolvedValueOnce([
-      patchedRow({ agentConfig: null, webhookSecret: null, ...row }),
-    ]);
+    updateReturning.mockResolvedValueOnce([patchedRow({ agentConfig: null, ...row })]);
     return req('/11111111-1111-4111-8111-111111111111', {
       method: 'PATCH',
       body: JSON.stringify(body),

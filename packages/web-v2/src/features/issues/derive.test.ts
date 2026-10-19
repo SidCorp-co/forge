@@ -17,6 +17,7 @@ import {
 import { STATUS_KEY_TONE } from "@/design/status";
 import {
 	allowedTransitions,
+	BULK_SHARES_ONE_REASON,
 	bulkAllowedStatuses,
 	canonicalIssueId,
 	issueQueryKey,
@@ -28,8 +29,8 @@ import {
 	deriveBlockerState,
 	deriveCommentKind,
 	filterCount,
-	deriveStepOutcomes,
-	runningStepOf,
+	deriveRunView,
+	issueSessionId,
 	filterToQueryParams,
 	groupRows,
 	groupedTransitions,
@@ -60,8 +61,8 @@ import type {
 	IssueDetail,
 	IssueRow,
 	PipelineHealth,
-	StepDurationRow,
-	StepHandoffRow,
+	JournalAttempt,
+	JournalRun,
 } from "./types";
 import { ISSUE_COMPLEXITIES, ISSUE_PRIORITIES, ISSUE_STATUSES } from "./types";
 
@@ -85,6 +86,7 @@ function row(over: Partial<IssueRow> & { id: string }): IssueRow {
 		mergedAt: over.mergedAt ?? null,
 		createdAt: over.createdAt ?? "2026-01-01T00:00:00.000Z",
 		updatedAt: over.updatedAt ?? "2026-01-01T00:00:00.000Z",
+		statusEnteredAt: over.statusEnteredAt ?? "2026-01-01T00:00:00.000Z",
 		agentSessions: over.agentSessions,
 		agentStatus: over.agentStatus,
 		modules: over.modules,
@@ -278,12 +280,33 @@ describe("groupedTransitions (ISS-982)", () => {
 		expect(byTo.get("dropped")).toBe("discard");
 	});
 
-	it("does not file releasing's close under the discards", () => {
-		expect(groupedTransitions(EXITS, "releasing")[0]).toEqual({
-			to: "closed",
-			kind: "forward",
-			startsGroup: false,
-		});
+	it("files a park that comes first as a bounce, not as the rung's forward move (ISS-1421)", () => {
+		const atGate: StatusExits = { ...EXITS, awaiting_release: ["needs_info", "on_hold", "dropped"] };
+		expect(groupedTransitions(atGate, "awaiting_release")).toEqual([
+			{ to: "needs_info", kind: "bounce", startsGroup: false },
+			{ to: "on_hold", kind: "bounce", startsGroup: false },
+			{ to: "dropped", kind: "discard", startsGroup: true },
+		]);
+	});
+
+	it("never offers releasing, even where a table lists it (ISS-1421)", () => {
+		const stale: StatusExits = {
+			...EXITS,
+			awaiting_release: ["releasing", "needs_info", "on_hold", "dropped"],
+		};
+		expect(allowedTransitions(stale, "awaiting_release")).not.toContain("releasing");
+		expect(groupedTransitions(stale, "awaiting_release").map((g) => g.to)).toEqual([
+			"needs_info",
+			"on_hold",
+			"dropped",
+		]);
+	});
+
+	it("offers no move out of releasing, even where a table lists some (ISS-1421)", () => {
+		const stale: StatusExits = { ...EXITS, releasing: ["closed", "reopen", "needs_info", "on_hold"] };
+		expect(allowedTransitions(stale, "releasing")).toEqual([]);
+		expect(groupedTransitions(stale, "releasing")).toEqual([]);
+		expect(bulkAllowedStatuses(stale, [row({ id: "a", status: "releasing" })])).toEqual([]);
 	});
 
 	it("starts a group at the first item of each kind after the first", () => {
@@ -307,23 +330,36 @@ describe("bulkAllowedStatuses (ISS-463)", () => {
 	it("returns [] for an empty selection", () => {
 		expect(bulkAllowedStatuses(EXITS, [])).toEqual([]);
 	});
-	it("matches allowedTransitions when every row shares a status, less the reason-required three", () => {
+	it("matches allowedTransitions when every row shares a status, less the reason-required ones a shared reason cannot serve", () => {
 		const rows = [
 			row({ id: "a", status: "approved" }),
 			row({ id: "b", status: "approved" }),
 		];
 		expect(bulkAllowedStatuses(EXITS, rows)).toEqual(
 			allowedTransitions(EXITS, "approved").filter(
-				(s) => !(REASON_REQUIRED_ISSUE_STATUSES as readonly string[]).includes(s),
+				(s) =>
+					!(REASON_REQUIRED_ISSUE_STATUSES as readonly string[]).includes(s) ||
+					BULK_SHARES_ONE_REASON.has(s),
 			),
 		);
 	});
-	it("omits exactly the targets the shared reason-required answer names, whatever it grows to", () => {
+	it("omits every reason-required target but the one that takes a single shared reason", () => {
+		const rows = [row({ id: "a", status: "in_progress" })];
+		const offered = bulkAllowedStatuses(EXITS, rows);
+		for (const owing of REASON_REQUIRED_ISSUE_STATUSES) {
+			expect(offered.includes(owing as never)).toBe(BULK_SHARES_ONE_REASON.has(owing));
+		}
+	});
+	it("omits exactly the targets the shared reason-required answer names, less the one shared reason, whatever it grows to", () => {
 		const rows = [row({ id: "a", status: "in_progress" })];
 		const all = allowedTransitions(EXITS, "in_progress");
 		const offered = bulkAllowedStatuses(EXITS, rows);
 		expect(all.filter((s) => !offered.includes(s))).toEqual(
-			all.filter((s) => (REASON_REQUIRED_ISSUE_STATUSES as readonly string[]).includes(s)),
+			all.filter(
+				(s) =>
+					(REASON_REQUIRED_ISSUE_STATUSES as readonly string[]).includes(s) &&
+					!BULK_SHARES_ONE_REASON.has(s),
+			),
 		);
 	});
 	it("never offers a status that requires an authored reason", () => {
@@ -336,6 +372,7 @@ describe("bulkAllowedStatuses (ISS-463)", () => {
 		expect(result).not.toContain("needs_info");
 		expect(result).not.toContain("reopen");
 		expect(result).toContain("on_hold");
+		expect(result).toContain("dropped");
 	});
 	it("intersects allowed targets across mixed statuses", () => {
 		const rows = [
@@ -803,28 +840,74 @@ describe("deriveCommentKind", () => {
 		["Verdict: APPROVE", "approved"],
 		["forge-fix applied the patch", "fix"],
 		["## QA Test Report\nall green", "qa"],
-		["Released v1.2.0 to prod", "released"],
 		["forge-code complete; pushed ISS-1 branch", "code"],
 		["Plan written and ready for review", "plan"],
 		["Just a normal note here", "comment"],
 	];
 	it.each(cases)("classifies %j as %s", (body, kind) => {
-		expect(deriveCommentKind({ body })).toEqual({ kind, form: "prefix" });
+		expect(deriveCommentKind({ body, announces: null })).toBe(kind);
 	});
 	it("has badge meta for every kind it returns", () => {
-		for (const [, kind] of cases) {
+		for (const kind of [...cases.map(([, k]) => k), "released"]) {
 			expect(
 				COMMENT_KIND_META[kind as keyof typeof COMMENT_KIND_META],
 			).toBeDefined();
 		}
 	});
 
+	// ISS-1228: the kind is read off the comment's opening line, so a word met further down a body
+	// that is about something else stamps nothing. The judge saw a Released badge on a Draft issue.
+	it.each([
+		["Moving this to draft until the plan is settled.\nNothing here has been released yet.", "comment"],
+		["Parking: the previous fix shipped with a typo, see below.", "comment"],
+		["Note on the plan\nThe reviewer approved the plan written above.", "comment"],
+	])("reads %j by its opening as %s", (body, kind) => {
+		expect(deriveCommentKind({ body, announces: null })).toBe(kind);
+	});
+
+	// ISS-1228 round 9: Released is a fact core records as its release flow writes the comment, never
+	// a reading of the words. Judge-21's four denials, and every line rounds 7 and 8 badged by its
+	// words, typed by a person or an agent carry no badge.
+	it.each([
+		"Released: nothing this week.",
+		"Shipped to QA failed — the build broke before upload.",
+		"Released to production got pushed to Monday, nothing went out today.",
+		"Released to production doesn't describe this one; it never left staging.",
+		"Released v1.2.0 to prod",
+		"Released v10.2.0 to prod",
+		"Released — v1.2.0 to production",
+		"Released v1.2.0 on May 3",
+		"Released 2026.10 to production",
+		"**Released** in v0.4.3 — the picker went out.",
+		"__Shipped__ to production this morning.",
+		"Released in v0.4.2 — the picker went out.",
+		"Released outside a release batch, and recorded from what production is serving.",
+		"Released: the new picker.",
+		"Published release v2.0.1",
+		"## Release notes\nThe picker is new.",
+		"**Release note**\nThe picker is new.",
+		"## Release note\nThe Pipeline page now lists live sessions.",
+	])("badges the typed comment %j with nothing", (body) => {
+		expect(deriveCommentKind({ body, announces: null })).toBe("comment");
+		expect(deriveCommentKind({ body })).toBe("comment");
+	});
+
+	it.each([
+		"Released outside a release batch, and recorded on the account of whoever released it.",
+		"**This issue is being closed by a release that was not verified.**",
+		"Not released: the deploy was rolled back.",
+		"Just a normal note here",
+	])("badges %j Released where core's release flow marked it, whatever its words", (body) => {
+		expect(deriveCommentKind({ body, announces: "release" })).toBe("released");
+	});
+
 	it("classifies a stored component body by its prose, not by its markup", () => {
 		expect(
 			deriveCommentKind({
 				body: "<forge-symptom><forge-opening><p>Plan written</p></forge-opening></forge-symptom>",
+				announces: null,
 			}),
-		).toEqual({ kind: "plan", form: "prefix" });
+		).toBe("plan");
 	});
 });
 
@@ -942,6 +1025,33 @@ describe("openBlockingRefs for an edge that holds until shipped (ISS-1225)", () 
 });
 
 describe("deriveBlockerState", () => {
+	// ISS-1228 round 8: the banner names each blocker by its status. A dropped blocker is not open,
+	// and since it never finishes, telling a person to finish it first is no way out.
+	it("names each blocker with its status and never calls a dropped one open", () => {
+		const deps: IssueDependencies = {
+			incoming: [
+				...incomingBlocks({ id: "e1", fromIssueId: "b1", fromDisplayId: "ISS-9", fromStatus: "in_progress" }).incoming,
+				...incomingBlocks({ id: "e2", fromIssueId: "b2", fromDisplayId: "ISS-11", fromStatus: "dropped" }).incoming,
+			],
+			outgoing: [],
+		};
+		const b = deriveBlockerState(blockerIssue({ status: "approved" }), undefined, deps);
+		expect(b?.reason).toBe("Blocked by ISS-9 (In progress) and ISS-11 (Dropped).");
+		expect(b?.reason).not.toMatch(/open/i);
+		expect(b?.whoMustAct).toMatch(/dropped issue never finishes/i);
+		expect(b?.whoMustAct).toMatch(/remove/i);
+	});
+
+	it("tells a person to finish blockers that can still finish", () => {
+		const b = deriveBlockerState(
+			blockerIssue({ status: "approved" }),
+			undefined,
+			incomingBlocks({ fromDisplayId: "ISS-9", fromStatus: "open" }),
+		);
+		expect(b?.reason).toBe("Blocked by ISS-9 (Open).");
+		expect(b?.whoMustAct).toMatch(/^Finish ISS-9 first/);
+	});
+
 	it("returns null when actively progressing", () => {
 		expect(
 			deriveBlockerState(
@@ -1209,153 +1319,156 @@ describe("deriveBlockerState", () => {
 	});
 });
 
-describe("deriveStepOutcomes — the steps an issue actually ran (ISS-999)", () => {
-	const handoff = (
-		step: string,
-		attempt: number,
-		payload: Record<string, unknown>,
-		over: Partial<StepHandoffRow> = {},
-	): StepHandoffRow => ({
-		id: `${step}-${attempt}`,
-		projectId: "p1",
-		issueId: "me",
-		pipelineRunId: "run-1",
-		kind: "handoff",
-		step,
-		attempt,
-		payload,
-		createdAt: "2026-01-01T00:00:00.000Z",
-		updatedAt: "2026-01-01T00:00:00.000Z",
+describe("deriveRunView — one view of what each run did (ISS-1133)", () => {
+	const attempt = (
+		phase: string,
+		n: number,
+		over: Partial<JournalAttempt> = {},
+	): JournalAttempt => ({
+		phase,
+		attempt: n,
+		source: "agent",
+		outcome: "ok",
+		startedAt: "2026-10-15T07:00:00.000Z",
+		endedAt: "2026-10-15T07:01:00.000Z",
+		durationSeconds: 60,
+		artifact: null,
+		handoff: null,
+		handoffAt: null,
 		...over,
 	});
-	const dur = (
-		step: string,
-		durationSeconds: number,
-		costUsd: number,
-		runId = "run-1",
-		finishedAt = "2026-01-01T00:05:00.000Z",
-	): StepDurationRow => ({
+	const run = (runId: string, over: Partial<JournalRun> = {}): JournalRun => ({
 		runId,
-		issueId: "me",
-		projectId: "p1",
-		step,
-		startedAt: "2026-01-01T00:00:00.000Z",
-		finishedAt,
-		durationSeconds,
-		costUsd,
+		ordinal: 1,
+		kind: "issue",
+		status: "completed",
+		group: null,
+		startedAt: "2026-10-15T07:00:00.000Z",
+		finishedAt: "2026-10-15T07:30:00.000Z",
+		costUsd: null,
+		sessionId: null,
+		attempts: [],
+		...over,
 	});
 
-	it("lists only the steps that have a row, and never one that has not run", () => {
-		const out = deriveStepOutcomes([handoff("plan", 1, { summary: "s" })], [dur("code", 10, 1)]);
-		expect(out.map((o) => o.step).sort()).toEqual(["code", "plan"]);
+	it("answers nothing for an issue that never ran, or before the read lands", () => {
+		expect(deriveRunView([], [])).toEqual([]);
+		expect(deriveRunView(undefined, undefined)).toEqual([]);
 	});
 
-	it("returns nothing at all for an issue with no handoffs and no durations", () => {
-		expect(deriveStepOutcomes([], [])).toEqual([]);
-		expect(deriveStepOutcomes(undefined, undefined)).toEqual([]);
-	});
-
-	it("keeps a job type outside the seven staged names under its own name", () => {
-		const out = deriveStepOutcomes([handoff("drive", 1, { outcome: "shipped it" })], []);
-		expect(out.map((o) => o.step)).toEqual(["drive"]);
-		expect(out[0].outcomeLabel).toBe("shipped it");
-	});
-
-	it("gives `fix` a row of its own rather than folding it onto `code`", () => {
-		const out = deriveStepOutcomes(
-			[handoff("code", 1, { summary: "wrote it" }), handoff("fix", 1, { summary: "patched" })],
+	it("keeps the number the server gave each run, so a run past the page keeps its own", () => {
+		const out = deriveRunView(
+			[run("r52", { ordinal: 52 }), run("r51", { ordinal: 51 })],
 			[],
 		);
-		expect(out.map((o) => o.step).sort()).toEqual(["code", "fix"]);
-		expect(out.find((o) => o.step === "fix")?.outcomeLabel).toBe("patched");
+		expect(out.map((r) => [r.runId, r.ordinal])).toEqual([
+			["r52", 52],
+			["r51", 51],
+		]);
 	});
 
-	it("orders by when a step last ran, not by any stage order", () => {
-		const out = deriveStepOutcomes(
+	it("names the other issues a group run was opened over, never this one", () => {
+		const [grouped, alone] = deriveRunView(
+			[run("g", { group: ["ISS-7", "ISS-9"] }), run("r")],
 			[],
+			"ISS-7",
+		);
+		expect(grouped?.alongside).toEqual(["ISS-9"]);
+		expect(alone?.alongside).toEqual([]);
+	});
+
+	it("keeps a phase's own name, and numbers an attempt only where the run made more than one", () => {
+		const [out] = deriveRunView(
+			[run("r1", { attempts: [attempt("plan", 1), attempt("drive", 1), attempt("drive", 2)] })],
+			[],
+		);
+		expect(out?.attempts.map((a) => [a.key, a.numbered])).toEqual([
+			["plan#1", false],
+			["drive#1", true],
+			["drive#2", true],
+		]);
+	});
+
+	it("carries the session a run session ran, though no session it was hydrated with names the issue", () => {
+		expect(deriveRunView([run("r1", { sessionId: "s-run" })], [])[0]?.sessionId).toBe("s-run");
+	});
+
+	it("reads an open attempt as running only while its run is live, and as left open once it ended", () => {
+		const open = attempt("drive", 1, { outcome: null, endedAt: null, durationSeconds: null });
+		const states = (status: JournalRun["status"]) =>
+			deriveRunView([run("r1", { status, attempts: [open] })], [])[0]?.attempts[0]?.state;
+		expect(states("running")).toBe("running");
+		expect(states("paused")).toBe("running");
+		expect(states("failed")).toBe("left-open");
+		expect(states("completed")).toBe("left-open");
+	});
+
+	it("reads each ended attempt by the outcome the journal holds", () => {
+		const [out] = deriveRunView(
 			[
-				dur("release", 1, 0, "r1", "2026-01-03T00:00:00.000Z"),
-				dur("triage", 1, 0, "r1", "2026-01-01T00:00:00.000Z"),
-				dur("code", 1, 0, "r1", "2026-01-02T00:00:00.000Z"),
+				run("r1", {
+					status: "running",
+					attempts: [
+						attempt("plan", 1),
+						attempt("code", 1, { outcome: "failed" }),
+						attempt("code", 2, { outcome: "abandoned" }),
+					],
+				}),
 			],
-		);
-		expect(out.map((o) => o.step)).toEqual(["triage", "code", "release"]);
-	});
-
-	it("reads `running` from the active step's own name and from nothing else", () => {
-		const rows = [handoff("plan", 1, {}), handoff("code", 1, {})];
-		const out = deriveStepOutcomes(rows, [], { activeStep: "code" });
-		expect(out.find((o) => o.step === "code")?.state).toBe("running");
-		expect(out.find((o) => o.step === "plan")?.state).toBe("done");
-	});
-
-	it("reads `failed` from the failed step's own name, and it outranks running", () => {
-		const out = deriveStepOutcomes([handoff("test", 1, {})], [], {
-			activeStep: "test",
-			failedStep: "test",
-		});
-		expect(out[0].state).toBe("failed");
-	});
-
-	it("leaves every step `done` when neither field names one", () => {
-		const out = deriveStepOutcomes([handoff("plan", 1, {}), handoff("code", 1, {})], [], {
-			activeStep: null,
-			failedStep: null,
-		});
-		expect(out.map((o) => o.state)).toEqual(["done", "done"]);
-	});
-
-	it("pulls a short outcome label and sums duration/cost across a run's attempts", () => {
-		const out = deriveStepOutcomes(
-			[handoff("plan", 1, { summary: "wrote the plan" })],
-			[dur("plan", 120, 0.25), dur("plan", 60, 0.1)],
-		);
-		expect(out[0].outcomeLabel).toBe("wrote the plan");
-		expect(out[0].durationSeconds).toBe(180);
-		expect(out[0].costUsd).toBeCloseTo(0.35);
-		expect(out[0].handoff?.step).toBe("plan");
-	});
-
-	it("keeps the latest attempt and never throws on an empty/odd payload", () => {
-		const out = deriveStepOutcomes(
-			[handoff("plan", 1, {}), handoff("plan", 2, { outcome: "v2" })],
-			undefined,
-		);
-		expect(out[0].handoff?.attempt).toBe(2);
-		expect(out[0].outcomeLabel).toBe("v2");
-		expect(deriveStepOutcomes([handoff("plan", 1, {})], [])[0].outcomeLabel).toBeUndefined();
-	});
-
-	it("uses a newer run's handoff instead of a prior attempt", () => {
-		const old = handoff("test", 2, { result: "blocked_fixture" });
-		const current = handoff("test", 1, { result: "pass" }, {
-			pipelineRunId: "run-2",
-			updatedAt: "2026-02-01T00:00:00.000Z",
-		});
-		const out = deriveStepOutcomes([old, current], []);
-		expect(out[0].handoff?.pipelineRunId).toBe("run-2");
-		expect(out[0].outcomeLabel).toBe("pass");
-	});
-
-	it("uses only the most-recent run's duration/cost (no double-count on reopen)", () => {
-		const out = deriveStepOutcomes(
 			[],
+		);
+		expect(out?.attempts.map((a) => a.state)).toEqual(["done", "failed", "abandoned"]);
+	});
+
+	it("summarises an attempt by its handoff first, then by the artifact it ended with", () => {
+		const [out] = deriveRunView(
 			[
-				dur("plan", 100, 1.0, "run-old", "2026-01-01T00:05:00.000Z"),
-				dur("plan", 200, 2.0, "run-new", "2026-02-01T00:05:00.000Z"),
+				run("r1", {
+					attempts: [
+						attempt("drive", 1, {
+							handoff: { step: "drive", outcome: "advanced", summary: "pushed the branch" },
+							artifact: { kind: "note", text: "not this" },
+						}),
+						attempt("code", 1, {
+							artifact: { kind: "commit", sha: "abcdef1234567890", message: "fix it" },
+						}),
+						attempt("review", 1, { artifact: { kind: "note", text: "looked fine" } }),
+						attempt("test", 1),
+					],
+				}),
 			],
-		);
-		expect(out[0].durationSeconds).toBe(200);
-		expect(out[0].costUsd).toBeCloseTo(2.0);
-	});
-
-	it("keeps a special test outcome as handoff evidence without it becoming a state", () => {
-		const out = deriveStepOutcomes(
-			[handoff("test", 1, { result: "blocked_fixture", resultReason: "no fixture" })],
 			[],
 		);
-		expect(out[0].outcomeLabel).toBe("blocked_fixture");
-		expect(out[0].state).toBe("done");
+		expect(out?.attempts.map((a) => a.summary)).toEqual([
+			"pushed the branch",
+			"abcdef123 fix it",
+			"looked fine",
+			null,
+		]);
+	});
+
+	it("puts each session under the run it served, and leaves out a session that served none", () => {
+		const session = (id: string, pipelineRunId: string | null, jobType: string) =>
+			({
+				id,
+				status: "completed",
+				metadata: { jobType, sessionGroup: "build" },
+				createdAt: "2026-10-15T07:00:00.000Z",
+				updatedAt: "2026-10-15T07:00:00.000Z",
+				startedAt: `2026-10-15T07:0${id.length}:00.000Z`,
+				title: null,
+				pipelineRunId,
+				claudeSessionId: "c1",
+			}) as const;
+		const out = deriveRunView(
+			[run("r2"), run("r1")],
+			[session("s1", "r1", "plan"), session("s22", "r1", "code"), session("chat", null, "chat")],
+		);
+		expect(out[0]?.sessions).toEqual([]);
+		expect(out[1]?.sessions.map((s) => [s.jobType, s.continuity])).toEqual([
+			["plan", "fresh"],
+			["code", "resumed"],
+		]);
 	});
 });
 
@@ -1490,61 +1603,6 @@ describe("statusFilterFromParams", () => {
 	});
 });
 
-describe("runningStepOf — a queued session names no running step (ISS-999)", () => {
-	const row = (step: string): StepHandoffRow => ({
-		id: `${step}-1`,
-		projectId: "p1",
-		issueId: "me",
-		pipelineRunId: "run-1",
-		kind: "handoff",
-		step,
-		attempt: 1,
-		payload: { summary: "first attempt" },
-		createdAt: "2026-01-01T00:00:00.000Z",
-		updatedAt: "2026-01-01T00:00:00.000Z",
-	});
-	const health = (
-		session?: { status: "queued" | "running"; skill: string },
-	): PipelineHealth =>
-		({
-			stage: "code",
-			...(session ? { activeSession: { id: "s1", ...session } } : {}),
-		}) as PipelineHealth;
-
-	it("names the skill of a session the kernel calls running", () => {
-		expect(runningStepOf(health({ status: "running", skill: "drive" }))).toBe(
-			"drive",
-		);
-	});
-
-	it("names nothing for a session the kernel calls queued", () => {
-		expect(runningStepOf(health({ status: "queued", skill: "drive" }))).toBeNull();
-	});
-
-	it("names nothing when there is no session, and survives a missing health", () => {
-		expect(runningStepOf(health())).toBeNull();
-		expect(runningStepOf(undefined)).toBeNull();
-		expect(runningStepOf(null)).toBeNull();
-	});
-
-	it("keeps a queued step out of the outcomes the card renders", () => {
-		const queued = health({ status: "queued", skill: "drive" });
-		const out = deriveStepOutcomes(
-			[row("drive")],
-			undefined,
-			{ activeStep: runningStepOf(queued), failedStep: null },
-		);
-		expect(out.map((o) => [o.step, o.state])).toEqual([["drive", "done"]]);
-		const running = health({ status: "running", skill: "drive" });
-		const live = deriveStepOutcomes(
-			[row("drive")],
-			undefined,
-			{ activeStep: runningStepOf(running), failedStep: null },
-		);
-		expect(live.map((o) => [o.step, o.state])).toEqual([["drive", "running"]]);
-	});
-});
-
 describe("canonicalIssueId (ISS-1160)", () => {
 	const UUID = "123e4567-e89b-12d3-a456-426614174000";
 
@@ -1647,3 +1705,27 @@ describe("originFromParams", () => {
 		expect(originFromParams(["human", "human"]).dropped).toEqual([]);
 	});
 });
+
+// ISS-1228 round 14 (judge-36): Open session landed on the unfiltered runs list, where no row opens
+// a session.
+describe("issueSessionId — the session Open session opens", () => {
+	const runs = (...sessionIds: (string | null)[]) => sessionIds.map((sessionId) => ({ sessionId }));
+
+	it("opens the live session holding the issue before any that ran it", () => {
+		expect(issueSessionId(["live-1"], runs("s-new"))).toBe("live-1");
+	});
+
+	it("else opens the newest session of the newest run that had one", () => {
+		expect(issueSessionId([], runs("s-b", "s-old"))).toBe("s-b");
+	});
+
+	it("skips a newest run that had no session for an older run's newest", () => {
+		expect(issueSessionId([], runs(null, "s-2"))).toBe("s-2");
+	});
+
+	it("opens nothing for an issue that never had a session", () => {
+		expect(issueSessionId([], runs(null, null))).toBeNull();
+		expect(issueSessionId([], [])).toBeNull();
+	});
+});
+

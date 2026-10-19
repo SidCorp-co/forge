@@ -176,8 +176,8 @@ describe('a member reading the fleet', () => {
     expect(row.deviceId).toBe(m.deviceId);
     expect(typeof row.observedAt).toBe('string');
     expect(row.issues).toEqual([
-      { issueKey: 'ISS-934', leaseReturned: false },
-      { issueKey: 'ISS-933', leaseReturned: true },
+      { issueKey: 'ISS-934', leaseReturned: false, coreHolds: false, title: null },
+      { issueKey: 'ISS-933', leaseReturned: true, coreHolds: false, title: null },
     ]);
   });
 

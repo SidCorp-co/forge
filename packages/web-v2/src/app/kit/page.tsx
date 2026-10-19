@@ -6,27 +6,25 @@ import {
   Avatar, Badge, Banner, BoardRowSkeleton, Breadcrumb, Button, Card, CardContent,
   CardHeader, CardTitle, Checkbox, Collapsible, CommandPalette, DataTable, Divider, EmptyState,
   ErrorState, Field, Highlight, HealthDot, Icon, IconButton, Input,
-  KanbanBoard, KanbanCardSkeleton, KanbanColumn, KanbanColumnSkeleton, Kicker, KanbanCard, LiveDot, Menu,
+  Kicker, LiveDot, Menu,
   MonoTag, NavRail, NotificationsMenu, Pagination, ProgressBar,
   NativeSelect, ProjectCardSkeleton, ProjectMark, Radio, RadioGroup,
   SegmentedControl, Select, SessionRowSkeleton, Skeleton, SlideOver, Spinner,
-  STAGES, Stat, StatusChip,
+  Stat, StatusChip,
   StreamingText, Table, TBody, TD, TH, THead, TR, Tabs, Textarea, Toggle, Tooltip,
   TopBar, HelpButton, PinnedTabBar, VirtualList, useAnimatedNumber, useElapsed,
   type Command, type DataTableColumn, type NotificationItem, type PinnedTab,
-  type StageKey, type StatusKey, type TopBarDensity,
+  type StatusKey, type TopBarDensity,
 } from "@/design";
 import {
   ForgeMascot, ProjectLoader, ColdBoot, AgentWorking, ReconnectingBanner,
 } from "@/design";
-import { TONE_META } from "@/design/status";
 import {
   NavRailCompact, PROJECT_ITEMS, WORKSPACE_ITEMS,
   type RailItem, type SwitcherProject,
 } from "@/features/shell";
 import { useToast } from "@/providers/toast-provider";
 import { PageTitle, SectionTitle } from "@/design/primitives/heading";
-import { WORK_STATE_LABELS } from "@forge/contracts/work-state";
 
 function Section({ id, title, hint, children }: { id: string; title: string; hint?: string; children: React.ReactNode }) {
   return (
@@ -46,9 +44,9 @@ function Row({ children }: { children: React.ReactNode }) {
 }
 
 const SEMANTIC_TOKENS = [
-  ["--bg-app", "App"], ["--bg-surface", "Surface"], ["--bg-sunken", "Sunken"],
-  ["--bg-hover", "Hover"], ["--border-default", "Border"], ["--fg-default", "FG"],
-  ["--fg-muted", "Muted"], ["--accent", "Accent"], ["--link", "Link"],
+  ["var(--bg-app)", "App"], ["var(--bg-surface)", "Surface"], ["var(--bg-sunken)", "Sunken"],
+  ["var(--bg-hover)", "Hover"], ["var(--border-default)", "Border"], ["var(--fg-default)", "FG"],
+  ["var(--fg-muted)", "Muted"], ["var(--accent)", "Accent"], ["var(--link)", "Link"],
 ];
 
 const STATUSES: StatusKey[] = ["running", "queued", "blocked", "waiting", "passed", "failed", "paused", "done", "review"];
@@ -67,16 +65,15 @@ const PROJECT_NAV: RailItem[] = PROJECT_ITEMS.map(({ key, label, icon }) => ({
 }));
 
 const RAIL_SWITCHER: SwitcherProject[] = [
-  { id: "p1", slug: "forge-core", name: "forge-core", initials: "FRG", tint: "var(--flame-50)", ink: "var(--flame-700)", liveRuns: 3, liveRunsRead: "read", pinned: true },
-  { id: "p2", slug: "forge-web", name: "forge-web", initials: "FWB", tint: "var(--cobalt-50)", ink: "var(--cobalt-700)", liveRuns: 1, liveRunsRead: "read", pinned: true },
-  { id: "p3", slug: "data-pipeline", name: "data-pipeline", initials: "DP", tint: "var(--green-50)", ink: "var(--green-600)", liveRuns: 0, liveRunsRead: "read", pinned: false },
+  { id: "p1", slug: "forge-core", name: "forge-core", initials: "FRG", tint: "var(--flame-50)", ink: "var(--flame-700)", liveSessions: 3, liveSessionsRead: "read", pinned: true },
+  { id: "p2", slug: "forge-web", name: "forge-web", initials: "FWB", tint: "var(--cobalt-50)", ink: "var(--cobalt-700)", liveSessions: 1, liveSessionsRead: "read", pinned: true },
+  { id: "p3", slug: "data-pipeline", name: "data-pipeline", initials: "DP", tint: "var(--green-50)", ink: "var(--green-600)", liveSessions: 0, liveSessionsRead: "read", pinned: false },
 ];
 
 const COMMANDS: Command[] = [
   { label: "FRG-238 · Review changes", icon: "clock", group: "recent" },
   { label: "forge-core", icon: "pin", group: "pinned", keywords: "project" },
   { label: "Issues · active", icon: "list", group: "pinned", keywords: "view" },
-  { label: "Go to Board", icon: "board", kbd: "G B", group: "navigate" },
   { label: "Go to Pipeline", icon: "pipeline", kbd: "G P", group: "navigate" },
   { label: "Go to Conversations", icon: "inbox", kbd: "G E", group: "navigate" },
   { label: "All projects", icon: "folder", kbd: "G O", group: "navigate" },
@@ -91,18 +88,9 @@ const NOTES: NotificationItem[] = [
   { id: "FRG-230", label: "STATUS", text: "Release agent opened PR #1284", sub: "ready to merge", time: "1h", unread: false, hue: "green" },
 ];
 
-/** The kit's own sample columns — the work states' words and their tones, which is what a real
- *  board draws (`features/pipeline/derive.ts:boardColumns`). */
-const KANBAN_COLUMNS: { title: string; color: string }[] = [
-  { title: WORK_STATE_LABELS.open, color: TONE_META.neutral.dot },
-  { title: WORK_STATE_LABELS.in_flight, color: TONE_META.active.dot },
-  { title: WORK_STATE_LABELS.blocked_on_person, color: TONE_META.attention.dot },
-  { title: WORK_STATE_LABELS.awaiting_release, color: TONE_META.shipped.dot },
-];
-
 const NAV_ANCHORS = [
   "tokens", "type", "buttons", "status", "avatars", "tags", "forms", "cards",
-  "pipeline", "kanban", "navrail", "topbar", "shell", "overlays", "states",
+  "navrail", "topbar", "shell", "overlays", "states",
   "mascot", "skeletons", "progress", "feedback", "realtime",
   "formcontrols", "display", "disclosure", "data", "datatable", "virtuallist", "overlays2", "pageload",
 ];
@@ -242,7 +230,7 @@ function AnimatedStatDemo() {
 
 function HighlightDemo() {
   const [tick, setTick] = useState(0);
-  const [stage, setStage] = useState<StageKey>("code");
+  const [stage, setStage] = useState("implement");
   const [status, setStatus] = useState<StatusKey>("running");
   return (
     <div className="flex max-w-xl flex-col gap-3">
@@ -259,7 +247,7 @@ function HighlightDemo() {
         icon="activity"
         onClick={() => {
           setStatus("passed");
-          setStage("test");
+          setStage("review");
           setTick((t) => t + 1);
         }}
       >
@@ -276,8 +264,8 @@ function ToastButtons() {
       <Button size="sm" variant="primary" icon="plus" onClick={() => toast({ title: "Issue created", description: "FRG-242 · routed to triage", tone: "success" })}>
         Create issue
       </Button>
-      <Button size="sm" variant="secondary" icon="trash" onClick={() => toast({ title: "Swept 1 zombie", description: "S-1037 cancelled", tone: "info" })}>
-        Sweep zombies
+      <Button size="sm" variant="secondary" icon="trash" onClick={() => toast({ title: "Ended 1 silent session.", tone: "info" })}>
+        End silent sessions
       </Button>
       <Button size="sm" variant="danger" icon="alert" onClick={() => toast({ title: "Runner lost connection", description: "ci-runner-01 — retrying", tone: "error" })}>
         Trigger error
@@ -535,22 +523,13 @@ export default function KitPage() {
             </div>
           </header>
 
-          <Section id="tokens" title="Color tokens" hint="Semantic layer (components reference these) + the 7 pipeline-stage hues.">
+          <Section id="tokens" title="Color tokens" hint="Semantic layer (components reference these).">
             <Row>
-              {SEMANTIC_TOKENS.map(([token, label]) => (
-                <div key={token} className="flex flex-col items-center gap-1.5">
-                  <span className="size-14 rounded-md border border-line" style={{ background: `var(${token})` }} />
+              {SEMANTIC_TOKENS.map(([ink, label]) => (
+                <div key={ink} className="flex flex-col items-center gap-1.5">
+                  <span className="size-14 rounded-md border border-line" style={{ background: ink }} />
                   <span className="fg-caption">{label}</span>
-                  <span className="font-mono text-10 text-subtle">{token}</span>
-                </div>
-              ))}
-            </Row>
-            <div className="my-5 h-px bg-[var(--border-subtle)]" />
-            <Row>
-              {STAGES.map((s) => (
-                <div key={s.key} className="flex flex-col items-center gap-1.5">
-                  <span className="size-9 rounded-pill" style={{ background: s.color }} />
-                  <span className="font-mono text-11 text-muted">{s.label}</span>
+                  <span className="font-mono text-10 text-subtle">{ink.slice(4, -1)}</span>
                 </div>
               ))}
             </Row>
@@ -589,16 +568,16 @@ export default function KitPage() {
             </div>
           </Section>
 
-          <Section id="status" title="Status & health" hint="Two domains: issue lifecycle (pill, dot) vs agent/session execution (squared, agent glyph). Running pulses and shows the active stage.">
+          <Section id="status" title="Status & health" hint="Two domains: issue lifecycle (pill, dot) vs agent/session execution (squared, agent glyph). Running pulses and shows the step it is on.">
             <div className="flex flex-col gap-4">
               <Row>
                 {STATUSES.map((s) => (
-                  <StatusChip key={s} status={s} stage={s === "running" ? "code" : undefined} />
+                  <StatusChip key={s} status={s} stage={s === "running" ? "implement" : undefined} />
                 ))}
               </Row>
               <Row>
                 {STATUSES.map((s) => (
-                  <StatusChip key={s} status={s} stage={s === "running" ? "code" : undefined} domain="session" />
+                  <StatusChip key={s} status={s} stage={s === "running" ? "implement" : undefined} domain="session" />
                 ))}
               </Row>
               <Row>
@@ -692,37 +671,6 @@ export default function KitPage() {
             </div>
           </Section>
 
-          <Section id="kanban" title="Kanban card">
-            <div className="grid max-w-3xl gap-3 sm:grid-cols-3">
-              <KanbanCard id="FRG-241" title="Sweep orphaned runner jobs on reconnect" status="running" cost="$0.42" assignee={{ initials: "SK", hue: "cobalt" }} />
-              <KanbanCard id="FRG-229" title="Retry policy for failed test stage handoff" status="blocked" cost="$0.39" assignee={{ initials: "MJ", hue: "green" }} />
-              <KanbanCard id="FRG-230" title="Per-step cost analytics on the run timeline" status="done" cost="$2.14" assignee={{ initials: "AR", hue: "flame" }} />
-            </div>
-          </Section>
-
-          <Section id="kanban-board" title="Kanban board" hint="One column per state, in no order. Horizontal snap-scroll when narrow.">
-            <div className="flex h-[320px]">
-              <KanbanBoard>
-                {KANBAN_COLUMNS.map((c) => (
-                  <KanbanColumn
-                    key={c.title}
-                    title={c.title}
-                    color={c.color}
-                    count={c.title === WORK_STATE_LABELS.in_flight ? 2 : 0}
-                    emptyHint={`No issues are ${c.title.toLowerCase()}.`}
-                  >
-                    {c.title === WORK_STATE_LABELS.in_flight && (
-                      <>
-                        <KanbanCard id="FRG-241" title="Sweep orphaned runner jobs on reconnect" status="running" cost="$0.42" assignee={{ initials: "SK", hue: "cobalt" }} />
-                        <KanbanCard id="FRG-229" title="Retry policy for failed test stage handoff" status="blocked" cost="$0.39" assignee={{ initials: "MJ", hue: "green" }} />
-                      </>
-                    )}
-                  </KanbanColumn>
-                ))}
-              </KanbanBoard>
-            </div>
-          </Section>
-
           <Section id="navrail" title="Nav rail" hint="Concept C, two modes. Default: the compact 88px icon Rail — the workspace tier, a hover project switcher, then the flat project tier (both tiers come from the shared nav model the shell renders). Active row = flame tint + a 3px accent bar; badged rows carry count pills. Brand expands it to the labeled 232px rail.">
             <div className="flex gap-6">
               {/* Default: compact 88px rail. Hover the project mark for the switcher. */}
@@ -732,7 +680,7 @@ export default function KitPage() {
                   projectItems={PROJECT_NAV}
                   activeKey={navActive}
                   activeSlug="forge-core"
-                  activeProject={{ name: "forge-core", initials: "FRG", tint: "var(--flame-50)", ink: "var(--flame-700)", liveRuns: 3, liveRunsRead: "read" }}
+                  activeProject={{ name: "forge-core", initials: "FRG", tint: "var(--flame-50)", ink: "var(--flame-700)", liveSessions: 3, liveSessionsRead: "read" }}
                   switcherProjects={RAIL_SWITCHER}
                   onNavigate={setNavActive}
                   onSelectProject={() => {}}
@@ -841,11 +789,6 @@ export default function KitPage() {
                 <BoardRowSkeleton />
                 <BoardRowSkeleton />
                 <BoardRowSkeleton />
-              </div>
-              <div className="grid max-w-3xl grid-cols-3 gap-4">
-                <KanbanColumnSkeleton cards={2} />
-                <KanbanColumnSkeleton cards={1} />
-                <KanbanCardSkeleton />
               </div>
               <div className="rounded-md border border-line bg-surface">
                 <SessionRowSkeleton />
@@ -982,7 +925,7 @@ export default function KitPage() {
               </THead>
               <TBody>
                 {[
-                  { sid: "S-1043", iss: "FRG-241", st: "running" as StatusKey, stage: "code", cost: "$0.42" },
+                  { sid: "S-1043", iss: "FRG-241", st: "running" as StatusKey, stage: "implement", cost: "$0.42" },
                   { sid: "S-1042", iss: "FRG-238", st: "review" as StatusKey, stage: undefined, cost: "$1.08" },
                   { sid: "S-1039", iss: "FRG-224", st: "failed" as StatusKey, stage: undefined, cost: "$0.91" },
                 ].map((r) => (

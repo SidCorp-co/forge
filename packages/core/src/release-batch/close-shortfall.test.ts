@@ -4,6 +4,7 @@
  * chain is held against Postgres in `tests/integration/release-roster-unclosable-e2e.test.ts`.
  */
 
+import { markMergedSteps } from '@forge/contracts/mark-merged-words';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../db/client.js', () => ({ db: {} }));
@@ -29,7 +30,14 @@ vi.mock('../issues/transition-evidence.js', () => ({
   checkTransitionEvidence: (...a: unknown[]) => evidence(...a),
 }));
 
-const { rosterCloseShortfalls, shortfallLine } = await import('./close-shortfall.js');
+const hasSession = vi.fn(async (..._a: unknown[]) => true);
+vi.mock('../pipeline/runs-of-issue.js', () => ({
+  issueHasSession: (...a: unknown[]) => hasSession(...a),
+}));
+
+const { ENTRY_RECORDS_CLEAR, rosterCloseShortfalls, shortfallLine, shortfallSaid } = await import(
+  './close-shortfall.js'
+);
 
 const PROJECT = 'p-1';
 
@@ -39,6 +47,7 @@ beforeEach(() => {
   asked.mockResolvedValue([]);
   declared.mockResolvedValue([]);
   evidence.mockResolvedValue(null);
+  hasSession.mockResolvedValue(true);
 });
 
 describe('rosterCloseShortfalls', () => {
@@ -60,7 +69,8 @@ describe('rosterCloseShortfalls', () => {
       detail: 'no landing',
       details: { shape: 'outside_git' },
     });
-    expect(found?.clears).toContain('landing');
+    // Repair 1 — the field is named as the page labels it, read from the page's own words.
+    expect(found?.clears).toBe(markMergedSteps(true));
     expect(unshipped).toHaveBeenCalledWith({}, { issueId: 'a', toStatus: 'closed' });
   });
 
@@ -68,6 +78,7 @@ describe('rosterCloseShortfalls', () => {
     unshipped.mockResolvedValue({ detail: 'no merged_at', details: { requires: 'mergedAt' } });
     const [found] = (await rosterCloseShortfalls(PROJECT, ['a'])).get('a') ?? [];
     expect(found).toMatchObject({ reason: 'not marked merged', details: { shape: 'git' } });
+    expect(found?.clears).toBe(markMergedSteps(false));
   });
 
   it('names open questions with the sentence the close prints', async () => {
@@ -79,6 +90,9 @@ describe('rosterCloseShortfalls', () => {
     expect(found?.clears).toBe(
       'Answer them in their "Decision waiting" cards on the issue\'s page.',
     );
+    // On the issue's own page the cards sit right above the banner (ISS-1421 r5 repair 1).
+    expect(found?.clearsHere).toBe('Answer them in the Decision waiting cards above.');
+    expect(found?.clearsHere).not.toMatch(/issue's page/);
     expect(found?.detail).toContain('this issue holds 2 open questions (q-1, q-2)');
     expect(found?.details).toEqual({ to: 'closed', openQuestionIds: ['q-1', 'q-2'] });
   });
@@ -93,7 +107,9 @@ describe('rosterCloseShortfalls', () => {
     const [found] = (await rosterCloseShortfalls(PROJECT, ['a'])).get('a') ?? [];
     expect(found).toMatchObject({
       code: 'ENTRY_CRITERIA_UNMET',
-      reason: 'missing what this project requires to close: plan, release_note',
+      reason: 'missing a plan and a release note, which this project requires before a close',
+      clearsHere:
+        "An agent writes them through Forge's issue tools. To start one, press Open session at the top of this page.",
     });
     expect(evidence).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -103,6 +119,21 @@ describe('rosterCloseShortfalls', () => {
         declaredCriteria: ['plan', 'release_note'],
       }),
     );
+  });
+
+  // ISS-1421 r6: since ISS-1228 the header shows Open session only where the issue has a session.
+  it('names Reopen, not Open session, for an issue with no session to open', async () => {
+    hasSession.mockResolvedValue(false);
+    evidence.mockResolvedValue({
+      code: 'ENTRY_CRITERIA_UNMET',
+      detail: 'needs a release note',
+      details: { unmet: ['release_note'] },
+    });
+    const [found] = (await rosterCloseShortfalls(PROJECT, ['a'])).get('a') ?? [];
+    expect(hasSession).toHaveBeenCalledWith(PROJECT, 'a');
+    expect(found?.clears).toContain("use Reopen in the issue's actions menu");
+    expect(found?.clearsHere).toContain('use Reopen in the actions menu at the top of this page');
+    expect(`${found?.clears} ${found?.clearsHere}`).not.toMatch(/Open session/);
   });
 
   it('reads the declaration once for the whole roster and keeps every shortfall a row has', async () => {
@@ -130,12 +161,40 @@ describe('rosterCloseShortfalls', () => {
 });
 
 describe('shortfallLine', () => {
-  it('names the issue, each reason and what clears it', () => {
+  it('names the issue, then each reason and what clears it as whole sentences', () => {
     expect(
       shortfallLine('ISS-4', [
         { reason: 'holds 1 open question', clears: 'Answer it.' },
         { reason: 'not marked merged', clears: 'Mark it merged.' },
       ]),
-    ).toBe('ISS-4: holds 1 open question. Answer it. not marked merged. Mark it merged.');
+    ).toBe('ISS-4: It holds 1 open question. Answer it. It is not marked merged. Mark it merged.');
+  });
+});
+
+// ISS-1421 r5: the banner and the gate panel joined `${reason}. ${clears}`, so a second shortfall
+// opened lower case after the first one's full stop ("… Where it landed. holds 1 open question.").
+describe('shortfallSaid', () => {
+  it.each([
+    ['not marked merged', 'It is not marked merged.'],
+    ['no mark naming where its work landed', 'It has no mark naming where its work landed.'],
+    ['holds 2 open questions', 'It holds 2 open questions.'],
+    [
+      'missing a plan, which this project requires before a close',
+      'It is missing a plan, which this project requires before a close.',
+    ],
+  ])('says "%s" as a sentence of its own, ahead of what clears it', (reason, sentence) => {
+    const said = shortfallSaid({ reason, clears: 'Do this.' });
+    expect(said).toBe(`${sentence} Do this.`);
+    for (const s of said.split(/(?<=\.)\s+/)) {
+      expect(s).toMatch(/^[A-Z]/);
+      expect(s).toMatch(/\.$/);
+    }
+  });
+
+  it('names who writes a missing record, and the door that starts one where none is working', () => {
+    expect(ENTRY_RECORDS_CLEAR).toBe(
+      "An agent writes them through Forge's issue tools. To start one, press Open session at the top of the issue's page.",
+    );
+    expect(ENTRY_RECORDS_CLEAR).not.toMatch(/agent working this issue/);
   });
 });

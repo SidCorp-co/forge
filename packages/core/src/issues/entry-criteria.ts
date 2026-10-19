@@ -55,7 +55,7 @@ const criteriaWith = (
     const lane = laneOf({ declared: record.declaredLandingShape, kind: record.projectKind });
     const short = landingShortfall(record, lane);
     if (!short) return null;
-    return `${short}. ${landingRoute(lane, mergeMarkKindOf(record), 'enter this status')}`;
+    return `${short} ${landingRoute(lane, mergeMarkKindOf(record), 'enter this status')}`;
   },
 });
 

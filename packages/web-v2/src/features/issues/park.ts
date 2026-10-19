@@ -46,7 +46,7 @@ export const PARK_ERROR_LABEL = "Couldn't read what this issue is waiting on, so
 
 export interface ParkMenuActions {
 	answer: () => void;
-	/** A move that asks nothing: the recorded rung, `on_hold`, `dropped`. */
+	/** A move taken as it stands: the recorded rung, `on_hold` (which asks its reason in the dialog), `dropped`. */
 	move: (to: IssueStatus) => void;
 	notNeeded: (resumeAt: IssueStatus) => void;
 	/** Every target the map holds, behind one reason. */

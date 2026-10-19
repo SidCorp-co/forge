@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Toast, type ToastView } from "@/design/primitives/toast";
 import { cn } from "@/lib/utils/cn";
 
@@ -21,6 +22,9 @@ export interface ToastInput extends ToastView {
 
 interface ToastApi {
   toast: (t: ToastInput) => void;
+  /** Removes the visible toasts holding `slot`, and no other: a notice about a screen that has just
+   *  given way to the next one, which would otherwise sit over it for the rest of its time. */
+  dismiss: (slot: string) => void;
 }
 
 interface ToastLaneApi {
@@ -59,13 +63,14 @@ function ToastStack({ items, remove }: Pick<ToastLaneApi, "items" | "remove">) {
 }
 
 /**
- * Where a frame's toasts go. On a wide screen it is an in-flow sibling after the frame's scrolling
- * `<main>`, so it takes its height out of `<main>`'s box instead of painting over it and no content
- * sits under a toast. On a phone there is no room to give: the same height would lift every
- * bottom-anchored thing on the page (a save bar) for as long as a toast shows, so there the lane
- * overlays the top edge, clear of the tab bar and the save bar, and lets touches through everywhere
- * but the toasts. Its height is capped so the reading area always keeps most of the column; anything
- * past the cap scrolls inside the lane. `className` carries the frame's own clearance.
+ * Where a frame's toasts go: an overlay at every width, over the top edge and clear of the bottom
+ * one, where a page's save bar and a phone's tab bar sit. A lane in the page flow took its height
+ * out of the column and lifted every bottom-anchored thing for as long as a toast showed (ISS-1171),
+ * so it lets touches through everywhere but the toasts instead. On a wide screen it keeps to the
+ * right, below the top bar. Its height is capped so the reading area keeps most of the column;
+ * anything past the cap scrolls inside the lane. `className` carries the frame's own clearance.
+ * It renders through a portal on `<body>`, as every layer in popover.tsx's stacking note does, so
+ * its tier is compared with an open dialog's and not trapped under it by the frame (ISS-1289).
  */
 export function ToastLane({ className }: { className?: string }) {
   const lane = useContext(ToastLaneContext);
@@ -74,19 +79,20 @@ export function ToastLane({ className }: { className?: string }) {
 
   useEffect(() => registerLane(), [registerLane]);
 
-  if (items.length === 0) return null;
-  return (
+  if (items.length === 0 || typeof document === "undefined") return null;
+  return createPortal(
     <section
       aria-label="Notifications"
       data-testid="toast-lane"
       className={cn(
-        "flex max-h-[35dvh] flex-none flex-col items-end gap-2.5 overflow-y-auto px-5 py-3 md:border-t md:border-line-subtle",
-        "max-md:pointer-events-none max-md:fixed max-md:inset-x-0 max-md:top-[env(safe-area-inset-top)] max-md:z-[60]",
+        "flex max-h-[35dvh] flex-col items-end gap-2.5 overflow-y-auto px-5 py-3",
+        "pointer-events-none fixed inset-x-0 top-[env(safe-area-inset-top)] z-[60] md:left-auto md:top-14",
         className,
       )}
     >
       <ToastStack items={items} remove={remove} />
-    </section>
+    </section>,
+    document.body,
   );
 }
 
@@ -111,13 +117,17 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     [remove],
   );
 
+  const dismiss = useCallback<ToastApi["dismiss"]>((slot) => {
+    setItems((xs) => xs.filter((x) => x.slot !== slot));
+  }, []);
+
   const registerLane = useCallback(() => {
     setLanes((n) => n + 1);
     return () => setLanes((n) => n - 1);
   }, []);
 
   return (
-    <ToastContext.Provider value={{ toast }}>
+    <ToastContext.Provider value={{ toast, dismiss }}>
       <ToastLaneContext.Provider value={{ items, remove, registerLane }}>
         {children}
         {lanes === 0 && items.length > 0 ? (

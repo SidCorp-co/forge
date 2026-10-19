@@ -103,7 +103,7 @@ export function AgentSelfEditor({
   if (selfQ.isError) {
     return (
       <div className="flex items-center gap-3" data-testid={`agent-self-error-${agentUserId}`}>
-        <p className="fg-body-sm text-danger">{formatApiError(selfQ.error)}</p>
+        <p className="fg-body-sm fg-danger">{formatApiError(selfQ.error)}</p>
         <Button variant="secondary" onClick={() => void selfQ.refetch()}>
           Try again
         </Button>

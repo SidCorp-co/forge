@@ -42,6 +42,10 @@ vi.mock('../issues/apply-transition.js', () => ({
 }));
 
 const publishSpy = vi.fn();
+vi.mock('../comments/forge-author.js', () => ({
+  forgeActor: async () => ({ type: 'user', id: 'forge', agency: 'agent' }),
+}));
+
 vi.mock('../ws/server.js', () => ({
   roomManager: { publish: publishSpy },
 }));
@@ -239,7 +243,6 @@ describe('cancelPipelineRun', () => {
         projectId: PROJECT_ID,
         status: 'in_progress',
         reopenCount: 0,
-        createdBy: 'owner-1',
       },
     ]);
 
@@ -255,7 +258,7 @@ describe('cancelPipelineRun', () => {
     ];
     expect(issueArg).toMatchObject({ id: ISSUE_ID, status: 'in_progress' });
     expect(toStatus).toBe('on_hold');
-    expect(actorArg).toMatchObject({ type: 'device', id: 'owner-1', ownerId: 'owner-1' });
+    expect(actorArg).toEqual({ type: 'user', id: 'forge', agency: 'agent' });
     expect(opts).toMatchObject({ skip: true });
   });
 
@@ -268,7 +271,6 @@ describe('cancelPipelineRun', () => {
         projectId: PROJECT_ID,
         status: 'in_progress',
         reopenCount: 0,
-        createdBy: 'owner-1',
       },
     ]);
 
@@ -301,7 +303,6 @@ describe('cancelPipelineRun', () => {
         projectId: PROJECT_ID,
         status: 'closed',
         reopenCount: 0,
-        createdBy: 'owner-1',
       },
     ]);
 

@@ -2,6 +2,7 @@
 
 // The Issues list's row: five columns on one grid, and the actions that hang off it (ISS-1155).
 
+import { jobKindLabel } from "@/features/overview/job-kinds";
 import {
   Avatar,
   Checkbox,
@@ -22,6 +23,7 @@ import {
   groupedTransitions,
   initials,
   priorityLabel,
+  RELEASING_HAS_NO_MOVE,
   transitionLabels,
 } from "../derive";
 import { useStatusExits } from "../hooks";
@@ -71,7 +73,7 @@ export function StatusCell({ row, now = Date.now() }: { row: IssueRow; now?: num
             <span key={run.word}>
               {i > 0 && " · "}
               <span>{run.word}</span>
-              {run.step && <span className="font-mono"> {run.step}</span>}
+              {run.step && <span> {jobKindLabel(run.step)}</span>}
             </span>
           ))}
         </span>
@@ -137,7 +139,9 @@ function useRowMenuItems(
   }
 
   const grouped = groupedTransitions(exits, row.status);
-  if (isPending) {
+  if (row.status === "releasing") {
+    items.push({ label: RELEASING_HAS_NO_MOVE, disabled: true, separatorBefore: true });
+  } else if (isPending) {
     items.push({ label: "Loading status moves…", disabled: true, separatorBefore: true });
   } else if (isError) {
     items.push({ label: "Couldn't load status moves", disabled: true, separatorBefore: true });

@@ -8,7 +8,7 @@ export type FlowStep = {
   readonly from: Actor;
   /** `METHOD /path` exactly as the route is mounted, so the check can find it in the document. */
   readonly call: string;
-  /** What the call achieves and what the caller reads from the answer. */
+  /** What the call achieves and what the caller reads from the answer, written as a sentence. */
   readonly note: string;
 };
 
@@ -34,27 +34,27 @@ export const FLOWS: readonly Flow[] = [
       {
         from: 'Runner',
         call: 'POST /api/devices/login/init',
-        note: 'a pairing code and the page the person opens, valid for ten minutes',
+        note: 'A pairing code and the page the person opens, valid for ten minutes.',
       },
       {
         from: 'Person',
         call: 'POST /api/devices/login/approve',
-        note: 'the code is bound to the person, or to an agent they administer',
+        note: 'The code is bound to the person, or to an agent they administer.',
       },
       {
         from: 'Runner',
         call: 'GET /api/devices/login/poll',
-        note: '204 while pending, then the device credential once, and 410 after that',
+        note: 'Answers 204 while pending, then the device credential once, and 410 after that.',
       },
       {
         from: 'Runner',
         call: 'POST /api/devices/heartbeat',
-        note: 'the box reports itself with its new credential and is online',
+        note: 'The box reports itself with its new credential and is online.',
       },
       {
         from: 'Runner',
         call: 'GET /api/devices/me/runners',
-        note: 'the projects this box is bound to, and where each is checked out',
+        note: 'The projects this box is bound to, and where each is checked out.',
       },
     ],
   },
@@ -67,37 +67,37 @@ export const FLOWS: readonly Flow[] = [
       {
         from: 'Master',
         call: 'GET /api/devices/me/pool',
-        note: 'the queued jobs this box may take, with what is held',
+        note: 'The queued jobs this box may take, with what is held.',
       },
       {
         from: 'Master',
         call: 'POST /api/devices/me/pool/prepare',
-        note: 'the job is held for this session, with its token and prompt, and stays queued',
+        note: 'The job is held for this session, with its token and prompt, and stays queued.',
       },
       {
         from: 'Master',
         call: 'POST /api/devices/me/pool/start',
-        note: 'the stamp that ends the hold and makes the job run',
+        note: 'The stamp that ends the hold and makes the job run.',
       },
       {
         from: 'Runner',
         call: 'POST /api/jobs/:id/ack',
-        note: 'the dispatch reached the box; a repeat reports acked false',
+        note: 'The dispatch reached the box; a repeat reports acked false.',
       },
       {
         from: 'Runner',
         call: 'POST /api/jobs/:id/events',
-        note: "a batch of the agent's events, in order",
+        note: "A batch of the agent's events, in order.",
       },
       {
         from: 'Runner',
         call: 'POST /api/jobs/:id/complete',
-        note: 'terminal: the exit code and a summary; /fail and /blocked end it the other ways',
+        note: 'The job ends with its exit code and a summary; /fail and /blocked end it the other ways.',
       },
       {
         from: 'Master',
         call: 'POST /api/devices/me/pool/release',
-        note: 'gives back anything the session still holds',
+        note: 'Gives back anything the session still holds.',
       },
     ],
   },
@@ -110,27 +110,27 @@ export const FLOWS: readonly Flow[] = [
       {
         from: 'Agent',
         call: 'POST /api/projects/:id/issues',
-        note: 'the issue, with its key and its first status',
+        note: 'The issue, with its key and its first status.',
       },
       {
         from: 'Agent',
         call: 'GET /api/issues/:id',
-        note: 'the issue as it stands, to read its status before moving it',
+        note: 'The issue as it stands, to read its status before moving it.',
       },
       {
         from: 'Agent',
         call: 'POST /api/issues/:id/transition',
-        note: 'the new status, or a 409 or 422 naming what the move is owed',
+        note: 'The new status, or a 409 or 422 naming what the move is owed.',
       },
       {
         from: 'Agent',
         call: 'POST /api/issues/:id/comments',
-        note: 'the record the next status is earned on',
+        note: 'The record the next status is earned on.',
       },
       {
         from: 'Agent',
         call: 'GET /api/issues/:id/activity',
-        note: 'what moved the issue, in order',
+        note: 'What moved the issue, in order.',
       },
     ],
   },
@@ -143,32 +143,32 @@ export const FLOWS: readonly Flow[] = [
       {
         from: 'Person',
         call: 'GET /api/pat',
-        note: 'the tokens already held, and the menu of permissions a new one may be granted',
+        note: 'The tokens already held, and the menu of permissions a new one may be granted.',
       },
       {
         from: 'Person',
         call: 'POST /api/pat',
-        note: 'the token, returned once, granted exactly the permissions named',
+        note: 'The token, returned once, granted exactly the permissions named.',
       },
       {
         from: 'Agent',
         call: 'GET /api/issues/:id',
-        note: 'sent as a bearer: allowed with issues:read, and a 403 naming the permission it lacks otherwise',
+        note: 'Sent as a bearer: allowed with issues:read, and a 403 naming the permission it lacks otherwise.',
       },
       {
         from: 'Person',
         call: 'GET /api/pat/:id/audit',
-        note: 'what the token did',
+        note: 'What the token did.',
       },
       {
         from: 'Person',
         call: 'POST /api/pat/:id/rotate',
-        note: 'a new secret for the same grant, the old one revoked',
+        note: 'A new secret for the same grant, the old one revoked.',
       },
       {
         from: 'Person',
         call: 'DELETE /api/pat/:id',
-        note: 'the token is revoked',
+        note: 'The token is revoked.',
       },
     ],
   },
@@ -204,17 +204,43 @@ export function checkFlows(document: OpenApiDocument, flows: readonly Flow[] = F
   return missing;
 }
 
-/** A flow as a Mermaid sequence diagram: one arrow to core per step, one answer back. */
+/** The longest a line of a drawn label may be: a sequence draws each gap as wide as its widest label. */
+const LABEL_WIDTH = 34;
+
+/** A label broken at word boundaries into lines no longer than `LABEL_WIDTH`, which mermaid breaks with `<br/>`. */
+export function labelLines(text: string): string {
+  const lines: string[] = [];
+  for (const word of text.split(/\s+/).filter(Boolean)) {
+    const last = lines[lines.length - 1];
+    if (last !== undefined && last.length + 1 + word.length <= LABEL_WIDTH)
+      lines[lines.length - 1] = `${last} ${word}`;
+    else lines.push(word);
+  }
+  return lines.join('<br/>');
+}
+
+/**
+ * A flow as a Mermaid sequence diagram: one arrow to core per step, one answer back. Core sits
+ * between the two actors it talks to, so every arrow joins neighbouring lifelines and no label is
+ * drawn across a third one. A flow of more than two actors has no such order, and is refused.
+ */
 export function toMermaid(flow: Flow): string {
   const actors = [...new Set(flow.steps.map((s) => s.from))];
+  if (actors.length > 2) {
+    throw new Error(
+      `flow ${flow.id} names ${actors.length} actors (${actors.join(', ')}): a sequence with core between them crosses a lifeline with some label, so a flow names at most two`,
+    );
+  }
+  const [left, right] = actors;
   const lines = [
     'sequenceDiagram',
-    ...actors.map((a) => `  participant ${a}`),
+    `  participant ${left}`,
     '  participant Core',
+    ...(right ? [`  participant ${right}`] : []),
   ];
   flow.steps.forEach((step, index) => {
     lines.push(`  ${step.from}->>Core: ${index + 1}. ${step.call}`);
-    lines.push(`  Core-->>${step.from}: ${step.note.replace(/[;\n]/g, ',')}`);
+    lines.push(`  Core-->>${step.from}: ${labelLines(step.note.replace(/[;\n]/g, ','))}`);
   });
   return lines.join('\n');
 }

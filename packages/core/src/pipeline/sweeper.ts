@@ -3,6 +3,7 @@ import { type AlertSweepResult, runAlertSweep } from '../admin/alert-sweeper.js'
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
 import { broadcastSessionEvent } from '../jobs/agent-session-link.js';
+import { boxAnswersSql } from '../jobs/box-answers.js';
 import { killGraceMs } from '../jobs/kill-gate.js';
 import {
   getLoopThresholds,
@@ -10,9 +11,15 @@ import {
   type LoopScope,
   runLoopMonitor,
 } from '../jobs/loop-monitor.js';
+import { CHAT_IDLE_CLOSE_MS, oneShotDeviceGraceMs } from '../jobs/loop-monitor-thresholds.js';
 import { parkedOnAHuman } from '../jobs/park-deadline.js';
 import { recordPipelineSweeperTick } from '../jobs/pgboss-health.js';
-import { CLIENT_SESSION_KINDS, kindTuple, PIPELINE_SESSION_KINDS } from '../jobs/session-kinds.js';
+import {
+  CLIENT_SESSION_KINDS,
+  endsOnItsOwnClockSql,
+  kindTuple,
+  PIPELINE_SESSION_KINDS,
+} from '../jobs/session-kinds.js';
 import { LIVE_SESSION_STATUSES } from '../lifecycle/status-sets.js';
 import { applyKernelTransition, SWEEP_SESSION_COLUMNS } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
@@ -449,7 +456,7 @@ export async function reapOrphanedOneShotRuns(
 ): Promise<OneShotRunReapResult> {
   const { heartbeatMs } = getZombieThresholds();
   const cutoffIso = new Date(now.getTime() - heartbeatMs).toISOString();
-  const deviceGraceMs = Math.max(heartbeatMs, 20 * 60_000);
+  const deviceGraceMs = oneShotDeviceGraceMs(heartbeatMs);
   const graceCutoffIso = new Date(now.getTime() - deviceGraceMs).toISOString();
   const projectClause = scope.projectId ? sql`AND r.project_id = ${scope.projectId}` : sql``;
 
@@ -477,6 +484,7 @@ export async function reapOrphanedOneShotRuns(
               )
             )
             OR ${parkedOnAHuman(sql`s.id`)}
+            OR ${endsOnItsOwnClockSql('s')}
           )
       )
       ${projectClause}
@@ -489,25 +497,33 @@ export async function reapOrphanedOneShotRuns(
     try {
       // A session already completed or failed is left as-is — the run still
       // needs closing (the missed-`/desktop/status` case).
-      const flipped = await applyKernelTransition(db, {
-        entity: 'session',
-        returning: SWEEP_SESSION_COLUMNS,
-        to: 'failed',
-        set: { failureReason: 'heartbeat_timeout', updatedAt: now },
-        where: and(
-          eq(agentSessions.pipelineRunId, row.id),
-          inArray(agentSessions.status, LIVE_SESSION_STATUSES),
-        ),
-        fromStatus: 'active',
-        reason: 'heartbeat_timeout',
-        actor: { type: 'sweeper' },
-        source: 'sweeper',
-      });
-      for (const s of flipped) {
-        broadcastSessionEvent(s.id, s.projectId, s.deviceId, 'agent-session.status', {
-          status: 'failed',
-          failureReason: 'heartbeat_timeout',
+      // A session whose box still answers stopped checking in itself; the box was reachable, so
+      // its reason says that rather than that the heartbeat (read: the runner) died (ISS-1228).
+      for (const [failureReason, boxed] of [
+        ['session_stopped_checking_in', boxAnswersSql(sql`${agentSessions.deviceId}`)],
+        ['heartbeat_timeout', sql`NOT ${boxAnswersSql(sql`${agentSessions.deviceId}`)}`],
+      ] as const) {
+        const flipped = await applyKernelTransition(db, {
+          entity: 'session',
+          returning: SWEEP_SESSION_COLUMNS,
+          to: 'failed',
+          set: { failureReason, updatedAt: now },
+          where: and(
+            eq(agentSessions.pipelineRunId, row.id),
+            inArray(agentSessions.status, LIVE_SESSION_STATUSES),
+            boxed,
+          ),
+          fromStatus: 'active',
+          reason: 'heartbeat_timeout',
+          actor: { type: 'sweeper' },
+          source: 'sweeper',
         });
+        for (const s of flipped) {
+          broadcastSessionEvent(s.id, s.projectId, s.deviceId, 'agent-session.status', {
+            status: 'failed',
+            failureReason,
+          });
+        }
       }
 
       const sessions = await db
@@ -553,7 +569,7 @@ export async function reapOrphanedOneShotRuns(
  * that never closed is covered too — `reapOrphanedOneShotRuns` only looks at
  * runs still `running`/`paused`, and the terminal-run trigger only labels.
  */
-export const CHAT_IDLE_CLOSE_MS = 2 * 60 * 60_000;
+export { CHAT_IDLE_CLOSE_MS };
 
 export async function closeIdleChatSessions(
   now: Date = new Date(),
@@ -650,10 +666,8 @@ let registered = false;
 
 export async function registerPipelineSweeper(): Promise<void> {
   if (registered) return;
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss v10 type drift
-  await (boss as any).createQueue(PIPELINE_SWEEPER_QUEUE);
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss v10 type drift
-  await (boss as any).work(PIPELINE_SWEEPER_QUEUE, async () => {
+  await boss.createQueue(PIPELINE_SWEEPER_QUEUE);
+  await boss.work(PIPELINE_SWEEPER_QUEUE, async () => {
     try {
       await runPipelineSweep();
     } catch (err) {
@@ -661,8 +675,7 @@ export async function registerPipelineSweeper(): Promise<void> {
       throw err;
     }
   });
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss v10 type drift
-  await (boss as any).schedule(PIPELINE_SWEEPER_QUEUE, '* * * * *');
+  await boss.schedule(PIPELINE_SWEEPER_QUEUE, '* * * * *');
   registered = true;
 }
 

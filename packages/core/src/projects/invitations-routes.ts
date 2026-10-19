@@ -1,17 +1,12 @@
-import { and, eq, gt, isNull, sql } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { answer } from '../api-reference/declare/describe.js';
 import { declaresInput } from '../api-reference/declare/validator.js';
 import { db } from '../db/client.js';
-import {
-  organizations,
-  orgInvitations,
-  projectInvitations,
-  projects,
-  users,
-} from '../db/schema.js';
+import { projectInvitations, projects, users } from '../db/schema.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
+import { refuseNonPersonAsMember } from '../orgs/service.js';
 import { consumeInvitationToken } from './invitation-token.js';
 import {
   acceptInvitation,
@@ -24,6 +19,7 @@ import {
   pendingInvitationsSchema,
   previewInvitation,
 } from './invitations-routes-reference.js';
+import { readPendingInvitations } from './pending-invitations.js';
 
 const badRequest = (code: string, message: string) =>
   new HTTPException(400, { message, cause: { code } });
@@ -40,66 +36,16 @@ export const invitationRoutes = new Hono<{ Variables: AuthVars }>();
 // Unified list of pending project + org invitations for the authed user.
 // MUST be registered BEFORE /:token or Hono will match token='pending'.
 invitationRoutes.get('/pending', listPendingInvitations, requireAuth(), async (c) => {
-  const userId = c.get('userId');
-  const [user] = await db
-    .select({ email: users.email })
-    .from(users)
-    .where(eq(users.id, userId))
-    .limit(1);
-  if (!user) {
+  const pending = await readPendingInvitations(c.get('userId'));
+  if (!pending) {
     throw new HTTPException(401, { message: 'user not found', cause: { code: 'UNAUTHENTICATED' } });
   }
-
-  const now = new Date();
-
-  const projectRows = await db
-    .select({
-      token: projectInvitations.token,
-      name: projects.name,
-      inviterEmail: users.email,
-      role: projectInvitations.role,
-      expiresAt: projectInvitations.expiresAt,
-      createdAt: projectInvitations.createdAt,
-    })
-    .from(projectInvitations)
-    .innerJoin(projects, eq(projects.id, projectInvitations.projectId))
-    .innerJoin(users, eq(users.id, projectInvitations.inviterId))
-    .where(
-      and(
-        sql`lower(${projectInvitations.email}) = lower(${user.email})`,
-        isNull(projectInvitations.acceptedAt),
-        isNull(projectInvitations.dismissedAt),
-        gt(projectInvitations.expiresAt, now),
-      ),
-    );
-
-  const orgRows = await db
-    .select({
-      token: orgInvitations.token,
-      name: organizations.name,
-      inviterEmail: users.email,
-      role: orgInvitations.role,
-      expiresAt: orgInvitations.expiresAt,
-      createdAt: orgInvitations.createdAt,
-    })
-    .from(orgInvitations)
-    .innerJoin(organizations, eq(organizations.id, orgInvitations.orgId))
-    .innerJoin(users, eq(users.id, orgInvitations.inviterId))
-    .where(
-      and(
-        sql`lower(${orgInvitations.email}) = lower(${user.email})`,
-        isNull(orgInvitations.acceptedAt),
-        isNull(orgInvitations.dismissedAt),
-        gt(orgInvitations.expiresAt, now),
-      ),
-    );
-
-  const pending = [
-    ...projectRows.map((r) => ({ kind: 'project' as const, ...r })),
-    ...orgRows.map((r) => ({ kind: 'org' as const, ...r })),
-  ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-
-  return c.json(answer(pendingInvitationsSchema, pending));
+  return c.json(
+    answer(
+      pendingInvitationsSchema,
+      pending.map(({ projectId: _projectId, ...row }) => row),
+    ),
+  );
 });
 
 invitationRoutes.get(
@@ -172,6 +118,8 @@ invitationRoutes.post(
       });
     }
 
+    // An agent account is never a member through a person's invitation (ISS-1421 round 3).
+    await refuseNonPersonAsMember({ email: user.email });
     const result = await consumeInvitationToken(token, { userId: user.id, email: user.email });
 
     switch (result.status) {

@@ -204,6 +204,13 @@ const headers = async () => ({
   'content-type': 'application/json',
 });
 
+/** A skipped row carries the refusal's code and sentence beside its reason (ISS-1421 round 2). */
+const DRAFT_REFUSED = {
+  reason: 'illegal_transition',
+  code: 'ILLEGAL_TRANSITION',
+  message: expect.stringContaining('a Draft (draft) issue may only move to'),
+};
+
 describe('PATCH /api/issues/batch', () => {
   it('401 without token', async () => {
     const res = await buildApp().request('/api/issues/batch', {
@@ -299,7 +306,7 @@ describe('PATCH /api/issues/batch', () => {
     expect(projectAccess).toHaveBeenCalledTimes(1);
   });
 
-  it('mixed status + priority — illegal transition surfaces as skipReason on the partially-applied row', async () => {
+  it('mixed status + priority — an illegal transition skips its issue and writes nothing else for it', async () => {
     authVerified();
     selectAwait.mockResolvedValueOnce([
       {
@@ -344,18 +351,13 @@ describe('PATCH /api/issues/batch', () => {
     });
     expect(res.status).toBe(200);
     const body = (await res.json()) as {
-      updated: { id: string; skipReason?: string }[];
-      skipped: { id: string; reason: string }[];
+      updated: { id: string }[];
+      skipped: { id: string; reason: string; detail?: string }[];
     };
-    // Both rows had priority applied, so both end up in `updated`. ISS1's
-    // illegal status request is surfaced via `skipReason` on the entry rather
-    // than silently swallowed.
-    expect(body.updated.map((u) => u.id).sort()).toEqual([ISS1, ISS2].sort());
-    expect(body.skipped).toHaveLength(0);
-    const iss1Entry = body.updated.find((u) => u.id === ISS1);
-    expect(iss1Entry?.skipReason).toBe('illegal_transition');
-    const iss2Entry = body.updated.find((u) => u.id === ISS2);
-    expect(iss2Entry?.skipReason).toBeUndefined();
+    expect(body.updated.map((u) => u.id)).toEqual([ISS2]);
+    const detail = expect.stringContaining('nothing else this update carried was written');
+    expect(body.skipped).toEqual([{ id: ISS1, ...DRAFT_REFUSED, detail }]);
+    expect(issueUpdatedEmit.mock.calls.map(([p]) => p.issueId)).toEqual([ISS2]);
     // ISS-196 — the AFTER UPDATE trigger writes the outbox row; the legacy
     // inline hooks emit was removed. Assert the status UPDATE ran inside a
     // transaction (the outbox row is committed atomically with it).

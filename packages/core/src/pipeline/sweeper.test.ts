@@ -438,7 +438,7 @@ describe('reapOrphanedOneShotRuns (ISS-445 — still an ACTIVE reaper)', () => {
       'p1',
       'd1',
       'agent-session.status',
-      expect.objectContaining({ status: 'failed', failureReason: 'heartbeat_timeout' }),
+      expect.objectContaining({ status: 'failed', failureReason: 'session_stopped_checking_in' }),
     );
     expect(closeRunIfOneShotMock).toHaveBeenCalledTimes(1);
     expect(closeRunIfOneShotMock).toHaveBeenCalledWith('run-stale', 'failed');

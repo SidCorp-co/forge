@@ -120,7 +120,7 @@ async function holdOf(issueId: string): Promise<Record<string, unknown> | null> 
 async function holdComments(issueId: string): Promise<string[]> {
   const rows = (await harness.db.execute(sql`
     SELECT body FROM comments
-     WHERE issue_id = ${issueId} AND body LIKE '%release-hold: %'
+     WHERE issue_id = ${issueId} AND (body LIKE '**Held by the automatic release**%' OR body LIKE '**The automatic release is holding this issue%')
      ORDER BY created_at ASC, id ASC
   `)) as unknown as Array<{ body: string }>;
   return rows.map((r) => r.body);
@@ -150,8 +150,8 @@ describe('a held row says why, once per reason', () => {
     expect(String(written?.reason)).toMatch(/read at \d{4}-\d\d-\d\dT/);
     const comments = await holdComments(id);
     expect(comments).toHaveLength(1);
-    expect(comments[0]).toContain('criterion 1');
-    expect(comments[0]).toContain('which a person owes');
+    expect(comments[0]).toContain('criterion 1 is not earned');
+    expect(comments[0]).toContain('A person records a verdict on each');
 
     const second = await sweep();
     expect(second.holdsWritten).toBe(0);
@@ -256,9 +256,10 @@ describe('a criteria hold names each served commit once', () => {
       `criterion 2: judged at ${JUDGED_B}, which is not a commit this project is serving`,
     );
     expect(times(reason, SERVING)).toBe(1);
+    // The comment is three sentences (ISS-1421 r8 repair 2): the reading is the stored hold's.
     const comments = await holdComments(id);
     expect(comments).toHaveLength(1);
-    expect(times(String(comments[0]), SERVING)).toBe(1);
+    expect(times(String(comments[0]), SERVING)).toBe(0);
   }, 30_000);
 
   it('reads one judged commit spelled full and short as one commit', async () => {
@@ -273,7 +274,7 @@ describe('a criteria hold names each served commit once', () => {
     expect(reason).not.toContain(`judged at ${JUDGED_A.slice(0, 8)},`);
     expect(times(reason, SERVING)).toBe(1);
     const comments = await holdComments(id);
-    expect(times(String(comments[0]), SERVING)).toBe(1);
+    expect(times(String(comments[0]), SERVING)).toBe(0);
   }, 30_000);
 });
 
@@ -318,11 +319,16 @@ describe('every exit before the cut is written on the row', () => {
     const said = releaseBlockerSentence('RELEASE_TARGET_UNDECLARED', { releaseChain });
     for (const id of [oldest, middle, newest]) expect((await holdOf(id))?.reason).toBe(said);
     expect(said).not.toContain(projectId);
-    const names = (await fx.displayIds([oldest, middle, newest])).map((n) => `\`${n}\``);
+    // ISS-1421 r8, criterion 90: the covered issues named in the heading, in plain words, and the
+    // comment three sentences with no backticked word (repair 2).
+    const names = await fx.displayIds([oldest, middle, newest]);
     const posted = await holdComments(oldest);
     expect(posted).toHaveLength(1);
-    expect(posted[0]).toContain(
-      `3 issues of this project, oldest merge first: ${names.join(', ')}.`,
+    expect(posted[0]).toBe(
+      `**Held by the automatic release** for ${names[0]}, ${names[1]} and ${names[2]}\n\n` +
+        'A release has nowhere to land, because no active deploy binding of this project carries its live stage. ' +
+        'A person adds one under Settings → Integrations, or chooses "Repository, no release" under Shape & release. ' +
+        'The next sweep then releases the waiting issues.',
     );
 
     // A row joining the same hold carries it, and costs the oldest no second comment.
@@ -408,37 +414,63 @@ describe('a hold does not outlive the wait it describes', () => {
 describe('the hold and its comment commit together', () => {
   it('keeps the hold unwritten when its comment cannot be stored, so the next tick tries both', async () => {
     const id = await heldRow();
-    const { writeReleaseHolds, NO_ACTOR_HOLD } = await import('../../src/pipeline/release-hold.js');
-
-    await expect(
-      writeReleaseHolds({
-        issueIds: [id],
-        holdFor: () => NO_ACTOR_HOLD,
-        authorId: randomUUID(),
-        now: new Date(),
-      }),
-    ).rejects.toThrow();
+    const { writeReleaseHolds, NO_RELEASE_GATE_HOLD } = await import(
+      '../../src/pipeline/release-hold.js'
+    );
+    // A comment store that refuses every write, planted for this case alone.
+    await harness.db.execute(sql`
+      CREATE FUNCTION refuse_comment() RETURNS trigger LANGUAGE plpgsql AS
+        $$ BEGIN RAISE EXCEPTION 'comments refused for this case'; END $$;
+      CREATE TRIGGER refuse_comment BEFORE INSERT ON comments
+        FOR EACH ROW EXECUTE FUNCTION refuse_comment();
+    `);
+    try {
+      await expect(
+        writeReleaseHolds({ issueIds: [id], holdFor: () => NO_RELEASE_GATE_HOLD, now: new Date() }),
+      ).rejects.toThrow();
+    } finally {
+      await harness.db.execute(sql`
+        DROP TRIGGER refuse_comment ON comments;
+        DROP FUNCTION refuse_comment();
+      `);
+    }
 
     expect(await holdOf(id)).toBeNull();
     expect(await holdComments(id)).toHaveLength(0);
   }, 30_000);
 
+  it('writes the hold comment as Forge, never as the project creator (ISS-1421)', async () => {
+    const id = await heldRow();
+    const { writeReleaseHolds, NO_RELEASE_GATE_HOLD } = await import(
+      '../../src/pipeline/release-hold.js'
+    );
+    const { FORGE_AUTHOR_ID } = await import('../../src/comments/forge-author.js');
+
+    await writeReleaseHolds({
+      issueIds: [id],
+      holdFor: () => NO_RELEASE_GATE_HOLD,
+      now: new Date(),
+    });
+
+    const authors = await harness.db.execute<{ author_id: string }>(sql`
+      SELECT author_id FROM comments WHERE issue_id = ${id} AND (body LIKE '**Held by the automatic release**%' OR body LIKE '**The automatic release is holding this issue%')
+    `);
+    expect(authors.map((r) => r.author_id)).toEqual([FORGE_AUTHOR_ID]);
+  }, 30_000);
+
   it('comments once when two writers race from the same prior hold', async () => {
     const id = await heldRow();
-    const { writeReleaseHolds, NO_ACTOR_HOLD } = await import('../../src/pipeline/release-hold.js');
+    const { writeReleaseHolds, NO_RELEASE_GATE_HOLD } = await import(
+      '../../src/pipeline/release-hold.js'
+    );
     const write = () =>
-      writeReleaseHolds({
-        issueIds: [id],
-        holdFor: () => NO_ACTOR_HOLD,
-        authorId: ownerId,
-        now: new Date(),
-      });
+      writeReleaseHolds({ issueIds: [id], holdFor: () => NO_RELEASE_GATE_HOLD, now: new Date() });
 
     const [a, b] = await Promise.all([write(), write()]);
 
     expect(a.written + b.written).toBe(1);
     expect(await holdComments(id)).toHaveLength(1);
-    expect((await holdOf(id))?.code).toBe('RELEASE_NO_ACTOR');
+    expect((await holdOf(id))?.code).toBe('NO_RELEASE_GATE');
   }, 30_000);
 });
 
@@ -457,7 +489,6 @@ describe('a reason is said once for as long as a row stays held', () => {
       writeReleaseHolds({
         issueIds: [id],
         holdFor: () => refusalHold('NO_RUNNER_ONLINE', reasons),
-        authorId: ownerId,
         now: new Date(),
       });
 
@@ -474,7 +505,6 @@ describe('a reason is said once for as long as a row stays held', () => {
       writeReleaseHolds({
         issueIds: [id],
         holdFor: () => refusalHold('NO_RUNNER_ONLINE', offline),
-        authorId: ownerId,
         now: new Date(),
       });
 
@@ -495,7 +525,6 @@ describe('a reason is said once for as long as a row stays held', () => {
       writeReleaseHolds({
         issueIds: [oldest, next],
         holdFor: () => refusalHold('NO_RUNNER_ONLINE', offline),
-        authorId: ownerId,
         now: new Date(),
         commentOn: new Set([commentOn]),
       });
@@ -505,7 +534,7 @@ describe('a reason is said once for as long as a row stays held', () => {
     const stale = { id: next, held: await holdOf(next) };
     await shared(next);
     const { commentOnce } = await holds();
-    await commentOnce(stale, ownerId, refusalHold('NO_RUNNER_ONLINE', offline), []);
+    await commentOnce(stale, refusalHold('NO_RUNNER_ONLINE', offline), []);
     expect(await holdComments(next)).toHaveLength(1);
 
     await clearReleaseHolds([next]);

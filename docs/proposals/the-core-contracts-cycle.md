@@ -65,6 +65,21 @@ Whoever takes this reproduces the race before changing anything — the failing 
 `packages/core build` against a mid-emit `packages/contracts dist`, and a fix that cannot be shown
 closing a reproduced failure is a guess with a commit message.
 
+## A rule core holds twice: a priced exception
+
+`@forge/contracts/test-credentials` `findCredentialFaults` is the test-credential rule the
+settings form reads. Core needs the same rule at runtime, in `projects/environments.ts:credentialFaults`,
+and cannot import it there: the entry that serves it is TypeScript source, and contracts is not a
+production dependency of core. ISS-1171 round 6 landed with the copy, by the dispatcher's decision.
+
+- **Traded:** a second copy of the rule, in core.
+- **Cost:** a change to the rule is two edits, one per copy. Only
+  `packages/core/src/projects/test-credentials-parity.test.ts` keeps them equal, over the cases it
+  lists; it was watched going red on a planted difference.
+- **Ends when:** core may import `@forge/contracts` at runtime, meaning contracts becomes a production
+  dependency of core. Then core imports `findCredentialFaults`, keeps only the paths and messages it
+  adds, and the copy and its parity test are deleted.
+
 ## Honest costs
 
 | Choice | What it costs whoever adopts it |

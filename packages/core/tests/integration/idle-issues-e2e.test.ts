@@ -14,9 +14,8 @@ vi.mock('../../src/notifications/emit.js', () => ({
 
 /**
  * The admin lookup is a real seam inside the pass, between the page read and the row writes. A
- * hook on it is how a concurrent writer is put INSIDE that window deterministically — the `db`
- * export is a Proxy whose `get` trap always answers with the live instance's own method, so
- * spying it intercepts nothing.
+ * hook on it puts a concurrent writer INSIDE that window deterministically: the `db` export is a
+ * Proxy whose `get` trap answers with the live instance's method, so spying it intercepts nothing.
  */
 let betweenReadAndWrite: (() => Promise<void>) | null = null;
 vi.mock('../../src/notifications/project-admins.js', () => ({
@@ -25,6 +24,7 @@ vi.mock('../../src/notifications/project-admins.js', () => ({
     return new Map(ids.map((id) => [id, [`admin-of-${id}`]]));
   },
   projectAdminUserIds: async () => ['admin'],
+  projectHasAdminSql: () => sql`TRUE`,
 }));
 
 /**
@@ -40,21 +40,10 @@ vi.mock('../../src/notifications/project-admins.js', () => ({
 const fx = registerIdleFixture(1100);
 const NOW = new Date('2026-09-20T16:00:00.000Z');
 
-let mods: {
-  reconcileIdleIssues: (
-    now?: Date,
-    scope?: { projectId?: string },
-  ) => Promise<{
-    detected: number;
-    reported: number;
-    leasesReleased: number;
-    cleared: number;
-    unclassified: number;
-  }>;
-};
+let mods: typeof import('../../src/pipeline/idle-issues.js');
 
 beforeAll(async () => {
-  mods = (await import('../../src/pipeline/idle-issues.js')) as unknown as typeof mods;
+  mods = await import('../../src/pipeline/idle-issues.js');
 }, 60_000);
 
 beforeEach(async () => {
@@ -101,7 +90,9 @@ describe('The three instances recorded on ISS-1122, 2026-09-20', () => {
     expect(result.detected).toBe(1);
     const strand = await strandOf(issueId);
     expect(strand?.status).toBe('open');
-    expect(String(strand?.reason)).toContain('job pool');
+    expect(String(strand?.reason)).toContain(
+      'no runner that takes this project’s work is connected',
+    );
     expect(strand?.owes).toBe('human');
     expect((strand?.evidence as Record<string, unknown>)?.poolHasRunner).toBe(false);
   });
@@ -198,7 +189,7 @@ describe('The inverses: a detector that flags everything is the same defect', ()
       for (const note of emitted) {
         expect(note.title).toContain('no live work could be confirmed');
         expect(note.title).not.toContain('nothing is working it');
-        expect(note.body).toContain('establishes nothing either way');
+        expect(note.body).toMatch(/^It has read .+, and no live work could be confirmed because /);
       }
     },
   );
@@ -210,7 +201,7 @@ describe('The inverses: a detector that flags everything is the same defect', ()
 
     expect(emitted).toHaveLength(1);
     expect(emitted[0]?.title).toContain('nothing is working it');
-    expect(emitted[0]?.body).toContain('no live job, run or lease behind it');
+    expect(emitted[0]?.body).toMatch(/^It has read Developed for \d+ days, and /);
   });
 
   it('leaves a row alone whose unexpired lease is held on it and nothing else', async () => {
@@ -253,16 +244,16 @@ describe('The inverses: a detector that flags everything is the same defect', ()
   it('reads a row as stranded once the session holding its lease is terminal', async () => {
     const issueId = await seedIssue({ status: 'testing' });
     await fx.seedIssueLease(fx.lastSeq, 'completed');
+    // The session ended long ago, not at the wall clock this suite's NOW predates.
+    await fx.db.execute(sql`UPDATE agent_sessions SET updated_at = ${LONG_AGO}::timestamptz`);
 
     expect((await mods.reconcileIdleIssues(NOW)).detected).toBe(1);
     expect(await strandOf(issueId)).not.toBeNull();
   });
 
   it('leaves a row alone that has not yet spent its own status grace', async () => {
-    const issueId = await seedIssue({
-      status: 'awaiting_release',
-      updatedAt: '2026-09-19T20:00:00.000Z',
-    });
+    const issueId = await seedIssue({ status: 'awaiting_release' });
+    await fx.enterStatus(issueId, 'testing', 'awaiting_release', '2026-09-19T20:00:00.000Z');
 
     expect((await mods.reconcileIdleIssues(NOW)).detected).toBe(0);
     expect(await strandOf(issueId)).toBeNull();
@@ -495,6 +486,7 @@ describe('The finding does not outlive what it claims', () => {
       UPDATE issues SET status='testing', updated_at=${NOW.toISOString()}::timestamptz
        WHERE id=${issueId}
     `);
+    await fx.enterStatus(issueId, 'in_progress', 'testing', NOW.toISOString());
     const result = await mods.reconcileIdleIssues(new Date('2026-09-20T16:05:00.000Z'));
 
     expect(result.cleared).toBe(1);
@@ -504,8 +496,9 @@ describe('The finding does not outlive what it claims', () => {
   /**
    * The consult's F1 — the recovery arm writes only to the rows it clears, so a page full of rows
    * that are still stranded would be re-read every tick and hide every row behind them for ever.
+   * ISS-1229 r13: it no longer pages, so the row behind them is reached on the first pass.
    */
-  it('walks past a full page of rows that stay stranded to reach one that recovered', async () => {
+  it('reaches a row that recovered behind a full page of rows that stay stranded, on the first pass', async () => {
     await fx.db.execute(sql`
       INSERT INTO issues (id, project_id, iss_seq, title, status, priority, created_by_id,
                           session_context, created_at, updated_at)
@@ -527,12 +520,8 @@ describe('The finding does not outlive what it claims', () => {
     `);
 
     const first = await mods.reconcileIdleIssues(NOW);
-    expect(first.cleared).toBe(0);
-    expect(await strandOf(recovered)).not.toBeNull();
 
-    const second = await mods.reconcileIdleIssues(NOW);
-
-    expect(second.cleared).toBe(1);
+    expect(first.cleared).toBe(1);
     expect(await strandOf(recovered)).toBeNull();
   });
 
@@ -556,6 +545,7 @@ describe('An automatic release hold decides what an awaiting_release strand says
       reason: 'criterion 3: unjudged. A person clears this.',
       owes: 'agent',
       waitingFor,
+      words: ['Criterion 3 has no verdict yet.', 'A person clears this.', 'Then it releases.'],
     };
     const merged = '2026-09-14T00:00:00.000Z';
     const held = await seedIssue({
@@ -572,8 +562,14 @@ describe('An automatic release hold decides what an awaiting_release strand says
     expect(String(strand?.reason)).toContain('(RELEASE_CRITERIA_UNEARNED): criterion 3: unjudged');
     const plain = await strandOf(unheld);
     expect([plain?.owes, plain?.waitingFor]).toEqual(['human', 'a person to release it']);
-    const note = emitted.find((n) => n.body.includes('A person clears this'));
-    expect(note?.body).toContain('A person clears this. It is waiting for');
+    // Two sentences: the hold by its first, then what it waits for; its remedy is the hold's comment.
+    // In the hold's own words, never its code (ISS-1229 r16).
+    const note = emitted.find((n) => n.body.includes('criterion 3 has no verdict yet'));
+    expect(note?.body).not.toContain('RELEASE_CRITERIA_UNEARNED');
+    expect(note?.body).toMatch(
+      /criterion 3 has no verdict yet\. It waits for a verdict on each criterion named/,
+    );
+    expect(note?.body).not.toContain('A person clears this');
     expect(note?.body).not.toContain('..');
   });
 });

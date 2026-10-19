@@ -24,6 +24,7 @@ import { db } from '../db/client.js';
 import { agentSessions, comments, devices, issues, pipelineRuns } from '../db/schema.js';
 import { canonicalIssueKey } from '../lib/issue-ref.js';
 import { logger } from '../logger.js';
+import { checkpointSourceSchema } from './run-checkpoint-source.js';
 import {
   BOX_RUN_ID_METADATA_KEY,
   RUN_ISSUES_METADATA_KEY,
@@ -35,7 +36,7 @@ import {
  */
 export const runCheckpointSchema = z
   .object({
-    source: z.string().min(1).max(64),
+    source: checkpointSourceSchema,
     branch: z.string().max(400).nullish(),
     head: z.string().max(64).nullish(),
     base: z.string().max(64).nullish(),
@@ -50,8 +51,6 @@ export const runCheckpointSchema = z
   .strict();
 
 export type RunCheckpoint = z.infer<typeof runCheckpointSchema>;
-
-export const RECONSTRUCTION_SOURCE = 'reconstructed_from_box';
 
 /** The line that makes a second write of the same evidence a no-op. */
 export function runEvidenceMarker(sessionId: string): string {
@@ -396,11 +395,7 @@ export async function writeRunEvidence(args: {
   sessionId: string;
   checkpoint: RunCheckpoint;
 }): Promise<RunEvidenceResult | null> {
-  if (args.checkpoint.source !== RECONSTRUCTION_SOURCE) {
-    throw new Error(
-      `writeRunEvidence: a checkpoint must declare itself as \`${RECONSTRUCTION_SOURCE}\`, got \`${args.checkpoint.source}\` — an undeclared payload cannot be printed as the box's half without this end guessing what it is`,
-    );
-  }
+  checkpointSourceSchema.parse(args.checkpoint.source);
   const session = await runSessionForDevice(args.deviceId, args.sessionId);
   if (!session) return null;
 

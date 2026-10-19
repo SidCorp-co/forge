@@ -10,6 +10,7 @@ import { isUniqueViolation } from '../lib/db-errors.js';
 import { logger } from '../logger.js';
 import { rateLimit } from '../middleware/rate-limit.js';
 import { ensurePersonalOrg } from '../orgs/service.js';
+import { agentAddressReserved, isAgentAddress } from './agent-account.js';
 import { sendVerificationEmail } from './email.js';
 import { hashPassword } from './password.js';
 import { evaluatePasswordStrength, MIN_PASSWORD_SCORE } from './password-strength.js';
@@ -40,6 +41,9 @@ authRoutes.post(
   }),
   async (c) => {
     const { email, password } = c.req.valid('json');
+    // Forge mints its own account at this address on first use; a person holding it first would
+    // be shown as Forge, and Forge could no longer write (ISS-1421 round 2).
+    if (isAgentAddress(email)) throw agentAddressReserved(email);
 
     // Strength check uses email as a personal input so `alex@studio.com`
     // refusing a password of "alex123" is automatic. Length floor stays in

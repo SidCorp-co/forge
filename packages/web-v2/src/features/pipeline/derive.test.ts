@@ -1,374 +1,272 @@
+import { waitingOnText } from "@/features/sessions/status-sentences";
 import { describe, expect, it } from "vitest";
-import { aggregateStepCosts, cardStatus, checkInLine, drawerRunChip, median, runGateNote, runSummaryReading } from "./derive";
-import { LABEL_VIEW, statusToChip } from "@/features/issues/derive";
 import {
-  PIPELINE_RUN_STATUSES,
-  type PipelineIssueRow,
-  type PipelineRunAttempt,
-  type PipelineRunStatus,
-  type RunGateCondition,
-  type StepDurationRow,
-} from "./types";
+  checkInOf,
+  holderLine,
+  orderHolds,
+  orderSessions,
+  QUIET_AFTER_MS,
+  readAtLine,
+  sessionKindLabel,
+  sessionName,
+  waitingOnOf,
+} from "./derive";
+import type { HeldIssue, Holder, LiveSession } from "./types";
 
-function step(over: Partial<StepDurationRow> & { step: string }): StepDurationRow {
-  return {
-    runId: over.runId ?? "r1",
-    issueId: over.issueId ?? "i1",
-    projectId: over.projectId ?? "p1",
-    step: over.step,
-    startedAt: over.startedAt ?? "2026-06-01T00:00:00Z",
-    finishedAt: over.finishedAt ?? "2026-06-01T00:01:00Z",
-    durationSeconds: over.durationSeconds ?? 10,
-    costUsd: over.costUsd ?? 0.01,
-  };
-}
+const NOW = Date.parse("2026-10-15T02:00:00.000Z");
 
-describe("median", () => {
-  it("returns null for an empty list", () => {
-    expect(median([])).toBeNull();
-  });
-  it("returns the middle of an odd-length list", () => {
-    expect(median([3, 1, 2])).toBe(2);
-  });
-  it("averages the two middles of an even-length list", () => {
-    expect(median([1, 2, 3, 4])).toBe(2.5);
-  });
+const session = (over: Partial<LiveSession> = {}): LiveSession => ({
+  id: "s1",
+  kind: "run_session",
+  title: "run: ISS-7",
+  status: "running",
+  runtimeState: "working",
+  deviceId: "d1",
+  deviceName: "box-a",
+  parentSessionId: null,
+  startedAt: "2026-10-15T01:00:00.000Z",
+  lastHeartbeatAt: "2026-10-15T01:59:40.000Z",
+  createdAt: "2026-10-15T01:00:00.000Z",
+  issues: [],
+  report: null,
+  ...over,
 });
 
-describe("aggregateStepCosts — the job types that actually ran (ISS-999)", () => {
-	it("returns one row per job type on the rows, and none for a job type with no row", () => {
-		const rows = aggregateStepCosts([step({ step: "code" }), step({ step: "test" })]);
-		expect(rows.map((r) => r.step).sort()).toEqual(["code", "test"]);
-	});
+describe("waitingOnOf — who can end the wait, in the box's words", () => {
+  const report = (over: Partial<NonNullable<LiveSession["report"]>>) => ({
+    incarnation: "live",
+    work: "blocked",
+    blockerKind: "human",
+    waitingOn: "the answer on ISS-7",
+    observedAt: "2026-10-15T01:59:00.000Z",
+    since: "2026-10-15T01:59:00.000Z",
+    ...over,
+  });
 
-	it("keeps a job type outside the seven staged names under its own name", () => {
-		const rows = aggregateStepCosts([step({ step: "drive", durationSeconds: 9 })]);
-		expect(rows.map((r) => r.step)).toEqual(["drive"]);
-		expect(rows[0].medianSec).toBe(9);
-	});
+  // ISS-1228 round 14 (judge-36): the Pipeline page said "A person — approve …" where every other
+  // surface said "Waiting on a person. Approve …." from status-sentences.ts.
+  it("names the blocker and what it waits on in the sentences every other surface says", () => {
+    expect(waitingOnOf({ kind: "run_session", report: report({}) })).toEqual({
+      text: "Waiting on a person. The answer on ISS-7.",
+      blocked: true,
+    });
+    expect(waitingOnOf({ kind: "run_session", report: report({}) }).text).toBe(waitingOnText("human", "the answer on ISS-7"));
+  });
 
-	it("gives `fix` a row of its own rather than summing it into `code`", () => {
-		const rows = aggregateStepCosts([
-			step({ step: "code", durationSeconds: 10, costUsd: 0.01 }),
-			step({ step: "fix", durationSeconds: 20, costUsd: 0.03 }),
-		]);
-		expect(rows.find((r) => r.step === "code")?.samples).toBe(1);
-		expect(rows.find((r) => r.step === "fix")?.samples).toBe(1);
-	});
-
-	it("takes the median duration and the summed cost per job type", () => {
-		const rows = aggregateStepCosts([
-			step({ step: "code", durationSeconds: 10, costUsd: 0.01 }),
-			step({ step: "code", durationSeconds: 30, costUsd: 0.02 }),
-			step({ step: "code", durationSeconds: 20, costUsd: 0.03 }),
-		]);
-		expect(rows[0].samples).toBe(3);
-		expect(rows[0].medianSec).toBe(20);
-		expect(rows[0].cost).toBeCloseTo(0.06, 5);
-	});
-
-	it("orders slowest median first, so the caller's `[0]` IS the bottleneck", () => {
-		const rows = aggregateStepCosts([
-			step({ step: "code", durationSeconds: 10 }),
-			step({ step: "test", durationSeconds: 90 }),
-			step({ step: "plan", durationSeconds: 50 }),
-		]);
-		expect(rows.map((r) => r.step)).toEqual(["test", "plan", "code"]);
-	});
-
-	it("colours one of the seven from its own token and anything else neutrally", () => {
-		const rows = aggregateStepCosts([step({ step: "code" }), step({ step: "drive" })]);
-		expect(rows.find((r) => r.step === "code")?.color).toBe("var(--stage-code)");
-		expect(rows.find((r) => r.step === "drive")?.color).toBe("var(--fg-subtle)");
-	});
-
-	it("returns nothing for an empty or absent window", () => {
-		expect(aggregateStepCosts([])).toEqual([]);
-		expect(aggregateStepCosts(undefined)).toEqual([]);
-	});
-});
-
-describe("cardStatus", () => {
-  const issue = (over: Partial<PipelineIssueRow> = {}): PipelineIssueRow =>
-    ({
-      id: "i",
-      projectId: "p",
-      displayId: "ISS-903",
-      title: "t",
-      status: "in_progress",
-      priority: "high",
-      assigneeId: null,
-      agentStatus: null,
-      held: true,
-      lastCheckInAt: null,
-      ...over,
-    }) as PipelineIssueRow;
-  const queuedHealth = (reason?: string) =>
-    ({
-      stage: "in_progress",
-      queuedStep: {
-        jobId: "a872c0b8",
-        jobType: "drive",
-        stageStatus: "open",
-        queuedAt: "2026-09-03T14:43:00.000Z",
-        retryAfterAt: null,
-      },
-      ...(reason
-        ? { waitingOn: { reason, since: "2026-09-03T14:43:00.000Z", details: {} } }
-        : {}),
-    }) as PipelineIssueRow["pipelineHealth"];
-
-  it("lets a queued step outrank the run's own Running", () => {
-    const card = cardStatus(
-      issue({ pipelineHealth: queuedHealth("runner_stale") }),
-      { status: "running" },
+  it("names the blocker alone where the box said nothing more", () => {
+    expect(waitingOnOf({ kind: "run_session", report: report({ blockerKind: "machine", waitingOn: null }) }).text).toBe(
+      "Waiting on a machine.",
     );
-    expect(card.status).toBe("waiting");
-    expect(card.label).toBe("No runner online");
-    expect(card.domain).toBe("session");
-    expect(card.waitingReason).toMatch(/No runner is online/);
   });
 
-  it("says Queued with no gate sentence for a step merely awaiting its turn", () => {
-    const card = cardStatus(
-      issue({ pipelineHealth: queuedHealth() }),
-      { status: "running" },
+  it("says Nothing only where the box reported the session runnable", () => {
+    expect(waitingOnOf({ kind: "run_session", report: report({ work: "runnable" }) })).toEqual({ text: "Nothing", blocked: false });
+  });
+
+  it("says the box sent no report rather than reading its silence as unblocked", () => {
+    expect(waitingOnOf({ kind: "run_session", report: null })).toEqual({
+      text: "The box has not reported.",
+      blocked: false,
+    });
+  });
+
+  it("says a master has no wait report, since a box reports runs and never a master", () => {
+    expect(waitingOnOf({ kind: "master", report: null })).toEqual({
+      text: "A box reports runs, not masters.",
+      blocked: false,
+    });
+  });
+
+  it("prints an unknown blocker kind as sent rather than guessing", () => {
+    expect(waitingOnOf({ kind: "run_session", report: report({ blockerKind: "vendor", waitingOn: null }) }).text).toBe(
+      "Waiting on vendor.",
     );
-    expect(card.status).toBe("queued");
-    expect(card.label).toBe("Queued");
-    expect(card.waitingReason).toBe("");
+  });
+});
+
+describe("checkInOf — the last check-in, and quiet past the threshold", () => {
+  it("reads a fresh beat plainly", () => {
+    expect(checkInOf(session(), NOW)).toEqual({ text: "20s ago", quiet: false });
   });
 
-  it("keeps the run's status when a session is live", () => {
-    const card = cardStatus(
-      issue({ pipelineHealth: queuedHealth("runner_stale"), agentStatus: "running" }),
-      { status: "running" },
+  it("is not quiet at exactly the threshold, and is one millisecond past it", () => {
+    const at = (ms: number) => new Date(NOW - ms).toISOString();
+    expect(checkInOf(session({ lastHeartbeatAt: at(QUIET_AFTER_MS) }), NOW).quiet).toBe(false);
+    expect(checkInOf(session({ lastHeartbeatAt: at(QUIET_AFTER_MS + 1) }), NOW).quiet).toBe(true);
+  });
+
+  it("marks a running session that never checked in as quiet once it has run past the threshold, and a queued one as not", () => {
+    expect(checkInOf(session({ lastHeartbeatAt: null }), NOW)).toEqual({ text: "No check-in yet", quiet: true });
+    expect(checkInOf(session({ status: "queued", lastHeartbeatAt: null }), NOW).quiet).toBe(false);
+  });
+
+  it("does not mark quiet a session that started inside the threshold and has not checked in yet", () => {
+    const started = new Date(NOW - 10_000).toISOString();
+    expect(checkInOf(session({ lastHeartbeatAt: null, startedAt: started }), NOW)).toEqual({
+      text: "No check-in yet",
+      quiet: false,
+    });
+  });
+});
+
+describe("orderSessions — masters first, with what they own beneath them", () => {
+  it("nests a master's sessions under it and lists the rest after", () => {
+    const master = session({ id: "m", kind: "master", createdAt: "2026-10-15T00:00:00.000Z" });
+    const child = session({ id: "c", parentSessionId: "m", createdAt: "2026-10-15T01:00:00.000Z" });
+    const loose = session({ id: "l", createdAt: "2026-10-14T00:00:00.000Z" });
+    const out = orderSessions([child, loose, master]);
+    expect(out.map((o) => [o.session.id, o.depth])).toEqual([
+      ["m", 0],
+      ["c", 1],
+      ["l", 0],
+    ]);
+  });
+
+  it("lists a session whose owner is not live at the top level rather than dropping it", () => {
+    const orphan = session({ id: "o", parentSessionId: "gone" });
+    expect(orderSessions([orphan]).map((o) => o.session.id)).toEqual(["o"]);
+  });
+});
+
+describe("session names", () => {
+  it("uses the title, else the kind, and names no run or stage for a session kind", () => {
+    expect(sessionName({ kind: "master", title: null })).toBe("Master");
+    expect(sessionName({ kind: "run_session", title: "  " })).toBe("Agent");
+    expect(["master", "run_session", "pipeline", "pm"].map(sessionKindLabel).join(" ")).not.toMatch(
+      /\b(run|stage|step|job)\b/i,
     );
-    expect(card.status).toBe("running");
-    expect(card.label).toBeUndefined();
-  });
-
-  it("shows the gate for a deferred retry, whose agentStatus reads failed", () => {
-    const card = cardStatus(
-      issue({ pipelineHealth: queuedHealth("runner_stale"), agentStatus: "failed" }),
-      { status: "running" },
-    );
-    expect(card.label).toBe("No runner online");
-  });
-
-  it("falls back to the issue's own status word on a held row with no run and nothing queued", () => {
-    const card = cardStatus(issue(), undefined);
-    expect(card.domain).toBe("issue");
-    expect(card.label).toBe("In progress");
-    expect(card.status).toBe(statusToChip("in_progress"));
-  });
-
-  // ISS-1213: rows stood at `testing` for hours with nothing on them, their cards reading Running.
-  // Reopen 1: one of them was being worked by a run core was never told about, so the card says
-  // what core knows, not that the row is stalled.
-  it("reads No check-in, in the unheld chip, on a row nothing holds", () => {
-    const card = cardStatus(issue({ status: "testing", held: false }), undefined);
-    expect([card.label, card.status]).toEqual(["No check-in", LABEL_VIEW.unheld.status]);
-    expect(card.status).not.toBe(statusToChip("testing"));
-  });
-
-  // A live run would have made the row held, so every run the board kept for an unheld row is history.
-  it.each(PIPELINE_RUN_STATUSES)("reads No check-in on a row nothing holds whatever its kept run (%s)", (status) => {
-    const card = cardStatus(issue({ status: "testing", held: false }), { status });
-    expect([card.label, card.status, card.domain]).toEqual(["No check-in", LABEL_VIEW.unheld.status, "issue"]);
-  });
-
-  it("gives an unheld card the clock time of its last check-in and how long ago it was", () => {
-    const at = new Date(2026, 8, 24, 18, 50, 58);
-    const now = at.getTime() + 89 * 60_000;
-    const card = cardStatus(issue({ status: "in_progress", held: false, lastCheckInAt: at.toISOString() }), undefined, now);
-    expect(card.note).toBe("Last check-in 18:50 · 1h ago");
-  });
-
-  it("says no check-in is on record on an unheld card core has no time for", () => {
-    const card = cardStatus(issue({ status: "developed", held: false, lastCheckInAt: null }), undefined);
-    expect(card.note).toBe("No check-in on record");
-  });
-
-  // A queued job would have made the row held, so a queued step on an unheld row is history too.
-  it("reads No check-in with its time on an unheld row whose health still says queued", () => {
-    const at = new Date(2026, 8, 24, 18, 50, 58);
-    const row = issue({ held: false, lastCheckInAt: at.toISOString(), pipelineHealth: queuedHealth() });
-    const card = cardStatus(row, undefined, at.getTime() + 9 * 60_000);
-    expect([card.label, card.note]).toEqual(["No check-in", "Last check-in 18:50 · 9m ago"]);
-  });
-
-  it("reads No check-in on record on an unheld queued row core has no time for", () => {
-    const card = cardStatus(issue({ held: false, pipelineHealth: queuedHealth("runner_stale") }), undefined);
-    expect([card.label, card.note]).toEqual(["No check-in", "No check-in on record"]);
-  });
-
-  it("gives a held card no check-in line, whatever time it carries", () => {
-    const card = cardStatus(issue({ held: true, lastCheckInAt: new Date().toISOString() }), undefined);
-    expect(card.note).toBe("");
-  });
-
-  it("keeps the status's own word on a row nothing holds, since no run was owed there", () => {
-    const card = cardStatus(issue({ status: "needs_info", held: false }), undefined);
-    expect(card.label).toBe("Needs info");
   });
 });
 
-const runGate = (over: Partial<RunGateCondition> = {}): RunGateCondition => ({
-	verdict: "failing_open",
-	count: 30,
-	perDay: 144,
-	windowMs: 18_000_000,
-	byReason: [{ reason: "this pane carries no control capability", count: 30 }],
-	...over,
-});
-
-describe("runGateNote", () => {
-	it("names the count, the rate and the window of a gate that was failing open", () => {
-		const note = runGateNote({ read: "ok", condition: runGate() });
-		expect(note?.verdict).toBe("failing_open");
-		expect(note?.detail).toBe("30 dispatch(es) admitted without a decision, 144/day over 5h 00m");
-	});
-
-	it("says when one reason accounts for the whole count", () => {
-		expect(runGateNote({ read: "ok", condition: runGate() })?.reason).toBe(
-			"every one of them: this pane carries no control capability",
-		);
-	});
-
-	it("names the commonest reason with its share where the count is a mixture", () => {
-		const note = runGateNote({
-			read: "ok",
-			condition: runGate({
-				byReason: [
-					{ reason: "no control capability", count: 20 },
-					{ reason: "the daemon did not answer", count: 10 },
-				],
-			}),
-		});
-		expect(note?.reason).toBe("20 of 30: no control capability");
-	});
-
-	it("still states a gate that had marked without reaching failing open", () => {
-		const note = runGateNote({
-			read: "ok",
-			condition: runGate({ verdict: "marked", count: 2, perDay: 3 }),
-		});
-		expect(note?.verdict).toBe("marked");
-		expect(note?.headline).toContain("admitted undecided dispatches");
-	});
-
-	it("says nothing where the response did not carry the field", () => {
-		expect(runGateNote(undefined)).toBeNull();
-	});
-
-	it("says a box reported no condition, and says it differently from a gate that was deciding", () => {
-		const none = runGateNote(null);
-		const clear = runGateNote({ read: "ok", condition: runGate({ verdict: "clear", count: 0 }) });
-		expect(none?.verdict).toBe("none");
-		expect(none?.headline).toContain("reported no gate condition");
-		expect(clear?.verdict).toBe("clear");
-		expect(clear?.headline).toContain("was deciding");
-		expect(none?.headline).not.toBe(clear?.headline);
-		expect(none?.detail).not.toBe(clear?.detail);
-	});
-
-	// A condition core holds but cannot read is evidence, and rendering nothing
-	// would tell the reviewer the box reported none (ISS-1192 F1).
-	it("says a stored condition could not be read, rather than showing nothing", () => {
-		const note = runGateNote({ read: "unreadable", reason: "gate.verdict: bad enum" });
-		expect(note?.verdict).toBe("unreadable");
-		expect(note?.headline).toContain("cannot be read");
-		expect(note?.detail).toContain("gate.verdict: bad enum");
-	});
-
-	it("does not invent a rate or a window the box did not state", () => {
-		const note = runGateNote({
-			read: "ok",
-			condition: runGate({ perDay: null, windowMs: null }),
-		});
-		expect(note?.detail).toBe(
-			"30 dispatch(es) admitted without a decision, at an unstated rate over an unknown span",
-		);
-	});
-});
-
-describe("checkInLine", () => {
-  it("counts minutes under an hour", () => {
-    const at = new Date(2026, 8, 24, 9, 5, 0);
-    expect(checkInLine(at.toISOString(), at.getTime() + 9 * 60_000)).toBe("Last check-in 09:05 · 9m ago");
+describe("holderLine — who holds an issue, why, and since when", () => {
+  it("names a session with its box", () => {
+    const h: Holder = {
+      by: "session",
+      sessionId: "s1",
+      sessionTitle: "run: ISS-7",
+      sessionKind: "run_session",
+      deviceName: "box-a",
+      since: "2026-10-15T01:00:00.000Z",
+    };
+    expect(holderLine(h, NOW, [session()])).toEqual({ who: "run: ISS-7 on box-a", why: "Working", since: "1h ago" });
   });
 
-  it("counts days past a day", () => {
-    const at = new Date(2026, 8, 22, 23, 59, 0);
-    expect(checkInLine(at.toISOString(), at.getTime() + 50 * 3_600_000)).toBe("Last check-in 23:59 · 2d ago");
+  it("says what a quiet session holding an issue last reported and how long ago, never that it is working it", () => {
+    const h: Holder = {
+      by: "session",
+      sessionId: "s1",
+      sessionTitle: "run: ISS-7",
+      sessionKind: "run_session",
+      deviceName: "box-a",
+      since: "2026-10-15T01:00:00.000Z",
+    };
+    const quiet = session({ lastHeartbeatAt: "2026-10-15T01:58:00.000Z" });
+    expect(holderLine(h, NOW, [quiet]).why).toBe("Last reported working. Last check-in 2m ago.");
+    const waiting = session({ runtimeState: "awaiting_input" });
+    expect(holderLine(h, NOW, [waiting]).why).toBe("Waiting for input");
   });
-});
 
-const att = (status: string) => ({ status }) as PipelineRunAttempt;
-const NO_JOBS = { attempts: [], lastSessionBeatAt: null };
-const runOf = (status: PipelineRunStatus, attempts: PipelineRunAttempt[] = [], beat: string | null = null) => ({
-  status,
-  attempts,
-  lastSessionBeatAt: beat,
-});
+  // ISS-1228 r9: Held by read "forge-code: Rename the export column" while the row above it said
+  // "Issue work: Rename the export column" for the same session.
+  it("names a step session holder as its live row does, its step in words", () => {
+    const h: Holder = {
+      by: "session",
+      sessionId: "s2",
+      sessionTitle: "forge-code: Rename the export column",
+      sessionKind: "pipeline",
+      deviceName: "box-a",
+      since: "2026-10-15T01:00:00.000Z",
+    };
+    const step = session({ id: "s2", kind: "pipeline", title: h.sessionTitle, jobType: "drive", skillName: "forge-code" });
+    expect(holderLine(h, NOW, [step]).who).toBe("Issue work: Rename the export column on box-a");
+  });
 
-describe("runSummaryReading — what the run summary alone says its agent is doing (ISS-1297)", () => {
-  it("reads a queued job nothing has claimed as queued", () => {
-    expect(runSummaryReading({ attempts: [att("queued")], lastSessionBeatAt: null })).toBe("queued");
+  // ISS-1229 round 13, the master's ruling: a kind with no words reads as unrecognised beside its type.
+  it("says a session kind it has no words for is unrecognised, showing the kind it carries", () => {
+    expect(sessionKindLabel("review_bot")).toBe("Unrecognised session (review_bot)");
   });
-  it("reads a job handed to a runner, or running, as running", () => {
-    expect(runSummaryReading({ attempts: [att("dispatched")], lastSessionBeatAt: null })).toBe("running");
-    expect(runSummaryReading({ attempts: [att("running")], lastSessionBeatAt: null })).toBe("running");
+
+  it("claims nothing for a session holder whose session the read did not return", () => {
+    const h: Holder = {
+      by: "session",
+      sessionId: "gone",
+      sessionTitle: null,
+      sessionKind: "run_session",
+      deviceName: null,
+      since: "2026-10-15T01:00:00.000Z",
+    };
+    expect(holderLine(h, NOW, [session()]).why).toBe("What its session is doing was not read");
+    expect(holderLine(h, NOW).why).not.toMatch(/working/i);
   });
-  it("lets a started job outrank a queued one beside it, in either order", () => {
-    expect(runSummaryReading({ attempts: [att("queued"), att("running")], lastSessionBeatAt: null })).toBe("running");
-    expect(runSummaryReading({ attempts: [att("running"), att("queued")], lastSessionBeatAt: null })).toBe("running");
+
+  it("names a claim with its holder and expiry, and calls its time a renewal", () => {
+    const h: Holder = {
+      by: "claim",
+      holder: "iss-8-abc",
+      renewedAt: "2026-10-15T01:50:00.000Z",
+      expiresAt: "2026-10-15T02:50:00.000Z",
+      next: "write the route",
+    };
+    const line = holderLine(h, NOW);
+    expect(line.who).toMatch(/^Claim by iss-8-abc until \d\d:\d\d$/);
+    expect(line.why).toBe("write the route");
+    expect(line.since).toBe("Renewed 10m ago");
   });
-  it("lets a session beat outrank a job row still reading queued", () => {
-    expect(runSummaryReading({ attempts: [att("queued")], lastSessionBeatAt: "2026-09-05T14:20:00Z" })).toBe("running");
+
+  it("says a claim's next step and renewal were not recorded where they were not", () => {
+    const h: Holder = { by: "claim", holder: "x", renewedAt: null, expiresAt: null, next: null };
+    expect(holderLine(h, NOW)).toEqual({ who: "Claim by x", why: "No next step was recorded", since: "Renewal not recorded" });
   });
-  it("reads a queued retry behind finished attempts as queued, and says nothing where no job is live", () => {
-    expect(runSummaryReading({ attempts: [att("failed"), att("queued")], lastSessionBeatAt: null })).toBe("queued");
-    expect(runSummaryReading({ attempts: [att("failed"), att("done")], lastSessionBeatAt: null })).toBeNull();
-    expect(runSummaryReading(NO_JOBS)).toBeNull();
+
+  it.each([
+    ["information", "A person owes information"],
+    ["decision", "A person owes a decision"],
+    ["resource", "A person owes a resource"],
+    [null, "A person — what is owed was not recorded"],
+  ] as const)("names a person who owes %s", (owes, who) => {
+    const h: Holder = { by: "person", status: "waiting", owes, since: null, why: "the vendor" };
+    expect(holderLine(h, NOW)).toEqual({ who, why: "the vendor", since: "Start not recorded" });
+  });
+
+  it("says no reason was recorded, and reads an on_hold as paused by a person", () => {
+    const h: Holder = { by: "person", status: "on_hold", owes: null, since: "2026-10-15T00:00:00.000Z", why: null };
+    expect(holderLine(h, NOW)).toEqual({ who: "Paused by a person", why: "No reason was recorded", since: "2h ago" });
   });
 });
 
-describe("drawerRunChip — one header reading whichever screen opens the drawer (ISS-1277, ISS-1297)", () => {
-  it("shows a queued step under a running run as queued", () => {
-    expect(drawerRunChip(runOf("running"), "queued")).toBe("queued");
+describe("orderHolds — a person's holds first, then the longest held", () => {
+  const held = (id: string, holders: Holder[]): HeldIssue => ({
+    issueId: id,
+    displayId: `ISS-${id}`,
+    title: id,
+    status: "in_progress",
+    holders,
   });
-  it("shows a running step under a running run as running", () => {
-    expect(drawerRunChip(runOf("running"), "running")).toBe("running");
+  const sessionHold = (since: string): Holder => ({
+    by: "session",
+    sessionId: "s",
+    sessionTitle: null,
+    sessionKind: "run_session",
+    deviceName: null,
+    since,
   });
-  it("keeps the run's own status when neither the issue's reading nor the summary says otherwise", () => {
-    expect(drawerRunChip(runOf("running"), null)).toBe("running");
-    expect(drawerRunChip(runOf("running"), "done")).toBe("running");
-    expect(drawerRunChip(runOf("running"), "failed")).toBe("running");
+
+  it("puts a person's hold before an older session hold, then oldest first", () => {
+    const person = held("1", [{ by: "person", status: "needs_info", owes: null, since: "2026-10-15T01:30:00.000Z", why: null }]);
+    const old = held("2", [sessionHold("2026-10-14T00:00:00.000Z")]);
+    const recent = held("3", [sessionHold("2026-10-15T01:00:00.000Z")]);
+    expect(orderHolds([recent, old, person]).map((h) => h.issueId)).toEqual(["1", "2", "3"]);
   });
-  it("reads the summary where there is no issue row: the same chip the board gives that run", () => {
-    const queuedRun = runOf("running", [att("queued")]);
-    expect(drawerRunChip(queuedRun, null)).toBe("queued");
-    expect(drawerRunChip(queuedRun, "queued")).toBe(drawerRunChip(queuedRun, null));
-    expect(drawerRunChip(runOf("running", [att("running")]), null)).toBe("running");
+
+  it("sorts a hold with no recorded start last within its group", () => {
+    const unknown = held("1", [{ by: "claim", holder: "x", renewedAt: null, expiresAt: null, next: null }]);
+    const known = held("2", [sessionHold("2026-10-15T01:00:00.000Z")]);
+    expect(orderHolds([unknown, known]).map((h) => h.issueId)).toEqual(["2", "1"]);
   });
-  it("gives one chip for one summary whatever the issue row says beside it", () => {
-    const handedOff = runOf("running", [att("dispatched")]);
-    expect(drawerRunChip(handedOff, "queued")).toBe(drawerRunChip(handedOff, null));
-    expect(drawerRunChip(handedOff, "queued")).toBe("running");
-    const waiting = runOf("running", [att("queued")]);
-    expect(drawerRunChip(waiting, "running")).toBe(drawerRunChip(waiting, null));
-    expect(drawerRunChip(waiting, "running")).toBe("queued");
-  });
-  it("keeps a paused run paused whatever the issue's session, queued job or attempts say", () => {
-    expect(drawerRunChip(runOf("paused"), "running")).toBe("paused");
-    expect(drawerRunChip(runOf("paused"), "queued")).toBe("paused");
-    expect(drawerRunChip(runOf("paused", [att("queued")]), null)).toBe("paused");
-  });
-  it("keeps a finished or cancelled run's own status", () => {
-    expect(drawerRunChip(runOf("completed"), "queued")).toBe("done");
-    expect(drawerRunChip(runOf("failed", [att("queued")]), null)).toBe("failed");
-    expect(drawerRunChip(runOf("cancelled"), "queued")).toBe("blocked");
+});
+
+describe("readAtLine", () => {
+  it("names the clock time of the reading kept on screen", () => {
+    expect(readAtLine("2026-10-15T01:59:00.000Z")).toMatch(/^Could not refresh — showing what was read at \d\d:\d\d\.$/);
   });
 });

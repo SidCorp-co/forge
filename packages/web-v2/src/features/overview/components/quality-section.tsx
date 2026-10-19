@@ -1,14 +1,10 @@
 "use client";
 
-import {
-  BulletBar,
-  CardTitle,
-  SankeyFlow,
-  SectionTitle,
-  Waffle,
-} from "@/design";
+import { BulletBar, CardTitle, SectionTitle, Waffle } from "@/design";
 import { TONE_META } from "@/design/status";
+import { failureReasonLabel } from "@/features/sessions/types";
 import { formatElapsed, qualityRates } from "../derive";
+import { jobKindsLabel } from "../job-kinds";
 import type { PulseQuality } from "../types";
 
 const LANE_LABEL: Record<string, string> = {
@@ -24,7 +20,7 @@ export interface QualitySectionProps {
 /** Section 5 — is the output any good? */
 export function QualitySection({ quality }: QualitySectionProps) {
   const rates = qualityRates(quality);
-  const { finished, reopened, rework, runFailure, sessionFailures, pipelineFlow } = quality;
+  const { finished, reopened, runFailure, sessionFailures, pipelineFlow } = quality;
 
   return (
     <section aria-labelledby="overview-quality" className="flex flex-col gap-4 border-t border-line pt-5">
@@ -70,16 +66,6 @@ export function QualitySection({ quality }: QualitySectionProps) {
           total={rates.finishedTotal}
           valueText={`${reopened.issues} issues · ${reopened.events} reopenings`}
         />
-        <BulletBar
-          label="Fix jobs against code jobs"
-          value={rework.fix}
-          total={rework.code}
-          valueText={
-            rates.reworkRatio === null
-              ? `${rework.fix} fix · no code jobs`
-              : `${rework.fix} fix · ${rework.code} code`
-          }
-        />
         {(["pipeline", "scheduler", "other"] as const).map((lane) => (
           <BulletBar
             key={lane}
@@ -92,7 +78,7 @@ export function QualitySection({ quality }: QualitySectionProps) {
 
       <div className="flex flex-col gap-1">
         <CardTitle className="fg-body-sm text-muted">
-          Why agent sessions failed — {rates.sessionFailureTotal} in 90 days
+          Why agent sessions failed — {rates.sessionFailureTotal} in the last 90 days
           {rates.unclassifiedShare !== null
             ? `, ${Math.round(rates.unclassifiedShare * 100)}% unclassified`
             : ""}
@@ -104,7 +90,7 @@ export function QualitySection({ quality }: QualitySectionProps) {
             {sessionFailures.map((r) => (
               <li key={r.reason} className="fg-body-sm flex justify-between gap-2">
                 <span className={r.reason === "unclassified" ? "text-subtle" : ""}>
-                  {r.reason}
+                  {failureReasonLabel(r.reason)}
                 </span>
                 <span className="tabular-nums text-muted">{r.count}</span>
               </li>
@@ -114,23 +100,32 @@ export function QualitySection({ quality }: QualitySectionProps) {
       </div>
 
       <div className="flex flex-col gap-1">
-        <CardTitle className="fg-body-sm text-muted">What the pipeline actually ran</CardTitle>
+        <CardTitle id="overview-ran" className="fg-body-sm text-muted">
+          What the pipeline actually ran — jobs finished in the last 90 days
+        </CardTitle>
         {pipelineFlow.length === 0 ? (
           <p className="fg-body-sm text-muted">No jobs finished in the window.</p>
         ) : (
-          <SankeyFlow
-            nodes={pipelineFlow.map((n) => ({
-              key: n.type,
-              label: n.type,
-              count: n.count,
-              medianSeconds: n.medianSeconds,
-              loop: n.type === "fix",
-            }))}
-            formatDuration={(s) => (s === null ? "—" : formatElapsed(s))}
-            label={`Jobs by pipeline stage over 90 days. ${pipelineFlow
-              .map((n) => `${n.type}: ${n.count}`)
-              .join(", ")}.`}
-          />
+          <table aria-labelledby="overview-ran" className="w-full">
+            <thead>
+              <tr className="fg-body-sm text-subtle">
+                <th scope="col" className="text-left font-normal">Work</th>
+                <th scope="col" className="text-right font-normal">Jobs</th>
+                <th scope="col" className="text-right font-normal">Median</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pipelineFlow.map((n) => (
+                <tr key={n.type} className="fg-body-sm">
+                  <td className="py-0.5 text-left">{jobKindsLabel(n.type)}</td>
+                  <td className="py-0.5 text-right tabular-nums">{n.count}</td>
+                  <td className="py-0.5 text-right tabular-nums text-muted">
+                    {n.medianSeconds === null ? "—" : formatElapsed(n.medianSeconds)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         )}
       </div>
     </section>

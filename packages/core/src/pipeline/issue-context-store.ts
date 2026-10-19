@@ -1,35 +1,29 @@
-import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, isNull, or } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import {
-  type IssueStepContextKind,
-  issueStepContextKinds,
-  issueStepContexts,
-  issues,
-} from '../db/schema.js';
+import { issues, pipelineRuns } from '../db/schema.js';
 import { actorAgencies, actorTypes } from '../db/schema-activity.js';
+import { runJournal } from '../db/schema-journal.js';
 import { refreshModuleKnowledgeForIssue } from '../labels/module-knowledge-refresh.js';
 import { type StepHandoffPayload, stepHandoffSchema } from '../memory/step-handoff-schema.js';
-import { hooks } from './hooks.js';
+
+/**
+ * The handoff half of the run journal (ISS-1133), behind the surface `issue_step_contexts` had:
+ * the `forge_step_handoff` tools and `/api/issue-step-contexts`. A handoff is the attempt's own
+ * result, so it lands on the `run_journal` row of (run, step, attempt), once.
+ *
+ * Does NOT check authorization — callers (REST routes, MCP tool factories)
+ * MUST verify project membership before invoking.
+ */
+
+export const issueStepContextKinds = ['handoff'] as const;
+export type IssueStepContextKind = (typeof issueStepContextKinds)[number];
 
 const PASSING_TEST_RESULTS: readonly string[] = ['pass', 'verified_by_test'];
 
 function isPassingTestHandoff(payload: StepHandoffPayload): boolean {
   return payload.step === 'test' && PASSING_TEST_RESULTS.includes(payload.result);
 }
-
-/**
- * Repository for `issue_step_contexts` — per-issue per-pipeline-run structured
- * context (proposal Y).
- *
- * Generic write/get over `kind`; v1 only persists kind='handoff' (validated
- * against `stepHandoffSchema`). Future kinds (blocker_note, retrospective,
- * cross_step_decision) plug in here by extending the dispatcher in
- * `writeIssueContext` — the table schema does not change.
- *
- * Does NOT check authorization — callers (REST routes, MCP tool factories)
- * MUST verify project membership before invoking.
- */
 
 const scopeSchema = z.object({
   projectId: z.uuid(),
@@ -46,11 +40,6 @@ export class IssueNotInProject extends Error {
   }
 }
 
-/**
- * The upsert key is `(issueId, step, attempt)` and carries no project, so a write authorised
- * against project A that names an issue of project B would replace B's handoff. The caller's role
- * is checked against `projectId`; this checks that the issue is in it.
- */
 async function assertIssueInProject(issueId: string, projectId: string): Promise<void> {
   const [row] = await db
     .select({ id: issues.id })
@@ -58,6 +47,52 @@ async function assertIssueInProject(issueId: string, projectId: string): Promise
     .where(and(eq(issues.id, issueId), eq(issues.projectId, projectId)))
     .limit(1);
   if (!row) throw new IssueNotInProject(issueId);
+}
+
+/** A write named a pipeline run that is not one of the project's, or does not exist at all. */
+export class PipelineRunNotFound extends Error {
+  constructor(runId: string) {
+    super(`pipelineRunId ${runId} is not accepted: no such run exists in this project`);
+    this.name = 'PipelineRunNotFound';
+  }
+}
+
+/**
+ * The row's foreign key refuses a run that does not exist, as a bare database error; a run of
+ * another project would pass it, so the run is read inside the project, and a miss reads the same
+ * for both so the answer never says whether a run exists elsewhere.
+ */
+async function assertRunInProject(runId: string, projectId: string): Promise<void> {
+  const [row] = await db
+    .select({ id: pipelineRuns.id })
+    .from(pipelineRuns)
+    .where(and(eq(pipelineRuns.id, runId), eq(pipelineRuns.projectId, projectId)))
+    .limit(1);
+  if (!row) throw new PipelineRunNotFound(runId);
+}
+
+/** Why a handoff was not written: the attempt already holds one, or belongs to another issue.
+ *  The row is left as it was in both. */
+export class HandoffRefused extends Error {
+  constructor(
+    readonly code: 'HANDOFF_ALREADY_WRITTEN' | 'HANDOFF_NOT_THIS_ISSUE',
+    message: string,
+  ) {
+    super(message);
+    this.name = 'HandoffRefused';
+  }
+}
+
+/** A handoff delete: the journal keeps every attempt, so there is nothing a delete may remove. */
+export class HandoffDeleteRefused extends Error {
+  readonly code = 'HANDOFF_IS_JOURNAL';
+  constructor(step: string, attempt: number) {
+    super(
+      `the \`${step}\` handoff of attempt ${attempt} was not deleted: a handoff is the run journal's ` +
+        "record of that attempt and the journal keeps every attempt. A later round is a new attempt's handoff",
+    );
+    this.name = 'HandoffDeleteRefused';
+  }
 }
 
 export type IssueContextScope = z.infer<typeof scopeSchema>;
@@ -85,67 +120,102 @@ export interface WriteIssueContextResult {
 }
 
 /**
- * Upsert an issue-step-context row. For `kind='handoff'` the natural key is
- * `(issueId, step, attempt)`; conflicting writes replace the payload + bump
- * `updatedAt` so re-runs of the same attempt land cleanly.
- *
- * For non-handoff kinds (future), upsert is by `id` only — caller chooses
- * whether to insert fresh or pre-resolve an id to update.
+ * Write the handoff of the attempt `(pipelineRunId, step, attempt)`. Where the run declared that
+ * phase attempt, the handoff fills its row; where it never did, a closed row is appended for it.
+ * A second handoff for the same attempt is refused by name and the first stands.
  */
 export async function writeIssueContext(
   input: WriteIssueContextInput,
 ): Promise<WriteIssueContextResult> {
   const validated = writeIssueContextInputSchema.parse(input);
   await assertIssueInProject(validated.issueId, validated.projectId);
+  await assertRunInProject(validated.pipelineRunId, validated.projectId);
 
-  if (validated.kind === 'handoff') {
-    if (!validated.step) {
-      throw new Error('writeIssueContext: kind=handoff requires `step`');
-    }
-    if (validated.payload.step !== validated.step) {
-      throw new Error(
-        `writeIssueContext: payload.step (${validated.payload.step}) does not match scope.step (${validated.step})`,
-      );
-    }
-    const [row] = await db
-      .insert(issueStepContexts)
-      .values({
-        projectId: validated.projectId,
-        issueId: validated.issueId,
-        pipelineRunId: validated.pipelineRunId,
-        kind: 'handoff',
-        step: validated.step,
-        attempt: validated.attempt,
-        payload: validated.payload,
-      })
-      .onConflictDoUpdate({
-        target: [issueStepContexts.issueId, issueStepContexts.step, issueStepContexts.attempt],
-        targetWhere: sql`${issueStepContexts.kind} = 'handoff'`,
-        set: {
-          pipelineRunId: sql`excluded.pipeline_run_id`,
-          payload: sql`excluded.payload`,
-          updatedAt: sql`now()`,
-        },
-      })
-      .returning({
-        id: issueStepContexts.id,
-        createdAt: issueStepContexts.createdAt,
-        updatedAt: issueStepContexts.updatedAt,
-      });
-    if (!row) throw new Error('writeIssueContext: upsert returned no row');
-
-    if (isPassingTestHandoff(validated.payload)) {
-      await refreshModuleKnowledgeForIssue({
-        issueId: validated.issueId,
-        projectId: validated.projectId,
-        actor: validated.actor,
-      });
-    }
-    await announceContractInput(validated.projectId, validated.issueId, 'step handoff written');
-    return row;
+  if (validated.kind !== 'handoff') {
+    throw new Error(`writeIssueContext: kind '${validated.kind}' not implemented`);
+  }
+  const step = validated.step;
+  if (!step) throw new Error('writeIssueContext: kind=handoff requires `step`');
+  if (validated.payload.step !== step) {
+    throw new Error(
+      `writeIssueContext: payload.step (${validated.payload.step}) does not match scope.step (${step})`,
+    );
   }
 
-  throw new Error(`writeIssueContext: kind '${validated.kind}' not implemented`);
+  const attemptOf = and(
+    eq(runJournal.runId, validated.pipelineRunId),
+    eq(runJournal.phase, step),
+    eq(runJournal.attempt, validated.attempt),
+  );
+  const now = new Date();
+  const [filled] = await db
+    .update(runJournal)
+    .set({ handoff: validated.payload, handoffAt: now, issueId: validated.issueId })
+    .where(
+      and(
+        attemptOf,
+        isNull(runJournal.handoff),
+        or(isNull(runJournal.issueId), eq(runJournal.issueId, validated.issueId)),
+      ),
+    )
+    .returning({ id: runJournal.id, startedAt: runJournal.startedAt, at: runJournal.handoffAt });
+  const written =
+    filled ??
+    (
+      await db
+        .insert(runJournal)
+        .values({
+          projectId: validated.projectId,
+          runId: validated.pipelineRunId,
+          issueId: validated.issueId,
+          phase: step,
+          attempt: validated.attempt,
+          source: 'agent',
+          outcome: 'ok',
+          handoff: validated.payload,
+          handoffAt: now,
+          startedAt: now,
+          endedAt: now,
+        })
+        .onConflictDoNothing({
+          target: [runJournal.runId, runJournal.phase, runJournal.attempt],
+        })
+        .returning({ id: runJournal.id, startedAt: runJournal.startedAt, at: runJournal.handoffAt })
+    )[0];
+  if (!written) await refuseHeldAttempt(validated.pipelineRunId, step, validated.attempt);
+  const row = written as NonNullable<typeof written>;
+
+  if (isPassingTestHandoff(validated.payload)) {
+    await refreshModuleKnowledgeForIssue({
+      issueId: validated.issueId,
+      projectId: validated.projectId,
+      actor: validated.actor,
+    });
+  }
+  const at = row.at ?? now;
+  return { id: row.id, createdAt: at, updatedAt: at };
+}
+
+/** The attempt exists and took no handoff: say which of the two reasons it was. */
+async function refuseHeldAttempt(runId: string, step: string, attempt: number): Promise<never> {
+  const [held] = await db
+    .select({ issueId: runJournal.issueId, handoffAt: runJournal.handoffAt })
+    .from(runJournal)
+    .where(
+      and(eq(runJournal.runId, runId), eq(runJournal.phase, step), eq(runJournal.attempt, attempt)),
+    )
+    .limit(1);
+  const named = `the \`${step}\` attempt ${attempt} of run ${runId}`;
+  if (held?.handoffAt) {
+    throw new HandoffRefused(
+      'HANDOFF_ALREADY_WRITTEN',
+      `${named} already holds its handoff, written ${held.handoffAt.toISOString()}; the journal keeps the first and this one was not written. A later round is a new attempt`,
+    );
+  }
+  throw new HandoffRefused(
+    'HANDOFF_NOT_THIS_ISSUE',
+    `${named} belongs to issue ${held?.issueId ?? 'another issue'}, not the one this handoff names; nothing was written`,
+  );
 }
 
 export const getIssueContextsInputSchema = z.object({
@@ -155,15 +225,8 @@ export const getIssueContextsInputSchema = z.object({
   kind: z.enum(issueStepContextKinds).optional(),
   /** Optional step allow-list — only rows whose `step` is in this list match. */
   steps: z.array(z.string().min(1).max(64)).max(20).optional(),
-  /**
-   * Optional pipeline_run scope. When set, rows are limited to that run —
-   * dispatcher prefetch passes the current run so we never inject handoffs
-   * from a prior (cancelled / superseded) run.
-   */
+  /** Optional pipeline_run scope, so a prefetch never injects a prior run's handoffs. */
   pipelineRunId: z.uuid().optional(),
-  /**
-   * Pagination + ordering. Defaults: latest-first by createdAt, 50 rows.
-   */
   limit: z.number().int().min(1).max(200).default(50),
   orderDir: z.enum(['asc', 'desc']).default('desc'),
 });
@@ -182,34 +245,41 @@ export interface IssueContextRow {
   updatedAt: Date;
 }
 
+/** An issue's handoffs, in the shape the handoff surface has always answered with. */
 export async function getIssueContexts(input: GetIssueContextsInput): Promise<IssueContextRow[]> {
   const validated = getIssueContextsInputSchema.parse(input);
   const conds = [
-    eq(issueStepContexts.projectId, validated.projectId),
-    eq(issueStepContexts.issueId, validated.issueId),
+    eq(runJournal.projectId, validated.projectId),
+    eq(runJournal.issueId, validated.issueId),
+    isNotNull(runJournal.handoff),
   ];
-  if (validated.kind) conds.push(eq(issueStepContexts.kind, validated.kind));
-  if (validated.pipelineRunId) {
-    conds.push(eq(issueStepContexts.pipelineRunId, validated.pipelineRunId));
-  }
+  if (validated.pipelineRunId) conds.push(eq(runJournal.runId, validated.pipelineRunId));
   if (validated.steps && validated.steps.length > 0) {
-    conds.push(inArray(issueStepContexts.step, validated.steps));
+    conds.push(inArray(runJournal.phase, validated.steps));
   }
-
   const orderFn = validated.orderDir === 'asc' ? asc : desc;
-
   const rows = await db
     .select()
-    .from(issueStepContexts)
+    .from(runJournal)
     .where(and(...conds))
-    .orderBy(orderFn(issueStepContexts.createdAt))
+    .orderBy(orderFn(runJournal.handoffAt))
     .limit(validated.limit);
 
-  return rows.map((r) => ({
-    ...r,
-    kind: r.kind as IssueStepContextKind,
-    payload: r.payload as StepHandoffPayload,
-  }));
+  return rows.map((r) => {
+    const at = r.handoffAt ?? r.startedAt;
+    return {
+      id: r.id,
+      projectId: r.projectId,
+      issueId: validated.issueId,
+      pipelineRunId: r.runId,
+      kind: 'handoff' as const,
+      step: r.phase,
+      attempt: r.attempt,
+      payload: r.handoff as StepHandoffPayload,
+      createdAt: at,
+      updatedAt: at,
+    };
+  });
 }
 
 export const deleteIssueContextInputSchema = z.object({
@@ -221,35 +291,8 @@ export const deleteIssueContextInputSchema = z.object({
 });
 export type DeleteIssueContextInput = z.infer<typeof deleteIssueContextInputSchema>;
 
-/**
- * Idempotent delete by natural key (kind='handoff' only; other kinds use id
- * directly when added). Returns the number of removed rows (0 or 1).
- */
-export async function deleteIssueContext(input: DeleteIssueContextInput): Promise<number> {
+/** Refused by name, always: the journal keeps every attempt's handoff. */
+export async function deleteIssueContext(input: DeleteIssueContextInput): Promise<never> {
   const validated = deleteIssueContextInputSchema.parse(input);
-  const result = await db
-    .delete(issueStepContexts)
-    .where(
-      and(
-        eq(issueStepContexts.projectId, validated.projectId),
-        eq(issueStepContexts.issueId, validated.issueId),
-        eq(issueStepContexts.kind, validated.kind),
-        eq(issueStepContexts.step, validated.step),
-        eq(issueStepContexts.attempt, validated.attempt),
-      ),
-    )
-    .returning({ id: issueStepContexts.id });
-  if (result.length > 0) {
-    await announceContractInput(validated.projectId, validated.issueId, 'step handoff deleted');
-  }
-  return result.length;
-}
-
-/** ISS-1072 — a handoff moved, so the contract's answer for this issue may have. */
-async function announceContractInput(
-  projectId: string,
-  issueId: string,
-  reason: string,
-): Promise<void> {
-  await hooks.emit('contractInputChanged', { projectId, issueId, reason });
+  throw new HandoffDeleteRefused(validated.step, validated.attempt);
 }

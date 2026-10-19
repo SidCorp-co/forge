@@ -1,15 +1,17 @@
 "use client";
 
 // The one importer of @tanstack/react-virtual: it hands back plain numbers and callbacks, so no
-// library type reaches a feature. The row that holds focus is always among the rows returned, found
-// by its key, so rows inserted or reordered above it do not move the hold to another row.
+// library type reaches a feature. The row that holds focus is always among the rows returned, by its key.
 
 import { defaultRangeExtractor, useVirtualizer } from "@tanstack/react-virtual";
 import {
   type FocusEvent,
+  type KeyboardEvent,
   type RefObject,
+  type UIEvent,
   useCallback,
   useLayoutEffect,
+  useReducer,
   useRef,
 } from "react";
 
@@ -50,13 +52,21 @@ export interface VirtualRows {
   reached: number;
   /** Ref for each drawn row, which carries `data-index`: it reports the row's measured height. */
   measureRow: (node: Element | null) => void;
-  /** Spread on the scroller: it learns which row holds focus. */
-  trackFocus: { onFocus: (event: FocusEvent<HTMLElement>) => void; onBlur: (event: FocusEvent<HTMLElement>) => void };
+  /** Spread on the scroller: it learns which row holds focus, takes End to the last row, and re-aims a scroll that ends at the end of rows not yet measured. */
+  scrollerEvents: {
+    onKeyDown: (event: KeyboardEvent<HTMLElement>) => void;
+    onFocus: (event: FocusEvent<HTMLElement>) => void;
+    onBlur: (event: FocusEvent<HTMLElement>) => void;
+    onScroll: (event: UIEvent<HTMLElement>) => void;
+  };
   /** Scrolls row `index` into the document and into view, then puts focus on it. */
   focusRow: (index: number) => void;
 }
 
 const ROW = "[data-index]";
+/** How long after End the end is still wanted: the rows near it measure as they come into view. */
+const END_SETTLE_MS = 1500;
+const TYPING = "input, textarea, select, [contenteditable]";
 
 /** Where the held row is now: where it was if it still has that key, else wherever that key went, else -1. */
 function heldIndex(
@@ -87,6 +97,7 @@ export function useVirtualRows({
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const held = useRef<{ key: string | number; index: number } | null>(null);
   const pending = useRef<number | null>(null);
+  const [, redraw] = useReducer((n: number) => n + 1, 0);
 
   const virtualizer = useVirtualizer<HTMLDivElement, Element>({
     count: enabled ? count : 0,
@@ -136,12 +147,50 @@ export function useVirtualRows({
       pending.current = index;
       held.current = { key: getKey?.(index) ?? index, index };
       virtualizer.scrollToIndex(index, { align: "auto" });
+      // A scroll that does not move the offset renders nothing, and the held row is drawn only by a render.
+      redraw();
       settle();
     },
     [virtualizer, settle, getKey],
   );
 
-  const trackFocus = {
+  // A jump to the end is aimed at estimated rows and rests short: aim at the last row again from the
+  // bottom and the library settles on it as the rows measure. The aim's own events are not answered.
+  const endWantedUntil = useRef(0);
+  const aimedFrom = useRef<{ top: number; height: number } | null>(null);
+  const reachedEnd = (event: UIEvent<HTMLElement>) => {
+    const scroller = event.currentTarget;
+    const { scrollTop, clientHeight, scrollHeight } = scroller;
+    if (!enabled || count === 0 || scrollHeight === 0 || scrollTop + clientHeight < scrollHeight - 1) {
+      aimedFrom.current = null;
+      return;
+    }
+    if (aimedFrom.current?.top === scrollTop && aimedFrom.current.height === scrollHeight) return;
+    aimedFrom.current = { top: scrollTop, height: scrollHeight };
+    virtualizer.scrollToIndex(count - 1, { align: "end" });
+  };
+
+  // The browser's own End rests short of rows only estimated, so End aims at the last row instead.
+  const endKey = (event: KeyboardEvent<HTMLElement>) => {
+    if (event.defaultPrevented || event.key !== "End" || event.shiftKey || event.altKey || event.metaKey) return;
+    if (!enabled || count === 0 || (event.target as HTMLElement).matches(TYPING)) return;
+    event.preventDefault();
+    endWantedUntil.current = Date.now() + END_SETTLE_MS;
+    virtualizer.scrollToIndex(count - 1, { align: "end" });
+  };
+
+  // The library stops aiming after a frame at its target and the last rows measure later, with no
+  // scroll to say so: while End is fresh, a new total height that leaves a gap aims again.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: totalSize is the trigger, a new total height, and is read from the DOM as scrollHeight.
+  useLayoutEffect(() => {
+    const scroller = scrollerRef.current;
+    if (!enabled || count === 0 || !scroller || Date.now() > endWantedUntil.current) return;
+    if (scroller.scrollTop + scroller.clientHeight < scroller.scrollHeight - 1) virtualizer.scrollToIndex(count - 1, { align: "end" });
+  }, [enabled, count, virtualizer, totalSize]);
+
+  const scrollerEvents = {
+    onKeyDown: endKey,
+    onScroll: reachedEnd,
     onFocus: (event: FocusEvent<HTMLElement>) => {
       const row = (event.target as HTMLElement).closest<HTMLElement>(ROW);
       if (!row || !event.currentTarget.contains(row)) {
@@ -164,7 +213,7 @@ export function useVirtualRows({
     reached: reachedIndex,
     gapAfter: rows.length === 0 ? totalSize : Math.max(0, totalSize - reached),
     measureRow: virtualizer.measureElement,
-    trackFocus,
+    scrollerEvents,
     focusRow,
   };
 }

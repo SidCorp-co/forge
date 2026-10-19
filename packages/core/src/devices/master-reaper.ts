@@ -1,6 +1,7 @@
 import { and, eq, notInArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions, terminalAgentSessionStatuses } from '../db/schema.js';
+import { boxAnswersSql } from '../jobs/box-answers.js';
 import { MASTER_SESSION_KIND } from '../jobs/session-kinds.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
@@ -9,7 +10,8 @@ import { SESSION_SILENCE_TIMEOUT_S } from './session-silence.js';
 const TERMINAL = sql.raw(terminalAgentSessionStatuses.map((s) => `'${s}'`).join(', '));
 
 /**
- * Close the master sessions whose box has stopped answering, and say how many.
+ * Close the master sessions that have stopped checking in, and say how many. The reason names
+ * the box only where the box has stopped answering too.
  *
  * Flipping the row terminal invokes the descent in `applyKernelTransition`,
  * which returns the children's issue leases.
@@ -23,7 +25,7 @@ const TERMINAL = sql.raw(terminalAgentSessionStatuses.map((s) => `'${s}'`).join(
 export async function reapSilentMasters(): Promise<number> {
   const staleSeconds = SESSION_SILENCE_TIMEOUT_S;
   const silent = (await db.execute(sql`
-    SELECT s.id, s.device_id, s.project_id
+    SELECT s.id, s.device_id, s.project_id, ${boxAnswersSql(sql`s.device_id`)} AS box_answers
     FROM agent_sessions s
     WHERE s.kind = ${MASTER_SESSION_KIND}
       AND s.status NOT IN (${TERMINAL})
@@ -44,11 +46,18 @@ export async function reapSilentMasters(): Promise<number> {
     const flipped = await applyKernelTransition(db, {
       entity: 'session',
       to: 'failed',
-      set: {
-        failureReason: 'runner_unreachable',
-        failureDetail: 'master-reaper: heartbeat stopped',
-        updatedAt: new Date(),
-      },
+      set:
+        row.box_answers === true
+          ? {
+              failureReason: 'session_stopped_checking_in',
+              failureDetail: 'master-reaper: the master stopped checking in while its box answered',
+              updatedAt: new Date(),
+            }
+          : {
+              failureReason: 'runner_unreachable',
+              failureDetail: 'master-reaper: heartbeat stopped',
+              updatedAt: new Date(),
+            },
       where: and(
         eq(agentSessions.id, sessionId),
         notInArray(agentSessions.status, [...terminalAgentSessionStatuses]),
@@ -134,10 +143,8 @@ let registered = false;
 export async function registerMasterReaper(): Promise<void> {
   if (registered) return;
   const { boss } = await import('../queue/boss.js');
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).createQueue(MASTER_REAPER_QUEUE);
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).work(MASTER_REAPER_QUEUE, async () => {
+  await boss.createQueue(MASTER_REAPER_QUEUE);
+  await boss.work(MASTER_REAPER_QUEUE, async () => {
     // Masters first: closing one returns its own holds and, through the
     // descent, its children's leases. The hold sweep that follows catches what
     // no transition can reach — a hold whose session row is gone entirely, and
@@ -147,8 +154,7 @@ export async function registerMasterReaper(): Promise<void> {
     const released = await reapDeadMasterHolds();
     if (released > 0) logger.info({ released }, 'master-reaper: sweep returned holds to the pool');
   });
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).schedule(MASTER_REAPER_QUEUE, '* * * * *');
+  await boss.schedule(MASTER_REAPER_QUEUE, '* * * * *');
   registered = true;
 }
 

@@ -1,12 +1,12 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { BOX_SILENT_AFTER_MS } from '../jobs/box-answers.js';
 import { logger } from '../logger.js';
 import { boss } from '../queue/boss.js';
-import { deviceRoom } from '../ws/rooms.js';
-import { roomManager } from '../ws/server.js';
+import { publishBoxState } from './box-state-publish.js';
 
 export const DEVICE_STALE_DETECTOR_QUEUE = 'device-status-detector';
-const DEVICE_STALE_THRESHOLD = "interval '90 seconds'";
+const DEVICE_STALE_THRESHOLD = `interval '${BOX_SILENT_AFTER_MS / 1000} seconds'`;
 
 type StaleDeviceRow = {
   id: string;
@@ -28,12 +28,7 @@ export async function runDeviceStaleSweep(): Promise<{
     `),
   );
 
-  for (const row of rows) {
-    roomManager.publish(deviceRoom(row.id), {
-      event: 'device.status',
-      data: { deviceId: row.id, status: 'offline', reason: 'stale' },
-    });
-  }
+  for (const row of rows) await publishBoxState(row.id, 'offline', 'stale');
 
   return { markedOffline: rows.length, durationMs: Date.now() - t0 };
 }
@@ -42,11 +37,8 @@ let registered = false;
 
 export async function registerDeviceStaleDetector(): Promise<void> {
   if (registered) return;
-  // pg-boss v10 requires explicit createQueue before schedule/work can reference it.
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).createQueue(DEVICE_STALE_DETECTOR_QUEUE);
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).work(DEVICE_STALE_DETECTOR_QUEUE, async () => {
+  await boss.createQueue(DEVICE_STALE_DETECTOR_QUEUE);
+  await boss.work(DEVICE_STALE_DETECTOR_QUEUE, async () => {
     try {
       const result = await runDeviceStaleSweep();
       logger.info(result, 'device-status-detector: sweep complete');
@@ -55,8 +47,7 @@ export async function registerDeviceStaleDetector(): Promise<void> {
       throw err;
     }
   });
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).schedule(DEVICE_STALE_DETECTOR_QUEUE, '*/2 * * * *');
+  await boss.schedule(DEVICE_STALE_DETECTOR_QUEUE, '*/2 * * * *');
   registered = true;
 }
 

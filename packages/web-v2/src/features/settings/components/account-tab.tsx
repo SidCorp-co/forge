@@ -101,7 +101,7 @@ function AccountPreferences({
         }
       } catch (err) {
         setFailure(
-          `${saved.length > 0 ? `${saved.join(" and ")} saved, but not the rest: ` : "Nothing was saved: "}${formatApiReason(err)} Your other edits are still here — Save sends them again.`,
+          `${saved.length > 0 ? `${saved.join(" and ")} saved, but not the rest.` : "Nothing was saved."} ${formatApiReason(err)} Your other edits are still here — Save sends them again.`,
         );
         throw err;
       }

@@ -4,10 +4,10 @@
 // field and grouped page list, the article, the table of contents. The in-app `/docs` screen
 // and the public `/guides` pages both compose these, so there is one reading UI, not two.
 import Link from "next/link";
-import { type ReactNode, useEffect, useRef } from "react";
-import { Card, CardContent, Icon, Input, Markdown } from "@/design";
+import { Fragment, type ReactNode, useEffect, useRef } from "react";
+import { Icon, Input, Markdown } from "@/design";
 import { cn } from "@/lib/utils/cn";
-import { slugify } from "../reader";
+import { type MatchExcerpt, type MatchSpan, slugify, titleParts } from "../reader";
 import type { TocEntry } from "../types";
 
 /** One entry in the sidebar: a button where the reader selects in place, a link where each
@@ -20,6 +20,8 @@ export interface DocsNavItem {
   onSelect?: () => void;
   /** A short label beside the title, e.g. which door a search result sits behind. */
   tag?: string;
+  /** On a search result: what the reader typed, marked in the title, and where in the page it was found. */
+  found?: { query: string; excerpt: MatchExcerpt | null };
 }
 
 export interface DocsNavSection {
@@ -33,17 +35,67 @@ function itemClass(active: boolean) {
     : "flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left text-13 text-muted hover:bg-hover hover:text-fg";
 }
 
+function Marked({ span }: { span: MatchSpan }) {
+  return (
+    <>
+      {span.before}
+      <mark className="bg-transparent font-semibold text-fg">{span.match}</mark>
+      {span.after}
+    </>
+  );
+}
+
+/** A page title as the reader sees it: a code span set as code, never its backticks, and the words
+ *  searched for marked wherever they fall across prose and code. */
+export function DocTitle({ title, query = "" }: { title: string; query?: string }) {
+  let offset = 0;
+  const parts = titleParts(title, query).map((part) => {
+    const key = `${offset}`;
+    offset += part.text.length;
+    const text = part.code ? (
+      <code key="code" className="font-mono">
+        {part.text}
+      </code>
+    ) : (
+      part.text
+    );
+    return part.marked ? (
+      <mark key={key} className="bg-transparent font-semibold text-fg">
+        {text}
+      </mark>
+    ) : (
+      <Fragment key={key}>{text}</Fragment>
+    );
+  });
+  return <>{parts}</>;
+}
+
+function Title({ item }: { item: DocsNavItem }) {
+  return (
+    <span className="truncate">
+      <DocTitle title={item.title} query={item.found?.query} />
+    </span>
+  );
+}
+
 function ItemBody({ item }: { item: DocsNavItem }) {
+  const excerpt = item.found?.excerpt ?? null;
   return (
     <>
       <Icon name="book" size={13} className="flex-none self-start pt-0.5 text-subtle" />
-      {item.tag ? (
+      {item.tag || excerpt ? (
         <span className="flex min-w-0 flex-col">
-          <span className="truncate">{item.title}</span>
-          <span className="fg-caption text-subtle">{item.tag}</span>
+          <Title item={item} />
+          {excerpt?.heading ? <span className="truncate text-12 font-medium leading-snug text-muted">{excerpt.heading}</span> : null}
+          {excerpt ? (
+            <span className="line-clamp-2 text-12 font-normal leading-snug text-muted">
+              <Marked span={excerpt} />
+            </span>
+          ) : null}
+          {item.tag ? <span className="fg-caption text-subtle">{item.tag}</span> : null}
         </span>
       ) : (
-        <span className="truncate">{item.title}</span>
+        <Title item={item} />
       )}
     </>
   );
@@ -70,14 +122,18 @@ export function DocsSearchField({
   onQuery,
   placeholder,
   label,
+  id,
 }: {
   query: string;
   onQuery: (q: string) => void;
   placeholder: string;
   label: string;
+  /** The field's address, for a link elsewhere on the page that takes the reader to it. */
+  id?: string;
 }) {
   return (
     <Input
+      id={id}
       icon="search"
       value={query}
       onChange={(e) => onQuery(e.target.value)}
@@ -89,7 +145,7 @@ export function DocsSearchField({
 
 export function DocsSearchResults({ results }: { results: DocsNavItem[] }) {
   return (
-    <ul className="flex flex-col gap-0.5 pt-1" aria-label="Search results">
+    <ul className="flex flex-col gap-1 pt-1" aria-label="Search results">
       {results.length === 0 ? (
         <li className="fg-body-sm px-2 py-1 text-subtle">No matches</li>
       ) : (
@@ -103,29 +159,35 @@ export function DocsSearchResults({ results }: { results: DocsNavItem[] }) {
   );
 }
 
-/** The search field, then either its results or the grouped page list. */
+/** The search field, anything said of what it searches, then either its results or the grouped
+ *  page list. */
 export function DocsSidebar({
   query,
   onQuery,
   placeholder,
   searchLabel,
+  searchNote,
   results,
   sections,
   navLabel,
   footer,
+  searchId,
 }: {
   query: string;
   onQuery: (q: string) => void;
   placeholder: string;
   searchLabel: string;
+  searchNote?: ReactNode;
   results: DocsNavItem[] | null;
   sections: DocsNavSection[];
   navLabel: string;
   footer?: ReactNode;
+  searchId?: string;
 }) {
   return (
     <div className="flex flex-col gap-2">
-      <DocsSearchField query={query} onQuery={onQuery} placeholder={placeholder} label={searchLabel} />
+      <DocsSearchField query={query} onQuery={onQuery} placeholder={placeholder} label={searchLabel} id={searchId} />
+      {searchNote}
       {results ? (
         <DocsSearchResults results={results} />
       ) : (
@@ -145,17 +207,26 @@ export function DocsSidebar({
   );
 }
 
+/** One step of a breadcrumb: plain text, or a link where the step is a page of its own. */
+export type DocsCrumb = string | { label: string; href: string };
+
+const crumbLabel = (c: DocsCrumb) => (typeof c === "string" ? c : c.label);
+
 /** A page: its breadcrumb, anything the caller puts above the body, and the markdown, with
- *  heading ids assigned after render so the table of contents can scroll to them. */
+ *  heading ids assigned after render so the table of contents can scroll to them. `trailing` sits
+ *  at the end of the breadcrumb's row, and a breadcrumb that has one stays at the top of the screen
+ *  below `lg`. */
 export function DocsArticle({
   crumbs,
   body,
   docBasePath,
   docRoute,
+  trailing,
   children,
 }: {
-  crumbs: string[];
+  crumbs: DocsCrumb[];
   body: string;
+  trailing?: ReactNode;
   docBasePath?: string;
   docRoute?: string;
   children?: ReactNode;
@@ -172,24 +243,47 @@ export function DocsArticle({
   });
   const trail = crumbs.map((crumb, depth) => ({
     crumb,
-    path: crumbs.slice(0, depth + 1).join(" / "),
+    path: crumbs
+      .slice(0, depth + 1)
+      .map(crumbLabel)
+      .join(" / "),
     last: depth === crumbs.length - 1,
   }));
 
   return (
     <div ref={ref} style={{ maxWidth: "72ch" }} className="mx-auto">
-      <nav aria-label="Breadcrumb" className="fg-caption mb-5 flex flex-wrap items-center gap-1.5 text-subtle">
-        {trail.map(({ crumb, path, last }) => (
-          <span key={path} className="contents">
-            {path !== crumb ? (
-              <span aria-hidden className="text-line-strong">
-                /
-              </span>
-            ) : null}
-            <span className={last ? "text-muted" : undefined}>{crumb}</span>
-          </span>
-        ))}
-      </nav>
+      <div
+        className={cn(
+          "mb-5 flex items-start justify-between gap-4",
+          // Below `lg` a reader partway down a long page keeps the way to search and to the door at
+          // the top of the screen; from `lg` up the sidebar is beside the page and this scrolls away.
+          // Column-wide: the frame has no padding a negative margin could bleed into.
+          trailing &&
+            "sticky top-0 z-10 border-b border-line-subtle bg-app py-2.5 lg:static lg:border-b-0 lg:bg-transparent lg:py-0",
+        )}
+      >
+        <nav aria-label="Breadcrumb" className="fg-caption flex flex-wrap items-center gap-1.5 text-subtle">
+          {trail.map(({ crumb, path, last }, depth) => (
+            <span key={path} className="contents">
+              {depth > 0 ? (
+                <span aria-hidden className="text-line-strong">
+                  /
+                </span>
+              ) : null}
+              {typeof crumb === "string" ? (
+                <span className={last ? "text-muted" : undefined}>
+                  <DocTitle title={crumb} />
+                </span>
+              ) : (
+                <Link href={crumb.href} className="text-muted underline underline-offset-2 hover:text-fg">
+                  <DocTitle title={crumb.label} />
+                </Link>
+              )}
+            </span>
+          ))}
+        </nav>
+        {trailing}
+      </div>
       {children}
       <Markdown variant="prose" docBasePath={docBasePath} docRoute={docRoute}>
         {body}
@@ -224,7 +318,8 @@ export function DocsToc({ toc }: { toc: TocEntry[] }) {
   );
 }
 
-/** Sidebar, content, table of contents — sticky sidebar beside the scrolling content.
+/** Sidebar, content, table of contents — sticky sidebar beside the scrolling content, the columns
+ *  parted by a hairline and whitespace rather than each set in a card.
  *  `contentFirst` puts the content above the sidebar where the columns stack (below `lg`), for a
  *  reader who arrived at a page from a link rather than to browse. */
 export function DocsLayout({
@@ -239,18 +334,16 @@ export function DocsLayout({
   contentFirst?: boolean;
 }) {
   return (
-    <div className="grid grid-cols-1 gap-4 lg:grid-cols-[260px_minmax(0,1fr)_220px]">
-      <Card
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-[260px_minmax(0,1fr)_220px] lg:gap-8">
+      <div
         className={cn(
-          "lg:sticky lg:top-4 lg:self-start lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto",
-          contentFirst && "order-2 lg:order-none",
+          "border-t border-line-subtle pt-4 lg:sticky lg:top-4 lg:self-start lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto lg:border-t-0 lg:border-r lg:pt-0 lg:pr-4",
+          contentFirst ? "order-2 lg:order-none" : "border-t-0 pt-0",
         )}
       >
-        <CardContent>{sidebar}</CardContent>
-      </Card>
-      <Card className={contentFirst ? "order-1 lg:order-none" : undefined}>
-        <CardContent>{children}</CardContent>
-      </Card>
+        {sidebar}
+      </div>
+      <div className={cn("min-w-0", contentFirst && "order-1 lg:order-none")}>{children}</div>
       <div className="hidden lg:block">
         <DocsToc toc={toc} />
       </div>

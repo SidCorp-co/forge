@@ -50,15 +50,6 @@ export const REGISTRY_BACKLOG_ADMISSIBLE_STATUSES = [
 ] as const;
 
 export const REGISTRY_JOB_TYPES = [
-  'triage',
-  'clarify',
-  'plan',
-  'code',
-  'review',
-  'test',
-  'staging',
-  'release',
-  'fix',
   'custom',
   'pm',
   'smoke',

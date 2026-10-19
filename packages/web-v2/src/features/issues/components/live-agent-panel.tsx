@@ -9,9 +9,11 @@
 // discriminated union rather than two components, which makes "renders nothing
 // when there is neither" the caller's obligation and the type's to enforce.
 
+import { jobKindLabel } from "@/features/overview/job-kinds";
 import { useState } from "react";
 import Link from "next/link";
-import { Card, CardContent, Icon, MonoTag } from "@/design";
+import { Card, CardContent, Icon, MonoTag, SILENCE_TONE, SILENCE_WORD } from "@/design";
+import { TONE_META } from "@/design/status";
 import { useElapsed } from "@/design/hooks/use-elapsed";
 import { heartbeatState } from "../derive";
 import type { QueuedStepView } from "../waiting";
@@ -27,7 +29,6 @@ interface LiveAgentPanelProps {
    *  Unused by the queued arm, which names the queued job's own type. */
   step: string;
   slug: string;
-  issueId: string;
 }
 
 const HEARTBEAT_META: Record<
@@ -35,18 +36,18 @@ const HEARTBEAT_META: Record<
   { dot: string; label: string }
 > = {
   alive: { dot: "var(--green-500)", label: "Heartbeat alive" },
-  stale: { dot: "var(--red-500)", label: "Heartbeat stale" },
+  stale: { dot: TONE_META[SILENCE_TONE].dot, label: SILENCE_WORD },
   unknown: { dot: "var(--ink-400)", label: "No heartbeat" },
 };
 
-export function LiveAgentPanel({ state, step, slug, issueId }: LiveAgentPanelProps) {
+export function LiveAgentPanel({ state, step, slug }: LiveAgentPanelProps) {
   return (
     <Card>
       <CardContent>
         {state.kind === "live" ? (
-          <LiveRow session={state.session} step={step} slug={slug} issueId={issueId} />
+          <LiveRow session={state.session} step={step} slug={slug} />
         ) : (
-          <QueuedRow step={state.step} slug={slug} issueId={issueId} />
+          <QueuedRow step={state.step} slug={slug} />
         )}
       </CardContent>
     </Card>
@@ -57,12 +58,10 @@ function LiveRow({
   session,
   step,
   slug,
-  issueId,
 }: {
   session: IssueAgentSession;
   step: string;
   slug: string;
-  issueId: string;
 }) {
   const [showOps, setShowOps] = useState(false);
 
@@ -96,7 +95,7 @@ function LiveRow({
           />
           <span className="fg-caption">{hbMeta.label}</span>
         </span>
-        <TimelineLink slug={slug} issueId={issueId} />
+        <PanelLink href={`/projects/${slug}/agents/${session.id}`} label="Open session" />
       </div>
 
       <button
@@ -127,11 +126,9 @@ function LiveRow({
 function QueuedRow({
   step,
   slug,
-  issueId,
 }: {
   step: QueuedStepView;
   slug: string;
-  issueId: string;
 }) {
   const [showOps, setShowOps] = useState(false);
   const queuedMs = Date.parse(step.queuedAt);
@@ -144,12 +141,12 @@ function QueuedRow({
           <Icon name="agent" size={16} />
           <span className="fg-label">Agent queued</span>
         </span>
-        <Stat icon="pipeline" label="Step" value={step.jobType} mono />
+        <Stat icon="pipeline" label="Step" value={jobKindLabel(step.jobType)} />
         <Stat icon="clock" label="Waited" value={waited} mono />
         {step.nextAttempt && (
           <Stat icon="clock" label="Next attempt" value={step.nextAttempt} />
         )}
-        <TimelineLink slug={slug} issueId={issueId} />
+        <PanelLink href={`/projects/${slug}/pipeline`} label="Open pipeline" />
       </div>
 
       <p className="fg-body-sm mt-2 text-muted">
@@ -178,13 +175,14 @@ function QueuedRow({
   );
 }
 
-function TimelineLink({ slug, issueId }: { slug: string; issueId: string }) {
+/** A live agent's session page, or the Pipeline page for a step no session runs yet. */
+function PanelLink({ href, label }: { href: string; label: string }) {
   return (
     <Link
-      href={`/projects/${slug}/agents?issue=${issueId}`}
+      href={href}
       className="fg-caption ml-auto inline-flex items-center gap-1 text-accent-text transition-opacity hover:opacity-80"
     >
-      View timeline
+      {label}
       <Icon name="arrowRight" size={13} />
     </Link>
   );

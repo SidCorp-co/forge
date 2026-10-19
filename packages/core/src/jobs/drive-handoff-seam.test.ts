@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   HANDOFF_STEPS,
   isHandoffStep,
-  renderTerminationBlock,
+  renderDriveTerminationBlock,
   stepHandoffSchema,
 } from '../memory/step-handoff-schema.js';
 
@@ -20,11 +20,13 @@ describe('ISS-888 — drive can produce the completion signal the finalizer read
     expect(isHandoffStep('drive')).toBe(true);
     expect(HANDOFF_STEPS).toContain('drive');
 
-    const block = renderTerminationBlock({
-      step: 'drive',
-      scope: { projectId: 'p1', issueId: 'i1', runId: 'r1', attempt: 1 },
+    const block = renderDriveTerminationBlock({
+      projectId: 'p1',
+      issueId: 'i1',
+      runId: 'r1',
+      attempt: 1,
     });
-    expect(block).toContain('forge_step_handoff.write');
+    expect(block).toContain('forge-runner api issue-step-contexts');
     expect(block).toContain('"step": "drive"');
   });
 

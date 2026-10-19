@@ -3,7 +3,6 @@
 import { useParams, useRouter } from "next/navigation";
 import {
   Badge,
-  EmptyState,
   ErrorState,
   IconButton,
   MonoTag,
@@ -11,13 +10,12 @@ import {
   PageTitle,
   ProjectLoader,
   ProjectMark,
-  useNow,
 } from "@/design";
 import { AttentionQueue } from "@/features/project-dashboard/components/attention-queue";
 import { AwaitingReleaseCard } from "@/features/project-dashboard/components/awaiting-release-card";
 import { ComingSoonNote } from "@/features/project-dashboard/components/dashboard-section";
 import { Headline } from "@/features/project-dashboard/components/headline";
-import { LiveRunsCard } from "@/features/project-dashboard/components/live-runs-card";
+import { LiveSessionsCard } from "@/features/project-dashboard/components/live-sessions-card";
 import { RunnersCard } from "@/features/project-dashboard/components/runners-card";
 import { SchedulesCard } from "@/features/project-dashboard/components/schedules-card";
 import { SpendCard } from "@/features/project-dashboard/components/spend-card";
@@ -26,52 +24,45 @@ import { StatusDonut } from "@/features/project-dashboard/components/status-donu
 import { StepTimes } from "@/features/project-dashboard/components/step-times";
 import { Throughput, THROUGHPUT_WINDOW_DAYS } from "@/features/project-dashboard/components/throughput";
 import {
-  activeRuns,
   attentionCaption,
+  attentionParts,
   attentionReadFailure,
   attentionRefusal,
   attentionCut,
+  type StuckIssues,
+  stuckRowsOf,
+  sessionsWaitingOnYou,
   idleRuns,
-  liveRuns,
+  joblessRuns,
+  runsShown,
   activeSpend,
   awaitingReleaseRuns,
   projectAttention,
-  runnersSummary,
-  spendByStage,
+  spendByStep,
   statusDonut,
 } from "@/features/project-dashboard/derive";
+import { useRunnerFleet } from "@/features/project-dashboard/runner-fleet";
 import {
   type ReadState,
   parkedAges,
   projectShape,
+  readOf,
   secondsSince,
   spendComparison,
   stuckRuns,
 } from "@/features/project-dashboard/shape";
-import { useAttention } from "@/features/attention/hooks";
+import { useAttention, useRetryFailedJob } from "@/features/attention/hooks";
 import { useIssues } from "@/features/issues/hooks";
 import { formatElapsed } from "@/features/overview/derive";
-import { useProjectRuns, useStepDurations, useThroughput } from "@/features/pipeline/hooks";
+import { useSessionsAndHolds } from "@/features/pipeline/hooks";
+import { useProjectRuns, useStepDurations, useThroughput } from "@/features/runs/hooks";
 import { useProjectHealth, useProjects } from "@/features/projects/hooks";
 import { projectGlyph, projectInitials } from "@/features/projects/glyph";
-import { useActiveRunners, useProjectRunners } from "@/features/runners/hooks";
 import { useSchedules } from "@/features/schedules/hooks";
-import { useQueueStats } from "@/features/sessions/hooks";
 import { formatApiError } from "@/lib/api/error";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
-
-/** Where one query stands, in the page's own words: a read that failed (even over an earlier answer) or has not arrived is never an empty one. */
-function readOf(q: { isError: boolean; error: unknown; data: unknown }): ReadState {
-  if (q.isError) return { read: "failed", reason: formatApiError(q.error) };
-  return q.data === undefined ? { read: "pending" } : { read: "ok" };
-}
-
-/** One state for several queries a figure depends on: failed if any failed, else pending if any is. */
-function readOfAll(...qs: Array<{ isError: boolean; error: unknown; data: unknown }>): ReadState {
-  const states = qs.map(readOf);
-  return states.find((r) => r.read === "failed") ?? states.find((r) => r.read === "pending") ?? { read: "ok" };
-}
+import { ProjectMissing } from "@/features/projects/components/project-missing";
 
 /** The window the spend and where-time-goes sections read; the throughput section's is its own. */
 const METRICS_WINDOW_DAYS = 7;
@@ -92,13 +83,14 @@ export default function ProjectOverviewPage() {
 
   // Card data — every hook reuses an existing source. Project-scoped hooks gate
   // on `projectId` so they no-op until the slug resolves.
-  const attentionQ = useAttention();
+  // The project's own organisation, whichever one the rail has open: its counts are this project's.
+  const attentionQ = useAttention({ orgId: project?.orgId ?? null });
+  const retryJob = useRetryFailedJob();
   const runsQ = useProjectRuns(projectId);
+  const sessionsQ = useSessionsAndHolds(projectId);
   const durationsQ = useStepDurations({ days: METRICS_WINDOW_DAYS, projectId }, !!projectId);
   const throughputQ = useThroughput({ days: THROUGHPUT_WINDOW_DAYS, projectId }, !!projectId);
-  const queueQ = useQueueStats(projectId);
-  const projectRunnersQ = useProjectRunners(projectId ?? null);
-  const activeRunnersQ = useActiveRunners(projectId ?? null);
+  const fleet = useRunnerFleet(projectId, Date.now());
   const schedulesQ = useSchedules(projectId);
 
   // The health row lists at most five parked issues, with no time on them. Their ages come from the
@@ -109,12 +101,6 @@ export default function ProjectOverviewPage() {
     sort: "updatedAt:desc",
     pageSize: 50,
   });
-
-  // Tick once a second while some runner is limited (live reset countdown);
-  // the active-runner card's busy state refreshes via its own 10s poll + WS,
-  // so it does not need the per-second tick.
-  const anyLimited = (projectRunnersQ.data ?? []).some((r) => r.limitReason);
-  const tick = useNow(1000, anyLimited);
 
   const isLoading = projectsQ.isLoading || healthQ.isLoading;
   const isError = projectsQ.isError || healthQ.isError;
@@ -145,11 +131,7 @@ export default function ProjectOverviewPage() {
   if (!project) {
     return (
       <div className="grid min-h-[60vh] place-items-center">
-        <EmptyState
-          title="Project not found"
-          message="This project doesn't exist or you don't have access to it."
-          mascot
-        />
+        <ProjectMissing slug={slug} />
       </div>
     );
   }
@@ -161,10 +143,17 @@ export default function ProjectOverviewPage() {
   // Nothing below states a count, a list or "All caught up" the reads have not given: until one is in,
   // the headline, the Needs you figure and the list say they are reading, and where it failed they
   // refuse by name. The health row's parked list alone is a part of the answer, not the whole of it.
-  const attentionPending = attentionQ.read === "pending";
-  const readFailure =
-    attentionQ.read === "failed" ? attentionReadFailure(formatApiError(attentionQ.error)) : null;
-  const attentionRead = attentionQ.read === "read";
+  // Needs you counts the sessions blocked on a person too, so it waits on the sessions read as well.
+  const sessionsState = readOf(sessionsQ);
+  const attentionPending = attentionQ.read === "pending" || sessionsState.read === "pending";
+  const attentionFailure =
+    attentionQ.read === "failed"
+      ? formatApiError(attentionQ.error)
+      : sessionsState.read === "failed"
+        ? `the live sessions were not read (${sessionsState.reason})`
+        : null;
+  const readFailure = attentionFailure === null ? null : attentionReadFailure(attentionFailure);
+  const attentionRead = attentionQ.read === "read" && sessionsState.read === "ok";
   const parkedState: ReadState = !parkedWanted
     ? { read: "ok" }
     : parkedQ.isError
@@ -173,53 +162,70 @@ export default function ProjectOverviewPage() {
         ? { read: "pending" }
         : { read: "ok" };
   const ages = parkedState.read === "ok" ? parkedAges(parkedQ.data?.items) : undefined;
-  const attention = attentionRead ? projectAttention(attentionQ.view, project.slug, health?.blockers, ages) : [];
+  const attention = attentionRead
+    ? [
+        ...projectAttention(attentionQ.view, project.slug, health?.blockers, ages),
+        ...sessionsWaitingOnYou(sessionsQ.data?.sessions, project.slug),
+      ]
+    : [];
   // A response that cannot say how much the list leaves out is refused where the figure and the list
   // are, so the rest of the dashboard stands rather than the whole page failing.
   const attentionRefused = readFailure ?? (attentionRead ? attentionRefusal(attentionQ.view, project.slug) : null);
-  const attentionLeftOut =
-    attentionRead && !attentionRefused
-      ? attentionCut(attention, attentionQ.view, project.slug, health?.blockersTotal, health?.work.blocked_on_person)
-      : null;
+  // Needs you holds the stuck issues the headline counts too, so every figure it says counts them.
+  const stuckIssues: StuckIssues | undefined = health
+    ? { total: health.stuckIssues, refs: health.stuckIssueRefs }
+    : undefined;
+  const stuckRowCount = stuckRowsOf(attention, stuckIssues).length;
+  const attentionCounted = attentionRead && !attentionRefused;
+  const needsYouParts = attentionCounted
+    ? attentionParts(attention, attentionQ.view, project.slug, stuckRowCount)
+    : null;
+  const needsYouWhole = needsYouParts
+    ? Object.values(needsYouParts).reduce((n, part) => n + part, 0)
+    : attention.length + stuckRowCount;
+  const attentionLeftOut = attentionCounted
+    ? attentionCut(attention, attentionQ.view, project.slug, stuckRowCount)
+    : null;
   const attentionState: ReadState = attentionPending
     ? { read: "pending" }
     : attentionRefused
-      ? { read: "failed", reason: readFailure ? formatApiError(attentionQ.error) : attentionRefused }
+      ? { read: "failed", reason: attentionFailure ?? attentionRefused }
       : { read: "ok" };
   const runItems = runsQ.data?.items;
   const runsState = readOf(runsQ);
+  const liveSessions = sessionsQ.data?.sessions ?? [];
+  // A chat whose turn runs is live and keeps its box busy, though the Pipeline page lists no chat.
+  const runningChats = sessionsQ.data?.runningChats?.length ?? 0;
+  const liveCount = liveSessions.length + runningChats;
   const durationsState = readOf(durationsQ);
   const throughputState = readOf(throughputQ);
-  const runnersState = readOf(projectRunnersQ);
-  const activityState = readOfAll(queueQ, activeRunnersQ);
+  const { summary: runners, runners: runnersState, activity: activityState } = fleet;
   const schedulesState = readOf(schedulesQ);
-  const runsActive = activeRuns(runItems);
   const runsIdle = idleRuns(runItems);
   const runsAwaitingRelease = awaitingReleaseRuns(runItems);
   const inFlight = activeSpend(runItems);
-  const runners = runnersSummary(
-    projectRunnersQ.data,
-    activityState.read === "ok" ? queueQ.data : undefined,
-    anyLimited ? tick : now,
-    activityState.read === "ok" ? activeRunnersQ.data?.runners : undefined,
-  );
   const donut = statusDonut(health?.work);
   const awaitingReleaseIssues = health?.work.awaiting_release ?? 0;
-  const spend = spendByStage(durationsQ.data);
+  const spend = spendByStep(durationsQ.data);
   const schedules = schedulesQ.data ?? [];
 
   const reading = projectShape({
     attention: attentionState,
     runs: runsState,
+    sessions: sessionsState,
     parked: parkedState,
     items: attention,
     cut: attentionLeftOut,
     slug: project.slug,
-    liveRuns: runsActive.length,
-    stuckRuns: stuckRuns(runsIdle, now),
+    liveSessions: liveCount,
+    stuckRuns: stuckRuns(joblessRuns(runItems), now),
     failedJobs: attentionState.read === "ok" ? (attentionQ.view?.projectTotals[project.slug]?.failedJobs ?? 0) : 0,
     releaseRuns: runsAwaitingRelease.length,
     releaseIssues: awaitingReleaseIssues,
+    stuck: health ? { read: "ok" } : { read: "failed", reason: "the health read returned no row for this project" },
+    stuckIssues: health?.stuckIssues ?? 0,
+    stuckIssuesByKind: health?.stuckIssuesByKind ?? {},
+    stuckIssueRefs: health?.stuckIssueRefs ?? [],
     now,
   });
 
@@ -228,7 +234,17 @@ export default function ProjectOverviewPage() {
     return s === null ? oldest : Math.max(oldest ?? 0, s);
   }, null);
 
-  const liveRunsSection = <LiveRunsCard runs={runsActive} slug={project.slug} idle={runsIdle} read={runsState} />;
+  const liveSection = (
+    <LiveSessionsCard
+      sessions={liveSessions}
+      runningChats={runningChats}
+      slug={project.slug}
+      now={now}
+      idle={runsIdle}
+      read={sessionsState}
+      runsRead={runsState}
+    />
+  );
   const releaseSection = (
     <AwaitingReleaseCard
       runs={runsAwaitingRelease}
@@ -283,15 +299,17 @@ export default function ProjectOverviewPage() {
 
         {(reading.shape === "working" || reading.shape === "unread") && (
           <StatStrip
-            liveRuns={runsActive.length}
+            liveSessions={liveCount}
+            sessionsUnread={sessionsState.read !== "ok"}
+            openRuns={runsShown(liveSessions, runItems).length}
             runsUnread={runsState.read !== "ok"}
-            openRuns={liveRuns(runItems).length}
             runnersUnread={runnersState.read !== "ok"}
             activityUnread={activityState.read !== "ok"}
             busyRunners={runners.busyCount}
             onlineRunners={runners.onlineCount}
-            needsYou={attention.length}
-            needsYouCaption={attentionCaption(attention, attentionLeftOut)}
+            totalRunners={runners.total}
+            needsYou={needsYouWhole}
+            needsYouCaption={needsYouParts ? attentionCaption(needsYouParts) : ""}
             oldestWait={oldestSeconds === null ? null : formatElapsed(oldestSeconds)}
             needsYouRefusal={attentionRefused}
             needsYouPending={attentionPending}
@@ -308,7 +326,7 @@ export default function ProjectOverviewPage() {
           // Quiet is short: the headline says nothing needs anyone, every empty section is one line,
           // and what holds data follows in one column.
           <div className="flex flex-col gap-4">
-            {liveRunsSection}
+            {liveSection}
             {releaseSection}
             {metricSections}
           </div>
@@ -320,12 +338,23 @@ export default function ProjectOverviewPage() {
                 cut={attentionLeftOut}
                 refusal={attentionRefused}
                 pending={attentionPending}
-                onRetry={readFailure ? attentionQ.refetch : undefined}
+                onRetry={
+                  readFailure
+                    ? () => {
+                        if (attentionQ.read === "failed") attentionQ.refetch();
+                        if (sessionsState.read === "failed") sessionsQ.refetch();
+                      }
+                    : undefined
+                }
+                onRetryJob={(jobId) => retryJob.mutate(jobId)}
+                retryingJobId={retryJob.isPending ? (retryJob.variables ?? null) : null}
                 shape={reading.shape}
+                stuck={stuckIssues}
+                whole={needsYouWhole}
                 slug={project.slug}
                 now={now}
               />
-              {liveRunsSection}
+              {liveSection}
               {releaseSection}
             </div>
             <div className="flex min-w-0 flex-col gap-5">{metricSections}</div>

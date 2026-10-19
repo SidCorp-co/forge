@@ -11,16 +11,27 @@ import {
   PageTitle,
   ProjectLoader,
   SlideOver,
-  StatusChip,
-  useElapsed,
+  WORKING_WORD,
 } from "@/design";
+import { SessionChip } from "@/features/sessions/components/session-chip";
+import { StopSessionConfirm } from "@/features/sessions/components/stop-session-confirm";
+import { waitingOnText } from "@/features/sessions/status-sentences";
+import { useSessionDuration } from "@/features/sessions/session-duration";
+import { sessionWord, WAITING_FOR_INPUT_WORD } from "@/features/sessions/session-word";
 import { useProjects } from "@/features/projects/hooks";
-import { isJobDriven } from "@/features/sessions/types";
+import { useDevices } from "@/features/runners/hooks";
+import { isJobDriven, sessionTitle, TERMINAL_SESSION_STATUSES } from "@/features/sessions/types";
 import {
   deriveSessionDisplayStatus,
+  isRealFailure,
+  sessionSilence,
+  sessionChipStatus,
+  sessionChipStatusOf,
+  sessionEndWord,
   sessionStep,
-  statusToChip,
 } from "@/features/sessions/types";
+import { SESSION_ICONS } from "@/design/primitives/status-chip";
+import { useNow } from "@/design/hooks/use-now";
 import { buildShareLink, useRecents } from "@/features/shell";
 import { formatApiError } from "@/lib/api/error";
 import { usePersistedState } from "@/lib/utils/use-persisted-state";
@@ -47,11 +58,12 @@ import { deriveAgentTasks, parseMessages, parseTurns } from "../types";
 import { SESSION_ATTACHMENTS } from "@/features/chat/attachments";
 import { ChatComposer, ReadOnlyComposerNote } from "@/features/chat/components/chat-composer";
 import { RunReport } from "./run-report/run-report";
+import { useLiveSessionRow } from "../live-row";
 import { ContextRail } from "./context-rail";
 import { Conversation } from "./conversation";
 import { NewOutput } from "./new-output";
 import { DisclosureScope } from "../disclosure";
-import { TurnStage, sessionTurnStage } from "./turn-stage";
+import { TurnStage, sessionActivity, sessionComposerState, sessionTurnStage } from "./turn-stage";
 import { tailOutputSize, useStickToBottom } from "./use-stick-to-bottom";
 
 interface SessionScreenProps {
@@ -94,7 +106,8 @@ export function SessionScreen({
   const setRailCollapsed = embedded ? setEmbeddedRailCollapsed : setPersistedRailCollapsed;
   const goBack = onClose ?? (projectSlug ? () => router.push(`/projects/${projectSlug}/agents`) : undefined);
 
-  const session = sessionQ.data;
+  // Judged on the newest check-in the live read has, not on the row as it was first fetched.
+  const session = useLiveSessionRow(sessionQ.data);
   const issueId = session?.metadata?.issueId;
 
   // Viewer = read-only: hide the composer (the server 403s sends regardless).
@@ -109,17 +122,19 @@ export function SessionScreen({
   // Skip in embedded mode (ISS-664 plan Q3): a session glanced at inline from
   // the workspace reply panel should not rewrite the owner's last-visited /
   // ⌘K recents state.
+  const recentId = session?.id;
+  const recentLabel = session ? (sessionTitle(session) ?? `Session ${session.id.slice(0, 8)}`) : null;
   useEffect(() => {
     if (embedded) return;
-    if (!session || !projectSlug) return;
+    if (!recentId || !recentLabel || !projectSlug) return;
     pushRecent({
       kind: "session",
-      id: session.id,
-      label: session.title ?? `Session ${session.id.slice(0, 8)}`,
-      href: `/projects/${projectSlug}/agents/${session.id}`,
+      id: recentId,
+      label: recentLabel,
+      href: `/projects/${projectSlug}/agents/${recentId}`,
       icon: "agent",
     });
-  }, [embedded, session?.id, session?.title, projectSlug, pushRecent]);
+  }, [embedded, recentId, recentLabel, projectSlug, pushRecent]);
 
   function copyLink() {
     if (!projectSlug) return;
@@ -159,11 +174,18 @@ export function SessionScreen({
   const streamedChars = useMemo(() => tailOutputSize(items), [items]);
 
   const display = session ? deriveSessionDisplayStatus(session) : "queued";
-  const live = display === "running" || display === "stalled";
-  const startMs = session?.startedAt
-    ? new Date(session.startedAt).getTime()
-    : undefined;
-  const elapsed = useElapsed(startMs, live);
+  const coreEnded = session ? TERMINAL_SESSION_STATUSES.has(session.status) : false;
+  const { live, answering } = sessionActivity(display);
+  const elapsed = useSessionDuration(session, live);
+  const now = useNow(1000, display === "stalled");
+  const silentForMs = session ? (sessionSilence(session, now).sinceHeartbeatMs ?? undefined) : undefined;
+  // What the box said last: a quiet session says it last reported blocked where its box did, and a
+  // blocked one says, in the box's words, who can end the wait (ISS-1228).
+  const boxBlocked = session?.report?.work === "blocked";
+  const word = session ? sessionWord(session, now) : null;
+  const waitingOn = boxBlocked ? waitingOnText(session?.report?.blockerKind, session?.report?.waitingOn) : undefined;
+  const [stopAsked, setStopAsked] = useState(false);
+  const deviceName = useDevices().data?.find((d) => d.id === session?.deviceId)?.name ?? null;
 
   const lastTurnId = items.length ? items[items.length - 1].turnId : undefined;
 
@@ -173,9 +195,18 @@ export function SessionScreen({
   const stage = sessionTurnStage({
     live,
     display,
+    failureReason: session?.failureReason ?? null,
     fromMessages,
     ...(items.length ? { tail: items[items.length - 1] } : {}),
   });
+  // An ended session's turn line says the word its header chip and run stats say (ISS-1228).
+  const ended = session
+    ? {
+        word: sessionEndWord(display, session.failureReason),
+        icon: SESSION_ICONS[sessionChipStatus(display, session.failureReason)],
+        failure: isRealFailure(display, session.failureReason),
+      }
+    : undefined;
 
   // Auto-scroll the thread to the newest message (ISS-728) — this pane and the
   // mobile SlideOver reply panel both render this screen (embedded mode), so
@@ -185,7 +216,7 @@ export function SessionScreen({
     ready: turnsQ.isSuccess,
     itemCount: items.length,
     live,
-    streaming: live && !fromMessages,
+    streaming: answering && !fromMessages,
     streamedChars,
   });
 
@@ -274,16 +305,17 @@ export function SessionScreen({
             />
           )}
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
-              <PageTitle className="fg-h3 truncate">{session.title ?? "Session"}</PageTitle>
+            <div className="flex flex-wrap items-center gap-2">
+              <PageTitle className="fg-h3 min-w-0 break-words">{sessionTitle(session) ?? "Session"}</PageTitle>
               <MonoTag hue="cobalt">{session.id.slice(0, 8)}</MonoTag>
             </div>
             <div className="mt-1 flex items-center gap-2">
-              <StatusChip
-                status={statusToChip(display)}
+              <SessionChip
+                status={sessionChipStatusOf(session, display)}
                 stage={sessionStep(session.metadata) ?? undefined}
                 size="sm"
-                domain="session"
+                session={session}
+                now={now}
               />
               {taskCount > 0 && (
                 <Badge tone="neutral">
@@ -292,17 +324,26 @@ export function SessionScreen({
               )}
             </div>
           </div>
-          <div className="flex items-center gap-1.5">
-            {live ? (
+          {/* A row of their own at phone width, so they never sit over the title. */}
+          <div className="flex basis-full flex-wrap items-center gap-1.5 sm:flex-none sm:basis-auto">
+            <StopSessionConfirm
+              target={stopAsked ? { name: sessionTitle(session) ?? "This session", box: deviceName } : null}
+              loading={cancel.isPending}
+              onClose={() => setStopAsked(false)}
+              onConfirm={() => cancel.mutate(undefined, { onSuccess: () => setStopAsked(false) })}
+            />
+            {/* Stop on every session core has not ended, an idle or queued one included; Rerun only once
+                it has, so a held session is never offered a rerun in place of a stop (ISS-1228). */}
+            {!coreEnded ? (
               <Button
                 variant="danger"
                 size="sm"
                 icon="stop"
                 className="min-h-11"
                 loading={cancel.isPending}
-                onClick={() => cancel.mutate()}
+                onClick={() => setStopAsked(true)}
               >
-                Stop
+                Stop session
               </Button>
             ) : (
               <Button
@@ -379,7 +420,7 @@ export function SessionScreen({
               ) : (
                 <Conversation
                   items={items}
-                  streaming={live && !fromMessages}
+                  streaming={answering && !fromMessages}
                   readOnly={fromMessages}
                   busy={
                     live ||
@@ -396,7 +437,15 @@ export function SessionScreen({
               )}
               {stage && (
                 <div className="mt-3">
-                  <TurnStage stage={stage} {...(elapsed ? { elapsed } : {})} />
+                  <TurnStage
+                    stage={stage}
+                    {...(elapsed ? { elapsed } : {})}
+                    {...(silentForMs != null ? { silentForMs } : {})}
+                    reported={word?.activity ?? WORKING_WORD}
+                    {...(word ? { activity: word.activity } : {})}
+                    {...(waitingOn ? { waitingOn } : {})}
+                    {...(ended ? { ended } : {})}
+                  />
                 </div>
               )}
               {newOutput && <NewOutput onGo={toBottom} />}
@@ -408,7 +457,7 @@ export function SessionScreen({
               onSend={async (message, files) => {
                 await send.mutateAsync({ sessionId, message, files });
               }}
-              busy={live || send.isPending}
+              {...sessionComposerState(display, send.isPending, word?.label === WAITING_FOR_INPUT_WORD)}
               disabled={!session.deviceId}
               attachments={SESSION_ATTACHMENTS}
             />

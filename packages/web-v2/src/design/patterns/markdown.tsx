@@ -1,10 +1,11 @@
 "use client";
 
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ComponentProps, ReactNode } from "react";
-import ReactMarkdown, { type Components } from "react-markdown";
+import ReactMarkdown, { type Components, type ExtraProps } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { Button } from "@/design/primitives/button";
 import { cn } from "@/lib/utils/cn";
 import { BodyImage, BodyLink } from "./body-link";
 import { CODE_BLOCK_CLASS, CODE_INLINE_CLASS, COMPACT_TAG_CLASS as T, LINK_CLASS } from "./body-tags";
@@ -82,6 +83,56 @@ function makeCodeRenderer(blockClass: string, inlineClass: string): Components["
   };
 }
 
+type HastElement = NonNullable<ExtraProps["node"]>;
+
+/** Whether a `<pre>` holds a mermaid diagram, which is drawn rather than copied. */
+function holdsMermaid(node: HastElement | undefined): boolean {
+  const code = node?.children.find((c): c is HastElement => c.type === "element" && c.tagName === "code");
+  const cls = code?.properties?.className;
+  return Array.isArray(cls) && cls.includes("language-mermaid");
+}
+
+type CopyState = "idle" | "copied" | "failed";
+
+/**
+ * A fenced block on a doc page, with a Copy button over it: a reader told to paste a block has
+ * to get it onto the clipboard first, and selecting twenty lines exactly is the act a first-time
+ * reader gets wrong (ISS-1289). The button reads like the MCP tab's snippet button.
+ */
+function ProseCodeBlock({ node, children }: ComponentProps<"pre"> & ExtraProps) {
+  const preRef = useRef<HTMLPreElement>(null);
+  const [state, setState] = useState<CopyState>("idle");
+  useEffect(() => {
+    if (state === "idle") return;
+    const t = setTimeout(() => setState("idle"), 2000);
+    return () => clearTimeout(t);
+  }, [state]);
+
+  if (holdsMermaid(node)) return <pre className="my-4 overflow-x-auto">{children}</pre>;
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText((preRef.current?.textContent ?? "").replace(/\n$/, ""));
+      setState("copied");
+    } catch {
+      setState("failed");
+    }
+  }
+
+  return (
+    <div className="my-4">
+      <div className="mb-1.5 flex justify-end">
+        <Button variant="secondary" size="sm" onClick={copy} className="min-h-11" aria-live="polite">
+          {state === "copied" ? "Copied ✓" : state === "failed" ? "Couldn't copy — select it instead" : "Copy"}
+        </Button>
+      </div>
+      <pre ref={preRef} className="overflow-x-auto">
+        {children}
+      </pre>
+    </div>
+  );
+}
+
 // COMPACT — dense styling for inline embeds (issue descriptions, comments,
 // plans). Small body, flattened heading scale.
 const compactComponents: Components = {
@@ -130,7 +181,7 @@ const proseComponents: Components = {
     "block overflow-x-auto rounded-lg border border-line bg-sunken p-4 font-mono text-13 leading-relaxed text-fg",
     "rounded bg-sunken px-1.5 py-0.5 font-mono text-13 text-fg",
   ),
-  pre: ({ children }) => <pre className="my-4 overflow-x-auto">{children}</pre>,
+  pre: ProseCodeBlock,
   img: imgRenderer,
   table: ({ children }) => (
     <div className="my-4 overflow-x-auto rounded-lg border border-line">

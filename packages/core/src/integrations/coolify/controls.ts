@@ -27,7 +27,10 @@ import {
 } from './commands.js';
 import { enqueueCoolifyConfirm } from './confirm.js';
 import { buildClient } from './log-fetch.js';
-import { readRollbackImagesNamingFailure } from './rollback-images-read.js';
+import {
+  listApplicationsNamingFailure,
+  readRollbackImagesNamingFailure,
+} from './rollback-images-read.js';
 import type {
   CoolifyApplicationResponse,
   CoolifyConfig,
@@ -95,7 +98,7 @@ export async function fetchCoolifyApplications(auth: {
   previousApiToken?: string;
 }): Promise<CoolifyApplicationSummary[]> {
   const client = new CoolifyClient(auth);
-  return (await client.listApplications()).map(summarize);
+  return (await listApplicationsNamingFailure(client)).map(summarize);
 }
 
 /**
@@ -110,7 +113,7 @@ export async function listApplicationsForIntegration(input: {
   const ctx = buildContextFromBinding<CoolifyConfig, CoolifySecrets>(row.pair);
   return {
     integrationId: row.id,
-    applications: (await buildClient(ctx).listApplications()).map(summarize),
+    applications: (await listApplicationsNamingFailure(buildClient(ctx))).map(summarize),
   };
 }
 
@@ -171,7 +174,7 @@ export async function resolveCoolifyTargets(input: {
 }): Promise<{ integrationId: string; targets: CoolifyTargetIdentity[] }> {
   const row = await requireIntegration(input);
   const ctx = buildContextFromBinding<CoolifyConfig, CoolifySecrets>(row.pair);
-  const apps = await buildClient(ctx).listApplications();
+  const apps = await listApplicationsNamingFailure(buildClient(ctx));
   const byUuid = new Map(apps.map((a) => [a.uuid, a]));
   return {
     integrationId: row.id,

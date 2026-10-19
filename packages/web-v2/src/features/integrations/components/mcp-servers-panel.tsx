@@ -17,24 +17,32 @@ import {
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { formatRelativeTime } from "@/lib/utils/format";
+import { STATE_WORDS } from "../derive";
 import { useIntegrationsList, useMcpPreview, useTestIntegration } from "../hooks";
 import { providerLabel } from "../providers/registry";
 import type { IntegrationSummary, IntegrationTestResult, McpServerPreviewEntry } from "../types";
 import { AgentAccessControl, GRANT_LABEL } from "./agent-access-control";
 import { Pill, scopeLabel } from "./status-pill";
+import { healthLine } from "@forge/contracts/health-words";
 
 const REASON_META: Record<
   McpServerPreviewEntry["reason"],
   { label: string; fg: string; bg: string; icon: "check" | "dot" | "alert"; hint?: string }
 > = {
-  ok: { label: "Will inject", fg: "var(--green-600)", bg: "var(--green-50)", icon: "check" },
+  ok: { label: "Given to agents", fg: "var(--green-600)", bg: "var(--green-50)", icon: "check" },
   not_configured: {
     label: "Not configured",
     fg: "var(--fg-subtle)",
     bg: "var(--bg-sunken)",
     icon: "dot",
   },
-  disabled: { label: "Disabled", fg: "var(--fg-subtle)", bg: "var(--bg-sunken)", icon: "dot" },
+  disabled: {
+    label: STATE_WORDS.off,
+    fg: "var(--fg-subtle)",
+    bg: "var(--bg-sunken)",
+    icon: "dot",
+    hint: "It is set up and turned off, so agents do not get its MCP server until it is turned back on.",
+  },
   no_credential: {
     label: "No credential",
     fg: "var(--amberw-600)",
@@ -46,28 +54,41 @@ const REASON_META: Record<
     fg: "var(--fg-subtle)",
     bg: "var(--bg-sunken)",
     icon: "dot",
-    hint: "Another binding of this provider holds the server name an agent would reach it by, so nothing here is wrong with this one. Where a provider serves one binding per project, the oldest granted one takes the slot and a label changes nothing — move the grant to this binding to use it instead. Where a provider serves several, each is named after its label and two labels can resolve to one name, which a label of its own settles.",
+    hint: "Another connection of this provider already gives agents this tool, so this one is not used. Nothing is wrong with it. To use this one, move the access to it, or give it a label of its own.",
   },
   not_granted: {
     label: "Not granted",
     fg: "var(--amberw-600)",
     bg: "var(--amberw-50)",
     icon: "alert",
-    hint: `Connected and credentialed, but no agent on this project may use it — nobody has granted it. Switch on "${GRANT_LABEL}" below to grant it; health does not gate the grant.`,
+    // Its connection's state is the row's pill and the Integrations row's; this says only the grant.
+    hint: `No agent on this project may use it yet. Switch on "${GRANT_LABEL}" below to allow it.`,
   },
   not_resolved: {
     label: "Not delivered",
     fg: "var(--red-600)",
     bg: "var(--red-50)",
     icon: "alert",
-    hint: "Active, credentialed, granted, and holding its own server name — and the resolver still built no server for it. That is either a stored credential that will not decrypt or a binding configuration this provider cannot build a server from. Verify the credential first; if it verifies, the configuration is what to check.",
+    hint: "It is set up and allowed, but agents still do not get it. Press Verify to check its credential. If that passes, check its settings above.",
   },
 };
 
 const SOURCE_LABEL: Record<McpServerPreviewEntry["source"], string> = {
-  integration: "from an integration",
-  project: "from this project's pipeline config",
+  integration: "From an integration",
+  project: "From this project's settings",
 };
+
+/** A row's title: the provider's name as the Integrations list shows it, the server's own name only
+ *  where no provider supplies it (one this project's settings declare itself). */
+export function rowTitle(entry: Pick<McpServerPreviewEntry, "provider" | "serverName">): string {
+  return entry.provider ? providerLabel(entry.provider) : entry.serverName;
+}
+
+export const MCP_PANEL_INTRO =
+  "The tools each agent working on this project is given. They come from this project's settings and from the integrations shared with it. An integration reaches agents only once it is allowed on its row. Credentials are added when an agent starts, and never shown here.";
+
+/** Each reason's hint, for a reader that holds them to the panel's own sentence rule. */
+export const REASON_HINTS = Object.values(REASON_META).flatMap((m) => (m.hint ? [m.hint] : []));
 
 function ReasonPill({ reason }: { reason: McpServerPreviewEntry["reason"] }) {
   const meta = REASON_META[reason];
@@ -116,18 +137,18 @@ function McpServerRow({
 
   return (
     <li className="flex flex-col gap-1.5 border-t border-line py-3">
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <Icon name="command" size={15} className="text-muted" />
-        <span className="font-mono text-13 font-semibold text-fg">{entry.serverName}</span>
+        <span className="text-13 font-semibold text-fg">{rowTitle(entry)}</span>
         {entry.role !== null && (
-          <span className="fg-body-sm rounded-pill bg-sunken px-2 py-0.5 text-subtle">
+          <span className="fg-body-sm whitespace-nowrap rounded-pill bg-sunken px-2 py-0.5 text-subtle">
             {scopeLabel(entry.role, entry.stages)}
           </span>
         )}
-        <span className="fg-body-sm rounded-pill bg-sunken px-2 py-0.5 text-subtle">
+        <span className="fg-body-sm whitespace-nowrap rounded-pill bg-sunken px-2 py-0.5 text-subtle">
           {SOURCE_LABEL[entry.source]}
         </span>
-        <span className="ml-auto">
+        <span className="ml-auto whitespace-nowrap">
           <ReasonPill reason={entry.reason} />
         </span>
       </div>
@@ -136,9 +157,10 @@ function McpServerRow({
         <p className="truncate font-mono text-12-5 text-muted" title={entry.url}>
           {entry.url}
         </p>
-      ) : entry.provider ? (
+      ) : entry.provider && !entry.configured ? (
+        // Only a row with nothing set up is told to set it up; any other reads its own state (r9).
         <p className="fg-body-sm text-subtle">
-          Configure the {providerLabel(entry.provider)} integration below to inject its MCP server.
+          Set up {providerLabel(entry.provider)} in the list above to give agents its MCP server.
         </p>
       ) : null}
 
@@ -153,9 +175,12 @@ function McpServerRow({
       {entry.configured && (
         <div className="flex items-center justify-between gap-2">
           <span className="fg-body-sm text-subtle">
-            {entry.lastHealthStatus
-              ? `health: ${entry.lastHealthStatus}${checked ? ` · ${checked}` : ""}`
-              : "never health-checked"}
+            {/* Turned off wins: the last check's finding is not a second state beside it. */}
+            {entry.reason === "disabled"
+              ? checked
+                ? `Checked ${checked}.`
+                : healthLine(null)
+              : healthLine(entry.lastHealthStatus, checked)}
           </span>
           {entry.bindingId && (
             <Button variant="ghost" size="sm" onClick={verify} loading={test.isPending}>
@@ -192,11 +217,7 @@ export function McpServersPanel({
     <SettingsSection>
       <SectionTitle className="fg-h3 mb-1">Agent MCP servers</SectionTitle>
       <p className="fg-body-sm mb-3 text-muted">
-        Every MCP server injected into a Claude agent dispatched for this project without a
-        per-state override, from both sources that feed them: this project&rsquo;s own pipeline
-        configuration and its granted integrations. The list comes from the same resolver that
-        performs the injection; credentials are attached at dispatch time and never shown here. A
-        connected integration reaches an agent only once it is granted, on the row below.
+        {MCP_PANEL_INTRO}
       </p>
       {preview.isLoading ? (
         <div className="flex flex-col gap-2">
@@ -220,15 +241,15 @@ export function McpServersPanel({
       )}
       {dropped.length > 0 && (
         <p className="fg-body-sm mt-3 text-[var(--amberw-600)]">
-          Declared for this project and not supplied, so the list above does not carry them:{" "}
-          {dropped.join(", ")}. A pipeline state that declares one with a spec of its own may
-          still supply it on that state&rsquo;s dispatches.
+          Named in this project&rsquo;s settings but not supplied, so agents do not get them:{" "}
+          {dropped.join(", ")}. A pipeline step that names one with its own settings may still give
+          it on that step.
         </p>
       )}
       {stateOnly.length > 0 && (
         <p className="fg-body-sm mt-2 text-subtle">
-          Declared only for particular pipeline states, so they are not in the list above and
-          whether each one resolves is decided on that state&rsquo;s dispatch: {stateOnly.join(", ")}.
+          Named only for some pipeline steps, so agents get them only on those steps:{" "}
+          {stateOnly.join(", ")}.
         </p>
       )}
     </SettingsSection>

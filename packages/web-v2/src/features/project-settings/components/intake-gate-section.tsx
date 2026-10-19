@@ -31,7 +31,7 @@ export function IntakeGateSection({
 				<code className="font-mono text-12">intake</code> label instead of
 				entering the pipeline. Approve by moving it{" "}
 				<code className="font-mono text-12">draft → open</code>; reject by
-				closing it. Review queue: the issues list filtered to draft +{" "}
+				dropping it. Review queue: the issues list filtered to draft +{" "}
 				<code className="font-mono text-12">intake</code>.
 			</p>
 

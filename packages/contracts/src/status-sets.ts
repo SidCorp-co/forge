@@ -19,6 +19,7 @@ export const REASON_REQUIRED_ISSUE_STATUSES = [
   'reopen',
   'waiting',
   'needs_info',
+  'on_hold',
 ] as const;
 
 /* status-tuple: differs — the browser's copy of core's `db/session-vocabulary.ts`

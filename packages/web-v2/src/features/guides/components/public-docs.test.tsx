@@ -4,16 +4,22 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { HELP_DOCS } from "@/features/docs/help-content.generated";
 import type { Guide, GuideScope } from "../api";
-import { ONE_CORPUS } from "../audience";
+import { BUNDLED_AUDIENCES, ONE_CORPUS } from "../audience";
 import { buildCorpus, helpPageHref, searchPlaceholder } from "../corpus";
-import { missingDoor } from "../missing";
-import { PublicLanding, PublicReader, PublicRefusal } from "./public-docs";
+import { BUNDLED_WAYS_IN, GUIDES_UNAVAILABLE, LANDING_WHILE_DOWN, missingDoor, missingPage, PAGE_AND_DOOR, SEARCH_WHILE_DOWN } from "../missing";
+
+// The address a client component reads is the window's, as Next's own hook reads it in a browser.
+vi.mock("next/navigation", () => ({ useSearchParams: () => new URLSearchParams(window.location.search) }));
+const { PublicLanding, PublicReader, PublicRefusal, QUERY_PARAM } = await import("./public-docs");
 
 expect.extend(matchers);
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  window.history.replaceState(null, "", "/");
+});
 
 const GUIDES: Guide[] = [
   {
@@ -192,7 +198,8 @@ describe("a page", () => {
 
   it("keeps a link to another help page on /guides", () => {
     reader({ kind: "page", href: helpPageHref("getting-started") });
-    const links = [...document.querySelectorAll("article a, [aria-label='Breadcrumb'] ~ * a")]
+    const links = [...document.querySelectorAll("a")]
+      .filter((a) => !a.closest("nav"))
       .map((a) => a.getAttribute("href") ?? "")
       .filter((h) => h.includes("?path="));
     expect(links.length).toBeGreaterThan(0);
@@ -200,13 +207,132 @@ describe("a page", () => {
   });
 });
 
+describe("a phone reader on a page, before scrolling past it", () => {
+  it("is given the door the page sits behind as a link, at the head of the breadcrumb", () => {
+    reader({ kind: "page", href: helpPageHref("getting-started") });
+    const crumbs = within(screen.getByRole("navigation", { name: "Breadcrumb" }));
+    const door = crumbs.getByRole("link", { name: "I use Forge" });
+    expect(door).toHaveAttribute("href", "/guides?for=user");
+    expect(crumbs.getAllByRole("link")).toHaveLength(1);
+  });
+
+  it("names the agent door for an agent page", () => {
+    reader({ kind: "page", href: "/guides/what-is-an-issue" });
+    const door = within(screen.getByRole("navigation", { name: "Breadcrumb" })).getByRole("link", {
+      name: "I'm an agent or a script",
+    });
+    expect(door).toHaveAttribute("href", "/guides?for=agent");
+  });
+
+  it("is given a link beside the breadcrumb that takes it to the search field and focuses it", () => {
+    reader({ kind: "page", href: helpPageHref("getting-started") });
+    const jump = screen.getByRole("link", { name: "Search" });
+    const field = screen.getByRole("textbox", { name: "Search every page" });
+    expect(jump).toHaveAttribute("href", `#${field.id}`);
+    expect(field.id).not.toBe("");
+    expect(jump.className).toContain("lg:hidden");
+    expect(document.activeElement).not.toBe(field);
+    fireEvent.click(jump);
+    expect(document.activeElement).toBe(field);
+  });
+
+  it("keeps the breadcrumb row at the top of the screen below lg, so it is there partway down", () => {
+    reader({ kind: "page", href: helpPageHref("getting-started") });
+    const row = screen.getByRole("navigation", { name: "Breadcrumb" }).parentElement;
+    expect(row?.className).toContain("sticky");
+    expect(row?.className).toContain("top-0");
+    expect(row?.className).toContain("lg:static");
+  });
+
+  // jsdom lays nothing out, so the width is held by its cause: a negative margin bleeds the row past
+  // a padding the reader's frame no longer has, and at 390 the page then scrolls sideways.
+  it("keeps the breadcrumb row inside the reader's frame, bleeding into no padding", () => {
+    reader({ kind: "page", href: helpPageHref("getting-started") });
+    const row = screen.getByRole("navigation", { name: "Breadcrumb" }).parentElement;
+    expect(row?.className.split(/\s+/).filter((c) => /^(?:\w+:)*-m[xlrse]-/.test(c))).toEqual([]);
+  });
+
+  it("keeps the article ahead of the sidebar it jumps to, below lg", () => {
+    reader({ kind: "page", href: helpPageHref("getting-started") });
+    const field = screen.getByRole("textbox", { name: "Search every page" });
+    const heading = screen.getByRole("heading", { level: 1 });
+    expect(heading.closest(".order-1")).not.toBeNull();
+    expect(field.closest(".order-2")).not.toBeNull();
+  });
+
+  it.each([
+    ["a door", { kind: "door", audience: "user" }],
+    ["a refused address", { kind: "refused", refusal: missingDoor("users") }],
+  ] as const)("is given the same link on %s", (_name, view) => {
+    reader(view);
+    const field = screen.getByRole("textbox", { name: "Search every page" });
+    expect(screen.getByRole("link", { name: "Search" })).toHaveAttribute("href", `#${field.id}`);
+  });
+
+  it("is given none where there is no search to reach", () => {
+    render(<PublicRefusal refusal={missingDoor("users")} />);
+    expect(screen.queryByRole("link", { name: "Search" })).toBeNull();
+  });
+});
+
 describe("a refused address, reached by a client navigation", () => {
-  it("shows the same refusal the middleware serves, with every door as the way on", () => {
-    const refusal = missingDoor("users");
-    render(<PublicRefusal refusal={refusal} />);
+  const refusal = missingDoor("users");
+  const refused = () => reader({ kind: "refused", refusal });
+
+  it("says what the middleware's 404 says, in the reader's content", () => {
+    refused();
     expect(screen.getByRole("heading", { name: refusal.heading })).toBeInTheDocument();
     expect(screen.getByText(refusal.body)).toBeInTheDocument();
-    expect(within(screen.getByRole("navigation", { name: "Ways in" })).getAllByRole("link")).toHaveLength(4);
+  });
+
+  it("offers the docs' search, and finds a page behind any door", () => {
+    refused();
+    fireEvent.change(screen.getByRole("textbox", { name: "Search every page" }), {
+      target: { value: "dependencies" },
+    });
+    const results = within(screen.getByRole("list", { name: "Search results" })).getAllByRole("link");
+    expect(results.map((l) => l.getAttribute("href"))).toContain(`/guides/issue-dependencies`);
+  });
+
+  it("offers every door as the way on, in the sidebar a door page has", () => {
+    refused();
+    const ways = within(screen.getByRole("navigation", { name: "Other ways in" })).getAllByRole("link");
+    expect(ways.map((l) => l.getAttribute("href"))).toEqual([
+      "/guides?for=user",
+      "/guides?for=assistant-setup",
+      "/guides?for=agent",
+      "/guides",
+    ]);
+  });
+});
+
+describe("a refused address when the guide index cannot be reached", () => {
+  it.each([
+    ["an unknown door", missingDoor("users")],
+    ["the guides being unavailable", GUIDES_UNAVAILABLE],
+  ])("keeps the refusal for %s, says what the search covers, and offers the doors that open and the landing's search", (_name, refusal) => {
+    render(<PublicRefusal refusal={refusal} />);
+    expect(screen.getByRole("heading", { name: refusal.heading })).toBeInTheDocument();
+    expect(screen.getByText(SEARCH_WHILE_DOWN)).toBeInTheDocument();
+    expect(screen.getByText(BUNDLED_WAYS_IN)).toBeInTheDocument();
+    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(document.body.textContent).not.toMatch(/not available|“agent”|agent or a script/);
+    const ways = within(screen.getByRole("navigation", { name: "Ways in" })).getAllByRole("link");
+    expect(ways.map((d) => d.getAttribute("href"))).toEqual(["/guides?for=user", "/guides?for=assistant-setup", "/guides"]);
+    expect(ways.at(-1)).toHaveAccessibleName("Search the pages for people");
+  });
+
+  it.each([
+    ["an unknown page", missingPage("no-such-page")],
+    ["a page and a door together", PAGE_AND_DOOR],
+  ])("does not send %s to the index, which is down with the rest", (_name, refusal) => {
+    render(<PublicRefusal refusal={refusal} />);
+    expect(document.body.textContent).not.toMatch(/index lists/);
+    expect(screen.getByText(BUNDLED_WAYS_IN)).toBeInTheDocument();
+  });
+
+  it("opens without the index exactly the doors every help page sits behind", () => {
+    expect([...BUNDLED_AUDIENCES].sort()).toEqual([...new Set(HELP_DOCS.map((d) => d.audience))].sort());
   });
 });
 
@@ -219,10 +345,60 @@ describe("a search result in the reader's sidebar", () => {
     const result = within(screen.getByRole("list", { name: "Search results" }))
       .getAllByRole("link")
       .find((l) => l.textContent?.startsWith("Connect Claude Code"));
-    const [title, door] = [...(result?.querySelectorAll("span > span") ?? [])];
-    expect(title?.textContent).toBe("Connect Claude Code");
-    expect(door?.textContent).toBe("I'm connecting an AI assistant");
-    expect(title?.parentElement?.className).toContain("flex-col");
+    const column = result?.querySelector("span.flex-col");
+    const rows = [...(column?.children ?? [])];
+    expect(rows[0]?.textContent).toBe("Connect Claude Code");
+    expect(rows.at(-1)?.textContent).toBe("I'm connecting an AI assistant");
+  });
+
+  it("says under which heading the body holds the words typed, with the words marked", () => {
+    reader({ kind: "door", audience: "agent" });
+    fireEvent.change(screen.getByRole("textbox", { name: "Search every page" }), {
+      target: { value: "four of them" },
+    });
+    const [result] = within(screen.getByRole("list", { name: "Search results" })).getAllByRole("link");
+    const rows = [...(result.querySelector("span.flex-col")?.children ?? [])].map((r) => r.textContent);
+    expect(rows).toEqual(["What is an issue?", "Admission gates", "Four of them.", "I'm an agent or a script"]);
+    expect(result.querySelector("span.line-clamp-2")?.textContent).toBe("Four of them.");
+    expect([...result.querySelectorAll("mark")].map((m) => m.textContent)).toEqual(["Four of them"]);
+  });
+
+  it("lists the pages whose title holds the words first, each with the words marked in it", () => {
+    reader({ kind: "door", audience: "agent" });
+    fireEvent.change(screen.getByRole("textbox", { name: "Search every page" }), {
+      target: { value: "issue" },
+    });
+    const results = within(screen.getByRole("list", { name: "Search results" })).getAllByRole("link");
+    const titled = results.map((r) => r.querySelector("span.flex-col > span")?.textContent ?? "");
+    const firstWithout = titled.findIndex((t) => !t.toLowerCase().includes("issue"));
+    expect(firstWithout).toBeGreaterThan(1);
+    expect(titled.slice(firstWithout).some((t) => t.toLowerCase().includes("issue"))).toBe(false);
+    expect(results[0].querySelector("span.flex-col > span mark")?.textContent?.toLowerCase()).toBe("issue");
+  });
+});
+
+describe("the tab's title", () => {
+  it("follows the reader to every door, page and refusal it is navigated to, without a reload", () => {
+    const { rerender } = reader({ kind: "page", href: helpPageHref("pair-a-runner") });
+    expect(document.title).toBe("Pair a runner — Forge documentation");
+    const to = (view: Parameters<typeof PublicReader>[0]["view"]) =>
+      rerender(<PublicReader corpus={corpus} view={view} scope={SCOPE} />);
+    to({ kind: "door", audience: "agent" });
+    expect(document.title).toBe("I'm an agent or a script — Forge documentation");
+    to({ kind: "page", href: "/guides/issue-dependencies" });
+    expect(document.title).toBe("Issue dependencies — Forge documentation");
+    const refusal = missingDoor("users");
+    to({ kind: "refused", refusal });
+    expect(document.title).toBe(`${refusal.heading} — Forge documentation`);
+  });
+
+  it("names only the site on the landing, and the refusal where the index cannot be reached", () => {
+    landing();
+    expect(document.title).toBe("Forge documentation");
+    cleanup();
+    const refusal = missingDoor("users");
+    render(<PublicRefusal refusal={refusal} />);
+    expect(document.title).toBe(`${refusal.heading} — Forge documentation`);
   });
 });
 
@@ -239,5 +415,131 @@ describe("the furniture", () => {
       expect(docsScreen).not.toContain(own);
       expect(publicDocs).not.toContain(own);
     }
+  });
+});
+
+const CODE_TITLED: Guide = {
+  slug: "conformance-and-verify",
+  audience: "agent",
+  title: "Conformance gates & `pnpm verify`",
+  summary: "One checker per axis.",
+  version: 1,
+  body: "## Conformance gates & `pnpm verify`\nA repo may carry gates, and `pnpm verify` is the entrypoint.",
+};
+const withCode = buildCorpus(HELP_DOCS, [...GUIDES, CODE_TITLED]);
+
+describe("a title carrying code", () => {
+  it("shows its code as code and never its backticks, in the results, the sidebar and the door's list", () => {
+    render(<PublicReader corpus={withCode} view={{ kind: "door", audience: "agent" }} scope={SCOPE} />);
+    const sidebar = screen.getByRole("navigation", { name: "I'm an agent or a script" });
+    const listed = screen.getByRole("list", { name: "Pages" });
+    for (const where of [sidebar, listed]) {
+      const link = within(where).getByRole("link", { name: /Conformance gates/ });
+      expect(link.textContent).not.toContain("`");
+      expect(link.querySelector("code")?.textContent).toBe("pnpm verify");
+    }
+    fireEvent.change(screen.getByRole("textbox", { name: "Search every page" }), { target: { value: "gates & pnpm" } });
+    const result = within(screen.getByRole("list", { name: "Search results" })).getAllByRole("link")[0];
+    expect(result.textContent).not.toContain("`");
+    expect([...result.querySelectorAll("mark")].map((m) => m.textContent).join("")).toBe("gates & pnpm");
+    expect(result.querySelector("mark code")?.textContent).toBe("pnpm");
+  });
+
+  it("is named without its backticks in the tab", () => {
+    render(<PublicReader corpus={withCode} view={{ kind: "page", href: "/guides/conformance-and-verify" }} scope={SCOPE} />);
+    expect(document.title).toBe("Conformance gates & pnpm verify — Forge documentation");
+  });
+
+  it("shows no body line for a search only its title and the heading repeating it hold", () => {
+    landingOf(withCode);
+    fireEvent.change(screen.getByRole("textbox", { name: "Search every page" }), { target: { value: "Conformance gates &" } });
+    const result = within(screen.getByRole("list", { name: "Search results" })).getAllByRole("link")[0];
+    expect(result.querySelector("span.flex-col")?.children).toHaveLength(2);
+  });
+});
+
+function landingOf(docs: typeof corpus) {
+  return render(<PublicLanding corpus={docs} placeholder={placeholder} scope={SCOPE} />);
+}
+
+describe("what was typed into the search, kept in the address", () => {
+  it("writes the words into the address as they are typed, replacing the entry rather than adding one", () => {
+    landing();
+    const before = window.history.length;
+    const field = screen.getByRole("textbox", { name: "Search every page" });
+    fireEvent.change(field, { target: { value: "st" } });
+    fireEvent.change(field, { target: { value: "status" } });
+    expect(new URLSearchParams(window.location.search).get(QUERY_PARAM)).toBe("status");
+    expect(window.history.length).toBe(before);
+    fireEvent.change(field, { target: { value: "" } });
+    expect(window.location.search).toBe("");
+  });
+
+  it("opens on the words the address holds, as Back to a search or a reload of one does", () => {
+    window.history.replaceState(null, "", "/guides?q=status");
+    landing();
+    expect(screen.getByRole("textbox", { name: "Search every page" })).toHaveValue("status");
+    expect(within(screen.getByRole("list", { name: "Search results" })).getAllByRole("link")[0]).toHaveTextContent(
+      /^Read an issue's status/,
+    );
+    cleanup();
+    window.history.replaceState(null, "", "/guides?path=pair-a-runner&q=runner");
+    reader({ kind: "page", href: helpPageHref("pair-a-runner") });
+    expect(screen.getByRole("textbox", { name: "Search every page" })).toHaveValue("runner");
+  });
+});
+
+describe("Back to a search, on a reader that stayed mounted", () => {
+  it("restores the words of the entry Back lands on, not the ones typed since", () => {
+    window.history.replaceState(null, "", "/guides?for=user");
+    reader({ kind: "door", audience: "user" });
+    const field = screen.getByRole("textbox", { name: "Search every page" });
+    fireEvent.change(field, { target: { value: "status" } });
+    window.history.pushState(null, "", "/guides?path=issue-statuses");
+    fireEvent.change(field, { target: { value: "runner" } });
+    window.history.replaceState(null, "", "/guides?for=user&q=status");
+    fireEvent(window, new PopStateEvent("popstate"));
+    expect(field).toHaveValue("status");
+    expect(within(screen.getByRole("list", { name: "Search results" })).getAllByRole("link")[0]).toHaveTextContent(
+      /^Read an issue's status/,
+    );
+  });
+});
+
+describe("the landing's ways in", () => {
+  it("are flat rows parted by hairlines, with no card around a door", () => {
+    landing();
+    for (const door of within(screen.getByRole("navigation", { name: "Ways in" })).getAllByRole("link")) {
+      expect(door.className).not.toMatch(/\b(rounded|shadow|border|bg-surface)/);
+    }
+  });
+});
+
+describe("a help page or door while the guide index cannot be reached", () => {
+  it("searches the bundled pages, says so, and offers only the doors that open without the index", () => {
+    render(
+      <PublicReader corpus={buildCorpus(HELP_DOCS, [])} view={{ kind: "page", href: helpPageHref("pair-a-runner") }} scope={null} />,
+    );
+    expect(screen.getByText(SEARCH_WHILE_DOWN)).toBeInTheDocument();
+    const onward = within(screen.getByRole("navigation", { name: "Other ways in" })).getAllByRole("link");
+    expect(onward.map((l) => l.getAttribute("href"))).toEqual(["/guides?for=assistant-setup"]);
+  });
+});
+
+
+describe("the landing while the guide index cannot be reached", () => {
+  it("says what its search covers in the words a help page's sidebar uses, under the field", () => {
+    const bundled = buildCorpus(HELP_DOCS, []);
+    render(<PublicLanding corpus={bundled} placeholder={searchPlaceholder(bundled, BUNDLED_AUDIENCES)} scope={null} />);
+    expect(screen.getByText(LANDING_WHILE_DOWN)).toBeInTheDocument();
+    expect(screen.getByText(SEARCH_WHILE_DOWN)).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/not available|agent or a script/);
+    const doors = within(screen.getByRole("navigation", { name: "Ways in" })).getAllByRole("link");
+    expect(doors.map((l) => l.getAttribute("href"))).toEqual(["/guides?for=user", "/guides?for=assistant-setup"]);
+  });
+
+  it("says nothing about an outage while the index answers", () => {
+    landing();
+    expect(screen.queryByText(SEARCH_WHILE_DOWN)).toBeNull();
   });
 });

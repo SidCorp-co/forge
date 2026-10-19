@@ -244,7 +244,14 @@ describe('a mark is never written on a lane the issue no longer holds', () => {
       }),
     );
     expect(refusal.code).toBe('LANDING_SHAPE_MOVED');
-    expect(refusal.message).toContain('moved from null to outside_git');
+    expect(refusal.message).toBe(
+      "Nothing was marked, because this issue's landing shape changed while the mark was judged. Mark it again.",
+    );
+    // The shape names stay in the technical view, never in the words (ISS-1421 r8).
+    expect((refusal as { details?: unknown }).details).toEqual({
+      judged: null,
+      holds: 'outside_git',
+    });
     expect((await stored(id)).merged_at).toBeNull();
   });
 });
@@ -303,7 +310,7 @@ describe('an issue declared outside git, on a git project', () => {
     expect(res.status).toBe(422);
     const body = JSON.stringify(await res.json());
     expect(body).toContain('LANDING_REQUIRED');
-    expect(body).toContain('declared on the issue');
+    expect(body).toContain('this issue is declared to land outside git');
     expect(body).not.toContain('kind `website`');
     expect((await stored(id)).merged_at).toBeNull();
   });
@@ -351,7 +358,7 @@ describe('an issue declared in git, on a project whose work lands outside it', (
     expect(res.status).toBe(422);
     const body = JSON.stringify(await res.json());
     expect(body).toContain('LANDING_NOT_THIS_SHAPE');
-    expect(body).toContain('declared on the issue');
+    expect(body).toContain('this issue is declared to land in git');
   });
 });
 

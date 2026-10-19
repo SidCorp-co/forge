@@ -7,21 +7,34 @@
 
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ApiError } from "@/lib/api/client";
+import { createQueryClient } from "@/providers/query-provider";
 import { stubLayout } from "@/test-support/layout";
-import type { NotificationRow } from "../types";
+import type { InboxFilter } from "@/features/notifications/api";
+import type { NotificationMember, NotificationRow } from "@/features/notifications/types";
 
 expect.extend(matchers);
 
 const server = vi.hoisted(() => ({
   total: 0,
-  ask: (_page: number) => Promise.resolve({ items: [] as NotificationRow[], totalCount: 0 }),
+  ask: (_page: number, _filter?: InboxFilter) =>
+    Promise.resolve({ items: [] as NotificationRow[], totalCount: 0 }),
+  members: (_id: string) => Promise.resolve([] as NotificationMember[]),
 }));
 
-vi.mock("../api", async (original) => {
-  const api = await original<typeof import("../api")>();
-  return { ...api, settingsApi: { ...api.settingsApi, listNotifications: (page: number) => server.ask(page) } };
+vi.mock("@/features/notifications/api", async (original) => {
+  const api = await original<typeof import("@/features/notifications/api")>();
+  return {
+    ...api,
+    notificationsApi: {
+      ...api.notificationsApi,
+      inbox: (page: number, filter: InboxFilter) => server.ask(page, filter),
+      members: (id: string) => server.members(id),
+      markRead: () => Promise.resolve({}),
+    },
+  };
 });
 vi.mock("@/providers/toast-provider", () => ({ useToast: () => ({ toast: () => {} }) }));
 vi.mock("../hooks", async (original) => {
@@ -61,12 +74,22 @@ const row = (n: number, over: Partial<NotificationRow> = {}): NotificationRow =>
   title: `Notification ${n}`,
   body: null,
   readAt: null,
+  explanation: null,
+  unread: true,
   members: 1,
   openMembers: 1,
   resolvedNotice: false,
+  projectSlug: null,
+  projectName: null,
   issueId: null,
+  secondaryIssueId: null,
   agentSessionId: null,
+  groupKey: null,
+  tier: "log",
+  severity: null,
   createdAt: "2026-10-01T10:00:00.000Z",
+  toldAt: "2026-10-01T10:00:00.000Z",
+  stuckKind: null,
   ...over,
 });
 
@@ -85,6 +108,17 @@ function serving(total: number, asked: number[] = []) {
 
 function open() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={client}>
+      <NotificationsTab />
+    </QueryClientProvider>,
+  );
+}
+
+/** The app's own query client, with its retries kept and their wait taken out, so a 5xx is asked as often as it is in the app. */
+function openOnTheAppsPolicy() {
+  const client = createQueryClient();
+  client.setDefaultOptions({ queries: { ...client.getDefaultOptions().queries, retryDelay: 0 } });
   return render(
     <QueryClientProvider client={client}>
       <NotificationsTab />
@@ -239,9 +273,57 @@ describe("the inbox at its edges", () => {
   });
 });
 
+describe("a failed ask for the next 25, on the query client the app runs", () => {
+  it("is asked once, then waits for Retry, and each press of Retry asks once more", async () => {
+    const asked: number[] = [];
+    let failing = true;
+    server.ask = async (page) => {
+      asked.push(page);
+      if (page === 2 && failing) throw new ApiError(503, "unavailable");
+      const from = (page - 1) * PAGE;
+      return { items: Array.from({ length: PAGE }, (_, i) => row(from + i + 1)), totalCount: 1300 };
+    };
+    openOnTheAppsPolicy();
+    await loaded();
+    await scrollTo(ROW * PAGE);
+    await screen.findByText("Couldn't load more.");
+    // Long enough for the client's own retries, had it been left to make them.
+    await act(async () => {
+      await new Promise((later) => setTimeout(later, 150));
+    });
+    expect(asked).toEqual([1, 2]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await screen.findByText("Couldn't load more.");
+    await act(async () => {
+      await new Promise((later) => setTimeout(later, 150));
+    });
+    expect(asked).toEqual([1, 2, 2]);
+
+    failing = false;
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(screen.queryByText("Couldn't load more.")).toBeNull());
+    expect(asked).toEqual([1, 2, 2, 2]);
+  });
+
+  it("keeps the client's retries for the first rows, which have no Retry beside them yet", async () => {
+    const asked: number[] = [];
+    server.ask = async (page) => {
+      asked.push(page);
+      throw new ApiError(503, "unavailable");
+    };
+    openOnTheAppsPolicy();
+    expect(await screen.findByText("Couldn't load notifications")).toBeInTheDocument();
+    expect(asked).toEqual([1, 1, 1]);
+  });
+});
+
 describe("Mark all read", () => {
   it("is off when every loaded row is read", async () => {
-    server.ask = async () => ({ items: [row(1, { readAt: "2026-10-01T11:00:00.000Z" })], totalCount: 1 });
+    server.ask = async () => ({
+      items: [row(1, { readAt: "2026-10-01T11:00:00.000Z", unread: false })],
+      totalCount: 1,
+    });
     open();
     await loaded();
     expect(screen.getByRole("button", { name: "Mark all read" })).toBeDisabled();
@@ -252,5 +334,262 @@ describe("Mark all read", () => {
     open();
     await loaded();
     expect(screen.getByRole("button", { name: "Mark all read" })).toBeEnabled();
+  });
+});
+
+describe("a row names what it is about and opens it", () => {
+  const ISSUE = "11111111-1111-4111-8111-111111111111";
+
+  it("is a link to its issue, titled by the issue and not by the cause that found it", async () => {
+    server.ask = async () => ({
+      items: [
+        row(1, {
+          type: "issue_stranded",
+          title: 'ISS-41 shipped but never closed — Invoicing',
+          body: 'ISS-41 "Repair invoice export" has carried a merge mark for 2 days.',
+          projectSlug: "invoicing",
+          projectName: "Invoicing",
+          issueId: ISSUE,
+        }),
+      ],
+      totalCount: 1,
+    });
+    open();
+    await loaded();
+    const link = screen.getByRole("link", { name: "ISS-41 shipped but never closed — Invoicing" });
+    expect(link).toHaveAttribute("href", `/projects/invoicing/issues/${ISSUE}`);
+    expect(link.className).toContain("min-h-11");
+    expect(screen.getByText("Invoicing · Stuck issues")).toBeInTheDocument();
+  });
+
+  it("opens its project where it names no issue, the ops page for a platform alert, and plain text for a project-less other", async () => {
+    server.ask = async () => ({
+      items: [
+        row(1, { type: "pipeline_wedge", title: "A runner can no longer authenticate", projectSlug: "invoicing" }),
+        row(2, { type: "ops_alert", title: "Disk is nearly full" }),
+        row(3, { type: "pipeline_wedge", title: "A step is held" }),
+      ],
+      totalCount: 3,
+    });
+    open();
+    await loaded();
+    expect(screen.getByRole("link", { name: "A runner can no longer authenticate" })).toHaveAttribute(
+      "href",
+      "/projects/invoicing",
+    );
+    expect(screen.getByRole("link", { name: "Disk is nearly full" })).toHaveAttribute("href", "/ops");
+    expect(screen.queryByRole("link", { name: "A step is held" })).toBeNull();
+    expect(screen.getByText("A step is held")).toBeInTheDocument();
+  });
+
+  it("reads a row read when it is opened", async () => {
+    server.ask = async () => ({
+      items: [row(1, { title: "ISS-5 is wedged", projectSlug: "invoicing", issueId: ISSUE })],
+      totalCount: 1,
+    });
+    const marked: string[] = [];
+    const { notificationsApi } = await import("@/features/notifications/api");
+    notificationsApi.markRead = (id: string) => {
+      marked.push(id);
+      return Promise.resolve({} as NotificationRow);
+    };
+    open();
+    await loaded();
+    fireEvent.click(screen.getByRole("link", { name: "ISS-5 is wedged" }));
+    await waitFor(() => expect(marked).toEqual(["n1"]));
+  });
+});
+
+describe("a sweep's row", () => {
+  const group = (over: Partial<NotificationRow> = {}) =>
+    row(1, {
+      type: "issue_stranded",
+      title: "Issues whose code shipped and whose close was never written",
+      explanation: "The step that owed the close did not write it.",
+      projectSlug: "invoicing",
+      projectName: "Invoicing",
+      members: 3,
+      openMembers: 2,
+      groupKey: "sweep:owed-close:1",
+      ...over,
+    });
+  const member = (n: number, over: Partial<NotificationMember> = {}): NotificationMember => ({
+    id: `m${n}`,
+    type: "issue_stranded",
+    kind: "condition",
+    state: "firing",
+    title: `ISS-4${n} shipped but never closed — Invoicing`,
+    body: null,
+    severity: null,
+    projectId: "p1",
+    projectSlug: "invoicing",
+    projectName: "Invoicing",
+    issueId: `00000000-0000-4000-8000-00000000000${n}`,
+    secondaryIssueId: null,
+    resolvedAt: null,
+    createdAt: "2026-10-01T10:00:00.000Z",
+    deliveredAt: "2026-10-01T10:00:00.000Z",
+    open: true,
+    ...over,
+  });
+
+  it("is titled by its cause with its count, and opens nothing itself", async () => {
+    server.ask = async () => ({ items: [group()], totalCount: 1 });
+    open();
+    await loaded();
+    expect(screen.getByText("Issues whose code shipped and whose close was never written")).toBeInTheDocument();
+    expect(screen.queryByRole("link")).toBeNull();
+    expect(screen.getByRole("button", { name: "2 of 3 still open — show" })).toBeInTheDocument();
+    expect(screen.queryByText("The step that owed the close did not write it.")).toBeNull();
+  });
+
+  it("expands to its members, each a link to its own issue, with the explanation said once", async () => {
+    server.ask = async () => ({ items: [group()], totalCount: 1 });
+    server.members = async () => [member(1), member(2), member(3, { open: false })];
+    open();
+    await loaded();
+    fireEvent.click(screen.getByRole("button", { name: "2 of 3 still open — show" }));
+    expect(await screen.findByRole("link", { name: "ISS-41 shipped but never closed — Invoicing" })).toHaveAttribute(
+      "href",
+      "/projects/invoicing/issues/00000000-0000-4000-8000-000000000001",
+    );
+    expect(screen.getAllByRole("link")).toHaveLength(3);
+    expect(screen.getAllByText("The step that owed the close did not write it.")).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "2 of 3 still open — hide" })).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("says what a single record's sweep means behind a disclosure, not on the row", async () => {
+    server.ask = async () => ({
+      items: [group({ members: 1, openMembers: 1, title: "ISS-41 shipped but never closed — Invoicing", issueId: "i1" })],
+      totalCount: 1,
+    });
+    open();
+    await loaded();
+    expect(screen.queryByText("The step that owed the close did not write it.")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "What this means" }));
+    expect(screen.getByText("The step that owed the close did not write it.")).toBeInTheDocument();
+  });
+
+  it("is read when a member is followed, and not when it is merely opened", async () => {
+    server.ask = async () => ({ items: [group()], totalCount: 1 });
+    server.members = async () => [member(1)];
+    const marked: string[] = [];
+    const { notificationsApi } = await import("@/features/notifications/api");
+    notificationsApi.markRead = (id: string) => {
+      marked.push(id);
+      return Promise.resolve({} as NotificationRow);
+    };
+    open();
+    await loaded();
+    fireEvent.click(screen.getByRole("button", { name: "2 of 3 still open — show" }));
+    const link = await screen.findByRole("link", { name: "ISS-41 shipped but never closed — Invoicing" });
+    expect(marked).toEqual([]);
+    fireEvent.click(link);
+    await waitFor(() => expect(marked).toEqual(["n1"]));
+  });
+
+  it("reads each member of a group that spans two projects as its own, the project named on every one", async () => {
+    server.ask = async () => ({ items: [group({ projectSlug: null, projectName: null })], totalCount: 1 });
+    server.members = async () => [
+      member(1, { title: "ISS-1 shipped but never closed", projectId: "p1", projectName: "Invoicing" }),
+      member(3, { title: "ISS-3 shipped but never closed", projectId: "p1", projectName: "Invoicing" }),
+      member(2, {
+        title: "ISS-1 shipped but never closed",
+        projectId: "p2",
+        projectSlug: "payroll",
+        projectName: "Payroll",
+      }),
+    ];
+    open();
+    await loaded();
+    fireEvent.click(screen.getByRole("button", { name: "2 of 3 still open — show" }));
+    await screen.findByRole("link", { name: "Payroll · ISS-1 shipped but never closed" });
+    expect(screen.getAllByRole("link").map((a) => a.textContent)).toEqual([
+      "Invoicing · ISS-1 shipped but never closed",
+      "Invoicing · ISS-3 shipped but never closed",
+      "Payroll · ISS-1 shipped but never closed",
+    ]);
+  });
+
+  it("names a failed load of its members, with a way to try again", async () => {
+    server.ask = async () => ({ items: [group()], totalCount: 1 });
+    server.members = () => Promise.reject(new Error("down"));
+    open();
+    await loaded();
+    fireEvent.click(screen.getByRole("button", { name: "2 of 3 still open — show" }));
+    expect(await screen.findByText(/Couldn't load these\./)).toBeInTheDocument();
+  });
+});
+
+describe("a row that has resolved", () => {
+  it("carries no `new` badge though nobody has read it, since the server says nothing is left to read", async () => {
+    server.ask = async () => ({
+      items: [
+        row(1, { title: "Resolved — ISS-5 is wedged", resolvedNotice: true, unread: false, readAt: null }),
+        row(2, { title: "ISS-6 is wedged", unread: true }),
+      ],
+      totalCount: 2,
+    });
+    open();
+    await loaded();
+    expect(screen.getAllByText("new")).toHaveLength(1);
+  });
+});
+
+describe("the filters", () => {
+  it("ask the server for unread only, and for one type, before any page is cut", async () => {
+    const seen: InboxFilter[] = [];
+    server.ask = async (_page, filter) => {
+      seen.push(filter as InboxFilter);
+      return { items: [row(1)], totalCount: 1 };
+    };
+    open();
+    await loaded();
+    expect(seen).toEqual([{ type: null, unreadOnly: false }]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Unread" }));
+    await waitFor(() => expect(seen.at(-1)).toEqual({ type: null, unreadOnly: true }));
+    expect(screen.getByRole("button", { name: "Unread" })).toHaveAttribute("aria-pressed", "true");
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Type" }), { target: { value: "issue_stranded" } });
+    await waitFor(() => expect(seen.at(-1)).toEqual({ type: "issue_stranded", unreadOnly: true }));
+  });
+
+  it("count and page only the matches, and say so when none match", async () => {
+    server.ask = async (_page, filter) =>
+      (filter as InboxFilter).type === "ops_alert"
+        ? { items: [], totalCount: 0 }
+        : { items: [row(1), row(2)], totalCount: 2 };
+    open();
+    await loaded();
+    expect(screen.getByText("2 notifications")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Type" }), { target: { value: "ops_alert" } });
+    expect(await screen.findByText("Nothing matches")).toBeInTheDocument();
+    expect(screen.queryByRole("feed")).toBeNull();
+    expect(screen.queryByText("All caught up")).toBeNull();
+  });
+
+  it("offer every type there is, each named", async () => {
+    serving(1);
+    open();
+    await loaded();
+    const options = within(screen.getByRole("combobox", { name: "Type" })).getAllByRole("option");
+    expect(options[0]).toHaveTextContent("All types");
+    expect(options).toHaveLength(12);
+    expect(options.every((o) => (o.textContent ?? "").trim().length > 0)).toBe(true);
+  });
+
+  it("keep every control at least 44px tall", async () => {
+    serving(1);
+    open();
+    await loaded();
+    for (const name of ["All", "Unread", "Mark all read"]) {
+      expect(screen.getByRole("button", { name }).className).toContain("min-h-11");
+    }
+    for (const name of ["All", "Unread"]) {
+      expect(screen.getByRole("button", { name }).className).toContain("min-w-11");
+    }
+    expect(screen.getByRole("combobox", { name: "Type" }).className).toContain("min-h-11");
   });
 });

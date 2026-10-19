@@ -1,0 +1,244 @@
+// ISS-1228 round 10 — a run row's chip. Where the box claims a process the row says what the run's
+// session is doing in the word every screen uses, and once core has heard nothing past the silence
+// line, what it last reported; a run with no process keeps the run's own words.
+
+import { describe, expect, it } from "vitest";
+import {
+  closeMarks,
+  disagreementText,
+  endReasonText,
+  offlineText,
+  pulseText,
+  runLeaseDisagreementText,
+  silenceText,
+  stateLabelAt,
+  waitsNow,
+} from "./run-state";
+
+const NOW = Date.parse("2026-10-16T10:00:00.000Z");
+const HEARD = new Date(NOW - 10_000).toISOString();
+const SILENT = new Date(NOW - 90_000).toISOString();
+
+const row = (over: Partial<Parameters<typeof stateLabelAt>[0]> = {}): Parameters<typeof stateLabelAt>[0] => ({
+  incarnation: "live",
+  work: "runnable",
+  lastActivityAt: HEARD,
+  silenceLimitMs: 10 * 60_000,
+  sessionStatus: "running",
+  sessionRuntimeState: "working",
+  observedAt: new Date(Date.now() - 4 * 60_000).toISOString(),
+  ...over,
+});
+
+describe("stateLabelAt", () => {
+  it("says the session's own activity while core holds it running and hears from it", () => {
+    expect(stateLabelAt(row({ sessionRuntimeState: "awaiting_input" }), NOW).label).toBe("Waiting for input");
+    expect(stateLabelAt(row({ sessionRuntimeState: "checkpointing" }), NOW).label).toBe("Checkpointing");
+    expect(stateLabelAt(row({ work: "blocked" }), NOW)).toMatchObject({ label: "Blocked", tone: "attention" });
+  });
+
+  it("says what a quiet run last reported, blocked or not, whether core still holds its session or ended it", () => {
+    for (const sessionStatus of ["running", "failed", null]) {
+      expect(stateLabelAt(row({ work: "blocked", lastActivityAt: SILENT, sessionStatus }), NOW)).toMatchObject({
+        label: "Last reported blocked",
+        tone: "neutral",
+      });
+      expect(stateLabelAt(row({ lastActivityAt: SILENT, sessionStatus }), NOW).label).toBe("Last reported working");
+    }
+  });
+
+  it("keeps the run's own words where the box claims no process", () => {
+    expect(stateLabelAt(row({ incarnation: "exited", work: "blocked", blockerKind: "human" }), NOW).label).toBe(
+      "Parked for a person",
+    );
+    expect(stateLabelAt(row({ incarnation: "exited", work: "runnable" }), NOW).label).toBe(
+      "Answered, awaiting revival",
+    );
+    expect(stateLabelAt(row({ work: "done" }), NOW).label).toBe("Closed");
+  });
+
+  // ISS-1228 round 13: a run core had ended read in the present tense while its box still reported it.
+  it("says what the box last reported of a run whose session core has ended, never that it is doing it", () => {
+    expect(stateLabelAt(row({ work: "blocked", sessionStatus: "failed" }), NOW)).toMatchObject({
+      label: "Last reported blocked",
+      tone: "neutral",
+    });
+    expect(stateLabelAt(row({ sessionStatus: "failed" }), NOW).label).toBe("Last reported working");
+  });
+
+  // ISS-1228 round 16 (judge-42): a run blocked on a person read "Waiting on a person." on its row and,
+  // on its chip's hover, "It waits on a machine or another agent": the hover reads the row's blocker.
+  it("says on the chip's hover the same holder its row's wait names, for every blocker kind", () => {
+    const holders: Array<[string | null, string]> = [
+      ["human", "a person"],
+      ["machine", "a machine"],
+      ["master_or_peer", "another agent"],
+      ["nobody", "nobody"],
+      [null, "someone the box did not name"],
+    ];
+    for (const [blockerKind, holder] of holders) {
+      for (const over of [{}, { sessionStatus: null }]) {
+        const detail = stateLabelAt(row({ ...over, work: "blocked", blockerKind }), NOW).detail;
+        expect(detail, `${blockerKind} ${JSON.stringify(over)}`).toContain(`waits on ${holder}`);
+        for (const [, other] of holders.filter(([k]) => k !== blockerKind)) {
+          expect(detail, `${blockerKind} names ${other}`).not.toContain(`waits on ${other}`);
+        }
+      }
+      const parked = stateLabelAt(row({ incarnation: "exited", work: "blocked", blockerKind }), NOW);
+      expect(parked.detail, `parked ${blockerKind}`).toContain(holder);
+      expect(parked.label, `parked ${blockerKind}`).toBe(blockerKind === "human" ? "Parked for a person" : "Parked");
+    }
+  });
+
+  it("calls a run a person stopped Stopped whatever its box says of its process, until the run closes", () => {
+    const stopped = { sessionStatus: "failed", sessionFailureReason: "user_cancelled" };
+    for (const [incarnation, work] of [
+      ["live", "runnable"],
+      ["live", "blocked"],
+      ["exited", "blocked"],
+      ["exited", "runnable"],
+    ]) {
+      expect(stateLabelAt(row({ ...stopped, incarnation, work }), NOW).label, `${incarnation} ${work}`).toBe("Stopped");
+    }
+    expect(stateLabelAt(row({ ...stopped, work: "done" }), NOW).label).toBe("Closed");
+  });
+});
+
+// ISS-1228 round 13: judge-34 saw an ended run read "Quiet. No report for 19m." beside its box's
+// report of two seconds before, and a core-ended session as a bare label.
+describe("an ended run's lines", () => {
+  const ended = { incarnation: "live", lastActivityAt: new Date(NOW - 19 * 60_000).toISOString(), silenceLimitMs: 10 * 60_000 };
+
+  it("says nothing of silence on a run whose session core has ended", () => {
+    expect(silenceText({ ...ended, sessionStatus: "failed" }, NOW)).toBeNull();
+    expect(silenceText({ ...ended, sessionStatus: "running" }, NOW)).toMatch(/^Quiet\./);
+  });
+
+  it("names the silence a check-in, the clock it reads, never a report", () => {
+    expect(silenceText({ ...ended, sessionStatus: "running" }, NOW)).toBe(
+      "Quiet. Core is ending it as failed. No check-in for 19m.",
+    );
+  });
+
+  it("says why the session ended as sentences, a person's stop in its own words", () => {
+    expect(endReasonText({ sessionStatus: "failed", sessionFailureReason: "session_stopped_checking_in" })).toBe(
+      "The session ended. Stopped checking in.",
+    );
+    expect(endReasonText({ sessionStatus: "failed", sessionFailureReason: "heartbeat_timeout" })).toBe(
+      "The session ended. No heartbeat.",
+    );
+    expect(endReasonText({ sessionStatus: "failed", sessionFailureReason: "user_cancelled" })).toBe(
+      "A person stopped the session.",
+    );
+    expect(endReasonText({ sessionStatus: "running", sessionFailureReason: "heartbeat_timeout" })).toBeNull();
+  });
+});
+
+describe("pulseText", () => {
+  it("says core is ending a run as failed once its silence passes core's limit, never that it recovers", () => {
+    const text = pulseText({ state: "past-threshold", sinceMs: 11 * 60_000 });
+    expect(text).toContain("Core is ending it as failed.");
+    expect(text).not.toMatch(/recover/i);
+  });
+});
+
+// ISS-1228 round 11 — a box core reads as offline is quoted in the past, and a lease core still
+// holds is not counted returned whatever the box says.
+describe("an offline box and a lease core still holds", () => {
+  it("says what an offline box last reported, never that the run is working or blocked now", () => {
+    expect(stateLabelAt(row({ deviceStatus: "offline" }), NOW)).toMatchObject({
+      label: "Last reported working",
+      tone: "neutral",
+    });
+    expect(stateLabelAt(row({ work: "blocked", sessionStatus: "failed", deviceStatus: "offline" }), NOW).label).toBe(
+      "Last reported blocked",
+    );
+    expect(stateLabelAt(row({ deviceStatus: "online" }), NOW).label).toBe("Working");
+  });
+
+  it("quotes an offline box with when it last reported", () => {
+    const observedAt = new Date(Date.now() - 52 * 60_000).toISOString();
+    expect(disagreementText("box-live-core-terminal", { observedAt, deviceStatus: "offline" })).toBe(
+      "The box said this was live 52m ago and is offline now. Core says the session ended.",
+    );
+    expect(disagreementText("box-live-core-terminal", { observedAt, deviceStatus: "online" })).toBe(
+      "The box says this is live. Core says the session ended.",
+    );
+    const live = { incarnation: "live", observedAt, sessionId: "s1", sessionStatus: "running" };
+    expect(offlineText({ ...live, deviceStatus: "offline" })).toBe("The box is offline. It last reported 52m ago.");
+    expect(offlineText({ ...live, deviceStatus: "online" })).toBeNull();
+    expect(offlineText({ ...live, sessionStatus: "failed", deviceStatus: "offline" })).toBeNull();
+  });
+
+  it("counts a lease returned only where core no longer holds it, and names the ones it does", () => {
+    const issues = [
+      { issueKey: "ISS-4", leaseReturned: true, coreHolds: true },
+      { issueKey: "ISS-5", leaseReturned: true, coreHolds: false },
+    ];
+    expect(closeMarks({ sessionTerminalAt: null, worktreeGoneAt: null, issues }).leasesReturned).toEqual({
+      returned: 1,
+      total: 2,
+    });
+    expect(runLeaseDisagreementText({ issues })).toBe(
+      "The box says it returned ISS-4. Core still holds it. Stop the session to free it.",
+    );
+    expect(runLeaseDisagreementText({ issues: [issues[1]] })).toBeNull();
+  });
+});
+
+// ISS-1228 round 14 (judge-36): a run a person stopped still said "Waiting on a person." with an
+// Open questions link until its box dropped it.
+describe("waitsNow", () => {
+  it("says a blocked run waits only while core holds its session", () => {
+    expect(waitsNow({ blockerKind: "human", sessionStatus: "running" })).toBe(true);
+    expect(waitsNow({ blockerKind: "human", sessionStatus: "failed" })).toBe(false);
+    expect(waitsNow({ blockerKind: "human", sessionStatus: "completed" })).toBe(false);
+    expect(waitsNow({ blockerKind: null, sessionStatus: "running" })).toBe(false);
+  });
+});
+
+// ISS-1228 round 14 (judge-36): "The box is offline." beside a live session could not be reached.
+describe("offlineText beside a live session", () => {
+  it("says the box is offline and when it last reported while core still holds the session", () => {
+    const text = offlineText({
+      incarnation: "live",
+      observedAt: new Date(Date.now() - 3 * 60_000).toISOString(),
+      sessionId: "s1",
+      sessionStatus: "running",
+      deviceStatus: "offline",
+    });
+    expect(text).toBe("The box is offline. It last reported 3m ago.");
+  });
+});
+
+
+// ISS-1228 round 15 (judge-39): on one runs-tab row an offline box read "The box is offline. It last
+// reported 10m ago." beside a chip whose hover said "The box is offline: this is what it last
+// reported, …", and every chip hover was worded outside the one place.
+describe("a run chip's hover", () => {
+  it("says an offline box the way the row's own line says it, word for word", () => {
+    const r = row({ deviceStatus: "offline" });
+    const live = { incarnation: "live", observedAt: r.observedAt, sessionId: "s1", sessionStatus: "running", deviceStatus: "offline" };
+    expect(stateLabelAt(r, NOW).detail).toBe(offlineText(live));
+    expect(stateLabelAt(r, NOW).detail).toBe("The box is offline. It last reported 4m ago.");
+  });
+
+  it("is a capitalised sentence ending in a stop in every state a run can be in", () => {
+    const states = [
+      row(),
+      row({ work: "blocked" }),
+      row({ incarnation: "exited", work: "blocked" }),
+      row({ incarnation: "exited", work: "runnable" }),
+      row({ work: "done" }),
+      row({ incarnation: "lost" }),
+      row({ lastActivityAt: SILENT }),
+      row({ sessionStatus: "failed" }),
+      row({ sessionStatus: "failed", sessionFailureReason: "user_cancelled" }),
+      row({ deviceStatus: "offline" }),
+    ];
+    for (const r of states) {
+      const { detail } = stateLabelAt(r, NOW);
+      expect(detail, detail).toMatch(/^[A-Z][\s\S]*[.!?]$/);
+    }
+  });
+});

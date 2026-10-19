@@ -9,7 +9,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { BOUND_DEFAULTS, readBounds } from './bounds.js';
+import { BOUND_DEFAULTS, readBounds, stallOrigin } from './bounds.js';
 import type { ReleaseAttemptRow } from './ledger.js';
 
 const NOW = 1_800_000_000_000;
@@ -109,6 +109,107 @@ describe('the stall bound', () => {
     const rows = [attempt({ stage: 'promote', startedAt: at(BOUND_DEFAULTS.stall + 1) })];
 
     expect(bound(rows, 'stall')?.measuredMs).toBe(BOUND_DEFAULTS.stall + 1);
+  });
+});
+
+describe('the stall bound, from the time a box took the job', () => {
+  const readTaken = (rows: ReleaseAttemptRow[], takenAgoMs: number | null) =>
+    readBounds(rows, { now: NOW, takenAt: takenAgoMs === null ? null : at(takenAgoMs) });
+  const stall = (rows: ReleaseAttemptRow[], takenAgoMs: number | null) =>
+    readTaken(rows, takenAgoMs).bounds.find((b) => b.name === 'stall');
+
+  it('is crossed for a run that took a job and wrote nothing, past the threshold', () => {
+    const reading = readTaken([], BOUND_DEFAULTS.stall + 1);
+
+    expect(stall([], BOUND_DEFAULTS.stall + 1)).toMatchObject({
+      crossed: true,
+      measuredMs: BOUND_DEFAULTS.stall + 1,
+    });
+    expect(reading.holding).toBe(true);
+    expect(reading.crossedNames).toEqual(['stall']);
+  });
+
+  it('is not crossed inside the threshold, nor at it', () => {
+    expect(stall([], BOUND_DEFAULTS.stall - 1)?.crossed).toBe(false);
+    expect(stall([], BOUND_DEFAULTS.stall)?.crossed).toBe(false);
+  });
+
+  it('measures from the newest write where the ledger holds one newer than the job', () => {
+    const rows = [attempt({ stage: 'verify', startedAt: at(60_000) })];
+
+    expect(stall(rows, BOUND_DEFAULTS.stall + 1)).toMatchObject({
+      crossed: false,
+      measuredMs: 60_000,
+    });
+  });
+
+  it('measures from the job where it is newer than every write, before any promotion', () => {
+    const rows = [attempt({ stage: 'verify', startedAt: at(BOUND_DEFAULTS.stall * 2) })];
+
+    expect(stall(rows, 60_000)).toMatchObject({ crossed: false, measuredMs: 60_000 });
+    expect(stall(rows, BOUND_DEFAULTS.stall + 5)?.crossed).toBe(true);
+  });
+
+  it('reads as it always did where no job time is given', () => {
+    const rows = [attempt({ stage: 'verify', startedAt: at(BOUND_DEFAULTS.stall * 2) })];
+
+    expect(readBounds(rows, { now: NOW }).bounds.find((b) => b.name === 'stall')).toMatchObject({
+      crossed: false,
+      measuredMs: null,
+    });
+    expect(
+      readBounds(rows, { now: NOW, takenAt: null }).bounds.find((b) => b.name === 'stall')?.crossed,
+    ).toBe(false);
+  });
+
+  it('says what it said before a job time existed, where none is given', () => {
+    const rows = [
+      attempt({ stage: 'promote', startedAt: at(BOUND_DEFAULTS.stall * 2) }),
+      attempt({ stage: 'verify', startedAt: at(60_000) }),
+    ];
+
+    for (const opts of [{ now: NOW }, { now: NOW, takenAt: null }]) {
+      expect(readBounds(rows, opts).bounds.find((b) => b.name === 'stall')).toEqual({
+        name: 'stall',
+        crossed: false,
+        measuredMs: 60_000,
+        thresholdMs: BOUND_DEFAULTS.stall,
+        why: LEDGER_WHY,
+      });
+    }
+  });
+});
+
+const LEDGER_WHY = 'time since the newest write to this run’s ledger';
+const TAKEN_WHY = 'time since a box took this run’s job, with nothing written to its ledger since';
+
+describe('the moment the stall bound says it measured from', () => {
+  const why = (rows: ReleaseAttemptRow[], takenAgoMs: number) =>
+    readBounds(rows, { now: NOW, takenAt: at(takenAgoMs) }).bounds.find((b) => b.name === 'stall')
+      ?.why;
+  const verify = (agoMs: number) => attempt({ stage: 'verify', startedAt: at(agoMs) });
+
+  it('names the job where a box took it after every ledger write, or wrote nothing', () => {
+    expect(why([], 60_000)).toBe(TAKEN_WHY);
+    expect(why([verify(120_000)], 60_000)).toBe(TAKEN_WHY);
+  });
+
+  it('names the newest ledger write where it is newer than the job', () => {
+    expect(why([verify(60_000)], 120_000)).toBe(LEDGER_WHY);
+  });
+
+  it('names the ledger write where it landed at the same instant as the job', () => {
+    expect(why([verify(60_000)], 60_000)).toBe(LEDGER_WHY);
+  });
+
+  it('agrees with the reading it explains', () => {
+    expect(stallOrigin([verify(60_000)], at(120_000))).toEqual({
+      at: NOW - 60_000,
+      from: 'ledger',
+    });
+    expect(stallOrigin([verify(120_000)], at(60_000))).toEqual({ at: NOW - 60_000, from: 'taken' });
+    expect(stallOrigin([verify(60_000)], at(60_000))).toEqual({ at: NOW - 60_000, from: 'ledger' });
+    expect(stallOrigin([], null)).toBeNull();
   });
 });
 
@@ -246,5 +347,26 @@ describe('what a crossed bound makes of the run', () => {
 
   it('reports all three bounds, crossed or not', () => {
     expect(read([]).bounds.map((b) => b.name)).toEqual(['total', 'stall', 'regression']);
+  });
+});
+
+describe('the bounds of a run that has ended', () => {
+  const takenAt = at(BOUND_DEFAULTS.stall * 3);
+
+  it('holds nothing, though a bound was crossed before it ended', () => {
+    const reading = readBounds([], { now: NOW, takenAt, ended: { at: null } });
+    expect(reading).toMatchObject({ holding: false, crossedNames: ['stall'] });
+  });
+
+  it('measures up to the moment it ended, never up to now', () => {
+    const ended = new Date(takenAt.getTime() + 60_000);
+    const stall = readBounds([], { now: NOW, takenAt, ended: { at: ended } }).bounds.find(
+      (b) => b.name === 'stall',
+    );
+    expect(stall).toMatchObject({ crossed: false, measuredMs: 60_000 });
+  });
+
+  it('still holds, while it is open, once the same bound is crossed', () => {
+    expect(readBounds([], { now: NOW, takenAt }).holding).toBe(true);
   });
 });

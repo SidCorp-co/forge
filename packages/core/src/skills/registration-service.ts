@@ -1,13 +1,13 @@
 /**
- * Which skill serves which pipeline stage — registration, distinct from the
- * skill CRUD in `service.ts`. Split out when that file crossed its line budget
- * (ISS-894 wave 3); the seam is the concern, not the size.
+ * A project skill's registration — distinct from the skill CRUD in `service.ts`. A registered
+ * skill joins the set a device installs (`resolveRegisteredEffectiveSkills`). The `stage` is the
+ * status the web Skills tab files it under and the key the table keeps one skill per; no status
+ * dispatches a skill, so it chooses nothing about when the skill runs.
  */
 
 import { and, eq, ne } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type IssueStatus, projects, skillRegistrations, skills } from '../db/schema.js';
-import { AUTONOMOUS_ENTRY_STATUS } from '../pipeline/autonomous-mode.js';
+import { type IssueStatus, skillRegistrations, skills } from '../db/schema.js';
 import { hooks } from '../pipeline/hooks.js';
 import { recordSkillActivityEvent } from './activity.js';
 
@@ -112,69 +112,4 @@ export async function registerSkillForProject(
 
   await hooks.emit('skillRegistered', { projectId, skillId, actorUserId, stage });
   return { projectId, skillId, stage };
-}
-
-export interface SkillRegistrationView {
-  stage: IssueStatus;
-  skillId: string;
-  skillName: string;
-  scope: 'global' | 'project';
-  /** `null` off the entry status, where the field gates nothing. */
-  mode: 'auto' | 'manual' | null;
-  enabled: boolean;
-  registeredBy: string | null;
-  registeredAt: string;
-}
-
-/**
- * List a project's stage→skill bindings overlaid with the per-stage
- * `mode`/`enabled` from `agentConfig.pipelineConfig.states`.
- *
- * `enabled` is meaningful at every stage. `mode` is meaningful at the entry
- * status alone and comes back `null` everywhere else.
- *
- * Stages with no skill registered are NOT returned — clients diff against
- * the canonical stage list (`STAGE_NAMES`) to surface gaps.
- */
-export async function listSkillRegistrations(projectId: string): Promise<SkillRegistrationView[]> {
-  const [project] = await db
-    .select({ agentConfig: projects.agentConfig })
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .limit(1);
-  if (!project) return [];
-  const ac = (project.agentConfig ?? {}) as Record<string, unknown>;
-  const pipeline = (ac.pipelineConfig ?? {}) as Record<string, unknown>;
-  const states = (pipeline.states ?? {}) as Record<
-    string,
-    { enabled?: boolean; mode?: 'auto' | 'manual' } | undefined
-  >;
-
-  const rows = await db
-    .select({
-      stage: skillRegistrations.stage,
-      skillId: skillRegistrations.skillId,
-      skillName: skills.name,
-      scope: skills.scope,
-      registeredBy: skillRegistrations.registeredBy,
-      createdAt: skillRegistrations.createdAt,
-    })
-    .from(skillRegistrations)
-    .innerJoin(skills, eq(skills.id, skillRegistrations.skillId))
-    .where(eq(skillRegistrations.projectId, projectId))
-    .orderBy(skillRegistrations.stage);
-
-  return rows.map((r) => {
-    const stageCfg = states[r.stage];
-    return {
-      stage: r.stage as IssueStatus,
-      skillId: r.skillId,
-      skillName: r.skillName,
-      scope: r.scope as 'global' | 'project',
-      mode: r.stage === AUTONOMOUS_ENTRY_STATUS ? (stageCfg?.mode ?? 'auto') : null,
-      enabled: stageCfg?.enabled !== false,
-      registeredBy: r.registeredBy,
-      registeredAt: r.createdAt instanceof Date ? r.createdAt.toISOString() : String(r.createdAt),
-    };
-  });
 }

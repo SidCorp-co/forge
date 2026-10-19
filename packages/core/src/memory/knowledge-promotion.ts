@@ -7,6 +7,7 @@
 // the fleet owner to say what it was doing.
 
 import { and, eq, gte, inArray, isNull, lte, sql } from 'drizzle-orm';
+import { forgeAuthorId } from '../comments/forge-author.js';
 import { db } from '../db/client.js';
 import { issues, memories, projects } from '../db/schema.js';
 import { logger } from '../logger.js';
@@ -59,19 +60,6 @@ export async function resolveKnowledgePromotion(
 export async function proposeKnowledgePromotions(projectId: string): Promise<void> {
   const cfg = await resolveKnowledgePromotion(projectId);
   if (!cfg.enabled) return;
-
-  const [projectRow] = await db
-    .select({ createdBy: projects.createdBy })
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .limit(1);
-  if (!projectRow?.createdBy) {
-    logger.debug(
-      { projectId },
-      'memory.consolidation: proposeKnowledgePromotions: project not found or no creator',
-    );
-    return;
-  }
 
   const ageThreshold = new Date(Date.now() - PROMOTION_AGE_DAYS * 24 * 60 * 60 * 1000);
 
@@ -128,7 +116,7 @@ export async function proposeKnowledgePromotions(projectId: string): Promise<voi
         status: 'open',
         priority: 'low',
         category: 'knowledge-promotion',
-        createdById: projectRow.createdBy,
+        createdById: await forgeAuthorId(db),
         createdVia: 'schedule',
       })
       .returning({ id: issues.id });

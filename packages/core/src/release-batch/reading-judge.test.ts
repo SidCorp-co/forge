@@ -395,7 +395,13 @@ describe('readings taken with probes the binding no longer declares', () => {
     const readings = [look(10, { a: NEW }, OTHER), look(20, { a: NEW }, OTHER)];
 
     expect(refusal({ readings })).toBe(
-      `the probes declared for ${A.name} are not the ones its 2 recorded reading(s) were taken with, so they say nothing about what these serve — call \`look\`, then finish`,
+      `the probes declared for ${A.name} are not the ones its 2 recorded readings were taken with, so they say nothing about what these serve — call \`look\`, then finish`,
+    );
+  });
+
+  it('counts one such reading in the singular', () => {
+    expect(refusal({ readings: [look(10, { a: NEW }, OTHER)] })).toBe(
+      `the probes declared for ${A.name} are not the ones its 1 recorded reading was taken with, so they say nothing about what these serve — call \`look\`, then finish`,
     );
   });
 

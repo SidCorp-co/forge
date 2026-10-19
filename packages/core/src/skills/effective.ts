@@ -25,7 +25,7 @@ export interface EffectiveSkill {
   files: SkillFile[];
   effectiveHash: string;
   /**
-   * The skill's scope. Only `project` is USABLE (installed/dispatched); a
+   * The skill's scope. Only `project` is USABLE (installed); a
    * `global` entry only ever appears in the catalog read as an adoptable
    * template.
    */
@@ -46,9 +46,9 @@ export interface EffectiveSkill {
   pinned: boolean;
   pinnedReason: string | null;
   /**
-   * True when this project skill is force-synced to runners without a pipeline
-   * stage binding (manual / user-invocable utility). It enters the device
-   * manifest but is never auto-dispatched. See `resolveRegisteredEffectiveSkills`.
+   * True when this project skill is force-synced to runners (manual /
+   * user-invocable utility). It enters the device manifest and is only ever
+   * invoked by name. See `resolveRegisteredEffectiveSkills`.
    */
   installOnly: boolean;
 }

@@ -1,29 +1,48 @@
 "use client";
 
 import { useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { formatApiError } from "@/lib/api/error";
+import { useToast } from "@/providers/toast-provider";
+import { useActiveOrg } from "@/features/orgs/active-org";
 import { useDevices } from "@/features/runners/hooks";
 import { badgeFigure, queryRead } from "@/design/patterns/badge-read";
 import { attentionApi } from "./api";
-import type { AttentionItem, AttentionView } from "./types";
+import { ATTENTION_BUCKETS, type AttentionBucket, type AttentionItem, type AttentionView } from "./types";
+
+const NO_BUCKET_TOTALS = Object.fromEntries(ATTENTION_BUCKETS.map((b) => [b, 0])) as Record<
+  AttentionBucket,
+  number
+>;
 
 /**
- * Cross-project attention/inbox view: the `/me/attention` buckets merged with
- * offline runners derived client-side from `/me/devices`. `total` includes the
- * offline-runner count so the rail badge and the screen agree, and is undefined
- * until both have been read: a count of what one of them has not yet said is not a count.
- * `read` and `devicesRead` say which of the two answered, and a reader states a figure, a
- * badge or an empty list only from `read`. `badge` is what the rails carry: the count where both were
- * read, else the read on its way or failed, never a held count after a failed refetch.
+ * The `/me/attention` buckets merged with offline runners from `/me/devices`. `total` is every item
+ * the buckets hold, listed or not, plus the offline runners, undefined until both were read
+ * (ISS-1229 r14). `expand` lists buckets whole; `orgId` reads one organisation in place of the
+ * active one. State a figure or empty list only from `read`; `badge` is never a held count after a
+ * failed refetch.
  */
-export function useAttention() {
+export function useAttention(
+  opts: { expand?: readonly AttentionBucket[]; orgId?: string | null } = {},
+) {
+  const active = useActiveOrg();
+  const own = opts.orgId !== undefined;
+  const orgId = own ? opts.orgId : active.activeOrgId;
+  const scopeError = own ? null : active.scopeError;
+  const expanded = [...(opts.expand ?? [])].sort();
   const attentionQ = useQuery({
-    queryKey: ["attention"],
-    queryFn: () => attentionApi.list(),
+    queryKey: ["attention", orgId, expanded],
+    queryFn: () => attentionApi.list(orgId, expanded),
+    enabled: own ? orgId !== null : active.scopeRead,
+    // Asking for a group whole keeps the page on screen while it is read; another organisation never
+    // shows this one's rows meanwhile.
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.queryKey[1] === orgId ? previous : undefined,
   });
   // `['devices','me']` is already WS-invalidated on device.login/paired/revoked
-  // and reconnect — reusing the runners hook keeps the offline bucket live.
-  const devicesQ = useDevices();
+  // and reconnect — reusing the runners hook keeps the offline bucket live. The organisation read is
+  // the devices' too: a box bound only to another organisation's projects is not this one's (ISS-1229 r16).
+  const devicesQ = useDevices(orgId);
 
   const offlineRunners: AttentionItem[] = useMemo(() => {
     const rows = devicesQ.data ?? [];
@@ -54,22 +73,17 @@ export function useAttention() {
       pendingSkillUpdates,
       unseenDrafts,
       unseenDraftsTotal: base?.unseenDraftsTotal ?? 0,
+      bucketTotals: base?.bucketTotals ?? NO_BUCKET_TOTALS,
+      total: base?.total ?? 0,
       // Where nothing has been read, `read` says so; the empty map here is no statement. A response the server sent without totals is refused where it is read.
       projectTotals: base ? base.projectTotals : {},
       offlineRunners,
     };
   }, [attentionQ.data, offlineRunners]);
 
-  const held =
-    view.needsReview.length +
-    view.awaitingInput.length +
-    view.mentions.length +
-    view.failedJobs.length +
-    view.pendingSkillUpdates.length +
-    view.unseenDrafts.length +
-    view.offlineRunners.length;
+  const held = view.total + view.offlineRunners.length;
 
-  const read = queryRead(attentionQ);
+  const read = scopeError ? "failed" : queryRead(attentionQ);
   const devicesRead = queryRead(devicesQ);
   const badge = useMemo(() => badgeFigure([read, devicesRead], held), [read, devicesRead, held]);
 
@@ -78,12 +92,36 @@ export function useAttention() {
     total: read === "read" && devicesRead === "read" ? held : undefined,
     read,
     devicesRead,
+    /** A group asked for whole is still on its way: the rows on screen are the capped ones. */
+    expanding: attentionQ.isPlaceholderData,
     badge,
-    error: attentionQ.error,
+    error: scopeError ?? attentionQ.error,
     devicesError: devicesQ.error,
     refetch: () => {
-      attentionQ.refetch();
+      if (scopeError) active.retryScope();
+      else attentionQ.refetch();
       devicesQ.refetch();
     },
   };
+}
+
+/**
+ * Retry a failed job from a Needs you row (ISS-1229 r16): the button retries the job, through the one
+ * route a person retries a failed job by, and the row leaves the list once its read is refreshed.
+ */
+export function useRetryFailedJob() {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: (jobId: string) => attentionApi.retryJob(jobId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["attention"] });
+      qc.invalidateQueries({ queryKey: ["jobs", "list"] });
+      qc.invalidateQueries({ queryKey: ["projects", "health"] });
+      toast({ title: "Job queued again", tone: "success" });
+    },
+    onError: (err) => {
+      toast({ title: "The job was not retried", description: formatApiError(err), tone: "error" });
+    },
+  });
 }

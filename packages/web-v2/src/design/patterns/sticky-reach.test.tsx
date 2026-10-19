@@ -106,7 +106,7 @@ function project(name: string): ProjectConsoleItem {
   return {
     id: name, slug: name, name, orgId: "o1", orgName: "Org", orgIsPersonal: false, role: "admin",
     createdAt: "2026-10-01T00:00:00Z", description: "A project", repoPath: `repo/${name}`, healthRead: "read",
-    health: "healthy", liveRuns: 1, openIssues: 3, runnerCount: 1, spend24hUsd: 1, memberCount: 2, members: ["AB", "CD"],
+    health: "healthy", liveSessions: 1, openIssues: 3, runnerCount: 1, spend24hUsd: 1, memberCount: 2, members: ["AB", "CD"],
     lastActivityAt: "2026-10-02T00:00:00Z", pinned: false,
   } as ProjectConsoleItem;
 }
@@ -117,7 +117,7 @@ const STICKY_FLOOR_PX = 128;
 const STICKY_CAP_PX = 160;
 
 async function measured(markup: string, table: string, column = PHONE_COLUMN, viewport = PHONE) {
-  const { reach, overflowing, stickyWidest, pinned, broken, clipped, scrolling, pillLines, headerLost, bodyRows } = await measureReach(markup, column, viewport);
+  const { reach, overflowing, stickyWidest, pinned, broken, clipped, scrolling, pillLines, pills, headerLost, bodyRows } = await measureReach(markup, column, viewport);
   return {
     reach: reach.filter((r) => r.table === table),
     overflowing: overflowing.filter((o) => o.startsWith(`${table}:`)),
@@ -127,6 +127,7 @@ async function measured(markup: string, table: string, column = PHONE_COLUMN, vi
     clipped: clipped.filter((c) => c.table === table),
     scrolling: scrolling.filter((s) => s.startsWith(`${table}:`)),
     pillLines,
+    pills: pills.filter((p) => p.table === table),
     headerLost: headerLost.filter((h) => h === table),
     bodyRows: bodyRows[table] ?? 0,
   };
@@ -330,10 +331,20 @@ describe("a table of more than 100 rows, windowed", () => {
   });
 });
 
-describe("the level pill of a token bound to a project", () => {
+// The app's own faces (Hanken Grotesk, JetBrains Mono) are loaded by the harness. The pill is also
+// measured in the fonts a machine may fall back to, where the same pill sits differently.
+const FONTS = [
+  { name: "the app's font", css: "" },
+  { name: "a wide sans (DejaVu Sans)", css: '*{font-family:"DejaVu Sans",sans-serif !important}' },
+  { name: "Liberation Sans", css: '*{font-family:"Liberation Sans",sans-serif !important}' },
+  { name: "monospace", css: "*{font-family:monospace !important}" },
+];
+
+describe.each(FONTS)("the level pill of a token bound to a project, in $name", ({ css }) => {
   const PROJECT = "qa-project-available-for-testing-0".padEnd(40, "x");
   const bound = () => [token("ci", { boundProjectId: "p1" })];
   const draw = () =>
+    `<style>${css}</style>` +
     renderToStaticMarkup(
       <TokenList tokens={bound()} level={() => `Project: ${PROJECT}`} onRevoke={() => {}} revoking={false} />,
     );
@@ -347,8 +358,56 @@ describe("the level pill of a token bound to a project", () => {
     expect(pillLines[`Project: ${PROJECT}`]).toBe(1);
   });
 
-  it("reads on one line at 1280px", async () => {
-    const { pillLines } = await measured(draw(), "Tokens that can reach your account", DESKTOP_COLUMN, DESKTOP);
+  it("sits inside the table's frame at 390px before anything is scrolled sideways, with the whole name in its title", async () => {
+    const { pills } = await measured(draw(), "Tokens that can reach your account");
+    const pill = pills.find((p) => p.text.includes(PROJECT.slice(0, 20)));
+    expect(pill, `no pill for the project in ${JSON.stringify(pills)}`).toBeDefined();
+    expect(pill?.framed, "the pill runs past the table's frame, so its end is found only by scrolling sideways").toBe(true);
+    expect(pill?.titled).toBe(true);
+  });
+
+  it("reads on one line at 1280px, inside the table's frame, with the whole name in its title", async () => {
+    const { pillLines, pills } = await measured(draw(), "Tokens that can reach your account", DESKTOP_COLUMN, DESKTOP);
     expect(pillLines[`Project: ${PROJECT}`]).toBe(1);
+    expect(pills.find((p) => p.text === `Project: ${PROJECT}`)).toMatchObject({ framed: true, titled: true });
+  });
+
+  if (css === "") {
+    it("keeps the table inside its frame at 1280px in the app's own fonts", async () => {
+      const { scrolling } = await measured(draw(), "Tokens that can reach your account", DESKTOP_COLUMN, DESKTOP);
+      expect(scrolling).toEqual([]);
+    });
+  }
+});
+
+// ISS-1264 round 5: the tokens a real account holds, one of them a paired box named for its device
+// id. The table has to fit the 894px the settings page leaves it at 1280px, with Expires and Revoke
+// inside the frame, and every Revoke has to be reachable at 390px.
+describe("the API Tokens table with the tokens a real account holds", () => {
+  const BOX = "device:72286b74-3a1c-4f0e-9c2d-5a8b1e7f4d90";
+  const REAL = () => [
+    token(BOX, { grant: "named", permissions: ["issues:read", "issues:write"], expiresAt: "2027-09-01T00:00:00.000Z", lastUsedAt: "2026-10-13T00:00:00.000Z" }),
+    token("iss974-walk-2", { grant: "full", scopes: ["read", "write", "admin"], lastUsedAt: "2026-10-02T00:00:00.000Z" }),
+    token("ci", { grant: "named", permissions: ["issues:read"], boundProjectId: "p1", expiresAt: "2027-01-01T00:00:00.000Z" }),
+    token("a-token-named-by-someone-who-likes-long-names-0123456789", { scopes: ["read"], expiresAt: "2027-03-01T00:00:00.000Z" }),
+    token("AdminHub UI", { grant: "full", scopes: ["read", "write"] }),
+  ];
+  const draw = () =>
+    renderToStaticMarkup(<TokenList tokens={REAL()} level={(t) => (t.boundProjectId ? "Project: Forge Platform Development" : "User-level")} onRevoke={() => {}} revoking={false} />);
+
+  it("fits its frame at 1280px, with Expires and every Revoke inside it", async () => {
+    const { scrolling, reach, pills } = await measured(draw(), "Tokens that can reach your account", DESKTOP_COLUMN, DESKTOP);
+    expect(scrolling, "the table is wider than the frame the settings page leaves it").toEqual([]);
+    expect(reach.filter((r) => r.control.startsWith("Revoke")).length).toBe(5);
+    expect(unframed(reach)).toEqual([]);
+    expect(pills.filter((p) => !p.framed)).toEqual([]);
+  });
+
+  it("keeps every Revoke reachable at 390px, with the name column inside its cap", async () => {
+    const { reach, overflowing, stickyWidest } = await measured(draw(), "Tokens that can reach your account");
+    expect(reach.filter((r) => r.control.startsWith("Revoke")).length).toBe(5);
+    expect(clearOf(reach)).toEqual([]);
+    expect(overflowing).toEqual([]);
+    expect(stickyWidest).toBeLessThanOrEqual(STICKY_CAP_PX);
   });
 });

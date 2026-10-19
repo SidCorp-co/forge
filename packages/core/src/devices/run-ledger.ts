@@ -9,10 +9,12 @@
 
 import { and, eq, inArray, notInArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { agentSessions, devices, runners } from '../db/schema.js';
+import { agentSessions, devices, runners, terminalAgentSessionStatuses } from '../db/schema.js';
 import { deviceRunLedger } from '../db/schema-run-ledger.js';
 import { MASTER_SESSION_KIND } from '../jobs/session-kinds.js';
 import { logger } from '../logger.js';
+import { silenceLimitFrom } from './session-silence.js';
+import { loadSilenceDeadlines } from './session-silence-read.js';
 
 export interface RunLedgerIssue {
   issueKey: string;
@@ -37,8 +39,23 @@ export interface RunLedgerEntry {
   issues: RunLedgerIssue[];
 }
 
+const TERMINAL_SESSIONS = sql.join(
+  terminalAgentSessionStatuses.map((s) => sql`${s}`),
+  sql`, `,
+);
+
 const fromEpochSeconds = (s: number | null | undefined): Date | null =>
   s == null ? null : new Date(s * 1000);
+
+/** A snapshot repeating the run's work, blocker and wait keeps the time core first saw them; one
+ *  changing any of the three starts it again at this snapshot. */
+const sameWaitKeepsItsStart = sql`CASE
+  WHEN ${deviceRunLedger.work} IS NOT DISTINCT FROM excluded.work
+   AND ${deviceRunLedger.blockerKind} IS NOT DISTINCT FROM excluded.blocker_kind
+   AND ${deviceRunLedger.waitingOn} IS NOT DISTINCT FROM excluded.waiting_on
+  THEN ${deviceRunLedger.workSince}
+  ELSE excluded.work_since
+END`;
 
 export async function applyRunLedgerSnapshot(args: {
   deviceId: string;
@@ -135,30 +152,50 @@ export async function applyRunLedgerSnapshot(args: {
       };
       await tx
         .insert(deviceRunLedger)
-        .values({ deviceId: args.deviceId, runId: e.runId, ...values })
+        .values({ deviceId: args.deviceId, runId: e.runId, ...values, workSince: observedAt })
         .onConflictDoUpdate({
           target: [deviceRunLedger.deviceId, deviceRunLedger.runId],
-          set: values,
+          set: { ...values, workSince: sameWaitKeepsItsStart },
         });
     }
   });
   logger.debug({ deviceId: args.deviceId, runs: entries.length }, 'run-ledger: snapshot applied');
 }
 
+/** An issue as the runs tab reads it: the box's word on its lease, and core's own. */
+export interface ProjectRunSessionIssue extends RunLedgerIssue {
+  /** Core still holds this issue's lease for the run's own session, whatever the box says. */
+  coreHolds: boolean;
+  /** The issue's title in this project, `null` where no issue of the project has that key. */
+  title: string | null;
+}
+
 export interface ProjectRunSessionRow
-  extends Omit<RunLedgerEntry, 'sessionTerminalAtEpochS' | 'worktreeGoneAtEpochS'> {
+  extends Omit<RunLedgerEntry, 'sessionTerminalAtEpochS' | 'worktreeGoneAtEpochS' | 'issues'> {
+  issues: ProjectRunSessionIssue[];
   /** ISO, because this half is read by a browser rather than written by a box. */
   sessionTerminalAt: string | null;
   worktreeGoneAt: string | null;
   deviceId: string;
   deviceName: string | null;
+  /** Core's reading of the box (`devices.status`), so a screen never quotes an offline box as
+   *  saying anything now; `null` where the device row is gone. */
+  deviceStatus: string | null;
+  deviceLastSeenAt: string | null;
   observedAt: string;
+  /** When core first saw this run's current work, blocker and wait. */
+  workSince: string;
   /** Core's own reading of the session, never the box's claim. */
   sessionStatus: string | null;
+  /** What the session last told core it is doing (`agent_sessions.runtime_state`). */
+  sessionRuntimeState: string | null;
   /** Why core failed the session, where it did. `null` both on a clean end and on a session that
    *  has not ended — `sessionStatus` is what separates those two, never this field's absence. */
   sessionFailureReason: string | null;
   lastActivityAt: string | null;
+  /** How long after `lastActivityAt` core ends the run's session if nothing more is heard; `null`
+   *  where that is null, where no silence ends it, or where core holds no session for the run. */
+  silenceLimitMs: number | null;
   masterTitle: string | null;
 }
 
@@ -182,10 +219,32 @@ export async function readProjectRunSessions(projectId: string): Promise<Project
       worktreeGoneAt: deviceRunLedger.worktreeGoneAt,
       issues: deviceRunLedger.issues,
       observedAt: deviceRunLedger.observedAt,
+      workSince: deviceRunLedger.workSince,
       deviceName: devices.name,
+      deviceStatus: devices.status,
+      deviceLastSeenAt: devices.lastSeenAt,
+      coreHeldKeys: sql<string[]>`COALESCE((
+        SELECT array_agg(l.issue_key)
+          FROM issue_leases l
+          JOIN agent_sessions ls ON ls.id = l.session_id
+         WHERE l.session_id = ${deviceRunLedger.sessionId}
+           AND l.project_id = ${deviceRunLedger.projectId}
+           AND ls.status NOT IN (${TERMINAL_SESSIONS})
+      ), '{}')`,
+      issueTitles: sql<Record<string, string> | null>`(
+        SELECT jsonb_object_agg('ISS-' || i.iss_seq, i.title) -- ISS-992:canonical
+          FROM issues i
+         WHERE i.project_id = ${deviceRunLedger.projectId}
+           AND 'ISS-' || i.iss_seq IN ( -- ISS-992:canonical
+             SELECT e.item ->> 'issueKey' FROM jsonb_array_elements(${deviceRunLedger.issues}) AS e(item)
+           )
+      )`,
       sessionStatus: sql<
         string | null
       >`(SELECT s.status FROM agent_sessions s WHERE s.id = ${deviceRunLedger.sessionId})`,
+      sessionRuntimeState: sql<
+        string | null
+      >`(SELECT s.runtime_state FROM agent_sessions s WHERE s.id = ${deviceRunLedger.sessionId})`,
       sessionFailureReason: sql<
         string | null
       >`(SELECT s.failure_reason FROM agent_sessions s WHERE s.id = ${deviceRunLedger.sessionId})`,
@@ -200,10 +259,22 @@ export async function readProjectRunSessions(projectId: string): Promise<Project
     .leftJoin(devices, eq(devices.id, deviceRunLedger.deviceId))
     .where(eq(deviceRunLedger.projectId, projectId))
     .orderBy(sql`${deviceRunLedger.observedAt} DESC`);
-  return rows.map((r) => ({
+  const deadlines = await loadSilenceDeadlines(
+    rows.flatMap((r) => (r.sessionId ? [r.sessionId] : [])),
+  );
+  return rows.map(({ coreHeldKeys, issueTitles, ...r }) => ({
     ...r,
-    issues: (r.issues ?? []) as RunLedgerIssue[],
+    silenceLimitMs: r.sessionId
+      ? silenceLimitFrom(deadlines.get(r.sessionId) ?? null, r.lastActivityAt)
+      : null,
+    issues: ((r.issues ?? []) as RunLedgerIssue[]).map((i) => ({
+      ...i,
+      coreHolds: (coreHeldKeys ?? []).includes(i.issueKey),
+      title: issueTitles?.[i.issueKey] ?? null,
+    })),
+    deviceLastSeenAt: r.deviceLastSeenAt ? new Date(r.deviceLastSeenAt).toISOString() : null,
     observedAt: new Date(r.observedAt).toISOString(),
+    workSince: new Date(r.workSince).toISOString(),
     lastActivityAt: r.lastActivityAt ? new Date(r.lastActivityAt).toISOString() : null,
     sessionTerminalAt: r.sessionTerminalAt ? new Date(r.sessionTerminalAt).toISOString() : null,
     worktreeGoneAt: r.worktreeGoneAt ? new Date(r.worktreeGoneAt).toISOString() : null,

@@ -4,9 +4,12 @@ import { db } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
 import { issues, notifications } from '../db/schema.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
+import { ASSERTS_WORK_IN_PROGRESS, statusLabel } from '../issues/status-sets.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../logger.js';
 import type { HooksBus } from '../pipeline/hooks.js';
+import { strandResolutionKey } from '../pipeline/idle-candidates.js';
+import { orphanedAssertionResolutionKey } from '../pipeline/issue-run-invariant.js';
 import { isTerminalPlacement } from '../pipeline/status-assertions.js';
 import { owedCloseResolutionKey, strandedResolutionKey } from '../pipeline/stranded-issues.js';
 import { resolveNotifications } from './auto-resolve.js';
@@ -60,7 +63,7 @@ async function alreadyNotifiedTransition(dedupeKey: string): Promise<boolean> {
 }
 
 /** Per-status one-line body explaining why the recipient is being pinged. */
-function bodyForStatus(to: IssueStatus, reason?: string): string {
+export function bodyForStatus(to: IssueStatus, reason?: string): string {
   if (reason && reason.trim().length > 0) return reason.trim();
   switch (to) {
     case 'tested':
@@ -74,8 +77,13 @@ function bodyForStatus(to: IssueStatus, reason?: string): string {
     case 'closed':
       return 'Closed.';
     default:
-      return `Moved to ${to}.`;
+      return `Moved to ${statusLabel(to)}.`;
   }
+}
+
+/** The notification's title: the issue, then the status it moved to as the screen names it. */
+export function transitionTitle(issue: string, to: IssueStatus): string {
+  return `${issue} moved to ${statusLabel(to)}`;
 }
 
 /**
@@ -93,8 +101,16 @@ function bodyForStatus(to: IssueStatus, reason?: string): string {
  */
 export function registerTransitionNotifications(bus: HooksBus): void {
   bus.on('transition', async (p) => {
+    // An idle notice names the status it was raised at, so any move ends it; a row still idle at
+    // its new status is raised again once that status's own clock is spent.
+    if (p.from !== p.to) await resolveNotifications(strandResolutionKey(p.issueId));
+
     if (p.to !== 'waiting') {
       await resolveNotifications(strandedResolutionKey(p.issueId));
+    }
+
+    if (!ASSERTS_WORK_IN_PROGRESS.includes(p.to)) {
+      await resolveNotifications(orphanedAssertionResolutionKey(p.issueId));
     }
 
     if (isTerminalPlacement(p.to)) {
@@ -131,7 +147,7 @@ export function registerTransitionNotifications(bus: HooksBus): void {
         userId: recipient,
         projectId: p.projectId,
         type: 'issue_status_changed',
-        title: `${label} moved to ${p.to}`,
+        title: transitionTitle(label, p.to),
         body: bodyForStatus(p.to, p.reason),
         issueId: p.issueId,
         severity: severityForStatus(p.to),

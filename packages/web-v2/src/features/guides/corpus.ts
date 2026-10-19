@@ -5,7 +5,7 @@ import type { HelpDoc } from "@/features/docs/help-content.generated";
 import { groupSections, HELP_SECTION_ORDER, searchDocs } from "@/features/docs/reader";
 import { coreFileUrl } from "@/lib/utils/core-url";
 import type { Guide } from "./api";
-import { AGENT_SECTION, AUDIENCES, type Audience, SEARCH_EXAMPLES } from "./audience";
+import { AGENT_SECTION, AUDIENCES, type Audience, INDEX_PATH, SEARCH_EXAMPLES, searchLabel } from "./audience";
 
 export interface PublicDoc {
   slug: string;
@@ -20,14 +20,8 @@ export interface PublicDoc {
   markdownUrl: string | null;
 }
 
-export const INDEX_PATH = "/guides";
-
 export function helpPageHref(slug: string): string {
   return `${INDEX_PATH}?path=${encodeURIComponent(slug)}`;
-}
-
-export function doorHref(audience: Audience): string {
-  return `${INDEX_PATH}?for=${audience}`;
 }
 
 export function guideMarkdownUrl(slug: string): string {
@@ -105,14 +99,14 @@ export function workingExamples(corpus: readonly PublicDoc[]) {
 /** The search field's placeholder: one example per door, in door order. An example that no
  *  longer finds a page behind its door is left out and said so on the server log, rather than
  *  teaching a word that finds nothing. */
-export function searchPlaceholder(corpus: readonly PublicDoc[]): string {
+export function searchPlaceholder(corpus: readonly PublicDoc[], doors: readonly Audience[] = AUDIENCES): string {
   const working = workingExamples(corpus);
-  for (const dead of SEARCH_EXAMPLES.filter((e) => !working.includes(e))) {
+  for (const dead of SEARCH_EXAMPLES.filter((e) => doors.includes(e.audience) && !working.includes(e))) {
     console.warn(
       `public docs: the search example "${dead.term}" finds no page behind the ${dead.audience} door, so the placeholder leaves it out — change SEARCH_EXAMPLES in features/guides/audience.ts`,
     );
   }
-  const ordered = AUDIENCES.flatMap((a) => working.filter((e) => e.audience === a));
-  if (ordered.length === 0) return "Search every page";
+  const ordered = doors.flatMap((a) => working.filter((e) => e.audience === a));
+  if (ordered.length === 0) return searchLabel(doors);
   return `Try ${ordered.map((e) => `“${e.term}”`).join(", ")}`;
 }

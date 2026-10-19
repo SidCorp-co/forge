@@ -226,28 +226,12 @@ describe('the hold a row carries (ISS-1215)', () => {
     expect(cutFailedHold(['lock timeout']).reason).toContain('not claimed, not moved');
   });
 
-  it('writes a comment carrying the reason, who owes it and the code', () => {
+  it('writes a comment naming what holds it and who acts, never the stored key or the code', () => {
     const body = releaseHoldComment(criteriaHold(REPORT));
-    expect(body).toContain('criterion 3: no verdict was recorded for it');
-    expect(body).toContain('which a person owes');
-    expect(body).toContain('`release-hold: RELEASE_CRITERIA_UNEARNED`');
-    expect(body).not.toContain('oldest of them alone');
-  });
-
-  it('says a shared hold is commented on the oldest of the rows it holds alone', () => {
-    const body = releaseHoldComment(refusalHold('NO_RUNNER_ONLINE', ['none online']), true);
-    expect(body).toContain('on every issue of this project it holds');
-    expect(body).toContain('oldest of them alone');
-  });
-
-  // ISS-1346 judge r2 finding 2: a comment standing for several rows named none of them.
-  it('names each row a shared hold stands for, in the order it was given them', () => {
-    const hold = refusalHold('NO_RUNNER_ONLINE', ['none online']);
-    const body = releaseHoldComment(hold, true, ['ISS-5', 'ISS-3', 'ISS-4']);
-    expect(body).toContain(
-      'When this was written it held 3 issues of this project, oldest merge first: `ISS-5`, `ISS-3`, `ISS-4`.',
-    );
-    expect(releaseHoldComment(hold, false, ['ISS-5'])).not.toContain('When this was written');
+    expect(body).toContain('criteria 1 and 3 are not earned');
+    expect(body).toContain('A person records a verdict');
+    expect(body).not.toMatch(/release-?hold|RELEASE_CRITERIA_UNEARNED/i);
+    expect(body).not.toContain('oldest alone');
   });
 });
 
@@ -361,7 +345,7 @@ describe('a standing refusal is one reason however long it stands (ISS-1215)', (
   ] as const)('drops the heartbeat age from a %s box (reporting: %s)', (reason, reporting) => {
     const first = refusal(box({ reason, reporting, lastSeenSeconds: 60 }));
     const later = refusal(box({ reason, reporting, lastSeenSeconds: 120 }));
-    expect(first.reason).not.toMatch(/\d+s ago/);
+    expect(first.reason).not.toMatch(/ ago\./);
     expect(sameReleaseHold(first, later)).toBe(true);
   });
 

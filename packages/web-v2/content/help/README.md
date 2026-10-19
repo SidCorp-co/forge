@@ -60,11 +60,13 @@ not a value here, and the voice rule each value is held to:
 
 ## Structure (Diátaxis, for the product)
 
-| Section | Purpose | Example pages |
+`HELP_SECTION_ORDER` lists six sections. These are the pages under each today:
+
+| Section | Purpose | Pages |
 |---|---|---|
-| Getting started | one end-to-end first run | Create a project · Pair a runner · Run your first issue |
-| Guides | one task each | Manage your org & members · Configure the pipeline · Connect an integration · Move a project to another org |
-| Connect an assistant | use Forge from an assistant the reader already has | What connecting does · Claude Desktop · Claude Code · Cursor · Another app · What you can ask · When it does not work |
-| Concepts | product-level mental model | Project · Device & runner · Pipeline · Organization |
-| Reference | look-ups | Pipeline stages · Roles & permissions · Settings |
-| Troubleshooting | when stuck | Device offline · Job stuck in queue · Pairing code expired |
+| Getting started | one end-to-end first run | Getting started · Pair a runner |
+| Guides | one task each | Ask for a change · Tell when an issue is done · Manage your organization · Configure the pipeline & approvals |
+| Connect an assistant | use Forge from an assistant the reader already has | What connecting an assistant does · Connect Claude Desktop · Connect Claude Code · Connect Cursor · Connect another app · What you can ask · When it does not work |
+| Concepts | product-level mental model | none yet |
+| Reference | look-ups | Read an issue's status |
+| Troubleshooting | when stuck | Troubleshooting |

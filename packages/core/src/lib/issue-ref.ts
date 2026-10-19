@@ -11,6 +11,22 @@ export function formatIssueRef(prefix: string | null | undefined, issSeq: number
   return `${prefix ?? LEGACY_ISSUE_PREFIX}-${issSeq}`;
 }
 
+/** Whether `text` already names `ref`, and not merely a longer reference that starts with it:
+ *  `ISS-1` is not named by `ISS-12`, and `ISS-12` is not named by `XISS-12`. */
+export function textNamesIssueRef(text: string, ref: string): boolean {
+  for (let at = text.indexOf(ref); at !== -1; at = text.indexOf(ref, at + 1)) {
+    const before = text[at - 1];
+    const after = text[at + ref.length];
+    if (
+      (before === undefined || !/[A-Za-z0-9-]/.test(before)) &&
+      (after === undefined || !/[0-9]/.test(after))
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export function canonicalIssueKey(issSeq: number): string {
   return `${LEGACY_ISSUE_PREFIX}-${issSeq}`;
 }

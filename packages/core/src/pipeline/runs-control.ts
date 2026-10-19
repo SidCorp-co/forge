@@ -7,8 +7,9 @@
  */
 
 import { and, eq, inArray } from 'drizzle-orm';
+import { forgeActor } from '../comments/forge-author.js';
 import { db } from '../db/client.js';
-import { type IssueStatus, issues, pipelineRuns, projects } from '../db/schema.js';
+import { type IssueStatus, issues, pipelineRuns } from '../db/schema.js';
 import type { ActorAgency, TransitionActor } from '../issues/actor-agency.js';
 import { transitionIssueStatus } from '../issues/apply-transition.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
@@ -31,6 +32,10 @@ const CANCEL_PARK_SKIP_STATUSES = new Set<IssueStatus>([
   'awaiting_release',
   'releasing',
 ]);
+
+/** What the thread reads beside a hold the cancel put the issue in: an entry into `on_hold` always says why. */
+const CANCEL_HOLD_REASON =
+  'The pipeline run on this issue was cancelled, so it is on hold rather than picked up by a new run. Move it on when it should run again.';
 
 export type PipelineRunRow = typeof pipelineRuns.$inferSelect;
 
@@ -128,24 +133,21 @@ async function parkIssueOnCancel(run: PipelineRunRow, actorUserId?: string): Pro
         projectId: issues.projectId,
         status: issues.status,
         reopenCount: issues.reopenCount,
-        createdBy: projects.createdBy,
       })
       .from(issues)
-      .innerJoin(projects, eq(projects.id, issues.projectId))
       .where(eq(issues.id, run.issueId))
       .limit(1);
     if (!row) return false;
     if (CANCEL_PARK_SKIP_STATUSES.has(row.status)) return false;
 
-    const fallbackId = row.createdBy ?? run.projectId;
     const actor: TransitionActor = actorUserId
       ? { type: 'user', id: actorUserId }
-      : { type: 'device', id: fallbackId, ownerId: fallbackId };
+      : await forgeActor(db);
     await transitionIssueStatus(
       { id: row.id, projectId: row.projectId, status: row.status, reopenCount: row.reopenCount },
       'on_hold',
       actor,
-      { skip: true },
+      { skip: true, transitionReason: CANCEL_HOLD_REASON },
     );
     return true;
   } catch (err) {

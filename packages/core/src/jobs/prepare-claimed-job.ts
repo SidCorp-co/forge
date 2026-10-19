@@ -14,11 +14,10 @@
 
 import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { devices, issueLabels, issues, jobs, labels, projects, runners } from '../db/schema.js';
+import { devices, issues, jobs, projects, runners } from '../db/schema.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { buildPipelinePreambleStructured } from '../lib/chat-preamble.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
-import { logger } from '../logger.js';
 import { injectAfterInvocation, injectTurnLevelRules } from '../prompt/user.js';
 import { AGENT_NAMING_MIN_RUNNER, atLeastVersion } from '../runners/device-cap.js';
 import { ensureAgentSessionForJob } from './agent-session-link.js';
@@ -26,12 +25,7 @@ import { loadPriorAttempts, renderPriorAttemptsBlock } from './prior-attempts.js
 import { persistPromptSnapshot } from './prompt-snapshot.js';
 import { resolveJobMcpServers } from './resolve-job-mcp-servers.js';
 import { finalizeResumeForDevice, resolveResumePolicy } from './resume-policy.js';
-import {
-  applySkillMaintenanceCarveout,
-  resolveStageOverrides,
-  SKILL_MAINTENANCE_LABEL,
-  type StageOverrides,
-} from './stage-overrides.js';
+import { resolveStageOverrides, type StageOverrides } from './stage-overrides.js';
 
 /**
  * The runner row that will actually host this job, refused by name when absent.
@@ -123,48 +117,6 @@ async function loadRepoPath(projectId: string): Promise<string | null> {
 }
 
 /**
- * Give a `code`/`fix` job on a skill-maintenance issue its skill-write tools
- * back. Best-effort: an absent label leaves the overrides untouched.
- */
-async function applyCarveout(
-  job: typeof jobs.$inferSelect,
-  overrides: StageOverrides,
-): Promise<void> {
-  if (!job.issueId || (job.type !== 'code' && job.type !== 'fix')) return;
-  try {
-    const [labelRow] = await db
-      .select({ id: labels.id })
-      .from(labels)
-      .where(and(eq(labels.projectId, job.projectId), eq(labels.name, SKILL_MAINTENANCE_LABEL)))
-      .limit(1);
-    let hasSkillMaintenanceLabel = false;
-    if (labelRow) {
-      const [issueLabelRow] = await db
-        .select({ issueId: issueLabels.issueId })
-        .from(issueLabels)
-        .where(and(eq(issueLabels.issueId, job.issueId), eq(issueLabels.labelId, labelRow.id)))
-        .limit(1);
-      hasSkillMaintenanceLabel = Boolean(issueLabelRow);
-    }
-    const removed = applySkillMaintenanceCarveout(overrides, {
-      hasSkillMaintenanceLabel,
-      jobType: job.type,
-    });
-    if (removed > 0) {
-      logger.info(
-        { jobId: job.id, issueId: job.issueId, jobType: job.type, removed },
-        'prepare: skill-maintenance carve-out unblocked skill-write tools',
-      );
-    }
-  } catch (err) {
-    logger.warn(
-      { err, jobId: job.id, issueId: job.issueId, type: job.type },
-      'prepare: skill-maintenance label lookup failed, preparing without carve-out',
-    );
-  }
-}
-
-/**
  * Prepare a job a master has just claimed on `deviceId`.
  *
  * Throws if the box has no runner bound to the job's project — that box cannot
@@ -196,7 +148,6 @@ export async function prepareClaimedJob(args: {
   const resume = finalizeResumeForDevice(proposedResume, args.deviceId);
 
   const stageOverrides = { ...overrides };
-  await applyCarveout(job, stageOverrides);
 
   const resolvedMcp = await resolveJobMcpServers({
     projectId: job.projectId,

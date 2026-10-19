@@ -328,7 +328,7 @@ describe('a binding whose probes changed after the agent looked', () => {
     const refused = await refusalOf(service.finishReleaseBatch(runId, actor(), { commit: PUSHED }));
 
     expect(refused).toBeInstanceOf(errors.ReleaseNotVerifiedError);
-    expect(refused.reason).toContain('are not the ones its 1 recorded reading(s) were taken with');
+    expect(refused.reason).toContain('are not the ones its 1 recorded reading was taken with');
     expect((await fx.stored(issueIds[0] as string)).status).toBe('releasing');
 
     const stillOld = await fx.look(runId);

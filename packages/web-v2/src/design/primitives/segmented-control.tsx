@@ -27,6 +27,8 @@ export interface SegmentedControlProps<T extends string> {
    * `STABLE_COUNT_CAP` reads `STABLE_COUNT_CAP+` and carries its full figure on the tab's title.
    */
   stableCountWidth?: boolean;
+  /** Below `sm`, drop the band and wrap whole options onto further rows rather than squeeze them. */
+  wrapNarrow?: boolean;
 }
 
 /** The largest figure the stable slot spells out: four digits, the same five characters as `9999+`. */
@@ -37,9 +39,15 @@ export function SegmentedControl<T extends string>({
   value,
   onChange,
   stableCountWidth = false,
+  wrapNarrow = false,
 }: SegmentedControlProps<T>) {
   return (
-    <div className="inline-flex items-center gap-0.5 rounded-md border border-line bg-sunken p-0.5">
+    <div
+      className={cn(
+        "inline-flex items-center gap-0.5 rounded-md border border-line bg-sunken p-0.5",
+        wrapNarrow && "max-sm:flex max-sm:flex-wrap max-sm:gap-1 max-sm:border-0 max-sm:bg-transparent max-sm:p-0",
+      )}
+    >
       {options.map((opt) => {
         const active = opt.value === value;
         const capped = stableCountWidth && opt.count !== undefined && opt.count > STABLE_COUNT_CAP;
@@ -48,10 +56,12 @@ export function SegmentedControl<T extends string>({
             key={opt.value}
             type="button"
             disabled={opt.disabled}
+            aria-pressed={active}
             title={opt.title ?? (capped ? String(opt.count) : undefined)}
             onClick={() => !opt.disabled && onChange?.(opt.value)}
             className={cn(
               "inline-flex items-center gap-1.5 rounded-sm px-2.5 py-1 text-13 font-semibold transition-colors duration-[120ms]",
+              wrapNarrow && "whitespace-nowrap max-sm:min-h-11",
               "focus-visible:shadow-[var(--shadow-focus)] focus-visible:outline-none",
               opt.disabled
                 ? "cursor-not-allowed text-muted opacity-50"

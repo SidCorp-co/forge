@@ -42,6 +42,7 @@ import {
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { mergedLandingSchema } from './landing-evidence.js';
+import { markInputRefusal } from './merge-input-refusal.js';
 import { applyMergeMarker, MergeMarkerError, mergedCommitShaSchema } from './merge-marker.js';
 import {
   markMerged,
@@ -63,9 +64,14 @@ export const issueMergeRoutes = new Hono<{ Variables: AuthVars }>();
 
 issueMergeRoutes.use('*', requireAuth(), assertEmailVerified());
 
+/** The mark door's own input refused: one sentence saying what the mark needs, zod's account kept. */
+const markRefused = (message: string, details: unknown) =>
+  new HTTPException(400, { message, cause: { code: 'BAD_REQUEST', details } });
+
 const mergeMarkerBodySchema = z
   .object({
-    target: z.string().trim().min(1).max(200).optional(),
+    // A blank target is a missing one: the lane decides whether one is owed (`targetRequiredDetail`).
+    target: z.string().trim().max(200).optional(),
     note: z.string().trim().min(1).max(2000).optional(),
     commit: mergedCommitShaSchema.optional(),
     landing: mergedLandingSchema.optional(),
@@ -98,10 +104,11 @@ async function runMergeMarker(
 
   const actor = restActor(c);
   try {
-    const { action, mark, markDetail } = await applyMergeMarker({
+    const { action, mark, markDetail, movedFrom, namedCommit } = await applyMergeMarker({
       issue,
       op,
       ...(body.target ? { target: body.target } : {}),
+      door: 'rest',
       ...(body.note ? { note: body.note } : {}),
       ...(body.commit ? { commit: body.commit } : {}),
       ...(body.landing ? { landing: body.landing } : {}),
@@ -116,14 +123,23 @@ async function runMergeMarker(
     // caller reads `action: 'merged'` and has no way to learn that what it wrote is a claim
     // Forge did not observe; the sentence has been composed for the audit trail since ISS-959
     // and never reached the one party that could act on it.
-    return c.json(answer(mergeMarkAnswerSchema, { id: issueId, action, mark, detail: markDetail }));
+    return c.json(
+      answer(mergeMarkAnswerSchema, {
+        id: issueId,
+        action,
+        mark,
+        detail: markDetail,
+        movedFrom,
+        namedCommit,
+      }),
+    );
   } catch (err) {
     if (err instanceof MergeMarkerError) {
       if (err.code === 'ISSUE_NOT_FOUND') throw notFound('issue not found');
-      // Whether a target is owed is the project's shape (`landing-evidence.ts`); the body is
-      // the one this door has always answered a missing target with.
+      // Whether a target is owed is the project's shape (`landing-evidence.ts`); `details` keeps
+      // the shape this door has always answered a missing target with.
       if (err.code === 'TARGET_REQUIRED') {
-        throw badRequest({ formErrors: ['target is required'], fieldErrors: {} });
+        throw markRefused(err.message, { formErrors: [err.message], fieldErrors: {} });
       }
       throw new HTTPException(422, {
         message: err.message,
@@ -136,10 +152,10 @@ async function runMergeMarker(
 
 const mergeMarkerValidators = [
   zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw markRefused(markInputRefusal(r.error), z.flattenError(r.error));
   }),
   zValidator('json', mergeMarkerBodySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw markRefused(markInputRefusal(r.error), z.flattenError(r.error));
   }),
 ] as const;
 

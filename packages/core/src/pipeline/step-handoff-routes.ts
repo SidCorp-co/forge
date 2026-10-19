@@ -11,12 +11,14 @@ import { resolveActor } from './activity.js';
 import {
   deleteIssueContext,
   getIssueContexts,
+  HandoffDeleteRefused,
+  HandoffRefused,
   IssueNotInProject,
+  PipelineRunNotFound,
   writeIssueContext,
 } from './issue-context-store.js';
 import {
   deleteHandoff,
-  handoffDeletedSchema,
   handoffListSchema,
   handoffWrittenSchema,
   listHandoffs,
@@ -24,9 +26,9 @@ import {
 } from './step-handoff-routes-reference.js';
 
 /**
- * REST surface for step-handoff persistence (proposal Y). 1-to-1 with the
- * `forge_step_handoff.*` MCP tools; both call the same service so behaviour
- * is identical regardless of caller.
+ * REST surface for step handoffs, stored on the run journal's attempt rows (ISS-1133). 1-to-1 with
+ * the `forge_step_handoff.*` MCP tools; both call the same service so behaviour is identical
+ * regardless of caller.
  */
 
 const writeBodySchema = z.object({
@@ -86,8 +88,19 @@ stepHandoffRoutes.post(
       const r = await writeIssueContext({ ...body, kind: 'handoff', actor: resolveActor(c) });
       return c.json(answer(handoffWrittenSchema, r), 201);
     } catch (err) {
-      if (err instanceof IssueNotInProject) {
+      if (err instanceof IssueNotInProject || err instanceof PipelineRunNotFound) {
         throw new HTTPException(404, { message: err.message, cause: { code: 'NOT_FOUND' } });
+      }
+      if (err instanceof HandoffRefused) {
+        throw err.code === 'HANDOFF_NOT_THIS_ISSUE'
+          ? new HTTPException(409, {
+              message: err.message,
+              cause: { code: 'HANDOFF_NOT_THIS_ISSUE' },
+            })
+          : new HTTPException(409, {
+              message: err.message,
+              cause: { code: 'HANDOFF_ALREADY_WRITTEN' },
+            });
       }
       throw err;
     }
@@ -128,13 +141,22 @@ stepHandoffRoutes.delete(
     const q = c.req.valid('query');
     const userId = c.get('userId');
     await assertProjectAccess(q.projectId, userId);
-    const n = await deleteIssueContext({
-      projectId: q.projectId,
-      issueId: q.issueId,
-      kind: 'handoff',
-      step: q.step,
-      attempt: q.attempt,
-    });
-    return c.json(answer(handoffDeletedSchema, { deleted: n > 0 }));
+    try {
+      return await deleteIssueContext({
+        projectId: q.projectId,
+        issueId: q.issueId,
+        kind: 'handoff',
+        step: q.step,
+        attempt: q.attempt,
+      });
+    } catch (err) {
+      if (err instanceof HandoffDeleteRefused) {
+        throw new HTTPException(409, {
+          message: err.message,
+          cause: { code: 'HANDOFF_IS_JOURNAL' },
+        });
+      }
+      throw err;
+    }
   },
 );

@@ -7,7 +7,8 @@
 
 import { Badge, EmptyState, Icon, MonoTag, type IconName } from "@/design";
 import { formatRelativeTime } from "@/lib/utils/format";
-import type { ActivityItem } from "../types";
+import { statusLabel } from "../derive";
+import type { ActivityItem, IssueStatus } from "../types";
 
 interface Node {
   icon: IconName;
@@ -24,8 +25,9 @@ function describe(item: ActivityItem): Node {
         icon: "pipeline",
         text: (
           <span className="inline-flex flex-wrap items-center gap-1.5">
-            Status {from && <MonoTag>{from}</MonoTag>} <Icon name="arrowRight" size={12} />{" "}
-            {to && <MonoTag hue="cobalt">{to}</MonoTag>}
+            Status {from && <span className="font-medium">{statusLabel(from as IssueStatus)}</span>}{" "}
+            <Icon name="arrowRight" size={12} />{" "}
+            {to && <span className="font-medium">{statusLabel(to as IssueStatus)}</span>}
           </span>
         ),
       };

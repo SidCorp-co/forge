@@ -9,26 +9,13 @@ import {
 } from '../declare/errors.js';
 import { type JsonSchema, renderSchema } from '../declare/schema.js';
 import type { ValidatorDeclaration } from '../declare/validator.js';
-import { type Access, accessOf } from './access.js';
+import { type Access, accessOf, accessProse, asksForBearer } from './access.js';
 import { type InputRefusal, probeInputRefusal } from './probe-hook.js';
 import { type RouteEntry, type RouteSource, readRoutes } from './registry.js';
-
-/** The rules the build itself can find a route in breach of. `check.ts` adds the ones it reads source for. */
-export type BuildRule =
-  | 'unread-chain'
-  | 'no-access'
-  | 'unrepresentable'
-  | 'unreadable-hook'
-  | 'undeclared-input'
-  | 'param-not-in-path'
-  | 'no-response'
-  | 'raw-json'
-  | 'more-than-one-descriptor'
-  | 'schema-name-clash'
-  | 'operation-id-clash';
+import type { Rule } from './rules.js';
 
 export type Finding = {
-  readonly rule: BuildRule | string;
+  readonly rule: Rule;
   /** `GET /api/issues/:id`, or the name of the thing the finding is about when it is not one route. */
   readonly route: string;
   readonly detail: string;
@@ -300,17 +287,16 @@ async function responsesOf(entry: RouteEntry, access: Access | null, doc: Docume
   };
   for (const [status, a] of Object.entries(declared?.responses ?? {})) answer(Number(status), a);
   for (const refusal of entry.refusals) addCode(errors, refusal.status, refusal.code, refusal.when);
-  if (access?.door === 'token') {
-    for (const refusal of PAT_DOOR_REFUSALS)
-      addCode(errors, refusal.status, refusal.code, refusal.when);
-  } else if (access?.door !== 'public') {
-    // A route kept out of the grant still meets the token door when a token is sent to it, and the
-    // door turns the token away there by name.
-    for (const refusal of PAT_DOOR_REFUSALS) {
-      if (refusal.code === 'INVALID_TOKEN' || refusal.code === 'PAT_NOT_PERMITTED')
-        addCode(errors, refusal.status, refusal.code, refusal.when);
-    }
-  }
+  // A route that reads no bearer never meets the token door. One kept out of the grant still meets
+  // it when a token is sent to it, and the door turns the token away there by name.
+  const doorRefusals = !asksForBearer(access, entry.takesBearer)
+    ? []
+    : access?.door === 'token'
+      ? PAT_DOOR_REFUSALS
+      : PAT_DOOR_REFUSALS.filter(
+          (r) => r.code === 'INVALID_TOKEN' || r.code === 'PAT_NOT_PERMITTED',
+        );
+  for (const refusal of doorRefusals) addCode(errors, refusal.status, refusal.code, refusal.when);
   addCode(
     errors,
     500,
@@ -348,7 +334,13 @@ async function responsesOf(entry: RouteEntry, access: Access | null, doc: Docume
   return { responses, answered, libraryDefault };
 }
 
-function accessExtension(access: Access): Record<string, unknown> {
+function accessExtension(access: Access, readsBearer: boolean): Record<string, unknown> {
+  if (access.door === 'token' && !readsBearer) {
+    return {
+      door: 'none',
+      reason: 'its gates read no bearer, so no token grant applies and no permission is checked',
+    };
+  }
   if (access.door === 'token') {
     return { door: 'token', permission: access.permission, reach: access.reach };
   }
@@ -453,23 +445,22 @@ export async function buildReference(
       });
     }
     ids.set(operationId, entry.key);
+    const described = [accessProse(access, entry.takesBearer), declared?.description]
+      .filter(Boolean)
+      .join('\n\n');
     const operation: Record<string, unknown> = {
       operationId,
       tags: [tag],
       ...(declared?.summary ? { summary: declared.summary } : {}),
-      ...(declared?.description ? { description: declared.description } : {}),
+      ...(described ? { description: described } : {}),
       ...(declared?.retired ? { deprecated: true } : {}),
       ...(parameters.length > 0 ? { parameters } : {}),
       ...(requestBody ? { requestBody } : {}),
       responses: answers.responses,
-      security:
-        !access ||
-        access.door === 'public' ||
-        access.door === 'ticket' ||
-        access.door === 'signature'
-          ? []
-          : [{ [BEARER_SCHEME]: [] }],
-      ...(access ? { 'x-forge-access': accessExtension(access) } : {}),
+      security: asksForBearer(access, entry.takesBearer) ? [{ [BEARER_SCHEME]: [] }] : [],
+      ...(access
+        ? { 'x-forge-access': accessExtension(access, asksForBearer(access, entry.takesBearer)) }
+        : {}),
     };
     paths[openApi] = { ...(paths[openApi] ?? {}), [method]: operation };
   }

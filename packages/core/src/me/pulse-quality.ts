@@ -57,17 +57,6 @@ async function readFinished(scope: ReturnType<typeof idList>) {
   );
 }
 
-async function readRework(scope: ReturnType<typeof idList>) {
-  const rows = (await db.execute(sql`
-    SELECT type, count(*)::int AS n
-    FROM jobs
-    WHERE project_id IN (${scope}) AND type IN ('fix', 'code') AND queued_at >= ${windowExpr}
-    GROUP BY type
-  `)) as unknown as Array<{ type: string; n: number }>;
-  const by = new Map(rows.map((r) => [r.type, Number(r.n)]));
-  return { fix: by.get('fix') ?? 0, code: by.get('code') ?? 0 };
-}
-
 async function readLanes(scope: ReturnType<typeof idList>) {
   const rows = (await db.execute(sql`
     SELECT kind,
@@ -116,9 +105,8 @@ async function readPipelineFlow(scope: ReturnType<typeof idList>) {
 
 export async function readPulseQuality(projectIds: string[]): Promise<PulseQuality> {
   const scope = idList(projectIds);
-  const [finished, rework, runFailure, sessionFailures, pipelineFlow] = await Promise.all([
+  const [finished, runFailure, sessionFailures, pipelineFlow] = await Promise.all([
     readFinished(scope),
-    readRework(scope),
     readLanes(scope),
     readSessionFailures(scope),
     readPipelineFlow(scope),
@@ -134,7 +122,6 @@ export async function readPulseQuality(projectIds: string[]): Promise<PulseQuali
       issues: Number(finished.reopened_issues),
       events: Number(finished.reopen_events),
     },
-    rework,
     runFailure,
     sessionFailures,
     pipelineFlow,

@@ -34,8 +34,7 @@ ever disagree.
 ## What gets a change merged
 
 **`ci-passed` is the one required check, and CI is the gate — not your laptop.** A green laptop and
-a red `ci-passed` means the change does not land. `strict: true`, so your branch must be current
-with the base before it merges.
+a red `ci-passed` means the change does not land.
 
 **Green covers the jobs that ran.** A skipped job passes `ci-passed`; the `changes` filter decides
 which run. Read which ran, not the aggregate alone — a suite the filter should have selected and
@@ -53,8 +52,8 @@ against an old schema. `node scripts/check-migration-order.mjs` prints the numbe
 yours: branches each deriving their number from one base all land on the same one, and whichever
 merges first silently kills the rest.
 
-**Changelog entries are capped at 40 words** by `check-release-record`. Entries of 59, 156 and 235
-words have each been refused.
+**A changelog entry your change adds is capped at 40 words** by `check-release-record`; an entry it
+corrects may spend the larger of that cap and the words it already held.
 
 ## Reporting a security vulnerability
 

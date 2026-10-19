@@ -2,18 +2,20 @@
 
 // Issue-detail properties rail. Read + inline-edit of the core fields, plus a
 // cost rollup, the merge mark (its date, and whether Forge observed the merge or
-// only recorded somebody's claim of it — ISS-1126), the ISS-<seq> branch
-// convention, and dependency edges (rendered as clickable `ISS-X` badges linking
+// only recorded somebody's claim of it — ISS-1126), the branch core's work-evidence
+// gate counts, and dependency edges (rendered as clickable `ISS-X` badges linking
 // to the related issue — ISS-331).
 
 import type { ComponentProps } from "react";
 import { Avatar, Badge, Button, MonoTag, Stat, StatusChip } from "@/design";
 import { COMPLEXITY_OPTIONS, PRIORITY_OPTIONS } from "./issue-row-parts";
 import { IssueRefBadge } from "./issue-ref-badge";
+import { LANDING_SHAPE_ROW } from "@/lib/api/error";
+import { LandingShapeControl } from "./landing-shape-control";
 import { LiveReachValue } from "./live-reach-row";
 import { MergeMarkerControl } from "./merge-marker-control";
 import { InlineSelect, StatusEdit } from "./inline-edit-cell";
-import { creatorLabelOf, initials, runStatusChip } from "../derive";
+import { creatorLabelOf, initials, runStatusChip, splitBlockedBy } from "../derive";
 import { AGENT_HOLDS_EDIT, heldByAgent } from "../edit-lock";
 import type {
   IssueComplexity,
@@ -101,24 +103,35 @@ function MergeMarkBadge({
     );
   }
   if (mark === "observed") {
+    // ISS-1421 r8 — the commit is the evidence, shown as text the way a claim's is: a hover alone
+    // is never reached at 390 or on touch.
     return (
-      <span title={`Forge observed this merge at ${commitSha ?? "a commit it recorded"}`}>
+      <>
         <Badge tone="green">observed</Badge>
-      </span>
+        {commitSha && (
+          <span
+            className="fg-body-sm min-w-0 break-all font-mono text-muted"
+            data-testid="merged-commit"
+            title={`Forge observed this merge at commit ${commitSha}.`}
+          >
+            {commitSha.slice(0, 7)}
+          </span>
+        )}
+      </>
     );
   }
   if (mark === "asserted" && claimedCommit) {
-    // ISS-1409 — a commit an agent named where Forge had no way to read the repository: shown as
-    // text, with what is owed it, because it is a claim and not a merge.
+    // ISS-1409 — a commit an agent named that Forge could not check: shown as text, with what is
+    // owed it, because it is a claim and not a merge.
     return (
       <>
         <Badge tone="amber">claimed</Badge>
         <span
           className="fg-body-sm min-w-0 break-all font-mono text-muted"
           data-testid="merged-claim"
-          title="Forge has no way to read this project's repository, so it did not check that this commit exists or landed. Once the repository can be read, marking the issue merged again checks it."
+          title={`Commit ${claimedCommit}. Forge could not check it against the repository, so it is a claim. An agent marking the issue merged again checks it once Forge can read the repository.`}
         >
-          {claimedCommit.slice(0, 10)} — not verified
+          {claimedCommit.slice(0, 7)} — not verified
         </span>
       </>
     );
@@ -224,7 +237,7 @@ export function PropertiesRail({
   const incoming = deps?.incoming ?? [];
   const outgoing = deps?.outgoing ?? [];
   const isDecompose = (e: IssueDependencyEdge) => e.kind === "decomposes" || e.kind === "parent";
-  const blockedBy = incoming.filter((e) => e.kind === "blocks");
+  const { holding: blockedBy, settled: wasBlockedBy } = splitBlockedBy(incoming);
   const blocks = outgoing.filter((e) => e.kind === "blocks");
   const parents = incoming.filter(isDecompose);
   const subtasks = outgoing.filter(isDecompose);
@@ -237,6 +250,8 @@ export function PropertiesRail({
   // An empty field renders no row; one whose action this reader holds keeps the action, on the shared `Not set` row.
   const offerModule = !hasModule && onEditModules !== undefined;
   const offerMerge = !issue.mergedAt && canMarkMerged === true;
+  const landingSource =
+    issue.declaredLandingShape === undefined ? undefined : issue.declaredLandingShape === null ? "project" : "issue";
   return (
     <div className="divide-y divide-line-subtle">
       {held && (
@@ -315,8 +330,22 @@ export function PropertiesRail({
           </div>
         </Row>
       )}
+      {canMarkMerged && (
+        <Row label={LANDING_SHAPE_ROW}>
+          <LandingShapeControl
+            issueId={issue.id}
+            declared={issue.declaredLandingShape ?? null}
+            effective={issue.landingShape}
+            disabled={pending || held}
+          />
+        </Row>
+      )}
       <Row label="Branch">
-        <MonoTag>{issue.displayId}</MonoTag>
+        {issue.recordedBranch ? (
+          <span className="fg-body-sm min-w-0 break-all font-mono text-fg">{issue.recordedBranch}</span>
+        ) : (
+          <span className="fg-body-sm text-muted">None recorded</span>
+        )}
       </Row>
       {issue.mergedAt && (
         <Row label="Merged">
@@ -333,8 +362,10 @@ export function PropertiesRail({
               <MergeMarkerControl
                 issueId={issue.id}
                 mergedAt={issue.mergedAt}
-                suggestedTarget={issue.displayId}
                 landingShape={issue.landingShape}
+                landingSource={landingSource}
+                mergedCommitSha={issue.mergedCommitSha}
+                newestMergedPull={issue.newestMergedPull}
               />
             )}
           </div>
@@ -375,14 +406,17 @@ export function PropertiesRail({
               <MergeMarkerControl
                 issueId={issue.id}
                 mergedAt={null}
-                suggestedTarget={issue.displayId}
                 landingShape={issue.landingShape}
+                landingSource={landingSource}
+                mergedCommitSha={issue.mergedCommitSha}
+                newestMergedPull={issue.newestMergedPull}
               />
             )}
           </div>
         </Row>
       )}
       <DepList edges={blockedBy} self={issue.id} slug={slug} label="Blocked by" />
+      <DepList edges={wasBlockedBy} self={issue.id} slug={slug} label="Was blocked by" />
       <DepList edges={blocks} self={issue.id} slug={slug} label="Blocks" />
       <DepList edges={parents} self={issue.id} slug={slug} label="Parent" />
       <DepList edges={subtasks} self={issue.id} slug={slug} label="Subtasks" />

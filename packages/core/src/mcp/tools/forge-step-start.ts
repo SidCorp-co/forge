@@ -3,6 +3,7 @@ import { extractIssueBranchOverride, resolveIssueBranches } from '../../branches
 import { listCommentAttachmentsForIssue } from '../../comments/attachment-service.js';
 import { listIssueComments } from '../../comments/service.js';
 import { type JobType, jobTypes } from '../../db/job-vocabulary.js';
+import { statusForCaller } from '../../issues/status-sets.js';
 import { getIssueContexts } from '../../pipeline/issue-context-store.js';
 import { chainLiveBranch } from '../../projects/release-chain.js';
 import { readProjectBranches } from '../../projects/service.js';
@@ -63,7 +64,7 @@ export const forgeStepStartTool: ContextScopedMcpToolFactory = (ctx) => ({
     const stage = resolveStage(input);
 
     const statusChanged = false;
-    const statusNote = `no status flip: the staged lane was removed (ISS-895), so no step has an in-flight status — the driver writes its own status. Issue is at '${issue.status}'.`;
+    const statusNote = `no status flip: the staged lane was removed (ISS-895), so no step has an in-flight status — the driver writes its own status. Issue is at ${statusForCaller(issue.status)}.`;
 
     const [commentRows, commentAttachmentsByCommentId, handoffs, projectRow] = await Promise.all([
       listIssueComments(input.issueId),

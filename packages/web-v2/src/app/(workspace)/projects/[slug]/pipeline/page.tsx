@@ -1,13 +1,14 @@
 "use client";
 
-// Project-tier Pipeline kanban (`/projects/[slug]/pipeline`, ISS-295).
+// Project-tier Pipeline page (`/projects/[slug]/pipeline`, ISS-1228): live sessions and holds.
 // Resolve slug → projectId via the project console list (same pattern as the
-// issues/sessions pages), then render the board screen.
+// issues/sessions pages), then render the screen.
 import { useParams } from "next/navigation";
 import { ErrorState, ProjectLoader } from "@/design";
-import { PipelineBoard } from "@/features/pipeline/components/pipeline-board";
+import { PipelineScreen } from "@/features/pipeline/components/pipeline-screen";
 import { useProjects } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
+import { ProjectMissing } from "@/features/projects/components/project-missing";
 
 export default function ProjectPipelinePage() {
   const params = useParams<{ slug: string }>();
@@ -34,18 +35,10 @@ export default function ProjectPipelinePage() {
   if (!project) {
     return (
       <div className="grid min-h-[60vh] place-items-center">
-        <ErrorState
-          title="Project not found"
-          message="This project doesn't exist or you don't have access to it."
-        />
+        <ProjectMissing slug={slug} />
       </div>
     );
   }
 
-  return (
-    <PipelineBoard
-      scope={{ projectId: project.id, slug: project.slug }}
-      canWrite={project.role !== "viewer"}
-    />
-  );
+  return <PipelineScreen scope={{ projectId: project.id, slug: project.slug }} />;
 }

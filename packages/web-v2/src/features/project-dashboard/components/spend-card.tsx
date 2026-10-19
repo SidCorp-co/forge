@@ -1,7 +1,7 @@
-// 7-day spend-by-stage (ISS-379, AC#4). Pure-CSS stacked bar (test / code / plan / other) + per-stage
+// 7-day spend by kind of work (ISS-379, AC#4). Pure-CSS stacked bar of the three costliest + Other, a
 // legend, `+$X in flight` where runs are still spending, and the figure against its own normal.
-import { formatUsd } from "@/features/pipeline/derive";
-import type { SpendByStageData } from "../derive";
+import { formatUsd } from "@/lib/utils/format";
+import type { SpendByStepData } from "../derive";
 import type { ReadState } from "../shape";
 import { DashboardSection, EmptyLine, unreadSection } from "./dashboard-section";
 
@@ -10,7 +10,7 @@ export function SpendCard({
   inFlightUsd,
   read,
 }: {
-  data: SpendByStageData;
+  data: SpendByStepData;
   inFlightUsd: number;
   /** The step-durations read the spend is summed from; until it is in, "none recorded" is not said. */
   read?: ReadState;
@@ -39,9 +39,12 @@ export function SpendCard({
       </div>
       <ul className="mt-2 grid grid-cols-2 gap-x-5 gap-y-1">
         {segments.map((s) => (
-          <li key={s.key} className="flex items-center gap-2">
-            <span className="size-2.5 flex-none rounded-sm" style={{ background: s.color }} />
-            <span className="fg-body-sm min-w-0 flex-1 truncate lowercase text-fg">{s.label}</span>
+          <li key={s.key} className="flex items-baseline gap-2">
+            <span className="size-2.5 flex-none translate-y-px rounded-sm" style={{ background: s.color }} />
+            {/* Wrapped between its words, never clipped, so two labels sharing an opening each read whole. */}
+            <span data-spend-label className="fg-body-sm min-w-0 flex-1 break-words text-fg">
+              {s.label}
+            </span>
             <span className="font-mono text-sm font-semibold tabular-nums text-fg">{formatUsd(s.cost)}</span>
           </li>
         ))}

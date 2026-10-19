@@ -43,6 +43,7 @@ beforeAll(() => {
   host.branch('production', at.root);
   at.own = host.commit('main', `fix(core): mark by commit (ISS-${SEQ})`);
   at.foreign = host.commit('main', 'fix(core): something else (ISS-1316)');
+  at.spaced = host.commit('main', 'fix(core):  keeps  its spacing (ISS-1316)');
   at.undeclared = host.commit('main', `chore: tidy, see ISS-${SEQ}`);
   host.branch(`ISS-${SEQ}-wip`, at.undeclared);
   at.offBase = host.commit(`ISS-${SEQ}-wip`, `ISS-${SEQ}: work in progress`);
@@ -67,7 +68,7 @@ describe('ISS-1398 — a commit mark on a GitLab project, read through its deplo
     const res = await mark(issue, own());
 
     expect(res.mark).toBe('observed');
-    expect(res.markDetail).toContain(`read from ${GITLAB_URL} itself`);
+    expect(res.markDetail).toContain(`, on main of ${GITLAB_URL}.`);
     expect((await row(issue.id)).merged_commit_sha).toBe(own());
     await advance(issue.id, 'in_progress', 'developed');
     expect((await row(issue.id)).status).toBe('developed');
@@ -91,14 +92,20 @@ describe('ISS-1398 — a commit mark on a GitLab project, read through its deplo
     [
       'COMMIT_NOT_IN_REPOSITORY',
       () => 'f'.repeat(40),
-      [`${GITLAB_URL} holds no commit ${'f'.repeat(40)}`],
+      [`${GITLAB_URL} holds no commit ${'f'.repeat(7)}.`],
     ],
     [
       'COMMIT_NOT_THIS_ISSUE',
       () => at.foreign as string,
-      ['"fix(core): something else (ISS-1316)"', `does not declare ISS-${SEQ}`],
+      ['\n> fix(core): something else (ISS-1316)', `does not name ISS-${SEQ}`, /\(ISS-1316\)$/],
     ],
-    ['COMMIT_NOT_THIS_ISSUE', () => at.undeclared as string, [`"chore: tidy, see ISS-${SEQ}"`]],
+    ['COMMIT_NOT_THIS_ISSUE', () => at.undeclared as string, [`\n> chore: tidy, see ISS-${SEQ}`]],
+    // ISS-1421 r8: a subject is quoted as the commit holds it, its spacing kept.
+    [
+      'COMMIT_NOT_THIS_ISSUE',
+      () => at.spaced as string,
+      [/\n> fix\(core\): {2}keeps {2}its spacing \(ISS-1316\)$/],
+    ],
     ['COMMIT_NOT_LANDED', () => at.offBase as string, ['main does not contain it']],
     // ISS-1398 r4: git resolves a packed commit's 40 digits plus any tail, so these were accepted.
     ...[`a`, 'abcdef0123456789abcdef0', 'abcdef0123456789abcdef01'].map(
@@ -123,7 +130,10 @@ describe('ISS-1398 — a commit mark on a GitLab project, read through its deplo
       const refused = await refusal(() => mark(issue, commit()));
 
       expect(refused.code).toBe(code);
-      for (const s of says) expect(refused.message).toContain(s);
+      for (const s of says) {
+        if (typeof s === 'string') expect(refused.message).toContain(s);
+        else expect(refused.message).toMatch(s);
+      }
       expect(await row(issue.id)).toMatchObject({ merged_at: null, merged_commit_sha: null });
       expect(await comments(issue.id)).toEqual(before);
     },
@@ -134,11 +144,15 @@ describe('ISS-1398 — a commit mark on a GitLab project, read through its deplo
     const branched = await seed({ sessionContext: { branch: `ISS-${SEQ}-elsewhere` } });
     const res = await mark(branched, (at.foreign as string).slice(0, 10));
     expect(res.mark).toBe('asserted');
-    expect(res.markDetail).toContain(`commit ${at.foreign} is recorded here as this call's claim`);
+    expect(res.markDetail).toContain(
+      `Commit ${(at.foreign as string).slice(0, 7)} is in ${GITLAB_URL}, and is noted in the comment only.`,
+    );
+    expect(res.namedCommit).toBe(at.foreign);
 
     const person = await seed({ sessionContext: {}, seq: SEQ + 1 });
     const human = await mark(person, (at.foreign as string).slice(0, 10), 'human');
-    expect(human.markDetail).toContain(at.foreign);
+    expect(human.markDetail).toContain((at.foreign as string).slice(0, 7));
+    expect(human.namedCommit).toBe(at.foreign);
     const refused = await refusal(() => mark(person, 'e'.repeat(40), 'human'));
     expect(refused.code).toBe('COMMIT_NOT_IN_REPOSITORY');
     const overlong = await refusal(() => mark(person, `${at.foreign}a`, 'human'));
@@ -147,34 +161,34 @@ describe('ISS-1398 — a commit mark on a GitLab project, read through its deplo
   }, 60_000);
 
   const GIT_ACCESS = "the project's Settings → Runners → Git access";
+  const REPO_URL_AT = "the project's Settings → Shape & release → Repository";
   const HOST_ANSWERS: Array<[HostAnswer, string[]]> = [
     [
       GITLAB_NO_ACCESS,
       [
-        `the git host took the deploy key attached to this project but will not let it read ${GITLAB_URL}`,
-        `give the deploy key attached under ${GIT_ACCESS} write access to that repository, since Forge reads the repository with it and the project's runner pushes with it`,
+        `the git host took this project's deploy key but will not let it read ${GITLAB_URL}.`,
+        "give that key write access to the repository, since the project's runner pushes with it.",
       ],
     ],
     [
       GITHUB_NOT_FOUND,
-      [
-        `the git host took the deploy key attached to this project but will not let it read ${GITLAB_URL}`,
-      ],
+      [`the git host took this project's deploy key but will not let it read ${GITLAB_URL}.`],
     ],
-    [NO_REPOSITORY, ['correct the SSH clone URL set there']],
+    [NO_REPOSITORY, [`if none lives there, fix the SSH clone URL under ${REPO_URL_AT}.`]],
     [
       keyUnknown('gitlab.com'),
       [
-        'the git host refused the deploy key attached to this project',
-        `give its public key write access to ${GITLAB_URL}, since Forge reads the repository with it and the project's runner pushes with it`,
+        "the git host refused this project's deploy key.",
+        `give the key write access to ${GITLAB_URL}, since the project's runner pushes with it.`,
+        `it is under ${GIT_ACCESS}.`,
       ],
     ],
     [
       unreachable('172.65.251.78'),
       [
-        'the git host gitlab.com could not be reached',
+        'the git host gitlab.com could not be reached, so the deploy key was never offered.',
         'ssh: connect to host gitlab.com',
-        `check that the SSH clone URL ${GITLAB_URL}, set under ${GIT_ACCESS}`,
+        `check that the SSH clone URL ${GITLAB_URL} names the right host, and that the host is up.`,
       ],
     ],
   ];
@@ -188,11 +202,13 @@ describe('ISS-1398 — a commit mark on a GitLab project, read through its deplo
       const res = await mark(issue, own());
 
       expect(res.mark).toBe('asserted');
-      expect(res.markDetail).toContain('is NOT verified');
+      expect(res.markDetail).toMatch(/(did not|could not) check it/);
       expect(res.markDetail).toContain(answer.said);
-      for (const s of says) expect(res.markDetail).toContain(s);
-      expect(res.markDetail).toContain(
-        `mark again once the tracker can read the project's repository with the deploy key attached under ${GIT_ACCESS}`,
+      // ISS-1421 — the host's step opens a sentence of its own, so it is read whatever its case.
+      for (const s of says) expect(res.markDetail.toLowerCase()).toContain(s.toLowerCase());
+      // ISS-1421 r8: our step ends our sentences, and the host's reason stands quoted beneath.
+      expect(res.markDetail).toMatch(
+        /(, then mark it again|Mark it again once Forge can read the repository)\.\n> /,
       );
       expect(res.markDetail).not.toMatch(/remote:\s*(\.|\))/);
       expect(res.markDetail).not.toContain('172.65.251.78');
@@ -217,9 +233,7 @@ describe('ISS-1398 — a commit mark on a GitLab project, read through its deplo
     const res = await mark(issue, at.offBase as string);
     expect(res.mark).toBe('asserted');
     expect(res.markDetail).toContain(`${GITLAB_URL} has no branch staging`);
-    expect(res.markDetail).toContain(
-      `mark again once ${GITLAB_URL} has a branch staging, or the project's base branch and release chain name only branches it has`,
-    );
+    expect(res.markDetail).toContain(`Mark it again once ${GITLAB_URL} has a branch staging.`);
     expect(res.markDetail).not.toContain('with the deploy key attached');
     expect(await row(issue.id)).toMatchObject({ merged_commit_sha: null });
   }, 60_000);
@@ -234,12 +248,11 @@ describe('ISS-1409 — a project whose deploy key cannot be used to read it, or 
     const res = await mark(issue, own());
 
     expect(res.mark).toBe('asserted');
-    expect(res.markDetail).toContain('NOT verified');
+    expect(res.markDetail).toMatch(/(did not|could not) check it/);
+    expect(res.markDetail).toContain("Forge has no way to read this project's repository");
+    expect(res.markDetail).toContain('Attach a deploy key, then mark it again.');
     expect(res.markDetail).toContain(
-      "Forge holds no GitHub binding and no deploy key for this project's repository on gitlab.com",
-    );
-    expect(res.markDetail).toContain(
-      `attach a deploy key with write access to ${GITLAB_URL} under the project's Settings → Runners → Git access`,
+      `Attach a deploy key with write access to ${GITLAB_URL} under the project's Settings → Runners → Git access.`,
     );
     expect(res.markDetail).not.toMatch(
       /bind (a|the) repository|Integrations|through a GitHub binding/,

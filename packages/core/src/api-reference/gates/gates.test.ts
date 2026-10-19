@@ -21,14 +21,13 @@ function codesWritten(text: string): string[] {
 }
 
 async function gates() {
-  const [auth, fresh, admin, device, anyAuth, user, apiKey, limit] = await Promise.all([
+  const [auth, fresh, admin, device, anyAuth, user, limit] = await Promise.all([
     import('../../middleware/auth.js'),
     import('../../middleware/require-fresh-auth.js'),
     import('../../middleware/require-admin.js'),
     import('../../middleware/require-device.js'),
     import('../../middleware/require-any-auth.js'),
     import('../../middleware/require-user.js'),
-    import('../../middleware/api-key.js'),
     import('../../middleware/rate-limit.js'),
   ]);
   const declared = (...built: object[]) =>
@@ -40,7 +39,6 @@ async function gates() {
     'require-device.ts': declared(device.requireDevice()),
     'require-any-auth.ts': declared(anyAuth.requireAnyAuth()),
     'require-user.ts': declared(user.requireUser()),
-    'api-key.ts': declared(apiKey.requireProjectApiKey()),
     'rate-limit.ts': declared(limit.rateLimit({ max: 1, windowMs: 1, by: 'ip' } as never)),
   } as Record<string, string[]>;
 }

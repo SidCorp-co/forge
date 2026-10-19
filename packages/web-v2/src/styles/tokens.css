@@ -6,7 +6,7 @@
    warm paper-white surfaces · clean grotesk + true monospace.
 
    2-LAYER TOKENS (see docs/proposals/web-v2-redesign.md):
-     Layer 1 — raw palette (--flame-*, --paper-*, --ink-*, --stage-*).
+     Layer 1 — raw palette (--flame-*, --paper-*, --ink-*).
                Theme-independent. Components NEVER reference these directly.
      Layer 2 — semantic (--bg-*, --fg-*, --border-*, --accent, ...).
                Components reference ONLY this layer. Dark mode later =
@@ -101,15 +101,6 @@
   --link:          var(--cobalt-500);
   --focus-ring:    var(--cobalt-500);
 
-  /* ===== PIPELINE STAGE ACCENTS (7-step hero motif) ===== */
-  --stage-triage:  #8A6BD1;
-  --stage-clarify: #2D5BD6;
-  --stage-plan:    #1F8FB0;
-  --stage-code:    #F15A2B;
-  --stage-review:  #E8920C;
-  --stage-test:    #1F9D6B;
-  --stage-release: #5A616E;
-
   /* ISS-509 — the pipeline "active" bead / progress fill. Its OWN token (cobalt,
      = the `active` tone) so it stops sharing the flame `--accent` with primary
      buttons and the "In progress" distribution bar. */
@@ -181,3 +172,9 @@
    moved 2h ago. This rule sits after `.fg-caption`, same specificity, so source
    order decides and the mark survives. */
 .fg-caption-stale { font-weight: 600; color: var(--amber-600); }
+
+/* An error said at a type class's own size: `fg-danger` beside any `.fg-*` above. `text-danger`
+   is a Tailwind utility and is swallowed there for the reason the note above gives, so eleven
+   error lines rendered grey from the day they were written. This sits after every `.fg-*`, same
+   specificity, so source order decides; it is the danger Banner's own foreground. */
+.fg-danger { color: var(--red-600); }

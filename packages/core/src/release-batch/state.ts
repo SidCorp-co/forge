@@ -1,6 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { pipelineRuns } from '../db/schema.js';
+import { TERMINAL_PIPELINE_RUN_STATUSES } from '../pipeline/status-sets.js';
 import { type BoundsReading, readBounds } from './bounds.js';
 import {
   closeVerification,
@@ -90,6 +91,7 @@ async function readRun(runId: string) {
     .select({
       projectId: pipelineRuns.projectId,
       status: pipelineRuns.status,
+      finishedAt: pipelineRuns.finishedAt,
       metadata: pipelineRuns.metadata,
       releaseVersion: pipelineRuns.releaseVersion,
     })
@@ -134,7 +136,12 @@ export async function readReleaseRunState(runId: string): Promise<ReleaseRunStat
     live,
     readings: { total: kept.length, latest: kept.slice(-READINGS_SHOWN).map(viewOf) },
     verification: recordedVerification(meta, runId),
-    bounds: readBounds(attempts),
+    bounds: readBounds(attempts, {
+      takenAt: start.kind === 'taken' ? new Date(start.at) : null,
+      ended: TERMINAL_PIPELINE_RUN_STATUSES.includes(run.status)
+        ? { at: run.finishedAt }
+        : undefined,
+    }),
     method,
     methodUnloaded: method !== null && !method.loaded,
     finish: readFinishRecord(meta),
@@ -152,7 +159,7 @@ export class ReleaseRunHoldingError extends Error {
 }
 
 /**
- * Refuse a further attempt on a run that is already past a bound.
+ * Refuse a further attempt on a run that is already past a bound, read off the ledger alone.
  */
 export async function assertRunNotHolding(runId: string): Promise<void> {
   const bounds = readBounds(await listAttempts(runId));

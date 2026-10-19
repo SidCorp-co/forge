@@ -154,9 +154,19 @@ describe('every registered issue reference takes the display key (ISS-1179)', ()
     expect(Object.keys(ARGS).sort()).toEqual(ISSUE_REF_INPUTS.map((i) => i.action).sort());
   });
 
+  // Unmark on an issue holding no mark is refused by name (NOT_MARKED_MERGED, ISS-1421), so the
+  // door is asked about an issue that holds one.
+  const seedFor = async (action: string): Promise<World> => {
+    const w = await seed();
+    if (action === 'unmark') {
+      await harness.db.execute(sql`UPDATE issues SET merged_at = now() WHERE id = ${w.issueId}`);
+    }
+    return w;
+  };
+
   for (const { action, field } of ISSUE_REF_INPUTS) {
     it(`${action} resolves ${field} given as ${KEY}`, async () => {
-      const w = await seed();
+      const w = await seedFor(action);
       const res = await call(w.pat, {
         ...ARGS[action]?.(KEY, w.projectId),
         projectId: w.projectId,
@@ -165,7 +175,7 @@ describe('every registered issue reference takes the display key (ISS-1179)', ()
     });
 
     it(`${action} still takes ${field} as a uuid`, async () => {
-      const w = await seed();
+      const w = await seedFor(action);
       const res = await call(w.pat, {
         ...ARGS[action]?.(w.issueId, w.projectId),
         projectId: w.projectId,
@@ -274,14 +284,27 @@ describe('a key that resolves to nothing is refused by name (ISS-1179)', () => {
 
 describe('the task actions are gone (ISS-1132)', () => {
   for (const action of ['createTask', 'listTasks', 'updateTask', 'deleteTask']) {
-    it(`${action} is refused by the tool's own unknown-action refusal`, async () => {
+    it(`${action} is refused by name, as removed by ISS-1132, with the actions still served`, async () => {
       const w = await seed();
       const res = await call(w.pat, { action, projectId: w.projectId });
       expect(res.isError).toBe(true);
-      expect(res.text).toContain('action');
-      expect(res.text).not.toContain('Task');
+      expect(res.text).toContain(`action \`${action}\` was removed`);
+      expect(res.text).toContain('subtasks were removed (ISS-1132)');
+      for (const served of ['list', 'get', 'create', 'update', 'transition', 'setAttributes']) {
+        expect(res.text).toContain(served);
+      }
+      expect(res.text).not.toContain('invalid_value');
+      expect(res.text.trimStart().startsWith('[')).toBe(false);
     });
   }
+
+  it('an action that never existed is refused as not a forge_issues action, not as removed', async () => {
+    const w = await seed();
+    const res = await call(w.pat, { action: 'vibes', projectId: w.projectId });
+    expect(res.isError).toBe(true);
+    expect(res.text).toContain('action `vibes` is not a forge_issues action');
+    expect(res.text).not.toContain('was removed');
+  });
 });
 
 /**

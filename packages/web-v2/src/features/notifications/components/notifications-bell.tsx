@@ -18,6 +18,7 @@ import {
   useDeclineInvitation,
 } from "../hooks";
 import { toNotificationItem, toInvitationItem } from "../map";
+import { memberTexts, secondaryHref, subjectHref } from "../subject";
 import type { PendingInvitation } from "../types";
 import { type DeliveryNotification, useNotificationDelivery } from "../use-notification-delivery";
 import { useOpenIndicator } from "../use-open-indicator";
@@ -86,7 +87,7 @@ export function NotificationsBell({ open, onClose, anchor }: NotificationsBellPr
 
   // Actionable invite items prepended to the bell; passive invitation_received
   // rows are filtered out so each invite appears once (as the actionable item).
-  // The passive rows still count toward the bell badge via the open-count API.
+  // The badge counts the same: each pending invitation once, never its record (ISS-1229 r14).
   const pendingItems = useMemo(
     () =>
       (pendingQuery.data ?? []).map((inv) =>
@@ -136,31 +137,14 @@ export function NotificationsBell({ open, onClose, anchor }: NotificationsBellPr
               onClick: () => {
                 markRead.mutate(row.id);
                 onClose();
-                const target = projects?.find((p) => p.id === row.projectId);
-                if (target) router.push(`/projects/${target.slug}/issues/${row.secondaryIssueId}`);
+                const href = secondaryHref(row);
+                if (href) router.push(href);
               },
             },
           ]);
         }),
     ],
-    [pendingItems, notificationRows, markRead, projects, router, onClose],
-  );
-  const onSelectNotification = useCallback(
-    (id: string) => {
-      const row = notificationRows.find((n) => n.id === id);
-      if (row && row.readAt === null) markRead.mutate(id);
-      onClose();
-      if (!row?.projectId) return; // mark-read only, no dead-end
-      const target = projects?.find((p) => p.id === row.projectId);
-      if (!target) return;
-      if (row.type === "reconcile_gate_pending") {
-        router.push(`/projects/${target.slug}/library?tab=updates`);
-        return;
-      }
-      if (!row.issueId) return;
-      router.push(`/projects/${target.slug}/issues/${row.issueId}`);
-    },
-    [notificationRows, markRead, projects, router, onClose],
+    [pendingItems, notificationRows, markRead, router, onClose],
   );
 
   // ISS-1063 — a grouped delivery expands to the records it carries. The fetch is
@@ -168,16 +152,16 @@ export function NotificationsBell({ open, onClose, anchor }: NotificationsBellPr
   // a member click deep-links the same way a plain row does.
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const membersQuery = useNotificationMembers(expandedId);
-  const expandedMembers = useMemo(
-    () =>
-      (membersQuery.data ?? []).map((m) => ({
+  const expandedMembers = useMemo(() => {
+    const members = membersQuery.data ?? [];
+    const texts = memberTexts(members);
+    return members.map((m, i) => ({
         id: m.id,
-        text: m.title,
-        time: formatRelativeTime(m.createdAt),
-        open: m.open,
-      })),
-    [membersQuery.data],
-  );
+        text: texts[i] ?? m.title,
+        sub: m.body ?? undefined,
+        time: formatRelativeTime(m.deliveredAt),
+    }));
+  }, [membersQuery.data]);
   const onToggleGroup = useCallback(
     (id: string) => setExpandedId((prev) => (prev === id ? null : id)),
     [],
@@ -185,13 +169,31 @@ export function NotificationsBell({ open, onClose, anchor }: NotificationsBellPr
   const onSelectMember = useCallback(
     (memberId: string) => {
       const member = membersQuery.data?.find((m) => m.id === memberId);
-      if (!member?.projectId || !member.issueId) return;
-      const target = projects?.find((p) => p.id === member.projectId);
-      if (!target) return;
+      const href = member ? subjectHref(member) : null;
+      if (!href) return;
+      if (expandedId) markRead.mutate(expandedId);
       onClose();
-      router.push(`/projects/${target.slug}/issues/${member.issueId}`);
+      router.push(href);
     },
-    [membersQuery.data, projects, router, onClose],
+    [membersQuery.data, expandedId, markRead, router, onClose],
+  );
+  // A row opens its subject and following it reads it. A grouped row has none of its own, since its
+  // records are the subjects, so selecting it opens the group and reads nothing: a member followed
+  // is what reads it, the same rule as the inbox.
+  const onSelectNotification = useCallback(
+    (id: string) => {
+      const row = notificationRows.find((n) => n.id === id);
+      if (!row) return;
+      if (row.members > 1) {
+        onToggleGroup(id);
+        return;
+      }
+      if (row.readAt === null) markRead.mutate(id);
+      onClose();
+      const href = subjectHref(row);
+      if (href) router.push(href);
+    },
+    [notificationRows, markRead, router, onClose, onToggleGroup],
   );
 
   // Realtime delivery bridge (ISS-510): toast + browser channels for incoming

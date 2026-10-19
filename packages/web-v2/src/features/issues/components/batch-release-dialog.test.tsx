@@ -293,8 +293,8 @@ describe("a batch release the server accepts", () => {
 
 // The judge's findings at ea73cf8 (bd150873): backticks shown raw, a retry nothing on screen
 // told apart from the first press, and a hidden toast that repeated the banner after Cancel.
-const EMPTY_ROSTER =
-  "Nothing is waiting at the release gate, so there is no release to cut. An issue reaches it by moving to `awaiting_release`, which is an act of its own.";
+const CUT_DROPS =
+  "A `cut-below` moves the release below the landing of issues this batch names, so it would name issues it does not ship.";
 
 function held() {
   let settle: (status: number, body: unknown) => void = () => {};
@@ -309,14 +309,14 @@ function held() {
 
 describe("a refusal, said once and where it can be read", () => {
   it("shows the sentence's code spans as code, with no backtick left in it", async () => {
-    answer(409, { code: "RELEASE_ROSTER_EMPTY", message: EMPTY_ROSTER });
+    answer(409, { code: "RELEASE_CUT_DROPS_ROSTER", message: CUT_DROPS });
     draw();
     press();
 
     const alert = await within(screen.getByRole("dialog")).findByRole("alert");
     expect(alert.textContent).not.toContain("`");
-    expect(within(alert).getByText("awaiting_release").tagName).toBe("CODE");
-    expect(alert).toHaveTextContent("moving to awaiting_release, which is an act of its own");
+    expect(within(alert).getByText("cut-below").tagName).toBe("CODE");
+    expect(alert).toHaveTextContent("A cut-below moves the release below the landing");
   });
 
   it("shows that a second press went out, and that it failed as well", async () => {
@@ -469,7 +469,7 @@ describe("issues the release would ship without naming them", () => {
 // sight, rows known only by number, and three choices nobody explained.
 const REFUSED_REVERT = {
   code: "RELEASE_CARRIED_DECISION_REFUSED",
-  message: "1 decision(s) sent with this batch do not hold — `ISS-7` `revert`: no revert.",
+  message: "1 decision sent with this batch does not hold — `ISS-7` `revert`: no revert.",
   details: {
     refused: [
       { issueId: "iss-7", displayId: "ISS-7", decision: "revert", why: "its landing bbbbbbbbbbbb was reverted by dddddddddddd, and that revert was reverted by eeeeeeeeeeee" },

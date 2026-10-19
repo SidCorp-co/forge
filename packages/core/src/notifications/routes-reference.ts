@@ -2,11 +2,14 @@ import { z } from 'zod';
 import { describeOperation, empty, fail, json } from '../api-reference/declare/describe.js';
 import { tableRow } from '../api-reference/declare/rows.js';
 import { notificationDeliveries, notificationTypes } from '../db/schema.js';
+import { STUCK_ISSUE_KINDS } from '../projects/stuck-issue-kinds.js';
 
 const NOT_FOUND = 'The notification is not one of the caller’s own';
 
 export const openCountSchema = z.object({
-  count: z.number().describe('Distinct records still true for the caller'),
+  count: z
+    .number()
+    .describe('Bell rows still open for the caller: a row carrying a record still true is one'),
 });
 
 export const markAllReadSchema = z.object({ updated: z.number() });
@@ -19,22 +22,47 @@ export const closedSchema = z.object({
 export const deliveryListItemSchema = z.object({
   id: z.string(),
   readAt: z.date().nullable(),
+  unread: z
+    .boolean()
+    .describe(
+      'Still asks to be read: no `readAt`, not a resolved notice, and carrying an event or a record that is still true',
+    ),
   groupKey: z.string().nullable(),
   resolvedNotice: z.boolean(),
   createdAt: z.date(),
+  toldAt: z
+    .date()
+    .describe('When the newest record this delivery carries reached the caller: the row’s clock'),
   members: z.number().describe('Records the delivery carries'),
   openMembers: z.number().describe('Of those, the ones still true'),
   type: z.string(),
   kind: z.string(),
   tier: z.string(),
-  title: z.string(),
-  body: z.string().nullable(),
+  title: z
+    .string()
+    .describe(
+      'The record’s own title for one record, the cause for several, which name no one issue',
+    ),
+  body: z
+    .string()
+    .nullable()
+    .describe('Only what is specific to a single record; null for several'),
+  explanation: z
+    .string()
+    .nullable()
+    .describe('What the sweep that wrote this means and what to do, once, from its detector'),
   severity: z.string().nullable(),
-  projectId: z.string().nullable(),
-  issueId: z.string().nullable(),
+  projectId: z.string().nullable().describe('Null where the records span projects'),
+  projectSlug: z.string().nullable(),
+  projectName: z.string().nullable(),
+  issueId: z.string().nullable().describe('Null where the delivery carries several records'),
   secondaryIssueId: z.string().nullable(),
   agentSessionId: z.string().nullable(),
   notificationId: z.string(),
+  stuckKind: z
+    .enum(STUCK_ISSUE_KINDS)
+    .nullable()
+    .describe('A stuck-issue row only: the reason its records are told by, which its tag names'),
 });
 
 export const deliveryListSchema = z.object({
@@ -58,10 +86,13 @@ export const deliveryMemberSchema = z.object({
   body: z.string().nullable(),
   severity: z.string().nullable(),
   projectId: z.string().nullable(),
+  projectSlug: z.string().nullable(),
+  projectName: z.string().nullable(),
   issueId: z.string().nullable(),
   secondaryIssueId: z.string().nullable(),
   resolvedAt: z.date().nullable(),
   createdAt: z.date(),
+  deliveredAt: z.date().describe('When this record reached the caller: the member’s clock'),
   open: z.boolean(),
 });
 
@@ -70,7 +101,7 @@ export const deliveryMembersSchema = z.array(deliveryMemberSchema);
 export const openCount = describeOperation({
   summary: 'Count the things still true for the caller',
   description:
-    'Counts distinct records, not deliveries: a grouped delivery of fifteen firing conditions reads fifteen. Signals never count.',
+    'Counts the bell rows still open, not the records inside them: a grouped delivery of fifteen firing conditions reads one. Signals never count. With `projectId`, a row counts only where every record still open in it is that project’s, so a group spanning two projects is counted once, in the count without `projectId`, and never once per project.',
   responses: { 200: json(openCountSchema) },
 });
 
@@ -83,6 +114,8 @@ export const markAllRead = describeOperation({
 
 export const listNotifications = describeOperation({
   summary: 'List the caller’s notifications, newest first',
+  description:
+    'One row per delivery, newest `toldAt` first; a resolved notice is not listed beside the row that raised its record, which reads resolved itself. `type` and `unread=true` narrow the list before it is paged, so the total and every page count only the matches.',
   responses: { 200: json(deliveryListSchema, 'One page of deliveries, with the list envelope') },
 });
 

@@ -11,6 +11,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { markMergedSteps } from '@forge/contracts/mark-merged-words';
 import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -154,7 +155,7 @@ describe('a release names, before the press, the rows its finish could not close
       expect.objectContaining({
         code: 'CLOSE_REQUIRES_SHIPPED',
         reason: 'no mark naming where its work landed',
-        clears: expect.stringContaining('landing'),
+        clears: markMergedSteps(true),
       }),
     ]);
     expect(refusalsOf(rows.asked)).toEqual([
@@ -162,15 +163,43 @@ describe('a release names, before the press, the rows its finish could not close
         code: 'OPEN_QUESTIONS',
         reason: 'holds 1 open question',
         clears: expect.stringContaining('Answer it'),
+        // The issue's own page shows the card right above its banner (ISS-1421 r5 repair 1).
+        saidHere: 'It holds 1 open question. Answer it in the Decision waiting card above.',
       }),
     ]);
     expect(refusalsOf(rows.unplanned)).toEqual([
       expect.objectContaining({
         code: 'ENTRY_CRITERIA_UNMET',
-        reason: 'missing what this project requires to close: plan',
-        clears: 'Write each missing record on the issue.',
+        reason: 'missing a plan, which this project requires before a close',
+        // No run of it has a session, so the header shows no Open session to press (ISS-1228).
+        clears:
+          "An agent writes them through Forge's issue tools. This issue has no session to open, so use Reopen in the issue's actions menu, and the agent that takes it writes them.",
       }),
     ]);
+  });
+
+  // ISS-1421 r6: the line names Open session by the rule the issue page's header shows it by.
+  it('names Open session for a row with a run that holds a session', async () => {
+    const rows = await fourRows();
+    const runId = randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO pipeline_runs (id, project_id, issue_id, kind, status, started_at, finished_at)
+      VALUES (${runId}, ${projectId}, ${rows.unplanned}, 'issue', 'completed', now(), now())
+    `);
+    await harness.db.execute(sql`
+      INSERT INTO agent_sessions (id, project_id, pipeline_run_id, kind, status, metadata)
+      VALUES (${randomUUID()}, ${projectId}, ${runId}, 'pipeline', 'completed', '{}'::jsonb)
+    `);
+
+    const res = await get(`/api/projects/${projectId}/release-batches/roster`);
+    const roster = (await res.json()) as {
+      issues: Array<{ id: string; closeRefusals: Array<Record<string, string>> }>;
+    };
+    const [refusal] = roster.issues.find((i) => i.id === rows.unplanned)?.closeRefusals ?? [];
+
+    expect(refusal?.clears).toBe(
+      "An agent writes them through Forge's issue tools. To start one, press Open session at the top of the issue's page.",
+    );
   });
 
   it('refuses a press naming them with a 409 naming each, and claims nothing and opens no run', async () => {
@@ -191,7 +220,9 @@ describe('a release names, before the press, the rows its finish could not close
     expect(body).toContain(String(unmarkedKey));
     expect(body).toContain('RELEASE_ISSUES_UNCLOSABLE');
     expect(body).toContain(`\`${askedKey}\` holds 1 open question`);
-    expect(body).toContain(`\`${unplannedKey}\` missing what this project requires to close: plan`);
+    expect(body).toContain(
+      `\`${unplannedKey}\` missing a plan, which this project requires before a close`,
+    );
     for (const id of Object.values(rows)) {
       expect(await fx.stored(id)).toMatchObject({ status: 'awaiting_release', claim: null });
     }
@@ -294,11 +325,15 @@ describe('a release still ships every row whose close stands', () => {
     expect(outcome.named).toEqual([rows.clean]);
     expect((await fx.stored(rows.clean)).status).toBe('releasing');
     expect(outcome.leftOff).toEqual([
-      expect.stringMatching(new RegExp(`^${unmarkedKey}: no mark naming where its work landed`)),
-      expect.stringMatching(new RegExp(`^${askedKey}: holds 1 open question`)),
-      expect.stringMatching(new RegExp(`^${unplannedKey}: missing what this project requires`)),
+      expect.stringMatching(
+        new RegExp(`^${unmarkedKey}: It has no mark naming where its work landed`),
+      ),
+      expect.stringMatching(new RegExp(`^${askedKey}: It holds 1 open question`)),
+      expect.stringMatching(
+        new RegExp(`^${unplannedKey}: It is missing a plan, which this project requires`),
+      ),
     ]);
-    expect(outcome.output).toContain('left off 3 issue(s)');
+    expect(outcome.output).toContain('left off 3 issues whose close');
     for (const id of [rows.unmarked, rows.asked, rows.unplanned]) {
       expect(await fx.stored(id)).toMatchObject({ status: 'awaiting_release', claim: null });
     }

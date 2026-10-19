@@ -13,7 +13,6 @@ import {
   issueLabels,
   issuePriorities,
   issueStatuses,
-  issueStepContexts,
   issues,
   jobEventKinds,
   jobEvents,
@@ -39,6 +38,7 @@ import {
   type users,
 } from './schema.js';
 import { activityLog, actorTypes } from './schema-activity.js';
+import { runJournal } from './schema-journal.js';
 
 type AnyTable =
   | typeof users
@@ -231,15 +231,6 @@ describe('db/schema — jobs', () => {
       'cancelled',
     ]);
     expect(jobTypes).toEqual([
-      'triage',
-      'clarify',
-      'plan',
-      'code',
-      'review',
-      'test',
-      'staging',
-      'release',
-      'fix',
       'custom',
       'pm',
       'smoke',
@@ -651,10 +642,18 @@ describe('db/schema — pm_policies', () => {
 });
 
 describe('the issue data plane holds no table or column nothing reads (ISS-1132)', () => {
-  it('has no verdict column and no verdict index on issue_step_contexts', () => {
-    const cfg = getTableConfig(issueStepContexts);
+  it('keeps a run journal with no verdict column, and its handoff and end each whole (ISS-1133)', async () => {
+    const schema = await import('./schema.js');
+    expect('issueStepContexts' in schema).toBe(false);
+    const cfg = getTableConfig(runJournal);
+    expect(cfg.name).toBe('run_journal');
     expect(cfg.columns.map((c) => c.name)).not.toContain('verdict');
-    expect(cfg.indexes.map((i) => i.config.name)).not.toContain('issue_step_contexts_verdict_idx');
+    expect(cfg.checks.map((c) => c.name).sort()).toEqual([
+      'run_journal_end_is_whole',
+      'run_journal_handoff_is_whole',
+    ]);
+    const unique = cfg.indexes.find((i) => i.config.name === 'run_journal_run_phase_attempt_idx');
+    expect(unique?.config.unique).toBe(true);
   });
 
   it('keeps a single-row attribute key single by a partial unique index, with no foreign key on key', () => {

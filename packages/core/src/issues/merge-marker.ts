@@ -4,35 +4,48 @@ import { db } from '../db/client.js';
 import { projectKinds } from '../db/schema.js';
 import type { Actor } from '../pipeline/activity.js';
 import { hooks } from '../pipeline/hooks.js';
-import {
-  collectWorkEvidence,
-  findMissingWorkEvidence,
-  readStandingClaim,
-} from '../pipeline/work-evidence.js';
+import { findMissingWorkEvidence, readStandingClaim } from '../pipeline/work-evidence.js';
 import type { ActorAgency } from './actor-agency.js';
 import { type CommitLanding, readCommitLanding, resolveMarkCommit } from './commit-landing.js';
+import {
+  type LaterLanding,
+  laterLanding,
+  markStays,
+  movedSentence,
+  notDescendantDetail,
+  unreadAnswer,
+} from './landing-advance.js';
 import {
   type LandingShape,
   type Lane,
   landingMarkRefusal,
   laneFrom,
+  type MarkDoor,
   markTargetRequired,
   readDeclaredLandingShape,
   readLandingShape,
   standingMarkRefusal,
   UnknownProjectKindError,
 } from './landing-evidence.js';
+import { targetRequiredDetail } from './merge-input-refusal.js';
 import {
+  alreadyMarkedSentence,
+  CHANGE_THE_MARK,
   clearIssueMerge,
   describeMergeMark,
+  keptClaimRepeat,
   type MergeMarkKind,
   type MergeRecord,
   mergeMarkKindOf,
   observedMergeForIssue,
+  readMergeColumns,
   recordIssueMerge,
+  shortenCommits,
+  threadBody,
 } from './merge-record.js';
 import { refuseUnmarkOnClosed } from './merged-at.js';
 import { findIssueById, type IssueRow } from './read-service.js';
+import { statusForCaller } from './status-sets.js';
 
 export type AuditComment = { id: string; body: string; parentId: string | null };
 
@@ -50,55 +63,34 @@ export const mergedCommitShaSchema = z
   .regex(/^[0-9a-f]{7,64}$/i, 'commit must be a git sha: 7 to 64 hex characters, nothing else');
 
 /**
- * ISS-959 — the commit this mark records, when the caller named none.
- *
- * `forge guide contract earning-and-unearning` requires that anything the
- * repository knows is written onto the issue at the step that knew it, and
- * says of this one: *"the merged mark, which today takes no commit and carries
- * it in the prose of its note"*. Prose is not a field, so the note's form was
- * part of the contract. This is the field, and the fallback is what makes it
- * arrive without every client learning it first.
- */
-async function resolveRecordedCommit(issueId: string): Promise<string | null> {
-  try {
-    const evidence = await collectWorkEvidence(issueId);
-    return evidence.handoffCommitSha;
-  } catch {
-    return null;
-  }
-}
-
-/** A commit the handoff recorded that the repository did not resolve, kept off the mark. */
-type LeftOut = { commit: string; why: string };
-
-/**
  * ISS-1350 — what a `git` mark names as its commit is the repository's resolution of it, never the
- * caller's spelling. A caller's commit the repository does not hold, or cannot be read for, is
- * refused by name; the handoff's, which the caller never sent, is left off and said to be. A merged
- * pull request's own merge sha is not read again: Forge already holds it.
+ * caller's spelling. A commit the repository does not hold, or cannot be read for, is refused by
+ * name. A merged pull request's own merge sha is not read again: Forge already holds it. A mark
+ * naming no commit records none.
  */
 async function recordedClaim(args: {
   projectId: string;
-  issueId: string;
   commit: string | undefined;
   observedSha: string | null;
-  fallback: boolean;
-}): Promise<{ claim: string | null; repository: string | null; leftOut: LeftOut | null }> {
+  /** On an issue already marked, a commit Forge cannot read is answered with where the mark stays
+   *  (ISS-1421 round 8): only an unmarked issue is refused, where marking with no commit helps. */
+  marked: boolean;
+}): Promise<{
+  claim: string | null;
+  repository: string | null;
+  unread?: { commit: string; why: string };
+}> {
   const { projectId, commit, observedSha } = args;
-  if (commit) {
-    if (observedSha && commit.toLowerCase() === observedSha.toLowerCase()) {
-      return { claim: commit, repository: null, leftOut: null };
-    }
-    const read = await resolveMarkCommit({ projectId, commit });
-    if (!read.ok) throw new MergeMarkerError(read.code, read.detail, read.details);
-    return { claim: read.sha, repository: read.repository, leftOut: null };
+  if (!commit) return { claim: null, repository: null };
+  if (observedSha && commit.toLowerCase() === observedSha.toLowerCase()) {
+    return { claim: commit, repository: null };
   }
-  const recorded = args.fallback ? await resolveRecordedCommit(args.issueId) : null;
-  if (!recorded) return { claim: null, repository: null, leftOut: null };
-  const read = await resolveMarkCommit({ projectId, commit: recorded });
-  if (!read.ok)
-    return { claim: null, repository: null, leftOut: { commit: recorded, why: read.reason } };
-  return { claim: read.sha, repository: read.repository, leftOut: null };
+  const read = await resolveMarkCommit({ projectId, commit });
+  if (!read.ok && read.unread && args.marked) {
+    return { claim: null, repository: null, unread: { commit, why: read.unread.why } };
+  }
+  if (!read.ok) throw new MergeMarkerError(read.code, read.detail, read.details);
+  return { claim: read.sha, repository: read.repository };
 }
 
 export async function writeAuditComment(
@@ -116,17 +108,20 @@ export class MergeMarkerError extends Error {
       | 'NO_WORK_EVIDENCE'
       | 'ISSUE_NOT_FOUND'
       | 'UNMARK_REQUIRES_NOT_CLOSED'
+      | 'NOT_MARKED_MERGED'
       | 'LANDING_REQUIRED'
       | 'LANDING_NOT_THIS_SHAPE'
       | 'MARK_ALREADY_STANDS'
       | 'TARGET_REQUIRED'
       | 'PROJECT_KIND_UNKNOWN'
       | 'LANDING_SHAPE_MOVED'
+      | 'LANDING_NOT_DESCENDANT'
       | Exclude<CommitLanding, { ok: true }>['code'],
     message: string,
     readonly details?: Record<string, unknown>,
   ) {
-    super(message);
+    // A person reads seven characters of a commit; `details` keeps the whole sha (ISS-1421).
+    super(shortenCommits(message));
     this.name = 'MergeMarkerError';
   }
 }
@@ -167,9 +162,8 @@ async function refuseMovedLane(issue: {
   if (!row || (row.declared ?? null) === judged) return;
   throw new MergeMarkerError(
     'LANDING_SHAPE_MOVED',
-    `this issue's \`landingShape\` moved from ${judged ?? 'null'} to ${row.declared ?? 'null'} ` +
-      'while this mark was judged, so nothing was marked. Mark it again, and it is judged on the ' +
-      'lane the issue holds now.',
+    "Nothing was marked, because this issue's landing shape changed while the mark was judged. " +
+      'Mark it again.',
     { judged, holds: row.declared },
   );
 }
@@ -193,10 +187,11 @@ async function agentEvidence(
   issueId: string,
   shape: LandingShape,
   sent: { commit?: string | undefined; landing?: string | undefined },
+  door: MarkDoor,
 ): Promise<AgentEvidence | null> {
   const standing = shape === 'git' ? await readStandingClaim(issueId) : null;
   if (standing) return agentCommit(issueId, sent.commit ?? standing);
-  const missing = await findMissingWorkEvidence(issueId, db, 'mark');
+  const missing = await findMissingWorkEvidence(issueId, db, 'mark', door);
   if (!missing || (shape === 'outside_git' && sent.landing)) return null;
   if (!sent.commit || shape !== 'git') throw new MergeMarkerError('NO_WORK_EVIDENCE', missing);
   return agentCommit(issueId, sent.commit);
@@ -226,24 +221,49 @@ function namesAnother(named: string, kept: string): string | null {
   return a.startsWith(b) || b.startsWith(a) ? null : named;
 }
 
+/** A later commit this mark compared with the one the row held; a different landing is refused. */
+async function compareLater(
+  issue: { id: string; projectId: string; declaredLandingShape: LandingShape | null },
+  commit: string | undefined,
+  observed: { commitSha: string; mergedAt: Date } | null,
+  fromRepository: Extract<CommitLanding, { ok: true }> | null,
+): Promise<LaterLanding | null> {
+  const later = await laterLanding(issue, commit, observed, fromRepository);
+  if (later?.kind === 'refused')
+    throw new MergeMarkerError(later.code, later.detail, later.details);
+  if (later?.kind === 'other') {
+    throw new MergeMarkerError(
+      'LANDING_NOT_DESCENDANT',
+      notDescendantDetail(later.held, later.candidate),
+      { held: later.held, commit: later.candidate },
+    );
+  }
+  return later;
+}
+
+export const NOT_MARKED_MERGED_DETAIL =
+  'This issue is not marked merged, so there is no mark to remove. Nothing changed.';
+
 /**
- * Clear the mark. The `closed` guard is the UPDATE's own WHERE, so nothing can close the row between
- * the decision and the write. A zero-row answer is read back rather than guessed at: the row is gone,
- * or it is closed, and anything else is a state those two conditions cannot produce.
+ * Clear the mark. The `closed` and the no-mark guards are the UPDATE's own WHERE, so nothing can
+ * close or clear the row between the decision and the write. A zero-row answer is read back rather
+ * than guessed at: the row is gone, closed or unmarked, and anything else is a state those three
+ * conditions cannot produce.
  */
 async function unmarkOrRefuse(issueId: string): Promise<void> {
   if (await clearIssueMerge(db, issueId)) return;
   const still = await findIssueById(issueId);
   if (!still) throw new MergeMarkerError('ISSUE_NOT_FOUND', 'issue not found');
   const refusal = refuseUnmarkOnClosed(still.status);
-  if (!refusal) {
-    throw new Error(
-      `unmark cleared no row on issue ${issueId}, which is neither missing nor \`closed\` but ` +
-        `\`${still.status}\`. The UPDATE's only other condition is the id, so this is a state ` +
-        `clearIssueMerge cannot produce and must not be reported as either of them.`,
-    );
+  if (refusal) throw new MergeMarkerError('UNMARK_REQUIRES_NOT_CLOSED', refusal.detail);
+  if (still.mergedAt == null) {
+    throw new MergeMarkerError('NOT_MARKED_MERGED', NOT_MARKED_MERGED_DETAIL);
   }
-  throw new MergeMarkerError('UNMARK_REQUIRES_NOT_CLOSED', refusal.detail);
+  throw new Error(
+    `unmark cleared no row on issue ${issueId}, which is neither missing, Closed (closed) nor unmarked but ` +
+      `${statusForCaller(still.status)}. The UPDATE's only other condition is the id, so this is a state ` +
+      `clearIssueMerge cannot produce and must not be reported as any of them.`,
+  );
 }
 
 export type MergeMarkerActor = {
@@ -252,6 +272,33 @@ export type MergeMarkerActor = {
   commentAuthorId: string;
   hookActor: Actor;
 };
+
+/** What a mark answers: one wording for the call's reply and the thread, read off the row it left. */
+function answerWords(a: {
+  later: LaterLanding | null;
+  mark: MergeMarkKind;
+  stamp: MergeRecord;
+  kept: ReturnType<typeof keptClaim>;
+  repeated: boolean;
+  namedUnread: { commit: string; why: string } | null;
+  standingDetail: string;
+}): { after: string; unread: string | null; markDetail: string } {
+  const stays = markStays(a.later, a.mark, a.stamp);
+  const after = a.kept ? keptClaimRepeat(a.kept) : `${stays} ${CHANGE_THE_MARK}`;
+  const named =
+    a.later?.kind === 'unread'
+      ? { commit: a.later.candidate, why: a.later.why }
+      : a.repeated
+        ? a.namedUnread
+        : null;
+  const unread = named ? unreadAnswer(stays, named.commit, named.why) : null;
+  const markDetail = a.repeated
+    ? (unread ?? `${alreadyMarkedSentence(a.stamp.mergedAt)}. ${after}`)
+    : a.later?.kind === 'moved'
+      ? movedSentence(a.later.from, a.later.to)
+      : a.standingDetail;
+  return { after, unread, markDetail };
+}
 
 export async function applyMergeMarker(args: {
   /** Already loaded AND authorised by the caller — this function does neither. */
@@ -267,12 +314,14 @@ export async function applyMergeMarker(args: {
   note?: string | undefined;
   /** The commit the CALLER says this mark was made at. On a `git` project the repository resolves
    *  it before anything is written (`recordedClaim`); the column takes only a commit Forge
-   *  observed. Absent falls back to the recorded handoff sha. */
+   *  observed. Absent, the mark records no commit. */
   commit?: string | undefined;
   /** Where the work landed outside git; whether this project takes one is `landing-evidence.ts`'s. */
   landing?: string | undefined;
   mergedAt?: Date | null;
   actor: MergeMarkerActor;
+  /** The door the mark came through, so a refusal names the field its caller sends. */
+  door?: MarkDoor;
 }): Promise<{
   issue: IssueRow;
   action: 'merged' | 'already_merged' | 'unmarked';
@@ -286,8 +335,13 @@ export async function applyMergeMarker(args: {
    */
   mark: MergeMarkKind;
   markDetail: string;
+  /** The commit the landing moved forward from, where this mark moved it (ISS-1421 round 7). */
+  movedFrom: string | null;
+  /** The whole commit this mark named where no column keeps it; its words show seven characters. */
+  namedCommit: string | null;
 }> {
   const before = args.issue;
+  const door = args.door ?? 'rest';
 
   let stampResult: MergeRecord = {
     wrote: true,
@@ -304,36 +358,44 @@ export async function applyMergeMarker(args: {
   let readFrom: Extract<CommitLanding, { ok: true }> | null = null;
   /** The repository that holds the claimed commit, where this call read it there. */
   let claimHeldBy: string | null = null;
-  let leftOut: LeftOut | null = null;
+  let later: LaterLanding | null = null;
+  let namedUnread: { commit: string; why: string } | null = null;
   if (args.op === 'mark') {
     const lane = await markLane(before);
     const shape = lane.shape;
     // A landing on a git lane is refused below whatever the target, and that refusal names the
     // real fault, so the missing target is not reported ahead of it.
     if (markTargetRequired(shape) && !args.target && !args.landing) {
-      throw new MergeMarkerError('TARGET_REQUIRED', 'target is required');
+      throw new MergeMarkerError('TARGET_REQUIRED', targetRequiredDetail(door));
     }
     if (args.actor.agency === 'agent') {
-      const evidence = await agentEvidence(before.id, shape, args);
+      const evidence = await agentEvidence(before.id, shape, args, door);
       if (evidence?.kind === 'read') fromRepository = evidence.landing;
       if (evidence?.kind === 'unverified') unverified = evidence;
     }
     const observed = await observedMergeForIssue(db, before.id);
     const landing = args.landing ?? null;
-    const refused = landingMarkRefusal({ lane, landing, observed: observed !== null });
+    const refused = landingMarkRefusal({ lane, landing, observed: observed !== null, door });
     if (refused) throw new MergeMarkerError(refused.code, refused.detail);
     // Every read is taken before the first write, so a refusal leaves the row as it found it.
     const recorded =
       shape === 'git' && !fromRepository && !unverified
         ? await recordedClaim({
             projectId: before.projectId,
-            issueId: before.id,
             commit: args.commit,
             observedSha: observed?.commitSha ?? null,
-            fallback: !observed,
+            marked: before.mergedAt != null,
           })
         : null;
-    if (observed) {
+    later =
+      shape === 'git' ? await compareLater(before, args.commit, observed, fromRepository) : null;
+    if (later?.kind === 'moved') {
+      stampResult = { wrote: true, ...(await readMergeColumns(db, before.id)) };
+    } else if (recorded?.unread) {
+      // A commit nothing could check writes nothing: the mark stays as it stands.
+      namedUnread = recorded.unread;
+      stampResult = { wrote: false, ...(await readMergeColumns(db, before.id)) };
+    } else if (observed) {
       stampResult = await recordIssueMerge(db, {
         issueId: before.id,
         declared: before.declaredLandingShape ?? null,
@@ -381,7 +443,6 @@ export async function applyMergeMarker(args: {
       // Only a `git` lane reaches here: `landingMarkRefusal` holds an `outside_git` mark to a landing.
       claimedCommit = unverified ? null : (recorded?.claim ?? null);
       claimHeldBy = recorded?.claim && recorded.repository ? recorded.repository : null;
-      leftOut = recorded?.leftOut ?? null;
     }
     if (!stampResult.wrote) await refuseMovedLane(before);
     const standing = standingMarkRefusal({
@@ -398,16 +459,8 @@ export async function applyMergeMarker(args: {
     await unmarkOrRefuse(before.id);
   }
 
-  const labelled = stampResult.commitSha ?? claimedCommit ?? stampResult.claimedCommit;
-  const commitLabel = labelled ? ` commit=${labelled}` : '';
-  const label =
-    args.op === 'mark'
-      ? `mark_merged${args.target ? ` target=${args.target}` : ''}${commitLabel}`
-      : 'unmark';
-  const unchanged =
-    args.op === 'mark' && !stampResult.wrote
-      ? `\nNOT stamped by this call: merged_at was already ${stampResult.mergedAt?.toISOString() ?? 'set'} and the first stamp wins; \`unmark\` then \`mark\` is the only correction. It does not re-block dependents: those are held by the issue's STATUS and not by this column (ISS-1100)`
-      : '';
+  const repeated = args.op === 'mark' && !stampResult.wrote;
+
   // Read off the ROW, not off the branch this call took: docs/modules/issues/merge-mark.md.
   const mark: MergeMarkKind =
     args.op === 'mark'
@@ -417,21 +470,30 @@ export async function applyMergeMarker(args: {
           mergedLanding: stampResult.landing,
         })
       : 'unmarked';
-  const markDetail = describeMergeMark({
+  const kept = unverified && keptClaim(unverified, stampResult.claimedCommit);
+  const standingDetail = describeMergeMark({
     kind: mark,
     commitSha: stampResult.commitSha,
     claimedCommit,
     landing: stampResult.landing,
-    unverified: unverified && keptClaim(unverified, stampResult.claimedCommit),
+    unverified: kept,
     ...(readFrom && stampResult.wrote ? { readFrom } : {}),
     claimHeldBy,
-    leftOut,
   });
-  const marked = args.op === 'mark' ? `\n${markDetail}` : '';
+  const { after, unread, markDetail } = answerWords({
+    later,
+    mark,
+    stamp: stampResult,
+    kept,
+    repeated,
+    namedUnread,
+    standingDetail,
+  });
+  const said = { stamp: stampResult, claimedCommit, repeated, unread, after, markDetail };
   const auditComment = await writeAuditComment(
     before.id,
     args.actor.commentAuthorId,
-    `${label}${args.note ? ` — ${args.note}` : ''}${unchanged}${marked}`,
+    threadBody({ ...args, ...said }),
   );
   if (auditComment) {
     await hooks.emit('commentCreated', {
@@ -465,11 +527,10 @@ export async function applyMergeMarker(args: {
     reason: args.op === 'mark' ? 'merged mark written' : 'merged mark cleared',
   });
 
-  if (args.op !== 'mark') return { issue, action: 'unmarked', mark, markDetail };
-  return {
-    issue,
-    action: stampResult.wrote ? 'merged' : 'already_merged',
-    mark,
-    markDetail,
-  };
+  const action = args.op !== 'mark' ? 'unmarked' : repeated ? 'already_merged' : 'merged';
+  const [movedFrom, namedCommit] = [
+    later?.kind === 'moved' ? later.from : null,
+    claimedCommit ?? kept?.notKept ?? null,
+  ];
+  return { issue, action, mark, markDetail, movedFrom, namedCommit };
 }

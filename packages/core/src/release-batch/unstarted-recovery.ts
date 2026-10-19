@@ -114,18 +114,23 @@ let registered = false;
  */
 export async function registerReleaseUnstartedRecovery(): Promise<void> {
   if (registered) return;
-  // The release batch's background work registers as one: the finish job and its sweep with it.
+  // The release batch's background work registers as one: the finish job, the sweep of a box gone
+  // quiet, the sweep of a job held with nothing to send it, and the sweep of a row at Releasing
+  // that nothing carries.
   const { registerReleaseBatchFinish } = await import('./finish-job.js');
   await registerReleaseBatchFinish();
+  const { registerReleaseSilentRecovery } = await import('./silent-recovery.js');
+  await registerReleaseSilentRecovery();
+  const { registerReleaseHeldRecovery } = await import('./held-recovery.js');
+  await registerReleaseHeldRecovery();
+  const { registerReleasingSettle } = await import('./releasing-settle.js');
+  await registerReleasingSettle();
   const { boss } = await import('../queue/boss.js');
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).createQueue(RECOVERY_QUEUE);
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).work(RECOVERY_QUEUE, async () => {
+  await boss.createQueue(RECOVERY_QUEUE);
+  await boss.work(RECOVERY_QUEUE, async () => {
     await recoverUnstartedReleaseBatches();
   });
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).schedule(RECOVERY_QUEUE, '* * * * *');
+  await boss.schedule(RECOVERY_QUEUE, '* * * * *');
   registered = true;
 }
 

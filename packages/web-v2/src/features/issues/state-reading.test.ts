@@ -33,6 +33,7 @@ const row = (over: Partial<IssueRow> = {}): IssueRow =>
     mergedAt: null,
     createdAt: iso(90 * HOUR),
     updatedAt: iso(2 * HOUR),
+    statusEnteredAt: iso(2 * HOUR),
     agentStatus: null,
     ...over,
   }) as IssueRow;
@@ -132,19 +133,34 @@ describe("what the run is doing", () => {
       }),
       NOW,
     );
-    expect(reading.runs).toEqual([{ word: "Running", step: "code", detail: null }]);
+    expect(reading.runs).toEqual([{ word: "Running", step: "Unrecognised work (code)", detail: null }]);
+  });
+
+  // ISS-1228 round 9: the issue list said "Running · forge-code" where spend calls the work Issue work.
+  it("names the running step by its job kind in words, never by its skill's stored name", () => {
+    const reading = stateReading(
+      row({
+        agentStatus: "running",
+        pipelineHealth: {
+          stage: "in_progress",
+          activeSession: { id: "s1", status: "running", skill: "forge-code", jobType: "drive" },
+        } as PipelineHealth,
+      }),
+      NOW,
+    );
+    expect(reading.runs).toEqual([{ word: "Running", step: "Issue work", detail: null }]);
   });
 
   it("names the gate holding a queued step, with its detail", () => {
     const [run] = stateReading(row({ pipelineHealth: queuedHealth("runner_stale") }), NOW).runs;
     expect(run.word).toBe("No runner online");
-    expect(run.step).toBe("drive");
+    expect(run.step).toBe("Issue work");
     expect(run.detail).toMatch(/No runner is online/);
   });
 
   it("says Queued when nothing is holding the step, so queued never reads as stuck", () => {
     const [run] = stateReading(row({ pipelineHealth: queuedHealth() }), NOW).runs;
-    expect(run).toEqual({ word: "Queued", step: "drive", detail: null });
+    expect(run).toEqual({ word: "Queued", step: "Issue work", detail: null });
   });
 
   it("keeps a failure's step and reason, and still shows the gate on a deferred retry", () => {
@@ -203,23 +219,32 @@ describe("how long, and measured from what", () => {
     expect(reading.elapsed?.label).toBe("2h");
   });
 
-  it("falls back to the last write only when the row records nothing more specific, and says so", () => {
-    const fresh = stateReading(row({ updatedAt: iso(2 * HOUR) }), NOW).elapsed;
+  it("is how long the issue has stood at its status where the row records nothing more specific", () => {
+    const fresh = stateReading(row({ statusEnteredAt: iso(2 * HOUR) }), NOW).elapsed;
     expect(fresh).toMatchObject({ label: "2h", stale: false });
-    expect(fresh?.title).toMatch(/last written to 2h ago/);
-    expect(fresh?.title).toMatch(/comment on its own does not/);
-    expect(fresh?.title).not.toMatch(/in this status|at this status/i);
+    expect(fresh?.title).toBe(
+      "This issue has been In progress for 2h. Counted from when it entered this status; an edit, a merge mark or a claim does not reset it.",
+    );
   });
 
-  it("reports a fresh write as a write, not as time in a status the issue has sat at for days", () => {
-    const reading = stateReading(row({ status: "open", createdAt: iso(10 * 24 * HOUR), updatedAt: iso(MIN) }), NOW);
-    expect(reading.elapsed?.label).toBe("1m");
-    expect(reading.elapsed?.title).toMatch(/last written to/);
+  // ISS-1229 r8, judge-20: ISS-4 read "In progress 3m" six minutes after it entered In progress,
+  // because a title edit three minutes in had written the row.
+  it("is not shortened by an edit made after the issue entered its status", () => {
+    const edited = row({ status: "in_progress", statusEnteredAt: iso(6 * MIN), updatedAt: iso(3 * MIN) });
+    expect(stateReading(edited, NOW).elapsed?.label).toBe("6m");
+  });
+
+  it("counts days at a status the issue has stood at for days, however fresh its last write", () => {
+    const reading = stateReading(
+      row({ status: "open", createdAt: iso(10 * 24 * HOUR), statusEnteredAt: iso(10 * 24 * HOUR), updatedAt: iso(MIN) }),
+      NOW,
+    );
+    expect(reading.elapsed?.label).toBe("10d");
   });
 
   it("marks a figure of a day or more as stale, and a fresher one not", () => {
-    expect(stateReading(row({ updatedAt: iso(48 * HOUR) }), NOW).elapsed?.stale).toBe(true);
-    expect(stateReading(row({ updatedAt: iso(23 * HOUR) }), NOW).elapsed?.stale).toBe(false);
+    expect(stateReading(row({ statusEnteredAt: iso(48 * HOUR) }), NOW).elapsed?.stale).toBe(true);
+    expect(stateReading(row({ statusEnteredAt: iso(23 * HOUR) }), NOW).elapsed?.stale).toBe(false);
   });
 
   it("has none for a settled issue", () => {

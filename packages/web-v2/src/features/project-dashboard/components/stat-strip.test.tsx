@@ -12,9 +12,10 @@ expect.extend(matchers);
 afterEach(cleanup);
 
 const base: StatStripProps = {
-  liveRuns: 3,
+  liveSessions: 3,
   busyRunners: 2,
   onlineRunners: 4,
+  totalRunners: 4,
   needsYou: 2,
   needsYouCaption: "to act on: 1 failed job · 1 to review",
   oldestWait: "112d",
@@ -35,21 +36,28 @@ const figure = (label: string) => {
 describe("the figures strip", () => {
   it("measures each figure against something the data holds", () => {
     render(<StatStrip {...base} />);
-    expect(figure("Runs live").getByText("2 of 4 runners busy")).toBeInTheDocument();
+    expect(figure("Sessions live").getByText("2 of 4 runners busy")).toBeInTheDocument();
     expect(figure("Needs you").getByText("oldest 112d · to act on: 1 failed job · 1 to review")).toBeInTheDocument();
     expect(figure("Open work").getByText("56 open, not picked up · 11 in flight")).toBeInTheDocument();
     expect(figure("Spend, 24h").getByText("2.0× the 7-day daily average of $7.00")).toBeInTheDocument();
   });
 
-  it("says how many runs are open where the figure counts fewer, since the navigation rail counts them all", () => {
-    render(<StatStrip {...base} liveRuns={0} openRuns={6} />);
-    expect(figure("Runs live").getByText("2 of 4 runners busy · 6 runs open in all")).toBeInTheDocument();
+  it("says how many runs are open, as the navigation rail counts them, beside the sessions working", () => {
+    render(<StatStrip {...base} liveSessions={0} openRuns={6} />);
+    expect(figure("Sessions live").getByText("0")).toBeInTheDocument();
+    expect(figure("Sessions live").getByText("2 of 4 runners busy · 6 runs open")).toBeInTheDocument();
+  });
+
+  it("states no run count while the runs read is out, and keeps the sessions figure it did read", () => {
+    render(<StatStrip {...base} openRuns={6} runsUnread />);
+    expect(figure("Sessions live").getByText("3")).toBeInTheDocument();
+    expect(figure("Sessions live").getByText("2 of 4 runners busy · runs not read")).toBeInTheDocument();
   });
 
   it("states no runner count while the runners read is out", () => {
     render(<StatStrip {...base} runnersUnread />);
-    expect(figure("Runs live").getByText("runners not read")).toBeInTheDocument();
-    expect(figure("Runs live").queryByText(/runners busy/)).toBeNull();
+    expect(figure("Sessions live").getByText("runners not read")).toBeInTheDocument();
+    expect(figure("Sessions live").queryByText(/runners busy/)).toBeNull();
   });
 
   it("shows no comparison for spend where the week holds none, and invents none", () => {
@@ -99,12 +107,11 @@ describe("the figures strip", () => {
     expect(n.getByText(/could not be read: offline/)).toBeInTheDocument();
   });
 
-  it("states no run count while the runs read has not arrived", () => {
-    render(<StatStrip {...base} runsUnread />);
-    const n = figure("Runs live");
+  it("states no session count while the sessions read has not arrived", () => {
+    render(<StatStrip {...base} sessionsUnread />);
+    const n = figure("Sessions live");
     expect(n.getByText("…")).toBeInTheDocument();
     expect(n.queryByText("3")).toBeNull();
-    expect(n.getByText("runs not read")).toBeInTheDocument();
   });
 
   it("does not carry the Pass rate placeholder as a figure", () => {

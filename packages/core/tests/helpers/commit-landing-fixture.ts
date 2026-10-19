@@ -29,6 +29,8 @@ export const OWN_TWIN = `${OWN.slice(0, 7)}${'0'.repeat(33)}`;
 interface FakeCommit {
   message: string;
   on: string[];
+  /** Every commit this one carries, itself aside: what a compare from one of them reads `ahead`. */
+  after?: string[];
 }
 
 export const repo = {
@@ -38,7 +40,40 @@ export const repo = {
   down: null as string | null,
   /** A merged pull request Forge projected for the issue, standing in for `repo_pull_requests`. */
   pullRequest: null as { commitSha: string; mergedAt: Date } | null,
+  /** The first compare naming each head in `order` waits for all of them, then each goes on in that
+   *  order, the next only once `settled` says the one before it wrote: two racing readers both read
+   *  the row before either writes, and they write in the order named. */
+  hold: null as Hold | null,
 };
+
+interface Hold {
+  order: string[];
+  arrived: Map<string, () => void>;
+  settled: (sha: string) => Promise<void>;
+  /** Why the order could not be kept; the rest are let go so the test ends and reads it. */
+  failed?: unknown;
+}
+
+async function releaseInOrder(hold: Hold) {
+  try {
+    for (const sha of hold.order) {
+      hold.arrived.get(sha)?.();
+      await hold.settled(sha);
+    }
+  } catch (err) {
+    hold.failed = err;
+    for (const go of hold.arrived.values()) go();
+  }
+}
+
+async function waitAtTheHold(head: string): Promise<void> {
+  const hold = repo.hold;
+  if (!hold?.order.includes(head) || hold.arrived.has(head)) return;
+  await new Promise<void>((go) => {
+    hold.arrived.set(head, go);
+    if (hold.arrived.size === hold.order.length) void releaseInOrder(hold);
+  });
+}
 
 /** `merge-record.js` with the projection's merged pull request taken from `repo.pullRequest`. */
 export function fakeMergeRecord(real: typeof MergeRecord): typeof MergeRecord {
@@ -99,6 +134,20 @@ export function fakeGitHubClient(real: typeof GitHubClient): typeof GitHubClient
               commit: { message: hit[1].message, committer: { date: '2026-09-30T09:00:00Z' } },
             } as T;
           }
+          // A compare of two commits, asked for its status alone (`descends`).
+          const pair = /\/compare\/([0-9a-f]+)\.\.\.([0-9a-f]+)\?per_page=1$/.exec(path);
+          if (pair?.[1] && pair[2]) {
+            if (repo.down === 'compare') {
+              throw new real.GitHubReadError(502, httpError(502, path).message);
+            }
+            const [base, head] = [find(pair[1]), find(pair[2])];
+            if (!base || !head) throw new real.GitHubReadError(404, httpError(404, path).message);
+            await waitAtTheHold(head[0]);
+            if (base[0] === head[0]) return { status: 'identical' } as T;
+            if (head[1].after?.includes(base[0])) return { status: 'ahead' } as T;
+            if (base[1].after?.includes(head[0])) return { status: 'behind' } as T;
+            return { status: 'diverged' } as T;
+          }
           const cmp = /\/compare\/([0-9a-f]+)\.\.\.(.+)$/.exec(path);
           if (cmp?.[1] && cmp[2]) {
             const hit = find(cmp[1]);
@@ -141,6 +190,7 @@ export function useCommitLandingWorld() {
     repo.reads.length = 0;
     repo.down = null;
     repo.pullRequest = null;
+    repo.hold = null;
     repo.commits = new Map<string, FakeCommit>([
       [OWN, { message: `fix(core): mark by commit (ISS-${SEQ})`, on: ['main'] }],
       [FOREIGN, { message: 'fix(core): something else (ISS-1316)', on: ['main'] }],
@@ -210,7 +260,7 @@ export function useCommitLandingWorld() {
       return { id, projectId, mergedAt: null, declaredLandingShape: null };
     },
 
-    /** An implementation handoff recording `commitSha`, the commit a mark naming none falls back to. */
+    /** An implementation handoff recording `commitSha`, which no mark reads. */
     async handoff(issueId: string, commitSha: string): Promise<void> {
       const runId = randomUUID();
       await harness.db.execute(sql`
@@ -218,8 +268,8 @@ export function useCommitLandingWorld() {
         VALUES (${runId}, ${projectId}, ${issueId}, 'issue', 'running', now())
       `);
       await harness.db.execute(sql`
-        INSERT INTO issue_step_contexts (project_id, issue_id, pipeline_run_id, kind, step, payload)
-        VALUES (${projectId}, ${issueId}, ${runId}, 'handoff', 'code', ${JSON.stringify({ commitSha })}::jsonb)
+        INSERT INTO run_journal (project_id, issue_id, run_id, phase, source, outcome, handoff, handoff_at, ended_at)
+        VALUES (${projectId}, ${issueId}, ${runId}, 'code', 'agent', 'ok', ${JSON.stringify({ commitSha })}::jsonb, now(), now())
       `);
     },
 
@@ -264,8 +314,16 @@ export function useCommitLandingWorld() {
         status: string;
         merged_at: unknown;
         merged_commit_sha: string | null;
-      }>(sql`SELECT status, merged_at, merged_commit_sha FROM issues WHERE id = ${id}`);
-      return r as { status: string; merged_at: unknown; merged_commit_sha: string | null };
+        merged_claimed_commit: string | null;
+      }>(
+        sql`SELECT status, merged_at, merged_commit_sha, merged_claimed_commit FROM issues WHERE id = ${id}`,
+      );
+      return r as {
+        status: string;
+        merged_at: unknown;
+        merged_commit_sha: string | null;
+        merged_claimed_commit: string | null;
+      };
     },
 
     async comments(id: string): Promise<string[]> {

@@ -1,4 +1,4 @@
-import { and, asc, eq, isNotNull, isNull, ne, or, sql } from 'drizzle-orm';
+import { and, desc, eq, isNotNull, isNull, ne, or, sql } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { repoPullRequests } from '../db/schema-repo-projection.js';
@@ -14,6 +14,7 @@ export type MergeEvidence =
       via: 'kernel' | 'event' | 'repository';
       /** Where the work also landed outside git, on a project whose landing is named. */
       landing?: string | null;
+      supersedes?: string | null;
     }
   | { kind: 'landed'; landing: string; at?: Date | null; via: 'mark' }
   | {
@@ -71,6 +72,85 @@ export function mergeMarkFields(row: MergeMarkColumns): {
   };
 }
 
+// A person reads a commit by its first seven characters; the whole sha stays in the answer's fields.
+export const shortCommit = (sha: string): string => sha.replace(/^([0-9a-f]{7})[0-9a-f]+$/i, '$1');
+export const shortenCommits = (text: string): string =>
+  text.replace(/\b([0-9a-f]{7})(?:[0-9a-f]{33}|[0-9a-f]{57})\b/gi, '$1');
+
+/** Another part of Forge's reason, cut to the one clause a sentence of ours can carry. */
+export function firstClause(why: string): string {
+  return (shortenCommits(why).split(/\n| — |; |\. /)[0] ?? why).trim().replace(/\.$/, '');
+}
+
+type Unverified = {
+  commit: string;
+  why: string;
+  clears: string;
+  noReader: boolean;
+  notKept?: string | null;
+};
+
+/** What must hold, cut to its first phrase; a reader's route reads as "once Forge can read it". */
+export function markAgainOnce(clears: string): string {
+  const once = firstClause(clears.replace(/^once\s+/, '')).split(', ')[0] ?? clears;
+  return /^the tracker can read the project's repository\b/.test(once)
+    ? 'Mark it again once Forge can read the repository'
+    : `Mark it again once ${once}`;
+}
+
+/** What checks it, in a sentence of ours; the host's own fix travels in the quoted reason. */
+export function checkStep(u: { why?: string; clears: string; noReader: boolean }): string {
+  if (!u.noReader) return markAgainOnce(u.clears);
+  const fix = u.why ?? '';
+  if (/\bset an SSH clone URL/i.test(fix)) {
+    return "Set the repository's SSH clone URL and a deploy key, then mark it again";
+  }
+  return /\bbind the repository\b/.test(fix)
+    ? 'Attach a deploy key or bind the repository, then mark it again'
+    : 'Attach a deploy key, then mark it again';
+}
+
+/** Another part of Forge's words, quoted on a line of their own so they never run on inside ours. */
+export function quoted(words: string): string {
+  return `> ${words.replace(/\s+/g, ' ').trim()}`;
+}
+
+/** A refusal quoted beneath ours: its sentences on one quoted line, each host line after it whole as code. */
+export function quotedRefusal(why: string): string {
+  const [ours = '', ...host] = why.trim().split('\n');
+  const said = ours
+    .trim()
+    .replace(/([^.!?])$/, '$1.')
+    .replace(/^[a-z](?=[a-z]*\s)/, (c) => c.toUpperCase());
+  const code = host.flatMap((l) => (l.trim() ? [`>\n> \`${l.trim().replace(/`/g, "'")}\``] : []));
+  return [quoted(said), ...code].join('\n');
+}
+
+/** Our sentences, then the reason another part of Forge gave, quoted beneath them (criterion 63). */
+export function withReason(sentences: string, why: string | null | undefined): string {
+  return why?.trim() ? `${sentences}\n${quotedRefusal(shortenCommits(why))}` : sentences;
+}
+
+/** A repository's address as code, so `git@host:org/repo` or `user@host` is never a mail link. */
+export function addressesAsCode(text: string): string {
+  return text.replace(
+    /(`[^`\n]*`)|((?:ssh|git|https?):\/\/[^\s`'"<>()]*[^\s`'"<>().,;:]|[\w.-]+@[\w-]+(?:\.[\w-]+)*(?::[^\s`'"<>()]*[^\s`'"<>().,;:])?)/g,
+    (whole, code: string | undefined, address: string | undefined) =>
+      code ? whole : `\`${address}\``,
+  );
+}
+
+/** A repeat beside the claim the row keeps: why it is unchecked, or what records the other commit. */
+export function keptClaimRepeat(u: Unverified): string {
+  const named = u.notKept ? shortCommit(u.notKept) : null;
+  return named
+    ? `Commit ${named} was not recorded, because the first claim, ${shortCommit(u.commit)}, stands. To record ${named} instead, use Unmark, then Mark merged again.`
+    : withReason(
+        `Commit ${shortCommit(u.commit)} stays a claim, because Forge could not check it. ${checkStep(u)}.`,
+        u.why,
+      );
+}
+
 /** The sentence saying which kind this is, written once: the audit comment and the caller's
  *  answer are both built from it. `claimedCommit` is the caller's word, not the column. */
 export function describeMergeMark(args: {
@@ -82,71 +162,53 @@ export function describeMergeMark(args: {
   readFrom?: { repository: string; branch: string } | null;
   /** The repository this call found the claimed commit in; it says nothing of whose landing it is. */
   claimHeldBy?: string | null;
-  /** The handoff's commit, which this call kept off the mark because the repository did not resolve it. */
-  leftOut?: { commit: string; why: string } | null;
   /** The commit the mark holds as a claim because the project gives Forge no way to read its
    *  repository (ISS-1409), and the cause with the setting that clears it. */
-  unverified?: {
-    commit: string;
-    why: string;
-    clears: string;
-    noReader: boolean;
-    notKept?: string | null;
-  } | null;
+  unverified?: Unverified | null;
 }): string {
   if (args.kind === 'unmarked') {
-    return 'this issue carries no merged mark: `merged_at` is empty, so nothing here says the work landed';
+    return 'This issue is not marked merged, so nothing here says the work landed.';
   }
   if (args.kind === 'landed') {
-    return `this mark names where the work landed outside git: \`merged_landing\` holds ${args.landing ?? 'the landing it was given'}. It is the word of whoever marked it, not a merge Forge observed`;
+    return `Marked as landed outside git, at ${args.landing ?? 'the landing it was given'}. Forge did not see it land; this is the marker's word.`;
   }
-  const left = args.leftOut
-    ? `. The commit ${args.leftOut.commit} this issue's implementation handoff recorded is not recorded on this mark, because ${args.leftOut.why}`
-    : '';
   if (args.kind === 'observed') {
     // Against the COLUMN, not the row this call selected: docs/modules/issues/merge-mark.md.
     const differs =
       !!args.claimedCommit &&
       args.claimedCommit.toLowerCase() !== (args.commitSha ?? '').toLowerCase();
-    const overruled = differs
-      ? `. Commit ${args.claimedCommit}, which this call named, is recorded as its claim and is not what the column holds`
-      : '';
+    const at = args.commitSha ? shortCommit(args.commitSha) : 'the commit it landed at';
     const source = args.readFrom
-      ? `read from ${args.readFrom.repository} itself, which resolves it, gives it to this issue by its subject and holds it on ${args.readFrom.branch}`
-      : "read by Forge itself, from its record of the pull request or from the project's repository";
-    return `this mark is a merge Forge observed: \`merged_commit_sha\` holds ${args.commitSha ?? 'the commit it landed at'}, ${source}, rather than from anybody's word for it${overruled}${left}`;
+      ? `on ${args.readFrom.branch} of ${args.readFrom.repository}`
+      : 'in the pull request or the repository';
+    // The column holds the merge Forge saw, and the CHECK keeps no claim beside it.
+    const overruled = differs
+      ? ` Commit ${shortCommit(args.claimedCommit as string)}, named in this mark, was not recorded.`
+      : '';
+    return `Forge saw this merge land at commit ${at}, ${source}.${overruled}`;
   }
   if (args.unverified) {
-    const notKept = args.unverified.notKept
-      ? `. Commit ${args.unverified.notKept}, which this call named, was NOT recorded: this issue's first claim, ${args.unverified.commit}, stands, and \`unmark\` then \`mark\` is the only correction`
-      : '';
-    const { noReader, why, clears } = args.unverified;
-    const because = noReader
-      ? "because Forge has no way to read this project's repository"
-      : `because Forge could not check it against this project's repository: ${why}`;
-    const toVerify = noReader
-      ? `To have Forge verify it: ${why}. Then mark again`
-      : `To have Forge verify it, mark again ${clears}`;
-    return (
-      'this mark is a CLAIM Forge did not observe, not a merge it witnessed: ' +
-      `commit ${args.unverified.commit} is recorded as this call's claim in \`merged_claimed_commit\` ` +
-      `and is NOT verified, ${because}; it did not ` +
-      'check that the commit exists, declares this issue or is on the base branch, and ' +
-      `\`merged_commit_sha\` stays empty. ${toVerify}, naming the commit or none, and Forge checks ` +
-      `the claim and upgrades this mark to observed, or refuses it by name${notKept}${left}`
+    const u = args.unverified;
+    const unchecked = u.noReader
+      ? "Forge has no way to read this project's repository, so it did not check it."
+      : 'Forge could not check it against the repository.';
+    return withReason(
+      `Commit ${shortCommit(u.commit)} was named and is kept as a claim. ${unchecked} ${checkStep(u)}.`,
+      u.why,
     );
   }
-  const claim = args.claimedCommit
-    ? `commit ${args.claimedCommit} is recorded here as this call's claim and is NOT in \`merged_commit_sha\``
-    : 'no commit is recorded in `merged_commit_sha`';
-  const held =
-    args.claimedCommit && args.claimHeldBy
-      ? `. ${args.claimHeldBy} holds commit ${args.claimedCommit}: Forge read that much there, and not whether it is this issue's landing`
-      : '';
-  return `this mark is a CLAIM Forge did not observe, not a merge it witnessed: ${claim}, because that column holds only a merge Forge has its own record of. Forge holds no merged pull request for this issue${held}${left}`;
+  const unseen = 'Forge did not see this merge, so the mark is a claim that names no commit.';
+  if (!args.claimedCommit) {
+    return 'No commit was named. Forge did not see this merge, so the mark is a claim.';
+  }
+  // A person's commit is checked only for the repository holding it, and the row keeps none of it:
+  // it counts as no work evidence (`work-evidence.ts`), so it is said to live in the comment alone.
+  const claimed = shortCommit(args.claimedCommit);
+  const held = args.claimHeldBy ? ` is in ${args.claimHeldBy}, and` : '';
+  return `Commit ${claimed}${held} is noted in the comment only. ${unseen}`;
 }
 
-async function readBack(
+export async function readMergeColumns(
   executor: MergeRecordExecutor,
   issueId: string,
 ): Promise<Omit<MergeRecord, 'wrote'>> {
@@ -195,9 +257,12 @@ export async function recordIssueMerge(
   // A claim may be attached to a bare `asserted` mark (one naming no commit, landing or claim), the
   // way an observed write may replace one: the first stamp still wins `merged_at`.
   const claimsOnly = evidence.kind === 'asserted' && Boolean(evidence.unverifiedCommit);
+  const supersedes = evidence.kind === 'observed' ? (evidence.supersedes ?? null) : null;
   const gate =
     evidence.kind === 'observed'
-      ? isNull(issues.mergedCommitSha)
+      ? supersedes
+        ? eq(issues.mergedCommitSha, supersedes)
+        : isNull(issues.mergedCommitSha)
       : claimsOnly
         ? or(
             isNull(issues.mergedAt),
@@ -214,8 +279,9 @@ export async function recordIssueMerge(
     .update(issues)
     .set({
       mergedAt: claimsOnly ? sql`coalesce(${issues.mergedAt}, ${stampExpr})` : stampExpr,
-      // A merge Forge read replaces any claim in the same statement: the CHECK holds a claim
-      // beside no commit.
+      // When the mark was first set, which the owed-close sweep counts from; a later write keeps it.
+      mergeMarkedAt: sql`coalesce(${issues.mergeMarkedAt}, now())`,
+      // A merge Forge read replaces any claim here: the CHECK holds a claim beside no commit.
       ...(evidence.kind === 'observed'
         ? { mergedCommitSha: evidence.commitSha, mergedClaimedCommit: null }
         : {}),
@@ -250,13 +316,14 @@ export async function recordIssueMerge(
       claimedCommit: wrote.mergedClaimedCommit,
     };
   }
-  const held = await readBack(executor, issueId);
+  const held = await readMergeColumns(executor, issueId);
   return { wrote: false, ...held };
 }
 
 /** Clear the claim, and report whether the row took it. It re-blocks nothing (ISS-1100). The
  *  `closed` guard is IN the statement: a read then a write leaves a window where the row is closed
- *  by somebody else, and what arrives then is the trigger's raw exception (ISS-1108). */
+ *  by somebody else, and what arrives then is the trigger's raw exception (ISS-1108). A row holding
+ *  no mark is not taken either, so a call that would clear nothing is never reported as a clear. */
 export async function clearIssueMerge(
   executor: MergeRecordExecutor,
   issueId: string,
@@ -265,12 +332,13 @@ export async function clearIssueMerge(
     .update(issues)
     .set({
       mergedAt: null,
+      mergeMarkedAt: null,
       mergedCommitSha: null,
       mergedLanding: null,
       mergedClaimedCommit: null,
       updatedAt: sql`now()`,
     })
-    .where(and(eq(issues.id, issueId), ne(issues.status, 'closed')))
+    .where(and(eq(issues.id, issueId), ne(issues.status, 'closed'), isNotNull(issues.mergedAt)))
     .returning({ id: issues.id });
   return rows.length > 0;
 }
@@ -290,8 +358,49 @@ export async function observedMergeForIssue(
         isNotNull(repoPullRequests.mergedAt),
       ),
     )
-    .orderBy(asc(repoPullRequests.mergedAt))
+    .orderBy(desc(repoPullRequests.mergedAt))
     .limit(1);
   if (!row?.sha || !row.at) return null;
   return { commitSha: row.sha, mergedAt: row.at };
+}
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** A repeated mark changes nothing, and says so: no stored timestamp, never "Marked merged". */
+export function alreadyMarkedSentence(mergedAt: Date | null): string {
+  const on = mergedAt
+    ? ` on ${mergedAt.getUTCDate()} ${MONTHS[mergedAt.getUTCMonth()]} ${mergedAt.getUTCFullYear()}`
+    : '';
+  return `Already marked merged${on}, so this call changed nothing`;
+}
+
+export const CHANGE_THE_MARK = 'To change the mark, use Unmark, then Mark merged again.';
+
+/** The audit comment a person reads: words, never field names. A repeat opens with what it did,
+ *  nothing; a first mark names its commit once, in the label only where the detail does not. */
+export function threadBody(args: {
+  op: 'mark' | 'unmark';
+  target?: string | undefined;
+  note?: string | undefined;
+  stamp: MergeRecord;
+  claimedCommit: string | null;
+  repeated: boolean;
+  unread: string | null;
+  after: string;
+  markDetail: string;
+}): string {
+  const note = args.note ? quoted(args.note) : null;
+  if (args.repeated) {
+    const parts = args.unread
+      ? [addressesAsCode(args.unread), note]
+      : [`${alreadyMarkedSentence(args.stamp.mergedAt)}.`, note, addressesAsCode(args.after)];
+    return parts.filter(Boolean).join('\n\n');
+  }
+  if (args.op !== 'mark') return ['Merge mark removed.', note].filter(Boolean).join('\n\n');
+  const labelled = args.stamp.commitSha ?? args.claimedCommit ?? args.stamp.claimedCommit;
+  const named = labelled ? shortCommit(labelled) : null;
+  const at = named && !args.markDetail.includes(named) ? `, at commit ${named}` : '';
+  const into = args.target ? ` into ${args.target}` : '';
+  const said = `Marked merged${into}${at}.\n${addressesAsCode(args.markDetail)}`;
+  return note ? `${said}\n\n${note}` : said;
 }

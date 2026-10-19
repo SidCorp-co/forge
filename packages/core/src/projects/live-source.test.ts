@@ -59,7 +59,7 @@ describe('resolveLiveSource', () => {
     );
     expect(s).toEqual({
       kind: 'refused',
-      reason: 'the GitHub App is not installed on SidCorp-co',
+      reason: 'The GitHub App is not installed on SidCorp-co.',
       cause: 'the GitHub App is not installed on SidCorp-co',
       unbound: false,
       route: 'binding',
@@ -81,7 +81,7 @@ describe('resolveLiveSource', () => {
     expect(s.kind).toBe('refused');
     const reason = s.kind === 'refused' ? s.reason : '';
     expect(reason).toBe(
-      `Forge holds no GitHub binding and no deploy key for this project's repository on gitlab.com, so it cannot read the repository — attach a deploy key with write access to ${GITLAB} under the project's Settings → Runners → Git access (since Forge reads the repository with it and the project's runner pushes with it)`,
+      `Forge cannot read this project's repository on gitlab.com, since it holds no GitHub binding and no deploy key. Attach a deploy key with write access to ${GITLAB} under the project's Settings → Runners → Git access.`,
     );
     expect(reason).not.toMatch(/GitHub repository|Integrations/);
     expect(s).toMatchObject({ unbound: true, route: 'deploy_key' });
@@ -100,7 +100,7 @@ describe('resolveLiveSource', () => {
     for (const s of [keyless, urlless]) {
       expect(s.kind === 'refused' && s.reason).not.toMatch(/branches/);
       expect(s.kind === 'refused' && s.cause).toMatch(
-        /repository to read|cannot read the repository$/,
+        /no repository to read$|cannot read this project's repository on /,
       );
       expect(s.kind === 'refused' && s.clears).toContain(
         "the project's Settings → Runners → Git access",
@@ -114,7 +114,7 @@ describe('resolveLiveSource', () => {
       deps({ row: { repoUrl: 'git@github.com:SidCorp-co/forge.git', privateKeyEnc: null } }),
     );
     expect(s.kind === 'refused' && s.reason).toMatch(
-      /on github\.com, .*Git access \(.*\), or bind the repository on its Integrations page$/,
+      /repository on github\.com, since .* Git access\. Or bind the repository on its Integrations page\.$/,
     );
   });
 
@@ -129,7 +129,7 @@ describe('resolveLiveSource', () => {
       deps({ row: { repoUrl: 'https://gitlab.com/a/b.git', privateKeyEnc: keyEnc } }),
     );
     expect(s.kind === 'refused' && s.reason).toMatch(
-      /^this project's repository URL https:\/\/gitlab\.com\/a\/b\.git is not an SSH remote/,
+      /^This project's repository URL https:\/\/gitlab\.com\/a\/b\.git is not an SSH remote/,
     );
   });
 

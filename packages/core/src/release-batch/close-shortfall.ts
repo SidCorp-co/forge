@@ -1,11 +1,17 @@
 // What the finish's close would refuse each roster issue for, read before the press by calling the
 // close's own predicates (ISS-1337): `docs/modules/release/release-batch.md`.
 
+import { markMergedSteps } from '@forge/contracts/mark-merged-words';
 import { db } from '../db/client.js';
 import { resolveDeclaredEntryCriteria } from '../issues/entry-criteria.js';
+import { entryRecordsInWords } from '../issues/entry-criteria-keys.js';
 import { refuseUnshippedClose } from '../issues/merged-at.js';
 import { checkTransitionEvidence } from '../issues/transition-evidence.js';
+import { issueHasSession } from '../pipeline/runs-of-issue.js';
 import { openQuestionIdsOn, openQuestionsFault } from '../questions/issue-coupling.js';
+import { shortfallSaid } from './shortfall-words.js';
+
+export { shortfallSaid, shortfallSentence } from './shortfall-words.js';
 
 export type CloseShortfallCode =
   | 'CLOSE_REQUIRES_SHIPPED'
@@ -19,6 +25,8 @@ export interface CloseShortfall {
   reason: string;
   /** The act that clears it. */
   clears: string;
+  /** The same act said on the issue's own page, whose controls are right there. */
+  clearsHere: string;
   /** The close's own sentence, unchanged. */
   detail: string;
   details: Record<string, unknown>;
@@ -35,9 +43,9 @@ function landingShortfallOf(refusal: {
   return {
     code: 'CLOSE_REQUIRES_SHIPPED',
     reason: outside ? 'no mark naming where its work landed' : 'not marked merged',
-    clears: outside
-      ? 'Mark it merged with its landing: the live URL, CMS entry or storefront resource the work now is.'
-      : 'Mark it merged where its work landed.',
+    // The control's own words, so the sentence names the field as the page labels it.
+    clears: markMergedSteps(outside),
+    clearsHere: markMergedSteps(outside),
     detail: refusal.detail,
     details: { ...refusal.details, shape: outside ? 'outside_git' : 'git' },
   };
@@ -64,6 +72,10 @@ async function shortfallsOf(
         n === 1
           ? 'Answer it in its "Decision waiting" card on the issue\'s page.'
           : 'Answer them in their "Decision waiting" cards on the issue\'s page.',
+      clearsHere:
+        n === 1
+          ? 'Answer it in the Decision waiting card above.'
+          : 'Answer them in the Decision waiting cards above.',
       detail: fault.detail,
       details: fault.details,
     });
@@ -83,8 +95,13 @@ async function shortfallsOf(
       : [];
     found.push({
       code: 'ENTRY_CRITERIA_UNMET',
-      reason: `missing what this project requires to close: ${unmet.join(', ')}`,
-      clears: 'Write each missing record on the issue.',
+      // The page has no editor for these records, so the door is the agent that writes them (r5).
+      reason: `missing ${entryRecordsInWords(unmet)}, which this project requires before a close`,
+      // Open session is on the header only where the issue has a session (ISS-1228), so the line
+      // names it only there and names Reopen, which every such page offers, everywhere else.
+      ...((await issueHasSession(projectId, issueId))
+        ? { clears: ENTRY_RECORDS_CLEAR, clearsHere: ENTRY_RECORDS_CLEAR_HERE }
+        : { clears: ENTRY_RECORDS_REOPEN, clearsHere: ENTRY_RECORDS_REOPEN_HERE }),
       detail: violation.detail,
       details: violation.details,
     });
@@ -110,10 +127,22 @@ export async function rosterCloseShortfalls(
   return out;
 }
 
-/** One line per shortfall, the way a hold or an outcome names it: "ISS-4: holds 1 open question. Answer it…". */
+export const ENTRY_RECORDS_CLEAR =
+  "An agent writes them through Forge's issue tools. To start one, press Open session at the top of the issue's page.";
+
+export const ENTRY_RECORDS_CLEAR_HERE =
+  "An agent writes them through Forge's issue tools. To start one, press Open session at the top of this page.";
+
+export const ENTRY_RECORDS_REOPEN =
+  "An agent writes them through Forge's issue tools. This issue has no session to open, so use Reopen in the issue's actions menu, and the agent that takes it writes them.";
+
+export const ENTRY_RECORDS_REOPEN_HERE =
+  "An agent writes them through Forge's issue tools. This issue has no session to open, so use Reopen in the actions menu at the top of this page, and the agent that takes it writes them.";
+
+/** One line per shortfall, the way a hold or an outcome names it: "ISS-4: It holds 1 open question. Answer it…". */
 export function shortfallLine(
   displayId: string,
   shortfalls: ReadonlyArray<Pick<CloseShortfall, 'reason' | 'clears'>>,
 ): string {
-  return `${displayId}: ${shortfalls.map((s) => `${s.reason}. ${s.clears}`).join(' ')}`;
+  return `${displayId}: ${shortfalls.map(shortfallSaid).join(' ')}`;
 }

@@ -39,8 +39,9 @@ describe('ISS-1149 · shippedPerDay is one calendar window', () => {
   async function plant(projectId: string, seq: number, to: string, at: Date) {
     const issueId = randomUUID();
     await harness.db.execute(sql`
-      INSERT INTO issues (id, project_id, iss_seq, title, status, priority, created_by_id)
-      VALUES (${issueId}, ${projectId}, ${seq}, 'shipped', 'open', 'medium', ${ownerId})
+      INSERT INTO issues (id, project_id, iss_seq, title, status, priority, created_by_id, merged_at)
+      VALUES (${issueId}, ${projectId}, ${seq}, 'shipped', 'open', 'medium', ${ownerId},
+              ${at.toISOString()}::timestamptz)
     `);
     await harness.db.execute(sql`
       INSERT INTO activity_log (id, issue_id, actor_type, actor_id, action, payload, created_at)

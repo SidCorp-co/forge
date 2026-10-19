@@ -2,12 +2,20 @@ import { and, eq, gte, inArray, isNull, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { notifications } from '../db/schema.js';
 import { issueWorkInFlightSql } from '../issues/issue-lease.js';
-import { ASSERTS_WORK_IN_PROGRESS } from '../issues/status-sets.js';
+import { lastWorkedAtSql } from '../issues/status-entered-at.js';
+import { ASSERTS_WORK_IN_PROGRESS, statusLabel } from '../issues/status-sets.js';
+import { elapsedWords } from '../lib/elapsed-words.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../logger.js';
+import { resolveNotifications } from '../notifications/auto-resolve.js';
 import { emitNotification } from '../notifications/emit.js';
+import { sweepGroup } from '../notifications/explanations.js';
 import { projectAdminUserIds } from '../notifications/project-admins.js';
-import { sweepGroupKey } from './stranded-issues.js';
+import {
+  outrankedSql,
+  retireOutrankedNotices,
+  type StuckNoticeSuffix,
+} from './stuck-precedence.js';
 
 /**
  * How long an issue may assert work with no run behind it before it is named.
@@ -30,6 +38,8 @@ export interface IssueRunInvariantResult {
   detected: number;
   /** Episodes named this tick (0 when every one was already named). */
   reported: number;
+  /** Named episodes whose cause had ended, now resolved. */
+  resolved: number;
 }
 
 /**
@@ -39,16 +49,80 @@ export function orphanedAssertionResolutionKey(issueId: string): string {
   return `issue:${issueId}:run-assertion-orphaned`;
 }
 
+const ORPHAN_KEY_SUFFIX = ':run-assertion-orphaned' satisfies StuckNoticeSuffix;
+
+/**
+ * Resolve every named orphan whose cause has ended: the issue left the asserting statuses, its
+ * project was archived, or a job, run or lease is behind it again. The detector's predicate without its grace, so a write
+ * that only moves the issue's clock ends nothing.
+ */
+export async function resolveEndedOrphanAssertions(): Promise<number> {
+  const ended = (await db.execute(sql`
+    SELECT DISTINCT n.resolution_key AS "key"
+      FROM notifications n
+      JOIN issues i ON i.id = n.issue_id
+      JOIN projects p ON p.id = i.project_id
+     WHERE n.type = 'issue_stranded'
+       AND n.resolved_at IS NULL
+       AND n.resolution_key LIKE ${`issue:%${ORPHAN_KEY_SUFFIX}`}
+       AND (
+         i.status NOT IN (${sql.join(
+           ASSERTS_WORK_IN_PROGRESS.map((s) => sql`${s}`),
+           sql`, `,
+         )})
+         -- An archived project raises no stuck-issue notice (archived-project-notices.ts).
+         OR p.archived_at IS NOT NULL
+         OR ${issueWorkInFlightSql({
+           issueId: sql`i.id`,
+           projectId: sql`i.project_id`,
+           issueKey: sql`'ISS-' || i.iss_seq`, // ISS-992:canonical
+         })}
+       )
+  `)) as unknown as { key: string }[];
+  let resolved = 0;
+  for (const { key } of ended) resolved += await resolveNotifications(key);
+  return resolved;
+}
+
 interface OrphanRow {
   issueId: string;
   projectId: string;
   issSeq: number;
   issuePrefix: string | null;
+  projectName: string;
   status: string;
   title: string;
-  /** When the issue last asserted, as the driver hands it back. */
+  /** When the last work on the issue ended, or it entered its status if later: Postgres's own text. */
   since: string;
 }
+
+/**
+ * What the project's admins read about one orphan: the issue with its project, the status in the
+ * screen's word, and how long nothing has worked it, never the stored time a raw query hands back.
+ */
+export function orphanNotice(args: {
+  ref: string;
+  projectName: string;
+  status: string;
+  since: string;
+  now: Date;
+}): { title: string; body: string } {
+  return {
+    title: `${args.ref} says work is in progress with no run behind it — ${args.projectName}`,
+    body:
+      `${args.ref} reads ${statusLabel(args.status)}, and nothing has worked it for ${elapsedWords(args.since, args.now)}: ` +
+      'no job, issue run or run session is live for it.',
+  };
+}
+
+/** Counted from the work's end, not the row's last write: a later edit moves `updated_at` (ISS-1229). */
+const ORPHAN_SINCE = lastWorkedAtSql({
+  id: sql`i.id`,
+  status: sql`i.status`,
+  createdAt: sql`i.created_at`,
+  projectId: sql`i.project_id`,
+  issueKey: sql`'ISS-' || i.iss_seq`, // ISS-992:canonical
+});
 
 async function orphanedAssertions(now: Date): Promise<OrphanRow[]> {
   const cutoff = new Date(now.getTime() - ORPHAN_ASSERTION_GRACE_MS).toISOString();
@@ -57,16 +131,19 @@ async function orphanedAssertions(now: Date): Promise<OrphanRow[]> {
            i.project_id    AS "projectId",
            i.iss_seq       AS "issSeq",
            p.issue_prefix  AS "issuePrefix",
+           p.name          AS "projectName",
            i.status        AS "status",
            i.title         AS "title",
-           i.updated_at    AS "since"
+           ${ORPHAN_SINCE} AS "since"
       FROM issues i
       JOIN projects p ON p.id = i.project_id
      WHERE i.status IN (${sql.join(
        ASSERTS_WORK_IN_PROGRESS.map((s) => sql`${s}`),
        sql`, `,
      )})
+       -- Which issues are named is unchanged; only what the notice counts from is ORPHAN_SINCE.
        AND i.updated_at < ${cutoff}
+       AND p.archived_at IS NULL
        -- the same predicate the admissible read uses (ISS-1109). This pass and that one
        -- were verbatim twins, and a sweep that drifts from the pool reports as orphaned
        -- exactly the issues a box is working. Matching on issue_prefix here would make a
@@ -76,6 +153,8 @@ async function orphanedAssertions(now: Date): Promise<OrphanRow[]> {
          projectId: sql`i.project_id`,
          issueKey: sql`'ISS-' || i.iss_seq`, // ISS-992:canonical
        })}
+       -- One issue, one stuck reason: a shipped issue never closed is told as that (ISS-1229 r14).
+       AND NOT ${outrankedSql(sql`i.id`, ORPHAN_KEY_SUFFIX)}
   `)) as unknown as OrphanRow[];
 }
 
@@ -129,21 +208,24 @@ async function emit(
 ): Promise<void> {
   const admins = await projectAdminUserIds(args.row.projectId);
   if (admins.length === 0) return;
-  await emitNotification({
-    recipients: admins,
-    projectId: args.row.projectId,
-    issueId: args.row.issueId,
-    type: 'issue_stranded',
-    resolutionKey,
-    groupKey: sweepGroupKey('orphan-assertion', args.now),
-    groupTitle: 'Issues asserting work in progress with no run behind them',
-    title: `${args.ref} says work is in progress with no run behind it`,
-    body:
-      `${args.ref} (${args.row.status}) has asserted work in progress since ` +
-      `${args.row.since} and no job, issue run or run session is live for it. ` +
-      'Nothing has been moved: whether the issue or the run record is the wrong half is not ' +
-      'decidable from here.',
-  });
+  await emitNotification(
+    {
+      recipients: admins,
+      projectId: args.row.projectId,
+      issueId: args.row.issueId,
+      type: 'issue_stranded',
+      resolutionKey,
+      ...sweepGroup('orphan-assertion', args.now),
+      ...orphanNotice({
+        ref: args.ref,
+        projectName: args.row.projectName,
+        status: args.row.status,
+        since: args.row.since,
+        now: args.now,
+      }),
+    },
+    args.now,
+  );
 }
 
 /**
@@ -152,11 +234,12 @@ async function emit(
 export async function detectOrphanedRunAssertions(
   now: Date = new Date(),
 ): Promise<IssueRunInvariantResult> {
+  const resolved = await resolveEndedOrphanAssertions();
   const rows = await orphanedAssertions(now);
   let reported = 0;
   for (const row of rows) {
     const ref = formatIssueRef(row.issuePrefix, row.issSeq);
     if (await nameOnce({ now, row, ref })) reported += 1;
   }
-  return { detected: rows.length, reported };
+  return { detected: rows.length, reported, resolved: resolved + (await retireOutrankedNotices()) };
 }

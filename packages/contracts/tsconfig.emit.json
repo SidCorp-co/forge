@@ -7,5 +7,5 @@
     "rootDir": "./src",
     "moduleResolution": "Bundler"
   },
-  "include": ["src/document-patch.ts", "src/attachments.ts"]
+  "include": ["src/document-patch.ts", "src/attachments.ts", "src/mark-merged-words.ts", "src/health-words.ts", "src/stuck-words.ts"]
 }

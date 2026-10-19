@@ -230,7 +230,7 @@ describe('where an unfinished batch leaves its roster', () => {
     }
   });
 
-  it('tells each returned issue that the promotion happened and where to record it', async () => {
+  it('tells each returned issue that the promotion happened and to record that release', async () => {
     const a = await insertIssue();
     const { runId } = await claim([a]);
     await recordPromotion(runId);
@@ -240,7 +240,8 @@ describe('where an unfinished batch leaves its roster', () => {
     const rows = await harness.db.execute(sql`SELECT body FROM comments WHERE issue_id = ${a}`);
     const body = String(rows[0]?.body ?? '');
     expect(body).toContain('recorded a promotion');
-    expect(body).toContain('release-records');
+    expect(body).toContain('If the release did land, record that release');
+    expect(body).not.toMatch(/\/api\/|release-records/);
   });
 
   it('holds the roster where the settlement is named `hold`', async () => {

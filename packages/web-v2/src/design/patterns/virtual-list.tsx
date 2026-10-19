@@ -33,11 +33,16 @@ export interface VirtualListProps<Row> {
 
 const TYPING = "input, textarea, select, [contenteditable]";
 const FIRST_SCREEN_PX = 640;
+/** The focus ring lies along the row's own edge, where neither the frame nor the next row can cover
+ *  it, and the row keeps its content inset wider than the ring, so the ring covers none of its text. */
+const ROW_CLASS =
+  "absolute left-0 top-0 w-full p-[3px] border-b border-line-subtle focus-visible:shadow-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-solid focus-visible:outline-[var(--focus-ring)]";
+const FRAME_CLASS = "max-h-[min(70vh,40rem)] overflow-y-auto";
 
 /**
  * A list of rows that puts only the ones in view in the document: the feed pattern, so each row says
- * "3 of 1,300" whether or not its neighbours exist, PageDown and PageUp walk from row to row, and the
- * row holding focus is never recycled out from under it. It scrolls inside a frame of its own, which
+ * "3 of 1,300" whether or not its neighbours exist, the arrow keys and PageDown and PageUp walk from
+ * row to row, and the row holding focus is never recycled out from under it. It scrolls inside a frame of its own, which
  * a long list needs in order to know what is in view. Rows load as the end of what is held comes
  * into view.
  */
@@ -76,11 +81,12 @@ export function VirtualList<Row>({
     if (!row || (row !== target && target.matches(TYPING))) return;
     const at = Number(row.dataset.index);
     const last = rows.length - 1;
+    const plain = !event.shiftKey && !event.altKey && !event.metaKey && !event.ctrlKey;
     const next =
-      event.key === "PageDown" ? Math.min(at + 1, last)
-      : event.key === "PageUp" ? Math.max(at - 1, 0)
-      : event.key === "End" && event.ctrlKey ? last
-      : event.key === "Home" && event.ctrlKey ? 0
+      event.key === "PageDown" || (event.key === "ArrowDown" && plain) ? Math.min(at + 1, last)
+      : event.key === "PageUp" || (event.key === "ArrowUp" && plain) ? Math.max(at - 1, 0)
+      : event.key === "End" && !event.shiftKey && !event.altKey && !event.metaKey ? last
+      : event.key === "Home" && !event.shiftKey && !event.altKey && !event.metaKey ? 0
       : null;
     if (next === null) return;
     event.preventDefault();
@@ -90,10 +96,10 @@ export function VirtualList<Row>({
   return (
     <div
       ref={virtual.scrollerRef}
-      {...virtual.trackFocus}
-      className={cn("max-h-[min(70vh,40rem)] overflow-y-auto", className)}
+      {...virtual.scrollerEvents}
+      className={cn(FRAME_CLASS, className)}
     >
-      {/* The feed's rows are all the keyboard has: each is a tab stop, and PageDown/PageUp are the quick way down. */}
+      {/* The feed's rows are all the keyboard has: each is a tab stop, and the arrow keys and PageDown/PageUp walk them. */}
       <div
         role="feed"
         aria-label={ariaLabel}
@@ -114,7 +120,7 @@ export function VirtualList<Row>({
               aria-posinset={item.index + 1}
               aria-setsize={size}
               aria-label={getRowLabel?.(row)}
-              className="absolute left-0 top-0 w-full border-b border-line-subtle focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+              className={ROW_CLASS}
               style={{ transform: `translateY(${item.start}px)` }}
             >
               {renderRow(row, item.index)}

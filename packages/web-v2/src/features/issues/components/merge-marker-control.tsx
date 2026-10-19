@@ -1,4 +1,4 @@
-// ISS-791 — the shipped-work claim, on the surface humans actually use.
+// ISS-791 — the merge mark, on the surface humans actually use.
 //
 // `POST /api/issues/:id/merge` existed only for the CLI and MCP, so a person who finished an issue
 // by hand could only close it — and a close auto-stamps `merged_at` inside its own transaction,
@@ -11,70 +11,98 @@ import { useEffect, useState } from "react";
 import { Button, Field, Input, Textarea } from "@/design";
 import { SlideOver } from "@/design/patterns/slide-over";
 import { formatApiError } from "@/lib/api/error";
-import { useMergeMarker } from "../hooks";
+import { answerShown, useMergeMarker } from "../hooks";
 import type { LandingShape } from "../types";
+import {
+  MARK_MERGED_ACTION,
+  UNMARK_ACTION,
+  WHERE_IT_LANDED_FIELD,
+  WORK_LANDS_ROW,
+} from "@forge/contracts/mark-merged-words";
 
 /** Core's cap on a landing (`MERGED_LANDING_MAX`). Said and enforced here, never silently cut. */
 const LANDING_MAX = 2000;
 
-const BLURB =
-  "For work finished outside the pipeline. This is a claim that the code shipped, not a date " +
-  "field: it is what lets the issue close, because `closed` means the work shipped and a close " +
-  "without it is refused. It does not release the issues blocked on this one — a status does " +
-  "that. Unmark withdraws a claim made wrongly, and is refused once the issue is closed: " +
-  "reopen it first, because a closed issue with no claim is a state nothing here can hold.";
+/** What the mark does, then how it is undone (ISS-1421, criterion 85). A mark records where the work
+ *  landed and never that it shipped: the banner beside it says "not shipped yet" (criterion 95). */
+export const BLURB = `Marking merged records where this work landed, which a close needs. ${UNMARK_ACTION} takes it back, unless the issue is closed.`;
 
-// ISS-1327 — on a project whose work lands outside git there is no branch to name: what landed is
-// a live page, a CMS entry, a storefront resource, and the close accepts a mark only if it says so.
-const LANDING_BLURB =
-  "This project's work lands outside git, so say where it landed: the live URL, the CMS entry or " +
-  "the storefront resource the work now is. That is what lets the issue close — a mark naming no " +
-  "landing is not accepted here. It does not release the issues blocked on this one — a status " +
-  "does that. Unmark withdraws a claim made wrongly, and is refused once the issue is closed.";
+/** A later merge of an issue already marked moves the mark forward (ISS-1421 round 7). */
+export const LATER_ACTION = "Mark a later merge";
+export const LATER_BLURB =
+  "This issue is already marked merged. A later merge that carries the marked commit moves the mark to it.";
+/** Said only where Forge holds a merged pull request at another commit than the mark's: anywhere
+ *  else an empty Commit has nothing to compare and changes nothing (ISS-1421 r8, criterion 127). */
+export const EMPTY_COMMIT_LINE = "Leave Commit empty to use the newest merged pull request.";
+
+export function emptyCommitCompares(newestMergedPull: string | null | undefined, held: string | null | undefined): boolean {
+  if (!newestMergedPull) return false;
+  const a = newestMergedPull.toLowerCase();
+  const b = (held ?? "").toLowerCase();
+  return b === "" || !(a.startsWith(b) || b.startsWith(a));
+}
+
+/** Outside git the mark names where the work now is, since there is no branch to name (ISS-1327). */
+export const LANDING_BLURB =
+  "Say where the work now is: the live URL, the CMS entry or the storefront resource. " +
+  `Marking merged records it, which a close needs. ${UNMARK_ACTION} takes it back, unless the issue is closed.`;
 
 interface MergeMarkerControlProps {
   issueId: string;
   /** `null` when no claim has been made — the control offers to make one. */
   mergedAt: string | null;
-  /** Default `target`, offered because the repo's branch convention is `ISS-<seq>`. */
-  suggestedTarget: string;
-  /** Core's answer for this issue's project; an older server that sends none reads as `git`. */
+  /** Core's answer for this issue's lane; an older server that sends none reads as `git`. */
   landingShape?: LandingShape | undefined;
+  /** Whose answer `landingShape` is: the issue's own declaration, or its project's shape. Absent
+   *  where the server does not say, and then the panel names no source. */
+  landingSource?: "issue" | "project" | undefined;
+  mergedCommitSha?: string | null | undefined;
+  newestMergedPull?: string | null | undefined;
+}
+
+/** Where this issue's work lands and who said so, since the two can differ. */
+function landingLine(shape: LandingShape, source: "issue" | "project" | undefined): string {
+  const where = shape === "outside_git" ? "outside git" : "in git";
+  if (source === "issue") return `This issue's work lands ${where}: the issue declares it itself, under ${WORK_LANDS_ROW}.`;
+  if (source === "project") return `This issue's work lands ${where}: that is its project's shape.`;
+  return `This issue's work lands ${where}.`;
 }
 
 export function MergeMarkerControl({
   issueId,
   mergedAt,
-  suggestedTarget,
   landingShape,
+  landingSource,
+  mergedCommitSha,
+  newestMergedPull,
 }: MergeMarkerControlProps) {
   const outsideGit = landingShape === "outside_git";
   const [open, setOpen] = useState(false);
-  const [target, setTarget] = useState(outsideGit ? "" : suggestedTarget);
+  // Starts empty: whatever it holds is sent as where the work landed, so a value filled in for the
+  // reader (once the issue's own key) became a mark saying the work merged into the issue.
+  const [target, setTarget] = useState("");
   const [note, setNote] = useState("");
+  const [commit, setCommit] = useState("");
   const [refusal, setRefusal] = useState<string | null>(null);
   const marker = useMergeMarker(issueId);
 
   useEffect(() => {
     if (open) {
-      setTarget(outsideGit ? "" : suggestedTarget);
+      setTarget("");
       setNote("");
+      setCommit("");
       setRefusal(null);
     }
-  }, [open, suggestedTarget, outsideGit]);
+  }, [open]);
 
-  if (mergedAt) {
-    return (
-      <Button
-        variant="ghost"
-        size="sm"
-        disabled={marker.isPending}
-        onClick={() => marker.unmark()}
-      >
-        Unmark
-      </Button>
-    );
-  }
+  const unmarkButton = (
+    <Button variant="ghost" size="sm" disabled={marker.isPending} onClick={() => marker.unmark()}>
+      {UNMARK_ACTION}
+    </Button>
+  );
+  // Outside git a second landing is refused while a mark stands, so only Unmark is offered there.
+  if (mergedAt && outsideGit) return unmarkButton;
+  const later = Boolean(mergedAt);
 
   const trimmedTarget = target.trim();
   const overLimit = outsideGit && trimmedTarget.length > LANDING_MAX;
@@ -82,14 +110,31 @@ export function MergeMarkerControl({
   return (
     <>
       <Button variant="ghost" size="sm" icon="check" onClick={() => setOpen(true)}>
-        Mark merged
+        {later ? LATER_ACTION : MARK_MERGED_ACTION}
       </Button>
+      {later && unmarkButton}
       {open && (
-        <SlideOver open onClose={() => setOpen(false)} title="Mark this work merged" width={480}>
+        <SlideOver
+          open
+          onClose={() => setOpen(false)}
+          title={later ? LATER_ACTION : "Mark this work merged"}
+          width={480}
+        >
           <div className="flex h-full flex-col gap-4">
-            <p className="fg-body-sm text-muted">{outsideGit ? LANDING_BLURB : BLURB}</p>
+            <p className="fg-body-sm text-fg" data-testid="landing-line">
+              {landingLine(outsideGit ? "outside_git" : "git", landingSource)}
+            </p>
+            <p className="fg-body-sm text-muted">
+              {later
+                ? emptyCommitCompares(newestMergedPull, mergedCommitSha)
+                  ? `${LATER_BLURB} ${EMPTY_COMMIT_LINE}`
+                  : LATER_BLURB
+                : outsideGit
+                  ? LANDING_BLURB
+                  : BLURB}
+            </p>
             <Field
-              label="Where it landed"
+              label={WHERE_IT_LANDED_FIELD}
               required
               error={
                 overLimit
@@ -102,7 +147,7 @@ export function MergeMarkerControl({
                 placeholder={
                   outsideGit
                     ? "e.g. https://shop.example.com/products/linen-tee, or the CMS entry it is"
-                    : "e.g. ISS-791, or the branch or PR it merged through"
+                    : "e.g. main, or the branch or PR it merged into"
                 }
                 onChange={(e) => {
                   setTarget(e.target.value);
@@ -110,6 +155,18 @@ export function MergeMarkerControl({
                 }}
               />
             </Field>
+            {later && (
+              <Field label="Commit">
+                <Input
+                  value={commit}
+                  placeholder="e.g. the merge commit of the later round"
+                  onChange={(e) => {
+                    setCommit(e.target.value);
+                    setRefusal(null);
+                  }}
+                />
+              </Field>
+            )}
             <Field label="Note">
               <Textarea
                 rows={4}
@@ -121,7 +178,7 @@ export function MergeMarkerControl({
             {refusal && (
               <p
                 role="alert"
-                className="fg-body-sm rounded-md border border-line bg-surface-subtle px-3 py-2"
+                className="fg-body-sm whitespace-pre-line rounded-md border border-line bg-surface-subtle px-3 py-2"
                 style={{ color: "var(--red-600)" }}
               >
                 {refusal}
@@ -147,10 +204,11 @@ export function MergeMarkerControl({
                     {
                       // A project that moves no branch names no target: the landing is where it landed.
                       ...(outsideGit ? { landing: trimmedTarget } : { target: trimmedTarget }),
+                      ...(later && commit.trim() ? { commit: commit.trim() } : {}),
                       ...(note.trim() ? { note: note.trim() } : {}),
                     },
                     // Closed on success only: a refused mark keeps what was typed, and says why.
-                    { onSuccess: () => setOpen(false), onError: (err) => setRefusal(formatApiError(err)) },
+                    { onSuccess: () => setOpen(false), onError: (err) => setRefusal(answerShown(formatApiError(err))) },
                   );
                 }}
               >

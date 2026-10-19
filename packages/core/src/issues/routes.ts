@@ -24,6 +24,7 @@ import {
   restCredential,
 } from '../middleware/auth.js';
 import { hooks } from '../pipeline/hooks.js';
+import { collectWorkEvidence } from '../pipeline/work-evidence.js';
 import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
 import { issueArchiveSide } from './archive.js';
 import { AttachmentError } from './attachment-service.js';
@@ -49,6 +50,7 @@ import {
 import { readLandingShape } from './landing-evidence.js';
 import { issueListPageQuery, serializeRestListRow } from './list-projection.js';
 import { liveReachForIssue } from './live-reach-read.js';
+import { observedMergeForIssue } from './merge-record.js';
 import { isSelfReferentialBranch } from './metadata.js';
 import { collectIssueFieldUpdates, SHARED_ISSUE_PATCH_FIELDS } from './patch-fields.js';
 import { pipelineHealthUnderived, safeHydratePipelineHealthForIssues } from './pipeline-health.js';
@@ -71,6 +73,7 @@ import {
   readIssue,
   readIssueByDisplay,
   readJobHistory,
+  STATUS_IS_NOT_AN_UPDATE,
 } from './routes-reference.js';
 import { jobHistoryForStep } from './search.js';
 import { buildIssueOrderBy } from './sort.js';
@@ -97,8 +100,8 @@ import { withKernelMarker } from '../db/kernel-marker.js';
 const projectIdParamSchema = z.object({ id: z.uuid() });
 const issueIdParamSchema = z.object({ id: z.uuid() });
 
-const badRequest = (details: unknown) =>
-  new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
+const badRequest = (details: unknown, message = 'Invalid input') =>
+  new HTTPException(400, { message, cause: { code: 'BAD_REQUEST', details } });
 
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
@@ -242,6 +245,8 @@ issueProjectRoutes.get(
         ...creatorMap.get(issue.id),
         pipelineHealth: healthMap.get(issue.id) ?? pipelineHealthUnderived(serialized.status),
         liveReach: await liveReachForIssue(issue),
+        recordedBranch: (await collectWorkEvidence(issue.id)).branch,
+        newestMergedPull: (await observedMergeForIssue(db, issue.id))?.commitSha ?? null,
         labels: labelRows,
         comments: [],
         activity: [],
@@ -398,6 +403,8 @@ issueRoutes.get(
         agentStatus: agentBucket?.agentStatus ?? null,
         pipelineHealth: healthMap.get(issue.id) ?? pipelineHealthUnderived(serialized.status),
         liveReach: await liveReachForIssue(issue),
+        recordedBranch: (await collectWorkEvidence(issue.id)).branch,
+        newestMergedPull: (await observedMergeForIssue(db, issue.id))?.commitSha ?? null,
         labels: labelRows,
         comments: [],
         activity: [],
@@ -439,7 +446,11 @@ issueRoutes.patch(
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
   zValidator('json', issuePatchSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) {
+      // A sent `status` is said in the message itself, not only in the details (ISS-1421 r2).
+      const status = r.error.issues.some((i) => i.message === STATUS_IS_NOT_AN_UPDATE);
+      throw badRequest(z.flattenError(r.error), status ? STATUS_IS_NOT_AN_UPDATE : undefined);
+    }
   }),
   async (c) => {
     const { id } = c.req.valid('param');

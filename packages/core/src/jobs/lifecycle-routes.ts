@@ -54,6 +54,7 @@ import {
 } from './lifecycle-routes-reference.js';
 import { JobResumeError, resumeHeldJob } from './resume-job.js';
 import type { RetryOutcome } from './retry.js';
+import { jobRetryUserRoutes } from './retry-routes.js';
 import { deriveSessionFinal } from './session-transcript.js';
 import { OCCUPYING_JOB_STATUSES } from './status-sets.js';
 import { jobTurnVerdictRoutes } from './turn-verdict-routes.js';
@@ -320,9 +321,9 @@ jobLifecycleDeviceRoutes.post(
       if (isResumeFailedError(input.error)) {
         updated = await reclassifyAbortedResume(updated);
       }
-      // ISS-280 / ISS-393 — shared finalize path: auto-retry → revert to
-      // entry-status (or park at `waiting` when exhausted) → session sync →
-      // broadcast → hooks → dispatch re-tick → health refresh.
+      // ISS-280 / ISS-393 — shared finalize path: auto-retry (or hold the job when exhausted; the
+      // issue's status is never written) → session sync → broadcast → hooks → dispatch re-tick →
+      // health refresh.
       const retry = await finalizeFailedJob(updated, {
         error: effectiveError ?? 'exit nonzero',
         exitCode: input.exitCode,
@@ -405,7 +406,8 @@ jobLifecycleDeviceRoutes.post(
     }
 
     // A runner that predates the blocked door ends a pane stopped on a question with this plain
-    // failure. A retry of the job would stop on the same question, so it is held like the other.
+    // failure. A retry of the job would stop on the same question, so it ends like the other: on a
+    // release the unread ask is refused by name and the release stopped (ISS-1421 r6).
     if (isBlockedReason(input.error)) {
       const ended = await endBlockedJob(job, device.id, {
         error: input.error,
@@ -512,6 +514,7 @@ async function insertKillAckEvent(
 // Auth applied per-handler — see comment in jobs/routes.ts on why a bare
 // `.use('*')` would 401 device-only sibling routes.
 export const jobLifecycleUserRoutes = new Hono<{ Variables: AuthVars }>();
+jobLifecycleUserRoutes.route('/', jobRetryUserRoutes);
 
 jobLifecycleUserRoutes.post(
   '/:id/cancel',

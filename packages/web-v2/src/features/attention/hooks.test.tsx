@@ -9,16 +9,30 @@ import { cleanup, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const server: { attention: () => Promise<unknown>; devices: () => Promise<unknown> } = {
+const server: {
+  attention: (orgId?: string | null, expand?: readonly string[]) => Promise<unknown>;
+  devices: (orgId?: string | null) => Promise<unknown>;
+  activeOrgId: string | null;
+  scopeRead: boolean;
+} = {
   attention: async () => ({}),
   devices: async () => [],
+  activeOrgId: null,
+  scopeRead: true,
 };
 
-vi.mock("./api", () => ({ attentionApi: { list: () => server.attention() } }));
+vi.mock("./api", () => ({
+  attentionApi: {
+    list: (orgId?: string | null, expand?: readonly string[]) => server.attention(orgId, expand),
+  },
+}));
+vi.mock("@/features/orgs/active-org", () => ({ useActiveOrg: () => ({ activeOrgId: server.activeOrgId, scopeRead: server.scopeRead }),
+}));
 vi.mock("@/features/runners/hooks", async () => {
   const { useQuery } = await import("@tanstack/react-query");
   return {
-    useDevices: () => useQuery({ queryKey: ["devices", "me", null], queryFn: () => server.devices() }),
+    useDevices: (orgId?: string | null) =>
+      useQuery({ queryKey: ["devices", "me", orgId ?? null], queryFn: () => server.devices(orgId) }),
   };
 });
 
@@ -32,6 +46,14 @@ const response = {
   pendingSkillUpdates: [],
   unseenDrafts: [],
   unseenDraftsTotal: 0,
+  bucketTotals: {
+    needsReview: 0,
+    awaitingInput: 1,
+    mentions: 0,
+    failedJobs: 0,
+    pendingSkillUpdates: 0,
+    unseenDrafts: 0,
+  },
   projectTotals: {},
   total: 1,
 };
@@ -46,10 +68,65 @@ function wrapper() {
 beforeEach(() => {
   server.attention = async () => response;
   server.devices = async () => [];
+  server.activeOrgId = null;
+  server.scopeRead = true;
 });
 afterEach(cleanup);
 
 describe("useAttention", () => {
+  // ISS-1229 r16, judge-41: one organisation's Attention listed a runner bound only to another's.
+  it("reads the offline runners of the organisation it reads, and every one's where none is active", async () => {
+    const asked: Array<string | null | undefined> = [];
+    server.devices = async (orgId) => {
+      asked.push(orgId);
+      return [];
+    };
+    server.activeOrgId = "org-a";
+    const { result, unmount } = renderHook(() => useAttention(), { wrapper: wrapper() });
+    await waitFor(() => expect(result.current.devicesRead).toBe("read"));
+    unmount();
+    server.activeOrgId = null;
+    const all = renderHook(() => useAttention(), { wrapper: wrapper() });
+    await waitFor(() => expect(all.result.current.devicesRead).toBe("read"));
+    expect(asked).toEqual(["org-a", null]);
+  });
+
+  // ISS-1229 r13, judge-30: the cap was filled across organisations and the screen filtered after it,
+  // so the active organisation's items could be cut before the filter saw them. The read asks the
+  // route for the active organisation, which cuts before its cap.
+  it("asks for the active organisation's items, and every organisation's where none is active", async () => {
+    const asked: Array<string | null | undefined> = [];
+    server.attention = async (orgId) => {
+      asked.push(orgId);
+      return response;
+    };
+    server.activeOrgId = "11111111-1111-4111-8111-111111111111";
+    const scoped = renderHook(() => useAttention(), { wrapper: wrapper() });
+    await waitFor(() => expect(scoped.result.current.read).toBe("read"));
+    server.activeOrgId = null;
+    const whole = renderHook(() => useAttention(), { wrapper: wrapper() });
+    await waitFor(() => expect(whole.result.current.read).toBe("read"));
+    expect(asked).toEqual(["11111111-1111-4111-8111-111111111111", null]);
+  });
+
+  it("asks nothing while the active organisation is still being read, then asks for it alone", async () => {
+    const asked: Array<string | null | undefined> = [];
+    server.attention = async (orgId) => {
+      asked.push(orgId);
+      return response;
+    };
+    server.scopeRead = false;
+    const hook = renderHook(() => useAttention(), { wrapper: wrapper() });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(asked).toEqual([]);
+    expect(hook.result.current.total).toBeUndefined();
+    server.scopeRead = true;
+    server.activeOrgId = "11111111-1111-4111-8111-111111111111";
+    hook.rerender();
+    await waitFor(() => expect(hook.result.current.read).toBe("read"));
+    expect(asked).toEqual(["11111111-1111-4111-8111-111111111111"]);
+  });
+
   it("states no total while the attention answer is on its way, and one once both reads are in", async () => {
     server.attention = () => new Promise(() => {});
     const slow = renderHook(() => useAttention(), { wrapper: wrapper() });
@@ -97,7 +174,12 @@ describe("useAttention", () => {
   });
 
   it("states a read zero as a zero, and a refetch that fails over a held count as failed rather than as the count", async () => {
-    server.attention = async () => ({ ...response, awaitingInput: [] });
+    server.attention = async () => ({
+      ...response,
+      awaitingInput: [],
+      bucketTotals: { ...response.bucketTotals, awaitingInput: 0 },
+      total: 0,
+    });
     const zero = renderHook(() => useAttention(), { wrapper: wrapper() });
     await waitFor(() => expect(zero.result.current.read).toBe("read"));
     await waitFor(() => expect(zero.result.current.devicesRead).toBe("read"));
@@ -113,6 +195,37 @@ describe("useAttention", () => {
     await waitFor(() => expect(held.result.current.read).toBe("failed"));
     expect(held.result.current.badge).toEqual({ badgeRead: "failed", badgeCounts: "need attention" });
     expect(held.result.current.total).toBeUndefined();
-    expect("total" in held.result.current.view).toBe(false);
+  });
+
+  // ISS-1229 r14, judge-35: 32 parks read 20 on the badge, the rows the capped bucket returned.
+  it("counts every item the buckets hold, listed or not, on the badge and the total", async () => {
+    server.attention = async () => ({
+      ...response,
+      bucketTotals: { ...response.bucketTotals, awaitingInput: 32 },
+      total: 32,
+    });
+    const { result } = renderHook(() => useAttention(), { wrapper: wrapper() });
+    await waitFor(() => expect(result.current.total).toBe(32));
+    expect(result.current.view.awaitingInput).toHaveLength(1);
+    expect(result.current.badge).toEqual({ badge: 32, badgeCounts: "need attention" });
+  });
+
+  it("asks for a group whole where it is named, and for the project's own organisation where one is given", async () => {
+    const asked: Array<[string | null | undefined, readonly string[] | undefined]> = [];
+    server.attention = async (orgId, expand) => {
+      asked.push([orgId, expand]);
+      return response;
+    };
+    server.activeOrgId = "11111111-1111-4111-8111-111111111111";
+    const whole = renderHook(() => useAttention({ expand: ["awaitingInput"] }), { wrapper: wrapper() });
+    await waitFor(() => expect(whole.result.current.read).toBe("read"));
+    const own = renderHook(() => useAttention({ orgId: "22222222-2222-4222-8222-222222222222" }), {
+      wrapper: wrapper(),
+    });
+    await waitFor(() => expect(own.result.current.read).toBe("read"));
+    expect(asked).toEqual([
+      ["11111111-1111-4111-8111-111111111111", ["awaitingInput"]],
+      ["22222222-2222-4222-8222-222222222222", []],
+    ]);
   });
 });

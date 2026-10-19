@@ -12,7 +12,7 @@ describe('noOpSentence', () => {
         parked: 'developed',
         final: 'developed',
       }),
-    ).toBe('issue already in status developed');
+    ).toBe('issue already in status Developed (developed)');
   });
 
   it('names both statuses when the release gate rewrote the close', () => {
@@ -23,9 +23,9 @@ describe('noOpSentence', () => {
       final: 'awaiting_release',
     });
 
-    expect(sentence).toContain('`closed`');
-    expect(sentence).toContain('`awaiting_release`');
-    expect(sentence).not.toBe('issue already in status awaiting_release');
+    expect(sentence).toContain('Closed (closed)');
+    expect(sentence).toContain('Awaiting release (awaiting_release)');
+    expect(sentence).not.toBe('issue already in status Awaiting release (awaiting_release)');
   });
 
   it('says the issue is not in the status the caller asked for', () => {
@@ -37,7 +37,7 @@ describe('noOpSentence', () => {
     });
 
     expect(sentence).toContain('release gate');
-    expect(sentence).toContain('already in status `awaiting_release`');
+    expect(sentence).toContain('already in status Awaiting release (awaiting_release)');
   });
 
   it('carries both routes to `closed`, with this project id in them', () => {
@@ -60,8 +60,8 @@ describe('noOpSentence', () => {
       final: 'needs_info',
     });
 
-    expect(sentence).toContain('`waiting`');
-    expect(sentence).toContain('`needs_info`');
+    expect(sentence).toContain('Waiting (waiting)');
+    expect(sentence).toContain('Needs info (needs_info)');
     expect(sentence).not.toContain('release gate');
   });
 
@@ -73,8 +73,8 @@ describe('noOpSentence', () => {
       final: 'awaiting_release',
     });
 
-    expect(sentence).toContain('`waiting`');
-    expect(sentence).toContain('`awaiting_release`');
+    expect(sentence).toContain('Waiting (waiting)');
+    expect(sentence).toContain('Awaiting release (awaiting_release)');
     expect(sentence).toContain('release gate');
   });
 });
@@ -102,7 +102,7 @@ describe('describeRewrite (ISS-1365)', () => {
     });
 
     expect(said).toMatchObject({ rule: 'autonomous_driver', stored: 'needs_info' });
-    expect(said?.detail).toContain('`waiting` was stored as `needs_info`');
+    expect(said?.detail).toContain('Waiting (waiting) was stored as Needs info (needs_info)');
     expect(said?.detail).toContain('`needs_decision` is kept');
   });
 

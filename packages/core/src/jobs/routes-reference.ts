@@ -1,13 +1,24 @@
 import { z } from 'zod';
 import { describeOperation, fail, json } from '../api-reference/declare/describe.js';
 import { tableRow } from '../api-reference/declare/rows.js';
+import { RETIRED_JOB_TYPES } from '../db/job-vocabulary.js';
 import { jobStatuses, jobs, jobTypes, modelTiers } from '../db/schema.js';
 import { paginationSchema } from '../lib/pagination.js';
 import { POOL_JOB_NO_PROMPT } from './pool-served.js';
 
+function retiredJobType(input: unknown): string | undefined {
+  if (typeof input !== 'string' || !(RETIRED_JOB_TYPES as readonly string[]).includes(input)) {
+    return undefined;
+  }
+  return `job type '${input}' was a stage of the staged pipeline and is retired (ISS-1229); a job's type is one of ${jobTypes.join(', ')}`;
+}
+
+/** A job type, refusing a retired stage by its name rather than as an unknown value. */
+export const jobTypeSchema = z.enum(jobTypes, { error: (iss) => retiredJobType(iss.input) });
+
 export const jobCreateSchema = z
   .object({
-    type: z.enum(jobTypes),
+    type: jobTypeSchema,
     payload: z.record(z.string(), z.unknown()).optional(),
     issueId: z.uuid().nullable().optional(),
     modelTier: z.enum(modelTiers).nullable().optional(),
@@ -24,7 +35,7 @@ export const jobPatchSchema = z
 
 export const jobListFiltersSchema = paginationSchema.extend({
   status: z.enum(jobStatuses).optional(),
-  type: z.enum(jobTypes).optional(),
+  type: jobTypeSchema.optional(),
   issueId: z.uuid().optional(),
 });
 
@@ -91,7 +102,10 @@ export const createJob = describeOperation({
     "The payload must carry a prompt. A job with an issue joins the issue's open run; one without gets a run of its own.",
   responses: {
     201: json(jobRowSchema, 'The queued job'),
-    400: fail('BAD_REQUEST', '`issueId` names no issue, or one in another project'),
+    400: fail(
+      'BAD_REQUEST',
+      '`type` names a retired staged-pipeline stage or no job type, or `issueId` names no issue, or one in another project',
+    ),
     403: notMember,
     404: fail('NOT_FOUND', 'no such project'),
     422: fail(POOL_JOB_NO_PROMPT, 'the payload carries no prompt for the job to run'),

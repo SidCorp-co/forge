@@ -76,7 +76,7 @@ describe('forge_release_batch refusals', () => {
 
     const refused = tool().handler({ action: 'finish', runId: RUN_ID });
 
-    await expect(refused).rejects.toThrow(/the abort kept its claims.*stay at `releasing`/);
+    await expect(refused).rejects.toThrow(/the abort kept its claims.*stay at Releasing/);
     await expect(refused).rejects.not.toThrow(/claims were released/);
   });
 

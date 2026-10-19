@@ -287,13 +287,13 @@ interface RejectionStreakRow extends Record<string, unknown> {
 export async function alarmRejectionStreaks(): Promise<Inv7AlarmResult> {
   const rows = await db.execute<RejectionStreakRow>(sql`
     WITH verdicts AS (
-      -- This CTE used to materialise every verdict phase_journal has ever held before anything
+      -- This CTE used to materialise every verdict run_journal has ever held before anything
       -- narrowed it, so an alarm about loops happening RIGHT NOW cost the whole history of every
       -- run that ever finished. The outer pr.status = 'running' is kept as well: it is what the
       -- guard above is written about, and a reader deleting it there because "the CTE does it now"
       -- would be deleting the documented one.
       SELECT pj.run_id, pj.issue_id, pj.started_at, pj.artifact ->> 'decision' AS decision
-      FROM phase_journal pj
+      FROM run_journal pj
       WHERE pj.source = 'runner'
         AND pj.artifact ->> 'kind' = 'verdict'
         AND EXISTS (
@@ -343,7 +343,7 @@ export async function alarmRejectionStreaks(): Promise<Inv7AlarmResult> {
       title: `${label} has been sent back by review ${row.streak} times in a row`,
       summary: `"${row.title ?? label}" has reached this project's \`noProgressRounds\` (${row.threshold}) counted as CONSECUTIVE review rejections — ${row.streak} rounds since the last approval, from the reviewer's own verdicts rather than anything the driver reported about itself. Rounds that each fix a different blocker are normal work, and an approval resets this to zero; ${row.streak} in a row without one is the stop signal the number exists for.`,
       nextStep:
-        "Read the findings on the last few `request_changes` verdicts. If they keep naming the same defect, park the issue at `waiting` with what has been tried; if each round names something new, no action. The agent's own `sessionContext.churn` ledger says what it believes changed each round.",
+        "Read the findings on the last few `request_changes` verdicts. If they keep naming the same defect, park the issue at Waiting with what has been tried; if each round names something new, no action. The agent's own `sessionContext.churn` ledger says what it believes changed each round.",
       action: 'Read the last rejections and decide; nothing is blocked.',
     });
   }

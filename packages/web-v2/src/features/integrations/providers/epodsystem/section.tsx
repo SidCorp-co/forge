@@ -39,6 +39,7 @@ import type { AgentAccess } from "../../types";
 import { ConnectionOwnerField } from "../../components/connection-owner-field";
 import { epodsystem } from "./index";
 import { IntegrationEnabledControl } from "../../components/integration-enabled-control";
+import { STATE_WORDS } from "../../derive";
 
 // Scopes a website build needs to publish themes + toggle commerce/cache.
 const REQUIRED_SCOPES = ["products:write", "webstore:write", "settings:write"];
@@ -63,7 +64,7 @@ interface BadgeView {
 
 function badgeFor(existing: IntegrationSummary | undefined): BadgeView {
   if (!existing) return { label: "Not configured", tone: "amber" };
-  if (!existing.active) return { label: "Disabled", tone: "neutral" };
+  if (!existing.active) return { label: STATE_WORDS.off, tone: "neutral" };
   if (existing.lastHealthStatus === "ok") {
     const name = (existing.config as EpodsystemReadConfig).storeName;
     return {
@@ -73,7 +74,7 @@ function badgeFor(existing: IntegrationSummary | undefined): BadgeView {
   }
   if (existing.lastHealthStatus === "error")
     return { label: "Invalid key", tone: "red" };
-  return { label: "Untested", tone: "neutral" };
+  return { label: STATE_WORDS.unchecked, tone: "neutral" };
 }
 
 /**
@@ -435,7 +436,7 @@ function AddEpodsystemForm({
             onChange={(e) => setLabel(e.target.value.toLowerCase())}
           />
           {labelError && (
-            <p className="fg-body-sm text-danger">{labelError}</p>
+            <p className="fg-body-sm fg-danger">{labelError}</p>
           )}
         </Field>
       )}

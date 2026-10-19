@@ -1,8 +1,9 @@
 import { and, eq, type SQL, sql } from 'drizzle-orm';
 import { readThresholds } from '../../admin/thresholds.js';
+import { forgeActor, forgeAuthorId } from '../../comments/forge-author.js';
 import { postSystemComment } from '../../comments/system-write.js';
 import { db } from '../../db/client.js';
-import { issues, projects } from '../../db/schema.js';
+import { issues } from '../../db/schema.js';
 import { TransitionError, transitionIssueStatus } from '../../issues/apply-transition.js';
 import { logger } from '../../logger.js';
 import { judgeSentryIssue, type SentryAdmissionThresholds } from './admission.js';
@@ -62,8 +63,6 @@ export interface SentryIssueRow {
 /** Everything one intake decision needs that is not the Sentry issue itself. */
 export interface SentryIntakeContext {
   projectId: string;
-  /** The Forge user a filed issue and a reopen are attributed to (`projects.createdBy`). */
-  createdById: string;
   thresholds: SentryAdmissionThresholds;
   /** The declared target this issue was confined to, named in the filed issue's body. */
   target: { label: string; organizationSlug: string; projectSlug?: string };
@@ -82,15 +81,6 @@ export type SentryIntakeOutcome =
   | { kind: 'refreshed' }
   | { kind: 'reopened' }
   | { kind: 'refused'; reason: string };
-
-export async function projectCreatedById(projectId: string): Promise<string | null> {
-  const [row] = await db
-    .select({ createdBy: projects.createdBy })
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .limit(1);
-  return row?.createdBy ?? null;
-}
 
 /** The admission policy, read from `admin_thresholds` — the SAME read on both doors. */
 export async function readSentryThresholds(): Promise<SentryAdmissionThresholds> {
@@ -324,7 +314,7 @@ async function reopenOnRegression(
   if (existing.status === 'dropped') {
     return {
       kind: 'refused',
-      reason: `Sentry reports ${shortId} has regressed, and the Forge issue holding it stands at \`dropped\` — a person decided not to fix this, so it is left where it is rather than reopened. Its counts were still refreshed.`,
+      reason: `Sentry reports ${shortId} has regressed, and the Forge issue holding it stands at Dropped (dropped) — a person decided not to fix this, so it is left where it is rather than reopened. Its counts were still refreshed.`,
     };
   }
   if (existing.status !== 'closed') return null;
@@ -352,13 +342,9 @@ async function reopenOnRegression(
       reopenCount: existing.reopenCount,
     },
     'reopen',
-    // No credential is behind a detector reopen — the Sentry webhook is the
-    // writer and `ctx.createdById` only says whose intake configuration it ran
-    // under. The audit row names the machine, said here rather than left to a
-    // collapse in `actorAgency` (ISS-1137).
-    { type: 'user', id: ctx.createdById, agency: 'agent' },
+    await forgeActor(db),
     {
-      transitionReason: `Sentry reports ${shortId} has regressed: this error is happening again after this issue was closed. Reopened rather than filed a second time — an error coming back is the same work, and the detector key holds at most one live issue for it.`,
+      transitionReason: `Sentry reports ${shortId} has regressed: this error is happening again after this issue was closed. It is reopened rather than filed a second time — an error coming back is the same work, and the detector key holds at most one live issue for it.`,
     },
   ).catch((err: unknown) => {
     if (err instanceof TransitionError && err.code === 'ISSUE_ARCHIVED') return err;
@@ -395,8 +381,9 @@ export async function intakeSentryIssue(
 ): Promise<SentryIntakeOutcome> {
   const shortId = issue.shortId?.trim() ?? '';
   const existing = shortId === '' ? null : await findFiled(ctx.projectId, shortId);
+  const forge = await forgeAuthorId(db);
   if (existing) {
-    const observed = await observe(existing, issue, shortId, ctx.createdById);
+    const observed = await observe(existing, issue, shortId, forge);
     if (issue.substatus === SENTRY_REGRESSED_SUBSTATUS) {
       const regressed = await reopenOnRegression(existing, issue, shortId, observed.previous, ctx);
       if (regressed) return regressed;
@@ -409,7 +396,7 @@ export async function intakeSentryIssue(
 
   const outcome = await file(
     ctx.projectId,
-    ctx.createdById,
+    forge,
     buildSentryIssueRow(issue, verdict.externalId, verdict.detectorKey, ctx.target),
     sighting(issue, verdict.externalId, null),
   );
@@ -422,6 +409,6 @@ export async function intakeSentryIssue(
       reason: `the insert for ${verdict.externalId} was refused by the unique index and the row it collided with could not be read back`,
     };
   }
-  const raced = await observe(winner, issue, verdict.externalId, ctx.createdById);
+  const raced = await observe(winner, issue, verdict.externalId, forge);
   return raced.what === 'commented' ? { kind: 'commented' } : { kind: 'refreshed' };
 }

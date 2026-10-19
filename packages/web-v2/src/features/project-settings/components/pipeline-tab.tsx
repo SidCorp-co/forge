@@ -50,7 +50,6 @@ import { KnowledgePromotionSection } from "./knowledge-promotion-section";
 import { McpServersSection } from "./mcp-servers-section";
 import { PluginsSection } from "./plugins-section";
 import { PoolBacklogSection } from "./pool-backlog-section";
-import { ReleaseSection } from "./release-section";
 import { RunnerPoolsSection, unknownPoolDevices } from "./runner-pools-section";
 import { SaveRefusedBanner } from "./save-refused-banner";
 import { StagePermissionsSection } from "./stage-permissions-section";
@@ -75,6 +74,17 @@ function StageRow({
   );
 }
 
+/** A heading over related sections, so ten of them read as three decisions rather than a list. */
+function PipelineGroup({ title, hint, children }: { title: string; hint: string; children: ReactNode }) {
+  return (
+    <section className="mt-10" aria-label={title}>
+      <h3 className="fg-h3 text-fg">{title}</h3>
+      <p className="fg-caption text-muted">{hint}</p>
+      {children}
+    </section>
+  );
+}
+
 function PipelinePage({
   projectId,
   canEdit,
@@ -93,8 +103,9 @@ function PipelinePage({
   /** The plugins the project designates, as stored. */
   plugins: PluginDesignation[];
 }) {
-  const update = useUpdatePipelineConfig(projectId);
-  const updatePlugins = useUpdatePlugins(projectId);
+  // A refused save is said once, by the banners in the save bar.
+  const update = useUpdatePipelineConfig(projectId, { toastFailure: false });
+  const updatePlugins = useUpdatePlugins(projectId, { toastFailure: false });
   const runnersQ = useProjectRunners(projectId);
   const [pluginsFailure, setPluginsFailure] = useState<{ configSaved: boolean; reason: string } | null>(
     null,
@@ -188,28 +199,36 @@ function PipelinePage({
           />
         </div>
 
-        <ReleaseSection projectId={projectId} slug={slug} />
+        <PipelineGroup
+          title="What a session gets"
+          hint="The skills, tools and permissions every session on this project starts with."
+        >
+          <PluginsSection form={form} canEdit={canEdit} />
+          <McpServersSection form={form} canEdit={canEdit} />
+          <StagePermissionsSection config={config} form={form} canEdit={canEdit} deviceNames={deviceNames} />
+        </PipelineGroup>
 
-        <PluginsSection form={form} canEdit={canEdit} />
+        <PipelineGroup
+          title="Where and when work is taken"
+          hint="Which machines take which stage, and what is let into the queue."
+        >
+          <RunnerPoolsSection projectId={projectId} form={form} canEdit={canEdit} slug={slug} />
+          <IntakeGateSection form={form} canEdit={canEdit} />
+          <PoolBacklogSection form={form} canEdit={canEdit} />
+        </PipelineGroup>
 
-        <McpServersSection form={form} canEdit={canEdit} />
-
-        <StagePermissionsSection config={config} form={form} canEdit={canEdit} deviceNames={deviceNames} />
-
-        <RunnerPoolsSection projectId={projectId} form={form} canEdit={canEdit} />
-
-        <IntakeGateSection form={form} canEdit={canEdit} />
-
-        <PoolBacklogSection form={form} canEdit={canEdit} />
-
-        <KnowledgePromotionSection form={form} canEdit={canEdit} />
-
-        <AssistantWeeklySection
-          projectId={projectId}
-          form={form}
-          canEdit={canEdit}
-          savedEnabled={config.assistantWeekly?.enabled === true}
-        />
+        <PipelineGroup
+          title="Background work"
+          hint="Jobs that run on a schedule rather than for one issue."
+        >
+          <KnowledgePromotionSection form={form} canEdit={canEdit} />
+          <AssistantWeeklySection
+            projectId={projectId}
+            form={form}
+            canEdit={canEdit}
+            savedEnabled={config.assistantWeekly?.enabled === true}
+          />
+        </PipelineGroup>
 
         <div className="mt-6 border-t border-line pt-5">
           <Collapsible flat title={`Configured elsewhere — ${API_ONLY_KEYS.length} keys this screen doesn't edit`}>
@@ -247,8 +266,8 @@ function PipelinePage({
           {pluginsFailure && (
             <Banner tone="danger" onDismiss={() => setPluginsFailure(null)}>
               {pluginsFailure.configSaved
-                ? "The pipeline settings were saved, but the plugins were not: "
-                : "The plugins were not saved: "}
+                ? "The pipeline settings were saved, but the plugins were not. "
+                : "The plugins were not saved. "}
               {pluginsFailure.reason} Your plugin edits are still here — Save sends them again.
             </Banner>
           )}

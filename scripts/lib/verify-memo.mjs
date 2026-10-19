@@ -196,10 +196,16 @@ export function coveredFiles(tree, roots) {
   return tree.files().filter((rel) => roots.some((r) => inRoot(r, rel)));
 }
 
-/** Files git ignores but a check still reads — a build's output, a directory of it or one file — listed from disk. */
+/**
+ * Files git ignores but a check still reads — a build's output, a directory of it or one file — listed
+ * from disk. A `{ path, only }` entry keeps, of a directory, the files whose path below it `only`
+ * matches: where a tool writes far more than any check reads, the rest is neither listed nor hashed.
+ */
 export function builtFiles(root, dirs = []) {
   const out = [];
-  for (const d of dirs) {
+  for (const entry of dirs) {
+    const d = rootPath(entry);
+    const only = typeof entry === 'string' ? null : entry.only;
     const st = lstatOrNull(join(root, d));
     if (!st) continue;
     if (!st.isDirectory()) {
@@ -207,7 +213,9 @@ export function builtFiles(root, dirs = []) {
       continue;
     }
     for (const name of readdirSync(join(root, d), { recursive: true })) {
-      const rel = `${d}/${String(name).split('\\').join('/')}`;
+      const below = String(name).split('\\').join('/');
+      if (only && !only.test(below)) continue;
+      const rel = `${d}/${below}`;
       if (lstatSync(join(root, rel)).isFile()) out.push(rel);
     }
   }
@@ -358,7 +366,11 @@ function stats(root, rel) {
 export function audit({ root, decl, tree, lines, git }) {
   const reachable = new Set([...coveredFiles(tree, decl.roots), ...builtFiles(root, decl.built)]);
   const derived = new Set(decl.derived ?? []);
-  const rootDirs = [...decl.roots.map(rootPath), ...(decl.built ?? []), ...(decl.listed ?? [])];
+  const rootDirs = [
+    ...decl.roots.map(rootPath),
+    ...(decl.built ?? []).map(rootPath),
+    ...(decl.listed ?? []),
+  ];
   const under = (rel) => rootDirs.some((r) => covers(r, rel));
   const above = (rel) => rel === '.' || rootDirs.some((r) => r.startsWith(`${rel}/`));
   const probed = (rel) => (decl.probed ?? []).some((p) => covers(p, rel));

@@ -94,6 +94,9 @@ const ADDED_AT_EPOCH_2 = [
   '/api/usage-records',
 ];
 
+/** ISS-1133 — the issue page's run journal read, so a pipeline token minted before it does not reach it. */
+const ADDED_AT_EPOCH_3 = ['/api/run-journal'];
+
 describe('a token keeps the reach it was minted with', () => {
   it('holds epoch 1 to exactly the prefixes a PAT could reach before the menu grew', () => {
     expect(prefixesAt(1)).toEqual([...AT_EPOCH_1].sort());
@@ -103,9 +106,15 @@ describe('a token keeps the reach it was minted with', () => {
     expect(prefixesAt(2)).toEqual([...ADDED_AT_EPOCH_2].sort());
   });
 
-  it('declares no epoch but those two, and mints at the highest', () => {
-    expect(patPermissionPrefixes()).toEqual([...AT_EPOCH_1, ...ADDED_AT_EPOCH_2].sort());
-    expect(PAT_GRANT_EPOCH).toBe(2);
+  it('puts the run journal read at epoch 3', () => {
+    expect(prefixesAt(3)).toEqual(ADDED_AT_EPOCH_3);
+  });
+
+  it('declares no epoch but those three, and mints at the highest', () => {
+    expect(patPermissionPrefixes()).toEqual(
+      [...AT_EPOCH_1, ...ADDED_AT_EPOCH_2, ...ADDED_AT_EPOCH_3].sort(),
+    );
+    expect(PAT_GRANT_EPOCH).toBe(3);
   });
 
   it('reports each prefix with the epoch it joined at', () => {

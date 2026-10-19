@@ -74,7 +74,7 @@ describe("the two paths that deliberately do NOT name a status", () => {
   });
 
   it("gives each reason-required move its own action sentence, none of them a status word", () => {
-    const said = (["reopen", "waiting", "needs_info"] as const).map((s) => {
+    const said = (["reopen", "waiting", "needs_info", "on_hold"] as const).map((s) => {
       const { result } = renderHook(() => useGuardedTransition());
       act(() => result.current.requestTransition("id", s));
       const dialog = result.current.dialog as { props: { onConfirm: (r: string) => void } };
@@ -84,7 +84,7 @@ describe("the two paths that deliberately do NOT name a status", () => {
       act(() => call[1].onSuccess());
       return toast.mock.calls.at(-1)?.[0]?.title ?? "";
     });
-    expect(new Set(said).size).toBe(3);
+    expect(new Set(said).size).toBe(4);
     expect(said.some((t) => t.startsWith("Moved to"))).toBe(false);
   });
 

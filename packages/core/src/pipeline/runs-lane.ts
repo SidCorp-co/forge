@@ -23,7 +23,7 @@ export interface ResidentMaster {
 /** ISS-1273 — where a run's step came from, and where there is none, why. */
 export type PipelineRunStep =
   | { source: 'run_column'; step: string; detail: null }
-  | { source: 'phase_journal'; step: string; detail: null }
+  | { source: 'run_journal'; step: string; detail: null }
   | { source: 'none'; step: null; detail: string };
 
 /** ISS-1273 — the issues a run was opened over, and where that answer came from: `[]` with no
@@ -126,7 +126,7 @@ export function stepOf(
   if (lane === 'run_session') {
     return openPhase === undefined
       ? { source: 'none', step: null, detail: noStepDetail(lane, group) }
-      : { source: 'phase_journal', step: openPhase, detail: null };
+      : { source: 'run_journal', step: openPhase, detail: null };
   }
   if (currentStep !== null) return { source: 'run_column', step: currentStep, detail: null };
   return { source: 'none', step: null, detail: noStepDetail(lane, group, master) };

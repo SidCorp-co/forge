@@ -6,7 +6,6 @@ import {
   REGISTRY_ISSUE_STATUSES,
 } from "@forge/contracts/pipeline-registry";
 import type { WorkState } from "@forge/contracts/work-state";
-import type { StageKey } from "@/design/stages";
 import type { StatusKey } from "@/design/status";
 
 /** Lifecycle status enum — derived from `@forge/contracts`, which is
@@ -106,12 +105,20 @@ export interface IssueRow {
   mergedClaimedCommit?: string | null;
   /** ISS-1384 — what this issue accepts as landed, its own or its project's; core's, never re-derived. */
   landingShape?: LandingShape;
+  /** The issue's own declaration, or null where its project's shape decides. */
+  declaredLandingShape?: LandingShape | null;
   /** ISS-1217 — whether the merged work is on the live branch. Core's reading; null where none. */
   liveReach?: LiveReach | null;
+  /** The branch core's work-evidence gate counts for this issue; null where it counts none. */
+  recordedBranch?: string | null;
+  /** The newest merged pull request's merge commit Forge holds for this issue; null where none. */
+  newestMergedPull?: string | null;
   createdAt: string;
   updatedAt: string;
   /** ISS-1257 — the oldest open question blocked on a person; null or absent when none is. */
   waitingOnPersonSince?: string | null;
+  /** ISS-1229 r8 — when the issue entered its status; an edit or a claim does not move it. Core's. */
+  statusEnteredAt: string;
   agentSessions?: IssueAgentSession[];
   agentStatus?: IssueAgentStatus;
   estimatedCost?: number;
@@ -217,6 +224,8 @@ export interface IssueSearchOpts {
    *  REPLACES the tab filter's status set, so a dashboard figure's destination
    *  is the bucket it was drawn from rather than the nearest tab (ISS-988). */
   status?: IssueStatus[];
+  /** Only the issues a stuck-issue notice stands for: where Needs you's stuck overflow lands (ISS-1229 r14). */
+  stuck?: boolean;
   sort?: IssueSort;
   page?: number;
   pageSize?: number;
@@ -279,7 +288,7 @@ export interface PipelineHealthQueuedStep {
  *  projection (do not re-derive a second mapping). */
 export interface PipelineHealth {
   stage: string;
-  activeSession?: { id: string; status: "queued" | "running"; skill: string };
+  activeSession?: { id: string; status: "queued" | "running"; skill: string; jobType?: string | null };
   waitingOn?: { reason: WaitingReason; since: string; details: Record<string, unknown> };
   queuedAt?: string;
   queuedStep?: PipelineHealthQueuedStep;
@@ -302,32 +311,40 @@ export interface PipelineHealthPausedRun {
   since: string;
 }
 
-/** One step-handoff row from `GET /api/issue-step-contexts` (kind=handoff).
- *  `payload` is free-form jsonb — render defensively. */
-export interface StepHandoffRow {
-  id: string;
-  projectId: string;
-  issueId: string;
-  pipelineRunId: string | null;
-  kind: string;
-  step: string;
+/** How an attempt ended; `null` while it is open. */
+export type JournalOutcome = "ok" | "failed" | "abandoned";
+
+/** One attempt of one phase as `GET /api/run-journal` answers it (ISS-1133). */
+export interface JournalAttempt {
+  phase: string;
   attempt: number;
-  payload: Record<string, unknown> | null;
-  createdAt: string;
-  updatedAt: string;
+  source: "runner" | "agent" | "system";
+  outcome: JournalOutcome | null;
+  startedAt: string;
+  endedAt: string | null;
+  /** Null while open, and for an attempt only its handoff recorded: no span was declared. */
+  durationSeconds: number | null;
+  artifact: Record<string, unknown> | null;
+  /** The handoff the attempt left, free-form jsonb — render defensively. */
+  handoff: Record<string, unknown> | null;
+  handoffAt: string | null;
 }
 
-/** One row from `GET /api/pipeline/step-durations` (project-window, filtered to
- *  this issue client-side). Per-stage duration + cost source (ISS-377 gap E). */
-export interface StepDurationRow {
+/** One run of the issue, its attempts in the order they started. */
+export interface JournalRun {
   runId: string;
-  issueId: string | null;
-  projectId: string;
-  step: string;
+  /** 1 for the issue's first run, counted by the server over all of them. */
+  ordinal: number;
+  kind: "issue" | "pm" | "interactive" | "system";
+  status: "running" | "paused" | "completed" | "failed" | "cancelled";
+  /** The issue keys a group run was opened over; null for a run of this issue alone. */
+  group: string[] | null;
   startedAt: string;
-  finishedAt: string;
-  durationSeconds: number;
-  costUsd: number;
+  finishedAt: string | null;
+  costUsd: number | null;
+  /** The newest agent session the run started; null where none ran it. */
+  sessionId: string | null;
+  attempts: JournalAttempt[];
 }
 
 /** Attachment carried on a comment node (ISS-363) — `url` is the download path,
@@ -359,6 +376,8 @@ export interface CommentNode {
   nodes: BodyNode[] | null;
   /** ISS-1089 — the `forge-record` block core parsed, with the project's lens. */
   record: (ForgeRecordView & { lens: RecordLens }) | null;
+  /** ISS-1228 — what core's own writer stamped this comment as recording; `null` for any other comment. */
+  announces?: "release" | null;
   /** ISS-932 wave 4 — the BOX a credential was issued to. Answers *where*, never *who*. */
   authorDeviceId?: string | null;
   body: string;
@@ -417,8 +436,8 @@ export interface AttachmentRow {
 }
 
 /**
- * Lifecycle comment kind. Read from `template` when the body is in component
- * form, and matched against the prose otherwise — `derive.ts:deriveCommentKind`.
+ * Lifecycle comment kind: Released from core's stamp, the rest matched against the comment's
+ * opening line — `derive.ts:deriveCommentKind`.
  */
 export type CommentKind =
   | "triage"
@@ -435,7 +454,7 @@ export type CommentKind =
   | "blocked"
   | "comment";
 
-export type { StageKey, StatusKey };
+export type { StatusKey };
 
 export interface LiveReachCommit {
   sha: string;

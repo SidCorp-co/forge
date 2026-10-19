@@ -49,7 +49,7 @@ export async function handlePmJobFailedAutoDisable(
       .where(eq(pmConfig.projectId, payload.projectId));
 
     const [project] = await tx
-      .select({ createdBy: projects.createdBy })
+      .select({ createdBy: projects.createdBy, name: projects.name })
       .from(projects)
       .where(eq(projects.id, payload.projectId))
       .limit(1);
@@ -68,7 +68,7 @@ export async function handlePmJobFailedAutoDisable(
         kind: kindOf('pm_escalation'),
         tier: tierOf('pm_escalation'),
         state: INITIAL_STATE[kindOf('pm_escalation')],
-        title: 'PM cadence auto-disabled',
+        title: `${project.name} — PM cadence auto-disabled`,
         body: `PM agent failed ${count} times in the last hour. Cadence and event triggers are off until you re-enable in project settings.`,
         issueId: null,
         agentSessionId: null,

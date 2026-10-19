@@ -53,17 +53,80 @@ describe('the API reference of the composed app', () => {
     ).toEqual([]);
   });
 
-  it('asks for no bearer on exactly the routes the token map excludes by a door that takes none', () => {
+  it('asks for a bearer on exactly the routes whose gates read one, and on the MCP door', () => {
     const wrong = reference.routes.flatMap((entry) => {
       const operation = reference.document.paths[openApiPath(entry.path)]?.[
         entry.method.toLowerCase()
       ] as { security?: unknown[] } | undefined;
-      const open = Array.isArray(operation?.security) && operation.security.length === 0;
+      const asks = Array.isArray(operation?.security) && operation.security.length > 0;
       const door = patUngrantableFor(entry.path, entry.method)?.admits;
-      const takesNoBearer = door === 'public' || door === 'ticket' || door === 'signature';
-      return open === takesNoBearer ? [] : [`${entry.key} is ${open ? 'open' : 'closed'}`];
+      const wanted =
+        door === 'public' || door === 'ticket' || door === 'signature'
+          ? false
+          : door === 'mcp' || entry.takesBearer;
+      return asks === wanted
+        ? []
+        : [`${entry.key} is documented ${asks ? 'with' : 'without'} a bearer`];
     });
     expect(wrong).toEqual([]);
+  });
+
+  it('documents with no bearer each route whose handler was read to take none, behind any door', () => {
+    // Each of these routes was read in its source: its credential is a body, a cookie, a pairing
+    // code or a token in the path, never an Authorization header.
+    const bearerless = [
+      'POST /api/devices/login/init',
+      'GET /api/devices/login/poll',
+      'POST /api/devices/pair',
+      'POST /api/auth/local',
+      'POST /api/auth/register',
+      'POST /api/auth/refresh',
+      'GET /api/invitations/:token',
+      'GET /api/org-invitations/:token',
+    ];
+    const bearer = ['POST /api/devices/heartbeat', 'GET /api/devices/me/pool', 'POST /api/pat'];
+    const asks = (key: string) => {
+      const entry = reference.routes.find((r) => r.key === key);
+      if (!entry) throw new Error(`the composed app serves no ${key}`);
+      const operation = reference.document.paths[openApiPath(entry.path)]?.[
+        entry.method.toLowerCase()
+      ] as { security?: unknown[] };
+      return (operation.security ?? []).length > 0;
+    };
+    expect(bearerless.filter(asks)).toEqual([]);
+    expect(bearer.filter((key) => !asks(key))).toEqual([]);
+  });
+
+  it('names a permission in x-forge-access on exactly the operations that ask for a bearer', () => {
+    const wrong = reference.routes.flatMap((entry) => {
+      const operation = reference.document.paths[openApiPath(entry.path)]?.[
+        entry.method.toLowerCase()
+      ] as { security?: unknown[]; 'x-forge-access'?: { permission?: string; door: string } };
+      const asks = (operation.security ?? []).length > 0;
+      const permission = operation['x-forge-access']?.permission;
+      if (permission && !asks) return [`${entry.key} claims ${permission} and asks for no bearer`];
+      if (!permission && operation['x-forge-access']?.door === 'token')
+        return [`${entry.key} is on the token door and names no permission`];
+      return [];
+    });
+    expect(wrong).toEqual([]);
+  });
+
+  it('shows, in the words an operation is read by, the permission or the door the document carries', () => {
+    const missing = reference.routes.flatMap((entry) => {
+      const operation = reference.document.paths[openApiPath(entry.path)]?.[
+        entry.method.toLowerCase()
+      ] as { description?: string; 'x-forge-access'?: { permission?: string; door: string } };
+      const access = operation['x-forge-access'];
+      if (!access) return [`${entry.key} carries no access`];
+      const shown = access.permission
+        ? `**Permission:** \`${access.permission}\``
+        : access.door === 'none'
+          ? '**Bearer:** not read.'
+          : `**Door:** \`${access.door}\``;
+      return operation.description?.startsWith(shown) ? [] : [`${entry.key} does not say ${shown}`];
+    });
+    expect(missing).toEqual([]);
   });
 
   it('draws only flows whose every step is an operation of the document', () => {

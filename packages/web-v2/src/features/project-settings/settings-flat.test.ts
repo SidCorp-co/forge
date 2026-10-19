@@ -11,8 +11,10 @@ const FEATURES = resolve(process.cwd(), "src/features");
 
 const SETTINGS_PAGES = [
   "project-settings/components/basics-tab.tsx",
-  "project-settings/components/repo-tab.tsx",
-  "project-settings/components/testing-tab.tsx",
+  "project-settings/components/shape-tab.tsx",
+  "project-settings/components/shape-sections.tsx",
+  "project-settings/components/environment-blocks.tsx",
+  "project-settings/components/release-section.tsx",
   "project-settings/components/pipeline-tab.tsx",
   "project-settings/components/memory-tab.tsx",
   "project-settings/components/labels-tab.tsx",
@@ -113,7 +115,7 @@ describe("the settings pages are flat", () => {
     ["project-settings/components/members-tab.tsx", "divide-y divide-line", 2],
     ["project-settings/components/labels-tab.tsx", "divide-y divide-line", 1],
     ["project-settings/components/modules-tab.tsx", "divide-y divide-line", 1],
-    ["project-settings/components/testing-tab.tsx", "divide-y divide-line", 1],
+    ["project-settings/components/environment-blocks.tsx", "divide-y divide-line", 2],
     ["integrations/components/mcp-servers-panel.tsx", "border-t border-line", 1],
   ];
 

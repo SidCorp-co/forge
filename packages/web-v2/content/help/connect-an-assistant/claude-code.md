@@ -14,7 +14,7 @@ and run it in a terminal.
 ## Before you start
 
 - Claude Code is installed and you have signed in to it at least once. To check,
-  open a terminal (step 15 below says how) and type `claude --version`, then
+  open a terminal (steps 24 to 26 below say how) and type `claude --version`, then
   press Enter: it prints a version number.
 - You can open the Forge project you want to ask about.
 - Open a blank note to paste into as you go — **Notes** or **TextEdit** on a
@@ -22,107 +22,249 @@ and run it in a terminal.
 
 ## Steps
 
-1. In Forge, select your initials at the bottom of the left-hand menu, then choose
-   **Account & Settings**.
+1. In Forge, select your initials at the bottom of the left-hand menu.
+
+   **Check:** a short menu opens, with **Account & Settings** in it.
+
+2. Choose **Account & Settings**.
 
    **Check:** the Settings page opens, with tabs along the top that include
    **API Tokens** and **MCP**.
 
-2. Choose the **API Tokens** tab.
+3. Choose the **API Tokens** tab.
 
-   **Check:** a form titled **Create a token** is at the top.
+   **Check:** a list titled **Your tokens** is at the top of the tab.
 
-3. In **Name**, type `Claude Code`.
+4. Scroll down, below **Your tokens**, to the form titled **Create a token**.
+
+   **Check:** the form's first box, **Name**, is in view.
+
+5. In **Name**, type `Claude Code`.
 
    **Check:** the name shows in the box.
 
-4. Under **Scopes**, tick both **read** and **write**. Read lets the assistant
-   look things up; write lets it file issues and add comments for you.
+6. Under **Scopes**, tick **write**; **read** is already ticked for you. Read lets
+   the assistant look things up; write lets it make changes for you, such as filing
+   an issue or adding a comment.
 
-   **Check:** both boxes are ticked.
+   **Check:** both **read** and **write** are ticked.
 
-5. In **Bind to a project**, choose the project you want to ask about. The token
+7. Under **Permissions**, choose **Only the permissions I pick**.
+
+   **Check:** a list of permissions, each with a box, appears under that choice, and
+   none of them is ticked.
+
+8. Tick `issues:read`. The form needs at least one permission, and these permissions
+   limit a different way into Forge from the one your assistant uses, so the
+   smallest one is enough. What your assistant may do is set by **Scopes** and by
+   **Bind to a project**.
+
+   **Check:** `issues:read` is the only permission ticked.
+
+9. In **Bind to a project**, choose the project you want to ask about. The token
    then works for that project only.
 
    **Check:** the box shows the project's name.
 
-6. Choose **Create token**. If Forge asks for your password, type it and choose
-   **Confirm & create**. If it offers **Continue with** your sign-in provider
-   instead, choose that, sign in, and choose **Create token** again once you are
-   back on this page.
+10. Choose **Create token**.
 
-   **Check:** a panel titled **Token created** shows a long code that starts with
-   `forge_pat_`.
+    **Check:** a panel titled **Token created** appears; or, if Forge wants to
+    confirm it is you first, a **Confirm password** box with the cursor in it, or a
+    **Continue with** button, comes into view instead; or, if a token you made
+    before has this name, the words
+    **An active token already uses this name.** show under **Name**, with the
+    name highlighted.
 
-7. Choose **Copy to clipboard**, and paste the code into your note. Forge shows it
-   only this once.
+11. If the **Token created** panel has not appeared, follow
+    **If the Token created panel does not appear** at the end of this page. You come
+    back to step 12 when the panel is showing.
 
-   **Check:** your note holds the whole code, starting with `forge_pat_`.
+    **Check:** the panel titled **Token created** shows a long code that starts with
+    `forge_pat_`.
 
-8. Choose **Done** to close the panel.
+12. Choose **Copy to clipboard**. Forge shows the code only this once.
 
-   **Check:** you are back on the **API Tokens** tab, and your new token is listed
-   under **Your tokens**.
+    **Check:** the button changes to **Copied ✓**.
 
-9. Choose the **MCP** tab.
+13. Paste the code into your note.
 
-   **Check:** a card titled **Connect a client** shows an **Endpoint** and a
-   **Project**.
+    **Check:** your note holds the whole code, starting with `forge_pat_`.
 
-10. Make sure **Project** shows the project you chose in step 5, and choose it if
-    it does not.
+14. Choose **Done** to close the panel.
 
-    **Check:** under **Config snippet**, a sentence reads *"This snippet
-    configures"* followed by your project's name.
+    **Check:** you are back on the **API Tokens** tab, and your new token is listed
+    under **Your tokens**.
 
-11. Choose the **Claude CLI** tab above the snippet.
+15. Choose the **MCP** tab.
+
+    **Check:** a card titled **Connect a client** shows an **Endpoint** and a
+    **Project**.
+
+16. In **Project**, choose the project you chose in step 9. It may already be
+    showing.
+
+    **Check:** under **Config snippet**, a sentence reads
+    *"This snippet configures"* followed by your project's name.
+
+17. Choose the **Claude CLI** tab above the snippet.
 
     **Check:** the snippet is one line starting `claude mcp add`, and the words
     above it say to run it in a terminal.
 
-12. Choose **Copy**.
+18. Choose **Copy**.
 
     **Check:** the button changes to **Copied ✓**.
 
-13. Paste the line into your note, under the code.
+19. Paste the line into your note, under the code.
 
     **Check:** your note holds the code and, below it, the line starting
     `claude mcp add`.
 
-14. In the line, replace `<YOUR_TOKEN_HERE>` — angle brackets included — with the
-    code from step 7. Leave the word `Bearer` and the space after it in place.
+20. In your note, drag across the code, from `forge_pat_` to its last character, to
+    highlight it.
+
+    **Check:** the whole code is highlighted, and nothing in the line below it is.
+
+21. Press **Cmd+C** on a Mac, or **Ctrl+C** on Windows, to copy the code.
+
+    **Check:** the code is still highlighted. A copy changes nothing on the screen;
+    the next paste shows it worked.
+
+22. In the line below, drag across `<YOUR_TOKEN_HERE>`, from `<` to `>`, to
+    highlight it.
+
+    **Check:** `<YOUR_TOKEN_HERE>` is highlighted with both angle brackets, and the
+    word `Bearer` and the space before it are not.
+
+23. Press **Cmd+V** on a Mac, or **Ctrl+V** on Windows, to paste the code over it.
 
     **Check:** the part in quotes reads `"Authorization: Bearer forge_pat_…"`, with
     your code where the dots are, and no `<` or `>` is left anywhere in the line.
 
-15. Open a terminal. On a Mac, press **Cmd+Space**, type `Terminal` and press
-    Enter. On Windows, open the **Start** menu, type `PowerShell` and press Enter.
+24. To open a terminal, first open your computer's search. On a Mac, press
+    **Cmd+Space**. On Windows, press the **Windows** key.
 
-    **Check:** a window opens with a line waiting for you to type.
+    **Check:** on a Mac, a search box opens; on Windows, the **Start** menu opens.
+    Either one is waiting for you to type.
 
-16. Copy the whole line from your note, paste it into the terminal and press
-    Enter.
+25. Type `Terminal` on a Mac, or `PowerShell` on Windows.
+
+    **Check:** the top result is **Terminal** on a Mac, or **Windows PowerShell** on
+    Windows.
+
+26. Press Enter to open the terminal.
+
+    **Check:** a terminal window opens, with a line waiting for you to type.
+
+27. In your note, drag from `claude` at the start of the line to the closing quote
+    at its end.
+
+    **Check:** the whole line is highlighted, from `claude` to the closing quote.
+
+28. Press **Cmd+C** on a Mac, or **Ctrl+C** on Windows, to copy the line.
+
+    **Check:** the line is still highlighted. A copy changes nothing on the screen;
+    the next paste shows it worked.
+
+29. Paste the line into the terminal.
+
+    **Check:** the terminal shows the line, with the cursor after it. It has not run
+    yet.
+
+30. Press Enter.
 
     **Check:** the terminal prints `Added HTTP MCP server forge with URL:` followed
-    by the Endpoint from step 9 and `to user config`.
+    by the Endpoint from step 15 and `to user config`.
 
-17. Type `claude mcp list` and press Enter.
+31. Type `claude mcp list`.
+
+    **Check:** the terminal shows `claude mcp list` after the prompt. It has not run
+    yet.
+
+32. Press Enter.
 
     **Check:** a line starts with `forge:` and ends with `✔ Connected`.
 
-18. Type `claude` and press Enter.
+33. Type `claude`.
+
+    **Check:** the terminal shows `claude` after the prompt. It has not run yet.
+
+34. Press Enter.
 
     **Check:** Claude Code starts and waits for your question.
 
-19. Ask: *"What issues are open in Forge right now?"*
+35. Type: *"What issues are open in Forge right now?"*
 
-    **Check:** Claude Code asks your permission to use a tool from `forge`; once
-    you allow it, it answers with issues from your project.
+    **Check:** your question shows where you type, and it has not been sent yet.
 
-20. Delete the note. The token now lives in Claude Code's own settings, and you
-    will not need the copy again.
+36. Press Enter to send it.
+
+    **Check:** Claude Code asks your permission to use a tool from `forge`.
+
+37. Allow it.
+
+    **Check:** Claude Code answers with issues from your project.
+
+38. Delete the note. The token now lives in Claude Code's own settings, and you will
+    not need the copy again.
 
     **Check:** the note is gone from your notes app.
+
+## If the Token created panel does not appear
+
+After step 10 you see one of three things instead of the **Token created** panel:
+a **Confirm password** box or a **Continue with** button, when Forge checks that it
+is really you before it makes a token, or the words
+**An active token already uses this name.** under **Name**. Do the part below
+that matches what you see. You finish with the **Token created** panel, and then
+you go on to step 12.
+
+If you see a **Confirm password** box:
+
+1. Type the password you sign in to Forge with into the **Confirm password** box.
+
+   **Check:** the box shows dots, one for each character you typed.
+
+2. Choose **Confirm & create**.
+
+   **Check:** a panel titled **Token created** shows a long code that starts with
+   `forge_pat_`.
+
+If you see a **Continue with** button:
+
+1. Choose **Continue with** your sign-in provider.
+
+   **Check:** your sign-in provider's own page opens.
+
+2. Sign in there.
+
+   **Check:** you are back on Forge's **API Tokens** tab, with the form as you
+   left it.
+
+3. Choose **Create token** again.
+
+   **Check:** a panel titled **Token created** shows a long code that starts with
+   `forge_pat_`.
+
+If you see **An active token already uses this name.** under **Name**:
+
+A token you made before already has this name, for another project or from a
+time you lost its code, and this one needs a name of its own. You could revoke
+the old token under **Your tokens** instead, but anything still using it would
+stop working, so a new name is the safer way on.
+
+1. Type a name none of your tokens has, such as `Claude Code 2`. The old name in
+   **Name** is highlighted, so what you type replaces it.
+
+   **Check:** **Name** shows the new name.
+
+2. Choose **Create token**.
+
+   **Check:** a panel titled **Token created** appears; or a **Confirm password**
+   box or a **Continue with** button comes into view.
+
+If the **Confirm password** box or the **Continue with** button came into view,
+do the part above that matches it.
 
 ## What happens next
 
@@ -131,6 +273,6 @@ has twenty examples. The connection works from any folder you start Claude Code
 in, and it lasts until you remove it with `claude mcp remove forge -s user` or
 revoke the token on the **API Tokens** tab.
 
-If step 17 shows `✘ Failed to connect`, see
+If step 32 shows `✘ Failed to connect`, see
 [When it does not work](?path=connect-an-assistant/when-it-does-not-work) — the
 words after it say which of the five problems it is.

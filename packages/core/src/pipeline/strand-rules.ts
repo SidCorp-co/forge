@@ -47,24 +47,24 @@ export const STRAND_RULES: Record<IssueStatus, StrandRule> = {
     watch: true,
     graceMs: 15 * MINUTE,
     owes: 'agent',
-    waitingFor: 'a run to be dispatched onto it',
+    waitingFor: 'work to start on it',
   },
   confirmed: { watch: true, graceMs: 6 * HOUR, owes: 'agent', waitingFor: 'a plan' },
   clarified: { watch: true, graceMs: 6 * HOUR, owes: 'agent', waitingFor: 'a plan' },
-  approved: { watch: true, graceMs: 6 * HOUR, owes: 'agent', waitingFor: 'a run to build it' },
+  approved: { watch: true, graceMs: 6 * HOUR, owes: 'agent', waitingFor: 'someone to build it' },
   in_progress: {
     watch: true,
     graceMs: 2 * HOUR,
     owes: 'agent',
-    waitingFor: 'the run that claimed it',
+    waitingFor: 'the agent that took it on to carry on',
   },
   developed: {
     watch: true,
     graceMs: 6 * HOUR,
     owes: 'agent',
-    waitingFor: 'a run to judge it',
+    waitingFor: 'someone to check it',
   },
-  testing: { watch: true, graceMs: 6 * HOUR, owes: 'agent', waitingFor: 'verdicts' },
+  testing: { watch: true, graceMs: 6 * HOUR, owes: 'agent', waitingFor: 'its checks to finish' },
   tested: { watch: true, graceMs: 6 * HOUR, owes: 'agent', waitingFor: 'a release' },
   awaiting_release: {
     watch: true,
@@ -72,8 +72,13 @@ export const STRAND_RULES: Record<IssueStatus, StrandRule> = {
     owes: 'human',
     waitingFor: 'a person to release it',
   },
-  releasing: { watch: true, graceMs: 2 * HOUR, owes: 'agent', waitingFor: 'the release run' },
-  reopen: { watch: true, graceMs: 6 * HOUR, owes: 'agent', waitingFor: 'a run to build it again' },
+  releasing: { watch: true, graceMs: 2 * HOUR, owes: 'agent', waitingFor: 'the release to finish' },
+  reopen: {
+    watch: true,
+    graceMs: 6 * HOUR,
+    owes: 'agent',
+    waitingFor: 'someone to build it again',
+  },
 };
 
 export const AT_REST_STATUSES: readonly IssueStatus[] = (
@@ -142,7 +147,57 @@ export function strandReason(args: {
   status: string;
   rule: StrandRule;
   evidence: StrandEvidence;
-}): { reason: string; owes: StrandOwner } {
+}): { reason: string; owes: StrandOwner; said: string } {
+  const found = technicalReason(args);
+  return { ...found, said: strandSaid(args) };
+}
+
+/** A hold's first sentence as a clause: what a person reads of it, never its code. */
+function holdClause(hold: ReleaseHold): string {
+  const first = hold.words?.[0];
+  if (!first) return 'the automatic release is holding it back';
+  return `${first.charAt(0).toLowerCase()}${first.slice(1)}`.replace(/[.]\s*$/, '');
+}
+
+/**
+ * ISS-1229 r16 — why nothing is working the issue, in words a person reads in the notice: the same
+ * evidence {@link strandReason} reads, never a lease, a dispatch, a row or a code.
+ */
+export function strandSaid(args: {
+  status: string;
+  rule: StrandRule;
+  evidence: StrandEvidence;
+}): string {
+  const { status, evidence } = args;
+  const lease = evidence.lease;
+  if (status === 'awaiting_release' && evidence.releaseHold)
+    return holdClause(evidence.releaseHold);
+  if (lease.verdict === 'abandoned') {
+    return `the agent working on it stopped answering ${silence(lease)}, so it was let go`;
+  }
+  if (status === 'open' && !evidence.poolHasRunner) {
+    return 'no runner is connected to take this project’s work';
+  }
+  if (status === 'open' && !evidence.everRan) return 'no work was ever started on it';
+  if (lease.verdict === 'expired') {
+    return lease.stopped
+      ? 'the agent that took it let it go, and nobody has taken it since'
+      : 'the agent that took it ran out of the time it asked for';
+  }
+  if (lease.verdict === 'shared') {
+    return `the agent holding it holds ${lease.fanout} issues at once, so it may not be working on this one`;
+  }
+  if (lease.verdict === 'malformed') return 'who is working on it could not be read';
+  if (evidence.everRan && !evidence.merged) return 'work on it stopped before its code was merged';
+  if (evidence.everRan && evidence.merged)
+    return 'its code was merged and nothing has moved it on since';
+  return 'nothing is working on it';
+}
+
+function technicalReason(args: { status: string; rule: StrandRule; evidence: StrandEvidence }): {
+  reason: string;
+  owes: StrandOwner;
+} {
   const { status, rule, evidence } = args;
   const fallbackOwner: StrandOwner = rule.watch ? rule.owes : 'human';
   const lease = evidence.lease;
@@ -160,7 +215,7 @@ export function strandReason(args: {
 
   if (status === 'open' && !evidence.poolHasRunner) {
     return {
-      reason: 'no runner is admitted to this project’s job pool, so no wake can be acted on',
+      reason: 'no runner that takes this project’s work is connected, so nothing can pick it up',
       owes: 'human',
     };
   }

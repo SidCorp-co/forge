@@ -34,11 +34,13 @@ dispatches. So:
 - **prose-deps** — describing an ordering in text instead of setting a `blocks` edge. Only the edge
   gates dispatch; prose gates nothing.
 - **open-as-note** / **draft-as-note** — filing a note as an issue.
-- **plan-by-hand** — pre-filling `plan` or `acceptanceCriteria` on create. On a staged project
-  those are written by the clarify and plan steps, on an autonomous one by the driver's own
-  clarifying and planning phases; filling them deletes that work's reason to exist.
-- **wholesale-config-clobber** — patching a nested map (`pipelineConfig.states`)
-  without reading it first. These are replace-not-merge; send a complete entry.
+- **plan-by-hand** — pre-filling `plan` or `acceptanceCriteria` on create. The driver writes
+  them in its own clarifying and planning phases; filling them deletes that work's reason to
+  exist.
+- **wholesale-config-clobber** — writing a nested map (`pipelineConfig.states`) without
+  reading it first, or resending keys you did not change. `get` it, then `update` with
+  `pipelineConfig` naming only the changed keys and `pipelineConfigBase` holding what `get`
+  answered; a key whose stored value moved since is refused `CONFIG_STALE`.
 - **skip-recall** — see above.
 - **fix-by-hand-and-forget** — fixing something outside the pipeline and leaving no status move and
   no recorded learning.

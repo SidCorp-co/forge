@@ -8,16 +8,18 @@
  * held on one transport and not the other. Both read this now.
  */
 
-import { and, desc, eq, type SQL, sql } from 'drizzle-orm';
+import { and, desc, eq, or, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type AgentSessionStatus, agentSessions } from '../db/schema.js';
 import type { SessionTranscript } from '../db/session-vocabulary.js';
 import { kindTuple, TRANSCRIPTLESS_SESSION_KINDS } from '../jobs/session-kinds.js';
+import { buildListEnvelope } from '../mcp/tools/list-envelope.js';
+import { encodeSessionCursor, type SessionCursor } from './cursor.js';
 
 /** SQL true for a row whose lane keeps no transcript in core (master, run_session). */
 const lanePutsNoTranscriptInCore = sql`${agentSessions.kind} IN ${kindTuple(TRANSCRIPTLESS_SESSION_KINDS)}`;
 
-/** A count nobody writes is not a count: null here only for a lane that records no transcript. */
+/** The one count of a session's entries, read by list and detail alike; null only for a lane that records no transcript. */
 const transcriptLength = sql<number | null>`CASE WHEN ${lanePutsNoTranscriptInCore} THEN NULL
   ELSE coalesce(jsonb_array_length(${agentSessions.messages}), 0) END`;
 
@@ -39,12 +41,7 @@ export const agentSessionListColumns = {
   pipelineControl: agentSessions.pipelineControl,
   pipelineTelemetry: agentSessions.pipelineTelemetry,
   pipelineHealth: agentSessions.pipelineHealth,
-  // The turn ledger answers without reading the transcript; its length answers only where the ledger has no rows.
-  messageCount: sql<number | null>`CASE WHEN ${lanePutsNoTranscriptInCore} THEN NULL ELSE coalesce((
-    SELECT max(t.turn_index) + 1
-    FROM agent_session_turns t
-    WHERE t.agent_session_id = "agent_sessions"."id"
-  ), jsonb_array_length(${agentSessions.messages}), 0) END`,
+  messageCount: transcriptLength,
   transcript: sql<SessionTranscript>`CASE WHEN ${lanePutsNoTranscriptInCore} THEN 'not-recorded' ELSE 'recorded' END`,
   failureReason: agentSessions.failureReason,
   failureDetail: agentSessions.failureDetail,
@@ -85,20 +82,58 @@ export type AgentSessionQuery = {
   status?: AgentSessionStatus | undefined;
   issueId?: string | undefined;
   limit: number;
+  /** Resume strictly after this row of the `(updated_at, id)` order. */
+  after?: SessionCursor | undefined;
 };
 
-/** The lean rows an agent lists sessions with, newest first. */
+/** `updated_at` as the database's microsecond text: a JS Date holds milliseconds and would skip or repeat rows below one. */
+const updatedAtKey = sql<string>`to_char(${agentSessions.updatedAt} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`;
+
+/** The lean rows an agent lists sessions with, newest first; each carries the `cursorKey` that {@link sessionListEnvelope} mints a token from. */
 export async function listAgentSessionsForMcp(q: AgentSessionQuery) {
   const conds: SQL[] = [eq(agentSessions.projectId, q.projectId)];
   if (q.status) conds.push(eq(agentSessions.status, q.status));
   if (q.issueId) conds.push(sql`${agentSessions.metadata}->>'issueId' = ${q.issueId}`);
+  if (q.after) {
+    const at = sql`${q.after.updatedAtKey}::timestamptz`;
+    conds.push(
+      or(
+        sql`${agentSessions.updatedAt} < ${at}`,
+        and(
+          sql`${agentSessions.updatedAt} = ${at}`,
+          sql`${agentSessions.id} < ${q.after.id}::uuid`,
+        ),
+      ) as SQL,
+    );
+  }
 
   return db
-    .select(agentSessionMcpListColumns)
+    .select({ ...agentSessionMcpListColumns, cursorKey: updatedAtKey })
     .from(agentSessions)
     .where(and(...conds))
-    .orderBy(desc(agentSessions.updatedAt))
+    .orderBy(desc(agentSessions.updatedAt), desc(agentSessions.id))
     .limit(q.limit);
+}
+
+/** The page both surfaces answer with: `nextCursor` is set when the limit or the size cap stopped the read short, and `hasMore` is that same fact. */
+export function sessionListEnvelope(
+  rows: Awaited<ReturnType<typeof listAgentSessionsForMcp>>,
+  limit: number,
+  hint: string,
+) {
+  const keyById = new Map(rows.map((r) => [r.id, r.cursorKey]));
+  const items = rows.map(({ cursorKey: _key, ...row }) => row);
+  return buildListEnvelope({
+    key: 'sessions',
+    items,
+    limit,
+    hint,
+    cursor: {
+      more: rows.length > limit,
+      of: (item) =>
+        encodeSessionCursor({ updatedAtKey: keyById.get(item.id) as string, id: item.id }),
+    },
+  });
 }
 
 /** How many messages a detail read returns. Both the REST route and the MCP tool take this tail. */
@@ -115,8 +150,7 @@ export async function readAgentSession(sessionId: string) {
   const [row] = await db
     .select({
       ...agentSessionListColumns,
-      messageCount: transcriptLength,
-      totalMessages: transcriptLength,
+      totalMessages: agentSessionListColumns.messageCount,
       messages: sql<unknown[]>`coalesce((
         SELECT jsonb_agg(x.e ORDER BY x.ord)
         FROM (

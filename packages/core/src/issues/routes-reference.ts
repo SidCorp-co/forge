@@ -53,28 +53,45 @@ export const issueCreateSchema = z
 
 export type IssueCreateInput = z.infer<typeof issueCreateSchema>;
 
+/** An update that carries `status` is told where a status moves, rather than only that the key is
+ *  unknown: a reader told "unrecognized" tries another spelling (ISS-1421 round 2). */
+export const STATUS_IS_NOT_AN_UPDATE =
+  'Unrecognized key: "status" — an issue update never writes a status. A status moves through ' +
+  'POST /api/issues/:id/transition (or `forge_issues` `transition`), and only starting a release ' +
+  'puts an issue at Releasing.';
+
+/** What both update doors say to an update that writes nothing (ISS-1229 r13). */
+export const NO_FIELDS_TO_UPDATE = 'no fields to update';
+
 export const issuePatchSchema = z
-  .object({
-    title: z.string().trim().min(1).max(500).optional(),
-    description: z.string().max(100_000).nullable().optional(),
-    descriptionFormat: z.enum(BODY_FORMATS).optional(),
-    priority: z.enum(issuePriorities).optional(),
-    category: z.string().trim().min(1).max(100).nullable().optional(),
-    complexity: z.enum(issueComplexities).nullable().optional(),
-    plan: z.string().max(200_000).nullable().optional(),
-    acceptanceCriteria: z.string().max(100_000).nullable().optional(),
-    assigneeId: z.uuid().nullable().optional(),
-    labels: z.array(labelAttachItemSchema).max(100).optional(),
-    metadata: issueMetadataSchema.optional(),
-    releaseNotes: ReleaseNotesSchema.nullable().optional(),
-    sessionContext: sessionContextSchema,
-    detectorKey: z.string().trim().min(1).max(120).optional(),
-    landingShape: landingShapeInputSchema.optional(),
-    expect: sessionContextExpectSchema.optional(),
-  })
-  .strict()
-  .refine((o) => Object.keys(o).length > 0, { message: 'no fields to update' })
-  .refine((o) => Object.keys(o).some((k) => k !== 'expect'), {
+  .strictObject(
+    {
+      title: z.string().trim().min(1).max(500).optional(),
+      description: z.string().max(100_000).nullable().optional(),
+      descriptionFormat: z.enum(BODY_FORMATS).optional(),
+      priority: z.enum(issuePriorities).optional(),
+      category: z.string().trim().min(1).max(100).nullable().optional(),
+      complexity: z.enum(issueComplexities).nullable().optional(),
+      plan: z.string().max(200_000).nullable().optional(),
+      acceptanceCriteria: z.string().max(100_000).nullable().optional(),
+      assigneeId: z.uuid().nullable().optional(),
+      labels: z.array(labelAttachItemSchema).max(100).optional(),
+      metadata: issueMetadataSchema.optional(),
+      releaseNotes: ReleaseNotesSchema.nullable().optional(),
+      sessionContext: sessionContextSchema,
+      detectorKey: z.string().trim().min(1).max(120).optional(),
+      landingShape: landingShapeInputSchema.optional(),
+      expect: sessionContextExpectSchema.optional(),
+    },
+    {
+      error: (iss) =>
+        iss.code === 'unrecognized_keys' && iss.keys.includes('status')
+          ? STATUS_IS_NOT_AN_UPDATE
+          : undefined,
+    },
+  )
+  .refine((o) => Object.keys(o).length > 0, { message: NO_FIELDS_TO_UPDATE })
+  .refine((o) => o.expect === undefined || Object.keys(o).some((k) => k !== 'expect'), {
     message: '`expect` is a precondition on a write — send the field(s) to write alongside it',
   });
 
@@ -116,6 +133,19 @@ const issueDetailFields = {
   ...creatorFields,
   pipelineHealth: pipelineHealthSchema,
   liveReach: liveReachSchema.nullable(),
+  /** The branch the work-evidence gate counts for this issue (`work-evidence.ts:collectWorkEvidence`), or null where it counts none. */
+  recordedBranch: z
+    .string()
+    .nullable()
+    .describe(
+      'The branch the work-evidence gate counts for this issue: sessionContext.branch or sessionContext.worklog.branch, unless it names the base branch or the live branch. Null where the gate counts no branch.',
+    ),
+  newestMergedPull: z
+    .string()
+    .nullable()
+    .describe(
+      'The merge commit of the most recently merged pull request Forge holds for this issue: the commit a Mark merged naming no commit compares with the mark. Null where Forge holds none.',
+    ),
   labels: z.array(issueLabelSchema),
   comments: z.array(z.never()),
   activity: z.array(z.never()),

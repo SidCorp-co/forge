@@ -390,7 +390,6 @@ export const projects = pgTable(
     agentConfig: jsonb('agent_config'),
     environments: jsonb('environments'),
     webhookSecret: text('webhook_secret'),
-    apiKey: text('api_key'),
     issuePrefix: text('issue_prefix'),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -398,7 +397,6 @@ export const projects = pgTable(
   (t) => ({
     orgIdIdx: index('projects_org_id_idx').on(t.orgId),
     createdByIdx: index('projects_created_by_idx').on(t.createdBy),
-    apiKeyUq: uniqueIndex('projects_api_key_uq').on(t.apiKey).where(sql`api_key IS NOT NULL`),
     defaultDeviceIdx: index('projects_default_device_id_idx').on(t.defaultDeviceId),
     archivedAtIdx: index('projects_archived_at_idx').on(t.archivedAt),
     issuePrefixFk: foreignKey({
@@ -966,6 +964,8 @@ export const issues = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
     mergedAt: timestamp('merged_at', { withTimezone: true }),
+    /** When Forge recorded the mark, which `merged_at` (when the code merged) can be hours older than. */
+    mergeMarkedAt: timestamp('merge_marked_at', { withTimezone: true }),
     mergedCommitSha: text('merged_commit_sha'),
     mergedLanding: text('merged_landing'),
     mergedClaimedCommit: text('merged_claimed_commit'),
@@ -1075,6 +1075,10 @@ export const projectWebhooksRelations = relations(projectWebhooks, ({ one }) => 
   project: one(projects, { fields: [projectWebhooks.projectId], references: [projects.id] }),
 }));
 
+/** What a comment core wrote can say it records (ISS-1228). */
+export const COMMENT_ANNOUNCEMENTS = ['release'] as const;
+export type CommentAnnouncement = (typeof COMMENT_ANNOUNCEMENTS)[number];
+
 export const comments = pgTable(
   'comments',
   {
@@ -1091,12 +1095,16 @@ export const comments = pgTable(
     body: text('body').notNull(),
     format: text('format', { enum: BODY_FORMATS }).notNull().default('markdown'),
     stage: text('stage'),
+    /** What core's own writer said this comment records, set as it writes it (ISS-1228). Only the
+     *  release flow sets it, to `release`; no caller's door can, so typed words never earn it. */
+    announces: text('announces', { enum: COMMENT_ANNOUNCEMENTS }),
     parentId: uuid('parent_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
     formatChk: check('comments_format_chk', sql`${t.format} IN ('markdown', 'html')`),
+    announcesChk: check('comments_announces_chk', sql`${t.announces} IN ('release')`),
     issueIdx: index('comments_issue_id_idx').on(t.issueId),
     issueCreatedIdx: index('comments_issue_created_idx').on(t.issueId, t.createdAt, t.id),
     parentIdx: index('comments_parent_id_idx').on(t.parentId),
@@ -2528,56 +2536,7 @@ export const uploadTickets = pgTable(
   }),
 );
 
-/**
- * Per-issue per-pipeline-run structured context (proposal Y).
- *
- * Stores the typed payload an agent writes at the end of a pipeline step
- * (kind='handoff') so the next state's prompt can inject it instead of
- * re-fetching the raw issue description / plan. Generic `kind` discriminator
- * leaves room for future per-issue per-run artifacts (blocker notes,
- * retrospectives, cross-step decisions) without another table.
- *
- * Lifecycle is fully derived: cascade delete from issues OR pipeline_runs.
- * No embedding here — handoffs are queried by natural key
- * `(issue_id, step, attempt)` in the hot path, not by similarity.
- *
- * Partial unique constraint enforces (issue, step, attempt) uniqueness for
- * `kind='handoff'` rows only; future kinds can have multiple rows per
- * (issue, step, attempt) without contention.
- */
-export const issueStepContextKinds = ['handoff'] as const;
-export type IssueStepContextKind = (typeof issueStepContextKinds)[number];
-
 export const testResults = ['pass', 'fail', 'blocked_fixture', 'verified_by_test'] as const;
-
-export const issueStepContexts = pgTable(
-  'issue_step_contexts',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    projectId: uuid('project_id')
-      .notNull()
-      .references(() => projects.id, { onDelete: 'cascade' }),
-    issueId: uuid('issue_id')
-      .notNull()
-      .references((): AnyPgColumn => issues.id, { onDelete: 'cascade' }),
-    pipelineRunId: uuid('pipeline_run_id')
-      .notNull()
-      .references(() => pipelineRuns.id, { onDelete: 'cascade' }),
-    kind: text('kind').notNull(),
-    step: text('step'),
-    attempt: integer('attempt').notNull().default(1),
-    payload: jsonb('payload').notNull(),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-  },
-  (t) => ({
-    handoffUq: uniqueIndex('issue_step_contexts_handoff_uq')
-      .on(t.issueId, t.step, t.attempt)
-      .where(sql`${t.kind} = 'handoff'`),
-    issueKindIdx: index('issue_step_contexts_issue_kind_idx').on(t.issueId, t.kind),
-    runIdx: index('issue_step_contexts_run_idx').on(t.pipelineRunId),
-  }),
-);
 
 // ISS-381 (2.2) — per-project queue-depth snapshots written once per pipeline
 // sweeper tick (runPipelineSweep) for projects with active jobs. Sparse: a tick

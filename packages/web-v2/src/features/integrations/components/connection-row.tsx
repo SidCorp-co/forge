@@ -7,10 +7,11 @@ import type { ConnectionDirectoryItem } from "@forge/contracts";
 import { formatRelativeTime } from "@/lib/utils/format";
 import { readOnlyNote } from "../connection-space";
 import { useCanManageConnection, useRemoveConnection, useUpdateConnection } from "../hooks";
-import { connectionTarget, connectionTitle } from "../connection-identity";
+import { connectionName, connectionTarget, connectionTitle } from "../connection-identity";
 import { deriveConnectionStatus } from "../derive";
 import { providerIcon, providerLabel as labelFor } from "../providers/registry";
 import { DirectoryStatusPill, scopeLabel } from "./status-pill";
+import { healthLine } from "@forge/contracts/health-words";
 
 /** Projects a connection is bound to, named — the line that tells two credentials apart. */
 function UsageLine({
@@ -51,8 +52,8 @@ function UsageLine({
 export function connectionRowLabel(
   connection: ConnectionDirectoryItem,
   projectName: (id: string) => string,
+  title: string = connectionTitle(connection),
 ): string {
-  const title = connectionTitle(connection);
   const parts = [`Manage connection ${title}`];
   // The same condition the visible provider pill renders under: two credentials
   // an operator called "Production", one Coolify and one GitHub, are told apart
@@ -60,7 +61,7 @@ export function connectionRowLabel(
   const providerLabel = labelFor(connection.provider);
   if (title !== providerLabel) parts.push(providerLabel);
   const target = connectionTarget(connection);
-  if (target) parts.push(target);
+  if (target && !title.startsWith(target)) parts.push(target);
   // Independent of the target rather than a fallback for it: two deploy tokens
   // against ONE endpoint, told apart on screen by the projects bound to them,
   // would otherwise reach the same name through the branch that already found
@@ -126,11 +127,15 @@ function RemoveButton({ connection }: { connection: ConnectionDirectoryItem }) {
 
 export function ConnectionRow({
   connection,
+  title = connectionTitle(connection),
   ownerLabel,
   projectName,
   onOpen,
 }: {
   connection: ConnectionDirectoryItem;
+  /** The name its section gives it by the share picker's rule (`connectionLabels`), so two
+   *  connections to one host never read alike (ISS-1421 r8, criterion 129). */
+  title?: string;
   /** ISS-477 — which principal owns this credential ("Personal" or an org name). */
   ownerLabel: string;
   projectName: (id: string) => string;
@@ -147,15 +152,16 @@ export function ConnectionRow({
   const healthId = useId();
   const statusId = useId();
   const checked = formatRelativeTime(connection.lastHealthAt);
-  const title = connectionTitle(connection);
-  const target = connectionTarget(connection);
+  // A title that already names what the connection points at is not repeated on the line below.
+  const named = connectionName(connection) ? connectionTarget(connection) : null;
+  const target = named && !title.startsWith(named) ? named : null;
   const providerLabel = labelFor(connection.provider);
 
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-line-subtle px-3 py-2">
       <button
         type="button"
-        aria-label={connectionRowLabel(connection, projectName)}
+        aria-label={connectionRowLabel(connection, projectName, title)}
         aria-describedby={[
           ownerId,
           // Only when it renders: an id naming no element is ignored by the
@@ -170,14 +176,17 @@ export function ConnectionRow({
         onClick={onOpen}
         className="-mx-1 flex min-w-[220px] flex-1 cursor-pointer flex-col gap-0.5 rounded-md px-1 py-0.5 text-left hover:bg-sunken focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
       >
-        <span className="inline-flex min-w-0 items-center gap-2">
+        <span className="inline-flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
           <Icon
             name={providerIcon(connection.provider)}
             size={16}
             className="shrink-0 text-muted"
           />
-          <span className="fg-label truncate">{title}</span>
-          {title !== providerLabel && (
+          {/* Wrapped, never cut: the end of a title is what tells two alike connections apart. */}
+          <span className="fg-label min-w-0 break-words" data-testid="connection-title">
+            {title}
+          </span>
+          {!title.startsWith(providerLabel) && (
             <span className="fg-body-sm shrink-0 rounded-pill bg-sunken px-2 py-0.5 text-subtle">
               {providerLabel}
             </span>
@@ -194,10 +203,8 @@ export function ConnectionRow({
           )}
           <UsageLine connection={connection} projectName={projectName} emptyId={usageEmptyId} />
           <span id={healthId} className="fg-body-sm text-subtle">
-            {connection.lastHealthStatus
-              ? `last health: ${connection.lastHealthStatus}${checked ? ` · ${checked}` : ""}`
-              : "never health-checked"}
-            {!connection.hasSecrets && " · no credential stored"}
+            {healthLine(connection.lastHealthStatus, checked)}
+            {!connection.hasSecrets && " No credential is stored."}
           </span>
         </span>
       </button>

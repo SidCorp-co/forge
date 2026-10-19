@@ -6,9 +6,9 @@ import {
 import { describe, expect, it } from "vitest";
 import {
   FAILURE_REASON_LABEL,
+  FAILURE_REASON_ACTION,
   failureReasonAction,
   failureReasonLabel,
-  HEARTBEAT_REAP_MS,
   STALLED_THRESHOLD_MS,
   deriveLiveness,
   deriveSessionDisplayStatus,
@@ -18,6 +18,9 @@ import {
   sessionKind,
   sessionStep,
   statusToChip,
+  sessionChipStatus,
+  sessionEndText,
+  sessionEndWord,
   classifySessionOutcome,
   isRealFailure,
   type SessionRow,
@@ -53,25 +56,51 @@ describe("deriveLiveness", () => {
     expect(deriveLiveness(running(59_000), NOW).state).toBe("alive");
   });
 
-  it("is stale just over the stale threshold (61s) with a reap countdown", () => {
-    const r = deriveLiveness(running(61_000), NOW);
+  // ISS-1228 round 9: the countdown and the "past" line count to the silence after which core ends
+  // this session, which core states on the row; the screen holds no number of its own.
+  const PIPELINE_LIMIT = 3 * 60_000;
+  const RUN_LIMIT = 10 * 60_000;
+
+  it("is stale just over the stale threshold (61s) with a countdown to core's limit", () => {
+    const r = deriveLiveness(running(61_000, { silenceLimitMs: PIPELINE_LIMIT }), NOW);
     expect(r.state).toBe("stale");
-    expect(r.reapInMs).toBe(HEARTBEAT_REAP_MS - 61_000);
+    expect(r.reapInMs).toBe(PIPELINE_LIMIT - 61_000);
   });
 
-  it("is still stale just under the reap bound (179s)", () => {
-    expect(deriveLiveness(running(179_000), NOW).state).toBe("stale");
+  it("is still stale just under core's limit (179s of 180s)", () => {
+    expect(deriveLiveness(running(179_000, { silenceLimitMs: PIPELINE_LIMIT }), NOW).state).toBe("stale");
   });
 
-  it("is reaping past the reap bound (181s)", () => {
-    const r = deriveLiveness(running(181_000), NOW);
+  it("is reaping past core's limit (181s of 180s)", () => {
+    const r = deriveLiveness(running(181_000, { silenceLimitMs: PIPELINE_LIMIT }), NOW);
     expect(r.state).toBe("reaping");
     expect(r.reapInMs).toBe(0);
   });
 
+  it("counts a run session to its own ten minutes, not to another kind's three", () => {
+    const r = deriveLiveness(running(4 * 60_000, { kind: "run_session", silenceLimitMs: RUN_LIMIT }), NOW);
+    expect(r.state).toBe("stale");
+    expect(r.reapInMs).toBe(6 * 60_000);
+    expect(deriveLiveness(running(RUN_LIMIT + 1_000, { silenceLimitMs: RUN_LIMIT }), NOW).state).toBe("reaping");
+  });
+
+  it("states no countdown and never past where core ends the session on no silence", () => {
+    for (const silenceLimitMs of [null, undefined]) {
+      const r = deriveLiveness(running(60 * 60_000, { silenceLimitMs }), NOW);
+      expect(r.state).toBe("stale");
+      expect(r.reapInMs).toBeNull();
+    }
+  });
+
+  it("calls a session past core's limit even inside the quiet line, where core's limit is shorter", () => {
+    const r = deriveLiveness(running(45_000, { silenceLimitMs: 30_000 }), NOW);
+    expect(r).toEqual({ state: "reaping", sinceHeartbeatMs: 45_000, reapInMs: 0 });
+    expect(deriveLiveness(running(30_000, { silenceLimitMs: 30_000 }), NOW).state).toBe("alive");
+  });
+
   it("treats the exact thresholds as the lower band (boundaries inclusive)", () => {
     expect(deriveLiveness(running(STALLED_THRESHOLD_MS), NOW).state).toBe("alive");
-    expect(deriveLiveness(running(HEARTBEAT_REAP_MS), NOW).state).toBe("stale");
+    expect(deriveLiveness(running(PIPELINE_LIMIT, { silenceLimitMs: PIPELINE_LIMIT }), NOW).state).toBe("stale");
   });
 
   it("returns na for an interactive chat session even when long-running", () => {
@@ -107,6 +136,27 @@ describe("deriveSessionDisplayStatus (single-sourced on deriveLiveness)", () => 
 
   it("passes through non-running statuses", () => {
     expect(deriveSessionDisplayStatus(running(0, { status: "failed" }), NOW)).toBe("failed");
+  });
+
+  // ISS-1228 round 8: what the box says of the session decides between Working and Blocked; silence
+  // still outranks both, since nobody has heard either for a minute.
+  const report = (work: string) => ({
+    incarnation: "live",
+    work,
+    blockerKind: "human",
+    waitingOn: "approve the restore",
+    observedAt: new Date(NOW - 5_000).toISOString(),
+    since: new Date(NOW - 5_000).toISOString(),
+  });
+  it("calls a running session its box reports blocked blocked, and a quiet one quiet", () => {
+    expect(deriveSessionDisplayStatus(running(5_000, { report: report("blocked") }), NOW)).toBe("blocked");
+    expect(deriveSessionDisplayStatus(running(5_000, { report: report("runnable") }), NOW)).toBe("running");
+    expect(deriveSessionDisplayStatus(running(90_000, { report: report("blocked") }), NOW)).toBe("stalled");
+    expect(deriveSessionDisplayStatus(running(0, { status: "failed", report: report("blocked") }), NOW)).toBe("failed");
+  });
+
+  it("gives a blocked session the blocked chip, never the running one", () => {
+    expect(statusToChip("blocked")).toBe("blocked");
   });
 });
 
@@ -156,13 +206,39 @@ describe("classifySessionOutcome (ISS-322 four-bucket classifier)", () => {
       "queue_timeout",
       "heartbeat_timeout",
       "no_worker_online",
-      "user_cancelled",
       "issue_busy",
       "runner_full",
     ]) {
       const o = classifySessionOutcome("failed", reason);
       expect(o.bucket, reason).toBe("swept");
       expect(o.statusKey, reason).toBe("swept");
+    }
+  });
+
+  // ISS-1228 round 13: one stop read six ways ("Failed", "Swept · Cancelled", "Blocked: Cancelled by a
+  // user", …). A person's stop and a session stopped on purpose both read Stopped, counted as before.
+  it("calls a person's stop and a stopped session Stopped, never Failed or Swept", () => {
+    for (const [display, reason] of [
+      ["failed", "user_cancelled"],
+      ["cancelled", null],
+    ] as const) {
+      const o = classifySessionOutcome(display, reason);
+      expect(o.label, display).toBe("Stopped");
+      expect(o.statusKey, display).toBe("archived");
+      expect(sessionChipStatus(display, reason), display).toBe("archived");
+    }
+    expect(classifySessionOutcome("failed", "user_cancelled").bucket).toBe("swept");
+    expect(failureReasonLabel("user_cancelled")).toBe("Stopped");
+    expect(sessionEndText("user_cancelled")).toBe("A person stopped the session.");
+    expect(sessionChipStatus("failed", "heartbeat_timeout")).toBe("swept");
+    expect(sessionChipStatus("running", null)).toBe("running");
+  });
+
+  it("says every remedy as sentences, with no dash joining two of them", () => {
+    for (const [reason, action] of Object.entries(FAILURE_REASON_ACTION)) {
+      expect(action, reason).toMatch(/^[A-Z]/);
+      expect(action, reason).toMatch(/\.$/);
+      expect(action, reason).not.toContain(" — ");
     }
   });
 
@@ -211,6 +287,14 @@ describe("classifySessionOutcome (ISS-322 four-bucket classifier)", () => {
     for (const cause of FAILURE_CAUSES) {
       expect(failureReasonLabel(cause), cause).toBeTruthy();
       expect(failureReasonAction(cause), cause).toBeTruthy();
+    }
+  });
+
+  it("ISS-1228: on a page whose button says Rerun, no remedy tells the reader to press Retry", () => {
+    for (const cause of FAILURE_CAUSES) {
+      const action = failureReasonAction(cause, "Rerun") ?? "";
+      expect(action, cause).not.toMatch(/\bRetry\b/);
+      expect(action, cause).toBe(failureReasonAction(cause)?.replace(/\bRetry\b/g, "Rerun"));
     }
   });
 
@@ -333,27 +417,27 @@ describe("sessionStep — the step a session recorded, or none (ISS-999)", () =>
 	const meta = (over: Record<string, unknown>) =>
 		over as unknown as Parameters<typeof sessionStep>[0];
 
-	it("names `drive` as `drive`, not as one of the seven staged names", () => {
-		expect(sessionStep(meta({ type: "pipeline", step: "drive" }))).toBe("drive");
+	it("names `drive` in the dashboard's words, not as one of the seven staged names", () => {
+		expect(sessionStep(meta({ type: "pipeline", step: "drive" }))).toBe("Issue work");
 	});
 
-	it("names a staged step by the word that was recorded, without normalising it", () => {
-		expect(sessionStep(meta({ step: "verify" }))).toBe("verify");
-		expect(sessionStep(meta({ step: "code" }))).toBe("code");
+	it("says a staged step it has no words for is unrecognised, showing the word that was recorded", () => {
+		expect(sessionStep(meta({ step: "verify" }))).toBe("Unrecognised work (verify)");
+		expect(sessionStep(meta({ step: "code" }))).toBe("Unrecognised work (code)");
 	});
 
 	it("falls back to `stage` where only that was recorded", () => {
-		expect(sessionStep(meta({ stage: "review" }))).toBe("review");
+		expect(sessionStep(meta({ stage: "review" }))).toBe("Unrecognised work (review)");
 	});
 
 	it("passes a blank `step` over in favour of a recorded `stage`", () => {
-		expect(sessionStep(meta({ step: " ", stage: "review" }))).toBe("review");
-		expect(sessionStep(meta({ step: "", stage: "review" }))).toBe("review");
+		expect(sessionStep(meta({ step: " ", stage: "review" }))).toBe("Unrecognised work (review)");
+		expect(sessionStep(meta({ step: "", stage: "review" }))).toBe("Unrecognised work (review)");
 	});
 
 	it("names no step for a value that is not a string", () => {
 		expect(sessionStep(meta({ step: { name: "drive" } }))).toBeNull();
-		expect(sessionStep(meta({ step: 7, stage: "plan" }))).toBe("plan");
+		expect(sessionStep(meta({ step: 7, stage: "plan" }))).toBe("Unrecognised work (plan)");
 		expect(sessionStep(meta({ step: null, stage: null }))).toBeNull();
 	});
 
@@ -363,4 +447,56 @@ describe("sessionStep — the step a session recorded, or none (ISS-999)", () =>
 		expect(sessionStep(meta({}))).toBeNull();
 		expect(sessionStep(null)).toBeNull();
 	});
+});
+
+// ISS-1228 round 14 (judge-36): one ended session's page read Swept in its header and Failed in its
+// turn line, and its remedy said "Rerun to re-dispatch.".
+describe("an ended session's one outcome word", () => {
+  it("is the word its chip says, whatever the reason", () => {
+    expect(sessionEndWord("failed", "heartbeat_timeout")).toBe("Swept");
+    expect(sessionEndWord("failed", "agent_killed")).toBe("Failed");
+    expect(sessionEndWord("failed", "user_cancelled")).toBe("Stopped");
+    expect(sessionEndWord("failed", "pipeline_cancelled")).toBe("Swept");
+    expect(sessionEndWord("completed", null)).toBe("Completed");
+  });
+
+  it("names no remedy with re-dispatch", () => {
+    for (const action of Object.values(FAILURE_REASON_ACTION)) {
+      expect(action).not.toMatch(/re-?dispatch/i);
+    }
+    expect(failureReasonAction("heartbeat_timeout", "Rerun")).toBe(
+      "The session stopped sending heartbeats. Rerun to start it again.",
+    );
+  });
+});
+
+
+// ISS-1228 round 15 (judge-39): a run that ran ten minutes before its box went offline was told
+// "The runner never picked it up", which is not what happened.
+describe("the remedy for a box that could not be reached", () => {
+  it("says the box stopped answering where the session had started", () => {
+    expect(failureReasonAction("runner_unreachable", "Rerun", true)).toBe(
+      "The box stopped answering while the session ran. Check it's online, then Rerun.",
+    );
+  });
+
+  it("says the runner never picked it up only where it never started", () => {
+    expect(failureReasonAction("runner_unreachable", "Retry", false)).toBe(
+      "The runner never picked it up. Check it's online, then Retry.",
+    );
+  });
+
+  it("claims neither where the caller cannot say whether it started", () => {
+    expect(failureReasonAction("runner_unreachable")).toBe("The box could not be reached. Check it's online, then Retry.");
+  });
+
+  it("reads a reason no start changes the same either way", () => {
+    expect(failureReasonAction("heartbeat_timeout", "Retry", true)).toBe(failureReasonAction("heartbeat_timeout"));
+  });
+
+  it("puts it on the sessions list's chip too", () => {
+    expect(classifySessionOutcome("failed", "runner_unreachable", true).tooltip).toBe(
+      "The box stopped answering while the session ran. Check it's online, then Retry.",
+    );
+  });
 });

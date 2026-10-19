@@ -89,6 +89,7 @@ import {
   NoReleaseGateError,
   ReleaseIssuesUnnamedError,
   ReleaseRecutRefusedError,
+  ReleaseRosterRefusedError,
   ReleaseVersionConflictError,
   ReleaseVersionExhaustedError,
 } from './service.js';
@@ -142,6 +143,7 @@ releaseBatchRoutes.post(
       if (err instanceof ReleaseVersionExhaustedError) {
         throw conflict('RELEASE_VERSION_EXHAUSTED', err.message);
       }
+      if (err instanceof ReleaseRosterRefusedError) throw conflict(err.code, err.message);
       throw err;
     }
   },

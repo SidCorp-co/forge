@@ -1,16 +1,13 @@
-import { apiClient, apiClientList } from "@/lib/api/client";
+import { apiClient } from "@/lib/api/client";
 import type {
   AssistantPreferences,
   CreatePatInput,
-  NotificationRow,
   PatMenu,
   PatToken,
   PatTokenCreated,
   PreferenceChange,
   Preferences,
 } from "./types";
-
-export const NOTIFICATIONS_PAGE_SIZE = 25;
 
 export const settingsApi = {
   getPreferences: () => apiClient<Preferences>(`/auth/me/preferences`),
@@ -54,16 +51,4 @@ export const settingsApi = {
       body: JSON.stringify({ password }),
     }),
 
-  /** `GET /api/notifications` — flat rows + `X-Total-Count`. */
-  listNotifications: (page = 1) =>
-    apiClientList<NotificationRow>(
-      `/notifications?page=${page}&pageSize=${NOTIFICATIONS_PAGE_SIZE}`,
-    ),
-
-  /** `POST /api/notifications/mark-all-read`. */
-  markAllRead: () =>
-    apiClient<{ updated: number }>(`/notifications/mark-all-read`, {
-      method: "POST",
-      body: JSON.stringify({}),
-    }),
 };

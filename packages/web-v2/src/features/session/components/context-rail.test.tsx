@@ -12,13 +12,17 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SessionRow } from "@/features/sessions/types";
 
 const useDevices = vi.fn();
+let siblingRows: SessionRow[] = [];
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 vi.mock("@/features/runners/hooks", () => ({ useDevices }));
-vi.mock("@/features/pipeline/hooks", () => ({ useRun: () => ({ data: undefined }) }));
+vi.mock("@/features/project-dashboard/runner-fleet", () => ({
+	useRunnerFleet: () => ({ summary: { lines: [] }, activity: { read: "pending" } }),
+}));
+vi.mock("@/features/runs/hooks", () => ({ useRun: () => ({ data: undefined }) }));
 vi.mock("@/features/sessions/hooks", () => ({
 	useSessionCost: () => ({ data: undefined }),
-	useSessions: () => ({ data: { items: [] } }),
+	useSessions: () => ({ data: { items: siblingRows } }),
 }));
 
 const { ContextRail } = await import("./context-rail");
@@ -26,6 +30,7 @@ const { ContextRail } = await import("./context-rail");
 afterEach(() => {
 	cleanup();
 	useDevices.mockReset();
+	siblingRows = [];
 });
 
 const DEVICE_ID = "6f6a3b5d-0c2e-4f1a-9d33-6b2c9a8e1f04";
@@ -81,5 +86,30 @@ describe("the runner version on the session context rail", () => {
 		expect(screen.getByText(DEVICE_ID.slice(0, 8))).toBeTruthy();
 		expect(screen.queryByText(/version not reported/)).toBeNull();
 		expect(screen.queryByText(/Linux/)).toBeNull();
+	});
+});
+
+describe("a sibling session's name on the context rail", () => {
+	const onIssue = { ...session, metadata: { issueId: "i1" } } as unknown as SessionRow;
+	const sibling = (id: string, title: string | null, metadata: Record<string, unknown>) =>
+		({ ...session, id, title, metadata: { issueId: "i1", ...metadata } }) as unknown as SessionRow;
+
+	it("prints a session's own title as written, never re-cased", () => {
+		useDevices.mockReturnValue({ data: [] });
+		siblingRows = [sibling("s2", "j14 scratch: fix the add link", {})];
+
+		render(<ContextRail session={onIssue} items={[]} />);
+
+		const name = screen.getByText("j14 scratch: fix the add link");
+		expect(name.className).not.toMatch(/(^|\s)(capitalize|uppercase)(\s|$)/);
+	});
+
+	it("says a step slug it has no words for is unrecognised, showing the slug", () => {
+		useDevices.mockReturnValue({ data: [] });
+		siblingRows = [sibling("s3", "j14 scratch", { step: "plan" })];
+
+		render(<ContextRail session={onIssue} items={[]} />);
+
+		expect(screen.getByText("Unrecognised work (plan)").textContent).toBe("Unrecognised work (plan)");
 	});
 });

@@ -2,7 +2,7 @@ import { logger } from '../../logger.js';
 import { SignatureVerificationError, verifyHmacSignature } from '../../webhooks/hmac.js';
 import { recordDelivery, updateDelivery } from '../deliveries.js';
 import type { AdapterContext, InboundDispatchInput, InboundDispatchResult } from '../types.js';
-import { intakeSentryIssue, projectCreatedById, readSentryThresholds } from './intake-issue.js';
+import { intakeSentryIssue, readSentryThresholds } from './intake-issue.js';
 import { projectIssue } from './issues.js';
 import { resolveSentryTarget, resolveSentryTargets } from './targets.js';
 import type { SentryConfig, SentrySecrets } from './types.js';
@@ -160,13 +160,6 @@ export async function handleSentryWebhook(
     const selected = selectSentryTarget(ctx.config, issue.projectSlug);
     if ('refusal' in selected) return await refuse(selected.refusal);
 
-    const createdById = await projectCreatedById(ctx.projectId);
-    if (!createdById) {
-      return await refuse(
-        'this project has no creator to file Sentry issues as, so the delivery could not be acted on',
-      );
-    }
-
     let target: ReturnType<typeof resolveSentryTarget>;
     try {
       target = resolveSentryTarget(ctx.config, selected.label);
@@ -178,7 +171,6 @@ export async function handleSentryWebhook(
 
     const outcome = await intakeSentryIssue(issue, {
       projectId: ctx.projectId,
-      createdById,
       thresholds: await readSentryThresholds(),
       target,
     });

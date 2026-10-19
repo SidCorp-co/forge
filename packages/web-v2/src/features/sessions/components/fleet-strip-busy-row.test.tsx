@@ -20,7 +20,24 @@ vi.mock("@/features/projects/hooks", () => ({
   useProject: () => ({ data: { devicePool: [DEVICE], defaultDeviceId: "dev-1" } }),
 }));
 vi.mock("../hooks", () => ({
-  useQueueStats: () => ({ data: { perDevice: [] } }),
+  useQueueStats: () => ({ data: { devices: [] }, isError: false, error: null }),
+}));
+vi.mock("@/features/runners/hooks", () => ({
+  useDevices: () => ({ data: [] }),
+  useProjectRunners: () => ({
+    data: [{ runnerId: "r-d1", deviceId: "dev-1", deviceName: "forge-vm", platform: "linux", deviceStatus: "online", runnerStatus: "online", limitReason: null }],
+    isError: false,
+    error: null,
+  }),
+  useActiveRunners: () => ({ data: { runners: [], busy: 0 }, isError: false, error: null }),
+}));
+vi.mock("@/features/pipeline/hooks", () => ({
+  // The box hosts the live session every case renders, as the dashboard's read says.
+  useSessionsAndHolds: () => ({
+    data: { sessions: [{ id: "s-1", deviceId: "dev-1" }], holds: [], runningChats: [], readAt: "" },
+    isError: false,
+    error: null,
+  }),
 }));
 
 afterEach(cleanup);
@@ -50,7 +67,7 @@ async function renderStrip(session: SessionRow) {
 describe("the busy device's detail row (ISS-999)", () => {
   it("names the step the session recorded", async () => {
     await renderStrip(row({ metadata: { type: "pipeline", step: "drive" }, title: "ISS-42 a title" }));
-    expect(screen.getByText("drive")).toBeInTheDocument();
+    expect(screen.getByText("Issue work")).toBeInTheDocument();
     expect(screen.getByText("ISS-42")).toBeInTheDocument();
   });
 
@@ -62,8 +79,19 @@ describe("the busy device's detail row (ISS-999)", () => {
 
   it("renders no detail row at all when there is neither a step nor an issue", async () => {
     await renderStrip(row({ metadata: { type: "pipeline" }, title: null }));
-    expect(screen.getByText("Busy · 1/1")).toBeInTheDocument();
+    expect(screen.getByText("Busy · 1 live session")).toBeInTheDocument();
     expect(screen.queryByText("·")).toBeNull();
     expect(screen.queryByText("stalled")).toBeNull();
+  });
+});
+
+describe("the box strip is flat (ISS-1228 criterion 51)", () => {
+  it("lists each box as a flush row under a hairline, not a bordered card", async () => {
+    await renderStrip(row({ metadata: { type: "pipeline" } }));
+    const list = screen.getByRole("list", { name: "Boxes" });
+    expect(list.className).toMatch(/divide-y/);
+    for (const item of screen.getAllByRole("listitem")) {
+      expect(item.className).not.toMatch(/rounded|(^|\s)border(\s|$)|border-dashed/);
+    }
   });
 });

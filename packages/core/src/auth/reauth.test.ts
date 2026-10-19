@@ -48,14 +48,18 @@ function buildApp() {
 }
 
 function post(body: unknown, ip = '10.0.0.1') {
-  return buildApp().request('/api/auth/reauth', {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-forwarded-for': ip,
+  return buildApp().request(
+    '/api/auth/reauth',
+    {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-forwarded-for': ip,
+      },
+      body: typeof body === 'string' ? body : JSON.stringify(body),
     },
-    body: typeof body === 'string' ? body : JSON.stringify(body),
-  });
+    { incoming: { socket: { remoteAddress: '10.0.1.5' } } },
+  );
 }
 
 beforeEach(() => {

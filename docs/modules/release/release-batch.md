@@ -82,8 +82,14 @@ Both are 409 blockers at the create door and at the release-record door alike, e
 issue, its reason and what clears it; a refused create claims nothing and opens no run. Readiness
 reads the same enumerator, so it lists them before anyone presses. The roster answer carries each
 issue's `closeRefusals` (`code`, `reason`, `clears`), and the release gate panel and the issue's
-awaiting-release banner offer no release for such an issue and print why. The unattended sweep
-leaves such an issue off its cut and writes a `RELEASE_ISSUES_UNCLOSABLE` release hold on it; a
+awaiting-release banner offer no release for such an issue and print why. For a missing record,
+`clears` names Open session only where the issue page's header shows it — a live session holding
+the issue, or a run of it with a session (`packages/core/src/pipeline/runs-of-issue.ts:issueHasSession`)
+— and Reopen in the actions menu everywhere else. The unattended sweep
+leaves such an issue off its cut and writes a `RELEASE_ISSUES_UNCLOSABLE` release hold on it, whose
+comment says one shortfall in a sentence and its act in the next, and several as a line each, the
+reason then its act, no sentence past 20 words
+(`packages/core/src/pipeline/release-hold-kinds.ts:closeRefusedHold`); a
 scheduled cut leaves it off and names it in its outcome. A refusal that arises after the press, a
 question asked mid-run, is still met at the finish below.
 
@@ -114,8 +120,20 @@ the rows behind it, and the carried check above answers those as it answers any 
 
 ## 2. From the claim to a box: the start (ISS-1323)
 
-A create that passes moves the roster to `releasing` and enqueues one `release_batch` job.
-`packages/core/src/release-batch/job-start.ts:readReleaseStart` reads that job, and `GET
+A create that passes claims the roster for its run and moves it to `releasing` in one transaction
+(`packages/core/src/release-batch/enter-releasing.ts:enterReleasing`), so either the whole roster
+stands at `releasing` under a running run or none of it does and the run is cancelled
+(`RELEASE_ROSTER_REFUSED`, or `CLAIM_CONFLICT` for a lost race); then it enqueues one `release_batch`
+job. Creating a batch is the only door that writes `releasing`: every other door asking for it is
+refused `RELEASING_STARTS_FROM_RELEASE`, and a move off it from anything but the batch's finish,
+its abort, the recovery of a run that stopped, never started or whose job is held with nothing to
+send it (`packages/core/src/release-batch/releasing-recovery.ts:recoverStrandedReleasing`), or the releasing
+sweep, is refused `RELEASING_ENDS_BY_RELEASE`
+(`packages/core/src/issues/releasing-door.ts`, ISS-1421).
+`packages/core/src/release-batch/job-start.ts:readReleaseStart` reads the newest release job, and a
+run any of whose release jobs was dispatched reads `taken` off the first of them, whatever the newest
+did since (a successor held on a decision and cancelled untaken is not a release that never
+started). `GET
 /api/projects/:projectId/release-batches/:runId/state` returns it as `start`. A batch no box has
 started can therefore be told apart from one whose agent is working:
 
@@ -134,6 +152,24 @@ started can therefore be told apart from one whose agent is working:
 `packages/core/src/release-batch/job-start.ts:unpickedJobSql`, so the reading and the hand-back cannot disagree about which batch
 is unstarted. Each reading's `why` is written for the person who pressed: no runner term, and no
 timestamp inside the sentence — the screen prints the times itself.
+
+A batch whose job a box took and which then stops writing is recovered by the other sweep,
+`packages/core/src/release-batch/silent-recovery.ts:recoverSilentReleaseBatches`, every minute. It reads each
+running batch that holds no finish record and no abort stamp through
+`packages/core/src/release-batch/bounds.ts:readBounds`, given the time the box took the job, which is where the
+`stall` bound measures from once the ledger holds nothing newer, so a batch that died before promoting reads as
+stalled too; `GET .../state` gives the same reading in `bounds`. Only the `stall` bound triggers it (`total` and
+`regression` describe a live batch a person should look at). A stalled batch goes through
+`packages/core/src/release-batch/service.ts:abortReleaseBatch` with no person: the abort stamp carries the reason,
+naming the moment the silence is measured from (`packages/core/src/release-batch/bounds.ts:stallOrigin`, which the
+`stall` bound's own explanation names too), and its `by` is empty, the roster goes back to the release gate, the run is cancelled and a pipeline wedge says so.
+The stamp is written only while the run is still running with no finish record, in the one statement that writes it
+(`packages/core/src/release-batch/abort-stamp.ts:stampAbort`), so a pause or a finish landing after the read stops it; a pass
+that died after stamping is resumed by the next on the reason it stamped, and a person's unfinished abort is never resumed.
+A batch with a `promote` attempt that never settled is cancelled with its roster held at `releasing`, and one
+whose promotion settled is left whole; once the run is cancelled, the releasing sweep settles that roster (section
+below). The in-flight guard itself reads status alone, so a new batch
+is refused until the pass has run, at most a minute after the bound is crossed.
 
 The run screen (`packages/web-v2/src/features/releases/components/release-run-screen.tsx`) prints
 `waiting` and `claimed` as "No box has started this release", `handed-back` as "Handed back to the
@@ -202,8 +238,9 @@ One issue's refused close does not stop the others from closing. The refused iss
 leaves (`packages/core/src/release-batch/releasing-recovery.ts:refusedCloseComment`) says:
 
 - that the release it was in has shipped, with its version;
-- the refusal by its code (`OPEN_QUESTIONS`, say), and every blocking object the refusal reports —
-  each id under a `*Ids` key of its details, labelled (`open question <id>`);
+- the refusal by its code (`OPEN_QUESTIONS`, say), and the blocking objects the refusal reports,
+  counted by their label (`2 open questions`); the ids under each `*Ids` key of its details stay on
+  the refusal a caller reads, and never reach the comment (ISS-1421);
 - what clears it, as an act the issue's page offers at the release gate — for `OPEN_QUESTIONS`,
   answer each in its "Decision waiting" card; for `CLOSE_REQUIRES_SHIPPED`, Mark merged on its
   Properties rail; a code with no such act keeps the refusal's own detail
@@ -214,11 +251,37 @@ leaves (`packages/core/src/release-batch/releasing-recovery.ts:refusedCloseComme
   `awaiting_release` row holds none — no withdrawal of a question, which no surface there offers,
   and no API route (`docs/proposals/a-shipped-issue-at-the-gate-closes-only-by-another-release.md`).
 
-Where the run recorded a `promote` attempt, the refused issue does not move: it stays at
-`releasing`, still claimed, because the code may be on production. Its comment names the same
-refusal, and in place of the last point it says that settling a promoted roster is an operator's
-act no screen offers yet — abort the batch with `promotedRoster: return-to-gate`, or settle the
-issue by hand (`docs/proposals/a-promoted-roster-is-settled-only-through-the-api.md`).
+Where the run recorded a `promote` attempt, the refused issue does not move while the run is live:
+it stays at `releasing`, still claimed, because the code may be on production. Its comment names the
+same refusal, and in place of the last point it says that once the run has ended the releasing sweep
+settles it, and that View release on the issue shows where its run stands.
+
+### A row at `releasing` that nothing carries (ISS-1421)
+
+`releasing` is not a status an issue waits in. Once a minute, on its own queue
+(`packages/core/src/release-batch/releasing-settle.ts:registerReleasingSettle`, registered beside the
+other release recoveries), `packages/core/src/release-batch/releasing-settle.ts:settleStrandedReleasing`
+takes every row at `releasing` whose claim is empty or names a run that is neither running nor
+paused, at most 50 a pass, on every project. The stale-claims reaper (`packages/core/src/pipeline/stale-release-claims.ts:reapStaleReleaseBatchClaims`) leaves such a row claimed, so the sweep's comment can say how the run that claimed it ended. It reads the project's verified live identity
+(`packages/core/src/release-batch/releasing-settle-reading.ts`) and, through the repository reader,
+whether that identity descends from the row's landing commit. It posts one comment naming why nothing
+was carrying the row and what it found, returns the row to `awaiting_release` with the dead claim
+cleared in the same transaction — without re-reading the gate's entry records, which would otherwise
+hold the row at `releasing` for good — and, where production carries the landing commit, closes it
+through a release record naming the serving commit; that close is refused, under a lock on the row, where the issue's landing commit is no longer the one production was read as carrying. An unverified project, an unreadable probe or
+repository, a missing landing commit, or a record the release door refuses leaves the row at the gate
+with a comment saying which. A row a running or paused run carries is never touched. The moves, the comments and the release
+record are written as Forge (`packages/core/src/comments/forge-author.ts:forgeAuthorId`), an agent
+account in no organization minted on first use, never as a person; the comments name no route and
+no id. What a comment tells its reader to do next follows how the project releases
+(`packages/core/src/release-batch/release-path-words.ts:nextAtGateFor`): on a project with a release
+gate, Release now on the page or at the release gate, but only for an issue a release would not hand
+straight back — one not marked merged, holding an open question or missing a close requirement is
+told what holds it and where to clear it, read from the same shortfalls the page's banner reads
+(`packages/core/src/release-batch/close-shortfall.ts:rosterCloseShortfalls`); on one that ships nothing, choosing a shape
+that releases or reopening the issue, and production is not read there; on one declaring a release
+with no live deploy target, that none can start until one is added. An issue whose work lands
+outside git is never asked for a commit.
 
 A close that failed without a refusal names the database's own reason with its SQLSTATE, read off
 the driver error under drizzle's wrapper (`packages/core/src/lib/db-errors.ts:pgDriverError`) and
@@ -283,7 +346,8 @@ A read that fails on either route is a reason, never an answer: a carriage that 
 leaves the criterion weighed by equality alone, so a failed read can hold a verdict and never earn
 one. The hold names each failed read by its cause beside the criterion it holds, and says the act
 that makes the repository readable once, at the head of its remedy, ahead of recording a verdict
-(`packages/core/src/pipeline/release-hold.ts:criteriaHold`). Readiness's `RELEASE_CRITERIA_UNEARNED` and its
+(`packages/core/src/pipeline/release-hold-kinds.ts:criteriaHold`); the comment on the issue is three
+sentences, that act first. Readiness's `RELEASE_CRITERIA_UNEARNED` and its
 `RELEASE_CRITERIA_HELD_BACK` warning lead with the same act, once, ahead of the verdicts
 (`packages/core/src/release-batch/criteria-hold.ts:criteriaHold` carries it as `details.clears`).
 A judged or served commit named by more digits than a whole sha is never read as carried: the
@@ -303,6 +367,12 @@ asks it again.
   than that door sends a plain `/fail` whose error carries
   `packages/core/src/jobs/blocked-reason.ts:BLOCKED_PHRASE`; core reads the phrase and takes the
   `unread` path, so core shipped alone already ends the loop for old runners.
+- **An ask nobody can read is refused, never held on.** On a release, an `unread` ask is refused by
+  name in `packages/core/src/release-batch/decision-hold.ts:refuseUnreadableReleaseAsk`
+  (`RELEASE_ASK_UNREADABLE`): no question is written, since a question saying only that it could
+  not be read is one nobody can answer. The roster goes back to Awaiting release with a comment on
+  each issue saying why and what to do next, and the job fails with that refusal leading its error,
+  so the run ends.
 - **The question lands on the tracker.** `packages/core/src/release-batch/decision-hold.ts:holdBlockedRelease`
   writes each pane question as an `agent_questions` row (choice when the dialog gave two or more
   options, free text otherwise) on the first open roster member, with a pointer comment on the
@@ -310,17 +380,28 @@ asks it again.
   what was refused. A question that cannot sit on an issue sits on the project.
 - **The run stays open and holds one successor.** The failed job gets a `held` successor under the
   same run, reason `awaiting_decision`, carrying the typed reference in
-  `packages/core/src/release-batch/decision-state.ts:DecisionRef`. No retry is scheduled, the run
-  is not reaped (it has a non-terminal job), and the roster is not recut. A second press for the
-  same members is refused `BATCH_IN_FLIGHT`, and the sentence says the release waits on a person
-  and names the question.
+  `packages/core/src/release-batch/decision-state.ts:DecisionRef`. No retry is scheduled and the
+  roster is not recut. Until the held recovery's next pass, a second press for the same members is
+  refused `BATCH_IN_FLIGHT`, and the sentence says the release waits on a person and names the
+  question.
 - **An answer requeues it.** `packages/core/src/release-batch/decision-hold.ts:requeueOnAnswer`
   runs on the `questionAnswered` hook; once every question of the decision is answered it releases
   the held job once, with the answers appended to its prompt
   (`packages/core/src/release-batch/prompt.ts:decisionsGivenSection`). Resuming the job by hand
   while a question is open is refused `DECISION_OPEN`.
-- **A run that ends voids its questions.** `voidOnRunEnd` closes the open questions when the run
-  is aborted or fails, so an answer after that finds nothing to requeue.
+- **Releasing is not a state an issue waits in.** `packages/core/src/release-batch/held-recovery.ts:recoverHeldReleaseBatches`
+  hands a release held on an owed decision back on its next once-a-minute pass: the held job is
+  cancelled with `packages/core/src/release-batch/decision-state.ts:DECISION_HANDBACK_REASON`, every roster issue returns to
+  Awaiting release unclaimed, and each one's comment carries the page the question is open on and
+  the release run's page. The comment ends on one next step, read off the project's release
+  setting by `packages/core/src/release-batch/held-recovery.ts:decisionNextStep`: with automatic
+  release, answering is enough; without it, answer, then start the next release from Awaiting
+  release. An answer given inside that minute still requeues the job; after it, the answer reaches
+  no release agent.
+- **The question outlives the release handed back on it.** `voidOnRunEnd` closes the open
+  questions when the run is aborted or fails, except a run the held recovery handed back on its
+  decision: that question stays open on the issue it is asked on, and its `OPEN_QUESTIONS`
+  shortfall keeps Release now off that issue until it is answered.
 
 Only `release_batch` jobs are held this way. Another job kind that ends `Blocked` fails with its
 question carried at project level and no successor.

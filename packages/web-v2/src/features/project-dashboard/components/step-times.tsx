@@ -4,10 +4,12 @@
 // step-durations window, slowest median first. Both figures come from the same rows the spend tile
 // reads, folded onto the job type each row carries.
 
+import { jobKindLabel } from "@/features/overview/job-kinds";
 import { useMemo } from "react";
 import { ErrorState } from "@/design";
-import { aggregateStepCosts, formatDurationSec, formatUsd } from "@/features/pipeline/derive";
-import type { StepDurationRow } from "@/features/pipeline/types";
+import { aggregateStepCosts } from "@/features/runs/derive";
+import { formatDurationSec, formatUsd } from "@/lib/utils/format";
+import type { StepDurationRow } from "@/features/runs/types";
 import { formatApiError } from "@/lib/api/error";
 import { slowestComparison } from "../shape";
 import { DashboardSection, EmptyLine, unreadSection } from "./dashboard-section";
@@ -40,7 +42,7 @@ export function StepTimes({ durations, windowDays, isLoading, error, onRetry }: 
       aside={
         !error ? (
           <>
-            {samples} step{samples === 1 ? "" : "s"} · {windowDays}d
+            {steps.length} step{steps.length === 1 ? "" : "s"} · {samples} finished · {windowDays}d
           </>
         ) : undefined
       }
@@ -57,16 +59,13 @@ export function StepTimes({ durations, windowDays, isLoading, error, onRetry }: 
           <div className="flex flex-col gap-2.5">
             {steps.map((s) => (
               <div key={s.step} className="flex items-center gap-2.5">
-                <span
-                  className="max-w-[96px] flex-none truncate font-mono text-12 lowercase text-muted"
-                  title={s.step}
-                >
-                  {s.step}
+                <span data-step-label className="w-28 flex-none break-words text-12 text-muted" title={jobKindLabel(s.step)}>
+                  {jobKindLabel(s.step)}
                 </span>
                 <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-sunken">
                   <span
                     className="block h-full rounded-full"
-                    style={{ width: `${(s.medianSec / maxMedian) * 100}%`, background: s.color }}
+                    style={{ width: `${(s.medianSec / maxMedian) * 100}%`, background: "var(--fg-muted)" }}
                   />
                 </span>
                 <span className="w-14 flex-none text-right font-mono text-12 text-fg">
@@ -79,13 +78,13 @@ export function StepTimes({ durations, windowDays, isLoading, error, onRetry }: 
             ))}
           </div>
           <p className="fg-body-sm mt-3 border-t border-line-subtle pt-2 text-muted">
-            Slowest step: <span className="font-mono lowercase text-fg">{slowest.step}</span> at a{" "}
+            Slowest step: <span className="text-fg">{jobKindLabel(slowest.step)}</span> at a{" "}
             <span className="font-mono text-fg">{formatDurationSec(slowest.medianSec)}</span> median
             over {slowest.samples} run{slowest.samples === 1 ? "" : "s"}
             {versus ? (
               <>
                 , <span className="font-mono text-fg">{versus.ratio.toFixed(1)}×</span> slower than{" "}
-                <span className="font-mono lowercase text-fg">{versus.next}</span>
+                <span className="text-fg">{jobKindLabel(versus.next)}</span>
               </>
             ) : null}
             .

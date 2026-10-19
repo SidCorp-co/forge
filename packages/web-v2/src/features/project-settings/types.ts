@@ -18,12 +18,18 @@ export function sectionWrite(before: unknown, after: unknown): DocumentWrite {
 	return { base, patch };
 }
 
-/** Patch body accepted by `PATCH /api/projects/:id` (basics + repo + testing).
+/** How a project's work lands: `standard` in git, `website` outside it (an API, a CMS, a
+ *  storefront), with no repository needed. Mirrors `projectKinds` in core. */
+export type ProjectKind = "standard" | "website";
+
+/** Patch body accepted by `PATCH /api/projects/:id` (general + shape & release).
  *  `orgId` moves the project to another org — requires org admin on BOTH the
  *  current and the destination org (403/404 otherwise). */
 export interface ProjectUpdateInput {
 	name?: string;
 	description?: string | null;
+	/** The project's kind: half of its shape, beside the release chain. */
+	kind?: ProjectKind;
 	repoPath?: string | null;
 	repoUrl?: string | null;
 	/** Prose: how to bring this repo's workspace to a buildable state. Read by
@@ -187,8 +193,10 @@ export interface PluginDesignation {
  *  `ReleaseBlocker` in core `release-batch/blocker-sentences.ts`. */
 export interface ReleaseBlocker {
 	code: string;
-	/** The one sentence an operator reads, carrying its own remedy. */
+	/** The caller's sentence, carrying its own remedy in the terms an API caller acts on. */
 	message: string;
+	/** The same reason as a person on Shape & release reads it: the act in words (ISS-1229 r8). */
+	reader: string;
 	details?: Record<string, unknown>;
 	/** False when this check could not be run at all. */
 	evaluated: boolean;
@@ -198,6 +206,8 @@ export interface ReleaseBlocker {
 export interface ReleaseWarning {
 	code: string;
 	message: string;
+	/** What a person reads; `message` is the caller's. */
+	reader: string;
 	details?: Record<string, unknown>;
 }
 

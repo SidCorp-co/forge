@@ -27,6 +27,7 @@ export interface EmitNotificationInput {
   title: string;
   body?: string | null;
   issueId?: string | null;
+  subject?: string | null;
   agentSessionId?: string | null;
   /** Overrides the contract default severity for this single event. */
   severity?: string | null;
@@ -42,11 +43,16 @@ export interface EmitNotificationInput {
   groupTitle?: string | null;
 }
 
+/** `now` is the evaluation's own clock: a sweep raising a condition dates it when it looked. */
 export async function emitNotification(
   input: EmitNotificationInput,
+  now?: Date,
 ): Promise<{ id: string; delivered: number } | null> {
-  return createNotification({
-    ...input,
-    severity: input.severity ?? defaultSeverityForType(input.type),
-  });
+  return createNotification(
+    {
+      ...input,
+      severity: input.severity ?? defaultSeverityForType(input.type),
+    },
+    now,
+  );
 }

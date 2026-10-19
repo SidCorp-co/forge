@@ -1,7 +1,8 @@
 import { parsePath } from '@forge/contracts/document-patch';
 import { ISSUE_STATUS_LABELS } from '@forge/contracts/issue-vocabulary';
+import { MARK_MERGED_ACTION, WHERE_IT_LANDED_FIELD, WORK_LANDS_ROW } from '@forge/contracts/mark-merged-words';
 import { claimConflictSentence } from './claim-conflict';
-import { ApiError } from './client';
+import { ApiError, isReasonPhrase, unsaidFailure } from './client';
 
 const FRIENDLY_CODES: Record<string, string> = {
   UNAUTHENTICATED: 'Your session has expired. Please sign in again.',
@@ -61,7 +62,11 @@ function mergeMarkSentence(err: ApiError): string | null {
       detailStr(err.details, 'held') === 'asserted'
         ? 'Its mark names no landing, so press Unmark first, then '
         : 'Use ';
-    return `Nothing on this issue says where the work landed, so it cannot close. ${unmarkFirst}Mark merged in the issue’s properties and fill in “Where it landed” — the live URL, CMS entry or storefront resource — then close. Use Dropped if it never landed.`;
+    return `Nothing on this issue says where the work landed, so it cannot close. ${unmarkFirst}${MARK_MERGED_ACTION} in the issue’s properties and fill in “${WHERE_IT_LANDED_FIELD}” — the live URL, CMS entry or storefront resource — then close. Use Dropped if it never landed.`;
+  }
+  // ISS-1421 r9: core names the REST field; a person here fills in the panel's own field.
+  if (err.code === 'LANDING_REQUIRED') {
+    return `Nothing was marked, because no merged pull request shows where this work landed. Fill in “${WHERE_IT_LANDED_FIELD}” with the live URL, CMS entry or storefront resource.`;
   }
   if (err.code === 'MARK_ALREADY_STANDS') {
     const held = detailStr(err.details, 'heldLanding');
@@ -71,45 +76,86 @@ function mergeMarkSentence(err: ApiError): string | null {
   return null;
 }
 
-/** The text a server error carries when nothing wrote it: the HTTP status text, which says nothing a person can use. */
-const BARE_SERVER_TEXT = new RegExp(
-  `^(${[
-    'internal server error',
-    'not implemented',
-    'bad gateway',
-    'service unavailable',
-    'gateway timeout',
-    'http version not supported',
-    'variant also negotiates',
-    'insufficient storage',
-    'loop detected',
-    'not extended',
-    'network authentication required',
-  ].join('|')})\\.?$`,
-  'i',
-);
+/** The issue page's row a person sets an issue's own landing shape on; refusals point at it by name. */
+export const LANDING_SHAPE_ROW = WORK_LANDS_ROW;
+
+/**
+ * The two project writes refused for the work they would strand, in the web's own words. Core's
+ * sentence is written for agents, with its code, field names and API routes; a person here acts on
+ * the issues the banner links, so the steps are the controls those issues carry.
+ */
+function strandedWorkSentence(err: ApiError): string | null {
+  if (err.code !== 'RELEASE_CHAIN_STRANDS_WORK' && err.code !== 'PROJECT_KIND_STRANDS_WORK') return null;
+  const total = (err.details as { total?: unknown } | undefined)?.total;
+  if (typeof total !== 'number' || total < 1) return null;
+  const one = total === 1;
+  const it = one ? 'it' : 'them';
+  if (err.code === 'RELEASE_CHAIN_STRANDS_WORK') {
+    return (
+      `${total} ${one ? 'issue waits' : 'issues wait'} at ${ISSUE_STATUS_LABELS.awaiting_release}, and with no release path nothing would ever release ${it}. ` +
+      `Release ${it} first, or return ${one ? 'it' : 'each one'} to ${ISSUE_STATUS_LABELS.developed}, then save again. ` +
+      `Closing ${it} is not a way out: a close says the work shipped.`
+    );
+  }
+  const outsideGit = detailStr(err.details, 'to') === 'website';
+  const kept = detailStr(err.details, 'landingShape') === 'outside_git' ? 'Outside git' : 'In git';
+  return (
+    `${total} unfinished ${one ? 'issue carries a merge mark' : 'issues carry merge marks'} that would stop counting as a landing once this project ${outsideGit ? 'has no repository' : 'has a repository'}. ` +
+    `Finish ${it} first, then change the shape. Or keep ${one ? 'its mark' : 'their marks'} counting: on ${one ? 'the issue' : 'each issue'}, press Unmark, set ${LANDING_SHAPE_ROW} to “${kept}”, ` +
+    `and mark ${one ? 'it' : 'each one'} merged again; then change the shape.`
+  );
+}
+
+/** A landing shape refused because a merge mark stands: the mark is judged on the lane it was made under. */
+function landingShapeSentence(err: ApiError): string | null {
+  if (err.code !== 'LANDING_SHAPE_MARK_STANDS') return null;
+  return (
+    'Nothing changed: this issue carries a merge mark, and a mark is judged on where its work landed when it was made. ' +
+    `Press Unmark, set ${LANDING_SHAPE_ROW} again, then mark it merged again.`
+  );
+}
 
 export function formatApiError(err: unknown): string {
   if (err instanceof ApiError) {
-    const mergeMark = mergeMarkSentence(err);
-    if (mergeMark) return mergeMark;
+    const worded = mergeMarkSentence(err) ?? strandedWorkSentence(err) ?? landingShapeSentence(err);
+    if (worded) return worded;
     const claimed = err.code === 'CLAIM_CONFLICT' ? claimConflictSentence(err.details) : null;
     if (claimed) return claimed;
     if (err.code && FRIENDLY_CODES[err.code]) return FRIENDLY_CODES[err.code];
-    if (err.status >= 500 && BARE_SERVER_TEXT.test(err.message.trim())) {
-      return `The server could not complete the request (${err.status}).`;
-    }
-    if (err.message) return err.message;
-    return `Request failed (${err.status})`;
+    if (!err.message.trim() || isReasonPhrase(err.message)) return unsaidFailure(err.status);
+    return err.message;
   }
   if (err instanceof Error) return err.message;
   return 'Unknown error';
 }
 
+/** A read that failed: what failed in the product's words, and the server's own code and message
+ *  for whoever reports it, which a screen keeps behind its technical view. */
+export interface ReadFailure {
+  said: string;
+  technical: string;
+}
+
+export function readFailure(err: unknown): ReadFailure {
+  if (err instanceof ApiError) {
+    const said = (err.code && FRIENDLY_CODES[err.code]) || unsaidFailure(err.status);
+    const code = err.code ? ` ${err.code}` : '';
+    return { said, technical: `${err.status}${code} — ${err.message.trim() || 'no message'}` };
+  }
+  const technical = err instanceof Error ? err.message : String(err);
+  return { said: 'Forge could not be reached. Check your connection, then try again.', technical };
+}
+
 /** A failure as a sentence of its own, so what a message says next starts after a full stop. */
 export function formatApiReason(err: unknown): string {
-  const text = formatApiError(err).trim();
-  return /[.!?]$/.test(text) ? text : `${text}.`;
+  return asSentence(formatApiError(err));
+}
+
+/** A phrase opened with a capital and closed with a full stop, so it can follow another sentence. */
+export function asSentence(phrase: string): string {
+  const text = phrase.trim();
+  const opened = /^[a-z]/.test(text) ? `${text.charAt(0).toUpperCase()}${text.slice(1)}` : text;
+  return /[.!?]$/.test(opened) ? opened : `${opened}.`;
 }
 
 
@@ -335,14 +381,97 @@ export function wasOrWere(count: number): 'was' | 'were' {
   return count === 1 ? 'was' : 'were';
 }
 
+/** What a refused settings save opens with where no part of it was written. */
+export const NOTHING_SAVED = 'Nothing was saved.';
+
 /**
  * What a refused settings save reads as on screen: the settings that moved, in the
  * screen's own names, and that nothing was written. The re-read is an action beside this
  * sentence rather than an instruction inside it.
  */
-export function formatSettingsWriteError(err: unknown): string {
+export function formatSettingsWriteError(err: unknown, saved = NOTHING_SAVED): string {
   const conflicts = writeConflicts(err);
   if (conflicts.length === 0) return formatApiError(err);
   const { text, count } = describeSettings(conflicts.map((c) => c.path));
-  return `${text} ${wasOrWere(count)} changed by someone else while this page was open. Nothing was saved — your edits are still here.`;
+  return `${text} ${wasOrWere(count)} changed by someone else while this page was open. ${saved.replace(/\.$/, '')} — your edits are still here.`;
+}
+
+/** A credential row an environments refusal names: what the page calls it, and whether that is its label. */
+interface NamedRow {
+  name: string;
+  labelled: boolean;
+}
+
+/** What an environments refusal says each credential rule is, in the words the Test access rows use. */
+const CREDENTIAL_RULES: Record<string, (row: NamedRow, other: NamedRow | null) => string> = {
+  'password-required': (row) => `${row.name} has no password. Type its password, or remove the row.`,
+  'duplicate-label': (row) =>
+    row.labelled
+      ? `Two credentials are labelled ${row.name}. Rename one of them, or remove it.`
+      : `${row.name} has a label another credential already has. Rename one of them, or remove it.`,
+  'duplicate-login': (row, other) =>
+    `${row.name} is the same login as ${other?.name ?? 'another credential'}. Remove one of them.`,
+};
+
+interface InvalidAt {
+  path: string;
+  rule?: string;
+  /** The earlier row a repeat repeats, where the server named one. */
+  sameAs?: number;
+}
+
+function invalidAt(err: ApiError): InvalidAt[] {
+  const rows = (err.details as { conflicts?: unknown } | undefined)?.conflicts;
+  if (!Array.isArray(rows)) return [];
+  return rows.filter(
+    (row): row is InvalidAt => typeof row === 'object' && row !== null && typeof (row as InvalidAt).path === 'string',
+  );
+}
+
+/** A credential row as the Test access rows name it: by the label the page holds, by its number only where it has none. */
+function credentialName(index: number, labels: readonly string[]): NamedRow {
+  const label = labels[index]?.trim();
+  return label ? { name: label, labelled: true } : { name: `Credential ${index + 1}`, labelled: false };
+}
+
+/** `testCredentials.0.password` → the row it names; null for a path outside the credentials. */
+function credentialRow(path: string, labels: readonly string[]): NamedRow | null {
+  const [key, at] = parsePath(path);
+  const index = Number(at);
+  if (key !== 'testCredentials' || at === undefined || !Number.isInteger(index)) return null;
+  return credentialName(index, labels);
+}
+
+/** One sentence per setting an `ENVIRONMENTS_INVALID` names, in the screen's names; never the server's paths. */
+function environmentsInvalidSentence(err: ApiError, labels: readonly string[]): string {
+  const said = invalidAt(err).map((at) => {
+    const row = credentialRow(at.path, labels);
+    const rule = at.rule ? CREDENTIAL_RULES[at.rule] : undefined;
+    const other = Number.isInteger(at.sameAs) ? credentialName(at.sameAs as number, labels) : null;
+    if (row && rule) return rule(row, other);
+    const field = FIELD_LABELS[at.path];
+    const section = row?.name ?? settingLabel(at.path);
+    return `${field ? `${section} (${field})` : section} is not a value this page can store. Correct it, then save again.`;
+  });
+  return said.length > 0
+    ? [...new Set(said)].join(' ')
+    : 'Something on this page is not a value it can store. Correct what is marked, then save again.';
+}
+
+/**
+ * A refused environments save in the page's own words (ISS-1171 r6). The server's sentence is
+ * written for agents, with document paths; and a 5xx's message is about the server, not about
+ * anything the person typed, so it is said as what happened and what to do, never repeated.
+ */
+export function formatEnvironmentsWriteError(err: unknown, credentialLabels: readonly string[] = []): string {
+  if (!(err instanceof ApiError)) return formatApiError(err);
+  if (writeConflicts(err).length > 0) return formatSettingsWriteError(err);
+  if (err.code === 'ENVIRONMENTS_INVALID') return environmentsInvalidSentence(err, credentialLabels);
+  if (err.status >= 500) {
+    const happened = asSentence(unsaidFailure(err.status));
+    return /try again/i.test(happened)
+      ? `${happened} Your edits are still here.`
+      : `${happened} Your edits are still here: save again in a moment.`;
+  }
+  return formatApiError(err);
 }

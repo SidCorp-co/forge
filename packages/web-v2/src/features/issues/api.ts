@@ -15,10 +15,21 @@ import type {
   IssueRow,
   IssueSearchOpts,
   IssueStatus,
+  LandingShape,
   ProjectMember,
   WaitingCause,
 } from "./types";
 
+
+/** What a press of Run did; the issue stays where it is, and masters take it from there. */
+export interface RunAnswer {
+  issueId: string;
+  status: string;
+  released: boolean;
+  masters: number;
+  boxesHeard: number;
+  taken: number;
+}
 export const ISSUES_PAGE_SIZE = 25;
 
 /** One entry of a `labels` write. A bare string attaches by name or uuid, not primary. */
@@ -28,6 +39,8 @@ export interface PatchIssueInput {
   priority?: IssuePriority;
   complexity?: IssueComplexity | null;
   description?: string;
+  /** Where this issue's own work lands; null answers the project's shape. */
+  landingShape?: LandingShape | null;
 }
 
 export interface CreateIssueInput {
@@ -101,6 +114,7 @@ export const issuesApi = {
     if (workState) params.set("workState", workState);
     for (const s of opts.status ?? []) params.append("status", s);
     if (opts.origin) params.set("origin", opts.origin);
+    if (opts.stuck) params.set("stuck", "true");
     const result = await apiClientList<IssueRow, { buckets?: IssueBuckets }>(
       `/projects/${projectId}/issues/search?${params}`,
     );
@@ -170,8 +184,10 @@ export const issuesApi = {
       body: JSON.stringify({ labels }),
     }),
 
+  /** `POST /api/issues/:id/run-pipeline-step` — offer an issue at Open to the project's masters.
+   *  Refused 409 `NO_MASTER_RUNNING` where none runs; no job is minted either way. */
   runPipelineStep: (id: string) =>
-    apiClient<unknown>(`/issues/${id}/run-pipeline-step`, {
+    apiClient<RunAnswer>(`/issues/${id}/run-pipeline-step`, {
       method: "POST",
       body: "{}",
     }),
@@ -266,10 +282,12 @@ export interface MarkMergedAnswer {
   action: "merged" | "already_merged";
   mark?: string;
   detail?: string;
+  movedFrom?: string | null;
 }
 
 export interface MarkMergedBody {
   target?: string;
   landing?: string;
+  commit?: string;
   note?: string;
 }

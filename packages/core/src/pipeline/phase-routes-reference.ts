@@ -50,13 +50,17 @@ export const startPhaseOp = describeOperation({
 });
 
 export const endPhaseOp = describeOperation({
-  summary: 'Close a phase with its outcome',
+  summary: 'Close a phase attempt with its outcome, once',
   description:
-    'Answers what was sent. A phase already closed by a runner verdict is left as it is.',
+    'Answers what was stored. An attempt is ended once: a second end is refused naming the outcome it holds, and an attempt holding a runner verdict is not ended by an agent.',
   responses: {
-    200: json(phaseEndedSchema, 'The phase, attempt and outcome as sent'),
+    200: json(phaseEndedSchema, 'The phase, attempt and outcome as stored'),
     403: fail('FORBIDDEN', NOT_A_MEMBER),
-    404: fail('NOT_FOUND', NO_RUN),
+    404: fail('PHASE_NOT_FOUND', 'the run does not exist, or never started that phase attempt'),
+    409: fail(
+      'PHASE_ALREADY_ENDED',
+      'the attempt already ended and keeps its first outcome; `PHASE_HOLDS_VERDICT` where it holds a runner verdict',
+    ),
   },
 });
 

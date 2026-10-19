@@ -16,6 +16,7 @@ import {
   invitationTokenParamSchema,
   previewOrgInvitation,
 } from './invitations-routes-reference.js';
+import { refuseNonPersonAsMember } from './service.js';
 
 // Mirror of projects/invitations-routes.ts for the org tier. Mounted at
 // /api/org-invitations; the shared /invite/accept web page picks this
@@ -99,6 +100,8 @@ orgInvitationRoutes.post(
       });
     }
 
+    // An agent account is never a member through a person's invitation (ISS-1421 round 3).
+    await refuseNonPersonAsMember({ email: user.email });
     const result = await consumeOrgInvitationToken(token, { userId: user.id, email: user.email });
 
     switch (result.status) {

@@ -777,13 +777,10 @@ let reconcileWorkerRegistered = false;
  *  transition (enqueued by `registerMemoryReconcileTrigger`). */
 export async function registerMemoryReconcileWorker(): Promise<void> {
   if (reconcileWorkerRegistered) return;
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).createQueue(MEMORY_RECONCILE_QUEUE);
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss handler arg type varies across versions
-  await (boss as any).work(MEMORY_RECONCILE_QUEUE, { batchSize: 1 }, async (arg: any) => {
-    const entries = Array.isArray(arg) ? arg : [arg];
-    for (const entry of entries) {
-      const data = entry?.data as { projectId?: string; issueId?: string } | undefined;
+  await boss.createQueue(MEMORY_RECONCILE_QUEUE);
+  type Reconcile = { projectId?: string; issueId?: string } | null;
+  await boss.work<Reconcile>(MEMORY_RECONCILE_QUEUE, { batchSize: 1 }, async (jobs) => {
+    for (const { data } of jobs) {
       if (!data?.projectId || !data.issueId) continue;
       try {
         const result = await reconcileForReleasedIssue(data.projectId, data.issueId);
@@ -811,10 +808,8 @@ let registered = false;
 
 export async function registerMemoryConsolidation(): Promise<void> {
   if (registered) return;
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).createQueue(MEMORY_CONSOLIDATION_QUEUE);
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).work(MEMORY_CONSOLIDATION_QUEUE, async () => {
+  await boss.createQueue(MEMORY_CONSOLIDATION_QUEUE);
+  await boss.work(MEMORY_CONSOLIDATION_QUEUE, async () => {
     try {
       const result = await runConsolidationSweep();
       logger.info(result, 'memory.consolidation: sweep complete');
@@ -824,8 +819,7 @@ export async function registerMemoryConsolidation(): Promise<void> {
     }
   });
   // 03:00 — before the 03:30 decay sweep (proposal: consolidate, then decay).
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).schedule(MEMORY_CONSOLIDATION_QUEUE, '0 3 * * *');
+  await boss.schedule(MEMORY_CONSOLIDATION_QUEUE, '0 3 * * *');
   registered = true;
 }
 

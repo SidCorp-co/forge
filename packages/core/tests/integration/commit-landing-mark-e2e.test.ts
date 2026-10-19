@@ -40,10 +40,10 @@ describe('ISS-1318 — a base-branch landing marked by its commit (real Postgres
 
     expect(res.action).toBe('merged');
     expect(res.mark).toBe('observed');
-    expect(res.markDetail).toContain(`read from ${repo.fullName} itself`);
+    expect(res.markDetail).toContain(`, on main of ${repo.fullName}.`);
     expect(res.markDetail).not.toContain('pull request');
     expect((await row(issue.id)).merged_commit_sha).toBe(OWN);
-    expect((await comments(issue.id)).at(-1)).toContain(`read from ${repo.fullName} itself`);
+    expect((await comments(issue.id)).at(-1)).toContain(`, on main of ${repo.fullName}.`);
 
     await advance(issue.id, 'in_progress', 'developed');
     await advance(issue.id, 'developed', 'testing');
@@ -68,15 +68,19 @@ describe('ISS-1318 — a base-branch landing marked by its commit (real Postgres
     [
       'COMMIT_NOT_IN_REPOSITORY',
       FABRICATED,
-      [`GitHub finds no commit ${FABRICATED} in SidCorp-co/specimen`],
+      [`The repository SidCorp-co/specimen holds no commit ${FABRICATED.slice(0, 7)}.`],
     ],
     [
       'COMMIT_NOT_THIS_ISSUE',
       FOREIGN,
-      [FOREIGN, '"fix(core): something else (ISS-1316)"', `does not declare ISS-${SEQ}`],
+      [FOREIGN.slice(0, 7), '\n> fix(core): something else (ISS-1316)', `does not name ISS-${SEQ}`],
     ],
-    ['COMMIT_NOT_THIS_ISSUE', UNDECLARED, [UNDECLARED, `"chore: tidy, see ISS-${SEQ}"`]],
-    ['COMMIT_NOT_LANDED', OFF_BASE, [OFF_BASE, 'main does not contain it']],
+    [
+      'COMMIT_NOT_THIS_ISSUE',
+      UNDECLARED,
+      [UNDECLARED.slice(0, 7), `\n> chore: tidy, see ISS-${SEQ}`],
+    ],
+    ['COMMIT_NOT_LANDED', OFF_BASE, [OFF_BASE.slice(0, 7), 'main does not contain it']],
   ] as const)(
     'refuses %s for %s, naming it, and writes nothing (criteria 4-6, 8)',
     async (code, commit, says) => {
@@ -97,30 +101,45 @@ describe('ISS-1318 — a base-branch landing marked by its commit (real Postgres
   // A reader that is configured and fails leaves the agent's commit as a claim that names the cause
   // (ISS-1409's ruling of 2026-10-08); a person's mark naming a commit is still refused.
   it.each([
-    ['read', 'HTTP 502', ', through a GitHub binding whose installation can read it'],
-    [
-      'mint',
-      'minting an installation token: HTTP 404',
-      ', through a GitHub binding whose installation can read it',
-    ],
+    ['read', 'HTTP 502'],
+    ['mint', 'Minting an installation token: HTTP 404.'],
   ] as const)(
     'records an unverified claim naming the cause and its fix when the repository cannot be read (%s) (criteria 7, 8)',
-    async (down, says, route) => {
+    async (down, says) => {
       repo.down = down;
       const issue = await seed();
       const res = await mark(issue, OWN);
       expect(res.action).toBe('merged');
       expect(res.mark).toBe('asserted');
-      expect(res.markDetail).toContain(`commit ${OWN} is recorded as this call's claim`);
-      expect(res.markDetail).toContain('is NOT verified');
-      expect(res.markDetail).toContain(says);
-      expect(res.markDetail).toContain(
-        `mark again once the tracker can read the project's repository${route}`,
+      // ISS-1421 r8: three short sentences of ours, the host's reason quoted on its own line.
+      expect(res.markDetail).toMatch(
+        new RegExp(
+          `^Commit ${OWN.slice(0, 7)} was named and is kept as a claim\\. Forge could not check it against the repository\\. Mark it again once Forge can read the repository\\.\\n> `,
+        ),
       );
+      expect(res.markDetail).toContain(says);
       expect(await row(issue.id)).toMatchObject({ merged_commit_sha: null });
-      const refused = await refusal(() => mark(issue, OWN, 'human'));
+
+      // Criterion 123: on the issue now marked, a person's commit Forge cannot read is answered with
+      // where the mark stays, and a comment says so; nothing is refused and nothing is written.
+      const said = await comments(issue.id);
+      const repeat = await mark({ ...issue, mergedAt: new Date() }, OWN, 'human');
+      expect(repeat.action).toBe('already_merged');
+      expect(repeat.markDetail.split('\n')[0]).toBe(
+        `The mark stays a claim naming commit ${OWN.slice(0, 7)}. Forge could not check commit ${OWN.slice(0, 7)} against the repository. Mark it again once it can.`,
+      );
+      expect(repeat.markDetail).toContain(says);
+      expect(repeat.markDetail).not.toContain('naming no commit');
+      expect(await comments(issue.id)).toHaveLength(said.length + 1);
+      expect((await comments(issue.id)).at(-1)).toContain('The mark stays a claim naming commit');
+      expect(await row(issue.id)).toMatchObject({ merged_commit_sha: null });
+
+      // Criterion 124: only an issue not yet marked is refused, and only there is no commit offered.
+      const fresh = await seed({ seq: SEQ + 1 });
+      const refused = await refusal(() => mark(fresh, OWN, 'human'));
       expect(refused.code).toBe('COMMIT_UNVERIFIED');
       expect(refused.message).toContain(says);
+      expect(refused.message).toContain('Or mark it naming no commit, which records a claim.');
     },
   );
 
@@ -128,7 +147,9 @@ describe('ISS-1318 — a base-branch landing marked by its commit (real Postgres
     const issue = await seed({ sessionContext: { branch: 'main' } });
     const refused = await refusal(() => mark(issue, undefined));
     expect(refused.code).toBe('NO_WORK_EVIDENCE');
-    expect(refused.message).toContain('`mark_merged` carrying `data.commit`');
+    // ISS-1421 r9: this door is REST's, so the step names REST's own field.
+    expect(refused.message).toContain('on the base branch in `commit`.');
+    expect(refused.message).not.toContain('data.commit');
     expect(repo.reads).toEqual([]);
   });
 
@@ -136,7 +157,9 @@ describe('ISS-1318 — a base-branch landing marked by its commit (real Postgres
     const issue = await seed({ sessionContext: { branch: 'ISS-1318-mark-landed-base' } });
     const res = await mark(issue, FOREIGN);
     expect(res.mark).toBe('asserted');
-    expect(res.markDetail).toContain(`commit ${FOREIGN} is recorded here as this call's claim`);
+    expect(res.markDetail).toContain(
+      `Commit ${FOREIGN.slice(0, 7)} is in ${repo.fullName}, and is noted in the comment only.`,
+    );
     expect((await row(issue.id)).merged_commit_sha).toBeNull();
     expect(repo.reads).toEqual([`/repos/${repo.fullName}/commits/${FOREIGN}`]);
   });
@@ -160,17 +183,17 @@ describe('ISS-1318 — a base-branch landing marked by its commit (real Postgres
     const issue = await seed();
     const res = await mark(issue, OWN);
     expect((await row(issue.id)).merged_commit_sha).toBe(pr);
-    expect(res.markDetail).not.toContain(`read from ${repo.fullName} itself`);
-    expect((await comments(issue.id)).at(-1)).not.toContain(`read from ${repo.fullName} itself`);
+    expect(res.markDetail).not.toContain(`, on main of ${repo.fullName}.`);
+    expect((await comments(issue.id)).at(-1)).not.toContain(`, on main of ${repo.fullName}.`);
   });
 
   it('takes no commit route on an outside_git project, naming the landing route (criterion 15, ISS-1384)', async () => {
     const issue = await seed({ kind: 'website' });
     const refused = await refusal(() => mark(issue, OWN));
     expect(refused.code).toBe('NO_WORK_EVIDENCE');
-    expect(refused.message).toContain("This project's work lands outside git");
-    expect(refused.message).toContain('`mark_merged` carrying `data.landing`');
-    expect(refused.message).not.toContain('data.commit');
+    expect(refused.message).toContain('this mark names no landing and no branch is recorded');
+    expect(refused.message).toContain('Send `landing` naming the live URL');
+    expect(refused.message).not.toContain('commit`');
     expect(repo.reads).toEqual([]);
   });
 });
@@ -185,12 +208,12 @@ describe('ISS-1318 — the live branch and an abbreviated sha, named for what th
       const issue = await seed();
       const refused = await refusal(() => mark(issue, short));
       expect(refused.code).toBe('COMMIT_NOT_IN_REPOSITORY');
+      // The commit as it was typed, whole: a shorter prefix of it could name a commit after all.
       expect(refused.message).toContain(
-        `GitHub resolves no single commit from ${short} in SidCorp-co/specimen`,
+        `The repository SidCorp-co/specimen resolves no single commit from ${short}.`,
       );
-      expect(refused.message).toContain('or more than one does');
-      expect(refused.message).toContain('the full 40-character sha');
-      expect(refused.message).not.toContain('finds no commit');
+      expect(refused.message).toContain('Mark it with the full sha the work landed at.');
+      expect(refused.message).not.toContain('holds no commit');
       expect(await row(issue.id)).toMatchObject({ merged_at: null, merged_commit_sha: null });
     },
   );
@@ -242,8 +265,8 @@ describe('ISS-1318 r3 — each refusal names a route its reader can take (real P
     const issue = await seed({ sessionContext: {} });
     const res = await mark(issue, OWN);
     expect(res.mark).toBe('asserted');
-    expect(res.markDetail).toContain('the project names no base branch to look for it on');
-    expect(res.markDetail).toContain('mark again once the project names its base branch');
+    expect(res.markDetail).toContain('The project names no base branch to look for it on');
+    expect(res.markDetail).toContain('Mark it again once the project names its base branch.');
     expect(repo.reads).toEqual([]);
   });
 

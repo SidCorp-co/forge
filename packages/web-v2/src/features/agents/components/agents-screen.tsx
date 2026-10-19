@@ -1,6 +1,6 @@
 "use client";
 
-import { ScreenTabs, type TabItem } from "@/design";
+import { PageContainer, ScreenTabs, type TabItem } from "@/design";
 import { SessionsScreen } from "@/features/sessions/components/sessions-screen";
 import { useLocationSearch } from "@/lib/utils/use-location-search";
 import { useTabParam } from "@/lib/utils/use-tab-param";
@@ -28,9 +28,12 @@ export function AgentsScreen({ scope }: AgentsScreenProps) {
     <div className="flex min-h-0 flex-1 flex-col">
       <ScreenTabs tabs={TABS} value={tab} onChange={(v) => setTab(v as AgentsTab)} />
       <div className="min-h-0 flex-1 overflow-auto">
-        {tab === "runs" && <RunsPane scope={scope} />}
-        {tab === "questions" && (
-          <QuestionsPane scope={scope} focusQuestionId={focusQuestionId} />
+        {/* The panes sit in the column the tab strip draws, so their rows end where its divider ends. */}
+        {tab !== "sessions" && (
+          <PageContainer className="py-0 sm:py-0" data-testid="agents-column">
+            {tab === "runs" && <RunsPane scope={scope} />}
+            {tab === "questions" && <QuestionsPane scope={scope} focusQuestionId={focusQuestionId} />}
+          </PageContainer>
         )}
         {tab === "sessions" && <SessionsScreen scope={{ projectId: scope.projectId }} />}
       </div>

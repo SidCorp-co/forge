@@ -9,16 +9,22 @@
 // work is queued AND zero runners are online (the silent no_worker_online mode)
 // — never when runners are merely all-busy (healthy backpressure).
 //
-// Data: useProject(projectId).devicePool + defaultDeviceId (project-scoped) ×
-// useQueueStats(projectId) (per-device queued/running). Liveness is the shared
-// deriveLiveness threshold so the strip, list, and detail never diverge.
+// Data: `useRunnerFleet`, the one summary the dashboard's Sessions live caption and Runners card
+// read too, so the strip and the dashboard never disagree about which boxes are online or busy
+// (ISS-1228); the project's defaultDeviceId; and the listed rows for the step a busy box is on.
+// Liveness is the shared deriveLiveness threshold so the strip, list, and detail never diverge.
 import { useMemo } from "react";
-import { Banner, HealthDot, Icon, MonoTag, Tooltip } from "@/design";
+import { Banner, HealthDot, Icon, MonoTag, SILENCE_TONE, SILENCE_WORD, Tooltip } from "@/design";
+import { TONE_META } from "@/design/status";
+import { useRunnerFleet } from "@/features/project-dashboard/runner-fleet";
+import type { ReadState } from "@/features/project-dashboard/shape";
 import { useProject } from "@/features/projects/hooks";
-import { deviceHealth } from "@/features/runners/types";
-import { useQueueStats } from "../hooks";
+import { boxHealth, boxWord } from "../box-state";
+import { DISPATCH_STALLED, PRIMARY_BOX_HOVER, queuedBehindText, queuedWithNoBoxText } from "../status-sentences";
 import {
   deriveLiveness,
+  isLiveDisplay,
+  isWaitingForABox,
   sessionStep,
   type AgentSessionDisplayStatus,
   type SessionRow,
@@ -47,106 +53,100 @@ interface FleetStripProps {
   now: number;
 }
 
+function queueWord(queued: number, read: ReadState): string {
+  if (read.read === "failed") return "queue not read";
+  if (read.read === "pending") return "reading the queue";
+  return queued > 0 ? `${queued} queued` : "no queue";
+}
+
 export function FleetStrip({ projectId, rows, displays, now }: FleetStripProps) {
   const projectQ = useProject(projectId);
-  const queueQ = useQueueStats(projectId);
-
-  const devicePool = projectQ.data?.devicePool ?? [];
+  const fleet = useRunnerFleet(projectId, now);
+  const lines = fleet.summary.lines;
   const defaultDeviceId = projectQ.data?.defaultDeviceId ?? null;
-
-  // Per-device queue depth from queue-stats (queued sessions waiting on that
-  // device). Sessions with no device assigned bucket under the null key.
-  const queuedByDevice = useMemo(() => {
-    const m = new Map<string | null, number>();
-    for (const d of queueQ.data?.devices ?? []) m.set(d.deviceId, d.queued);
-    return m;
-  }, [queueQ.data]);
+  const activityRead = fleet.activity.read === "ok";
 
   const boundByDevice = useMemo(() => {
     const m = new Map<string, { row: SessionRow; display: AgentSessionDisplayStatus }>();
     rows.forEach((row, i) => {
       const d = displays[i];
-      if ((d === "running" || d === "stalled") && row.deviceId && !m.has(row.deviceId)) {
+      if (isLiveDisplay(d) && row.deviceId && !m.has(row.deviceId)) {
         m.set(row.deviceId, { row, display: d });
       }
     });
     return m;
   }, [rows, displays]);
 
-  const onlineRunners = devicePool.filter((d) => d.status === "online").length;
-  const queuedCount = rows.filter((r) => r.status === "queued" || r.status === "idle").length;
-  const dispatchStalled = queuedCount > 0 && onlineRunners === 0;
+  const queuedCount = rows.filter(isWaitingForABox).length;
+  const dispatchStalled =
+    fleet.runners.read === "ok" && queuedCount > 0 && fleet.summary.onlineCount === 0;
 
   return (
     <div className="flex flex-col gap-3">
       {dispatchStalled && (
         <Banner tone="danger">
-          <span className="font-semibold">Dispatch stalled — no runner online.</span>{" "}
-          {queuedCount} session{queuedCount === 1 ? "" : "s"} queued with no runner to pick it up.
-          Bring a runner online or check device pairing.
+          <span className="font-semibold">{DISPATCH_STALLED}</span> {queuedWithNoBoxText(queuedCount)}
         </Banner>
       )}
 
-      {devicePool.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-line px-4 py-3 fg-body-sm text-muted">
-          No runners paired to this project yet.
-        </div>
+      {fleet.runners.read !== "ok" ? (
+        <p className="fg-body-sm border-y border-line py-3 text-muted">
+          {fleet.runners.read === "failed" ? `Runners not read: ${fleet.runners.reason}` : "Reading runners…"}
+        </p>
+      ) : lines.length === 0 ? (
+        <p className="fg-body-sm border-y border-line py-3 text-muted">No runners paired to this project yet.</p>
       ) : (
-        <div className="flex gap-2.5 overflow-x-auto pb-1">
-          {devicePool.map((d) => {
-            const bound = boundByDevice.get(d.id);
-            const busy = !!bound;
+        <ul aria-label="Boxes" className="flex flex-col divide-y divide-line border-y border-line">
+          {lines.map((d) => {
+            const bound = d.deviceId ? boundByDevice.get(d.deviceId) : undefined;
+            const busy = d.online && d.busy;
             const liveness = bound ? deriveLiveness(bound.row, now) : null;
             const stale = liveness?.state === "stale" || liveness?.state === "reaping";
-            const health = busy && stale ? "attention" : deviceHealth(d.status as never);
-            const isPrimary = d.id === defaultDeviceId;
-            const queued = queuedByDevice.get(d.id) ?? 0;
+            const health = boxHealth(d, stale);
+            const isPrimary = d.deviceId !== null && d.deviceId === defaultDeviceId;
+            const queued = d.queued;
             const step = bound ? sessionStep(bound.row.metadata) : null;
             const issueRef = bound ? issueRefFromTitle(bound.row.title) : null;
 
             return (
-              <div
+              <li
                 key={d.id}
-                className="min-w-[200px] flex-none rounded-lg border bg-surface px-3 py-2.5"
-                style={{
-                  borderColor: isPrimary ? "var(--cobalt-100)" : "var(--color-line)",
-                }}
+                className="flex flex-col gap-1 py-2.5 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-4"
               >
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex min-w-0 items-center gap-1.5">
-                    <Icon name="server" size={13} className="flex-none text-subtle" />
-                    <span className="truncate fg-body-sm text-fg" title={d.name}>
-                      {d.name}
-                    </span>
-                  </div>
+                <div className="flex min-w-0 items-center gap-1.5 sm:w-56">
                   <HealthDot health={health} withLabel={false} />
+                  <Icon name="server" size={13} className="flex-none text-subtle" />
+                  <span className="truncate fg-body-sm font-medium text-fg" title={d.name}>
+                    {d.name}
+                  </span>
                 </div>
 
-                <div className="mt-1.5 flex items-center gap-1.5">
-                  <Tooltip label={isPrimary ? "Primary runner (pinned default)" : "Cold spare — idle is normal"}>
-                    <MonoTag hue={isPrimary ? "cobalt" : "neutral"}>
-                      {isPrimary ? "Primary" : "Spare"}
-                    </MonoTag>
-                  </Tooltip>
+                <div className="flex items-center gap-1.5">
+                  {isPrimary && (
+                    <Tooltip label={PRIMARY_BOX_HOVER}>
+                      <MonoTag hue="cobalt">Primary</MonoTag>
+                    </Tooltip>
+                  )}
                   <span className="fg-caption text-subtle">
                     {PLATFORM_LABEL[d.platform] ?? d.platform}
                   </span>
                 </div>
 
-                <div className="mt-2 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-3">
                   <span
+                    data-testid="box-word"
                     className="fg-caption font-semibold"
                     style={{ color: busy ? "var(--cobalt-700)" : "var(--fg-subtle)" }}
                   >
-                    {busy ? "Busy · 1/1" : "Free · 0/1"}
+                    {boxWord(d, activityRead)}
                   </span>
-                  <span className="fg-caption text-subtle" title={`${queued} queued behind this runner`}>
-                    {queued > 0 ? `${queued} queued` : "no queue"}
+                  <span data-testid="box-queue" className="fg-caption text-subtle" title={queuedBehindText(queued)}>
+                    {queueWord(queued, fleet.queue)}
                   </span>
                 </div>
 
-                {busy && (step || issueRef || stale) && (
-                  <div className="mt-1.5 flex items-center gap-1.5 overflow-hidden">
+                {bound && (step || issueRef || stale) && (
+                  <div className="flex items-center gap-1.5 overflow-hidden">
                     {step && <span className="fg-caption capitalize text-muted">{step}</span>}
                     {issueRef && (
                       <>
@@ -155,16 +155,16 @@ export function FleetStrip({ projectId, rows, displays, now }: FleetStripProps) 
                       </>
                     )}
                     {stale && (
-                      <span className="fg-caption" style={{ color: "var(--amberw-600)" }}>
-                        stalled
+                      <span className="fg-caption" style={{ color: TONE_META[SILENCE_TONE].fg }}>
+                        {SILENCE_WORD}
                       </span>
                     )}
                   </div>
                 )}
-              </div>
+              </li>
             );
           })}
-        </div>
+        </ul>
       )}
     </div>
   );

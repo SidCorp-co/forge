@@ -8,7 +8,11 @@ import { eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
-import { type EnvironmentsConfig, environmentsPatchSchema } from './environments.js';
+import {
+  credentialFaults,
+  type EnvironmentsConfig,
+  environmentsPatchSchema,
+} from './environments.js';
 
 export type EnvironmentsErrorCode =
   | 'ENVIRONMENTS_STALE'
@@ -88,6 +92,17 @@ export async function updateEnvironments(
           message: i.message,
         })),
       });
+    }
+
+    // Only a write that names the credentials is held to their rules: a row stored before them
+    // does not refuse a limits edit made by somebody who never touched it.
+    const faults = 'testCredentials' in patch ? credentialFaults(next.testCredentials) : [];
+    if (faults.length > 0) {
+      throw new EnvironmentsError(
+        'ENVIRONMENTS_INVALID',
+        `${faults.map((f) => f.message).join(' ')} Nothing was written.`,
+        { conflicts: faults },
+      );
     }
 
     await tx.update(projects).set({ environments: next }).where(eq(projects.id, projectId));

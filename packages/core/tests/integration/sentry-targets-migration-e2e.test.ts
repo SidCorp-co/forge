@@ -1,7 +1,7 @@
 /**
  * ISS-1380 — the shipped migration, run against the rows the old code left behind.
  *
- * The statement is read out of `0330_...sql` rather than restated, because what has to hold is what
+ * The statement is read out of `0340_...sql` rather than restated, because what has to hold is what
  * the deploy will execute. Four properties:
  *   - a connection's targets reach the one binding that was reading them, and leave the connection;
  *   - a connection whose targets cannot go to exactly one binding ABORTS the deploy naming it, and
@@ -24,7 +24,7 @@ import {
 
 const MIGRATION = fileURLToPath(
   new URL(
-    '../../drizzle/migrations/0330_a_sentry_target_belongs_to_the_project_that_names_it.sql',
+    '../../drizzle/migrations/0340_a_sentry_target_belongs_to_the_project_that_names_it.sql',
     import.meta.url,
   ),
 );

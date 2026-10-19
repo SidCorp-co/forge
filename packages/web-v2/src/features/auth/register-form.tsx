@@ -5,8 +5,10 @@ import { useRef, useState } from 'react';
 import { Banner, Button, Field, Input } from '@/design';
 import { ApiError } from '@/lib/api/client';
 import { useAuth } from '@/providers/auth-provider';
+import { AGENT_ADDRESS_MESSAGE } from './agent-address';
 import { PasswordMeter } from './components/password-meter';
 import { extractFieldErrors } from './extract-field-errors';
+import { rateLimitedOf } from './rate-limit-words';
 import { validateRegister, type RegisterFieldErrors } from './validation';
 
 // The server only validates email + password; confirmPassword is client-only.
@@ -45,14 +47,20 @@ export function RegisterForm() {
       // button useful.
       router.replace(`/login?registered=1&email=${encodeURIComponent(email.trim())}`);
     } catch (err) {
-      const aboutAddress = err instanceof ApiError && err.code === 'CONFLICT';
+      const agentAddress = err instanceof ApiError && err.code === 'AGENT_ADDRESS_RESERVED';
+      const aboutAddress = agentAddress || (err instanceof ApiError && err.code === 'CONFLICT');
       // A refusal of an address the field no longer holds describes nothing on screen.
       if (aboutAddress && emailNow.current !== email) return;
       const fieldMap = extractFieldErrors(err, SERVER_FIELD_KEYS);
       if (Object.keys(fieldMap).length > 0) {
         setFieldErrors(fieldMap);
       } else {
-        setTopError(err instanceof Error ? err.message : 'Registration failed');
+        // The sign-in page's sentence for the same address, not the API's own words for it.
+        setTopError(
+          agentAddress
+            ? AGENT_ADDRESS_MESSAGE
+            : (rateLimitedOf(err) ?? (err instanceof Error ? err.message : 'Registration failed')),
+        );
         bannerAddress.current = aboutAddress ? email : null;
       }
     } finally {

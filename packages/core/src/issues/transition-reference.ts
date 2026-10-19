@@ -25,6 +25,8 @@ export const TRANSITION_REFUSAL_STATUS = {
   RELEASE_TAG_UNREAD: 503,
   ENTRY_CRITERIA_UNMET: 422,
   VOID_REASON_REQUIRED: 422,
+  RELEASING_STARTS_FROM_RELEASE: 409,
+  RELEASING_ENDS_BY_RELEASE: 409,
 } as const satisfies Record<TransitionErrorCode, 409 | 422 | 503>;
 
 /** Where a rule stored a status other than the one asked for, and why. */
@@ -69,6 +71,10 @@ const REFUSALS: Record<TransitionErrorCode, string> = {
   ENTRY_CRITERIA_UNMET: "the project's entry criteria for the status are not met",
   VOID_REASON_REQUIRED:
     '`voidQuestions` was needed to settle the open questions and came without a reason',
+  RELEASING_STARTS_FROM_RELEASE:
+    '`releasing` was asked for by a door other than starting a release, which is the only door that writes it',
+  RELEASING_ENDS_BY_RELEASE:
+    "a move out of `releasing` came from a door other than the release's finish or abort or the releasing sweep",
 };
 
 const refusalsAt = (status: 409 | 422 | 503) =>

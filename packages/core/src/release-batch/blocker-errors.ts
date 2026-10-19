@@ -7,6 +7,7 @@ import type {
 } from './blocker-sentences.js';
 import { ReleaseRunnerAmbiguousError } from './channel.js';
 import { readClaimConflictDetails } from './claim-conflicts.js';
+import { counted } from './counted.js';
 import {
   BatchInFlightError,
   ClaimConflictError,
@@ -80,7 +81,7 @@ export class ReleaseRosterUnusableError extends Error {
     public readonly code: 'RELEASE_ROSTER_EMPTY' | 'RELEASE_ROSTER_OVERSIZE',
     public readonly waiting: number,
   ) {
-    super(`${code}: ${waiting} issue(s) at the release gate`);
+    super(`${code}: ${counted(waiting, 'issue')} at the release gate`);
     this.name = 'ReleaseRosterUnusableError';
   }
 }

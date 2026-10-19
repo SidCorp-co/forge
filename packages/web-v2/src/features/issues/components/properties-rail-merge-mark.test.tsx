@@ -78,7 +78,10 @@ describe("the merge mark on the issue rail", () => {
   it("says an unverified claim is claimed, shows its commit and says it is not verified (ISS-1409)", () => {
     render(rail("asserted", null, null, "git", SHA));
     expect(screen.getByText("claimed")).toBeInTheDocument();
-    expect(screen.getByTestId("merged-claim")).toHaveTextContent(`${SHA.slice(0, 10)} — not verified`);
+    // ISS-1421 — seven characters to read, the whole commit on hover.
+    expect(screen.getByTestId("merged-claim")).toHaveTextContent(`${SHA.slice(0, 7)} — not verified`);
+    expect(screen.getByTestId("merged-claim")).not.toHaveTextContent(SHA.slice(0, 8));
+    expect(screen.getByTestId("merged-claim").getAttribute("title")?.startsWith(`Commit ${SHA}. `)).toBe(true);
     expect(screen.queryByText("observed")).toBeNull();
   });
 
@@ -102,7 +105,24 @@ describe("the merge mark on the issue rail", () => {
 
   it("names the commit a reader would check the observed merge against", () => {
     render(rail("observed", SHA));
-    expect(screen.getByTitle(new RegExp(SHA))).toBeInTheDocument();
+    expect(screen.getByTitle(SHA, { exact: false })).toBeInTheDocument();
+  });
+
+  // ISS-1421 r8, criterion 132: judge-40 saw only the date and "observed" after a move, the commit
+  // kept on a hover nobody reaches at 390.
+  it("shows an observed commit by seven characters, the whole commit on hover", () => {
+    render(rail("observed", SHA));
+    const commit = screen.getByTestId("merged-commit");
+    expect(commit).toHaveTextContent(SHA.slice(0, 7));
+    expect(commit).not.toHaveTextContent(SHA.slice(0, 8));
+    expect(commit.getAttribute("title")).toBe(`Forge observed this merge at commit ${SHA}.`);
+  });
+
+  it("says a claim's commit was not checked without saying no reader exists", () => {
+    render(rail("asserted", null, null, "git", SHA));
+    const title = screen.getByTestId("merged-claim").getAttribute("title") ?? "";
+    expect(title).toContain("could not check it against the repository");
+    expect(title).not.toContain("no way to read");
   });
 
   it("says why the claim is a claim, rather than only labelling it", () => {

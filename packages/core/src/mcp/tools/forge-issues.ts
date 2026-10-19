@@ -29,6 +29,7 @@ import {
   readIssueLandingShape,
 } from '../../issues/landing-evidence.js';
 import { type IssueListRow, listIssueRows } from '../../issues/list-service.js';
+import { markTargetBranch } from '../../issues/mark-target.js';
 import {
   applyMergeMarker,
   MergeMarkerError,
@@ -38,17 +39,26 @@ import { mergeMarkFields } from '../../issues/merge-record.js';
 import { parkQuestionNotMinted } from '../../issues/park-question.js';
 import { collectIssueFieldUpdates, SHARED_ISSUE_PATCH_FIELDS } from '../../issues/patch-fields.js';
 import { findIssueById, type IssueRow } from '../../issues/read-service.js';
-import { applyIssueRelations, issueRelationInputSchema } from '../../issues/relations-service.js';
+import {
+  type AppliedIssueRelation,
+  issueRelationInputSchema,
+} from '../../issues/relations-service.js';
 import { ReleaseNotesSchema } from '../../issues/release-notes.js';
+import { NO_FIELDS_TO_UPDATE } from '../../issues/routes-reference.js';
 import { IssueSearchKeyRefused } from '../../issues/search-term.js';
 import { sessionContextExpectSchema, sessionContextSchema } from '../../issues/session-context.js';
-import { updateIssueFields } from '../../issues/update-service.js';
 import { formatIssueRef } from '../../lib/issue-ref.js';
 import { markUntrusted, sanitizeUntrusted } from '../../prompt/sanitize.js';
+import { ISSUE_ACTIONS, refuseUnservedIssueAction } from './forge-issues-actions.js';
 import { refuseStrayArchiveFields, runArchiveAction } from './forge-issues-archive.js';
 import { forgeIssuesDescription } from './forge-issues-description.js';
 import { toMcpIssueError } from './forge-issues-errors.js';
-import { transitionByData } from './forge-issues-transition.js';
+import { moveWithWrites, transitionByData, writeWithoutMove } from './forge-issues-transition.js';
+import {
+  unwrittenIfUpdate,
+  unwrittenOnRefusal,
+  unwrittenRefusal,
+} from './forge-issues-update-refusal.js';
 import { ISSUE_REF_CLAUSE, issueRefSchema, refsFor } from './issue-ref-input.js';
 import {
   assertPrincipalIsMember,
@@ -125,7 +135,7 @@ const dataObject = z
     note: z.string().max(10_000).optional(),
     issueId: issueRefSchema.optional(),
     relations: z.array(issueRelationInputSchema).max(20).optional(),
-    reason: z.string().trim().min(1).max(10_000).optional(),
+    reason: z.string().trim().max(10_000).optional(),
     waitingKind: z.enum(waitingKinds).optional(),
     needs: z
       .string()
@@ -179,18 +189,7 @@ const GET_SELECTABLE_FIELDS = [...STEP_START_HEAVY_FIELDS, 'releaseNotes'] as co
 
 const inputSchema = z
   .object({
-    action: z.enum([
-      'list',
-      'get',
-      'create',
-      'update',
-      'transition',
-      'mark_merged',
-      'unmark',
-      'setAttributes',
-      'archive',
-      'unarchive',
-    ]),
+    action: z.enum(ISSUE_ACTIONS),
     projectId: z.uuid().optional(),
     documentId: issueRefSchema.optional(),
     filters: filtersSchema,
@@ -440,26 +439,31 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
   description: forgeIssuesDescription(ISSUE_REF_CLAUSE),
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
-    const input = inputSchema.parse(args);
     const { principal } = ctx;
-    const refs = refsFor(input, ctx, principal);
-    refuseStrayArchiveFields(input);
+    // An update refused by its input check has written nothing either, and says so (ISS-1229 r12).
+    const { input, refs } = unwrittenIfUpdate(args, () => {
+      refuseUnservedIssueAction((args as { action?: unknown } | null)?.action);
+      const input = inputSchema.parse(args);
+      const refs = refsFor(input, ctx, principal);
+      refuseStrayArchiveFields(input);
 
-    if (
-      input.data?.relations !== undefined &&
-      input.action !== 'create' &&
-      input.action !== 'update'
-    ) {
-      throw new Error(
-        `BAD_REQUEST: data.relations is applied only by action 'create' and 'update' (got '${input.action}') — send the edges on the create/update call that carries them`,
-      );
-    }
+      if (
+        input.data?.relations !== undefined &&
+        input.action !== 'create' &&
+        input.action !== 'update'
+      ) {
+        throw new Error(
+          `BAD_REQUEST: data.relations is applied only by action 'create' and 'update' (got '${input.action}') — send the edges on the create/update call that carries them`,
+        );
+      }
 
-    if (input.data?.landingShape !== undefined && input.action !== 'update') {
-      throw new Error(
-        `BAD_REQUEST: data.landingShape is applied only by action 'update' (got '${input.action}') — declare where this issue's work lands on an update of the issue`,
-      );
-    }
+      if (input.data?.landingShape !== undefined && input.action !== 'update') {
+        throw new Error(
+          `BAD_REQUEST: data.landingShape is applied only by action 'update' (got '${input.action}') — declare where this issue's work lands on an update of the issue`,
+        );
+      }
+      return { input, refs };
+    });
 
     switch (input.action) {
       case 'archive':
@@ -614,75 +618,85 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         return out;
       }
       case 'update': {
-        if (!input.documentId) throw new Error('BAD_REQUEST: documentId is required for update');
-        if (!input.data) throw new Error('BAD_REQUEST: data is required for update');
-        const issue = await loadIssue(await refs.issue('documentId', input.documentId));
-        await assertPrincipalIsWriter(principal, issue.projectId);
-
+        // Nothing is written until every value is resolved, so a refusal here leaves the issue as
+        // it was, and says so first (ISS-1229 r11).
+        const sentStatus = input.data?.status !== undefined;
+        const { issue, data } = await unwrittenOnRefusal(sentStatus, async () => {
+          if (!input.documentId) throw new Error('BAD_REQUEST: documentId is required for update');
+          if (!input.data) throw new Error('BAD_REQUEST: data is required for update');
+          const issue = await loadIssue(await refs.issue('documentId', input.documentId));
+          await assertPrincipalIsWriter(principal, issue.projectId);
+          return { issue, data: input.data };
+        });
         let labelIds: ResolvedLabelAttach[] | undefined;
-        if (input.data.labels !== undefined) {
-          try {
-            labelIds = await resolveLabelIdsForWrite(issue.projectId, input.data.labels);
-          } catch (err) {
-            throw toMcpIssueError(err);
-          }
-        }
-
-        if (input.data.detectorKey !== undefined && !isValidDetectorKey(input.data.detectorKey)) {
-          throw new Error(
-            `BAD_REQUEST: data.detectorKey must be lowercase slash-separated slugs, max 120 chars (got '${input.data.detectorKey}')`,
-          );
-        }
-
         let collected: ReturnType<typeof collectIssueFieldUpdates>;
         try {
-          collected = collectIssueFieldUpdates(input.data as Record<string, unknown>, [
+          if (data.labels !== undefined) {
+            labelIds = await resolveLabelIdsForWrite(issue.projectId, data.labels);
+          }
+          if (data.detectorKey !== undefined && !isValidDetectorKey(data.detectorKey)) {
+            throw new Error(
+              `BAD_REQUEST: data.detectorKey must be lowercase slash-separated slugs, max 120 chars (got '${data.detectorKey}')`,
+            );
+          }
+          collected = collectIssueFieldUpdates(data as Record<string, unknown>, [
             ...SHARED_ISSUE_PATCH_FIELDS,
           ]);
+          const writesFields = Object.keys(collected.updates).length > 0 || labelIds !== undefined;
+          const writesAnything =
+            writesFields || data.status !== undefined || (data.relations?.length ?? 0) > 0;
+          if (!writesAnything && !data.expect) {
+            throw new Error(
+              `BAD_REQUEST: ${NO_FIELDS_TO_UPDATE}: \`data\` carries no field, label, relation or status to write.`,
+            );
+          }
+          if (data.expect && !writesFields) {
+            throw new Error(
+              'BAD_REQUEST: data.expect is a precondition on a FIELD write — it holds nothing against a status or relations change. Send the field(s) to write alongside it.',
+            );
+          }
         } catch (err) {
-          throw toMcpIssueError(err);
+          throw unwrittenRefusal(err, sentStatus);
         }
         const { updates, warnings: bodyWarnings } = collected;
 
         const willWriteFields = Object.keys(updates).length > 0 || labelIds !== undefined;
-        if (input.data.expect && !willWriteFields) {
-          throw new Error(
-            'BAD_REQUEST: data.expect is a precondition on a FIELD write — it holds nothing against a status or relations change. Send the field(s) to write alongside it.',
-          );
-        }
-
-        if (willWriteFields) {
-          updates.updatedAt = new Date();
-          try {
-            await updateIssueFields({
+        if (willWriteFields) updates.updatedAt = new Date();
+        const fields = willWriteFields
+          ? {
               issueId: issue.id,
               updates,
               labelIds,
-              ...(input.data.expect ? { expect: input.data.expect } : {}),
+              ...(data.expect ? { expect: data.expect } : {}),
               actor: principalHookActor(principal),
-            });
-          } catch (err) {
-            throw toMcpIssueError(err);
-          }
-        }
-
-        const r = await applyIssueRelations(
-          { actor: principalHookActor(principal), createdById: principal.userId },
-          issue.projectId,
-          issue.id,
-          input.data.relations,
-        );
+            }
+          : null;
+        const writer = { actor: principalHookActor(principal), createdById: principal.userId };
+        const writes = { fields, relations: data.relations, writer };
 
         let unasked: string | null = null;
         let rewritten: TransitionRewrite | null | undefined;
-        if (input.data.status && input.data.status !== issue.status) {
-          ({ rewritten } = await transitionByData(issue, input.data.status, principal, input.data));
+        let r: AppliedIssueRelation[];
+        if (data.status) {
+          try {
+            ({ rewritten, relations: r } = await moveWithWrites(
+              issue,
+              data.status,
+              principal,
+              data,
+              writes,
+            ));
+          } catch (err) {
+            throw toMcpIssueError(err);
+          }
           unasked = parkQuestionNotMinted({
             issue,
-            toStatus: input.data.status,
+            toStatus: data.status,
             actor: principalActor(principal),
-            options: { needs: input.data.needs },
+            options: { needs: data.needs },
           });
+        } else {
+          r = await writeWithoutMove(issue, writes);
         }
 
         const fresh = await loadIssue(issue.id);
@@ -734,29 +748,39 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
             action,
             mark,
             markDetail: detail,
+            movedFrom,
+            namedCommit,
           } = await applyMergeMarker({
             issue,
             op: marking ? 'mark' : 'unmark',
-            ...(input.data?.target ? { target: input.data.target } : {}),
+            ...(input.data?.target
+              ? { target: await markTargetBranch(issue, input.data.target) }
+              : {}),
             ...(input.data?.note ? { note: input.data.note } : {}),
             ...(input.data?.commit ? { commit: input.data.commit } : {}),
             ...(input.data?.landing ? { landing: input.data.landing } : {}),
             ...(input.data?.mergedAt
               ? { mergedAt: parseDate(input.data.mergedAt, 'mergedAt') }
               : {}),
+            door: 'mcp',
             actor: {
               agency: actorAgency(principalActor(principal)),
               commentAuthorId: principal.userId,
               hookActor: principalHookActor(principal),
             },
           });
-          return { ...(await serializeWithAttachments(fresh)), action, mark, detail };
+          return {
+            ...(await serializeWithAttachments(fresh)),
+            action,
+            mark,
+            detail,
+            movedFrom,
+            namedCommit,
+          };
         } catch (err) {
           if (err instanceof MergeMarkerError) {
-            // Owed on a git-shape project only (`landing-evidence.ts`), in this door's own words.
-            if (err.code === 'TARGET_REQUIRED') {
-              throw new Error('BAD_REQUEST: data.target is required for mark_merged');
-            }
+            // Owed on a git-shape project only (`landing-evidence.ts`), naming this door's field.
+            if (err.code === 'TARGET_REQUIRED') throw new Error(`BAD_REQUEST: ${err.message}`);
             throw new Error(`${err.code}: ${err.message}`);
           }
           throw err;

@@ -1,5 +1,5 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.5.14/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.5.15/schema.json",
   "vcs": {
     "enabled": true,
     "clientKind": "git",
@@ -28,6 +28,12 @@
     "enabled": true,
     "rules": {
       "preset": "recommended",
+      "a11y": {
+        "noLabelWithoutControl": {
+          "level": "error",
+          "options": { "inputComponents": ["Toggle"] }
+        }
+      },
       "style": {
         "noNonNullAssertion": "warn",
         "noRestrictedImports": {
@@ -58,6 +64,10 @@
       "suspicious": {
         "noExplicitAny": "warn"
       }
+    },
+    "domains": {
+      "react": "recommended",
+      "next": "recommended"
     }
   },
   "overrides": [

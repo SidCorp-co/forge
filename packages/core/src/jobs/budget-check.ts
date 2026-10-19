@@ -1,8 +1,8 @@
-import { eq, sql } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
+import { forgeAuthorId } from '../comments/forge-author.js';
 import { postSystemComment } from '../comments/system-write.js';
 import { db } from '../db/client.js';
-import type { JobType } from '../db/schema.js';
-import { issues, type jobs, projects } from '../db/schema.js';
+import type { JobType, jobs } from '../db/schema.js';
 import { utcDateTrunc } from '../lib/time-buckets.js';
 import { logger } from '../logger.js';
 import { extractStageStatus, resolveStageOverrides } from './stage-overrides.js';
@@ -104,24 +104,10 @@ export interface PostBudgetExhaustedCommentInput {
   result: BudgetCheckResult;
 }
 
-/**
- * Post the operator-facing comment that explains a dispatch was blocked
- * by the monthly budget cap. Authored by the project creator (audit
- * `projects.created_by`) so the comment carries a real author_id (issue-level
- * comments are not nullable on that column). No-op if the issue (or its
- * project creator) cannot be resolved.
- */
+/** Post, as Forge, the operator-facing comment that says a dispatch was blocked by the budget cap. */
 export async function postBudgetExhaustedComment(
   input: PostBudgetExhaustedCommentInput,
 ): Promise<void> {
-  const [row] = await db
-    .select({ createdBy: projects.createdBy })
-    .from(issues)
-    .innerJoin(projects, eq(projects.id, issues.projectId))
-    .where(eq(issues.id, input.issueId))
-    .limit(1);
-  if (!row?.createdBy) return;
-
   const budgetStr =
     typeof input.result.budget === 'number' ? `$${input.result.budget.toFixed(2)}` : 'n/a';
   const body = [
@@ -136,7 +122,7 @@ export async function postBudgetExhaustedComment(
   try {
     await postSystemComment({
       issueId: input.issueId,
-      authorId: row.createdBy,
+      authorId: await forgeAuthorId(db),
       body,
     });
   } catch (err) {

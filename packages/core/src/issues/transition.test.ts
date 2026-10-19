@@ -421,7 +421,7 @@ describe('POST /api/issues/:id/transition — draft as a target (ISS-787)', () =
     const res = await req({ toStatus: 'draft' }, token);
     const body = (await res.json()) as { code: string; message: string };
     expect(body.code).toBe('STALE_TRANSITION');
-    expect(body.message).toContain('confirmed');
+    expect(body.message).toContain('Confirmed');
     expect(body.message).not.toMatch(/run or job appeared/i);
   });
 
@@ -471,7 +471,7 @@ describe('POST /api/issues/:id/transition — draft as a target (ISS-787)', () =
     const res = await req({ toStatus: 'needs_info' }, token);
     expect(res.status).toBe(409);
     const body = (await res.json()) as { message: string };
-    expect(body.message).toContain('`draft`');
+    expect(body.message).toContain('Draft');
     expect(body.message).not.toMatch(/not a valid runtime status target/);
     expect(updateWhere).not.toHaveBeenCalled();
   });
@@ -485,7 +485,7 @@ describe('POST /api/issues/:id/transition — a refusal answers in its own words
     expect(res.status).toBe(409);
     const body = (await res.json()) as { code: string; message: string };
     expect(body.code).toBe('NO_OP');
-    expect(body.message).toContain('already in status open');
+    expect(body.message).toBe('issue already in status Open (open)');
   });
 
   it('422 CLOSE_REQUIRES_SHIPPED for a close on an issue with no merged_at (ISS-1108)', async () => {
@@ -495,6 +495,6 @@ describe('POST /api/issues/:id/transition — a refusal answers in its own words
     expect(res.status).toBe(422);
     const body = (await res.json()) as { code: string; message: string };
     expect(body.code).toBe('CLOSE_REQUIRES_SHIPPED');
-    expect(body.message).toContain('`dropped`');
+    expect(body.message).toContain('Dropped');
   });
 });

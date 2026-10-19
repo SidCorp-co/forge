@@ -218,10 +218,12 @@ it("leaves no entry that reopens the form when Back is taken from the issue just
 describe("an old ?tab= link", () => {
   const list = () => screen.queryByTestId("issues-list");
 
-  it("sends ?tab=board to the pipeline page and draws no list on the way", () => {
-    mountAt("/projects/forge-dev/issues?tab=board");
+  it("drops ?tab=board and shows the list, which holds the states the board drew (ISS-1228)", () => {
+    mountAt("/projects/forge-dev/issues?tab=board&q=crash");
 
-    expect(next.replaced).toEqual([{ href: "/projects/forge-dev/pipeline", drawn: 0 }]);
+    expect(window.location.pathname).toBe("/projects/forge-dev/issues");
+    expect(window.location.search).toBe("?q=crash");
+    expect(list()).toBeInTheDocument();
   });
 
   it("sends ?tab=insights to the project dashboard", () => {

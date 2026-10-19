@@ -14,12 +14,22 @@ const WEB_V2 = resolve(__dirname, "../..");
 
 let stylesheet: Promise<string> | undefined;
 
-/** The app's own stylesheet, compiled from `globals.css` over every class the sources use. */
+const FONT_FILES = [
+  { family: "Hanken Grotesk", file: "hanken-grotesk-latin-variable.woff2", weight: "100 900" },
+  { family: "JetBrains Mono", file: "jetbrains-mono-latin-variable.woff2", weight: "400 800" },
+];
+const fontFaces = () =>
+  FONT_FILES.map(({ family, file, weight }) => `@font-face{font-family:"${family}";font-weight:${weight};src:url("file://${join(WEB_V2, "src/app/fonts", file)}") format("woff2")}`).join("");
+
+/** Resolves once the app's fonts are in, so a page measures in the face users get and not in whatever the machine falls back to. */
+export const APP_FONTS_LOADED = `Promise.all([document.fonts.load('400 15px "Hanken Grotesk"'), document.fonts.load('600 15px "Hanken Grotesk"'), document.fonts.load('400 15px "JetBrains Mono"')])`;
+
+/** The app's own stylesheet, compiled from `globals.css` over every class the sources use, after the faces `next/font` loads in the app. */
 export function appStylesheet(): Promise<string> {
   stylesheet ??= (async () => {
     const from = join(WEB_V2, "src/app/globals.css");
     const result = await postcss([tailwind({ base: WEB_V2 }) as never]).process(readFileSync(from, "utf8"), { from });
-    return result.css;
+    return fontFaces() + result.css;
   })();
   return stylesheet;
 }
@@ -53,6 +63,14 @@ export function warmChrome(options: WarmOptions = {}): Promise<ChromeSession> {
   return session;
 }
 
+/** The browser `warmChrome` left running; a case that asks before it was warmed is refused by name. */
+export function runningChrome(): Promise<ChromeSession> {
+  if (!session) {
+    throw new Error("A Chrome case ran before warmChrome(): call it from beforeAll with WARM_HOOK_MS, so no case carries the launch inside its own timeout.");
+  }
+  return session;
+}
+
 export async function closeChrome(): Promise<void> {
   const running = session;
   session = undefined;
@@ -75,6 +93,8 @@ export interface Measured {
   scrolling: string[];
   /** How many lines each pill in a table body takes, by its text. */
   pillLines: Record<string, number>;
+  /** Each pill in a table body: whether the table's frame holds it unscrolled, and whether a title carries its whole text. */
+  pills: { table: string; text: string; framed: boolean; titled: boolean }[];
   /** Tables with a frame of their own whose header does not stay at the top of it when the rows scroll under it. */
   headerLost: string[];
   /** How many rows each table draws in its body, by label. */
@@ -105,6 +125,7 @@ const broken = [];
 const clipped = [];
 const scrolling = [];
 const pillLines = {};
+const pills = [];
 const headerLost = [];
 const bodyRows = {};
 for (const table of document.querySelectorAll("table")) {
@@ -115,10 +136,20 @@ for (const table of document.querySelectorAll("table")) {
   if (max > 1) scrolling.push(label + ": " + max + "px");
   bodyRows[label] = table.querySelectorAll("tbody tr[data-index]").length || table.querySelectorAll("tbody tr").length;
   for (const pill of table.querySelectorAll("tbody span.rounded-pill")) {
-    const range = document.createRange();
-    range.selectNodeContents(pill);
     const text = pill.textContent.trim();
-    pillLines[text] = Math.max(pillLines[text] || 0, new Set(Array.from(range.getClientRects(), (r) => Math.round(r.top))).size);
+    const tops = new Set();
+    const walker = document.createTreeWalker(pill, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      for (const r of range.getClientRects()) tops.add(Math.round(r.top));
+    }
+    pillLines[text] = Math.max(pillLines[text] || 0, tops.size);
+    scroller.scrollLeft = 0;
+    const at = pill.getBoundingClientRect();
+    const view = scroller.getBoundingClientRect();
+    const holder = pill.querySelector("[title]");
+    pills.push({ table: label, text, framed: at.left >= view.left - 0.5 && at.right <= view.right + 0.5, titled: holder !== null && holder.getAttribute("title") === text });
   }
   if (scroller.scrollHeight > scroller.clientHeight + 1) {
     scroller.scrollTop = 200;
@@ -180,7 +211,7 @@ for (const table of document.querySelectorAll("table")) {
     });
   }
 }
-parent.postMessage(btoa(String.fromCharCode(...new TextEncoder().encode(JSON.stringify({ viewport: innerWidth, out, overflowing, stickyWidest, pinned, broken, clipped, scrolling, pillLines, headerLost, bodyRows })))), "*");
+parent.postMessage(btoa(String.fromCharCode(...new TextEncoder().encode(JSON.stringify({ viewport: innerWidth, out, overflowing, stickyWidest, pinned, broken, clipped, scrolling, pillLines, pills, headerLost, bodyRows })))), "*");
 `;
 
 /**
@@ -192,9 +223,9 @@ export async function measureReach(markup: string, width: number, viewport: numb
   if (!session) {
     throw new Error("measureReach ran before warmChrome(): call it from beforeAll with WARM_HOOK_MS, so no case carries the launch inside its own timeout.");
   }
-  const chrome = await session;
+  const chrome = await runningChrome();
   const css = await appStylesheet();
-  const inner = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><style>${css}</style></head><body style="margin:0"><div style="width:${width}px">${markup}</div><script>${MEASURE}</script></body></html>`;
+  const inner = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><style>${css}</style></head><body style="margin:0"><div style="width:${width}px">${markup}</div><script>${APP_FONTS_LOADED}.then(() => {${MEASURE}});</script></body></html>`;
   const outer = `<!doctype html><html><body style="margin:0"><iframe src="inner.html" style="width:${viewport}px;height:1200px;border:0"></iframe><pre id="reach"></pre><script>addEventListener("message", (e) => { document.getElementById("reach").textContent = e.data; });</script></body></html>`;
   const dir = mkdtempSync(join(tmpdir(), "forge-chrome-layout-"));
   try {
@@ -204,11 +235,11 @@ export async function measureReach(markup: string, width: number, viewport: numb
     if (!body) throw new Error("Chrome laid the page out but reported no measurement: the frame's script did not run.");
     // The report crosses as base64, so no `&`, `<` or `"` in it needs unescaping and nothing is unescaped here.
     const text = Buffer.from(body, "base64").toString("utf8");
-    const measured = JSON.parse(text) as { viewport: number; out: Reach[]; overflowing: string[]; stickyWidest: Record<string, number>; pinned: Measured["pinned"]; broken: string[]; clipped: Measured["clipped"]; scrolling: string[]; pillLines: Record<string, number>; headerLost: string[]; bodyRows: Record<string, number> };
+    const measured = JSON.parse(text) as { viewport: number; out: Reach[]; overflowing: string[]; stickyWidest: Record<string, number>; pinned: Measured["pinned"]; broken: string[]; clipped: Measured["clipped"]; scrolling: string[]; pillLines: Record<string, number>; pills: Measured["pills"]; headerLost: string[]; bodyRows: Record<string, number> };
     if (measured.viewport !== viewport) {
       throw new Error(`Chrome laid the page out in a ${measured.viewport}px viewport, not the ${viewport}px asked for, so the responsive classes answered for another screen.`);
     }
-    return { reach: measured.out, overflowing: measured.overflowing, stickyWidest: measured.stickyWidest, pinned: measured.pinned, broken: measured.broken, clipped: measured.clipped, scrolling: measured.scrolling, pillLines: measured.pillLines, headerLost: measured.headerLost, bodyRows: measured.bodyRows };
+    return { reach: measured.out, overflowing: measured.overflowing, stickyWidest: measured.stickyWidest, pinned: measured.pinned, broken: measured.broken, clipped: measured.clipped, scrolling: measured.scrolling, pillLines: measured.pillLines, pills: measured.pills, headerLost: measured.headerLost, bodyRows: measured.bodyRows };
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

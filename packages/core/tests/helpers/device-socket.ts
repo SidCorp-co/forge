@@ -16,6 +16,8 @@ export function openDeviceSocket(deviceId: string): OpenDeviceSocket {
   const frames: Array<{ event: string; data: unknown }> = [];
   const sub: Subscriber = {
     readyState: OPEN,
+    // The box's own socket, which is what `heardByBox` counts; a browser in the room is not one.
+    principal: { type: 'device' },
     send(raw: string) {
       frames.push(JSON.parse(raw) as { event: string; data: unknown });
     },

@@ -14,16 +14,19 @@ interface Stat {
 }
 
 export interface StatStripProps {
-  liveRuns: number;
-  /** The runs read has not arrived or failed: no run count is stated. */
-  runsUnread?: boolean;
-  /** Runs open in all, as the navigation rail counts them; the figure says when it counts fewer. */
+  liveSessions: number;
+  /** The sessions read has not arrived or failed: no session count is stated. */
+  sessionsUnread?: boolean;
+  /** Runs open in all, as the navigation rail counts them. */
   openRuns?: number;
+  runsUnread?: boolean;
   /** The runners read has not arrived or failed: no runner count is stated. */
   runnersUnread?: boolean;
   activityUnread?: boolean;
   busyRunners: number;
   onlineRunners: number;
+  /** Every runner serving the project, online or not. */
+  totalRunners: number;
   needsYou: number;
   /** What the figure counts, by kind. */
   needsYouCaption: string;
@@ -47,15 +50,23 @@ function money(usd: number): string {
   return `$${usd.toFixed(2)}`;
 }
 
-function runsCaption(props: StatStripProps): string {
-  if (props.runsUnread) return "runs not read";
+function runnersFigure(props: StatStripProps): string {
+  if (props.totalRunners === 0) return "no runners";
+  if (props.onlineRunners === 0) return `${plural(props.totalRunners, "runner", "runners")} · none online`;
+  const busy = `${props.busyRunners} of ${props.onlineRunners} runners busy`;
+  const offline = props.totalRunners - props.onlineRunners;
+  return offline > 0 ? `${busy} · ${offline} offline` : busy;
+}
+
+function liveCaption(props: StatStripProps): string {
   const runners = props.runnersUnread
     ? "runners not read"
     : props.activityUnread
       ? `${plural(props.onlineRunners, "runner", "runners")} online · activity not read`
-      : `${props.busyRunners} of ${props.onlineRunners} runners busy`;
-  const open = props.openRuns ?? props.liveRuns;
-  return open > props.liveRuns ? `${runners} · ${plural(open, "run", "runs")} open in all` : runners;
+      : runnersFigure(props);
+  if (props.runsUnread) return `${runners} · runs not read`;
+  const open = props.openRuns ?? 0;
+  return open > 0 ? `${runners} · ${plural(open, "run", "runs")} open` : runners;
 }
 
 export function StatStrip(props: StatStripProps) {
@@ -63,10 +74,10 @@ export function StatStrip(props: StatStripProps) {
   const needsGap = props.needsYouPending || props.needsYouRefusal || unreadReads.length > 0;
   const stats: Stat[] = [
     {
-      label: "Runs live",
-      value: props.runsUnread ? "…" : String(props.liveRuns),
-      caption: runsCaption(props),
-      accent: !props.runsUnread && props.liveRuns > 0,
+      label: "Sessions live",
+      value: props.sessionsUnread ? "…" : String(props.liveSessions),
+      caption: liveCaption(props),
+      accent: !props.sessionsUnread && props.liveSessions > 0,
     },
     {
       label: "Needs you",

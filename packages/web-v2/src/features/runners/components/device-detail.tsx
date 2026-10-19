@@ -90,7 +90,7 @@ function DeviceSummary({ device }: { device: DeviceRow }) {
 			<div className="rounded-lg border border-line bg-sunken px-3 py-1.5">
 				<MetaRow label="Status">
 					<span className="inline-flex items-center gap-1.5 capitalize">
-						<HealthDot health={deviceHealth(device.status)} />
+						<HealthDot health={deviceHealth(device.status)} withLabel={false} />
 						{device.status}
 					</span>
 				</MetaRow>

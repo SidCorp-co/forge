@@ -70,8 +70,9 @@ describe('ISS-1409 — no reader: the agent mark is an unverified claim (real Po
     const res = await mark(issue, OWN);
     const audit = (await comments(issue.id)).at(-1) as string;
     for (const text of [res.markDetail, audit]) {
-      expect(text).toContain(`commit ${OWN}`);
-      expect(text).toContain('NOT verified');
+      expect(text).toContain(`Commit ${OWN.slice(0, 7)} was named`);
+      expect(text).not.toContain(OWN);
+      expect(text).toMatch(/(did not|could not) check it/);
       expect(text).toContain('no way to read this project');
       expect(text.match(/Git access/g)).toHaveLength(1);
     }
@@ -91,8 +92,8 @@ describe('ISS-1409 — no reader: the agent mark is an unverified claim (real Po
     const issue = await seed({ sessionContext: {} });
     const res = await mark(issue, OWN);
     expect(res.mark).toBe('asserted');
-    expect(res.markDetail).toContain('the project names no base branch to look for it on');
-    expect(res.markDetail).toContain('mark again once the project names its base branch');
+    expect(res.markDetail).toContain('The project names no base branch to look for it on');
+    expect(res.markDetail).toContain('Mark it again once the project names its base branch.');
     expect(await claimOf(issue.id)).toBe(OWN);
     expect(await row(issue.id)).toMatchObject({ merged_commit_sha: null });
     await advance(issue.id, 'in_progress', 'developed');
@@ -129,10 +130,11 @@ describe('ISS-1409 — the claim beside a mark that already stands (real Postgre
     const again = await mark(issue, FOREIGN);
     expect(again.action).toBe('already_merged');
     expect(await claimOf(issue.id)).toBe(OWN);
+    expect(again.namedCommit).toBe(FOREIGN);
     const audit = (await comments(issue.id)).at(-1) as string;
     for (const text of [again.markDetail, audit]) {
-      expect(text).toContain(OWN);
-      expect(text).toContain(`Commit ${FOREIGN}, which this call named, was NOT recorded`);
+      expect(text).toContain(`the first claim, ${OWN.slice(0, 7)}, stands`);
+      expect(text).toContain(`Commit ${FOREIGN.slice(0, 7)} was not recorded`);
       expect(text).toContain('first claim');
     }
   });
@@ -143,7 +145,7 @@ describe('ISS-1409 — the claim beside a mark that already stands (real Postgre
     await mark(issue, OWN);
     for (const named of [OWN, OWN.slice(0, 9), OWN.toUpperCase()]) {
       const again = await mark(issue, named);
-      expect(again.markDetail).not.toContain('was NOT recorded');
+      expect(again.markDetail).not.toContain('was not recorded');
     }
   });
 
@@ -174,7 +176,7 @@ describe("ISS-1409 — a reader that was read keeps its refusals, and a person's
 
   it.each([
     ['read', 'HTTP 502'],
-    ['mint', 'minting an installation token: HTTP 404'],
+    ['mint', 'Minting an installation token: HTTP 404.'],
   ] as const)(
     'records an unverified claim naming the cause where the configured reader fails (%s), and advances the issue (criterion 6)',
     async (down, says) => {
@@ -182,9 +184,9 @@ describe("ISS-1409 — a reader that was read keeps its refusals, and a person's
       const issue = await seed();
       const res = await mark(issue, OWN);
       expect(res.mark).toBe('asserted');
-      expect(res.markDetail).toContain('is NOT verified');
+      expect(res.markDetail).toMatch(/(did not|could not) check it/);
       expect(res.markDetail).toContain(says);
-      expect(res.markDetail).toContain('mark again once the tracker can read');
+      expect(res.markDetail).toContain('Mark it again once Forge can read the repository.');
       expect((await comments(issue.id)).at(-1)).toContain(says);
       expect(await claimOf(issue.id)).toBe(OWN);
       expect(await row(issue.id)).toMatchObject({ merged_commit_sha: null });
@@ -249,7 +251,7 @@ describe('ISS-1409 — the claim is verified by a repeat mark once the repositor
     const again = await mark(issue, OWN);
     expect(again.action).toBe('already_merged');
     expect(again.mark).toBe('asserted');
-    expect(again.markDetail).toContain('NOT verified');
+    expect(again.markDetail).toMatch(/(did not|could not) check it/);
     expect(await claimOf(issue.id)).toBe(OWN);
   });
 
@@ -261,7 +263,7 @@ describe('ISS-1409 — the claim is verified by a repeat mark once the repositor
     const again = await mark(issue, undefined);
     expect(again.action).toBe('already_merged');
     expect(again.mark).toBe('asserted');
-    expect(again.markDetail).toContain('NOT verified');
+    expect(again.markDetail).toMatch(/(did not|could not) check it/);
     expect(again.markDetail).toContain('HTTP 502');
     expect(await claimOf(issue.id)).toBe(OWN);
     expect(await row(issue.id)).toMatchObject({ merged_commit_sha: null });

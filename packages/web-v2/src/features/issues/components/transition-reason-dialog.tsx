@@ -1,7 +1,7 @@
-// RFC 0002 INV-8 — the three statuses that STOP the pipeline carry the reason
-// they stopped it. The server rejects the write without one (422
-// TRANSITION_REASON_REQUIRED, plus WAITING_KIND_REQUIRED for `waiting`), so
-// every surface that offers these three routes through here rather than firing
+// RFC 0002 INV-8 — the statuses that STOP the pipeline carry the reason they
+// stopped it, and so does a hold (ISS-1251). The server rejects the write without
+// one (422 TRANSITION_REASON_REQUIRED, plus WAITING_KIND_REQUIRED for `waiting`), so
+// every surface that offers one of them routes through here rather than firing
 // the mutation and surfacing a 422 toast.
 
 "use client";
@@ -12,7 +12,7 @@ import { SlideOver } from "@/design/patterns/slide-over";
 import { statusLabel } from "../derive";
 import type { IssueStatus, WaitingCause } from "../types";
 
-export type ReasonStatus = "reopen" | "waiting" | "needs_info";
+export type ReasonStatus = "reopen" | "waiting" | "needs_info" | "on_hold";
 /**
  * ISS-1257 — a close or drop the server refused because questions on the issue are still open.
  * ISS-1310 — the two ways out of a park that leave its question unanswered, each asking why.
@@ -48,6 +48,13 @@ const COPY: Record<DialogMode, CopySpec> = {
       "The question is posted as a comment before the status flips. Ask it in full here — this is the only place the reporter will see it.",
     placeholder: "e.g. which environment did you see this on, and was the user an org admin?",
   },
+  on_hold: {
+    title: "Put this issue on hold",
+    confirm: "Put on hold",
+    blurb:
+      "A hold pauses the issue on purpose. The reason is posted on the thread when it moves, where whoever lifts the hold reads why it was put there.",
+    placeholder: "e.g. waiting for the migration window to close before this goes on",
+  },
   move_anyway: {
     title: "Move this issue anyway",
     confirm: "Move",
@@ -71,6 +78,19 @@ const COPY: Record<DialogMode, CopySpec> = {
   },
 };
 
+/** The words for one issue, or for a selection where more than one is moved by the same confirm. */
+function copyFor(status: DialogMode, issueCount: number | undefined): CopySpec {
+  const copy = COPY[status];
+  if (status !== "on_hold" || issueCount === undefined || issueCount < 2) return copy;
+  return {
+    ...copy,
+    title: `Put ${issueCount} issues on hold`,
+    confirm: `Put ${issueCount} on hold`,
+    blurb:
+      "A hold pauses each issue on purpose. This one reason is posted on every selected issue's thread when it moves, where whoever lifts the hold reads why it was put there.",
+  };
+}
+
 const KIND_LABEL: Record<WaitingCause, string> = {
   needs_decision: "A decision — someone has to choose",
   needs_resource: "A resource — someone has to supply what I cannot create",
@@ -82,6 +102,8 @@ interface TransitionReasonDialogProps {
   openQuestions?: number;
   /** Every target a `move_anyway` may pick, the transitions map unchanged. */
   targets?: IssueStatus[];
+  /** How many issues one confirm moves, where it moves a selection and not one issue (ISS-1251). */
+  issueCount?: number;
   loading: boolean;
   onConfirm: (reason: string, waitingKind?: WaitingCause, target?: IssueStatus) => void;
   onClose: () => void;
@@ -91,6 +113,7 @@ export function TransitionReasonDialog({
   status,
   openQuestions,
   targets,
+  issueCount,
   loading,
   onConfirm,
   onClose,
@@ -114,7 +137,7 @@ export function TransitionReasonDialog({
   }, [loading]);
 
   if (!status) return null;
-  const copy = COPY[status];
+  const copy = copyFor(status, issueCount);
   const trimmed = reason.trim();
   const picking = status === "move_anyway";
   const asksKind = status === "waiting" || (picking && target === "waiting");

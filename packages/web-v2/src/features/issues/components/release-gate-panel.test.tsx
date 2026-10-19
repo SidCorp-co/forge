@@ -122,21 +122,22 @@ describe("ReleaseGatePanel — who deploys this", () => {
   it("names the project's live deploy target rather than saying nobody deploys it", () => {
     state({ channels: ["coolify"], issues: ISSUES });
     renderPanel();
-    expect(screen.getByText("coolify")).toBeInTheDocument();
-    expect(screen.queryByText("nothing — a person deploys")).not.toBeInTheDocument();
+    // ISS-1421 r6, criterion 97: the product's name, never its lower-case id.
+    expect(screen.getByText("Deploys through Coolify.")).toBeInTheDocument();
+    expect(screen.queryByText("coolify")).not.toBeInTheDocument();
+    expect(screen.queryByText("Nothing deploys it: a person does.")).not.toBeInTheDocument();
   });
 
   it("names every target where the project declares more than one", () => {
-    state({ channels: ["coolify", "vercel"], issues: ISSUES });
+    state({ channels: ["coolify", "epodsystem"], issues: ISSUES });
     renderPanel();
-    expect(screen.getByText("coolify")).toBeInTheDocument();
-    expect(screen.getByText("vercel")).toBeInTheDocument();
+    expect(screen.getByText(/^Deploys through Coolify and /)).toBeInTheDocument();
   });
 
   it("says a person deploys this only where the roster names no target at all", () => {
     state({ channels: [], issues: ISSUES });
     renderPanel();
-    expect(screen.getByText("nothing — a person deploys")).toBeInTheDocument();
+    expect(screen.getByText("Nothing deploys it: a person does.")).toBeInTheDocument();
   });
 
   it("shows the error state, and no sentence about deploying, when the response was refused", () => {
@@ -148,8 +149,8 @@ describe("ReleaseGatePanel — who deploys this", () => {
     });
     renderPanel();
     expect(screen.getByText("Couldn't load the release gate")).toBeInTheDocument();
-    expect(screen.queryByText(/Deploys via/)).not.toBeInTheDocument();
-    expect(screen.queryByText("nothing — a person deploys")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Deploys through/)).not.toBeInTheDocument();
+    expect(screen.queryByText("Nothing deploys it: a person does.")).not.toBeInTheDocument();
   });
 });
 
@@ -231,6 +232,8 @@ describe("ReleaseGatePanel — a row a release could not close", () => {
         code: "CLOSE_REQUIRES_SHIPPED",
         reason: "no mark naming where its work landed",
         clears: "Mark it merged with its landing.",
+        said: "It has no mark naming where its work landed. Mark it merged with its landing.",
+        saidHere: "It has no mark naming where its work landed. Mark it merged with its landing.",
       },
     ],
     closeFailure: null,
@@ -240,10 +243,11 @@ describe("ReleaseGatePanel — a row a release could not close", () => {
     state({ issues: [...ISSUES, REFUSED] });
     renderPanel();
     expect(screen.getByRole("checkbox", { name: "Select ISS-4 for release" })).toBeDisabled();
-    expect(screen.getByText("can't close")).toBeInTheDocument();
+    expect(screen.getByText("Not ready to release")).toBeInTheDocument();
+    expect(screen.queryByText(/can't close/)).not.toBeInTheDocument();
     expect(
       screen.getByText(
-        "A release could not close this: no mark naming where its work landed. Mark it merged with its landing.",
+        "It has no mark naming where its work landed. Mark it merged with its landing.",
       ),
     ).toBeInTheDocument();
   });
@@ -251,7 +255,7 @@ describe("ReleaseGatePanel — a row a release could not close", () => {
   it("is left out of select-all, the ready count and the dialog", () => {
     state({ issues: [...ISSUES, REFUSED] });
     renderPanel();
-    expect(screen.getByText(/2 ready · 1 in a release · 1 a release can't close/)).toBeInTheDocument();
+    expect(screen.getByText(/2 ready · 1 in a release · 1 not ready to release/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("checkbox", { name: "Select every issue that can be released" }));
     fireEvent.click(screen.getByRole("button", { name: /^Release 2 now$/ }));
     expect(dialogProps?.selectedIssues.map((i) => i.displayId)).toEqual(["ISS-1", "ISS-2"]);
@@ -346,5 +350,20 @@ describe("ReleaseGatePanel — nothing is waiting", () => {
     expect(screen.queryByRole("region", { name: "Awaiting release" })).not.toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: "Select ISS-1 for release" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /release now/i })).toBeInTheDocument();
+  });
+});
+
+// ISS-1421 r6 repair: the panel was a rounded, bordered card above a flush table (owner rule: flat).
+describe("ReleaseGatePanel — laid out flat", () => {
+  it.each([
+    ["the roster", () => state({ issues: ISSUES })],
+    ["its loading state", () => state(null, { isLoading: true })],
+    ["its error state", () => state(null, { isError: true, error: new Error("gateway timed out") })],
+  ])("draws %s with hairlines, and no card surface", (_name, arrange) => {
+    arrange();
+    const { container } = renderPanel();
+    expect(container.querySelector(".shadow-sm")).toBeNull();
+    expect(container.querySelector(".rounded-lg.border")).toBeNull();
+    expect(container.querySelector("section.border-y")).not.toBeNull();
   });
 });

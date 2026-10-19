@@ -181,8 +181,9 @@ describe('GET rollback-images, when Coolify refuses the read', () => {
     const res = await images();
     expect(res.status).toBe(424);
     const body = (await res.json()) as { message: string };
+    // ISS-1421 r6, criterion 98: it ends as a sentence does.
     expect(body.message).toBe(
-      'Coolify answered HTTP 500 to GET /api/v1/applications/app-uuid/rollback-images',
+      'Coolify answered HTTP 500 to GET /api/v1/applications/app-uuid/rollback-images.',
     );
   });
 
@@ -219,6 +220,7 @@ describe('GET rollback-images, when Coolify refuses the read', () => {
     const body = (await res.json()) as { code: string; message: string };
     expect(body.code).toBe('COOLIFY_UNREACHABLE');
     expect(body.message).toContain('Could not reach Coolify');
+    expect(body.message).toMatch(/\.$/);
     expect(body.message).toContain('GET /api/v1/applications/app-uuid/rollback-images');
     expect(body.message).not.toContain('<uuid>');
   });
@@ -291,6 +293,66 @@ describe('the other Coolify routes, when Coolify refuses', () => {
     expect(res.status).toBe(502);
     expect(JSON.stringify(await res.json())).toContain(
       'Coolify answered HTTP 500 to GET /api/v1/resources',
+    );
+  });
+});
+
+/** ISS-1421 r5 — the settings picker and the bound-target panel read the application list. */
+describe('the application list reads, when Coolify cannot be reached', () => {
+  const unreachable = async () => {
+    const { CoolifyClient } = await import('./client.js');
+    const { listApplicationsNamingFailure } = await import('./rollback-images-read.js');
+    const client = new CoolifyClient({
+      baseUrl: 'https://coolify.example',
+      apiToken: 'tok',
+      fetchImpl: (async () => {
+        throw new TypeError('fetch failed', { cause: { code: 'ENOTFOUND' } });
+      }) as typeof fetch,
+    });
+    return () =>
+      listApplicationsNamingFailure(client).then(() => {
+        throw new Error('the stubbed Coolify answered');
+      });
+  };
+
+  it('answers the picker 424 naming the read, never a bare 500', async () => {
+    const { fetchCoolifyApplications } = await import('./controls.js');
+    vi.mocked(fetchCoolifyApplications).mockImplementationOnce(await unreachable());
+    const res = await app.request(`/${PROJECT_ID}/integrations/coolify/applications`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ baseUrl: 'https://coolify.example', apiToken: 'tok-12345678' }),
+    });
+    expect(res.status).toBe(424);
+    const body = (await res.json()) as { code: string; message: string };
+    expect(body.code).toBe('COOLIFY_UNREACHABLE');
+    expect(body.message).toContain('Could not reach Coolify for GET /api/v1/applications');
+  });
+
+  it('answers the bound targets 424 naming the read, never a bare 500', async () => {
+    const { resolveCoolifyTargets } = await import('./controls.js');
+    vi.mocked(resolveCoolifyTargets).mockImplementationOnce(await unreachable());
+    const res = await app.request(`/${PROJECT_ID}/integrations/coolify/targets`);
+    expect(res.status).toBe(424);
+    const body = (await res.json()) as { code: string; message: string };
+    expect(body.code).toBe('COOLIFY_UNREACHABLE');
+    expect(body.message).toContain('no application list to read');
+  });
+
+  it('answers the picker 424 with the status and route of a refusal Coolify gave', async () => {
+    const { fetchCoolifyApplications } = await import('./controls.js');
+    const { CoolifyApiError } = await import('./client.js');
+    vi.mocked(fetchCoolifyApplications).mockRejectedValueOnce(
+      new CoolifyApiError(500, 'boom', undefined, 'GET /api/v1/applications'),
+    );
+    const res = await app.request(`/${PROJECT_ID}/integrations/coolify/applications`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ baseUrl: 'https://coolify.example', apiToken: 'tok-12345678' }),
+    });
+    expect(res.status).toBe(424);
+    expect(((await res.json()) as { message: string }).message).toBe(
+      'Coolify answered HTTP 500 to GET /api/v1/applications.',
     );
   });
 });

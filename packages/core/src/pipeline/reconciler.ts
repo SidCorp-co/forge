@@ -320,10 +320,8 @@ async function resetOneWedge(row: WedgeCandidate): Promise<boolean> {
 export async function registerReconciler(): Promise<void> {
   if (registered) return;
   const { boss } = await import('../queue/boss.js');
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss v10 type drift
-  await (boss as any).createQueue(RECONCILER_QUEUE);
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss v10 type drift
-  await (boss as any).work(RECONCILER_QUEUE, async () => {
+  await boss.createQueue(RECONCILER_QUEUE);
+  await boss.work(RECONCILER_QUEUE, async () => {
     try {
       await runReconcilerOnce();
     } catch (err) {
@@ -331,8 +329,7 @@ export async function registerReconciler(): Promise<void> {
       throw err;
     }
   });
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss v10 type drift
-  await (boss as any).schedule(RECONCILER_QUEUE, '* * * * *');
+  await boss.schedule(RECONCILER_QUEUE, '* * * * *');
   registered = true;
 }
 

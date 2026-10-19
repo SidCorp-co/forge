@@ -5,34 +5,26 @@ import { logger } from '../logger.js';
 import type { Actor } from './activity.js';
 import {
   AUTONOMOUS_ENTRY_STATUS,
+  type DriveRelease,
   dispatchAutonomous,
   dispatchDriveManual,
+  isEntryGateClosed,
 } from './autonomous-dispatch.js';
 import type { HooksBus } from './hooks.js';
 import { type PipelineConfig, pipelineConfigSchema } from './pipeline-config-schema.js';
 
-export { ActiveJobConflictError } from './enqueue-helper.js';
+export { NoMasterRunningError } from './autonomous-dispatch.js';
 
-async function loadPipelineConfig(
-  projectId: string,
-): Promise<{ cfg: PipelineConfig | null; projectCreatedBy: string | null }> {
+async function loadPipelineConfig(projectId: string): Promise<{ cfg: PipelineConfig | null }> {
   const [row] = await db
-    .select({
-      agentConfig: projects.agentConfig,
-      createdBy: projects.createdBy,
-      archivedAt: projects.archivedAt,
-    })
+    .select({ agentConfig: projects.agentConfig, archivedAt: projects.archivedAt })
     .from(projects)
     .where(eq(projects.id, projectId))
     .limit(1);
-  if (!row) return { cfg: null, projectCreatedBy: null };
-  if (row.archivedAt != null) return { cfg: null, projectCreatedBy: row.createdBy ?? null };
+  if (!row || row.archivedAt != null) return { cfg: null };
   const ac = (row.agentConfig as { pipelineConfig?: unknown } | null) ?? {};
   const parsed = pipelineConfigSchema.safeParse(ac.pipelineConfig ?? {});
-  return {
-    cfg: parsed.success ? parsed.data : null,
-    projectCreatedBy: row.createdBy ?? null,
-  };
+  return { cfg: parsed.success ? parsed.data : null };
 }
 
 /**
@@ -47,9 +39,9 @@ export async function triggerPipelineStepManual(args: {
   status: IssueStatus;
   actor: Actor;
   reason: Record<string, unknown>;
-}): Promise<{ released: true }> {
-  const { projectCreatedBy } = await loadPipelineConfig(args.projectId);
-  return dispatchDriveManual({ ...args, projectCreatedBy });
+}): Promise<DriveRelease> {
+  const { cfg } = await loadPipelineConfig(args.projectId);
+  return dispatchDriveManual({ ...args, entryGated: isEntryGateClosed(cfg) });
 }
 
 export async function reEnqueueForIssue(args: {
@@ -59,9 +51,9 @@ export async function reEnqueueForIssue(args: {
   actor: Actor;
   reason: Record<string, unknown>;
 }): Promise<void> {
-  const { cfg, projectCreatedBy } = await loadPipelineConfig(args.projectId);
+  const { cfg } = await loadPipelineConfig(args.projectId);
   if (!cfg?.enabled) return;
-  await dispatchAutonomous({ ...args, cfg, projectCreatedBy });
+  await dispatchAutonomous({ ...args, cfg });
 }
 
 /**

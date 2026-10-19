@@ -9,8 +9,9 @@ import { devices, issues, jobs, promptBlobs, usageRecords } from '../db/schema.j
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { listResponse } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { openIssueRun, openOneShotRun } from '../pipeline/runs.js';
+import { openOneShotRun } from '../pipeline/runs.js';
 import { canonicalSessionId, usageSessionMatch } from '../usage-records/rollup.js';
+import { admitIssueJob, admitJob } from './admit.js';
 import { readJob } from './job-queries.js';
 import { noPromptMessage, type POOL_JOB_NO_PROMPT, poolPrompt } from './pool-served.js';
 import {
@@ -123,28 +124,27 @@ jobProjectRoutes.post(
 
     // ISS-101 — every job needs a pipeline_run. Issue-bound jobs attach to
     // the issue's open run; project-only jobs get a one-shot 'system' run.
-    const run = input.issueId
-      ? await openIssueRun({ projectId, issueId: input.issueId })
-      : await openOneShotRun({
-          projectId,
-          kind: 'system',
-          metadata: { source: 'jobs.create', type: input.type },
+    const values = {
+      projectId,
+      createdBy: userId,
+      type: input.type,
+      payload: input.payload ?? {},
+      modelTier: input.modelTier ?? null,
+      status: 'queued' as const,
+    };
+    const inserted = input.issueId
+      ? await admitIssueJob(db, { ...values, issueId: input.issueId })
+      : await admitJob(db, {
+          ...values,
+          issueId: null,
+          pipelineRunId: (
+            await openOneShotRun({
+              projectId,
+              kind: 'system',
+              metadata: { source: 'jobs.create', type: input.type },
+            })
+          ).id,
         });
-
-    const [inserted] = await db
-      .insert(jobs)
-      .values({
-        projectId,
-        issueId: input.issueId ?? null,
-        pipelineRunId: run.id,
-        createdBy: userId,
-        type: input.type,
-        payload: input.payload ?? {},
-        modelTier: input.modelTier ?? null,
-        status: 'queued',
-      })
-      .returning();
-    if (!inserted) throw new Error('jobs: insert returned no row');
 
     return c.json(answer(jobRowSchema, inserted), 201);
   },

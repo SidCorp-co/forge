@@ -10,6 +10,7 @@ import {
   partitionUnrecorded,
   unrecordedSentryEvent,
 } from './migration-audit.js';
+import { runCredentialScrubOnce } from './scrub-stored-credentials.js';
 
 const url = process.env.DATABASE_URL;
 if (!url) {
@@ -30,6 +31,14 @@ try {
     const { entries, sessions, turns } = backfill.report;
     console.log(
       `[migrate] canonical-transcript backfill: ${entries} entr(ies) rewritten across ${sessions} session(s) and ${turns} turn row(s)`,
+    );
+  }
+
+  const scrub = await runCredentialScrubOnce(sql);
+  if (scrub.ran) {
+    const { activity, kernelTransitions, outbox, questions } = scrub.report;
+    console.log(
+      `[migrate] stored-credential scrub: rewrote ${activity} activity row(s), ${kernelTransitions} kernel transition(s), ${outbox} outbox row(s) and ${questions} question(s)`,
     );
   }
 

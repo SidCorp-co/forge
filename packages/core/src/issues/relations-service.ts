@@ -13,6 +13,7 @@ import { type IssueDependencyHold, issueDependencyHolds } from '../db/schema.js'
 import type { IssueDependencyExecutor } from './dependency-executor.js';
 import {
   emitIssueDependencyEffects,
+  IssueDependencyError,
   type IssueDependencyWrite,
   type IssueDependencyWriter,
   type SetIssueDependencyInput,
@@ -73,12 +74,40 @@ export async function applyIssueRelations(
   return pending.map((p) => p.applied);
 }
 
+/**
+ * What `before` writes and every edge, on one transaction: an edge the graph refuses leaves what
+ * `before` wrote unwritten too (ISS-1229 r11). The caller flushes the effects once it commits.
+ */
+export async function writeBesideRelations<T>(
+  writer: IssueDependencyWriter,
+  projectId: string,
+  issueId: string,
+  relations: readonly IssueRelationInput[] | undefined,
+  before: (tx: Parameters<Parameters<typeof db.transaction>[0]>[0]) => Promise<T>,
+): Promise<{ wrote: T; pending: PendingIssueRelation[] }> {
+  return db.transaction(async (tx) => {
+    const wrote = await before(tx);
+    return { wrote, pending: await writeIssueRelations(writer, projectId, issueId, relations, tx) };
+  });
+}
+
 /** One edge landed, plus what announcing it will need. */
 export type PendingIssueRelation = {
   applied: AppliedIssueRelation;
   input: SetIssueDependencyInput;
   written: IssueDependencyWrite;
 };
+
+/** A relation naming no issue says which entry and which of its fields names it. */
+function namingTheField(err: unknown, index: number, rel: IssueRelationInput): unknown {
+  if (!(err instanceof IssueDependencyError) || err.code !== 'NOT_FOUND') return err;
+  const field = rel.dependsOnId != null ? 'dependsOnId' : 'blocksId';
+  const named = rel.dependsOnId ?? rel.blocksId;
+  return new IssueDependencyError(
+    'NOT_FOUND',
+    `\`relations[${index}].${field}\` names ${named}, which is no issue of this project's`,
+  );
+}
 
 /**
  * The DURABLE half of `relations`: land every edge on `ex`, announce none.
@@ -93,7 +122,7 @@ export async function writeIssueRelations(
   ex: IssueDependencyExecutor,
 ): Promise<PendingIssueRelation[]> {
   const pending: PendingIssueRelation[] = [];
-  for (const rel of relations ?? []) {
+  for (const [index, rel] of (relations ?? []).entries()) {
     if ((rel.dependsOnId == null) === (rel.blocksId == null)) {
       throw new Error('BAD_REQUEST: relation needs exactly one of dependsOnId or blocksId');
     }
@@ -109,7 +138,9 @@ export async function writeIssueRelations(
       validUntil: rel.validUntil,
       holdsUntil: rel.holdsUntil,
     };
-    const written = await writeIssueDependency(input, writer, ex);
+    const written = await writeIssueDependency(input, writer, ex).catch((err: unknown) => {
+      throw namingTheField(err, index, rel);
+    });
     pending.push({
       input,
       written,

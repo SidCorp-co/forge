@@ -1,4 +1,4 @@
-import type { NotificationSeverity, NotificationType } from "@forge/contracts/notifications";
+import type { NotificationSeverity, NotificationType, StuckIssueKind } from "@forge/contracts/notifications";
 
 export type { NotificationSeverity, NotificationType };
 
@@ -11,7 +11,9 @@ export interface NotificationRow {
   tier: string;
   title: string;
   body: string | null;
+  explanation: string | null;
   readAt: string | null;
+  unread: boolean;
   /** Non-null when this delivery groups several records under one cause. */
   groupKey: string | null;
   /** True when this delivery announces that a condition CLEARED. */
@@ -20,10 +22,15 @@ export interface NotificationRow {
   members: number;
   openMembers: number;
   severity: NotificationSeverity | null;
+  projectSlug: string | null;
+  projectName: string | null;
   issueId: string | null;
   secondaryIssueId: string | null;
   agentSessionId: string | null;
   createdAt: string;
+  /** When the newest record it carries reached the reader: the row's clock, which its members share. */
+  toldAt: string;
+  stuckKind: StuckIssueKind | null;
 }
 
 /** One record behind a delivery — `GET /api/notifications/:id/members`. */
@@ -36,10 +43,14 @@ export interface NotificationMember {
   body: string | null;
   severity: NotificationSeverity | null;
   projectId: string | null;
+  projectSlug: string | null;
+  projectName: string | null;
   issueId: string | null;
   secondaryIssueId: string | null;
   resolvedAt: string | null;
   createdAt: string;
+  /** When this record reached the reader: the member's clock. */
+  deliveredAt: string;
   /** Still true for this reader: a firing condition or an unfinished task. */
   open: boolean;
 }

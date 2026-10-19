@@ -234,7 +234,7 @@ describe('an answer moves only a needs_info park', () => {
     const issueId = await insertIssue('needs_info');
     await answer(await openQuestion(issueId));
     expect(await statusOf(issueId)).toBe('open');
-    expect((await transitionReasons(issueId)).join('\n')).toMatch(/`confirmed`/);
+    expect((await transitionReasons(issueId)).join('\n')).toMatch(/rather than Confirmed because/);
   });
 
   for (const status of ['testing', 'in_progress', 'developed', 'awaiting_release'] as const) {

@@ -146,7 +146,8 @@ describe('the discovery reads outside the plan inventory', () => {
     await archive(['ISS-1']);
     const buckets = await import('../../src/me/attention-buckets.js');
     expect((await buckets.selectMentions(userId)).map((r) => r.issSeq)).toEqual([2]);
-    expect((await buckets.selectFailedJobs(userId)).map((r) => r.issSeq)).toEqual([2]);
+    const failed = await import('../../src/me/attention-failed-jobs.js');
+    expect((await failed.selectFailedJobs(userId)).map((r) => r.issSeq)).toEqual([2]);
   });
 });
 
@@ -226,7 +227,6 @@ describe('a Sentry regression on an archived closed issue', () => {
       },
       {
         projectId,
-        createdById: userId,
         thresholds: await readSentryThresholds(),
         target: { label: 'proj', organizationSlug: 'org' },
       },

@@ -75,19 +75,22 @@ export function matchesSub(rest: string, sub: string): boolean {
   return sub === "" ? rest === "" : rest === sub || rest.startsWith(`${sub}/`);
 }
 
-/** Active rail row for a pathname. Inside a project the rail carries the
- *  project tier, so we light the matching `proj-*` key by matching the
- *  project-relative remainder (mirrors the old tab bar's matchesSub). Docs is
- *  lit on its own route. */
+/** The rail row a project page sits on; a page no row lists (Pipeline, Releases, Settings)
+ *  lights none, because Dashboard is a page of its own and not their parent. */
+function projectItemKey(pathname: string, slug: string): string {
+  const base = `/projects/${slug}`;
+  const rest = pathname.startsWith(base) ? pathname.slice(base.length) : "";
+  return PROJECT_ITEMS_BY_SPECIFICITY.find((it) => matchesSub(rest, it.sub))?.key ?? NO_ROW;
+}
+
+/** The key no rail row or tab carries, so nothing is drawn active. */
+export const NO_ROW = "";
+
+/** Active rail row for a pathname: the matching `proj-*` row inside a project, Docs on its own route. */
 export function buildActiveKey(pathname: string, slug: string | null): string {
   if (pathname.startsWith("/whats-new")) return "whats-new";
   if (pathname.startsWith("/docs")) return "docs";
-  if (slug) {
-    const base = `/projects/${slug}`;
-    const rest = pathname.startsWith(base) ? pathname.slice(base.length) : "";
-    const hit = PROJECT_ITEMS_BY_SPECIFICITY.find((it) => matchesSub(rest, it.sub));
-    return hit?.key ?? "proj-overview";
-  }
+  if (slug) return projectItemKey(pathname, slug);
   const ws = WORKSPACE_ITEMS.find((it) =>
     it.href === "/" ? pathname === "/" : pathname.startsWith(it.href),
   );
@@ -95,12 +98,7 @@ export function buildActiveKey(pathname: string, slug: string | null): string {
 }
 
 export function buildBottomActiveKey(pathname: string, slug: string | null): string {
-  if (slug) {
-    const base = `/projects/${slug}`;
-    const rest = pathname.startsWith(base) ? pathname.slice(base.length) : "";
-    const hit = PROJECT_ITEMS_BY_SPECIFICITY.find((it) => matchesSub(rest, it.sub));
-    return hit?.key ?? "proj-overview";
-  }
+  if (slug) return projectItemKey(pathname, slug);
   if (pathname.startsWith("/projects")) return "projects";
   if (pathname.startsWith("/attention")) return "attention";
   if (pathname.startsWith("/settings")) return "you";
@@ -169,6 +167,13 @@ export function bottomTabItems(
   ];
 }
 
+/** Project pages the rail does not list: the rail lights none of its rows, the crumb names them. */
+const OFF_RAIL_PAGES: Record<string, string> = {
+  pipeline: "Pipeline",
+  releases: "Releases",
+  settings: "Settings",
+};
+
 export function buildCrumbs(opts: {
   pathname: string;
   slug: string | null;
@@ -181,10 +186,12 @@ export function buildCrumbs(opts: {
 
   if (slug) {
     const page = PROJECT_ITEMS.find((it) => it.key === activeKey);
+    const segment = pathname.split("/")[3] ?? "";
+    const label = page?.label ?? OFF_RAIL_PAGES[segment] ?? segment;
     return [
       { label: "Projects", href: "/projects" },
       { label: projectName ?? slug, href: `/projects/${slug}` },
-      { label: page?.label ?? "Dashboard" },
+      { label },
     ];
   }
 

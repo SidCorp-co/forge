@@ -44,6 +44,9 @@ export interface PairMockDeviceOpts {
 
 export async function pairMockDevice(opts: PairMockDeviceOpts): Promise<MockDevice> {
   const { server, projectId, userJwt } = opts;
+  // Every pairing here comes from one socket, which the pairing limit counts (ISS-1421); a suite
+  // pairing its devices is not that limit's subject.
+  (await import('../../src/middleware/rate-limit.js')).__resetRateLimitStore();
 
   const codeRes = await fetch(`${server.baseUrl}/api/projects/${projectId}/devices/pairing-codes`, {
     method: 'POST',

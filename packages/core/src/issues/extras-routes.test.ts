@@ -36,7 +36,7 @@ vi.mock('../db/client.js', () => ({
   },
 }));
 
-const wakeMastersForProject = vi.fn(async () => 1);
+const wakeMastersForProject = vi.fn(async () => ({ boxes: 1, delivered: 1, reached: 1 }));
 vi.mock('../ws/master-wake.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../ws/master-wake.js')>()),
   wakeMastersForProject: (...a: unknown[]) => wakeMastersForProject(...(a as [])),
@@ -183,25 +183,50 @@ describe('POST /api/issues/:id/run-pipeline-step', () => {
     });
   }
 
-  it('202 releases the issue at the entry status, minting no job', async () => {
+  it('202 offers the issue to the masters, minting no job, and answers what it did', async () => {
     setupHappyPath({ status: 'open' });
+    dbExecute.mockResolvedValueOnce([{ n: 2 }] as never);
 
     const res = await post();
 
     expect(res.status).toBe(202);
-    expect(await res.json()).toEqual({ issueId: ISSUE_ID, status: 'awaiting_release' });
+    expect(await res.json()).toEqual({
+      issueId: ISSUE_ID,
+      status: 'open',
+      released: false,
+      masters: 2,
+      boxesHeard: 1,
+      taken: 0,
+    });
     expect(wakeMastersForProject).toHaveBeenCalledTimes(1);
   });
 
-  it('202 even when the entry stage is gated to a human', async () => {
+  it('202 says it released the issue where the entry stage is gated to a human', async () => {
     setupHappyPath({
       status: 'open',
       agentConfig: { pipelineConfig: { states: { open: { mode: 'manual' } } } },
     });
+    dbExecute.mockResolvedValueOnce([{ n: 1 }] as never);
 
     const res = await post();
 
     expect(res.status).toBe(202);
+    expect(await res.json()).toMatchObject({ released: true, masters: 1 });
+  });
+
+  // ISS-1228 round 11: with no master on the project this answered 202 and nothing took the issue.
+  it('409 NO_MASTER_RUNNING where no master runs on the project, writing nothing', async () => {
+    setupHappyPath({ status: 'open' });
+    dbExecute.mockResolvedValueOnce([{ n: 0 }] as never);
+
+    const res = await post();
+
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { code: string; message: string };
+    expect(body.code).toBe('NO_MASTER_RUNNING');
+    expect(body.message).toMatch(/No master is running on this project/);
+    expect(dbExecute).toHaveBeenCalledTimes(1);
+    expect(wakeMastersForProject).not.toHaveBeenCalled();
   });
 
   it('400 on a body that still names a staged stage', async () => {

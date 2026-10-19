@@ -105,7 +105,7 @@ describe("an issue's own declaration answers before its project's kind (ISS-1384
   it('tells a git lane sending a landing how to declare the issue outside git', () => {
     expect(
       landingMarkRefusal({ lane: GIT, landing: 'https://x', observed: false })?.detail,
-    ).toContain('`landingShape: outside_git`');
+    ).toContain('Set `landingShape` to `outside_git`');
   });
 });
 
@@ -126,7 +126,7 @@ describe('which marks count as landed, per shape', () => {
   it('refuses a bare timestamp on the outside-git shape: it names nothing that landed', () => {
     const short = landingShortfall(ASSERTED, OUTSIDE) as string;
     expect(short).toContain('names no landing');
-    expect(short).not.toMatch(/merged pull request|merged_commit_sha|CLAIM Forge did not observe/);
+    expect(short).not.toMatch(/merged pull request|merged_commit_sha|Forge did not see this merge/);
     expect(short).toContain('accepts `landed` or `observed`');
   });
 
@@ -142,7 +142,7 @@ describe('the route a refusal names is the one the shape has', () => {
   it('names mark_merged with a commit on the git shape, and a declaration for a change that lands no file', () => {
     const route = landingRoute(GIT);
     expect(route).toContain('`mark_merged`, naming the commit it landed at in `data.commit`');
-    expect(route).toContain('`landingShape: outside_git`');
+    expect(route).toContain('Set `landingShape` to `outside_git`');
     // `landing` on this lane is refused LANDING_NOT_THIS_SHAPE, so it is never the route offered.
     expect(route).not.toContain('naming where it landed');
   });
@@ -207,7 +207,8 @@ describe('a landing sent over a mark that stands', () => {
     expect(refusal?.code).toBe('MARK_ALREADY_STANDS');
     expect(refusal?.detail).toContain(LANDED.mergedLanding);
     expect(refusal?.detail).toContain(`${TYPO} was not recorded`);
-    expect(refusal?.detail).toContain('`unmark`');
+    expect(refusal?.detail).toContain('use Unmark, then Mark merged');
+    expect(refusal?.detail).not.toContain('`unmark`');
     expect(refusal?.details).toMatchObject({
       heldLanding: LANDED.mergedLanding,
       heldKind: 'landed',
@@ -216,7 +217,7 @@ describe('a landing sent over a mark that stands', () => {
 
   it('refuses a landing sent over a mark that names none', () => {
     const refusal = standingMarkRefusal({ sent: TYPO, wrote: false, held: ASSERTED });
-    expect(refusal?.detail).toContain('a mark (asserted) that names no landing');
+    expect(refusal?.detail).toContain('a mark that names no landing');
     expect(refusal?.details).toMatchObject({ heldLanding: null, heldKind: 'asserted' });
   });
 
@@ -231,5 +232,60 @@ describe('a landing sent over a mark that stands', () => {
   it('owes a target only on the shape that moves branches', () => {
     expect(markTargetRequired('git')).toBe(true);
     expect(markTargetRequired('outside_git')).toBe(false);
+  });
+});
+
+// ISS-1421 r6, criterion 63: what a mark's caller is answered reads as the page's own sentences do —
+// each opens with a capital, ends with a full stop, runs to at most 20 words and shouts no word of
+// its own. A line quoted with `> ` is another part's words and is not held here.
+describe('every answer the mark writer refuses with', () => {
+  const SHOUT_KEPT = new Set(['URL', 'CMS', 'PATCH', 'API']);
+  const TYPO = 'https://mowmentbrand.com/prodcts/tee';
+  const refusals: Array<[string, string | undefined]> = [
+    [
+      'LANDING_NOT_THIS_SHAPE',
+      landingMarkRefusal({ lane: GIT, landing: 'https://x', observed: false })?.detail,
+    ],
+    [
+      'LANDING_NOT_THIS_SHAPE, declared',
+      landingMarkRefusal({
+        lane: { shape: 'git', declared: true },
+        landing: 'https://x',
+        observed: false,
+      })?.detail,
+    ],
+    [
+      'LANDING_REQUIRED',
+      landingMarkRefusal({ lane: OUTSIDE, landing: null, observed: false })?.detail,
+    ],
+    [
+      'LANDING_REQUIRED, declared',
+      landingMarkRefusal({ lane: DECLARED_OUTSIDE, landing: null, observed: false })?.detail,
+    ],
+    [
+      'MARK_ALREADY_STANDS',
+      standingMarkRefusal({ sent: TYPO, wrote: false, held: LANDED })?.detail,
+    ],
+    [
+      'MARK_ALREADY_STANDS, no landing held',
+      standingMarkRefusal({ sent: TYPO, wrote: false, held: ASSERTED })?.detail,
+    ],
+  ];
+
+  it.each(refusals)('%s is short whole sentences', (_code, detail) => {
+    expect(detail).toBeDefined();
+    const own = (detail as string)
+      .split('\n\n')
+      .filter((paragraph) => !paragraph.startsWith('> '))
+      .join(' ')
+      // A URL the sentence quotes keeps its own spelling and is one word.
+      .replace(/https?:\/\/\S+/g, 'URL');
+    for (const sentence of own.trim().split(/(?<=\.)\s+/)) {
+      expect(sentence, sentence).toMatch(/^[A-Z]/);
+      expect(sentence, sentence).toMatch(/\.$/);
+      expect(sentence.split(/\s+/).length, sentence).toBeLessThanOrEqual(20);
+      const shouted = (sentence.match(/\b[A-Z]{2,}\b/g) ?? []).filter((w) => !SHOUT_KEPT.has(w));
+      expect(shouted, sentence).toEqual([]);
+    }
   });
 });

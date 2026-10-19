@@ -11,7 +11,7 @@
 //     `:provider/reauth-start` (ISS-167). The form draft survives the redirect
 //     via sessionStorage; the callback returns with `?reauth=ok` /
 //     `?reauth_error=<code>` which this tab consumes on mount.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Button,
   Checkbox,
@@ -33,6 +33,7 @@ import { useAuth } from "@/providers/auth-provider";
 import { useToast } from "@/providers/toast-provider";
 import { useCreateToken, useReauth, useRevokeToken, useTokens } from "../hooks";
 import {
+  PAT_NAME_IN_USE,
   PAT_SCOPES,
   type CreatePatInput,
   type PatScope,
@@ -46,6 +47,8 @@ const RETURN_PATH = "/settings?tab=tokens";
 
 // Form draft persisted across the SSO reauth full-page redirect.
 const DRAFT_KEY = "forge.settings.token-draft";
+/** The form's own notices share one slot, dismissed when the Token created panel replaces the form. */
+const FORM_NOTICE = "token-form";
 
 const PROVIDER_LABELS: Record<string, string> = {
   github: "GitHub",
@@ -58,13 +61,57 @@ const REAUTH_ERROR_MESSAGES: Record<string, string> = {
   identity_mismatch: "The provider account doesn't match the one linked to your Forge account.",
 };
 
+interface FormErrors {
+  name?: string;
+  scopes?: string;
+  permissions?: string;
+}
+type FormField = keyof FormErrors;
+/** The fields in the order the form draws them, so the first refused is the one nearest the top. */
+const FIELD_ORDER: FormField[] = ["name", "scopes", "permissions"];
+
+interface FormState {
+  name: string;
+  scopes: PatScope[];
+  grantMode: "" | "full" | "named";
+  permissions: string[];
+  tokens: PatToken[];
+  menuLoaded: boolean;
+}
+
+/** The message each field would be refused with if Create token were pressed now. */
+function validate(form: FormState): FormErrors {
+  const next: FormErrors = {};
+  const name = form.name.trim();
+  if (!name) next.name = "Name is required.";
+  else if (form.tokens.some((t) => t.name === name && !t.revokedAt)) next.name = PAT_NAME_IN_USE;
+  if (form.scopes.length === 0) next.scopes = "Select at least one scope.";
+  if (!form.grantMode) next.permissions = "Choose what this token may reach.";
+  else if (form.grantMode === "named" && form.permissions.length === 0)
+    next.permissions = "Pick at least one permission, or choose full access.";
+  else if (!form.menuLoaded) next.permissions = "The permission menu hasn't loaded yet.";
+  return next;
+}
+
+/** What each field holds, in the form a refusal is compared against. */
+function heldValues(form: FormState): Record<FormField, string> {
+  return {
+    name: form.name.trim(),
+    scopes: [...form.scopes].sort().join(","),
+    permissions: `${form.grantMode}:${[...form.permissions].sort().join(",")}`,
+  };
+}
+
+/** A refusal recorded on a press: its message, and the value the field held when it was refused. */
+type Refusals = Partial<Record<FormField, { message: string; value: string }>>;
+
 export function TokensTab() {
   const tokensQ = useTokens();
   const projectsQ = useProjects();
   const create = useCreateToken();
   const revoke = useRevokeToken();
   const reauth = useReauth();
-  const { toast } = useToast();
+  const { toast, dismiss } = useToast();
   const { user } = useAuth();
 
   // Default to the password prompt while /auth/me is still resolving — a
@@ -81,11 +128,22 @@ export function TokensTab() {
   const [expiresAt, setExpiresAt] = useState("");
   // ISS-497 — "" = None (user-level); a project id = bind the token to it.
   const [boundProjectId, setBoundProjectId] = useState("");
-  const [errors, setErrors] = useState<{
-    name?: string;
-    scopes?: string;
-    permissions?: string;
-  }>({});
+  const [refusals, setRefusals] = useState<Refusals>({});
+  // Create token sits below the whole form, so a refused field near its top is drawn off screen. The
+  // first one refused is brought into view with the cursor in it, after the errors have rendered.
+  const [refused, setRefused] = useState<{ field: FormField } | null>(null);
+  const nameRef = useRef<HTMLDivElement>(null);
+  const scopesRef = useRef<HTMLDivElement>(null);
+  const permissionsRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!refused) return;
+    const field = { name: nameRef, scopes: scopesRef, permissions: permissionsRef }[refused.field].current;
+    field?.scrollIntoView({ block: "center", behavior: "smooth" });
+    const control = field?.querySelector<HTMLElement>("input, button");
+    control?.focus({ preventScroll: true });
+    // A refused name is highlighted, so what the reader types next replaces it.
+    if (control instanceof HTMLInputElement) control.select();
+  }, [refused]);
 
   const projects = projectsQ.data ?? [];
   const projectsById = new Map(projects.map((p) => [p.id, p]));
@@ -93,23 +151,46 @@ export function TokensTab() {
     { value: "", label: "None — user-level / all my projects" },
     ...projects.map((p) => ({ value: p.id, label: `${p.name} (${p.slug})` })),
   ];
-  /** Human level label for a token row: "User-level" or "Project: <slug>". */
+  /** Human level label for a token row: "User-level" or "Project: <name>", the slug only where the project has no name. */
   function levelLabel(t: PatToken): string {
     if (!t.boundProjectId) return "User-level";
-    return `Project: ${projectsById.get(t.boundProjectId)?.slug ?? t.boundProjectId.slice(0, 8)}`;
+    const project = projectsById.get(t.boundProjectId);
+    return `Project: ${project?.name || project?.slug || t.boundProjectId.slice(0, 8)}`;
   }
 
   // One-time plaintext reveal.
   const [revealed, setRevealed] = useState<PatTokenCreated | null>(null);
+  // The panel says its own copy result: a toast sits top right, over the drawer it would confirm.
+  const [copyResult, setCopyResult] = useState<"copied" | "failed" | null>(null);
 
   // Fresh-auth re-prompt.
   const [needsReauth, setNeedsReauth] = useState(false);
   const [password, setPassword] = useState("");
+  // The re-auth field opens below the whole form, under the fold on a laptop screen, so it is
+  // brought into view, and the password box focused, the moment it is asked for.
+  const reauthRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!needsReauth) return;
+    const field = reauthRef.current;
+    field?.scrollIntoView({ block: "center", behavior: "smooth" });
+    field?.querySelector<HTMLInputElement>('input[type="password"]')?.focus({ preventScroll: true });
+  }, [needsReauth]);
 
   const tokens = tokensQ.data?.tokens ?? [];
   // The menu the door will accept, served beside the list so the form cannot
   // offer a name the create call would be refused for.
   const menu = tokensQ.data?.menu ?? null;
+
+  // A refusal describes what its field holds now: it is shown only while the field still holds the
+  // value it refused and that value is still refused for the same reason.
+  const form: FormState = { name, scopes, grantMode, permissions, tokens, menuLoaded: !!menu };
+  const live = validate(form);
+  const held = heldValues(form);
+  const errors: FormErrors = {};
+  for (const field of FIELD_ORDER) {
+    const refusal = refusals[field];
+    if (refusal && refusal.value === held[field] && refusal.message === live[field]) errors[field] = refusal.message;
+  }
 
   // Consume the SSO reauth outcome on return: restore the draft on success,
   // surface the typed error on failure, and strip the params either way so a
@@ -157,12 +238,14 @@ export function TokensTab() {
         title: "Re-authenticated",
         description: "You're verified for the next few minutes — create your token now.",
         tone: "success",
+        slot: FORM_NOTICE,
       });
     } else if (errCode) {
       toast({
         title: "Re-authentication failed",
         description: REAUTH_ERROR_MESSAGES[errCode] ?? errCode,
         tone: "error",
+        slot: FORM_NOTICE,
       });
     }
   }, [toast]);
@@ -191,17 +274,15 @@ export function TokensTab() {
   }
 
   function buildInput(): CreatePatInput | null {
-    const next: typeof errors = {};
-    if (!name.trim()) next.name = "Name is required.";
-    else if (tokens.some((t) => t.name === name.trim() && !t.revokedAt))
-      next.name = "An active token already uses this name.";
-    if (scopes.length === 0) next.scopes = "Select at least one scope.";
-    if (!grantMode) next.permissions = "Choose what this token may reach.";
-    else if (grantMode === "named" && permissions.length === 0)
-      next.permissions = "Pick at least one permission, or choose full access.";
-    else if (!menu) next.permissions = "The permission menu hasn't loaded yet.";
-    setErrors(next);
-    if (Object.keys(next).length > 0 || !menu) return null;
+    const next: Refusals = {};
+    for (const field of FIELD_ORDER) {
+      const message = live[field];
+      if (message) next[field] = { message, value: held[field] };
+    }
+    setRefusals(next);
+    const first = FIELD_ORDER.find((field) => next[field]);
+    if (first) setRefused({ field: first });
+    if (first || !menu) return null;
     return {
       name: name.trim(),
       scopes,
@@ -218,12 +299,14 @@ export function TokensTab() {
     setPermissions([]);
     setExpiresAt("");
     setBoundProjectId("");
-    setErrors({});
+    setRefusals({});
   }
 
   function runCreate(input: CreatePatInput) {
     create.mutate(input, {
       onSuccess: (token) => {
+        dismiss(FORM_NOTICE);
+        setCopyResult(null);
         setRevealed(token);
         setNeedsReauth(false);
         setPassword("");
@@ -238,9 +321,10 @@ export function TokensTab() {
               ? "Confirm your password to create a token."
               : "Confirm with your sign-in provider to create a token.",
             tone: "info",
+            slot: FORM_NOTICE,
           });
         } else {
-          toast({ title: "Couldn't create token", description: formatApiError(err), tone: "error" });
+          toast({ title: "Couldn't create token", description: formatApiError(err), tone: "error", slot: FORM_NOTICE });
         }
       },
     });
@@ -257,7 +341,7 @@ export function TokensTab() {
     reauth.mutate(password, {
       onSuccess: () => runCreate(input),
       onError: (err) =>
-        toast({ title: "Re-authentication failed", description: formatApiError(err), tone: "error" }),
+        toast({ title: "Re-authentication failed", description: formatApiError(err), tone: "error", slot: FORM_NOTICE }),
     });
   }
 
@@ -265,9 +349,9 @@ export function TokensTab() {
     if (!revealed) return;
     try {
       await navigator.clipboard.writeText(revealed.plaintext);
-      toast({ title: "Copied to clipboard", tone: "success" });
+      setCopyResult("copied");
     } catch {
-      toast({ title: "Copy failed", description: "Select and copy the token manually.", tone: "error" });
+      setCopyResult("failed");
     }
   }
 
@@ -275,8 +359,8 @@ export function TokensTab() {
     <div className="space-y-8">
       {tokensQ.isLoading && (
         <div className="space-y-2.5">
-          {Array.from({ length: 3 }).map((_, i) => (
-            <Skeleton key={i} className="h-14 w-full rounded-lg" />
+          {["first", "second", "third"].map((row) => (
+            <Skeleton key={row} className="h-14 w-full rounded-lg" />
           ))}
         </div>
       )}
@@ -302,50 +386,52 @@ export function TokensTab() {
         <div>
           <SectionTitle id="create-a-token" className="fg-h3 mb-4">Create a token</SectionTitle>
           <div className="space-y-4">
-            <Field label="Name" required error={errors.name}>
-              <Input
-                value={name}
-                placeholder="e.g. CI deploy token"
-                onChange={(e) => setName(e.target.value)}
-              />
-            </Field>
+            <div ref={nameRef}>
+              <Field label="Name" required error={errors.name}>
+                <Input value={name} placeholder="e.g. CI deploy token" onChange={(e) => setName(e.target.value)} />
+              </Field>
+            </div>
 
-            <Field label="Scopes" required error={errors.scopes} hint="What this token may do.">
-              <div className="flex flex-wrap gap-4 pt-1">
-                {PAT_SCOPES.map((scope) => (
-                  <Checkbox
-                    key={scope}
-                    checked={scopes.includes(scope)}
-                    onChange={() => toggleScope(scope)}
-                    label={scope}
-                  />
-                ))}
-              </div>
-            </Field>
-
-            <Field
-              label="Permissions"
-              required
-              error={errors.permissions}
-              hint="Which of the API this token reaches. Full access covers every permission, including any added later."
-            >
-              <RadioGroup name="pat-grant" value={grantMode} onChange={(v) => setGrantMode(v as "" | "full" | "named")}>
-                <Radio value="full" label="Full access — every permission on the menu" />
-                <Radio value="named" label="Only the permissions I pick" />
-              </RadioGroup>
-              {grantMode === "named" && (
-                <div className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                  {(menu?.permissions ?? []).map((permission) => (
+            <div ref={scopesRef}>
+              <Field label="Scopes" required error={errors.scopes} hint="What this token may do.">
+                <div className="flex flex-wrap gap-4 pt-1">
+                  {PAT_SCOPES.map((scope) => (
                     <Checkbox
-                      key={permission}
-                      checked={permissions.includes(permission)}
-                      onChange={() => togglePermission(permission)}
-                      label={permission}
+                      key={scope}
+                      checked={scopes.includes(scope)}
+                      onChange={() => toggleScope(scope)}
+                      label={scope}
                     />
                   ))}
                 </div>
-              )}
-            </Field>
+              </Field>
+            </div>
+
+            <div ref={permissionsRef}>
+              <Field
+                label="Permissions"
+                required
+                error={errors.permissions}
+                hint="Which of the API this token reaches. Full access covers every permission, including any added later."
+              >
+                <RadioGroup name="pat-grant" value={grantMode} onChange={(v) => setGrantMode(v as "" | "full" | "named")}>
+                  <Radio value="full" label="Full access — every permission on the menu" />
+                  <Radio value="named" label="Only the permissions I pick" />
+                </RadioGroup>
+                {grantMode === "named" && (
+                  <div className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+                    {(menu?.permissions ?? []).map((permission) => (
+                      <Checkbox
+                        key={permission}
+                        checked={permissions.includes(permission)}
+                        onChange={() => togglePermission(permission)}
+                        label={permission}
+                      />
+                    ))}
+                  </div>
+                )}
+              </Field>
+            </div>
 
             <Field label="Expires" hint="Optional. Leave blank for a non-expiring token.">
               <Input type="date" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} />
@@ -368,45 +454,47 @@ export function TokensTab() {
               />
             </Field>
 
-            {needsReauth && hasPassword && (
-              <Field
-                label="Confirm password"
-                required
-                hint="Token creation requires a recent sign-in."
-              >
-                <Input
-                  type="password"
-                  value={password}
-                  autoComplete="current-password"
-                  placeholder="Your account password"
-                  onChange={(e) => setPassword(e.target.value)}
-                />
-              </Field>
-            )}
+            <div ref={reauthRef} className="space-y-4 empty:hidden">
+              {needsReauth && hasPassword && (
+                <Field
+                  label="Confirm password"
+                  required
+                  hint="Token creation requires a recent sign-in."
+                >
+                  <Input
+                    type="password"
+                    value={password}
+                    autoComplete="current-password"
+                    placeholder="Your account password"
+                    onChange={(e) => setPassword(e.target.value)}
+                  />
+                </Field>
+              )}
 
-            {needsReauth && !hasPassword && (
-              <Field
-                label="Re-authenticate"
-                hint={
-                  linkedProviders.length > 0
-                    ? "Token creation requires a recent sign-in. Confirm with your sign-in provider — you'll come right back here with the form intact."
-                    : "Token creation requires a recent sign-in, but this account has no password and no linked sign-in provider. Ask an administrator for help."
-                }
-              >
-                <div className="flex flex-wrap gap-3 pt-1">
-                  {linkedProviders.map((p) => (
-                    <Button
-                      key={p}
-                      variant="primary"
-                      onClick={() => startSsoReauth(p)}
-                      className="min-h-11"
-                    >
-                      Continue with {PROVIDER_LABELS[p] ?? p}
-                    </Button>
-                  ))}
-                </div>
-              </Field>
-            )}
+              {needsReauth && !hasPassword && (
+                <Field
+                  label="Re-authenticate"
+                  hint={
+                    linkedProviders.length > 0
+                      ? "Token creation requires a recent sign-in. Confirm with your sign-in provider — you'll come right back here with the form intact."
+                      : "Token creation requires a recent sign-in, but this account has no password and no linked sign-in provider. Ask an administrator for help."
+                  }
+                >
+                  <div className="flex flex-wrap gap-3 pt-1">
+                    {linkedProviders.map((p) => (
+                      <Button
+                        key={p}
+                        variant="primary"
+                        onClick={() => startSsoReauth(p)}
+                        className="min-h-11"
+                      >
+                        Continue with {PROVIDER_LABELS[p] ?? p}
+                      </Button>
+                    ))}
+                  </div>
+                </Field>
+              )}
+            </div>
 
             <div className="flex flex-wrap gap-3">
               {needsReauth ? (
@@ -459,13 +547,18 @@ export function TokensTab() {
               </code>
             </div>
             <div className="flex gap-3">
-              <Button variant="primary" icon="check" onClick={copyPlaintext} className="min-h-11">
-                Copy to clipboard
+              <Button variant="primary" onClick={copyPlaintext} className="min-h-11">
+                {copyResult === "copied" ? "Copied ✓" : "Copy to clipboard"}
               </Button>
               <Button variant="secondary" onClick={() => setRevealed(null)} className="min-h-11">
                 Done
               </Button>
             </div>
+            {copyResult === "failed" && (
+              <p role="alert" className="fg-body-sm fg-danger">
+                Copy failed. Select the token above and copy it by hand.
+              </p>
+            )}
           </div>
         )}
       </SlideOver>

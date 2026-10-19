@@ -38,9 +38,10 @@ timestamp is `unmarked`.
 
 ## What `mark_merged` writes, on each path
 
-`applyMergeMarker` looks for a merged pull request Forge has projected
+`applyMergeMarker` looks for the issue's most recently merged pull request Forge has projected
 (`observedMergeForIssue`). Where it finds one it stamps `merged_at` AND
-`merged_commit_sha`, from that record. Where it finds none it stamps `merged_at` alone.
+`merged_commit_sha`, from that record. Where it finds none it stamps `merged_at` alone. A row
+that already holds a commit is moved forward by a later one, never overwritten (below).
 
 Where an agent marks an issue on the `git` shape that holds no other work evidence
 (`findMissingWorkEvidence`) and the call carries `data.commit`, the commit is the only trace
@@ -59,14 +60,16 @@ refusal by name and writes nothing: `COMMIT_NOT_IN_REPOSITORY`, `COMMIT_NOT_THIS
 `COMMIT_NOT_LANDED`. Where Forge cannot tell (the project declares no way to read its repository,
 the reader it has fails, or no base branch is named) the agent's commit is kept as a claim instead
 (below, ISS-1409), and `COMMIT_UNVERIFIED` is what a person's mark, or an agent's on an issue that
-already holds a branch or handoff, meets there. On the git route the cause is one of five. The first is that the name of the
+already holds a branch, meets there. On the git route the cause is one of five. The first is that the name of the
 host the URL names did not resolve, which is found before any connection is made
 (`packages/core/src/git/bounded-fetch.ts:unresolvedHostRefusal`). The other four are read from
-what the host said (`packages/core/src/git/bounded-fetch.ts:hostRefusal`) and quoted in its words
-past any `remote:` banner: the host refused the key; it took the key but will not let it read that
-repository, or none is there; the host could not be reached; or the repository lacks a branch.
-Each of the first four says what clears it, and where that is access for the key it asks for write
-access, as Test connection under Git access does, since the runner pushes with the same key.
+what the host said (`packages/core/src/git/bounded-fetch.ts:hostRefusal`): the host refused the key;
+it took the key but will not let it read that repository, or none is there; the host could not be
+reached; or the repository lacks a branch. Each of the first four says what clears it, and where that
+is access for the key it asks for write access, as Test connection under Git access does, since the
+runner pushes with the same key. That is at most three short sentences with no dash, and the host's
+own line, past any `remote:` banner, stands apart beneath them (`Refused.said`, put on its own line by
+`packages/core/src/projects/repository-reader.ts:saying`).
 What clears it is named beside the cause, in the answer to an agent's mark (the claim's) and in the
 refusal to a person's: mark again once the tracker can read the repository: through the GitHub binding where the project has one, otherwise with the deploy key
 over the SSH clone URL under Git access; where a branch is missing, once the repository has it or
@@ -118,8 +121,10 @@ whether it is `noReader`); a repository that was read and says no never carries 
 - **Only "cannot verify" is softened.** A repository that was READ and says no (the commit absent,
   another issue's, not on the base or live branch) is refused as before, by name, and nothing is
   written. A person's mark naming a commit, and an agent's naming one on an issue that already
-  holds a branch or handoff, still go through `resolveMarkCommit` and are refused
-  `COMMIT_UNVERIFIED` where nothing can read.
+  holds a branch, still go through `resolveMarkCommit` and are refused
+  `COMMIT_UNVERIFIED` where nothing can read, on an issue not yet marked; only that refusal offers
+  a mark naming no commit. On an issue already marked the call writes nothing and is answered, in
+  its reply and its comment, with where the mark stays, the reason quoted (ISS-1421 r8).
 - **It is verified later by a repeat mark.** With a claim standing, `agentEvidence` reads the
   repository for the commit the repeat names, or the claim, before it takes the claim as evidence.
   Readable and agreeing: the one writer's observed stamp, whose gate is the empty
@@ -157,13 +162,18 @@ else behind it, because the landing IS the trace such work leaves. The refusal o
 the landing route and never `data.commit`. Its price is below.
 
 The `work_evidence` entry criterion runs the same check and holds a person as well, so its refusal
-is read by `anyone` (`EvidenceReader`): it names the branch and handoff routes, says a person's mark
+is the `criterion` door's (`EvidenceDoor`): it names the branch route, says a person's mark
 naming a commit is checked only for the repository holding it, not read as this issue's landing, so
 it does not clear it, and names `statusEntryCriteria` as the
 declaration to change where the project's work leaves none of these.
 
-Where the row already holds a stamp, the gated UPDATE moves nothing and the answer
-describes what the row HOLDS, not which branch this call took. So the "your commit is not
+Where the row already holds a stamp and the call names no later landing (below), the gated
+UPDATE moves nothing and the answer describes what the row HOLDS, not which branch this call took. Both the answer and the thread
+comment open by saying so — "Already marked merged on 17 Oct 2026, so this call changed
+nothing." — with the caller's note whole on a line of its own and never the "Marked merged" a
+first mark opens with (`packages/core/src/issues/merge-marker.ts:alreadyMarkedSentence`). An `unmark`
+on a row holding no mark is refused `NOT_MARKED_MERGED` and writes no comment: `clearIssueMerge`
+takes only a marked row, so a removal never reaches the record that did not happen. So the "your commit is not
 what the column holds" clause compares the claim against the column. Comparing it against
 the row the call happened to select tells a caller its own commit was overruled by that
 same commit.
@@ -176,23 +186,95 @@ as for `merged_at`; a `200` that kept the old landing while the caller was told 
 evidence is what this replaced (ISS-1327). The exact landing re-sent is answered `already_merged`
 like any other repeat.
 
+## A later landing moves the mark forward (ISS-1421 round 7)
+
+An issue worked in rounds merges more than once, and the mark is where it landed: the release
+gate, the roster, live reach and the issue's properties all read `merged_commit_sha`. Until round 7
+the observed write was gated on an empty column and `observedMergeForIssue` read the OLDEST merged
+pull request, so the first round held the mark for ever and every later one was answered "changed
+nothing"; ISS-1421 read its first round's commit after three more had merged.
+
+`packages/core/src/issues/landing-advance.ts` reads a candidate commit against the one the row
+holds through the project's repository (`RepositoryReader.descends`: one GitHub compare's status,
+or `merge-base --is-ancestor` over the deploy key's fetch). The candidate is the commit a mark
+names, read as this issue's landing by `readCommitLanding` (a person's included), or, where the
+mark names none, the most recently merged pull request's merge commit; an older merged pull
+request is not read.
+
+- **It descends:** the mark moves to it, commit and time, and the comment and the answer say "The
+  landing moved from commit A to commit B, which carries it." The answer's `movedFrom` names A.
+  The write names A as the commit it moves from (`recordIssueMerge`'s `supersedes`) and lands only
+  while the column still holds A; a write that loses that race reads the row again and compares
+  again, at most three times, and only a write that took is reported as a move.
+- **The same commit, or one A already carries:** nothing changes, answered as any repeat, with
+  "Commit B is already in commit A, where the mark stays." where they differ.
+- **Neither:** a different landing. The mark door refuses it `LANDING_NOT_DESCENDANT`, naming both
+  commits and Unmark then Mark merged as the way to move it there, and writes nothing.
+- **The repository cannot say:** the mark stays, answered as a repeat naming why. Like an agent's
+  unverified claim (ISS-1409), a read Forge could not take is not evidence the work is false.
+
+A merge Forge observes itself takes the same reading: GitHub's `pull_request` event
+(`packages/core/src/integrations/github/projection-events.ts:stampMergedIssue`) and Forge's own merge
+(`packages/core/src/integrations/github/merge.ts:writeEvidence`), both through `stampObservedMerge`
+and `advanceObservedLanding`. Nobody is there to refuse, so a merge that does not descend, or that
+could not be compared, is left with a comment on the issue saying so, once; a redelivery of a merge
+the mark already holds says nothing.
+
+What does not move: an unverified claim (`merged_claimed_commit`), since no read could place it on
+a line, and a `landed` mark outside git, which has no commit. No stored row was rewritten: a mark
+left at an earlier round moves on that issue's next mark or next observed merge.
+
+## How a mark answers a person (ISS-1421)
+
+Every human sentence a mark gives — the answer's `detail`, the toast, the audit comment, a refusal's
+message — names a commit by its first seven characters (`packages/core/src/issues/merge-record.ts:shortCommit`; a
+`MergeMarkerError` shortens any whole sha in its message). The whole sha stays where a caller reads
+it as data: the row (`mergedCommitSha`, `mergedClaimedCommit`), the answer's `movedFrom` and
+`namedCommit` (the commit this mark named where no column keeps it), a refusal's `details`, and the
+rail's hover, where an observed commit and a claim's both show by seven characters. An answer is at
+most three short sentences of Forge's own: what happened, why in one clause, what to do, each
+capitalised, stopped and at most 20 words. Another part of Forge's reason — a host's refusal —
+stands quoted on a line of its own beneath them (`withReason`), opened capitalised unless it opens on
+an address and stopped where it was not, never cut into one of them; the host's own line under it is
+quoted whole as code, one piece (`quotedRefusal`), as the releasing sweep's comment quotes it too; a commit's subject is quoted
+there as the commit holds it, unstopped. A repository holding no commit is named in the sentence
+itself, so its reader's own words are quoted only where they say more (an overlong sha). A toast keeps
+the quoted reason to its first clause on a line of its own, the mark's comment holding it whole
+(`packages/web-v2/src/features/issues/hooks.ts:answerInBrief`), and a refusal shown beside the form,
+which writes no comment, puts it whole on a line of its own, the host's line as it said it
+(`packages/web-v2/src/features/issues/hooks.ts:answerShown`). A first mark's comment names its commit once: the label carries it only where the sentence
+after it does not, and a repository's address shows there as code, never a mail link, a bare
+`user@host` in a quoted host reason included (`addressesAsCode`). A note, on a first mark, an unmark
+or a repeat, is quoted on a line of its own (`threadBody`). Each mark refusal names the field its
+own door's caller sends: `landing`, `commit` or `target` on REST, `data.landing`, `data.commit` or
+`data.target` on MCP (`packages/core/src/issues/landing-evidence.ts:markField`), and the page's
+own field on the issue page (`packages/web-v2/src/lib/api/error.ts:formatApiError`). The REST
+door's refusal of its own input, a blank target read as a missing one, is one sentence naming what
+the mark needs (`packages/core/src/issues/merge-input-refusal.ts:markInputRefusal`), with zod's
+account kept in `details`. An MCP `target` of `base`, `prod` or `feature` is written as the branch it
+means (`packages/core/src/issues/mark-target.ts:markTargetBranch`). No answer repeats "Forge saw
+this merge land" before the point; `packages/core/src/issues/mark-words.test.ts` holds every
+sentence builder to this.
+
 ## Every `git` mark's commit is one the repository holds
 
 A claim is still checked (ISS-1350). On a `git` project every commit a mark records — a person's,
-an agent's on an issue that has a branch or handoff, one beside a merged pull request — is first
+an agent's on an issue that has a branch, one beside a merged pull request — is first
 resolved by the project's repository (`packages/core/src/issues/commit-landing.ts:resolveMarkCommit`, the same commit
 read `readCommitLanding` takes). The repository holding no such commit refuses the mark
-`COMMIT_NOT_IN_REPOSITORY`; a repository that cannot be read refuses it `COMMIT_UNVERIFIED`, naming
-why, and a mark naming no commit is the route that still records. A resolved commit is recorded by
-the full sha the repository gives, never as the caller typed it. It stays a claim: Forge read that
-the repository holds it, not that it is this issue's landing, so `merged_commit_sha` is not stamped
-from it and the answer says which of the two Forge read. The one commit not read is the merged pull
+`COMMIT_NOT_IN_REPOSITORY`; a repository that cannot be read refuses it `COMMIT_UNVERIFIED` on an
+issue not yet marked, naming why, and a mark naming no commit is the route that still records. A
+resolved commit is named by the full sha the repository gives (the answer's `namedCommit`), never
+as the caller typed it. No column keeps it: Forge read that the repository holds it, not that it is
+this issue's landing, so `merged_commit_sha` is not stamped from it, and a person's commit is no work
+evidence (`packages/core/src/pipeline/work-evidence.ts:gitDetail`), so `merged_claimed_commit` is
+not either. The answer and the comment say it is noted in the comment only and that the mark is a
+claim naming no commit — what the rail and a repeat mark say of the row. The one commit not read is the merged pull
 request's own merge sha, which Forge already holds.
 
-Where the caller names no commit, the mark falls back to the commit the issue's implementation
-handoff recorded. That commit is resolved the same way, and where the repository does not hold it
-or cannot be read it is left off the mark — the caller never sent it, so it is not refused — and the
-answer and the audit comment name it and why.
+Where the caller names no commit, the mark records none. No step handoff is read for one: the
+work-evidence gate reads the issue's own row and nothing else (`packages/core/src/pipeline/work-evidence.ts:collectWorkEvidence`),
+so a commit a handoff recorded is neither evidence nor a mark's commit.
 
 What this replaced: sid-desk ISS-578's mark carried a real commit's first eight characters and a
 fabricated tail, and nothing read it before it was recorded. That mark, like every mark that
@@ -320,6 +402,3 @@ handler that mapped every row through one reading, would stay green through it. 
 `packages/core/src/mcp/tools/forge-issues-merge-mark.test.ts` calls the tool factory's own
 handler. `packages/core/src/issues/merge-mark-surfaces.test.ts` keeps the helpers' own
 property, which is a different claim.
-
-The observed branch is only ever exercised under a mocked projection: on any database
-here `repo_pull_requests` is empty, so the branch is unreachable in the field.

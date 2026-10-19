@@ -2,8 +2,15 @@
 
 import type { QueryClient } from "@tanstack/react-query";
 import { invalidateThroughInFlight } from "./invalidate-through-inflight";
+import { moveSessionInLiveReads } from "@/features/pipeline/live-read";
 import { scheduleInvalidation } from "./invalidation-coalescer";
 import { trackJobSeq } from "./seq-tracker";
+
+/** The issue page's run journal, `runJournalKey` in features/issues/detail-hooks.ts. */
+const RUN_JOURNAL = "run-journal";
+/** The Agents runs tab, `runSessionsKey` in features/agents/hooks.ts. */
+const RUN_SESSIONS = "run-sessions";
+const SESSIONS_AND_HOLDS = "sessions-and-holds";
 
 interface EventEnvelope {
 	event: string;
@@ -26,10 +33,12 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 		case "issue.deleted": {
 			scheduleInvalidation(qc, ["issues", "list"]);
 			scheduleInvalidation(qc, ["issues", "search"]);
+			scheduleInvalidation(qc, [SESSIONS_AND_HOLDS]);
 			scheduleInvalidation(qc, ["attention"]);
 			scheduleInvalidation(qc, ["pulse"]);
 			if (data?.issueId) {
 				scheduleInvalidation(qc, ["issue", data.issueId]);
+				scheduleInvalidation(qc, [RUN_JOURNAL, data.issueId]);
 				scheduleInvalidation(qc, ["activities", data.issueId]);
 			}
 			return;
@@ -37,11 +46,13 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 		case "issue.statusChanged": {
 			scheduleInvalidation(qc, ["issues", "list"]);
 			scheduleInvalidation(qc, ["issues", "search"]);
+			scheduleInvalidation(qc, [SESSIONS_AND_HOLDS]);
 			scheduleInvalidation(qc, ["projects", "health"]);
 			scheduleInvalidation(qc, ["pulse"]);
 			scheduleInvalidation(qc, ["attention"]);
 			if (data?.issueId) {
 				scheduleInvalidation(qc, ["issue", data.issueId]);
+				scheduleInvalidation(qc, [RUN_JOURNAL, data.issueId]);
 				scheduleInvalidation(qc, ["activities", data.issueId]);
 				scheduleInvalidation(qc, ["questions", data.issueId]);
 			}
@@ -51,6 +62,7 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 			scheduleInvalidation(qc, ["issues", "list"]);
 			if (data?.issueId) {
 				scheduleInvalidation(qc, ["issue", data.issueId]);
+				scheduleInvalidation(qc, [RUN_JOURNAL, data.issueId]);
 			}
 			if (data?.projectId) {
 				scheduleInvalidation(qc, ["projects", data.projectId, "active-runners"]);
@@ -118,7 +130,17 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 		case "agent-session.updated":
 		case "agent-session.status":
 		case "agent-session.deleted": {
+			// The live read drops a stopped session as its event arrives, before the re-read lands (ISS-1228).
+			if (typeof data?.sessionId === "string" && typeof data?.status === "string") {
+				moveSessionInLiveReads(qc, data.sessionId, data.status);
+			}
 			scheduleInvalidation(qc, ["agent-sessions"]);
+			scheduleInvalidation(qc, [SESSIONS_AND_HOLDS]);
+			// A session's events name no issue, so every open issue page and runs tab re-reads (ISS-1228).
+			scheduleInvalidation(qc, [RUN_JOURNAL]);
+			scheduleInvalidation(qc, [RUN_SESSIONS]);
+			// The rail and the projects console count live sessions off the health rollup.
+			scheduleInvalidation(qc, ["projects", "health"]);
 			scheduleInvalidation(qc, ["pulse"]);
 			if (data?.sessionId) {
 				scheduleInvalidation(qc, ["agent-session", data.sessionId]);
@@ -159,6 +181,7 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 		case "job.completed":
 		case "job.failed":
 		case "job.resumed":
+		case "job.retried":
 		case "job.cancelled": {
 			scheduleInvalidation(qc, ["jobs", "list"]);
 			scheduleInvalidation(qc, ["admin", "ops"]);
@@ -179,7 +202,8 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 		case "pipeline_run.status_changed": {
 			scheduleInvalidation(qc, ["pipeline-runs", "list"]);
 			scheduleInvalidation(qc, ["admin", "ops"]);
-			// Projects console (ISS-290): liveRuns / spend roll up from pipeline_runs.
+			scheduleInvalidation(qc, data?.issueId ? [RUN_JOURNAL, data.issueId] : [RUN_JOURNAL]);
+			// Projects console (ISS-290): spend rolls up from pipeline_runs.
 			scheduleInvalidation(qc, ["projects", "health"]);
 			scheduleInvalidation(qc, ["pulse"]);
 			if (data?.runId) {
@@ -189,6 +213,7 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 			if (data?.status === "cancelled") {
 				scheduleInvalidation(qc, ["jobs"]);
 				scheduleInvalidation(qc, ["agent-sessions"]);
+				scheduleInvalidation(qc, [RUN_SESSIONS]);
 			}
 			// A run reaching a terminal status frees its runner — refresh the
 			// active-runner snapshot so the busy → idle flip reflects live.
@@ -228,6 +253,17 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 			if (data?.projectId) {
 				scheduleInvalidation(qc, ["projects", data.projectId, "runners"]);
 			}
+			return;
+		}
+		// Every session read states its box's state, so the strip and the rows refresh together (ISS-1228).
+		case "device.status": {
+			if (!data?.projectId) return;
+			scheduleInvalidation(qc, ["projects", data.projectId, "runners"]);
+			scheduleInvalidation(qc, ["projects", data.projectId, "active-runners"]);
+			scheduleInvalidation(qc, ["agent-sessions"]);
+			scheduleInvalidation(qc, ["agent-session"]);
+			scheduleInvalidation(qc, [SESSIONS_AND_HOLDS]);
+			scheduleInvalidation(qc, [RUN_SESSIONS]);
 			return;
 		}
 		case "runner.status":
@@ -323,6 +359,9 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
  */
 const REPLAY_PREFIXES: readonly (readonly unknown[])[] = [
 	["issues"],
+	[RUN_JOURNAL],
+	[RUN_SESSIONS],
+	[SESSIONS_AND_HOLDS],
 	["jobs"],
 	["projects"],
 	["agent-sessions"],

@@ -39,9 +39,9 @@ export interface SwitcherProject {
   initials: string;
   tint: string;
   ink: string;
-  /** Null where the health rollup was not read; `liveRunsRead` then says why. */
-  liveRuns: number | null;
-  liveRunsRead: QueryRead;
+  /** Null where the health rollup was not read; `liveSessionsRead` then says why. */
+  liveSessions: number | null;
+  liveSessionsRead: QueryRead;
   pinned: boolean;
 }
 
@@ -57,8 +57,8 @@ export interface NavRailCompactProps {
     initials: string;
     tint: string;
     ink: string;
-    liveRuns: number | null;
-    liveRunsRead: QueryRead;
+    liveSessions: number | null;
+    liveSessionsRead: QueryRead;
   } | null;
   switcherProjects: SwitcherProject[];
   onNavigate: (key: string) => void;
@@ -284,14 +284,14 @@ export function NavRailCompact({
                 <Icon name="chevronUpDown" size={9} strokeWidth={2.4} />
               </span>
             </span>
-            {activeProject.liveRuns === null ? (
+            {activeProject.liveSessions === null ? (
               <span className="font-mono text-9-5 font-semibold text-subtle">
-                <ReadFigure value={null} read={activeProject.liveRunsRead} counts="live runs" />
+                <ReadFigure value={null} read={activeProject.liveSessionsRead} counts="live sessions" />
               </span>
             ) : (
-              activeProject.liveRuns > 0 && (
+              activeProject.liveSessions > 0 && (
                 <span className="font-mono text-9-5 font-semibold text-accent-text">
-                  {activeProject.liveRuns} live
+                  {activeProject.liveSessions} live
                 </span>
               )
             )}
@@ -343,12 +343,12 @@ export function NavRailCompact({
                   >
                     <ProjectMark tint={p.tint} ink={p.ink} initials={p.initials} size={20} radius="var(--r-sm)" />
                     <span className="min-w-0 flex-1 truncate text-13 font-medium text-fg">{p.name}</span>
-                    {p.liveRuns === null ? (
+                    {p.liveSessions === null ? (
                       <span className="flex-none font-mono text-11 text-subtle">
-                        <ReadFigure value={null} read={p.liveRunsRead} counts="live runs" />
+                        <ReadFigure value={null} read={p.liveSessionsRead} counts="live sessions" />
                       </span>
                     ) : (
-                      p.liveRuns > 0 && (
+                      p.liveSessions > 0 && (
                         <span className="size-1.5 flex-none rounded-pill" style={{ background: 'var(--accent)' }} />
                       )
                     )}
@@ -458,7 +458,7 @@ export function NavRailCompact({
             }
             className="relative inline-flex size-8 items-center justify-center rounded-md text-subtle transition-colors hover:bg-hover hover:text-fg"
           >
-            <Icon name="bell" size={18} />
+            <Icon name="news" size={18} />
             {whatsNewBadge && whatsNewBadge > 0 ? (
               <span
                 aria-hidden

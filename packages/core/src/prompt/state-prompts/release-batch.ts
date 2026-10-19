@@ -50,7 +50,9 @@ a step you could not complete, a procedure that does not fit what you actually f
   finish already closed stays closed (\`alreadyClosed\`). Where this run recorded no promotion, it
   releases every claim and moves the issues still at \`releasing\` back to the release gate for
   a later batch (\`recovered\`). Where this run recorded a promotion, the code may already be on
-  production, so the roster keeps its claims and stays at \`releasing\` for a person to settle.
+  production, so the roster stays at \`releasing\` until this run has ended; Forge's releasing
+  sweep then reads what production serves, closes each issue whose landing commit it carries
+  through a release record, and returns the rest to the release gate.
   Report each issue where the abort's answer says it is.
 → Then fail the turn honestly so the job records 'failed'.
 

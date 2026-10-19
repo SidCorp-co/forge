@@ -14,6 +14,7 @@ import {
   type SelectOption,
   SettingsSection,
 } from "@/design";
+import { isAgentAddress } from "@/features/auth/agent-address";
 import { useOrgMembers } from "@/features/orgs/hooks";
 import { useProjectsIncludingArchived } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
@@ -39,6 +40,16 @@ const ROLE_OPTIONS: SelectOption[] = [
   { value: "member", label: "Member" },
   { value: "admin", label: "Admin" },
 ];
+
+
+/** The org members the add picker offers: not already on the project, and people only, since an
+ *  agent account's projects are set on the agent and the add door refuses one (ISS-1421 r3). */
+export function orgCandidatesFor<M extends { userId: string; email: string }>(
+  orgMembers: readonly M[],
+  memberIds: ReadonlySet<string>,
+): M[] {
+  return orgMembers.filter((m) => !memberIds.has(m.userId) && !isAgentAddress(m.email));
+}
 
 export function MembersTab({
   projectId,
@@ -67,9 +78,7 @@ export function MembersTab({
   );
 
   const memberIds = new Set((membersQ.data ?? []).map((m) => m.userId));
-  const orgCandidates = (orgMembersQ.data ?? []).filter(
-    (m) => !memberIds.has(m.userId),
-  );
+  const orgCandidates = orgCandidatesFor(orgMembersQ.data ?? [], memberIds);
   const orgCandidateOptions: SelectOption[] = orgCandidates.map((m) => ({
     value: m.userId,
     label: m.email,

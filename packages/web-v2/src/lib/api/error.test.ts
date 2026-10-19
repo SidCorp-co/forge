@@ -4,9 +4,11 @@ import {
   describeSettings,
   formatApiError,
   formatApiReason,
+  formatEnvironmentsWriteError,
   formatPipelineConfigError,
   formatSettingsWriteError,
   isRetryableApiError,
+  readFailure,
 } from './error';
 
 describe('formatPipelineConfigError', () => {
@@ -147,6 +149,14 @@ describe('formatApiError — the merge-mark refusals, in the web\'s words', () =
     expect(msg).not.toContain('landed');
   });
 
+  it('names the panel field, never the REST one, for a mark naming no landing (ISS-1421 r9)', () => {
+    const msg = formatApiError(new ApiError(422, 'Send `landing` naming the live URL.', 'LANDING_REQUIRED'));
+    expect(msg).toBe(
+      'Nothing was marked, because no merged pull request shows where this work landed. Fill in “Where it landed” with the live URL, CMS entry or storefront resource.',
+    );
+    expect(msg).not.toContain('`');
+  });
+
   it('names the landing that stands, and Unmark, for a refused correction', () => {
     const msg = formatApiError(
       new ApiError(422, 'core sentence', 'MARK_ALREADY_STANDS', { heldLanding: 'https://shop.example.com/a' }),
@@ -275,35 +285,106 @@ describe('describeSettings', () => {
 });
 
 describe('a server error that carries only its HTTP status text', () => {
-  it('is said as a failed request, not echoed', () => {
+  it('is said as a failed request in words, with no status code', () => {
     expect(formatApiError(new ApiError(500, 'Internal Server Error'))).toBe(
-      'The server could not complete the request (500).',
+      'The server ran into a problem and could not finish the request.',
     );
     expect(formatApiError(new ApiError(503, 'Service Unavailable'))).toBe(
-      'The server could not complete the request (503).',
+      'The server is unavailable right now. Try again in a moment.',
+    );
+    expect(formatApiError(new ApiError(504, 'Gateway Timeout'))).toBe(
+      'The server did not answer in time. Try again in a moment.',
     );
   });
 
   it('covers every standard 5xx status text, whole-message only', () => {
-    expect(formatApiError(new ApiError(501, 'Not Implemented'))).toBe('The server could not complete the request (501).');
+    expect(formatApiError(new ApiError(501, 'Not Implemented'))).toBe(
+      'The server ran into a problem and could not finish the request.',
+    );
     expect(formatApiError(new ApiError(505, 'HTTP Version Not Supported'))).toBe(
-      'The server could not complete the request (505).',
+      'The server ran into a problem and could not finish the request.',
     );
     expect(formatApiError(new ApiError(501, 'Not Implemented for this provider'))).toBe(
       'Not Implemented for this provider',
     );
   });
 
-  it("keeps a server error's own words, and a client error's status text", () => {
-    expect(formatApiError(new ApiError(500, 'the plugins store is down'))).toBe('the plugins store is down');
-    expect(formatApiError(new ApiError(400, 'Internal Server Error'))).toBe('Internal Server Error');
+  it('opens a reason as a sentence of its own, and ends it', () => {
+    expect(formatApiReason(new ApiError(503, 'the plugins store is down'))).toBe('The plugins store is down.');
+    expect(formatApiReason(new ApiError(500, 'Internal Server Error'))).toBe(
+      'The server ran into a problem and could not finish the request.',
+    );
   });
 
-  it('ends a reason with a stop so the next sentence starts after one', () => {
-    expect(formatApiReason(new ApiError(500, 'the plugins store is down'))).toBe('the plugins store is down.');
-    expect(formatApiReason(new ApiError(404, 'Not found.'))).toBe('Not found.');
-    expect(formatApiReason(new ApiError(500, 'Internal Server Error'))).toBe(
-      'The server could not complete the request (500).',
+  it('never prints a bare number, for a failure that carries no message at all', () => {
+    expect(formatApiError(new ApiError(500, ''))).not.toMatch(/\d{3}/);
+    expect(formatApiError(new ApiError(422, ''))).not.toMatch(/\d{3}/);
+  });
+});
+
+describe('formatEnvironmentsWriteError (ISS-1171 r6)', () => {
+  const invalid = (conflicts: unknown[]) =>
+    new ApiError(400, "testCredentials[1] ('Admin') has no password.", 'ENVIRONMENTS_INVALID', { conflicts });
+
+  it('names each credential rule by the row the page shows, never the document path', () => {
+    const err = invalid([
+      { path: 'testCredentials.1.label', rule: 'duplicate-label', sameAs: 0 },
+      { path: 'testCredentials.2.username', rule: 'duplicate-login', sameAs: 0 },
+    ]);
+    const said = formatEnvironmentsWriteError(err, ['QA', 'qa', 'Owner']);
+    expect(said).toBe(
+      'Two credentials are labelled qa. Rename one of them, or remove it. Owner is the same login as QA. Remove one of them.',
     );
+    expect(said).not.toMatch(/testCredentials|\[\d\]/);
+  });
+
+  it('names every row one way, by its label, and by its number only where the page holds none', () => {
+    const said = formatEnvironmentsWriteError(
+      invalid([
+        { path: 'testCredentials.1.password', rule: 'password-required' },
+        { path: 'testCredentials.2.username', rule: 'duplicate-login', sameAs: 1 },
+        { path: 'testCredentials.3.label', rule: 'duplicate-label' },
+      ]),
+      ['QA one', '', 'QA two'],
+    );
+    expect(said).toBe(
+      'Credential 2 has no password. Type its password, or remove the row. QA two is the same login as Credential 2. Remove one of them. Credential 4 has a label another credential already has. Rename one of them, or remove it.',
+    );
+    expect(said).not.toMatch(/Test credential|\(\w/);
+  });
+
+  it('names a setting the server refused for its own schema by its screen name', () => {
+    expect(formatEnvironmentsWriteError(invalid([{ path: 'live.url', message: 'Invalid url' }]))).toBe(
+      'Live (URL) is not a value this page can store. Correct it, then save again.',
+    );
+  });
+
+  it('says a server failure as what happened and what to do, whatever its message', () => {
+    const said = formatEnvironmentsWriteError(new ApiError(503, 'Planted: pool exhausted', 'SERVER_ERROR'));
+    expect(said).toBe('The server is unavailable right now. Try again in a moment. Your edits are still here.');
+  });
+});
+
+describe('readFailure — a failed read in the product\'s words, and the server\'s own beside it', () => {
+  it('says a server failure by its status and keeps the code and message for the technical view', () => {
+    const planted = 'planted failure: relation "issue_leases" does not exist';
+    expect(readFailure(new ApiError(500, planted, 'INTERNAL'))).toEqual({
+      said: 'The server ran into a problem and could not finish the request.',
+      technical: `500 INTERNAL — ${planted}`,
+    });
+  });
+
+  it('says a refusal it has words for in those words', () => {
+    expect(readFailure(new ApiError(403, 'not a project member', 'FORBIDDEN'))).toEqual({
+      said: 'You do not have access to this resource.',
+      technical: '403 FORBIDDEN — not a project member',
+    });
+  });
+
+  it('says an unreached server as one, and keeps what the browser said', () => {
+    expect(readFailure(new TypeError('Failed to fetch'))).toEqual({
+      said: 'Forge could not be reached. Check your connection, then try again.',
+      technical: 'Failed to fetch',
+    });
   });
 });

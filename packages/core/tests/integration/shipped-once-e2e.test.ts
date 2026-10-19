@@ -74,6 +74,38 @@ const PLANTED = {
   { moves: ReadonlyArray<readonly [string, string, Date]>; countsOn: number }
 >;
 
+/**
+ * Issues that reached a shipped status and shipped nothing: one dropped afterwards, whose work will not
+ * happen, and ones a person moved to Awaiting release with no merge recorded. Each lands on day 6
+ * back, a day no planted issue counts on, so a count that takes one in reads 1 where the card says 0.
+ */
+const NEVER_SHIPPED = {
+  droppedFromAwaitingRelease: {
+    status: 'dropped',
+    merged: true,
+    moves: [
+      ['testing', 'awaiting_release', at(6, 9)],
+      ['awaiting_release', 'dropped', at(6, 15)],
+    ],
+  },
+  movedByHandWithNoMerge: {
+    status: 'awaiting_release',
+    merged: false,
+    moves: [['open', 'awaiting_release', at(6, 10)]],
+  },
+  parkedAfterAMoveWithNoMerge: {
+    status: 'on_hold',
+    merged: false,
+    moves: [
+      ['open', 'awaiting_release', at(6, 11)],
+      ['awaiting_release', 'on_hold', at(6, 12)],
+    ],
+  },
+} as const satisfies Record<
+  string,
+  { status: string; merged: boolean; moves: ReadonlyArray<readonly [string, string, Date]> }
+>;
+
 /** The seven-day card, oldest day first: one issue on each of days 5, 4, 2 and 1 back. */
 const CARD = [0, 1, 1, 0, 1, 1, 0];
 
@@ -121,10 +153,11 @@ describe('ISS-1270 · a shipped issue counts once, on its first shipped day', ()
       const issueId = randomUUID();
       issueIds[key] = issueId;
       const createdAt = new Date(spec.moves[0][2].getTime() - DAY_MS);
+      // Every planted issue carries a merge: a shipped status alone is no shipment.
       await harness.db.execute(sql`
-        INSERT INTO issues (id, project_id, iss_seq, title, status, priority, created_by_id, created_at)
+        INSERT INTO issues (id, project_id, iss_seq, title, status, priority, created_by_id, created_at, merged_at)
         VALUES (${issueId}, ${projectId}, ${seq}, ${key}, 'open', 'medium', ${ownerId},
-                ${createdAt.toISOString()}::timestamptz)
+                ${createdAt.toISOString()}::timestamptz, ${spec.moves[0][2].toISOString()}::timestamptz)
       `);
       for (const [from, to, when] of spec.moves) {
         await harness.db.execute(sql`
@@ -138,6 +171,27 @@ describe('ISS-1270 · a shipped issue counts once, on its first shipped day', ()
           INSERT INTO issue_labels (issue_id, label_id) VALUES (${issueId}, ${labelId})
         `);
       }
+    }
+    for (const [key, spec] of Object.entries(NEVER_SHIPPED)) {
+      seq += 1;
+      const issueId = randomUUID();
+      const mergedAt = spec.merged ? spec.moves[0][2].toISOString() : null;
+      await harness.db.execute(sql`
+        INSERT INTO issues (id, project_id, iss_seq, title, status, priority, created_by_id, created_at, merged_at)
+        VALUES (${issueId}, ${projectId}, ${seq}, ${key}, ${spec.status}, 'medium', ${ownerId},
+                ${new Date(spec.moves[0][2].getTime() - DAY_MS).toISOString()}::timestamptz,
+                ${mergedAt}::timestamptz)
+      `);
+      for (const [from, to, when] of spec.moves) {
+        await harness.db.execute(sql`
+          INSERT INTO activity_log (id, issue_id, actor_type, actor_id, action, payload, created_at)
+          VALUES (${randomUUID()}, ${issueId}, 'user', ${ownerId}, 'issue.statusChanged',
+                  ${JSON.stringify({ from, to })}::jsonb, ${when.toISOString()}::timestamptz)
+        `);
+      }
+      await harness.db.execute(sql`
+        INSERT INTO issue_labels (issue_id, label_id) VALUES (${issueId}, ${labelId})
+      `);
     }
   }, 120_000);
 
@@ -175,6 +229,23 @@ describe('ISS-1270 · a shipped issue counts once, on its first shipped day', ()
       expect(await countOn(PLANTED.sameInstant.countsOn)).toBe(1);
     });
 
+    it('counts nothing for an issue that reached awaiting_release and was then dropped', async () => {
+      expect(await countOn(6)).toBe(0);
+    });
+
+    it('counts nothing for an issue moved to awaiting_release with no merge, nor one parked after it', async () => {
+      const { shippedPerDay } = await import('../../src/pipeline/throughput-series.js');
+      const unmerged = (await harness.db.execute(sql`
+        SELECT title FROM issues WHERE project_id = ${projectId} AND merged_at IS NULL ORDER BY title
+      `)) as unknown as Array<{ title: string }>;
+      expect(unmerged.map((r) => r.title)).toEqual([
+        'movedByHandWithNoMerge',
+        'parkedAfterAMoveWithNoMerge',
+      ]);
+      const rows = await shippedPerDay([projectId], DAYS, asOf);
+      expect(rows.find((r) => r.date === ymd(midnight(6)))?.count).toBe(0);
+    });
+
     it('totals the distinct issues whose first shipped day is in the window, on a dense seven-day calendar', async () => {
       const rows = await series();
       expect(rows.map((r) => r.date)).toEqual(
@@ -188,7 +259,7 @@ describe('ISS-1270 · a shipped issue counts once, on its first shipped day', ()
   describe('project health', () => {
     const aggregates = async () => {
       const { readHealthAggregates } = await import('../../src/projects/health-aggregates.js');
-      return readHealthAggregates([projectId]);
+      return readHealthAggregates([projectId], ownerId);
     };
 
     it('reports throughput as the issues whose first shipped transition is in the last seven days', async () => {

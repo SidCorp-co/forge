@@ -11,7 +11,7 @@ import { jobEvents, jobs } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { isSentryEnabled, Sentry } from '../observability/sentry.js';
 import { classifyFailure, deriveActionFromKind } from '../pipeline/failure-classifier.js';
-import { verifyRecovery } from '../pipeline/recovery-verifier.js';
+import { type RecoveryVerdict, verifyRecovery } from '../pipeline/recovery-verifier.js';
 import {
   capacityWedgeEntityId,
   emitPipelineWedge,
@@ -20,6 +20,7 @@ import {
 import { onlineCapableDeviceIds } from '../runners/select.js';
 import type { RequiredCapabilities } from '../runners/types.js';
 import { buildVerifierPrompt } from '../skills/reconcile-service.js';
+import { admitJob, RunClosedToJobs } from './admit.js';
 import { resolveStageOverrides } from './stage-overrides.js';
 
 type JobRow = typeof jobs.$inferSelect;
@@ -201,19 +202,22 @@ async function notifyCapacityOutage(
  * What to tell an operator about an empty pool, given which of the three ways
  * it is empty.
  */
-function wedgeCopy(
+export function wedgeCopy(
   allLimited: boolean,
   limitedCount: number,
   tooOldCount: number,
   args: { scope: string },
 ): { reason: string; action: string; title: string; summary: string; nextStep: string } {
   const { scope } = args;
+  /** Its runners, as a person counts them: never "all 1" or "all 2". */
+  const its = (n: number, one: string, many: string) =>
+    n === 1 ? `its one runner ${one}` : `${n === 2 ? 'both' : `all ${n}`} of its runners ${many}`;
   if (allLimited) {
     return {
       reason: `all ${limitedCount} capable device(s) are rate-limited or quarantined`,
       action: 'raise the account limit or wait for the provider reset',
       title: `No capacity: every runner for ${scope} is limited`,
-      summary: `Work for ${scope} is paused because all ${limitedCount} of its runners have hit an account limit. Steps keep waiting and resume by themselves once one frees up.`,
+      summary: `Work for ${scope} is paused because ${its(limitedCount, 'has', 'have')} hit an account limit. Steps keep waiting and resume by themselves once one frees up.`,
       nextStep:
         'Raise the account spend/usage limit, or wait for the provider reset — no other action needed.',
     };
@@ -223,7 +227,7 @@ function wedgeCopy(
       reason: `all ${tooOldCount} capable device(s) run a build too old to claim work`,
       action: 'update the runner on those hosts',
       title: `No capacity: every runner for ${scope} is out of date`,
-      summary: `Work for ${scope} is paused because all ${tooOldCount} of its runners are online but running a build older than this server requires, so every claim is refused. This does NOT clear by itself.`,
+      summary: `Work for ${scope} is paused because ${its(tooOldCount, 'is', 'are')} online but running a build older than this server requires, so every claim is refused. This does NOT clear by itself.`,
       nextStep:
         'Update forge-runner on those hosts; work resumes on the next tick once they report the new version.',
     };
@@ -346,7 +350,7 @@ export async function scheduleAutoRetryWithVerify(
   }
 
   if (job.issueId) {
-    let verdict: 'advanced' | 'reverted' | 'pending';
+    let verdict: RecoveryVerdict;
     try {
       verdict = await verifyRecovery(job);
     } catch (err) {
@@ -362,13 +366,6 @@ export async function scheduleAutoRetryWithVerify(
         await publishSessionRecoveryChanged(job.projectId, job.agentSessionId);
       }
       return { scheduled: false, reason: 'completed_via_recovery' };
-    }
-    if (verdict === 'reverted') {
-      if (job.agentSessionId) {
-        await markSessionTerminal(job.agentSessionId, 'cancelled_stale');
-        await publishSessionRecoveryChanged(job.projectId, job.agentSessionId);
-      }
-      return { scheduled: false, reason: 'cancelled_stale' };
     }
   }
 
@@ -434,9 +431,9 @@ export async function scheduleAutoRetryWithVerify(
     nextPayload.promptString = await buildVerifierPrompt(basePayload.reconcileRunId, newJobId);
   }
 
-  const [created] = await db
-    .insert(jobs)
-    .values({
+  let created: { id: string };
+  try {
+    created = await admitJob(db, {
       ...(newJobId ? { id: newJobId } : {}),
       projectId: job.projectId,
       issueId: job.issueId,
@@ -449,10 +446,11 @@ export async function scheduleAutoRetryWithVerify(
       attempts: job.attempts + 1,
       retryOf: job.id,
       retryAfterAt,
-    })
-    .returning({ id: jobs.id });
-
-  if (!created) throw new Error('retry: insert returned no row');
+    });
+  } catch (err) {
+    if (err instanceof RunClosedToJobs) return { scheduled: false, reason: 'run_closed' };
+    throw err;
+  }
 
   if (job.agentSessionId) {
     try {

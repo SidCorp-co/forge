@@ -50,7 +50,7 @@ import {
   renameOrg,
   updatedMemberSchema,
 } from './routes-reference.js';
-import { listOrgMembers, listOrgsForUser } from './service.js';
+import { listOrgMembers, listOrgsForUser, refuseNonPersonAsMember } from './service.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -244,6 +244,8 @@ orgRoutes.post(
       throw conflict('personal org cannot have additional members', 'PERSONAL_ORG_IMMUTABLE');
     }
 
+    // Before the lookup: an address whose account is not minted yet would otherwise be invited.
+    await refuseNonPersonAsMember({ email });
     const [target] = await db
       .select({ id: users.id })
       .from(users)
@@ -286,6 +288,7 @@ orgRoutes.post(
       return c.json(answer(invitedSchema, body), 202);
     }
 
+    await refuseNonPersonAsMember({ userId: target.id });
     const [inserted] = await db
       .insert(organizationMembers)
       .values({ orgId, userId: target.id, role })

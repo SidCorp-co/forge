@@ -1,21 +1,15 @@
-
-import type { PipelineRunListItem } from "@/features/pipeline/types";
-import { HEARTBEAT_REAP_MS } from "@/features/sessions/types";
+import type { PipelineRunListItem } from "@/features/runs/types";
 
 const LIVE_RUN_STATUSES: ReadonlySet<string> = new Set(["running", "paused"]);
 
-/** Whether core has heard from a session on this run recently enough to call it alive. */
-export function sessionIsBeating(
-  run: Pick<PipelineRunListItem, "lastSessionBeatAt">,
-  nowMs: number,
-): boolean {
-  if (!run.lastSessionBeatAt) return false;
-  const beat = Date.parse(run.lastSessionBeatAt);
-  if (Number.isNaN(beat)) return false;
-  return nowMs - beat <= HEARTBEAT_REAP_MS;
+export const RUN_START_GRACE_MS = 3 * 60_000;
+
+/** Core ends a silent session itself, so a session it holds open is an agent behind the run. */
+export function sessionIsBeating(run: Pick<PipelineRunListItem, "lastSessionBeatAt">): boolean {
+  return run.lastSessionBeatAt != null && !Number.isNaN(Date.parse(run.lastSessionBeatAt));
 }
 
-/** Whether a run that has never been heard from is still inside its startup grace. */
+/** Whether a run that has never been heard from is still inside its start-up grace. */
 function runIsStartingUp(
   run: Pick<PipelineRunListItem, "lastSessionBeatAt" | "startedAt">,
   nowMs: number,
@@ -23,7 +17,19 @@ function runIsStartingUp(
   if (run.lastSessionBeatAt) return false;
   const started = Date.parse(run.startedAt);
   if (Number.isNaN(started)) return false;
-  return nowMs - started <= HEARTBEAT_REAP_MS;
+  return nowMs - started <= RUN_START_GRACE_MS;
+}
+
+/** The project's runs that are still open, worked or not. */
+export function openRuns(runs: readonly PipelineRunListItem[] | undefined): PipelineRunListItem[] {
+  return (runs ?? []).filter((r) => LIVE_RUN_STATUSES.has(r.status));
+}
+
+/** Open runs with a live job or a heartbeating session behind them. */
+export function workedRuns(runs: readonly PipelineRunListItem[] | undefined): PipelineRunListItem[] {
+  return (runs ?? []).filter(
+    (r) => LIVE_RUN_STATUSES.has(r.status) && ((r.liveJobs ?? 0) > 0 || sessionIsBeating(r)),
+  );
 }
 
 /**
@@ -37,7 +43,7 @@ export function stalledRuns(
     (r) =>
       LIVE_RUN_STATUSES.has(r.status) &&
       (r.liveJobs ?? 0) === 0 &&
-      !sessionIsBeating(r, nowMs) &&
+      !sessionIsBeating(r) &&
       !runIsStartingUp(r, nowMs),
   );
 }

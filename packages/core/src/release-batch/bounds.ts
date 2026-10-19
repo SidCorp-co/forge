@@ -55,16 +55,55 @@ function readRegression(readings: ReleaseAttemptRow[]): { crossed: boolean; why:
   };
 }
 
+/** Where a run's silence is measured from, and which of the two moments that is. */
+export interface StallOrigin {
+  at: number;
+  from: 'ledger' | 'taken';
+}
+
+/**
+ * The newest write to the run's ledger, or the time a box took its job where that is newer than
+ * every write. A write at the same instant as the job is the ledger's: it is the later act.
+ */
+export function stallOrigin(
+  attempts: ReleaseAttemptRow[],
+  takenAt?: Date | null,
+): StallOrigin | null {
+  const newestWrite = attempts
+    .flatMap((a) => [a.startedAt.getTime(), ...(a.settledAt ? [a.settledAt.getTime()] : [])])
+    .reduce<number | null>((max, t) => (max === null || t > max ? t : max), null);
+  const taken = takenAt?.getTime() ?? null;
+  if (taken !== null && (newestWrite === null || taken > newestWrite)) {
+    return { at: taken, from: 'taken' };
+  }
+  return newestWrite === null ? null : { at: newestWrite, from: 'ledger' };
+}
+
+const STALL_WHY: Record<StallOrigin['from'], string> = {
+  ledger: 'time since the newest write to this run’s ledger',
+  taken: 'time since a box took this run’s job, with nothing written to its ledger since',
+};
+
 /**
  * The three bounds, measured against one run's ledger.
  *
- * `now` is injected so the reading is testable without real time.
+ * `now` is injected so the reading is testable without real time. `takenAt` is when a box took
+ * the run's job: given, it is where a run's silence is measured from once the ledger holds nothing
+ * newer, so a run that took its job and died before promoting reads as stalled. Without it the
+ * stall bound reads only a run that has promoted.
  */
 export function readBounds(
   attempts: ReleaseAttemptRow[],
-  opts: { now?: number; total?: number; stall?: number } = {},
+  opts: {
+    now?: number;
+    total?: number;
+    stall?: number;
+    takenAt?: Date | null;
+    /** The run has ended: its bounds measure up to `at` where it is known, and nothing holds. */
+    ended?: { at: Date | null } | undefined;
+  } = {},
 ): BoundsReading {
-  const now = opts.now ?? Date.now();
+  const now = opts.ended?.at?.getTime() ?? opts.now ?? Date.now();
   const totalThreshold = opts.total ?? BOUND_DEFAULTS.total;
   const stallThreshold = opts.stall ?? BOUND_DEFAULTS.stall;
 
@@ -90,12 +129,9 @@ export function readBounds(
           why: 'time since this run first promoted',
         };
 
-  const lastWrite = attempts
-    .flatMap((a) => [a.startedAt.getTime(), a.settledAt?.getTime() ?? Number.NEGATIVE_INFINITY])
-    .reduce<number | null>((max, t) => (max === null || t > max ? t : max), null);
-  const stallFrom = lastWrite !== null && Number.isFinite(lastWrite) ? lastWrite : firstPromotion;
+  const origin = stallOrigin(attempts, opts.takenAt);
   const stall: BoundReading =
-    firstPromotion === null || stallFrom === null
+    origin === null || (firstPromotion === null && opts.takenAt == null)
       ? {
           name: 'stall',
           crossed: false,
@@ -105,10 +141,10 @@ export function readBounds(
         }
       : {
           name: 'stall',
-          crossed: now - stallFrom > stallThreshold,
-          measuredMs: now - stallFrom,
+          crossed: now - origin.at > stallThreshold,
+          measuredMs: now - origin.at,
           thresholdMs: stallThreshold,
-          why: 'time since the newest write to this run’s ledger',
+          why: STALL_WHY[origin.from],
         };
 
   const regression: BoundReading = {
@@ -120,5 +156,5 @@ export function readBounds(
 
   const bounds = [total, stall, regression];
   const crossedNames = bounds.filter((b) => b.crossed).map((b) => b.name);
-  return { holding: crossedNames.length > 0, crossedNames, bounds };
+  return { holding: opts.ended === undefined && crossedNames.length > 0, crossedNames, bounds };
 }

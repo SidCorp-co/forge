@@ -1,34 +1,22 @@
-import { and, eq, gt, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
+import { and, eq, gt, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import { type Db, db } from '../db/client.js';
-import {
-  issueDependencies,
-  issueStepContexts,
-  issues,
-  jobs,
-  projectKinds,
-  projects,
-} from '../db/schema.js';
+import { issueDependencies, issues, projectKinds, projects } from '../db/schema.js';
 import { WORK_EVIDENCE_WAIVER_KIND } from '../issues/dependency-effects.js';
 import {
   DECLARE_OUTSIDE_GIT,
   type Lane,
   laneOrNull,
+  type MarkDoor,
+  markField,
+  sendLanding,
   whereItLands,
 } from '../issues/landing-evidence.js';
 import { logger } from '../logger.js';
 import { chainLiveBranch } from '../projects/release-chain.js';
 
-const IMPLEMENTATION_STEPS = ['code', 'fix', 'drive'] as const;
-
-const JOB_SCAN_LIMIT = 50;
-const HANDOFF_SCAN_LIMIT = 50;
-
 type EvidenceExecutor = Pick<Db, 'select'>;
 
 export interface WorkEvidence {
-  implementationJobCount: number;
-  handoffCommitSha: string | null;
-  handoffFilesModified: number;
   branch: string | null;
   /** `issues.merged_commit_sha`: a merge Forge read for itself, from a pull request or the repository. */
   mergedCommitSha: string | null;
@@ -46,90 +34,46 @@ export async function collectWorkEvidence(
   issueId: string,
   executor: EvidenceExecutor = db,
 ): Promise<WorkEvidence> {
-  const [jobRows, handoffRows, issueRows] = await Promise.all([
-    executor
-      .select({ id: jobs.id })
-      .from(jobs)
-      .where(and(eq(jobs.issueId, issueId), inArray(jobs.type, IMPLEMENTATION_STEPS)))
-      .limit(JOB_SCAN_LIMIT),
-    executor
-      .select({ payload: issueStepContexts.payload })
-      .from(issueStepContexts)
-      .where(
-        and(
-          eq(issueStepContexts.issueId, issueId),
-          eq(issueStepContexts.kind, 'handoff'),
-          inArray(issueStepContexts.step, IMPLEMENTATION_STEPS),
-        ),
-      )
-      .limit(HANDOFF_SCAN_LIMIT),
-    executor
-      .select({
-        sessionContext: issues.sessionContext,
-        mergedAt: issues.mergedAt,
-        mergedCommitSha: issues.mergedCommitSha,
-        mergedLanding: issues.mergedLanding,
-        mergedClaimedCommit: issues.mergedClaimedCommit,
-        declaredLandingShape: issues.declaredLandingShape,
-        baseBranch: projects.baseBranch,
-        releaseChain: projects.releaseChain,
-        projectKind: projects.kind,
-      })
-      .from(issues)
-      .innerJoin(projects, eq(projects.id, issues.projectId))
-      .where(eq(issues.id, issueId))
-      .limit(1),
-  ]);
+  const [row] = await executor
+    .select({
+      sessionContext: issues.sessionContext,
+      mergedAt: issues.mergedAt,
+      mergedCommitSha: issues.mergedCommitSha,
+      mergedLanding: issues.mergedLanding,
+      mergedClaimedCommit: issues.mergedClaimedCommit,
+      declaredLandingShape: issues.declaredLandingShape,
+      baseBranch: projects.baseBranch,
+      releaseChain: projects.releaseChain,
+      projectKind: projects.kind,
+    })
+    .from(issues)
+    .innerJoin(projects, eq(projects.id, issues.projectId))
+    .where(eq(issues.id, issueId))
+    .limit(1);
 
-  let handoffCommitSha: string | null = null;
-  let handoffFilesModified = 0;
-  for (const row of handoffRows) {
-    const payload = row.payload as Record<string, unknown> | null;
-    if (!payload) continue;
-    if (
-      !handoffCommitSha &&
-      typeof payload.commitSha === 'string' &&
-      payload.commitSha.length > 0
-    ) {
-      handoffCommitSha = payload.commitSha;
-    }
-    if (Array.isArray(payload.filesModified)) {
-      handoffFilesModified += payload.filesModified.length;
-    }
-  }
-
-  const sessionContext = issueRows[0]?.sessionContext as Record<string, unknown> | null | undefined;
+  const sessionContext = row?.sessionContext as Record<string, unknown> | null | undefined;
   const worklog = sessionContext?.worklog as Record<string, unknown> | null | undefined;
   const named = [sessionContext?.branch, worklog?.branch].find(
     (v): v is string => typeof v === 'string' && v.length > 0,
   );
-  const projectRow = issueRows[0];
-  const excludedLive = projectRow ? chainLiveBranch(projectRow.releaseChain) : null;
-  const branch =
-    named && named !== issueRows[0]?.baseBranch && named !== excludedLive ? named : null;
+  const excludedLive = row ? chainLiveBranch(row.releaseChain) : null;
+  const branch = named && named !== row?.baseBranch && named !== excludedLive ? named : null;
 
-  const lane = laneOrNull(projectRow?.declaredLandingShape, projectRow?.projectKind);
-  const marked = projectRow?.mergedAt != null;
+  const lane = laneOrNull(row?.declaredLandingShape, row?.projectKind);
+  const marked = row?.mergedAt != null;
   return {
-    implementationJobCount: jobRows.length,
-    handoffCommitSha,
-    handoffFilesModified,
     branch,
-    mergedCommitSha: marked ? projectRow?.mergedCommitSha?.trim() || null : null,
+    mergedCommitSha: marked ? row?.mergedCommitSha?.trim() || null : null,
     mergedLanding:
-      marked && lane?.shape === 'outside_git' ? projectRow?.mergedLanding?.trim() || null : null,
-    claimedCommit: marked ? projectRow?.mergedClaimedCommit?.trim() || null : null,
+      marked && lane?.shape === 'outside_git' ? row?.mergedLanding?.trim() || null : null,
+    claimedCommit: marked ? row?.mergedClaimedCommit?.trim() || null : null,
     lane,
   };
 }
 
-/** Whether anything shows work happened: a branch, a handoff, a merge Forge read, the commit a mark
- *  claims where Forge could not read the repository, or — on an `outside_git` lane — the landing its
- *  mark names. */
+/** Whether any field of the issue's row shows work happened. */
 export function hasCodeEvidence(evidence: WorkEvidence): boolean {
   return (
-    Boolean(evidence.handoffCommitSha) ||
-    evidence.handoffFilesModified > 0 ||
     Boolean(evidence.branch) ||
     Boolean(evidence.mergedCommitSha) ||
     Boolean(evidence.claimedCommit) ||
@@ -171,9 +115,8 @@ export async function hasChildIssues(
   return row != null;
 }
 
-const BRANCH_OR_HANDOFF =
-  'record the branch in sessionContext.branch or sessionContext.worklog.branch, or write the ' +
-  'implementation step handoff with commitSha/filesModified';
+const RECORD_THE_BRANCH =
+  'record the branch in sessionContext.branch or sessionContext.worklog.branch';
 
 const NOT_A_BRANCH =
   'A branch equal to the project base branch is not evidence, and neither is the last branch of ' +
@@ -210,48 +153,51 @@ const UNKNOWN_LANE =
   projectKinds.map((k) => `\`${k}\``).join(', ') +
   ', so whether its work lands in git is unknown and the commit route is not offered.';
 
+/** What a mark door's refusal opens on; the reason that follows completes the sentence. */
+const NOTHING_MARKED = 'Nothing was marked, because';
+
+/** The mark door's refusal: its own short sentences, then each rule another part words, quoted on
+ *  a line of its own rather than spliced into one of them (ISS-1421 r6, criterion 63). */
+function markDetail(said: string, rules: readonly string[]): string {
+  return [said, ...rules.map((rule) => `> ${rule.replace(/\s+/g, ' ').trim()}`)].join('\n\n');
+}
+
 /** Outside git the landing a mark names is the route, for anyone. A branch is that lane's second
  *  route and its base-branch paragraph is a git lane's, so the sentence ends on the lane. */
-function outsideGitDetail(lane: Lane, door: EvidenceDoor): string {
+function outsideGitDetail(lane: Lane, door: EvidenceDoor, via: MarkDoor): string {
   const lands = `${whereItLands(lane, true)}, so a commit is not read here.`;
   if (door === 'mark') {
-    return (
-      'this mark names no landing, and no branch or code handoff is recorded for this issue, so ' +
-      'nothing was marked — mark it again with `mark_merged` carrying `data.landing`, ' +
-      `${WHERE_IT_NOW_IS}. ${lands}`
-    );
+    return `${NOTHING_MARKED} this mark names no landing and no branch is recorded for this issue. ${sendLanding(via)}`;
   }
   return (
-    'no landing, branch or code handoff is recorded for this issue — mark it merged with ' +
-    `\`mark_merged\` carrying \`data.landing\`, ${WHERE_IT_NOW_IS}, or ${BRANCH_OR_HANDOFF}, ` +
+    'no landing or branch is recorded for this issue — mark it merged with ' +
+    `\`mark_merged\` carrying \`data.landing\`, ${WHERE_IT_NOW_IS}, or ${RECORD_THE_BRANCH}, ` +
     `${THEN[door]}. ${lands}${door === 'criterion' ? ` ${DECLARED}` : ''}`
   );
 }
 
 /** On a git lane the commit route is read for an agent alone (`merge-marker.ts:applyMergeMarker`),
  *  so a sentence offering it to anyone else sends them into the same refusal again. */
-function gitDetail(door: EvidenceDoor): string {
+function gitDetail(door: EvidenceDoor, via: MarkDoor): string {
   if (door === 'mark') {
-    return (
-      'this mark names no commit, and no branch or code handoff is recorded for this issue, so ' +
-      `nothing was marked — ${BRANCH_OR_HANDOFF}, then mark it again; or, where the work landed ` +
-      'on the base branch itself, mark it again with `mark_merged` carrying `data.commit`, the ' +
-      "commit it landed at, which Forge checks against the project's repository. " +
-      `${UNREADABLE_REPOSITORY} ${DECLARE_OUTSIDE_GIT} ${NOT_A_BRANCH}`
+    return markDetail(
+      `${NOTHING_MARKED} this mark names no commit and no branch is recorded for this issue. ` +
+        'Record the branch in `sessionContext.branch`, or name the commit it landed at on the ' +
+        `base branch in ${markField(via, 'commit')}. Forge checks that commit against the project's repository.`,
+      [UNREADABLE_REPOSITORY, DECLARE_OUTSIDE_GIT, NOT_A_BRANCH],
     );
   }
   if (door === 'advance') {
     return (
-      'no branch, commit or code handoff is recorded for this issue — record the branch in ' +
-      'sessionContext.branch or sessionContext.worklog.branch, write the implementation step ' +
-      'handoff with commitSha/filesModified, or, where the work landed on the base branch ' +
-      'itself, mark it merged with `mark_merged` carrying `data.commit`, the commit it landed ' +
+      `no branch or commit is recorded for this issue — ${RECORD_THE_BRANCH}, or, where the ` +
+      'work landed on the base branch itself, mark it merged with `mark_merged` carrying ' +
+      '`data.commit`, the commit it landed ' +
       `at, which Forge checks against the project's repository, before advancing. ` +
       `${UNREADABLE_REPOSITORY} ${DECLARE_OUTSIDE_GIT} ${NOT_A_BRANCH}`
     );
   }
   return (
-    `no branch, commit or code handoff is recorded for this issue — ${BRANCH_OR_HANDOFF}, ` +
+    `no branch or commit is recorded for this issue — ${RECORD_THE_BRANCH}, ` +
     'before this status. A merge mark counts only where Forge read its commit itself, or held it as a claim it could not check: a mark ' +
     "over a merged pull request Forge holds for this issue, or an agent's `mark_merged` " +
     "carrying `data.commit`, which Forge reads from the project's repository as this issue's " +
@@ -264,12 +210,23 @@ function gitDetail(door: EvidenceDoor): string {
 
 /** The `NO_WORK_EVIDENCE` refusal, naming only the routes that clear it on this issue's lane at
  *  this door. */
-export function noWorkEvidenceDetail(lane: Lane | null, door: EvidenceDoor = 'advance'): string {
-  if (lane?.shape === 'outside_git') return outsideGitDetail(lane, door);
-  if (lane?.shape === 'git') return gitDetail(door);
+export function noWorkEvidenceDetail(
+  lane: Lane | null,
+  door: EvidenceDoor = 'advance',
+  via: MarkDoor = 'rest',
+): string {
+  if (lane?.shape === 'outside_git') return outsideGitDetail(lane, door, via);
+  if (lane?.shape === 'git') return gitDetail(door, via);
+  if (door === 'mark') {
+    return markDetail(
+      `${NOTHING_MARKED} no branch is recorded for this issue. Record the branch in ` +
+        '`sessionContext.branch` or `sessionContext.worklog.branch`, then mark it again.',
+      [UNKNOWN_LANE, NOT_A_BRANCH],
+    );
+  }
   return (
-    `no branch or code handoff is recorded for this issue${door === 'mark' ? ', so nothing was marked' : ''} ` +
-    `— ${BRANCH_OR_HANDOFF}, ${THEN[door]}. ${UNKNOWN_LANE}` +
+    `no branch is recorded for this issue ` +
+    `— ${RECORD_THE_BRANCH}, ${THEN[door]}. ${UNKNOWN_LANE}` +
     `${door === 'criterion' ? ` ${DECLARED}` : ''} ${NOT_A_BRANCH}`
   );
 }
@@ -289,19 +246,21 @@ export async function missingWorkEvidenceStrict(
   issueId: string,
   executor: EvidenceExecutor = db,
   door: EvidenceDoor = 'advance',
+  via: MarkDoor = 'rest',
 ): Promise<string | null> {
   if (await hasChildIssues(issueId, executor)) return null;
   const evidence = await collectWorkEvidence(issueId, executor);
-  return hasCodeEvidence(evidence) ? null : noWorkEvidenceDetail(evidence.lane, door);
+  return hasCodeEvidence(evidence) ? null : noWorkEvidenceDetail(evidence.lane, door, via);
 }
 
 export async function findMissingWorkEvidence(
   issueId: string,
   executor: EvidenceExecutor = db,
   door: EvidenceDoor = 'advance',
+  via: MarkDoor = 'rest',
 ): Promise<string | null> {
   try {
-    return await missingWorkEvidenceStrict(issueId, executor, door);
+    return await missingWorkEvidenceStrict(issueId, executor, door, via);
   } catch (err) {
     logger.warn({ err, issueId }, 'work-evidence: check failed, allowing (fail open)');
     return null;

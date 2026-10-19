@@ -58,6 +58,14 @@ let projectionRows: unknown[] = [];
 let stampedRows: unknown[] = [{ mergedAt: AT, mergedCommitSha: null }];
 /** Every column set the mark's UPDATE carried, which is what the description claims about. */
 const setPayloads: Record<string, unknown>[] = [];
+const commentBodies: string[] = [];
+
+// The branch a target token means is read against Postgres in
+// `tests/integration/landing-moves-forward-e2e.test.ts`; here it is named outright (ISS-1421 r8).
+vi.mock('../../issues/mark-target.js', () => ({
+  markTargetBranch: async (_issue: unknown, token: string) =>
+    ({ base: 'main', prod: 'production', feature: 'ISS-7-the-branch' })[token],
+}));
 
 vi.mock('../../db/client.js', () => ({
   db: {
@@ -81,9 +89,10 @@ vi.mock('../../db/client.js', () => ({
       },
     }),
     insert: () => ({
-      values: (row: { body: string }) => ({
-        returning: async () => [{ id: 'comment-1', body: row.body, parentId: null }],
-      }),
+      values: (row: { body: string }) => {
+        commentBodies.push(row.body);
+        return { returning: async () => [{ id: 'comment-1', body: row.body, parentId: null }] };
+      },
     }),
   },
 }));
@@ -114,7 +123,6 @@ vi.mock('../../issues/dependency-read.js', () => ({
 vi.mock('../../issues/attributes/read.js', () => ({ loadIssueAttributes: async () => [] }));
 vi.mock('../../pipeline/work-evidence.js', () => ({
   findMissingWorkEvidence: async () => null,
-  collectWorkEvidence: async () => ({ handoffCommitSha: null }),
 }));
 vi.mock('../../pipeline/hooks.js', () => ({ hooks: { emit: async () => undefined } }));
 /** The shape `landing-evidence.ts` reads off the project's kind, set per case. */
@@ -261,8 +269,17 @@ describe('forge_issues action=mark_merged, the answer to the call that writes on
       action: 'mark_merged',
       data: { issueId: ISSUE_ID, target: 'base', commit: 'abc1234' },
     });
-    expect(claimed.detail).toContain('CLAIM Forge did not observe');
-    expect(claimed.detail).toContain('NOT in `merged_commit_sha`');
+    expect(claimed.detail).toContain('Forge did not see this merge');
+    expect(claimed.detail).toContain('so the mark is a claim that names no commit');
+    expect(claimed.detail).not.toContain('kept');
+  });
+
+  // ISS-1421 r8, criterion 126: judge-40 read "Marked merged into base." in the thread.
+  it('names the branch a target token means in the comment, never the token', async () => {
+    commentBodies.length = 0;
+    await call({ action: 'mark_merged', data: { issueId: ISSUE_ID, target: 'base' } });
+    expect(commentBodies.join('\n')).toContain('Marked merged into main');
+    expect(commentBodies.join('\n')).not.toContain('into base');
   });
 
   it('answers unmark with unmarked rather than the kind it cleared', async () => {
@@ -347,5 +364,27 @@ describe('forge_issues on a project whose work lands outside git (ISS-1327)', ()
     const text = forgeIssuesDescription('<ref clause>');
     expect(text).toContain('data.landing');
     expect(text).toContain('LANDING_REQUIRED');
+  });
+});
+
+// ISS-1421 r9, criteria 119 and 131: judge-43 read "data.target is required for mark_merged" and a
+// four-sentence LANDING_REQUIRED. This door's refusals name the field an MCP caller sends.
+describe('mark_merged refusals name the MCP field (ISS-1421 r9)', () => {
+  it('refuses a mark with no target in one sentence naming data.target', async () => {
+    await expect(call({ action: 'mark_merged', data: { issueId: ISSUE_ID } })).rejects.toThrow(
+      'BAD_REQUEST: Name where the work merged as `data.target`: base, prod or feature.',
+    );
+    expect(setPayloads).toEqual([]);
+  });
+
+  it('refuses a website mark naming no landing with data.landing as the step', async () => {
+    shape = 'outside_git';
+    const refused = await call({
+      action: 'mark_merged',
+      data: { issueId: ISSUE_ID, target: 'prod' },
+    }).catch((err: Error) => err.message);
+    expect(refused).toMatch(/^LANDING_REQUIRED: Nothing was marked, because /);
+    expect(refused).toContain('Send `data.landing` naming the live URL');
+    expect(refused).not.toContain('landingShape');
   });
 });

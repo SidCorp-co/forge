@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { Badge, Button, HealthDot, Icon } from "@/design";
 import type { RunnersSummary } from "../derive";
-import { type ReadState, unreadStatement } from "../shape";
+import { plural, type ReadState, unreadStatement } from "../shape";
 import { DashboardSection, EmptyLine, RowList, unreadSection } from "./dashboard-section";
 
 const PLATFORM_LABEL: Record<string, string> = { macos: "macOS", linux: "Linux", windows: "Windows" };
@@ -18,7 +18,7 @@ export function RunnersCard({
   slug: string;
   /** The project's runners read; until it is in, "none bound" is not said. */
   read?: ReadState;
-  /** The queue and active-runner reads; until both are in, no runner is called idle or busy. */
+  /** The queue, active-runner and sessions reads; until all are in, no runner is called idle or busy. */
   activity?: ReadState;
 }) {
   const router = useRouter();
@@ -80,7 +80,15 @@ export function RunnersCard({
                 className="fg-caption min-w-12 flex-none text-right font-semibold"
                 style={{ color: r.busy ? "var(--cobalt-700)" : "var(--fg-subtle)" }}
               >
-                {r.draining ? "draining" : r.online ? (r.busy ? "busy" : "idle") : "offline"}
+                {r.draining
+                  ? "draining"
+                  : r.online
+                    ? r.sessions > 0
+                      ? plural(r.sessions, "session", "sessions")
+                      : r.busy
+                        ? "busy"
+                        : "idle"
+                    : "offline"}
               </span>
             )}
           </li>

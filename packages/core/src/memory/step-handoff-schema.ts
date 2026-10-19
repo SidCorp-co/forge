@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { type JobType, testResults } from '../db/schema.js';
+import { testResults } from '../db/schema.js';
 
 const triageHandoff = z.object({
   step: z.literal('triage'),
@@ -133,11 +133,11 @@ export const HANDOFF_STEPS = [
   'test',
   'fix',
   'drive',
-] as const satisfies ReadonlyArray<JobType>;
+] as const;
 export type HandoffStep = (typeof HANDOFF_STEPS)[number];
 
-export function isHandoffStep(step: JobType): step is HandoffStep {
-  return (HANDOFF_STEPS as readonly JobType[]).includes(step);
+export function isHandoffStep(step: string): step is HandoffStep {
+  return (HANDOFF_STEPS as readonly string[]).includes(step);
 }
 
 // ────────────────────────────────────────────────────────────────────
@@ -279,16 +279,9 @@ export interface HandoffScope {
 }
 
 /**
- * The autonomous lane's termination block.
- *
- * `renderTerminationBlock` below is the staged one and stays as it is. The
- * driver needs its own because the staged text is wrong for it in three ways
- * that all point the same direction: it names MCP tools on a lane that reaches
- * Forge over the CLI, it sends the agent to "the next state in the Pipeline
- * Rules ladder" on a lane that has no ladder, and it offers `waiting` and
- * `reopen` — the two parks `issues/autonomous-park.ts` then silently rewrites,
- * so instructing them makes that net fire on every session it was built to
- * catch once.
+ * The driver's termination block: the handoff it records over the CLI, and the statuses it may
+ * leave the issue on. It offers neither `waiting` nor `reopen`, the two parks
+ * `issues/autonomous-park.ts` rewrites.
  */
 export function renderDriveTerminationBlock(scope: HandoffScope): string {
   return [
@@ -319,57 +312,6 @@ export function renderDriveTerminationBlock(scope: HandoffScope): string {
     '',
     '```json',
     renderHandoffSchemaPrompt('drive'),
-    '```',
-    '',
-    'Rules:',
-    '- All fields above are REQUIRED unless marked optional.',
-    '- Array fields have a max length; do not exceed it.',
-    '- Enum fields must use one of the listed values exactly.',
-    '- Do NOT invent fields not listed above.',
-  ].join('\n');
-}
-
-export function renderTerminationBlock(opts: { step: HandoffStep; scope: HandoffScope }): string {
-  const { step, scope } = opts;
-  return [
-    '## Termination protocol',
-    '',
-    'When you finish the work for this state, record a short structured handoff so',
-    'the next step inherits your context. This is best-effort context — NOT a',
-    'completion gate, so it never blocks your real work.',
-    '',
-    '1. Call `forge_step_handoff.write` with these scope fields (do not change them):',
-    '',
-    '   ```json',
-    '   {',
-    `     "projectId": "${scope.projectId}",`,
-    `     "issueId": "${scope.issueId}",`,
-    `     "pipelineRunId": "${scope.runId}",`,
-    `     "step": "${step}",`,
-    `     "attempt": ${scope.attempt},`,
-    '     "payload": <see schema below>',
-    '   }',
-    '   ```',
-    '',
-    '2. Advance the pipeline state (MANDATORY — not best-effort). Call',
-    '   `forge_issues.update` to move the issue `status` to the next state in the',
-    '   Pipeline Rules ladder, even if your skill instructions did not mention a',
-    '   transition. On success move forward; on a blocking problem branch to',
-    '   `reopen` / `needs_info` / `waiting` / `on_hold` instead. Entering `waiting`',
-    '   requires a non-empty `reason` and the applicable `waitingKind`; follow any',
-    '   stage-specific exit instruction for the exact values. An issue left in its',
-    '   current status stalls the pipeline forever — never skip this step.',
-    '',
-    '3. Then respond with `DONE` on a new line as your final assistant text.',
-    '',
-    'The handoff (step 1) is best-effort context: if its payload fails validation,',
-    'fix it and retry, but if you genuinely cannot produce a valid one, still do',
-    'step 2 and respond `DONE`. The status advance (step 2) is never optional.',
-    '',
-    `Required JSON shape for the \`payload\` (step="${step}"):`,
-    '',
-    '```json',
-    renderHandoffSchemaPrompt(step),
     '```',
     '',
     'Rules:',

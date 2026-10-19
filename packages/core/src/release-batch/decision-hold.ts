@@ -14,22 +14,26 @@
  */
 
 import { and, eq, sql } from 'drizzle-orm';
+import { forgeAuthorId } from '../comments/forge-author.js';
 import { postSystemComment, withholdForIssue } from '../comments/system-write.js';
 import { db, type Tx } from '../db/client.js';
 import { withKernelMarker } from '../db/kernel-marker.js';
 import { comments, issues, jobs, pipelineRuns } from '../db/schema.js';
 import { issueDisplayIds } from '../issues/display-ids.js';
-import { ISSUE_TERMINAL_STATUSES } from '../issues/status-sets.js';
+import { ISSUE_TERMINAL_STATUSES, statusLabel } from '../issues/status-sets.js';
+import { admitJob } from '../jobs/admit.js';
 import type { PaneAsk } from '../jobs/blocked-wire.js';
 import { buildRequeueUpdate, dispatchRequeuedJob, HOLD_PAYLOAD_KEY } from '../jobs/hold.js';
 import { AUTO_RETRY_PAYLOAD_KEY } from '../jobs/retry.js';
 import { logger } from '../logger.js';
-import { paneQuestions } from '../questions/pane-question.js';
+import { projectAutoProdDeploy } from '../pipeline/auto-prod-deploy.js';
+import { oneLine, paneQuestions } from '../questions/pane-question.js';
 import { questionIdFor, writePaneQuestion } from '../questions/pane-question-write.js';
 import { QuestionRefused, voidQuestion } from '../questions/write.js';
 import { readAbortStamp } from './abort-stamp.js';
 import {
   AWAITING_DECISION,
+  DECISION_HANDBACK_REASON,
   DECISION_KEY,
   type DecisionQuestionView,
   type DecisionRef,
@@ -40,6 +44,8 @@ import {
   readDecisionRef,
 } from './decision-state.js';
 import { decisionsGivenSection, type GivenDecision } from './prompt.js';
+import { projectPages, releaseRunSentence } from './release-links.js';
+import { recoverStrandedReleasing } from './releasing-recovery.js';
 
 type JobRow = typeof jobs.$inferSelect;
 
@@ -74,7 +80,6 @@ function pointerBody(display: string): string {
 
 async function pointOthersAt(
   tx: Tx,
-  job: JobRow,
   others: readonly ClaimedMember[],
   anchorId: string,
 ): Promise<void> {
@@ -88,19 +93,78 @@ async function pointOthersAt(
       .where(and(eq(comments.issueId, member.id), eq(comments.body, body)))
       .limit(1);
     if (same.length === 0) {
-      await postSystemComment({ issueId: member.id, authorId: job.createdBy, body: written }, tx);
+      await postSystemComment(
+        { issueId: member.id, authorId: await forgeAuthorId(tx), body: written },
+        tx,
+      );
     }
   }
 }
 
+/** What a release agent's unreadable ask is refused with (ISS-1421 r6, criterion 94). */
+export const RELEASE_ASK_UNREADABLE = 'RELEASE_ASK_UNREADABLE';
+
+export interface UnreadableAskRefusal {
+  code: typeof RELEASE_ASK_UNREADABLE;
+  detail: string;
+}
+
+/**
+ * A release agent's pane that stopped on a question this box could not read. No question is
+ * written, since nobody could answer one that says only that it could not be read (anhome
+ * b210f881): the release is stopped instead, each issue it carried is put back at the release gate
+ * with a comment saying why and what to do next, and the refusal is returned for the job's end.
+ * `null` where no open release run holds the job.
+ */
+export async function refuseUnreadableReleaseAsk(
+  job: JobRow,
+  asked: Extract<PaneAsk, { kind: 'unread' }>,
+): Promise<UnreadableAskRefusal | null> {
+  const [run] = await db
+    .select({
+      kind: pipelineRuns.kind,
+      status: pipelineRuns.status,
+      metadata: pipelineRuns.metadata,
+    })
+    .from(pipelineRuns)
+    .where(eq(pipelineRuns.id, job.pipelineRunId))
+    .limit(1);
+  const meta = (run?.metadata ?? {}) as Record<string, unknown>;
+  const open = run?.status === 'running' || run?.status === 'paused';
+  if (run?.kind !== 'system' || meta.source !== 'release-batch' || !open) return null;
+  const why = oneLine(asked.why, 500).replace(/[.\s]+$/, '');
+  const pages = await projectPages(job.projectId);
+  const auto = await projectAutoProdDeploy(job.projectId);
+  await recoverStrandedReleasing(job.pipelineRunId, {
+    reason:
+      `The ${WHO} stopped on a question Forge could not read, because ${why}. No question was ` +
+      `written, since nobody could answer it, so the release was stopped. ${releaseRunSentence(job.pipelineRunId, pages)}`,
+    comment: true,
+    nextStep: (at) =>
+      auto
+        ? 'This project releases automatically, so the next automatic release takes the issue.'
+        : `Start the next release from ${statusLabel(at)}.`,
+  });
+  return {
+    code: RELEASE_ASK_UNREADABLE,
+    detail:
+      `${RELEASE_ASK_UNREADABLE}: The ${WHO} stopped on a question Forge could not read, because ` +
+      `${why}. No question was written, since nobody could answer it, and the release was stopped.`,
+  };
+}
+
 /**
  * Put what the blocked job's pane asked on the tracker and leave a held successor of the job under
- * its run. `null` where the run is not an open release, which leaves nothing to hold.
+ * its run. `null` where the run is not an open release, which leaves nothing to hold. An unreadable
+ * ask is never held on: `refuseUnreadableReleaseAsk` is its door.
  */
 export async function holdBlockedRelease(
   job: JobRow,
   asked: PaneAsk,
 ): Promise<HeldDecision | null> {
+  if (asked.kind === 'unread') {
+    throw new Error(`${RELEASE_ASK_UNREADABLE}: an unreadable ask is refused, never held on`);
+  }
   const prior = await heldDecisionOf(job.id);
   if (prior) return prior;
   const [run] = await db
@@ -142,28 +206,24 @@ export async function holdBlockedRelease(
         who: WHO,
       });
     }
-    if (anchor) await pointOthersAt(tx, job, members.slice(1), anchor);
-    const [held] = await tx
-      .insert(jobs)
-      .values({
-        projectId: job.projectId,
-        issueId: job.issueId,
-        pipelineRunId: job.pipelineRunId,
-        createdBy: job.createdBy,
-        type: job.type,
-        payload: {
-          ...payload,
-          [HOLD_PAYLOAD_KEY]: { reason: AWAITING_DECISION, heldAt: now, autoRelease: false },
-          [DECISION_KEY]: ref,
-        },
-        modelTier: job.modelTier,
-        status: 'held',
-        attempts: job.attempts,
-        retryOf: job.id,
-        failureReason: AWAITING_DECISION,
-      })
-      .returning({ id: jobs.id });
-    if (!held) throw new Error('decision-hold: the held successor was not written');
+    if (anchor) await pointOthersAt(tx, members.slice(1), anchor);
+    const held = await admitJob(tx, {
+      projectId: job.projectId,
+      issueId: job.issueId,
+      pipelineRunId: job.pipelineRunId,
+      createdBy: job.createdBy,
+      type: job.type,
+      payload: {
+        ...payload,
+        [HOLD_PAYLOAD_KEY]: { reason: AWAITING_DECISION, heldAt: now, autoRelease: false },
+        [DECISION_KEY]: ref,
+      },
+      modelTier: job.modelTier,
+      status: 'held',
+      attempts: job.attempts,
+      retryOf: job.id,
+      failureReason: AWAITING_DECISION,
+    });
     return { heldJobId: held.id, questionIds, issueId: anchor, replayed: false };
   });
   if (written.replayed) return written;
@@ -268,6 +328,13 @@ export async function requeueOnAnswer(questionId: string): Promise<boolean> {
 export async function voidOnRunEnd(runId: string, toStatus: string): Promise<number> {
   const decision = await decisionOfRun(runId);
   if (!decision) return 0;
+  // A release handed back on its decision leaves the question to the issue it is asked on.
+  const [held] = await db
+    .select({ error: jobs.error })
+    .from(jobs)
+    .where(eq(jobs.id, decision.jobId))
+    .limit(1);
+  if (held?.error === DECISION_HANDBACK_REASON) return 0;
   const [run] = await db
     .select({ metadata: pipelineRuns.metadata })
     .from(pipelineRuns)

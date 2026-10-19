@@ -7,9 +7,9 @@ audience: user
 
 # Getting started with Forge
 
-Forge runs your work as an automated pipeline: you file an issue, and agents
-move it through triage → plan → code → review → release on a machine you
-control. This page is the shortest path from zero to a running pipeline.
+Forge runs your work as an automated pipeline: you file an issue, and an agent
+carries it from filed to shipped on a machine you control. This page is the
+shortest path from zero to a running pipeline.
 
 ## The four pieces
 
@@ -19,8 +19,9 @@ control. This page is the shortest path from zero to a running pipeline.
   personal org; create a team org to share with others.
 - **Device & runner** — a machine running the `forge-runner` agent that
   actually executes jobs against a checkout of your repo.
-- **Pipeline** — the stages an issue passes through. Each stage runs an agent or
-  waits for your click, per your settings.
+- **Pipeline** — how an issue gets from filed to shipped. An agent carries it
+  the whole way; [Configure the pipeline & approvals](?path=configure-the-pipeline)
+  covers where a person approves.
 
 ## Steps
 

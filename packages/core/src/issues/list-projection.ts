@@ -4,6 +4,7 @@ import { type IssueStatus, issues, type WaitingKind } from '../db/schema.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { type MergeMarkColumns, type MergeMarkKind, mergeMarkKindOf } from './merge-record.js';
 import type { IssueSearchField } from './search-predicate.js';
+import { statusEnteredAtSql } from './status-entered-at.js';
 
 /**
  * The columns both REST issue lists select. Heavy TOAST columns
@@ -32,6 +33,7 @@ export const REST_ISSUE_LIST_COLUMNS = {
   externalId: issues.externalId,
   reopenCount: issues.reopenCount,
   mergedAt: issues.mergedAt,
+  mergeMarkedAt: issues.mergeMarkedAt,
   mergedCommitSha: issues.mergedCommitSha,
   mergedLanding: issues.mergedLanding,
   mergedClaimedCommit: issues.mergedClaimedCommit,
@@ -47,6 +49,14 @@ export const REST_ISSUE_LIST_COLUMNS = {
   )`
     .mapWith(issues.createdAt)
     .as('waiting_on_person_since'),
+  /** ISS-1229 r8 — when the issue entered its status, which a title edit or a claim does not move. */
+  statusEnteredAt: sql<Date>`${statusEnteredAtSql({
+    id: sql`${issues.id}`,
+    status: sql`${issues.status}`,
+    createdAt: sql`${issues.createdAt}`,
+  })}`
+    .mapWith(issues.createdAt)
+    .as('status_entered_at'),
 } as const;
 
 /** One row as the two REST list endpoints select it. */
@@ -78,6 +88,7 @@ export type RestIssueListRow = {
   createdAt: Date;
   updatedAt: Date;
   waitingOnPersonSince: Date | null;
+  statusEnteredAt: Date;
   /** ISS-960 — present only when the query carried a search term. */
   matchedFields?: IssueSearchField[];
 };

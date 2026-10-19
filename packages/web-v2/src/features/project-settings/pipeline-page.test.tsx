@@ -12,7 +12,7 @@ import {
 } from "@forge/contracts/document-patch";
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LeaveGuardProvider } from "@/design";
 import { ApiError } from "@/lib/api/client";
@@ -169,6 +169,36 @@ describe("one form, one save bar", () => {
 	});
 });
 
+// ISS-1171: the release card moved to Shape & release, and the ten sections left read as three groups.
+describe("the page's layout", () => {
+	it("carries no release card", async () => {
+		mountPage();
+		await ready();
+		expect(screen.queryByText(/Can this project release/)).toBeNull();
+		expect(screen.queryByText("Release chain")).toBeNull();
+		expect(screen.queryByText(/Why a release will not start/)).toBeNull();
+	});
+
+	it("puts its sections under three group headings", async () => {
+		mountPage();
+		await ready();
+		for (const heading of ["What a session gets", "Where and when work is taken", "Background work"]) {
+			expect(screen.getByRole("region", { name: heading })).toBeInTheDocument();
+		}
+		expect(
+			within(screen.getByRole("region", { name: "Where and when work is taken" })).getByText("Runner pools"),
+		).toBeInTheDocument();
+	});
+
+	// ISS-1229: a draft with nothing merged cannot be closed, so the gate's way out is Dropped.
+	it("tells a person to turn an intake issue down by dropping it, never by closing it", async () => {
+		mountPage();
+		await ready();
+		expect(screen.getByText(/reject by dropping it/)).toBeInTheDocument();
+		expect(screen.queryByText(/reject by closing it/)).toBeNull();
+	});
+});
+
 describe("what one Save writes", () => {
 	it("is one pipeline-config write naming only the leaves that moved, with no plugins write", async () => {
 		mountPage();
@@ -305,7 +335,7 @@ describe("a Save that lands in part", () => {
 
 		const banner = await screen.findByText(/the pipeline settings were saved, but the plugins were not/i);
 		expect(banner.textContent).toBe(
-			"The pipeline settings were saved, but the plugins were not: the plugins store is down. Your plugin edits are still here — Save sends them again.",
+			"The pipeline settings were saved, but the plugins were not. The plugins store is down. Your plugin edits are still here — Save sends them again.",
 		);
 		expect((stored.intakeGate as Doc).enabled).toBe(true);
 	});
@@ -318,7 +348,7 @@ describe("a Save that lands in part", () => {
 
 		const banner = await screen.findByText(/the pipeline settings were saved, but the plugins were not/i);
 		expect(banner.textContent).toBe(
-			"The pipeline settings were saved, but the plugins were not: The server could not complete the request (500). Your plugin edits are still here — Save sends them again.",
+			"The pipeline settings were saved, but the plugins were not. The server ran into a problem and could not finish the request. Your plugin edits are still here — Save sends them again.",
 		);
 	});
 

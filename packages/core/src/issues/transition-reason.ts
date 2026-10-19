@@ -2,9 +2,26 @@ import { postSystemComment } from '../comments/system-write.js';
 import { db, type Tx } from '../db/client.js';
 import type { IssueStatus, WaitingKind } from '../db/schema.js';
 import { actorAgency, type TransitionActor } from './actor-agency.js';
-import { AWAITING_INPUT_STATUSES, ISSUE_STATUS_LABELS } from './status-sets.js';
+import { AWAITING_INPUT_STATUSES, ISSUE_STATUS_LABELS, statusForCaller } from './status-sets.js';
 
-export const REASON_REQUIRED_STATUSES = new Set<IssueStatus>(['reopen', 'waiting', 'needs_info']);
+export const REASON_REQUIRED_STATUSES = new Set<IssueStatus>([
+  'reopen',
+  'waiting',
+  'needs_info',
+  'on_hold',
+]);
+
+/**
+ * Statuses whose reason a trusted writer's `skip` does not waive. An entry into one is announced on
+ * the thread whoever wrote it, because the announcement is what a reader pairs a hold with, and an
+ * entry that wrote none is one nothing can be paired to.
+ */
+const REASON_NEVER_WAIVED = new Set<IssueStatus>(['on_hold']);
+
+/** Whether this writer's `skip` waives the reason the move into `to` would otherwise owe. */
+export function reasonWaived(to: IssueStatus, skip: boolean | undefined): boolean {
+  return skip === true && !REASON_NEVER_WAIVED.has(to);
+}
 
 /**
  * Does this transition need an authored reason?
@@ -16,12 +33,13 @@ export function requiresAuthoredReason(from: IssueStatus, to: IssueStatus): bool
 }
 
 const HEADINGS: Record<string, (from: IssueStatus, kind?: WaitingKind | null) => string> = {
-  reopen: (from) => `🔁 **Reopened from \`${from}\`**`,
+  reopen: (from) => `🔁 **Reopened from ${ISSUE_STATUS_LABELS[from]}**`,
   needs_info: (from) => `❓ **Needs info** — moved from \`${from}\``,
   waiting: (from, kind) =>
     kind === 'needs_resource'
       ? `⏸ **Waiting on a person to supply something** — moved from \`${from}\``
       : `⏸ **Waiting on a human decision** — moved from \`${from}\``,
+  on_hold: (from) => `⏸ **On hold** — moved from \`${from}\``,
 };
 
 /**
@@ -125,6 +143,11 @@ export async function postTransitionReasonComment(
   );
 }
 
+/** What the reason must say, for a status whose question is not "what is needed or what is wrong". */
+const REASON_SAYS: Partial<Record<IssueStatus, string>> = {
+  on_hold: 'why the work is being paused',
+};
+
 /**
  * What is missing from a park's own account of itself, or `null`.
  */
@@ -137,17 +160,22 @@ export function parkReasonFault(
     skip?: boolean | undefined;
   },
 ): { code: 'TRANSITION_REASON_REQUIRED' | 'WAITING_KIND_REQUIRED'; detail: string } | null {
-  if (!requiresAuthoredReason(fromStatus, requestedStatus) || options.skip === true) return null;
+  if (
+    !requiresAuthoredReason(fromStatus, requestedStatus) ||
+    reasonWaived(requestedStatus, options.skip)
+  )
+    return null;
   if (!options.transitionReason?.trim()) {
     return {
       code: 'TRANSITION_REASON_REQUIRED',
-      detail: `a transition to \`${requestedStatus}\` must carry a reason saying what is needed or what is wrong`,
+      detail: `a transition to ${statusForCaller(requestedStatus)} must carry a reason saying ${REASON_SAYS[requestedStatus] ?? 'what is needed or what is wrong'}, sent as \`reason\` (REST body, or \`data.reason\` / \`data.note\` on \`forge_issues\`)`,
     };
   }
   if (requestedStatus === 'waiting' && !options.waitingKind) {
     return {
       code: 'WAITING_KIND_REQUIRED',
-      detail: 'a `waiting` park must say which kind it is: `needs_decision` or `needs_resource`',
+      detail:
+        'a Waiting (waiting) park must say which kind it is: `needs_decision` or `needs_resource`',
     };
   }
   return null;

@@ -214,8 +214,9 @@ export const forgeReleaseBatchTool: ContextScopedMcpToolFactory = (ctx) => ({
     '`accepted` and the server closes every claimed issue on its own — read `state` → `finish.state` for `finished` or `failed`, whose `refusal` ' +
     'says why; where no live binding declares a probe it closes the roster unverified on your account alone), `abort` (`reason`; closes nothing and leaves closed the issues a finish already closed, answered as `alreadyClosed`; ' +
     'on a run that recorded no promotion it releases every claim and moves the issues still at `releasing` back to the release gate, answered as `recovered` — ' +
-    'a roster whose run already promoted is left at `releasing` still claimed unless `promotedRoster: "return-to-gate"` names the settlement, which returns it ' +
-    'to the release gate for `POST /release-records` to close against what production is serving). ' +
+    'a roster whose run already promoted is left at `releasing` until the releasing sweep, within a minute of the run ending, reads what production serves and ' +
+    'closes each issue whose landing commit it carries by a release record or returns it to the release gate; `promotedRoster: "return-to-gate"` returns it ' +
+    'at once, for `POST /release-records` to close against what production is serving). ' +
     'Every action needs `runId`, and a token with the write scope: a credential that could read the batch but not record it is ' +
     'refused at `get`, before anything changes.',
   inputSchema: zodToMcpSchema(inputSchema),

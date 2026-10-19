@@ -1,6 +1,7 @@
 import type { Context, MiddlewareHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import type { RateLimitRule } from '../config/rate-limits.js';
+import { clientIpOf } from './client-ip.js';
 import { refuses } from './declarations.js';
 
 type Bucket = { count: number; resetAt: number };
@@ -13,22 +14,6 @@ const store = new Map<string, Bucket>();
  */
 export function __resetRateLimitStore(): void {
   store.clear();
-}
-
-/**
- * Extract client IP. Trusts `x-forwarded-for` (left-most) then `x-real-ip`.
- * NOTE: assumes deployment behind a trusted proxy (Traefik/Coolify). Without
- * one, these headers are client-supplied and spoofable.
- */
-export function getClientIp(c: Context): string | undefined {
-  const xff = c.req.header('x-forwarded-for');
-  if (xff) {
-    const first = xff.split(',')[0]?.trim();
-    if (first) return first;
-  }
-  const real = c.req.header('x-real-ip');
-  if (real) return real.trim();
-  return undefined;
 }
 
 function getUserId(c: Context): string | undefined {
@@ -50,7 +35,7 @@ function deriveKey(
   ruleName: string,
   c: Context,
 ): { key: string; dim: string } | null {
-  const ip = getClientIp(c);
+  const ip = clientIpOf(c);
   const userId = getUserId(c);
 
   if (rule.by === 'token') {
@@ -77,6 +62,20 @@ function deriveKey(
   // by === 'ip'
   if (ip) return { key: `${ruleName}:ip:${ip}`, dim: 'ip' };
   return null;
+}
+
+/** How long until the bucket renews, in the largest whole unit, rounded up. */
+function waitWords(seconds: number): string {
+  if (seconds < 60) return `${seconds} second${seconds === 1 ? '' : 's'}`;
+  const minutes = Math.ceil(seconds / 60);
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'}`;
+  const hours = Math.ceil(minutes / 60);
+  return `${hours} hour${hours === 1 ? '' : 's'}`;
+}
+
+/** What a refused caller reads: a sentence with the wait in it, never a bare status (ISS-1421 r4). */
+export function rateLimitedMessage(retryAfterSeconds: number): string {
+  return `Too many requests in a short time. Try again in ${waitWords(retryAfterSeconds)}.`;
 }
 
 export type RateLimitOptions = {
@@ -114,7 +113,7 @@ export function rateLimit(rule: RateLimitRule, opts: RateLimitOptions = {}): Mid
       const retryAfterSeconds = Math.max(1, Math.ceil((bucket.resetAt - now) / 1000));
       c.header('Retry-After', String(retryAfterSeconds));
       throw new HTTPException(429, {
-        message: 'rate limit exceeded',
+        message: rateLimitedMessage(retryAfterSeconds),
         cause: { code: 'RATE_LIMITED', details: { retryAfterSeconds } },
       });
     }

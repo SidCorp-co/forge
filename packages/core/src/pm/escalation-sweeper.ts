@@ -25,13 +25,13 @@
 import { redactedMessage } from '@forge/observability';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type JobType, jobs, pmDecisions, projects } from '../db/schema.js';
+import { isJobType, pmDecisions, projects, RETIRED_JOB_TYPES } from '../db/schema.js';
+import { admitIssueJob } from '../jobs/admit.js';
 import { buildJobPromptString } from '../jobs/prompt-string.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { logger } from '../logger.js';
 import { indexMemory } from '../memory/indexer.js';
 import { Sentry } from '../observability/sentry.js';
-import { openIssueRun } from '../pipeline/runs.js';
 import { boss } from '../queue/boss.js';
 
 export const PM_ESCALATION_SWEEPER_QUEUE = 'pm.escalation-sweeper';
@@ -170,6 +170,16 @@ async function executeDispatchFallback(
   if (!issueId || !jobType) {
     return { status: 'skipped', reason: 'invalid_dispatch_payload' };
   }
+  if (!isJobType(jobType)) {
+    const retired = (RETIRED_JOB_TYPES as readonly string[]).includes(jobType);
+    logger.warn(
+      { projectId, issueId, jobType },
+      retired
+        ? 'pm-escalation-sweeper: the fallback names a retired staged-pipeline stage (ISS-1229); no job minted'
+        : 'pm-escalation-sweeper: the fallback names no job type; no job minted',
+    );
+    return { status: 'skipped', reason: retired ? 'retired_job_type' : 'unknown_job_type' };
+  }
 
   const creatorId = await loadProjectCreator(projectId);
   if (!creatorId) return { status: 'skipped', reason: 'project_missing' };
@@ -183,7 +193,7 @@ async function executeDispatchFallback(
     skillName: `forge-${jobType}`,
     promptString: buildJobPromptString({
       skillName: `forge-${jobType}`,
-      jobType: jobType as JobType,
+      jobType,
       issueId,
     }),
     dispatchedBy: 'pm-escalation-timeout',
@@ -192,22 +202,17 @@ async function executeDispatchFallback(
 
   // ISS-101 — escalation fallback is an issue-pipeline job; attach it to the
   // issue's open run (creates one if missing).
-  const run = await openIssueRun({ projectId, issueId });
   let insertedId: string | null = null;
   try {
-    const [inserted] = await db
-      .insert(jobs)
-      .values({
-        projectId,
-        issueId,
-        pipelineRunId: run.id,
-        createdBy: creatorId,
-        type: jobType as never,
-        payload,
-        status: 'queued',
-      } as never)
-      .returning({ id: jobs.id });
-    insertedId = inserted?.id ?? null;
+    const inserted = await admitIssueJob(db, {
+      projectId,
+      issueId,
+      createdBy: creatorId,
+      type: jobType,
+      payload,
+      status: 'queued',
+    });
+    insertedId = inserted.id;
   } catch (err) {
     if (isUniqueViolation(err)) {
       // Active dispatch of the same type already exists — treat as success
@@ -281,10 +286,8 @@ let registered = false;
 
 export async function registerPmEscalationSweeper(): Promise<void> {
   if (registered) return;
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).createQueue(PM_ESCALATION_SWEEPER_QUEUE);
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).work(PM_ESCALATION_SWEEPER_QUEUE, async () => {
+  await boss.createQueue(PM_ESCALATION_SWEEPER_QUEUE);
+  await boss.work(PM_ESCALATION_SWEEPER_QUEUE, async () => {
     try {
       const result = await runPmEscalationSweep();
       if (result.executed > 0 || result.errors > 0) {
@@ -295,16 +298,14 @@ export async function registerPmEscalationSweeper(): Promise<void> {
       throw err;
     }
   });
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).schedule(PM_ESCALATION_SWEEPER_QUEUE, PM_ESCALATION_SWEEPER_CRON, {});
+  await boss.schedule(PM_ESCALATION_SWEEPER_QUEUE, PM_ESCALATION_SWEEPER_CRON, {});
   registered = true;
 }
 
 export async function unregisterPmEscalationSweeper(): Promise<void> {
   if (!registered) return;
   try {
-    // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-    await (boss as any).unschedule?.(PM_ESCALATION_SWEEPER_QUEUE);
+    await boss.unschedule?.(PM_ESCALATION_SWEEPER_QUEUE);
   } catch {
     // unschedule is best-effort — if the schedule never existed, ignore.
   }

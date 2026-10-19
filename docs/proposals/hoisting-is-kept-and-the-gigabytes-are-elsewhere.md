@@ -29,18 +29,12 @@ weak evidence of the settings being unnecessary, it is no evidence at all. Re-ta
 found one more package, two more `pnpm verify` verdicts, and `pnpm build` and `pnpm test` failing
 where the first run recorded them passing.
 
-Two things will re-hide it for the next person:
+One thing will re-hide it for the next person:
 
 - **Turborepo's cache.** `pnpm build` and `pnpm test` are turbo tasks, and turbo hashes each
   package's own inputs — which do not include the node_modules layout. A `pnpm build` run under
   the isolated linker after a hoisted one comes back `FULL TURBO, 4 successful` having run
   nothing. Re-measure with `--force`, or with `TURBO_CACHE_DIR` pointed somewhere empty.
-- **A scratch directory with a very large parent.** Run from
-  `/home/dev/.cache/forge-tmp/<...>/`, `biome` stopped applying `scripts/biome.json` and
-  `form scripts lint` and `form lint-budget` both went red on formatting, under *both* linkers.
-  The same tree at `/home/dev/forge-iss1287-probe` is green. That is an artefact of the probe's
-  location and not of this repository; it is recorded here only so the next person does not read
-  it as a finding.
 
 ### How to re-take it
 

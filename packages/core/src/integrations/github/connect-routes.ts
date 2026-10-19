@@ -194,6 +194,19 @@ githubConnectRoutes.post(
 );
 
 /**
+ * A GitHub connection whose App was never finished: the manifest round trip that stores the App's
+ * key never came back. Its own code, since the web words `BAD_REQUEST` as a generic "Invalid input"
+ * and this sentence is the one that says what is missing and what to press (ISS-1421 r8).
+ */
+const githubAppUnfinished = (connectionId: string) =>
+  new HTTPException(409, {
+    message:
+      'This GitHub connection has no App yet: creating it on GitHub was never finished. ' +
+      'Use Create a separate App instead.',
+    cause: { code: 'GITHUB_APP_UNFINISHED', details: { connectionId } },
+  });
+
+/**
  * The App whose repositories this project's picker may list: one the caller reaches by the rule
  * every door reads (`../reach.ts`), asked after the route has proved the caller an admin of the
  * project. A connection this project's binding points at is reached whoever owns it and whether or
@@ -233,7 +246,7 @@ githubConnectRoutes.get(
       appId?: string;
       privateKey?: string;
     }>(connection);
-    if (!appId || !privateKey) throw badRequest({ connectionId: 'the App was never converted' });
+    if (!appId || !privateKey) throw githubAppUnfinished(connectionId);
 
     return c.json(
       answer(repositoriesSchema, await listInstallationRepositories({ appId, privateKey })),

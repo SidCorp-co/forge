@@ -179,6 +179,18 @@ describe('a release agent stopped on a question, ended Blocked', () => {
 
     const pointers = await Promise.all(others.map((id) => fx.commentCount(id)));
     expect(pointers).toEqual([1, 1]);
+    // Forge points the others at the question; the person who pressed Release said none of it.
+    const authors = await harness.db.execute<{ kind: string; email: string }>(sql`
+      SELECT u.kind, u.email FROM comments c JOIN users u ON u.id = c.author_id
+      WHERE c.issue_id IN (${sql.join(
+        others.map((id) => sql`${id}`),
+        sql`, `,
+      )})
+    `);
+    expect(authors).toEqual([
+      { kind: 'agent', email: 'forge@agents.forge.invalid' },
+      { kind: 'agent', email: 'forge@agents.forge.invalid' },
+    ]);
     expect(await fx.commentCount(first)).toBe(0);
 
     const jobs = await jobsOf(release.runId);
@@ -340,6 +352,42 @@ describe('the decision is answered, or the release ends first', () => {
   });
 });
 
+// ISS-1421 r5 — Releasing is not a state an issue waits in: the held recovery hands a release held
+// on a decision back, and the question stays open on the issue it is asked on, holding that issue.
+describe('a release handed back while it waits on a decision (criterion 67, 68)', () => {
+  it('returns the roster to the gate, links the open question, and keeps it open after the run ends', async () => {
+    const release = await runningRelease();
+    const { questionIds } = await (await blocked(release.jobId)).json();
+    const [first, second] = release.ids as [string, string, string];
+
+    const { recoverHeldReleaseBatches } = await import('../../src/release-batch/held-recovery.js');
+    expect(await recoverHeldReleaseBatches(new Date())).toEqual({ recovered: 1 });
+    await fx.waitFor(async () => (await fx.runStatus(release.runId)) !== 'running');
+
+    for (const id of release.ids) {
+      expect(await fx.stored(id)).toMatchObject({ status: 'awaiting_release', claim: null });
+    }
+    const comments = await harness.db.execute<{ body: string }>(sql`
+      SELECT body FROM comments WHERE issue_id = ${second} ORDER BY created_at DESC LIMIT 1
+    `);
+    expect(comments[0]?.body).toMatch(
+      new RegExp(`The question stays open at https?://\\S+/projects/[^/\\s]+/issues/${first}\\.`),
+    );
+    expect(comments[0]?.body).toContain(`/releases/${release.runId}.`);
+
+    // The run's end voids nothing: the question waits on the issue it is asked on.
+    await new Promise((r) => setTimeout(r, 200));
+    const asked = await questionsOn(first);
+    expect(asked.map((q) => q.id)).toEqual(questionIds);
+    expect(asked[0]?.status).toBe('open');
+
+    const { rosterCloseShortfalls } = await import('../../src/release-batch/close-shortfall.js');
+    const held = await rosterCloseShortfalls(projectId, [first, second]);
+    expect(held.get(first)?.map((s) => s.code)).toContain('OPEN_QUESTIONS');
+    expect(held.get(second)?.map((s) => s.code) ?? []).not.toContain('OPEN_QUESTIONS');
+  });
+});
+
 describe('two moments the answer and the hold can meet', () => {
   it('leaves one held job when two reports of one blocked job are taken at the same moment', async () => {
     const release = await runningRelease();
@@ -435,23 +483,8 @@ describe('a question the question screen refuses', () => {
   });
 });
 
-describe('a plain failure from a runner that reads nothing, and a job that is no release', () => {
-  it('holds the release the same way, with a question saying the box could not read the pane', async () => {
-    const release = await runningRelease();
-
-    const res = await post(`/api/jobs/${release.jobId}/fail`, deviceToken, {
-      error: BLOCKED_REASON,
-    });
-    expect(res.status).toBe(200);
-    expect((await res.json()).retry.scheduled).toBe(false);
-
-    const asked = await questionsOn(release.ids[0] as string);
-    expect(asked).toHaveLength(1);
-    expect(promptOf(asked[0])).toContain('could not read');
-    expect((await jobsOf(release.runId)).map((j) => j.status).sort()).toEqual(['failed', 'held']);
-    expect(await fx.runStatus(release.runId)).toBe('running');
-  });
-
+// A release's unreadable ask is refused rather than held on: release-unreadable-ask-e2e.test.ts.
+describe('a job that is no release', () => {
   it('carries the question of a smoke job at project level and does not retry it', async () => {
     const runId = randomUUID();
     const jobId = randomUUID();

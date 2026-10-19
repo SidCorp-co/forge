@@ -141,7 +141,7 @@ describe('an agent closes on a project whose release chain has nowhere to land',
       };
       expect(body.code).toBe('RELEASE_TARGET_UNDECLARED');
       expect(body.message).toContain("no active deploy binding carrying the 'live' stage");
-      expect(body.message).toContain('press "This project ships nothing"');
+      expect(body.message).toContain('choose "Repository, no release" under Shape & release');
       expect(body.details).toMatchObject({ projectId: w.projectId, releaseChain: chain });
       expect(await statusOf(id)).toBe('testing');
     },
@@ -160,7 +160,14 @@ describe('an agent closes on a project whose release chain has nowhere to land',
       skipped: Array<{ id: string; reason: string }>;
     };
     expect(body.updated).toEqual([]);
-    expect(body.skipped).toEqual([{ id, reason: 'release_target_undeclared' }]);
+    expect(body.skipped).toEqual([
+      {
+        id,
+        reason: 'release_target_undeclared',
+        code: 'RELEASE_TARGET_UNDECLARED',
+        message: expect.stringContaining('no active deploy binding'),
+      },
+    ]);
     expect(await statusOf(id)).toBe('testing');
   }, 120_000);
 

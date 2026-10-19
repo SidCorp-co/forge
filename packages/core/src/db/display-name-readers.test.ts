@@ -15,10 +15,14 @@ const PRESENTATION_AND_MAPPING: Record<string, string> = {
   'orgs/agent-accounts.ts': 'an org admin reads and sets an agent’s label',
   'orgs/service.ts': 'the org member list returns it beside the address',
   'issues/actor-resolution.ts': 'the label an activity row is rendered by',
+  'comments/forge-author.ts':
+    'writes the label Forge’s own account is minted with, and reads nothing back: it is decided by its fixed id (ISS-1421)',
   'issues/creator.ts':
     'the label an issue’s creator is rendered by on every issue list and detail, which is the same job `actor-resolution.ts` does for an activity row. It decides nothing: `users.kind` decides whether the writer is an agent, and this is only what that writer is CALLED (ISS-1137)',
   'projects/members-routes.ts':
     'the project member list returns it beside the address, exactly as `orgs/service.ts` does for the org member list. The creator filter is built from this list and cannot name an agent it is only told the address of (ISS-1137)',
+  'projects/stuck-issue-kinds.ts':
+    'the name a park somebody else owes is printed by on Needs you, the Attention page and the bell, so a reader is told whose decision it waits for (ISS-1229 r16). It decides nothing: who owes the park is read off the assignee and creator ids',
   'assistant/conversation-routes.ts':
     'the name a person’s own message is attributed by in a conversation transcript, which is a label read by whoever opens the room and by the model answering in it — it addresses nobody and resolves nothing',
   'assistant/conversation-people.ts':
@@ -99,7 +103,8 @@ describe('displayName is rendered, never read to decide anything (ISS-1003)', ()
   it('lists no file that has stopped naming it', () => {
     const stale = Object.keys(PRESENTATION_AND_MAPPING).filter((rel) => {
       try {
-        return !mentionsColumn(readFileSync(join(SRC, rel), 'utf8'));
+        const source = readFileSync(join(SRC, rel), 'utf8');
+        return !mentionsColumn(source) && !importsUsersAndNamesTheLabel(source);
       } catch {
         return true;
       }

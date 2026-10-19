@@ -22,7 +22,7 @@ describe("the age chip", () => {
     [14, "overdue", "14d"],
     [112, "overdue", "112d"],
   ] as const)("shows %s days as %s", (days, band, text) => {
-    render(<AgeChip since={ago(days)} basis="entered" now={NOW} />);
+    render(<AgeChip since={ago(days)} now={NOW} />);
     const chip = screen.getByTestId("age-chip");
     expect(chip).toHaveAttribute("data-band", band);
     expect(chip).toHaveTextContent(text);
@@ -30,7 +30,7 @@ describe("the age chip", () => {
 
   it("rises in weight across the bands", () => {
     const weight = (days: number) => {
-      const { unmount } = render(<AgeChip since={ago(days)} basis="entered" now={NOW} />);
+      const { unmount } = render(<AgeChip since={ago(days)} now={NOW} />);
       const w = screen.getByTestId("age-chip").className.match(/font-(normal|medium|semibold|bold)/)?.[0];
       unmount();
       return w;
@@ -43,15 +43,8 @@ describe("the age chip", () => {
     ]);
   });
 
-  it("says an age taken from the last write is one, and explains it", () => {
-    render(<AgeChip since={ago(112)} basis="last-write" now={NOW} />);
-    const chip = screen.getByTestId("age-chip");
-    expect(chip).toHaveTextContent("112d since last write");
-    expect(chip.getAttribute("title")).toMatch(/Nothing records how long it has been parked/);
-  });
-
   it("draws nothing for an item with no time", () => {
-    render(<AgeChip since={undefined} basis={undefined} now={NOW} />);
+    render(<AgeChip since={undefined} now={NOW} />);
     expect(screen.queryByTestId("age-chip")).toBeNull();
   });
 });

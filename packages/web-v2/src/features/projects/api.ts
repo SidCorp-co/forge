@@ -29,6 +29,11 @@ export const projectApi = {
           `GET /projects/health: the row for \`${row.projectSlug}\` has no count for the work state \`${missing}\` in \`work\`, so the server predates the work states and no figure can be drawn from it. Reload once the server has been updated.`,
         );
       }
+      if (typeof row.liveSessions !== 'number') {
+        throw new Error(
+          `GET /projects/health: the row for \`${row.projectSlug}\` has no \`liveSessions\` count, so the server predates the live-session figure and no project can be said to have none live. Reload once the server has been updated.`,
+        );
+      }
     }
     return rows;
   },

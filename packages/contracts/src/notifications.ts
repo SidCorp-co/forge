@@ -13,6 +13,17 @@ export const NOTIFICATION_TYPES = [
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
+// `waiting` is a park the reader owes; `waiting_on_others` one somebody else owes (ISS-1229 r16).
+export const STUCK_ISSUE_KINDS = [
+  'waiting',
+  'waiting_on_others',
+  'idle',
+  'owed_close',
+  'orphan',
+  'other',
+] as const;
+export type StuckIssueKind = (typeof STUCK_ISSUE_KINDS)[number];
+
 export const NOTIFICATION_KINDS = ['signal', 'condition', 'task'] as const;
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 

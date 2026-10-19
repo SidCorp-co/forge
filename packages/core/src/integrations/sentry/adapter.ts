@@ -209,7 +209,6 @@ export const sentryIntegration = declareIntegration<SentryConfig, SentrySecrets>
   presentation: {
     label: 'Sentry',
     alwaysStageKeyed: false,
-    neverCheckedDetail: 'never test-connected',
     // ISS-526 — the multi-target shape: count plus the first target's org for the card subtitle.
     cardMeta: (config) => {
       const cfg = config as SentryConfig;

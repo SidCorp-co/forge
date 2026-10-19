@@ -2,7 +2,7 @@
 
 // Awaiting-release card — pipeline runs parked at the manual `tested` gate:
 // done and verified, just waiting on a human to advance tested→released. These
-// are NOT live/executing work (see `LiveRunsCard`), so they get their own
+// are NOT live work (see `LiveSessionsCard`), so they get their own
 // list with a calm "Verified" chip instead of the pulsing "running" one, and a
 // collapsed default so a large backlog can't push the rest of the dashboard
 // (Runners, Upcoming schedules) below the fold.
@@ -13,8 +13,8 @@ import Link from "next/link";
 import { WORK_STATE_LABELS } from "@forge/contracts/work-state";
 import { Button, type DataTableModelColumn, Checkbox, Icon, StatusChip, useDataTableRows } from "@/design";
 import { BatchReleaseDialog, type BatchReleaseIssue } from "@/features/issues/components/batch-release-dialog";
-import { formatUsd } from "@/features/pipeline/derive";
-import type { PipelineRunListItem } from "@/features/pipeline/types";
+import { formatUsd } from "@/lib/utils/format";
+import type { PipelineRunListItem } from "@/features/runs/types";
 import { plural, type ReadState } from "../shape";
 import { DashboardSection, EmptyLine, RowList, unreadSection } from "./dashboard-section";
 

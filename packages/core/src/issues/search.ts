@@ -30,7 +30,10 @@ import {
 import { loadProjectAccess } from '../lib/authz.js';
 import { listResponse } from '../lib/pagination.js';
 import { queryBadRequest } from '../lib/query-strict.js';
+import { isNot } from '../me/attention-buckets.js';
+import { heldAsFailedJobWhere } from '../me/attention-failed-jobs.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { stuckNoticeStandsSql } from '../projects/stuck-issue-kinds.js';
 import { usageSessionMatch } from '../usage-records/rollup.js';
 import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
 import { issueArchiveSide } from './archive.js';
@@ -138,6 +141,8 @@ const searchQuerySchema = z
     withModules: z.coerce.boolean().optional().default(false),
     /** ISS-1237 — archived issues are out of search unless asked for, in the page, total and buckets alike. */
     includeArchived: z.stringbool().optional(),
+    /** ISS-1229 r14 — only the issues a stuck-issue notice stands for: what Needs you's stuck count names. */
+    stuck: z.stringbool().optional(),
   })
   .strict();
 
@@ -311,6 +316,11 @@ searchRoutes.get(
     }
     if (q.category) {
       both(eq(issues.category, q.category));
+    }
+    if (q.stuck === true) {
+      // The issues the headline counts as stuck: one the reader's failed jobs list is counted there.
+      both(stuckNoticeStandsSql(sql`${issues.id}`));
+      both(isNot(heldAsFailedJobWhere(userId)));
     }
     if (q.label && q.label.length > 0) {
       const labelIds = q.label;

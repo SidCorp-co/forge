@@ -370,12 +370,11 @@ describe('release-readiness and the create door answer the same question', () =>
 
     expect(warned?.message).toContain("Label the box you want this project's releases to run on");
     expect(warned?.message).toContain('Settings \u2192 Runners');
+    // Both places, and why both: the binding falls back to its connection's label (ISS-1229 r13).
     expect(warned?.message).toContain(
       'clear `releaseRunnerLabel` from the live deploy binding under Settings \u2192 Integrations ' +
-        'AND from the connection behind it under Integrations in the workspace rail',
-    );
-    expect(warned?.message).toContain(
-      "Clearing it from the binding alone falls back to the connection's label rather than to none.",
+        'and from the connection behind it under Integrations in the workspace rail, ' +
+        'since the binding falls back to it.',
     );
     expect(warned?.message).not.toContain('does stop a release');
   });
@@ -496,7 +495,7 @@ describe('a reason names the state it was read from and the act that clears it',
     const empty = (await readiness(w)).body.blockers.find((b) => b.code === 'RELEASE_ROSTER_EMPTY');
 
     expect(empty?.message).toContain('2 issues');
-    expect(empty?.message).toContain('`awaiting_release`');
+    expect(empty?.message).toMatch(/^[^`]*Awaiting release[^`]*$/);
     expect(empty?.message).not.toContain('merged and marked');
   });
 });
@@ -528,7 +527,7 @@ describe('the reason the unattended sweep will not carry an issue', () => {
     const held = answer.body.blockers.find((b) => b.code === 'RELEASE_CRITERIA_UNEARNED');
 
     expect(held).toBeDefined();
-    expect(held?.message).toContain(`\`${await shownAs(issue)}\` owes criterion 1, 2`);
+    expect(held?.message).toContain(`\`${await shownAs(issue)}\` owes criteria 1 and 2`);
     expect(held?.message).not.toContain(issue);
     expect(held?.details?.held).toEqual([
       { issueId: issue, displayId: await shownAs(issue), criteria: [1, 2] },

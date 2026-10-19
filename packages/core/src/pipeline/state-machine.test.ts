@@ -6,6 +6,7 @@ import {
   DRAFT_EXIT_TARGETS,
   getAllowedTransitions,
   isReopenEntry,
+  RETIRED_STATUS_REPLACEMENTS,
   transitions,
 } from './state-machine.js';
 
@@ -17,8 +18,8 @@ const EXPECTED_EXITS: Record<string, readonly string[]> = {
   in_progress: ['closed', 'developed', 'dropped', 'needs_info', 'on_hold'],
   developed: ['dropped', 'needs_info', 'on_hold', 'reopen', 'testing'],
   testing: ['awaiting_release', 'closed', 'dropped', 'needs_info', 'on_hold', 'reopen'],
-  awaiting_release: ['dropped', 'needs_info', 'on_hold', 'releasing'],
-  releasing: ['closed', 'needs_info', 'on_hold', 'reopen'],
+  awaiting_release: ['dropped', 'needs_info', 'on_hold'],
+  releasing: [],
   needs_info: [
     'approved',
     'awaiting_release',
@@ -53,6 +54,7 @@ const DRAFT_MAY_REACH = ['open', 'closed', 'dropped', 'developed', 'in_progress'
 
 function acceptedByTheDocumentedRules(from: string, to: string): boolean {
   if (to === 'draft') return false;
+  if (to === 'clarified' || to === 'tested') return false;
   if (from === 'draft') return DRAFT_MAY_REACH.includes(to);
   return true;
 }
@@ -177,22 +179,15 @@ describe('state machine', () => {
     }
   });
 
-  it('awaiting_release exits to the release starting, the parks, or a discard', () => {
-    expect([...transitions.awaiting_release].sort()).toEqual([
-      'dropped',
-      'needs_info',
-      'on_hold',
-      'releasing',
-    ]);
+  it('no rung offers releasing: a release starts from the Release button (ISS-1421)', () => {
+    expect([...transitions.awaiting_release].sort()).toEqual(['dropped', 'needs_info', 'on_hold']);
+    for (const status of issueStatuses) {
+      expect(transitions[status], status).not.toContain('releasing');
+    }
   });
 
-  it('releasing exits only to the two release outcomes and the two parks', () => {
-    expect([...transitions.releasing].sort()).toEqual([
-      'closed',
-      'needs_info',
-      'on_hold',
-      'reopen',
-    ]);
+  it('releasing offers no exit: only the release carrying the issue ends it (ISS-1421)', () => {
+    expect(transitions.releasing).toEqual([]);
   });
 
   it('isReopenEntry counts every entry into reopen, not just from closed (ISS-781)', () => {
@@ -216,6 +211,14 @@ describe('state machine', () => {
       expect(canTransitionFree('approved', 'needs_info')).toBe(true);
       expect(canTransitionFree('developed', 'reopen')).toBe(true);
       expect(canTransitionFree('tested', 'on_hold')).toBe(true);
+    });
+
+    it('never allows a retired rung as a target, from any status', () => {
+      for (const from of issueStatuses) {
+        expect(canTransitionFree(from, 'clarified'), `${from} -> clarified`).toBe(false);
+        expect(canTransitionFree(from, 'tested'), `${from} -> tested`).toBe(false);
+      }
+      expect([...RETIRED_STATUS_REPLACEMENTS.keys()].sort()).toEqual(['clarified', 'tested']);
     });
 
     it('never allows draft as a target', () => {

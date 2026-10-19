@@ -34,9 +34,9 @@ const PROJECT: RailItem[] = [
 	{ key: "proj-automation", label: "Automation", icon: "calendar" },
 ];
 
-const ACTIVE = { name: "Forge", initials: "FO", tint: "#eee", ink: "#333", liveRuns: 0, liveRunsRead: "read" as const };
+const ACTIVE = { name: "Forge", initials: "FO", tint: "#eee", ink: "#333", liveSessions: 0, liveSessionsRead: "read" as const };
 
-function renderRail(over: { activeProject?: typeof ACTIVE | { name: string; initials: string; tint: string; ink: string; liveRuns: number | null; liveRunsRead: "pending" | "failed" | "read" }; switcherProjects?: Parameters<typeof NavRailCompact>[0]["switcherProjects"] } = {}) {
+function renderRail(over: { activeProject?: typeof ACTIVE | { name: string; initials: string; tint: string; ink: string; liveSessions: number | null; liveSessionsRead: "pending" | "failed" | "read" }; switcherProjects?: Parameters<typeof NavRailCompact>[0]["switcherProjects"] } = {}) {
 	return render(
 		<NavRailCompact
 			workspaceItems={WORKSPACE}
@@ -175,23 +175,23 @@ describe("a nav label and its button", () => {
 	});
 });
 
-// ISS-1156 — the live-run label under the project mark is stated only from a health read that came
+// ISS-1156 — the live-session label under the project mark is stated only from a health read that came
 // in. A pending or failed read is drawn as its own mark with a name, never as the absence of a count.
-describe("the live runs under the project mark", () => {
-	const unread = (liveRunsRead: "pending" | "failed") => ({ ...ACTIVE, liveRuns: null, liveRunsRead });
+describe("the live sessions under the project mark", () => {
+	const unread = (liveSessionsRead: "pending" | "failed") => ({ ...ACTIVE, liveSessions: null, liveSessionsRead });
 
 	it("says the read failed, by name, instead of drawing nothing", () => {
 		renderRail({ activeProject: unread("failed") });
-		expect(screen.getByLabelText("how many live runs could not be read").textContent).toBe("!");
+		expect(screen.getByLabelText("how many live sessions could not be read").textContent).toBe("!");
 	});
 
 	it("says the read is on its way", () => {
 		renderRail({ activeProject: unread("pending") });
-		expect(screen.getByLabelText("reading how many live runs").textContent).toBe("…");
+		expect(screen.getByLabelText("reading how many live sessions").textContent).toBe("…");
 	});
 
 	it("states the count where the read came in, and draws nothing for a read zero", () => {
-		renderRail({ activeProject: { ...ACTIVE, liveRuns: 3 } });
+		renderRail({ activeProject: { ...ACTIVE, liveSessions: 3 } });
 		expect(screen.getByText("3 live")).toBeTruthy();
 		cleanup();
 		renderRail();
@@ -199,13 +199,13 @@ describe("the live runs under the project mark", () => {
 		expect(screen.queryByLabelText(/read/)).toBeNull();
 	});
 
-	it("names the failed read on the switcher row of a project, not as a project with no live run", () => {
-		const row = (liveRunsRead: "pending" | "failed" | "read", liveRuns: number | null) => ({
-			id: "p1", slug: "forge-dev", name: "Forge", initials: "FO", tint: "#eee", ink: "#333", pinned: false, liveRuns, liveRunsRead,
+	it("names the failed read on the switcher row of a project, not as a project with no live session", () => {
+		const row = (liveSessionsRead: "pending" | "failed" | "read", liveSessions: number | null) => ({
+			id: "p1", slug: "forge-dev", name: "Forge", initials: "FO", tint: "#eee", ink: "#333", pinned: false, liveSessions, liveSessionsRead,
 		});
 		renderRail({ switcherProjects: [row("failed", null)] });
 		fireEvent.click(screen.getByRole("button", { name: /Switch project/ }));
-		expect(within(screen.getByRole("dialog")).getByLabelText("how many live runs could not be read").textContent).toBe("!");
+		expect(within(screen.getByRole("dialog")).getByLabelText("how many live sessions could not be read").textContent).toBe("!");
 	});
 });
 
@@ -214,7 +214,7 @@ describe("the live runs under the project mark", () => {
 // Help popover close on Escape and give focus back to their trigger; this surface has to as well.
 describe("the project switcher and the Escape key", () => {
 	const row = (id: string, name: string) => ({
-		id, slug: id, name, initials: name.slice(0, 2).toUpperCase(), tint: "#eee", ink: "#333", pinned: false, liveRuns: 0, liveRunsRead: "read" as const,
+		id, slug: id, name, initials: name.slice(0, 2).toUpperCase(), tint: "#eee", ink: "#333", pinned: false, liveSessions: 0, liveSessionsRead: "read" as const,
 	});
 	const PROJECTS = [row("forge-dev", "Forge"), row("epod", "Epod")];
 
@@ -287,5 +287,17 @@ describe("the project switcher and the Escape key", () => {
 
 		expect(screen.queryByRole("dialog")).toBeNull();
 		expect(document.activeElement).toBe(issues);
+	});
+});
+
+// ISS-1229 r16, judge-41: What's New drew the notifications bell with a dot of its own, so a dot stayed
+// beside the bell after the bell said "You're all caught up". It draws an icon of its own.
+describe("the What's New button", () => {
+	it("draws an icon that is not the notifications bell", () => {
+		renderRail();
+
+		const svg = screen.getByLabelText("What's New").querySelector("svg");
+		expect(svg?.getAttribute("class")).toContain("lucide-megaphone");
+		expect(svg?.getAttribute("class")).not.toContain("lucide-bell");
 	});
 });

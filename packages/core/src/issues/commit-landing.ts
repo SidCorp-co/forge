@@ -15,6 +15,7 @@ import {
   saying,
 } from '../projects/repository-reader.js';
 import { heldIssuePrefixes, issueRefFormatter } from './issue-prefix-read.js';
+import { checkStep, shortCommit, withReason } from './merge-record.js';
 
 export type CommitLandingRefusalCode =
   | 'COMMIT_NOT_IN_REPOSITORY'
@@ -23,7 +24,13 @@ export type CommitLandingRefusalCode =
   | 'COMMIT_UNVERIFIED';
 
 export type CommitLanding =
-  | { ok: true; sha: string; committedAt: Date; branch: string; repository: string }
+  | {
+      ok: true;
+      sha: string;
+      committedAt: Date;
+      branch: string;
+      repository: string;
+    }
   | {
       ok: false;
       code: CommitLandingRefusalCode;
@@ -63,10 +70,43 @@ function unreadable(
   const { noReader = false, claimable = true } = how;
   return refuse(
     'COMMIT_UNVERIFIED',
-    `commit ${commit} could not be checked against this project's repository: ${why}. Mark again ${clears}`,
+    uncheckedCommit(commit, why, { clears, noReader }),
     { commit },
     claimable ? { why, clears, noReader } : undefined,
   );
+}
+
+/** What was not checked and what checks it, the host's reason quoted beneath (ISS-1421: three short
+ *  sentences). Only a refused mark, which a caller makes on an issue not yet marked, offers a mark
+ *  naming no commit: on a marked issue that would change nothing. */
+function uncheckedCommit(
+  commit: string,
+  why: string,
+  how: { clears: string; noReader: boolean },
+  refused = false,
+): string {
+  const named = shortCommit(commit);
+  const said = refused
+    ? `Nothing was marked, because Forge could not check commit ${named} against the repository. ${checkStep({ why, ...how })}. Or mark it naming no commit, which records a claim.`
+    : `Forge could not check commit ${named} against the repository. ${checkStep({ why, ...how })}.`;
+  return withReason(said, why);
+}
+
+/** A commit the repository does not hold, in our words, naming the repository and what was typed. */
+function notInRepository(
+  commit: string,
+  looked: { detail: string; details: Record<string, unknown> },
+) {
+  const where =
+    typeof looked.details.repository === 'string' ? ` ${looked.details.repository}` : '';
+  const said = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i.test(commit)
+    ? `The repository${where} holds no commit ${shortCommit(commit)}. Mark it with the commit the work landed at.`
+    : `The repository${where} resolves no single commit from ${commit.length < 40 ? commit : shortCommit(commit)}. Mark it with the full sha the work landed at.`;
+  // Only an overlong name's reason says more than the sentence above does.
+  return {
+    detail: withReason(said, /hex digits/.test(looked.detail) ? looked.detail : null),
+    details: looked.details,
+  };
 }
 
 /**
@@ -115,7 +155,13 @@ export async function readCommitLanding(
           noReader: access.unbound,
         });
       }
-      return landingIn(access.reader, { projectId, issSeq, commit, baseBranch, branches });
+      return landingIn(access.reader, {
+        projectId,
+        issSeq,
+        commit,
+        baseBranch,
+        branches,
+      });
     },
     deps,
   );
@@ -136,7 +182,8 @@ async function landingIn(
   const clears = readableThrough(reader.route);
   const looked = await reader.commit(commit);
   if (looked.kind === 'absent') {
-    return refuse('COMMIT_NOT_IN_REPOSITORY', looked.detail, looked.details);
+    const { detail, details } = notInRepository(commit, looked);
+    return refuse('COMMIT_NOT_IN_REPOSITORY', detail, details);
   }
   if (looked.kind === 'unreadable') return unreadable(commit, looked.why, clears);
   const { sha, message } = looked;
@@ -147,7 +194,8 @@ async function landingIn(
     const subject = subjectOf(message);
     return refuse(
       'COMMIT_NOT_THIS_ISSUE',
-      `commit ${sha} in ${repository} is not ${ref}'s landing: its subject "${subject}" does not declare ${ref}. A commit is an issue's when its subject names the key in a closing (…) group, opens with it, or merges a branch named for it`,
+      // The subject is quoted as the commit holds it: never stopped, capitalised or respaced.
+      `Commit ${shortCommit(sha)} is not ${ref}'s landing, because its subject does not name ${ref}. Mark the commit whose subject ends with (${ref}), opens with ${ref}, or merges its branch.\n> ${subject.trim()}`,
       { commit: sha, repository, subject, issue: ref },
     );
   }
@@ -170,7 +218,7 @@ async function landingIn(
   }
   return refuse(
     'COMMIT_NOT_LANDED',
-    `commit ${sha} is in ${repository} and ${branches.join(' and ')} ${branches.length > 1 ? 'do' : 'does'} not contain it, so it has not landed. Mark once it is merged there`,
+    `Commit ${shortCommit(sha)} is in ${repository}, but ${branches.join(' and ')} ${branches.length > 1 ? 'do' : 'does'} not contain it, so it has not landed. Mark it once it is merged there.`,
     { commit: sha, repository, branches },
   );
 }
@@ -184,6 +232,9 @@ export type CommitResolution =
       details: Record<string, unknown>;
       /** The cause alone, for a reader that words its own sentence around it. */
       reason: string;
+      /** Where Forge could not read the repository: the host's reason, which a marked issue
+       *  answers with where its mark stays rather than with this refusal. */
+      unread?: { why: string };
     };
 
 /**
@@ -196,29 +247,32 @@ export async function resolveMarkCommit(
   deps: CommitLandingDeps = {},
 ): Promise<CommitResolution> {
   const { projectId, commit } = args;
-  const unresolved = (why: string, route: RepositoryRoute): CommitResolution => ({
+  const unresolved = (
+    why: string,
+    route: RepositoryRoute,
+    noReader: boolean,
+  ): CommitResolution => ({
     ok: false,
     code: 'COMMIT_UNVERIFIED',
-    detail:
-      `commit ${commit} could not be checked against this project's repository, so the mark is ` +
-      `not recorded naming it unchecked: ${why}. Mark again ${readableThrough(route)}, or mark it naming no ` +
-      'commit, which records a claim that names none',
+    detail: uncheckedCommit(commit, why, { clears: readableThrough(route), noReader }, true),
     details: { commit },
     reason: `the repository could not be read: ${why}`,
+    unread: { why },
   });
   return withRepository(
     projectId,
     async (access) => {
-      if (access.kind === 'refused') return unresolved(saying(access), access.route);
+      if (access.kind === 'refused') {
+        return unresolved(saying(access), access.route, access.unbound);
+      }
       const { reader } = access;
       const looked = await reader.commit(commit);
-      if (looked.kind === 'unreadable') return unresolved(looked.why, reader.route);
+      if (looked.kind === 'unreadable') return unresolved(looked.why, reader.route, false);
       if (looked.kind === 'absent') {
         return {
           ok: false,
           code: 'COMMIT_NOT_IN_REPOSITORY',
-          detail: looked.detail,
-          details: looked.details,
+          ...notInRepository(commit, looked),
           reason: `${reader.name} does not resolve it`,
         };
       }

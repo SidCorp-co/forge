@@ -458,3 +458,40 @@ describe('loadReleaseReadiness — the live address, and the preview that is not
     expect((await loadReleaseReadiness(PROJECT_ID))?.verifySources).toEqual(['environments-live']);
   });
 });
+
+describe('loadReleaseReadiness — the base branch it answers', () => {
+  it('answers the stored base branch of a project whose release has nowhere to land yet', async () => {
+    project({
+      baseBranch: 'dev',
+      releaseChain: [{ branch: 'dev' }, { branch: 'main', from: 'dev' }],
+    });
+
+    const out = await loadReleaseReadiness(PROJECT_ID);
+
+    expect(out?.targetUndeclared).toBe(true);
+    expect(out?.baseBranch).toBe('dev');
+  });
+
+  it('answers the stored base branch of a publish project with a live target', async () => {
+    project({ baseBranch: 'main', releaseChain: [{ branch: 'main' }] });
+    liveBinding({});
+
+    expect((await loadReleaseReadiness(PROJECT_ID))?.baseBranch).toBe('main');
+  });
+
+  it('answers the stored base branch of a project that ships nothing', async () => {
+    project({ baseBranch: 'trunk', releaseChain: [] });
+
+    expect((await loadReleaseReadiness(PROJECT_ID))?.baseBranch).toBe('trunk');
+  });
+});
+
+describe('loadReleaseReadiness — no base branch stored', () => {
+  it('answers none rather than a branch nobody named', async () => {
+    project({ releaseChain: [] });
+    const [row] = (await selectLimit()) as Record<string, unknown>[];
+    selectLimit.mockResolvedValue([{ ...row, baseBranch: null }]);
+
+    expect((await loadReleaseReadiness(PROJECT_ID))?.baseBranch).toBe('');
+  });
+});

@@ -55,6 +55,10 @@ const closeRefusalSchema = z.object({
   code: z.enum(['CLOSE_REQUIRES_SHIPPED', 'OPEN_QUESTIONS', 'ENTRY_CRITERIA_UNMET']),
   reason: z.string(),
   clears: z.string(),
+  /** The shortfall and what clears it, as whole sentences a page shows as they are. */
+  said: z.string(),
+  /** The same, for the issue's own page: its door is a control on that page. */
+  saidHere: z.string(),
 });
 
 export const rosterSchema = z.object({
@@ -119,8 +123,9 @@ export const readinessSchema = z.object({
   declarationRead: z.boolean(),
   channelsRead: z.boolean(),
   gaps: z.array(z.string()),
-  blockers: z.array(blockerSchema),
-  warnings: z.array(warningSchema),
+  /** `reader` is the sentence a person reads; `message` stays the caller's. */
+  blockers: z.array(blockerSchema.extend({ reader: z.string() })),
+  warnings: z.array(warningSchema.extend({ reader: z.string() })),
   carried: carriedRecordSchema,
 });
 

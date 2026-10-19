@@ -34,6 +34,8 @@ export function useIntegrationsList(projectId: string | undefined) {
 function useInvalidateIntegrations(projectId: string | undefined) {
   const qc = useQueryClient();
   return () => {
+    // A save from the tab makes or changes a connection, which the Share section lists (ISS-1421).
+    qc.invalidateQueries({ queryKey: ["integration-connections"] });
     qc.invalidateQueries({ queryKey: ["integrations", "list", projectId] });
     qc.invalidateQueries({ queryKey: ["integrations", "status", projectId] });
     qc.invalidateQueries({
@@ -429,6 +431,10 @@ export function useBindExistingConnection() {
       });
       qc.invalidateQueries({
         queryKey: ["integrations", "status", vars.body.projectId],
+      });
+      // The Agent MCP servers panel reads what a share now gives agents (ISS-1421 r6, criterion 99).
+      qc.invalidateQueries({
+        queryKey: ["integrations", "mcp-preview", vars.body.projectId],
       });
       toast({ title: "Connection shared", tone: "success" });
     },

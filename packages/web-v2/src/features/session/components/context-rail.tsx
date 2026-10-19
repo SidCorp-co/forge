@@ -19,39 +19,41 @@ import {
   Icon,
   MonoTag,
   Stat,
-  StatusChip,
-  useElapsed,
 } from "@/design";
+import { SessionChip } from "@/features/sessions/components/session-chip";
+import { useSessionDuration } from "@/features/sessions/session-duration";
 import {
   deriveSessionDisplayStatus,
+  isLiveDisplay,
+  sessionChipStatusOf,
+  sessionEndText,
   sessionStep,
-  statusToChip,
   failureReasonAction,
   failureReasonLabel,
+  isRealFailure,
   type SessionRow,
+  TERMINAL_SESSION_STATUSES,
 } from "@/features/sessions/types";
+import { coreNoteText, TIMING_HOVER } from "@/features/sessions/status-sentences";
 import { useSessionCost, useSessions } from "@/features/sessions/hooks";
-import { isJobDriven, sessionKind } from "@/features/sessions/types";
-import { type RunGateNote, runGateNote, runGateUnfetched } from "@/features/pipeline/derive";
-import { useRun } from "@/features/pipeline/hooks";
+import { isJobDriven, sessionKind, sessionTitle } from "@/features/sessions/types";
+import { type RunGateNote, runGateNote, runGateUnfetched } from "@/features/runs/derive";
+import { useRun } from "@/features/runs/hooks";
 import { useDevices } from "@/features/runners/hooks";
-import { deviceHealth, deviceVersionLabel } from "@/features/runners/types";
+import { deviceHealth, deviceStatusWord, deviceVersionLabel } from "@/features/runners/types";
+import { useRunnerFleet } from "@/features/project-dashboard/runner-fleet";
+import { boxHealth, boxWord } from "@/features/sessions/box-state";
 import { deriveAgentTasks, deriveFilesChanged, type ConversationItem } from "../types";
+
+/** Where a session that went silent left off, said only on a page that holds its turns. */
+export const LAST_TURN_SHOWS_WHERE = "Its last turn, in the conversation, shows where it stopped.";
+const WENT_SILENT = new Set(["session_stopped_checking_in", "heartbeat_timeout"]);
 
 const PLATFORM_LABEL: Record<string, string> = {
   macos: "macOS",
   linux: "Linux",
   windows: "Windows",
 };
-
-function formatDuration(ms: number): string {
-  const s = Math.max(0, Math.floor(ms / 1000));
-  const m = Math.floor(s / 60);
-  const h = Math.floor(m / 60);
-  if (h > 0) return `${h}h ${String(m % 60).padStart(2, "0")}m`;
-  if (m > 0) return `${m}m ${String(s % 60).padStart(2, "0")}s`;
-  return `${s}s`;
-}
 
 function fmtNum(n: number | undefined): string {
   if (n == null) return "—";
@@ -111,14 +113,8 @@ export function ContextRail({
   const router = useRouter();
   const display = deriveSessionDisplayStatus(session);
   const stage = sessionStep(session.metadata) ?? undefined;
-  const live = display === "running" || display === "stalled";
-  const startMs = session.startedAt ? new Date(session.startedAt).getTime() : undefined;
-  const elapsed = useElapsed(startMs, live);
-  const duration = !startMs
-    ? "—"
-    : live
-      ? elapsed
-      : formatDuration(new Date(session.updatedAt).getTime() - startMs);
+  const live = isLiveDisplay(display);
+  const duration = useSessionDuration(session, live);
 
   const usage = session.usage ?? {};
   const files = deriveFilesChanged(items);
@@ -140,6 +136,9 @@ export function ContextRail({
   // Resolve the runner the session is bound to. The device may not be in the
   // viewer's owner-scoped list (different owner) → fall back to the short id.
   const devicesQ = useDevices();
+  // The box's state as the sessions strip and the Runs tab read it: the project's runner line for this device.
+  const fleet = useRunnerFleet(session.projectId, Date.now());
+  const line = fleet.summary.lines.find((l) => l.deviceId === session.deviceId);
   const device = session.deviceId
     ? devicesQ.data?.find((d) => d.id === session.deviceId)
     : undefined;
@@ -160,7 +159,7 @@ export function ContextRail({
   const modelLabel =
     cost && cost.models.length > 0
       ? cost.models.length === 1
-        ? cost.models[0]!.model
+        ? (cost.models[0]?.model ?? null)
         : `${cost.models.length} models`
       : null;
 
@@ -168,6 +167,9 @@ export function ContextRail({
   const failureReason = session.failureReason ?? null;
   const showBlocker =
     !!failureReason && (display === "failed" || display === "stalled" || display === "cancelled_stale");
+  const remedy = failureReasonAction(failureReason, "Rerun", session.startedAt != null);
+  // Core has ended it: a session it still holds, idle between turns included, has no end time.
+  const ended = TERMINAL_SESSION_STATUSES.has(session.status);
 
   return (
     <div className="flex flex-col gap-6">
@@ -180,7 +182,11 @@ export function ContextRail({
                 <span className="flex-1 truncate fg-body-sm" title={device.name}>
                   {device.name}
                 </span>
-                <HealthDot health={deviceHealth(device.status)} />
+                {line ? (
+                  <HealthDot health={boxHealth(line, false)} label={boxWord(line, fleet.activity.read === "ok")} />
+                ) : (
+                  <HealthDot health={deviceHealth(device.status)} label={deviceStatusWord(device.status)} />
+                )}
               </div>
               <span className="fg-caption">
                 {PLATFORM_LABEL[device.platform] ?? device.platform}
@@ -226,13 +232,15 @@ export function ContextRail({
 
       {isPipeline && (
         <Section title="Pipeline">
-          <StatusChip status={statusToChip(display)} stage={stage} size="sm" domain="session" />
+          <SessionChip status={sessionChipStatusOf(session, display)} stage={stage} size="sm" session={session} />
         </Section>
       )}
 
       <Section title="Run stats">
         <div className="flex flex-col gap-2.5">
-          {!isPipeline && <StatusChip status={statusToChip(display)} stage={stage} size="sm" domain="session" />}
+          {!isPipeline && (
+            <SessionChip status={sessionChipStatusOf(session, display)} stage={stage} size="sm" session={session} />
+          )}
           <Stat icon="activity" title="Turns">{usage.turns ?? "—"} turns</Stat>
           <Stat icon="clock" title="Duration">{duration}</Stat>
           <Stat icon="cpu" title="Context window used">{fmtNum(usage.contextUsed)} ctx</Stat>
@@ -282,13 +290,17 @@ export function ContextRail({
       )}
 
       {showBlocker && (
-        <Section title="Blocked">
-          <Banner tone={failureReason === "user_cancelled" ? "attention" : "danger"}>
+        <Section title={display === "stalled" ? "Core's note" : "Why it ended"}>
+          {/* One tone for one outcome: red only where the chip reads a failure (ISS-1228). */}
+          <Banner tone={display === "stalled" ? "attention" : isRealFailure(display, failureReason) ? "danger" : "neutral"}>
             <span className="font-semibold">
-              {failureReasonLabel(failureReason) ?? failureReason}
+              {display === "stalled"
+                ? coreNoteText(failureReasonLabel(failureReason) ?? failureReason)
+                : sessionEndText(failureReason)}
             </span>
-            {failureReasonAction(failureReason) && (
-              <span className="mt-0.5 block">{failureReasonAction(failureReason)}</span>
+            {remedy && <span className="mt-0.5 block">{remedy}</span>}
+            {WENT_SILENT.has(failureReason) && items.length > 0 && (
+              <span className="mt-0.5 block">{LAST_TURN_SHOWS_WHERE}</span>
             )}
           </Banner>
         </Section>
@@ -296,12 +308,12 @@ export function ContextRail({
 
       <Section title="Timing">
         <div className="flex flex-col gap-2.5">
-          <Stat icon="calendar" title="Dispatched to a runner">
+          <Stat icon="calendar" title={TIMING_HOVER.dispatched}>
             {fmtTime(session.dispatchedAt)} dispatched
           </Stat>
-          <Stat icon="play" title="Agent started">{fmtTime(session.startedAt)} started</Stat>
-          <Stat icon="check" title="Ended (last update on a terminal session)">
-            {live ? "—" : fmtTime(session.updatedAt)} ended
+          <Stat icon="play" title={TIMING_HOVER.started}>{fmtTime(session.startedAt)} started</Stat>
+          <Stat icon="check" title={TIMING_HOVER.ended}>
+            {ended ? fmtTime(session.updatedAt) : "—"} ended
           </Stat>
         </div>
       </Section>
@@ -358,19 +370,15 @@ export function ContextRail({
 function SiblingRow({ row, onOpen }: { row: SessionRow; onOpen?: () => void }) {
   const display = deriveSessionDisplayStatus(row);
   const stage = sessionStep(row.metadata) ?? undefined;
-  const label =
-    (row.metadata?.step as string | undefined) ??
-    (row.metadata?.stage as string | undefined) ??
-    row.title ??
-    `Session ${row.id.slice(0, 8)}`;
+  const label = stage ?? sessionTitle(row) ?? `Session ${row.id.slice(0, 8)}`;
 
   const inner = (
     <>
       <Icon name="pipeline" size={13} className="flex-none text-subtle" />
-      <span className="flex-1 truncate fg-body-sm capitalize" title={label}>
+      <span className="flex-1 truncate fg-body-sm" title={label}>
         {label}
       </span>
-      <StatusChip status={statusToChip(display)} stage={stage} size="sm" domain="session" />
+      <SessionChip status={sessionChipStatusOf(row, display)} stage={stage} size="sm" session={row} />
     </>
   );
 

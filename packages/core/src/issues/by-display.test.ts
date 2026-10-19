@@ -8,6 +8,24 @@ vi.mock('./landing-evidence.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./landing-evidence.js')>()),
   readLandingShape: async () => 'git',
 }));
+// The detail answer carries the work-evidence gate's branch; that read is proved against Postgres
+// in `tests/integration/recorded-branch-e2e.test.ts`, so here it is the gate's answer verbatim.
+vi.mock('../pipeline/work-evidence.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../pipeline/work-evidence.js')>()),
+  collectWorkEvidence: async () => ({
+    branch: 'ISS-7-the-branch',
+    mergedCommitSha: null,
+    mergedLanding: null,
+    claimedCommit: null,
+    lane: null,
+  }),
+}));
+// The newest merged pull request's commit (ISS-1421 r8) is read against Postgres in
+// `tests/integration/landing-moves-forward-e2e.test.ts`; here Forge holds none.
+vi.mock('./merge-record.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./merge-record.js')>()),
+  observedMergeForIssue: async () => null,
+}));
 vi.mock('../config/env.js', () => ({
   env: { JWT_SECRET: TEST_SECRET, NODE_ENV: 'test' },
 }));
@@ -150,11 +168,13 @@ describe('GET /api/projects/:id/issues/by-display/:displayId', () => {
       labels: unknown[];
       comments: unknown[];
       activity: unknown[];
+      recordedBranch: string | null;
     };
     expect(body.id).toBe(ISSUE_ID);
     expect(body.displayId).toBe('ISS-7');
     expect(body.labels).toEqual([]);
     expect(body.comments).toEqual([]);
     expect(body.activity).toEqual([]);
+    expect(body.recordedBranch).toBe('ISS-7-the-branch');
   });
 });

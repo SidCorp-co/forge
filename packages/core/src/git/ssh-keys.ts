@@ -171,19 +171,19 @@ async function lsRemote(
         return {
           ok: false,
           code: 'auth_denied',
-          message: `The git host refused this deploy key (${said}). Give its public key ${KEY_ACCESS} to the repository, ${WHY_KEY_ACCESS}.`,
+          message: `The git host refused this deploy key. Give it ${KEY_ACCESS} to the repository, ${WHY_KEY_ACCESS}.\n${said}`,
         };
       case 'no_access':
         return {
           ok: false,
           code: 'not_found',
-          message: `The git host took this deploy key but will not let it read the repository (${said}). Give it ${KEY_ACCESS} to the repository, ${WHY_KEY_ACCESS}; if no repository lives at that URL, correct the SSH clone URL.`,
+          message: `The git host took this deploy key but will not let it read the repository. Give it ${KEY_ACCESS} to the repository, ${WHY_KEY_ACCESS}. If none lives there, fix the SSH clone URL.\n${said}`,
         };
       case 'unreachable':
         return {
           ok: false,
           code: 'host_unreachable',
-          message: `Could not reach the git host (${said}).`,
+          message: `Forge could not reach the git host.\n${said}`,
         };
       default:
         return { ok: false, code: 'error', message: said || 'git ls-remote failed.' };

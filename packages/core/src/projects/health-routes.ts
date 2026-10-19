@@ -1,3 +1,4 @@
+import type { StuckIssueKind } from '@forge/contracts/notifications';
 import { inArray } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { answer } from '../api-reference/declare/describe.js';
@@ -19,6 +20,7 @@ import { formatIssueRef } from '../lib/issue-ref.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { type BlockerRow, readHealthAggregates } from './health-aggregates.js';
 import { projectHealthListSchema, readProjectHealth } from './health-routes-reference.js';
+import { readStuckKinds } from './stuck-kinds-read.js';
 
 interface ProjectHealthRow {
   /** Project UUID — needed by web-v2 to join the `GET /api/projects` list rows
@@ -36,13 +38,22 @@ interface ProjectHealthRow {
   /** How many issues are in each work state, by the same rule the pulse and the issues search count by. */
   work: WorkStateCounts;
   /** The most recently updated parked issues, capped at `PER_PROJECT_BLOCKER_CAP`. */
-  blockers: Array<{ issueId: string; documentId: string; status: string }>;
+  blockers: Array<{
+    issueId: string;
+    documentId: string;
+    title: string;
+    status: string;
+    stuckKind?: StuckIssueKind;
+    stuckOwedBy?: string;
+  }>;
   /** Every parked issue, the count behind the capped `blockers` list. */
   blockersTotal: number;
   pendingEscalations: number;
   avgCycleTimeDays: number;
-  /** Pipeline runs currently `running` or `paused`. */
+  /** Pipeline runs currently `running` or `paused`: open runs, which is not proof anything works them. */
   liveRuns: number;
+  /** Agent sessions live by `liveSessionWhere`, the count the pipeline surface's session list makes. */
+  liveSessions: number;
   /** Runners in the `online` state. */
   runnerCount: number;
   /** Trailing-24h spend (USD) from the `pipeline_run_step_durations` view. */
@@ -57,6 +68,16 @@ interface ProjectHealthRow {
    *  issues sit on the claim lane none of its hops reaches. A zero says the lane is empty; the
    *  field's absence, which is what callers had before, said nothing at all. */
   loopMonitor: LoopMonitorCoverage;
+  stuckIssues: number;
+  /** The same issues, each once under its most specific reason, so the kinds add up to `stuckIssues`. */
+  stuckIssuesByKind: Partial<Record<StuckIssueKind, number>>;
+  stuckIssueRefs: Array<{
+    issueId: string;
+    documentId: string;
+    title: string;
+    kind: StuckIssueKind;
+    owedBy?: string;
+  }>;
 }
 
 /** First 2 chars of the email local-part, uppercased — the avatar initials. */
@@ -84,6 +105,7 @@ function groupBlockers(rows: BlockerRow[]): Map<string, ProjectHealthRow['blocke
     arr.push({
       issueId: formatIssueRef(r.issuePrefix, r.issSeq),
       documentId: r.id,
+      title: r.title,
       status: r.status,
     });
     byProject.set(r.projectId, arr);
@@ -112,7 +134,7 @@ projectHealthRoutes.get('/health', readProjectHealth, async (c) => {
   if (visibleProjects.length === 0) return c.json(answer(projectHealthListSchema, []));
 
   const projectIds = visibleProjects.map((p) => p.id);
-  const agg = await readHealthAggregates(projectIds);
+  const agg = await readHealthAggregates(projectIds, userId);
   const claimHeldByProject = await countClaimHeldIssuesByProject(projectIds);
 
   const rowsByProject = new Map<string, WorkStateRow[]>();
@@ -123,6 +145,18 @@ projectHealthRoutes.get('/health', readProjectHealth, async (c) => {
   }
 
   const blockersByProject = groupBlockers(agg.blockerRowsAll);
+  // A parked issue a stuck-issue notice stands for is listed by that notice's words (ISS-1229 r15).
+  const blockerKinds = await readStuckKinds(
+    [...blockersByProject.values()].flatMap((list) => list.map((b) => b.documentId)),
+    userId,
+  );
+  for (const list of blockersByProject.values()) {
+    for (const b of list) {
+      const told = blockerKinds.get(b.documentId);
+      if (told) b.stuckKind = told.kind;
+      if (told?.owedBy) b.stuckOwedBy = told.owedBy;
+    }
+  }
   const blockersTotalByProject = new Map<string, number>();
   for (const r of agg.blockerRowsAll) {
     blockersTotalByProject.set(r.projectId, (blockersTotalByProject.get(r.projectId) ?? 0) + 1);
@@ -138,6 +172,26 @@ projectHealthRoutes.get('/health', readProjectHealth, async (c) => {
 
   const liveRunsByProject = new Map<string, number>();
   for (const r of agg.liveRunRows) liveRunsByProject.set(r.projectId, Number(r.n));
+
+  const liveSessionsByProject = new Map<string, number>();
+  for (const r of agg.liveSessionRows) liveSessionsByProject.set(r.projectId, Number(r.n));
+
+  const stuckIssuesByProject = new Map<string, number>();
+  const stuckKindsByProject = new Map<string, ProjectHealthRow['stuckIssuesByKind']>();
+  const stuckRefsByProject = new Map<string, ProjectHealthRow['stuckIssueRefs']>();
+  for (const r of agg.stuckIssueRows) {
+    stuckIssuesByProject.set(r.projectId, Number(r.total));
+    stuckKindsByProject.set(r.projectId, r.byKind);
+    const refs = stuckRefsByProject.get(r.projectId) ?? [];
+    refs.push({
+      issueId: formatIssueRef(r.issuePrefix, r.issSeq),
+      documentId: r.id,
+      title: r.title,
+      kind: r.kind,
+      ...(r.owedBy ? { owedBy: r.owedBy } : {}),
+    });
+    stuckRefsByProject.set(r.projectId, refs);
+  }
 
   const runnersByProject = new Map<string, number>();
   for (const r of agg.runnerRows) runnersByProject.set(r.projectId, Number(r.n));
@@ -181,12 +235,16 @@ projectHealthRoutes.get('/health', readProjectHealth, async (c) => {
       pendingEscalations: pendingEscalationsOf(rowsByProject.get(p.id) ?? []),
       avgCycleTimeDays: cycleByProject.get(p.id) ?? 0,
       liveRuns: liveRunsByProject.get(p.id) ?? 0,
+      liveSessions: liveSessionsByProject.get(p.id) ?? 0,
       runnerCount: runnersByProject.get(p.id) ?? 0,
       spend24hUsd: spendByProject.get(p.id) ?? 0,
       memberCount: memberCountByProject.get(p.id) ?? 0,
       members: membersByProject.get(p.id) ?? [],
       lastActivityAt: lastActivityByProject.get(p.id) ?? null,
       loopMonitor: loopMonitorCoverage(claimHeldByProject.get(p.id) ?? 0),
+      stuckIssues: stuckIssuesByProject.get(p.id) ?? 0,
+      stuckIssuesByKind: stuckKindsByProject.get(p.id) ?? {},
+      stuckIssueRefs: stuckRefsByProject.get(p.id) ?? [],
     };
   });
 

@@ -32,6 +32,8 @@ let stored: Doc;
 let sent: unknown[];
 /** How many times the page has read the document back. */
 let reads: number;
+/** What the next write answers with, where a case plants a failure the document has no part in. */
+let failure: ApiError | null = null;
 
 vi.mock("@/lib/api/client", async () => {
 	const actual = await vi.importActual<typeof import("@/lib/api/client")>("@/lib/api/client");
@@ -41,6 +43,7 @@ vi.mock("@/lib/api/client", async () => {
 			if (path.endsWith("/pipeline-config") && init?.method === "PATCH") {
 				const write = JSON.parse(init.body ?? "null") as { base: Doc; patch: Doc } | null;
 				sent.push(write);
+				if (failure) throw failure;
 				if (!write || typeof write !== "object" || !("base" in write) || !("patch" in write)) {
 					throw new ApiError(400, "a pipeline config write is `{ base, patch }`", "CONFIG_PATCH_SHAPE");
 				}
@@ -111,6 +114,7 @@ const pool = (stage: string, device: string) =>
 beforeEach(() => {
 	sent = [];
 	reads = 0;
+	failure = null;
 	toast.mockClear();
 });
 afterEach(cleanup);
@@ -184,6 +188,26 @@ describe("two sections edited, one Save", () => {
 		expect(patch).not.toHaveProperty("intakeGate");
 		expect(patch).not.toHaveProperty("knowledgePromotion");
 		expect(patch).not.toHaveProperty("enabled");
+	});
+});
+
+describe("a write that fails for a reason of the server's own", () => {
+	it("opens with nothing saved, then says the reason in words", async () => {
+		failure = new ApiError(502, "", undefined);
+		mountPage();
+		await pinOpenToBoxA();
+		press();
+		expect(
+			await screen.findByText("Nothing was saved. The server did not answer in time. Try again in a moment."),
+		).toBeInTheDocument();
+	});
+
+	it("says a refusal the screen has words for after the same opening", async () => {
+		failure = new ApiError(409, "", "OPEN_LOCKED_ON");
+		mountPage();
+		await pinOpenToBoxA();
+		press();
+		expect(await screen.findByText("Nothing was saved. The Open stage can't be disabled.")).toBeInTheDocument();
 	});
 });
 

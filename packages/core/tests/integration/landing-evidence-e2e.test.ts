@@ -85,7 +85,7 @@ describe('a project whose work lands outside git (kind website)', () => {
     // Outside git the mark is short of a landing, never of a commit Forge did not watch land.
     expect(refusal.message).toContain('names no landing');
     expect(refusal.message).not.toMatch(
-      /merged pull request|merged_commit_sha|CLAIM Forge did not observe/,
+      /merged pull request|merged_commit_sha|Forge did not see this merge/,
     );
     expect((await stored(id)).status).toBe('awaiting_release');
 
@@ -227,7 +227,7 @@ describe('a project that lands in git (kind standard) closes exactly as before',
     expect(refusal.code).toBe('CLOSE_REQUIRES_SHIPPED');
     expect(refusal.message).toContain('this issue carries no `merged_at`');
     expect(refusal.message).toContain('naming the commit it landed at in `data.commit`');
-    expect(refusal.message).toContain('`landingShape: outside_git`');
+    expect(refusal.message).toContain('Set `landingShape` to `outside_git`');
     expect(refusal.message).not.toContain('naming where it landed');
   });
 

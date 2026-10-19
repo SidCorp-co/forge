@@ -1,304 +1,325 @@
-import { posix } from 'node:path';
 import ts from 'typescript';
+import { Model } from './single-door.model.fixture.js';
+import {
+  type FileFacts,
+  type FnInfo,
+  TABLE,
+  unwrap,
+  WRITING_CALLS,
+} from './single-door.parse.fixture.js';
+import { rawSqlFindings, WRITES_ON_COMMENTS } from './single-door.sql.fixture.js';
 
-/** One place a source writes the comments table, with the line it does so on. */
+/**
+ * A finding: `write` is the comments table written, `unresolved` a write whose table the scan could
+ * not trace. The second is refused by name, since passing it would say the table is not this one.
+ */
 export interface CommentWrite {
   file: string;
   line: number;
   how: string;
+  kind: 'write' | 'unresolved';
 }
 
-const WRITING_CALLS = new Set(['insert', 'update', 'delete']);
+/** The builder methods a drizzle write is followed by, which `Map.delete` and `hash.update` are not. */
+const BUILDER_CALLS = new Set([
+  'values',
+  'set',
+  'where',
+  'returning',
+  'onConflictDoNothing',
+  'onConflictDoUpdate',
+  '$dynamic',
+  'execute',
+  'prepare',
+  'then',
+]);
 
-const RAW_WRITES = [
-  /\binsert\s+into\s+(?:only\s+)?(?:"?public"?\.)?"?comments"?\b/i,
-  /\bupdate\s+(?:only\s+)?(?:"?public"?\.)?"?comments"?\s+set\b/i,
-  /\bdelete\s+from\s+(?:only\s+)?(?:"?public"?\.)?"?comments"?\b/i,
-];
+const lineOf = (f: FileFacts, node: ts.Node): number =>
+  f.sf.getLineAndCharacterOfPosition(node.getStart(f.sf)).line + 1;
 
-/** What a file calls the comments table, and what it calls a module that exports it. */
-interface Bindings {
-  tables: Set<string>;
-  namespaces: Map<string, ReadonlySet<string>>;
-}
-
-interface Parsed {
-  sf: ts.SourceFile;
-  imports: Array<{ spec: string; named: Array<[string, string]>; namespace: string | null }>;
-  declarations: ts.VariableDeclaration[];
-  exportsFrom: Array<{ spec: string; pairs: Array<[string, string]> | 'all' }>;
-  localExports: Array<[string, string]>;
-  exportedVariables: string[];
-  calls: ts.CallExpression[];
-  strings: ts.LiteralLikeNode[];
-  declaredTable: string[];
-}
-
-function unwrap(node: ts.Expression): ts.Expression {
-  let current = node;
-  for (;;) {
-    if (
-      ts.isParenthesizedExpression(current) ||
-      ts.isAsExpression(current) ||
-      ts.isNonNullExpression(current) ||
-      ts.isSatisfiesExpression(current) ||
-      ts.isAwaitExpression(current)
-    ) {
-      current = current.expression;
-    } else return current;
+/** The method a call names when it is a write, `*` when the method is picked at run time. */
+function writeMethod(callee: ts.Expression): { name: string; at: ts.Node } | null {
+  if (ts.isPropertyAccessExpression(callee) && WRITING_CALLS.has(callee.name.text)) {
+    return { name: callee.name.text, at: callee.name };
   }
+  if (!ts.isElementAccessExpression(callee)) return null;
+  const key = callee.argumentExpression;
+  if (!ts.isStringLiteralLike(key)) return { name: '*', at: key };
+  return WRITING_CALLS.has(key.text) ? { name: key.text, at: key } : null;
 }
 
-function isExported(node: ts.VariableStatement): boolean {
-  return ts.getModifiers(node)?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword) ?? false;
+/** Whether the call is followed by what only a drizzle write is followed by. */
+function isBuilderShaped(call: ts.CallExpression): boolean {
+  let parent = call.parent;
+  while (ts.isParenthesizedExpression(parent)) parent = parent.parent;
+  if (ts.isAwaitExpression(parent) || ts.isReturnStatement(parent)) return true;
+  if (ts.isArrowFunction(parent) && parent.body === call) return true;
+  return ts.isPropertyAccessExpression(parent) && BUILDER_CALLS.has(parent.name.text);
 }
 
-/** `pgTable('comments', ...)`, however the call is laid out. */
-function declaresCommentsTable(init: ts.Expression | undefined): boolean {
-  if (!init) return false;
-  const call = unwrap(init);
-  if (!ts.isCallExpression(call) || !ts.isIdentifier(call.expression)) return false;
-  if (call.expression.text !== 'pgTable') return false;
-  const [name] = call.arguments;
-  return !!name && ts.isStringLiteralLike(name) && name.text === 'comments';
+function lineNode(callee: ts.Expression): ts.Node {
+  return ts.isPropertyAccessExpression(callee) ? callee.name : callee;
 }
 
-function importOf(statement: ts.ImportDeclaration): Parsed['imports'][number] | null {
-  const clause = statement.importClause;
-  if (!clause || clause.isTypeOnly || !ts.isStringLiteral(statement.moduleSpecifier)) return null;
-  const bindings = clause.namedBindings;
-  const named: Array<[string, string]> = [];
-  let namespace: string | null = null;
-  if (bindings && ts.isNamespaceImport(bindings)) namespace = bindings.name.text;
-  if (bindings && ts.isNamedImports(bindings)) {
-    for (const el of bindings.elements) {
-      if (!el.isTypeOnly) named.push([(el.propertyName ?? el.name).text, el.name.text]);
+/** Per function, the parameters it hands to a write, and whether that write is drizzle-shaped. */
+type Writers = Map<FnInfo, Map<number, boolean>>;
+
+/** One pass over a file's calls: what each hands a table to, and what that function hands on. */
+class Inspector {
+  changed = false;
+
+  constructor(
+    private readonly model: Model,
+    private readonly writers: Writers,
+    private readonly f: FileFacts,
+    private readonly out: CommentWrite[] | null,
+  ) {}
+
+  private report(at: ts.Node, kind: CommentWrite['kind'], how: string): void {
+    this.out?.push({ file: this.f.file, line: lineOf(this.f, at), how, kind });
+  }
+
+  private mark(fn: FnInfo, index: number, strict: boolean): void {
+    const params = this.writers.get(fn) ?? new Map<number, boolean>();
+    this.writers.set(fn, params);
+    const held = params.get(index);
+    if (held === undefined || (strict && !held)) {
+      params.set(index, strict || (held ?? false));
+      this.changed = true;
     }
   }
-  return { spec: statement.moduleSpecifier.text, named, namespace };
-}
 
-function parse(file: string, text: string): Parsed {
-  const sf = ts.createSourceFile(file, text, ts.ScriptTarget.Latest, false, ts.ScriptKind.TS);
-  const parsed: Parsed = {
-    sf,
-    imports: [],
-    declarations: [],
-    exportsFrom: [],
-    localExports: [],
-    exportedVariables: [],
-    calls: [],
-    strings: [],
-    declaredTable: [],
-  };
-
-  for (const statement of sf.statements) {
-    if (ts.isImportDeclaration(statement)) {
-      const imported = importOf(statement);
-      if (imported) parsed.imports.push(imported);
-    } else if (ts.isExportDeclaration(statement) && !statement.isTypeOnly) {
-      const spec =
-        statement.moduleSpecifier && ts.isStringLiteral(statement.moduleSpecifier)
-          ? statement.moduleSpecifier.text
-          : null;
-      const clause = statement.exportClause;
-      if (!clause && spec) parsed.exportsFrom.push({ spec, pairs: 'all' });
-      if (clause && ts.isNamedExports(clause)) {
-        const pairs: Array<[string, string]> = clause.elements
-          .filter((el) => !el.isTypeOnly)
-          .map((el) => [(el.propertyName ?? el.name).text, el.name.text]);
-        if (spec) parsed.exportsFrom.push({ spec, pairs });
-        else parsed.localExports.push(...pairs);
+  /** Follow one argument that is handed to a write, `strict` being when a write is the only reading. */
+  private table(arg: ts.Expression | undefined, at: ts.Node, label: string, strict: boolean): void {
+    if (!arg) return;
+    if (ts.isSpreadElement(arg)) {
+      if (strict)
+        this.report(at, 'unresolved', `${label}: a spread hides which argument is the table`);
+      return;
+    }
+    const ev = this.model.evalOwn(arg, this.f.file);
+    if (ev.values.has(TABLE)) {
+      this.report(at, 'write', label);
+      return;
+    }
+    const bare = unwrap(arg);
+    const param = ts.isIdentifier(bare) ? this.model.paramOf(bare) : null;
+    if (param) {
+      if (param.primitive) return;
+      if (param.fn && param.index >= 0) {
+        this.mark(param.fn, param.index, strict);
+        return;
       }
-    } else if (ts.isVariableStatement(statement) && isExported(statement)) {
-      for (const decl of statement.declarationList.declarations) {
-        if (!ts.isIdentifier(decl.name)) continue;
-        if (declaresCommentsTable(decl.initializer)) parsed.declaredTable.push(decl.name.text);
-        else parsed.exportedVariables.push(decl.name.text);
+      if (this.model.eval(arg, this.f.file).values.has(TABLE)) {
+        this.report(at, 'write', label);
+      } else if (strict) {
+        this.report(
+          at,
+          'unresolved',
+          `${label}: \`${bare.getText()}\` is a parameter of a function the scan cannot follow to its callers`,
+        );
+      }
+      return;
+    }
+    if (this.isPrimitiveMemberOfParam(bare)) return;
+    if (ev.unknown && strict) {
+      this.report(
+        at,
+        'unresolved',
+        `${label}: the table is ${ev.unknown}, which the scan cannot follow`,
+      );
+    } else if (strict && ts.isCallExpression(bare) && !this.model.resolvesCall(bare, this.f.file)) {
+      this.report(
+        at,
+        'unresolved',
+        `${label}: the table is the result of a call the scan cannot enter`,
+      );
+    }
+  }
+
+  /** `row.path`, `opts.a.b`: a member of a parameter whose declared type makes it a string or a number. */
+  private isPrimitiveMemberOfParam(node: ts.Expression): boolean {
+    const path: string[] = [];
+    let root = node;
+    while (ts.isPropertyAccessExpression(root)) {
+      path.unshift(root.name.text);
+      root = unwrap(root.expression);
+    }
+    if (!ts.isIdentifier(root) || path.length === 0) return false;
+    const param = this.model.paramOf(root);
+    return !!param && this.model.primitiveMember(param.type, path, this.f.file);
+  }
+
+  calls(): void {
+    for (const call of this.f.calls) {
+      const callee = unwrap(call.expression);
+      const write = writeMethod(callee);
+      const [first] = call.arguments;
+      if (write && first) {
+        const label = `.${write.name === '*' ? '[…]' : write.name}(${first.getText().slice(0, 40)})`;
+        if (write.name === '*') this.tableIfProven(first, write.at, label);
+        else this.table(first, write.at, label, isBuilderShaped(call));
+      }
+      for (const fn of this.model.fnsOf(this.model.eval(callee, this.f.file))) {
+        for (const [index, strict] of [...(this.writers.get(fn) ?? [])]) {
+          const spread = call.arguments.slice(0, index + 1).some((a) => ts.isSpreadElement(a));
+          const label = `${callee.getText().slice(0, 40)}(${call.arguments.map((a) => a.getText().slice(0, 20)).join(', ')})`;
+          if (spread && strict) {
+            this.report(
+              lineNode(callee),
+              'unresolved',
+              `${label}: a spread hides which argument is the table`,
+            );
+          } else if (!spread) this.table(call.arguments[index], lineNode(callee), label, strict);
+        }
       }
     }
   }
 
-  const visit = (node: ts.Node): void => {
-    if (ts.isVariableDeclaration(node)) parsed.declarations.push(node);
-    if (
-      ts.isCallExpression(node) &&
-      ts.isPropertyAccessExpression(node.expression) &&
-      WRITING_CALLS.has(node.expression.name.text) &&
-      node.arguments.length > 0
-    ) {
-      parsed.calls.push(node);
+  private tableIfProven(arg: ts.Expression, at: ts.Node, label: string): void {
+    if (this.model.evalOwn(arg, this.f.file).values.has(TABLE)) this.report(at, 'write', label);
+  }
+
+  /** What is used as a value rather than called: a write method, or a helper that writes a table. */
+  references(helpers: boolean): void {
+    for (const node of this.f.refs) {
+      const parent = node.parent;
+      const called = ts.isCallExpression(parent) && unwrap(parent.expression) === node;
+      if (called || isDeclaration(node)) continue;
+      if (isBoundWriteMethod(node)) {
+        this.report(
+          node,
+          'unresolved',
+          `\`${node.getText().slice(0, 40)}\` is taken as a value, so what table it is given is out of the scan's sight`,
+        );
+        continue;
+      }
+      if (!helpers || !(ts.isIdentifier(node) || ts.isPropertyAccessExpression(node))) continue;
+      const strictHelper = this.model
+        .fnsOf(this.model.eval(node as ts.Expression, this.f.file))
+        .find((fn) => [...(this.writers.get(fn)?.values() ?? [])].some(Boolean));
+      if (strictHelper) {
+        this.report(
+          node,
+          'unresolved',
+          `\`${strictHelper.name}\` hands a table to a write and is used here as a value, so what table it is given is out of the scan's sight`,
+        );
+      }
     }
-    if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
-      parsed.strings.push(node);
-    } else if (ts.isTemplateHead(node) || ts.isTemplateMiddle(node) || ts.isTemplateTail(node)) {
-      parsed.strings.push(node);
+    for (const pattern of this.f.declarations) {
+      if (!ts.isObjectBindingPattern(pattern.name)) continue;
+      for (const el of pattern.name.elements) {
+        const key = (el.propertyName ?? el.name).getText();
+        if (WRITING_CALLS.has(key))
+          this.report(
+            el,
+            'unresolved',
+            `\`${key}\` is taken out of an object as a value, so what table it is given is out of the scan's sight`,
+          );
+      }
     }
-    ts.forEachChild(node, visit);
-  };
-  visit(sf);
-  return parsed;
+  }
+
+  strings(): void {
+    for (const raw of rawSqlFindings(this.model, this.f)) this.report(raw.at, raw.kind, raw.how);
+    for (const node of this.f.strings) {
+      if (WRITES_ON_COMMENTS.some((re) => re.test(node.text)))
+        this.report(node, 'write', 'raw SQL on comments');
+    }
+  }
 }
 
-/** The file a relative module specifier names, among the files given. */
-function resolveModule(
-  from: string,
-  spec: string,
-  known: ReadonlyMap<string, Parsed>,
-): string | null {
-  if (!spec.startsWith('.')) return null;
-  const base = posix.normalize(posix.join(posix.dirname(from), spec));
-  const bare = base.replace(/\.(?:js|ts)$/, '');
-  for (const candidate of [`${bare}.ts`, `${base}.ts`, `${bare}/index.ts`]) {
-    if (known.has(candidate)) return candidate;
-  }
-  return null;
+/** `db.insert.bind(db)`, `db.update.call(db, t)`: the write method used without being called as one. */
+function isBoundWriteMethod(node: ts.Node): boolean {
+  const named = ts.isPropertyAccessExpression(node)
+    ? node.name.text
+    : ts.isElementAccessExpression(node) && ts.isStringLiteralLike(node.argumentExpression)
+      ? node.argumentExpression.text
+      : null;
+  const parent = node.parent;
+  return (
+    named !== null &&
+    WRITING_CALLS.has(named) &&
+    ts.isPropertyAccessExpression(parent) &&
+    parent.expression === node &&
+    ['bind', 'call', 'apply'].includes(parent.name.text)
+  );
 }
 
-/** Whether `expr` is the comments table under the names this file gives it. */
-function isTable(expr: ts.Expression, b: Bindings): boolean {
-  const node = unwrap(expr);
-  if (ts.isIdentifier(node)) return b.tables.has(node.text);
-  if (ts.isPropertyAccessExpression(node) && ts.isIdentifier(node.expression)) {
-    return b.namespaces.get(node.expression.text)?.has(node.name.text) ?? false;
-  }
+/** Whether an identifier names a thing where it is declared, imported or exported, not where it is used. */
+function isDeclaration(node: ts.Node): boolean {
+  const p = node.parent;
+  if (!ts.isIdentifier(node)) return false;
+  if (ts.isPropertyAccessExpression(p) && p.name === node) return true;
   if (
-    ts.isElementAccessExpression(node) &&
-    ts.isIdentifier(node.expression) &&
-    ts.isStringLiteralLike(node.argumentExpression)
+    ts.isQualifiedName(p) ||
+    ts.isTypeReferenceNode(p) ||
+    (ts.isPropertyAssignment(p) && p.name === node)
+  )
+    return true;
+  if (
+    ts.isVariableDeclaration(p) ||
+    ts.isParameter(p) ||
+    ts.isBindingElement(p) ||
+    ts.isFunctionDeclaration(p) ||
+    ts.isFunctionExpression(p) ||
+    ts.isClassDeclaration(p) ||
+    ts.isMethodDeclaration(p) ||
+    ts.isPropertyDeclaration(p) ||
+    ts.isImportSpecifier(p) ||
+    ts.isImportClause(p) ||
+    ts.isNamespaceImport(p) ||
+    ts.isExportSpecifier(p) ||
+    ts.isNamespaceExport(p) ||
+    ts.isLabeledStatement(p)
   ) {
-    return b.namespaces.get(node.expression.text)?.has(node.argumentExpression.text) ?? false;
+    return true;
   }
   return false;
 }
 
-/** The module an `import('...')` expression names, if `expr` is one. */
-function dynamicImportOf(expr: ts.Expression): string | null {
-  const node = unwrap(expr);
-  const [first] = ts.isCallExpression(node) ? node.arguments : [];
-  const isImport =
-    ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword;
-  return isImport && first && ts.isStringLiteralLike(first) ? first.text : null;
-}
-
-/** Every name the comments table goes by in one file, followed through imports and local aliases. */
-function bindingsOf(
-  file: string,
-  parsed: Parsed,
-  known: ReadonlyMap<string, Parsed>,
-  exportedAs: ReadonlyMap<string, ReadonlySet<string>>,
-): Bindings {
-  const b: Bindings = { tables: new Set(), namespaces: new Map() };
-  const namesOf = (spec: string): ReadonlySet<string> | null => {
-    const target = resolveModule(file, spec, known);
-    const names = target ? exportedAs.get(target) : undefined;
-    return names && names.size > 0 ? names : null;
-  };
-
-  for (const imp of parsed.imports) {
-    const names = namesOf(imp.spec);
-    if (!names) continue;
-    for (const [imported, local] of imp.named) if (names.has(imported)) b.tables.add(local);
-    if (imp.namespace) b.namespaces.set(imp.namespace, names);
-  }
-
-  const takeFrom = (pattern: ts.ObjectBindingPattern, names: ReadonlySet<string>): void => {
-    for (const el of pattern.elements) {
-      const key = el.propertyName ?? el.name;
-      if (ts.isIdentifier(el.name) && ts.isIdentifier(key) && names.has(key.text)) {
-        b.tables.add(el.name.text);
-      }
-    }
-  };
-
-  for (let changed = true; changed; ) {
-    const before = b.tables.size + b.namespaces.size;
-    for (const decl of parsed.declarations) {
-      if (!decl.initializer) continue;
-      const spec = dynamicImportOf(decl.initializer);
-      const names = spec ? namesOf(spec) : null;
-      const init = unwrap(decl.initializer);
-      if (names && ts.isIdentifier(decl.name)) b.namespaces.set(decl.name.text, names);
-      if (names && ts.isObjectBindingPattern(decl.name)) takeFrom(decl.name, names);
-      if (ts.isIdentifier(decl.name) && isTable(init, b)) b.tables.add(decl.name.text);
-      if (ts.isIdentifier(init)) {
-        const held = b.namespaces.get(init.text);
-        if (held && ts.isIdentifier(decl.name)) b.namespaces.set(decl.name.text, held);
-        if (held && ts.isObjectBindingPattern(decl.name)) takeFrom(decl.name, held);
-      }
-    }
-    changed = b.tables.size + b.namespaces.size !== before;
-  }
-  return b;
-}
-
-/** Export names of the table per module, settled across chains of re-exports. */
-function exportedNames(parsed: ReadonlyMap<string, Parsed>): Map<string, Set<string>> {
-  const exportedAs = new Map<string, Set<string>>();
-  for (const [file, p] of parsed) exportedAs.set(file, new Set(p.declaredTable));
-
-  for (let changed = true; changed; ) {
-    changed = false;
-    for (const [file, p] of parsed) {
-      const mine = exportedAs.get(file) as Set<string>;
-      const add = (name: string): void => {
-        if (mine.has(name)) return;
-        mine.add(name);
-        changed = true;
-      };
-      for (const from of p.exportsFrom) {
-        const target = resolveModule(file, from.spec, parsed);
-        const theirs = target ? exportedAs.get(target) : undefined;
-        if (!theirs) continue;
-        if (from.pairs === 'all') for (const name of theirs) add(name);
-        else for (const [imported, as] of from.pairs) if (theirs.has(imported)) add(as);
-      }
-      if (p.localExports.length > 0 || p.exportedVariables.length > 0) {
-        const b = bindingsOf(file, p, parsed, exportedAs);
-        for (const [local, as] of p.localExports) if (b.tables.has(local)) add(as);
-        for (const name of p.exportedVariables) if (b.tables.has(name)) add(name);
-      }
-    }
-  }
-  return exportedAs;
-}
-
 /**
- * Every place the given sources write the comments table, outside the files allowed to.
+ * Every place the given sources write the comments table, outside the files allowed to, and every
+ * write they make through a shape the scan cannot follow.
  *
- * Read from each file's syntax tree: the table is the export declared as `pgTable('comments', ...)`,
- * followed through every import of it (named, aliased, namespace or dynamic), re-export and local
- * alias. A write is an `insert`, `update` or `delete` call whose argument is that table, or a raw
- * SQL string that writes a table named `comments`. A comment or a string that merely says
- * `insert(comments)` is not one, and `db.insert(s.comments)` is.
+ * The table is the export declared as `pgTable('comments', ...)`, followed through every import of
+ * it, re-export, namespace (however re-exported or renamed), destructuring, alias and function that
+ * returns it (`single-door.model.fixture.ts`). A write is an `insert`, `update` or `delete` call
+ * given that table, a call of a helper that hands one of its parameters to such a call, or a raw SQL
+ * string that writes a table named `comments`. A comment that merely says `insert(comments)` is not.
+ *
+ * What the scan cannot trace to a table is refused by name and never passed: a computed key, a
+ * `this` member, the result of a call it cannot enter, a helper reached through a method, a callback
+ * or a destructured parameter, a helper used as a value, a write method taken as a value. A
+ * parameter typed as a primitive cannot be a table, and a call that is not shaped like a drizzle
+ * write (`Map.delete`, `hash.update`) is not refused for its argument. What a call hands a function
+ * is followed into its parameters, so a method of an object handed in is read where it is handed.
  */
 export function commentWrites(
   sources: ReadonlyMap<string, string>,
   doors: ReadonlySet<string>,
 ): CommentWrite[] {
-  const parsed = new Map<string, Parsed>();
-  for (const [file, text] of sources) parsed.set(file, parse(file, text));
-  const exportedAs = exportedNames(parsed);
+  const model = new Model(sources);
+  const writers: Writers = new Map();
+  const scanned = [...model.facts.values()].filter((f) => !doors.has(f.file));
 
-  const writes: CommentWrite[] = [];
-  for (const [file, p] of parsed) {
-    if (doors.has(file)) continue;
-    const lineOf = (node: ts.Node): number =>
-      p.sf.getLineAndCharacterOfPosition(node.getStart(p.sf)).line + 1;
-    const b = bindingsOf(file, p, parsed, exportedAs);
-    for (const call of p.calls) {
-      const callee = call.expression as ts.PropertyAccessExpression;
-      const [target] = call.arguments;
-      if (target && isTable(target, b)) {
-        const how = `.${callee.name.text}(${target.getText(p.sf)})`;
-        writes.push({ file, line: lineOf(callee.name), how });
-      }
-    }
-    for (const node of p.strings) {
-      if (RAW_WRITES.some((re) => re.test(node.text))) {
-        writes.push({ file, line: lineOf(node), how: 'raw SQL on comments' });
-      }
+  for (let changed = true; changed; ) {
+    changed = false;
+    for (const f of scanned) {
+      const pass = new Inspector(model, writers, f, null);
+      pass.calls();
+      changed = pass.changed || changed;
     }
   }
-  return writes.sort((a, c) => a.file.localeCompare(c.file) || a.line - c.line);
+
+  const found: CommentWrite[] = [];
+  const anyHelper = writers.size > 0;
+  for (const f of scanned) {
+    const pass = new Inspector(model, writers, f, found);
+    pass.calls();
+    pass.references(anyHelper);
+    pass.strings();
+  }
+  const once = new Map(found.map((w) => [`${w.file}:${w.line}:${w.kind}`, w]));
+  return [...once.values()].sort((a, c) => a.file.localeCompare(c.file) || a.line - c.line);
 }

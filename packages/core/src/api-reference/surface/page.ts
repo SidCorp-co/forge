@@ -1,3 +1,4 @@
+import { sentence } from '../declare/prose.js';
 import type { OpenApiDocument } from '../document/build.js';
 import { type Flow, operationOfStep, toMermaid } from './flows.js';
 
@@ -8,8 +9,8 @@ export const SCALAR = {
 } as const;
 
 export const MERMAID = {
-  src: 'https://cdn.jsdelivr.net/npm/mermaid@11.17.2/dist/mermaid.min.js',
-  integrity: 'sha384-EOXBFmc3gx5mb+vn0vPvvGqACToJD24hhacX5Yx+8NUUQrHIle/Qi5Bg9o3zKwW2',
+  src: 'https://cdn.jsdelivr.net/npm/mermaid@12.2.0/dist/mermaid.min.js',
+  integrity: 'sha384-8xUhuLNMjW/cI2Dacg3DR4WliYznvIg0LVG1stctThKD/YVrJFI9TNCFxft5NYgp',
 } as const;
 
 function escapeHtml(text: string): string {
@@ -48,6 +49,16 @@ pre.mermaid {
 ol { padding-left: 1.2rem; }
 `;
 
+const REFERENCE_CONFIGURATION = {
+  hideClientButton: true,
+  defaultHttpClient: { targetKey: 'shell', clientKey: 'curl' },
+  // The viewer keeps its response codes in one row that scrolls inside a header it clips, so on a
+  // narrow screen the last codes are out of sight; here they wrap into the row below instead.
+  customCss:
+    '.response-card .scalar-card-header-title { overflow: visible; white-space: normal; flex: 1 1 100%; } ' +
+    '.response-card .tab-list { flex-wrap: wrap; overflow: visible; height: auto; }',
+} as const;
+
 /** The page that renders the served document, readable with no credential. */
 export function renderReferencePage(openApiUrl: string): string {
   return `<!doctype html>
@@ -59,7 +70,7 @@ export function renderReferencePage(openApiUrl: string): string {
 <link rel="icon" href="data:,">
 </head>
 <body>
-<script id="api-reference" data-url="${escapeHtml(openApiUrl)}" data-configuration='{"hideClientButton":true,"defaultHttpClient":{"targetKey":"shell","clientKey":"curl"}}'></script>
+<script id="api-reference" data-url="${escapeHtml(openApiUrl)}" data-configuration="${escapeHtml(JSON.stringify(REFERENCE_CONFIGURATION))}"></script>
 <script src="${SCALAR.src}" integrity="${SCALAR.integrity}" crossorigin="anonymous"></script>
 </body>
 </html>
@@ -77,8 +88,11 @@ export function renderFlowsPage(
       const steps = flow.steps
         .map((step) => {
           const op = operationOfStep(document, step.call);
-          const summary = typeof op?.summary === 'string' ? ` — ${escapeHtml(op.summary)}` : '';
-          return `<li><code>${escapeHtml(step.call)}</code>${summary}. ${escapeHtml(step.note)}</li>`;
+          const prose = [typeof op?.summary === 'string' ? op.summary : '', step.note]
+            .map(sentence)
+            .filter(Boolean)
+            .join(' ');
+          return `<li><code>${escapeHtml(step.call)}</code> — ${escapeHtml(prose)}</li>`;
         })
         .join('\n');
       return `<section id="${escapeHtml(flow.id)}">
@@ -110,6 +124,8 @@ ${sections}
 <script>
   mermaid.initialize({
     startOnLoad: false,
+    layout: 'dagre',
+    look: 'classic',
     sequence: { useMaxWidth: false },
     flowchart: { useMaxWidth: false },
     theme: window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'default',

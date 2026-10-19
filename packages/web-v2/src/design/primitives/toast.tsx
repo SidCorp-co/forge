@@ -46,7 +46,7 @@ export function Toast({ title, description, tone = "default", onClick, onClose }
       {t.icon && <Icon name={t.icon} size={17} style={{ color: t.color, marginTop: 1 }} />}
       <div className="flex-1">
         <p className="fg-label">{title}</p>
-        {description && <p className="fg-caption mt-0.5">{description}</p>}
+        {description && <p className="fg-caption mt-0.5 whitespace-pre-line">{description}</p>}
       </div>
       {onClose && (
         <button

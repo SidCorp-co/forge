@@ -71,10 +71,8 @@ import {
   forgeSkillsDeleteTool,
   forgeSkillsEffectiveTool,
   forgeSkillsGetTool,
-  forgeSkillsListRegistrationsTool,
   forgeSkillsListTool,
   forgeSkillsPushTool,
-  forgeSkillsRegisterTool,
   forgeSkillsSyncStatusTool,
   forgeSkillsUpdateTool,
 } from './tools/forge-skills.js';
@@ -88,9 +86,11 @@ import { forgeStorefrontTargetTool } from './tools/forge-storefront-target.js';
 import { forgeUploadsTool } from './tools/forge-uploads.js';
 import type { McpContext, McpTool } from './tools/lib.js';
 import { patEffectiveProjectIds, resolveProjectIdFromSlug } from './tools/project-scope.js';
+import { zodRefusalMessage } from './zod-refusal.js';
 
 export function classifyError(err: unknown): { code: AuditResultCode; message: string } {
-  const message = redactedMessage(err);
+  const refused = zodRefusalMessage(err);
+  const message = refused === null ? redactedMessage(err) : redactedMessage(new Error(refused));
   if (message.startsWith('NOT_FOUND')) return { code: 'not_found', message };
   if (message.startsWith('FORBIDDEN')) return { code: 'forbidden', message };
   return { code: 'error', message };
@@ -125,8 +125,6 @@ export function createMcpServer(ctx: McpContext): Server {
     forgeStepHandoffDeleteTool(ctx),
     forgeSkillsListTool(ctx),
     forgeSkillsGetTool(ctx),
-    forgeSkillsRegisterTool(ctx),
-    forgeSkillsListRegistrationsTool(ctx),
     forgeSkillsCreateTool(ctx),
     forgeSkillsUpdateTool(ctx),
     forgeSkillsDeleteTool(ctx),

@@ -24,20 +24,15 @@ vi.mock('../skills/reconcile-service.js', () => ({
   failReconcileRunForFailedJob: (...args: unknown[]) => failReconcileRunMock(...args),
 }));
 
-const issueRowMock = vi.fn<() => unknown[]>(() => [
-  { id: 'i1', projectId: 'p1', status: 'in_progress', reopenCount: 0, projectCreatedBy: 'owner1' },
-]);
+const issueRowMock = vi.fn<() => unknown[]>(() => [{ id: 'i1', projectId: 'p1' }]);
 const handoffRowMock = vi.fn<() => unknown[]>(() => []);
-function selectChain() {
-  let joined = false;
+// The issue read is the one selecting `projectId`; every other select here is the handoff probe.
+function selectChain(fields: Record<string, unknown> = {}) {
+  const readsIssue = 'projectId' in fields;
   const chain = {
     from: () => chain,
-    innerJoin: () => {
-      joined = true;
-      return chain;
-    },
     where: () => chain,
-    limit: async () => (joined ? issueRowMock() : handoffRowMock()),
+    limit: async () => (readsIssue ? issueRowMock() : handoffRowMock()),
   };
   return chain;
 }
@@ -51,7 +46,7 @@ function _mentions(value: unknown, needle: string, seen = new Set<unknown>()): b
 }
 vi.mock('../db/client.js', () => ({
   db: {
-    select: () => selectChain(),
+    select: (fields?: Record<string, unknown>) => selectChain(fields),
     update: () => ({
       set: (values: unknown) => {
         updateSetMock(values);
@@ -74,47 +69,6 @@ vi.mock('../pipeline/runs.js', () => ({
 const emitWedgeMock = vi.fn(async (..._args: unknown[]) => undefined);
 vi.mock('../pipeline/wedge.js', () => ({
   emitPipelineWedge: (...args: unknown[]) => emitWedgeMock(...args),
-}));
-
-const JOB_TYPE_ENTRY_STATUS: Record<string, string> = {
-  triage: 'open',
-  clarify: 'confirmed',
-  plan: 'clarified',
-  code: 'approved',
-  review: 'developed',
-  test: 'testing',
-  fix: 'reopen',
-  release: 'awaiting_release',
-};
-const JOB_TYPE_INFLIGHT_STATUS: Record<string, string> = {
-  code: 'in_progress',
-  fix: 'in_progress',
-};
-const JOB_TYPE_EXPECTED_EXIT_STATUS: Record<string, string[]> = {
-  code: ['developed'],
-  fix: ['developed'],
-  plan: ['approved'],
-  review: ['testing', 'reopen'],
-  test: ['awaiting_release', 'reopen', 'tested'],
-};
-// ISS-702 — real classifyVerdict semantics, mirrored here so this suite stays
-// a pure unit test of finalize-failure.ts without importing recovery-verifier.js.
-function classifyVerdict(
-  currentStatus: string,
-  jobType: string,
-): 'advanced' | 'pending' | 'reverted' {
-  const entry = JOB_TYPE_ENTRY_STATUS[jobType];
-  if (entry && currentStatus === entry) return 'pending';
-  if (JOB_TYPE_INFLIGHT_STATUS[jobType] === currentStatus) return 'pending';
-  const exits = JOB_TYPE_EXPECTED_EXIT_STATUS[jobType] ?? [];
-  if (exits.includes(currentStatus)) return 'advanced';
-  if (currentStatus === 'awaiting_release' || currentStatus === 'closed') return 'advanced';
-  if (!entry) return 'pending';
-  return 'reverted';
-}
-vi.mock('../pipeline/recovery-verifier.js', () => ({
-  JOB_TYPE_ENTRY_STATUS,
-  classifyVerdict,
 }));
 
 const hooksEmitMock = vi.fn(async (..._args: unknown[]) => undefined);
@@ -164,7 +118,7 @@ function makeJob(overrides: Record<string, unknown> = {}) {
     projectId: 'p1',
     issueId: 'i1',
     createdBy: 'creator1',
-    type: 'fix',
+    type: 'custom',
     attempts: 1,
     status: 'failed',
     exitCode: 1,
@@ -185,15 +139,7 @@ beforeEach(() => {
     callOrder.push('scheduleAutoRetryWithVerify');
     return { scheduled: false };
   });
-  issueRowMock.mockReturnValue([
-    {
-      id: 'i1',
-      projectId: 'p1',
-      status: 'in_progress',
-      reopenCount: 0,
-      projectCreatedBy: 'owner1',
-    },
-  ]);
+  issueRowMock.mockReturnValue([{ id: 'i1', projectId: 'p1' }]);
 });
 
 afterEach(() => {
@@ -201,18 +147,12 @@ afterEach(() => {
 });
 
 describe('finalizeFailedJob', () => {
-  it('reverts the issue to entry-status (fix→reopen) when a retry is scheduled, and does NOT close the run', async () => {
+  it('writes no issue status when a retry is scheduled, and does NOT close the run', async () => {
     scheduleRetryMock.mockResolvedValueOnce({ scheduled: true });
     const retry = await finalizeFailedJob(makeJob(), { error: 'boom', exitCode: 1 });
 
     expect(retry.scheduled).toBe(true);
-    expect(applyTransitionMock).toHaveBeenCalledTimes(1);
-    expect(applyTransitionMock).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 'i1' }),
-      'reopen',
-      expect.objectContaining({ id: 'owner1' }),
-      { skip: true },
-    );
+    expect(applyTransitionMock).not.toHaveBeenCalled();
     expect(closeRunMock).not.toHaveBeenCalled();
     expect(syncSessionMock).toHaveBeenCalledWith(expect.objectContaining({ id: 'j1' }), 'failed', {
       retryPending: true,
@@ -228,22 +168,20 @@ describe('finalizeFailedJob', () => {
     expect(publishHealthMock).toHaveBeenCalledWith('p1', ['i1']);
   });
 
-  it('code job: reverts in_progress → approved on a scheduled retry (ISS-34 repro)', async () => {
-    scheduleRetryMock.mockResolvedValueOnce({ scheduled: true });
-    await finalizeFailedJob(makeJob({ type: 'code' }), { error: 'crash' });
-    expect(applyTransitionMock).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 'i1' }),
-      'approved',
-      expect.any(Object),
-      { skip: true },
-    );
-    expect(closeRunMock).not.toHaveBeenCalled();
-  });
+  it.each(['code', 'fix', 'test'])(
+    'a historical row of the retired type %s writes no issue status either (ISS-1229)',
+    async (type) => {
+      scheduleRetryMock.mockResolvedValueOnce({ scheduled: true });
+      await finalizeFailedJob(makeJob({ type }), { error: 'crash' });
+      expect(applyTransitionMock).not.toHaveBeenCalled();
+      expect(closeRunMock).not.toHaveBeenCalled();
+    },
+  );
 
-  it('holds the job and reverts the issue to entry-status when retry is NOT scheduled — never `waiting`', async () => {
+  it('holds the job and writes no issue status when retry is NOT scheduled', async () => {
     scheduleRetryMock.mockResolvedValueOnce({ scheduled: false, reason: 'retry_rounds_exhausted' });
     holdJobMock.mockResolvedValueOnce('held-job-1');
-    const retry = await finalizeFailedJob(makeJob({ type: 'code' }), {
+    const retry = await finalizeFailedJob(makeJob(), {
       error: 'boom',
       exitCode: 1,
     });
@@ -253,9 +191,7 @@ describe('finalizeFailedJob', () => {
     expect((heldJob as { id: string }).id).toBe('j1');
     expect(heldReason).toBe('retry_rounds_exhausted');
 
-    const statusesWritten = applyTransitionMock.mock.calls.map((c) => c[1]);
-    expect(statusesWritten).toEqual(['approved']);
-    expect(statusesWritten).not.toContain('waiting');
+    expect(applyTransitionMock).not.toHaveBeenCalled();
 
     const wedge = emitWedgeMock.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(wedge.issueId).toBe('i1');
@@ -265,14 +201,14 @@ describe('finalizeFailedJob', () => {
   it('does NOT close the run when a job was held', async () => {
     scheduleRetryMock.mockResolvedValueOnce({ scheduled: false, reason: 'all_devices_exhausted' });
     holdJobMock.mockResolvedValueOnce('held-job-2');
-    await finalizeFailedJob(makeJob({ type: 'code' }), { error: 'boom' });
+    await finalizeFailedJob(makeJob(), { error: 'boom' });
     expect(closeRunMock).not.toHaveBeenCalled();
   });
 
   it('closes the run when the reason holds nothing (a cancel)', async () => {
     scheduleRetryMock.mockResolvedValueOnce({ scheduled: false, reason: 'cancellation_requested' });
     holdJobMock.mockResolvedValueOnce(null);
-    await finalizeFailedJob(makeJob({ type: 'code' }), { error: 'boom' });
+    await finalizeFailedJob(makeJob(), { error: 'boom' });
     expect(closeRunMock).toHaveBeenCalledWith('i1', 'failed');
     expect(emitWedgeMock).not.toHaveBeenCalled();
   });
@@ -287,7 +223,7 @@ describe('finalizeFailedJob', () => {
     expect(emitWedgeMock).not.toHaveBeenCalled();
   });
 
-  it.each(['completed_via_recovery', 'cancelled_stale'])(
+  it.each(['completed_via_recovery'])(
     'leaves the issue untouched when verify-first recovery skipped the retry (reason=%s)',
     async (reason) => {
       scheduleRetryMock.mockResolvedValueOnce({ scheduled: false, reason });
@@ -304,38 +240,15 @@ describe('finalizeFailedJob', () => {
     },
   );
 
-  it('does not revert when the issue is already at entry-status (no NO_OP transition)', async () => {
-    scheduleRetryMock.mockResolvedValueOnce({ scheduled: true });
-    issueRowMock.mockReturnValueOnce([
-      { id: 'i1', projectId: 'p1', status: 'reopen', reopenCount: 0, projectCreatedBy: 'owner1' },
-    ]);
-    await finalizeFailedJob(makeJob({ type: 'fix' }), { error: 'boom' });
-    expect(applyTransitionMock).not.toHaveBeenCalled();
-  });
-
-  it('ISS-702: does NOT revert a stale code job onto `waiting` when a retry is scheduled (parked by a later step)', async () => {
-    scheduleRetryMock.mockResolvedValueOnce({ scheduled: true });
-    issueRowMock.mockReturnValueOnce([
-      { id: 'i1', projectId: 'p1', status: 'waiting', reopenCount: 0, projectCreatedBy: 'owner1' },
-    ]);
-    await finalizeFailedJob(makeJob({ type: 'code' }), { error: 'boom' });
-    expect(applyTransitionMock).not.toHaveBeenCalled();
-  });
-
   it('short-circuits scheduleAutoRetryWithVerify when precomputedRetry is given', async () => {
-    const retry = await finalizeFailedJob(makeJob({ type: 'code' }), {
+    const retry = await finalizeFailedJob(makeJob(), {
       error: 'resume_failed',
       precomputedRetry: { scheduled: false },
     });
 
     expect(retry.scheduled).toBe(false);
     expect(scheduleRetryMock).not.toHaveBeenCalled();
-    expect(applyTransitionMock).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 'i1' }),
-      'approved',
-      expect.any(Object),
-      { skip: true },
-    );
+    expect(applyTransitionMock).not.toHaveBeenCalled();
     expect(closeRunMock).toHaveBeenCalledWith('i1', 'failed');
   });
 
@@ -359,7 +272,7 @@ describe('finalizeFailedJob', () => {
   it('wedge carries hold copy that says the step resumes itself, for all_devices_exhausted', async () => {
     scheduleRetryMock.mockResolvedValueOnce({ scheduled: false, reason: 'all_devices_exhausted' });
     holdJobMock.mockResolvedValueOnce('held-job-3');
-    await finalizeFailedJob(makeJob({ type: 'code' }), { error: 'boom' });
+    await finalizeFailedJob(makeJob(), { error: 'boom' });
 
     const call = emitWedgeMock.mock.calls[0]?.[0] as Record<string, string>;
     expect(call.title).toBe('Step held: every runner is rate-limited');
@@ -371,7 +284,7 @@ describe('finalizeFailedJob', () => {
     scheduleRetryMock.mockResolvedValueOnce({ scheduled: false, reason: 'all_devices_exhausted' });
     holdJobMock.mockResolvedValueOnce('held-job-4');
     holdAutoReleasesMock.mockReturnValueOnce(true);
-    await finalizeFailedJob(makeJob({ type: 'code' }), { error: 'boom' });
+    await finalizeFailedJob(makeJob(), { error: 'boom' });
 
     expect(emitWedgeMock).not.toHaveBeenCalled();
   });
@@ -380,7 +293,7 @@ describe('finalizeFailedJob', () => {
     scheduleRetryMock.mockResolvedValueOnce({ scheduled: false, reason: 'non_retryable_terminal' });
     holdJobMock.mockResolvedValueOnce('held-job-5');
     holdAutoReleasesMock.mockReturnValueOnce(false);
-    await finalizeFailedJob(makeJob({ type: 'code' }), { error: 'boom' });
+    await finalizeFailedJob(makeJob(), { error: 'boom' });
 
     const call = emitWedgeMock.mock.calls[0]?.[0] as Record<string, string>;
     expect(call.title).toBe('Step held: non-retryable failure');

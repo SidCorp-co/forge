@@ -1,12 +1,13 @@
 
-import { type StageKey, stageColor } from "@/design/stages";
 import { TONE_META, type SemanticTone } from "@/design/status";
+import { failedJobWords } from "@/features/attention/failed-job-words";
 import type { AttentionView } from "@/features/attention/types";
 import { statusLabel } from "@/features/issues/derive";
 import type { IssueStatus } from "@/features/issues/types";
-import { jobTypeToStage } from "@/features/pipeline/derive";
-import type { PipelineRunListItem, StepDurationRow } from "@/features/pipeline/types";
+import { jobKindsLabel } from "@/features/overview/job-kinds";
+import type { PipelineRunListItem, StepDurationRow } from "@/features/runs/types";
 import type { ProjectHealthRow } from "@/features/projects/types";
+import type { StuckIssueKind } from "@forge/contracts/notifications";
 import {
   type ActiveRunner,
   type ProjectRunner,
@@ -23,6 +24,8 @@ import {
   workStateOf,
 } from "@forge/contracts/work-state";
 import type { QueueStats } from "@/features/sessions/types";
+import type { LiveSession } from "@/features/pipeline/types";
+import { sessionName } from "@/features/pipeline/derive";
 
 /* ------------------------------------------------------------------ *
  * Open work by state: the donut, drawn from the same counts as the tile (ISS-1156)
@@ -80,57 +83,54 @@ export function conicGradient(segments: DonutSegment[]): string {
 }
 
 /* ------------------------------------------------------------------ *
- * 7-day spend by stage (AC#4)
+ * 7-day spend by step (AC#4)
  * ------------------------------------------------------------------ */
 
-export type SpendGroupKey = "test" | "code" | "plan" | "other";
-
-const SPEND_GROUPS: ReadonlyArray<{ key: SpendGroupKey; label: string; color: string }> = [
-  { key: "test", label: "test", color: stageColor("test") },
-  { key: "code", label: "code", color: stageColor("code") },
-  { key: "plan", label: "plan", color: stageColor("plan") },
-  { key: "other", label: "other", color: "var(--ink-400)" },
-];
-
-/** Fold a pipeline stage into one of the four spend groups. `fix` already folds onto `code` via
- *  `jobTypeToStage`; triage/clarify/review/release, and any job type outside the seven staged
- *  names (`drive`, `pm`, `custom`) for which `jobTypeToStage` answers `null`, go to `other`. */
-function stageToSpendGroup(stage: StageKey | null): SpendGroupKey {
-  if (stage === "test") return "test";
-  if (stage === "code") return "code";
-  if (stage === "plan") return "plan";
-  return "other";
-}
+/** Neutral ink for the three costliest kinds of work, then "Other": a kind carries no colour of its own. */
+const SPEND_INK = ["var(--fg-default)", "var(--fg-muted)", "var(--fg-subtle)"] as const;
+const OTHER_INK = "var(--border-strong)";
+export const SPEND_OTHER_KEY = "other";
 
 export interface SpendSegment {
-  key: SpendGroupKey;
+  /** The step exactly as the rows name it, or `other` for everything past the three costliest. */
+  key: string;
+  /** The kind of work in the Overview's words, never the stored step name. */
   label: string;
   color: string;
   cost: number;
   pct: number;
 }
 
-export interface SpendByStageData {
+export interface SpendByStepData {
   segments: SpendSegment[];
   total: number;
 }
 
-export function spendByStage(rows: StepDurationRow[] | undefined): SpendByStageData {
-  const byGroup = new Map<SpendGroupKey, number>(SPEND_GROUPS.map((g) => [g.key, 0]));
-  for (const r of rows ?? []) {
-    const g = stageToSpendGroup(jobTypeToStage(r.step));
-    byGroup.set(g, (byGroup.get(g) ?? 0) + (r.costUsd ?? 0));
+/** The window's spend by step, named in the Overview's words: the three costliest, then Other. */
+export function spendByStep(rows: StepDurationRow[] | undefined): SpendByStepData {
+  const byStep = new Map<string, number>();
+  for (const r of rows ?? []) byStep.set(r.step, (byStep.get(r.step) ?? 0) + (r.costUsd ?? 0));
+  const ranked = [...byStep.entries()]
+    .filter(([, cost]) => cost > 0)
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+  const total = ranked.reduce((a, [, cost]) => a + cost, 0);
+  const pct = (cost: number) => (total > 0 ? (cost / total) * 100 : 0);
+  const segments: SpendSegment[] = ranked.slice(0, SPEND_INK.length).map(([step, cost], i) => ({
+    key: step,
+    label: jobKindsLabel(step),
+    color: SPEND_INK[i] as string,
+    cost,
+    pct: pct(cost),
+  }));
+  const rest = ranked.slice(SPEND_INK.length).reduce((a, [, cost]) => a + cost, 0);
+  if (rest > 0) {
+    segments.push({ key: SPEND_OTHER_KEY, label: "Other", color: OTHER_INK, cost: rest, pct: pct(rest) });
   }
-  const total = [...byGroup.values()].reduce((a, b) => a + b, 0);
-  const segments = SPEND_GROUPS.map((g) => {
-    const cost = byGroup.get(g.key) ?? 0;
-    return { key: g.key, label: g.label, color: g.color, cost, pct: total > 0 ? (cost / total) * 100 : 0 };
-  }).filter((s) => s.cost > 0);
   return { segments, total };
 }
 
 /* ------------------------------------------------------------------ *
- * Live runs + in-flight spend (AC#3, AC#1)
+ * Open runs + in-flight spend (AC#3, AC#1)
  * ------------------------------------------------------------------ */
 
 const LIVE_RUN_STATUSES = new Set(["running", "paused"]);
@@ -144,17 +144,36 @@ export function liveRuns(runs: PipelineRunListItem[] | undefined): PipelineRunLi
   return (runs ?? []).filter((r) => LIVE_RUN_STATUSES.has(r.status));
 }
 
-export function activeRuns(runs: PipelineRunListItem[] | undefined): PipelineRunListItem[] {
-  return liveRuns(runs).filter((r) => (r.liveJobs ?? 0) > 0);
+/** Something is working the run: a live job on it, or a session on it that has not ended. */
+function worked(r: PipelineRunListItem): boolean {
+  return (r.liveJobs ?? 0) > 0 || r.lastSessionBeatAt != null;
 }
 
-/** Live runs with no live JOB on them. Split out from `awaitingReleaseRuns`:
- *  that one names the single expected park (the release gate); this one is
- *  everything else, which is the set nobody could see before. */
-export function idleRuns(runs: PipelineRunListItem[] | undefined): PipelineRunListItem[] {
+/** Live runs something is working. A driver run holds no job, so a job count alone reads it as idle. */
+export function activeRuns(runs: PipelineRunListItem[] | undefined): PipelineRunListItem[] {
+  return liveRuns(runs).filter(worked);
+}
+
+/** Live runs off the release gate with no live job: the set a run goes stuck from, whatever a session on it last said. */
+export function joblessRuns(runs: PipelineRunListItem[] | undefined): PipelineRunListItem[] {
   return liveRuns(runs).filter(
     (r) => (r.liveJobs ?? 0) === 0 && r.currentStep !== AWAITING_RELEASE_STEP,
   );
+}
+
+/** Live runs off the release gate that nothing works: no live job, and no session on them that has not ended. */
+export function idleRuns(runs: PipelineRunListItem[] | undefined): PipelineRunListItem[] {
+  return joblessRuns(runs).filter((r) => !worked(r));
+}
+
+/** The open runs the Live sessions section shows, worked by a listed session or by nothing (ISS-1228). */
+export function runsShown(
+  sessions: readonly Pick<LiveSession, "pipelineRunId">[],
+  runs: PipelineRunListItem[] | undefined,
+): PipelineRunListItem[] {
+  const worked = new Set(sessions.map((s) => s.pipelineRunId).filter((id): id is string => !!id));
+  const idle = new Set(idleRuns(runs).map((r) => r.id));
+  return liveRuns(runs).filter((r) => worked.has(r.id) || idle.has(r.id));
 }
 
 export function awaitingReleaseRuns(runs: PipelineRunListItem[] | undefined): PipelineRunListItem[] {
@@ -175,31 +194,32 @@ export function activeSpend(runs: PipelineRunListItem[] | undefined): number {
  * ------------------------------------------------------------------ */
 
 /** `input` holds an open question; `parked` is stopped at a status a person moves it from, with no question. */
-export type AttentionActionKind = "retry" | "diff" | "input" | "parked";
-
-/** `entered`: time in the state, measured. `last-write`: when the issue was last written to, which is
- *  not time parked (a claim or a comment resets it), so it ages a chip and never degrades a project. */
-export type AgeBasis = "entered" | "last-write";
-
-export interface ParkedAge {
-  since: string;
-  basis: AgeBasis;
-}
+export type AttentionActionKind = "retry" | "diff" | "input" | "parked" | "session";
 
 export interface DashboardAttentionItem {
   key: string;
   actionKind: AttentionActionKind;
   /** Primary-action button label. */
   actionLabel: string;
-  /** What is wrong + at which step. */
+  /** What is wrong + at which step, or the issue's own title where `detail` says why it is listed. */
   title: string;
+  /** Why the issue is listed, read under its title. */
+  detail?: string;
   issueRef?: string;
   /** basePath-relative destination (Next prepends `/v2`). */
   link: string;
+  /** When the wait began: the state entered or the question opened, never a last write. */
   since?: string;
-  /** What `since` was measured from; absent where the item has no time. */
-  sinceBasis?: AgeBasis;
   status?: string;
+  /** The reason a stuck-issue notice tells this item's issue by: the row says it in those words. */
+  stuckKind?: StuckIssueKind;
+  /** `waiting_on_others` only: the person the park waits for, whom the row names. */
+  stuckOwedBy?: string;
+  /** An answer or review the reader owes, which heads its row above a failed job or a stuck reason. */
+  owed?: true;
+  jobId?: string;
+  /** The reader's failed job on an issue they owe an answer, listed here rather than as its own row. */
+  failedJob?: { jobType: string; failure: string | null };
 }
 
 function mapAttention(
@@ -210,24 +230,31 @@ function mapAttention(
 ): DashboardAttentionItem[] {
   return items
     .filter((it) => it.projectSlug === slug)
-    .map((it, i) => ({
+    .map((it, i) => ({ it, i, said: actionKind === "retry" ? failedJobWords(it) : it.title }))
+    // A failed job is said in words, under its issue's title where it ran for one (ISS-1229 r14).
+    .map(({ it, i, said }) => ({
       key: `${actionKind}-${it.link}-${i}`,
       actionKind,
       actionLabel,
-      title: it.title,
+      ...(it.issueTitle ? { title: it.issueTitle, detail: said } : { title: said }),
       issueRef: it.issueRef,
       link: it.link,
       since: it.since,
-      sinceBasis: "entered" as const,
       status: it.status,
+      ...(it.stuckKind ? { stuckKind: it.stuckKind } : {}),
+      ...(it.stuckOwedBy ? { stuckOwedBy: it.stuckOwedBy } : {}),
+      ...(it.failedJob ? { failedJob: it.failedJob } : {}),
+      ...(actionKind === "retry" && it.jobId ? { jobId: it.jobId } : {}),
     }));
 }
 
-function ageOf(age: ParkedAge | undefined): { since?: string; sinceBasis?: AgeBasis } {
-  return age ? { since: age.since, sinceBasis: age.basis } : {};
+const owed = (items: DashboardAttentionItem[]) => items.map((it) => ({ ...it, owed: true as const }));
+
+function ageOf(since: string | undefined): { since?: string } {
+  return since ? { since } : {};
 }
 
-/** The work state's word, then the status the issue sits at. */
+/** Why a parked issue is listed: the work state's word, then the status it sits at. */
 function parkedTitle(status: string): string {
   if (!(REGISTRY_ISSUE_STATUSES as readonly string[]).includes(status)) {
     throw new Error(
@@ -247,7 +274,7 @@ export function projectAttention(
   slug: string,
   blockers: ProjectHealthRow["blockers"] | undefined,
   /** The parked issues' ages by issue id; a blocker with none is listed without a time. */
-  ages?: ReadonlyMap<string, ParkedAge>,
+  ages?: ReadonlyMap<string, string>,
 ): DashboardAttentionItem[] {
   const out: DashboardAttentionItem[] = [];
   const parked: DashboardAttentionItem[] = [];
@@ -256,14 +283,14 @@ export function projectAttention(
     const asked = awaiting.filter((it) => it.questionId != null);
     const silent = awaiting.filter((it) => it.questionId == null);
     out.push(
-      ...mapAttention(view.failedJobs, slug, "retry", "Approve & retry"),
-      ...mapAttention(view.needsReview, slug, "diff", "Open diff"),
-      ...mapAttention(asked, slug, "input", "Provide info"),
+      ...mapAttention(view.failedJobs, slug, "retry", "Retry job"),
+      ...owed(mapAttention(view.needsReview, slug, "diff", "Open diff")),
+      ...owed(mapAttention(asked, slug, "input", "Provide info")),
     );
     parked.push(
-      ...mapAttention(silent, slug, "parked", "Open issue").map((it) => ({
+      ...owed(mapAttention(silent, slug, "parked", "Open issue")).map((it) => ({
         ...it,
-        title: it.status ? parkedTitle(it.status) : it.title,
+        ...(it.status ? { detail: parkedTitle(it.status) } : {}),
       })),
     );
   }
@@ -276,33 +303,92 @@ export function projectAttention(
       key: `parked-${b.documentId}`,
       actionKind: "parked",
       actionLabel: "Open issue",
-      title: parkedTitle(b.status),
+      title: b.title,
+      detail: parkedTitle(b.status),
       issueRef: b.issueId,
       link,
       status: b.status,
+      ...(b.stuckKind ? { stuckKind: b.stuckKind } : {}),
+      ...(b.stuckOwedBy ? { stuckOwedBy: b.stuckOwedBy } : {}),
       ...ageOf(ages?.get(b.documentId)),
     });
   }
   return [...out, ...parked];
 }
 
-const ATTENTION_PARTS: ReadonlyArray<{ kind: AttentionActionKind; one: string; many: string }> = [
-  { kind: "retry", one: "failed job", many: "failed jobs" },
-  { kind: "diff", one: "to review", many: "to review" },
-  { kind: "input", one: "issue with an open question", many: "issues with an open question" },
-  { kind: "parked", one: "issue parked with no question", many: "issues parked with no question" },
-];
+/**
+ * The live sessions whose box reports them blocked on a person (ISS-1228): a person has to act for
+ * each to go on, so each is one item to act on, in the box's own words, aged from when the box first
+ * reported that wait. A session blocked on a machine, another agent or nobody waits on no person and
+ * is not listed.
+ */
+export function sessionsWaitingOnYou(
+  sessions: readonly LiveSession[] | undefined,
+  slug: string,
+): DashboardAttentionItem[] {
+  return (sessions ?? [])
+    .filter((s) => s.report?.work === "blocked" && s.report.blockerKind === "human")
+    .map((s) => ({
+      key: `session-${s.id}`,
+      actionKind: "session" as const,
+      actionLabel: "Open session",
+      title: s.report?.waitingOn
+        ? `${sessionName(s)} waits on you — ${s.report.waitingOn}`
+        : `${sessionName(s)} waits on you`,
+      ...(s.issues[0] ? { issueRef: s.issues[0].displayId } : {}),
+      link: `/projects/${slug}/agents/${s.id}`,
+      ...ageOf(s.report?.since),
+    }));
+}
+
+/** What the stuck-issue notices of a project name: how many issues, and the first few of them. */
+export interface StuckIssues {
+  total: number;
+  refs: readonly {
+    issueId: string;
+    documentId: string;
+    title: string;
+    kind: StuckIssueKind;
+    owedBy?: string;
+  }[];
+}
+
+/** An item whose issue the stuck count holds: a failed job's is counted as that, never as stuck too. */
+export function countedStuck(it: DashboardAttentionItem): boolean {
+  return it.stuckKind !== undefined && it.actionKind !== "retry";
+}
+
+/** The stuck issues Needs you does not already list as an item, each a row of its own. */
+export function stuckRowsOf(
+  items: readonly DashboardAttentionItem[],
+  stuck: StuckIssues | undefined,
+): StuckIssues["refs"] {
+  const listed = new Set(items.map((it) => it.issueRef));
+  return (stuck?.refs ?? []).filter((r) => !listed.has(r.issueId));
+}
+
+/**
+ * The stuck issues Needs you does not show at all: the whole count less every stuck issue on it, as a
+ * row of its own or as an item its notice tells, each once (ISS-1229 r15).
+ */
+export function stuckLeftOut(items: readonly DashboardAttentionItem[], stuck: StuckIssues | undefined): number {
+  if (!stuck) return 0;
+  const shown = new Set([
+    ...items.flatMap((it) => (countedStuck(it) && it.issueRef ? [it.issueRef] : [])),
+    ...stuckRowsOf(items, stuck).map((r) => r.issueId),
+  ]);
+  return Math.max(stuck.total - shown.size, 0);
+}
 
 /**
  * How much of what a person has to act on the list leaves out. Core caps each source and counts it
- * whole beside it. The two sources the people come from overlap, so core splits the attention count
- * into the part at a status the health row's parked list holds whole and the part outside it; the
- * parked total plus that part counts no issue twice. The figure says "at least", since an issue can
- * be on the page that no response counted.
+ * whole beside it: failed jobs, reviews, the reader's parks, the parks no bucket lists (`parkedOnly`)
+ * and the stuck issues none of those holds (`stuckOnly`), each issue once; sessions are listed whole.
+ * The figure is that whole, never "at least" (ISS-1229 r14, r15).
  */
 export interface AttentionCut {
   shown: number;
-  atLeast: number;
+  whole: number;
   /** The parked and question items are the part cut, so the Issues list holds the rest. */
   peopleCut: boolean;
 }
@@ -319,64 +405,104 @@ export function attentionRefusal(view: AttentionView | undefined, slug: string):
     return "Needs you cannot say how much it leaves out: the attention response has no `projectTotals`. The server is not the release this page was built for.";
   }
   const totals = view.projectTotals[slug];
-  if (totals !== undefined && typeof totals.awaitingOutsideBlockers !== "number") {
-    return "Needs you cannot say how much it leaves out: the attention response's `projectTotals` have no `awaitingOutsideBlockers`. The server is not the release this page was built for.";
+  for (const key of ["parkedOnly", "awaitingAsked", "parkedAsked", "stuckOnly"] as const) {
+    if (totals !== undefined && typeof totals[key] !== "number") {
+      return `Needs you cannot say how much it leaves out: the attention response's \`projectTotals\` have no \`${key}\`. The server is not the release this page was built for.`;
+    }
   }
   return null;
 }
 
+/** Needs you's whole, by kind: each counted whole, listed or not, so the kinds add up to the figure. */
+export interface AttentionParts {
+  failed: number;
+  review: number;
+  asked: number;
+  parked: number;
+  stuck: number;
+  sessions: number;
+}
+
+/** The parts of Needs you's whole; where core counted nothing for the project, the rows on the page. */
+export function attentionParts(
+  items: readonly DashboardAttentionItem[],
+  view: AttentionView | undefined,
+  slug: string,
+  stuckRows = 0,
+): AttentionParts {
+  const refusal = attentionRefusal(view, slug);
+  if (refusal !== null) throw new Error(refusal);
+  const totals = view?.projectTotals[slug];
+  const listed = (kind: AttentionActionKind) => items.filter((i) => i.actionKind === kind).length;
+  const sessions = listed("session");
+  if (!totals) {
+    return {
+      failed: listed("retry"),
+      review: listed("diff"),
+      asked: listed("input"),
+      parked: listed("parked"),
+      stuck: stuckRows,
+      sessions,
+    };
+  }
+  return {
+    failed: totals.failedJobs,
+    review: totals.needsReview,
+    asked: totals.awaitingAsked + totals.parkedAsked,
+    parked: totals.awaitingInput - totals.awaitingAsked + totals.parkedOnly - totals.parkedAsked,
+    stuck: totals.stuckOnly,
+    sessions,
+  };
+}
+
+/** Every item Needs you holds, listed or not: the one number its figure, heading and caption say. */
+export function attentionWhole(
+  items: readonly DashboardAttentionItem[],
+  view: AttentionView | undefined,
+  slug: string,
+  stuckRows = 0,
+): number {
+  const p = attentionParts(items, view, slug, stuckRows);
+  return p.failed + p.review + p.asked + p.parked + p.stuck + p.sessions;
+}
+
+/** Where the list's rows (its items and its stuck rows) fall short of the whole; null where they do not. */
 export function attentionCut(
   items: readonly DashboardAttentionItem[],
   view: AttentionView | undefined,
   slug: string,
-  blockersTotal: number | undefined,
-  /** Issues the health row counts in the Blocked on a person state: each is owed a person's answer, so
-   *  the list cannot hold fewer than that, whichever source listed them. */
-  blockedOnPerson = 0,
+  stuckRows = 0,
 ): AttentionCut | null {
   if (!view) return null;
-  const refusal = attentionRefusal(view, slug);
-  if (refusal !== null) throw new Error(refusal);
-  const totals = view.projectTotals[slug] ?? {
-    needsReview: 0,
-    awaitingInput: 0,
-    awaitingOutsideBlockers: 0,
-    failedJobs: 0,
-  };
-  const listed = (kinds: readonly AttentionActionKind[]) =>
-    items.filter((i) => kinds.includes(i.actionKind)).length;
-  const listedPeople = listed(["input", "parked"]);
-  const people = Math.max(
-    listedPeople,
-    totals.awaitingInput,
-    (blockersTotal ?? 0) + totals.awaitingOutsideBlockers,
-    blockedOnPerson,
-  );
-  const atLeast =
-    Math.max(totals.failedJobs, listed(["retry"])) +
-    Math.max(totals.needsReview, listed(["diff"])) +
-    people;
-  if (atLeast <= items.length) return null;
-  return { shown: items.length, atLeast, peopleCut: people > listedPeople };
+  const whole = attentionWhole(items, view, slug, stuckRows);
+  const shown = items.length + stuckRows;
+  if (whole <= shown) return null;
+  const totals = view.projectTotals[slug];
+  const listedPeople = items.filter((i) => i.actionKind === "input" || i.actionKind === "parked").length;
+  const people = (totals?.awaitingInput ?? 0) + (totals?.parkedOnly ?? 0);
+  return { shown, whole, peopleCut: people > listedPeople };
 }
 
+const ATTENTION_PARTS: ReadonlyArray<{ part: keyof AttentionParts; one: string; many: string }> = [
+  { part: "failed", one: "failed job", many: "failed jobs" },
+  { part: "review", one: "to review", many: "to review" },
+  { part: "asked", one: "issue with an open question", many: "issues with an open question" },
+  { part: "parked", one: "issue parked with no question", many: "issues parked with no question" },
+  { part: "stuck", one: "other issue reported stuck", many: "other issues reported stuck" },
+  { part: "sessions", one: "session waiting on you", many: "sessions waiting on you" },
+];
+
 /**
- * What the Needs you tile counts, said under its figure: items a person has to act on, by kind.
- * A failed job or a held dependency is no issue's work state, so this figure is not Blocked on a
- * person and the tile says what it is instead of sitting beside that count unexplained. Where the
- * list is cut the caption says how much of the whole it shows.
+ * What the Needs you tile counts, by kind, said under its figure. A failed job or a held dependency is
+ * no issue's work state, so this figure is not Blocked on a person and the tile says what it is instead.
+ * How many rows the list shows is said under the list, never here (ISS-1229 r15).
  */
-export function attentionCaption(
-  items: readonly DashboardAttentionItem[],
-  cut: AttentionCut | null = null,
-): string {
-  const parts = ATTENTION_PARTS.flatMap(({ kind, one, many }) => {
-    const n = items.filter((i) => i.actionKind === kind).length;
+export function attentionCaption(parts: AttentionParts): string {
+  const said = ATTENTION_PARTS.flatMap(({ part, one, many }) => {
+    const n = parts[part];
     return n === 0 ? [] : [`${n} ${n === 1 ? one : many}`];
   });
-  const said = parts.length === 0 ? "nothing listed to act on" : `to act on: ${parts.join(" · ")}`;
-  if (cut) return `${said} — ${cut.shown} of at least ${cut.atLeast}`;
-  return parts.length === 0 ? "nothing to act on" : said;
+  return said.length === 0 ? "nothing to act on" : `to act on: ${said.join(" · ")}`;
 }
 
 /* ------------------------------------------------------------------ *
@@ -385,12 +511,16 @@ export function attentionCaption(
 
 export interface RunnerLine {
   id: string;
+  deviceId: string | null;
   name: string;
   platform: NonNullable<ProjectRunner["platform"]>;
   online: boolean;
   /** Accepting no new work while it finishes what it has — listed, never counted online. */
   draining: boolean;
+  /** Hosting a live session, or running a pool job or the active-runner snapshot's current one. */
   busy: boolean;
+  /** Live sessions on this runner's device, as the Pipeline page lists them. */
+  sessions: number;
   running: number;
   queued: number;
   /** Rate/usage/auth limit on this device's runner for this project, or null. */
@@ -404,6 +534,7 @@ export interface RunnerLine {
 export interface RunnersSummary {
   lines: RunnerLine[];
   onlineCount: number;
+  /** Online runners that are busy: the caption reads it against `onlineCount`. */
   busyCount: number;
   total: number;
 }
@@ -413,7 +544,12 @@ export function runnersSummary(
   queue: QueueStats | undefined,
   now: number = Date.now(),
   active?: ActiveRunner[] | undefined,
+  sessions?: readonly Pick<LiveSession, "deviceId">[] | undefined,
 ): RunnersSummary {
+  const sessionsByDevice = new Map<string, number>();
+  for (const s of sessions ?? []) {
+    if (s.deviceId) sessionsByDevice.set(s.deviceId, (sessionsByDevice.get(s.deviceId) ?? 0) + 1);
+  }
   const byDevice = new Map<string, { queued: number; running: number }>();
   for (const d of queue?.devices ?? []) {
     if (d.deviceId) byDevice.set(d.deviceId, { queued: d.queued, running: d.running });
@@ -428,14 +564,17 @@ export function runnersSummary(
       const draining = r.runnerStatus === "draining";
       const online = r.deviceStatus === "online" && !draining;
       const act = activeByRunner.get(r.runnerId);
-      const busy = act ? !!act.current : online && q.running > 0;
+      const hosted = (r.deviceId ? sessionsByDevice.get(r.deviceId) : undefined) ?? 0;
+      const busy = sessions ? hosted > 0 : act ? !!act.current : online && q.running > 0;
       return {
         id: r.runnerId,
+        deviceId: r.deviceId ?? null,
         name: r.deviceName ?? act?.name ?? "unnamed runner",
         platform: r.platform ?? "linux",
         online,
         draining,
         busy,
+        sessions: hosted,
         running: q.running,
         queued: q.queued,
         limit: runnerLimitDisplay(r, now),
@@ -446,7 +585,7 @@ export function runnersSummary(
   return {
     lines,
     onlineCount: lines.filter((l) => l.online).length,
-    busyCount: lines.filter((l) => l.busy).length,
+    busyCount: lines.filter((l) => l.online && l.busy).length,
     total: lines.length,
   };
 }

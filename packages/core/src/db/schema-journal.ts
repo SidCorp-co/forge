@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import {
+  check,
   index,
   integer,
   jsonb,
@@ -23,8 +24,13 @@ export type PhaseArtifact =
   | { kind: 'note'; text: string }
   | Record<string, unknown>;
 
-export const phaseJournal = pgTable(
-  'phase_journal',
+/**
+ * What a run did, one row per (run, phase, attempt) (ISS-1133). A session declares a phase, ends it
+ * once, and may leave the attempt's handoff once; no column a row holds is written a second time,
+ * which is what the stores' guarded UPDATEs keep and the two CHECKs below make whole.
+ */
+export const runJournal = pgTable(
+  'run_journal',
   {
     id: uuid('id').primaryKey().defaultRandom(),
     projectId: uuid('project_id')
@@ -45,23 +51,32 @@ export const phaseJournal = pgTable(
     source: text('source', { enum: phaseJournalSources }).notNull(),
     outcome: text('outcome', { enum: phaseJournalOutcomes }),
     artifact: jsonb('artifact').$type<PhaseArtifact>(),
+    /** The attempt's step handoff, validated by `memory/step-handoff-schema.ts`. */
+    handoff: jsonb('handoff').$type<Record<string, unknown>>(),
+    /** When the handoff was written, which is what a job's completion is judged against. */
+    handoffAt: timestamp('handoff_at', { withTimezone: true }),
 
     startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
     endedAt: timestamp('ended_at', { withTimezone: true }),
   },
   (t) => ({
-    oneRowPerAttempt: uniqueIndex('phase_journal_run_phase_attempt_idx').on(
+    oneRowPerAttempt: uniqueIndex('run_journal_run_phase_attempt_idx').on(
       t.runId,
       t.phase,
       t.attempt,
     ),
-    runStartedIdx: index('phase_journal_run_started_idx').on(t.runId, t.startedAt),
-    issueStartedIdx: index('phase_journal_issue_started_idx').on(t.issueId, t.startedAt),
-    runnerVerdictsIdx: index('phase_journal_runner_verdicts_idx')
+    runStartedIdx: index('run_journal_run_started_idx').on(t.runId, t.startedAt),
+    issueStartedIdx: index('run_journal_issue_started_idx').on(t.issueId, t.startedAt),
+    runnerVerdictsIdx: index('run_journal_runner_verdicts_idx')
       .on(t.runId, t.startedAt)
       .where(sql`source = 'runner' AND artifact ->> 'kind' = 'verdict'`),
+    endIsWhole: check('run_journal_end_is_whole', sql`(ended_at IS NULL) = (outcome IS NULL)`),
+    handoffIsWhole: check(
+      'run_journal_handoff_is_whole',
+      sql`(handoff IS NULL) = (handoff_at IS NULL)`,
+    ),
   }),
 );
 
-export type PhaseJournalRow = typeof phaseJournal.$inferSelect;
-export type NewPhaseJournalRow = typeof phaseJournal.$inferInsert;
+export type RunJournalRow = typeof runJournal.$inferSelect;
+export type NewRunJournalRow = typeof runJournal.$inferInsert;

@@ -1,33 +1,53 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { cache } from "react";
 import { HELP_DOCS } from "@/features/docs/help-content.generated";
 import { fetchGuide, fetchGuideCorpus, fetchGuideScope } from "@/features/guides/api";
-import { DOORS } from "@/features/guides/audience";
+import { DOORS, documentTitle } from "@/features/guides/audience";
 import { buildCorpus, fromGuide } from "@/features/guides/corpus";
 import { GuideShell } from "@/features/guides/components/guide-shell";
-import { PublicReader } from "@/features/guides/components/public-docs";
+import { PublicReader, PublicRefusal } from "@/features/guides/components/public-docs";
+import { GUIDES_UNAVAILABLE, missingGuideHeading } from "@/features/guides/missing";
+import { orUnreadable } from "@/features/guides/unreadable";
 
 type Params = { params: Promise<{ slug: string }> };
 
+/** The guide and the corpus its reader is built from, read once per request; `null` where core's
+ *  answer could not be read. */
+const readGuide = cache((slug: string) =>
+  orUnreadable(async () => {
+    const scope = await fetchGuideScope();
+    const guide = await fetchGuide(slug);
+    if (!guide) return { guide: null };
+    return { guide, corpus: buildCorpus(HELP_DOCS, await fetchGuideCorpus()), scope };
+  }),
+);
+
 export async function generateMetadata({ params }: Params): Promise<Metadata> {
   const { slug } = await params;
-  const guide = await fetchGuide(slug);
-  if (!guide) return {};
-  return { title: `${guide.title} — Forge documentation`, description: `${DOORS.agent.notice} ${guide.summary}` };
+  const read = await readGuide(slug);
+  if (!read) return { title: documentTitle(GUIDES_UNAVAILABLE.heading), robots: { index: false } };
+  const { guide } = read;
+  if (!guide) return { title: documentTitle(missingGuideHeading(slug)), robots: { index: false } };
+  return { title: documentTitle(guide.title), description: `${DOORS.agent.notice} ${guide.summary}` };
 }
 
 export default async function GuidePage({ params }: Params) {
-  const { slug } = await params;
-  const guide = await fetchGuide(slug);
-  if (!guide) notFound();
-  const [guides, scope] = await Promise.all([fetchGuideCorpus(), fetchGuideScope()]);
-  const corpus = buildCorpus(HELP_DOCS, guides);
+  const read = await readGuide((await params).slug);
+  if (!read) {
+    return (
+      <GuideShell indexDown>
+        <PublicRefusal refusal={GUIDES_UNAVAILABLE} />
+      </GuideShell>
+    );
+  }
+  if (!read.guide) notFound();
   return (
     <GuideShell>
       <PublicReader
-        scope={scope}
-        corpus={corpus}
-        view={{ kind: "page", href: fromGuide(guide, 0).href }}
+        scope={read.scope}
+        corpus={read.corpus}
+        view={{ kind: "page", href: fromGuide(read.guide, 0).href }}
       />
     </GuideShell>
   );

@@ -474,7 +474,6 @@ export const coolifyIntegration = declareIntegration<CoolifyConfig, CoolifySecre
     label: 'Coolify',
     // Coolify is stage-split by design, so even a single binding keys by stage.
     alwaysStageKeyed: true,
-    neverCheckedDetail: 'never health-checked',
   },
   adapter: coolifyAdapterMethods,
 });

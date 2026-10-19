@@ -2,8 +2,9 @@ import { describe, expect, it } from "vitest";
 import { legacyTab } from "./legacy-tab";
 
 describe("legacyTab — an old ?tab= link goes where its content lives now", () => {
-  it("sends the board to the pipeline page", () => {
-    expect(legacyTab("forge-dev", "?tab=board")).toEqual({ kind: "redirect", href: "/projects/forge-dev/pipeline", onIssues: false });
+  it("keeps the board on the Issues list, which holds the states the board drew (ISS-1228)", () => {
+    expect(legacyTab("forge-dev", "?tab=board")).toEqual({ kind: "redirect", href: "/projects/forge-dev/issues", onIssues: true });
+    expect(legacyTab("forge-dev", "?tab=board&q=x")).toEqual({ kind: "redirect", href: "/projects/forge-dev/issues?q=x", onIssues: true });
   });
 
   it("sends insights to the project dashboard", () => {

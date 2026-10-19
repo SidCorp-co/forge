@@ -47,10 +47,9 @@ describe('STATUS_ASSERTIONS (ISS-940)', () => {
     expect(LIVE_STATUSES).not.toContain('closed');
   });
 
-  it('answers every evidence question off a row field, never a status', () => {
+  it('answers every evidence question off a field of the issue row, never a status or another table', () => {
     expect(EVIDENCE_FIELDS.landed).toBe('issues.merged_at');
-    expect(Object.values(EVIDENCE_FIELDS).every((f) => f.includes('.') || f.includes(' '))).toBe(
-      true,
-    );
+    expect(EVIDENCE_FIELDS.commit).toBe('issues.merged_commit_sha');
+    expect(Object.values(EVIDENCE_FIELDS).filter((f) => !f.startsWith('issues.'))).toEqual([]);
   });
 });

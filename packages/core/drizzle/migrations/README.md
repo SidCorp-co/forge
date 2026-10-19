@@ -11,10 +11,11 @@ on container start by `node dist/db/migrate.js` (Dockerfile CMD).
    apply, in order (`idx` field).
 2. For each entry, opens `<tag>.sql` from this directory and computes its
    hash.
-3. Compares the hash against rows in the `drizzle.__drizzle_migrations`
-   table in the target DB.
-4. Applies any file whose hash isn't already present, then inserts a
-   journal row in the DB.
+3. Reads the single highest `created_at` in the `drizzle.__drizzle_migrations`
+   table of the target DB, once.
+4. Applies, in order, every entry whose `when` exceeds that number, and inserts
+   a row carrying its hash and `when`. An entry at or below it is skipped,
+   whatever its hash.
 
 **A `.sql` file in this folder does NOT get applied unless its tag is
 registered in `meta/_journal.json`.** The runtime migrator never scans
@@ -26,7 +27,7 @@ the directory — it trusts the journal exclusively.
 
 ```bash
 cd packages/core
-# After editing src/db/schema.ts:
+# After editing src/db/schema.ts or a src/db/schema-*.ts module:
 pnpm db:generate
 ```
 
@@ -40,13 +41,12 @@ emits a snapshot under `meta/`.
    Drizzle reads the single highest `created_at` in the target DB and skips
    lower entries silently, forever — the container then serves new code against
    an old schema. Raise the generated `when` by hand to a whole number of days
-   above the journal's `max(when)` — `+ 86400000` where yours is the only
-   migration open, and enough to clear the highest `when` any unmerged sibling
-   holds where it is not. Read the siblings immediately before the push that
-   lands it: every branch deriving `+ 86400000` from one `main` lands on the
-   same number, and the gate reads only your own journal, so it is green on a
-   value a sibling is about to take. `db/migrations-journal.test.ts` holds the
-   shape — whole days, strictly above, at most 30 ahead — not the collision.
+   above the journal's `max(when)`: the number `node scripts/check-migration-order.mjs`
+   prints on its `Next free:` line, which reads every open branch's journal as well
+   as yours. Every branch deriving `+ 86400000` from one `main` lands on the same
+   number, so a value taken from your own journal alone is one a sibling is about
+   to take. `db/migrations-journal.test.ts` reads only your own journal and holds
+   the shape — whole days, strictly above, at most 30 ahead — not the collision.
 2. It does not re-emit an index that Postgres dropped with the column. If your
    change drops and re-adds a column (the only way to alter a generated
    column's expression), every index on that column goes with it and drizzle's
@@ -82,8 +82,9 @@ re-emits DDL the database already has. So after `git merge origin/main`:
 
 **Neither `when` test can see this.** With the stale numbering sitting BELOW a higher-`idx` entry
 from `main`, the journal still reads strictly increasing in `idx` order and the head entry is still
-a whole day above the previous maximum, so both go green; only the snapshot chain reds. Read the
-floor off `main` and off every unmerged sibling yourself — the gate reads your journal alone.
+a whole day above the previous maximum, so both go green; only the snapshot chain reds. The number
+to take is the one `node scripts/check-migration-order.mjs` prints on its `Next free:` line, because
+those two tests read your journal alone.
 
 ### Hand-written SQL (rare)
 
@@ -169,19 +170,25 @@ post-mortem in `0043_agent_sessions_zombie_fix_redo.sql`.)
 
 ### Symptom: migrator says "[migrate] done" but nothing changed
 
-Either the journal entry is missing (above) or `drizzle.__drizzle_migrations`
-already contains a row whose hash matches your file. If the columns are
-genuinely missing on the target DB despite the row, someone (or an old
-deploy) recorded the migration without the SQL actually running. Fix:
+Either the journal entry is missing (above) or the entry's `when` is at or below
+the highest `created_at` in `drizzle.__drizzle_migrations`, so the migrator
+skipped it: it compares only against that one number (see *Two things it gets
+wrong*). Raise the entry's `when` above it and ship a follow-up.
+
+If the columns are genuinely missing on the target DB although the migration is
+recorded, someone (or an old deploy) recorded it without the SQL actually
+running. The recorded row is only re-run when it is the highest one:
 
 ```sql
 DELETE FROM drizzle.__drizzle_migrations WHERE id = <bad_id>;
 ```
 
-Then restart the container so the migrator reapplies cleanly.
+Then restart the container so the migrator reapplies cleanly. A row below the
+highest is not read at all; for that case raise the `when` of a follow-up
+migration that carries the statements.
 
 ## Source of truth
 
 - Runtime migrator: `packages/core/src/db/migrate.ts`
-- Schema TS: `packages/core/src/db/schema.ts`
+- Schema TS: `packages/core/src/db/schema.ts`, and the `schema-*.ts` modules `drizzle.config.ts` names
 - Drizzle config: `packages/core/drizzle.config.ts`

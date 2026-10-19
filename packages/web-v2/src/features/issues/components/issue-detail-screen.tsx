@@ -4,21 +4,18 @@
 // `['issue',id]` / `['comments',id]` / `['activities',id]` — the event-router invalidates
 // exactly those, so a query keyed anything else here stops updating and nothing reports it.
 //
-// The sections this file draws are flat, with no Card: after the banners and the description, the
-// main column reads Steps, Acceptance criteria, Agent plan, then the Comments / Activity region,
+// The sections this file draws are flat, with no Card: after the banners, the main column reads the
+// release note, Description, Runs, Acceptance criteria, Agent plan, then the Comments / Activity region,
 // each ruled off from the one above by a hairline. The Properties rail sits beside it behind a
 // hairline at `lg` and under it as a disclosure below.
 
 import {
-  Button,
   Checkbox,
   Collapsible,
-  EmptyPanelLine,
   ErrorState,
   HelpButton,
   IconButton,
   Markdown,
-  Menu,
   MonoTag,
   PageContainer,
   PageTitle,
@@ -26,11 +23,11 @@ import {
   Skeleton,
   StatusChip,
   Tabs,
-  type MenuItem,
   type TabItem,
 } from "@/design";
-import { useResumeRun } from "@/features/pipeline/hooks";
+import { useResumeRun } from "@/features/runs/hooks";
 import { useProjects } from "@/features/projects/hooks";
+import { useSessionsAndHolds } from "@/features/pipeline/hooks";
 import { DecisionPanel, focusDecisionPanel } from "@/features/questions/components/decision-panel";
 import { buildShareLink, useRecents } from "@/features/shell";
 import { formatApiError, isRetryableApiError } from "@/lib/api/error";
@@ -39,14 +36,15 @@ import { useRoom } from "@/lib/ws/use-room";
 import { useToast } from "@/providers/toast-provider";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   canonicalIssueId,
   deriveBlockerState,
-  deriveStepOutcomes,
+  deriveRunView,
   isLiveRun,
-  runningStepOf,
   issueQueryKey,
+  issueSessionId,
+  liveStepWords,
   parseChecklist,
   runStatusChip,
   threadQuestionOf,
@@ -60,32 +58,31 @@ import {
   useComments,
   useCreateComment,
   useIssue,
-  useStepDurations,
-  useStepHandoffs,
+  useRunJournal,
 } from "../detail-hooks";
 import {
   useIssueCost,
   useIssueDeps,
   usePatchIssue,
   useProjectMembers,
+  useRunPipelineStep,
 } from "../hooks";
 import { useIssuePark } from "../park";
 import type { IssueAgentSession, IssueStatus } from "../types";
 import { ActivityFeed } from "./activity-feed";
 import { AwaitingReleaseBanner } from "./awaiting-release-banner";
 import { BlockerBanner } from "./blocker-banner";
+import { IssueHeaderActions } from "./issue-header-actions";
 import { useGuardedTransition } from "./use-guarded-transition";
 import { CommentThread } from "./comment-thread";
-import { DescriptionCard } from "./description-card";
-import { ReleaseNoteCard } from "./release-note-card";
+import { DescriptionSection } from "./description-section";
+import { FlatSection } from "./flat-section";
+import { ReleaseNoteSection } from "./release-note-section";
+import { LeaseDisagreementNotice } from "./lease-disagreement-notice";
 import { type LiveAgentState, LiveAgentPanel } from "./live-agent-panel";
 import { ModulePicker } from "./module-picker";
 import { PropertiesRail } from "./properties-rail";
-import { SessionGroupTimeline } from "./session-group-timeline";
-import { StepArtifactCard } from "./step-artifact-card";
-
-/** An empty or unread Steps line drawn flush: a hairline above in place of the card's border. */
-const FLAT_PANEL_LINE = "rounded-none border-0 border-t border-line-subtle bg-transparent px-0 shadow-none";
+import { RunJournalSection } from "./run-journal-section";
 
 interface IssueDetailScreenProps {
   projectId: string;
@@ -102,7 +99,6 @@ export function IssueDetailScreen({
   const { toast } = useToast();
   const { push: pushRecent } = useRecents();
   const [tab, setTab] = useState("comments");
-  const [expandedStep, setExpandedStep] = useState<string | null>(null);
 
   useRoom(projectRoom(projectId));
 
@@ -122,8 +118,8 @@ export function IssueDetailScreen({
   const depsQ = useIssueDeps(canonicalId, true, projectId);
   const costQ = useIssueCost(canonicalId, true, projectId);
   const membersQ = useProjectMembers(projectId);
-  const handoffsQ = useStepHandoffs(projectId, canonicalId);
-  const durationsQ = useStepDurations(projectId, canonicalId);
+  const journalQ = useRunJournal(projectId, canonicalId);
+  const holdsQ = useSessionsAndHolds(projectId);
 
   const patch = usePatchIssue();
   const {
@@ -134,6 +130,7 @@ export function IssueDetailScreen({
   } = useGuardedTransition();
   const qc = useQueryClient();
   const resumeRun = useResumeRun();
+  const runIssue = useRunPipelineStep();
   // ISS-1160 — a display-key load keys `useIssue` on `id`+`projectId` (never
   // globally unique on `id` alone), so an invalidation naming only the
   // canonical uuid this mutation reports misses that entry; name both.
@@ -210,11 +207,13 @@ export function IssueDetailScreen({
     requestTransition(issue.id, "reopen", { successMessage: "Issue resumed", onSuccess: refreshIssue });
 
   const blocker = deriveBlockerState(issue, issue.pipelineHealth, depsQ.data, park);
-  const liveStep = issue.pipelineHealth?.activeSession?.skill ?? null;
-  const stepOutcomes = deriveStepOutcomes(handoffsQ.data, durationsQ.data, {
-    activeStep: runningStepOf(issue.pipelineHealth),
-    failedStep: issue.failureInfo?.failedStep ?? null,
-  });
+  const liveStep = liveStepWords(issue.pipelineHealth?.activeSession);
+  // A group run names its members by the canonical key, never the project prefix (ISS-992).
+  const runs = deriveRunView(journalQ.data, issue.agentSessions, `ISS-${issue.issSeq}`);
+  const holding = (holdsQ.data?.holds?.find((h) => h.issueId === issue.id)?.holders ?? []).flatMap((h) =>
+    h.by === "session" ? [h.sessionId] : [],
+  );
+  const sessionId = issueSessionId(holding, runs);
   const liveSession = pickActiveSession(issue.agentSessions);
   const queuedStep = deriveQueuedStep(issue.pipelineHealth, !!liveSession);
   const agentState: LiveAgentState | null = liveSession
@@ -240,37 +239,9 @@ export function IssueDetailScreen({
   const statusPark = canWrite ? { reading: park, actions: parkActions } : undefined;
   const threadQuestion = park.state === "ready" && park.park ? threadQuestionOf(park.park) : null;
 
-  const isTerminal = issue.status === "awaiting_release" || issue.status === "closed";
-  const isParked = issue.status === "on_hold";
   // The run's state is a session chip beside the issue's lifecycle chip, never merged into it (ISS-360, ISS-1150).
   const runChip = runStatusChip(issue);
   const isRunActive = isLiveRun(runChip) || issue.status === "in_progress" || issue.status === "reopen";
-  const openSessions = () =>
-    router.push(`/projects/${slug}/agents?issue=${issue.id}`);
-  const openPipeline = () => router.push(`/projects/${slug}/pipeline`);
-
-  const moreItems: MenuItem[] = [
-    { label: "Open pipeline", icon: "pipeline", onSelect: openPipeline },
-    ...(isTerminal || isParked || !canWrite
-      ? []
-      : [
-          {
-            label: "Pause (hold)",
-            icon: "stop",
-            onSelect: () => onTransition("on_hold"),
-          } as MenuItem,
-        ]),
-    ...(isTerminal || !canWrite
-      ? []
-      : [
-          {
-            label: "Reopen",
-            icon: "rerun",
-            onSelect: () => onTransition("reopen"),
-          } as MenuItem,
-        ]),
-    { label: "Copy link", icon: "link", onSelect: copyLink },
-  ];
 
   const tabs: TabItem[] = [
     {
@@ -311,7 +282,7 @@ export function IssueDetailScreen({
                 domain="session"
               />
             )}
-            {liveStep && <span className="fg-caption font-mono">{liveStep}</span>}
+            {liveStep && runChip !== "running" && <span className="fg-caption">{liveStep}</span>}
           </div>
           <PageTitle className="fg-h3 mt-1.5 break-words">{issue.title}</PageTitle>
         </div>
@@ -327,59 +298,18 @@ export function IssueDetailScreen({
             ]}
             shortcuts={[{ keys: "⌘K", desc: "Open the command palette" }]}
           />
-          {!canWrite || isTerminal ? (
-            canWrite ? (
-              <Button
-                variant="primary"
-                size="sm"
-                icon="rerun"
-                loading={pending}
-                onClick={() => onTransition("reopen")}
-              >
-                Reopen
-              </Button>
-            ) : (
-              <Button
-                variant="primary"
-                size="sm"
-                icon="pipeline"
-                onClick={openPipeline}
-              >
-                View pipeline
-              </Button>
-            )
-          ) : isRunActive ? (
-            <Button
-              variant="secondary"
-              size="sm"
-              icon="stop"
-              loading={pending}
-              onClick={() => onTransition("on_hold")}
-            >
-              Pause
-            </Button>
-          ) : (
-            <Button
-              variant="primary"
-              size="sm"
-              icon="pipeline"
-              onClick={openPipeline}
-            >
-              Run pipeline
-            </Button>
-          )}
-          <Button
-            variant="secondary"
-            size="sm"
-            icon="agent"
-            onClick={openSessions}
-          >
-            Open session
-          </Button>
-          <Menu
-            align="right"
-            items={moreItems}
-            trigger={<IconButton icon="more" aria-label="Issue actions" />}
+          <IssueHeaderActions
+            slug={slug}
+            sessionHref={sessionId ? `/projects/${slug}/agents/${sessionId}` : null}
+            status={issue.status}
+            releaseRunId={issue.releaseBatchRunId}
+            canWrite={canWrite}
+            pending={pending}
+            isRunActive={isRunActive}
+            onTransition={onTransition}
+            onRun={() => runIssue.mutate(issue.id, { onSuccess: refreshIssue })}
+            running={runIssue.isPending}
+            onCopyLink={copyLink}
           />
         </div>
       </div>
@@ -415,18 +345,19 @@ export function IssueDetailScreen({
 
           {reasonDialog}
 
+          <LeaseDisagreementNotice projectId={projectId} issueId={issue.id} slug={slug} />
+
           {agentState && (
             <LiveAgentPanel
               state={agentState}
               step={liveStep ?? "—"}
               slug={slug}
-              issueId={id}
             />
           )}
 
-          <ReleaseNoteCard issue={issue} />
+          <ReleaseNoteSection issue={issue} />
 
-          <DescriptionCard
+          <DescriptionSection
             issue={issue}
             attachments={attachmentsQ.data ?? []}
             attachmentsLoading={attachmentsQ.isLoading}
@@ -434,42 +365,12 @@ export function IssueDetailScreen({
             canWrite={canWrite}
           />
 
-          {/* Session-group continuity (ISS-376) — resumed/fresh per step. Self-
-              hides when no session carries group metadata. */}
-          <SessionGroupTimeline sessions={issue.agentSessions ?? []} />
-
-          {handoffsQ.isLoading || durationsQ.isLoading ? (
-            <EmptyPanelLine title="Steps" status="Loading…" className={FLAT_PANEL_LINE} />
-          ) : handoffsQ.isError || durationsQ.isError ? (
-            <EmptyPanelLine
-              title="Steps"
-              status="Couldn't load"
-              detail={formatApiError(handoffsQ.isError ? handoffsQ.error : durationsQ.error)}
-              className={FLAT_PANEL_LINE}
-            />
-          ) : stepOutcomes.length === 0 ? (
-            <EmptyPanelLine
-              title="Steps"
-              status="None yet"
-              detail="Steps appear here as agents record them."
-              className={FLAT_PANEL_LINE}
-            />
-          ) : (
-            <FlatSection title="Steps">
-              <div className="space-y-2">
-                {stepOutcomes.map((outcome) => (
-                  <StepArtifactCard
-                    key={outcome.step}
-                    outcome={outcome}
-                    open={expandedStep === outcome.step}
-                    onToggle={() =>
-                      setExpandedStep((cur) => (cur === outcome.step ? null : outcome.step))
-                    }
-                  />
-                ))}
-              </div>
-            </FlatSection>
-          )}
+          <RunJournalSection
+            runs={runs}
+            loading={journalQ.isLoading}
+            error={journalQ.isError ? journalQ.error : null}
+            onRetry={() => journalQ.refetch()}
+          />
 
           {checklist.length > 0 && (
             <FlatSection title="Acceptance criteria">
@@ -577,16 +478,6 @@ export function IssueDetailScreen({
         labels={issue.labels ?? []}
       />
     </PageContainer>
-  );
-}
-
-/** A main-column section drawn flat: a hairline above, a label heading, then its content. */
-function FlatSection({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section aria-label={title} className="border-t border-line-subtle pt-4">
-      <h2 className="fg-label mb-3">{title}</h2>
-      {children}
-    </section>
   );
 }
 

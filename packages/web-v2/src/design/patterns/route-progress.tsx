@@ -37,8 +37,10 @@ export function RouteProgress() {
     const start = () => {
       if (hide.current) clearTimeout(hide.current);
       startPath.current = location.pathname;
-      setVisible(true);
-      setWidth(8);
+      queueMicrotask(() => {
+        setVisible(true);
+        setWidth(8);
+      });
       if (trickle.current) clearInterval(trickle.current);
       trickle.current = setInterval(() => setWidth((w) => (w < 90 ? w + (90 - w) * 0.12 : w)), 200);
       // Belt-and-braces: never let the bar trickle forever.

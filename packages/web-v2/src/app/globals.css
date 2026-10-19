@@ -91,15 +91,8 @@
   --color-amber: var(--amber-500);
   --color-green: var(--green-500);
   --color-red: var(--red-500);
-
-  /* pipeline stage hues */
-  --color-stage-triage: var(--stage-triage);
-  --color-stage-clarify: var(--stage-clarify);
-  --color-stage-plan: var(--stage-plan);
-  --color-stage-code: var(--stage-code);
-  --color-stage-review: var(--stage-review);
-  --color-stage-test: var(--stage-test);
-  --color-stage-release: var(--stage-release);
+  /* a refusal said in text: the danger Banner's own foreground */
+  --color-danger: var(--red-600);
 
   /* radii (utilities: rounded-sm/md/lg/xl/pill) */
   --radius-xs: var(--r-xs);

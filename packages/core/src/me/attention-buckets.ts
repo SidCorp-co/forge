@@ -11,13 +11,11 @@ import {
   type SQL,
   sql,
 } from 'drizzle-orm';
-import { alias } from 'drizzle-orm/pg-core';
 import { db } from '../db/client.js';
 import {
   commentMentions,
   comments,
   issues,
-  jobs,
   notificationDeliveries,
   notificationDeliveryMembers,
   notifications,
@@ -28,21 +26,61 @@ import {
 } from '../db/schema.js';
 import { issueArchiveSide } from '../issues/archive.js';
 import { creatorIsAgentCondition } from '../issues/creator.js';
-import { AWAITING_INPUT_STATUSES, ISSUE_RESOLVED_STATUSES } from '../issues/status-sets.js';
+import { statusEnteredAtSql } from '../issues/status-entered-at.js';
+import { AWAITING_INPUT_STATUSES } from '../issues/status-sets.js';
 import { statusesInWorkState } from '../issues/work-state.js';
 import { visibleProjectsWhere } from '../lib/authz.js';
-import { BLOCKED_STATUSES } from '../projects/health-aggregates.js';
 import { holdsOpenHumanQuestion } from '../questions/issue-coupling.js';
 
 export const NEEDS_REVIEW_STATUSES = ['developed', 'reopen'] as const;
-const PER_BUCKET = 5;
-const PENDING_SKILL_UPDATES_CAP = 20;
 
-export const UNSEEN_DRAFTS_CAP = 20;
+/** The six buckets the attention read lists, by their response keys. */
+export const ATTENTION_BUCKETS = [
+  'needsReview',
+  'awaitingInput',
+  'mentions',
+  'failedJobs',
+  'pendingSkillUpdates',
+  'unseenDrafts',
+] as const;
+export type AttentionBucket = (typeof ATTENTION_BUCKETS)[number];
 
-export const AWAITING_INPUT_CAP = 20;
+/** How many rows each bucket lists unless the caller asks for it whole. */
+export const BUCKET_CAPS: Readonly<Record<AttentionBucket, number>> = {
+  needsReview: 5,
+  awaitingInput: 20,
+  mentions: 5,
+  failedJobs: 5,
+  pendingSkillUpdates: 20,
+  unseenDrafts: 20,
+};
 
-const retryJobs = alias(jobs, 'retry_jobs');
+export const UNSEEN_DRAFTS_CAP = BUCKET_CAPS.unseenDrafts;
+
+export const AWAITING_INPUT_CAP = BUCKET_CAPS.awaitingInput;
+
+/** A bucket's cap, or `null` where the caller asked for it whole (ISS-1229 r14). */
+export type BucketLimit = number | null;
+
+export function capped<T extends { limit: (n: number) => unknown }>(query: T, limit: BucketLimit) {
+  return limit === null ? query : query.limit(limit);
+}
+
+/** Which organisation's projects a read covers; none named reads every one the caller can see. */
+export interface AttentionScope {
+  orgId?: string | undefined;
+}
+
+/**
+ * Applied before each cap, so a cap filled by one organisation cannot empty another (ISS-1229 r13).
+ * An archived project's page answers not found, so nothing of it is counted or listed (ISS-1229 r15).
+ */
+export function inScope(scope: AttentionScope): SQL {
+  return and(
+    isNull(projects.archivedAt),
+    scope.orgId ? eq(projects.orgId, scope.orgId) : undefined,
+  ) as SQL;
+}
 
 export interface AttentionIssueRow {
   id: string;
@@ -50,13 +88,16 @@ export interface AttentionIssueRow {
   issuePrefix: string | null;
   title: string;
   status: string;
-  updatedAt: Date;
+  /** When it entered its status: what the item's age counts from, never the last write (ISS-1229 r8). */
+  statusEnteredAt: Date;
   projectSlug: string;
   projectName: string;
 }
 
 /** The awaiting-input row, which carries WHY it is ranked where it is. */
 export interface AttentionAwaitingRow extends AttentionIssueRow {
+  /** Since its oldest open question to a person, or since it entered its status where none is open. */
+  waitingSince: Date;
   claimsHeld: number;
   workspacesPinned: number;
   dependents: number;
@@ -75,11 +116,16 @@ export interface AttentionMentionRow {
 }
 
 export interface AttentionFailedJobRow {
+  /** The failed job, which a person retries by it. */
+  jobId: string;
   type: string;
   finishedAt: Date | null;
   createdAt: Date;
   error: string | null;
+  /** What the failure classifier named, where it named anything. */
+  failureReason: string | null;
   issueDocId: string | null;
+  issueTitle: string | null;
   issSeq: number | null;
   issuePrefix: string | null;
   projectSlug: string;
@@ -101,18 +147,29 @@ export function ownedForAnswer(userId: string) {
   );
 }
 
+/** Negated where a predicate can read NULL: a NULL there is "not held", never "unknown". */
+export function isNot(condition: SQL): SQL {
+  return sql`NOT coalesce((${condition}), false)`;
+}
+
+const statusEnteredAt = statusEnteredAtSql({
+  id: sql`${issues.id}`,
+  status: sql`${issues.status}`,
+  createdAt: sql`${issues.createdAt}`,
+});
+
 const issueFields = {
   id: issues.id,
   issSeq: issues.issSeq,
   issuePrefix: projects.issuePrefix,
   title: issues.title,
   status: issues.status,
-  updatedAt: issues.updatedAt,
+  statusEnteredAt: sql<Date>`${statusEnteredAt}`.mapWith(issues.createdAt),
   projectSlug: projects.slug,
   projectName: projects.name,
 } as const;
 
-function needsReviewWhere(userId: string): SQL {
+export function needsReviewWhere(userId: string): SQL {
   return and(
     eq(issues.assigneeId, userId),
     inArray(issues.status, [...NEEDS_REVIEW_STATUSES]),
@@ -121,14 +178,21 @@ function needsReviewWhere(userId: string): SQL {
   ) as SQL;
 }
 
-export function selectNeedsReview(userId: string): Promise<AttentionIssueRow[]> {
-  return db
-    .select(issueFields)
-    .from(issues)
-    .innerJoin(projects, eq(projects.id, issues.projectId))
-    .where(needsReviewWhere(userId))
-    .orderBy(desc(issues.updatedAt))
-    .limit(PER_BUCKET) as Promise<AttentionIssueRow[]>;
+export function selectNeedsReview(
+  userId: string,
+  scope: AttentionScope = {},
+  limit: BucketLimit = BUCKET_CAPS.needsReview,
+): Promise<AttentionIssueRow[]> {
+  return capped(
+    db
+      .select(issueFields)
+      .from(issues)
+      .innerJoin(projects, eq(projects.id, issues.projectId))
+      .where(and(needsReviewWhere(userId), inScope(scope)))
+      .orderBy(desc(issues.updatedAt))
+      .$dynamic(),
+    limit,
+  ) as unknown as Promise<AttentionIssueRow[]>;
 }
 
 function openQuestionCost(column: string): SQL<number> {
@@ -144,7 +208,8 @@ const AWAITING_COST_ORDER = [
   issues.updatedAt,
 ] as const;
 
-function awaitingInputWhere(userId: string): SQL {
+/** A park the reader owes an answer to, in any project; `awaitingInputWhere` adds what they can see. */
+export function owedAnswerWhere(userId: string): SQL {
   return and(
     ownedForAnswer(userId),
     or(
@@ -158,33 +223,46 @@ function awaitingInputWhere(userId: string): SQL {
         holdsOpenHumanQuestion(issues.id),
       ),
     ),
-    ...visibleProjectsWhere(),
   ) as SQL;
 }
 
-export function selectAwaitingInput(userId: string): Promise<AttentionAwaitingRow[]> {
-  return db
-    .select({
-      ...issueFields,
-      claimsHeld: openQuestionCost('claims_held'),
-      workspacesPinned: openQuestionCost('workspaces_pinned'),
-      dependents: openQuestionCost('dependents'),
-      blockerKind: openQuestionColumn('blocker_kind'),
-      questionId: openQuestionColumn('id'),
-    })
-    .from(issues)
-    .innerJoin(projects, eq(projects.id, issues.projectId))
-    .leftJoin(
-      projectMembers,
-      and(eq(projectMembers.projectId, projects.id), eq(projectMembers.userId, userId)),
-    )
-    .leftJoin(
-      organizationMembers,
-      and(eq(organizationMembers.orgId, projects.orgId), eq(organizationMembers.userId, userId)),
-    )
-    .where(awaitingInputWhere(userId))
-    .orderBy(...AWAITING_COST_ORDER)
-    .limit(AWAITING_INPUT_CAP) as Promise<AttentionAwaitingRow[]>;
+export function awaitingInputWhere(userId: string): SQL {
+  return and(owedAnswerWhere(userId), ...visibleProjectsWhere()) as SQL;
+}
+
+/** The caller's memberships, which `visibleProjectsWhere` reads, joined beside `projects`. */
+export const memberOf = (userId: string) =>
+  and(eq(projectMembers.projectId, projects.id), eq(projectMembers.userId, userId));
+export const orgMemberOf = (userId: string) =>
+  and(eq(organizationMembers.orgId, projects.orgId), eq(organizationMembers.userId, userId));
+
+export function selectAwaitingInput(
+  userId: string,
+  scope: AttentionScope = {},
+  limit: BucketLimit = BUCKET_CAPS.awaitingInput,
+): Promise<AttentionAwaitingRow[]> {
+  return capped(
+    db
+      .select({
+        ...issueFields,
+        waitingSince: sql<Date>`coalesce((select min(q.created_at) from agent_questions q
+        where q.issue_id = ${issues.id} and q.status = 'open' and q.blocker_kind = 'human'),
+        ${statusEnteredAt})`.mapWith(issues.createdAt),
+        claimsHeld: openQuestionCost('claims_held'),
+        workspacesPinned: openQuestionCost('workspaces_pinned'),
+        dependents: openQuestionCost('dependents'),
+        blockerKind: openQuestionColumn('blocker_kind'),
+        questionId: openQuestionColumn('id'),
+      })
+      .from(issues)
+      .innerJoin(projects, eq(projects.id, issues.projectId))
+      .leftJoin(projectMembers, memberOf(userId))
+      .leftJoin(organizationMembers, orgMemberOf(userId))
+      .where(and(awaitingInputWhere(userId), inScope(scope)))
+      .orderBy(...AWAITING_COST_ORDER)
+      .$dynamic(),
+    limit,
+  ) as unknown as Promise<AttentionAwaitingRow[]>;
 }
 
 function openQuestionColumn(column: string): SQL<string | null> {
@@ -230,7 +308,7 @@ function unseenDraftOwner(userId: string): SQL {
   ) as SQL;
 }
 
-function unseenDraftCondition(userId: string): SQL {
+export function unseenDraftCondition(userId: string): SQL {
   return and(
     eq(issues.status, 'draft'),
     creatorIsAgentCondition(),
@@ -246,35 +324,41 @@ function unseenDraftCondition(userId: string): SQL {
 
 const PRIORITY_RANK = sql`case ${issues.priority} when 'critical' then 0 when 'high' then 1 when 'medium' then 2 when 'low' then 3 else 4 end`;
 
-export function selectUnseenDrafts(userId: string): Promise<AttentionIssueRow[]> {
-  return db
-    .select(issueFields)
-    .from(issues)
-    .innerJoin(projects, eq(projects.id, issues.projectId))
-    .where(unseenDraftCondition(userId))
-    .orderBy(PRIORITY_RANK, desc(issues.updatedAt))
-    .limit(UNSEEN_DRAFTS_CAP) as Promise<AttentionIssueRow[]>;
+export function selectUnseenDrafts(
+  userId: string,
+  scope: AttentionScope = {},
+  limit: BucketLimit = BUCKET_CAPS.unseenDrafts,
+): Promise<AttentionIssueRow[]> {
+  return capped(
+    db
+      .select(issueFields)
+      .from(issues)
+      .innerJoin(projects, eq(projects.id, issues.projectId))
+      .where(and(unseenDraftCondition(userId), inScope(scope)))
+      .orderBy(PRIORITY_RANK, desc(issues.updatedAt))
+      .$dynamic(),
+    limit,
+  ) as unknown as Promise<AttentionIssueRow[]>;
 }
 
-export function selectUnseenDraftCount(userId: string): Promise<{ total: number | null }[]> {
-  return db
-    .select({ total: sql<number>`count(*)::int` })
-    .from(issues)
-    .innerJoin(projects, eq(projects.id, issues.projectId))
-    .where(unseenDraftCondition(userId)) as Promise<{ total: number | null }[]>;
-}
+const mentionFields = {
+  notificationTitle: notifications.title,
+  mentionedAt: commentMentions.createdAt,
+  issueDocId: issues.id,
+  issSeq: issues.issSeq,
+  issuePrefix: projects.issuePrefix,
+  projectSlug: projects.slug,
+  projectName: projects.name,
+};
 
-export function selectMentions(userId: string): Promise<AttentionMentionRow[]> {
+/** The mentions bucket's rows, under whichever fields the caller selects: its list and its count. */
+export function mentionsOf<F extends Record<string, unknown>>(
+  fields: F,
+  userId: string,
+  scope: AttentionScope,
+) {
   return db
-    .select({
-      notificationTitle: notifications.title,
-      mentionedAt: commentMentions.createdAt,
-      issueDocId: issues.id,
-      issSeq: issues.issSeq,
-      issuePrefix: projects.issuePrefix,
-      projectSlug: projects.slug,
-      projectName: projects.name,
-    })
+    .select(fields as never)
     .from(commentMentions)
     .innerJoin(comments, eq(comments.id, commentMentions.commentId))
     .innerJoin(issues, and(eq(issues.id, comments.issueId), ...issueArchiveSide(false)))
@@ -304,143 +388,61 @@ export function selectMentions(userId: string): Promise<AttentionMentionRow[]> {
         eq(notificationDeliveries.userId, commentMentions.userId),
       ),
     )
-    .where(and(eq(commentMentions.userId, userId), sql`${notificationDeliveries.readAt} IS NULL`))
-    .orderBy(desc(commentMentions.createdAt))
-    .limit(PER_BUCKET) as Promise<AttentionMentionRow[]>;
+    .where(
+      and(
+        eq(commentMentions.userId, userId),
+        sql`${notificationDeliveries.readAt} IS NULL`,
+        inScope(scope),
+      ),
+    )
+    .$dynamic();
 }
 
-function failedJobsWhere(userId: string): SQL {
+export function selectMentions(
+  userId: string,
+  scope: AttentionScope = {},
+  limit: BucketLimit = BUCKET_CAPS.mentions,
+): Promise<AttentionMentionRow[]> {
+  return capped(
+    mentionsOf(mentionFields, userId, scope).orderBy(desc(commentMentions.createdAt)),
+    limit,
+  ) as unknown as Promise<AttentionMentionRow[]>;
+}
+
+export function pendingSkillUpdateWhere(userId: string, scope: AttentionScope): SQL {
   return and(
-    eq(jobs.createdBy, userId),
-    eq(jobs.status, 'failed'),
-    sql`${jobs.createdAt} >= now() - interval '7 days'`,
-    notExists(db.select({ one: sql`1` }).from(retryJobs).where(eq(retryJobs.retryOf, jobs.id))),
+    adminsProject(userId),
+    inScope(scope),
     or(
-      isNull(issues.id),
-      and(notInArray(issues.status, [...ISSUE_RESOLVED_STATUSES]), ...issueArchiveSide(false)),
+      and(eq(reconcileRuns.status, 'decided'), eq(reconcileRuns.gate, 'human')),
+      and(
+        eq(reconcileRuns.status, 'escalated'),
+        eq(reconcileRuns.verdict, 'escalate'),
+        isNull(reconcileRuns.acknowledgedAt),
+      ),
     ),
   ) as SQL;
 }
 
-export function selectFailedJobs(userId: string): Promise<AttentionFailedJobRow[]> {
-  return db
-    .select({
-      type: jobs.type,
-      finishedAt: jobs.finishedAt,
-      createdAt: jobs.createdAt,
-      error: jobs.error,
-      issueDocId: issues.id,
-      issSeq: issues.issSeq,
-      issuePrefix: projects.issuePrefix,
-      projectSlug: projects.slug,
-      projectName: projects.name,
-    })
-    .from(jobs)
-    .innerJoin(projects, eq(projects.id, jobs.projectId))
-    .leftJoin(issues, eq(issues.id, jobs.issueId))
-    .where(failedJobsWhere(userId))
-    .orderBy(desc(sql`coalesce(${jobs.finishedAt}, ${jobs.createdAt})`))
-    .limit(PER_BUCKET) as Promise<AttentionFailedJobRow[]>;
-}
-
-export function selectPendingSkillUpdates(userId: string): Promise<AttentionReconcileRow[]> {
-  return db
-    .select({
-      status: reconcileRuns.status,
-      createdAt: reconcileRuns.createdAt,
-      decidedAt: reconcileRuns.decidedAt,
-      projectSlug: projects.slug,
-      projectName: projects.name,
-    })
-    .from(reconcileRuns)
-    .innerJoin(projects, eq(projects.id, reconcileRuns.projectId))
-    .where(
-      and(
-        adminsProject(userId),
-        or(
-          and(eq(reconcileRuns.status, 'decided'), eq(reconcileRuns.gate, 'human')),
-          and(
-            eq(reconcileRuns.status, 'escalated'),
-            eq(reconcileRuns.verdict, 'escalate'),
-            isNull(reconcileRuns.acknowledgedAt),
-          ),
-        ),
-      ),
-    )
-    .orderBy(desc(sql`coalesce(${reconcileRuns.decidedAt}, ${reconcileRuns.createdAt})`))
-    .limit(PENDING_SKILL_UPDATES_CAP) as Promise<AttentionReconcileRow[]>;
-}
-
-/** What a project holds in the three capped buckets, counted whole. */
-export interface AttentionProjectTotals {
-  needsReview: number;
-  awaitingInput: number;
-  /**
-   * The part of `awaitingInput` at a status the project health row's parked list (`blockers`) does
-   * not count. The rest are at statuses that list holds whole, so a screen reading both adds this to
-   * the health row's `blockersTotal` and counts no issue twice.
-   */
-  awaitingOutsideBlockers: number;
-  failedJobs: number;
-}
-
-/**
- * Each capped bucket's unclipped count per project slug, from the same predicate the bucket's rows
- * come from, so a screen showing part of a bucket can say how much of it that is. A project with
- * nothing in any of the three has no entry.
- */
-export async function selectAttentionTotals(
+export function selectPendingSkillUpdates(
   userId: string,
-): Promise<Record<string, AttentionProjectTotals>> {
-  const count = sql<number>`count(*)::int`;
-  const [review, awaiting, failed] = await Promise.all([
-    db
-      .select({ slug: projects.slug, n: count })
-      .from(issues)
-      .innerJoin(projects, eq(projects.id, issues.projectId))
-      .where(needsReviewWhere(userId))
-      .groupBy(projects.slug),
+  scope: AttentionScope = {},
+  limit: BucketLimit = BUCKET_CAPS.pendingSkillUpdates,
+): Promise<AttentionReconcileRow[]> {
+  return capped(
     db
       .select({
-        slug: projects.slug,
-        n: count,
-        outside: sql<number>`(count(*) filter (where ${notInArray(issues.status, [...BLOCKED_STATUSES])}))::int`,
+        status: reconcileRuns.status,
+        createdAt: reconcileRuns.createdAt,
+        decidedAt: reconcileRuns.decidedAt,
+        projectSlug: projects.slug,
+        projectName: projects.name,
       })
-      .from(issues)
-      .innerJoin(projects, eq(projects.id, issues.projectId))
-      .leftJoin(
-        projectMembers,
-        and(eq(projectMembers.projectId, projects.id), eq(projectMembers.userId, userId)),
-      )
-      .leftJoin(
-        organizationMembers,
-        and(eq(organizationMembers.orgId, projects.orgId), eq(organizationMembers.userId, userId)),
-      )
-      .where(awaitingInputWhere(userId))
-      .groupBy(projects.slug),
-    db
-      .select({ slug: projects.slug, n: count })
-      .from(jobs)
-      .innerJoin(projects, eq(projects.id, jobs.projectId))
-      .leftJoin(issues, eq(issues.id, jobs.issueId))
-      .where(failedJobsWhere(userId))
-      .groupBy(projects.slug),
-  ]);
-  const totals: Record<string, AttentionProjectTotals> = {};
-  const at = (slug: string) => {
-    totals[slug] ??= {
-      needsReview: 0,
-      awaitingInput: 0,
-      awaitingOutsideBlockers: 0,
-      failedJobs: 0,
-    };
-    return totals[slug];
-  };
-  for (const r of review) at(r.slug).needsReview = r.n;
-  for (const r of awaiting) {
-    at(r.slug).awaitingInput = r.n;
-    at(r.slug).awaitingOutsideBlockers = r.outside;
-  }
-  for (const r of failed) at(r.slug).failedJobs = r.n;
-  return totals;
+      .from(reconcileRuns)
+      .innerJoin(projects, eq(projects.id, reconcileRuns.projectId))
+      .where(pendingSkillUpdateWhere(userId, scope))
+      .orderBy(desc(sql`coalesce(${reconcileRuns.decidedAt}, ${reconcileRuns.createdAt})`))
+      .$dynamic(),
+    limit,
+  ) as unknown as Promise<AttentionReconcileRow[]>;
 }

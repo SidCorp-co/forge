@@ -1,4 +1,7 @@
 import { and, eq } from 'drizzle-orm';
+import { HTTPException } from 'hono/http-exception';
+import { agentIsNotAPerson, isAgentAddress, isForgeAddress } from '../auth/agent-account.js';
+import { FORGE_AUTHOR_ID } from '../comments/forge-author.js';
 import { db } from '../db/client.js';
 import { organizationMembers, organizations, users } from '../db/schema.js';
 
@@ -7,6 +10,51 @@ import { organizationMembers, organizations, users } from '../db/schema.js';
  * satisfy this for the two inserts we need.
  */
 type DbLike = Pick<typeof db, 'insert' | 'select'>;
+
+/** Forge's own account writes what its sweeps say and is a member of nothing. */
+export function isNeverAMember(userId: string): boolean {
+  return userId === FORGE_AUTHOR_ID;
+}
+
+/** The one refusal every door that adds a member or invites one answers Forge with, by id or by
+ *  address in any letter case, whether or not its account has been minted yet. */
+export function forgeIsNotAMember(named: string): HTTPException {
+  return new HTTPException(409, {
+    message: `Forge's own account (${named}) is never a member of an organization or a project. It only writes what Forge's sweeps say.`,
+    cause: { code: 'FORGE_IS_NOT_A_MEMBER' },
+  });
+}
+
+/** Refuse an invitation or a membership naming Forge, by address or by account id. */
+export function refuseForgeAsMember(target: { email?: string; userId?: string }): void {
+  if (target.email !== undefined && isForgeAddress(target.email)) {
+    throw forgeIsNotAMember(target.email);
+  }
+  if (target.userId !== undefined && isNeverAMember(target.userId)) {
+    throw forgeIsNotAMember(`account ${target.userId}`);
+  }
+}
+
+/** Refuse an invitation or a membership naming anything but a person: Forge by its own code first,
+ *  then any address on the agent domain, in any letter case, and any agent account by id. */
+export async function refuseNonPersonAsMember(target: {
+  email?: string;
+  userId?: string;
+}): Promise<void> {
+  refuseForgeAsMember(target);
+  if (target.email !== undefined && isAgentAddress(target.email)) {
+    throw agentIsNotAPerson({ email: target.email });
+  }
+  if (target.userId === undefined) return;
+  const [row] = await db
+    .select({ kind: users.kind, email: users.email })
+    .from(users)
+    .where(eq(users.id, target.userId))
+    .limit(1);
+  if (row && (row.kind === 'agent' || isAgentAddress(row.email))) {
+    throw agentIsNotAPerson({ userId: target.userId });
+  }
+}
 
 /**
  * Idempotently provision the user's personal org (one per user, enforced by

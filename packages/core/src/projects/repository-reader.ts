@@ -4,14 +4,27 @@ export const RANGE_COMMIT_LIMIT = 1000;
 
 export type RepositoryRoute = 'binding' | 'deploy_key';
 
-/** Why a read was refused, and the act that clears it held apart, so several causes say it once. */
+/** Why a read was refused, the act that clears it, and the host's own words, each held apart. */
 export interface Refused {
   readonly cause: string;
   readonly clears?: string;
+  readonly said?: string;
 }
 
+const asSentence = (part: string): string => {
+  const text = part.trim();
+  return `${text.charAt(0).toUpperCase()}${text.slice(1)}`.replace(/([^.!?])$/, '$1.');
+};
+
+/** The cause, then the act that clears it, as sentences; the host's own line beneath them. */
 export function saying(refused: Refused): string {
-  return refused.clears === undefined ? refused.cause : `${refused.cause} — ${refused.clears}`;
+  const ours = [refused.cause, refused.clears].flatMap((p) => (p ? [asSentence(p)] : [])).join(' ');
+  return refused.said ? `${ours}\n${refused.said}` : ours;
+}
+
+/** The cause inside a sentence of ours, where a line of its own cannot go: the host's words after a colon. */
+export function inClause(refused: Omit<Refused, 'clears'>): string {
+  return refused.said ? `${refused.cause}: ${refused.said}` : refused.cause;
 }
 
 const HEX = /^[0-9a-f]+$/i;
@@ -90,6 +103,7 @@ export interface RepositoryReader {
   commit(ref: string): Promise<CommitLookup>;
   branchHead(branch: string): Promise<BranchRead>;
   contains(sha: string, branch: string): Promise<Containment>;
+  descends(ancestor: string, head: string): Promise<Containment>;
   tagsContaining(commit: string, pattern: string): Promise<TagContainment>;
   carriage(judged: string, served: string): Promise<Carriage>;
   changedPaths(landing: string): Promise<ChangedPaths>;

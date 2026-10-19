@@ -9,7 +9,7 @@
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { PatToken } from "../types";
+import { PAT_NAME_IN_USE, type PatToken } from "../types";
 
 expect.extend(matchers);
 Element.prototype.scrollIntoView = vi.fn();
@@ -39,13 +39,16 @@ function aToken(over: Partial<PatToken>): PatToken {
 }
 
 let tokens: PatToken[] = [];
+let projects: { id: string; name: string; slug: string }[] = [];
 const createMutate = vi.fn();
 const revokeMutate = vi.fn();
+const toastSpy = vi.fn();
+const dismissSpy = vi.fn();
 
 vi.mock("@/features/projects/hooks", () => ({
-  useProjects: () => ({ data: [], isLoading: false, isError: false }),
+  useProjects: () => ({ data: projects, isLoading: false, isError: false }),
 }));
-vi.mock("@/providers/toast-provider", () => ({ useToast: () => ({ toast: vi.fn() }) }));
+vi.mock("@/providers/toast-provider", () => ({ useToast: () => ({ toast: toastSpy, dismiss: dismissSpy }) }));
 vi.mock("@/providers/auth-provider", () => ({
   useAuth: () => ({ user: { hasPassword: true, oauthProviders: [] } }),
 }));
@@ -68,8 +71,11 @@ const createButton = () => screen.getByRole("button", { name: "Create token" });
 
 beforeEach(() => {
   tokens = [];
+  projects = [];
   createMutate.mockClear();
   revokeMutate.mockClear();
+  toastSpy.mockClear();
+  dismissSpy.mockClear();
 });
 afterEach(cleanup);
 
@@ -324,5 +330,298 @@ describe("TokensTab — what still has access comes first", () => {
   it("draws no card list beside the table for a narrow screen", () => {
     render(<TokensTab />);
     expect(screen.getAllByText("iss974-walk-2")).toHaveLength(1);
+  });
+});
+
+describe("TokensTab — the level a project token is bound to", () => {
+  const BOUND = "00000000-0000-0000-0000-0000000000aa";
+
+  it("names the project by its name, and not by its slug", () => {
+    projects = [{ id: BOUND, name: "Forge Platform", slug: "forge-dev" }];
+    tokens = [aToken({ id: "t1", name: "ci", boundProjectId: BOUND })];
+    render(<TokensTab />);
+    expect(screen.getByText("Project: Forge Platform")).toBeInTheDocument();
+    expect(screen.queryByText("Project: forge-dev")).toBeNull();
+  });
+
+  it("falls back to the slug where the project has no name, and to its id where it is not listed", () => {
+    projects = [{ id: BOUND, name: "", slug: "forge-dev" }];
+    tokens = [
+      aToken({ id: "t1", name: "ci", boundProjectId: BOUND }),
+      aToken({ id: "t2", name: "other", boundProjectId: "11111111-2222-3333-4444-555555555555" }),
+    ];
+    render(<TokensTab />);
+    expect(screen.getByText("Project: forge-dev")).toBeInTheDocument();
+    expect(screen.getByText("Project: 11111111")).toBeInTheDocument();
+  });
+});
+
+// ISS-1289 — a create refused for fresh auth adds the password box below the whole form, under the
+// fold at 1280x900. The setup pages' Check after Create token names that box, so it has to be in view.
+describe("TokensTab — the re-auth prompt opens where the reader is looking", () => {
+  it("brings the Confirm password box into view and puts the cursor in it", async () => {
+    const { ApiError } = await import("@/lib/api/client");
+    const scroll = vi.mocked(Element.prototype.scrollIntoView);
+    scroll.mockClear();
+    createMutate.mockImplementationOnce((_input, opts: { onError: (e: unknown) => void }) =>
+      opts.onError(new ApiError(403, "fresh auth", "FRESH_AUTH_REQUIRED")),
+    );
+    render(<TokensTab />);
+    fireEvent.change(nameField(), { target: { value: "ci" } });
+    fireEvent.click(screen.getByRole("radio", { name: /Full access/ }));
+    expect(scroll).not.toHaveBeenCalled();
+
+    fireEvent.click(createButton());
+
+    const password = screen.getByPlaceholderText("Your account password");
+    expect(scroll).toHaveBeenCalledTimes(1);
+    expect(scroll.mock.contexts[0]).toContainElement(password);
+    expect(password).toHaveFocus();
+  });
+});
+
+// ISS-1289 — Create token sits below the whole form, so a refused field near its top is drawn off
+// screen at 1280x900 and at 390, and a reader repeating a setup page with its fixed name pressed the
+// button and saw nothing change. The first refused field comes into view and takes the cursor.
+describe("TokensTab — a refused create shows the reader the field it refused", () => {
+  const scroll = () => vi.mocked(Element.prototype.scrollIntoView);
+
+  it("brings a name an active token holds into view, highlighted with the cursor in it, and sends nothing", () => {
+    tokens = [aToken({ name: "Claude Code" }), aToken({ id: "2", name: "old", revokedAt: "2026-01-02T00:00:00.000Z" })];
+    scroll().mockClear();
+    render(<TokensTab />);
+    fireEvent.change(nameField(), { target: { value: "Claude Code" } });
+    fireEvent.click(screen.getByRole("radio", { name: /Full access/ }));
+    createButton().focus();
+
+    fireEvent.click(createButton());
+
+    expect(createMutate).not.toHaveBeenCalled();
+    const input = nameField() as HTMLInputElement;
+    expect(input).toHaveFocus();
+    expect([input.selectionStart, input.selectionEnd]).toEqual([0, "Claude Code".length]);
+    const refusal = screen.getByRole("alert");
+    expect(refusal).toHaveTextContent(PAT_NAME_IN_USE);
+    expect(scroll()).toHaveBeenCalledTimes(1);
+    expect(scroll().mock.contexts[0]).toContainElement(input);
+    expect(scroll().mock.contexts[0]).toContainElement(refusal);
+    expect(input).toHaveAccessibleDescription(PAT_NAME_IN_USE);
+    expect(input).toHaveAttribute("aria-invalid", "true");
+  });
+
+  it("lets a revoked token's name through", () => {
+    tokens = [aToken({ name: "Claude Code", revokedAt: "2026-01-02T00:00:00.000Z" })];
+    render(<TokensTab />);
+    fireEvent.change(nameField(), { target: { value: "Claude Code" } });
+    fireEvent.click(screen.getByRole("radio", { name: /Full access/ }));
+    fireEvent.click(createButton());
+    expect(createMutate).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText(PAT_NAME_IN_USE)).toBeNull();
+  });
+
+  it("puts the cursor on the first Scopes box when no scope is ticked", () => {
+    scroll().mockClear();
+    render(<TokensTab />);
+    fireEvent.change(nameField(), { target: { value: "ci" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: "read" }));
+    fireEvent.click(screen.getByRole("radio", { name: /Full access/ }));
+    fireEvent.click(createButton());
+    expect(createMutate).not.toHaveBeenCalled();
+    expect(screen.getByRole("checkbox", { name: "read" })).toHaveFocus();
+    expect(scroll().mock.contexts.at(-1)).toContainElement(screen.getByText("Select at least one scope."));
+  });
+
+  it("puts the cursor on the first Permissions choice when none is made", () => {
+    scroll().mockClear();
+    render(<TokensTab />);
+    fireEvent.change(nameField(), { target: { value: "ci" } });
+    fireEvent.click(createButton());
+    expect(createMutate).not.toHaveBeenCalled();
+    expect(screen.getByRole("radio", { name: /Full access/ })).toHaveFocus();
+    expect(scroll().mock.contexts.at(-1)).toContainElement(screen.getByText("Choose what this token may reach."));
+  });
+
+  it("takes the field nearest the top when several are refused, and moves nothing on a create that goes", () => {
+    scroll().mockClear();
+    render(<TokensTab />);
+    fireEvent.click(createButton());
+    expect(nameField()).toHaveFocus();
+    expect(scroll()).toHaveBeenCalledTimes(1);
+
+    scroll().mockClear();
+    fireEvent.change(nameField(), { target: { value: "ci" } });
+    fireEvent.click(screen.getByRole("radio", { name: /Full access/ }));
+    fireEvent.click(createButton());
+    expect(createMutate).toHaveBeenCalledTimes(1);
+    expect(scroll()).not.toHaveBeenCalled();
+  });
+});
+
+// ISS-1289 — the toast lane sits top right, over the right-hand drawer, so a toast confirming the copy
+// covered the Token created panel's first line at 1280. The panel says its own result, and the form's
+// notices, which can still be showing when a quick create opens the panel, are dismissed as it opens.
+describe("TokensTab — the Token created panel says its own copy result", () => {
+  const created = { ...aToken({ name: "ci" }), plaintext: "forge_pat_abc" };
+
+  async function openPanel() {
+    createMutate.mockImplementationOnce((_input, opts: { onSuccess: (t: unknown) => void }) => opts.onSuccess(created));
+    render(<TokensTab />);
+    fireEvent.change(nameField(), { target: { value: "ci" } });
+    fireEvent.click(screen.getByRole("radio", { name: /Full access/ }));
+    fireEvent.click(createButton());
+    return screen.getByRole("dialog");
+  }
+
+  function clipboard(writeText: (text: string) => Promise<void>) {
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+  }
+
+  it("dismisses the form's notices as the panel opens", async () => {
+    await openPanel();
+    expect(dismissSpy).toHaveBeenCalledWith("token-form");
+  });
+
+  it("puts every notice the form raises in that one slot", async () => {
+    const { ApiError } = await import("@/lib/api/client");
+    createMutate.mockImplementationOnce((_input, opts: { onError: (e: unknown) => void }) =>
+      opts.onError(new ApiError(403, "fresh auth", "FRESH_AUTH_REQUIRED")),
+    );
+    createMutate.mockImplementationOnce((_input, opts: { onError: (e: unknown) => void }) =>
+      opts.onError(new ApiError(500, "boom", "INTERNAL")),
+    );
+    render(<TokensTab />);
+    fireEvent.change(nameField(), { target: { value: "ci" } });
+    fireEvent.click(screen.getByRole("radio", { name: /Full access/ }));
+    fireEvent.click(createButton());
+    cleanup();
+    render(<TokensTab />);
+    fireEvent.change(nameField(), { target: { value: "ci" } });
+    fireEvent.click(screen.getByRole("radio", { name: /Full access/ }));
+    fireEvent.click(createButton());
+    expect(toastSpy).toHaveBeenCalledTimes(2);
+    for (const [notice] of toastSpy.mock.calls) expect(notice).toMatchObject({ slot: "token-form" });
+  });
+
+  it("turns Copy to clipboard into Copied ✓ and raises no toast", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    clipboard(writeText);
+    const panel = await openPanel();
+    toastSpy.mockClear();
+
+    await act(async () => fireEvent.click(within(panel).getByRole("button", { name: "Copy to clipboard" })));
+
+    expect(writeText).toHaveBeenCalledWith("forge_pat_abc");
+    expect(within(panel).getByRole("button", { name: "Copied ✓" })).toBeInTheDocument();
+    expect(toastSpy).not.toHaveBeenCalled();
+  });
+
+  it("says a refused copy inside the panel, and raises no toast", async () => {
+    clipboard(vi.fn().mockRejectedValue(new Error("denied")));
+    const panel = await openPanel();
+    toastSpy.mockClear();
+
+    await act(async () => fireEvent.click(within(panel).getByRole("button", { name: "Copy to clipboard" })));
+
+    expect(within(panel).getByRole("alert")).toHaveTextContent("Copy failed. Select the token above and copy it by hand.");
+    expect(within(panel).getByRole("button", { name: "Copy to clipboard" })).toBeInTheDocument();
+    expect(toastSpy).not.toHaveBeenCalled();
+  });
+});
+
+// ISS-1289 — a refusal describes what the field holds now. It stayed under Name, invalid and
+// describing it, after the reader typed a new, free name, until Create token was pressed again.
+describe("TokensTab — a refusal leaves once its field no longer holds what it refused", () => {
+  const refusal = (text: string) => screen.queryAllByRole("alert").find((el) => el.textContent === text) ?? null;
+  const scopesGroup = () => screen.getByRole("checkbox", { name: "read" }).closest("div[aria-describedby]");
+
+  it("goes when Name holds a new name, and is back when the refused name is typed back", () => {
+    tokens = [aToken({ name: "Claude Code" })];
+    render(<TokensTab />);
+    fireEvent.change(nameField(), { target: { value: "Claude Code" } });
+    fireEvent.click(screen.getByRole("radio", { name: /Full access/ }));
+    fireEvent.click(createButton());
+    expect(refusal(PAT_NAME_IN_USE)).not.toBeNull();
+
+    fireEvent.change(nameField(), { target: { value: "Claude Code 2" } });
+    expect(refusal(PAT_NAME_IN_USE)).toBeNull();
+    expect(nameField()).not.toHaveAttribute("aria-invalid");
+    expect(nameField()).not.toHaveAttribute("aria-describedby");
+
+    fireEvent.change(nameField(), { target: { value: "Claude Code " } });
+    expect(refusal(PAT_NAME_IN_USE)).not.toBeNull();
+    expect(nameField()).toHaveAccessibleDescription(PAT_NAME_IN_USE);
+    expect(nameField()).toHaveAttribute("aria-invalid", "true");
+    expect(createMutate).not.toHaveBeenCalled();
+  });
+
+  it("goes when Name holds another taken name nobody pressed Create token on", () => {
+    tokens = [aToken({ name: "Claude Code" }), aToken({ id: "2", name: "Cursor" })];
+    render(<TokensTab />);
+    fireEvent.change(nameField(), { target: { value: "Claude Code" } });
+    fireEvent.click(screen.getByRole("radio", { name: /Full access/ }));
+    fireEvent.click(createButton());
+    expect(refusal(PAT_NAME_IN_USE)).not.toBeNull();
+
+    fireEvent.change(nameField(), { target: { value: "Cursor" } });
+    expect(refusal(PAT_NAME_IN_USE)).toBeNull();
+    expect(nameField()).not.toHaveAttribute("aria-invalid");
+  });
+
+  it("goes when the token that held the name is revoked", () => {
+    tokens = [aToken({ name: "Claude Code" })];
+    const { rerender } = render(<TokensTab />);
+    fireEvent.change(nameField(), { target: { value: "Claude Code" } });
+    fireEvent.click(screen.getByRole("radio", { name: /Full access/ }));
+    fireEvent.click(createButton());
+    expect(refusal(PAT_NAME_IN_USE)).not.toBeNull();
+
+    tokens = [aToken({ name: "Claude Code", revokedAt: "2026-01-02T00:00:00.000Z" })];
+    rerender(<TokensTab />);
+    expect(refusal(PAT_NAME_IN_USE)).toBeNull();
+    expect(nameField()).not.toHaveAttribute("aria-invalid");
+  });
+
+  it("shows no refusal for a value Create token was never pressed on", () => {
+    tokens = [aToken({ name: "Claude Code" })];
+    render(<TokensTab />);
+    fireEvent.click(screen.getByRole("radio", { name: /Full access/ }));
+    fireEvent.click(createButton());
+    expect(refusal("Name is required.")).not.toBeNull();
+
+    fireEvent.change(nameField(), { target: { value: "Claude Code" } });
+    expect(screen.queryAllByRole("alert")).toEqual([]);
+    expect(nameField()).not.toHaveAttribute("aria-invalid");
+  });
+
+  it("goes from Scopes when a scope is ticked, leaving the hint as its description", () => {
+    render(<TokensTab />);
+    fireEvent.change(nameField(), { target: { value: "ci" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: "read" }));
+    fireEvent.click(screen.getByRole("radio", { name: /Full access/ }));
+    fireEvent.click(createButton());
+    expect(scopesGroup()).toHaveAccessibleDescription("Select at least one scope.");
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "write" }));
+    expect(refusal("Select at least one scope.")).toBeNull();
+    expect(scopesGroup()).toHaveAccessibleDescription("What this token may do.");
+    expect(scopesGroup()).not.toHaveAttribute("aria-invalid");
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "write" }));
+    expect(refusal("Select at least one scope.")).not.toBeNull();
+  });
+
+  it("goes from Permissions when a choice is made, and when a picked list gains a permission", () => {
+    render(<TokensTab />);
+    fireEvent.change(nameField(), { target: { value: "ci" } });
+    fireEvent.click(createButton());
+    expect(refusal("Choose what this token may reach.")).not.toBeNull();
+
+    fireEvent.click(screen.getByRole("radio", { name: /permissions I pick/ }));
+    expect(screen.queryAllByRole("alert")).toEqual([]);
+
+    fireEvent.click(createButton());
+    expect(refusal("Pick at least one permission, or choose full access.")).not.toBeNull();
+    fireEvent.click(screen.getByRole("checkbox", { name: "issues:read" }));
+    expect(screen.queryAllByRole("alert")).toEqual([]);
   });
 });

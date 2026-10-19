@@ -1,11 +1,26 @@
 import { apiClient, apiClientList } from "@/lib/api/client";
-import type { NotificationMember, NotificationRow, PendingInvitation } from "./types";
+import type { NotificationMember, NotificationRow, NotificationType, PendingInvitation } from "./types";
 
 export const BELL_PAGE_SIZE = 20;
+export const INBOX_PAGE_SIZE = 25;
+
+/** What the inbox narrows to before the server cuts a page: a type, and unread only. */
+export interface InboxFilter {
+  type: NotificationType | null;
+  unreadOnly: boolean;
+}
 
 export const notificationsApi = {
   list: () =>
     apiClientList<NotificationRow>(`/notifications?page=1&pageSize=${BELL_PAGE_SIZE}`),
+
+  /** One page of the inbox. The filter is the server's, applied before the page is cut. */
+  inbox: (page: number, filter: InboxFilter) => {
+    const query = new URLSearchParams({ page: String(page), pageSize: String(INBOX_PAGE_SIZE) });
+    if (filter.type) query.set("type", filter.type);
+    if (filter.unreadOnly) query.set("unread", "true");
+    return apiClientList<NotificationRow>(`/notifications?${query}`);
+  },
 
   openCount: () => apiClient<{ count: number }>(`/notifications/open-count`),
 

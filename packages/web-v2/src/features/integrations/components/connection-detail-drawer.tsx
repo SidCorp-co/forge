@@ -38,7 +38,15 @@ const SECTIONS = new Map(
 
 // A provider with no section is not a provider whose section is empty — it is one this screen has
 // nothing to configure for, and saying so beats rendering a blank pane under its name.
-function ProviderSection({ provider, projectId }: { provider: string; projectId: string }) {
+function ProviderSection({
+  provider,
+  projectId,
+  stage,
+}: {
+  provider: string;
+  projectId: string;
+  stage: DeployStage | null;
+}) {
   const Section = SECTIONS.get(provider);
   if (!Section) {
     return (
@@ -49,7 +57,7 @@ function ProviderSection({ provider, projectId }: { provider: string; projectId:
   }
   return (
     <Suspense fallback={<Skeleton className="h-40 w-full" />}>
-      <Section projectId={projectId} />
+      <Section projectId={projectId} {...(stage ? { stage } : {})} />
     </Suspense>
   );
 }
@@ -213,8 +221,10 @@ function ConfigPane({
   const binding = useBindingForCard(projectId, provider, stageFromCardKey);
   return (
     <>
-      <ProviderSection provider={provider} projectId={projectId} />
-      {binding && (
+      <ProviderSection provider={provider} projectId={projectId} stage={stageFromCardKey} />
+      {/* A provider's section carries its own agents switch, with its own refusal words, so the
+          pane adds one only where there is no section (ISS-1421 r8, criterion 128). */}
+      {binding && !SECTIONS.has(provider) && (
         <section className="mt-4">
           <AgentAccessControl projectId={projectId} binding={binding} canEdit={canEdit} />
         </section>

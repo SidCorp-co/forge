@@ -152,7 +152,7 @@ describe('fetchDivergence', () => {
     );
     expect(d).toEqual({
       ok: false,
-      reason: 'the repository has no branch develop, so it cannot be compared',
+      reason: 'The repository has no branch develop, so it cannot be compared.',
     });
   });
 
@@ -166,7 +166,7 @@ describe('fetchDivergence', () => {
     );
     expect(d).toEqual({
       ok: false,
-      reason: 'mas..ter is not a branch name git accepts, so it cannot be fetched',
+      reason: 'Mas..ter is not a branch name git accepts, so it cannot be fetched.',
     });
     expect(() => git(join(dir, 'live-reading.git'), 'rev-parse', '--git-dir')).toThrow();
   });
@@ -180,7 +180,7 @@ describe('fetchDivergence', () => {
     );
     expect(d.ok).toBe(false);
     expect(!d.ok && d.reason).toMatch(
-      /^the git host took the deploy key attached to this project but will not let it read file:\/\/\S+nowhere\.git \(fatal: '\S+nowhere\.git' does not appear to be a git repository\)/,
+      /^The git host took this project's deploy key but will not let it read file:\/\/\S+nowhere\.git\. .*\nfatal: '\S+nowhere\.git' does not appear to be a git repository/,
     );
   });
 
@@ -237,7 +237,7 @@ describe('a fetch that outgrows its budget', () => {
     expect(d).toEqual({
       ok: false,
       reason:
-        'fetching staging and master from the git host passed 256 KiB, the most one reading may fetch — the host may not honour the commits-only filter',
+        'Fetching staging and master from the git host passed 256 KiB, the most one reading may fetch. The host may not honour the commits-only filter.',
     });
     expect(survivors(dir)).toBe('');
   });
@@ -256,7 +256,7 @@ describe('a fetch that outgrows its budget', () => {
     );
     expect(d).toEqual({
       ok: false,
-      reason: 'fetching staging and master from the git host took longer than 0.001s',
+      reason: 'Fetching staging and master from the git host took longer than 0.001s.',
     });
     expect(survivors(dir)).toBe('');
   });
@@ -329,7 +329,8 @@ describe('readRemoteDivergence', () => {
       expect(d).toEqual({
         ok: false,
         reason:
-          "the git host refused the deploy key attached to this project (git@gitlab.com: Permission denied (publickey).) — give its public key write access to git@gitlab.com:sid/desk.git, since Forge reads the repository with it and the project's runner pushes with it; the key is the one attached under the project's Settings → Runners → Git access",
+          "The git host refused this project's deploy key. Give the key write access to git@gitlab.com:sid/desk.git, since the project's runner pushes with it. It is under the project's Settings → Runners → Git access.\n" +
+          'git@gitlab.com: Permission denied (publickey).',
       });
     } finally {
       process.env.PATH = path;

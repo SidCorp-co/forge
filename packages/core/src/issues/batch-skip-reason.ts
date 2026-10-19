@@ -19,6 +19,8 @@ export const BATCH_SKIP_BY_CODE = {
   ISSUE_ARCHIVED: 'issue_archived',
   OPEN_QUESTIONS: 'open_questions',
   VOID_REASON_REQUIRED: 'void_reason_required',
+  RELEASING_STARTS_FROM_RELEASE: 'releasing_starts_from_release',
+  RELEASING_ENDS_BY_RELEASE: 'releasing_ends_by_release',
 } as const satisfies Record<TransitionErrorCode, string>;
 
 export type BatchSkipReason =

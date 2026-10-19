@@ -64,3 +64,13 @@ describe('the login page and its return address', () => {
     },
   );
 });
+
+// ISS-1421 round 3 — sign-in and register say the same sentence for an agent address, from one place.
+describe('the login page and an agent address', () => {
+  it('shows the sentence the register page shows when an identity provider returns one', async () => {
+    const { AGENT_ADDRESS_MESSAGE } = await import('@/features/auth/agent-address');
+    await open({ oauth_error: 'agent_address' });
+
+    expect(screen.getByText(AGENT_ADDRESS_MESSAGE)).toBeInTheDocument();
+  });
+});

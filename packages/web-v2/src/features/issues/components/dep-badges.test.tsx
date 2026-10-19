@@ -57,7 +57,7 @@ describe("DepBadges reads the row, never the network", () => {
         outgoing: [edge({ id: "out1" }), edge({ id: "out2" })],
       }),
     );
-    expect(screen.getByTitle("Blocked by 1")).toBeInTheDocument();
+    expect(screen.getByTitle("Was blocked by 1")).toBeInTheDocument();
     expect(screen.getByTitle("Blocks 2")).toBeInTheDocument();
   });
 
@@ -75,15 +75,21 @@ describe("DepBadges reads the row, never the network", () => {
 describe("direction", () => {
   it("counts incoming as blocked-by and outgoing as blocks, not the reverse", () => {
     show(deps({ incoming: [edge({ id: "i" })], outgoing: [edge({ id: "o1" }), edge({ id: "o2" }), edge({ id: "o3" })] }));
-    expect(screen.getByTitle("Blocked by 1")).toBeInTheDocument();
+    expect(screen.getByTitle("Was blocked by 1")).toBeInTheDocument();
     expect(screen.getByTitle("Blocks 3")).toBeInTheDocument();
-    expect(screen.queryByTitle("Blocked by 3")).not.toBeInTheDocument();
+    expect(screen.queryByTitle("Was blocked by 3")).not.toBeInTheDocument();
     expect(screen.queryByTitle("Blocks 1")).not.toBeInTheDocument();
   });
 
   it("names a still-open blocker rather than counting it", () => {
     show(deps({ incoming: [edge({ id: "i", fromDisplayId: "ISS-9", fromStatus: "in_progress" })] }));
     expect(screen.getByTitle("Blocked by ISS-9")).toBeInTheDocument();
+  });
+
+  it("never says blocked by of a row whose every blocker has closed", () => {
+    show(deps({ incoming: [edge({ id: "a" }), edge({ id: "b", fromDisplayId: "ISS-3" })] }));
+    expect(screen.getByTitle("Was blocked by 2")).toBeInTheDocument();
+    expect(screen.queryByTitle(/^Blocked by/)).not.toBeInTheDocument();
   });
 
   it("reads an outgoing parent edge as a subtask and an incoming one as the parent", () => {

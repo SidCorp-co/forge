@@ -22,7 +22,7 @@ Two are easy to mix up. `developed` vs `in_progress` is the pushed/not-pushed li
 ### A status says WHERE the work is, never WHAT exists
 Every status answers one question — which gate the work sits at, and whose move is next. That is the whole of what it claims, it is declared per status in `pipeline/status-assertions.ts`, and there is no field in that declaration in which a status could claim anything else. So do not read a rung as a promise that code was written, pushed or merged, and never refuse a rung because you cannot make such a promise true.
 
-The evidence questions are answered by three row fields instead, and you read them directly: `merged_at` (it landed), `sessionContext.branch` (a branch exists), and the implementation handoff's `commitSha`. `merged_at` is caller-asserted rather than verified — `mark_merged` writes what the caller says landed, and no transition writes it at all — so it is evidence of a claim, which is what an evidence field is.
+The evidence questions are answered by three fields of the issue's own row instead, and you read them directly: `merged_at` (it landed), `sessionContext.branch` (a branch exists), and `merged_commit_sha` (the commit Forge read as its landing). A step handoff's `commitSha` is not evidence of anything: the work-evidence check reads none. `merged_at` is caller-asserted rather than verified — `mark_merged` writes what the caller says landed, and no transition writes it at all — so it is evidence of a claim, which is what an evidence field is.
 
 This is why work you built and pushed but cannot merge yourself stays at `in_progress` with `sessionContext.branch` set: the branch field says the code exists, and the rung says only that a session holds the issue. Four runs on 2026-09-06 reached that identical state and recorded four different statuses because the promise was undefined (ISS-940). One more consequence worth knowing: on this lane `open` is the ONLY status a job is dispatched at, so every other live status is already waiting on a person — reaching one is not how you ask for work to continue.
 
@@ -40,7 +40,7 @@ actually refuses: the run/job invariant in `CLAUDE.md`.
               │                                                             │   rung, back to
 draft ─▶ open ─▶ confirmed ─▶ approved ─▶ in_progress ─▶ developed ─▶ testing ─▶ awaiting_release ─▶ releasing ─▶ closed
   │                                          │              │          │                                 │           │
-  └─▶ dropped                                │              └─▶ reopen ◀─┘ (a failed check)               └─▶ reopen ─┘
+  └─▶ dropped                                │              └─▶ reopen ◀─┘ (a failed check)               └◀─ gate ──┘
                                              └──▶ closed (project with no release gate)
 ```
 
@@ -54,31 +54,31 @@ draft ─▶ open ─▶ confirmed ─▶ approved ─▶ in_progress ─▶ dev
 | `developed` | the code exists and owes a proof | whoever reviews it |
 | `testing` | the proof is being run | whoever is testing it |
 | `awaiting_release` | merged to the base branch, waiting for production | a person, by pressing RELEASE |
-| `releasing` | a release was triggered and is running | the release batch |
+| `releasing` | a release batch run is carrying it to production now; never chosen from a menu | the release batch |
 | `needs_info` | a question a person owes an answer to | a person, by answering |
 | `on_hold` | a pause a person chose — **not** a question | the person who paused it |
 | `reopen` | a person disagreed with a close | a person, by routing it |
 | `closed` | done — nothing enters it without `merged_at` | nobody |
 | `dropped` | ended **without** stamping `merged_at` — it was not work | nobody |
 
-`needs_info` and `on_hold` are enterable from **every** rung and from each other. `draft` cannot park (it already is a resting place) and `closed`/`dropped` cannot: a park after an end is a reopen, and `closed → reopen` already is that hop — on a staged project and on an autonomous one alike, where a person is its only writer.
+`needs_info` and `on_hold` are enterable from **every** rung but `releasing`, and from each other. `draft` cannot park (it already is a resting place) and `closed`/`dropped` cannot: a park after an end is a reopen, and `closed → reopen` already is that hop, which on an autonomous project only a person writes.
 
 **Leaving a park returns to the rung it left** — any of `open`, `confirmed`, `approved`, `in_progress`, `developed`, `testing` or `awaiting_release`, not always `open`. A park taken at `awaiting_release` is work already merged and waiting for production; sending it to `open` dispatches a fresh agent onto shipped work and loses its place at the gate. Today `pipeline/answer-resume.ts` sends an answered `needs_info` to `confirmed` once its last open question is answered — the rung that says its requirements are settled — or to `open` on a project whose `poolBacklog.statuses` admit nothing at `confirmed`, saying why on the thread; whatever rung it left, because nothing records where the park came from. So park at `needs_info` only for want of a requirement, and to ask a person about finished work, ask with `forge_questions` and leave the rung alone: a question marks its issue as waiting on a person and moves nothing, and an answer at any rung but `needs_info` moves nothing either.
 
 **A failed check goes to `reopen`, not backwards down the ladder.** On the **staged** lane, `developed → reopen` and `testing → reopen` are the two rejection exits, and `reopen` routes to `in_progress` (rework) or back to `developed` (the proof was wrong, the code was not). On the **autonomous** lane neither rung is a driver status, so the agent never writes them; a person does, from the board. `isReopenEntry` counts both as real rejections in the quality metric on either lane; only `in_progress → reopen` is excluded, because that one is the system recovering a dead run — which is why it is the one shape both modes produce.
 
-**Only `finish` and `abort` may write out of `releasing`.** An agent that could leave it would be declaring its own release finished. A batch that dies without either outcome hands its issues to `reopen` with the reason attached.
+**Only creating a release batch writes `releasing`, and only four paths write out of it** (ISS-1421): the batch's `finish`, which closes the issue; its `abort`; the recovery of a batch run that stopped, never started or whose job is held with nothing to send it, each of which returns the issue to Awaiting release; and the releasing sweep. A release whose job waits on a decision a person owes is one of those held jobs: it is handed back on the next pass, and its question stays open on the issue it is asked on, holding that issue's close until it is answered. A release record closes an issue from Awaiting release, never from `releasing`. Every other door asking for either is refused by name (`RELEASING_STARTS_FROM_RELEASE`, `RELEASING_ENDS_BY_RELEASE`), and the entry refusal names only a door the project has: on a project with a release gate, Release now on the page of an issue at Awaiting release, the release gate, or `POST /api/projects/:id/release-batches`, and only for an issue a release would not hand straight back — one not marked merged, holding an open question or missing a close requirement is told what holds it and where to clear it; an issue elsewhere is told to reach Awaiting release first; a project that ships nothing, or declares a release with no live deploy target, is told that instead. An agent that could leave `releasing` would be declaring its own release finished. A batch that dies without either outcome hands its issues back to the release gate with the reason attached, and any row left at `releasing` with no running or paused run behind it is settled by the releasing sweep within a minute — closed by a release record where production's verified deployment carries its landing commit, otherwise returned to the gate, with a comment saying which.
 
-**Three retired statuses, and the trap is that all three still WORK.**
+**Retired statuses, and the one that still WORKS.**
 
 | Retired | What happens if you write it |
 |---|---|
 | `deploying` `pass` `staging` | gone from the enum — `forge_issues.update` **refuses** them, so you find out at once |
-| `clarified` `tested` | still in the enum for rows that already hold them, so the write **SUCCEEDS silently**. Nothing dispatches at either, so the issue is stranded until a person moves it by hand |
+| `clarified` `tested` | still in the enum for the rows that already hold them, so such a row stays readable and can be moved out. A write INTO either is **refused** (`ILLEGAL_TRANSITION`, naming `approved` and `awaiting_release` as the rungs that took their place), because nothing dispatches at them and the issue would be stranded until a person moved it by hand |
 | `released` | renamed to `awaiting_release` (migration 0228). The old name is refused. It was the past tense of an action that had not happened, and it doubled as the release *trigger* because there was no button; the button and `releasing` took that job |
 | `waiting` | still written, still being retired. An agent's `waiting` is rewritten to `needs_info` on an autonomous project |
 
-`tested` is the one to watch: forge-plugin still writes it where this chain says `testing`, and one project names it in `poolBacklog.statuses`. Until both move, treat a row at `tested` as a row at `testing` that owes a status fix (ISS-1022).
+`waiting` is the one to watch: it is not refused, so a write of it succeeds, and it is rewritten to `needs_info` on an autonomous project.
 
 **`confirmed` and `approved` are NOT retired, and were for one day.** They were cut on 2026-09-10 with `clarified` and `tested`, on the rule that a rung earns its place only where a **different party** owes the next move at it — and under the single-driver pipeline one agent walked all four, so none of them did. The wave model splits triage from execution, which is exactly that party boundary, and forge-plugin's own ladder never stopped naming the two: a kernel calling them retired was the half that was wrong (ISS-976). Nothing dispatches at either, so a row resting on one reaches a master only where its project declares the status in `poolBacklog.statuses`.
 
@@ -90,11 +90,11 @@ The runtime gate is permissive: **any status may move to any status, except that
 The status ladder you see in prompts, in the UI's next-state suggestions, and in the `transitions` map in the source is the **recommended happy path**, not a constraint. Do not infer that a hop is illegal because it is not listed there, and do not build multi-hop detours to reach a status you could have set directly. If a transition is genuinely refused you will get a typed error naming the reason (`TRANSITION_REASON_REQUIRED` on a park with no rationale, `WAITING_KIND_REQUIRED` on a `waiting` that does not say which kind, `RELEASE_RECORD_REQUIRED` on a close with no `releaseNotes` — set the field and close again, `{ section: 'Skip', userFacing: '-' }` is a complete answer, `ILLEGAL_TRANSITION` on either half of the rule above — `draft` as a target, or a `draft` leaving to anything else) — reason from that error, never from the shape of the ladder.
 
 ### The description is a requirements contract, not an implementation script
-A description is the one context channel every downstream step trusts without re-verifying, so what you put in it decides whether plan and code explore the repo or just obey a stale snapshot.
+A description is the one context channel the agent working the issue trusts without re-verifying, so what you put in it decides whether the driver explores the repo or just obeys a stale snapshot.
 
 **Belongs** — the stable half, owned by the requester: the outcome and who it serves; business and domain rules; invariants stated as behaviour; what the user must see when it fails; explicit out-of-scope; acceptance criteria as observable outcomes; external-system facts the repo cannot know (a vendor API's required call order) — labelled as unverified reference material, not as instructions.
 
-**Does not belong** — the volatile half, owned by plan and code reading the live repo: which files or components to touch; endpoint-by-endpoint call scripts and internal sequencing; "follow the pattern at <path>"; assertions about the current implementation state (these go stale fastest and do the most damage); anything that pre-decides a design that the plan step exists to decide on a staged project, and the driver's planning phase on an autonomous one.
+**Does not belong** — the volatile half, owned by the driver reading the live repo: which files or components to touch; endpoint-by-endpoint call scripts and internal sequencing; "follow the pattern at <path>"; assertions about the current implementation state (these go stale fastest and do the most damage); anything that pre-decides a design the driver's planning phase exists to decide.
 
 Two rules follow, both enforced at triage:
 - **Never promote a description's implementation claim to a verified fact.** Either check it against the live repo in this run and say you did, or record it as "claimed by author, unverified". Writing "(verified: …)" without checking costs a whole downstream run.
@@ -104,10 +104,10 @@ Two rules follow, both enforced at triage:
 Within a pipeline step: do your real work, post your findings/decision comment, write your handoff — status transition comes **last**, after all of that. The next step only picks the issue up once status has actually moved, so setting it early (before the comment lands) means the next step can start reading a half-written record.
 
 ### Bounce states, reachable from anywhere
-`needs_info` (requirements missing/unclear), `waiting` (blocked on a human decision), `reopen` (regression or failed check), `on_hold` (deliberate pause) are not restricted to the happy-path ladder — set one the moment the condition is true rather than forcing a step that can't succeed. `on_hold` specifically means "active work, paused on purpose" — don't use it to park work that never started (leave that at `draft`) and don't use it to survive a mechanical crash (the system already reverts and retries those automatically).
+`needs_info` (requirements missing/unclear), `waiting` (blocked on a human decision), `reopen` (regression or failed check), `on_hold` (deliberate pause) are not restricted to the happy-path ladder — set one the moment the condition is true rather than forcing a step that can't succeed. `on_hold` specifically means "active work, paused on purpose" — don't use it to park work that never started (leave that at `draft`) and don't use it to survive a mechanical crash (the system already retries those automatically).
 
 ### Leaving a park is symmetric with entering one
-Entering `waiting`/`on_hold` is free from anywhere, and so is leaving. Set the next status through the UI, REST or MCP and the next step dispatches — no actor check, no `unblock` flag, no admin. If you set a forward status and no job appears, that is a real fault (a stuck runner, a held job, a blocking dependency), not a rule — read `pipelineHealth.waitingOn`.
+Entering `waiting`/`on_hold` is open from anywhere (each costs the written reason above), and leaving one costs nothing. Set the next status through the UI, REST or MCP and the next step dispatches — no actor check, no `unblock` flag, no admin. If you set a forward status and no job appears, that is a real fault (a stuck runner, a held job, a blocking dependency), not a rule — read `pipelineHealth.waitingOn`.
 
 An earlier version of this pipeline refused every non-human exit from a park. It cost four refused resume attempts on one issue (ISS-163) and produced no work; RFC 0002 removed it.
 
@@ -141,7 +141,7 @@ Write it as the ask, not as the reason again. *"Choose: (a) accept the landed pa
 **The mint is gated on agency, not on the field.** A park by a person mints nothing — they stopped their own work and own their own resume. Only an agent-held credential (an agent account or a paired device) mints, so a `needs` sent by a human-owned token reaches no reader.
 
 ### Stopping the pipeline costs you a written reason
-`reopen`, `waiting` and `needs_info` are the three statuses that stop the pipeline, and all three are **rejected without a `reason`** (422). Pass it on the `forge_issues` call (`note` also counts); it is posted as a comment before the status flips, so it cannot go missing afterwards. `waiting` additionally requires `waitingKind`, and `waitingKind` is REFUSED on every other target (422 `WAITING_KIND_NOT_APPLICABLE`) — no other target takes it, so put the ask in `reason`.
+`reopen`, `waiting` and `needs_info` stop the pipeline for a person and `on_hold` pauses it on purpose, and all four are **rejected without a `reason`** (422), by every writer of them: REST, `forge_issues`, and core's own. Pass it on the `forge_issues` call (`note` also counts); it is posted as a comment in the same transaction as the status write, so it cannot go missing afterwards, and its first line ends `— moved from` and the status the issue left. A hold's first line is `⏸ **On hold**`, so a reader tells it from a `waiting` park by that line. A blank reason is refused the same way as a missing one, and `PATCH /issues/batch` takes one `reason` beside `status` that it posts on every issue it moves. `waiting` additionally requires `waitingKind`, and `waitingKind` is REFUSED on every other target (422 `WAITING_KIND_NOT_APPLICABLE`) — no other target takes it, so put the ask in `reason`.
 
 Entering a park costs a sentence; leaving one costs nothing. That asymmetry is deliberate and it is the opposite of the old rule, which let anyone stop the pipeline silently and then argued about who was allowed to restart it.
 
@@ -152,14 +152,14 @@ This replaced a check on WHO answered a `needs_info` question. That check existe
 There is no cap on how many times an issue may be reopened — the stop signal is judgement, not arithmetic: ~5 rounds with no movement means a human is needed, while 5 rounds each making progress is normal work.
 
 ### `merged_at` is written deliberately, and by nothing else
-Two things write it: `forge_issues` `mark_merged`, which is a claim you make, and an observed merge of a pull request Forge has projected. No transition stamps it as a side effect — closing did until ISS-1108 and no longer does, and the `mergeStates.baseBranch` rule that once stamped it on the way out of a state was removed before that. `unmark` clears a claim you made wrongly; it is not a step anything routine owes, and it is refused on a `closed` issue — `closed` means the work shipped, so reopen it first and take `dropped` from there where the work never landed.
+Two things write it: `forge_issues` `mark_merged`, which is a claim you make, and an observed merge of a pull request Forge has projected. No transition stamps it as a side effect. `unmark` clears a claim you made wrongly; it is not a step anything routine owes, and it is refused on a `closed` issue — `closed` means the work shipped, so reopen it first and take `dropped` from there where the work never landed.
 
 ### Derived fields you don't hand-set
-- `plan` — written by the **plan** step. A reporter who pre-fills it deletes that step's reason to exist, and risks a plan agent trusting it instead of exploring. Red flag: `plan-by-hand`.
-- `acceptanceCriteria` — written by **clarify/plan**. Draft ACs from the requester belong in `description` prose, not in this field.
+- `plan` — written by the driver in its planning phase. A reporter who pre-fills it deletes that phase's reason to exist, and risks the driver trusting it instead of exploring. Red flag: `plan-by-hand`.
+- `acceptanceCriteria` — written by the driver in its clarifying and planning phases. Draft ACs from the requester belong in `description` prose, not in this field.
 - `merged_at` — you (or your step) stamp this one explicitly when you merge to the base branch and then park at a manual gate; everything else about pipeline status is either the ladder you're walking or a bounce state above. It is **caller-asserted, never verified against git** — so before stamping it, confirm the commit is actually reachable from the target branch, and never read someone else's `merged_at` as proof a merge happened.
 
 When you report an issue, fill `title`, `description`, `priority`, `category` — and leave the rest to the pipeline.
 
 ### A crash is not a reason to hold
-If your job fails mechanically (process crash, non-zero exit), the system itself reverts the issue to the stage's entry status and re-dispatches with a retry budget — you never need to (and shouldn't) set `on_hold` to paper over that.
+If a pool job fails mechanically (process crash, non-zero exit), the system retries it within a retry budget, or holds it once the budget is spent, and leaves the issue's status where it was — you never need to (and shouldn't) set `on_hold` to paper over that.

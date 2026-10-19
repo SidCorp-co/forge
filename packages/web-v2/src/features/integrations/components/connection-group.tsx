@@ -13,6 +13,7 @@ import {
 } from "@/design";
 import type { ConnectionDirectoryItem } from "@forge/contracts";
 import { type ConnectionGroup, groupSummary } from "../connection-groups";
+import { connectionLabels } from "../connection-identity";
 import { providerIcon } from "../providers/registry";
 import { ConnectionRow } from "./connection-row";
 
@@ -32,6 +33,8 @@ export function ConnectionGroupSection({
   onOpenConnection: (id: string) => void;
 }) {
   const rowsId = `connections-${group.provider}`;
+  // One app per section, so the provider is the section's and each row is named by the picker's rule.
+  const titles = connectionLabels(group.connections, false);
   return (
     <SettingsSection>
       <SectionTitle className="fg-h3">
@@ -68,6 +71,7 @@ export function ConnectionGroupSection({
             <ConnectionRow
               key={c.id}
               connection={c}
+              title={titles.get(c.id) ?? c.id}
               ownerLabel={ownerLabel(c)}
               projectName={projectName}
               onOpen={() => onOpenConnection(c.id)}

@@ -165,11 +165,8 @@ let registered = false;
 
 export async function registerEmbeddingBackfill(): Promise<void> {
   if (registered) return;
-  // pg-boss v10 requires explicit createQueue before schedule/work can reference it.
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).createQueue(MEMORY_EMBED_BACKFILL_QUEUE);
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).work(MEMORY_EMBED_BACKFILL_QUEUE, async () => {
+  await boss.createQueue(MEMORY_EMBED_BACKFILL_QUEUE);
+  await boss.work(MEMORY_EMBED_BACKFILL_QUEUE, async () => {
     try {
       const result = await runEmbeddingBackfill();
       if (result.reembedded > 0 || result.knowledgeReembedded > 0 || result.aborted) {
@@ -186,8 +183,7 @@ export async function registerEmbeddingBackfill(): Promise<void> {
       throw err;
     }
   });
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
-  await (boss as any).schedule(MEMORY_EMBED_BACKFILL_QUEUE, '*/5 * * * *');
+  await boss.schedule(MEMORY_EMBED_BACKFILL_QUEUE, '*/5 * * * *');
   registered = true;
 }
 
