@@ -6726,6 +6726,9 @@
 - **Each contribution rule is written once.** `CONTRIBUTING.md` now links to the file that owns a
   rule instead of copying it, and an accepted decision record is never rewritten: a later decision
   gets a record of its own. (ISS-1308)
+- **`GOVERNANCE.md` says what actually merges and releases.** Merging a runner change ships it to
+  every auto-updating box, and a Dependabot patch bump merges itself. Both are now written there.
+  (ISS-1308)
 - **Background work queued before an upgrade still runs after it.** Forge moves its job queue to a new version on first start and carries every waiting job across; error reports still send no cookies, addresses or request bodies. (ISS-1342)
 - **An issue page shows each run as one record of what it did.** Each phase with its outcome, time and handoff, plus the run's sessions and cost. A handoff or phase end is written once; a second is refused. (ISS-1133)
 - **Work evidence is read off the issue itself.** A step handoff's commit no longer lets an agent move an issue to `developed`, and a merge mark naming no commit records none; record the branch or mark the commit. (ISS-1133)

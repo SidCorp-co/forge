@@ -133,16 +133,15 @@ describe('the key that armed the landing deploy survives nowhere but its own ret
 
   /**
    * Where the retirement itself speaks. Whole files, which is what the exemption can be: of the
-   * six, only the schema is code the product runs with, and its own occurrences are held to the
+   * five, only the schema is code the product runs with, and its own occurrences are held to the
    * retired-key literal by the case below. A mention in a test, in the migration that deletes the
-   * key, in the changelog or in the ADR that records the retirement reads nothing at runtime.
+   * key or in the ADR that records the retirement reads nothing at runtime.
    */
   const RETIREMENT_SITES = new Set([
     'packages/core/src/pipeline/pipeline-config-schema.ts',
     'packages/core/src/pipeline/no-code-fires-a-deploy.test.ts',
     'packages/core/tests/integration/landing-deploy-key-removed-e2e.test.ts',
     'packages/core/drizzle/migrations/0305_no_code_fires_a_deploy.sql',
-    'CHANGELOG.md',
     'docs/adr/0002-the-agent-cuts-the-release-tag.md',
   ]);
 
@@ -160,6 +159,15 @@ describe('the key that armed the landing deploy survives nowhere but its own ret
       .sort();
 
     expect(offenders).toEqual([]);
+  });
+
+  /** An exempted file that no longer names the key would hide the next mention written into it. */
+  it('every exempted file still mentions the key', () => {
+    const idle = [...RETIREMENT_SITES]
+      .filter((path) => !readFileSync(join(REPO_ROOT, path), 'utf8').includes(RETIRED_KEY))
+      .sort();
+
+    expect(idle).toEqual([]);
   });
 
   /** The schema's exemption is the retired-key literal, never the whole file. */

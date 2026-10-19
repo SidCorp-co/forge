@@ -8,7 +8,7 @@ work itself are in [`CLAUDE.md`](CLAUDE.md); this file is about authority.
 | Role | Does |
 |---|---|
 | **Owner** | decides intent and policy; the final word on anything [`docs/VISION.md`](docs/VISION.md) covers |
-| **Dispatcher** | picks up work, merges pull requests, fires deploys, cuts release tags |
+| **Dispatcher** | picks up work, merges pull requests, fires deploys, cuts Forge's release tags |
 | **Run** | takes one issue from its title to a pushed branch and an open pull request |
 | **Judge** | exercises a change somebody else wrote and records a verdict per criterion |
 
@@ -18,11 +18,17 @@ that wrote the code is not the one whose verdicts move it on.
 ## Merge authority
 
 **A run does not merge and does not deploy. Both are the dispatcher's.** A run briefed to merge
-stops short and hands it back, saying so.
+stops short and hands it back, saying so. Which check a merge waits on, and why an administrator
+able to merge past it does not: [`CLAUDE.md`](CLAUDE.md#commands) *Commands*.
 
-**Nobody merges past a red `ci-passed`.** `enforce_admins` is `false` on the base branch, so an
-administrator *can*. Don't. The setting exists for recovery, not for convenience, and using it
-makes the required check a suggestion.
+**One merge is nobody's act.**
+[`.github/workflows/dependabot-auto-merge.yml`](.github/workflows/dependabot-auto-merge.yml)
+turns on auto-merge for a Dependabot pull request bumping a patch version, or a minor version
+outside Cargo, and GitHub merges it once the required check passes. A major bump, and a minor bump
+in Cargo, are labelled for a person instead. That merge is pushed under the workflow's own token,
+and GitHub starts no workflow for such a push: no post-merge CI, and no runner release for a bump
+under `packages/runner/` — see
+[`docs/proposals/a-dependabot-merge-starts-no-workflow.md`](docs/proposals/a-dependabot-merge-starts-no-workflow.md).
 
 **A merge lands the head that was judged.** Where a merge through the GitHub integration is
 authorised for a head (`expectedHeadSha`) and the pull request's head has moved, the merge is
@@ -30,8 +36,8 @@ refused as `head-moved` and names both heads.
 
 ## Review authority
 
-**`ci-passed` is the required check and the only one.** Branch protection does **not** require a
-pull-request review: `required_pull_request_reviews` is off. This means
+Branch protection does **not** require a pull-request review: `required_pull_request_reviews` is
+off. This means
 [`.github/CODEOWNERS`](.github/CODEOWNERS) routes review requests and enforces nothing — it is a
 notification, not a gate. That file says so itself rather than leaving a reader to infer it.
 
@@ -40,9 +46,19 @@ criterion, which is recorded on the issue rather than on the pull request.
 
 ## Release authority
 
-**A deploy is never a side effect of code, and neither is a release tag.** Both are the
-dispatcher's own act. No code path fires a deployment, and none cuts a release tag — see
-[`docs/adr/0002-the-agent-cuts-the-release-tag.md`](docs/adr/0002-the-agent-cuts-the-release-tag.md).
+**Forge's own release is the dispatcher's act, and a run never releases.** No code path deploys
+Forge or cuts its release tag; the dispatcher does both, in the order
+[`docs/adr/0002-the-agent-cuts-the-release-tag.md`](docs/adr/0002-the-agent-cuts-the-release-tag.md)
+records.
+
+**The runner is released by merging it.** A push to `main` that touches `packages/runner/` runs
+[`.github/workflows/runner-autorelease.yml`](.github/workflows/runner-autorelease.yml), which cuts
+the next `runner-v*` tag on the commit that brought the change in and publishes a GitHub Release
+with the binaries. Every box that has not opted out with `update.auto = false` installs that build
+on its next update check, so merging a runner change ships it to those boxes with no further act. ADR 0002 leaves this as code
+on purpose. A project admin can also cut a runner tag on request, through
+`packages/core/src/integrations/github/runner-release.ts:startRunnerRelease`, behind
+`POST /api/projects/:projectId/runner-releases`.
 
 **A release's version number is allocated, not chosen.** One writer, under a lock, with a failed
 release burning its number — see
