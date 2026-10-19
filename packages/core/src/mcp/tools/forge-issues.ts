@@ -767,9 +767,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
             ...(input.data?.note ? { note: input.data.note } : {}),
             ...(input.data?.commit ? { commit: input.data.commit } : {}),
             ...(input.data?.landing ? { landing: input.data.landing } : {}),
-            ...(input.data?.mergedAt
-              ? { mergedAt: markedAt(input.data.mergedAt) }
-              : {}),
+            ...(input.data?.mergedAt ? { mergedAt: markedAt(input.data.mergedAt) } : {}),
             door: 'mcp',
             actor: {
               agency: actorAgency(principalActor(principal)),

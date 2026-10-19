@@ -58,7 +58,8 @@ const RECORDS = {
 // r10: judge-46 read a 25-word sentence where the issue had no session to open.
 const RECORDS_NO_SESSION = {
   code: 'ENTRY_CRITERIA_UNMET',
-  reason: 'missing a plan, acceptance criteria and a release note, which this project requires before a close',
+  reason:
+    'missing a plan, acceptance criteria and a release note, which this project requires before a close',
   clears:
     "An agent writes them through Forge's issue tools. This issue has no session to open, so use Reopen in the issue's actions menu. The agent that takes it writes them.",
   clearsHere:
@@ -67,7 +68,10 @@ const RECORDS_NO_SESSION = {
 const QUESTIONS = { ...QUESTION, reason: 'holds 2 open questions' };
 const UNREAD_REPORT: IssueCriteriaReport = {
   ...REPORT,
-  unearned: REPORT.unearned.map((c) => ({ ...c, clears: ['give Forge a deploy key it can read with'] })),
+  unearned: REPORT.unearned.map((c) => ({
+    ...c,
+    clears: ['give Forge a deploy key it can read with'],
+  })),
 };
 const TARGET =
   'This project declares a release chain and has no active deploy binding carrying the `live` stage, so there is nowhere for a release to land.';

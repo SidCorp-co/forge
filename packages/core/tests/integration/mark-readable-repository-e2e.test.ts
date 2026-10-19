@@ -17,7 +17,6 @@ process.env.DEVICE_TOKEN_PEPPER ??= 'integration-test-pepper-padded-to-32-chars-
 import { keyUnknown } from '../../src/git/host-answers.fixture.js';
 import { liveReachForIssue } from '../../src/issues/live-reach-read.js';
 import { issueRefPattern, liveReachOf } from '../../src/projects/live-reach.js';
-import { createTestProjectMember, registerIntegrationsForTest } from '../helpers/index.js';
 import { SEQ, useCommitLandingWorld } from '../helpers/commit-landing-fixture.js';
 import {
   attachDeployKey,
@@ -25,6 +24,7 @@ import {
   type GitHost,
   startGitHost,
 } from '../helpers/git-host-fixture.js';
+import { createTestProjectMember, registerIntegrationsForTest } from '../helpers/index.js';
 
 vi.mock('node:dns', async (importOriginal) =>
   (await import('../helpers/git-host-fixture.js')).publicDns(await importOriginal()),

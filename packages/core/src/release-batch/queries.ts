@@ -31,8 +31,6 @@ export interface ReleaseRosterEntry {
   title: string;
   /** When the branch landed on the base branch. Null only for legacy rows. */
   mergedAt: string | null;
-  /** The commit the issue's merge mark holds, the landing a release carries; it moves with a later
-   *  merge of the same issue (ISS-1421, criterion 109). Null where the mark names no commit. */
   mergedCommitSha: string | null;
   /** Whole days since the merge, so "oldest 6 days" is a read, not a sum. */
   waitingDays: number | null;

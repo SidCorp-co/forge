@@ -243,16 +243,19 @@ describe("a mark's refusals, at each door (ISS-1421 r9)", () => {
   // r10: what an agent's mark with nothing behind it is told is the mark's own three sentences; the
   // lane's rules (an unreadable repository, declaring outside git, a base branch is not evidence)
   // belong to the doors that move a status, not appended to this answer.
-  it.each(doors)('answers a git-lane mark with no branch and no commit in its own words alone (%s)', (door) => {
-    const said = noWorkEvidenceDetail(git, 'mark', door);
-    expect(said).not.toContain('\n');
-    expect(said).not.toMatch(/PATCH|forge_issues|release chain|cannot verify/);
-    expect(said).toBe(
-      'Nothing was marked, because this mark names no commit and no branch is recorded for this issue. ' +
-        `Record the branch in \`sessionContext.branch\`, or name the commit it landed at on the base branch in ${door === 'mcp' ? '`data.commit`' : '`commit`'}. ` +
-        "Forge checks that commit against the project's repository.",
-    );
-  });
+  it.each(doors)(
+    'answers a git-lane mark with no branch and no commit in its own words alone (%s)',
+    (door) => {
+      const said = noWorkEvidenceDetail(git, 'mark', door);
+      expect(said).not.toContain('\n');
+      expect(said).not.toMatch(/PATCH|forge_issues|release chain|cannot verify/);
+      expect(said).toBe(
+        'Nothing was marked, because this mark names no commit and no branch is recorded for this issue. ' +
+          `Record the branch in \`sessionContext.branch\`, or name the commit it landed at on the base branch in ${door === 'mcp' ? '`data.commit`' : '`commit`'}. ` +
+          "Forge checks that commit against the project's repository.",
+      );
+    },
+  );
 
   const cases = doors.flatMap(
     (door) =>
