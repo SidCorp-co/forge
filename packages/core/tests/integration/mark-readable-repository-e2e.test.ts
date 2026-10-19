@@ -6,14 +6,18 @@
  * mark path against a real Postgres: what git says is what the mark answers.
  */
 
+import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
+import { Hono } from 'hono';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 process.env.JWT_SECRET ??= 'integration-test-secret-padded-to-32-chars-long';
 process.env.DEVICE_TOKEN_PEPPER ??= 'integration-test-pepper-padded-to-32-chars-long';
 
 import { keyUnknown } from '../../src/git/host-answers.fixture.js';
+import { liveReachForIssue } from '../../src/issues/live-reach-read.js';
 import { issueRefPattern, liveReachOf } from '../../src/projects/live-reach.js';
+import { createTestProjectMember, registerIntegrationsForTest } from '../helpers/index.js';
 import { SEQ, useCommitLandingWorld } from '../helpers/commit-landing-fixture.js';
 import {
   attachDeployKey,
@@ -26,7 +30,7 @@ vi.mock('node:dns', async (importOriginal) =>
   (await import('../helpers/git-host-fixture.js')).publicDns(await importOriginal()),
 );
 
-const { seed, mark, row, comments, current } = useCommitLandingWorld();
+const { seed, mark, row, comments, current, withLiveBranch } = useCommitLandingWorld();
 
 let host: GitHost;
 const at: Record<string, string> = {};
@@ -38,6 +42,8 @@ beforeAll(() => {
   at.first = host.commit('main', `fix(core): round one (ISS-${SEQ})`);
   at.second = host.commit('main', `fix(core): round two (ISS-${SEQ})`);
   at.other = host.commit('main', 'fix(core): another issue entirely (ISS-1316)');
+  // Production still serves the root, so every later commit is one live lacks (criterion 109).
+  host.branch('production', at.root as string);
   host.publish();
 });
 
@@ -111,6 +117,66 @@ describe('a mark Forge observed, then moved by a later commit: the landing core 
     expect(reach?.state).toBe('not_on_live');
     expect(reach && 'evidence' in reach ? reach.evidence : []).toEqual([
       { sha: at.second, subject: 'chore: unrelated subject', via: 'merged_commit' },
+    ]);
+  }, 60_000);
+});
+
+// ISS-1421 r10, criterion 109: judge-46 found nothing reading the release roster after a move, and
+// live reach fed by hand. Both are read here through the code that serves them: the roster through
+// its own route, and live reach as the issue's GET computes it, off the row and the repository.
+describe('after a mark moves, the release roster and live reach read the later commit (criterion 109)', () => {
+  it('names the later commit as the landing on the roster route and in live reach', async () => {
+    const { db, projectId, userId } = current();
+    await withLiveBranch();
+    const connectionId = randomUUID();
+    await db.execute(sql`
+      INSERT INTO integration_connections (id, owner_type, owner_id, provider, active)
+      VALUES (${connectionId}, 'user', ${userId}, 'coolify', true)
+    `);
+    await db.execute(sql`
+      INSERT INTO integration_bindings (connection_id, project_id, provider, role, stages, active, config)
+      VALUES (${connectionId}, ${projectId}, 'coolify', 'deploy', ARRAY['live']::text[], true, '{}'::jsonb)
+    `);
+    await createTestProjectMember(db, { userId, projectId, role: 'admin' });
+    await db.execute(sql`UPDATE users SET email_verified_at = now() WHERE id = ${userId}`);
+    await registerIntegrationsForTest();
+    const [{ releaseBatchRoutes }, { errorHandler }, { signUserToken }] = await Promise.all([
+      import('../../src/release-batch/routes.js'),
+      import('../../src/middleware/error.js'),
+      import('../../src/auth/jwt.js'),
+    ]);
+    // biome-ignore lint/suspicious/noExplicitAny: test-only mount, as release-roster-unclosable-e2e does
+    const app: any = new Hono();
+    app.route('/api/projects', releaseBatchRoutes);
+    app.onError(errorHandler);
+
+    const issue = await seed({ status: 'awaiting_release' });
+    await mark(issue, at.first);
+    const later = await mark({ ...issue, mergedAt: new Date() }, at.second);
+    expect(later.movedFrom).toBe(at.first);
+
+    const res = await app.request(`/api/projects/${projectId}/release-batches/roster`, {
+      headers: { Authorization: `Bearer ${await signUserToken(userId)}` },
+    });
+    expect(res.status).toBe(200);
+    const roster = (await res.json()) as {
+      gateStatus: string | null;
+      issues: Array<{ id: string; mergedCommitSha?: string | null }>;
+    };
+    expect(roster.gateStatus).toBe('awaiting_release');
+    expect(roster.issues.find((i) => i.id === issue.id)?.mergedCommitSha).toBe(at.second);
+
+    const stored = await row(issue.id);
+    const reach = await liveReachForIssue({
+      projectId,
+      issSeq: SEQ,
+      mergedAt: stored.merged_at as Date,
+      mergedCommitSha: stored.merged_commit_sha,
+    });
+    expect(reach?.state).toBe('not_on_live');
+    const landings = reach && 'evidence' in reach ? reach.evidence : [];
+    expect(landings.filter((e) => e.via === 'merged_commit').map((e) => e.sha)).toEqual([
+      at.second,
     ]);
   }, 60_000);
 });

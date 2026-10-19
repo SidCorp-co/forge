@@ -164,6 +164,8 @@ describe('formatApiError — the merge-mark refusals, in the web\'s words', () =
     expect(msg).toContain('https://shop.example.com/a');
     expect(msg).toContain('press Unmark');
     expect(msg).toContain('nothing changed');
+    // ISS-1421 r10: the sentences a mark is answered in carry no dash (criterion 63).
+    expect(msg).not.toContain('—');
   });
 });
 

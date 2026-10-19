@@ -176,7 +176,7 @@ function shortfallStep(s: Shortfall): string {
   if (s.code === 'ENTRY_CRITERIA_UNMET') {
     return /Open session/.test(act)
       ? 'press Open session at the top of this page, and the agent writes the missing records'
-      : 'use Reopen in the actions menu at the top of this page, and the agent that takes it writes the missing records';
+      : 'use Reopen in the actions menu at the top, and an agent writes the missing records';
   }
   return `${act.charAt(0).toLowerCase()}${act.slice(1)}`
     .replace(/\.$/, '')

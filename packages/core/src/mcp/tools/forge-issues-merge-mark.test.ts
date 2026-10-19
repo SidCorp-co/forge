@@ -377,6 +377,40 @@ describe('mark_merged refusals name the MCP field (ISS-1421 r9)', () => {
     expect(setPayloads).toEqual([]);
   });
 
+  // r10: judge-46 read "invalid arguments — `data.target`: Invalid option: expected one of ..." for
+  // these, because the input schema refused them before the mark's own sentence was reached.
+  it.each([
+    ['a blank', ''],
+    ['an all-spaces', '   '],
+    ['an unknown', 'release'],
+  ])('refuses %s target in the same sentence as a missing one', async (_what, target) => {
+    await expect(
+      call({ action: 'mark_merged', data: { issueId: ISSUE_ID, target } }),
+    ).rejects.toThrow(
+      /^BAD_REQUEST: Name where the work merged as `data\.target`: base, prod or feature\.$/,
+    );
+    expect(setPayloads).toEqual([]);
+  });
+
+  it('refuses a mergedAt that names no date in a sentence naming data.mergedAt', async () => {
+    await expect(
+      call({
+        action: 'mark_merged',
+        data: { issueId: ISSUE_ID, target: 'base', mergedAt: 'yesterday' },
+      }),
+    ).rejects.toThrow(
+      /^BAD_REQUEST: Send `data\.mergedAt` as an ISO date and time, such as 2026-10-18T09:00:00Z, or leave it out\.$/,
+    );
+  });
+
+  it('refuses a mark or an unmark naming no issue in a sentence naming data.issueId', async () => {
+    for (const action of ['mark_merged', 'unmark']) {
+      await expect(call({ action, data: { target: 'base' } })).rejects.toThrow(
+        /^BAD_REQUEST: Name the issue as `data\.issueId`\.$/,
+      );
+    }
+  });
+
   it('refuses a website mark naming no landing with data.landing as the step', async () => {
     shape = 'outside_git';
     const refused = await call({
