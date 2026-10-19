@@ -38,6 +38,10 @@ export function runReadingChip(run: Pick<PipelineRunSummary, "status" | "reading
   return run.reading === "starting" ? { status: "queued", label: "Starting" } : { status: "queued", label: "Queued" };
 }
 
+/** What a run's time is: when it opened while nothing has started, when it started once it has. */
+export const runSinceWord = (run: Pick<PipelineRunSummary, "status" | "reading">): string =>
+  run.status === "running" && (run.reading === "queued" || run.reading === "starting") ? "Opened" : "Started";
+
 /** Median of a numeric list (`null` for an empty list). Used by the dashboard's
  *  where-time-goes aggregate. */
 export function median(values: number[]): number | null {

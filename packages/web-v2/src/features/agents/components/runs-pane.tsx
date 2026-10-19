@@ -6,7 +6,7 @@ import { EmptyState, ErrorState, Input, MonoTag, Skeleton } from "@/design";
 import { useNow } from "@/design/hooks/use-now";
 import { useProjectRuns } from "@/features/runs/hooks";
 import { NO_BOX_REPORTS_A_RUN, NO_RUN_WORKING, RUN_APPEARS } from "@/features/sessions/status-sentences";
-import { runReadingChip } from "@/features/runs/derive";
+import { runReadingChip, runSinceWord } from "@/features/runs/derive";
 import { RUN_STATUS_WORD } from "@/features/runs/run-status-words";
 import type { PipelineRunListItem } from "@/features/runs/types";
 import { formatApiError } from "@/lib/api/error";
@@ -150,7 +150,9 @@ function NothingRunning({ projectId, slug }: { projectId: string; slug: string }
                   <span data-run-status className="fg-body-sm text-fg">
                     {runReadingChip(r).label}
                   </span>
-                  <span className="fg-caption tabular-nums">Started {formatRelativeTime(r.startedAt)}</span>
+                  <span data-run-since className="fg-caption tabular-nums">
+                    {runSinceWord(r)} {formatRelativeTime(r.startedAt)}
+                  </span>
                 </span>
               </li>
             ))}

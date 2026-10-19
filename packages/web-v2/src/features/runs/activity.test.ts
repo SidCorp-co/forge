@@ -185,6 +185,8 @@ describe("deriveActivityFeed", () => {
     ]);
     expect(entry?.outcome).toBe("Taken by a runner, not started yet");
     expect(entry?.device).toBe("box-taker");
+    // The master's read of the r17 shots: the row said Queued beside the drawer's Starting.
+    expect(entry?.verb).toBe("Starting");
   });
 
   it("never says Ran or Retried of an attempt that has not started", () => {
@@ -194,7 +196,7 @@ describe("deriveActivityFeed", () => {
       attempt({ jobType: "review", status: "dispatched", startedAt: null, finishedAt: null }),
       attempt({ jobType: "smoke", status: "queued", startedAt: null, finishedAt: null, takenBy: { deviceId: "d9", deviceName: null } }),
     ]);
-    expect(feed.map((e) => e.verb)).toEqual(["Ran", "Queued", "Queued", "Queued"]);
+    expect(feed.map((e) => e.verb)).toEqual(["Ran", "Queued", "Starting", "Starting"]);
   });
 
   it("labels the first attempt Ran and a later one Retried", () => {

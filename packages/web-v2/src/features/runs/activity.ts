@@ -53,8 +53,12 @@ function deviceLabel(a: PipelineRunAttempt): string {
   return "unassigned";
 }
 
-/** Queued, taken or sent: an attempt that has not started, which no verb may say ran (ISS-1228). */
-const notStarted = (a: PipelineRunAttempt): boolean => a.status === "queued" || a.status === "dispatched";
+/** An attempt not started reads the run's own word: Starting where a box has taken or been sent it,
+ *  Queued where none has, never Ran (ISS-1228). */
+function unstartedVerb(a: PipelineRunAttempt): string | null {
+  if (a.status === "dispatched" || (a.status === "queued" && a.takenBy)) return "Starting";
+  return a.status === "queued" ? "Queued" : null;
+}
 
 function causeOf(a: PipelineRunAttempt): FailureCause | null {
   if (a.failureCause) return resolveFailureCause(a.failureCause);
@@ -108,7 +112,8 @@ function signature(
 }
 
 function verbFor(a: PipelineRunAttempt, position: number, repeats: number): string {
-  if (notStarted(a)) return "Queued";
+  const unstarted = unstartedVerb(a);
+  if (unstarted) return unstarted;
   if (repeats > 1) return "Retried";
   return position === 1 ? "Ran" : "Retried";
 }

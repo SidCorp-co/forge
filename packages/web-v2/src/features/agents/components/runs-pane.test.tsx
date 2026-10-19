@@ -178,6 +178,12 @@ describe("the Agents runs tab with nothing running on a box", () => {
       "Starting",
       "Running",
     ]);
+    // The master's read of the r17 shots: "Started 10m ago" beside a run nothing had started.
+    expect(open.map((r) => (r.querySelector("[data-run-since]") as HTMLElement).textContent)).toEqual([
+      expect.stringMatching(/^Opened .+ ago$/),
+      expect.stringMatching(/^Opened .+ ago$/),
+      expect.stringMatching(/^Started .+ ago$/),
+    ]);
   });
 
   // ISS-1228 round 14 (judge-36): the tab counted an open run with work behind it and listed none.
