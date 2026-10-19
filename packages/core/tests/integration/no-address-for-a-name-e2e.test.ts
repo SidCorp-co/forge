@@ -362,9 +362,7 @@ describe("migration 0343: a stored title quotes its issue's title and its projec
     const notices = await runRestore();
 
     expect(await titlesOf(moved)).toEqual(Array(2).fill(`ISS-1 — ${quoted} moved to Needs info`));
-    expect(await titlesOf(mention)).toEqual(
-      Array(2).fill(`@lan mentioned you in "${quoted}"`),
-    );
+    expect(await titlesOf(mention)).toEqual(Array(2).fill(`@lan mentioned you in "${quoted}"`));
     expect(await titlesOf(resolved)).toEqual([
       `ISS-1 — ${quoted} moved to Needs info`,
       `Resolved — ISS-1 — ${quoted} moved to Needs info`,
@@ -380,7 +378,7 @@ describe("migration 0343: a stored title quotes its issue's title and its projec
       Array(2).fill("ISS-5 is waiting for another member's decision — Invoicing"),
     );
     expect(notices).toEqual([
-      '0343: 10 stored title(s) quote an issue title or project name as written again; 2 holding neither that text nor 0342\'s reading of it were left as they are',
+      "0343: 10 stored title(s) quote an issue title or project name as written again; 2 holding neither that text nor 0342's reading of it were left as they are",
     ]);
   });
 
