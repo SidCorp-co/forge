@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ApiError } from "@/lib/api/client";
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import { useActiveOrg } from "@/features/orgs/active-org";
@@ -106,6 +107,17 @@ export function useAttention(
 }
 
 /**
+ * Why a retry was refused, in a reader's words. Core names the job type for its API callers; a person
+ * is told the work is already there instead (ISS-1229 r17).
+ */
+export function retryRefusalWords(err: unknown): string {
+  if (err instanceof ApiError && err.code === "ALREADY_ACTIVE") {
+    return "The same work is already queued or running on this issue, and that is its retry.";
+  }
+  return formatApiError(err);
+}
+
+/**
  * Retry a failed job from a Needs you row (ISS-1229 r16): the button retries the job, through the one
  * route a person retries a failed job by, and the row leaves the list once its read is refreshed.
  */
@@ -121,7 +133,7 @@ export function useRetryFailedJob() {
       toast({ title: "Job queued again", tone: "success" });
     },
     onError: (err) => {
-      toast({ title: "The job was not retried", description: formatApiError(err), tone: "error" });
+      toast({ title: "The job was not retried", description: retryRefusalWords(err), tone: "error" });
     },
   });
 }

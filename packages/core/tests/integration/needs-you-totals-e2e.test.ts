@@ -66,7 +66,7 @@ async function issueAt(
   status: string,
   withQuestion: boolean,
   owner: string = viewer,
-): Promise<void> {
+): Promise<string> {
   seq += 1;
   const id = randomUUID();
   await harness.db.execute(sql`
@@ -82,6 +82,16 @@ async function issueAt(
       VALUES (${randomUUID()}, ${projectId}, ${id}, 'open', 'human', '[]'::jsonb, 0, 0, 0)
     `);
   }
+  return id;
+}
+
+/** A stuck-issue notice standing for the issue, as the waiting-park sweep raises one at six hours. */
+async function noticeFor(issueId: string): Promise<void> {
+  await harness.db.execute(sql`
+    INSERT INTO notifications (project_id, issue_id, type, kind, tier, state, title, resolution_key)
+    VALUES (${projectId}, ${issueId}, 'issue_stranded', 'condition', 'ticket', 'firing',
+            'parked', ${`issue:${issueId}:stranded`})
+  `);
 }
 
 async function get<T>(path: string): Promise<T> {
@@ -124,12 +134,13 @@ describe('the counts beside the lists the Needs you tile is read from', () => {
   it('lets the two responses add up to what is owed without counting an issue in both', async () => {
     // j4's shape: the viewer's own waiting issue is in the attention response only, other people's
     // on_hold and needs_info issues are in the health row only, and a needs_info issue the viewer
-    // owns with a question is in both.
+    // owns with a question is in both. Of the other people's parks, only the one a stuck-issue notice
+    // stands for is the viewer's to act on (ISS-1229 r17, judge-44).
     const other = (await createTestUser(harness.db)).id;
     await createTestProjectMember(harness.db, { userId: other, projectId, role: 'member' });
     await issueAt('waiting', false);
     await issueAt('on_hold', false, other);
-    await issueAt('needs_info', false, other);
+    await noticeFor(await issueAt('needs_info', false, other));
     await issueAt('needs_info', true);
 
     const attention = await get<{
@@ -140,19 +151,25 @@ describe('the counts beside the lists the Needs you tile is read from', () => {
 
     const totals = attention.projectTotals[slug];
     expect(totals?.awaitingInput).toBe(2);
-    expect(totals?.parkedOnly).toBe(2);
+    expect(totals?.parkedOnly).toBe(1);
     const blockersTotal = health.find((h) => h.projectSlug === slug)?.blockersTotal ?? 0;
     expect(blockersTotal).toBe(4);
-    // four distinct issues are owed to this viewer or parked: the viewer's two, and the two parked
-    // by someone else that only the health row's list holds (ISS-1229 r14).
-    expect((totals?.awaitingInput ?? 0) + (totals?.parkedOnly ?? 0)).toBe(4);
+    // three distinct issues are the viewer's to act on: their own two, and the park by someone else
+    // a notice stands for; the fourth waits on its owner alone.
+    expect((totals?.awaitingInput ?? 0) + (totals?.parkedOnly ?? 0)).toBe(3);
   });
 
-  it("lists a waiting issue somebody else owns, which the viewer's attention response leaves out", async () => {
-    // j15's scratch reading: the headline counted it as blocked on a person and no list named it.
+  it('counts a waiting issue somebody else owns only once a stuck-issue notice stands for it', async () => {
+    // j15's scratch reading: the headline counted it as blocked on a person and no list named it;
+    // judge-44: before any notice it is its owner's alone, not the viewer's to act on (ISS-1229 r17).
     const other = (await createTestUser(harness.db)).id;
     await createTestProjectMember(harness.db, { userId: other, projectId, role: 'member' });
-    await issueAt('waiting', false, other);
+    const parked = await issueAt('waiting', false, other);
+    const before = await get<{ projectTotals: Record<string, { parkedOnly: number }> }>(
+      '/api/me/attention',
+    );
+    expect(before.projectTotals[slug]?.parkedOnly ?? 0).toBe(0);
+    await noticeFor(parked);
 
     const attention = await get<{ projectTotals: Record<string, unknown> }>('/api/me/attention');
     const health =

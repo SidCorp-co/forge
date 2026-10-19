@@ -174,13 +174,19 @@ describe('Needs you lists a question only where it moves the work state (real Po
         UPDATE issues SET assignee_id = ${other}, created_by_id = ${other}
          WHERE id IN (${othersOnHold}, ${othersNeedsInfo})
       `);
+      await harness.db.execute(sql`
+        INSERT INTO notifications (project_id, issue_id, type, kind, tier, state, title, resolution_key)
+        VALUES (${projectId}, ${othersOnHold}, 'issue_stranded', 'condition', 'ticket', 'firing',
+                'parked', ${`issue:${othersOnHold}:stranded`})
+      `);
       const [totals] = Object.values(await selectAttentionTotals(owner));
       // The reader owes the first two; the other two are parked by someone else, held only by the
-      // health row's parked list, and are the project's parked-only part (ISS-1229 r14).
+      // health row's parked list (ISS-1229 r14), and only the one a stuck-issue notice stands for is
+      // the project's parked-only part (r17, judge-44).
       expect(totals).toEqual({
         awaitingInput: 2,
         awaitingAsked: 1,
-        parkedOnly: 2,
+        parkedOnly: 1,
         needsReview: 0,
         failedJobs: 0,
         parkedAsked: 0,
@@ -188,7 +194,7 @@ describe('Needs you lists a question only where it moves the work state (real Po
       });
       const { blockerRowsAll } = await readHealthAggregates([projectId], owner);
       expect(blockerRowsAll).toHaveLength(3);
-      expect((totals?.awaitingInput ?? 0) + (totals?.parkedOnly ?? 0)).toBe(4);
+      expect((totals?.awaitingInput ?? 0) + (totals?.parkedOnly ?? 0)).toBe(3);
     });
 
     it('has no entry for a project with nothing in any bucket', async () => {

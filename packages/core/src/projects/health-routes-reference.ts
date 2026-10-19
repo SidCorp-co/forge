@@ -34,6 +34,12 @@ const projectHealthSchema = z.object({
         .string()
         .optional()
         .describe('`waiting_on_others` only: the person the park waits for'),
+      readerOwns: z
+        .literal(true)
+        .optional()
+        .describe(
+          "The caller owns the park (its assignee, else whoever filed it); absent on another person's",
+        ),
     }),
   ),
   blockersTotal: z.number(),
@@ -63,6 +69,12 @@ const projectHealthSchema = z.object({
         .string()
         .optional()
         .describe('`waiting_on_others` only: the person the park waits for'),
+      readerOwns: z
+        .literal(true)
+        .optional()
+        .describe(
+          "The caller owns the park (its assignee, else whoever filed it); absent on another person's",
+        ),
     }),
   ),
 });

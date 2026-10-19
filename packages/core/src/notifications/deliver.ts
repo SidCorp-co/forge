@@ -1,4 +1,4 @@
-import { and, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
+import { and, eq, gt, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import { FORGE_AUTHOR_ID } from '../comments/forge-author.js';
 import { db } from '../db/client.js';
 import type { NotificationType } from '../db/schema.js';
@@ -14,6 +14,7 @@ import {
 import { formatIssueRef, textNamesIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../logger.js';
 import { hooks } from '../pipeline/hooks.js';
+import { stuckRankSql } from '../projects/stuck-issue-kinds.js';
 import { emissionAllowed, noteSuppressed } from './emission-switch.js';
 import { INITIAL_STATE, inhibitorsOf, kindOf, pendingEvaluationsFor, tierOf } from './kinds.js';
 
@@ -146,10 +147,29 @@ async function inhibitor(input: DeliverInput): Promise<string | null> {
         eq(notifications.projectId, input.projectId),
         eq(notifications.state, 'firing'),
         isNull(notifications.resolvedAt),
+        // A root with no key is one nothing could ever end, so it holds nothing (ISS-1229 r17).
+        isNotNull(notifications.resolutionKey),
       ),
     )
     .limit(1);
   return row?.id ?? null;
+}
+
+/**
+ * ISS-1229 r17 — one issue, one stuck reason, chosen before anybody is told. A stuck-issue notice
+ * waits while a more specific one stands unresolved for its issue, in any state: two reasons ripening
+ * in one sweep otherwise both went out, and the lesser was retired seconds after its delivery.
+ */
+async function outrankedOnItsIssue(input: DeliverInput): Promise<boolean> {
+  if (input.type !== 'issue_stranded' || !input.issueId || !input.resolutionKey) return false;
+  const rows = await db.execute(sql`
+    SELECT 1 FROM notifications up
+     WHERE up.issue_id = ${input.issueId} AND up.type = 'issue_stranded'
+       AND up.resolved_at IS NULL
+       AND ${stuckRankSql(sql`up.resolution_key`)} < ${stuckRankSql(sql`${input.resolutionKey}`)}
+     LIMIT 1
+  `);
+  return rows.length > 0;
 }
 
 /**
@@ -353,7 +373,8 @@ export async function recordAndDeliver(
   if (existing) {
     const heldFor = existing.pendingSince ? now.getTime() - existing.pendingSince.getTime() : 0;
     const owed = pendingEvaluationsFor(input.type) * EVALUATION_MS;
-    const ripe = existing.state === 'pending' && heldFor >= owed;
+    const outranked = existing.state === 'pending' && (await outrankedOnItsIssue(input));
+    const ripe = existing.state === 'pending' && heldFor >= owed && !outranked;
     const inhibitedNow = ripe || existing.state === 'firing' ? await inhibitor(input) : null;
     const promote = ripe && !inhibitedNow;
     // Until somebody is told: the sentence they read is what was raised, and a resolved row's
@@ -383,7 +404,9 @@ export async function recordAndDeliver(
 
   const title = await titleNamingItsSubject(input);
   const inhibitedBy = kind === 'condition' ? await inhibitor(input) : null;
-  const waits = kind === 'condition' && pendingEvaluationsFor(input.type) > 0;
+  const waits =
+    kind === 'condition' &&
+    (pendingEvaluationsFor(input.type) > 0 || (await outrankedOnItsIssue(input)));
   const state = inhibitedBy ? 'inhibited' : waits ? 'pending' : INITIAL_STATE[kind];
 
   const [record] = await db
