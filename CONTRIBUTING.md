@@ -2,9 +2,9 @@
 
 Thanks for your interest. The project is in alpha — every piece of feedback is valuable.
 
-This file is the front door. It says how to get a change in and what gets it merged. It does not
-restate the rules; each one below names the file that owns it, and that file is right if the two
-ever disagree.
+This file is the front door: the order a change goes in, and where each rule it meets is written.
+A rule another file owns appears here as a link to that file, never as a second copy, and the owner
+is right if the two ever disagree. The two this file owns itself are steps 1 and 3 below.
 
 ## Where the rules live
 
@@ -20,40 +20,35 @@ ever disagree.
 
 1. **Open an issue first** unless the change is trivial. Significant designs are argued in
    [`docs/proposals/destination/`](docs/proposals/destination/) before they are built.
-2. **Branch from the default branch**, named `ISS-<number>-<slug>`. Renaming a branch after a pull
-   request is open orphans the pull request.
+2. **Branch from the default branch**, under a name `scripts/check-branch-name.sh` accepts — its
+   schemes are in [`scripts/README.md`](scripts/README.md#check-branch-namesh). Renaming a branch
+   after a pull request is open orphans the pull request.
 3. **Write [Conventional Commits](https://www.conventionalcommits.org/)** — `fix(core): …`,
    `feat(gates): …`, `docs(npmrc): …`. This is already the convention in the history; nothing
    enforces it yet, so it is on you.
-4. **Run `pnpm verify` before you push.** It declares the suites and the build rather than running
-   them all; `pnpm test:changed` is the inner loop and selects by import graph, which is why it is
-   a loop and not a proof.
+4. **Before you push, run what [`CLAUDE.md`](CLAUDE.md#commands) *Commands* names**, and read there
+   what each command proves.
 5. **Open a pull request** and fill [the template](.github/PULL_REQUEST_TEMPLATE.md). The
    declarations it asks for decide how your change is handled, so answer them honestly.
 
 ## What gets a change merged
 
-**`ci-passed` is the one required check, and CI is the gate — not your laptop.** A green laptop and
-a red `ci-passed` means the change does not land.
+Which check is required, where it runs, and what a skipped job means:
+[`CLAUDE.md`](CLAUDE.md#commands) *Commands*. What a green check is evidence for:
+[`CLAUDE.md`](CLAUDE.md#green-is-a-claim-about-one-proposition) *Green is a claim about one
+proposition*. Each gate behind it: [`scripts/README.md`](scripts/README.md). Who merges, and that it
+is not you: [`GOVERNANCE.md`](GOVERNANCE.md#merge-authority).
 
-**Green covers the jobs that ran.** A skipped job passes `ci-passed`; the `changes` filter decides
-which run. Read which ran, not the aggregate alone — a suite the filter should have selected and
-did not is a defect, not a pass.
+## The rule that fails silently
 
-**Who merges is not you.** See [`GOVERNANCE.md`](GOVERNANCE.md).
+**Migration order** breaks without an error: a migration taken out of order is skipped, and
+nothing says so. The rule and the number to take are
+[`CLAUDE.md`](CLAUDE.md#invariants) *Invariants*; why the checker measures every open branch rather
+than yours is `scripts/check-migration-order.mjs` in [`scripts/README.md`](scripts/README.md).
 
-## Two things that fail silently, so they are stated here
-
-**Migration order.** A migration's `when` in `packages/core/drizzle/migrations/meta/_journal.json`
-must exceed every `created_at` already in the target database. Drizzle reads the single highest
-once and **skips lower entries silently, forever** — the container then starts and serves new code
-against an old schema. `node scripts/check-migration-order.mjs` prints the number to take, and its
-`Next free:` line is the only place to read one from. The subject is every open branch, not only
-yours: branches each deriving their number from one base all land on the same one, and whichever
-merges first silently kills the rest.
-
-**A changelog entry your change adds is capped at 40 words** by `check-release-record`; an entry it
-corrects may spend the larger of that cap and the words it already held.
+A changelog entry over its word budget is not silent: `check-release-record` refuses it in CI and in
+`pnpm verify`, printing the entry and the ceiling it applied, and exits non-zero. Its rules are
+`scripts/check-release-record.mjs` in [`scripts/README.md`](scripts/README.md).
 
 ## Reporting a security vulnerability
 

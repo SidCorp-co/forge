@@ -9,7 +9,7 @@
 <!-- These decide how the change is handled. A wrong answer here is a defect, not a formality. -->
 
 - [ ] screen change — a person can see a difference
-- [ ] schema coupling — a migration rides with this (read the migration-order rule in CONTRIBUTING.md)
+- [ ] schema coupling — a migration rides with this (read the migration-order rule in CLAUDE.md, Invariants)
 - [ ] deploy coupling — this must land before or after something else to be safe
 - [ ] user-facing outcome — a CHANGELOG entry is owed
 

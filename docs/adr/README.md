@@ -4,9 +4,14 @@ One file per decision: what was decided, the context it was decided in, and what
 
 ## The convention
 
-- **An ADR is immutable.** A decision that changes gets a **new** ADR superseding the old one by
-  number; the old one keeps standing and says which ADR replaced it. Editing a past decision to
-  match the present destroys the only record of why the present was chosen.
+- **An accepted ADR's decision is immutable.** A later decision is a **new** ADR that supersedes or
+  amends the old one by number; the old one keeps standing and carries one line saying which ADR
+  superseded or amended it. Editing a past decision to match the present destroys the only record of
+  why the present was chosen.
+- **What an accepted ADR may take as an edit** is what changes no decision: that one
+  superseded-by or amended-by line, a citation corrected for a file or symbol that moved, tense, and
+  something the decision already named, named more exactly — the identifier of an issue it
+  described, say. Anything that adds a decision or changes one is a new ADR.
 - **Numbered `NNNN-kebab-title.md`**, allocated in order, never reused.
 - **A rule belongs in the document that owns it** — [`CONTRIBUTING.md`](../../CONTRIBUTING.md),
   [`GOVERNANCE.md`](../../GOVERNANCE.md), [`CLAUDE.md`](../../CLAUDE.md) or
@@ -24,3 +29,20 @@ and none in the installed `forge-plugin` copy — `grep -rl 0014` over
 `3.36.192`, matched no `.md` file. The citation resolves to nothing readable. It is recorded here
 so a reader stops looking, and so nobody reads `0014` in this directory, when it is allocated, as
 that citation's target.
+
+## The edits ADR 0003 took after it was accepted
+
+ADR 0003 was accepted at `31d4b826f` and edited six times afterwards. Five changed no decision and
+stand as edits:
+
+| Commit | Edit | Kind |
+|---|---|---|
+| `6faf9c58e` | the amnesty's end condition, already a forge-plugin issue closing, names which readers that issue moves, and says its number is not yet allocated | clarification |
+| `154b42f9c` | a citation corrected for a symbol that moved | clarification |
+| `3e9b50b6e` | the amnesty names `ISS-2745`, the issue its end condition described | clarification |
+| `1b455cffa` | the context put in the past tense, and a citation corrected for a file that moved | clarification |
+| `4f0652fb4` | a pointer dropped from a file that no longer holds the measurement | clarification |
+
+One, `4c52ec218`, added a decision — that `base_branch` stays — and rewrote the context to
+match. That decision is [ADR 0005](0005-base-branch-stays-beside-the-release-chain.md) now; ADR
+0003's context reads as it was accepted, and its amended-by line points there.
