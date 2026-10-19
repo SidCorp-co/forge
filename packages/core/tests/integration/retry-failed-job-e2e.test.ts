@@ -251,4 +251,22 @@ describe('a person retries a failed job', () => {
     `);
     expect(await failedJobIds()).toEqual([]);
   });
+
+  // ISS-1229 r18, judge-48: the API caller still read "a drive job is already queued or running on
+  // this issue", the stored job type; the page and the API now read one sentence.
+  it('refuses a retry whose work is already queued in the words the page shows', async () => {
+    const failed = await seedJob('failed');
+    await harness.db.execute(sql`
+      INSERT INTO jobs (id, project_id, issue_id, pipeline_run_id, created_by, type, status)
+      VALUES (${randomUUID()}, ${projectId}, ${issueId}, ${runId}, ${ownerId}, 'drive', 'queued')
+    `);
+    const res = await retry(failed);
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { code?: string; message?: string };
+    expect(body).toMatchObject({
+      code: 'ALREADY_ACTIVE',
+      message: 'The same work is already queued or running on this issue, and that is its retry.',
+    });
+    expect(JSON.stringify(body)).not.toContain('drive');
+  });
 });

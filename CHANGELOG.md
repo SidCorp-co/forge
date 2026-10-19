@@ -3201,6 +3201,7 @@
 - **A run session's drawer is titled by its issue and offers Open issue**, and a run a session works without jobs no longer says nothing has run. (ISS-1228)
 - **The run drawer offers only what a run can take**: Cancel run before anything has started, Pause and Stop once it has, and no Rerun or Fork. (ISS-1228)
 - **Stuck-work notifications and a wait on nobody read as plain sentences**, without "Pipeline wedge", hop names or WHERE/WHY/WHAT. (ISS-1228)
+- **Forge no longer calls a person by their email address.** Someone with no display name reads "another member" in notices, the bell and the project page, older bell rows included, and a refused retry reads the same sentence everywhere. (ISS-1229)
 - **A master that ended as the last session on its box's tmux server is reported ended.** Its messages used to wait and its run stayed open for ever; a tmux the box cannot ask still says nothing. (ISS-1265)
 - **A running master is no longer reported ended when its box's tmux socket file goes missing.** Its messages wait instead of its run closing, and the box's log names the missing socket and the masters on it. (ISS-1265)
 - **A blocked run always says it is waiting**, on its row as on hover, even where its box did not say on whom: it reads "Waiting on someone the box did not name." A working run shows no wait. (ISS-1228)

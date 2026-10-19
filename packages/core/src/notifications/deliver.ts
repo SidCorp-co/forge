@@ -17,6 +17,7 @@ import { hooks } from '../pipeline/hooks.js';
 import { stuckRankSql } from '../projects/stuck-issue-kinds.js';
 import { emissionAllowed, noteSuppressed } from './emission-switch.js';
 import { INITIAL_STATE, inhibitorsOf, kindOf, pendingEvaluationsFor, tierOf } from './kinds.js';
+import { unaddressedTitle } from './unaddressed-title.js';
 
 /**
  * How long one evaluation of a periodic detector is.
@@ -346,13 +347,19 @@ export async function deliverExisting(
 }
 
 export async function recordAndDeliver(
-  input: DeliverInput,
+  raised: DeliverInput,
   now: Date = new Date(),
 ): Promise<{ id: string; delivered: number } | null> {
-  if (!emissionAllowed(input.type)) {
-    noteSuppressed(input.type, input.title);
+  if (!emissionAllowed(raised.type)) {
+    noteSuppressed(raised.type, raised.title);
     return null;
   }
+  // A stored title keeps what it was written with, so no person is named in one by address (ISS-1229 r18).
+  const input: DeliverInput = {
+    ...raised,
+    title: await unaddressedTitle(raised.title),
+    ...(raised.groupTitle ? { groupTitle: await unaddressedTitle(raised.groupTitle) } : {}),
+  };
 
   const kind = kindOf(input.type);
 

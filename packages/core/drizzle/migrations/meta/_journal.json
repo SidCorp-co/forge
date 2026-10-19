@@ -2199,6 +2199,13 @@
       "when": 1812499200000,
       "tag": "0341_an_old_bell_row_names_a_status_as_the_screen_does",
       "breakpoints": true
+    },
+    {
+      "idx": 342,
+      "version": "7",
+      "when": 1812585600000,
+      "tag": "0342_a_notice_names_no_one_by_address",
+      "breakpoints": true
     }
   ]
 }
