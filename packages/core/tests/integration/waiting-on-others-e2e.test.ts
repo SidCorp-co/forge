@@ -26,7 +26,7 @@ async function park(seq: number, filedBy: string, assignee: string | null = null
   return id;
 }
 
-async function member(name: string): Promise<string> {
+async function member(name: string | null): Promise<string> {
   const user = await createTestUser(fx.db);
   await fx.db.execute(sql`UPDATE users SET display_name = ${name} WHERE id = ${user.id}`);
   await fx.db.execute(sql`
@@ -92,5 +92,38 @@ describe("another person's park, read by a project admin who does not owe it", (
     expect((await waitingTitlesFor(mai, [notice?.id ?? ''])).get(notice?.id ?? '')).toBe(
       'ISS-2 is waiting for your decision — Invoicing',
     );
+  });
+
+  // ISS-1229 r18, judge-48: a member with no display name was named by address, and stored so.
+  it('names a member with no display name "another member", never by address', async () => {
+    const lan = await member(null);
+    const [{ email } = { email: '' }] = (await fx.db.execute(
+      sql`SELECT email FROM users WHERE id = ${lan}`,
+    )) as unknown as Array<{ email: string }>;
+    const theirs = await park(2, lan);
+    await announce();
+
+    const { readHealthAggregates } = await import('../../src/projects/health-aggregates.js');
+    const { stuckIssueRows } = await readHealthAggregates([fx.project.id], fx.owner);
+    expect(stuckIssueRows.map((r) => [r.id, r.kind, r.owedBy])).toEqual([
+      [theirs, 'waiting_on_others', 'another member'],
+    ]);
+    const { readStuckKinds } = await import('../../src/projects/stuck-kinds-read.js');
+    expect((await readStuckKinds([theirs], fx.owner)).get(theirs)).toEqual({
+      kind: 'waiting_on_others',
+      owedBy: 'another member',
+    });
+
+    const [group] = fx.sweepRows(await fx.inbox());
+    expect((await fx.membersOf(group?.id ?? '')).map((m) => m.title)).toEqual([
+      "ISS-2 is waiting for another member's decision — Invoicing",
+    ]);
+    const stored = (await fx.db.execute(sql`
+      SELECT title FROM notifications UNION ALL SELECT title FROM notification_deliveries
+    `)) as unknown as Array<{ title: string | null }>;
+    expect(stored.map((r) => r.title)).toContain(
+      "ISS-2 is waiting for another member's decision — Invoicing",
+    );
+    expect(stored.filter((r) => r.title?.includes(email))).toEqual([]);
   });
 });

@@ -14,6 +14,7 @@ import {
   users,
 } from '../db/schema.js';
 import { assertProjectRole, loadOrgRole, loadProjectAccess } from '../lib/authz.js';
+import { personName } from '../lib/person-name.js';
 import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { emitNotification } from '../notifications/emit.js';
@@ -233,7 +234,7 @@ memberRoutes.post(
     if (!project) throw notFound('NOT_FOUND', 'project not found');
 
     const [inviter] = await db
-      .select({ email: users.email })
+      .select({ email: users.email, displayName: users.displayName })
       .from(users)
       .where(eq(users.id, inviterId))
       .limit(1);
@@ -287,7 +288,7 @@ memberRoutes.post(
           userId: existingUser.id,
           projectId,
           type: 'invitation_received',
-          title: `${inviter.email} invited you to ${project.name} as ${role}`,
+          title: `${personName(inviter.displayName, 'start')} invited you to ${project.name} as ${role}`,
         });
       } catch (notifyErr) {
         logger.error({ err: notifyErr, projectId, email }, 'failed to emit invitation_received');

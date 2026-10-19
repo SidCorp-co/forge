@@ -12,19 +12,26 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const server: {
   attention: (orgId?: string | null, expand?: readonly string[]) => Promise<unknown>;
   devices: (orgId?: string | null) => Promise<unknown>;
+  retryJob: (jobId: string) => Promise<unknown>;
   activeOrgId: string | null;
   scopeRead: boolean;
 } = {
   attention: async () => ({}),
   devices: async () => [],
+  retryJob: async () => ({}),
   activeOrgId: null,
   scopeRead: true,
 };
+const toasts: Array<{ title: string; description?: string }> = [];
 
 vi.mock("./api", () => ({
   attentionApi: {
     list: (orgId?: string | null, expand?: readonly string[]) => server.attention(orgId, expand),
+    retryJob: (jobId: string) => server.retryJob(jobId),
   },
+}));
+vi.mock("@/providers/toast-provider", () => ({
+  useToast: () => ({ toast: (t: { title: string; description?: string }) => toasts.push(t) }),
 }));
 vi.mock("@/features/orgs/active-org", () => ({ useActiveOrg: () => ({ activeOrgId: server.activeOrgId, scopeRead: server.scopeRead }),
 }));
@@ -36,7 +43,7 @@ vi.mock("@/features/runners/hooks", async () => {
   };
 });
 
-const { useAttention } = await import("./hooks");
+const { useAttention, useRetryFailedJob } = await import("./hooks");
 
 const response = {
   needsReview: [],
@@ -231,23 +238,21 @@ describe("useAttention", () => {
 });
 
 // ISS-1229 r17, judge-44: the toast read "a drive job is already queued or running on this issue",
-// the stored job type, to a person.
-describe("retryRefusalWords", () => {
-  it("names no stored job type where work of its kind is already queued", async () => {
-    const { retryRefusalWords } = await import("./hooks");
+// the stored job type, to a person. r18, judge-48: the API caller read it too, so core says the
+// sentence and the page's toast forwards what core said, with no wording of its own.
+describe("a refused retry", () => {
+  it.each([
+    ["ALREADY_ACTIVE", "The same work is already queued or running on this issue, and that is its retry."],
+    ["ISSUE_RESOLVED", "the issue this job ran for is at Closed, so there is nothing to retry it for"],
+  ])("is told in the toast in core's own sentence (%s)", async (code, said) => {
     const { ApiError } = await import("@/lib/api/client");
-    const said = retryRefusalWords(
-      new ApiError(409, "a drive job is already queued or running on this issue; that one is its retry", "ALREADY_ACTIVE"),
-    );
-    expect(said).toBe("The same work is already queued or running on this issue, and that is its retry.");
-    expect(said).not.toContain("drive");
-  });
-
-  it("says any other refusal as the server said it", async () => {
-    const { retryRefusalWords } = await import("./hooks");
-    const { ApiError } = await import("@/lib/api/client");
-    expect(retryRefusalWords(new ApiError(409, "the issue this job ran for is at Closed, so there is nothing to retry it for", "ISSUE_RESOLVED"))).toContain(
-      "at Closed",
-    );
+    server.retryJob = async () => {
+      throw new ApiError(409, said, code);
+    };
+    toasts.length = 0;
+    const { result } = renderHook(() => useRetryFailedJob(), { wrapper: wrapper() });
+    result.current.mutate("job-1");
+    await waitFor(() => expect(toasts).toHaveLength(1));
+    expect(toasts[0]).toMatchObject({ title: "The job was not retried", description: said });
   });
 });

@@ -1,7 +1,7 @@
 import { NOTIFICATION_TYPES } from "@forge/contracts/notifications";
 import { describe, expect, it } from "vitest";
 import { formatRelativeTime } from "@/lib/utils/format";
-import { TYPE_FILTER_OPTIONS, TYPE_NAMES, toNotificationItem } from "./map";
+import { TYPE_FILTER_OPTIONS, TYPE_NAMES, toInvitationItem, toNotificationItem } from "./map";
 import type { NotificationRow } from "./types";
 
 const row = (over: Partial<NotificationRow> = {}): NotificationRow => ({
@@ -115,5 +115,26 @@ describe("a stuck-issue row whose condition has since resolved (ISS-1229 r12)", 
 
   it("never reads a done task as a resolved condition", () => {
     expect(toNotificationItem(row({ kind: "task", type: "intake_pending", openMembers: 0 })).label).toBe("INTAKE");
+  });
+});
+
+// ISS-1229 r18, judge-48: the bell named a person by their address; an invitation names its inviter
+// by the name core sends, which is never an address.
+describe("an invitation row", () => {
+  it("names the inviter by the name core sends", () => {
+    const item = toInvitationItem(
+      {
+        kind: "project",
+        token: "t1",
+        name: "Invoicing",
+        inviterName: "Another member",
+        role: "member",
+        expiresAt: "2026-10-08T10:00:00.000Z",
+        createdAt: "2026-10-01T10:00:00.000Z",
+      },
+      [],
+    );
+    expect(item.text).toBe("Another member invited you to Invoicing as member");
+    expect(item.text).not.toMatch(/@/);
   });
 });

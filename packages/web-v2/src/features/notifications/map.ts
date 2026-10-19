@@ -121,7 +121,7 @@ export function toInvitationItem(
   return {
     id: `invite-${inv.token}`,
     label: "INVITE",
-    text: `${inv.inviterEmail} invited you to ${inv.name} as ${inv.role}`,
+    text: `${inv.inviterName} invited you to ${inv.name} as ${inv.role}`,
     time: formatRelativeTime(inv.createdAt),
     unread: true,
     hue: "amber",
