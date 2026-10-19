@@ -103,6 +103,7 @@ describe('testSshConnection, in the words each host refuses with', () => {
   });
 
   // ISS-1398 judge j2 finding 1: Test connection asked for write access, the mark and hold for read.
+  // r11: all three ask for read access, which is all Forge needs, and name the devices' write apart.
   it.each([
     [GITLAB_NO_ACCESS.name, GITLAB_NO_ACCESS],
     ['a key the host does not know', keyUnknown('gitlab.com')],
@@ -115,9 +116,9 @@ describe('testSshConnection, in the words each host refuses with', () => {
       const test = await testSshConnection('git@gitlab.com:sid/desk.git', 'key');
 
       expect(test.message).toContain(
-        "write access to the repository, since the project's runner pushes with it",
+        "Give it read access to the repository, which is all Forge needs; devices that push with it need write access.",
       );
-      expect(test.message).not.toContain('read access');
+      expect(test.message).not.toMatch(/Give it write access/);
     },
   );
 });

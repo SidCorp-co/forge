@@ -225,7 +225,7 @@ describe('ISS-1398 — the release weighs a verdict through the deploy key', () 
 
     const reason = String((await fx.holdOf(id))?.reason);
     const fix =
-      "give that key write access to the repository, since the project's runner pushes with it";
+      `give that key read access to ${GITLAB_URL}, which is all Forge needs; devices that push with it need write access`;
     expect(reason).toContain('whether what it serves carries it could not be read');
     expect(reason).toContain("what this issue's landing changed could not be read");
     expect(reason.split('If none lives there, fix the SSH clone URL')).toHaveLength(2);
@@ -247,7 +247,7 @@ describe('ISS-1398 — the release weighs a verdict through the deploy key', () 
     const reason = String((await fx.holdOf(id))?.reason);
     expect(reason).toContain('whether what it serves carries it could not be read');
     expect(reason).toContain(
-      `attach a deploy key with write access to ${GITLAB_URL} under the project's Settings → Runners → Git access`,
+      `attach a deploy key with read access to ${GITLAB_URL} under the project's Settings → Runners → Git access`,
     );
     expect(reason).not.toMatch(/bind (a|the) repository|Integrations/);
   }, 60_000);
@@ -302,7 +302,7 @@ describe('ISS-1398 — the range a merge-branch release carries, read through th
 
     const warned = readiness?.warnings.find((w) => w.code === 'RELEASE_CARRIED_UNREAD');
     expect(warned?.message).toContain(
-      `\nForge cannot read this project's repository on gitlab.com, since it holds no GitHub binding and no deploy key. Attach a deploy key with write access to ${GITLAB_URL} under the project's Settings → Runners → Git access.`,
+      `\nForge cannot read this project's repository on gitlab.com, since it holds no GitHub binding and no deploy key. Attach a deploy key with read access to ${GITLAB_URL} under the project's Settings → Runners → Git access. Read access is all Forge needs; devices that push with it need write access.`,
     );
     expect(warned?.message).not.toMatch(/bind (a|the) repository|Integrations/);
   }, 60_000);

@@ -411,7 +411,7 @@ describe('the hold the unattended sweep puts on a waiting issue', () => {
 describe('the hold where a repository read failed', () => {
   // ISS-1398 judge j3: readiness asked only for a verdict where a failed repository read held the
   // criterion, which no verdict repairs; the hold already leads with making the repository readable.
-  const FIX = 'on the git host, give the deploy key write access to git@gitlab.com:sid/desk.git';
+  const FIX = 'on the git host, give the deploy key read access to git@gitlab.com:sid/desk.git';
   const unreadReport = (issueId: string) => ({
     ...heldReport(issueId, [1, 2]),
     unearned: [1, 2].map((criterion) => ({

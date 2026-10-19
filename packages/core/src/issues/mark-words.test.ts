@@ -21,7 +21,7 @@ const B = 'b2c3d4e5f60718293a4b5c6d7e8f90123456789a';
 const WHY = `SidCorp-co/forge could not compare ${A} with ${B}: GET /repos/SidCorp-co/forge/compare returned HTTP 502; retry later. The host said more`;
 const CLEARS =
   "once the tracker can read the project's repository, through a GitHub binding whose installation can read it";
-const NO_READER = `Forge holds no GitHub binding and no deploy key for this project's repository on gitlab.com, so it cannot read the repository — attach a deploy key with write access to git@gitlab.com:acme/shop.git under Git access`;
+const NO_READER = `Forge holds no GitHub binding and no deploy key for this project's repository on gitlab.com, so it cannot read the repository — attach a deploy key with read access to git@gitlab.com:acme/shop.git under Git access`;
 const REPO = 'git@github.com:junixlabs/PixelAgent.git';
 
 /** Our own sentences, the quoted lines set apart. */
@@ -313,13 +313,13 @@ describe("a mark's refusals, at each door (ISS-1421 r9)", () => {
 // span inside brackets with a gap before the colon. It now stands as one code line of its own.
 describe("the host's own line under a mark (ISS-1421 r9)", () => {
   const WHY =
-    "The git host refused this project's deploy key. Give the key write access to git@github.com:acme/shop.git, since the project's runner pushes with it.\ngit@github.com: Permission denied (publickey).";
+    "The git host refused this project's deploy key. Give the key read access to git@github.com:acme/shop.git, which is all Forge needs; devices that push with it need write access.\ngit@github.com: Permission denied (publickey).";
 
   it('quotes our sentences, then the host line whole as code on a line of its own', () => {
     const said = withReason('The mark stays a claim that names no commit.', WHY);
     expect(said).toBe(
       'The mark stays a claim that names no commit.\n' +
-        "> The git host refused this project's deploy key. Give the key write access to git@github.com:acme/shop.git, since the project's runner pushes with it.\n" +
+        "> The git host refused this project's deploy key. Give the key read access to git@github.com:acme/shop.git, which is all Forge needs; devices that push with it need write access.\n" +
         '>\n> `git@github.com: Permission denied (publickey).`',
     );
     expect(addressesAsCode(said)).toContain('> `git@github.com: Permission denied (publickey).`');
