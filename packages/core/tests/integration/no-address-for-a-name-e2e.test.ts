@@ -1,10 +1,12 @@
 /**
  * ISS-1229 r18 — judge-48 at beta 02b2026: a member with no display name was named by their email
  * address in notice titles and the bell. The master's ruling: a notice, bell row or page never shows
- * an address as a person's name. Covered here: the delivery door, an invitation from an inviter with
- * no display name, and migration 0342 over titles already stored — its own text read from its file,
- * so what is proved is what runs at the deploy. Every case ends by refusing any stored title that
- * still carries an address.
+ * an address as a person's name. ISS-1229 r19 — judge-54 at beta 907b85e: round 18 also rewrote an
+ * address inside an issue's own title, so the bell disagreed with the issue page. The ruling: only the
+ * slot that names a person is chosen by lib/person-name.ts; an issue title or project name is quoted
+ * as written. Covered here: a title quoting an issue or project, an invitation from an inviter with no
+ * display name, and migrations 0342 and 0343 over titles already stored — each read from its file, so
+ * what is proved is what runs at the deploy.
  */
 
 import { readFileSync } from 'node:fs';
@@ -24,6 +26,9 @@ vi.mock('../../src/projects/invitation-email.js', () => ({
 
 const MIGRATION = fileURLToPath(
   new URL('../../drizzle/migrations/0342_a_notice_names_no_one_by_address.sql', import.meta.url),
+);
+const RESTORE = fileURLToPath(
+  new URL('../../drizzle/migrations/0343_a_notice_quotes_a_title_as_written.sql', import.meta.url),
 );
 
 const fx = registerInboxFixture();
@@ -61,24 +66,67 @@ async function addressedTitles(): Promise<string[]> {
   return rows.map((r) => r.title);
 }
 
-describe('a notice raised with an address in its title', () => {
-  it("is stored with the person's name, or another member, in its place", async () => {
+async function issueTitled(seq: number, title: string): Promise<string> {
+  const id = crypto.randomUUID();
+  await fx.db.execute(sql`
+    INSERT INTO issues (id, project_id, title, status, created_by_id, iss_seq)
+    VALUES (${id}, ${fx.project.id}, ${title}, 'in_progress', ${fx.owner}, ${seq})
+  `);
+  return id;
+}
+
+describe('a notice title quoting an issue or a project', () => {
+  it("shows the issue's title as written, an address in it included, stored and in the bell", async () => {
     const mai = await person('Mai');
-    const lan = await person(null);
+    const actor = await person('Lan');
+    const title = `Reply to ${mai.email} and refunds@example.com about the export`;
+    const issueId = await issueTitled(4, title);
+    const { HooksBus } = await import('../../src/pipeline/hooks.js');
+    const { registerTransitionNotifications } = await import(
+      '../../src/notifications/notify-transitions.js'
+    );
+    const bus = new HooksBus();
+    registerTransitionNotifications(bus);
+    await fx.db.execute(sql`UPDATE issues SET status = 'needs_info' WHERE id = ${issueId}`);
+    await bus.emit('transition', {
+      issueId,
+      projectId: fx.project.id,
+      actor: { type: 'user', id: actor.id, agency: 'human' },
+      from: 'in_progress',
+      to: 'needs_info',
+      reopenCount: 0,
+    });
+
+    const [stored] = (await fx.db.execute(
+      sql`SELECT title FROM notifications WHERE type = 'issue_status_changed'`,
+    )) as unknown as Array<{ title: string }>;
+    expect(stored?.title).toContain(title);
+    const [row] = (await fx.inbox()).items;
+    expect(row?.title).toBe(stored?.title);
+  });
+
+  it("shows a project's name as written, and a title opening with an address keeps it", async () => {
+    await fx.db.execute(
+      sql`UPDATE projects SET name = 'Billing (ops@example.com)' WHERE id = ${fx.project.id}`,
+    );
+    await fx.mods.recordAndDeliver({
+      type: 'ops_alert',
+      recipients: [fx.owner],
+      projectId: fx.project.id,
+      title: 'Billing (ops@example.com) — PM cadence auto-disabled',
+    });
     await fx.mods.recordAndDeliver({
       type: 'mention',
       recipients: [fx.owner],
       projectId: fx.project.id,
-      title: `${lan.email} and ${mai.email} asked about ${fx.project.name}`,
+      title: 'billing@example.com asked about Billing (ops@example.com)',
     });
 
-    const [stored] = (await fx.db.execute(
-      sql`SELECT title FROM notifications WHERE type = 'mention'`,
-    )) as unknown as Array<{ title: string }>;
-    expect(stored?.title).toBe(`Another member and Mai asked about ${fx.project.name}`);
-    const [row] = (await fx.inbox()).items;
-    expect(row?.title).toBe(stored?.title);
-    expect(await addressedTitles()).toEqual([]);
+    const titles = ((await fx.inbox()).items ?? []).map((r) => r.title).sort();
+    expect(titles).toEqual([
+      'Billing (ops@example.com) — PM cadence auto-disabled',
+      'billing@example.com asked about Billing (ops@example.com)',
+    ]);
   });
 });
 
@@ -229,6 +277,121 @@ describe('migration 0342: a stored title names no one by address', () => {
     await runMigration();
     const after = await titlesOf(once);
     await runMigration();
+    expect(await titlesOf(once)).toEqual(after);
+  });
+});
+
+/** A record about `about` and the bell row that told it, as 0342 left them. */
+async function storedAbout(
+  title: string,
+  about: { issueId?: string; projectId?: string },
+  deliveryTitle: string = title,
+): Promise<{ recordId: string; deliveryId: string }> {
+  const [record] = (await fx.db.execute(sql`
+    INSERT INTO notifications (type, kind, tier, state, title, issue_id, project_id)
+    VALUES ('issue_stranded', 'condition', 'ticket', 'firing', ${title},
+            ${about.issueId ?? null}, ${about.projectId ?? null})
+    RETURNING id
+  `)) as unknown as Array<{ id: string }>;
+  const [delivery] = (await fx.db.execute(sql`
+    INSERT INTO notification_deliveries (user_id, title) VALUES (${fx.owner}, ${deliveryTitle}) RETURNING id
+  `)) as unknown as Array<{ id: string }>;
+  await fx.db.execute(sql`
+    INSERT INTO notification_delivery_members (delivery_id, notification_id)
+    VALUES (${delivery?.id}, ${record?.id})
+  `);
+  return { recordId: record?.id ?? '', deliveryId: delivery?.id ?? '' };
+}
+
+async function runRestore(): Promise<string[]> {
+  const notices: string[] = [];
+  const postgres = (await import('postgres')).default;
+  const client = postgres(process.env.DATABASE_URL ?? '', {
+    max: 1,
+    onnotice: (n) => notices.push(n.message ?? ''),
+  });
+  try {
+    for (const statement of readFileSync(RESTORE, 'utf8').split('--> statement-breakpoint')) {
+      if (statement.trim()) await client.unsafe(statement);
+    }
+  } finally {
+    await client.end({ timeout: 5 });
+  }
+  return notices;
+}
+
+describe("migration 0343: a stored title quotes its issue's title and its project's name as written", () => {
+  it('restores what 0342 read as a person inside an issue title or a project name', async () => {
+    const mai = await person('Mai');
+    await person(null, 'lan@example.com');
+    const quoted = `Reply to ${mai.email} about the export`;
+    const opening = 'lan@example.com asked for a refund';
+    const exportIssue = await issueTitled(1, quoted);
+    const refundIssue = await issueTitled(2, opening);
+    const retitled = await issueTitled(3, `Send ${mai.email} the export`);
+    const plainIssue = await issueTitled(5, 'Fix the export');
+    await fx.db.execute(
+      sql`UPDATE projects SET name = 'Billing (ops@example.com)' WHERE id = ${fx.project.id}`,
+    );
+
+    const moved = await storedAbout('ISS-1 — Reply to Mai about the export moved to Needs info', {
+      issueId: exportIssue,
+    });
+    const mention = await storedAbout('@lan mentioned you in "Reply to Mai about the export"', {
+      issueId: exportIssue,
+    });
+    const resolved = await storedAbout(
+      'ISS-1 — Reply to Mai about the export moved to Needs info',
+      { issueId: exportIssue },
+      'Resolved — ISS-1 — Reply to Mai about the export moved to Needs info',
+    );
+    const atStart = await storedAbout('Another member asked for a refund', {
+      issueId: refundIssue,
+    });
+    const project = await storedAbout('Billing (another member) — PM cadence auto-disabled', {
+      projectId: fx.project.id,
+    });
+    const stale = await storedAbout(
+      'ISS-3 — Reply to another member about the export moved to Needs info',
+      { issueId: retitled },
+    );
+    const park = await storedAbout("ISS-5 is waiting for another member's decision — Invoicing", {
+      issueId: plainIssue,
+    });
+
+    const notices = await runRestore();
+
+    expect(await titlesOf(moved)).toEqual(Array(2).fill(`ISS-1 — ${quoted} moved to Needs info`));
+    expect(await titlesOf(mention)).toEqual(
+      Array(2).fill(`@lan mentioned you in "${quoted}"`),
+    );
+    expect(await titlesOf(resolved)).toEqual([
+      `ISS-1 — ${quoted} moved to Needs info`,
+      `Resolved — ISS-1 — ${quoted} moved to Needs info`,
+    ]);
+    expect(await titlesOf(atStart)).toEqual(Array(2).fill(opening));
+    expect(await titlesOf(project)).toEqual(
+      Array(2).fill('Billing (ops@example.com) — PM cadence auto-disabled'),
+    );
+    expect(await titlesOf(stale)).toEqual(
+      Array(2).fill('ISS-3 — Reply to another member about the export moved to Needs info'),
+    );
+    expect(await titlesOf(park)).toEqual(
+      Array(2).fill("ISS-5 is waiting for another member's decision — Invoicing"),
+    );
+    expect(notices).toEqual([
+      '0343: 10 stored title(s) quote an issue title or project name as written again; 2 holding neither that text nor 0342\'s reading of it were left as they are',
+    ]);
+  });
+
+  it('runs again over titles it already restored and changes nothing', async () => {
+    const mai = await person('Mai');
+    const issueId = await issueTitled(1, `Reply to ${mai.email}`);
+    const once = await storedAbout('ISS-1 — Reply to Mai moved to Needs info', { issueId });
+    await runRestore();
+    const after = await titlesOf(once);
+    expect(after).toEqual(Array(2).fill(`ISS-1 — Reply to ${mai.email} moved to Needs info`));
+    await runRestore();
     expect(await titlesOf(once)).toEqual(after);
   });
 });

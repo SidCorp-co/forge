@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
+import { personName } from '../lib/person-name.js';
 import { parkOwerNameSql, parkOwerSql } from '../projects/stuck-issue-kinds.js';
 import { groupTitleOfGroupKey } from './explanations.js';
 
@@ -12,7 +13,7 @@ export type ParkOwedBy = { you: true } | { you: false; name: string | null };
  * person who does by name (ISS-1229 r16, the master's ruling on criterion 98).
  */
 export function waitingParkAsk(waitingKind: string | null, owedBy: ParkOwedBy): string {
-  const who = owedBy.you ? null : owedBy.name;
+  const who = owedBy.you || owedBy.name === null ? null : personName(owedBy.name);
   if (waitingKind === 'needs_decision') {
     if (owedBy.you) return 'your decision';
     return who ? `${who}'s decision` : 'a decision';
