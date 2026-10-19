@@ -93,9 +93,19 @@ describe("ActivityTab — required states", () => {
     expect(onRetry).toHaveBeenCalledTimes(1);
   });
 
-  it("first-run empty: says what will appear here", () => {
-    render(<ActivityTab run={run([])} loading={false} error={null} onRetry={noop} />);
+  it("first-run empty: says what will appear here, in a box's name rather than a runner's", () => {
+    const opened = { ...run([]), startedAt: new Date().toISOString() };
+    render(<ActivityTab run={opened} loading={false} error={null} onRetry={noop} />);
     expect(screen.getByText(/nothing has run yet/i)).toBeInTheDocument();
+    expect(screen.getByText("Attempts appear here the moment a box picks this up.")).toBeInTheDocument();
+  });
+
+  // ISS-1228 round 18 repair: a run reading Nothing working promised attempts "the moment a runner
+  // picks this up", though no job waited for any box.
+  it("a run nothing works and nothing waits on: says so, and promises no attempt", () => {
+    render(<ActivityTab run={run([])} loading={false} error={null} onRetry={noop} />);
+    expect(screen.getByText("Nothing is working this run")).toBeInTheDocument();
+    expect(screen.queryByText(/the moment a/)).toBeNull();
   });
 
   // ISS-1228 round 18: a run session's drawer read Running over "Nothing has run yet".

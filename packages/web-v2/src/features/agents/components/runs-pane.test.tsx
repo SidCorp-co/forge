@@ -481,6 +481,32 @@ describe("the band over the runs tab (ISS-1228 criterion 49)", () => {
     pane();
     expect(screen.getByText("Every open run has a job or a live agent behind it.")).toBeInTheDocument();
   });
+
+  // ISS-1228 round 18 repair: a paused run nothing works is neither stalled nor worked.
+  it("says every open run has work behind it only when every one does", () => {
+    state.runs = [run({ id: "p", status: "paused", finishedAt: null, liveJobs: 0 })];
+    state.total = 1;
+    pane();
+    expect(screen.queryByText("Every open run has a job or a live agent behind it.")).toBeNull();
+    expect(screen.queryByText(/nothing working on/)).toBeNull();
+  });
+
+  // ISS-1228 round 18 repair: the band said "1 open run has nothing working on it" and named none.
+  it("names each open run nothing works, by issue or kind, each linking its drawer", () => {
+    const idle = { status: "running" as const, finishedAt: null, liveJobs: 0 };
+    state.runs = [
+      run({ ...idle, id: "r5", issueRef: "ISS-5" }),
+      run({ ...idle, id: "rs", issueId: null, issueRef: null, kind: "system" }),
+    ];
+    state.total = 2;
+    pane();
+    const band = screen.getByText(/have nothing working on them/);
+    expect(within(band).getAllByRole("link").map((a) => [a.textContent, a.getAttribute("href")])).toEqual([
+      ["ISS-5", "/ops?run=r5"],
+      ["System run", "/ops?run=rs"],
+    ]);
+    expect(band).toHaveTextContent("ISS-5 and System run have nothing working on them");
+  });
 });
 
 // ISS-1228 round 13: judge-34 read an ended run as orange "Quiet. No report for 19m." on the row that

@@ -33,16 +33,45 @@ const OPEN_RUN_WORD: Record<Exclude<RunReading, "running">, { status: StatusKey;
   waiting: { status: "waiting", label: sessionStatusLabel("waiting") },
 };
 
+const RUN_START_GRACE_MS = 3 * 60_000;
+
+type RunLiveFields = Pick<PipelineRunSummary, "status" | "reading" | "liveJobs" | "lastSessionBeatAt" | "startedAt">;
+
+/** Core ends a silent session itself, so a session it holds open is an agent behind the run. */
+export function sessionIsBeating(run: Pick<PipelineRunSummary, "lastSessionBeatAt">): boolean {
+  return run.lastSessionBeatAt != null && !Number.isNaN(Date.parse(run.lastSessionBeatAt));
+}
+
+function startingUp(run: RunLiveFields, nowMs: number): boolean {
+  const started = Date.parse(run.startedAt);
+  return !Number.isNaN(started) && nowMs - started <= RUN_START_GRACE_MS;
+}
+
+/** A running run past its start-up grace with no agent, live job or beating session; the band, rows
+ *  and drawer header all ask this one test (ISS-1228). */
+export function runIsStalled(run: RunLiveFields, nowMs: number): boolean {
+  return (
+    run.status === "running" &&
+    run.reading == null &&
+    (run.liveJobs ?? 0) === 0 &&
+    !sessionIsBeating(run) &&
+    !startingUp(run, nowMs)
+  );
+}
+
+function unreadRunWord(run: RunLiveFields, nowMs: number): { status: StatusKey; label: string } {
+  if (runIsStalled(run, nowMs)) return { status: "zombie", label: "Nothing working" };
+  if ((run.liveJobs ?? 0) === 0 && !sessionIsBeating(run)) return OPEN_RUN_WORD.starting;
+  return { status: "running", label: RUN_STATUS_WORD.running };
+}
+
 /** The one word a run reads on every surface, the runs tab and the drawer's header alike: an open run
  *  by what core says its agent is doing, any other by its own status (ISS-1228). */
-export function runReadingChip(run: Pick<PipelineRunSummary, "status" | "reading">): {
-  status: StatusKey;
-  label: string;
-} {
-  if (run.status !== "running" || run.reading === null || run.reading === "running") {
+export function runReadingChip(run: RunLiveFields, nowMs: number): { status: StatusKey; label: string } {
+  if (run.status !== "running" || run.reading === "running") {
     return { status: runStatusToStatusKey(run.status), label: RUN_STATUS_WORD[run.status] };
   }
-  return OPEN_RUN_WORD[run.reading];
+  return run.reading == null ? unreadRunWord(run, nowMs) : OPEN_RUN_WORD[run.reading];
 }
 
 /** Whether anything has started on an open run: an agent working, or a chat waiting on its person. */

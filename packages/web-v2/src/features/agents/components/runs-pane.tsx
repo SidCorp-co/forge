@@ -90,11 +90,18 @@ function RunWork({ run, slug }: { run: PipelineRunListItem; slug: string }) {
   return <span className="fg-body-sm text-fg">{RUN_KIND_WORD[run.kind] ?? run.kind}</span>;
 }
 
+/** A run by the issues it worked, else by its kind, as the band names it. */
+function runName(run: PipelineRunListItem): string {
+  if (run.issueRef) return run.issueRef;
+  if (run.group.issues.length > 0) return run.group.issues.join(" + ");
+  return RUN_KIND_WORD[run.kind] ?? run.kind;
+}
+
 /**
  * What the tab shows where no box reports a run: the open runs with work behind them, each in the
  * word the run drawer reads it by, the runs that have closed, and above nothing, that none is working.
  */
-function NothingRunning({ projectId, slug }: { projectId: string; slug: string }) {
+function NothingRunning({ projectId, slug, now }: { projectId: string; slug: string; now: number }) {
   const runsQ = useProjectRuns(projectId);
   const closed = useMemo(() => closedRuns(runsQ.data?.items), [runsQ.data]);
   // One set for the sentence's count and the rows beneath it, so no run is counted and not shown.
@@ -141,7 +148,7 @@ function NothingRunning({ projectId, slug }: { projectId: string; slug: string }
                 </span>
                 <span className="flex flex-none items-baseline gap-3 whitespace-nowrap">
                   <span data-run-status className="fg-body-sm text-fg">
-                    {runReadingChip(r).label}
+                    {runReadingChip(r, now).label}
                   </span>
                   <span data-run-since className="fg-caption tabular-nums">
                     {runSinceWord(r)} {formatRelativeTime(r.startedAt)}
@@ -194,6 +201,7 @@ function StalledBand({ projectId, now }: { projectId: string; now: number }) {
     [runsQ.data, now],
   );
   const open = useMemo(() => openRuns(runsQ.data?.items), [runsQ.data]);
+  const worked = useMemo(() => workedRuns(runsQ.data?.items), [runsQ.data]);
 
   if (loading) {
     return <Skeleton variant="rect" className="h-8 w-full max-w-md" aria-busy="true" />;
@@ -220,13 +228,25 @@ function StalledBand({ projectId, now }: { projectId: string; now: number }) {
   // With no run open there is nothing to say about open runs: the tab below says what is running.
   if (open.length === 0) return null;
 
+  // A paused run, or one still starting up, is neither stalled nor worked: no reassurance covers it.
+  if (stalled.length === 0) {
+    return worked.length === open.length ? (
+      <p className="fg-caption text-muted">Every open run has a job or a live agent behind it.</p>
+    ) : null;
+  }
+  // Each run named, opening its drawer: the rows below list worked runs, so the band is where these are found.
   return (
     <p className="fg-caption text-muted">
-      {stalled.length === 0
-        ? "Every open run has a job or a live agent behind it."
-        : `${stalled.length} open ${stalled.length === 1 ? "run has" : "runs have"} nothing working on ${
-            stalled.length === 1 ? "it" : "them"
-          } — no live job and no agent still reporting.`}
+      {stalled.map((r, i) => (
+        <span key={r.id}>
+          {i > 0 && (i === stalled.length - 1 ? " and " : ", ")}
+          <Link href={`/ops?run=${r.id}`} className="underline focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]">
+            {runName(r)}
+          </Link>
+        </span>
+      ))}
+      {stalled.length === 1 ? " has nothing working on it" : " have nothing working on them"} — no live job and no
+      agent still reporting.
     </p>
   );
 }
@@ -256,7 +276,7 @@ export function RunsPane({ scope }: RunsPaneProps) {
           <ErrorState message={formatApiError(error)} onRetry={() => refetch()} />
         </div>
       ) : all.length === 0 ? (
-        <NothingRunning projectId={scope.projectId} slug={scope.slug} />
+        <NothingRunning projectId={scope.projectId} slug={scope.slug} now={now} />
       ) : (
         <>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">

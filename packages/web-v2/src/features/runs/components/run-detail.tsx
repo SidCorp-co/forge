@@ -25,6 +25,7 @@ import {
   Tooltip,
   type MenuItem,
 } from "@/design";
+import { useNow } from "@/design/hooks/use-now";
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import { useRecents, buildShareLink } from "@/features/shell";
@@ -66,6 +67,7 @@ export function RunDetail({ open, onClose, runId, projectSlugs, canWrite = true 
   const pause = usePauseRun();
   const resume = useResumeRun();
   const cancel = useCancelRun();
+  const now = useNow(10_000, open);
 
   const run = runQ.data;
   const slug = run ? projectSlugs.get(run.projectId) : undefined;
@@ -95,7 +97,7 @@ export function RunDetail({ open, onClose, runId, projectSlugs, canWrite = true 
   const chipStep = run?.currentStep ? jobKindLabel(run.currentStep) : undefined;
   const label = issueRef ?? (runId ? `run ${runId.slice(0, 8)}` : "run");
   const title = runTitle(issues, run ? RUN_KIND_WORD[run.kind] : "Pipeline run");
-  const chip = run ? runReadingChip(run) : null;
+  const chip = run ? runReadingChip(run, now) : null;
   // Pause and Stop now act on an agent at work, so only a run something has started offers them; an
   // open run nothing has started yet offers Cancel run, the one control it takes (ISS-1228).
   const hasStarted = run ? runHasStarted(run) : false;
