@@ -87,9 +87,11 @@ awaiting-release banner offer no release for such an issue and print why. For a 
 the issue, or a run of it with a session (`packages/core/src/pipeline/runs-of-issue.ts:issueHasSession`)
 — and Reopen in the actions menu everywhere else. The unattended sweep
 leaves such an issue off its cut and writes a `RELEASE_ISSUES_UNCLOSABLE` release hold on it, whose
-comment says one shortfall in a sentence and its act in the next, and several as a line each, the
-reason then its act, no sentence past 20 words
-(`packages/core/src/pipeline/release-hold-kinds.ts:closeRefusedHold`); a
+comment gives each shortfall a line of its own, the banner's sentence for it then its act, under an
+opening that says the release cannot close the issue, so no sentence runs past 20 words whatever
+set of records the project requires
+(`packages/core/src/pipeline/release-hold-kinds.ts:closeRefusedHold`; the words are
+`packages/core/src/release-batch/shortfall-words.ts`'s); a
 scheduled cut leaves it off and names it in its outcome. A refusal that arises after the press, a
 question asked mid-run, is still met at the finish below.
 
@@ -333,8 +335,10 @@ differ in, and the files a landing changed) — goes through one port,
 - **The project's active GitHub binding**, where it has one. A binding that exists and cannot be
   used is refused in GitHub's words; it never falls back to the key.
 - **Otherwise the SSH deploy key attached under Settings → Runners → Git access**, beside an SSH
-  repository URL — the same key a runner clones and pushes with, which is why every sentence that
-  asks for access for it asks for write access. `packages/core/src/git/repository-reading.ts`
+  repository URL — the same key a runner clones and pushes with. Forge only reads with it, so every
+  sentence that asks for access for it asks for read access and says apart that devices pushing
+  with it need write access (`packages/core/src/git/bounded-fetch.ts:WHY_KEY_ACCESS`).
+  `packages/core/src/git/repository-reading.ts`
   reads with plain git: every branch's commits once per reading (`--filter=tree:0`), and only the
   trees of the commits a file question compares (`--depth=1 --filter=blob:none`), never a file's
   contents, each fetch held to the byte and time budget of `packages/core/src/git/bounded-fetch.ts`.

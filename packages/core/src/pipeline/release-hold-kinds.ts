@@ -195,23 +195,19 @@ const capitalised = (clause: string): string =>
 export function closeRefusedHold(shortfalls: readonly Shortfall[]): ReleaseHold {
   const said = shortfalls.map((s) => shortfallSentence(s.reason).replace(/^It/, 'it').slice(0, -1));
   const acts = shortfalls.map((s) => s.clearsHere ?? s.clears).join(' ');
-  // One reason is one sentence and its act another; several are a line each, reason then act, so
-  // no sentence runs past `HOLD_SENTENCE_WORDS` however many there are (ISS-1421 r9).
-  const [only] = shortfalls;
-  const words: HoldWords =
-    shortfalls.length === 1 && only
-      ? [
-          `The automatic release cannot close this issue, because ${shortfallWhy(only).replace(/^It/, 'it')}`,
-          `To clear it, ${shortfallStep(only)}.`,
-          'The next sweep releases it once that is done.',
-        ]
-      : [
-          `The automatic release cannot close this issue, for ${shortfalls.length} reasons.`,
-          shortfalls
-            .map((s) => `- ${shortfallWhy(s)} ${capitalised(shortfallStep(s))}.`)
-            .join('\n'),
-          'The next sweep releases it once each is done.',
-        ];
+  // Each reason is a line of its own, the banner's sentence and then its act, however many there
+  // are: joined to the opening, one reason ran past `HOLD_SENTENCE_WORDS` once a project required
+  // four records (ISS-1421 r11), and a line keeps the comment to its three parts.
+  const one = shortfalls.length === 1;
+  const words: HoldWords = [
+    one
+      ? 'The automatic release cannot close this issue.'
+      : `The automatic release cannot close this issue, for ${shortfalls.length} reasons.`,
+    shortfalls.map((s) => `- ${shortfallWhy(s)} ${capitalised(shortfallStep(s))}.`).join('\n'),
+    one
+      ? 'The next sweep releases it once that is done.'
+      : 'The next sweep releases it once each is done.',
+  ];
   return {
     code: 'RELEASE_ISSUES_UNCLOSABLE',
     reason:
