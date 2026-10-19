@@ -359,7 +359,21 @@ describe("migration 0343: a stored title quotes its issue's title and its projec
       issueId: plainIssue,
     });
 
+    // Consult fc2554 findings F1 and F2: a whole-address title, and a person slot reading like one.
+    const bare = await person('Mai', 'Mai@desk.example.com');
+    const bareIssue = await issueTitled(6, bare.email);
+    const whole = await storedAbout('Mai moved to Needs info', { issueId: bareIssue });
+    const addressOnly = await issueTitled(7, 'ops-desk@example.com');
+    const slot = await storedAbout("ISS-7 is waiting for another member's decision — Invoicing", {
+      issueId: addressOnly,
+    });
+
     const notices = await runRestore();
+
+    expect(await titlesOf(whole)).toEqual(Array(2).fill(`${bare.email} moved to Needs info`));
+    expect(await titlesOf(slot)).toEqual(
+      Array(2).fill("ISS-7 is waiting for another member's decision — Invoicing"),
+    );
 
     expect(await titlesOf(moved)).toEqual(Array(2).fill(`ISS-1 — ${quoted} moved to Needs info`));
     expect(await titlesOf(mention)).toEqual(Array(2).fill(`@lan mentioned you in "${quoted}"`));
@@ -378,7 +392,7 @@ describe("migration 0343: a stored title quotes its issue's title and its projec
       Array(2).fill("ISS-5 is waiting for another member's decision — Invoicing"),
     );
     expect(notices).toEqual([
-      "0343: 10 stored title(s) quote an issue title or project name as written again; 2 holding neither that text nor 0342's reading of it were left as they are",
+      "0343: 12 stored title(s) quote an issue title or project name as written again; 4 that quote neither that text nor 0342's reading of it were left as they are",
     ]);
   });
 

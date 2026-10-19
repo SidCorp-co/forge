@@ -4,21 +4,33 @@
 -- that names a person is swapped; an issue's title and a project's name are quoted as written.
 -- For each stored title, on a record and on its bell row, whose issue, secondary issue or project
 -- carries an address in its title or name, this reads that text as 0342 did, against the users table
--- as it stands, and where the stored title holds that reading puts the text back as written. A title
--- holding neither the text nor that reading is left as it is and counted: nothing is guessed. The
+-- as it stands, and finds that reading where a title quotes such a text: after the title's start,
+-- " — ", '"', ": " or " to ", and before its end, " — ", '"', " moved to" or " as ". A person slot
+-- ("waiting for another member's decision") is never one of those places. Every place is found in
+-- the title as stored and replaced once; a title whose places overlap, or that holds neither the
+-- text nor its reading in such a place, is left as it is and counted: nothing is guessed. The
 -- pattern is lib/person-name.ts ADDRESS_PATTERN, and the reading is 0342's loop.
 DO $$
 DECLARE
   pat CONSTANT text := '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}';
   r record;
   quoted text;
-  said text;
   read_as text;
   found text;
   named text;
   at integer;
   opening boolean;
+  pos integer;
+  stop integer;
+  len integer;
   holds boolean;
+  starts integer[];
+  lens integer[];
+  texts text[];
+  i integer;
+  j integer;
+  clash boolean;
+  said text;
   restored integer := 0;
   left_alone integer := 0;
 BEGIN
@@ -45,11 +57,13 @@ BEGIN
     HAVING bool_or(coalesce(i.title ~ pat, false) OR coalesce(si.title ~ pat, false)
                    OR coalesce(p.name ~ pat, false))
   LOOP
-    said := r.title;
     holds := false;
+    starts := '{}';
+    lens := '{}';
+    texts := '{}';
     FOREACH quoted IN ARRAY r.texts LOOP
       CONTINUE WHEN quoted !~ pat;
-      IF position(quoted IN said) > 0 THEN
+      IF position(quoted IN r.title) > 0 THEN
         holds := true;
         CONTINUE;
       END IF;
@@ -71,26 +85,53 @@ BEGIN
             FROM at FOR length(found)
           );
         END LOOP;
-        IF opening THEN
-          IF left(said, length(read_as)) = read_as THEN
-            said := quoted || substr(said, length(read_as) + 1);
+        len := length(read_as);
+        pos := 0;
+        LOOP
+          stop := position(read_as IN substr(r.title, pos + 1));
+          EXIT WHEN stop = 0;
+          pos := pos + stop;
+          -- The opening reading is 0342's only at the title's start, and the inside one only after it.
+          IF (opening = (pos = 1))
+             AND (pos = 1 OR right(left(r.title, pos - 1), 3) = ' — ' OR right(left(r.title, pos - 1), 1) = '"'
+                  OR right(left(r.title, pos - 1), 2) = ': ' OR right(left(r.title, pos - 1), 4) = ' to ')
+             AND (pos + len - 1 = length(r.title) OR substr(r.title, pos + len, 3) = ' — '
+                  OR substr(r.title, pos + len, 1) = '"' OR substr(r.title, pos + len, 9) = ' moved to'
+                  OR substr(r.title, pos + len, 4) = ' as ')
+          THEN
+            starts := starts || pos;
+            lens := lens || len;
+            texts := texts || quoted;
           END IF;
-        ELSIF position(read_as IN said) > 0 THEN
-          said := replace(said, read_as, quoted);
+          EXIT WHEN opening;
+        END LOOP;
+      END LOOP;
+    END LOOP;
+
+    clash := false;
+    FOR i IN 1 .. coalesce(array_length(starts, 1), 0) LOOP
+      FOR j IN 1 .. coalesce(array_length(starts, 1), 0) LOOP
+        IF i <> j AND starts[i] < starts[j] + lens[j] AND starts[j] < starts[i] + lens[i] THEN
+          clash := true;
         END IF;
       END LOOP;
-      IF position(quoted IN said) > 0 THEN holds := true; END IF;
     END LOOP;
-    IF said <> r.title THEN
+
+    IF coalesce(array_length(starts, 1), 0) > 0 AND NOT clash THEN
+      said := r.title;
+      -- From the last place to the first, so each start still points into the title as stored.
+      FOR i IN SELECT k FROM generate_subscripts(starts, 1) k ORDER BY starts[k] DESC LOOP
+        said := overlay(said PLACING texts[i] FROM starts[i] FOR lens[i]);
+      END LOOP;
       IF r.kind = 'record' THEN
         UPDATE public.notifications SET title = said WHERE id = r.id;
       ELSE
         UPDATE public.notification_deliveries SET title = said WHERE id = r.id;
       END IF;
       restored := restored + 1;
-    ELSIF NOT holds THEN
+    ELSIF NOT holds OR clash THEN
       left_alone := left_alone + 1;
     END IF;
   END LOOP;
-  RAISE NOTICE '0343: % stored title(s) quote an issue title or project name as written again; % holding neither that text nor 0342''s reading of it were left as they are', restored, left_alone;
+  RAISE NOTICE '0343: % stored title(s) quote an issue title or project name as written again; % that quote neither that text nor 0342''s reading of it were left as they are', restored, left_alone;
 END $$;
