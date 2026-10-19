@@ -16,7 +16,7 @@ import { Hono } from 'hono';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { ADDRESS_PATTERN } from '../../src/lib/person-name.js';
 import type { RequestIdVars } from '../../src/middleware/request-id.js';
-import { createTestUser } from '../helpers/factories.js';
+import { createTestProject, createTestUser } from '../helpers/factories.js';
 import { registerInboxFixture } from '../helpers/inbox-fixture.js';
 
 vi.mock('../../src/projects/invitation-email.js', () => ({
@@ -325,9 +325,7 @@ describe("migration 0343: a stored title quotes its issue's title and its projec
     const mai = await person('Mai');
     await person(null, 'lan@example.com');
     const quoted = `Reply to ${mai.email} about the export`;
-    const opening = 'lan@example.com asked for a refund';
     const exportIssue = await issueTitled(1, quoted);
-    const refundIssue = await issueTitled(2, opening);
     const retitled = await issueTitled(3, `Send ${mai.email} the export`);
     const plainIssue = await issueTitled(5, 'Fix the export');
     await fx.db.execute(
@@ -345,8 +343,9 @@ describe("migration 0343: a stored title quotes its issue's title and its projec
       { issueId: exportIssue },
       'Resolved — ISS-1 — Reply to Mai about the export moved to Needs info',
     );
-    const atStart = await storedAbout('Another member asked for a refund', {
-      issueId: refundIssue,
+    const desk = await createTestProject(fx.db, fx.owner, { name: 'lan@example.com desk' });
+    const atStart = await storedAbout('Another member desk — PM cadence auto-disabled', {
+      projectId: desk.id,
     });
     const project = await storedAbout('Billing (another member) — PM cadence auto-disabled', {
       projectId: fx.project.id,
@@ -362,7 +361,7 @@ describe("migration 0343: a stored title quotes its issue's title and its projec
     // Consult fc2554 findings F1 and F2: a whole-address title, and a person slot reading like one.
     const bare = await person('Mai', 'Mai@desk.example.com');
     const bareIssue = await issueTitled(6, bare.email);
-    const whole = await storedAbout('Mai moved to Needs info', { issueId: bareIssue });
+    const whole = await storedAbout('ISS-6 — Mai moved to Needs info', { issueId: bareIssue });
     const addressOnly = await issueTitled(7, 'ops-desk@example.com');
     const slot = await storedAbout("ISS-7 is waiting for another member's decision — Invoicing", {
       issueId: addressOnly,
@@ -375,13 +374,26 @@ describe("migration 0343: a stored title quotes its issue's title and its projec
       issueId: statusIssue,
     });
 
+    // Consult 1641f0 F1: a person named like the project is not the project's place.
+    const projectNamed = await person('Invoicing', 'books@desk.example.com');
+    const projectLike = await issueTitled(9, projectNamed.email);
+    const suffix = await storedAbout("ISS-9 is waiting for another member's decision — Invoicing", {
+      issueId: projectLike,
+    });
+
     const notices = await runRestore();
+
+    expect(await titlesOf(suffix)).toEqual(
+      Array(2).fill("ISS-9 is waiting for another member's decision — Invoicing"),
+    );
 
     expect(await titlesOf(transition)).toEqual(
       Array(2).fill(`ISS-8 — ${statusNamed.email} moved to Needs info`),
     );
 
-    expect(await titlesOf(whole)).toEqual(Array(2).fill(`${bare.email} moved to Needs info`));
+    expect(await titlesOf(whole)).toEqual(
+      Array(2).fill(`ISS-6 — ${bare.email} moved to Needs info`),
+    );
     expect(await titlesOf(slot)).toEqual(
       Array(2).fill("ISS-7 is waiting for another member's decision — Invoicing"),
     );
@@ -392,7 +404,9 @@ describe("migration 0343: a stored title quotes its issue's title and its projec
       `ISS-1 — ${quoted} moved to Needs info`,
       `Resolved — ISS-1 — ${quoted} moved to Needs info`,
     ]);
-    expect(await titlesOf(atStart)).toEqual(Array(2).fill(opening));
+    expect(await titlesOf(atStart)).toEqual(
+      Array(2).fill('lan@example.com desk — PM cadence auto-disabled'),
+    );
     expect(await titlesOf(project)).toEqual(
       Array(2).fill('Billing (ops@example.com) — PM cadence auto-disabled'),
     );
@@ -403,7 +417,7 @@ describe("migration 0343: a stored title quotes its issue's title and its projec
       Array(2).fill("ISS-5 is waiting for another member's decision — Invoicing"),
     );
     expect(notices).toEqual([
-      "0343: 14 stored title(s) quote an issue title or project name as written again; 4 that quote neither that text nor 0342's reading of it were left as they are",
+      "0343: 14 stored title(s) quote an issue title or project name as written again; 6 that quote neither that text nor 0342's reading of it were left as they are",
     ]);
   });
 
