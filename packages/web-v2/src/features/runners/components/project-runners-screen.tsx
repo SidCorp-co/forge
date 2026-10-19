@@ -7,6 +7,7 @@
 // stepper. Workspace-level `/runners` is the device-global roll-up (pair /
 // rename / revoke); project membership (admin) gates the writes here.
 
+import { ConnTestMessage } from "@/features/resources/components/conn-test-message";
 import {
   Badge,
   Banner,
@@ -187,7 +188,7 @@ function GitConfigCard({
 							</p>
 							{testCred.data && (
 								<Banner tone={testCred.data.ok ? "success" : "danger"}>
-									{testCred.data.message}
+									<ConnTestMessage message={testCred.data.message} />
 									{testCred.data.headSha
 										? ` (HEAD ${testCred.data.headSha.slice(0, 10)})`
 										: ""}

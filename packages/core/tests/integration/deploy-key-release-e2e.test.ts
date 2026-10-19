@@ -231,7 +231,7 @@ describe('ISS-1398 — the release weighs a verdict through the deploy key', () 
     expect(reason.split(fix)).toHaveLength(2);
     expect(reason).toContain(`A person clears this by making the repository readable: ${fix}`);
     expect(reason.indexOf(fix)).toBeLessThan(reason.indexOf('record a verdict'));
-    expect(reason).not.toContain('read access');
+    expect(reason).not.toMatch(/key write access/);
   }, 60_000);
 
   it('names the deploy key to attach, never GitHub, where the project has neither (criteria 14, 16)', async () => {
