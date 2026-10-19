@@ -311,9 +311,10 @@ mod missing_socket {
             tracing::debug!("[terminal] {name}: the tmux socket file is still not there");
             return;
         }
-        let shown = socket
-            .as_deref()
-            .map_or_else(|| "of the default server".to_string(), |p| p.display().to_string());
+        let shown = socket.as_deref().map_or_else(
+            || "of the default server".to_string(),
+            |p| p.display().to_string(),
+        );
         let placed: Vec<String> = PLACED
             .lock()
             .unwrap_or_else(|e| e.into_inner())
