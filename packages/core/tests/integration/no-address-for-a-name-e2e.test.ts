@@ -381,7 +381,20 @@ describe("migration 0343: a stored title quotes its issue's title and its projec
       issueId: projectLike,
     });
 
+    // Consult 8b8298 F1: a project's name read like words inside an issue's title is not its place.
+    const ledger = await createTestProject(fx.db, fx.owner, { name: 'books@ledger.example.com' });
+    await person('Invoicing', 'books@ledger.example.com');
+    const guideIssue = await issueTitled(10, 'Guide to Invoicing as owner');
+    const guide = await storedAbout('ISS-10 — Guide to Invoicing as owner moved to Needs info', {
+      issueId: guideIssue,
+      projectId: ledger.id,
+    });
+
     const notices = await runRestore();
+
+    expect(await titlesOf(guide)).toEqual(
+      Array(2).fill('ISS-10 — Guide to Invoicing as owner moved to Needs info'),
+    );
 
     expect(await titlesOf(suffix)).toEqual(
       Array(2).fill("ISS-9 is waiting for another member's decision — Invoicing"),
@@ -417,7 +430,7 @@ describe("migration 0343: a stored title quotes its issue's title and its projec
       Array(2).fill("ISS-5 is waiting for another member's decision — Invoicing"),
     );
     expect(notices).toEqual([
-      "0343: 14 stored title(s) quote an issue title or project name as written again; 6 that quote neither that text nor 0342's reading of it were left as they are",
+      "0343: 14 stored title(s) quote an issue title or project name as written again; 8 that quote neither that text nor 0342's reading of it were left as they are",
     ]);
   });
 

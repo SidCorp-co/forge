@@ -4,14 +4,15 @@
 -- that names a person is swapped; an issue's title and a project's name are quoted as written.
 -- For each stored title, on a record and on its bell row, whose issue, secondary issue or project
 -- carries an address in its title or name, this reads that text as 0342 did, against the users table
--- as it stands, and finds that reading only where a producer quotes that kind of text: an issue's
--- title between " — " and " moved to", between '"' and '"', or after ": " at the end; a project's
--- name between " — " and the end, at the start before " — ", or between " to " and " as ". A person
--- slot ("waiting for another member's decision") and a status ("moved to Needs info") are never one
--- of those places. Every place is found in the title as stored and replaced once; a title whose
--- places overlap, or that holds neither the text nor its reading in such a place, is left as it is
--- and counted: nothing is guessed. The pattern is lib/person-name.ts ADDRESS_PATTERN, and the
--- reading is 0342's loop.
+-- as it stands, and puts the text back only where the title's own template quotes that kind of
+-- text and the whole quoted part is that reading: an issue's title in a status change ("ISS-3 — <title>
+-- moved to …"), a mention ('… mentioned you in "<title>"') or an intake notice ("Awaiting intake
+-- review: <title>"); a project's name in an invitation ("… invited you to <name> as <role>"), or, in a
+-- title of no such template, as its " — <name>" ending or its "<name> — " opening. A person slot
+-- ("waiting for another member's decision") and a status are never such a part. Every part is found
+-- in the title as stored and replaced once; a title whose parts overlap, or that quotes neither the
+-- text nor its reading, is left as it is and counted: nothing is guessed. The pattern is
+-- lib/person-name.ts ADDRESS_PATTERN, and the reading is 0342's loop.
 DO $$
 DECLARE
   pat CONSTANT text := '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}';
@@ -22,11 +23,11 @@ DECLARE
   named text;
   at integer;
   opening boolean;
-  before text;
-  after text;
-  placed boolean;
+  m text[];
+  slot_kind text;
+  slot_at integer;
+  slot_len integer;
   pos integer;
-  stop integer;
   len integer;
   holds boolean;
   starts integer[];
@@ -73,6 +74,26 @@ BEGIN
     starts := '{}';
     lens := '{}';
     texts := '{}';
+    -- The one quoted part the title's template names, where it has one.
+    slot_kind := NULL;
+    m := regexp_match(r.title, '^((?:Resolved — )?[A-Za-z][A-Za-z0-9]{1,5}-[0-9]+ — )(.+)( moved to [^—]+)$');
+    IF m IS NULL THEN
+      m := regexp_match(r.title, '^((?:Resolved — )?(?:@[^ ]+|someone) mentioned you in ")(.*)(")$');
+    END IF;
+    IF m IS NULL THEN
+      m := regexp_match(r.title, '^((?:Resolved — )?Awaiting intake review: )(.+)()$');
+    END IF;
+    IF m IS NOT NULL THEN
+      slot_kind := 'issue';
+    ELSE
+      m := regexp_match(r.title, '^((?:Resolved — )?.+ invited you to )(.+)( as [a-z_]+)$');
+      IF m IS NOT NULL THEN slot_kind := 'project'; END IF;
+    END IF;
+    IF m IS NOT NULL THEN
+      slot_at := length(m[1]) + 1;
+      slot_len := length(m[2]);
+    END IF;
+
     FOR k IN 1 .. array_length(r.texts, 1) LOOP
       quoted := r.texts[k];
       IF position(quoted IN r.title) > 0 THEN
@@ -98,38 +119,25 @@ BEGIN
           );
         END LOOP;
         len := length(read_as);
-        pos := 0;
-        LOOP
-          stop := position(read_as IN substr(r.title, pos + 1));
-          EXIT WHEN stop = 0;
-          pos := pos + stop;
-          -- The opening reading is 0342's only at the title's start, and the inside one only after it.
-          before := CASE
-            WHEN pos = 1 THEN 'start'
-            WHEN right(left(r.title, pos - 1), 3) = ' — ' THEN 'dash'
-            WHEN right(left(r.title, pos - 1), 1) = '"' THEN 'quote'
-            WHEN right(left(r.title, pos - 1), 2) = ': ' THEN 'colon'
-            WHEN right(left(r.title, pos - 1), 4) = ' to ' THEN 'to'
-          END;
-          after := CASE
-            WHEN pos + len - 1 = length(r.title) THEN 'end'
-            WHEN substr(r.title, pos + len, 3) = ' — ' THEN 'dash'
-            WHEN substr(r.title, pos + len, 1) = '"' THEN 'quote'
-            WHEN substr(r.title, pos + len, 9) = ' moved to' THEN 'moved'
-            WHEN substr(r.title, pos + len, 4) = ' as ' THEN 'as'
-          END;
-          IF r.sources[k] = 'issue' THEN
-            placed := (before, after) IN (('dash', 'moved'), ('quote', 'quote'), ('colon', 'end'));
-          ELSE
-            placed := (before, after) IN (('dash', 'end'), ('start', 'dash'), ('to', 'as'));
+        pos := NULL;
+        -- The opening reading is 0342's only at the title's start, and the inside one only after it.
+        IF slot_kind IS NOT NULL THEN
+          IF slot_kind = r.sources[k] AND opening = (slot_at = 1) AND slot_len = len
+             AND substr(r.title, slot_at, len) = read_as THEN
+            pos := slot_at;
           END IF;
-          IF opening = (pos = 1) AND coalesce(placed, false) THEN
-            starts := starts || pos;
-            lens := lens || len;
-            texts := texts || quoted;
+        ELSIF r.sources[k] = 'project' THEN
+          IF opening AND left(r.title, len + 3) = read_as || ' — ' THEN
+            pos := 1;
+          ELSIF NOT opening AND length(r.title) > len + 3 AND right(r.title, len + 3) = ' — ' || read_as THEN
+            pos := length(r.title) - len + 1;
           END IF;
-          EXIT WHEN opening;
-        END LOOP;
+        END IF;
+        IF pos IS NOT NULL THEN
+          starts := starts || pos;
+          lens := lens || len;
+          texts := texts || quoted;
+        END IF;
       END LOOP;
     END LOOP;
 
