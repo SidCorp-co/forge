@@ -66,8 +66,8 @@ host the URL names did not resolve, which is found before any connection is made
 what the host said (`packages/core/src/git/bounded-fetch.ts:hostRefusal`): the host refused the key;
 it took the key but will not let it read that repository, or none is there; the host could not be
 reached; or the repository lacks a branch. Each of the first four says what clears it, and where that
-is access for the key it asks for write access, as Test connection under Git access does, since the
-runner pushes with the same key. That is at most three short sentences with no dash, and the host's
+is access for the key it asks for read access, as Test connection under Git access does, which is
+all Forge needs, and says that devices pushing with the same key need write access. That is at most three short sentences with no dash, and the host's
 own line, past any `remote:` banner, stands apart beneath them (`Refused.said`, put on its own line by
 `packages/core/src/projects/repository-reader.ts:saying`).
 What clears it is named beside the cause, in the answer to an agent's mark (the claim's) and in the
@@ -243,7 +243,9 @@ itself, so its reader's own words are quoted only where they say more (an overlo
 the quoted reason to its first clause on a line of its own, the mark's comment holding it whole
 (`packages/web-v2/src/features/issues/hooks.ts:answerInBrief`), and a refusal shown beside the form,
 which writes no comment, puts it whole on a line of its own, the host's line as it said it
-(`packages/web-v2/src/features/issues/hooks.ts:answerShown`). A first mark's comment names its commit once: the label carries it only where the sentence
+(`packages/web-v2/src/features/issues/hooks.ts:answerShown`). A first mark's toast reads "Marked
+merged." over one sentence saying whether Forge saw the merge or the mark is a claim, as the comment
+does, a claim in the comment's own words (`packages/contracts/src/mark-merged-words.ts:markIsSentence`). A first mark's comment names its commit once: the label carries it only where the sentence
 after it does not, and a repository's address shows there as code, never a mail link, a bare
 `user@host` in a quoted host reason included (`addressesAsCode`). A note, on a first mark, an unmark
 or a repeat, is quoted on a line of its own (`threadBody`). Each mark refusal names the field its

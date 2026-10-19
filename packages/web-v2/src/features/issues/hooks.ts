@@ -1,6 +1,7 @@
 "use client";
 
 
+import { markIsSentence } from "@forge/contracts/mark-merged-words";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo, useRef } from "react";
 import { ApiError } from "@/lib/api/client";
@@ -337,7 +338,8 @@ export function useMergeMarker(issueId: string) {
         // A later landing of the same issue moves the mark (ISS-1421 round 7); the sentence names both commits.
         toast({ title: "Landing moved", description: answerInBrief(answer.detail ?? ""), tone: "success" });
       } else {
-        toast({ title: "Marked merged", tone: "success" });
+        // Whether Forge saw the merge or the mark is a claim, in one sentence (ISS-1421 r11).
+        toast({ title: "Marked merged.", description: markIsSentence(answer.mark ?? ""), tone: "success" });
       }
     },
   });
