@@ -3194,6 +3194,7 @@
 
 ### Fixed
 
+- **A master that ended as the last session on its box's tmux server is reported ended.** Its messages used to wait and its run stayed open for ever; a tmux the box cannot ask still says nothing. (ISS-1265)
 - **A blocked run always says it is waiting**, on its row as on hover, even where its box did not say on whom: it reads "Waiting on someone the box did not name." A working run shows no wait. (ISS-1228)
 - **A chat waiting for your reply is no longer ended as failed after twenty quiet minutes.** It closes two hours after its last turn, and its row and page say when beforehand. (ISS-1228)
 - **A session checking in no longer makes every open page reload.** Only that session and the lists that show it refresh, unless its status changed. (ISS-1228)
