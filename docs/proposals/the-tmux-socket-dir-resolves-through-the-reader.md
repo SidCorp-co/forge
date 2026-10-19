@@ -44,3 +44,14 @@ One change that takes all three: `session_config_dir` reads `config::base_dir`, 
 scoped directory resolves a socket path nothing can serve, the four tests move to `unit_for`, the
 counted-reader entry drops by one, and the runner's macOS and Windows legs are run on the branch
 before it lands.
+
+## Honest costs
+
+- **Taking it costs a run on the macOS and Windows legs before it lands.** Which tmux tests run
+  there changes, and no box here runs either leg, so the branch cannot be judged locally.
+- **Taking it costs four tests' subject.** Moved onto `unit_for`, they stop proving that the
+  production resolution with no override is the box's own directory, and nothing in a test build can
+  prove that once the resolution refuses a non-scratch directory.
+- **Leaving it costs a test build that resolves the live session server's socket by default.** A
+  future tmux test that forgets `IsolatedServer` reaches the server live masters run on, and only
+  the review of that test stands between it and them.
