@@ -1,6 +1,7 @@
 import type { StuckIssueKind } from '@forge/contracts/notifications';
 import type { StuckKind } from '@forge/contracts/stuck-words';
 import { type SQL, sql } from 'drizzle-orm';
+import { personNameSql } from '../lib/person-name.js';
 
 export const STUCK_ISSUE_KINDS = [
   'waiting',
@@ -46,7 +47,7 @@ export function parkOwerSql(issueId: SQL): SQL {
 }
 
 export function parkOwerNameSql(issueId: SQL): SQL {
-  return sql`(SELECT coalesce(pu.display_name, pu.email) FROM users pu WHERE pu.id = ${parkOwerSql(issueId)})`;
+  return sql`(SELECT ${personNameSql(sql`pu.display_name`)} FROM users pu WHERE pu.id = ${parkOwerSql(issueId)})`;
 }
 
 /** The kind a notice tells this reader by: a waiting park somebody else owes is never theirs. */

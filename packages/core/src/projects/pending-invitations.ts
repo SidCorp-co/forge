@@ -7,6 +7,7 @@ import {
   projects,
   users,
 } from '../db/schema.js';
+import { personNameSql } from '../lib/person-name.js';
 
 /**
  * The invitations a person may still accept, project and organisation alike: the rows the bell offers
@@ -17,7 +18,8 @@ export interface PendingInvitation {
   kind: 'project' | 'org';
   token: string;
   name: string;
-  inviterEmail: string;
+  /** What the bell calls the inviter: never their address (ISS-1229 r18). */
+  inviterName: string;
   role: string;
   expiresAt: Date;
   createdAt: Date;
@@ -41,7 +43,7 @@ export async function readPendingInvitations(
     .select({
       token: projectInvitations.token,
       name: projects.name,
-      inviterEmail: users.email,
+      inviterName: personNameSql(sql`${users.displayName}`, 'start'),
       role: projectInvitations.role,
       expiresAt: projectInvitations.expiresAt,
       createdAt: projectInvitations.createdAt,
@@ -65,7 +67,7 @@ export async function readPendingInvitations(
     .select({
       token: orgInvitations.token,
       name: organizations.name,
-      inviterEmail: users.email,
+      inviterName: personNameSql(sql`${users.displayName}`, 'start'),
       role: orgInvitations.role,
       expiresAt: orgInvitations.expiresAt,
       createdAt: orgInvitations.createdAt,

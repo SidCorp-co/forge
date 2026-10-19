@@ -60,7 +60,7 @@ export interface PendingInvitation {
   kind: "project" | "org";
   token: string;
   name: string;
-  inviterEmail: string;
+  inviterName: string;
   role: string;
   expiresAt: string;
   createdAt: string;

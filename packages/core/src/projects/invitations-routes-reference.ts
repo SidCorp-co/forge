@@ -9,7 +9,7 @@ export const pendingInvitationsSchema = z.array(
     kind: z.enum(['project', 'org']),
     token: z.string(),
     name: z.string(),
-    inviterEmail: z.string(),
+    inviterName: z.string(),
     role: z.string(),
     expiresAt: z.date(),
     createdAt: z.date(),
