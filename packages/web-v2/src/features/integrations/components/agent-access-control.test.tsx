@@ -25,12 +25,16 @@ function show(
   active: boolean,
   agentAccess: AgentAccess,
   agentPathKind: AgentPathKind,
-  { bindingActive = active, readFrom }: { bindingActive?: boolean; readFrom?: "drawer" | "panel" } = {},
+  {
+    bindingActive = active,
+    connectionActive = true,
+    readFrom,
+  }: { bindingActive?: boolean; connectionActive?: boolean; readFrom?: "drawer" | "panel" } = {},
 ) {
   render(
     <AgentAccessControl
       projectId="p1"
-      binding={{ id: "b1", active, bindingActive, agentAccess, agentPathKind }}
+      binding={{ id: "b1", active, bindingActive, connectionActive, agentAccess, agentPathKind }}
       canEdit
       {...(readFrom ? { readFrom } : {})}
     />,
@@ -75,8 +79,24 @@ describe("the agents switch on a binding that is turned off", () => {
       "all",
       "They may use it once Enable credential in its drawer, opened from the list above, turns its shared credential back on.",
     ],
+    [
+      "drawer",
+      "both",
+      "all",
+      "They may use it once Enabled and its shared credential are both back on, in this drawer.",
+    ],
+    [
+      "panel",
+      "both",
+      "none",
+      "A grant takes effect once Enabled and its shared credential are both back on, in its drawer opened from the list above.",
+    ],
   ] as const)("names the switch that turns it back on, read from the %s, turned off at the %s, granted %s", (from, tier, access, said) => {
-    const text = show(false, access, "direct-mcp", { bindingActive: tier === "credential", readFrom: from });
+    const text = show(false, access, "direct-mcp", {
+      bindingActive: tier === "credential",
+      connectionActive: tier === "binding",
+      readFrom: from,
+    });
     expect(text).toContain(said);
     expect(text).not.toMatch(/Turning this on|turned back on\./);
     for (const sentence of text.match(/[A-Z][^.]*\./g) ?? []) {
@@ -95,7 +115,14 @@ describe("the agents switch on a binding that is turned off", () => {
     render(
       <Control
         projectId="p1"
-        binding={{ id: "b1", active: false, bindingActive: false, agentAccess: "all", agentPathKind: "direct-mcp" }}
+        binding={{
+          id: "b1",
+          active: false,
+          bindingActive: false,
+          connectionActive: true,
+          agentAccess: "all",
+          agentPathKind: "direct-mcp",
+        }}
         canEdit
       />,
     );

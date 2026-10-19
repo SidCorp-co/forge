@@ -30,8 +30,8 @@ const KIND_COPY: Record<
   },
 };
 
-/** Which tier turned a binding off: this project's Enabled switch, or the shared credential. */
-export type TurnedOff = "binding" | "credential";
+/** Which tier turned a binding off: this project's Enabled switch, the shared credential, or both. */
+export type TurnedOff = "binding" | "credential" | "both";
 
 /** Where the switch is read from: inside the provider's drawer, or the Agent MCP servers panel. */
 export type ReadFrom = "drawer" | "panel";
@@ -41,6 +41,10 @@ const OFF = "Agents get nothing from it while it is turned off.";
 /** The control that turns it back on, named as its drawer labels it (ISS-1421 r11). */
 function backOn(tier: TurnedOff, from: ReadFrom): string {
   const where = from === "drawer" ? "in this drawer" : "in its drawer, opened from the list above,";
+  if (tier === "both") {
+    const at = from === "drawer" ? "in this drawer" : "in its drawer opened from the list above";
+    return `once Enabled and its shared credential are both back on, ${at}`;
+  }
   return tier === "binding"
     ? `once Enabled ${where} is switched back on`
     : `once Enable credential ${where} turns its shared credential back on`;
@@ -57,10 +61,11 @@ export function turnedOffCopy(tier: TurnedOff, from: ReadFrom): { granted: strin
 
 /** The tier a saved binding is turned off at, or null where both are on. */
 export function turnedOffTier(
-  binding: Pick<IntegrationSummary, "active" | "bindingActive">,
+  binding: Pick<IntegrationSummary, "active" | "bindingActive" | "connectionActive">,
 ): TurnedOff | null {
   if (binding.active) return null;
-  return binding.bindingActive ? "credential" : "binding";
+  if (binding.bindingActive) return "credential";
+  return binding.connectionActive ? "binding" : "both";
 }
 
 export function agentAccessBody(
@@ -161,7 +166,7 @@ export function AgentAccessControl({
   projectId: string;
   binding: Pick<
     IntegrationSummary,
-    "id" | "agentAccess" | "agentPathKind" | "active" | "bindingActive"
+    "id" | "agentAccess" | "agentPathKind" | "active" | "bindingActive" | "connectionActive"
   >;
   /** May the caller edit this project's integrations at all. The GRANT's own tier is applied here. */
   canEdit: boolean;
