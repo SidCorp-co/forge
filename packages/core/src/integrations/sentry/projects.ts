@@ -10,7 +10,7 @@
  * list would be the same sentence for four different facts.
  */
 
-import { attemptSentryCall, type SentryAttempt } from './call.js';
+import { attemptSentryCall, SentryAnswerNotJson, type SentryAttempt } from './call.js';
 import { sentryOrganizationsUrl, sentryOrgProjectsUrl } from './endpoints.js';
 import { nextSentryCursor } from './listing.js';
 import { SentryRefusal } from './refusals.js';
@@ -63,6 +63,11 @@ async function readPage(url: string, auth: SentryProjectsAuth): Promise<Page> {
       res = await attemptSentryCall(url, auth.previousAuthToken, 'GET');
     }
   } catch (err) {
+    if (err instanceof SentryAnswerNotJson) {
+      throw new SentryRefusal('unreadable_answer', `sentry: GET ${url} — ${err.message}`, {
+        httpStatus: err.status,
+      });
+    }
     const reason = err instanceof Error ? err.message : 'unknown error';
     throw new SentryRefusal(
       'sentry_unreachable',

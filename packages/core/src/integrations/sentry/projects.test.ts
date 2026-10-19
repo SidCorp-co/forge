@@ -142,6 +142,27 @@ describe('what Sentry can answer instead of a list', () => {
     expect(refusal.httpStatus).toBe(status);
   });
 
+  it('refuses a body that is not JSON as unreadable_answer, carrying the status Sentry sent', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        headers: { get: () => null },
+        json: async () => {
+          throw new SyntaxError('Unexpected token < in JSON at position 0');
+        },
+      })),
+    );
+
+    const refusal = await refusalOf(() => listSentryProjects(AUTH, 'canawan'));
+
+    expect(refusal.reason).toBe('unreadable_answer');
+    expect(refusal.httpStatus).toBe(200);
+    expect(refusal.message).toContain('HTTP 200');
+    expect(refusal.message).toContain('not JSON');
+  });
+
   it('refuses an unreachable host as sentry_unreachable and names the URL it tried', async () => {
     vi.stubGlobal(
       'fetch',

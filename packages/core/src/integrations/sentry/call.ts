@@ -20,6 +20,14 @@ export type SentryAttempt =
       refusal: SentryRefusalReason;
     };
 
+/** A 2xx from Sentry whose body is not JSON: Sentry was reached and answered, so its status is kept. */
+export class SentryAnswerNotJson extends Error {
+  constructor(readonly status: number) {
+    super(`Sentry answered HTTP ${status} with a body that is not JSON`);
+    this.name = 'SentryAnswerNotJson';
+  }
+}
+
 /** One HTTP attempt at Sentry, classified: shared by the dispatch path and the project picker. */
 export async function attemptSentryCall(
   url: string,
@@ -40,7 +48,15 @@ export async function attemptSentryCall(
       ...(body ? { body: JSON.stringify(body) } : {}),
       signal: controller.signal,
     });
-    if (res.ok) return { kind: 'ok', body: await res.json(), link: res.headers.get('link') };
+    if (res.ok) {
+      let parsed: unknown;
+      try {
+        parsed = await res.json();
+      } catch {
+        throw new SentryAnswerNotJson(res.status);
+      }
+      return { kind: 'ok', body: parsed, link: res.headers.get('link') };
+    }
     if (res.status === 401) {
       return {
         kind: 'refused',

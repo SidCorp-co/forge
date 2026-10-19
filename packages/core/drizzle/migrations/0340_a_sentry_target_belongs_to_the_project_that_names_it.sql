@@ -12,7 +12,8 @@
 -- WHICH BINDING GETS THEM. A binding that already holds its own `targets` key was never reading the
 -- connection's list (the binding's wins in `effectiveConfig`, and an explicitly EMPTY list wins too:
 -- that binding resolved none), so it is left as it is. The bindings WITHOUT one are the ones
--- inheriting; where some are active only those count. The one exception is the legacy pair below,
+-- inheriting; where some are active only those count, and an inactive one passed over is named in a
+-- NOTICE, since it keeps no target. The one exception is the legacy pair below,
 -- which an empty `targets: []` on the binding did NOT override, so there an empty list still inherits.
 -- Then:
 --   exactly one inheriting binding  -> the connection's targets move onto it.
@@ -104,6 +105,15 @@ BEGIN
         UPDATE integration_bindings
            SET config = config || jsonb_build_object('targets', moving), updated_at = now()
          WHERE id = inheriting[1];
+        SELECT string_agg(format('binding %s (project %s)', b.id, b.project_id), '; ' ORDER BY b.created_at, b.id)
+          INTO detail
+          FROM integration_bindings b
+         WHERE b.connection_id = conn.id AND b.id <> inheriting[1] AND NOT b.active
+           AND NOT (CASE WHEN jsonb_typeof(b.config -> 'targets') = 'array' THEN (has_targets OR jsonb_array_length(b.config -> 'targets') > 0) ELSE false END);
+        IF detail IS NOT NULL THEN
+          RAISE NOTICE 'ISS-1380: Sentry connection % moved its targets onto active binding %; inactive % inherited them too and is left with no target, so turning it back on needs its own config.targets',
+            conn.id, inheriting[1], detail;
+        END IF;
       ELSE
         RAISE NOTICE 'ISS-1380: Sentry connection % holds targets every one of its % binding(s) already overrides with its own; the connection''s copy is removed', conn.id, total_bindings;
       END IF;

@@ -13,6 +13,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { sql } from 'drizzle-orm';
+import postgres from 'postgres';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   createTestProject,
@@ -49,6 +50,21 @@ beforeEach(async () => {
 
 /** The whole shipped file: it is one `DO` block, so what runs here is what the deploy runs. */
 const migrate = () => harness.db.execute(sql.raw(readFileSync(MIGRATION, 'utf8')));
+
+/** The same file through a client that keeps what the deploy log would print: each NOTICE. */
+async function migrateHearing(): Promise<string[]> {
+  const notices: string[] = [];
+  const client = postgres(harness.url, {
+    max: 1,
+    onnotice: (notice) => notices.push(String(notice.message)),
+  });
+  try {
+    await client.unsafe(readFileSync(MIGRATION, 'utf8'));
+  } finally {
+    await client.end({ timeout: 5 });
+  }
+  return notices;
+}
 
 async function failureTextOf(call: Promise<unknown>): Promise<string> {
   try {
@@ -319,17 +335,29 @@ describe('a binding that already holds its own targets', () => {
     });
   });
 
-  it('prefers the active inheriting binding over an inactive one', async () => {
+  it('prefers the active inheriting binding over an inactive one, and names the one left with none', async () => {
     const conn = await aConnection({ host: 'logs.canawan.com', targets: [target('shared')] });
     const live = await aBinding(conn);
     const retired = await aBinding(conn, {}, { active: false });
 
-    await migrate();
+    const notices = await migrateHearing();
 
     expect(await configOf('integration_bindings', live.id)).toEqual({
       targets: [target('shared')],
     });
     expect(await configOf('integration_bindings', retired.id)).toEqual({});
+    const said = notices.find((n) => n.includes(retired.id));
+    expect(said, notices.join('\n')).toBeDefined();
+    expect(said).toContain(conn);
+    expect(said).toContain(live.id);
+    expect(said).toContain('inactive');
+  });
+
+  it('names no binding left behind when the only inheriting binding is the one that takes them', async () => {
+    const conn = await aConnection({ host: 'logs.canawan.com', targets: [target('shared')] });
+    await aBinding(conn);
+
+    expect((await migrateHearing()).filter((n) => n.includes('left with no target'))).toEqual([]);
   });
 });
 

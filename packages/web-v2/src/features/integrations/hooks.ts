@@ -41,7 +41,6 @@ function useInvalidateIntegrations(projectId: string | undefined) {
     qc.invalidateQueries({
       queryKey: ["integrations", "mcp-preview", projectId],
     });
-    // The Sentry pick list is read through the saved credential, so a save may have changed it.
     qc.invalidateQueries({ queryKey: ["integrations", "sentry-projects", projectId] });
   };
 }
@@ -117,9 +116,8 @@ export function useCoolifyApplications(
   });
 }
 
-/** ISS-1380 — the Sentry projects a token can read, for the target picker. `auth` is a saved
- *  integration, or the credential typed on the create form once the person asks for the list; null
- *  holds the query back. */
+/** ISS-1380 — the Sentry projects a saved integration's or a typed credential can read, for the
+ *  target picker; a null `auth` holds the query back. */
 export function useSentryProjects(
   projectId: string | undefined,
   auth: { integrationId: string } | { host: string; authToken: string } | null,
