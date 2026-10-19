@@ -45,6 +45,23 @@ describe("the agents switch on a binding that is turned off", () => {
     expect(screen.getByText(access === "all" ? TURNED_OFF_COPY.granted : TURNED_OFF_COPY.withheld)).toBeInTheDocument();
   });
 
+  // Seen on the after-shot: the line saying who may grant it read as a credential already sent.
+  it("says who may grant it as what granting would do, for a caller who may not", async () => {
+    vi.resetModules();
+    vi.doMock("../hooks", () => ({
+      useUpdateProviderIntegration: () => ({ mutate: vi.fn() }),
+      useIsOrgAdmin: () => false,
+    }));
+    const { AgentAccessControl: Control } = await import("./agent-access-control");
+    render(
+      <Control projectId="p1" binding={{ id: "b1", active: false, agentAccess: "all", agentPathKind: "direct-mcp" }} canEdit />,
+    );
+    const text = document.body.textContent ?? "";
+    expect(text).toContain("Granting this sends the integration's credential to the runner");
+    expect(text).not.toMatch(/credential is (?:sent|handed)/);
+    vi.doUnmock("../hooks");
+  });
+
   it("still says what the grant does on a binding that is on", () => {
     expect(show(true, "all", "direct-mcp")).toMatch(/handed to the runner box/);
   });
