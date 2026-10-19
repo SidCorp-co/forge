@@ -100,6 +100,7 @@ function outcomeOf(a: PipelineRunAttempt, cause: FailureCause | null): string {
 }
 
 function detailOf(a: PipelineRunAttempt, cause: FailureCause | null): string | null {
+  if (OPEN_STATUSES.has(a.status)) return null;
   if (a.failureDetail) return a.failureDetail;
   if (!a.failureReason) return null;
   if (a.failureReason === cause) return null;
@@ -114,7 +115,7 @@ function signature(
   outcome: string,
   action: string | null,
 ): string {
-  const fields = [a.jobType, a.status, cause ?? "", outcome, action ?? "", deviceLabel(a)];
+  const fields = [a.jobType, a.status, stateVerb(a) ?? "", cause ?? "", outcome, action ?? "", deviceLabel(a)];
   return [...fields, detailOf(a, cause) ?? ""].join("\0");
 }
 

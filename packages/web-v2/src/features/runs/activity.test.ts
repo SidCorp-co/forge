@@ -220,14 +220,28 @@ describe("deriveActivityFeed", () => {
       }),
       attempt({ status: "dispatched", ranAt: null, finishedAt: null, failureCause: "queue_timeout" }),
     ]);
-    expect(feed.map((e) => [e.cause, e.action, e.tone])).toEqual([
-      [null, null, "open"],
-      [null, null, "open"],
+    expect(feed.map((e) => [e.cause, e.action, e.detail, e.tone])).toEqual([
+      [null, null, null, "open"],
+      [null, null, null, "open"],
     ]);
     expect(feed.map((e) => e.outcome)).toEqual([
       "Taken by box-taker, not started yet",
       "Sent to ubuntu5, not started yet",
     ]);
+  });
+
+  it.each([
+    ["ran, then never started", ["2026-08-30T10:00:06.000Z", null]],
+    ["never started, then ran", [null, "2026-08-30T10:00:06.000Z"]],
+  ])("keeps two otherwise identical attempts apart when one %s, each with its own verb", (_n, ranAts) => {
+    const feed = deriveActivityFeed(
+      ranAts.map((ranAt) =>
+        attempt({ status: "cancelled", failureReason: "runner_full", failureCause: null, ranAt }),
+      ),
+    );
+    expect(feed.map((e) => e.verb)).toEqual(
+      ranAts.map((r, i) => (r ? (i === 0 ? "Ran" : "Retried") : "Never started")),
+    );
   });
 
   it("reads an attempt that ended before any box started it as Never started, never Ran", () => {
