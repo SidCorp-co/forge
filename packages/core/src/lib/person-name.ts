@@ -1,6 +1,7 @@
 import { type SQL, sql } from 'drizzle-orm';
+import { logger } from '../logger.js';
 
-/** A notice, bell row or page calls a person by the name they gave, never by address (ISS-1229 r18). */
+/** The one slot of a title that names a person: the name they gave, never an address (ISS-1229). */
 export const UNNAMED_PERSON = 'another member';
 export const UNNAMED_PERSON_AT_START = 'Another member';
 
@@ -18,6 +19,8 @@ export function personName(
 ): string {
   const given = displayName?.trim();
   if (given && !carriesAnAddress(given)) return given;
+  if (given)
+    logger.warn('person-name: a name held an email address, so it reads as another member');
   return at === 'start' ? UNNAMED_PERSON_AT_START : UNNAMED_PERSON;
 }
 

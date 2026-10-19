@@ -25,8 +25,6 @@ const PRESENTATION_AND_MAPPING: Record<string, string> = {
     'the name a park somebody else owes is printed by on Needs you, the Attention page and the bell, so a reader is told whose decision it waits for (ISS-1229 r16). It decides nothing: who owes the park is read off the assignee and creator ids',
   'projects/pending-invitations.ts':
     'the name the bell’s invitation row prints its inviter by, in place of their address (ISS-1229 r18). It decides nothing: which invitations are offered is read off the invitee’s address and the invitation rows',
-  'notifications/unaddressed-title.ts':
-    'the name the delivery door prints in place of an address a notice title carries, so a stored title never calls a person by address (ISS-1229 r18). It decides nothing: the title is delivered whatever it reads',
   'assistant/conversation-routes.ts':
     'the name a person’s own message is attributed by in a conversation transcript, which is a label read by whoever opens the room and by the model answering in it — it addresses nobody and resolves nothing',
   'assistant/conversation-people.ts':
