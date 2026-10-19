@@ -7,7 +7,7 @@
 -- as it stands, and puts the text back only where the title's own template quotes that kind of
 -- text and the whole quoted part is that reading: an issue's title in a status change ("ISS-3 — <title>
 -- moved to …"), a mention ('… mentioned you in "<title>"') or an intake notice ("Awaiting intake
--- review: <title>"); a project's name in an invitation ("… invited you to <name> as <role>"), or, in a
+-- review: <title>"), either of the last two behind the reference the delivery door leads with; a project's name in an invitation ("… invited you to <name> as <role>"), or, in a
 -- title of no such template, as its " — <name>" ending or its "<name> — " opening. A person slot
 -- ("waiting for another member's decision") and a status are never such a part. Every part is found
 -- in the title as stored and replaced once; a title whose parts overlap, or that quotes neither the
@@ -78,10 +78,10 @@ BEGIN
     slot_kind := NULL;
     m := regexp_match(r.title, '^((?:Resolved — )?[A-Za-z][A-Za-z0-9]{1,5}-[0-9]+ — )(.+)( moved to [^—]+)$');
     IF m IS NULL THEN
-      m := regexp_match(r.title, '^((?:Resolved — )?(?:@[^ ]+|someone) mentioned you in ")(.*)(")$');
+      m := regexp_match(r.title, '^((?:Resolved — )?(?:[A-Za-z][A-Za-z0-9]{1,5}-[0-9]+ — )?(?:@[^ ]+|someone) mentioned you in ")(.*)(")$');
     END IF;
     IF m IS NULL THEN
-      m := regexp_match(r.title, '^((?:Resolved — )?Awaiting intake review: )(.+)()$');
+      m := regexp_match(r.title, '^((?:Resolved — )?(?:[A-Za-z][A-Za-z0-9]{1,5}-[0-9]+ — )?Awaiting intake review: )(.+)()$');
     END IF;
     IF m IS NOT NULL THEN
       slot_kind := 'issue';

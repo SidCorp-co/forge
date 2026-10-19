@@ -434,6 +434,51 @@ describe("migration 0343: a stored title quotes its issue's title and its projec
     ]);
   });
 
+  // Consult f0e175 F1/F2: titles as their producers and the delivery door store them, then 0342.
+  it('restores a mention and an intake notice as the delivery door stored them', async () => {
+    const actor = await person('Lan', 'lan.handle@example.com');
+    const quoted = 'Refund ops@desk.example.com before Friday';
+    const issueId = await issueTitled(11, quoted);
+    const { HooksBus } = await import('../../src/pipeline/hooks.js');
+    const { registerNotifyMentionsSubscriber } = await import(
+      '../../src/notifications/notify-mentions.js'
+    );
+    const bus = new HooksBus();
+    registerNotifyMentionsSubscriber(bus);
+    await bus.emit('commentMentioned', {
+      issueId,
+      projectId: fx.project.id,
+      commentId: crypto.randomUUID(),
+      actor: { type: 'user', id: actor.id, agency: 'human' },
+      mentionedUserIds: [fx.owner],
+    });
+    await fx.mods.recordAndDeliver({
+      type: 'intake_pending',
+      recipients: [fx.owner],
+      projectId: fx.project.id,
+      issueId,
+      title: `Awaiting intake review: ${quoted}`,
+    });
+    const asStored = async () =>
+      (
+        (await fx.db.execute(
+          sql`SELECT title FROM notifications WHERE issue_id = ${issueId}`,
+        )) as unknown as Array<{ title: string }>
+      )
+        .map((r) => r.title)
+        .sort();
+    const produced = [
+      `ISS-11 — @lan.handle mentioned you in "${quoted}"`,
+      `ISS-11 — Awaiting intake review: ${quoted}`,
+    ].sort();
+    expect(await asStored()).toEqual(produced);
+
+    await runMigration();
+    expect((await asStored()).every((t) => t.includes('another member'))).toBe(true);
+    await runRestore();
+    expect(await asStored()).toEqual(produced);
+  });
+
   it('runs again over titles it already restored and changes nothing', async () => {
     const mai = await person('Mai');
     const issueId = await issueTitled(1, `Reply to ${mai.email}`);
