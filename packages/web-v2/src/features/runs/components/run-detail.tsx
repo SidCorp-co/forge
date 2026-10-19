@@ -29,6 +29,7 @@ import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import { useRecents, buildShareLink } from "@/features/shell";
 import { runHasStarted, runReadingChip } from "../derive";
+import { RUN_KIND_WORD } from "../run-status-words";
 import { formatDurationMs, formatUsd } from "@/lib/utils/format";
 import { useCancelRun, usePauseRun, useResumeRun, useRun } from "../hooks";
 import { ActivityTab } from "./activity-feed";
@@ -93,7 +94,7 @@ export function RunDetail({ open, onClose, runId, projectSlugs, canWrite = true 
   }
   const chipStep = run?.currentStep ? jobKindLabel(run.currentStep) : undefined;
   const label = issueRef ?? (runId ? `run ${runId.slice(0, 8)}` : "run");
-  const title = runTitle(issues);
+  const title = runTitle(issues, run ? RUN_KIND_WORD[run.kind] : "Pipeline run");
   const chip = run ? runReadingChip(run) : null;
   // Pause and Stop now act on an agent at work, so only a run something has started offers them; an
   // open run nothing has started yet offers Cancel run, the one control it takes (ISS-1228).
@@ -301,11 +302,11 @@ function runIssues(run: PipelineRunSummary): RunIssue[] {
   }));
 }
 
-/** A run is titled by its one issue; several are listed by key; none leaves the generic title. */
-function runTitle(issues: RunIssue[]): string {
-  if (issues.length === 1) return issues[0]?.title ?? issues[0]?.ref ?? "Pipeline run";
+/** A run is titled by its one issue; several are listed by key; none by its kind, as the runs tab names it. */
+function runTitle(issues: RunIssue[], kindWord: string): string {
+  if (issues.length === 1) return issues[0]?.title ?? issues[0]?.ref ?? kindWord;
   if (issues.length > 1) return issues.map((i) => i.ref).join(", ");
-  return "Pipeline run";
+  return kindWord;
 }
 
 /* ── Timeline ─────────────────────────────────────────────────────────── */

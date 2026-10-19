@@ -160,7 +160,7 @@ describe("the Ops drawer, which opens a run with no issue row (ISS-1297)", () =>
       reading: "queued",
     });
     open();
-    expect(screen.getByRole("heading", { name: "Pipeline run" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Issue run" })).toBeInTheDocument();
     expect(screen.getByText("run r1")).toBeInTheDocument();
   });
 
@@ -203,6 +203,13 @@ describe("the Ops drawer, which opens a run with no issue row (ISS-1297)", () =>
     open();
     expect(within(opsHeader()).getByText("Waiting for me")).toBeInTheDocument();
     expect(within(opsHeader()).queryByText(/running/i)).toBeNull();
+  });
+
+  // ISS-1228 round 18: the runs tab called a chat's run "Chat run" and its drawer "Pipeline run".
+  it("titles a run that names no issue by its kind, as the runs tab does", () => {
+    run = summary("running", { issueId: null, issueRef: null, issueTitle: null, kind: "interactive", reading: "waiting" });
+    open();
+    expect(screen.getByRole("heading", { name: "Chat run" })).toBeInTheDocument();
   });
 
   it("still offers both for a running run, and Resume run for a paused one", () => {

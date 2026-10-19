@@ -7,7 +7,7 @@ import { useNow } from "@/design/hooks/use-now";
 import { useProjectRuns } from "@/features/runs/hooks";
 import { NO_BOX_REPORTS_A_RUN, NO_RUN_WORKING, RUN_APPEARS } from "@/features/sessions/status-sentences";
 import { runReadingChip, runSinceWord } from "@/features/runs/derive";
-import { RUN_STATUS_WORD } from "@/features/runs/run-status-words";
+import { RUN_KIND_WORD, RUN_STATUS_WORD } from "@/features/runs/run-status-words";
 import type { PipelineRunListItem } from "@/features/runs/types";
 import { formatApiError } from "@/lib/api/error";
 import { formatRelativeTime } from "@/lib/utils/format";
@@ -32,13 +32,6 @@ const CLOSED_STATUS_WORD: Record<string, string> = {
   completed: RUN_STATUS_WORD.completed,
   failed: RUN_STATUS_WORD.failed,
   cancelled: RUN_STATUS_WORD.cancelled,
-};
-
-const RUN_KIND_WORD: Record<string, string> = {
-  issue: "Issue run",
-  pm: "Project manager run",
-  interactive: "Chat run",
-  system: "System run",
 };
 
 /** The project's runs that have closed, newest first: what the tab offers where no box reports a run. */
