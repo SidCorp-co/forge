@@ -573,6 +573,40 @@ mod tests {
                 "the body that came in its own read is the body recorded"
             );
         }
+
+        #[allow(clippy::await_holding_lock)]
+        #[tokio::test]
+        async fn a_message_the_pane_takes_is_acked_delivered() {
+            let _serialised = ONE_AT_A_TIME.lock().await;
+            let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            let sent = send_one(Asked::Present, &composer(""), None).await;
+            assert_eq!(
+                sent.outcomes(),
+                vec![r#"{"outcome":"delivered"}"#.to_string()],
+                "an empty composer takes the message"
+            );
+            assert!(
+                sent.verbs.iter().any(|v| v == "send-keys"),
+                "and it is typed and submitted: {:?}",
+                sent.verbs
+            );
+        }
+
+        /// ISS-1224 settled that a pane whose composer cannot be read is typed into
+        /// anyway, as it always was before a pane could be read. This change does
+        /// not reopen it.
+        #[allow(clippy::await_holding_lock)]
+        #[tokio::test]
+        async fn a_pane_whose_composer_cannot_be_read_still_takes_the_message() {
+            let _serialised = ONE_AT_A_TIME.lock().await;
+            let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            let sent = send_one(Asked::Present, "$ \n$ echo hi\nhi\n$ ", None).await;
+            assert_eq!(
+                sent.outcomes(),
+                vec![r#"{"outcome":"delivered"}"#.to_string()],
+                "an unreadable prompt is typed into and reported honestly, unchanged by this issue"
+            );
+        }
     }
 
     fn frame(kind: &str, body: Option<&str>, job: Option<&str>) -> SendFrame {
