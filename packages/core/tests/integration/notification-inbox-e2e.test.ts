@@ -88,11 +88,11 @@ describe('a notification written against an issue', () => {
       projectId: fx.project.id,
       issueId,
       type: 'pipeline_wedge',
-      title: 'Pipeline wedge: heartbeat hop miss on job',
+      title: 'Work stopped checking in',
       resolutionKey: 'wedge:job-1',
     });
     const [row] = (await inbox()).items as [InboxRow];
-    expect(row.title).toBe('ISS-77 — Pipeline wedge: heartbeat hop miss on job');
+    expect(row.title).toBe('ISS-77 — Work stopped checking in');
   });
 
   it('does not name it twice where the producer already did', async () => {

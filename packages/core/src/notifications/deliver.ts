@@ -57,8 +57,8 @@ export interface DeliverInput {
 /**
  * ISS-1168 — a notification names what it is about in its title.
  *
- * A title is what a reader sees first, and a producer that wrote "Pipeline wedge: heartbeat hop miss
- * on job" or "A runner can no longer authenticate" left the reader to open the row to learn which.
+ * A title is what a reader sees first, and a producer that wrote "A session stopped checking in" or
+ * "A runner can no longer authenticate" left the reader to open the row to learn which.
  * Producers differ in how much of the subject they name, so the one door every record goes through
  * settles it: an issue's reference leads the title, else the named subject (a runner, a session),
  * else the project. A title that already holds the name is left alone, and one about none of them is

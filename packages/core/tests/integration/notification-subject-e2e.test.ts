@@ -160,9 +160,7 @@ describe('a notification about no issue', () => {
       action: 'check the device',
     });
     const [row] = await only();
-    expect(row?.title).toBe(
-      'Nightly sync on build-box-8 — Pipeline wedge: heartbeat hop miss on session',
-    );
+    expect(row?.title).toBe('Nightly sync on build-box-8 — A session stopped checking in');
   });
 
   it('names the step it is about by its kind', async () => {
