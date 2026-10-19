@@ -3246,7 +3246,7 @@
 - **An automatic-release hold stays short however many records a project requires.** Each reason a release cannot close the issue is a line of its own, so four missing records no longer make a 23-word sentence. (ISS-1421)
 - **Marking merged says whether Forge saw the merge.** The notice reads "Marked merged." over one sentence: Forge saw it land, or the mark is a claim. (ISS-1421)
 - **A turned-off integration says where to turn it back on**: the Enabled switch in its drawer, or Enable credential for a shared credential. Coolify's drawer now has that switch too. (ISS-1421)
-- **A deploy key is asked for read access, which is all Forge needs.** The sentence says apart that devices pushing with the key need write access. (ISS-1421)
+- **A deploy key is asked for read access, which is all Forge needs.** The sentence says apart that devices pushing with the key need write access, and Test connection shows the host's own words on a line of their own. (ISS-1421)
 - **An agent's mark with nothing behind it is told what to send in three short sentences, and nothing more.** The rules about unreadable repositories and base branches are no longer appended to it. (ISS-1421)
 - **The agent tool refuses a blank or unknown mark target in the same sentence as a missing one.** A bad date or a missing issue is refused in a sentence naming its field too. (ISS-1421)
 - **The release roster names each issue's landing commit**, the later one once a later merge moves the mark. (ISS-1421)
