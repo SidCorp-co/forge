@@ -90,7 +90,9 @@ export function refusedAsMark<T>(args: unknown, parse: () => T): T {
     const action = (args as { action?: unknown } | null)?.action;
     const issues = (err as { name?: unknown; issues?: unknown } | null)?.issues;
     const zod = (err as { name?: unknown } | null)?.name === 'ZodError' && Array.isArray(issues);
-    if (zod && (action === 'mark_merged' || action === 'unmark')) {
+    // Only the mark's own fields, under `data`: a top-level field keeps the tool's own refusal.
+    const underData = zod && (issues as Array<{ path?: unknown[] }>)[0]?.path?.[0] === 'data';
+    if (underData && (action === 'mark_merged' || action === 'unmark')) {
       throw new Error(`BAD_REQUEST: ${markInputRefusal(err as MarkInputError, 'mcp')}`);
     }
     throw err;

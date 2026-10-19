@@ -392,6 +392,17 @@ describe('mark_merged refusals name the MCP field (ISS-1421 r9)', () => {
     expect(setPayloads).toEqual([]);
   });
 
+  it("keeps the tool's own refusal for a top-level field, never asking to rebuild data", async () => {
+    const refused = await call({
+      action: 'mark_merged',
+      projectId: 'not-a-uuid',
+      data: { issueId: ISSUE_ID, target: 'base' },
+    }).catch((err: Error) => err);
+    expect(refused).toBeInstanceOf(Error);
+    expect((refused as Error).message).not.toMatch(/^BAD_REQUEST: Send the mark/);
+    expect(JSON.stringify((refused as { issues?: unknown }).issues)).toContain('projectId');
+  });
+
   it('refuses a mergedAt that names no date in a sentence naming data.mergedAt', async () => {
     await expect(
       call({
