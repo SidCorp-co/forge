@@ -224,8 +224,7 @@ describe('ISS-1398 — the release weighs a verdict through the deploy key', () 
     await sweep();
 
     const reason = String((await fx.holdOf(id))?.reason);
-    const fix =
-      `give that key read access to ${GITLAB_URL}, which is all Forge needs; devices that push with it need write access`;
+    const fix = `give that key read access to ${GITLAB_URL}, which is all Forge needs; devices that push with it need write access`;
     expect(reason).toContain('whether what it serves carries it could not be read');
     expect(reason).toContain("what this issue's landing changed could not be read");
     expect(reason.split('If none lives there, fix the SSH clone URL')).toHaveLength(2);

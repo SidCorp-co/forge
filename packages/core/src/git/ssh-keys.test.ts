@@ -116,7 +116,7 @@ describe('testSshConnection, in the words each host refuses with', () => {
       const test = await testSshConnection('git@gitlab.com:sid/desk.git', 'key');
 
       expect(test.message).toContain(
-        "Give it read access to the repository, which is all Forge needs; devices that push with it need write access.",
+        'Give it read access to the repository, which is all Forge needs; devices that push with it need write access.',
       );
       expect(test.message).not.toMatch(/Give it write access/);
     },

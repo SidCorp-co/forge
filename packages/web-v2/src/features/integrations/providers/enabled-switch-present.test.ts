@@ -3,12 +3,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-/**
- * ISS-1421 r11 — a turned-off binding's agents line says it comes back once Enabled in this drawer
- * is switched on (`agent-access-control.tsx:turnedOffCopy`). Coolify's drawer had no such switch, so
- * the line would have named a control the reader could not find. Every provider drawer that shows
- * a saved binding's agents switch also shows its Enabled switch.
- */
+// ISS-1421 r11: the turned-off agents line names Enabled in this drawer, so every drawer has it.
 const PROVIDERS = dirname(fileURLToPath(import.meta.url));
 
 const sections = readdirSync(PROVIDERS, { withFileTypes: true })

@@ -1,21 +1,16 @@
-// What each close shortfall says, apart from the reads that find it, so every combination a project
-// can require is worded and measured without a database (ISS-1421 r11, criterion 133).
+// Each close shortfall's words, apart from its reads, so a test can word every combination (ISS-1421 r11).
 
 import { markMergedSteps } from '@forge/contracts/mark-merged-words';
 import { entryRecordsInWords } from '../issues/entry-criteria-keys.js';
 
-type CloseShortfallCode =
-  | 'CLOSE_REQUIRES_SHIPPED'
-  | 'OPEN_QUESTIONS'
-  | 'ENTRY_CRITERIA_UNMET';
+type CloseShortfallCode = 'CLOSE_REQUIRES_SHIPPED' | 'OPEN_QUESTIONS' | 'ENTRY_CRITERIA_UNMET';
 
-/** A shortfall's words: its reason, the act that clears it, and that act said on the issue's page. */
 export interface ShortfallWords {
   code: CloseShortfallCode;
   /** In a reader's words, what stands in the way: "holds 1 open question". */
   reason: string;
   clears: string;
-  /** The same act said on the issue's own page, whose controls are right there. */
+  /** The same act said on the issue's own page. */
   clearsHere: string;
 }
 
@@ -42,7 +37,6 @@ export function landingShortfallWords(outsideGit: boolean): ShortfallWords {
 }
 
 export function openQuestionsShortfallWords(n: number): ShortfallWords {
-  // The issue's page offers an answer and nothing that voids a question (ISS-1381 r3).
   return {
     code: 'OPEN_QUESTIONS',
     reason: `holds ${n} open question${n === 1 ? '' : 's'}`,

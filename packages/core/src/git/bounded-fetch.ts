@@ -8,15 +8,9 @@ import type { PinnedSshHost } from './ssh-host-guard.js';
 export const GIT_ACCESS = "the project's Settings → Runners → Git access";
 export const REPO_URL_AT = "the project's Settings → Shape & release → Repository";
 
-/**
- * What every sentence asks the git host to give the key attached under Git access, and why: read
- * access, which is all Forge does with it (ISS-1421 r11). The project's devices clone and push with
- * the same key, so a key given read alone would break their next push (ISS-1398), and the clause
- * says so rather than asking for write access as though Forge needed it to read.
- */
+// Forge only reads with the key, but devices clone and push with it (ISS-1398, ISS-1421 r11).
 export const KEY_ACCESS = 'read access';
 const KEY_NEED = 'all Forge needs; devices that push with it need write access';
-/** The why as a clause after the access it explains, and as a sentence of its own. */
 export const WHY_KEY_ACCESS = `which is ${KEY_NEED}`;
 export const READ_ACCESS_IS = `Read access is ${KEY_NEED}`;
 

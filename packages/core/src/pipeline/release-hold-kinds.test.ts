@@ -243,12 +243,12 @@ describe('every hold kind is commented in three short sentences (ISS-1421 r8 rep
   });
 });
 
-// r11, criterion 133: judge-52 read a 23-word opening once a project required evidence of the work
-// as well. Every combination of shortfalls a close can be refused for is worded by the builders
-// the roster reads with, and every sentence of every hold kind is measured.
+// r11, criterion 133: judge-52 read a 23-word opening once evidence of the work was required too.
 describe('no hold sentence runs past the cap, for any shortfalls a project can require (ISS-1421 r11)', () => {
-  const subsets = <T,>(items: readonly T[]): T[][] =>
-    items.reduce<T[][]>((all, item) => [...all, ...all.map((s) => [...s, item])], [[]]);
+  const subsets = <T>(items: readonly T[]): T[][] =>
+    Array.from({ length: 2 ** items.length }, (_, mask) =>
+      items.filter((_item, i) => (mask >> i) & 1),
+    );
   const landings = [[], [landingShortfallWords(false)], [landingShortfallWords(true)]];
   const questions = [[], [openQuestionsShortfallWords(1)], [openQuestionsShortfallWords(2)]];
   const records = [
@@ -312,7 +312,10 @@ describe('no hold sentence runs past the cap, for any shortfalls a project can r
   });
 
   it('measures every other kind at its longest', () => {
-    const long = 'A reason another part of Forge words at length, and longer than any sentence here. '.repeat(3);
+    const long =
+      'A reason another part of Forge words at length, and longer than any sentence here. '.repeat(
+        3,
+      );
     for (const hold of [
       ...KINDS.map(([, h]) => h),
       refusalHold('NO_RUNNER_ONLINE', [long]),
