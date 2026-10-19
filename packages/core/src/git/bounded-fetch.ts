@@ -62,6 +62,9 @@ const GIT_TRAILER =
 
 const RULE = /^[=\-*#_~]{3,}$/;
 
+/** An absolute path in a reply: Forge's own temp files or the server's, neither a person's to read. */
+const ABSOLUTE_PATH = /(?<=^|[\s'"(=])\/(?:[\w.@+-]+\/)+[\w.@+-]*/g;
+
 /** The first line a git host said with words in it, past git's `remote:` prefix, banner rules
  *  (GitLab opens a refusal with them) and git's own trailer, which is kept only where alone. */
 export function hostSaid(stderr: string): string {
@@ -69,8 +72,13 @@ export function hostSaid(stderr: string): string {
     .split(/\r?\n/)
     .map((l) => l.replace(/^remote:/i, '').trim())
     .filter((l) => l !== '' && !RULE.test(l));
-  return (lines.find((l) => !GIT_TRAILER.test(l)) ?? lines[0] ?? '').slice(0, 300);
+  return (lines.find((l) => !GIT_TRAILER.test(l)) ?? lines[0] ?? '')
+    .replace(ABSOLUTE_PATH, '[path hidden]')
+    .slice(0, 300);
 }
+
+/** ssh could not load the stored key, so nothing was offered: Forge's failure, not the host's. */
+const KEY_UNLOADABLE = /^load key .*: (?:error in libcrypto|invalid format|incorrect passphrase)/im;
 
 const KEY_REFUSED =
   /permission denied \(|no supported authentication methods|too many authentication failures/i;
@@ -84,12 +92,16 @@ const UNREACHABLE =
 
 export type HostRefusal =
   | { kind: 'no_branch'; branch: string; said: string }
-  | { kind: 'key_refused' | 'no_access' | 'unreachable' | 'other'; said: string };
+  | {
+      kind: 'key_unreadable' | 'key_refused' | 'no_access' | 'unreachable' | 'other';
+      said: string;
+    };
 
 export function readHostRefusal(stderr: string): HostRefusal {
   const said = hostSaid(stderr);
   const missing = stderr.match(/couldn't find remote ref (?:refs\/heads\/)?(\S+)/i);
   if (missing?.[1]) return { kind: 'no_branch', branch: missing[1], said };
+  if (KEY_UNLOADABLE.test(stderr)) return { kind: 'key_unreadable', said: '' };
   if (KEY_REFUSED.test(stderr)) return { kind: 'key_refused', said };
   if (NO_ACCESS.test(stderr)) return { kind: 'no_access', said };
   if (UNREACHABLE.test(stderr)) return { kind: 'unreachable', said };
@@ -115,6 +127,12 @@ export function hostRefusal(err: GitFailure, remote: string): Refused {
   switch (answer.kind) {
     case 'no_branch':
       return { cause: `the repository has no branch ${answer.branch}, so it cannot be compared` };
+    case 'key_unreadable':
+      return {
+        cause:
+          "Forge could not read this project's stored deploy key, so it was never offered to the git host",
+        clears: `detach it and generate a new one under ${GIT_ACCESS}`,
+      };
     case 'key_refused':
       return {
         cause: "the git host refused this project's deploy key",

@@ -55,6 +55,15 @@ describe('every shortfall sentence the banner and the gate panel show', () => {
     }
   });
 
+  // r12 repair: "An agent writes them …" and "The agent that takes it writes them." said one thing twice.
+  it.each(every)('%s: what clears it is one sentence, said once', (_, words) => {
+    for (const clears of [words.clears, words.clearsHere]) {
+      expect(clears.split(/(?<=\.)\s+/), clears).toHaveLength(
+        words.code === 'CLOSE_REQUIRES_SHIPPED' ? 2 : 1,
+      );
+    }
+  });
+
   it('says five missing records in the sentence the hold comment uses', () => {
     const five = entryRecordsShortfallWords(ENTRY_CRITERION_KEYS, true);
     expect(shortfallSaid({ reason: five.reason, clears: five.clearsHere })).toMatch(

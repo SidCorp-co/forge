@@ -68,9 +68,9 @@ const RECORDS_NO_SESSION = {
   code: 'ENTRY_CRITERIA_UNMET',
   reason: 'missing a plan, acceptance criteria and a release note',
   clears:
-    "An agent writes them through Forge's issue tools. This issue has no session to open, so use Reopen in the issue's actions menu. The agent that takes it writes them.",
+    "This issue has no session, so use Reopen in the issue's actions menu to start an agent that writes them.",
   clearsHere:
-    "An agent writes them through Forge's issue tools. This issue has no session to open, so use Reopen in the actions menu at the top of this page. The agent that takes it writes them.",
+    'This issue has no session, so use Reopen in the actions menu above to start an agent that writes them.',
 };
 const QUESTIONS = { ...QUESTION, reason: 'holds 2 open questions' };
 const UNREAD_REPORT: IssueCriteriaReport = {

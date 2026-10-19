@@ -180,7 +180,7 @@ describe('fetchDivergence', () => {
     );
     expect(d.ok).toBe(false);
     expect(!d.ok && d.reason).toMatch(
-      /^The git host took this project's deploy key but will not let it read file:\/\/\S+nowhere\.git\. .*\nfatal: '\S+nowhere\.git' does not appear to be a git repository/,
+      /^The git host took this project's deploy key but will not let it read file:\/\/\S+nowhere\.git\. .*\nfatal: '\[path hidden\]' does not appear to be a git repository/,
     );
   });
 

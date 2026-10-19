@@ -66,9 +66,12 @@ async function shortfallsOf(
     declaredCriteria: declared,
   });
   if (violation?.code === 'ENTRY_CRITERIA_UNMET') {
-    const unmet = Array.isArray(violation.details.unmet)
+    const declaredUnmet = Array.isArray(violation.details.unmet)
       ? (violation.details.unmet as string[])
       : [];
+    // A missing merge mark is the landing shortfall above, so it is not named a second time.
+    const unmet = unshipped ? declaredUnmet.filter((k) => k !== 'merged_mark') : declaredUnmet;
+    if (unmet.length === 0) return found;
     found.push({
       ...entryRecordsShortfallWords(unmet, await issueHasSession(projectId, issueId)),
       detail: violation.detail,

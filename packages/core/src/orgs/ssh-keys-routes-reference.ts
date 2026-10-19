@@ -42,6 +42,7 @@ export const sshConnectionTestSchema = z.object({
   code: z.enum([
     'authenticated',
     'auth_denied',
+    'key_unreadable',
     'host_unreachable',
     'not_found',
     'timeout',

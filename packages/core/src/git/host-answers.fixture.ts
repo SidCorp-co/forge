@@ -56,7 +56,7 @@ export const NO_REPOSITORY: HostAnswer = {
   name: 'a plain git server, no repository at the path',
   stderr: "fatal: '/srv/git/sid/desk.git' does not appear to be a git repository\n",
   exit: 128,
-  said: "'/srv/git/sid/desk.git' does not appear to be a git repository",
+  said: "'[path hidden]' does not appear to be a git repository",
 };
 
 /** ssh failing to connect to the address the host guard pinned. */
@@ -66,5 +66,15 @@ export function unreachable(address: string): HostAnswer {
     stderr: `ssh: connect to host ${address} port 22: Connection timed out\r\n`,
     exit: 255,
     said: 'port 22: Connection timed out',
+  };
+}
+
+/** ssh failing to load the stored key on Forge's side, before the host's refusal of no key. */
+export function keyUnloadable(error: 'error in libcrypto' | 'invalid format'): HostAnswer {
+  return {
+    name: `a stored key ssh cannot load (${error})`,
+    stderr: `Load key "/home/dev/.cache/forge-tmp/forge-sshkey-KFw7z3/id_deploy": ${error}\r\ngit@github.com: Permission denied (publickey).\r\n`,
+    exit: 255,
+    said: '',
   };
 }
