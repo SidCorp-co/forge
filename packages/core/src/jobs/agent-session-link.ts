@@ -47,7 +47,9 @@ async function sessionHasEnded(sessionId: string): Promise<boolean> {
     .from(agentSessions)
     .where(eq(agentSessions.id, sessionId))
     .limit(1);
-  return row === undefined || (terminalAgentSessionStatuses as readonly string[]).includes(row.status);
+  return (
+    row === undefined || (terminalAgentSessionStatuses as readonly string[]).includes(row.status)
+  );
 }
 
 /**

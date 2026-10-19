@@ -62,9 +62,7 @@ export interface PipelineRunAttempt {
   failureKind: "code" | "infra" | "transient-cc" | "timeout" | null;
   failureAction: "terminal" | "quarantine" | "failover" | "retry" | null;
   queuedAt: string | null;
-  /** When core sent the job to a box, which is not when anything ran. */
   startedAt: string | null;
-  /** When the attempt's own session first reported its agent working; null where it never did. */
   ranAt: string | null;
   finishedAt: string | null;
   autoRetry: { round: number; target: string | null; tries: number; done: string[] } | null;

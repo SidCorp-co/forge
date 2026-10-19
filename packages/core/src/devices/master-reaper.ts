@@ -90,10 +90,7 @@ export async function reapSilentMasters(): Promise<number> {
  * {@link reapSilentMasters}: without it the box that function spares loses every
  * job it held one statement later. A TERMINAL master is not guarded.
  *
- * A held job whose OWN session core ended after the hold began is released too, whatever its
- * master: the take that session carried is over, and the job would otherwise read as starting for
- * as long as its master lives (ISS-1228). A session that ended before this take began never counts,
- * the take minting a new one in its place.
+ * So is a held job whose OWN session ended after the hold began: that take is over (ISS-1228).
  */
 export async function reapDeadMasterHolds(): Promise<number> {
   const staleSeconds = SESSION_SILENCE_TIMEOUT_S;

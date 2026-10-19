@@ -294,7 +294,10 @@ describe("a dead session's hold is given back (criteria 148, 149)", () => {
       pinDeviceId: null,
     } as never;
 
-    const fresh = await ensureAgentSessionForJob({ ...job, heldBy: null }, { repoPath: null, resume });
+    const fresh = await ensureAgentSessionForJob(
+      { ...job, heldBy: null },
+      { repoPath: null, resume },
+    );
 
     expect(fresh).not.toBeNull();
     expect(fresh).not.toBe(ownSession);

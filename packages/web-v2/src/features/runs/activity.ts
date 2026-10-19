@@ -45,7 +45,6 @@ export interface ActivityEntry {
 
 const OPEN_STATUSES: ReadonlySet<string> = new Set(LIVE_JOB_STATUSES);
 
-/** The box an attempt is on, by name where core knows one; a taken job is on the box that took it. */
 function boxOf(a: PipelineRunAttempt): string | null {
   if (a.deviceName) return a.deviceName;
   if (a.deviceId) return a.deviceId.slice(0, 8);
@@ -53,12 +52,9 @@ function boxOf(a: PipelineRunAttempt): string | null {
   return null;
 }
 
-/** Runner-friendly device name, never a bare empty cell. */
 const deviceLabel = (a: PipelineRunAttempt): string => boxOf(a) ?? "unassigned";
 
-/** An open attempt reads the run's own word for it — Running, Starting where a box has taken or been
- *  sent it, Queued where none has, Held — and a finished one that no box ever started reads Never
- *  started: never Ran for work that did not run (ISS-1228). */
+/** The run's own word for an open attempt, and Never started for a finished one nothing ran (ISS-1228). */
 function stateVerb(a: PipelineRunAttempt): string | null {
   if (a.status === "running") return "Running";
   if (a.status === "dispatched" || (a.status === "queued" && a.takenBy)) return "Starting";
@@ -68,8 +64,7 @@ function stateVerb(a: PipelineRunAttempt): string | null {
   return null;
 }
 
-/** An open attempt has no cause and so no remedy, whatever its session ended of: the attempt has
- *  not ended, and a remedy on it would send a person after a failure that has not happened. */
+/** An open attempt has not ended, so it has no cause and no remedy, whatever its session ended of. */
 function causeOf(a: PipelineRunAttempt): FailureCause | null {
   if (OPEN_STATUSES.has(a.status)) return null;
   if (a.failureCause) return resolveFailureCause(a.failureCause);

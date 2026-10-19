@@ -149,7 +149,8 @@ describe('jobs/agent-session-link', () => {
   });
 
   describe('ensureAgentSessionForJob', () => {
-    it('returns the existing session id when the job already has one (no-op)', async () => {
+    it('returns the existing session id when the job already has one still open (no-op)', async () => {
+      pushSelect({ status: 'queued' });
       const result = await ensureAgentSessionForJob(
         { ...baseJob, agentSessionId: 'sess-existing' } as never,
         { repoPath: '/r', resume: FRESH_RESUME },
@@ -158,6 +159,20 @@ describe('jobs/agent-session-link', () => {
       expect(insertCalls).toHaveLength(0);
       expect(updateCalls).toHaveLength(0);
     });
+
+    // ISS-1228 round 18 (judge-53): a take after the job's session had ended reused it.
+    it.each([[{ status: 'failed' }], [undefined]])(
+      'mints a new session where the one the job links has ended or is gone (%j)',
+      async (linked) => {
+        if (linked) pushSelect(linked);
+        const result = await ensureAgentSessionForJob(
+          { ...baseJob, agentSessionId: 'sess-ended' } as never,
+          { repoPath: '/r', resume: FRESH_RESUME },
+        );
+        expect(result).toBe('sess-new');
+        expect(insertCalls).toHaveLength(1);
+      },
+    );
 
     it('ISS-785 — mints a FRESH session row for a retry job instead of reusing the parent, chaining metadata + carrying pipelineHealth forward', async () => {
       pushSelect({ agentSessionId: 'sess-parent' });

@@ -240,8 +240,9 @@ jobEventsRoutes.post(
           : {};
         const beat = await withKernelMarker(db, async (tx) => {
           // The frame that moves the session to running moves its job there too, so a job its box is
-          // working never reads as sent and not started (ISS-1228).
-          if (sawTurn) {
+          // working never reads as sent and not started (ISS-1228). Gated on the row already read, as
+          // the ack stamp is, so a job past `dispatched` costs no statement.
+          if (sawTurn && job.status === 'dispatched') {
             await tx
               .update(jobs)
               .set({ status: 'running' })
