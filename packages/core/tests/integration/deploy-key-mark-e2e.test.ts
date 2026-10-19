@@ -167,7 +167,7 @@ describe('ISS-1398 — a commit mark on a GitLab project, read through its deplo
       GITLAB_NO_ACCESS,
       [
         `the git host took this project's deploy key but will not let it read ${GITLAB_URL}.`,
-        "give that key write access to the repository, since the project's runner pushes with it.",
+        `give that key read access to ${GITLAB_URL}, which is all Forge needs; devices that push with it need write access.`,
       ],
     ],
     [
@@ -179,7 +179,7 @@ describe('ISS-1398 — a commit mark on a GitLab project, read through its deplo
       keyUnknown('gitlab.com'),
       [
         "the git host refused this project's deploy key.",
-        `give the key write access to ${GITLAB_URL}, since the project's runner pushes with it.`,
+        `give the key read access to ${GITLAB_URL}, which is all Forge needs; devices that push with it need write access.`,
         `it is under ${GIT_ACCESS}.`,
       ],
     ],
@@ -252,7 +252,7 @@ describe('ISS-1409 — a project whose deploy key cannot be used to read it, or 
     expect(res.markDetail).toContain("Forge has no way to read this project's repository");
     expect(res.markDetail).toContain('Attach a deploy key, then mark it again.');
     expect(res.markDetail).toContain(
-      `Attach a deploy key with write access to ${GITLAB_URL} under the project's Settings → Runners → Git access.`,
+      `Attach a deploy key with read access to ${GITLAB_URL} under the project's Settings → Runners → Git access. Read access is all Forge needs; devices that push with it need write access.`,
     );
     expect(res.markDetail).not.toMatch(
       /bind (a|the) repository|Integrations|through a GitHub binding/,

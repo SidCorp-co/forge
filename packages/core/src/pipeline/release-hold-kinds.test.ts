@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { IssueCriteriaReport } from '../issues/criteria-verdicts.js';
+import { ENTRY_CRITERION_KEYS } from '../issues/entry-criteria-keys.js';
+import {
+  entryRecordsShortfallWords,
+  landingShortfallWords,
+  openQuestionsShortfallWords,
+} from '../release-batch/shortfall-words.js';
 import {
   closeRefusedHold,
   closeUnreadableHold,
@@ -15,10 +21,12 @@ import {
   runtimeUnroutedHold,
   targetUndeclaredHold,
 } from './release-hold.js';
+import { HOLD_SENTENCE_WORDS } from './release-hold-kinds.js';
 
 // ISS-1421 r8 repair 2: every kind a hold comment comes in is what holds it, what a person does
 // and what happens then — three short sentences, no backticked word, no code.
 const HEADING = '**Held by the automatic release**';
+const wordsIn = (sentence: string): number => sentence.trim().split(/\s+/).length;
 const REPORT: IssueCriteriaReport = {
   issueId: 'iss-1',
   broken: [],
@@ -94,8 +102,8 @@ const KINDS: ReadonlyArray<[string, ReleaseHold, string]> = [
   [
     'close refused for one reason',
     closeRefusedHold([QUESTION]),
-    'The automatic release cannot close this issue, because it holds 1 open question. ' +
-      'To clear it, answer the question in the Decision waiting card above. ' +
+    'The automatic release cannot close this issue.\n\n' +
+      '- It holds 1 open question. Answer the question in the Decision waiting card above.\n\n' +
       'The next sweep releases it once that is done.',
   ],
   [
@@ -110,8 +118,8 @@ const KINDS: ReadonlyArray<[string, ReleaseHold, string]> = [
   [
     'close refused for missing records, with no session to open',
     closeRefusedHold([RECORDS_NO_SESSION]),
-    'The automatic release cannot close this issue, because it is missing a plan, acceptance criteria and a release note. ' +
-      'To clear it, use Reopen in the actions menu at the top, and an agent writes the missing records. ' +
+    'The automatic release cannot close this issue.\n\n' +
+      '- It is missing a plan, acceptance criteria and a release note. Use Reopen in the actions menu at the top, and an agent writes the missing records.\n\n' +
       'The next sweep releases it once that is done.',
   ],
   [
@@ -232,5 +240,95 @@ describe('every hold kind is commented in three short sentences (ISS-1421 r8 rep
     const body = releaseHoldComment(queuedBehindHold(20), true, ['ISS-5', 'ISS-3', 'ISS-4']);
     expect(body.split('\n\n')[0]).toBe(`${HEADING} for ISS-5, ISS-3 and ISS-4`);
     expect(body).not.toContain('stands for');
+  });
+});
+
+// r11, criterion 133: judge-52 read a 23-word opening once evidence of the work was required too.
+describe('no hold sentence runs past the cap, for any shortfalls a project can require (ISS-1421 r11)', () => {
+  const subsets = <T>(items: readonly T[]): T[][] =>
+    Array.from({ length: 2 ** items.length }, (_, mask) =>
+      items.filter((_item, i) => (mask >> i) & 1),
+    );
+  const landings = [[], [landingShortfallWords(false)], [landingShortfallWords(true)]];
+  const questions = [[], [openQuestionsShortfallWords(1)], [openQuestionsShortfallWords(2)]];
+  const records = [
+    [],
+    ...subsets(ENTRY_CRITERION_KEYS)
+      .filter((keys) => keys.length > 0)
+      .flatMap((keys) => [true, false].map((s) => [entryRecordsShortfallWords(keys, s)])),
+  ];
+  const combinations = landings.flatMap((l) =>
+    questions.flatMap((q) => records.map((r) => [...l, ...q, ...r])),
+  );
+
+  function sentencesOf(body: string): string[] {
+    return body
+      .split('\n\n')
+      .slice(1)
+      .flatMap((part) => part.split(/\n|(?<=\.)\s+(?=[A-Z])/))
+      .map((one) => one.replace(/^- /, '').trim())
+      .filter((one) => one !== '');
+  }
+
+  function expectEachFits(hold: ReleaseHold): void {
+    for (const one of sentencesOf(releaseHoldComment(hold))) {
+      expect(wordsIn(one), one).toBeLessThanOrEqual(HOLD_SENTENCE_WORDS);
+      expect(one, one).toMatch(/^[A-Z"].*\.$/);
+    }
+  }
+
+  it('enumerates every set of required records, with and without a session, beside every other shortfall', () => {
+    expect(ENTRY_CRITERION_KEYS.length).toBe(5);
+    expect(combinations.length).toBe(3 * 3 * (1 + 31 * 2));
+    for (const shortfalls of combinations.filter((c) => c.length > 0)) {
+      expectEachFits(closeRefusedHold(shortfalls));
+    }
+  });
+
+  it('says four missing records in the sentence the banner uses, apart from the opening', () => {
+    const four = entryRecordsShortfallWords(
+      ['plan', 'acceptance_criteria', 'release_note', 'work_evidence'],
+      true,
+    );
+    const body = releaseHoldComment(closeRefusedHold([four]));
+    expect(body).toContain(
+      'The automatic release cannot close this issue.\n\n- It is missing a plan, acceptance criteria, a release note and evidence of the work. Press Open session',
+    );
+  });
+
+  it('measures the criteria hold for every count of criteria, readable repository or not', () => {
+    for (const n of [1, 2, 3, 4, 12]) {
+      const unearned = Array.from({ length: n }, (_, i) => ({
+        criterion: 100 + i,
+        verdict: null,
+        standing: null,
+        why: 'no verdict was recorded for it',
+      }));
+      expectEachFits(criteriaHold({ ...REPORT, unearned }));
+      expectEachFits(
+        criteriaHold({ ...REPORT, unearned: unearned.map((c) => ({ ...c, clears: ['x'] })) }),
+      );
+    }
+  });
+
+  it('measures every other kind at its longest', () => {
+    const long =
+      'A reason another part of Forge words at length, and longer than any sentence here. '.repeat(
+        3,
+      );
+    for (const hold of [
+      ...KINDS.map(([, h]) => h),
+      refusalHold('NO_RUNNER_ONLINE', [long]),
+      refusalHold('BATCH_IN_FLIGHT', [long]),
+      queuedBehindHold(10_000),
+      cutFailedHold([long]),
+      closeUnreadableHold(long),
+      gateUnreadableHold(long),
+      criteriaUnreadableHold(long),
+      targetUndeclaredHold(long),
+      runtimeUnroutedHold(long, long),
+    ]) {
+      expectEachFits(hold);
+    }
   });
 });

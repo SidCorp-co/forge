@@ -237,7 +237,7 @@ describe('weighVerdict — what it leaves as it was', () => {
   // ISS-1398 judge j2 finding 4: where the carriage and the paths both failed, the key's fix was
   // said beside each cause, twice, and not where the remedy is.
   it('says each failed read by its cause, and the act that clears them once, apart', () => {
-    const KEY_FIX = 'give the deploy key write access to git@gitlab.com:sid/desk.git';
+    const KEY_FIX = 'give the deploy key read access to git@gitlab.com:sid/desk.git';
     const w = weighing({
       runtimes: [runner(served(BUILD))],
       changed: { kind: 'unread', why: 'the paths could not be fetched', clears: KEY_FIX },

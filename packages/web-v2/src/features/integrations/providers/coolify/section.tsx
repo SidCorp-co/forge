@@ -26,6 +26,7 @@ import {
   AgentAccessControl, agentAccessBody} from "../../components/agent-access-control";
 import type { AgentAccess } from "../../types";
 import { ConnectionOwnerField } from "../../components/connection-owner-field";
+import { IntegrationEnabledControl } from "../../components/integration-enabled-control";
 import { coolify } from "./index";
 import { CoolifyTargetsField } from "./targets-field";
 import { STAGE_OPTIONS } from "../../components/status-pill";
@@ -358,6 +359,9 @@ function StagePanel({
           </Button>
         )}
       </div>
+
+      {/* The switch a turned-off target is turned back on with, which the agents line names (ISS-1421 r11). */}
+      {existing && <IntegrationEnabledControl projectId={projectId} binding={existing} />}
 
       {existing && <DeployConfirmationHint />}
 

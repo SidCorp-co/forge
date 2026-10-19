@@ -169,7 +169,7 @@ function McpServerRow({
       )}
 
       {binding && (
-        <AgentAccessControl projectId={projectId} binding={binding} canEdit={canEdit} />
+        <AgentAccessControl projectId={projectId} binding={binding} canEdit={canEdit} readFrom="panel" />
       )}
 
       {entry.configured && (

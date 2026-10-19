@@ -1,3 +1,4 @@
+import { LANDING_UNSEEN, MARK_UNSEEN } from '@forge/contracts/mark-merged-words';
 import { and, desc, eq, isNotNull, isNull, ne, or, sql } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import { issues } from '../db/schema.js';
@@ -170,7 +171,7 @@ export function describeMergeMark(args: {
     return 'This issue is not marked merged, so nothing here says the work landed.';
   }
   if (args.kind === 'landed') {
-    return `Marked as landed outside git, at ${args.landing ?? 'the landing it was given'}. Forge did not see it land; this is the marker's word.`;
+    return `Marked as landed outside git, at ${args.landing ?? 'the landing it was given'}. ${LANDING_UNSEEN}`;
   }
   if (args.kind === 'observed') {
     // Against the COLUMN, not the row this call selected: docs/modules/issues/merge-mark.md.
@@ -199,7 +200,7 @@ export function describeMergeMark(args: {
   }
   const unseen = 'Forge did not see this merge, so the mark is a claim that names no commit.';
   if (!args.claimedCommit) {
-    return 'No commit was named. Forge did not see this merge, so the mark is a claim.';
+    return `No commit was named. ${MARK_UNSEEN}`;
   }
   // A person's commit is checked only for the repository holding it, and the row keeps none of it:
   // it counts as no work evidence (`work-evidence.ts`), so it is said to live in the comment alone.

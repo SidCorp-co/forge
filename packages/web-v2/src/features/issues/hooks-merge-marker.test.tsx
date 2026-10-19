@@ -68,8 +68,15 @@ describe("the notice after Mark merged", () => {
     );
   });
 
-  it("says Marked merged on a first mark", async () => {
-    answer = { id: ISSUE, action: "merged", mark: "observed", detail: "x", movedFrom: null };
-    expect((await markOnce()).title).toBe("Marked merged");
+  // r11: judge-52 read a bare "Marked merged" with nothing saying whether Forge saw the merge.
+  it.each([
+    ["observed", "Forge saw this merge land."],
+    ["asserted", "Forge did not see this merge, so the mark is a claim."],
+    ["landed", "Forge did not see it land, so the mark is a claim."],
+  ])("says Marked merged on a first %s mark, and in one sentence what the mark is", async (mark, is) => {
+    answer = { id: ISSUE, action: "merged", mark, detail: "x", movedFrom: null };
+    const said = await markOnce();
+    expect(said.title).toBe("Marked merged.");
+    expect(said.description).toBe(is);
   });
 });

@@ -8,13 +8,11 @@ import type { PinnedSshHost } from './ssh-host-guard.js';
 export const GIT_ACCESS = "the project's Settings → Runners → Git access";
 export const REPO_URL_AT = "the project's Settings → Shape & release → Repository";
 
-/**
- * What every sentence asks the git host to give the key attached under Git access, and why. Write,
- * not read: core only reads with it, but it is the key the project's runner is provisioned with and
- * pushes with, so a key given read alone clears a read and breaks the next push.
- */
-export const KEY_ACCESS = 'write access';
-export const WHY_KEY_ACCESS = "since the project's runner pushes with it";
+// Forge only reads with the key, but devices clone and push with it (ISS-1398, ISS-1421 r11).
+export const KEY_ACCESS = 'read access';
+const KEY_NEED = 'all Forge needs; devices that push with it need write access';
+export const WHY_KEY_ACCESS = `which is ${KEY_NEED}`;
+export const READ_ACCESS_IS = `Read access is ${KEY_NEED}`;
 
 /** The host a remote names, for a sentence; the URL itself where no host can be read from it. */
 export function hostOf(repoUrl: string): string {
@@ -129,7 +127,7 @@ export function hostRefusal(err: GitFailure, remote: string): Refused {
     case 'no_access':
       return {
         cause: `the git host took this project's deploy key but will not let it read ${remote}`,
-        clears: `give that key ${KEY_ACCESS} to the repository, ${WHY_KEY_ACCESS}. If none lives there, fix the SSH clone URL under ${REPO_URL_AT}`,
+        clears: `give that key ${KEY_ACCESS} to ${remote}, ${WHY_KEY_ACCESS}. If none lives there, fix the SSH clone URL under ${REPO_URL_AT}`,
         ...said,
       };
     case 'unreachable':

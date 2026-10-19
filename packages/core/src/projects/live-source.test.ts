@@ -81,7 +81,7 @@ describe('resolveLiveSource', () => {
     expect(s.kind).toBe('refused');
     const reason = s.kind === 'refused' ? s.reason : '';
     expect(reason).toBe(
-      `Forge cannot read this project's repository on gitlab.com, since it holds no GitHub binding and no deploy key. Attach a deploy key with write access to ${GITLAB} under the project's Settings → Runners → Git access.`,
+      `Forge cannot read this project's repository on gitlab.com, since it holds no GitHub binding and no deploy key. Attach a deploy key with read access to ${GITLAB} under the project's Settings → Runners → Git access. Read access is all Forge needs; devices that push with it need write access.`,
     );
     expect(reason).not.toMatch(/GitHub repository|Integrations/);
     expect(s).toMatchObject({ unbound: true, route: 'deploy_key' });
@@ -114,7 +114,7 @@ describe('resolveLiveSource', () => {
       deps({ row: { repoUrl: 'git@github.com:SidCorp-co/forge.git', privateKeyEnc: null } }),
     );
     expect(s.kind === 'refused' && s.reason).toMatch(
-      /repository on github\.com, since .* Git access\. Or bind the repository on its Integrations page\.$/,
+      /repository on github\.com, since .* Git access\. Read access is all Forge needs; devices that push with it need write access\. Or bind the repository on its Integrations page\.$/,
     );
   });
 

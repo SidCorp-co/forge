@@ -8,7 +8,7 @@ import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentAccess, AgentPathKind } from "@forge/contracts";
-import { AgentAccessControl, TURNED_OFF_COPY } from "./agent-access-control";
+import { AgentAccessControl, turnedOffCopy } from "./agent-access-control";
 
 expect.extend(matchers);
 
@@ -21,12 +21,22 @@ afterEach(cleanup);
 
 const LIVE = /handed to the runner box|calls the provider directly|makes the call|hands the project's credential/;
 
-function show(active: boolean, agentAccess: AgentAccess, agentPathKind: AgentPathKind) {
+function show(
+  active: boolean,
+  agentAccess: AgentAccess,
+  agentPathKind: AgentPathKind,
+  {
+    bindingActive = active,
+    connectionActive = true,
+    readFrom,
+  }: { bindingActive?: boolean; connectionActive?: boolean; readFrom?: "drawer" | "panel" } = {},
+) {
   render(
     <AgentAccessControl
       projectId="p1"
-      binding={{ id: "b1", active, agentAccess, agentPathKind }}
+      binding={{ id: "b1", active, bindingActive, connectionActive, agentAccess, agentPathKind }}
       canEdit
+      {...(readFrom ? { readFrom } : {})}
     />,
   );
   return document.body.textContent ?? "";
@@ -42,7 +52,56 @@ describe("the agents switch on a binding that is turned off", () => {
     const text = show(false, access, kind);
     expect(text).toContain("Agents get nothing from it while it is turned off.");
     expect(text).not.toMatch(LIVE);
-    expect(screen.getByText(access === "all" ? TURNED_OFF_COPY.granted : TURNED_OFF_COPY.withheld)).toBeInTheDocument();
+    const copy = turnedOffCopy("binding", "drawer");
+    expect(screen.getByText(access === "all" ? copy.granted : copy.withheld)).toBeInTheDocument();
+  });
+
+  // r11: judge-52 read "Turning this on takes effect once it is turned back on", two switches called
+  // "on" and neither said where turning it back on happens.
+  it.each([
+    ["drawer", "binding", "all", "They may use it once Enabled in this drawer is switched back on."],
+    ["drawer", "binding", "none", "A grant takes effect once Enabled in this drawer is switched back on."],
+    [
+      "panel",
+      "binding",
+      "all",
+      "They may use it once Enabled in its drawer, opened from the list above, is switched back on.",
+    ],
+    [
+      "drawer",
+      "credential",
+      "none",
+      "A grant takes effect once Enable credential in this drawer turns its shared credential back on.",
+    ],
+    [
+      "panel",
+      "credential",
+      "all",
+      "They may use it once Enable credential in its drawer, opened from the list above, turns its shared credential back on.",
+    ],
+    [
+      "drawer",
+      "both",
+      "all",
+      "They may use it once Enabled and its shared credential are both back on, in this drawer.",
+    ],
+    [
+      "panel",
+      "both",
+      "none",
+      "A grant takes effect once Enabled and its shared credential are both back on, in its drawer opened from the list above.",
+    ],
+  ] as const)("names the switch that turns it back on, read from the %s, turned off at the %s, granted %s", (from, tier, access, said) => {
+    const text = show(false, access, "direct-mcp", {
+      bindingActive: tier === "credential",
+      connectionActive: tier === "binding",
+      readFrom: from,
+    });
+    expect(text).toContain(said);
+    expect(text).not.toMatch(/Turning this on|turned back on\./);
+    for (const sentence of text.match(/[A-Z][^.]*\./g) ?? []) {
+      expect(sentence.split(/\s+/).length, sentence).toBeLessThanOrEqual(25);
+    }
   });
 
   // Seen on the after-shot: the line saying who may grant it read as a credential already sent.
@@ -54,7 +113,18 @@ describe("the agents switch on a binding that is turned off", () => {
     }));
     const { AgentAccessControl: Control } = await import("./agent-access-control");
     render(
-      <Control projectId="p1" binding={{ id: "b1", active: false, agentAccess: "all", agentPathKind: "direct-mcp" }} canEdit />,
+      <Control
+        projectId="p1"
+        binding={{
+          id: "b1",
+          active: false,
+          bindingActive: false,
+          connectionActive: true,
+          agentAccess: "all",
+          agentPathKind: "direct-mcp",
+        }}
+        canEdit
+      />,
     );
     const text = document.body.textContent ?? "";
     expect(text).toContain("Granting this sends the integration's credential to the runner");

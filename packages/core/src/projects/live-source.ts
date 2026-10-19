@@ -1,7 +1,13 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projectGitCredentials, projects, workspaceSshKeys } from '../db/schema.js';
-import { GIT_ACCESS, hostOf, KEY_ACCESS, REPO_URL_AT } from '../git/bounded-fetch.js';
+import {
+  GIT_ACCESS,
+  hostOf,
+  KEY_ACCESS,
+  READ_ACCESS_IS,
+  REPO_URL_AT,
+} from '../git/bounded-fetch.js';
 import { classifyGitRemote } from '../git/provision-credential.js';
 import { type BranchRefs, readRemoteDivergence } from '../git/remote-divergence.js';
 import {
@@ -65,7 +71,7 @@ function noCredential(repoUrl: string | null): Refused {
   const github = host === 'github.com' ? '. Or bind the repository on its Integrations page' : '';
   return {
     cause: `Forge cannot read this project's repository on ${host}, since it holds no GitHub binding and no deploy key`,
-    clears: `attach a deploy key with ${KEY_ACCESS} to ${repoUrl.trim()} under ${GIT_ACCESS}${github}`,
+    clears: `attach a deploy key with ${KEY_ACCESS} to ${repoUrl.trim()} under ${GIT_ACCESS}. ${READ_ACCESS_IS}${github}`,
   };
 }
 

@@ -7,6 +7,7 @@
 // stepper. Workspace-level `/runners` is the device-global roll-up (pair /
 // rename / revoke); project membership (admin) gates the writes here.
 
+import { ConnTestMessage } from "@/features/resources/components/conn-test-message";
 import {
   Badge,
   Banner,
@@ -160,7 +161,7 @@ function GitConfigCard({
 					) : credData?.configured ? (
 						<div className="mt-2 flex flex-col gap-2">
 							<div className="flex items-center justify-between gap-2">
-								<span className="inline-flex items-center gap-1.5 text-13 text-fg">
+								<span className="inline-flex shrink-0 items-center gap-1.5 text-13 text-fg">
 									<Icon
 										name="check"
 										size={14}
@@ -169,7 +170,12 @@ function GitConfigCard({
 									{credData.key.name}
 								</span>
 								{credData.key.fingerprint && (
-									<MonoTag>{credData.key.fingerprint}</MonoTag>
+									<MonoTag
+										className="min-w-0 truncate"
+										title={credData.key.fingerprint}
+									>
+										{credData.key.fingerprint}
+									</MonoTag>
 								)}
 							</div>
 							<div className="flex items-center justify-between gap-2">
@@ -187,7 +193,7 @@ function GitConfigCard({
 							</p>
 							{testCred.data && (
 								<Banner tone={testCred.data.ok ? "success" : "danger"}>
-									{testCred.data.message}
+									<ConnTestMessage message={testCred.data.message} />
 									{testCred.data.headSha
 										? ` (HEAD ${testCred.data.headSha.slice(0, 10)})`
 										: ""}

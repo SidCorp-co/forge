@@ -13,8 +13,9 @@ import {
 const REMOTE = 'git@gitlab.com:sid/desk.git';
 const GIT_ACCESS = "the project's Settings → Runners → Git access";
 const REPO_URL_AT = "the project's Settings → Shape & release → Repository";
-/** What every sentence asks the key be given: Test connection's too (`ssh-keys.test.ts`). */
-const ASK = "write access to the repository, since the project's runner pushes with it";
+/** What every sentence asks the key be given, and why: Test connection's too (`ssh-keys.test.ts`). */
+const WHY = 'which is all Forge needs; devices that push with it need write access';
+const ASK = `read access to ${REMOTE}, ${WHY}`;
 
 const refusalOf = (a: HostAnswer) =>
   fetchRefusal({ stderr: a.stderr + GIT_TRAILER, code: 128 }, REMOTE);
@@ -77,7 +78,7 @@ describe('fetchRefusal, in the words each host sends', () => {
     'reads $name as a key the host refused, naming the repository to add it to',
     (answer) => {
       expect(refusalOf(answer)).toBe(
-        `The git host refused this project's deploy key. Give the key write access to ${REMOTE}, since the project's runner pushes with it. It is under ${GIT_ACCESS}.\n${answer.said}`,
+        `The git host refused this project's deploy key. Give the key read access to ${REMOTE}, which is all Forge needs; devices that push with it need write access. It is under ${GIT_ACCESS}.\n${answer.said}`,
       );
     },
   );
@@ -95,14 +96,16 @@ describe('fetchRefusal, in the words each host sends', () => {
     expect(why).not.toMatch(/(read|write) access/);
   });
 
-  // ISS-1398 judge j2 finding 1: the mark and the hold asked for read access, Test connection for write.
+  // ISS-1398 judge j2 finding 1: the mark and the hold asked for read access, Test connection for
+  // write; one clause words all three. r11: judge-52 read it asking for write access so Forge could
+  // read, where read access is all Forge needs and the devices pushing with the key need write.
   it.each([GITLAB_NO_ACCESS, keyUnknown('gitlab.com')])(
-    'asks for write access for $name, as Test connection does, and never for read access',
+    'asks for read access for $name, as Test connection does, naming the write devices need apart',
     (answer) => {
       const why = refusalOf(answer);
-      expect(why).toContain('write access');
-      expect(why).toContain("since the project's runner pushes with it");
-      expect(why).not.toContain('read access');
+      expect(why).toContain(`read access to ${REMOTE}, ${WHY}.`);
+      expect(why).not.toMatch(/Give (?:the|that) key write access/);
+      expect(why).not.toContain('runner pushes');
     },
   );
 
@@ -177,8 +180,8 @@ describe('the git-access refusal reads in short sentences, the host apart (ISS-1
 
   it('says a refused key in the words the coordinator asked for', () => {
     expect(refusalOf(keyUnknown('github.com')).split('\n')[0]).toBe(
-      "The git host refused this project's deploy key. Give the key write access to " +
-        `${REMOTE}, since the project's runner pushes with it. It is under ${GIT_ACCESS}.`,
+      "The git host refused this project's deploy key. Give the key read access to " +
+        `${REMOTE}, which is all Forge needs; devices that push with it need write access. It is under ${GIT_ACCESS}.`,
     );
   });
 });

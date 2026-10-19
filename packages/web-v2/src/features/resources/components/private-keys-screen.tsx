@@ -26,6 +26,7 @@ import { formatRelativeTime } from "@/lib/utils/format";
 import { useState } from "react";
 import { keyInUseDetails, useDeleteSshKey, useOrgSshKeys, useTestSshKey } from "../hooks";
 import type { SshConnTestResult, WorkspaceSshKeyView } from "../types";
+import { ConnTestMessage } from "./conn-test-message";
 import { PrivateKeyCreateSlideOver } from "./private-key-create-slideover";
 
 /** Test a pool key's reachability against a caller-supplied SSH repo URL. */
@@ -74,7 +75,7 @@ function TestSshKeyDialog({
 					<p
 						className={`fg-body-sm ${result.ok ? "text-[var(--green-600)]" : "text-[var(--red-600)]"}`}
 					>
-						{result.message}
+						<ConnTestMessage message={result.message} />
 					</p>
 				)}
 				<div className="mt-auto flex items-center justify-end gap-2.5 pt-2">
