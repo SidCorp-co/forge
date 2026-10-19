@@ -67,8 +67,10 @@ Full walkthrough: [docs/quickstart.md](docs/quickstart.md).
 ## Contributing
 
 [CONTRIBUTING.md](CONTRIBUTING.md) is the front door; [GOVERNANCE.md](GOVERNANCE.md) says who
-reviews, merges and releases. Trunk-based: one `main`, branches under a day, feature flags absorb
-what is in flight. Significant changes are argued in
+reviews, merges and releases. Two branches are gated, `main` and `dev`: CI runs on a pull request
+into either and on a push to either ([`ci.yml`](.github/workflows/ci.yml)), and `dev` is the
+base branch the repository is moving to. Which jobs each run takes:
+[CLAUDE.md](CLAUDE.md#commands). Significant changes are argued in
 [`docs/proposals/destination/`](docs/proposals/destination/), and the decisions behind the rules are
 in [`docs/adr/`](docs/adr/).
 

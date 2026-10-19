@@ -32,8 +32,8 @@ that citation's target.
 
 ## The edits ADR 0003 took after it was accepted
 
-ADR 0003 was accepted at `31d4b826f` and edited six times afterwards. Five changed no decision and
-stand as edits:
+ADR 0003 was accepted at `31d4b826f` and edited seven times afterwards. Six changed no decision
+and stand as edits:
 
 | Commit | Edit | Kind |
 |---|---|---|
@@ -42,6 +42,7 @@ stand as edits:
 | `3e9b50b6e` | the amnesty names `ISS-2745`, the issue its end condition described | clarification |
 | `1b455cffa` | the context put in the past tense, and a citation corrected for a file that moved | clarification |
 | `4f0652fb4` | a pointer dropped from a file that no longer holds the measurement | clarification |
+| `266bf8fe1` | the amended-by line naming ADR 0005, and the context restored to its accepted wording, in the past tense `1b455cffa` gave it, undoing `4c52ec218`'s rewrite | amended-by line |
 
 One, `4c52ec218`, added a decision — that `base_branch` stays — and rewrote the context to
 match. That decision is [ADR 0005](0005-base-branch-stays-beside-the-release-chain.md) now; ADR

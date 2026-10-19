@@ -14,9 +14,9 @@ updates:
     # failed identically all 4; `minor-and-patch-9d2cc350ae` ran 5 times and failed
     # all 5 — ~9 full runs on two PRs that were never going to go green, against 89
     # direct pushes to main in the same week. Disabled means the PR keeps the base
-    # it opened against; `@dependabot rebase` still works when a rebase is wanted,
-    # and branch protection (`strict: true`) refuses a stale branch at merge time,
-    # so nothing lands un-rebased.
+    # it opened against; `@dependabot rebase` still works when a rebase is wanted.
+    # Branch protection does not require a branch to be up to date (ISS-1370), so
+    # a bump can merge behind `main`.
     rebase-strategy: "disabled"
     open-pull-requests-limit: 5
     labels: ["dependencies", "ci"]
@@ -46,9 +46,9 @@ updates:
     # failed identically all 4; `minor-and-patch-9d2cc350ae` ran 5 times and failed
     # all 5 — ~9 full runs on two PRs that were never going to go green, against 89
     # direct pushes to main in the same week. Disabled means the PR keeps the base
-    # it opened against; `@dependabot rebase` still works when a rebase is wanted,
-    # and branch protection (`strict: true`) refuses a stale branch at merge time,
-    # so nothing lands un-rebased.
+    # it opened against; `@dependabot rebase` still works when a rebase is wanted.
+    # Branch protection does not require a branch to be up to date (ISS-1370), so
+    # a bump can merge behind `main`.
     rebase-strategy: "disabled"
     open-pull-requests-limit: 5
     labels: ["dependencies"]
@@ -96,9 +96,9 @@ updates:
     # failed identically all 4; `minor-and-patch-9d2cc350ae` ran 5 times and failed
     # all 5 — ~9 full runs on two PRs that were never going to go green, against 89
     # direct pushes to main in the same week. Disabled means the PR keeps the base
-    # it opened against; `@dependabot rebase` still works when a rebase is wanted,
-    # and branch protection (`strict: true`) refuses a stale branch at merge time,
-    # so nothing lands un-rebased.
+    # it opened against; `@dependabot rebase` still works when a rebase is wanted.
+    # Branch protection does not require a branch to be up to date (ISS-1370), so
+    # a bump can merge behind `main`.
     rebase-strategy: "disabled"
     open-pull-requests-limit: 5
     labels: ["dependencies", "rust"]
