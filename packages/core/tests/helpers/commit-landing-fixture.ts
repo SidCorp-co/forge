@@ -211,8 +211,8 @@ export function useCommitLandingWorld() {
   });
 
   return {
-    current(): { db: TestDatabase['db']; projectId: string } {
-      return { db: harness.db, projectId };
+    current(): { db: TestDatabase['db']; projectId: string; userId: string } {
+      return { db: harness.db, projectId, userId };
     },
 
     async setBaseBranch(branch: string | null): Promise<void> {

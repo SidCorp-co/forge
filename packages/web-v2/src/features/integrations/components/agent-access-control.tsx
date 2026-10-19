@@ -30,6 +30,14 @@ const KIND_COPY: Record<
   },
 };
 
+/** A binding turned off gives agents nothing, granted or not, so nothing under the switch may read
+ *  as live (ISS-1421 r10, criterion 134). */
+export const TURNED_OFF_COPY = {
+  granted: "Agents get nothing from it while it is turned off. Once it is turned back on, they may use it.",
+  withheld:
+    "Agents get nothing from it while it is turned off. Turning this on takes effect once it is turned back on.",
+} as const;
+
 export function agentAccessBody(
   pathKind: AgentPathKind,
   value: AgentAccess,
@@ -49,7 +57,7 @@ export function mayWriteAgentAccess(
 /** Who the caller has to be, said in the same terms the server refuses in. */
 export function agentAccessDeniedReason(pathKind: AgentPathKind): string {
   return pathKind === "direct-mcp"
-    ? "This integration's credential is sent to the runner, so only an organisation owner or admin can grant it to agents."
+    ? "Granting this sends the integration's credential to the runner, so only an organisation owner or admin can grant it."
     : "Only a project admin can change this.";
 }
 
@@ -68,6 +76,7 @@ export function AgentAccessChoice({
   disabledReason,
   busy,
   failure,
+  turnedOff = false,
 }: {
   value: AgentAccess;
   onChange: (next: AgentAccess) => void;
@@ -77,8 +86,11 @@ export function AgentAccessChoice({
   disabledReason?: string;
   busy?: boolean;
   failure?: string | null;
+  /** A saved binding that is turned off: what the grant would do is not what happens now. */
+  turnedOff?: boolean;
 }) {
-  const copy = pathKind === "none" ? undefined : KIND_COPY[pathKind];
+  const kind = pathKind === "none" ? undefined : KIND_COPY[pathKind];
+  const copy = kind && turnedOff ? TURNED_OFF_COPY : kind;
   if (!copy) return null;
 
   const granted = value !== AGENT_ACCESS_CLOSED;
@@ -119,7 +131,7 @@ export function AgentAccessControl({
   disabledReason,
 }: {
   projectId: string;
-  binding: Pick<IntegrationSummary, "id" | "agentAccess" | "agentPathKind">;
+  binding: Pick<IntegrationSummary, "id" | "agentAccess" | "agentPathKind" | "active">;
   /** May the caller edit this project's integrations at all. The GRANT's own tier is applied here. */
   canEdit: boolean;
   disabledReason?: string;
@@ -146,6 +158,7 @@ export function AgentAccessControl({
       disabledReason={disabledReason ?? agentAccessDeniedReason(binding.agentPathKind)}
       busy={inFlight !== null}
       failure={failure}
+      turnedOff={!binding.active}
       onChange={(next) => {
         setFailure(null);
         setInFlight(next);

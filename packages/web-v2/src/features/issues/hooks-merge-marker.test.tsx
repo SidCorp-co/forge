@@ -53,7 +53,7 @@ describe("the notice after Mark merged", () => {
       "> The git host gitlab.com could not be reached, so the deploy key was never offered. Check that the SSH clone URL `git@gitlab.com:sid/desk.git` names the right host, and that the host is up.\n>\n> `ssh: connect to host gitlab.com port 22: Connection timed out`";
     answer = { id: ISSUE, action: "already_merged", mark: "observed", detail: `${ours}\n${why}`, movedFrom: null };
     const said = await markOnce();
-    expect(said.title).toBe("Already marked merged — nothing changed");
+    expect(said.title).toBe("Already marked merged, so nothing changed.");
     // The reason's first clause on a line of its own, never the host's whole account after a
     // literal "> " (round 8): the mark's comment keeps it whole.
     expect(said.description).toBe(`${ours}\nThe git host gitlab.com could not be reached.`);

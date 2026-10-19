@@ -31,6 +31,7 @@ export interface ReleaseRosterEntry {
   title: string;
   /** When the branch landed on the base branch. Null only for legacy rows. */
   mergedAt: string | null;
+  mergedCommitSha: string | null;
   /** Whole days since the merge, so "oldest 6 days" is a read, not a sum. */
   waitingDays: number | null;
   claimedByRunId: string | null;
@@ -120,6 +121,7 @@ export async function loadReleaseRoster(projectId: string): Promise<ReleaseRoste
       issSeq: issues.issSeq,
       title: issues.title,
       mergedAt: issues.mergedAt,
+      mergedCommitSha: issues.mergedCommitSha,
       releaseBatchRunId: issues.releaseBatchRunId,
     })
     .from(issues)
@@ -143,6 +145,7 @@ export async function loadReleaseRoster(projectId: string): Promise<ReleaseRoste
       displayId: r.issSeq != null ? formatIssueRef(prefix, r.issSeq) : r.id,
       title: r.title ?? '(untitled)',
       mergedAt: r.mergedAt ? r.mergedAt.toISOString() : null,
+      mergedCommitSha: r.mergedCommitSha,
       waitingDays: r.mergedAt
         ? Math.floor((now - r.mergedAt.getTime()) / (24 * 60 * 60 * 1000))
         : null,

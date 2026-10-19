@@ -71,7 +71,7 @@ function mergeMarkSentence(err: ApiError): string | null {
   if (err.code === 'MARK_ALREADY_STANDS') {
     const held = detailStr(err.details, 'heldLanding');
     const stands = held ? `This issue’s mark already says it landed at ${held}` : 'This issue already carries a mark that names no landing';
-    return `${stands}, and that mark stands — nothing changed. To change it, press Unmark, then Mark merged with the landing that is right.`;
+    return `${stands}, so nothing changed. To change it, press Unmark, then Mark merged with the landing that is right.`;
   }
   return null;
 }

@@ -152,8 +152,9 @@ A merged commit on the row is work evidence: `collectWorkEvidence` reads `merged
 where `merged_at` is set, so an issue the mark accepted is not refused `NO_WORK_EVIDENCE` at
 `developed` or `testing` one status later. The `NO_WORK_EVIDENCE` refusal
 (`packages/core/src/pipeline/work-evidence.ts:noWorkEvidenceDetail`) offers that commit route
-on the `git` lane only, and to an agent only, and tells that lane how an issue whose change lands
-no file in the repository declares itself `outside_git`.
+on the `git` lane only, and to an agent only. At the doors that move a status it also tells that
+lane how an issue whose change lands no file in the repository declares itself `outside_git`; a
+mark's own refusal is its three sentences alone, with none of the lane's rules appended (ISS-1421 r10).
 
 On an `outside_git` lane the landing a mark names is the work evidence (ISS-1384):
 `collectWorkEvidence` reads `merged_landing` where `merged_at` is set and the lane is
@@ -248,10 +249,12 @@ after it does not, and a repository's address shows there as code, never a mail 
 or a repeat, is quoted on a line of its own (`threadBody`). Each mark refusal names the field its
 own door's caller sends: `landing`, `commit` or `target` on REST, `data.landing`, `data.commit` or
 `data.target` on MCP (`packages/core/src/issues/landing-evidence.ts:markField`), and the page's
-own field on the issue page (`packages/web-v2/src/lib/api/error.ts:formatApiError`). The REST
+own field on the issue page (`packages/web-v2/src/lib/api/error.ts:formatApiError`). Either
 door's refusal of its own input, a blank target read as a missing one, is one sentence naming what
 the mark needs (`packages/core/src/issues/merge-input-refusal.ts:markInputRefusal`), with zod's
-account kept in `details`. An MCP `target` of `base`, `prod` or `feature` is written as the branch it
+account kept in `details` on REST; on MCP, a `mark_merged` or `unmark` its input schema refuses (a
+blank, all-spaces or unknown `data.target` among them) is worded the same way before zod's text
+reaches the caller (`packages/core/src/issues/merge-input-refusal.ts:refusedAsMark`). An MCP `target` of `base`, `prod` or `feature` is written as the branch it
 means (`packages/core/src/issues/mark-target.ts:markTargetBranch`). No answer repeats "Forge saw
 this merge land" before the point; `packages/core/src/issues/mark-words.test.ts` holds every
 sentence builder to this.

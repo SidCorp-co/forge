@@ -74,6 +74,7 @@ export const rosterSchema = z.object({
       displayId: z.string(),
       title: z.string(),
       mergedAt: z.string().nullable(),
+      mergedCommitSha: z.string().nullable(),
       waitingDays: z.number().nullable(),
       claimedByRunId: z.string().nullable(),
       closeRefusals: z.array(closeRefusalSchema),

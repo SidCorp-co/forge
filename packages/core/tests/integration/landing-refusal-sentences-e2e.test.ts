@@ -13,6 +13,7 @@ import {
   harness,
   refusalOf,
   rest,
+  stored,
   tool,
   useLandingHarness,
   type World,
@@ -227,5 +228,50 @@ describe('RELEASE_WORK_UNMERGED follows the roster it was sent', () => {
     expect(unmerged.map((b) => b.details?.shape)).toEqual(['git', 'outside_git']);
     expect(unmerged[0]?.details?.issueIds).toEqual([gitSecond, gitFirst]);
     expect(unmerged[1]?.details?.issueIds).toEqual([declared]);
+  });
+});
+
+// ISS-1421 r10, criteria 63 and 119: judge-46 read about 150 words of the lane's rules appended to
+// an agent's git-lane mark refusal at both doors, and zod's "Invalid option" for a blank, all-spaces
+// or unknown MCP target. Each is read here at the real door, over HTTP and the MCP transport.
+describe("an agent's mark refused at the real doors reads in the mark's own sentences", () => {
+  const AGENT_GIT_MARK = (field: string) =>
+    'Nothing was marked, because this mark names no commit and no branch is recorded for this issue. ' +
+    `Record the branch in \`sessionContext.branch\`, or name the commit it landed at on the base branch in ${field}. ` +
+    "Forge checks that commit against the project's repository.";
+
+  it('answers a git-lane mark with no branch and no commit in its three sentences alone, at REST and MCP', async () => {
+    const w = await world('standard');
+    await asAgent(w);
+    const id = await issueAt(w, 'in_progress');
+    const res = await rest('POST', `/api/issues/${id}/merge`, w.pat, { target: 'main' });
+    const body = (await res.json()) as { code?: string; message?: string; error?: string };
+    expect(res.status).toBe(422);
+    expect(body.code).toBe('NO_WORK_EVIDENCE');
+    expect(body.message ?? body.error).toBe(AGENT_GIT_MARK('`commit`'));
+
+    const viaTool = await tool(w.pat, {
+      action: 'mark_merged',
+      data: { issueId: id, target: 'base' },
+    });
+    expect(viaTool.isError).toBe(true);
+    expect(viaTool.text).toBe(`Error: NO_WORK_EVIDENCE: ${AGENT_GIT_MARK('`data.commit`')}`);
+    expect((await stored(id)).merged_at).toBeNull();
+  });
+
+  it.each([
+    ['a blank', ''],
+    ['an all-spaces', '   '],
+    ['an unknown', 'release'],
+  ])('refuses %s MCP target as a missing one is refused', async (_what, target) => {
+    const w = await world('standard');
+    await asAgent(w);
+    const id = await issueAt(w, 'in_progress');
+    const viaTool = await tool(w.pat, { action: 'mark_merged', data: { issueId: id, target } });
+    expect(viaTool.isError).toBe(true);
+    expect(viaTool.text).toBe(
+      'Error: Name where the work merged as `data.target`: base, prod or feature.',
+    );
+    expect((await stored(id)).merged_at).toBeNull();
   });
 });

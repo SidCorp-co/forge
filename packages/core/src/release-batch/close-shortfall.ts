@@ -134,10 +134,10 @@ export const ENTRY_RECORDS_CLEAR_HERE =
   "An agent writes them through Forge's issue tools. To start one, press Open session at the top of this page.";
 
 export const ENTRY_RECORDS_REOPEN =
-  "An agent writes them through Forge's issue tools. This issue has no session to open, so use Reopen in the issue's actions menu, and the agent that takes it writes them.";
+  "An agent writes them through Forge's issue tools. This issue has no session to open, so use Reopen in the issue's actions menu. The agent that takes it writes them.";
 
 export const ENTRY_RECORDS_REOPEN_HERE =
-  "An agent writes them through Forge's issue tools. This issue has no session to open, so use Reopen in the actions menu at the top of this page, and the agent that takes it writes them.";
+  "An agent writes them through Forge's issue tools. This issue has no session to open, so use Reopen in the actions menu at the top of this page. The agent that takes it writes them.";
 
 /** One line per shortfall, the way a hold or an outcome names it: "ISS-4: It holds 1 open question. Answer it…". */
 export function shortfallLine(

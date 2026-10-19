@@ -55,6 +55,24 @@ const RECORDS = {
   clears: 'An agent writes them. To start one, press Open session at the top of the issue page.',
   clearsHere: 'An agent writes them. To start one, press Open session at the top of this page.',
 };
+// r10: judge-46 read a 25-word sentence where the issue had no session to open.
+const RECORDS_NO_SESSION = {
+  code: 'ENTRY_CRITERIA_UNMET',
+  reason:
+    'missing a plan, acceptance criteria and a release note, which this project requires before a close',
+  clears:
+    "An agent writes them through Forge's issue tools. This issue has no session to open, so use Reopen in the issue's actions menu. The agent that takes it writes them.",
+  clearsHere:
+    "An agent writes them through Forge's issue tools. This issue has no session to open, so use Reopen in the actions menu at the top of this page. The agent that takes it writes them.",
+};
+const QUESTIONS = { ...QUESTION, reason: 'holds 2 open questions' };
+const UNREAD_REPORT: IssueCriteriaReport = {
+  ...REPORT,
+  unearned: REPORT.unearned.map((c) => ({
+    ...c,
+    clears: ['give Forge a deploy key it can read with'],
+  })),
+};
 const TARGET =
   'This project declares a release chain and has no active deploy binding carrying the `live` stage, so there is nowhere for a release to land.';
 
@@ -88,6 +106,28 @@ const KINDS: ReadonlyArray<[string, ReleaseHold, string]> = [
       '- It holds 1 open question. Answer the question in the Decision waiting card above.\n' +
       '- It is missing a test report. Press Open session at the top of this page, and the agent writes the missing records.\n\n' +
       'The next sweep releases it once each is done.',
+  ],
+  [
+    'close refused for missing records, with no session to open',
+    closeRefusedHold([RECORDS_NO_SESSION]),
+    'The automatic release cannot close this issue, because it is missing a plan, acceptance criteria and a release note. ' +
+      'To clear it, use Reopen in the actions menu at the top, and an agent writes the missing records. ' +
+      'The next sweep releases it once that is done.',
+  ],
+  [
+    'close refused for several reasons, with no session to open',
+    closeRefusedHold([QUESTIONS, RECORDS_NO_SESSION]),
+    'The automatic release cannot close this issue, for 2 reasons.\n\n' +
+      '- It holds 2 open questions. Answer the questions in the Decision waiting cards above.\n' +
+      '- It is missing a plan, acceptance criteria and a release note. Use Reopen in the actions menu at the top, and an agent writes the missing records.\n\n' +
+      'The next sweep releases it once each is done.',
+  ],
+  [
+    'criteria unearned with an unreadable repository',
+    criteriaHold(UNREAD_REPORT),
+    'The automatic release leaves this issue out, because criteria 3 and 5 are unearned and its repository is unreadable. ' +
+      'A person makes the repository readable to Forge again, then records a verdict on each or closes the issue. ' +
+      'The next sweep weighs it again.',
   ],
   [
     'close unreadable',
@@ -155,6 +195,13 @@ const KINDS: ReadonlyArray<[string, ReleaseHold, string]> = [
 ];
 
 describe('every hold kind is commented in three short sentences (ISS-1421 r8 repair 2)', () => {
+  // r10, criterion 133: every builder in release-hold-kinds.ts (a refusal as a person's and as one
+  // that clears itself), and each variant one of them words differently, is measured above.
+  it('measures every kind a hold comes in', () => {
+    expect(new Set(KINDS.map(([, hold]) => hold.code)).size).toBe(12);
+    expect(KINDS.length).toBe(16);
+  });
+
   it.each(KINDS)(
     'words the %s hold as what holds it, what a person does, what follows',
     (_k, hold, said) => {
