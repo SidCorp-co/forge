@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from 'vitest';
 const people = [
   { email: 'Mai@Example.com', displayName: 'Mai' },
   { email: 'lan@example.com', displayName: null },
+  { email: 'a@example.test', displayName: 'Ana' },
+  { email: 'ba@example.test', displayName: 'Bao' },
 ];
 vi.mock('../db/client.js', () => ({
   db: { select: () => ({ from: () => ({ where: async () => people }) }) },
@@ -30,5 +32,9 @@ describe('a notice title at the delivery door', () => {
     expect(await unaddressedTitle('ISS-4 is waiting for ghost@example.org')).toBe(
       'ISS-4 is waiting for another member',
     );
+  });
+
+  it('reads an address that sits inside another as its own person only where it stands alone', async () => {
+    expect(await unaddressedTitle('a@example.test and ba@example.test')).toBe('Ana and Bao');
   });
 });

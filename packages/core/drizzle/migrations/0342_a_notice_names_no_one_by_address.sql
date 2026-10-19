@@ -13,6 +13,7 @@ DECLARE
   said text;
   found text;
   named text;
+  at integer;
   rewritten integer := 0;
 BEGIN
   FOR r IN
@@ -31,10 +32,11 @@ BEGIN
          AND nullif(regexp_replace(u.display_name, '^[[:space:]]+|[[:space:]]+$', '', 'g'), '') IS NOT NULL
          AND u.display_name !~ pat
        LIMIT 1;
-      said := replace(
-        said,
-        found,
-        coalesce(named, CASE WHEN left(said, length(found)) = found THEN 'Another member' ELSE 'another member' END)
+      -- Only this occurrence: an address can sit inside another ("a@x.test" in "ba@x.test").
+      at := position(found IN said);
+      said := overlay(
+        said PLACING coalesce(named, CASE WHEN at = 1 THEN 'Another member' ELSE 'another member' END)
+        FROM at FOR length(found)
       );
     END LOOP;
     IF r.kind = 'record' THEN

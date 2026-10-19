@@ -41,8 +41,11 @@ beforeAll(async () => {
   app.onError(errorHandler);
 });
 
-async function person(displayName: string | null): Promise<{ id: string; email: string }> {
-  const user = await createTestUser(fx.db);
+async function person(
+  displayName: string | null,
+  email?: string,
+): Promise<{ id: string; email: string }> {
+  const user = await createTestUser(fx.db, email ? { email } : {});
   await fx.db.execute(sql`
     UPDATE users SET display_name = ${displayName}, email_verified_at = now() WHERE id = ${user.id}
   `);
@@ -208,6 +211,16 @@ describe('migration 0342: a stored title names no one by address', () => {
     expect(await titlesOf(plain)).toEqual(Array(2).fill('ISS-6 moved to Testing'));
     expect(await titlesOf(spaces)).toEqual(Array(2).fill('Another member asked Lan'));
     expect(await addressedTitles()).toEqual([]);
+  });
+
+  it('rewrites an address that sits inside another only where it stands on its own', async () => {
+    await person('Mai', 'a@example.test');
+    await person('Lan', 'ba@example.test');
+    const nested = await stored('a@example.test and ba@example.test');
+    await runMigration();
+    expect(await titlesOf(nested)).toEqual(Array(2).fill('Mai and Lan'));
+    await runMigration();
+    expect(await titlesOf(nested)).toEqual(Array(2).fill('Mai and Lan'));
   });
 
   it('runs again over titles it already rewrote and changes nothing', async () => {
