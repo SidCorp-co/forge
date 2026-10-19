@@ -3,7 +3,9 @@
 //! One `list-sessions` on the daemon's own socket (`terminal::socket_path`),
 //! never `attach`, `send-keys` or `kill`. A server that is not running holds no
 //! session and says so in its own words; any other failure is a question tmux
-//! did not answer, which is unreadable and never an empty box.
+//! did not answer, which is unreadable and never an empty box. A socket file
+//! that is not there is one of those: tmux says the same of a file moved from
+//! under a server still running every master it ran (ISS-1265 round 4).
 
 use std::collections::HashMap;
 use std::process::{Command, Stdio};
@@ -41,18 +43,30 @@ fn asked(mut cmd: Command, source: &str) -> Read<Sessions> {
     )
 }
 
-/// tmux's own wording for a socket no server is listening on: `no server
-/// running`, or a connect refused because the socket file is not there.
+/// tmux's own wording for a socket file nothing listens on.
 fn no_server(stderr: &str) -> bool {
+    stderr.to_lowercase().contains("no server running")
+}
+
+/// tmux's wording for a socket file that is not there.
+fn no_socket_file(stderr: &str) -> bool {
     let lower = stderr.to_lowercase();
-    lower.contains("no server running")
-        || (lower.contains("error connecting to") && lower.contains("no such file"))
+    lower.contains("error connecting to") && lower.contains("no such file")
 }
 
 pub fn parse(source: &str, ok: bool, stdout: &str, stderr: &str) -> Read<Sessions> {
     if !ok {
         if no_server(stderr) {
             return Ok(Sessions::new());
+        }
+        if no_socket_file(stderr) {
+            return Err(Unreadable::new(
+                source,
+                format!(
+                    "the socket file is not there, so whether a server moved from under it still runs the masters cannot be read ({})",
+                    stderr.trim()
+                ),
+            ));
         }
         return Err(Unreadable::new(source, stderr.trim()));
     }

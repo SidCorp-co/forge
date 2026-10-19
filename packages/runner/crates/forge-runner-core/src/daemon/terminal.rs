@@ -103,7 +103,11 @@ fn fits_a_unix_socket(path: &str) -> bool {
 }
 
 fn socket_args() -> Vec<String> {
-    match socket_path() {
+    socket_args_for(socket_path().as_deref())
+}
+
+fn socket_args_for(socket: Option<&std::path::Path>) -> Vec<String> {
+    match socket {
         Some(p) => vec!["-S".into(), p.to_string_lossy().into_owned()],
         None => Vec::new(),
     }
@@ -130,16 +134,24 @@ pub(super) async fn tmux(args: &[&str]) -> Result<std::process::Output> {
 }
 
 /// `tmux`, run as a client whose own `PATH` is `path` where one is given.
+///
+/// A call that exits zero was answered by a server on the socket, so a missing
+/// socket file said before is said again if it goes missing again.
 async fn tmux_with_path(args: &[&str], path: Option<&str>) -> Result<std::process::Output> {
-    let mut all = socket_args();
+    let socket = socket_path();
+    let mut all = socket_args_for(socket.as_deref());
     all.extend(args.iter().map(|a| (*a).to_string()));
-    tmux_command()
+    let out = tmux_command()
         .args(&all)
         .envs(path.map(|p| ("PATH", p)))
         .stdin(Stdio::null())
         .output()
         .await
-        .map_err(|e| Error::Other(format!("tmux {}: {e}", args.first().copied().unwrap_or(""))))
+        .map_err(|e| Error::Other(format!("tmux {}: {e}", args.first().copied().unwrap_or(""))))?;
+    if out.status.success() {
+        missing_socket::answered(socket);
+    }
+    Ok(out)
 }
 
 fn session_target(name: &str) -> String {
@@ -181,6 +193,14 @@ pub async fn pane_pid(name: &str) -> Option<u32> {
 /// pane reads `no server running` once it has ended, and reading that as
 /// unknown left its messages and its run open for ever wherever no keepalive
 /// held the server up (ISS-1265 round 3).
+///
+/// A socket FILE that is not there is the opposite case. tmux answers
+/// `error connecting to <sock> (No such file or directory)` for a socket never
+/// made and, word for word, for one moved or deleted from under a server that
+/// is still running every session it ran (judge-51, ISS-1265 round 4). Nothing
+/// in the answer parts the two, and the runner places its panes on that socket
+/// before it asks about them, so the master's ruling of 2026-10-19 reads it as
+/// a question nobody answered, never as an ending.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Presence {
     Present,
@@ -189,17 +209,20 @@ pub(crate) enum Presence {
 }
 
 /// tmux's own wording for a session it does not hold: a server that answered
-/// without it, a socket whose server has exited (`ECONNREFUSED`), and a socket
-/// no server ever made (`ENOENT`, in `strerror`'s English; another language
-/// reads as unaskable, the safe direction). Anything else it says,
-/// `Permission denied` and `server exited unexpectedly` among them, is not an
-/// answer about the session, and an unread answer is not an ending.
-const NO_SUCH_SESSION: [&str; 4] = [
+/// without it, and a socket file whose server has exited (`ECONNREFUSED`).
+/// Anything else it says, `Permission denied`, `server exited unexpectedly`
+/// and a socket file that is not there among them, is not an answer about the
+/// session, and an unread answer is not an ending.
+const NO_SUCH_SESSION: [&str; 3] = [
     "can't find session",
     "session not found",
     "no server running on",
-    "(no such file or directory)",
 ];
+
+/// tmux's wording for a socket file that is not there, in `strerror`'s English.
+fn says_no_socket_file(lower: &str) -> bool {
+    lower.contains("error connecting to") && lower.contains("(no such file or directory)")
+}
 
 pub(crate) async fn has_session(name: &str) -> Presence {
     let target = session_target(name);
@@ -217,10 +240,15 @@ pub(crate) async fn has_session(name: &str) -> Presence {
     }
     let said = String::from_utf8_lossy(&out.stderr);
     let lower = said.to_lowercase();
+    if says_no_socket_file(&lower) {
+        missing_socket::say(name);
+        return Presence::Unaskable;
+    }
     if NO_SUCH_SESSION
         .iter()
         .any(|wording| lower.contains(wording))
     {
+        missing_socket::answered(socket_path());
         return Presence::Absent;
     }
     tracing::warn!(
@@ -228,6 +256,81 @@ pub(crate) async fn has_session(name: &str) -> Presence {
         said.trim()
     );
     Presence::Unaskable
+}
+
+/// What this daemon knows about the socket its panes are on, for the one line
+/// a missing socket file earns.
+///
+/// The line names the panes `ensure` placed there, because those are the
+/// sessions a server nobody can reach may still be running. It is said once
+/// per episode rather than per ask: recovery and the sweeps ask every few
+/// seconds, and an episode ends at the first tmux call a server on that socket
+/// answers, whichever caller made it.
+mod missing_socket {
+    use std::collections::{BTreeMap, BTreeSet};
+    use std::path::PathBuf;
+    use std::sync::Mutex;
+
+    type Socket = Option<PathBuf>;
+
+    static PLACED: Mutex<BTreeMap<Socket, BTreeSet<String>>> = Mutex::new(BTreeMap::new());
+    static SAID: Mutex<BTreeSet<Socket>> = Mutex::new(BTreeSet::new());
+
+    pub(super) fn placed(socket: Socket, name: &str) {
+        PLACED
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .entry(socket)
+            .or_default()
+            .insert(name.to_string());
+    }
+
+    pub(super) fn forgotten(socket: &Socket, name: &str) {
+        if let Some(names) = PLACED
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get_mut(socket)
+        {
+            names.remove(name);
+        }
+    }
+
+    pub(super) fn answered(socket: Socket) {
+        SAID.lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(&socket);
+    }
+
+    pub(super) fn say(name: &str) {
+        let socket = super::socket_path();
+        if !SAID
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(socket.clone())
+        {
+            tracing::debug!("[terminal] {name}: the tmux socket file is still not there");
+            return;
+        }
+        let shown = socket
+            .as_deref()
+            .map_or_else(|| "of the default server".to_string(), |p| p.display().to_string());
+        let placed: Vec<String> = PLACED
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(&socket)
+            .map(|names| names.iter().cloned().collect())
+            .unwrap_or_default();
+        if placed.is_empty() {
+            tracing::warn!(
+                "[terminal] {name}: the tmux socket file {shown} is not there, so no server on it could be asked whether this session is running, and nothing is read as ended. This daemon placed no pane on that socket since it started"
+            );
+        } else {
+            tracing::error!(
+                "[terminal] {name}: the tmux socket file {shown} is not there, so the server this daemon placed {} on could not be asked whether they are running, and none is read as ended — a socket moved or deleted under a running server still holds every session it held. Sending SIGUSR1 to that tmux server recreates the file",
+                placed.join(", ")
+            );
+        }
+    }
 }
 
 pub async fn alive(name: &str) -> bool {
@@ -628,6 +731,7 @@ pub async fn ensure(
             String::from_utf8_lossy(&out.stderr).trim()
         )));
     }
+    missing_socket::placed(socket_path(), name);
     if let Some(path) = transcript {
         pipe_pane(name, path).await;
     }
@@ -872,12 +976,18 @@ nothing confirmed its prompt was empty before typing"
 pub async fn kill(name: &str) -> Result<()> {
     let target = session_target(name);
     let refused = match tmux(&["kill-session", "-t", &target]).await {
-        Ok(out) if out.status.success() => return Ok(()),
+        Ok(out) if out.status.success() => {
+            missing_socket::forgotten(&socket_path(), name);
+            return Ok(());
+        }
         Ok(out) => String::from_utf8_lossy(&out.stderr).trim().to_string(),
         Err(e) => e.to_string(),
     };
     match still_there(name).await {
-        Ok(false) => Ok(()),
+        Ok(false) => {
+            missing_socket::forgotten(&socket_path(), name);
+            Ok(())
+        }
         Ok(true) => Err(Error::Other(format!("tmux kill-session {name}: {refused}"))),
         Err(e) => Err(Error::Other(format!(
             "tmux kill-session {name}: {refused}, and whether it is still there could not be established: {e}"
@@ -896,14 +1006,19 @@ pub async fn kill(name: &str) -> Result<()> {
 /// (ISS-1208).
 ///
 /// A server that is not running is `Ok(false)`, not an error: no server holds
-/// no sessions, which is the outcome the caller wanted. `Err` is this box
-/// failing to run tmux at all.
+/// no sessions, which is the outcome the caller wanted. `Err` is every answer
+/// [`has_session`] cannot read as one about the session — tmux that could not
+/// be run, a socket refusing this box, and a socket file that is not there,
+/// where a server moved from under it still runs the pane this kill never
+/// reached (ISS-1265 round 4).
 async fn still_there(name: &str) -> Result<bool> {
-    let target = session_target(name);
-    Ok(tmux(&["has-session", "-t", &target])
-        .await?
-        .status
-        .success())
+    match has_session(name).await {
+        Presence::Present => Ok(true),
+        Presence::Absent => Ok(false),
+        Presence::Unaskable => Err(Error::Other(
+            "tmux could not be asked whether this session is there".into(),
+        )),
+    }
 }
 
 pub fn pane_argv(mcp_config: Option<&std::path::Path>, resume: Option<&str>) -> Vec<String> {
@@ -2845,10 +2960,11 @@ done
         assert_eq!(
             spawns.len(),
             2,
-            "the wrapper and load-buffer are the only two, and both take `socket_args()`"
+            "the wrapper and load-buffer are the only two, and both take the socket's args"
         );
         assert!(
-            production.contains("let mut all = socket_args();") && spawns[0].starts_with("&all)"),
+            production.contains("let mut all = socket_args_for(socket.as_deref());")
+                && spawns[0].starts_with("&all)"),
             "the wrapper builds its args from the socket and passes them"
         );
         assert!(
