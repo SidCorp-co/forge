@@ -71,9 +71,13 @@ describe('hostSaid hides every absolute path a reply carries', () => {
       'a path on the git server',
       "fatal: '/srv/git/sid/desk.git' does not appear to be a git repository\n",
     ],
+    ['a one-part path', "fatal: '/repo.git' does not appear to be a git repository\n"],
+    ['a quoted path with a space', 'Load key "/home/build user/key": bad\n'],
+    ['a bare path', 'fatal: /srv/git/desk.git: no such repository\n'],
   ])('%s', (_name, stderr) => {
     const said = hostSaid(stderr);
-    expect(said).not.toMatch(/(^|[\s'"(])\/[\w.-]+\//);
+    expect(said).not.toMatch(/(^|[\s'"(])\/[\w.-]/);
+    expect(said).not.toMatch(/build|user\/key|repo\.git|desk|forge-tmp/);
     expect(said).toContain('[path hidden]');
   });
 });

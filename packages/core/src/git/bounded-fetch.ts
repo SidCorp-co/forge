@@ -63,7 +63,8 @@ const GIT_TRAILER =
 const RULE = /^[=\-*#_~]{3,}$/;
 
 /** An absolute path in a reply: Forge's own temp files or the server's, neither a person's to read. */
-const ABSOLUTE_PATH = /(?<=^|[\s'"(=])\/(?:[\w.@+-]+\/)+[\w.@+-]*/g;
+const QUOTED_PATH = /(['"])\/[^'"\n]*\1/g;
+const BARE_PATH = /(?<=^|[\s(=])\/[\w.@+-]+(?:\/[\w.@+-]*)*/g;
 
 /** The first line a git host said with words in it, past git's `remote:` prefix, banner rules
  *  (GitLab opens a refusal with them) and git's own trailer, which is kept only where alone. */
@@ -73,7 +74,8 @@ export function hostSaid(stderr: string): string {
     .map((l) => l.replace(/^remote:/i, '').trim())
     .filter((l) => l !== '' && !RULE.test(l));
   return (lines.find((l) => !GIT_TRAILER.test(l)) ?? lines[0] ?? '')
-    .replace(ABSOLUTE_PATH, '[path hidden]')
+    .replace(QUOTED_PATH, '$1[path hidden]$1')
+    .replace(BARE_PATH, '[path hidden]')
     .slice(0, 300);
 }
 
