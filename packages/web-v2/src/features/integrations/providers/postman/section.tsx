@@ -179,8 +179,8 @@ export function PostmanSection({ projectId }: { projectId: string }) {
       <div className="flex flex-col gap-4">
         <p className="fg-body-sm text-muted">
           Store a Postman API key + write-target. Being connected is not the same as being
-          usable: the official Postman MCP tools reach this project&apos;s agents only once the
-          grant below is on.
+          usable: the official Postman MCP tools reach this project&apos;s agents only while
+          Enabled and the grant below are both on.
         </p>
 
         <Field

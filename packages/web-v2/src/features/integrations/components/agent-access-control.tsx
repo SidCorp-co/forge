@@ -30,13 +30,38 @@ const KIND_COPY: Record<
   },
 };
 
+/** Which tier turned a binding off: this project's Enabled switch, or the shared credential. */
+export type TurnedOff = "binding" | "credential";
+
+/** Where the switch is read from: inside the provider's drawer, or the Agent MCP servers panel. */
+export type ReadFrom = "drawer" | "panel";
+
+const OFF = "Agents get nothing from it while it is turned off.";
+
+/** The control that turns it back on, named as its drawer labels it (ISS-1421 r11). */
+function backOn(tier: TurnedOff, from: ReadFrom): string {
+  const where = from === "drawer" ? "in this drawer" : "in its drawer, opened from the list above,";
+  return tier === "binding"
+    ? `once Enabled ${where} is switched back on`
+    : `once Enable credential ${where} turns its shared credential back on`;
+}
+
 /** A binding turned off gives agents nothing, granted or not, so nothing under the switch may read
- *  as live (ISS-1421 r10, criterion 134). */
-export const TURNED_OFF_COPY = {
-  granted: "Agents get nothing from it while it is turned off. Once it is turned back on, they may use it.",
-  withheld:
-    "Agents get nothing from it while it is turned off. Turning this on takes effect once it is turned back on.",
-} as const;
+ *  as live (ISS-1421 r10, criterion 134), and the way back names its switch and where it is. */
+export function turnedOffCopy(tier: TurnedOff, from: ReadFrom): { granted: string; withheld: string } {
+  return {
+    granted: `${OFF} They may use it ${backOn(tier, from)}.`,
+    withheld: `${OFF} A grant takes effect ${backOn(tier, from)}.`,
+  };
+}
+
+/** The tier a saved binding is turned off at, or null where both are on. */
+export function turnedOffTier(
+  binding: Pick<IntegrationSummary, "active" | "bindingActive">,
+): TurnedOff | null {
+  if (binding.active) return null;
+  return binding.bindingActive ? "credential" : "binding";
+}
 
 export function agentAccessBody(
   pathKind: AgentPathKind,
@@ -76,7 +101,8 @@ export function AgentAccessChoice({
   disabledReason,
   busy,
   failure,
-  turnedOff = false,
+  turnedOff = null,
+  readFrom = "drawer",
 }: {
   value: AgentAccess;
   onChange: (next: AgentAccess) => void;
@@ -87,10 +113,11 @@ export function AgentAccessChoice({
   busy?: boolean;
   failure?: string | null;
   /** A saved binding that is turned off: what the grant would do is not what happens now. */
-  turnedOff?: boolean;
+  turnedOff?: TurnedOff | null;
+  readFrom?: ReadFrom;
 }) {
   const kind = pathKind === "none" ? undefined : KIND_COPY[pathKind];
-  const copy = kind && turnedOff ? TURNED_OFF_COPY : kind;
+  const copy = kind && turnedOff ? turnedOffCopy(turnedOff, readFrom) : kind;
   if (!copy) return null;
 
   const granted = value !== AGENT_ACCESS_CLOSED;
@@ -129,12 +156,17 @@ export function AgentAccessControl({
   binding,
   canEdit,
   disabledReason,
+  readFrom = "drawer",
 }: {
   projectId: string;
-  binding: Pick<IntegrationSummary, "id" | "agentAccess" | "agentPathKind" | "active">;
+  binding: Pick<
+    IntegrationSummary,
+    "id" | "agentAccess" | "agentPathKind" | "active" | "bindingActive"
+  >;
   /** May the caller edit this project's integrations at all. The GRANT's own tier is applied here. */
   canEdit: boolean;
   disabledReason?: string;
+  readFrom?: ReadFrom;
 }) {
   const update = useUpdateProviderIntegration(projectId);
   const isOrgAdmin = useIsOrgAdmin(projectId);
@@ -158,7 +190,8 @@ export function AgentAccessControl({
       disabledReason={disabledReason ?? agentAccessDeniedReason(binding.agentPathKind)}
       busy={inFlight !== null}
       failure={failure}
-      turnedOff={!binding.active}
+      turnedOff={turnedOffTier(binding)}
+      readFrom={readFrom}
       onChange={(next) => {
         setFailure(null);
         setInFlight(next);

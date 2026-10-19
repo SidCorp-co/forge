@@ -249,8 +249,8 @@ export function SentrySection({ projectId }: { projectId: string }) {
         <p className="fg-body-sm text-muted">
           Store one Sentry host + auth token, then register every Sentry project it can read
           (e.g. backend, frontend, mobile). The official Sentry MCP tools reach this
-          project&apos;s agents only once the grant below is on; the target list is then shared
-          with them so they query the right org/project.
+          project&apos;s agents only while Enabled and the grant below are both on; the target list
+          is then shared with them so they query the right org/project.
         </p>
 
         <Field
