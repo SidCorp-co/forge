@@ -30,6 +30,7 @@ import {
   distinctCauseCount,
   filterActivity,
 } from "../activity";
+import { runHasStarted } from "../derive";
 import type { PipelineRunRetrySummary, PipelineRunSummary } from "../types";
 
 interface ActivityTabProps {
@@ -69,6 +70,15 @@ export function ActivityTab({ run, loading, error, onRetry }: ActivityTabProps) 
   }
 
   const entries = deriveActivityFeed(run.attempts);
+  // A run its header reads Running or Waiting for me with no job on it is worked by its session.
+  if (entries.length === 0 && runHasStarted(run)) {
+    return (
+      <EmptyState
+        title="No job attempts"
+        message="A session works this run directly rather than through jobs, so there are no attempts to list. Its session's page shows what it is doing."
+      />
+    );
+  }
   if (entries.length === 0) {
     return (
       <EmptyState

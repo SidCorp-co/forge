@@ -160,20 +160,6 @@ describe('jobs/agent-session-link', () => {
       expect(updateCalls).toHaveLength(0);
     });
 
-    // ISS-1228 round 18 (judge-53): a take after the job's session had ended reused it.
-    it.each([[{ status: 'failed' }], [undefined]])(
-      'mints a new session where the one the job links has ended or is gone (%j)',
-      async (linked) => {
-        if (linked) pushSelect(linked);
-        const result = await ensureAgentSessionForJob(
-          { ...baseJob, agentSessionId: 'sess-ended' } as never,
-          { repoPath: '/r', resume: FRESH_RESUME },
-        );
-        expect(result).toBe('sess-new');
-        expect(insertCalls).toHaveLength(1);
-      },
-    );
-
     it('ISS-785 — mints a FRESH session row for a retry job instead of reusing the parent, chaining metadata + carrying pipelineHealth forward', async () => {
       pushSelect({ agentSessionId: 'sess-parent' });
       pushSelect({
@@ -368,6 +354,30 @@ describe('jobs/agent-session-link', () => {
       expect(closeRunIfOneShotMock).not.toHaveBeenCalled();
     });
   });
+});
+
+// ISS-1228 round 18 (judge-53): a take after the job's session had ended reused it.
+describe('ensureAgentSessionForJob — a session that has ended is never reused', () => {
+  beforeEach(() => {
+    selectQueue.length = 0;
+    updateCalls.length = 0;
+    insertCalls.length = 0;
+    publishMock.mockReset();
+    closeRunIfOneShotMock.mockClear();
+  });
+
+  it.each([[{ status: 'failed' }], [undefined]])(
+    'mints a new session where the one the job links has ended or is gone (%j)',
+    async (linked) => {
+      if (linked) pushSelect(linked);
+      const result = await ensureAgentSessionForJob(
+        { ...baseJob, agentSessionId: 'sess-ended' } as never,
+        { repoPath: '/r', resume: FRESH_RESUME },
+      );
+      expect(result).toBe('sess-new');
+      expect(insertCalls).toHaveLength(1);
+    },
+  );
 });
 
 describe('jobs/agent-session-link — ISS-877 failure cause', () => {
