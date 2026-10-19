@@ -96,7 +96,6 @@ export function RunDetail({ open, onClose, runId, projectSlugs, canWrite = true 
   const label = issueRef ?? (runId ? `run ${runId.slice(0, 8)}` : "run");
   const title = run?.issueTitle ?? "Pipeline run";
   const chip = run ? runReadingChip(run) : null;
-  const chipStatus = chip?.status ?? null;
   // A run reading Queued is in no box's hands, so there is no step to pause after and no agent to stop;
   // one Starting is on a box already, and keeps both (ISS-1228).
   const hasStarted = run?.status === "running" && run.reading !== "queued";
