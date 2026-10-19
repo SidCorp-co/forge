@@ -30,6 +30,8 @@ import {
   distinctCauseCount,
   filterActivity,
 } from "../activity";
+import { useNow } from "@/design/hooks/use-now";
+import { runHasStarted, runIsStalled } from "../derive";
 import type { PipelineRunRetrySummary, PipelineRunSummary } from "../types";
 
 interface ActivityTabProps {
@@ -54,6 +56,7 @@ const FILTERS: { value: ActivityFilter; label: string }[] = [
 
 export function ActivityTab({ run, loading, error, onRetry }: ActivityTabProps) {
   const [filter, setFilter] = useState<ActivityFilter>("all");
+  const now = useNow(10_000);
 
   if (loading) return <ActivitySkeleton />;
   if (error) return <ErrorState message={formatApiError(error)} onRetry={onRetry} />;
@@ -69,11 +72,28 @@ export function ActivityTab({ run, loading, error, onRetry }: ActivityTabProps) 
   }
 
   const entries = deriveActivityFeed(run.attempts);
+  // A run its header reads Running or Waiting for me with no job on it is worked by its session.
+  if (entries.length === 0 && runHasStarted(run)) {
+    return (
+      <EmptyState
+        title="No job attempts"
+        message="A session works this run directly rather than through jobs, so there are no attempts to list. Its session's page shows what it is doing."
+      />
+    );
+  }
+  if (entries.length === 0 && runIsStalled(run, now)) {
+    return (
+      <EmptyState
+        title="Nothing is working this run"
+        message="No box is working it and no job is waiting for one, so nothing will appear here on its own."
+      />
+    );
+  }
   if (entries.length === 0) {
     return (
       <EmptyState
         title="Nothing has run yet"
-        message="Attempts appear here the moment a runner picks this up."
+        message="Attempts appear here the moment a box picks this up."
       />
     );
   }
@@ -173,9 +193,6 @@ function ActivityRow({ entry }: { entry: ActivityEntry }) {
           )}
         </div>
 
-        {entry.detail && (
-          <p className="fg-caption break-words text-muted">{entry.detail}</p>
-        )}
         {entry.action && (
           <p className="fg-caption break-words" style={{ color: "var(--amberw-600)" }}>
             {entry.action}

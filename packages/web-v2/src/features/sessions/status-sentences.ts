@@ -73,7 +73,7 @@ const waitHolder = (kind: string | null | undefined): string =>
 export function waitingOnText(kind: string | null | undefined, waitingOn: string | null | undefined): string {
   const head =
     kind === "nobody"
-      ? "Waiting on nobody. This run is a failure with a name."
+      ? "Waiting on nobody. Nothing will end this wait on its own, so a person has to look at it."
       : `Waiting on ${waitHolder(kind)}.`;
   const words = waitingOn?.trim();
   return words ? `${head} ${stop(capitalised(words))}` : head;

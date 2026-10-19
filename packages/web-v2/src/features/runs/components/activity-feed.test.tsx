@@ -32,6 +32,7 @@ function attempt(over: Partial<PipelineRunAttempt> = {}): PipelineRunAttempt {
     failureAction: null,
     queuedAt: "2026-08-30T10:00:00.000Z",
     startedAt: "2026-08-30T10:00:05.000Z",
+    ranAt: "2026-08-30T10:00:06.000Z",
     finishedAt: "2026-08-30T10:01:00.000Z",
     autoRetry: null,
     takenBy: null,
@@ -92,10 +93,32 @@ describe("ActivityTab — required states", () => {
     expect(onRetry).toHaveBeenCalledTimes(1);
   });
 
-  it("first-run empty: says what will appear here", () => {
-    render(<ActivityTab run={run([])} loading={false} error={null} onRetry={noop} />);
+  it("first-run empty: says what will appear here, in a box's name rather than a runner's", () => {
+    const opened = { ...run([]), startedAt: new Date().toISOString() };
+    render(<ActivityTab run={opened} loading={false} error={null} onRetry={noop} />);
     expect(screen.getByText(/nothing has run yet/i)).toBeInTheDocument();
+    expect(screen.getByText("Attempts appear here the moment a box picks this up.")).toBeInTheDocument();
   });
+
+  // ISS-1228 round 18 repair: a run reading Nothing working promised attempts "the moment a runner
+  // picks this up", though no job waited for any box.
+  it("a run nothing works and nothing waits on: says so, and promises no attempt", () => {
+    render(<ActivityTab run={run([])} loading={false} error={null} onRetry={noop} />);
+    expect(screen.getByText("Nothing is working this run")).toBeInTheDocument();
+    expect(screen.queryByText(/the moment a/)).toBeNull();
+  });
+
+  // ISS-1228 round 18: a run session's drawer read Running over "Nothing has run yet".
+  it.each(["running", "waiting"] as const)(
+    "a %s run with no job: says a session works it, never that nothing has run",
+    (reading) => {
+      render(
+        <ActivityTab run={{ ...run([]), reading }} loading={false} error={null} onRetry={noop} />,
+      );
+      expect(screen.getByText("No job attempts")).toBeInTheDocument();
+      expect(screen.queryByText(/nothing has run yet/i)).toBeNull();
+    },
+  );
 
   it("no pipeline run: says there is none rather than that nothing has run", () => {
     render(<ActivityTab run={undefined} loading={false} error={null} onRetry={noop} />);

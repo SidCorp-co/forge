@@ -4,8 +4,7 @@
 // rather than navigating away. Reads top-down as a status panel (ISS-436):
 // header (title + run cost) → run controls → Activity / Timeline / Cost tabs, all driven by
 // `GET /api/pipeline-runs/:id` (`useRun`, WS-live via key
-// `['pipeline-run', id]`). Pause/Resume/Cancel hit real endpoints; Rerun/Fork
-// have NO backend (info toast, no phantom call).
+// `['pipeline-run', id]`). Every control and menu item hits a real endpoint or link.
 
 import { jobKindLabel } from "@/features/overview/job-kinds";
 import { useEffect, useState } from "react";
@@ -26,10 +25,12 @@ import {
   Tooltip,
   type MenuItem,
 } from "@/design";
+import { useNow } from "@/design/hooks/use-now";
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import { useRecents, buildShareLink } from "@/features/shell";
-import { runReadingChip } from "../derive";
+import { runHasStarted, runReadingChip } from "../derive";
+import { RUN_KIND_WORD } from "../run-status-words";
 import { formatDurationMs, formatUsd } from "@/lib/utils/format";
 import { useCancelRun, usePauseRun, useResumeRun, useRun } from "../hooks";
 import { ActivityTab } from "./activity-feed";
@@ -66,11 +67,12 @@ export function RunDetail({ open, onClose, runId, projectSlugs, canWrite = true 
   const pause = usePauseRun();
   const resume = useResumeRun();
   const cancel = useCancelRun();
+  const now = useNow(10_000, open);
 
   const run = runQ.data;
-  const taskIssueId = run?.issueId ?? null;
   const slug = run ? projectSlugs.get(run.projectId) : undefined;
-  const issueRef = run?.issueRef ?? null;
+  const issues = run ? runIssues(run) : [];
+  const issueRef = issues.length === 1 ? (issues[0]?.ref ?? null) : null;
 
   // Track the opened run as recently-viewed (surfaces in the ⌘K Recent group).
   useEffect(() => {
@@ -94,11 +96,12 @@ export function RunDetail({ open, onClose, runId, projectSlugs, canWrite = true 
   }
   const chipStep = run?.currentStep ? jobKindLabel(run.currentStep) : undefined;
   const label = issueRef ?? (runId ? `run ${runId.slice(0, 8)}` : "run");
-  const title = run?.issueTitle ?? "Pipeline run";
-  const chip = run ? runReadingChip(run) : null;
-  // A run reading Queued is in no box's hands, so there is no step to pause after and no agent to stop;
-  // one Starting is on a box already, and keeps both (ISS-1228).
-  const hasStarted = run?.status === "running" && run.reading !== "queued";
+  const title = runTitle(issues, run ? RUN_KIND_WORD[run.kind] : "Pipeline run");
+  const chip = run ? runReadingChip(run, now) : null;
+  // Pause and Stop now act on an agent at work, so only a run something has started offers them; an
+  // open run nothing has started yet offers Cancel run, the one control it takes (ISS-1228).
+  const hasStarted = run ? runHasStarted(run) : false;
+  const canCancelUnstarted = run?.status === "running" && !hasStarted;
   // Pause is a "finish the in-flight step, then halt" gate (it does NOT abort
   // the running agent — only Cancel does). So a paused run with a step still
   // `running` is transitional ("Pausing…"); once that step clears it is fully
@@ -126,29 +129,28 @@ export function RunDetail({ open, onClose, runId, projectSlugs, canWrite = true 
     cancel.mutate(runId);
   }
 
-  const notSupported = (action: string) =>
-    toast({ tone: "info", title: `${action} isn't supported yet` });
-
-  function openIssue() {
-    if (!slug || !taskIssueId) return;
+  function openIssue(href: string) {
+    if (!slug) return;
     onClose();
-    router.push(`/projects/${slug}/issues/${taskIssueId}`);
+    router.push(`/projects/${slug}/issues/${href}`);
   }
 
   const menuItems: MenuItem[] = [];
   // Related / Jump-to cross-links (run ↔ issue) + shareable deep-link.
-  if (slug && taskIssueId) {
-    menuItems.push({ label: "Open issue", icon: "list", onSelect: openIssue });
+  if (slug) {
+    for (const issue of issues) {
+      menuItems.push({
+        label: issues.length === 1 ? "Open issue" : `Open ${issue.ref}`,
+        icon: "list",
+        onSelect: () => openIssue(issue.href),
+      });
+    }
   }
   if (runId) {
     menuItems.push({ label: "Copy link", icon: "link", onSelect: copyLink });
   }
-  menuItems.push(
-    { label: "Rerun", icon: "rerun", onSelect: () => notSupported("Rerun") },
-    { label: "Fork", icon: "fork", onSelect: () => notSupported("Fork") },
-  );
-  // NOTE: abort lives on the first-class "Stop now" control below (ISS-376), so
-  // there is exactly one abort affordance — no duplicate "Cancel run" here.
+  // NOTE: abort lives on the first-class "Stop now" / "Cancel run" control below (ISS-376), so
+  // there is exactly one abort affordance — none in this menu.
 
   return (
     <SlideOver
@@ -216,6 +218,18 @@ export function RunDetail({ open, onClose, runId, projectSlugs, canWrite = true 
                   </Button>
                 </Tooltip>
               )}
+              {canWrite && runId && canCancelUnstarted && (
+                <Tooltip label="Ends this run before anything works on it. Nothing has started, so no agent is stopped mid-step.">
+                  <Button
+                    variant="danger"
+                    icon="stop"
+                    loading={cancel.isPending}
+                    onClick={onStopClick}
+                  >
+                    {confirmStop ? "Confirm cancel" : "Cancel run"}
+                  </Button>
+                </Tooltip>
+              )}
               <Menu
                 align="left"
                 trigger={
@@ -268,6 +282,33 @@ export function RunDetail({ open, onClose, runId, projectSlugs, canWrite = true 
       )}
     </SlideOver>
   );
+}
+
+/** One issue a run names: its key, where its page is, and its title where core knows it. */
+interface RunIssue {
+  ref: string;
+  href: string;
+  title: string | null;
+}
+
+/** The issues a run names: its own, else the group a box drove it over, each keyed and titled from
+ *  what core answered (ISS-1228). A run session carries no issue of its own, only its group. */
+function runIssues(run: PipelineRunSummary): RunIssue[] {
+  if (run.issueId) {
+    return [{ ref: run.issueRef ?? run.issueId.slice(0, 8), href: run.issueId, title: run.issueTitle }];
+  }
+  return run.group.issues.map((key) => ({
+    ref: key,
+    href: encodeURIComponent(key),
+    title: run.groupTitles?.[key] ?? null,
+  }));
+}
+
+/** A run is titled by its one issue; several are listed by key; none by its kind, as the runs tab names it. */
+function runTitle(issues: RunIssue[], kindWord: string): string {
+  if (issues.length === 1) return issues[0]?.title ?? issues[0]?.ref ?? kindWord;
+  if (issues.length > 1) return issues.map((i) => i.ref).join(", ");
+  return kindWord;
 }
 
 /* ── Timeline ─────────────────────────────────────────────────────────── */

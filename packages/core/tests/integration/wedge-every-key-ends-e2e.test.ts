@@ -64,7 +64,7 @@ async function wedgeHolding(
   const [wedge] = (await harness.db.execute(sql`
     INSERT INTO notifications (project_id, type, kind, tier, state, title, resolution_key, pending_since, last_seen_at)
     VALUES (${w.projectId}::uuid, 'pipeline_wedge', 'condition', 'page', 'firing',
-            'Pipeline wedge: claim hop miss on session', ${key}, now(), now())
+            'No box started a session it was given', ${key}, now(), now())
     RETURNING id
   `)) as unknown as Array<{ id: string }>;
   const [held] = (await harness.db.execute(sql`

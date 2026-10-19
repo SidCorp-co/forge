@@ -149,7 +149,8 @@ describe('jobs/agent-session-link', () => {
   });
 
   describe('ensureAgentSessionForJob', () => {
-    it('returns the existing session id when the job already has one (no-op)', async () => {
+    it('returns the existing session id when the job already has one still open (no-op)', async () => {
+      pushSelect({ status: 'queued' });
       const result = await ensureAgentSessionForJob(
         { ...baseJob, agentSessionId: 'sess-existing' } as never,
         { repoPath: '/r', resume: FRESH_RESUME },
@@ -353,6 +354,30 @@ describe('jobs/agent-session-link', () => {
       expect(closeRunIfOneShotMock).not.toHaveBeenCalled();
     });
   });
+});
+
+// ISS-1228 round 18 (judge-53): a take after the job's session had ended reused it.
+describe('ensureAgentSessionForJob — a session that has ended is never reused', () => {
+  beforeEach(() => {
+    selectQueue.length = 0;
+    updateCalls.length = 0;
+    insertCalls.length = 0;
+    publishMock.mockReset();
+    closeRunIfOneShotMock.mockClear();
+  });
+
+  it.each([[{ status: 'failed' }], [undefined]])(
+    'mints a new session where the one the job links has ended or is gone (%j)',
+    async (linked) => {
+      if (linked) pushSelect(linked);
+      const result = await ensureAgentSessionForJob(
+        { ...baseJob, agentSessionId: 'sess-ended' } as never,
+        { repoPath: '/r', resume: FRESH_RESUME },
+      );
+      expect(result).toBe('sess-new');
+      expect(insertCalls).toHaveLength(1);
+    },
+  );
 });
 
 describe('jobs/agent-session-link — ISS-877 failure cause', () => {

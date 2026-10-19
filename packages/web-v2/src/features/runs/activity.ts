@@ -27,9 +27,8 @@ export interface ActivityEntry {
   outcome: string;
   /** The resolved ISS-877 cause, or null when nothing failed. */
   cause: FailureCause | null;
-  /** One-line remedy for that cause; null when there is nothing to act on. */
+  /** One-line remedy, on the run's latest attempt alone; null when there is nothing to act on. */
   action: string | null;
-  detail: string | null;
   tone: ActivityTone;
   /** Runner the attempt landed on, already resolved to something printable. */
   device: string;
@@ -45,22 +44,28 @@ export interface ActivityEntry {
 
 const OPEN_STATUSES: ReadonlySet<string> = new Set(LIVE_JOB_STATUSES);
 
-/** Runner-friendly device name, never a bare empty cell; a taken job is on the box that took it. */
-function deviceLabel(a: PipelineRunAttempt): string {
+function boxOf(a: PipelineRunAttempt): string | null {
   if (a.deviceName) return a.deviceName;
   if (a.deviceId) return a.deviceId.slice(0, 8);
   if (a.takenBy) return a.takenBy.deviceName ?? a.takenBy.deviceId.slice(0, 8);
-  return "unassigned";
+  return null;
 }
 
-/** An attempt not started reads the run's own word: Starting where a box has taken or been sent it,
- *  Queued where none has, never Ran (ISS-1228). */
-function unstartedVerb(a: PipelineRunAttempt): string | null {
+const deviceLabel = (a: PipelineRunAttempt): string => boxOf(a) ?? "unassigned";
+
+/** The run's own word for an open attempt, and Never started for a finished one nothing ran (ISS-1228). */
+function stateVerb(a: PipelineRunAttempt): string | null {
+  if (a.status === "running") return "Running";
   if (a.status === "dispatched" || (a.status === "queued" && a.takenBy)) return "Starting";
-  return a.status === "queued" ? "Queued" : null;
+  if (a.status === "queued") return "Queued";
+  if (a.status === "held") return "Held";
+  if (a.status !== "done" && a.ranAt === null) return "Never started";
+  return null;
 }
 
+/** An open attempt has not ended, so it has no cause and no remedy, whatever its session ended of. */
 function causeOf(a: PipelineRunAttempt): FailureCause | null {
+  if (OPEN_STATUSES.has(a.status)) return null;
   if (a.failureCause) return resolveFailureCause(a.failureCause);
   if (a.status !== "failed" && a.status !== "cancelled") return null;
   if (a.failureReason && LEGACY_NEUTRAL_REASONS.has(a.failureReason)) return null;
@@ -73,17 +78,32 @@ function toneOf(a: PipelineRunAttempt, cause: FailureCause | null): ActivityTone
   return FAILURE_CAUSE_PRESENTATION[cause];
 }
 
-/** Outcome text for an attempt that never finished — never a blank cell. */
+/** A box-side cause of an attempt nothing started, said of the box it was sent to (ISS-1228). */
+const NEVER_TOOK: Partial<Record<FailureCause, { box: (box: string) => string; none: string }>> = {
+  queue_timeout: { box: (b) => `${b} never took it before the queue timeout`, none: "No box took it before the queue timeout" },
+  no_client_ack: { box: (b) => `${b} never acknowledged it`, none: "No box acknowledged it" },
+  runner_unreachable: { box: (b) => `${b} could not be reached`, none: "No box could be reached" },
+};
+
+function neverTook(a: PipelineRunAttempt, cause: FailureCause | null) {
+  return cause && a.ranAt === null ? NEVER_TOOK[cause] : undefined;
+}
+
+/** Outcome text for an attempt that never finished — never a blank cell, and the box by its name. */
 function openOutcome(a: PipelineRunAttempt): string {
+  const box = boxOf(a) ?? "a box";
   if (a.status === "running") return "Still running";
-  if (a.status === "dispatched") return "Sent to a runner, not started yet";
+  if (a.status === "dispatched") return `Sent to ${box}, not started yet`;
   if (a.status === "held") return "Held — waiting on a gate";
-  if (a.takenBy) return "Taken by a runner, not started yet";
-  return "Queued — no runner has picked it up";
+  if (a.takenBy) return `Taken by ${box}, not started yet`;
+  return "Queued — no box has taken it yet";
 }
 
 function outcomeOf(a: PipelineRunAttempt, cause: FailureCause | null): string {
   if (OPEN_STATUSES.has(a.status)) return openOutcome(a);
+  const box = boxOf(a);
+  const never = neverTook(a, cause);
+  if (never) return box ? never.box(box) : never.none;
   if (cause) return failureReasonLabel(cause) ?? "Unclassified";
   if (a.status === "done") return "Completed";
   if (a.failureReason && LEGACY_NEUTRAL_REASONS.has(a.failureReason)) {
@@ -92,12 +112,12 @@ function outcomeOf(a: PipelineRunAttempt, cause: FailureCause | null): string {
   return `Ended ${a.status}`;
 }
 
-function detailOf(a: PipelineRunAttempt, cause: FailureCause | null): string | null {
-  if (a.failureDetail) return a.failureDetail;
-  if (!a.failureReason) return null;
-  if (a.failureReason === cause) return null;
-  if (LEGACY_NEUTRAL_REASONS.has(a.failureReason)) return null;
-  return a.failureReason;
+/** The remedy for a cause, naming the box where the box is what failed to start it. */
+function actionOf(a: PipelineRunAttempt, cause: FailureCause | null): string | null {
+  if (!cause) return null;
+  if (!neverTook(a, cause)) return failureReasonAction(cause, "Retry", a.ranAt != null);
+  const box = boxOf(a);
+  return box ? `Check that ${box} is online and its runner is running.` : "Check that a box bound to this project is online.";
 }
 
 /** Two attempts collapse into one line only when every readable field agrees. */
@@ -107,13 +127,12 @@ function signature(
   outcome: string,
   action: string | null,
 ): string {
-  const fields = [a.jobType, a.status, cause ?? "", outcome, action ?? "", deviceLabel(a)];
-  return [...fields, detailOf(a, cause) ?? ""].join("\0");
+  return [a.jobType, a.status, stateVerb(a) ?? "", cause ?? "", outcome, action ?? "", deviceLabel(a)].join("\0");
 }
 
 function verbFor(a: PipelineRunAttempt, position: number, repeats: number): string {
-  const unstarted = unstartedVerb(a);
-  if (unstarted) return unstarted;
+  const state = stateVerb(a);
+  if (state) return state;
   if (repeats > 1) return "Retried";
   return position === 1 ? "Ran" : "Retried";
 }
@@ -126,7 +145,7 @@ export function deriveActivityFeed(attempts: PipelineRunAttempt[] | undefined): 
     const position = index + 1;
     const cause = causeOf(a);
     const outcome = outcomeOf(a, cause);
-    const action = cause ? failureReasonAction(cause, "Retry", a.startedAt != null) : null;
+    const action = actionOf(a, cause);
     const sig = signature(a, cause, outcome, action);
     const previous = entries[entries.length - 1];
 
@@ -147,7 +166,6 @@ export function deriveActivityFeed(attempts: PipelineRunAttempt[] | undefined): 
       outcome,
       cause,
       action,
-      detail: detailOf(a, cause),
       tone: toneOf(a, cause),
       device: deviceLabel(a),
       repeats: 1,
@@ -157,6 +175,9 @@ export function deriveActivityFeed(attempts: PipelineRunAttempt[] | undefined): 
     });
   });
 
+  // A remedy answers what to do next, and an attempt a later one followed has had its next step.
+  const last = attempts?.length ?? 0;
+  for (const e of entries) if (Math.max(...e.positions) < last) e.action = null;
   return entries;
 }
 

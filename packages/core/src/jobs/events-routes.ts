@@ -238,8 +238,17 @@ jobEventsRoutes.post(
               startedAt: sql`CASE WHEN ${previous.status} = 'queued' THEN ${heartbeatNow.toISOString()}::timestamptz ELSE ${agentSessions.startedAt} END`,
             }
           : {};
-        const beat = await withKernelMarker(db, async (tx) =>
-          tx
+        const beat = await withKernelMarker(db, async (tx) => {
+          // The frame that moves the session to running moves its job there too, so a job its box is
+          // working never reads as sent and not started (ISS-1228). Gated on the row already read, as
+          // the ack stamp is, so a job past `dispatched` costs no statement.
+          if (sawTurn && job.status === 'dispatched') {
+            await tx
+              .update(jobs)
+              .set({ status: 'running' })
+              .where(and(eq(jobs.id, jobId), eq(jobs.status, 'dispatched')));
+          }
+          return tx
             .with(previous)
             .update(agentSessions)
             .set({
@@ -256,8 +265,8 @@ jobEventsRoutes.post(
               startedRunning: sawTurn
                 ? sql<boolean>`${previous.status} = 'queued'`
                 : sql<boolean>`false`,
-            }),
-        );
+            });
+        });
         const beaten = beat[0];
         if (beaten?.startedRunning) {
           broadcastSessionEvent(

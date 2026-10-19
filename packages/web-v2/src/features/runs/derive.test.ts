@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { aggregateStepCosts, median, runGateNote, runReadingChip } from "./derive";
+import { aggregateStepCosts, median, runGateNote, runHasStarted, runIsStalled, runReadingChip } from "./derive";
 import type { PipelineRunStatus, RunGateCondition, RunReading, StepDurationRow } from "./types";
 
 function step(over: Partial<StepDurationRow> & { step: string }): StepDurationRow {
@@ -156,7 +156,41 @@ describe("runGateNote", () => {
 // ISS-1228 round 17 (judge-47): the runs tab read a taken and a sent run Running where the drawer read
 // Queued, and the drawer read a sent run Running beside "not started yet". One reading, from core.
 describe("runReadingChip — the one word a run reads on every surface", () => {
-  const of = (status: PipelineRunStatus, reading: RunReading | null = null) => runReadingChip({ status, reading });
+  const NOW = Date.parse("2026-10-20T10:00:00.000Z");
+  const minutesAgo = (m: number) => new Date(NOW - m * 60_000).toISOString();
+  const live = { liveJobs: 1, lastSessionBeatAt: null, startedAt: minutesAgo(10) };
+  const of = (status: PipelineRunStatus, reading: RunReading | null = null) =>
+    runReadingChip({ status, reading, ...live }, NOW);
+
+  // ISS-1228 round 18 repair: the band counted a run as having nothing working on it while its drawer
+  // read Running, and named it nowhere.
+  it("reads an open run nothing works as Nothing working once its start-up grace is over", () => {
+    const idle = { status: "running" as const, reading: null, liveJobs: 0, lastSessionBeatAt: null };
+    expect(runReadingChip({ ...idle, startedAt: minutesAgo(10) }, NOW)).toEqual({ status: "zombie", label: "Nothing working" });
+    expect(runIsStalled({ ...idle, startedAt: minutesAgo(10) }, NOW)).toBe(true);
+    expect(runReadingChip({ ...idle, startedAt: minutesAgo(1) }, NOW)).toEqual({ status: "queued", label: "Starting" });
+    expect(runIsStalled({ ...idle, startedAt: minutesAgo(1) }, NOW)).toBe(false);
+    expect(runReadingChip({ ...idle, startedAt: minutesAgo(10), lastSessionBeatAt: minutesAgo(5) }, NOW).label).toBe("Running");
+    expect(runIsStalled({ ...idle, startedAt: minutesAgo(10), reading: "starting" }, NOW)).toBe(false);
+    const paused = { ...idle, status: "paused" as const, startedAt: minutesAgo(10) };
+    expect([runIsStalled(paused, NOW), runReadingChip(paused, NOW).label]).toEqual([false, "Paused"]);
+  });
+
+  it("reads a chat waiting on its person as Waiting for me (ISS-1228 round 18)", () => {
+    expect(of("running", "waiting")).toEqual({ status: "waiting", label: "Waiting for me" });
+  });
+
+  it("calls a run started only once an agent works on it or a chat waits on its person", () => {
+    const started = (reading: RunReading | null) => runHasStarted({ status: "running", reading });
+    expect([started("running"), started("waiting"), started("starting"), started("queued"), started(null)]).toEqual([
+      true,
+      true,
+      false,
+      false,
+      false,
+    ]);
+    expect(runHasStarted({ status: "completed", reading: "running" })).toBe(false);
+  });
 
   it("reads an open run by what core says its agent is doing", () => {
     expect(of("running", "queued")).toEqual({ status: "queued", label: "Queued" });

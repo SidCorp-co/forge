@@ -91,7 +91,10 @@ describe("every status sentence, capitalised and stopped", () => {
     expect(blockedText(waitingOnText("human", "approve the database restore in Coolify"))).toBe(
       "Blocked. Waiting on a person. Approve the database restore in Coolify.",
     );
-    expect(waitingOnText("nobody", null)).toBe("Waiting on nobody. This run is a failure with a name.");
+    expect(waitingOnText("nobody", null)).toBe(
+      "Waiting on nobody. Nothing will end this wait on its own, so a person has to look at it.",
+    );
+    expect(waitingOnText("nobody", null)).not.toContain("failure with a name");
   });
 
   it("says why a session ended as sentences, and a person's stop in one way", () => {

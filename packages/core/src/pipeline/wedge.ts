@@ -4,6 +4,7 @@ import { agentSessions, devices, jobs, notifications, projects, runners } from '
 import { logger } from '../logger.js';
 import { resolveNotifications } from '../notifications/auto-resolve.js';
 import { createNotification } from '../notifications/routes.js';
+import { wedgeWordsFor } from './wedge-words.js';
 
 export function wedgeResolutionKey(entityId: string): string {
   return `wedge:${entityId}`;
@@ -42,12 +43,13 @@ export type WedgeHop = 'ack' | 'claim' | 'heartbeat' | 'result' | 'dispatch';
 export interface PipelineWedgeEvent {
   projectId: string;
   issueId?: string | null;
-  /** WHERE — which loop hop missed. */
+  /** Which part of the loop missed. */
   hop: WedgeHop;
   entity: 'job' | 'session' | 'run' | 'outbox' | 'capacity' | 'runner';
   entityId: string;
-  /** WHY — what the detector saw (technical; logged, and used as the body fallback). */
+  /** What the detector saw, in its own vocabulary: logged, never shown to a person. */
   reason: string;
+  /** What an operator does about it, in the same vocabulary: logged beside `reason`. */
   action: string;
   /** Business-language title naming the stuck work (ISS-xx + title, no internal vocab). */
   title?: string;
@@ -174,14 +176,11 @@ export async function emitPipelineWedge(ev: PipelineWedgeEvent): Promise<void> {
       return;
     }
 
-    const title = ev.title ?? `Pipeline wedge: ${ev.hop} hop miss on ${ev.entity}`;
+    const plain = wedgeWordsFor(ev.hop, ev.entity);
+    const title = ev.title ?? plain.title;
     const body = ev.summary
       ? [ev.summary, ev.nextStep ? `Next: ${ev.nextStep}` : null].filter(Boolean).join('\n')
-      : [
-          `WHERE: ${ev.hop} hop, ${ev.entity} ${ev.entityId}`,
-          `WHY: ${ev.reason}`,
-          `WHAT: ${ev.action}`,
-        ].join('\n');
+      : plain.body;
 
     await createNotification({
       userId: project.createdBy,
@@ -204,6 +203,7 @@ export async function emitPipelineWedge(ev: PipelineWedgeEvent): Promise<void> {
         entity: ev.entity,
         entityId: ev.entityId,
         reason: ev.reason,
+        action: ev.action,
       },
       'pipeline_wedge',
     );

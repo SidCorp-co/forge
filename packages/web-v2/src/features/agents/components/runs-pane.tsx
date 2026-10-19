@@ -7,7 +7,7 @@ import { useNow } from "@/design/hooks/use-now";
 import { useProjectRuns } from "@/features/runs/hooks";
 import { NO_BOX_REPORTS_A_RUN, NO_RUN_WORKING, RUN_APPEARS } from "@/features/sessions/status-sentences";
 import { runReadingChip, runSinceWord } from "@/features/runs/derive";
-import { RUN_STATUS_WORD } from "@/features/runs/run-status-words";
+import { RUN_KIND_WORD, RUN_STATUS_WORD } from "@/features/runs/run-status-words";
 import type { PipelineRunListItem } from "@/features/runs/types";
 import { formatApiError } from "@/lib/api/error";
 import { formatRelativeTime } from "@/lib/utils/format";
@@ -32,13 +32,6 @@ const CLOSED_STATUS_WORD: Record<string, string> = {
   completed: RUN_STATUS_WORD.completed,
   failed: RUN_STATUS_WORD.failed,
   cancelled: RUN_STATUS_WORD.cancelled,
-};
-
-const RUN_KIND_WORD: Record<string, string> = {
-  issue: "Issue run",
-  pm: "Project manager run",
-  interactive: "Chat run",
-  system: "System run",
 };
 
 /** The project's runs that have closed, newest first: what the tab offers where no box reports a run. */
@@ -97,15 +90,41 @@ function RunWork({ run, slug }: { run: PipelineRunListItem; slug: string }) {
   return <span className="fg-body-sm text-fg">{RUN_KIND_WORD[run.kind] ?? run.kind}</span>;
 }
 
+/** An open run in the word its drawer reads it by, and since when. */
+function OpenRunRow({ run, slug, now }: { run: PipelineRunListItem; slug: string; now: number }) {
+  return (
+    <li className="flex items-baseline gap-3 py-2">
+      <span className="min-w-0 flex-1">
+        <RunWork run={run} slug={slug} />
+      </span>
+      <span className="flex flex-none items-baseline gap-3 whitespace-nowrap">
+        <span data-run-status className="fg-body-sm text-fg">
+          {runReadingChip(run, now).label}
+        </span>
+        <span data-run-since className="fg-caption tabular-nums">
+          {runSinceWord(run, now)} {formatRelativeTime(run.startedAt)}
+        </span>
+      </span>
+    </li>
+  );
+}
+
+/** A run by the issues it worked, else by its kind, as the band names it. */
+function runName(run: PipelineRunListItem): string {
+  if (run.issueRef) return run.issueRef;
+  if (run.group.issues.length > 0) return run.group.issues.join(" + ");
+  return RUN_KIND_WORD[run.kind] ?? run.kind;
+}
+
 /**
- * What the tab shows where no box reports a run: the open runs with work behind them, each in the
- * word the run drawer reads it by, the runs that have closed, and above nothing, that none is working.
+ * What the tab shows where no box reports a run: every open run, each in the word the run drawer
+ * reads it by, the runs that have closed, and above nothing, that none is working.
  */
-function NothingRunning({ projectId, slug }: { projectId: string; slug: string }) {
+function NothingRunning({ projectId, slug, now }: { projectId: string; slug: string; now: number }) {
   const runsQ = useProjectRuns(projectId);
   const closed = useMemo(() => closedRuns(runsQ.data?.items), [runsQ.data]);
-  // One set for the sentence's count and the rows beneath it, so no run is counted and not shown.
-  const open = useMemo(() => workedRuns(runsQ.data?.items), [runsQ.data]);
+  // Every open run, the band's stalled ones included, so no run is named or counted and not shown.
+  const open = useMemo(() => openRuns(runsQ.data?.items), [runsQ.data]);
   const readWhole = !runsQ.isError && runsQ.data !== undefined && runsQ.data.totalCount <= runsQ.data.items.length;
   const read = runsQ.data?.items.length ?? 0;
   const total = runsQ.data?.totalCount ?? read;
@@ -142,19 +161,7 @@ function NothingRunning({ projectId, slug }: { projectId: string; slug: string }
           <h3 className="fg-caption mt-2">Open runs · {open.length}</h3>
           <ul aria-label="Open runs" className="flex flex-col divide-y divide-line border-y border-line">
             {open.map((r) => (
-              <li key={r.id} className="flex items-baseline gap-3 py-2">
-                <span className="min-w-0 flex-1">
-                  <RunWork run={r} slug={slug} />
-                </span>
-                <span className="flex flex-none items-baseline gap-3 whitespace-nowrap">
-                  <span data-run-status className="fg-body-sm text-fg">
-                    {runReadingChip(r).label}
-                  </span>
-                  <span data-run-since className="fg-caption tabular-nums">
-                    {runSinceWord(r)} {formatRelativeTime(r.startedAt)}
-                  </span>
-                </span>
-              </li>
+              <OpenRunRow key={r.id} run={r} slug={slug} now={now} />
             ))}
           </ul>
         </>
@@ -201,6 +208,7 @@ function StalledBand({ projectId, now }: { projectId: string; now: number }) {
     [runsQ.data, now],
   );
   const open = useMemo(() => openRuns(runsQ.data?.items), [runsQ.data]);
+  const worked = useMemo(() => workedRuns(runsQ.data?.items), [runsQ.data]);
 
   if (loading) {
     return <Skeleton variant="rect" className="h-8 w-full max-w-md" aria-busy="true" />;
@@ -227,14 +235,51 @@ function StalledBand({ projectId, now }: { projectId: string; now: number }) {
   // With no run open there is nothing to say about open runs: the tab below says what is running.
   if (open.length === 0) return null;
 
+  // A paused run, or one still starting up, is neither stalled nor worked: no reassurance covers it.
+  if (stalled.length === 0) {
+    return worked.length === open.length ? (
+      <p className="fg-caption text-muted">Every open run has a job or a live agent behind it.</p>
+    ) : null;
+  }
+  // Each run named, opening its drawer: the rows below list worked runs, so the band is where these are found.
   return (
     <p className="fg-caption text-muted">
-      {stalled.length === 0
-        ? "Every open run has a job or a live agent behind it."
-        : `${stalled.length} open ${stalled.length === 1 ? "run has" : "runs have"} nothing working on ${
-            stalled.length === 1 ? "it" : "them"
-          } — no live job and no agent still reporting.`}
+      {stalled.map((r, i) => (
+        <span key={r.id}>
+          {i > 0 && (i === stalled.length - 1 ? " and " : ", ")}
+          <Link href={`/ops?run=${r.id}`} className="underline focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]">
+            {runName(r)}
+          </Link>
+        </span>
+      ))}
+      {stalled.length === 1 ? " has nothing working on it" : " have nothing working on them"} — no live job and no
+      agent still reporting.
     </p>
+  );
+}
+
+/** Whether the tab's search and state filter keep an open run nothing works: never Working, and a
+ *  search over what its row shows. */
+function keepsStalled(run: PipelineRunListItem, q: string, filter: StateFilter): boolean {
+  if (filter === "working") return false;
+  const needle = q.trim().toLowerCase();
+  const hay = [runName(run), run.issueTitle ?? "", ...Object.values(run.groupTitles ?? {})].join(" ").toLowerCase();
+  return hay.includes(needle);
+}
+
+/** Beside the runs boxes report, every open run nothing works, so each run the band names is a row
+ *  on this tab (ISS-1228). */
+function StalledRunRows({ runs, slug, now }: { runs: readonly PipelineRunListItem[]; slug: string; now: number }) {
+  if (runs.length === 0) return null;
+  return (
+    <>
+      <h3 className="fg-caption mt-2">Nothing working · {runs.length}</h3>
+      <ul aria-label="Open runs nothing works" className="flex flex-col divide-y divide-line border-y border-line">
+        {runs.map((r) => (
+          <OpenRunRow key={r.id} run={r} slug={slug} now={now} />
+        ))}
+      </ul>
+    </>
   );
 }
 
@@ -247,6 +292,11 @@ export function RunsPane({ scope }: RunsPaneProps) {
 
   const all = data?.items ?? [];
   const rows = useMemo(() => applyFilters(all, q, filter, now), [all, q, filter, now]);
+  const runsQ = useProjectRuns(scope.projectId);
+  const stalled = useMemo(
+    () => stalledRuns(runsQ.data?.items, now).filter((r) => keepsStalled(r, q, filter)),
+    [runsQ.data, now, q, filter],
+  );
 
   return (
     <div className="flex flex-col gap-3 py-4">
@@ -263,7 +313,7 @@ export function RunsPane({ scope }: RunsPaneProps) {
           <ErrorState message={formatApiError(error)} onRetry={() => refetch()} />
         </div>
       ) : all.length === 0 ? (
-        <NothingRunning projectId={scope.projectId} slug={scope.slug} />
+        <NothingRunning projectId={scope.projectId} slug={scope.slug} now={now} />
       ) : (
         <>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -296,7 +346,7 @@ export function RunsPane({ scope }: RunsPaneProps) {
             </fieldset>
           </div>
 
-          {rows.length === 0 ? (
+          {rows.length === 0 && stalled.length === 0 ? (
             <EmptyState
               mascot={false}
               title="No runs match"
@@ -312,12 +362,15 @@ export function RunsPane({ scope }: RunsPaneProps) {
               }}
             />
           ) : (
-            <ul aria-label="Runs a box reports" className="flex flex-col divide-y divide-line border-y border-line">
-              {rows.map((row) => (
-                <RunRow key={row.runId} row={row} now={now} slug={scope.slug} />
-              ))}
-            </ul>
+            rows.length > 0 && (
+              <ul aria-label="Runs a box reports" className="flex flex-col divide-y divide-line border-y border-line">
+                {rows.map((row) => (
+                  <RunRow key={row.runId} row={row} now={now} slug={scope.slug} />
+                ))}
+              </ul>
+            )
           )}
+          <StalledRunRows runs={stalled} slug={scope.slug} now={now} />
         </>
       )}
     </div>

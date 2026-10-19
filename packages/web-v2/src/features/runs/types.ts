@@ -41,7 +41,7 @@ export interface PipelineRunStepSummary {
 }
 
 /** One job row of a run's per-attempt timeline: the `retry_of` chain, its device and its rotation. */
-export type RunReading = "running" | "starting" | "queued";
+export type RunReading = "running" | "starting" | "waiting" | "queued";
 
 export interface PipelineRunAttempt {
   jobId: string;
@@ -63,6 +63,7 @@ export interface PipelineRunAttempt {
   failureAction: "terminal" | "quarantine" | "failover" | "retry" | null;
   queuedAt: string | null;
   startedAt: string | null;
+  ranAt: string | null;
   finishedAt: string | null;
   autoRetry: { round: number; target: string | null; tries: number; done: string[] } | null;
   takenBy: { deviceId: string; deviceName: string | null } | null;

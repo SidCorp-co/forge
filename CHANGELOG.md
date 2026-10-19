@@ -3194,6 +3194,15 @@
 
 ### Fixed
 
+- **A job its runner is working reads Running in the run drawer**, in its header and its activity alike, instead of "Starting" under a Running header. (ISS-1228)
+- **A job its runner took but never started goes back to the queue** once its session is ended, instead of reading "Starting" for as long as its master lives; the next attempt gets a fresh session. (ISS-1228)
+- **The run drawer shows no failure or remedy on work still open**, names the runner that took or was sent it, and says "Never started" of work that ended before anything ran. (ISS-1228)
+- **A chat waiting for your reply reads "Waiting for me" on the runs tab and in its run drawer**, never Running. (ISS-1228)
+- **A run session's drawer is titled by its issue and offers Open issue**, and a run a session works without jobs no longer says nothing has run. (ISS-1228)
+- **The run drawer offers only what a run can take**: Cancel run before anything has started, Pause and Stop once it has, and no Rerun or Fork. (ISS-1228)
+- **An open run with nothing working on it reads "Nothing working"** on the runs tab and in its run drawer, and the runs tab lists each such run as a row and names it, linked, above the list. (ISS-1228)
+- **The run drawer says which box never took queued work**, such as "box-a never took it before the queue timeout", without core's own reason text, and offers a remedy only on the latest attempt. (ISS-1228)
+- **Stuck-work notifications and a wait on nobody read as plain sentences**, without "Pipeline wedge", hop names or WHERE/WHY/WHAT. (ISS-1228)
 - **Forge no longer calls a person by their email address.** Someone with no display name reads "another member" in notices, the bell and the project page, older bell rows included, and a refused retry reads the same sentence everywhere. (ISS-1229)
 - **A master that ended as the last session on its box's tmux server is reported ended.** Its messages used to wait and its run stayed open for ever; a tmux the box cannot ask still says nothing. (ISS-1265)
 - **A running master is no longer reported ended when its box's tmux socket file goes missing.** Its messages wait instead of its run closing, and the box's log names the missing socket and the masters on it. (ISS-1265)

@@ -17,7 +17,7 @@ export const MASTER_SESSION_KIND: AgentSessionKind = MASTER_SESSION_METADATA_TYP
 
 export const RUN_SESSION_KIND: AgentSessionKind = RUN_SESSION_METADATA_TYPE;
 
-const CHAT_SESSION_KIND: AgentSessionKind = 'chat';
+export const CHAT_SESSION_KIND: AgentSessionKind = 'chat';
 
 /**
  * Ended by a reaper of its own, never by the one-shot sweep: a master or a working run session ten

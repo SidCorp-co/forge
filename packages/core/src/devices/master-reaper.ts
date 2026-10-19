@@ -89,6 +89,8 @@ export async function reapSilentMasters(): Promise<number> {
  * The silence arm carries the SAME child-liveness guard as
  * {@link reapSilentMasters}: without it the box that function spares loses every
  * job it held one statement later. A TERMINAL master is not guarded.
+ *
+ * So is a held job whose OWN session ended after the hold began: that take is over (ISS-1228).
  */
 export async function reapDeadMasterHolds(): Promise<number> {
   const staleSeconds = SESSION_SILENCE_TIMEOUT_S;
@@ -96,12 +98,17 @@ export async function reapDeadMasterHolds(): Promise<number> {
   const rows = (await db.execute(sql`
     WITH doomed AS (
       SELECT j.id, j.held_by,
-             COALESCE(s.status, 'no_session') AS master_status
+             COALESCE(s.status, 'no_session') AS master_status,
+             own.id IS NOT NULL AS own_session_ended
       FROM jobs j
       LEFT JOIN agent_sessions s ON s.id = j.held_by
+      LEFT JOIN agent_sessions own ON own.id = j.agent_session_id
+                                  AND own.status IN (${TERMINAL})
+                                  AND own.updated_at >= j.held_at
       WHERE j.held_by IS NOT NULL
         AND (
-          s.status IN (${TERMINAL})
+          own.id IS NOT NULL
+          OR s.status IN (${TERMINAL})
           OR (
             COALESCE(s.last_heartbeat_at, s.started_at)
               < now() - make_interval(secs => ${staleSeconds})
@@ -118,9 +125,9 @@ export async function reapDeadMasterHolds(): Promise<number> {
     )
     UPDATE jobs
     SET held_by = NULL, held_at = NULL
-    WHERE id IN (SELECT id FROM doomed)
-    RETURNING id, (SELECT held_by FROM doomed d WHERE d.id = jobs.id) AS former_holder,
-              (SELECT master_status FROM doomed d WHERE d.id = jobs.id) AS master_status
+    FROM doomed d
+    WHERE jobs.id = d.id
+    RETURNING jobs.id, d.held_by AS former_holder, d.master_status, d.own_session_ended
   `)) as unknown as Array<Record<string, unknown>>;
 
   for (const row of rows) {
@@ -130,7 +137,9 @@ export async function reapDeadMasterHolds(): Promise<number> {
         masterSessionId: String(row.former_holder),
         masterStatus: String(row.master_status),
       },
-      'master-reaper: released a hold whose master is gone',
+      row.own_session_ended === true
+        ? 'master-reaper: released a hold whose own session core ended before the job started'
+        : 'master-reaper: released a hold whose master is gone',
     );
   }
   return rows.length;
