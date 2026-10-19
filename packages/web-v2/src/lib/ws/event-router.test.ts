@@ -458,3 +458,31 @@ describe("a failed job retried by a person", () => {
     expect(c.has(["jobs", "list"])).toBe(true);
   });
 });
+
+// ISS-1228 round 17 (judge-45): every session check-in re-read every open tab's data — issue pages,
+// the health rollup, the pulse — though a check-in that leaves the status alone moves none of them.
+describe("a check-in re-reads only the session and the lists that show it", () => {
+  const whole = [["run-journal"], ["projects", "health"], ["pulse"]];
+  const shown = (id: string) => [["agent-session", id], ["agent-sessions"], ["sessions-and-holds"], ["run-sessions"]];
+
+  it("leaves issue pages, the health rollup and the pulse alone where the status is the one last seen", () => {
+    send("agent-session.status", { sessionId: "ci-1", status: "running" });
+    const c = send("agent-session.updated", { sessionId: "ci-1", status: "running" });
+    for (const k of shown("ci-1")) expect(c.has(k), JSON.stringify(k)).toBe(true);
+    for (const k of whole) expect(c.has(k), JSON.stringify(k)).toBe(false);
+  });
+
+  it("re-reads the whole set where the status moved or was never seen", () => {
+    send("agent-session.updated", { sessionId: "ci-2", status: "running" });
+    const moved = send("agent-session.updated", { sessionId: "ci-2", status: "idle" });
+    for (const k of whole) expect(moved.has(k), JSON.stringify(k)).toBe(true);
+    const unseen = send("agent-session.updated", { sessionId: "ci-3", status: "running" });
+    for (const k of whole) expect(unseen.has(k), JSON.stringify(k)).toBe(true);
+  });
+
+  it("re-reads the whole set for a status event, whatever was seen before", () => {
+    send("agent-session.updated", { sessionId: "ci-4", status: "running" });
+    const c = send("agent-session.status", { sessionId: "ci-4", status: "running" });
+    for (const k of whole) expect(c.has(k), JSON.stringify(k)).toBe(true);
+  });
+});

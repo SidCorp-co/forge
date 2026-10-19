@@ -299,4 +299,21 @@ describe('endsOnItsOwnClock', () => {
     expect(endsOnItsOwnClock('run_session', 'queued')).toBe(false);
     expect(endsOnItsOwnClock('chat', 'running')).toBe(false);
   });
+
+  // ISS-1228 round 17 (judge-45): a chat waiting on its person's reply was failed by the one-shot
+  // sweep twenty quiet minutes after its turn ended, with no countdown before.
+  it('names a chat waiting on its person, which only the idle-chat close ends', () => {
+    expect(endsOnItsOwnClock('chat', 'idle')).toBe(true);
+    const waiting = subject({
+      status: 'idle',
+      runtimeState: null,
+      hasJob: false,
+      oneShot: alone({
+        runnerSeenAt: T + 60 * MIN,
+        runnerAnswers: true,
+        ownClock: endsOnItsOwnClock('chat', 'idle'),
+      }),
+    });
+    expect(silenceLimitMs(waiting)).toBe(CHAT_IDLE_CLOSE_MS);
+  });
 });

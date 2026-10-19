@@ -3194,6 +3194,13 @@
 
 ### Fixed
 
+- **A blocked run always says it is waiting**, on its row as on hover, even where its box did not say on whom: it reads "Waiting on someone the box did not name." A working run shows no wait. (ISS-1228)
+- **A chat waiting for your reply is no longer ended as failed after twenty quiet minutes.** It closes two hours after its last turn, and its row and page say when beforehand. (ISS-1228)
+- **A session checking in no longer makes every open page reload.** Only that session and the lists that show it refresh, unless its status changed. (ISS-1228)
+- **A run reads one word everywhere**: Queued while nobody has taken its job, Starting once a runner has it, Running once it runs, on the runs tab and the run drawer alike. (ISS-1228)
+- **The runs tab no longer says no box reports a run above the open runs it lists.** (ISS-1228)
+- **The run drawer names the runner that took a job it has not started**, instead of "unassigned", and never says "Ran" for work that has not started. (ISS-1228)
+- **The Ops run drawer offers Open issue** on a run that works one issue. (ISS-1228)
 - **A blocked run says who it waits on the same way on its row and on hover.** A run waiting on a person no longer hovers that a machine holds it, and "Parked for a person" means a person. (ISS-1228)
 - **A session page's times say what they are on hover**, in plain sentences, for a live session as for one that has ended. (ISS-1228)
 - **A chat waiting for your reply reads "Waiting for me" on its row, its page and its side panel**, and is no longer counted as queued or listed under the Queued filter. (ISS-1228)

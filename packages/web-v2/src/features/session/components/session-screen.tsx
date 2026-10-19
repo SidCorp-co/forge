@@ -22,7 +22,9 @@ import { useProjects } from "@/features/projects/hooks";
 import { useDevices } from "@/features/runners/hooks";
 import { isJobDriven, sessionTitle, TERMINAL_SESSION_STATUSES } from "@/features/sessions/types";
 import {
+  chatCloseText,
   deriveSessionDisplayStatus,
+  isAwaitingReply,
   isRealFailure,
   sessionSilence,
   sessionChipStatus,
@@ -177,7 +179,9 @@ export function SessionScreen({
   const coreEnded = session ? TERMINAL_SESSION_STATUSES.has(session.status) : false;
   const { live, answering } = sessionActivity(display);
   const elapsed = useSessionDuration(session, live);
-  const now = useNow(1000, display === "stalled");
+  const awaitingReply = session ? isAwaitingReply(session) : false;
+  const now = useNow(1000, display === "stalled" || awaitingReply);
+  const closeText = session ? chatCloseText(session, now) : null;
   const silentForMs = session ? (sessionSilence(session, now).sinceHeartbeatMs ?? undefined) : undefined;
   // What the box said last: a quiet session says it last reported blocked where its box did, and a
   // blocked one says, in the box's words, who can end the wait (ISS-1228).
@@ -317,6 +321,7 @@ export function SessionScreen({
                 session={session}
                 now={now}
               />
+              {closeText && <span className="fg-caption text-subtle">{closeText}</span>}
               {taskCount > 0 && (
                 <Badge tone="neutral">
                   {taskCount} {taskCount === 1 ? "task" : "tasks"}

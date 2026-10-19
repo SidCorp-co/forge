@@ -95,6 +95,7 @@ export function OpsMonitor() {
     () => (throughputQ.data ?? []).filter((r) => projectIds.has(r.projectId)),
     [throughputQ.data, projectIds],
   );
+  const slugById = useMemo(() => new Map(projects.map((p) => [p.id, p.slug])), [projects]);
   const nameById = useMemo(() => {
     const m = new Map<string, string>();
     for (const p of projects) m.set(p.id, p.name);
@@ -171,7 +172,7 @@ export function OpsMonitor() {
         )}
       </div>
 
-      <RunDetail open={!!runId} onClose={() => setRunId(null)} runId={runId} />
+      <RunDetail open={!!runId} onClose={() => setRunId(null)} runId={runId} projectSlugs={slugById} />
     </PageContainer>
   );
 }

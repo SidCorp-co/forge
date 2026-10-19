@@ -41,6 +41,8 @@ export interface PipelineRunStepSummary {
 }
 
 /** One job row of a run's per-attempt timeline: the `retry_of` chain, its device and its rotation. */
+export type RunReading = "running" | "starting" | "queued";
+
 export interface PipelineRunAttempt {
   jobId: string;
   jobType: string;
@@ -63,6 +65,7 @@ export interface PipelineRunAttempt {
   startedAt: string | null;
   finishedAt: string | null;
   autoRetry: { round: number; target: string | null; tries: number; done: string[] } | null;
+  takenBy: { deviceId: string; deviceName: string | null } | null;
 }
 
 export interface PipelineRunRetrySummary {
@@ -103,6 +106,8 @@ export interface PipelineRunSummary {
   liveJobs: number;
   /** ISS-998 — newest heartbeat of a non-terminal session on this run, or null. */
   lastSessionBeatAt: string | null;
+  /** What core says the run's agent is doing (`runs-liveness.ts`), the one word every surface shows. */
+  reading: RunReading | null;
   attempts: PipelineRunAttempt[];
   /** ISS-411 — round-robin headline; null when the run never retried. */
   retrySummary: PipelineRunRetrySummary | null;

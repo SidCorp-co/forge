@@ -91,6 +91,10 @@ export const sessionEndedText = (reason: string, label: string | null): string =
 
 export const quietWhyText = (doing: string, ago: string): string => `${doing}. Last check-in ${ago}.`;
 
+/** When core closes a chat waiting on its person's reply; a close is not a failure, so it never says failed. */
+export const chatClosesInText = (when: string | null): string =>
+  when === null ? "Core is closing this chat now." : `Core closes this chat in ${when} if no reply comes.`;
+
 export const ENDS_AS_FAILED_HOVER = "Core ends a session as failed once it stays silent this long.";
 
 export const CHAT_TAG_HOVER = "An interactive chat. It spawns no pipeline job, so a running chat is not a wedged box.";
@@ -142,10 +146,6 @@ export const RUN_APPEARS = "A run appears here as soon as a master opens one on 
 export const NO_RUN_WORKING = "No run is working on this project right now.";
 
 export const NO_BOX_REPORTS_A_RUN = "No box reports a run on this project right now.";
-
-/** Where no box reports a run though core counts open runs with work behind them. */
-export const noBoxReportsButWorkedText = (worked: number): string =>
-  `No box reports a run here, though ${worked} open ${worked === 1 ? "run has" : "runs have"} work behind ${worked === 1 ? "it" : "them"}.`;
 
 /** Why an ended session's chip reads what it reads, on hover. */
 export const OUTCOME_HOVER = {

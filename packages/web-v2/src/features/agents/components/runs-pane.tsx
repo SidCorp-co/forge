@@ -5,12 +5,8 @@ import { useMemo, useState } from "react";
 import { EmptyState, ErrorState, Input, MonoTag, Skeleton } from "@/design";
 import { useNow } from "@/design/hooks/use-now";
 import { useProjectRuns } from "@/features/runs/hooks";
-import {
-  NO_BOX_REPORTS_A_RUN,
-  NO_RUN_WORKING,
-  noBoxReportsButWorkedText,
-  RUN_APPEARS,
-} from "@/features/sessions/status-sentences";
+import { NO_BOX_REPORTS_A_RUN, NO_RUN_WORKING, RUN_APPEARS } from "@/features/sessions/status-sentences";
+import { runReadingChip } from "@/features/runs/derive";
 import { RUN_STATUS_WORD } from "@/features/runs/run-status-words";
 import type { PipelineRunListItem } from "@/features/runs/types";
 import { formatApiError } from "@/lib/api/error";
@@ -43,11 +39,6 @@ const RUN_KIND_WORD: Record<string, string> = {
   pm: "Project manager run",
   interactive: "Chat run",
   system: "System run",
-};
-
-const OPEN_STATUS_WORD: Record<string, string> = {
-  running: RUN_STATUS_WORD.running,
-  paused: RUN_STATUS_WORD.paused,
 };
 
 /** The project's runs that have closed, newest first: what the tab offers where no box reports a run. */
@@ -107,15 +98,14 @@ function RunWork({ run, slug }: { run: PipelineRunListItem; slug: string }) {
 }
 
 /**
- * What the tab says where no box reports a run: whether any run is working, and the runs that have
- * closed, so a project whose runs all ended is never said to have none.
+ * What the tab shows where no box reports a run: the open runs with work behind them, each in the
+ * word the run drawer reads it by, the runs that have closed, and above nothing, that none is working.
  */
 function NothingRunning({ projectId, slug }: { projectId: string; slug: string }) {
   const runsQ = useProjectRuns(projectId);
   const closed = useMemo(() => closedRuns(runsQ.data?.items), [runsQ.data]);
   // One set for the sentence's count and the rows beneath it, so no run is counted and not shown.
   const open = useMemo(() => workedRuns(runsQ.data?.items), [runsQ.data]);
-  const worked = open.length;
   const readWhole = !runsQ.isError && runsQ.data !== undefined && runsQ.data.totalCount <= runsQ.data.items.length;
   const read = runsQ.data?.items.length ?? 0;
   const total = runsQ.data?.totalCount ?? read;
@@ -143,9 +133,10 @@ function NothingRunning({ projectId, slug }: { projectId: string; slug: string }
 
   return (
     <section className="flex flex-col gap-2">
-      <p className="fg-body-sm text-fg">
-        {worked > 0 ? noBoxReportsButWorkedText(worked) : readWhole ? NO_RUN_WORKING : NO_BOX_REPORTS_A_RUN}
-      </p>
+      {/* Said only above nothing: an open run listed beneath it is one a box may hold (ISS-1228). */}
+      {open.length === 0 && (
+        <p className="fg-body-sm text-fg">{readWhole ? NO_RUN_WORKING : NO_BOX_REPORTS_A_RUN}</p>
+      )}
       {open.length > 0 && (
         <>
           <h3 className="fg-caption mt-2">Open runs · {open.length}</h3>
@@ -156,7 +147,9 @@ function NothingRunning({ projectId, slug }: { projectId: string; slug: string }
                   <RunWork run={r} slug={slug} />
                 </span>
                 <span className="flex flex-none items-baseline gap-3 whitespace-nowrap">
-                  <span className="fg-body-sm text-fg">{OPEN_STATUS_WORD[r.status] ?? r.status}</span>
+                  <span data-run-status className="fg-body-sm text-fg">
+                    {runReadingChip(r).label}
+                  </span>
                   <span className="fg-caption tabular-nums">Started {formatRelativeTime(r.startedAt)}</span>
                 </span>
               </li>

@@ -17,15 +17,25 @@ export const MASTER_SESSION_KIND: AgentSessionKind = MASTER_SESSION_METADATA_TYP
 
 export const RUN_SESSION_KIND: AgentSessionKind = RUN_SESSION_METADATA_TYPE;
 
-/** Ended by its own kind's reaper ten minutes after its last beat, never by the one-shot sweep. */
+const CHAT_SESSION_KIND: AgentSessionKind = 'chat';
+
+/**
+ * Ended by a reaper of its own, never by the one-shot sweep: a master or a working run session ten
+ * minutes after its last beat, and a chat waiting on its person's reply only by the idle-chat close,
+ * so a person's slow reply never reads as a failure (ISS-1228).
+ */
 export function endsOnItsOwnClock(kind: string, status: string): boolean {
-  return kind === MASTER_SESSION_KIND || (kind === RUN_SESSION_KIND && status === 'running');
+  return (
+    kind === MASTER_SESSION_KIND ||
+    (kind === RUN_SESSION_KIND && status === 'running') ||
+    (kind === CHAT_SESSION_KIND && status === 'idle')
+  );
 }
 
 export function endsOnItsOwnClockSql(s: string): SQL {
   const kind = sql.raw(`${s}.kind`);
   const status = sql.raw(`${s}.status`);
-  return sql`(${kind} = ${MASTER_SESSION_KIND} OR (${kind} = ${RUN_SESSION_KIND} AND ${status} = 'running'))`;
+  return sql`(${kind} = ${MASTER_SESSION_KIND} OR (${kind} = ${RUN_SESSION_KIND} AND ${status} = 'running') OR (${kind} = ${CHAT_SESSION_KIND} AND ${status} = 'idle'))`;
 }
 
 export const PIPELINE_SESSION_KINDS = [

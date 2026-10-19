@@ -29,7 +29,7 @@ import {
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import { useRecents, buildShareLink } from "@/features/shell";
-import { drawerRunChip } from "../derive";
+import { runReadingChip } from "../derive";
 import { formatDurationMs, formatUsd } from "@/lib/utils/format";
 import { useCancelRun, usePauseRun, useResumeRun, useRun } from "../hooks";
 import { ActivityTab } from "./activity-feed";
@@ -43,8 +43,8 @@ interface RunDetailProps {
   onClose: () => void;
   /** Run to inspect (null when the issue has never run). */
   runId: string | null;
-  /** Active project slug — enables the "Open issue" cross-link when present. */
-  slug?: string;
+  /** Each project's slug by its id, so the run's own project gives the "Open issue" link. */
+  projectSlugs: ReadonlyMap<string, string>;
   /** False for project viewers (read-only): hides the Pause/Resume/Stop run
    *  controls (the server 403s them anyway).
    *  Optional, defaults true so existing callers keep their behaviour. */
@@ -57,7 +57,7 @@ const TABS = [
   { value: "cost", label: "Cost" },
 ];
 
-export function RunDetail({ open, onClose, runId, slug, canWrite = true }: RunDetailProps) {
+export function RunDetail({ open, onClose, runId, projectSlugs, canWrite = true }: RunDetailProps) {
   const [tab, setTab] = useState("activity");
   const { toast } = useToast();
   const router = useRouter();
@@ -69,6 +69,7 @@ export function RunDetail({ open, onClose, runId, slug, canWrite = true }: RunDe
 
   const run = runQ.data;
   const taskIssueId = run?.issueId ?? null;
+  const slug = run ? projectSlugs.get(run.projectId) : undefined;
   const issueRef = run?.issueRef ?? null;
 
   // Track the opened run as recently-viewed (surfaces in the ⌘K Recent group).
@@ -94,7 +95,8 @@ export function RunDetail({ open, onClose, runId, slug, canWrite = true }: RunDe
   const chipStep = run?.currentStep ? jobKindLabel(run.currentStep) : undefined;
   const label = issueRef ?? (runId ? `run ${runId.slice(0, 8)}` : "run");
   const title = run?.issueTitle ?? "Pipeline run";
-  const chipStatus = run ? drawerRunChip(run, null) : null;
+  const chip = run ? runReadingChip(run) : null;
+  const chipStatus = chip?.status ?? null;
   // A run reading Queued has nothing started, so there is no step to pause after and no agent to stop.
   const hasStarted = run?.status === "running" && chipStatus !== "queued";
   // Pause is a "finish the in-flight step, then halt" gate (it does NOT abort
@@ -156,16 +158,8 @@ export function RunDetail({ open, onClose, runId, slug, canWrite = true }: RunDe
       title={
         <span className="flex items-center gap-2.5">
           <MonoTag>{label}</MonoTag>
-          {/* The session vocabulary reads `paused` as an idle session; a pipeline run that is paused says so. */}
-          {chipStatus && (
-            <StatusChip
-              status={chipStatus}
-              stage={chipStep}
-              size="sm"
-              domain="session"
-              label={chipStatus === "paused" ? "Paused" : undefined}
-            />
-          )}
+          {/* The run's one word, the runs tab's too: the session vocabulary would read `paused` as idle. */}
+          {chip && <StatusChip status={chip.status} stage={chipStep} size="sm" domain="session" label={chip.label} />}
         </span>
       }
     >

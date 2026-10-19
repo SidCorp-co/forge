@@ -205,10 +205,10 @@ export function stateLabelAt(
   return coreLive ? { label: word.label, detail: meta.detail, tone: word.tone } : meta;
 }
 
-/** Whether the run waits on someone now: a box's blocked report stands only while core holds the
- *  session, so a run core ended, a person's stop included, waits on nobody (ISS-1228). */
-export function waitsNow(row: Pick<RunSessionRow, "blockerKind" | "sessionStatus">): boolean {
-  return row.blockerKind != null && !coreEnded(row);
+/** Whether the run waits on someone now: whatever the box reports blocked waits, a holder it did not
+ *  name included, and only while core holds the session, so a run core ended waits on nobody (ISS-1228). */
+export function waitsNow(row: Pick<RunSessionRow, "work" | "sessionStatus">): boolean {
+  return row.work === "blocked" && !coreEnded(row);
 }
 
 /** Whether the box claims a process exists for this run. */
