@@ -9,7 +9,8 @@ import {
 import { TERMINAL_AGENT_SESSION_STATUSES } from "@forge/contracts/status-sets";
 import { sessionStatusLabel } from "@/design/primitives/status-chip";
 import { type StatusKey, STOPPED_WORD } from "@/design/status";
-import { ENDING_AS_FAILED, endsAsFailedInText, OUTCOME_HOVER, sessionEndedText } from "./status-sentences";
+import { formatDurationMs } from "@/lib/utils/format";
+import { chatClosesInText, ENDING_AS_FAILED, endsAsFailedInText, OUTCOME_HOVER, sessionEndedText } from "./status-sentences";
 
 export type AgentSessionStatus =
   | "idle"
@@ -418,6 +419,25 @@ export function quietEndText(liveness: LivenessResult): string | null {
     return endsAsFailedInText(countdown(liveness.reapInMs));
   }
   return null;
+}
+
+/**
+ * When core closes a chat waiting on its person's reply, from the limit core serves on the row and
+ * counted from the moment the screens count silence from (ISS-1228); `null` on any other session.
+ */
+export function chatCloseText(
+  session: Pick<SessionRow, "status" | "metadata" | "lastHeartbeatAt" | "startedAt" | "updatedAt" | "silenceLimitMs"> & {
+    kind?: AgentSessionKind | null;
+  },
+  nowMs: number,
+): string | null {
+  const limit = session.silenceLimitMs ?? null;
+  if (!isAwaitingReply(session) || limit === null) return null;
+  const from = Date.parse(session.lastHeartbeatAt ?? session.startedAt ?? session.updatedAt ?? "");
+  if (Number.isNaN(from)) return null;
+  const left = from + limit - nowMs;
+  if (left <= 0) return chatClosesInText(null);
+  return chatClosesInText(left < 60_000 ? `${Math.ceil(left / 1000)}s` : formatDurationMs(left));
 }
 
 export function deriveLiveness(

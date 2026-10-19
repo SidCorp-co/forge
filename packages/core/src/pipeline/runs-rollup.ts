@@ -9,13 +9,11 @@
  * here so the front-end stays a thin renderer.
  */
 
-import { asc, eq, inArray, sql } from 'drizzle-orm';
+import { eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
   agentSessions,
-  devices,
   issues,
-  jobs,
   type PipelineRunKind,
   type PipelineRunStatus,
   pipelineRuns,
@@ -24,9 +22,13 @@ import {
 } from '../db/schema.js';
 import { type RunGate, readRunGate } from '../devices/gate-report.js';
 import { type RunPolicy, readRunPolicy } from '../devices/policy-copy.js';
-import { RETRY_MAX_ROUNDS, readAutoRetryPayload } from '../jobs/retry.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { usageSessionMatch } from '../usage-records/rollup.js';
+import {
+  loadAttemptsForRun,
+  type PipelineRunAttempt,
+  type PipelineRunRetrySummary,
+} from './runs-attempts.js';
 import { groupTitlesOf, loadGroupTitles } from './runs-group-titles.js';
 import {
   groupOf,
@@ -37,8 +39,9 @@ import {
   type ResidentMaster,
   stepOf,
 } from './runs-lane.js';
-import { loadRunLivenessByRunIds, residentMasterOn } from './runs-liveness.js';
+import { loadRunLivenessByRunIds, type RunReading, residentMasterOn } from './runs-liveness.js';
 
+export type { PipelineRunAttempt, PipelineRunRetrySummary } from './runs-attempts.js';
 export type {
   PipelineRunGroup,
   PipelineRunLane,
@@ -65,55 +68,6 @@ export interface PipelineRunCostSummary {
   cacheCreationTokens: number;
   requests: number;
   sampleCount: number;
-}
-
-/**
- * ISS-411 — one job row of a run's per-attempt timeline. Unlike `steps`
- * (one row per `jobType`, derived from `agent_sessions`), this is sourced from
- * the `jobs` table so the `retry_of` chain, the device each attempt landed on,
- * and the ISS-407 round-robin state (`payload._autoRetry`) are all visible.
- */
-export interface PipelineRunAttempt {
-  jobId: string;
-  jobType: string;
-  status: string;
-  /** `jobs.attempts` — re-dispatch counter on this job row. */
-  attempts: number;
-  /** Prior job in the `retry_of` chain, if this row is a retry. */
-  retryOf: string | null;
-  deviceId: string | null;
-  /** Friendly device name (`devices.name`), null when the device is gone. */
-  deviceName: string | null;
-  failureReason: string | null;
-  /** ISS-877 cause token off the linked `agent_sessions` row; null when the
-   *  attempt never reached a session, or died before one was classified. */
-  failureCause: string | null;
-  /** ISS-877 operator sentence that goes with the cause. */
-  failureDetail: string | null;
-  /** Retry-policy axis off the job row — a runner that went offline (`infra`)
-   *  is not the same failure as a step that broke the build (`code`). */
-  failureKind: 'code' | 'infra' | 'transient-cc' | 'timeout' | null;
-  /** What the retry engine did with this failure. */
-  failureAction: 'terminal' | 'quarantine' | 'failover' | 'retry' | null;
-  queuedAt: string | null;
-  startedAt: string | null;
-  finishedAt: string | null;
-  /** ISS-407 round-robin rotation state at the time this row was (re)queued. */
-  autoRetry: { round: number; target: string | null; tries: number; done: string[] } | null;
-}
-
-/**
- * ISS-411 — derived round-robin headline for the run, taken from the most
- * recent attempt's `_autoRetry`. `round N / maxRounds` + the device the next
- * attempt targets (resolved to a name) make "retried 3x on dev1, now round 2
- * targeting ubuntu5" legible at a glance.
- */
-export interface PipelineRunRetrySummary {
-  totalAttempts: number;
-  round: number;
-  maxRounds: number;
-  targetDeviceId: string | null;
-  targetDeviceName: string | null;
 }
 
 export interface PipelineRunSummary {
@@ -150,6 +104,8 @@ export interface PipelineRunSummary {
    * this run, or `null` where the run has none.
    */
   lastSessionBeatAt: string | null;
+  /** What the run's agent is doing, the one reading every surface shows (`runs-liveness.ts`). */
+  reading: RunReading | null;
   /** ISS-1335 — the live master session on a `master`-lane run; `null` off that lane, and on a
    *  master run nothing holds any more. A session of another kind never fills it. */
   residentMaster: ResidentMaster | null;
@@ -259,91 +215,6 @@ async function loadCostForRun(runId: string): Promise<PipelineRunCostSummary> {
   return row ?? EMPTY_COST;
 }
 
-/**
- * ISS-411 — per-attempt timeline for one run, sourced from `jobs` (NOT
- * `agent_sessions`), ordered oldest-first. Left-joins `devices` so each
- * attempt carries the runner-friendly device name, and reads the ISS-407
- * `payload._autoRetry` rotation state defensively (absent on pre-407 rows →
- * null). Also returns a derived `retrySummary` headline from the latest row.
- */
-async function loadAttemptsForRun(runId: string): Promise<{
-  attempts: PipelineRunAttempt[];
-  retrySummary: PipelineRunRetrySummary | null;
-}> {
-  const rows = await db
-    .select({
-      jobId: jobs.id,
-      jobType: jobs.type,
-      status: jobs.status,
-      attempts: jobs.attempts,
-      retryOf: jobs.retryOf,
-      deviceId: jobs.deviceId,
-      deviceName: devices.name,
-      failureReason: jobs.failureReason,
-      failureKind: jobs.failureKind,
-      failureAction: jobs.failureAction,
-      failureCause: agentSessions.failureReason,
-      failureDetail: agentSessions.failureDetail,
-      queuedAt: jobs.queuedAt,
-      startedAt: jobs.dispatchedAt,
-      finishedAt: jobs.finishedAt,
-      payload: jobs.payload,
-    })
-    .from(jobs)
-    .leftJoin(devices, eq(devices.id, jobs.deviceId))
-    .leftJoin(agentSessions, eq(agentSessions.id, jobs.agentSessionId))
-    .where(eq(jobs.pipelineRunId, runId))
-    .orderBy(asc(jobs.queuedAt));
-
-  const nameById = new Map<string, string>();
-  for (const r of rows) {
-    if (r.deviceId && r.deviceName) nameById.set(r.deviceId, r.deviceName);
-  }
-
-  const attempts: PipelineRunAttempt[] = rows.map((r) => {
-    const hasAutoRetry =
-      !!r.payload &&
-      typeof r.payload === 'object' &&
-      '_autoRetry' in (r.payload as Record<string, unknown>);
-    const ar = hasAutoRetry ? readAutoRetryPayload(r.payload) : null;
-    return {
-      jobId: r.jobId,
-      jobType: r.jobType,
-      status: r.status,
-      attempts: r.attempts ?? 0,
-      retryOf: r.retryOf ?? null,
-      deviceId: r.deviceId ?? null,
-      deviceName: r.deviceName ?? null,
-      failureReason: r.failureReason ?? null,
-      failureCause: r.failureCause ?? null,
-      failureDetail: r.failureDetail ?? null,
-      failureKind: r.failureKind ?? null,
-      failureAction: r.failureAction ?? null,
-      queuedAt: toIso(r.queuedAt),
-      startedAt: toIso(r.startedAt),
-      finishedAt: toIso(r.finishedAt),
-      autoRetry: ar,
-    } satisfies PipelineRunAttempt;
-  });
-
-  let retrySummary: PipelineRunRetrySummary | null = null;
-  for (let i = attempts.length - 1; i >= 0; i--) {
-    const ar = attempts[i]?.autoRetry;
-    if (ar) {
-      retrySummary = {
-        totalAttempts: attempts.length,
-        round: ar.round,
-        maxRounds: RETRY_MAX_ROUNDS,
-        targetDeviceId: ar.target,
-        targetDeviceName: ar.target ? (nameById.get(ar.target) ?? null) : null,
-      };
-      break;
-    }
-  }
-
-  return { attempts, retrySummary };
-}
-
 function rowToListItem(row: RunRow): PipelineRunListItem {
   const lane = laneOf(row);
   const group = groupOf(row, lane);
@@ -365,6 +236,7 @@ function rowToListItem(row: RunRow): PipelineRunListItem {
     cost: EMPTY_COST,
     liveJobs: 0,
     lastSessionBeatAt: null,
+    reading: null,
     residentMaster: null,
   };
 }
@@ -463,6 +335,7 @@ export async function loadPipelineRunSummary(runId: string): Promise<PipelineRun
     groupTitles,
     liveJobs: liveMap.get(runId)?.liveJobs ?? 0,
     lastSessionBeatAt: liveMap.get(runId)?.beat ?? null,
+    reading: liveMap.get(runId)?.reading ?? null,
     residentMaster,
     steps,
     cost,
@@ -545,6 +418,7 @@ export async function listItemsFromRows(rows: RunRow[]): Promise<PipelineRunList
       cost: costMap.get(r.id) ?? EMPTY_COST,
       liveJobs: liveMap.get(r.id)?.liveJobs ?? 0,
       lastSessionBeatAt: liveMap.get(r.id)?.beat ?? null,
+      reading: liveMap.get(r.id)?.reading ?? null,
       residentMaster,
     };
   });

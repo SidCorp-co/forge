@@ -74,6 +74,7 @@ import {
   isRealFailure,
   failureReasonLabel,
   quietEndText,
+  chatCloseText,
   AGENT_SESSION_KINDS,
   SESSION_KIND_LABEL,
   type AgentSessionDisplayStatus,
@@ -687,6 +688,7 @@ function StatusCell({
   const liveness = deriveLiveness(row, now);
   const word = sessionWord(row, now);
   const endText = quietEndText(liveness);
+  const closeText = chatCloseText(row, now);
   // ISS-664 — a finished interactive chat awaiting the owner's reply gets its
   // own distinct chip (the `waiting` StatusKey — amber "a human must act"),
   // taking priority over the generic idle→paused mapping used everywhere else
@@ -724,6 +726,7 @@ function StatusCell({
           {endText}
         </span>
       )}
+      {closeText && <span className="fg-caption text-subtle">{closeText}</span>}
     </div>
   );
 }

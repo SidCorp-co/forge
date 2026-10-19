@@ -1,6 +1,7 @@
 /**
  * Whether anything is alive on a run: its unheld live jobs, the newest heartbeat of any live
- * session on it, and — for a resident master's run (ISS-1335) — the live master session itself.
+ * session on it, what its agent is doing, and — for a resident master's run (ISS-1335) — the live
+ * master session itself.
  * Read by both run lists, so the REST row and the MCP row cannot answer differently.
  */
 
@@ -22,9 +23,26 @@ const sqlList = (values: readonly string[]) =>
     sql`, `,
   );
 
+/** What a run's agent is doing, the one reading every surface shows (ISS-1228): `running` once a job
+ *  runs or a session on it beats, `starting` where a box has taken or been sent a job it has not
+ *  started, `queued` where only a job nobody has taken waits, `null` where no live job or beat is. */
+export type RunReading = 'running' | 'starting' | 'queued';
+
+export function readingOf(counts: {
+  running: number;
+  starting: number;
+  queued: number;
+  beat: string | null;
+}): RunReading | null {
+  if (counts.running > 0 || counts.beat !== null) return 'running';
+  if (counts.starting > 0) return 'starting';
+  return counts.queued > 0 ? 'queued' : null;
+}
+
 export interface RunLiveness {
   liveJobs: number;
   beat: string | null;
+  reading: RunReading | null;
   /** The newest live `kind = 'master'` session on the run, whatever its lane. */
   master: ResidentMaster | null;
 }
@@ -43,6 +61,9 @@ export async function loadRunLivenessByRunIds(runIds: string[]): Promise<Map<str
   const rows = await db.execute<{
     run_id: string;
     live_jobs: number | string;
+    running_jobs: number | string;
+    starting_jobs: number | string;
+    untaken_jobs: number | string;
     last_beat: Date | string | null;
     master_session_id?: string | null;
     master_name?: string | null;
@@ -53,6 +74,13 @@ export async function loadRunLivenessByRunIds(runIds: string[]): Promise<Map<str
       (SELECT count(*) FROM ${jobs} j
         WHERE j.pipeline_run_id = r.id
           AND j.status IN (${sqlList(UNHELD_LIVE_JOB_STATUSES)})) AS live_jobs,
+      (SELECT count(*) FROM ${jobs} j
+        WHERE j.pipeline_run_id = r.id AND j.status = 'running') AS running_jobs,
+      (SELECT count(*) FROM ${jobs} j
+        WHERE j.pipeline_run_id = r.id
+          AND (j.status = 'dispatched' OR (j.status = 'queued' AND j.held_by IS NOT NULL))) AS starting_jobs,
+      (SELECT count(*) FROM ${jobs} j
+        WHERE j.pipeline_run_id = r.id AND j.status = 'queued' AND j.held_by IS NULL) AS untaken_jobs,
       (SELECT max(s.last_heartbeat_at) FROM ${agentSessions} s
         WHERE s.pipeline_run_id = r.id
           AND s.status NOT IN (${sqlList(terminalAgentSessionStatuses)})) AS last_beat,
@@ -73,9 +101,16 @@ export async function loadRunLivenessByRunIds(runIds: string[]): Promise<Map<str
   `);
   for (const r of rows) {
     if (!r.run_id) continue;
+    const beat = toIso(r.last_beat);
     out.set(r.run_id, {
       liveJobs: Number(r.live_jobs),
-      beat: toIso(r.last_beat),
+      beat,
+      reading: readingOf({
+        running: Number(r.running_jobs),
+        starting: Number(r.starting_jobs),
+        queued: Number(r.untaken_jobs),
+        beat,
+      }),
       master: r.master_session_id
         ? {
             sessionId: r.master_session_id,

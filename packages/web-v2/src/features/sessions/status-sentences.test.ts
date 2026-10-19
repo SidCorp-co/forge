@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   blockedText,
   boxOfflineText,
+  chatClosesInText,
   coreNoteText,
   ENDING_AS_FAILED,
   endsAsFailedInText,
@@ -62,6 +63,8 @@ describe("every status sentence, capitalised and stopped", () => {
     sessionEndedText("user_cancelled", "Stopped"),
     sessionEndedText("session_stopped_checking_in", null),
     quietWhyText("Last reported working", "2m ago"),
+    chatClosesInText("1h 52m"),
+    chatClosesInText(null),
   ];
 
   it("says each as whole sentences: a capital first, a stop last, no middot between", () => {
@@ -123,8 +126,6 @@ describe("every sentence in the one place", () => {
       s.queuedBehindText(3),
       s.queuedWithNoBoxText(1),
       s.queuedWithNoBoxText(2),
-      s.noBoxReportsButWorkedText(1),
-      s.noBoxReportsButWorkedText(4),
       s.gateUnreadableDetailText("gate.verdict: bad enum"),
       s.gateAdmittedText(1, "3/day", "5h 00m"),
       s.gateAdmittedText(30, "at an unstated rate", "an unknown span"),

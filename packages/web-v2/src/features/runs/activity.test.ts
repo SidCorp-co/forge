@@ -31,6 +31,7 @@ function attempt(over: Partial<PipelineRunAttempt> = {}): PipelineRunAttempt {
     startedAt: "2026-08-30T10:00:05.000Z",
     finishedAt: "2026-08-30T10:01:00.000Z",
     autoRetry: null,
+    takenBy: null,
     ...over,
   };
 }
@@ -167,6 +168,35 @@ describe("deriveActivityFeed", () => {
     ]);
 
     expect(feed[0]?.detail).toBeNull();
+  });
+
+  // ISS-1228 round 17 (judge-47): a taken job read "no runner has picked it up · unassigned" while the
+  // Pipeline page held it on its box, and work not yet started read "Ran".
+  it("names the box that took a job it has not started, never unassigned", () => {
+    const [entry] = deriveActivityFeed([
+      attempt({
+        status: "queued",
+        startedAt: null,
+        finishedAt: null,
+        deviceId: null,
+        deviceName: null,
+        takenBy: { deviceId: "d9", deviceName: "box-taker" },
+      }),
+    ]);
+    expect(entry?.outcome).toBe("Taken by a runner, not started yet");
+    expect(entry?.device).toBe("box-taker");
+    // The master's read of the r17 shots: the row said Queued beside the drawer's Starting.
+    expect(entry?.verb).toBe("Starting");
+  });
+
+  it("never says Ran or Retried of an attempt that has not started", () => {
+    const feed = deriveActivityFeed([
+      attempt({ status: "failed", failureCause: "agent_killed" }),
+      attempt({ status: "queued", startedAt: null, finishedAt: null }),
+      attempt({ jobType: "review", status: "dispatched", startedAt: null, finishedAt: null }),
+      attempt({ jobType: "smoke", status: "queued", startedAt: null, finishedAt: null, takenBy: { deviceId: "d9", deviceName: null } }),
+    ]);
+    expect(feed.map((e) => e.verb)).toEqual(["Ran", "Queued", "Starting", "Starting"]);
   });
 
   it("labels the first attempt Ran and a later one Retried", () => {

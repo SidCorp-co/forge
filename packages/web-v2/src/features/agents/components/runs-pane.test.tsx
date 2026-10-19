@@ -69,6 +69,7 @@ const run = (over: Partial<PipelineRunListItem>): PipelineRunListItem =>
     cost: { estimatedCost: 0 },
     liveJobs: 0,
     lastSessionBeatAt: null,
+    reading: null,
     ...over,
   }) as PipelineRunListItem;
 
@@ -149,8 +150,40 @@ describe("the Agents runs tab with nothing running on a box", () => {
     state.total = 2;
     pane();
     expect(screen.queryByText("No run is working on this project right now.")).not.toBeInTheDocument();
-    expect(screen.getByText("No box reports a run here, though 1 open run has work behind it.")).toBeInTheDocument();
     expect(within(screen.getByRole("list", { name: "Closed runs" })).getAllByRole("listitem")).toHaveLength(1);
+  });
+
+  // ISS-1228 round 17 (judge-47): "No box reports a run here" stood above three open runs.
+  it("says no box reports a run only where it lists no open run", () => {
+    state.runs = [run({ id: "o", status: "running", finishedAt: null, liveJobs: 1, reading: "starting" })];
+    state.total = 1;
+    pane();
+    expect(screen.getByRole("list", { name: "Open runs" })).toBeInTheDocument();
+    expect(screen.queryByText(/No box reports a run/)).not.toBeInTheDocument();
+  });
+
+  // ISS-1228 round 17 (judge-47): an untaken, a taken and a sent run all read Running here while the
+  // Ops drawer read Queued; each reads the word core gives it, the drawer's word.
+  it("reads each open run by what core says its agent is doing", () => {
+    state.runs = [
+      run({ id: "q", issueRef: "ISS-1", status: "running", finishedAt: null, liveJobs: 1, reading: "queued" }),
+      run({ id: "s", issueRef: "ISS-2", status: "running", finishedAt: null, liveJobs: 1, reading: "starting" }),
+      run({ id: "r", issueRef: "ISS-3", status: "running", finishedAt: null, liveJobs: 1, reading: "running" }),
+    ];
+    state.total = 3;
+    pane();
+    const open = within(screen.getByRole("list", { name: "Open runs" })).getAllByRole("listitem");
+    expect(open.map((r) => (r.querySelector("[data-run-status]") as HTMLElement).textContent)).toEqual([
+      "Queued",
+      "Starting",
+      "Running",
+    ]);
+    // The master's read of the r17 shots: "Started 10m ago" beside a run nothing had started.
+    expect(open.map((r) => (r.querySelector("[data-run-since]") as HTMLElement).textContent)).toEqual([
+      expect.stringMatching(/^Opened .+ ago$/),
+      expect.stringMatching(/^Opened .+ ago$/),
+      expect.stringMatching(/^Started .+ ago$/),
+    ]);
   });
 
   // ISS-1228 round 14 (judge-36): the tab counted an open run with work behind it and listed none.
@@ -162,7 +195,6 @@ describe("the Agents runs tab with nothing running on a box", () => {
     ];
     state.total = 3;
     pane();
-    expect(screen.getByText("No box reports a run here, though 1 open run has work behind it.")).toBeInTheDocument();
     const open = within(screen.getByRole("list", { name: "Open runs" })).getAllByRole("listitem");
     expect(open).toHaveLength(1);
     expect(open[0]).toHaveTextContent("ISS-4");
@@ -300,6 +332,25 @@ describe("the runs a box reports (ISS-1228 round 8)", () => {
       "title",
       "It waits on a person, and keeps its process while it waits.",
     );
+  });
+
+  // ISS-1228 round 17 (judge-45): a blocked run whose box named no kind drew no wait, only a hover.
+  it("shows the wait of a blocked run whose box named no blocker kind, the holder its hover names", () => {
+    state.ledger = [ledgerRow({ work: "blocked", blockerKind: null, waitingOn: "something the box did not classify" })];
+    pane();
+    const row = within(screen.getByRole("list", { name: "Runs a box reports" })).getByRole("listitem");
+    expect(row).toHaveTextContent("Waiting on someone the box did not name. Something the box did not classify.");
+    expect(within(row).getByText("Blocked").closest("[title]")).toHaveAttribute(
+      "title",
+      "It waits on someone the box did not name, and keeps its process while it waits.",
+    );
+  });
+
+  it("shows no wait on a working run whose box left a blocker kind behind", () => {
+    state.ledger = [ledgerRow({ work: "runnable", blockerKind: "human", waitingOn: "approve the restore" })];
+    pane();
+    const row = within(screen.getByRole("list", { name: "Runs a box reports" })).getByRole("listitem");
+    expect(row).not.toHaveTextContent(/Waiting on/);
   });
 
   // ISS-1228 round 14 (judge-36): a stopped run still said it waited on a person, with Open questions.

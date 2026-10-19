@@ -190,10 +190,17 @@ describe("an offline box and a lease core still holds", () => {
 // Open questions link until its box dropped it.
 describe("waitsNow", () => {
   it("says a blocked run waits only while core holds its session", () => {
-    expect(waitsNow({ blockerKind: "human", sessionStatus: "running" })).toBe(true);
-    expect(waitsNow({ blockerKind: "human", sessionStatus: "failed" })).toBe(false);
-    expect(waitsNow({ blockerKind: "human", sessionStatus: "completed" })).toBe(false);
-    expect(waitsNow({ blockerKind: null, sessionStatus: "running" })).toBe(false);
+    expect(waitsNow({ work: "blocked", sessionStatus: "running" })).toBe(true);
+    expect(waitsNow({ work: "blocked", sessionStatus: "failed" })).toBe(false);
+    expect(waitsNow({ work: "blocked", sessionStatus: "completed" })).toBe(false);
+  });
+
+  // ISS-1228 round 17 (judge-45): a run its box reports blocked with no blocker kind drew no wait.
+  it("says a run its box reports blocked waits whatever kind the box named, and a working one never", () => {
+    expect(waitsNow({ work: "blocked", sessionStatus: "running" })).toBe(true);
+    expect(waitsNow({ work: "runnable", sessionStatus: "running" })).toBe(false);
+    expect(waitsNow({ work: "done", sessionStatus: "running" })).toBe(false);
+    expect(waitsNow({ work: "blocked", sessionStatus: null })).toBe(true);
   });
 });
 

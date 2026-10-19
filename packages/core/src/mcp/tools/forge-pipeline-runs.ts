@@ -77,6 +77,7 @@ export async function pipelineRunsListHandler(
     return {
       ...row,
       liveJobs: live?.liveJobs ?? 0,
+      reading: live?.reading ?? null,
       lane,
       residentMaster: residentMasterOn(lane, live),
     };
@@ -96,8 +97,11 @@ export async function pipelineRunsGetHandler(
 ) {
   const run = await loadRunForPrincipal(principal, input.runId);
 
-  const jobCounts = await countRunJobsByStatus(input.runId);
-  return { run, jobCounts };
+  const [jobCounts, liveness] = await Promise.all([
+    countRunJobsByStatus(input.runId),
+    loadRunLivenessByRunIds([input.runId]),
+  ]);
+  return { run, jobCounts, reading: liveness.get(input.runId)?.reading ?? null };
 }
 
 export async function pipelineRunsPauseHandler(

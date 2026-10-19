@@ -59,6 +59,12 @@ export const pipelineRunListItemSchema = z.object({
   cost: costSchema,
   liveJobs: z.number(),
   lastSessionBeatAt: nullableIso,
+  reading: z
+    .enum(['running', 'starting', 'queued'])
+    .nullable()
+    .describe(
+      "what the run's agent is doing: running once a job runs or a session on it beats, starting where a box has taken or been sent a job it has not started, queued where only an untaken job waits",
+    ),
   residentMaster: z
     .object({
       sessionId: z.string(),
@@ -92,6 +98,12 @@ const attemptSchema = z.object({
       done: z.array(z.string()),
     })
     .nullable(),
+  takenBy: z
+    .object({ deviceId: z.string(), deviceName: z.string().nullable() })
+    .nullable()
+    .describe(
+      'the box whose session holds this job before starting it; null once started or where none holds it',
+    ),
 });
 
 /** One run with its step timeline, per-attempt device/retry timeline and cost rolled up. */

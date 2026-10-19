@@ -45,11 +45,19 @@ export interface ActivityEntry {
 
 const OPEN_STATUSES: ReadonlySet<string> = new Set(LIVE_JOB_STATUSES);
 
-/** Runner-friendly device name, never a bare empty cell. */
+/** Runner-friendly device name, never a bare empty cell; a taken job is on the box that took it. */
 function deviceLabel(a: PipelineRunAttempt): string {
   if (a.deviceName) return a.deviceName;
   if (a.deviceId) return a.deviceId.slice(0, 8);
+  if (a.takenBy) return a.takenBy.deviceName ?? a.takenBy.deviceId.slice(0, 8);
   return "unassigned";
+}
+
+/** An attempt not started reads the run's own word: Starting where a box has taken or been sent it,
+ *  Queued where none has, never Ran (ISS-1228). */
+function unstartedVerb(a: PipelineRunAttempt): string | null {
+  if (a.status === "dispatched" || (a.status === "queued" && a.takenBy)) return "Starting";
+  return a.status === "queued" ? "Queued" : null;
 }
 
 function causeOf(a: PipelineRunAttempt): FailureCause | null {
@@ -66,15 +74,16 @@ function toneOf(a: PipelineRunAttempt, cause: FailureCause | null): ActivityTone
 }
 
 /** Outcome text for an attempt that never finished — never a blank cell. */
-function openOutcome(status: string): string {
-  if (status === "running") return "Still running";
-  if (status === "dispatched") return "Sent to a runner, not started yet";
-  if (status === "held") return "Held — waiting on a gate";
+function openOutcome(a: PipelineRunAttempt): string {
+  if (a.status === "running") return "Still running";
+  if (a.status === "dispatched") return "Sent to a runner, not started yet";
+  if (a.status === "held") return "Held — waiting on a gate";
+  if (a.takenBy) return "Taken by a runner, not started yet";
   return "Queued — no runner has picked it up";
 }
 
 function outcomeOf(a: PipelineRunAttempt, cause: FailureCause | null): string {
-  if (OPEN_STATUSES.has(a.status)) return openOutcome(a.status);
+  if (OPEN_STATUSES.has(a.status)) return openOutcome(a);
   if (cause) return failureReasonLabel(cause) ?? "Unclassified";
   if (a.status === "done") return "Completed";
   if (a.failureReason && LEGACY_NEUTRAL_REASONS.has(a.failureReason)) {
@@ -102,7 +111,9 @@ function signature(
   return [...fields, detailOf(a, cause) ?? ""].join("\0");
 }
 
-function verbFor(position: number, repeats: number): string {
+function verbFor(a: PipelineRunAttempt, position: number, repeats: number): string {
+  const unstarted = unstartedVerb(a);
+  if (unstarted) return unstarted;
   if (repeats > 1) return "Retried";
   return position === 1 ? "Ran" : "Retried";
 }
@@ -122,7 +133,7 @@ export function deriveActivityFeed(attempts: PipelineRunAttempt[] | undefined): 
     if (previous && sig === lastSignature) {
       previous.repeats += 1;
       previous.positions.push(position);
-      previous.verb = "Retried";
+      previous.verb = verbFor(a, position, previous.repeats);
       previous.at = a.finishedAt ?? a.startedAt ?? a.queuedAt ?? previous.at;
       previous.open = OPEN_STATUSES.has(a.status);
       return;
@@ -131,7 +142,7 @@ export function deriveActivityFeed(attempts: PipelineRunAttempt[] | undefined): 
     lastSignature = sig;
     entries.push({
       key: a.jobId,
-      verb: verbFor(position, 1),
+      verb: verbFor(a, position, 1),
       object: jobKindLabel(a.jobType),
       outcome,
       cause,

@@ -12,6 +12,37 @@ const RUN_JOURNAL = "run-journal";
 const RUN_SESSIONS = "run-sessions";
 const SESSIONS_AND_HOLDS = "sessions-and-holds";
 
+/** The status this tab last heard for each session, so a check-in that moves none is told apart. */
+const lastStatus = new Map<string, string>();
+const LAST_STATUS_CAP = 1000;
+
+function seeStatus(sessionId: string, status: string): void {
+	lastStatus.delete(sessionId);
+	lastStatus.set(sessionId, status);
+	if (lastStatus.size > LAST_STATUS_CAP) {
+		const oldest = lastStatus.keys().next().value;
+		if (oldest !== undefined) lastStatus.delete(oldest);
+	}
+}
+
+// biome-ignore lint/suspicious/noExplicitAny: heterogeneous payloads
+function statusUnmoved(data: any): data is { sessionId: string; status: string } {
+	return (
+		typeof data?.sessionId === "string" &&
+		typeof data?.status === "string" &&
+		lastStatus.get(data.sessionId) === data.status
+	);
+}
+
+/** A session's check-in that leaves its status alone moves no count, no issue page and no rollup:
+ *  only the session's own page and the lists that show the session re-read (ISS-1228). */
+function rereadWhatShowsSession(qc: QueryClient, sessionId: string): void {
+	scheduleInvalidation(qc, ["agent-session", sessionId]);
+	scheduleInvalidation(qc, ["agent-sessions"]);
+	scheduleInvalidation(qc, [SESSIONS_AND_HOLDS]);
+	scheduleInvalidation(qc, [RUN_SESSIONS]);
+}
+
 interface EventEnvelope {
 	event: string;
 	// biome-ignore lint/suspicious/noExplicitAny: heterogeneous payloads
@@ -133,6 +164,13 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 			// The live read drops a stopped session as its event arrives, before the re-read lands (ISS-1228).
 			if (typeof data?.sessionId === "string" && typeof data?.status === "string") {
 				moveSessionInLiveReads(qc, data.sessionId, data.status);
+			}
+			if (event === "agent-session.updated" && statusUnmoved(data)) {
+				rereadWhatShowsSession(qc, data.sessionId);
+				return;
+			}
+			if (typeof data?.sessionId === "string" && typeof data?.status === "string") {
+				seeStatus(data.sessionId, data.status);
 			}
 			scheduleInvalidation(qc, ["agent-sessions"]);
 			scheduleInvalidation(qc, [SESSIONS_AND_HOLDS]);

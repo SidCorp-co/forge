@@ -34,6 +34,7 @@ function attempt(over: Partial<PipelineRunAttempt> = {}): PipelineRunAttempt {
     startedAt: "2026-08-30T10:00:05.000Z",
     finishedAt: "2026-08-30T10:01:00.000Z",
     autoRetry: null,
+    takenBy: null,
     ...over,
   };
 }
@@ -64,6 +65,7 @@ function run(attempts: PipelineRunAttempt[]): PipelineRunSummary {
     },
     liveJobs: 0,
     lastSessionBeatAt: null,
+    reading: null,
     attempts,
     retrySummary: null,
     gateAtOpen: null,

@@ -124,3 +124,58 @@ describe('a session ended for silence says what stopped (ISS-1228 round 11)', ()
     expect(await endOf(unheard)).toEqual({ status: 'failed', reason: 'heartbeat_timeout' });
   });
 });
+
+describe('a chat waiting on its person is never failed for silence (ISS-1228 round 17)', () => {
+  /** A chat whose turn ended `ago` before now, waiting for its person's reply on an open chat run. */
+  async function waitingChat(ago: string, box = deviceId): Promise<{ id: string; runId: string }> {
+    const runId = randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO pipeline_runs (id, project_id, kind, status, started_at)
+      VALUES (${runId}, ${projectId}::uuid, 'interactive', 'running', now() - interval '3 hours')
+    `);
+    const id = randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO agent_sessions (id, project_id, device_id, pipeline_run_id, kind, status, title,
+                                  claude_session_id, started_at, last_heartbeat_at)
+      VALUES (${id}, ${projectId}::uuid, ${box}::uuid, ${runId}, 'chat', 'idle', 'a chat',
+              'claude-1', now() - interval '3 hours', now() - ${ago}::interval)
+    `);
+    return { id, runId };
+  }
+
+  async function runOf(runId: string): Promise<unknown> {
+    const [row] = await harness.db.execute(
+      sql`SELECT status FROM pipeline_runs WHERE id = ${runId}`,
+    );
+    return row?.status;
+  }
+
+  it('leaves it and its run to the one-shot sweep, whether or not its box answers', async () => {
+    const { reapOrphanedOneShotRuns } = await import('../../src/pipeline/sweeper.js');
+    const [owner] = await harness.db.execute(
+      sql`SELECT owner_id FROM devices WHERE id = ${deviceId}`,
+    );
+    const silentBox = (await createTestDevice(harness.db, String(owner?.owner_id))).id;
+    await bindTestRunner(harness.db, { projectId, deviceId: silentBox });
+    await harness.db.execute(
+      sql`UPDATE runners SET last_seen_at = now() - interval '5 minutes' WHERE device_id = ${silentBox}::uuid`,
+    );
+    await boxHeard('10 seconds');
+    const answered = await waitingChat('21 minutes');
+    const unheard = await waitingChat('21 minutes', silentBox);
+    await reapOrphanedOneShotRuns(new Date());
+    for (const chat of [answered, unheard]) {
+      expect(await endOf(chat.id)).toEqual({ status: 'idle', reason: null });
+      expect(await runOf(chat.runId)).toBe('running');
+    }
+  });
+
+  it('closes it as completed, never failed, two hours after it was last heard', async () => {
+    const { closeIdleChatSessions } = await import('../../src/pipeline/sweeper.js');
+    const fresh = await waitingChat('119 minutes');
+    const stale = await waitingChat('121 minutes');
+    await closeIdleChatSessions(new Date());
+    expect(await endOf(fresh.id)).toEqual({ status: 'idle', reason: null });
+    expect(await endOf(stale.id)).toEqual({ status: 'completed', reason: null });
+  });
+});

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { aggregateStepCosts, drawerRunChip, median, runGateNote, runSummaryReading } from "./derive";
-import type { PipelineRunAttempt, PipelineRunStatus, RunGateCondition, StepDurationRow } from "./types";
+import { aggregateStepCosts, median, runGateNote, runReadingChip } from "./derive";
+import type { PipelineRunStatus, RunGateCondition, RunReading, StepDurationRow } from "./types";
 
 function step(over: Partial<StepDurationRow> & { step: string }): StepDurationRow {
   return {
@@ -153,70 +153,26 @@ describe("runGateNote", () => {
 	});
 });
 
-const att = (status: string) => ({ status }) as PipelineRunAttempt;
-const NO_JOBS = { attempts: [], lastSessionBeatAt: null };
-const runOf = (status: PipelineRunStatus, attempts: PipelineRunAttempt[] = [], beat: string | null = null) => ({
-  status,
-  attempts,
-  lastSessionBeatAt: beat,
-});
+// ISS-1228 round 17 (judge-47): the runs tab read a taken and a sent run Running where the drawer read
+// Queued, and the drawer read a sent run Running beside "not started yet". One reading, from core.
+describe("runReadingChip — the one word a run reads on every surface", () => {
+  const of = (status: PipelineRunStatus, reading: RunReading | null = null) => runReadingChip({ status, reading });
 
-describe("runSummaryReading — what the run summary alone says its agent is doing (ISS-1297)", () => {
-  it("reads a queued job nothing has claimed as queued", () => {
-    expect(runSummaryReading({ attempts: [att("queued")], lastSessionBeatAt: null })).toBe("queued");
+  it("reads an open run by what core says its agent is doing", () => {
+    expect(of("running", "queued")).toEqual({ status: "queued", label: "Queued" });
+    expect(of("running", "starting")).toEqual({ status: "queued", label: "Starting" });
+    expect(of("running", "running")).toEqual({ status: "running", label: "Running" });
   });
-  it("reads a job handed to a runner, or running, as running", () => {
-    expect(runSummaryReading({ attempts: [att("dispatched")], lastSessionBeatAt: null })).toBe("running");
-    expect(runSummaryReading({ attempts: [att("running")], lastSessionBeatAt: null })).toBe("running");
+
+  it("reads a running run core says nothing of by its status", () => {
+    expect(of("running")).toEqual({ status: "running", label: "Running" });
   });
-  it("lets a started job outrank a queued one beside it, in either order", () => {
-    expect(runSummaryReading({ attempts: [att("queued"), att("running")], lastSessionBeatAt: null })).toBe("running");
-    expect(runSummaryReading({ attempts: [att("running"), att("queued")], lastSessionBeatAt: null })).toBe("running");
-  });
-  it("lets a session beat outrank a job row still reading queued", () => {
-    expect(runSummaryReading({ attempts: [att("queued")], lastSessionBeatAt: "2026-09-05T14:20:00Z" })).toBe("running");
-  });
-  it("reads a queued retry behind finished attempts as queued, and says nothing where no job is live", () => {
-    expect(runSummaryReading({ attempts: [att("failed"), att("queued")], lastSessionBeatAt: null })).toBe("queued");
-    expect(runSummaryReading({ attempts: [att("failed"), att("done")], lastSessionBeatAt: null })).toBeNull();
-    expect(runSummaryReading(NO_JOBS)).toBeNull();
+
+  it("keeps a paused, finished or stopped run's own status whatever its reading", () => {
+    expect(of("paused", "running")).toEqual({ status: "paused", label: "Paused" });
+    expect(of("completed", "queued")).toEqual({ status: "done", label: "Completed" });
+    expect(of("failed", "starting")).toEqual({ status: "failed", label: "Failed" });
+    expect(of("cancelled")).toEqual({ status: "blocked", label: "Stopped" });
   });
 });
 
-describe("drawerRunChip — one header reading whichever screen opens the drawer (ISS-1277, ISS-1297)", () => {
-  it("shows a queued step under a running run as queued", () => {
-    expect(drawerRunChip(runOf("running"), "queued")).toBe("queued");
-  });
-  it("shows a running step under a running run as running", () => {
-    expect(drawerRunChip(runOf("running"), "running")).toBe("running");
-  });
-  it("keeps the run's own status when neither the issue's reading nor the summary says otherwise", () => {
-    expect(drawerRunChip(runOf("running"), null)).toBe("running");
-    expect(drawerRunChip(runOf("running"), "done")).toBe("running");
-    expect(drawerRunChip(runOf("running"), "failed")).toBe("running");
-  });
-  it("reads the summary where there is no issue row: the same chip the board gives that run", () => {
-    const queuedRun = runOf("running", [att("queued")]);
-    expect(drawerRunChip(queuedRun, null)).toBe("queued");
-    expect(drawerRunChip(queuedRun, "queued")).toBe(drawerRunChip(queuedRun, null));
-    expect(drawerRunChip(runOf("running", [att("running")]), null)).toBe("running");
-  });
-  it("gives one chip for one summary whatever the issue row says beside it", () => {
-    const handedOff = runOf("running", [att("dispatched")]);
-    expect(drawerRunChip(handedOff, "queued")).toBe(drawerRunChip(handedOff, null));
-    expect(drawerRunChip(handedOff, "queued")).toBe("running");
-    const waiting = runOf("running", [att("queued")]);
-    expect(drawerRunChip(waiting, "running")).toBe(drawerRunChip(waiting, null));
-    expect(drawerRunChip(waiting, "running")).toBe("queued");
-  });
-  it("keeps a paused run paused whatever the issue's session, queued job or attempts say", () => {
-    expect(drawerRunChip(runOf("paused"), "running")).toBe("paused");
-    expect(drawerRunChip(runOf("paused"), "queued")).toBe("paused");
-    expect(drawerRunChip(runOf("paused", [att("queued")]), null)).toBe("paused");
-  });
-  it("keeps a finished or cancelled run's own status", () => {
-    expect(drawerRunChip(runOf("completed"), "queued")).toBe("done");
-    expect(drawerRunChip(runOf("failed", [att("queued")]), null)).toBe("failed");
-    expect(drawerRunChip(runOf("cancelled"), "queued")).toBe("blocked");
-  });
-});

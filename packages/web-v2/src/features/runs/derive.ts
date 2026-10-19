@@ -7,6 +7,7 @@ import {
   gateUnreadableDetailText,
 } from "@/features/sessions/status-sentences";
 import { formatDurationMs } from "@/lib/utils/format";
+import { RUN_STATUS_WORD } from "./run-status-words";
 import type { PipelineRunStatus, PipelineRunSummary, RunGate, StepDurationRow } from "./types";
 
 /** Map a run status to the design-kit `StatusKey` vocabulary (chip + card). */
@@ -25,29 +26,21 @@ export function runStatusToStatusKey(status: PipelineRunStatus): StatusKey {
   }
 }
 
-/** What a run's own summary says its agent is doing: a session beat or a started job is running, only unclaimed jobs is queued, no live job is null. */
-export function runSummaryReading(
-  run: Pick<PipelineRunSummary, "attempts" | "lastSessionBeatAt">,
-): "running" | "queued" | null {
-  if (run.lastSessionBeatAt !== null) return "running";
-  let queued = false;
-  for (const a of run.attempts) {
-    if (a.status === "running" || a.status === "dispatched") return "running";
-    if (a.status === "queued") queued = true;
+/** The one word a run reads on every surface, the runs tab and the drawer's header alike: an open run
+ *  by what core says its agent is doing, any other by its own status (ISS-1228). */
+export function runReadingChip(run: Pick<PipelineRunSummary, "status" | "reading">): {
+  status: StatusKey;
+  label: string;
+} {
+  if (run.status !== "running" || run.reading === null || run.reading === "running") {
+    return { status: runStatusToStatusKey(run.status), label: RUN_STATUS_WORD[run.status] };
   }
-  return queued ? "queued" : null;
+  return run.reading === "starting" ? { status: "queued", label: "Starting" } : { status: "queued", label: "Queued" };
 }
 
-/** The drawer header's chip, one reading on every screen: a running run reads its summary, the issue row only where the summary names no live job. */
-export function drawerRunChip(
-  run: Pick<PipelineRunSummary, "status" | "attempts" | "lastSessionBeatAt">,
-  issueRun: StatusKey | null,
-): StatusKey {
-  if (run.status !== "running") return runStatusToStatusKey(run.status);
-  const reading = runSummaryReading(run);
-  if (reading !== null) return reading;
-  return issueRun === "running" || issueRun === "queued" ? issueRun : "running";
-}
+/** What a run's time is: when it opened while nothing has started, when it started once it has. */
+export const runSinceWord = (run: Pick<PipelineRunSummary, "status" | "reading">): string =>
+  run.status === "running" && (run.reading === "queued" || run.reading === "starting") ? "Opened" : "Started";
 
 /** Median of a numeric list (`null` for an empty list). Used by the dashboard's
  *  where-time-goes aggregate. */

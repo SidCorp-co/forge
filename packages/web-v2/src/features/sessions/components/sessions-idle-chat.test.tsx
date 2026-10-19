@@ -129,6 +129,26 @@ describe("an idle chat on the sessions list (ISS-1228 round 16)", () => {
   });
 });
 
+// ISS-1228 round 17 (judge-45): core ended an idle chat as failed with nothing said beforehand.
+describe("when core closes a chat waiting for its person (ISS-1228 round 17)", () => {
+  it("says it on the chat's row, from the limit core serves", () => {
+    const heard = new Date(Date.now() - 8 * 60_000).toISOString();
+    rows = [session("chat-wait", { status: "idle", lastHeartbeatAt: heard, silenceLimitMs: 2 * 60 * 60_000 })];
+    render(<SessionsScreen scope={{ projectId: "p1" }} />);
+    expect(rowOf("chat-wait")).toHaveTextContent(/Core closes this chat in 1h 5[12]m if no reply comes\./);
+    expect(rowOf("chat-wait")).not.toHaveTextContent(/failed/i);
+  });
+
+  it("says nothing of a close where core serves no limit, or the chat's turn is running", () => {
+    rows = [
+      session("chat-nolimit", { status: "idle", silenceLimitMs: null }),
+      session("chat-busy", { silenceLimitMs: 2 * 60 * 60_000 }),
+    ];
+    render(<SessionsScreen scope={{ projectId: "p1" }} />);
+    for (const id of ["chat-nolimit", "chat-busy"]) expect(rowOf(id)).not.toHaveTextContent(/Core closes/);
+  });
+});
+
 describe("the box dot on the sessions list (ISS-1228 round 16)", () => {
   it("is drawn on every session core has not ended that names a box, a chat's included", () => {
     rows = [idleChat, runningChat, run];
