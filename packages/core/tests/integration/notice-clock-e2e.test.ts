@@ -58,7 +58,9 @@ describe('how long a stuck-issue notice says the issue has stood', () => {
     await idle.reconcileIdleIssues(NOW);
 
     expect(emitted).toHaveLength(1);
-    expect(emitted[0]?.body).toMatch(/^ISS-\d+ has read Open for 2 days /);
+    // Counted from the status change two days ago, never from the edit an hour ago.
+    expect(emitted[0]?.body).toMatch(/^It has read Open for 2 days,/);
+    expect(emitted[0]?.body).not.toMatch(/for (an|1) hour/);
   });
 
   it('a waiting-park notice counts from when the issue was parked', async () => {

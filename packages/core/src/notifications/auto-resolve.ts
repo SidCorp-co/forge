@@ -1,4 +1,4 @@
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
   notificationDeliveries,
@@ -27,28 +27,42 @@ import { hooks } from '../pipeline/hooks.js';
 export async function resolveNotifications(resolutionKey: string): Promise<number> {
   if (!resolutionKey) return 0;
   try {
-    const cleared = await db.execute<{ id: string; state: string }>(sql`
-      UPDATE notifications n
-      SET resolved_at = now(),
-          state = CASE WHEN n.kind = 'condition' THEN 'resolved' ELSE n.state END
-      FROM (
-        SELECT id FROM notifications
-        WHERE resolution_key = ${resolutionKey} AND resolved_at IS NULL
-        ORDER BY id
-        FOR UPDATE
-      ) prev
-      WHERE n.id = prev.id
-      RETURNING n.id, n.state
-    `);
-
-    for (const row of cleared) {
-      await sendResolvedNotice(row.id);
-    }
-    return cleared.length;
+    return await resolveWhere(sql`resolution_key = ${resolutionKey}`);
   } catch (err) {
     logger.error({ err, resolutionKey }, 'auto-resolve: resolveNotifications failed');
     return 0;
   }
+}
+
+/** One record by its id: the way to end a condition stored with no key, which no key can reach. */
+export async function resolveNotificationById(id: string): Promise<number> {
+  try {
+    return await resolveWhere(sql`id = ${id}`);
+  } catch (err) {
+    logger.error({ err, id }, 'auto-resolve: resolveNotificationById failed');
+    return 0;
+  }
+}
+
+async function resolveWhere(which: SQL): Promise<number> {
+  const cleared = await db.execute<{ id: string; state: string }>(sql`
+    UPDATE notifications n
+    SET resolved_at = now(),
+        state = CASE WHEN n.kind = 'condition' THEN 'resolved' ELSE n.state END
+    FROM (
+      SELECT id FROM notifications
+      WHERE ${which} AND resolved_at IS NULL
+      ORDER BY id
+      FOR UPDATE
+    ) prev
+    WHERE n.id = prev.id
+    RETURNING n.id, n.state
+  `);
+
+  for (const row of cleared) {
+    await sendResolvedNotice(row.id);
+  }
+  return cleared.length;
 }
 
 export async function sendResolvedNotice(notificationId: string): Promise<number> {

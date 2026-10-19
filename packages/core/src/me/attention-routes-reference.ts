@@ -92,7 +92,9 @@ export const attentionSchema = z.object({
         parkedOnly: z
           .number()
           .int()
-          .describe("Parked issues of the project the health row's list holds and no bucket lists"),
+          .describe(
+            "Parked issues of the project the health row's list holds and no bucket lists, the caller's own or one a stuck-issue notice stands for",
+          ),
         parkedAsked: z
           .number()
           .int()

@@ -8,7 +8,12 @@ import { createLimiter } from '../lib/bounded-concurrency.js';
 import { heldAsFailedJobWhere } from '../me/attention-failed-jobs.js';
 import { readLiveSessionCounts } from '../pipeline/live-session.js';
 import { firstShipped } from '../pipeline/shipped-at.js';
-import { parkOwerNameSql, readerStuckKindSql, stuckRankSql } from './stuck-issue-kinds.js';
+import {
+  parkOwerNameSql,
+  parkOwerSql,
+  readerStuckKindSql,
+  stuckRankSql,
+} from './stuck-issue-kinds.js';
 
 /**
  * The twelve independent per-project reads behind `GET /api/projects/health`, and
@@ -39,6 +44,8 @@ export type BlockerRow = {
   issuePrefix: string | null;
   title: string;
   status: string;
+  /** Whether the reader owns the park (its assignee, else whoever filed it): theirs to act on. */
+  readerOwns: boolean;
 };
 
 function idList(projectIds: string[]) {
@@ -52,7 +59,7 @@ function idList(projectIds: string[]) {
 const readStatusRows = (projectIds: string[]) =>
   readWorkStateRows(inArray(issues.projectId, projectIds), false);
 
-const readBlockerRows = (projectIds: string[]) =>
+const readBlockerRows = (projectIds: string[], readerId: string) =>
   db
     .select({
       projectId: issues.projectId,
@@ -62,6 +69,7 @@ const readBlockerRows = (projectIds: string[]) =>
       title: issues.title,
       status: issues.status,
       updatedAt: issues.updatedAt,
+      readerOwns: sql<boolean>`(${parkOwerSql(sql`${issues.id}`)} IS NOT DISTINCT FROM ${readerId}::uuid)`,
     })
     .from(issues)
     .innerJoin(projects, eq(projects.id, issues.projectId))
@@ -256,7 +264,7 @@ export async function readHealthAggregates(projectIds: string[], readerId: strin
     stuckIssueRows,
   ] = await Promise.all([
     run(() => readStatusRows(projectIds)),
-    run(() => readBlockerRows(projectIds)),
+    run(() => readBlockerRows(projectIds, readerId)),
     run(() => readThroughputRows(projectIds)),
     run(() => readCycleRows(projectIds)),
     run(() => readLiveRunRows(projectIds)),
