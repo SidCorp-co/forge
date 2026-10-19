@@ -22,14 +22,13 @@ packages/runner` lists `b70f00098` alone.
 
 ## What would close it
 
-Either of these. Both are the owner's to choose.
+**Merge with a token whose push starts workflows.** A GitHub App installation token, or a
+fine-grained token, stored as a repository secret and passed to `gh pr merge`. That closes all three
+gaps. No agent here can write a repository secret, so it is the owner's.
 
-- **Merge with a token whose push starts workflows.** A GitHub App installation token, or a
-  fine-grained token, stored as a repository secret and passed to `gh pr merge`. No agent here can
-  write a repository secret.
-- **Release the runner on a clock as well as on a push.** Add a `schedule` trigger to
-  `runner-autorelease.yml` that cuts a tag when `main` holds runner commits past the newest
-  `runner-v*` tag. Post-merge CI would still be missing for those commits.
+**A partial mitigation, not a close:** add a `schedule` trigger to `runner-autorelease.yml` that
+cuts a tag when `main` holds runner commits past the newest `runner-v*` tag. That ships the runner
+change, and leaves post-merge CI and the Sentry registration missing for those commits.
 
 ## Honest costs
 
