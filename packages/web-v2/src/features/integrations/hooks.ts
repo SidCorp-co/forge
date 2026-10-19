@@ -41,6 +41,7 @@ function useInvalidateIntegrations(projectId: string | undefined) {
     qc.invalidateQueries({
       queryKey: ["integrations", "mcp-preview", projectId],
     });
+    qc.invalidateQueries({ queryKey: ["integrations", "sentry-projects", projectId] });
   };
 }
 
@@ -112,6 +113,21 @@ export function useCoolifyApplications(
     queryFn: () => integrationsApi.coolifyApplications(projectId as string, auth as never),
     enabled: !!projectId && !!auth,
     retry: false,
+  });
+}
+
+/** ISS-1380 — the Sentry projects a saved integration's or a typed credential can read, for the
+ *  target picker; a null `auth` holds the query back. */
+export function useSentryProjects(
+  projectId: string | undefined,
+  auth: { integrationId: string } | { host: string; authToken: string } | null,
+) {
+  return useQuery({
+    queryKey: ["integrations", "sentry-projects", projectId, JSON.stringify(auth)],
+    queryFn: () => integrationsApi.sentryProjects(projectId as string, auth as never),
+    enabled: !!projectId && !!auth,
+    retry: false,
+    staleTime: 60_000,
   });
 }
 

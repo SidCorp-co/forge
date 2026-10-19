@@ -10,8 +10,8 @@ const CALL_TIMEOUT_MS = 15_000;
 
 export type SentryAdapterContext = AdapterContext<SentryConfig, SentrySecrets>;
 
-type Attempt =
-  | { kind: 'ok'; body: unknown; link: string | null }
+export type SentryAttempt =
+  | { kind: 'ok'; status: number; body: unknown; link: string | null }
   | {
       kind: 'refused';
       status: number;
@@ -20,12 +20,21 @@ type Attempt =
       refusal: SentryRefusalReason;
     };
 
-async function attempt(
+/** A 2xx from Sentry whose body is not JSON: Sentry was reached and answered, so its status is kept. */
+export class SentryAnswerNotJson extends Error {
+  constructor(readonly status: number) {
+    super(`Sentry answered HTTP ${status} with a body that is not JSON`);
+    this.name = 'SentryAnswerNotJson';
+  }
+}
+
+/** One HTTP attempt at Sentry, classified: shared by the dispatch path and the project picker. */
+export async function attemptSentryCall(
   url: string,
   token: string,
   method: 'GET' | 'PUT',
   body?: Record<string, unknown>,
-): Promise<Attempt> {
+): Promise<SentryAttempt> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), CALL_TIMEOUT_MS);
   try {
@@ -39,7 +48,15 @@ async function attempt(
       ...(body ? { body: JSON.stringify(body) } : {}),
       signal: controller.signal,
     });
-    if (res.ok) return { kind: 'ok', body: await res.json(), link: res.headers.get('link') };
+    if (res.ok) {
+      let parsed: unknown;
+      try {
+        parsed = await res.json();
+      } catch {
+        throw new SentryAnswerNotJson(res.status);
+      }
+      return { kind: 'ok', status: res.status, body: parsed, link: res.headers.get('link') };
+    }
     if (res.status === 401) {
       return {
         kind: 'refused',
@@ -98,16 +115,16 @@ export async function callSentry(
       'sentry: this connection holds no auth token, so no call can be made',
     );
   }
-  let res: Attempt;
+  let res: SentryAttempt;
   try {
-    res = await attempt(url, authToken, method, body);
+    res = await attemptSentryCall(url, authToken, method, body);
     if (
       res.kind === 'refused' &&
       res.status === 401 &&
       ctx.secrets.previousAuthToken &&
       isPreviousCredentialValid(ctx.secrets)
     ) {
-      res = await attempt(url, ctx.secrets.previousAuthToken, method, body);
+      res = await attemptSentryCall(url, ctx.secrets.previousAuthToken, method, body);
     }
   } catch (err) {
     // A timeout, a DNS failure or a body that is not JSON never produced an HTTP status, so it

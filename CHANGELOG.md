@@ -10,6 +10,7 @@
 
 ### Security
 
+- **One project's agents can no longer read another's Sentry issues through a shared connection.** Each project keeps its own Sentry projects; others are refused. Where projects still share a connection's targets, deploy stops until each declares its own.
 - **A stored test credential no longer reaches an issue comment.** A comment written on the web or by an agent tool that carries one is refused, naming where; text Forge writes itself gets a marker saying where it is read.
 - **A stored test credential written as `&#64;` or split by markup is refused too.** It was stored because only the characters sent were matched; a comment is now matched as it reads, on the web and through the agent tool.
 - **A stored test credential hidden by an invisible character is refused too.** A status-change reason is now kept with the credential replaced, as its comment is, and values already stored in activity, transition logs and questions are replaced on deploy.
@@ -130,6 +131,8 @@
   reporting were enabled on the repository in the same change.
 
 ### Added
+
+- **Sentry settings list the organization's Sentry projects to pick from.** Choosing one fills in its organization and project; if the list cannot be read the form says why and still takes the slugs typed by hand.
 
 - **An issue page says where its work lands, and a person can change it.** Work lands sits in its properties; a change the issue's merge mark forbids is refused there, with the steps. (ISS-1171)
 - **Writing an issue into `clarified` or `tested` is refused.** Both were retired rungs that accepted the write and stranded the issue; the refusal names `approved` or `awaiting_release`. Issues already there can still move.
