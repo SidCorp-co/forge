@@ -368,7 +368,18 @@ describe("migration 0343: a stored title quotes its issue's title and its projec
       issueId: addressOnly,
     });
 
+    // Consult 708806 F1: a person read as a status's own words is no quoted title.
+    const statusNamed = await person('Needs info', 'desk@status.example.com');
+    const statusIssue = await issueTitled(8, statusNamed.email);
+    const transition = await storedAbout('ISS-8 — Needs info moved to Needs info', {
+      issueId: statusIssue,
+    });
+
     const notices = await runRestore();
+
+    expect(await titlesOf(transition)).toEqual(
+      Array(2).fill(`ISS-8 — ${statusNamed.email} moved to Needs info`),
+    );
 
     expect(await titlesOf(whole)).toEqual(Array(2).fill(`${bare.email} moved to Needs info`));
     expect(await titlesOf(slot)).toEqual(
@@ -392,7 +403,7 @@ describe("migration 0343: a stored title quotes its issue's title and its projec
       Array(2).fill("ISS-5 is waiting for another member's decision — Invoicing"),
     );
     expect(notices).toEqual([
-      "0343: 12 stored title(s) quote an issue title or project name as written again; 4 that quote neither that text nor 0342's reading of it were left as they are",
+      "0343: 14 stored title(s) quote an issue title or project name as written again; 4 that quote neither that text nor 0342's reading of it were left as they are",
     ]);
   });
 

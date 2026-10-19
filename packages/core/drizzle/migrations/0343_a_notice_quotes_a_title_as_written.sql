@@ -4,9 +4,10 @@
 -- that names a person is swapped; an issue's title and a project's name are quoted as written.
 -- For each stored title, on a record and on its bell row, whose issue, secondary issue or project
 -- carries an address in its title or name, this reads that text as 0342 did, against the users table
--- as it stands, and finds that reading where a title quotes such a text: after the title's start,
--- " — ", '"', ": " or " to ", and before its end, " — ", '"', " moved to" or " as ". A person slot
--- ("waiting for another member's decision") is never one of those places. Every place is found in
+-- as it stands, and finds that reading where a title quotes such a text, between one of the pairs a
+-- producer writes: " — " and " moved to" or the end, '"' and '"', ": " and the end, " to " and " as ",
+-- or the start and " — ", " moved to" or the end. A person slot ("waiting for another member's
+-- decision") and a status ("moved to Needs info") are never one of those places. Every place is found in
 -- the title as stored and replaced once; a title whose places overlap, or that holds neither the
 -- text nor its reading in such a place, is left as it is and counted: nothing is guessed. The
 -- pattern is lib/person-name.ts ADDRESS_PATTERN, and the reading is 0342's loop.
@@ -20,6 +21,8 @@ DECLARE
   named text;
   at integer;
   opening boolean;
+  before text;
+  after text;
   pos integer;
   stop integer;
   len integer;
@@ -92,12 +95,24 @@ BEGIN
           EXIT WHEN stop = 0;
           pos := pos + stop;
           -- The opening reading is 0342's only at the title's start, and the inside one only after it.
-          IF (opening = (pos = 1))
-             AND (pos = 1 OR right(left(r.title, pos - 1), 3) = ' — ' OR right(left(r.title, pos - 1), 1) = '"'
-                  OR right(left(r.title, pos - 1), 2) = ': ' OR right(left(r.title, pos - 1), 4) = ' to ')
-             AND (pos + len - 1 = length(r.title) OR substr(r.title, pos + len, 3) = ' — '
-                  OR substr(r.title, pos + len, 1) = '"' OR substr(r.title, pos + len, 9) = ' moved to'
-                  OR substr(r.title, pos + len, 4) = ' as ')
+          before := CASE
+            WHEN pos = 1 THEN 'start'
+            WHEN right(left(r.title, pos - 1), 3) = ' — ' THEN 'dash'
+            WHEN right(left(r.title, pos - 1), 1) = '"' THEN 'quote'
+            WHEN right(left(r.title, pos - 1), 2) = ': ' THEN 'colon'
+            WHEN right(left(r.title, pos - 1), 4) = ' to ' THEN 'to'
+          END;
+          after := CASE
+            WHEN pos + len - 1 = length(r.title) THEN 'end'
+            WHEN substr(r.title, pos + len, 3) = ' — ' THEN 'dash'
+            WHEN substr(r.title, pos + len, 1) = '"' THEN 'quote'
+            WHEN substr(r.title, pos + len, 9) = ' moved to' THEN 'moved'
+            WHEN substr(r.title, pos + len, 4) = ' as ' THEN 'as'
+          END;
+          IF opening = (pos = 1)
+             AND (before, after) IN (('dash', 'moved'), ('dash', 'end'), ('quote', 'quote'),
+                                     ('colon', 'end'), ('to', 'as'), ('start', 'dash'),
+                                     ('start', 'moved'), ('start', 'end'))
           THEN
             starts := starts || pos;
             lens := lens || len;
