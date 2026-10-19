@@ -104,7 +104,10 @@ describe('migration 0341: an old status-change title names the status as the scr
     const grouped = await told('issue_status_changed', 'Three issues moved to closed', 'g:1');
     const notStatus = await told('issue_status_changed', 'ISS-28 moved to the next room');
     await runMigration();
-    expect(await titles(worded)).toEqual(['ISS-26 moved to Needs info', 'ISS-26 moved to Needs info']);
+    expect(await titles(worded)).toEqual([
+      'ISS-26 moved to Needs info',
+      'ISS-26 moved to Needs info',
+    ]);
     expect(await titles(other)).toEqual(['ISS-27 moved to closed', 'ISS-27 moved to closed']);
     expect((await titles(grouped))[1]).toBe('Three issues moved to closed');
     expect(await titles(notStatus)).toEqual([

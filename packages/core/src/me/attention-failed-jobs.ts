@@ -21,8 +21,8 @@ import { alias } from 'drizzle-orm/pg-core';
 import { db } from '../db/client.js';
 import { issues, jobs, projects } from '../db/schema.js';
 import { issueArchiveSide } from '../issues/archive.js';
-import { LIVE_JOB_STATUSES } from '../jobs/status-sets.js';
 import { ISSUE_RESOLVED_STATUSES, ISSUE_TERMINAL_STATUSES } from '../issues/status-sets.js';
+import { LIVE_JOB_STATUSES } from '../jobs/status-sets.js';
 import {
   type AttentionFailedJobRow,
   type AttentionScope,

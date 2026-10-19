@@ -41,7 +41,9 @@ const STILL_HOLDS: Readonly<Record<WedgeKeyKind, (w: WedgeKeyParts) => SQL>> = {
                                      AND (r.limit_reason = 'auth' OR r.quarantined_until > now()))`,
   // Raised once the row is out of redeliveries, so its row is never processed: what ends it is the
   // issue moving on — off the status the change took it to, finished, archived, or the change re-applied.
-  outbox: ({ uid }) => sql`EXISTS (SELECT 1 FROM pipeline_outbox o JOIN issues i ON i.id = o.issue_id
+  outbox: ({
+    uid,
+  }) => sql`EXISTS (SELECT 1 FROM pipeline_outbox o JOIN issues i ON i.id = o.issue_id
                                     WHERE o.id = ${uid} AND o.processed_at IS NULL
                                       AND i.status = o.to_status
                                       AND i.status NOT IN ('closed', 'dropped')
@@ -102,7 +104,9 @@ async function endedWedges(): Promise<{ ended: string[]; unread: string[] }> {
 }
 
 /** Firing wedges stored with no key at all, from before keys existed: no resolver could reach one. */
-async function keylessWedges(): Promise<Array<{ id: string; title: string; project_id: string | null }>> {
+async function keylessWedges(): Promise<
+  Array<{ id: string; title: string; project_id: string | null }>
+> {
   return db.execute<{ id: string; title: string; project_id: string | null }>(sql`
     SELECT n.id, n.title, n.project_id FROM notifications n
      WHERE n.type = 'pipeline_wedge' AND n.state = 'firing' AND n.resolved_at IS NULL

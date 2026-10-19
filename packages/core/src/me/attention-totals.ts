@@ -168,7 +168,6 @@ export async function selectAttentionTotals(
       .where(
         and(
           inArray(issues.status, [...BLOCKED_STATUSES]),
-          // The reader's own park; another person's once a stuck-issue notice stands for it (ISS-1229 r17).
           sql`(${parkOwerSql(sql`${issues.id}`)} = ${userId}::uuid OR ${stuckNoticeStandsSql(sql`${issues.id}`)})`,
           ...visibleProjectsWhere(),
           inScope(scope),

@@ -114,7 +114,9 @@ describe('one issue, one stuck reason', () => {
 
     await pass();
     expect(await standing(shipped)).toEqual(['idle', 'owed-close']);
-    await fx.db.execute(sql`UPDATE notifications SET pending_since = now() - interval '10 minutes'`);
+    await fx.db.execute(
+      sql`UPDATE notifications SET pending_since = now() - interval '10 minutes'`,
+    );
     await pass();
     await pass();
 

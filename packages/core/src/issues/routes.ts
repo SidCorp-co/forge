@@ -198,7 +198,10 @@ function toHttpCreateError(err: unknown): unknown {
   if (err instanceof IssueCreateError) {
     const code = err.code;
     if (code === 'PROJECT_ARCHIVED') {
-      return new HTTPException(409, { message: archivedProjectRefusal(err.value), cause: { code } });
+      return new HTTPException(409, {
+        message: archivedProjectRefusal(err.value),
+        cause: { code },
+      });
     }
     return new HTTPException(400, { message: `${code}: ${err.value}`, cause: { code } });
   }

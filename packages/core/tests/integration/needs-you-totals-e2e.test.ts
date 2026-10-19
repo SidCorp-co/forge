@@ -159,7 +159,7 @@ describe('the counts beside the lists the Needs you tile is read from', () => {
     expect((totals?.awaitingInput ?? 0) + (totals?.parkedOnly ?? 0)).toBe(3);
   });
 
-  it("counts a waiting issue somebody else owns only once a stuck-issue notice stands for it", async () => {
+  it('counts a waiting issue somebody else owns only once a stuck-issue notice stands for it', async () => {
     // j15's scratch reading: the headline counted it as blocked on a person and no list named it;
     // judge-44: before any notice it is its owner's alone, not the viewer's to act on (ISS-1229 r17).
     const other = (await createTestUser(harness.db)).id;
