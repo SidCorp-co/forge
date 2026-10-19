@@ -76,7 +76,8 @@ async function readPage(url: string, auth: SentryProjectsAuth): Promise<Page> {
     );
   }
   if (res.kind !== 'ok') {
-    throw new SentryRefusal(res.refusal, `sentry: GET ${url} — ${res.reason}`, {
+    const said = res.refusal === 'sentry_http_error' ? res.reason : `HTTP ${res.status}: ${res.reason}`;
+    throw new SentryRefusal(res.refusal, `sentry: GET ${url} — ${said}`, {
       httpStatus: res.status,
     });
   }

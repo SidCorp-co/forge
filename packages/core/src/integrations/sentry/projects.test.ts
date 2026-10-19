@@ -140,6 +140,8 @@ describe('what Sentry can answer instead of a list', () => {
 
     expect(refusal.reason).toBe(reason);
     expect(refusal.httpStatus).toBe(status);
+    expect(refusal.message).toContain(`HTTP ${status}`);
+    expect(refusal.message.match(/HTTP \d{3}/g)).toHaveLength(1);
   });
 
   it('refuses a body that is not JSON as unreadable_answer, carrying the status Sentry sent', async () => {
