@@ -43,6 +43,7 @@ export interface SentryProjectsAuth {
 }
 
 interface Page {
+  status: number;
   body: unknown;
   link: string | null;
 }
@@ -79,19 +80,21 @@ async function readPage(url: string, auth: SentryProjectsAuth): Promise<Page> {
       httpStatus: res.status,
     });
   }
-  return { body: res.body, link: res.link };
+  return { status: res.status, body: res.body, link: res.link };
 }
 
 function listOf(page: Page, url: string): unknown[] {
   if (Array.isArray(page.body)) return page.body;
   throw new SentryRefusal(
     'unreadable_answer',
-    `sentry: GET ${url} answered ${page.body === null ? 'null' : typeof page.body}, and this listing has to be an array`,
+    `sentry: GET ${url} answered HTTP ${page.status} with a body of type ${page.body === null ? 'null' : typeof page.body}, and this listing has to be an array`,
+    { httpStatus: page.status },
   );
 }
 
 function slugOf(
   entry: unknown,
+  page: Page,
   url: string,
   what: string,
 ): Record<string, unknown> & { slug: string } {
@@ -99,7 +102,8 @@ function slugOf(
   if (!row || typeof row.slug !== 'string' || row.slug === '') {
     throw new SentryRefusal(
       'unreadable_answer',
-      `sentry: GET ${url} answered a ${what} with no slug, so it cannot be offered as a target`,
+      `sentry: GET ${url} answered HTTP ${page.status} with a ${what} that has no slug, so it cannot be offered as a target`,
+      { httpStatus: page.status },
     );
   }
   return row as Record<string, unknown> & { slug: string };
@@ -113,7 +117,7 @@ async function organizationsOf(
 ): Promise<{ slugs: string[]; truncated: boolean }> {
   const url = sentryOrganizationsUrl(auth.host);
   const page = await readPage(url, auth);
-  const slugs = listOf(page, url).map((o) => slugOf(o, url, 'organization').slug);
+  const slugs = listOf(page, url).map((o) => slugOf(o, page, url, 'organization').slug);
   if (slugs.length === 0) {
     throw new SentryRefusal(
       'no_organization',
@@ -146,7 +150,7 @@ export async function listSentryProjects(
       const url = sentryOrgProjectsUrl(auth.host, org, cursor);
       const page = await readPage(url, auth);
       for (const entry of listOf(page, url)) {
-        const row = slugOf(entry, url, 'project');
+        const row = slugOf(entry, page, url, 'project');
         if (projects.length >= SENTRY_PROJECTS_MAX) return { projects, truncated: true };
         projects.push({
           organizationSlug: org,

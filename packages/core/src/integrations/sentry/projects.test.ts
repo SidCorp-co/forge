@@ -201,14 +201,18 @@ describe('what Sentry can answer instead of a list', () => {
     const refusal = await refusalOf(() => listSentryProjects(AUTH, 'canawan'));
 
     expect(refusal.reason).toBe('unreadable_answer');
+    expect(refusal.httpStatus).toBe(200);
+    expect(refusal.message).toContain('HTTP 200');
   });
 
   it('refuses a project with no slug, because it cannot be offered as a target', async () => {
     answerWith({ body: [project('a'), { id: '9', name: 'nameless' }] });
 
-    expect((await refusalOf(() => listSentryProjects(AUTH, 'canawan'))).reason).toBe(
-      'unreadable_answer',
-    );
+    const refusal = await refusalOf(() => listSentryProjects(AUTH, 'canawan'));
+
+    expect(refusal.reason).toBe('unreadable_answer');
+    expect(refusal.httpStatus).toBe(200);
+    expect(refusal.message).toContain('HTTP 200');
   });
 
   it('refuses a failure on the second organization rather than answering the first one alone', async () => {

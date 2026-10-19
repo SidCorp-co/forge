@@ -11,7 +11,7 @@ const CALL_TIMEOUT_MS = 15_000;
 export type SentryAdapterContext = AdapterContext<SentryConfig, SentrySecrets>;
 
 export type SentryAttempt =
-  | { kind: 'ok'; body: unknown; link: string | null }
+  | { kind: 'ok'; status: number; body: unknown; link: string | null }
   | {
       kind: 'refused';
       status: number;
@@ -55,7 +55,7 @@ export async function attemptSentryCall(
       } catch {
         throw new SentryAnswerNotJson(res.status);
       }
-      return { kind: 'ok', body: parsed, link: res.headers.get('link') };
+      return { kind: 'ok', status: res.status, body: parsed, link: res.headers.get('link') };
     }
     if (res.status === 401) {
       return {
