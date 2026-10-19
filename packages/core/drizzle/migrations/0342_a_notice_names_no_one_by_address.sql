@@ -25,10 +25,10 @@ BEGIN
       found := substring(said FROM pat);
       EXIT WHEN found IS NULL;
       named := NULL;
-      SELECT btrim(u.display_name) INTO named
+      SELECT regexp_replace(u.display_name, '^[[:space:]]+|[[:space:]]+$', '', 'g') INTO named
         FROM public.users u
        WHERE lower(u.email) = lower(found)
-         AND nullif(btrim(u.display_name), '') IS NOT NULL
+         AND nullif(regexp_replace(u.display_name, '^[[:space:]]+|[[:space:]]+$', '', 'g'), '') IS NOT NULL
          AND u.display_name !~ pat
        LIMIT 1;
       said := replace(

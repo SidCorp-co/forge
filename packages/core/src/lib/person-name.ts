@@ -23,6 +23,7 @@ export function personName(
 
 export function personNameSql(displayName: SQL, at: 'inside' | 'start' = 'inside'): SQL<string> {
   const unnamed = at === 'start' ? UNNAMED_PERSON_AT_START : UNNAMED_PERSON;
-  return sql<string>`(CASE WHEN nullif(btrim(${displayName}), '') IS NULL OR ${displayName} ~ ${ADDRESS_PATTERN}
-                   THEN ${unnamed}::text ELSE btrim(${displayName}) END)`;
+  const given = sql`regexp_replace(${displayName}, '^[[:space:]]+|[[:space:]]+$', '', 'g')`;
+  return sql<string>`(CASE WHEN nullif(${given}, '') IS NULL OR ${displayName} ~ ${ADDRESS_PATTERN}
+                   THEN ${unnamed}::text ELSE ${given} END)`;
 }

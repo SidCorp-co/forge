@@ -146,12 +146,32 @@ async function runMigration() {
   }
 }
 
+describe('what core calls a person, in SQL as in TypeScript', () => {
+  it.each([
+    ['Mai', 'Mai'],
+    ['  Mai\t', 'Mai'],
+    ['\t\n', 'another member'],
+    ['', 'another member'],
+    [null, 'another member'],
+    ['mai@example.com', 'another member'],
+  ])('reads %j as %j, as personName does', async (given, called) => {
+    const { personName, personNameSql } = await import('../../src/lib/person-name.js');
+    const [row] = (await fx.db.execute(
+      sql`SELECT ${personNameSql(sql`${given}::text`)} AS called`,
+    )) as unknown as Array<{ called: string }>;
+    expect(row?.called).toBe(called);
+    expect(personName(given)).toBe(called);
+  });
+});
+
 describe('migration 0342: a stored title names no one by address', () => {
   it('reads each address as that person is called now, on the record and its bell row', async () => {
     const mai = await person('Mai');
     const lan = await person(null);
     const selfNamed = await person('');
     await fx.db.execute(sql`UPDATE users SET display_name = email WHERE id = ${selfNamed.id}`);
+    const blank = await person('\t\n');
+    const padded = await person(' Lan\t');
 
     const named = await stored(
       `ISS-2 is waiting for ${mai.email.toUpperCase()}'s decision — Invoicing`,
@@ -164,7 +184,8 @@ describe('migration 0342: a stored title names no one by address', () => {
     const nobody = await stored('ISS-5 is waiting for ghost@departed.example — Invoicing');
     const twice = await stored(`${mai.email} and ${lan.email} and ${mai.email}`);
     const plain = await stored('ISS-6 moved to Testing');
-    expect((await addressedTitles()).length).toBe(12);
+    const spaces = await stored(`${blank.email} asked ${padded.email}`);
+    expect((await addressedTitles()).length).toBe(14);
 
     await runMigration();
 
@@ -185,6 +206,7 @@ describe('migration 0342: a stored title names no one by address', () => {
     );
     expect(await titlesOf(twice)).toEqual(Array(2).fill('Mai and another member and Mai'));
     expect(await titlesOf(plain)).toEqual(Array(2).fill('ISS-6 moved to Testing'));
+    expect(await titlesOf(spaces)).toEqual(Array(2).fill('Another member asked Lan'));
     expect(await addressedTitles()).toEqual([]);
   });
 
