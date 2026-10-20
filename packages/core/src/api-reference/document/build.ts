@@ -1,4 +1,3 @@
-import { BODY_NOT_TAKEN_WHEN } from '../../middleware/body-not-taken.js';
 import { PAT_DOOR_REFUSALS } from '../../middleware/pat-rest-surface.js';
 import { type Answer, codeFor } from '../declare/describe.js';
 import {
@@ -8,7 +7,7 @@ import {
   errorResponse,
 } from '../declare/errors.js';
 import { type JsonSchema, renderSchema } from '../declare/schema.js';
-import type { ValidatorDeclaration } from '../declare/validator.js';
+import { BODY_NOT_TAKEN_WHEN, type ValidatorDeclaration } from '../declare/validator.js';
 import { type Access, accessOf, accessProse, asksForBearer } from './access.js';
 import { type InputRefusal, probeInputRefusal } from './probe-hook.js';
 import { type RouteEntry, type RouteSource, readRoutes } from './registry.js';

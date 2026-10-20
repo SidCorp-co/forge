@@ -1,9 +1,8 @@
 import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { takesBodyAsSent, zValidator } from '../api-reference/declare/validator.js';
-import { MOST_READ_BYTES, refuseBodyNotTaken } from './body-not-taken.js';
-import { errorHandler } from './error.js';
+import { errorHandler } from '../../middleware/error.js';
+import { MOST_READ_BYTES, refuseBodyNotTaken, takesBodyAsSent, zValidator } from './validator.js';
 
 // ISS-1421 r16 — judge-69 asked for a pairing code with `expiresInMinutes: 1` and was minted a
 // ten-minute one: the route declares no body, so the field was dropped unread and nothing said so.

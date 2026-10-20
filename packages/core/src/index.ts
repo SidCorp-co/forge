@@ -19,7 +19,7 @@ import { agentSessionRoutes } from './agent-sessions/routes.js';
 import { registerAgentCronTicker, unregisterAgentCronTicker } from './agents/cron.js';
 import { agentRoutes } from './agents/routes.js';
 import { describeOperation, redirect } from './api-reference/declare/describe.js';
-import { declaresInput } from './api-reference/declare/validator.js';
+import { declaresInput, refuseBodyNotTaken } from './api-reference/declare/validator.js';
 import { responseConformance } from './api-reference/gates/conformance.js';
 import { describedInstallRoutes } from './api-reference/surface/install-reference.js';
 import { referenceOf, referenceRoutes } from './api-reference/surface/routes.js';
@@ -113,7 +113,6 @@ import { memoryMineRoutes } from './memory/mine-routes.js';
 import { memorySearchRoutes } from './memory/search-routes.js';
 import { memoryWriteRoutes } from './memory/write-routes.js';
 import { projectMetricsRoutes } from './metrics/routes.js';
-import { refuseBodyNotTaken } from './middleware/body-not-taken.js';
 import { errorHandler, notFoundHandler } from './middleware/error.js';
 import { requestLogger } from './middleware/logger.js';
 import { PAT_ACCEPTED_PERMISSIONS_HEADER } from './middleware/pat-rest-surface.js';
@@ -215,7 +214,8 @@ const corsMiddleware = cors({
     PAT_ACCEPTED_PERMISSIONS_HEADER,
   ],
 });
-for (const at of ['/api/*', '/mcp']) app.use(at, corsMiddleware);
+app.use('/api/*', corsMiddleware);
+app.use('/mcp', corsMiddleware);
 app.use(
   '/api/*',
   answerUnservedPath(() => app),
