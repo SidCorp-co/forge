@@ -2,8 +2,8 @@
 // into; the script reads only this file's scratch directory and the routes on loopback.
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
-import type { AddressInfo } from 'node:net';
+import { chmod, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { type AddressInfo, createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -24,6 +24,9 @@ let releaseDir: string;
 let server: ServerType;
 let base: string;
 let tamper = false;
+let downloadBroken = false;
+/** A loopback port nothing listens on: the build list there is unreachable. */
+let closedPort: number;
 
 beforeAll(async () => {
   root = await mkdtemp(join(tmpdir(), 'install-routes-'));
@@ -48,12 +51,27 @@ beforeAll(async () => {
     changed[body.length] = 0x58;
     c.res = new Response(changed, { status: c.res.status, headers: c.res.headers });
   });
+  // The download failing outright, as a proxy timing out or core restarting mid-install would.
+  app.use('/api/install/bin/*', async (c, next) => {
+    if (!downloadBroken) return next();
+    return c.text('bad gateway', 502);
+  });
   app.route('/api', installRoutes);
+  // Something that answers 200 at the build list's path but is not core: a captive portal, or a
+  // web host serving its index page for every path.
+  app.get('/portal/install/latest.json', (c) =>
+    c.html('<html><body>Sign in to continue</body></html>'),
+  );
 
   await new Promise<void>((resolve) => {
     server = serve({ fetch: app.fetch, hostname: '127.0.0.1', port: 0 }, () => resolve());
   });
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+
+  const probe = createServer();
+  await new Promise<void>((resolve) => probe.listen(0, '127.0.0.1', () => resolve()));
+  closedPort = (probe.address() as AddressInfo).port;
+  await new Promise<void>((resolve) => probe.close(() => resolve()));
 });
 
 afterAll(async () => {
@@ -69,17 +87,26 @@ interface Install {
   bin: string;
 }
 
+interface InstallOptions {
+  /** A build already installed on the box before the script runs. */
+  existing?: string;
+  /** Stand in for the core the script was served by, as a box that cannot reach it would see. */
+  servedBy?: { base: string; prefix: string };
+}
+
 /** Run the served install script as a box reporting `os`/`arch` would. */
 async function install(
   name: string,
   os: string,
   arch: string,
-  existing?: string,
+  { existing, servedBy }: InstallOptions = {},
 ): Promise<Install> {
   const box = join(root, name);
   const home = join(box, 'home');
   const shim = join(box, 'shim');
+  const scratch = join(box, 'tmp');
   await mkdir(home, { recursive: true });
+  await mkdir(scratch, { recursive: true });
   await mkdir(shim, { recursive: true });
   const uname = `#!/bin/sh\ncase "$1" in -s) echo "${os}";; -m) echo "${arch}";; *) exit 1;; esac\n`;
   await writeFile(join(shim, 'uname'), uname);
@@ -89,14 +116,23 @@ async function install(
     await mkdir(join(home, '.local', 'bin'), { recursive: true });
     await writeFile(bin, existing);
   }
-  const script = await (await fetch(`${base}/api/install.sh`)).text();
+  let script = await (await fetch(`${base}/api/install.sh`)).text();
+  if (servedBy) {
+    for (const line of [`BASE="${base}"`, 'PREFIX="/api"']) {
+      if (!script.includes(line)) throw new Error(`the served script no longer carries ${line}`);
+    }
+    script = script
+      .replace(`BASE="${base}"`, `BASE="${servedBy.base}"`)
+      .replace('PREFIX="/api"', `PREFIX="${servedBy.prefix}"`);
+  }
   await writeFile(join(box, 'install.sh'), script);
   const env = {
     HOME: home,
     XDG_CONFIG_HOME: join(box, 'config'),
+    TMPDIR: scratch,
     PATH: `${shim}:${process.env.PATH ?? '/usr/bin:/bin'}`,
   };
-  return new Promise((resolve, reject) => {
+  const run = await new Promise<Install>((resolve, reject) => {
     const child = spawn('sh', [join(box, 'install.sh')], { env });
     let stdout = '';
     let stderr = '';
@@ -105,6 +141,9 @@ async function install(
     child.on('error', reject);
     child.on('close', (code) => resolve({ code, stdout, stderr, home, bin }));
   });
+  // Whatever the script fetched it fetched into its own scratch, and it removes that on every exit.
+  expect(await readdir(scratch)).toEqual([]);
+  return run;
 }
 
 const exists = (p: string) =>
@@ -141,10 +180,13 @@ describe('REQ-25 BC-2: a build that does not match its published sha256 is refus
   it('a download changed on the way is refused INSTALL_SHA256_MISMATCH and the box keeps what it had', async () => {
     tamper = true;
     try {
-      const run = await install('bc2', 'Linux', 'x86_64', 'the build this box already had');
+      const run = await install('bc2', 'Linux', 'x86_64', {
+        existing: 'the build this box already had',
+      });
       expect(run.code).toBe(1);
-      expect(run.stderr).toContain(
-        `INSTALL_SHA256_MISMATCH: forge-runner for ${PUBLISHED} hashed ${sha256(`${BUILD}X`)}, core publishes ${sha256(BUILD)}; nothing was installed.`,
+      expect(run.stderr).toBe(
+        `INSTALL_SHA256_MISMATCH: forge-runner for ${PUBLISHED} hashed ${sha256(`${BUILD}X`)}, core publishes ${sha256(BUILD)}; nothing was installed. ` +
+          `Run the install command again; if it fails the same way, something between this box and ${base} is changing the download, so tell your Forge admin.\n`,
       );
       expect(await readFile(run.bin, 'utf8')).toBe('the build this box already had');
       expect(await exists(`${run.bin}.new`)).toBe(false);
@@ -185,5 +227,66 @@ describe('REQ-25 BC-3: a platform with no published build is refused by name, na
       'INSTALL_PLATFORM_UNSUPPORTED: forge-runner is built for x86_64 and aarch64, and this box is riscv64 (Linux)',
     );
     expect(await exists(join(run.home, '.local'))).toBe(false);
+  });
+
+  // A refusal names what is wrong. A box that cannot read the build list has not learned anything
+  // about its platform, so it must never be told its platform has no build.
+  describe('a build list the box cannot read is refused under its own name, never as an unpublished platform', () => {
+    it('core unreachable: INSTALL_BUILD_LIST_UNREACHABLE names the URL and the curl failure', async () => {
+      const unreachable = `http://127.0.0.1:${closedPort}`;
+      const run = await install('list-unreachable', 'Linux', 'x86_64', {
+        servedBy: { base: unreachable, prefix: '/api' },
+      });
+      expect(run.code).toBe(1);
+      expect(run.stderr).not.toContain('INSTALL_PLATFORM_UNPUBLISHED');
+      expect(run.stderr).toMatch(
+        new RegExp(
+          `^INSTALL_BUILD_LIST_UNREACHABLE: could not read the published build list at ${unreachable}/api/install/latest\\.json \\(curl exit 7: curl: \\(7\\) [^\\n]*\\); this box's platform \\(${PUBLISHED}\\) was not checked and nothing was installed\\. Check that this box can reach ${unreachable}, then run the install command again\\.\\n$`,
+        ),
+      );
+      expect(await exists(join(run.home, '.local'))).toBe(false);
+    });
+
+    it('build list answering 404: INSTALL_BUILD_LIST_UNREACHABLE names the URL and the HTTP status', async () => {
+      const run = await install('list-404', 'Linux', 'x86_64', {
+        servedBy: { base, prefix: '/api/no-such-prefix' },
+      });
+      expect(run.code).toBe(1);
+      expect(run.stderr).toBe(
+        `INSTALL_BUILD_LIST_UNREACHABLE: could not read the published build list at ${base}/api/no-such-prefix/install/latest.json (curl exit 22: curl: (22) The requested URL returned error: 404); this box's platform (${PUBLISHED}) was not checked and nothing was installed. Check that this box can reach ${base}, then run the install command again.\n`,
+      );
+      expect(await exists(join(run.home, '.local'))).toBe(false);
+    });
+
+    it('a 200 that is not a build list: INSTALL_BUILD_LIST_UNREADABLE names the URL', async () => {
+      const run = await install('list-not-json', 'Linux', 'x86_64', {
+        servedBy: { base, prefix: '/portal' },
+      });
+      expect(run.code).toBe(1);
+      expect(run.stderr).toBe(
+        `INSTALL_BUILD_LIST_UNREADABLE: ${base}/portal/install/latest.json answered, but not with a forge-runner build list; this box's platform (${PUBLISHED}) was not checked and nothing was installed. Check that ${base} is the Forge you meant to install from, then run the install command again.\n`,
+      );
+      expect(await exists(join(run.home, '.local'))).toBe(false);
+    });
+  });
+});
+
+describe('a download that fails is refused by name, and the box keeps what it had', () => {
+  it('the build download answering 502: INSTALL_DOWNLOAD_FAILED names the URL, and no partial file is left', async () => {
+    downloadBroken = true;
+    try {
+      const run = await install('download-502', 'Linux', 'x86_64', {
+        existing: 'the build this box already had',
+      });
+      expect(run.code).toBe(1);
+      expect(run.stdout).toContain(`Downloading forge-runner (${PUBLISHED})`);
+      expect(run.stderr).toBe(
+        `INSTALL_DOWNLOAD_FAILED: could not download ${base}/api/install/bin/${PUBLISHED} (curl exit 22: curl: (22) The requested URL returned error: 502); nothing was installed. Check that this box can reach ${base}, then run the install command again.\n`,
+      );
+      expect(await readFile(run.bin, 'utf8')).toBe('the build this box already had');
+      expect(await exists(`${run.bin}.new`)).toBe(false);
+    } finally {
+      downloadBroken = false;
+    }
   });
 });

@@ -51,23 +51,41 @@ case "$arch" in
 esac
 target="$cpu-$plat"
 dest="$HOME/.local/bin"
+tmp=$(mktemp -d)
+trap 'rm -rf "$tmp"' EXIT
+trap 'exit 1' INT TERM
+# curl runs outside any pipe, so its own exit status is the one checked; $rc and $why keep what it said.
+fetch() {
+  if curl -fsSL "$1" -o "$2" 2>"$tmp/curl.err"; then return 0; else rc=$?; fi
+  why=$(tr '\\n' ' ' <"$tmp/curl.err" | sed 's/ *$//')
+  return 1
+}
 # Read what core publishes first: a platform with no build is refused by name, never a bare 404.
-manifest=$(curl -fsSL "$BASE$PREFIX/install/latest.json" | tr -d ' \\n')
+# A build list that could not be read says nothing about the platform, so it is refused as itself.
+list="$BASE$PREFIX/install/latest.json"
+fetch "$list" "$tmp/latest.json" || { echo "INSTALL_BUILD_LIST_UNREACHABLE: could not read the published build list at $list (curl exit $rc: $why); this box's platform ($target) was not checked and nothing was installed. Check that this box can reach $BASE, then run the install command again." >&2; exit 1; }
+manifest=$(tr -d ' \\n' <"$tmp/latest.json")
+case "$manifest" in
+  *'"assets":{'*) ;;
+  *) echo "INSTALL_BUILD_LIST_UNREADABLE: $list answered, but not with a forge-runner build list; this box's platform ($target) was not checked and nothing was installed. Check that $BASE is the Forge you meant to install from, then run the install command again." >&2; exit 1;;
+esac
 published=$(printf '%s' "$manifest" | grep -o '"[^"]*":{"url"' | sed 's/":{"url"//; s/"//g' | paste -sd, - | sed 's/,/, /g')
 [ -n "$published" ] || published=none
 case ", $published, " in
   *", $target, "*) ;;
   *) echo "INSTALL_PLATFORM_UNPUBLISHED: no forge-runner build is published for $target ($os $arch); published: $published. Nothing was installed." >&2; exit 1;;
 esac
-# Made only once the platform is known to be published, so a refusal leaves nothing behind.
-mkdir -p "$dest"
-echo "Downloading forge-runner ($target)..."
-curl -fsSL "$BASE$PREFIX/install/bin/$target" -o "$dest/forge-runner.new"
-# Refuse by name unless the download matches the sha256 core publishes for this target.
 want=$(printf '%s' "$manifest" | sed -n 's/.*"'"$target"'":{[^}]*"sha256":"\\([0-9a-f]*\\)".*/\\1/p')
-[ -n "$want" ] || { rm -f "$dest/forge-runner.new"; echo "INSTALL_SHA256_UNPUBLISHED: core publishes no sha256 for $target, so the download cannot be verified; nothing was installed." >&2; exit 1; }
-if command -v sha256sum >/dev/null 2>&1; then got=$(sha256sum "$dest/forge-runner.new" | cut -d' ' -f1); else got=$(shasum -a 256 "$dest/forge-runner.new" | cut -d' ' -f1); fi
-[ "$got" = "$want" ] || { rm -f "$dest/forge-runner.new"; echo "INSTALL_SHA256_MISMATCH: forge-runner for $target hashed $got, core publishes $want; nothing was installed." >&2; exit 1; }
+[ -n "$want" ] || { echo "INSTALL_SHA256_UNPUBLISHED: core publishes no sha256 for $target, so the download cannot be verified; nothing was installed." >&2; exit 1; }
+echo "Downloading forge-runner ($target)..."
+bin="$BASE$PREFIX/install/bin/$target"
+fetch "$bin" "$tmp/forge-runner" || { echo "INSTALL_DOWNLOAD_FAILED: could not download $bin (curl exit $rc: $why); nothing was installed. Check that this box can reach $BASE, then run the install command again." >&2; exit 1; }
+# Refuse by name unless the download matches the sha256 core publishes for this target.
+if command -v sha256sum >/dev/null 2>&1; then got=$(sha256sum "$tmp/forge-runner" | cut -d' ' -f1); else got=$(shasum -a 256 "$tmp/forge-runner" | cut -d' ' -f1); fi
+[ "$got" = "$want" ] || { echo "INSTALL_SHA256_MISMATCH: forge-runner for $target hashed $got, core publishes $want; nothing was installed. Run the install command again; if it fails the same way, something between this box and $BASE is changing the download, so tell your Forge admin." >&2; exit 1; }
+# Made only once a verified build is in hand, so a refusal leaves nothing behind.
+mkdir -p "$dest"
+mv "$tmp/forge-runner" "$dest/forge-runner.new"
 chmod +x "$dest/forge-runner.new"
 mv "$dest/forge-runner.new" "$dest/forge-runner"
 echo "Installed to $dest/forge-runner"
