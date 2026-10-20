@@ -1,35 +1,46 @@
-# A runner socket moved under a running server orphans its masters, off Linux after a restart
+# A runner socket moved under a running server orphans its masters, off Linux when no process check finds the server
 
 Met while working ISS-1265. A tmux socket file moved or deleted under a running server leaves every
 master on it running, and the next placement used to start a second server on the same path, which
 answers `can't find session` for each of them, so the inbox acked them `gone`.
 
-Since round 5, `packages/runner/crates/forge-runner-core/src/daemon/terminal.rs:ensure` refuses that
-placement while panes are placed on the socket, by `missing_socket::placement_refused`. "Placed" has
-two sources: the panes this daemon placed on that socket and has not ended, held in memory, and, on
-Linux, `/proc/net/unix`, which still lists the old server listening on the path after its file is
-gone. Where no socket path resolves and panes go to tmux's default server, the path is the one
-that server gave when a pane was placed on it, or the one tmux last named missing. The refusal
-names the socket, the panes, and how to find the server and send it `SIGUSR1`, which makes tmux
-recreate the file.
+`packages/runner/crates/forge-runner-core/src/daemon/terminal.rs:ensure` refuses that placement
+while a server still runs on the path, by `missing_socket::placement_refused`. Whether one runs is
+asked each time, never read off the record of placed panes, because that record outlives the server
+that ran them (round 6, judge-64: a server stopped by hand with its stale file removed locked every
+placement out until the daemon restarted). Two reads answer it, in `missing_socket::serving`:
+
+- **The kernel's listing**, on Linux: `/proc/net/unix` still lists a server listening on the path
+  after its file is gone, and lists nothing once that server has exited.
+- **The process the runner started as the server**: `pgrep -of -- '-S <path> new-session'`, the
+  argv both routes here start every server with, and the command the refusal names. For tmux's
+  default server, which carries no `-S`, it is the pid that server gave when a pane was placed on
+  it, counted only while `ps` shows the same process start and an argv naming tmux.
+
+A listener or a matching process refuses the placement, naming the socket, the panes still placed
+on it, and the server's pid with how to send it `SIGUSR1`, which makes tmux recreate the file. A
+readable listing with neither, or off Linux a process check that ran and found none, means the
+server has ended: the panes placed on it are logged once as ended with it, and the placement starts
+a fresh server. The record also drops a pane wherever tmux reports it gone, by `has_session` or by a
+full listing of the sessions.
 
 ## What is still open
 
-A daemon restarted while the file is gone, on a box with no `/proc/net/unix` (macOS), holds neither
-source. Its in-memory record is empty, so its first placement starts the second server and the
-orphaning follows as before.
+Off Linux, where no kernel listing is read, a server on that path that was not started as
+`tmux -S <path> new-session` — started by hand, say — is found by neither read. Its file gone, the
+next placement starts the second server and the orphaning follows as before.
 
 ## What ends it
 
-A record of placed panes that survives a restart and is keyed by socket, or a portable way to ask
-the kernel whether a process still listens on a unix socket path whose file is gone. The ledger's
-`masters` rows do not serve: they record no socket, and the ledger lives under the data dir while the
-socket lives under the config dir, so a box running two runners would read one runner's masters as
-placed on the other's socket.
+A portable way to ask the kernel whether a process still listens on a unix socket path whose file
+is gone, or a way for a person's own tmux on the runner's socket to carry the same argv.
 
 ## Honest costs
 
 - **A refused placement costs every new pane on the box** until a person sends the server
-  `SIGUSR1` or puts the file back. The refusal line names the command; nothing retries it for them.
-- **An unreadable `/proc/net/unix` also refuses**, with the file gone, rather than reading as no
-  server, so a Linux box hiding that listing cannot cold-start on a socket never made.
+  `SIGUSR1` or puts the file back. The refusal names the command and the pid, and is said again at
+  warning level once a minute while placements keep being refused; nothing signals the server for
+  them.
+- **An unreadable `/proc/net/unix` also refuses**, with the file gone and no process found, rather
+  than reading as no server, so a Linux box hiding that listing cannot cold-start on a socket never
+  made.
