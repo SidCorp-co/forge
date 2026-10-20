@@ -141,7 +141,7 @@ export async function withDeployKey<T>(
 }
 
 /** The guard words its refusals for a clause; Test connection shows one alone, as a sentence. */
-function asSentence(clause: string): string {
+export function asSentence(clause: string): string {
   const said = clause.trim();
   const opened = said.charAt(0).toUpperCase() + said.slice(1);
   return /[.!?)]$/.test(opened) ? opened : `${opened}.`;

@@ -27,11 +27,12 @@ import type { AgentAccess } from "../../types";
 import { ConnectionOwnerField } from "../../components/connection-owner-field";
 import { google } from "./index";
 import { IntegrationEnabledControl } from "../../components/integration-enabled-control";
-import { bindingBadge, type DirectoryStatus } from "../../derive";
+import { bindingBadge } from "../../derive";
 
-/** What a state means for a Google key, under the badge that names it as the row does: the five
- *  states name five next actions, and `needs_scope` must not read as "re-enter the credential". */
-const GOOGLE_STATE_SAYS: Partial<Record<DirectoryStatus, string>> = {
+/** What Google's own check found, under the badge that names the state as the row does: the five
+ *  findings name five next actions, and `needs_scope` must not read as "re-enter the credential".
+ *  Keyed on the check's finding, so an open breaker over a passing check is not called a missing sheet. */
+const GOOGLE_CHECK_SAYS: Record<string, string> = {
   needs_reauth: "Google rejected the service account key.",
   needs_scope: "The sheet is not shared with the service account.",
   degraded: "No default sheet is set to read.",
@@ -101,7 +102,10 @@ function GoogleBindingPanel({
   const [error, setError] = useState<string | null>(null);
 
   const badge = bindingBadge(binding);
-  const says = badge.status ? GOOGLE_STATE_SAYS[badge.status] : undefined;
+  const says =
+    binding.active && binding.breakerOpenedAt === null
+      ? GOOGLE_CHECK_SAYS[binding.lastHealthStatus ?? ""]
+      : undefined;
 
   async function saveDefaultSheet() {
     setError(null);

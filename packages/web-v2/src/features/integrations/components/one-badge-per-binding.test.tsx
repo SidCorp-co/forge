@@ -20,6 +20,7 @@ const NOW = "2026-10-14T00:00:00.000Z";
 
 let provider = "postman";
 let health: string | null = "needs_reauth";
+let breaker: string | null = null;
 
 function row() {
   const deploy = provider === "coolify";
@@ -38,7 +39,7 @@ function row() {
     connectionActive: true,
     lastHealthStatus: health,
     lastHealthAt: health ? NOW : null,
-    breakerOpenedAt: null,
+    breakerOpenedAt: breaker,
     hasSecrets: true,
     integrationSecretSet: true,
     agentAccess: "all",
@@ -83,6 +84,7 @@ vi.mock("@/providers/toast-provider", () => ({ useToast: () => ({ toast: vi.fn()
 let queries: QueryClient;
 
 beforeEach(() => {
+  breaker = null;
   queries = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 60_000 } } });
 });
 afterEach(cleanup);
@@ -147,5 +149,24 @@ describe("Epodsystem's connected count", () => {
     health = "ok";
     await drawer();
     expect(await screen.findByText("1 connected")).toBeInTheDocument();
+  });
+});
+
+// Review F1 on 592ce7d: an open breaker over a passing check read "No default sheet is set to read".
+describe("Google's line under the badge", () => {
+  it("names what Google's check found, never a cause the check did not report", async () => {
+    provider = "google";
+    health = "ok";
+    breaker = "2026-10-14T00:00:00.000Z";
+    await drawer();
+    expect(await screen.findAllByText("Degraded")).not.toHaveLength(0);
+    expect(screen.queryByText("No default sheet is set to read.")).toBeNull();
+  });
+
+  it("says the sheet is missing where the check found it so", async () => {
+    provider = "google";
+    health = "degraded";
+    await drawer();
+    expect(await screen.findByText("No default sheet is set to read.")).toBeInTheDocument();
   });
 });

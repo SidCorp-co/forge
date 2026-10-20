@@ -107,6 +107,19 @@ describe('a stored deploy key Forge cannot decrypt (criterion 145)', () => {
   });
 });
 
+describe("the workspace pool's Test connection on a URL it will not probe", () => {
+  it('refuses it in a capitalised sentence, as the project Test connection does', async () => {
+    const res = await post(`/api/orgs/${orgId}/ssh-keys/${keyId}/test`, {
+      repoUrl: 'file:///srv/x',
+    });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { code: string; message: string };
+    expect(body.code).toBe('INVALID_TRANSPORT');
+    expect(body.message).toMatch(/^Set an SSH clone URL/);
+    expect(body.message).toMatch(/[.)]$/);
+  });
+});
+
 describe('storing a private key ssh cannot load', () => {
   it('is refused in a plain sentence, the code in its own field', async () => {
     const res = await post(`/api/orgs/${orgId}/ssh-keys`, {

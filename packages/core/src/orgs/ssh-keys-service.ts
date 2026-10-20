@@ -24,6 +24,7 @@ import {
 } from '../db/schema.js';
 import { assertSafeSshRepoUrl } from '../git/ssh-host-guard.js';
 import {
+  asSentence,
   derivePublicFromPrivate,
   generateSshKeypair,
   testStoredSshKey,
@@ -253,7 +254,10 @@ export async function testOrgSshKey(
   keyId: string,
   repoUrl: string,
 ): Promise<SshConnTestResult> {
-  await assertSafeSshRepoUrl(repoUrl);
+  await assertSafeSshRepoUrl(repoUrl).catch((err: unknown) => {
+    if (!(err instanceof HTTPException)) throw err;
+    throw new HTTPException(err.status, { message: asSentence(err.message), cause: err.cause });
+  });
   if (!isVaultConfigured()) throw vaultUnavailable();
 
   const [row] = await db
