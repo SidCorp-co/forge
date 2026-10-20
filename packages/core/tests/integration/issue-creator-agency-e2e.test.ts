@@ -144,6 +144,36 @@ describe('the credential answers, and a person on their own token is a person', 
     expect(row.creatorLabel).toBe('Another member');
   });
 
+  // ISS-1229 r21, judge-62: the issue page's Creator field is a label, so it reads the display name,
+  // else "Another member", and the only place the address travels is the creatorEmail wire field.
+  it.each([
+    [null, 'Another member'],
+    ['an address for a name', 'Another member'],
+    [' Lan Pham ', 'Lan Pham'],
+  ])(
+    'the issue page names a creator whose display name is %j as %j, never by address',
+    async (given, called) => {
+      const named = given === 'an address for a name' ? personEmail : given;
+      await harness.db.execute(
+        sql`UPDATE users SET display_name = ${named} WHERE id = ${personId}`,
+      );
+      try {
+        const token = await personPat();
+        const id = await createIssueWith(token, 'read on its own page');
+        const res = await app.request(`/api/issues/${id}`, {
+          headers: { authorization: `Bearer ${token}` },
+        });
+        expect(res.status).toBe(200);
+        const { creatorEmail, ...shown } = (await res.json()) as Record<string, unknown>;
+        expect(creatorEmail).toBe(personEmail);
+        expect(shown.creatorLabel).toBe(called);
+        expect(JSON.stringify(shown)).not.toContain(personEmail);
+      } finally {
+        await harness.db.execute(sql`UPDATE users SET display_name = NULL WHERE id = ${personId}`);
+      }
+    },
+  );
+
   // Criterion 3 — the other surface of the same event, which has to agree.
   it('the activity feed reads that same issue as the person too', async () => {
     const id = await createIssueWith(await personPat(), 'one event, two surfaces');
