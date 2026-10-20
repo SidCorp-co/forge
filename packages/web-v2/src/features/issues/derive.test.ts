@@ -676,21 +676,21 @@ describe("groupRows", () => {
 			status: "open",
 			priority: "high",
 			createdById: "u1",
-			creatorLabel: "ann@x.co",
+			creatorLabel: "Ann Lee",
 		}),
 		row({
 			id: "b",
 			status: "open",
 			priority: "low",
 			createdById: "u2",
-			creatorLabel: "bob@x.co",
+			creatorLabel: "Another member",
 		}),
 		row({
 			id: "c",
 			status: "developed",
 			priority: "high",
 			createdById: "u1",
-			creatorLabel: "ann@x.co",
+			creatorLabel: "Ann Lee",
 		}),
 	];
 	it("returns a single group for none", () => {
@@ -725,8 +725,8 @@ describe("groupRows", () => {
 		const g = groupRows(mixed, "creator");
 		expect(g.map((x) => x.key)).toEqual(["u1", "u2", "a1", "a2"]);
 		expect(g.map((x) => x.label)).toEqual([
-			"ann@x.co",
-			"bob@x.co",
+			"Ann Lee",
+			"Another member",
 			"master",
 			"reviewer",
 		]);
@@ -774,44 +774,30 @@ describe("groupRows by module", () => {
 	});
 });
 
+// ISS-1229 r21: a member is named as personName says — never by address, never by a raw id.
 describe("memberLabel / initials", () => {
-	it("resolves member email or falls back to a short id", () => {
-		expect(memberLabel("u1", [{ userId: "u1", email: "bob@x.co" }])).toBe(
-			"bob@x.co",
+	it("names a member by display name, else Another member, never by address or id", () => {
+		expect(memberLabel("u1", [{ userId: "u1", displayName: "Bob Tran" }])).toBe("Bob Tran");
+		expect(memberLabel("u1", [{ userId: "u1", displayName: null }])).toBe("Another member");
+		expect(memberLabel("u1", [{ userId: "u1", displayName: "bob@x.co" }])).toBe(
+			"Another member",
 		);
-		expect(memberLabel("abcdef1234", [])).toBe("abcdef12");
+		expect(memberLabel("abcdef1234", [])).toBe("Unknown user");
 		expect(memberLabel(null)).toBe("Unassigned");
 	});
-	it("derives two-letter initials", () => {
-		expect(initials("ann.smith@x.co")).toBe("AS");
-		expect(initials("bob@x.co")).toBe("BO");
+	it("derives two-letter initials from a name, never from an address", () => {
+		expect(initials("Ann Smith")).toBe("AS");
+		expect(initials("Another member")).toBe("AM");
+		expect(initials("ann.smith@x.co")).toBe("AM");
 	});
 });
 
 describe("creatorLabelOf", () => {
-	it("prefers the server-provided creatorLabel", () => {
-		expect(
-			creatorLabelOf({
-				creatorLabel: "ann@x.co",
-				creatorEmail: "ann@x.co",
-			}),
-		).toBe("ann@x.co");
+	it("is the server-provided creatorLabel", () => {
+		expect(creatorLabelOf({ creatorLabel: "Ann Smith" })).toBe("Ann Smith");
 	});
-	it("falls back to the address when the server sent no label", () => {
-		expect(
-			creatorLabelOf({
-				creatorLabel: "",
-				creatorEmail: "master@agents.local",
-			}),
-		).toBe("master@agents.local");
-	});
-	it("never falls back to a raw id — 'Unknown user' when nothing resolves", () => {
-		expect(
-			creatorLabelOf({
-				creatorLabel: "",
-				creatorEmail: null,
-			}),
-		).toBe("Unknown user");
+	it("never falls back to an address or a raw id — 'Unknown user' when nothing resolves", () => {
+		expect(creatorLabelOf({ creatorLabel: "" })).toBe("Unknown user");
 	});
 });
 

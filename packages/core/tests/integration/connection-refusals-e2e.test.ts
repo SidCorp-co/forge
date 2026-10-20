@@ -167,7 +167,7 @@ describe('a refusal to change a connection names its owner', () => {
     expect(body.message).not.toMatch(/another individual/i);
   });
 
-  it('names a person who set no display name by their email', async () => {
+  it('names a person who set no display name as another member, lower-case mid-sentence, never by their email', async () => {
     const connection = await appBoundTo([projectId]);
     await harness.db.execute(sql`UPDATE users SET display_name = NULL WHERE id = ${clicker.id}`);
     const rows = (await harness.db.execute(
@@ -175,9 +175,39 @@ describe('a refusal to change a connection names its owner', () => {
     )) as unknown as Array<{ email: string }>;
 
     const body = await bodyOf(await patch(boundAdmin.id, connection.id));
+    const listed = await bodyOf(
+      await app.request('/api/integration-connections', { headers: await headers(boundAdmin.id) }),
+    );
 
-    expect(body.message).toContain(`owned by ${rows[0]?.email}`);
+    expect(body.message).toContain('owned by another member,');
+    expect(body.message).toContain('Ask another member,');
+    expect(body.message).not.toContain(rows[0]?.email ?? '@');
+    expect(body.message).not.toMatch(/Another member/);
+    expect(listed.items?.find((i) => i.id === connection.id)?.access?.ownerName).toBe(
+      'another member',
+    );
   });
+
+  it.each([
+    ['a person', undefined],
+    ['an organization', 'org'],
+  ] as const)(
+    'opens with a capital and names a connection %s owns by its label, never by its id',
+    async (_owner, kind) => {
+      const connection = await appBoundTo(
+        [projectId],
+        kind ? { type: kind, id: orgId } : undefined,
+      );
+      const caller = kind ? clicker.id : boundAdmin.id;
+
+      const body = await bodyOf(await patch(caller, connection.id));
+
+      expect(body.message).toMatch(
+        /^You can see the connection "GitHub App forge-test" but not change it/,
+      );
+      expect(body.message).not.toContain(connection.id);
+    },
+  );
 
   it('names an organization by its name and never by its id', async () => {
     const connection = await appBoundTo([projectId], { type: 'org', id: orgId });

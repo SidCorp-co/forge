@@ -11,8 +11,8 @@ export interface ResolvedActor {
   displayName: string;
   isAgent: boolean;
   deviceId?: string;
-  /** Owning member's email for a device, when the owner resolves. */
-  ownerEmail?: string;
+  /** What the device's owning member is called, when the owner resolves (ISS-1229: never their address). */
+  ownerName?: string;
 }
 
 /** Stable map key for an actor ref. */

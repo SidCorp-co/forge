@@ -50,7 +50,7 @@ export function AttentionBanner({ count, read, attentionOnly, onToggle, onRetry 
         <strong className="font-semibold">
           {count} {count === 1 ? 'project' : 'projects'}
         </strong>{' '}
-        need attention — blocked runs or offline runners.
+        {count === 1 ? 'needs' : 'need'} attention — blocked runs or offline runners.
       </Banner>
     </div>
   );

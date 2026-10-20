@@ -17,7 +17,7 @@ import {
 } from '../jobs/loop-monitor-axis.js';
 import { loadVisibleProjectIds } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
-import { personName } from '../lib/person-name.js';
+import { personInitials } from '../lib/person-name.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { type BlockerRow, readHealthAggregates } from './health-aggregates.js';
 import { projectHealthListSchema, readProjectHealth } from './health-routes-reference.js';
@@ -80,19 +80,6 @@ interface ProjectHealthRow {
     kind: StuckIssueKind;
     owedBy?: string;
   }>;
-}
-
-/** Two letters of what the member is called: one from each of the first two words, else the first two. */
-function memberInitials(displayName: string | null): string {
-  const words = personName(displayName).split(/\s+/).filter(Boolean);
-  const letters =
-    words.length > 1
-      ? words
-          .slice(0, 2)
-          .map((w) => w.charAt(0))
-          .join('')
-      : (words[0] ?? '').slice(0, 2);
-  return letters.toUpperCase();
 }
 
 /** Issues parked at `needs_info`, a count of that one status whatever else is asked of a person. */
@@ -215,7 +202,7 @@ projectHealthRoutes.get('/health', readProjectHealth, async (c) => {
   for (const r of agg.memberRows) {
     memberCountByProject.set(r.projectId, (memberCountByProject.get(r.projectId) ?? 0) + 1);
     const arr = membersByProject.get(r.projectId) ?? [];
-    if (arr.length < MEMBER_AVATAR_CAP) arr.push(memberInitials(r.displayName));
+    if (arr.length < MEMBER_AVATAR_CAP) arr.push(personInitials(r.displayName));
     membersByProject.set(r.projectId, arr);
   }
 

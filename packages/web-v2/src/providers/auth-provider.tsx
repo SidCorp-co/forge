@@ -20,6 +20,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import { personInitials } from '@forge/contracts/person-name';
 import { authApi } from '@/lib/api/auth-api';
 import { ApiError } from '@/lib/api/client';
 
@@ -29,6 +30,8 @@ interface AuthState {
   login: (input: LoginInput) => Promise<void>;
   register: (input: RegisterInput) => Promise<void>;
   logout: () => Promise<void>;
+  /** Saves the name other members read, and every surface reading `user` follows it. */
+  setDisplayName: (displayName: string | null) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -86,8 +89,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     router.push('/login');
   }, [router]);
 
+  const setDisplayName = useCallback(async (displayName: string | null) => {
+    const saved = await authApi.setDisplayName(displayName);
+    setUser((u) => (u ? { ...u, displayName: saved.displayName } : u));
+  }, []);
+
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, register, logout }}>
+    <AuthContext.Provider value={{ user, isLoading, login, register, logout, setDisplayName }}>
       {children}
     </AuthContext.Provider>
   );
@@ -99,9 +107,15 @@ const defaultAuth: AuthState = {
   login: async () => {},
   register: async () => {},
   logout: async () => {},
+  setDisplayName: async () => {},
 };
 
 export function useAuth() {
   const ctx = useContext(AuthContext);
   return ctx ?? defaultAuth;
+}
+
+export function useUserInitials(): string | undefined {
+  const { user } = useAuth();
+  return user ? personInitials(user.displayName) : undefined;
 }

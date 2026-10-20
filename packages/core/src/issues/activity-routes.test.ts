@@ -26,7 +26,7 @@ vi.mock('../lib/authz.js', async (importOriginal) => ({
 }));
 
 // Resolve actors deterministically without touching the (mocked) db: a user
-// ref → email, a device ref → name + agent marker. Keeps the db chain mock
+// ref → what personName calls them, a device ref → name + agent marker. Keeps the db chain mock
 // scoped to the activity query itself.
 vi.mock('./actor-resolution.js', () => {
   return {
@@ -36,14 +36,14 @@ vi.mock('./actor-resolution.js', () => {
         m.set(
           actorKey(r.type, r.id),
           r.type === 'user'
-            ? { type: 'user', id: r.id, displayName: 'member@example.com', isAgent: false }
+            ? { type: 'user', id: r.id, displayName: 'Another member', isAgent: false }
             : {
                 type: 'device',
                 id: r.id,
                 displayName: 'Agent Device',
                 isAgent: true,
                 deviceId: r.id,
-                ownerEmail: 'owner@example.com',
+                ownerName: 'another member',
               },
         );
       }
@@ -160,7 +160,7 @@ describe('GET /api/issues/:id/activity', () => {
     expect(body.items[0]?.actor).toEqual({
       type: 'user',
       id: USER_ID,
-      displayName: 'member@example.com',
+      displayName: 'Another member',
       isAgent: false,
     });
     expect(body.items[0]?.actorType).toBe('user');

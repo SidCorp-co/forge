@@ -297,7 +297,7 @@ function CommentItem({
   const meta = COMMENT_KIND_META[kind];
   const isAgent = node.author?.isAgent ?? false;
   const author = node.author?.displayName ?? memberLabel(node.authorId, members);
-  const ownerEmail = node.author?.ownerEmail;
+  const ownerName = node.author?.ownerName;
   return (
     <div
       className={depth > 0 ? "border-l border-line-subtle pl-3 sm:pl-4" : ""}
@@ -320,8 +320,8 @@ function CommentItem({
               {formatRelativeTime(node.createdAt)}
             </span>
           </div>
-          {isAgent && ownerEmail && (
-            <div className="fg-caption">via {ownerEmail}</div>
+          {isAgent && ownerName && (
+            <div className="fg-caption">via {ownerName}</div>
           )}
           <div className="mt-1">
             <BodyView

@@ -81,7 +81,7 @@ authRoutes.post(
         if (!created) {
           throw new Error('register: insert returned no row');
         }
-        await ensurePersonalOrg(tx, created.userId, created.email);
+        await ensurePersonalOrg(tx, created.userId);
         return created;
       });
 

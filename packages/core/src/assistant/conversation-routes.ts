@@ -51,6 +51,7 @@ import { users } from '../db/schema.js';
 import { conversationModes } from '../db/schema-conversations.js';
 import { assertProjectRole, effectiveProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { fromPage, listResponse } from '../lib/pagination.js';
+import { personName } from '../lib/person-name.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import {
   mayChangeMembership,
@@ -444,7 +445,7 @@ conversationRoutes.post(
     }
 
     const [me] = await db
-      .select({ displayName: users.displayName, email: users.email })
+      .select({ displayName: users.displayName })
       .from(users)
       .where(eq(users.id, userId))
       .limit(1);
@@ -459,7 +460,7 @@ conversationRoutes.post(
         },
         projectId,
         userId,
-        userLabel: me?.displayName ?? me?.email ?? null,
+        userLabel: me ? personName(me.displayName, 'start') : null,
         content,
         mode: asking,
         namedMode: mode !== undefined,

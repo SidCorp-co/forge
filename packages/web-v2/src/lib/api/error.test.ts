@@ -218,7 +218,7 @@ describe('the connection refusals (ISS-1216)', () => {
   // A 404 under `NOT_FOUND` prints "Not found." and drops the server's sentence, which is what the
   // connection drawer's red panel showed; these two codes are what keeps the sentence.
   const reachable =
-    'connection 2679a042 is not one you can reach. Ask its owner, or an admin of a project it is bound to, to bind it to a project you administer.';
+    'Connection 2679a042 is not one you can reach. Ask its owner, or an admin of a project it is bound to, to bind it to a project you administer.';
 
   it('prints the server sentence for a connection the caller cannot reach, not "Not found."', () => {
     const err = new ApiError(404, reachable, 'CONNECTION_NOT_REACHABLE');
@@ -226,7 +226,7 @@ describe('the connection refusals (ISS-1216)', () => {
   });
 
   it('prints the server sentence for a connection the caller may read but not change', () => {
-    const sentence = 'you can see connection 2679a042 but not change it: Ask its owner.';
+    const sentence = 'You can see the connection "Deploy box" but not change it: it is owned by another member. Ask another member.';
     const err = new ApiError(403, sentence, 'CONNECTION_NOT_MANAGEABLE');
     expect(formatApiError(err)).toBe(sentence);
   });
