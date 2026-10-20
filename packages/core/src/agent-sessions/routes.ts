@@ -741,13 +741,10 @@ agentSessionRoutes.patch(
       }
     }
 
-    if (patch.status !== undefined && patch.status !== existing.status) {
-      broadcastSession(updated, 'agent-session.status');
-    } else {
-      // A first check-in leaves the status alone but moves its run from Starting to Running (ISS-1228).
-      const started = existing.startedAt == null && updates.startedAt != null;
-      broadcastSession(updated, 'agent-session.updated', started ? { started: true } : {});
-    }
+    const moved = patch.status !== undefined && patch.status !== existing.status;
+    broadcastSession(updated, moved ? 'agent-session.status' : 'agent-session.updated', {
+      started: existing.startedAt == null && updates.startedAt != null,
+    });
 
     if (classification) {
       await classification.recoverAfterWrite(updated.metadata ?? existing.metadata);
