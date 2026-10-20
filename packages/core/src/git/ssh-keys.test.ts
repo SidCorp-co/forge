@@ -102,15 +102,22 @@ describe('testSshConnection, in the words each host refuses with', () => {
     [NO_REPOSITORY.name, 'not_found', NO_REPOSITORY],
     ['a key the host does not know', 'auth_denied', keyUnknown('gitlab.com')],
     ['an unreachable host', 'host_unreachable', unreachable('172.65.251.78')],
-  ] as const)('reads %s as %s, quoting what it said', async (_name, code, answer) => {
+  ] as const)('reads %s as %s, keeping what it said apart', async (_name, code, answer) => {
     lookup.mockResolvedValue([{ address: '172.65.251.78', family: 4 }]);
     answering(answer);
 
     const test = await testSshConnection('git@gitlab.com:sid/desk.git', 'key');
 
     expect(test).toMatchObject({ ok: false, code });
-    expect(test.message).toContain(answer.said.replace('172.65.251.78', 'gitlab.com'));
-    expect(test.message).not.toMatch(/^remote:|remote:\s*(\.|\))/);
+    // ISS-1421 r15: the message is Forge's sentences alone; what ssh said stays in diagnostics.
+    const said = answer.said.replace('172.65.251.78', 'gitlab.com');
+    expect(test.diagnostics?.hostSaid).toContain(said);
+    expect(test.message).not.toContain(said);
+    expect(test.message).not.toContain('\n');
+    for (const sentence of test.message.split(/(?<=\.) /)) {
+      expect(sentence).toMatch(/^[A-Z].*\.$/);
+    }
+    expect(test.diagnostics?.hostSaid).not.toMatch(/^remote:|remote:\s*(\.|\))/);
   });
 
   // ISS-1421 r12 repair: a key ssh could not load read as the host refusing it, over Forge's temp path.
@@ -135,8 +142,10 @@ describe('testSshConnection, in the words each host refuses with', () => {
 
     const test = await testSshConnection('git@gitlab.com:sid/desk.git', 'key');
 
-    expect(test.message).toContain("'[path hidden]' does not appear to be a git repository");
-    expect(test.message).not.toContain('/srv/git');
+    expect(test.diagnostics?.hostSaid).toContain(
+      "'[path hidden]' does not appear to be a git repository",
+    );
+    expect(JSON.stringify(test)).not.toContain('/srv/git');
   });
 
   // ISS-1398 judge j2 finding 1: Test connection asked for write access, the mark and hold for read.

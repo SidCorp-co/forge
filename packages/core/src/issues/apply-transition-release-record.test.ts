@@ -4,6 +4,10 @@
 // nothing asked whether a line existed. Four issues closed that way on
 // 2026-08-27 alone. These tests pin the three exemptions — drop one and a
 // legitimate path breaks; add a fourth and the silent close comes back.
+//
+// ISS-1421 r15: which closes owe the note is decided here, and the note is read inside the move's
+// transaction beside the records the project declares (`transition-evidence.ts`), so one refusal
+// names them all. These tests hold the decision; that file's tests hold the refusal's words.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -71,7 +75,20 @@ vi.mock('./park-question.js', () => ({
   mintParkQuestion: vi.fn(async () => undefined),
 }));
 
-vi.mock('./transition-evidence.js', () => ({ checkTransitionEvidence: vi.fn(async () => null) }));
+// The checker stands in for the note's read: it refuses where the close owes a note and none is written.
+const noteWritten = { value: false };
+const checkTransitionEvidence = vi.fn(async (ctx: { releaseNoteOwed?: boolean }) =>
+  ctx.releaseNoteOwed && !noteWritten.value
+    ? {
+        code: 'RELEASE_RECORD_REQUIRED',
+        detail: "This issue can't close yet: the release note is missing.",
+        details: { requires: 'releaseNotes' },
+      }
+    : null,
+);
+vi.mock('./transition-evidence.js', () => ({
+  checkTransitionEvidence: (ctx: { releaseNoteOwed?: boolean }) => checkTransitionEvidence(ctx),
+}));
 vi.mock('./merged-at.js', () => ({
   BASE_MERGE_STATE: 'awaiting_release',
   refuseUnshippedClose: vi.fn(async () => null),
@@ -105,12 +122,15 @@ const AT_WORK = {
 };
 
 function issueRow(releaseNotes: unknown) {
-  selectRows.mockResolvedValueOnce([{ id: ISSUE_ID, releaseNotes }]);
+  noteWritten.value = releaseNotes != null;
 }
 
 function everyRowRefusable() {
-  selectRows.mockResolvedValue([{ id: ISSUE_ID, releaseNotes: null }]);
+  noteWritten.value = false;
 }
+
+/** Whether the move asked the checker for the note an agent's close owes. */
+const owed = () => checkTransitionEvidence.mock.calls.at(-1)?.[0]?.releaseNoteOwed;
 
 function queueUpdate(status: string) {
   updateReturning.mockResolvedValueOnce([
@@ -138,15 +158,17 @@ describe('an agent close', () => {
     expect(updateSet).not.toHaveBeenCalled();
   });
 
-  it('names the field that clears it, so the session can fix it in one call', async () => {
+  it('carries the refusal the checker words, under the code an agent close was always refused with', async () => {
     issueRow(null);
 
     const err = await close(AGENT).catch((e: unknown) => e as InstanceType<typeof TransitionError>);
 
     expect(err).toBeInstanceOf(TransitionError);
     expect((err as InstanceType<typeof TransitionError>).code).toBe('RELEASE_RECORD_REQUIRED');
-    expect((err as InstanceType<typeof TransitionError>).detail).toContain('releaseNotes');
-    expect((err as InstanceType<typeof TransitionError>).detail).toContain('Dropped');
+    expect((err as InstanceType<typeof TransitionError>).details).toEqual({
+      requires: 'releaseNotes',
+    });
+    expect(owed()).toBe(true);
   });
 
   it('is refused from `released` as well, which is the staged path the release step closes on', async () => {
@@ -168,6 +190,7 @@ describe('an agent close', () => {
     issueRow(null);
 
     await expect(close(AGENT, { skip: true })).rejects.toThrow('RELEASE_RECORD_REQUIRED');
+    expect(owed()).toBe(true);
   });
 
   it('accepts a `Skip` note, because what is refused is silence, not a decision not to publish', async () => {
@@ -184,6 +207,7 @@ describe('the closes this rule deliberately does not touch', () => {
     queueUpdate('closed');
 
     expect((await close(HUMAN)).status).toBe('closed');
+    expect(owed()).toBe(false);
   });
 
   it('the release path, where a release demonstrably happened before the close', async () => {
@@ -191,6 +215,7 @@ describe('the closes this rule deliberately does not touch', () => {
     queueUpdate('closed');
 
     expect((await close(AGENT, { viaReleasePath: true })).status).toBe('closed');
+    expect(owed()).toBe(false);
   });
 
   it('`dropped`, which closes without claiming anything shipped', async () => {
@@ -198,6 +223,7 @@ describe('the closes this rule deliberately does not touch', () => {
     queueUpdate('dropped');
 
     expect((await transitionIssueStatus(AT_WORK, 'dropped', AGENT)).status).toBe('dropped');
+    expect(owed()).toBe(false);
   });
 
   it('a park, which is not a close at all', async () => {
@@ -209,5 +235,6 @@ describe('the closes this rule deliberately does not touch', () => {
     });
 
     expect(result.status).toBe('needs_info');
+    expect(owed()).toBe(false);
   });
 });

@@ -191,7 +191,10 @@ export function GitConfigCard({
 							<p className="fg-body-sm text-subtle">{ADD_DEPLOY_KEY}</p>
 							{testCred.data && (
 								<Banner tone={testCred.data.ok ? "success" : "danger"}>
-									<ConnTestMessage message={testCred.data.message} />
+									<ConnTestMessage
+										message={testCred.data.message}
+										hostSaid={testCred.data.diagnostics?.hostSaid}
+									/>
 									{testCred.data.headSha
 										? ` (HEAD ${testCred.data.headSha.slice(0, 10)})`
 										: ""}

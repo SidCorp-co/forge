@@ -75,7 +75,7 @@ function TestSshKeyDialog({
 					<p
 						className={`fg-body-sm ${result.ok ? "text-[var(--green-600)]" : "text-[var(--red-600)]"}`}
 					>
-						<ConnTestMessage message={result.message} />
+						<ConnTestMessage message={result.message} hostSaid={result.diagnostics?.hostSaid} />
 					</p>
 				)}
 				<div className="mt-auto flex items-center justify-end gap-2.5 pt-2">

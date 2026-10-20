@@ -37,6 +37,21 @@ describe('schemaRefused', () => {
     expect(r.details.formErrors).toEqual([]);
   });
 
+  it("words a discriminator outside its values as Forge's sentence, never zod's (ISS-1421 r15)", () => {
+    const keys = z.discriminatedUnion('mode', [
+      z.object({ mode: z.literal('generate'), name: z.string() }),
+      z.object({ mode: z.literal('provide'), key: z.string() }),
+    ]);
+    const r = keys.safeParse({ mode: 'nope' });
+    if (r.success) throw new Error('expected a refusal');
+    const err = schemaRefused(r.error);
+    expect(err.message).toBe('The field mode takes one of the values listed in details.accepted.');
+    expect((err.cause as { details: { accepted: unknown } }).details.accepted).toEqual({
+      mode: ['generate', 'provide'],
+    });
+    expect(err.message).not.toMatch(/discriminator|Expected/);
+  });
+
   it('says a missing field is required and an unknown one is not taken', () => {
     expect(refused({ toStatus: 'open', extra: 1 }).message).toBe(
       'The field extra is not one this call takes.',

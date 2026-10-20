@@ -2,6 +2,7 @@ import type { Server as HttpServer, IncomingMessage } from 'node:http';
 import type { Server as HttpsServer } from 'node:https';
 import { and, eq } from 'drizzle-orm';
 import { type WebSocket, WebSocketServer } from 'ws';
+import { AGENT_CANNOT_LOGIN } from '../auth/agent-account.js';
 import { isAgentUser } from '../auth/agent-login-gate.js';
 import { AUTH_COOKIE_NAME } from '../auth/cookie.js';
 import { verifyDeviceCredential } from '../auth/device-credential.js';
@@ -78,15 +79,18 @@ function parseProtocolToken(header: string | string[] | undefined): ProtocolMatc
   return undefined;
 }
 
-/** A session token's person; one naming an agent account, which holds no session, is no principal (ISS-1421). */
-async function tryUserToken(token: string): Promise<Principal | null> {
+/** A session token naming an agent account, which holds no session: refused as every other door refuses it. */
+const AGENT_SESSION = 'agent' as const;
+
+/** A session token's person, `null` for no session token, or AGENT_SESSION for one naming an agent (ISS-1421). */
+async function tryUserToken(token: string): Promise<Principal | typeof AGENT_SESSION | null> {
   let subject: string;
   try {
     subject = (await verifyUserToken(token)).sub;
   } catch {
     return null;
   }
-  if (await isAgentUser(subject)) return null;
+  if (await isAgentUser(subject)) return AGENT_SESSION;
   return { type: 'user', userId: subject };
 }
 
@@ -97,7 +101,7 @@ interface AuthResult {
   acceptedProtocol?: string;
 }
 
-async function resolveBearer(token: string): Promise<Principal | null> {
+async function resolveBearer(token: string): Promise<Principal | typeof AGENT_SESSION | null> {
   const user = await tryUserToken(token);
   if (user) return user;
   const device = await verifyDeviceCredential(token);
@@ -105,12 +109,24 @@ async function resolveBearer(token: string): Promise<Principal | null> {
   return null;
 }
 
-async function authenticate(req: IncomingMessage): Promise<AuthResult | null> {
+/** The upgrade's refusal of an agent's session: 403 AGENT_CANNOT_LOGIN, the body every REST door answers (ISS-1421 r15). */
+function agentSessionRefusal(): string {
+  const body = JSON.stringify({ code: 'AGENT_CANNOT_LOGIN', message: AGENT_CANNOT_LOGIN });
+  return (
+    'HTTP/1.1 403 Forbidden\r\nContent-Type: application/json\r\n' +
+    `Content-Length: ${Buffer.byteLength(body)}\r\nConnection: close\r\n\r\n${body}`
+  );
+}
+
+async function authenticate(
+  req: IncomingMessage,
+): Promise<AuthResult | typeof AGENT_SESSION | null> {
   // Authorization header — used by the Tauri Rust client and other native
   // callers that can set arbitrary headers on the upgrade request.
   const bearer = parseBearer(req.headers.authorization);
   if (bearer) {
     const principal = await resolveBearer(bearer);
+    if (principal === AGENT_SESSION) return AGENT_SESSION;
     return principal ? { principal } : null;
   }
 
@@ -121,6 +137,7 @@ async function authenticate(req: IncomingMessage): Promise<AuthResult | null> {
   const proto = parseProtocolToken(req.headers['sec-websocket-protocol']);
   if (proto) {
     const principal = await resolveBearer(proto.token);
+    if (principal === AGENT_SESSION) return AGENT_SESSION;
     return principal ? { principal, acceptedProtocol: proto.protocol } : null;
   }
 
@@ -128,6 +145,7 @@ async function authenticate(req: IncomingMessage): Promise<AuthResult | null> {
   const cookie = parseCookie(req.headers.cookie, AUTH_COOKIE_NAME);
   if (cookie) {
     const user = await tryUserToken(cookie);
+    if (user === AGENT_SESSION) return AGENT_SESSION;
     return user ? { principal: user } : null;
   }
 
@@ -193,13 +211,18 @@ export function attachWs(server: AnyServer): void {
     if (url.pathname !== '/ws') return;
 
     void (async () => {
-      let result: AuthResult | null;
+      let result: AuthResult | typeof AGENT_SESSION | null;
       try {
         result = await authenticate(req);
       } catch (err) {
         // A credential read that failed answers no one; the socket is refused, never left hanging.
         logger.warn({ err }, 'ws.authenticate_failed');
         socket.write('HTTP/1.1 503 Service Unavailable\r\n\r\n');
+        socket.destroy();
+        return;
+      }
+      if (result === AGENT_SESSION) {
+        socket.write(agentSessionRefusal());
         socket.destroy();
         return;
       }

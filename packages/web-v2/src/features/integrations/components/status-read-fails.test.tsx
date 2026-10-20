@@ -146,6 +146,39 @@ describe("a status read that fails while a drawer is open", () => {
     }
   });
 
+  // ISS-1421 r15 — judge-65: pressing Test again while the reads still failed left the notice
+  // off-screen, because the failure read the same words and the scroll keyed on the words alone.
+  it("scrolls the notice into view again on every failed refresh, the same words or not", async () => {
+    const scrolled = vi.fn();
+    const original = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = scrolled;
+    try {
+      render(
+        <QueryClientProvider client={queries}>
+          <ProjectIntegrationsPanel projectId={PROJECT} />
+        </QueryClientProvider>,
+      );
+      fireEvent.click(await screen.findByRole("button", { name: "Manage Sentry" }));
+      const dialog = await screen.findByRole("dialog");
+      statusFails = true;
+      await act(async () => {
+        await queries.refetchQueries({ queryKey: ["integrations", "status", PROJECT] });
+      });
+      await within(dialog).findByText(/The status could not be refreshed/);
+      await waitFor(() => expect(scrolled).toHaveBeenCalledTimes(1));
+      // The same failure again, a moment later: the person pressed Test a second time.
+      await new Promise((r) => setTimeout(r, 5));
+      await act(async () => {
+        await queries.refetchQueries({ queryKey: ["integrations", "status", PROJECT] });
+      });
+      await waitFor(() => expect(scrolled).toHaveBeenCalledTimes(2));
+      const notice = within(dialog).getByText(/The status could not be refreshed/);
+      expect((scrolled.mock.contexts[1] as HTMLElement).contains(notice)).toBe(true);
+    } finally {
+      Element.prototype.scrollIntoView = original;
+    }
+  });
+
   it("still says Couldn't load where no status was ever read", async () => {
     statusFails = true;
     render(

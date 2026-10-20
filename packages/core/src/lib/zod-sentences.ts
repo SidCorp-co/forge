@@ -13,6 +13,8 @@ interface SchemaIssue {
   message?: string;
   keys?: readonly string[];
   values?: readonly unknown[];
+  /** A discriminated union's own values for its discriminator, on the issue that refuses it. */
+  options?: readonly unknown[];
 }
 
 export interface SchemaRefusalWords {
@@ -131,14 +133,18 @@ export function schemaRefusalWords(
       );
     } else if (!field) {
       sentences.push(zodMessageWords(null, issue.message ?? ''));
-    } else if (issue.code === 'invalid_value' && issue.values?.length) {
+    } else if (
+      (issue.code === 'invalid_value' && issue.values?.length) ||
+      (issue.code === 'invalid_union' && issue.options?.length)
+    ) {
       // The issue does not say whether the field was absent or held another value, so neither is claimed.
-      // A schema's own message ("`pass_rate` is retired") says more than the library's default.
-      const own = issue.message && !/^Invalid (?:option|input)\b/.test(issue.message);
+      // A schema's own message ("`pass_rate` is retired") says more than the library's default, and a
+      // discriminator's ("Invalid discriminator value. Expected …") is the library's own (ISS-1421 r15).
+      const own = issue.message && !/^Invalid (?:option|input|discriminator)\b/.test(issue.message);
       sentences.push(
         `The field ${named(field)} takes one of the values ${valuesAre}.${own ? ` ${asSentence(issue.message ?? '')}` : ''}`,
       );
-      accepted.push({ field, values: issue.values.map(String) });
+      accepted.push({ field, values: (issue.values ?? issue.options ?? []).map(String) });
     } else if (issue.code === 'invalid_type' && /received undefined$/.test(issue.message ?? '')) {
       sentences.push(`The field ${named(field)} is required.`);
     } else {

@@ -128,6 +128,51 @@ describe('release record required E2E', () => {
     expect(await stored(id)).toEqual({ status: 'in_progress', mergedAt: null });
   });
 
+  // ISS-1421 r15, criterion 154 — judge-65: an agent closing an issue its project required a plan
+  // and criteria for was refused for the release note alone, by its stored key, and learnt of the
+  // other two only on a second refusal. One refusal now names all three, in their names.
+  it('names every record a close is missing in one refusal, the owed note beside the declared ones', async () => {
+    const { applyStatusTransition, TransitionError } = await import(
+      '../../src/issues/apply-transition.js'
+    );
+    await harness.db.execute(sql`
+      UPDATE projects
+         SET agent_config = ${JSON.stringify({
+           pipelineConfig: { statusEntryCriteria: { closed: ['plan', 'acceptance_criteria'] } },
+         })}::jsonb
+       WHERE id = ${projectId}
+    `);
+    const id = await insertIssue('in_progress');
+
+    const err = (await applyStatusTransition(await load(id), 'closed', device()).catch(
+      (e: unknown) => e,
+    )) as InstanceType<typeof TransitionError>;
+
+    expect(err).toBeInstanceOf(TransitionError);
+    expect(err.code).toBe('RELEASE_RECORD_REQUIRED');
+    expect(err.detail).toMatch(
+      /^This issue can't close yet: the plan, the acceptance criteria and the release note are missing\. /,
+    );
+    expect(err.detail).not.toMatch(/releaseNotes|acceptanceCriteria|release_note|`/);
+    for (const sentence of err.detail.split(/(?<=\.) /)) {
+      expect(sentence).toMatch(/^[A-Z].*\.$/);
+      expect(sentence.split(/\s+/).length).toBeLessThanOrEqual(20);
+    }
+    // What an MCP caller reads: the sentence, then each record's step on a line of its own, a
+    // sentence that opens on no stored key.
+    const [, ...steps] = err.message.split('\n');
+    expect(steps).toHaveLength(3);
+    for (const step of steps) {
+      expect(step).toMatch(/^[A-Z].*\.$/);
+      expect(step).not.toMatch(/^(plan|acceptance_criteria|release_note):/);
+    }
+    expect(err.details).toMatchObject({
+      requires: 'releaseNotes',
+      unmet: ['plan', 'acceptance_criteria', 'release_note'],
+    });
+    expect(await stored(id)).toEqual({ status: 'in_progress', mergedAt: null });
+  });
+
   it('refuses from `released` too, and lets it through once a note exists', async () => {
     const { applyStatusTransition } = await import('../../src/issues/apply-transition.js');
     const bare = await insertIssue('awaiting_release');

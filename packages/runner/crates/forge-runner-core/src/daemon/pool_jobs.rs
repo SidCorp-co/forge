@@ -2125,7 +2125,7 @@ mod tests {
 
         let (absent, absent_reads) = fake_core::serve_recording(
             "404 Not Found",
-            r#"{"code":"NOT_FOUND","message":"Not Found: GET /api/devices/me/pool"}"#,
+            r#"{"code":"ROUTE_ABSENT","message":"No route answers GET /api/devices/me/pool."}"#,
         )
         .await;
         let (stumbling, stumbling_reads) =

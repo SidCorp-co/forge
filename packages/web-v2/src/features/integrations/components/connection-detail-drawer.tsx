@@ -260,6 +260,7 @@ export function ConnectionDetailDrawer({
   onClose,
   canEdit = true,
   statusReadError = null,
+  statusReadFailedAt = 0,
   onRetryStatus,
 }: {
   projectId: string;
@@ -268,16 +269,20 @@ export function ConnectionDetailDrawer({
   canEdit?: boolean;
   /** Why the Integrations tab's last status read failed, said here so the open drawer stays open. */
   statusReadError?: string | null;
+  /** When that read failed: a second failure with the same words is still a new one to show. */
+  statusReadFailedAt?: number;
   onRetryStatus?: () => void;
 }) {
   const provider = card ? cardProvider(card.key) : null;
   const caps = getCapabilities(card);
   const [tab, setTab] = useState<"config" | "deliveries">("config");
-  // A refresh that fails after a press at the drawer's foot is shown where it is read (ISS-1421 r14).
+  // A refresh that fails after a press at the drawer's foot is shown where it is read (ISS-1421 r14),
+  // every time it fails: keyed on when it failed, since a second failure reads the same (r15).
   const noticeRef = useRef<HTMLDivElement>(null);
+  const failure = statusReadError ? `${statusReadFailedAt}:${statusReadError}` : null;
   useEffect(() => {
-    if (statusReadError) noticeRef.current?.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
-  }, [statusReadError]);
+    if (failure) noticeRef.current?.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
+  }, [failure]);
 
   if (!card || !provider) return null;
 

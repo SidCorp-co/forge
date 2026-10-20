@@ -386,7 +386,7 @@ mod tests {
         }
         let t404 = f(
             404,
-            "pool 404 Not Found: Not Found: GET /api/devices/me/pool",
+            "pool 404 Not Found: No route answers GET /api/devices/me/pool.",
         );
         for i in 0..3 {
             note(dir, UNSERVED_PROJECT, &t404, NOW - 300_000 + i * 10_000);

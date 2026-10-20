@@ -4,8 +4,8 @@
  * `no_work_evidence` holds against an agent only — a human hand-advance is a
  * recorded human decision. `entry_criteria` (ISS-959) holds against every
  * actor, because what the project declared is the project's rule and not a
- * defence against fabrication. `skip:true` exempts the whole checker: that is
- * the orchestrator's curated soft-skip/failover chain.
+ * defence against fabrication. `skip:true` exempts the whole checker but for the release note an
+ * agent's close owes (ISS-1421 r15): that is the orchestrator's curated soft-skip/failover chain.
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -146,17 +146,19 @@ describe('checkTransitionEvidence — no_work_evidence rule', () => {
   });
 });
 
-describe('checkTransitionEvidence — entry_criteria rule (ISS-959)', () => {
-  beforeEach(() => {
-    findMissingWorkEvidenceMock.mockReset();
-    findMissingWorkEvidenceMock.mockResolvedValue(null);
-    findUnmetEntryCriteriaMock.mockReset();
-    findUnmetEntryCriteriaMock.mockResolvedValue(null);
-  });
+const resetRecordReaders = () => {
+  findMissingWorkEvidenceMock.mockReset();
+  findMissingWorkEvidenceMock.mockResolvedValue(null);
+  findUnmetEntryCriteriaMock.mockReset();
+  findUnmetEntryCriteriaMock.mockResolvedValue(null);
+};
 
-  const shortfall = (...keys: string[]) => ({
-    unmet: keys.map((key) => ({ key, detail: `no ${key} is written on this issue` })),
-  });
+const shortfall = (...keys: string[]) => ({
+  unmet: keys.map((key) => ({ key, detail: `no ${key} is written on this issue` })),
+});
+
+describe('checkTransitionEvidence — entry_criteria rule (ISS-959)', () => {
+  beforeEach(resetRecordReaders);
 
   it('refuses a HUMAN transition on an unmet declared criterion — the half no rule reached before', async () => {
     findUnmetEntryCriteriaMock.mockResolvedValue(shortfall('plan'));
@@ -198,7 +200,7 @@ describe('checkTransitionEvidence — entry_criteria rule (ISS-959)', () => {
       declaredCriteria: ['plan', 'acceptance_criteria', 'merged_mark'],
     });
     expect(violation?.detail).toBe(
-      "This issue can't close yet: the plan is missing. An agent working this issue writes it; Open session or Reopen on its page starts one.",
+      "This issue can't close yet: the plan is missing. An agent working this issue writes it; Open session or Reopen on its page starts one. If it turned out not to be work, move it to Dropped instead.",
     );
     expect(violation?.detail).not.toMatch(/acceptance|merge mark/i);
   });
@@ -319,5 +321,116 @@ describe('checkTransitionEvidence — entry_criteria rule (ISS-959)', () => {
     expect(findUnmetEntryCriteriaMock).toHaveBeenCalledWith(
       expect.objectContaining({ declared: [] }),
     );
+  });
+});
+
+// ISS-1421 r15 — judge-65: an agent's close with three records missing was refused for the release
+// note alone, by its stored key, and learnt of the plan and the criteria on a second refusal.
+describe('an agent close, which owes a release note on every project', () => {
+  beforeEach(resetRecordReaders);
+
+  it('names every missing record in one refusal, the owed note beside the declared ones', async () => {
+    findUnmetEntryCriteriaMock.mockResolvedValue(
+      shortfall('plan', 'acceptance_criteria', 'release_note'),
+    );
+    const violation = await checkTransitionEvidence({
+      issue: ISSUE,
+      toStatus: 'closed',
+      agency: 'agent',
+      skip: false,
+      declaredCriteria: ['plan', 'acceptance_criteria'],
+      releaseNoteOwed: true,
+    });
+    expect(findUnmetEntryCriteriaMock).toHaveBeenCalledWith(
+      expect.objectContaining({ declared: ['plan', 'acceptance_criteria', 'release_note'] }),
+    );
+    expect(violation?.code).toBe('RELEASE_RECORD_REQUIRED');
+    expect(violation?.detail).toBe(
+      "This issue can't close yet: the plan, the acceptance criteria and the release note are missing. An agent working this issue writes them; Open session or Reopen on its page starts one. If it turned out not to be work, move it to Dropped instead.",
+    );
+    expect(violation?.details).toMatchObject({
+      requires: 'releaseNotes',
+      unmet: ['plan', 'acceptance_criteria', 'release_note'],
+    });
+  });
+
+  it('reads the same sentence a person reads for the same records, code aside', async () => {
+    findUnmetEntryCriteriaMock.mockResolvedValue(shortfall('plan', 'release_note'));
+    const agent = await checkTransitionEvidence({
+      issue: ISSUE,
+      toStatus: 'closed',
+      agency: 'agent',
+      skip: false,
+      declaredCriteria: ['plan'],
+      releaseNoteOwed: true,
+    });
+    const person = await checkTransitionEvidence({
+      issue: ISSUE,
+      toStatus: 'closed',
+      agency: 'human',
+      skip: false,
+      declaredCriteria: ['plan', 'release_note'],
+    });
+    expect(agent?.detail).toBe(person?.detail);
+    expect(person?.code).toBe('ENTRY_CRITERIA_UNMET');
+  });
+
+  it('keeps ENTRY_CRITERIA_UNMET where the project declares the note itself', async () => {
+    findUnmetEntryCriteriaMock.mockResolvedValue(shortfall('release_note'));
+    const violation = await checkTransitionEvidence({
+      issue: ISSUE,
+      toStatus: 'closed',
+      agency: 'agent',
+      skip: false,
+      declaredCriteria: ['release_note'],
+      releaseNoteOwed: true,
+    });
+    expect(violation?.code).toBe('ENTRY_CRITERIA_UNMET');
+    expect(findUnmetEntryCriteriaMock).toHaveBeenCalledWith(
+      expect.objectContaining({ declared: ['release_note'] }),
+    );
+  });
+
+  it('is ENTRY_CRITERIA_UNMET when the note is written and a declared record is not', async () => {
+    findUnmetEntryCriteriaMock.mockResolvedValue(shortfall('plan'));
+    const violation = await checkTransitionEvidence({
+      issue: ISSUE,
+      toStatus: 'closed',
+      agency: 'agent',
+      skip: false,
+      declaredCriteria: ['plan'],
+      releaseNoteOwed: true,
+    });
+    expect(violation?.code).toBe('ENTRY_CRITERIA_UNMET');
+    expect(violation?.details).not.toHaveProperty('requires');
+  });
+
+  it('is not waived by a bare `skip`, which waives the declared records alone', async () => {
+    findUnmetEntryCriteriaMock.mockResolvedValue(shortfall('release_note'));
+    const violation = await checkTransitionEvidence({
+      issue: ISSUE,
+      toStatus: 'closed',
+      agency: 'agent',
+      skip: true,
+      declaredCriteria: ['plan'],
+      releaseNoteOwed: true,
+    });
+    expect(violation?.code).toBe('RELEASE_RECORD_REQUIRED');
+    expect(findUnmetEntryCriteriaMock).toHaveBeenCalledWith(
+      expect.objectContaining({ declared: ['release_note'] }),
+    );
+    expect(findMissingWorkEvidenceMock).not.toHaveBeenCalled();
+  });
+
+  it('owes nothing where no note is owed and nothing is declared', async () => {
+    const violation = await checkTransitionEvidence({
+      issue: ISSUE,
+      toStatus: 'closed',
+      agency: 'agent',
+      skip: false,
+      declaredCriteria: [],
+      releaseNoteOwed: false,
+    });
+    expect(violation).toBeNull();
   });
 });

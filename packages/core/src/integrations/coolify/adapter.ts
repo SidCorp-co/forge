@@ -21,6 +21,7 @@ import {
   type OutboundDispatchInput,
   type OutboundDispatchResult,
 } from '../types.js';
+import { thrownDiagnostics } from '../unreached.js';
 import { breakerAllowsDispatch, maybeResetBreaker, maybeTripBreaker } from './circuit-breaker.js';
 import { CoolifyApiError, coolifyAbilityForRoute, describeCoolifyForbidden } from './client.js';
 import { type CoolifyConfirmJob, enqueueCoolifyConfirm } from './confirm.js';
@@ -152,10 +153,18 @@ const coolifyAdapterMethods: DispatchingAdapterMethods<CoolifyConfig, CoolifySec
     const started = Date.now();
     const client = buildClient(ctx);
     const targets = ctx.config.targets ?? [];
+    if (targets.length === 0) {
+      await updateConnection(ctx.connectionId, {
+        lastHealthStatus: 'error',
+        lastHealthAt: new Date(),
+      });
+      return {
+        status: 'error',
+        message: 'No deploy target is set on this binding, so there is nothing to check.',
+        diagnostics: { targetCount: 0 },
+      } satisfies HealthCheckResult;
+    }
     try {
-      if (targets.length === 0) {
-        throw new Error('coolify: no deploy targets configured');
-      }
       const names: string[] = [];
       for (const t of targets) {
         const res = await client.getResource(t.resourceUuid);
@@ -200,6 +209,8 @@ const coolifyAdapterMethods: DispatchingAdapterMethods<CoolifyConfig, CoolifySec
         message,
         diagnostics: {
           httpStatus: status,
+          // Not an answer Coolify gave: why the request never reached it, or that it failed first.
+          ...(err instanceof CoolifyApiError ? {} : thrownDiagnostics(err)),
           ...(verdict.route ? { route: verdict.route } : {}),
           ...(verdict.missingAbility ? { missingAbility: verdict.missingAbility } : {}),
         },

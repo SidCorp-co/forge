@@ -26,63 +26,51 @@ export const loginRoutes = new Hono();
 
 loginRoutes.use('/local', rateLimit(RULES.authLocal, { name: 'authLocal' }));
 
-loginRoutes.post(
-  '/local',
-  login,
-  zValidator('json', loginSchema, (result) => {
-    if (!result.success) {
-      throw new HTTPException(400, {
-        message: 'Invalid login input',
-        cause: { code: 'BAD_REQUEST', details: z.flattenError(result.error) },
-      });
-    }
-  }),
-  async (c) => {
-    const { email, password } = c.req.valid('json');
+loginRoutes.post('/local', login, zValidator('json', loginSchema), async (c) => {
+  const { email, password } = c.req.valid('json');
 
-    const invalidCredentials = () =>
-      new HTTPException(401, {
-        message: 'invalid credentials',
-        cause: { code: 'INVALID_CREDENTIALS' },
-      });
+  const invalidCredentials = () =>
+    new HTTPException(401, {
+      message: 'invalid credentials',
+      cause: { code: 'INVALID_CREDENTIALS' },
+    });
 
-    const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
-    if (!user) {
-      // Equalize timing with the wrong-password path by running a verify
-      // against a dummy hash before throwing.
-      await verifyPassword(password, await getDummyPasswordHash());
-      throw invalidCredentials();
-    }
+  const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
+  if (!user) {
+    // Equalize timing with the wrong-password path by running a verify
+    // against a dummy hash before throwing.
+    await verifyPassword(password, await getDummyPasswordHash());
+    throw invalidCredentials();
+  }
 
-    // OAuth-only users have no local password (passwordHash is NULL since
-    // 0037). Run a dummy verify for timing parity, then refuse — they have
-    // to come back through their OAuth provider.
-    if (!user.passwordHash) {
-      await verifyPassword(password, await getDummyPasswordHash());
-      throw invalidCredentials();
-    }
-    const ok = await verifyPassword(password, user.passwordHash);
-    if (!ok) throw invalidCredentials();
+  // OAuth-only users have no local password (passwordHash is NULL since
+  // 0037). Run a dummy verify for timing parity, then refuse — they have
+  // to come back through their OAuth provider.
+  if (!user.passwordHash) {
+    await verifyPassword(password, await getDummyPasswordHash());
+    throw invalidCredentials();
+  }
+  const ok = await verifyPassword(password, user.passwordHash);
+  if (!ok) throw invalidCredentials();
 
-    assertNotAgent(user.kind, user.id);
+  assertNotAgent(user.kind, user.id);
 
-    const token = await signUserToken(user.id);
-    const { raw: refreshToken } = await db.transaction((tx) => issueRefreshToken(tx, user.id));
-    // JWT cookie for browser cookie auth; refresh token rides its own
-    // narrow-scoped httpOnly cookie (/api/auth) so JS never sees it.
-    setAuthCookie(c, token);
-    setRefreshCookie(c, refreshToken);
+  const token = await signUserToken(user.id);
+  const { raw: refreshToken } = await db.transaction((tx) => issueRefreshToken(tx, user.id));
+  // JWT cookie for browser cookie auth; refresh token rides its own
+  // narrow-scoped httpOnly cookie (/api/auth) so JS never sees it.
+  setAuthCookie(c, token);
+  setRefreshCookie(c, refreshToken);
 
-    return c.json(
-      answer(loginAnswerSchema, {
-        token,
-        user: {
-          id: user.id,
-          email: user.email,
-          emailVerified: user.emailVerifiedAt !== null,
-        },
-        emailVerificationRequired: user.emailVerifiedAt === null,
-      }),
-    );
-  },
-);
+  return c.json(
+    answer(loginAnswerSchema, {
+      token,
+      user: {
+        id: user.id,
+        email: user.email,
+        emailVerified: user.emailVerifiedAt !== null,
+      },
+      emailVerificationRequired: user.emailVerifiedAt === null,
+    }),
+  );
+});

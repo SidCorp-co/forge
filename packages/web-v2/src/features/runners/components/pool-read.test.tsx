@@ -63,7 +63,7 @@ const unserved = (over: Partial<RunnerPoolRead> = {}): RunnerPoolRead => ({
 		at: Date.now() - 2 * 60 * MIN,
 		status: 404,
 		what: "404 Not Found",
-		reason: "pool 404 Not Found: Not Found: GET /api/devices/me/pool",
+		reason: "pool 404 Not Found: No route answers GET /api/devices/me/pool.",
 	},
 	...over,
 });

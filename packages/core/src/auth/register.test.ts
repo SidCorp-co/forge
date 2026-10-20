@@ -135,6 +135,22 @@ describe('POST /api/auth/register', () => {
     expect(db.insert).not.toHaveBeenCalled();
   });
 
+  it('refuses a field it does not take by name, and writes nothing', async () => {
+    const res = await buildApp().request('/api/auth/register', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: 'a@b.co', password: 'quartz-juniper-tessellate', name: 'A' }),
+    });
+
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { code: string; message: string };
+    expect(body).toMatchObject({
+      code: 'BAD_REQUEST',
+      message: 'The field name is not one this call takes.',
+    });
+    expect(db.insert).not.toHaveBeenCalled();
+  });
+
   it('returns 400 on weak password (<8 chars)', async () => {
     const res = await buildApp().request('/api/auth/register', {
       method: 'POST',

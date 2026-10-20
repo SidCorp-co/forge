@@ -193,5 +193,4 @@ pub const PROJECT_MISMATCH: &str = r#"{"code":"ISSUE_LEASE_KEY_PROJECT_MISMATCH"
 pub const AMBIGUOUS: &str = r#"{"code":"ISSUE_LEASE_AMBIGUOUS","message":"this box holds 2 leases on ISS-880, one per project; send `?projectId=<id>`"}"#;
 
 /// `404` from a core that does not serve the route at all.
-pub const ROUTE_ABSENT: &str =
-    r#"{"code":"NOT_FOUND","message":"Not Found: GET /api/devices/me/issue-leases/ISS-880"}"#;
+pub const ROUTE_ABSENT: &str = r#"{"code":"ROUTE_ABSENT","message":"No route answers GET /api/devices/me/issue-leases/ISS-880."}"#;

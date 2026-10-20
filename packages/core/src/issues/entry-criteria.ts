@@ -36,18 +36,14 @@ const isBlank = (v: string | null): boolean => v == null || v.trim().length === 
 const criteriaWith = (
   workEvidence: (id: string, executor: CriterionExecutor) => Promise<string | null>,
 ): Record<EntryCriterionKey, Criterion> => ({
-  plan: (_id, record) =>
-    isBlank(record.plan)
-      ? 'no `plan` is written on this issue — write the plan field before this status'
-      : null,
+  plan: (_id, record) => (isBlank(record.plan) ? 'Write the plan in the `plan` field.' : null),
   acceptance_criteria: (_id, record) =>
     isBlank(record.acceptanceCriteria)
-      ? 'no `acceptanceCriteria` is written on this issue — write the criteria before this status'
+      ? 'Write the acceptance criteria in the `acceptanceCriteria` field.'
       : null,
   release_note: (_id, record) =>
     record.releaseNotes == null
-      ? 'no `releaseNotes` is written on this issue — `{ section, userFacing }`, or ' +
-        "`{ section: 'Skip', userFacing: '-' }` when the change has no user-facing half"
+      ? "Write `releaseNotes` as `{ section, userFacing }`, or `{ section: 'Skip', userFacing: '-' }` when nothing is user-facing."
       : null,
   work_evidence: (id, _record, executor) => workEvidence(id, executor),
   // Which kinds count as landed on this issue's lane: `landing-evidence.ts`, and nowhere else.

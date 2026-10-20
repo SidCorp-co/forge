@@ -29,6 +29,8 @@ export interface TransitionEvidenceContext {
    * the transaction this runs inside (`entry-criteria.ts` says why).
    */
   declaredCriteria: readonly EntryCriterionKey[];
+  /** Set by `applyStatusTransition` for a close taken by an agent off the release path. */
+  releaseNoteOwed?: boolean;
   executor?: EvidenceExecutor;
 }
 
@@ -62,36 +64,47 @@ const noWorkEvidenceRule: EvidenceRule = {
   },
 };
 
+/** A close refused for its records says the move that claims no ship, for work that was not work. */
+const CLOSE_INSTEAD = 'If it turned out not to be work, move it to Dropped instead.';
+
 /**
  * ISS-959 requirement 3 — the project's own declaration, held against every
  * client, so a status set from the tracker's screens is earned or refused like
- * one set from a CLI.
+ * one set from a CLI. `skip` waives the declaration, never the release note an agent's close owes,
+ * and one refusal names every record missing.
  */
 const entryCriteriaRule: EvidenceRule = {
   agentOnly: false,
   check: async (ctx) => {
+    const declared = ctx.skip ? [] : ctx.declaredCriteria;
+    const noteOnlyOwed = ctx.releaseNoteOwed === true && !declared.includes('release_note');
+    const required: EntryCriterionKey[] = [
+      ...declared,
+      ...(noteOnlyOwed ? (['release_note'] as const) : []),
+    ];
     const shortfall = await findUnmetEntryCriteria({
       issueId: ctx.issue.id,
-      declared: ctx.declaredCriteria,
+      declared: required,
       executor: ctx.executor ?? db,
     });
     if (!shortfall) return null;
+    const unmet = shortfall.unmet.map((u) => u.key);
+    // The agent-only note keeps the code an agent has always been refused a close with.
+    const owedNoteMissing = noteOnlyOwed && unmet.includes('release_note');
     return {
-      code: 'ENTRY_CRITERIA_UNMET',
+      code: owedNoteMissing ? 'RELEASE_RECORD_REQUIRED' : 'ENTRY_CRITERIA_UNMET',
       // A short sentence per record by its name; each record's whole step stays in `steps`.
       detail: [
-        entryRecordsMissingWords(
-          ctx.toStatus,
-          statusLabel(ctx.toStatus),
-          shortfall.unmet.map((u) => u.key),
-        ),
-        ...entryRecordsWrittenBy(shortfall.unmet.map((u) => u.key)),
+        entryRecordsMissingWords(ctx.toStatus, statusLabel(ctx.toStatus), unmet),
+        ...entryRecordsWrittenBy(unmet),
+        ...(ctx.toStatus === 'closed' ? [CLOSE_INSTEAD] : []),
       ].join(' '),
       details: {
         issueId: ctx.issue.id,
         toStatus: ctx.toStatus,
-        unmet: shortfall.unmet.map((u) => u.key),
+        unmet,
         steps: Object.fromEntries(shortfall.unmet.map((u) => [u.key, u.detail])),
+        ...(owedNoteMissing ? { requires: 'releaseNotes' } : {}),
       },
     };
   },
@@ -102,9 +115,10 @@ const RULES: readonly EvidenceRule[] = [noWorkEvidenceRule, entryCriteriaRule];
 export async function checkTransitionEvidence(
   ctx: TransitionEvidenceContext,
 ): Promise<TransitionEvidenceViolation | null> {
-  if (ctx.skip) return null;
+  if (ctx.skip && ctx.releaseNoteOwed !== true) return null;
   try {
     for (const rule of RULES) {
+      if (ctx.skip && rule !== entryCriteriaRule) continue;
       if (rule.agentOnly && ctx.agency !== 'agent') continue;
       const violation = await rule.check(ctx);
       if (violation) return violation;

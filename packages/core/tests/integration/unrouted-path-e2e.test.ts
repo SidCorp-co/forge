@@ -109,7 +109,7 @@ describe('a path no route serves', () => {
       answers.push(`${who}: ${res.status} ${body.code}`);
       expect(body.message ?? '', who).toContain(path);
     }
-    expect(answers).toEqual(credentials.map(([who]) => `${who}: 404 NOT_FOUND`));
+    expect(answers).toEqual(credentials.map(([who]) => `${who}: 404 ROUTE_ABSENT`));
   });
 
   it('a HEAD request to a served GET route is answered by that route', async () => {

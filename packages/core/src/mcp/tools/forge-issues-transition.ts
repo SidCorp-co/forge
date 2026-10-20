@@ -30,10 +30,7 @@ export interface TransitionData {
   voidQuestions?: string | undefined;
 }
 
-type InTransaction = Pick<
-  ApplyStatusTransitionOptions,
-  'beforeStatusWrite' | 'releaseNotesWritten'
->;
+type InTransaction = Pick<ApplyStatusTransitionOptions, 'beforeStatusWrite'>;
 
 /**
  * One status move off `data`, the same for `update` and `transition`. Its answer carries
@@ -97,9 +94,6 @@ export async function moveWithWrites(
             throw err;
           }
         },
-        ...(fields && 'releaseNotes' in fields.updates
-          ? { releaseNotesWritten: fields.updates.releaseNotes }
-          : {}),
       }
     : {};
   let moved: Awaited<ReturnType<typeof transitionIssueStatus>>;

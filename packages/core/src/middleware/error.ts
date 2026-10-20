@@ -159,7 +159,7 @@ function captureToSentry(
 
 export const notFoundHandler: NotFoundHandler<{ Variables: RequestIdVars }> = (c: Context) => {
   return c.json<ErrorBody>(
-    { code: 'NOT_FOUND', message: `Not Found: ${c.req.method} ${c.req.path}` },
+    { code: 'ROUTE_ABSENT', message: `No route answers ${c.req.method} ${c.req.path}.` },
     404,
   );
 };

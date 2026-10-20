@@ -58,11 +58,21 @@ export const PAT_DOOR_REFUSALS: readonly Refusal[] = Object.freeze([
     when: 'the token was not granted the permission this route needs',
   },
   {
+    status: 403,
+    code: 'DEVICE_TOKEN_REACHES_NO_PROJECT',
+    when: "a paired box's device token, held by a person, on a route outside the box's own",
+  },
+  {
     status: 429,
     code: 'RATE_LIMITED',
     when: 'the token has spent its read or write allowance for the window; Retry-After says when it renews',
   },
 ]);
+
+/** ISS-1421 r15 — what a person's box token is told on a door it does not pass, which is true. */
+export const DEVICE_TOKEN_REACHES_NO_PROJECT =
+  "This is a paired box's device token, and it reaches no project through this route. " +
+  "Send a personal access token here; the box's token serves only the box's own routes.";
 
 const PAT_REQUEST_VAR = 'patRequestResolution';
 
@@ -105,6 +115,13 @@ export async function beginPatRequest(
   }
   if (excluded?.admits === 'device' && principal.deviceId !== null) {
     return admitTheBox(c, token, principal);
+  }
+  if (principal.deviceId !== null && patEffectiveProjectIds(principal)?.length === 0) {
+    // A person's box is fenced to no project, so every project here read as "Project not found."
+    throw new HTTPException(403, {
+      message: DEVICE_TOKEN_REACHES_NO_PROJECT,
+      cause: { code: 'DEVICE_TOKEN_REACHES_NO_PROJECT' },
+    });
   }
   if (excluded) {
     throw new HTTPException(403, {

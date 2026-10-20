@@ -1,5 +1,6 @@
 import { getIntegration } from './registry.js';
 import type { HealthCheckResult } from './types.js';
+import { isUnreachedReason, unreachedWords } from './unreached.js';
 
 function asSentence(text: string): string {
   const t = text.trim();
@@ -9,14 +10,17 @@ function asSentence(text: string): string {
 }
 
 /**
- * A check's answer as a person reads it: a sentence Forge owns saying what the check found, and
- * the text the adapter or provider gave kept under `diagnostics.checkSaid` (ISS-1421 r14).
+ * A check's answer as a person reads it: sentences Forge owns saying what the check found, and the
+ * text the adapter or provider gave kept under `diagnostics.checkSaid` (ISS-1421 r14). Nothing is
+ * put in the provider's mouth (r15): a check that never reached its host says why in Forge's words,
+ * and one that failed some other way before an answer came says that, never "It said".
  */
 export function healthAnswer(provider: string, result: HealthCheckResult): HealthCheckResult {
   const label =
     getIntegration(provider)?.presentation?.label ??
     provider.charAt(0).toUpperCase() + provider.slice(1);
   const said = result.message?.trim() ?? '';
+  const diagnostics = result.diagnostics ?? {};
   const lead: Record<HealthCheckResult['status'], string> = {
     ok: '',
     degraded: `${label} answered, but not fully.`,
@@ -24,10 +28,13 @@ export function healthAnswer(provider: string, result: HealthCheckResult): Healt
     needs_reauth: `${label} refused the stored credential, so it needs signing in again.`,
     needs_scope: `${label} took the credential but it lacks a permission Forge needs.`,
   };
-  const message =
-    result.status === 'ok'
-      ? asSentence(said) || `${label} answered the check.`
-      : [lead[result.status], said ? `It said: ${asSentence(said)}` : ''].filter(Boolean).join(' ');
+  let message: string;
+  if (result.status === 'ok') message = asSentence(said) || `${label} answered the check.`;
+  else if (isUnreachedReason(diagnostics.unreached))
+    message = unreachedWords(label, diagnostics.unreached);
+  else if (diagnostics.thrown === true)
+    message = `${lead[result.status]} The check failed, and what failed is kept in the diagnostics.`;
+  else message = [lead[result.status], asSentence(said)].filter(Boolean).join(' ');
   return {
     ...result,
     message,

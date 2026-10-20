@@ -23,46 +23,34 @@ const reauthSchema = z.object({
 reauthRoutes.use('/reauth', rateLimit(RULES.authLocal, { name: 'authReauth' }));
 reauthRoutes.use('/reauth', requireAuth());
 
-reauthRoutes.post(
-  '/reauth',
-  reauth,
-  zValidator('json', reauthSchema, (result) => {
-    if (!result.success) {
-      throw new HTTPException(400, {
-        message: 'Invalid reauth input',
-        cause: { code: 'BAD_REQUEST', details: z.flattenError(result.error) },
-      });
-    }
-  }),
-  async (c) => {
-    const userId = c.get('userId');
-    const { password } = c.req.valid('json');
+reauthRoutes.post('/reauth', reauth, zValidator('json', reauthSchema), async (c) => {
+  const userId = c.get('userId');
+  const { password } = c.req.valid('json');
 
-    const invalid = () =>
-      new HTTPException(401, {
-        message: 'invalid credentials',
-        cause: { code: 'INVALID_CREDENTIALS' },
-      });
+  const invalid = () =>
+    new HTTPException(401, {
+      message: 'invalid credentials',
+      cause: { code: 'INVALID_CREDENTIALS' },
+    });
 
-    const [user] = await db
-      .select({ id: users.id, passwordHash: users.passwordHash })
-      .from(users)
-      .where(eq(users.id, userId))
-      .limit(1);
+  const [user] = await db
+    .select({ id: users.id, passwordHash: users.passwordHash })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
 
-    // OAuth-only users have no local password (passwordHash is NULL since
-    // 0037). Equalize timing with the wrong-password path before refusing.
-    if (!user?.passwordHash) {
-      await verifyPassword(password, await getDummyPasswordHash());
-      throw invalid();
-    }
+  // OAuth-only users have no local password (passwordHash is NULL since
+  // 0037). Equalize timing with the wrong-password path before refusing.
+  if (!user?.passwordHash) {
+    await verifyPassword(password, await getDummyPasswordHash());
+    throw invalid();
+  }
 
-    const ok = await verifyPassword(password, user.passwordHash);
-    if (!ok) throw invalid();
+  const ok = await verifyPassword(password, user.passwordHash);
+  if (!ok) throw invalid();
 
-    const freshAuthAt = new Date();
-    await db.update(users).set({ lastFreshAuthAt: freshAuthAt }).where(eq(users.id, userId));
+  const freshAuthAt = new Date();
+  await db.update(users).set({ lastFreshAuthAt: freshAuthAt }).where(eq(users.id, userId));
 
-    return c.json(answer(reauthedSchema, { freshAuthAt: freshAuthAt.toISOString() }));
-  },
-);
+  return c.json(answer(reauthedSchema, { freshAuthAt: freshAuthAt.toISOString() }));
+});
