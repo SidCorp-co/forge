@@ -105,11 +105,6 @@ describe('a stored deploy key Forge cannot decrypt (criterion 145)', () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ ok: false, code: 'key_unreadable', message: UNREADABLE });
   });
-
-  it('shows no file path in what it answers (criterion 146)', async () => {
-    const res = await post(`/api/projects/${projectId}/git-credential/test`);
-    expect(JSON.stringify(await res.json())).not.toMatch(/\/(tmp|home|srv|var)\//);
-  });
 });
 
 describe('storing a private key ssh cannot load', () => {

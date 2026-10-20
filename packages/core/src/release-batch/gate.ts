@@ -24,7 +24,7 @@ export class ReleaseTargetUndeclaredError extends Error {
     readonly projectId: string,
     readonly releaseChain: ReleaseChain,
   ) {
-    const detail = `project ${projectId} declares a release chain ending at '${chainLiveBranch(releaseChain) ?? chainStartBranch(releaseChain)}' but has no active deploy binding carrying the 'live' stage, so there is nowhere for a release to land. Either add one on the integrations screen, or, if this project ships nothing, choose "Repository, no release" under Shape & release in its settings.`;
+    const detail = `Project ${projectId} declares a release chain ending at '${chainLiveBranch(releaseChain) ?? chainStartBranch(releaseChain)}' but has no active deploy binding carrying the 'live' stage, so there is nowhere for a release to land. Either add one on the integrations screen, or, if this project ships nothing, choose "Repository, no release" under Shape & release in its settings.`;
     super(`RELEASE_TARGET_UNDECLARED: ${detail}`);
     this.name = 'ReleaseTargetUndeclaredError';
     this.detail = detail;
