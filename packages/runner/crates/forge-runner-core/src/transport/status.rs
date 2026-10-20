@@ -101,6 +101,31 @@ fn one_line(text: &str) -> String {
     }
 }
 
+/// The code core's not-found handler answers a route it does not serve under;
+/// a missing record answers `NOT_FOUND` or a code of its own instead. Read off
+/// the code, never off the sentence beside it, which is worded for a person
+/// (ISS-1421 r15, r16).
+pub const ROUTE_ABSENT: &str = "ROUTE_ABSENT";
+
+/// Whether an answer is core saying it serves no such route: a `404` whose
+/// JSON body carries the `ROUTE_ABSENT` code.
+pub fn route_absent(status: u16, body: &str) -> bool {
+    status == 404
+        && serde_json::from_str::<serde_json::Value>(body)
+            .ok()
+            .and_then(|parsed| parsed.get("code")?.as_str().map(|c| c == ROUTE_ABSENT))
+            .unwrap_or(false)
+}
+
+/// What a door says when core serves no route for it: the door, then that the
+/// route is missing, which an upgrade of core or of this box settles.
+pub(crate) fn absent(what: &str, text: &str) -> String {
+    format!(
+        "{what}: core serves no such route, so its version and this box's do not match ({})",
+        body_line(text)
+    )
+}
+
 /// `<what> <status named>: <body>`, the shape every refused call to core prints.
 pub(crate) fn refused(what: &str, status: u16, text: &str) -> String {
     let named = named(status);
@@ -847,7 +872,8 @@ mod tests {
     ///
     /// `refusal` counts as saying it: it composes the sentence with `refused`
     /// and only decides which error variant carries it, so a site that calls it
-    /// prints exactly what a site calling `refused` prints (ISS-1284). What the
+    /// prints exactly what a site calling `refused` prints (ISS-1284). `absent`
+    /// says a missing route's body through the same line (ISS-1421 r16). What the
     /// guard is against is a site formatting a body by hand, and neither of
     /// these is that.
     #[test]
@@ -859,7 +885,8 @@ mod tests {
                 continue;
             }
             let said = shipped.matches("status::refused(").count()
-                + shipped.matches("status::refusal(").count();
+                + shipped.matches("status::refusal(").count()
+                + shipped.matches("status::absent(").count();
             assert!(
                 said >= bodies,
                 "{name} reads {bodies} response body/bodies and says {said} of them through \

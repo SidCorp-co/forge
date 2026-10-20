@@ -6,7 +6,7 @@ import {
   SessionAttachmentError,
 } from '../agent-sessions/attachment-service.js';
 import { answer } from '../api-reference/declare/describe.js';
-import { zValidator } from '../api-reference/declare/validator.js';
+import { takesBodyAsSent, zValidator } from '../api-reference/declare/validator.js';
 import {
   AttachmentError as CommentAttachmentError,
   persistCommentAttachment,
@@ -59,6 +59,7 @@ export const uploadRoutes = new Hono();
 uploadRoutes.put(
   '/:uploadId',
   uploadAttachment,
+  takesBodyAsSent('the file itself, sent as the bytes of the body'),
   uploadBodyLimit(() => {
     throw badRequest('file too large', 'FILE_TOO_LARGE');
   }),

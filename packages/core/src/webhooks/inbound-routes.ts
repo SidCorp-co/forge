@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { answer } from '../api-reference/declare/describe.js';
-import { declaresInput } from '../api-reference/declare/validator.js';
+import { declaresInput, takesBodyAsSent } from '../api-reference/declare/validator.js';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
 import { recordTurnedAwayInboundCall } from '../integrations/inbound-door.js';
@@ -99,6 +99,9 @@ export const webhookInboundRoutes = new Hono();
 webhookInboundRoutes.post(
   '/in/:slug',
   receiveWebhook,
+  takesBodyAsSent(
+    'a provider signs the bytes it sends, so the body is checked against its signature, never a schema',
+  ),
   declaresInput('param', webhookSlugParamSchema),
   async (c) => {
     const slug = webhookSlugParamSchema.parse(c.req.param()).slug;

@@ -1,3 +1,4 @@
+import { BODY_NOT_TAKEN_WHEN } from '../../middleware/body-not-taken.js';
 import { PAT_DOOR_REFUSALS } from '../../middleware/pat-rest-surface.js';
 import { type Answer, codeFor } from '../declare/describe.js';
 import {
@@ -219,6 +220,14 @@ function inputsOf(entry: RouteEntry, doc: Document) {
   return { parameters, bodies };
 }
 
+const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+
+/** A write route `refuseBodyNotTaken` holds to no body: it declares none and names no reason. */
+function takesNoBody(entry: RouteEntry): boolean {
+  if (!WRITE_METHODS.has(entry.method) || entry.bodyAsSent !== null) return false;
+  return !entry.validators.some((v) => v.target === 'json' || v.target === 'form');
+}
+
 type ErrorCodes = Map<number, Map<string, string[]>>;
 
 function addCode(into: ErrorCodes, status: number, code: string, when: string): void {
@@ -284,6 +293,7 @@ async function responsesOf(entry: RouteEntry, access: Access | null, doc: Docume
   };
   for (const [status, a] of Object.entries(declared?.responses ?? {})) answer(Number(status), a);
   for (const refusal of entry.refusals) addCode(errors, refusal.status, refusal.code, refusal.when);
+  if (takesNoBody(entry)) addCode(errors, 400, 'BAD_REQUEST', BODY_NOT_TAKEN_WHEN);
   // A route that reads no bearer never meets the token door. One kept out of the grant still meets
   // it when a token is sent to it, and the door turns the token away there by name.
   const doorRefusals = !asksForBearer(access, entry.takesBearer)
@@ -435,7 +445,11 @@ export async function buildReference(
       });
     }
     ids.set(operationId, entry.key);
-    const described = [accessProse(access, entry.takesBearer), declared?.description]
+    const described = [
+      accessProse(access, entry.takesBearer),
+      declared?.description,
+      entry.bodyAsSent ? `Takes its body as sent: ${entry.bodyAsSent}.` : null,
+    ]
       .filter(Boolean)
       .join('\n\n');
     const operation: Record<string, unknown> = {

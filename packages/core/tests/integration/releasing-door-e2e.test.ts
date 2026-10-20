@@ -275,10 +275,10 @@ describe('a move to Releasing from any door but a release batch (criteria 5, 6, 
       details: { formErrors: string[] };
     };
     expect(body.code).toBe('BAD_REQUEST');
-    expect(body.message).toContain('Unrecognized key: "status"');
+    expect(body.message).not.toMatch(/Unrecognized key/);
     expect(body.message).toContain('POST /api/issues/:id/transition');
     expect(body.details.formErrors).toContain(
-      'Unrecognized key: "status" — an issue update never writes a status. A status moves through POST /api/issues/:id/transition (or `forge_issues` `transition`), and only starting a release puts an issue at Releasing.',
+      'An issue update never writes a status, so this one wrote nothing. A status moves through POST /api/issues/:id/transition, or `forge_issues` `transition`, and only starting a release puts an issue at Releasing.',
     );
     expect(await row(id)).toEqual({ status: 'awaiting_release', claim: null });
     expect(await movesInto(id, 'releasing')).toBe(0);

@@ -3,7 +3,7 @@ import { type Context, Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { answer } from '../api-reference/declare/describe.js';
-import { zValidator } from '../api-reference/declare/validator.js';
+import { takesBodyAsSent, zValidator } from '../api-reference/declare/validator.js';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
 import { setInertAttachmentHeaders } from '../lib/attachment-headers.js';
@@ -17,6 +17,7 @@ import {
   persistSessionAttachment,
   SessionAttachmentError,
 } from './attachment-service.js';
+import { personOrRefuse } from './session-access.js';
 
 function attachmentErrorToHttp(err: SessionAttachmentError): HTTPException {
   switch (err.code) {
@@ -85,6 +86,7 @@ async function authorizeSession(
 agentSessionAttachmentRoutes.post(
   '/:sessionId/attachments',
   ref.uploadAttachment,
+  takesBodyAsSent('a multipart form carrying the file, which the route reads itself'),
   uploadBodyLimit(() => {
     throw badRequest('file too large', 'FILE_TOO_LARGE');
   }),
@@ -93,11 +95,9 @@ agentSessionAttachmentRoutes.post(
   }),
   async (c) => {
     const { sessionId } = c.req.valid('param');
+    // Uploading a chat attachment is a person's act; a box only downloads a turn's files.
+    personOrRefuse(c.get('userId'));
     await authorizeSession(c, sessionId);
-
-    if (c.get('principal') === 'device') {
-      throw forbidden('device principals cannot upload chat attachments');
-    }
 
     const body = await c.req.parseBody();
     const file = body.file;

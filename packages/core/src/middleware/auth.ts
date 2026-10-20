@@ -7,7 +7,7 @@ import { runWithPatScope } from '../auth/pat-scope.js';
 import type { IssueCreationChannel } from '../db/schema.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { readBearerToken } from './bearer.js';
-import { refuses } from './declarations.js';
+import { letsBoxIn, refuses } from './declarations.js';
 import { beginPatRequest } from './pat-rest-surface.js';
 import { admitSessionUser, authUserRow } from './session-account.js';
 
@@ -188,6 +188,7 @@ export function requireUserOrDevice(): MiddlewareHandler<{ Variables: AuthVars }
     c.set('agency', 'agent');
     await next();
   };
+  letsBoxIn(gate);
   return refuses(gate, [
     { status: 401, code: 'UNAUTHENTICATED', when: 'no bearer token and no session cookie' },
     {

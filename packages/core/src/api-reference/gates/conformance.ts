@@ -3,7 +3,7 @@ import { HTTPException } from 'hono/http-exception';
 import { matchedRoutes } from 'hono/route';
 import { type ZodType, z } from 'zod';
 import { env } from '../../config/env.js';
-import { isRefusalSentence } from '../../lib/refusal-sentence.js';
+import { holdsReason, isRefusalSentence, NO_REASON_GIVEN } from '../../lib/refusal-sentence.js';
 import type { OperationDeclaration } from '../declare/describe.js';
 import { renderSchema } from '../declare/schema.js';
 import type { Reference } from '../document/build.js';
@@ -71,6 +71,13 @@ export function judgeAnswer(
       return {
         status,
         what: `the error envelope's message is not a sentence: ${JSON.stringify(message)}`,
+      };
+    // ISS-1421 r16: a reason the door wrote is the message, never kept behind a generic sentence.
+    const details = (body as { details?: unknown }).details;
+    if (status < 500 && NO_REASON_GIVEN.includes(message) && holdsReason(details))
+      return {
+        status,
+        what: `the error envelope says ${JSON.stringify(message)} while its details give the reason: ${JSON.stringify(details)}`,
       };
     return null;
   }

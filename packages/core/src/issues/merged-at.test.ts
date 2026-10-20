@@ -64,12 +64,16 @@ describe('refuseUnshippedClose — a close on a project that lands in git', () =
     const { executor } = buildMockExecutor(UNSHIPPED);
     const refusal = await refuseUnshippedClose(executor, { issueId: 'iss-1', toStatus: 'closed' });
     expect(refusal).not.toBeNull();
-    expect(refusal?.detail).toContain('nothing on it shows the work shipped');
-    expect(refusal?.detail).toContain('Dropped');
-    expect(refusal?.detail).toContain('`data.commit`');
-    expect(refusal?.detail).toContain('Set `landingShape` to `outside_git`');
-    expect(refusal?.detail).not.toContain('naming where it landed');
-    expect(refusal?.details).toEqual({ requires: 'mergedAt', useInstead: 'dropped' });
+    // ISS-1421 r16 — judge-69 read about 120 words naming `merged_at`; the same short sentences
+    // now serve a person and an agent, and the agent's door is a step on a line of its own.
+    expect(refusal?.detail).toBe(
+      "This issue can't close yet: it is not marked merged. Use Mark merged in the issue's properties, then close it. If it turned out not to be work, move it to Dropped instead.",
+    );
+    expect(refusal?.detail).not.toMatch(/merged_at|`/);
+    expect(refusal?.details).toMatchObject({ requires: 'mergedAt', useInstead: 'dropped' });
+    const steps = refusal?.details.steps as Record<string, string> | undefined;
+    expect(steps?.merged_mark).toContain('`data.commit`');
+    expect(steps?.landing_shape).toContain('Set `landingShape` to `outside_git`');
   });
 
   it('refuses a close on an issue the read cannot find, rather than letting it through', async () => {
@@ -111,26 +115,30 @@ describe('refuseUnshippedClose — a close on a project whose work lands outside
   it('refuses a bare timestamp, naming data.landing as the route', async () => {
     const { executor } = buildMockExecutor(mark('website', { mergedAt: AT }));
     const refusal = await refuseUnshippedClose(executor, { issueId: 'iss-1', toStatus: 'closed' });
-    expect(refusal?.detail).toContain('names no landing');
-    expect(refusal?.detail).not.toMatch(
-      /merged pull request|merged_commit_sha|Forge did not see this merge/,
+    expect(refusal?.detail).toBe(
+      "This issue can't close yet: its mark does not say where the work landed. Use Unmark, then Mark merged, and fill in Where it landed. If it turned out not to be work, move it to Dropped instead.",
     );
-    expect(refusal?.detail).toContain('`data.landing`');
-    expect(refusal?.details).toEqual({
+    expect(refusal?.details).toMatchObject({
       requires: 'mergedLanding',
       shape: 'outside_git',
       declared: false,
       held: 'asserted',
       useInstead: 'dropped',
     });
+    const steps = refusal?.details.steps as Record<string, string> | undefined;
+    expect(steps?.merged_mark).toMatch(/^Take the mark back with `forge_issues` `unmark` first/);
+    expect(steps?.merged_mark).toContain('`data.landing`');
   });
 
   it('refuses no mark at all with the same route', async () => {
     const { executor } = buildMockExecutor(mark('website'));
     const refusal = await refuseUnshippedClose(executor, { issueId: 'iss-1', toStatus: 'closed' });
-    expect(refusal?.detail).toContain('not marked merged');
-    expect(refusal?.detail).toContain('`data.landing`');
+    expect(refusal?.detail).toMatch(/^This issue can't close yet: it has no mark saying where/);
+    expect(refusal?.detail).toContain('Use Mark merged in the issue');
     expect(refusal?.details).toMatchObject({ requires: 'mergedLanding', held: 'unmarked' });
+    expect((refusal?.details.steps as Record<string, string> | undefined)?.merged_mark).toMatch(
+      /^Mark it merged with `forge_issues` `mark_merged` carrying `data.landing`/,
+    );
   });
 
   it('refuses by name a project kind nothing writes, rather than guessing its shape', async () => {

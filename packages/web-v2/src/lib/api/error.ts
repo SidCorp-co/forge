@@ -1,6 +1,6 @@
 import { parsePath } from '@forge/contracts/document-patch';
 import { ISSUE_STATUS_LABELS } from '@forge/contracts/issue-vocabulary';
-import { MARK_MERGED_ACTION, WHERE_IT_LANDED_FIELD, WORK_LANDS_ROW } from '@forge/contracts/mark-merged-words';
+import { WHERE_IT_LANDED_FIELD, WORK_LANDS_ROW } from '@forge/contracts/mark-merged-words';
 import { claimConflictSentence } from './claim-conflict';
 import { ApiError, isReasonPhrase, unsaidFailure } from './client';
 import { isUnreachable, UNREACHABLE_SENTENCE } from './transport-failure';
@@ -47,7 +47,8 @@ export function isRetryableApiError(err: unknown): boolean {
 /**
  * ISS-1327 — the merge-mark refusals in the web's own words. Core's sentence is written for
  * agents and names every door there is; a person here has one, the issue's Mark merged control.
- * Read off `details`, never parsed out of the prose.
+ * Read off `details`, never parsed out of the prose. The unshipped close is not among them: core
+ * says it in the page's own control names for both readers (ISS-1421 r16), so it shows as sent.
  */
 function detailStr(details: unknown, key: string): string | null {
   const value = details && typeof details === 'object' ? (details as Record<string, unknown>)[key] : null;
@@ -55,16 +56,6 @@ function detailStr(details: unknown, key: string): string | null {
 }
 
 function mergeMarkSentence(err: ApiError): string | null {
-  if (err.code === 'CLOSE_REQUIRES_SHIPPED') {
-    if (detailStr(err.details, 'requires') !== 'mergedLanding') {
-      return 'Nothing on this issue says the work shipped, so it cannot close. Once it has, use Mark merged in the issue’s properties, then close. Use Dropped for work that turned out not to be work.';
-    }
-    const unmarkFirst =
-      detailStr(err.details, 'held') === 'asserted'
-        ? 'Its mark names no landing, so press Unmark first, then '
-        : 'Use ';
-    return `Nothing on this issue says where the work landed, so it cannot close. ${unmarkFirst}${MARK_MERGED_ACTION} in the issue’s properties and fill in “${WHERE_IT_LANDED_FIELD}” — the live URL, CMS entry or storefront resource — then close. Use Dropped if it never landed.`;
-  }
   // ISS-1421 r9: core names the REST field; a person here fills in the panel's own field.
   if (err.code === 'LANDING_REQUIRED') {
     return `Nothing was marked, because no merged pull request shows where this work landed. Fill in “${WHERE_IT_LANDED_FIELD}” with the live URL, CMS entry or storefront resource.`;

@@ -175,6 +175,22 @@ describe('judgeAnswer', () => {
     ).toContain('undefined');
   });
 
+  it('fails a generic refusal whose details give the reason (ISS-1421 r16)', () => {
+    const known = new Map([[400, new Set(['BAD'])]]);
+    const generic = { code: 'BAD', message: 'The input was refused.' };
+    expect(
+      judgeAnswer(declaration, known, 400, {
+        ...generic,
+        details: 'projectId is required unless scope=all',
+      })?.what,
+    ).toContain('while its details give the reason');
+    expect(
+      judgeAnswer(declaration, known, 400, { ...generic, details: { config: { url: 'x' } } })?.what,
+    ).toContain('while its details give the reason');
+    expect(judgeAnswer(declaration, known, 400, generic)).toBeNull();
+    expect(judgeAnswer(declaration, known, 400, { ...generic, details: { count: 3 } })).toBeNull();
+  });
+
   it('fails a declared error code inside an envelope whose message is not a string', () => {
     const known = new Map([[404, new Set(['NOT_FOUND'])]]);
     expect(

@@ -2,6 +2,7 @@ import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/
 import { type Context, Hono } from 'hono';
 import { z } from 'zod';
 import { describeOperation, empty, json, raw } from '../api-reference/declare/describe.js';
+import { takesBodyAsSent } from '../api-reference/declare/validator.js';
 import { clientIpOf } from '../middleware/client-ip.js';
 import type { PrincipalVars } from '../middleware/require-pat.js';
 import { formatDeprecationHeader } from './deprecation.js';
@@ -114,8 +115,10 @@ export async function mcpHandler(c: Context<{ Variables: PrincipalVars }>): Prom
   }
 }
 
+const MCP_BODY = 'a JSON-RPC message, which the MCP server reads and refuses in its own terms';
+
 /** Mounted at `/mcp` once, so each method carries its own description. */
 export const mcpRoutes = new Hono<{ Variables: PrincipalVars }>()
-  .post('/', mcpPost, mcpHandler)
+  .post('/', mcpPost, takesBodyAsSent(MCP_BODY), mcpHandler)
   .get('/', mcpStream, mcpHandler)
-  .delete('/', mcpClose, mcpHandler);
+  .delete('/', mcpClose, takesBodyAsSent(MCP_BODY), mcpHandler);

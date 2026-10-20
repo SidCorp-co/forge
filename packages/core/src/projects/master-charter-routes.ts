@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { answer } from '../api-reference/declare/describe.js';
-import { zValidator } from '../api-reference/declare/validator.js';
+import { takesBodyAsSent, zValidator } from '../api-reference/declare/validator.js';
 import { assertProjectAccess } from '../lib/authz.js';
 import {
   type AuthVars,
@@ -95,6 +95,9 @@ masterCharterRoutes.get(
 masterCharterRoutes.put(
   '/:id/master-charter',
   writeMasterCharter,
+  takesBodyAsSent(
+    'parseMasterCharterWrite reads the body itself and refuses every field but goal and rules by name',
+  ),
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest('invalid project id');
   }),

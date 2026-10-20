@@ -50,6 +50,7 @@ import {
   ensureSessionRole,
   idParamSchema,
   notFound,
+  personOrRefuse,
 } from './session-access.js';
 import { recordSessionCreatedActivity } from './session-activity.js';
 import { type AgentSessionPatch, finalizeScheduleSessionFailure } from './session-failure.js';
@@ -79,7 +80,7 @@ agentSessionLifecycleRoutes.post(
   }),
   async (c) => {
     const input = c.req.valid('json');
-    const userId = c.get('userId');
+    const userId = personOrRefuse(c.get('userId'));
 
     if (input.type) {
       throw badRequest({
@@ -391,7 +392,7 @@ agentSessionLifecycleRoutes.post(
   }),
   async (c) => {
     const input = c.req.valid('json');
-    const userId = c.get('userId');
+    const userId = personOrRefuse(c.get('userId'));
 
     const project = await loadProjectBySlug(input.projectSlug);
     if (!project) throw notFound('project not found');
@@ -576,7 +577,7 @@ agentSessionLifecycleRoutes.get(
   }),
   async (c) => {
     const { deviceId, projectSlug } = c.req.valid('query');
-    const userId = c.get('userId');
+    const userId = personOrRefuse(c.get('userId'));
 
     // Non-revealing default: any caller without ownership/membership of the
     // queried target gets `connected:false` and cannot tell a real offline

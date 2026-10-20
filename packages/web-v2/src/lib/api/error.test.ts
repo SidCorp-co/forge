@@ -123,30 +123,15 @@ describe('isRetryableApiError', () => {
 // web has one, the issue's Mark merged control, and the toast that carries the sentence is short.
 describe('formatApiError — the merge-mark refusals, in the web\'s words', () => {
   const words = (s: string) => s.trim().split(/\s+/).length;
-  const AGENT_SENTENCE = 'x '.repeat(142);
 
-  it('names Mark merged and "Where it landed" for a website close, in at most 60 words', () => {
-    for (const held of ['unmarked', 'asserted']) {
-      const msg = formatApiError(
-        new ApiError(422, AGENT_SENTENCE, 'CLOSE_REQUIRES_SHIPPED', { requires: 'mergedLanding', held }),
-      );
-      expect(msg).toContain('Mark merged');
-      expect(msg).toContain('“Where it landed”');
-      expect(words(msg)).toBeLessThanOrEqual(60);
-    }
-  });
-
-  it('says Unmark first where the mark that stands names no landing', () => {
-    const msg = formatApiError(
-      new ApiError(422, AGENT_SENTENCE, 'CLOSE_REQUIRES_SHIPPED', { requires: 'mergedLanding', held: 'asserted' }),
-    );
-    expect(msg).toContain('press Unmark first');
-  });
-
-  it('names Mark merged and no landing for a close on a project that lands in git', () => {
-    const msg = formatApiError(new ApiError(422, AGENT_SENTENCE, 'CLOSE_REQUIRES_SHIPPED', { requires: 'mergedAt' }));
-    expect(msg).toContain('Mark merged');
-    expect(msg).not.toContain('landed');
+  // ISS-1421 r16: core words the unshipped close for a person and an agent alike, in the page's own
+  // control names, so the web shows it as sent rather than keeping a second wording beside it.
+  it('shows the unshipped close as core says it', () => {
+    const said =
+      "This issue can't close yet: it is not marked merged. Use Mark merged in the issue's properties, then close it. If it turned out not to be work, move it to Dropped instead.";
+    const msg = formatApiError(new ApiError(422, said, 'CLOSE_REQUIRES_SHIPPED', { requires: 'mergedAt' }));
+    expect(msg).toBe(said);
+    for (const sentence of msg.split(/(?<=\.) /)) expect(words(sentence)).toBeLessThanOrEqual(20);
   });
 
   it('names the panel field, never the REST one, for a mark naming no landing (ISS-1421 r9)', () => {

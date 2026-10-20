@@ -46,7 +46,20 @@ export function zodMessageWords(field: string | null, message: string): string {
     if (m) return words(subject, m);
   }
   if (!field && said) return asSentence(said);
+  const phrase = ownPhrase(said);
+  if (field && phrase) return `${subject} ${phrase}`;
   return `${subject} was refused. ${asSentence(said || 'It did not match its schema')}`;
+}
+
+/** A door's own phrase about a field ("required", "must be a uuid"), said of that field. */
+function ownPhrase(said: string): string | null {
+  if (said === 'required') return 'is required.';
+  if (said === 'not found') return 'was not found.';
+  if (/^(?:is|are|was|must|does|do|has|cannot|takes|belongs|issued)\b/.test(said)) {
+    const verb = said.startsWith('issued') ? `was ${said}` : said;
+    return /[.!?]$/.test(verb) ? verb : `${verb}.`;
+  }
+  return null;
 }
 
 const BOUND_WORDS: Record<string, string> = {
@@ -88,7 +101,7 @@ const ZOD_WORDS: ReadonlyArray<[RegExp, (subject: string, m: RegExpExecArray) =>
  * Sentences for refusal details already flattened to `{ formErrors, fieldErrors }`, or to a plain
  * record of field to message, for a door that kept only those.
  */
-export function flattenedRefusalWords(details: unknown): string[] {
+export function flattenedRefusalWords(details: unknown, at = ''): string[] {
   if (details === null || typeof details !== 'object' || Array.isArray(details)) return [];
   const d = details as { formErrors?: unknown; fieldErrors?: unknown };
   const listOf = (v: unknown): string[] =>
@@ -97,11 +110,41 @@ export function flattenedRefusalWords(details: unknown): string[] {
   const form = flattened ? listOf(d.formErrors) : [];
   const fields = (flattened ? d.fieldErrors : details) as Record<string, unknown>;
   return [
-    ...form.map((m) => zodMessageWords(null, m)),
-    ...Object.entries(fields ?? {}).flatMap(([field, v]) =>
-      listOf(v).map((m) => zodMessageWords(field, m)),
-    ),
+    ...form.map((m) => zodMessageWords(at || null, m)),
+    ...Object.entries(fields ?? {}).flatMap(([key, v]) => {
+      const field = at ? `${at}.${key}` : key;
+      // A record nested under a field ("config": { "url": "required" }) names each field inside it.
+      if (v !== null && typeof v === 'object' && !Array.isArray(v))
+        return flattenedRefusalWords(v, field);
+      return listOf(v).map((m) => zodMessageWords(field, m));
+    }),
   ];
+}
+
+/**
+ * The fields of `known` a stray `sent` may have meant: one whose name, case ignored, ends with it,
+ * or lies at most two single-letter insertions, deletions or substitutions from it (ISS-1421 r16).
+ */
+export function fieldsNear(sent: string, known: readonly string[]): string[] {
+  const s = sent.toLowerCase();
+  return known.filter((k) => {
+    const name = k.toLowerCase();
+    if (name === s) return false;
+    return name.endsWith(s) || editDistance(name, s) <= 2;
+  });
+}
+
+function editDistance(a: string, b: string): number {
+  let prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    const row = [i];
+    for (let j = 1; j <= b.length; j++) {
+      const swap = (prev[j - 1] ?? 0) + (a[i - 1] === b[j - 1] ? 0 : 1);
+      row.push(Math.min((prev[j] ?? 0) + 1, (row[j - 1] ?? 0) + 1, swap));
+    }
+    prev = row;
+  }
+  return prev[b.length] ?? 0;
 }
 
 function joined(names: readonly string[]): string {

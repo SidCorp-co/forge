@@ -1,7 +1,11 @@
 import { findTargetHandler } from 'hono/utils/handler';
-import { type Refusal, refusalsOf, takesBearer } from '../../middleware/declarations.js';
+import { admitsBox, type Refusal, refusalsOf, takesBearer } from '../../middleware/declarations.js';
 import { type OperationDeclaration, operationDeclarations } from '../declare/describe.js';
-import { type ValidatorDeclaration, validatorDeclarations } from '../declare/validator.js';
+import {
+  bodyTakenAsSent,
+  type ValidatorDeclaration,
+  validatorDeclarations,
+} from '../declare/validator.js';
 
 /** One route the composed app serves, with everything declared on the way to its handler. */
 export type RouteEntry = {
@@ -18,6 +22,10 @@ export type RouteEntry = {
   readonly refusals: readonly Refusal[];
   /** Whether a gate that runs for this request turns a missing or invalid bearer away. */
   readonly takesBearer: boolean;
+  /** Why the route takes its body as sent, where it says so; null for one held to its schema. */
+  readonly bodyAsSent: string | null;
+  /** Whether a gate in the chain admits a paired box's device token. */
+  readonly admitsBox: boolean;
   /** Why the chain could not be read, or null when it was. */
   readonly unread: string | null;
 };
@@ -93,6 +101,8 @@ export function readRoutes(app: RouteSource): RouteEntry[] {
       operations: targets.flatMap((h) => operationDeclarations.get(h) ?? []),
       refusals,
       takesBearer: takesBearer(refusals),
+      bodyAsSent: targets.map((h) => bodyTakenAsSent.get(h)).find((r) => r !== undefined) ?? null,
+      admitsBox: targets.some(admitsBox),
       unread:
         chain === null
           ? `no request path reaches ${key} through the router (tried ${SAMPLES.length} sample values)`

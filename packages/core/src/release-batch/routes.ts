@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { answer } from '../api-reference/declare/describe.js';
-import { zValidator } from '../api-reference/declare/validator.js';
+import { takesBodyAsSent, zValidator } from '../api-reference/declare/validator.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { resolveReleaseChannels } from './channel.js';
@@ -373,6 +373,9 @@ releaseBatchRoutes.post(
 releaseBatchRoutes.post(
   '/:projectId/release-batches/:runId/attempts',
   openBatchAttempt,
+  takesBodyAsSent(
+    "the release agent writes this body by hand from its skill, and a release in flight is not stopped over a field Forge does not read; ends when the release skill's attempt is sent by a verb that builds the body",
+  ),
   zValidator('param', runParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
@@ -403,6 +406,9 @@ releaseBatchRoutes.post(
 releaseBatchRoutes.post(
   '/:projectId/release-batches/:runId/attempts/:key/account',
   accountForAttempt,
+  takesBodyAsSent(
+    "the release agent writes this body by hand from its skill, and a release in flight is not stopped over a field Forge does not read; ends when the release skill's account is sent by a verb that builds the body",
+  ),
   zValidator('param', attemptKeyParamSchema, (r) => {
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),

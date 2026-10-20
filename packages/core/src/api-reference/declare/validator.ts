@@ -114,7 +114,7 @@ export const zValidator: typeof honoZValidator = ((
 }) as typeof honoZValidator;
 
 /** A body refused for the fields named, in the sentence the shared validator says it in. */
-function unknownFieldsRefused(keys: string[]): HTTPException {
+export function unknownFieldsRefused(keys: string[]): HTTPException {
   const { sentences } = schemaRefusalWords([{ code: 'unrecognized_keys', keys, path: [] }], {
     valuesAre: 'listed in details.accepted',
   });
@@ -142,5 +142,19 @@ export function declaresInput(
     return next();
   };
   validatorDeclarations.set(middleware, { target, schema, hook: null, enforced: false });
+  return middleware;
+}
+
+/** Why a route takes its request body as it was sent, keyed by the middleware that says so. */
+export const bodyTakenAsSent = new WeakMap<object, string>();
+
+/**
+ * Declares a route that reads its own body (raw bytes, a multipart form, JSON-RPC) or keeps a field
+ * it does not read, with the reason a caller reads in the API reference; every other route has its
+ * body checked against the schema it declares, or refused where it declares none (ISS-1421 r16).
+ */
+export function takesBodyAsSent(reason: string): MiddlewareHandler {
+  const middleware: MiddlewareHandler = async (_c, next) => next();
+  bodyTakenAsSent.set(middleware, reason);
   return middleware;
 }

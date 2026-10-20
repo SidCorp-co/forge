@@ -76,6 +76,15 @@ function classifyCoolifyFailure(err: unknown): CoolifyFailureVerdict {
   return { health: 'error', message: null, route, missingAbility: null };
 }
 
+/** A failed check in words, with what to do where the host's answer says the address may be wrong. */
+function checkFailureWords(err: unknown): string {
+  if (!(err instanceof Error)) return 'unknown error';
+  if (!(err instanceof CoolifyApiError)) return err.message;
+  if (err.addressSuspect)
+    return `${err.message} Check the address saved on this connection, then test again.`;
+  return err.status >= 500 ? `${err.message} Test again once it answers.` : err.message;
+}
+
 /** The message a failure is recorded and reported under. */
 function describeCoolifyFailure(err: unknown): string {
   const verdict = classifyCoolifyFailure(err);
@@ -190,7 +199,7 @@ const coolifyAdapterMethods: DispatchingAdapterMethods<CoolifyConfig, CoolifySec
     } catch (err) {
       const status = err instanceof CoolifyApiError ? err.status : null;
       const verdict = classifyCoolifyFailure(err);
-      const message = verdict.message ?? (err instanceof Error ? err.message : 'unknown error');
+      const message = verdict.message ?? checkFailureWords(err);
       await updateConnection(ctx.connectionId, {
         lastHealthStatus: verdict.health,
         lastHealthAt: new Date(),

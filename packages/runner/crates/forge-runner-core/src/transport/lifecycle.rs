@@ -108,18 +108,10 @@ pub enum BlockedDoor {
     Absent,
 }
 
-/// The code core's not-found handler answers a route it does not have under;
-/// a missing job answers `NOT_FOUND` instead. Read off the code, never off the
-/// sentence beside it, which is worded for a person (ISS-1421 r15).
-const ROUTE_ABSENT: &str = "ROUTE_ABSENT";
-
-/// Whether a refusal is core saying it serves no such route.
+/// Whether a refusal is core saying it serves no such route; a missing job
+/// answers `NOT_FOUND` instead.
 fn route_absent(refused: &Refused) -> bool {
-    refused.code == 404
-        && serde_json::from_str::<serde_json::Value>(&refused.text)
-            .ok()
-            .and_then(|body| body.get("code")?.as_str().map(|c| c == ROUTE_ABSENT))
-            .unwrap_or(false)
+    super::status::route_absent(refused.code, &refused.text)
 }
 
 /// End a job that was stopped on a question, carrying what it asked

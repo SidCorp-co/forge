@@ -224,7 +224,16 @@ pub async fn close(
     if resp.status().as_u16() == 401 {
         return Err(Error::Unauthorized);
     }
+    // A 404 is core saying no such session stands, which is what a close leaves; a route core
+    // does not serve has closed nothing, and says so.
     if resp.status().as_u16() == 404 {
+        let text = resp.text().await.unwrap_or_default();
+        if super::status::route_absent(404, &text) {
+            return Err(Error::Other(super::status::absent(
+                "run-session close",
+                &text,
+            )));
+        }
         return Ok(());
     }
     if !resp.status().is_success() {
@@ -319,6 +328,13 @@ pub async fn is_terminal(client: &CoreClient, session_id: &str) -> Result<bool> 
         return Err(Error::Unauthorized);
     }
     if resp.status().as_u16() == 404 {
+        let text = resp.text().await.unwrap_or_default();
+        if super::status::route_absent(404, &text) {
+            return Err(Error::Other(super::status::absent(
+                "run-session state",
+                &text,
+            )));
+        }
         return Ok(true);
     }
     if !resp.status().is_success() {
@@ -464,9 +480,18 @@ pub async fn release_lease(
     // release was asking for; `is_returned` reads it back either way. Anything
     // else — a 409 core could not narrow to one project among them — is an
     // error, because retrying it unchanged never resolves (ISS-1139).
-    if !resp.status().is_success() && resp.status().as_u16() != 404 {
+    if !resp.status().is_success() {
         let code = resp.status().as_u16();
         let text = resp.text().await.unwrap_or_default();
+        if super::status::route_absent(code, &text) {
+            return Err(Error::Other(super::status::absent(
+                "issue-lease release",
+                &text,
+            )));
+        }
+        if code == 404 {
+            return Ok(());
+        }
         return Err(Error::Other(super::status::refused(
             "issue-lease release",
             code,
@@ -792,5 +817,61 @@ mod tests {
             "499 units of room, two units a character, so 249 whole characters and no half of one"
         );
         assert!(cut.ends_with('\u{2026}'));
+    }
+
+    /// ISS-1421 r16 — a 404 is read by its code at every door: a missing
+    /// session or lease is the state a close or a release asks for, and a route
+    /// core does not serve is a version mismatch that closed and returned nothing.
+    const NO_SUCH_SESSION: &str = r#"{"code":"NOT_FOUND","message":"No run session has this id."}"#;
+
+    #[tokio::test]
+    async fn a_close_on_a_route_core_does_not_serve_is_an_error_and_a_missing_session_is_closed() {
+        let absent = fake_core::serve_always("404 Not Found", fake_core::ROUTE_ABSENT).await;
+        let err = close(&client(absent), "s-1", Outcome::Ended, None, None)
+            .await
+            .expect_err("a route core does not serve closed nothing");
+        assert!(
+            format!("{err}").contains("core serves no such route"),
+            "{err}"
+        );
+
+        let gone = fake_core::serve_always("404 Not Found", NO_SUCH_SESSION).await;
+        close(&client(gone), "s-1", Outcome::Ended, None, None)
+            .await
+            .expect("a session core no longer holds is what a close leaves");
+    }
+
+    #[tokio::test]
+    async fn a_state_read_on_a_route_core_does_not_serve_is_an_error_not_an_ended_session() {
+        let absent = fake_core::serve_always("404 Not Found", fake_core::ROUTE_ABSENT).await;
+        let err = is_terminal(&client(absent), "s-1")
+            .await
+            .expect_err("a missing route says nothing about whether the session ended");
+        assert!(
+            format!("{err}").contains("core serves no such route"),
+            "{err}"
+        );
+
+        let gone = fake_core::serve_always("404 Not Found", NO_SUCH_SESSION).await;
+        assert!(is_terminal(&client(gone), "s-1")
+            .await
+            .expect("a missing session has ended"));
+    }
+
+    #[tokio::test]
+    async fn a_release_on_a_route_core_does_not_serve_is_an_error_not_a_returned_lease() {
+        let absent = fake_core::serve_always("404 Not Found", fake_core::ROUTE_ABSENT).await;
+        let err = release_lease(&client(absent), Some("p-1"), "ISS-880")
+            .await
+            .expect_err("a route core does not serve returned no lease");
+        assert!(
+            format!("{err}").contains("core serves no such route"),
+            "{err}"
+        );
+
+        let gone = fake_core::serve_always("404 Not Found", NO_SUCH_SESSION).await;
+        release_lease(&client(gone), Some("p-1"), "ISS-880")
+            .await
+            .expect("no lease standing is what the release asked for");
     }
 }

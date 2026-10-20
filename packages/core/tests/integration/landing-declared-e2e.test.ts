@@ -321,7 +321,7 @@ describe('an issue declared outside git, on a git project', () => {
     const refusal = await refusalOf(() => close(w, bare));
     expect(refusal.code).toBe('CLOSE_REQUIRES_SHIPPED');
     expect(refusal.message).toContain('`mark_merged` carrying `data.landing`');
-    expect(refusal.message).toContain('declared on the issue');
+    expect((refusal as { details?: { declared?: boolean } }).details?.declared).toBe(true);
     expect(refusal.message).not.toContain('kind `website`');
 
     const landed = await issueAt(w, 'awaiting_release', 'outside_git', { landing: ENV_LANDING });

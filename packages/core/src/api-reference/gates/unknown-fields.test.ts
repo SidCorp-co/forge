@@ -6,27 +6,23 @@ import { type RouteEntry, type RouteSource, readRoutes } from '../document/regis
 
 /**
  * ISS-1421 r15 — a JSON body field no schema names is refused by name, never dropped. judge-65 sent
- * `POST /api/projects` a `colour` and got 201 with the colour gone. The shared validator refuses
- * such a field on every route it guards; a route that parses its own body, or a schema that says it
- * takes any field, is held here to a named reason, which is the price of letting a field through.
+ * `POST /api/projects` a `colour` and got 201 with the colour gone. r16 — judge-69 sent a pairing
+ * code request `expiresInMinutes: 1` and got a ten-minute code: a route that declares no body took
+ * one and dropped it. A route that lets a field through, or reads its own body, says why on its own
+ * declaration (`takesBodyAsSent`), which the API reference shows; this is the price of the exception.
  */
-const TAKES_ANY_FIELD: Readonly<Record<string, string>> = {
-  'POST /api/devices/me/questions':
-    'a box sends the question it was asked as it read it, and the extra keys are kept with the question',
-  'POST /api/projects/:projectId/release-batches/:runId/attempts':
-    "the release agent writes this body by hand from its skill, and a release in flight is not stopped over a field Forge does not read; ends when the release skill's attempt is sent by a verb that builds the body",
-  'POST /api/projects/:projectId/release-batches/:runId/attempts/:key/account':
-    "the release agent writes this body by hand from its skill, and a release in flight is not stopped over a field Forge does not read; ends when the release skill's account is sent by a verb that builds the body",
-  'PUT /api/projects/:id/master-charter':
-    'parseMasterCharterWrite reads the body itself and refuses every field but goal and rules by name',
-};
-
 let routes: RouteEntry[];
 
 beforeAll(async () => {
   const { app } = (await import('../../index.js')) as unknown as { app: RouteSource };
   routes = readRoutes(app);
 }, 120_000);
+
+const WRITES = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+const READS_A_BODY = /req\.(?:json|text|parseBody|formData|arrayBuffer|blob)\(|req\.raw\b/;
+
+const bodyAsSent = (key: string): boolean =>
+  routes.some((r) => r.key === key && r.bodyAsSent !== null);
 
 const bodies = (): { key: string; declaration: ValidatorDeclaration }[] =>
   routes.flatMap((entry) =>
@@ -39,7 +35,7 @@ describe('a JSON body field no schema names', () => {
   it('is refused on every route, or the route names why it takes it', () => {
     const silent: string[] = [];
     for (const { key, declaration } of bodies()) {
-      if (key in TAKES_ANY_FIELD) continue;
+      if (bodyAsSent(key)) continue;
       const policy = fieldsPolicy(declaration.schema);
       if (policy !== 'closed') silent.push(`${key}: the schema's fields are ${policy}`);
     }
@@ -48,9 +44,24 @@ describe('a JSON body field no schema names', () => {
     expect(silent, 'each line is a route that drops a field it does not name').toEqual([]);
   });
 
-  it('names no exception for a route the app no longer serves', () => {
-    const served = new Set(bodies().map((b) => b.key));
-    expect(Object.keys(TAKES_ANY_FIELD).filter((k) => !served.has(k))).toEqual([]);
+  it('is refused on every write route that declares no body, unless the route says why', () => {
+    const silent = routes
+      .filter((r) => WRITES.has(r.method) && !r.bodyAsSent)
+      .filter((r) => !r.validators.some((v) => v.target === 'json' || v.target === 'form'))
+      .filter((r) => READS_A_BODY.test(String(r.handler)))
+      .map((r) => r.key);
+    expect(silent, 'each route reads a body it neither declares nor names a reason for').toEqual(
+      [],
+    );
+    // Not vacuous: dozens of write routes take no body, judge-69's pairing code among them.
+    const bodiless = routes.filter((r) => WRITES.has(r.method) && !r.bodyAsSent);
+    expect(bodiless.map((r) => r.key)).toContain('POST /api/projects/:id/devices/pairing-codes');
+  });
+
+  it('names its reason in words on every route that takes a body as sent', () => {
+    const named = routes.filter((r) => r.bodyAsSent !== null);
+    expect(named.length).toBeGreaterThanOrEqual(10);
+    for (const r of named) expect(r.bodyAsSent, r.key).toMatch(/^[a-z].{20,}[^.]$/);
   });
 
   it('is refused by name on the route judge-65 sent a colour to', async () => {

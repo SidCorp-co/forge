@@ -26,7 +26,11 @@ export function leadWith(message: string, sentence: string): string {
 }
 
 /** A refused move says how to send the rest; any other refusal names the move among what it kept. */
-export function unwrittenRefusal(err: unknown, sentStatus: boolean): unknown {
+export function unwrittenRefusal(
+  err: unknown,
+  sentStatus: boolean,
+  inputSchema?: Record<string, unknown>,
+): unknown {
   if (err instanceof TransitionError) {
     return new TransitionError(
       err.code,
@@ -36,7 +40,7 @@ export function unwrittenRefusal(err: unknown, sentStatus: boolean): unknown {
   }
   const mapped = toMcpIssueError(err);
   if (!(mapped instanceof Error)) return mapped;
-  const message = zodRefusalMessage(mapped) ?? mapped.message;
+  const message = zodRefusalMessage(mapped, inputSchema) ?? mapped.message;
   return new Error(
     leadWith(message, sentStatus ? `${UNWRITTEN}, the status move included` : UNWRITTEN),
   );
@@ -51,12 +55,16 @@ function sentStatusIn(args: unknown): boolean {
 }
 
 /** Run a step that writes nothing; where the call is an update, a refusal from it says so first. */
-export function unwrittenIfUpdate<T>(args: unknown, step: () => T): T {
+export function unwrittenIfUpdate<T>(
+  args: unknown,
+  step: () => T,
+  inputSchema?: Record<string, unknown>,
+): T {
   try {
     return step();
   } catch (err) {
     if ((args as { action?: unknown } | null)?.action !== 'update') throw err;
-    throw unwrittenRefusal(err, sentStatusIn(args));
+    throw unwrittenRefusal(err, sentStatusIn(args), inputSchema);
   }
 }
 

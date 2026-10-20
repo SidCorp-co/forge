@@ -148,6 +148,33 @@ describe('coolifyAdapter.healthcheck — 401 and 403 are different verdicts (ISS
     expect(maybeResetBreakerMock).toHaveBeenCalledWith(CONN_ID);
   });
 
+  // ISS-1421 r16 — judge-69 read "Coolify API error: 404." over example.com, and a 404 in the
+  // diagnostics for a host that had answered 200 with an object.
+  it('says what a host that is not Coolify answered, the status it sent and the address to check', async () => {
+    globalThis.fetch = vi.fn(
+      async () => new Response('<html></html>', { status: 404 }),
+    ) as unknown as typeof fetch;
+    const res = await coolifyAdapter.healthcheck(buildCtx({ apiToken: 'cf-current' }));
+    expect(res.status).toBe('error');
+    expect(res.message).toBe(
+      'The server at coolify.example answered 404 Not Found to GET /api/v1/resources, so it may not be Coolify. Check the address saved on this connection, then test again.',
+    );
+    expect(res.diagnostics).toMatchObject({ httpStatus: 404 });
+
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ url: 'x' }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+    ) as unknown as typeof fetch;
+    const object = await coolifyAdapter.healthcheck(buildCtx({ apiToken: 'cf-current' }));
+    expect(object.message).toMatch(/something other than a list of resources/);
+    expect(object.message).toContain('Check the address saved on this connection');
+    expect(object.diagnostics).toMatchObject({ httpStatus: 200 });
+    expect(object.message).not.toMatch(/Coolify API error/);
+  });
+
   it('keeps error for a non-auth HTTP failure (500)', async () => {
     globalThis.fetch = vi.fn(
       async () => new Response('boom', { status: 500 }),
