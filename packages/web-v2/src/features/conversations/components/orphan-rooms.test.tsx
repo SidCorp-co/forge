@@ -94,6 +94,21 @@ describe("a room whose project was deleted, told apart", () => {
     expect(row.textContent).toMatch(/nothing said/);
   });
 
+  it("gives each row's control the facts that tell it apart, not only its title", () => {
+    rooms = [
+      room({ id: "r1", title: null, deletedProjectNames: ["Billing"] }),
+      room({ id: "r2", title: null, deletedProjectNames: ["Invoicing"], lastMessageAt: null }),
+    ];
+    render(<RoomsWithoutAProject orgId="o1" onOpen={() => {}} />);
+    const names = screen
+      .getAllByRole("button", { name: /^Open .*, read-only: / })
+      .map((button) => button.getAttribute("aria-label"));
+    expect(names).toHaveLength(2);
+    expect(new Set(names).size).toBe(2);
+    expect(names[0]).toBe("Open Untitled conversation, read-only: Billing (deleted) · opened 3 Oct · last message 5 Oct");
+    expect(names[1]).toBe("Open Untitled conversation, read-only: Invoicing (deleted) · opened 3 Oct · nothing said");
+  });
+
   it("opens the room when its row is chosen", () => {
     const onOpen = vi.fn();
     rooms = [room()];

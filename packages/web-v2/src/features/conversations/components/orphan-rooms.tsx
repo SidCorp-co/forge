@@ -77,7 +77,7 @@ export function RoomsWithoutAProject({
           >
             <button
               type="button"
-              aria-label={`Open ${orphanTitleOf(room)}, read-only`}
+              aria-label={`Open ${orphanTitleOf(room)}, read-only: ${orphanRoomFacts(room)}`}
               aria-current={openId === room.id ? "true" : undefined}
               className="min-w-0 flex-1 py-1 text-left"
               onClick={() => onOpen(room)}
