@@ -215,8 +215,7 @@ const corsMiddleware = cors({
     PAT_ACCEPTED_PERMISSIONS_HEADER,
   ],
 });
-app.use('/api/*', corsMiddleware);
-app.use('/mcp', corsMiddleware);
+for (const at of ['/api/*', '/mcp']) app.use(at, corsMiddleware);
 app.use(
   '/api/*',
   answerUnservedPath(() => app),

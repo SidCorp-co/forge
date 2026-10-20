@@ -181,7 +181,9 @@ describe('CoolifyClient', () => {
     const res = await client.getDeployment('a/b');
     expect(res.status).toBe('finished');
   });
+});
 
+describe('CoolifyClient reading a resource it was not given', () => {
   it('throws a clear not-found (not a bare 404) when the uuid is absent from the list', async () => {
     const fetchImpl = makeFetch(
       () =>
