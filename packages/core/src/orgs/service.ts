@@ -23,24 +23,37 @@ export const PERSONAL_WORKSPACE_NAME = 'Personal';
  */
 export async function deleteOrganization(orgId: string): Promise<void> {
   await db.transaction(async (tx) => {
-    const elsewhere = alias(organizationMembers, 'elsewhere');
-    const own = await tx
-      .select({ id: users.id, handle: organizationMembers.handle })
+    // Lock the agents first, then read their memberships in a statement of its own: one that waited
+    // on a lock sees a membership committed meanwhile, which the locking statement's snapshot does not.
+    const candidates = await tx
+      .select({ id: users.id })
       .from(organizationMembers)
       .innerJoin(users, eq(users.id, organizationMembers.userId))
-      .where(
-        and(
-          eq(organizationMembers.orgId, orgId),
-          eq(users.kind, 'agent'),
-          notExists(
-            tx
-              .select({ userId: elsewhere.userId })
-              .from(elsewhere)
-              .where(and(eq(elsewhere.userId, users.id), ne(elsewhere.orgId, orgId))),
-          ),
-        ),
-      )
+      .where(and(eq(organizationMembers.orgId, orgId), eq(users.kind, 'agent')))
       .for('update', { of: users });
+    const elsewhere = alias(organizationMembers, 'elsewhere');
+    const own =
+      candidates.length === 0
+        ? []
+        : await tx
+            .select({ id: users.id, handle: organizationMembers.handle })
+            .from(organizationMembers)
+            .innerJoin(users, eq(users.id, organizationMembers.userId))
+            .where(
+              and(
+                eq(organizationMembers.orgId, orgId),
+                inArray(
+                  users.id,
+                  candidates.map((c) => c.id),
+                ),
+                notExists(
+                  tx
+                    .select({ userId: elsewhere.userId })
+                    .from(elsewhere)
+                    .where(and(eq(elsewhere.userId, users.id), ne(elsewhere.orgId, orgId))),
+                ),
+              ),
+            );
     const ids = own.map((a) => a.id);
     if (ids.length > 0) {
       const [held] = await tx

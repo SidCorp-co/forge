@@ -103,6 +103,22 @@ async function agentsOfTheTeam() {
   return { handle: handle.userId, made: made.userId, shared: shared.userId };
 }
 
+/** Returns once some session waits on a lock `pid` holds, or `pending` settled first. */
+async function blockedBy(pid: number, pending: Promise<unknown>): Promise<void> {
+  let settled = false;
+  pending.then(
+    () => (settled = true),
+    () => (settled = true),
+  );
+  for (let tries = 0; tries < 250 && !settled; tries += 1) {
+    const waiting = await harness.db.execute(
+      sql`SELECT 1 FROM pg_stat_activity WHERE ${pid}::int = ANY(pg_blocking_pids(pid))`,
+    );
+    if (waiting.length) return;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+}
+
 describe('deleting an organization takes its own agent accounts with it', () => {
   it('deletes the agents that belonged to it alone, and keeps one another organization holds', async () => {
     const agents = await agentsOfTheTeam();
@@ -162,5 +178,36 @@ describe('deleting an organization takes its own agent accounts with it', () => 
     expect(Number(left[0]?.n)).toBe(1);
     expect(await userExists(agents.handle)).toBe(true);
     expect(await userExists(agents.made)).toBe(true);
+  });
+
+  // Review F1: an agent joining a second organization while the delete waits for it stays.
+  it('keeps an agent that joined another organization while the delete waited on it', async () => {
+    const { agent } = await accounts.createAgentAccount({
+      orgId: teamId,
+      projectIds: [projectId],
+      handle: 'late-bot',
+    });
+    await harness.db.execute(sql`DELETE FROM projects WHERE id = ${projectId}`);
+    const postgres = (await import('postgres')).default;
+    const client = postgres(process.env.DATABASE_URL ?? '', { max: 1 });
+    const a = await client.reserve();
+    try {
+      const [row] = await a`SELECT pg_backend_pid() AS pid`;
+      await a`BEGIN`;
+      await a`INSERT INTO organization_members (org_id, user_id, role, handle)
+              VALUES (${otherTeamId}, ${agent.userId}, 'member', 'late-bot')`;
+      const deleting = deleteOrg(teamId);
+      await blockedBy(Number(row?.pid), deleting);
+      await a`COMMIT`;
+      expect((await deleting).status).toBe(204);
+    } finally {
+      a.release();
+      await client.end({ timeout: 5 });
+    }
+    expect(await userExists(agent.userId)).toBe(true);
+    const kept = await harness.db.execute<{ org_id: string }>(
+      sql`SELECT org_id FROM organization_members WHERE user_id = ${agent.userId}`,
+    );
+    expect(kept.map((r) => r.org_id)).toEqual([otherTeamId]);
   });
 });
