@@ -46,6 +46,7 @@ describe("QuestionsPane", () => {
     render(<QuestionsPane scope={scope} />);
     expect(screen.getByText("Nothing is waiting on a person")).toBeInTheDocument();
     expect(screen.getByText(/waits on that issue's row in the Issues list/)).toBeInTheDocument();
+    expect(screen.getByText(/one work with no issue stopped on, appears here/)).toBeInTheDocument();
   });
 
   it("sends a run row's link to an open decision on an issue straight to that issue", () => {

@@ -3,9 +3,9 @@
  *
  * A release batch is held on the question (`release-batch/decision-hold.ts`) and its run goes on
  * under a held successor. Any other pool job fails without a retry, since the same work would stop
- * on the same question, and what it asked is put to the project's people at project level. Either
- * way the question is on the tracker where the people who owe the answer read, and no identical job
- * is queued for the same unchanged work.
+ * on the same question. What it asked is the issue's question (ISS-1257's marker, so no sweep takes
+ * the issue for idle), or the project's where the job carries no issue (ISS-1366); no identical job
+ * is queued for the same work.
  */
 
 import { db } from '../db/client.js';
@@ -40,26 +40,29 @@ export class BlockedJobMissing extends Error {
   }
 }
 
-async function carryAtProjectLevel(
+/** Ask what the job asked on the issue it works, else at project level; answers where it stands. */
+async function carryQuestion(
   job: NonNullable<Awaited<ReturnType<typeof readJob>>>,
   asked: BlockedBody['asked'],
-): Promise<string[]> {
+): Promise<{ ids: string[]; issueId: string | null }> {
   const who = `${job.type} agent`;
   const panes = paneQuestions(asked, who);
   const ids = panes.map((_, i) => questionIdFor(job.id, i));
+  let issueId: string | null = null;
   await db.transaction(async (tx) => {
     for (const [i, pane] of panes.entries()) {
-      await writePaneQuestion(tx, {
+      const at = await writePaneQuestion(tx, {
         id: ids[i] as string,
         projectId: job.projectId,
-        issueId: null,
+        issueId: job.issueId,
         pane,
         who,
         agentSessionId: job.agentSessionId,
       });
+      issueId ??= at;
     }
   });
-  return ids;
+  return { ids, issueId };
 }
 
 /**
@@ -77,6 +80,7 @@ export async function endBlockedJob(
 
   let held: HeldDecision | null = null;
   let questionIds: string[] = [];
+  let askedOn: string | null = null;
   let error = body.error;
   if (full.type === RELEASE_JOB_TYPE && body.asked.kind === 'unread') {
     // Refused by name rather than written as a question nobody can answer (ISS-1421 r6).
@@ -86,7 +90,7 @@ export async function endBlockedJob(
     held = await holdBlockedRelease(full, body.asked);
     questionIds = held?.questionIds ?? [];
   } else {
-    questionIds = await carryAtProjectLevel(full, body.asked);
+    ({ ids: questionIds, issueId: askedOn } = await carryQuestion(full, body.asked));
   }
 
   await failOccupyingJob(
@@ -106,7 +110,7 @@ export async function endBlockedJob(
     status: 'failed',
     heldJobId: held?.heldJobId ?? null,
     questionIds,
-    issueId: held?.issueId ?? null,
+    issueId: held?.issueId ?? askedOn,
     replayed: held?.replayed ?? false,
   };
 }

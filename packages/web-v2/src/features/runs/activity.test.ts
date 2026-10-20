@@ -428,6 +428,17 @@ describe("round 19: held, cancelled, question and control-free remedies", () => 
     expect(line?.action).toBe("Answer its question on the Questions tab.");
   });
 
+  // The master's ruling: a job working an issue asks on that issue, which the issue page shows.
+  it("sends a question stop on an issue's run to the issue page, not the Questions tab", () => {
+    const [line] = deriveActivityFeed(
+      [attempt({ status: "failed", failureCause: "stopped_on_question", failureReason: "stopped_on_question" })],
+      undefined,
+      null,
+      true,
+    );
+    expect(line?.action).toBe("Answer its question on its issue's page.");
+  });
+
   it.each([
     "heartbeat_timeout",
     "agent_exited_without_result",

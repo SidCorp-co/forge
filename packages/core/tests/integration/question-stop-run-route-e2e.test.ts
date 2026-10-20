@@ -162,12 +162,16 @@ describe('a job that stopped on a question reads so on the run route (criteria 1
     );
     expect(body.projectSlug).toBe(project?.slug);
 
-    // Its question stays the project's, read on the Questions tab, naming the issue and the work —
-    // its own job's, though a newer job elsewhere has a session too.
+    // Its question is its issue's (the master's ruling), so the Questions tab, which lists the
+    // project's own, holds none; it names the work that asked — its own job, though a newer job
+    // elsewhere has a session too.
     await laterJobElsewhere(runId);
     const { projectQuestionsFor } = await import('../../src/questions/read.js');
-    const page = await projectQuestionsFor(projectId, ownerId, 'open', { limit: 10 }, true);
-    expect(page?.questions[0]?.issueId).toBeNull();
+    const page = await projectQuestionsFor(projectId, ownerId, 'open', { limit: 10 });
+    expect(page?.questions[0]?.issueId).toBe(issueId);
+    expect(
+      (await projectQuestionsFor(projectId, ownerId, 'open', { limit: 10 }, true))?.questions,
+    ).toEqual([]);
     expect(page?.questions[0]?.askedBy).toEqual({
       jobType: 'drive',
       issueId,

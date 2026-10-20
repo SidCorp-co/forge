@@ -130,11 +130,20 @@ function outcomeOf(a: PipelineRunAttempt, cause: FailureCause | null, viewerId: 
 
 /** A person's remedy, naming no control the drawer lacks. A later attempt nobody cancelled is core's
  *  resend, so it asks nothing here; a cancelled one ended the resend, and the remedy stands. */
-function actionOf(a: PipelineRunAttempt, cause: FailureCause | null, later: readonly PipelineRunAttempt[]): string | null {
+/** Where a job's question stands: on the issue it worked, which the issue page shows (ISS-1228). */
+const QUESTION_ON_ISSUE = "Answer its question on its issue's page.";
+
+function actionOf(
+  a: PipelineRunAttempt,
+  cause: FailureCause | null,
+  later: readonly PipelineRunAttempt[],
+  onIssue: boolean,
+): string | null {
   if (a.status === "held") return a.hold && !a.hold.resumesItself ? HELD_STUCK_ACTION : null;
   if (OPEN_STATUSES.has(a.status) || a.status === "cancelled" || !cause) return null;
   const resent = later.find((b) => b.status !== "cancelled");
   if (resent) return nextAttemptText(resent.status === "held" ? "held" : "sent");
+  if (cause === "stopped_on_question" && onIssue) return QUESTION_ON_ISSUE;
   if (!neverTook(a, cause)) return failureReasonAction(cause, null, a.ranAt != null);
   const box = boxOf(a);
   return box ? `Check that ${box} is online and its runner is running.` : "Check that a box bound to this project is online.";
@@ -155,12 +164,14 @@ function verbFor(a: PipelineRunAttempt, position: number, repeats: number, runWo
 
 /**
  * The run's attempts as feed lines. `blockedWord` is the run's word where a box reports it blocked:
- * its open attempt reads that word too, so the drawer's header and its activity never part.
+ * its open attempt reads that word too, so the drawer's header and its activity never part. `onIssue`
+ * says the run works an issue, where a job's question then stands.
  */
 export function deriveActivityFeed(
   attempts: PipelineRunAttempt[] | undefined,
   blockedWord?: string,
   viewerId: string | null = null,
+  onIssue = false,
 ): ActivityEntry[] {
   const entries: ActivityEntry[] = [];
   let lastSignature: string | null = null;
@@ -170,7 +181,7 @@ export function deriveActivityFeed(
     const position = index + 1;
     const cause = causeOf(a);
     const outcome = outcomeOf(a, cause, viewerId);
-    const action = actionOf(a, cause, list.slice(index + 1));
+    const action = actionOf(a, cause, list.slice(index + 1), onIssue);
     const sig = signature(a, cause, outcome);
     const previous = entries[entries.length - 1];
 

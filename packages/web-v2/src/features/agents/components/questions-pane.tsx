@@ -151,7 +151,7 @@ export function QuestionsPane({ scope, focusQuestionId }: QuestionsPaneProps) {
         <EmptyState
           titleId={EMPTY_TITLE_ID}
           title="Nothing is waiting on a person"
-          message="A question a master asks, or one an issue's work stopped on, appears here. A question on an issue waits on that issue's row in the Issues list, and is answered on the issue."
+          message="A question a master asks, or one work with no issue stopped on, appears here. A question on an issue waits on that issue's row in the Issues list, and is answered on the issue."
         />
       </div>
     );

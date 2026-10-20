@@ -88,7 +88,12 @@ export function ActivityTab({ run, loading, error, onRetry, sessionHref }: Activ
   }
 
   const word = runReadingChip(run, now);
-  const entries = deriveActivityFeed(run.attempts, run.reading === "blocked" ? word.label : undefined, user?.id ?? null);
+  const entries = deriveActivityFeed(
+    run.attempts,
+    run.reading === "blocked" ? word.label : undefined,
+    user?.id ?? null,
+    !!run.issueId,
+  );
   const open = run.status === "running" || run.status === "paused";
   // An open run its session works without jobs: one that has started, or a run session or master's.
   const sessionWorked = runHasStarted(run) || run.lane === "run_session" || run.lane === "master";
