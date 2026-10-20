@@ -100,7 +100,7 @@ describe('transitionIssueStatus — run-closing decoupled from terminal-for-disp
     // A person's close cuts short any job still working, which then reads why (ISS-1228 round 21).
     expect(closeOpenRunForIssueMock).toHaveBeenCalledWith(ISSUE_ID, 'completed', {
       cause: 'issue_closed',
-      moverDeviceId: null,
+      spares: 'none',
     });
   });
 

@@ -57,7 +57,12 @@ beforeEach(async () => {
 });
 
 /** An issue in progress whose run's job a box is working, with its live session. */
-async function workedIssue(): Promise<{ issueId: string; runId: string; jobId: string; sessionId: string }> {
+async function workedIssue(): Promise<{
+  issueId: string;
+  runId: string;
+  jobId: string;
+  sessionId: string;
+}> {
   const issueId = randomUUID();
   await harness.db.execute(sql`
     INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id)
@@ -84,7 +89,10 @@ async function workedIssue(): Promise<{ issueId: string; runId: string; jobId: s
   return { issueId, runId, jobId, sessionId };
 }
 
-async function drop(issueId: string, actor: Parameters<typeof import('../../src/issues/apply-transition.js').transitionIssueStatus>[2]) {
+async function drop(
+  issueId: string,
+  actor: Parameters<typeof import('../../src/issues/apply-transition.js').transitionIssueStatus>[2],
+) {
   const { transitionIssueStatus } = await import('../../src/issues/apply-transition.js');
   await transitionIssueStatus(
     { id: issueId, projectId, status: 'in_progress', reopenCount: 0 },
@@ -147,5 +155,15 @@ describe('a job its issue’s end cut off reads cut off (criteria 216, 217)', ()
 
     const { job } = await rows(worked);
     expect(job).toEqual({ status: 'cancelled', failure_reason: 'issue_dropped' });
+  });
+
+  it('stops the run an agent account dropped, and ends its job done as that step’s own act', async () => {
+    const worked = await workedIssue();
+    await drop(worked.issueId, { type: 'user', id: ownerId, agency: 'agent' });
+
+    const { run, job, session } = await rows(worked);
+    expect(run?.status).toBe('cancelled');
+    expect(job?.status).toBe('done');
+    expect(session?.status).toBe('completed');
   });
 });

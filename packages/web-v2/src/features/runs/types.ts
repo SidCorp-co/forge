@@ -84,7 +84,6 @@ export interface PipelineRunAttempt {
   hold?: RunHold | null;
   cancelledBy?: { kind: "person" | "agent" | "core"; userId?: string | null; name: string | null } | null;
   questionOn?: "issue" | "project" | null;
-  /** Who answered the question this job stopped on, and when; null until a person has. */
   questionAnswered?: { userId: string | null; name: string | null; at: string } | null;
 }
 

@@ -15,12 +15,13 @@ export type CascadeReason =
   | 'pipeline_failed'
   | IssueCut['cause'];
 
-/** An issue entering Dropped or Closed while a job of its run still works (ISS-1228). The box whose
- *  agent made the move is running the step that ended it, so its job ends `done` (ISS-352); every
- *  other live job was cut off and ends `cancelled` with the cause, never as a completion. */
+/** An issue entering Dropped or Closed while a job of its run still works (ISS-1228). The jobs the
+ *  mover's own step is running end `done` (ISS-352): those on its box, or every one when an agent
+ *  account moved it and names no box. Every other live job was cut off and ends `cancelled` with the
+ *  cause, never as a completion. */
 export interface IssueCut {
   cause: 'issue_dropped' | 'issue_closed';
-  moverDeviceId: string | null;
+  spares: { deviceId: string } | 'none' | 'every';
 }
 
 export interface CascadeResult {
@@ -42,9 +43,11 @@ export async function cascadeCancelChildJobs(
   cut?: IssueCut,
 ): Promise<CascadeResult> {
   if (!cut) return endLiveJobs(tx, runId, reason);
-  const own = cut.moverDeviceId
-    ? await endLiveJobs(tx, runId, 'pipeline_completed', eq(jobs.deviceId, cut.moverDeviceId))
-    : null;
+  if (cut.spares === 'every') return endLiveJobs(tx, runId, 'pipeline_completed');
+  const own =
+    cut.spares === 'none'
+      ? null
+      : await endLiveJobs(tx, runId, 'pipeline_completed', eq(jobs.deviceId, cut.spares.deviceId));
   const cutOff = await endLiveJobs(tx, runId, cut.cause);
   if (!own) return cutOff;
   for (const [s, d] of own.deviceBySession) cutOff.deviceBySession.set(s, d);
@@ -84,11 +87,7 @@ async function endLiveJobs(
           failureKind: issueCut ? null : 'infra',
           failureReason: reason,
         },
-    where: and(
-      eq(jobs.pipelineRunId, runId),
-      inArray(jobs.status, [...LIVE_JOB_STATUSES]),
-      scope,
-    ),
+    where: and(eq(jobs.pipelineRunId, runId), inArray(jobs.status, [...LIVE_JOB_STATUSES]), scope),
     fromStatus: 'active',
     reason,
     actor: { type: 'system' },

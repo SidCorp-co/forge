@@ -150,17 +150,23 @@ async function questionsAsked(
             at: step.answeredAt,
           };
     const prior = on.get(jobId);
-    on.set(jobId, { on: q.issueId ? 'issue' : 'project', answered: answered ?? prior?.answered ?? null });
+    on.set(jobId, {
+      on: q.issueId ? 'issue' : 'project',
+      answered: answered ?? prior?.answered ?? null,
+    });
   }
   return on;
 }
 
 /** The step a person answered, on a question that reads answered; none on one still open or voided. */
-function answeredStep(q: { status: string; steps: readonly QuestionStep[] }): QuestionStep | undefined {
+function answeredStep(q: {
+  status: string;
+  steps: readonly QuestionStep[];
+}): QuestionStep | undefined {
   return q.status === 'answered' ? q.steps.filter((s) => s.answeredAt).at(-1) : undefined;
 }
 
-/** Each answering account's name as a person reads it, never an address (ISS-1229). */
+/** The display name each answering account goes by, keyed by its id. */
 async function namesOf(userIds: readonly string[]): Promise<Map<string, string>> {
   if (userIds.length === 0) return new Map();
   const rows = await db

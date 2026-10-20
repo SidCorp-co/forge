@@ -56,7 +56,10 @@ beforeEach(async () => {
   deviceId = (await pairDevice({ ownerId, name: 'box-a', platform: 'linux' })).device.id;
 });
 
-type Attempt = { questionOn: string | null; questionAnswered: { userId: string | null; name: string | null; at: string } | null };
+type Attempt = {
+  questionOn: string | null;
+  questionAnswered: { userId: string | null; name: string | null; at: string } | null;
+};
 
 async function attemptsOf(runId: string): Promise<Attempt[]> {
   const { signUserToken } = await import('../../src/auth/jwt.js');
@@ -96,17 +99,22 @@ describe('an answered question names who answered it (criterion 207)', () => {
       error: 'forge-runner: the pane has been stopped on a question only a human can answer for 2m',
       asked: {
         kind: 'dialog',
-        questions: [{ question: 'Which database?', options: [{ label: 'Primary' }, { label: 'Replica' }] }],
+        questions: [
+          { question: 'Which database?', options: [{ label: 'Primary' }, { label: 'Replica' }] },
+        ],
       },
     });
     const questionId = ended.questionIds[0];
     if (!questionId) throw new Error('the job must have asked');
 
-    expect((await attemptsOf(runId))[0]).toMatchObject({ questionOn: 'issue', questionAnswered: null });
+    expect((await attemptsOf(runId))[0]).toMatchObject({
+      questionOn: 'issue',
+      questionAnswered: null,
+    });
 
-    const [row] = await harness.db.execute<{ steps: Array<{ round: number; options?: Array<{ id: string }> }> }>(
-      sql`SELECT steps FROM agent_questions WHERE id = ${questionId}`,
-    );
+    const [row] = await harness.db.execute<{
+      steps: Array<{ round: number; options?: Array<{ id: string }> }>;
+    }>(sql`SELECT steps FROM agent_questions WHERE id = ${questionId}`);
     const step = row?.steps.at(-1);
     const optionId = step?.options?.[0]?.id;
     if (!step || !optionId) throw new Error('the question must offer a choice');

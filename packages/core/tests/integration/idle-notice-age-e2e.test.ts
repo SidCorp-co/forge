@@ -1,7 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { createTestProjectMember } from '../helpers/index.js';
 import { registerIdleFixture } from '../helpers/idle-fixture.js';
+import { createTestProjectMember } from '../helpers/index.js';
 
 /**
  * ISS-1228 round 21 (judge-67, criterion 219): an idle notice read "It has read Open for 18 minutes"
@@ -27,7 +27,11 @@ beforeEach(async () => {
 
 describe('an idle notice counts from entering the status to reaching its reader (criterion 219)', () => {
   it('tells the age at the time the bell shows, counted from the entry, not from the first sighting', async () => {
-    await createTestProjectMember(fx.db, { userId: fx.ownerId, projectId: fx.projectId, role: 'admin' });
+    await createTestProjectMember(fx.db, {
+      userId: fx.ownerId,
+      projectId: fx.projectId,
+      role: 'admin',
+    });
     await fx.seedRunner('online');
     const entered = new Date('2026-10-20T13:54:01.000Z');
     const issue = await fx.seedIssue({ status: 'open', updatedAt: entered.toISOString() });

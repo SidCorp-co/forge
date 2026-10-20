@@ -501,6 +501,23 @@ describe("what was answered or cut off reads so", () => {
     expect(first?.action).toBe("Answered by Ann Lee, 1m ago. Core already sent it again, so nothing is asked of you.");
   });
 
+  it("never folds two questions with different answers into one line", () => {
+    const at = new Date(Date.now() - 60_000).toISOString();
+    const later = new Date(Date.now() - 30_000).toISOString();
+    const thenAsked = deriveActivityFeed([
+      asked({ jobId: "j-1", questionAnswered: { userId: "u-1", name: "Ann Lee", at } }),
+      asked({ jobId: "j-2", questionAnswered: null }),
+    ]);
+    expect(thenAsked).toHaveLength(2);
+    expect(thenAsked[0]?.action).toMatch(/^Answered by Ann Lee, 1m ago\./);
+    expect(thenAsked[1]?.action).toBe("Answer its question on its issue's page.");
+    const twoPeople = deriveActivityFeed([
+      asked({ jobId: "j-1", questionAnswered: { userId: "u-1", name: "Ann Lee", at } }),
+      asked({ jobId: "j-2", questionAnswered: { userId: "u-2", name: "Bo Tran", at: later } }),
+    ]);
+    expect(twoPeople.map((e) => e.action?.split(",")[0])).toEqual(["Answered by Ann Lee", "Answered by Bo Tran"]);
+  });
+
   it("shows no box for an attempt no box took, and says so where its outcome does not", () => {
     const [cancelled] = deriveActivityFeed([
       attempt({ status: "cancelled", deviceId: null, deviceName: null, ranAt: null, cancelledBy: { kind: "person", userId: "u-1", name: "Ann Lee" } }),

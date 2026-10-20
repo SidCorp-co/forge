@@ -171,9 +171,15 @@ function actionOf(
   return box ? `Check that ${box} is online and its runner is running.` : "Check that a box bound to this project is online.";
 }
 
-/** Two attempts collapse into one line only when every readable field agrees. */
+/** Two attempts collapse into one line only when every readable field agrees, their answers included. */
 function signature(a: PipelineRunAttempt, cause: FailureCause | null, outcome: string): string {
-  return [a.jobType, a.status, stateVerb(a) ?? "", cause ?? "", outcome, boxOf(a) ?? ""].join("\0");
+  const answer = cause === "stopped_on_question" ? answerKey(a) : "";
+  return [a.jobType, a.status, stateVerb(a) ?? "", cause ?? "", outcome, boxOf(a) ?? "", answer].join("\0");
+}
+
+function answerKey(a: PipelineRunAttempt): string {
+  const answered = a.questionAnswered;
+  return answered ? `${answered.userId ?? ""}@${answered.at}` : "unanswered";
 }
 
 function verbFor(a: PipelineRunAttempt, position: number, repeats: number, runWord?: string): string {

@@ -5,7 +5,6 @@
  * that stay stuck, three passes read 100 each, the first 250 reads name 250 different issues, and the
  * third pass takes the 50 never read before any it has read already.
  */
-import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
