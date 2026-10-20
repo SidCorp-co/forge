@@ -22,6 +22,7 @@ describe('what a finish says on an issue it could not close (ISS-1381)', () => {
       code: 'OPEN_QUESTIONS',
       detail: 'answer them first',
       blocking: ['blocking run r-9', 'open question q-1', 'open question q-2'],
+      steps: [],
     });
     const said = refusedCloseComment({
       refusal,
@@ -128,6 +129,20 @@ describe('what a finish says on an issue it could not close (ISS-1381)', () => {
     expect(said).toContain('This batch recorded a promotion; abort it to settle.');
     expect(said).toContain('Clear the reason above first');
     expect(said).not.toContain('The issue is at');
+  });
+});
+
+describe('what a finish tells the release agent of a refused close (ISS-1421 r16)', () => {
+  it("carries each of the refusal's steps on a line of its own after its sentences", () => {
+    const refused = new TransitionError('CLOSE_REQUIRES_SHIPPED', "This issue can't close yet.", {
+      steps: { merged_mark: 'Mark it merged carrying `data.landing`.' },
+    });
+    expect(closeFailureText(closeRefusalOf(refused))).toBe(
+      "CLOSE_REQUIRES_SHIPPED: This issue can't close yet.\nMark it merged carrying `data.landing`.",
+    );
+    expect(closeFailureText(closeRefusalOf(new TransitionError('NO_OP', 'Nothing moved.')))).toBe(
+      'NO_OP: Nothing moved.',
+    );
   });
 });
 

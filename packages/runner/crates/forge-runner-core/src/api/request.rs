@@ -297,9 +297,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_dropped_post_reports_delivery_unknown_not_a_retry() {
-        let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = l.local_addr().unwrap();
-        drop(l);
+        let (_held, addr) = crate::transport::lifecycle::testing::refused_addr().await;
         let c = CoreClient::new(format!("http://{addr}"), "tok".to_string());
         let mut r = req("issues");
         r.method = "POST".into();
@@ -313,9 +311,7 @@ mod tests {
 
     #[tokio::test]
     async fn an_unreachable_core_is_retryable_and_never_zero() {
-        let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = l.local_addr().unwrap();
-        drop(l);
+        let (_held, addr) = crate::transport::lifecycle::testing::refused_addr().await;
         let c = CoreClient::new(format!("http://{addr}"), "tok".to_string());
         let r = run(&c, &req("issues")).await;
         assert_eq!(r.outcome.exit_code, 9);

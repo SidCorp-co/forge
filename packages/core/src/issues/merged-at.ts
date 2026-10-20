@@ -23,8 +23,7 @@ export interface ShippedRuleRefusal {
 
 const CLOSE_INSTEAD = 'If it turned out not to be work, move it to Dropped instead.';
 
-const UNMARK_FIRST =
-  'Take the mark back with `forge_issues` `unmark` first, since the first mark stands. ';
+const UNMARK_FIRST = 'The first mark stands, so `unmark` it first with `forge_issues` `unmark`. ';
 
 const MARK_WITH_COMMIT =
   'Mark it merged with `forge_issues` `mark_merged`, naming the commit it landed at in ' +

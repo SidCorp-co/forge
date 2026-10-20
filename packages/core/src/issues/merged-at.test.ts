@@ -126,7 +126,7 @@ describe('refuseUnshippedClose — a close on a project whose work lands outside
       useInstead: 'dropped',
     });
     const steps = refusal?.details.steps as Record<string, string> | undefined;
-    expect(steps?.merged_mark).toMatch(/^Take the mark back with `forge_issues` `unmark` first/);
+    expect(steps?.merged_mark).toMatch(/^The first mark stands, so `unmark` it first/);
     expect(steps?.merged_mark).toContain('`data.landing`');
   });
 

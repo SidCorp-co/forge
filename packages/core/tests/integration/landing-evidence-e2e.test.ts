@@ -81,7 +81,7 @@ describe('a project whose work lands outside git (kind website)', () => {
     const refusal = await refusalOf(() => close(w, id));
     expect(refusal.code).toBe('CLOSE_REQUIRES_SHIPPED');
     expect(refusal.message).toContain('`mark_merged` carrying `data.landing`');
-    expect(refusal.message).toContain('`unmark` first');
+    expect(refusal.message).toContain('`unmark` it first');
     // Outside git the mark is short of a landing, never of a commit Forge did not watch land.
     expect(refusal.message).toContain('its mark does not say where the work landed');
     expect(refusal.message).not.toMatch(

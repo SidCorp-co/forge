@@ -175,6 +175,60 @@ pub async fn turn_is_job_end(client: &CoreClient, job_id: &str) -> bool {
     }
 }
 
+/// What a test reaching an unreachable core needs: an address whose connect is refused.
+#[cfg(test)]
+pub(crate) mod testing {
+    use std::io::ErrorKind;
+    use std::time::{Duration, Instant};
+
+    /// How long a connect may go unrefused before the test fails, naming the
+    /// address and what the connect got instead.
+    const REFUSED_WITHIN: Duration = Duration::from_secs(10);
+
+    /// An address whose connect has been seen refused, and the socket that
+    /// keeps it so for as long as the caller holds it.
+    ///
+    /// A listener that is bound and dropped is not closed while a process
+    /// forked in that moment (any sibling test's `Command::spawn`, tmux, git
+    /// or sh) holds its descriptor until exec: the port stays LISTEN and a
+    /// connect is accepted. So nothing here ever listens. On Linux and Windows
+    /// the port stays bound, which refuses every connect and lends the port to
+    /// no sibling's listener. macOS answers a connect to such a socket by
+    /// timing out (ISS-1316's CI), so there the port is released. Either way
+    /// the address is handed out only once a connect to it is refused.
+    pub(crate) async fn refused_addr() -> (Option<tokio::net::TcpSocket>, std::net::SocketAddr) {
+        let socket = tokio::net::TcpSocket::new_v4().unwrap();
+        socket.bind("127.0.0.1:0".parse().unwrap()).unwrap();
+        let addr = socket.local_addr().unwrap();
+        let held = if cfg!(target_os = "macos") {
+            drop(socket);
+            None
+        } else {
+            Some(socket)
+        };
+        let deadline = Instant::now() + REFUSED_WITHIN;
+        loop {
+            let probe = tokio::time::timeout(
+                Duration::from_millis(500),
+                tokio::net::TcpStream::connect(addr),
+            )
+            .await;
+            let answered = match probe {
+                Ok(Err(e)) if e.kind() == ErrorKind::ConnectionRefused => return (held, addr),
+                Ok(Err(e)) => format!("failed with {e}"),
+                Ok(Ok(_)) => String::from("was accepted"),
+                Err(_) => String::from("timed out"),
+            };
+            assert!(
+                Instant::now() < deadline,
+                "a connect to {addr} still {answered} {}s after nothing listened on it",
+                REFUSED_WITHIN.as_secs()
+            );
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -228,10 +282,7 @@ mod tests {
 
     #[tokio::test]
     async fn an_unreachable_core_finishes_the_job() {
-        // Bind then drop, so the port is closed and the connect refuses.
-        let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = l.local_addr().unwrap();
-        drop(l);
+        let (_held, addr) = testing::refused_addr().await;
         assert!(turn_is_job_end(&client(format!("http://{addr}")), "job-1").await);
     }
 
