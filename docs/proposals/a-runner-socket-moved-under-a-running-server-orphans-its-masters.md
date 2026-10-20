@@ -21,7 +21,11 @@ placement out until the daemon restarted). Two reads answer it, in `missing_sock
 A readable listing decides alone, because a tmux server holds its listening socket until it exits;
 the process check then only supplies the pid. Where no listing is read, a matching process stands
 in for it. A server found this way refuses the placement, naming the socket, the panes still placed
-on it, and the server's pid with how to send it `SIGUSR1`, which makes tmux recreate the file. A
+on it, and how to send the server `SIGUSR1`, which makes tmux recreate the file: `kill -USR1`
+with the pid the process check found, or, where it found none, the `pgrep` that finds it. A
+default server whose recorded pid has since exited or passed to another process is never named
+to signal; the line says no tmux server holds that pid now and names `ss -xlp src <path>`, which
+finds the process still listening on the path. A
 readable listing with no listener, or off Linux a process check that ran and found none, means the
 server has ended: the panes placed on it are logged once as ended with it, and the placement starts
 a fresh server. The record also drops a pane wherever tmux reports it gone, by `has_session` or by a
