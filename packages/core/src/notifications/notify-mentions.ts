@@ -1,6 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, users } from '../db/schema.js';
+import { personName } from '../lib/person-name.js';
 import { logger } from '../logger.js';
 import type { HooksBus } from '../pipeline/hooks.js';
 import { emitNotification } from './emit.js';
@@ -23,17 +24,16 @@ export function registerNotifyMentionsSubscriber(bus: HooksBus): void {
       logger.error({ err, issueId: p.issueId }, 'notify-mentions: issue lookup failed');
     }
 
-    // Resolve the actor's email-local-part once for the title.
-    let actorHandle = 'someone';
+    // The mentioner's slot is filled as every person slot is, never from their address (ISS-1229 r20).
+    let actorName = personName(null, 'start');
     if (actorId) {
       try {
         const [row] = await db
-          .select({ email: users.email })
+          .select({ displayName: users.displayName })
           .from(users)
           .where(eq(users.id, actorId))
           .limit(1);
-        const local = row?.email.split('@', 1)[0];
-        if (local) actorHandle = `@${local}`;
+        actorName = personName(row?.displayName, 'start');
       } catch (err) {
         logger.error({ err, actorId }, 'notify-mentions: actor lookup failed');
       }
@@ -46,7 +46,7 @@ export function registerNotifyMentionsSubscriber(bus: HooksBus): void {
           userId,
           projectId: p.projectId,
           type: 'mention',
-          title: `${actorHandle} mentioned you in "${issueTitle}"`,
+          title: `${actorName} mentioned you in "${issueTitle}"`,
           issueId: p.issueId,
         });
       } catch (err) {

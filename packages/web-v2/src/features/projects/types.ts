@@ -76,7 +76,7 @@ export interface ProjectHealthRow {
   spend24hUsd: number;
   /** True total membership count. */
   memberCount: number;
-  /** Up to 5 email-derived avatar initials. */
+  /** Up to 5 avatar initials, from each member's name as core calls them, never their address. */
   members: string[];
   /** ISO timestamp of the most recent issue/run activity, or `null`. */
   lastActivityAt: string | null;

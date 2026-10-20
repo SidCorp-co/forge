@@ -17,6 +17,7 @@ import {
 } from '../jobs/loop-monitor-axis.js';
 import { loadVisibleProjectIds } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
+import { personName } from '../lib/person-name.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { type BlockerRow, readHealthAggregates } from './health-aggregates.js';
 import { projectHealthListSchema, readProjectHealth } from './health-routes-reference.js';
@@ -61,7 +62,7 @@ interface ProjectHealthRow {
   spend24hUsd: number;
   /** True total project membership count. */
   memberCount: number;
-  /** Up to 5 email-derived avatar initials (no display-name column exists). */
+  /** Up to 5 avatar initials, each from the name `personName` gives the member, never their address. */
   members: string[];
   /** ISO timestamp of the most recent issue/run activity, or `null`. */
   lastActivityAt: string | null;
@@ -81,10 +82,17 @@ interface ProjectHealthRow {
   }>;
 }
 
-/** First 2 chars of the email local-part, uppercased — the avatar initials. */
-function emailInitials(email: string): string {
-  const local = email.split('@')[0] ?? email;
-  return local.slice(0, 2).toUpperCase();
+/** Two letters of what the member is called: one from each of the first two words, else the first two. */
+function memberInitials(displayName: string | null): string {
+  const words = personName(displayName).split(/\s+/).filter(Boolean);
+  const letters =
+    words.length > 1
+      ? words
+          .slice(0, 2)
+          .map((w) => w.charAt(0))
+          .join('')
+      : (words[0] ?? '').slice(0, 2);
+  return letters.toUpperCase();
 }
 
 /** Issues parked at `needs_info`, a count of that one status whatever else is asked of a person. */
@@ -207,7 +215,7 @@ projectHealthRoutes.get('/health', readProjectHealth, async (c) => {
   for (const r of agg.memberRows) {
     memberCountByProject.set(r.projectId, (memberCountByProject.get(r.projectId) ?? 0) + 1);
     const arr = membersByProject.get(r.projectId) ?? [];
-    if (arr.length < MEMBER_AVATAR_CAP) arr.push(emailInitials(r.email));
+    if (arr.length < MEMBER_AVATAR_CAP) arr.push(memberInitials(r.displayName));
     membersByProject.set(r.projectId, arr);
   }
 

@@ -247,8 +247,10 @@ describe('GET /api/projects/health', () => {
     queryQueue.push([{ projectId: PROJECT_A_ID, n: 2 }]); // runnerRows
     queryQueue.push([{ project_id: PROJECT_A_ID, spend: 13.38 }]); // spendRows (db.execute)
     queryQueue.push([
-      { projectId: PROJECT_A_ID, email: 'ada@x.io', joinedAt: new Date() },
-      { projectId: PROJECT_A_ID, email: 'bob@x.io', joinedAt: new Date() },
+      { projectId: PROJECT_A_ID, displayName: 'Ada Lovelace', joinedAt: new Date() },
+      { projectId: PROJECT_A_ID, displayName: 'Bob', joinedAt: new Date() },
+      { projectId: PROJECT_A_ID, displayName: null, joinedAt: new Date() },
+      { projectId: PROJECT_A_ID, displayName: 'carol@x.io', joinedAt: new Date() },
     ]); // memberRows
     queryQueue.push([{ projectId: PROJECT_A_ID, lastAt: '2026-05-30T10:00:00.000Z' }]); // issueActivityRows
     queryQueue.push([{ projectId: PROJECT_A_ID, lastAt: '2026-05-31T12:00:00.000Z' }]); // runActivityRows
@@ -279,8 +281,8 @@ describe('GET /api/projects/health', () => {
     expect(alpha?.repoPath).toBe('org/alpha');
     expect(alpha?.runnerCount).toBe(2);
     expect(alpha?.spend24hUsd).toBeCloseTo(13.38);
-    expect(alpha?.memberCount).toBe(2);
-    expect(alpha?.members).toEqual(['AD', 'BO']); // email-derived initials
+    expect(alpha?.memberCount).toBe(4);
+    expect(alpha?.members).toEqual(['AL', 'BO', 'AM', 'AM']); // from the name, never the address
     expect(alpha?.lastActivityAt).toBe('2026-05-31T12:00:00.000Z'); // max(issue, run)
     // Project with no rollup rows falls back to safe defaults.
     const counts = body.map((p) => [p.liveRuns, (p as { liveSessions?: number }).liveSessions]);

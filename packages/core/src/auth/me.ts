@@ -72,7 +72,7 @@ meRoutes.get('/me', readAccount, async (c) => {
  * The name a person is shown as, in their own words (ISS-1003).
  *
  * Trimmed and bounded, and otherwise anything they type — accents included.
- * `null` clears it, which puts them back to being rendered by address.
+ * `null` clears it; `personName` in lib/person-name.ts then says what they are called.
  */
 const profileSchema = z
   .object({ displayName: z.string().trim().min(1).max(200).nullable() })

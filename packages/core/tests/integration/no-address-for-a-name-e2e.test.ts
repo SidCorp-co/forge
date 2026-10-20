@@ -436,21 +436,16 @@ describe("migration 0343: a stored title quotes its issue's title and its projec
 
   // Consults f0e175 and 2d5735: titles as their producers and the door store them, then 0342.
   it('restores a mention and an intake notice as the delivery door stored them', async () => {
-    const actor = await person('Lan', 'lan.handle@example.com');
+    await person('Lan', 'lan.handle@example.com');
     const quoted = 'Refund ops@desk.example.com moved to Closed';
     const issueId = await issueTitled(11, quoted);
-    const { HooksBus } = await import('../../src/pipeline/hooks.js');
-    const { registerNotifyMentionsSubscriber } = await import(
-      '../../src/notifications/notify-mentions.js'
-    );
-    const bus = new HooksBus();
-    registerNotifyMentionsSubscriber(bus);
-    await bus.emit('commentMentioned', {
-      issueId,
+    // The mention as round 19's producer wrote it, which is what 0342 and 0343 ran over.
+    await fx.mods.recordAndDeliver({
+      type: 'mention',
+      recipients: [fx.owner],
       projectId: fx.project.id,
-      commentId: crypto.randomUUID(),
-      actor: { type: 'user', id: actor.id, agency: 'human' },
-      mentionedUserIds: [fx.owner],
+      issueId,
+      title: `@lan.handle mentioned you in "${quoted}"`,
     });
     await fx.mods.recordAndDeliver({
       type: 'intake_pending',
