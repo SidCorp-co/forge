@@ -237,4 +237,7 @@ export const CLOSED_EMPTY = {
   sessionMessage: "A session worked this run directly rather than through jobs, so there are no attempts to list.",
   sessionLink: "Its session's page shows what it did.",
   liveSessionLink: "Its session's page shows what it is doing.",
+  notCheckedIn: "Its session has not checked in since it opened, so nothing has run on it yet.",
+  neverCheckedIn: "Its session never checked in before it ended, so nothing ran on it.",
+  endedSessionLink: "Its session's page shows how it ended.",
 } as const;

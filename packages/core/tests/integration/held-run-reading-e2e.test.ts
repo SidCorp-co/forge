@@ -161,6 +161,7 @@ describe('a run session is Starting until it checks in (criteria 135, 166, 180)'
     const before = await summary(opened.runId);
     expect(before.reading).toBe('starting');
     expect(before.runningSince).toBeNull();
+    expect(before.checkInBy).toMatch(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/);
     const ends = Date.parse(before.checkInBy ?? '') - Date.now();
     expect(ends).toBeGreaterThan(9 * 60_000);
     expect(ends).toBeLessThanOrEqual(10 * 60_000);
@@ -186,6 +187,8 @@ describe('a run session is Starting until it checks in (criteria 135, 166, 180)'
     expect(after.checkInBy).toBeNull();
     const first = after.runningSince;
     expect(first).not.toBeNull();
+    // An ISO time every reader parses, never Postgres's own text.
+    expect(first).toMatch(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/);
 
     // A later check-in never moves the start.
     await app.request(`/api/agent-sessions/${opened.sessionId}`, {

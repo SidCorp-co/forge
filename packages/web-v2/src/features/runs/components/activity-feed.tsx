@@ -90,6 +90,14 @@ export function ActivityTab({ run, loading, error, onRetry, sessionHref }: Activ
   const open = run.status === "running" || run.status === "paused";
   // An open run its session works without jobs: one that has started, or a run session or master's.
   const sessionWorked = runHasStarted(run) || run.lane === "run_session" || run.lane === "master";
+  if (entries.length === 0 && open && run.reading === "starting") {
+    return (
+      <div className="flex flex-col items-center gap-2">
+        <EmptyState title="Not started yet" message={CLOSED_EMPTY.notCheckedIn} />
+        <SessionLink href={sessionHref} text={CLOSED_EMPTY.liveSessionLink} />
+      </div>
+    );
+  }
   if (entries.length === 0 && open && sessionWorked) {
     return (
       <div className="flex flex-col items-center gap-2">
@@ -107,6 +115,14 @@ export function ActivityTab({ run, loading, error, onRetry, sessionHref }: Activ
     );
   }
   // A closed run promises nothing: a session worked it, or nothing ran on it (ISS-1228 round 19).
+  if (entries.length === 0 && !open && run.sessionId && run.runningSince === null) {
+    return (
+      <div className="flex flex-col items-center gap-2">
+        <EmptyState title="Nothing ran on this run" message={CLOSED_EMPTY.neverCheckedIn} />
+        <SessionLink href={sessionHref} text={CLOSED_EMPTY.endedSessionLink} />
+      </div>
+    );
+  }
   if (entries.length === 0 && !open) {
     return run.sessionId ? (
       <div className="flex flex-col items-center gap-2">

@@ -16,9 +16,13 @@ import { CHAT_SESSION_KIND, RUN_SESSION_KIND } from '../jobs/session-kinds.js';
 import { UNHELD_LIVE_JOB_STATUSES } from '../jobs/status-sets.js';
 import type { PipelineRunLane, ResidentMaster } from './runs-lane.js';
 
+/** A raw read answers Postgres's own text (`2026-10-20 02:06:04.8+00`), which not every reader parses. */
 function toIso(value: Date | string | null): string | null {
-  if (value === null) return null;
-  return value instanceof Date ? value.toISOString() : value;
+  if (value == null) return null;
+  if (value instanceof Date) return value.toISOString();
+  const at = new Date(value.replace(' ', 'T').replace(/([+-]\d\d)$/, '$1:00'));
+  if (Number.isNaN(at.getTime())) throw new Error(`runs-liveness: "${value}" is not a timestamp`);
+  return at.toISOString();
 }
 
 const sqlList = (values: readonly string[]) =>
