@@ -10,7 +10,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { answer } from '../api-reference/declare/describe.js';
-import { declaresInput, zValidator } from '../api-reference/declare/validator.js';
+import { declaresInput, takesBodyAsSent, zValidator } from '../api-reference/declare/validator.js';
 import type { AnswerShape, QuestionBlockerKind, QuestionOption } from '../db/schema-questions.js';
 import {
   type ResolvedLeaseKey,
@@ -346,18 +346,6 @@ type AskBody = Pick<AskInput, 'issueId' | 'agentSessionId' | 'assumed' | 'cost' 
   needed?: string | null;
 };
 
-/**
- * The trio a box must always send keeps the refusal it has always had; any other field of the
- * wrong type is refused with the failing paths before it can reach the kernel.
- */
-function askBodyRefusal(error: z.ZodError): unknown {
-  const required = ['id', 'projectId', 'prompt'];
-  const trio = error.issues.some(
-    (i) => i.path.length === 0 || required.includes(String(i.path[0])),
-  );
-  return trio ? 'id, projectId and prompt are required' : z.flattenError(error);
-}
-
 function askAnswerOf(body: AskBody): AskAnswer {
   if (body.answerShape === 'free_text') return { shape: 'free_text', needed: body.needed ?? '' };
   return {
@@ -371,10 +359,13 @@ devicePoolRoutes.post(
   '/me/questions',
   requireDevice(),
   askQuestionRoute,
+  takesBodyAsSent(
+    'a box sends the question it was asked as it read it, and the extra keys are kept with the question',
+  ),
   declaresInput('json', askQuestionBodySchema),
   async (c) => {
     const parsed = askQuestionBodySchema.safeParse(await c.req.json().catch(() => null));
-    if (!parsed.success) throw badRequest(askBodyRefusal(parsed.error));
+    if (!parsed.success) throw badRequest(z.flattenError(parsed.error));
     const body = parsed.data as AskBody;
     await assertDeviceBoundToProject(c.get('device').id, body.projectId);
     try {

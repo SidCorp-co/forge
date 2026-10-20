@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { issueStatuses } from '../db/schema.js';
 import { openQuestionsFault } from '../questions/issue-coupling.js';
 import { describeRewrite, noOpSentence } from './close-substitution.js';
-import { closedMeansShipped } from './merged-at.js';
+import { refuseUnshippedClose } from './merged-at.js';
 import { parkQuestionNotMinted } from './park-question.js';
 import { parkReasonFault } from './transition-reason.js';
 
@@ -86,8 +86,28 @@ describe('a park with no reason', () => {
 });
 
 describe('the other refusals a status move meets', () => {
-  it('a close with no merge names Closed and Dropped by label', () => {
-    inWords(closedMeansShipped({ shape: 'git', declared: true }), 60);
+  it('a close with no merge names Mark merged and Dropped in sentences of at most 20 words', async () => {
+    const executor = {
+      select: () => ({
+        from: () => ({
+          innerJoin: () => ({
+            where: () => ({
+              limit: async () => [
+                { mergedAt: null, mergedCommitSha: null, mergedLanding: null, kind: 'standard' },
+              ],
+            }),
+          }),
+        }),
+      }),
+    };
+    const refusal = await refuseUnshippedClose(executor as never, {
+      issueId: 'i',
+      toStatus: 'closed',
+    });
+    expect(refusal?.detail).toMatch(/Mark merged/);
+    expect(refusal?.detail).toMatch(/Dropped/);
+    expect(refusal?.detail).not.toMatch(/merged_at/);
+    inWords(refusal?.detail ?? '', 20);
   });
 
   it('a terminal move over an open question names its status by label', () => {

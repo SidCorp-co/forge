@@ -1,7 +1,12 @@
+import {
+  MARK_MERGED_ACTION,
+  UNMARK_ACTION,
+  WHERE_IT_LANDED_FIELD,
+} from '@forge/contracts/mark-merged-words';
 import type { IssueStatus } from '../db/schema.js';
 import {
+  DECLARE_OUTSIDE_GIT,
   type Lane,
-  landingRoute,
   landingShortfall,
   readLandingEvidence,
 } from './landing-evidence.js';
@@ -16,13 +21,71 @@ export interface ShippedRuleRefusal {
   details: Record<string, unknown>;
 }
 
-/** The sentence every close refusal carries, naming the route this issue's lane has. */
-export function closedMeansShipped(lane: Lane, held?: MergeMarkKind): string {
-  return (
-    'Closed means the work shipped. Use Dropped for work that turned out not to be work — ' +
-    'a note, a question, a duplicate, something already done — which is terminal without the claim ' +
-    `and releases every \`blocks\` dependent the same way. ${landingRoute(lane, held)}`
-  );
+const CLOSE_INSTEAD = 'If it turned out not to be work, move it to Dropped instead.';
+
+const UNMARK_FIRST = 'The first mark stands, so `unmark` it first with `forge_issues` `unmark`. ';
+
+const MARK_WITH_COMMIT =
+  'Mark it merged with `forge_issues` `mark_merged`, naming the commit it landed at in ' +
+  '`data.commit` where there is one.';
+
+const MARK_WITH_LANDING =
+  'Mark it merged with `forge_issues` `mark_merged` carrying `data.landing`, the live URL, CMS ' +
+  'entry or storefront resource the work now is.';
+
+/**
+ * A close with nothing showing the work shipped, in the same short sentences for a person and an
+ * agent: what stands in the way, the one control that clears it, and Dropped for work that was not
+ * work (ISS-1421 r16). An agent's door to the same act is a step in `details.steps`, which an MCP
+ * caller reads on a line of its own.
+ */
+function unshippedWords(lane: Lane, held: MergeMarkKind): ShippedRuleRefusal {
+  if (lane.shape === 'git') {
+    // A mark naming only a landing is no merge in git, and the first mark stands until it is taken back.
+    const landed = held === 'landed';
+    return {
+      detail: [
+        landed
+          ? "This issue can't close yet: its mark names a landing, not a merge in git."
+          : "This issue can't close yet: it is not marked merged.",
+        landed
+          ? `Use ${UNMARK_ACTION}, then ${MARK_MERGED_ACTION} in the issue's properties.`
+          : `Use ${MARK_MERGED_ACTION} in the issue's properties, then close it.`,
+        CLOSE_INSTEAD,
+      ].join(' '),
+      details: {
+        requires: 'mergedAt',
+        useInstead: 'dropped',
+        ...(landed ? { held } : {}),
+        steps: {
+          merged_mark: `${landed ? UNMARK_FIRST : ''}${MARK_WITH_COMMIT}`,
+          landing_shape: DECLARE_OUTSIDE_GIT,
+        },
+      },
+    };
+  }
+  const asserted = held === 'asserted';
+  return {
+    detail: [
+      asserted
+        ? "This issue can't close yet: its mark does not say where the work landed."
+        : "This issue can't close yet: it has no mark saying where the work landed.",
+      asserted
+        ? `Use ${UNMARK_ACTION}, then ${MARK_MERGED_ACTION}, and fill in ${WHERE_IT_LANDED_FIELD}.`
+        : `Use ${MARK_MERGED_ACTION} in the issue's properties and fill in ${WHERE_IT_LANDED_FIELD}.`,
+      CLOSE_INSTEAD,
+    ].join(' '),
+    details: {
+      requires: 'mergedLanding',
+      shape: lane.shape,
+      declared: lane.declared,
+      held,
+      useInstead: 'dropped',
+      steps: {
+        merged_mark: `${asserted ? UNMARK_FIRST : ''}${MARK_WITH_LANDING}`,
+      },
+    },
+  };
 }
 
 // cm:flow release/close after:stamp — the close reads the stamp and the issue's lane and refuses unless landing-evidence.ts accepts the mark; it no longer writes one, so an issue that never shipped cannot wear the status that says it did
@@ -33,24 +96,8 @@ export async function refuseUnshippedClose(
   if (args.toStatus !== 'closed') return null;
   const evidence = await readLandingEvidence(executor, args.issueId);
   if (evidence && !landingShortfall(evidence.columns, evidence.lane)) return null;
-  if (!evidence || evidence.lane.shape === 'git') {
-    const lane = evidence?.lane ?? { shape: 'git', declared: false };
-    return {
-      detail: `This issue carries no \`merged_at\`, so nothing on it shows the work shipped. ${closedMeansShipped(lane)}`,
-      details: { requires: 'mergedAt', useInstead: 'dropped' },
-    };
-  }
-  const { columns, lane } = evidence;
-  return {
-    detail: `${landingShortfall(columns, lane)} So nothing on it shows where the work landed. ${closedMeansShipped(lane, mergeMarkKindOf(columns))}`,
-    details: {
-      requires: 'mergedLanding',
-      shape: lane.shape,
-      declared: lane.declared,
-      held: mergeMarkKindOf(columns),
-      useInstead: 'dropped',
-    },
-  };
+  if (!evidence) return unshippedWords({ shape: 'git', declared: false }, 'unmarked');
+  return unshippedWords(evidence.lane, mergeMarkKindOf(evidence.columns));
 }
 
 /** Why `unmark` is refused on a `closed` issue, or `null` where it may proceed. `clearIssueMerge`

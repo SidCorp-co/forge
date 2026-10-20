@@ -52,8 +52,18 @@ pub async fn list_designated(client: &CoreClient) -> Result<Vec<DesignatedPlugin
     if resp.status().as_u16() == 401 {
         return Err(Error::Unauthorized);
     }
+    // A core that predates this route designates nothing, which is what an empty list says; any
+    // other 404 is a refusal like the rest, read by its code and never by its status alone.
     if resp.status().as_u16() == 404 {
-        return Ok(Vec::new());
+        let text = resp.text().await.unwrap_or_default();
+        if super::status::route_absent(404, &text) {
+            return Ok(Vec::new());
+        }
+        return Err(Error::Other(super::status::refused(
+            "me/plugins",
+            404,
+            &text,
+        )));
     }
     if !resp.status().is_success() {
         let code = resp.status().as_u16();
@@ -68,4 +78,36 @@ pub async fn list_designated(client: &CoreClient) -> Result<Vec<DesignatedPlugin
         .await
         .map(|r| r.plugins)
         .map_err(|e| Error::Other(format!("me/plugins decode: {e}")))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::transport::fake_core;
+
+    /// ISS-1421 r16 — every 404 read alike: an empty list for any of them. A
+    /// core that predates the route designates nothing; any other 404 is a
+    /// refusal, told apart by its code.
+    #[tokio::test]
+    async fn only_a_route_core_does_not_serve_reads_as_no_plugins() {
+        let absent = fake_core::serve_always(
+            "404 Not Found",
+            r#"{"code":"ROUTE_ABSENT","message":"No route answers GET /api/devices/me/plugins."}"#,
+        )
+        .await;
+        let none = list_designated(&CoreClient::new(absent, "tok"))
+            .await
+            .expect("a core without the route designates nothing");
+        assert!(none.is_empty());
+
+        let other = fake_core::serve_always(
+            "404 Not Found",
+            r#"{"code":"NOT_FOUND","message":"No device has this token."}"#,
+        )
+        .await;
+        let err = list_designated(&CoreClient::new(other, "tok"))
+            .await
+            .expect_err("a 404 that is not a missing route is a refusal");
+        assert!(format!("{err}").contains("404"), "{err}");
+    }
 }

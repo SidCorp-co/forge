@@ -22,3 +22,15 @@ const BEARER_REFUSALS: ReadonlySet<string> = new Set(['UNAUTHENTICATED', 'INVALI
 export function takesBearer(thrown: readonly Refusal[]): boolean {
   return thrown.some((r) => r.status === 401 && BEARER_REFUSALS.has(r.code));
 }
+
+const boxDoors = new WeakSet<object>();
+
+/** Marks a gate that lets a paired box's device token through, so the routes behind it are known. */
+export function letsBoxIn<M extends object>(middleware: M): M {
+  boxDoors.add(middleware);
+  return middleware;
+}
+
+export function admitsBox(handler: object): boolean {
+  return boxDoors.has(handler);
+}

@@ -444,36 +444,43 @@ function parseDate(value: string, field: string): Date {
   return d;
 }
 
+/** The schema a caller reads, which a refused field's near neighbours are read off (ISS-1421 r16). */
+const INPUT_JSON_SCHEMA = zodToMcpSchema(inputSchema);
+
 export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_issues',
   description: forgeIssuesDescription(ISSUE_REF_CLAUSE),
-  inputSchema: zodToMcpSchema(inputSchema),
+  inputSchema: INPUT_JSON_SCHEMA,
   handler: async (args) => {
     const { principal } = ctx;
     // An update refused by its input check has written nothing either, and says so (ISS-1229 r12).
-    const { input, refs } = unwrittenIfUpdate(args, () => {
-      refuseUnservedIssueAction((args as { action?: unknown } | null)?.action);
-      const input = refusedAsMark(args, () => inputSchema.parse(args));
-      const refs = refsFor(input, ctx, principal);
-      refuseStrayArchiveFields(input);
+    const { input, refs } = unwrittenIfUpdate(
+      args,
+      () => {
+        refuseUnservedIssueAction((args as { action?: unknown } | null)?.action);
+        const input = refusedAsMark(args, () => inputSchema.parse(args));
+        const refs = refsFor(input, ctx, principal);
+        refuseStrayArchiveFields(input);
 
-      if (
-        input.data?.relations !== undefined &&
-        input.action !== 'create' &&
-        input.action !== 'update'
-      ) {
-        throw new Error(
-          `BAD_REQUEST: data.relations is applied only by action 'create' and 'update' (got '${input.action}') — send the edges on the create/update call that carries them`,
-        );
-      }
+        if (
+          input.data?.relations !== undefined &&
+          input.action !== 'create' &&
+          input.action !== 'update'
+        ) {
+          throw new Error(
+            `BAD_REQUEST: data.relations is applied only by action 'create' and 'update' (got '${input.action}') — send the edges on the create/update call that carries them`,
+          );
+        }
 
-      if (input.data?.landingShape !== undefined && input.action !== 'update') {
-        throw new Error(
-          `BAD_REQUEST: data.landingShape is applied only by action 'update' (got '${input.action}') — declare where this issue's work lands on an update of the issue`,
-        );
-      }
-      return { input, refs };
-    });
+        if (input.data?.landingShape !== undefined && input.action !== 'update') {
+          throw new Error(
+            `BAD_REQUEST: data.landingShape is applied only by action 'update' (got '${input.action}') — declare where this issue's work lands on an update of the issue`,
+          );
+        }
+        return { input, refs };
+      },
+      INPUT_JSON_SCHEMA,
+    );
 
     switch (input.action) {
       case 'archive':

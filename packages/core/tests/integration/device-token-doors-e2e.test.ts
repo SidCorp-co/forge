@@ -158,4 +158,33 @@ describe("a paired box's device token on its owner's project", () => {
     expect(body.message).toBe(DEVICE_SPEAKS_FOR_NO_PERSON);
     expect(body.message).not.toMatch(/member/i);
   });
+
+  // ISS-1421 r16 — judge-69 read a membership or role sentence at these three, the box's owner
+  // being an admin of the project all along.
+  type Door = [string, () => string, (() => Record<string, string>) | undefined];
+  const doors: Door[] = [
+    ['GET', () => `/api/agent-sessions/queue-stats?projectId=${w.projectId}`, undefined],
+    ['POST', () => '/api/agent-sessions', () => ({ projectId: w.projectId, title: 'a chat' })],
+    ['POST', () => `/api/agent-sessions/sweep-zombies?projectId=${w.projectId}`, undefined],
+    ['POST', () => '/api/agent-sessions/start', () => ({ projectSlug: 'x', prompt: 'p' })],
+  ];
+  it.each(doors)('is refused %s as a box, never as a non-member', async (method, path, body) => {
+    const res = await app.request(path(), {
+      method,
+      headers: { authorization: `Bearer ${w.deviceToken}`, 'content-type': 'application/json' },
+      ...(body ? { body: JSON.stringify(body()) } : {}),
+    });
+    expect(res.status).toBe(403);
+    const said = await res.json();
+    expect(said.message).toBe(DEVICE_SPEAKS_FOR_NO_PERSON);
+    expect(said.message).not.toMatch(/member|role/i);
+  });
+
+  it("answers the same queue read to the owner's session", async () => {
+    const res = await get(
+      `/api/agent-sessions/queue-stats?projectId=${w.projectId}`,
+      w.personToken,
+    );
+    expect(res.status).toBe(200);
+  });
 });

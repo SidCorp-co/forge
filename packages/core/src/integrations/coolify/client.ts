@@ -1,3 +1,4 @@
+import { STATUS_CODES } from 'node:http';
 import type {
   CoolifyApplicationLogsResponse,
   CoolifyApplicationResponse,
@@ -10,15 +11,39 @@ import type {
 } from './types.js';
 
 export class CoolifyApiError extends Error {
+  /** The HTTP status the host sent, a 2xx included where its body was not what Coolify sends. */
   readonly status: number;
   readonly body: string;
   /** The route that produced this error, e.g. `POST /api/v1/deploy`. */
   readonly route: string | null;
-  constructor(status: number, body: string, message?: string, route?: string) {
-    super(message ?? `Coolify API error: ${status}`);
+  /** Whether what the host answered says the address may not be a Coolify server's. */
+  readonly addressSuspect: boolean;
+  constructor(
+    status: number,
+    body: string,
+    message?: string,
+    route?: string,
+    addressSuspect = false,
+  ) {
+    super(message ?? `The server answered HTTP ${status}${route ? ` to ${route}` : ''}.`);
     this.status = status;
     this.body = body;
     this.route = route ?? null;
+    this.addressSuspect = addressSuspect;
+  }
+}
+
+/** "404 Not Found", or the bare number where the status has no registered name. */
+function statusWords(status: number): string {
+  const name = STATUS_CODES[status];
+  return name ? `${status} ${name}` : `HTTP ${status}`;
+}
+
+function hostOf(baseUrl: string): string {
+  try {
+    return new URL(baseUrl).host || baseUrl;
+  } catch {
+    return baseUrl;
   }
 }
 
@@ -101,6 +126,20 @@ export class CoolifyClient {
   }
 
   private async request<T>(method: 'GET' | 'POST', path: string, body?: unknown): Promise<T> {
+    return (await this.send<T>(method, path, body)).data;
+  }
+
+  /** What the host answered, said of the host: whether it is Coolify is what the answer is about. */
+  private answered(status: number, route: string): string {
+    const said = `The server at ${hostOf(this.baseUrl)} answered ${statusWords(status)} to ${route}`;
+    return status === 404 ? `${said}, so it may not be Coolify.` : `${said}.`;
+  }
+
+  private async send<T>(
+    method: 'GET' | 'POST',
+    path: string,
+    body?: unknown,
+  ): Promise<{ status: number; data: T }> {
     const url = joinUrl(this.baseUrl, path);
     const route = `${method} ${path.split('?')[0]}`;
     const tokens = [this.apiToken];
@@ -133,10 +172,16 @@ export class CoolifyClient {
           continue;
         }
         if (!res.ok) {
-          throw new CoolifyApiError(res.status, await safeText(res), undefined, route);
+          throw new CoolifyApiError(
+            res.status,
+            await safeText(res),
+            this.answered(res.status, route),
+            route,
+            res.status !== 401 && res.status !== 403 && res.status < 500,
+          );
         }
-        if (res.status === 204) return undefined as unknown as T;
-        return (await res.json()) as T;
+        if (res.status === 204) return { status: res.status, data: undefined as unknown as T };
+        return { status: res.status, data: (await res.json()) as T };
       } catch (err) {
         clearTimeout(timer);
         if (err instanceof CoolifyApiError && err.status !== 401) throw err;
@@ -169,14 +214,26 @@ export class CoolifyClient {
    * a bare 404.
    */
   async getResource(resourceUuid: string): Promise<CoolifyResourceResponse> {
-    const list = await this.request<CoolifyResourceResponse[]>('GET', '/api/v1/resources');
-    const match = Array.isArray(list) ? list.find((r) => r.uuid === resourceUuid) : undefined;
+    const route = 'GET /api/v1/resources';
+    // The status carried is the one the host sent: a 200 whose body is no list says the address
+    // may not be Coolify's, and a list without the uuid says the binding names the wrong resource.
+    const { status, data } = await this.send<unknown>('GET', '/api/v1/resources');
+    if (!Array.isArray(data)) {
+      throw new CoolifyApiError(
+        status,
+        '',
+        `The server at ${hostOf(this.baseUrl)} answered ${route} with something other than a list of resources, so it may not be Coolify.`,
+        route,
+        true,
+      );
+    }
+    const match = (data as CoolifyResourceResponse[]).find((r) => r.uuid === resourceUuid);
     if (!match) {
       throw new CoolifyApiError(
-        404,
+        status,
         '',
-        `resource ${resourceUuid} not found in Coolify resource list`,
-        'GET /api/v1/resources',
+        `Coolify lists no resource ${resourceUuid}. Check the resource this binding names.`,
+        route,
       );
     }
     return match;

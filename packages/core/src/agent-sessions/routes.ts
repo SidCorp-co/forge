@@ -66,6 +66,7 @@ import {
   idParamSchema,
   loadSessionOr404,
   notFound,
+  personOrRefuse,
 } from './session-access.js';
 import { recordSessionCreatedActivity } from './session-activity.js';
 import { recordReportedTranscript } from './session-events.js';
@@ -196,7 +197,7 @@ agentSessionRoutes.get(
   }),
   async (c) => {
     const { projectId } = c.req.valid('query');
-    const userId = c.get('userId');
+    const userId = personOrRefuse(c.get('userId'));
 
     const access = await loadProjectAccess(projectId, userId);
     if (!access.role) throw forbidden('not a project member');
@@ -240,7 +241,7 @@ agentSessionRoutes.post(
   }),
   async (c) => {
     const { projectId } = c.req.valid('query');
-    const userId = c.get('userId');
+    const userId = personOrRefuse(c.get('userId'));
 
     const access = await loadProjectAccess(projectId, userId);
     assertProjectRole(access, 'admin', 'owner or admin role required');
@@ -422,7 +423,7 @@ agentSessionRoutes.post(
   }),
   async (c) => {
     const input = c.req.valid('json');
-    const userId = c.get('userId');
+    const userId = personOrRefuse(c.get('userId'));
 
     const access = await loadProjectAccess(input.projectId, userId);
     assertProjectRole(access, 'member');

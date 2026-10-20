@@ -3,7 +3,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { answer } from '../api-reference/declare/describe.js';
-import { zValidator } from '../api-reference/declare/validator.js';
+import { takesBodyAsSent, zValidator } from '../api-reference/declare/validator.js';
 import { db } from '../db/client.js';
 import { issueAttachments, issues } from '../db/schema.js';
 import { setInertAttachmentHeaders } from '../lib/attachment-headers.js';
@@ -56,6 +56,7 @@ issueAttachmentRoutes.use('/:id/attachments', requireAnyAuth());
 issueAttachmentRoutes.post(
   '/:id/attachments',
   uploadIssueAttachment,
+  takesBodyAsSent('a multipart form carrying the file, which the route reads itself'),
   uploadBodyLimit(() => {
     throw badRequest('file too large', 'FILE_TOO_LARGE');
   }),

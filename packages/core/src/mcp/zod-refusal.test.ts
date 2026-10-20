@@ -70,4 +70,37 @@ describe('zodRefusalMessage', () => {
     expect(zodRefusalMessage(null)).toBeNull();
     expect(zodRefusalMessage({ name: 'ZodError' })).toBeNull();
   });
+
+  // ISS-1421 r16 — judge-69 sent forge_issues `id` and read only that `id` is not taken.
+  it('names the field near a stray one, read off the tool input schema', () => {
+    const tool = z.strictObject({
+      action: z.enum(['get']),
+      documentId: z.string().optional(),
+      projectId: z.string().optional(),
+      data: z
+        .strictObject({
+          title: z.string(),
+          attachments: z.array(z.strictObject({ name: z.string() })).optional(),
+        })
+        .optional(),
+    });
+    const json = z.toJSONSchema(tool) as Record<string, unknown>;
+    const said = (input: unknown) => {
+      const r = tool.safeParse(input);
+      if (r.success) throw new Error('expected the schema to refuse');
+      return zodRefusalMessage(r.error, json);
+    };
+    expect(said({ action: 'get', id: 'x' })).toBe(
+      'BAD_REQUEST: The field `id` is not one this call takes. This call takes `documentId` and `projectId`, either of which may be what `id` meant.',
+    );
+    expect(said({ action: 'get', data: { titel: 'x' } })).toContain(
+      'This call takes `data.title`, which may be what `data.titel` meant.',
+    );
+    expect(said({ action: 'get', data: { title: 't', attachments: [{ nmae: 'a' }] } })).toContain(
+      'This call takes `data.attachments.0.name`, which may be what `data.attachments.0.nmae` meant.',
+    );
+    expect(said({ action: 'get', colour: 'x' })).toBe(
+      'BAD_REQUEST: The field `colour` is not one this call takes.',
+    );
+  });
 });

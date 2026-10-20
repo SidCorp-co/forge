@@ -12,7 +12,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { answer } from '../api-reference/declare/describe.js';
-import { zValidator } from '../api-reference/declare/validator.js';
+import { takesBodyAsSent, zValidator } from '../api-reference/declare/validator.js';
 import { db } from '../db/client.js';
 import { commentAttachments, comments, issues } from '../db/schema.js';
 import { setInertAttachmentHeaders } from '../lib/attachment-headers.js';
@@ -75,6 +75,7 @@ export const commentAttachmentRoutes = new Hono<{ Variables: AuthVars }>();
 commentAttachmentRoutes.post(
   '/:commentId/attachments',
   uploadCommentAttachment,
+  takesBodyAsSent('a multipart form carrying the file, which the route reads itself'),
   requireAnyAuth(),
   // Reject the request before parseBody buffers the entire payload — this
   // caps memory regardless of file size.

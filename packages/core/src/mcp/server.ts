@@ -89,8 +89,11 @@ import type { McpContext, McpTool } from './tools/lib.js';
 import { patEffectiveProjectIds, resolveProjectIdFromSlug } from './tools/project-scope.js';
 import { zodRefusalMessage } from './zod-refusal.js';
 
-export function classifyError(err: unknown): { code: AuditResultCode; message: string } {
-  const refused = zodRefusalMessage(err);
+export function classifyError(
+  err: unknown,
+  inputSchema?: Record<string, unknown>,
+): { code: AuditResultCode; message: string } {
+  const refused = zodRefusalMessage(err, inputSchema);
   const message = refused === null ? redactedMessage(err) : redactedMessage(new Error(refused));
   if (message.startsWith('NOT_FOUND')) return { code: 'not_found', message };
   if (message.startsWith('FORBIDDEN')) return { code: 'forbidden', message };
@@ -266,7 +269,7 @@ export function createMcpServer(ctx: McpContext): Server {
       writeMcpAudit({ ...auditBase, resultCode: 'ok' });
       return toToolCallContent(result);
     } catch (err) {
-      const { code, message } = classifyError(err);
+      const { code, message } = classifyError(err, tool.inputSchema);
       writeMcpAudit({ ...auditBase, resultCode: code });
       return {
         content: [{ type: 'text', text: toolErrorText(message) }],

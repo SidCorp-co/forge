@@ -62,7 +62,7 @@ export async function closedOnRoster(runId: string, executor: Tx = db): Promise<
 /** Why a finish could not close one issue: a refusal the transition named, or a failure that never
  *  reached a decision (ISS-1381). */
 export type CloseRefusal =
-  | { kind: 'refused'; code: string; detail: string; blocking: string[] }
+  | { kind: 'refused'; code: string; detail: string; blocking: string[]; steps: string[] }
   | { kind: 'failed'; message: string };
 
 /** `openQuestionIds` → `open question`: the label each id in that collection is named by. */
@@ -85,6 +85,12 @@ function blockingObjects(details: Record<string, unknown>): string[] {
     );
 }
 
+/** An agent's step for each record a refusal names, from `details.steps` (ISS-1421 r16). */
+function stepsOf(steps: unknown): string[] {
+  if (!steps || typeof steps !== 'object') return [];
+  return Object.values(steps).filter((s): s is string => typeof s === 'string');
+}
+
 export function closeRefusalOf(err: unknown): CloseRefusal {
   if (err instanceof TransitionError) {
     return {
@@ -92,6 +98,7 @@ export function closeRefusalOf(err: unknown): CloseRefusal {
       code: err.code,
       detail: err.detail,
       blocking: blockingObjects(err.details),
+      steps: stepsOf(err.details.steps),
     };
   }
   return { kind: 'failed', message: failureMessage(err) };
@@ -149,7 +156,8 @@ function databaseReason(err: unknown, driver: { code: string; message: string })
 
 /** What a finish reports for one issue it could not close, on its answer and its record. */
 export function closeFailureText(refusal: CloseRefusal): string {
-  return refusal.kind === 'refused' ? `${refusal.code}: ${refusal.detail}` : refusal.message;
+  if (refusal.kind !== 'refused') return refusal.message;
+  return [`${refusal.code}: ${refusal.detail}`, ...refusal.steps].join('\n');
 }
 
 /**

@@ -83,7 +83,7 @@ feedbackReportRoutes.get(
     }
 
     if (!projectId) {
-      throw badRequest('projectId is required unless scope=all');
+      throw badRequest({ projectId: 'is required unless scope=all' });
     }
 
     const access = await loadProjectAccess(projectId, userId);
@@ -113,7 +113,7 @@ feedbackReportRoutes.post(
   async (c) => {
     const reportId = c.req.param('id');
     if (!reportIdParamSchema.safeParse({ id: reportId }).success) {
-      throw badRequest('id must be a valid uuid');
+      throw badRequest({ id: 'must be a valid uuid' });
     }
     const { reviewed, linkedIssueId } = c.req.valid('json');
     const userId = c.get('userId');

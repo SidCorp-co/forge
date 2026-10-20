@@ -140,6 +140,10 @@ pub async fn answer(
         return Err(Error::Unauthorized);
     }
     if resp.status().as_u16() == 404 {
+        let text = resp.text().await.unwrap_or_default();
+        if super::status::route_absent(404, &text) {
+            return Err(Error::Other(super::status::absent("question read", &text)));
+        }
         return Err(Error::Other(format!(
             "question read: {question_id} is not registered to this box for run {run_id}"
         )));
@@ -234,6 +238,24 @@ mod tests {
             .await
             .expect_err("a 404 must not read as `not answered yet`");
         assert!(format!("{err}").contains("not registered"), "{err}");
+    }
+
+    /// ISS-1421 r16 — judge-69: a core missing this route would have been read
+    /// as a question not registered to the box. The code says which it is.
+    #[tokio::test]
+    async fn a_route_core_does_not_serve_is_said_as_that_never_as_an_unregistered_question() {
+        let base = one_shot(
+            "404 Not Found",
+            r#"{"code":"ROUTE_ABSENT","message":"No route answers GET /api/devices/me/questions/q-1."}"#,
+        )
+        .await;
+        let client = CoreClient::new(base, "tok");
+        let err = answer(&client, "q-1", "run-1")
+            .await
+            .expect_err("a missing route is no answer");
+        let said = format!("{err}");
+        assert!(said.contains("core serves no such route"), "{said}");
+        assert!(!said.contains("not registered"), "{said}");
     }
 
     #[tokio::test]

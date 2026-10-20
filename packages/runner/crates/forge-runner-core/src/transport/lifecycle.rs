@@ -108,18 +108,10 @@ pub enum BlockedDoor {
     Absent,
 }
 
-/// The code core's not-found handler answers a route it does not have under;
-/// a missing job answers `NOT_FOUND` instead. Read off the code, never off the
-/// sentence beside it, which is worded for a person (ISS-1421 r15).
-const ROUTE_ABSENT: &str = "ROUTE_ABSENT";
-
-/// Whether a refusal is core saying it serves no such route.
+/// Whether a refusal is core saying it serves no such route; a missing job
+/// answers `NOT_FOUND` instead.
 fn route_absent(refused: &Refused) -> bool {
-    refused.code == 404
-        && serde_json::from_str::<serde_json::Value>(&refused.text)
-            .ok()
-            .and_then(|body| body.get("code")?.as_str().map(|c| c == ROUTE_ABSENT))
-            .unwrap_or(false)
+    super::status::route_absent(refused.code, &refused.text)
 }
 
 /// End a job that was stopped on a question, carrying what it asked
@@ -183,6 +175,66 @@ pub async fn turn_is_job_end(client: &CoreClient, job_id: &str) -> bool {
     }
 }
 
+/// What a test reaching an unreachable core needs: an address whose connect is refused.
+#[cfg(test)]
+pub(crate) mod testing {
+    use std::io::ErrorKind;
+    use std::time::{Duration, Instant};
+
+    /// How long one probe waits for an answer before reading silence as one.
+    const PROBE_WAITS: Duration = Duration::from_millis(500);
+
+    /// How long a connect may keep being accepted before the test fails,
+    /// naming the address and what the connect got instead.
+    const UNANSWERED_WITHIN: Duration = Duration::from_secs(10);
+
+    /// An address no listener answers, and the socket that keeps it so for as
+    /// long as the caller holds it.
+    ///
+    /// A listener that is bound and dropped is not closed while a process
+    /// forked in that moment (any sibling test's `Command::spawn`, tmux, git
+    /// or sh) holds its descriptor until exec: the port stays LISTEN and a
+    /// connect is accepted. So nothing here ever listens. On Linux and Windows
+    /// the port stays bound, so no sibling's listener can take it. macOS
+    /// answers a connect to such a socket by timing out (ISS-1316's CI), so
+    /// there the port is released.
+    ///
+    /// The address is handed out once a probe connect is not accepted: Linux
+    /// and macOS refuse it at once, while Windows retries the SYN after each
+    /// reset for about two seconds before it says refused, so a probe that
+    /// hears nothing within `PROBE_WAITS` is one no listener answered either.
+    /// Only an accepted connect means something listens there, and it is
+    /// probed again until `UNANSWERED_WITHIN`.
+    pub(crate) async fn refused_addr() -> (Option<tokio::net::TcpSocket>, std::net::SocketAddr) {
+        let socket = tokio::net::TcpSocket::new_v4().unwrap();
+        socket.bind("127.0.0.1:0".parse().unwrap()).unwrap();
+        let addr = socket.local_addr().unwrap();
+        let held = if cfg!(target_os = "macos") {
+            drop(socket);
+            None
+        } else {
+            Some(socket)
+        };
+        let deadline = Instant::now() + UNANSWERED_WITHIN;
+        loop {
+            let probe =
+                tokio::time::timeout(PROBE_WAITS, tokio::net::TcpStream::connect(addr)).await;
+            let answered = match probe {
+                Ok(Err(e)) if e.kind() == ErrorKind::ConnectionRefused => return (held, addr),
+                Err(_) => return (held, addr),
+                Ok(Err(e)) => format!("failed with {e}"),
+                Ok(Ok(_)) => String::from("was accepted"),
+            };
+            assert!(
+                Instant::now() < deadline,
+                "a connect to {addr} still {answered} {}s after nothing listened on it",
+                UNANSWERED_WITHIN.as_secs()
+            );
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -236,10 +288,7 @@ mod tests {
 
     #[tokio::test]
     async fn an_unreachable_core_finishes_the_job() {
-        // Bind then drop, so the port is closed and the connect refuses.
-        let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = l.local_addr().unwrap();
-        drop(l);
+        let (_held, addr) = testing::refused_addr().await;
         assert!(turn_is_job_end(&client(format!("http://{addr}")), "job-1").await);
     }
 

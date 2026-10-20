@@ -181,7 +181,9 @@ describe('CoolifyClient', () => {
     const res = await client.getDeployment('a/b');
     expect(res.status).toBe('finished');
   });
+});
 
+describe('CoolifyClient reading a resource it was not given', () => {
   it('throws a clear not-found (not a bare 404) when the uuid is absent from the list', async () => {
     const fetchImpl = makeFetch(
       () =>
@@ -195,10 +197,50 @@ describe('CoolifyClient', () => {
       apiToken: 'tok',
       fetchImpl,
     });
+    // ISS-1421 r16: the host answered 200, so the status carried is 200, never a 404 it never sent.
+    await expect(client.getResource('res-uuid')).rejects.toMatchObject({
+      status: 200,
+      message: 'Coolify lists no resource res-uuid. Check the resource this binding names.',
+      addressSuspect: false,
+    });
+  });
+
+  // ISS-1421 r16 — judge-69 pointed a binding at example.com and read "Coolify API error: 404.",
+  // and at httpbin.org, which answered 200 with an object, and read a 404 the host never sent.
+  it('says a host that answered 404 answered it, and that it may not be Coolify', async () => {
+    const fetchImpl = makeFetch(() => new Response('<html>nope</html>', { status: 404 }));
+    const client = new CoolifyClient({
+      baseUrl: 'https://example.com',
+      apiToken: 'tok',
+      fetchImpl,
+    });
     await expect(client.getResource('res-uuid')).rejects.toMatchObject({
       status: 404,
-      message: expect.stringContaining('not found'),
+      message:
+        'The server at example.com answered 404 Not Found to GET /api/v1/resources, so it may not be Coolify.',
+      addressSuspect: true,
     });
+  });
+
+  it('says a host that answered no list of resources did, with the status it sent', async () => {
+    const fetchImpl = makeFetch(
+      () =>
+        new Response(JSON.stringify({ args: {} }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+    );
+    const client = new CoolifyClient({
+      baseUrl: 'https://httpbin.org/anything',
+      apiToken: 'tok',
+      fetchImpl,
+    });
+    const refused = await client.getResource('res-uuid').catch((e: unknown) => e);
+    expect(refused).toMatchObject({ status: 200, addressSuspect: true });
+    expect((refused as Error).message).toBe(
+      'The server at httpbin.org answered GET /api/v1/resources with something other than a list of resources, so it may not be Coolify.',
+    );
+    expect((refused as Error).message).not.toMatch(/Coolify API error|404/);
   });
 });
 

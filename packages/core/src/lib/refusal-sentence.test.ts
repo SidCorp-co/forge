@@ -47,6 +47,41 @@ describe('refusalMessage', () => {
     expect(refusalMessage('Invalid input', undefined)).toBe('The input was refused.');
   });
 
+  // ISS-1421 r16 — judge-69 read "The input was refused." with the reason beside it in details.
+  it('says the reason a door handed as a sentence, never the generic refusal', () => {
+    expect(refusalMessage('Invalid input', 'projectId is required unless scope=all')).toBe(
+      '`projectId` is required unless scope=all.',
+    );
+    expect(
+      refusalMessage(
+        'Invalid input',
+        'Forge cannot deploy to `postman` — it has no deploy adapter, so this binding can only be `role: "service"`.',
+      ),
+    ).toMatch(/^Forge cannot deploy to `postman`/);
+    expect(refusalMessage('Invalid input', ['a is wrong', 'b is wrong'])).toBe(
+      'A is wrong. B is wrong.',
+    );
+    expect(refusalMessage('Invalid input', { message: 'prompt is required' })).toBe(
+      'Prompt is required.',
+    );
+    expect(refusalMessage('Invalid input', { projectId: 'is required unless scope=all' })).toBe(
+      'The field projectId is required unless scope=all.',
+    );
+    expect(refusalMessage('Invalid input', { config: { url: 'required' } })).toBe(
+      'The field config.url is required.',
+    );
+    expect(
+      refusalMessage('Invalid input', [
+        { message: 'Invalid input: expected string, received undefined', path: ['id'] },
+      ]),
+    ).toBe('The field id is required.');
+  });
+
+  it('keeps the generic refusal for details that hold no reason', () => {
+    expect(refusalMessage('Invalid input', { count: 3 })).toBe('The input was refused.');
+    expect(refusalMessage('', null)).toBe('The request was refused.');
+  });
+
   it('makes any other message a sentence', () => {
     expect(refusalMessage('verify email', undefined)).toBe('Verify email.');
   });

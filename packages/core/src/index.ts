@@ -19,7 +19,7 @@ import { agentSessionRoutes } from './agent-sessions/routes.js';
 import { registerAgentCronTicker, unregisterAgentCronTicker } from './agents/cron.js';
 import { agentRoutes } from './agents/routes.js';
 import { describeOperation, redirect } from './api-reference/declare/describe.js';
-import { declaresInput } from './api-reference/declare/validator.js';
+import { declaresInput, refuseBodyNotTaken } from './api-reference/declare/validator.js';
 import { responseConformance } from './api-reference/gates/conformance.js';
 import { describedInstallRoutes } from './api-reference/surface/install-reference.js';
 import { referenceOf, referenceRoutes } from './api-reference/surface/routes.js';
@@ -223,6 +223,7 @@ app.use(
 
 const apiReference = referenceOf(() => app);
 app.use('/api/*', responseConformance(apiReference));
+app.use('*', refuseBodyNotTaken());
 
 for (const at of ['/', '/api']) app.route(at, publicHealthRoutes);
 

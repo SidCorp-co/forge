@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { zValidator } from '../api-reference/declare/validator.js';
+import { takesBodyAsSent, zValidator } from '../api-reference/declare/validator.js';
 import type { AuthVars } from '../middleware/auth.js';
 import {
   RETIRED_PROJECT_FACTS_CONFIG_MESSAGE,
@@ -30,6 +30,14 @@ projectFactsRoutes.get('/:id/project-facts', readProjectFacts, param, () => {
   throw gone();
 });
 
-projectFactsRoutes.patch('/:id/project-facts', patchProjectFacts, param, () => {
-  throw gone();
-});
+projectFactsRoutes.patch(
+  '/:id/project-facts',
+  patchProjectFacts,
+  takesBodyAsSent(
+    "the door is retired, and answers 410 naming where a project's prose now lives whatever it is sent",
+  ),
+  param,
+  () => {
+    throw gone();
+  },
+);
