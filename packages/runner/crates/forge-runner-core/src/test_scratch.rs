@@ -261,12 +261,14 @@ impl TmuxServers {
     }
 
     /// The pids of the tmux processes started on a socket under the directory.
-    pub fn running(&self) -> Vec<u32> {
+    pub fn running(&self) -> Result<Vec<u32>, String> {
         Self::running_under(&self.0)
     }
 
-    /// The same for any directory, with nothing ended when it is read.
-    pub fn running_under(dir: &Path) -> Vec<u32> {
+    /// The same for any directory, with nothing ended when it is read. A
+    /// process table that could not be read is an error, never an empty one:
+    /// read as no server, it would certify a teardown nothing checked.
+    pub fn running_under(dir: &Path) -> Result<Vec<u32>, String> {
         let mut pattern = String::from("^([^ ]*/)?tmux .*-S ");
         for c in dir.display().to_string().chars() {
             if "\\.[]()*+?{}|^$".contains(c) {
@@ -275,24 +277,52 @@ impl TmuxServers {
             pattern.push(c);
         }
         pattern.push('/');
-        let Ok(out) = std::process::Command::new("pgrep")
+        let out = std::process::Command::new("pgrep")
             .args(["-f", "--", &pattern])
             .stdin(std::process::Stdio::null())
             .output()
-        else {
-            return Vec::new();
-        };
-        String::from_utf8_lossy(&out.stdout)
-            .lines()
-            .filter_map(|l| l.trim().parse().ok())
-            .collect()
+            .map_err(|e| format!("`pgrep` could not be run: {e}"))?;
+        match out.status.code() {
+            Some(0) => Ok(String::from_utf8_lossy(&out.stdout)
+                .lines()
+                .filter_map(|l| l.trim().parse().ok())
+                .collect()),
+            Some(1) => Ok(Vec::new()),
+            code => Err(format!(
+                "`pgrep` exited {code:?}: {}",
+                String::from_utf8_lossy(&out.stderr).trim()
+            )),
+        }
     }
 }
 
 #[cfg(unix)]
 impl Drop for TmuxServers {
     fn drop(&mut self) {
-        for pid in self.running() {
+        let left = self.end_them();
+        if std::thread::panicking() {
+            return;
+        }
+        match left {
+            Ok(left) if left.is_empty() => {}
+            Ok(left) => panic!(
+                "tmux process(es) {left:?} started on a socket under {} outlived the test",
+                self.0.display()
+            ),
+            Err(e) => panic!(
+                "whether a tmux process started on a socket under {} outlived the test could not be read: {e}",
+                self.0.display()
+            ),
+        }
+    }
+}
+
+#[cfg(unix)]
+impl TmuxServers {
+    /// Ends every one by pid, then reads what is left once they have had
+    /// time to go.
+    fn end_them(&self) -> Result<Vec<u32>, String> {
+        for pid in self.running()? {
             let Ok(pid) = i32::try_from(pid) else {
                 continue;
             };
@@ -302,17 +332,12 @@ impl Drop for TmuxServers {
             );
         }
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-        let mut left = self.running();
+        let mut left = self.running()?;
         while !left.is_empty() && std::time::Instant::now() < deadline {
             std::thread::sleep(std::time::Duration::from_millis(25));
-            left = self.running();
+            left = self.running()?;
         }
-        if !left.is_empty() && !std::thread::panicking() {
-            panic!(
-                "tmux process(es) {left:?} started on a socket under {} outlived the test",
-                self.0.display()
-            );
-        }
+        Ok(left)
     }
 }
 

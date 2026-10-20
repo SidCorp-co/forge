@@ -5222,9 +5222,11 @@ done
         assert!(second.status.success(), "a second server takes the path");
         moved.put_back();
         drop(moved);
-        let before = crate::test_scratch::TmuxServers::running_under(&under);
+        let before = crate::test_scratch::TmuxServers::running_under(&under)
+            .expect("the process table is read");
         drop(iso);
-        let left = crate::test_scratch::TmuxServers::running_under(&under);
+        let left = crate::test_scratch::TmuxServers::running_under(&under)
+            .expect("the process table is read");
         assert!(
             before.len() >= 2,
             "the plant: two servers ran under the isolation: {before:?}"
@@ -5232,6 +5234,50 @@ done
         assert!(
             left.is_empty(),
             "every server the test started ended with its isolation, the one its socket cannot reach too: {left:?}"
+        );
+    }
+
+    /// ISS-1265 round 6, review F1 of the leak repair: a teardown that could
+    /// not read the process table has not checked anything, so it fails the
+    /// test rather than reading an unread table as one with no server in it.
+    #[cfg(unix)]
+    #[test]
+    fn a_teardown_that_cannot_read_the_process_table_fails_the_test() {
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let under = crate::test_scratch::Scratch::short("unread");
+        let empty = crate::test_scratch::Scratch::new("no-pgrep");
+        let refusing = crate::test_scratch::Scratch::new("pgrep-fails");
+        testing::write_shim(
+            &refusing.join("pgrep"),
+            "#!/bin/sh\n[ \"$1\" = --forge-shim-probe ] && exit 0\necho 'pgrep: cannot read the table' >&2\nexit 3\n",
+        );
+        let mut read = Vec::new();
+        for path in [empty.path(), refusing.path()] {
+            let _path = ScopedVar::set("PATH", path);
+            let listed = crate::test_scratch::TmuxServers::running_under(&under);
+            let dropped = std::panic::catch_unwind(|| {
+                drop(crate::test_scratch::TmuxServers::under(&under));
+            });
+            read.push((listed, dropped.is_err()));
+        }
+        let (unrun, unrun_failed) = &read[0];
+        let (refused, refused_failed) = &read[1];
+        assert!(
+            matches!(unrun, Err(e) if e.contains("could not be run")),
+            "a pgrep that cannot be run is not a table with no server: {unrun:?}"
+        );
+        assert!(
+            matches!(refused, Err(e) if e.contains("Some(3)") && e.contains("cannot read")),
+            "an error exit is not the no-match exit: {refused:?}"
+        );
+        assert!(
+            *unrun_failed && *refused_failed,
+            "and either way the teardown fails the test rather than certifying it"
+        );
+        assert_eq!(
+            crate::test_scratch::TmuxServers::running_under(&under),
+            Ok(Vec::new()),
+            "with pgrep back, no match is an empty table"
         );
     }
 
