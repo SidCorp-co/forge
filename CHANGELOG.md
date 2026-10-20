@@ -3194,6 +3194,18 @@
 
 ### Fixed
 
+- **A step stopped to ask a question says so in the run drawer and points to the Questions tab**, instead of "Unclassified · The cause wasn't recorded". (ISS-1228)
+- **The Questions tab names the issue a job's question holds up**, linked, and the kind of work that asked, instead of "asked by a master — no issue behind it". (ISS-1228)
+- **A run drawer opened from its copied link offers Open issue and its session's page** whichever workspace you have active. (ISS-1228)
+- **A run you cancelled yourself reads "Cancelled by you"**, never "another member". (ISS-1228)
+- **A box that never took a step is named in the drawer's remedy** even after a later retry was cancelled. (ISS-1228)
+- **The issue page no longer flashes "Failed" or "Completed", or offers Run, while it reads its runs**: it shows a placeholder, says when the run could not be read and offers Retry, and its side panel's Run row reads the header's word. (ISS-1228)
+- **A run that has started keeps saying "Started"** when its step is queued again, instead of "Opened". (ISS-1228)
+- **Run step times in the API are ISO timestamps.** (ISS-1228)
+- **When Forge stops sending an issue back to its agent, its comment counts the run's sessions and says how each ended**, and the bell row reads a sentence instead of a stored code. (ISS-1228)
+- **The no-capacity notice's next step fixes the reasons it names**, such as updating an old runner or waiting out an account limit. (ISS-1228)
+- **The issue page's and a session page's headers, and the chat composer, no longer show the page through them as it scrolls**, and a line divides each from what scrolls beneath; at phone width the issue header's actions keep to one row, Help as its icon. (ISS-1228)
+- **Forge no longer parks an issue for a person while its run waits on a hold that clears by itself**, such as a wait for a free runner, under a comment saying nothing worked on it. (ISS-1228)
 - **A job its runner is working reads Running in the run drawer**, in its header and its activity alike, instead of "Starting" under a Running header. (ISS-1228)
 - **A job its runner took but never started goes back to the queue** once its session is ended, instead of reading "Starting" for as long as its master lives; the next attempt gets a fresh session. (ISS-1228)
 - **The run drawer shows no failure or remedy on work still open**, names the runner that took or was sent it, and says "Never started" of work that ended before anything ran. (ISS-1228)
@@ -3228,7 +3240,7 @@
 - **A run whose step core holds reads Held** on the runs tab, the run drawer and the issue page, saying why it waits and whether it resumes on its own, never "Nothing working". (ISS-1228)
 - **A run session that has not checked in reads Starting** and says when core ends it if it never does; it reads Running, and "Started", only from its first check-in. (ISS-1228)
 - **The runs tab lists every open run once**, with what its box reports inside its row and one word shared with its drawer, and every open run's row opens that drawer. (ISS-1228)
-- **A cancelled step reads "Cancelled by" the person who cancelled it**, never an earlier attempt's queue timeout, and a step stopped to ask a question says so instead of "Unclassified". (ISS-1228)
+- **A cancelled step reads "Cancelled by" the person who cancelled it**, never an earlier attempt's queue timeout. (ISS-1228)
 - **The run drawer asks for nothing where core already sent a step again**, and no remedy names a control the drawer does not offer. (ISS-1228)
 - **The no-capacity notice names what keeps online runners from the work**, such as a workspace not yet ready, and says no runner is online only where none is; the bell tags it STALLED. (ISS-1228)
 - **Stop now's hover is a plain sentence, and a closed run's drawer links the session that worked it.** (ISS-1228)

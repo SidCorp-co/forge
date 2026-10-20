@@ -30,6 +30,9 @@ export interface HelpContent {
 export interface HelpButtonProps extends HelpContent {
   /** Visible button label (default "Help"). */
   label?: string;
+  /** Below the `sm` breakpoint show the icon alone, the label kept for screen readers: for a bar
+   *  whose actions would otherwise wrap to a row of their own at phone width. */
+  compact?: boolean;
 }
 
 /** Reusable contextual help: an icon+label button that toggles a closeable
@@ -38,6 +41,7 @@ export interface HelpButtonProps extends HelpContent {
  *  aria-expanded, Esc + click-away close, focus returns to the trigger). */
 export function HelpButton({
   label = "Help",
+  compact = false,
   summary,
   actions,
   shortcuts,
@@ -75,7 +79,7 @@ export function HelpButton({
         )}
       >
         <Icon name="help" size={15} />
-        {label}
+        {compact ? <span className="max-sm:sr-only">{label}</span> : label}
       </button>
 
       <Popover

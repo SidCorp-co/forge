@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import { postSystemComment } from '../comments/system-write.js';
 import { db } from '../db/client.js';
 import type { IssueStatus } from '../db/schema.js';
+import { AUTO_RELEASE_REASONS, HOLD_PAYLOAD_KEY } from '../jobs/hold-state.js';
 import { transitionIssueStatus } from '../issues/apply-transition.js';
 import { logger } from '../logger.js';
 import { isSentryEnabled, Sentry } from '../observability/sentry.js';
@@ -34,6 +35,23 @@ const WEDGE_GRACE = '10 minutes';
 const WEDGE_RESET_LIMIT = 50;
 const WEDGE_SCAN_PAGE = 200;
 
+/**
+ * A job held on a hold that clears by itself — the SQL reading of `holdOf`'s `resumesItself`. The
+ * hold re-queues that job on its own recheck, so the issue is not stuck: a rescue would wake the
+ * masters for nothing, and three of them parked the issue for a person under a comment saying
+ * nothing worked on it while its run read Held (ISS-1228).
+ */
+function holdResumesItselfSql(job: ReturnType<typeof sql>) {
+  const reasons = sql.join(
+    [...AUTO_RELEASE_REASONS].map((r) => sql`${r}`),
+    sql`, `,
+  );
+  const hold = sql`${job}.payload -> ${HOLD_PAYLOAD_KEY}`;
+  return sql`(${job}.status = 'held'
+    AND COALESCE(${hold} ->> 'reason', ${job}.failure_reason) IN (${reasons})
+    AND COALESCE((${hold} ->> 'autoRelease')::boolean, ${hold} IS NULL))`;
+}
+
 let registered = false;
 
 export async function runReconcilerOnce(): Promise<{
@@ -61,7 +79,7 @@ export async function runReconcilerOnce(): Promise<{
       AND NOT EXISTS (
         SELECT 1 FROM jobs j
         WHERE j.issue_id = i.id
-          AND j.status IN ('queued','dispatched','running')
+          AND (j.status IN ('queued','dispatched','running') OR ${holdResumesItselfSql(sql`j`)})
       )
     LIMIT ${STUCK_ISSUE_LIMIT}
   `);

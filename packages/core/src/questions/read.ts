@@ -5,7 +5,7 @@
 // latency and nothing else (ISS-964 criterion 12).
 
 import { randomUUID } from 'node:crypto';
-import { and, count, desc, eq, isNull, sql } from 'drizzle-orm';
+import { and, count, desc, eq, getTableName, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, type ProjectMemberRole } from '../db/schema.js';
 import {
@@ -147,6 +147,13 @@ export interface QuestionAskedBy {
   issueTitle: string | null;
 }
 
+/**
+ * The question's own session column, named with its table: drizzle writes a column bare, and bare
+ * inside the subquery it binds to `jobs.agent_session_id`, which matched every job with a session
+ * and named the project's newest one instead of the one that asked (ISS-1228).
+ */
+const askingSession = sql.raw(`"${getTableName(agentQuestions)}"."agent_session_id"`);
+
 /** The job linked to the asking session, read through that session (the blocked door links it). */
 const askingJob = sql<{
   jobType: string;
@@ -160,8 +167,8 @@ const askingJob = sql<{
     FROM jobs j
     LEFT JOIN issues i ON i.id = j.issue_id
     LEFT JOIN projects p ON p.id = i.project_id
-   WHERE ${agentQuestions.agentSessionId} IS NOT NULL
-     AND j.agent_session_id = ${agentQuestions.agentSessionId}
+   WHERE ${askingSession} IS NOT NULL
+     AND j.agent_session_id = ${askingSession}
    ORDER BY j.queued_at DESC
    LIMIT 1)`;
 

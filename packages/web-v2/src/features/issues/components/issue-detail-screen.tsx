@@ -266,8 +266,9 @@ export function IssueDetailScreen({
           actions reachable while scrolling a long issue (ISS-347). The shell's
           TopBar now carries the breadcrumb trail (ISS-358/359), so the in-page
           breadcrumb was removed to stop the doubled header that hid the detail
-          (ISS-360 regression). Full-bleed via negative gutters. */}
-      <div ref={stickyHeader} className="sticky top-0 z-20 -mx-4 mb-5 flex flex-wrap items-start gap-3 border-b border-line-subtle bg-app/95 px-4 py-3 backdrop-blur sm:-mx-8 sm:px-8">
+          (ISS-360 regression). Full-bleed via negative gutters. Opaque with a visible line: content
+          scrolling under a see-through bar read as a ghost control beside the status chip (ISS-1228). */}
+      <div ref={stickyHeader} className="sticky top-0 z-20 -mx-4 mb-5 flex flex-wrap items-start gap-3 border-b border-line bg-app px-4 py-3 sm:-mx-8 sm:px-8">
         <IconButton
           icon="arrowRight"
           aria-label="Back to issues"
@@ -309,6 +310,7 @@ export function IssueDetailScreen({
             reader to choose Reopen at the top of the issue page, on whatever screen they read it. */}
         <div className="flex basis-full flex-wrap items-center gap-2 sm:flex-none sm:basis-auto">
           <HelpButton
+            compact
             summary="The full record for one issue: pipeline progress, description, acceptance criteria, the agent plan, and Comments / Activity."
             actions={[
               "Edit properties (status, priority, complexity) in the rail",

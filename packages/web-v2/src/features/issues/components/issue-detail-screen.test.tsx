@@ -328,6 +328,28 @@ describe("the issue header's run", () => {
   });
 });
 
+// ISS-1228 r20 (coordinator, 390 scrolled): the comment composer's send row showed through the bar as a ghost
+// pill beside the status chip, and the bar met what scrolled under it with no line.
+describe("the issue header over scrolled content", () => {
+  it("paints a solid background, no see-through blur, and a visible dividing line", () => {
+    renderScreen();
+    const bar = screen.getByText("ISS-7").closest(".sticky") as HTMLElement;
+    const classes = bar.className.split(/\s+/);
+    expect(classes).toContain("bg-app");
+    expect(classes.filter((c) => c.startsWith("bg-app/") || c.startsWith("backdrop-"))).toEqual([]);
+    expect(classes).toContain("border-b");
+    expect(classes).toContain("border-line");
+  });
+
+  // At 390 the overflow menu wrapped to a row of its own beside Help, Open pipeline and Open session.
+  it("shows Help as its icon at phone width, still named Help", () => {
+    renderScreen();
+    const bar = screen.getByText("ISS-7").closest(".sticky") as HTMLElement;
+    const help = within(bar).getByRole("button", { name: "Help" });
+    expect(within(help).getByText("Help").className).toContain("max-sm:sr-only");
+  });
+});
+
 // ISS-1257 — a question marks its issue and leaves its rung alone; ISS-1310 — the banner reads it off the park view.
 describe("the issue header at Releasing (ISS-1421)", () => {
   const menuItems = () => screen.queryAllByRole("menuitem").map((el) => el.textContent ?? "");

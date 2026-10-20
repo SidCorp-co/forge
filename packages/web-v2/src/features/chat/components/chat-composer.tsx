@@ -106,7 +106,7 @@ export interface ChatComposerProps {
 
 function bandClass(sticky: boolean, pad: string): string {
   return sticky
-    ? `sticky bottom-0 z-10 border-t border-line bg-app/95 backdrop-blur ${pad}`
+    ? `sticky bottom-0 z-10 border-t border-line bg-app ${pad}`
     : `flex-none border-t border-line bg-app ${pad}`;
 }
 

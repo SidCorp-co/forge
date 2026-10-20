@@ -25,6 +25,7 @@ beforeAll(async () => {
   process.env.DATABASE_URL = harness.url;
   process.env.NODE_ENV ??= 'test';
   process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
+  process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
 }, 60_000);
 
 afterAll(async () => {
@@ -104,5 +105,53 @@ describe('the rescue limit says what the records say (criteria 190, 191)', () =>
     expect(moved?.reason).not.toMatch(/_/);
     const { bodyForStatus } = await import('../../src/notifications/notify-transitions.js');
     expect(bodyForStatus('needs_info', 'autonomous_rescue_cap_reached')).toBe(moved?.reason);
+  });
+});
+
+// ISS-1228 r20 (rig): a run held for a box that will free was rescued three times and parked for a person,
+// under a comment saying nothing worked on it, while the run itself read Held.
+describe('a hold that clears by itself is work, not a stuck issue (criterion 198)', () => {
+  async function heldRun(hold: string): Promise<string> {
+    const issueId = await cappedRun(['failed']);
+    await harness.db.execute(sql`UPDATE issues SET updated_at = now() - interval '10 minutes' WHERE id = ${issueId}`);
+    const [run] = await harness.db.execute<{ id: string }>(
+      sql`SELECT id FROM pipeline_runs WHERE issue_id = ${issueId}`,
+    );
+    await harness.db.execute(sql`
+      INSERT INTO jobs (id, project_id, issue_id, pipeline_run_id, created_by, type, status, failure_reason,
+                        payload, queued_at)
+      VALUES (${randomUUID()}, ${projectId}, ${issueId}, ${run?.id}, ${ownerId}, 'drive', 'held',
+              'all_devices_exhausted', ${hold}::jsonb, now() - interval '10 minutes')
+    `);
+    return issueId;
+  }
+
+  async function sweep(issueId: string) {
+    const { runReconcilerOnce } = await import('../../src/pipeline/reconciler.js');
+    await runReconcilerOnce();
+    const [issue] = await harness.db.execute<{ status: string }>(
+      sql`SELECT status FROM issues WHERE id = ${issueId}`,
+    );
+    const comments = await harness.db.execute<{ body: string }>(
+      sql`SELECT body FROM comments WHERE issue_id = ${issueId}`,
+    );
+    return { status: issue?.status, comments: comments.length };
+  }
+
+  it('leaves an issue whose job waits on a hold that resumes itself at Open, with no park comment', async () => {
+    for (const hold of ['{}', '{"__hold":{"reason":"all_devices_exhausted","heldAt":"2026-10-20T00:00:00Z","autoRelease":true}}']) {
+      await truncateAll(harness.db);
+      ownerId = (await createTestUser(harness.db, { emailVerifiedAt: new Date() })).id;
+      const org = await seedOrg(harness.db, ownerId);
+      projectId = (await createTestProject(harness.db, ownerId, { orgId: org.id })).id;
+      expect(await sweep(await heldRun(hold))).toEqual({ status: 'open', comments: 0 });
+    }
+  });
+
+  it('still rescues, and at the limit parks, an issue whose hold has spent its one release', async () => {
+    const issueId = await heldRun(
+      '{"__hold":{"reason":"all_devices_exhausted","heldAt":"2026-10-20T00:00:00Z","autoRelease":false}}',
+    );
+    expect(await sweep(issueId)).toEqual({ status: 'needs_info', comments: 1 });
   });
 });

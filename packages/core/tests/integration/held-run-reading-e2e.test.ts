@@ -310,6 +310,26 @@ describe("a dead take's session is dropped when its hold is given back (criterio
 });
 
 describe('a job that stopped on a question reads so on the run route (criteria 174, 184, 189, 193)', () => {
+  /** A newer job on another issue with a session of its own: the job a bare column bound to (rig, r20). */
+  async function laterJobElsewhere(runId: string): Promise<void> {
+    const otherIssue = randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id)
+      VALUES (${otherIssue}, ${projectId}, 6, 'Split the billing job', 'in_progress', ${ownerId})
+    `);
+    const otherSession = randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO agent_sessions (id, project_id, pipeline_run_id, device_id, kind, status, failure_reason, started_at)
+      VALUES (${otherSession}, ${projectId}, ${runId}, ${deviceId}, 'pipeline', 'failed', 'provider_overloaded', now())
+    `);
+    await harness.db.execute(sql`
+      INSERT INTO jobs (id, project_id, pipeline_run_id, issue_id, device_id, agent_session_id, created_by,
+                        type, status, queued_at, finished_at, payload)
+      VALUES (${randomUUID()}, ${projectId}, ${runId}, ${otherIssue}, ${deviceId}, ${otherSession}, ${ownerId},
+              'review', 'failed', now() + interval '1 minute', now(), '{}'::jsonb)
+    `);
+  }
+
   it('carries the question stop through the session row to GET /api/pipeline-runs/:id', async () => {
     const runId = await newRun();
     const issueId = randomUUID();
@@ -381,7 +401,9 @@ describe('a job that stopped on a question reads so on the run route (criteria 1
     );
     expect(body.projectSlug).toBe(project?.slug);
 
-    // Its question stays the project's, read on the Questions tab, naming the issue and the work.
+    // Its question stays the project's, read on the Questions tab, naming the issue and the work —
+    // its own job's, though a newer job elsewhere has a session too.
+    await laterJobElsewhere(runId);
     const { projectQuestionsFor } = await import('../../src/questions/read.js');
     const page = await projectQuestionsFor(projectId, ownerId, 'open', { limit: 10 }, true);
     expect(page?.questions[0]?.issueId).toBeNull();
@@ -410,6 +432,7 @@ describe('a job that stopped on a question reads so on the run route (criteria 1
   });
 
   it("names no job for a question a master asked through the device door", async () => {
+    await laterJobElsewhere(await newRun());
     const { askQuestion } = await import('../../src/questions/write.js');
     await askQuestion({
       id: randomUUID(),
