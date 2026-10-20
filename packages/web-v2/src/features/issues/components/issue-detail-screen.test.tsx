@@ -318,6 +318,16 @@ describe("the issue header's run", () => {
     expect(refetch).toHaveBeenCalled();
   });
 
+  // r20 review F2: the Retry lived in the primary action, which a closed issue never reaches.
+  it("offers Retry beside an unreadable run on a closed issue too", () => {
+    issueOver = { status: "closed", mergedAt: "2026-09-05T15:00:00Z" };
+    const refetch = vi.fn();
+    journal = { data: undefined, isLoading: false, isError: true, error: new Error("boom"), refetch };
+    renderScreen();
+    fireEvent.click(within(headerChips()).getByRole("button", { name: "Retry" }));
+    expect(refetch).toHaveBeenCalled();
+  });
+
   it("reads a held run Held, never the failed session's verdict, once the journal answers", () => {
     issueOver = { agentStatus: "failed" };
     journal = openRun({ reading: "held", hold: { reason: "all_devices_exhausted", resumesItself: true, recheckAt: null, since: null } });

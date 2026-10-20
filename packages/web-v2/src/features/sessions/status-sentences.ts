@@ -226,13 +226,14 @@ export const nextAttemptText = (next: "sent" | "held"): string =>
     ? "Core holds the next try, so nothing is asked of you here."
     : "Core already sent it again, so nothing is asked of you.";
 
-/** Who cancelled, said to the one reading: "you" where the reader's own account did it, whatever its name. */
+/** Who cancelled, said to the one reading: "you" where the reader themself did it, whatever their name —
+ *  never for an agent acting on the reader's account, which is still the agent's act. */
 export function cancelledByText(
   by: { kind: "person" | "agent" | "core"; userId?: string | null; name: string | null } | null | undefined,
   viewerId: string | null = null,
 ): string {
   if (!by || by.kind === "core") return "Cancelled by core";
-  if (viewerId && by.userId === viewerId) return "Cancelled by you";
+  if (viewerId && by.kind === "person" && by.userId === viewerId) return "Cancelled by you";
   return `Cancelled by ${by.name ?? (by.kind === "agent" ? "an agent" : "a person")}`;
 }
 

@@ -11,6 +11,7 @@
 
 import { useNow } from "@/design/hooks/use-now";
 import {
+  Button,
   Checkbox,
   Collapsible,
   ErrorState,
@@ -286,9 +287,14 @@ export function IssueDetailScreen({
               </span>
             )}
             {runChip.state === "unreadable" && (
-              <span role="status" className="fg-caption text-muted">
-                The run could not be read.
-              </span>
+              <>
+                <span role="status" className="fg-caption text-muted">
+                  The run could not be read.
+                </span>
+                <Button variant="secondary" size="sm" icon="rerun" onClick={() => journalQ.refetch()}>
+                  Retry
+                </Button>
+              </>
             )}
             {runWord && (
               <span className="inline-flex" title={runWord.detail}>
@@ -328,7 +334,6 @@ export function IssueDetailScreen({
             pending={pending}
             isRunActive={isRunActive}
             runsUnreadable={runChip.state === "unreadable"}
-            onRetryRuns={() => journalQ.refetch()}
             onTransition={onTransition}
             onRun={() => runIssue.mutate(issue.id, { onSuccess: refreshIssue })}
             running={runIssue.isPending}

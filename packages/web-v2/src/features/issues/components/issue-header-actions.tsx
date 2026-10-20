@@ -20,7 +20,6 @@ export function IssueHeaderActions({
   pending,
   isRunActive,
   runsUnreadable = false,
-  onRetryRuns,
   onTransition,
   onRun,
   running,
@@ -36,7 +35,6 @@ export function IssueHeaderActions({
   isRunActive: boolean | null;
   /** The run journal's first read failed: the action's place offers reading it again. */
   runsUnreadable?: boolean;
-  onRetryRuns?: () => void;
   onTransition: (to: IssueStatus) => void;
   /** Offer the issue to the project's masters; only at Open, the one status a press can start. */
   onRun: () => void;
@@ -71,7 +69,6 @@ export function IssueHeaderActions({
         isTerminal={isTerminal}
         isRunActive={isRunActive}
         runsUnreadable={runsUnreadable}
-        onRetryRuns={onRetryRuns}
         pending={pending}
         onTransition={onTransition}
         atEntry={status === "open"}
@@ -105,7 +102,6 @@ function PrimaryAction(props: {
   isTerminal: boolean;
   isRunActive: boolean | null;
   runsUnreadable: boolean;
-  onRetryRuns: (() => void) | undefined;
   pending: boolean;
   onTransition: (to: IssueStatus) => void;
   atEntry: boolean;
@@ -139,11 +135,8 @@ function PrimaryAction(props: {
   }
   // Pause, Run and Open pipeline each say something about the run: none is offered before it is read.
   if (props.isRunActive === null) {
-    return props.runsUnreadable ? (
-      <Button variant="secondary" size="sm" icon="rerun" onClick={props.onRetryRuns}>
-        Retry
-      </Button>
-    ) : (
+    // Unreadable, the Retry stands beside the chip row's "could not be read", for every reader.
+    return props.runsUnreadable ? null : (
       <span role="status" aria-label="Reading the run" className="inline-flex">
         <Skeleton className="h-8 w-28" />
       </span>

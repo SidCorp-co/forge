@@ -385,6 +385,17 @@ describe("round 19: held, cancelled, question and control-free remedies", () => 
     expect(deriveActivityFeed([cancelled])[0]?.outcome).toBe("Cancelled by another member");
   });
 
+  // r20 review F1: an agent acting on the reader's account cancelled it, not the reader.
+  it("never says you for an agent that cancelled on the reader's account", () => {
+    const byAgent = attempt({
+      status: "cancelled",
+      ranAt: null,
+      failureCause: null,
+      cancelledBy: { kind: "agent", userId: "u1", name: "forge-runner" },
+    });
+    expect(deriveActivityFeed([byAgent], undefined, "u1")[0]?.outcome).toBe("Cancelled by forge-runner");
+  });
+
   it("reads a person's cancel as theirs, never an earlier take's queue timeout", () => {
     const [line] = deriveActivityFeed([
       attempt({
