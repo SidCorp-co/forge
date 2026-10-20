@@ -11159,6 +11159,10 @@ mod servers_refusal_walk_tests {
     /// holding a first-turn run declared under the session that pane replaces.
     #[allow(clippy::await_holding_lock)]
     #[tokio::test]
+    #[cfg_attr(
+        not(target_os = "linux"),
+        ignore = "no process table this box can read names a conversation off Linux"
+    )]
     async fn a_sweep_that_starts_a_pane_records_the_end_of_the_subagents_it_inherits() {
         use crate::runner::ledger::{Ledger, NewRun, HOST_PANE_STARTED};
         let _serialised = terminal::testing::ONE_AT_A_TIME.lock().await;
@@ -11295,6 +11299,10 @@ mod servers_refusal_walk_tests {
     /// through the sweep itself.
     #[allow(clippy::await_holding_lock)]
     #[tokio::test]
+    #[cfg_attr(
+        not(target_os = "linux"),
+        ignore = "no process table this box can read names a conversation off Linux"
+    )]
     async fn a_sweep_that_resumes_a_pane_tells_it_the_inherited_subagent_ended_with_the_one_before()
     {
         use crate::runner::ledger::{Ledger, NewRun};
@@ -11505,6 +11513,10 @@ mod servers_refusal_walk_tests {
     /// sentence as that pane did, cursor moves between its words, and exits.
     #[allow(clippy::await_holding_lock)]
     #[tokio::test]
+    #[cfg_attr(
+        not(target_os = "linux"),
+        ignore = "no process table this box can read names a conversation off Linux"
+    )]
     async fn a_pane_that_exits_over_a_background_session_is_not_placed_again_while_it_runs() {
         use crate::runner::ledger::Ledger;
         let _serialised = terminal::testing::ONE_AT_A_TIME.lock().await;
@@ -11520,12 +11532,6 @@ mod servers_refusal_walk_tests {
         }
         if !iso.took() {
             terminal::testing::cannot_run("this box does not resolve its tmux socket from the config dir, so the only server here is its own — not starting a pane on it");
-            return;
-        }
-        if !cfg!(target_os = "linux") {
-            terminal::testing::cannot_run(
-                "no process table this box can read names a conversation off Linux",
-            );
             return;
         }
         let home = crate::test_scratch::Scratch::new("sweepbg-home");
