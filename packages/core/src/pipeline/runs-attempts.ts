@@ -1,12 +1,14 @@
 /** A run's attempts, one per job on it, sourced from `jobs` so the `retry_of` chain and the box each
  *  landed on are visible beside the round-robin headline (ISS-411). */
 
-import { asc, eq, sql } from 'drizzle-orm';
+import { asc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions, devices, jobs } from '../db/schema.js';
+import { agentQuestions } from '../db/schema-questions.js';
 import { RETRY_MAX_ROUNDS, readAutoRetryPayload } from '../jobs/retry.js';
 import { isoOrNull } from '../lib/iso-time.js';
 import { personNameSql } from '../lib/person-name.js';
+import { questionIdFor } from '../questions/pane-question-id.js';
 import { DOOR_DECIDED_CAUSES, type FailureCause } from './failure-causes.js';
 import { causeForText } from './failure-patterns.js';
 import { holdOf, type RunHold } from './runs-liveness.js';
@@ -93,6 +95,8 @@ export interface PipelineRunAttempt {
     userId: string | null;
     name: string | null;
   } | null;
+  /** Where the question this job stopped on stands; null unless it stopped on one. */
+  questionOn: 'issue' | 'project' | null;
 }
 
 /** The round-robin headline, from the newest attempt's `_autoRetry`. */
@@ -102,6 +106,28 @@ export interface PipelineRunRetrySummary {
   maxRounds: number;
   targetDeviceId: string | null;
   targetDeviceName: string | null;
+}
+
+/** Each stopped job's first question, read by its id: a question asked on a closed issue stands on the project. */
+async function questionsAsked(
+  rows: readonly { jobId: string; failureReason: string | null }[],
+): Promise<Map<string, 'issue' | 'project'>> {
+  const idOf = new Map(
+    rows
+      .filter((r) => r.failureReason === 'stopped_on_question')
+      .map((r) => [questionIdFor(r.jobId, 0), r.jobId] as const),
+  );
+  const on = new Map<string, 'issue' | 'project'>();
+  if (idOf.size === 0) return on;
+  const asked = await db
+    .select({ id: agentQuestions.id, issueId: agentQuestions.issueId })
+    .from(agentQuestions)
+    .where(inArray(agentQuestions.id, [...idOf.keys()]));
+  for (const q of asked) {
+    const jobId = idOf.get(q.id);
+    if (jobId) on.set(jobId, q.issueId ? 'issue' : 'project');
+  }
+  return on;
 }
 
 /** One run's attempts oldest first; `_autoRetry` is absent on rows older than ISS-407. */
@@ -142,6 +168,7 @@ export async function loadAttemptsForRun(runId: string): Promise<{
     .where(eq(jobs.pipelineRunId, runId))
     .orderBy(asc(jobs.queuedAt));
 
+  const questionOn = await questionsAsked(rows);
   const nameById = new Map<string, string>();
   for (const r of rows) {
     if (r.deviceId && r.deviceName) nameById.set(r.deviceId, r.deviceName);
@@ -191,6 +218,7 @@ export async function loadAttemptsForRun(runId: string): Promise<{
             })
           : null,
       cancelledBy: cancelled ? cancelledByOf(r.cancelActor ?? null) : null,
+      questionOn: questionOn.get(r.jobId) ?? null,
     } satisfies PipelineRunAttempt;
   });
 

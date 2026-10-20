@@ -428,15 +428,16 @@ describe("round 19: held, cancelled, question and control-free remedies", () => 
     expect(line?.action).toBe("Answer its question on the Questions tab.");
   });
 
-  // The master's ruling: a job working an issue asks on that issue, which the issue page shows.
-  it("sends a question stop on an issue's run to the issue page, not the Questions tab", () => {
-    const [line] = deriveActivityFeed(
-      [attempt({ status: "failed", failureCause: "stopped_on_question", failureReason: "stopped_on_question" })],
-      undefined,
-      null,
-      true,
-    );
-    expect(line?.action).toBe("Answer its question on its issue's page.");
+  // The master's ruling: a job working an issue asks on that issue, which the issue page shows; one
+  // asked after its issue closed stands on the project, so the drawer reads where it stands.
+  it.each([
+    ["issue", "Answer its question on its issue's page."],
+    ["project", "Answer its question on the Questions tab."],
+  ] as const)("sends a question standing on the %s to where it is answered", (questionOn, action) => {
+    const [line] = deriveActivityFeed([
+      attempt({ status: "failed", failureCause: "stopped_on_question", failureReason: "stopped_on_question", questionOn }),
+    ]);
+    expect(line?.action).toBe(action);
   });
 
   it.each([

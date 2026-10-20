@@ -92,7 +92,6 @@ export function ActivityTab({ run, loading, error, onRetry, sessionHref }: Activ
     run.attempts,
     run.reading === "blocked" ? word.label : undefined,
     user?.id ?? null,
-    !!run.issueId,
   );
   const open = run.status === "running" || run.status === "paused";
   // An open run its session works without jobs: one that has started, or a run session or master's.

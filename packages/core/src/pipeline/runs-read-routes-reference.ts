@@ -155,6 +155,12 @@ const attemptSchema = z.object({
     })
     .nullable()
     .describe('who cancelled this job, or its run; null unless it was cancelled'),
+  questionOn: z
+    .enum(['issue', 'project'])
+    .nullable()
+    .describe(
+      'where the question this job stopped on stands: on its issue, or the project where it has none or it had closed; null unless it stopped on one',
+    ),
 });
 
 /** One run with its step timeline, per-attempt device/retry timeline and cost rolled up. */

@@ -221,7 +221,7 @@ describe('migration 0347 links the questions already standing at project level (
       VALUES (${jobId}, ${projectId}, ${issueId}, ${runId}, ${ownerId}, 'drive', 'failed', 'stopped_on_question',
               '{}'::jsonb, now())
     `);
-    const { questionIdFor } = await import('../../src/questions/pane-question-write.js');
+    const { questionIdFor } = await import('../../src/questions/pane-question-id.js');
     const { askQuestion } = await import('../../src/questions/write.js');
     const id = questionIdFor(jobId, 1);
     await askQuestion({

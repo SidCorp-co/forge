@@ -142,9 +142,14 @@ describe('a job that stopped on a question reads so on the run route (criteria 1
       projectSlug: string;
       startedAt: string;
       steps: Array<{ startedAt: string | null; finishedAt: string | null }>;
-      attempts: Array<{ failureCause: string | null; failureReason: string | null }>;
+      attempts: Array<{
+        failureCause: string | null;
+        failureReason: string | null;
+        questionOn: string | null;
+      }>;
     };
     expect(body.attempts[0]?.failureReason).toBe('stopped_on_question');
+    expect(body.attempts[0]?.questionOn).toBe('issue');
     expect(body.attempts[0]?.failureCause).toBe('stopped_on_question');
 
     // Every time the route answers is ISO, the step times a raw aggregate reads included.
@@ -194,6 +199,33 @@ describe('a job that stopped on a question reads so on the run route (criteria 1
               'stopped_on_question', 'pane stopped on a question', '{}'::jsonb, now())
     `);
     expect((await summary(runId)).attempts[0]?.failureCause).toBe('stopped_on_question');
+    expect((await summary(runId)).attempts[0]?.questionOn).toBeNull();
+  });
+
+  it("reads a question asked on an issue already dropped as the project's, not the issue's", async () => {
+    const runId = await newRun();
+    const issueId = randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id)
+      VALUES (${issueId}, ${projectId}, 7, 'Retire the scratch table', 'dropped', ${ownerId})
+    `);
+    const jobId = randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO jobs (id, project_id, pipeline_run_id, issue_id, device_id, created_by, type, status,
+                        dispatched_at, acked_at, payload)
+      VALUES (${jobId}, ${projectId}, ${runId}, ${issueId}, ${deviceId}, ${ownerId}, 'drive', 'running',
+              now(), now(), '{}'::jsonb)
+    `);
+    const { endBlockedJob } = await import('../../src/jobs/blocked.js');
+    const ended = await endBlockedJob({ id: jobId, status: 'running' }, deviceId, {
+      error: 'forge-runner: the pane has been stopped on a question only a human can answer for 2m',
+      asked: {
+        kind: 'dialog',
+        questions: [{ question: 'Keep the scratch table?', options: [{ label: 'Yes' }] }],
+      },
+    });
+    expect(ended.issueId).toBeNull();
+    expect((await summary(runId)).attempts[0]?.questionOn).toBe('project');
   });
 
   it('names no job for a question a master asked through the device door', async () => {

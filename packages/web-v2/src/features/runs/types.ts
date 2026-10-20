@@ -83,6 +83,7 @@ export interface PipelineRunAttempt {
   takenBy: { deviceId: string; deviceName: string | null } | null;
   hold?: RunHold | null;
   cancelledBy?: { kind: "person" | "agent" | "core"; userId?: string | null; name: string | null } | null;
+  questionOn?: "issue" | "project" | null;
 }
 
 export interface PipelineRunRetrySummary {

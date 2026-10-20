@@ -1,27 +1,15 @@
 /**
  * Writing what a pane asked onto the tracker, once.
  *
- * A report that reaches core twice leaves one question: the id is a function of the blocked job
- * and the question's place in its dialog.
+ * A report that reaches core twice leaves one question: the id (`pane-question-id.ts`) is a function
+ * of the blocked job and the question's place in its dialog.
  */
 
-import { createHash } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
 import { agentQuestions } from '../db/schema-questions.js';
 import { type PaneQuestion, refusedPaneQuestion, rulesOf } from './pane-question.js';
 import { insertAskedQuestion, QuestionRefused } from './write.js';
-
-/** The same id for the same blocked job and place, in the shape of a name-based (v5) uuid. */
-export function questionIdFor(jobId: string, index: number): string {
-  const bytes = Buffer.from(
-    createHash('sha1').update(`forge:blocked-question:${jobId}:${index}`).digest().subarray(0, 16),
-  );
-  bytes[6] = ((bytes[6] as number) & 0x0f) | 0x50;
-  bytes[8] = ((bytes[8] as number) & 0x3f) | 0x80;
-  const hex = bytes.toString('hex');
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
-}
 
 /**
  * Write one question at `issueId`, or at project level where that is null, and answer where it

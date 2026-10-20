@@ -5,7 +5,7 @@
 --
 -- Each such question already standing is linked to the issue of the job that asked it. That job is
 -- found by the question's id, which jobs/blocked.ts derives from the job's id and the question's
--- place in its dialog (questions/pane-question-write.ts questionIdFor: the first 16 bytes of
+-- place in its dialog (questions/pane-question-id.ts questionIdFor: the first 16 bytes of
 -- sha1('forge:blocked-question:<job id>:<index>') stamped as a version-5 uuid), the one record both
 -- rows hold. Only a job that stopped on a question and carries an issue in the question's own project
 -- counts; an open question is not linked to an issue that has since closed or been dropped, which a
