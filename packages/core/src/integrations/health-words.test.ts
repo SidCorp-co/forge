@@ -53,9 +53,11 @@ describe('healthAnswer', () => {
       message: 'Unexpected token < in JSON at position 0',
       diagnostics: { thrown: true },
     });
+    // An answer that could not be read is still an answer, so nothing says Postman never answered.
     expect(answered.message).toBe(
-      'Forge could not check Postman. It failed before Postman answered, and what failed is kept in the diagnostics.',
+      'Forge could not check Postman. The check failed, and what failed is kept in the diagnostics.',
     );
+    expect(answered.message).not.toMatch(/before Postman answered/);
     expect(answered.diagnostics?.checkSaid).toBe('Unexpected token < in JSON at position 0');
   });
 

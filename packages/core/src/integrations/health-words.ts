@@ -33,7 +33,7 @@ export function healthAnswer(provider: string, result: HealthCheckResult): Healt
   else if (isUnreachedReason(diagnostics.unreached))
     message = unreachedWords(label, diagnostics.unreached);
   else if (diagnostics.thrown === true)
-    message = `${lead[result.status]} It failed before ${label} answered, and what failed is kept in the diagnostics.`;
+    message = `${lead[result.status]} The check failed, and what failed is kept in the diagnostics.`;
   else message = [lead[result.status], asSentence(said)].filter(Boolean).join(' ');
   return {
     ...result,
