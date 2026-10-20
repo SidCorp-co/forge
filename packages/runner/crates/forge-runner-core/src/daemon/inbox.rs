@@ -546,29 +546,40 @@ mod tests {
                 return;
             }
             let dir = crate::test_scratch::Scratch::new("inbox-moved");
-            terminal::ensure(
-                PANE,
-                &dir,
-                &["sleep".to_string(), "60".to_string()],
-                &[],
-                None,
-            )
-            .await
-            .expect("the master pane must start");
+            let sleeping = || ["sleep".to_string(), "60".to_string()];
+            let beside = terminal::session_name(terminal::MASTER_PREFIX, "inboxmoved-beside");
+            for name in [PANE, beside.as_str()] {
+                terminal::ensure(name, &dir, &sleeping(), &[], None)
+                    .await
+                    .expect("the master pane must start");
+            }
             let moved = crate::daemon::terminal::testing::MovedSocket::aside();
-            let (acks, log) = send_frame().await;
+            let later = terminal::session_name(terminal::MASTER_PREFIX, "inboxmoved-later");
+            let (placing, logs) = crate::log_capture::capturing();
+            let placed = terminal::ensure(&later, &dir, &sleeping(), &[], None).await;
+            drop(logs);
+            let (acks, framed) = send_frame().await;
+            let log = placing.said() + &framed;
             assert!(
                 acks.is_empty(),
-                "the master is running; nobody could ask its server: {acks:?}"
+                "the master is running; nobody could ask its server, and no second server answers for it: {acks:?}"
+            );
+            assert!(
+                placed.is_err(),
+                "a placement on the moved socket starts no second server: {placed:?}"
             );
             let socket = moved.socket().display().to_string();
             let said = log
                 .lines()
-                .find(|l| l.contains("ERROR") && l.contains(&socket))
+                .find(|l| {
+                    l.contains("ERROR") && l.contains(&socket) && l.contains("could not be asked")
+                })
                 .unwrap_or_else(|| panic!("an error-level line names the missing socket: {log}"));
+            let mut both = [PANE, beside.as_str()];
+            both.sort_unstable();
             assert!(
-                said.contains(PANE),
-                "and names the pane this daemon placed on it: {said}"
+                said.contains(&format!("placed {} on", both.join(", "))),
+                "and names exactly the panes this daemon placed on it: {said}"
             );
         }
 

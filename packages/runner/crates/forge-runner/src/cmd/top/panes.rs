@@ -54,17 +54,28 @@ fn no_socket_file(stderr: &str) -> bool {
     lower.contains("error connecting to") && lower.contains("no such file")
 }
 
+/// The socket tmux says it tried, said once by whichever of the source and
+/// the reason does not already name it.
+fn socket_named(stderr: &str) -> Option<&str> {
+    let after = stderr.split_once("error connecting to ")?.1;
+    after.rsplit_once(" (").map(|(path, _)| path)
+}
+
 pub fn parse(source: &str, ok: bool, stdout: &str, stderr: &str) -> Read<Sessions> {
     if !ok {
         if no_server(stderr) {
             return Ok(Sessions::new());
         }
         if no_socket_file(stderr) {
+            let named = socket_named(stderr).filter(|path| !source.contains(path));
+            let file = named.map_or_else(
+                || "the socket file".to_string(),
+                |path| format!("the socket file {path}"),
+            );
             return Err(Unreadable::new(
                 source,
                 format!(
-                    "the socket file is not there, so whether a server moved from under it still runs the masters cannot be read ({})",
-                    stderr.trim()
+                    "{file} is not there, so whether a server moved from under it still runs the masters cannot be read"
                 ),
             ));
         }
@@ -136,6 +147,21 @@ mod tests {
             e.reason.contains("/x/tmux.sock") && e.reason.contains("not there"),
             "it names the socket and says its file is missing: {e}"
         );
+    }
+
+    /// ISS-1265 round 5, judge-56: the source already names the socket, so
+    /// the reason does not repeat it inside tmux's own sentence.
+    #[test]
+    fn a_missing_socket_is_named_once() {
+        let e = parse(
+            "tmux list-sessions on /x/tmux.sock",
+            false,
+            "",
+            "error connecting to /x/tmux.sock (No such file or directory)",
+        )
+        .unwrap_err();
+        assert_eq!(e.to_string().matches("/x/tmux.sock").count(), 1, "{e}");
+        assert!(e.reason.contains("not there"), "{e}");
     }
 
     /// Criterion 22.
