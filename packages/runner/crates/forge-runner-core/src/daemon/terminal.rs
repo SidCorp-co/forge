@@ -476,15 +476,7 @@ mod missing_socket {
         if !placed.is_empty() {
             why.push(format!("this daemon placed {} on it", placed.join(", ")));
         }
-        match super::listening_on(&path) {
-            super::Listening::Yes => {
-                why.push("a tmux server still listens on that path".to_string())
-            }
-            super::Listening::Unread(e) => why.push(format!(
-                "whether a tmux server still listens on that path could not be read ({e})"
-            )),
-            super::Listening::No => {}
-        }
+        why.extend(super::still_listening(&path));
         if why.is_empty() {
             return None;
         }
@@ -497,51 +489,46 @@ mod missing_socket {
     }
 }
 
-/// Whether the kernel lists a process listening on a unix socket path.
-#[derive(Debug)]
-enum Listening {
-    Yes,
-    No,
-    Unread(String),
-}
-
-/// `/proc/net/unix` still lists a listening socket by the path it was bound
-/// to after that file is unlinked, which is what tells a server whose socket
-/// file was moved from no server at all.
+/// Why a server may still run on `socket` though its file is gone, as the
+/// kernel answers it: `/proc/net/unix` still lists a listening socket by the
+/// path it was bound to after that file is unlinked, and a listing that
+/// cannot be read is not an empty one.
 #[cfg(target_os = "linux")]
-fn listening_on(socket: &std::path::Path) -> Listening {
+fn still_listening(socket: &std::path::Path) -> Option<String> {
     const TABLE: &str = "/proc/net/unix";
-    if listing_unread() {
-        return Listening::Unread(format!("reading {TABLE}: a test said it cannot be read"));
-    }
+    let read = if listing_unread() {
+        Err(format!("reading {TABLE}: a test said it cannot be read"))
+    } else {
+        std::fs::read_to_string(TABLE).map_err(|e| format!("reading {TABLE}: {e}"))
+    };
     let resolved = resolved(socket);
-    match std::fs::read_to_string(TABLE) {
-        Ok(table) => {
-            if table
-                .lines()
-                .skip(1)
-                .filter_map(listening_path)
-                .any(|path| path == socket || path == resolved.as_path())
-            {
-                Listening::Yes
-            } else {
-                Listening::No
-            }
-        }
-        Err(e) => Listening::Unread(format!("reading {TABLE}: {e}")),
+    match read {
+        Ok(table) => table
+            .lines()
+            .skip(1)
+            .filter_map(listening_path)
+            .any(|path| path == socket || path == resolved.as_path())
+            .then(|| "a tmux server still listens on that path".to_string()),
+        Err(e) => Some(format!(
+            "whether a tmux server still listens on that path could not be read ({e})"
+        )),
     }
 }
 
+/// No kernel listing is read off Linux, so only this daemon's own record
+/// refuses a placement there; a restart while the file is gone is the case
+/// `docs/proposals/a-runner-socket-moved-under-a-running-server-orphans-its-masters.md`
+/// leaves open.
 #[cfg(not(target_os = "linux"))]
-fn listening_on(_: &std::path::Path) -> Listening {
-    Listening::No
+fn still_listening(_: &std::path::Path) -> Option<String> {
+    None
 }
 
 /// The path of a listening socket in one `/proc/net/unix` row, laid out as
 /// `Num RefCount Protocol Flags Type St Inode Path`: the inode is padded, the
 /// path is the rest of the line after one space and may hold spaces, and a
 /// listening socket carries `__SO_ACCEPTCON` (`0x10000`) in its flags.
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+#[cfg(target_os = "linux")]
 fn listening_path(row: &str) -> Option<&std::path::Path> {
     let mut rest = row;
     let mut flags = "";
@@ -1302,7 +1289,10 @@ pub fn pane_env() -> Vec<(String, String)> {
 /// module's transport and the rules they break are `daemon/master.rs`'s. A
 /// second copy over there would be a second thing to keep true.
 #[cfg(test)]
-use testing::{listing_unread, systemd_stand_in, tmux_command};
+use testing::{systemd_stand_in, tmux_command};
+
+#[cfg(all(test, target_os = "linux"))]
+use testing::listing_unread;
 
 #[cfg(test)]
 pub(crate) mod testing {
@@ -1636,14 +1626,17 @@ pub(crate) mod testing {
         }
     }
 
+    #[cfg(target_os = "linux")]
     thread_local! {
         static UNREAD_LISTING: Cell<bool> = const { Cell::new(false) };
     }
 
     /// The kernel's listing of listening sockets cannot be read on this thread
     /// until dropped, as on a box whose `/proc` hides it.
+    #[cfg(target_os = "linux")]
     pub(crate) struct UnreadListing;
 
+    #[cfg(target_os = "linux")]
     impl UnreadListing {
         pub(crate) fn here() -> Self {
             UNREAD_LISTING.with(|u| u.set(true));
@@ -1651,13 +1644,14 @@ pub(crate) mod testing {
         }
     }
 
+    #[cfg(target_os = "linux")]
     impl Drop for UnreadListing {
         fn drop(&mut self) {
             UNREAD_LISTING.with(|u| u.set(false));
         }
     }
 
-    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+    #[cfg(target_os = "linux")]
     pub(super) fn listing_unread() -> bool {
         UNREAD_LISTING.with(Cell::get)
     }
@@ -4086,6 +4080,7 @@ done
     /// `/proc/net/unix` rows as Linux writes them: a padded inode, a path
     /// holding a space, a connected socket bound to the same path, and an
     /// unbound one.
+    #[cfg(target_os = "linux")]
     #[test]
     fn a_listening_row_names_its_path_and_no_other_row_does() {
         let rows = [
