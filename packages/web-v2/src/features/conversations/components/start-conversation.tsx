@@ -10,6 +10,7 @@
 // The room is opened when the person says start, and not when they pick a
 // project, so browsing the project list leaves no empty rooms behind it.
 
+import { personChoice } from "@forge/contracts/person-name";
 import { useState } from "react";
 import { Button, Checkbox, ErrorState, Icon, Select, Spinner } from "@/design";
 import { useOrgScopedProjects } from "@/features/projects/hooks";
@@ -210,12 +211,23 @@ function Extras({
                 key={p.userId}
                 checked={people.includes(p.userId)}
                 onChange={() => onTogglePerson(p.userId)}
-                label={p.displayName ?? p.email}
+                label={<PersonChoice displayName={p.displayName} email={p.email} />}
               />
             ))}
           </div>
         </div>
       )}
     </div>
+  );
+}
+
+/** A person offered for the room: by name, with the address that tells two alike apart (ISS-1229 r21). */
+function PersonChoice({ displayName, email }: { displayName: string | null; email: string }) {
+  const { label, detail } = personChoice(displayName, email);
+  return (
+    <span className="inline-flex min-w-0 flex-wrap items-baseline gap-x-2">
+      <span data-person-label>{label}</span>
+      <span className="fg-caption min-w-0 break-all text-muted" data-person-detail>{detail}</span>
+    </span>
   );
 }

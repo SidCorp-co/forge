@@ -164,7 +164,7 @@ async function findOrCreateUser(
       providerAccountId: identity.providerAccountId,
       email,
     });
-    await ensurePersonalOrg(tx, user.id, email);
+    await ensurePersonalOrg(tx, user.id);
     return user;
   });
   logger.info({ userId: created.id, provider: cfg.id }, 'oauth: created new user');

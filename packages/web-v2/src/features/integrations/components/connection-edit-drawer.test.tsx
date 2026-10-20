@@ -65,7 +65,7 @@ afterEach(cleanup);
 
 describe("the drawer's Projects using it panel over a refusal", () => {
   it("prints the server's sentence for a connection it cannot reach, with no Retry that would meet it again", () => {
-    const sentence = `connection ${connection.id} is not one you can reach. Ask its owner.`;
+    const sentence = `Connection ${connection.id} is not one you can reach. Ask its owner.`;
     bindingsError = new ApiError(404, sentence, "CONNECTION_NOT_REACHABLE");
 
     mount();

@@ -16,7 +16,7 @@ export function LiveCount({ n, read }: LiveCountProps) {
     <span
       title="Agent sessions live now, as the Pipeline page lists them"
       className={cn(
-        'inline-flex items-center gap-1.5 font-mono text-12-5',
+        'inline-flex items-center gap-1.5 whitespace-nowrap font-mono text-12-5',
         live ? 'text-accent-text' : 'text-subtle',
       )}
     >

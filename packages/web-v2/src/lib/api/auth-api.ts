@@ -24,6 +24,13 @@ export const authApi = {
 
   me: () => apiClient<MeResponse>('/auth/me'),
 
+  /** `PATCH /auth/me` — the name other members read; `null` clears it. */
+  setDisplayName: (displayName: string | null) =>
+    apiClient<{ id: string; email: string; displayName: string | null }>('/auth/me', {
+      method: 'PATCH',
+      body: JSON.stringify({ displayName }),
+    }),
+
   logout: () => apiClient<void>('/auth/logout', { method: 'POST' }),
 
   refresh: () =>

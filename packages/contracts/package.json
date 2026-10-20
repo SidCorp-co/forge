@@ -46,6 +46,10 @@
       "types": "./dist/deploy-key-words.d.ts",
       "default": "./dist/deploy-key-words.js"
     },
+    "./person-name": {
+      "types": "./dist/person-name.d.ts",
+      "default": "./dist/person-name.js"
+    },
     "./deploy-capability": {
       "types": "./src/deploy-capability.ts",
       "default": "./src/deploy-capability.ts"

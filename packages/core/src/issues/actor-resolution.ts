@@ -1,6 +1,7 @@
 import { inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { devices, users } from '../db/schema.js';
+import { personName } from '../lib/person-name.js';
 import { type ActorRef, type ActorType, actorKey, type ResolvedActor } from './actor-identity.js';
 
 const UNKNOWN_LABEL = 'Unknown';
@@ -17,8 +18,8 @@ function unknownActor(type: ActorType, id: string): ResolvedActor {
 
 /**
  * Batch-resolve a set of actor refs to display identities, keyed by
- * `actorKey(type, id)`. Users resolve to their email; devices resolve to the
- * device name plus (best-effort) the owning member's email. An id that matches
+ * `actorKey(type, id)`. Users resolve to what `personName` calls them; devices resolve to the
+ * device name plus (best-effort) what the owning member is called. An id that matches
  * no row degrades to a defined `Unknown` fallback — never throws — so a stale
  * actorId on an old row can't 500 the comments/activity endpoints.
  */
@@ -35,20 +36,19 @@ export async function resolveActors(refs: ActorRef[]): Promise<Map<string, Resol
     else if (ref.type === 'device') deviceIds.add(ref.id);
   }
 
-  const userEmailById = new Map<string, string>();
+  const displayNameById = new Map<string, string | null>();
   const agentUserIds = new Set<string>();
   if (userIds.size > 0) {
     const rows = await db
       .select({
         id: users.id,
-        email: users.email,
         displayName: users.displayName,
         kind: users.kind,
       })
       .from(users)
       .where(inArray(users.id, [...userIds]));
     for (const r of rows) {
-      userEmailById.set(r.id, r.displayName ?? r.email);
+      displayNameById.set(r.id, r.displayName);
       if (r.kind === 'agent') agentUserIds.add(r.id);
     }
   }
@@ -62,35 +62,38 @@ export async function resolveActors(refs: ActorRef[]): Promise<Map<string, Resol
     for (const r of rows) deviceById.set(r.id, { name: r.name, ownerId: r.ownerId });
   }
 
-  // Resolve device owner emails in one extra batched query (owners not already
+  // Resolve device owners in one extra batched query (owners not already
   // covered by the user lookup above).
   const ownerIdsToFetch = new Set<string>();
   for (const d of deviceById.values()) {
-    if (!userEmailById.has(d.ownerId)) ownerIdsToFetch.add(d.ownerId);
+    if (!displayNameById.has(d.ownerId)) ownerIdsToFetch.add(d.ownerId);
   }
   if (ownerIdsToFetch.size > 0) {
     const rows = await db
       .select({
         id: users.id,
-        email: users.email,
         displayName: users.displayName,
         kind: users.kind,
       })
       .from(users)
       .where(inArray(users.id, [...ownerIdsToFetch]));
     for (const r of rows) if (r.kind === 'agent') agentUserIds.add(r.id);
-    for (const r of rows) userEmailById.set(r.id, r.displayName ?? r.email);
+    for (const r of rows) displayNameById.set(r.id, r.displayName);
   }
 
   for (const ref of refs) {
     const key = actorKey(ref.type, ref.id);
     if (result.has(key)) continue;
     if (ref.type === 'user') {
-      const email = userEmailById.get(ref.id);
       result.set(
         key,
-        email
-          ? { type: 'user', id: ref.id, displayName: email, isAgent: agentUserIds.has(ref.id) }
+        displayNameById.has(ref.id)
+          ? {
+              type: 'user',
+              id: ref.id,
+              displayName: personName(displayNameById.get(ref.id), 'start'),
+              isAgent: agentUserIds.has(ref.id),
+            }
           : unknownActor('user', ref.id),
       );
     } else {
@@ -99,14 +102,16 @@ export async function resolveActors(refs: ActorRef[]): Promise<Map<string, Resol
         result.set(key, unknownActor('device', ref.id));
         continue;
       }
-      const ownerEmail = userEmailById.get(device.ownerId);
+      const ownerName = displayNameById.has(device.ownerId)
+        ? personName(displayNameById.get(device.ownerId))
+        : undefined;
       result.set(key, {
         type: 'device',
         id: ref.id,
         displayName: device.name,
         isAgent: true,
         deviceId: ref.id,
-        ...(ownerEmail ? { ownerEmail } : {}),
+        ...(ownerName ? { ownerName } : {}),
       });
     }
   }
@@ -114,14 +119,20 @@ export async function resolveActors(refs: ActorRef[]): Promise<Map<string, Resol
   return result;
 }
 
-/** The label each user is rendered by; an id with no user row is absent, never "Unknown". */
-export async function userLabels(ids: string[]): Promise<Map<string, string>> {
+/**
+ * What each user is called; an id with no user row is absent, never "Unknown". `at` is where the
+ * name stands: 'start' opens a label or a sentence, 'inside' sits mid-sentence ("another member").
+ */
+export async function userLabels(
+  ids: string[],
+  at: 'inside' | 'start' = 'start',
+): Promise<Map<string, string>> {
   const labels = new Map<string, string>();
   if (ids.length === 0) return labels;
   const rows = await db
-    .select({ id: users.id, email: users.email, displayName: users.displayName })
+    .select({ id: users.id, displayName: users.displayName })
     .from(users)
     .where(inArray(users.id, ids));
-  for (const row of rows) labels.set(row.id, row.displayName ?? row.email);
+  for (const row of rows) labels.set(row.id, personName(row.displayName, at));
   return labels;
 }

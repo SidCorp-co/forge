@@ -187,7 +187,9 @@ describe('a release batch names every issue its range carries', () => {
     expect(body).not.toContain(runId);
     expect(body).toContain(String(res.body.version));
     expect(body).toContain(why);
-    expect(body).toContain(ownerEmail);
+    // ISS-1229 r21: the decider is named as core calls them, never by address.
+    expect(body).toContain('Another member decided');
+    expect(body).not.toContain(ownerEmail);
     expect(body).not.toContain('Whoever pressed');
     const prompt = await promptOf(runId);
     expect(prompt).toContain(`Promote exactly \`${sha('b')}\``);

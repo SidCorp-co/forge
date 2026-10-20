@@ -10,6 +10,8 @@ import { Popover } from "@/design/primitives/popover";
 export interface SelectOption {
   value: string;
   label: string;
+  /** Secondary text under the label, e.g. the address that tells two alike-named people apart. */
+  detail?: string;
   icon?: IconName;
   disabled?: boolean;
 }
@@ -116,7 +118,9 @@ export function Select({
           typeahead.current = now - typeaheadAt.current > 800 ? e.key : typeahead.current + e.key;
           typeaheadAt.current = now;
           const q = typeahead.current.toLowerCase();
-          const i = options.findIndex((o) => !o.disabled && o.label.toLowerCase().startsWith(q));
+          const i = options.findIndex(
+            (o) => !o.disabled && [o.label, o.detail ?? ""].some((t) => t.toLowerCase().startsWith(q)),
+          );
           if (i >= 0) setActive(i);
         }
     }
@@ -187,7 +191,10 @@ export function Select({
               )}
             >
               {o.icon && <Icon name={o.icon} size={16} style={isActive ? { color: "var(--accent)" } : { color: "var(--fg-subtle)" }} />}
-              <span className="flex-1 truncate">{o.label}</span>
+              <span className="flex min-w-0 flex-1 flex-col">
+                <span className="truncate" data-option-label>{o.label}</span>
+                {o.detail && <span className="fg-caption break-all text-muted" data-option-detail>{o.detail}</span>}
+              </span>
               {isSel && <Icon name="check" size={15} strokeWidth={2.5} style={{ color: "var(--accent)" }} />}
             </div>
           );
@@ -217,7 +224,7 @@ export function NativeSelect({ options, className, ...props }: NativeSelectProps
       >
         {options.map((o) => (
           <option key={o.value} value={o.value} disabled={o.disabled}>
-            {o.label}
+            {o.detail ? `${o.label} (${o.detail})` : o.label}
           </option>
         ))}
       </select>

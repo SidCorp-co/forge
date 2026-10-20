@@ -1,6 +1,7 @@
 import { and, eq, inArray, isNotNull, isNull, notInArray, or, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, users } from '../db/schema.js';
+import { personName } from '../lib/person-name.js';
 
 export const DETECTOR_CHANNELS = ['system', 'schedule'] as const;
 
@@ -27,8 +28,8 @@ const UNKNOWN_CREATOR_LABEL = 'Unknown user';
 
 /**
  * Who filed each issue on this page, one grouped query (ISS-756, ISS-1137). A
- * writer is a named account: `users.kind` is its kind and `display_name` its
- * label, so no class label stands in for a group of writers. Never a raw id.
+ * writer is a named account: `users.kind` is its kind and `personName` its
+ * label, so no class label stands in for a group of writers. Never a raw id, never an address.
  */
 export async function hydrateCreatorsForIssues(
   rows: { id: string; createdById: string }[],
@@ -53,7 +54,7 @@ export async function hydrateCreatorsForIssues(
         {
           creatorEmail: writer?.email ?? null,
           creatorIsAgent: writer?.kind === 'agent',
-          creatorLabel: writer?.displayName ?? writer?.email ?? UNKNOWN_CREATOR_LABEL,
+          creatorLabel: writer ? personName(writer.displayName, 'start') : UNKNOWN_CREATOR_LABEL,
         },
       ];
     }),

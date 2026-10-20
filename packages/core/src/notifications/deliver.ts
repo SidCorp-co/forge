@@ -238,7 +238,7 @@ async function deliverTo(
     if (already) continue;
 
     title ??= await titleNamingItsSubject(input);
-    let deliveryId: string | undefined;
+    let grouped: string | undefined;
     if (input.groupKey) {
       const [existing] = await db
         .select({ id: notificationDeliveries.id })
@@ -251,29 +251,45 @@ async function deliverTo(
           ),
         )
         .limit(1);
-      deliveryId = existing?.id;
+      grouped = existing?.id;
     }
-    let founded = false;
-    if (!deliveryId) {
-      founded = true;
-      const [created] = await db
-        .insert(notificationDeliveries)
-        .values({
-          userId,
-          channel: 'bell',
-          groupKey: input.groupKey ?? null,
-          // A grouped delivery names the cause; an ungrouped one is its record.
-          title: input.groupKey ? (input.groupTitle ?? title) : title,
-          createdAt: now,
-        })
-        .returning({ id: notificationDeliveries.id });
-      deliveryId = created?.id;
-    }
-    if (!deliveryId) continue;
-    await db
-      .insert(notificationDeliveryMembers)
-      .values({ deliveryId, notificationId: recordId, deliveredAt: now })
-      .onConflictDoNothing();
+    const groupRow = grouped;
+    // A bell row and its first member land together, so a failed member insert leaves no row
+    // holding nothing; a group's row that lost its last notice meanwhile is founded afresh
+    // (ISS-1229 r21).
+    const landed = await db.transaction(async (tx) => {
+      const [held] = groupRow
+        ? await tx
+            .select({ id: notificationDeliveries.id })
+            .from(notificationDeliveries)
+            .where(eq(notificationDeliveries.id, groupRow))
+            .for('key share')
+        : [];
+      let id = held?.id;
+      const founded = !id;
+      if (!id) {
+        const [created] = await tx
+          .insert(notificationDeliveries)
+          .values({
+            userId,
+            channel: 'bell',
+            groupKey: input.groupKey ?? null,
+            // A grouped delivery names the cause; an ungrouped one is its record.
+            title: input.groupKey ? (input.groupTitle ?? title) : title,
+            createdAt: now,
+          })
+          .returning({ id: notificationDeliveries.id });
+        id = created?.id;
+      }
+      if (!id) return undefined;
+      await tx
+        .insert(notificationDeliveryMembers)
+        .values({ deliveryId: id, notificationId: recordId, deliveredAt: now })
+        .onConflictDoNothing();
+      return { founded };
+    });
+    if (!landed) continue;
+    const { founded } = landed;
     told += 1;
 
     await hooks.emit('notificationCreated', {

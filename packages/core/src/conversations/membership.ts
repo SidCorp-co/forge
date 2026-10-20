@@ -15,6 +15,7 @@ import {
   conversations,
 } from '../db/schema-conversations.js';
 import { effectiveProjectRole, projectRoleAtLeast } from '../lib/authz.js';
+import { personName } from '../lib/person-name.js';
 import type { Executor, TxOnly } from './db-executor.js';
 import { existingProjectHandle, handleNameForProject } from './handles.js';
 import { conversationTransport } from './ports.js';
@@ -159,14 +160,14 @@ export async function settleShape(
   return target;
 }
 
-/** How a room names a person: their address, never their display name. */
+/** How a room names a person: what `personName` calls them, never their address (ISS-1229). */
 export async function personLabel(tx: Executor, userId: string): Promise<string> {
   const [row] = await tx
-    .select({ email: users.email })
+    .select({ displayName: users.displayName })
     .from(users)
     .where(eq(users.id, userId))
     .limit(1);
-  return row?.email ?? userId;
+  return personName(row?.displayName, 'start');
 }
 
 /**

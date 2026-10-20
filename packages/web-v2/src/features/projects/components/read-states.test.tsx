@@ -242,14 +242,17 @@ describe("the workspace band and the attention banner, with two organizations", 
     ];
     render(<ProjectsConsole />);
     const band = screen.getByText("Workspace").parentElement as HTMLElement;
-    expect(band.textContent).toContain("1 projects");
+    expect(band.textContent).toContain("1 project");
+    expect(band.textContent).not.toContain("1 projects");
     expect(band.textContent).toContain("29 open work");
     expect(band.textContent).toContain("2 live sessions");
-    expect(band.textContent).toContain("1 runners");
+    expect(band.textContent).toContain("1 runner");
+    expect(band.textContent).not.toContain("1 runners");
     expect(band.textContent).toContain("$1.50 / 24h");
     expect(screen.getByText("alpha")).toBeTruthy();
     expect(screen.queryByText("beta")).toBeNull();
-    expect(screen.getByText(/1 project\b/)).toBeTruthy();
+    // The band and the attention banner each count the one project (ISS-1229 r21).
+    expect(screen.getAllByText(/1 project\b/)).toHaveLength(2);
   });
 
   it("leave an organization with no project saying so, not the page of a workspace with none", () => {

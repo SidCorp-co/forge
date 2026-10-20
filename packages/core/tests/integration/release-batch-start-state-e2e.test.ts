@@ -180,7 +180,9 @@ describe('the state of a release batch says whether a box has started it', () =>
     const { start } = await startOf(runId);
 
     expect(start.kind).toBe('aborted');
-    expect(start.by).toBe(ownerEmail);
+    // ISS-1229 r21: who aborted it is named as core calls them, never by address.
+    expect(start.by).toBe('Another member');
+    expect(start.by).not.toBe(ownerEmail);
     expect(start.why).toBe(reason);
     expect(typeof start.at).toBe('string');
   });

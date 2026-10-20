@@ -1,27 +1,30 @@
+import {
+  ADDRESS_PATTERN,
+  givenName,
+  personName as named,
+  UNNAMED_PERSON,
+  UNNAMED_PERSON_AT_START,
+} from '@forge/contracts/person-name';
 import { type SQL, sql } from 'drizzle-orm';
 import { logger } from '../logger.js';
 
-/** The one slot of a title that names a person: the name they gave, never an address (ISS-1229). */
-export const UNNAMED_PERSON = 'another member';
-export const UNNAMED_PERSON_AT_START = 'Another member';
+export {
+  ADDRESS_PATTERN,
+  carriesAnAddress,
+  givenName,
+  personInitials,
+  UNNAMED_PERSON,
+  UNNAMED_PERSON_AT_START,
+} from '@forge/contracts/person-name';
 
-/** Read alike by JavaScript and Postgres. */
-export const ADDRESS_PATTERN = '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}';
-
-export function carriesAnAddress(text: string): boolean {
-  return new RegExp(ADDRESS_PATTERN).test(text);
-}
-
-/** A display name that is blank or holds an address names nobody, and reads as the unnamed person. */
+/** `@forge/contracts/person-name`'s, saying when a name it was handed held an address (ISS-1229). */
 export function personName(
   displayName: string | null | undefined,
   at: 'inside' | 'start' = 'inside',
 ): string {
-  const given = displayName?.trim();
-  if (given && !carriesAnAddress(given)) return given;
-  if (given)
+  if (displayName?.trim() && givenName(displayName) === null)
     logger.warn('person-name: a name held an email address, so it reads as another member');
-  return at === 'start' ? UNNAMED_PERSON_AT_START : UNNAMED_PERSON;
+  return named(displayName, at);
 }
 
 export function personNameSql(displayName: SQL, at: 'inside' | 'start' = 'inside'): SQL<string> {

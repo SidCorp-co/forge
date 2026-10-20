@@ -23,7 +23,7 @@ import { ConversationPanel } from "@/features/conversations/components/conversat
 import { useConversationDock } from "@/features/conversations/use-conversation-dock";
 import { useLocationSearch } from "@/lib/utils/use-location-search";
 import { useSignInRedirect } from "@/features/auth/use-sign-in-redirect";
-import { useAuth } from "@/providers/auth-provider";
+import { useAuth, useUserInitials } from "@/providers/auth-provider";
 import { ToastLane, useToast } from "@/providers/toast-provider";
 import { useProjects } from "@/features/projects/hooks";
 import { usePinnedProjects } from "@/features/projects/pins";
@@ -83,6 +83,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   // deep-link (ISS-436 — pathname-only matching lit up EVERY pin on the route).
   const locationSearch = useLocationSearch();
   const { user, isLoading, logout } = useAuth();
+  const userInitials = useUserInitials();
   useUnblockCascadeToasts();
   const { toast } = useToast();
   const { data: projects } = useProjects();
@@ -252,8 +253,6 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
       SECONDARY_DESTINATIONS.find((it) => it.key === key);
     if (dest) router.push(dest.href);
   }
-
-  const userInitials = user?.email ? user.email.slice(0, 2).toUpperCase() : undefined;
 
   // Bottom tab bar (<md, ISS-514/ISS-681) — tier swap + active key live in
   // nav-model. Inside a project, the "Project" switcher item renders the

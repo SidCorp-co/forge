@@ -8,6 +8,7 @@ import { db } from '../db/client.js';
 import { oauthAccounts, userPreferences, users } from '../db/schema.js';
 import { assertOrgAccess } from '../lib/authz.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
+import { followDisplayName } from '../orgs/service.js';
 import {
   accountPreferencesSchema,
   accountSchema,
@@ -72,7 +73,8 @@ meRoutes.get('/me', readAccount, async (c) => {
  * The name a person is shown as, in their own words (ISS-1003).
  *
  * Trimmed and bounded, and otherwise anything they type — accents included.
- * `null` clears it; `personName` in lib/person-name.ts then says what they are called.
+ * `null` clears it; `personName` in lib/person-name.ts then says what they are called. Their
+ * personal workspace follows it in the same transaction (`followDisplayName`).
  */
 const profileSchema = z
   .object({ displayName: z.string().trim().min(1).max(200).nullable() })
@@ -90,11 +92,23 @@ meRoutes.patch(
     }
   }),
   async (c) => {
-    const [row] = await db
-      .update(users)
-      .set({ displayName: c.req.valid('json').displayName })
-      .where(eq(users.id, c.get('userId')))
-      .returning({ id: users.id, email: users.email, displayName: users.displayName });
+    const userId = c.get('userId');
+    const after = c.req.valid('json').displayName;
+    const row = await db.transaction(async (tx) => {
+      const [was] = await tx
+        .select({ displayName: users.displayName })
+        .from(users)
+        .where(eq(users.id, userId))
+        .for('update');
+      if (!was) return undefined;
+      const [now] = await tx
+        .update(users)
+        .set({ displayName: after })
+        .where(eq(users.id, userId))
+        .returning({ id: users.id, email: users.email, displayName: users.displayName });
+      await followDisplayName(tx, userId, was.displayName, after);
+      return now;
+    });
     if (!row) {
       throw new HTTPException(401, {
         message: 'user not found',

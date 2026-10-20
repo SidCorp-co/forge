@@ -319,7 +319,8 @@ describe('reading is not managing', () => {
 
     expect(res.status).toBe(403);
     expect(body.code).toBe('CONNECTION_NOT_MANAGEABLE');
-    expect(body.message).toContain(connection.id);
+    expect(body.message).toContain('the connection "GitHub App forge-test"');
+    expect(body.message).not.toContain(connection.id);
     expect(body.message).toMatch(/owner/i);
   });
 
