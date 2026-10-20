@@ -63,12 +63,13 @@ export async function readableConversation(
   return row;
 }
 
-/** Renaming and deleting are writes, and a write takes more than a look. */
+/** Renaming and deleting are writes, and a write takes more than a look. A room about no project is
+ *  its opener's and its organization admins' to change, whether or not they are in it (ISS-1229 r23). */
 export async function writableConversation(id: string, userId: string): Promise<ConversationRow> {
   const row = await getConversation(id);
   if (!row) throw notFound('conversation not found');
-  await assertConversationWritable(row.id, userId);
-  await assertInTheRoom(row, userId);
+  const scope = await assertConversationWritable(row.id, userId);
+  if (scope.length > 0) await assertInTheRoom(row, userId);
   return row;
 }
 

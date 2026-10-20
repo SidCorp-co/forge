@@ -8,7 +8,7 @@
 // smaller, and in a shared room it says so rather than claiming an access
 // change that did not happen.
 
-import { personChoice, personName } from "@forge/contracts/person-name";
+import { personChoice } from "@forge/contracts/person-name";
 import { useState } from "react";
 import { Avatar, Banner, Button, ErrorState, Icon, SlideOver, Spinner } from "@/design";
 import { formatApiError } from "@/lib/api/error";
@@ -76,7 +76,7 @@ export function AddPersonDialog({
               Back
             </Button>
             <Button variant="primary" loading={add.isPending} onClick={confirm}>
-              Add {personName(picked.displayName)}
+              Add to room
             </Button>
           </div>
         )}

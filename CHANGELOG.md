@@ -3194,6 +3194,11 @@
 
 ### Fixed
 
+- **An organization whose agent still holds a device can now be deleted.** Runners, Organisation lists every device its agents hold, an admin revokes them there, and the refusal to delete names every such device. (ISS-1229)
+- **You read as "You", not "Another member", in a room's people list, on the Activity tab and as an issue's creator.** Taking someone out of a room asks first, naming who; adding reads "Add to room". (ISS-1229)
+- **Clear beside your display name empties the field and no longer wipes your saved name**, and a typed name that differs from it counts as an unsaved change until you save or discard it. (ISS-1229)
+- **The Activity tab names a changed field in words**, and a merge reads "recorded the merge" rather than listing stored field names. (ISS-1229)
+- **A conversation whose project was deleted can be deleted.** It is listed under your conversations, marked as its project deleted, for whoever opened it and, where its organization is known, that organization's admins. (ISS-1229)
 - **A step stopped to ask a question says so in the run drawer and points to where it is answered**, its issue's page or the Questions tab, instead of "Unclassified · The cause wasn't recorded". (ISS-1228)
 - **A job's question stands on the issue it was working**: the issue page shows it, and no sweep moves the issue back to Open or names it idle while it stands. (ISS-1228)
 - **A run whose job stopped on a question reads "Needs an answer" while it stands**, then "Answered", never Failed, on the runs tab, the run drawer and the issue page. (ISS-1228)

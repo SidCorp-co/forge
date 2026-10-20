@@ -155,7 +155,8 @@ export const sentSchema = z.object({
 
 /** What a room refuses a caller who may not look at it or change it (403). */
 export const ROOM_FORBIDDEN = {
-  CONVERSATION_NO_SCOPE: 'the room has no agent in it, so it is about no project',
+  CONVERSATION_NO_SCOPE:
+    'the room has no agent in it, so it is about no project, and the caller neither opened it nor holds the admin role in its organization',
   CONVERSATION_OUT_OF_SCOPE:
     'the caller holds too little of a role on a project the room is about; a room needs one on every project in it',
   NOT_IN_THE_ROOM:

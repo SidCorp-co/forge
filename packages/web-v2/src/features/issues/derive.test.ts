@@ -793,6 +793,14 @@ describe("memberLabel / initials", () => {
 });
 
 describe("creatorLabelOf", () => {
+	// ISS-1229 r23, judge-66: the reader read their own issue's creator as "Another member".
+	it("names the reader's own issue You, and anybody else's by core's name", () => {
+		const row = { creatorLabel: "Another member", createdById: "u-1" };
+		expect(creatorLabelOf(row, "u-1")).toBe("You");
+		expect(creatorLabelOf(row, "u-2")).toBe("Another member");
+		expect(creatorLabelOf(row)).toBe("Another member");
+	});
+
 	it("is the server-provided creatorLabel", () => {
 		expect(creatorLabelOf({ creatorLabel: "Ann Smith" })).toBe("Ann Smith");
 	});

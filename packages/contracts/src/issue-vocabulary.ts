@@ -113,6 +113,30 @@ export const ISSUE_KEY_REFUSAL_CODES = [
 export type IssueKeyRefusalCode = (typeof ISSUE_KEY_REFUSAL_CODES)[number];
 
 /**
+ * Every issue field an `issue.updated` activity row can name (ISS-1229 r23). Core's update hook is
+ * typed by it, so a field written without words for the Activity tab does not compile.
+ */
+export const ISSUE_UPDATE_FIELDS = [
+  'title',
+  'description',
+  'priority',
+  'category',
+  'complexity',
+  'plan',
+  'acceptanceCriteria',
+  'releaseNotes',
+  'sessionContext',
+  'detectorKey',
+  'assigneeId',
+  'metadata',
+  'mergedAt',
+  'mergedCommitSha',
+  'mergedLanding',
+] as const;
+
+export type IssueUpdateField = (typeof ISSUE_UPDATE_FIELDS)[number];
+
+/**
  * Every action core writes to an issue's activity log, which the Activity tab says as a sentence
  * (ISS-1229 r22). A writer outside this list does not compile, so no row reaches the tab as a code
  * nobody gave words to.

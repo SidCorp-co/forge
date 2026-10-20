@@ -1,10 +1,11 @@
 "use client";
 
 // Activity timeline for the issue detail: each event, newest first, as a sentence that opens with
-// who acted (`activity-sentences.ts`), and under it whether an agent acted and when.
+// who acted (`activity-sentences.ts`), "You" for the reader, and under it whether an agent acted and when.
 
 import { Badge, EmptyState, Icon } from "@/design";
 import { formatRelativeTime } from "@/lib/utils/format";
+import { useAuth } from "@/providers/auth-provider";
 import { activitySentence, type SentencePart } from "../activity-sentences";
 import type { ActivityItem } from "../types";
 
@@ -33,13 +34,14 @@ function Sentence({ parts }: { parts: SentencePart[] }) {
 }
 
 export function ActivityFeed({ items }: { items: ActivityItem[] }) {
+  const { user } = useAuth();
   if (items.length === 0) {
     return <EmptyState title="No activity yet" message="Status changes and edits will show here." mascot={false} />;
   }
   return (
     <ol className="space-y-3">
       {items.map((item) => {
-        const said = activitySentence(item);
+        const said = activitySentence(item, user?.id);
         const isAgent = item.actor?.isAgent ?? item.actorType === "device";
         return (
           <li key={item.id} className="flex items-start gap-3">

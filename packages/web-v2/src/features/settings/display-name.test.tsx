@@ -78,11 +78,13 @@ describe("a person's display name, from Settings → Account", () => {
     await waitFor(() => expect(screen.getByTestId("rail-avatar")).toHaveTextContent("AM"));
     expect(nameField().value).toBe("");
     fireEvent.change(nameField(), { target: { value: "  Lan Pham " } });
-    fireEvent.click(screen.getByRole("button", { name: "Set name" }));
+    expect(screen.getByText("You have unsaved changes.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(screen.getByTestId("rail-avatar")).toHaveTextContent("LP"));
     expect(writes).toEqual(["Lan Pham"]);
     expect(nameField().value).toBe("Lan Pham");
     expect(reread).toHaveBeenCalledWith({ queryKey: ["orgs"] });
+    await waitFor(() => expect(screen.getByText("No unsaved changes.")).toBeInTheDocument());
   });
 
   it("is cleared there, and the avatar reads Another member's initials again", async () => {
@@ -90,6 +92,9 @@ describe("a person's display name, from Settings → Account", () => {
     mount();
     await waitFor(() => expect(nameField().value).toBe("Lan Pham"));
     fireEvent.click(screen.getByRole("button", { name: "Clear" }));
+    expect(nameField().value).toBe("");
+    expect(writes).toEqual([]);
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(screen.getByTestId("rail-avatar")).toHaveTextContent("AM"));
     expect(writes).toEqual([null]);
   });
@@ -99,11 +104,34 @@ describe("a person's display name, from Settings → Account", () => {
     mount();
     await waitFor(() => expect(screen.getByTestId("rail-avatar")).toHaveTextContent("AM"));
     fireEvent.change(nameField(), { target: { value: "lan.pham@example.com" } });
-    expect(screen.getByText(displayNameRefusal("lan.pham@example.com") as string)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Set name" })).toBeDisabled();
+    expect(await screen.findByText(displayNameRefusal("lan.pham@example.com") as string)).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save" })).toBeDisabled());
     expect(writes).toEqual([]);
     fireEvent.change(nameField(), { target: { value: "Lan Pham" } });
-    expect(screen.queryByText(/cannot hold an email address/)).toBeNull();
-    expect(screen.getByRole("button", { name: "Set name" })).toBeEnabled();
+    await waitFor(() => expect(screen.queryByText(/cannot hold an email address/)).toBeNull());
+    expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
+  });
+
+  // ISS-1229 r23, judge-66: Clear beside a refused name wiped the SAVED name, and the page read
+  // "No unsaved changes" while the refused draft stood.
+  it("clears the typed text and never the saved name, and calls a refused draft an unsaved change", async () => {
+    me = { ...me, displayName: "Lan Pham" };
+    mount();
+    await waitFor(() => expect(nameField().value).toBe("Lan Pham"));
+    fireEvent.change(nameField(), { target: { value: "lan.pham@example.com" } });
+    expect(await screen.findByText(displayNameRefusal("lan.pham@example.com") as string)).toBeInTheDocument();
+    expect(screen.queryByText("No unsaved changes.")).toBeNull();
+    expect(screen.getByRole("button", { name: "Discard" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear" }));
+    expect(nameField().value).toBe("");
+    expect(writes).toEqual([]);
+    expect(me.displayName).toBe("Lan Pham");
+    expect(await screen.findByText("You have unsaved changes.")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Discard" }));
+    await waitFor(() => expect(nameField().value).toBe("Lan Pham"));
+    expect(screen.getByText("No unsaved changes.")).toBeInTheDocument();
+    expect(writes).toEqual([]);
   });
 });

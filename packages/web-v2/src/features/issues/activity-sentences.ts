@@ -3,7 +3,11 @@
 // does not compile until it has them; a row this build cannot know still reads as a change by its
 // actor, never as the code it was stored under.
 
-import { type IssueActivityAction, ISSUE_ACTIVITY_ACTIONS } from "@forge/contracts/issue-vocabulary";
+import {
+  type IssueActivityAction,
+  type IssueUpdateField,
+  ISSUE_ACTIVITY_ACTIONS,
+} from "@forge/contracts/issue-vocabulary";
 import { personName } from "@forge/contracts/person-name";
 import type { IconName } from "@/design";
 import { statusLabel } from "./derive";
@@ -23,24 +27,54 @@ type Payload = Record<string, unknown>;
 
 const text = (v: unknown): string | null => (typeof v === "string" && v.trim() ? v : null);
 
-/** A field name as words: `acceptanceCriteria` → "acceptance criteria". */
-const fieldWords = (field: string): string =>
-  field.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/[_-]+/g, " ").toLowerCase();
+/** Each field an update can name, in the words a reader knows it by; never its stored name (ISS-1229 r23). */
+const FIELD_WORDS: Record<Exclude<IssueUpdateField, MergeField>, string> = {
+  title: "the title",
+  description: "the description",
+  priority: "the priority",
+  category: "the category",
+  complexity: "the complexity",
+  plan: "the plan",
+  acceptanceCriteria: "the acceptance criteria",
+  releaseNotes: "the release note",
+  sessionContext: "the agent's working notes",
+  detectorKey: "what raised this issue",
+  assigneeId: "who it is assigned to",
+  metadata: "the branch settings",
+};
+
+/** The three fields a merge record writes together, said as the one act they are. */
+type MergeField = "mergedAt" | "mergedCommitSha" | "mergedLanding";
+const MERGE_FIELDS: readonly string[] = ["mergedAt", "mergedCommitSha", "mergedLanding"] satisfies MergeField[];
+
+/** A value short enough to quote: the title, priority and category, never a body. */
+const QUOTED: readonly string[] = ["title", "priority", "category", "complexity"];
 
 const joined = (words: string[]): string =>
   words.length <= 1 ? (words[0] ?? "") : `${words.slice(0, -1).join(", ")} and ${words[words.length - 1]}`;
 
+const wordsFor = (field: string): string | null =>
+  Object.hasOwn(FIELD_WORDS, field) ? FIELD_WORDS[field as keyof typeof FIELD_WORDS] : null;
+
 function edited(p: Payload): SentencePart[] {
   const fields = Array.isArray(p.fields) ? p.fields.filter((f): f is string => typeof f === "string") : [];
-  if (fields.length === 0) return ["changed this issue"];
-  const [only] = fields;
-  if (fields.length === 1 && only) {
+  const merge = fields.some((f) => MERGE_FIELDS.includes(f));
+  const rest = fields.filter((f) => !MERGE_FIELDS.includes(f));
+  const acts: string[] = [];
+  if (merge) acts.push(text((p.after as Payload | undefined)?.mergedAt) ? "recorded the merge" : "took back the merge record");
+  const [only] = rest;
+  if (rest.length === 1 && only && !merge && QUOTED.includes(only)) {
     const from = text((p.before as Payload | undefined)?.[only]);
     const to = text((p.after as Payload | undefined)?.[only]);
-    if (from && to && from.length <= 40 && to.length <= 40)
-      return [`changed the ${fieldWords(only)} from `, { strong: from }, " to ", { strong: to }];
+    const field = wordsFor(only);
+    if (field && from && to && from.length <= 40 && to.length <= 40)
+      return [`changed ${field} from `, { strong: from }, " to ", { strong: to }];
   }
-  return [`changed the ${joined(fields.map(fieldWords))}`];
+  const named = rest.map(wordsFor).filter((w): w is string => w !== null);
+  if (named.length > 0) acts.push(`changed ${joined(named)}`);
+  // A field this build has no words for is a change to the issue, never its stored name.
+  if (named.length < rest.length && named.length === 0) acts.push("changed this issue");
+  return acts.length === 0 ? ["changed this issue"] : [joined(acts)];
 }
 
 function named(p: Payload, what: string): string {
@@ -90,18 +124,21 @@ const SENTENCES: Record<IssueActivityAction, (p: Payload) => { icon: IconName; d
 
 const known = new Set<string>(ISSUE_ACTIVITY_ACTIONS);
 
-/** Who acted, as core named them; one it could not resolve is "Another member", or "An agent" for a device. */
-function actorOf(item: ActivityItem): string {
+/** Who acted, as core named them: "You" for the reader (ISS-1229 r23); one core could not resolve is
+ *  "Another member", or "An agent" for a device. */
+function actorOf(item: ActivityItem, viewerId?: string | null): string {
+  const userId = item.actor?.type === "user" ? item.actor.id : item.actorType === "user" ? item.actorId : null;
+  if (viewerId && userId === viewerId) return "You";
   if (item.actor?.displayName) return item.actor.type === "device" ? item.actor.displayName : personName(item.actor.displayName, "start");
   return item.actorType === "device" ? "An agent" : personName(null, "start");
 }
 
-export function activitySentence(item: ActivityItem): ActivitySentence {
+export function activitySentence(item: ActivityItem, viewerId?: string | null): ActivitySentence {
   const payload = (item.payload ?? {}) as Payload;
   const said = known.has(item.action)
     ? SENTENCES[item.action as IssueActivityAction](payload)
     : { icon: "dot" as const, did: ["changed this issue"] };
-  return { icon: said.icon, actor: actorOf(item), did: said.did };
+  return { icon: said.icon, actor: actorOf(item, viewerId), did: said.did };
 }
 
 /** The sentence as plain text, for a label or a test. */

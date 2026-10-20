@@ -64,6 +64,10 @@ export interface DeviceRow {
 export interface OrgDeviceRow extends Omit<DeviceRow, "capabilities" | "gate"> {
 	runnerCount: number;
 	projectNames: string[];
+	/** The organisation's agent holding the box, as `@handle`; null for a person's (ISS-1229 r23). */
+	heldBy: string | null;
+	/** Whether the viewer may revoke it: its pairer, or an admin where this organisation's agent paired it. */
+	canRevoke: boolean;
 }
 
 /** `POST /api/devices/login/init` response — a fresh pairing code + verify URL. */

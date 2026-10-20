@@ -1,3 +1,4 @@
+import type { IssueUpdateField } from '@forge/contracts/issue-vocabulary';
 import type {
   IssueDependencyKind,
   IssueStatus,
@@ -31,7 +32,8 @@ export interface HookPayloads {
     issueId: string;
     projectId: string;
     actor: Actor;
-    fields: string[];
+    /** Each one has words on the Activity tab (ISS-1229 r23). */
+    fields: IssueUpdateField[];
     before: Record<string, unknown>;
     after: Record<string, unknown>;
   };

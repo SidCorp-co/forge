@@ -20,7 +20,7 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
-import { projects, users } from './schema.js';
+import { organizations, projects, users } from './schema.js';
 import type { PresenceConfig } from './schema-agent-selves.js';
 
 export const conversationAdapters = ['web', 'widget', 'rocketchat', 'telegram'] as const;
@@ -79,6 +79,14 @@ export const conversations = pgTable(
      * its handles' selves (ISS-1087).
      */
     presence: jsonb('presence').$type<RoomPresence | null>(),
+    /**
+     * The organization the room belongs to, read from the project it was opened for, so the room
+     * outlives that project as its organization's (ISS-1229 r23); null only for a room 0350 found
+     * no project for.
+     */
+    orgId: uuid('org_id').references(() => organizations.id, { onDelete: 'cascade' }),
+    /** Who opened the room, where a person did; they may delete it once it is about no project. */
+    createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -86,6 +94,7 @@ export const conversations = pgTable(
     venueUnique: uniqueIndex('conversations_venue_unique').on(t.adapter, t.externalId),
     updatedIdx: index('conversations_updated_idx').on(t.updatedAt),
     archivedIdx: index('conversations_archived_idx').on(t.archivedAt),
+    orgIdx: index('conversations_org_idx').on(t.orgId),
     adapterKnown: check(
       'conversations_adapter_known',
       sql`${t.adapter} IN ('web','widget','rocketchat','telegram')`,

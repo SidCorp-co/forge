@@ -42,6 +42,7 @@ import {
   type DeviceCount,
   type DeviceScope,
   emptyState,
+  pairedByLabel,
   populationLine,
   rowActionNote,
   SCOPES,
@@ -205,7 +206,7 @@ function DeviceNameCell({ device }: { device: DeviceRow | OrgDeviceRow }) {
         {device.name}
         {device.ownedByMe ? null : (
           <span className="ml-1.5 inline-flex items-center rounded px-1.5 py-0.5 text-11 font-medium text-muted bg-sunken">
-            paired by another member
+            {pairedByLabel("heldBy" in device ? device.heldBy : null)}
           </span>
         )}
       </span>
@@ -263,7 +264,7 @@ function GitPush({ device, named = false }: { device: DeviceRow | OrgDeviceRow; 
   );
 }
 
-/** Manage, Turn off or on, and Revoke, where the viewer owns the device; else why they cannot. */
+/** Manage, Turn off or on, and Revoke, where the viewer owns the device; Revoke alone where an admin may revoke an agent's; else why they cannot. */
 function DeviceActions({
   device: d,
   scope,
@@ -285,10 +286,19 @@ function DeviceActions({
 }) {
   const revoked = d.status === "revoked";
   const disabled = !!d.disabledAt;
-  const actionNote = rowActionNote(scope, d.ownedByMe);
+  const canRevoke = "canRevoke" in d && d.canRevoke;
+  const actionNote = rowActionNote(scope, d.ownedByMe, canRevoke);
   if (actionNote !== null) return <span className="fg-body-sm text-subtle">{actionNote}</span>;
   if (confirming === d.id) {
     return <RevokeDeviceControl deviceId={d.id} deviceName={d.name} onDone={onRevokeDone} />;
+  }
+  // An organisation agent's box: an admin revokes it here, and its other controls stay its pairer's.
+  if (!d.ownedByMe) {
+    return revoked ? null : (
+      <Button variant="ghost" size="sm" icon="trash" onClick={() => onAskRevoke(d.id)}>
+        Revoke
+      </Button>
+    );
   }
   return (
     <span className="inline-flex flex-wrap items-center gap-1">
@@ -384,7 +394,7 @@ export function RunnersScreen() {
           actions={[
             "Mine — every device you paired, whether or not it serves a project",
             "Organisation — every device assigned to a project you can see here, whoever paired it",
-            "Turn off, revoke and rename are the device owner's alone",
+            "Turn off and rename are the device owner's alone; a device this organisation's agent holds is revoked by an admin of it here",
           ]}
           docPath="pair-a-runner"
         />

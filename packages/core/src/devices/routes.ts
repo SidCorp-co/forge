@@ -27,6 +27,7 @@ import { deviceProvisionRoutes } from './me-provisions.js';
 import { listDeviceAssignments } from './me-runners.js';
 import { redeemPairingCode } from './pair.js';
 import { heartbeatPool } from './pool-read-report.js';
+import { mayRevokeDevice, REVOKE_REFUSAL } from './revoke-authority.js';
 import {
   assignmentSchema,
   deviceHeartbeat,
@@ -260,7 +261,7 @@ deviceOwnerRoutes.delete(
     if (!device) {
       throw new HTTPException(404, { message: 'device not found', cause: { code: 'NOT_FOUND' } });
     }
-    if (device.ownerId !== userId) throw forbidden('not the device owner');
+    if (!(await mayRevokeDevice(device.ownerId, userId))) throw forbidden(REVOKE_REFUSAL);
 
     await db.transaction(async (tx) => {
       await tx.update(devices).set({ status: 'revoked' }).where(eq(devices.id, id));
@@ -271,10 +272,9 @@ deviceOwnerRoutes.delete(
     try {
       const { roomManager } = await import('../ws/server.js');
       const { deviceRoom, userRoom } = await import('../ws/rooms.js');
-      roomManager.publish(userRoom(userId), {
-        event: 'device.revoked',
-        data: { deviceId: id },
-      });
+      for (const room of new Set([userId, device.ownerId])) {
+        roomManager.publish(userRoom(room), { event: 'device.revoked', data: { deviceId: id } });
+      }
       roomManager.publish(deviceRoom(id), {
         event: 'device.revoked',
         data: { deviceId: id },

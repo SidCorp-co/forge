@@ -23,7 +23,7 @@ export function scopeCountLabel(count: DeviceCount): string {
 export function populationLine(scope: DeviceScope): string {
 	return scope === "mine"
 		? "Every device you have paired, including one that serves no project yet."
-		: "Every device assigned to a project you can see in this organisation, whoever paired it.";
+		: "Every device assigned to a project you can see in this organisation, whoever paired it, and every device this organisation's agents hold.";
 }
 
 /** Reconciles this page's device count with the Overview's runner count. */
@@ -39,10 +39,20 @@ export function assignmentBridgeLine(
 	return `${boxes} ${assignments} between them — the assignments are what Overview counts as runners.`;
 }
 
-/** What the org list says in place of the owner's controls. */
-export function rowActionNote(scope: DeviceScope, ownedByMe: boolean): string | null {
+/** What the org list says in place of the owner's controls; null where the row carries controls. */
+export function rowActionNote(
+	scope: DeviceScope,
+	ownedByMe: boolean,
+	canRevoke = false,
+): string | null {
 	if (scope === "mine") return null;
-	return ownedByMe ? "yours — manage it under Mine" : "read only";
+	if (ownedByMe) return "yours — manage it under Mine";
+	return canRevoke ? null : "read only";
+}
+
+/** Who a box on the org list belongs to, where the viewer did not pair it. */
+export function pairedByLabel(heldBy: string | null | undefined): string {
+	return heldBy ? `held by the agent ${heldBy}` : "paired by another member";
 }
 
 export interface ScopeEmptyState {
@@ -80,12 +90,12 @@ export function emptyState(
 	const mine = counts.mine;
 	if (mine !== UNKNOWN_COUNT && mine > 0) {
 		return {
-			title: "No device is assigned to a project you can see in this organisation",
+			title: "No device is assigned to a project you can see in this organisation, and none of its agents holds one",
 			message: `You have paired ${scopeCountLabel(mine)}. Assign one to a project in this organisation to see it here.`,
 		};
 	}
 	return {
-		title: "No device is assigned to a project you can see in this organisation",
+		title: "No device is assigned to a project you can see in this organisation, and none of its agents holds one",
 		message:
 			"Pair a runner with the command above, then assign it to a project in this organisation.",
 	};

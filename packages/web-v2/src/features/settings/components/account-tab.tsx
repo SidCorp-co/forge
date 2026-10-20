@@ -1,8 +1,9 @@
 "use client";
 
-// Settings → Account. Identity is read from the hydrated auth session. Theme + language save
-// against `/api/auth/me/preferences` and the reply style + standing instructions against
-// `/api/auth/preferences`: two routes, one form, one save bar.
+// Settings → Account. Identity is read from the hydrated auth session. The display name saves
+// against `/api/auth/me`, theme + language against `/api/auth/me/preferences` and the reply style +
+// standing instructions against `/api/auth/preferences`: three routes, one form, one save bar, so a
+// typed name is an unsaved change like any other (ISS-1229 r23).
 import { displayNameRefusal, personName } from "@forge/contracts/person-name";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -45,6 +46,7 @@ const LANGUAGE_OPTIONS: SelectOption[] = [
 ];
 
 export interface AccountDraft {
+  displayName: string;
   theme: ThemePref;
   language: LanguagePref;
   answerStyle: AnswerStyle;
@@ -52,13 +54,26 @@ export interface AccountDraft {
 }
 
 const schema = z.object({
+  // The one sentence core refuses the same name with, shown before anything is sent (ISS-1229 r22).
+  displayName: z
+    .string()
+    .max(200)
+    .superRefine((name, ctx) => {
+      const refused = displayNameRefusal(name);
+      if (refused) ctx.addIssue({ code: "custom", message: refused });
+    }),
   theme: z.enum(["system", "light", "dark"]),
   language: z.enum(["en", "vi"]),
   answerStyle: z.enum(["default", "concise", "detailed", "bullets"]),
   assistantInstructions: z.string().max(2000, "Standing instructions are at most 2000 characters."),
 }) as unknown as z.ZodType<AccountDraft, AccountDraft>;
 
-const readOf = (prefs: Preferences, assistant: AssistantPreferences): AccountDraft => ({
+const readOf = (
+  savedName: string,
+  prefs: Preferences,
+  assistant: AssistantPreferences,
+): AccountDraft => ({
+  displayName: savedName,
   theme: prefs.theme,
   language: prefs.language,
   answerStyle: assistant.answerStyle,
@@ -68,20 +83,28 @@ const readOf = (prefs: Preferences, assistant: AssistantPreferences): AccountDra
 /** Standing instructions of nothing but whitespace are no instructions: they are what a save clears. */
 const blankAsEmpty = (value: string): string => (value.trim() === "" ? "" : value);
 
-function AccountPreferences({
+function AccountForm({
   prefs,
   assistant,
 }: {
   prefs: Preferences;
   assistant: AssistantPreferences;
 }) {
+  const { user, setDisplayName } = useAuth();
+  const qc = useQueryClient();
+  const savedName = user?.displayName ?? "";
   const updatePrefs = useUpdatePreferences();
   const updateAssistant = useUpdateAssistantPreferences();
   const [failure, setFailure] = useState<string | null>(null);
+  const [savingName, setSavingName] = useState(false);
   const form = useSettingsForm<AccountDraft>({
-    read: readOf(prefs, assistant),
+    read: readOf(savedName, prefs, assistant),
     schema,
-    comparable: (d) => ({ ...d, assistantInstructions: blankAsEmpty(d.assistantInstructions) }),
+    comparable: (d) => ({
+      ...d,
+      displayName: d.displayName.trim(),
+      assistantInstructions: blankAsEmpty(d.assistantInstructions),
+    }),
   });
   const { theme, language } = form.draft;
 
@@ -90,6 +113,20 @@ function AccountPreferences({
     await form.save(async (held) => {
       const saved: string[] = [];
       try {
+        const name = held.displayName.trim();
+        if (name !== savedName.trim()) {
+          setSavingName(true);
+          try {
+            await setDisplayName(name === "" ? null : name);
+          } finally {
+            setSavingName(false);
+          }
+          // The field shows the name as stored, without the spaces a save trims.
+          form.setDraft((d) => ({ ...d, displayName: name }));
+          saved.push("Display name");
+          // The personal workspace follows the name, so the organization list is read again.
+          await qc.invalidateQueries({ queryKey: ["orgs"] });
+        }
         if (held.theme !== prefs.theme || held.language !== prefs.language) {
           await updatePrefs.mutateAsync({ theme: held.theme, language: held.language });
           saved.push("Theme and language");
@@ -115,6 +152,16 @@ function AccountPreferences({
   return (
     <>
       <SettingsSection>
+        <SectionTitle className="fg-h3 mb-4">Profile</SectionTitle>
+        <DisplayNameField
+          value={form.draft.displayName ?? ""}
+          error={form.errorAt("displayName")}
+          onChange={(displayName) => form.setDraft((d) => ({ ...d, displayName }))}
+        />
+        <ProfileFacts />
+      </SettingsSection>
+
+      <SettingsSection>
         <SectionTitle className="fg-h3 mb-4">Preferences</SectionTitle>
         <div className="space-y-4">
           <Field label="Theme" hint="Applies the next time the app loads.">
@@ -138,7 +185,7 @@ function AccountPreferences({
 
       <SettingsFormBar
         dirty={form.dirty}
-        saving={updatePrefs.isPending || updateAssistant.isPending}
+        saving={savingName || updatePrefs.isPending || updateAssistant.isPending}
         blockedBy={form.invalid ? "Fix what is marked above before saving." : null}
         onSave={() => void save().catch(() => undefined)}
         onDiscard={() => {
@@ -156,90 +203,79 @@ function AccountPreferences({
   );
 }
 
-/** The name other members read this person by (ISS-1229 r21): set here, cleared here. */
-function DisplayNameField() {
-  const { user, setDisplayName } = useAuth();
-  const qc = useQueryClient();
-  const saved = user?.displayName ?? "";
-  const [draft, setDraft] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [failure, setFailure] = useState<string | null>(null);
-  const value = draft ?? saved;
-  // The one sentence core refuses the same name with, shown before anything is sent (ISS-1229 r22).
-  const refused = draft === null ? null : displayNameRefusal(draft);
-  const save = async (next: string | null) => {
-    setSaving(true);
-    setFailure(null);
-    try {
-      await setDisplayName(next);
-      setDraft(null);
-      // The personal workspace follows the name, so the organization list is read again.
-      await qc.invalidateQueries({ queryKey: ["orgs"] });
-    } catch (err) {
-      setFailure(formatApiError(err));
-    } finally {
-      setSaving(false);
-    }
-  };
+/**
+ * The name other members read this person by (ISS-1229 r21), a field of the page's one form: a draft
+ * that differs from the saved name is an unsaved change, and Clear empties the field, never the
+ * saved name, which only Save writes (ISS-1229 r23).
+ */
+function DisplayNameField({
+  value,
+  error,
+  onChange,
+}: {
+  value: string;
+  error: string | undefined;
+  onChange: (next: string) => void;
+}) {
   return (
     <div className="space-y-2">
       <Field
         label="Display name"
         hint={`What other members read you as. Without one you read as "${personName(null, "start")}".`}
-        error={refused ?? failure ?? undefined}
+        error={error}
       >
         <Input
           value={value}
           maxLength={200}
           placeholder={personName(null, "start")}
-          onChange={(e) => setDraft(e.target.value)}
+          onChange={(e) => onChange(e.target.value)}
         />
       </Field>
-      <div className="flex justify-end gap-2">
-        {saved && (
-          <Button variant="ghost" size="sm" disabled={saving} onClick={() => void save(null)}>
+      {value !== "" && (
+        <div className="flex justify-end">
+          <Button variant="ghost" size="sm" onClick={() => onChange("")}>
             Clear
           </Button>
-        )}
-        <Button
-          variant="primary"
-          size="sm"
-          loading={saving}
-          disabled={!value.trim() || value.trim() === saved || refused !== null}
-          onClick={() => void save(value.trim())}
-        >
-          Set name
-        </Button>
-      </div>
+        </div>
+      )}
     </div>
   );
 }
 
-export function AccountTab() {
+function ProfileFacts() {
   const { user } = useAuth();
+  return (
+    <dl className="mt-4 space-y-3">
+      <div className="flex items-center justify-between gap-3">
+        <dt className="fg-label">Email</dt>
+        <dd className="fg-body-sm text-fg">{user?.email ?? "—"}</dd>
+      </div>
+      <div className="flex items-center justify-between gap-3">
+        <dt className="fg-label">User ID</dt>
+        <dd>{user?.id ? <MonoTag>{user.id}</MonoTag> : "—"}</dd>
+      </div>
+    </dl>
+  );
+}
+
+export function AccountTab() {
   const prefsQ = usePreferences();
   const assistantQ = useAssistantPreferences();
 
+  if (prefsQ.data && assistantQ.data) {
+    return (
+      <div className="space-y-6">
+        <AccountForm prefs={prefsQ.data} assistant={assistantQ.data} />
+      </div>
+    );
+  }
   return (
     <div className="space-y-6">
       <SettingsSection>
         <SectionTitle className="fg-h3 mb-4">Profile</SectionTitle>
-        <DisplayNameField />
-        <dl className="mt-4 space-y-3">
-          <div className="flex items-center justify-between gap-3">
-            <dt className="fg-label">Email</dt>
-            <dd className="fg-body-sm text-fg">{user?.email ?? "—"}</dd>
-          </div>
-          <div className="flex items-center justify-between gap-3">
-            <dt className="fg-label">User ID</dt>
-            <dd>{user?.id ? <MonoTag>{user.id}</MonoTag> : "—"}</dd>
-          </div>
-        </dl>
+        <ProfileFacts />
       </SettingsSection>
-
-      {prefsQ.data && assistantQ.data ? (
-        <AccountPreferences prefs={prefsQ.data} assistant={assistantQ.data} />
-      ) : prefsQ.isError || assistantQ.isError ? (
+      {prefsQ.isError || assistantQ.isError ? (
         <SettingsSection>
           <ErrorState
             message={formatApiError(prefsQ.error ?? assistantQ.error)}

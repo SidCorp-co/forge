@@ -263,3 +263,12 @@ export function conversationTitle(row: ConversationRow, firstSaid?: string | nul
   if (said) return said.length > 60 ? `${said.slice(0, 60)}…` : said;
   return "New conversation";
 }
+
+/** A room its organization holds whose every project is gone (ISS-1229 r23): found and deleted, never spoken in. */
+export interface RoomWithoutAProject {
+  id: string;
+  title: string | null;
+  shape: ConversationShape;
+  archivedAt: string | null;
+  updatedAt: string;
+}

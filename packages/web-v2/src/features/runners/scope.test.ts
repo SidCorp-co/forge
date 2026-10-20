@@ -9,6 +9,7 @@ import {
 	assignmentBridgeLine,
 	emptyState,
 	populationLine,
+	pairedByLabel,
 	rowActionNote,
 	scopeCountLabel,
 	scopeName,
@@ -82,6 +83,16 @@ describe("what stands in for the owner's controls on the org list", () => {
 		expect(rowActionNote("org", false)).toBe("read only");
 	});
 
+	it("stands aside for the Revoke control where an admin may revoke an organisation agent's box", () => {
+		expect(rowActionNote("org", false, true)).toBeNull();
+		expect(rowActionNote("org", false, false)).toBe("read only");
+	});
+
+	it("names the agent holding a box, and another member otherwise", () => {
+		expect(pairedByLabel("@ops-bot")).toBe("held by the agent @ops-bot");
+		expect(pairedByLabel(null)).toBe("paired by another member");
+	});
+
 	it("points a caller at the list where their own box always appears", () => {
 		expect(rowActionNote("org", true)).toContain("Mine");
 	});
@@ -111,7 +122,7 @@ describe("an empty organisation-scope list", () => {
 	it("never claims the organisation whole, only what this caller can see", () => {
 		const state = emptyState("org", { mine: 3, org: 0 });
 		expect(state.title).toBe(
-			"No device is assigned to a project you can see in this organisation",
+			"No device is assigned to a project you can see in this organisation, and none of its agents holds one",
 		);
 		expect(state.title).not.toBe("No devices yet");
 	});

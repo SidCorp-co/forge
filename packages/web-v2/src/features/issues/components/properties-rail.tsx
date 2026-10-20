@@ -18,6 +18,7 @@ import { InlineSelect, StatusEdit } from "./inline-edit-cell";
 import { creatorLabelOf, initials, splitBlockedBy } from "../derive";
 import type { RunWord } from "@/features/runs/derive";
 import { AGENT_HOLDS_EDIT, heldByAgent } from "../edit-lock";
+import { useAuth } from "@/providers/auth-provider";
 import type {
   IssueComplexity,
   IssueCostSummary,
@@ -234,6 +235,7 @@ export function PropertiesRail({
   park,
   runWord = null,
 }: PropertiesRailProps) {
+  const viewerId = useAuth().user?.id;
   const modules = (issue.labels ?? []).filter((l) => l.kind === "module");
   const plainLabels = (issue.labels ?? []).filter((l) => l.kind !== "module");
   const primaryModule = modules.find((m) => m.isPrimary);
@@ -301,8 +303,8 @@ export function PropertiesRail({
       <Row label="Creator">
         <div className="flex items-center justify-end gap-2">
           <Avatar initials={initials(creatorLabelOf(issue))} size={22} />
-          <span className="fg-body-sm truncate text-fg" title={creatorLabelOf(issue)}>
-            {creatorLabelOf(issue)}
+          <span className="fg-body-sm truncate text-fg" title={creatorLabelOf(issue, viewerId)}>
+            {creatorLabelOf(issue, viewerId)}
           </span>
         </div>
       </Row>

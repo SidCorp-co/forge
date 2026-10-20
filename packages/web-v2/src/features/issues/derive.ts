@@ -453,8 +453,13 @@ export function memberLabel(
 export const ANY_AGENT_LABEL = "any agent";
 
 /** ISS-756 — the ONE creator-label helper for every surface. A writer is a
- *  named account, so never a class label (ISS-1137) and never a raw id. */
-export function creatorLabelOf(row: Pick<IssueRow, "creatorLabel">): string {
+ *  named account, so never a class label (ISS-1137) and never a raw id; the
+ *  reader's own issue reads "You" (ISS-1229 r23). */
+export function creatorLabelOf(
+	row: Pick<IssueRow, "creatorLabel"> & Partial<Pick<IssueRow, "createdById">>,
+	viewerId?: string | null,
+): string {
+	if (viewerId && row.createdById === viewerId) return "You";
 	return row.creatorLabel || "Unknown user";
 }
 

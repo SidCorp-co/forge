@@ -98,7 +98,7 @@ async function patchBatchRow(
     before[key] = current;
     after[key] = next;
   }
-  const fields = Object.keys(after);
+  const fields = Object.keys(after) as Array<'priority' | 'category'>;
   const set = { ...after, updatedAt: sql`now()` };
 
   let rewritten: TransitionRewrite | null = null;

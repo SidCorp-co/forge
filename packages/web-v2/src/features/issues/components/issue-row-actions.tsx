@@ -2,6 +2,7 @@
 
 // The Issues list's row: five columns on one grid, and the actions that hang off it (ISS-1155).
 
+import { useAuth } from "@/providers/auth-provider";
 import { jobKindLabel } from "@/features/overview/job-kinds";
 import {
   Avatar,
@@ -235,7 +236,8 @@ export function IssueLine({
   const { open, pending } = useOpenIssue(slug, row.id);
   const comfortable = density === "comfortable";
   const primaryModule = row.modules?.some((m) => m.isPrimary) ? row.modules : undefined;
-  const label = creatorLabelOf(row);
+  const viewerId = useAuth().user?.id;
+  const label = creatorLabelOf(row, viewerId);
 
   return (
     <GridPart
@@ -317,7 +319,7 @@ export function IssueLine({
       </GridPart>
       <GridPart role="cell" className={cn(CELL.who, "px-1")}>
         <span role="img" aria-label={label} title={label} className="inline-flex">
-          <Avatar initials={initials(label)} size={22} />
+          <Avatar initials={initials(creatorLabelOf(row))} size={22} />
         </span>
       </GridPart>
       <GridPart role="cell" className={cn(CELL.menu, "flex justify-center px-1 max-lg:h-11 max-lg:items-center")}>
