@@ -741,11 +741,10 @@ agentSessionRoutes.patch(
       }
     }
 
-    if (patch.status !== undefined && patch.status !== existing.status) {
-      broadcastSession(updated, 'agent-session.status');
-    } else {
-      broadcastSession(updated, 'agent-session.updated');
-    }
+    const moved = patch.status !== undefined && patch.status !== existing.status;
+    broadcastSession(updated, moved ? 'agent-session.status' : 'agent-session.updated', {
+      started: existing.startedAt == null && updates.startedAt != null,
+    });
 
     if (classification) {
       await classification.recoverAfterWrite(updated.metadata ?? existing.metadata);

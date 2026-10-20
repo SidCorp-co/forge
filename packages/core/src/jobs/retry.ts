@@ -21,6 +21,7 @@ import { onlineCapableDeviceIds } from '../runners/select.js';
 import type { RequiredCapabilities } from '../runners/types.js';
 import { buildVerifierPrompt } from '../skills/reconcile-service.js';
 import { admitJob, RunClosedToJobs } from './admit.js';
+import { fleetCopy, readCapacityFleet } from './capacity-fleet.js';
 import { resolveStageOverrides } from './stage-overrides.js';
 
 type JobRow = typeof jobs.$inferSelect;
@@ -161,10 +162,8 @@ export function nextRotation(
 
 /**
  * Tell the operator the pool has nothing to run on — once per pool, not once
- * per job.
- *
- * The second pool read (`includeLimited`) happens ONLY here, on the deferral
- * path, because it buys exactly one thing: which of the two outages this is.
+ * per job. The fleet read happens ONLY here, on the deferral path, because it
+ * buys exactly one thing: which outage this is.
  */
 async function notifyCapacityOutage(
   job: JobRow,
@@ -172,21 +171,19 @@ async function notifyCapacityOutage(
   required: RequiredCapabilities | undefined,
   stagePool: string[] | null,
 ): Promise<void> {
-  const present = await onlineCapableDeviceIds(job.projectId, required, {
-    includeLimited: true,
-    allowDeviceIds: stagePool,
-  });
-  const allLimited = present.length > 0;
-  const tooOld = allLimited
-    ? []
-    : await onlineCapableDeviceIds(job.projectId, required, {
-        includeLimited: true,
-        includeBelowFloor: true,
-        allowDeviceIds: stagePool,
-      });
-  const copy = wedgeCopy(allLimited, present.length, tooOld.length, {
-    scope: stagePool ? `the ${job.type} runner pool` : 'this project',
-  });
+  // Read off the runners the fleet shows online, so the notice never says none is online beside an
+  // online one (ISS-1228): each online runner is named by what keeps it from the step.
+  const fleet = await readCapacityFleet(job.projectId, required, stagePool);
+  const scope = { scope: stagePool ? `the ${job.type} runner pool` : 'this project' };
+  const all = (n: number) => fleet.online > 0 && n === fleet.online;
+  const copy =
+    fleetCopy(fleet, scope) ??
+    wedgeCopy(
+      all(fleet.bars.limited),
+      fleet.online,
+      all(fleet.bars.too_old) ? fleet.online : 0,
+      scope,
+    );
 
   await emitPipelineWedge({
     projectId: job.projectId,

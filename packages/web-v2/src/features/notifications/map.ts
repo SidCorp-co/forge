@@ -30,7 +30,7 @@ function typeLabel(row: Pick<NotificationRow, "type" | "stuckKind">): string | u
     case "issue_status_changed":
       return "STATUS";
     case "pipeline_wedge":
-      return "WEDGE";
+      return "STALLED";
     case "mention":
       return "MENTION";
     case "invitation_received":

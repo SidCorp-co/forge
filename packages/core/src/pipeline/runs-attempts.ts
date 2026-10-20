@@ -5,6 +5,10 @@ import { asc, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions, devices, jobs } from '../db/schema.js';
 import { RETRY_MAX_ROUNDS, readAutoRetryPayload } from '../jobs/retry.js';
+import { personNameSql } from '../lib/person-name.js';
+import type { FailureCause } from './failure-causes.js';
+import { causeForText } from './failure-patterns.js';
+import { holdOf, type RunHold } from './runs-liveness.js';
 
 /** The box a held, unstarted job is on: the box its own session was opened on, else its holder's. */
 const takenDevice = sql<
@@ -12,6 +16,41 @@ const takenDevice = sql<
 >`CASE WHEN ${jobs.status} = 'queued' AND ${jobs.heldBy} IS NOT NULL
   THEN COALESCE(${agentSessions.deviceId},
                 (SELECT h.device_id FROM agent_sessions h WHERE h.id = ${jobs.heldBy})) END`;
+
+/**
+ * The newest cancel of the job, else of its run: who wrote it, and the name the person gave where a
+ * person did — never their address, which reads as the unnamed person (ISS-1229).
+ */
+const cancelActor = sql<{ type: string; agency: string; name: string | null } | null>`(
+  SELECT json_build_object('type', t.actor_type, 'agency', t.actor_agency,
+                           'name', CASE WHEN u.id IS NULL THEN NULL
+                                        ELSE ${personNameSql(sql`u.display_name`)} END)
+    FROM kernel_transitions t
+    LEFT JOIN users u ON u.id = t.actor_id
+   WHERE t.to_status = 'cancelled'
+     AND ((t.entity = 'job' AND t.entity_id = ${jobs.id})
+       OR (t.entity = 'run' AND t.entity_id = ${jobs.pipelineRunId}))
+   ORDER BY (t.actor_type = 'user') DESC, (t.entity = 'job') DESC, t.created_at DESC
+   LIMIT 1)`;
+
+/** Who cancelled a job: a person or an agent by the account that did, else core itself. */
+export function cancelledByOf(
+  actor: { type: string; agency: string; name: string | null } | null,
+): PipelineRunAttempt['cancelledBy'] {
+  if (actor?.type !== 'user') return { kind: 'core', name: null };
+  return { kind: actor.agency === 'agent' ? 'agent' : 'person', name: actor.name ?? null };
+}
+
+/** A failed job no session ended: the cause core's classifier reads off what the sweeper wrote on it. */
+function sweptCause(
+  status: string,
+  reason: string | null,
+  error: string | null,
+): FailureCause | null {
+  if (status !== 'failed') return null;
+  const cause = causeForText([reason, error].filter(Boolean).join(' — '));
+  return cause === 'unclassified' ? null : cause;
+}
 
 function toIso(value: Date | string | null): string | null {
   if (value === null) return null;
@@ -40,6 +79,10 @@ export interface PipelineRunAttempt {
   autoRetry: { round: number; target: string | null; tries: number; done: string[] } | null;
   /** The box whose session holds the job before it starts: a taken job is never "unassigned". */
   takenBy: { deviceId: string; deviceName: string | null } | null;
+  /** Why core holds the job and whether it sends it again by itself; null unless it is held. */
+  hold: RunHold | null;
+  /** Who cancelled the job or its run; null unless it was cancelled. */
+  cancelledBy: { kind: 'person' | 'agent' | 'core'; name: string | null } | null;
 }
 
 /** The round-robin headline, from the newest attempt's `_autoRetry`. */
@@ -66,6 +109,7 @@ export async function loadAttemptsForRun(runId: string): Promise<{
       deviceId: jobs.deviceId,
       deviceName: devices.name,
       failureReason: jobs.failureReason,
+      error: jobs.error,
       failureKind: jobs.failureKind,
       failureAction: jobs.failureAction,
       failureCause: agentSessions.failureReason,
@@ -74,7 +118,9 @@ export async function loadAttemptsForRun(runId: string): Promise<{
       startedAt: jobs.dispatchedAt,
       ranAt: agentSessions.startedAt,
       finishedAt: jobs.finishedAt,
+      retryAfterAt: jobs.retryAfterAt,
       payload: jobs.payload,
+      cancelActor,
       takenDeviceId: takenDevice,
       takenDeviceName: sql<
         string | null
@@ -97,6 +143,7 @@ export async function loadAttemptsForRun(runId: string): Promise<{
       typeof r.payload === 'object' &&
       '_autoRetry' in (r.payload as Record<string, unknown>);
     const ar = hasAutoRetry ? readAutoRetryPayload(r.payload) : null;
+    const cancelled = r.status === 'cancelled';
     return {
       jobId: r.jobId,
       jobType: r.jobType,
@@ -106,8 +153,11 @@ export async function loadAttemptsForRun(runId: string): Promise<{
       deviceId: r.deviceId ?? null,
       deviceName: r.deviceName ?? null,
       failureReason: r.failureReason ?? null,
-      failureCause: r.failureCause ?? null,
-      failureDetail: r.failureDetail ?? null,
+      // A cancel is the job's own end: a session an earlier take ended is not why it stopped.
+      failureCause: cancelled
+        ? null
+        : (r.failureCause ?? sweptCause(r.status, r.failureReason, r.error)),
+      failureDetail: cancelled ? null : (r.failureDetail ?? null),
       failureKind: r.failureKind ?? null,
       failureAction: r.failureAction ?? null,
       queuedAt: toIso(r.queuedAt),
@@ -118,6 +168,16 @@ export async function loadAttemptsForRun(runId: string): Promise<{
       takenBy: r.takenDeviceId
         ? { deviceId: r.takenDeviceId, deviceName: r.takenDeviceName ?? null }
         : null,
+      hold:
+        r.status === 'held'
+          ? holdOf({
+              payload: r.payload,
+              failureReason: r.failureReason ?? null,
+              retryAfterAt: toIso(r.retryAfterAt),
+              since: toIso(r.queuedAt),
+            })
+          : null,
+      cancelledBy: cancelled ? cancelledByOf(r.cancelActor ?? null) : null,
     } satisfies PipelineRunAttempt;
   });
 
@@ -134,6 +194,14 @@ export async function loadAttemptsForRun(runId: string): Promise<{
       };
       break;
     }
+  }
+  // The box a retry targets need not be one an attempt ran on: its name is read, never its id shown.
+  if (retrySummary?.targetDeviceId && retrySummary.targetDeviceName === null) {
+    const [box] = await db
+      .select({ name: devices.name })
+      .from(devices)
+      .where(eq(devices.id, retrySummary.targetDeviceId));
+    retrySummary.targetDeviceName = box?.name ?? null;
   }
 
   return { attempts, retrySummary };

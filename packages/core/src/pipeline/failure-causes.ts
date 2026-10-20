@@ -63,6 +63,8 @@ export const FAILURE_CAUSES = [
    *  Writer: jobs/park-deadline.ts (ISS-964 criterion 34); the days waited are
    *  on the question's `ended_reason`, not here. */
   'park_unanswered',
+  /** the job stopped to ask a person a question and was not retried. Writer: jobs/blocked.ts (ISS-1228). */
+  'stopped_on_question',
   /** a schedule run produced no evidence. Writer: agent-sessions/schedule-evidence.ts. */
   'audit_ran_blind',
   /** the I1 trigger reaped an active child under a terminal run. 101 sessions. */
@@ -125,6 +127,7 @@ export const FAILURE_CAUSE_ORIGIN: Record<FailureCause, FailureOrigin> = {
   resume_failed: 'forge',
   residency_expired: 'forge',
   park_unanswered: 'user',
+  stopped_on_question: 'user',
   audit_ran_blind: 'forge',
   orphan_under_terminal_run: 'lifecycle',
   pipeline_cancelled: 'lifecycle',

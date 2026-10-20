@@ -40,7 +40,7 @@ function StateChip({ row, now }: { row: RunSessionRow; now: number }) {
 }
 
 /** The three marks, rendered as three. */
-function Marks({ row }: { row: RunSessionRow }) {
+export function Marks({ row }: { row: RunSessionRow }) {
   const m = closeMarks(row);
   const items: Array<{ on: boolean; label: string }> = [
     { on: m.sessionTerminal, label: "session" },
@@ -67,7 +67,7 @@ function Marks({ row }: { row: RunSessionRow }) {
 }
 
 /** What core's own heartbeat says, where it disagrees with the chip beside it. */
-function coreReadingLines(row: RunSessionRow, now: number): { lines: string[]; silence: string | null } {
+export function coreReadingLines(row: RunSessionRow, now: number): { lines: string[]; silence: string | null } {
   const silence = silenceText(row, now);
   const split = disagreement(row);
   const ended = endReasonText(row);
@@ -83,7 +83,7 @@ function coreReadingLines(row: RunSessionRow, now: number): { lines: string[]; s
   return { lines, silence };
 }
 
-function CoreReading({ lines, silence }: { lines: string[]; silence: string | null }) {
+export function CoreReading({ lines, silence }: { lines: string[]; silence: string | null }) {
   if (lines.length === 0) return null;
   return (
     <span className="fg-caption flex min-w-0 max-w-full flex-col gap-0.5 text-muted sm:ml-auto sm:text-right">
@@ -110,7 +110,7 @@ export interface RunRowProps {
 
 /** Who can end the wait and what the run waits on, in the box's own words and the session page's
  *  sentences; the questions tab is a link beside it rather than a paraphrase in its place. */
-function WaitingOn({ row }: { row: RunSessionRow }) {
+export function WaitingOn({ row }: { row: RunSessionRow }) {
   const pathname = usePathname() || "";
   return (
     <span className="fg-caption flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2 text-muted">

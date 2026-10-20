@@ -138,3 +138,12 @@ describe("an invitation row", () => {
     expect(item.text).not.toMatch(/@/);
   });
 });
+
+// ISS-1228 round 19 (judge-57): the bell tagged a stuck-work notice "WEDGE", a word no person reads.
+describe("the bell's tag on a stuck-work notice", () => {
+  it("reads STALLED, the type's own word, never WEDGE", () => {
+    const item = toNotificationItem(row({ type: "pipeline_wedge", stuckKind: null }));
+    expect(JSON.stringify(item)).toContain("STALLED");
+    expect(JSON.stringify(item)).not.toContain("WEDGE");
+  });
+});

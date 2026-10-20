@@ -139,6 +139,8 @@ describe("a reconnect still repairs every prefix it repaired before", () => {
     for (const key of [
       ["issues"],
       ["run-journal"],
+      ["pipeline-runs"],
+      ["pipeline-run"],
       ["run-sessions"],
       ["sessions-and-holds"],
       ["jobs"],
@@ -160,7 +162,7 @@ describe("a reconnect still repairs every prefix it repaired before", () => {
     ]) {
       expect(c.has(key)).toBe(true);
     }
-    expect(c.keys).toHaveLength(20);
+    expect(c.keys).toHaveLength(22);
   });
 });
 
@@ -484,5 +486,30 @@ describe("a check-in re-reads only the session and the lists that show it", () =
     send("agent-session.updated", { sessionId: "ci-4", status: "running" });
     const c = send("agent-session.status", { sessionId: "ci-4", status: "running" });
     for (const k of whole) expect(c.has(k), JSON.stringify(k)).toBe(true);
+  });
+});
+
+// ISS-1228 round 19 (review F1): a run's word moves on a first check-in, a job event or a box flip, none of
+// which said so to the run list, the open drawer or the issue page's Runs.
+describe("every event that moves a run's word re-reads every read that says it", () => {
+  const runReads = [["pipeline-runs", "list"], ["pipeline-run"], ["run-journal"]];
+
+  it("re-reads the runs on a run session's first check-in, though its status is unchanged", () => {
+    send("agent-session.status", { sessionId: "fc-1", status: "running" });
+    const first = send("agent-session.updated", { sessionId: "fc-1", status: "running", started: true });
+    for (const k of runReads) expect(first.has(k), JSON.stringify(k)).toBe(true);
+    const later = send("agent-session.updated", { sessionId: "fc-1", status: "running" });
+    for (const k of runReads) expect(later.has(k), JSON.stringify(k)).toBe(false);
+  });
+
+  it.each([
+    ["job.assigned", { jobId: "j1" }],
+    ["job.failed", { jobId: "j1" }],
+    ["job.cancelled", { jobId: "j1" }],
+    ["agent-session.status", { sessionId: "fc-2", status: "failed" }],
+    ["device.status", { deviceId: "d1", projectId: "p1", status: "offline" }],
+  ] as const)("re-reads the runs on %s", (event, data) => {
+    const c = send(event, data);
+    for (const k of runReads) expect(c.has(k), JSON.stringify(k)).toBe(true);
   });
 });

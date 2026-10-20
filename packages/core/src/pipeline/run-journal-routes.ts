@@ -12,6 +12,7 @@ import { assertProjectAccess } from '../lib/authz.js';
 import { canonicalIssueKey } from '../lib/issue-ref.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { issueJournalSchema, readIssueJournal } from './run-journal-routes-reference.js';
+import { loadRunLivenessByRunIds, type RunLiveness } from './runs-liveness.js';
 import { RUN_LIMIT, runsOfIssue } from './runs-of-issue.js';
 import { loadCostByRunIds } from './runs-rollup.js';
 
@@ -82,6 +83,7 @@ export function groupByRun(
   rows: readonly RunJournalRow[],
   issueId: string,
   costs: ReadonlyMap<string, number> = new Map(),
+  live: ReadonlyMap<string, RunLiveness> = new Map(),
 ): IssueJournal {
   const grouped = new Set(runs.filter((r) => r.group !== null).map((r) => r.id));
   const attempts = new Map<string, Attempt[]>();
@@ -101,6 +103,11 @@ export function groupByRun(
     finishedAt: run.finishedAt,
     costUsd: costs.get(run.id) ?? null,
     sessionId: run.sessionId,
+    // The run's word comes from the read every run surface takes it from, never from its status.
+    reading: live.get(run.id)?.reading ?? null,
+    hold: live.get(run.id)?.hold ?? null,
+    block: live.get(run.id)?.block ?? null,
+    runningSince: live.get(run.id)?.runningSince ?? null,
     attempts: (attempts.get(run.id) ?? []).sort(
       (a, b) => a.startedAt.getTime() - b.startedAt.getTime() || a.attempt - b.attempt,
     ),
@@ -148,13 +155,14 @@ runJournalRoutes.get(
       }))
       .slice(-RUN_LIMIT);
     const runIds = heads.map((r) => r.id);
-    const [rows, costs] = await Promise.all([
+    const [rows, costs, live] = await Promise.all([
       runIds.length === 0
         ? Promise.resolve([] as RunJournalRow[])
         : db.select().from(runJournal).where(inArray(runJournal.runId, runIds)),
       loadCostByRunIds(runIds),
+      loadRunLivenessByRunIds(runIds),
     ]);
     const cost = new Map([...costs].map(([runId, c]) => [runId, c.estimatedCost]));
-    return c.json(answer(issueJournalSchema, groupByRun(heads, rows, issueId, cost)));
+    return c.json(answer(issueJournalSchema, groupByRun(heads, rows, issueId, cost, live)));
   },
 );

@@ -36,6 +36,7 @@ export interface RunSessionRow {
   workSince?: string;
   /** Core's own reading, never the box's claim — the two disagreeing is signal. */
   sessionStatus: string | null;
+  pipelineRunId?: string | null;
   sessionRuntimeState?: string | null;
   /** Why core failed the session, where it did. `null` both on a clean end and on one still open. */
   sessionFailureReason: string | null;

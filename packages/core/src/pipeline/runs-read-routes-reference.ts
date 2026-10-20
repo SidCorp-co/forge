@@ -60,11 +60,35 @@ export const pipelineRunListItemSchema = z.object({
   liveJobs: z.number(),
   lastSessionBeatAt: nullableIso,
   reading: z
-    .enum(['running', 'starting', 'waiting', 'queued'])
+    .enum(['blocked', 'running', 'starting', 'waiting', 'queued', 'held'])
     .nullable()
     .describe(
-      "what the run's agent is doing: running once a job runs or a session core holds running has beaten, starting where a box has taken or been sent a job it has not started or a queued session beats, waiting where only a chat waits on its person's reply, queued where only an untaken job waits",
+      "what the run's agent is doing: blocked where a box reports a session core still holds blocked, running once a job runs or a session core holds running has checked in, starting where a box has taken or been sent a job it has not started or a session has not checked in since it opened, waiting where only a chat waits on its person's reply, queued where only an untaken job waits, held where only a job core holds waits",
     ),
+  hold: z
+    .object({
+      reason: z.string(),
+      resumesItself: z.boolean(),
+      recheckAt: nullableIso,
+      since: nullableIso,
+    })
+    .nullable()
+    .describe(
+      "the newest held job's hold: its reason, whether core sends it again by itself, and when it next tries a hold that waits out a clock",
+    ),
+  block: z
+    .object({ blockerKind: z.string().nullable(), parked: z.boolean() })
+    .nullable()
+    .describe(
+      'what a box reports its blocked session on the run waits on, and whether its process has gone',
+    ),
+  checkInBy: nullableIso.describe(
+    'when core ends a session on the run that has not checked in since it opened, if none comes',
+  ),
+  runningSince: nullableIso.describe(
+    'the earliest start of any session on the run, ended ones included: when its work started',
+  ),
+  sessionId: z.string().nullable().describe("the run's newest session"),
   residentMaster: z
     .object({
       sessionId: z.string(),
@@ -107,6 +131,21 @@ const attemptSchema = z.object({
     .describe(
       'the box whose session holds this job before starting it; null once started or where none holds it',
     ),
+  hold: z
+    .object({
+      reason: z.string(),
+      resumesItself: z.boolean(),
+      recheckAt: nullableIso,
+      since: nullableIso,
+    })
+    .nullable()
+    .describe(
+      'why core holds this job and whether it sends it again by itself; null unless it is held',
+    ),
+  cancelledBy: z
+    .object({ kind: z.enum(['person', 'agent', 'core']), name: z.string().nullable() })
+    .nullable()
+    .describe('who cancelled this job, or its run; null unless it was cancelled'),
 });
 
 /** One run with its step timeline, per-attempt device/retry timeline and cost rolled up. */

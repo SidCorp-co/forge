@@ -10,6 +10,7 @@
 
 import { db } from '../db/client.js';
 import type { JobStatus } from '../db/schema.js';
+import type { FailureCause } from '../pipeline/failure-causes.js';
 import { paneQuestions } from '../questions/pane-question.js';
 import { questionIdFor, writePaneQuestion } from '../questions/pane-question-write.js';
 import { holdBlockedRelease, refuseUnreadableReleaseAsk } from '../release-batch/decision-hold.js';
@@ -18,6 +19,8 @@ import { RELEASE_JOB_TYPE } from '../release-batch/job-start.js';
 import type { BlockedBody } from './blocked-wire.js';
 import { failOccupyingJob } from './fail-job.js';
 import { readJob } from './job-queries.js';
+
+const STOPPED_ON_QUESTION: FailureCause = 'stopped_on_question';
 
 export interface BlockedEnd {
   jobId: string;
@@ -88,7 +91,7 @@ export async function endBlockedJob(
   await failOccupyingJob(
     job,
     deviceId,
-    { error },
+    { error, failureReason: STOPPED_ON_QUESTION },
     {
       precomputedRetry: {
         scheduled: false,

@@ -7,7 +7,9 @@ import {
   resolveFailureCause,
 } from "@forge/contracts/failure-causes";
 import { LIVE_JOB_STATUSES } from "@forge/contracts/status-sets";
+import { cancelledByText, HELD_STUCK_ACTION, nextAttemptText } from "@/features/sessions/status-sentences";
 import { failureReasonAction, failureReasonLabel } from "@/features/sessions/types";
+import { holdSentence } from "./derive";
 import type { PipelineRunAttempt } from "./types";
 
 /** How an entry reads. `failure` is the only red; `open` is a live attempt. */
@@ -63,9 +65,10 @@ function stateVerb(a: PipelineRunAttempt): string | null {
   return null;
 }
 
-/** An open attempt has not ended, so it has no cause and no remedy, whatever its session ended of. */
+/** An open attempt has not ended, so it has no cause and no remedy, whatever its session ended of; a
+ *  cancel is a person's or core's act, never a failure, whatever an earlier take's session ended of. */
 function causeOf(a: PipelineRunAttempt): FailureCause | null {
-  if (OPEN_STATUSES.has(a.status)) return null;
+  if (OPEN_STATUSES.has(a.status) || a.status === "cancelled") return null;
   if (a.failureCause) return resolveFailureCause(a.failureCause);
   if (a.status !== "failed" && a.status !== "cancelled") return null;
   if (a.failureReason && LEGACY_NEUTRAL_REASONS.has(a.failureReason)) return null;
@@ -86,7 +89,7 @@ const NEVER_TOOK: Partial<Record<FailureCause, { box: (box: string) => string; n
 };
 
 function neverTook(a: PipelineRunAttempt, cause: FailureCause | null) {
-  return cause && a.ranAt === null ? NEVER_TOOK[cause] : undefined;
+  return cause && a.status === "failed" && a.ranAt === null ? NEVER_TOOK[cause] : undefined;
 }
 
 /** Outcome text for an attempt that never finished — never a blank cell, and the box by its name. */
@@ -94,13 +97,24 @@ function openOutcome(a: PipelineRunAttempt): string {
   const box = boxOf(a) ?? "a box";
   if (a.status === "running") return "Still running";
   if (a.status === "dispatched") return `Sent to ${box}, not started yet`;
-  if (a.status === "held") return "Held — waiting on a gate";
+  if (a.status === "held") return holdSentence(a.hold ?? null);
   if (a.takenBy) return `Taken by ${box}, not started yet`;
   return "Queued — no box has taken it yet";
 }
 
+function cancelledOutcome(a: PipelineRunAttempt): string {
+  if (a.failureReason && LEGACY_NEUTRAL_REASONS.has(a.failureReason)) {
+    return failureReasonLabel(a.failureReason) ?? "Not dispatched";
+  }
+  if (a.cancelledBy && a.cancelledBy.kind !== "core") return cancelledByText(a.cancelledBy);
+  const cause = a.failureReason ? resolveFailureCause(a.failureReason) : "unclassified";
+  const cleanup = cause !== "unclassified" && cause !== "pipeline_cancelled" && cause !== "user_cancelled";
+  return cleanup ? (failureReasonLabel(cause) ?? cancelledByText(a.cancelledBy)) : cancelledByText(a.cancelledBy);
+}
+
 function outcomeOf(a: PipelineRunAttempt, cause: FailureCause | null): string {
   if (OPEN_STATUSES.has(a.status)) return openOutcome(a);
+  if (a.status === "cancelled") return cancelledOutcome(a);
   const box = boxOf(a);
   const never = neverTook(a, cause);
   if (never) return box ? never.box(box) : never.none;
@@ -112,56 +126,64 @@ function outcomeOf(a: PipelineRunAttempt, cause: FailureCause | null): string {
   return `Ended ${a.status}`;
 }
 
-/** The remedy for a cause, naming the box where the box is what failed to start it. */
-function actionOf(a: PipelineRunAttempt, cause: FailureCause | null): string | null {
-  if (!cause) return null;
-  if (!neverTook(a, cause)) return failureReasonAction(cause, "Retry", a.ranAt != null);
+/** A person's remedy, read against the attempt after it, naming no control the drawer lacks. */
+function actionOf(a: PipelineRunAttempt, cause: FailureCause | null, next: PipelineRunAttempt | undefined): string | null {
+  if (a.status === "held") return a.hold && !a.hold.resumesItself ? HELD_STUCK_ACTION : null;
+  if (OPEN_STATUSES.has(a.status) || a.status === "cancelled" || !cause) return null;
+  if (next) return nextAttemptText(next.status === "held" ? "held" : "sent");
+  if (!neverTook(a, cause)) return failureReasonAction(cause, null, a.ranAt != null);
   const box = boxOf(a);
   return box ? `Check that ${box} is online and its runner is running.` : "Check that a box bound to this project is online.";
 }
 
 /** Two attempts collapse into one line only when every readable field agrees. */
-function signature(
-  a: PipelineRunAttempt,
-  cause: FailureCause | null,
-  outcome: string,
-  action: string | null,
-): string {
-  return [a.jobType, a.status, stateVerb(a) ?? "", cause ?? "", outcome, action ?? "", deviceLabel(a)].join("\0");
+function signature(a: PipelineRunAttempt, cause: FailureCause | null, outcome: string): string {
+  return [a.jobType, a.status, stateVerb(a) ?? "", cause ?? "", outcome, deviceLabel(a)].join("\0");
 }
 
-function verbFor(a: PipelineRunAttempt, position: number, repeats: number): string {
+function verbFor(a: PipelineRunAttempt, position: number, repeats: number, runWord?: string): string {
+  if (runWord && OPEN_STATUSES.has(a.status)) return runWord;
   const state = stateVerb(a);
   if (state) return state;
   if (repeats > 1) return "Retried";
   return position === 1 ? "Ran" : "Retried";
 }
 
-export function deriveActivityFeed(attempts: PipelineRunAttempt[] | undefined): ActivityEntry[] {
+/**
+ * The run's attempts as feed lines. `blockedWord` is the run's word where a box reports it blocked:
+ * its open attempt reads that word too, so the drawer's header and its activity never part.
+ */
+export function deriveActivityFeed(
+  attempts: PipelineRunAttempt[] | undefined,
+  blockedWord?: string,
+): ActivityEntry[] {
   const entries: ActivityEntry[] = [];
   let lastSignature: string | null = null;
+  const list = attempts ?? [];
 
-  (attempts ?? []).forEach((a, index) => {
+  list.forEach((a, index) => {
     const position = index + 1;
     const cause = causeOf(a);
     const outcome = outcomeOf(a, cause);
-    const action = actionOf(a, cause);
-    const sig = signature(a, cause, outcome, action);
+    // A line's remedy is its last attempt's, read against the attempt after it.
+    const action = actionOf(a, cause, list[index + 1]);
+    const sig = signature(a, cause, outcome);
     const previous = entries[entries.length - 1];
 
     if (previous && sig === lastSignature) {
       previous.repeats += 1;
       previous.positions.push(position);
-      previous.verb = verbFor(a, position, previous.repeats);
+      previous.verb = verbFor(a, position, previous.repeats, blockedWord);
       previous.at = a.finishedAt ?? a.startedAt ?? a.queuedAt ?? previous.at;
       previous.open = OPEN_STATUSES.has(a.status);
+      previous.action = action;
       return;
     }
 
     lastSignature = sig;
     entries.push({
       key: a.jobId,
-      verb: verbFor(a, position, 1),
+      verb: verbFor(a, position, 1, blockedWord),
       object: jobKindLabel(a.jobType),
       outcome,
       cause,
@@ -175,9 +197,6 @@ export function deriveActivityFeed(attempts: PipelineRunAttempt[] | undefined): 
     });
   });
 
-  // A remedy answers what to do next, and an attempt a later one followed has had its next step.
-  const last = attempts?.length ?? 0;
-  for (const e of entries) if (Math.max(...e.positions) < last) e.action = null;
   return entries;
 }
 

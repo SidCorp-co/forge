@@ -248,6 +248,7 @@ export const FAILURE_REASON_LABEL: Record<SessionFailureReason, string> = {
   resume_failed: "Resume failed",
   residency_expired: "Session window expired",
   park_unanswered: "Question went unanswered",
+  stopped_on_question: "Stopped to ask a question",
   audit_ran_blind: "Ran without evidence",
   orphan_under_terminal_run: "Cleaned up (run ended)",
   pipeline_cancelled: "Pipeline cancelled",
@@ -299,6 +300,7 @@ export const FAILURE_REASON_ACTION: Record<SessionFailureReason, string> = {
   resume_failed: "Resuming the previous session failed. Rerun to start fresh.",
   residency_expired: "The session outlived its window. Rerun to start fresh.",
   park_unanswered: "Nobody answered the agent's question before its deadline. The work stopped and its branch was kept.",
+  stopped_on_question: "Answer its question on the Questions tab.",
   audit_ran_blind: "The scheduled run called no tools, so it produced no evidence. Rerun.",
   unclassified: "The cause wasn't recorded. Open the run timeline to see why.",
   queue_timeout: "No runner picked it up. Check the fleet strip for an online runner.",
@@ -351,15 +353,65 @@ const ACTION_BY_START: Partial<Record<SessionFailureReason, { started: string; n
   },
 };
 
-/** The remedy in the words of the page it is read on: `button` is that page's own, `started` whether it had started. */
+/** Run the issue again from the page that offers it, said where the page read on offers no Retry. */
+const AGAIN = "run the issue again from its page";
+
+/**
+ * Each remedy that names a control, worded for a page that offers none of them (the Ops drawer, ISS-1228):
+ * what to fix, and where the work is started again, never a button that page does not have.
+ */
+const ACTION_WITHOUT_CONTROL: Partial<Record<SessionFailureReason, string>> = {
+  provider_auth_expired: `The runner's sign-in expired. Re-authenticate it, then ${AGAIN}.`,
+  provider_overloaded: `The model provider was busy. ${capitalise(AGAIN)}.`,
+  agent_startup_failed: `The agent never got going on this runner. Check its MCP config, then ${AGAIN}.`,
+  agent_skill_missing: `The skill hasn't reached this runner. Sync it, then ${AGAIN}.`,
+  agent_exited_without_result: `The agent exited before reporting. ${capitalise(AGAIN)}.`,
+  workspace_disk_full: `The runner is out of disk. Free space, then ${AGAIN}.`,
+  repo_root_contention: `Another job on that runner held the repo for ten minutes. Once it is free, ${AGAIN}.`,
+  runner_unreachable: `The box could not be reached. Check it's online, then ${AGAIN}.`,
+  session_lost: `The session died without reporting. ${capitalise(AGAIN)}.`,
+  ws_publish_failed: "The reply couldn't be delivered. Send the message again from the chat.",
+  "ws-publish-failed": "The reply couldn't be delivered. Send the message again from the chat.",
+  resume_failed: `Resuming the previous session failed. To start fresh, ${AGAIN}.`,
+  residency_expired: `The session outlived its window. To start fresh, ${AGAIN}.`,
+  audit_ran_blind: "The scheduled run called no tools, so it produced no evidence. Run the schedule again from its page.",
+  heartbeat_timeout: `The session stopped sending heartbeats. ${capitalise(AGAIN)}.`,
+  session_stopped_checking_in: `The session stopped checking in while its runner kept answering. ${capitalise(AGAIN)}.`,
+  turn_never_reported: `A runner picked this up but nothing ever reported the agent starting a turn. Check whether its prompt was actually submitted, then ${AGAIN}.`,
+  no_worker_online: `Bring a runner online or check device pairing, then ${AGAIN}.`,
+  no_client_ack: `The runner never acknowledged the dispatch. Check it's online, then ${AGAIN}.`,
+  user_cancelled: `A person stopped it. To start fresh, ${AGAIN}.`,
+  skill_not_synced: "The skill hadn't finished syncing to the runner yet. Send the message again from the chat.",
+};
+
+const ACTION_BY_START_WITHOUT_CONTROL: Partial<Record<SessionFailureReason, { started: string; never: string }>> = {
+  runner_unreachable: {
+    started: `The box stopped answering while the session ran. Check it's online, then ${AGAIN}.`,
+    never: `The runner never picked it up. Check it's online, then ${AGAIN}.`,
+  },
+};
+
+function capitalise(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+/**
+ * The remedy in the words of the page it is read on: `button` is that page's own control, or `null`
+ * on a page that offers none, and `started` whether it had started.
+ */
 export function failureReasonAction(
   reason: string | null | undefined,
-  button: "Retry" | "Rerun" = "Retry",
+  button: "Retry" | "Rerun" | null = "Retry",
   started?: boolean,
 ): string | null {
   if (!reason) return null;
   const cause = (Object.hasOwn(FAILURE_REASON_ACTION, reason) ? reason : resolveFailureCause(reason)) as SessionFailureReason;
-  const byStart = started === undefined ? undefined : ACTION_BY_START[cause];
+  const byStartTable = button === null ? ACTION_BY_START_WITHOUT_CONTROL : ACTION_BY_START;
+  const byStart = started === undefined ? undefined : byStartTable[cause];
+  if (button === null) {
+    if (byStart) return started ? byStart.started : byStart.never;
+    return ACTION_WITHOUT_CONTROL[cause] ?? FAILURE_REASON_ACTION[cause];
+  }
   const action = byStart ? (started ? byStart.started : byStart.never) : FAILURE_REASON_ACTION[cause];
   return action.replace(/\bRetry\b/g, button);
 }

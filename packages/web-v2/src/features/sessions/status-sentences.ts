@@ -180,3 +180,64 @@ export const gateAdmittedText = (count: number, rate: string, window: string): s
 
 /** Which reason the gate's admissions were for, as the Declaration gate's own sentence. */
 export const gateReasonText = (line: string): string => stop(capitalised(line));
+
+/** Why core holds a job, by the hold's reason, said of the step it holds (ISS-1228 round 19). */
+const HOLD_WHY: Record<string, string> = {
+  all_devices_exhausted: "No box could take it.",
+  monthly_budget_exhausted: "The project spent its monthly budget.",
+  retry_rounds_exhausted: "It failed on every try core gave it.",
+  non_retryable_terminal: "It failed in a way core does not try again.",
+  verify_unavailable: "Core could not check whether the work already finished.",
+};
+
+const HOLD_RESUMES: Record<string, string> = {
+  all_devices_exhausted: "Core sends it again once a box can take it.",
+  monthly_budget_exhausted: "Core sends it again once the budget allows.",
+  verify_unavailable: "Core checks again and sends it on its own.",
+};
+
+/** A held step's line: why core holds it and whether it is sent again by itself. */
+export function heldText(hold: { reason: string; resumesItself: boolean } | null | undefined, at: string | null): string {
+  const why = (hold && HOLD_WHY[hold.reason]) ?? "Core holds it.";
+  if (!hold?.resumesItself) return `${why} This hold does not clear on its own.`;
+  const resumes = at ? `Core tries it again at ${at}.` : (HOLD_RESUMES[hold.reason] ?? "Core sends it again on its own.");
+  return `${why} ${resumes}`;
+}
+
+/** What a hold that does not clear on its own asks of a person, with the drawer's own control. */
+export const HELD_STUCK_ACTION = "Nothing sends it again. Fix what stopped it, then Cancel run and run the issue again from its page.";
+
+export const CANCEL_HELD_HOVER = "Ends this run. Its step is held, and core would send it again on its own.";
+export const CANCEL_STUCK_HOLD_HOVER = "Ends this run. Its step is held until someone acts, so core would not send it again.";
+
+export const CANCEL_UNSTARTED_HOVER = "Ends this run before anything works on it. Nothing has started, so no agent is stopped mid-step.";
+
+export const STOP_NOW_HOVER = "Stops the agent working this run at once. The run ends and cannot be resumed.";
+
+/** A session that has not checked in since it opened, and when core ends it if none comes. */
+export const checkInByText = (countdown: string | null): string =>
+  countdown === null
+    ? "It has not checked in since it opened. Core is ending it."
+    : `It has not checked in since it opened. Core ends it in ${countdown} if it never checks in.`;
+
+/** An attempt a later one already followed: core moved on, so nothing is asked of a person. */
+export const nextAttemptText = (next: "sent" | "held"): string =>
+  next === "held"
+    ? "Core holds the next try, so nothing is asked of you here."
+    : "Core already sent it again, so nothing is asked of you.";
+
+export function cancelledByText(by: { kind: "person" | "agent" | "core"; name: string | null } | null | undefined): string {
+  if (!by || by.kind === "core") return "Cancelled by core";
+  return `Cancelled by ${by.name ?? (by.kind === "agent" ? "an agent" : "a person")}`;
+}
+
+/** The activity of a closed run nothing ran on, and of one a session worked without jobs. */
+export const CLOSED_EMPTY = {
+  message: "It closed with no job run on it, so nothing more will appear here.",
+  sessionMessage: "A session worked this run directly rather than through jobs, so there are no attempts to list.",
+  sessionLink: "Its session's page shows what it did.",
+  liveSessionLink: "Its session's page shows what it is doing.",
+  notCheckedIn: "Its session has not checked in since it opened, so nothing has run on it yet.",
+  neverCheckedIn: "Its session never checked in before it ended, so nothing ran on it.",
+  endedSessionLink: "Its session's page shows how it ended.",
+} as const;

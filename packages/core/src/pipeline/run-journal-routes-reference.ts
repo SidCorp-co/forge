@@ -40,6 +40,29 @@ export const journalRunSchema = z.object({
     .string()
     .nullable()
     .describe('the newest agent session the run started; null where none ran it'),
+  reading: z
+    .enum(['blocked', 'running', 'starting', 'waiting', 'queued', 'held'])
+    .nullable()
+    .describe(
+      "what the run's agent is doing, the reading the run listing answers (`runs-liveness.ts`)",
+    ),
+  hold: z
+    .object({
+      reason: z.string(),
+      resumesItself: z.boolean(),
+      recheckAt: z.string().nullable(),
+      since: z.string().nullable(),
+    })
+    .nullable()
+    .describe("the newest held job's hold, where the run holds one"),
+  block: z
+    .object({ blockerKind: z.string().nullable(), parked: z.boolean() })
+    .nullable()
+    .describe('what a box reports its blocked session on the run waits on'),
+  runningSince: z
+    .string()
+    .nullable()
+    .describe('the earliest start of any session on the run: when its work started'),
   attempts: z.array(journalAttemptSchema),
 });
 

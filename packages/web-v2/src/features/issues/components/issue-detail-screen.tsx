@@ -9,6 +9,7 @@
 // each ruled off from the one above by a hairline. The Properties rail sits beside it behind a
 // hairline at `lg` and under it as a disclosure below.
 
+import { useNow } from "@/design/hooks/use-now";
 import {
   Checkbox,
   Collapsible,
@@ -42,6 +43,7 @@ import {
   deriveBlockerState,
   deriveRunView,
   isLiveRun,
+  openRunWord,
   issueQueryKey,
   issueSessionId,
   liveStepWords,
@@ -120,6 +122,7 @@ export function IssueDetailScreen({
   const membersQ = useProjectMembers(projectId);
   const journalQ = useRunJournal(projectId, canonicalId);
   const holdsQ = useSessionsAndHolds(projectId);
+  const now = useNow(10_000);
 
   const patch = usePatchIssue();
   const {
@@ -239,9 +242,12 @@ export function IssueDetailScreen({
   const statusPark = canWrite ? { reading: park, actions: parkActions } : undefined;
   const threadQuestion = park.state === "ready" && park.park ? threadQuestionOf(park.park) : null;
 
-  // The run's state is a session chip beside the issue's lifecycle chip, never merged into it (ISS-360, ISS-1150).
-  const runChip = runStatusChip(issue);
-  const isRunActive = isLiveRun(runChip) || issue.status === "in_progress" || issue.status === "reopen";
+  // The run's state is a session chip beside the issue's lifecycle chip, never merged into it (ISS-360, ISS-1150):
+  // an open run's in core's word, the one every run surface reads, else the sessions' verdict (ISS-1228).
+  const runWord = openRunWord(runs, now);
+  const runChip = runWord ? null : runStatusChip(issue);
+  const isRunActive =
+    runWord !== null || isLiveRun(runChip) || issue.status === "in_progress" || issue.status === "reopen";
 
   const tabs: TabItem[] = [
     {
@@ -275,6 +281,16 @@ export function IssueDetailScreen({
             <MonoTag hue="cobalt">{issue.displayId}</MonoTag>
             {/* Issue lifecycle (pill) vs live agent run (squared, agent glyph). */}
             <StatusChip status={statusToChip(issue.status)} label={statusLabel(issue.status)} />
+            {runWord && (
+              <span className="inline-flex" title={runWord.detail}>
+                <StatusChip
+                  status={runWord.status}
+                  label={runWord.label}
+                  stage={runWord.status === "running" ? (liveStep ?? undefined) : undefined}
+                  domain="session"
+                />
+              </span>
+            )}
             {runChip && (
               <StatusChip
                 status={runChip}
@@ -282,7 +298,9 @@ export function IssueDetailScreen({
                 domain="session"
               />
             )}
-            {liveStep && runChip !== "running" && <span className="fg-caption">{liveStep}</span>}
+            {liveStep && runChip !== "running" && runWord?.status !== "running" && (
+              <span className="fg-caption">{liveStep}</span>
+            )}
           </div>
           <PageTitle className="fg-h3 mt-1.5 break-words">{issue.title}</PageTitle>
         </div>

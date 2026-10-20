@@ -39,7 +39,14 @@ import {
   type ResidentMaster,
   stepOf,
 } from './runs-lane.js';
-import { loadRunLivenessByRunIds, type RunReading, residentMasterOn } from './runs-liveness.js';
+import {
+  loadRunLivenessByRunIds,
+  type RunBlock,
+  type RunHold,
+  type RunLiveness,
+  type RunReading,
+  residentMasterOn,
+} from './runs-liveness.js';
 
 export type { PipelineRunAttempt, PipelineRunRetrySummary } from './runs-attempts.js';
 export type {
@@ -106,6 +113,16 @@ export interface PipelineRunSummary {
   lastSessionBeatAt: string | null;
   /** What the run's agent is doing, the one reading every surface shows (`runs-liveness.ts`). */
   reading: RunReading | null;
+  /** Why core holds the run's job and whether it sends it again itself, where it holds one. */
+  hold: RunHold | null;
+  /** What a box reports its blocked session on the run waits on. */
+  block: RunBlock | null;
+  /** When core ends a session on the run that has not checked in since it opened. */
+  checkInBy: string | null;
+  /** When the run's work started: the earliest start of any session on it. */
+  runningSince: string | null;
+  /** The run's newest session. */
+  sessionId: string | null;
   /** ISS-1335 — the live master session on a `master`-lane run; `null` off that lane, and on a
    *  master run nothing holds any more. A session of another kind never fills it. */
   residentMaster: ResidentMaster | null;
@@ -236,8 +253,20 @@ function rowToListItem(row: RunRow): PipelineRunListItem {
     cost: EMPTY_COST,
     liveJobs: 0,
     lastSessionBeatAt: null,
-    reading: null,
+    ...readingFields(undefined),
     residentMaster: null,
+  };
+}
+
+/** The reading and what explains it, off one liveness row, so every read of a run answers alike. */
+function readingFields(l: RunLiveness | undefined) {
+  return {
+    reading: l?.reading ?? null,
+    hold: l?.hold ?? null,
+    block: l?.block ?? null,
+    checkInBy: l?.checkInBy ?? null,
+    runningSince: l?.runningSince ?? null,
+    sessionId: l?.sessionId ?? null,
   };
 }
 
@@ -335,7 +364,7 @@ export async function loadPipelineRunSummary(runId: string): Promise<PipelineRun
     groupTitles,
     liveJobs: liveMap.get(runId)?.liveJobs ?? 0,
     lastSessionBeatAt: liveMap.get(runId)?.beat ?? null,
-    reading: liveMap.get(runId)?.reading ?? null,
+    ...readingFields(liveMap.get(runId)),
     residentMaster,
     steps,
     cost,
@@ -418,7 +447,7 @@ export async function listItemsFromRows(rows: RunRow[]): Promise<PipelineRunList
       cost: costMap.get(r.id) ?? EMPTY_COST,
       liveJobs: liveMap.get(r.id)?.liveJobs ?? 0,
       lastSessionBeatAt: liveMap.get(r.id)?.beat ?? null,
-      reading: liveMap.get(r.id)?.reading ?? null,
+      ...readingFields(liveMap.get(r.id)),
       residentMaster,
     };
   });
