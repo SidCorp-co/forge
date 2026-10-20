@@ -34,7 +34,7 @@ import { postReleaseGateHoldComment, resolveAgentCloseTarget } from './release-g
 import { refuseUnrecordedClose } from './release-record-required.js';
 import { holdReleaseTagClose } from './release-tag-close.js';
 import { explainReleasingRace, releasingDoorRefusal } from './releasing-door.js';
-import { ISSUE_TERMINAL_STATUSES, statusForCaller } from './status-sets.js';
+import { ISSUE_TERMINAL_STATUSES, statusLabel } from './status-sets.js';
 import { TransitionError, type TransitionErrorCode } from './transition-error.js';
 import { checkTransitionEvidence } from './transition-evidence.js';
 import {
@@ -224,7 +224,7 @@ export async function stageIssueTransition(
     if (replacement) {
       throw new TransitionError(
         'ILLEGAL_TRANSITION',
-        `${statusForCaller(requestedStatus)} is a retired rung: nothing dispatches at it, so an issue written there is stranded until a person moves it by hand. Write ${statusForCaller(replacement)} instead — it is the rung that took its place.`,
+        `${statusLabel(requestedStatus)} is retired: nothing dispatches at it, so an issue there waits until a person moves it. Use ${statusLabel(replacement)}, which took its place.`,
         { from: fromStatus, to: requestedStatus, replacedBy: replacement },
       );
     }
@@ -242,7 +242,7 @@ export async function stageIssueTransition(
   if (options.waitingKind && requestedStatus !== 'waiting') {
     throw new TransitionError(
       'WAITING_KIND_NOT_APPLICABLE',
-      `\`waitingKind\` is stored only for a Waiting (waiting) park, and ${statusForCaller(requestedStatus)} cannot hold it. Say what the issue is waiting for in \`reason\` instead — that is posted as a comment before the status flips and is kept.`,
+      `Only a Waiting park keeps \`waitingKind\`, and ${statusLabel(requestedStatus)} cannot hold it. Say what the issue waits for in \`reason\` instead, which is posted as a comment and kept.`,
       { from: fromStatus, to: requestedStatus, waitingKind: options.waitingKind },
     );
   }
@@ -528,7 +528,7 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
         },
       );
       if (!result)
-        throw new TransitionError('STALE_TRANSITION', 'issue status changed concurrently', {
+        throw new TransitionError('STALE_TRANSITION', 'Another move landed first. Retry.', {
           from: fromStatus,
           to: toStatus,
         });

@@ -37,10 +37,17 @@ function oldestMergedAt(issues: ReleaseRosterEntry[]): string | null {
 
 /** The empty gate's one line has to fit a phone whole, so each wording is
  *  short: formatCountdown's "any moment now" would not fit after "Next cut". */
-function emptyGateDetail(nextCutAt: string | null): string {
-  if (!nextCutAt) return "A person releases";
+function emptyGateDetail(nextCutAt: string | null, automatic: boolean): string {
+  if (!nextCutAt) return automatic ? "Releases on its own" : "A person releases";
   if (new Date(nextCutAt).getTime() <= Date.now()) return "Cut due now";
   return `Next cut ${formatCountdown(nextCutAt)}`;
+}
+
+/** What releases the waiting issues: a schedule, the automatic release, or a person (ISS-1421 r13). */
+export function whatReleases(nextCutAt: string | null, automatic: boolean): string {
+  if (nextCutAt) return `Next cut ${formatCountdown(nextCutAt)}`;
+  if (automatic) return "Forge releases each one on its own once its criteria pass and nothing holds it";
+  return "No schedule — a person releases this";
 }
 
 /**
@@ -80,7 +87,7 @@ export function ReleaseGatePanel({ projectId, slug }: { projectId: string; slug:
       <EmptyPanelLine
         title={WORK_STATE_LABELS.awaiting_release}
         status="None waiting"
-        detail={emptyGateDetail(data.nextCutAt)}
+        detail={emptyGateDetail(data.nextCutAt, data.automaticRelease)}
       />
     );
   }
@@ -117,9 +124,7 @@ export function ReleaseGatePanel({ projectId, slug }: { projectId: string; slug:
             <Badge tone="cobalt">{issues.length}</Badge>
           </div>
           <p className="fg-caption text-muted">
-            {data.nextCutAt
-              ? `Next cut ${formatCountdown(data.nextCutAt)}`
-              : "No schedule — a person releases this"}
+            {whatReleases(data.nextCutAt, data.automaticRelease)}
             {oldest ? ` · oldest merged ${formatRelativeTime(oldest)}` : ""}
           </p>
         </div>

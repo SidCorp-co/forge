@@ -7,8 +7,8 @@ import { zValidator } from '../api-reference/declare/validator.js';
 import { db } from '../db/client.js';
 import { projectGitCredentials, projects, workspaceSshKeys } from '../db/schema.js';
 import { classifyGitRemote } from '../git/provision-credential.js';
-import { testSshConnection } from '../git/ssh-keys.js';
-import { decryptSecret, isVaultConfigured } from '../integrations/vault.js';
+import { testStoredSshKey } from '../git/ssh-keys.js';
+import { isVaultConfigured } from '../integrations/vault.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { logger } from '../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
@@ -144,7 +144,7 @@ gitCredentialRoutes.post(
       .limit(1);
     if (!ref) {
       throw new HTTPException(404, {
-        message: 'no deploy key configured for this project',
+        message: 'This project has no deploy key to test.',
         cause: { code: 'NOT_CONFIGURED' },
       });
     }
@@ -152,23 +152,12 @@ gitCredentialRoutes.post(
     const repoUrl = project.repoUrl?.trim();
     if (!repoUrl || classifyGitRemote(repoUrl) !== 'ssh') {
       throw new HTTPException(400, {
-        message: 'set an SSH clone URL (git@host:org/repo.git) to test the deploy key',
+        message: 'Set an SSH clone URL, like git@host:org/repo.git, to test the deploy key.',
         cause: { code: 'NEEDS_SSH_URL' },
       });
     }
 
-    let privateKey: string;
-    try {
-      privateKey = decryptSecret(ref.privateKeyEnc);
-    } catch (err) {
-      logger.error({ err, projectId }, 'git-credential: decrypt failed on connection test');
-      throw new HTTPException(500, {
-        message: 'failed to decrypt the stored key (vault master key may have rotated)',
-        cause: { code: 'DECRYPT_FAILED' },
-      });
-    }
-
-    const result = await testSshConnection(repoUrl, privateKey);
+    const result = await testStoredSshKey(repoUrl, ref.privateKeyEnc, { projectId });
     logger.info({ projectId, code: result.code, ok: result.ok }, 'git-credential: connection test');
     return c.json(answer(sshConnectionTestSchema, result));
   },

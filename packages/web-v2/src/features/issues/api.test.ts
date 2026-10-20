@@ -13,6 +13,7 @@ const ROSTER = {
   releaseRunnerLabel: "release",
   baseBranch: "main",
   nextCutAt: null,
+  automaticRelease: false,
   issues: [],
 };
 

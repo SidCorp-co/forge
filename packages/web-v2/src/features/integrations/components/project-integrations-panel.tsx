@@ -7,7 +7,7 @@
 // `/integrations` page is now the owner connection directory.
 
 import { type KeyboardEvent, useEffect, useState } from "react";
-import { Button, ErrorState, Icon, type IconName, SectionTitle, Skeleton } from "@/design";
+import { Banner, Button, ErrorState, Icon, type IconName, SectionTitle, Skeleton } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { formatRelativeTime } from "@/lib/utils/format";
 import { useIntegrationsStatus } from "../hooks";
@@ -205,6 +205,9 @@ export function ProjectIntegrationsPanel({
   const status = useIntegrationsStatus(projectId);
   const [selectedCard, setSelectedCard] = useState<StatusCard | null>(null);
   const cards = status.data?.cards ?? [];
+  // A failed refresh keeps what the last read showed: the open drawer and both writes stay in view,
+  // and the failure is said beside them rather than in place of them (ISS-1421 r13).
+  const readError = status.isError ? formatApiError(status.error) : null;
 
   useEffect(() => {
     if (!openProvider) return;
@@ -224,10 +227,22 @@ export function ProjectIntegrationsPanel({
             <Skeleton key={i} className="h-[56px] w-full" />
           ))}
         </div>
-      ) : status.isError ? (
+      ) : status.isError && !status.data ? (
         <ErrorState message={formatApiError(status.error)} onRetry={() => status.refetch()} />
       ) : (
         <>
+          {readError ? (
+            <Banner
+              tone="attention"
+              action={
+                <Button variant="ghost" size="sm" onClick={() => status.refetch()}>
+                  Retry
+                </Button>
+              }
+            >
+              {`The status could not be refreshed, so it shows the last read. ${readError}`}
+            </Banner>
+          ) : null}
           <div className="flex items-center justify-between gap-2">
             <SectionTitle className="fg-h3">Status</SectionTitle>
             <Button variant="ghost" size="sm" icon="rerun" onClick={() => status.refetch()}>
@@ -258,15 +273,16 @@ export function ProjectIntegrationsPanel({
           </ul>
 
           <McpServersPanel projectId={projectId} canEdit={canEdit} />
-
-          <ConnectionDetailDrawer
-            projectId={projectId}
-            card={liveCard(selectedCard, cards)}
-            onClose={() => setSelectedCard(null)}
-            canEdit={canEdit}
-          />
         </>
       )}
+      <ConnectionDetailDrawer
+        projectId={projectId}
+        card={liveCard(selectedCard, cards)}
+        onClose={() => setSelectedCard(null)}
+        canEdit={canEdit}
+        statusReadError={readError}
+        onRetryStatus={() => status.refetch()}
+      />
     </div>
   );
 }

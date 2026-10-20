@@ -68,7 +68,7 @@ export const pickGitCredential = describeOperation({
 export const testGitCredential = describeOperation({
   summary: "Test the project's deploy key against its repository",
   description:
-    'Runs `git ls-remote` over SSH with the stored key. A refused or unreachable remote is a 200 with `ok: false`; only a project that cannot be tested is an error.',
+    'Runs `git ls-remote` over SSH with the stored key. A refused or unreachable remote, and a stored key Forge cannot decrypt (`key_unreadable`), is a 200 with `ok: false`; only a project that cannot be tested is an error.',
   responses: {
     200: json(sshConnectionTestSchema, 'The outcome of the connection test'),
     400: fail('NEEDS_SSH_URL', 'the project has no SSH clone URL to test against'),
@@ -77,10 +77,6 @@ export const testGitCredential = describeOperation({
       NOT_FOUND: NOT_FOUND,
       NOT_CONFIGURED: 'the project has no deploy key',
     }),
-    500: fail(
-      'DECRYPT_FAILED',
-      'the stored key cannot be decrypted, as when the vault master key was rotated',
-    ),
     503: fail('VAULT_NOT_CONFIGURED', 'the server has no secret vault'),
   },
 });

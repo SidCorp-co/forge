@@ -66,7 +66,7 @@ const ISSUES: ReleaseRoster["issues"] = [
 
 function state(over: Partial<ReleaseRoster> | null, flags: Record<string, unknown> = {}) {
   roster.mockReturnValue({
-    data: over === null ? undefined : { gateStatus: "tested", nextCutAt: null, channels: ["coolify"], releaseRunnerLabel: null, issues: [], ...over },
+    data: over === null ? undefined : { gateStatus: "tested", nextCutAt: null, automaticRelease: false, channels: ["coolify"], releaseRunnerLabel: null, issues: [], ...over },
     isLoading: false,
     isError: false,
     error: null,
@@ -342,6 +342,30 @@ describe("ReleaseGatePanel — nothing is waiting", () => {
     state({ issues: [], nextCutAt: null });
     renderPanel();
     expect(screen.getByText("A person releases")).toBeInTheDocument();
+  });
+
+  // ISS-1421 r13 — judge-58 read "a person releases this" on a project whose automatic release was
+  // writing hold comments on the very issues the panel listed.
+  it("says the gate releases on its own where the automatic release is on", () => {
+    state({ issues: [], nextCutAt: null, automaticRelease: true });
+    renderPanel();
+    expect(screen.getByText("Releases on its own")).toBeInTheDocument();
+    expect(screen.queryByText("A person releases")).not.toBeInTheDocument();
+  });
+
+  it("names the automatic release, never a person, over a waiting roster", () => {
+    state({ issues: ISSUES.slice(0, 1), nextCutAt: null, automaticRelease: true });
+    renderPanel();
+    expect(
+      screen.getByText(/Forge releases each one on its own once its criteria pass and nothing holds it/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/a person releases this/)).not.toBeInTheDocument();
+  });
+
+  it("still says a person releases a waiting roster where nothing else will", () => {
+    state({ issues: ISSUES.slice(0, 1), nextCutAt: null, automaticRelease: false });
+    renderPanel();
+    expect(screen.getByText(/No schedule — a person releases this/)).toBeInTheDocument();
   });
 
   it("goes back to the full card the moment one issue is waiting", () => {

@@ -69,7 +69,9 @@ export function AwaitingReleaseBanner({
 			<span className="font-medium">{merged} — not shipped yet.</span>{" "}
 			{data.nextCutAt
 				? `The next release cut runs ${formatCountdown(data.nextCutAt)}.`
-				: "No release is scheduled, so this ships when a person cuts one."}
+				: data.automaticRelease
+					? "Forge releases it on its own once its criteria pass and nothing holds it."
+					: "No release is scheduled, so this ships when a person cuts one."}
 		</Banner>
 	);
 }

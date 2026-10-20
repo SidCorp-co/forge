@@ -88,6 +88,7 @@ describe("useBatchRelease — Release now refused", () => {
       releaseRunnerLabel: null,
       baseBranch: "main",
       nextCutAt: null,
+      automaticRelease: false,
       issues: [
         {
           id: "iss-1",

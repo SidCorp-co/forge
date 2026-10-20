@@ -101,25 +101,27 @@ const KEPT_LINES: Array<[string, RegExp, string]> = [
  *  either helper is refused until it is placed here. The release path's refusals are a person's: their
  *  way out is a release and never a status a caller sends back, so the label stands alone there
  *  (ISS-1421 r6, the master's ruling; the code and `details` still carry the values). The Draft
- *  refusals are met on the status menu and read the same way (ISS-1421 r12). */
+ *  refusals are met on the status menu and read the same way (ISS-1421 r12), and so is every refusal
+ *  a status move answers: the master's round-13 ruling reads the ISS-1229 pair as one for logs and
+ *  `details`, never the sentence a person reads (ISS-1421 r13). */
 const READS: Record<string, 'person' | 'caller'> = {
   'integrations/github/check-run-body.ts': 'person',
   'integrations/sentry/intake-issue.ts': 'caller',
-  'issues/apply-transition.ts': 'caller',
+  'issues/apply-transition.ts': 'person',
   'issues/archive.ts': 'caller',
-  'issues/close-substitution.ts': 'caller',
+  'issues/close-substitution.ts': 'person',
   'issues/draft-entry.ts': 'person',
   'issues/landing-evidence.ts': 'caller',
   'issues/merge-marker.ts': 'caller',
-  'issues/merged-at.ts': 'caller',
-  'issues/park-question.ts': 'caller',
+  'issues/merged-at.ts': 'person',
+  'issues/park-question.ts': 'person',
   'issues/park-view.ts': 'person',
   'issues/release-gate-hold.ts': 'person',
-  'issues/release-record-required.ts': 'caller',
-  'issues/release-tag-close.ts': 'caller',
+  'issues/release-record-required.ts': 'person',
+  'issues/release-tag-close.ts': 'person',
   'issues/releasing-door.ts': 'person',
-  'issues/transition-evidence.ts': 'caller',
-  'issues/transition-reason.ts': 'caller',
+  'issues/transition-evidence.ts': 'person',
+  'issues/transition-reason.ts': 'person',
   'issues/work-state.ts': 'caller',
   'jobs/retry-failed-job.ts': 'person',
   'mcp/tools/forge-step-start.ts': 'caller',
@@ -137,7 +139,7 @@ const READS: Record<string, 'person' | 'caller'> = {
   'pipeline/wedge-lease.ts': 'person',
   'pm/dispatch-service.ts': 'caller',
   'projects/stranded-work.ts': 'caller',
-  'questions/issue-coupling.ts': 'caller',
+  'questions/issue-coupling.ts': 'person',
   'questions/write.ts': 'caller',
   'release-batch/abort-stamp.ts': 'person',
   'release-batch/blocker-sentences.ts': 'person',
@@ -163,6 +165,11 @@ type Kept = Array<[string, RegExp, string]>;
 /** Lines in a caller's file that only a person reads, so the label alone is right there. A sentence
  *  both read takes the pair. */
 const PERSON_LINES: Kept = [
+  [
+    'issues/archive.ts',
+    /This issue cannot move to \$\{statusLabel\(toStatus\)\}/,
+    'a status move refused over an archived edge, met on the status menu (ISS-1421 r13)',
+  ],
   [
     'issues/transition-reason.ts',
     /Reopened from \$\{ISSUE_STATUS_LABELS\[from\]\}/,

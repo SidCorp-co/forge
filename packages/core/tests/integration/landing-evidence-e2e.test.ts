@@ -225,7 +225,7 @@ describe('a project that lands in git (kind standard) closes exactly as before',
     const id = await seedIssue(w);
     const refusal = await refusalOf(() => close(w, id));
     expect(refusal.code).toBe('CLOSE_REQUIRES_SHIPPED');
-    expect(refusal.message).toContain('this issue carries no `merged_at`');
+    expect(refusal.message).toContain('This issue carries no `merged_at`');
     expect(refusal.message).toContain('naming the commit it landed at in `data.commit`');
     expect(refusal.message).toContain('Set `landingShape` to `outside_git`');
     expect(refusal.message).not.toContain('naming where it landed');

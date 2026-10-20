@@ -6,7 +6,7 @@
 // project reads by default is binding-tier, so two projects on one credential
 // each keep their own sheet.
 
-import { Badge, type BadgeProps, Banner, Button, ErrorState, Field, Input, Textarea } from "@/design";
+import { Badge, Banner, Button, ErrorState, Field, Input, Textarea } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useMemo, useState } from "react";
 import {
@@ -27,29 +27,16 @@ import type { AgentAccess } from "../../types";
 import { ConnectionOwnerField } from "../../components/connection-owner-field";
 import { google } from "./index";
 import { IntegrationEnabledControl } from "../../components/integration-enabled-control";
-import { STATE_WORDS } from "../../derive";
+import { bindingBadge } from "../../derive";
 
-interface BadgeView {
-  label: string;
-  tone: NonNullable<BadgeProps["tone"]>;
-}
-
-// The five verdicts name five different next actions, so none of them shares a
-// label with another — `needs_scope` in particular must not read as "re-enter
-// the credential", because re-entering it reproduces the state exactly.
-function badgeFor(existing: IntegrationSummary | undefined): BadgeView {
-  if (!existing) return { label: "Not configured", tone: "amber" };
-  if (!existing.active) return { label: STATE_WORDS.off, tone: "neutral" };
-  if (existing.lastHealthStatus === "ok") return { label: "Connected", tone: "green" };
-  if (existing.lastHealthStatus === "needs_reauth")
-    return { label: "Key rejected by Google", tone: "red" };
-  if (existing.lastHealthStatus === "needs_scope")
-    return { label: "Sheet not shared with the account", tone: "amber" };
-  if (existing.lastHealthStatus === "degraded")
-    return { label: "No default sheet to read", tone: "amber" };
-  if (existing.lastHealthStatus === "error") return { label: STATE_WORDS.failed, tone: "red" };
-  return { label: STATE_WORDS.unchecked, tone: "neutral" };
-}
+/** What Google's own check found, under the badge that names the state as the row does: the five
+ *  findings name five next actions, and `needs_scope` must not read as "re-enter the credential".
+ *  Keyed on the check's finding, so an open breaker over a passing check is not called a missing sheet. */
+const GOOGLE_CHECK_SAYS: Record<string, string> = {
+  needs_reauth: "Google rejected the service account key.",
+  needs_scope: "The sheet is not shared with the service account.",
+  degraded: "No default sheet is set to read.",
+};
 
 /** The sentence that decides whether an operator's sheet is reachable. It is
  *  the same on both panels because it is the same mistake on both. */
@@ -114,7 +101,11 @@ function GoogleBindingPanel({
   const [testResult, setTestResult] = useState<IntegrationTestResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const badge = badgeFor(binding);
+  const badge = bindingBadge(binding);
+  const says =
+    binding.active && binding.breakerOpenedAt === null
+      ? GOOGLE_CHECK_SAYS[binding.lastHealthStatus ?? ""]
+      : undefined;
 
   async function saveDefaultSheet() {
     setError(null);
@@ -168,6 +159,7 @@ function GoogleBindingPanel({
         </span>
         <Badge tone={badge.tone}>{badge.label}</Badge>
       </div>
+      {says ? <p className="fg-body-sm text-muted">{says}</p> : null}
 
       <p className="fg-body-sm text-muted">
         Agents read and write this project&apos;s sheets through Forge. The key stays
