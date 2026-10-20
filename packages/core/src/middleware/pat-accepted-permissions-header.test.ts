@@ -19,7 +19,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('../config/env.js', () => ({
   env: { NODE_ENV: 'test', JWT_SECRET: 'test-secret-at-least-32-chars-long-abcdef' },
 }));
-vi.mock('../db/client.js', () => ({ db: {} }));
+vi.mock('../db/client.js', async () => {
+  const { sessionReadOr } = await import('./session-read.fixture.js');
+  return { db: { select: sessionReadOr(() => ({})) } };
+});
 vi.mock('../mcp/tools/project-scope.js', () => ({ patEffectiveProjectIds: () => null }));
 
 const authenticatePat = vi.fn();

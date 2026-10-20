@@ -231,7 +231,7 @@ export async function authenticatePat(
 }
 
 const NOT_A_PAT_REFUSAL =
-  'this is not a Forge personal access token — those start with `forge_pat_`; create one ' +
+  'This is not a Forge personal access token: those start with `forge_pat_`. Create one ' +
   'under Settings → API Tokens and paste it whole after `Bearer `. If this is a runner box: ' +
   'device tokens no longer authenticate /mcp — an agent session presents its own ' +
   '`job:`/`session:` token, minted by core and written into the job MCP config by ' +

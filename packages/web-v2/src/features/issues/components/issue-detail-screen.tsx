@@ -369,6 +369,7 @@ export function IssueDetailScreen({
             projectId={issue.projectId}
             issueId={issue.id}
             canWrite={canWrite}
+            mergeMark={issue.mergeMark}
           />
 
           {reasonDialog}

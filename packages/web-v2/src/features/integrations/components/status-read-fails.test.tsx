@@ -117,6 +117,35 @@ describe("a status read that fails while a drawer is open", () => {
     }
   });
 
+  // ISS-1421 r14 — judge-61 at 390: Test connection sits at the drawer's foot, so the notice that
+  // followed it appeared off-screen above, and the person learned of it only by scrolling up.
+  // Whether it lands in view is a browser's answer: the 390 after-shot measured it, not jsdom.
+  it("asks the browser to scroll the notice into view when it appears", async () => {
+    const scrolled = vi.fn();
+    const original = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = scrolled;
+    try {
+      render(
+        <QueryClientProvider client={queries}>
+          <ProjectIntegrationsPanel projectId={PROJECT} />
+        </QueryClientProvider>,
+      );
+      fireEvent.click(await screen.findByRole("button", { name: "Manage Sentry" }));
+      const dialog = await screen.findByRole("dialog");
+      expect(scrolled).not.toHaveBeenCalled();
+      statusFails = true;
+      await act(async () => {
+        await queries.refetchQueries({ queryKey: ["integrations", "status", PROJECT] });
+      });
+      const notice = await within(dialog).findByText(/The status could not be refreshed/);
+      await waitFor(() => expect(scrolled).toHaveBeenCalled());
+      const target = scrolled.mock.contexts[0] as HTMLElement;
+      expect(target.contains(notice)).toBe(true);
+    } finally {
+      Element.prototype.scrollIntoView = original;
+    }
+  });
+
   it("still says Couldn't load where no status was ever read", async () => {
     statusFails = true;
     render(

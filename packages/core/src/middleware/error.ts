@@ -1,6 +1,7 @@
 import { redactedMessage, redactQueryParams } from '@forge/observability';
 import type { Context, ErrorHandler, NotFoundHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
+import { refusalMessage } from '../lib/refusal-sentence.js';
 import { getLogger } from '../logger.js';
 import {
   holdServerTags,
@@ -98,7 +99,9 @@ export const errorHandler: ErrorHandler<{ Variables: RequestIdVars }> = (err, c)
     const { code: causeCode, details, wwwAuthenticate } = extractCause(err.cause);
     const body: ErrorBody = {
       code: causeCode ?? statusToCode(status),
-      message: err.message || statusToCode(status),
+      // ISS-1421 r14: every refusal a caller reads is a sentence, whichever door worded it.
+      message:
+        status < 500 ? refusalMessage(err.message, details) : err.message || statusToCode(status),
     };
     if (details !== undefined) body.details = details;
 

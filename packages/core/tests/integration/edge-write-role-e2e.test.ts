@@ -167,7 +167,7 @@ describe('a person who is no member at all', () => {
       toIssueId: to,
       kind: 'blocks',
     });
-    expect(refused).toContain('project not found or not accessible');
+    expect(refused).toContain('Project not found or not accessible');
     expect(await edgeCount()).toBe(0);
   });
 });

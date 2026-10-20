@@ -4,6 +4,7 @@ import { Banner, Button } from "@/design";
 import { formatCountdown, formatRelativeTime } from "@/lib/utils/format";
 import { failedCloseLead } from "@/features/releases/roster";
 import { useBatchRelease, useReleaseRoster } from "../hooks";
+import type { MergeMarkKind } from "../types";
 
 /**
  * What "awaiting release" means, on the issue a person is actually reading:
@@ -13,10 +14,13 @@ export function AwaitingReleaseBanner({
 	projectId,
 	issueId,
 	canWrite,
+	mergeMark,
 }: {
 	projectId: string;
 	issueId: string;
 	canWrite: boolean;
+	/** Which record the mark is: a claim naming no commit is never said to be a merge (ISS-1421 r14). */
+	mergeMark?: MergeMarkKind;
 }) {
 	const { data } = useReleaseRoster(projectId);
 	const batch = useBatchRelease(projectId);
@@ -25,9 +29,15 @@ export function AwaitingReleaseBanner({
 	if (!data?.gateStatus || !entry) return null;
 	const baseBranch = data.baseBranch;
 
-	const merged = entry.mergedAt
-		? `Merged into ${baseBranch ?? "the base branch"} ${formatRelativeTime(entry.mergedAt)}`
-		: "Merged";
+	const when = entry.mergedAt ? ` ${formatRelativeTime(entry.mergedAt)}` : "";
+	const merged =
+		mergeMark === "asserted"
+			? `Claimed as merged${when}, naming no commit`
+			: mergeMark === "landed"
+				? `Marked as landed${when}`
+				: entry.mergedAt
+					? `Merged into ${baseBranch ?? "the base branch"}${when}`
+					: "Merged";
 
 	if (entry.claimedByRunId) {
 		return <Banner tone="info">{`${merged} — it is in a release, whose run says whether a box has started it`}</Banner>;

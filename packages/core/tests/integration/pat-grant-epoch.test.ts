@@ -294,7 +294,7 @@ describe('a token minted now reaches every feature mount it is granted (ISS-1373
     });
     expect(res.status).toBe(400);
     expect(codeOf(res)).toBe('PAT_ACCOUNT_PERMISSION_ON_SCOPED_TOKEN');
-    expect(res.text).toContain('orgs:read is an account permission,');
+    expect(res.text).toContain('`orgs:read` is an account permission,');
     expect(res.text).toContain('Drop it,');
     const rows = await harness.db.execute(
       sql`SELECT id FROM personal_access_tokens WHERE name = 'scoped-with-orgs'`,
@@ -310,7 +310,7 @@ describe('a token minted now reaches every feature mount it is granted (ISS-1373
     });
     expect(res.status).toBe(400);
     expect(codeOf(res)).toBe('PAT_ACCOUNT_PERMISSION_ON_SCOPED_TOKEN');
-    expect(res.text).toContain('orgs:read, devices:read are account permissions,');
+    expect(res.text).toContain('`orgs:read`, devices:read are account permissions,');
     expect(res.text).toContain('Drop them,');
   });
 

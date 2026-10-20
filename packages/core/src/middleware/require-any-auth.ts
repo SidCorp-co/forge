@@ -7,6 +7,7 @@ import type { ActorAgency } from '../issues/actor-agency.js';
 import { readBearerToken } from './bearer.js';
 import { refuses } from './declarations.js';
 import { beginPatRequest } from './pat-rest-surface.js';
+import { admitSessionUser } from './session-account.js';
 
 export type AnyAuthVars = {
   userId: string;
@@ -35,6 +36,7 @@ export function requireAnyAuth(): MiddlewareHandler<{ Variables: AnyAuthVars }> 
     } catch {
       throw unauth('invalid token');
     }
+    await admitSessionUser(c, claims.sub);
     c.set('userId', claims.sub);
     c.set('principal', 'user');
     c.set('agency', 'human');
@@ -43,5 +45,10 @@ export function requireAnyAuth(): MiddlewareHandler<{ Variables: AnyAuthVars }> 
   return refuses(gate, [
     { status: 401, code: 'UNAUTHENTICATED', when: 'no bearer token and no session cookie' },
     { status: 401, code: 'UNAUTHENTICATED', when: 'the session token does not verify' },
+    {
+      status: 403,
+      code: 'AGENT_CANNOT_LOGIN',
+      when: 'the session token names an agent account, which holds no session',
+    },
   ]);
 }

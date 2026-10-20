@@ -40,13 +40,13 @@ const selectFrom = vi.fn(() => ({
 const insertReturning = vi.fn();
 const insertValues = vi.fn(() => ({ returning: insertReturning }));
 const deleteWhere = vi.fn(async () => undefined);
-const deleteFrom = vi.fn(() => ({ where: deleteWhere }));
 
-vi.mock('../db/client.js', () => {
+vi.mock('../db/client.js', async () => {
+  const { sessionReadOr: read } = await import('../middleware/session-read.fixture.js');
   const db = {
-    select: vi.fn(() => ({ from: selectFrom })),
+    select: vi.fn(read(() => ({ from: selectFrom }))),
     insert: vi.fn(() => ({ values: insertValues })),
-    delete: vi.fn(() => deleteFrom()),
+    delete: vi.fn(() => ({ where: deleteWhere })),
     execute: vi.fn(async () => []),
     transaction: async (cb: (tx: unknown) => Promise<unknown>) => cb(db),
   };

@@ -36,10 +36,10 @@ function planted() {
     c.json({ id: 7, createdAt: new Date(), title: 't' }),
   );
   app.get('/api/issues/not-found', declare, () => {
-    throw new HTTPException(404, { message: 'gone', cause: { code: 'NOT_FOUND' } });
+    throw new HTTPException(404, { message: 'Gone.', cause: { code: 'NOT_FOUND' } });
   });
   app.get('/api/issues/other-code', declare, () => {
-    throw new HTTPException(404, { message: 'gone', cause: { code: 'GONE_FOR_GOOD' } });
+    throw new HTTPException(404, { message: 'Gone.', cause: { code: 'GONE_FOR_GOOD' } });
   });
   // Both match /api/issues/first; the one registered first answers, and is the one judged.
   app.get(
@@ -159,17 +159,27 @@ describe('judgeAnswer', () => {
     ).toBeNull();
   });
 
-  it('accepts the validation library own 400 only for a route whose validator has no hook', () => {
-    const body = { success: false, error: { issues: [] } };
+  it('fails a 4xx envelope whose message is not a sentence (ISS-1421 r14)', () => {
     const known = new Map([[400, new Set(['BAD'])]]);
-    expect(judgeAnswer(declaration, known, 400, body, true)).toBeNull();
-    expect(judgeAnswer(declaration, known, 400, body, false)?.what).toContain('undefined');
-    expect(judgeAnswer(declaration, known, 400, { code: 'OTHER' }, true)?.what).toContain('OTHER');
+    expect(
+      judgeAnswer(declaration, known, 400, { code: 'BAD', message: 'Invalid input' })?.what,
+    ).toContain('not a sentence');
+    expect(
+      judgeAnswer(declaration, known, 400, { code: 'BAD', message: 'bad thing.' })?.what,
+    ).toContain('not a sentence');
+    expect(
+      judgeAnswer(declaration, known, 400, { code: 'BAD', message: 'The field n is required.' }),
+    ).toBeNull();
+    expect(
+      judgeAnswer(declaration, known, 400, { success: false, error: { issues: [] } })?.what,
+    ).toContain('undefined');
   });
 
   it('fails a declared error code inside an envelope whose message is not a string', () => {
     const known = new Map([[404, new Set(['NOT_FOUND'])]]);
-    expect(judgeAnswer(declaration, known, 404, { code: 'NOT_FOUND', message: 'gone' })).toBeNull();
+    expect(
+      judgeAnswer(declaration, known, 404, { code: 'NOT_FOUND', message: 'Gone.' }),
+    ).toBeNull();
     expect(judgeAnswer(declaration, known, 404, { code: 'NOT_FOUND', message: 7 })?.what).toContain(
       'message',
     );

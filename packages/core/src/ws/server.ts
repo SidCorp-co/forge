@@ -2,6 +2,7 @@ import type { Server as HttpServer, IncomingMessage } from 'node:http';
 import type { Server as HttpsServer } from 'node:https';
 import { and, eq } from 'drizzle-orm';
 import { type WebSocket, WebSocketServer } from 'ws';
+import { isAgentUser } from '../auth/agent-login-gate.js';
 import { AUTH_COOKIE_NAME } from '../auth/cookie.js';
 import { verifyDeviceCredential } from '../auth/device-credential.js';
 import { verifyUserToken } from '../auth/jwt.js';
@@ -9,6 +10,7 @@ import { db } from '../db/client.js';
 import { devices, runners } from '../db/schema.js';
 import { handleRunnerSessions } from '../devices/run-ledger-ws.js';
 import { effectiveProjectRole } from '../lib/authz.js';
+import { logger } from '../logger.js';
 import { isPlatformAdmin } from '../middleware/require-admin.js';
 import {
   handleRunnerRegister,
@@ -76,13 +78,16 @@ function parseProtocolToken(header: string | string[] | undefined): ProtocolMatc
   return undefined;
 }
 
+/** A session token's person; one naming an agent account, which holds no session, is no principal (ISS-1421). */
 async function tryUserToken(token: string): Promise<Principal | null> {
+  let subject: string;
   try {
-    const claims = await verifyUserToken(token);
-    return { type: 'user', userId: claims.sub };
+    subject = (await verifyUserToken(token)).sub;
   } catch {
     return null;
   }
+  if (await isAgentUser(subject)) return null;
+  return { type: 'user', userId: subject };
 }
 
 interface AuthResult {
@@ -188,7 +193,16 @@ export function attachWs(server: AnyServer): void {
     if (url.pathname !== '/ws') return;
 
     void (async () => {
-      const result = await authenticate(req);
+      let result: AuthResult | null;
+      try {
+        result = await authenticate(req);
+      } catch (err) {
+        // A credential read that failed answers no one; the socket is refused, never left hanging.
+        logger.warn({ err }, 'ws.authenticate_failed');
+        socket.write('HTTP/1.1 503 Service Unavailable\r\n\r\n');
+        socket.destroy();
+        return;
+      }
       if (!result) {
         socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
         socket.destroy();

@@ -18,9 +18,18 @@ export type TransitionErrorCode =
   | 'RELEASING_STARTS_FROM_RELEASE'
   | 'RELEASING_ENDS_BY_RELEASE';
 
+/** `details.steps`, a record's key to its whole step, as one line each under the sentence. */
+function stepLines(steps: unknown): string {
+  if (!steps || typeof steps !== 'object') return '';
+  return Object.entries(steps)
+    .map(([key, step]) => `\n${key}: ${String(step)}`)
+    .join('');
+}
+
 /**
  * Typed transition failure. `message` keeps the legacy `CODE: detail` shape
- * the MCP surface exposes; REST callers map `code`/`detail`/`details` onto
+ * the MCP surface exposes, with each of `details.steps` on a line of its own, since an MCP
+ * caller reads no details; REST callers map `code`/`detail`/`details` onto
  * HTTPException instead of parsing the string.
  */
 export class TransitionError extends Error {
@@ -29,6 +38,6 @@ export class TransitionError extends Error {
     readonly detail: string,
     readonly details: Record<string, unknown> = {},
   ) {
-    super(`${code}: ${detail}`);
+    super(`${code}: ${detail}${stepLines(details.steps)}`);
   }
 }

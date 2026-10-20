@@ -9,7 +9,11 @@
  * its code in the code field rather than at the front of the sentence.
  */
 
+import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -131,8 +135,49 @@ describe('storing a private key ssh cannot load', () => {
     const body = (await res.json()) as { code: string; message: string };
     expect(body.code).toBe('INVALID_PRIVATE_KEY');
     expect(body.message).toBe(
-      'Forge could not read this SSH private key. It may be malformed or protected by a passphrase, and Forge needs one it can use unattended.',
+      'Forge could not read this SSH private key. Paste the whole key in OpenSSH format, from its BEGIN line to its END line.',
     );
     expect(body.message).not.toMatch(/invalid_private_key/i);
   });
+
+  // ISS-1421 r14 — judge-61: a passphrase-protected key got no answer at all; ssh-keygen read its
+  // open stdin for the passphrase until the proxy closed the request with a 524.
+  it('is refused at once for a passphrase-protected key, in a sentence of its own', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'forge-prot-key-'));
+    try {
+      execFileSync('ssh-keygen', [
+        '-q',
+        '-t',
+        'ed25519',
+        '-N',
+        'a passphrase',
+        '-f',
+        join(dir, 'k'),
+      ]);
+      const started = Date.now();
+      const res = await post(`/api/orgs/${orgId}/ssh-keys`, {
+        mode: 'provide',
+        name: 'Protected',
+        privateKey: readFileSync(join(dir, 'k'), 'utf8'),
+      });
+      expect(Date.now() - started).toBeLessThan(5_000);
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as {
+        code: string;
+        message: string;
+        details?: { reason?: string };
+      };
+      expect(body.code).toBe('INVALID_PRIVATE_KEY');
+      expect(body.message).toBe(
+        'Forge could not read this SSH private key, because a passphrase protects it. Forge uses keys unattended, so paste one without a passphrase or generate one here.',
+      );
+      expect(body.details?.reason).toBe('passphrase');
+      const stored = await harness.db.execute(
+        sql`SELECT id FROM workspace_ssh_keys WHERE name = 'Protected'`,
+      );
+      expect(stored).toHaveLength(0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 20_000);
 });

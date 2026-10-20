@@ -121,7 +121,7 @@ describe.each(['pass_rate', 'approve_rate'])('the retired metric %s', (metric) =
     const { projectId, pat } = await seed();
     const res = await callMcp(pat, projectId, metric);
     expect(res.isError).toBe(true);
-    expect(res.text.startsWith('Error: invalid arguments — `metric`: ')).toBe(true);
+    expect(res.text.startsWith('Error: The field `metric` ')).toBe(true);
     expect(res.text).not.toMatch(/"code"|"path"|invalid_value|^Error: \[/);
     expect(() => JSON.parse(res.text.replace(/^Error: /, ''))).toThrow();
   });
@@ -132,7 +132,9 @@ describe('a name that was never a metric, through the MCP tool', () => {
     const { projectId, pat } = await seed();
     const res = await callMcp(pat, projectId, 'vibes');
     expect(res.isError).toBe(true);
-    expect(res.text).toContain('`metric`: metric `vibes` is not a metric this project serves');
+    expect(res.text).toContain(
+      'The field `metric` takes one of the values listed below. Metric `vibes` is not a metric this project serves.',
+    );
     expect(res.text).not.toContain('is retired');
     expect(res.text).not.toMatch(/"code"|invalid_value/);
   });
@@ -171,7 +173,7 @@ describe('any other enum-validated MCP input is refused in the same shape', () =
       })) as { isError?: boolean; content: Array<{ text: string }> };
       expect(res.isError).toBe(true);
       const text = res.content[0]?.text ?? '';
-      expect(text.startsWith('Error: invalid arguments — `breakdown`: ')).toBe(true);
+      expect(text.startsWith('Error: The field `breakdown` ')).toBe(true);
       expect(text).not.toMatch(/"code"|invalid_value/);
     } finally {
       await ctx.close();

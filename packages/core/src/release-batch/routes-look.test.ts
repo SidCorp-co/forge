@@ -188,7 +188,7 @@ describe('POST .../readings — every refusal under its own code', () => {
 
     expect(status).toBe(409);
     expect(body.code).toBe('RELEASE_NOT_VERIFIED');
-    expect(body.message).toBe('`abc` is not a whole commit');
+    expect(body.message).toBe('`abc` is not a whole commit.');
   });
 
   it('passes an error it does not know through as a 500 rather than a 409', async () => {

@@ -168,7 +168,7 @@ export async function createOrgSshKey(
     if (err instanceof UnreadablePrivateKeyError) {
       throw new HTTPException(400, {
         message: err.message,
-        cause: { code: 'INVALID_PRIVATE_KEY' },
+        cause: { code: 'INVALID_PRIVATE_KEY', details: { reason: err.reason } },
       });
     }
     logger.error({ err, orgId }, 'ssh-keys: keypair build failed');
