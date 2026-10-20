@@ -8,6 +8,7 @@ import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { IssueCostSummary, IssueDetail } from "../types";
+import type { RunWord } from "@/features/runs/derive";
 import { PropertiesRail } from "./properties-rail";
 
 expect.extend(matchers);
@@ -56,6 +57,7 @@ const COST: IssueCostSummary = {
 function renderRail(
   over: Partial<IssueDetail> = {},
   opts: { writer?: boolean; cost?: IssueCostSummary } = {},
+  runWord: RunWord | null = null,
 ) {
   render(
     <PropertiesRail
@@ -68,6 +70,7 @@ function renderRail(
       onTransition={vi.fn()}
       onEditModules={opts.writer ? vi.fn() : undefined}
       canMarkMerged={opts.writer ?? false}
+      runWord={runWord}
     />,
   );
 }
@@ -113,43 +116,22 @@ describe("the rail's empty fields", () => {
 });
 
 describe("the rail's two statuses", () => {
-  it("shows no Run row when no run has a state", () => {
-    renderRail();
+  it("shows no Run row when no run has a word", () => {
+    renderRail({ agentStatus: "failed" });
     expect(rowLabel("Status")).toBeInTheDocument();
     expect(rowLabel("Run")).toBeNull();
   });
 
+  // ISS-1228 r20: the side panel read the sessions' verdict while the header read the run.
   it.each([
-    ["queued", "Queued"],
-    ["running", "Running"],
-    ["completed", "Completed"],
-    ["failed", "Failed"],
-  ] as const)("shows a %s run on its own Run row, apart from the issue status", (agentStatus, word) => {
-    renderRail({ agentStatus });
+    [{ status: "queued", label: "Queued" }],
+    [{ status: "paused", label: "Held" }],
+    [{ status: "failed", label: "Failed" }],
+  ] as const)("shows the header's run word %j on its own Run row, apart from the issue status", (word) => {
+    renderRail({ agentStatus: "failed" }, {}, word);
     const run = rowLabel("Run")?.parentElement as HTMLElement;
-    expect(within(run).getByText(word)).toBeInTheDocument();
+    expect(within(run).getByText(word.label)).toBeInTheDocument();
     const status = rowLabel("Status")?.parentElement as HTMLElement;
-    expect(within(status).queryByText(word)).toBeNull();
-  });
-
-  // ISS-1277 — a job no runner has claimed has no session, and is still a queued run.
-  const queuedJob = {
-    stage: "open",
-    queuedStep: { jobId: "j1", jobType: "drive", stageStatus: null, queuedAt: "2026-09-05T14:16:00Z", retryAfterAt: null },
-  };
-
-  it.each([
-    ["no session", null],
-    ["a failed session", "failed"],
-    ["a completed session", "completed"],
-  ] as const)("shows a job queued with %s as a Queued run", (_, agentStatus) => {
-    renderRail({ agentStatus, pipelineHealth: queuedJob });
-    const run = rowLabel("Run")?.parentElement as HTMLElement;
-    expect(within(run).getByText("Queued")).toBeInTheDocument();
-  });
-
-  it("shows no Run row when the pipeline has nothing queued and no session exists", () => {
-    renderRail({ agentStatus: null, pipelineHealth: { stage: "open" } });
-    expect(rowLabel("Run")).toBeNull();
+    expect(within(status).queryByText(word.label)).toBeNull();
   });
 });

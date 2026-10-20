@@ -55,6 +55,7 @@ async function carryAtProjectLevel(
         issueId: null,
         pane,
         who,
+        agentSessionId: job.agentSessionId,
       });
     }
   });

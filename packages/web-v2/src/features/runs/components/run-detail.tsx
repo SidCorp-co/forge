@@ -50,8 +50,6 @@ interface RunDetailProps {
   onClose: () => void;
   /** Run to inspect (null when the issue has never run). */
   runId: string | null;
-  /** Each project's slug by its id, so the run's own project gives the "Open issue" link. */
-  projectSlugs: ReadonlyMap<string, string>;
   /** False for project viewers (read-only): hides the Pause/Resume/Stop run
    *  controls (the server 403s them anyway).
    *  Optional, defaults true so existing callers keep their behaviour. */
@@ -69,7 +67,7 @@ function cancelHover(run: { reading?: string | null; hold?: { resumesItself: boo
   return run.hold?.resumesItself ? CANCEL_HELD_HOVER : CANCEL_STUCK_HOLD_HOVER;
 }
 
-export function RunDetail({ open, onClose, runId, projectSlugs, canWrite = true }: RunDetailProps) {
+export function RunDetail({ open, onClose, runId, canWrite = true }: RunDetailProps) {
   const [tab, setTab] = useState("activity");
   const { toast } = useToast();
   const router = useRouter();
@@ -81,7 +79,8 @@ export function RunDetail({ open, onClose, runId, projectSlugs, canWrite = true 
   const now = useNow(10_000, open);
 
   const run = runQ.data;
-  const slug = run ? projectSlugs.get(run.projectId) : undefined;
+  // The run's own project, never the active org's list: a copied link opens under any org (ISS-1228).
+  const slug = run?.projectSlug;
   const issues = run ? runIssues(run) : [];
   const issueRef = issues.length === 1 ? (issues[0]?.ref ?? null) : null;
 

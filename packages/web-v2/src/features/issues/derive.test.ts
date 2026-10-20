@@ -52,7 +52,7 @@ import {
 	statusFilterFromParams,
 	transitionLabels,
 } from "./derive";
-import { openRunWord } from "./derive";
+import { issueRunChip, openRunWord } from "./derive";
 import type { ParkReading } from "./derive";
 import type {
 	IssueDependencies,
@@ -1749,8 +1749,7 @@ describe("the issue page's open run, in core's word (round 19)", () => {
     );
   });
 
-  it("leaves the sessions' verdict standing where no open run has a reading", () => {
-    expect(openRunWord([{ ...base, reading: undefined }], 0)).toBeNull();
+  it("answers no open-run word where the issue has no open run", () => {
     expect(openRunWord([{ ...base, status: "failed", reading: "held" }], 0)).toBeNull();
   });
 
@@ -1760,3 +1759,48 @@ describe("the issue page's open run, in core's word (round 19)", () => {
   });
 });
 
+/** ISS-1228 round 20 (judge-62): the header read Failed, or Completed, until the run journal answered. */
+describe("the issue page's run chip, from the run journal alone (round 20)", () => {
+  const run = (over: Record<string, unknown>) => ({
+    status: "running" as const,
+    startedAt: "2026-10-20T04:00:00.000Z",
+    runningSince: null,
+    hold: null,
+    block: null,
+    reading: null,
+    ordinal: 1,
+    ...over,
+  });
+  const now = Date.parse("2026-10-20T04:12:00.000Z");
+
+  it("says nothing of the run until the journal answers, and that it could not be read where it failed", () => {
+    expect(issueRunChip([], { answered: false, failed: false }, now)).toEqual({ state: "unread" });
+    expect(issueRunChip([], { answered: false, failed: true }, now)).toEqual({ state: "unreadable" });
+  });
+
+  it("reads the open run's word once the journal answers", () => {
+    const chip = issueRunChip(
+      [run({ reading: "held", hold: { reason: "all_devices_exhausted", resumesItself: true, recheckAt: null, since: null } })],
+      { answered: true, failed: false },
+      now,
+    );
+    expect(chip).toMatchObject({ state: "read", open: true, word: { label: "Held" } });
+  });
+
+  it("reads the newest closed run's own word where none is open, and nothing where there is no run", () => {
+    const chip = issueRunChip(
+      [run({ status: "completed", ordinal: 1 }), run({ status: "failed", ordinal: 2 })],
+      { answered: true, failed: false },
+      now,
+    );
+    expect(chip).toMatchObject({ state: "read", open: false, word: { label: "Failed" } });
+    expect(issueRunChip([], { answered: true, failed: false }, now)).toEqual({ state: "read", word: null, open: false });
+  });
+
+  it("keeps a reading already shown when a later refresh fails", () => {
+    expect(issueRunChip([run({ reading: "running" })], { answered: true, failed: true }, now)).toMatchObject({
+      state: "read",
+      open: true,
+    });
+  });
+});

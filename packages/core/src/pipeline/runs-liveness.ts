@@ -14,16 +14,9 @@ import { SESSION_SILENCE_TIMEOUT_S } from '../devices/session-silence.js';
 import { AUTO_RELEASE_REASONS, readHoldState } from '../jobs/hold-state.js';
 import { CHAT_SESSION_KIND, RUN_SESSION_KIND } from '../jobs/session-kinds.js';
 import { UNHELD_LIVE_JOB_STATUSES } from '../jobs/status-sets.js';
+import { isoOrNull } from '../lib/iso-time.js';
 import type { PipelineRunLane, ResidentMaster } from './runs-lane.js';
 
-/** A raw read answers Postgres's own text (`2026-10-20 02:06:04.8+00`), which not every reader parses. */
-function toIso(value: Date | string | null): string | null {
-  if (value == null) return null;
-  if (value instanceof Date) return value.toISOString();
-  const at = new Date(value.replace(' ', 'T').replace(/([+-]\d\d)$/, '$1:00'));
-  if (Number.isNaN(at.getTime())) throw new Error(`runs-liveness: "${value}" is not a timestamp`);
-  return at.toISOString();
-}
 
 const sqlList = (values: readonly string[]) =>
   sql.join(
@@ -224,7 +217,7 @@ export async function loadRunLivenessByRunIds(runIds: string[]): Promise<Map<str
   `);
   for (const r of rows) {
     if (!r.run_id) continue;
-    const beat = toIso(r.last_beat);
+    const beat = isoOrNull(r.last_beat);
     out.set(r.run_id, {
       liveJobs: Number(r.live_jobs),
       beat,
@@ -243,22 +236,22 @@ export async function loadRunLivenessByRunIds(runIds: string[]): Promise<Map<str
           ? holdOf({
               payload: r.hold_payload,
               failureReason: r.hold_reason,
-              retryAfterAt: toIso(r.hold_recheck_at),
-              since: toIso(r.hold_since),
+              retryAfterAt: isoOrNull(r.hold_recheck_at),
+              since: isoOrNull(r.hold_since),
             })
           : null,
       block:
         r.blocked === true
           ? { blockerKind: r.blocker_kind, parked: r.blocked_incarnation === 'exited' }
           : null,
-      checkInBy: toIso(r.check_in_by),
-      runningSince: toIso(r.running_since),
+      checkInBy: isoOrNull(r.check_in_by),
+      runningSince: isoOrNull(r.running_since),
       sessionId: r.session_id,
       master: r.master_session_id
         ? {
             sessionId: r.master_session_id,
             name: r.master_name ?? null,
-            lastHeartbeatAt: toIso(r.master_beat ?? null),
+            lastHeartbeatAt: isoOrNull(r.master_beat ?? null),
           }
         : null,
     });

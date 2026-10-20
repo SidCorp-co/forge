@@ -7,6 +7,7 @@ import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { ASSERTS_WORK_IN_PROGRESS, statusLabel } from '../issues/status-sets.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../logger.js';
+import { RESCUE_CAP_REASON, RESCUE_CAP_SENTENCE } from '../pipeline/autonomous-rescue-cap.js';
 import type { HooksBus } from '../pipeline/hooks.js';
 import { strandResolutionKey } from '../pipeline/idle-candidates.js';
 import { orphanedAssertionResolutionKey } from '../pipeline/issue-run-invariant.js';
@@ -62,9 +63,19 @@ async function alreadyNotifiedTransition(dedupeKey: string): Promise<boolean> {
   }
 }
 
-/** Per-status one-line body explaining why the recipient is being pinged. */
+/** A reason a transition stores as a code rather than a sentence: `autonomous_rescue_cap_reached`. */
+const STORED_CODE = /^[a-z][a-z0-9]*(?:_[a-z0-9]+)+$/;
+
+/** The sentence for each stored code a person is notified of; a code with none takes the status's. */
+const CODE_SENTENCES: Readonly<Record<string, string>> = {
+  [RESCUE_CAP_REASON]: RESCUE_CAP_SENTENCE,
+};
+
+/** Per-status one-line body explaining why the recipient is being pinged: never a stored code. */
 export function bodyForStatus(to: IssueStatus, reason?: string): string {
-  if (reason && reason.trim().length > 0) return reason.trim();
+  const said = reason?.trim() ?? '';
+  if (said && STORED_CODE.test(said)) return CODE_SENTENCES[said] ?? bodyForStatus(to);
+  if (said) return said;
   switch (to) {
     case 'tested':
       return 'Ready for your release review.';

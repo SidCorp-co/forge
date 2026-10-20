@@ -23,6 +23,7 @@ import {
 import { type RunGate, readRunGate } from '../devices/gate-report.js';
 import { type RunPolicy, readRunPolicy } from '../devices/policy-copy.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
+import { isoOf, isoOrNull } from '../lib/iso-time.js';
 import { usageSessionMatch } from '../usage-records/rollup.js';
 import {
   loadAttemptsForRun,
@@ -80,6 +81,8 @@ export interface PipelineRunCostSummary {
 export interface PipelineRunSummary {
   id: string;
   projectId: string;
+  /** The slug of the run's own project, so a reader in any org can link the run's issue and session. */
+  projectSlug: string;
   issueId: string | null;
   lane: PipelineRunLane;
   step: PipelineRunStep;
@@ -140,7 +143,7 @@ export interface PipelineRunSummary {
 
 export type PipelineRunListItem = Omit<
   PipelineRunSummary,
-  'steps' | 'attempts' | 'retrySummary' | 'gateAtOpen' | 'policyAtOpen'
+  'projectSlug' | 'steps' | 'attempts' | 'retrySummary' | 'gateAtOpen' | 'policyAtOpen'
 >;
 
 const EMPTY_COST: PipelineRunCostSummary = {
@@ -155,15 +158,6 @@ const EMPTY_COST: PipelineRunCostSummary = {
 
 type RunRow = typeof pipelineRuns.$inferSelect;
 
-function toIso(value: Date | string | null): string | null {
-  if (value === null) return null;
-  if (value instanceof Date) return value.toISOString();
-  return value;
-}
-
-function toIsoRequired(value: Date | string): string {
-  return value instanceof Date ? value.toISOString() : value;
-}
 
 /**
  * Aggregate the agent_sessions for a single run into one step per `jobType`.
@@ -193,8 +187,8 @@ async function loadStepsForRun(runId: string): Promise<PipelineRunStepSummary[]>
     else if (Number(r.hasOpen) === 1) status = 'pending';
     else status = 'pending';
 
-    const startedAt = toIso(r.startedAt);
-    const finishedAt = status === 'completed' || status === 'failed' ? toIso(r.finishedAt) : null;
+    const startedAt = isoOrNull(r.startedAt);
+    const finishedAt = status === 'completed' || status === 'failed' ? isoOrNull(r.finishedAt) : null;
     const durationMs =
       startedAt && finishedAt
         ? new Date(finishedAt).getTime() - new Date(startedAt).getTime()
@@ -248,8 +242,8 @@ function rowToListItem(row: RunRow): PipelineRunListItem {
     groupTitles: {},
     kind: row.kind,
     status: row.status,
-    startedAt: toIsoRequired(row.startedAt),
-    finishedAt: toIso(row.finishedAt),
+    startedAt: isoOf(row.startedAt),
+    finishedAt: isoOrNull(row.finishedAt),
     cost: EMPTY_COST,
     liveJobs: 0,
     lastSessionBeatAt: null,
@@ -338,20 +332,23 @@ export async function loadPipelineRunSummary(runId: string): Promise<PipelineRun
   if (!row) return null;
 
   const listItem = rowToListItem(row);
-  const [steps, cost, attemptRollup, issueRefs, liveMap, openPhase] = await Promise.all([
+  const [steps, cost, attemptRollup, issueRefs, liveMap, openPhase, [project]] = await Promise.all([
     loadStepsForRun(runId),
     loadCostForRun(runId),
     loadAttemptsForRun(runId),
     loadIssueRefs(row.issueId ? [row.issueId] : []),
     loadRunLivenessByRunIds([runId]),
     loadOpenPhaseByRunIds(listItem.lane === 'run_session' ? [runId] : []),
+    db.select({ slug: projects.slug }).from(projects).where(eq(projects.id, row.projectId)),
   ]);
+  if (!project) throw new Error(`pipeline run ${runId} names project ${row.projectId}, which is gone`);
   const groupTitles = groupTitlesOf(listItem, await loadGroupTitles([listItem]));
 
   const ref = row.issueId ? issueRefs.get(row.issueId) : undefined;
   const residentMaster = residentMasterOn(listItem.lane, liveMap.get(runId));
   return {
     ...listItem,
+    projectSlug: project.slug,
     ...withStep(
       listItem.lane,
       row.currentStep,

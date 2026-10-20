@@ -76,6 +76,15 @@ export interface AgentQuestion {
   /** What the run needs to be told, on a free-text round. Empty string on a choice round. */
   needed: string;
   locked: boolean;
+  /** On the project queue: the job whose agent stopped on it and the issue it worked; null where no job asked. */
+  askedBy?: QuestionAskedBy | null;
+}
+
+export interface QuestionAskedBy {
+  jobType: string;
+  issueId: string | null;
+  issueRef: string | null;
+  issueTitle: string | null;
 }
 
 export interface QuestionListResponse {

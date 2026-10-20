@@ -36,6 +36,8 @@ export async function writePaneQuestion(
     issueId: string | null;
     pane: PaneQuestion;
     who: string;
+    /** The session that stopped on it, so a reader can name the job that asked and its issue. */
+    agentSessionId?: string | null;
   },
 ): Promise<void> {
   const [existing] = await tx
@@ -49,6 +51,7 @@ export async function writePaneQuestion(
       id: args.id,
       projectId: args.projectId,
       ...(at ? { issueId: at } : {}),
+      ...(args.agentSessionId ? { agentSessionId: args.agentSessionId } : {}),
       prompt: question.prompt,
       blockerKind: 'human',
       answer: question.answer,

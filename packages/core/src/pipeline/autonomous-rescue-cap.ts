@@ -1,12 +1,12 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { forgeActor } from '../comments/forge-author.js';
 import { db } from '../db/client.js';
-import { type IssueStatus, jobs, pipelineRuns } from '../db/schema.js';
+import { agentSessions, type IssueStatus, jobs, pipelineRuns } from '../db/schema.js';
 import { transitionIssueStatus } from '../issues/apply-transition.js';
 import { logger } from '../logger.js';
 import { isSentryEnabled, Sentry } from '../observability/sentry.js';
 import { AUTONOMOUS_JOB_TYPE, AUTONOMOUS_QUESTION_STATUS } from './autonomous-mode.js';
-import { postCapReachedComment } from './autonomous-rescue-comment.js';
+import { postCapReachedComment, type RunSessionTally } from './autonomous-rescue-comment.js';
 
 /**
  * Rescues of one run before the issue is handed to a human. Matches
@@ -14,6 +14,10 @@ import { postCapReachedComment } from './autonomous-rescue-comment.js';
  * different thing, so it is declared separately rather than imported.
  */
 export const AUTONOMOUS_RESCUE_CAP = 3;
+
+/** The reason code the park stores, and the sentence a person reads for it wherever it is shown. */
+export const RESCUE_CAP_REASON = 'autonomous_rescue_cap_reached';
+export const RESCUE_CAP_SENTENCE = `Forge sent it back to its agent ${AUTONOMOUS_RESCUE_CAP} times on this run without it moving on, so it stopped and waits on your answer.`;
 
 const METADATA_KEY = 'autonomousRescue';
 
@@ -42,6 +46,25 @@ async function countDoneDriveJobs(runId: string): Promise<number> {
       ),
     );
   return row?.n ?? 0;
+}
+
+/** The run's agent sessions by how each ended, counted off their rows as the run lists them. */
+async function tallyRunSessions(runId: string): Promise<RunSessionTally> {
+  const [row] = await db
+    .select({
+      completed: sql<number>`count(*) FILTER (WHERE ${agentSessions.status} IN ('completed', 'completed_via_recovery'))::int`,
+      failed: sql<number>`count(*) FILTER (WHERE ${agentSessions.status} = 'failed')::int`,
+      stopped: sql<number>`count(*) FILTER (WHERE ${agentSessions.status} IN ('cancelled', 'cancelled_stale'))::int`,
+      open: sql<number>`count(*) FILTER (WHERE ${agentSessions.status} IN ('idle', 'queued', 'running'))::int`,
+    })
+    .from(agentSessions)
+    .where(eq(agentSessions.pipelineRunId, runId));
+  return {
+    completed: Number(row?.completed ?? 0),
+    failed: Number(row?.failed ?? 0),
+    stopped: Number(row?.stopped ?? 0),
+    open: Number(row?.open ?? 0),
+  };
 }
 
 /**
@@ -76,7 +99,7 @@ export async function checkAutonomousRescueCap(args: {
     if (doneDriveJobs - state.doneDriveJobs > 1) return { capped: false, runId: run.id };
     if (state.count < AUTONOMOUS_RESCUE_CAP) return { capped: false, runId: run.id };
 
-    await parkForHuman({ ...args, runId: run.id, doneDriveJobs });
+    await parkForHuman({ ...args, runId: run.id });
     return { capped: true, runId: run.id };
   } catch (err) {
     logger.error(
@@ -93,7 +116,6 @@ async function parkForHuman(args: {
   runId: string;
   status: IssueStatus;
   reopenCount: number;
-  doneDriveJobs: number;
 }): Promise<void> {
   const actor = await forgeActor(db);
   await transitionIssueStatus(
@@ -106,8 +128,8 @@ async function parkForHuman(args: {
     AUTONOMOUS_QUESTION_STATUS,
     actor,
     {
-      reason: 'autonomous_rescue_cap_reached',
-      transitionReason: `The driver was rescued ${AUTONOMOUS_RESCUE_CAP} times on this run without progress, so it has stopped rather than try a fourth.`,
+      reason: RESCUE_CAP_REASON,
+      transitionReason: RESCUE_CAP_SENTENCE,
       needs:
         'Whether to send it back to the driver as it stands, or what to change first — answering returns the issue to open.',
       skip: true,
@@ -118,7 +140,7 @@ async function parkForHuman(args: {
     issueId: args.issueId,
     fromStatus: args.status,
     cap: AUTONOMOUS_RESCUE_CAP,
-    driveSessions: args.doneDriveJobs,
+    sessions: await tallyRunSessions(args.runId),
   });
 
   logger.warn(

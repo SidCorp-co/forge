@@ -143,13 +143,21 @@ const attemptSchema = z.object({
       'why core holds this job and whether it sends it again by itself; null unless it is held',
     ),
   cancelledBy: z
-    .object({ kind: z.enum(['person', 'agent', 'core']), name: z.string().nullable() })
+    .object({
+      kind: z.enum(['person', 'agent', 'core']),
+      userId: z
+        .string()
+        .nullable()
+        .describe('the account that cancelled it, so a reader can tell its own cancel; null for core'),
+      name: z.string().nullable(),
+    })
     .nullable()
     .describe('who cancelled this job, or its run; null unless it was cancelled'),
 });
 
 /** One run with its step timeline, per-attempt device/retry timeline and cost rolled up. */
 export const pipelineRunSummarySchema = pipelineRunListItemSchema.extend({
+  projectSlug: z.string().describe("the slug of the run's own project, whichever org the reader has active"),
   steps: z.array(
     z.object({
       jobType: z.string(),

@@ -10,7 +10,7 @@ import {
 import { masterSessionIfOwned } from '../devices/master-owner.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
-import type { FailureCause } from '../pipeline/failure-causes.js';
+import { DOOR_DECIDED_CAUSES, type FailureCause } from '../pipeline/failure-causes.js';
 import { classifyFailure } from '../pipeline/failure-classifier.js';
 import { closeRunIfOneShot, closeRunOnceJobsEnd } from '../pipeline/runs.js';
 import { deviceRoom, projectRoom } from '../ws/rooms.js';
@@ -237,6 +237,9 @@ function deriveSessionFailure(job: JobRow): {
   failureReason: FailureCause;
   failureDetail: string | null;
 } {
+  if (job.failureReason && DOOR_DECIDED_CAUSES.has(job.failureReason)) {
+    return { failureReason: job.failureReason as FailureCause, failureDetail: job.error ?? null };
+  }
   const text = [job.failureReason, job.error].filter(Boolean).join(' — ');
   const classified = classifyFailure({
     error: text,

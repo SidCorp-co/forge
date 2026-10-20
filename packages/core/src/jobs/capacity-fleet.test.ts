@@ -68,6 +68,35 @@ describe('the capacity notice beside an online runner', () => {
     );
   });
 
+  // ISS-1228 r20, judge-62: the next step offered a workspace and a turn-on for an old build and a limit.
+  it('names a fix for each bar it named, and none for a bar it did not', () => {
+    const copy = fleetCopy(
+      fleetOf([
+        { ...ready, claimCapable: false },
+        { ...ready, limited: true },
+      ]),
+      scope,
+    );
+    expect(copy?.summary).toContain('one is running a build too old to take work, and one is held back by an account limit');
+    expect(copy?.nextStep).toBe(
+      "Open this project's Runners tab, then update the runner on an old build, and wait for the account limit to lift, or sign the limited runner in to an account with room.",
+    );
+    expect(copy?.nextStep).not.toMatch(/workspace|back on/);
+  });
+
+  it('says each fix of several runners in the plural', () => {
+    const copy = fleetCopy(
+      fleetOf([
+        { ...ready, workspaceReady: false },
+        { ...ready, workspaceReady: false },
+      ]),
+      scope,
+    );
+    expect(copy?.nextStep).toBe(
+      "Open this project's Runners tab, then finish the workspace of the runners without one.",
+    );
+  });
+
   it.each([
     ['nothing online', []],
     ['every runner limited', [{ ...ready, limited: true }]],

@@ -352,6 +352,39 @@ describe("round 19: held, cancelled, question and control-free remedies", () => 
     );
   });
 
+  // ISS-1228 round 20 (judge-62): a cancelled retry hid the box's remedy as if core had sent it again.
+  it("names the box on a never-taken attempt whose only later attempt a person cancelled", () => {
+    const feed = deriveActivityFeed([
+      attempt(never),
+      attempt({ status: "cancelled", ranAt: null, failureCause: null, cancelledBy: { kind: "person", userId: "u1", name: "Sam" } }),
+    ]);
+    expect(feed[0]?.action).toBe("Check that j57-b is online and its runner is running.");
+  });
+
+  it.each([
+    ["open", { status: "queued", ranAt: null, finishedAt: null, failureCause: null }],
+    ["failed", { ...never }],
+  ] as const)("asks nothing of a never-taken attempt behind a cancel and a later %s attempt", (_name, third) => {
+    const feed = deriveActivityFeed([
+      attempt(never),
+      attempt({ status: "cancelled", ranAt: null, failureCause: null, cancelledBy: { kind: "person", userId: "u1", name: "Sam" } }),
+      attempt(third),
+    ]);
+    expect(feed[0]?.action).toBe("Core already sent it again, so nothing is asked of you.");
+  });
+
+  it("says Cancelled by you to the person who cancelled, and their name to anyone else", () => {
+    const cancelled = attempt({
+      status: "cancelled",
+      ranAt: null,
+      failureCause: null,
+      cancelledBy: { kind: "person", userId: "u1", name: "another member" },
+    });
+    expect(deriveActivityFeed([cancelled], undefined, "u1")[0]?.outcome).toBe("Cancelled by you");
+    expect(deriveActivityFeed([cancelled], undefined, "u2")[0]?.outcome).toBe("Cancelled by another member");
+    expect(deriveActivityFeed([cancelled])[0]?.outcome).toBe("Cancelled by another member");
+  });
+
   it("reads a person's cancel as theirs, never an earlier take's queue timeout", () => {
     const [line] = deriveActivityFeed([
       attempt({
@@ -374,9 +407,11 @@ describe("round 19: held, cancelled, question and control-free remedies", () => 
     expect(line?.action).toBeNull();
   });
 
+  // ISS-1228 round 20 (judge-62): the r19 case fed a null cause; core answers the session's cause, which
+  // it now keeps as the question stop the blocked door recorded.
   it("reads a job that stopped on a question as that, never Unclassified", () => {
     const [line] = deriveActivityFeed([
-      attempt({ status: "failed", failureCause: null, failureReason: "stopped_on_question" }),
+      attempt({ status: "failed", failureCause: "stopped_on_question", failureReason: "stopped_on_question" }),
     ]);
     expect(line?.outcome).toBe("Stopped to ask a question");
     expect(line?.action).toBe("Answer its question on the Questions tab.");

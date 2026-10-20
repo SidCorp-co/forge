@@ -82,7 +82,8 @@ export interface PipelineRunAttempt {
   autoRetry: { round: number; target: string | null; tries: number; done: string[] } | null;
   takenBy: { deviceId: string; deviceName: string | null } | null;
   hold?: RunHold | null;
-  cancelledBy?: { kind: "person" | "agent" | "core"; name: string | null } | null;
+  /** Who cancelled it; `userId` is the cancelling account's, so the reader who did it reads "you". */
+  cancelledBy?: { kind: "person" | "agent" | "core"; userId?: string | null; name: string | null } | null;
 }
 
 export interface PipelineRunRetrySummary {
@@ -104,6 +105,8 @@ export type PipelineRunGroup =
 export interface PipelineRunSummary {
   id: string;
   projectId: string;
+  /** The run's own project's slug, so its issue and session link whichever org is active. */
+  projectSlug?: string;
   issueId: string | null;
   lane: PipelineRunLane;
   group: PipelineRunGroup;
@@ -155,7 +158,7 @@ export interface RunGateCondition {
 /** `GET /api/projects/:id/pipeline-runs` list row: the summary without its step, attempt and gate rollups. */
 export type PipelineRunListItem = Omit<
   PipelineRunSummary,
-  "steps" | "attempts" | "retrySummary" | "gateAtOpen"
+  "projectSlug" | "steps" | "attempts" | "retrySummary" | "gateAtOpen"
 >;
 
 export interface StepDurationRow {

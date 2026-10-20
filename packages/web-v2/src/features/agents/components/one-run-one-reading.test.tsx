@@ -80,6 +80,7 @@ function openRun(issueRef: string, reading: RunReading | null, attempts: Pipelin
   return {
     id: `run-${issueRef}`,
     projectId: "p1",
+    projectSlug: "rigjobs",
     issueId: `i-${issueRef}`,
     issueRef,
     issueTitle: `The ${issueRef} issue`,
@@ -119,7 +120,7 @@ function rowWord(issueRef: string): string {
 
 /** What the Ops drawer says: the word its header chip opens with, and each activity row's text. */
 function drawer(issueRef: string): { header: string; rows: string[]; verbs: string[] } {
-  render(<RunDetail open onClose={vi.fn()} runId="r" projectSlugs={new Map([["p1", "rigjobs"]])} />);
+  render(<RunDetail open onClose={vi.fn()} runId="r" />);
   const headerText = (screen.getByText(issueRef).parentElement as HTMLElement).textContent ?? "";
   const items = Array.from(document.querySelectorAll("li"));
   const rows = items.map((li) => li.textContent ?? "");

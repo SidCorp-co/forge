@@ -18,7 +18,9 @@ import {
   useLinkedQuestion,
   useProjectQuestions,
 } from "@/features/questions/hooks";
-import type { AgentQuestion, AnswerInput } from "@/features/questions/types";
+import type { AgentQuestion, AnswerInput, QuestionAskedBy } from "@/features/questions/types";
+import { jobKindLabel } from "@/features/overview/job-kinds";
+import Link from "next/link";
 import { formatApiError } from "@/lib/api/error";
 
 const EMPTY_TITLE_ID = "agents-questions-empty-title";
@@ -35,8 +37,21 @@ export interface QuestionsPaneProps {
   focusQuestionId?: string | null;
 }
 
-function IssueContext() {
-  return <span className="fg-caption text-muted">asked by a master — no issue behind it</span>;
+/** Who asked: the job that stopped on it and the issue it worked, else a master with no issue (ISS-1228). */
+function IssueContext({ askedBy, slug }: { askedBy: QuestionAskedBy | null | undefined; slug: string }) {
+  if (!askedBy) return <span className="fg-caption text-muted">asked by a master — no issue behind it</span>;
+  const work = jobKindLabel(askedBy.jobType);
+  if (!askedBy.issueId || !askedBy.issueRef) {
+    return <span className="fg-caption text-muted">Asked by {work}, with no issue behind it</span>;
+  }
+  return (
+    <span className="fg-caption text-muted">
+      Asked by {work} on{" "}
+      <Link href={`/projects/${slug}/issues/${askedBy.issueId}`} className="underline" title={askedBy.issueTitle ?? undefined}>
+        {askedBy.issueRef}
+      </Link>
+    </span>
+  );
 }
 
 export function QuestionsPane({ scope, focusQuestionId }: QuestionsPaneProps) {
@@ -135,8 +150,8 @@ export function QuestionsPane({ scope, focusQuestionId }: QuestionsPaneProps) {
       <div className="grid min-h-[40vh] place-items-center py-4">
         <EmptyState
           titleId={EMPTY_TITLE_ID}
-          title="No master is waiting on a person"
-          message="A question a master asks with no issue behind it appears here. A question on an issue waits on that issue's row in the Issues list, and is answered on the issue."
+          title="Nothing is waiting on a person"
+          message="A question a master asks, or one an issue's work stopped on, appears here. A question on an issue waits on that issue's row in the Issues list, and is answered on the issue."
         />
       </div>
     );
@@ -151,7 +166,7 @@ export function QuestionsPane({ scope, focusQuestionId }: QuestionsPaneProps) {
           onAnswer={onAnswer}
           pending={answering.has(question.id)}
           highlighted={question.id === focusQuestionId}
-          context={<IssueContext />}
+          context={<IssueContext askedBy={question.askedBy} slug={scope.slug} />}
         />
       ))}
       {hasNextPage && (

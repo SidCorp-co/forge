@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, ButtonLink, IconButton, Menu, type MenuItem } from "@/design";
+import { Button, ButtonLink, IconButton, Menu, type MenuItem, Skeleton } from "@/design";
 import { useRouter } from "next/navigation";
 import type { IssueStatus } from "../types";
 
@@ -19,6 +19,8 @@ export function IssueHeaderActions({
   canWrite,
   pending,
   isRunActive,
+  runsUnreadable = false,
+  onRetryRuns,
   onTransition,
   onRun,
   running,
@@ -30,7 +32,11 @@ export function IssueHeaderActions({
   releaseRunId: string | null | undefined;
   canWrite: boolean;
   pending: boolean;
-  isRunActive: boolean;
+  /** Whether a run is active; null until the run journal has answered, when no run action is offered. */
+  isRunActive: boolean | null;
+  /** The run journal's first read failed: the action's place offers reading it again. */
+  runsUnreadable?: boolean;
+  onRetryRuns?: () => void;
   onTransition: (to: IssueStatus) => void;
   /** Offer the issue to the project's masters; only at Open, the one status a press can start. */
   onRun: () => void;
@@ -64,6 +70,8 @@ export function IssueHeaderActions({
         canWrite={canWrite}
         isTerminal={isTerminal}
         isRunActive={isRunActive}
+        runsUnreadable={runsUnreadable}
+        onRetryRuns={onRetryRuns}
         pending={pending}
         onTransition={onTransition}
         atEntry={status === "open"}
@@ -95,7 +103,9 @@ function PrimaryAction(props: {
   releaseRunId: string | null | undefined;
   canWrite: boolean;
   isTerminal: boolean;
-  isRunActive: boolean;
+  isRunActive: boolean | null;
+  runsUnreadable: boolean;
+  onRetryRuns: (() => void) | undefined;
   pending: boolean;
   onTransition: (to: IssueStatus) => void;
   atEntry: boolean;
@@ -125,6 +135,18 @@ function PrimaryAction(props: {
       <Button variant="primary" size="sm" icon="rerun" loading={pending} onClick={() => onTransition("reopen")}>
         Reopen
       </Button>
+    );
+  }
+  // Pause, Run and Open pipeline each say something about the run: none is offered before it is read.
+  if (props.isRunActive === null) {
+    return props.runsUnreadable ? (
+      <Button variant="secondary" size="sm" icon="rerun" onClick={props.onRetryRuns}>
+        Retry
+      </Button>
+    ) : (
+      <span role="status" aria-label="Reading the run" className="inline-flex">
+        <Skeleton className="h-8 w-28" />
+      </span>
     );
   }
   if (props.isRunActive) {

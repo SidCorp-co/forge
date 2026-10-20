@@ -42,13 +42,11 @@ import {
   canonicalIssueId,
   deriveBlockerState,
   deriveRunView,
-  isLiveRun,
-  openRunWord,
+  issueRunChip,
   issueQueryKey,
   issueSessionId,
   liveStepWords,
   parseChecklist,
-  runStatusChip,
   threadQuestionOf,
   statusLabel,
   statusToChip,
@@ -242,12 +240,12 @@ export function IssueDetailScreen({
   const statusPark = canWrite ? { reading: park, actions: parkActions } : undefined;
   const threadQuestion = park.state === "ready" && park.park ? threadQuestionOf(park.park) : null;
 
-  // The run's state is a session chip beside the issue's lifecycle chip, never merged into it (ISS-360, ISS-1150):
-  // an open run's in core's word, the one every run surface reads, else the sessions' verdict (ISS-1228).
-  const runWord = openRunWord(runs, now);
-  const runChip = runWord ? null : runStatusChip(issue);
+  // The run's state is a session chip beside the issue's lifecycle chip, never merged into it (ISS-360, ISS-1150),
+  // read from the run journal alone: until it answers, the header says nothing about the run (ISS-1228).
+  const runChip = issueRunChip(runs, { answered: journalQ.data !== undefined, failed: journalQ.isError }, now);
+  const runWord = runChip.state === "read" ? runChip.word : null;
   const isRunActive =
-    runWord !== null || isLiveRun(runChip) || issue.status === "in_progress" || issue.status === "reopen";
+    runChip.state === "read" ? runChip.open || issue.status === "in_progress" || issue.status === "reopen" : null;
 
   const tabs: TabItem[] = [
     {
@@ -281,6 +279,16 @@ export function IssueDetailScreen({
             <MonoTag hue="cobalt">{issue.displayId}</MonoTag>
             {/* Issue lifecycle (pill) vs live agent run (squared, agent glyph). */}
             <StatusChip status={statusToChip(issue.status)} label={statusLabel(issue.status)} />
+            {runChip.state === "unread" && (
+              <span role="status" aria-label="Reading the run" className="inline-flex">
+                <Skeleton className="h-6 w-24" />
+              </span>
+            )}
+            {runChip.state === "unreadable" && (
+              <span role="status" className="fg-caption text-muted">
+                The run could not be read.
+              </span>
+            )}
             {runWord && (
               <span className="inline-flex" title={runWord.detail}>
                 <StatusChip
@@ -291,14 +299,7 @@ export function IssueDetailScreen({
                 />
               </span>
             )}
-            {runChip && (
-              <StatusChip
-                status={runChip}
-                stage={runChip === "running" ? (liveStep ?? undefined) : undefined}
-                domain="session"
-              />
-            )}
-            {liveStep && runChip !== "running" && runWord?.status !== "running" && (
+            {liveStep && runWord && runWord.status !== "running" && (
               <span className="fg-caption">{liveStep}</span>
             )}
           </div>
@@ -324,6 +325,8 @@ export function IssueDetailScreen({
             canWrite={canWrite}
             pending={pending}
             isRunActive={isRunActive}
+            runsUnreadable={runChip.state === "unreadable"}
+            onRetryRuns={() => journalQ.refetch()}
             onTransition={onTransition}
             onRun={() => runIssue.mutate(issue.id, { onSuccess: refreshIssue })}
             running={runIssue.isPending}
@@ -467,6 +470,7 @@ export function IssueDetailScreen({
             onEditModules={canWrite ? () => setModulePickerOpen(true) : undefined}
             canMarkMerged={canWrite}
             park={statusPark}
+            runWord={runWord}
           />
         </aside>
         <div className="border-t border-line-subtle lg:hidden">
@@ -482,6 +486,7 @@ export function IssueDetailScreen({
               onEditModules={canWrite ? () => setModulePickerOpen(true) : undefined}
               canMarkMerged={canWrite}
               park={statusPark}
+              runWord={runWord}
             />
           </Collapsible>
         </div>

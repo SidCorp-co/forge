@@ -131,6 +131,27 @@ const BAR_WORDS: Record<CapacityBar, string> = {
   limited: 'held back by an account limit',
 };
 
+/** What a person does about each bar, said of the runners it keeps: one runner, or several. */
+const BAR_FIXES: Record<CapacityBar, (several: boolean) => string> = {
+  silent: (m) => `restart the runner${m ? 's' : ''} that ${m ? 'have' : 'has'} not checked in for this project`,
+  disabled: (m) => `turn the runner${m ? 's' : ''} that ${m ? 'are' : 'is'} off back on`,
+  outside_pool: (m) => `add the runner${m ? 's' : ''} outside the pool to the pool this step may use`,
+  lacking: (m) => `give the runner${m ? 's' : ''} missing a capability what this step needs`,
+  workspace: (m) => `finish the workspace of the runner${m ? 's' : ''} without one`,
+  too_old: (m) => `update the runner${m ? 's' : ''} on an old build`,
+  limited: (m) =>
+    `wait for the account limit to lift, or sign the limited runner${m ? 's' : ''} in to an account with room`,
+};
+
+/** The next step, one fix for each bar the notice named and none for a bar it did not. */
+function nextStepFor(named: readonly CapacityBar[], bars: Record<CapacityBar, number>): string {
+  if (named.length === 0) return "Open this project's Runners tab and check what it shows for each runner.";
+  const fixes = named.map((b) => BAR_FIXES[b](bars[b] > 1));
+  const last = fixes.pop() as string;
+  const said = fixes.length === 0 ? last : `${fixes.join(', ')}, and ${last}`;
+  return `Open this project's Runners tab, then ${said}.`;
+}
+
 /** Its online runners, counted as a person counts them: never "all 1" or "all 2". */
 function onlineCount(n: number): string {
   if (n === 1) return 'Its one runner is online';
@@ -163,7 +184,6 @@ export function fleetCopy(
     action: 'fix what keeps the online runners from this step',
     title: `No runner can take this work for ${args.scope}`,
     summary: `${onlineCount(online)}, but ${why}. Steps keep waiting and resume by themselves once one can take them.`,
-    nextStep:
-      "Open this project's Runners tab and fix what it shows for each runner, such as finishing its workspace or turning it back on.",
+    nextStep: nextStepFor(named, bars),
   };
 }

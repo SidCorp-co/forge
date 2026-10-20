@@ -18,10 +18,10 @@ import { RunDetail } from "./run-detail";
 expect.extend(matchers);
 
 let run: PipelineRunSummary | undefined;
-const SLUGS: ReadonlyMap<string, string> = new Map([["p1", "forge-dev"]]);
 const idle = { mutate: vi.fn(), isPending: false };
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), prefetch: vi.fn() }) }));
+const nav = vi.hoisted(() => ({ push: vi.fn() }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: nav.push, prefetch: vi.fn() }) }));
 vi.mock("@/providers/toast-provider", () => ({ useToast: () => ({ toast: vi.fn() }) }));
 vi.mock("@/features/shell", () => ({ buildShareLink: (p: string) => p, useRecents: () => ({ push: vi.fn() }) }));
 vi.mock("./activity-feed", () => ({ ActivityTab: () => null }));
@@ -60,6 +60,7 @@ function summary(status: PipelineRunStatus, over: Partial<PipelineRunSummary> = 
   return {
     id: "r1",
     projectId: "p1",
+    projectSlug: "forge-dev",
     issueId: "i1",
     issueRef: "ISS-2",
     issueTitle: "A queued issue",
@@ -95,7 +96,7 @@ afterEach(cleanup);
 
 describe("the Ops drawer before its run loads", () => {
   it("draws no chip in the Ops drawer while its run has not loaded", () => {
-    render(<RunDetail open onClose={vi.fn()} runId="r1" projectSlugs={SLUGS} />);
+    render(<RunDetail open onClose={vi.fn()} runId="r1" />);
     const opsHeader = screen.getByText("run r1").parentElement as HTMLElement;
     expect(opsHeader.children).toHaveLength(1);
     expect(within(opsHeader).queryByText("Queued")).toBeNull();
@@ -104,7 +105,7 @@ describe("the Ops drawer before its run loads", () => {
 
 describe("the Ops drawer, which opens a run with no issue row (ISS-1297)", () => {
   const opsHeader = () => screen.getByText("ISS-2").parentElement as HTMLElement;
-  const open = () => render(<RunDetail open onClose={vi.fn()} runId="r1" projectSlugs={new Map()} />);
+  const open = () => render(<RunDetail open onClose={vi.fn()} runId="r1" />);
   const queuedRun = () => summary("running", { attempts: [attempt("queued")], reading: "queued" });
 
   it("reads a run whose only live job is queued and unclaimed as Queued, never running", () => {
@@ -236,7 +237,7 @@ describe("the Ops drawer, which opens a run with no issue row (ISS-1297)", () =>
 describe("the run drawer's tabs", () => {
   it("offers Activity, Timeline and Cost, with no Tasks tab", () => {
     run = summary("running");
-    render(<RunDetail open onClose={vi.fn()} runId="r1" projectSlugs={SLUGS} />);
+    render(<RunDetail open onClose={vi.fn()} runId="r1" />);
     expect(screen.getAllByRole("tab").map((t) => t.textContent)).toEqual(["Activity", "Timeline", "Cost"]);
     expect(screen.queryByRole("tab", { name: /tasks/i })).toBeNull();
   });
@@ -251,13 +252,25 @@ describe("Open issue from the Ops drawer", () => {
 
   it("is offered on a run that names one issue, its project's slug read from the run", () => {
     run = summary("running", { reading: "running" });
-    render(<RunDetail open onClose={vi.fn()} runId="r1" projectSlugs={SLUGS} />);
+    render(<RunDetail open onClose={vi.fn()} runId="r1" />);
     expect(menu()).not.toBeNull();
+  });
+
+  // ISS-1228 round 20 (judge-62): opened from its copied link under another active org, the drawer
+  // looked the run's project up in the active org's projects and offered no Open issue.
+  it("opens the issue in the run's own project, whichever org is active", () => {
+    nav.push.mockClear();
+    run = summary("running", { projectId: "p-elsewhere", projectSlug: "qa-j62-1228", reading: "running" });
+    render(<RunDetail open onClose={vi.fn()} runId="r1" />);
+    const item = menu();
+    expect(item).not.toBeNull();
+    fireEvent.click(item as HTMLElement);
+    expect(nav.push).toHaveBeenCalledWith("/projects/qa-j62-1228/issues/i1");
   });
 
   it("is not offered on a run that names no issue", () => {
     run = summary("running", { issueId: null, issueRef: null, reading: "running" });
-    render(<RunDetail open onClose={vi.fn()} runId="r1" projectSlugs={SLUGS} />);
+    render(<RunDetail open onClose={vi.fn()} runId="r1" />);
     expect(menu()).toBeNull();
   });
 
@@ -277,7 +290,7 @@ describe("Open issue from the Ops drawer", () => {
 
   it("titles a run session by the one issue it holds and offers Open issue", () => {
     run = runSession(["ISS-1"]);
-    render(<RunDetail open onClose={vi.fn()} runId="r1" projectSlugs={SLUGS} />);
+    render(<RunDetail open onClose={vi.fn()} runId="r1" />);
     expect(screen.getByText("ISS-1")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Fix the login page" })).toBeInTheDocument();
     expect(screen.queryByText("run r1")).toBeNull();
@@ -286,7 +299,7 @@ describe("Open issue from the Ops drawer", () => {
 
   it("offers Open for each issue of a run session over several", () => {
     run = runSession(["ISS-1", "ISS-4"]);
-    render(<RunDetail open onClose={vi.fn()} runId="r1" projectSlugs={SLUGS} />);
+    render(<RunDetail open onClose={vi.fn()} runId="r1" />);
     fireEvent.click(screen.getByRole("button", { name: "More run actions" }));
     expect(screen.getByRole("menuitem", { name: "Open ISS-1" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Open ISS-4" })).toBeInTheDocument();
@@ -297,7 +310,7 @@ describe("Open issue from the Ops drawer", () => {
 describe("the drawer's menu offers only what the run takes", () => {
   it("lists no action that only says it is not supported", () => {
     run = summary("running", { reading: "running" });
-    render(<RunDetail open onClose={vi.fn()} runId="r1" projectSlugs={SLUGS} />);
+    render(<RunDetail open onClose={vi.fn()} runId="r1" />);
     fireEvent.click(screen.getByRole("button", { name: "More run actions" }));
     const items = screen.getAllByRole("menuitem").map((i) => i.textContent);
     expect(items).toEqual(["Open issue", "Copy link"]);
@@ -306,7 +319,7 @@ describe("the drawer's menu offers only what the run takes", () => {
 
 /** ISS-1228 round 19 (judge-57): a held job, a silent run session and the drawer's own words. */
 describe("round 19: the drawer reads a held job and a silent session as themselves", () => {
-  const openDrawer = () => render(<RunDetail open onClose={vi.fn()} runId="r1" projectSlugs={SLUGS} />);
+  const openDrawer = () => render(<RunDetail open onClose={vi.fn()} runId="r1" />);
   const header = () => screen.getByText("ISS-2").parentElement as HTMLElement;
 
   it("reads a run whose only job core holds as Held, never Nothing working, and says why", () => {

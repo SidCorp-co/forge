@@ -5,8 +5,9 @@ import { asc, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions, devices, jobs } from '../db/schema.js';
 import { RETRY_MAX_ROUNDS, readAutoRetryPayload } from '../jobs/retry.js';
+import { isoOrNull } from '../lib/iso-time.js';
 import { personNameSql } from '../lib/person-name.js';
-import type { FailureCause } from './failure-causes.js';
+import { DOOR_DECIDED_CAUSES, type FailureCause } from './failure-causes.js';
 import { causeForText } from './failure-patterns.js';
 import { holdOf, type RunHold } from './runs-liveness.js';
 
@@ -21,8 +22,13 @@ const takenDevice = sql<
  * The newest cancel of the job, else of its run: who wrote it, and the name the person gave where a
  * person did — never their address, which reads as the unnamed person (ISS-1229).
  */
-const cancelActor = sql<{ type: string; agency: string; name: string | null } | null>`(
-  SELECT json_build_object('type', t.actor_type, 'agency', t.actor_agency,
+const cancelActor = sql<{
+  type: string;
+  agency: string;
+  id: string | null;
+  name: string | null;
+} | null>`(
+  SELECT json_build_object('type', t.actor_type, 'agency', t.actor_agency, 'id', u.id,
                            'name', CASE WHEN u.id IS NULL THEN NULL
                                         ELSE ${personNameSql(sql`u.display_name`)} END)
     FROM kernel_transitions t
@@ -33,12 +39,17 @@ const cancelActor = sql<{ type: string; agency: string; name: string | null } | 
    ORDER BY (t.actor_type = 'user') DESC, (t.entity = 'job') DESC, t.created_at DESC
    LIMIT 1)`;
 
-/** Who cancelled a job: a person or an agent by the account that did, else core itself. */
+/** Who cancelled a job: a person or an agent by the account that did, else core itself. The account's
+ *  id goes with its name, so a reader can say "you" to the one who cancelled it. */
 export function cancelledByOf(
-  actor: { type: string; agency: string; name: string | null } | null,
+  actor: { type: string; agency: string; id?: string | null; name: string | null } | null,
 ): PipelineRunAttempt['cancelledBy'] {
-  if (actor?.type !== 'user') return { kind: 'core', name: null };
-  return { kind: actor.agency === 'agent' ? 'agent' : 'person', name: actor.name ?? null };
+  if (actor?.type !== 'user') return { kind: 'core', userId: null, name: null };
+  return {
+    kind: actor.agency === 'agent' ? 'agent' : 'person',
+    userId: actor.id ?? null,
+    name: actor.name ?? null,
+  };
 }
 
 /** A failed job no session ended: the cause core's classifier reads off what the sweeper wrote on it. */
@@ -52,10 +63,6 @@ function sweptCause(
   return cause === 'unclassified' ? null : cause;
 }
 
-function toIso(value: Date | string | null): string | null {
-  if (value === null) return null;
-  return value instanceof Date ? value.toISOString() : value;
-}
 
 export interface PipelineRunAttempt {
   jobId: string;
@@ -82,7 +89,11 @@ export interface PipelineRunAttempt {
   /** Why core holds the job and whether it sends it again by itself; null unless it is held. */
   hold: RunHold | null;
   /** Who cancelled the job or its run; null unless it was cancelled. */
-  cancelledBy: { kind: 'person' | 'agent' | 'core'; name: string | null } | null;
+  cancelledBy: {
+    kind: 'person' | 'agent' | 'core';
+    userId: string | null;
+    name: string | null;
+  } | null;
 }
 
 /** The round-robin headline, from the newest attempt's `_autoRetry`. */
@@ -153,17 +164,20 @@ export async function loadAttemptsForRun(runId: string): Promise<{
       deviceId: r.deviceId ?? null,
       deviceName: r.deviceName ?? null,
       failureReason: r.failureReason ?? null,
-      // A cancel is the job's own end: a session an earlier take ended is not why it stopped.
+      // A cancel is the job's own end: a session an earlier take ended is not why it stopped. A cause
+      // the job's door decided is the job's word, whatever its session row was classified as.
       failureCause: cancelled
         ? null
-        : (r.failureCause ?? sweptCause(r.status, r.failureReason, r.error)),
+        : r.failureReason && DOOR_DECIDED_CAUSES.has(r.failureReason)
+          ? r.failureReason
+          : (r.failureCause ?? sweptCause(r.status, r.failureReason, r.error)),
       failureDetail: cancelled ? null : (r.failureDetail ?? null),
       failureKind: r.failureKind ?? null,
       failureAction: r.failureAction ?? null,
-      queuedAt: toIso(r.queuedAt),
-      startedAt: toIso(r.startedAt),
-      ranAt: toIso(r.ranAt),
-      finishedAt: toIso(r.finishedAt),
+      queuedAt: isoOrNull(r.queuedAt),
+      startedAt: isoOrNull(r.startedAt),
+      ranAt: isoOrNull(r.ranAt),
+      finishedAt: isoOrNull(r.finishedAt),
       autoRetry: ar,
       takenBy: r.takenDeviceId
         ? { deviceId: r.takenDeviceId, deviceName: r.takenDeviceName ?? null }
@@ -173,8 +187,8 @@ export async function loadAttemptsForRun(runId: string): Promise<{
           ? holdOf({
               payload: r.payload,
               failureReason: r.failureReason ?? null,
-              retryAfterAt: toIso(r.retryAfterAt),
-              since: toIso(r.queuedAt),
+              retryAfterAt: isoOrNull(r.retryAfterAt),
+              since: isoOrNull(r.queuedAt),
             })
           : null,
       cancelledBy: cancelled ? cancelledByOf(r.cancelActor ?? null) : null,

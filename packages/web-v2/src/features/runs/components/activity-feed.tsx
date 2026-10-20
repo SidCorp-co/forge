@@ -32,6 +32,7 @@ import {
   filterActivity,
 } from "../activity";
 import { useNow } from "@/design/hooks/use-now";
+import { useAuth } from "@/providers/auth-provider";
 import { CLOSED_EMPTY } from "@/features/sessions/status-sentences";
 import { runHasStarted, runIsStalled, runReadingChip } from "../derive";
 import type { PipelineRunRetrySummary, PipelineRunSummary } from "../types";
@@ -71,6 +72,7 @@ function SessionLink({ href, text }: { href: string | null | undefined; text: st
 export function ActivityTab({ run, loading, error, onRetry, sessionHref }: ActivityTabProps) {
   const [filter, setFilter] = useState<ActivityFilter>("all");
   const now = useNow(10_000);
+  const { user } = useAuth();
 
   if (loading) return <ActivitySkeleton />;
   if (error) return <ErrorState message={formatApiError(error)} onRetry={onRetry} />;
@@ -86,7 +88,7 @@ export function ActivityTab({ run, loading, error, onRetry, sessionHref }: Activ
   }
 
   const word = runReadingChip(run, now);
-  const entries = deriveActivityFeed(run.attempts, run.reading === "blocked" ? word.label : undefined);
+  const entries = deriveActivityFeed(run.attempts, run.reading === "blocked" ? word.label : undefined, user?.id ?? null);
   const open = run.status === "running" || run.status === "paused";
   // An open run its session works without jobs: one that has started, or a run session or master's.
   const sessionWorked = runHasStarted(run) || run.lane === "run_session" || run.lane === "master";
