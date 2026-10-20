@@ -494,24 +494,25 @@ mod missing_socket {
 
     const LISTENS: &str = "a tmux server still listens on that path";
 
-    /// The reading of the two questions together. A listener or a process
-    /// started as the server is a server that runs. A readable listing with
-    /// neither is the kernel saying nothing serves the path, which is the one
-    /// read that settles it; off Linux, a process check that ran and found
-    /// none is the best there is.
+    /// The reading of the two questions together. A readable listing settles
+    /// it on its own: a tmux server holds its listening socket until it exits,
+    /// so a listener is a server and none is no server, whatever else carries
+    /// its words (consult F1). Where the listing is not read, a process started
+    /// as the server is a server that runs, and off Linux a process check that
+    /// ran and found none is the best there is.
     pub(super) fn serving_from(listing: Listing, process: Result<Option<u32>, String>) -> Serving {
         match (listing, process) {
             (Listing::Listens, process) => Serving::Runs {
                 pid: process.ok().flatten(),
                 why: LISTENS.to_string(),
             },
+            (Listing::Silent, _) => {
+                Serving::Ended("the kernel lists nothing listening on that path".to_string())
+            }
             (_, Ok(Some(pid))) => Serving::Runs {
                 pid: Some(pid),
                 why: format!("the tmux server started on that path still runs as pid {pid}"),
             },
-            (Listing::Silent, _) => {
-                Serving::Ended("the kernel lists nothing listening on that path".to_string())
-            }
             (Listing::NotKept, Ok(None)) => Serving::Ended(
                 "no process started as the tmux server on that path runs".to_string(),
             ),
@@ -536,7 +537,7 @@ mod missing_socket {
     /// The pid of the process the runner started as the tmux server on
     /// `path`, by the same command the line hands a person, so a refusal that
     /// names it names one that finds something.
-    fn server_process(socket: &Socket, path: &Path) -> Result<Option<u32>, String> {
+    pub(super) fn server_process(socket: &Socket, path: &Path) -> Result<Option<u32>, String> {
         if socket.is_none() {
             let Some(served) = served_default().filter(|s| s.path == path) else {
                 return Err("this daemon holds no pid for the default server".to_string());
@@ -550,10 +551,7 @@ mod missing_socket {
             return super::still_the_process(served.pid, &started)
                 .map(|same| same.then_some(served.pid));
         }
-        let pattern = format!(
-            "-S {} new-session",
-            ere_literal(&path.display().to_string())
-        );
+        let pattern = server_pattern(&path.display().to_string());
         let out = std::process::Command::new("pgrep")
             .args(["-o", "-f", "--", &pattern])
             .stdin(std::process::Stdio::null())
@@ -599,8 +597,16 @@ mod missing_socket {
         };
         format!(
             "`pgrep -of -- {}` prints the pid of the tmux server started on that path{found} and SIGUSR1 to it (`kill -USR1 <pid>`) makes it recreate the file",
-            super::shell_quote(&format!("-S {} new-session", ere_literal(path)))
+            super::shell_quote(&server_pattern(path))
         )
+    }
+
+    /// What `pgrep -f` matches for the server started on `path`: a command
+    /// line that runs tmux and carries the argv both routes here start every
+    /// server with, so a process that only mentions those words is not taken
+    /// for the server (consult F1).
+    fn server_pattern(path: &str) -> String {
+        format!("^([^ ]*/)?tmux .*-S {} new-session", ere_literal(path))
     }
 
     /// `text` as a POSIX extended regular expression matching only itself,
@@ -4679,6 +4685,11 @@ done
             None,
             "nothing is known of the default server before a pane is placed on it"
         );
+        // The server still listens where its file was, as a running one does.
+        std::fs::create_dir_all(path.parent().expect("a parent")).expect("its directory");
+        let listener =
+            std::os::unix::net::UnixListener::bind(&path).expect("a listener of the test's own");
+        std::fs::remove_file(&path).expect("its file goes");
         let mut server = a_tmux_stand_in();
         let pid = server.id();
         missing_socket::default_served(Some((path.clone(), pid)));
@@ -4686,6 +4697,7 @@ done
         let refused = missing_socket::refusal("forge-next", &None);
         missing_socket::forgotten(&None, &pane);
         missing_socket::default_served(None);
+        drop(listener);
         let _ = server.kill();
         let _ = server.wait();
         let refused = refused.expect("a second default server would orphan the first's panes");
@@ -4714,15 +4726,25 @@ done
             Some("Thu Jan  1 00:00:00 1970".to_string()),
         )));
         missing_socket::placed(None, &pane);
+        let reused = missing_socket::server_process(&None, &path);
         let refused = missing_socket::refusal("forge-next", &None);
         missing_socket::forgotten(&None, &pane);
+        missing_socket::default_served(Some((path.clone(), other.id())));
+        let same = missing_socket::server_process(&None, &path);
         missing_socket::default_served(None);
         let _ = other.kill();
         let _ = other.wait();
         assert_eq!(
-            refused, None,
-            "the pid runs, but not as the server that gave it, so nothing waits on that server"
+            reused,
+            Ok(None),
+            "the pid runs, but not as the process that gave it"
         );
+        assert_eq!(
+            same,
+            Ok(Some(other.id())),
+            "the plant: the same pid read with its own start is the server"
+        );
+        assert_eq!(refused, None, "so nothing waits on that server");
     }
 
     /// ISS-1265 round 6: a server runs where the kernel lists a listener or
@@ -4740,7 +4762,11 @@ done
         for process in [Ok(Some(7)), Ok(None), failed()] {
             assert!(runs(&serving_from(Listing::Listens, process)));
         }
-        for listing in [Listing::Silent, unread(), Listing::NotKept] {
+        assert!(
+            ended(&serving_from(Listing::Silent, Ok(Some(7)))),
+            "a readable listing with no listener settles it, whatever else carries the argv"
+        );
+        for listing in [unread(), Listing::NotKept] {
             assert_eq!(
                 serving_from(listing, Ok(Some(7))),
                 Serving::Runs {
@@ -4836,6 +4862,46 @@ done
         );
     }
 
+    /// A copy of `sh` called `tmux`, so a process can run as tmux with any
+    /// argv a test needs, and the directory that holds it.
+    #[cfg(unix)]
+    fn a_shell_named_tmux() -> (crate::test_scratch::Scratch, std::path::PathBuf) {
+        let dir = crate::test_scratch::Scratch::short("shtmux");
+        let named = dir.join("tmux");
+        std::fs::copy(which::which("sh").expect("sh is on PATH"), &named).expect("sh is copied");
+        (dir, named)
+    }
+
+    /// ISS-1265 round 6, consult F1: a process that only mentions the
+    /// server's argv, with nothing listening on the path, is not a server, so
+    /// it holds no placement back and is never named as the one to signal.
+    #[cfg(unix)]
+    #[test]
+    fn a_process_that_only_mentions_the_servers_argv_holds_nothing_back() {
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let gone = crate::test_scratch::Scratch::short("mention");
+        let path = gone.join("tmux.sock");
+        let socket = Some(path.clone());
+        let pane = session_name(MASTER_PREFIX, &format!("mention-{}", std::process::id()));
+        let mut mention = std::process::Command::new("sh")
+            .args([
+                "-c",
+                "sleep 30; :",
+                &format!("-S {} new-session", path.display()),
+            ])
+            .spawn()
+            .expect("sh runs");
+        missing_socket::placed(socket.clone(), &pane);
+        let refused = missing_socket::refusal("forge-next", &socket);
+        missing_socket::forgotten(&socket, &pane);
+        let _ = mention.kill();
+        let _ = mention.wait();
+        assert_eq!(
+            refused, None,
+            "nothing listens there and nothing runs as tmux on it, so the placement goes ahead"
+        );
+    }
+
     /// ISS-1265 round 5, consult F2: `pgrep` reads its pattern as a regular
     /// expression, so a path holding `[1]` named the server of `…1…`, an older
     /// process, instead of its own.
@@ -4845,11 +4911,12 @@ done
         let tag = std::process::id();
         let path = format!("/nonexistent/forge-f[1]-{tag}/tmux.sock");
         let decoy = format!("/nonexistent/forge-f1-{tag}/tmux.sock");
+        let tmux = a_shell_named_tmux();
         let holding = |p: &str| {
-            std::process::Command::new("sh")
-                .args(["-c", "sleep 30; :", &format!("-S {p} new-session")])
+            std::process::Command::new(&tmux.1)
+                .args(["-c", "sleep 30; :", "-S", p, "new-session"])
                 .spawn()
-                .expect("sh runs")
+                .expect("the shell runs")
         };
         let mut older = holding(&decoy);
         std::thread::sleep(Duration::from_millis(1100));
