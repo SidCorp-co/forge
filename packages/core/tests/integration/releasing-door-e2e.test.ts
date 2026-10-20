@@ -408,7 +408,7 @@ describe('the one door that writes Releasing: creating a release batch (criteria
     const body = (await res.json()) as { code: string; message: string };
     expect(body.code).toBe('RELEASE_ROSTER_REFUSED');
     expect(body.message).toContain(
-      `issue ${unplanned} could not enter Releasing (ENTRY_CRITERIA_UNMET`,
+      `Issue ${unplanned} could not enter Releasing (ENTRY_CRITERIA_UNMET`,
     );
     expect(body.message).toContain('no issue on this roster was claimed or moved');
     for (const id of [planned, unplanned]) {

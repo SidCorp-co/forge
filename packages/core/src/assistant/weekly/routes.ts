@@ -7,6 +7,7 @@
 
 import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
+import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { answer } from '../../api-reference/declare/describe.js';
 import { zValidator } from '../../api-reference/declare/validator.js';
@@ -46,17 +47,15 @@ assistantWeeklyRoutes.post(
       .from(projects)
       .where(eq(projects.id, id))
       .limit(1);
-    if (!row) return c.json({ code: 'NOT_FOUND', message: 'project not found' }, 404);
+    if (!row)
+      throw new HTTPException(404, { message: 'project not found', cause: { code: 'NOT_FOUND' } });
     const config = readAssistantWeekly(row.agentConfig);
     if (!config)
-      return c.json(
-        {
-          code: 'ASSISTANT_WEEKLY_OFF',
-          message:
-            'pipelineConfig.assistantWeekly is not enabled on this project; save it with enabled, pinnedIssue, judgeProviderId and judgeModel first',
-        },
-        409,
-      );
+      throw new HTTPException(409, {
+        message:
+          'The weekly reading is not enabled on this project. Save pipelineConfig.assistantWeekly with enabled, pinnedIssue, judgeProviderId and judgeModel first.',
+        cause: { code: 'ASSISTANT_WEEKLY_OFF' },
+      });
     const outcome = await runAssistantWeeklyForProject(
       { projectId: row.id, slug: row.slug, config },
       realDeps(),

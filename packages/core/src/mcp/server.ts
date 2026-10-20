@@ -8,6 +8,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import pkg from '../../package.json' with { type: 'json' };
 import { type AuditResultCode, digestArgs, writeMcpAudit } from '../auth/mcp-audit.js';
+import { refusalSentence } from '../lib/refusal-sentence.js';
 import { resolveManagedMetaPrompts } from '../skills/effective.js';
 import { forgeMcpInstructions } from './instructions.js';
 import { toToolCallContent } from './tool-result.js';
@@ -96,9 +97,12 @@ export function classifyError(err: unknown): { code: AuditResultCode; message: s
   return { code: 'error', message };
 }
 
-/** What the caller reads: the status word goes, and a refusal code after it stays first. */
+/**
+ * What the caller reads: the status word goes, a refusal code after it stays first, and what
+ * follows is a sentence, whichever tool worded it (ISS-1421 r14).
+ */
 export function toolErrorText(message: string): string {
-  return `Error: ${message.replace(/^(?:FORBIDDEN|NOT_FOUND|BAD_REQUEST):\s*/, '')}`;
+  return `Error: ${refusalSentence(message.replace(/^(?:FORBIDDEN|NOT_FOUND|BAD_REQUEST):\s*/, ''))}`;
 }
 
 function projectIdFromArgs(args: Record<string, unknown>): string | null {
@@ -240,7 +244,7 @@ export function createMcpServer(ctx: McpContext): Server {
     if (!tool) {
       writeMcpAudit({ ...auditBase, resultCode: 'not_found' });
       return {
-        content: [{ type: 'text', text: `Unknown tool: ${name}` }],
+        content: [{ type: 'text', text: toolErrorText(`No tool is named ${name}.`) }],
         isError: true,
       };
     }
@@ -250,7 +254,9 @@ export function createMcpServer(ctx: McpContext): Server {
     if (allow !== null && target && !allow.includes(target)) {
       writeMcpAudit({ ...auditBase, resultCode: 'not_found' });
       return {
-        content: [{ type: 'text', text: 'NOT_FOUND: project not found or not accessible' }],
+        content: [
+          { type: 'text', text: toolErrorText('NOT_FOUND: project not found or not accessible') },
+        ],
         isError: true,
       };
     }

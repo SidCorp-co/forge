@@ -433,7 +433,7 @@ describe('POST /:projectId/release-batches/:runId/finish — the door answers th
     expect(partial.status).toBe(409);
     expect(await partial.json()).toMatchObject({
       code: 'RELEASE_NOT_VERIFIED',
-      message: '`abc` is not a whole commit',
+      message: '`abc` is not a whole commit.',
     });
   });
 });

@@ -21,12 +21,15 @@ const insertReturning = vi.fn();
 const onConflictDoUpdate = vi.fn(() => ({ returning: insertReturning }));
 const insertValues = vi.fn(() => ({ onConflictDoUpdate }));
 
-vi.mock('../db/client.js', () => ({
-  db: {
-    select: vi.fn(() => ({ from: selectFrom })),
-    insert: vi.fn(() => ({ values: insertValues })),
-  },
-}));
+vi.mock('../db/client.js', async () => {
+  const { sessionReadOr } = await import('../middleware/session-read.fixture.js');
+  return {
+    db: {
+      select: vi.fn(sessionReadOr(() => ({ from: selectFrom }))),
+      insert: vi.fn(() => ({ values: insertValues })),
+    },
+  };
+});
 
 const writeAssistantPreferences = vi.fn();
 const listPreferenceChanges = vi.fn();

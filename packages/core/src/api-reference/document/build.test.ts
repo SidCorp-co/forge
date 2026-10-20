@@ -151,13 +151,14 @@ describe('buildReference over a planted app', () => {
     expect(schema).toContain('BAD_ISSUE_ID');
   });
 
-  it('gives a validator with no hook the library default 400', async () => {
+  it('gives a validator with no hook the envelope 400 it refuses with (ISS-1421 r14)', async () => {
     const { document } = await buildReference(planted(), { version: 't' });
     const responses = responsesAt(document, '/api/issues', 'post');
-    expect(responses['400']?.description).toContain('no hook');
+    expect(JSON.stringify(responses['400'])).toContain('BAD_REQUEST');
+    expect(JSON.stringify(responses['400'])).not.toContain('"success"');
   });
 
-  it('keeps both refusals of a route whose parameter validator has a hook and whose body validator has none', async () => {
+  it('keeps both refusals of a route whose parameter validator has a hook and whose body validator has none, in the envelope', async () => {
     const app = new Hono();
     app.post(
       '/api/mixed/:id',
@@ -167,13 +168,10 @@ describe('buildReference over a planted app', () => {
       (c) => c.json({}),
     );
     const { document } = await buildReference(app, { version: 't' });
-    const refusal = responsesAt(document, '/api/mixed/{id}', 'post')['400'] as unknown as {
-      content: { 'application/json': { schema: { anyOf: unknown[] } } };
-    };
-    const alternatives = JSON.stringify(refusal.content['application/json'].schema.anyOf);
-    expect(refusal.content['application/json'].schema.anyOf).toHaveLength(2);
+    const alternatives = JSON.stringify(responsesAt(document, '/api/mixed/{id}', 'post')['400']);
     expect(alternatives).toContain('BAD_MIXED_ID');
-    expect(alternatives).toContain('success');
+    expect(alternatives).toContain('BAD_REQUEST');
+    expect(alternatives).not.toContain('"success"');
   });
 
   it('keeps a declared JSON refusal and the envelope a hook throws, at one status', async () => {

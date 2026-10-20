@@ -120,13 +120,13 @@ describe('the refusals, and the sentence each one carries', () => {
       service.startRunnerRelease.mockResolvedValue({
         started: false,
         kind,
-        message: `the sentence for ${kind}`,
+        message: `The sentence for ${kind}.`,
         release,
       });
       const res = await post({ version: '0.13.3' });
       const body = (await res.json()) as { error?: { message?: string; code?: string } };
       expect(res.status).toBe(status);
-      expect(JSON.stringify(body)).toContain(`the sentence for ${kind}`);
+      expect(JSON.stringify(body)).toContain(`The sentence for ${kind}.`);
       expect(JSON.stringify(body)).toContain(`RUNNER_RELEASE_${kind.toUpperCase()}`);
     });
   }

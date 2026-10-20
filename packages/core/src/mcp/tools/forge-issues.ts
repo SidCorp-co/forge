@@ -437,7 +437,9 @@ function markedAt(value: string): Date {
 function parseDate(value: string, field: string): Date {
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) {
-    throw new Error(`BAD_REQUEST: invalid ISO date for ${field}: ${value}`);
+    throw new Error(
+      `BAD_REQUEST: The field \`${field}\` takes an ISO date, and ${JSON.stringify(value)} is not one.`,
+    );
   }
   return d;
 }
@@ -527,7 +529,8 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
       }
 
       case 'get': {
-        if (!input.documentId) throw new Error('BAD_REQUEST: documentId is required for get');
+        if (!input.documentId)
+          throw new Error('BAD_REQUEST: Name the issue to read as `documentId`.');
         const issue = await loadIssue(await refs.issue('documentId', input.documentId));
         await assertPrincipalIsMember(principal, issue.projectId);
         if (input.fields && input.fields.length > 0) {
@@ -555,7 +558,7 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
 
       case 'setAttributes': {
         if (!input.documentId)
-          throw new Error('BAD_REQUEST: documentId is required for setAttributes');
+          throw new Error('BAD_REQUEST: Name the issue to set attributes on as `documentId`.');
         if (!input.attributes || input.attributes.length === 0)
           throw new Error(
             'BAD_REQUEST: attributes is required for setAttributes — each entry is { key, value }, and the registered keys come back on action=get under `attributes`',
@@ -579,7 +582,8 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
       }
 
       case 'create': {
-        if (!input.data?.title) throw new Error('BAD_REQUEST: data.title is required for create');
+        if (!input.data?.title)
+          throw new Error('BAD_REQUEST: Give the new issue a title as `data.title`.');
         const projectId = await resolveProjectId(input, ctx);
         await assertPrincipalIsWriter(principal, projectId);
 
@@ -630,8 +634,9 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
         // it was, and says so first (ISS-1229 r11).
         const sentStatus = input.data?.status !== undefined;
         const { issue, data } = await unwrittenOnRefusal(sentStatus, async () => {
-          if (!input.documentId) throw new Error('BAD_REQUEST: documentId is required for update');
-          if (!input.data) throw new Error('BAD_REQUEST: data is required for update');
+          if (!input.documentId)
+            throw new Error('BAD_REQUEST: Name the issue to update as `documentId`.');
+          if (!input.data) throw new Error('BAD_REQUEST: Send the fields to write as `data`.');
           const issue = await loadIssue(await refs.issue('documentId', input.documentId));
           await assertPrincipalIsWriter(principal, issue.projectId);
           return { issue, data: input.data };
@@ -721,9 +726,10 @@ export const forgeIssuesTool: ContextScopedMcpToolFactory = (ctx) => ({
 
       case 'transition': {
         if (!input.documentId)
-          throw new Error('BAD_REQUEST: documentId is required for transition');
+          throw new Error('BAD_REQUEST: Name the issue to move as `documentId`.');
         const target = input.data?.status;
-        if (!target) throw new Error('BAD_REQUEST: data.status is required for transition');
+        if (!target)
+          throw new Error('BAD_REQUEST: Name the status to move the issue to as `data.status`.');
         const issue = await loadIssue(await refs.issue('documentId', input.documentId));
         await assertPrincipalIsWriter(principal, issue.projectId);
         const { rewritten } = await transitionByData(issue, target, principal, input.data);

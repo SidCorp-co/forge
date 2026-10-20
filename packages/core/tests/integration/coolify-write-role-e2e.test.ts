@@ -57,7 +57,7 @@ describe.each(ACTIONS)('Coolify %s', (action) => {
       {},
     );
     expect(res.status).toBe(403);
-    expect(res.refused).toContain('requires the project member role');
+    expect(res.refused).toContain('Requires the project member role');
   });
 
   it('is refused to a viewer at the tool', async () => {
@@ -65,7 +65,7 @@ describe.each(ACTIONS)('Coolify %s', (action) => {
       action,
       projectId,
     });
-    expect(refused).toContain('requires the project member role');
+    expect(refused).toContain('Requires the project member role');
   });
 
   it.each(['member', 'admin'] as const)(

@@ -67,6 +67,15 @@ function makeApp(handler: typeof errorHandler = errorHandler) {
   app.get('/boom', () => {
     throw new Error('kaboom');
   });
+  app.get('/invalid-input', () => {
+    throw new HTTPException(400, {
+      message: 'Invalid input',
+      cause: {
+        code: 'BAD_REQUEST',
+        details: { formErrors: [], fieldErrors: { id: ['Invalid UUID'] } },
+      },
+    });
+  });
   app.get('/http-ex-www-auth', () => {
     throw new HTTPException(401, {
       message: 'invalid personal access token',
@@ -161,7 +170,8 @@ describe('error middleware', () => {
     const res = await makeApp().request('/http-ex');
     expect(res.status).toBe(404);
     const body = await res.json();
-    expect(body).toEqual({ code: 'NOT_FOUND', message: 'thing not found' });
+    // ISS-1421 r14: every 4xx message is a sentence, whichever door worded it.
+    expect(body).toEqual({ code: 'NOT_FOUND', message: 'Thing not found.' });
     expect(warnSpy).toHaveBeenCalled();
     expect(errorSpy).not.toHaveBeenCalled();
   });
@@ -172,8 +182,17 @@ describe('error middleware', () => {
     const body = await res.json();
     expect(body).toEqual({
       code: 'VALIDATION_FAILED',
-      message: 'invalid',
+      message: 'Invalid.',
       details: { field: 'email' },
+    });
+  });
+
+  it('answers "Invalid input" over flattened errors as a sentence per field, details kept', async () => {
+    const res = await makeApp().request('/invalid-input');
+    expect(await res.json()).toEqual({
+      code: 'BAD_REQUEST',
+      message: 'The field id is not a valid UUID.',
+      details: { formErrors: [], fieldErrors: { id: ['Invalid UUID'] } },
     });
   });
 
@@ -202,7 +221,7 @@ describe('error middleware', () => {
     );
     const body = (await res.json()) as { code: string; message: string };
     expect(body.code).toBe('UNAUTHENTICATED');
-    expect(body.message).toBe('invalid personal access token');
+    expect(body.message).toBe('Invalid personal access token.');
   });
 
   it('HTTPException without cause.wwwAuthenticate sets no WWW-Authenticate header', async () => {

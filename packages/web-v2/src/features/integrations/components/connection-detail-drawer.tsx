@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, lazy, useMemo, useState } from "react";
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import {
   Banner,
   Button,
@@ -273,6 +273,11 @@ export function ConnectionDetailDrawer({
   const provider = card ? cardProvider(card.key) : null;
   const caps = getCapabilities(card);
   const [tab, setTab] = useState<"config" | "deliveries">("config");
+  // A refresh that fails after a press at the drawer's foot is shown where it is read (ISS-1421 r14).
+  const noticeRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (statusReadError) noticeRef.current?.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
+  }, [statusReadError]);
 
   if (!card || !provider) return null;
 
@@ -296,6 +301,7 @@ export function ConnectionDetailDrawer({
       <div className="flex flex-col gap-4 px-5 py-4">
         {statusReadError ? (
           // In the drawer's flow, above the first field: it pushes the form down and never covers a control.
+          <div ref={noticeRef} className="scroll-mt-4">
           <Banner
             tone="attention"
             action={
@@ -308,6 +314,7 @@ export function ConnectionDetailDrawer({
           >
             {`The status could not be refreshed, so the state above is the last one read. ${statusReadError}`}
           </Banner>
+          </div>
         ) : null}
         {caps.hasDeliveryLog ? (
           <>

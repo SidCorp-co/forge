@@ -407,7 +407,12 @@ export async function collectReleaseBlockers(
   if (read) {
     if (read.kind === 'no-release') blockers.push(blocker('NO_RELEASE_GATE'));
     if (read.kind === 'undeclared-target') {
-      blockers.push(blocker('RELEASE_TARGET_UNDECLARED', { releaseChain: read.releaseChain }));
+      blockers.push(
+        blocker('RELEASE_TARGET_UNDECLARED', {
+          releaseChain: read.releaseChain,
+          projectName: read.projectName,
+        }),
+      );
     }
     if (read.kind !== 'gated') {
       return {

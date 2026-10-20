@@ -9,6 +9,7 @@ import { activityLog, type IssueStatus, issues, jobs, usageRecords } from '../db
 import { noPromptMessage, POOL_JOB_NO_PROMPT } from '../jobs/pool-served.js';
 import { assertProjectRole, loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
+import { schemaRefused } from '../lib/zod-sentences.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { hooks } from '../pipeline/hooks.js';
 import { NoMasterRunningError, triggerPipelineStepManual } from '../pipeline/orchestrator.js';
@@ -45,9 +46,6 @@ import { triggerTerminalDispatch } from './transition.js';
 const idParamSchema = z.object({ id: z.uuid() });
 
 const runPipelineStepBodySchema = z.object({}).strict();
-
-const badRequest = (details: unknown) =>
-  new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
 
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
@@ -172,7 +170,7 @@ issueExtrasRoutes.patch(
   '/batch',
   patchIssuesBatch,
   zValidator('json', batchPatchBodySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw schemaRefused(r.error);
   }),
   async (c) => {
     const { ids, data } = c.req.valid('json');
@@ -284,7 +282,7 @@ issueExtrasRoutes.post(
   '/:id/enrich',
   enrichIssue,
   zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw schemaRefused(r.error);
   }),
   async (c) => {
     const { id: issueId } = c.req.valid('param');
@@ -310,10 +308,10 @@ issueExtrasRoutes.post(
   '/:id/run-pipeline-step',
   runPipelineStep,
   zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw schemaRefused(r.error);
   }),
   zValidator('json', runPipelineStepBodySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw schemaRefused(r.error);
   }),
   async (c) => {
     const { id: issueId } = c.req.valid('param');
@@ -367,7 +365,7 @@ issueExtrasRoutes.get(
   '/pipeline-timing',
   readPipelineTiming,
   zValidator('query', pipelineTimingQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw schemaRefused(r.error);
   }),
   async (c) => {
     const { projectId, from, to, limit } = c.req.valid('query');
@@ -453,10 +451,10 @@ issueExtrasRoutes.get(
   '/:id/cost-summary',
   readCostSummary,
   zValidator('param', issueRouteIdParamSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw schemaRefused(r.error);
   }),
   zValidator('query', projectScopeQuerySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
+    if (!r.success) throw schemaRefused(r.error);
   }),
   async (c) => {
     const { id: rawId } = c.req.valid('param');

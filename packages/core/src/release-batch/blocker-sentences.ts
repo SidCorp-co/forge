@@ -363,7 +363,7 @@ function sentenceFor(code: ReleaseBlockerCode, details?: Record<string, unknown>
   if (Array.isArray(details?.issueIds) && isNamedCode(code)) return namedSentence(code, details);
   if (code === 'RELEASE_PROBES_UNREADABLE') return unreadableSentence(remedy, details);
   const urls = details?.urls;
-  if (Array.isArray(urls) && urls.length > 0) return `${urls.join(', ')} — ${remedy}`;
+  if (Array.isArray(urls) && urls.length > 0) return `${quoted(urls)} — ${remedy}`;
   const check = details?.check;
   if (typeof check === 'string') {
     // The reading's own reason, which is the one thing a person can act on (ISS-1386 r2).
@@ -439,6 +439,11 @@ const refusedDeclarationSentence: RefusedDeclaration = (n) => {
   return `a \`verify\` Forge cannot read — ${w('it names no probe', 'none of them names a probe')} with a url — and a declared \`verify\` takes NO project default, so no release can be proved ${w('there', 'at any of them')} and none closes past ${w('it', 'them')}. Correct ${w('it', 'each')} to \`{"probes":[{"url":"https://<host>/api/health","commitPath":"commit"}]}\`, or remove ${w('it', 'them')}: the project's \`environments.live.commitUrl\` then answers, and with neither the release is recorded unverified.`;
 };
 
+/** Urls as code, so a sentence that opens on one reads the same wherever it is answered. */
+function quoted(urls: readonly unknown[]): string {
+  return urls.map((u) => `\`${String(u)}\``).join(', ');
+}
+
 /** The probes whose url is not a url, counted, since the remedy alone speaks of one. */
 function unreadableUrls(n: number): string {
   const w = (one: string, many: string) => agree(n, one, many);
@@ -453,7 +458,7 @@ export function unreadableSentence(
   const urls = Array.isArray(details?.urls) ? (details.urls as string[]) : [];
   const bindings = Array.isArray(details?.bindings) ? (details.bindings as string[]) : [];
   const parts: string[] = [];
-  if (urls.length > 0) parts.push(`${urls.join(', ')} — ${unreadableUrls(urls.length)}`);
+  if (urls.length > 0) parts.push(`${quoted(urls)} — ${unreadableUrls(urls.length)}`);
   if (bindings.length > 0) {
     const which = bindings.map((b) => `\`${b}\``).join(', ');
     const w = (one: string, many: string) => agree(bindings.length, one, many);

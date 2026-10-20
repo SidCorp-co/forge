@@ -11,9 +11,10 @@ const updateWhere = vi.fn(async () => undefined);
 const updateSet = vi.fn(() => ({ where: updateWhere }));
 const updateMock = vi.fn(() => ({ set: updateSet }));
 
-vi.mock('../db/client.js', () => ({
-  db: { update: updateMock },
-}));
+vi.mock('../db/client.js', async () => {
+  const { sessionReadOr } = await import('../middleware/session-read.fixture.js');
+  return { db: { update: updateMock, select: vi.fn(sessionReadOr(() => ({}))) } };
+});
 
 const { logoutRoutes } = await import('./logout.js');
 const { AUTH_COOKIE_NAME } = await import('./cookie.js');

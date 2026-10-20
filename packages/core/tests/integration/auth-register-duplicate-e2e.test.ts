@@ -83,7 +83,7 @@ describe('POST /api/auth/register for an email already registered', () => {
     const res = await register(EMAIL);
     const text = await res.text();
     expect(res.status).toBe(409);
-    expect(JSON.parse(text)).toEqual({ code: 'CONFLICT', message: 'Email already registered' });
+    expect(JSON.parse(text)).toEqual({ code: 'CONFLICT', message: 'Email already registered.' });
     expect(text).not.toMatch(/\$argon2|params|insert into/i);
   });
 

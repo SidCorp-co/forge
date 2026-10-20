@@ -311,7 +311,7 @@ describe('refuses on every action', () => {
       const answer = await call(token, { ...args, runId });
       expect(answer.isError, args.action).toBe(true);
       expect(answer.text, args.action).toMatch(
-        /requires the project member role or above to write; the role held is viewer/,
+        /Requires the project member role or above to write; the role held is viewer/,
       );
     }
     expect((await fx.stored(a)).status).toBe('releasing');
@@ -330,7 +330,7 @@ describe('refuses on every action', () => {
         const answer = await call(workspaceToken, { ...args, runId });
         expect(answer.isError, `${args.action} ${runId}`).toBe(true);
         expect(answer.text, `${args.action} ${runId}`).toMatch(
-          /release batch not found in this project/,
+          /Release batch not found in this project/,
         );
       }
     }

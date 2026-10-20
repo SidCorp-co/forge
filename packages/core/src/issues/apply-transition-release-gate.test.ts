@@ -120,6 +120,7 @@ function undeclaredTarget() {
     {
       baseBranch: 'dev',
       releaseChain: [{ branch: 'dev' }, { branch: 'master', from: 'merge-branch' }],
+      name: 'Storefront',
     },
   ]);
   listBindings.mockResolvedValueOnce([]);
@@ -294,8 +295,9 @@ describe('a project that declares a release it cannot land', () => {
 
     const err = await transitionIssueStatus(AT_WORK, 'closed', AGENT).catch((e: Error) => e);
 
-    expect(String(err)).toContain(PROJECT_ID);
-    expect(String(err)).toContain("no active deploy binding carrying the 'live' stage");
+    expect(String(err)).toContain(`Project "Storefront" releases to 'master'`);
+    expect(String(err)).not.toContain(PROJECT_ID);
+    expect(String(err)).toContain('has no live deploy target, so a release has nowhere to land.');
     expect(String(err)).toContain(
       'choose "Repository, no release" under Shape & release in its settings',
     );

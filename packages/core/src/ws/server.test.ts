@@ -37,10 +37,11 @@ vi.mock('../auth/cookie.js', () => ({
   AUTH_COOKIE_NAME: 'forge_auth',
 }));
 
+const accountRead = vi.hoisted(() => ({ rows: async (): Promise<unknown[]> => [] }));
 vi.mock('../db/client.js', () => ({
   db: {
     select: vi.fn(() => ({
-      from: vi.fn(() => ({ where: vi.fn(() => ({ limit: vi.fn(async () => []) })) })),
+      from: vi.fn(() => ({ where: vi.fn(() => ({ limit: vi.fn(() => accountRead.rows()) })) })),
     })),
   },
 }));
@@ -49,6 +50,7 @@ vi.mock('../db/schema.js', () => ({
   devices: {},
   projectMembers: {},
   runners: {},
+  users: {},
 }));
 
 const handleRunnerRegisterMock = vi.fn();
@@ -137,6 +139,23 @@ describe('/ws auth — Sec-WebSocket-Protocol subprotocol (ISS-286)', () => {
     if (result.status === 'open') {
       expect(result.protocol).toBe(`forge.bearer.${VALID_USER_TOKEN}`);
     }
+  });
+
+  // ISS-1421 r14: a session token is a person's; one naming an agent account opens no socket.
+  it('rejects with 401 a session token whose account is an agent', async () => {
+    accountRead.rows = async () => [{ kind: 'agent' }];
+    const result = await dial({ protocols: [`forge.bearer.${VALID_USER_TOKEN}`] });
+    accountRead.rows = async () => [];
+    expect(result.status === 'error' ? result.code : result.status).toBe(401);
+  });
+
+  it('refuses with 503, and leaves nothing hanging, when the account cannot be read', async () => {
+    accountRead.rows = async () => {
+      throw new Error('the database went away');
+    };
+    const result = await dial({ protocols: [`forge.bearer.${VALID_USER_TOKEN}`] });
+    accountRead.rows = async () => [];
+    expect(result.status === 'error' ? result.code : result.status).toBe(503);
   });
 
   it('rejects with 401 when the subprotocol carries an invalid JWT', async () => {
