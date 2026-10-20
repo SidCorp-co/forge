@@ -57,7 +57,7 @@ describe('an update refusal that wrote nothing', () => {
     })();
 
     expect(read(err)).toMatch(
-      /^Error: Nothing this update carried was written\. Invalid arguments — `data\.priority`: Invalid option/,
+      /^Error: Nothing this update carried was written\. The field `data\.priority` was refused\. Invalid option\.$/,
     );
   });
 

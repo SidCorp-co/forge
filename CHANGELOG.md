@@ -3194,6 +3194,8 @@
 
 ### Fixed
 
+- **A passphrase-protected private key is refused at once.** Pasting one used to leave Create key spinning until the request timed out; it now says Forge could not read the key. (ISS-1421)
+- **A status move with a status Forge does not have is refused in a sentence** naming the field, through the API and agent tools, instead of "Invalid input". (ISS-1421)
 - **A job its runner is working reads Running in the run drawer**, in its header and its activity alike, instead of "Starting" under a Running header. (ISS-1228)
 - **A job its runner took but never started goes back to the queue** once its session is ended, instead of reading "Starting" for as long as its master lives; the next attempt gets a fresh session. (ISS-1228)
 - **The run drawer shows no failure or remedy on work still open**, names the runner that took or was sent it, and says "Never started" of work that ended before anything ran. (ISS-1228)

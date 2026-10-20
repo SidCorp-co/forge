@@ -347,7 +347,7 @@ describe('forge_issues update — every refusal before the write says first that
 
       expect(said).toMatch(
         new RegExp(
-          `^forge_issues refused: Error: Nothing this update carried was written${moved}\\. Invalid arguments — \`data\\.priority\``,
+          `^forge_issues refused: Error: Nothing this update carried was written${moved}\\. The field \`data\\.priority\` takes one of the values listed below\\.\n\`data\\.priority\` takes: "critical"`,
         ),
       );
       expect(await whole(id)).toEqual(before);
@@ -425,7 +425,9 @@ describe('forge_issues update — every refusal before the write says first that
       data: { title: 'never made', priority: 'urgent-ish' },
     });
 
-    expect(said).toMatch(/^forge_issues refused: Error: invalid arguments — `data\.priority`/);
+    expect(said).toMatch(
+      /^forge_issues refused: Error: The field `data\.priority` takes one of the values listed below\./,
+    );
     expect(said).not.toContain('Nothing this update carried was written');
   });
 });

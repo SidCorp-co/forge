@@ -1,5 +1,6 @@
 // @gate-input whole-tree — the host-answer cases run a fake ssh from PATH, which the root-walk guard cannot see into.
-import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -205,5 +206,44 @@ describe('derivePublicFromPrivate', () => {
       'Forge could not read this SSH private key. It may be malformed or protected by a passphrase, and Forge needs one it can use unattended.',
     );
     expect(message).not.toMatch(/^[a-z_]+:/);
+  });
+
+  // ISS-1421 r14 — judge-61: a passphrase-protected key held the store request open until the
+  // proxy's 524, because ssh-keygen read its open stdin for a passphrase nobody would type.
+  it('refuses a passphrase-protected key at once, in the same sentence', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'forge-prot-key-'));
+    try {
+      execFileSync('ssh-keygen', [
+        '-q',
+        '-t',
+        'ed25519',
+        '-N',
+        'a passphrase',
+        '-f',
+        join(dir, 'k'),
+      ]);
+      const pasted = readFileSync(join(dir, 'k'), 'utf8');
+      const started = Date.now();
+      const refused = await derivePublicFromPrivate(pasted, 'forge-x').catch((e: unknown) => e);
+      expect(refused).toBeInstanceOf(UnreadablePrivateKeyError);
+      expect(Date.now() - started).toBeLessThan(5_000);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }, 15_000);
+
+  it('still derives an unprotected key', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'forge-open-key-'));
+    try {
+      execFileSync('ssh-keygen', ['-q', '-t', 'ed25519', '-N', '', '-f', join(dir, 'k')]);
+      const derived = await derivePublicFromPrivate(
+        readFileSync(join(dir, 'k'), 'utf8'),
+        'forge-x',
+      );
+      expect(derived.publicKey).toMatch(/^ssh-ed25519 \S+ forge-x$/);
+      expect(derived.fingerprint).toMatch(/^SHA256:/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
