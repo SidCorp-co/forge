@@ -41,7 +41,7 @@ import { pgErrorCode } from '../lib/db-errors.js';
 import { issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
 import type { Actor } from '../pipeline/activity.js';
 import { heldIssuePrefixes, issueRefFormatter } from './issue-prefix-read.js';
-import { ISSUE_TERMINAL_STATUSES, statusForCaller } from './status-sets.js';
+import { ISSUE_TERMINAL_STATUSES, statusForCaller, statusLabel } from './status-sets.js';
 
 /** The condition a discovery read composes: nothing when the caller asked for archived rows too. */
 export function issueArchiveSide(includeArchived: boolean | undefined): SQL[] {
@@ -421,7 +421,7 @@ export async function archiveRefusalForTransition(
     .limit(1);
   if (!tied) return null;
   const key = (await issueRefFormatter(tied.projectId))(tied.issSeq);
-  return `this issue cannot become ${statusForCaller(toStatus)} while a live \`${tied.edgeKind}\` edge ties it to ${key}, which is archived and would be load-bearing again. Retract the edge, or: ${archivedIssueSentence(key, tied.projectId)}`;
+  return `This issue cannot move to ${statusLabel(toStatus)} while a live \`${tied.edgeKind}\` edge ties it to ${key}, which is archived and would be load-bearing again. Retract the edge, or: ${archivedIssueSentence(key, tied.projectId)}`;
 }
 
 /**

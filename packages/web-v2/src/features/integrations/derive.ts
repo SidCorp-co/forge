@@ -128,14 +128,28 @@ export interface BadgeView {
   tone: NonNullable<BadgeProps["tone"]>;
 }
 
-/** A section's badge: a failed check is never "Active", turned off is not a breaker (ISS-1421). */
-export function bindingBadge(existing: IntegrationSummary | undefined): BadgeView {
-  if (!existing) return { label: "Not configured", tone: "amber" };
-  if (!existing.active) return { label: STATE_WORDS.off, tone: "neutral" };
-  if (existing.breakerOpenedAt !== null) return { label: "Degraded", tone: "amber" };
-  if (existing.lastHealthStatus === "ok") return { label: "Connected", tone: "green" };
-  if (existing.lastHealthStatus === "error") return { label: STATE_WORDS.failed, tone: "red" };
-  return { label: STATE_WORDS.unchecked, tone: "neutral" };
+const BADGE_TONE: Record<DirectoryStatus, BadgeView["tone"]> = {
+  connected: "green",
+  degraded: "amber",
+  error: "red",
+  not_connected: "amber",
+  needs_reauth: "amber",
+  needs_scope: "amber",
+  disabled: "neutral",
+  unverified: "neutral",
+};
+
+/** Derived from the row's own status, so a refused check never reads "Not checked yet" here. */
+export function bindingBadge(
+  existing: IntegrationSummary | undefined,
+): BadgeView & { status: DirectoryStatus | null } {
+  if (!existing) return { label: "Not configured", tone: "amber", status: null };
+  const status = deriveConnectionStatus(existing);
+  return { label: DIRECTORY_STATUS_META[status].label, tone: BADGE_TONE[status], status };
+}
+
+export function bindingConnected(existing: IntegrationSummary): boolean {
+  return deriveConnectionStatus(existing) === "connected";
 }
 
 /** Icon + text + tinted-pill metadata for each directory state. Never

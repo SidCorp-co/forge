@@ -6,6 +6,7 @@ interface RosterStub {
   releaseRunnerLabel: string | null;
   baseBranch: string | null;
   nextCutAt: string | null;
+  automaticRelease: boolean;
   currentVersion: string | null;
   issues: Array<{
     id: string;
@@ -21,6 +22,7 @@ const loadReleaseRosterMock = vi.fn(
     releaseRunnerLabel: null,
     baseBranch: 'main',
     nextCutAt: null,
+    automaticRelease: false,
     currentVersion: null,
     issues: [],
   }),
@@ -80,6 +82,7 @@ beforeEach(() => {
     releaseRunnerLabel: null,
     baseBranch: 'main',
     nextCutAt: null,
+    automaticRelease: false,
     currentVersion: null,
     issues: [],
   });
@@ -222,6 +225,7 @@ describe('runScheduledReleaseCut — unchanged by the cutWaitingRelease extracti
       releaseRunnerLabel: null,
       baseBranch: null,
       nextCutAt: null,
+      automaticRelease: false,
       currentVersion: null,
       issues: [],
     });
@@ -241,6 +245,7 @@ describe('runScheduledReleaseCut — unchanged by the cutWaitingRelease extracti
       releaseRunnerLabel: null,
       baseBranch: 'main',
       nextCutAt: null,
+      automaticRelease: false,
       currentVersion: null,
       issues: [{ id: 'iss-1', claimedByRunId: 'run-already', closeRefusals: [] }],
     });
@@ -259,6 +264,7 @@ describe('runScheduledReleaseCut — unchanged by the cutWaitingRelease extracti
       releaseRunnerLabel: null,
       baseBranch: 'main',
       nextCutAt: null,
+      automaticRelease: false,
       currentVersion: null,
       issues: [
         { id: 'iss-1', claimedByRunId: null, closeRefusals: [] },
@@ -281,6 +287,7 @@ describe('runScheduledReleaseCut — unchanged by the cutWaitingRelease extracti
       releaseRunnerLabel: null,
       baseBranch: 'main',
       nextCutAt: null,
+      automaticRelease: false,
       currentVersion: null,
       issues: [{ id: 'iss-1', claimedByRunId: null, closeRefusals: [] }],
     });
@@ -309,6 +316,7 @@ describe('runScheduledReleaseCut — a row the finish could not close (ISS-1337)
       releaseRunnerLabel: null,
       baseBranch: 'main',
       nextCutAt: null,
+      automaticRelease: false,
       currentVersion: null,
       issues,
     };

@@ -17,6 +17,7 @@ describe("badgeFor", () => {
     expect(badgeFor(binding({ active: false, lastHealthStatus: "error" }))).toEqual({
       label: "Turned off",
       tone: "neutral",
+      status: "disabled",
     });
   });
 
@@ -43,6 +44,9 @@ describe("the row and drawer header say what the badge says", () => {
     for (const over of [
       { active: false, lastHealthStatus: "error" },
       { lastHealthStatus: "error" },
+      { lastHealthStatus: "needs_reauth" },
+      { lastHealthStatus: "needs_scope" },
+      { lastHealthStatus: "degraded" },
       {},
     ] as Array<Partial<IntegrationSummary>>) {
       expect(pill(over)).toBe(badgeFor(binding(over)).label);

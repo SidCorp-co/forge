@@ -8,7 +8,6 @@
 
 import {
   Badge,
-  type BadgeProps,
   Banner,
   Button,
   Field,
@@ -44,22 +43,7 @@ import type { AgentAccess } from "../../types";
 import { ConnectionOwnerField } from "../../components/connection-owner-field";
 import { rocketchat } from "./index";
 import { IntegrationEnabledControl } from "../../components/integration-enabled-control";
-import { STATE_WORDS } from "../../derive";
-
-interface BadgeView {
-  label: string;
-  tone: NonNullable<BadgeProps["tone"]>;
-}
-
-function badgeFor(existing: IntegrationSummary | undefined): BadgeView {
-  if (!existing) return { label: "Not configured", tone: "amber" };
-  if (!existing.active) return { label: STATE_WORDS.off, tone: "neutral" };
-  if (existing.lastHealthStatus === "ok") return { label: "Connected", tone: "green" };
-  if (existing.lastHealthStatus === "needs_reauth")
-    return { label: "Bot credential rejected", tone: "red" };
-  if (existing.lastHealthStatus === "error") return { label: STATE_WORDS.failed, tone: "red" };
-  return { label: STATE_WORDS.unchecked, tone: "neutral" };
-}
+import { bindingBadge } from "../../derive";
 
 export function RocketchatSection({ projectId }: { projectId: string }) {
   const list = useIntegrationsList(projectId);
@@ -215,7 +199,7 @@ function RocketchatBindingPanel({
   const [testResult, setTestResult] = useState<IntegrationTestResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const badge = badgeFor(binding);
+  const badge = bindingBadge(binding);
 
   async function saveRids(next: string[]) {
     setError(null);
@@ -267,6 +251,9 @@ function RocketchatBindingPanel({
         </span>
         <Badge tone={badge.tone}>{badge.label}</Badge>
       </div>
+      {badge.status === "needs_reauth" ? (
+        <p className="fg-body-sm text-muted">Rocket.Chat rejected the bot credential.</p>
+      ) : null}
 
       <p className="fg-body-sm text-muted">
         The bot answers @-mentions in the bound rooms, reads the discussion, and can

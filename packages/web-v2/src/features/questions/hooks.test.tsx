@@ -36,6 +36,7 @@ vi.mock("../issues/api", async () => {
       roster: vi.fn(async () => ({
         gateStatus: "awaiting_release",
         nextCutAt: null,
+        automaticRelease: false,
         channels: [],
         releaseRunnerLabel: null,
         baseBranch: "main",

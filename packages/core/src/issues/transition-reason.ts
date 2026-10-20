@@ -2,7 +2,7 @@ import { postSystemComment } from '../comments/system-write.js';
 import { db, type Tx } from '../db/client.js';
 import type { IssueStatus, WaitingKind } from '../db/schema.js';
 import { actorAgency, type TransitionActor } from './actor-agency.js';
-import { AWAITING_INPUT_STATUSES, ISSUE_STATUS_LABELS, statusForCaller } from './status-sets.js';
+import { AWAITING_INPUT_STATUSES, ISSUE_STATUS_LABELS, statusLabel } from './status-sets.js';
 
 export const REASON_REQUIRED_STATUSES = new Set<IssueStatus>([
   'reopen',
@@ -168,14 +168,13 @@ export function parkReasonFault(
   if (!options.transitionReason?.trim()) {
     return {
       code: 'TRANSITION_REASON_REQUIRED',
-      detail: `a transition to ${statusForCaller(requestedStatus)} must carry a reason saying ${REASON_SAYS[requestedStatus] ?? 'what is needed or what is wrong'}, sent as \`reason\` (REST body, or \`data.reason\` / \`data.note\` on \`forge_issues\`)`,
+      detail: `A move to ${statusLabel(requestedStatus)} needs a reason saying ${REASON_SAYS[requestedStatus] ?? 'what is needed or what is wrong'}. Send it as \`reason\`, or as \`data.reason\` or \`data.note\` on \`forge_issues\`.`,
     };
   }
   if (requestedStatus === 'waiting' && !options.waitingKind) {
     return {
       code: 'WAITING_KIND_REQUIRED',
-      detail:
-        'a Waiting (waiting) park must say which kind it is: `needs_decision` or `needs_resource`',
+      detail: 'A Waiting park must say which kind it is: `needs_decision` or `needs_resource`.',
     };
   }
   return null;

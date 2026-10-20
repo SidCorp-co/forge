@@ -16,6 +16,7 @@ import { type IssueStatus, issues, jobs, pipelineRuns, schedules } from '../db/s
 import { issueDisplayIds } from '../issues/display-ids.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
+import { readAutoProdDeploy } from '../pipeline/auto-prod-deploy.js';
 import { readProjectBranches } from '../projects/service.js';
 import { nextRunFor } from '../schedules/cron.js';
 import { releaseRunnerLabelOf, resolveReleaseChannels } from './channel.js';
@@ -62,6 +63,11 @@ export interface ReleaseRoster {
   /** When the next scheduled cut fires. `null` = nobody scheduled one. */
   nextCutAt: string | null;
   /**
+   * Whether the automatic release takes a waiting issue without a person (`autoProdDeploy`), so a
+   * screen with no schedule to name says that rather than that a person releases it (ISS-1421 r13).
+   */
+  automaticRelease: boolean;
+  /**
    * The version the project is serving: what the last release to SHIP cut. `null` when no release
    * here has ever shipped. Read off the ship stamp rather than the run's status, because
    * `cancelConcludedRun` flips a `completed` run to `cancelled` without taking the bytes down.
@@ -107,11 +113,13 @@ export async function loadReleaseRoster(projectId: string): Promise<ReleaseRoste
       releaseRunnerLabel: null,
       baseBranch: null,
       nextCutAt: null,
+      automaticRelease: false,
       currentVersion: null,
       issues: [],
     };
   }
   const nextCutAt = await nextScheduledCutAt(projectId);
+  const automaticRelease = await readAutoProdDeploy(projectId);
   const currentVersion = await currentReleaseVersion(projectId);
   const branches = await readProjectBranches(projectId);
 
@@ -139,6 +147,7 @@ export async function loadReleaseRoster(projectId: string): Promise<ReleaseRoste
     releaseRunnerLabel: releaseRunnerLabelOf(projectId, channels),
     baseBranch: branches?.baseBranch ?? null,
     nextCutAt,
+    automaticRelease,
     currentVersion,
     issues: rows.map((r) => ({
       id: r.id,

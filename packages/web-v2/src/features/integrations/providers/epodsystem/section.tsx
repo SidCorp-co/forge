@@ -2,7 +2,6 @@
 
 import {
   Badge,
-  type BadgeProps,
   Banner,
   Button,
   CardTitle,
@@ -39,7 +38,7 @@ import type { AgentAccess } from "../../types";
 import { ConnectionOwnerField } from "../../components/connection-owner-field";
 import { epodsystem } from "./index";
 import { IntegrationEnabledControl } from "../../components/integration-enabled-control";
-import { STATE_WORDS } from "../../derive";
+import { bindingBadge, bindingConnected } from "../../derive";
 
 // Scopes a website build needs to publish themes + toggle commerce/cache.
 const REQUIRED_SCOPES = ["products:write", "webstore:write", "settings:write"];
@@ -56,25 +55,6 @@ const STAGE_CHOICES: { value: DeployStage; label: string; hint: string }[] = [
   { value: "preview", label: "Preview", hint: "the draft theme, seen before it counts" },
   { value: "live", label: "Live", hint: "the published theme real customers are on" },
 ];
-
-interface BadgeView {
-  label: string;
-  tone: NonNullable<BadgeProps["tone"]>;
-}
-
-function badgeFor(existing: IntegrationSummary | undefined): BadgeView {
-  if (!existing) return { label: "Not configured", tone: "amber" };
-  if (!existing.active) return { label: STATE_WORDS.off, tone: "neutral" };
-  if (existing.lastHealthStatus === "ok") {
-    const name = (existing.config as EpodsystemReadConfig).storeName;
-    return {
-      label: name ? `Connected to ${name}` : "Connected",
-      tone: "green",
-    };
-  }
-  if (existing.lastHealthStatus === "error") return { label: STATE_WORDS.failed, tone: "red" };
-  return { label: STATE_WORDS.unchecked, tone: "neutral" };
-}
 
 /**
  * ISS-395 / ISS-387 / ISS-558 — Epodsystem storefront integration config.
@@ -96,6 +76,8 @@ export function EpodsystemSection({ projectId }: { projectId: string }) {
     [list.data],
   );
 
+  // Only a binding whose last check passed is connected: a key the provider refused is not.
+  const connectedCount = epodsystemBindings.filter(bindingConnected).length;
   const [showAddForm, setShowAddForm] = useState(false);
 
   return (
@@ -103,9 +85,7 @@ export function EpodsystemSection({ projectId }: { projectId: string }) {
       <div className="mb-4 flex items-center justify-between gap-3">
         <div className="flex items-center justify-between gap-2">
           <CardTitle>Epodsystem storefronts</CardTitle>
-          {epodsystemBindings.length > 0 && (
-            <Badge tone="green">{epodsystemBindings.length} connected</Badge>
-          )}
+          {connectedCount > 0 && <Badge tone="green">{connectedCount} connected</Badge>}
         </div>
       </div>
       <div className="flex flex-col gap-4">
@@ -185,7 +165,8 @@ function EpodsystemBindingRow({
   const [error, setError] = useState<string | null>(null);
   const [showKeyField, setShowKeyField] = useState(false);
 
-  const badge = badgeFor(binding);
+  const badge = bindingBadge(binding);
+  const storeName = (binding.config as EpodsystemReadConfig).storeName;
   const bindingLabel = (binding as { label?: string }).label ?? "";
 
   async function handleSaveKey() {
@@ -246,6 +227,9 @@ function EpodsystemBindingRow({
         </div>
         <Badge tone={badge.tone}>{badge.label}</Badge>
       </div>
+      {badge.status === "connected" && storeName ? (
+        <p className="fg-body-sm text-muted">Connected to {storeName}.</p>
+      ) : null}
 
       {error && <Banner tone="danger">{error}</Banner>}
       {testResult &&

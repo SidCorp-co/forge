@@ -153,20 +153,20 @@ export async function explainReleasingRace(
   if (row && row.status !== from) {
     return new TransitionError(
       'STALE_TRANSITION',
-      `issue status changed concurrently — it left ${statusLabel(from)} for ${statusLabel(row.status)} while the release was claiming it`,
+      `The issue moved from ${statusLabel(from)} to ${statusLabel(row.status)} while the release was claiming it.`,
       details,
     );
   }
   if (row?.claimedBy && row.claimedBy !== runId) {
     return new TransitionError(
       'STALE_TRANSITION',
-      `release run ${row.claimedBy} claimed this issue while release run ${runId} was claiming it`,
+      `Release run ${row.claimedBy} claimed this issue while release run ${runId} was claiming it.`,
       details,
     );
   }
   return new TransitionError(
     'STALE_TRANSITION',
-    `release run ${runId} is ${run?.status ?? 'gone'}, not running, so nothing would carry this issue at ${statusLabel(RELEASING)}`,
+    `Release run ${runId} is ${run?.status ?? 'gone'}, not running, so nothing would carry this issue at ${statusLabel(RELEASING)}.`,
     details,
   );
 }

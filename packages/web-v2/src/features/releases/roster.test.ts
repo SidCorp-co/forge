@@ -21,6 +21,7 @@ function body(over: Record<string, unknown> = {}) {
     releaseRunnerLabel: "release",
     baseBranch: "main",
     nextCutAt: null,
+    automaticRelease: false,
     issues: [ENTRY],
     ...over,
   };
@@ -41,6 +42,7 @@ describe("parseReleaseRoster", () => {
       releaseRunnerLabel: "release",
       baseBranch: "main",
       nextCutAt: null,
+      automaticRelease: false,
       issues: [ENTRY],
     });
   });

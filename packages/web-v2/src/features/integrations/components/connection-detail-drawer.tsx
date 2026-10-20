@@ -2,6 +2,8 @@
 
 import { Suspense, lazy, useMemo, useState } from "react";
 import {
+  Banner,
+  Button,
   CardTitle,
   ErrorState,
   SegmentedControl,
@@ -257,11 +259,16 @@ export function ConnectionDetailDrawer({
   card,
   onClose,
   canEdit = true,
+  statusReadError = null,
+  onRetryStatus,
 }: {
   projectId: string;
   card: StatusCard | null;
   onClose: () => void;
   canEdit?: boolean;
+  /** Why the Integrations tab's last status read failed, said here so the open drawer stays open. */
+  statusReadError?: string | null;
+  onRetryStatus?: () => void;
 }) {
   const provider = card ? cardProvider(card.key) : null;
   const caps = getCapabilities(card);
@@ -287,6 +294,20 @@ export function ConnectionDetailDrawer({
   return (
     <SlideOver open={Boolean(card)} onClose={onClose} title={title} width={560}>
       <div className="flex flex-col gap-4 px-5 py-4">
+        {statusReadError ? (
+          <Banner
+            tone="attention"
+            action={
+              onRetryStatus ? (
+                <Button variant="ghost" size="sm" onClick={onRetryStatus}>
+                  Retry
+                </Button>
+              ) : undefined
+            }
+          >
+            {`The status could not be refreshed, so the state above is the last one read. ${statusReadError}`}
+          </Banner>
+        ) : null}
         {caps.hasDeliveryLog ? (
           <>
             <Tabs

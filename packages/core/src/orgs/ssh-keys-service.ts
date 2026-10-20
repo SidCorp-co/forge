@@ -23,8 +23,13 @@ import {
   workspaceSshKeys,
 } from '../db/schema.js';
 import { assertSafeSshRepoUrl } from '../git/ssh-host-guard.js';
-import { derivePublicFromPrivate, generateSshKeypair, testSshConnection } from '../git/ssh-keys.js';
-import { decryptSecret, encryptSecret, isVaultConfigured } from '../integrations/vault.js';
+import {
+  derivePublicFromPrivate,
+  generateSshKeypair,
+  testStoredSshKey,
+  UnreadablePrivateKeyError,
+} from '../git/ssh-keys.js';
+import { encryptSecret, isVaultConfigured } from '../integrations/vault.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { logger } from '../logger.js';
 
@@ -159,13 +164,15 @@ export async function createOrgSshKey(
       source = 'user_provided';
     }
   } catch (err) {
-    const msg = (err as Error).message;
-    if (msg.startsWith('invalid_private_key')) {
-      throw new HTTPException(400, { message: msg, cause: { code: 'INVALID_PRIVATE_KEY' } });
+    if (err instanceof UnreadablePrivateKeyError) {
+      throw new HTTPException(400, {
+        message: err.message,
+        cause: { code: 'INVALID_PRIVATE_KEY' },
+      });
     }
     logger.error({ err, orgId }, 'ssh-keys: keypair build failed');
     throw new HTTPException(500, {
-      message: 'failed to build SSH keypair',
+      message: 'Forge could not build the SSH key pair.',
       cause: { code: 'KEYPAIR_FAILED' },
     });
   }
@@ -197,7 +204,8 @@ export async function createOrgSshKey(
   } catch (err) {
     if (isUniqueViolation(err)) {
       throw new HTTPException(409, {
-        message: 'this key already exists in the org pool (matching fingerprint)',
+        message:
+          'This key is already in the workspace pool: one with the same fingerprint is stored.',
         cause: { code: 'DUPLICATE_FINGERPRINT' },
       });
     }
@@ -255,16 +263,5 @@ export async function testOrgSshKey(
     .limit(1);
   if (!row) throw notFound('ssh key not found');
 
-  let privateKey: string;
-  try {
-    privateKey = decryptSecret(row.privateKeyEnc);
-  } catch (err) {
-    logger.error({ err, orgId, keyId }, 'ssh-keys: decrypt failed on connection test');
-    throw new HTTPException(500, {
-      message: 'failed to decrypt the stored key (vault master key may have rotated)',
-      cause: { code: 'DECRYPT_FAILED' },
-    });
-  }
-
-  return testSshConnection(repoUrl, privateKey);
+  return testStoredSshKey(repoUrl, row.privateKeyEnc, { orgId, keyId });
 }

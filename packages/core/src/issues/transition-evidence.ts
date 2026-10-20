@@ -5,7 +5,7 @@ import type { ActorAgency } from './actor-agency.js';
 import type { TransitionErrorCode, TransitionIssueRow } from './apply-transition.js';
 import { findUnmetEntryCriteria } from './entry-criteria.js';
 import type { EntryCriterionKey } from './entry-criteria-keys.js';
-import { statusForCaller } from './status-sets.js';
+import { statusLabel } from './status-sets.js';
 
 export interface TransitionEvidenceViolation {
   code: TransitionErrorCode;
@@ -75,9 +75,9 @@ const entryCriteriaRule: EvidenceRule = {
     return {
       code: 'ENTRY_CRITERIA_UNMET',
       detail:
-        `${statusForCaller(ctx.toStatus)} requires ${shortfall.unmet.length === 1 ? 'a record' : 'records'} this project declares, and ` +
+        `${statusLabel(ctx.toStatus)} needs ${shortfall.unmet.length === 1 ? 'a record' : 'records'} this project declares, and ` +
         `${shortfall.unmet.length === 1 ? 'it is' : 'they are'} missing: ` +
-        shortfall.unmet.map((u) => `${u.key} — ${u.detail}`).join('; '),
+        `${shortfall.unmet.map((u) => `${u.key} — ${u.detail}`).join('; ')}.`,
       details: {
         issueId: ctx.issue.id,
         toStatus: ctx.toStatus,
