@@ -17,7 +17,8 @@ EXIT CODES
   3   UNAUTHORIZED (401)          not retryable — the PAT is missing, revoked or
       expired. `forge-runner login --pat <token>`, or export FORGE_PAT.
   4   FORBIDDEN (403)             not retryable
-  5   NOT_FOUND (404)             not retryable
+  5   NOT_FOUND (404)             not retryable — ROUTE_ABSENT is the same
+      404 where this core serves no such route.
   6   client error (400/409/422)  not retryable — the request is wrong
   7   TOO_MANY_REQUESTS (429)     RETRYABLE after a wait
   8   server error (5xx)          RETRYABLE
@@ -143,6 +144,11 @@ mod tests {
     fn an_empty_body_code_falls_back_instead_of_reporting_nothing() {
         assert_eq!(classify(404, Some("")).code, "NOT_FOUND");
         assert_eq!(classify(404, None).code, "NOT_FOUND");
+        let absent = classify(404, Some("ROUTE_ABSENT"));
+        assert_eq!(
+            (absent.exit_code, absent.code.as_str()),
+            (5, "ROUTE_ABSENT")
+        );
     }
 
     #[test]
