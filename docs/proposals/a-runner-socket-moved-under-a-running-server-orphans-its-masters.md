@@ -12,14 +12,17 @@ placement out until the daemon restarted). Two reads answer it, in `missing_sock
 
 - **The kernel's listing**, on Linux: `/proc/net/unix` still lists a server listening on the path
   after its file is gone, and lists nothing once that server has exited.
-- **The process the runner started as the server**: `pgrep -of -- '-S <path> new-session'`, the
-  argv both routes here start every server with, and the command the refusal names. For tmux's
+- **The process the runner started as the server**: `pgrep -of` on a command line that runs tmux
+  with `-S <path> new-session`, the argv both routes here start every server with, and the command
+  the refusal names. For tmux's
   default server, which carries no `-S`, it is the pid that server gave when a pane was placed on
   it, counted only while `ps` shows the same process start and an argv naming tmux.
 
-A listener or a matching process refuses the placement, naming the socket, the panes still placed
+A readable listing decides alone, because a tmux server holds its listening socket until it exits;
+the process check then only supplies the pid. Where no listing is read, a matching process stands
+in for it. A server found this way refuses the placement, naming the socket, the panes still placed
 on it, and the server's pid with how to send it `SIGUSR1`, which makes tmux recreate the file. A
-readable listing with neither, or off Linux a process check that ran and found none, means the
+readable listing with no listener, or off Linux a process check that ran and found none, means the
 server has ended: the panes placed on it are logged once as ended with it, and the placement starts
 a fresh server. The record also drops a pane wherever tmux reports it gone, by `has_session` or by a
 full listing of the sessions.
