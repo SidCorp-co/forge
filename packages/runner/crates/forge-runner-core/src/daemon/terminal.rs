@@ -120,6 +120,13 @@ fn systemd_stand_in() -> Option<Placement> {
     None
 }
 
+/// Whether a test said the kernel's listing cannot be read; never in a build
+/// that is not a test's. The test build's twin is `testing::listing_unread`.
+#[cfg(all(not(test), target_os = "linux"))]
+fn listing_unread() -> bool {
+    false
+}
+
 /// The one place a tmux process is built, so a test build can hand the
 /// transport a tmux of its own without moving the process's `PATH`, which
 /// every other test's spawn by bare name resolves through (ISS-1312). The test
@@ -275,6 +282,40 @@ mod missing_socket {
 
     static PLACED: Mutex<BTreeMap<Socket, BTreeSet<String>>> = Mutex::new(BTreeMap::new());
     static SAID: Mutex<BTreeSet<Socket>> = Mutex::new(BTreeSet::new());
+    static REFUSED: Mutex<BTreeSet<Socket>> = Mutex::new(BTreeSet::new());
+    /// Where the default server said it serves, and as which pid, the last
+    /// time this daemon placed a pane on it: with no socket resolved there is
+    /// no path to check for, and no `-S` in its argv to find it by (consult F1).
+    static DEFAULT_SERVED: Mutex<Option<(PathBuf, u32)>> = Mutex::new(None);
+
+    pub(super) fn default_served(served: Option<(PathBuf, u32)>) {
+        *DEFAULT_SERVED.lock().unwrap_or_else(|e| e.into_inner()) = served;
+    }
+
+    fn served_default() -> Option<(PathBuf, u32)> {
+        DEFAULT_SERVED
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+    }
+
+    /// The default socket's path as tmux last named it missing, which a daemon
+    /// that restarted after the file went holds with no placement behind it.
+    static DEFAULT_SAID: Mutex<Option<PathBuf>> = Mutex::new(None);
+
+    pub(super) fn default_said(path: Option<PathBuf>) {
+        *DEFAULT_SAID.lock().unwrap_or_else(|e| e.into_inner()) = path;
+    }
+
+    /// Where the default server is, by its own word or by tmux's last refusal.
+    fn default_path() -> Option<PathBuf> {
+        served_default().map(|(path, _)| path).or_else(|| {
+            DEFAULT_SAID
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .clone()
+        })
+    }
 
     pub(super) fn placed(socket: Socket, name: &str) {
         PLACED
@@ -299,6 +340,24 @@ mod missing_socket {
         SAID.lock()
             .unwrap_or_else(|e| e.into_inner())
             .remove(&socket);
+        REFUSED
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(&socket);
+    }
+
+    /// Says a refused placement at error level once per episode, as `say`
+    /// does, since every sweep that finds a master not running places it again.
+    pub(super) fn say_refused(refused: &str) {
+        if REFUSED
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(super::socket_path())
+        {
+            tracing::error!("[terminal] {refused}");
+        } else {
+            tracing::debug!("[terminal] {refused}");
+        }
     }
 
     /// The socket tmux says it tried, which is the only name for it where
@@ -308,8 +367,58 @@ mod missing_socket {
         after.rsplit_once(" (").map(|(path, _)| path)
     }
 
+    fn placed_on(socket: &Socket) -> Vec<String> {
+        PLACED
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(socket)
+            .map(|names| names.iter().cloned().collect())
+            .unwrap_or_default()
+    }
+
+    /// How a person finds the server still running on `path` and has it make
+    /// its socket file again (tmux(1): SIGUSR1 recreates a removed socket).
+    ///
+    /// Not the session unit's `MainPID`: systemd reads `0` for a `forking`
+    /// unit whose tmux client exited, measured on both units of a live box.
+    /// Not every process the kernel lists on the socket either: a pane being
+    /// spawned holds it as a fork of the server until it execs, and SIGUSR1
+    /// ends that fork. The server keeps the argv of the client that started
+    /// it, which both routes here write as `tmux -S <path> new-session`, and
+    /// it is older than any fork or client carrying the same words.
+    pub(super) fn recovery(socket: &Socket, path: &str) -> String {
+        if socket.is_none() {
+            return match served_default() {
+                Some((_, pid)) => format!(
+                    "The default tmux server answered as pid {pid} when this daemon last placed a pane on it; `ps -o args= -p {pid}` shows whether it still runs, and SIGUSR1 to it (`kill -USR1 {pid}`) makes it recreate the file"
+                ),
+                None => "SIGUSR1 to the default tmux server still running on it makes it recreate the file; this daemon placed no pane on it since it started, so it holds no pid for it".to_string(),
+            };
+        }
+        format!(
+            "`pgrep -of -- {}` prints the pid of the tmux server started on that path, and SIGUSR1 to it (`kill -USR1 <pid>`) makes it recreate the file",
+            super::shell_quote(&format!("-S {} new-session", ere_literal(path)))
+        )
+    }
+
+    /// `text` as a POSIX extended regular expression matching only itself,
+    /// for `pgrep`, which reads its pattern as one (consult F2).
+    pub(super) fn ere_literal(text: &str) -> String {
+        let mut out = String::with_capacity(text.len());
+        for c in text.chars() {
+            if "\\.[]()*+?{}|^$".contains(c) {
+                out.push('\\');
+            }
+            out.push(c);
+        }
+        out
+    }
+
     pub(super) fn say(name: &str, said: &str) {
         let socket = super::socket_path();
+        if socket.is_none() {
+            default_said(named_by(said).map(PathBuf::from));
+        }
         if !SAID
             .lock()
             .unwrap_or_else(|e| e.into_inner())
@@ -318,32 +427,122 @@ mod missing_socket {
             tracing::debug!("[terminal] {name}: the tmux socket file is still not there");
             return;
         }
-        let shown = named_by(said).map_or_else(
-            || {
-                socket.as_deref().map_or_else(
-                    || "of the default server".to_string(),
-                    |p| p.display().to_string(),
-                )
-            },
-            str::to_string,
-        );
-        let placed: Vec<String> = PLACED
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .get(&socket)
-            .map(|names| names.iter().cloned().collect())
-            .unwrap_or_default();
+        let path = named_by(said)
+            .map(str::to_string)
+            .or_else(|| socket.as_deref().map(|p| p.display().to_string()));
+        let shown = path
+            .clone()
+            .unwrap_or_else(|| "of the default server".to_string());
+        let placed = placed_on(&socket);
         if placed.is_empty() {
             tracing::warn!(
                 "[terminal] {name}: the tmux socket file {shown} is not there, so no server on it could be asked whether this session is running, and nothing is read as ended. This daemon placed no pane on that socket since it started"
             );
         } else {
             tracing::error!(
-                "[terminal] {name}: the tmux socket file {shown} is not there, so the server this daemon placed {} on could not be asked whether they are running, and none is read as ended — a socket moved or deleted under a running server still holds every session it held. Sending SIGUSR1 to that tmux server recreates the file",
-                placed.join(", ")
+                "[terminal] {name}: the tmux socket file {shown} is not there, so the server this daemon placed {} on could not be asked whether they are running, and none is read as ended — a socket moved or deleted under a running server still holds every session it held. {}",
+                placed.join(", "),
+                path.as_deref()
+                    .map(|p| recovery(&socket, p))
+                    .unwrap_or_default()
             );
         }
     }
+
+    /// Why `name` may not be placed now: the runner's socket file is gone
+    /// while panes are placed on it, so the placement would start a second
+    /// server on that path, which answers `can't find session` for every
+    /// master the first still runs, and each would be acked `gone` (the
+    /// master's ruling of 2026-10-19, ISS-1265 round 5).
+    ///
+    /// Placed is this daemon's record for the socket, or a server the kernel
+    /// still lists listening on the path, which outlives a restart of this
+    /// daemon where the record does not. A listing that cannot be read is not
+    /// an empty one. With neither, a socket never made is a cold start.
+    pub(super) fn placement_refused(name: &str) -> Option<String> {
+        refusal(name, &super::socket_path())
+    }
+
+    /// The same, for the socket `socket` names, or for the default server's
+    /// own path where none was resolved.
+    pub(super) fn refusal(name: &str, socket: &Socket) -> Option<String> {
+        let path = socket.clone().or_else(default_path)?;
+        if !matches!(std::fs::symlink_metadata(&path), Err(e) if e.kind() == std::io::ErrorKind::NotFound)
+        {
+            return None;
+        }
+        let mut why = Vec::new();
+        let placed = placed_on(socket);
+        if !placed.is_empty() {
+            why.push(format!("this daemon placed {} on it", placed.join(", ")));
+        }
+        why.extend(super::still_listening(&path));
+        if why.is_empty() {
+            return None;
+        }
+        let shown = path.display().to_string();
+        Some(format!(
+            "{name} was not placed: the tmux socket file {shown} is not there, and {}. A server started on that path now would answer that it holds no session for every pane the old one still runs, so placement waits until the socket answers again. {}",
+            why.join(", and "),
+            recovery(socket, &shown)
+        ))
+    }
+}
+
+/// Why a server may still run on `socket` though its file is gone, as the
+/// kernel answers it: `/proc/net/unix` still lists a listening socket by the
+/// path it was bound to after that file is unlinked, and a listing that
+/// cannot be read is not an empty one.
+#[cfg(target_os = "linux")]
+fn still_listening(socket: &std::path::Path) -> Option<String> {
+    const TABLE: &str = "/proc/net/unix";
+    let read = if listing_unread() {
+        Err(format!("reading {TABLE}: a test said it cannot be read"))
+    } else {
+        std::fs::read_to_string(TABLE).map_err(|e| format!("reading {TABLE}: {e}"))
+    };
+    let resolved = resolved(socket);
+    match read {
+        Ok(table) => table
+            .lines()
+            .skip(1)
+            .filter_map(listening_path)
+            .any(|path| path == socket || path == resolved.as_path())
+            .then(|| "a tmux server still listens on that path".to_string()),
+        Err(e) => Some(format!(
+            "whether a tmux server still listens on that path could not be read ({e})"
+        )),
+    }
+}
+
+/// No kernel listing is read off Linux, so only this daemon's own record
+/// refuses a placement there; a restart while the file is gone is the case
+/// `docs/proposals/a-runner-socket-moved-under-a-running-server-orphans-its-masters.md`
+/// leaves open.
+#[cfg(not(target_os = "linux"))]
+fn still_listening(_: &std::path::Path) -> Option<String> {
+    None
+}
+
+/// The path of a listening socket in one `/proc/net/unix` row, laid out as
+/// `Num RefCount Protocol Flags Type St Inode Path`: the inode is padded, the
+/// path is the rest of the line after one space and may hold spaces, and a
+/// listening socket carries `__SO_ACCEPTCON` (`0x10000`) in its flags.
+#[cfg(target_os = "linux")]
+fn listening_path(row: &str) -> Option<&std::path::Path> {
+    let mut rest = row;
+    let mut flags = "";
+    for field in 0..7 {
+        rest = rest.trim_start();
+        let end = rest.find(' ')?;
+        if field == 3 {
+            flags = &rest[..end];
+        }
+        rest = &rest[end..];
+    }
+    let path = rest.strip_prefix(' ')?;
+    let listening = u32::from_str_radix(flags, 16).is_ok_and(|f| f & 0x10000 != 0);
+    (listening && !path.is_empty()).then(|| std::path::Path::new(path))
 }
 
 pub async fn alive(name: &str) -> bool {
@@ -705,6 +904,10 @@ pub async fn ensure(
     if alive(name).await {
         return Ok(false);
     }
+    if let Some(refused) = missing_socket::placement_refused(name) {
+        missing_socket::say_refused(&refused);
+        return Err(Error::Other(refused));
+    }
     ensure_server().await;
     let cwd = cwd.to_string_lossy().to_string();
     let mut args: Vec<String> = vec![
@@ -745,10 +948,27 @@ pub async fn ensure(
         )));
     }
     missing_socket::placed(socket_path(), name);
+    if socket_path().is_none() {
+        missing_socket::default_served(served().await);
+    }
     if let Some(path) = transcript {
         pipe_pane(name, path).await;
     }
     Ok(true)
+}
+
+/// The socket path and pid of the server the transport reaches, in its own
+/// words, or `None` where it could not be asked.
+async fn served() -> Option<(std::path::PathBuf, u32)> {
+    let out = tmux(&["display-message", "-p", "#{pid} #{socket_path}"])
+        .await
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let said = String::from_utf8_lossy(&out.stdout);
+    let (pid, path) = said.trim().split_once(' ')?;
+    Some((std::path::PathBuf::from(path), pid.parse().ok()?))
 }
 
 async fn pipe_pane(name: &str, path: &std::path::Path) {
@@ -1070,6 +1290,9 @@ pub fn pane_env() -> Vec<(String, String)> {
 /// second copy over there would be a second thing to keep true.
 #[cfg(test)]
 use testing::{systemd_stand_in, tmux_command};
+
+#[cfg(all(test, target_os = "linux"))]
+use testing::listing_unread;
 
 #[cfg(test)]
 pub(crate) mod testing {
@@ -1395,6 +1618,42 @@ pub(crate) mod testing {
         pub(crate) fn again(&self) {
             std::fs::rename(&self.socket, &self.aside).expect("the socket file moves aside again");
         }
+
+        /// Drops the file set aside, for a server that has made its socket
+        /// again: putting the old file back would cover the one it answers on.
+        pub(crate) fn discard_aside(&self) {
+            std::fs::remove_file(&self.aside).expect("the file set aside is removed");
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    thread_local! {
+        static UNREAD_LISTING: Cell<bool> = const { Cell::new(false) };
+    }
+
+    /// The kernel's listing of listening sockets cannot be read on this thread
+    /// until dropped, as on a box whose `/proc` hides it.
+    #[cfg(target_os = "linux")]
+    pub(crate) struct UnreadListing;
+
+    #[cfg(target_os = "linux")]
+    impl UnreadListing {
+        pub(crate) fn here() -> Self {
+            UNREAD_LISTING.with(|u| u.set(true));
+            Self
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    impl Drop for UnreadListing {
+        fn drop(&mut self) {
+            UNREAD_LISTING.with(|u| u.set(false));
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    pub(super) fn listing_unread() -> bool {
+        UNREAD_LISTING.with(Cell::get)
     }
 
     #[cfg(unix)]
@@ -3775,6 +4034,434 @@ done
             has_session(&name).await,
             Presence::Present,
             "the socket is back and the session it never lost answers"
+        );
+    }
+
+    /// ISS-1265 round 5, judge-56: the line names exactly the panes placed on
+    /// the missing socket and not ended, so a fixed list, or one read across
+    /// sockets, does not pass here.
+    #[cfg(unix)]
+    #[test]
+    fn the_missing_socket_line_names_exactly_the_panes_placed_on_that_socket() {
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _iso = testing::IsolatedServer::new("c31list");
+        let socket = socket_path();
+        let elsewhere = Some(std::path::PathBuf::from("/nonexistent/forge-c31/tmux.sock"));
+        // Named for this process, so no list fixed in the code can match them.
+        let [a, b, ended, other] = ["c31-a", "c31-b", "c31-ended", "c31-other"]
+            .map(|n| session_name(MASTER_PREFIX, &format!("{n}-{}", std::process::id())));
+        for name in [&b, &a, &ended] {
+            missing_socket::placed(socket.clone(), name);
+        }
+        missing_socket::placed(elsewhere.clone(), &other);
+        missing_socket::forgotten(&socket, &ended);
+        let shown = socket
+            .as_deref()
+            .expect("a socket of the test's own")
+            .display()
+            .to_string();
+        let said = logged_while_missing(&format!(
+            "error connecting to {shown} (No such file or directory)\n"
+        ));
+        for name in [&a, &b] {
+            missing_socket::forgotten(&socket, name);
+        }
+        missing_socket::forgotten(&elsewhere, &other);
+        assert!(
+            said.contains(&format!("placed {a}, {b} on")),
+            "exactly the two panes still placed on that socket: {said}"
+        );
+        assert!(
+            !said.contains(&ended) && !said.contains(&other),
+            "never a pane ended since, nor one placed on another socket: {said}"
+        );
+    }
+
+    /// `/proc/net/unix` rows as Linux writes them: a padded inode, a path
+    /// holding a space, a connected socket bound to the same path, and an
+    /// unbound one.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_listening_row_names_its_path_and_no_other_row_does() {
+        let rows = [
+            "0000000000000000: 00000002 00000000 00010000 0001 01   996 /x/a b/tmux.sock",
+            "0000000000000000: 00000003 00000000 00000000 0001 03 39320 /x/a b/tmux.sock",
+            "0000000000000000: 00000003 00000000 00000000 0001 03 39321",
+        ];
+        let read: Vec<_> = rows.iter().map(|r| listening_path(r)).collect();
+        assert_eq!(
+            read,
+            [Some(std::path::Path::new("/x/a b/tmux.sock")), None, None]
+        );
+    }
+
+    /// Starts a master pane named for `tag` on the test's own server.
+    #[cfg(unix)]
+    async fn placed_master(tag: &str, dir: &std::path::Path) -> String {
+        let name = session_name(MASTER_PREFIX, tag);
+        ensure(
+            &name,
+            dir,
+            &["sleep".to_string(), "60".to_string()],
+            &[],
+            None,
+        )
+        .await
+        .expect("the master pane must start");
+        name
+    }
+
+    /// A placement of `tag` on the test's own server, with the error it met.
+    #[cfg(unix)]
+    async fn placing(tag: &str, dir: &std::path::Path) -> (String, Result<bool>) {
+        let name = session_name(MASTER_PREFIX, tag);
+        let placed = ensure(
+            &name,
+            dir,
+            &["sleep".to_string(), "60".to_string()],
+            &[],
+            None,
+        )
+        .await;
+        (name, placed)
+    }
+
+    /// ISS-1265 round 5, judge-56: the missing-socket line names how to find
+    /// the server it asks a person to signal. Run as written, on a real tmux
+    /// server whose file was moved, the command prints that server's pid, and
+    /// SIGUSR1 to it makes tmux put its socket back.
+    #[cfg(unix)]
+    #[allow(clippy::await_holding_lock)]
+    #[tokio::test]
+    async fn the_missing_socket_line_names_the_command_that_finds_the_server() {
+        let _serialised = ONE_AT_A_TIME.lock().await;
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let iso = testing::IsolatedServer::new("sigusr");
+        if !available() {
+            cannot_run("tmux is not installed here — the read this rests on cannot run");
+            return;
+        }
+        if !iso.took() {
+            cannot_run("this box does not resolve its tmux socket from the config dir, so the only server here is its own — not moving its socket");
+            return;
+        }
+        let dir = crate::test_scratch::Scratch::new("terminal-sigusr");
+        let name = placed_master("sigusr", &dir).await;
+        let moved = testing::MovedSocket::aside();
+        let socket = moved.socket().display().to_string();
+        let (said, _logs) = crate::log_capture::capturing();
+        assert_eq!(has_session(&name).await, Presence::Unaskable);
+        let log = said.said();
+        let line = log
+            .lines()
+            .find(|l| l.contains("ERROR") && l.contains(&socket))
+            .unwrap_or_else(|| panic!("an error-level line names the missing socket: {log}"));
+        assert!(line.contains("SIGUSR1"), "{line}");
+        let command = line
+            .split('`')
+            .find(|part| part.starts_with("pgrep "))
+            .unwrap_or_else(|| panic!("the line names the command that finds the server: {line}"));
+        let out = std::process::Command::new("sh")
+            .args(["-c", command])
+            .output()
+            .expect("sh runs");
+        let printed = String::from_utf8_lossy(&out.stdout).into_owned();
+        let pid: i32 = printed
+            .trim()
+            .parse()
+            .unwrap_or_else(|_| panic!("`{command}` prints one pid, the server's: {printed}"));
+        nix::sys::signal::kill(
+            nix::unistd::Pid::from_raw(pid),
+            nix::sys::signal::Signal::SIGUSR1,
+        )
+        .expect("the server takes SIGUSR1");
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        while !moved.socket().exists() {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "SIGUSR1 to pid {pid} never made the socket file again"
+            );
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+        moved.discard_aside();
+        assert_eq!(
+            has_session(&name).await,
+            Presence::Present,
+            "the server that was signalled is the one running the master"
+        );
+    }
+
+    /// ISS-1265 round 5, the master's ruling on the placement residual: with
+    /// the socket file gone and panes placed on it, a placement would start a
+    /// second server on that path, which answers `can't find session` for every
+    /// master the first still runs. It is refused instead, and starts nothing;
+    /// once the file is back, the same placement goes ahead.
+    #[cfg(unix)]
+    #[allow(clippy::await_holding_lock)]
+    #[tokio::test]
+    async fn a_placement_on_a_gone_socket_with_panes_placed_is_refused_and_starts_nothing() {
+        let _serialised = ONE_AT_A_TIME.lock().await;
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let iso = testing::IsolatedServer::new("placemoved");
+        if !available() {
+            cannot_run("tmux is not installed here — the read this rests on cannot run");
+            return;
+        }
+        if !iso.took() {
+            cannot_run("this box does not resolve its tmux socket from the config dir, so the only server here is its own — not moving its socket");
+            return;
+        }
+        let dir = crate::test_scratch::Scratch::new("terminal-placemoved");
+        let first = placed_master("placemoved", &dir).await;
+        let moved = testing::MovedSocket::aside();
+        let socket = moved.socket().display().to_string();
+        let (said, _logs) = crate::log_capture::capturing();
+        let (next, placed) = placing("placemoved-next", &dir).await;
+        let socket_made = moved.socket().exists();
+        let why = placed
+            .expect_err("a second server on that path would orphan the first one's masters")
+            .to_string();
+        assert!(
+            why.contains(&socket) && why.contains(&first) && why.contains("SIGUSR1"),
+            "the refusal names the socket, the pane placed on it and the recovery: {why}"
+        );
+        let (_, twice) = placing("placemoved-next", &dir).await;
+        assert!(twice.is_err(), "still refused while the file stays gone");
+        let log = said.said();
+        let refusals: Vec<&str> = log
+            .lines()
+            .filter(|l| l.contains("ERROR") && l.contains("was not placed"))
+            .collect();
+        assert!(
+            refusals.len() == 1 && refusals[0].contains(&next) && refusals[0].contains(&first),
+            "the refusal is said at error level, once while the file stays gone: {log}"
+        );
+        assert!(
+            !socket_made,
+            "no server was started on that path, so no socket file was made there"
+        );
+        moved.put_back();
+        assert_eq!(
+            has_session(&first).await,
+            Presence::Present,
+            "the server whose file was moved still runs what it ran"
+        );
+        assert_eq!(has_session(&next).await, Presence::Absent);
+        let (_, again) = placing("placemoved-next", &dir).await;
+        assert!(
+            again.expect("the socket answers again, so the placement goes ahead"),
+            "and it places the pane"
+        );
+        assert_eq!(has_session(&next).await, Presence::Present);
+    }
+
+    /// ISS-1265 round 5: a daemon that restarted while the file was gone holds
+    /// no record of what it placed, and the kernel still lists the old server
+    /// listening on that path, which is enough to refuse.
+    #[cfg(target_os = "linux")]
+    #[allow(clippy::await_holding_lock)]
+    #[tokio::test]
+    async fn a_placement_with_no_record_is_refused_while_a_server_still_listens_on_the_path() {
+        let _serialised = ONE_AT_A_TIME.lock().await;
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let iso = testing::IsolatedServer::new("placelisten");
+        if !available() {
+            cannot_run("tmux is not installed here — the read this rests on cannot run");
+            return;
+        }
+        if !iso.took() {
+            cannot_run("this box does not resolve its tmux socket from the config dir, so the only server here is its own — not moving its socket");
+            return;
+        }
+        let dir = crate::test_scratch::Scratch::new("terminal-placelisten");
+        let first = placed_master("placelisten", &dir).await;
+        let moved = testing::MovedSocket::aside();
+        missing_socket::forgotten(&socket_path(), &first);
+        let socket = moved.socket().display().to_string();
+        let (_, placed) = placing("placelisten-next", &dir).await;
+        let socket_made = moved.socket().exists();
+        let why = placed
+            .expect_err("the kernel still lists a server on that path")
+            .to_string();
+        assert!(
+            why.contains(&socket) && why.contains("still listens"),
+            "the refusal names the socket and the server still listening on it: {why}"
+        );
+        assert!(!socket_made, "no server was started on that path");
+    }
+
+    /// ISS-1265 round 5, consult F1: a listing that cannot be read is not an
+    /// empty one, so with the file gone the placement is refused naming the
+    /// read that failed.
+    #[cfg(target_os = "linux")]
+    #[allow(clippy::await_holding_lock)]
+    #[tokio::test]
+    async fn a_placement_on_a_gone_socket_is_refused_where_the_listing_cannot_be_read() {
+        let _serialised = ONE_AT_A_TIME.lock().await;
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let iso = testing::IsolatedServer::new("placeunread");
+        if !available() {
+            cannot_run("tmux is not installed here — the read this rests on cannot run");
+            return;
+        }
+        if !iso.took() {
+            cannot_run("this box does not resolve its tmux socket from the config dir, so the only server here is its own — not asking it");
+            return;
+        }
+        let socket = socket_path().expect("a socket of the test's own");
+        let dir = crate::test_scratch::Scratch::new("terminal-placeunread");
+        let _unread = testing::UnreadListing::here();
+        let (_, placed) = placing("placeunread", &dir).await;
+        let socket_made = socket.exists();
+        let why = placed
+            .expect_err("whether a server still listens there was not read")
+            .to_string();
+        assert!(
+            why.contains("/proc/net/unix") && why.contains(&socket.display().to_string()),
+            "the refusal names the read that failed and the socket: {why}"
+        );
+        assert!(!socket_made, "no server was started on that path");
+    }
+
+    /// ISS-1265 round 5, the ruling's other half: a socket file never made,
+    /// with no pane placed on it and no server listening there, is a cold
+    /// start, and the placement starts the server.
+    #[cfg(unix)]
+    #[allow(clippy::await_holding_lock)]
+    #[tokio::test]
+    async fn a_placement_on_a_socket_never_made_starts_the_server() {
+        let _serialised = ONE_AT_A_TIME.lock().await;
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let iso = testing::IsolatedServer::new("placefresh");
+        if !available() {
+            cannot_run("tmux is not installed here — the read this rests on cannot run");
+            return;
+        }
+        if !iso.took() {
+            cannot_run("this box does not resolve its tmux socket from the config dir, so the only server here is its own — not placing on it");
+            return;
+        }
+        let socket = socket_path().expect("a socket of the test's own");
+        assert!(!socket.exists(), "the plant: no socket file was ever made");
+        let dir = crate::test_scratch::Scratch::new("terminal-placefresh");
+        let (name, placed) = placing("placefresh", &dir).await;
+        assert!(placed.expect("a cold start places"), "and places the pane");
+        assert_eq!(has_session(&name).await, Presence::Present);
+        let (path, pid) = served().await.expect("the server says where it serves");
+        assert_eq!(
+            path, socket,
+            "in its own words, the socket it was started on"
+        );
+        assert!(pid > 1, "and as which pid: {pid}");
+    }
+
+    /// ISS-1265 round 5, consult F1: with no socket resolved the panes go to
+    /// tmux's default server, and its file going missing refuses a placement
+    /// just the same, at the path and pid that server last gave.
+    #[test]
+    fn a_placement_on_the_default_server_whose_file_is_gone_is_refused() {
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let gone = crate::test_scratch::Scratch::new("default-gone");
+        let path = gone.join("tmux-1000").join("default");
+        let pane = session_name(MASTER_PREFIX, &format!("defgone-{}", std::process::id()));
+        assert_eq!(
+            missing_socket::refusal("forge-next", &None),
+            None,
+            "nothing is known of the default server before a pane is placed on it"
+        );
+        missing_socket::default_served(Some((path.clone(), 4242)));
+        missing_socket::placed(None, &pane);
+        let refused = missing_socket::refusal("forge-next", &None);
+        missing_socket::forgotten(&None, &pane);
+        missing_socket::default_served(None);
+        let refused = refused.expect("a second default server would orphan the first's panes");
+        assert!(
+            refused.contains(&path.display().to_string())
+                && refused.contains(&pane)
+                && refused.contains("kill -USR1 4242"),
+            "names the default socket, the pane on it and the pid it answered as: {refused}"
+        );
+    }
+
+    /// ISS-1265 round 5, the second read's F1: a daemon restarted on Linux
+    /// with no socket resolved holds no placement on the default server, and
+    /// the path tmux names missing is enough to ask the kernel whether that
+    /// server still listens there.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_restarted_daemon_refuses_a_default_server_still_listening_where_its_file_was() {
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let scratch = crate::test_scratch::Scratch::short("dflisten");
+        let _xdg = ScopedVar::set("XDG_CONFIG_HOME", scratch.join("d".repeat(100)));
+        assert_eq!(
+            socket_path(),
+            None,
+            "the plant: no socket resolves, so panes go to the default server"
+        );
+        let path = scratch.join("default");
+        let listener =
+            std::os::unix::net::UnixListener::bind(&path).expect("a listener of the test's own");
+        std::fs::remove_file(&path).expect("its file goes, as a cleaner of /tmp removes it");
+        missing_socket::answered(None);
+        missing_socket::say(
+            "forge-asked",
+            &format!(
+                "error connecting to {} (No such file or directory)\n",
+                path.display()
+            ),
+        );
+        let refused = missing_socket::placement_refused("forge-next");
+        drop(listener);
+        let after = missing_socket::placement_refused("forge-next");
+        missing_socket::default_said(None);
+        missing_socket::answered(None);
+        let refused = refused.expect("a server still listens where the default file was");
+        assert!(
+            refused.contains(&path.display().to_string()) && refused.contains("still listens"),
+            "names the default socket and the server still on it: {refused}"
+        );
+        assert_eq!(
+            after, None,
+            "with nothing listening there, a cold start places"
+        );
+    }
+
+    /// ISS-1265 round 5, consult F2: `pgrep` reads its pattern as a regular
+    /// expression, so a path holding `[1]` named the server of `…1…`, an older
+    /// process, instead of its own.
+    #[cfg(unix)]
+    #[test]
+    fn the_recovery_command_finds_its_own_path_and_not_one_its_pattern_also_matches() {
+        let tag = std::process::id();
+        let path = format!("/nonexistent/forge-f[1]-{tag}/tmux.sock");
+        let decoy = format!("/nonexistent/forge-f1-{tag}/tmux.sock");
+        let holding = |p: &str| {
+            std::process::Command::new("sh")
+                .args(["-c", "sleep 30; :", &format!("-S {p} new-session")])
+                .spawn()
+                .expect("sh runs")
+        };
+        let mut older = holding(&decoy);
+        std::thread::sleep(Duration::from_millis(1100));
+        let mut own = holding(&path);
+        let said = missing_socket::recovery(&Some(std::path::PathBuf::from(&path)), &path);
+        let command = said
+            .split('`')
+            .find(|part| part.starts_with("pgrep "))
+            .unwrap_or_else(|| panic!("the line names a pgrep: {said}"))
+            .to_string();
+        let out = std::process::Command::new("sh")
+            .args(["-c", &command])
+            .output()
+            .expect("sh runs");
+        let _ = older.kill();
+        let _ = own.kill();
+        let _ = older.wait();
+        let _ = own.wait();
+        assert_eq!(
+            String::from_utf8_lossy(&out.stdout).trim(),
+            own.id().to_string(),
+            "`{command}` names the process started on that path"
         );
     }
 
