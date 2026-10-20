@@ -87,7 +87,7 @@ vi.mock('../route-helpers.js', () => ({
     new HTTPException(404, { message: `${entity} not found`, cause: { code: 'NOT_FOUND' } }),
   connectionNotReachable: (id: string) =>
     new HTTPException(404, {
-      message: `connection ${id} is not one you can reach.`,
+      message: `Connection ${id} is not one you can reach.`,
       cause: { code: 'CONNECTION_NOT_REACHABLE' },
     }),
   assertVaultConfigured: () => {},

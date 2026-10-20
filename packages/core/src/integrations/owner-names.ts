@@ -7,8 +7,9 @@ import type { IntegrationConnectionRow } from './store.js';
 type Owned = Pick<IntegrationConnectionRow, 'id' | 'ownerType' | 'ownerId'>;
 
 /**
- * Each connection's owner as the product names them: an organization by name, a person as
- * `personName` calls them, never by address (ISS-1216, ISS-1229). Keyed by connection id; an owner that no longer resolves is absent.
+ * Each connection's owner as a sentence names them: an organization by name, a person as
+ * `personName` calls them mid-sentence ("another member"), never by address (ISS-1216, ISS-1229).
+ * Keyed by connection id; an owner that no longer resolves is absent.
  */
 export async function ownerNamesOf(connections: Owned[]): Promise<Map<string, string>> {
   const orgIds = new Set<string>();
@@ -23,7 +24,7 @@ export async function ownerNamesOf(connections: Owned[]): Promise<Map<string, st
       .where(inArray(organizations.id, [...orgIds]));
     for (const row of rows) orgNames.set(row.id, row.name);
   }
-  const personLabels = await userLabels([...userIds]);
+  const personLabels = await userLabels([...userIds], 'inside');
 
   const out = new Map<string, string>();
   for (const c of connections) {
