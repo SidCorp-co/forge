@@ -3206,6 +3206,8 @@
 - **A run drawer attempt no box took shows no box**, reading "No box took it" instead of "unassigned", and a session working a live run is said to be working it. (ISS-1228)
 - **A job its issue's drop or close cut short reads "Cancelled because the issue was dropped"** (or closed), never Completed, and a dropped issue's run reads Stopped. (ISS-1228)
 - **The rescue pass reaches every stuck issue in turn** instead of waking the same hundred every minute and never the rest. (ISS-1228)
+- **A close held back for its deploy still cuts the job it ended**: once the deploy confirms, that job reads "Cancelled because the issue was closed", never done. (ISS-1228)
+- **The issue page says when it could not read which session holds the issue**, with Retry, instead of opening an older session in its place. (ISS-1228)
 - **A step stopped to ask a question says so in the run drawer and points to where it is answered**, its issue's page or the Questions tab, instead of "Unclassified · The cause wasn't recorded". (ISS-1228)
 - **A job's question stands on the issue it was working**: the issue page shows it, and no sweep moves the issue back to Open or names it idle while it stands. (ISS-1228)
 - **A run whose job stopped on a question reads "Needs an answer" while it stands**, then "Answered", never Failed, on the runs tab, the run drawer and the issue page. (ISS-1228)

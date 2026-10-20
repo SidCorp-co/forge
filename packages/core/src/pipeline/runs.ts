@@ -13,7 +13,12 @@ import { jobs, type PipelineRunKind, type PipelineRunStatus, pipelineRuns } from
 import { LIVE_JOB_STATUSES } from '../jobs/status-sets.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
-import { markCloseDeferred, readDeployHolds, resolveDeployGate } from './deploy-confirmations.js';
+import {
+  markCloseDeferred,
+  readDeferredCut,
+  readDeployHolds,
+  resolveDeployGate,
+} from './deploy-confirmations.js';
 import { hooks } from './hooks.js';
 import {
   cascadeCancelChildJobs,
@@ -157,23 +162,28 @@ export type CloseResult = 'settled' | 'deferred';
  * Only `completed` is gated: a run already heading for `failed` or `cancelled`
  * is not making a claim about a deploy.
  */
+/** What the close writes, and the cut it carries: its caller's, or one a deferral stored (ISS-1228). */
+type Gated = { to: 'completed' | 'failed' | 'cancelled'; cut: IssueCut | undefined };
+
 async function gatedOutcome(
   runId: string,
   outcome: 'completed' | 'failed' | 'cancelled',
-): Promise<'completed' | 'failed' | 'cancelled' | null> {
-  if (outcome !== 'completed') return outcome;
-  if (Object.keys(await readDeployHolds(runId)).length === 0) return 'completed';
+  cut?: IssueCut,
+): Promise<Gated | null> {
+  if (outcome !== 'completed') return { to: outcome, cut };
+  if (Object.keys(await readDeployHolds(runId)).length === 0) return { to: 'completed', cut };
 
-  await markCloseDeferred(runId);
+  await markCloseDeferred(runId, cut);
   const gate = resolveDeployGate(await readDeployHolds(runId));
-  if (gate.verdict === 'clear') return 'completed';
+  if (gate.verdict === 'clear')
+    return { to: 'completed', cut: cut ?? (await readDeferredCut(runId)) };
   if (gate.verdict === 'failed') {
     logger.warn(
       { runId, detail: gate.detail },
       'run close: deploy confirmation failed — closing the run `failed` rather than `completed`',
     );
     await setCurrentStep(runId, `${RELEASE_DEPLOY_FAILED_STEP} (${gate.detail})`);
-    return 'failed';
+    return { to: 'failed', cut: undefined };
   }
   await setCurrentStep(runId, `${RELEASE_DEPLOY_IN_FLIGHT_STEP} (${gate.confirmed}/${gate.total})`);
   logger.info(
@@ -195,17 +205,19 @@ export async function closeRun(
   runId: string,
   outcome: 'completed' | 'failed' | 'cancelled',
 ): Promise<CloseResult> {
-  const resolved = await gatedOutcome(runId, outcome);
-  if (resolved === null) return 'deferred';
+  const gated = await gatedOutcome(runId, outcome);
+  if (gated === null) return 'deferred';
+  const { to: resolved, cut } = gated;
   const { rows, cascade } = await db.transaction(async (tx) => {
     const updated = await transitionRunClosed(tx, runId, resolved);
     const c =
       updated.length > 0
-        ? await cascadeCancelChildJobs(tx, runId, reasonForOutcome(resolved))
+        ? await cascadeCancelChildJobs(tx, runId, reasonForOutcome(resolved), cut)
         : null;
     return { rows: updated, cascade: c };
   });
-  if (cascade) await requestKillsForCascade(cascade.killableJobs, reasonForOutcome(resolved));
+  if (cascade)
+    await requestKillsForCascade(cascade.killableJobs, cut?.cause ?? reasonForOutcome(resolved));
   await emitCloseHook(rows, resolved, cascade?.cancelledJobIds ?? []);
   return 'settled';
 }
@@ -372,8 +384,9 @@ export async function closeOpenRunForIssue(
 ): Promise<CloseResult> {
   const open = await selectOpenIssueRun(issueId);
   if (!open) return 'settled';
-  const resolved = await gatedOutcome(open.id, outcome);
-  if (resolved === null) return 'deferred';
+  const gated = await gatedOutcome(open.id, outcome, cut);
+  if (gated === null) return 'deferred';
+  const { to: resolved, cut: carried } = gated;
   const { rows, cascades } = await db.transaction(async (tx) => {
     const updatedRows = await applyKernelTransition(tx, {
       entity: 'run',
@@ -392,13 +405,16 @@ export async function closeOpenRunForIssue(
     const cs = await Promise.all(
       updatedRows.map(async (r) => ({
         runId: r.id,
-        result: await cascadeCancelChildJobs(tx, r.id, reasonForOutcome(resolved), cut),
+        result: await cascadeCancelChildJobs(tx, r.id, reasonForOutcome(resolved), carried),
       })),
     );
     return { rows: updatedRows, cascades: cs };
   });
   for (const c of cascades) {
-    await requestKillsForCascade(c.result.killableJobs, cut?.cause ?? reasonForOutcome(resolved));
+    await requestKillsForCascade(
+      c.result.killableJobs,
+      carried?.cause ?? reasonForOutcome(resolved),
+    );
   }
   const cascadedByRun = new Map(cascades.map((c) => [c.runId, c.result.cancelledJobIds]));
   await emitCloseHookPerRow(rows, resolved, cascadedByRun);

@@ -1709,6 +1709,11 @@ describe("originFromParams", () => {
 describe("issueSessionId — the session Open session opens", () => {
 	const runs = (...sessionIds: (string | null)[]) => sessionIds.map((sessionId) => ({ sessionId }));
 
+	// ISS-1228 round 21: a failed holds read fell back to the run's own session without a word.
+	it("says the holds read failed rather than opening the run's session in its place", () => {
+		expect(issueSessionId("unread", runs("s-b"))).toBe("unread");
+	});
+
 	it("opens the live session holding the issue before any that ran it", () => {
 		expect(issueSessionId(["live-1"], runs("s-new"))).toBe("live-1");
 	});

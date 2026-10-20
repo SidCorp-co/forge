@@ -6,7 +6,7 @@
 // 390 are the measurement of the row.
 
 import * as matchers from "@testing-library/jest-dom/matchers";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { IssueStatus } from "../types";
 import { IssueHeaderActions } from "./issue-header-actions";
@@ -144,3 +144,32 @@ describe("the primary action follows what the run waits on", () => {
     expect(screen.getByRole("button", { name: "Pause" })).toBeInTheDocument();
   });
 });
+
+// ISS-1228 round 21: a failed read of which session holds the issue fell back to the run's own
+// session without a word; it now says so where Open session goes, with Retry.
+describe("a session the page could not read", () => {
+  it("says so with Retry and links to no other session", () => {
+    const retry = vi.fn();
+    render(
+      <IssueHeaderActions
+        slug="forge"
+        sessionHref={null}
+        sessionUnread={{ retry }}
+        status="in_progress"
+        releaseRunId={null}
+        canWrite
+        pending={false}
+        isRunActive
+        onTransition={vi.fn()}
+        onRun={onRun}
+        running={false}
+        onCopyLink={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole("status")).toHaveTextContent("Its session could not be read.");
+    expect(screen.queryByRole("link", { name: "Open session" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(retry).toHaveBeenCalledTimes(1);
+  });
+});
+

@@ -166,4 +166,38 @@ describe('a job its issue’s end cut off reads cut off (criteria 216, 217)', ()
     expect(job?.status).toBe('done');
     expect(session?.status).toBe('completed');
   });
+
+  it('carries a close the deploy gate held back to its finish, cutting the job then (criterion 222)', async () => {
+    const worked = await workedIssue();
+    const hold = {
+      bindingId: 'b-1',
+      deploymentUuid: 'd-1',
+      targetLabel: 'web',
+      status: 'pending',
+      deadlineAt: new Date(Date.now() + 600_000).toISOString(),
+    };
+    await harness.db.execute(sql`
+      UPDATE pipeline_runs SET metadata = jsonb_build_object('__forge_deploy_confirm', jsonb_build_object('target:d-1', ${JSON.stringify(hold)}::jsonb))
+       WHERE id = ${worked.runId}
+    `);
+    const { closeOpenRunForIssue, closeRun } = await import('../../src/pipeline/runs.js');
+    const held = await closeOpenRunForIssue(worked.issueId, 'completed', {
+      cause: 'issue_closed',
+      spares: 'none',
+    });
+    expect(held).toBe('deferred');
+    expect((await rows(worked)).job?.status).toBe('running');
+
+    // What the deploy's confirmation does once its last target succeeds (integrations/coolify/confirm.ts).
+    await harness.db.execute(sql`
+      UPDATE pipeline_runs SET metadata = jsonb_set(metadata, '{__forge_deploy_confirm,target:d-1,status}', '"succeeded"')
+       WHERE id = ${worked.runId}
+    `);
+    expect(await closeRun(worked.runId, 'completed')).toBe('settled');
+
+    const { run, job, session } = await rows(worked);
+    expect(run?.status).toBe('completed');
+    expect(job).toEqual({ status: 'cancelled', failure_reason: 'issue_closed' });
+    expect(session).toEqual({ status: 'cancelled', failure_reason: 'issue_closed' });
+  });
 });

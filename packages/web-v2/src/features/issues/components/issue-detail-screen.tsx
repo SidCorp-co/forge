@@ -215,7 +215,7 @@ export function IssueDetailScreen({
   const holding = (holdsQ.data?.holds?.find((h) => h.issueId === issue.id)?.holders ?? []).flatMap((h) =>
     h.by === "session" ? [h.sessionId] : [],
   );
-  const sessionId = issueSessionId(holding, runs);
+  const sessionId = issueSessionId(holdsQ.isError ? "unread" : holding, runs);
   const liveSession = pickActiveSession(issue.agentSessions);
   const queuedStep = deriveQueuedStep(issue.pipelineHealth, !!liveSession);
   const agentState: LiveAgentState | null = liveSession
@@ -332,7 +332,8 @@ export function IssueDetailScreen({
           />
           <IssueHeaderActions
             slug={slug}
-            sessionHref={sessionId ? `/projects/${slug}/agents/${sessionId}` : null}
+            sessionHref={sessionId && sessionId !== "unread" ? `/projects/${slug}/agents/${sessionId}` : null}
+            sessionUnread={sessionId === "unread" ? unreadOf(holdsQ) : undefined}
             status={issue.status}
             releaseRunId={issue.releaseBatchRunId}
             canWrite={canWrite}

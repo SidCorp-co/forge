@@ -34,6 +34,7 @@ vi.mock('./deploy-confirmations.js', () => ({
   readDeployHolds: (...a: unknown[]) => readHoldsMock(...(a as [])),
   resolveDeployGate: (...a: unknown[]) => deployGateMock(...(a as [])),
   markCloseDeferred: (...a: unknown[]) => markDeferredMock(...(a as [])),
+  readDeferredCut: async () => undefined,
 }));
 
 vi.mock('./hooks.js', () => ({
@@ -311,7 +312,12 @@ describe('closeRun / closeRunIfOneShot / closeOpenRunForIssue', () => {
     expect(closeCall?.set).toMatchObject({ status: 'completed' });
     expect(closeCall?.set.finishedAt).toBeInstanceOf(Date);
     expect(closeCall?.set.updatedAt).toBeInstanceOf(Date);
-    expect(cascadeMock).toHaveBeenCalledWith(expect.anything(), 'run-1', 'pipeline_completed');
+    expect(cascadeMock).toHaveBeenCalledWith(
+      expect.anything(),
+      'run-1',
+      'pipeline_completed',
+      undefined,
+    );
     expect(emitMock).toHaveBeenCalledTimes(1);
     expect(emitMock).toHaveBeenCalledWith('pipelineRunStatusChanged', {
       runId: 'run-1',

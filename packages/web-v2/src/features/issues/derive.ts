@@ -1007,12 +1007,14 @@ export interface RunView {
 /**
  * The session the issue page's Open session opens: one holding the issue now, else the newest
  * session of the newest run that had one, or `null` for an issue no session has run. `runs` are
- * newest first, as `deriveRunView` gives them.
+ * newest first, as `deriveRunView` gives them. A holds read that failed reads `"unread"`: which
+ * session holds the issue is unknown, so no older one stands in for it (ISS-1228).
  */
 export function issueSessionId(
-	holding: readonly string[],
+	holding: readonly string[] | "unread",
 	runs: readonly Pick<RunView, "sessionId">[],
-): string | null {
+): string | "unread" | null {
+	if (holding === "unread") return "unread";
 	return holding[0] ?? runs.find((run) => run.sessionId)?.sessionId ?? null;
 }
 
