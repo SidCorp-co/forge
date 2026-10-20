@@ -573,29 +573,30 @@ jobs:
           done
           if [ -n "$failed" ]; then echo "::error::cross-target clippy failed for:$failed"; exit 1; fi
       # The tests that drive a master pane through a real tmux server return early where tmux is
-      # absent, and a return passes green having asserted nothing — so whether this gate caught
-      # the ensure_master mutants they exist for rested on what the image happened to carry
-      # (ISS-1235). Linux installs tmux (the ubuntu image carries it today; nothing promises
-      # that) and sets FORGE_TEST_REQUIRE_TMUX, under which such a test fails naming what it
-      # lacked instead of returning. macOS resolves the config dir, and so the socket, outside
-      # XDG_CONFIG_HOME, so a test there cannot get a server of its own and still skips;
-      # Windows does not compile the module. Clippy denies warnings, here, in runner-release.yml's
-      # check job and in scripts/check-runner-gates.mjs alike: a lint that only warns is read by
-      # nobody, and five stood on main that way. It runs whether or not the cross-target step
-      # failed, so a push that breaks both platforms and Linux shows all of it in one run; a
-      # cross-target step that never ran means the setup above it failed, and then neither does.
+      # absent, and a return passes green having asserted nothing — so whether this gate caught the
+      # ensure_master mutants they exist for rested on what the image happened to carry (ISS-1235).
+      # Linux and macOS install tmux and set FORGE_TEST_REQUIRE_TMUX, under which such a test fails
+      # naming what it lacked instead of returning; a test build takes a scratch XDG_CONFIG_HOME on
+      # every platform, so macOS gets a server of its own too (ISS-1265). Windows does not compile
+      # the module. Clippy denies warnings, here, in runner-release.yml's check job and in
+      # scripts/check-runner-gates.mjs alike: a lint that only warns is read by nobody, and five
+      # stood on main that way. It runs whether or not the cross-target step failed, so a push that
+      # breaks both platforms and Linux shows all of it in one run; a cross-target step that never
+      # ran means the setup above it failed, and then neither does.
       - name: Lockfile sync + fmt + clippy + test
         if: ${{ !cancelled() && steps.cross.outcome != 'skipped' }}
         working-directory: packages/runner
         shell: bash
-        env:
-          FORGE_TEST_REQUIRE_TMUX: ${{ runner.os == 'Linux' && '1' || '' }}
-        # Anchored: `runner-platforms` runs this same script by alias, so the two cannot drift.
+        # Anchored: `runner-platforms` runs this same env and script by alias, so they cannot drift.
+        env: &runner-gate-env
+          FORGE_TEST_REQUIRE_TMUX: ${{ runner.os != 'Windows' && '1' || '' }}
         run: &runner-gate |
           if [ "$RUNNER_OS" = Linux ]; then
             sudo apt-get update -q && sudo apt-get install -y -q tmux
-            tmux -V
+          elif [ "$RUNNER_OS" = macOS ]; then
+            HOMEBREW_NO_AUTO_UPDATE=1 brew install tmux
           fi
+          if [ -n "$FORGE_TEST_REQUIRE_TMUX" ]; then tmux -V; fi
           cargo metadata --locked --format-version=1 >/dev/null
           cargo fmt --check
           cargo clippy --workspace --all-targets -- -D warnings
@@ -623,6 +624,7 @@ jobs:
       - name: Lockfile sync + fmt + clippy + test
         working-directory: packages/runner
         shell: bash
+        env: *runner-gate-env
         run: *runner-gate
 
   docs:

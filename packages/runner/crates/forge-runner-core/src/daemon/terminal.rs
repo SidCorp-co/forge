@@ -529,15 +529,21 @@ mod missing_socket {
     }
 
     /// Whether a tmux server still runs on `path`, the path of `socket` or of
-    /// the default server where `socket` is `None`.
-    pub(super) fn serving(socket: &Socket, path: &Path) -> Serving {
-        serving_from(super::listing(path), server_process(socket, path))
+    /// the default server where `socket` is `None`, with the process check's
+    /// own answer, which the recovery a line hands a person is built from.
+    fn serving(socket: &Socket, path: &Path) -> (Serving, Found) {
+        let found = server_process(socket, path);
+        (serving_from(super::listing(path), found.clone()), found)
     }
+
+    /// What the process check answered: the pid of the process started as the
+    /// server on the path, none, or why it could not be asked.
+    pub(super) type Found = Result<Option<u32>, String>;
 
     /// The pid of the process the runner started as the tmux server on
     /// `path`, by the same command the line hands a person, so a refusal that
     /// names it names one that finds something.
-    pub(super) fn server_process(socket: &Socket, path: &Path) -> Result<Option<u32>, String> {
+    pub(super) fn server_process(socket: &Socket, path: &Path) -> Found {
         if socket.is_none() {
             let Some(served) = served_default().filter(|s| s.path == path) else {
                 return Err("this daemon holds no pid for the default server".to_string());
@@ -582,23 +588,33 @@ mod missing_socket {
     /// ends that fork. The server keeps the argv of the client that started
     /// it, which both routes here write as `tmux -S <path> new-session`, and
     /// it is older than any fork or client carrying the same words.
-    pub(super) fn recovery(socket: &Socket, path: &str, pid: Option<u32>) -> String {
+    pub(super) fn recovery(socket: &Socket, path: &str, found: &Found) -> String {
         if socket.is_none() {
-            return match served_default() {
-                Some(Served { pid, .. }) => format!(
+            return match (served_default(), found) {
+                (Some(_), Ok(Some(pid))) => format!(
+                    "The default tmux server answered as pid {pid} when this daemon last placed a pane on it and still runs as that process; SIGUSR1 to it (`kill -USR1 {pid}`) makes it recreate the file"
+                ),
+                // The check ran, and the pid is no longer that server: it has
+                // exited or the kernel has handed it to another process, which
+                // SIGUSR1 would end (judge-68).
+                (Some(Served { pid, .. }), Ok(None)) => format!(
+                    "The default tmux server answered as pid {pid} when this daemon last placed a pane on it, and no tmux server holds pid {pid} now, so it is not the one to signal; `ss -xlp src {path}` names the process still listening on that path, and SIGUSR1 to that process (`kill -USR1 <its pid>`) makes it recreate the file"
+                ),
+                (Some(Served { pid, .. }), Err(_)) => format!(
                     "The default tmux server answered as pid {pid} when this daemon last placed a pane on it; `ps -o args= -p {pid}` shows whether it still runs, and SIGUSR1 to it (`kill -USR1 {pid}`) makes it recreate the file"
                 ),
-                None => "SIGUSR1 to the default tmux server still running on it makes it recreate the file; this daemon placed no pane on it since it started, so it holds no pid for it".to_string(),
+                (None, _) => "SIGUSR1 to the default tmux server still running on it makes it recreate the file; this daemon placed no pane on it since it started, so it holds no pid for it".to_string(),
             };
         }
-        let found = match pid {
-            Some(pid) => format!(", pid {pid} now,"),
-            None => String::new(),
-        };
-        format!(
-            "`pgrep -of -- {}` prints the pid of the tmux server started on that path{found} and SIGUSR1 to it (`kill -USR1 <pid>`) makes it recreate the file",
-            super::shell_quote(&server_pattern(path))
-        )
+        let finds = super::shell_quote(&server_pattern(path));
+        match found {
+            Ok(Some(pid)) => format!(
+                "`pgrep -of -- {finds}` prints the pid of the tmux server started on that path, pid {pid} now, and SIGUSR1 to it (`kill -USR1 {pid}`) makes it recreate the file"
+            ),
+            _ => format!(
+                "`pgrep -of -- {finds}` prints the pid of the tmux server started on that path and SIGUSR1 to it (`kill -USR1 <pid>`) makes it recreate the file"
+            ),
+        }
     }
 
     /// What `pgrep -f` matches for the server started on `path`: a command
@@ -666,16 +682,16 @@ mod missing_socket {
             );
             return;
         }
-        let pid = match path.as_deref().map(|p| (p, serving(&socket, p))) {
-            Some((p, Serving::Ended(why))) => return ended_with_server(&socket, p, &why),
-            Some((_, Serving::Runs { pid, .. })) => pid,
-            _ => None,
+        let found = match path.as_deref().map(|p| (p, serving(&socket, p))) {
+            Some((p, (Serving::Ended(why), _))) => return ended_with_server(&socket, p, &why),
+            Some((_, (_, found))) => found,
+            None => Ok(None),
         };
         tracing::error!(
             "[terminal] {name}: the tmux socket file {shown} is not there, so the server this daemon placed {} on could not be asked whether they are running, and none is read as ended — a socket moved or deleted under a running server still holds every session it held. {}",
             placed.join(", "),
             path.as_deref()
-                .map(|p| recovery(&socket, &p.display().to_string(), pid))
+                .map(|p| recovery(&socket, &p.display().to_string(), &found))
                 .unwrap_or_default()
         );
     }
@@ -705,7 +721,8 @@ mod missing_socket {
             return None;
         }
         let placed = placed_on(socket);
-        let (why, pid) = match serving(socket, &path) {
+        let (serves, found) = serving(socket, &path);
+        let (why, pid) = match serves {
             Serving::Ended(why) => {
                 ended_with_server(socket, &path, &why);
                 return None;
@@ -728,7 +745,7 @@ mod missing_socket {
         Some(format!(
             "{name} was not placed: the tmux socket file {shown} is not there, and {}. A server started on that path now would answer that it holds no session for every pane the old one still runs, so placement waits until the socket answers again. {}.{unlisted}",
             because.join(", and "),
-            recovery(socket, &shown, pid)
+            recovery(socket, &shown, &found)
         ))
     }
 }
@@ -4459,6 +4476,7 @@ done
         }
         let dir = crate::test_scratch::Scratch::new("terminal-sigusr");
         let name = placed_master("sigusr", &dir).await;
+        let (_, server) = served().await.expect("the server says which pid it is");
         let moved = testing::MovedSocket::aside();
         let socket = moved.socket().display().to_string();
         let (said, _logs) = crate::log_capture::capturing();
@@ -4469,6 +4487,10 @@ done
             .find(|l| l.contains("ERROR") && l.contains(&socket))
             .unwrap_or_else(|| panic!("an error-level line names the missing socket: {log}"));
         assert!(line.contains("SIGUSR1"), "{line}");
+        assert!(
+            line.contains(&format!("(`kill -USR1 {server}`)")),
+            "the line signals the server's own pid, not a placeholder: {line}"
+        );
         let command = line
             .split('`')
             .find(|part| part.starts_with("pgrep "))
@@ -4525,6 +4547,7 @@ done
         }
         let dir = crate::test_scratch::Scratch::new("terminal-placemoved");
         let first = placed_master("placemoved", &dir).await;
+        let (_, server) = served().await.expect("the server says which pid it is");
         let moved = testing::MovedSocket::aside();
         let socket = moved.socket().display().to_string();
         let (said, _logs) = crate::log_capture::capturing();
@@ -4536,6 +4559,10 @@ done
         assert!(
             why.contains(&socket) && why.contains(&first) && why.contains("SIGUSR1"),
             "the refusal names the socket, the pane placed on it and the recovery: {why}"
+        );
+        assert!(
+            why.contains(&format!("(`kill -USR1 {server}`)")),
+            "the recovery signals that server's own pid: {why}"
         );
         let (_, twice) = placing("placemoved-next", &dir).await;
         assert!(twice.is_err(), "still refused while the file stays gone");
@@ -4826,6 +4853,26 @@ done
         );
     }
 
+    /// Returns once the kernel lists nothing listening at `path`. A sibling
+    /// test that forked while this process held the listener keeps a copy of
+    /// it until that fork execs, so the listing can outlive the drop, and a
+    /// placement refused then is right to be (judge-68, ISS-1265 round 7).
+    #[cfg(target_os = "linux")]
+    fn until_nothing_listens(path: &std::path::Path) {
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        loop {
+            match listing(path) {
+                missing_socket::Listing::Silent => return,
+                other => assert!(
+                    std::time::Instant::now() < deadline,
+                    "the kernel still reads {} as {other:?} 10s after the test closed its listener",
+                    path.display()
+                ),
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+
     /// ISS-1265 round 5, the second read's F1: a daemon restarted on Linux
     /// with no socket resolved holds no placement on the default server, and
     /// the path tmux names missing is enough to ask the kernel whether that
@@ -4855,6 +4902,7 @@ done
         );
         let refused = missing_socket::placement_refused("forge-next");
         drop(listener);
+        until_nothing_listens(&path);
         let after = missing_socket::placement_refused("forge-next");
         missing_socket::default_said(None);
         missing_socket::answered(None);
@@ -4866,6 +4914,113 @@ done
         assert_eq!(
             after, None,
             "with nothing listening there, a cold start places"
+        );
+    }
+
+    /// ISS-1265 round 7, judge-68: a refusal on the runner's own socket said
+    /// "pid N now" and then `kill -USR1 <pid>`, so a person carried the number
+    /// across by hand. The process the check found is the one the command names.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_refusal_on_the_runners_socket_signals_the_pid_it_found() {
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let gone = crate::test_scratch::Scratch::short("foundpid");
+        let path = gone.join("tmux.sock");
+        let socket = Some(path.clone());
+        let pane = session_name(MASTER_PREFIX, &format!("foundpid-{}", std::process::id()));
+        let listener =
+            std::os::unix::net::UnixListener::bind(&path).expect("a listener of the test's own");
+        std::fs::remove_file(&path).expect("its file goes");
+        let tmux = a_shell_named_tmux();
+        let mut server = std::process::Command::new(&tmux.1)
+            .args([
+                "-c",
+                "sleep 30; :",
+                "-S",
+                &path.display().to_string(),
+                "new-session",
+            ])
+            .spawn()
+            .expect("the shell runs");
+        missing_socket::placed(socket.clone(), &pane);
+        let refused = missing_socket::refusal("forge-next", &socket);
+        missing_socket::forgotten(&socket, &pane);
+        drop(listener);
+        let _ = server.kill();
+        let _ = server.wait();
+        let refused = refused.expect("a server still listens there");
+        assert!(
+            refused.contains(&format!("(`kill -USR1 {}`)", server.id()))
+                && !refused.contains("<pid>"),
+            "the command signals the pid the check found, not a placeholder: {refused}"
+        );
+    }
+
+    /// ISS-1265 round 7: where no process started as the server was found,
+    /// the line still hands a person the `pgrep` that finds one and the
+    /// command to run on what it prints.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_refusal_that_found_no_server_process_keeps_the_command_that_finds_one() {
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let gone = crate::test_scratch::Scratch::short("nopid");
+        let path = gone.join("tmux.sock");
+        let socket = Some(path.clone());
+        let pane = session_name(MASTER_PREFIX, &format!("nopid-{}", std::process::id()));
+        let listener =
+            std::os::unix::net::UnixListener::bind(&path).expect("a listener of the test's own");
+        std::fs::remove_file(&path).expect("its file goes");
+        missing_socket::placed(socket.clone(), &pane);
+        let refused = missing_socket::refusal("forge-next", &socket);
+        missing_socket::forgotten(&socket, &pane);
+        drop(listener);
+        let refused = refused.expect("a server still listens there");
+        assert!(
+            refused.contains("`pgrep -of -- ") && refused.contains("(`kill -USR1 <pid>`)"),
+            "the pgrep that finds the server, then the command for what it prints: {refused}"
+        );
+    }
+
+    /// ISS-1265 round 7, judge-68: the default server's line named the pid it
+    /// gave at placement even where the check had just found that pid held by
+    /// a process started at another time, and told a person to signal it.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_default_server_pid_now_held_by_another_process_is_never_named_to_signal() {
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let gone = crate::test_scratch::Scratch::new("default-renamed");
+        let path = gone.join("tmux-1000").join("default");
+        let pane = session_name(MASTER_PREFIX, &format!("defrename-{}", std::process::id()));
+        std::fs::create_dir_all(path.parent().expect("a parent")).expect("its directory");
+        let listener =
+            std::os::unix::net::UnixListener::bind(&path).expect("a listener of the test's own");
+        std::fs::remove_file(&path).expect("its file goes");
+        let mut other = a_tmux_stand_in();
+        let pid = other.id();
+        missing_socket::default_served_as(Some((
+            path.clone(),
+            pid,
+            Some("Thu Jan  1 00:00:00 1970".to_string()),
+        )));
+        missing_socket::placed(None, &pane);
+        let refused = missing_socket::refusal("forge-next", &None);
+        missing_socket::forgotten(&None, &pane);
+        missing_socket::default_served(None);
+        drop(listener);
+        let _ = other.kill();
+        let _ = other.wait();
+        let refused = refused.expect("a server still listens where the default file was");
+        assert!(
+            !refused.contains(&format!("kill -USR1 {pid}")),
+            "the pid is not the server's now, so no line says to signal it: {refused}"
+        );
+        assert!(
+            refused.contains(&format!("no tmux server holds pid {pid} now")),
+            "and the line says so: {refused}"
+        );
+        assert!(
+            refused.contains(&format!("`ss -xlp src {}`", path.display())),
+            "and names what finds the process still listening there: {refused}"
         );
     }
 
@@ -4948,7 +5103,8 @@ done
         let mut older = holding(&decoy);
         std::thread::sleep(Duration::from_millis(1100));
         let mut own = holding(&path);
-        let said = missing_socket::recovery(&Some(std::path::PathBuf::from(&path)), &path, None);
+        let said =
+            missing_socket::recovery(&Some(std::path::PathBuf::from(&path)), &path, &Ok(None));
         let command = said
             .split('`')
             .find(|part| part.starts_with("pgrep "))
