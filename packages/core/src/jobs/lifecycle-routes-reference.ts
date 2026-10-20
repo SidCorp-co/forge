@@ -7,11 +7,9 @@ import { salvageSchema } from './prior-attempts.js';
 
 export const jobIdParamSchema = z.object({ id: z.uuid() });
 
-export const ackBodySchema = z
-  .object({
-    skillsRanWith: z.record(z.string(), z.string().max(128)).optional(),
-  })
-  .passthrough();
+export const ackBodySchema = z.object({
+  skillsRanWith: z.record(z.string(), z.string().max(128)).optional(),
+});
 
 export const completeBodySchema = z
   .object({

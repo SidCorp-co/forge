@@ -17,6 +17,7 @@ import {
   type HealthCheckResult,
   type IntegrationAdapterMethods,
 } from '../types.js';
+import { thrownDiagnostics } from '../unreached.js';
 import { postmanRestBase } from './endpoints.js';
 import { buildPostmanMcpEntry } from './resolver.js';
 import {
@@ -42,7 +43,7 @@ const postmanAdapterMethods: IntegrationAdapterMethods<PostmanConfig, PostmanSec
         lastHealthStatus: 'error',
         lastHealthAt: new Date(),
       });
-      return { status: 'error', message: 'no Postman API key configured' };
+      return { status: 'error', message: 'No Postman API key is saved on this connection.' };
     }
 
     const base = postmanRestBase(ctx.config.region ?? 'us');
@@ -136,7 +137,7 @@ const postmanAdapterMethods: IntegrationAdapterMethods<PostmanConfig, PostmanSec
         { connectionId: ctx.connectionId, bindingId: ctx.bindingId, err: message },
         'postman: healthcheck failed',
       );
-      return { status: 'error', message };
+      return { status: 'error', message, diagnostics: thrownDiagnostics(err) };
     }
   },
 

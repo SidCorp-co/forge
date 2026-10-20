@@ -108,9 +108,19 @@ pub enum BlockedDoor {
     Absent,
 }
 
-/// The marker core's not-found handler writes for a route it does not have;
-/// a missing job says `job not found` instead.
-const ROUTE_ABSENT: &str = "Not Found: POST";
+/// The code core's not-found handler answers a route it does not have under;
+/// a missing job answers `NOT_FOUND` instead. Read off the code, never off the
+/// sentence beside it, which is worded for a person (ISS-1421 r15).
+const ROUTE_ABSENT: &str = "ROUTE_ABSENT";
+
+/// Whether a refusal is core saying it serves no such route.
+fn route_absent(refused: &Refused) -> bool {
+    refused.code == 404
+        && serde_json::from_str::<serde_json::Value>(&refused.text)
+            .ok()
+            .and_then(|body| body.get("code")?.as_str().map(|c| c == ROUTE_ABSENT))
+            .unwrap_or(false)
+}
 
 /// End a job that was stopped on a question, carrying what it asked
 /// (`daemon::job_asked::Asked::to_json`) so core can put it before a person.
@@ -133,7 +143,7 @@ pub async fn blocked(
         return Ok(BlockedDoor::Recorded);
     }
     let refused = Refused::read(resp).await;
-    if refused.code == 404 && refused.text.contains(ROUTE_ABSENT) {
+    if route_absent(&refused) {
         return Ok(BlockedDoor::Absent);
     }
     Err(refused.error)
@@ -275,7 +285,7 @@ mod tests {
         let asked = serde_json::json!({"kind":"unread","why":"x"});
         let url = serve_once(
             "404 Not Found",
-            r#"{"code":"NOT_FOUND","message":"Not Found: POST /api/jobs/job-1/blocked"}"#,
+            r#"{"code":"ROUTE_ABSENT","message":"No route answers POST /api/jobs/job-1/blocked."}"#,
         )
         .await;
         assert_eq!(
@@ -284,6 +294,15 @@ mod tests {
                 .unwrap(),
             BlockedDoor::Absent
         );
+        // The sentence is not the signal: a 404 under another code is a missing job, whatever it says.
+        let url = serve_once(
+            "404 Not Found",
+            r#"{"code":"NOT_FOUND","message":"No route answers POST /api/jobs/job-1/blocked."}"#,
+        )
+        .await;
+        blocked(&client(url), "job-1", "ended", &asked)
+            .await
+            .expect_err("only the code says the route is absent");
         let url = serve_once(
             "404 Not Found",
             r#"{"code":"NOT_FOUND","message":"job not found"}"#,

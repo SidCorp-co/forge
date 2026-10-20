@@ -1,8 +1,9 @@
 import { zValidator as honoZValidator } from '@hono/zod-validator';
 import type { Context, MiddlewareHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import type { ZodType, z } from 'zod';
+import { type ZodType, z } from 'zod';
 import { isBareRefusal } from '../../lib/refusal-sentence.js';
+import { fieldsPolicy, refusesItself, unknownFields } from '../../lib/unknown-fields.js';
 import { schemaRefusalWords, schemaRefused } from '../../lib/zod-sentences.js';
 
 /** What a route's input validator was built from, which the mounted middleware no longer shows. */
@@ -77,6 +78,23 @@ function sentenced(hook: Hook | undefined): Hook {
   };
 }
 
+/**
+ * A JSON body's schema that refuses, by name, a top-level field it does not take (ISS-1421 r15).
+ * One that declares it takes any (`.loose()`, `.catchall()`) is that schema's own say and is kept.
+ */
+export function refusingUnknownFields(schema: ZodType): ZodType {
+  if (fieldsPolicy(schema) === 'open') return schema;
+  return z
+    .unknown()
+    .superRefine((body, ctx) => {
+      const keys = unknownFields(schema, body);
+      if (keys.length > 0 && !refusesItself(schema, body)) {
+        ctx.addIssue({ code: 'unrecognized_keys', keys, input: body as never });
+      }
+    })
+    .pipe(schema as z.ZodType<unknown>);
+}
+
 /** `@hono/zod-validator`'s `zValidator`, its failed parse refused in sentences, that also records what it was built from. */
 export const zValidator: typeof honoZValidator = ((
   target: ValidatorDeclaration['target'],
@@ -87,7 +105,7 @@ export const zValidator: typeof honoZValidator = ((
   const refusing = sentenced((hook ?? undefined) as Hook | undefined);
   const middleware = (honoZValidator as (...args: unknown[]) => MiddlewareHandler)(
     target,
-    schema,
+    target === 'json' ? refusingUnknownFields(schema) : schema,
     refusing,
     options,
   );
@@ -95,12 +113,34 @@ export const zValidator: typeof honoZValidator = ((
   return middleware;
 }) as typeof honoZValidator;
 
-/** Declares the schema a handler parses an input with itself; the middleware passes every request through. */
+/** A body refused for the fields named, in the sentence the shared validator says it in. */
+function unknownFieldsRefused(keys: string[]): HTTPException {
+  const { sentences } = schemaRefusalWords([{ code: 'unrecognized_keys', keys, path: [] }], {
+    valuesAre: 'listed in details.accepted',
+  });
+  return new HTTPException(400, {
+    message: sentences.join(' '),
+    cause: { code: 'BAD_REQUEST', details: { unknownFields: keys } },
+  });
+}
+
+/**
+ * Declares the schema a handler parses an input with itself. The handler keeps its own refusals;
+ * a JSON body field the schema does not name is refused here first, as the shared validator does.
+ */
 export function declaresInput(
   target: ValidatorDeclaration['target'],
   schema: ZodType,
 ): MiddlewareHandler {
-  const middleware: MiddlewareHandler = async (_c, next) => next();
+  const middleware: MiddlewareHandler = async (c, next) => {
+    if (target === 'json' && fieldsPolicy(schema) !== 'open') {
+      // Hono keeps the parsed body, so the handler's own read gets the same one.
+      const body = await c.req.json().catch(() => undefined);
+      const keys = unknownFields(schema, body);
+      if (keys.length > 0) throw unknownFieldsRefused(keys);
+    }
+    return next();
+  };
   validatorDeclarations.set(middleware, { target, schema, hook: null, enforced: false });
   return middleware;
 }

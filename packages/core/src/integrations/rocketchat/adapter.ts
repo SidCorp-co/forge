@@ -15,6 +15,7 @@ import {
   type HealthCheckResult,
   type IntegrationAdapterMethods,
 } from '../types.js';
+import { thrownDiagnostics } from '../unreached.js';
 import {
   ROCKETCHAT_BINDING_CONFIG_KEYS,
   rocketchatConfigBase,
@@ -41,16 +42,22 @@ const rocketChatAdapterMethods: IntegrationAdapterMethods<RocketChatConfig, Rock
     const serverUrl = ctx.config?.serverUrl?.replace(/\/+$/, '');
     const { authToken, userId } = ctx.secrets ?? {};
 
-    const fail = async (status: HealthCheckResult['status'], message: string) => {
+    const fail = async (
+      status: HealthCheckResult['status'],
+      message: string,
+      diagnostics?: Record<string, unknown>,
+    ) => {
       await updateConnection(ctx.connectionId, {
         lastHealthStatus: status,
         lastHealthAt: new Date(),
       });
-      return { status, message };
+      return { status, message, ...(diagnostics ? { diagnostics } : {}) };
     };
 
-    if (!serverUrl) return fail('error', 'no Rocket.Chat serverUrl configured');
-    if (!authToken || !userId) return fail('error', 'no Rocket.Chat bot credentials configured');
+    if (!serverUrl)
+      return fail('error', 'No Rocket.Chat server address is saved on this connection.');
+    if (!authToken || !userId)
+      return fail('error', 'No Rocket.Chat bot credential is saved on this connection.');
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
@@ -60,18 +67,34 @@ const rocketChatAdapterMethods: IntegrationAdapterMethods<RocketChatConfig, Rock
         signal: controller.signal,
       });
       if (res.status === 401 || res.status === 403) {
-        return fail('needs_reauth', `Rocket.Chat rejected the bot credential (HTTP ${res.status})`);
+        return fail(
+          'needs_reauth',
+          `Rocket.Chat refused the bot credential with HTTP ${res.status}.`,
+          {
+            httpStatus: res.status,
+          },
+        );
       }
-      if (!res.ok) return fail('error', `Rocket.Chat /api/v1/me returned HTTP ${res.status}`);
+      if (!res.ok)
+        return fail('error', `Rocket.Chat answered HTTP ${res.status} when asked who the bot is.`, {
+          httpStatus: res.status,
+        });
       const body = (await res.json()) as { success?: boolean; username?: string };
-      if (!body?.success && !body?.username) return fail('error', 'Rocket.Chat /api/v1/me not ok');
+      if (!body?.success && !body?.username)
+        return fail('error', 'Rocket.Chat answered, but did not say who the bot is.', {
+          httpStatus: res.status,
+        });
       await updateConnection(ctx.connectionId, {
         lastHealthStatus: 'ok',
         lastHealthAt: new Date(),
       });
       return { status: 'ok', diagnostics: { username: body.username, serverUrl } };
     } catch (err) {
-      return fail('error', err instanceof Error ? err.message : String(err));
+      return fail(
+        'error',
+        err instanceof Error ? err.message : String(err),
+        thrownDiagnostics(err),
+      );
     } finally {
       clearTimeout(timer);
     }

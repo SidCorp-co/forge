@@ -18,11 +18,11 @@ export type TransitionErrorCode =
   | 'RELEASING_STARTS_FROM_RELEASE'
   | 'RELEASING_ENDS_BY_RELEASE';
 
-/** `details.steps`, a record's key to its whole step, as one line each under the sentence. */
+/** `details.steps`, a line each; the stored key stays in details, so no line opens on it. */
 function stepLines(steps: unknown): string {
   if (!steps || typeof steps !== 'object') return '';
-  return Object.entries(steps)
-    .map(([key, step]) => `\n${key}: ${String(step)}`)
+  return Object.values(steps)
+    .map((step) => `\n${String(step)}`)
     .join('');
 }
 

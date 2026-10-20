@@ -205,12 +205,14 @@ describe('error middleware', () => {
     expect(errorSpy).toHaveBeenCalled();
   });
 
-  it('notFound handler returns { code: NOT_FOUND, message }', async () => {
-    const res = await makeApp().request('/nope');
+  it('notFound handler names the route no handler answers, as a sentence under ROUTE_ABSENT', async () => {
+    const res = await makeApp().request('/nope', { method: 'POST' });
     expect(res.status).toBe(404);
-    const body = (await res.json()) as { code: string; message: string };
-    expect(body.code).toBe('NOT_FOUND');
-    expect(body.message).toContain('/nope');
+    // ISS-1421 r15: judge-65 read "Not Found: GET /api/no-such-route", with no full stop.
+    expect(await res.json()).toEqual({
+      code: 'ROUTE_ABSENT',
+      message: 'No route answers POST /nope.',
+    });
   });
 
   it('HTTPException cause.wwwAuthenticate is attached to the response', async () => {

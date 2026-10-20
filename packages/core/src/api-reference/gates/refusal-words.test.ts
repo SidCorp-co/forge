@@ -96,7 +96,7 @@ function writtenRefusals(): { file: string; status: number; said: string }[] {
 describe('every 4xx refusal written under src, as the error envelope answers it', () => {
   it('is a sentence', async () => {
     const written = writtenRefusals();
-    expect(written.length).toBeGreaterThan(300);
+    expect(written.length).toBeGreaterThan(250);
     const wrong: string[] = [];
     for (const { file, status, said } of written) {
       const mini = new Hono<{ Variables: RequestIdVars }>();

@@ -17,16 +17,52 @@ describe('healthAnswer', () => {
       diagnostics: { httpStatus: 401 },
     });
     expect(answered.message).toBe(
-      'Postman refused the stored credential, so it needs signing in again. It said: Invalid Postman API key.',
+      'Postman refused the stored credential, so it needs signing in again. Invalid Postman API key.',
     );
     expect(answered.diagnostics).toEqual({ httpStatus: 401, checkSaid: 'invalid Postman API key' });
     expect(answered.status).toBe('needs_reauth');
   });
 
   it('says a failed check could not be made, by the provider label', () => {
-    expect(healthAnswer('postman', { status: 'error', message: 'fetch failed' }).message).toBe(
-      'Forge could not check Postman. It said: Fetch failed.',
+    expect(
+      healthAnswer('postman', { status: 'error', message: 'No Postman API key is saved.' }).message,
+    ).toBe('Forge could not check Postman. No Postman API key is saved.');
+  });
+
+  // ISS-1421 r15 — judge-65: a Coolify host that does not resolve answered "Forge could not check
+  // Coolify. It said: Fetch failed.", the HTTP client's text in the mouth of a provider never reached.
+  it("says why a host was not reached in Forge's words, the client's text kept in diagnostics", () => {
+    const answered = healthAnswer('postman', {
+      status: 'error',
+      message: 'fetch failed',
+      diagnostics: { httpStatus: null, unreached: 'host_unresolved', unreachedCode: 'ENOTFOUND' },
+    });
+    expect(answered.message).toBe(
+      'Forge could not reach Postman, because its host name does not resolve. Check the address saved on this connection, then test again.',
     );
+    expect(answered.message).not.toMatch(/It said|fetch failed/i);
+    expect(answered.diagnostics).toMatchObject({
+      checkSaid: 'fetch failed',
+      unreachedCode: 'ENOTFOUND',
+    });
+  });
+
+  it("never quotes a thrown error as Forge's sentence or as the provider's", () => {
+    const answered = healthAnswer('postman', {
+      status: 'error',
+      message: 'Unexpected token < in JSON at position 0',
+      diagnostics: { thrown: true },
+    });
+    expect(answered.message).toBe(
+      'Forge could not check Postman. It failed before Postman answered, and what failed is kept in the diagnostics.',
+    );
+    expect(answered.diagnostics?.checkSaid).toBe('Unexpected token < in JSON at position 0');
+  });
+
+  it('never says "It said" for any answer', () => {
+    for (const status of ['degraded', 'error', 'needs_reauth', 'needs_scope'] as const) {
+      expect(healthAnswer('postman', { status, message: 'x' }).message).not.toMatch(/It said/);
+    }
   });
 
   it('opens every answer with a capital and ends it with a full stop, for every status', () => {

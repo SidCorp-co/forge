@@ -81,8 +81,10 @@ export interface SshConnTest {
     | 'not_found'
     | 'timeout'
     | 'error';
-  /** Human-readable one-liner (safe to show — no secrets). */
+  /** Forge's sentences (safe to show — no secrets). */
   message: string;
+  /** What the git host or ssh said, its paths hidden, kept apart from Forge's words (ISS-1421 r15). */
+  diagnostics?: { hostSaid?: string };
   /** Remote HEAD sha on success, for a "reachable @ abc123" confirmation. */
   headSha?: string;
 }
@@ -209,6 +211,7 @@ async function lsRemote(
     }
     const answer = readHostRefusal((e.stderr ?? '').toString());
     const said = namingTheHost(answer.said, pin);
+    const diagnostics = said ? { diagnostics: { hostSaid: said } } : {};
     switch (answer.kind) {
       case 'key_unreadable':
         return STORED_KEY_UNREADABLE;
@@ -216,22 +219,30 @@ async function lsRemote(
         return {
           ok: false,
           code: 'auth_denied',
-          message: `The git host refused this deploy key. Give it ${KEY_ACCESS} to the repository, ${WHY_KEY_ACCESS}.\n${said}`,
+          message: `The git host refused this deploy key. Give it ${KEY_ACCESS} to the repository, ${WHY_KEY_ACCESS}.`,
+          ...diagnostics,
         };
       case 'no_access':
         return {
           ok: false,
           code: 'not_found',
-          message: `The git host took this deploy key but will not let it read the repository. Give it ${KEY_ACCESS} to the repository, ${WHY_KEY_ACCESS}. If none lives there, fix the SSH clone URL.\n${said}`,
+          message: `The git host took this deploy key but will not let it read the repository. Give it ${KEY_ACCESS} to the repository, ${WHY_KEY_ACCESS}. If none lives there, fix the SSH clone URL.`,
+          ...diagnostics,
         };
       case 'unreachable':
         return {
           ok: false,
           code: 'host_unreachable',
-          message: `Forge could not reach the git host.\n${said}`,
+          message: 'Forge could not reach the git host.',
+          ...diagnostics,
         };
       default:
-        return { ok: false, code: 'error', message: said || 'git ls-remote failed.' };
+        return {
+          ok: false,
+          code: 'error',
+          message: 'Forge could not list the repository, for a reason it does not recognise.',
+          ...diagnostics,
+        };
     }
   }
 }

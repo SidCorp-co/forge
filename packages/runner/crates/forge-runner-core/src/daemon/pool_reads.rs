@@ -619,7 +619,7 @@ mod tests {
     fn gone() -> Took {
         unread(
             Some(404),
-            "pool 404 Not Found: Not Found: GET /api/devices/me/pool",
+            "pool 404 Not Found: No route answers GET /api/devices/me/pool.",
         )
     }
 
@@ -803,7 +803,7 @@ mod tests {
         assert_eq!(said.matches("core answered 404").count(), 1, "{said}");
         assert!(said.contains(P1), "{said}");
         assert!(
-            said.contains("Not Found: GET /api/devices/me/pool"),
+            said.contains("No route answers GET /api/devices/me/pool."),
             "{said}"
         );
         assert!(said.contains("UNSERVED"), "{said}");

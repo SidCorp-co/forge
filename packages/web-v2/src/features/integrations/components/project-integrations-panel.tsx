@@ -281,6 +281,7 @@ export function ProjectIntegrationsPanel({
         onClose={() => setSelectedCard(null)}
         canEdit={canEdit}
         statusReadError={readError}
+        statusReadFailedAt={status.errorUpdatedAt}
         onRetryStatus={() => status.refetch()}
       />
     </div>

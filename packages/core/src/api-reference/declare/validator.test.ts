@@ -164,17 +164,83 @@ describe('what a validator records for the reference', () => {
 });
 
 describe('declaresInput', () => {
-  it('records the schema as declared and not enforced, and lets every request through', async () => {
+  function declaredApp() {
+    const app = new Hono();
+    app.post('/d', declaresInput('json', schema), async (c) => c.json({ got: await c.req.json() }));
+    app.onError((err, c) =>
+      err instanceof HTTPException
+        ? c.json({ refused: err.status, message: err.message }, err.status)
+        : c.json({}, 500),
+    );
+    return app;
+  }
+  const post = (body: string) =>
+    declaredApp().request('/d', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body,
+    });
+
+  it('records the schema as declared and not enforced', () => {
     const mw = declaresInput('json', schema);
     expect(validatorDeclarations.get(mw)).toMatchObject({
       target: 'json',
       schema,
       enforced: false,
     });
-    let reached = false;
-    await mw({} as never, async () => {
-      reached = true;
+  });
+
+  it('lets a body through to the handler, which parses it itself, values and all', async () => {
+    const res = await post('{"n":"zero"}');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ got: { n: 'zero' } });
+  });
+
+  it('lets a body that is not JSON through to the handler, which owns that refusal', async () => {
+    const res = await post('not json');
+    expect(res.status).toBe(500);
+  });
+
+  it('refuses by name a field the schema does not take, before the handler runs (ISS-1421 r15)', async () => {
+    const res = await post('{"n":1,"colour":"red"}');
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({
+      refused: 400,
+      message: 'The field colour is not one this call takes.',
     });
-    expect(reached).toBe(true);
+  });
+});
+
+describe('zValidator on a JSON body', () => {
+  it('refuses by name a field the schema does not take, with the rest of what is wrong', async () => {
+    const app = new Hono();
+    app.post('/j', zValidator('json', schema), (c) => c.json({ ok: true }));
+    app.onError((err, c) =>
+      err instanceof HTTPException
+        ? c.json({ refused: err.status, message: err.message }, err.status)
+        : c.json({}, 500),
+    );
+    const sent = (body: string) =>
+      app.request('/j', { method: 'POST', headers: { 'content-type': 'application/json' }, body });
+    expect(await (await sent('{"n":1,"colour":"red"}')).json()).toEqual({
+      refused: 400,
+      message: 'The field colour is not one this call takes.',
+    });
+    expect(await (await sent('{"colour":"red"}')).json()).toEqual({
+      refused: 400,
+      message: 'The field colour is not one this call takes. The field n takes a number, not NaN.',
+    });
+    expect((await sent('{"n":1}')).status).toBe(200);
+  });
+
+  it('takes any field where the schema says it does', async () => {
+    const app = new Hono();
+    app.post('/j', zValidator('json', schema.loose()), (c) => c.json({ ok: true }));
+    const res = await app.request('/j', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{"n":1,"colour":"red"}',
+    });
+    expect(res.status).toBe(200);
   });
 });

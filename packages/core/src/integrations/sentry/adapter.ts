@@ -6,6 +6,7 @@ import {
   type HealthCheckResult,
   type IntegrationAdapterMethods,
 } from '../types.js';
+import { thrownDiagnostics } from '../unreached.js';
 import { sentryRestBase } from './endpoints.js';
 import { dispatchSentryOutbound } from './issues.js';
 import { buildSentryMcpEntry } from './resolver.js';
@@ -31,14 +32,14 @@ const sentryAdapterMethods: IntegrationAdapterMethods<SentryConfig, SentrySecret
         lastHealthStatus: 'error',
         lastHealthAt: new Date(),
       });
-      return { status: 'error', message: 'no Sentry auth token configured' };
+      return { status: 'error', message: 'No Sentry auth token is saved on this connection.' };
     }
     if (!ctx.config?.host) {
       await updateConnection(ctx.connectionId, {
         lastHealthStatus: 'error',
         lastHealthAt: new Date(),
       });
-      return { status: 'error', message: 'no Sentry host configured' };
+      return { status: 'error', message: 'No Sentry host is saved on this connection.' };
     }
 
     const base = sentryRestBase(ctx.config.host);
@@ -133,7 +134,7 @@ const sentryAdapterMethods: IntegrationAdapterMethods<SentryConfig, SentrySecret
         { connectionId: ctx.connectionId, bindingId: ctx.bindingId, err: message },
         'sentry: healthcheck failed',
       );
-      return { status: 'error', message };
+      return { status: 'error', message, diagnostics: thrownDiagnostics(err) };
     }
   },
 

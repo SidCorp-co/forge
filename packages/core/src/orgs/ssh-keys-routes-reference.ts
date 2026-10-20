@@ -50,6 +50,10 @@ export const sshConnectionTestSchema = z.object({
   ]),
   message: z.string(),
   headSha: z.string().optional(),
+  diagnostics: z
+    .object({ hostSaid: z.string().optional() })
+    .optional()
+    .describe("What the git host or ssh said, its paths hidden; the message is Forge's own words"),
 });
 
 const NO_ORG = 'the organization does not exist';

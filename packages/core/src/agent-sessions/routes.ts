@@ -58,6 +58,7 @@ import {
   assertDeviceOwnsSession,
   assertSessionOwnerOrAdmin,
   badRequest,
+  boxSessionFilter,
   ensureSessionMember,
   ensureSessionOwnerOrAdmin,
   ensureSessionRole,
@@ -265,7 +266,9 @@ agentSessionRoutes.get(
 
     const conditions: SQL[] = [];
 
-    if (projectId) {
+    if (c.get('principal') === 'device') {
+      conditions.push(...boxSessionFilter(c.get('deviceId'), deviceId, projectId));
+    } else if (projectId) {
       const access = await loadProjectAccess(projectId, userId);
       if (!access.role) throw forbidden('not a project member');
       conditions.push(eq(agentSessions.projectId, projectId));

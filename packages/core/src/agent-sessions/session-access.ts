@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { eq, type SQL } from 'drizzle-orm';
 import type { Context } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -29,7 +29,32 @@ export async function loadSessionOr404(sessionId: string) {
   return session;
 }
 
+export const DEVICE_SPEAKS_FOR_NO_PERSON =
+  "A paired box's device token reaches only the sessions dispatched to its box, and this route acts for a person. " +
+  'Send a personal access token, or sign in.';
+
+/** The person a session route acts for; a device, which names none, is refused in those words. */
+/** A box lists the sessions dispatched to it, as `GET /:id` reads one of them, and no other box's. */
+export function boxSessionFilter(
+  own: string | undefined,
+  asked?: string,
+  projectId?: string,
+): SQL[] {
+  if (!own || (asked && asked !== own)) {
+    throw forbidden('A box lists only the sessions dispatched to it.');
+  }
+  const on = [eq(agentSessions.deviceId, own)];
+  if (projectId) on.push(eq(agentSessions.projectId, projectId));
+  return on;
+}
+
+export function personOrRefuse(userId: string | undefined): string {
+  if (!userId) throw forbidden(DEVICE_SPEAKS_FOR_NO_PERSON);
+  return userId;
+}
+
 export async function ensureSessionMember(sessionId: string, userId: string) {
+  personOrRefuse(userId);
   const session = await loadSessionOr404(sessionId);
   const access = await loadProjectAccess(session.projectId, userId);
   // Reads are project-visible: any effective role (incl. viewer) may see the
@@ -44,6 +69,7 @@ export async function ensureSessionRole(
   min: ProjectMemberRole,
   message?: string,
 ) {
+  personOrRefuse(userId);
   const session = await loadSessionOr404(sessionId);
   const access = await loadProjectAccess(session.projectId, userId);
   assertProjectRole(access, min, message);

@@ -31,7 +31,6 @@ import { refuseUnshippedClose } from './merged-at.js';
 import { mintParkQuestion } from './park-question.js';
 import { publishPipelineHealthChanged } from './pipeline-health.js';
 import { postReleaseGateHoldComment, resolveAgentCloseTarget } from './release-gate-hold.js';
-import { refuseUnrecordedClose } from './release-record-required.js';
 import { holdReleaseTagClose } from './release-tag-close.js';
 import { explainReleasingRace, releasingDoorRefusal } from './releasing-door.js';
 import { ISSUE_TERMINAL_STATUSES, statusLabel } from './status-sets.js';
@@ -69,8 +68,6 @@ type TransitionTx = Parameters<Parameters<Db['transaction']>[0]>[0];
 
 export interface ApplyStatusTransitionOptions {
   beforeStatusWrite?: (tx: TransitionTx) => Promise<void>;
-  /** The release notes `beforeStatusWrite` stores, which the close is judged on. */
-  releaseNotesWritten?: unknown;
   /**
    * Bypass `canTransitionFree`. In practice that guard forbids `draft` and the
    * retired rungs as a target and restricts `draft`'s own exits, so this flag
@@ -281,11 +278,6 @@ export async function stageIssueTransition(
     );
   }
 
-  const unrecorded = await refuseUnrecordedClose(issue.id, toStatus, actor, options);
-  if (unrecorded) {
-    throw new TransitionError('RELEASE_RECORD_REQUIRED', unrecorded.detail, unrecorded.details);
-  }
-
   // Asked before the transaction opens, which no repository read should hold; the landing it judged is held inside.
   const guarded = await holdReleaseTagClose(issue, toStatus, options);
 
@@ -293,6 +285,8 @@ export async function stageIssueTransition(
     options.skip === true
       ? []
       : await resolveDeclaredEntryCriteria(issue.projectId, requestedStatus);
+  const releaseNoteOwed =
+    toStatus === 'closed' && actorAgency(actor) === 'agent' && options.viaReleasePath !== true;
 
   const txResult = await executeTransitionWrite({
     issue,
@@ -303,6 +297,7 @@ export async function stageIssueTransition(
     options: guarded,
     reopening,
     declaredCriteria,
+    releaseNoteOwed,
     executor,
   });
   return {
@@ -385,6 +380,8 @@ type TransitionWriteInput = {
   options: ApplyStatusTransitionOptions;
   reopening: boolean;
   declaredCriteria: readonly EntryCriterionKey[];
+  /** An agent's close, which owes a release note whatever the project declares. */
+  releaseNoteOwed: boolean;
   /** The caller's transaction this write is a savepoint of; `db` where absent. */
   executor?: TransitionTx | undefined;
 };
@@ -417,7 +414,7 @@ function kernelActorFor(actor: TransitionActor): KernelActor {
 
 async function executeTransitionWrite(input: TransitionWriteInput): Promise<TransitionWriteResult> {
   const { issue, fromStatus, requestedStatus, toStatus, actor, options, reopening } = input;
-  const { declaredCriteria, executor } = input;
+  const { declaredCriteria, releaseNoteOwed, executor } = input;
   const claim = options.releaseRun;
   // ISS-1421 — `releasing` is entered claimed by a running release run, in this one statement.
   const releaseGate = claim
@@ -466,6 +463,7 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
         agency: actorAgency(actor),
         skip: options.skip === true,
         declaredCriteria,
+        releaseNoteOwed,
         executor: tx,
       });
       if (violation) throw new TransitionError(violation.code, violation.detail, violation.details);

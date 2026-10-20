@@ -7,13 +7,13 @@
  */
 import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
+import { notFoundHandler } from './error.js';
+import type { RequestIdVars } from './request-id.js';
 import { answerUnservedPath } from './unserved-path.js';
 
 function composed() {
-  const app = new Hono();
-  app.notFound((c) =>
-    c.json({ code: 'NOT_FOUND', message: `Not Found: ${c.req.method} ${c.req.path}` }, 404),
-  );
+  const app = new Hono<{ Variables: RequestIdVars }>();
+  app.notFound(notFoundHandler);
   app.use(
     '/api/*',
     answerUnservedPath(() => app),
@@ -36,8 +36,8 @@ describe('answerUnservedPath', () => {
     const res = await composed().request('/api/things-area/no-such', { method: 'POST' });
     expect(res.status).toBe(404);
     expect(await res.json()).toEqual({
-      code: 'NOT_FOUND',
-      message: 'Not Found: POST /api/things-area/no-such',
+      code: 'ROUTE_ABSENT',
+      message: 'No route answers POST /api/things-area/no-such.',
     });
   });
 

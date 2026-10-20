@@ -5,7 +5,7 @@
  */
 
 import { createServer } from 'node:http';
-import type { AddressInfo } from 'node:net';
+import { type AddressInfo, connect as netConnect } from 'node:net';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
 const TEST_SECRET = 'test-secret-at-least-32-chars-long-abcdef';
@@ -132,6 +132,25 @@ function dial(opts: {
   });
 }
 
+/** The whole answer to an upgrade sent by hand, status line, headers and body. */
+function rawUpgrade(token: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const socket = netConnect(port, '127.0.0.1', () => {
+      socket.write(
+        'GET /ws HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n' +
+          'Sec-WebSocket-Version: 13\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n' +
+          `Authorization: Bearer ${token}\r\n\r\n`,
+      );
+    });
+    let got = '';
+    socket.on('data', (chunk) => {
+      got += chunk.toString();
+    });
+    socket.on('close', () => resolve(got));
+    socket.on('error', reject);
+  });
+}
+
 describe('/ws auth — Sec-WebSocket-Protocol subprotocol (ISS-286)', () => {
   it('upgrades when client offers `forge.bearer.<jwt>` and echoes the protocol back', async () => {
     const result = await dial({ protocols: [`forge.bearer.${VALID_USER_TOKEN}`] });
@@ -142,11 +161,25 @@ describe('/ws auth — Sec-WebSocket-Protocol subprotocol (ISS-286)', () => {
   });
 
   // ISS-1421 r14: a session token is a person's; one naming an agent account opens no socket.
-  it('rejects with 401 a session token whose account is an agent', async () => {
+  // r15: it is refused 403 AGENT_CANNOT_LOGIN, as every REST session door refuses it, not 401.
+  it('rejects with 403 AGENT_CANNOT_LOGIN a session token whose account is an agent', async () => {
     accountRead.rows = async () => [{ kind: 'agent' }];
     const result = await dial({ protocols: [`forge.bearer.${VALID_USER_TOKEN}`] });
+    const byHeader = await dial({ headers: { authorization: `Bearer ${VALID_USER_TOKEN}` } });
+    const raw = await rawUpgrade(VALID_USER_TOKEN);
     accountRead.rows = async () => [];
-    expect(result.status === 'error' ? result.code : result.status).toBe(401);
+    expect(result.status === 'error' ? result.code : result.status).toBe(403);
+    expect(byHeader.status === 'error' ? byHeader.code : byHeader.status).toBe(403);
+    expect(raw).toMatch(/^HTTP\/1\.1 403 Forbidden/);
+    expect(raw).toContain('"code":"AGENT_CANNOT_LOGIN"');
+    expect(raw).toContain('This account is an agent and cannot sign in.');
+  });
+
+  it('still opens for a person whose session token names no agent', async () => {
+    accountRead.rows = async () => [{ kind: 'human' }];
+    const result = await dial({ protocols: [`forge.bearer.${VALID_USER_TOKEN}`] });
+    accountRead.rows = async () => [];
+    expect(result.status).toBe('open');
   });
 
   it('refuses with 503, and leaves nothing hanging, when the account cannot be read', async () => {

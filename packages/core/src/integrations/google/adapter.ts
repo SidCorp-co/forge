@@ -16,6 +16,7 @@ import {
   type HealthCheckResult,
   type IntegrationAdapterMethods,
 } from '../types.js';
+import { thrownDiagnostics } from '../unreached.js';
 import { googleAccessToken, parseServiceAccountKey } from './auth.js';
 import { getSpreadsheet } from './client.js';
 import {
@@ -108,7 +109,11 @@ const googleAdapterMethods: IntegrationAdapterMethods<GoogleConfig, GoogleSecret
   async healthcheck(ctx): Promise<HealthCheckResult> {
     const serviceAccountJson = ctx.secrets?.serviceAccountJson;
     if (typeof serviceAccountJson !== 'string' || serviceAccountJson.length === 0) {
-      return failHealth(ctx.connectionId, 'error', 'no Google service-account key is stored');
+      return failHealth(
+        ctx.connectionId,
+        'error',
+        'No Google service-account key is saved on this connection.',
+      );
     }
 
     let mint: MintOutcome;
@@ -125,7 +130,7 @@ const googleAdapterMethods: IntegrationAdapterMethods<GoogleConfig, GoogleSecret
         { connectionId: ctx.connectionId, bindingId: ctx.bindingId, err: message },
         'google: minting an access token failed',
       );
-      return failHealth(ctx.connectionId, 'error', message);
+      return failHealth(ctx.connectionId, 'error', message, thrownDiagnostics(err));
     }
 
     const identity = identityFrom(serviceAccountJson);
@@ -183,7 +188,7 @@ const googleAdapterMethods: IntegrationAdapterMethods<GoogleConfig, GoogleSecret
         { connectionId: ctx.connectionId, bindingId: ctx.bindingId, err: message },
         'google: healthcheck failed',
       );
-      return failHealth(ctx.connectionId, 'error', message);
+      return failHealth(ctx.connectionId, 'error', message, thrownDiagnostics(err));
     }
   },
 

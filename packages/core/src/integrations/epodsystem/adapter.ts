@@ -7,6 +7,7 @@ import {
   type HealthCheckResult,
   type IntegrationAdapterMethods,
 } from '../types.js';
+import { thrownDiagnostics } from '../unreached.js';
 import { epodsystemGraphqlBase } from './endpoints.js';
 import { buildEpodsystemMcpEntry } from './resolver.js';
 import {
@@ -72,7 +73,7 @@ const epodsystemAdapterMethods: IntegrationAdapterMethods<EpodsystemConfig, Epod
         lastHealthStatus: 'error',
         lastHealthAt: new Date(),
       });
-      return { status: 'error', message: 'no Epodsystem API key configured' };
+      return { status: 'error', message: 'No Epodsystem API key is saved on this connection.' };
     }
 
     // The endpoint is fixed platform config (EPODSYSTEM_ENDPOINT env, default
@@ -226,7 +227,7 @@ const epodsystemAdapterMethods: IntegrationAdapterMethods<EpodsystemConfig, Epod
         { connectionId: ctx.connectionId, bindingId: ctx.bindingId, err: message },
         'epodsystem: healthcheck failed',
       );
-      return { status: 'error', message };
+      return { status: 'error', message, diagnostics: thrownDiagnostics(err) };
     }
   },
 

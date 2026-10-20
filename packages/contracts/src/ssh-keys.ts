@@ -50,6 +50,8 @@ export interface SshConnTestResult {
     | 'timeout'
     | 'error';
   message: string;
+  /** What the git host or ssh said, its paths hidden: kept here, never inside `message` (ISS-1421 r15). */
+  diagnostics?: { hostSaid?: string };
   headSha?: string;
 }
 
