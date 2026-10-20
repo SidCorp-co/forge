@@ -8,8 +8,10 @@ Since round 5, `packages/runner/crates/forge-runner-core/src/daemon/terminal.rs:
 placement while panes are placed on the socket, by `missing_socket::placement_refused`. "Placed" has
 two sources: the panes this daemon placed on that socket and has not ended, held in memory, and, on
 Linux, `/proc/net/unix`, which still lists the old server listening on the path after its file is
-gone. The refusal names the socket, the panes, and how to find the server and send it `SIGUSR1`,
-which makes tmux recreate the file.
+gone. Where no socket path resolves and panes go to tmux's default server, the path is the one
+that server gave when a pane was placed on it, or the one tmux last named missing. The refusal
+names the socket, the panes, and how to find the server and send it `SIGUSR1`, which makes tmux
+recreate the file.
 
 ## What is still open
 

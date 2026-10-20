@@ -299,6 +299,24 @@ mod missing_socket {
             .clone()
     }
 
+    /// The default socket's path as tmux last named it missing, which a daemon
+    /// that restarted after the file went holds with no placement behind it.
+    static DEFAULT_SAID: Mutex<Option<PathBuf>> = Mutex::new(None);
+
+    pub(super) fn default_said(path: Option<PathBuf>) {
+        *DEFAULT_SAID.lock().unwrap_or_else(|e| e.into_inner()) = path;
+    }
+
+    /// Where the default server is, by its own word or by tmux's last refusal.
+    fn default_path() -> Option<PathBuf> {
+        served_default().map(|(path, _)| path).or_else(|| {
+            DEFAULT_SAID
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .clone()
+        })
+    }
+
     pub(super) fn placed(socket: Socket, name: &str) {
         PLACED
             .lock()
@@ -370,11 +388,12 @@ mod missing_socket {
     /// it is older than any fork or client carrying the same words.
     pub(super) fn recovery(socket: &Socket, path: &str) -> String {
         if socket.is_none() {
-            if let Some((_, pid)) = served_default() {
-                return format!(
+            return match served_default() {
+                Some((_, pid)) => format!(
                     "The default tmux server answered as pid {pid} when this daemon last placed a pane on it; `ps -o args= -p {pid}` shows whether it still runs, and SIGUSR1 to it (`kill -USR1 {pid}`) makes it recreate the file"
-                );
-            }
+                ),
+                None => "SIGUSR1 to the default tmux server still running on it makes it recreate the file; this daemon placed no pane on it since it started, so it holds no pid for it".to_string(),
+            };
         }
         format!(
             "`pgrep -of -- {}` prints the pid of the tmux server started on that path, and SIGUSR1 to it (`kill -USR1 <pid>`) makes it recreate the file",
@@ -397,6 +416,9 @@ mod missing_socket {
 
     pub(super) fn say(name: &str, said: &str) {
         let socket = super::socket_path();
+        if socket.is_none() {
+            default_said(named_by(said).map(PathBuf::from));
+        }
         if !SAID
             .lock()
             .unwrap_or_else(|e| e.into_inner())
@@ -444,9 +466,7 @@ mod missing_socket {
     /// The same, for the socket `socket` names, or for the default server's
     /// own path where none was resolved.
     pub(super) fn refusal(name: &str, socket: &Socket) -> Option<String> {
-        let path = socket
-            .clone()
-            .or_else(|| served_default().map(|(path, _)| path))?;
+        let path = socket.clone().or_else(default_path)?;
         if !matches!(std::fs::symlink_metadata(&path), Err(e) if e.kind() == std::io::ErrorKind::NotFound)
         {
             return None;
@@ -4365,6 +4385,49 @@ done
                 && refused.contains(&pane)
                 && refused.contains("kill -USR1 4242"),
             "names the default socket, the pane on it and the pid it answered as: {refused}"
+        );
+    }
+
+    /// ISS-1265 round 5, the second read's F1: a daemon restarted on Linux
+    /// with no socket resolved holds no placement on the default server, and
+    /// the path tmux names missing is enough to ask the kernel whether that
+    /// server still listens there.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_restarted_daemon_refuses_a_default_server_still_listening_where_its_file_was() {
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let scratch = crate::test_scratch::Scratch::short("dflisten");
+        let _xdg = ScopedVar::set("XDG_CONFIG_HOME", scratch.join("d".repeat(100)));
+        assert_eq!(
+            socket_path(),
+            None,
+            "the plant: no socket resolves, so panes go to the default server"
+        );
+        let path = scratch.join("default");
+        let listener =
+            std::os::unix::net::UnixListener::bind(&path).expect("a listener of the test's own");
+        std::fs::remove_file(&path).expect("its file goes, as a cleaner of /tmp removes it");
+        missing_socket::answered(None);
+        missing_socket::say(
+            "forge-asked",
+            &format!(
+                "error connecting to {} (No such file or directory)\n",
+                path.display()
+            ),
+        );
+        let refused = missing_socket::placement_refused("forge-next");
+        drop(listener);
+        let after = missing_socket::placement_refused("forge-next");
+        missing_socket::default_said(None);
+        missing_socket::answered(None);
+        let refused = refused.expect("a server still listens where the default file was");
+        assert!(
+            refused.contains(&path.display().to_string()) && refused.contains("still listens"),
+            "names the default socket and the server still on it: {refused}"
+        );
+        assert_eq!(
+            after, None,
+            "with nothing listening there, a cold start places"
         );
     }
 
