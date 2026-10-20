@@ -8,6 +8,7 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
+import { CAPACITY_BARS, type CapacityBar } from '../jobs/capacity-fleet.js';
 
 vi.mock('../config/env.js', () => ({
   env: {
@@ -249,6 +250,53 @@ describe('classifyPipelineHealthForIssue — the two gates that never clear them
     );
     expect(out.waitingOn?.reason).toBe('runner_stale');
     expect(out.waitingOn?.details).toEqual({ freshRunners: 0 });
+  });
+
+  // ISS-1228 r20 (rig): both runners online, one too old and one limited, read "No runner is online".
+  describe('names the runner wait off the online runners, as the capacity notice does', () => {
+    const fleet = (online: number, bars: Partial<Record<CapacityBar, number>>) => ({
+      online,
+      bars: { ...Object.fromEntries(CAPACITY_BARS.map((b) => [b, 0])), ...bars } as Record<
+        CapacityBar,
+        number
+      >,
+    });
+    const waitWith = (f: ReturnType<typeof fleet>) =>
+      classifyPipelineHealthForIssue(
+        baseInput({ jobs: [job()], runnerPool: { total: 0, fleet: f } }),
+      ).waitingOn;
+
+    it('says runner_stale only where no runner is online', () => {
+      expect(waitWith(fleet(0, {}))).toMatchObject({ reason: 'runner_stale' });
+    });
+
+    it('says runner_too_old where every online runner is out of date', () => {
+      expect(waitWith(fleet(2, { too_old: 2 }))).toMatchObject({
+        reason: 'runner_too_old',
+        details: { online: 2 },
+      });
+    });
+
+    it("carries the notice's sentence and next step for a mix of bars", () => {
+      const wait = waitWith(fleet(2, { too_old: 1, limited: 1 }));
+      expect(wait?.reason).toBe('runner_capacity');
+      expect(wait?.details).toEqual({
+        online: 2,
+        bars: ['too_old', 'limited'],
+        summary:
+          'Both of its runners are online, but one is running a build too old to take work, and one is held back by an account limit. Steps keep waiting and resume by themselves once one can take them.',
+        nextStep:
+          "Open this project's Runners tab, then update the runner on an old build, and wait for the account limit to lift, or sign the limited runner in to an account with room.",
+      });
+    });
+
+    it('names an account limit on every online runner as that, never as none online', () => {
+      const wait = waitWith(fleet(1, { limited: 1 }));
+      expect(wait?.reason).toBe('runner_capacity');
+      expect(wait?.details?.summary).toBe(
+        'Its one runner is online, but it is held back by an account limit. Steps keep waiting and resume by themselves once one can take them.',
+      );
+    });
   });
 
   it('reports no reason pool-wide when every runner is alive and busy', () => {

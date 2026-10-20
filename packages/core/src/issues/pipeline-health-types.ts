@@ -10,7 +10,8 @@ export type PipelineWaitingReason =
   | 'run_not_running'
   | 'retry_cooldown'
   | 'runner_stale'
-  | 'runner_too_old';
+  | 'runner_too_old'
+  | 'runner_capacity';
 
 export type WaitingCause = WaitingKind;
 

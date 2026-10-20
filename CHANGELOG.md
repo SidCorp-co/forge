@@ -3204,6 +3204,7 @@
 - **Run step times in the API are ISO timestamps.** (ISS-1228)
 - **When Forge stops sending an issue back to its agent, its comment counts the run's sessions and says how each ended**, and the bell row reads a sentence instead of a stored code. (ISS-1228)
 - **The no-capacity notice's next step fixes the reasons it names**, such as updating an old runner or waiting out an account limit. (ISS-1228)
+- **An issue page no longer says no runner is online while one is**: where online runners cannot take its step, it says why and what to do, as the bell's notice does. (ISS-1228)
 - **The issue page's and a session page's headers, and the chat composer, no longer show the page through them as it scrolls**, and a line divides each from what scrolls beneath; at phone width the issue header's actions keep to one row, Help as its icon. (ISS-1228)
 - **Forge no longer parks an issue for a person while its run waits on a hold that clears by itself**, such as a wait for a free runner, under a comment saying nothing worked on it. (ISS-1228)
 - **A job its runner is working reads Running in the run drawer**, in its header and its activity alike, instead of "Starting" under a Running header. (ISS-1228)

@@ -105,6 +105,7 @@ describe("WAITING_REASON_SHORT", () => {
     "retry_cooldown",
     "runner_stale",
     "runner_too_old",
+    "runner_capacity",
   ];
 
   it("covers every reason with a chip-length label", () => {
@@ -113,6 +114,40 @@ describe("WAITING_REASON_SHORT", () => {
       expect(label, r).toBeTruthy();
       expect(label.length, `${r}: "${label}"`).toBeLessThanOrEqual(24);
     }
+  });
+});
+
+// ISS-1228 r20 (rig): runners online, one too old and one limited, read "No runner is online".
+describe("a wait no online runner can take", () => {
+  const gate = (details: Record<string, unknown>) =>
+    deriveQueuedStep(
+      health({ waitingOn: { reason: "runner_capacity", since: QUEUED_AT, details } }),
+      false,
+    )?.gate;
+
+  it("reads the capacity notice's sentence and next step core sent, and asks for attention", () => {
+    const g = gate({
+      online: 2,
+      bars: ["too_old", "limited"],
+      summary: "Both of its runners are online, but one is running a build too old to take work.",
+      nextStep: "Open this project's Runners tab, then update the runner on an old build.",
+    });
+    expect(g?.detail).toBe("Both of its runners are online, but one is running a build too old to take work.");
+    expect(g?.who).toBe("Open this project's Runners tab, then update the runner on an old build.");
+    expect(g?.short).toBe("No runner can take it");
+    expect(g?.needsAction).toBe(true);
+  });
+
+  it("never says no runner is online, even where core sent no words", () => {
+    expect(gate({})?.detail).not.toMatch(/No runner is online/);
+  });
+
+  it("says no runner is online for runner_stale, and only that", () => {
+    const g = deriveQueuedStep(
+      health({ waitingOn: { reason: "runner_stale", since: QUEUED_AT, details: { freshRunners: 0 } } }),
+      false,
+    )?.gate;
+    expect(g?.detail).toBe("No runner is online for this project.");
   });
 });
 
@@ -125,6 +160,7 @@ describe("gate tone", () => {
 		expect(needs("run_not_running")).toBe(true);
 		expect(needs("retry_cooldown")).toBe(false);
 		expect(needs("runner_too_old")).toBe(true);
+		expect(needs("runner_capacity")).toBe(true);
 		expect(needs("issue_busy")).toBe(false);
 	});
 
