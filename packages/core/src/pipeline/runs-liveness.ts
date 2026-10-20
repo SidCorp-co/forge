@@ -11,7 +11,7 @@ import { agentSessions, jobs, pipelineRuns, terminalAgentSessionStatuses } from 
 import { deviceRunLedger } from '../db/schema-run-ledger.js';
 import { MASTER_SESSION_METADATA_TYPE } from '../devices/run-session-keys.js';
 import { SESSION_SILENCE_TIMEOUT_S } from '../devices/session-silence.js';
-import { AUTO_RELEASE_REASONS, readHoldState } from '../jobs/hold.js';
+import { AUTO_RELEASE_REASONS, readHoldState } from '../jobs/hold-state.js';
 import { CHAT_SESSION_KIND, RUN_SESSION_KIND } from '../jobs/session-kinds.js';
 import { UNHELD_LIVE_JOB_STATUSES } from '../jobs/status-sets.js';
 import type { PipelineRunLane, ResidentMaster } from './runs-lane.js';

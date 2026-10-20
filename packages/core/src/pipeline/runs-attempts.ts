@@ -5,6 +5,7 @@ import { asc, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions, devices, jobs } from '../db/schema.js';
 import { RETRY_MAX_ROUNDS, readAutoRetryPayload } from '../jobs/retry.js';
+import { personNameSql } from '../lib/person-name.js';
 import { holdOf, type RunHold } from './runs-liveness.js';
 
 /** The box a held, unstarted job is on: the box its own session was opened on, else its holder's. */
@@ -14,9 +15,14 @@ const takenDevice = sql<
   THEN COALESCE(${agentSessions.deviceId},
                 (SELECT h.device_id FROM agent_sessions h WHERE h.id = ${jobs.heldBy})) END`;
 
-/** The newest cancel of the job, else of its run: who wrote it, and the person's name where a person did. */
+/**
+ * The newest cancel of the job, else of its run: who wrote it, and the name the person gave where a
+ * person did — never their address, which reads as the unnamed person (ISS-1229).
+ */
 const cancelActor = sql<{ type: string; agency: string; name: string | null } | null>`(
-  SELECT json_build_object('type', t.actor_type, 'agency', t.actor_agency, 'name', u.display_name)
+  SELECT json_build_object('type', t.actor_type, 'agency', t.actor_agency,
+                           'name', CASE WHEN u.id IS NULL THEN NULL
+                                        ELSE ${personNameSql(sql`u.display_name`)} END)
     FROM kernel_transitions t
     LEFT JOIN users u ON u.id = t.actor_id
    WHERE t.to_status = 'cancelled'
