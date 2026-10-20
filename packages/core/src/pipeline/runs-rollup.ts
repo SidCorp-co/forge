@@ -22,8 +22,8 @@ import {
 } from '../db/schema.js';
 import { type RunGate, readRunGate } from '../devices/gate-report.js';
 import { type RunPolicy, readRunPolicy } from '../devices/policy-copy.js';
-import { formatIssueRef } from '../lib/issue-ref.js';
 import { isoOf, isoOrNull } from '../lib/iso-time.js';
+import { formatIssueRef } from '../lib/issue-ref.js';
 import { usageSessionMatch } from '../usage-records/rollup.js';
 import {
   loadAttemptsForRun,
@@ -158,7 +158,6 @@ const EMPTY_COST: PipelineRunCostSummary = {
 
 type RunRow = typeof pipelineRuns.$inferSelect;
 
-
 /**
  * Aggregate the agent_sessions for a single run into one step per `jobType`.
  * Status precedence: running > failed > completed > pending.
@@ -188,7 +187,8 @@ async function loadStepsForRun(runId: string): Promise<PipelineRunStepSummary[]>
     else status = 'pending';
 
     const startedAt = isoOrNull(r.startedAt);
-    const finishedAt = status === 'completed' || status === 'failed' ? isoOrNull(r.finishedAt) : null;
+    const finishedAt =
+      status === 'completed' || status === 'failed' ? isoOrNull(r.finishedAt) : null;
     const durationMs =
       startedAt && finishedAt
         ? new Date(finishedAt).getTime() - new Date(startedAt).getTime()
@@ -341,7 +341,8 @@ export async function loadPipelineRunSummary(runId: string): Promise<PipelineRun
     loadOpenPhaseByRunIds(listItem.lane === 'run_session' ? [runId] : []),
     db.select({ slug: projects.slug }).from(projects).where(eq(projects.id, row.projectId)),
   ]);
-  if (!project) throw new Error(`pipeline run ${runId} names project ${row.projectId}, which is gone`);
+  if (!project)
+    throw new Error(`pipeline run ${runId} names project ${row.projectId}, which is gone`);
   const groupTitles = groupTitlesOf(listItem, await loadGroupTitles([listItem]));
 
   const ref = row.issueId ? issueRefs.get(row.issueId) : undefined;

@@ -128,9 +128,8 @@ function outcomeOf(a: PipelineRunAttempt, cause: FailureCause | null, viewerId: 
   return `Ended ${a.status}`;
 }
 
-/** A person's remedy, read against every attempt after it, naming no control the drawer lacks. A later
- *  attempt nobody cancelled is core's resend, open or itself a later failure, so it asks nothing here;
- *  a cancelled one ended the resend, and the remedy stands (ISS-1228 round 20). */
+/** A person's remedy, naming no control the drawer lacks. A later attempt nobody cancelled is core's
+ *  resend, so it asks nothing here; a cancelled one ended the resend, and the remedy stands. */
 function actionOf(a: PipelineRunAttempt, cause: FailureCause | null, later: readonly PipelineRunAttempt[]): string | null {
   if (a.status === "held") return a.hold && !a.hold.resumesItself ? HELD_STUCK_ACTION : null;
   if (OPEN_STATUSES.has(a.status) || a.status === "cancelled" || !cause) return null;
@@ -171,7 +170,6 @@ export function deriveActivityFeed(
     const position = index + 1;
     const cause = causeOf(a);
     const outcome = outcomeOf(a, cause, viewerId);
-    // A line's remedy is its last attempt's, read against every attempt after it.
     const action = actionOf(a, cause, list.slice(index + 1));
     const sig = signature(a, cause, outcome);
     const previous = entries[entries.length - 1];

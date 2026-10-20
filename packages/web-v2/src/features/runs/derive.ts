@@ -129,8 +129,7 @@ export function runReadingChip(run: RunLiveFields, nowMs: number): RunWord {
 export const runHasStarted = (run: Pick<PipelineRunSummary, "status" | "reading">): boolean =>
   run.status === "running" && (run.reading === "running" || run.reading === "waiting" || run.reading === "blocked");
 
-/** When a run's time is from, and what it is called: its work's first start once anything has started
- *  on it, whatever it reads now (a run queued again still started), else its opening (ISS-1228 r20). */
+/** A run's time: its first start once anything started on it (queued again, it still started), else its opening. */
 export function runSince(run: RunLiveFields, nowMs: number): { word: "Started" | "Opened"; at: string } {
   if (run.runningSince) return { word: "Started", at: run.runningSince };
   const working = run.status !== "running" || runHasStarted(run) || runReadingChip(run, nowMs).label === RUN_STATUS_WORD.running;

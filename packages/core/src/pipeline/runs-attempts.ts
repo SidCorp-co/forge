@@ -63,7 +63,6 @@ function sweptCause(
   return cause === 'unclassified' ? null : cause;
 }
 
-
 export interface PipelineRunAttempt {
   jobId: string;
   jobType: string;

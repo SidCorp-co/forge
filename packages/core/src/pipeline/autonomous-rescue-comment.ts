@@ -34,11 +34,10 @@ export function buildCapReachedCommentBody(args: {
   cap: number;
   sessions: RunSessionTally;
 }): string {
-  const status = statusLabel(args.fromStatus);
   return [
     `🛑 **Forge has stopped sending this issue back to its agent** — it is now waiting on you.`,
     '',
-    `It sat at ${status} with nothing working on it, and Forge sent it back ${args.cap} times on this run without it moving on; another try would most likely end the same way. ${sessionsLine(args.sessions)}`,
+    `It sat at ${statusLabel(args.fromStatus)} with nothing working on it, and Forge sent it back ${args.cap} times on this run without it moving on; another try would most likely end the same way. ${sessionsLine(args.sessions)}`,
     '',
     'What to look at:',
     args.sessions.failed > 0

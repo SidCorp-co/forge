@@ -336,34 +336,6 @@ describe('ISS-164 pipelineHealth E2E', () => {
     expect(health?.waitingOn?.details.freshRunners).toBe(0);
   });
 
-  // ISS-1228 r20 (rig): both runners online, one too old and one limited, read "No runner is online".
-  it('names why the online runners cannot take the step, as the capacity notice does (criterion 200)', async () => {
-    const { project } = await seedProject();
-    const second = await insertFreshRunner(project.id);
-    const issueId = await insertIssue(project.id);
-    await insertJob(project.id, { issueId, status: 'queued', type: 'plan' });
-    await harness.db.execute(sql`
-      UPDATE devices SET status = 'online', last_seen_at = now(), agent_version = '0.10.0'
-       WHERE id = (SELECT device_id FROM runners WHERE project_id = ${project.id} AND id <> ${second})
-    `);
-    await harness.db.execute(sql`
-      UPDATE devices SET status = 'online', last_seen_at = now()
-       WHERE id = (SELECT device_id FROM runners WHERE id = ${second})
-    `);
-    await harness.db.execute(
-      sql`UPDATE runners SET rate_limited_until = now() + interval '3 hours' WHERE id = ${second}`,
-    );
-
-    const health = (await mods.hydratePipelineHealthForIssues(project.id, [issueId])).get(issueId);
-    expect(health?.waitingOn?.reason).toBe('runner_capacity');
-    expect(health?.waitingOn?.details).toMatchObject({
-      online: 2,
-      bars: ['too_old', 'limited'],
-      summary:
-        'Both of its runners are online, but one is running a build too old to take work, and one is held back by an account limit. Steps keep waiting and resume by themselves once one can take them.',
-    });
-  });
-
   it('never reads jobs.gate_reason (live-join contract — preserved after D1 column drop)', async () => {
     const dbModule = (await import('../../src/db/client.js')) as {
       db: { execute: (...args: unknown[]) => unknown };

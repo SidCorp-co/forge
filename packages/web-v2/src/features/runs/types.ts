@@ -82,7 +82,6 @@ export interface PipelineRunAttempt {
   autoRetry: { round: number; target: string | null; tries: number; done: string[] } | null;
   takenBy: { deviceId: string; deviceName: string | null } | null;
   hold?: RunHold | null;
-  /** Who cancelled it; `userId` is the cancelling account's, so the reader who did it reads "you". */
   cancelledBy?: { kind: "person" | "agent" | "core"; userId?: string | null; name: string | null } | null;
 }
 
@@ -105,7 +104,6 @@ export type PipelineRunGroup =
 export interface PipelineRunSummary {
   id: string;
   projectId: string;
-  /** The run's own project's slug, so its issue and session link whichever org is active. */
   projectSlug?: string;
   issueId: string | null;
   lane: PipelineRunLane;

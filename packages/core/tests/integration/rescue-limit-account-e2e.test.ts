@@ -113,7 +113,9 @@ describe('the rescue limit says what the records say (criteria 190, 191)', () =>
 describe('a hold that clears by itself is work, not a stuck issue (criterion 198)', () => {
   async function heldRun(hold: string): Promise<string> {
     const issueId = await cappedRun(['failed']);
-    await harness.db.execute(sql`UPDATE issues SET updated_at = now() - interval '10 minutes' WHERE id = ${issueId}`);
+    await harness.db.execute(
+      sql`UPDATE issues SET updated_at = now() - interval '10 minutes' WHERE id = ${issueId}`,
+    );
     const [run] = await harness.db.execute<{ id: string }>(
       sql`SELECT id FROM pipeline_runs WHERE issue_id = ${issueId}`,
     );
@@ -139,7 +141,10 @@ describe('a hold that clears by itself is work, not a stuck issue (criterion 198
   }
 
   it('leaves an issue whose job waits on a hold that resumes itself at Open, with no park comment', async () => {
-    for (const hold of ['{}', '{"__hold":{"reason":"all_devices_exhausted","heldAt":"2026-10-20T00:00:00Z","autoRelease":true}}']) {
+    for (const hold of [
+      '{}',
+      '{"__hold":{"reason":"all_devices_exhausted","heldAt":"2026-10-20T00:00:00Z","autoRelease":true}}',
+    ]) {
       await truncateAll(harness.db);
       ownerId = (await createTestUser(harness.db, { emailVerifiedAt: new Date() })).id;
       const org = await seedOrg(harness.db, ownerId);

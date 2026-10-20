@@ -148,7 +148,9 @@ const attemptSchema = z.object({
       userId: z
         .string()
         .nullable()
-        .describe('the account that cancelled it, so a reader can tell its own cancel; null for core'),
+        .describe(
+          'the account that cancelled it, so a reader can tell its own cancel; null for core',
+        ),
       name: z.string().nullable(),
     })
     .nullable()
@@ -157,7 +159,9 @@ const attemptSchema = z.object({
 
 /** One run with its step timeline, per-attempt device/retry timeline and cost rolled up. */
 export const pipelineRunSummarySchema = pipelineRunListItemSchema.extend({
-  projectSlug: z.string().describe("the slug of the run's own project, whichever org the reader has active"),
+  projectSlug: z
+    .string()
+    .describe("the slug of the run's own project, whichever org the reader has active"),
   steps: z.array(
     z.object({
       jobType: z.string(),

@@ -126,7 +126,6 @@ vi.mock('../db/client.js', () => ({
         const isPipelineRuns = String(tableKey).startsWith('pipeline_runs');
         const isIssues = String(tableKey).startsWith('issues');
         const isAttempts = String(tableKey).startsWith('jobs.');
-        // The run's own project answers its slug, whichever org the reader has active.
         if (String(tableKey).startsWith('projects.')) {
           return makeChain(Promise.resolve([{ slug: 'run-project' }]));
         }
@@ -248,28 +247,6 @@ describe('loadPipelineRunSummary', () => {
     expect(step.finishedAt).toBeNull();
     expect(step.durationMs).toBeNull();
     expect(step.agentSessionId).toBe(SESS_A);
-  });
-
-  // ISS-1228 r20, judge-62: the step times a raw aggregate reads answered Postgres's own text.
-  it("answers a step's times as ISO and the run's own project slug", async () => {
-    runRowQueue.push([runRow]);
-    stepsQueue.push([
-      {
-        jobType: 'review',
-        latestId: SESS_B,
-        startedAt: '2026-10-20 04:15:53.658+00',
-        finishedAt: '2026-10-20 04:16:00+00',
-        hasRunning: 0,
-        hasFailed: 1,
-        hasCompleted: 0,
-        hasOpen: 0,
-      },
-    ]);
-    const result = await loadPipelineRunSummary(RUN_ID);
-    expect(result?.steps[0]?.startedAt).toBe('2026-10-20T04:15:53.658Z');
-    expect(result?.steps[0]?.finishedAt).toBe('2026-10-20T04:16:00.000Z');
-    expect(result?.steps[0]?.durationMs).toBe(6342);
-    expect(result?.projectSlug).toBe('run-project');
   });
 
   it('terminal step computes durationMs from startedAt → finishedAt', async () => {

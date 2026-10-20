@@ -77,7 +77,9 @@ describe('the capacity notice beside an online runner', () => {
       ]),
       scope,
     );
-    expect(copy?.summary).toContain('one is running a build too old to take work, and one is held back by an account limit');
+    expect(copy?.summary).toContain(
+      'one is running a build too old to take work, and one is held back by an account limit',
+    );
     expect(copy?.nextStep).toBe(
       "Open this project's Runners tab, then update the runner on an old build, and wait for the account limit to lift, or sign the limited runner in to an account with room.",
     );

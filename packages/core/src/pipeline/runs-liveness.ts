@@ -5,18 +5,17 @@
  * Read by both run lists, so the REST row and the MCP row cannot answer differently.
  */
 
-import { sql } from 'drizzle-orm';
+import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions, jobs, pipelineRuns, terminalAgentSessionStatuses } from '../db/schema.js';
 import { deviceRunLedger } from '../db/schema-run-ledger.js';
 import { MASTER_SESSION_METADATA_TYPE } from '../devices/run-session-keys.js';
 import { SESSION_SILENCE_TIMEOUT_S } from '../devices/session-silence.js';
-import { AUTO_RELEASE_REASONS, readHoldState } from '../jobs/hold-state.js';
+import { AUTO_RELEASE_REASONS, HOLD_PAYLOAD_KEY, readHoldState } from '../jobs/hold-state.js';
 import { CHAT_SESSION_KIND, RUN_SESSION_KIND } from '../jobs/session-kinds.js';
 import { UNHELD_LIVE_JOB_STATUSES } from '../jobs/status-sets.js';
 import { isoOrNull } from '../lib/iso-time.js';
 import type { PipelineRunLane, ResidentMaster } from './runs-lane.js';
-
 
 const sqlList = (values: readonly string[]) =>
   sql.join(
@@ -57,6 +56,23 @@ export interface RunHold {
   /** When core next tries a hold that waits out a clock; null where it waits on a condition. */
   recheckAt: string | null;
   since: string | null;
+}
+
+/**
+ * A job held on a hold that clears by itself — the SQL reading of `holdOf`'s `resumesItself`. The
+ * hold re-queues that job on its own recheck, so the issue is not stuck: a rescue would wake the
+ * masters for nothing, and three of them parked the issue for a person under a comment saying
+ * nothing worked on it while its run read Held (ISS-1228).
+ */
+export function holdResumesItselfSql(job: SQL) {
+  const reasons = sql.join(
+    [...AUTO_RELEASE_REASONS].map((r) => sql`${r}`),
+    sql`, `,
+  );
+  const hold = sql`${job}.payload -> ${HOLD_PAYLOAD_KEY}`;
+  return sql`(${job}.status = 'held'
+    AND COALESCE(${hold} ->> 'reason', ${job}.failure_reason) IN (${reasons})
+    AND COALESCE((${hold} ->> 'autoRelease')::boolean, ${hold} IS NULL))`;
 }
 
 /** A held job's hold, read off its row: the reason its payload names, else the row's own. */

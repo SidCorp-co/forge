@@ -49,7 +49,7 @@ describe('what the reconciler says on an issue a person reads', () => {
   });
 
   // ISS-1228 r20, judge-62: four failed sessions read "finished without an error" and "0 agent sessions".
-  it('counts the run\'s sessions and says how they ended, never that a failed one finished cleanly', () => {
+  it("counts the run's sessions and says how they ended, never that a failed one finished cleanly", () => {
     const body = buildCapReachedCommentBody({
       fromStatus: 'open',
       cap: 3,
@@ -72,6 +72,8 @@ describe('what the reconciler says on an issue a person reads', () => {
       cap: 3,
       sessions: { completed: 1, failed: 1, stopped: 1, open: 1 },
     });
-    expect(mixed).toContain('4 agent sessions worked this run: 1 completed, 1 failed, 1 stopped, 1 still open.');
+    expect(mixed).toContain(
+      '4 agent sessions worked this run: 1 completed, 1 failed, 1 stopped, 1 still open.',
+    );
   });
 });

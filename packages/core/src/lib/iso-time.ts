@@ -1,8 +1,4 @@
-/**
- * A timestamp as an API answers it: ISO 8601. A drizzle column answers a `Date`, but a raw read
- * (`db.execute`, an aggregate under `sql<…>`) answers Postgres's own text, such as
- * `2026-10-20 04:15:53.658+00`, which not every reader parses.
- */
+/** ISO 8601 from a `Date` or the Postgres text a raw read answers (`2026-10-20 04:15:53.658+00`). */
 export function isoOrNull(value: Date | string | null | undefined): string | null {
   if (value == null) return null;
   if (value instanceof Date) return value.toISOString();
@@ -11,7 +7,6 @@ export function isoOrNull(value: Date | string | null | undefined): string | nul
   return at.toISOString();
 }
 
-/** As {@link isoOrNull}, for a column that is never null. */
 export function isoOf(value: Date | string): string {
   return isoOrNull(value) as string;
 }

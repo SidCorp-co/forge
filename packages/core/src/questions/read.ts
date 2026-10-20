@@ -172,13 +172,15 @@ const askingJob = sql<{
    ORDER BY j.queued_at DESC
    LIMIT 1)`;
 
-function askedByOf(job: {
-  jobType: string;
-  issueId: string | null;
-  issSeq: number | null;
-  issueTitle: string | null;
-  prefix: string | null;
-} | null): QuestionAskedBy | null {
+function askedByOf(
+  job: {
+    jobType: string;
+    issueId: string | null;
+    issSeq: number | null;
+    issueTitle: string | null;
+    prefix: string | null;
+  } | null,
+): QuestionAskedBy | null {
   if (!job) return null;
   return {
     jobType: job.jobType,
