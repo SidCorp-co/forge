@@ -30,10 +30,35 @@ function takesABody(handlers: readonly object[]): boolean {
   });
 }
 
+/** The most of a body this reads: past it, the body is refused unread, before any gate runs. */
+export const MOST_READ_BYTES = 64 * 1024;
+
+/** The body as text, or null past `MOST_READ_BYTES`, read no further than that. */
+async function boundedText(body: ReadableStream<Uint8Array>): Promise<string | null> {
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    size += value.byteLength;
+    if (size > MOST_READ_BYTES) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks).toString('utf8');
+}
+
 /** The fields a body names, `[]` for one that is not a JSON object, null for none at all. */
 async function sentFields(c: Context): Promise<string[] | null> {
-  if (c.req.header('content-length') === '0' || !c.req.raw.body) return null;
-  const text = (await c.req.text()).trim();
+  const body = c.req.raw.body;
+  if (c.req.header('content-length') === '0' || !body) return null;
+  if (Number(c.req.header('content-length')) > MOST_READ_BYTES) return [];
+  const read = await boundedText(body);
+  if (read === null) return [];
+  const text = read.trim();
   if (text === '') return null;
   let parsed: unknown;
   try {

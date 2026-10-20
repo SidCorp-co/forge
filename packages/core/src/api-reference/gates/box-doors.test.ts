@@ -15,6 +15,8 @@ const SERVES_ANY_PRINCIPAL: Readonly<Record<string, string>> = {
     "relays a box's built prompt to the web client waiting on its request id, reading no project",
 };
 
+const COMMENTS = /\/\*[\s\S]*?\*\/|\/\/.*$/gm;
+
 let routes: RouteEntry[];
 
 beforeAll(async () => {
@@ -26,7 +28,7 @@ describe("a route a paired box's token gets through to", () => {
   it('says in its handler what it does with a box', () => {
     const silent = routes
       .filter((r) => r.admitsBox && !(r.key in SERVES_ANY_PRINCIPAL))
-      .filter((r) => !HANDLES_THE_BOX.test(String(r.handler)))
+      .filter((r) => !HANDLES_THE_BOX.test(String(r.handler).replace(COMMENTS, '')))
       .map((r) => r.key);
     expect(silent, 'each route reads a box as a person who belongs to nothing').toEqual([]);
   });

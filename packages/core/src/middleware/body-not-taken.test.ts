@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { takesBodyAsSent, zValidator } from '../api-reference/declare/validator.js';
-import { refuseBodyNotTaken } from './body-not-taken.js';
+import { MOST_READ_BYTES, refuseBodyNotTaken } from './body-not-taken.js';
 import { errorHandler } from './error.js';
 
 // ISS-1421 r16 — judge-69 asked for a pairing code with `expiresInMinutes: 1` and was minted a
@@ -51,6 +51,43 @@ describe('a write route that declares no body', () => {
       expect(res.status, sent).toBe(400);
       expect(((await res.json()) as { message: string }).message).toBe('This call takes no body.');
     }
+    expect(minted()).toBe(0);
+  });
+
+  it('refuses a streamed body past the bound before reading the rest of it', async () => {
+    const { a, minted } = app();
+    const chunk = new Uint8Array(16 * 1024).fill(0x20);
+    let pulled = 0;
+    let cancelled = false;
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulled += 1;
+        controller.enqueue(chunk);
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    const res = await a.request('/pairing-codes', {
+      method: 'POST',
+      body: stream,
+      duplex: 'half',
+    } as RequestInit);
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { message: string }).message).toBe('This call takes no body.');
+    expect(cancelled).toBe(true);
+    expect(pulled * chunk.byteLength).toBeLessThanOrEqual(MOST_READ_BYTES + 2 * chunk.byteLength);
+    expect(minted()).toBe(0);
+  });
+
+  it('refuses a body declared longer than the bound without reading it', async () => {
+    const { a, minted } = app();
+    const res = await a.request('/pairing-codes', {
+      method: 'POST',
+      body: ' '.repeat(MOST_READ_BYTES + 1),
+      headers: { 'content-length': String(MOST_READ_BYTES + 1) },
+    });
+    expect(res.status).toBe(400);
     expect(minted()).toBe(0);
   });
 

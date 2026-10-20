@@ -77,7 +77,12 @@ describe('zodRefusalMessage', () => {
       action: z.enum(['get']),
       documentId: z.string().optional(),
       projectId: z.string().optional(),
-      data: z.strictObject({ title: z.string() }).optional(),
+      data: z
+        .strictObject({
+          title: z.string(),
+          attachments: z.array(z.strictObject({ name: z.string() })).optional(),
+        })
+        .optional(),
     });
     const json = z.toJSONSchema(tool) as Record<string, unknown>;
     const said = (input: unknown) => {
@@ -90,6 +95,9 @@ describe('zodRefusalMessage', () => {
     );
     expect(said({ action: 'get', data: { titel: 'x' } })).toContain(
       'This call takes `data.title`, which may be what `data.titel` meant.',
+    );
+    expect(said({ action: 'get', data: { title: 't', attachments: [{ nmae: 'a' }] } })).toContain(
+      'This call takes `data.attachments.0.name`, which may be what `data.attachments.0.nmae` meant.',
     );
     expect(said({ action: 'get', colour: 'x' })).toBe(
       'BAD_REQUEST: The field `colour` is not one this call takes.',

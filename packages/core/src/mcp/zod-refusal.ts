@@ -2,6 +2,7 @@ import { fieldsNear, schemaRefusalWords } from '../lib/zod-sentences.js';
 
 type JsonNode = {
   properties?: Record<string, JsonNode>;
+  items?: JsonNode | JsonNode[];
   anyOf?: JsonNode[];
   oneOf?: JsonNode[];
   allOf?: JsonNode[];
@@ -20,6 +21,7 @@ function fieldsAt(schema: JsonNode, path: readonly PropertyKey[]): string[] {
   let nodes = [schema];
   for (const segment of path) {
     nodes = nodes.flatMap(branches).flatMap((n) => {
+      if (typeof segment === 'number') return n.items ? [n.items].flat() : [];
       const next = n.properties?.[String(segment)];
       return next ? [next] : [];
     });
