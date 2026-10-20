@@ -14,6 +14,8 @@ interface BlockerBannerProps {
   onResumePark: (to: IssueStatus) => void;
   onResumeRun: (runId: string) => void;
   onProvideInfo: () => void;
+  /** Read again what the issue waits on, where that read failed (ISS-1228). */
+  onRetryPark?: (() => void) | undefined;
 }
 
 export function BlockerBanner({
@@ -24,6 +26,7 @@ export function BlockerBanner({
   onResumePark,
   onResumeRun,
   onProvideInfo,
+  onRetryPark,
 }: BlockerBannerProps) {
   const { cta, runId, resumeAt } = blocker;
 
@@ -49,6 +52,12 @@ export function BlockerBanner({
   } else if (cta.kind === "provide-info") {
     action = (
       <Button variant="primary" size="sm" icon="mail" onClick={onProvideInfo}>
+        {cta.label}
+      </Button>
+    );
+  } else if (cta.kind === "retry-park" && onRetryPark) {
+    action = (
+      <Button variant="secondary" size="sm" icon="rerun" onClick={onRetryPark}>
         {cta.label}
       </Button>
     );

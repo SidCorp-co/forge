@@ -404,7 +404,7 @@ describe('closeRun / closeRunIfOneShot / closeOpenRunForIssue', () => {
     await closeOpenRunForIssue('i-1', 'completed');
     const closeCall = updateCalls.find((c) => c.returnedRows.length > 0);
     expect(closeCall?.set.status).toBe('completed');
-    expect(cascadeMock).toHaveBeenCalledWith(expect.anything(), 'run-1', 'pipeline_completed');
+    expect(cascadeMock).toHaveBeenCalledWith(expect.anything(), 'run-1', 'pipeline_completed', undefined);
     expect(emitMock).toHaveBeenCalledTimes(1);
     expect(emitMock).toHaveBeenLastCalledWith('pipelineRunStatusChanged', {
       runId: 'run-1',

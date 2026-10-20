@@ -464,3 +464,63 @@ describe("round 19: held, cancelled, question and control-free remedies", () => 
     expect(line?.verb).toBe("Blocked, holding the box");
   });
 });
+
+// ISS-1228 round 21 (judge-67): the drawer of an answered question still said "Answer its question on
+// its issue's page." under the header "Answered"; an attempt no box took wore the chip "unassigned";
+// a job its issue's drop cut short read "Completed".
+describe("what was answered or cut off reads so", () => {
+  const asked = (over: Partial<PipelineRunAttempt> = {}) =>
+    attempt({
+      status: "failed",
+      failureReason: "stopped_on_question",
+      failureCause: "stopped_on_question",
+      questionOn: "issue",
+      ...over,
+    });
+
+  it("names who answered a question and when, and asks nothing", () => {
+    const at = new Date(Date.now() - 4 * 60_000).toISOString();
+    const [mine] = deriveActivityFeed([asked({ questionAnswered: { userId: "u-1", name: "Ann Lee", at } })], undefined, "u-1");
+    expect(mine?.action).toBe("Answered by you, 4m ago.");
+    const [theirs] = deriveActivityFeed([asked({ questionAnswered: { userId: "u-1", name: "Ann Lee", at } })], undefined, "u-2");
+    expect(theirs?.action).toBe("Answered by Ann Lee, 4m ago.");
+    expect(theirs?.action).not.toMatch(/Answer its question/);
+  });
+
+  it("still sends the reader to a question nobody has answered", () => {
+    const [entry] = deriveActivityFeed([asked({ questionAnswered: null })]);
+    expect(entry?.action).toBe("Answer its question on its issue's page.");
+  });
+
+  it("says nothing is asked once core sent an answered attempt again", () => {
+    const at = new Date(Date.now() - 60_000).toISOString();
+    const [first] = deriveActivityFeed([
+      asked({ questionAnswered: { userId: "u-1", name: "Ann Lee", at } }),
+      attempt({ status: "queued", ranAt: null, finishedAt: null }),
+    ]);
+    expect(first?.action).toBe("Answered by Ann Lee, 1m ago. Core already sent it again, so nothing is asked of you.");
+  });
+
+  it("shows no box for an attempt no box took, and says so where its outcome does not", () => {
+    const [cancelled] = deriveActivityFeed([
+      attempt({ status: "cancelled", deviceId: null, deviceName: null, ranAt: null, cancelledBy: { kind: "person", userId: "u-1", name: "Ann Lee" } }),
+    ]);
+    expect(cancelled?.device).toBeNull();
+    expect(cancelled?.noBox).toBe("No box took it");
+    const [timedOut] = deriveActivityFeed([
+      attempt({ status: "failed", deviceId: null, deviceName: null, ranAt: null, failureCause: "queue_timeout" }),
+    ]);
+    expect(timedOut?.outcome).toBe("No box took it before the queue timeout");
+    expect(timedOut?.noBox).toBeNull();
+    const [queued] = deriveActivityFeed([attempt({ status: "queued", deviceId: null, deviceName: null, ranAt: null, finishedAt: null })]);
+    expect(queued?.device).toBeNull();
+    expect(queued?.noBox).toBeNull();
+  });
+
+  it("reads a job its issue's drop or close cut short as cancelled for that, never Completed", () => {
+    const [dropped] = deriveActivityFeed([attempt({ status: "cancelled", failureReason: "issue_dropped" })]);
+    expect(dropped?.outcome).toBe("Cancelled because the issue was dropped");
+    const [closed] = deriveActivityFeed([attempt({ status: "cancelled", failureReason: "issue_closed" })]);
+    expect(closed?.outcome).toBe("Cancelled because the issue was closed");
+  });
+});

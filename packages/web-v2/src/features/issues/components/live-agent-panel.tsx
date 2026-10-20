@@ -21,7 +21,8 @@ import type { IssueAgentSession } from "../types";
 
 export type LiveAgentState =
   | { kind: "live"; session: IssueAgentSession }
-  | { kind: "queued"; step: QueuedStepView };
+  /** `saidAbove`: the page's banner already says why the step waits, so this arm does not repeat it. */
+  | { kind: "queued"; step: QueuedStepView; saidAbove?: boolean };
 
 interface LiveAgentPanelProps {
   state: LiveAgentState;
@@ -47,7 +48,7 @@ export function LiveAgentPanel({ state, step, slug }: LiveAgentPanelProps) {
         {state.kind === "live" ? (
           <LiveRow session={state.session} step={step} slug={slug} />
         ) : (
-          <QueuedRow step={state.step} slug={slug} />
+          <QueuedRow step={state.step} slug={slug} saidAbove={state.saidAbove === true} />
         )}
       </CardContent>
     </Card>
@@ -126,9 +127,11 @@ function LiveRow({
 function QueuedRow({
   step,
   slug,
+  saidAbove,
 }: {
   step: QueuedStepView;
   slug: string;
+  saidAbove: boolean;
 }) {
   const [showOps, setShowOps] = useState(false);
   const queuedMs = Date.parse(step.queuedAt);
@@ -149,12 +152,15 @@ function QueuedRow({
         <PanelLink href={`/projects/${slug}/pipeline`} label="Open pipeline" />
       </div>
 
-      <p className="fg-body-sm mt-2 text-muted">
-        {step.gate
-          ? step.gate.detail
-          : "The step is awaiting its turn — it dispatches on the next tick."}
-      </p>
-      {step.gate && <p className="fg-caption mt-1 text-muted">{step.gate.who}</p>}
+      {/* Said once: where the banner above names the wait, this panel keeps only its figures (ISS-1228). */}
+      {!saidAbove && (
+        <p className="fg-body-sm mt-2 text-muted">
+          {step.gate
+            ? step.gate.detail
+            : "The step is awaiting its turn — it dispatches on the next tick."}
+        </p>
+      )}
+      {step.gate && !saidAbove && <p className="fg-caption mt-1 text-muted">{step.gate.who}</p>}
 
       <button
         type="button"

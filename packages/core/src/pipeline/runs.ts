@@ -17,6 +17,7 @@ import { markCloseDeferred, readDeployHolds, resolveDeployGate } from './deploy-
 import { hooks } from './hooks.js';
 import {
   cascadeCancelChildJobs,
+  type IssueCut,
   reasonForOutcome,
   requestKillsForCascade,
 } from './runs-cascade.js';
@@ -367,6 +368,7 @@ export async function cancelConcludedRun(runId: string): Promise<CancelConcluded
 export async function closeOpenRunForIssue(
   issueId: string,
   outcome: 'completed' | 'failed' | 'cancelled',
+  cut?: IssueCut,
 ): Promise<CloseResult> {
   const open = await selectOpenIssueRun(issueId);
   if (!open) return 'settled';
@@ -390,13 +392,13 @@ export async function closeOpenRunForIssue(
     const cs = await Promise.all(
       updatedRows.map(async (r) => ({
         runId: r.id,
-        result: await cascadeCancelChildJobs(tx, r.id, reasonForOutcome(resolved)),
+        result: await cascadeCancelChildJobs(tx, r.id, reasonForOutcome(resolved), cut),
       })),
     );
     return { rows: updatedRows, cascades: cs };
   });
   for (const c of cascades) {
-    await requestKillsForCascade(c.result.killableJobs, reasonForOutcome(resolved));
+    await requestKillsForCascade(c.result.killableJobs, cut?.cause ?? reasonForOutcome(resolved));
   }
   const cascadedByRun = new Map(cascades.map((c) => [c.runId, c.result.cancelledJobIds]));
   await emitCloseHookPerRow(rows, resolved, cascadedByRun);

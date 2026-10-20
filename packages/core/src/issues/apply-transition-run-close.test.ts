@@ -97,7 +97,11 @@ describe('transitionIssueStatus — run-closing decoupled from terminal-for-disp
     );
 
     expect(result.terminal).toBe(true);
-    expect(closeOpenRunForIssueMock).toHaveBeenCalledWith(ISSUE_ID, 'completed');
+    // A person's close cuts short any job still working, which then reads why (ISS-1228 round 21).
+    expect(closeOpenRunForIssueMock).toHaveBeenCalledWith(ISSUE_ID, 'completed', {
+      cause: 'issue_closed',
+      moverDeviceId: null,
+    });
   });
 
   it('TERMINAL_FOR_DISPATCH still includes both released and closed (Layer-2 unblock unaffected)', () => {

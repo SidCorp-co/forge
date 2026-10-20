@@ -281,5 +281,10 @@ describe("a closed run's activity promises nothing", () => {
       />,
     );
     expect(screen.getByRole("link", { name: "Its session's page shows what it is doing." })).toBeInTheDocument();
+    // ISS-1228 round 21 (judge-67): a live run's drawer said its session "worked" it.
+    expect(
+      screen.getByText("A session is working this run directly rather than through jobs, so there are no attempts to list."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/A session worked this run/)).toBeNull();
   });
 });

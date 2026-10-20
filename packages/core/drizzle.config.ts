@@ -28,6 +28,7 @@ export default defineConfig({
     './src/db/schema-project-facts-backup.ts',
     './src/db/schema-repo-projection.ts',
     './src/db/schema-runner-release.ts',
+    './src/db/schema-reconciler.ts',
   ],
   out: './drizzle/migrations',
   dbCredentials: {

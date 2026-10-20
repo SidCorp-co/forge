@@ -8,7 +8,7 @@
 
 import { useState } from "react";
 import { BodyView, Button, Skeleton } from "@/design";
-import { formatApiError } from "@/lib/api/error";
+import { formatApiError, isRetryableApiError } from "@/lib/api/error";
 import type { AttachmentRow, IssueDetail } from "../types";
 import { AttachmentList } from "./attachment-list";
 import { BodyEditor } from "./body-editor";
@@ -23,6 +23,8 @@ export interface DescriptionSectionProps {
   attachmentsLoading?: boolean;
   /** A failed attachments read, said as such rather than drawn as none. */
   attachmentsError?: unknown;
+  /** Read the attachments again, offered where retrying could change the answer (ISS-1160). */
+  onRetryAttachments?: (() => void) | undefined;
 }
 
 export function DescriptionSection({
@@ -31,6 +33,7 @@ export function DescriptionSection({
   canWrite,
   attachmentsLoading = false,
   attachmentsError = null,
+  onRetryAttachments,
 }: DescriptionSectionProps) {
   const [draft, setDraft] = useState<string | null>(null);
   const save = useSaveDescription(issue.id);
@@ -59,7 +62,12 @@ export function DescriptionSection({
         ))
       }
     >
-      <IssueAttachments rows={attachments} loading={attachmentsLoading} error={attachmentsError} />
+      <IssueAttachments
+        rows={attachments}
+        loading={attachmentsLoading}
+        error={attachmentsError}
+        onRetry={onRetryAttachments}
+      />
       {editing ? (
         <BodyEditor
           label="Issue description"
@@ -114,10 +122,12 @@ function IssueAttachments({
   rows,
   loading,
   error,
+  onRetry,
 }: {
   rows: AttachmentRow[];
   loading: boolean;
   error: unknown;
+  onRetry: (() => void) | undefined;
 }) {
   if (loading) {
     return (
@@ -128,8 +138,13 @@ function IssueAttachments({
   }
   if (error) {
     return (
-      <p role="alert" className="fg-body-sm mb-4 text-muted">
-        Couldn't load attachments — {formatApiError(error)}
+      <p role="alert" className="fg-body-sm mb-4 flex flex-wrap items-center gap-2 text-muted">
+        <span>Couldn't load attachments — {formatApiError(error)}</span>
+        {onRetry && isRetryableApiError(error) && (
+          <Button variant="secondary" size="sm" icon="rerun" onClick={onRetry}>
+            Retry
+          </Button>
+        )}
       </p>
     );
   }

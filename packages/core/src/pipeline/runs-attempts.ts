@@ -3,8 +3,8 @@
 
 import { asc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { agentSessions, devices, jobs } from '../db/schema.js';
-import { agentQuestions } from '../db/schema-questions.js';
+import { agentSessions, devices, jobs, users } from '../db/schema.js';
+import { agentQuestions, type QuestionStep } from '../db/schema-questions.js';
 import { RETRY_MAX_ROUNDS, readAutoRetryPayload } from '../jobs/retry.js';
 import { isoOrNull } from '../lib/iso-time.js';
 import { personNameSql } from '../lib/person-name.js';
@@ -97,6 +97,8 @@ export interface PipelineRunAttempt {
   } | null;
   /** Where the question this job stopped on stands; null unless it stopped on one. */
   questionOn: 'issue' | 'project' | null;
+  /** Who answered the question this job stopped on, and when; null unless a person answered it. */
+  questionAnswered: { userId: string | null; name: string | null; at: string } | null;
 }
 
 /** The round-robin headline, from the newest attempt's `_autoRetry`. */
@@ -108,26 +110,64 @@ export interface PipelineRunRetrySummary {
   targetDeviceName: string | null;
 }
 
-/** Where each stopped job's questions stand, read by their ids: one asked on a closed issue stands on the project. */
+interface AskedQuestion {
+  on: 'issue' | 'project';
+  answered: { userId: string | null; name: string | null; at: string } | null;
+}
+
+/** Where each stopped job's questions stand, read by their ids: one asked on a closed issue stands on
+ *  the project. A question a person answered names who and when, off its answered step (ISS-1228). */
 async function questionsAsked(
   rows: readonly { jobId: string; failureReason: string | null }[],
-): Promise<Map<string, 'issue' | 'project'>> {
+): Promise<Map<string, AskedQuestion>> {
   const idOf = new Map(
     rows
       .filter((r) => r.failureReason === 'stopped_on_question')
       .flatMap((r) => questionIdsFor(r.jobId).map((id) => [id, r.jobId] as const)),
   );
-  const on = new Map<string, 'issue' | 'project'>();
+  const on = new Map<string, AskedQuestion>();
   if (idOf.size === 0) return on;
   const asked = await db
-    .select({ id: agentQuestions.id, issueId: agentQuestions.issueId })
+    .select({
+      id: agentQuestions.id,
+      issueId: agentQuestions.issueId,
+      status: agentQuestions.status,
+      steps: agentQuestions.steps,
+    })
     .from(agentQuestions)
     .where(inArray(agentQuestions.id, [...idOf.keys()]));
+  const answeredBy = await namesOf(asked.flatMap((q) => answeredStep(q)?.answeredBy ?? []));
   for (const q of asked) {
     const jobId = idOf.get(q.id);
-    if (jobId) on.set(jobId, q.issueId ? 'issue' : 'project');
+    if (!jobId) continue;
+    const step = answeredStep(q);
+    const answered =
+      step?.answeredAt === undefined
+        ? null
+        : {
+            userId: step.answeredBy ?? null,
+            name: step.answeredBy ? (answeredBy.get(step.answeredBy) ?? null) : null,
+            at: step.answeredAt,
+          };
+    const prior = on.get(jobId);
+    on.set(jobId, { on: q.issueId ? 'issue' : 'project', answered: answered ?? prior?.answered ?? null });
   }
   return on;
+}
+
+/** The step a person answered, on a question that reads answered; none on one still open or voided. */
+function answeredStep(q: { status: string; steps: readonly QuestionStep[] }): QuestionStep | undefined {
+  return q.status === 'answered' ? q.steps.filter((s) => s.answeredAt).at(-1) : undefined;
+}
+
+/** Each answering account's name as a person reads it, never an address (ISS-1229). */
+async function namesOf(userIds: readonly string[]): Promise<Map<string, string>> {
+  if (userIds.length === 0) return new Map();
+  const rows = await db
+    .select({ id: users.id, name: personNameSql(sql`${users.displayName}`) })
+    .from(users)
+    .where(inArray(users.id, [...new Set(userIds)]));
+  return new Map(rows.map((r) => [r.id, r.name]));
 }
 
 /** One run's attempts oldest first; `_autoRetry` is absent on rows older than ISS-407. */
@@ -218,7 +258,8 @@ export async function loadAttemptsForRun(runId: string): Promise<{
             })
           : null,
       cancelledBy: cancelled ? cancelledByOf(r.cancelActor ?? null) : null,
-      questionOn: questionOn.get(r.jobId) ?? null,
+      questionOn: questionOn.get(r.jobId)?.on ?? null,
+      questionAnswered: questionOn.get(r.jobId)?.answered ?? null,
     } satisfies PipelineRunAttempt;
   });
 

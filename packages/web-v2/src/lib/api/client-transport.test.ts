@@ -112,3 +112,24 @@ describe("a failure the server said nothing about is carried in words, never as 
     expect(said).toBe("The server refused the request without saying why.");
   });
 });
+
+// ISS-1228 r21 (judge-67): the issue page's Runs section printed "Failed to fetch (forge-beta-api…)".
+describe("a request the browser could not send reads as one sentence on every screen", async () => {
+  const { formatApiError, readFailure } = await import("./error");
+
+  beforeEach(() => {
+    fetchMock.mockReset();
+    vi.stubGlobal("fetch", fetchMock);
+  });
+
+  it("words the browser's rejection, never its own message", async () => {
+    fetchMock.mockRejectedValue(new TypeError("Failed to fetch (forge-beta-api.sidcorp.co)"));
+    const err = await apiClient("/whatever").catch((e: unknown) => e);
+    expect(formatApiError(err)).toBe("Forge could not be reached. Check your connection, then try again.");
+    expect(readFailure(err).said).toBe("Forge could not be reached. Check your connection, then try again.");
+  });
+
+  it("keeps the message of an error no request raised", () => {
+    expect(formatApiError(new Error("The file is larger than 25 MB."))).toBe("The file is larger than 25 MB.");
+  });
+});
