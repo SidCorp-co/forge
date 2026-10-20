@@ -86,7 +86,12 @@ interface ProjectHealthRow {
 function memberInitials(displayName: string | null): string {
   const words = personName(displayName).split(/\s+/).filter(Boolean);
   const letters =
-    words.length > 1 ? words.slice(0, 2).map((w) => w.charAt(0)).join('') : (words[0] ?? '').slice(0, 2);
+    words.length > 1
+      ? words
+          .slice(0, 2)
+          .map((w) => w.charAt(0))
+          .join('')
+      : (words[0] ?? '').slice(0, 2);
   return letters.toUpperCase();
 }
 
