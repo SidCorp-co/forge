@@ -198,7 +198,7 @@ describe('checkTransitionEvidence — entry_criteria rule (ISS-959)', () => {
       declaredCriteria: ['plan', 'acceptance_criteria', 'merged_mark'],
     });
     expect(violation?.detail).toBe(
-      'Closed needs a record this issue is missing. The plan is missing. An agent working this issue writes it; Open session or Reopen on its page starts one.',
+      "This issue can't close yet: the plan is missing. An agent working this issue writes it; Open session or Reopen on its page starts one.",
     );
     expect(violation?.detail).not.toMatch(/acceptance|merge mark/i);
   });
@@ -213,9 +213,8 @@ describe('checkTransitionEvidence — entry_criteria rule (ISS-959)', () => {
       declaredCriteria: ['plan', 'release_note'],
     });
     expect(violation?.detail).toMatch(
-      /^Closed needs records this issue is missing\. The plan is missing\./,
+      /^This issue can't close yet: the plan and the release note are missing\. /,
     );
-    expect(violation?.detail).toContain('The release note is missing.');
   });
 
   // ISS-1421 r14 — judge-61 read one 71-word sentence naming records by stored key
@@ -238,7 +237,24 @@ describe('checkTransitionEvidence — entry_criteria rule (ISS-959)', () => {
       expect(sentence).toMatch(/^[A-Z].*\.$/);
       expect(sentence.split(/\s+/).length).toBeLessThanOrEqual(20);
     }
+    expect(detail).toMatch(
+      /^This issue can't close yet: five records are missing\. They are the plan, /,
+    );
     expect(violation?.details?.steps).toHaveProperty('merged_mark');
+  });
+
+  it('says which status the issue cannot move to when the move is not a close', async () => {
+    findUnmetEntryCriteriaMock.mockResolvedValue(shortfall('acceptance_criteria'));
+    const violation = await checkTransitionEvidence({
+      issue: ISSUE,
+      toStatus: 'awaiting_release',
+      agency: 'human',
+      skip: false,
+      declaredCriteria: ['acceptance_criteria'],
+    });
+    expect(violation?.detail).toMatch(
+      /^This issue can't move to Awaiting release yet: the acceptance criteria are missing\. /,
+    );
   });
 
   it('passes a transition whose declared criteria are all met', async () => {

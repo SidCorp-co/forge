@@ -27,6 +27,81 @@ function asSentence(text: string): string {
   return /[.!?]$/.test(opened) ? opened : `${opened}.`;
 }
 
+function article(type: string): string {
+  if (type === 'null' || type === 'undefined' || type === 'NaN') return type;
+  return /^[aeiou]/i.test(type) ? `an ${type}` : `a ${type}`;
+}
+
+/**
+ * One of zod's own messages, which open "Invalid input: expected …", said of the field it is about.
+ * A message a schema wrote itself is kept after the field is named.
+ */
+export function zodMessageWords(field: string | null, message: string): string {
+  const subject = field ? `The field ${field}` : 'The input';
+  const said = message.trim();
+  for (const [pattern, words] of ZOD_WORDS) {
+    const m = pattern.exec(said);
+    if (m) return words(subject, m);
+  }
+  if (!field && said) return asSentence(said);
+  return `${subject} was refused. ${asSentence(said || 'It did not match its schema')}`;
+}
+
+const BOUND_WORDS: Record<string, string> = {
+  '>=': 'at least',
+  '>': 'more than',
+  '<=': 'at most',
+  '<': 'less than',
+};
+
+function boundWords(subject: string, m: RegExpExecArray): string {
+  const [, , type, op = '', bound, unit] = m;
+  if ((type === 'string' || type === 'array') && op === '>=' && bound === '1')
+    return `${subject} cannot be empty.`;
+  const units = bound === '1' && unit ? unit.replace(/s$/, '') : unit;
+  return `${subject} takes ${BOUND_WORDS[op] ?? op} ${bound}${units ? ` ${units}` : ''}.`;
+}
+
+/** zod's default messages, each with the words it is said in; the first pattern that matches wins. */
+const ZOD_WORDS: ReadonlyArray<[RegExp, (subject: string, m: RegExpExecArray) => string]> = [
+  [/^Invalid input: expected \w+, received undefined$/, (s) => `${s} is required.`],
+  [/^Invalid input: expected date, received Date$/, (s) => `${s} is not a valid date.`],
+  [
+    /^Invalid input: expected (\w+), received (\w+)$/,
+    (s, m) => `${s} takes ${article(m[1] ?? '')}, not ${article(m[2] ?? '')}.`,
+  ],
+  [
+    /^Invalid (?:input|option): expected one of (.+)$/,
+    (s, m) => `${s} takes one of ${(m[1] ?? '').split('|').join(', ')}.`,
+  ],
+  [/^Invalid input: expected (.+)$/, (s, m) => `${s} takes ${m[1]}.`],
+  [/^Invalid input$/, (s) => `${s} matches none of the forms it takes.`],
+  [/^Too (small|big): expected (\w+) to (?:have|be) ([<>]=?)(\S+)(?: (\w+))?$/, boundWords],
+  [/^Unrecognized keys?: (.+)$/, (s, m) => `${s} holds ${m[1]}, which this call does not take.`],
+  [/^Invalid (?:string|number): (.+)$/, (s, m) => asSentence(`${s} ${m[1]}`)],
+  [/^Invalid ([A-Za-z ]+)$/, (s, m) => `${s} is not a valid ${m[1]?.replace(/^ISO /, '')}.`],
+];
+
+/**
+ * Sentences for refusal details already flattened to `{ formErrors, fieldErrors }`, or to a plain
+ * record of field to message, for a door that kept only those.
+ */
+export function flattenedRefusalWords(details: unknown): string[] {
+  if (details === null || typeof details !== 'object' || Array.isArray(details)) return [];
+  const d = details as { formErrors?: unknown; fieldErrors?: unknown };
+  const listOf = (v: unknown): string[] =>
+    (Array.isArray(v) ? v : [v]).filter((x): x is string => typeof x === 'string');
+  const flattened = Array.isArray(d.formErrors) && typeof d.fieldErrors === 'object';
+  const form = flattened ? listOf(d.formErrors) : [];
+  const fields = (flattened ? d.fieldErrors : details) as Record<string, unknown>;
+  return [
+    ...form.map((m) => zodMessageWords(null, m)),
+    ...Object.entries(fields ?? {}).flatMap(([field, v]) =>
+      listOf(v).map((m) => zodMessageWords(field, m)),
+    ),
+  ];
+}
+
 function joined(names: readonly string[]): string {
   return names.length <= 1
     ? names.join('')
@@ -55,11 +130,11 @@ export function schemaRefusalWords(
           : `The fields ${joined(fields)} are not ones this call takes.`,
       );
     } else if (!field) {
-      sentences.push(asSentence(issue.message ?? 'The input was refused'));
+      sentences.push(zodMessageWords(null, issue.message ?? ''));
     } else if (issue.code === 'invalid_value' && issue.values?.length) {
       // The issue does not say whether the field was absent or held another value, so neither is claimed.
       // A schema's own message ("`pass_rate` is retired") says more than the library's default.
-      const own = issue.message && !/^Invalid option/.test(issue.message);
+      const own = issue.message && !/^Invalid (?:option|input)\b/.test(issue.message);
       sentences.push(
         `The field ${named(field)} takes one of the values ${valuesAre}.${own ? ` ${asSentence(issue.message ?? '')}` : ''}`,
       );
@@ -67,7 +142,7 @@ export function schemaRefusalWords(
     } else if (issue.code === 'invalid_type' && /received undefined$/.test(issue.message ?? '')) {
       sentences.push(`The field ${named(field)} is required.`);
     } else {
-      sentences.push(`The field ${named(field)} was refused. ${asSentence(issue.message ?? '')}`);
+      sentences.push(zodMessageWords(named(field), issue.message ?? ''));
     }
   }
   return { sentences, accepted };

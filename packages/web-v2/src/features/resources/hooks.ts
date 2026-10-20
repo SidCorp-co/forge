@@ -28,6 +28,16 @@ export function useOrgSshKeys(orgId: string | null) {
 	});
 }
 
+/** Where the form shows a create refusal: under Private key when about the key, else at its foot. */
+export function createKeyRefusal(err: unknown): { field: "privateKey" | "form"; message: string } | null {
+	if (!err) return null;
+	if (err instanceof ApiError && err.code === "DUPLICATE_FINGERPRINT")
+		return { field: "privateKey", message: "This key is already in the pool: one there has the same fingerprint." };
+	if (err instanceof ApiError && err.code === "INVALID_PRIVATE_KEY")
+		return { field: "privateKey", message: err.message };
+	return { field: "form", message: formatApiError(err) };
+}
+
 export function useCreateSshKey(orgId: string) {
 	const qc = useQueryClient();
 	const { toast } = useToast();
@@ -36,13 +46,6 @@ export function useCreateSshKey(orgId: string) {
 		onSuccess: () => {
 			qc.invalidateQueries({ queryKey: ["orgs", orgId, "ssh-keys"] });
 			toast({ title: "Private key created", tone: "success" });
-		},
-		onError: (err) => {
-			const description =
-				err instanceof ApiError && err.code === "DUPLICATE_FINGERPRINT"
-					? "This key already exists in the pool (matching fingerprint)."
-					: formatApiError(err);
-			toast({ title: "Couldn't create key", description, tone: "error" });
 		},
 	});
 }

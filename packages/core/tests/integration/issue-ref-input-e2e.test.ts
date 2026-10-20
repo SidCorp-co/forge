@@ -277,7 +277,7 @@ describe('a key that resolves to nothing is refused by name (ISS-1179)', () => {
       projectId: w.otherProjectId,
     });
     expect(res.isError).toBe(true);
-    expect(res.text).toContain('project not found or not accessible');
+    expect(res.text).toContain('Project not found or not accessible');
     expect(res.text).not.toContain('display key');
   });
 });
@@ -288,7 +288,7 @@ describe('the task actions are gone (ISS-1132)', () => {
       const w = await seed();
       const res = await call(w.pat, { action, projectId: w.projectId });
       expect(res.isError).toBe(true);
-      expect(res.text).toContain(`action \`${action}\` was removed`);
+      expect(res.text).toContain(`Action \`${action}\` was removed`);
       expect(res.text).toContain('subtasks were removed (ISS-1132)');
       for (const served of ['list', 'get', 'create', 'update', 'transition', 'setAttributes']) {
         expect(res.text).toContain(served);
@@ -302,7 +302,7 @@ describe('the task actions are gone (ISS-1132)', () => {
     const w = await seed();
     const res = await call(w.pat, { action: 'vibes', projectId: w.projectId });
     expect(res.isError).toBe(true);
-    expect(res.text).toContain('action `vibes` is not a forge_issues action');
+    expect(res.text).toContain('Action `vibes` is not a forge_issues action');
     expect(res.text).not.toContain('was removed');
   });
 });

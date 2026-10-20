@@ -73,12 +73,12 @@ beforeEach(() => {
 
 describe('GET /api/questions', () => {
   it.each([
-    ['', 'issueId or projectId is required'],
-    [`?issueId=${QUESTION}&projectId=${PROJECT}`, 'name issueId or projectId, not both'],
-    [`?projectId=${PROJECT}&issue=any`, 'issue takes one value'],
-    [`?projectId=${PROJECT}&status=nope`, 'status must be one of'],
-    ['?projectId=nope', 'projectId must be a uuid'],
-    ['?issueId=nope', 'issueId must be a uuid'],
+    ['', '`issueId` or projectId is required.'],
+    [`?issueId=${QUESTION}&projectId=${PROJECT}`, 'Name issueId or projectId, not both'],
+    [`?projectId=${PROJECT}&issue=any`, 'Issue takes one value'],
+    [`?projectId=${PROJECT}&status=nope`, 'Status must be one of'],
+    ['?projectId=nope', '`projectId` must be a uuid.'],
+    ['?issueId=nope', '`issueId` must be a uuid.'],
   ])('refuses %s by name', async (query, message) => {
     const { status, body } = await call(query);
     expect(status).toBe(400);
@@ -144,13 +144,13 @@ describe('POST /api/questions/:id/answer', () => {
   ])('asks for an option or text when given %s', async (_name, body) => {
     const res = await post(`/${QUESTION}/answer`, body);
     expect(res.status).toBe(400);
-    expect(res.body.message).toBe('optionId or text is required');
+    expect(res.body.message).toBe('`optionId` or text is required.');
   });
 
   it('refuses an option and text together', async () => {
     const res = await post(`/${QUESTION}/answer`, { optionId: 'a', text: 'b', round: 1 });
     expect(res.status).toBe(400);
-    expect(res.body.message).toBe('send optionId or text, never both');
+    expect(res.body.message).toBe('Send optionId or text, never both.');
   });
 
   it.each([{}, { round: '1' }, { round: 1.5 }, { round: null }])(
@@ -158,7 +158,7 @@ describe('POST /api/questions/:id/answer', () => {
     async (extra) => {
       const res = await post(`/${QUESTION}/answer`, { optionId: 'a', ...extra });
       expect(res.status).toBe(400);
-      expect(res.body.message).toBe('round is required, as an integer');
+      expect(res.body.message).toBe('Round is required, as an integer.');
     },
   );
 
@@ -183,7 +183,7 @@ describe('POST /api/questions/:id/answer', () => {
   it('refuses an id that is not a uuid', async () => {
     const res = await post('/nope/answer', { optionId: 'a', round: 1 });
     expect(res.status).toBe(400);
-    expect(res.body.message).toBe('the question id must be a uuid');
+    expect(res.body.message).toBe('The question id must be a uuid.');
   });
 });
 

@@ -37,20 +37,6 @@ export function errorResponse(
   };
 }
 
-const LIBRARY_DEFAULT_REFUSAL: JsonSchema = {
-  description:
-    'The input failed the schema and this validator has no hook, so the library answers with the failed parse.',
-  content: {
-    'application/json': {
-      schema: {
-        type: 'object',
-        required: ['success', 'error'],
-        properties: { success: { const: false }, error: {} },
-      },
-    },
-  },
-};
-
 function jsonSchemaOf(response: JsonSchema): JsonSchema {
   const content = response.content as Record<string, { schema: JsonSchema }>;
   return content['application/json']?.schema ?? {};
@@ -66,9 +52,4 @@ export function alongside(first: JsonSchema, second: JsonSchema): JsonSchema {
       },
     },
   };
-}
-
-/** A 400 answer that also admits the library's own refusal, for a route with one validator that has a hook and one that has none. */
-export function withLibraryRefusal(hooked: JsonSchema | undefined): JsonSchema {
-  return hooked ? alongside(hooked, LIBRARY_DEFAULT_REFUSAL) : LIBRARY_DEFAULT_REFUSAL;
 }

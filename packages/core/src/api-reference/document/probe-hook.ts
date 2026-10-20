@@ -6,8 +6,6 @@ import type { ValidatorDeclaration } from '../declare/validator.js';
 /** What a route answers when its input fails the schema it declares. */
 export type InputRefusal =
   | { readonly kind: 'refused'; readonly status: number; readonly code: string }
-  /** No hook: the library answers 400 with the failed parse as the body. */
-  | { readonly kind: 'library-default' }
   | { readonly kind: 'unreadable'; readonly why: string };
 
 /**
@@ -38,7 +36,8 @@ function probeContext(): unknown {
  * states the status and code the route sends and not the one a document beside it would claim.
  */
 export async function probeInputRefusal(declaration: ValidatorDeclaration): Promise<InputRefusal> {
-  if (declaration.hook === null) return { kind: 'library-default' };
+  if (declaration.hook === null)
+    return { kind: 'unreadable', why: 'the validator records no hook' };
   const error = new z.ZodError([
     { code: 'custom', message: 'probe', path: ['probe'], input: undefined },
   ]);
@@ -47,7 +46,7 @@ export async function probeInputRefusal(declaration: ValidatorDeclaration): Prom
     const hook = declaration.hook as (result: unknown, c: unknown) => unknown;
     const answered = await hook(failed, probeContext());
     if (answered instanceof Response) return await readResponse(answered);
-    return { kind: 'library-default' };
+    return { kind: 'unreadable', why: 'the hook let a failed parse through' };
   } catch (thrown) {
     if (thrown instanceof HTTPException) {
       const cause = thrown.cause as { code?: unknown } | undefined;

@@ -120,14 +120,14 @@ describe('a probe whose url is not a url', () => {
 
   it('speaks of the one probe, at one', () => {
     expect(sentence(['htp//a'])).toBe(
-      'htp//a — A declared verification probe holds a url that is not a url, so no request could ever be made to it and the release would fail while reading what production is serving. Correct the probe, including its scheme.',
+      '`htp//a` — A declared verification probe holds a url that is not a url, so no request could ever be made to it and the release would fail while reading what production is serving. Correct the probe, including its scheme.',
     );
   });
 
   it('counts the probes and speaks of them, at two', () => {
     const two = sentence(['htp//a', 'ftp:/b']);
     expect(two).toContain(
-      'htp//a, ftp:/b — 2 declared verification probes hold urls that are not urls',
+      '`htp//a`, `ftp:/b` — 2 declared verification probes hold urls that are not urls',
     );
     expect(two).toContain('could ever be made to them');
     expect(two).toContain('Correct each probe, including its scheme.');

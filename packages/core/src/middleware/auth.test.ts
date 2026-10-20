@@ -54,6 +54,8 @@ function buildApp() {
 beforeEach(() => {
   vi.clearAllMocks();
   selectLimit.mockReset();
+  // A token's account row, where a test queues none: absent, so neither an agent nor verified.
+  selectLimit.mockResolvedValue([]);
   selectColumns.mockReset();
   verifyDeviceCredentialMock.mockReset();
 });
@@ -94,6 +96,34 @@ describe('requireAuth', () => {
   });
 });
 
+// ISS-1421 r14 — a session token is a person's; one naming an agent account was read as a person's.
+describe('a session token naming an agent account', () => {
+  it.each([
+    ['requireAuth', '/protected'],
+    ['requireUserOrDevice', '/either'],
+  ])('is refused by %s as AGENT_CANNOT_LOGIN, never admitted as a person', async (_door, path) => {
+    const token = await signUserToken('uuid-agent');
+    selectLimit.mockResolvedValueOnce([{ ...VERIFIED, kind: 'agent' }]);
+    const app = buildApp();
+    app.get('/either', requireUserOrDevice(), (c) => c.json({ userId: c.get('userId') }));
+    const res = await app.request(path, { headers: { authorization: `Bearer ${token}` } });
+    expect(res.status).toBe(403);
+    const body = (await res.json()) as { code: string; message: string };
+    expect(body.code).toBe('AGENT_CANNOT_LOGIN');
+    expect(body.message).toMatch(/^This account is an agent and cannot sign in\. /);
+  });
+
+  it("admits a person's session, reading the row assertEmailVerified then reads again from memory", async () => {
+    const token = await signUserToken('uuid-person');
+    selectLimit.mockResolvedValueOnce([{ ...VERIFIED, kind: 'human' }]);
+    const res = await buildApp().request('/verified', {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(res.status).toBe(200);
+    expect(selectLimit).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('assertEmailVerified', () => {
   it('reads the row once however many mounts a request crosses', async () => {
     const token = await signUserToken('uuid-ok');
@@ -120,7 +150,7 @@ describe('assertEmailVerified', () => {
     expect(res.status).toBe(403);
     const body = (await res.json()) as { code: string; message: string };
     expect(body.code).toBe('EMAIL_NOT_VERIFIED');
-    expect(body.message).toBe('verify email');
+    expect(body.message).toBe('Verify email.');
   });
 
   it('403 EMAIL_NOT_VERIFIED when user row is missing', async () => {
@@ -206,7 +236,7 @@ describe('assertEmailVerified', () => {
     });
   });
 
-  it('selects email alongside email_verified_at, so one row answers both gates', async () => {
+  it('selects email and kind alongside email_verified_at, so one row answers every gate', async () => {
     const token = await signUserToken('uuid-ok');
     selectLimit.mockResolvedValueOnce([VERIFIED]);
 
@@ -217,6 +247,7 @@ describe('assertEmailVerified', () => {
     expect(Object.keys(selectColumns.mock.calls[0]?.[0] as object).sort()).toEqual([
       'email',
       'emailVerifiedAt',
+      'kind',
     ]);
   });
 

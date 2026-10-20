@@ -55,7 +55,29 @@ describe('schemaRefused', () => {
       expect(s).toMatch(/\.$/);
     }
     expect(r.message).toContain('The fields extra and more are not ones this call takes.');
-    expect(r.message).toContain('The field reason was refused. Too big:');
+    expect(r.message).toContain('The field reason takes at most 5 characters.');
+    expect(r.message).toContain('The field ids cannot be empty.');
+    expect(r.message).not.toMatch(/Invalid input|Too big|Too small/);
+  });
+
+  it("words zod's own messages for a field and never repeats them", async () => {
+    const { zodMessageWords } = await import('./zod-sentences.js');
+    expect(zodMessageWords('n', 'Invalid input: expected number, received string')).toBe(
+      'The field n takes a number, not a string.',
+    );
+    expect(zodMessageWords('id', 'Invalid UUID')).toBe('The field id is not a valid UUID.');
+    expect(zodMessageWords('k', 'Invalid option: expected one of "a"|"b"')).toBe(
+      'The field k takes one of "a", "b".',
+    );
+    expect(zodMessageWords('when', 'Invalid input')).toBe(
+      'The field when matches none of the forms it takes.',
+    );
+    expect(zodMessageWords('n', 'Too small: expected number to be >0')).toBe(
+      'The field n takes more than 0.',
+    );
+    expect(zodMessageWords(null, 'Invalid input: expected object, received string')).toBe(
+      'The input takes an object, not a string.',
+    );
   });
 
   it("keeps a schema's own message for a fixed-set field", () => {

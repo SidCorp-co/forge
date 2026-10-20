@@ -43,6 +43,7 @@ vi.mock("@/features/project-settings/hooks", () => ({ useUpdateProject: mutation
 vi.mock("@/features/resources/hooks", () => ({
 	useOrgSshKeys: () => query([]),
 	useCreateSshKey: mutation,
+	createKeyRefusal: () => null,
 }));
 // A hook this screen reads that is not named here answers an empty query that is also a no-op
 // mutation, so what the test pins is the row and not every control around it.

@@ -28,12 +28,15 @@ const onConflictDoUpdate = vi.fn(() => ({ returning: insertReturning }));
 const insertValues = vi.fn(() => ({ onConflictDoUpdate }));
 const dbInsert = vi.fn(() => ({ values: insertValues }));
 
-vi.mock('../db/client.js', () => ({
-  db: {
-    select: vi.fn(() => ({ from: selectFrom })),
-    insert: dbInsert,
-  },
-}));
+vi.mock('../db/client.js', async () => {
+  const { sessionReadOr } = await import('../middleware/session-read.fixture.js');
+  return {
+    db: {
+      select: vi.fn(sessionReadOr(() => ({ from: selectFrom }))),
+      insert: dbInsert,
+    },
+  };
+});
 
 // assertOrgAccess is the membership gate for activeOrgId (ISS-469). Mocked so
 // tests drive the member / non-member / missing-org branches without a real db.

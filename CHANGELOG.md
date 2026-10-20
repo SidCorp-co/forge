@@ -3194,9 +3194,10 @@
 
 ### Fixed
 
-- **A passphrase-protected private key is refused at once.** Pasting one used to leave Create key spinning until the request timed out; it now says a passphrase protects the key. (ISS-1421)
-- **A status move with a status Forge does not have is refused in a sentence** naming the field, through the API and agent tools, instead of "Invalid input". (ISS-1421)
-- **A move refused for missing records names each record by its name**, such as "The plan is missing", in short sentences, instead of one long line of field keys. (ISS-1421)
+- **A passphrase-protected private key is refused at once, under the Private key field.** Pasting one used to leave Create key spinning until the request timed out; now the form says a passphrase protects it. (ISS-1421)
+- **Every refusal from the API and the agent tools reads as a sentence**, naming the field and what it takes, instead of "Invalid input" or a line opening in lower case. (ISS-1421)
+- **A move refused for missing records says so in one sentence**, such as "This issue can't close yet: the plan and the release note are missing.", then who writes them. (ISS-1421)
+- **A session token for an agent account is refused.** An agent signs in with its token only; read as a person, it could close an issue its token could not. (ISS-1421)
 - **A release with nowhere to land names the project**, not its id. (ISS-1421)
 - **Test connection answers in plain sentences** saying what the check found, such as a refused key, with the provider's own words kept below. (ISS-1421)
 - **A failed status refresh scrolls into view in an integration drawer**, so pressing Test connection at the drawer's foot no longer hides it above. (ISS-1421)

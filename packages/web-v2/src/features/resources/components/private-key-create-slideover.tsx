@@ -7,7 +7,7 @@
 // UX contract requires for a new modal.
 import { Button, Field, Input, SegmentedControl, SlideOver, Textarea } from "@/design";
 import { useState } from "react";
-import { useCreateSshKey } from "../hooks";
+import { createKeyRefusal, useCreateSshKey } from "../hooks";
 import type { WorkspaceSshKeyView } from "../types";
 
 export interface PrivateKeyCreateSlideOverProps {
@@ -30,7 +30,12 @@ export function PrivateKeyCreateSlideOver({
 	const [note, setNote] = useState("");
 	const [privateKey, setPrivateKey] = useState("");
 
+	const refusal = createKeyRefusal(create.error);
+	// A key refusal shows on the field while it is on screen, and at the foot once Source hides it.
+	const onField = refusal?.field === "privateKey" && mode === "provide";
+
 	function reset() {
+		create.reset();
 		setMode("generate");
 		setName("");
 		setNote("");
@@ -89,16 +94,28 @@ export function PrivateKeyCreateSlideOver({
 					/>
 				</div>
 				{mode === "provide" && (
-					<Field label="Private key" hint="OpenSSH format. Passphrase-protected keys are rejected.">
+					<Field
+						label="Private key"
+						hint="OpenSSH format. Passphrase-protected keys are rejected."
+						error={onField ? refusal?.message : undefined}
+					>
 						<Textarea
 							value={privateKey}
-							onChange={(e) => setPrivateKey(e.target.value)}
+							onChange={(e) => {
+								if (create.error) create.reset();
+								setPrivateKey(e.target.value);
+							}}
 							placeholder={"-----BEGIN OPENSSH PRIVATE KEY-----\n…"}
 							spellCheck={false}
 							rows={6}
 							className="font-mono text-12"
 						/>
 					</Field>
+				)}
+				{refusal && !onField && (
+					<p role="alert" className="fg-caption" style={{ color: "var(--red-600)" }}>
+						{refusal.message}
+					</p>
 				)}
 				<div className="mt-auto flex items-center justify-end gap-2.5 pt-2">
 					<Button type="button" variant="ghost" onClick={handleClose} disabled={create.isPending}>

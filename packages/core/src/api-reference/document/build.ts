@@ -5,7 +5,6 @@ import {
   ERROR_ENVELOPE,
   ERROR_ENVELOPE_NAME,
   errorResponse,
-  withLibraryRefusal,
 } from '../declare/errors.js';
 import { type JsonSchema, renderSchema } from '../declare/schema.js';
 import type { ValidatorDeclaration } from '../declare/validator.js';
@@ -42,8 +41,6 @@ export type Reference = {
   readonly findings: readonly Finding[];
   /** Keyed by `RouteEntry.key`. */
   readonly errors: ReadonlyMap<string, AnsweredErrors>;
-  /** The routes whose input refusal is the validation library's own body, which carries no `code`. */
-  readonly libraryDefaults: ReadonlySet<string>;
 };
 
 const BEARER_SCHEME = 'bearerAuth';
@@ -303,15 +300,11 @@ async function responsesOf(entry: RouteEntry, access: Access | null, doc: Docume
     'INTERNAL_ERROR',
     'an unexpected failure; nothing about the request is to blame',
   );
-  let libraryDefault = false;
   for (const declaration of entry.validators) {
     if (declaration.enforced === false) continue;
     const refusal = await refusalOf(entry, declaration, doc);
-    if (refusal.kind === 'refused') {
+    if (refusal.kind === 'refused')
       addCode(errors, refusal.status, refusal.code, `the ${declaration.target} failed its schema`);
-    } else if (refusal.kind === 'library-default') {
-      libraryDefault = true;
-    }
   }
   for (const [status, byCode] of errors) {
     const codes = [...byCode].map(([code, whens]) => ({ code, when: whens.join('; ') }));
@@ -319,7 +312,6 @@ async function responsesOf(entry: RouteEntry, access: Access | null, doc: Docume
     const declaredJson = responses[String(status)];
     responses[String(status)] = declaredJson ? alongside(declaredJson, envelope) : envelope;
   }
-  if (libraryDefault) responses['400'] = withLibraryRefusal(responses['400']);
   if (!succeeded && !declared?.retired) {
     doc.findings.push({
       rule: 'no-response',
@@ -331,7 +323,7 @@ async function responsesOf(entry: RouteEntry, access: Access | null, doc: Docume
   const answered = new Map<number, ReadonlySet<string>>(
     [...errors].map(([status, byCode]) => [status, new Set(byCode.keys())]),
   );
-  return { responses, answered, libraryDefault };
+  return { responses, answered };
 }
 
 function accessExtension(access: Access, readsBearer: boolean): Record<string, unknown> {
@@ -378,7 +370,6 @@ export async function buildReference(
   const tags = new Set<string>();
   const ids = new Map<string, string>();
   const errors = new Map<string, AnsweredErrors>();
-  const libraryDefaults = new Set<string>();
 
   for (const entry of routes) {
     if (entry.unread)
@@ -430,7 +421,6 @@ export async function buildReference(
     })();
     const answers = await responsesOf(entry, access, doc);
     errors.set(entry.key, answers.answered);
-    if (answers.libraryDefault) libraryDefaults.add(entry.key);
     const tag = tagOf(entry.path);
     tags.add(tag);
     const openApi = openApiPath(entry.path);
@@ -491,6 +481,5 @@ export async function buildReference(
     routes,
     findings: doc.findings,
     errors,
-    libraryDefaults,
   };
 }

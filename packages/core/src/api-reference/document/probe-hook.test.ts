@@ -58,12 +58,20 @@ describe('probeInputRefusal', () => {
     expect(refusal).toMatchObject({ kind: 'refused', status: 400 });
   });
 
-  it('answers the library default for a validator with no hook', async () => {
-    expect(await probeInputRefusal(declared())).toEqual({ kind: 'library-default' });
+  it('reads a refusal in the envelope for a validator given no hook (ISS-1421 r14)', async () => {
+    expect(await probeInputRefusal(declared())).toEqual({
+      kind: 'refused',
+      status: 400,
+      code: 'BAD_REQUEST',
+    });
   });
 
-  it('answers the library default for a hook that does not refuse', async () => {
-    expect(await probeInputRefusal(declared(() => undefined))).toEqual({ kind: 'library-default' });
+  it('reads a refusal in the envelope for a hook that lets a failed parse through', async () => {
+    expect(await probeInputRefusal(declared(() => undefined))).toEqual({
+      kind: 'refused',
+      status: 400,
+      code: 'BAD_REQUEST',
+    });
   });
 
   it('says it could not read a hook that fails some other way, never that the hook is silent', async () => {

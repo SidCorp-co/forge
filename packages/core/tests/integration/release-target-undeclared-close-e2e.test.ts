@@ -27,6 +27,7 @@ let harness: TestDatabase;
 // biome-ignore lint/suspicious/noExplicitAny: test-only mount
 let app: any;
 let mintPat: typeof import('../../src/auth/pat.js')['mintPat'];
+let signUserToken: typeof import('../../src/auth/jwt.js')['signUserToken'];
 
 beforeAll(async () => {
   harness = await setupTestDatabase();
@@ -40,13 +41,15 @@ beforeAll(async () => {
   process.env.CORS_ORIGINS ??= 'http://localhost:3000';
   process.env.NODE_ENV ??= 'test';
 
-  const [transitionMod, extrasMod, patMod, errMod] = await Promise.all([
+  const [transitionMod, extrasMod, patMod, errMod, jwtMod] = await Promise.all([
     import('../../src/issues/transition.js'),
     import('../../src/issues/extras-routes.js'),
     import('../../src/auth/pat.js'),
     import('../../src/middleware/error.js'),
+    import('../../src/auth/jwt.js'),
   ]);
   mintPat = patMod.mintPat;
+  signUserToken = jwtMod.signUserToken;
   app = new Hono();
   app.route('/api/issues', transitionMod.transitionRoutes);
   app.route('/api/issues', extrasMod.issueExtrasRoutes);
@@ -64,6 +67,8 @@ beforeEach(async () => {
 interface World {
   projectId: string;
   agentToken: string;
+  /** A session token for the agent account, which no sign-in door issues: signed with the server's secret. */
+  agentSession: string;
   humanToken: string;
   userId: string;
 }
@@ -82,6 +87,7 @@ async function seedWorld(chain: unknown[]): Promise<World> {
   return {
     projectId: project.id,
     agentToken: await mint(agent.id, 'an agent'),
+    agentSession: await signUserToken(agent.id),
     humanToken: await mint(human.id, 'a person'),
     userId: human.id,
   };
@@ -151,6 +157,22 @@ describe('an agent closes on a project whose release chain has nowhere to land',
     },
     120_000,
   );
+
+  it('refuses the agent on a session token as it does on its access token, and nothing moves', async () => {
+    const w = await seedWorld(ONE_BRANCH);
+    const id = await seedIssue(w);
+
+    const byToken = await close(id, w.agentToken);
+    const bySession = await close(id, w.agentSession);
+
+    expect(byToken.status).toBe(409);
+    // ISS-1421 r14: a session names a person. Read as one, this agent closed what its token could not.
+    expect(bySession.status).toBe(403);
+    const body = (await bySession.json()) as { code?: string; message?: string };
+    expect(body.code).toBe('AGENT_CANNOT_LOGIN');
+    expect(body.message).toMatch(/^This account is an agent and cannot sign in\. /);
+    expect(await statusOf(id)).toBe('testing');
+  }, 120_000);
 
   it('is skipped by the batch route under its own reason', async () => {
     const w = await seedWorld(ONE_BRANCH);

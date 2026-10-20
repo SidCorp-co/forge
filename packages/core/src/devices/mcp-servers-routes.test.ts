@@ -86,7 +86,7 @@ describe('GET /api/devices/me/mcp-servers (ISS-1043)', () => {
     selectLimit.mockResolvedValueOnce([]); // no runner row for (device, project)
     const res = await buildApp().request(PATH, { headers: { authorization: 'Bearer good' } });
     expect(res.status).toBe(403);
-    expect(await res.text()).toContain('device not bound to project');
+    expect(await res.text()).toContain('Device not bound to project');
     expect(resolveSessionMcpServers).not.toHaveBeenCalled();
   });
 

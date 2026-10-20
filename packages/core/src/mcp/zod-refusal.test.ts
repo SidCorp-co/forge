@@ -29,13 +29,13 @@ describe('zodRefusalMessage', () => {
 
   it('names a nested field by its dotted path', () => {
     expect(refusal({ metric: 'cost', nested: { n: 'x' } })).toBe(
-      'BAD_REQUEST: The field `nested.n` was refused. Invalid input: expected number, received string.',
+      'BAD_REQUEST: The field `nested.n` takes a number, not a string.',
     );
   });
 
   it('names every refused field, not only the first', () => {
     expect(refusal({ metric: 'vibes', nested: { n: 'x' } })).toMatch(
-      /^BAD_REQUEST: The field `metric` takes one of the values listed below\. The field `nested\.n` was refused\. /,
+      /^BAD_REQUEST: The field `metric` takes one of the values listed below\. The field `nested\.n` takes a number, not a string\./,
     );
   });
 

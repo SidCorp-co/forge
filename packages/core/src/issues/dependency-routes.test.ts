@@ -144,7 +144,8 @@ describe('dependency route identifier resolution (ISS-1160)', () => {
     const res = await getKey('ISS-1097/dependencies');
     expect(res.status).toBe(400);
     const body = (await res.json()) as { message: string };
-    expect(body.message).toMatch(/Invalid input/);
+    expect(body.message).toMatch(/^`ISS-1097` is not a uuid/);
+    expect(body.message).not.toMatch(/Invalid input/);
   });
 
   it('refuses a string that is neither a uuid nor a display key, with an example of each', async () => {

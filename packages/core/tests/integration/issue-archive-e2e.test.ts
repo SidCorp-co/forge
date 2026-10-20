@@ -319,7 +319,7 @@ describe('what an archive refuses, writing nothing', () => {
     expect(rest.status).toBe(403);
     const ask = { action: 'archive', archiveFilter: { keys: ['ISS-1'] }, dryRun: true };
     expect((await mcp(writerPat, ask)).error).toMatch(/lacks the admin scope/);
-    expect((await mcp(memberPat, ask)).error).toMatch(/requires project admin access/);
+    expect((await mcp(memberPat, ask)).error).toMatch(/Requires project admin access/);
   });
 
   it('carries every refusal, not the first five, on REST and on MCP alike', async () => {

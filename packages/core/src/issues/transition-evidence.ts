@@ -5,8 +5,8 @@ import type { ActorAgency } from './actor-agency.js';
 import type { TransitionErrorCode, TransitionIssueRow } from './apply-transition.js';
 import { findUnmetEntryCriteria } from './entry-criteria.js';
 import {
-  ENTRY_RECORD_MISSING,
   type EntryCriterionKey,
+  entryRecordsMissingWords,
   entryRecordsWrittenBy,
 } from './entry-criteria-keys.js';
 import { statusLabel } from './status-sets.js';
@@ -80,8 +80,11 @@ const entryCriteriaRule: EvidenceRule = {
       code: 'ENTRY_CRITERIA_UNMET',
       // A short sentence per record by its name; each record's whole step stays in `steps`.
       detail: [
-        `${statusLabel(ctx.toStatus)} needs ${shortfall.unmet.length === 1 ? 'a record' : 'records'} this issue is missing.`,
-        ...shortfall.unmet.map((u) => ENTRY_RECORD_MISSING[u.key]),
+        entryRecordsMissingWords(
+          ctx.toStatus,
+          statusLabel(ctx.toStatus),
+          shortfall.unmet.map((u) => u.key),
+        ),
         ...entryRecordsWrittenBy(shortfall.unmet.map((u) => u.key)),
       ].join(' '),
       details: {
