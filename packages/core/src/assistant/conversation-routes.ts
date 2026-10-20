@@ -281,6 +281,7 @@ conversationRoutes.post(
         shape: 'direct',
         projectId: input.projectId,
         title: input.title ?? null,
+        createdBy: userId,
       });
       await addPerson({ conversationId: room.id, userId, actorUserId: userId, tx });
       for (const named of handles) {

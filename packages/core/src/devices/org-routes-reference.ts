@@ -6,7 +6,7 @@ import { deviceBuildFields } from './routes-reference.js';
 
 export const orgIdParamSchema = z.object({ orgId: z.uuid() });
 
-/** A device bound to a project of the organisation; `capabilities` and the gate report stay with the owner. */
+/** A device bound to a project of the organisation, or held by one of its agents; `capabilities` and the gate report stay with the owner. */
 export const orgDeviceSchema = tableRow(devices)
   .pick({
     id: true,
@@ -26,11 +26,15 @@ export const orgDeviceSchema = tableRow(devices)
     runnerCount: z.number(),
     projectNames: z.array(z.string()),
     ownedByMe: z.boolean(),
+    /** The organisation's agent holding the device, as `@handle`; null for a person's box. */
+    heldBy: z.string().nullable(),
+    /** Whether the caller may revoke it: its pairer, or an admin where an agent of this organisation paired it. */
+    canRevoke: z.boolean(),
   });
 
 export const listOrgDevices = describeOperation({
   summary:
-    "List the organisation's devices over the projects the caller can see, whoever paired them",
+    "List the organisation's devices over the projects the caller can see, whoever paired them, and every live device the organisation's own agents hold",
   responses: {
     200: json(z.array(orgDeviceSchema)),
     403: fail('FORBIDDEN', 'the caller is not a member of the organisation'),

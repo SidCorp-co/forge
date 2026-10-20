@@ -60,7 +60,14 @@ function orgDevice(over: Partial<OrgDeviceRow> = {}): OrgDeviceRow {
 		name: "sid-xeon-1",
 		ownedByMe: false,
 	});
-	return { ...rest, runnerCount: 2, projectNames: ["Pipeline Alpha", "Pipeline Beta"], ...over };
+	return {
+		...rest,
+		runnerCount: 2,
+		projectNames: ["Pipeline Alpha", "Pipeline Beta"],
+		heldBy: null,
+		canRevoke: false,
+		...over,
+	};
 }
 
 function Wrap({ children }: { children: ReactNode }) {
@@ -175,6 +182,37 @@ describe("the organisation scope", () => {
 		expect(screen.getByText("read only")).toBeTruthy();
 	});
 
+	// ISS-1229 r23 (judge-66 on 198): an organisation agent's box was on neither list, and nobody
+	// could revoke it, so the organisation could not be deleted.
+	it("lists the box an organisation agent holds, names the agent, and offers an admin Revoke alone", async () => {
+		listOrgDevices.mockResolvedValue([
+			orgDevice({ id: "dev-7", name: "agent-box", heldBy: "@ops-bot", canRevoke: true, projectNames: [], runnerCount: 0 }),
+		]);
+
+		await show();
+		tab(/^Organisation · /).click();
+		await screen.findByText("agent-box");
+
+		expect(screen.getByText("held by the agent @ops-bot")).toBeTruthy();
+		expect(screen.queryByText("read only")).toBeNull();
+		expect(screen.queryByRole("button", { name: "Turn off" })).toBeNull();
+		expect(screen.queryByRole("button", { name: "Manage" })).toBeNull();
+		screen.getByRole("button", { name: "Revoke" }).click();
+		expect(await screen.findByLabelText(/type .*agent-box/i)).toBeTruthy();
+	});
+
+	it("keeps an organisation agent's box read only for a member who may not revoke it", async () => {
+		listOrgDevices.mockResolvedValue([orgDevice({ heldBy: "@ops-bot", canRevoke: false })]);
+
+		await show();
+		tab(/^Organisation · /).click();
+		await screen.findByText("sid-xeon-1");
+
+		expect(screen.getByText("held by the agent @ops-bot")).toBeTruthy();
+		expect(screen.queryByRole("button", { name: "Revoke" })).toBeNull();
+		expect(screen.getByText("read only")).toBeTruthy();
+	});
+
 	it("points a caller at Mine for a box of their own standing in the org list", async () => {
 		listOrgDevices.mockResolvedValue([orgDevice({ id: "dev-9", ownedByMe: true })]);
 
@@ -215,7 +253,7 @@ describe("the organisation scope", () => {
 
 		expect(
 			await screen.findByText(
-				"No device is assigned to a project you can see in this organisation",
+				"No device is assigned to a project you can see in this organisation, and none of its agents holds one",
 			),
 		).toBeTruthy();
 		expect(screen.getByText(/You have paired 1 device/)).toBeTruthy();
@@ -235,7 +273,7 @@ describe("a scope whose query has not answered", () => {
 		await screen.findByText(/Every device assigned to a project you can see/);
 
 		expect(
-			screen.queryByText("No device is assigned to a project you can see in this organisation"),
+			screen.queryByText("No device is assigned to a project you can see in this organisation, and none of its agents holds one"),
 		).toBeNull();
 		expect(listOrgDevices).not.toHaveBeenCalled();
 		expect(tab(/^Organisation · counting…$/)).toBeTruthy();
@@ -276,7 +314,7 @@ describe("a list that failed to load", () => {
 
 		expect(await screen.findByRole("button", { name: /retry/i })).toBeTruthy();
 		expect(
-			screen.queryByText("No device is assigned to a project you can see in this organisation"),
+			screen.queryByText("No device is assigned to a project you can see in this organisation, and none of its agents holds one"),
 		).toBeNull();
 	});
 });

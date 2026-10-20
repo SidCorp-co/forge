@@ -155,7 +155,7 @@ export const deleteOrg = describeOperation({
       PERSONAL_ORG_IMMUTABLE: 'a personal organization cannot be deleted',
       ORG_NOT_EMPTY: 'projects still live in the organization; delete or move them first',
       ORG_AGENT_HOLDS_A_DEVICE:
-        'one of its agent accounts holds a device not yet revoked; revoke it first',
+        "its agent accounts hold devices not yet revoked, every one named; an admin of the organization revokes them from the organization's Runners list first",
     }),
   },
 });

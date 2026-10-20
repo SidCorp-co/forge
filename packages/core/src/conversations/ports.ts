@@ -10,6 +10,8 @@ export interface ConversationVenue {
   shape: ConversationShape;
   projectId: string;
   title?: string | null;
+  /** The person opening the room, where one is; they may delete it once it is about no project. */
+  createdBy?: string | null;
 }
 
 export interface DeliveryReceipt {

@@ -53,6 +53,8 @@ export function useRevokeDevice() {
 		mutationFn: (id: string) => runnersApi.revokeDevice(id),
 		onSuccess: () => {
 			qc.invalidateQueries({ queryKey: ["devices", "me"] });
+			// An admin revoking an organisation agent's box reads it on the organisation list.
+			qc.invalidateQueries({ queryKey: ["devices", "org"] });
 			toast({ title: "Device revoked", tone: "success" });
 		},
 		onError: (err) =>

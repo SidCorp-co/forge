@@ -7,6 +7,7 @@ import type {
   ConversationMembership,
   ConversationMode,
   ConversationRow,
+  RoomWithoutAProject,
 } from "./types";
 
 export interface OpenConversationArgs {
@@ -165,4 +166,6 @@ export const conversationsApi = {
 
   /** `DELETE /api/conversations/:id`. */
   remove: (id: string) => apiClient<void>(`/conversations/${id}`, { method: "DELETE" }),
+  withoutAProject: (orgId: string) =>
+    apiClient<RoomWithoutAProject[]>(`/orgs/${orgId}/rooms-without-a-project`),
 };

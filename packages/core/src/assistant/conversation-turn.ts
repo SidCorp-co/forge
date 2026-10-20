@@ -102,7 +102,7 @@ export async function openTurn(opts: OpenTurnOptions): Promise<ConversationTurn>
     const scope = await assertConversationWritable(row.id, opts.readerUserId ?? null);
     if (!scope.includes(opts.projectId)) {
       throw conflict(
-        `conversation ${row.id} is about ${scope.join(', ')} and this turn arrives under project ${opts.projectId}; a turn runs in a room its own project is in`,
+        `conversation ${row.id} is about ${scope.join(', ') || 'no project'} and this turn arrives under project ${opts.projectId}; a turn runs in a room its own project is in`,
         'CONVERSATION_PROJECT_CONFLICT',
       );
     }
@@ -149,6 +149,7 @@ export async function openTurn(opts: OpenTurnOptions): Promise<ConversationTurn>
       shape: opts.shape ?? 'direct',
       projectId: opts.projectId,
       title: opts.title ?? null,
+      createdBy: opts.readerUserId,
     },
     { db: dbi },
   );

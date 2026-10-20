@@ -2,8 +2,13 @@ import { and, eq, isNotNull, isNull } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db as defaultDb } from '../db/client.js';
 import type { ProjectMemberRole } from '../db/schema.js';
-import { conversationParticipants } from '../db/schema-conversations.js';
-import { effectiveProjectRole, projectRoleAtLeast } from '../lib/authz.js';
+import { conversationParticipants, conversations } from '../db/schema-conversations.js';
+import {
+  effectiveProjectRole,
+  loadOrgRole,
+  orgRoleAtLeast,
+  projectRoleAtLeast,
+} from '../lib/authz.js';
 import type { Executor } from './db-executor.js';
 
 const forbidden = (message: string, code: string) =>
@@ -68,8 +73,11 @@ async function assertConversationRole(
   }
   const scope = await derivedScope(conversationId, tx);
   if (scope.length === 0) {
+    // A room about no project is still its organization's (ISS-1229 r23): whoever opened it, or an
+    // admin of that organization, reaches it, to look at it and to delete it.
+    if (await holdsRoomAboutNoProject(conversationId, userId, tx)) return [];
     throw forbidden(
-      `conversation ${conversationId} has no handle in it, so it is about no project and nobody holds a role that reaches it`,
+      `conversation ${conversationId} has no agent in it, so it is about no project; only the person who opened it or an admin of its organization can reach it`,
       'CONVERSATION_NO_SCOPE',
     );
   }
@@ -83,4 +91,20 @@ async function assertConversationRole(
     }
   }
   return scope;
+}
+
+/** Whether this caller opened the room or holds the admin role in the organization it belongs to. */
+export async function holdsRoomAboutNoProject(
+  conversationId: string,
+  userId: string,
+  tx: Executor = defaultDb,
+): Promise<boolean> {
+  const [room] = await tx
+    .select({ orgId: conversations.orgId, createdBy: conversations.createdBy })
+    .from(conversations)
+    .where(eq(conversations.id, conversationId))
+    .limit(1);
+  if (!room) return false;
+  if (room.createdBy === userId) return true;
+  return room.orgId !== null && orgRoleAtLeast(await loadOrgRole(room.orgId, userId), 'admin');
 }

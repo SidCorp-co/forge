@@ -1,3 +1,4 @@
+import type { IssueUpdateField } from '@forge/contracts/issue-vocabulary';
 import { redactedMessage } from '@forge/observability';
 import { and, count, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
@@ -478,10 +479,10 @@ issueRoutes.patch(
     }
 
     const updates: Record<string, unknown> = { updatedAt: new Date() };
-    const changedFields: string[] = [];
+    const changedFields: IssueUpdateField[] = [];
     const before: Record<string, unknown> = {};
     const after: Record<string, unknown> = {};
-    const track = (field: keyof IssueRow, next: unknown) => {
+    const track = (field: IssueUpdateField & keyof IssueRow, next: unknown) => {
       const prev = issue[field];
       if (prev !== next) {
         changedFields.push(field);
@@ -494,7 +495,7 @@ issueRoutes.patch(
       collected = collectIssueFieldUpdates(
         patch,
         [...SHARED_ISSUE_PATCH_FIELDS, 'assigneeId'],
-        (f, v) => track(f as keyof IssueRow, v),
+        (f, v) => track(f as IssueUpdateField & keyof IssueRow, v),
       );
     } catch (err) {
       throw toHttpCreateError(err);

@@ -1,9 +1,11 @@
 /**
- * The one claim about this route a mock is the right instrument for: a
- * malformed `orgId` is refused BEFORE any database read (ISS-1162). Which rows
+ * The claims about this route a mock is the right instrument for: a malformed
+ * `orgId` is refused BEFORE any database read (ISS-1162), and nothing is read
+ * past the organisation's agents where there is nothing to list. Which rows
  * the route returns is decided by a join and a visibility predicate, and is
  * proved against real Postgres in
- * `tests/integration/org-devices-scope-e2e.test.ts` — under a mocked row set
+ * `tests/integration/org-devices-scope-e2e.test.ts` and, for an agent's
+ * devices, `tests/integration/org-delete-agents-e2e.test.ts` — under a mocked row set
  * those assertions could not go red on a wrong `WHERE`.
  */
 
@@ -24,8 +26,13 @@ vi.mock('../config/env.js', () => ({
 
 const chain: Record<string, unknown> = {};
 const selectOrderBy = vi.fn(async () => [] as Array<Record<string, unknown>>);
+/** The organisation's agents, the first read; a thenable chain so `await` reads the rows. */
+const agentRows = vi.fn(() => [] as Array<{ id: string; handle: string | null }>);
 chain.innerJoin = vi.fn(() => chain);
-chain.where = vi.fn(() => chain);
+chain.where = vi.fn(() => ({
+  ...chain,
+  then: (resolve: (rows: unknown) => unknown) => resolve(agentRows()),
+}));
 chain.groupBy = vi.fn(() => chain);
 chain.orderBy = selectOrderBy;
 const selectFrom = vi.fn(() => chain);
@@ -103,13 +110,14 @@ describe('GET /api/orgs/:orgId/devices', () => {
     expect(dbSelect).not.toHaveBeenCalled();
   });
 
-  it('answers empty without a query when the caller can see no project at all', async () => {
+  it('answers empty after reading only its agents when the caller sees no project and it holds no agent', async () => {
     loadVisibleProjectIds.mockResolvedValueOnce([]);
 
     const res = await buildApp().fetch(get(`/api/orgs/${ORG}/devices`));
 
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual([]);
-    expect(dbSelect).not.toHaveBeenCalled();
+    expect(dbSelect).toHaveBeenCalledTimes(1);
+    expect(selectOrderBy).not.toHaveBeenCalled();
   });
 });

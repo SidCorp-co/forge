@@ -35,10 +35,10 @@ const updateWhere = vi.fn(() => ({ returning: updateReturning, then: undefined }
 const updateSet = vi.fn(() => ({ where: updateWhere }));
 const dbUpdate = vi.fn(() => ({ set: updateSet }));
 
-const selectLimit = vi.fn();
+const selectLimit = vi.fn(async (): Promise<unknown[]> => []);
 const selectOrderBy = vi.fn();
 const selectWhere = vi.fn((): unknown => ({ limit: selectLimit, orderBy: selectOrderBy }));
-const selectInnerJoin = vi.fn(() => ({ where: selectWhere }));
+const selectInnerJoin = vi.fn((): unknown => ({ where: selectWhere, innerJoin: selectInnerJoin }));
 const selectFrom = vi.fn(() => ({ where: selectWhere, innerJoin: selectInnerJoin }));
 const dbSelect = vi.fn(() => ({ from: selectFrom }));
 

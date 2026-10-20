@@ -8,12 +8,12 @@
 // not, at the accent token, which clears the 3:1 non-text contrast bar against
 // the surface behind it: the difference is meant to be seen rather than read.
 
-import { personName } from "@forge/contracts/person-name";
 import { useState } from "react";
 import {
   Avatar,
   Banner,
   Button,
+  ConfirmDialog,
   Icon,
   IconButton,
   SectionTitle,
@@ -21,8 +21,17 @@ import {
   Tooltip,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
+import { useAuth } from "@/providers/auth-provider";
 import { useRemoveParticipant } from "../hooks";
-import { agentsOf, initialsOf, peopleOf, removalClaim, scopeDerivation } from "../membership";
+import {
+  agentsOf,
+  initialsOf,
+  memberName,
+  peopleOf,
+  removalClaim,
+  removalQuestion,
+  scopeDerivation,
+} from "../membership";
 import type { ConversationMembership, ConversationParticipant } from "../types";
 import { AddAgentDialog } from "./add-agent-dialog";
 import { AddPersonDialog } from "./add-person-dialog";
@@ -43,7 +52,11 @@ export function ConversationMembers({
 }) {
   const [addingAgent, setAddingAgent] = useState(false);
   const [addingPerson, setAddingPerson] = useState(false);
+  // Taking somebody out is asked first, naming who (ISS-1229 r23): two unnamed people read alike.
+  const [removing, setRemoving] = useState<ConversationParticipant | null>(null);
   const remove = useRemoveParticipant(conversationId);
+  const viewerId = useAuth().user?.id ?? null;
+  const asked = removing ? removalQuestion(removing, viewerId) : null;
 
   const agents = agentsOf(room);
   const people = peopleOf(room);
@@ -79,8 +92,9 @@ export function ConversationMembers({
                 member={agent}
                 room={room}
                 canChange={canChange}
+                viewerId={viewerId}
                 busy={remove.isPending}
-                onRemove={() => remove.mutate({ participantId: agent.id })}
+                onRemove={() => setRemoving(agent)}
               />
             ))}
           </Section>
@@ -102,13 +116,28 @@ export function ConversationMembers({
                 member={person}
                 room={room}
                 canChange={canChange}
+                viewerId={viewerId}
                 busy={remove.isPending}
-                onRemove={() => remove.mutate({ participantId: person.id })}
+                onRemove={() => setRemoving(person)}
               />
             ))}
           </Section>
         </div>
       </SlideOver>
+
+      <ConfirmDialog
+        open={removing !== null}
+        title={asked?.title ?? ""}
+        message={removing ? removalClaim(removing, room, viewerId) : ""}
+        confirmLabel={asked?.confirm ?? ""}
+        tone="danger"
+        loading={remove.isPending}
+        onClose={() => setRemoving(null)}
+        onConfirm={() => {
+          if (!removing) return;
+          remove.mutate({ participantId: removing.id }, { onSettled: () => setRemoving(null) });
+        }}
+      />
 
       <AddAgentDialog
         conversationId={conversationId}
@@ -158,12 +187,14 @@ function MemberRow({
   member,
   room,
   canChange,
+  viewerId,
   busy,
   onRemove,
 }: {
   member: ConversationParticipant;
   room: Partial<ConversationMembership>;
   canChange: boolean;
+  viewerId: string | null;
   busy: boolean;
   onRemove: () => void;
 }) {
@@ -189,7 +220,7 @@ function MemberRow({
       )}
       <div className="min-w-0 flex-1">
         <span className={`fg-body-sm block truncate ${isAgent ? "font-mono" : ""}`}>
-          {isAgent ? `@${member.displayName ?? member.label}` : personName(member.displayName, "start")}
+          {memberName(member, viewerId)}
         </span>
         <span className="fg-caption block truncate text-subtle">
           {isAgent ? (project?.name ?? "a project this room is no longer about") : "Person"}
@@ -201,11 +232,11 @@ function MemberRow({
         </Tooltip>
       )}
       {canChange && (
-        <Tooltip label={removalClaim(member, room)}>
+        <Tooltip label={removalClaim(member, room, viewerId)}>
           <IconButton
             icon="x"
             size="sm"
-            aria-label={`Take ${isAgent ? `@${member.displayName ?? member.label}` : personName(member.displayName)} out of the room`}
+            aria-label={`Take ${member.kind === "person" && viewerId && member.userId === viewerId ? "yourself" : memberName(member, viewerId, "inside")} out of the room`}
             disabled={busy}
             onClick={onRemove}
           />

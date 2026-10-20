@@ -23,9 +23,11 @@ vi.mock("../hooks", () => ({
   useAddPerson: () => ({ mutate: vi.fn(), reset: vi.fn(), isPending: false, isError: false }),
   useProjectCandidates: () => ({ isLoading: false, isError: false, data: { people, handles: [] } }),
   useOpenConversation: () => ({ mutate: vi.fn(), isPending: false, isError: false }),
-  useRemoveParticipant: () => ({ mutate: vi.fn(), isPending: false, isError: false }),
+  useRemoveParticipant: () => ({ mutate: removeMutate, isPending: false, isError: false }),
   useAddHandle: () => ({ mutate: vi.fn(), reset: vi.fn(), isPending: false, isError: false }),
 }));
+const removeMutate = vi.fn();
+vi.mock("@/providers/auth-provider", () => ({ useAuth: () => ({ user: { id: "me" } }) }));
 vi.mock("@/features/projects/hooks", () => ({
   useOrgScopedProjects: () => ({ projects: [{ id: "p1", name: "Billing", slug: "billing" }] }),
 }));
@@ -51,7 +53,7 @@ describe("adding a person to a room", () => {
   it("confirms the pick by name and address", () => {
     render(<AddPersonDialog conversationId="c1" room={{ shape: "group" }} open onClose={() => {}} />);
     fireEvent.click(screen.getByText("kim@example.org"));
-    expect(screen.getByText("Add another member")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Add to room" })).toBeTruthy();
     expect(screen.getByText("kim@example.org")).toBeTruthy();
     expect(screen.queryByText("lan.pham@example.com")).toBeNull();
   });
@@ -74,11 +76,13 @@ describe("starting a conversation", () => {
 describe("a person with no display name, inside a sentence", () => {
   const room = { shape: "group" as const, scopeProjects: [{ id: "p1", name: "Billing", slug: "billing" }] };
 
-  it("reads lower-case in the add-person confirmation and on its button", () => {
+  // ISS-1229 r23, judge-66: "Add another member" read as "add one more member".
+  it("reads lower-case in the add-person confirmation, and the button says what it does", () => {
     render(<AddPersonDialog conversationId="c1" room={room} open onClose={() => {}} />);
     fireEvent.click(screen.getByText("lan.pham@example.com"));
     expect(screen.getByText(/Adding another member lists them here/)).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Add another member" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Add to room" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /another member/i })).toBeNull();
   });
 
   it("opens a sentence capitalised", () => {
@@ -119,3 +123,45 @@ describe("a person with no display name, inside a sentence", () => {
   });
 });
 
+
+// ISS-1229 r23, judge-66: the reader read their own row as "Another member", and the remove control
+// acted at once, between two rows that read alike.
+describe("the reader and removal in a room's people list", () => {
+  const room = { shape: "group" as const, scopeProjects: [{ id: "p1", name: "Billing", slug: "billing" }] };
+  const me = { id: "pm", kind: "person" as const, userId: "me", projectId: null, label: null, displayName: "Another member", reachable: null };
+  const other = { id: "po", kind: "person" as const, userId: "u2", projectId: null, label: null, displayName: "Another member", reachable: null };
+
+  it("names the reader's own row You and anybody else's as core named them", () => {
+    render(
+      <ConversationMembers conversationId="c1" room={{ ...room, participants: [me, other] }} canChange open onClose={() => {}} />,
+    );
+    const rows = screen.getAllByTestId("member-row-person").map((r) => r.textContent);
+    expect(rows[0]).toContain("You");
+    expect(rows[1]).toContain("Another member");
+    expect(screen.getByRole("button", { name: "Take yourself out of the room" })).toBeTruthy();
+  });
+
+  it("asks before taking a person out, naming who, and removes only on the answer", () => {
+    removeMutate.mockReset();
+    render(
+      <ConversationMembers conversationId="c1" room={{ ...room, participants: [me, { ...other, displayName: "Mai Tran" }] }} canChange open onClose={() => {}} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Take Mai Tran out of the room" }));
+    expect(removeMutate).not.toHaveBeenCalled();
+    expect(screen.getByText("Take Mai Tran out of this room?")).toBeTruthy();
+    expect(screen.getByText("Mai Tran will no longer be listed in this room.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Take Mai Tran out" }));
+    expect(removeMutate).toHaveBeenCalledTimes(1);
+    expect(removeMutate.mock.calls[0]?.[0]).toEqual({ participantId: "po" });
+  });
+
+  it("asks the reader taking themselves out in their own words", () => {
+    render(
+      <ConversationMembers conversationId="c1" room={{ ...room, participants: [me] }} canChange open onClose={() => {}} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Take yourself out of the room" }));
+    expect(screen.getByText("Take yourself out of this room?")).toBeTruthy();
+    expect(screen.getByText("You will no longer be listed in this room.")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Take me out" })).toBeTruthy();
+  });
+});

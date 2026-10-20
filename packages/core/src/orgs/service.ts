@@ -56,15 +56,14 @@ export async function deleteOrganization(orgId: string): Promise<void> {
             );
     const ids = own.map((a) => a.id);
     if (ids.length > 0) {
-      const [held] = await tx
+      const held = await tx
         .select({ device: devices.name, ownerId: devices.ownerId })
         .from(devices)
         .where(and(inArray(devices.ownerId, ids), ne(devices.status, 'revoked')))
-        .limit(1);
-      if (held) {
-        const agent = own.find((a) => a.id === held.ownerId);
+        .orderBy(devices.ownerId, devices.name);
+      if (held.length > 0) {
         throw new HTTPException(409, {
-          message: `This organization's agent @${agent?.handle ?? held.ownerId} still holds the device "${held.device}", so the organization was not deleted. Revoke that device under Runners, then delete the organization.`,
+          message: heldDevicesRefusal(own, held),
           cause: { code: 'ORG_AGENT_HOLDS_A_DEVICE' },
         });
       }
@@ -75,6 +74,35 @@ export async function deleteOrganization(orgId: string): Promise<void> {
       await tx.delete(users).where(inArray(users.id, ids));
     }
   });
+}
+
+const quotedList = (names: readonly string[]): string => {
+  const quoted = names.map((n) => `"${n}"`);
+  return quoted.length <= 1
+    ? (quoted[0] ?? '')
+    : `${quoted.slice(0, -1).join(', ')} and ${quoted[quoted.length - 1]}`;
+};
+
+/** The one refusal naming every live device each of the organization's own agents holds (ISS-1229 r23). */
+export function heldDevicesRefusal(
+  agents: readonly { id: string; handle: string | null }[],
+  held: readonly { device: string; ownerId: string }[],
+): string {
+  const byAgent = new Map<string, string[]>();
+  for (const row of held)
+    byAgent.set(row.ownerId, [...(byAgent.get(row.ownerId) ?? []), row.device]);
+  const holders = [...byAgent].map(([ownerId, names]) => {
+    const handle = agents.find((a) => a.id === ownerId)?.handle;
+    return { at: handle ? `@${handle}` : `the agent ${ownerId}`, names };
+  });
+  const way = `Revoke ${held.length === 1 ? 'it' : 'them'} on the Runners page under Organisation, then delete the organization.`;
+  const [only] = holders;
+  if (holders.length === 1 && only) {
+    const what = only.names.length === 1 ? 'the device' : `${only.names.length} devices,`;
+    return `This organization's agent ${only.at} still holds ${what} ${quotedList(only.names)}, so the organization was not deleted. ${way}`;
+  }
+  const each = holders.map((h) => `${h.at} holds ${quotedList(h.names)}`).join('; ');
+  return `This organization's agents still hold ${held.length} devices not yet revoked (${each}), so the organization was not deleted. ${way}`;
 }
 
 /**

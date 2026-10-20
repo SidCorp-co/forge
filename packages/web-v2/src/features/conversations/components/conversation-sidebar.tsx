@@ -44,6 +44,8 @@ interface ConversationSidebarProps {
   onArchive?: (archived: boolean, row: ListedConversation) => void;
   /** Ask to delete a row — the caller owns the confirmation. */
   onDelete?: (row: ListedConversation) => void;
+  /** Shown under the rows: the organization's rooms whose projects are gone (ISS-1229 r23). */
+  below?: React.ReactNode;
 }
 
 export function ConversationSidebar({
@@ -57,6 +59,7 @@ export function ConversationSidebar({
   onOpen,
   showArchived,
   onToggleArchived,
+  below,
   loading,
   error,
   onRetry,
@@ -161,6 +164,7 @@ export function ConversationSidebar({
               ))}
             </div>
           )}
+          {below}
         </div>
       )}
     </div>

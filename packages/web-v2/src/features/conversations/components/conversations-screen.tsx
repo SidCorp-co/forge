@@ -8,6 +8,7 @@ import {
   PageTitle,
   SlideOver,
 } from "@/design";
+import { useActiveOrg } from "@/features/orgs/active-org";
 import { useOrgScopedProjects, useProjects } from "@/features/projects/hooks";
 import { usePersistedState } from "@/lib/utils/use-persisted-state";
 import { projectRoom } from "@/lib/ws/rooms";
@@ -22,6 +23,7 @@ import {
 import { conversationTitle } from "../types";
 import { ConversationChat } from "./conversation-chat";
 import { ConversationSidebar } from "./conversation-sidebar";
+import { RoomsWithoutAProject } from "./orphan-rooms";
 import { StartConversation } from "./start-conversation";
 
 const SIDEBAR_COLLAPSED_KEY = "web-v2:conversations-sidebar-collapsed";
@@ -47,6 +49,7 @@ export function ConversationsScreen() {
   const { projects: orgProjects, projectIds: orgProjectIds } = useOrgScopedProjects();
   const projectIdList = useMemo(() => [...orgProjectIds].sort(), [orgProjectIds]);
   const [showArchived, setShowArchived] = useState(false);
+  const { activeOrgId } = useActiveOrg();
   const conversations = useConversationsAcrossProjects(projectIdList, showArchived);
 
   const [selection, setSelection] = useState<Selection | null>(null);
@@ -107,6 +110,7 @@ export function ConversationsScreen() {
         archive.mutate({ id: row.id, archived }, { onSuccess: () => dropIfOpen(row.id) });
       }}
       onDelete={(row) => setConfirming(row)}
+      below={showArchived ? null : <RoomsWithoutAProject orgId={activeOrgId ?? null} />}
       loading={conversations.isLoading}
       error={conversations.error}
       onRetry={conversations.refetch}

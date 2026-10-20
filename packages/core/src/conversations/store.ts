@@ -8,6 +8,7 @@
 import { and, asc, desc, eq, gte, inArray, like, lte, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db as defaultDb } from '../db/client.js';
+import { projects } from '../db/schema.js';
 import type { ConversationWindowDecision } from '../db/schema-conversations.js';
 import {
   type ConversationAdapter,
@@ -120,6 +121,12 @@ export async function openConversationIn(
 ): Promise<ConversationRow> {
   {
     const handle = await resolveProjectHandle(tx, venue.projectId);
+    // The room is its organization's, and stays so once the project is gone (ISS-1229 r23).
+    const [project] = await tx
+      .select({ orgId: projects.orgId })
+      .from(projects)
+      .where(eq(projects.id, venue.projectId))
+      .limit(1);
     const [inserted] = await tx
       .insert(conversations)
       .values({
@@ -127,6 +134,8 @@ export async function openConversationIn(
         externalId: venue.externalId,
         shape: venue.shape,
         title: venue.title ?? null,
+        orgId: project?.orgId ?? null,
+        createdBy: venue.createdBy ?? null,
       })
       .onConflictDoNothing({ target: [conversations.adapter, conversations.externalId] })
       .returning(selection);

@@ -198,13 +198,27 @@ export function personAdditionClaims(args: {
   ];
 }
 
+/** How a member is named in the room's list: the reader's own row reads "You" (ISS-1229 r23). */
+export function memberName(
+  participant: ConversationParticipant,
+  viewerId?: string | null,
+  at: "inside" | "start" = "start",
+): string {
+  if (participant.kind === "handle") return `@${participant.displayName ?? participant.label ?? "agent"}`;
+  if (viewerId && participant.userId === viewerId) return at === "start" ? "You" : "you";
+  return personName(participant.displayName, at);
+}
+
 /** What taking this member out does. */
 export function removalClaim(
   participant: ConversationParticipant,
   room: Partial<Pick<ConversationMembership, "scopeProjects" | "participants">>,
+  viewerId?: string | null,
 ): string {
   if (participant.kind !== "handle") {
-    return `${personName(participant.displayName, "start")} will no longer be listed in this room.`;
+    return viewerId && participant.userId === viewerId
+      ? "You will no longer be listed in this room."
+      : `${personName(participant.displayName, "start")} will no longer be listed in this room.`;
   }
   const rest = agentsOf(room)
     .filter((p) => p.id !== participant.id)
@@ -224,4 +238,14 @@ export function composerRefusal(
     reason: `This room is about ${list(room.scopeProjects)}, and a message is answered under exactly one project.`,
     wayOut: "Take one of its agents out, and the room can be spoken in again.",
   };
+}
+
+/** The question asked before a member is taken out, naming who (ISS-1229 r23). */
+export function removalQuestion(
+  participant: ConversationParticipant,
+  viewerId?: string | null,
+): { title: string; confirm: string } {
+  const self = participant.kind === "person" && Boolean(viewerId) && participant.userId === viewerId;
+  const who = self ? "yourself" : memberName(participant, viewerId, "inside");
+  return { title: `Take ${who} out of this room?`, confirm: self ? "Take me out" : `Take ${who} out` };
 }

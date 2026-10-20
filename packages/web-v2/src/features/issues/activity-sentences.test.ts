@@ -1,4 +1,4 @@
-import { ISSUE_ACTIVITY_ACTIONS } from "@forge/contracts/issue-vocabulary";
+import { ISSUE_ACTIVITY_ACTIONS, ISSUE_UPDATE_FIELDS } from "@forge/contracts/issue-vocabulary";
 import { describe, expect, it } from "vitest";
 import { activitySentence, sentenceText } from "./activity-sentences";
 import type { ActivityItem } from "./types";
@@ -45,11 +45,45 @@ describe("an Activity event, said as a sentence", () => {
 
   it("names the fields an edit changed in words", () => {
     expect(said(item("issue.updated", { payload: { fields: ["title", "acceptanceCriteria"] } }))).toBe(
-      "Lan Pham changed the title and acceptance criteria",
+      "Lan Pham changed the title and the acceptance criteria",
     );
     expect(
       said(item("issue.updated", { payload: { fields: ["priority"], before: { priority: "medium" }, after: { priority: "high" } } })),
     ).toBe("Lan Pham changed the priority from medium to high");
+  });
+
+  // ISS-1229 r23, judge-66: "changed the merged at, merged commit sha and merged landing".
+  it("says a merge record as the one act it is, and no stored field name in any edit", () => {
+    expect(
+      said(
+        item("issue.updated", {
+          payload: {
+            fields: ["mergedAt", "mergedCommitSha", "mergedLanding"],
+            before: { mergedAt: null },
+            after: { mergedAt: "2026-10-20T10:00:00Z", mergedCommitSha: "abc", mergedLanding: "pr" },
+          },
+        }),
+      ),
+    ).toBe("Lan Pham recorded the merge");
+    expect(
+      said(item("issue.updated", { payload: { fields: ["mergedAt", "mergedCommitSha", "mergedLanding"], after: { mergedAt: null } } })),
+    ).toBe("Lan Pham took back the merge record");
+    for (const field of ISSUE_UPDATE_FIELDS) {
+      const text = said(item("issue.updated", { payload: { fields: [field] } }));
+      expect(text, field).not.toMatch(/merged at|commit sha|landing|detector key|session context|metadata|assignee id/i);
+      if (/[A-Z]/.test(field)) expect(text, field).not.toContain(field);
+    }
+    expect(said(item("issue.updated", { payload: { fields: ["releaseNotes", "sessionContext"] } }))).toBe(
+      "Lan Pham changed the release note and the agent's working notes",
+    );
+    expect(said(item("issue.updated", { payload: { fields: ["someNewColumn"] } }))).toBe("Lan Pham changed this issue");
+  });
+
+  // ISS-1229 r23, judge-66: the reader saw their own events as "Another member".
+  it("names the reader You, whatever name core gave them", () => {
+    expect(sentenceText(activitySentence(item("comment.created", { actor: null }), "u1"))).toBe("You commented");
+    expect(sentenceText(activitySentence(item("comment.created"), "u1"))).toBe("You commented");
+    expect(sentenceText(activitySentence(item("comment.created"), "u2"))).toBe("Lan Pham commented");
   });
 
   it("says an action this build has no words for as a change by its actor, never as its code", () => {

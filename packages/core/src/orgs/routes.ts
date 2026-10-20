@@ -21,6 +21,7 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { sendOrgInvitationEmail } from '../projects/invitation-email.js';
 import { agentAccountRoutes } from './agent-accounts-routes.js';
 import { issueOrgInvitationToken } from './invitations.js';
+import { orgRoomRoutes } from './room-routes.js';
 import {
   addedMemberSchema,
   addMemberSchema,
@@ -487,3 +488,4 @@ orgRoutes.route('/', agentAccountRoutes);
 // ISS-1162 — the organisation's devices, mounted here so the router carries no
 // auth of its own and answers under the same org gate every sibling does.
 orgRoutes.route('/', deviceOrgRoutes);
+orgRoutes.route('/', orgRoomRoutes);

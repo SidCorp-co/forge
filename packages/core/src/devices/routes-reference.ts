@@ -212,7 +212,16 @@ export const updateDevice = describeOperation({
 
 export const revokeDevice = describeOperation({
   summary: 'Revoke a device: its token dies and its runner bindings are removed',
-  responses: { 204: empty('Revoked'), 403: notOwner, 404: noDevice },
+  description:
+    "The account that paired the device revokes it, and so does whoever holds the admin role in an organization the agent account holding it belongs to: an agent's device is its organization's to manage.",
+  responses: {
+    204: empty('Revoked'),
+    403: fail(
+      'FORBIDDEN',
+      'the caller neither paired the device nor holds the admin role in an organization whose agent paired it',
+    ),
+    404: noDevice,
+  },
 });
 
 export const listDeviceRunners = describeOperation({

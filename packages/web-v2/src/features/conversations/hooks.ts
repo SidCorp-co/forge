@@ -323,3 +323,12 @@ export function useWithdrawnDrafts(id: string | undefined) {
     NO_WITHDRAWN,
   );
 }
+
+/** The active organization's rooms whose projects are gone (ISS-1229 r23); a delete re-reads it. */
+export function useRoomsWithoutAProject(orgId: string | null) {
+  return useQuery({
+    queryKey: ["conversations", "without-a-project", orgId],
+    queryFn: () => conversationsApi.withoutAProject(orgId as string),
+    enabled: orgId !== null,
+  });
+}
