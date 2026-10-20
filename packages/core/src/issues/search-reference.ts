@@ -79,6 +79,7 @@ export const pipelineHealthSchema = z.object({
         'retry_cooldown',
         'runner_stale',
         'runner_too_old',
+        'runner_capacity',
       ]),
       since: z.string(),
       details: z.record(z.string(), z.unknown()),

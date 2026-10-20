@@ -337,7 +337,7 @@ describe('a report core repeats about an issue', () => {
       issueId: here,
       fromStatus: 'awaiting_release' as const,
       cap: 3,
-      driveSessions: 3,
+      sessions: { completed: 0, failed: 3, stopped: 0, open: 0 },
     };
 
     await mods.postCapReachedComment(args);

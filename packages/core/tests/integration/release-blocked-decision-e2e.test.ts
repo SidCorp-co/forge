@@ -457,9 +457,8 @@ describe('an answer that reaches a release already ended', () => {
 describe('a question the question screen refuses', () => {
   it('is carried as a free-text question naming the rule it broke, never dropped', async () => {
     const release = await runningRelease();
-    const { writePaneQuestion, questionIdFor } = await import(
-      '../../src/questions/pane-question-write.js'
-    );
+    const { writePaneQuestion } = await import('../../src/questions/pane-question-write.js');
+    const { questionIdFor } = await import('../../src/questions/pane-question-id.js');
     const id = questionIdFor(release.jobId, 7);
 
     await harness.db.transaction(async (tx) => {

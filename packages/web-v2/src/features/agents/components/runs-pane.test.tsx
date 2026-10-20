@@ -153,6 +153,23 @@ describe("the Agents runs tab with nothing running on a box", () => {
     expect(within(screen.getByRole("list", { name: "Closed runs" })).getAllByRole("listitem")).toHaveLength(1);
   });
 
+  // ISS-1228 r20 (after-shots): a run waiting on its question's answer is not over; it lists with
+  // the open runs in the word its drawer reads, and an answered one closes as Answered.
+  it("lists a run whose question stands as open, reading Needs an answer, and an answered one as Answered", () => {
+    state.runs = [
+      run({ id: "a", issueRef: "ISS-4", status: "failed", reading: "asking" }),
+      run({ id: "b", issueRef: "ISS-5", status: "failed", reading: "answered" }),
+    ];
+    state.total = 2;
+    pane();
+    const open = within(screen.getByRole("list", { name: "Open runs" })).getAllByRole("listitem");
+    expect(open.map((r) => (r.querySelector("[data-run-status]") as HTMLElement).textContent)).toEqual([
+      "Needs an answer",
+    ]);
+    const closed = within(screen.getByRole("list", { name: "Closed runs" })).getAllByRole("listitem");
+    expect(closed.map((r) => (r.querySelector("[data-run-status]") as HTMLElement).textContent)).toEqual(["Answered"]);
+  });
+
   // ISS-1228 round 17 (judge-47): "No box reports a run here" stood above three open runs.
   it("says no box reports a run only where it lists no open run", () => {
     state.runs = [run({ id: "o", status: "running", finishedAt: null, liveJobs: 1, reading: "starting" })];

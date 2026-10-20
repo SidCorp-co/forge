@@ -12,6 +12,7 @@ import {
   runnerUnlimited,
   runnerWorkspaceReady,
 } from '../runners/liveness-sql.js';
+import type { CapacityFleet } from './capacity-fleet.js';
 import { countInFlightForOneRunner } from './in-flight.js';
 
 export type GateSkipReason =
@@ -184,8 +185,11 @@ export async function assertDispatchable(
 
 export interface RunnerAvailability {
   /** Runners the picker considers selectable at all (online, fresh, not
-   *  rate-limited, device not disabled). Zero ⇒ gate reason `runner_stale`. */
+   *  rate-limited, device not disabled). Zero ⇒ a runner gate, which `fleet` names. */
   total: number;
+  /** Where `total` is zero, the project's online runners and what keeps each from the step, so
+   *  a reader says "none online" only where none is (ISS-1228). Absent where nobody read it. */
+  fleet?: CapacityFleet;
 }
 
 /**

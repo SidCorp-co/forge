@@ -11,6 +11,7 @@
 
 import { useNow } from "@/design/hooks/use-now";
 import {
+  Button,
   Checkbox,
   Collapsible,
   ErrorState,
@@ -42,13 +43,11 @@ import {
   canonicalIssueId,
   deriveBlockerState,
   deriveRunView,
-  isLiveRun,
-  openRunWord,
+  issueRunChip,
   issueQueryKey,
   issueSessionId,
   liveStepWords,
   parseChecklist,
-  runStatusChip,
   threadQuestionOf,
   statusLabel,
   statusToChip,
@@ -242,12 +241,12 @@ export function IssueDetailScreen({
   const statusPark = canWrite ? { reading: park, actions: parkActions } : undefined;
   const threadQuestion = park.state === "ready" && park.park ? threadQuestionOf(park.park) : null;
 
-  // The run's state is a session chip beside the issue's lifecycle chip, never merged into it (ISS-360, ISS-1150):
-  // an open run's in core's word, the one every run surface reads, else the sessions' verdict (ISS-1228).
-  const runWord = openRunWord(runs, now);
-  const runChip = runWord ? null : runStatusChip(issue);
+  // The run's state is a session chip beside the issue's lifecycle chip, never merged into it (ISS-360, ISS-1150),
+  // read from the run journal alone: until it answers, the header says nothing about the run (ISS-1228).
+  const runChip = issueRunChip(runs, { answered: journalQ.data !== undefined, failed: journalQ.isError }, now);
+  const runWord = runChip.state === "read" ? runChip.word : null;
   const isRunActive =
-    runWord !== null || isLiveRun(runChip) || issue.status === "in_progress" || issue.status === "reopen";
+    runChip.state === "read" ? runChip.open || issue.status === "in_progress" || issue.status === "reopen" : null;
 
   const tabs: TabItem[] = [
     {
@@ -268,8 +267,9 @@ export function IssueDetailScreen({
           actions reachable while scrolling a long issue (ISS-347). The shell's
           TopBar now carries the breadcrumb trail (ISS-358/359), so the in-page
           breadcrumb was removed to stop the doubled header that hid the detail
-          (ISS-360 regression). Full-bleed via negative gutters. */}
-      <div ref={stickyHeader} className="sticky top-0 z-20 -mx-4 mb-5 flex flex-wrap items-start gap-3 border-b border-line-subtle bg-app/95 px-4 py-3 backdrop-blur sm:-mx-8 sm:px-8">
+          (ISS-360 regression). Full-bleed via negative gutters. Opaque with a visible line: content
+          scrolling under a see-through bar read as a ghost control beside the status chip (ISS-1228). */}
+      <div ref={stickyHeader} className="sticky top-0 z-20 -mx-4 mb-5 flex flex-wrap items-start gap-3 border-b border-line bg-app px-4 py-3 sm:-mx-8 sm:px-8">
         <IconButton
           icon="arrowRight"
           aria-label="Back to issues"
@@ -281,6 +281,21 @@ export function IssueDetailScreen({
             <MonoTag hue="cobalt">{issue.displayId}</MonoTag>
             {/* Issue lifecycle (pill) vs live agent run (squared, agent glyph). */}
             <StatusChip status={statusToChip(issue.status)} label={statusLabel(issue.status)} />
+            {runChip.state === "unread" && (
+              <span role="status" aria-label="Reading the run" className="inline-flex">
+                <Skeleton className="h-6 w-24" />
+              </span>
+            )}
+            {runChip.state === "unreadable" && (
+              <>
+                <span role="status" className="fg-caption text-muted">
+                  The run could not be read.
+                </span>
+                <Button variant="secondary" size="sm" icon="rerun" onClick={() => journalQ.refetch()}>
+                  Retry
+                </Button>
+              </>
+            )}
             {runWord && (
               <span className="inline-flex" title={runWord.detail}>
                 <StatusChip
@@ -291,14 +306,7 @@ export function IssueDetailScreen({
                 />
               </span>
             )}
-            {runChip && (
-              <StatusChip
-                status={runChip}
-                stage={runChip === "running" ? (liveStep ?? undefined) : undefined}
-                domain="session"
-              />
-            )}
-            {liveStep && runChip !== "running" && runWord?.status !== "running" && (
+            {liveStep && runWord && runWord.status !== "running" && (
               <span className="fg-caption">{liveStep}</span>
             )}
           </div>
@@ -308,6 +316,7 @@ export function IssueDetailScreen({
             reader to choose Reopen at the top of the issue page, on whatever screen they read it. */}
         <div className="flex basis-full flex-wrap items-center gap-2 sm:flex-none sm:basis-auto">
           <HelpButton
+            compact
             summary="The full record for one issue: pipeline progress, description, acceptance criteria, the agent plan, and Comments / Activity."
             actions={[
               "Edit properties (status, priority, complexity) in the rail",
@@ -324,6 +333,7 @@ export function IssueDetailScreen({
             canWrite={canWrite}
             pending={pending}
             isRunActive={isRunActive}
+            runsUnreadable={runChip.state === "unreadable"}
             onTransition={onTransition}
             onRun={() => runIssue.mutate(issue.id, { onSuccess: refreshIssue })}
             running={runIssue.isPending}
@@ -468,6 +478,7 @@ export function IssueDetailScreen({
             onEditModules={canWrite ? () => setModulePickerOpen(true) : undefined}
             canMarkMerged={canWrite}
             park={statusPark}
+            runWord={runWord}
           />
         </aside>
         <div className="border-t border-line-subtle lg:hidden">
@@ -483,6 +494,7 @@ export function IssueDetailScreen({
               onEditModules={canWrite ? () => setModulePickerOpen(true) : undefined}
               canMarkMerged={canWrite}
               park={statusPark}
+              runWord={runWord}
             />
           </Collapsible>
         </div>

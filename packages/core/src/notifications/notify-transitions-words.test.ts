@@ -19,4 +19,20 @@ describe('the status-change notification, in the words the screen uses', () => {
   it('keeps the reason a person wrote', () => {
     expect(bodyForStatus('in_progress', ' picked up again ')).toBe('picked up again');
   });
+
+  // ISS-1228 r20, judge-62: the bell showed the stored reason autonomous_rescue_cap_reached.
+  it('words a stored reason code as a sentence, never the code', () => {
+    const body = bodyForStatus('needs_info', 'autonomous_rescue_cap_reached');
+    expect(body).toBe(
+      'Forge sent it back to its agent 3 times on this run without it moving on, so it stopped and waits on your answer.',
+    );
+    expect(body).not.toMatch(/_/);
+  });
+
+  it("takes the status's own sentence for a code it has no words for", () => {
+    expect(bodyForStatus('needs_info', 'some_unworded_code')).toBe(
+      'The driver asked a question — it cannot continue until you answer.',
+    );
+    expect(bodyForStatus('closed', 'reconciler_autonomous_wedge_reset')).toBe('Closed.');
+  });
 });

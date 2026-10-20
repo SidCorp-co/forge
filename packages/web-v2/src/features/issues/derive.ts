@@ -175,24 +175,42 @@ export function runStatusChip({ agentStatus, pipelineHealth }: RunReadingSource)
 	return null;
 }
 
+type RunWordSource = Pick<RunView, "status" | "reading" | "hold" | "block" | "startedAt" | "runningSince">;
+
+const wordOf = (run: RunWordSource, nowMs: number): RunWord =>
+	runReadingChip({ ...run, reading: run.reading ?? null, liveJobs: 0, lastSessionBeatAt: null, checkInBy: null }, nowMs);
+
 /**
  * The word an issue's open run reads, the word the runs tab and the Ops drawer read it by: core's
  * reading of the run, so a held job reads Held here and never the failed session's verdict
- * (ISS-1228 round 19), Nothing working included. Null where the issue has no open run or an older core
- * answered no reading, and the sessions' verdict (`runStatusChip`) stands.
+ * (ISS-1228 round 19), Nothing working included. Null where the issue has no open run.
  */
-export function openRunWord(
-	runs: readonly Pick<RunView, "status" | "reading" | "hold" | "block" | "startedAt" | "runningSince">[],
-	nowMs: number,
-): RunWord | null {
+export function openRunWord(runs: readonly RunWordSource[], nowMs: number): RunWord | null {
 	const open = runs.find((r) => r.status === "running" || r.status === "paused");
-	if (!open || open.reading === undefined) return null;
-	return runReadingChip({ ...open, reading: open.reading, liveJobs: 0, lastSessionBeatAt: null, checkInBy: null }, nowMs);
+	return open ? wordOf(open, nowMs) : null;
 }
 
-/** Whether the run's reading says an agent is working or waiting to. */
-export const isLiveRun = (chip: StatusKey | null): chip is "running" | "queued" =>
-	chip === "running" || chip === "queued";
+/**
+ * The issue page's run chip, read from the run journal alone: its open run's word, else its newest
+ * run's, else none. Until the journal has answered it is `unread`, and `unreadable` where its first
+ * read failed: no surface fills that gap with the sessions' verdict (ISS-1228 round 20).
+ */
+export type IssueRunChip =
+	| { state: "unread" }
+	| { state: "unreadable" }
+	| { state: "read"; word: RunWord | null; open: boolean };
+
+export function issueRunChip(
+	runs: readonly (RunWordSource & Pick<RunView, "ordinal">)[],
+	journal: { answered: boolean; failed: boolean },
+	nowMs: number,
+): IssueRunChip {
+	if (!journal.answered) return { state: journal.failed ? "unreadable" : "unread" };
+	const open = openRunWord(runs, nowMs);
+	if (open) return { state: "read", word: open, open: true };
+	const newest = runs.reduce<(typeof runs)[number] | null>((n, r) => (n === null || r.ordinal > n.ordinal ? r : n), null);
+	return { state: "read", word: newest ? wordOf(newest, nowMs) : null, open: false };
+}
 
 export function statusToTone(status: IssueStatus): SemanticTone {
 	return STATUS_KEY_TONE[statusToChip(status)];

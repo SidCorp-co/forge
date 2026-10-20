@@ -438,6 +438,22 @@ describe('jobs/agent-session-link — ISS-877 failure cause', () => {
     expect(updateCalls[0]?.set.failureReason).toBe('agent_exited_without_result');
   });
 
+  it('keeps the question stop the blocked door recorded, whatever the runner wrote beside it', async () => {
+    await syncAgentSessionLifecycle(
+      {
+        ...baseJob,
+        agentSessionId: 'sess-1',
+        failureReason: 'stopped_on_question',
+        error: 'pane has been stopped on a question only a human can answer for 2m',
+      } as never,
+      'failed',
+    );
+    expect(updateCalls[0]?.set.failureReason).toBe('stopped_on_question');
+    expect(updateCalls[0]?.set.failureDetail).toBe(
+      'pane has been stopped on a question only a human can answer for 2m',
+    );
+  });
+
   it('ISS-877: `job_failed` is not written by this path any more', async () => {
     await syncAgentSessionLifecycle({ ...baseJob, agentSessionId: 'sess-1' } as never, 'failed');
     expect(updateCalls[0]?.set.failureReason).not.toBe('job_failed');

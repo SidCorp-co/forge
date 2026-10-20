@@ -60,10 +60,10 @@ export const pipelineRunListItemSchema = z.object({
   liveJobs: z.number(),
   lastSessionBeatAt: nullableIso,
   reading: z
-    .enum(['blocked', 'running', 'starting', 'waiting', 'queued', 'held'])
+    .enum(['blocked', 'running', 'starting', 'waiting', 'queued', 'held', 'asking', 'answered'])
     .nullable()
     .describe(
-      "what the run's agent is doing: blocked where a box reports a session core still holds blocked, running once a job runs or a session core holds running has checked in, starting where a box has taken or been sent a job it has not started or a session has not checked in since it opened, waiting where only a chat waits on its person's reply, queued where only an untaken job waits, held where only a job core holds waits",
+      "what the run's agent is doing: blocked where a box reports a session core still holds blocked, running once a job runs or a session core holds running has checked in, starting where a box has taken or been sent a job it has not started or a session has not checked in since it opened, waiting where only a chat waits on its person's reply, queued where only an untaken job waits, held where only a job core holds waits; with nothing live, asking where its newest job stopped on a question that stands and answered once a person answered it",
     ),
   hold: z
     .object({
@@ -143,13 +143,31 @@ const attemptSchema = z.object({
       'why core holds this job and whether it sends it again by itself; null unless it is held',
     ),
   cancelledBy: z
-    .object({ kind: z.enum(['person', 'agent', 'core']), name: z.string().nullable() })
+    .object({
+      kind: z.enum(['person', 'agent', 'core']),
+      userId: z
+        .string()
+        .nullable()
+        .describe(
+          'the account that cancelled it, so a reader can tell its own cancel; null for core',
+        ),
+      name: z.string().nullable(),
+    })
     .nullable()
     .describe('who cancelled this job, or its run; null unless it was cancelled'),
+  questionOn: z
+    .enum(['issue', 'project'])
+    .nullable()
+    .describe(
+      'where the question this job stopped on stands: on its issue, or the project where it has none or it had closed; null unless it stopped on one',
+    ),
 });
 
 /** One run with its step timeline, per-attempt device/retry timeline and cost rolled up. */
 export const pipelineRunSummarySchema = pipelineRunListItemSchema.extend({
+  projectSlug: z
+    .string()
+    .describe("the slug of the run's own project, whichever org the reader has active"),
   steps: z.array(
     z.object({
       jobType: z.string(),

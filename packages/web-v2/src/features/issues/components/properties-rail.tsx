@@ -15,7 +15,8 @@ import { LandingShapeControl } from "./landing-shape-control";
 import { LiveReachValue } from "./live-reach-row";
 import { MergeMarkerControl } from "./merge-marker-control";
 import { InlineSelect, StatusEdit } from "./inline-edit-cell";
-import { creatorLabelOf, initials, runStatusChip, splitBlockedBy } from "../derive";
+import { creatorLabelOf, initials, splitBlockedBy } from "../derive";
+import type { RunWord } from "@/features/runs/derive";
 import { AGENT_HOLDS_EDIT, heldByAgent } from "../edit-lock";
 import type {
   IssueComplexity,
@@ -216,6 +217,8 @@ interface PropertiesRailProps {
   canMarkMerged?: boolean | undefined;
   /** What a person owes this issue, so the status control at a park offers that decision first. */
   park?: ComponentProps<typeof StatusEdit>["park"];
+  /** The run's word, the header chip's own (`issueRunChip`); null where there is none to show. */
+  runWord?: RunWord | null;
 }
 
 export function PropertiesRail({
@@ -229,6 +232,7 @@ export function PropertiesRail({
   onEditModules,
   canMarkMerged,
   park,
+  runWord = null,
 }: PropertiesRailProps) {
   const modules = (issue.labels ?? []).filter((l) => l.kind === "module");
   const plainLabels = (issue.labels ?? []).filter((l) => l.kind !== "module");
@@ -244,7 +248,6 @@ export function PropertiesRail({
   const duplicates = [...incoming, ...outgoing].filter((e) => e.kind === "duplicates");
   const related = [...incoming, ...outgoing].filter((e) => e.kind === "relates");
   const held = heldByAgent(issue.status, issue.agentStatus);
-  const runChip = runStatusChip(issue);
   const tokens = totalTokens(cost);
   const hasModule = primaryModule !== undefined || secondaryModules.length > 0;
   // An empty field renders no row; one whose action this reader holds keeps the action, on the shared `Not set` row.
@@ -268,9 +271,11 @@ export function PropertiesRail({
           park={park}
         />
       </Row>
-      {runChip && (
+      {runWord && (
         <Row label="Run">
-          <StatusChip status={runChip} size="sm" domain="session" />
+          <span className="inline-flex" title={runWord.detail}>
+            <StatusChip status={runWord.status} label={runWord.label} size="sm" domain="session" />
+          </span>
         </Row>
       )}
       <Row label="Priority">

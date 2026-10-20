@@ -116,7 +116,7 @@ describe("Forge's notices on an issue are Forge's (ISS-1421)", () => {
       issueId: id,
       fromStatus: 'in_progress',
       cap: 3,
-      driveSessions: 4,
+      sessions: { completed: 0, failed: 4, stopped: 0, open: 0 },
     });
     expect(await authorsOn(id)).toEqual([FORGE]);
   });

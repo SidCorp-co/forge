@@ -3,9 +3,9 @@ import type { PipelineRunListItem } from "@/features/runs/types";
 
 const LIVE_RUN_STATUSES: ReadonlySet<string> = new Set(["running", "paused"]);
 
-/** The project's runs that are still open, worked or not. */
+/** The project's runs that are still open, worked or not, or wait on the answer to their job's question. */
 export function openRuns(runs: readonly PipelineRunListItem[] | undefined): PipelineRunListItem[] {
-  return (runs ?? []).filter((r) => LIVE_RUN_STATUSES.has(r.status));
+  return (runs ?? []).filter((r) => LIVE_RUN_STATUSES.has(r.status) || r.reading === "asking");
 }
 
 /** Open runs with a live job or a heartbeating session behind them. */

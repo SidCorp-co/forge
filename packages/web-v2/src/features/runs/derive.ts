@@ -38,7 +38,17 @@ export interface RunWord {
   detail?: string;
 }
 
-const OPEN_RUN_WORD: Record<Exclude<RunReading, "running" | "blocked" | "held">, RunWord> = {
+/** A run whose newest job stopped on a question reads by that question, whatever its own status. */
+const QUESTION_RUN_WORD: Record<"asking" | "answered", RunWord> = {
+  asking: {
+    status: "waiting",
+    label: "Needs an answer",
+    detail: "Its job stopped on a question, which waits on a person's answer.",
+  },
+  answered: { status: "done", label: "Answered", detail: "Its job stopped on a question, which a person has answered." },
+};
+
+const OPEN_RUN_WORD: Record<Exclude<RunReading, "running" | "blocked" | "held" | "asking" | "answered">, RunWord> = {
   starting: { status: "queued", label: "Starting" },
   queued: { status: "queued", label: "Queued" },
   waiting: { status: "waiting", label: sessionStatusLabel("waiting") },
@@ -106,6 +116,7 @@ function startingWord(run: RunLiveFields, nowMs: number): RunWord {
 /** The one word a run reads on every surface — the runs tab, the drawer's header and open attempt, the
  *  issue page — an open run by what core says its agent is doing, any other by its own status (ISS-1228). */
 export function runReadingChip(run: RunLiveFields, nowMs: number): RunWord {
+  if (run.reading === "asking" || run.reading === "answered") return QUESTION_RUN_WORD[run.reading];
   if (run.status !== "running" || run.reading === "running") {
     return { status: runStatusToStatusKey(run.status), label: RUN_STATUS_WORD[run.status] };
   }
@@ -129,8 +140,9 @@ export function runReadingChip(run: RunLiveFields, nowMs: number): RunWord {
 export const runHasStarted = (run: Pick<PipelineRunSummary, "status" | "reading">): boolean =>
   run.status === "running" && (run.reading === "running" || run.reading === "waiting" || run.reading === "blocked");
 
-/** When a run's time is from, and what it is called: its work's start once it runs, else its opening. */
+/** A run's time: its first start once anything started on it (queued again, it still started), else its opening. */
 export function runSince(run: RunLiveFields, nowMs: number): { word: "Started" | "Opened"; at: string } {
+  if (run.runningSince) return { word: "Started", at: run.runningSince };
   const working = run.status !== "running" || runHasStarted(run) || runReadingChip(run, nowMs).label === RUN_STATUS_WORD.running;
   // An older core answers no start of work; its opening is all there is to say it from.
   if (working) return { word: "Started", at: run.runningSince ?? run.startedAt };

@@ -5,7 +5,7 @@
 // latency and nothing else (ISS-964 criterion 12).
 
 import { randomUUID } from 'node:crypto';
-import { and, count, desc, eq, isNull, sql } from 'drizzle-orm';
+import { and, count, desc, eq, getTableName, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, type ProjectMemberRole } from '../db/schema.js';
 import {
@@ -19,6 +19,7 @@ import {
   questionWaiters,
 } from '../db/schema-questions.js';
 import { effectiveProjectRole, projectRoleAtLeast } from '../lib/authz.js';
+import { formatIssueRef } from '../lib/issue-ref.js';
 import {
   type AskAnswer,
   type AskInput,
@@ -132,7 +133,62 @@ export type ProjectQuestionRow = Pick<
   | 'createdAt'
   | 'updatedAt'
 > &
-  ReturnType<typeof shapeOf> & { rounds: number; currentStep: QuestionStep | null };
+  ReturnType<typeof shapeOf> & {
+    rounds: number;
+    currentStep: QuestionStep | null;
+    askedBy: QuestionAskedBy | null;
+  };
+
+/** The job whose agent stopped on the question, and the issue it worked; null where no job asked. */
+export interface QuestionAskedBy {
+  jobType: string;
+  issueId: string | null;
+  issueRef: string | null;
+  issueTitle: string | null;
+}
+
+/**
+ * The question's own session column, named with its table: drizzle writes a column bare, and bare
+ * inside the subquery it binds to `jobs.agent_session_id`, which matched every job with a session
+ * and named the project's newest one instead of the one that asked (ISS-1228).
+ */
+const askingSession = sql.raw(`"${getTableName(agentQuestions)}"."agent_session_id"`);
+
+/** The job linked to the asking session, read through that session (the blocked door links it). */
+const askingJob = sql<{
+  jobType: string;
+  issueId: string | null;
+  issSeq: number | null;
+  issueTitle: string | null;
+  prefix: string | null;
+} | null>`(
+  SELECT json_build_object('jobType', j.type, 'issueId', i.id, 'issSeq', i.iss_seq,
+                           'issueTitle', i.title, 'prefix', p.issue_prefix)
+    FROM jobs j
+    LEFT JOIN issues i ON i.id = j.issue_id
+    LEFT JOIN projects p ON p.id = i.project_id
+   WHERE ${askingSession} IS NOT NULL
+     AND j.agent_session_id = ${askingSession}
+   ORDER BY j.queued_at DESC
+   LIMIT 1)`;
+
+function askedByOf(
+  job: {
+    jobType: string;
+    issueId: string | null;
+    issSeq: number | null;
+    issueTitle: string | null;
+    prefix: string | null;
+  } | null,
+): QuestionAskedBy | null {
+  if (!job) return null;
+  return {
+    jobType: job.jobType,
+    issueId: job.issueId,
+    issueRef: job.issSeq != null ? formatIssueRef(job.prefix, job.issSeq) : null,
+    issueTitle: job.issueTitle,
+  };
+}
 
 /**
  * One page of a project's questions, newest first, or null when the caller
@@ -218,6 +274,7 @@ export async function projectQuestionsFor(
         updatedAt: agentQuestions.updatedAt,
         rounds: sql<number>`jsonb_array_length(${agentQuestions.steps})::int`,
         currentStep: sql<QuestionStep | null>`${agentQuestions.steps} -> -1`,
+        askingJob,
         cursor: sql<string>`${agentQuestions.createdAt}::text || '|' || ${agentQuestions.id}::text`,
       })
       .from(agentQuestions)
@@ -232,8 +289,9 @@ export async function projectQuestionsFor(
   const pageRows = hasMore ? rows.slice(0, page.limit) : rows;
   const last = pageRows[pageRows.length - 1];
   return {
-    questions: pageRows.map(({ cursor: _cursor, ...row }) => ({
+    questions: pageRows.map(({ cursor: _cursor, askingJob: job, ...row }) => ({
       ...row,
+      askedBy: askedByOf(job ?? null),
       rounds: Number(row.rounds),
       ...shapeOf(row.currentStep ?? undefined, role),
     })),

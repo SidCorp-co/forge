@@ -102,19 +102,21 @@ function openOutcome(a: PipelineRunAttempt): string {
   return "Queued — no box has taken it yet";
 }
 
-function cancelledOutcome(a: PipelineRunAttempt): string {
+function cancelledOutcome(a: PipelineRunAttempt, viewerId: string | null): string {
   if (a.failureReason && LEGACY_NEUTRAL_REASONS.has(a.failureReason)) {
     return failureReasonLabel(a.failureReason) ?? "Not dispatched";
   }
-  if (a.cancelledBy && a.cancelledBy.kind !== "core") return cancelledByText(a.cancelledBy);
+  if (a.cancelledBy && a.cancelledBy.kind !== "core") return cancelledByText(a.cancelledBy, viewerId);
   const cause = a.failureReason ? resolveFailureCause(a.failureReason) : "unclassified";
   const cleanup = cause !== "unclassified" && cause !== "pipeline_cancelled" && cause !== "user_cancelled";
-  return cleanup ? (failureReasonLabel(cause) ?? cancelledByText(a.cancelledBy)) : cancelledByText(a.cancelledBy);
+  return cleanup
+    ? (failureReasonLabel(cause) ?? cancelledByText(a.cancelledBy, viewerId))
+    : cancelledByText(a.cancelledBy, viewerId);
 }
 
-function outcomeOf(a: PipelineRunAttempt, cause: FailureCause | null): string {
+function outcomeOf(a: PipelineRunAttempt, cause: FailureCause | null, viewerId: string | null): string {
   if (OPEN_STATUSES.has(a.status)) return openOutcome(a);
-  if (a.status === "cancelled") return cancelledOutcome(a);
+  if (a.status === "cancelled") return cancelledOutcome(a, viewerId);
   const box = boxOf(a);
   const never = neverTook(a, cause);
   if (never) return box ? never.box(box) : never.none;
@@ -126,11 +128,21 @@ function outcomeOf(a: PipelineRunAttempt, cause: FailureCause | null): string {
   return `Ended ${a.status}`;
 }
 
-/** A person's remedy, read against the attempt after it, naming no control the drawer lacks. */
-function actionOf(a: PipelineRunAttempt, cause: FailureCause | null, next: PipelineRunAttempt | undefined): string | null {
+/** Where a job's question stands on the issue it worked, which the issue page shows (ISS-1228). */
+const QUESTION_ON_ISSUE = "Answer its question on its issue's page.";
+
+/** A person's remedy, naming no control the drawer lacks. A later attempt nobody cancelled is core's
+ *  resend, so it asks nothing here; a cancelled one ended the resend, and the remedy stands. */
+function actionOf(
+  a: PipelineRunAttempt,
+  cause: FailureCause | null,
+  later: readonly PipelineRunAttempt[],
+): string | null {
   if (a.status === "held") return a.hold && !a.hold.resumesItself ? HELD_STUCK_ACTION : null;
   if (OPEN_STATUSES.has(a.status) || a.status === "cancelled" || !cause) return null;
-  if (next) return nextAttemptText(next.status === "held" ? "held" : "sent");
+  const resent = later.find((b) => b.status !== "cancelled");
+  if (resent) return nextAttemptText(resent.status === "held" ? "held" : "sent");
+  if (cause === "stopped_on_question" && a.questionOn === "issue") return QUESTION_ON_ISSUE;
   if (!neverTook(a, cause)) return failureReasonAction(cause, null, a.ranAt != null);
   const box = boxOf(a);
   return box ? `Check that ${box} is online and its runner is running.` : "Check that a box bound to this project is online.";
@@ -156,6 +168,7 @@ function verbFor(a: PipelineRunAttempt, position: number, repeats: number, runWo
 export function deriveActivityFeed(
   attempts: PipelineRunAttempt[] | undefined,
   blockedWord?: string,
+  viewerId: string | null = null,
 ): ActivityEntry[] {
   const entries: ActivityEntry[] = [];
   let lastSignature: string | null = null;
@@ -164,9 +177,8 @@ export function deriveActivityFeed(
   list.forEach((a, index) => {
     const position = index + 1;
     const cause = causeOf(a);
-    const outcome = outcomeOf(a, cause);
-    // A line's remedy is its last attempt's, read against the attempt after it.
-    const action = actionOf(a, cause, list[index + 1]);
+    const outcome = outcomeOf(a, cause, viewerId);
+    const action = actionOf(a, cause, list.slice(index + 1));
     const sig = signature(a, cause, outcome);
     const previous = entries[entries.length - 1];
 

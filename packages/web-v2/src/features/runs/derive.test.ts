@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { aggregateStepCosts, median, runGateNote, runHasStarted, runIsStalled, runReadingChip } from "./derive";
+import { aggregateStepCosts, median, runGateNote, runHasStarted, runIsStalled, runReadingChip, runSince } from "./derive";
 import type { PipelineRunStatus, RunGateCondition, RunReading, StepDurationRow } from "./types";
 
 function step(over: Partial<StepDurationRow> & { step: string }): StepDurationRow {
@@ -176,6 +176,17 @@ describe("runReadingChip — the one word a run reads on every surface", () => {
     expect([runIsStalled(paused, NOW), runReadingChip(paused, NOW).label]).toEqual([false, "Paused"]);
   });
 
+  // ISS-1228 r20 (after-shots): a run whose job stopped on a question read a red Failed beside the
+  // issue's waiting banner. It waits on a person while the question stands; Failed only once the
+  // question is voided or expired without an answer.
+  it("reads a run whose job stopped on a question by that question, never Failed while it stands", () => {
+    expect(of("failed", "asking").label).toBe("Needs an answer");
+    expect(of("failed", "asking").status).toBe("waiting");
+    expect(of("running", "asking").label).toBe("Needs an answer");
+    expect(of("failed", "answered").label).toBe("Answered");
+    expect(of("failed", null).label).toBe("Failed");
+  });
+
   it("reads a chat waiting on its person as Waiting for me (ISS-1228 round 18)", () => {
     expect(of("running", "waiting")).toEqual({ status: "waiting", label: "Waiting for me" });
   });
@@ -210,3 +221,27 @@ describe("runReadingChip — the one word a run reads on every surface", () => {
   });
 });
 
+// ISS-1228 round 20 (judge-62): a run queued again after its first attempt read "Opened".
+describe("runSince — Started from the first start, Opened only before anything started", () => {
+  const base = {
+    status: "running" as PipelineRunStatus,
+    liveJobs: 1,
+    lastSessionBeatAt: null,
+    startedAt: "2026-10-20T04:15:47.000Z",
+  };
+  const now = Date.parse("2026-10-20T04:20:00.000Z");
+
+  it.each(["queued", "held", "starting"] as const)("keeps Started for a run that started and now reads %s", (reading) => {
+    expect(runSince({ ...base, reading, runningSince: "2026-10-20T04:15:53.658Z" }, now)).toEqual({
+      word: "Started",
+      at: "2026-10-20T04:15:53.658Z",
+    });
+  });
+
+  it("says Opened, from its opening, where nothing has started", () => {
+    expect(runSince({ ...base, reading: "queued", runningSince: null }, now)).toEqual({
+      word: "Opened",
+      at: "2026-10-20T04:15:47.000Z",
+    });
+  });
+});

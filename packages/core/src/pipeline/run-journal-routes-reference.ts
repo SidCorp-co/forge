@@ -41,7 +41,7 @@ export const journalRunSchema = z.object({
     .nullable()
     .describe('the newest agent session the run started; null where none ran it'),
   reading: z
-    .enum(['blocked', 'running', 'starting', 'waiting', 'queued', 'held'])
+    .enum(['blocked', 'running', 'starting', 'waiting', 'queued', 'held', 'asking', 'answered'])
     .nullable()
     .describe(
       "what the run's agent is doing, the reading the run listing answers (`runs-liveness.ts`)",

@@ -8,7 +8,12 @@ export const blockedEndSchema = z.object({
   status: z.literal('failed'),
   heldJobId: z.string().nullable(),
   questionIds: z.array(z.string()),
-  issueId: z.string().nullable(),
+  issueId: z
+    .string()
+    .nullable()
+    .describe(
+      'The issue the question stands on: the one the job worked, else null for a project-level ask',
+    ),
   replayed: z.boolean(),
 });
 

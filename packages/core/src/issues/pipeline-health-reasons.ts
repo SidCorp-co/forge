@@ -1,3 +1,4 @@
+import { fleetSentence } from '../jobs/capacity-fleet.js';
 import type { RunnerAvailability } from '../jobs/queued-gates.js';
 import type {
   PipelineHealth,
@@ -51,14 +52,33 @@ export function retryCooldownWaitingOn(
   };
 }
 
-/** The runner-layer (L4/L5) `waitingOn` for a queued candidate, or `null`. */
+/**
+ * The runner-layer (L4/L5) `waitingOn` for a queued candidate, or `null`. Named off the project's
+ * online runners as the capacity notice names them (ISS-1228): `runner_stale` only where none is
+ * online, `runner_too_old` where every online one is out of date, and `runner_capacity`, with the
+ * notice's own sentence and next step, for any other mix — an account limit, a missing workspace.
+ */
 export function runnerWaitingOn(
   sinceIso: string,
   runnerPool: RunnerAvailability,
 ): PipelineHealth['waitingOn'] {
-  if (runnerPool.total === 0) {
+  if (runnerPool.total > 0) return undefined;
+  const fleet = runnerPool.fleet;
+  const said = fleet ? fleetSentence(fleet) : null;
+  if (!fleet || !said) {
     return { reason: 'runner_stale', since: sinceIso, details: { freshRunners: 0 } };
   }
-
-  return undefined;
+  if (fleet.bars.too_old === fleet.online) {
+    return { reason: 'runner_too_old', since: sinceIso, details: { online: fleet.online } };
+  }
+  return {
+    reason: 'runner_capacity',
+    since: sinceIso,
+    details: {
+      online: fleet.online,
+      bars: said.named,
+      summary: said.summary,
+      nextStep: said.nextStep,
+    },
+  };
 }

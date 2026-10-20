@@ -148,6 +148,15 @@ export const LEGACY_CAUSE_ALIAS: Readonly<Record<string, FailureCause>> = {
 const CAUSE_SET: ReadonlySet<string> = new Set(FAILURE_CAUSES);
 const ALIAS_LOOKUP: ReadonlyMap<string, FailureCause> = new Map(Object.entries(LEGACY_CAUSE_ALIAS));
 
+/**
+ * Causes a door records on the job because it knows them by construction, never read off text: the
+ * blocked door's question stop. Whatever the runner wrote beside it names no truer cause, and the
+ * text classifier knows none of them, so a reader takes the job's own word (ISS-1228 round 20).
+ */
+export const DOOR_DECIDED_CAUSES: ReadonlySet<string> = new Set<FailureCause>([
+  'stopped_on_question',
+]);
+
 export function resolveFailureCause(raw: string | null | undefined): FailureCause {
   if (!raw) return 'unclassified';
   if (CAUSE_SET.has(raw)) return raw as FailureCause;

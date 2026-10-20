@@ -296,7 +296,7 @@ export function SessionScreen({
 
   return (
     <div className={`flex flex-col ${embedded ? "h-full min-h-0" : "min-h-dvh"}`}>
-      <header className="sticky top-0 z-20 border-b border-line bg-app/95 px-4 py-3 backdrop-blur sm:px-6">
+      <header className="sticky top-0 z-20 border-b border-line bg-app px-4 py-3 sm:px-6">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           {goBack && (
             <Button

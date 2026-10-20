@@ -131,6 +131,30 @@ const BAR_WORDS: Record<CapacityBar, string> = {
   limited: 'held back by an account limit',
 };
 
+/** What a person does about each bar, said of the runners it keeps: one runner, or several. */
+const BAR_FIXES: Record<CapacityBar, (several: boolean) => string> = {
+  silent: (m) =>
+    `restart the runner${m ? 's' : ''} that ${m ? 'have' : 'has'} not checked in for this project`,
+  disabled: (m) => `turn the runner${m ? 's' : ''} that ${m ? 'are' : 'is'} off back on`,
+  outside_pool: (m) =>
+    `add the runner${m ? 's' : ''} outside the pool to the pool this step may use`,
+  lacking: (m) => `give the runner${m ? 's' : ''} missing a capability what this step needs`,
+  workspace: (m) => `finish the workspace of the runner${m ? 's' : ''} without one`,
+  too_old: (m) => `update the runner${m ? 's' : ''} on an old build`,
+  limited: (m) =>
+    `wait for the account limit to lift, or sign the limited runner${m ? 's' : ''} in to an account with room`,
+};
+
+/** The next step, one fix for each bar the notice named and none for a bar it did not. */
+function nextStepFor(named: readonly CapacityBar[], bars: Record<CapacityBar, number>): string {
+  if (named.length === 0)
+    return "Open this project's Runners tab and check what it shows for each runner.";
+  const fixes = named.map((b) => BAR_FIXES[b](bars[b] > 1));
+  const last = fixes.pop() as string;
+  const said = fixes.length === 0 ? last : `${fixes.join(', ')}, and ${last}`;
+  return `Open this project's Runners tab, then ${said}.`;
+}
+
 /** Its online runners, counted as a person counts them: never "all 1" or "all 2". */
 function onlineCount(n: number): string {
   if (n === 1) return 'Its one runner is online';
@@ -144,6 +168,27 @@ function barClause(bar: CapacityBar, n: number, online: number): string {
 }
 
 /**
+ * Why a project's online runners cannot take its steps, and what a person does about it: the
+ * notice's words and the issue page's, so the two never disagree. Null where none is online.
+ */
+export function fleetSentence(
+  fleet: CapacityFleet,
+): { named: CapacityBar[]; summary: string; nextStep: string } | null {
+  const { online, bars } = fleet;
+  if (online === 0) return null;
+  const named = CAPACITY_BARS.filter((b) => bars[b] > 0);
+  const why =
+    named.length === 0
+      ? 'none of them could take it when core last looked'
+      : named.map((b) => barClause(b, bars[b], online)).join(', and ');
+  return {
+    named,
+    summary: `${onlineCount(online)}, but ${why}. Steps keep waiting and resume by themselves once one can take them.`,
+    nextStep: nextStepFor(named, bars),
+  };
+}
+
+/**
  * The notice for a pool emptied by something other than every runner being offline, limited or out
  * of date — those keep `wedgeCopy`'s words. Null where that copy already tells the truth.
  */
@@ -152,18 +197,14 @@ export function fleetCopy(
   args: { scope: string },
 ): { reason: string; action: string; title: string; summary: string; nextStep: string } | null {
   const { online, bars } = fleet;
-  if (online === 0 || bars.limited === online || bars.too_old === online) return null;
-  const named = CAPACITY_BARS.filter((b) => bars[b] > 0);
-  const why =
-    named.length === 0
-      ? 'none of them could take it when core last looked'
-      : named.map((b) => barClause(b, bars[b], online)).join(', and ');
+  if (bars.limited === online || bars.too_old === online) return null;
+  const said = fleetSentence(fleet);
+  if (!said) return null;
   return {
-    reason: `${online} capable device(s) online, none able to take the step: ${named.join(', ') || 'none barred'}`,
+    reason: `${online} capable device(s) online, none able to take the step: ${said.named.join(', ') || 'none barred'}`,
     action: 'fix what keeps the online runners from this step',
     title: `No runner can take this work for ${args.scope}`,
-    summary: `${onlineCount(online)}, but ${why}. Steps keep waiting and resume by themselves once one can take them.`,
-    nextStep:
-      "Open this project's Runners tab and fix what it shows for each runner, such as finishing its workspace or turning it back on.",
+    summary: said.summary,
+    nextStep: said.nextStep,
   };
 }

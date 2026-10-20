@@ -18,6 +18,7 @@ import {
   mintReconcilerActor,
   reconcilerActorFor,
 } from './reconciler-actor.js';
+import { holdResumesItselfSql } from './runs-liveness.js';
 import {
   buildWedgeResetBody,
   readWedgeLease,
@@ -58,10 +59,12 @@ export async function runReconcilerOnce(): Promise<{
     WHERE i.status = ${AUTONOMOUS_ENTRY_STATUS}
       AND i.merged_at IS NULL
       AND i.updated_at < now() - interval '${sql.raw(STUCK_ISSUE_INTERVAL)}'
+      -- Waiting on a person's answer is not stuck: rescuing it would only park it again (ISS-1228).
+      AND NOT ${holdsOpenHumanQuestion(sql`i.id`)}
       AND NOT EXISTS (
         SELECT 1 FROM jobs j
         WHERE j.issue_id = i.id
-          AND j.status IN ('queued','dispatched','running')
+          AND (j.status IN ('queued','dispatched','running') OR ${holdResumesItselfSql(sql`j`)})
       )
     LIMIT ${STUCK_ISSUE_LIMIT}
   `);

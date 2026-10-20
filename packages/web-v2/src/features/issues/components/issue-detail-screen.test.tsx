@@ -262,22 +262,22 @@ describe("the issue detail's sections and rail", () => {
 // ISS-1277 — a job no runner has claimed yet has no session, and the header still reads it as a queued run.
 describe("the issue header's run", () => {
   const headerChips = () => screen.getByText("ISS-7").parentElement as HTMLElement;
+  const openRun = (over: Record<string, unknown>) =>
+    ok([{ runId: "r1", ordinal: 1, kind: "issue", status: "running", group: null, startedAt: "2026-09-05T14:16:00Z", finishedAt: null, costUsd: null, attempts: [], reading: "queued", runningSince: null, ...over }]);
 
-  it("shows a queued job with no session as a Queued run chip and offers Pause", () => {
-    pipelineHealth = {
-      stage: "open",
-      queuedStep: { jobId: "j1", jobType: "drive", stageStatus: null, queuedAt: "2026-09-05T14:16:00Z", retryAfterAt: null },
-    };
+  it("shows an open run whose job is queued as a Queued run chip and offers Pause", () => {
+    journal = openRun({ reading: "queued" });
     renderScreen();
     expect(within(headerChips()).getByText("Queued")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Pause" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /^Run/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Run$/ })).toBeNull();
   });
 
   // ISS-1228 r9: the chip carried the step and a caption beside it named it again, and at phone width the chip cut it.
   it("names a running step once, in words, in the header", () => {
     issueOver = { agentStatus: "running" };
     pipelineHealth = { stage: "in_progress", activeSession: { id: "s1", status: "running", skill: "forge-code", jobType: "drive" } };
+    journal = openRun({ reading: "running", runningSince: "2026-09-05T14:17:00Z" });
     renderScreen();
     const said = headerChips().textContent ?? "";
     expect(said).toContain("Issue work");
@@ -285,12 +285,78 @@ describe("the issue header's run", () => {
     expect(said).not.toMatch(/forge-code|\bdrive\b/);
   });
 
-  it("shows no run chip and offers Run when nothing is queued and no session exists", () => {
+  it("shows no run chip and offers Run when the issue has no run", () => {
     pipelineHealth = { stage: "open" };
     renderScreen();
     expect(within(headerChips()).queryByText("Queued")).toBeNull();
     expect(within(headerChips()).queryByText("Running")).toBeNull();
     expect(screen.getByRole("button", { name: "Run" })).toBeInTheDocument();
+  });
+
+  // ISS-1228 r20 (judge-62): the header painted Failed beside Run, or Completed, until the journal answered.
+  it("shows a placeholder, no run word and no run action, while the run journal is unread", () => {
+    issueOver = { agentStatus: "failed" };
+    journal = { data: undefined, isLoading: true, isError: false, error: null, refetch: vi.fn() };
+    renderScreen();
+    expect(within(headerChips()).queryByText(/Failed|Completed|Running|Queued|Held/)).toBeNull();
+    expect(screen.getAllByRole("status", { name: "Reading the run" })).toHaveLength(2);
+    for (const name of [/^Run$/, "Pause", "Open pipeline"]) {
+      expect(screen.queryByRole("button", { name })).toBeNull();
+    }
+  });
+
+  it("says the run could not be read and offers Retry, with no run word or run action", () => {
+    issueOver = { agentStatus: "completed" };
+    const refetch = vi.fn();
+    journal = { data: undefined, isLoading: false, isError: true, error: new Error("boom"), refetch };
+    renderScreen();
+    expect(within(headerChips()).getByText("The run could not be read.")).toBeInTheDocument();
+    expect(within(headerChips()).queryByText("Completed")).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Run$/ })).toBeNull();
+    const header = screen.getByText("ISS-7").closest(".sticky") as HTMLElement;
+    fireEvent.click(within(header).getByRole("button", { name: "Retry" }));
+    expect(refetch).toHaveBeenCalled();
+  });
+
+  // r20 review F2: the Retry lived in the primary action, which a closed issue never reaches.
+  it("offers Retry beside an unreadable run on a closed issue too", () => {
+    issueOver = { status: "closed", mergedAt: "2026-09-05T15:00:00Z" };
+    const refetch = vi.fn();
+    journal = { data: undefined, isLoading: false, isError: true, error: new Error("boom"), refetch };
+    renderScreen();
+    fireEvent.click(within(headerChips()).getByRole("button", { name: "Retry" }));
+    expect(refetch).toHaveBeenCalled();
+  });
+
+  it("reads a held run Held, never the failed session's verdict, once the journal answers", () => {
+    issueOver = { agentStatus: "failed" };
+    journal = openRun({ reading: "held", hold: { reason: "all_devices_exhausted", resumesItself: true, recheckAt: null, since: null } });
+    renderScreen();
+    expect(within(headerChips()).getByText("Held")).toBeInTheDocument();
+    expect(within(headerChips()).queryByText("Failed")).toBeNull();
+    expect(screen.getByRole("button", { name: "Pause" })).toBeInTheDocument();
+  });
+});
+
+// ISS-1228 r20 (coordinator, 390 scrolled): the comment composer's send row showed through the bar as a ghost
+// pill beside the status chip, and the bar met what scrolled under it with no line.
+describe("the issue header over scrolled content", () => {
+  it("paints a solid background, no see-through blur, and a visible dividing line", () => {
+    renderScreen();
+    const bar = screen.getByText("ISS-7").closest(".sticky") as HTMLElement;
+    const classes = bar.className.split(/\s+/);
+    expect(classes).toContain("bg-app");
+    expect(classes.filter((c) => c.startsWith("bg-app/") || c.startsWith("backdrop-"))).toEqual([]);
+    expect(classes).toContain("border-b");
+    expect(classes).toContain("border-line");
+  });
+
+  // At 390 the overflow menu wrapped to a row of its own beside Help, Open pipeline and Open session.
+  it("shows Help as its icon at phone width, still named Help", () => {
+    renderScreen();
+    const bar = screen.getByText("ISS-7").closest(".sticky") as HTMLElement;
+    const help = within(bar).getByRole("button", { name: "Help" });
+    expect(within(help).getByText("Help").className).toContain("max-sm:sr-only");
   });
 });
 

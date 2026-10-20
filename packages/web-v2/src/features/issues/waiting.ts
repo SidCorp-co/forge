@@ -68,9 +68,14 @@ export const WAITING_REASON_COPY: Record<
 		who: "Resume the run (or cancel it and re-open the issue for a fresh one).",
 	},
 	runner_stale: {
-		reason:
-			"No runner is online for this project — every host is offline, stale, or rate-limited.",
+		reason: "No runner is online for this project.",
 		who: "Bring a runner back (check the Runners tab); the step dispatches on the next tick.",
+	},
+	// Core sends this one's words in `details` — the capacity notice's own (ISS-1228); these stand
+	// in only for a payload that carries none.
+	runner_capacity: {
+		reason: "Runners are online for this project, but none of them can take this step.",
+		who: "Open this project's Runners tab and check what it shows for each runner.",
 	},
 	retry_cooldown: {
 		reason:
@@ -92,6 +97,7 @@ export const WAITING_REASON_SHORT: Record<WaitingReason, string> = {
 	retry_cooldown: "Retry cooldown",
 	runner_stale: "No runner online",
 	runner_too_old: "Runner build too old",
+	runner_capacity: "No runner can take it",
 };
 
 /** Copy for a gate this build has no words for. Core owns the vocabulary and
@@ -121,6 +127,7 @@ const GATE_NEEDS_ACTION: Record<Exclude<WaitingReason, "job_held">, boolean> = {
 	retry_cooldown: false,
 	runner_stale: true,
 	runner_too_old: true,
+	runner_capacity: true,
 };
 
 function gateNeedsAction(reason: WaitingReason, holdReason: unknown): boolean {
@@ -142,12 +149,25 @@ export interface QueuedStepView {
 	gate: GateView | null;
 }
 
+/** A `runner_capacity` wait in the words core sent, which are the capacity notice's. */
+function capacityCopy(details: Record<string, unknown> | undefined): { reason: string; who: string } {
+	const fallback = WAITING_REASON_COPY.runner_capacity;
+	const summary = details?.summary;
+	const nextStep = details?.nextStep;
+	return {
+		reason: typeof summary === "string" && summary ? summary : fallback.reason,
+		who: typeof nextStep === "string" && nextStep ? nextStep : fallback.who,
+	};
+}
+
 export function gateView(waitingOn: PipelineHealth["waitingOn"]): GateView | null {
 	if (!waitingOn) return null;
 	const copy =
 		waitingOn.reason === "job_held"
 			? heldCopy(waitingOn.details?.holdReason)
-			: (WAITING_REASON_COPY[waitingOn.reason] ?? UNKNOWN_GATE_COPY);
+			: waitingOn.reason === "runner_capacity"
+				? capacityCopy(waitingOn.details)
+				: (WAITING_REASON_COPY[waitingOn.reason] ?? UNKNOWN_GATE_COPY);
 	return {
 		reason: waitingOn.reason,
 		short: WAITING_REASON_SHORT[waitingOn.reason] ?? "Waiting",

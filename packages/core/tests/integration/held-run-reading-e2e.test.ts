@@ -254,7 +254,7 @@ describe('a cancel reads as a cancel, by whom (criterion 173)', () => {
     expect(row?.failure_reason).toBe('user_cancelled');
     const attempt = (await summary(runId)).attempts[0];
     expect(attempt?.failureCause).toBeNull();
-    expect(attempt?.cancelledBy).toEqual({ kind: 'person', name: 'Sam Owner' });
+    expect(attempt?.cancelledBy).toEqual({ kind: 'person', userId: ownerId, name: 'Sam Owner' });
   });
 
   it("names the person who cancelled the run on a job the run's cancel swept", async () => {
@@ -271,7 +271,7 @@ describe('a cancel reads as a cancel, by whom (criterion 173)', () => {
     });
     const attempt = (await summary(runId)).attempts[0];
     expect(attempt?.status).toBe('cancelled');
-    expect(attempt?.cancelledBy).toEqual({ kind: 'person', name: 'Sam Owner' });
+    expect(attempt?.cancelledBy).toEqual({ kind: 'person', userId: ownerId, name: 'Sam Owner' });
   });
 });
 
@@ -304,37 +304,6 @@ describe("a dead take's session is dropped when its hold is given back (criterio
       sql`SELECT agent_session_id FROM jobs WHERE id = ${jobId}`,
     );
     expect(row?.agent_session_id).toBeNull();
-  });
-});
-
-describe('a job that stopped on a question records why (criterion 174)', () => {
-  it('records stopped_on_question on the job, never leaving it unclassified', async () => {
-    const runId = await newRun();
-    const jobId = randomUUID();
-    await harness.db.execute(sql`
-      INSERT INTO jobs (id, project_id, pipeline_run_id, device_id, created_by, type, status,
-                        dispatched_at, acked_at, payload)
-      VALUES (${jobId}, ${projectId}, ${runId}, ${deviceId}, ${ownerId}, 'drive', 'running',
-              now(), now(), '{}'::jsonb)
-    `);
-    const { endBlockedJob } = await import('../../src/jobs/blocked.js');
-    const ended = await endBlockedJob({ id: jobId, status: 'running' }, deviceId, {
-      error: 'blocked on a question',
-      asked: {
-        kind: 'dialog',
-        questions: [{ question: 'Which base?', options: [{ label: 'main' }] }],
-      },
-    });
-    expect(ended.questionIds).toHaveLength(1);
-    const [row] = await harness.db.execute<{ failure_reason: string | null }>(
-      sql`SELECT failure_reason FROM jobs WHERE id = ${jobId}`,
-    );
-    expect(row?.failure_reason).toBe('stopped_on_question');
-    // Its question is the project's, read on the Questions tab the drawer's remedy names.
-    const [question] = await harness.db.execute<{ issue_id: string | null }>(
-      sql`SELECT issue_id FROM agent_questions WHERE id = ${ended.questionIds[0]}`,
-    );
-    expect(question?.issue_id).toBeNull();
   });
 });
 

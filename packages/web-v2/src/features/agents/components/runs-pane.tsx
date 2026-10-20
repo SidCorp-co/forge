@@ -36,10 +36,11 @@ const CLOSED_STATUS_WORD: Record<string, string> = {
   cancelled: RUN_STATUS_WORD.cancelled,
 };
 
-/** The project's runs that have closed, newest first: what the tab offers where no box reports a run. */
+/** The project's runs that have closed, newest first: what the tab offers where no box reports a run.
+ *  One whose question still waits on a person is open (`openRuns`). */
 function closedRuns(runs: readonly PipelineRunListItem[] | undefined): PipelineRunListItem[] {
   return (runs ?? [])
-    .filter((r) => Object.hasOwn(CLOSED_STATUS_WORD, r.status))
+    .filter((r) => Object.hasOwn(CLOSED_STATUS_WORD, r.status) && r.reading !== "asking")
     .sort((a, b) => (b.finishedAt ?? b.startedAt).localeCompare(a.finishedAt ?? a.startedAt));
 }
 
@@ -399,7 +400,7 @@ export function RunsPane({ scope }: RunsPaneProps) {
                     </span>
                     <span data-run-outcome className="flex flex-none items-baseline gap-3 whitespace-nowrap">
                       <span data-run-status className="fg-body-sm text-fg">
-                        {CLOSED_STATUS_WORD[r.status]}
+                        {runReadingChip(r, now).label}
                       </span>
                       <span className="fg-caption tabular-nums">{formatRelativeTime(r.finishedAt ?? r.startedAt)}</span>
                     </span>

@@ -111,12 +111,15 @@ function runSpan(run: RunView): string | null {
   return formatDurationMs(Date.parse(run.finishedAt) - Date.parse(run.startedAt));
 }
 
-/** An open run in the word every run surface reads it by (core's reading), any other by its status. */
+/** An open run, or one whose job's question waits on a person, in the word every run surface reads it
+ *  by (core's reading); any other by its status. */
 function runStatusOf(run: RunView, now: number): { label: string; dot: string; detail?: string } {
   const base = RUN_STATUS[run.status];
-  if ((run.status !== "running" && run.status !== "paused") || run.reading === undefined) return base;
+  const asked = run.reading === "asking" || run.reading === "answered";
+  if ((!asked && run.status !== "running" && run.status !== "paused") || run.reading === undefined) return base;
   const word = runReadingChip({ ...run, reading: run.reading, liveJobs: 0, lastSessionBeatAt: null, checkInBy: null }, now);
-  const dot = word.label === base.label ? base.dot : run.reading === "held" ? "var(--amber-500)" : "var(--border-strong)";
+  const amber = run.reading === "held" || run.reading === "asking";
+  const dot = word.label === base.label ? base.dot : amber ? "var(--amber-500)" : "var(--border-strong)";
   return { label: word.label, dot, ...(word.detail ? { detail: word.detail } : {}) };
 }
 

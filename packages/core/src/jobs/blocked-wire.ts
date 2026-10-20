@@ -6,6 +6,9 @@ import { z } from 'zod';
 
 const text = (max: number) => z.string().min(1).max(max);
 
+/** The most questions one pane's dialog carries, so the most places a blocked job's questions take. */
+export const DIALOG_QUESTIONS_MAX = 10;
+
 const optionSchema = z
   .object({ label: text(500), description: z.string().max(2000).optional() })
   .strict();
@@ -20,7 +23,10 @@ const dialogQuestionSchema = z
   .strict();
 
 export const paneAskSchema = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('dialog'), questions: z.array(dialogQuestionSchema).min(1).max(10) }),
+  z.object({
+    kind: z.literal('dialog'),
+    questions: z.array(dialogQuestionSchema).min(1).max(DIALOG_QUESTIONS_MAX),
+  }),
   z.object({ kind: z.literal('permission'), tool: text(200), input: z.string().max(4000) }),
   z.object({ kind: z.literal('unread'), why: text(1000) }),
 ]);

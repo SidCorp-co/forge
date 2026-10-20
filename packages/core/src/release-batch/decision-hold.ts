@@ -28,7 +28,8 @@ import { AUTO_RETRY_PAYLOAD_KEY } from '../jobs/retry.js';
 import { logger } from '../logger.js';
 import { projectAutoProdDeploy } from '../pipeline/auto-prod-deploy.js';
 import { oneLine, paneQuestions } from '../questions/pane-question.js';
-import { questionIdFor, writePaneQuestion } from '../questions/pane-question-write.js';
+import { questionIdFor } from '../questions/pane-question-id.js';
+import { writePaneQuestion } from '../questions/pane-question-write.js';
 import { QuestionRefused, voidQuestion } from '../questions/write.js';
 import { readAbortStamp } from './abort-stamp.js';
 import {

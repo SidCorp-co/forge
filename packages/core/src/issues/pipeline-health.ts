@@ -25,6 +25,7 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import type { IssueStatus, WaitingKind } from '../db/schema.js';
+import { readCapacityFleet } from '../jobs/capacity-fleet.js';
 import { freshRunnerAvailability } from '../jobs/queued-gates.js';
 import { logger } from '../logger.js';
 import { holderFanout, readClaim } from '../pipeline/lease-fanout.js';
@@ -206,7 +207,9 @@ export async function hydratePipelineHealthForIssues(
   const jobsByIssue = await loadActiveJobsByIssue(projectId, ids);
   const pausedRunsByIssue = await loadPausedRunsByIssue(projectId, ids);
 
-  const runnerPool = await freshRunnerAvailability(projectId);
+  const pool = await freshRunnerAvailability(projectId);
+  const runnerPool =
+    pool.total > 0 ? pool : { ...pool, fleet: await readCapacityFleet(projectId, undefined, null) };
 
   for (const issueId of ids) {
     const issueRow = issuesById.get(issueId);

@@ -102,7 +102,7 @@ vi.mock('../db/schema.js', () => ({
     projectId: 'issues.project_id',
     title: 'issues.title',
   },
-  projects: { id: 'projects.id', issuePrefix: 'projects.issue_prefix' },
+  projects: { id: 'projects.id', issuePrefix: 'projects.issue_prefix', slug: 'projects.slug' },
   usageRecords: {
     id: 'usage_records.id',
     estimatedCost: 'usage_records.estimated_cost',
@@ -126,6 +126,9 @@ vi.mock('../db/client.js', () => ({
         const isPipelineRuns = String(tableKey).startsWith('pipeline_runs');
         const isIssues = String(tableKey).startsWith('issues');
         const isAttempts = String(tableKey).startsWith('jobs.');
+        if (String(tableKey).startsWith('projects.')) {
+          return makeChain(Promise.resolve([{ slug: 'run-project' }]));
+        }
 
         const result = isAgentSessions
           ? stepsQueue.shift()

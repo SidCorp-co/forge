@@ -113,6 +113,17 @@ export const projectQuestionsSchema = z.object({
       updatedAt: z.date(),
       rounds: z.number(),
       currentStep: questionStepSchema.nullable(),
+      askedBy: z
+        .object({
+          jobType: z.string(),
+          issueId: z.string().nullable(),
+          issueRef: z.string().nullable(),
+          issueTitle: z.string().nullable(),
+        })
+        .nullable()
+        .describe(
+          "the job whose agent stopped on this question and the issue it worked; null where no job asked, as a master's question",
+        ),
       ...currentRound,
     }),
   ),

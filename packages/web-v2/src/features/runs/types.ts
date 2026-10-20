@@ -41,7 +41,7 @@ export interface PipelineRunStepSummary {
 }
 
 /** One job row of a run's per-attempt timeline: the `retry_of` chain, its device and its rotation. */
-export type RunReading = "blocked" | "running" | "starting" | "waiting" | "queued" | "held";
+export type RunReading = "blocked" | "running" | "starting" | "waiting" | "queued" | "held" | "asking" | "answered";
 
 /** Why core holds a run's job and whether it sends it again by itself (core `jobs/hold.ts`). */
 export interface RunHold {
@@ -82,7 +82,8 @@ export interface PipelineRunAttempt {
   autoRetry: { round: number; target: string | null; tries: number; done: string[] } | null;
   takenBy: { deviceId: string; deviceName: string | null } | null;
   hold?: RunHold | null;
-  cancelledBy?: { kind: "person" | "agent" | "core"; name: string | null } | null;
+  cancelledBy?: { kind: "person" | "agent" | "core"; userId?: string | null; name: string | null } | null;
+  questionOn?: "issue" | "project" | null;
 }
 
 export interface PipelineRunRetrySummary {
@@ -104,6 +105,7 @@ export type PipelineRunGroup =
 export interface PipelineRunSummary {
   id: string;
   projectId: string;
+  projectSlug?: string;
   issueId: string | null;
   lane: PipelineRunLane;
   group: PipelineRunGroup;
@@ -155,7 +157,7 @@ export interface RunGateCondition {
 /** `GET /api/projects/:id/pipeline-runs` list row: the summary without its step, attempt and gate rollups. */
 export type PipelineRunListItem = Omit<
   PipelineRunSummary,
-  "steps" | "attempts" | "retrySummary" | "gateAtOpen"
+  "projectSlug" | "steps" | "attempts" | "retrySummary" | "gateAtOpen"
 >;
 
 export interface StepDurationRow {

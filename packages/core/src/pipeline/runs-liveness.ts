@@ -5,25 +5,19 @@
  * Read by both run lists, so the REST row and the MCP row cannot answer differently.
  */
 
-import { sql } from 'drizzle-orm';
+import { inArray, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions, jobs, pipelineRuns, terminalAgentSessionStatuses } from '../db/schema.js';
+import { agentQuestions } from '../db/schema-questions.js';
 import { deviceRunLedger } from '../db/schema-run-ledger.js';
 import { MASTER_SESSION_METADATA_TYPE } from '../devices/run-session-keys.js';
 import { SESSION_SILENCE_TIMEOUT_S } from '../devices/session-silence.js';
-import { AUTO_RELEASE_REASONS, readHoldState } from '../jobs/hold-state.js';
+import { AUTO_RELEASE_REASONS, HOLD_PAYLOAD_KEY, readHoldState } from '../jobs/hold-state.js';
 import { CHAT_SESSION_KIND, RUN_SESSION_KIND } from '../jobs/session-kinds.js';
 import { UNHELD_LIVE_JOB_STATUSES } from '../jobs/status-sets.js';
+import { isoOrNull } from '../lib/iso-time.js';
+import { questionIdsFor } from '../questions/pane-question-id.js';
 import type { PipelineRunLane, ResidentMaster } from './runs-lane.js';
-
-/** A raw read answers Postgres's own text (`2026-10-20 02:06:04.8+00`), which not every reader parses. */
-function toIso(value: Date | string | null): string | null {
-  if (value == null) return null;
-  if (value instanceof Date) return value.toISOString();
-  const at = new Date(value.replace(' ', 'T').replace(/([+-]\d\d)$/, '$1:00'));
-  if (Number.isNaN(at.getTime())) throw new Error(`runs-liveness: "${value}" is not a timestamp`);
-  return at.toISOString();
-}
 
 const sqlList = (values: readonly string[]) =>
   sql.join(
@@ -35,9 +29,21 @@ const sqlList = (values: readonly string[]) =>
  *  box reports a session core still holds blocked, `running` once a job runs or a session core holds
  *  running has checked in, `starting` where a box has taken or been sent a job it has not started or
  *  a session has not yet checked in, `waiting` where only a chat waits on its person's reply,
- *  `queued` where only a job nobody has taken waits, `held` where only a job core holds waits, `null`
- *  where nothing is live. */
-export type RunReading = 'blocked' | 'running' | 'starting' | 'waiting' | 'queued' | 'held';
+ *  `queued` where only a job nobody has taken waits, `held` where only a job core holds waits;
+ *  with nothing live, `asking` where its newest job stopped on a question that stands and `answered`
+ *  once a person answered it, else `null` — a question voided or expired leaves the run its status. */
+export type RunReading =
+  | 'blocked'
+  | 'running'
+  | 'starting'
+  | 'waiting'
+  | 'queued'
+  | 'held'
+  | 'asking'
+  | 'answered';
+
+/** Where the question a run's newest job stopped on stands with a person. */
+type QuestionReading = 'asking' | 'answered';
 
 export function readingOf(counts: {
   blocked?: boolean;
@@ -48,13 +54,37 @@ export function readingOf(counts: {
   runningSessions: number;
   startingSessions: number;
   waitingChats: number;
+  question?: QuestionReading | null;
 }): RunReading | null {
   if (counts.blocked) return 'blocked';
   if (counts.running > 0 || counts.runningSessions > 0) return 'running';
   if (counts.starting > 0 || counts.startingSessions > 0) return 'starting';
   if (counts.waitingChats > 0) return 'waiting';
   if (counts.queued > 0) return 'queued';
-  return (counts.held ?? 0) > 0 ? 'held' : null;
+  if ((counts.held ?? 0) > 0) return 'held';
+  return counts.question ?? null;
+}
+
+const STANDING_QUESTION = new Set(['open', 'needs_info']);
+
+/** Per run whose newest job stopped on a question, whether one of its questions stands or was answered. */
+async function questionReadings(
+  newest: ReadonlyMap<string, string>,
+): Promise<Map<string, QuestionReading>> {
+  const runOf = new Map<string, string>();
+  for (const [runId, jobId] of newest) for (const id of questionIdsFor(jobId)) runOf.set(id, runId);
+  const out = new Map<string, QuestionReading>();
+  if (runOf.size === 0) return out;
+  const asked = await db
+    .select({ id: agentQuestions.id, status: agentQuestions.status })
+    .from(agentQuestions)
+    .where(inArray(agentQuestions.id, [...runOf.keys()]));
+  for (const q of asked) {
+    const runId = runOf.get(q.id) as string;
+    if (STANDING_QUESTION.has(q.status)) out.set(runId, 'asking');
+    else if (q.status === 'answered' && !out.has(runId)) out.set(runId, 'answered');
+  }
+  return out;
 }
 
 /** Why core holds a run's job and whether it sends it again by itself (`jobs/hold.ts`). */
@@ -64,6 +94,23 @@ export interface RunHold {
   /** When core next tries a hold that waits out a clock; null where it waits on a condition. */
   recheckAt: string | null;
   since: string | null;
+}
+
+/**
+ * A job held on a hold that clears by itself — the SQL reading of `holdOf`'s `resumesItself`. The
+ * hold re-queues that job on its own recheck, so the issue is not stuck: a rescue would wake the
+ * masters for nothing, and three of them parked the issue for a person under a comment saying
+ * nothing worked on it while its run read Held (ISS-1228).
+ */
+export function holdResumesItselfSql(job: SQL) {
+  const reasons = sql.join(
+    [...AUTO_RELEASE_REASONS].map((r) => sql`${r}`),
+    sql`, `,
+  );
+  const hold = sql`${job}.payload -> ${HOLD_PAYLOAD_KEY}`;
+  return sql`(${job}.status = 'held'
+    AND COALESCE(${hold} ->> 'reason', ${job}.failure_reason) IN (${reasons})
+    AND COALESCE((${hold} ->> 'autoRelease')::boolean, ${hold} IS NULL))`;
 }
 
 /** A held job's hold, read off its row: the reason its payload names, else the row's own. */
@@ -143,6 +190,7 @@ export async function loadRunLivenessByRunIds(runIds: string[]): Promise<Map<str
     master_session_id?: string | null;
     master_name?: string | null;
     master_beat?: Date | string | null;
+    asked_job_id?: string | null;
   }>(sql`
     SELECT
       r.id AS run_id,
@@ -192,7 +240,10 @@ export async function loadRunLivenessByRunIds(runIds: string[]): Promise<Map<str
           AND s.status NOT IN (${sqlList(terminalAgentSessionStatuses)})) AS last_beat,
       m.id AS master_session_id,
       m.name AS master_name,
-      m.last_heartbeat_at AS master_beat
+      m.last_heartbeat_at AS master_beat,
+      (SELECT CASE WHEN j.failure_reason = 'stopped_on_question' THEN j.id END FROM ${jobs} j
+        WHERE j.pipeline_run_id = r.id
+        ORDER BY j.queued_at DESC NULLS LAST LIMIT 1) AS asked_job_id
     FROM ${pipelineRuns} r
     LEFT JOIN LATERAL (
       SELECT s.id, s.metadata->>'terminalName' AS name, s.last_heartbeat_at
@@ -222,9 +273,12 @@ export async function loadRunLivenessByRunIds(runIds: string[]): Promise<Map<str
     ) b ON true
     WHERE r.id IN (${sqlList(runIds)})
   `);
+  const question = await questionReadings(
+    new Map(rows.flatMap((r) => (r.run_id && r.asked_job_id ? [[r.run_id, r.asked_job_id]] : []))),
+  );
   for (const r of rows) {
     if (!r.run_id) continue;
-    const beat = toIso(r.last_beat);
+    const beat = isoOrNull(r.last_beat);
     out.set(r.run_id, {
       liveJobs: Number(r.live_jobs),
       beat,
@@ -237,28 +291,29 @@ export async function loadRunLivenessByRunIds(runIds: string[]): Promise<Map<str
         runningSessions: Number(r.running_sessions),
         startingSessions: Number(r.starting_sessions),
         waitingChats: Number(r.waiting_chats),
+        question: question.get(r.run_id) ?? null,
       }),
       hold:
         Number(r.held_jobs) > 0
           ? holdOf({
               payload: r.hold_payload,
               failureReason: r.hold_reason,
-              retryAfterAt: toIso(r.hold_recheck_at),
-              since: toIso(r.hold_since),
+              retryAfterAt: isoOrNull(r.hold_recheck_at),
+              since: isoOrNull(r.hold_since),
             })
           : null,
       block:
         r.blocked === true
           ? { blockerKind: r.blocker_kind, parked: r.blocked_incarnation === 'exited' }
           : null,
-      checkInBy: toIso(r.check_in_by),
-      runningSince: toIso(r.running_since),
+      checkInBy: isoOrNull(r.check_in_by),
+      runningSince: isoOrNull(r.running_since),
       sessionId: r.session_id,
       master: r.master_session_id
         ? {
             sessionId: r.master_session_id,
             name: r.master_name ?? null,
-            lastHeartbeatAt: toIso(r.master_beat ?? null),
+            lastHeartbeatAt: isoOrNull(r.master_beat ?? null),
           }
         : null,
     });
