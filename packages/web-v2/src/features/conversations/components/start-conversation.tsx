@@ -225,9 +225,9 @@ function Extras({
 function PersonChoice({ displayName, email }: { displayName: string | null; email: string }) {
   const { label, detail } = personChoice(displayName, email);
   return (
-    <span className="inline-flex items-baseline gap-2">
+    <span className="inline-flex min-w-0 flex-wrap items-baseline gap-x-2">
       <span data-person-label>{label}</span>
-      <span className="fg-caption text-muted" data-person-detail>{detail}</span>
+      <span className="fg-caption min-w-0 break-all text-muted" data-person-detail>{detail}</span>
     </span>
   );
 }

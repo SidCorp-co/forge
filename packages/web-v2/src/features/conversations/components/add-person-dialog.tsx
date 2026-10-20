@@ -25,7 +25,7 @@ function ChoiceText({ person }: { person: PersonCandidate }) {
   return (
     <>
       <span className="fg-body-sm" data-person-label>{label}</span>
-      <span className="fg-caption ml-auto truncate text-muted" data-person-detail>{detail}</span>
+      <span className="fg-caption ml-auto min-w-0 break-all text-right text-muted" data-person-detail>{detail}</span>
     </>
   );
 }
