@@ -66,7 +66,7 @@ function pickOf(stored: unknown): ProjectView | null {
 }
 
 export function ProjectsConsole() {
-  const { items: allItems, isLoading, isError, error, healthRead, refetch, toggle } = useProjectsConsole();
+  const { items: allItems, isLoading, isError, error, healthRead, healthError, refetch, toggle } = useProjectsConsole();
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -190,6 +190,7 @@ export function ProjectsConsole() {
           <AttentionBanner
             count={attentionCount}
             read={healthRead}
+            error={healthError}
             onRetry={() => refetch()}
             attentionOnly={attentionOnly}
             onToggle={() => setAttentionOnly((a) => !a)}

@@ -10,6 +10,7 @@
 // an "Agents & tasks" list (derived from Task/Skill transcript blocks), and a
 // "Sessions for this issue" list (sibling sessions via the existing list API).
 
+import { formatApiError } from "@/lib/api/error";
 import { useMemo } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -129,7 +130,7 @@ export function ContextRail({
     : runQ.data
       ? runGateNote(runQ.data.gateAtOpen)
       : runQ.isError
-        ? runGateUnfetched(runQ.error instanceof Error ? runQ.error.message : String(runQ.error))
+        ? runGateUnfetched(formatApiError(runQ.error))
         : null;
   const hasCache = usage.cacheRead != null || usage.cacheWrite != null;
 

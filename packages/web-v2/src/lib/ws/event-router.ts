@@ -107,6 +107,21 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 			}
 			return;
 		}
+		// An answered question changes what every open page of its issue reads — "Needs an answer", the
+		// Answer action, the run's word, the park — for its answerer and every other reader (ISS-1228).
+		case "question.answered": {
+			scheduleInvalidation(qc, ["attention"]);
+			scheduleInvalidation(qc, ["pulse"]);
+			rereadRunReadings(qc);
+			if (data?.issueId) {
+				scheduleInvalidation(qc, ["questions", data.issueId]);
+				scheduleInvalidation(qc, ["issue", data.issueId]);
+				scheduleInvalidation(qc, ["comments", data.issueId]);
+				scheduleInvalidation(qc, ["activities", data.issueId]);
+			}
+			if (data?.projectId) scheduleInvalidation(qc, ["questions", "project", data.projectId]);
+			return;
+		}
 		case "comment.created":
 		case "comment.updated":
 		case "comment.deleted": {

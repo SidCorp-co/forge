@@ -2,6 +2,7 @@ import { unrecognised } from "@/features/overview/job-kinds";
 import { liveSessionWord } from "@/features/sessions/session-word";
 import { BOX_SENT_NO_REPORT, MASTER_HAS_NO_REPORT, quietWhyText, waitingOnText } from "@/features/sessions/status-sentences";
 import { STALLED_THRESHOLD_MS, sessionSilence, sessionTitle } from "@/features/sessions/types";
+import { readFailure } from "@/lib/api/error";
 import { formatElapsed } from "@/lib/utils/format";
 import type { HeldIssue, Holder, LiveSession, PersonOwes } from "./types";
 
@@ -180,7 +181,8 @@ export function orderHolds(holds: readonly HeldIssue[]): HeldIssue[] {
   );
 }
 
-/** The clock time a reading was taken, for the line a failed refresh shows. */
-export function readAtLine(readAt: string): string {
-  return `Could not refresh — showing what was read at ${clock(readAt) ?? readAt}.`;
+/** The line a failed refresh shows: the clock time of the reading kept on screen, and why the refresh
+ *  failed (ISS-1228 round 22). */
+export function readAtLine(readAt: string, error: unknown): string {
+  return `Could not refresh — showing what was read at ${clock(readAt) ?? readAt}. ${readFailure(error).said}`;
 }

@@ -1,0 +1,61 @@
+import { QueryObserver } from "@tanstack/react-query";
+import { describe, expect, it } from "vitest";
+import { createQueryClient } from "@/providers/query-provider";
+import { ApiError } from "./client";
+
+/** A read whose answers come from a list, one per fetch; a pending entry never settles until released. */
+function scripted(outcomes: Array<"fail" | "ok" | "hang">) {
+	let n = 0;
+	const hung: Array<() => void> = [];
+	return {
+		hung,
+		fn: () => {
+			const next = outcomes[n++] ?? "ok";
+			if (next === "fail") return Promise.reject(new ApiError(503, "Forge is restarting.", "UNAVAILABLE"));
+			if (next === "hang") return new Promise<string>((resolve) => hung.push(() => resolve("answered")));
+			return Promise.resolve("answered");
+		},
+	};
+}
+
+const settle = () => new Promise((r) => setTimeout(r, 0));
+
+describe("a read that has failed stays failed until a refetch answers (criterion 224)", () => {
+	it("keeps isError and its error through every refetch that has not answered", async () => {
+		const client = createQueryClient();
+		const read = scripted(["fail", "hang", "fail", "hang"]);
+		const observer = new QueryObserver(client, { queryKey: ["holds"], queryFn: read.fn, retry: false });
+		const unsubscribe = observer.subscribe(() => {});
+		await settle();
+		const failed = observer.getCurrentResult();
+		expect(failed.isError).toBe(true);
+		const error = failed.error;
+
+		// A poll refetches while the failure still stands: the read is failed, not "nothing yet".
+		void observer.refetch();
+		await settle();
+		expect(observer.getCurrentResult()).toMatchObject({ isError: true, isPending: false, isFetching: true, error });
+		read.hung[0]?.();
+		await settle();
+		expect(observer.getCurrentResult()).toMatchObject({ isSuccess: true, data: "answered", error: null });
+		unsubscribe();
+	});
+
+	it("says the newest failure, and lets a reset read start over", async () => {
+		const client = createQueryClient();
+		const read = scripted(["fail", "fail", "hang"]);
+		const observer = new QueryObserver(client, { queryKey: ["runs"], queryFn: read.fn, retry: false });
+		const unsubscribe = observer.subscribe(() => {});
+		await settle();
+		const first = observer.getCurrentResult().error;
+		await observer.refetch();
+		const second = observer.getCurrentResult().error;
+		expect(second).not.toBe(first);
+		expect(observer.getCurrentResult().isError).toBe(true);
+
+		void client.resetQueries({ queryKey: ["runs"] });
+		await settle();
+		expect(observer.getCurrentResult()).toMatchObject({ isPending: true, isError: false });
+		unsubscribe();
+	});
+});

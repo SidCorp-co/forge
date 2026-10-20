@@ -4,6 +4,8 @@
 // reader can do about it renders no row; the empty fields a writer can act on share one `Not set`
 // row; and the run's state is its own `Run` row, never folded into the issue's `Status`.
 
+import { ApiError } from "@/lib/api/client";
+import { markUnreachable, UNREACHABLE_SENTENCE } from "@/lib/api/transport-failure";
 import * as matchers from "@testing-library/jest-dom/matchers";
 import type { ComponentProps } from "react";
 import { cleanup, render, screen, within } from "@testing-library/react";
@@ -140,12 +142,14 @@ describe("the rail's two statuses", () => {
 
 // ISS-1228 round 21: a rail read that failed was drawn as no relations and no cost.
 describe("the rail's failed reads", () => {
-  it("says its relations and cost could not be read, and Retry reads each again", () => {
+  it("says its relations and cost could not be read, and why, and Retry reads each again", () => {
     const deps = vi.fn();
     const cost = vi.fn();
-    renderRail({}, { unread: { deps: { retry: deps }, cost: { retry: cost } } });
-    expect(screen.getByText("Its relations could not be read.")).toBeInTheDocument();
-    expect(screen.getByText("The cost could not be read.")).toBeInTheDocument();
+    const lost = new TypeError("Failed to fetch");
+    markUnreachable(lost);
+    renderRail({}, { unread: { deps: { error: lost, retry: deps }, cost: { error: lost, retry: cost } } });
+    expect(screen.getByText(`Its relations could not be read. ${UNREACHABLE_SENTENCE}`)).toBeInTheDocument();
+    expect(screen.getByText(`The cost could not be read. ${UNREACHABLE_SENTENCE}`)).toBeInTheDocument();
     const retries = screen.getAllByRole("button", { name: "Retry" });
     expect(retries).toHaveLength(2);
     for (const r of retries) r.click();
@@ -154,8 +158,10 @@ describe("the rail's failed reads", () => {
   });
 
   it("still says a read failed where trying again could not change it, with no Retry", () => {
-    renderRail({}, { unread: { deps: {} } });
-    expect(screen.getByText("Its relations could not be read.")).toBeInTheDocument();
+    renderRail({}, { unread: { deps: { error: new ApiError(403, "Forbidden", "FORBIDDEN") } } });
+    expect(
+      screen.getByText("Its relations could not be read. You do not have access to this resource."),
+    ).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
   });
 });

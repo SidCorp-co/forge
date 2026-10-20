@@ -51,6 +51,8 @@ export interface NotificationsMenuProps {
   onMarkAllRead?: () => void;
   loading?: boolean;
   error?: boolean;
+  /** Why the notifications could not be read, in the product's words. */
+  errorWhy?: string | undefined;
   onRetry?: () => void;
   // ISS-1063 — grouping is what turns fifteen bell rows into one, so the members
   // have to stay reachable or the grouping is a loss of information rather than a
@@ -69,6 +71,7 @@ export function NotificationsMenu({
   onMarkAllRead,
   loading,
   error,
+  errorWhy,
   onRetry,
   expandedId,
   expandedMembers,
@@ -98,7 +101,7 @@ export function NotificationsMenu({
         </div>
       ) : error ? (
         <div className="flex flex-col items-center gap-2 px-4 py-8 text-center">
-          <p className="fg-body-sm text-fg">Couldn't load notifications.</p>
+          <p className="fg-body-sm text-fg">{errorWhy ? `Couldn't load notifications. ${errorWhy}` : "Couldn't load notifications."}</p>
           {onRetry && (
             <button
               type="button"

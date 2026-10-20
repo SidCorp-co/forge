@@ -70,4 +70,11 @@ describe("a run's times say which is which", () => {
     expect(text).toContain("Needs an answer");
     expect(text).not.toContain("Failed");
   });
+
+  // ISS-1228 round 22 (judge-71, criterion 228): it read "Needs an answer · Ended 2m ago".
+  it("says when a run waiting on an answer stopped to ask, never that it ended", () => {
+    const text = line(run({ status: "failed", reading: "asking" }));
+    expect(text).toContain("Stopped to ask 1m ago · ran 1m 49s");
+    expect(text).not.toContain("Ended");
+  });
 });

@@ -3,6 +3,7 @@
 // The status control at a park: the decision the person has, then the transitions map behind one
 // more click (ISS-1310). The park view is read once and every surface below takes it from here.
 
+import { formatApiError } from "@/lib/api/error";
 import { statusesForLabels } from "@forge/contracts/issue-vocabulary";
 import type { StatusExits } from "@forge/contracts/pipeline-registry";
 import { useQuery } from "@tanstack/react-query";
@@ -32,7 +33,7 @@ export function useIssuePark(
 		queryFn: () => issueDetailApi.getPark(issueId as string),
 		enabled: Boolean(issueId && status),
 	});
-	if (q.isError) return { state: "error", retry: () => void q.refetch() };
+	if (q.isError) return { state: "error", error: q.error, retry: () => void q.refetch() };
 	if (q.isPending || !q.data) return { state: "loading" };
 	return { state: "ready", park: q.data.park };
 }
@@ -85,7 +86,7 @@ export function parkMenuItems(args: {
 		: ordinary.map((item) => ({ ...item, separatorBefore: true }));
 	if (reading.state !== "ready") {
 		if (!parked) return null;
-		const said = reading.state === "loading" ? PARK_LOADING_LABEL : PARK_ERROR_LABEL;
+		const said = reading.state === "loading" ? PARK_LOADING_LABEL : `${PARK_ERROR_LABEL}. ${formatApiError(reading.error)}`;
 		return [{ label: said, disabled: true }, ...anyway];
 	}
 	const park = reading.park;

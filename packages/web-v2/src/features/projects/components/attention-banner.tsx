@@ -3,6 +3,7 @@
 // Needs-attention banner: surfaces the count of projects with blocked runs or
 // offline runners, and toggles the attention-only filter. Where the health
 // rollup is not read, it says so: no banner would read as no project needing attention.
+import { formatApiError } from '@/lib/api/error';
 import { Banner, Button } from '@/design';
 import type { QueryRead } from '@/design/patterns/badge-read';
 
@@ -10,12 +11,14 @@ export interface AttentionBannerProps {
   count: number;
   /** What the health rollup answered; a count is stated only where it is `read`. */
   read: QueryRead;
+  /** Why the health rollup could not be read, where it could not. */
+  error?: unknown;
   attentionOnly: boolean;
   onToggle: () => void;
   onRetry: () => void;
 }
 
-export function AttentionBanner({ count, read, attentionOnly, onToggle, onRetry }: AttentionBannerProps) {
+export function AttentionBanner({ count, read, error, attentionOnly, onToggle, onRetry }: AttentionBannerProps) {
   if (read !== 'read') {
     return (
       <div className="mb-4" role="status">
@@ -30,7 +33,7 @@ export function AttentionBanner({ count, read, attentionOnly, onToggle, onRetry 
           }
         >
           {read === 'failed'
-            ? 'Which projects need attention could not be read, so no figure below is a count. Retry to read it again.'
+            ? `Which projects need attention could not be read, so no figure below is a count. ${formatApiError(error)}`
             : 'Reading which projects need attention…'}
         </Banner>
       </div>

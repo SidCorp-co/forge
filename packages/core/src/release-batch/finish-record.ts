@@ -59,8 +59,15 @@ function actorOf(v: unknown): TransitionActor | null {
   const a = v as Record<string, unknown>;
   const id = str(a.id);
   if (!id) return null;
-  if (a.type === 'user')
-    return { type: 'user', id, ...(a.agency ? { agency: a.agency } : {}) } as TransitionActor;
+  if (a.type === 'user') {
+    const deviceId = str(a.deviceId);
+    return {
+      type: 'user',
+      id,
+      ...(a.agency ? { agency: a.agency } : {}),
+      ...(deviceId ? { deviceId } : {}),
+    } as TransitionActor;
+  }
   const ownerId = str(a.ownerId);
   if (a.type === 'device' && ownerId) return { type: 'device', id, ownerId };
   return null;

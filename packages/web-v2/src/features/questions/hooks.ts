@@ -2,15 +2,16 @@
 
 // web-v2 feature module: parked decisions — react-query surface.
 //
-// There is no websocket event for a question in either direction: core's
-// `wakeMastersForAnswer` publishes to DEVICE rooms, which no browser subscribes
-// to. So this module refetches its own key and nothing else will do it for it.
+// A question asked reaches no browser by event, so this module polls its own key while a question
+// stands. An answer does: core publishes `question.answered` to the project room, and the event
+// router re-reads every page of that issue (ISS-1228 round 22).
 
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 import { ApiError } from "@/lib/api/client";
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
+import { runJournalKey } from "@/features/issues/detail-hooks";
 import { questionsApi } from "./api";
 import type { AnswerInput } from "./types";
 
@@ -42,6 +43,10 @@ export function useAnswerQuestion(issueId: string) {
       qc.invalidateQueries({ queryKey: ["release-roster"] });
       // The park the waiting banner and the status menu read is keyed under the comments (r4).
       qc.invalidateQueries({ queryKey: ["comments", issueId] });
+      // The run reads by its question: "Needs an answer" and the Answer action give way now (ISS-1228).
+      qc.invalidateQueries({ queryKey: runJournalKey(issueId) });
+      qc.invalidateQueries({ queryKey: ["pipeline-run"] });
+      qc.invalidateQueries({ queryKey: ["pipeline-runs", "list"] });
       toast({
         title: "Decision recorded",
         description: "Your answer is on the question. Whoever asked reads it there.",

@@ -149,6 +149,16 @@ describe('cascadeCancelChildJobs — session-status mapping (ISS-352)', () => {
     expect(res.killableJobs.map((j) => j.id)).toEqual(['job-1', 'job-2']);
   });
 
+  it('ISS-1228 r22: a job an agent account dropped as its own act asks its box to cancel nothing', async () => {
+    const { tx } = makeTx([{ id: 'job-1', agentSessionId: 'sess-1', deviceId: 'dev-1' }]);
+    const res = await cascadeCancelChildJobs(tx as never, 'run-1', 'pipeline_cancelled', {
+      cause: 'issue_dropped',
+      spares: 'every',
+    });
+    expect(res.cancelledJobIds).toEqual(['job-1']);
+    expect(res.killableJobs).toEqual([]);
+  });
+
   it('genuine cancel/fail closes still cancel orphan jobs', async () => {
     const { tx, captures } = makeTx(jobRows);
     await cascadeCancelChildJobs(tx as never, 'run-1', 'pipeline_failed');

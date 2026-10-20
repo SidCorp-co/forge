@@ -76,6 +76,8 @@ export interface ProjectsConsole {
   /** What the projects list and the health rollup each answered. A count drawn from `items` is a statement only where both are `read`: before that, or after either failed, its zeros are defaults. */
   projectsRead: QueryRead;
   healthRead: QueryRead;
+  /** Why the health rollup could not be read, where it could not. */
+  healthError: unknown;
   refetch: () => void;
   toggle: (id: string) => void;
 }
@@ -103,6 +105,7 @@ export function useProjectsConsole(): ProjectsConsole {
     error: projects.error,
     projectsRead: queryRead(projects),
     healthRead,
+    healthError: health.error,
     refetch: () => {
       projects.refetch();
       health.refetch();

@@ -10,6 +10,8 @@ export interface VirtualListMore {
   loading: boolean;
   /** The last ask failed: nothing asks again until the person presses Retry. */
   failed: boolean;
+  /** Why it failed, in the product's words, said beside Retry. */
+  why?: string | undefined;
 }
 
 export interface VirtualListProps<Row> {
@@ -132,7 +134,7 @@ export function VirtualList<Row>({
         <div role="status" className="fg-caption flex items-center justify-center gap-2 px-4 py-3 text-muted">
           {more.failed ? (
             <>
-              <span>Couldn't load more.</span>
+              <span>{more.why ? `Couldn't load more. ${more.why}` : "Couldn't load more."}</span>
               <button type="button" onClick={more.onLoad} className="text-link hover:underline">
                 Retry
               </button>

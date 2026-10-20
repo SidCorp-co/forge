@@ -43,11 +43,13 @@ export async function cascadeCancelChildJobs(
   cut?: IssueCut,
 ): Promise<CascadeResult> {
   if (!cut) return endLiveJobs(tx, runId, reason);
-  if (cut.spares === 'every') return endLiveJobs(tx, runId, 'pipeline_completed');
+  // A job the mover's own step runs ends done as its own last act, so its box is sent no cancel:
+  // the record says done and the signal must not say cut off (ISS-1228 round 22).
+  if (cut.spares === 'every') return spared(await endLiveJobs(tx, runId, 'pipeline_completed'));
   const own =
     cut.spares === 'none'
       ? null
-      : await endLiveJobs(tx, runId, 'pipeline_completed', eq(jobs.deviceId, cut.spares.deviceId));
+      : spared(await endLiveJobs(tx, runId, 'pipeline_completed', eq(jobs.deviceId, cut.spares.deviceId)));
   const cutOff = await endLiveJobs(tx, runId, cut.cause);
   if (!own) return cutOff;
   for (const [s, d] of own.deviceBySession) cutOff.deviceBySession.set(s, d);
@@ -55,9 +57,11 @@ export async function cascadeCancelChildJobs(
     cancelledJobIds: [...own.cancelledJobIds, ...cutOff.cancelledJobIds],
     abortedSessionIds: [...own.abortedSessionIds, ...cutOff.abortedSessionIds],
     deviceBySession: cutOff.deviceBySession,
-    killableJobs: [...own.killableJobs, ...cutOff.killableJobs],
+    killableJobs: cutOff.killableJobs,
   };
 }
+
+const spared = (ended: CascadeResult): CascadeResult => ({ ...ended, killableJobs: [] });
 
 const ISSUE_CUT_CAUSES: ReadonlySet<CascadeReason> = new Set(['issue_dropped', 'issue_closed']);
 

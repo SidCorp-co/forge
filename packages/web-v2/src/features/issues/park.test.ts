@@ -33,7 +33,7 @@ function park(over: Partial<IssuePark> = {}): IssuePark {
 
 describe("parkMenuItems — where the ordinary map stays the whole answer", () => {
   it("leaves a working rung alone while its park is being read, or reads nobody owes it", () => {
-    for (const reading of [{ state: "loading" as const }, { state: "error" as const }, { state: "ready" as const, park: null }]) {
+    for (const reading of [{ state: "loading" as const }, { state: "error" as const, error: new Error("boom") }, { state: "ready" as const, park: null }]) {
       expect(
         parkMenuItems({ status: "testing", reading, exits: undefined, ordinary, actions: actions() }),
       ).toBeNull();

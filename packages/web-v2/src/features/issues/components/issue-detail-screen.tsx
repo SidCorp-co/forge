@@ -33,6 +33,7 @@ import { useSessionsAndHolds } from "@/features/pipeline/hooks";
 import { DecisionPanel, focusDecisionPanel } from "@/features/questions/components/decision-panel";
 import { buildShareLink, useRecents } from "@/features/shell";
 import { formatApiError, isRetryableApiError } from "@/lib/api/error";
+import { couldNotRead } from "@/lib/api/read-failed";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { useToast } from "@/providers/toast-provider";
@@ -212,10 +213,16 @@ export function IssueDetailScreen({
   const liveStep = liveStepWords(issue.pipelineHealth?.activeSession);
   // A group run names its members by the canonical key, never the project prefix (ISS-992).
   const runs = deriveRunView(journalQ.data, issue.agentSessions, `ISS-${issue.issSeq}`);
-  const holding = (holdsQ.data?.holds?.find((h) => h.issueId === issue.id)?.holders ?? []).flatMap((h) =>
-    h.by === "session" ? [h.sessionId] : [],
-  );
-  const sessionId = issueSessionId(holdsQ.isError ? "unread" : holding, runs);
+  // Until the holds read answers, which session holds the issue is unknown: no other one opens in its
+  // place, and a read that failed says so with its cause and Retry (ISS-1228 round 22).
+  const holding = holdsQ.isError
+    ? ("unread" as const)
+    : holdsQ.data === undefined
+      ? ("reading" as const)
+      : (holdsQ.data.holds?.find((h) => h.issueId === issue.id)?.holders ?? []).flatMap((h) =>
+          h.by === "session" ? [h.sessionId] : [],
+        );
+  const sessionId = issueSessionId(holding, runs);
   const liveSession = pickActiveSession(issue.agentSessions);
   const queuedStep = deriveQueuedStep(issue.pipelineHealth, !!liveSession);
   const agentState: LiveAgentState | null = liveSession
@@ -248,9 +255,11 @@ export function IssueDetailScreen({
   const isRunActive =
     runChip.state === "read" ? runChip.open || issue.status === "in_progress" || issue.status === "reopen" : null;
 
-  // A rail read that failed says so with Retry, never drawn as no relations or no cost (ISS-1228).
+  // A read that failed says so, with why and Retry, never drawn as no relations or no cost (ISS-1228).
   const unreadOf = (q: { isError: boolean; error: unknown; refetch: () => unknown }) =>
-    q.isError ? { retry: isRetryableApiError(q.error) ? () => void q.refetch() : undefined } : undefined;
+    q.isError
+      ? { error: q.error, retry: isRetryableApiError(q.error) ? () => void q.refetch() : undefined }
+      : undefined;
   const railUnread = { deps: unreadOf(depsQ), cost: unreadOf(costQ) };
 
   const tabs: TabItem[] = [
@@ -294,7 +303,7 @@ export function IssueDetailScreen({
             {runChip.state === "unreadable" && (
               <>
                 <span role="status" className="fg-caption text-muted">
-                  The run could not be read.
+                  {couldNotRead("The run", journalQ.error)}
                 </span>
                 <Button variant="secondary" size="sm" icon="rerun" onClick={() => journalQ.refetch()}>
                   Retry

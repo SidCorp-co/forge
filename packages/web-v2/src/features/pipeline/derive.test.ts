@@ -1,3 +1,4 @@
+import { markUnreachable, UNREACHABLE_SENTENCE } from "@/lib/api/transport-failure";
 import { waitingOnText } from "@/features/sessions/status-sentences";
 import { describe, expect, it } from "vitest";
 import {
@@ -266,7 +267,11 @@ describe("orderHolds — a person's holds first, then the longest held", () => {
 });
 
 describe("readAtLine", () => {
-  it("names the clock time of the reading kept on screen", () => {
-    expect(readAtLine("2026-10-15T01:59:00.000Z")).toMatch(/^Could not refresh — showing what was read at \d\d:\d\d\.$/);
+  it("names the clock time of the reading kept on screen, and why the refresh failed", () => {
+    const lost = new TypeError("Failed to fetch");
+    markUnreachable(lost);
+    const said = readAtLine("2026-10-15T01:59:00.000Z", lost);
+    expect(said).toMatch(/^Could not refresh — showing what was read at \d\d:\d\d\. /);
+    expect(said.endsWith(UNREACHABLE_SENTENCE)).toBe(true);
   });
 });

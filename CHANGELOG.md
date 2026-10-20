@@ -3194,6 +3194,12 @@
 
 ### Fixed
 
+- **A read that failed keeps saying so until it answers.** Retrying used to blank it back to loading, so the issue header offered the agent's session as if nothing held the issue; a failed read now keeps its sentence and Retry across every refetch, and no session opens while the holder is unread. (ISS-1228)
+- **Every failed read names its cause.** Forge being unreachable reads "Forge could not be reached", and a refusal reads as the refusal's own sentence, on the issue, pipeline, notifications, integrations, runners, monitor and project pages alike. (ISS-1228)
+- **An agent account dropping an issue ends its jobs the same way over the API and the agent tools**, and a job its own drop ended done is no longer also sent a cancel. (ISS-1228)
+- **An open issue page shows an answer within seconds**, for whoever answered it and anyone else looking, instead of keeping "Needs an answer" for a minute. (ISS-1228)
+- **A run that stopped to ask reads "Stopped to ask" in the Runs section, never "Ended"**, and an answered question's line reads in a neutral tone. (ISS-1228)
+- **Runners too old to take work are told to update as many hosts as are online**: "that host" for one, "both hosts" for two. (ISS-1228)
 - **An organization whose agent still holds a device can now be deleted.** Runners, Organisation lists every device its agents hold, an admin revokes them there, and the refusal to delete names every such device. (ISS-1229)
 - **You read as "You", not "Another member", in a room's people list, on the Activity tab and as an issue's creator.** Taking someone out of a room asks first, naming who; adding reads "Add to room". (ISS-1229)
 - **Clear beside your display name empties the field and no longer wipes your saved name**, and a typed name that differs from it counts as an unsaved change until you save or discard it. (ISS-1229)

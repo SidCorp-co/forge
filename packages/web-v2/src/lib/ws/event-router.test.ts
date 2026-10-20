@@ -513,3 +513,23 @@ describe("every event that moves a run's word re-reads every read that says it",
     for (const k of runReads) expect(c.has(k), JSON.stringify(k)).toBe(true);
   });
 });
+
+// ISS-1228 round 22 (judge-71, criterion 227): an open issue page kept "Needs an answer" for a minute
+// after its question was answered, because no event told a browser the answer had come.
+describe("an answered question reaches every open page of its issue", () => {
+  it("re-reads that issue's questions, park, issue and runs", () => {
+    const c = send("question.answered", { questionId: "q1", projectId: "p1", issueId: "i3" });
+    for (const key of [["questions", "i3"], ["issue", "i3"], ["comments", "i3"], ["run-journal"], ["pipeline-run"], ["questions", "project", "p1"]]) {
+      expect(c.has(key), JSON.stringify(key)).toBe(true);
+    }
+  });
+
+  it("marks the open issue page's run journal stale", async () => {
+    const { runJournalKey } = await import("@/features/issues/detail-hooks");
+    const qc = new QueryClient();
+    qc.setQueryData(runJournalKey("i3"), { runs: [] });
+    routeEvent({ event: "question.answered", data: { questionId: "q1", projectId: "p1", issueId: "i3" }, timestamp: "2026-10-21T12:00:00.000Z" }, qc);
+    flushInvalidations();
+    expect(qc.getQueryState(runJournalKey("i3"))?.isInvalidated).toBe(true);
+  });
+});

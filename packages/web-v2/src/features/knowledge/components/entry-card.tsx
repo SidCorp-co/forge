@@ -4,6 +4,7 @@
 // Markdown). Inferred entries get a Confirm button (PUT confidence:verified).
 // Manages its own open state so the full body is fetched lazily on expand.
 
+import { couldNotRead } from "@/lib/api/read-failed";
 import { useState } from "react";
 import { Badge, Button, Icon, Markdown, Skeleton } from "@/design";
 import { useKnowledgeEntry, useUpsertEntry } from "../hooks";
@@ -78,7 +79,7 @@ export function EntryCard({ projectId, row, canManage, defaultOpen = false }: En
             </div>
           )}
           {entryQ.isError && (
-            <p className="fg-caption text-red-600">Failed to load entry body.</p>
+            <p className="fg-caption text-red-600">{couldNotRead("This entry's body", entryQ.error)}</p>
           )}
           {entryQ.data && (
             <>

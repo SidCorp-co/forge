@@ -82,7 +82,7 @@ export function BulkActionBar({
   onCleared: () => void;
 }) {
   const bulk = useBulkUpdateIssues();
-  const { exits, isPending: exitsPending, isError: exitsFailed } = useStatusExits();
+  const { exits, isPending: exitsPending, failure: exitsFailure } = useStatusExits();
   const [batchDialogOpen, setBatchDialogOpen] = useState(false);
   const [holdOpen, setHoldOpen] = useState(false);
   const statusReasonId = useId();
@@ -95,9 +95,7 @@ export function BulkActionBar({
   const heldReason = heldCount > 0 ? agentHoldsSelection(heldCount, count) : null;
   const statusUnavailable = exitsPending
     ? "Loading the status moves…"
-    : exitsFailed
-      ? "Couldn't load the status moves"
-      : null;
+    : exitsFailure;
   const noCommonStatus = statusTargets.length === 0;
   const batchRelease = canBatchRelease(selectedRows);
 

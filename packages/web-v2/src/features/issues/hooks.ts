@@ -553,9 +553,19 @@ export function useStatusExits() {
     queryFn: () => registryApi.get(),
     staleTime: Number.POSITIVE_INFINITY,
   });
+  const unsent = !q.isError && !q.isPending && q.data?.statusExits === undefined;
   return {
     exits: q.data?.statusExits,
     isPending: q.isPending,
-    isError: q.isError || (!q.isPending && q.data?.statusExits === undefined),
+    isError: q.isError || unsent,
+    /** Said where the moves could not be read, with why (ISS-1228 round 22). */
+    failure: q.isError ? statusMovesUnread(formatApiError(q.error)) : unsent ? statusMovesUnread(NO_MAP_SENT) : null,
   };
+}
+
+const NO_MAP_SENT = "Forge answered without the status moves.";
+
+/** A status-move menu whose map could not be read: that, and why. */
+export function statusMovesUnread(why: string): string {
+  return `Couldn't load status moves. ${why}`;
 }

@@ -89,3 +89,19 @@ describe('notificationCreated WS bridge', () => {
     expect(publishMock.mock.calls[0]?.[0]).toBe(userRoom(USER_ID));
   });
 });
+
+describe('questionAnswered WS bridge (ISS-1228 round 22)', () => {
+  it('tells the project room which issue’s question was answered, and nothing of the answer', async () => {
+    await bus.emit('questionAnswered', {
+      questionId: DECISION_ID,
+      projectId: PROJECT_ID,
+      issueId: NOTIFICATION_ID,
+      answeredBy: USER_ID,
+      body: 'Primary',
+    });
+    expect(publishMock).toHaveBeenCalledWith(projectRoom(PROJECT_ID), {
+      event: 'question.answered',
+      data: { questionId: DECISION_ID, projectId: PROJECT_ID, issueId: NOTIFICATION_ID },
+    });
+  });
+});

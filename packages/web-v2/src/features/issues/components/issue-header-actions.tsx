@@ -1,6 +1,7 @@
 "use client";
 
 import { Button, ButtonLink, IconButton, Menu, type MenuItem, Skeleton } from "@/design";
+import { couldNotRead } from "@/lib/api/read-failed";
 import { useRouter } from "next/navigation";
 import type { IssueStatus } from "../types";
 
@@ -30,8 +31,8 @@ export function IssueHeaderActions({
 }: {
   slug: string;
   sessionHref: string | null;
-  /** Which session holds the issue could not be read: said with Retry where Open session goes. */
-  sessionUnread?: { retry?: (() => void) | undefined } | undefined;
+  /** Which session holds the issue could not be read: said, with why and Retry, where Open session goes. */
+  sessionUnread?: { error: unknown; retry?: (() => void) | undefined } | undefined;
   status: IssueStatus;
   releaseRunId: string | null | undefined;
   canWrite: boolean;
@@ -98,7 +99,7 @@ export function IssueHeaderActions({
       )}
       {sessionUnread && (
         <span role="status" className="fg-caption inline-flex flex-wrap items-center gap-2 text-muted">
-          Its session could not be read.
+          {couldNotRead("Its session", sessionUnread.error)}
           {sessionUnread.retry && (
             <Button variant="secondary" size="sm" icon="rerun" onClick={sessionUnread.retry}>
               Retry

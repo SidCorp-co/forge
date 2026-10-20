@@ -5,7 +5,7 @@ import { verifyUserToken } from '../auth/jwt.js';
 import { isPatLike } from '../auth/pat-format.js';
 import { runWithPatScope } from '../auth/pat-scope.js';
 import type { IssueCreationChannel } from '../db/schema.js';
-import type { ActorAgency } from '../issues/actor-agency.js';
+import { type ActorAgency, credentialActor, type UserActor } from '../issues/actor-agency.js';
 import { readBearerToken } from './bearer.js';
 import { refuses } from './declarations.js';
 import { beginPatRequest } from './pat-rest-surface.js';
@@ -27,16 +27,14 @@ export type AuthVars = {
   patDeviceId?: string;
 };
 
-export function restActor(c: Context<{ Variables: RestActorVars }>): {
-  type: 'user';
-  id: string;
-  agency: ActorAgency;
-} {
-  return { type: 'user', id: c.get('userId'), agency: restAgency(c) };
+export function restActor(c: Context<{ Variables: RestActorVars }>): UserActor & { agency: ActorAgency } {
+  const deviceId = c.get('principal') === 'device' ? c.get('deviceId') : c.get('patDeviceId');
+  return credentialActor({ userId: c.get('userId'), agency: restAgency(c), deviceId });
 }
 
 type RestActorVars = {
   userId: string;
+  deviceId?: string;
   agency?: ActorAgency;
   principal?: 'user' | 'device' | 'pat';
   patTokenId?: string;

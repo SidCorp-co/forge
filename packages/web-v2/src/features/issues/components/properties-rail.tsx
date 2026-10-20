@@ -6,6 +6,7 @@
 // gate counts, and dependency edges (rendered as clickable `ISS-X` badges linking
 // to the related issue — ISS-331).
 
+import { couldNotRead } from "@/lib/api/read-failed";
 import type { ComponentProps } from "react";
 import { Avatar, Badge, Button, MonoTag, Stat, StatusChip } from "@/design";
 import { COMPLEXITY_OPTIONS, PRIORITY_OPTIONS } from "./issue-row-parts";
@@ -152,6 +153,7 @@ function MergeMarkBadge({
 
 /** A rail read that failed; `retry` only where reading again could change the answer (ISS-1160). */
 export interface UnreadRead {
+  error: unknown;
   retry?: (() => void) | undefined;
 }
 
@@ -402,7 +404,7 @@ export function PropertiesRail({
           <LiveReachValue reach={issue.liveReach} />
         </Row>
       )}
-      {unread.cost && <UnreadRow label="Cost" what="The cost could not be read." onRetry={unread.cost.retry} />}
+      {unread.cost && <UnreadRow label="Cost" what={couldNotRead("The cost", unread.cost.error)} onRetry={unread.cost.retry} />}
       {cost && cost.estimatedCost > 0 && (
         <Row label="Cost">
           <Stat icon="dollar">{`$${cost.estimatedCost.toFixed(2)}`}</Stat>
@@ -443,7 +445,7 @@ export function PropertiesRail({
         </Row>
       )}
       {unread.deps && (
-        <UnreadRow label="Relations" what="Its relations could not be read." onRetry={unread.deps.retry} />
+        <UnreadRow label="Relations" what={couldNotRead("Its relations", unread.deps.error)} onRetry={unread.deps.retry} />
       )}
       <DepList edges={blockedBy} self={issue.id} slug={slug} label="Blocked by" />
       <DepList edges={wasBlockedBy} self={issue.id} slug={slug} label="Was blocked by" />

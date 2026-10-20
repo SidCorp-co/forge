@@ -127,7 +127,7 @@ function useRowMenuItems(
   actions: RowActions,
   open: () => void,
 ): MenuItem[] {
-  const { exits, isPending, isError } = useStatusExits();
+  const { exits, isPending, failure } = useStatusExits();
   const items: MenuItem[] = [
     { label: "Open issue", icon: "arrowRight", onSelect: open },
   ];
@@ -144,8 +144,8 @@ function useRowMenuItems(
     items.push({ label: RELEASING_HAS_NO_MOVE, disabled: true, separatorBefore: true });
   } else if (isPending) {
     items.push({ label: "Loading status moves…", disabled: true, separatorBefore: true });
-  } else if (isError) {
-    items.push({ label: "Couldn't load status moves", disabled: true, separatorBefore: true });
+  } else if (failure) {
+    items.push({ label: failure, disabled: true, separatorBefore: true });
   }
   const statusNames = transitionLabels(grouped.map((g) => g.to));
   for (const [i, g] of grouped.entries()) {

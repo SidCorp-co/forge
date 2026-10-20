@@ -1,4 +1,5 @@
 
+import { couldNotRead } from "@/lib/api/read-failed";
 import { personChoice, personInitials, readerInitials, readerName } from "@forge/contracts/person-name";
 import { jobKindLabel } from "@/features/overview/job-kinds";
 import {
@@ -701,7 +702,7 @@ export interface BlockerState {
  */
 export type ParkReading =
 	| { state: "loading" }
-	| { state: "error"; retry?: () => void }
+	| { state: "error"; error: unknown; retry?: () => void }
 	| { state: "ready"; park: IssuePark | null };
 
 export const NO_PARK: ParkReading = { state: "ready", park: null };
@@ -909,7 +910,7 @@ export function deriveBlockerState(
 			tone: "attention",
 			reason: "This issue is stopped until a person acts.",
 			whoMustAct:
-				park.state === "error" ? "What it waits on could not be read." : "Reading what it waits on…",
+				park.state === "error" ? couldNotRead("What it waits on", park.error) : "Reading what it waits on…",
 			cta: park.state === "error" ? { label: "Retry", kind: "retry-park" } : { label: "", kind: "none" },
 			...(blockingRefs.length ? { blockingRefs } : {}),
 		};
@@ -1029,14 +1030,16 @@ export interface RunView {
 /**
  * The session the issue page's Open session opens: one holding the issue now, else the newest
  * session of the newest run that had one, or `null` for an issue no session has run. `runs` are
- * newest first, as `deriveRunView` gives them. A holds read that failed reads `"unread"`: which
- * session holds the issue is unknown, so no older one stands in for it (ISS-1228).
+ * newest first, as `deriveRunView` gives them. A holds read that failed reads `"unread"`, and one
+ * that has not answered `"reading"`: which session holds the issue is then unknown, so no older one
+ * stands in for it (ISS-1228).
  */
 export function issueSessionId(
-	holding: readonly string[] | "unread",
+	holding: readonly string[] | "unread" | "reading",
 	runs: readonly Pick<RunView, "sessionId">[],
 ): string | "unread" | null {
 	if (holding === "unread") return "unread";
+	if (holding === "reading") return null;
 	return holding[0] ?? runs.find((run) => run.sessionId)?.sessionId ?? null;
 }
 

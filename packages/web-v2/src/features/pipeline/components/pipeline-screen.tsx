@@ -53,7 +53,7 @@ export function PipelineScreen({ scope }: { scope: { projectId: string; slug: st
         <p className="fg-body-sm">What is working on this project now, and what is held.</p>
         {data && q.isError && (
           <p className="fg-caption fg-caption-stale" role="status">
-            {readAtLine(data.readAt)}
+            {readAtLine(data.readAt, q.error)}
           </p>
         )}
       </header>

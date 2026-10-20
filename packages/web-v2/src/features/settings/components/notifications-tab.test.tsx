@@ -260,7 +260,7 @@ describe("the inbox at its edges", () => {
     open();
     await loaded();
     await scrollTo(ROW * PAGE);
-    await screen.findByText("Couldn't load more.");
+    await screen.findByText(/^Couldn't load more\. \S/);
     await act(async () => {});
     await act(async () => {});
     expect(asked).toEqual([1, 2]);
@@ -269,7 +269,7 @@ describe("the inbox at its edges", () => {
     failing = false;
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(asked).toEqual([1, 2, 2]));
-    await waitFor(() => expect(screen.queryByText("Couldn't load more.")).toBeNull());
+    await waitFor(() => expect(screen.queryByText(/^Couldn't load more\./)).toBeNull());
   });
 });
 
@@ -286,7 +286,7 @@ describe("a failed ask for the next 25, on the query client the app runs", () =>
     openOnTheAppsPolicy();
     await loaded();
     await scrollTo(ROW * PAGE);
-    await screen.findByText("Couldn't load more.");
+    await screen.findByText(/^Couldn't load more\. \S/);
     // Long enough for the client's own retries, had it been left to make them.
     await act(async () => {
       await new Promise((later) => setTimeout(later, 150));
@@ -294,7 +294,7 @@ describe("a failed ask for the next 25, on the query client the app runs", () =>
     expect(asked).toEqual([1, 2]);
 
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
-    await screen.findByText("Couldn't load more.");
+    await screen.findByText(/^Couldn't load more\. \S/);
     await act(async () => {
       await new Promise((later) => setTimeout(later, 150));
     });
@@ -302,7 +302,7 @@ describe("a failed ask for the next 25, on the query client the app runs", () =>
 
     failing = false;
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
-    await waitFor(() => expect(screen.queryByText("Couldn't load more.")).toBeNull());
+    await waitFor(() => expect(screen.queryByText(/^Couldn't load more\./)).toBeNull());
     expect(asked).toEqual([1, 2, 2, 2]);
   });
 
