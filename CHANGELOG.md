@@ -9,6 +9,18 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.257] - 2026-10-20
+
+Runner install names an unreachable Forge instead of blaming your platform
+
+### Digest
+
+- <!-- digest: 2026-W42 --> **An Approvals inbox, a Questions page, an embeddable feedback chat and one-button GitHub connect.** A project now has one Approvals inbox for everything waiting on your decision, and a Questions page that lists only what you owe. Client sites can embed a feedback chat that files Feedback and gives visitors a private status link. Claude Code signs in to Forge through the browser, and a BA can work requirements, feedback, releases and designs from it or the web. Release pages open on a short summary with each change titled, project settings gain a Testing tab, and the sidebar, pages and phone layouts read more clearly. Fixes cover contrast, menus, broken screenshots, release re-cuts and GitHub rate limits.
+
+### Fixed
+
+- **The runner install script no longer blames your platform when it cannot reach Forge.** An unreachable or unreadable build list, and a failed download, are refused by name with the URL and curl's error; a checksum mismatch says what next.
+
 ## [0.4.0-dev.256] - 2026-10-16
 
 Requests with no body now say which field they need
