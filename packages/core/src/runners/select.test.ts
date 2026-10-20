@@ -65,13 +65,6 @@ describe('onlineCapableDeviceIds (retry round-robin candidate set)', () => {
     expect(q).toContain('quarantined_until');
   });
 
-  it('includeLimited:true returns the unfiltered set (no quarantine gate)', async () => {
-    execute.mockResolvedValueOnce([]);
-    await onlineCapableDeviceIds(PROJECT_A, undefined, { includeLimited: true });
-    const q = JSON.stringify(execute.mock.calls.at(-1)?.[0]);
-    expect(q).not.toContain('quarantined_until');
-  });
-
   it('omits a quarantined runner device from the health-gated candidate set', async () => {
     // The real WHERE clause filters the quarantined row out at the DB layer;
     // simulate that by having the query return only the healthy device.

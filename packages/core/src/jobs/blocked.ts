@@ -20,7 +20,6 @@ import type { BlockedBody } from './blocked-wire.js';
 import { failOccupyingJob } from './fail-job.js';
 import { readJob } from './job-queries.js';
 
-/** The cause a job that stopped on a question ends with, so its attempt never reads unclassified. */
 const STOPPED_ON_QUESTION: FailureCause = 'stopped_on_question';
 
 export interface BlockedEnd {

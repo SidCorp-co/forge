@@ -190,17 +190,13 @@ const HOLD_WHY: Record<string, string> = {
   verify_unavailable: "Core could not check whether the work already finished.",
 };
 
-/** What a hold waits for before core sends the step again, by reason. */
 const HOLD_RESUMES: Record<string, string> = {
   all_devices_exhausted: "Core sends it again once a box can take it.",
   monthly_budget_exhausted: "Core sends it again once the budget allows.",
   verify_unavailable: "Core checks again and sends it on its own.",
 };
 
-/**
- * A held step's line: why core holds it and whether it is sent again by itself, worded so an owner
- * reading it never takes a hold that resumes for one nothing will (ISS-1228 round 19).
- */
+/** A held step's line: why core holds it and whether it is sent again by itself. */
 export function heldText(hold: { reason: string; resumesItself: boolean } | null | undefined, at: string | null): string {
   const why = (hold && HOLD_WHY[hold.reason]) ?? "Core holds it.";
   if (!hold?.resumesItself) return `${why} This hold does not clear on its own.`;
@@ -211,13 +207,10 @@ export function heldText(hold: { reason: string; resumesItself: boolean } | null
 /** What a hold that does not clear on its own asks of a person, with the drawer's own control. */
 export const HELD_STUCK_ACTION = "Nothing sends it again. Fix what stopped it, then Cancel run and run the issue again from its page.";
 
-/** Cancel run's hover on a run whose step core holds: what the cancel gives up. */
 export const CANCEL_HELD_HOVER = "Ends this run. Its step is held, and core would send it again on its own.";
 
-/** Cancel run's hover on a run nothing has started. */
 export const CANCEL_UNSTARTED_HOVER = "Ends this run before anything works on it. Nothing has started, so no agent is stopped mid-step.";
 
-/** Stop now's hover, in a person's words. */
 export const STOP_NOW_HOVER = "Stops the agent working this run at once. The run ends and cannot be resumed.";
 
 /** A session that has not checked in since it opened, and when core ends it if none comes. */
@@ -232,7 +225,6 @@ export const nextAttemptText = (next: "sent" | "held"): string =>
     ? "Core holds the next try, so nothing is asked of you here."
     : "Core already sent it again, so nothing is asked of you.";
 
-/** An attempt that was cancelled, by whom. */
 export function cancelledByText(by: { kind: "person" | "agent" | "core"; name: string | null } | null | undefined): string {
   if (!by || by.kind === "core") return "Cancelled by core";
   return `Cancelled by ${by.name ?? (by.kind === "agent" ? "an agent" : "a person")}`;

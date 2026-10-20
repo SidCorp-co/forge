@@ -62,26 +62,15 @@ vi.mock('../runners/select.js', () => ({
   onlineCapableDeviceIds: (...a: unknown[]) => onlineDevicesMock(...(a as [never])),
 }));
 
-// The runners the capacity notice reads (ISS-1228): the fleet query is proved against Postgres in
-// `tests/integration/capacity-notice-fleet-e2e.test.ts`; here each case says which fleet it faces.
-type Fleet = import('./capacity-fleet.js').CapacityFleet;
-const emptyBars = (): Fleet['bars'] => ({
-  silent: 0,
-  disabled: 0,
-  outside_pool: 0,
-  lacking: 0,
-  workspace: 0,
-  too_old: 0,
-  limited: 0,
-});
-const fleetMock = vi.fn(
-  async (..._a: unknown[]): Promise<Fleet> => ({ online: 0, bars: emptyBars() }),
-);
-vi.mock('./capacity-fleet.js', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('./capacity-fleet.js')>()),
+// The fleet query is proved against Postgres in tests/integration/capacity-notice-fleet-e2e.test.ts.
+const fleetMock = vi.fn(async (..._a: unknown[]) => ({
+  online: 0,
+  bars: {} as Record<string, number>,
+}));
+vi.mock('./capacity-fleet.js', async (orig) => ({
+  ...(await orig<object>()),
   readCapacityFleet: (...a: unknown[]) => fleetMock(...a),
 }));
-const limitedFleet = (): Fleet => ({ online: 2, bars: { ...emptyBars(), limited: 2 } });
 
 const stagePoolMock = vi.fn(
   async (..._a: unknown[]) => ({ deviceIds: null }) as { deviceIds: string[] | null },
@@ -156,10 +145,10 @@ beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(FIXED_NOW);
   insertReturning.mockReset();
+  fleetMock.mockReset();
   verifyRecoveryMock.mockResolvedValue('pending');
   onlineDevicesMock.mockResolvedValue(['device-A', 'device-B', 'device-C']);
   stagePoolMock.mockResolvedValue({ deviceIds: null });
-  fleetMock.mockResolvedValue({ online: 0, bars: emptyBars() });
   ccSignalRow = { total: 0, toolCalls: 0, messages: 0 };
 });
 afterEach(() => {
@@ -534,11 +523,8 @@ describe('scheduleAutoRetryWithVerify — per-class policy (ISS-450)', () => {
 
   describe('ISS-823 — all-devices-exhausted vs all-offline (failover)', () => {
     it('DEFERS to the rotation (does not park on entry) when every online device is rate-limited', async () => {
-      onlineDevicesMock.mockImplementation(async (..._args: unknown[]) => {
-        const opts = _args[2] as { includeLimited?: boolean } | undefined;
-        return opts?.includeLimited ? ['device-A', 'device-B'] : [];
-      });
-      fleetMock.mockResolvedValue(limitedFleet());
+      onlineDevicesMock.mockResolvedValue([]);
+      fleetMock.mockResolvedValueOnce({ online: 2, bars: { limited: 2 } });
       insertReturning.mockResolvedValueOnce([{ id: 'j2' }]);
       const result = await run(
         {
@@ -558,11 +544,8 @@ describe('scheduleAutoRetryWithVerify — per-class policy (ISS-450)', () => {
     });
 
     it('spends no round and keeps the exclusion memory while the pool is empty', async () => {
-      onlineDevicesMock.mockImplementation(async (..._args: unknown[]) => {
-        const opts = _args[2] as { includeLimited?: boolean } | undefined;
-        return opts?.includeLimited ? ['device-A', 'device-B'] : [];
-      });
-      fleetMock.mockResolvedValue(limitedFleet());
+      onlineDevicesMock.mockResolvedValue([]);
+      fleetMock.mockResolvedValueOnce({ online: 2, bars: { limited: 2 } });
       insertReturning.mockResolvedValueOnce([{ id: 'j2' }]);
       await run(
         {
@@ -582,11 +565,8 @@ describe('scheduleAutoRetryWithVerify — per-class policy (ISS-450)', () => {
     });
 
     it('reports all_devices_exhausted once the deferral ceiling is passed', async () => {
-      onlineDevicesMock.mockImplementation(async (..._args: unknown[]) => {
-        const opts = _args[2] as { includeLimited?: boolean } | undefined;
-        return opts?.includeLimited ? ['device-A', 'device-B'] : [];
-      });
-      fleetMock.mockResolvedValue(limitedFleet());
+      onlineDevicesMock.mockResolvedValue([]);
+      fleetMock.mockResolvedValueOnce({ online: 2, bars: { limited: 2 } });
       const result = await run(
         {
           deviceId: 'device-A',
@@ -609,11 +589,8 @@ describe('scheduleAutoRetryWithVerify — per-class policy (ISS-450)', () => {
     });
 
     it('notifies once about the pool, naming the rate-limit case', async () => {
-      onlineDevicesMock.mockImplementation(async (..._args: unknown[]) => {
-        const opts = _args[2] as { includeLimited?: boolean } | undefined;
-        return opts?.includeLimited ? ['device-A', 'device-B'] : [];
-      });
-      fleetMock.mockResolvedValue(limitedFleet());
+      onlineDevicesMock.mockResolvedValue([]);
+      fleetMock.mockResolvedValueOnce({ online: 2, bars: { limited: 2 } });
       insertReturning.mockResolvedValueOnce([{ id: 'j2' }]);
       await run(
         {

@@ -81,7 +81,6 @@ export interface PipelineRunAttempt {
   finishedAt: string | null;
   autoRetry: { round: number; target: string | null; tries: number; done: string[] } | null;
   takenBy: { deviceId: string; deviceName: string | null } | null;
-  /** Absent from an older core. */
   hold?: RunHold | null;
   cancelledBy?: { kind: "person" | "agent" | "core"; name: string | null } | null;
 }
@@ -126,15 +125,11 @@ export interface PipelineRunSummary {
   lastSessionBeatAt: string | null;
   /** What core says the run's agent is doing (`runs-liveness.ts`), the one word every surface shows. */
   reading: RunReading | null;
-  /** Why core holds the run's job, where it holds one. */
   hold?: RunHold | null;
-  /** What a box reports its blocked session on the run waits on. */
   block?: RunBlock | null;
   /** When core ends a session on the run that has not checked in since it opened. */
   checkInBy?: string | null;
-  /** When the run's work started: the earliest start of any session on it. */
   runningSince?: string | null;
-  /** The run's newest session, whose page says what it is doing. */
   sessionId?: string | null;
   attempts: PipelineRunAttempt[];
   /** ISS-411 — round-robin headline; null when the run never retried. */

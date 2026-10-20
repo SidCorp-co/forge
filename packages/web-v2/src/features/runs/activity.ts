@@ -102,8 +102,6 @@ function openOutcome(a: PipelineRunAttempt): string {
   return "Queued — no box has taken it yet";
 }
 
-/** Who ended a cancelled attempt: a person or an agent by name, a dispatcher skip or a cleanup by its own
- *  words, else core — never the cause an earlier take's session ended of. */
 function cancelledOutcome(a: PipelineRunAttempt): string {
   if (a.failureReason && LEGACY_NEUTRAL_REASONS.has(a.failureReason)) {
     return failureReasonLabel(a.failureReason) ?? "Not dispatched";
@@ -128,12 +126,7 @@ function outcomeOf(a: PipelineRunAttempt, cause: FailureCause | null): string {
   return `Ended ${a.status}`;
 }
 
-/**
- * What a person can do about an attempt, read against the one after it: an attempt core already sent
- * again or holds asks nothing of a person; the latest one carries its remedy, the box named where the
- * box is what never took it; a hold that does not clear on its own says what to do. No remedy names a
- * control the drawer does not offer (ISS-1228 round 19).
- */
+/** A person's remedy, read against the attempt after it, naming no control the drawer lacks. */
 function actionOf(a: PipelineRunAttempt, cause: FailureCause | null, next: PipelineRunAttempt | undefined): string | null {
   if (a.status === "held") return a.hold && !a.hold.resumesItself ? HELD_STUCK_ACTION : null;
   if (OPEN_STATUSES.has(a.status) || a.status === "cancelled" || !cause) return null;

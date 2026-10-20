@@ -1,10 +1,7 @@
 /**
- * Why no runner can take a step, read off the same runner rows the fleet shows online (ISS-1228).
- *
- * The empty-pool notice used to say "no runner online" whenever the dispatch pool came back empty,
- * which is false wherever a runner is online and a narrower test refused it: its device turned off,
- * the step's pool, a capability, its workspace, its build, an account limit. Each online runner is
- * read once here and named by the first of those it fails, in the order a person fixes them.
+ * Why no runner can take a step, read off the runner rows the fleet shows online (ISS-1228): an
+ * empty dispatch pool is not "no runner online" while one is. Each online runner is named by the
+ * first check it fails, in the order a person fixes them.
  */
 
 import { sql } from 'drizzle-orm';
