@@ -161,6 +161,17 @@ const attemptSchema = z.object({
     .describe(
       'where the question this job stopped on stands: on its issue, or the project where it has none or it had closed; null unless it stopped on one',
     ),
+  questionAnswered: z
+    .object({
+      userId: z
+        .string()
+        .nullable()
+        .describe('the account that answered, so a reader can tell its own answer'),
+      name: z.string().nullable().describe('that person as a reader names them, never an address'),
+      at: z.string().describe('when it was answered, ISO 8601'),
+    })
+    .nullable()
+    .describe('who answered the question this job stopped on, and when; null unless answered'),
 });
 
 /** One run with its step timeline, per-attempt device/retry timeline and cost rolled up. */

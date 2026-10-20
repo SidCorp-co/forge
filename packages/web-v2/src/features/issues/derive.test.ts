@@ -1208,16 +1208,19 @@ describe("deriveBlockerState", () => {
 			}
 		});
 
-		it("says so while the park is being read, or could not be read, and offers nothing", () => {
-			for (const state of ["loading", "error"] as const) {
-				const b = deriveBlockerState(blockerIssue({ status: "waiting" }), undefined, undefined, { state });
-				expect(b?.tone).toBe("attention");
-				expect(b?.cta.kind).toBe("none");
-			}
+		it("says so while the park is being read, and offers nothing", () => {
+			const b = deriveBlockerState(blockerIssue({ status: "waiting" }), undefined, undefined, { state: "loading" });
+			expect(b?.tone).toBe("attention");
+			expect(b?.cta.kind).toBe("none");
+		});
+
+		// ISS-1228 round 21: a failed read is a sentence and Retry, never "reload the page".
+		it("says the park could not be read and offers Retry", () => {
 			const failed = deriveBlockerState(blockerIssue({ status: "needs_info" }), undefined, undefined, {
 				state: "error",
 			});
-			expect(failed?.whoMustAct).toMatch(/could not be read/);
+			expect(failed?.whoMustAct).toBe("What it waits on could not be read.");
+			expect(failed?.cta).toEqual({ label: "Retry", kind: "retry-park" });
 		});
 	});
 
@@ -1706,6 +1709,11 @@ describe("originFromParams", () => {
 describe("issueSessionId — the session Open session opens", () => {
 	const runs = (...sessionIds: (string | null)[]) => sessionIds.map((sessionId) => ({ sessionId }));
 
+	// ISS-1228 round 21: a failed holds read fell back to the run's own session without a word.
+	it("says the holds read failed rather than opening the run's session in its place", () => {
+		expect(issueSessionId("unread", runs("s-b"))).toBe("unread");
+	});
+
 	it("opens the live session holding the issue before any that ran it", () => {
 		expect(issueSessionId(["live-1"], runs("s-new"))).toBe("live-1");
 	});
@@ -1788,12 +1796,27 @@ describe("the issue page's run chip, from the run journal alone (round 20)", () 
       now,
     );
     expect(chip).toMatchObject({ state: "read", open: false, word: { label: "Failed" } });
-    expect(issueRunChip([], { answered: true, failed: false }, now)).toEqual({ state: "read", word: null, open: false });
+    expect(issueRunChip([], { answered: true, failed: false }, now)).toEqual({
+      state: "read",
+      word: null,
+      open: false,
+      waitsOn: null,
+    });
   });
 
   it("reads a run whose job stopped on a question that stands as Needs an answer, never Failed", () => {
     const chip = issueRunChip([run({ status: "failed", reading: "asking" })], { answered: true, failed: false }, now);
     expect(chip).toMatchObject({ state: "read", word: { label: "Needs an answer", status: "waiting" } });
+  });
+
+  // ISS-1228 round 21: the header's primary action is read off what the run waits on.
+  it("says a run waiting for an answer waits on one, and an open run nothing works waits on nothing", () => {
+    const asking = issueRunChip([run({ status: "failed", reading: "asking" })], { answered: true, failed: false }, now);
+    expect(asking).toMatchObject({ state: "read", waitsOn: "answer" });
+    const idle = issueRunChip([run({ reading: null })], { answered: true, failed: false }, now);
+    expect(idle).toMatchObject({ state: "read", open: true, word: { label: "Nothing working" }, waitsOn: "nothing" });
+    const working = issueRunChip([run({ reading: "running" })], { answered: true, failed: false }, now);
+    expect(working).toMatchObject({ state: "read", waitsOn: null });
   });
 
   it("keeps a reading already shown when a later refresh fails", () => {

@@ -27,6 +27,7 @@ import { expireBlocksEdgesOnDrop, type UnblockedDependent } from './drop-cascade
 import { recordDropUnblock } from './drop-unblock.js';
 import { resolveDeclaredEntryCriteria } from './entry-criteria.js';
 import type { EntryCriterionKey } from './entry-criteria-keys.js';
+import { runCloseFor } from './issue-cut.js';
 import { refuseUnshippedClose } from './merged-at.js';
 import { mintParkQuestion } from './park-question.js';
 import { publishPipelineHealthChanged } from './pipeline-health.js';
@@ -351,7 +352,7 @@ async function publishTransition(
   await setCurrentStepForOpenIssueRun(issue.id, toStatus);
   const terminal = TERMINAL_FOR_DISPATCH.has(toStatus) || held;
   if (ISSUE_TERMINAL_STATUSES.includes(toStatus) || held) {
-    await closeOpenRunForIssue(issue.id, 'completed');
+    await closeOpenRunForIssue(issue.id, ...runCloseFor(actor, toStatus, held));
   }
 
   return {

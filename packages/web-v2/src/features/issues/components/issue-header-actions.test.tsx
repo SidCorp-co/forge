@@ -6,7 +6,7 @@
 // 390 are the measurement of the row.
 
 import * as matchers from "@testing-library/jest-dom/matchers";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { IssueStatus } from "../types";
 import { IssueHeaderActions } from "./issue-header-actions";
@@ -98,6 +98,78 @@ describe("Open session opens the issue's session", () => {
     renderAt("open", null, null);
     expect(screen.queryByRole("link", { name: "Open session" })).toBeNull();
     expect(screen.getByRole("button", { name: "Issue actions" })).toBeInTheDocument();
+  });
+});
+
+
+// ISS-1228 round 21 (judge-67): Pause was the primary action on a run waiting for an answer and on one
+// with nothing working; the master's ruling makes Answer the primary of the first and none of the second.
+describe("the primary action follows what the run waits on", () => {
+  function renderWaiting(runWaitsOn: "answer" | "nothing" | null, onAnswer = vi.fn()) {
+    render(
+      <IssueHeaderActions
+        slug="forge"
+        sessionHref={null}
+        status="in_progress"
+        releaseRunId={null}
+        canWrite
+        pending={false}
+        isRunActive
+        runWaitsOn={runWaitsOn}
+        onAnswer={onAnswer}
+        onTransition={vi.fn()}
+        onRun={onRun}
+        running={false}
+        onCopyLink={vi.fn()}
+      />,
+    );
+    return onAnswer;
+  }
+
+  it("offers Answer on a run waiting for an answer, and pressing it shows the question", () => {
+    const onAnswer = renderWaiting("answer");
+    expect(screen.queryByRole("button", { name: "Pause" })).toBeNull();
+    screen.getByRole("button", { name: "Answer" }).click();
+    expect(onAnswer).toHaveBeenCalledTimes(1);
+  });
+
+  it("offers no primary action on a run nothing is working", () => {
+    renderWaiting("nothing");
+    const controls = [...document.querySelectorAll("button, a[href]")];
+    expect(controls.map((b) => b.getAttribute("aria-label") ?? b.textContent)).toEqual(["Issue actions"]);
+  });
+
+  it("keeps Pause the primary on a run something is working", () => {
+    renderWaiting(null);
+    expect(screen.getByRole("button", { name: "Pause" })).toBeInTheDocument();
+  });
+});
+
+// ISS-1228 round 21: a failed read of which session holds the issue fell back to the run's own
+// session without a word; it now says so where Open session goes, with Retry.
+describe("a session the page could not read", () => {
+  it("says so with Retry and links to no other session", () => {
+    const retry = vi.fn();
+    render(
+      <IssueHeaderActions
+        slug="forge"
+        sessionHref={null}
+        sessionUnread={{ retry }}
+        status="in_progress"
+        releaseRunId={null}
+        canWrite
+        pending={false}
+        isRunActive
+        onTransition={vi.fn()}
+        onRun={onRun}
+        running={false}
+        onCopyLink={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole("status")).toHaveTextContent("Its session could not be read.");
+    expect(screen.queryByRole("link", { name: "Open session" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(retry).toHaveBeenCalledTimes(1);
   });
 });
 

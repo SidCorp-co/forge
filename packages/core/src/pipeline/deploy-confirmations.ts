@@ -1,9 +1,11 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { pipelineRuns } from '../db/schema.js';
+import type { IssueCut } from './runs-cascade.js';
 
 export const DEPLOY_CONFIRM_METADATA_KEY = '__forge_deploy_confirm';
 export const DEPLOY_CLOSE_PENDING_METADATA_KEY = '__forge_deploy_close_pending';
+export const DEPLOY_CLOSE_CUT_METADATA_KEY = '__forge_deploy_close_cut';
 
 export const DEPLOY_CONFIRM_WINDOW_MS = 30 * 60_000;
 
@@ -231,14 +233,45 @@ export function resolveDeployGate(holds: DeployHolds, now: Date = new Date()): D
  * not. Without this the deferral would simply lose the close until a sweeper
  * re-found the run.
  */
-export async function markCloseDeferred(runId: string): Promise<void> {
+/** Held back with the issue's cut, the close that finishes later cuts the same jobs (ISS-1228). */
+export async function markCloseDeferred(runId: string, cut?: IssueCut): Promise<void> {
+  const pending = sql`jsonb_set(coalesce(${pipelineRuns.metadata}, '{}'::jsonb), ARRAY[${DEPLOY_CLOSE_PENDING_METADATA_KEY}], 'true'::jsonb, true)`;
   await db
     .update(pipelineRuns)
     .set({
-      metadata: sql`jsonb_set(coalesce(${pipelineRuns.metadata}, '{}'::jsonb), ARRAY[${DEPLOY_CLOSE_PENDING_METADATA_KEY}], 'true'::jsonb, true)`,
+      metadata: cut
+        ? sql`jsonb_set(${pending}, ARRAY[${DEPLOY_CLOSE_CUT_METADATA_KEY}], ${JSON.stringify(cut)}::jsonb, true)`
+        : pending,
       updatedAt: new Date(),
     })
     .where(and(eq(pipelineRuns.id, runId), inArray(pipelineRuns.status, ['running', 'paused'])));
+}
+
+export async function readDeferredCut(runId: string): Promise<IssueCut | undefined> {
+  const [row] = await db
+    .select({ metadata: pipelineRuns.metadata })
+    .from(pipelineRuns)
+    .where(eq(pipelineRuns.id, runId))
+    .limit(1);
+  const stored = ((row?.metadata ?? {}) as Record<string, unknown>)[DEPLOY_CLOSE_CUT_METADATA_KEY];
+  if (stored === undefined) return undefined;
+  if (isIssueCut(stored)) return stored;
+  throw new Error(
+    `run ${runId} holds ${DEPLOY_CLOSE_CUT_METADATA_KEY} = ${JSON.stringify(stored)}, which is not a cut: ` +
+      `expected { cause: 'issue_dropped' | 'issue_closed', spares: 'none' | 'every' | { deviceId } }`,
+  );
+}
+
+function isIssueCut(v: unknown): v is IssueCut {
+  if (typeof v !== 'object' || v === null) return false;
+  const { cause, spares } = v as Record<string, unknown>;
+  if (cause !== 'issue_dropped' && cause !== 'issue_closed') return false;
+  if (spares === 'none' || spares === 'every') return true;
+  return (
+    typeof spares === 'object' &&
+    spares !== null &&
+    typeof (spares as { deviceId?: unknown }).deviceId === 'string'
+  );
 }
 
 export async function isCloseDeferred(runId: string): Promise<boolean> {

@@ -5,6 +5,7 @@
 // row; and the run's state is its own `Run` row, never folded into the issue's `Status`.
 
 import * as matchers from "@testing-library/jest-dom/matchers";
+import type { ComponentProps } from "react";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { IssueCostSummary, IssueDetail } from "../types";
@@ -56,7 +57,7 @@ const COST: IssueCostSummary = {
 
 function renderRail(
   over: Partial<IssueDetail> = {},
-  opts: { writer?: boolean; cost?: IssueCostSummary } = {},
+  opts: { writer?: boolean; cost?: IssueCostSummary; unread?: ComponentProps<typeof PropertiesRail>["unread"] } = {},
   runWord: RunWord | null = null,
 ) {
   render(
@@ -71,6 +72,7 @@ function renderRail(
       onEditModules={opts.writer ? vi.fn() : undefined}
       canMarkMerged={opts.writer ?? false}
       runWord={runWord}
+      unread={opts.unread}
     />,
   );
 }
@@ -133,5 +135,27 @@ describe("the rail's two statuses", () => {
     expect(within(run).getByText(word.label)).toBeInTheDocument();
     const status = rowLabel("Status")?.parentElement as HTMLElement;
     expect(within(status).queryByText(word.label)).toBeNull();
+  });
+});
+
+// ISS-1228 round 21: a rail read that failed was drawn as no relations and no cost.
+describe("the rail's failed reads", () => {
+  it("says its relations and cost could not be read, and Retry reads each again", () => {
+    const deps = vi.fn();
+    const cost = vi.fn();
+    renderRail({}, { unread: { deps: { retry: deps }, cost: { retry: cost } } });
+    expect(screen.getByText("Its relations could not be read.")).toBeInTheDocument();
+    expect(screen.getByText("The cost could not be read.")).toBeInTheDocument();
+    const retries = screen.getAllByRole("button", { name: "Retry" });
+    expect(retries).toHaveLength(2);
+    for (const r of retries) r.click();
+    expect(deps).toHaveBeenCalledTimes(1);
+    expect(cost).toHaveBeenCalledTimes(1);
+  });
+
+  it("still says a read failed where trying again could not change it, with no Retry", () => {
+    renderRail({}, { unread: { deps: {} } });
+    expect(screen.getByText("Its relations could not be read.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
   });
 });

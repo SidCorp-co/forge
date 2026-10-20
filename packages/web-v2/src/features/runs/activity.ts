@@ -9,6 +9,7 @@ import {
 import { LIVE_JOB_STATUSES } from "@forge/contracts/status-sets";
 import { cancelledByText, HELD_STUCK_ACTION, nextAttemptText } from "@/features/sessions/status-sentences";
 import { failureReasonAction, failureReasonLabel } from "@/features/sessions/types";
+import { formatRelativeTime } from "@/lib/utils/format";
 import { holdSentence } from "./derive";
 import type { PipelineRunAttempt } from "./types";
 
@@ -32,8 +33,10 @@ export interface ActivityEntry {
   /** One-line remedy, on the run's latest attempt alone; null when there is nothing to act on. */
   action: string | null;
   tone: ActivityTone;
-  /** Runner the attempt landed on, already resolved to something printable. */
-  device: string;
+  /** The box the attempt landed on, by name; null where no box took it. */
+  device: string | null;
+  /** "No box took it" for an ended attempt no box took whose outcome does not already say so. */
+  noBox: string | null;
   /** How many consecutive attempts this one line stands for. */
   repeats: number;
   /** 1-based positions in the run's attempt order that this line covers. */
@@ -53,7 +56,13 @@ function boxOf(a: PipelineRunAttempt): string | null {
   return null;
 }
 
-const deviceLabel = (a: PipelineRunAttempt): string => boxOf(a) ?? "unassigned";
+/** Said where an ended attempt had no box and its outcome does not say so itself (ISS-1228). */
+const NO_BOX_TOOK_IT = "No box took it";
+
+function noBoxLine(a: PipelineRunAttempt, cause: FailureCause | null): string | null {
+  if (boxOf(a) !== null || OPEN_STATUSES.has(a.status) || neverTook(a, cause)) return null;
+  return NO_BOX_TOOK_IT;
+}
 
 /** The run's own word for an open attempt, and Never started for a finished one nothing ran (ISS-1228). */
 function stateVerb(a: PipelineRunAttempt): string | null {
@@ -131,26 +140,46 @@ function outcomeOf(a: PipelineRunAttempt, cause: FailureCause | null, viewerId: 
 /** Where a job's question stands on the issue it worked, which the issue page shows (ISS-1228). */
 const QUESTION_ON_ISSUE = "Answer its question on its issue's page.";
 
+/** Who answered the question an attempt stopped on, and when: "you" to the person who did. */
+function answeredText(a: PipelineRunAttempt, viewerId: string | null): string | null {
+  const answered = a.questionAnswered;
+  if (!answered) return null;
+  const who = viewerId && answered.userId === viewerId ? "you" : (answered.name ?? "a person");
+  const when = formatRelativeTime(answered.at);
+  return when ? `Answered by ${who}, ${when}.` : `Answered by ${who}.`;
+}
+
 /** A person's remedy, naming no control the drawer lacks. A later attempt nobody cancelled is core's
  *  resend, so it asks nothing here; a cancelled one ended the resend, and the remedy stands. */
 function actionOf(
   a: PipelineRunAttempt,
   cause: FailureCause | null,
   later: readonly PipelineRunAttempt[],
+  viewerId: string | null,
 ): string | null {
   if (a.status === "held") return a.hold && !a.hold.resumesItself ? HELD_STUCK_ACTION : null;
   if (OPEN_STATUSES.has(a.status) || a.status === "cancelled" || !cause) return null;
+  // A question a person answered asks nothing more of anyone: it says who answered, and when.
+  const answered = cause === "stopped_on_question" ? answeredText(a, viewerId) : null;
   const resent = later.find((b) => b.status !== "cancelled");
-  if (resent) return nextAttemptText(resent.status === "held" ? "held" : "sent");
+  const resend = resent ? nextAttemptText(resent.status === "held" ? "held" : "sent") : null;
+  if (answered) return resend ? `${answered} ${resend}` : answered;
+  if (resend) return resend;
   if (cause === "stopped_on_question" && a.questionOn === "issue") return QUESTION_ON_ISSUE;
   if (!neverTook(a, cause)) return failureReasonAction(cause, null, a.ranAt != null);
   const box = boxOf(a);
   return box ? `Check that ${box} is online and its runner is running.` : "Check that a box bound to this project is online.";
 }
 
-/** Two attempts collapse into one line only when every readable field agrees. */
+/** Two attempts collapse into one line only when every readable field agrees, their answers included. */
 function signature(a: PipelineRunAttempt, cause: FailureCause | null, outcome: string): string {
-  return [a.jobType, a.status, stateVerb(a) ?? "", cause ?? "", outcome, deviceLabel(a)].join("\0");
+  const answer = cause === "stopped_on_question" ? answerKey(a) : "";
+  return [a.jobType, a.status, stateVerb(a) ?? "", cause ?? "", outcome, boxOf(a) ?? "", answer].join("\0");
+}
+
+function answerKey(a: PipelineRunAttempt): string {
+  const answered = a.questionAnswered;
+  return answered ? `${answered.userId ?? ""}@${answered.at}` : "unanswered";
 }
 
 function verbFor(a: PipelineRunAttempt, position: number, repeats: number, runWord?: string): string {
@@ -178,7 +207,7 @@ export function deriveActivityFeed(
     const position = index + 1;
     const cause = causeOf(a);
     const outcome = outcomeOf(a, cause, viewerId);
-    const action = actionOf(a, cause, list.slice(index + 1));
+    const action = actionOf(a, cause, list.slice(index + 1), viewerId);
     const sig = signature(a, cause, outcome);
     const previous = entries[entries.length - 1];
 
@@ -201,7 +230,8 @@ export function deriveActivityFeed(
       cause,
       action,
       tone: toneOf(a, cause),
-      device: deviceLabel(a),
+      device: boxOf(a),
+      noBox: noBoxLine(a, cause),
       repeats: 1,
       positions: [position],
       at: a.finishedAt ?? a.startedAt ?? a.queuedAt,

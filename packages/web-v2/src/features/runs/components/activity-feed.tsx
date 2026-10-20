@@ -107,7 +107,7 @@ export function ActivityTab({ run, loading, error, onRetry, sessionHref }: Activ
   if (entries.length === 0 && open && sessionWorked) {
     return (
       <div className="flex flex-col items-center gap-2">
-        <EmptyState title="No job attempts" message={CLOSED_EMPTY.sessionMessage} />
+        <EmptyState title="No job attempts" message={CLOSED_EMPTY.liveSessionMessage} />
         <SessionLink href={sessionHref} text={CLOSED_EMPTY.liveSessionLink} />
       </div>
     );
@@ -250,10 +250,14 @@ function ActivityRow({ entry }: { entry: ActivityEntry }) {
         )}
 
         <div className="fg-caption flex flex-wrap items-center gap-x-3 gap-y-1 text-subtle">
-          <span className="inline-flex min-w-0 items-center gap-1">
-            <Icon name="server" size={11} className="flex-none align-[-1px]" />
-            <span className="truncate">{entry.device}</span>
-          </span>
+          {entry.device ? (
+            <span className="inline-flex min-w-0 items-center gap-1">
+              <Icon name="server" size={11} className="flex-none align-[-1px]" />
+              <span className="truncate">{entry.device}</span>
+            </span>
+          ) : (
+            entry.noBox && <span>{entry.noBox}</span>
+          )}
           {when && <span>{when}</span>}
         </div>
       </div>

@@ -1,4 +1,4 @@
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, type SQL } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
 import { agentSessions, jobs } from '../db/schema.js';
 import { LIVE_JOB_STATUSES } from '../jobs/status-sets.js';
@@ -9,7 +9,20 @@ import { logger } from '../logger.js';
 type Tx = Parameters<Parameters<Db['transaction']>[0]>[0];
 export type JobRow = typeof jobs.$inferSelect;
 
-export type CascadeReason = 'pipeline_cancelled' | 'pipeline_completed' | 'pipeline_failed';
+export type CascadeReason =
+  | 'pipeline_cancelled'
+  | 'pipeline_completed'
+  | 'pipeline_failed'
+  | IssueCut['cause'];
+
+/** An issue entering Dropped or Closed while a job of its run still works (ISS-1228). The jobs the
+ *  mover's own step is running end `done` (ISS-352): those on its box, or every one when an agent
+ *  account moved it and names no box. Every other live job was cut off and ends `cancelled` with the
+ *  cause, never as a completion. */
+export interface IssueCut {
+  cause: 'issue_dropped' | 'issue_closed';
+  spares: { deviceId: string } | 'none' | 'every';
+}
 
 export interface CascadeResult {
   cancelledJobIds: string[];
@@ -27,8 +40,35 @@ export async function cascadeCancelChildJobs(
   tx: Tx | Db,
   runId: string,
   reason: CascadeReason,
+  cut?: IssueCut,
+): Promise<CascadeResult> {
+  if (!cut) return endLiveJobs(tx, runId, reason);
+  if (cut.spares === 'every') return endLiveJobs(tx, runId, 'pipeline_completed');
+  const own =
+    cut.spares === 'none'
+      ? null
+      : await endLiveJobs(tx, runId, 'pipeline_completed', eq(jobs.deviceId, cut.spares.deviceId));
+  const cutOff = await endLiveJobs(tx, runId, cut.cause);
+  if (!own) return cutOff;
+  for (const [s, d] of own.deviceBySession) cutOff.deviceBySession.set(s, d);
+  return {
+    cancelledJobIds: [...own.cancelledJobIds, ...cutOff.cancelledJobIds],
+    abortedSessionIds: [...own.abortedSessionIds, ...cutOff.abortedSessionIds],
+    deviceBySession: cutOff.deviceBySession,
+    killableJobs: [...own.killableJobs, ...cutOff.killableJobs],
+  };
+}
+
+const ISSUE_CUT_CAUSES: ReadonlySet<CascadeReason> = new Set(['issue_dropped', 'issue_closed']);
+
+async function endLiveJobs(
+  tx: Tx | Db,
+  runId: string,
+  reason: CascadeReason,
+  scope?: SQL,
 ): Promise<CascadeResult> {
   const now = new Date();
+  const issueCut = ISSUE_CUT_CAUSES.has(reason);
 
   // ISS-444 amendment 2 — the JOB axis mirrors the ISS-352 session branch
   // below: a run closing as `pipeline_completed` is the cascade's SUCCESS
@@ -44,10 +84,10 @@ export async function cascadeCancelChildJobs(
       : {
           finishedAt: now,
           cancellationRequested: true,
-          failureKind: 'infra',
+          failureKind: issueCut ? null : 'infra',
           failureReason: reason,
         },
-    where: and(eq(jobs.pipelineRunId, runId), inArray(jobs.status, [...LIVE_JOB_STATUSES])),
+    where: and(eq(jobs.pipelineRunId, runId), inArray(jobs.status, [...LIVE_JOB_STATUSES]), scope),
     fromStatus: 'active',
     reason,
     actor: { type: 'system' },
@@ -90,7 +130,11 @@ export async function cascadeCancelChildJobs(
     // Mapping a success-close to `failed` produced the false-failed badge the
     // reporter saw on ISS-351's forge-test / forge-release sessions. Only
     // genuine failure/cancel closes should mark the leftover sessions failed.
-    const sessionTarget: 'completed' | 'failed' = completedSuccess ? 'completed' : 'failed';
+    const sessionTarget: 'completed' | 'failed' | 'cancelled' = completedSuccess
+      ? 'completed'
+      : issueCut
+        ? 'cancelled'
+        : 'failed';
     await applyKernelTransition(tx, {
       entity: 'session',
       to: sessionTarget,

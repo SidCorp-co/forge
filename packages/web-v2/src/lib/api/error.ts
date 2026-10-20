@@ -3,6 +3,7 @@ import { ISSUE_STATUS_LABELS } from '@forge/contracts/issue-vocabulary';
 import { MARK_MERGED_ACTION, WHERE_IT_LANDED_FIELD, WORK_LANDS_ROW } from '@forge/contracts/mark-merged-words';
 import { claimConflictSentence } from './claim-conflict';
 import { ApiError, isReasonPhrase, unsaidFailure } from './client';
+import { isUnreachable, UNREACHABLE_SENTENCE } from './transport-failure';
 
 const FRIENDLY_CODES: Record<string, string> = {
   UNAUTHENTICATED: 'Your session has expired. Please sign in again.',
@@ -125,6 +126,7 @@ export function formatApiError(err: unknown): string {
     if (!err.message.trim() || isReasonPhrase(err.message)) return unsaidFailure(err.status);
     return err.message;
   }
+  if (isUnreachable(err)) return UNREACHABLE_SENTENCE;
   if (err instanceof Error) return err.message;
   return 'Unknown error';
 }
@@ -143,7 +145,7 @@ export function readFailure(err: unknown): ReadFailure {
     return { said, technical: `${err.status}${code} — ${err.message.trim() || 'no message'}` };
   }
   const technical = err instanceof Error ? err.message : String(err);
-  return { said: 'Forge could not be reached. Check your connection, then try again.', technical };
+  return { said: UNREACHABLE_SENTENCE, technical };
 }
 
 /** A failure as a sentence of its own, so what a message says next starts after a full stop. */

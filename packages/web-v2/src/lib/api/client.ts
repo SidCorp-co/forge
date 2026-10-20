@@ -1,5 +1,5 @@
 import { CORE_URL } from '@/lib/utils/core-url';
-import { reportTransportFailure } from './transport-failure';
+import { markUnreachable, reportTransportFailure } from './transport-failure';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
 
@@ -114,6 +114,7 @@ async function sendRequest(endpoint: string, init: RequestInit): Promise<Respons
     return await fetch(url, init);
   } catch (err) {
     reportTransportFailure(err, { url, method: init.method ?? 'GET' });
+    markUnreachable(err);
     throw err;
   }
 }

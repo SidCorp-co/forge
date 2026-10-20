@@ -215,13 +215,13 @@ export function IssueDetailScreen({
   const holding = (holdsQ.data?.holds?.find((h) => h.issueId === issue.id)?.holders ?? []).flatMap((h) =>
     h.by === "session" ? [h.sessionId] : [],
   );
-  const sessionId = issueSessionId(holding, runs);
+  const sessionId = issueSessionId(holdsQ.isError ? "unread" : holding, runs);
   const liveSession = pickActiveSession(issue.agentSessions);
   const queuedStep = deriveQueuedStep(issue.pipelineHealth, !!liveSession);
   const agentState: LiveAgentState | null = liveSession
     ? { kind: "live", session: liveSession }
     : queuedStep
-      ? { kind: "queued", step: queuedStep }
+      ? { kind: "queued", step: queuedStep, saidAbove: !!queuedStep.gate && blocker?.reason === queuedStep.gate.detail }
       : null;
 
   const focusDecisions = () => {
@@ -247,6 +247,11 @@ export function IssueDetailScreen({
   const runWord = runChip.state === "read" ? runChip.word : null;
   const isRunActive =
     runChip.state === "read" ? runChip.open || issue.status === "in_progress" || issue.status === "reopen" : null;
+
+  // A rail read that failed says so with Retry, never drawn as no relations or no cost (ISS-1228).
+  const unreadOf = (q: { isError: boolean; error: unknown; refetch: () => unknown }) =>
+    q.isError ? { retry: isRetryableApiError(q.error) ? () => void q.refetch() : undefined } : undefined;
+  const railUnread = { deps: unreadOf(depsQ), cost: unreadOf(costQ) };
 
   const tabs: TabItem[] = [
     {
@@ -327,12 +332,15 @@ export function IssueDetailScreen({
           />
           <IssueHeaderActions
             slug={slug}
-            sessionHref={sessionId ? `/projects/${slug}/agents/${sessionId}` : null}
+            sessionHref={sessionId && sessionId !== "unread" ? `/projects/${slug}/agents/${sessionId}` : null}
+            sessionUnread={sessionId === "unread" ? unreadOf(holdsQ) : undefined}
             status={issue.status}
             releaseRunId={issue.releaseBatchRunId}
             canWrite={canWrite}
             pending={pending}
             isRunActive={isRunActive}
+            runWaitsOn={runChip.state === "read" ? runChip.waitsOn : null}
+            onAnswer={focusDecisions}
             runsUnreadable={runChip.state === "unreadable"}
             onTransition={onTransition}
             onRun={() => runIssue.mutate(issue.id, { onSuccess: refreshIssue })}
@@ -353,6 +361,7 @@ export function IssueDetailScreen({
               onResumePark={onTransition}
               onResumeRun={onResumeRun}
               onProvideInfo={focusDecisions}
+              onRetryPark={park.state === "error" ? park.retry : undefined}
             />
           )}
 
@@ -391,6 +400,7 @@ export function IssueDetailScreen({
             attachments={attachmentsQ.data ?? []}
             attachmentsLoading={attachmentsQ.isLoading}
             attachmentsError={attachmentsQ.isError ? attachmentsQ.error : null}
+            onRetryAttachments={() => attachmentsQ.refetch()}
             canWrite={canWrite}
           />
 
@@ -479,6 +489,7 @@ export function IssueDetailScreen({
             canMarkMerged={canWrite}
             park={statusPark}
             runWord={runWord}
+            unread={railUnread}
           />
         </aside>
         <div className="border-t border-line-subtle lg:hidden">
@@ -495,6 +506,7 @@ export function IssueDetailScreen({
               canMarkMerged={canWrite}
               park={statusPark}
               runWord={runWord}
+              unread={railUnread}
             />
           </Collapsible>
         </div>

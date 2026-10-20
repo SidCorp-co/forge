@@ -236,10 +236,11 @@ export function cancelledByText(
   return `Cancelled by ${by.name ?? (by.kind === "agent" ? "an agent" : "a person")}`;
 }
 
-/** The activity of a closed run nothing ran on, and of one a session worked without jobs. */
+/** The activity of a closed run nothing ran on, and of one a session works or worked without jobs. */
 export const CLOSED_EMPTY = {
   message: "It closed with no job run on it, so nothing more will appear here.",
   sessionMessage: "A session worked this run directly rather than through jobs, so there are no attempts to list.",
+  liveSessionMessage: "A session is working this run directly rather than through jobs, so there are no attempts to list.",
   sessionLink: "Its session's page shows what it did.",
   liveSessionLink: "Its session's page shows what it is doing.",
   notCheckedIn: "Its session has not checked in since it opened, so nothing has run on it yet.",

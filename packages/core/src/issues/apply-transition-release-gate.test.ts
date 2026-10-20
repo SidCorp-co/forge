@@ -198,7 +198,7 @@ describe('an agent closing on a project that declared a release gate', () => {
 
     await transitionIssueStatus(AT_WORK, 'closed', AGENT);
 
-    expect(closeRunMock).toHaveBeenCalledWith(ISSUE_ID, 'completed');
+    expect(closeRunMock).toHaveBeenCalledWith(ISSUE_ID, 'completed', undefined);
   });
 
   it('says on the issue that it is merged and not shipped', async () => {
