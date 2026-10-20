@@ -3194,6 +3194,14 @@
 
 ### Fixed
 
+- **A passphrase-protected private key is refused at once, under the Private key field.** Pasting one used to leave Create key spinning until the request timed out; now the form says a passphrase protects it. (ISS-1421)
+- **Every refusal from the API and the agent tools reads as a sentence**, naming the field and what it takes, instead of "Invalid input" or a line opening in lower case. (ISS-1421)
+- **A move refused for missing records says so in one sentence**, such as "This issue can't close yet: the plan and the release note are missing.", then who writes them. (ISS-1421)
+- **A session token for an agent account is refused.** An agent signs in with its token only; read as a person, it could close an issue its token could not. (ISS-1421)
+- **A release with nowhere to land names the project**, not its id. (ISS-1421)
+- **Test connection answers in plain sentences** saying what the check found, such as a refused key, with the provider's own words kept below. (ISS-1421)
+- **A failed status refresh scrolls into view in an integration drawer**, so pressing Test connection at the drawer's foot no longer hides it above. (ISS-1421)
+- **An issue whose merge is only claimed says "Claimed as merged"** on its release banner, never "Merged into main". (ISS-1421)
 - **A job its runner is working reads Running in the run drawer**, in its header and its activity alike, instead of "Starting" under a Running header. (ISS-1228)
 - **A job its runner took but never started goes back to the queue** once its session is ended, instead of reading "Starting" for as long as its master lives; the next attempt gets a fresh session. (ISS-1228)
 - **The run drawer shows no failure or remedy on work still open**, names the runner that took or was sent it, and says "Never started" of work that ended before anything ran. (ISS-1228)

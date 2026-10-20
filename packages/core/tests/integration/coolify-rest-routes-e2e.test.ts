@@ -148,7 +148,7 @@ describe('Coolify commands over REST', () => {
     expect(res.status).toBe(400);
     expect(await res.json()).toMatchObject({
       code: 'BAD_REQUEST',
-      message: 'project has no active Coolify integration',
+      message: 'Project has no active Coolify integration.',
     });
   });
 

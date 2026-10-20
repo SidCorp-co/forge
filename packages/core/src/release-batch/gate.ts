@@ -23,8 +23,10 @@ export class ReleaseTargetUndeclaredError extends Error {
   constructor(
     readonly projectId: string,
     readonly releaseChain: ReleaseChain,
+    readonly projectName: string | null = null,
   ) {
-    const detail = `Project ${projectId} declares a release chain ending at '${chainLiveBranch(releaseChain) ?? chainStartBranch(releaseChain)}' but has no active deploy binding carrying the 'live' stage, so there is nowhere for a release to land. Either add one on the integrations screen, or, if this project ships nothing, choose "Repository, no release" under Shape & release in its settings.`;
+    const project = projectName ? `Project "${projectName}"` : 'This project';
+    const detail = `${project} releases to '${chainLiveBranch(releaseChain) ?? chainStartBranch(releaseChain)}' but has no live deploy target, so a release has nowhere to land. Add one on the integrations screen, or, if this project ships nothing, choose "Repository, no release" under Shape & release in its settings.`;
     super(`RELEASE_TARGET_UNDECLARED: ${detail}`);
     this.name = 'ReleaseTargetUndeclaredError';
     this.detail = detail;
@@ -33,7 +35,7 @@ export class ReleaseTargetUndeclaredError extends Error {
 
 export type ReleaseDeclaration =
   | { kind: 'no-release'; releaseChain: ReleaseChain; baseBranch: string }
-  | { kind: 'undeclared-target'; releaseChain: ReleaseChain }
+  | { kind: 'undeclared-target'; releaseChain: ReleaseChain; projectName: string }
   | {
       kind: 'gated';
       /** The WHOLE ordered path: a crossing is a fact about one edge, so no field reduces it. */
@@ -55,6 +57,7 @@ export async function resolveReleaseDeclaration(
     .select({
       baseBranch: projects.baseBranch,
       releaseChain: projects.releaseChain,
+      name: projects.name,
     })
     .from(projects)
     .where(eq(projects.id, projectId))
@@ -69,7 +72,7 @@ export async function resolveReleaseDeclaration(
 
   const liveBindings = await listActiveDeployBindingsForStage(projectId, 'live');
   if (liveBindings.length === 0) {
-    return { kind: 'undeclared-target', releaseChain };
+    return { kind: 'undeclared-target', releaseChain, projectName: row.name };
   }
 
   return {
@@ -92,7 +95,7 @@ export async function resolveReleaseGate(projectId: string): Promise<IssueStatus
   const decl = await resolveReleaseDeclaration(projectId);
   if (!decl) return null;
   if (decl.kind === 'undeclared-target') {
-    throw new ReleaseTargetUndeclaredError(projectId, decl.releaseChain);
+    throw new ReleaseTargetUndeclaredError(projectId, decl.releaseChain, decl.projectName);
   }
   return decl.kind === 'gated' ? RELEASE_GATE_STATUS : null;
 }

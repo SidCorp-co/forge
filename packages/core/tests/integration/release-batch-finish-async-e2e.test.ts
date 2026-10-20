@@ -186,7 +186,7 @@ describe('the door answers inside its own bound (the reproduction)', () => {
     expect(res.ms).toBeLessThan(DOOR_MS);
     expect(res.body.code).toBe('RELEASE_NOT_VERIFIED');
     expect(res.body.message).toBe(
-      `the live build is unchanged (${BEFORE}) — the site is healthy and still serving the pre-release commit, and the release pushed ${PUSHED}`,
+      `The live build is unchanged (${BEFORE}) — the site is healthy and still serving the pre-release commit, and the release pushed ${PUSHED}.`,
     );
     expect(await rawFinish(runId)).toBeNull();
     expect((await state(runId)).runStatus).toBe('running');

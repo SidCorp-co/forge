@@ -231,7 +231,7 @@ describe('a person retries a failed job', () => {
     expect(res.status).toBe(403);
     const body = (await res.json()) as { error?: { message?: string }; message?: string };
     const said = JSON.stringify(body);
-    expect(said).toContain('requires the project member role or above');
+    expect(said).toContain('Requires the project member role or above');
     expect(said).toContain('the role held is viewer');
     expect(said).not.toContain('not a project member');
     const [n] = await harness.db.execute<{ n: number }>(

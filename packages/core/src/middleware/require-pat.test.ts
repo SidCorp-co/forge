@@ -254,7 +254,7 @@ describe('requirePat — the refusal a pasted config meets (ISS-1175)', () => {
     expect(res.status).toBe(401);
     expect(vi.mocked(verifyPat)).not.toHaveBeenCalled();
     const { message } = (await res.json()) as { message: string };
-    expect(message).toMatch(/^this is not a Forge personal access token/);
+    expect(message).toMatch(/^This is not a Forge personal access token/);
     expect(message).toMatch(/start with `forge_pat_`/);
     expect(message).toMatch(/Settings → API Tokens/);
     expect(message.indexOf('personal access token')).toBeLessThan(message.indexOf('device tokens'));
@@ -286,7 +286,7 @@ describe('requirePat — the refusal a pasted config meets (ISS-1175)', () => {
       headers: { authorization: 'Bearer abc<def>' },
     });
     const { message } = (await res.json()) as { message: string };
-    expect(message).toMatch(/^this is not a Forge personal access token/);
+    expect(message).toMatch(/^This is not a Forge personal access token/);
   });
 });
 

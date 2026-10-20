@@ -141,9 +141,12 @@ describe('ISS-959 C — declared entry criteria, checked for every client', () =
   it('AC20 — the refusal names the record that is missing, and how to write it', async () => {
     const { id, token } = await seed({ statusEntryCriteria: { on_hold: ['release_note'] } });
     const res = await transition(id, token, 'on_hold');
-    const body = (await res.json()) as { message: string };
-    expect(body.message).toContain('release_note');
-    expect(body.message).toContain('`releaseNotes`');
+    const body = (await res.json()) as {
+      message: string;
+      details: { steps: Record<string, string> };
+    };
+    expect(body.message).toContain("can't move to On hold yet: the release note is missing.");
+    expect(body.details.steps.release_note).toContain('`releaseNotes`');
   });
 
   it('AC21 — the refusal names only the unmet criteria, never every criterion the status declares', async () => {
@@ -153,9 +156,10 @@ describe('ISS-959 C — declared entry criteria, checked for every client', () =
     });
     const res = await transition(id, token, 'on_hold');
     const body = (await res.json()) as { message: string };
-    expect(body.message).toContain('release_note');
-    expect(body.message).not.toContain('plan —');
-    expect(body.message).toContain('a record');
+    expect(body.message).toMatch(
+      /^This issue can't move to On hold yet: the release note is missing\. /,
+    );
+    expect(body.message).not.toContain('plan');
   });
 
   it('AC22 — the same transition succeeds once the named record is written', async () => {

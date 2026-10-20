@@ -300,7 +300,7 @@ describe('the HTTP door keeps the refusals ISS-1113 criterion 9 was judged on', 
     const body = (await res.json()) as { code: string; message: string };
     expect(body.code).toBe('SOURCE_COMMENT_NOT_FOUND');
     expect(body.message).toBe(
-      `sourceCommentId \`${ABSENT_COMMENT_ID}\` names no comment. It must be the id of a comment on this issue — the row exists to point back at the sentence that asserted it.`,
+      `\`sourceCommentId\` \`${ABSENT_COMMENT_ID}\` names no comment. It must be the id of a comment on this issue — the row exists to point back at the sentence that asserted it.`,
     );
   });
 
@@ -313,7 +313,7 @@ describe('the HTTP door keeps the refusals ISS-1113 criterion 9 was judged on', 
     const body = (await res.json()) as { code: string; message: string };
     expect(body.code).toBe('SOURCE_COMMENT_OFF_ISSUE');
     expect(body.message).toBe(
-      `sourceCommentId \`${offIssueCommentId}\` names a comment on a different issue (\`${offIssueCommentId}\` is on \`${otherIssueId}\`). The pointer must stay on the issue the attribute is written to, or no reader can follow it back.`,
+      `\`sourceCommentId\` \`${offIssueCommentId}\` names a comment on a different issue (\`${offIssueCommentId}\` is on \`${otherIssueId}\`). The pointer must stay on the issue the attribute is written to, or no reader can follow it back.`,
     );
   });
 });

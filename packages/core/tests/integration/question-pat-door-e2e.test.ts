@@ -203,7 +203,7 @@ describe('asking through the token door', () => {
     const res = await post('/api/questions', writeToken, askBody({ issueId: randomUUID() }));
 
     expect(res.status).toBe(404);
-    expect(await res.json()).toMatchObject({ message: 'issue not found' });
+    expect(await res.json()).toMatchObject({ message: 'Issue not found.' });
     expect(await countQuestions()).toBe(0);
   });
 

@@ -1,16 +1,15 @@
-import { eq } from 'drizzle-orm';
 import type { Context, MiddlewareHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { verifyDeviceCredential } from '../auth/device-credential.js';
 import { verifyUserToken } from '../auth/jwt.js';
 import { isPatLike } from '../auth/pat-format.js';
 import { runWithPatScope } from '../auth/pat-scope.js';
-import { db } from '../db/client.js';
-import { type IssueCreationChannel, users } from '../db/schema.js';
+import type { IssueCreationChannel } from '../db/schema.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { readBearerToken } from './bearer.js';
 import { refuses } from './declarations.js';
 import { beginPatRequest } from './pat-rest-surface.js';
+import { admitSessionUser, authUserRow } from './session-account.js';
 
 export type AuthVars = {
   userId: string;
@@ -129,17 +128,19 @@ export function requireAuth(): MiddlewareHandler<{ Variables: AuthVars }> {
 
     if (isPatLike(token)) return admitPat(c, token, next);
 
+    let subject: string;
     try {
-      const claims = await verifyUserToken(token);
-      c.set('userId', claims.sub);
-      c.set('principal', 'user');
-      c.set('agency', 'human');
+      subject = (await verifyUserToken(token)).sub;
     } catch {
       throw new HTTPException(401, {
         message: 'invalid token',
         cause: { code: 'INVALID_TOKEN' },
       });
     }
+    await admitSessionUser(c, subject);
+    c.set('userId', subject);
+    c.set('principal', 'user');
+    c.set('agency', 'human');
 
     await next();
   };
@@ -150,6 +151,11 @@ export function requireAuth(): MiddlewareHandler<{ Variables: AuthVars }> {
       code: 'INVALID_TOKEN',
       when: 'the session token or personal access token does not verify',
     },
+    {
+      status: 403,
+      code: 'AGENT_CANNOT_LOGIN',
+      when: 'the session token names an agent account, which holds no session',
+    },
   ]);
 }
 
@@ -158,19 +164,21 @@ export function requireUserOrDevice(): MiddlewareHandler<{ Variables: AuthVars }
     const token = readBearerToken(c);
 
     if (!isPatLike(token)) {
+      let subject: string;
       try {
-        const claims = await verifyUserToken(token);
-        c.set('userId', claims.sub);
-        c.set('principal', 'user');
-        c.set('agency', 'human');
-        await next();
-        return;
+        subject = (await verifyUserToken(token)).sub;
       } catch {
         throw new HTTPException(401, {
           message: 'invalid token',
           cause: { code: 'INVALID_TOKEN' },
         });
       }
+      await admitSessionUser(c, subject);
+      c.set('userId', subject);
+      c.set('principal', 'user');
+      c.set('agency', 'human');
+      await next();
+      return;
     }
 
     const device = await verifyDeviceCredential(token);
@@ -187,40 +195,15 @@ export function requireUserOrDevice(): MiddlewareHandler<{ Variables: AuthVars }
       code: 'INVALID_TOKEN',
       when: 'the session token or personal access token does not verify',
     },
+    {
+      status: 403,
+      code: 'AGENT_CANNOT_LOGIN',
+      when: 'the session token names an agent account, which holds no session',
+    },
   ]);
 }
 
-/** The columns of the caller's `users` row that an auth gate decides on. */
-export type AuthUserRow = { email: string; emailVerifiedAt: Date | null };
-
-/**
- * The caller's `users` row, read straight from the database.
- *
- * For a caller with no request to memoise against: the WebSocket
- * `canSubscribe` gate reaches `isPlatformAdmin` outside any Hono context, and
- * has no `c` to hold an answer on.
- */
-export async function readAuthUser(userId: string): Promise<AuthUserRow | null> {
-  const [row] = await db
-    .select({ email: users.email, emailVerifiedAt: users.emailVerifiedAt })
-    .from(users)
-    .where(eq(users.id, userId))
-    .limit(1);
-  return row ?? null;
-}
-
-const AUTH_USER_VAR = 'authUserResolution';
-
-type AuthUserResolution = { userId: string; row: AuthUserRow | null };
-
-export async function authUserRow(c: Context, userId: string): Promise<AuthUserRow | null> {
-  const cached = c.get(AUTH_USER_VAR) as AuthUserResolution | undefined;
-  if (cached && cached.userId === userId) return cached.row;
-
-  const row = await readAuthUser(userId);
-  c.set(AUTH_USER_VAR, { userId, row } satisfies AuthUserResolution);
-  return row;
-}
+export { type AuthUserRow, authUserRow, readAuthUser } from './session-account.js';
 
 export function assertEmailVerified(): MiddlewareHandler<{ Variables: AuthVars }> {
   const gate: MiddlewareHandler<{ Variables: AuthVars }> = async (c, next) => {

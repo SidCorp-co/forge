@@ -14,6 +14,7 @@ import {
 } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
+import { schemaRefused } from '../lib/zod-sentences.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
@@ -45,9 +46,6 @@ const transitionBodySchema = z
   .strict();
 
 const idParamSchema = z.object({ id: z.uuid() });
-
-const badRequest = (details: unknown) =>
-  new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
 
 const notFound = () =>
   new HTTPException(404, { message: 'issue not found', cause: { code: 'NOT_FOUND' } });
@@ -219,10 +217,10 @@ transitionRoutes.post(
   '/:id/transition',
   transitionIssue,
   zValidator('param', idParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw schemaRefused(result.error);
   }),
   zValidator('json', transitionBodySchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw schemaRefused(result.error);
   }),
   async (c) => {
     const { id } = c.req.valid('param');

@@ -3,6 +3,7 @@ import type { Context, MiddlewareHandler } from 'hono';
 import { getCookie } from 'hono/cookie';
 import { HTTPException } from 'hono/http-exception';
 import { errors as joseErrors } from 'jose';
+import { assertNotAgent } from '../auth/agent-account.js';
 import { AUTH_COOKIE_NAME } from '../auth/cookie.js';
 import { verifyUserToken } from '../auth/jwt.js';
 import { db } from '../db/client.js';
@@ -52,14 +53,16 @@ export const requireUser = (): MiddlewareHandler<{ Variables: UserVars }> => {
         id: users.id,
         email: users.email,
         emailVerifiedAt: users.emailVerifiedAt,
+        kind: users.kind,
       })
       .from(users)
       .where(eq(users.id, claims.sub))
       .limit(1);
 
     if (!row) throw unauth('UNAUTHENTICATED', 'user not found');
+    assertNotAgent(row.kind, row.id);
 
-    c.set('user', row);
+    c.set('user', { id: row.id, email: row.email, emailVerifiedAt: row.emailVerifiedAt });
     await next();
   };
   return refuses(gate, [
@@ -69,5 +72,10 @@ export const requireUser = (): MiddlewareHandler<{ Variables: UserVars }> => {
       when: 'no token, a token that does not verify, or a user that no longer exists',
     },
     { status: 401, code: 'TOKEN_EXPIRED', when: 'the session token has expired' },
+    {
+      status: 403,
+      code: 'AGENT_CANNOT_LOGIN',
+      when: 'the session token names an agent account, which holds no session',
+    },
   ]);
 };

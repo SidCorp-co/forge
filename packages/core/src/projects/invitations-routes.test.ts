@@ -23,13 +23,16 @@ const updateReturning = vi.fn();
 const updateWhere = vi.fn(() => ({ returning: updateReturning }));
 const updateSet = vi.fn(() => ({ where: updateWhere }));
 
-vi.mock('../db/client.js', () => ({
-  db: {
-    select: vi.fn(() => ({ from: selectFrom })),
-    update: vi.fn(() => ({ set: updateSet })),
-    transaction: vi.fn(),
-  },
-}));
+vi.mock('../db/client.js', async () => {
+  const { sessionReadOr } = await import('../middleware/session-read.fixture.js');
+  return {
+    db: {
+      select: vi.fn(sessionReadOr(() => ({ from: selectFrom }))),
+      update: vi.fn(() => ({ set: updateSet })),
+      transaction: vi.fn(),
+    },
+  };
+});
 
 const consumeInvitationToken = vi.fn();
 vi.mock('./invitation-token.js', () => ({

@@ -71,6 +71,20 @@ describe("AwaitingReleaseBanner", () => {
     expect(screen.getByText(/Merged into main 3h ago/)).toBeInTheDocument();
   });
 
+  // ISS-1421 r14 — judge-61 read "Merged into main" over a mark that was only a claim naming no commit.
+  it("says a mark that is only a claim is claimed, never merged into the base branch", () => {
+    state({});
+    render(<AwaitingReleaseBanner projectId="proj-1" issueId="iss-1" canWrite mergeMark="asserted" />);
+    expect(screen.getByText(/Claimed as merged 3h ago, naming no commit — not shipped yet\./)).toBeInTheDocument();
+    expect(screen.queryByText(/Merged into/)).not.toBeInTheDocument();
+  });
+
+  it("names a merge Forge saw as merged into the base branch", () => {
+    state({});
+    render(<AwaitingReleaseBanner projectId="proj-1" issueId="iss-1" canWrite mergeMark="observed" />);
+    expect(screen.getByText(/Merged into main 3h ago/)).toBeInTheDocument();
+  });
+
   it("degrades to words, never a number, when nothing is scheduled to cut", () => {
     state({ nextCutAt: null });
     renderBanner();

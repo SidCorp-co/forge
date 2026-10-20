@@ -23,6 +23,7 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { AGENT_ACCESS_CLOSED, type AgentAccess } from './agent-access.js';
 import { registerCoolifyDeployRoutes } from './coolify/routes.js';
 import { findDeliveryById } from './deliveries.js';
+import { healthAnswer } from './health-words.js';
 import { buildMcpPreview } from './mcp-preview-service.js';
 import {
   applySecretsPatch,
@@ -348,7 +349,7 @@ integrationsRoutes.post('/:projectId/integrations/:id/test', ...testIntegration,
   }
   const ctx = buildContextFromBinding(existing);
   const result = await adapter.healthcheck(ctx);
-  return c.json(answer(healthResultSchema, result));
+  return c.json(answer(healthResultSchema, healthAnswer(existing.binding.provider, result)));
 });
 
 integrationsRoutes.post(

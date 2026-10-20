@@ -302,7 +302,7 @@ describe('a cursor this list did not mint is refused by name', () => {
         arguments: { projectId: w.projectId, cursor: bad },
       })) as { isError?: boolean; content: Array<{ text: string }> };
       expect(res.isError).toBe(true);
-      expect(res.content[0]?.text).toContain(`cursor: ${message}`);
+      expect(res.content[0]?.text).toContain(`Cursor: ${message}`);
     },
   );
 });

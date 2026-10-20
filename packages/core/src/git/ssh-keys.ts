@@ -11,6 +11,15 @@ import { isHostUnresolved, type PinnedSshHost, pinSafeSshHost } from './ssh-host
 
 const execFileAsync = promisify(execFile);
 
+const SSH_KEYGEN_TIMEOUT_MS = 4_000;
+
+/** ssh-keygen with stdin closed and a deadline: nothing it could prompt for holds a request open. */
+function sshKeygen(args: string[]): Promise<{ stdout: string; stderr: string }> {
+  const run = execFileAsync('ssh-keygen', args, { timeout: SSH_KEYGEN_TIMEOUT_MS });
+  run.child.stdin?.end();
+  return run;
+}
+
 export interface GeneratedSshKey {
   /** OpenSSH public key line, e.g. "ssh-ed25519 AAAA… forge-<slug>". */
   publicKey: string;
@@ -46,21 +55,11 @@ export async function generateSshKeypair(comment: string): Promise<GeneratedSshK
     const keyPath = join(dir, 'id_ed25519');
     // -N '' => no passphrase (the key is protected by vault encryption at rest);
     // -C => comment; -q => quiet. ssh-keygen writes <keyPath> + <keyPath>.pub.
-    await execFileAsync('ssh-keygen', [
-      '-t',
-      'ed25519',
-      '-N',
-      '',
-      '-C',
-      comment,
-      '-f',
-      keyPath,
-      '-q',
-    ]);
+    await sshKeygen(['-t', 'ed25519', '-N', '', '-C', comment, '-f', keyPath, '-q']);
     const [privateKey, publicKey, fp] = await Promise.all([
       readFile(keyPath, 'utf8'),
       readFile(`${keyPath}.pub`, 'utf8'),
-      execFileAsync('ssh-keygen', ['-l', '-f', `${keyPath}.pub`]).then((r) => r.stdout),
+      sshKeygen(['-l', '-f', `${keyPath}.pub`]).then((r) => r.stdout),
     ]);
     return {
       publicKey: publicKey.trim(),
@@ -237,12 +236,17 @@ async function lsRemote(
   }
 }
 
+const UNREADABLE_KEY_WORDS = {
+  malformed:
+    'Forge could not read this SSH private key. Paste the whole key in OpenSSH format, from its BEGIN line to its END line.',
+  passphrase:
+    'Forge could not read this SSH private key, because a passphrase protects it. Forge uses keys unattended, so paste one without a passphrase or generate one here.',
+} as const;
+
 /** A pasted private key ssh cannot load. Its message is the sentence a person reads; the code is the caller's. */
 export class UnreadablePrivateKeyError extends Error {
-  constructor() {
-    super(
-      'Forge could not read this SSH private key. It may be malformed or protected by a passphrase, and Forge needs one it can use unattended.',
-    );
+  constructor(readonly reason: keyof typeof UNREADABLE_KEY_WORDS) {
+    super(UNREADABLE_KEY_WORDS[reason]);
     this.name = 'UnreadablePrivateKeyError';
   }
 }
@@ -261,20 +265,22 @@ export async function derivePublicFromPrivate(
     await writeFile(keyPath, privateKey.endsWith('\n') ? privateKey : `${privateKey}\n`, {
       mode: 0o600,
     });
-    // `ssh-keygen -y` prints the public key for a private key; it errors on a
-    // passphrase-protected or malformed key (no TTY to prompt), which we surface.
+    // `-P ''`: try the empty passphrase only, never prompt for another (ISS-1421 r14).
     let publicRaw: string;
     try {
-      const { stdout } = await execFileAsync('ssh-keygen', ['-y', '-f', keyPath]);
-      publicRaw = stdout.trim();
-    } catch {
-      throw new UnreadablePrivateKeyError();
+      const { stdout } = await sshKeygen(['-y', '-P', '', '-f', keyPath]);
+      // Type and key: the pasted key's own comment is replaced by `comment`, not kept before it.
+      publicRaw = stdout.trim().split(/\s+/).slice(0, 2).join(' ');
+    } catch (err) {
+      const said = String((err as { stderr?: unknown }).stderr ?? '');
+      throw new UnreadablePrivateKeyError(
+        /incorrect passphrase/i.test(said) ? 'passphrase' : 'malformed',
+      );
     }
     const publicKey = comment ? `${publicRaw} ${comment}` : publicRaw;
-    // Fingerprint the derived public key.
     const pubPath = `${keyPath}.pub`;
     await writeFile(pubPath, `${publicKey}\n`);
-    const { stdout: fp } = await execFileAsync('ssh-keygen', ['-l', '-f', pubPath]);
+    const { stdout: fp } = await sshKeygen(['-l', '-f', pubPath]);
     return { publicKey, privateKey, fingerprint: parseFingerprint(fp) };
   });
 }
