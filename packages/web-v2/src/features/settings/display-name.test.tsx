@@ -4,12 +4,11 @@
 // person gives one — and clears it — and what reads the signed-in person follows without a reload.
 
 import * as matchers from "@testing-library/jest-dom/matchers";
-import { personInitials } from "@forge/contracts/person-name";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LeaveGuardProvider } from "@/design";
-import { AuthProvider, useAuth } from "@/providers/auth-provider";
+import { AuthProvider, useUserInitials } from "@/providers/auth-provider";
 import { AccountTab } from "./components/account-tab";
 
 expect.extend(matchers);
@@ -42,10 +41,9 @@ vi.mock("@/lib/api/client", async () => {
 });
 vi.mock("@/providers/toast-provider", () => ({ useToast: () => ({ toast: vi.fn() }) }));
 
-/** What the rail's account avatar reads: the signed-in person's initials. */
+/** Shows what the rail's account avatar reads, through the hook the workspace layout reads it by. */
 function RailAvatar() {
-  const { user } = useAuth();
-  return <span data-testid="rail-avatar">{user ? personInitials(user.displayName) : ""}</span>;
+  return <span data-testid="rail-avatar">{useUserInitials() ?? ""}</span>;
 }
 
 let qc: QueryClient;

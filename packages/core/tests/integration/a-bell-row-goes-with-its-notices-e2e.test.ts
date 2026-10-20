@@ -77,6 +77,31 @@ async function bell(): Promise<Array<{ title: string; holds: string[] }>> {
   return rows.map((r) => ({ title: r.title, holds: [...r.holds] }));
 }
 
+/** Two connections of their own, so one transaction can be held open while another runs. */
+async function twoSessions() {
+  const postgres = (await import('postgres')).default;
+  const client = postgres(process.env.DATABASE_URL ?? '', { max: 2 });
+  const a = await client.reserve();
+  const [row] = await a`SELECT pg_backend_pid() AS pid`;
+  return { client, a, b: await client.reserve(), pid: Number(row?.pid) };
+}
+
+/** Returns once some session waits on a lock `pid` holds, or `pending` settled first. */
+async function blockedBy(pid: number, pending: Promise<unknown>): Promise<void> {
+  let settled = false;
+  pending.then(
+    () => (settled = true),
+    () => (settled = true),
+  );
+  for (let tries = 0; tries < 250 && !settled; tries += 1) {
+    const waiting = (await fx.db.execute(sql`
+      SELECT 1 FROM pg_stat_activity WHERE ${pid}::int = ANY(pg_blocking_pids(pid))
+    `)) as unknown as unknown[];
+    if (waiting.length) return;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+}
+
 describe('a bell row goes with the last notice it holds', () => {
   it("deleting a project removes its bell rows and keeps a row that holds another project's notice", async () => {
     const other = await createTestProject(fx.db, fx.owner, { name: 'Ledger' });
@@ -104,6 +129,45 @@ describe('a bell row goes with the last notice it holds', () => {
 
     await fx.db.execute(sql`DELETE FROM notifications WHERE id IN (${single}, ${one})`);
 
+    expect(await bell()).toEqual([{ title: 'Group g1', holds: ['Invoicing — Grouped two'] }]);
+  });
+
+  it("two transactions each removing one of a row's last two notices leave no row behind", async () => {
+    const one = await tell(fx.project.id, 'Grouped one', 'g1');
+    const two = await tell(fx.project.id, 'Grouped two', 'g1');
+    const { client, a, b, pid } = await twoSessions();
+    try {
+      await a`BEGIN`;
+      await a`DELETE FROM notifications WHERE id = ${one}`;
+      await b`BEGIN`;
+      const second = b`DELETE FROM notifications WHERE id = ${two}`.execute();
+      await blockedBy(pid, second);
+      await a`COMMIT`;
+      await second;
+      await b`COMMIT`;
+    } finally {
+      a.release();
+      b.release();
+      await client.end({ timeout: 5 });
+    }
+    expect(await bell()).toEqual([]);
+  });
+
+  it("a notice told to a group whose row is losing its last notice founds the group's row afresh", async () => {
+    const one = await tell(fx.project.id, 'Grouped one', 'g1');
+    const { client, a, b, pid } = await twoSessions();
+    b.release();
+    try {
+      await a`BEGIN`;
+      await a`DELETE FROM notifications WHERE id = ${one}`;
+      const told = tell(fx.project.id, 'Grouped two', 'g1');
+      await blockedBy(pid, told);
+      await a`COMMIT`;
+      await told;
+    } finally {
+      a.release();
+      await client.end({ timeout: 5 });
+    }
     expect(await bell()).toEqual([{ title: 'Group g1', holds: ['Invoicing — Grouped two'] }]);
   });
 

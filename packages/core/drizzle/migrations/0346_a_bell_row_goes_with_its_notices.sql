@@ -18,6 +18,12 @@ RETURNS trigger
 LANGUAGE plpgsql
 AS $$
 BEGIN
+  -- Locked first, and read again by a statement of its own: two transactions each removing one of
+  -- a row's last two notices would otherwise each see the other's still standing, and keep it.
+  PERFORM 1 FROM public.notification_deliveries d
+   WHERE d.id IN (SELECT DISTINCT gone.delivery_id FROM gone)
+   ORDER BY d.id
+   FOR UPDATE;
   DELETE FROM public.notification_deliveries d
    WHERE d.id IN (SELECT DISTINCT gone.delivery_id FROM gone)
      AND NOT EXISTS (

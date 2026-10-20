@@ -20,6 +20,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import { personInitials } from '@forge/contracts/person-name';
 import { authApi } from '@/lib/api/auth-api';
 import { ApiError } from '@/lib/api/client';
 
@@ -112,4 +113,9 @@ const defaultAuth: AuthState = {
 export function useAuth() {
   const ctx = useContext(AuthContext);
   return ctx ?? defaultAuth;
+}
+
+export function useUserInitials(): string | undefined {
+  const { user } = useAuth();
+  return user ? personInitials(user.displayName) : undefined;
 }
