@@ -22,11 +22,7 @@ export type UserActor = {
 
 export type TransitionActor = UserActor | ({ type: 'device' } & DeviceLite);
 
-/**
- * The actor a credential acts as, built the same way by every door — REST and MCP — so a write
- * reads the same whichever door it came through (ISS-1228 round 22): the account the credential
- * belongs to, that account's agency, and the box the credential was issued to where it names one.
- */
+/** Built the same way by REST and MCP, so a write reads the same whichever door it came through. */
 export function credentialActor(credential: {
   userId: string;
   agency: ActorAgency;

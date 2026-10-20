@@ -49,7 +49,14 @@ export async function cascadeCancelChildJobs(
   const own =
     cut.spares === 'none'
       ? null
-      : spared(await endLiveJobs(tx, runId, 'pipeline_completed', eq(jobs.deviceId, cut.spares.deviceId)));
+      : spared(
+          await endLiveJobs(
+            tx,
+            runId,
+            'pipeline_completed',
+            eq(jobs.deviceId, cut.spares.deviceId),
+          ),
+        );
   const cutOff = await endLiveJobs(tx, runId, cut.cause);
   if (!own) return cutOff;
   for (const [s, d] of own.deviceBySession) cutOff.deviceBySession.set(s, d);

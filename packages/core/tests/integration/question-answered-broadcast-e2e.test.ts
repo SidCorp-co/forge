@@ -75,7 +75,9 @@ async function askedOnIssue(): Promise<{ issueId: string; questionId: string; op
     error: 'forge-runner: the pane has been stopped on a question only a human can answer for 2m',
     asked: {
       kind: 'dialog',
-      questions: [{ question: 'Which database?', options: [{ label: 'Primary' }, { label: 'Replica' }] }],
+      questions: [
+        { question: 'Which database?', options: [{ label: 'Primary' }, { label: 'Replica' }] },
+      ],
     },
   });
   const questionId = ended.questionIds[0];
@@ -107,7 +109,9 @@ describe('an answer reaches every open page of its issue (criterion 227)', () =>
       expect(res.status).toBe(200);
 
       const frames = publish.mock.calls.filter(
-        ([room, frame]) => room === projectRoom(projectId) && (frame as { event: string }).event === 'question.answered',
+        ([room, frame]) =>
+          room === projectRoom(projectId) &&
+          (frame as { event: string }).event === 'question.answered',
       );
       expect(frames.map(([, frame]) => frame)).toEqual([
         {

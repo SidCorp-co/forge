@@ -558,7 +558,6 @@ export function useStatusExits() {
     exits: q.data?.statusExits,
     isPending: q.isPending,
     isError: q.isError || unsent,
-    /** Said where the moves could not be read, with why (ISS-1228 round 22). */
     failure: q.isError ? statusMovesUnread(formatApiError(q.error)) : unsent ? statusMovesUnread(NO_MAP_SENT) : null,
   };
 }

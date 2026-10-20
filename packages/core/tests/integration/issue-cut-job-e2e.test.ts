@@ -73,7 +73,8 @@ async function agentCredential(): Promise<string> {
   const agent = await createTestUser(harness.db, { kind: 'agent' });
   await createTestProjectMember(harness.db, { userId: agent.id, projectId, role: 'member' });
   const { mintPat } = await import('../../src/auth/pat.js');
-  return (await mintPat({ userId: agent.id, name: 'an agent account', scopes: ['read', 'write'] })).plaintext;
+  return (await mintPat({ userId: agent.id, name: 'an agent account', scopes: ['read', 'write'] }))
+    .plaintext;
 }
 
 /** The credential a box's checkout carries in its `.mcp.json`, as the box's provisioning mints it. */
@@ -146,12 +147,18 @@ async function drop(door: Door, credential: string, issueId: string): Promise<vo
       method: 'tools/call',
       params: {
         name: 'forge_issues',
-        arguments: { action: 'transition', documentId: issueId, data: { status: 'dropped', reason } },
+        arguments: {
+          action: 'transition',
+          documentId: issueId,
+          data: { status: 'dropped', reason },
+        },
       },
     }),
   });
   expect(res.status).toBe(200);
-  const out = (await res.json()) as { result: { isError?: boolean; content: Array<{ text: string }> } };
+  const out = (await res.json()) as {
+    result: { isError?: boolean; content: Array<{ text: string }> };
+  };
   expect(out.result.isError ?? false, out.result.content.map((c) => c.text).join('\n')).toBe(false);
 }
 
@@ -161,7 +168,9 @@ async function jobOf(ids: { jobId: string; sessionId: string }) {
     status: string;
     failure_reason: string | null;
     cancel_asked: boolean;
-  }>(sql`SELECT status, failure_reason, kill_requested_at IS NOT NULL AS cancel_asked FROM jobs WHERE id = ${ids.jobId}`);
+  }>(
+    sql`SELECT status, failure_reason, kill_requested_at IS NOT NULL AS cancel_asked FROM jobs WHERE id = ${ids.jobId}`,
+  );
   const [session] = await harness.db.execute<{ status: string }>(
     sql`SELECT status FROM agent_sessions WHERE id = ${ids.sessionId}`,
   );
@@ -175,7 +184,12 @@ async function runStatus(runId: string): Promise<string | undefined> {
   return run?.status;
 }
 
-const CUT = { status: 'cancelled', failure_reason: 'issue_dropped', cancel_asked: true, session: 'cancelled' };
+const CUT = {
+  status: 'cancelled',
+  failure_reason: 'issue_dropped',
+  cancel_asked: true,
+  session: 'cancelled',
+};
 const OWN_ACT = { status: 'done', failure_reason: null, cancel_asked: false, session: 'completed' };
 
 describe('a job its issue’s end cut off reads cut off (criterion 216)', () => {
@@ -252,7 +266,12 @@ describe('a close the deploy gate held back (criterion 222)', () => {
     expect(await closeRun(worked.runId, 'completed')).toBe('settled');
 
     expect(await runStatus(worked.runId)).toBe('completed');
-    const closed = { status: 'cancelled', failure_reason: 'issue_closed', cancel_asked: true, session: 'cancelled' };
+    const closed = {
+      status: 'cancelled',
+      failure_reason: 'issue_closed',
+      cancel_asked: true,
+      session: 'cancelled',
+    };
     expect(await jobOf(worked.jobs.a)).toEqual(closed);
     expect(await jobOf(worked.jobs.b)).toEqual(closed);
   });

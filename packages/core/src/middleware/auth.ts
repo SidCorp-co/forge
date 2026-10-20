@@ -27,7 +27,9 @@ export type AuthVars = {
   patDeviceId?: string;
 };
 
-export function restActor(c: Context<{ Variables: RestActorVars }>): UserActor & { agency: ActorAgency } {
+export function restActor(
+  c: Context<{ Variables: RestActorVars }>,
+): UserActor & { agency: ActorAgency } {
   const deviceId = c.get('principal') === 'device' ? c.get('deviceId') : c.get('patDeviceId');
   return credentialActor({ userId: c.get('userId'), agency: restAgency(c), deviceId });
 }

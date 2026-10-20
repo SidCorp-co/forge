@@ -32,8 +32,7 @@ export interface ActivityEntry {
   cause: FailureCause | null;
   /** One-line remedy, on the run's latest attempt alone; null when there is nothing to act on. */
   action: string | null;
-  /** A settled fact that asks nothing of the reader — who answered its question, that core already
-   *  sent it again — drawn in the neutral tone, apart from a remedy (ISS-1228 round 22). */
+  /** A settled fact that asks nothing of the reader, drawn neutral, apart from a remedy (ISS-1228). */
   note: string | null;
   tone: ActivityTone;
   /** The box the attempt landed on, by name; null where no box took it. */
@@ -152,9 +151,7 @@ function answeredText(a: PipelineRunAttempt, viewerId: string | null): string | 
   return when ? `Answered by ${who}, ${when}.` : `Answered by ${who}.`;
 }
 
-/** What an attempt's line says after its outcome: a person's remedy, naming no control the drawer
- *  lacks, or a settled note that asks nothing. A later attempt nobody cancelled is core's resend, so
- *  it is a note; a cancelled one ended the resend, and the remedy stands. */
+/** A remedy naming no control the drawer lacks, or a note: core's uncancelled resend asks nothing. */
 function followUpOf(
   a: PipelineRunAttempt,
   cause: FailureCause | null,

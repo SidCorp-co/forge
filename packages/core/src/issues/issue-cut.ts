@@ -2,8 +2,7 @@ import type { IssueStatus } from '../db/schema.js';
 import type { IssueCut } from '../pipeline/runs-cascade.js';
 import { actorAgency, type TransitionActor } from './actor-agency.js';
 
-/** The mover spares the jobs its own step runs (ISS-352): those on the box its credential names, or
- *  every one where an agent account that names no box moved it; a person spares none. */
+/** The mover spares its own step's jobs (ISS-352): its box's, an agent account's every one, a person's none. */
 function issueCutBy(actor: TransitionActor, toStatus: IssueStatus): IssueCut {
   const cause = toStatus === 'dropped' ? 'issue_dropped' : 'issue_closed';
   const box = actor.type === 'device' ? actor.id : actor.deviceId;

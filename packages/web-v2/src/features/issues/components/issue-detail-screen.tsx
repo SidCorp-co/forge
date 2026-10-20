@@ -213,8 +213,7 @@ export function IssueDetailScreen({
   const liveStep = liveStepWords(issue.pipelineHealth?.activeSession);
   // A group run names its members by the canonical key, never the project prefix (ISS-992).
   const runs = deriveRunView(journalQ.data, issue.agentSessions, `ISS-${issue.issSeq}`);
-  // Until the holds read answers, which session holds the issue is unknown: no other one opens in its
-  // place, and a read that failed says so with its cause and Retry (ISS-1228 round 22).
+  // Until the holds read answers, which session holds the issue is unknown, so none opens (ISS-1228).
   const holding = holdsQ.isError
     ? ("unread" as const)
     : holdsQ.data === undefined

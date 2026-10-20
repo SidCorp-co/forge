@@ -1,15 +1,7 @@
 import type { Query, QueryCache } from "@tanstack/react-query";
 
-/**
- * A read that has failed stays failed, with its error, until a refetch answers (ISS-1228 round 22).
- *
- * react-query puts a query that has never answered back to `pending`, with no error, the moment it
- * refetches — on every poll and every socket invalidation — so a screen that reads `isError` says
- * the read failed, then says nothing between retries, and reads the pending gap as "nothing there":
- * the issue page opened another session in place of the one it could not read. A query that holds
- * an earlier answer keeps `error` through a refetch already; this gives one that holds none the same
- * standing. Installed once where the client is built, so every screen reads it.
- */
+/** A read that failed stays failed until a refetch answers: react-query resets a query holding no
+ *  data to `pending` on every refetch, which a screen reads as "nothing there" (ISS-1228). */
 export function keepFailedReadsFailed(cache: QueryCache): () => void {
 	const lastError = new WeakMap<Query, unknown>();
 	return cache.subscribe((event) => {

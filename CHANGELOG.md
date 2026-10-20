@@ -3194,7 +3194,7 @@
 
 ### Fixed
 
-- **A read that failed keeps saying so until it answers.** Retrying used to blank it back to loading, so the issue header offered the agent's session as if nothing held the issue; a failed read now keeps its sentence and Retry across every refetch, and no session opens while the holder is unread. (ISS-1228)
+- **A read that failed keeps saying so until it answers.** Retrying blanked it to loading, so the issue header offered a session as if nothing held it; it now keeps its sentence and Retry, and opens no session meanwhile. (ISS-1228)
 - **Every failed read names its cause.** Forge being unreachable reads "Forge could not be reached", and a refusal reads as the refusal's own sentence, on the issue, pipeline, notifications, integrations, runners, monitor and project pages alike. (ISS-1228)
 - **An agent account dropping an issue ends its jobs the same way over the API and the agent tools**, and a job its own drop ended done is no longer also sent a cancel. (ISS-1228)
 - **An open issue page shows an answer within seconds**, for whoever answered it and anyone else looking, instead of keeping "Needs an answer" for a minute. (ISS-1228)
