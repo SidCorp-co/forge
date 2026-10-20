@@ -177,15 +177,15 @@ export function runStatusChip({ agentStatus, pipelineHealth }: RunReadingSource)
 /**
  * The word an issue's open run reads, the word the runs tab and the Ops drawer read it by: core's
  * reading of the run, so a held job reads Held here and never the failed session's verdict
- * (ISS-1228 round 19). Null where the issue has no open run core reads, and the sessions' verdict
- * (`runStatusChip`) stands.
+ * (ISS-1228 round 19), Nothing working included. Null where the issue has no open run or an older core
+ * answered no reading, and the sessions' verdict (`runStatusChip`) stands.
  */
 export function openRunWord(
 	runs: readonly Pick<RunView, "status" | "reading" | "hold" | "block" | "startedAt" | "runningSince">[],
 	nowMs: number,
 ): RunWord | null {
 	const open = runs.find((r) => r.status === "running" || r.status === "paused");
-	if (!open || open.reading == null) return null;
+	if (!open || open.reading === undefined) return null;
 	return runReadingChip({ ...open, reading: open.reading, liveJobs: 0, lastSessionBeatAt: null, checkInBy: null }, nowMs);
 }
 
@@ -964,7 +964,8 @@ export interface RunView {
 	finishedAt: string | null;
 	costUsd: number | null;
 	sessionId: string | null;
-	reading: RunReading | null;
+	/** Core's word for the run, null where nothing lives on it; undefined where an older core answered none. */
+	reading: RunReading | null | undefined;
 	hold: RunHold | null;
 	block: RunBlock | null;
 	runningSince: string | null;
@@ -1035,7 +1036,7 @@ export function deriveRunView(
 			finishedAt: run.finishedAt,
 			costUsd: run.costUsd,
 			sessionId: run.sessionId,
-			reading: run.reading ?? null,
+			reading: run.reading,
 			hold: run.hold ?? null,
 			block: run.block ?? null,
 			runningSince: run.runningSince ?? null,

@@ -208,6 +208,7 @@ export function heldText(hold: { reason: string; resumesItself: boolean } | null
 export const HELD_STUCK_ACTION = "Nothing sends it again. Fix what stopped it, then Cancel run and run the issue again from its page.";
 
 export const CANCEL_HELD_HOVER = "Ends this run. Its step is held, and core would send it again on its own.";
+export const CANCEL_STUCK_HOLD_HOVER = "Ends this run. Its step is held until someone acts, so core would not send it again.";
 
 export const CANCEL_UNSTARTED_HOVER = "Ends this run before anything works on it. Nothing has started, so no agent is stopped mid-step.";
 

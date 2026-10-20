@@ -114,9 +114,9 @@ function runSpan(run: RunView): string | null {
 /** An open run in the word every run surface reads it by (core's reading), any other by its status. */
 function runStatusOf(run: RunView, now: number): { label: string; dot: string; detail?: string } {
   const base = RUN_STATUS[run.status];
-  if ((run.status !== "running" && run.status !== "paused") || run.reading == null) return base;
-  const word = runReadingChip({ ...run, liveJobs: 0, lastSessionBeatAt: null, checkInBy: null }, now);
-  const dot = run.reading === "running" ? base.dot : run.reading === "held" ? "var(--amber-500)" : "var(--border-strong)";
+  if ((run.status !== "running" && run.status !== "paused") || run.reading === undefined) return base;
+  const word = runReadingChip({ ...run, reading: run.reading, liveJobs: 0, lastSessionBeatAt: null, checkInBy: null }, now);
+  const dot = word.label === base.label ? base.dot : run.reading === "held" ? "var(--amber-500)" : "var(--border-strong)";
   return { label: word.label, dot, ...(word.detail ? { detail: word.detail } : {}) };
 }
 
@@ -126,9 +126,9 @@ function RunBlock({ run, open, onToggle }: { run: RunView; open: boolean; onTogg
   const span = runSpan(run);
   // Read only where core answered the run's reading: an older core's answer keeps "Started".
   const since =
-    run.reading == null
+    run.reading === undefined
       ? { word: "Started", at: run.startedAt }
-      : runSince({ ...run, liveJobs: 0, lastSessionBeatAt: null }, now);
+      : runSince({ ...run, reading: run.reading, liveJobs: 0, lastSessionBeatAt: null }, now);
   // Each time says which it is: a finished run when it ended and how long it ran, one still going
   // when its work started, or when it opened while nothing works it yet (ISS-1228).
   const facts = [

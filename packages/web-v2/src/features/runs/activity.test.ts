@@ -379,7 +379,7 @@ describe("round 19: held, cancelled, question and control-free remedies", () => 
       attempt({ status: "failed", failureCause: null, failureReason: "stopped_on_question" }),
     ]);
     expect(line?.outcome).toBe("Stopped to ask a question");
-    expect(line?.action).toBe("Answer its question on the issue page.");
+    expect(line?.action).toBe("Answer its question on the Questions tab.");
   });
 
   it.each([

@@ -6,7 +6,7 @@
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createTestProject,
   createTestProjectMember,
@@ -165,6 +165,15 @@ describe('a run session is Starting until it checks in (criteria 135, 166, 180)'
     expect(ends).toBeGreaterThan(9 * 60_000);
     expect(ends).toBeLessThanOrEqual(10 * 60_000);
 
+    const { roomManager } = await import('../../src/ws/server.js');
+    const publish = vi.spyOn(roomManager, 'publish');
+    const startedFlags = () =>
+      publish.mock.calls
+        .filter(([room]) => room === `project:${projectId}`)
+        .map(([, p]) => p as { event: string; data: { started?: boolean } })
+        .filter((p) => p.event === 'agent-session.updated')
+        .map((p) => p.data.started === true);
+
     const res = await app.request(`/api/agent-sessions/${opened.sessionId}`, {
       method: 'PATCH',
       headers: { authorization: `Bearer ${deviceToken}`, 'content-type': 'application/json' },
@@ -185,6 +194,9 @@ describe('a run session is Starting until it checks in (criteria 135, 166, 180)'
       body: JSON.stringify({ status: 'running' }),
     });
     expect((await summary(opened.runId)).runningSince).toBe(first);
+    // Only the first check-in says the run started, so the run's readers re-read on it alone.
+    expect(startedFlags()).toEqual([true, false]);
+    publish.mockRestore();
   });
 });
 
@@ -302,16 +314,23 @@ describe('a job that stopped on a question records why (criterion 174)', () => {
       VALUES (${jobId}, ${projectId}, ${runId}, ${deviceId}, ${ownerId}, 'drive', 'running',
               now(), now(), '{}'::jsonb)
     `);
-    const { failOccupyingJob } = await import('../../src/jobs/fail-job.js');
-    await failOccupyingJob(
-      { id: jobId, status: 'running' },
-      deviceId,
-      { error: 'blocked on a question', failureReason: 'stopped_on_question' },
-      { precomputedRetry: { scheduled: false, reason: 'blocked_on_question' } },
-    );
+    const { endBlockedJob } = await import('../../src/jobs/blocked.js');
+    const ended = await endBlockedJob({ id: jobId, status: 'running' }, deviceId, {
+      error: 'blocked on a question',
+      asked: {
+        kind: 'dialog',
+        questions: [{ question: 'Which base?', options: [{ label: 'main' }] }],
+      },
+    });
+    expect(ended.questionIds).toHaveLength(1);
     const [row] = await harness.db.execute<{ failure_reason: string | null }>(
       sql`SELECT failure_reason FROM jobs WHERE id = ${jobId}`,
     );
     expect(row?.failure_reason).toBe('stopped_on_question');
+    // Its question is the project's, read on the Questions tab the drawer's remedy names.
+    const [question] = await harness.db.execute<{ issue_id: string | null }>(
+      sql`SELECT issue_id FROM agent_questions WHERE id = ${ended.questionIds[0]}`,
+    );
+    expect(question?.issue_id).toBeNull();
   });
 });

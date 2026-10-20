@@ -54,8 +54,14 @@ describe("a run's times say which is which", () => {
   });
 
   it("labels when a run still going started, and says no length for it", () => {
-    const text = line(run({ status: "running", finishedAt: null, startedAt: at(180_000) }));
+    const text = line(run({ status: "running", reading: "running", finishedAt: null, startedAt: at(180_000) }));
     expect(text).toContain("Started 3m ago");
     expect(text).not.toMatch(/ran /);
+  });
+
+  it("names an open run nothing lives on Nothing working, the word its drawer reads, never Running", () => {
+    const text = line(run({ status: "running", reading: null, finishedAt: null, startedAt: at(20 * 60_000) }));
+    expect(text).toContain("Nothing working");
+    expect(text).not.toContain("Running");
   });
 });

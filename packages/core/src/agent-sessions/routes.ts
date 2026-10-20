@@ -744,7 +744,9 @@ agentSessionRoutes.patch(
     if (patch.status !== undefined && patch.status !== existing.status) {
       broadcastSession(updated, 'agent-session.status');
     } else {
-      broadcastSession(updated, 'agent-session.updated');
+      // A first check-in leaves the status alone but moves its run from Starting to Running (ISS-1228).
+      const started = existing.startedAt == null && updates.startedAt != null;
+      broadcastSession(updated, 'agent-session.updated', started ? { started: true } : {});
     }
 
     if (classification) {

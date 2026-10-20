@@ -327,6 +327,20 @@ describe("round 19: the drawer reads a held job and a silent session as themselv
     expect(screen.getByRole("tooltip")).toHaveTextContent("core would send it again on its own");
   });
 
+  it("never promises a held run's Cancel hover a resend where the hold does not clear on its own", () => {
+    run = summary("running", {
+      liveJobs: 0,
+      attempts: [attempt("held")],
+      reading: "held",
+      hold: { reason: "retry_rounds_exhausted", resumesItself: false, recheckAt: null, since: null },
+    });
+    openDrawer();
+    expect(document.querySelector("[data-run-wait]")).toHaveTextContent("This hold does not clear on its own.");
+    fireEvent.mouseEnter(screen.getByRole("button", { name: "Cancel run" }));
+    expect(screen.getByRole("tooltip")).toHaveTextContent("held until someone acts");
+    expect(screen.getByRole("tooltip")).not.toHaveTextContent("on its own");
+  });
+
   it("reads a run session that has not checked in as Starting, never Running, with how long core waits", () => {
     run = summary("running", {
       liveJobs: 0,

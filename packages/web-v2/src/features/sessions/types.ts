@@ -300,7 +300,7 @@ export const FAILURE_REASON_ACTION: Record<SessionFailureReason, string> = {
   resume_failed: "Resuming the previous session failed. Rerun to start fresh.",
   residency_expired: "The session outlived its window. Rerun to start fresh.",
   park_unanswered: "Nobody answered the agent's question before its deadline. The work stopped and its branch was kept.",
-  stopped_on_question: "Answer its question on the issue page.",
+  stopped_on_question: "Answer its question on the Questions tab.",
   audit_ran_blind: "The scheduled run called no tools, so it produced no evidence. Rerun.",
   unclassified: "The cause wasn't recorded. Open the run timeline to see why.",
   queue_timeout: "No runner picked it up. Check the fleet strip for an online runner.",

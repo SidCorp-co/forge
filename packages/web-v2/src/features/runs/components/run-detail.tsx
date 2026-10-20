@@ -29,7 +29,12 @@ import { useNow } from "@/design/hooks/use-now";
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import { useRecents, buildShareLink } from "@/features/shell";
-import { CANCEL_HELD_HOVER, CANCEL_UNSTARTED_HOVER, STOP_NOW_HOVER } from "@/features/sessions/status-sentences";
+import {
+  CANCEL_HELD_HOVER,
+  CANCEL_STUCK_HOLD_HOVER,
+  CANCEL_UNSTARTED_HOVER,
+  STOP_NOW_HOVER,
+} from "@/features/sessions/status-sentences";
 import { runHasStarted, runReadingChip } from "../derive";
 import { RUN_KIND_WORD } from "../run-status-words";
 import { formatDurationMs, formatUsd } from "@/lib/utils/format";
@@ -58,6 +63,11 @@ const TABS = [
   { value: "timeline", label: "Timeline" },
   { value: "cost", label: "Cost" },
 ];
+
+function cancelHover(run: { reading?: string | null; hold?: { resumesItself: boolean } | null } | undefined): string {
+  if (run?.reading !== "held") return CANCEL_UNSTARTED_HOVER;
+  return run.hold?.resumesItself ? CANCEL_HELD_HOVER : CANCEL_STUCK_HOLD_HOVER;
+}
 
 export function RunDetail({ open, onClose, runId, projectSlugs, canWrite = true }: RunDetailProps) {
   const [tab, setTab] = useState("activity");
@@ -229,7 +239,7 @@ export function RunDetail({ open, onClose, runId, projectSlugs, canWrite = true 
                 </Tooltip>
               )}
               {canWrite && runId && canCancelUnstarted && (
-                <Tooltip label={run?.reading === "held" ? CANCEL_HELD_HOVER : CANCEL_UNSTARTED_HOVER}>
+                <Tooltip label={cancelHover(run)}>
                   <Button
                     variant="danger"
                     icon="stop"

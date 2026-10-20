@@ -1750,8 +1750,13 @@ describe("the issue page's open run, in core's word (round 19)", () => {
   });
 
   it("leaves the sessions' verdict standing where no open run has a reading", () => {
-    expect(openRunWord([{ ...base, reading: null }], 0)).toBeNull();
+    expect(openRunWord([{ ...base, reading: undefined }], 0)).toBeNull();
     expect(openRunWord([{ ...base, status: "failed", reading: "held" }], 0)).toBeNull();
+  });
+
+  it("reads an open run nothing lives on as Nothing working, the word the runs tab and drawer read", () => {
+    const word = openRunWord([{ ...base, reading: null }], Date.parse("2026-10-19T23:10:00.000Z"));
+    expect(word?.label).toBe("Nothing working");
   });
 });
 
