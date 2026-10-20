@@ -240,6 +240,126 @@ impl AsRef<OsStr> for InScratch {
     }
 }
 
+/// Every tmux server a test started on a socket under `dir`, ended by its pid
+/// when this drops — on a pass, an early return and a panic alike.
+///
+/// Ending a server by its socket alone reaches only the server whose file is
+/// at the path: a test that moves or removes the socket, or puts one server's
+/// file back over another's, leaves a server nothing can address, running
+/// for ever (ISS-1265 round 6: judge-64's run left three). A server keeps the
+/// argv it was started with, `tmux -S <socket> …`, so the pid is read off the
+/// process table by that argv rather than asked of the socket. Once it has
+/// ended them, the drop checks that none is left and fails the test naming
+/// any that is.
+#[cfg(unix)]
+pub struct TmuxServers {
+    dir: PathBuf,
+    /// The `pgrep` that reads the process table: by bare name, except in the
+    /// test of a table that cannot be read, which hands one in rather than
+    /// moving the process's `PATH` under every other test.
+    pgrep: PathBuf,
+}
+
+#[cfg(unix)]
+impl TmuxServers {
+    pub fn under(dir: &Path) -> Self {
+        Self::reading_with(dir, Path::new("pgrep"))
+    }
+
+    /// The same, reading the process table with `pgrep`.
+    pub fn reading_with(dir: &Path, pgrep: &Path) -> Self {
+        Self {
+            dir: dir.to_path_buf(),
+            pgrep: pgrep.to_path_buf(),
+        }
+    }
+
+    /// The pids of the tmux processes started on a socket under the directory.
+    pub fn running(&self) -> Result<Vec<u32>, String> {
+        Self::read_with(&self.dir, &self.pgrep)
+    }
+
+    /// The same for any directory, with nothing ended when it is read. A
+    /// process table that could not be read is an error, never an empty one:
+    /// read as no server, it would certify a teardown nothing checked.
+    pub fn running_under(dir: &Path) -> Result<Vec<u32>, String> {
+        Self::read_with(dir, Path::new("pgrep"))
+    }
+
+    /// The same, reading the process table with `pgrep`.
+    pub fn read_with(dir: &Path, pgrep: &Path) -> Result<Vec<u32>, String> {
+        let mut pattern = String::from("^([^ ]*/)?tmux .*-S ");
+        for c in dir.display().to_string().chars() {
+            if "\\.[]()*+?{}|^$".contains(c) {
+                pattern.push('\\');
+            }
+            pattern.push(c);
+        }
+        pattern.push('/');
+        let out = std::process::Command::new(pgrep)
+            .args(["-f", "--", &pattern])
+            .stdin(std::process::Stdio::null())
+            .output()
+            .map_err(|e| format!("`pgrep` could not be run: {e}"))?;
+        match out.status.code() {
+            Some(0) => Ok(String::from_utf8_lossy(&out.stdout)
+                .lines()
+                .filter_map(|l| l.trim().parse().ok())
+                .collect()),
+            Some(1) => Ok(Vec::new()),
+            code => Err(format!(
+                "`pgrep` exited {code:?}: {}",
+                String::from_utf8_lossy(&out.stderr).trim()
+            )),
+        }
+    }
+}
+
+#[cfg(unix)]
+impl Drop for TmuxServers {
+    fn drop(&mut self) {
+        let left = self.end_them();
+        if std::thread::panicking() {
+            return;
+        }
+        match left {
+            Ok(left) if left.is_empty() => {}
+            Ok(left) => panic!(
+                "tmux process(es) {left:?} started on a socket under {} outlived the test",
+                self.dir.display()
+            ),
+            Err(e) => panic!(
+                "whether a tmux process started on a socket under {} outlived the test could not be read: {e}",
+                self.dir.display()
+            ),
+        }
+    }
+}
+
+#[cfg(unix)]
+impl TmuxServers {
+    /// Ends every one by pid, then reads what is left once they have had
+    /// time to go.
+    fn end_them(&self) -> Result<Vec<u32>, String> {
+        for pid in self.running()? {
+            let Ok(pid) = i32::try_from(pid) else {
+                continue;
+            };
+            let _ = nix::sys::signal::kill(
+                nix::unistd::Pid::from_raw(pid),
+                nix::sys::signal::Signal::SIGKILL,
+            );
+        }
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let mut left = self.running()?;
+        while !left.is_empty() && std::time::Instant::now() < deadline {
+            std::thread::sleep(std::time::Duration::from_millis(25));
+            left = self.running()?;
+        }
+        Ok(left)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -3222,6 +3222,7 @@
 - **A master that ended as the last session on its box's tmux server is reported ended.** Its messages used to wait and its run stayed open for ever; a tmux the box cannot ask still says nothing. (ISS-1265)
 - **A running master is no longer reported ended when its box's tmux socket file goes missing.** Its messages wait instead of its run closing, and the box's log names the missing socket and the masters on it. (ISS-1265)
 - **A box whose tmux socket file went missing no longer starts a second server over its running masters.** New panes wait, and the log names the masters and how to find the server to signal. (ISS-1265)
+- **A box whose tmux server was stopped with its socket file gone places panes without a restart.** Its masters are logged as ended; while a server still runs there, the refusal names its pid and repeats each minute. (ISS-1265)
 - **A blocked run always says it is waiting**, on its row as on hover, even where its box did not say on whom: it reads "Waiting on someone the box did not name." A working run shows no wait. (ISS-1228)
 - **A chat waiting for your reply is no longer ended as failed after twenty quiet minutes.** It closes two hours after its last turn, and its row and page say when beforehand. (ISS-1228)
 - **A session checking in no longer makes every open page reload.** Only that session and the lists that show it refresh, unless its status changed. (ISS-1228)
