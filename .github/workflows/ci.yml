@@ -600,7 +600,7 @@ jobs:
           cargo metadata --locked --format-version=1 >/dev/null
           cargo fmt --check
           cargo clippy --workspace --all-targets -- -D warnings
-          cargo test --workspace
+          cargo test --workspace --no-fail-fast
 
   # The `runner` gate, by the `*runner-gate` alias, on the two platforms a pull request no longer
   # waits on (ISS-1370). Post-merge, nightly and on a dispatch; `ci-passed` does not need it,

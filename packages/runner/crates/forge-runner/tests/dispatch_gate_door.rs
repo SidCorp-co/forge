@@ -512,7 +512,8 @@ fn a_dispatcher_in_an_operators_own_tmux_is_let_through_unmarked() {
 ///
 /// `None` where this box cannot host one, after failing the test instead
 /// wherever the run promised tmux (`FORGE_TEST_REQUIRE_TMUX` set and not
-/// empty, as CI sets it on Linux; on the other runners CI sets it empty).
+/// empty, as CI sets it on Linux and macOS). Every caller is ignored on
+/// macOS, the one platform that promises tmux and cannot place this socket.
 fn gate_in_a_runner_pane(config_home: &Path, pane: &str, payload: &str) -> Option<String> {
     let skip = |why: &str| {
         #[expect(
@@ -527,9 +528,6 @@ fn gate_in_a_runner_pane(config_home: &Path, pane: &str, payload: &str) -> Optio
         eprintln!("skipped: {why}");
         None
     };
-    if cfg!(target_os = "macos") {
-        return skip("macOS resolves the tmux socket outside the config home a test can set");
-    }
     if scoped("tmux", config_home).arg("-V").output().is_err() {
         return skip("tmux is not installed here");
     }
@@ -605,6 +603,10 @@ fn record_with_slug(config_home: &Path, pane: &str, project: &str, slug: Option<
 /// ISS-1316 criterion 16, through the door and a real tmux server: a pane
 /// the daemon placed, whose capability never reached its environment.
 #[test]
+#[cfg_attr(
+    target_os = "macos",
+    ignore = "macOS resolves the tmux socket outside the config home a test can set"
+)]
 fn a_runner_pane_whose_capability_never_arrived_is_refused_by_name() {
     let scratch = Scratch::new("lostmint");
     record_with_slug(scratch.path(), "forge-master-e2e", "proj-e2e", Some("e2e"));
@@ -629,6 +631,10 @@ fn a_runner_pane_whose_capability_never_arrived_is_refused_by_name() {
 /// ISS-1316 criterion 22, through the door: a job pane is told the command
 /// that ends it on the runner's own tmux server, every value filled in.
 #[test]
+#[cfg_attr(
+    target_os = "macos",
+    ignore = "macOS resolves the tmux socket outside the config home a test can set"
+)]
 fn a_job_pane_whose_capability_never_arrived_is_told_the_command_that_ends_it() {
     let scratch = Scratch::new("lostjob");
     record_with_slug(scratch.path(), "forge-job-j42", "proj-e2e", Some("e2e"));
@@ -657,6 +663,10 @@ fn a_job_pane_whose_capability_never_arrived_is_told_the_command_that_ends_it() 
 /// ISS-1316 criterion 23, through the door: a record 0.17.72 wrote carries no
 /// slug, so the project is named by its id and the command ends the pane itself.
 #[test]
+#[cfg_attr(
+    target_os = "macos",
+    ignore = "macOS resolves the tmux socket outside the config home a test can set"
+)]
 fn a_pane_whose_record_carries_no_slug_is_still_told_a_command_it_can_run() {
     let scratch = Scratch::new("lostnoslug");
     record_for(scratch.path(), "forge-master-e2e", "proj-e2e");
@@ -683,6 +693,10 @@ fn a_pane_whose_record_carries_no_slug_is_still_told_a_command_it_can_run() {
 /// ISS-1316 criterion 19, through the door: a session on the runner's server
 /// that no record names is let through and named in the mark it leaves.
 #[test]
+#[cfg_attr(
+    target_os = "macos",
+    ignore = "macOS resolves the tmux socket outside the config home a test can set"
+)]
 fn a_runner_pane_no_record_names_is_let_through_and_named() {
     let scratch = Scratch::new("unrecorded");
     record_for(scratch.path(), "forge-master-someone-else", "proj-e2e");
@@ -705,6 +719,10 @@ const DIALOG_PAYLOAD: &str = r#"{"session_id":"d5953edb-97bc-42b8-891d-206e10590
 /// ISS-1385 criterion 15: a dialog planted in a master pane on a runner-shaped
 /// tmux server is refused by the registered command, naming the route.
 #[test]
+#[cfg_attr(
+    target_os = "macos",
+    ignore = "macOS resolves the tmux socket outside the config home a test can set"
+)]
 fn a_dialog_opened_in_a_master_pane_is_refused_naming_the_route() {
     use forge_runner_core::daemon::master_question::{ROUTE_LATER, ROUTE_OPEN};
     let scratch = Scratch::new("dialog");
@@ -726,6 +744,10 @@ fn a_dialog_opened_in_a_master_pane_is_refused_naming_the_route() {
 
 /// ISS-1385 criterion 7: a job pane's dialog is not this rule's subject.
 #[test]
+#[cfg_attr(
+    target_os = "macos",
+    ignore = "macOS resolves the tmux socket outside the config home a test can set"
+)]
 fn a_dialog_opened_in_a_job_pane_is_let_through_unmarked() {
     let scratch = Scratch::new("dialogjob");
     let Some(printed) = gate_in_a_runner_pane(scratch.path(), "forge-job-j42", DIALOG_PAYLOAD)
