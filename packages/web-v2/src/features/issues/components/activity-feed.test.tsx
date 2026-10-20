@@ -32,3 +32,22 @@ describe("a status move in the Activity tab (ISS-1421)", () => {
     expect(screen.queryByText("awaiting_release")).toBeNull();
   });
 });
+
+// ISS-1229 r22, judge-63: comment events showed their codes.
+describe("a comment event in the Activity tab", () => {
+  it("reads as a sentence naming who did it, never as its code", () => {
+    const by = { type: "user", id: "u1", displayName: "Another member", isAgent: false };
+    render(
+      <ActivityFeed
+        items={[
+          { ...moved("open", "in_progress"), id: "c1", action: "comment.created", payload: {}, actor: by },
+          { ...moved("open", "in_progress"), id: "c2", action: "comment.mentioned", payload: { mentionedUserIds: ["x"] }, actor: by },
+        ] as ActivityItem[]}
+      />,
+    );
+    expect(screen.getByText("Another member commented")).toBeInTheDocument();
+    expect(screen.getByText("Another member mentioned a member in a comment")).toBeInTheDocument();
+    expect(screen.queryByText(/comment\.(created|mentioned)/)).toBeNull();
+  });
+});
+

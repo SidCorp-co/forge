@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { EmptyState, ErrorState, PageContainer, Skeleton } from '@/design';
 import { useActiveOrg } from '@/features/orgs/active-org';
+import { workspaceName } from '@/features/orgs/workspace-name';
 import { useProjectsConsole } from '@/features/projects/hooks';
 import { formatApiError } from '@/lib/api/error';
 import { usePulse } from '../hooks';
@@ -23,7 +24,7 @@ export function OverviewScreen() {
   const [nowMs, setNowMs] = useState(0);
   useEffect(() => setNowMs(Date.now()), []);
 
-  const orgLabel = activeOrg ? (activeOrg.isPersonal ? 'Personal' : activeOrg.name) : null;
+  const orgLabel = activeOrg ? workspaceName(activeOrg) : null;
   const data = pulse.data;
   const hasProjects = useMemo(() => (data ? data.work.perProject.length > 0 : false), [data]);
 

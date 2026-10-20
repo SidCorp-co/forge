@@ -82,8 +82,13 @@ describe("which space a connection belongs in", () => {
 });
 
 describe("how a row names its owner and why it is read-only", () => {
-  it("calls another person's credential another user's, not Personal", () => {
-    expect(connectionOwnerLabel(item(), () => undefined)).toBe("Another user");
+  // ISS-1229 r22: the label is core's name for the owner, else "Another member" — never "Another user".
+  it("labels another person's credential by core's name for its owner, not Personal", () => {
+    const named = item({ access: { reach: "binding", canManage: false, ownerName: "Mai Tran" } });
+    const unnamed = item({ access: { reach: "binding", canManage: false, ownerName: "another member" } });
+    expect(connectionOwnerLabel(named, () => undefined)).toBe("Mai Tran");
+    expect(connectionOwnerLabel(unnamed, () => undefined)).toBe("Another member");
+    expect(connectionOwnerLabel(item(), () => undefined)).toBe("Another member");
     expect(
       connectionOwnerLabel(item({ access: { reach: "owner", canManage: true, ownerName: null } }), () => undefined),
     ).toBe("Personal");
@@ -96,7 +101,7 @@ describe("how a row names its owner and why it is read-only", () => {
   });
 
   it("says who may change it", () => {
-    expect(readOnlyNote(item(), "Another user")).toMatch(/only its owner/);
+    expect(readOnlyNote(item(), "Another member")).toMatch(/only its owner/);
     const owned = item({ ownerType: "org", ownerId: "o1" });
     expect(readOnlyNote(owned, "Sidcorp")).toMatch(/owner or admin of Sidcorp/);
   });

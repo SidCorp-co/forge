@@ -30,6 +30,8 @@ describe('what a person is called', () => {
     personName('Mai');
     personName(null);
     expect(warn).not.toHaveBeenCalled();
+    personName('Another member', 'inside');
+    expect(warn).not.toHaveBeenCalled();
     personName('mai@example.com');
     expect(warn).toHaveBeenCalledTimes(1);
     expect(JSON.stringify(warn.mock.calls[0])).not.toContain('mai@example.com');

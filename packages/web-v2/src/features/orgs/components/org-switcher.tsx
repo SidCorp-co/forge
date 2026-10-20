@@ -14,13 +14,7 @@ import { Icon } from "@/design/icons/icon";
 import { Menu, type MenuItem } from "@/design/patterns/menu";
 import { cn } from "@/lib/utils/cn";
 import { useActiveOrg } from "../active-org";
-import type { OrgListItem } from "../types";
-
-/** Personal orgs surface as "Personal" everywhere (matches Settings → Orgs and
- *  the legacy projects-toolbar label). */
-function orgLabel(o: OrgListItem): string {
-  return o.isPersonal ? "Personal" : o.name;
-}
+import { workspaceName } from "../workspace-name";
 
 export function OrgSwitcher({ variant }: { variant: "compact" | "expanded" }) {
   const router = useRouter();
@@ -29,11 +23,11 @@ export function OrgSwitcher({ variant }: { variant: "compact" | "expanded" }) {
   // Nothing to show until orgs resolve (avoids a flash of an empty control).
   if (!activeOrg) return null;
 
-  const label = orgLabel(activeOrg);
+  const label = workspaceName(activeOrg);
 
   const items: MenuItem[] = [
     ...orgs.map((o) => ({
-      label: orgLabel(o),
+      label: workspaceName(o),
       icon: o.id === activeOrg.id ? ("check" as const) : undefined,
       onSelect: () => setActiveOrg(o.id),
     })),

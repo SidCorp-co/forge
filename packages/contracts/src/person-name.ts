@@ -10,10 +10,17 @@ export function carriesAnAddress(text: string): boolean {
   return new RegExp(ADDRESS_PATTERN).test(text);
 }
 
-/** The display name, trimmed, where it names somebody; null where it is blank or holds an address. */
+/** The display name, trimmed; null where blank, holding an address, or this helper's own fallback. */
 export function givenName(displayName: string | null | undefined): string | null {
   const given = displayName?.trim();
-  return given && !carriesAnAddress(given) ? given : null;
+  if (!given || carriesAnAddress(given)) return null;
+  return given.toLowerCase() === UNNAMED_PERSON ? null : given;
+}
+
+export function displayNameRefusal(displayName: string): string | null {
+  return carriesAnAddress(displayName)
+    ? `A display name cannot hold an email address: other members never see one, so they would read you as "${UNNAMED_PERSON_AT_START}". Type the name you want them to read.`
+    : null;
 }
 
 export function personName(

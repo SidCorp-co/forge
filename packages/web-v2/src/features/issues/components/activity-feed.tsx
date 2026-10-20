@@ -1,61 +1,35 @@
 "use client";
 
-// Activity timeline for the issue detail. Renders the reverse-chron activity
-// log: status transitions (from → to), dependency edges, label changes,
-// assignment, creation. Comment lifecycle is NOT in the activity log (the
-// Comments tab is the source for that).
+// Activity timeline for the issue detail: each event, newest first, as a sentence that opens with
+// who acted (`activity-sentences.ts`), and under it whether an agent acted and when.
 
-import { Badge, EmptyState, Icon, MonoTag, type IconName } from "@/design";
+import { Badge, EmptyState, Icon } from "@/design";
 import { formatRelativeTime } from "@/lib/utils/format";
-import { statusLabel } from "../derive";
-import type { ActivityItem, IssueStatus } from "../types";
+import { activitySentence, type SentencePart } from "../activity-sentences";
+import type { ActivityItem } from "../types";
 
-interface Node {
-  icon: IconName;
-  text: React.ReactNode;
-}
-
-function describe(item: ActivityItem): Node {
-  const p = (item.payload ?? {}) as Record<string, unknown>;
-  const from = typeof p.from === "string" ? p.from : undefined;
-  const to = typeof p.to === "string" ? p.to : undefined;
-  switch (item.action) {
-    case "issue.statusChanged":
-      return {
-        icon: "pipeline",
-        text: (
-          <span className="inline-flex flex-wrap items-center gap-1.5">
-            Status {from && <span className="font-medium">{statusLabel(from as IssueStatus)}</span>}{" "}
-            <Icon name="arrowRight" size={12} />{" "}
-            {to && <span className="font-medium">{statusLabel(to as IssueStatus)}</span>}
+/** The sentence's runs, adjacent words joined into one text so the line reads as one sentence. */
+function Sentence({ parts }: { parts: SentencePart[] }) {
+  const runs = parts.reduce<SentencePart[]>((acc, part) => {
+    const last = acc[acc.length - 1];
+    if (typeof part === "string" && typeof last === "string") acc[acc.length - 1] = last + part;
+    else acc.push(part);
+    return acc;
+  }, []);
+  return (
+    <>
+      {runs.map((run, i) =>
+        typeof run === "string" ? (
+          run
+        ) : (
+          // biome-ignore lint/suspicious/noArrayIndexKey: a sentence's runs never reorder
+          <span key={i} className="font-medium">
+            {run.strong}
           </span>
         ),
-      };
-    case "issue.created":
-      return { icon: "plus", text: "Issue created" };
-    case "issue.dependency.added":
-      return { icon: "link", text: "Dependency added" };
-    case "issue.dependency.removed":
-      return { icon: "link", text: "Dependency removed" };
-    case "issue.labeled":
-      return { icon: "star", text: "Label added" };
-    case "issue.unlabeled":
-      return { icon: "star", text: "Label removed" };
-    case "issue.assigned":
-      return { icon: "agent", text: "Assignee changed" };
-    case "issue.priorityChanged":
-      return {
-        icon: "alert",
-        text: (
-          <span className="inline-flex flex-wrap items-center gap-1.5">
-            Priority {from && <MonoTag>{from}</MonoTag>} <Icon name="arrowRight" size={12} />{" "}
-            {to && <MonoTag>{to}</MonoTag>}
-          </span>
-        ),
-      };
-    default:
-      return { icon: "dot", text: item.action };
-  }
+      )}
+    </>
+  );
 }
 
 export function ActivityFeed({ items }: { items: ActivityItem[] }) {
@@ -65,21 +39,18 @@ export function ActivityFeed({ items }: { items: ActivityItem[] }) {
   return (
     <ol className="space-y-3">
       {items.map((item) => {
-        const node = describe(item);
-        // Prefer the server-resolved actor (what core calls a member / agent device name)
-        // over the bare actorType. Fall back to the raw type for older payloads;
-        // never show just "user"/"device" when a name is available (ISS-519).
+        const said = activitySentence(item);
         const isAgent = item.actor?.isAgent ?? item.actorType === "device";
-        const actorLabel = item.actor?.displayName ?? item.actorType;
         return (
           <li key={item.id} className="flex items-start gap-3">
             <span className="mt-0.5 flex size-6 flex-none items-center justify-center rounded-pill bg-sunken text-subtle">
-              <Icon name={node.icon} size={14} />
+              <Icon name={said.icon} size={14} />
             </span>
             <div className="min-w-0 flex-1">
-              <div className="fg-body-sm text-fg">{node.text}</div>
+              <div className="fg-body-sm text-fg">
+                <Sentence parts={[`${said.actor} `, ...said.did]} />
+              </div>
               <div className="fg-caption mt-0.5 flex flex-wrap items-center gap-1.5">
-                <span className="truncate">{actorLabel}</span>
                 {isAgent && (
                   <Badge tone="accent">
                     <span className="inline-flex items-center gap-1">
@@ -88,7 +59,7 @@ export function ActivityFeed({ items }: { items: ActivityItem[] }) {
                     </span>
                   </Badge>
                 )}
-                <span>· {formatRelativeTime(item.createdAt)}</span>
+                <span>{formatRelativeTime(item.createdAt)}</span>
               </div>
             </div>
           </li>

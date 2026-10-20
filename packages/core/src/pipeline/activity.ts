@@ -1,3 +1,4 @@
+import type { IssueActivityAction } from '@forge/contracts/issue-vocabulary';
 import type { Context } from 'hono';
 import { type Db, db } from '../db/client.js';
 import { type ActorType, activityLog } from '../db/schema.js';
@@ -9,7 +10,8 @@ export type Actor = { type: ActorType; id: string; agency: ActorAgency };
 export interface RecordActivityInput {
   issueId: string;
   actor: Actor;
-  action: string;
+  /** One of the actions the Activity tab has words for (ISS-1229 r22). */
+  action: IssueActivityAction;
   before?: unknown;
   after?: unknown;
   payload?: Record<string, unknown>;

@@ -3,7 +3,7 @@
 // Settings → Account. Identity is read from the hydrated auth session. Theme + language save
 // against `/api/auth/me/preferences` and the reply style + standing instructions against
 // `/api/auth/preferences`: two routes, one form, one save bar.
-import { personName } from "@forge/contracts/person-name";
+import { displayNameRefusal, personName } from "@forge/contracts/person-name";
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { z } from "zod";
@@ -165,6 +165,8 @@ function DisplayNameField() {
   const [saving, setSaving] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const value = draft ?? saved;
+  // The one sentence core refuses the same name with, shown before anything is sent (ISS-1229 r22).
+  const refused = draft === null ? null : displayNameRefusal(draft);
   const save = async (next: string | null) => {
     setSaving(true);
     setFailure(null);
@@ -184,7 +186,7 @@ function DisplayNameField() {
       <Field
         label="Display name"
         hint={`What other members read you as. Without one you read as "${personName(null, "start")}".`}
-        error={failure ?? undefined}
+        error={refused ?? failure ?? undefined}
       >
         <Input
           value={value}
@@ -203,7 +205,7 @@ function DisplayNameField() {
           variant="primary"
           size="sm"
           loading={saving}
-          disabled={!value.trim() || value.trim() === saved}
+          disabled={!value.trim() || value.trim() === saved || refused !== null}
           onClick={() => void save(value.trim())}
         >
           Set name

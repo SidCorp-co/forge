@@ -425,8 +425,8 @@ export type ConnectionReach = (typeof CONNECTION_REACH_VALUES)[number];
  * or an owner/admin of the owning org, and a `binding` reach never carries it.
  *
  * `ownerName` is who owns it as the product names them elsewhere: the organization's name, or the
- * person's display name (their email where they set none). Null only where the owner no longer
- * resolves, and a screen then says that rather than inventing a name.
+ * person as `personName` calls them inside a sentence (their display name, else "another member",
+ * never their address). Null only where the owner no longer resolves.
  */
 export interface ConnectionAccess {
   reach: ConnectionReach;

@@ -8,6 +8,7 @@
 // not, at the accent token, which clears the 3:1 non-text contrast bar against
 // the surface behind it: the difference is meant to be seen rather than read.
 
+import { personName } from "@forge/contracts/person-name";
 import { useState } from "react";
 import {
   Avatar,
@@ -188,7 +189,7 @@ function MemberRow({
       )}
       <div className="min-w-0 flex-1">
         <span className={`fg-body-sm block truncate ${isAgent ? "font-mono" : ""}`}>
-          {isAgent ? `@${member.displayName ?? member.label}` : (member.displayName ?? "Unknown")}
+          {isAgent ? `@${member.displayName ?? member.label}` : personName(member.displayName, "start")}
         </span>
         <span className="fg-caption block truncate text-subtle">
           {isAgent ? (project?.name ?? "a project this room is no longer about") : "Person"}
@@ -204,7 +205,7 @@ function MemberRow({
           <IconButton
             icon="x"
             size="sm"
-            aria-label={`Take ${member.displayName ?? "this member"} out of the room`}
+            aria-label={`Take ${isAgent ? `@${member.displayName ?? member.label}` : personName(member.displayName)} out of the room`}
             disabled={busy}
             onClick={onRemove}
           />

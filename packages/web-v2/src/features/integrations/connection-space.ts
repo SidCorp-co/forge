@@ -1,4 +1,5 @@
 import type { ConnectionDirectoryItem } from "@forge/contracts";
+import { personName } from "@forge/contracts/person-name";
 
 export interface DirectorySpace {
   id: string;
@@ -23,12 +24,15 @@ export function connectionInSpace(
   );
 }
 
+/** Who owns a credential, as a row labels them: an organization, "Personal" for the caller's own, else the person by `personName` (ISS-1229 r22). */
 export function connectionOwnerLabel(
   connection: ConnectionDirectoryItem,
   orgName: (orgId: string) => string | undefined,
 ): string {
-  if (connection.ownerType === "org") return orgName(connection.ownerId) ?? "Organization";
-  return connection.access.reach === "owner" ? "Personal" : "Another user";
+  if (connection.ownerType === "org")
+    return orgName(connection.ownerId) ?? connection.access.ownerName ?? "Organization";
+  if (connection.access.reach === "owner") return "Personal";
+  return personName(connection.access.ownerName, "start");
 }
 
 /** Why a row offers no controls, and who may change the credential. */

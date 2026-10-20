@@ -68,6 +68,13 @@ describe("what a stored turn carries for its reader", () => {
     expect(await screen.findByRole("button", { name: /^Copied message from Colin/ })).toBeInTheDocument();
   });
 
+  // ISS-1229 r22: the control's name is a sentence, so a person with no display name reads lower-case in it.
+  it("names an unnamed author lower-case inside the copy control's name", () => {
+    render(<ConversationThread messages={[said({ authorLabel: "Another member" })]} windows={[]} />);
+    expect(screen.getByTestId("message-actions")).toHaveTextContent("Another member");
+    expect(screen.getByRole("button", { name: /^Copy message from another member/ })).toBeInTheDocument();
+  });
+
   it("says which message each copy control takes, so a list of them is not seven 'Copy's", () => {
     const answer = said({
       id: "m2",

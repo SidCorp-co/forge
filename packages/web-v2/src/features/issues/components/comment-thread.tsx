@@ -5,6 +5,7 @@
 // `<BodyView>` (markdown or a `forge-*` component tree), author initials
 // resolved against the project members, and reply/add boxes.
 
+import { personName } from "@forge/contracts/person-name";
 import {
   Avatar,
   Badge,
@@ -321,7 +322,7 @@ function CommentItem({
             </span>
           </div>
           {isAgent && ownerName && (
-            <div className="fg-caption">via {ownerName}</div>
+            <div className="fg-caption">via {personName(ownerName)}</div>
           )}
           <div className="mt-1">
             <BodyView

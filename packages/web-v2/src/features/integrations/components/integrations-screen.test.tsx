@@ -87,12 +87,21 @@ afterEach(() => {
 });
 
 describe("a credential reached only through a binding", () => {
-  it("is listed in the space of the org whose project binds it, as another user's and not Personal", async () => {
+  it("is listed in the space of the org whose project binds it, as another member's and not Personal", async () => {
     mount();
 
     expect(await screen.findByText("Forge GitHub App")).toBeInTheDocument();
-    expect(screen.getByText("Another user")).toBeInTheDocument();
+    expect(screen.getByText("Another member")).toBeInTheDocument();
     expect(screen.queryByText("Personal")).toBeNull();
+  });
+
+  // ISS-1229 r22, judge-63: the row said "Another user" while core named the owner "Mai Tran".
+  it("is labelled by the name core gives its owner", async () => {
+    connections = [item({ access: { reach: "binding", canManage: false, ownerName: "Mai Tran" } })];
+    mount();
+
+    expect(await screen.findByText("Mai Tran")).toBeInTheDocument();
+    expect(screen.queryByText("Another user")).toBeNull();
   });
 
   it("says who may change it, and offers no Disable or Remove", async () => {

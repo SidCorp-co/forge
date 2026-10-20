@@ -1,9 +1,10 @@
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, ne, notExists } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import { HTTPException } from 'hono/http-exception';
 import { agentIsNotAPerson, isAgentAddress, isForgeAddress } from '../auth/agent-account.js';
 import { FORGE_AUTHOR_ID } from '../comments/forge-author.js';
 import { db } from '../db/client.js';
-import { organizationMembers, organizations, users } from '../db/schema.js';
+import { devices, organizationMembers, organizations, users } from '../db/schema.js';
 import { givenName } from '../lib/person-name.js';
 
 /**
@@ -13,6 +14,68 @@ import { givenName } from '../lib/person-name.js';
 type DbLike = Pick<typeof db, 'insert' | 'select'>;
 
 export const PERSONAL_WORKSPACE_NAME = 'Personal';
+
+/**
+ * Delete an organization and the agent accounts that belonged to it and to no other, in one
+ * transaction (ISS-1229 r22): nothing else names such an agent once the organization's projects are
+ * gone, and left behind it is an account with no membership and no door to remove it. A revoked
+ * device of such an agent goes with it; one not yet revoked refuses the delete by name.
+ */
+export async function deleteOrganization(orgId: string): Promise<void> {
+  await db.transaction(async (tx) => {
+    // Lock the agents first, then read their memberships in a statement of its own: one that waited
+    // on a lock sees a membership committed meanwhile, which the locking statement's snapshot does not.
+    const candidates = await tx
+      .select({ id: users.id })
+      .from(organizationMembers)
+      .innerJoin(users, eq(users.id, organizationMembers.userId))
+      .where(and(eq(organizationMembers.orgId, orgId), eq(users.kind, 'agent')))
+      .for('update', { of: users });
+    const elsewhere = alias(organizationMembers, 'elsewhere');
+    const own =
+      candidates.length === 0
+        ? []
+        : await tx
+            .select({ id: users.id, handle: organizationMembers.handle })
+            .from(organizationMembers)
+            .innerJoin(users, eq(users.id, organizationMembers.userId))
+            .where(
+              and(
+                eq(organizationMembers.orgId, orgId),
+                inArray(
+                  users.id,
+                  candidates.map((c) => c.id),
+                ),
+                notExists(
+                  tx
+                    .select({ userId: elsewhere.userId })
+                    .from(elsewhere)
+                    .where(and(eq(elsewhere.userId, users.id), ne(elsewhere.orgId, orgId))),
+                ),
+              ),
+            );
+    const ids = own.map((a) => a.id);
+    if (ids.length > 0) {
+      const [held] = await tx
+        .select({ device: devices.name, ownerId: devices.ownerId })
+        .from(devices)
+        .where(and(inArray(devices.ownerId, ids), ne(devices.status, 'revoked')))
+        .limit(1);
+      if (held) {
+        const agent = own.find((a) => a.id === held.ownerId);
+        throw new HTTPException(409, {
+          message: `This organization's agent @${agent?.handle ?? held.ownerId} still holds the device "${held.device}", so the organization was not deleted. Revoke that device under Runners, then delete the organization.`,
+          cause: { code: 'ORG_AGENT_HOLDS_A_DEVICE' },
+        });
+      }
+    }
+    await tx.delete(organizations).where(eq(organizations.id, orgId));
+    if (ids.length > 0) {
+      await tx.delete(devices).where(inArray(devices.ownerId, ids));
+      await tx.delete(users).where(inArray(users.id, ids));
+    }
+  });
+}
 
 /**
  * A personal workspace is named by its owner's display name, else "Personal", never their address

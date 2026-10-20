@@ -21,6 +21,7 @@ import {
 import { formatApiError } from '@/lib/api/error';
 import { usePersistedState } from '@/lib/utils/use-persisted-state';
 import { useActiveOrg } from '@/features/orgs/active-org';
+import { workspaceName } from '@/features/orgs/workspace-name';
 import { blindSearchEmpty, isAttention, unreadStatements, workspaceTotals } from '../derive';
 import { DEFAULT_PROJECT_SORT, isDefaultSort, PROJECT_MODEL_COLUMNS } from '../columns';
 import { useProjectsConsole } from '../hooks';
@@ -86,7 +87,7 @@ export function ProjectsConsole() {
   // no "all organizations" view. null only while orgs load → show all for one
   // tick (avoids a flash of empty), then snaps to scope.
   const { activeOrg, activeOrgId } = useActiveOrg();
-  const scopeLabel = activeOrg ? (activeOrg.isPersonal ? 'Personal' : activeOrg.name) : null;
+  const scopeLabel = activeOrg ? workspaceName(activeOrg) : null;
 
   // Relative timestamps: 0 on the server + first paint (renders "just now"),
   // then the real clock after mount — hydration-safe.
