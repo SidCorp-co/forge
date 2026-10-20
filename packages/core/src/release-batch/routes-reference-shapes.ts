@@ -67,6 +67,7 @@ export const rosterSchema = z.object({
   releaseRunnerLabel: z.string().nullable(),
   baseBranch: z.string().nullable(),
   nextCutAt: z.string().nullable(),
+  automaticRelease: z.boolean(),
   currentVersion: z.string().nullable(),
   issues: z.array(
     z.object({

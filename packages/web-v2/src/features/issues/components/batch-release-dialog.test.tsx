@@ -44,6 +44,7 @@ function rosterAnswer(): Response {
       releaseRunnerLabel: null,
       baseBranch: "main",
       nextCutAt: null,
+      automaticRelease: false,
       issues,
     }),
     { status: 200, headers: { "content-type": "application/json" } },
@@ -104,6 +105,7 @@ function draw({ read = true }: { read?: boolean } = {}) {
       releaseRunnerLabel: null,
       baseBranch: "main",
       nextCutAt: null,
+      automaticRelease: false,
       issues: [],
     });
   }

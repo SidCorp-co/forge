@@ -53,6 +53,8 @@ export interface ReleaseRoster {
   releaseRunnerLabel: string | null;
   baseBranch: string | null;
   nextCutAt: string | null;
+  /** The automatic release takes a waiting issue without a person. */
+  automaticRelease: boolean;
   issues: ReleaseRosterEntry[];
 }
 
@@ -92,6 +94,12 @@ function objectAt(raw: unknown, endpoint: string, where: string): Record<string,
 function stringAt(o: Record<string, unknown>, key: string, endpoint: string, where: string): string {
   const v = keyAt(o, key);
   if (typeof v !== "string") throw new RosterShapeError(endpoint, where, "a string", v);
+  return v;
+}
+
+function booleanAt(o: Record<string, unknown>, key: string, endpoint: string, where: string): boolean {
+  const v = keyAt(o, key);
+  if (typeof v !== "boolean") throw new RosterShapeError(endpoint, where, "a boolean", v);
   return v;
 }
 
@@ -200,6 +208,7 @@ export function parseReleaseRoster(raw: unknown, endpoint: string): ReleaseRoste
     releaseRunnerLabel: nullableStringAt(o, "releaseRunnerLabel", endpoint, "releaseRunnerLabel"),
     baseBranch: nullableStringAt(o, "baseBranch", endpoint, "baseBranch"),
     nextCutAt: nullableStringAt(o, "nextCutAt", endpoint, "nextCutAt"),
+    automaticRelease: booleanAt(o, "automaticRelease", endpoint, "automaticRelease"),
     issues: issues.map((entry, i) => entryAt(entry, endpoint, `issues[${i}]`)),
   };
 }

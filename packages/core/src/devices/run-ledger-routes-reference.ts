@@ -32,6 +32,7 @@ export const runSessionRowSchema = z.object({
   observedAt: z.string(),
   workSince: z.string(),
   sessionStatus: z.string().nullable(),
+  pipelineRunId: z.string().nullable().describe('the pipeline run the reported session works'),
   sessionRuntimeState: z.string().nullable(),
   sessionFailureReason: z.string().nullable(),
   lastActivityAt: z.string().nullable(),

@@ -110,15 +110,9 @@ export async function getTrippedDeviceIds(projectId: string): Promise<string[]> 
 export async function onlineCapableDeviceIds(
   projectId: string,
   requiredCapabilities?: RequiredCapabilities,
-  opts?: {
-    includeLimited?: boolean;
-    includeBelowFloor?: boolean;
-    allowDeviceIds?: string[] | null;
-  },
+  opts?: { allowDeviceIds?: string[] | null },
 ): Promise<string[]> {
   const required = JSON.stringify(requiredCapabilities ?? {});
-  const floorClause = opts?.includeBelowFloor ? sql`` : CLAIM_CAPABLE_DEVICE;
-  const limitClause = opts?.includeLimited ? sql`` : sql`AND ${runnerUnlimited('runners')}`;
   const rows = await db.execute<{ device_id: string }>(
     sql`
       SELECT DISTINCT device_id
@@ -127,10 +121,10 @@ export async function onlineCapableDeviceIds(
         AND device_id IS NOT NULL
         AND capabilities @> ${required}::jsonb
         AND ${runnerFresh('runners', livenessSeconds())}
-        ${limitClause}
+        AND ${runnerUnlimited('runners')}
         AND ${runnerWorkspaceReady('runners')}
         AND ${deviceNotDisabled('runners')}
-        ${floorClause}
+        ${CLAIM_CAPABLE_DEVICE}
         ${poolClause(opts?.allowDeviceIds)}
       ORDER BY device_id ASC
     `,

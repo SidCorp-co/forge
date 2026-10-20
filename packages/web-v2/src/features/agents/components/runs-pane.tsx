@@ -6,7 +6,7 @@ import { EmptyState, ErrorState, Input, MonoTag, Skeleton } from "@/design";
 import { useNow } from "@/design/hooks/use-now";
 import { useProjectRuns } from "@/features/runs/hooks";
 import { NO_BOX_REPORTS_A_RUN, NO_RUN_WORKING, RUN_APPEARS } from "@/features/sessions/status-sentences";
-import { runReadingChip, runSinceWord } from "@/features/runs/derive";
+import { runReadingChip, runSince } from "@/features/runs/derive";
 import { RUN_KIND_WORD, RUN_STATUS_WORD } from "@/features/runs/run-status-words";
 import type { PipelineRunListItem } from "@/features/runs/types";
 import { formatApiError } from "@/lib/api/error";
@@ -15,8 +15,10 @@ import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { applyFilters, type StateFilter } from "../filter";
 import { useRunSessions } from "../hooks";
+import { waitsNow } from "../run-state";
 import { openRuns, stalledRuns, workedRuns } from "../stalled-runs";
-import { RunRow } from "./run-row";
+import type { RunSessionRow } from "../types";
+import { CoreReading, coreReadingLines, Marks, RunRow, WaitingOn } from "./run-row";
 
 const FILTERS: Array<{ value: StateFilter; label: string }> = [
   { value: "all", label: "All" },
@@ -90,21 +92,67 @@ function RunWork({ run, slug }: { run: PipelineRunListItem; slug: string }) {
   return <span className="fg-body-sm text-fg">{RUN_KIND_WORD[run.kind] ?? run.kind}</span>;
 }
 
-/** An open run in the word its drawer reads it by, and since when. */
-function OpenRunRow({ run, slug, now }: { run: PipelineRunListItem; slug: string; now: number }) {
+/** A box's report of an open run, in that run's row: what it waits on, core's reading, the marks, the box. */
+function ReportLines({ report, now }: { report: RunSessionRow; now: number }) {
+  const core = coreReadingLines(report, now);
   return (
-    <li className="flex items-baseline gap-3 py-2">
-      <span className="min-w-0 flex-1">
+    <span data-run-report className="flex min-w-0 basis-full flex-wrap items-baseline gap-x-4 gap-y-1">
+      {waitsNow(report) && (
+        <span className="min-w-48 flex-1">
+          <WaitingOn row={report} />
+        </span>
+      )}
+      <CoreReading lines={core.lines} silence={core.silence} />
+      <Marks row={report} />
+      <span className="fg-caption flex min-w-0 items-baseline gap-2 text-subtle">
+        <span className="min-w-0 break-words">{report.deviceName ?? report.deviceId}</span>
+        <span className="flex-none whitespace-nowrap">{formatRelativeTime(report.observedAt)}</span>
+      </span>
+    </span>
+  );
+}
+
+/**
+ * An open run in the word its drawer reads it by, and since when, opening its drawer; a box's report
+ * of it sits in this row, so a run a box reports is listed once (ISS-1228 round 19).
+ */
+function OpenRunRow({
+  run,
+  slug,
+  now,
+  report,
+}: {
+  run: PipelineRunListItem;
+  slug: string;
+  now: number;
+  report?: RunSessionRow | undefined;
+}) {
+  const word = runReadingChip(run, now);
+  const since = runSince(run, now);
+  const waits = run.reading === "held" || run.reading === "starting" ? word.detail : undefined;
+  return (
+    <li data-run-row={run.id} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 py-2">
+      <span className="min-w-48 flex-1">
         <RunWork run={run} slug={slug} />
       </span>
-      <span className="flex flex-none items-baseline gap-3 whitespace-nowrap">
-        <span data-run-status className="fg-body-sm text-fg">
-          {runReadingChip(run, now).label}
+      <Link
+        href={`/ops?run=${run.id}`}
+        aria-label={`Open the run of ${runName(run)}: ${word.label}`}
+        className="flex flex-none items-baseline gap-3 whitespace-nowrap hover:underline focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+      >
+        <span data-run-status className="fg-body-sm text-fg" title={word.detail}>
+          {word.label}
         </span>
         <span data-run-since className="fg-caption tabular-nums">
-          {runSinceWord(run, now)} {formatRelativeTime(run.startedAt)}
+          {since.word} {formatRelativeTime(since.at)}
         </span>
-      </span>
+      </Link>
+      {waits && (
+        <span data-run-wait className="fg-caption basis-full text-muted">
+          {waits}
+        </span>
+      )}
+      {report && <ReportLines report={report} now={now} />}
     </li>
   );
 }
@@ -114,85 +162,6 @@ function runName(run: PipelineRunListItem): string {
   if (run.issueRef) return run.issueRef;
   if (run.group.issues.length > 0) return run.group.issues.join(" + ");
   return RUN_KIND_WORD[run.kind] ?? run.kind;
-}
-
-/**
- * What the tab shows where no box reports a run: every open run, each in the word the run drawer
- * reads it by, the runs that have closed, and above nothing, that none is working.
- */
-function NothingRunning({ projectId, slug, now }: { projectId: string; slug: string; now: number }) {
-  const runsQ = useProjectRuns(projectId);
-  const closed = useMemo(() => closedRuns(runsQ.data?.items), [runsQ.data]);
-  // Every open run, the band's stalled ones included, so no run is named or counted and not shown.
-  const open = useMemo(() => openRuns(runsQ.data?.items), [runsQ.data]);
-  const readWhole = !runsQ.isError && runsQ.data !== undefined && runsQ.data.totalCount <= runsQ.data.items.length;
-  const read = runsQ.data?.items.length ?? 0;
-  const total = runsQ.data?.totalCount ?? read;
-
-  if (runsQ.isLoading) {
-    return (
-      <div className="flex flex-col gap-2" aria-busy="true">
-        {[0, 1, 2].map((i) => (
-          <Skeleton key={i} className="h-9 w-full" />
-        ))}
-      </div>
-    );
-  }
-
-  if (!runsQ.isError && total === 0) {
-    return (
-      <div className="grid min-h-[40vh] place-items-center">
-        <EmptyState
-          title="No runs on this project"
-          message={RUN_APPEARS}
-        />
-      </div>
-    );
-  }
-
-  return (
-    <section className="flex flex-col gap-2">
-      {/* Said only above nothing: an open run listed beneath it is one a box may hold (ISS-1228). */}
-      {open.length === 0 && (
-        <p className="fg-body-sm text-fg">{readWhole ? NO_RUN_WORKING : NO_BOX_REPORTS_A_RUN}</p>
-      )}
-      {open.length > 0 && (
-        <>
-          <h3 className="fg-caption mt-2">Open runs · {open.length}</h3>
-          <ul aria-label="Open runs" className="flex flex-col divide-y divide-line border-y border-line">
-            {open.map((r) => (
-              <OpenRunRow key={r.id} run={r} slug={slug} now={now} />
-            ))}
-          </ul>
-        </>
-      )}
-      {closed.length > 0 && (
-        <>
-          <h3 className="fg-caption mt-2">
-            Closed runs · {closed.length}
-            {total > read ? ` — from the newest ${read} of ${total} runs` : ""}
-          </h3>
-          <ul aria-label="Closed runs" className="flex flex-col divide-y divide-line border-y border-line">
-            {closed.map((r) => (
-              // One rule at every width: what the run worked takes the rest of the line and wraps
-              // within itself; its outcome and age hold one line of their own at the right.
-              <li key={r.id} className="flex items-baseline gap-3 py-2">
-                <span className="min-w-0 flex-1">
-                  <RunWork run={r} slug={slug} />
-                </span>
-                <span data-run-outcome className="flex flex-none items-baseline gap-3 whitespace-nowrap">
-                  <span data-run-status className="fg-body-sm text-fg">
-                    {CLOSED_STATUS_WORD[r.status]}
-                  </span>
-                  <span className="fg-caption tabular-nums">{formatRelativeTime(r.finishedAt ?? r.startedAt)}</span>
-                </span>
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
-    </section>
-  );
 }
 
 /**
@@ -258,101 +227,133 @@ function StalledBand({ projectId, now }: { projectId: string; now: number }) {
   );
 }
 
-/** Whether the tab's search and state filter keep an open run nothing works: never Working, and a
- *  search over what its row shows. */
-function keepsStalled(run: PipelineRunListItem, q: string, filter: StateFilter): boolean {
-  if (filter === "working") return false;
-  const needle = q.trim().toLowerCase();
-  const hay = [runName(run), run.issueTitle ?? "", ...Object.values(run.groupTitles ?? {})].join(" ").toLowerCase();
-  return hay.includes(needle);
+/** Each open run's newest box report, by the run its session works. */
+function reportsByRun(reports: readonly RunSessionRow[]): Map<string, RunSessionRow> {
+  const out = new Map<string, RunSessionRow>();
+  for (const r of reports) {
+    if (!r.pipelineRunId) continue;
+    const seen = out.get(r.pipelineRunId);
+    if (!seen || seen.observedAt < r.observedAt) out.set(r.pipelineRunId, r);
+  }
+  return out;
 }
 
-/** Beside the runs boxes report, every open run nothing works, so each run the band names is a row
- *  on this tab (ISS-1228). */
-function StalledRunRows({ runs, slug, now }: { runs: readonly PipelineRunListItem[]; slug: string; now: number }) {
-  if (runs.length === 0) return null;
-  return (
-    <>
-      <h3 className="fg-caption mt-2">Nothing working · {runs.length}</h3>
-      <ul aria-label="Open runs nothing works" className="flex flex-col divide-y divide-line border-y border-line">
-        {runs.map((r) => (
-          <OpenRunRow key={r.id} run={r} slug={slug} now={now} />
-        ))}
-      </ul>
-    </>
-  );
+/** Whether the tab's search and state filter keep an open run: Working is a run reading Running, Not
+ *  progressing every other open run, and the search reads what its row shows. */
+function keepsOpen(
+  run: PipelineRunListItem,
+  report: RunSessionRow | undefined,
+  q: string,
+  filter: StateFilter,
+  now: number,
+): boolean {
+  const running = runReadingChip(run, now).label === RUN_STATUS_WORD.running;
+  if (filter === "working" && !running) return false;
+  if (filter === "waiting" && running) return false;
+  const needle = q.trim().toLowerCase();
+  if (needle === "") return true;
+  const hay = [
+    runName(run),
+    run.issueTitle ?? "",
+    ...Object.values(run.groupTitles ?? {}),
+    report?.deviceName ?? "",
+    report?.worktreePath ?? "",
+  ]
+    .join(" ")
+    .toLowerCase();
+  return hay.includes(needle);
 }
 
 export function RunsPane({ scope }: RunsPaneProps) {
   useRoom(projectRoom(scope.projectId));
-  const { data, isLoading, isError, error, refetch } = useRunSessions(scope.projectId);
+  const reportsQ = useRunSessions(scope.projectId);
+  const runsQ = useProjectRuns(scope.projectId);
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState<StateFilter>("all");
   const now = useNow(10_000);
 
-  const all = data?.items ?? [];
-  const rows = useMemo(() => applyFilters(all, q, filter, now), [all, q, filter, now]);
-  const runsQ = useProjectRuns(scope.projectId);
-  const stalled = useMemo(
-    () => stalledRuns(runsQ.data?.items, now).filter((r) => keepsStalled(r, q, filter)),
-    [runsQ.data, now, q, filter],
+  const reports = reportsQ.data?.items ?? [];
+  const open = useMemo(() => openRuns(runsQ.data?.items), [runsQ.data]);
+  const byRun = useMemo(() => reportsByRun(reports), [reports]);
+  const openIds = useMemo(() => new Set(open.map((r) => r.id)), [open]);
+  // Every open run is one row, a box's report of it inside; a report with no open run keeps its own.
+  const shownOpen = useMemo(
+    () => open.filter((r) => keepsOpen(r, byRun.get(r.id), q, filter, now)),
+    [open, byRun, q, filter, now],
   );
+  const unmatched = useMemo(
+    () => reports.filter((r) => !(r.pipelineRunId && openIds.has(r.pipelineRunId))),
+    [reports, openIds],
+  );
+  const shownReports = useMemo(() => applyFilters(unmatched, q, filter, now), [unmatched, q, filter, now]);
+  const closed = useMemo(() => closedRuns(runsQ.data?.items), [runsQ.data]);
+  const read = runsQ.data?.items.length ?? 0;
+  const total = runsQ.data?.totalCount ?? read;
+  const readWhole = !runsQ.isError && runsQ.data !== undefined && total <= read;
+
+  const loading = reportsQ.isLoading || runsQ.isLoading;
+  // A runs read that failed is said by the band above; the boxes' reports still list beneath it.
+  const failed = reportsQ.isError ? reportsQ : null;
+  const nothing = open.length === 0 && reports.length === 0;
 
   return (
     <div className="flex flex-col gap-3 py-4">
       <StalledBand projectId={scope.projectId} now={now} />
-      {isLoading ? (
+      {loading ? (
         <div className="flex flex-col gap-2" aria-busy="true">
           <Skeleton className="h-9 w-full max-w-sm" />
           {[0, 1, 2].map((i) => (
             <Skeleton key={i} className="h-14 w-full" />
           ))}
         </div>
-      ) : isError ? (
+      ) : failed ? (
         <div className="grid min-h-[40vh] place-items-center">
-          <ErrorState message={formatApiError(error)} onRetry={() => refetch()} />
+          <ErrorState message={formatApiError(failed.error)} onRetry={() => failed.refetch()} />
         </div>
-      ) : all.length === 0 ? (
-        <NothingRunning projectId={scope.projectId} slug={scope.slug} now={now} />
+      ) : nothing && !runsQ.isError && total === 0 ? (
+        <div className="grid min-h-[40vh] place-items-center">
+          <EmptyState title="No runs on this project" message={RUN_APPEARS} />
+        </div>
       ) : (
-        <>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <Input
-              icon="search"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Filter by issue, box or worktree"
-              aria-label="Filter runs"
-              className="w-full sm:max-w-sm"
-            />
-            <fieldset className="flex flex-none items-center gap-1 border-0 p-0">
-              <legend className="sr-only">Run state</legend>
-              {FILTERS.map((f) => (
-                <button
-                  key={f.value}
-                  type="button"
-                  onClick={() => setFilter(f.value)}
-                  aria-pressed={filter === f.value}
-                  className="fg-caption rounded-md border border-line px-2 py-1 transition-colors hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)] max-md:min-h-[36px]"
-                  style={
-                    filter === f.value
-                      ? { background: "var(--paper-200)", color: "var(--fg-default)" }
-                      : { color: "var(--fg-muted)" }
-                  }
-                >
-                  {f.label}
-                </button>
-              ))}
-            </fieldset>
-          </div>
-
-          {rows.length === 0 && stalled.length === 0 ? (
+        <section className="flex flex-col gap-2">
+          {/* Said only above nothing: an open run listed beneath it is one a box may hold (ISS-1228). */}
+          {nothing && <p className="fg-body-sm text-fg">{readWhole ? NO_RUN_WORKING : NO_BOX_REPORTS_A_RUN}</p>}
+          {!nothing && (
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <Input
+                icon="search"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Filter by issue, box or worktree"
+                aria-label="Filter runs"
+                className="w-full sm:max-w-sm"
+              />
+              <fieldset className="flex flex-none items-center gap-1 border-0 p-0">
+                <legend className="sr-only">Run state</legend>
+                {FILTERS.map((f) => (
+                  <button
+                    key={f.value}
+                    type="button"
+                    onClick={() => setFilter(f.value)}
+                    aria-pressed={filter === f.value}
+                    className="fg-caption rounded-md border border-line px-2 py-1 transition-colors hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)] max-md:min-h-[36px]"
+                    style={
+                      filter === f.value
+                        ? { background: "var(--paper-200)", color: "var(--fg-default)" }
+                        : { color: "var(--fg-muted)" }
+                    }
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </fieldset>
+            </div>
+          )}
+          {!nothing && shownOpen.length === 0 && shownReports.length === 0 && (
             <EmptyState
               mascot={false}
               title="No runs match"
-              message={
-                q.trim() === "" ? "No runs in this state right now." : `No runs match “${q.trim()}”.`
-              }
+              message={q.trim() === "" ? "No runs in this state right now." : `No runs match “${q.trim()}”.`}
               action={{
                 label: "Clear filters",
                 onClick: () => {
@@ -361,17 +362,53 @@ export function RunsPane({ scope }: RunsPaneProps) {
                 },
               }}
             />
-          ) : (
-            rows.length > 0 && (
+          )}
+          {shownOpen.length > 0 && (
+            <>
+              <h3 className="fg-caption mt-2">Open runs · {shownOpen.length}</h3>
+              <ul aria-label="Open runs" className="flex flex-col divide-y divide-line border-y border-line">
+                {shownOpen.map((r) => (
+                  <OpenRunRow key={r.id} run={r} slug={scope.slug} now={now} report={byRun.get(r.id)} />
+                ))}
+              </ul>
+            </>
+          )}
+          {shownReports.length > 0 && (
+            <>
+              <h3 className="fg-caption mt-2">Reported by boxes, no open run · {shownReports.length}</h3>
               <ul aria-label="Runs a box reports" className="flex flex-col divide-y divide-line border-y border-line">
-                {rows.map((row) => (
+                {shownReports.map((row) => (
                   <RunRow key={row.runId} row={row} now={now} slug={scope.slug} />
                 ))}
               </ul>
-            )
+            </>
           )}
-          <StalledRunRows runs={stalled} slug={scope.slug} now={now} />
-        </>
+          {closed.length > 0 && (
+            <>
+              <h3 className="fg-caption mt-2">
+                Closed runs · {closed.length}
+                {total > read ? ` — from the newest ${read} of ${total} runs` : ""}
+              </h3>
+              <ul aria-label="Closed runs" className="flex flex-col divide-y divide-line border-y border-line">
+                {closed.map((r) => (
+                  // One rule at every width: what the run worked takes the rest of the line and wraps
+                  // within itself; its outcome and age hold one line of their own at the right.
+                  <li key={r.id} className="flex items-baseline gap-3 py-2">
+                    <span className="min-w-0 flex-1">
+                      <RunWork run={r} slug={scope.slug} />
+                    </span>
+                    <span data-run-outcome className="flex flex-none items-baseline gap-3 whitespace-nowrap">
+                      <span data-run-status className="fg-body-sm text-fg">
+                        {CLOSED_STATUS_WORD[r.status]}
+                      </span>
+                      <span className="fg-caption tabular-nums">{formatRelativeTime(r.finishedAt ?? r.startedAt)}</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </section>
       )}
     </div>
   );

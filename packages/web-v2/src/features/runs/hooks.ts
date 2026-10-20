@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { LIVE_READ_POLL_MS } from "@/features/sessions/types";
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import { runsApi } from "./api";
@@ -13,6 +14,8 @@ export function useProjectRuns(projectId: string | undefined) {
     queryKey: ["pipeline-runs", "list", projectId],
     queryFn: () => runsApi.runsForProject({ projectId: projectId as string }),
     enabled: !!projectId,
+    // A box's ledger report moves a run's word without an event, so the list polls with the report.
+    refetchInterval: LIVE_READ_POLL_MS,
   });
 }
 
@@ -23,6 +26,7 @@ export function useRun(runId: string | undefined, enabled = true) {
     queryKey: ["pipeline-run", runId],
     queryFn: () => runsApi.run(runId as string),
     enabled: enabled && !!runId,
+    refetchInterval: LIVE_READ_POLL_MS,
   });
 }
 

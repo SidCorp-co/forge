@@ -1,3 +1,4 @@
+import type { RunBlock, RunHold, RunReading } from "@/features/runs/types";
 
 import type { BodyNode, ForgeRecordView, RecordLens, ReleaseNotes } from "@forge/contracts";
 import {
@@ -344,6 +345,12 @@ export interface JournalRun {
   costUsd: number | null;
   /** The newest agent session the run started; null where none ran it. */
   sessionId: string | null;
+  /** What core says the run's agent is doing, as the run listing answers it; absent from an older core. */
+  reading?: RunReading | null;
+  hold?: RunHold | null;
+  block?: RunBlock | null;
+  /** When the run's work started; null where nothing on it has. */
+  runningSince?: string | null;
   attempts: JournalAttempt[];
 }
 

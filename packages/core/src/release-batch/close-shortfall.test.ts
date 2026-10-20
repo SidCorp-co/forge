@@ -93,7 +93,7 @@ describe('rosterCloseShortfalls', () => {
     // On the issue's own page the cards sit right above the banner (ISS-1421 r5 repair 1).
     expect(found?.clearsHere).toBe('Answer them in the Decision waiting cards above.');
     expect(found?.clearsHere).not.toMatch(/issue's page/);
-    expect(found?.detail).toContain('this issue holds 2 open questions (q-1, q-2)');
+    expect(found?.detail).toContain('This issue holds 2 open questions (q-1, q-2)');
     expect(found?.details).toEqual({ to: 'closed', openQuestionIds: ['q-1', 'q-2'] });
   });
 

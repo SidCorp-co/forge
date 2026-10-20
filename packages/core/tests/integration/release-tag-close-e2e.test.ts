@@ -172,7 +172,7 @@ describe('POST /api/issues/:id/transition to closed, on a project that ships by 
     expect(body.code).toBe('CLOSE_REQUIRES_RELEASE_TAG');
     expect(body.message).toContain(landing);
     expect(body.message).toContain('`a-v1.0.0`');
-    expect(body.message).toContain('rests at Awaiting release (awaiting_release)');
+    expect(body.message).toContain('rests at Awaiting release');
     expect(body.details).toMatchObject({
       pattern: 'a-v*',
       landing,

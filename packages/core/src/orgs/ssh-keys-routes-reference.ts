@@ -94,7 +94,7 @@ export const deleteSshKey = describeOperation({
 export const testSshKey = describeOperation({
   summary: 'Check that a key can reach a repository over SSH',
   description:
-    'A refused or unreachable remote is an answer with `ok: false`, not an error. The URL must be an SSH remote that resolves to public addresses only.',
+    'A refused or unreachable remote is an answer with `ok: false`, not an error, and so is a stored key Forge cannot decrypt (`key_unreadable`). The URL must be an SSH remote that resolves to public addresses only.',
   responses: {
     200: json(sshConnectionTestSchema, 'What the probe found'),
     400: fail({
@@ -104,7 +104,6 @@ export const testSshKey = describeOperation({
     }),
     403: fail('FORBIDDEN', 'the caller is not a member of the organization'),
     404: fail('NOT_FOUND', `${NO_ORG}, or it holds no such key`),
-    500: fail('DECRYPT_FAILED', 'the stored key cannot be decrypted, as after a vault key change'),
     503: fail('VAULT_NOT_CONFIGURED', VAULT),
   },
 });

@@ -250,7 +250,8 @@ export async function openRunSession(args: {
         kind: RUN_SESSION_KIND,
         parentSessionId: masterSessionId,
         status: 'running',
-        startedAt: new Date(),
+        // No start until the session's first check-in, which the session patch route stamps: a
+        // session that never checks in reads Starting, never Running (ISS-1228).
         lastHeartbeatAt: new Date(),
         metadata: { terminalName: args.name, deviceId: args.deviceId },
       })

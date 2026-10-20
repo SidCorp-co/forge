@@ -11,7 +11,7 @@ import type { IssueDependencyExecutor } from '../issues/dependency-executor.js';
 import {
   ISSUE_STATUS_LABELS,
   ISSUE_TERMINAL_STATUSES,
-  statusForCaller,
+  statusLabel,
 } from '../issues/status-sets.js';
 
 type Executor = IssueDependencyExecutor;
@@ -78,7 +78,7 @@ export function openQuestionsFault(
   const noun = ids.length === 1 ? 'open question' : 'open questions';
   return {
     code: 'OPEN_QUESTIONS',
-    detail: `this issue holds ${ids.length} ${noun} (${ids.join(', ')}), and ${statusForCaller(toStatus)} would leave ${ids.length === 1 ? 'it' : 'them'} asking a person for a decision nothing can act on. Answer ${ids.length === 1 ? 'it' : 'them'} first, or send this move again with \`voidQuestions: "<why they died with the work>"\`, which voids each one with that reason in the same write.`,
+    detail: `This issue holds ${ids.length} ${noun} (${ids.join(', ')}), and ${statusLabel(toStatus)} would leave ${ids.length === 1 ? 'it' : 'them'} asking a person for a decision nothing can act on. Answer ${ids.length === 1 ? 'it' : 'them'} first, or send this move again with \`voidQuestions: "<why they died with the work>"\`, which voids each one with that reason in the same write.`,
     details: { to: toStatus, openQuestionIds: [...ids] },
   };
 }

@@ -2,12 +2,16 @@ import type { StatusKey } from "@/design/status";
 import { sessionStatusLabel } from "@/design/primitives/status-chip";
 import { gateReasonLine } from "@/features/runners/types";
 import {
+  blockedHoldingText,
+  checkInByText,
   GATE_TEXT,
   gateAdmittedText,
   gateReasonText,
   gateUnreadableDetailText,
+  heldText,
+  parkedText,
 } from "@/features/sessions/status-sentences";
-import { formatDurationMs } from "@/lib/utils/format";
+import { formatDurationMs, formatElapsed } from "@/lib/utils/format";
 import { RUN_STATUS_WORD } from "./run-status-words";
 import type { PipelineRunStatus, PipelineRunSummary, RunGate, RunReading, StepDurationRow } from "./types";
 
@@ -27,7 +31,14 @@ export function runStatusToStatusKey(status: PipelineRunStatus): StatusKey {
   }
 }
 
-const OPEN_RUN_WORD: Record<Exclude<RunReading, "running">, { status: StatusKey; label: string }> = {
+/** A run's word on every surface, and the sentence its hover reads. */
+export interface RunWord {
+  status: StatusKey;
+  label: string;
+  detail?: string;
+}
+
+const OPEN_RUN_WORD: Record<Exclude<RunReading, "running" | "blocked" | "held">, RunWord> = {
   starting: { status: "queued", label: "Starting" },
   queued: { status: "queued", label: "Queued" },
   waiting: { status: "waiting", label: sessionStatusLabel("waiting") },
@@ -35,7 +46,8 @@ const OPEN_RUN_WORD: Record<Exclude<RunReading, "running">, { status: StatusKey;
 
 const RUN_START_GRACE_MS = 3 * 60_000;
 
-type RunLiveFields = Pick<PipelineRunSummary, "status" | "reading" | "liveJobs" | "lastSessionBeatAt" | "startedAt">;
+type RunLiveFields = Pick<PipelineRunSummary, "status" | "reading" | "liveJobs" | "lastSessionBeatAt" | "startedAt"> &
+  Partial<Pick<PipelineRunSummary, "hold" | "block" | "checkInBy" | "runningSince">>;
 
 /** Core ends a silent session itself, so a session it holds open is an agent behind the run. */
 export function sessionIsBeating(run: Pick<PipelineRunSummary, "lastSessionBeatAt">): boolean {
@@ -59,29 +71,75 @@ export function runIsStalled(run: RunLiveFields, nowMs: number): boolean {
   );
 }
 
-function unreadRunWord(run: RunLiveFields, nowMs: number): { status: StatusKey; label: string } {
+function unreadRunWord(run: RunLiveFields, nowMs: number): RunWord {
   if (runIsStalled(run, nowMs)) return { status: "zombie", label: "Nothing working" };
   if ((run.liveJobs ?? 0) === 0 && !sessionIsBeating(run)) return OPEN_RUN_WORD.starting;
   return { status: "running", label: RUN_STATUS_WORD.running };
 }
 
-/** The one word a run reads on every surface, the runs tab and the drawer's header alike: an open run
- *  by what core says its agent is doing, any other by its own status (ISS-1228). */
-export function runReadingChip(run: RunLiveFields, nowMs: number): { status: StatusKey; label: string } {
+/** When core next tries a hold that waits out a clock, as a reader's clock reads it. */
+function recheckClock(at: string | null | undefined): string | null {
+  if (!at) return null;
+  const ms = Date.parse(at);
+  return Number.isNaN(ms) ? null : new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+/** A held step's sentence, the drawer's activity row and the run's hover alike (ISS-1228 round 19). */
+export const holdSentence = (hold: PipelineRunSummary["hold"]): string => heldText(hold, recheckClock(hold?.recheckAt));
+
+/** A run a box reports blocked: its word by whether the box's process is gone and who holds the wait. */
+function blockedWord(block: PipelineRunSummary["block"]): RunWord {
+  const kind = block?.blockerKind ?? null;
+  if (block?.parked) {
+    return { status: "blocked", label: kind === "human" ? "Parked for a person" : "Parked", detail: parkedText(kind) };
+  }
+  return { status: "blocked", label: "Blocked, holding the box", detail: blockedHoldingText(kind) };
+}
+
+/** A starting run's hover: how long core waits for a session that has not checked in. */
+function startingWord(run: RunLiveFields, nowMs: number): RunWord {
+  if (!run.checkInBy) return OPEN_RUN_WORD.starting;
+  const left = Date.parse(run.checkInBy) - nowMs;
+  return { ...OPEN_RUN_WORD.starting, detail: checkInByText(left > 0 ? formatElapsed(left) : null) };
+}
+
+/** The one word a run reads on every surface — the runs tab, the drawer's header and open attempt, the
+ *  issue page — an open run by what core says its agent is doing, any other by its own status (ISS-1228). */
+export function runReadingChip(run: RunLiveFields, nowMs: number): RunWord {
   if (run.status !== "running" || run.reading === "running") {
     return { status: runStatusToStatusKey(run.status), label: RUN_STATUS_WORD[run.status] };
   }
-  return run.reading == null ? unreadRunWord(run, nowMs) : OPEN_RUN_WORD[run.reading];
+  switch (run.reading) {
+    case null:
+    case undefined:
+      return unreadRunWord(run, nowMs);
+    case "held":
+      return { status: "paused", label: "Held", detail: holdSentence(run.hold ?? null) };
+    case "blocked":
+      return blockedWord(run.block ?? null);
+    case "starting":
+      return startingWord(run, nowMs);
+    default:
+      return OPEN_RUN_WORD[run.reading];
+  }
 }
 
-/** Whether anything has started on an open run: an agent working, or a chat waiting on its person. */
+/** Whether anything has started on an open run: an agent working or waiting on someone, or a chat
+ *  waiting on its person. */
 export const runHasStarted = (run: Pick<PipelineRunSummary, "status" | "reading">): boolean =>
-  run.status === "running" && (run.reading === "running" || run.reading === "waiting");
+  run.status === "running" && (run.reading === "running" || run.reading === "waiting" || run.reading === "blocked");
 
-/** What a run's time is: when it opened while nothing works it, when it started once an agent does. */
+/** When a run's time is from, and what it is called: its work's start once it runs, else its opening. */
+export function runSince(run: RunLiveFields, nowMs: number): { word: "Started" | "Opened"; at: string } {
+  const working = run.status !== "running" || runHasStarted(run) || runReadingChip(run, nowMs).label === RUN_STATUS_WORD.running;
+  // An older core answers no start of work; its opening is all there is to say it from.
+  if (working) return { word: "Started", at: run.runningSince ?? run.startedAt };
+  return { word: "Opened", at: run.startedAt };
+}
+
+/** What a run's time is called: Opened until its work starts, Started once it has (`runSince`). */
 export function runSinceWord(run: RunLiveFields, nowMs: number): string {
-  if (run.status !== "running" || run.reading === "waiting") return "Started";
-  return runReadingChip(run, nowMs).label === RUN_STATUS_WORD.running ? "Started" : "Opened";
+  return runSince(run, nowMs).word;
 }
 
 /** Median of a numeric list (`null` for an empty list). Used by the dashboard's

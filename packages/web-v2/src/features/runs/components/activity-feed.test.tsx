@@ -213,3 +213,73 @@ describe("the collapsed-repeat badge is reachable without a mouse", () => {
     expect(screen.queryByRole("tooltip")).toBeNull();
   });
 });
+
+// ISS-1228 round 19 (judge-57): a closed run with no attempt still promised attempts would appear.
+describe("a closed run's activity promises nothing", () => {
+  it("says nothing ran on a closed run with no attempt and no session", () => {
+    render(
+      <ActivityTab run={{ ...run([]), status: "failed", finishedAt: "2026-08-30T10:10:00.000Z" }} loading={false} error={null} onRetry={noop} />,
+    );
+    expect(screen.getByText("Nothing ran on this run")).toBeInTheDocument();
+    expect(screen.queryByText(/Attempts appear here/)).toBeNull();
+  });
+
+  it("says a session worked a closed run session, linking its page", () => {
+    render(
+      <ActivityTab
+        run={{ ...run([]), lane: "run_session", status: "failed", finishedAt: "2026-08-30T10:10:00.000Z", sessionId: "s7", runningSince: "2026-08-30T10:01:00.000Z" }}
+        sessionHref="/projects/qa/agents/s7"
+        loading={false}
+        error={null}
+        onRetry={noop}
+      />,
+    );
+    expect(screen.queryByText(/Attempts appear here/)).toBeNull();
+    expect(screen.getByRole("link", { name: "Its session's page shows what it did." })).toHaveAttribute(
+      "href",
+      "/projects/qa/agents/s7",
+    );
+  });
+
+  it("says nothing ran on a closed run whose session never checked in, never that a session worked it", () => {
+    render(
+      <ActivityTab
+        run={{ ...run([]), lane: "run_session", status: "failed", finishedAt: "2026-08-30T10:10:00.000Z", sessionId: "s7", runningSince: null }}
+        sessionHref="/projects/qa/agents/s7"
+        loading={false}
+        error={null}
+        onRetry={noop}
+      />,
+    );
+    expect(screen.getByText("Nothing ran on this run")).toBeInTheDocument();
+    expect(screen.queryByText(/A session worked this run/)).toBeNull();
+    expect(screen.getByRole("link", { name: "Its session's page shows how it ended." })).toBeInTheDocument();
+  });
+
+  it("says a run session that has not checked in has not started, never that it worked the run", () => {
+    render(
+      <ActivityTab
+        run={{ ...run([]), lane: "run_session", reading: "starting", sessionId: "s7", runningSince: null }}
+        sessionHref="/projects/qa/agents/s7"
+        loading={false}
+        error={null}
+        onRetry={noop}
+      />,
+    );
+    expect(screen.getByText("Not started yet")).toBeInTheDocument();
+    expect(screen.queryByText(/A session worked this run/)).toBeNull();
+  });
+
+  it("links the session's page from an open run its session works", () => {
+    render(
+      <ActivityTab
+        run={{ ...run([]), lane: "run_session", reading: "running", sessionId: "s7" }}
+        sessionHref="/projects/qa/agents/s7"
+        loading={false}
+        error={null}
+        onRetry={noop}
+      />,
+    );
+    expect(screen.getByRole("link", { name: "Its session's page shows what it is doing." })).toBeInTheDocument();
+  });
+});

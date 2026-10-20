@@ -3,7 +3,7 @@
 
 import { Hono } from 'hono';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { statusForCaller } from './status-sets.js';
+import { statusLabel } from './status-sets.js';
 
 const TEST_SECRET = 'test-secret-at-least-32-chars-long-abcdef';
 
@@ -108,10 +108,17 @@ describe('a status write into a retired rung', () => {
     queueAuthAndIssue('in_progress');
     const res = await req({ toStatus: retired }, token);
     expect(res.status).toBe(409);
-    const body = (await res.json()) as { code: string; message: string };
+    const body = (await res.json()) as {
+      code: string;
+      message: string;
+      details: Record<string, unknown>;
+    };
     expect(body.code).toBe('ILLEGAL_TRANSITION');
-    expect(body.message).toContain(`${statusForCaller(retired)} is a retired rung`);
-    expect(body.message).toContain(`Write ${statusForCaller(replacement)} instead`);
+    // The labels a person reads; the values a caller sends back stay in details (ISS-1421 r13).
+    expect(body.message).toContain(`${statusLabel(retired)} is retired`);
+    expect(body.message).toContain(`Use ${statusLabel(replacement)}, which took its place.`);
+    expect(body.message).not.toContain(`(${retired})`);
+    expect(body.details).toMatchObject({ to: retired, replacedBy: replacement });
     expect(dbUpdate).not.toHaveBeenCalled();
   });
 

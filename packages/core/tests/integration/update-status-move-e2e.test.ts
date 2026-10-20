@@ -120,7 +120,7 @@ describe('forge_issues update — a status move and the writes beside it are one
       data: { status: 'confirmed' },
     });
 
-    expect(said).toContain('NO_OP: issue already in status Confirmed (confirmed)');
+    expect(said).toContain('NO_OP: The issue is already at Confirmed.');
     expect(said).not.toContain('Nothing else');
     expect((await row(id)).status).toBe('confirmed');
   });
@@ -139,7 +139,7 @@ describe('forge_issues update — a status move and the writes beside it are one
     expect(said).toMatch(
       /^forge_issues refused: Error: NO_OP: The status move was refused, so nothing else this update carried was written: send it again without `data\.status` to write the rest\. /,
     );
-    expect(said).toContain('Issue already in status Confirmed (confirmed)');
+    expect(said).toContain('The issue is already at Confirmed.');
     expect(await row(id)).toEqual(before);
   });
 

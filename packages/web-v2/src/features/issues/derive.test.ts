@@ -52,6 +52,7 @@ import {
 	statusFilterFromParams,
 	transitionLabels,
 } from "./derive";
+import { openRunWord } from "./derive";
 import type { ParkReading } from "./derive";
 import type {
 	IssueDependencies,
@@ -1713,5 +1714,35 @@ describe("issueSessionId — the session Open session opens", () => {
 		expect(issueSessionId([], runs(null, null))).toBeNull();
 		expect(issueSessionId([], [])).toBeNull();
 	});
+});
+
+/** ISS-1228 round 19 (judge-57): the issue page read Failed and "Run 1 · Running" while core held its job. */
+describe("the issue page's open run, in core's word (round 19)", () => {
+  const base = { status: "running" as const, startedAt: "2026-10-19T22:49:00.000Z", runningSince: null, hold: null, block: null };
+
+  it("reads a run whose job core holds as Held, never the failed session's verdict", () => {
+    const word = openRunWord(
+      [{ ...base, reading: "held", hold: { reason: "all_devices_exhausted", resumesItself: true, recheckAt: null, since: null } }],
+      Date.parse("2026-10-19T23:10:00.000Z"),
+    );
+    expect(word?.label).toBe("Held");
+    expect(word?.detail).toBe("No box could take it. Core sends it again once a box can take it.");
+  });
+
+  it("reads a blocked run in the runs tab's blocked word", () => {
+    expect(openRunWord([{ ...base, reading: "blocked", block: { blockerKind: "human", parked: true } }], 0)?.label).toBe(
+      "Parked for a person",
+    );
+  });
+
+  it("leaves the sessions' verdict standing where no open run has a reading", () => {
+    expect(openRunWord([{ ...base, reading: undefined }], 0)).toBeNull();
+    expect(openRunWord([{ ...base, status: "failed", reading: "held" }], 0)).toBeNull();
+  });
+
+  it("reads an open run nothing lives on as Nothing working, the word the runs tab and drawer read", () => {
+    const word = openRunWord([{ ...base, reading: null }], Date.parse("2026-10-19T23:10:00.000Z"));
+    expect(word?.label).toBe("Nothing working");
+  });
 });
 

@@ -26,7 +26,7 @@ function seeStatus(sessionId: string, status: string): void {
 }
 
 // biome-ignore lint/suspicious/noExplicitAny: heterogeneous payloads
-function statusUnmoved(data: any): data is { sessionId: string; status: string } {
+function statusUnmoved(data: any): data is { sessionId: string; status: string; started?: boolean } {
 	return (
 		typeof data?.sessionId === "string" &&
 		typeof data?.status === "string" &&
@@ -41,6 +41,13 @@ function rereadWhatShowsSession(qc: QueryClient, sessionId: string): void {
 	scheduleInvalidation(qc, ["agent-sessions"]);
 	scheduleInvalidation(qc, [SESSIONS_AND_HOLDS]);
 	scheduleInvalidation(qc, [RUN_SESSIONS]);
+}
+
+/** Every read that says a run's word: its row on the runs tab, its open drawer and the issue page's Runs. */
+function rereadRunReadings(qc: QueryClient): void {
+	scheduleInvalidation(qc, ["pipeline-runs", "list"]);
+	scheduleInvalidation(qc, ["pipeline-run"]);
+	scheduleInvalidation(qc, [RUN_JOURNAL]);
 }
 
 interface EventEnvelope {
@@ -167,6 +174,7 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 			}
 			if (event === "agent-session.updated" && statusUnmoved(data)) {
 				rereadWhatShowsSession(qc, data.sessionId);
+				if (data.started === true) rereadRunReadings(qc);
 				return;
 			}
 			if (typeof data?.sessionId === "string" && typeof data?.status === "string") {
@@ -175,7 +183,7 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 			scheduleInvalidation(qc, ["agent-sessions"]);
 			scheduleInvalidation(qc, [SESSIONS_AND_HOLDS]);
 			// A session's events name no issue, so every open issue page and runs tab re-reads (ISS-1228).
-			scheduleInvalidation(qc, [RUN_JOURNAL]);
+			rereadRunReadings(qc);
 			scheduleInvalidation(qc, [RUN_SESSIONS]);
 			// The rail and the projects console count live sessions off the health rollup.
 			scheduleInvalidation(qc, ["projects", "health"]);
@@ -222,6 +230,7 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 		case "job.retried":
 		case "job.cancelled": {
 			scheduleInvalidation(qc, ["jobs", "list"]);
+			rereadRunReadings(qc);
 			scheduleInvalidation(qc, ["admin", "ops"]);
 			// ISS-307 — a job flipping to failed (incl. deploy) belongs in Attention's
 			// failed-jobs bucket; refresh the cross-project inbox + rail count.
@@ -302,6 +311,7 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 			scheduleInvalidation(qc, ["agent-session"]);
 			scheduleInvalidation(qc, [SESSIONS_AND_HOLDS]);
 			scheduleInvalidation(qc, [RUN_SESSIONS]);
+			rereadRunReadings(qc);
 			return;
 		}
 		case "runner.status":
@@ -398,6 +408,8 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 const REPLAY_PREFIXES: readonly (readonly unknown[])[] = [
 	["issues"],
 	[RUN_JOURNAL],
+	["pipeline-runs"],
+	["pipeline-run"],
 	[RUN_SESSIONS],
 	[SESSIONS_AND_HOLDS],
 	["jobs"],

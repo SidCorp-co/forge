@@ -20,13 +20,19 @@ type JobRow = typeof jobs.$inferSelect;
 export async function failOccupyingJob(
   job: { id: string; status: JobStatus },
   deviceId: string,
-  input: { error: string; salvage?: SalvageRecord | undefined },
+  input: { error: string; salvage?: SalvageRecord | undefined; failureReason?: string | undefined },
   finalize: Pick<FinalizeFailedJobOptions, 'precomputedRetry' | 'runContinues'> = {},
 ): Promise<{ updated: JobRow; retry: RetryOutcome }> {
   let [updated] = await applyKernelTransition(db, {
     entity: 'job',
     to: 'failed',
-    set: { error: input.error, finishedAt: new Date(), ...salvageSet(input.salvage) },
+    set: {
+      error: input.error,
+      finishedAt: new Date(),
+      ...salvageSet(input.salvage),
+      // A cause the caller knows is recorded with the failure, so no reader takes it as unclassified.
+      ...(input.failureReason ? { failureReason: input.failureReason } : {}),
+    },
     where: and(eq(jobsTable.id, job.id), eq(jobsTable.status, job.status)),
     fromStatus: job.status,
     reason: input.error,

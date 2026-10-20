@@ -16,7 +16,16 @@ import {
 const lookup = vi.fn();
 vi.mock('node:dns', () => ({ promises: { lookup: (...a: unknown[]) => lookup(...a) } }));
 
-const { testSshConnection, withDeployKey } = await import('./ssh-keys.js');
+process.env.INTEGRATION_MASTER_KEY ??= Buffer.alloc(32, 7).toString('base64');
+const {
+  derivePublicFromPrivate,
+  STORED_KEY_UNREADABLE,
+  testSshConnection,
+  testStoredSshKey,
+  UnreadablePrivateKeyError,
+  withDeployKey,
+} = await import('./ssh-keys.js');
+const { encryptSecret } = await import('../integrations/vault.js');
 
 beforeEach(() => {
   lookup.mockReset();
@@ -53,7 +62,7 @@ describe('testSshConnection', () => {
     await expect(testSshConnection('git@127.0.0.1:sid/desk.git', 'key')).resolves.toEqual({
       ok: false,
       code: 'error',
-      message: 'that host resolves to a private/internal address and cannot be probed',
+      message: 'That host resolves to a private/internal address and cannot be probed.',
     });
   });
 
@@ -62,7 +71,7 @@ describe('testSshConnection', () => {
     await expect(testSshConnection('git@nowhere.example:sid/desk.git', 'key')).resolves.toEqual({
       ok: false,
       code: 'host_unreachable',
-      message: 'the repository host nowhere.example could not be resolved',
+      message: 'The repository host nowhere.example could not be resolved.',
     });
   });
 });
@@ -148,4 +157,53 @@ describe('testSshConnection, in the words each host refuses with', () => {
       expect(test.message).not.toMatch(/Give it write access/);
     },
   );
+});
+
+// ISS-1421 r13 — criteria 145 and 146 could not be reached on beta: Forge refuses at upload a key ssh
+// cannot load. What does reach a stored key after that check is a ciphertext the vault cannot open,
+// which Test connection answered as a bare 500 DECRYPT_FAILED rather than as a key Forge cannot read.
+describe('testStoredSshKey', () => {
+  it('answers a stored key the vault cannot open as key_unreadable, without running ssh', async () => {
+    const sealed = encryptSecret('-----BEGIN OPENSSH PRIVATE KEY-----\nx\n');
+    const damaged = Buffer.from(sealed);
+    damaged[damaged.length - 1] = (damaged[damaged.length - 1] ?? 0) ^ 0xff;
+
+    const test = await testStoredSshKey('git@gitlab.com:sid/desk.git', damaged, { projectId: 'p' });
+
+    expect(test).toEqual(STORED_KEY_UNREADABLE);
+    expect(test.message).toBe(
+      'Forge could not read the stored deploy key, so it was never offered to the git host. Detach it and generate a new one.',
+    );
+    expect(lookup).not.toHaveBeenCalled();
+  });
+
+  it('answers a ciphertext too short to be one the same way', async () => {
+    const test = await testStoredSshKey('git@gitlab.com:sid/desk.git', Buffer.from('x'), {});
+    expect(test).toMatchObject({ ok: false, code: 'key_unreadable' });
+  });
+
+  it('tests a key the vault opens against the host, as before', async () => {
+    lookup.mockRejectedValue(Object.assign(new Error('nope'), { code: 'ENOTFOUND' }));
+    const test = await testStoredSshKey(
+      'git@gitlab.invalid:sid/desk.git',
+      encryptSecret('key'),
+      {},
+    );
+    expect(test.code).toBe('host_unreachable');
+    expect(lookup).toHaveBeenCalled();
+  });
+});
+
+// ISS-1421 r13 — storing a malformed key answered "invalid_private_key: could not read …", its code
+// leading the sentence a person reads. The code is the caller's, in the refusal's details.
+describe('derivePublicFromPrivate', () => {
+  it('refuses a key ssh cannot load in a plain sentence, with no code in front', async () => {
+    const refused = await derivePublicFromPrivate('not a key', 'forge-x').catch((e: unknown) => e);
+    expect(refused).toBeInstanceOf(UnreadablePrivateKeyError);
+    const message = (refused as Error).message;
+    expect(message).toBe(
+      'Forge could not read this SSH private key. It may be malformed or protected by a passphrase, and Forge needs one it can use unattended.',
+    );
+    expect(message).not.toMatch(/^[a-z_]+:/);
+  });
 });

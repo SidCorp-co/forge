@@ -4,6 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { HTTPException } from 'hono/http-exception';
+import { decryptSecret } from '../integrations/vault.js';
+import { logger } from '../logger.js';
 import { KEY_ACCESS, namingTheHost, readHostRefusal, WHY_KEY_ACCESS } from './bounded-fetch.js';
 import { isHostUnresolved, type PinnedSshHost, pinSafeSshHost } from './ssh-host-guard.js';
 
@@ -138,12 +140,47 @@ export async function withDeployKey<T>(
   });
 }
 
+/** The guard words its refusals for a clause; Test connection shows one alone, as a sentence. */
+export function asSentence(clause: string): string {
+  const said = clause.trim();
+  const opened = said.charAt(0).toUpperCase() + said.slice(1);
+  return /[.!?)]$/.test(opened) ? opened : `${opened}.`;
+}
+
+/** A stored key Forge cannot read: one it cannot decrypt, or one ssh cannot load. Never the host's. */
+export const STORED_KEY_UNREADABLE: SshConnTest = {
+  ok: false,
+  code: 'key_unreadable',
+  message:
+    'Forge could not read the stored deploy key, so it was never offered to the git host. Detach it and generate a new one.',
+};
+
+/**
+ * Test connection on a stored key. A ciphertext the vault cannot open (its master key changed, or the
+ * row was damaged) is a key Forge cannot read, answered as one rather than as a server fault: it is
+ * the one way a stored key becomes unreadable once the upload check has passed (ISS-1421 r13).
+ */
+export async function testStoredSshKey(
+  repoUrl: string,
+  privateKeyEnc: Buffer,
+  context: Record<string, unknown>,
+): Promise<SshConnTest> {
+  let privateKey: string;
+  try {
+    privateKey = decryptSecret(privateKeyEnc);
+  } catch (err) {
+    logger.warn({ err, ...context }, 'ssh-keys: the stored key could not be decrypted for a test');
+    return STORED_KEY_UNREADABLE;
+  }
+  return testSshConnection(repoUrl, privateKey);
+}
+
 export async function testSshConnection(repoUrl: string, privateKey: string): Promise<SshConnTest> {
   return withDeployKey(privateKey, repoUrl, (env, _dir, pin) => lsRemote(repoUrl, env, pin)).catch(
     (err: unknown): SshConnTest => {
       if (!(err instanceof HTTPException)) throw err;
       const code = isHostUnresolved(err) ? 'host_unreachable' : 'error';
-      return { ok: false, code, message: err.message };
+      return { ok: false, code, message: asSentence(err.message) };
     },
   );
 }
@@ -175,12 +212,7 @@ async function lsRemote(
     const said = namingTheHost(answer.said, pin);
     switch (answer.kind) {
       case 'key_unreadable':
-        return {
-          ok: false,
-          code: 'key_unreadable',
-          message:
-            'Forge could not read the stored deploy key, so it was never offered to the git host. Detach it and generate a new one.',
-        };
+        return STORED_KEY_UNREADABLE;
       case 'key_refused':
         return {
           ok: false,
@@ -205,6 +237,16 @@ async function lsRemote(
   }
 }
 
+/** A pasted private key ssh cannot load. Its message is the sentence a person reads; the code is the caller's. */
+export class UnreadablePrivateKeyError extends Error {
+  constructor() {
+    super(
+      'Forge could not read this SSH private key. It may be malformed or protected by a passphrase, and Forge needs one it can use unattended.',
+    );
+    this.name = 'UnreadablePrivateKeyError';
+  }
+}
+
 /**
  * Derive the public key + fingerprint from a user-supplied OpenSSH private key.
  * Throws if the key is malformed or passphrase-protected (we can't store a key
@@ -226,9 +268,7 @@ export async function derivePublicFromPrivate(
       const { stdout } = await execFileAsync('ssh-keygen', ['-y', '-f', keyPath]);
       publicRaw = stdout.trim();
     } catch {
-      throw new Error(
-        'invalid_private_key: could not read the SSH private key (malformed or passphrase-protected)',
-      );
+      throw new UnreadablePrivateKeyError();
     }
     const publicKey = comment ? `${publicRaw} ${comment}` : publicRaw;
     // Fingerprint the derived public key.

@@ -31,6 +31,7 @@ function state(
     data: {
       gateStatus: "tested",
       nextCutAt: null,
+      automaticRelease: false,
       channels: ["coolify"],
       releaseRunnerLabel: null,
       baseBranch: "main",
@@ -75,6 +76,15 @@ describe("AwaitingReleaseBanner", () => {
     renderBanner();
     expect(screen.getByText(/No release is scheduled/)).toBeInTheDocument();
     expect(screen.queryByText(/next release cut runs/)).not.toBeInTheDocument();
+  });
+
+  it("says Forge releases it on its own where the automatic release is on (ISS-1421 r13)", () => {
+    state({ nextCutAt: null, automaticRelease: true });
+    renderBanner();
+    expect(
+      screen.getByText(/Forge releases it on its own once its criteria pass and nothing holds it\./),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/No release is scheduled/)).not.toBeInTheDocument();
   });
 
   it("counts down to a real cut when one is scheduled", () => {
