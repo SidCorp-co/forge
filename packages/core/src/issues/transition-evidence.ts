@@ -4,7 +4,11 @@ import { findMissingWorkEvidence } from '../pipeline/work-evidence.js';
 import type { ActorAgency } from './actor-agency.js';
 import type { TransitionErrorCode, TransitionIssueRow } from './apply-transition.js';
 import { findUnmetEntryCriteria } from './entry-criteria.js';
-import type { EntryCriterionKey } from './entry-criteria-keys.js';
+import {
+  ENTRY_RECORD_MISSING,
+  type EntryCriterionKey,
+  entryRecordsWrittenBy,
+} from './entry-criteria-keys.js';
 import { statusLabel } from './status-sets.js';
 
 export interface TransitionEvidenceViolation {
@@ -74,14 +78,17 @@ const entryCriteriaRule: EvidenceRule = {
     if (!shortfall) return null;
     return {
       code: 'ENTRY_CRITERIA_UNMET',
-      detail:
-        `${statusLabel(ctx.toStatus)} needs ${shortfall.unmet.length === 1 ? 'a record' : 'records'} this project declares, and ` +
-        `${shortfall.unmet.length === 1 ? 'it is' : 'they are'} missing: ` +
-        `${shortfall.unmet.map((u) => `${u.key} — ${u.detail}`).join('; ')}.`,
+      // A short sentence per record by its name; each record's whole step stays in `steps`.
+      detail: [
+        `${statusLabel(ctx.toStatus)} needs ${shortfall.unmet.length === 1 ? 'a record' : 'records'} this issue is missing.`,
+        ...shortfall.unmet.map((u) => ENTRY_RECORD_MISSING[u.key]),
+        ...entryRecordsWrittenBy(shortfall.unmet.map((u) => u.key)),
+      ].join(' '),
       details: {
         issueId: ctx.issue.id,
         toStatus: ctx.toStatus,
         unmet: shortfall.unmet.map((u) => u.key),
+        steps: Object.fromEntries(shortfall.unmet.map((u) => [u.key, u.detail])),
       },
     };
   },

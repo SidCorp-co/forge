@@ -11,7 +11,7 @@ import { isHostUnresolved, type PinnedSshHost, pinSafeSshHost } from './ssh-host
 
 const execFileAsync = promisify(execFile);
 
-const SSH_KEYGEN_TIMEOUT_MS = 10_000;
+const SSH_KEYGEN_TIMEOUT_MS = 4_000;
 
 /** ssh-keygen with stdin closed and a deadline: nothing it could prompt for holds a request open. */
 function sshKeygen(args: string[]): Promise<{ stdout: string; stderr: string }> {
@@ -236,12 +236,17 @@ async function lsRemote(
   }
 }
 
+const UNREADABLE_KEY_WORDS = {
+  malformed:
+    'Forge could not read this SSH private key. Paste the whole key in OpenSSH format, from its BEGIN line to its END line.',
+  passphrase:
+    'Forge could not read this SSH private key, because a passphrase protects it. Forge uses keys unattended, so paste one without a passphrase or generate one here.',
+} as const;
+
 /** A pasted private key ssh cannot load. Its message is the sentence a person reads; the code is the caller's. */
 export class UnreadablePrivateKeyError extends Error {
-  constructor() {
-    super(
-      'Forge could not read this SSH private key. It may be malformed or protected by a passphrase, and Forge needs one it can use unattended.',
-    );
+  constructor(readonly reason: keyof typeof UNREADABLE_KEY_WORDS) {
+    super(UNREADABLE_KEY_WORDS[reason]);
     this.name = 'UnreadablePrivateKeyError';
   }
 }
@@ -266,8 +271,11 @@ export async function derivePublicFromPrivate(
       const { stdout } = await sshKeygen(['-y', '-P', '', '-f', keyPath]);
       // Type and key: the pasted key's own comment is replaced by `comment`, not kept before it.
       publicRaw = stdout.trim().split(/\s+/).slice(0, 2).join(' ');
-    } catch {
-      throw new UnreadablePrivateKeyError();
+    } catch (err) {
+      const said = String((err as { stderr?: unknown }).stderr ?? '');
+      throw new UnreadablePrivateKeyError(
+        /incorrect passphrase/i.test(said) ? 'passphrase' : 'malformed',
+      );
     }
     const publicKey = comment ? `${publicRaw} ${comment}` : publicRaw;
     const pubPath = `${keyPath}.pub`;

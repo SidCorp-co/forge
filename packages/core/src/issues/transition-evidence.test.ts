@@ -172,6 +172,7 @@ describe('checkTransitionEvidence — entry_criteria rule (ISS-959)', () => {
       issueId: ISSUE.id,
       toStatus: 'closed',
       unmet: ['plan'],
+      steps: { plan: expect.any(String) },
     });
   });
 
@@ -196,9 +197,10 @@ describe('checkTransitionEvidence — entry_criteria rule (ISS-959)', () => {
       skip: false,
       declaredCriteria: ['plan', 'acceptance_criteria', 'merged_mark'],
     });
-    expect(violation?.detail).toContain('no plan is written on this issue');
-    expect(violation?.detail).not.toContain('acceptance_criteria');
-    expect(violation?.detail).not.toContain('merged_mark');
+    expect(violation?.detail).toBe(
+      'Closed needs a record this issue is missing. The plan is missing. An agent working this issue writes it; Open session or Reopen on its page starts one.',
+    );
+    expect(violation?.detail).not.toMatch(/acceptance|merge mark/i);
   });
 
   it('reads plural and singular from the shortfall it was given', async () => {
@@ -210,8 +212,33 @@ describe('checkTransitionEvidence — entry_criteria rule (ISS-959)', () => {
       skip: false,
       declaredCriteria: ['plan', 'release_note'],
     });
-    expect(violation?.detail).toContain('records this project declares');
-    expect(violation?.detail).toContain('they are missing');
+    expect(violation?.detail).toMatch(
+      /^Closed needs records this issue is missing\. The plan is missing\./,
+    );
+    expect(violation?.detail).toContain('The release note is missing.');
+  });
+
+  // ISS-1421 r14 — judge-61 read one 71-word sentence naming records by stored key
+  // ("acceptance_criteria — no `acceptanceCriteria` …").
+  it('names every record by its name, in sentences of at most 20 words, never by stored key', async () => {
+    const all = ['plan', 'acceptance_criteria', 'release_note', 'work_evidence', 'merged_mark'];
+    findUnmetEntryCriteriaMock.mockResolvedValue(shortfall(...all));
+    const violation = await checkTransitionEvidence({
+      issue: ISSUE,
+      toStatus: 'closed',
+      agency: 'human',
+      skip: false,
+      declaredCriteria: all as never,
+    });
+    const detail = violation?.detail ?? '';
+    expect(detail).not.toMatch(
+      /acceptance_criteria|release_note|work_evidence|merged_mark|acceptanceCriteria|releaseNotes|`/,
+    );
+    for (const sentence of detail.split(/(?<=\.) /)) {
+      expect(sentence).toMatch(/^[A-Z].*\.$/);
+      expect(sentence.split(/\s+/).length).toBeLessThanOrEqual(20);
+    }
+    expect(violation?.details?.steps).toHaveProperty('merged_mark');
   });
 
   it('passes a transition whose declared criteria are all met', async () => {

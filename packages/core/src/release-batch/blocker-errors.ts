@@ -100,6 +100,7 @@ function errorFor(
         Array.isArray(first.details?.releaseChain)
           ? (first.details.releaseChain as ReleaseChain)
           : [],
+        typeof first.details?.projectName === 'string' ? first.details.projectName : null,
       );
     case 'CLAIM_CONFLICT':
       return new ClaimConflictError(ids, readClaimConflictDetails(first.details));

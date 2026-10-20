@@ -38,6 +38,7 @@ import {
   storeConnection,
   testConnection,
 } from './connection-routes-reference.js';
+import { healthAnswer } from './health-words.js';
 import { ownerNamesOf } from './owner-names.js';
 import { raceWithTimeout } from './probe.js';
 import {
@@ -335,12 +336,16 @@ integrationConnectionsRoutes.post('/:id/test', ...testConnection, async (c) => {
     adapter.healthcheck(buildContextFromBinding(pair)),
     TEST_PROBE_TIMEOUT_MS,
   );
+  const provider = pair.binding.provider;
   if (result === null) {
     return c.json(
-      answer(healthResultSchema, { status: 'error', message: 'healthcheck timed out after 10s' }),
+      answer(
+        healthResultSchema,
+        healthAnswer(provider, { status: 'error', message: 'No answer came within 10 seconds.' }),
+      ),
     );
   }
-  return c.json(answer(healthResultSchema, result));
+  return c.json(answer(healthResultSchema, healthAnswer(provider, result)));
 });
 
 integrationConnectionsRoutes.patch(

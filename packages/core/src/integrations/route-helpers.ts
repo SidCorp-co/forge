@@ -5,6 +5,7 @@ import { effectiveProjectRole, orgRoleAtLeast, projectWriteRefusal } from '../li
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { type AgentAccess, agentAccessTier, noAgentPathMessage } from './agent-access.js';
+import { healthAnswer } from './health-words.js';
 import { raceWithTimeout } from './probe.js';
 import { getAdapter, getIntegration } from './registry.js';
 import {
@@ -300,10 +301,11 @@ async function runInitialHealthcheck(
   const adapter = getAdapter(pair.binding.provider);
   if (!adapter) return null;
   try {
-    return await raceWithTimeout(
+    const result = await raceWithTimeout(
       adapter.healthcheck(buildContextFromBinding(pair)),
       INITIAL_PROBE_TIMEOUT_MS,
     );
+    return result && healthAnswer(pair.binding.provider, result);
   } catch {
     // The adapter records its own failure states; a transport-level crash here
     // simply leaves the connection `unverified`.

@@ -140,7 +140,11 @@ describe('an agent closes on a project whose release chain has nowhere to land',
         details?: Record<string, unknown>;
       };
       expect(body.code).toBe('RELEASE_TARGET_UNDECLARED');
-      expect(body.message).toContain("no active deploy binding carrying the 'live' stage");
+      // ISS-1421 r14: the project by its name, never its id; the id stays in details.
+      expect(body.message).toMatch(
+        /^Project "[^"]+" releases to '[^']+' but has no live deploy target, /,
+      );
+      expect(body.message).not.toContain(w.projectId);
       expect(body.message).toContain('choose "Repository, no release" under Shape & release');
       expect(body.details).toMatchObject({ projectId: w.projectId, releaseChain: chain });
       expect(await statusOf(id)).toBe('testing');
@@ -165,7 +169,7 @@ describe('an agent closes on a project whose release chain has nowhere to land',
         id,
         reason: 'release_target_undeclared',
         code: 'RELEASE_TARGET_UNDECLARED',
-        message: expect.stringContaining('no active deploy binding'),
+        message: expect.stringContaining('has no live deploy target'),
       },
     ]);
     expect(await statusOf(id)).toBe('testing');

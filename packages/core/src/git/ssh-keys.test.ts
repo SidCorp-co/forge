@@ -203,14 +203,14 @@ describe('derivePublicFromPrivate', () => {
     expect(refused).toBeInstanceOf(UnreadablePrivateKeyError);
     const message = (refused as Error).message;
     expect(message).toBe(
-      'Forge could not read this SSH private key. It may be malformed or protected by a passphrase, and Forge needs one it can use unattended.',
+      'Forge could not read this SSH private key. Paste the whole key in OpenSSH format, from its BEGIN line to its END line.',
     );
     expect(message).not.toMatch(/^[a-z_]+:/);
   });
 
   // ISS-1421 r14 — judge-61: a passphrase-protected key held the store request open until the
   // proxy's 524, because ssh-keygen read its open stdin for a passphrase nobody would type.
-  it('refuses a passphrase-protected key at once, in the same sentence', async () => {
+  it('refuses a passphrase-protected key at once, in a sentence of its own', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'forge-prot-key-'));
     try {
       execFileSync('ssh-keygen', [
@@ -226,6 +226,10 @@ describe('derivePublicFromPrivate', () => {
       const started = Date.now();
       const refused = await derivePublicFromPrivate(pasted, 'forge-x').catch((e: unknown) => e);
       expect(refused).toBeInstanceOf(UnreadablePrivateKeyError);
+      expect((refused as { reason?: string }).reason).toBe('passphrase');
+      expect((refused as Error).message).toBe(
+        'Forge could not read this SSH private key, because a passphrase protects it. Forge uses keys unattended, so paste one without a passphrase or generate one here.',
+      );
       expect(Date.now() - started).toBeLessThan(5_000);
     } finally {
       rmSync(dir, { recursive: true, force: true });
