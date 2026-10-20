@@ -63,4 +63,23 @@ describe("a comment's author", () => {
     expect(container.textContent).toContain("via another member");
     expect(container.textContent).not.toContain("@");
   });
+
+  // ISS-1229 r22: the "via" line sits inside a sentence, so a capitalised label is placed again.
+  it("names an unnamed owner lower-case on the via line, whichever form core served", () => {
+    const { container } = render(
+      <CommentThread
+        issueId="i1"
+        comments={[
+          node({
+            authorId: "d1",
+            author: { type: "device", id: "d1", displayName: "CI Runner", isAgent: true, ownerName: "Another member" },
+          }),
+        ]}
+        members={members}
+        readOnly
+      />,
+    );
+    expect(container.textContent).toContain("via another member");
+  });
 });
+

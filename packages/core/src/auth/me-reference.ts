@@ -36,8 +36,15 @@ export const readAccount = describeOperation({
 
 export const patchProfile = describeOperation({
   summary: 'Set or clear the name the account is shown as',
-  description: '`displayName: null` clears it, and the account is shown by its address again.',
-  responses: { 200: json(profileAnswerSchema, 'The profile as stored') },
+  description:
+    '`displayName: null` clears it, and other members then read the account as "Another member", never by its address. A name holding an email address is refused.',
+  responses: {
+    200: json(profileAnswerSchema, 'The profile as stored'),
+    400: fail({
+      BAD_REQUEST: 'the body is not `{ displayName }`, a name of 1 to 200 characters or null',
+      DISPLAY_NAME_HOLDS_AN_ADDRESS: 'the display name holds an email address',
+    }),
+  },
 });
 
 export const readAccountPreferences = describeOperation({

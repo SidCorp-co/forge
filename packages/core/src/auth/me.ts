@@ -7,6 +7,7 @@ import { zValidator } from '../api-reference/declare/validator.js';
 import { db } from '../db/client.js';
 import { oauthAccounts, userPreferences, users } from '../db/schema.js';
 import { assertOrgAccess } from '../lib/authz.js';
+import { displayNameRefusal } from '../lib/person-name.js';
 import { type AuthVars, requireAuth } from '../middleware/auth.js';
 import { followDisplayName } from '../orgs/service.js';
 import {
@@ -72,7 +73,8 @@ meRoutes.get('/me', readAccount, async (c) => {
 /**
  * The name a person is shown as, in their own words (ISS-1003).
  *
- * Trimmed and bounded, and otherwise anything they type — accents included.
+ * Trimmed and bounded, and otherwise anything they type — accents included — but an email address,
+ * which no other member is ever shown, so it is refused by name (ISS-1229 r22).
  * `null` clears it; `personName` in lib/person-name.ts then says what they are called. Their
  * personal workspace follows it in the same transaction (`followDisplayName`).
  */
@@ -94,6 +96,13 @@ meRoutes.patch(
   async (c) => {
     const userId = c.get('userId');
     const after = c.req.valid('json').displayName;
+    const refusal = after === null ? null : displayNameRefusal(after);
+    if (refusal) {
+      throw new HTTPException(400, {
+        message: refusal,
+        cause: { code: 'DISPLAY_NAME_HOLDS_AN_ADDRESS' },
+      });
+    }
     const row = await db.transaction(async (tx) => {
       const [was] = await tx
         .select({ displayName: users.displayName })

@@ -111,3 +111,34 @@ export const ISSUE_KEY_REFUSAL_CODES = [
 ] as const;
 
 export type IssueKeyRefusalCode = (typeof ISSUE_KEY_REFUSAL_CODES)[number];
+
+/**
+ * Every action core writes to an issue's activity log, which the Activity tab says as a sentence
+ * (ISS-1229 r22). A writer outside this list does not compile, so no row reaches the tab as a code
+ * nobody gave words to.
+ */
+export const ISSUE_ACTIVITY_ACTIONS = [
+  'issue.created',
+  'issue.updated',
+  'issue.assigned',
+  'issue.statusChanged',
+  'issue.labeled',
+  'issue.unlabeled',
+  'issue.dependency.added',
+  'issue.dependency.updated',
+  'issue.dependency.removed',
+  'issue.attachment.uploaded',
+  'issue.attachment.deleted',
+  'issue.archived',
+  'issue.unarchived',
+  'comment.created',
+  'comment.updated',
+  'comment.deleted',
+  'comment.mentioned',
+  'agent-session.created',
+  'agent-session.pipelineControl.changed',
+  'module_knowledge_refreshed',
+  'module_knowledge_refresh_failed',
+] as const;
+
+export type IssueActivityAction = (typeof ISSUE_ACTIVITY_ACTIONS)[number];

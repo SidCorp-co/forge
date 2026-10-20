@@ -145,6 +145,8 @@ export const renameOrg = describeOperation({
 
 export const deleteOrg = describeOperation({
   summary: 'Delete an empty team organization',
+  description:
+    'The agent accounts that belong to this organization and to no other are deleted with it.',
   responses: {
     204: empty('Deleted'),
     403: fail('FORBIDDEN', OWNER_ONLY),
@@ -152,6 +154,8 @@ export const deleteOrg = describeOperation({
     409: fail({
       PERSONAL_ORG_IMMUTABLE: 'a personal organization cannot be deleted',
       ORG_NOT_EMPTY: 'projects still live in the organization; delete or move them first',
+      ORG_AGENT_HOLDS_A_DEVICE:
+        'one of its agent accounts holds a device not yet revoked; revoke it first',
     }),
   },
 });

@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LeaveGuardProvider } from "@/design";
 import { AuthProvider, useUserInitials } from "@/providers/auth-provider";
 import { AccountTab } from "./components/account-tab";
+import { displayNameRefusal } from "@forge/contracts/person-name";
 
 expect.extend(matchers);
 
@@ -91,5 +92,18 @@ describe("a person's display name, from Settings → Account", () => {
     fireEvent.click(screen.getByRole("button", { name: "Clear" }));
     await waitFor(() => expect(screen.getByTestId("rail-avatar")).toHaveTextContent("AM"));
     expect(writes).toEqual([null]);
+  });
+
+  // ISS-1229 r22, judge-63: an address saved as one's name was taken without a word.
+  it("refuses an address typed as the name, saying why under the field, and offers no save", async () => {
+    mount();
+    await waitFor(() => expect(screen.getByTestId("rail-avatar")).toHaveTextContent("AM"));
+    fireEvent.change(nameField(), { target: { value: "lan.pham@example.com" } });
+    expect(screen.getByText(displayNameRefusal("lan.pham@example.com") as string)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Set name" })).toBeDisabled();
+    expect(writes).toEqual([]);
+    fireEvent.change(nameField(), { target: { value: "Lan Pham" } });
+    expect(screen.queryByText(/cannot hold an email address/)).toBeNull();
+    expect(screen.getByRole("button", { name: "Set name" })).toBeEnabled();
   });
 });

@@ -1,6 +1,6 @@
 import {
   ADDRESS_PATTERN,
-  givenName,
+  carriesAnAddress,
   personName as named,
   UNNAMED_PERSON,
   UNNAMED_PERSON_AT_START,
@@ -11,6 +11,7 @@ import { logger } from '../logger.js';
 export {
   ADDRESS_PATTERN,
   carriesAnAddress,
+  displayNameRefusal,
   givenName,
   personInitials,
   UNNAMED_PERSON,
@@ -22,7 +23,7 @@ export function personName(
   displayName: string | null | undefined,
   at: 'inside' | 'start' = 'inside',
 ): string {
-  if (displayName?.trim() && givenName(displayName) === null)
+  if (displayName && carriesAnAddress(displayName))
     logger.warn('person-name: a name held an email address, so it reads as another member');
   return named(displayName, at);
 }
@@ -31,5 +32,6 @@ export function personNameSql(displayName: SQL, at: 'inside' | 'start' = 'inside
   const unnamed = at === 'start' ? UNNAMED_PERSON_AT_START : UNNAMED_PERSON;
   const given = sql`regexp_replace(${displayName}, '^[[:space:]]+|[[:space:]]+$', '', 'g')`;
   return sql<string>`(CASE WHEN nullif(${given}, '') IS NULL OR ${displayName} ~ ${ADDRESS_PATTERN}
+                        OR lower(${given}) = ${UNNAMED_PERSON}
                    THEN ${unnamed}::text ELSE ${given} END)`;
 }

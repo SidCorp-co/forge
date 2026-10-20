@@ -50,7 +50,12 @@ import {
   renameOrg,
   updatedMemberSchema,
 } from './routes-reference.js';
-import { listOrgMembers, listOrgsForUser, refuseNonPersonAsMember } from './service.js';
+import {
+  deleteOrganization,
+  listOrgMembers,
+  listOrgsForUser,
+  refuseNonPersonAsMember,
+} from './service.js';
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
@@ -143,7 +148,8 @@ orgRoutes.patch(
 );
 
 // Delete a TEAM org: owner-only, refused while any project still lives in it
-// (move or delete projects first) and always refused for personal orgs.
+// (move or delete projects first) and always refused for personal orgs. Its own
+// agent accounts go with it (`deleteOrganization`).
 orgRoutes.delete(
   '/:orgId',
   deleteOrg,
@@ -170,7 +176,7 @@ orgRoutes.delete(
       );
     }
 
-    await db.delete(organizations).where(eq(organizations.id, orgId));
+    await deleteOrganization(orgId);
     return c.body(null, 204);
   },
 );

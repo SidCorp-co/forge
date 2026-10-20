@@ -21,6 +21,7 @@ import {
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useActiveOrg } from "../active-org";
+import { workspaceName } from "../workspace-name";
 import { useOrgProjects } from "../hooks";
 import { OrgMembersCard } from "./org-members-card";
 import { SectionTitle, PageTitle } from "@/design/primitives/heading";
@@ -41,7 +42,7 @@ export function OrgHome() {
     );
   }
 
-  const label = activeOrg.isPersonal ? "Personal" : activeOrg.name;
+  const label = workspaceName(activeOrg);
 
   return (
     <PageContainer>

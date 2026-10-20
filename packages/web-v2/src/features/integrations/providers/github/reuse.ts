@@ -1,3 +1,4 @@
+import { personName } from "@forge/contracts/person-name";
 import type { ConnectionDirectoryItem } from "@forge/contracts";
 
 /** The project a GitHub App is being offered to — what the bind rule is asked about. */
@@ -41,6 +42,6 @@ export function unbindableReason(
     const org = project && first.ownerId === project.orgId ? project.orgName : (owner ?? "its organization");
     return `${name} is owned by ${org}, and only an owner or admin of ${org} can bind it to this project — ask them, or create a separate App below.`;
   }
-  const person = owner ?? "another user";
+  const person = personName(owner);
   return `${name} is owned by ${person}, and only ${owner ? "they" : "its owner"} can bind it to this project — ask ${owner ? person : "its owner"}, or create a separate App below.`;
 }

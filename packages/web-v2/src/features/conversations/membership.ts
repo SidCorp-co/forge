@@ -12,6 +12,7 @@
 // provider history window and not by when an agent joined. So the sentence says
 // the agent is shown what has already been said, and it says the bound.
 
+import { personName } from "@forge/contracts/person-name";
 import type {
   ConversationMembership,
   ConversationParticipant,
@@ -48,11 +49,12 @@ const list = (projects: readonly ConversationProject[] | undefined): string => {
   return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 };
 
-/** The same joining, for names rather than projects. */
+/** The same joining, for people opening a sentence: only the first name stands at its start (ISS-1229 r22). */
 const list2 = (names: readonly string[]): string => {
   if (names.length === 0) return "Nobody";
-  if (names.length === 1) return names[0] as string;
-  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+  const placed = names.map((name, i) => personName(name, i === 0 ? "start" : "inside"));
+  if (placed.length === 1) return placed[0] as string;
+  return `${placed.slice(0, -1).join(", ")} and ${placed[placed.length - 1]}`;
 };
 
 /** Two letters for an avatar, from whatever name there is. */
@@ -176,22 +178,22 @@ export function roomOpeningClaims(args: {
  * What adding this person does, which is a smaller thing and says so.
  */
 export function personAdditionClaims(args: {
-  name: string;
+  displayName: string | null;
   room: Partial<Pick<ConversationMembership, "shape" | "scopeProjects">>;
 }): MembershipClaim[] {
-  const { name, room } = args;
+  const { displayName, room } = args;
   if (room.shape === "direct") {
     return [
       {
         key: "person-can-read",
-        text: `${name} will be able to read this room, including everything said in it before now.`,
+        text: `${personName(displayName, "start")} will be able to read this room, including everything said in it before now.`,
       },
     ];
   }
   return [
     {
       key: "person-already-could",
-      text: `Anybody holding a role on ${list(room.scopeProjects)} can already open this room. Adding ${name} lists them here; it changes nobody's access.`,
+      text: `Anybody holding a role on ${list(room.scopeProjects)} can already open this room. Adding ${personName(displayName)} lists them here; it changes nobody's access.`,
     },
   ];
 }
@@ -202,7 +204,7 @@ export function removalClaim(
   room: Partial<Pick<ConversationMembership, "scopeProjects" | "participants">>,
 ): string {
   if (participant.kind !== "handle") {
-    return `${participant.displayName ?? "This person"} will no longer be listed in this room.`;
+    return `${personName(participant.displayName, "start")} will no longer be listed in this room.`;
   }
   const rest = agentsOf(room)
     .filter((p) => p.id !== participant.id)

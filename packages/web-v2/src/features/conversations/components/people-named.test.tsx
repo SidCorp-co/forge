@@ -6,7 +6,9 @@
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { agentAdditionClaims, personAdditionClaims, removalClaim } from "../membership";
 import { AddPersonDialog } from "./add-person-dialog";
+import { ConversationMembers } from "./conversation-members";
 import { StartConversation } from "./start-conversation";
 
 const people = [
@@ -21,6 +23,8 @@ vi.mock("../hooks", () => ({
   useAddPerson: () => ({ mutate: vi.fn(), reset: vi.fn(), isPending: false, isError: false }),
   useProjectCandidates: () => ({ isLoading: false, isError: false, data: { people, handles: [] } }),
   useOpenConversation: () => ({ mutate: vi.fn(), isPending: false, isError: false }),
+  useRemoveParticipant: () => ({ mutate: vi.fn(), isPending: false, isError: false }),
+  useAddHandle: () => ({ mutate: vi.fn(), reset: vi.fn(), isPending: false, isError: false }),
 }));
 vi.mock("@/features/projects/hooks", () => ({
   useOrgScopedProjects: () => ({ projects: [{ id: "p1", name: "Billing", slug: "billing" }] }),
@@ -47,7 +51,7 @@ describe("adding a person to a room", () => {
   it("confirms the pick by name and address", () => {
     render(<AddPersonDialog conversationId="c1" room={{ shape: "group" }} open onClose={() => {}} />);
     fireEvent.click(screen.getByText("kim@example.org"));
-    expect(screen.getByText("Add Another member")).toBeTruthy();
+    expect(screen.getByText("Add another member")).toBeTruthy();
     expect(screen.getByText("kim@example.org")).toBeTruthy();
     expect(screen.queryByText("lan.pham@example.com")).toBeNull();
   });
@@ -65,3 +69,53 @@ describe("starting a conversation", () => {
     ]);
   });
 });
+
+// ISS-1229 r22, judge-63 on criterion 187: "Another member" stood capitalised inside sentences.
+describe("a person with no display name, inside a sentence", () => {
+  const room = { shape: "group" as const, scopeProjects: [{ id: "p1", name: "Billing", slug: "billing" }] };
+
+  it("reads lower-case in the add-person confirmation and on its button", () => {
+    render(<AddPersonDialog conversationId="c1" room={room} open onClose={() => {}} />);
+    fireEvent.click(screen.getByText("lan.pham@example.com"));
+    expect(screen.getByText(/Adding another member lists them here/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Add another member" })).toBeTruthy();
+  });
+
+  it("opens a sentence capitalised", () => {
+    render(<AddPersonDialog conversationId="c1" room={{ shape: "direct" }} open onClose={() => {}} />);
+    fireEvent.click(screen.getByText("lan.pham@example.com"));
+    expect(screen.getByText(/^Another member will be able to read this room/)).toBeTruthy();
+  });
+
+  it("takes the label core served and places it again", () => {
+    const [claim] = personAdditionClaims({ displayName: "Another member", room });
+    expect(claim?.text).toContain("Adding another member lists them here");
+    const [named] = personAdditionClaims({ displayName: "Mai Tran", room });
+    expect(named?.text).toContain("Adding Mai Tran lists them here");
+  });
+
+  it("names the remove control lower-case and says what removal does from the sentence's start", () => {
+    const person = {
+      id: "pp1", kind: "person" as const, userId: "u2", projectId: null, label: null,
+      displayName: "Another member", reachable: null,
+    };
+    render(
+      <ConversationMembers conversationId="c1" room={{ ...room, participants: [person] }} canChange open onClose={() => {}} />,
+    );
+    expect(screen.getByRole("button", { name: "Take another member out of the room" })).toBeTruthy();
+    expect(removalClaim(person, room)).toBe("Another member will no longer be listed in this room.");
+  });
+
+  it("lists the people an agent would put out with only the first capitalised", () => {
+    const claims = agentAdditionClaims({
+      candidate: {
+        userId: "a1", handle: "ops", project: { id: "p2", name: "Ops", slug: "ops" },
+        losesReaders: ["Another member", "Lan Pham", "Another member"],
+      },
+      room,
+    });
+    const losing = claims.find((c) => c.key === "readers-lose")?.text ?? "";
+    expect(losing).toMatch(/^Another member, Lan Pham and another member are in this room today/);
+  });
+});
+

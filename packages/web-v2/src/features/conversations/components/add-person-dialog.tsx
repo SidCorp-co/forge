@@ -8,7 +8,7 @@
 // smaller, and in a shared room it says so rather than claiming an access
 // change that did not happen.
 
-import { personChoice } from "@forge/contracts/person-name";
+import { personChoice, personName } from "@forge/contracts/person-name";
 import { useState } from "react";
 import { Avatar, Banner, Button, ErrorState, Icon, SlideOver, Spinner } from "@/design";
 import { formatApiError } from "@/lib/api/error";
@@ -18,7 +18,6 @@ import type { ConversationMembership, PersonCandidate } from "../types";
 
 // A picker offers a person by name and shows their address, so two alike can be told apart (ISS-1229 r21).
 const choiceOf = (person: PersonCandidate) => personChoice(person.displayName, person.email);
-const nameOf = (person: PersonCandidate): string => choiceOf(person).label;
 
 function ChoiceText({ person }: { person: PersonCandidate }) {
   const { label, detail } = choiceOf(person);
@@ -77,7 +76,7 @@ export function AddPersonDialog({
               Back
             </Button>
             <Button variant="primary" loading={add.isPending} onClick={confirm}>
-              Add {nameOf(picked)}
+              Add {personName(picked.displayName)}
             </Button>
           </div>
         )}
@@ -93,11 +92,11 @@ function Confirmation({
   person: PersonCandidate;
   room: Partial<Pick<ConversationMembership, "shape" | "scopeProjects">>;
 }) {
-  const claims = personAdditionClaims({ name: nameOf(person), room });
+  const claims = personAdditionClaims({ displayName: person.displayName, room });
   return (
     <div data-testid="add-person-confirmation" className="flex flex-col gap-3">
       <div className="flex items-center gap-2 px-1 py-2">
-        <Avatar initials={initialsOf(nameOf(person))} size={22} />
+        <Avatar initials={initialsOf(choiceOf(person).label)} size={22} />
         <ChoiceText person={person} />
       </div>
       <ul className="flex flex-col gap-2">
