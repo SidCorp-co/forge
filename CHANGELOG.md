@@ -3205,6 +3205,7 @@
 - **Stuck-work notifications and a wait on nobody read as plain sentences**, without "Pipeline wedge", hop names or WHERE/WHY/WHAT. (ISS-1228)
 - **Forge no longer calls a person by their email address.** Someone with no display name reads "another member" in notices, the bell and the project page, older bell rows included, and a refused retry reads the same sentence everywhere. (ISS-1229)
 - **A notice shows an issue's title and a project's name exactly as written**, an email address in them included, so the bell agrees with the issue page again; older notices read as written after the update. (ISS-1229)
+- **A mention names who mentioned you by their display name**, or "Another member", never by part of their email address, older mentions included; project cards' member avatars take their initials from that name too. (ISS-1229)
 - **A master that ended as the last session on its box's tmux server is reported ended.** Its messages used to wait and its run stayed open for ever; a tmux the box cannot ask still says nothing. (ISS-1265)
 - **A running master is no longer reported ended when its box's tmux socket file goes missing.** Its messages wait instead of its run closing, and the box's log names the missing socket and the masters on it. (ISS-1265)
 - **A blocked run always says it is waiting**, on its row as on hover, even where its box did not say on whom: it reads "Waiting on someone the box did not name." A working run shows no wait. (ISS-1228)

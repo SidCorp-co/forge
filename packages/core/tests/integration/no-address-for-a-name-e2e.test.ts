@@ -6,7 +6,9 @@
  * slot that names a person is chosen by lib/person-name.ts; an issue title or project name is quoted
  * as written. Covered here: a title quoting an issue or project, an invitation from an inviter with no
  * display name, and migrations 0342 and 0343 over titles already stored — each read from its file, so
- * what is proved is what runs at the deploy.
+ * what is proved is what runs at the deploy. ISS-1229 r20 — judge-59 at beta 9974765: a mention named
+ * who mentioned you by the part of their address before the "@". It now names them as personName
+ * does, and migration 0344 rewrites the mentions already stored.
  */
 
 import { readFileSync } from 'node:fs';
@@ -29,6 +31,9 @@ const MIGRATION = fileURLToPath(
 );
 const RESTORE = fileURLToPath(
   new URL('../../drizzle/migrations/0343_a_notice_quotes_a_title_as_written.sql', import.meta.url),
+);
+const MENTIONER = fileURLToPath(
+  new URL('../../drizzle/migrations/0344_a_mention_names_who_mentioned_you.sql', import.meta.url),
 );
 
 const fx = registerInboxFixture();
@@ -303,7 +308,7 @@ async function storedAbout(
   return { recordId: record?.id ?? '', deliveryId: delivery?.id ?? '' };
 }
 
-async function runRestore(): Promise<string[]> {
+async function runRestore(file: string = RESTORE): Promise<string[]> {
   const notices: string[] = [];
   const postgres = (await import('postgres')).default;
   const client = postgres(process.env.DATABASE_URL ?? '', {
@@ -311,7 +316,7 @@ async function runRestore(): Promise<string[]> {
     onnotice: (n) => notices.push(n.message ?? ''),
   });
   try {
-    for (const statement of readFileSync(RESTORE, 'utf8').split('--> statement-breakpoint')) {
+    for (const statement of readFileSync(file, 'utf8').split('--> statement-breakpoint')) {
       if (statement.trim()) await client.unsafe(statement);
     }
   } finally {
@@ -436,21 +441,16 @@ describe("migration 0343: a stored title quotes its issue's title and its projec
 
   // Consults f0e175 and 2d5735: titles as their producers and the door store them, then 0342.
   it('restores a mention and an intake notice as the delivery door stored them', async () => {
-    const actor = await person('Lan', 'lan.handle@example.com');
+    await person('Lan', 'lan.handle@example.com');
     const quoted = 'Refund ops@desk.example.com moved to Closed';
     const issueId = await issueTitled(11, quoted);
-    const { HooksBus } = await import('../../src/pipeline/hooks.js');
-    const { registerNotifyMentionsSubscriber } = await import(
-      '../../src/notifications/notify-mentions.js'
-    );
-    const bus = new HooksBus();
-    registerNotifyMentionsSubscriber(bus);
-    await bus.emit('commentMentioned', {
-      issueId,
+    // The mention as round 19's producer wrote it, which is what 0342 and 0343 ran over.
+    await fx.mods.recordAndDeliver({
+      type: 'mention',
+      recipients: [fx.owner],
       projectId: fx.project.id,
-      commentId: crypto.randomUUID(),
-      actor: { type: 'user', id: actor.id, agency: 'human' },
-      mentionedUserIds: [fx.owner],
+      issueId,
+      title: `@lan.handle mentioned you in "${quoted}"`,
     });
     await fx.mods.recordAndDeliver({
       type: 'intake_pending',
@@ -488,5 +488,155 @@ describe("migration 0343: a stored title quotes its issue's title and its projec
     expect(after).toEqual(Array(2).fill(`ISS-1 — Reply to ${mai.email} moved to Needs info`));
     await runRestore();
     expect(await titlesOf(once)).toEqual(after);
+  });
+});
+
+async function mentionBy(mentioner: { id: string }, issueId: string): Promise<void> {
+  const { HooksBus } = await import('../../src/pipeline/hooks.js');
+  const { registerNotifyMentionsSubscriber } = await import(
+    '../../src/notifications/notify-mentions.js'
+  );
+  const bus = new HooksBus();
+  registerNotifyMentionsSubscriber(bus);
+  await bus.emit('commentMentioned', {
+    issueId,
+    projectId: fx.project.id,
+    commentId: crypto.randomUUID(),
+    actor: { type: 'user', id: mentioner.id, agency: 'human' },
+    mentionedUserIds: [fx.owner],
+  });
+}
+
+async function mentionTitles(issueId: string): Promise<string[]> {
+  const rows = (await fx.db.execute(sql`
+    SELECT n.title FROM notifications n WHERE n.issue_id = ${issueId}
+    UNION ALL
+    SELECT d.title FROM notification_deliveries d
+      JOIN notification_delivery_members m ON m.delivery_id = d.id
+      JOIN notifications n ON n.id = m.notification_id
+     WHERE n.issue_id = ${issueId}
+  `)) as unknown as Array<{ title: string }>;
+  return rows.map((r) => r.title);
+}
+
+describe('a mention names who mentioned you as core calls them', () => {
+  it.each([
+    ['Lan Pham', 'Lan Pham'],
+    [null, 'Another member'],
+    ['   ', 'Another member'],
+    ['lan.pham@example.com', 'Another member'],
+  ])('a mentioner whose display name is %j reads %j, stored and in the bell', async (given, called) => {
+    const mentioner = await person(given, 'lan.pham@example.com');
+    const issueId = await issueTitled(7, 'Fix the export');
+    await mentionBy(mentioner, issueId);
+
+    const expected = `ISS-7 — ${called} mentioned you in "Fix the export"`;
+    expect(await mentionTitles(issueId)).toEqual([expected, expected]);
+    const [row] = (await fx.inbox()).items;
+    expect(row?.title).toBe(expected);
+    expect(row?.title).not.toContain('lan.pham');
+  });
+});
+
+/** Two comment rows give an author a hand on an issue, which is how 0344 tells two alike handles apart. */
+async function commentOn(issueId: string, authorId: string): Promise<void> {
+  await fx.db.execute(sql`
+    INSERT INTO comments (issue_id, author_id, body) VALUES (${issueId}, ${authorId}, 'see @someone')
+  `);
+}
+
+async function storedMention(issueId: string, title: string) {
+  await fx.mods.recordAndDeliver({
+    type: 'mention',
+    recipients: [fx.owner],
+    projectId: fx.project.id,
+    issueId,
+    title,
+  });
+}
+
+describe('migration 0344: a stored mention names who mentioned you as core calls them', () => {
+  it('rewrites each "@handle" it can tie to one person, and leaves and counts the rest', async () => {
+    await person('Lan Pham', 'lan.pham@example.com');
+    await person(null, 'mai@example.com');
+    await person(null, 'self.named@example.com').then((u) =>
+      fx.db.execute(sql`UPDATE users SET display_name = email WHERE id = ${u.id}`),
+    );
+    const twinA = await person('Twin A', 'twin@a.example');
+    await person('Twin B', 'twin@b.example');
+    await person('Solo', 'solo@c.example');
+
+    const named = await issueTitled(1, 'Fix the export');
+    const unnamed = await issueTitled(2, 'Fix the import');
+    const addressAsName = await issueTitled(3, 'Fix the "quoted" rows');
+    const twins = await issueTitled(4, 'Ask the twins');
+    const twinsUnknown = await issueTitled(5, 'Ask nobody');
+    const nobody = await issueTitled(6, 'Ghost');
+    const someone = await issueTitled(8, 'Lost actor');
+    const done = await issueTitled(9, 'Already named');
+    const caseOnly = await issueTitled(10, 'Case matters');
+    await commentOn(twins, twinA.id);
+
+    await storedMention(named, '@lan.pham mentioned you in "Fix the export"');
+    await storedMention(unnamed, '@mai mentioned you in "Fix the import"');
+    await storedMention(addressAsName, '@self.named mentioned you in "Fix the "quoted" rows"');
+    await storedMention(twins, '@twin mentioned you in "Ask the twins"');
+    await storedMention(twinsUnknown, '@twin mentioned you in "Ask nobody"');
+    await storedMention(nobody, '@ghost mentioned you in "Ghost"');
+    await storedMention(someone, 'someone mentioned you in "Lost actor"');
+    await storedMention(done, 'Lan Pham mentioned you in "Already named"');
+    await storedMention(caseOnly, '@SOLO mentioned you in "Case matters"');
+    await fx.mods.recordAndDeliver({
+      type: 'ops_alert',
+      recipients: [fx.owner],
+      projectId: fx.project.id,
+      issueId: nobody,
+      title: '@solo mentioned you in "not a mention"',
+    });
+
+    const notices = await runRestore(MENTIONER);
+
+    const both = (t: string) => [t, t];
+    expect(await mentionTitles(named)).toEqual(both('ISS-1 — Lan Pham mentioned you in "Fix the export"'));
+    expect(await mentionTitles(unnamed)).toEqual(
+      both('ISS-2 — Another member mentioned you in "Fix the import"'),
+    );
+    expect(await mentionTitles(addressAsName)).toEqual(
+      both('ISS-3 — Another member mentioned you in "Fix the "quoted" rows"'),
+    );
+    expect(await mentionTitles(twins)).toEqual(both('ISS-4 — Twin A mentioned you in "Ask the twins"'));
+    expect(await mentionTitles(twinsUnknown)).toEqual(
+      both('ISS-5 — @twin mentioned you in "Ask nobody"'),
+    );
+    expect((await mentionTitles(nobody)).sort()).toEqual(
+      [
+        'ISS-6 — @ghost mentioned you in "Ghost"',
+        'ISS-6 — @ghost mentioned you in "Ghost"',
+        'ISS-6 — @solo mentioned you in "not a mention"',
+        'ISS-6 — @solo mentioned you in "not a mention"',
+      ].sort(),
+    );
+    expect(await mentionTitles(someone)).toEqual(
+      both('ISS-8 — Another member mentioned you in "Lost actor"'),
+    );
+    expect(await mentionTitles(done)).toEqual(both('ISS-9 — Lan Pham mentioned you in "Already named"'));
+    expect(await mentionTitles(caseOnly)).toEqual(both('ISS-10 — @SOLO mentioned you in "Case matters"'));
+    expect(notices).toEqual([
+      '0344: 10 stored mention title(s) now name who mentioned the reader as core calls them; 6 whose handle names no one person were left as they are',
+    ]);
+  });
+
+  it('runs again over titles it already rewrote and changes nothing', async () => {
+    await person(null, 'mai@example.com');
+    const issueId = await issueTitled(1, 'Fix the import');
+    await storedMention(issueId, '@mai mentioned you in "Fix the import"');
+    await runRestore(MENTIONER);
+    const after = await mentionTitles(issueId);
+    expect(after).toEqual(Array(2).fill('ISS-1 — Another member mentioned you in "Fix the import"'));
+    const notices = await runRestore(MENTIONER);
+    expect(await mentionTitles(issueId)).toEqual(after);
+    expect(notices).toEqual([
+      '0344: 0 stored mention title(s) now name who mentioned the reader as core calls them; 0 whose handle names no one person were left as they are',
+    ]);
   });
 });

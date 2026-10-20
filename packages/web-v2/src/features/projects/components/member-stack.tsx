@@ -1,4 +1,4 @@
-// Overlapping avatar stack from email-derived initials, with a `+N` overflow
+// Overlapping avatar stack from the members' name initials, with a `+N` overflow
 // chip when the true `memberCount` exceeds the rendered avatars.
 import { Avatar, type AvatarHue } from '@/design';
 
