@@ -6,8 +6,10 @@
 -- and on its bell row, behind the delivery door's optional "Resolved — " and issue-reference leads.
 -- A handle is tied to a person only where exactly one user's address has that part before the "@",
 -- or, where several do, exactly one of them wrote a comment on the mention's issue; any other handle
--- is left as it is and counted. The "someone" the producer printed when it found no user names
--- nobody, and reads "Another member". The pattern is lib/person-name.ts ADDRESS_PATTERN.
+-- is left as it is and counted, as is a token some user's display name reads exactly ("@solo",
+-- "someone"), since that may be a name already written. The "someone" the producer printed when it
+-- found no user names nobody, and reads "Another member". The pattern is lib/person-name.ts
+-- ADDRESS_PATTERN.
 DO $$
 DECLARE
   pat CONSTANT text := '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}';
@@ -34,6 +36,15 @@ BEGIN
   LOOP
     m := regexp_match(r.title, '^((?:Resolved — )?(?:[A-Za-z][A-Za-z0-9]{1,5}-[0-9]+ — )?)(@[^ ]+|someone)( mentioned you in ".*")$');
     CONTINUE WHEN m IS NULL;
+
+    -- A token someone is called by today may be a name this producer or a run before wrote: left.
+    IF EXISTS (
+      SELECT 1 FROM public.users u
+       WHERE regexp_replace(u.display_name, '^[[:space:]]+|[[:space:]]+$', '', 'g') = m[2]
+    ) THEN
+      left_alone := left_alone + 1;
+      CONTINUE;
+    END IF;
 
     named := NULL;
     IF m[2] = 'someone' THEN

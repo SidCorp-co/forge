@@ -626,6 +626,31 @@ describe('migration 0344: a stored mention names who mentioned you as core calls
     ]);
   });
 
+  // Consult on the round-20 diff: a display name may itself read like a handle or "someone".
+  it('leaves a token somebody is called by, so a name it wrote is never read as a handle', async () => {
+    await person('@solo', 'lan@example.com');
+    await person('Solo', 'solo@example.com');
+    await person('someone', 'some.one@example.com');
+    const fix = await issueTitled(1, 'Fix');
+    const named = await issueTitled(2, 'Named');
+    await storedMention(fix, '@lan mentioned you in "Fix"');
+    await storedMention(named, 'someone mentioned you in "Named"');
+
+    const first = await runRestore(MENTIONER);
+    const second = await runRestore(MENTIONER);
+
+    expect(await mentionTitles(fix)).toEqual(Array(2).fill('ISS-1 — @solo mentioned you in "Fix"'));
+    expect(await mentionTitles(named)).toEqual(
+      Array(2).fill('ISS-2 — someone mentioned you in "Named"'),
+    );
+    expect(first).toEqual([
+      '0344: 2 stored mention title(s) now name who mentioned the reader as core calls them; 2 whose handle names no one person were left as they are',
+    ]);
+    expect(second).toEqual([
+      '0344: 0 stored mention title(s) now name who mentioned the reader as core calls them; 4 whose handle names no one person were left as they are',
+    ]);
+  });
+
   it('runs again over titles it already rewrote and changes nothing', async () => {
     await person(null, 'mai@example.com');
     const issueId = await issueTitled(1, 'Fix the import');
