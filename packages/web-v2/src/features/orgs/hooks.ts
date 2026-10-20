@@ -33,7 +33,8 @@ export function useDeleteOrg() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (orgId: string) => orgsApi.remove(orgId),
-    onSuccess: () => qc.invalidateQueries({ queryKey: keys.list }),
+    // Exact: ["orgs"] prefixes the deleted organization's own reads, which now only 404.
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.list, exact: true }),
   });
 }
 
