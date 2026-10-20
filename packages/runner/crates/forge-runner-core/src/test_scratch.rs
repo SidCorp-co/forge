@@ -240,6 +240,82 @@ impl AsRef<OsStr> for InScratch {
     }
 }
 
+/// Every tmux server a test started on a socket under `dir`, ended by its pid
+/// when this drops — on a pass, an early return and a panic alike.
+///
+/// Ending a server by its socket alone reaches only the server whose file is
+/// at the path: a test that moves or removes the socket, or puts one server's
+/// file back over another's, leaves a server nothing can address, running
+/// for ever (ISS-1265 round 6: judge-64's run left three). A server keeps the
+/// argv it was started with, `tmux -S <socket> …`, so the pid is read off the
+/// process table by that argv rather than asked of the socket. Once it has
+/// ended them, the drop checks that none is left and fails the test naming
+/// any that is.
+#[cfg(unix)]
+pub struct TmuxServers(PathBuf);
+
+#[cfg(unix)]
+impl TmuxServers {
+    pub fn under(dir: &Path) -> Self {
+        Self(dir.to_path_buf())
+    }
+
+    /// The pids of the tmux processes started on a socket under the directory.
+    pub fn running(&self) -> Vec<u32> {
+        Self::running_under(&self.0)
+    }
+
+    /// The same for any directory, with nothing ended when it is read.
+    pub fn running_under(dir: &Path) -> Vec<u32> {
+        let mut pattern = String::from("^([^ ]*/)?tmux .*-S ");
+        for c in dir.display().to_string().chars() {
+            if "\\.[]()*+?{}|^$".contains(c) {
+                pattern.push('\\');
+            }
+            pattern.push(c);
+        }
+        pattern.push('/');
+        let Ok(out) = std::process::Command::new("pgrep")
+            .args(["-f", "--", &pattern])
+            .stdin(std::process::Stdio::null())
+            .output()
+        else {
+            return Vec::new();
+        };
+        String::from_utf8_lossy(&out.stdout)
+            .lines()
+            .filter_map(|l| l.trim().parse().ok())
+            .collect()
+    }
+}
+
+#[cfg(unix)]
+impl Drop for TmuxServers {
+    fn drop(&mut self) {
+        for pid in self.running() {
+            let Ok(pid) = i32::try_from(pid) else {
+                continue;
+            };
+            let _ = nix::sys::signal::kill(
+                nix::unistd::Pid::from_raw(pid),
+                nix::sys::signal::Signal::SIGKILL,
+            );
+        }
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let mut left = self.running();
+        while !left.is_empty() && std::time::Instant::now() < deadline {
+            std::thread::sleep(std::time::Duration::from_millis(25));
+            left = self.running();
+        }
+        if !left.is_empty() && !std::thread::panicking() {
+            panic!(
+                "tmux process(es) {left:?} started on a socket under {} outlived the test",
+                self.0.display()
+            );
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -1797,6 +1797,9 @@ pub(crate) mod testing {
     /// that variable somewhere empty is the whole isolation — and it is what
     /// keeps a test off the server this box's live masters are running on.
     pub(crate) struct IsolatedServer {
+        // Dropped after this struct's own drop has asked the server to end
+        // through its socket, and before the directory goes.
+        _servers: crate::test_scratch::TmuxServers,
         _xdg: ScopedVar,
         dir: crate::test_scratch::Scratch,
     }
@@ -1809,7 +1812,11 @@ pub(crate) mod testing {
             let dir = crate::test_scratch::Scratch::short(&format!("iso-{label}"));
             std::fs::create_dir_all(dir.join("forge-runner")).expect("isolated config dir");
             let xdg = ScopedVar::set("XDG_CONFIG_HOME", &dir);
-            Self { _xdg: xdg, dir }
+            Self {
+                _servers: crate::test_scratch::TmuxServers::under(&dir),
+                _xdg: xdg,
+                dir,
+            }
         }
 
         /// Whether the isolation took.
@@ -4869,6 +4876,26 @@ done
         let dir = crate::test_scratch::Scratch::short("shtmux");
         let named = dir.join("tmux");
         std::fs::copy(which::which("sh").expect("sh is on PATH"), &named).expect("sh is copied");
+        // As `testing::until_it_runs` does for a shim: a sibling thread that
+        // forked while the copy's descriptor was open keeps the kernel from
+        // running it (`ETXTBSY`) until that fork execs, so it is handed out
+        // only once it has run.
+        let runs = || {
+            std::process::Command::new(&named)
+                .args(["-c", ":"])
+                .stdin(std::process::Stdio::null())
+                .status()
+                .is_ok_and(|s| s.success())
+        };
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while !runs() {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "{} never ran",
+                named.display()
+            );
+            std::thread::sleep(Duration::from_millis(20));
+        }
         (dir, named)
     }
 
@@ -5158,6 +5185,53 @@ done
                 .count()
                 == 1,
             "its pane is said once to have ended with it: {log}"
+        );
+    }
+
+    /// ISS-1265 round 6, the coordinator's repair: judge-64's run left three
+    /// servers on test sockets for ever. A second server started while the
+    /// first one's file was aside, then covered by that file put back, cannot
+    /// be reached through the socket; the isolation still ends it, by pid.
+    #[cfg(unix)]
+    #[allow(clippy::await_holding_lock)]
+    #[tokio::test]
+    async fn a_server_its_socket_cannot_reach_is_ended_with_its_isolation() {
+        let _serialised = ONE_AT_A_TIME.lock().await;
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let iso = testing::IsolatedServer::new("orphan");
+        if !available() {
+            cannot_run("tmux is not installed here — the read this rests on cannot run");
+            return;
+        }
+        if !iso.took() {
+            cannot_run("this box does not resolve its tmux socket from the config dir, so the only server here is its own — not touching it");
+            return;
+        }
+        let socket = socket_path().expect("a socket of the test's own");
+        let under = socket
+            .parent()
+            .and_then(std::path::Path::parent)
+            .expect("the isolation's own directory")
+            .to_path_buf();
+        let dir = crate::test_scratch::Scratch::new("terminal-orphan");
+        placed_master("orphan-first", &dir).await;
+        let moved = testing::MovedSocket::aside();
+        let second = tmux(&["new-session", "-d", "-s", "orphan-second", "sleep", "60"])
+            .await
+            .expect("tmux runs");
+        assert!(second.status.success(), "a second server takes the path");
+        moved.put_back();
+        drop(moved);
+        let before = crate::test_scratch::TmuxServers::running_under(&under);
+        drop(iso);
+        let left = crate::test_scratch::TmuxServers::running_under(&under);
+        assert!(
+            before.len() >= 2,
+            "the plant: two servers ran under the isolation: {before:?}"
+        );
+        assert!(
+            left.is_empty(),
+            "every server the test started ended with its isolation, the one its socket cannot reach too: {left:?}"
         );
     }
 

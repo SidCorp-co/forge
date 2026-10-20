@@ -199,6 +199,9 @@ mod tests {
         }
         let scratch = forge_runner_core::test_scratch::Scratch::short("tp");
         let dir = scratch.path();
+        // Ends the server by pid however the test leaves, a panic included.
+        #[cfg(unix)]
+        let _servers = forge_runner_core::test_scratch::TmuxServers::under(dir);
         let sock = dir.join("t.sock");
         let tmux = |locale: Option<&str>| {
             let mut c = Command::new("tmux");

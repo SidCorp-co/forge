@@ -535,6 +535,8 @@ fn gate_in_a_runner_pane(config_home: &Path, pane: &str, payload: &str) -> Optio
     }
     let dir = config_dir_at(config_home);
     let sock = dir.join("tmux.sock");
+    // Ends the server by pid however this returns, a panic included.
+    let _servers = forge_runner_core::test_scratch::TmuxServers::under(&dir);
     let input = config_home.join("payload.json");
     let output = config_home.join("printed.json");
     std::fs::write(&input, payload).expect("payload");
