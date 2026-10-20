@@ -4,6 +4,7 @@
 // against `/api/auth/me/preferences` and the reply style + standing instructions against
 // `/api/auth/preferences`: two routes, one form, one save bar.
 import { personName } from "@forge/contracts/person-name";
+import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { z } from "zod";
 import type { AnswerStyle } from "@forge/contracts";
@@ -158,6 +159,7 @@ function AccountPreferences({
 /** The name other members read this person by (ISS-1229 r21): set here, cleared here. */
 function DisplayNameField() {
   const { user, setDisplayName } = useAuth();
+  const qc = useQueryClient();
   const saved = user?.displayName ?? "";
   const [draft, setDraft] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -169,6 +171,8 @@ function DisplayNameField() {
     try {
       await setDisplayName(next);
       setDraft(null);
+      // The personal workspace follows the name, so the organization list is read again.
+      await qc.invalidateQueries({ queryKey: ["orgs"] });
     } catch (err) {
       setFailure(formatApiError(err));
     } finally {

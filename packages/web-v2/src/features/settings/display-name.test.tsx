@@ -48,8 +48,10 @@ function RailAvatar() {
   return <span data-testid="rail-avatar">{user ? personInitials(user.displayName) : ""}</span>;
 }
 
+let qc: QueryClient;
+
 function mount() {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
       <AuthProvider>
@@ -71,8 +73,9 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("a person's display name, from Settings → Account", () => {
-  it("is set there, and the rail's avatar follows it without a reload", async () => {
+  it("is set there, and the rail's avatar and the workspace list follow it without a reload", async () => {
     mount();
+    const reread = vi.spyOn(qc, "invalidateQueries");
     await waitFor(() => expect(screen.getByTestId("rail-avatar")).toHaveTextContent("AM"));
     expect(nameField().value).toBe("");
     fireEvent.change(nameField(), { target: { value: "  Lan Pham " } });
@@ -80,6 +83,7 @@ describe("a person's display name, from Settings → Account", () => {
     await waitFor(() => expect(screen.getByTestId("rail-avatar")).toHaveTextContent("LP"));
     expect(writes).toEqual(["Lan Pham"]);
     expect(nameField().value).toBe("Lan Pham");
+    expect(reread).toHaveBeenCalledWith({ queryKey: ["orgs"] });
   });
 
   it("is cleared there, and the avatar reads Another member's initials again", async () => {
