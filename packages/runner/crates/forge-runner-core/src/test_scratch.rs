@@ -252,23 +252,42 @@ impl AsRef<OsStr> for InScratch {
 /// ended them, the drop checks that none is left and fails the test naming
 /// any that is.
 #[cfg(unix)]
-pub struct TmuxServers(PathBuf);
+pub struct TmuxServers {
+    dir: PathBuf,
+    /// The `pgrep` that reads the process table: by bare name, except in the
+    /// test of a table that cannot be read, which hands one in rather than
+    /// moving the process's `PATH` under every other test.
+    pgrep: PathBuf,
+}
 
 #[cfg(unix)]
 impl TmuxServers {
     pub fn under(dir: &Path) -> Self {
-        Self(dir.to_path_buf())
+        Self::reading_with(dir, Path::new("pgrep"))
+    }
+
+    /// The same, reading the process table with `pgrep`.
+    pub fn reading_with(dir: &Path, pgrep: &Path) -> Self {
+        Self {
+            dir: dir.to_path_buf(),
+            pgrep: pgrep.to_path_buf(),
+        }
     }
 
     /// The pids of the tmux processes started on a socket under the directory.
     pub fn running(&self) -> Result<Vec<u32>, String> {
-        Self::running_under(&self.0)
+        Self::read_with(&self.dir, &self.pgrep)
     }
 
     /// The same for any directory, with nothing ended when it is read. A
     /// process table that could not be read is an error, never an empty one:
     /// read as no server, it would certify a teardown nothing checked.
     pub fn running_under(dir: &Path) -> Result<Vec<u32>, String> {
+        Self::read_with(dir, Path::new("pgrep"))
+    }
+
+    /// The same, reading the process table with `pgrep`.
+    pub fn read_with(dir: &Path, pgrep: &Path) -> Result<Vec<u32>, String> {
         let mut pattern = String::from("^([^ ]*/)?tmux .*-S ");
         for c in dir.display().to_string().chars() {
             if "\\.[]()*+?{}|^$".contains(c) {
@@ -277,7 +296,7 @@ impl TmuxServers {
             pattern.push(c);
         }
         pattern.push('/');
-        let out = std::process::Command::new("pgrep")
+        let out = std::process::Command::new(pgrep)
             .args(["-f", "--", &pattern])
             .stdin(std::process::Stdio::null())
             .output()
@@ -307,11 +326,11 @@ impl Drop for TmuxServers {
             Ok(left) if left.is_empty() => {}
             Ok(left) => panic!(
                 "tmux process(es) {left:?} started on a socket under {} outlived the test",
-                self.0.display()
+                self.dir.display()
             ),
             Err(e) => panic!(
                 "whether a tmux process started on a socket under {} outlived the test could not be read: {e}",
-                self.0.display()
+                self.dir.display()
             ),
         }
     }

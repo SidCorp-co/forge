@@ -5252,11 +5252,12 @@ done
             "#!/bin/sh\n[ \"$1\" = --forge-shim-probe ] && exit 0\necho 'pgrep: cannot read the table' >&2\nexit 3\n",
         );
         let mut read = Vec::new();
-        for path in [empty.path(), refusing.path()] {
-            let _path = ScopedVar::set("PATH", path);
-            let listed = crate::test_scratch::TmuxServers::running_under(&under);
+        for pgrep in [empty.join("pgrep"), refusing.join("pgrep")] {
+            let listed = crate::test_scratch::TmuxServers::read_with(&under, &pgrep);
             let dropped = std::panic::catch_unwind(|| {
-                drop(crate::test_scratch::TmuxServers::under(&under));
+                drop(crate::test_scratch::TmuxServers::reading_with(
+                    &under, &pgrep,
+                ));
             });
             read.push((listed, dropped.is_err()));
         }
