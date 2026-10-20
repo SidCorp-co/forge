@@ -87,6 +87,11 @@ export const conversations = pgTable(
     orgId: uuid('org_id').references(() => organizations.id, { onDelete: 'cascade' }),
     /** Who opened the room, where a person did; they may delete it once it is about no project. */
     createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+    /**
+     * Projects deleted while this room was about them, kept by migration 0353's trigger on `projects`
+     * (ISS-1229 r24), since the handle rows naming them go with the project. Empty before 0353.
+     */
+    deletedProjectNames: text('deleted_project_names').array().notNull().default(sql`'{}'::text[]`),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

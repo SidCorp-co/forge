@@ -13,6 +13,7 @@ export interface ResolvedActor {
   deviceId?: string;
   /** What the device's owning member is called, when the owner resolves (ISS-1229: never their address). */
   ownerName?: string;
+  ownerId?: string;
 }
 
 /** Stable map key for an actor ref. */

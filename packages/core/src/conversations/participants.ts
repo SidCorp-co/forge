@@ -38,6 +38,8 @@ export interface ParticipantRow {
    * authority its room's project needs.
    */
   reachable: boolean | null;
+  /** When this member was added; what tells apart two people who read the same name (ISS-1229 r24). */
+  addedAt: Date;
 }
 
 export async function listParticipants(
@@ -59,6 +61,7 @@ export async function listParticipants(
       projectId: conversationParticipants.projectId,
       externalKey: conversationParticipants.externalKey,
       label: conversationParticipants.label,
+      addedAt: conversationParticipants.addedAt,
       liveTokens: live.n,
       memberRole: projectMembers.role,
     })
@@ -86,6 +89,7 @@ export async function listParticipants(
     externalKey: row.externalKey,
     label: row.label,
     reachable: row.kind === 'handle' ? (row.liveTokens ?? 0) > 0 && row.memberRole !== null : null,
+    addedAt: row.addedAt,
   }));
 }
 

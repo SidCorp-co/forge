@@ -23,6 +23,7 @@ import {
   type SelectOption,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
+import { failureToast } from "@/lib/api/failure-toast";
 import { cn } from "@/lib/utils/cn";
 import { useAuth } from "@/providers/auth-provider";
 import { useToast } from "@/providers/toast-provider";
@@ -160,11 +161,7 @@ export function OrgMembersCard({
         setMemberToRemove(null);
       },
       onError: (err) => {
-        toast({
-          title: "Request failed",
-          description: formatApiError(err),
-          tone: "error",
-        });
+        toast(failureToast(err, "The member was not removed"));
         setMemberToRemove(null);
       },
     });
@@ -178,11 +175,7 @@ export function OrgMembersCard({
         setInviteToRevoke(null);
       },
       onError: (err) => {
-        toast({
-          title: "Request failed",
-          description: formatApiError(err),
-          tone: "error",
-        });
+        toast(failureToast(err, "The invitation was not revoked"));
         setInviteToRevoke(null);
       },
     });
@@ -196,11 +189,7 @@ export function OrgMembersCard({
         onDeleted();
       },
       onError: (err) =>
-        toast({
-          title: "Request failed",
-          description: formatApiError(err),
-          tone: "error",
-        }),
+        toast(failureToast(err, "The organization was not deleted")),
     });
   }
 
@@ -217,11 +206,7 @@ export function OrgMembersCard({
         setRenameOpen(false);
       },
       onError: (err) =>
-        toast({
-          title: "Request failed",
-          description: formatApiError(err),
-          tone: "error",
-        }),
+        toast(failureToast(err, "The organization was not renamed")),
     });
   }
 
@@ -307,11 +292,7 @@ export function OrgMembersCard({
                             onSuccess: () =>
                               toast({ title: "Role updated", tone: "success" }),
                             onError: (err) =>
-                              toast({
-                                title: "Request failed",
-                                description: formatApiError(err),
-                                tone: "error",
-                              }),
+                              toast(failureToast(err, "The role was not changed")),
                           },
                         )
                       }
@@ -436,11 +417,7 @@ export function OrgMembersCard({
                     }
                   },
                   onError: (err) =>
-                    toast({
-                      title: "Request failed",
-                      description: formatApiError(err),
-                      tone: "error",
-                    }),
+                    toast(failureToast(err, "The member was not added")),
                 },
               );
             }}

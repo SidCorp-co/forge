@@ -55,6 +55,8 @@ import {
   deleteOrganization,
   listOrgMembers,
   listOrgsForUser,
+  PERSONAL_WORKSPACE_REFUSAL,
+  projectsStandRefusal,
   refuseNonPersonAsMember,
 } from './service.js';
 
@@ -149,7 +151,7 @@ orgRoutes.patch(
 );
 
 // Delete a TEAM org: owner-only, refused while any project still lives in it
-// (move or delete projects first) and always refused for personal orgs. Its own
+// (each named; nothing moves a project to another organization) and always refused for personal orgs. Its own
 // agent accounts go with it (`deleteOrganization`).
 orgRoutes.delete(
   '/:orgId',
@@ -163,17 +165,18 @@ orgRoutes.delete(
 
     const org = await assertOrgAccess(orgId, userId, 'owner');
     if (org.isPersonal) {
-      throw conflict('personal org cannot be deleted', 'PERSONAL_ORG_IMMUTABLE');
+      throw conflict(PERSONAL_WORKSPACE_REFUSAL, 'PERSONAL_ORG_IMMUTABLE');
     }
-    const [projectCount] = await db
-      .select({ n: count() })
+    const standing = await db
+      .select({ name: projects.name })
       .from(projects)
-      .where(eq(projects.orgId, orgId));
-    if (Number(projectCount?.n ?? 0) > 0) {
+      .where(eq(projects.orgId, orgId))
+      .orderBy(projects.name);
+    if (standing.length > 0) {
       throw conflict(
-        'org still has projects',
+        projectsStandRefusal(standing.map((p) => p.name)),
         'ORG_NOT_EMPTY',
-        'delete or move its projects first',
+        'delete its projects first',
       );
     }
 

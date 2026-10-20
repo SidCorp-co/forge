@@ -15,7 +15,7 @@ import { LandingShapeControl } from "./landing-shape-control";
 import { LiveReachValue } from "./live-reach-row";
 import { MergeMarkerControl } from "./merge-marker-control";
 import { InlineSelect, StatusEdit } from "./inline-edit-cell";
-import { creatorLabelOf, initials, splitBlockedBy } from "../derive";
+import { categoryLabel, creatorInitialsOf, creatorLabelOf, splitBlockedBy } from "../derive";
 import type { RunWord } from "@/features/runs/derive";
 import { AGENT_HOLDS_EDIT, heldByAgent } from "../edit-lock";
 import { useAuth } from "@/providers/auth-provider";
@@ -50,11 +50,6 @@ function fmtTokens(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
   return String(n);
-}
-
-/** Title-case a free-text category (`improvement` → `Improvement`). */
-function titleCase(s: string): string {
-  return s.replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
@@ -326,7 +321,7 @@ export function PropertiesRail({
       </Row>
       <Row label="Creator">
         <div className="flex items-center justify-end gap-2">
-          <Avatar initials={initials(creatorLabelOf(issue))} size={22} />
+          <Avatar initials={creatorInitialsOf(issue, viewerId)} size={22} />
           <span className="fg-body-sm truncate text-fg" title={creatorLabelOf(issue, viewerId)}>
             {creatorLabelOf(issue, viewerId)}
           </span>
@@ -334,7 +329,7 @@ export function PropertiesRail({
       </Row>
       {issue.category && (
         <Row label="Category">
-          <Badge tone="neutral">{titleCase(issue.category)}</Badge>
+          <Badge tone="neutral">{categoryLabel(issue.category)}</Badge>
         </Row>
       )}
       {hasModule && (

@@ -17,7 +17,7 @@ import {
 } from '../jobs/loop-monitor-axis.js';
 import { loadVisibleProjectIds } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
-import { personInitials } from '../lib/person-name.js';
+import { readerInitials } from '../lib/person-name.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { type BlockerRow, readHealthAggregates } from './health-aggregates.js';
 import { projectHealthListSchema, readProjectHealth } from './health-routes-reference.js';
@@ -62,7 +62,8 @@ interface ProjectHealthRow {
   spend24hUsd: number;
   /** True total project membership count. */
   memberCount: number;
-  /** Up to 5 avatar initials, each from the name `personName` gives the member, never their address. */
+  /** Up to 5 avatar initials, each from the name `personName` gives the member, never their address;
+   *  the reader's own never "AM" (`readerInitials`). */
   members: string[];
   /** ISO timestamp of the most recent issue/run activity, or `null`. */
   lastActivityAt: string | null;
@@ -202,7 +203,7 @@ projectHealthRoutes.get('/health', readProjectHealth, async (c) => {
   for (const r of agg.memberRows) {
     memberCountByProject.set(r.projectId, (memberCountByProject.get(r.projectId) ?? 0) + 1);
     const arr = membersByProject.get(r.projectId) ?? [];
-    if (arr.length < MEMBER_AVATAR_CAP) arr.push(personInitials(r.displayName));
+    if (arr.length < MEMBER_AVATAR_CAP) arr.push(readerInitials(r.userId, userId, r.displayName));
     membersByProject.set(r.projectId, arr);
   }
 

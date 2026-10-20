@@ -154,6 +154,7 @@ const readMemberRows = (projectIds: string[]) =>
   db
     .select({
       projectId: projectMembers.projectId,
+      userId: projectMembers.userId,
       displayName: users.displayName,
       joinedAt: projectMembers.createdAt,
     })

@@ -2248,6 +2248,13 @@
       "when": 1813363200000,
       "tag": "0351_the_rescue_pass_reads_in_turn",
       "breakpoints": true
+    },
+    {
+      "idx": 353,
+      "version": "7",
+      "when": 1813536000000,
+      "tag": "0353_a_room_remembers_its_deleted_projects",
+      "breakpoints": true
     }
   ]
 }

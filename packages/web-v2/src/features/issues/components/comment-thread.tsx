@@ -5,7 +5,8 @@
 // `<BodyView>` (markdown or a `forge-*` component tree), author initials
 // resolved against the project members, and reply/add boxes.
 
-import { personName } from "@forge/contracts/person-name";
+import { readerInitials, readerName } from "@forge/contracts/person-name";
+import { useAuth } from "@/providers/auth-provider";
 import {
   Avatar,
   Badge,
@@ -297,14 +298,18 @@ function CommentItem({
   const kind = deriveCommentKind(node);
   const meta = COMMENT_KIND_META[kind];
   const isAgent = node.author?.isAgent ?? false;
-  const author = node.author?.displayName ?? memberLabel(node.authorId, members);
+  const viewerId = useAuth().user?.id ?? null;
+  // The reader reads "You" for their own comment and "via you" for their own agent's (ISS-1229 r24).
+  const named = node.author?.displayName ?? memberLabel(node.authorId, members);
+  const author = node.author?.type === "device" ? named : readerName(node.authorId, viewerId, named);
   const ownerName = node.author?.ownerName;
+  const via = ownerName ? readerName(node.author?.ownerId, viewerId, ownerName, "inside") : null;
   return (
     <div
       className={depth > 0 ? "border-l border-line-subtle pl-3 sm:pl-4" : ""}
     >
       <div className="flex items-start gap-2.5">
-        <Avatar initials={initials(author)} size={26} />
+        <Avatar initials={node.author?.type === "device" ? initials(author) : readerInitials(node.authorId, viewerId, named)} size={26} />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className="fg-label text-fg">{author}</span>
@@ -321,9 +326,7 @@ function CommentItem({
               {formatRelativeTime(node.createdAt)}
             </span>
           </div>
-          {isAgent && ownerName && (
-            <div className="fg-caption">via {personName(ownerName)}</div>
-          )}
+          {isAgent && via && <div className="fg-caption">via {via}</div>}
           <div className="mt-1">
             <BodyView
               body={node.body}

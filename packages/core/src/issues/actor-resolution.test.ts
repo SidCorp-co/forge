@@ -54,6 +54,7 @@ describe('resolveActors', () => {
       isAgent: true,
       deviceId: D1,
       ownerName: 'another member',
+      ownerId: O1,
     });
   });
 

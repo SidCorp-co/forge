@@ -49,7 +49,24 @@ describe("an Activity event, said as a sentence", () => {
     );
     expect(
       said(item("issue.updated", { payload: { fields: ["priority"], before: { priority: "medium" }, after: { priority: "high" } } })),
-    ).toBe("Lan Pham changed the priority from medium to high");
+    ).toBe("Lan Pham changed the priority from Medium to High");
+  });
+
+  // ISS-1229 r24, judge-70: "from s to xl" while the properties panel showed "XL".
+  it.each([
+    ["complexity", "s", "xl", "Lan Pham changed the complexity from Small to XL"],
+    ["priority", "none", "critical", "Lan Pham changed the priority from None to Critical"],
+    ["category", "bug", "enhancement", "Lan Pham changed the category from Bug to Enhancement"],
+  ])("quotes a %s change as the properties panel shows it", (field, from, to, words) => {
+    expect(said(item("issue.updated", { payload: { fields: [field], before: { [field]: from }, after: { [field]: to } } }))).toBe(
+      words,
+    );
+  });
+
+  it("says a value set where none stood, in the panel's words", () => {
+    expect(said(item("issue.updated", { payload: { fields: ["complexity"], before: { complexity: null }, after: { complexity: "m" } } }))).toBe(
+      "Lan Pham set the complexity to Medium",
+    );
   });
 
   // ISS-1229 r23, judge-66: "changed the merged at, merged commit sha and merged landing".

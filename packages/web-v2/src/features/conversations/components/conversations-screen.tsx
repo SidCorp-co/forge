@@ -20,9 +20,10 @@ import {
   useDeleteConversation,
   useRenameConversation,
 } from "../hooks";
-import { conversationTitle } from "../types";
+import { conversationTitle, type RoomWithoutAProject } from "../types";
 import { ConversationChat } from "./conversation-chat";
 import { ConversationSidebar } from "./conversation-sidebar";
+import { OrphanRoomView } from "./orphan-room-view";
 import { RoomsWithoutAProject } from "./orphan-rooms";
 import { StartConversation } from "./start-conversation";
 
@@ -53,6 +54,8 @@ export function ConversationsScreen() {
   const conversations = useConversationsAcrossProjects(projectIdList, showArchived);
 
   const [selection, setSelection] = useState<Selection | null>(null);
+  /** A room whose project was deleted, opened read-only in place of a chat (ISS-1229 r24). */
+  const [orphan, setOrphan] = useState<RoomWithoutAProject | null>(null);
   const selectionKeyRef = useRef(0);
   const [collapsed, setCollapsed] = usePersistedState<boolean>(SIDEBAR_COLLAPSED_KEY, false, {
     syncTabs: false,
@@ -73,12 +76,14 @@ export function ConversationsScreen() {
   const now = Date.now();
 
   const openRow = useCallback((row: ListedConversation) => {
+    setOrphan(null);
     selectionKeyRef.current += 1;
     setSelection({ key: selectionKeyRef.current, projectId: row.projectId, conversationId: row.id });
     setMobileHistoryOpen(false);
   }, []);
 
   const startNew = useCallback(() => {
+    setOrphan(null);
     setSelection(null);
     setMobileHistoryOpen(false);
   }, []);
@@ -88,6 +93,7 @@ export function ConversationsScreen() {
   }, []);
 
   const openStarted = useCallback((conversationId: string, projectId: string) => {
+    setOrphan(null);
     selectionKeyRef.current += 1;
     setSelection({ key: selectionKeyRef.current, projectId, conversationId });
   }, []);
@@ -110,7 +116,20 @@ export function ConversationsScreen() {
         archive.mutate({ id: row.id, archived }, { onSuccess: () => dropIfOpen(row.id) });
       }}
       onDelete={(row) => setConfirming(row)}
-      below={showArchived ? null : <RoomsWithoutAProject orgId={activeOrgId ?? null} />}
+      below={
+        showArchived ? null : (
+          <RoomsWithoutAProject
+            orgId={activeOrgId ?? null}
+            openId={orphan?.id}
+            onDeleted={(id) => setOrphan((o) => (o?.id === id ? null : o))}
+            onOpen={(room) => {
+              setSelection(null);
+              setOrphan(room);
+              setMobileHistoryOpen(false);
+            }}
+          />
+        )
+      }
       loading={conversations.isLoading}
       error={conversations.error}
       onRetry={conversations.refetch}
@@ -136,7 +155,9 @@ export function ConversationsScreen() {
         <div className="hidden md:flex md:min-h-0">{sidebar(false)}</div>
 
         <div className="min-h-0 flex-1 bg-app">
-          {selection ? (
+          {orphan ? (
+            <OrphanRoomView key={orphan.id} room={orphan} onDeleted={() => setOrphan(null)} />
+          ) : selection ? (
             <ConversationChat
               key={selection.key}
               projectId={selection.projectId}

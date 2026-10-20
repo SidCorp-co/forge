@@ -152,8 +152,9 @@ export const deleteOrg = describeOperation({
     403: fail('FORBIDDEN', OWNER_ONLY),
     404: fail('NOT_FOUND', NOT_AN_ORG),
     409: fail({
-      PERSONAL_ORG_IMMUTABLE: 'a personal organization cannot be deleted',
-      ORG_NOT_EMPTY: 'projects still live in the organization; delete or move them first',
+      PERSONAL_ORG_IMMUTABLE: 'a personal workspace cannot be deleted',
+      ORG_NOT_EMPTY:
+        'projects still live in the organization, each named with their count; delete them first',
       ORG_AGENT_HOLDS_A_DEVICE:
         "its agent accounts hold devices not yet revoked, every one named; an admin of the organization revokes them from the organization's Runners list first",
     }),

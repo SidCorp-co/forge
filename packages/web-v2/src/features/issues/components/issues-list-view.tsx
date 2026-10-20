@@ -24,7 +24,6 @@ import {
   type SegmentOption,
   type SelectOption,
 } from "@/design";
-import { personChoice } from "@forge/contracts/person-name";
 import { WORK_STATE_LABELS, WORK_STATES } from "@forge/contracts/work-state";
 import { decodeFilter, decodeNumber, usePinnedViews } from "@/features/shell";
 import { formatApiError } from "@/lib/api/error";
@@ -43,8 +42,10 @@ import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/lib/utils/cn";
 import { type IssueBuckets, ISSUES_PAGE_SIZE } from "../api";
+import { useAuth } from "@/providers/auth-provider";
 import {
   ANY_AGENT_LABEL,
+  creatorChoice,
   filterCount,
   groupRows,
   originFromParams,
@@ -289,16 +290,17 @@ export function IssuesListView({
   // its own name and an agent is marked rather than replaced by a class label.
   // "any agent" stays as a KIND filter above them, which is a different
   // question from "which writer" and is why it is not one of the names.
+  const viewerId = useAuth().user?.id ?? null;
   const creatorFilterOptions = useMemo<SelectOption[]>(
     () => [
       { value: "", label: "Creator: anyone" },
       { value: "agent", label: `Creator: ${ANY_AGENT_LABEL}` },
       ...(membersQ.data ?? []).map((m) => {
-        const { label, detail } = personChoice(m.displayName, m.email);
+        const { label, detail } = creatorChoice(m, viewerId);
         return { value: m.userId, label: m.kind === "agent" ? `${label} (agent)` : label, detail };
       }),
     ],
-    [membersQ.data],
+    [membersQ.data, viewerId],
   );
 
   const labelFilterOptions = useMemo<SelectOption[]>(
@@ -346,7 +348,7 @@ export function IssuesListView({
     statusParam?.length === 1 && FINISHED_CUTS.includes(statusParam[0]) ? statusParam[0] : "";
   const pageCount = Math.max(1, Math.ceil(total / ISSUES_PAGE_SIZE));
 
-  const groups = useMemo(() => groupRows(rows, groupBy), [rows, groupBy]);
+  const groups = useMemo(() => groupRows(rows, groupBy, viewerId), [rows, groupBy, viewerId]);
   // The rollup is read only while the list is grouped by module: it supplies the project-wide
   // counts on each group's header, which one page of rows cannot.
   const rollupQ = useModuleRollup(groupBy === "module" ? projectId : undefined);

@@ -12,6 +12,7 @@ import {
   Skeleton,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
+import { failureToast } from "@/lib/api/failure-toast";
 import { SLUG_RE, slugify } from "@/lib/slug";
 import { useToast } from "@/providers/toast-provider";
 // Settings → Organizations. List the caller's orgs (personal pinned first),
@@ -152,11 +153,7 @@ function CreateOrgForm() {
               toast({ title: "Organization created", tone: "success" });
             },
             onError: (err) =>
-              toast({
-                title: "Request failed",
-                description: formatApiError(err),
-                tone: "error",
-              }),
+              toast(failureToast(err, "The organization was not created")),
           },
         );
       }}

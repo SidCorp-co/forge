@@ -12,7 +12,7 @@
 // provider history window and not by when an agent joined. So the sentence says
 // the agent is shown what has already been said, and it says the bound.
 
-import { personName } from "@forge/contracts/person-name";
+import { personName, readerName } from "@forge/contracts/person-name";
 import type {
   ConversationMembership,
   ConversationParticipant,
@@ -198,15 +198,48 @@ export function personAdditionClaims(args: {
   ];
 }
 
-/** How a member is named in the room's list: the reader's own row reads "You" (ISS-1229 r23). */
+const ADDED_DAY = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+const ADDED_TIME = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "UTC" });
+const ORDINALS = ["first", "second", "third", "fourth", "fifth"];
+
+/**
+ * What tells a person apart from others in the room who read the same name (ISS-1229 r24): the day
+ * they were added, then the minute, then their place in the order added — the way a connection is
+ * told apart (`connectionLabels`). Null where nobody else reads like them.
+ */
+function addedWords(
+  participant: ConversationParticipant,
+  room: Partial<Pick<ConversationMembership, "participants">>,
+  viewerId?: string | null,
+): string | null {
+  if (participant.kind !== "person" || !participant.addedAt) return null;
+  const base = (p: ConversationParticipant) => readerName(p.userId, viewerId, p.displayName).toLowerCase();
+  const alike = (room.participants ?? [])
+    .filter((p) => p.kind === "person" && p.addedAt && base(p) === base(participant))
+    .sort((a, b) => (a.addedAt as string).localeCompare(b.addedAt as string) || a.id.localeCompare(b.id));
+  if (alike.length < 2) return null;
+  const day = (p: ConversationParticipant) => ADDED_DAY.format(new Date(p.addedAt as string));
+  const minute = (p: ConversationParticipant) => `${day(p)}, ${ADDED_TIME.format(new Date(p.addedAt as string))} UTC`;
+  const sameDay = alike.filter((p) => day(p) === day(participant));
+  if (sameDay.length < 2) return `added ${day(participant)}`;
+  const sameMinute = alike.filter((p) => minute(p) === minute(participant));
+  if (sameMinute.length < 2) return `added ${minute(participant)}`;
+  const place = sameMinute.findIndex((p) => p.id === participant.id);
+  return `added ${minute(participant)}, the ${ORDINALS[place] ?? `number ${place + 1}`}`;
+}
+
+/** How a member is named in the room's list: the reader's own row reads "You" (ISS-1229 r23), and
+ *  people who read alike carry when each was added, in the list and every question about them (r24). */
 export function memberName(
   participant: ConversationParticipant,
   viewerId?: string | null,
   at: "inside" | "start" = "start",
+  room?: Partial<Pick<ConversationMembership, "participants">>,
 ): string {
   if (participant.kind === "handle") return `@${participant.displayName ?? participant.label ?? "agent"}`;
-  if (viewerId && participant.userId === viewerId) return at === "start" ? "You" : "you";
-  return personName(participant.displayName, at);
+  const name = readerName(participant.userId, viewerId, participant.displayName, at);
+  const apart = room ? addedWords(participant, room, viewerId) : null;
+  return apart ? `${name} (${apart})` : name;
 }
 
 /** What taking this member out does. */
@@ -216,9 +249,7 @@ export function removalClaim(
   viewerId?: string | null,
 ): string {
   if (participant.kind !== "handle") {
-    return viewerId && participant.userId === viewerId
-      ? "You will no longer be listed in this room."
-      : `${personName(participant.displayName, "start")} will no longer be listed in this room.`;
+    return `${memberName(participant, viewerId, "start", room)} will no longer be listed in this room.`;
   }
   const rest = agentsOf(room)
     .filter((p) => p.id !== participant.id)
@@ -244,8 +275,12 @@ export function composerRefusal(
 export function removalQuestion(
   participant: ConversationParticipant,
   viewerId?: string | null,
+  room?: Partial<Pick<ConversationMembership, "participants">>,
 ): { title: string; confirm: string } {
   const self = participant.kind === "person" && Boolean(viewerId) && participant.userId === viewerId;
-  const who = self ? "yourself" : memberName(participant, viewerId, "inside");
-  return { title: `Take ${who} out of this room?`, confirm: self ? "Take me out" : `Take ${who} out` };
+  const who = self ? "yourself" : memberName(participant, viewerId, "inside", room);
+  // The button answers the question above it, so it keeps the short name: the full one, with when they
+  // were added, made the button push Cancel off a phone's width (ISS-1229 r24).
+  const short = self ? "yourself" : memberName(participant, viewerId, "inside");
+  return { title: `Take ${who} out of this room?`, confirm: self ? "Take me out" : `Take ${short} out` };
 }

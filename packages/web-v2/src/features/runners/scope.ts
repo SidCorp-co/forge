@@ -33,10 +33,16 @@ export function assignmentBridgeLine(
 ): string | null {
 	if (deviceCount === UNKNOWN_COUNT || runnerAssignments === UNKNOWN_COUNT) return null;
 	if (deviceCount === 0) return null;
-	const boxes = deviceCount === 1 ? "This 1 device serves" : `These ${deviceCount} devices serve`;
+	// One device serves its assignments alone, so "between them" is said of two or more (ISS-1229 r24).
+	const boxes = deviceCount === 1 ? "This device serves" : `These ${deviceCount} devices serve`;
 	const assignments =
-		runnerAssignments === 1 ? "1 runner assignment" : `${runnerAssignments} runner assignments`;
-	return `${boxes} ${assignments} between them — the assignments are what Overview counts as runners.`;
+		runnerAssignments === 0
+			? "no runner assignments"
+			: runnerAssignments === 1
+				? "1 runner assignment"
+				: `${runnerAssignments} runner assignments`;
+	const shared = deviceCount > 1 && runnerAssignments > 0 ? " between them" : "";
+	return `${boxes} ${assignments}${shared} — the assignments are what Overview counts as runners.`;
 }
 
 /** What the org list says in place of the owner's controls; null where the row carries controls. */

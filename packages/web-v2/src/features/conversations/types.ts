@@ -109,6 +109,7 @@ export interface ConversationParticipant {
   /** What to print: the address for an agent, the account's own name for a person. */
   displayName: string | null;
   reachable: boolean | null;
+  addedAt?: string;
 }
 
 /** A project in a room's derived scope, named so a screen can say which it is. */
@@ -270,5 +271,9 @@ export interface RoomWithoutAProject {
   title: string | null;
   shape: ConversationShape;
   archivedAt: string | null;
+  createdAt: string;
   updatedAt: string;
+  /** The projects deleted while it was about them; empty where it was orphaned before they were kept. */
+  deletedProjectNames: string[];
+  lastMessageAt: string | null;
 }

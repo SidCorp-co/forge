@@ -8,6 +8,7 @@
 // not, at the accent token, which clears the 3:1 non-text contrast bar against
 // the surface behind it: the difference is meant to be seen rather than read.
 
+import { readerInitials } from "@forge/contracts/person-name";
 import { useState } from "react";
 import {
   Avatar,
@@ -25,7 +26,6 @@ import { useAuth } from "@/providers/auth-provider";
 import { useRemoveParticipant } from "../hooks";
 import {
   agentsOf,
-  initialsOf,
   memberName,
   peopleOf,
   removalClaim,
@@ -56,7 +56,7 @@ export function ConversationMembers({
   const [removing, setRemoving] = useState<ConversationParticipant | null>(null);
   const remove = useRemoveParticipant(conversationId);
   const viewerId = useAuth().user?.id ?? null;
-  const asked = removing ? removalQuestion(removing, viewerId) : null;
+  const asked = removing ? removalQuestion(removing, viewerId, room) : null;
 
   const agents = agentsOf(room);
   const people = peopleOf(room);
@@ -215,12 +215,12 @@ function MemberRow({
         </span>
       ) : (
         <span data-testid="member-mark-person" className="flex-none">
-          <Avatar initials={initialsOf(member.displayName ?? "?")} size={20} />
+          <Avatar initials={readerInitials(member.userId, viewerId, member.displayName)} size={20} />
         </span>
       )}
       <div className="min-w-0 flex-1">
         <span className={`fg-body-sm block truncate ${isAgent ? "font-mono" : ""}`}>
-          {memberName(member, viewerId)}
+          {memberName(member, viewerId, "start", room)}
         </span>
         <span className="fg-caption block truncate text-subtle">
           {isAgent ? (project?.name ?? "a project this room is no longer about") : "Person"}
@@ -236,7 +236,7 @@ function MemberRow({
           <IconButton
             icon="x"
             size="sm"
-            aria-label={`Take ${member.kind === "person" && viewerId && member.userId === viewerId ? "yourself" : memberName(member, viewerId, "inside")} out of the room`}
+            aria-label={`Take ${member.kind === "person" && viewerId && member.userId === viewerId ? "yourself" : memberName(member, viewerId, "inside", room)} out of the room`}
             disabled={busy}
             onClick={onRemove}
           />

@@ -13,7 +13,8 @@
 // drawn by it: a person's own bubble, which carries an `authorLabel` a session
 // has no notion of, and the four non-message entries below.
 
-import { personName } from "@forge/contracts/person-name";
+import { readerName } from "@forge/contracts/person-name";
+import { useAuth } from "@/providers/auth-provider";
 import { useState } from "react";
 import { Icon } from "@/design";
 import { Conversation } from "@/features/session/components/conversation";
@@ -106,7 +107,11 @@ function spokenAt(iso: string): { label: string; title: string } {
 function MessageActions({ message }: { message: ConversationMessage }) {
   const [copied, setCopied] = useState(false);
   const when = spokenAt(message.createdAt);
-  const author = message.authorLabel ?? (message.role === "user" ? "You" : "Assistant");
+  const viewerId = useAuth().user?.id ?? null;
+  // The reader's own message is "You" whatever label core stored for it (ISS-1229 r24).
+  const own = Boolean(viewerId) && message.authorUserId === viewerId;
+  const author = own ? "You" : (message.authorLabel ?? (message.role === "user" ? "You" : "Assistant"));
+  const from = own ? "you" : readerName(null, null, author, "inside");
   const copy = () => {
     navigator.clipboard?.writeText(message.content).then(
       () => {
@@ -131,7 +136,7 @@ function MessageActions({ message }: { message: ConversationMessage }) {
         onClick={copy}
         // A list of controls all named "Copy" does not say which is which; the
         // name leads with the visible word so a voice command still finds it.
-        aria-label={`${copied ? "Copied" : "Copy"} message from ${personName(author)}${when.label ? ` at ${when.label}` : ""}`}
+        aria-label={`${copied ? "Copied" : "Copy"} message from ${from}${when.label ? ` at ${when.label}` : ""}`}
         className="rounded-sm underline-offset-2 hover:text-fg hover:underline"
       >
         {copied ? "Copied" : "Copy"}

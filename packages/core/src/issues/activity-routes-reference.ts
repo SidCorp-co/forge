@@ -10,6 +10,7 @@ export const resolvedActorSchema = z.object({
   isAgent: z.boolean(),
   deviceId: z.string().optional(),
   ownerName: z.string().optional(),
+  ownerId: z.string().optional(),
 });
 
 export const activityRowSchema = z.object({

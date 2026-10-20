@@ -2,6 +2,7 @@
 
 import { ApiError } from "@/lib/api/client";
 import { formatApiError } from "@/lib/api/error";
+import { failureToast } from "@/lib/api/failure-toast";
 import { useToast } from "@/providers/toast-provider";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { runnersApi } from "./api";
@@ -58,11 +59,7 @@ export function useRevokeDevice() {
 			toast({ title: "Device revoked", tone: "success" });
 		},
 		onError: (err) =>
-			toast({
-				title: "Revoke failed",
-				description: formatApiError(err),
-				tone: "error",
-			}),
+			toast(failureToast(err, "The device was not revoked")),
 	});
 }
 
@@ -119,11 +116,7 @@ export function useRenameDevice() {
 			toast({ title: "Device renamed", tone: "success" });
 		},
 		onError: (err) =>
-			toast({
-				title: "Rename failed",
-				description: formatApiError(err),
-				tone: "error",
-			}),
+			toast(failureToast(err, "The device was not renamed")),
 	});
 }
 
@@ -154,11 +147,7 @@ export function useBindRunner(deviceId: string) {
 			toast({ title: "Project assigned", tone: "success" });
 		},
 		onError: (err) =>
-			toast({
-				title: "Assign failed",
-				description: formatApiError(err),
-				tone: "error",
-			}),
+			toast(failureToast(err, "The project was not assigned")),
 	});
 }
 
@@ -182,11 +171,7 @@ export function usePatchRunner(deviceId: string) {
 			toast({ title: "Runner saved", tone: "success" });
 		},
 		onError: (err) =>
-			toast({
-				title: "Save failed",
-				description: formatApiError(err),
-				tone: "error",
-			}),
+			toast(failureToast(err, "The runner was not saved")),
 	});
 }
 
@@ -207,12 +192,10 @@ export function useSetRunnerAdmission(projectId: string) {
 				tone: "success",
 			});
 		},
-		onError: (err) =>
-			toast({
-				title: "Save failed",
-				description: formatApiError(err),
-				tone: "error",
-			}),
+		onError: (err, v) =>
+			toast(
+				failureToast(err, v.admit ? "The runner was not put back in the pool" : "The runner was not drained"),
+			),
 	});
 }
 
@@ -227,11 +210,7 @@ export function useSetRunnerLabels(projectId: string) {
 			toast({ title: "Labels saved", tone: "success" });
 		},
 		onError: (err) =>
-			toast({
-				title: "Save failed",
-				description: formatApiError(err),
-				tone: "error",
-			}),
+			toast(failureToast(err, "The labels were not saved")),
 	});
 }
 
@@ -249,11 +228,7 @@ export function useUnbindRunner(deviceId: string) {
 			toast({ title: "Project unassigned", tone: "success" });
 		},
 		onError: (err) =>
-			toast({
-				title: "Unassign failed",
-				description: formatApiError(err),
-				tone: "error",
-			}),
+			toast(failureToast(err, "The project was not unassigned")),
 	});
 }
 
@@ -294,8 +269,7 @@ export function useRunnerActivity(runnerId: string, enabled: boolean) {
  * dispatch tick, carries projectId) and on `runner.status`/`pipeline_run`
  * terminal events. The 10s `refetchInterval` is a backstop for any gap (e.g.
  * `job.assigned` rides the device room, so busy ONSET can lag up to one poll)
- * and re-anchors the row's elapsed counter to real `startedAt` values (the
- * per-second tick itself is purely client-side).
+ * and re-anchors the row's elapsed counter to real `startedAt` values.
  */
 export function useActiveRunners(projectId: string | null) {
 	return useQuery({
@@ -347,11 +321,7 @@ export function useDeleteGitCredential(projectId: string) {
 			toast({ title: "Deploy key removed", tone: "success" });
 		},
 		onError: (err) =>
-			toast({
-				title: "Remove failed",
-				description: formatApiError(err),
-				tone: "error",
-			}),
+			toast(failureToast(err, "The deploy key was not removed")),
 	});
 }
 
@@ -391,11 +361,7 @@ export function useAssignDeviceToProject(projectId: string) {
 			toast({ title: "Device assigned — provisioning…", tone: "success" });
 		},
 		onError: (err) =>
-			toast({
-				title: "Assign failed",
-				description: formatApiError(err),
-				tone: "error",
-			}),
+			toast(failureToast(err, "The device was not assigned")),
 	});
 }
 
@@ -411,11 +377,7 @@ export function useUnassignDeviceFromProject(projectId: string) {
 			toast({ title: "Device unassigned", tone: "success" });
 		},
 		onError: (err) =>
-			toast({
-				title: "Unassign failed",
-				description: formatApiError(err),
-				tone: "error",
-			}),
+			toast(failureToast(err, "The device was not unassigned")),
 	});
 }
 
@@ -484,10 +446,6 @@ export function useReprovision(projectId: string) {
 			toast({ title: "Re-provisioning…", tone: "success" });
 		},
 		onError: (err) =>
-			toast({
-				title: "Re-provision failed",
-				description: formatApiError(err),
-				tone: "error",
-			}),
+			toast(failureToast(err, "The device was not re-provisioned")),
 	});
 }

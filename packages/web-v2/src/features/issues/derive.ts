@@ -1,5 +1,5 @@
 
-import { personInitials, personName } from "@forge/contracts/person-name";
+import { personChoice, personInitials, readerInitials, readerName } from "@forge/contracts/person-name";
 import { jobKindLabel } from "@/features/overview/job-kinds";
 import {
 	AUTONOMOUS_LABELS,
@@ -118,6 +118,9 @@ export const COMPLEXITY_LABELS: Record<IssueComplexity, string> = {
 export const statusLabel = (s: IssueStatus): string => STATUS_LABELS[s] ?? s;
 export const priorityLabel = (p: IssuePriority): string =>
 	PRIORITY_LABELS[p] ?? p;
+/** A free-text category as the properties panel shows it (`improvement` → `Improvement`). */
+export const categoryLabel = (category: string): string =>
+	category.replace(/\b\w/g, (c) => c.toUpperCase());
 export const complexityLabel = (
 	c: IssueComplexity | null | undefined,
 ): string => (c ? (COMPLEXITY_LABELS[c] ?? c) : "—");
@@ -452,14 +455,25 @@ function groupByModule(rows: IssueRow[]): IssueGroup[] {
 	});
 }
 
-/** What a member is called, as `personName` says it: never their address, never a raw id (ISS-1229). */
+/** What a member is called, as `personName` says it: never their address, never a raw id (ISS-1229);
+ *  "You" to the reader themself (r24). */
 export function memberLabel(
 	userId: string | null,
 	members?: { userId: string; displayName: string | null }[],
+	viewerId?: string | null,
 ): string {
 	if (!userId) return "Unassigned";
 	const m = members?.find((x) => x.userId === userId);
-	return m ? personName(m.displayName, "start") : "Unknown user";
+	return m ? readerName(m.userId, viewerId, m.displayName) : "Unknown user";
+}
+
+/** How the creator filter offers a member: by name, "You" for the reader, the address beside it. */
+export function creatorChoice(
+	member: { userId: string; displayName: string | null; email: string },
+	viewerId?: string | null,
+): { label: string; detail: string } {
+	const choice = personChoice(member.displayName, member.email);
+	return { ...choice, label: readerName(member.userId, viewerId, member.displayName) };
 }
 
 /** The creator-filter option that selects every agent's issues at once. */
@@ -481,13 +495,21 @@ export function initials(label: string): string {
 	return personInitials(label);
 }
 
+/** An issue's creator avatar: the reader's own letter where they gave no name, never "AM" (ISS-1229 r24). */
+export function creatorInitialsOf(
+	row: Pick<IssueRow, "creatorLabel"> & Partial<Pick<IssueRow, "createdById">>,
+	viewerId?: string | null,
+): string {
+	return readerInitials(row.createdById, viewerId, row.creatorLabel);
+}
+
 /**
  * Group rows client-side. `none` returns a single group. Within each group the
  * server-provided order is preserved (server already sorted). Group ordering is
  * deterministic (by the natural enum/status order, Unassigned last for people, modules by name with
  * the issues that have none last).
  */
-export function groupRows(rows: IssueRow[], groupBy: GroupBy): IssueGroup[] {
+export function groupRows(rows: IssueRow[], groupBy: GroupBy, viewerId?: string | null): IssueGroup[] {
 	if (groupBy === "none") {
 		return [{ key: "all", label: "All issues", rows }];
 	}
@@ -505,7 +527,7 @@ export function groupRows(rows: IssueRow[], groupBy: GroupBy): IssueGroup[] {
 	const groups: IssueGroup[] = [];
 	for (const [key, groupRowsArr] of buckets) {
 		const label =
-			groupBy === "creator" ? creatorLabelOf(groupRowsArr[0]) : key;
+			groupBy === "creator" ? creatorLabelOf(groupRowsArr[0], viewerId) : key;
 		groups.push({ key, label, rows: groupRowsArr });
 	}
 	if (groupBy === "creator") {
