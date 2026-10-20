@@ -346,7 +346,7 @@ describe('MCP forge_issues into on_hold', () => {
     expect(await thread(id)).toHaveLength(0);
   });
 
-  it('refuses a blank reason by the same name, naming on_hold', async () => {
+  it('refuses a blank reason by the same name, naming On hold', async () => {
     const w = await seed();
     const id = await insertIssue(w, 'in_progress');
 
@@ -358,7 +358,7 @@ describe('MCP forge_issues into on_hold', () => {
 
     expect(answer.isError).toBe(true);
     expect(answer.text).toContain('TRANSITION_REASON_REQUIRED');
-    expect(answer.text).toContain('on_hold');
+    expect(answer.text).toContain('On hold');
     expect(await statusOf(id)).toBe('in_progress');
     expect(await thread(id)).toHaveLength(0);
   });

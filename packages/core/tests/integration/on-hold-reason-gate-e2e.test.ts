@@ -10,6 +10,7 @@
 import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { statusLabel } from '../../src/issues/status-sets.js';
 import {
   createTestProject,
   createTestProjectMember,
@@ -206,7 +207,8 @@ describe('forge_issues — a blank reason or note meets the gate too', () => {
 
       expect(answer.isError).toBe(true);
       expect(answer.text).toContain('TRANSITION_REASON_REQUIRED');
-      expect(answer.text).toContain(to);
+      // The sentence names the status by its label (ISS-1421 r13); the value rides `details`, which REST carries.
+      expect(answer.text).toContain(statusLabel(to));
       expect(await statusOf(id)).toBe(from);
     });
   }
