@@ -103,7 +103,7 @@ async function agentsOfTheTeam() {
   return { handle: handle.userId, made: made.userId, shared: shared.userId };
 }
 
-/** Returns once some session waits on a lock `pid` holds, or `pending` settled first. */
+/** Resolves once some session waits on a lock `pid` holds; throws if `pending` settled first or none ever did. */
 async function blockedBy(pid: number, pending: Promise<unknown>): Promise<void> {
   let settled = false;
   pending.then(
@@ -117,6 +117,7 @@ async function blockedBy(pid: number, pending: Promise<unknown>): Promise<void> 
     if (waiting.length) return;
     await new Promise((resolve) => setTimeout(resolve, 20));
   }
+  throw new Error('the delete never waited on the open membership insert, so the race was not run');
 }
 
 describe('deleting an organization takes its own agent accounts with it', () => {
@@ -201,6 +202,7 @@ describe('deleting an organization takes its own agent accounts with it', () => 
       await a`COMMIT`;
       expect((await deleting).status).toBe(204);
     } finally {
+      await a`ROLLBACK`.catch(() => undefined);
       a.release();
       await client.end({ timeout: 5 });
     }
