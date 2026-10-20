@@ -364,7 +364,8 @@ export interface ResolvedActor {
   displayName: string;
   isAgent: boolean;
   deviceId?: string;
-  ownerEmail?: string;
+  /** What the device's owner is called, never their address (ISS-1229). */
+  ownerName?: string;
 }
 
 /** Comment node (tree) from `GET /api/issues/:id/comments`. */

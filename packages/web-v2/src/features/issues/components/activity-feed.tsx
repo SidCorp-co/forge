@@ -66,7 +66,7 @@ export function ActivityFeed({ items }: { items: ActivityItem[] }) {
     <ol className="space-y-3">
       {items.map((item) => {
         const node = describe(item);
-        // Prefer the server-resolved actor (member email / agent device name)
+        // Prefer the server-resolved actor (what core calls a member / agent device name)
         // over the bare actorType. Fall back to the raw type for older payloads;
         // never show just "user"/"device" when a name is available (ISS-519).
         const isAgent = item.actor?.isAgent ?? item.actorType === "device";

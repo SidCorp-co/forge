@@ -8,6 +8,7 @@
 // smaller, and in a shared room it says so rather than claiming an access
 // change that did not happen.
 
+import { personName } from "@forge/contracts/person-name";
 import { useState } from "react";
 import { Avatar, Banner, Button, ErrorState, Icon, SlideOver, Spinner } from "@/design";
 import { formatApiError } from "@/lib/api/error";
@@ -15,7 +16,8 @@ import { useAddPerson, useConversationCandidates } from "../hooks";
 import { initialsOf, personAdditionClaims } from "../membership";
 import type { ConversationMembership, PersonCandidate } from "../types";
 
-const nameOf = (person: PersonCandidate): string => person.displayName ?? person.email;
+// A person is named as everywhere a member reads them, never by address (ISS-1229 r21).
+const nameOf = (person: PersonCandidate): string => personName(person.displayName, "start");
 
 export function AddPersonDialog({
   conversationId,
@@ -86,7 +88,6 @@ function Confirmation({
       <div className="flex items-center gap-2 px-1 py-2">
         <Avatar initials={initialsOf(nameOf(person))} size={22} />
         <span className="fg-label">{nameOf(person)}</span>
-        <span className="fg-caption ml-auto text-muted">{person.email}</span>
       </div>
       <ul className="flex flex-col gap-2">
         {claims.map((claim) => (
@@ -144,7 +145,6 @@ function CandidateList({
           >
             <Icon name="users" size={15} className="flex-none text-subtle" />
             <span className="fg-body-sm">{nameOf(person)}</span>
-            <span className="fg-caption ml-auto text-muted">{person.email}</span>
           </button>
         </li>
       ))}

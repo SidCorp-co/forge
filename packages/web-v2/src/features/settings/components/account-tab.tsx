@@ -3,13 +3,16 @@
 // Settings → Account. Identity is read from the hydrated auth session. Theme + language save
 // against `/api/auth/me/preferences` and the reply style + standing instructions against
 // `/api/auth/preferences`: two routes, one form, one save bar.
+import { personName } from "@forge/contracts/person-name";
 import { useState } from "react";
 import { z } from "zod";
 import type { AnswerStyle } from "@forge/contracts";
 import {
   Banner,
+  Button,
   ErrorState,
   Field,
+  Input,
   MonoTag,
   SectionTitle,
   Select,
@@ -152,6 +155,60 @@ function AccountPreferences({
   );
 }
 
+/** The name other members read this person by (ISS-1229 r21): set here, cleared here. */
+function DisplayNameField() {
+  const { user, setDisplayName } = useAuth();
+  const saved = user?.displayName ?? "";
+  const [draft, setDraft] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [failure, setFailure] = useState<string | null>(null);
+  const value = draft ?? saved;
+  const save = async (next: string | null) => {
+    setSaving(true);
+    setFailure(null);
+    try {
+      await setDisplayName(next);
+      setDraft(null);
+    } catch (err) {
+      setFailure(formatApiError(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <div className="space-y-2">
+      <Field
+        label="Display name"
+        hint={`What other members read you as. Without one you read as "${personName(null, "start")}".`}
+        error={failure ?? undefined}
+      >
+        <Input
+          value={value}
+          maxLength={200}
+          placeholder={personName(null, "start")}
+          onChange={(e) => setDraft(e.target.value)}
+        />
+      </Field>
+      <div className="flex justify-end gap-2">
+        {saved && (
+          <Button variant="ghost" size="sm" disabled={saving} onClick={() => void save(null)}>
+            Clear
+          </Button>
+        )}
+        <Button
+          variant="primary"
+          size="sm"
+          loading={saving}
+          disabled={!value.trim() || value.trim() === saved}
+          onClick={() => void save(value.trim())}
+        >
+          Set name
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export function AccountTab() {
   const { user } = useAuth();
   const prefsQ = usePreferences();
@@ -161,7 +218,8 @@ export function AccountTab() {
     <div className="space-y-6">
       <SettingsSection>
         <SectionTitle className="fg-h3 mb-4">Profile</SectionTitle>
-        <dl className="space-y-3">
+        <DisplayNameField />
+        <dl className="mt-4 space-y-3">
           <div className="flex items-center justify-between gap-3">
             <dt className="fg-label">Email</dt>
             <dd className="fg-body-sm text-fg">{user?.email ?? "—"}</dd>

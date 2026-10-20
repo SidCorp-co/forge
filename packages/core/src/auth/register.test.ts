@@ -86,7 +86,7 @@ describe('POST /api/auth/register', () => {
     expect(values.emailVerifiedAt).toBeUndefined();
     expect(issueVerificationToken).toHaveBeenCalledWith('uuid-1');
     expect(sendVerificationEmail).toHaveBeenCalledWith('a@b.co', 'tok-mock');
-    expect(ensurePersonalOrgMock).toHaveBeenCalledWith(expect.anything(), 'uuid-1', 'a@b.co');
+    expect(ensurePersonalOrgMock).toHaveBeenCalledWith(expect.anything(), 'uuid-1');
   });
 
   it('still returns 201 when sending the verification email fails', async () => {

@@ -10,6 +10,7 @@ export interface ListResponse<T> {
 }
 
 export interface MeResponse extends User {
+  displayName: string | null;
   lastFreshAuthAt: string | null;
   hasPassword: boolean;
   oauthProviders: string[];

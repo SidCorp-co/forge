@@ -27,23 +27,24 @@ describe('resolveActors', () => {
     expect(whereMock).not.toHaveBeenCalled();
   });
 
-  it('resolves a user actor to its email (not an agent)', async () => {
-    whereMock.mockResolvedValueOnce([{ id: U1, email: 'alice@example.com' }]);
+  // ISS-1229 r21: an actor is named as personName says, never by their address.
+  it.each([
+    ['Alice Pham', 'Alice Pham'],
+    [null, 'Another member'],
+    ['alice@example.com', 'Another member'],
+  ])('resolves a user whose display name is %j to %j (not an agent)', async (given, named) => {
+    whereMock.mockResolvedValueOnce([{ id: U1, email: 'alice@example.com', displayName: given }]);
     const result = await resolveActors([{ type: 'user', id: U1 }]);
     const actor = result.get(actorKey('user', U1));
-    expect(actor).toEqual({
-      type: 'user',
-      id: U1,
-      displayName: 'alice@example.com',
-      isAgent: false,
-    });
+    expect(actor).toEqual({ type: 'user', id: U1, displayName: named, isAgent: false });
+    expect(JSON.stringify(actor)).not.toContain('alice@');
   });
 
-  it('resolves a device actor to its name + owner email and flags it as an agent', async () => {
+  it('resolves a device actor to its name + what its owner is called, and flags it as an agent', async () => {
     // userIds empty → users query skipped; devices query first, owner query second.
     whereMock
       .mockResolvedValueOnce([{ id: D1, name: 'CI Runner', ownerId: O1 }])
-      .mockResolvedValueOnce([{ id: O1, email: 'owner@example.com' }]);
+      .mockResolvedValueOnce([{ id: O1, email: 'owner@example.com', displayName: null }]);
     const result = await resolveActors([{ type: 'device', id: D1 }]);
     const actor = result.get(actorKey('device', D1));
     expect(actor).toEqual({
@@ -52,7 +53,7 @@ describe('resolveActors', () => {
       displayName: 'CI Runner',
       isAgent: true,
       deviceId: D1,
-      ownerEmail: 'owner@example.com',
+      ownerName: 'another member',
     });
   });
 
@@ -80,12 +81,12 @@ describe('resolveActors', () => {
   });
 
   it('dedupes repeated refs into one resolved entry', async () => {
-    whereMock.mockResolvedValueOnce([{ id: U1, email: 'alice@example.com' }]);
+    whereMock.mockResolvedValueOnce([{ id: U1, email: 'alice@example.com', displayName: 'Alice' }]);
     const result = await resolveActors([
       { type: 'user', id: U1 },
       { type: 'user', id: U1 },
     ]);
     expect(result.size).toBe(1);
-    expect(result.get(actorKey('user', U1))?.displayName).toBe('alice@example.com');
+    expect(result.get(actorKey('user', U1))?.displayName).toBe('Alice');
   });
 });

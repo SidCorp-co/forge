@@ -18,7 +18,7 @@ export function StatsBand({ totals }: StatsBandProps) {
     <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-line bg-surface px-[18px] py-[13px] shadow-sm">
       <span className="text-13-5 font-bold text-fg">Workspace</span>
       <span className="h-4 w-px bg-line" aria-hidden />
-      <Stat icon="folder">{totals.projects} projects</Stat>
+      <Stat icon="folder">{totals.projects} {totals.projects === 1 ? "project" : "projects"}</Stat>
       <span
         className="inline-flex items-center gap-1.5 font-mono text-12-5 text-accent-text"
         title="Agent sessions live now, as the Pipeline page lists them"
@@ -31,7 +31,8 @@ export function StatsBand({ totals }: StatsBandProps) {
         <ReadFigure value={totals.openIssues} read={totals.healthRead} counts={OPEN_WORK_COUNTS} /> {OPEN_WORK_LABEL.toLowerCase()}
       </Stat>
       <Stat icon="server">
-        <ReadFigure value={totals.runners} read={totals.healthRead} counts="runners" /> runners
+        <ReadFigure value={totals.runners} read={totals.healthRead} counts="runners" />{" "}
+        {totals.runners === 1 ? "runner" : "runners"}
       </Stat>
       <Stat icon="dollar" title="Trailing 24h spend">
         <ReadFigure value={totals.spend24hUsd} read={totals.healthRead} counts="dollars spent in 24h">{formatSpend}</ReadFigure> / 24h

@@ -1,15 +1,42 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { agentIsNotAPerson, isAgentAddress, isForgeAddress } from '../auth/agent-account.js';
 import { FORGE_AUTHOR_ID } from '../comments/forge-author.js';
 import { db } from '../db/client.js';
 import { organizationMembers, organizations, users } from '../db/schema.js';
+import { givenName } from '../lib/person-name.js';
 
 /**
  * Tx-compatible handle — both `db` and the `tx` inside `db.transaction`
  * satisfy this for the two inserts we need.
  */
 type DbLike = Pick<typeof db, 'insert' | 'select'>;
+
+export const PERSONAL_WORKSPACE_NAME = 'Personal';
+
+/**
+ * A personal workspace is named by its owner's display name, else "Personal", never their address
+ * (ISS-1229); it follows while it carries one of those two, and any other name is the owner's own.
+ */
+export async function followDisplayName(
+  dbh: Pick<typeof db, 'update'>,
+  userId: string,
+  before: string | null,
+  after: string | null,
+): Promise<void> {
+  const prior = givenName(before);
+  const automatic = prior ? [PERSONAL_WORKSPACE_NAME, prior] : [PERSONAL_WORKSPACE_NAME];
+  await dbh
+    .update(organizations)
+    .set({ name: givenName(after) ?? PERSONAL_WORKSPACE_NAME })
+    .where(
+      and(
+        eq(organizations.createdBy, userId),
+        eq(organizations.isPersonal, true),
+        inArray(organizations.name, automatic),
+      ),
+    );
+}
 
 /** Forge's own account writes what its sweeps say and is a member of nothing. */
 export function isNeverAMember(userId: string): boolean {
@@ -62,11 +89,7 @@ export async function refuseNonPersonAsMember(target: {
  * (local register + OAuth first-login); existing users are covered by
  * migration 0106. Slug mirrors the migration: `personal-<userId>`.
  */
-export async function ensurePersonalOrg(
-  dbh: DbLike,
-  userId: string,
-  email: string,
-): Promise<string> {
+export async function ensurePersonalOrg(dbh: DbLike, userId: string): Promise<string> {
   const existing = await dbh
     .select({ id: organizations.id })
     .from(organizations)
@@ -79,7 +102,7 @@ export async function ensurePersonalOrg(
     .insert(organizations)
     .values({
       slug: `personal-${userId}`,
-      name: email.split('@')[0] || 'personal',
+      name: PERSONAL_WORKSPACE_NAME,
       isPersonal: true,
       createdBy: userId,
     })

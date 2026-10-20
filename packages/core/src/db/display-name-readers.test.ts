@@ -13,7 +13,8 @@ const PRESENTATION_AND_MAPPING: Record<string, string> = {
   'db/schema.ts': 'the declaration itself',
   'auth/me.ts': 'a person reads and sets their own label',
   'orgs/agent-accounts.ts': 'an org admin reads and sets an agent’s label',
-  'orgs/service.ts': 'the org member list returns it beside the address',
+  'orgs/service.ts':
+    'the org member list returns it beside the address, and a personal workspace is named by it, else "Personal", in place of the address (ISS-1229 r21). It decides nothing: whose workspace it is is read off `created_by`',
   'issues/actor-resolution.ts': 'the label an activity row is rendered by',
   'comments/forge-author.ts':
     'writes the label Forge’s own account is minted with, and reads nothing back: it is decided by its fixed id (ISS-1421)',
@@ -31,6 +32,10 @@ const PRESENTATION_AND_MAPPING: Record<string, string> = {
     'the name a project card’s member avatars take their initials from, through `personName`, in place of their address (ISS-1229 r20). It decides nothing: who is a member is read off the membership rows',
   'assistant/conversation-routes.ts':
     'the name a person’s own message is attributed by in a conversation transcript, which is a label read by whoever opens the room and by the model answering in it — it addresses nobody and resolves nothing',
+  'conversations/membership.ts':
+    'the name the line a room is told when somebody joins or leaves prints them by, through `personName`, in place of their address (ISS-1229 r21). It decides nothing: who is in the room is read off the participant rows',
+  'issues/attributes/read.ts':
+    'the name an issue attribute that refers to a person is printed by, through `personName`, in place of their address (ISS-1229 r21). It decides nothing: the attribute holds the user id',
   'assistant/conversation-people.ts':
     'the name a room’s member list and its candidate list are PRINTED by, attached on the way out of the request. It exists because `conversations/` is named below as a place the column may not be read, and a roster still has to say who somebody is: an agent prints its address, which is what resolves, and a person prints this label, which resolves nothing (ISS-1011)',
 };

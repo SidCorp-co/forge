@@ -37,7 +37,7 @@ const issue = (n: number, over: Partial<IssueRow> = {}): IssueRow => ({
   createdById: "u1",
   creatorEmail: "ann.lee@example.co",
   creatorIsAgent: false,
-  creatorLabel: "ann.lee@example.co",
+  creatorLabel: "Ann Lee",
   reopenCount: 0,
   mergedAt: null,
   createdAt: "2026-09-01T00:00:00.000Z",
@@ -164,9 +164,10 @@ describe("the creator", () => {
   it("is an avatar of initials whose accessible name and tooltip are the full label, and prints no label", () => {
     mount();
     const [first] = rowsOf();
-    const avatar = within(first).getByRole("img", { name: "ann.lee@example.co" });
-    expect(avatar).toHaveAttribute("title", "ann.lee@example.co");
+    const avatar = within(first).getByRole("img", { name: "Ann Lee" });
+    expect(avatar).toHaveAttribute("title", "Ann Lee");
     expect(avatar).toHaveTextContent("AL");
+    expect(first.textContent).not.toContain("Ann Lee");
     expect(first.textContent).not.toContain("ann.lee@example.co");
   });
 });
@@ -205,7 +206,7 @@ describe("density", () => {
     const [first, second] = rowsOf();
     expect(within(first).getByText("web")).toBeInTheDocument();
     expect(within(first).getByText("bug")).toBeInTheDocument();
-    expect(within(first).getByText("ann.lee@example.co")).toBeInTheDocument();
+    expect(within(first).getByText("Ann Lee")).toBeInTheDocument();
     expect(within(second).queryByText("web")).toBeNull();
     expect(within(second).queryByText("bug")).toBeNull();
   });

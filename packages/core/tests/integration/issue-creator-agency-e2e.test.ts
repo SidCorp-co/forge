@@ -140,7 +140,8 @@ describe('the credential answers, and a person on their own token is a person', 
     expect(row.creatorIsAgent).toBe(false);
     expect(row.createdById).toBe(personId);
     expect(row.creatorEmail).toBe(personEmail);
-    expect(row.creatorLabel).toBe(personEmail);
+    // ISS-1229 r21: a person with no display name is labelled as core calls them, never by address.
+    expect(row.creatorLabel).toBe('Another member');
   });
 
   // Criterion 3 — the other surface of the same event, which has to agree.
@@ -159,13 +160,14 @@ describe('the credential answers, and a person on their own token is a person', 
 
   // Criterion 3 — a browser session was never the broken direction, and is asserted
   // so a fix that simply flipped the default would fail here instead.
-  it('a browser session files as the person, showing their address', async () => {
+  it('a browser session files as the person, named without their address', async () => {
     const jwt = await signUserToken(personId);
     const id = await createIssueWith(jwt, 'typed by a person at a keyboard');
 
     const row = await rowOnList(jwt, id);
     expect(row.creatorIsAgent).toBe(false);
-    expect(row.creatorLabel).toBe(row.creatorEmail);
+    expect(row.creatorEmail).toBe(personEmail);
+    expect(row.creatorLabel).toBe('Another member');
   });
 
   // Criteria 2, 4, 11 — an agent account's own credential, under its own name.

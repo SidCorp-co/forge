@@ -253,27 +253,33 @@ async function deliverTo(
         .limit(1);
       deliveryId = existing?.id;
     }
-    let founded = false;
-    if (!deliveryId) {
-      founded = true;
-      const [created] = await db
-        .insert(notificationDeliveries)
-        .values({
-          userId,
-          channel: 'bell',
-          groupKey: input.groupKey ?? null,
-          // A grouped delivery names the cause; an ungrouped one is its record.
-          title: input.groupKey ? (input.groupTitle ?? title) : title,
-          createdAt: now,
-        })
-        .returning({ id: notificationDeliveries.id });
-      deliveryId = created?.id;
-    }
+    const founded = !deliveryId;
+    // A bell row and its first member land together, so a failed member insert leaves no row
+    // holding nothing (ISS-1229 r21).
+    deliveryId = await db.transaction(async (tx) => {
+      let id = deliveryId;
+      if (!id) {
+        const [created] = await tx
+          .insert(notificationDeliveries)
+          .values({
+            userId,
+            channel: 'bell',
+            groupKey: input.groupKey ?? null,
+            // A grouped delivery names the cause; an ungrouped one is its record.
+            title: input.groupKey ? (input.groupTitle ?? title) : title,
+            createdAt: now,
+          })
+          .returning({ id: notificationDeliveries.id });
+        id = created?.id;
+      }
+      if (!id) return undefined;
+      await tx
+        .insert(notificationDeliveryMembers)
+        .values({ deliveryId: id, notificationId: recordId, deliveredAt: now })
+        .onConflictDoNothing();
+      return id;
+    });
     if (!deliveryId) continue;
-    await db
-      .insert(notificationDeliveryMembers)
-      .values({ deliveryId, notificationId: recordId, deliveredAt: now })
-      .onConflictDoNothing();
     told += 1;
 
     await hooks.emit('notificationCreated', {

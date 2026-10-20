@@ -2,6 +2,7 @@ import { asc, eq, inArray } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { issueAttributes, issues, projects, users } from '../../db/schema.js';
 import { formatIssueRef } from '../../lib/issue-ref.js';
+import { personName } from '../../lib/person-name.js';
 import { attributeDef } from './registry.js';
 import { type AttributeRow, type RenderedAttribute, renderAttribute } from './render.js';
 
@@ -24,10 +25,10 @@ async function refLabels(rows: readonly AttributeRow[]): Promise<Map<string, str
       out.set(row.id, formatIssueRef(row.prefix, row.seq));
   if (userRefs.length > 0)
     for (const row of await db
-      .select({ id: users.id, email: users.email })
+      .select({ id: users.id, displayName: users.displayName })
       .from(users)
       .where(inArray(users.id, userRefs)))
-      out.set(row.id, row.email);
+      out.set(row.id, personName(row.displayName, 'start'));
   return out;
 }
 

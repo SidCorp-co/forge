@@ -1,6 +1,7 @@
 import { inArray } from 'drizzle-orm';
 import { db as defaultDb } from '../db/client.js';
 import { users } from '../db/schema.js';
+import { personName } from '../lib/person-name.js';
 
 /** Whatever the store hands back, as far as this module needs to know. */
 export interface Nameable {
@@ -10,7 +11,7 @@ export interface Nameable {
 }
 
 /**
- * The label to print for each member of a room.
+ * The label to print for each member of a room: what `personName` calls a person, never their address.
  */
 export async function withDisplayNames<T extends Nameable>(
   rows: readonly T[],
@@ -22,10 +23,10 @@ export async function withDisplayNames<T extends Nameable>(
   const named = new Map<string, string | null>();
   if (ids.length > 0) {
     const found = await db
-      .select({ id: users.id, displayName: users.displayName, email: users.email })
+      .select({ id: users.id, displayName: users.displayName })
       .from(users)
       .where(inArray(users.id, ids));
-    for (const row of found) named.set(row.id, row.displayName ?? row.email);
+    for (const row of found) named.set(row.id, personName(row.displayName, 'start'));
   }
   return rows.map((row) => ({
     ...row,
@@ -45,13 +46,10 @@ export async function nameLostReaders<T extends { losesReaderIds: string[] }>(
   const named = new Map<string, string>();
   if (ids.length > 0) {
     const found = await db
-      .select({ id: users.id, displayName: users.displayName, email: users.email })
+      .select({ id: users.id, displayName: users.displayName })
       .from(users)
       .where(inArray(users.id, ids));
-    for (const row of found) {
-      const label = row.displayName ?? row.email;
-      if (label) named.set(row.id, label);
-    }
+    for (const row of found) named.set(row.id, personName(row.displayName, 'start'));
   }
   return candidates.map(({ losesReaderIds, ...rest }) => ({
     ...rest,
@@ -66,7 +64,7 @@ export async function nameLostReaders<T extends { losesReaderIds: string[] }>(
 export async function namePeople<T extends { userId: string; email: string }>(
   candidates: readonly T[],
   db: typeof defaultDb = defaultDb,
-): Promise<Array<T & { displayName: string | null }>> {
+): Promise<Array<T & { displayName: string }>> {
   const ids = candidates.map((c) => c.userId);
   const named = new Map<string, string | null>();
   if (ids.length > 0) {
@@ -77,6 +75,6 @@ export async function namePeople<T extends { userId: string; email: string }>(
     for (const row of found) named.set(row.id, row.displayName);
   }
   return candidates
-    .map((c) => ({ ...c, displayName: named.get(c.userId) ?? null }))
-    .sort((a, b) => (a.displayName ?? a.email).localeCompare(b.displayName ?? b.email));
+    .map((c) => ({ ...c, displayName: personName(named.get(c.userId), 'start') }))
+    .sort((a, b) => a.displayName.localeCompare(b.displayName));
 }

@@ -43,15 +43,19 @@ describe('hydrateCreatorsForIssues', () => {
     expect(dbSelect).not.toHaveBeenCalled();
   });
 
-  it('a person with no display name is labelled by their address', async () => {
-    selectWhere.mockReturnValueOnce([person()]);
-    const map = await hydrateCreatorsForIssues([{ id: 'i1', createdById: 'u1' }]);
-    expect(map.get('i1')).toEqual({
-      creatorEmail: 'owner@example.com',
-      creatorIsAgent: false,
-      creatorLabel: 'owner@example.com',
-    });
-  });
+  // ISS-1229 r21: a creator is never labelled by their address, whatever the display name holds.
+  it.each([null, '  ', 'owner@example.com'])(
+    'a person whose display name is %j is labelled "Another member"',
+    async (displayName) => {
+      selectWhere.mockReturnValueOnce([person({ displayName })]);
+      const map = await hydrateCreatorsForIssues([{ id: 'i1', createdById: 'u1' }]);
+      expect(map.get('i1')).toEqual({
+        creatorEmail: 'owner@example.com',
+        creatorIsAgent: false,
+        creatorLabel: 'Another member',
+      });
+    },
+  );
 
   it('a person with a display name is labelled by it', async () => {
     selectWhere.mockReturnValueOnce([person({ displayName: 'Ada Lovelace' })]);
@@ -88,14 +92,14 @@ describe('hydrateCreatorsForIssues', () => {
     expect(map.get('i2')?.creatorIsAgent).toBe(true);
   });
 
-  it('an agent with no display name falls back to its address, not to a class label', async () => {
+  it('an agent with no display name reads as another member, never its address', async () => {
     selectWhere.mockReturnValueOnce([
       person({ id: 'a1', email: 'nameless@agents.local', kind: 'agent' }),
     ]);
     expect((await hydrateCreatorsForIssues([{ id: 'i1', createdById: 'a1' }])).get('i1')).toEqual({
       creatorEmail: 'nameless@agents.local',
       creatorIsAgent: true,
-      creatorLabel: 'nameless@agents.local',
+      creatorLabel: 'Another member',
     });
   });
 

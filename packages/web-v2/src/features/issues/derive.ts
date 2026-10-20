@@ -1,4 +1,5 @@
 
+import { personInitials, personName } from "@forge/contracts/person-name";
 import { jobKindLabel } from "@/features/overview/job-kinds";
 import {
 	AUTONOMOUS_LABELS,
@@ -403,14 +404,14 @@ function groupByModule(rows: IssueRow[]): IssueGroup[] {
 	});
 }
 
-/** Resolve a member display label (email local-part) for grouping/avatars. */
+/** What a member is called, as `personName` says it: never their address, never a raw id (ISS-1229). */
 export function memberLabel(
-	assigneeId: string | null,
-	members?: { userId: string; email: string }[],
+	userId: string | null,
+	members?: { userId: string; displayName: string | null }[],
 ): string {
-	if (!assigneeId) return "Unassigned";
-	const m = members?.find((x) => x.userId === assigneeId);
-	return m ? m.email : assigneeId.slice(0, 8);
+	if (!userId) return "Unassigned";
+	const m = members?.find((x) => x.userId === userId);
+	return m ? personName(m.displayName, "start") : "Unknown user";
 }
 
 /** The creator-filter option that selects every agent's issues at once. */
@@ -418,19 +419,13 @@ export const ANY_AGENT_LABEL = "any agent";
 
 /** ISS-756 — the ONE creator-label helper for every surface. A writer is a
  *  named account, so never a class label (ISS-1137) and never a raw id. */
-export function creatorLabelOf(
-	row: Pick<IssueRow, "creatorLabel" | "creatorEmail">,
-): string {
-	return row.creatorLabel || row.creatorEmail || "Unknown user";
+export function creatorLabelOf(row: Pick<IssueRow, "creatorLabel">): string {
+	return row.creatorLabel || "Unknown user";
 }
 
-/** Two-letter initials from an email/id, for an Avatar. */
+/** Two-letter initials of a name core or `personName` gave, for an Avatar. */
 export function initials(label: string): string {
-	const at = label.indexOf("@");
-	const base = at > 0 ? label.slice(0, at) : label;
-	const parts = base.split(/[.\-_\s]+/).filter(Boolean);
-	if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-	return base.slice(0, 2).toUpperCase();
+	return personInitials(label);
 }
 
 /**

@@ -55,7 +55,7 @@ const issue = (n: number, modules: IssueRow["modules"]): IssueRow => ({
   createdById: "u1",
   creatorEmail: "ann@x.co",
   creatorIsAgent: false,
-  creatorLabel: "ann@x.co",
+  creatorLabel: "Ann Lee",
   reopenCount: 0,
   mergedAt: null,
   createdAt: "2026-09-01T00:00:00.000Z",

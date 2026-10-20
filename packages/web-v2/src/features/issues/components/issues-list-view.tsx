@@ -24,6 +24,7 @@ import {
   type SegmentOption,
   type SelectOption,
 } from "@/design";
+import { personName } from "@forge/contracts/person-name";
 import { WORK_STATE_LABELS, WORK_STATES } from "@forge/contracts/work-state";
 import { decodeFilter, decodeNumber, usePinnedViews } from "@/features/shell";
 import { formatApiError } from "@/lib/api/error";
@@ -296,8 +297,8 @@ export function IssuesListView({
         value: m.userId,
         label:
           m.kind === "agent"
-            ? `${m.displayName ?? m.email} (agent)`
-            : (m.displayName ?? m.email),
+            ? `${personName(m.displayName, "start")} (agent)`
+            : personName(m.displayName, "start"),
       })),
     ],
     [membersQ.data],

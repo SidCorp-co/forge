@@ -24,6 +24,7 @@ import { useConversationDock } from "@/features/conversations/use-conversation-d
 import { useLocationSearch } from "@/lib/utils/use-location-search";
 import { useSignInRedirect } from "@/features/auth/use-sign-in-redirect";
 import { useAuth } from "@/providers/auth-provider";
+import { personInitials } from "@forge/contracts/person-name";
 import { ToastLane, useToast } from "@/providers/toast-provider";
 import { useProjects } from "@/features/projects/hooks";
 import { usePinnedProjects } from "@/features/projects/pins";
@@ -253,7 +254,8 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
     if (dest) router.push(dest.href);
   }
 
-  const userInitials = user?.email ? user.email.slice(0, 2).toUpperCase() : undefined;
+  // Initials of what the person is called, never letters of their address (ISS-1229 r21).
+  const userInitials = user ? personInitials(user.displayName) : undefined;
 
   // Bottom tab bar (<md, ISS-514/ISS-681) — tier swap + active key live in
   // nav-model. Inside a project, the "Project" switcher item renders the
