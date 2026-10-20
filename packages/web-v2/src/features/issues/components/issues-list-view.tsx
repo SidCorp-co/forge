@@ -24,7 +24,7 @@ import {
   type SegmentOption,
   type SelectOption,
 } from "@/design";
-import { personName } from "@forge/contracts/person-name";
+import { personChoice } from "@forge/contracts/person-name";
 import { WORK_STATE_LABELS, WORK_STATES } from "@forge/contracts/work-state";
 import { decodeFilter, decodeNumber, usePinnedViews } from "@/features/shell";
 import { formatApiError } from "@/lib/api/error";
@@ -293,13 +293,10 @@ export function IssuesListView({
     () => [
       { value: "", label: "Creator: anyone" },
       { value: "agent", label: `Creator: ${ANY_AGENT_LABEL}` },
-      ...(membersQ.data ?? []).map((m) => ({
-        value: m.userId,
-        label:
-          m.kind === "agent"
-            ? `${personName(m.displayName, "start")} (agent)`
-            : personName(m.displayName, "start"),
-      })),
+      ...(membersQ.data ?? []).map((m) => {
+        const { label, detail } = personChoice(m.displayName, m.email);
+        return { value: m.userId, label: m.kind === "agent" ? `${label} (agent)` : label, detail };
+      }),
     ],
     [membersQ.data],
   );

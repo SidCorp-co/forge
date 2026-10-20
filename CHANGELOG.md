@@ -3209,6 +3209,7 @@
 - **Nobody is named to other members by their email address.** Creators, comment authors, conversation people and the rail avatar read your display name, else "Another member"; your personal workspace takes it, else "Personal". Set it in Settings → Account. (ISS-1229)
 - **Deleting a project takes its bell rows with it,** where they used to stay behind with their titles; rows already left behind are removed on deploy. (ISS-1229)
 - **The projects page counts in plain English:** "1 project needs attention", "1 project", "1 runner". (ISS-1229)
+- **A project card keeps its member avatars and last-activity age inside the card,** wrapping them under the figures where the row is too narrow instead of running past its edge. (ISS-1229)
 - **A master that ended as the last session on its box's tmux server is reported ended.** Its messages used to wait and its run stayed open for ever; a tmux the box cannot ask still says nothing. (ISS-1265)
 - **A running master is no longer reported ended when its box's tmux socket file goes missing.** Its messages wait instead of its run closing, and the box's log names the missing socket and the masters on it. (ISS-1265)
 - **A box whose tmux socket file went missing no longer starts a second server over its running masters.** New panes wait, and the log names the masters and how to find the server to signal. (ISS-1265)

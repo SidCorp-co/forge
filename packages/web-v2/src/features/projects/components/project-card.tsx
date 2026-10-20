@@ -87,7 +87,7 @@ export function ProjectCard({ project, now, onTogglePin }: ProjectCardProps) {
         )}
       </p>
 
-      <div className="flex items-center gap-3.5 border-t border-line-subtle pt-3">
+      <div className="flex flex-wrap items-center gap-x-3.5 gap-y-2 border-t border-line-subtle pt-3">
         <LiveCount n={project.liveSessions} read={project.healthRead} />
         <Stat icon="inbox" title={`${OPEN_WORK_LABEL}: ${OPEN_WORK_DEFINITION}`}>
           <ReadFigure value={project.openIssues} read={project.healthRead} counts={`in ${OPEN_WORK_LABEL.toLowerCase()}`} />
@@ -100,13 +100,13 @@ export function ProjectCard({ project, now, onTogglePin }: ProjectCardProps) {
             {formatSpend}
           </ReadFigure>
         </Stat>
-        <span className="ml-auto flex items-center gap-2.5">
+        <span className="ml-auto flex flex-none items-center gap-2.5">
           {project.memberCount === null ? (
             <ReadFigure value={null} read={project.healthRead} subject="the team and last activity" />
           ) : (
             <>
               <MemberStack members={project.members} total={project.memberCount} />
-              <span className="font-mono text-11 text-subtle">
+              <span className="whitespace-nowrap font-mono text-11 text-subtle">
                 {formatRelativeTime(project.lastActivityAt, now)}
               </span>
             </>

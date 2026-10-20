@@ -1,5 +1,5 @@
 // What a person is called wherever another member reads it: the name they gave, never their address
-// (ISS-1229). Web and core read this one file; only Settings → Members and invitations show an address.
+// (ISS-1229). Only Settings → Members, invitations and a picker (personChoice) show an address.
 
 export const UNNAMED_PERSON = 'another member';
 export const UNNAMED_PERSON_AT_START = 'Another member';
@@ -34,4 +34,11 @@ export function personInitials(displayName: string | null | undefined): string {
           .join('')
       : (words[0] ?? '').slice(0, 2);
   return letters.toUpperCase();
+}
+
+export function personChoice(
+  displayName: string | null | undefined,
+  email: string,
+): { label: string; detail: string } {
+  return { label: personName(displayName, 'start'), detail: email.trim() };
 }

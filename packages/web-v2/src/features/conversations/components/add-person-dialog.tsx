@@ -8,7 +8,7 @@
 // smaller, and in a shared room it says so rather than claiming an access
 // change that did not happen.
 
-import { personName } from "@forge/contracts/person-name";
+import { personChoice } from "@forge/contracts/person-name";
 import { useState } from "react";
 import { Avatar, Banner, Button, ErrorState, Icon, SlideOver, Spinner } from "@/design";
 import { formatApiError } from "@/lib/api/error";
@@ -16,8 +16,19 @@ import { useAddPerson, useConversationCandidates } from "../hooks";
 import { initialsOf, personAdditionClaims } from "../membership";
 import type { ConversationMembership, PersonCandidate } from "../types";
 
-// A person is named as everywhere a member reads them, never by address (ISS-1229 r21).
-const nameOf = (person: PersonCandidate): string => personName(person.displayName, "start");
+// A picker offers a person by name and shows their address, so two alike can be told apart (ISS-1229 r21).
+const choiceOf = (person: PersonCandidate) => personChoice(person.displayName, person.email);
+const nameOf = (person: PersonCandidate): string => choiceOf(person).label;
+
+function ChoiceText({ person }: { person: PersonCandidate }) {
+  const { label, detail } = choiceOf(person);
+  return (
+    <>
+      <span className="fg-body-sm" data-person-label>{label}</span>
+      <span className="fg-caption ml-auto truncate text-muted" data-person-detail>{detail}</span>
+    </>
+  );
+}
 
 export function AddPersonDialog({
   conversationId,
@@ -87,7 +98,7 @@ function Confirmation({
     <div data-testid="add-person-confirmation" className="flex flex-col gap-3">
       <div className="flex items-center gap-2 px-1 py-2">
         <Avatar initials={initialsOf(nameOf(person))} size={22} />
-        <span className="fg-label">{nameOf(person)}</span>
+        <ChoiceText person={person} />
       </div>
       <ul className="flex flex-col gap-2">
         {claims.map((claim) => (
@@ -144,7 +155,7 @@ function CandidateList({
             className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
           >
             <Icon name="users" size={15} className="flex-none text-subtle" />
-            <span className="fg-body-sm">{nameOf(person)}</span>
+            <ChoiceText person={person} />
           </button>
         </li>
       ))}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { carriesAnAddress, givenName, personInitials, personName } from './person-name.js';
+import { carriesAnAddress, givenName, personChoice, personInitials, personName } from './person-name.js';
 
 // ISS-1229 r21: the one name helper web and core both read.
 describe('what a person is called', () => {
@@ -27,5 +27,12 @@ describe('what a person is called', () => {
   it('tells an address from a name that only holds an @', () => {
     expect(carriesAnAddress('@mai mentioned you')).toBe(false);
     expect(carriesAnAddress('mai.tran@example.co.uk')).toBe(true);
+  });
+
+  it('offers a person in a picker by name, with the address beside it to tell two alike apart', () => {
+    const [one, two] = [personChoice(null, 'lan@example.com'), personChoice(' ', ' kim@example.com ')];
+    expect([one.label, two.label]).toEqual(['Another member', 'Another member']);
+    expect([one.detail, two.detail]).toEqual(['lan@example.com', 'kim@example.com']);
+    expect(personChoice(' Mai Tran ', 'mai@example.com')).toEqual({ label: 'Mai Tran', detail: 'mai@example.com' });
   });
 });
