@@ -295,21 +295,19 @@ export function ConnectionDetailDrawer({
     <SlideOver open={Boolean(card)} onClose={onClose} title={title} width={560}>
       <div className="flex flex-col gap-4 px-5 py-4">
         {statusReadError ? (
-          // Sticky, so a press far down the drawer still shows the read that failed after it.
-          <div className="sticky top-0 z-10">
-            <Banner
-              tone="attention"
-              action={
-                onRetryStatus ? (
-                  <Button variant="ghost" size="sm" onClick={onRetryStatus}>
-                    Retry
-                  </Button>
-                ) : undefined
-              }
-            >
-              {`The status could not be refreshed, so the state above is the last one read. ${statusReadError}`}
-            </Banner>
-          </div>
+          // In the drawer's flow, above the first field: it pushes the form down and never covers a control.
+          <Banner
+            tone="attention"
+            action={
+              onRetryStatus ? (
+                <Button variant="ghost" size="sm" onClick={onRetryStatus}>
+                  Retry
+                </Button>
+              ) : undefined
+            }
+          >
+            {`The status could not be refreshed, so the state above is the last one read. ${statusReadError}`}
+          </Banner>
         ) : null}
         {caps.hasDeliveryLog ? (
           <>

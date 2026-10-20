@@ -3267,7 +3267,7 @@
 - **A move into or out of Draft that is refused names statuses in words**, such as Open, never followed by a stored value. (ISS-1421)
 - **Every integration drawer's badge says what its row says.** A key the provider refused reads Needs re-auth there too, never Not checked yet, and Google and Rocket.Chat say what it means beneath. (ISS-1421)
 - **Epodsystem counts only stores whose last check passed as connected.** (ISS-1421)
-- **A failed status refresh keeps the integration drawer open** and says so in a line above it, instead of replacing the tab with Couldn't load. (ISS-1421)
+- **A failed status refresh keeps the integration drawer open** and says so above its first field, pushing the form down rather than covering it, instead of replacing the tab with Couldn't load. (ISS-1421)
 - **On a project that releases on its own, the release gate and banner say so**, instead of that a person releases it. (ISS-1421)
 - **Every refused status change names statuses in words**, such as On hold, in plain sentences; the values stay in the refusal's details. (ISS-1421)
 - **Test connection on a stored deploy key Forge cannot decrypt says Forge could not read it**, and to replace it, instead of failing with a server error. (ISS-1421)

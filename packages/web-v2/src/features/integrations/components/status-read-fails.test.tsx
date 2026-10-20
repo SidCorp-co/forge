@@ -6,7 +6,7 @@
 
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ProjectIntegrationsPanel } from "./project-integrations-panel";
 
@@ -90,6 +90,31 @@ describe("a status read that fails while a drawer is open", () => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
     expect(screen.queryByText("Couldn't load")).toBeNull();
     expect(screen.getByRole("button", { name: "Manage Sentry" })).toBeInTheDocument();
+  });
+
+  // The coordinator's 390 shot: a sticky notice pinned itself over the Project slug input once the
+  // drawer scrolled. The notice sits in the drawer's flow, before the first field, in no layer of its own.
+  it("puts the notice in the drawer's flow before the first field, never in a layer over it", async () => {
+    render(
+      <QueryClientProvider client={queries}>
+        <ProjectIntegrationsPanel projectId={PROJECT} />
+      </QueryClientProvider>,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Manage Sentry" }));
+    const dialog = await screen.findByRole("dialog");
+    statusFails = true;
+    await act(async () => {
+      await queries.refetchQueries({ queryKey: ["integrations", "status", PROJECT] });
+    });
+    const notice = await within(dialog).findByText(/The status could not be refreshed/);
+    const firstField = await within(dialog).findByLabelText(/Project slug/i);
+    expect(notice.compareDocumentPosition(firstField) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    for (let el: HTMLElement | null = notice; el && el !== dialog; el = el.parentElement) {
+      expect(el.className, "an ancestor of the notice lifts it out of the flow").not.toMatch(
+        /(^|\s)(sticky|fixed|absolute)(\s|$)/,
+      );
+      expect(el.style.position).not.toMatch(/sticky|fixed|absolute/);
+    }
   });
 
   it("still says Couldn't load where no status was ever read", async () => {
