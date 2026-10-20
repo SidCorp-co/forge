@@ -176,6 +176,17 @@ describe("runReadingChip — the one word a run reads on every surface", () => {
     expect([runIsStalled(paused, NOW), runReadingChip(paused, NOW).label]).toEqual([false, "Paused"]);
   });
 
+  // ISS-1228 r20 (after-shots): a run whose job stopped on a question read a red Failed beside the
+  // issue's waiting banner. It waits on a person while the question stands; Failed only once the
+  // question is voided or expired without an answer.
+  it("reads a run whose job stopped on a question by that question, never Failed while it stands", () => {
+    expect(of("failed", "asking").label).toBe("Needs an answer");
+    expect(of("failed", "asking").status).toBe("waiting");
+    expect(of("running", "asking").label).toBe("Needs an answer");
+    expect(of("failed", "answered").label).toBe("Answered");
+    expect(of("failed", null).label).toBe("Failed");
+  });
+
   it("reads a chat waiting on its person as Waiting for me (ISS-1228 round 18)", () => {
     expect(of("running", "waiting")).toEqual({ status: "waiting", label: "Waiting for me" });
   });

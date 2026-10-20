@@ -64,4 +64,10 @@ describe("a run's times say which is which", () => {
     expect(text).toContain("Nothing working");
     expect(text).not.toContain("Running");
   });
+
+  it("names a run whose job stopped on a standing question Needs an answer, the word its drawer reads, never Failed", () => {
+    const text = line(run({ status: "failed", reading: "asking" }));
+    expect(text).toContain("Needs an answer");
+    expect(text).not.toContain("Failed");
+  });
 });

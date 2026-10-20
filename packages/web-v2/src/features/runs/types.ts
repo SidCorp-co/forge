@@ -41,7 +41,7 @@ export interface PipelineRunStepSummary {
 }
 
 /** One job row of a run's per-attempt timeline: the `retry_of` chain, its device and its rotation. */
-export type RunReading = "blocked" | "running" | "starting" | "waiting" | "queued" | "held";
+export type RunReading = "blocked" | "running" | "starting" | "waiting" | "queued" | "held" | "asking" | "answered";
 
 /** Why core holds a run's job and whether it sends it again by itself (core `jobs/hold.ts`). */
 export interface RunHold {

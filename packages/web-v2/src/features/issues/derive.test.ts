@@ -1783,6 +1783,11 @@ describe("the issue page's run chip, from the run journal alone (round 20)", () 
     expect(issueRunChip([], { answered: true, failed: false }, now)).toEqual({ state: "read", word: null, open: false });
   });
 
+  it("reads a run whose job stopped on a question that stands as Needs an answer, never Failed", () => {
+    const chip = issueRunChip([run({ status: "failed", reading: "asking" })], { answered: true, failed: false }, now);
+    expect(chip).toMatchObject({ state: "read", word: { label: "Needs an answer", status: "waiting" } });
+  });
+
   it("keeps a reading already shown when a later refresh fails", () => {
     expect(issueRunChip([run({ reading: "running" })], { answered: true, failed: true }, now)).toMatchObject({
       state: "read",

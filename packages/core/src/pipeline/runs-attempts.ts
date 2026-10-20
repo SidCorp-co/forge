@@ -8,7 +8,7 @@ import { agentQuestions } from '../db/schema-questions.js';
 import { RETRY_MAX_ROUNDS, readAutoRetryPayload } from '../jobs/retry.js';
 import { isoOrNull } from '../lib/iso-time.js';
 import { personNameSql } from '../lib/person-name.js';
-import { questionIdFor } from '../questions/pane-question-id.js';
+import { questionIdsFor } from '../questions/pane-question-id.js';
 import { DOOR_DECIDED_CAUSES, type FailureCause } from './failure-causes.js';
 import { causeForText } from './failure-patterns.js';
 import { holdOf, type RunHold } from './runs-liveness.js';
@@ -108,14 +108,14 @@ export interface PipelineRunRetrySummary {
   targetDeviceName: string | null;
 }
 
-/** Each stopped job's first question, read by its id: a question asked on a closed issue stands on the project. */
+/** Where each stopped job's questions stand, read by their ids: one asked on a closed issue stands on the project. */
 async function questionsAsked(
   rows: readonly { jobId: string; failureReason: string | null }[],
 ): Promise<Map<string, 'issue' | 'project'>> {
   const idOf = new Map(
     rows
       .filter((r) => r.failureReason === 'stopped_on_question')
-      .map((r) => [questionIdFor(r.jobId, 0), r.jobId] as const),
+      .flatMap((r) => questionIdsFor(r.jobId).map((id) => [id, r.jobId] as const)),
   );
   const on = new Map<string, 'issue' | 'project'>();
   if (idOf.size === 0) return on;

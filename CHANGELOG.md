@@ -3196,6 +3196,7 @@
 
 - **A step stopped to ask a question says so in the run drawer and points to where it is answered**, its issue's page or the Questions tab, instead of "Unclassified · The cause wasn't recorded". (ISS-1228)
 - **A job's question stands on the issue it was working**: the issue page shows it, and no sweep moves the issue back to Open or names it idle while it stands. (ISS-1228)
+- **A run whose job stopped on a question reads "Needs an answer" while it stands**, then "Answered", never Failed, on the runs tab, the run drawer and the issue page. (ISS-1228)
 - **The Questions tab names the issue a job's question holds up**, linked, and the kind of work that asked, instead of "asked by a master — no issue behind it". (ISS-1228)
 - **A run drawer opened from its copied link offers Open issue and its session's page** whichever workspace you have active. (ISS-1228)
 - **A run you cancelled yourself reads "Cancelled by you"**, never "another member". (ISS-1228)

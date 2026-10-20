@@ -60,10 +60,10 @@ export const pipelineRunListItemSchema = z.object({
   liveJobs: z.number(),
   lastSessionBeatAt: nullableIso,
   reading: z
-    .enum(['blocked', 'running', 'starting', 'waiting', 'queued', 'held'])
+    .enum(['blocked', 'running', 'starting', 'waiting', 'queued', 'held', 'asking', 'answered'])
     .nullable()
     .describe(
-      "what the run's agent is doing: blocked where a box reports a session core still holds blocked, running once a job runs or a session core holds running has checked in, starting where a box has taken or been sent a job it has not started or a session has not checked in since it opened, waiting where only a chat waits on its person's reply, queued where only an untaken job waits, held where only a job core holds waits",
+      "what the run's agent is doing: blocked where a box reports a session core still holds blocked, running once a job runs or a session core holds running has checked in, starting where a box has taken or been sent a job it has not started or a session has not checked in since it opened, waiting where only a chat waits on its person's reply, queued where only an untaken job waits, held where only a job core holds waits; with nothing live, asking where its newest job stopped on a question that stands and answered once a person answered it",
     ),
   hold: z
     .object({

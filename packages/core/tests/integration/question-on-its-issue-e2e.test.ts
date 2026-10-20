@@ -127,6 +127,49 @@ async function issueState(issueId: string) {
   return { status: issue?.status, comments: comments.length, stranded: stranded.length };
 }
 
+/** The run's word as every reader of it takes it: the summary the drawer, the runs tab and the issue page read. */
+async function runReading(runId: string) {
+  const { loadPipelineRunSummary } = await import('../../src/pipeline/runs-rollup.js');
+  const run = await loadPipelineRunSummary(runId);
+  return { status: run?.status, reading: run?.reading };
+}
+
+describe('a run whose job stopped on a question reads as waiting on its answer, never Failed alone', () => {
+  it('reads asking while the question stands, answered once it is answered', async () => {
+    const { runId } = await stopOnQuestion('in_progress');
+    expect(await runReading(runId)).toEqual({ status: 'failed', reading: 'asking' });
+    await harness.db.execute(sql`UPDATE agent_questions SET status = 'answered'`);
+    expect(await runReading(runId)).toEqual({ status: 'failed', reading: 'answered' });
+  });
+
+  it('reads the later work once a job after the question runs or fails', async () => {
+    const { issueId, runId } = await stopOnQuestion('in_progress');
+    await harness.db.execute(sql`UPDATE agent_questions SET status = 'answered'`);
+    await harness.db.execute(sql`UPDATE pipeline_runs SET status = 'running', finished_at = NULL`);
+    const later = randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO jobs (id, project_id, pipeline_run_id, issue_id, device_id, created_by, type, status,
+                        queued_at, dispatched_at, acked_at, payload)
+      VALUES (${later}, ${projectId}, ${runId}, ${issueId}, ${deviceId}, ${ownerId}, 'drive', 'running',
+              now() + interval '1 minute', now(), now(), '{}'::jsonb)
+    `);
+    expect(await runReading(runId)).toEqual({ status: 'running', reading: 'running' });
+    await harness.db.execute(
+      sql`UPDATE jobs SET status = 'failed', failure_reason = 'agent_exited_without_result', finished_at = now() WHERE id = ${later}`,
+    );
+    await harness.db.execute(sql`UPDATE pipeline_runs SET status = 'failed', finished_at = now()`);
+    expect(await runReading(runId)).toEqual({ status: 'failed', reading: null });
+  });
+
+  it('reads Failed once its question is voided or expired without an answer', async () => {
+    const { runId } = await stopOnQuestion('in_progress');
+    await harness.db.execute(sql`UPDATE agent_questions SET status = 'void'`);
+    expect(await runReading(runId)).toEqual({ status: 'failed', reading: null });
+    await harness.db.execute(sql`UPDATE agent_questions SET status = 'expired'`);
+    expect(await runReading(runId)).toEqual({ status: 'failed', reading: null });
+  });
+});
+
 describe("a job's question is its issue's (criteria 201, 202)", () => {
   it('stands on the issue the job worked, linked to the session that asked', async () => {
     const { issueId } = await stopOnQuestion('in_progress');

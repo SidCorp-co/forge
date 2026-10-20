@@ -46,6 +46,13 @@ describe("a run's one reading (ISS-1228)", () => {
     expect(readingOf({ ...none, held: 1, queued: 1 })).toBe('queued');
   });
 
+  it('reads a run whose job stopped on a question by that question, only with nothing live', () => {
+    expect(readingOf({ ...none, question: 'asking' })).toBe('asking');
+    expect(readingOf({ ...none, question: 'answered' })).toBe('answered');
+    expect(readingOf({ ...none, question: 'asking', queued: 1 })).toBe('queued');
+    expect(readingOf({ ...none, question: 'asking', held: 1 })).toBe('held');
+  });
+
   it('reads a run a box reports blocked as blocked, ahead of the job it runs', () => {
     expect(readingOf({ ...none, blocked: true, running: 1, runningSessions: 1 })).toBe('blocked');
   });
