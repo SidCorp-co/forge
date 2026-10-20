@@ -105,6 +105,20 @@ export function heldDevicesRefusal(
   return `This organization's agents still hold ${held.length} devices not yet revoked (${each}), so the organization was not deleted. ${way}`;
 }
 
+/** The refusal of a delete while projects still live in the organization, each named (ISS-1229 r24). */
+export function projectsStandRefusal(names: readonly string[]): string {
+  const held =
+    names.length === 1
+      ? `the project ${quotedList(names)}`
+      : `${names.length} projects, ${quotedList(names)}`;
+  const where =
+    names.length === 1 ? 'it first, from its settings' : "them first, from each project's settings";
+  return `This organization still holds ${held}, so the organization was not deleted. Delete ${where}, then delete the organization.`;
+}
+
+export const PERSONAL_WORKSPACE_REFUSAL =
+  'A personal workspace cannot be deleted; it is yours for as long as your account is.';
+
 /**
  * A personal workspace is named by its owner's display name, else "Personal", never their address
  * (ISS-1229); it follows while it carries one of those two, and any other name is the owner's own.

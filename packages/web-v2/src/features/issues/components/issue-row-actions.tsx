@@ -22,7 +22,7 @@ import {
   complexityLabel,
   creatorLabelOf,
   groupedTransitions,
-  initials,
+  creatorInitialsOf,
   priorityLabel,
   RELEASING_HAS_NO_MOVE,
   transitionLabels,
@@ -319,7 +319,7 @@ export function IssueLine({
       </GridPart>
       <GridPart role="cell" className={cn(CELL.who, "px-1")}>
         <span role="img" aria-label={label} title={label} className="inline-flex">
-          <Avatar initials={initials(creatorLabelOf(row))} size={22} />
+          <Avatar initials={creatorInitialsOf(row, viewerId)} size={22} />
         </span>
       </GridPart>
       <GridPart role="cell" className={cn(CELL.menu, "flex justify-center px-1 max-lg:h-11 max-lg:items-center")}>

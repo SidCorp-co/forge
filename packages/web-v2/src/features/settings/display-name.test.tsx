@@ -10,7 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LeaveGuardProvider } from "@/design";
 import { AuthProvider, useUserInitials } from "@/providers/auth-provider";
 import { AccountTab } from "./components/account-tab";
-import { displayNameRefusal } from "@forge/contracts/person-name";
+import { displayNameRefusal, READER_INITIAL } from "@forge/contracts/person-name";
 
 expect.extend(matchers);
 
@@ -75,7 +75,7 @@ describe("a person's display name, from Settings → Account", () => {
   it("is set there, and the rail's avatar and the workspace list follow it without a reload", async () => {
     mount();
     const reread = vi.spyOn(qc, "invalidateQueries");
-    await waitFor(() => expect(screen.getByTestId("rail-avatar")).toHaveTextContent("AM"));
+    await waitFor(() => expect(screen.getByTestId("rail-avatar")).toHaveTextContent(READER_INITIAL));
     expect(nameField().value).toBe("");
     fireEvent.change(nameField(), { target: { value: "  Lan Pham " } });
     expect(screen.getByText("You have unsaved changes.")).toBeInTheDocument();
@@ -87,7 +87,8 @@ describe("a person's display name, from Settings → Account", () => {
     await waitFor(() => expect(screen.getByText("No unsaved changes.")).toBeInTheDocument());
   });
 
-  it("is cleared there, and the avatar reads Another member's initials again", async () => {
+  // ISS-1229 r24: the reader's own avatar never wears an unnamed member's "AM"; it reads their letter.
+  it("is cleared there, and the avatar reads the reader's own letter again", async () => {
     me = { ...me, displayName: "Lan Pham" };
     mount();
     await waitFor(() => expect(nameField().value).toBe("Lan Pham"));
@@ -95,14 +96,14 @@ describe("a person's display name, from Settings → Account", () => {
     expect(nameField().value).toBe("");
     expect(writes).toEqual([]);
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    await waitFor(() => expect(screen.getByTestId("rail-avatar")).toHaveTextContent("AM"));
+    await waitFor(() => expect(screen.getByTestId("rail-avatar")).toHaveTextContent(READER_INITIAL));
     expect(writes).toEqual([null]);
   });
 
   // ISS-1229 r22, judge-63: an address saved as one's name was taken without a word.
   it("refuses an address typed as the name, saying why under the field, and offers no save", async () => {
     mount();
-    await waitFor(() => expect(screen.getByTestId("rail-avatar")).toHaveTextContent("AM"));
+    await waitFor(() => expect(screen.getByTestId("rail-avatar")).toHaveTextContent(READER_INITIAL));
     fireEvent.change(nameField(), { target: { value: "lan.pham@example.com" } });
     expect(await screen.findByText(displayNameRefusal("lan.pham@example.com") as string)).toBeInTheDocument();
     await waitFor(() => expect(screen.getByRole("button", { name: "Save" })).toBeDisabled());

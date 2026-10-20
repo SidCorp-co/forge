@@ -2,7 +2,9 @@
 
 // The organization's rooms whose every project was deleted (ISS-1229 r23). Every other list here is
 // a project's, so without this one such a room is found by nobody; its opener and the organization's
-// admins see it, and delete it, since a room about no project takes no message.
+// admins see it, read it and delete it, since a room about no project takes no message. Each row
+// says which project went, when the room was opened and when it was last spoken in, so rooms with
+// one title are told apart, and opens the room read-only before any delete (r24).
 
 import { useState } from "react";
 import { Button, ConfirmDialog, ErrorState } from "@/design";
@@ -10,9 +12,37 @@ import { formatApiError } from "@/lib/api/error";
 import { useDeleteConversation, useRoomsWithoutAProject } from "../hooks";
 import type { RoomWithoutAProject } from "../types";
 
-const titleOf = (room: RoomWithoutAProject) => room.title?.trim() || "Untitled conversation";
+export const orphanTitleOf = (room: RoomWithoutAProject) => room.title?.trim() || "Untitled conversation";
 
-export function RoomsWithoutAProject({ orgId }: { orgId: string | null }) {
+const DAY = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
+
+const joined = (names: string[]): string =>
+  names.length <= 1 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+
+/** What tells this room apart: the project that went, then when it was opened and its last word. */
+export function orphanRoomFactLines(room: RoomWithoutAProject): [project: string, when: string] {
+  const project =
+    room.deletedProjectNames.length > 0
+      ? `${joined(room.deletedProjectNames)} (deleted)`
+      : "its project's name was not kept";
+  const said = room.lastMessageAt ? `last message ${DAY.format(new Date(room.lastMessageAt))}` : "nothing said";
+  return [project, `opened ${DAY.format(new Date(room.createdAt))} · ${said}`];
+}
+
+export const orphanRoomFacts = (room: RoomWithoutAProject): string => orphanRoomFactLines(room).join(" · ");
+
+export function RoomsWithoutAProject({
+  orgId,
+  onOpen,
+  openId,
+  onDeleted,
+}: {
+  orgId: string | null;
+  onOpen: (room: RoomWithoutAProject) => void;
+  openId?: string | undefined;
+  /** Told the id of a room deleted from this list, so a view still showing it can close. */
+  onDeleted?: (id: string) => void;
+}) {
   const rooms = useRoomsWithoutAProject(orgId);
   const remove = useDeleteConversation();
   const [confirming, setConfirming] = useState<RoomWithoutAProject | null>(null);
@@ -36,21 +66,34 @@ export function RoomsWithoutAProject({ orgId }: { orgId: string | null }) {
       </h3>
       <p className="fg-caption px-1 pb-2 text-subtle">
         {list.length === 1 ? "This room's project is" : "These rooms' projects are"} gone, so nobody can
-        write in {list.length === 1 ? "it" : "them"}. Delete what you no longer need.
+        write in {list.length === 1 ? "it" : "them"}. Open one to read it; delete what you no longer need.
       </p>
       <ul className="space-y-1">
         {list.map((room) => (
           <li
             key={room.id}
             data-testid="room-without-a-project"
-            className="flex min-h-11 items-center gap-2 rounded-md px-2"
+            className={`flex min-h-11 items-center gap-2 rounded-md px-2 ${openId === room.id ? "bg-surface" : ""}`}
           >
-            <span className="fg-body-sm min-w-0 flex-1 truncate text-fg">{titleOf(room)}</span>
+            <button
+              type="button"
+              aria-label={`Open ${orphanTitleOf(room)}, read-only`}
+              aria-current={openId === room.id ? "true" : undefined}
+              className="min-w-0 flex-1 py-1 text-left"
+              onClick={() => onOpen(room)}
+            >
+              <span className="fg-body-sm block truncate text-fg">{orphanTitleOf(room)}</span>
+              {orphanRoomFactLines(room).map((line) => (
+                <span key={line} className="fg-caption block break-words text-subtle">
+                  {line}
+                </span>
+              ))}
+            </button>
             <Button
               variant="ghost"
               size="sm"
               icon="trash"
-              aria-label={`Delete ${titleOf(room)}`}
+              aria-label={`Delete ${orphanTitleOf(room)}`}
               onClick={() => setConfirming(room)}
             >
               Delete
@@ -63,7 +106,7 @@ export function RoomsWithoutAProject({ orgId }: { orgId: string | null }) {
         title="Delete this conversation?"
         message={
           confirming
-            ? `“${titleOf(confirming)}” and everything said in it will be gone. Its project was deleted, so it cannot be archived and opened again.`
+            ? `“${orphanTitleOf(confirming)}” and everything said in it will be gone. Its project was deleted, so it cannot be archived and opened again.`
             : ""
         }
         confirmLabel="Delete"
@@ -71,7 +114,8 @@ export function RoomsWithoutAProject({ orgId }: { orgId: string | null }) {
         loading={remove.isPending}
         onConfirm={() => {
           if (!confirming) return;
-          remove.mutate(confirming.id, { onSettled: () => setConfirming(null) });
+          const id = confirming.id;
+          remove.mutate(id, { onSuccess: () => onDeleted?.(id), onSettled: () => setConfirming(null) });
         }}
         onClose={() => setConfirming(null)}
       />

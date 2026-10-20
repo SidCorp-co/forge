@@ -240,7 +240,7 @@ describe("the organisation scope", () => {
 		tab(/^Organisation · /).click();
 
 		expect(
-			await screen.findByText(/This 1 device serves 2 runner assignments between them/),
+			await screen.findByText(/This device serves 2 runner assignments/),
 		).toBeTruthy();
 		expect(screen.getByText(/Overview counts as runners/)).toBeTruthy();
 	});

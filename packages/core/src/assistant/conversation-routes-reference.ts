@@ -113,6 +113,7 @@ export const participantSchema = z.object({
   label: z.string().nullable(),
   reachable: z.boolean().nullable(),
   displayName: z.string().nullable(),
+  addedAt: z.date(),
 });
 
 export const namedProjectSchema = z.object({ id: z.string(), name: z.string(), slug: z.string() });

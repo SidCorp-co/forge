@@ -49,3 +49,32 @@ export function personChoice(
 ): { label: string; detail: string } {
   return { label: personName(displayName, 'start'), detail: email.trim() };
 }
+
+/** The reader's own avatar letter where they gave no name: never the initials of "another member". */
+export const READER_INITIAL = 'Y';
+
+const isReader = (
+  personId: string | null | undefined,
+  readerId: string | null | undefined,
+): boolean => Boolean(personId) && personId === readerId;
+
+/** What a person is called to whoever is reading: "You" for the reader themself (ISS-1229 r24). */
+export function readerName(
+  personId: string | null | undefined,
+  readerId: string | null | undefined,
+  displayName: string | null | undefined,
+  at: 'inside' | 'start' = 'start',
+): string {
+  if (isReader(personId, readerId)) return at === 'start' ? 'You' : 'you';
+  return personName(displayName, at);
+}
+
+/** A person's avatar initials, the reader's own taken from their name or else `READER_INITIAL`. */
+export function readerInitials(
+  personId: string | null | undefined,
+  readerId: string | null | undefined,
+  displayName: string | null | undefined,
+): string {
+  if (isReader(personId, readerId) && !givenName(displayName)) return READER_INITIAL;
+  return personInitials(displayName);
+}

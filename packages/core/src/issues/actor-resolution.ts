@@ -111,7 +111,7 @@ export async function resolveActors(refs: ActorRef[]): Promise<Map<string, Resol
         displayName: device.name,
         isAgent: true,
         deviceId: ref.id,
-        ...(ownerName ? { ownerName } : {}),
+        ...(ownerName ? { ownerName, ownerId: device.ownerId } : {}),
       });
     }
   }

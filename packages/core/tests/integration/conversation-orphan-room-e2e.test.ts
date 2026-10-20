@@ -64,7 +64,9 @@ beforeEach(async () => {
       sql`INSERT INTO organization_members (org_id, user_id, role) VALUES (${orgId}, ${id}, 'member')`,
     );
   }
-  projectId = (await createTestProject(harness.db, ownerId, { slug: 'billing', orgId })).id;
+  projectId = (
+    await createTestProject(harness.db, ownerId, { slug: 'billing', name: 'Billing', orgId })
+  ).id;
   await harness.db.execute(
     sql`INSERT INTO project_members (project_id, user_id, role) VALUES (${projectId}, ${creatorId}, 'member')`,
   );
@@ -101,11 +103,23 @@ async function roomExists(id: string): Promise<boolean> {
   return Number(rows[0]?.n) === 1;
 }
 
-const listed = async (userId: string): Promise<string[]> => {
-  const res = await as(userId, `/api/orgs/${orgId}/rooms-without-a-project`);
-  expect(res.status, await res.clone().text()).toBe(200);
-  return ((await res.json()) as Array<{ id: string }>).map((r) => r.id);
+type ListedRoom = {
+  id: string;
+  deletedProjectNames: string[];
+  createdAt: string;
+  lastMessageAt: string | null;
 };
+
+const rows = async (userId: string, under = orgId): Promise<ListedRoom[]> => {
+  const res = await as(userId, `/api/orgs/${under}/rooms-without-a-project`);
+  expect(res.status, await res.clone().text()).toBe(200);
+  return (await res.json()) as ListedRoom[];
+};
+
+const listedUnder = async (userId: string, under: string): Promise<string[]> =>
+  (await rows(userId, under)).map((r) => r.id);
+
+const listed = (userId: string): Promise<string[]> => listedUnder(userId, orgId);
 
 describe('a room whose project was deleted', () => {
   it('stays its organization’s, and its creator finds it and deletes it', async () => {
@@ -145,12 +159,15 @@ describe('a room whose project was deleted', () => {
     expect(res.status).toBe(409);
   });
 
-  // Consult F1: 0350 finds no organization for a room whose projects were gone before it ran.
+  // Consult F1: 0350 finds no organization for a room whose projects were gone before it ran. Round 24:
+  // it is listed under its opener's personal workspace alone, never under every organization they read.
   it('stays its opener’s to find and delete where no organization is recorded for it', async () => {
     const id = await roomWhoseProjectIsGone();
+    const personal = (await seedOrg(harness.db, creatorId, { isPersonal: true })).id;
     await harness.db.execute(sql`UPDATE conversations SET org_id = NULL WHERE id = ${id}`);
 
-    expect(await listed(creatorId)).toEqual([id]);
+    expect(await listed(creatorId)).toEqual([]);
+    expect(await listedUnder(creatorId, personal)).toEqual([id]);
     expect(await listed(ownerId)).toEqual([]);
     expect((await as(ownerId, `/api/conversations/${id}`, 'DELETE')).status).toBe(403);
     expect((await as(creatorId, `/api/conversations/${id}`, 'DELETE')).status).toBe(204);
@@ -158,16 +175,58 @@ describe('a room whose project was deleted', () => {
   });
 
   // Review F1: the opener who has since left the organization still finds it, under one they hold.
+  // Round 24: under their personal workspace alone, while the organization's admins still find it.
   it('stays findable by its opener after they leave its organization', async () => {
     const id = await roomWhoseProjectIsGone();
     const elsewhere = (await seedOrg(harness.db, creatorId)).id;
+    const personal = (await seedOrg(harness.db, creatorId, { isPersonal: true })).id;
     await harness.db.execute(
       sql`DELETE FROM organization_members WHERE org_id = ${orgId} AND user_id = ${creatorId}`,
     );
 
-    const res = await as(creatorId, `/api/orgs/${elsewhere}/rooms-without-a-project`);
-    expect(((await res.json()) as Array<{ id: string }>).map((r) => r.id)).toEqual([id]);
+    expect(await listedUnder(creatorId, elsewhere)).toEqual([]);
+    expect(await listedUnder(creatorId, personal)).toEqual([id]);
+    expect(await listed(ownerId)).toEqual([id]);
     expect((await as(creatorId, `/api/conversations/${id}`, 'DELETE')).status).toBe(204);
+  });
+
+  // Round 24: a row tells its room apart — the project that went, when it was opened, its last word.
+  it('names the project that was deleted, when the room was opened and when it was last spoken in', async () => {
+    const opened = await as(creatorId, '/api/conversations', 'POST', {
+      projectId,
+      title: 'Release chat',
+    });
+    const { id } = (await opened.json()) as { id: string };
+    await harness.db.execute(
+      sql`INSERT INTO conversation_messages (conversation_id, seq, role, content, created_at)
+          VALUES (${id}, 1, 'user', 'hello', '2026-10-03T09:15:00Z')`,
+    );
+    await harness.db.execute(sql`DELETE FROM projects WHERE id = ${projectId}`);
+
+    const [row] = await rows(creatorId);
+    expect(row?.id).toBe(id);
+    expect(row?.deletedProjectNames).toEqual(['Billing']);
+    expect(typeof row?.createdAt).toBe('string');
+    expect(row?.lastMessageAt).toBe('2026-10-03T09:15:00.000Z');
+  });
+
+  it('records the project through the project delete route too, and says nothing was said in an empty room', async () => {
+    const opened = await as(creatorId, '/api/conversations', 'POST', { projectId });
+    const { id } = (await opened.json()) as { id: string };
+    const gone = await as(ownerId, `/api/projects/${projectId}`, 'DELETE');
+    expect(gone.status, await gone.clone().text()).toBe(204);
+
+    const [row] = await rows(creatorId);
+    expect(row).toMatchObject({ id, deletedProjectNames: ['Billing'], lastMessageAt: null });
+  });
+
+  it('records no name for a room orphaned before 0353 kept them', async () => {
+    const id = await roomWhoseProjectIsGone();
+    await harness.db.execute(
+      sql`UPDATE conversations SET deleted_project_names = '{}' WHERE id = ${id}`,
+    );
+    const [row] = await rows(creatorId);
+    expect(row?.deletedProjectNames).toEqual([]);
   });
 
   it('goes with its organization', async () => {

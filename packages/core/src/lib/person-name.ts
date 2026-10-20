@@ -14,6 +14,9 @@ export {
   displayNameRefusal,
   givenName,
   personInitials,
+  READER_INITIAL,
+  readerInitials,
+  readerName,
   UNNAMED_PERSON,
   UNNAMED_PERSON_AT_START,
 } from '@forge/contracts/person-name';

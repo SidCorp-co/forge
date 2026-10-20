@@ -12,6 +12,7 @@ import { ConversationThread } from "./conversation-thread";
 
 expect.extend(matchers);
 afterEach(cleanup);
+vi.mock("@/providers/auth-provider", () => ({ useAuth: () => ({ user: { id: "me" } }) }));
 
 const AT = "2026-09-21T10:14:38.790Z";
 
@@ -50,6 +51,14 @@ describe("what a stored turn carries for its reader", () => {
   it("names the account when the transport labelled nobody", () => {
     render(<ConversationThread messages={[said({ authorLabel: null })]} windows={[]} />);
     expect(screen.getByTestId("message-actions")).toHaveTextContent("You");
+  });
+
+  // ISS-1229 r24: the reader's own message, in a room where core labels them like anyone else.
+  it('heads the reader\'s own message "You", whatever label core stored', () => {
+    render(<ConversationThread messages={[said({ authorUserId: "me", authorLabel: "Another member" })]} windows={[]} />);
+    expect(screen.getByTestId("message-actions")).toHaveTextContent("You");
+    expect(screen.getByTestId("message-actions")).not.toHaveTextContent("Another member");
+    expect(screen.getByRole("button", { name: /^Copy message from you/ })).toBeInTheDocument();
   });
 
   it("says when it was said, with the full stamp behind it", () => {

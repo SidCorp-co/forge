@@ -101,7 +101,7 @@ describe("a person with no display name, inside a sentence", () => {
   it("names the remove control lower-case and says what removal does from the sentence's start", () => {
     const person = {
       id: "pp1", kind: "person" as const, userId: "u2", projectId: null, label: null,
-      displayName: "Another member", reachable: null,
+      displayName: "Another member", reachable: null, addedAt: "2026-10-01T09:00:00Z",
     };
     render(
       <ConversationMembers conversationId="c1" room={{ ...room, participants: [person] }} canChange open onClose={() => {}} />,
@@ -128,8 +128,8 @@ describe("a person with no display name, inside a sentence", () => {
 // acted at once, between two rows that read alike.
 describe("the reader and removal in a room's people list", () => {
   const room = { shape: "group" as const, scopeProjects: [{ id: "p1", name: "Billing", slug: "billing" }] };
-  const me = { id: "pm", kind: "person" as const, userId: "me", projectId: null, label: null, displayName: "Another member", reachable: null };
-  const other = { id: "po", kind: "person" as const, userId: "u2", projectId: null, label: null, displayName: "Another member", reachable: null };
+  const me = { id: "pm", kind: "person" as const, userId: "me", projectId: null, label: null, displayName: "Another member", reachable: null, addedAt: "2026-10-01T09:00:00Z" };
+  const other = { id: "po", kind: "person" as const, userId: "u2", projectId: null, label: null, displayName: "Another member", reachable: null, addedAt: "2026-10-01T09:00:00Z" };
 
   it("names the reader's own row You and anybody else's as core named them", () => {
     render(
@@ -163,5 +163,35 @@ describe("the reader and removal in a room's people list", () => {
     expect(screen.getByText("Take yourself out of this room?")).toBeTruthy();
     expect(screen.getByText("You will no longer be listed in this room.")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Take me out" })).toBeTruthy();
+  });
+});
+
+// ISS-1229 r24: the reader's own avatar never wears "AM", and two people who read alike are told apart
+// in the list in the words the question before removal uses.
+describe("the people list, told apart", () => {
+  const room = { shape: "group" as const, scopeProjects: [{ id: "p1", name: "Billing", slug: "billing" }] };
+  const me = { id: "pm", kind: "person" as const, userId: "me", projectId: null, label: null, displayName: "Another member", reachable: null, addedAt: "2026-10-02T09:00:00Z" };
+  const lan = { id: "pl", kind: "person" as const, userId: "u2", projectId: null, label: null, displayName: "Another member", reachable: null, addedAt: "2026-10-03T09:00:00Z" };
+  const kim = { id: "pk", kind: "person" as const, userId: "u3", projectId: null, label: null, displayName: "Another member", reachable: null, addedAt: "2026-10-04T09:00:00Z" };
+
+  it("gives the reader's own avatar their letter, never AM", () => {
+    render(
+      <ConversationMembers conversationId="c1" room={{ ...room, participants: [me] }} canChange open onClose={() => {}} />,
+    );
+    const [mine] = screen.getAllByTestId("member-mark-person");
+    expect(mine?.textContent).not.toContain("AM");
+    expect(mine?.textContent).toBe("Y");
+  });
+
+  it("tells two unnamed people apart by when each was added, and asks about the one chosen in the same words", () => {
+    removeMutate.mockReset();
+    render(
+      <ConversationMembers conversationId="c1" room={{ ...room, participants: [me, lan, kim] }} canChange open onClose={() => {}} />,
+    );
+    const rows = screen.getAllByTestId("member-row-person").map((r) => r.textContent ?? "");
+    expect(rows[1]).toContain("Another member (added 3 Oct 2026)");
+    expect(rows[2]).toContain("Another member (added 4 Oct 2026)");
+    fireEvent.click(screen.getByRole("button", { name: "Take another member (added 4 Oct 2026) out of the room" }));
+    expect(screen.getByText("Take another member (added 4 Oct 2026) out of this room?")).toBeTruthy();
   });
 });

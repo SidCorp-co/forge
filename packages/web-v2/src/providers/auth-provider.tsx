@@ -20,7 +20,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { personInitials } from '@forge/contracts/person-name';
+import { readerInitials } from '@forge/contracts/person-name';
 import { authApi } from '@/lib/api/auth-api';
 import { ApiError } from '@/lib/api/client';
 
@@ -117,5 +117,5 @@ export function useAuth() {
 
 export function useUserInitials(): string | undefined {
   const { user } = useAuth();
-  return user ? personInitials(user.displayName) : undefined;
+  return user ? readerInitials(user.id, user.id, user.displayName) : undefined;
 }

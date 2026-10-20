@@ -316,3 +316,47 @@ describe('deleting an organization takes its own agent accounts with it', () => 
     expect(kept.map((r) => r.org_id)).toEqual([otherTeamId]);
   });
 });
+
+// ISS-1229 r24: the refusals a person reads when the delete cannot go, as sentences.
+describe('an organization the delete cannot take yet', () => {
+  it('names how many projects it still holds, each by name, and that they go first', async () => {
+    await createTestProject(harness.db, ownerId, {
+      slug: 'billing',
+      name: 'Billing',
+      orgId: teamId,
+    });
+
+    const res = await deleteOrg(teamId);
+    const body = (await res.json()) as { code?: string; message?: string };
+    expect(res.status).toBe(409);
+    expect(body.code).toBe('ORG_NOT_EMPTY');
+    expect(body.message).toMatch(/^This organization still holds 2 projects, /);
+    expect(body.message).toContain('"Billing"');
+    expect(body.message).toMatch(
+      /so the organization was not deleted\. Delete them first, from each project's settings, then delete the organization\.$/,
+    );
+    const rows = await harness.db.execute<{ n: number }>(
+      sql`SELECT count(*)::int AS n FROM organizations WHERE id = ${teamId}`,
+    );
+    expect(Number(rows[0]?.n)).toBe(1);
+  });
+
+  it('says one project as one', async () => {
+    const res = await deleteOrg(teamId);
+    const body = (await res.json()) as { message?: string };
+    expect(body.message).toMatch(
+      /^This organization still holds the project "[^"]+", so the organization was not deleted\. Delete it first, from its settings, then delete the organization\.$/,
+    );
+  });
+
+  it('refuses a personal workspace in a sentence', async () => {
+    const personal = (await seedOrg(harness.db, ownerId, { isPersonal: true })).id;
+    const res = await deleteOrg(personal);
+    const body = (await res.json()) as { code?: string; message?: string };
+    expect(res.status).toBe(409);
+    expect(body.code).toBe('PERSONAL_ORG_IMMUTABLE');
+    expect(body.message).toBe(
+      'A personal workspace cannot be deleted; it is yours for as long as your account is.',
+    );
+  });
+});

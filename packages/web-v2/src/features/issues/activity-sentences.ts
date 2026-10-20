@@ -10,8 +10,8 @@ import {
 } from "@forge/contracts/issue-vocabulary";
 import { personName } from "@forge/contracts/person-name";
 import type { IconName } from "@/design";
-import { statusLabel } from "./derive";
-import type { ActivityItem, IssueStatus } from "./types";
+import { categoryLabel, complexityLabel, priorityLabel, statusLabel } from "./derive";
+import type { ActivityItem, IssueComplexity, IssuePriority, IssueStatus } from "./types";
 
 /** A run of the sentence; `strong` marks a value a reader scans for, such as a status. */
 export type SentencePart = string | { strong: string };
@@ -50,6 +50,13 @@ const MERGE_FIELDS: readonly string[] = ["mergedAt", "mergedCommitSha", "mergedL
 /** A value short enough to quote: the title, priority and category, never a body. */
 const QUOTED: readonly string[] = ["title", "priority", "category", "complexity"];
 
+/** A quoted value in the words the properties panel shows it in, never as stored (ISS-1229 r24). */
+const PANEL_WORDS: Record<string, (value: string) => string> = {
+  priority: (v) => priorityLabel(v as IssuePriority),
+  complexity: (v) => complexityLabel(v as IssueComplexity),
+  category: categoryLabel,
+};
+
 const joined = (words: string[]): string =>
   words.length <= 1 ? (words[0] ?? "") : `${words.slice(0, -1).join(", ")} and ${words[words.length - 1]}`;
 
@@ -64,11 +71,15 @@ function edited(p: Payload): SentencePart[] {
   if (merge) acts.push(text((p.after as Payload | undefined)?.mergedAt) ? "recorded the merge" : "took back the merge record");
   const [only] = rest;
   if (rest.length === 1 && only && !merge && QUOTED.includes(only)) {
-    const from = text((p.before as Payload | undefined)?.[only]);
-    const to = text((p.after as Payload | undefined)?.[only]);
+    const shown = (v: string | null) => (v && PANEL_WORDS[only] ? PANEL_WORDS[only](v) : v);
+    const from = shown(text((p.before as Payload | undefined)?.[only]));
+    const to = shown(text((p.after as Payload | undefined)?.[only]));
     const field = wordsFor(only);
     if (field && from && to && from.length <= 40 && to.length <= 40)
       return [`changed ${field} from `, { strong: from }, " to ", { strong: to }];
+    const before = p.before as Payload | undefined;
+    const stoodEmpty = before !== undefined && Object.hasOwn(before, only) && !text(before[only]);
+    if (field && stoodEmpty && to && to.length <= 40) return [`set ${field} to `, { strong: to }];
   }
   const named = rest.map(wordsFor).filter((w): w is string => w !== null);
   if (named.length > 0) acts.push(`changed ${joined(named)}`);

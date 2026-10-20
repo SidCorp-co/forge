@@ -6,6 +6,9 @@ import {
   personChoice,
   personInitials,
   personName,
+  READER_INITIAL,
+  readerInitials,
+  readerName,
 } from './person-name.js';
 
 // ISS-1229 r21: the one name helper web and core both read.
@@ -37,10 +40,16 @@ describe('what a person is called', () => {
   });
 
   it('offers a person in a picker by name, with the address beside it to tell two alike apart', () => {
-    const [one, two] = [personChoice(null, 'lan@example.com'), personChoice(' ', ' kim@example.com ')];
+    const [one, two] = [
+      personChoice(null, 'lan@example.com'),
+      personChoice(' ', ' kim@example.com '),
+    ];
     expect([one.label, two.label]).toEqual(['Another member', 'Another member']);
     expect([one.detail, two.detail]).toEqual(['lan@example.com', 'kim@example.com']);
-    expect(personChoice(' Mai Tran ', 'mai@example.com')).toEqual({ label: 'Mai Tran', detail: 'mai@example.com' });
+    expect(personChoice(' Mai Tran ', 'mai@example.com')).toEqual({
+      label: 'Mai Tran',
+      detail: 'mai@example.com',
+    });
   });
 
   // ISS-1229 r22: a label core already served is placed again where the web's sentence puts it.
@@ -72,5 +81,33 @@ describe('a display name holding an address', () => {
 
   it.each(['Mai Tran', '@mai', ' ', ''])('is not refused where it holds none (%j)', (typed) => {
     expect(displayNameRefusal(typed)).toBeNull();
+  });
+});
+
+// ISS-1229 r24: the reader reads "You" wherever a person is named to them, and their own avatar
+// never wears the initials of an unnamed member.
+describe('the reader', () => {
+  it('reads "You" for themself, at a sentence start and inside one', () => {
+    expect(readerName('u1', 'u1', 'Mai Tran')).toBe('You');
+    expect(readerName('u1', 'u1', null, 'inside')).toBe('you');
+  });
+
+  it('reads anyone else as personName names them, and so does a page with no reader', () => {
+    expect(readerName('u2', 'u1', 'Mai Tran')).toBe('Mai Tran');
+    expect(readerName('u2', 'u1', null)).toBe('Another member');
+    expect(readerName('u1', null, null, 'inside')).toBe('another member');
+    expect(readerName(null, null, 'Mai')).toBe('Mai');
+  });
+
+  it('takes their own initials from their name, and never "AM" where they gave none', () => {
+    expect(readerInitials('u1', 'u1', 'Mai Tran')).toBe('MT');
+    expect(readerInitials('u1', 'u1', null)).toBe(READER_INITIAL);
+    expect(readerInitials('u1', 'u1', 'Another member')).toBe(READER_INITIAL);
+    expect(READER_INITIAL).not.toBe('AM');
+  });
+
+  it("leaves everyone else's initials as personInitials takes them", () => {
+    expect(readerInitials('u2', 'u1', null)).toBe('AM');
+    expect(readerInitials('u2', 'u1', 'Lan Pham')).toBe('LP');
   });
 });

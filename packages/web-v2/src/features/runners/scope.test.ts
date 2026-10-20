@@ -61,7 +61,20 @@ describe("the line reconciling devices with the Overview's runners", () => {
 	});
 
 	it("reads singular for one device and one assignment", () => {
-		expect(assignmentBridgeLine(1, 1)).toContain("This 1 device serves 1 runner assignment");
+		expect(assignmentBridgeLine(1, 1)).toContain("This device serves 1 runner assignment —");
+	});
+
+	// ISS-1229 r24, judge-70: "This 1 device serves 0 runner assignments between them".
+	it.each([
+		[1, 0, "This device serves no runner assignments —"],
+		[1, 2, "This device serves 2 runner assignments —"],
+		[2, 0, "These 2 devices serve no runner assignments —"],
+		[2, 1, "These 2 devices serve 1 runner assignment between them —"],
+		[3, 5, "These 3 devices serve 5 runner assignments between them —"],
+	])("agrees in number at %i device(s) and %i assignment(s)", (devices, assignments, words) => {
+		const line = assignmentBridgeLine(devices, assignments) ?? "";
+		expect(line.startsWith(words)).toBe(true);
+		if (devices === 1) expect(line).not.toContain("between them");
 	});
 
 	it("is withheld while either figure is unknown", () => {
