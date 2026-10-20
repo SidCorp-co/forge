@@ -29,6 +29,8 @@ import {
 	type StatusKey,
 } from "@/design/status";
 import { STALLED_THRESHOLD_MS } from "@/features/sessions/types";
+import { type RunWord, runReadingChip } from "@/features/runs/derive";
+import type { RunBlock, RunHold, RunReading } from "@/features/runs/types";
 import { gateView, pausedRunView } from "./waiting";
 import type {
 	CommentKind,
@@ -170,6 +172,21 @@ export function runStatusChip({ agentStatus, pipelineHealth }: RunReadingSource)
 	if (agentStatus === "completed") return "done";
 	if (agentStatus === "failed") return "failed";
 	return null;
+}
+
+/**
+ * The word an issue's open run reads, the word the runs tab and the Ops drawer read it by: core's
+ * reading of the run, so a held job reads Held here and never the failed session's verdict
+ * (ISS-1228 round 19). Null where the issue has no open run core reads, and the sessions' verdict
+ * (`runStatusChip`) stands.
+ */
+export function openRunWord(
+	runs: readonly Pick<RunView, "status" | "reading" | "hold" | "block" | "startedAt" | "runningSince">[],
+	nowMs: number,
+): RunWord | null {
+	const open = runs.find((r) => r.status === "running" || r.status === "paused");
+	if (!open || open.reading == null) return null;
+	return runReadingChip({ ...open, reading: open.reading, liveJobs: 0, lastSessionBeatAt: null, checkInBy: null }, nowMs);
 }
 
 /** Whether the run's reading says an agent is working or waiting to. */
@@ -947,6 +964,10 @@ export interface RunView {
 	finishedAt: string | null;
 	costUsd: number | null;
 	sessionId: string | null;
+	reading: RunReading | null;
+	hold: RunHold | null;
+	block: RunBlock | null;
+	runningSince: string | null;
 	attempts: AttemptView[];
 	/** The agent sessions that ran it, oldest first, with whether each resumed or started fresh. */
 	sessions: SessionTimelineEntry[];
@@ -1014,6 +1035,10 @@ export function deriveRunView(
 			finishedAt: run.finishedAt,
 			costUsd: run.costUsd,
 			sessionId: run.sessionId,
+			reading: run.reading ?? null,
+			hold: run.hold ?? null,
+			block: run.block ?? null,
+			runningSince: run.runningSince ?? null,
 			sessions: byRun.get(run.runId) ?? [],
 			attempts: run.attempts.map((a) => ({
 				key: `${a.phase}#${a.attempt}`,

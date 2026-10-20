@@ -41,7 +41,21 @@ export interface PipelineRunStepSummary {
 }
 
 /** One job row of a run's per-attempt timeline: the `retry_of` chain, its device and its rotation. */
-export type RunReading = "running" | "starting" | "waiting" | "queued";
+export type RunReading = "blocked" | "running" | "starting" | "waiting" | "queued" | "held";
+
+/** Why core holds a run's job and whether it sends it again by itself (core `jobs/hold.ts`). */
+export interface RunHold {
+  reason: string;
+  resumesItself: boolean;
+  recheckAt: string | null;
+  since: string | null;
+}
+
+/** What a box reports its blocked session on the run waits on, and whether its process has gone. */
+export interface RunBlock {
+  blockerKind: string | null;
+  parked: boolean;
+}
 
 export interface PipelineRunAttempt {
   jobId: string;
@@ -67,6 +81,9 @@ export interface PipelineRunAttempt {
   finishedAt: string | null;
   autoRetry: { round: number; target: string | null; tries: number; done: string[] } | null;
   takenBy: { deviceId: string; deviceName: string | null } | null;
+  /** Absent from an older core. */
+  hold?: RunHold | null;
+  cancelledBy?: { kind: "person" | "agent" | "core"; name: string | null } | null;
 }
 
 export interface PipelineRunRetrySummary {
@@ -109,6 +126,16 @@ export interface PipelineRunSummary {
   lastSessionBeatAt: string | null;
   /** What core says the run's agent is doing (`runs-liveness.ts`), the one word every surface shows. */
   reading: RunReading | null;
+  /** Why core holds the run's job, where it holds one. */
+  hold?: RunHold | null;
+  /** What a box reports its blocked session on the run waits on. */
+  block?: RunBlock | null;
+  /** When core ends a session on the run that has not checked in since it opened. */
+  checkInBy?: string | null;
+  /** When the run's work started: the earliest start of any session on it. */
+  runningSince?: string | null;
+  /** The run's newest session, whose page says what it is doing. */
+  sessionId?: string | null;
   attempts: PipelineRunAttempt[];
   /** ISS-411 — round-robin headline; null when the run never retried. */
   retrySummary: PipelineRunRetrySummary | null;

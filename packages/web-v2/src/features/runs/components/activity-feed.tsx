@@ -10,6 +10,7 @@
 //
 // Grouping + labels are pure and live in `../activity`; this file is render only.
 
+import Link from "next/link";
 import { useState } from "react";
 import {
   Badge,
@@ -31,7 +32,8 @@ import {
   filterActivity,
 } from "../activity";
 import { useNow } from "@/design/hooks/use-now";
-import { runHasStarted, runIsStalled } from "../derive";
+import { CLOSED_EMPTY } from "@/features/sessions/status-sentences";
+import { runHasStarted, runIsStalled, runReadingChip } from "../derive";
 import type { PipelineRunRetrySummary, PipelineRunSummary } from "../types";
 
 interface ActivityTabProps {
@@ -39,6 +41,8 @@ interface ActivityTabProps {
   loading: boolean;
   error: unknown;
   onRetry: () => void;
+  /** The page of the session that works the run, where one does. */
+  sessionHref?: string | null;
 }
 
 const TONE_COLOR: Record<ActivityTone, { dot: string; fg: string }> = {
@@ -54,7 +58,17 @@ const FILTERS: { value: ActivityFilter; label: string }[] = [
   { value: "failures", label: "Failures" },
 ];
 
-export function ActivityTab({ run, loading, error, onRetry }: ActivityTabProps) {
+/** A link to the run's session page, in the sentence that says what that page shows. */
+function SessionLink({ href, text }: { href: string | null | undefined; text: string }) {
+  if (!href) return null;
+  return (
+    <Link href={href} className="underline focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]">
+      {text}
+    </Link>
+  );
+}
+
+export function ActivityTab({ run, loading, error, onRetry, sessionHref }: ActivityTabProps) {
   const [filter, setFilter] = useState<ActivityFilter>("all");
   const now = useNow(10_000);
 
@@ -71,14 +85,17 @@ export function ActivityTab({ run, loading, error, onRetry }: ActivityTabProps) 
     );
   }
 
-  const entries = deriveActivityFeed(run.attempts);
-  // A run its header reads Running or Waiting for me with no job on it is worked by its session.
-  if (entries.length === 0 && runHasStarted(run)) {
+  const word = runReadingChip(run, now);
+  const entries = deriveActivityFeed(run.attempts, run.reading === "blocked" ? word.label : undefined);
+  const open = run.status === "running" || run.status === "paused";
+  // An open run its session works without jobs: one that has started, or a run session or master's.
+  const sessionWorked = runHasStarted(run) || run.lane === "run_session" || run.lane === "master";
+  if (entries.length === 0 && open && sessionWorked) {
     return (
-      <EmptyState
-        title="No job attempts"
-        message="A session works this run directly rather than through jobs, so there are no attempts to list. Its session's page shows what it is doing."
-      />
+      <div className="flex flex-col items-center gap-2">
+        <EmptyState title="No job attempts" message={CLOSED_EMPTY.sessionMessage} />
+        <SessionLink href={sessionHref} text={CLOSED_EMPTY.liveSessionLink} />
+      </div>
     );
   }
   if (entries.length === 0 && runIsStalled(run, now)) {
@@ -87,6 +104,17 @@ export function ActivityTab({ run, loading, error, onRetry }: ActivityTabProps) 
         title="Nothing is working this run"
         message="No box is working it and no job is waiting for one, so nothing will appear here on its own."
       />
+    );
+  }
+  // A closed run promises nothing: a session worked it, or nothing ran on it (ISS-1228 round 19).
+  if (entries.length === 0 && !open) {
+    return run.sessionId ? (
+      <div className="flex flex-col items-center gap-2">
+        <EmptyState title="No job attempts" message={CLOSED_EMPTY.sessionMessage} />
+        <SessionLink href={sessionHref} text={CLOSED_EMPTY.sessionLink} />
+      </div>
+    ) : (
+      <EmptyState title="Nothing ran on this run" message={CLOSED_EMPTY.message} />
     );
   }
   if (entries.length === 0) {

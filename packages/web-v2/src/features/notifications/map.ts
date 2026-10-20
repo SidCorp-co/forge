@@ -30,7 +30,8 @@ function typeLabel(row: Pick<NotificationRow, "type" | "stuckKind">): string | u
     case "issue_status_changed":
       return "STATUS";
     case "pipeline_wedge":
-      return "WEDGE";
+      // A word a person reads, the filter's own name for the type (ISS-1228 round 19).
+      return "STALLED";
     case "mention":
       return "MENTION";
     case "invitation_received":

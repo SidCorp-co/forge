@@ -82,7 +82,8 @@ describe("deriveActivityFeed", () => {
     );
 
     expect(feed).toHaveLength(2);
-    expect(feed[0]?.action).toBeNull();
+    // The earlier attempt core already sent again asks nothing of a person (round 19).
+    expect(feed[0]?.action).toBe("Core already sent it again, so nothing is asked of you.");
     expect(feed[1]?.action).toEqual(
       starts[1] ? expect.stringContaining("stopped answering") : "Check that ubuntu5 is online and its runner is running.",
     );
@@ -267,13 +268,13 @@ describe("deriveActivityFeed", () => {
     });
   });
 
-  it("offers no remedy on an attempt a later one already followed", () => {
+  it("says nothing is asked of a person, in place of a remedy, on an attempt core already sent again", () => {
     const feed = deriveActivityFeed([
       attempt({ status: "failed", ranAt: null, failureCause: "queue_timeout", deviceName: "box-a" }),
       attempt({ status: "queued", startedAt: null, ranAt: null, finishedAt: null, deviceId: null, deviceName: null }),
     ]);
     expect(feed.map((e) => [e.verb, e.action])).toEqual([
-      ["Never started", null],
+      ["Never started", "Core already sent it again, so nothing is asked of you."],
       ["Queued", null],
     ]);
   });
@@ -302,5 +303,106 @@ describe("filterActivity", () => {
 
     expect(filterActivity(feed, "all")).toHaveLength(2);
     expect(filterActivity(feed, "failures")).toHaveLength(0);
+  });
+});
+
+/** ISS-1228 round 19 (judge-57): what each attempt says, read against the attempt after it. */
+describe("round 19: held, cancelled, question and control-free remedies", () => {
+  const never = { status: "failed", ranAt: null, failureCause: "queue_timeout", deviceName: "j57-b" } as const;
+
+  it("reads a held attempt Held, says why and that core sends it again, and asks nothing", () => {
+    const feed = deriveActivityFeed([
+      attempt(never),
+      attempt({
+        status: "held",
+        ranAt: null,
+        finishedAt: null,
+        deviceId: null,
+        deviceName: null,
+        failureCause: null,
+        failureReason: "all_devices_exhausted",
+        hold: { reason: "all_devices_exhausted", resumesItself: true, recheckAt: null, since: null },
+      }),
+    ]);
+    expect(feed[0]?.action).toBe("Core holds the next try, so nothing is asked of you here.");
+    expect([feed[1]?.verb, feed[1]?.outcome, feed[1]?.action]).toEqual([
+      "Held",
+      "No box could take it. Core sends it again once a box can take it.",
+      null,
+    ]);
+  });
+
+  it("names what to do on a hold that does not clear on its own, with a control the drawer offers", () => {
+    const [held] = deriveActivityFeed([
+      attempt({
+        status: "held",
+        ranAt: null,
+        finishedAt: null,
+        failureCause: null,
+        hold: { reason: "retry_rounds_exhausted", resumesItself: false, recheckAt: null, since: null },
+      }),
+    ]);
+    expect(held?.outcome).toBe("It failed on every try core gave it. This hold does not clear on its own.");
+    expect(held?.action).toContain("Cancel run");
+  });
+
+  it("names the box on the latest never-taken attempt where nothing follows it", () => {
+    expect(deriveActivityFeed([attempt(never)])[0]?.action).toBe(
+      "Check that j57-b is online and its runner is running.",
+    );
+  });
+
+  it("reads a person's cancel as theirs, never an earlier take's queue timeout", () => {
+    const [line] = deriveActivityFeed([
+      attempt({
+        status: "cancelled",
+        ranAt: null,
+        failureCause: null,
+        failureReason: "pipeline_cancelled",
+        deviceName: null,
+        cancelledBy: { kind: "person", name: "Sam" },
+      }),
+    ]);
+    expect([line?.outcome, line?.cause, line?.action, line?.tone]).toEqual(["Cancelled by Sam", null, null, "swept"]);
+  });
+
+  it("reads a cancel even where core still answers an old session cause beside it", () => {
+    const [line] = deriveActivityFeed([
+      attempt({ status: "cancelled", ranAt: null, failureCause: "queue_timeout", cancelledBy: { kind: "person", name: null } }),
+    ]);
+    expect(line?.outcome).toBe("Cancelled by a person");
+    expect(line?.action).toBeNull();
+  });
+
+  it("reads a job that stopped on a question as that, never Unclassified", () => {
+    const [line] = deriveActivityFeed([
+      attempt({ status: "failed", failureCause: null, failureReason: "stopped_on_question" }),
+    ]);
+    expect(line?.outcome).toBe("Stopped to ask a question");
+    expect(line?.action).toBe("Answer its question on the issue page.");
+  });
+
+  it.each([
+    "heartbeat_timeout",
+    "agent_exited_without_result",
+    "provider_auth_expired",
+    "runner_unreachable",
+    "session_lost",
+    "no_client_ack",
+    "turn_never_reported",
+    "user_cancelled",
+  ])("names no Retry or Rerun in the remedy for %s", (cause) => {
+    for (const ranAt of [null, "2026-08-30T10:00:05.000Z"]) {
+      const action = deriveActivityFeed([attempt({ status: "failed", failureCause: cause, ranAt })])[0]?.action ?? "";
+      expect(action).not.toMatch(/\b(Retry|Rerun)\b/);
+    }
+  });
+
+  it("reads an open attempt in the run's blocked word where the box reports the run blocked", () => {
+    const [line] = deriveActivityFeed(
+      [attempt({ status: "running", finishedAt: null, failureCause: null })],
+      "Blocked, holding the box",
+    );
+    expect(line?.verb).toBe("Blocked, holding the box");
   });
 });

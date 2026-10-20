@@ -124,7 +124,10 @@ export async function reapDeadMasterHolds(): Promise<number> {
         )
     )
     UPDATE jobs
-    SET held_by = NULL, held_at = NULL
+    SET held_by = NULL, held_at = NULL,
+        -- A take whose own session ended is over: the next take mints its own, and no later read of
+        -- this job inherits that session's cause (ISS-1228).
+        agent_session_id = CASE WHEN d.own_session_ended THEN NULL ELSE jobs.agent_session_id END
     FROM doomed d
     WHERE jobs.id = d.id
     RETURNING jobs.id, d.held_by AS former_holder, d.master_status, d.own_session_ended

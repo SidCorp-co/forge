@@ -303,3 +303,55 @@ describe("the drawer's menu offers only what the run takes", () => {
     expect(items).toEqual(["Open issue", "Copy link"]);
   });
 });
+
+/** ISS-1228 round 19 (judge-57): a held job, a silent run session and the drawer's own words. */
+describe("round 19: the drawer reads a held job and a silent session as themselves", () => {
+  const openDrawer = () => render(<RunDetail open onClose={vi.fn()} runId="r1" projectSlugs={SLUGS} />);
+  const header = () => screen.getByText("ISS-2").parentElement as HTMLElement;
+
+  it("reads a run whose only job core holds as Held, never Nothing working, and says why", () => {
+    run = summary("running", {
+      liveJobs: 0,
+      startedAt: new Date(Date.now() - 20 * 60_000).toISOString(),
+      attempts: [attempt("held")],
+      reading: "held",
+      hold: { reason: "all_devices_exhausted", resumesItself: true, recheckAt: null, since: null },
+    });
+    openDrawer();
+    expect(within(header()).getByText("Held")).toBeInTheDocument();
+    expect(within(header()).queryByText("Nothing working")).toBeNull();
+    expect(document.querySelector("[data-run-wait]")).toHaveTextContent(
+      "No box could take it. Core sends it again once a box can take it.",
+    );
+    fireEvent.mouseEnter(screen.getByRole("button", { name: "Cancel run" }));
+    expect(screen.getByRole("tooltip")).toHaveTextContent("core would send it again on its own");
+  });
+
+  it("reads a run session that has not checked in as Starting, never Running, with how long core waits", () => {
+    run = summary("running", {
+      liveJobs: 0,
+      lastSessionBeatAt: new Date().toISOString(),
+      reading: "starting",
+      checkInBy: new Date(Date.now() + 7 * 60_000 + 5_000).toISOString(),
+    });
+    openDrawer();
+    expect(within(header()).getByText("Starting")).toBeInTheDocument();
+    expect(within(header()).queryByText("Running")).toBeNull();
+    expect(document.querySelector("[data-run-wait]")).toHaveTextContent("Core ends it in 7m if it never checks in.");
+  });
+
+  it("says what Stop now does in plain words, naming no field or event", () => {
+    run = summary("running", { attempts: [attempt("running")], reading: "running" });
+    openDrawer();
+    fireEvent.mouseEnter(screen.getByRole("button", { name: "Stop now" }));
+    const tip = screen.getByRole("tooltip");
+    expect(tip).toHaveTextContent("Stops the agent working this run at once.");
+    expect(tip.textContent).not.toMatch(/cancellationRequested|agent:abort|\(|\)/);
+  });
+
+  it("reads a run its box reports blocked in the blocked word, the runs tab's", () => {
+    run = summary("running", { reading: "blocked", block: { blockerKind: "machine", parked: false } });
+    openDrawer();
+    expect(within(header()).getByText("Blocked, holding the box")).toBeInTheDocument();
+  });
+});

@@ -9,6 +9,8 @@ import { useState } from "react";
 import { EmptyPanelLine, Icon, STOPPED_WORD } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { formatDurationMs, formatDurationSec, formatRelativeTime, formatUsd } from "@/lib/utils/format";
+import { useNow } from "@/design/hooks/use-now";
+import { runReadingChip, runSince } from "@/features/runs/derive";
 import {
   type AttemptState,
   type AttemptView,
@@ -109,13 +111,28 @@ function runSpan(run: RunView): string | null {
   return formatDurationMs(Date.parse(run.finishedAt) - Date.parse(run.startedAt));
 }
 
+/** An open run in the word every run surface reads it by (core's reading), any other by its status. */
+function runStatusOf(run: RunView, now: number): { label: string; dot: string; detail?: string } {
+  const base = RUN_STATUS[run.status];
+  if ((run.status !== "running" && run.status !== "paused") || run.reading == null) return base;
+  const word = runReadingChip({ ...run, liveJobs: 0, lastSessionBeatAt: null, checkInBy: null }, now);
+  const dot = run.reading === "running" ? base.dot : run.reading === "held" ? "var(--amber-500)" : "var(--border-strong)";
+  return { label: word.label, dot, ...(word.detail ? { detail: word.detail } : {}) };
+}
+
 function RunBlock({ run, open, onToggle }: { run: RunView; open: boolean; onToggle: () => void }) {
-  const status = RUN_STATUS[run.status];
+  const now = useNow(10_000);
+  const status = runStatusOf(run, now);
   const span = runSpan(run);
+  // Read only where core answered the run's reading: an older core's answer keeps "Started".
+  const since =
+    run.reading == null
+      ? { word: "Started", at: run.startedAt }
+      : runSince({ ...run, liveJobs: 0, lastSessionBeatAt: null }, now);
   // Each time says which it is: a finished run when it ended and how long it ran, one still going
-  // when it started (ISS-1228).
+  // when its work started, or when it opened while nothing works it yet (ISS-1228).
   const facts = [
-    run.finishedAt ? `Ended ${formatRelativeTime(run.finishedAt)}` : `Started ${formatRelativeTime(run.startedAt)}`,
+    run.finishedAt ? `Ended ${formatRelativeTime(run.finishedAt)}` : `${since.word} ${formatRelativeTime(since.at)}`,
     span ? `ran ${span}` : null,
     run.costUsd != null ? formatUsd(run.costUsd) : null,
   ].filter(Boolean);
@@ -134,7 +151,7 @@ function RunBlock({ run, open, onToggle }: { run: RunView; open: boolean; onTogg
       >
         <Icon name={open ? "chevronDown" : "chevronRight"} size={14} className="flex-none text-muted" />
         <span className="fg-body-sm font-semibold">Run {run.ordinal}</span>
-        <span className="fg-caption inline-flex items-center gap-1.5 text-muted">
+        <span className="fg-caption inline-flex items-center gap-1.5 text-muted" title={status.detail}>
           <Dot color={status.dot} />
           {status.label}
         </span>

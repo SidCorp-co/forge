@@ -334,7 +334,7 @@ describe("the runs a box reports (ISS-1228 round 8)", () => {
     state.runs = [run({ ...idle, id: "r1", issueRef: "ISS-1" }), run({ ...idle, id: "r5", issueRef: "ISS-5" })];
     state.total = 2;
     pane();
-    const rows = within(screen.getByRole("list", { name: "Open runs nothing works" })).getAllByRole("listitem");
+    const rows = within(screen.getByRole("list", { name: "Open runs" })).getAllByRole("listitem");
     expect(rows.map((r) => [r.querySelector("a")?.textContent, r.querySelector("[data-run-status]")?.textContent])).toEqual([
       ["ISS-1", "Nothing working"],
       ["ISS-5", "Nothing working"],
@@ -350,11 +350,11 @@ describe("the runs a box reports (ISS-1228 round 8)", () => {
     pane();
     fireEvent.change(screen.getByRole("textbox", { name: "Filter runs" }), { target: { value: "fifth" } });
     expect(screen.queryByRole("list", { name: "Runs a box reports" })).toBeNull();
-    expect(within(screen.getByRole("list", { name: "Open runs nothing works" })).getByText("ISS-5")).toBeInTheDocument();
+    expect(within(screen.getByRole("list", { name: "Open runs" })).getByText("ISS-5")).toBeInTheDocument();
     expect(screen.queryByText("No runs match")).toBeNull();
     fireEvent.change(screen.getByRole("textbox", { name: "Filter runs" }), { target: { value: "" } });
     fireEvent.click(screen.getByRole("button", { name: "Working" }));
-    expect(screen.queryByRole("list", { name: "Open runs nothing works" })).toBeNull();
+    expect(screen.queryByRole("list", { name: "Open runs" })).toBeNull();
   });
 
   it("shows what a blocked run waits on in the box's own words", () => {
@@ -614,3 +614,99 @@ describe("the runs tab hears its project's events", () => {
     expect(state.rooms).toContain(projectRoom("p1"));
   });
 });
+
+/** ISS-1228 round 19 (judge-57): one list of every open run, one word per run, whatever a box reports. */
+describe("one list of every open run (round 19)", () => {
+  const open = { status: "running" as const, finishedAt: null };
+
+  it("lists a run a box reports once, in its run's row, beside every other open run, in the drawer's word", () => {
+    state.ledger = [ledgerRow({ pipelineRunId: "r6", issues: [{ issueKey: "ISS-6", leaseReturned: false }] })];
+    state.runs = [
+      run({ ...open, id: "r1", issueRef: "ISS-1", liveJobs: 1, reading: "queued" }),
+      run({ ...open, id: "r3", issueRef: "ISS-3", liveJobs: 1, reading: "starting" }),
+      run({ ...open, id: "r6", issueId: null, issueRef: null, kind: "system", lane: "run_session", reading: "running", lastSessionBeatAt: new Date().toISOString() }),
+    ];
+    state.total = 3;
+    pane();
+    const rows = within(screen.getByRole("list", { name: "Open runs" })).getAllByRole("listitem");
+    expect(rows.map((r) => r.querySelector("[data-run-status]")?.textContent)).toEqual(["Queued", "Starting", "Running"]);
+    expect(rows[2]?.querySelector("[data-run-report]")).toHaveTextContent("box-a");
+    expect(screen.queryByRole("list", { name: "Runs a box reports" })).toBeNull();
+  });
+
+  it("reads a run whose only job core holds Held, says why, and keeps it out of the band", () => {
+    state.runs = [
+      run({
+        ...open,
+        id: "h",
+        issueRef: "ISS-3",
+        reading: "held",
+        hold: { reason: "all_devices_exhausted", resumesItself: true, recheckAt: null, since: null },
+      }),
+    ];
+    state.total = 1;
+    pane();
+    const row = within(screen.getByRole("list", { name: "Open runs" })).getByRole("listitem");
+    expect(row.querySelector("[data-run-status]")).toHaveTextContent("Held");
+    expect(row.querySelector("[data-run-wait]")).toHaveTextContent(
+      "No box could take it. Core sends it again once a box can take it.",
+    );
+    expect(screen.queryByText(/nothing working on/)).toBeNull();
+  });
+
+  it("reads a run session that has not checked in Starting, saying how long core waits", () => {
+    state.runs = [
+      run({
+        ...open,
+        id: "s",
+        issueRef: "ISS-7",
+        reading: "starting",
+        checkInBy: new Date(Date.now() + 7 * 60_000 + 5_000).toISOString(),
+      }),
+    ];
+    state.total = 1;
+    pane();
+    const row = within(screen.getByRole("list", { name: "Open runs" })).getByRole("listitem");
+    expect(row.querySelector("[data-run-status]")).toHaveTextContent("Starting");
+    expect(row.querySelector("[data-run-wait]")).toHaveTextContent(
+      "It has not checked in since it opened. Core ends it in 7m if it never checks in.",
+    );
+  });
+
+  it("reads a run its box reports blocked in the blocked word, with the box's wait in its row", () => {
+    state.ledger = [
+      ledgerRow({ pipelineRunId: "b", work: "blocked", blockerKind: "human", waitingOn: "approve the restore" }),
+    ];
+    state.runs = [
+      run({ ...open, id: "b", issueRef: "ISS-1", reading: "blocked", block: { blockerKind: "human", parked: false } }),
+    ];
+    state.total = 1;
+    pane();
+    const row = within(screen.getByRole("list", { name: "Open runs" })).getByRole("listitem");
+    const word = row.querySelector("[data-run-status]") as HTMLElement;
+    expect(word).toHaveTextContent("Blocked, holding the box");
+    expect(word).toHaveAttribute("title", expect.stringContaining("a person"));
+    expect(row).toHaveTextContent("Waiting on a person. Approve the restore.");
+  });
+
+  it("opens each open run's drawer from its row", () => {
+    state.runs = [run({ ...open, id: "r9", issueRef: "ISS-9", liveJobs: 1, reading: "queued" })];
+    state.total = 1;
+    pane();
+    const row = within(screen.getByRole("list", { name: "Open runs" })).getByRole("listitem");
+    const links = within(row).getAllByRole("link").map((a) => a.getAttribute("href"));
+    expect(links).toContain("/ops?run=r9");
+  });
+
+  it("says Started from when the run's work started, never from its opening", () => {
+    const opened = new Date(Date.now() - 16 * 60_000).toISOString();
+    const started = new Date(Date.now() - 60_000).toISOString();
+    state.runs = [run({ ...open, id: "w", startedAt: opened, runningSince: started, reading: "running", liveJobs: 1 })];
+    state.total = 1;
+    pane();
+    expect(screen.getByRole("list", { name: "Open runs" }).querySelector("[data-run-since]")).toHaveTextContent(
+      /^Started 1m ago$/,
+    );
+  });
+});
+

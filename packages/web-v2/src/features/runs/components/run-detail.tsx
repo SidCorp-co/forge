@@ -29,6 +29,7 @@ import { useNow } from "@/design/hooks/use-now";
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import { useRecents, buildShareLink } from "@/features/shell";
+import { CANCEL_HELD_HOVER, CANCEL_UNSTARTED_HOVER, STOP_NOW_HOVER } from "@/features/sessions/status-sentences";
 import { runHasStarted, runReadingChip } from "../derive";
 import { RUN_KIND_WORD } from "../run-status-words";
 import { formatDurationMs, formatUsd } from "@/lib/utils/format";
@@ -161,7 +162,16 @@ export function RunDetail({ open, onClose, runId, projectSlugs, canWrite = true 
         <span className="flex items-center gap-2.5">
           <MonoTag>{label}</MonoTag>
           {/* The run's one word, the runs tab's too: the session vocabulary would read `paused` as idle. */}
-          {chip && <StatusChip status={chip.status} stage={chipStep} size="sm" domain="session" label={chip.label} />}
+          {chip &&
+            (chip.detail ? (
+              <Tooltip label={chip.detail}>
+                <span className="inline-flex">
+                  <StatusChip status={chip.status} stage={chipStep} size="sm" domain="session" label={chip.label} />
+                </span>
+              </Tooltip>
+            ) : (
+              <StatusChip status={chip.status} stage={chipStep} size="sm" domain="session" label={chip.label} />
+            ))}
         </span>
       }
     >
@@ -207,7 +217,7 @@ export function RunDetail({ open, onClose, runId, projectSlugs, canWrite = true 
               {/* Distinct destructive abort — present whenever an agent could
                   still be running (running, or the finishing step while pausing). */}
               {canWrite && runId && (hasStarted || isPausing) && (
-                <Tooltip label="Aborts the running agent immediately (cancellationRequested + agent:abort). Terminal — the run cannot be resumed.">
+                <Tooltip label={STOP_NOW_HOVER}>
                   <Button
                     variant="danger"
                     icon="stop"
@@ -219,7 +229,7 @@ export function RunDetail({ open, onClose, runId, projectSlugs, canWrite = true 
                 </Tooltip>
               )}
               {canWrite && runId && canCancelUnstarted && (
-                <Tooltip label="Ends this run before anything works on it. Nothing has started, so no agent is stopped mid-step.">
+                <Tooltip label={run?.reading === "held" ? CANCEL_HELD_HOVER : CANCEL_UNSTARTED_HOVER}>
                   <Button
                     variant="danger"
                     icon="stop"
@@ -256,6 +266,10 @@ export function RunDetail({ open, onClose, runId, projectSlugs, canWrite = true 
             {isHalted && (
               <p className="fg-body-sm text-muted">Run halted — no active session.</p>
             )}
+            {/* What a held or starting run waits for, said where the header word is read (ISS-1228). */}
+            {chip?.detail && (run?.reading === "held" || run?.reading === "starting") && (
+              <p data-run-wait className="fg-caption text-muted">{chip.detail}</p>
+            )}
           </div>
 
           {/* Tabs */}
@@ -265,6 +279,7 @@ export function RunDetail({ open, onClose, runId, projectSlugs, canWrite = true 
               {tab === "activity" ? (
                 <ActivityTab
                   run={run}
+                  sessionHref={slug && run?.sessionId ? `/projects/${slug}/agents/${run.sessionId}` : null}
                   loading={runQ.isLoading}
                   error={runQ.isError ? runQ.error : null}
                   onRetry={() => runQ.refetch()}

@@ -63,7 +63,11 @@ export async function cancelJob(jobId: string, opts: CancelJobOptions): Promise<
       const [row] = await applyKernelTransition(tx, {
         entity: 'job',
         to: 'cancelled',
-        set: { finishedAt: new Date(), cancellationRequested: true },
+        set: {
+          finishedAt: new Date(),
+          cancellationRequested: true,
+          failureReason: 'user_cancelled',
+        },
         where: and(eq(jobs.id, jobId), eq(jobs.status, previousStatus)),
         fromStatus: previousStatus,
         reason: opts.reason,

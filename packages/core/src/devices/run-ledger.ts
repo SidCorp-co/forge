@@ -187,6 +187,8 @@ export interface ProjectRunSessionRow
   workSince: string;
   /** Core's own reading of the session, never the box's claim. */
   sessionStatus: string | null;
+  /** The pipeline run the session works, so a report sits in its run's row. */
+  pipelineRunId: string | null;
   /** What the session last told core it is doing (`agent_sessions.runtime_state`). */
   sessionRuntimeState: string | null;
   /** Why core failed the session, where it did. `null` both on a clean end and on a session that
@@ -242,6 +244,9 @@ export async function readProjectRunSessions(projectId: string): Promise<Project
       sessionStatus: sql<
         string | null
       >`(SELECT s.status FROM agent_sessions s WHERE s.id = ${deviceRunLedger.sessionId})`,
+      pipelineRunId: sql<
+        string | null
+      >`(SELECT s.pipeline_run_id FROM agent_sessions s WHERE s.id = ${deviceRunLedger.sessionId})`,
       sessionRuntimeState: sql<
         string | null
       >`(SELECT s.runtime_state FROM agent_sessions s WHERE s.id = ${deviceRunLedger.sessionId})`,
