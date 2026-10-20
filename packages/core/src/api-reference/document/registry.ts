@@ -24,7 +24,6 @@ export type RouteEntry = {
   readonly takesBearer: boolean;
   /** Why the route takes its body as sent, where it says so; null for one held to its schema. */
   readonly bodyAsSent: string | null;
-  /** Whether a gate in the chain admits a paired box's device token. */
   readonly admitsBox: boolean;
   /** Why the chain could not be read, or null when it was. */
   readonly unread: string | null;

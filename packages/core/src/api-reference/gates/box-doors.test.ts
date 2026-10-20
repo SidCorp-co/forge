@@ -2,12 +2,9 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { type RouteEntry, type RouteSource, readRoutes } from '../document/registry.js';
 
 /**
- * ISS-1421 r16 — judge-69 sent a paired box's token to three session routes that act for a person
- * and was told "Not a project member.", "Requires project member access." and "Owner or admin role
- * required.": each loaded a person's project access for a principal that names no person. Every
- * route a box's token gets through to says, in its handler, what it does with a box: refuses it in
- * the true sentence (`personOrRefuse`, or a session guard that calls it), or serves the box's own
- * session by name. A handler that does neither reads a box as a person who belongs to nothing.
+ * ISS-1421 r16 — three session routes read a paired box's token as a person who belongs to
+ * nothing. Every route a box's token gets through says what it does with a box: refuses it in the
+ * true sentence (`personOrRefuse`, or a session guard that calls it), or serves its own session.
  */
 const HANDLES_THE_BOX =
   /personOrRefuse|ensureSession(?:Member|Role|OwnerOrAdmin)|principal|assertDeviceOwnsSession|assertOwnsSession|boxSessionFilter|authorizeSession/;

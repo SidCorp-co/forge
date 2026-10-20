@@ -156,7 +156,6 @@ function databaseReason(err: unknown, driver: { code: string; message: string })
 
 /** What a finish reports for one issue it could not close, on its answer and its record. */
 export function closeFailureText(refusal: CloseRefusal): string {
-  // The release agent reads this answer, so each step follows on a line of its own, as over MCP.
   if (refusal.kind !== 'refused') return refusal.message;
   return [`${refusal.code}: ${refusal.detail}`, ...refusal.steps].join('\n');
 }
