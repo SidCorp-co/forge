@@ -12,6 +12,7 @@ import { z } from 'zod';
 import { answer } from '../api-reference/declare/describe.js';
 import { zValidator } from '../api-reference/declare/validator.js';
 import { db } from '../db/client.js';
+import { organizationMembers } from '../db/schema.js';
 import { conversationParticipants, conversations } from '../db/schema-conversations.js';
 import { assertOrgAccess, orgRoleAtLeast } from '../lib/authz.js';
 import type { AuthVars } from '../middleware/auth.js';
@@ -48,14 +49,30 @@ orgRoomRoutes.get(
       .from(conversations)
       .where(
         and(
-          // A room whose organization nothing recorded (0350 found none) is its opener's alone, and
-          // shown to them under whichever organization they read.
+          // A room whose organization nothing recorded (0350 found none), or one the opener no longer
+          // belongs to, is its opener's alone, shown under whichever organization they read.
           or(
             and(
               eq(conversations.orgId, orgId),
               orgRoleAtLeast(role, 'admin') ? undefined : eq(conversations.createdBy, userId),
             ),
-            and(isNull(conversations.orgId), eq(conversations.createdBy, userId)),
+            and(
+              eq(conversations.createdBy, userId),
+              or(
+                isNull(conversations.orgId),
+                notExists(
+                  db
+                    .select({ userId: organizationMembers.userId })
+                    .from(organizationMembers)
+                    .where(
+                      and(
+                        eq(organizationMembers.orgId, conversations.orgId),
+                        eq(organizationMembers.userId, userId),
+                      ),
+                    ),
+                ),
+              ),
+            ),
           ),
           notExists(
             db

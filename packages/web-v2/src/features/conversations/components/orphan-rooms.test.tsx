@@ -9,9 +9,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RoomWithoutAProject } from "../types";
 
 let rooms: RoomWithoutAProject[] = [];
+let failed: Error | null = null;
+const refetch = vi.fn();
 const removeMutate = vi.fn();
 vi.mock("../hooks", () => ({
-  useRoomsWithoutAProject: () => ({ data: rooms }),
+  useRoomsWithoutAProject: () => ({ data: failed ? undefined : rooms, isError: failed !== null, error: failed, refetch }),
   useDeleteConversation: () => ({ mutate: removeMutate, isPending: false }),
 }));
 
@@ -28,6 +30,8 @@ const room = (over: Partial<RoomWithoutAProject> = {}): RoomWithoutAProject => (
 
 beforeEach(() => {
   rooms = [];
+  failed = null;
+  refetch.mockReset();
   removeMutate.mockReset();
 });
 afterEach(cleanup);
@@ -36,6 +40,15 @@ describe("rooms whose project was deleted", () => {
   it("shows nothing where the organization holds none", () => {
     const { container } = render(<RoomsWithoutAProject orgId="o1" />);
     expect(container.textContent).toBe("");
+  });
+
+  // Review F1: a failed read showed nothing, as if there were no such room.
+  it("says the list could not be read, and reads it again on Retry", () => {
+    failed = new Error("network down");
+    render(<RoomsWithoutAProject orgId="o1" />);
+    expect(screen.getByText("Couldn't load the rooms whose project was deleted")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /retry/i }));
+    expect(refetch).toHaveBeenCalledTimes(1);
   });
 
   it("lists each one, says why it can take no message, and deletes it only once asked", () => {

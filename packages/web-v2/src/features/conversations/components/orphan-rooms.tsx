@@ -5,7 +5,8 @@
 // admins see it, and delete it, since a room about no project takes no message.
 
 import { useState } from "react";
-import { Button, ConfirmDialog } from "@/design";
+import { Button, ConfirmDialog, ErrorState } from "@/design";
+import { formatApiError } from "@/lib/api/error";
 import { useDeleteConversation, useRoomsWithoutAProject } from "../hooks";
 import type { RoomWithoutAProject } from "../types";
 
@@ -16,6 +17,17 @@ export function RoomsWithoutAProject({ orgId }: { orgId: string | null }) {
   const remove = useDeleteConversation();
   const [confirming, setConfirming] = useState<RoomWithoutAProject | null>(null);
   const list = rooms.data ?? [];
+  if (rooms.isError) {
+    return (
+      <div className="mt-4 border-t border-line pt-3">
+        <ErrorState
+          title="Couldn't load the rooms whose project was deleted"
+          message={formatApiError(rooms.error)}
+          onRetry={() => void rooms.refetch()}
+        />
+      </div>
+    );
+  }
   if (list.length === 0) return null;
   return (
     <section aria-labelledby="rooms-without-a-project" className="mt-4 border-t border-line pt-3">

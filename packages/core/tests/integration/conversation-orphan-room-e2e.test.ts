@@ -157,6 +157,19 @@ describe('a room whose project was deleted', () => {
     expect(await roomExists(id)).toBe(false);
   });
 
+  // Review F1: the opener who has since left the organization still finds it, under one they hold.
+  it('stays findable by its opener after they leave its organization', async () => {
+    const id = await roomWhoseProjectIsGone();
+    const elsewhere = (await seedOrg(harness.db, creatorId)).id;
+    await harness.db.execute(
+      sql`DELETE FROM organization_members WHERE org_id = ${orgId} AND user_id = ${creatorId}`,
+    );
+
+    const res = await as(creatorId, `/api/orgs/${elsewhere}/rooms-without-a-project`);
+    expect(((await res.json()) as Array<{ id: string }>).map((r) => r.id)).toEqual([id]);
+    expect((await as(creatorId, `/api/conversations/${id}`, 'DELETE')).status).toBe(204);
+  });
+
   it('goes with its organization', async () => {
     const id = await roomWhoseProjectIsGone();
     await harness.db.execute(sql`DELETE FROM organizations WHERE id = ${orgId}`);
