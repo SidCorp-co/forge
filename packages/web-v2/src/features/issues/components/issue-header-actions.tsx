@@ -14,11 +14,14 @@ import type { IssueStatus } from "../types";
 export function IssueHeaderActions({
   slug,
   sessionHref,
+  sessionUnread,
   status,
   releaseRunId,
   canWrite,
   pending,
   isRunActive,
+  runWaitsOn = null,
+  onAnswer,
   runsUnreadable = false,
   onTransition,
   onRun,
@@ -27,12 +30,18 @@ export function IssueHeaderActions({
 }: {
   slug: string;
   sessionHref: string | null;
+  /** Which session holds the issue could not be read: said with Retry where Open session goes. */
+  sessionUnread?: { retry?: (() => void) | undefined } | undefined;
   status: IssueStatus;
   releaseRunId: string | null | undefined;
   canWrite: boolean;
   pending: boolean;
   /** Whether a run is active; null until the run journal has answered, when no run action is offered. */
   isRunActive: boolean | null;
+  /** What the run waits on: an answer makes Answer the primary, nothing working offers none (ISS-1228). */
+  runWaitsOn?: "answer" | "nothing" | null;
+  /** Bring the question the run waits on into view. */
+  onAnswer?: () => void;
   /** The run journal's first read failed: the action's place offers reading it again. */
   runsUnreadable?: boolean;
   onTransition: (to: IssueStatus) => void;
@@ -68,6 +77,8 @@ export function IssueHeaderActions({
         canWrite={canWrite}
         isTerminal={isTerminal}
         isRunActive={isRunActive}
+        runWaitsOn={runWaitsOn}
+        onAnswer={onAnswer}
         runsUnreadable={runsUnreadable}
         pending={pending}
         onTransition={onTransition}
@@ -85,6 +96,16 @@ export function IssueHeaderActions({
           Open session
         </ButtonLink>
       )}
+      {sessionUnread && (
+        <span role="status" className="fg-caption inline-flex flex-wrap items-center gap-2 text-muted">
+          Its session could not be read.
+          {sessionUnread.retry && (
+            <Button variant="secondary" size="sm" icon="rerun" onClick={sessionUnread.retry}>
+              Retry
+            </Button>
+          )}
+        </span>
+      )}
       <Menu
         align="right"
         items={moreItems}
@@ -101,6 +122,8 @@ function PrimaryAction(props: {
   canWrite: boolean;
   isTerminal: boolean;
   isRunActive: boolean | null;
+  runWaitsOn: "answer" | "nothing" | null;
+  onAnswer: (() => void) | undefined;
   runsUnreadable: boolean;
   pending: boolean;
   onTransition: (to: IssueStatus) => void;
@@ -142,6 +165,16 @@ function PrimaryAction(props: {
       </span>
     );
   }
+  // A run waiting on a person's answer asks for that answer; one nothing works offers no act beside its
+  // word. Pause stays in the menu on both (ISS-1228 round 21).
+  if (props.runWaitsOn === "answer" && props.onAnswer) {
+    return (
+      <Button variant="primary" size="sm" icon="mail" onClick={props.onAnswer}>
+        Answer
+      </Button>
+    );
+  }
+  if (props.runWaitsOn === "nothing") return null;
   if (props.isRunActive) {
     return (
       <Button variant="secondary" size="sm" icon="stop" loading={pending} onClick={() => onTransition("on_hold")}>

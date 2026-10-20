@@ -135,3 +135,15 @@ describe("LiveAgentPanel — live arm (unchanged)", () => {
     expect(screen.getByText("sess-1")).toBeInTheDocument();
   });
 });
+
+// ISS-1228 round 21 (judge-67): the capacity text stood twice, in the banner and in this panel.
+describe("LiveAgentPanel — the wait said once", () => {
+  it("keeps the step and the wait but not the banner's sentences where the banner says them", () => {
+    renderPanel({ kind: "queued", step: gatedStep, saidAbove: true });
+    expect(screen.getByText("Agent queued")).toBeInTheDocument();
+    expect(screen.getByText("Issue work")).toBeInTheDocument();
+    expect(screen.queryByText(/No runner is online for this project/)).toBeNull();
+    expect(screen.queryByText(/Bring a runner back/)).toBeNull();
+    expect(screen.queryByText(/awaiting its turn/)).toBeNull();
+  });
+});

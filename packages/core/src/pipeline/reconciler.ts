@@ -56,6 +56,7 @@ export async function runReconcilerOnce(): Promise<{
     SELECT i.id, i.project_id, i.status, i.reopen_count, p.created_by
     FROM issues i
     INNER JOIN projects p ON p.id = i.project_id
+    LEFT JOIN reconciler_examined e ON e.issue_id = i.id
     WHERE i.status = ${AUTONOMOUS_ENTRY_STATUS}
       AND i.merged_at IS NULL
       AND i.updated_at < now() - interval '${sql.raw(STUCK_ISSUE_INTERVAL)}'
@@ -66,8 +67,11 @@ export async function runReconcilerOnce(): Promise<{
         WHERE j.issue_id = i.id
           AND (j.status IN ('queued','dispatched','running') OR ${holdResumesItselfSql(sql`j`)})
       )
+    -- Longest-unread first, so every candidate is reached within ceil(N / limit) passes (ISS-1228).
+    ORDER BY e.examined_at ASC NULLS FIRST, i.id
     LIMIT ${STUCK_ISSUE_LIMIT}
   `);
+  await markExamined(stuck.map((r) => r.id));
 
   for (const row of stuck) {
     try {
@@ -134,6 +138,19 @@ export async function runReconcilerOnce(): Promise<{
   }
 
   return { rescued, stale, autonomousReset };
+}
+
+/** Stamp every row this pass took, rescued or not, so it goes behind every row not yet read. */
+async function markExamined(issueIds: readonly string[]): Promise<void> {
+  if (issueIds.length === 0) return;
+  const rows = sql.join(
+    issueIds.map((id) => sql`(${id}::uuid, now())`),
+    sql`, `,
+  );
+  await db.execute(sql`
+    INSERT INTO reconciler_examined (issue_id, examined_at) VALUES ${rows}
+    ON CONFLICT (issue_id) DO UPDATE SET examined_at = EXCLUDED.examined_at
+  `);
 }
 
 /** Committed between the wedge read and the reset's row lock: a question for a person, a lease. */

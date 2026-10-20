@@ -198,7 +198,16 @@ export function openRunWord(runs: readonly RunWordSource[], nowMs: number): RunW
 export type IssueRunChip =
 	| { state: "unread" }
 	| { state: "unreadable" }
-	| { state: "read"; word: RunWord | null; open: boolean };
+	| { state: "read"; word: RunWord | null; open: boolean; waitsOn: RunWaitsOn };
+
+/** What the run the chip reads waits on, which decides the header's primary action (ISS-1228 r21):
+ *  a person's answer, nothing at all (Nothing working), or neither. */
+export type RunWaitsOn = "answer" | "nothing" | null;
+
+function waitsOnOf(run: RunWordSource, word: RunWord): RunWaitsOn {
+	if (run.reading === "asking") return "answer";
+	return word.status === "zombie" ? "nothing" : null;
+}
 
 export function issueRunChip(
 	runs: readonly (RunWordSource & Pick<RunView, "ordinal">)[],
@@ -206,10 +215,14 @@ export function issueRunChip(
 	nowMs: number,
 ): IssueRunChip {
 	if (!journal.answered) return { state: journal.failed ? "unreadable" : "unread" };
-	const open = openRunWord(runs, nowMs);
-	if (open) return { state: "read", word: open, open: true };
+	const openRun = runs.find((r) => r.status === "running" || r.status === "paused");
+	if (openRun) {
+		const word = wordOf(openRun, nowMs);
+		return { state: "read", word, open: true, waitsOn: waitsOnOf(openRun, word) };
+	}
 	const newest = runs.reduce<(typeof runs)[number] | null>((n, r) => (n === null || r.ordinal > n.ordinal ? r : n), null);
-	return { state: "read", word: newest ? wordOf(newest, nowMs) : null, open: false };
+	const word = newest ? wordOf(newest, nowMs) : null;
+	return { state: "read", word, open: false, waitsOn: newest && word ? waitsOnOf(newest, word) : null };
 }
 
 export function statusToTone(status: IssueStatus): SemanticTone {
@@ -629,6 +642,7 @@ export type BlockerCtaKind =
 	| "resume-park"
 	| "resume-run"
 	| "open-blocker"
+	| "retry-park"
 	| "none";
 
 /** A blocking dependency endpoint, ready to render as a clickable ISS-x chip. */
@@ -665,7 +679,7 @@ export interface BlockerState {
  */
 export type ParkReading =
 	| { state: "loading" }
-	| { state: "error" }
+	| { state: "error"; retry?: () => void }
 	| { state: "ready"; park: IssuePark | null };
 
 export const NO_PARK: ParkReading = { state: "ready", park: null };
@@ -873,10 +887,8 @@ export function deriveBlockerState(
 			tone: "attention",
 			reason: "This issue is stopped until a person acts.",
 			whoMustAct:
-				park.state === "error"
-					? "What it waits on could not be read — reload the page, or read the thread."
-					: "Reading what it waits on…",
-			cta: { label: "", kind: "none" },
+				park.state === "error" ? "What it waits on could not be read." : "Reading what it waits on…",
+			cta: park.state === "error" ? { label: "Retry", kind: "retry-park" } : { label: "", kind: "none" },
 			...(blockingRefs.length ? { blockingRefs } : {}),
 		};
 	}
@@ -995,12 +1007,14 @@ export interface RunView {
 /**
  * The session the issue page's Open session opens: one holding the issue now, else the newest
  * session of the newest run that had one, or `null` for an issue no session has run. `runs` are
- * newest first, as `deriveRunView` gives them.
+ * newest first, as `deriveRunView` gives them. A holds read that failed reads `"unread"`: which
+ * session holds the issue is unknown, so no older one stands in for it (ISS-1228).
  */
 export function issueSessionId(
-	holding: readonly string[],
+	holding: readonly string[] | "unread",
 	runs: readonly Pick<RunView, "sessionId">[],
-): string | null {
+): string | "unread" | null {
+	if (holding === "unread") return "unread";
 	return holding[0] ?? runs.find((run) => run.sessionId)?.sessionId ?? null;
 }
 

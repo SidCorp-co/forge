@@ -72,6 +72,10 @@ export const FAILURE_CAUSES = [
   'audit_ran_blind',
   /** the I1 trigger reaped an active child under a terminal run. 101 sessions. */
   'orphan_under_terminal_run',
+  /** its issue was dropped while it worked, by anyone but its own box. Writer: pipeline/runs-cascade.ts (ISS-1228). */
+  'issue_dropped',
+  /** its issue was closed while it worked, by anyone but its own box. Writer: pipeline/runs-cascade.ts (ISS-1228). */
+  'issue_closed',
   /** run cancelled. 19 sessions, 98 jobs. */
   'pipeline_cancelled',
   /** run completed while a child was still active. 15 sessions, 172 jobs. */
@@ -140,6 +144,8 @@ export const FAILURE_CAUSE_PRESENTATION: Record<FailureCause, FailureCausePresen
   stopped_on_question: 'swept',
   audit_ran_blind: 'failure',
   orphan_under_terminal_run: 'cleanup',
+  issue_dropped: 'swept',
+  issue_closed: 'swept',
   pipeline_cancelled: 'cleanup',
   pipeline_completed: 'cleanup',
   pipeline_failed: 'cleanup',

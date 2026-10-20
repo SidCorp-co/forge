@@ -32,7 +32,7 @@ export function useIssuePark(
 		queryFn: () => issueDetailApi.getPark(issueId as string),
 		enabled: Boolean(issueId && status),
 	});
-	if (q.isError) return { state: "error" };
+	if (q.isError) return { state: "error", retry: () => void q.refetch() };
 	if (q.isPending || !q.data) return { state: "loading" };
 	return { state: "ready", park: q.data.park };
 }

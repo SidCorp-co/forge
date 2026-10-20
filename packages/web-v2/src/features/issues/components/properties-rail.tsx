@@ -155,6 +155,27 @@ function MergeMarkBadge({
   return null;
 }
 
+/** A rail read that failed; `retry` only where reading again could change the answer (ISS-1160). */
+export interface UnreadRead {
+  retry?: (() => void) | undefined;
+}
+
+/** A rail row whose read failed: what could not be read, and Retry (ISS-1228 round 21). */
+function UnreadRow({ label, what, onRetry }: { label: string; what: string; onRetry: (() => void) | undefined }) {
+  return (
+    <Row label={label}>
+      <span role="status" className="fg-caption inline-flex flex-wrap items-center justify-end gap-2 text-muted">
+        {what}
+        {onRetry && (
+          <Button variant="secondary" size="sm" icon="rerun" onClick={onRetry}>
+            Retry
+          </Button>
+        )}
+      </span>
+    </Row>
+  );
+}
+
 /** A relation section (Blocked by / Blocks / Parent / Subtasks / Duplicates /
  *  Related). The section heading conveys the relationship, so each edge renders
  *  only a clickable `ISS-X` badge for the OTHER endpoint (with a status tone
@@ -220,6 +241,8 @@ interface PropertiesRailProps {
   park?: ComponentProps<typeof StatusEdit>["park"];
   /** The run's word, the header chip's own (`issueRunChip`); null where there is none to show. */
   runWord?: RunWord | null;
+  /** A read of the rail's that failed, said as such with a way to read it again, never drawn as none (ISS-1228). */
+  unread?: { deps?: UnreadRead | undefined; cost?: UnreadRead | undefined };
 }
 
 export function PropertiesRail({
@@ -234,6 +257,7 @@ export function PropertiesRail({
   canMarkMerged,
   park,
   runWord = null,
+  unread = {},
 }: PropertiesRailProps) {
   const viewerId = useAuth().user?.id;
   const modules = (issue.labels ?? []).filter((l) => l.kind === "module");
@@ -383,6 +407,7 @@ export function PropertiesRail({
           <LiveReachValue reach={issue.liveReach} />
         </Row>
       )}
+      {unread.cost && <UnreadRow label="Cost" what="The cost could not be read." onRetry={unread.cost.retry} />}
       {cost && cost.estimatedCost > 0 && (
         <Row label="Cost">
           <Stat icon="dollar">{`$${cost.estimatedCost.toFixed(2)}`}</Stat>
@@ -421,6 +446,9 @@ export function PropertiesRail({
             )}
           </div>
         </Row>
+      )}
+      {unread.deps && (
+        <UnreadRow label="Relations" what="Its relations could not be read." onRetry={unread.deps.retry} />
       )}
       <DepList edges={blockedBy} self={issue.id} slug={slug} label="Blocked by" />
       <DepList edges={wasBlockedBy} self={issue.id} slug={slug} label="Was blocked by" />

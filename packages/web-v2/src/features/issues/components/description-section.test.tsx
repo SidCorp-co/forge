@@ -4,6 +4,7 @@
 // description typed wrong at create could not be corrected from the browser at
 // all. These pin the affordance, what it sends, and that Cancel discards.
 
+import { ApiError } from "@/lib/api/client";
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -230,5 +231,38 @@ describe("DescriptionSection's attachments", () => {
     );
     expect(container.querySelector("[aria-busy]")).not.toBeNull();
     expect(screen.queryByRole("region", { name: "Attachments" })).toBeNull();
+  });
+});
+
+// ISS-1228 round 21: a failed attachments read said so with no way to read it again.
+describe("DescriptionSection — a failed attachments read", () => {
+  it("says it could not load them, in Forge's words, and offers Retry", () => {
+    const retry = vi.fn();
+    render(
+      <DescriptionSection
+        issue={issue("hello")}
+        attachments={[]}
+        canWrite={false}
+        attachmentsError={new ApiError(503, "")}
+        onRetryAttachments={retry}
+      />,
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent(/Couldn't load attachments/);
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(retry).toHaveBeenCalledTimes(1);
+  });
+
+  it("offers no Retry for a refusal the same request would meet again", () => {
+    render(
+      <DescriptionSection
+        issue={issue("hello")}
+        attachments={[]}
+        canWrite={false}
+        attachmentsError={new ApiError(403, "not a member", "FORBIDDEN")}
+        onRetryAttachments={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent("You do not have access to this resource.");
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
   });
 });
