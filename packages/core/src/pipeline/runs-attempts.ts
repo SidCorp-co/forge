@@ -6,6 +6,8 @@ import { db } from '../db/client.js';
 import { agentSessions, devices, jobs } from '../db/schema.js';
 import { RETRY_MAX_ROUNDS, readAutoRetryPayload } from '../jobs/retry.js';
 import { personNameSql } from '../lib/person-name.js';
+import type { FailureCause } from './failure-causes.js';
+import { causeForText } from './failure-patterns.js';
 import { holdOf, type RunHold } from './runs-liveness.js';
 
 /** The box a held, unstarted job is on: the box its own session was opened on, else its holder's. */
@@ -37,6 +39,17 @@ export function cancelledByOf(
 ): PipelineRunAttempt['cancelledBy'] {
   if (actor?.type !== 'user') return { kind: 'core', name: null };
   return { kind: actor.agency === 'agent' ? 'agent' : 'person', name: actor.name ?? null };
+}
+
+/** A failed job no session ended: the cause core's classifier reads off what the sweeper wrote on it. */
+function sweptCause(
+  status: string,
+  reason: string | null,
+  error: string | null,
+): FailureCause | null {
+  if (status !== 'failed') return null;
+  const cause = causeForText([reason, error].filter(Boolean).join(' — '));
+  return cause === 'unclassified' ? null : cause;
 }
 
 function toIso(value: Date | string | null): string | null {
@@ -96,6 +109,7 @@ export async function loadAttemptsForRun(runId: string): Promise<{
       deviceId: jobs.deviceId,
       deviceName: devices.name,
       failureReason: jobs.failureReason,
+      error: jobs.error,
       failureKind: jobs.failureKind,
       failureAction: jobs.failureAction,
       failureCause: agentSessions.failureReason,
@@ -140,7 +154,9 @@ export async function loadAttemptsForRun(runId: string): Promise<{
       deviceName: r.deviceName ?? null,
       failureReason: r.failureReason ?? null,
       // A cancel is the job's own end: a session an earlier take ended is not why it stopped.
-      failureCause: cancelled ? null : (r.failureCause ?? null),
+      failureCause: cancelled
+        ? null
+        : (r.failureCause ?? sweptCause(r.status, r.failureReason, r.error)),
       failureDetail: cancelled ? null : (r.failureDetail ?? null),
       failureKind: r.failureKind ?? null,
       failureAction: r.failureAction ?? null,
@@ -178,6 +194,14 @@ export async function loadAttemptsForRun(runId: string): Promise<{
       };
       break;
     }
+  }
+  // The box a retry targets need not be one an attempt ran on: its name is read, never its id shown.
+  if (retrySummary?.targetDeviceId && retrySummary.targetDeviceName === null) {
+    const [box] = await db
+      .select({ name: devices.name })
+      .from(devices)
+      .where(eq(devices.id, retrySummary.targetDeviceId));
+    retrySummary.targetDeviceName = box?.name ?? null;
   }
 
   return { attempts, retrySummary };

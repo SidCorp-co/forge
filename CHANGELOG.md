@@ -3229,6 +3229,7 @@
 - **Stop now's hover is a plain sentence, and a closed run's drawer links the session that worked it.** (ISS-1228)
 - **A run's word changes without a reload** on the runs tab, its drawer and its issue page once its session first checks in or its step moves. (ISS-1228)
 - **An open run nothing works reads Nothing working on its issue page**, as in its drawer. (ISS-1228)
+- **A step no box took reads why, such as the box could not be reached, never "Unclassified"**, and a retry names the box it targets instead of a device id. (ISS-1228)
 - **A chat whose turn is running counts as a live session** on the dashboard's figure and opening sentence, the side rail and the projects list, and the dashboard says how many such chats there are. (ISS-1228)
 - **The dashboard's "runs open" counts only the runs it shows you**, those a listed session works and those nothing works, so the figure matches the list beneath it. (ISS-1228)
 - **Every live session row on the sessions page shows its box's dot**, chats included, and a box that has gone offline shows the same warning dot on every session it holds. (ISS-1228)

@@ -334,3 +334,34 @@ describe('a job that stopped on a question records why (criterion 174)', () => {
     expect(question?.issue_id).toBeNull();
   });
 });
+
+describe('a job no box took reads its cause, never unclassified (criterion 160)', () => {
+  it("classifies the sweeper's ack miss on a job no session ended", async () => {
+    const runId = await newRun();
+    await harness.db.execute(sql`
+      INSERT INTO jobs (id, project_id, pipeline_run_id, device_id, created_by, type, status, error,
+                        failure_reason, failure_kind, payload, finished_at)
+      VALUES (${randomUUID()}, ${projectId}, ${runId}, ${deviceId}, ${ownerId}, 'drive', 'failed',
+              'dispatch_unclaimed',
+              'dispatch never claimed by a runner (no ack / no started event within grace window)',
+              'infra', '{}'::jsonb, now())
+    `);
+    const attempt = (await summary(runId)).attempts[0];
+    expect(attempt?.failureCause).toBe('runner_unreachable');
+  });
+});
+
+describe('a retry names the box it targets (criterion 172)', () => {
+  it('reads the name of a target box no attempt ran on, never its id', async () => {
+    const runId = await newRun();
+    const payload = JSON.stringify({
+      _autoRetry: { round: 1, target: deviceId, tries: 1, done: [] },
+    });
+    await harness.db.execute(sql`
+      INSERT INTO jobs (id, project_id, pipeline_run_id, created_by, type, status, payload)
+      VALUES (${randomUUID()}, ${projectId}, ${runId}, ${ownerId}, 'drive', 'queued', ${payload}::jsonb)
+    `);
+    const { retrySummary } = await summary(runId);
+    expect(retrySummary).toMatchObject({ targetDeviceId: deviceId, targetDeviceName: 'box-b' });
+  });
+});

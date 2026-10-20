@@ -97,7 +97,11 @@ function ReportLines({ report, now }: { report: RunSessionRow; now: number }) {
   const core = coreReadingLines(report, now);
   return (
     <span data-run-report className="flex min-w-0 basis-full flex-wrap items-baseline gap-x-4 gap-y-1">
-      {waitsNow(report) && <WaitingOn row={report} />}
+      {waitsNow(report) && (
+        <span className="min-w-48 flex-1">
+          <WaitingOn row={report} />
+        </span>
+      )}
       <CoreReading lines={core.lines} silence={core.silence} />
       <Marks row={report} />
       <span className="fg-caption flex min-w-0 items-baseline gap-2 text-subtle">
@@ -128,7 +132,7 @@ function OpenRunRow({
   const waits = run.reading === "held" || run.reading === "starting" ? word.detail : undefined;
   return (
     <li data-run-row={run.id} className="flex flex-wrap items-baseline gap-x-3 gap-y-1 py-2">
-      <span className="min-w-0 flex-1">
+      <span className="min-w-48 flex-1">
         <RunWork run={run} slug={slug} />
       </span>
       <Link

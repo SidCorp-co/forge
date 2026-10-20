@@ -167,7 +167,7 @@ export function ActivityTab({ run, loading, error, onRetry, sessionHref }: Activ
 }
 
 function RetryHeadline({ summary }: { summary: PipelineRunRetrySummary }) {
-  const target = summary.targetDeviceName ?? summary.targetDeviceId?.slice(0, 8) ?? null;
+  const target = summary.targetDeviceName;
   return (
     <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 rounded-md border border-line-subtle bg-sunken px-3.5 py-2.5">
       <span
