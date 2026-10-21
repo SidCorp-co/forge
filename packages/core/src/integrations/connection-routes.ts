@@ -89,6 +89,7 @@ import {
   updateConnection,
 } from './store.js';
 import type { IntegrationProvider } from './types.js';
+import { decryptJson } from './vault.js';
 
 /**
  * The connection and how the caller reaches it, or the refusal that names why not. Reach decides
@@ -393,14 +394,17 @@ integrationConnectionsRoutes.patch(
       if (merged !== undefined) connPatch.secrets = merged;
     }
 
-    // A deleted connection holds no key, and turning it on again takes a new one (ISS-1421 r20).
-    const keyed =
-      connPatch.secrets !== undefined ? connPatch.secrets !== null : existing.secretsEnc !== null;
-    if (
-      patch.active === true &&
-      !keyed &&
-      getIntegration(existing.provider)?.schemas.primaryCredentialField
-    ) {
+    // A deleted connection holds no key, and turning it on again takes a new one (ISS-1421 r20):
+    // the key itself, not another secret saved beside it.
+    const primary = getIntegration(existing.provider)?.schemas.primaryCredentialField;
+    const held =
+      connPatch.secrets !== undefined
+        ? connPatch.secrets
+        : existing.secretsEnc
+          ? decryptJson<Record<string, unknown>>(existing.secretsEnc)
+          : null;
+    const keyed = !primary || (typeof held?.[primary] === 'string' && held[primary] !== '');
+    if (patch.active === true && !keyed) {
       throw new HTTPException(409, {
         message:
           'This connection holds no key, as deleting it wiped its keys. Save a new key to turn it back on.',

@@ -147,6 +147,9 @@ function resolved(schema: ZodType): ZodType {
   }
 }
 
+/** The kinds of option that can take a list: a list itself, anything, or a choice among them. */
+const LIST_TAKERS = new Set(['array', 'tuple', 'unknown', 'any', 'union', 'intersection']);
+
 /** What reads a field that a branch takes whatever it holds: it names no stray inside it. */
 const ANYTHING = { _zod: { def: { type: 'unknown' } } } as unknown as ZodType;
 
@@ -192,10 +195,7 @@ function straysIn(schema: ZodType, value: unknown, path: PropertyKey[]): StrayAt
   if (Array.isArray(value)) {
     if (def.type === 'union' && def.options) {
       // An option taking anything takes the list as sent; one taking no list cannot.
-      const takes = def.options.filter(
-        (o) =>
-          !['string', 'number', 'boolean', 'object', 'record'].includes(defOf(resolved(o)).type),
-      );
+      const takes = def.options.filter((o) => LIST_TAKERS.has(defOf(resolved(o)).type));
       return agreed(takes.map((o) => straysIn(o, value, path)));
     }
     const at = (i: number) =>

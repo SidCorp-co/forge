@@ -105,6 +105,33 @@ describe('deleting a connection (criteria 210, 211)', () => {
     expect((await secretsOf(connection.id)).active).toBe(false);
   });
 
+  // Eighth whole-set read: a deleted Rocket.Chat connection sent its bot user alone was turned on.
+  it('is not turned on by a secret saved beside the key', async () => {
+    const connection = await store.createConnection({
+      ownerType: 'user',
+      ownerId,
+      provider: 'rocketchat',
+      displayName: 'rc',
+      config: { serverUrl: 'https://chat.example' },
+      secrets: { authToken: 'scratch-rc-token', userId: 'scratch-bot' },
+    });
+    await call('DELETE', `/api/integration-connections/${connection.id}`);
+    const on = await call('PATCH', `/api/integration-connections/${connection.id}`, {
+      active: true,
+      secrets: { userId: 'scratch-bot-2' },
+    });
+    expect(on.status, JSON.stringify(on.body)).toBe(409);
+    expect(on.body.code).toBe('CONNECTION_HAS_NO_KEY');
+    const saved = await call('PATCH', `/api/integration-connections/${connection.id}`, {
+      secrets: { userId: 'scratch-bot-2' },
+    });
+    expect(saved.status).toBe(200);
+    const after = await call('PATCH', `/api/integration-connections/${connection.id}`, {
+      active: true,
+    });
+    expect(after.status).toBe(409);
+  });
+
   it('turns back on with a new key, which is all it holds', async () => {
     const connection = await rotatedSentry({ type: 'user', id: ownerId });
     await call('DELETE', `/api/integration-connections/${connection.id}`);

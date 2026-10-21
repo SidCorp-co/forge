@@ -209,6 +209,19 @@ describe('a field inside a body object that the object does not take (ISS-1421 r
     );
   });
 
+  // Eighth whole-set read: a `null` option, which takes no list, cancelled the list's strays.
+  it('is refused inside a list whose union also takes null', async () => {
+    const nullable = z.object({
+      items: z.union([z.array(z.object({ id: z.string() })), z.null()]),
+    });
+    const res = await refusing((a) =>
+      a.post('/n', zValidator('json', nullable), (c) => c.json({ ok: true })),
+    ).request('/n', post({ items: [{ id: 'a', colour: 'red' }] }));
+    expect(((await res.json()) as Refusal).message).toBe(
+      'The field items.0.colour is not one this call takes.',
+    );
+  });
+
   // Seventh whole-set read: a union whose other option takes anything was refused for a stray.
   it('lets a list through where another option of its union takes anything', async () => {
     const either = z.object({
