@@ -18,22 +18,16 @@ export function roomDeletedLine(sending: boolean): string {
 
 const UNSENT_QUOTE = 200;
 
-/**
- * Where a kept notice stands with its text: offered to copy with a tap, copied, or to be copied by hand,
- * either because this browser has no clipboard or because it refused the copy (ISS-1229 r32, judge-90).
- */
+/** A kept notice's text: offered to copy, copied, or to copy by hand (no clipboard, or it refused). */
 export type KeptCopy = "offered" | "copied" | "by-hand" | "refused";
 
 /**
- * The thread goes with the room, so the notice quotes what was written, its outer blank space aside
- * (r29, r30). Only a message the reader sent "was not sent"; text still in the box is kept (r31). Text to
- * be copied by hand is quoted whole and as typed, since what the quote leaves out could not be selected
- * (r32); its toast is asked to keep that text's spaces (`verbatim`).
+ * The notice quotes what was written, trimmed (r29, r30); only a message the reader sent "was not sent"
+ * (r31). Text to copy by hand is quoted whole and as typed, for a `verbatim` toast (r32).
  */
 export function unsentLine(text: string, sent: boolean, copy: KeptCopy = "offered"): string {
   const byHand = copy === "by-hand" || copy === "refused";
   const shown = text.trim();
-  // Selected by hand, the quote is the text exactly as typed, as an automatic copy writes it (r32 F1).
   const quoted = byHand
     ? text
     : shown.length > UNSENT_QUOTE

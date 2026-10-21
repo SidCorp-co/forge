@@ -3263,7 +3263,7 @@
 - **On a phone, a room opens with its message box and Send in view** above the tab bar, and they stay in view while the keyboard is up. (ISS-1229)
 - **Text you had not sent is called kept, not unsent**, when its room is deleted; copying it says so in that notice instead of a second one over the room list. (ISS-1229)
 - **On a phone, a tapped take-out reason shows under its row**, leaving the Add agent button in view. (ISS-1229)
-- **On a phone, the conversation gets the screen while you write in a room.** The top bar, the Conversations heading and the tab bar step aside and the About line folds, so the message you are answering stays in view with the keyboard up. (ISS-1229)
+- **On a phone, the conversation gets the screen while you write in a room.** The top bar, heading and tab bar step aside and the About line folds, so the message you answer stays in view. (ISS-1229)
 - **The add-agent panel says every agent you can add is already in the room** when that is why it offers none, and where another one comes from, instead of naming a role you hold. (ISS-1229)
 - **A deleted room's kept text can be copied by hand** when the browser will not copy it: the notice says so and shows the whole text to select. (ISS-1229)
 - **An agent answering in a room is no longer marked as unable to act there.** Only an agent that lost its role on the room's project is marked, as unable to answer. (ISS-1229)

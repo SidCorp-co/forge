@@ -1,6 +1,4 @@
-// ISS-1229 r32 (judge-90): an agent's row said "can't act" while that agent answered in the room. A room
-// is answered through core by the agent holding a role on the room's project (`handleForProject`); its
-// own personal token is never asked for, so whether it holds one says nothing about the room.
+// ISS-1229 r32 (judge-90): an agent marked "can't act" for holding no token answered in its room.
 
 import { describe, expect, it } from 'vitest';
 import { answersHere } from './participants.js';

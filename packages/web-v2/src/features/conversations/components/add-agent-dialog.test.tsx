@@ -77,8 +77,7 @@ describe("adding the agent of a project that was deleted", () => {
     expect(empty).not.toMatch(/member role/);
   });
 
-  // r32, judge-90: an admin whose project's one agent was already in the room read that an agent is
-  // added by somebody holding a member role, a role they held. The panel says what is true instead.
+  // r32, judge-90: an admin was told a role they held is what adds an agent.
   it("says every agent the reader can add is already here, and where another one comes from", () => {
     handles = [];
     render(<AddAgentDialog conversationId="c1" room={{ shape: "group", scopeProjects: [] }} open onClose={() => {}} />);
