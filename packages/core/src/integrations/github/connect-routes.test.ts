@@ -249,7 +249,14 @@ describe('GET /:projectId/integrations/github/repositories — what the door doe
     const res = await app().request(`/api/projects/${PROJECT_ID}/integrations/github/repositories`);
 
     expect(res.status).toBe(400);
-    expect((await bodyOf(res)).details).toEqual({ connectionId: 'required' });
+    expect((await bodyOf(res)).message).toBe('The field connectionId is required.');
+  });
+
+  // ISS-1421 r17 — a connectionId that is not a uuid reached a uuid column and answered 500.
+  it('refuses a connectionId that is not a uuid by naming the field', async () => {
+    const res = await repositories('not-a-uuid');
+    expect(res.status).toBe(400);
+    expect((await bodyOf(res)).message).toContain('connectionId');
   });
 
   // ISS-1421 r8: the drawer printed the web's generic "Invalid input" for this, since BAD_REQUEST
