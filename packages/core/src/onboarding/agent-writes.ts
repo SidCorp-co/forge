@@ -1,7 +1,8 @@
 /**
  * The agent's writes into an onboarding thread: questionnaire batches, updates that name designs,
  * and the close. Each runs in one transaction under the project's onboarding lock, refusals named
- * and nothing written.
+ * and nothing written. A done onboarding still takes the agent's batches and updates: it is done on
+ * its assumptions, and an answer that comes later lands as a proposed revision (REQ-10 BC-11).
  */
 
 import type {
@@ -35,14 +36,22 @@ import {
 } from './act.js';
 import { citeRefusals, landingsOf } from './design-items.js';
 import { settlePhaseJob } from './job.js';
-import { designsOf, onboardingOf, projectHoldsSensitiveData, seriesItemsOf } from './read.js';
+import {
+  designsOf,
+  liveJobOf,
+  onboardingOf,
+  projectHoldsSensitiveData,
+  seriesItemsOf,
+} from './read.js';
 import {
   agentWriteRefusal,
   closeRefusal,
   dataFlowRefusal,
+  designsUnproposedRefusal,
   designUnknownRefusals,
   doneRefusal,
   notStarted,
+  onboardingItemRefusals,
 } from './rules.js';
 
 type OnboardingQuestionnaireOutcome =
@@ -57,18 +66,18 @@ export async function postOnboardingQuestionnaire(input: {
   const { projectId, actor, body } = input;
   const who = await refusalFor(actor, projectId, posterRefusal);
   if (who) return { ok: false, refusals: [who] };
+  const asks = onboardingItemRefusals(body.items);
+  if (asks.length) return { ok: false, refusals: asks };
   let batchId = '';
   let conversationId = '';
   let messageId: string | null = null;
-  let jobId: string | null = null;
   const refused = await inTx(async (tx) => {
     await lockOnboarding(tx, projectId);
     const row = await onboardingOf(tx, projectId, true);
     if (!row) return [notStarted()];
-    const blocked = doneRefusal(row) ?? roundsRefusal(row.roundsSent);
+    const blocked = roundsRefusal(row.roundsSent);
     if (blocked) return [blocked];
     conversationId = row.conversationId;
-    jobId = row.lastJobId;
     const posted = await postQuestionnaireIn(tx, {
       projectId,
       conversationId: row.conversationId,
@@ -94,7 +103,6 @@ export async function postOnboardingQuestionnaire(input: {
   });
   if (refused) return { ok: false, refusals: refused };
   await announce(conversationId, messageId, 'assistant');
-  await settlePhaseJob(actor.agency, jobId);
   return { ok: true, questionnaire: await batchView(db, projectId, batchId), created: true };
 }
 
@@ -114,8 +122,6 @@ export async function postOnboardingUpdate(input: {
     await lockOnboarding(tx, projectId);
     const row = await onboardingOf(tx, projectId, true);
     if (!row) return [notStarted()];
-    const done = doneRefusal(row);
-    if (done) return [done];
     conversationId = row.conversationId;
     const ids = body.designs?.workflowIds ?? [];
     if (ids.length) {
@@ -175,6 +181,9 @@ export async function postOnboardingUpdate(input: {
   return settled(projectId);
 }
 
+// the agent's mark ends its phase: on an onboarding already done (a revise phase after a late
+// answer) it settles the live job and leaves the close as it stood; any other second close is
+// ONBOARDING_DONE
 export async function markOnboardingDone(input: {
   projectId: string;
   actor: OnboardingActor;
@@ -190,25 +199,29 @@ export async function markOnboardingDone(input: {
     await lockOnboarding(tx, projectId);
     const row = await onboardingOf(tx, projectId, true);
     if (!row) return [notStarted()];
-    const done = doneRefusal(row);
+    const agent = actor.agency === 'agent';
+    const endsPhase = agent && row.doneAt !== null && (await liveJobOf(tx, projectId)) !== null;
+    const done = endsPhase ? null : doneRefusal(row);
     if (done) return [done];
     conversationId = row.conversationId;
     jobId = row.lastJobId;
     const designs = await designsOf(tx, projectId, row.designs);
-    const flow = dataFlowRefusal(
-      sensitive,
-      designs.map((d) => d.template),
-    );
+    const flow =
+      dataFlowRefusal(
+        sensitive,
+        designs.map((d) => d.template),
+      ) ?? (agent ? designsUnproposedRefusal(designs) : null);
     if (flow) return [flow];
-    await tx
-      .update(onboardings)
-      .set({
-        doneBy: actor.userId,
-        doneAgency: actor.agency,
-        doneAt: new Date(),
-        updatedAt: new Date(),
-      })
-      .where(eq(onboardings.id, row.id));
+    if (!row.doneAt)
+      await tx
+        .update(onboardings)
+        .set({
+          doneBy: actor.userId,
+          doneAgency: actor.agency,
+          doneAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(eq(onboardings.id, row.id));
     if (input.text) {
       await appendMessagesIn(tx, {
         conversationId: row.conversationId,

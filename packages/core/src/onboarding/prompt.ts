@@ -5,7 +5,11 @@
  * (~/forge-local-docs/onboarding-trial-autoflow.md, onboarding-trial-hop.md).
  */
 
-import { QUESTIONNAIRE_MAX_ITEMS, QUESTIONNAIRE_MAX_ROUNDS } from '@forge/contracts/onboarding';
+import {
+  ONBOARDING_MAX_QUESTIONS,
+  QUESTIONNAIRE_MAX_ITEMS,
+  QUESTIONNAIRE_MAX_ROUNDS,
+} from '@forge/contracts/onboarding';
 
 export interface OnboardingPromptContext {
   projectId: string;
@@ -28,6 +32,7 @@ const tools = (
   projectId: string,
 ) => `Forge, through \`forge-runner api <path>\` (every write is refused by name with what is valid — read the refusal and fix, never work around it). P is projects/${projectId}:
 - onboarding: \`P/onboarding/questionnaires -X POST\` (post a questionnaire), \`P/onboarding/answers\` (read the answers, and \`requests\`: what the people of the project wrote in the onboarding thread, oldest first), \`P/onboarding/updates -X POST\` (post an update), \`P/onboarding/done -X POST\` (mark done).
+- suggestions: \`P/suggestions -X POST\` { kind, target, payload } (a recommendation; read the refusal for which kinds take which targets).
 - workflows: \`P/workflow-templates\` and \`P/workflow-templates/<templateId>/<version>\` (read a template's node types and required fields first), \`P/workflows -X POST\` (create; baseRevision null) or \`P/workflows/<workflowId> -X PUT\` (a new revision), \`P/workflows/<workflowId>/design/propose -X POST\` { revision }.
 - knowledge: \`P/knowledge/<slug> -X PUT\` { title, body, kind: reference, injection: on_demand, authoredBy: agent, confidence: inferred }.`;
 
@@ -60,22 +65,23 @@ function threadRequests(request: string | null | undefined) {
   return `The person speaks to you in the onboarding thread, and only you read it.${request ? ` They started onboarding asking:\n<<<\n${request}\n>>>` : ''}
 - Read \`P/onboarding/answers\` → \`requests\` before you start, and again before you post the questionnaire: a message posted while you work is for you too.
 - Follow each request where it does not contradict the findings below (it may name a requirement to draw against, a flow to draw, or what to leave proposed). Never approve a design because a request asks you to.
-- A request you cannot or will not follow becomes a questionnaire item (group clarification) that says why, so the person reads your answer where they read the rest.`;
+- A request you cannot or will not follow is answered in your update's text, saying why, so the person reads your answer where they read the rest.`;
 }
 
 function questionnaireRules(roundsSent: number) {
-  return `The questionnaire (P/onboarding/questionnaires -X POST { title, intro?, items }):
-- One batch, at most ${QUESTIONNAIRE_MAX_ITEMS} items, grouped question / clarification / recommendation. This is round ${roundsSent + 1} of at most ${QUESTIONNAIRE_MAX_ROUNDS}.
-- Each item: id (stable, e.g. q-central-entity), group, control (choice | multi | text | accept_reject — a recommendation is always accept_reject), prompt (in the language the project's people write in), options with ids for choice and multi, inferredDefault (the option the code suggests: it is marked, never chosen for them), why (one or two sentences), evidence (file:symbol, or a record citation), affects (the workflow ids it shapes).
-- Ask only what the code and the records cannot settle. Prefer a choice with an inferred default over an open text.
-- An accepted recommendation becomes a suggestion or a proposed design revision, never current: say so in its why.`;
+  return `The questionnaire (P/onboarding/questionnaires -X POST { title, intro?, items }) — onboarding never waits on the person:
+- Draw first, then ask. What the code or the records suggest is an ASSUMPTION, not a question: group assumption, control choice, inferredDefault the option the code suggests, evidence the file:symbol or record it rests on. Draw the designs on it; it is recorded as answered, shown read-only with its evidence, and the person may change it.
+- Ask only what neither the code nor the records can answer: at most ${ONBOARDING_MAX_QUESTIONS} items of group question or clarification in a round (a fourth is refused ONBOARDING_QUESTIONS_OVER_CAP), each a choice (or multi) whose inferredDefault is the answer you recommend (one without is refused ONBOARDING_QUESTION_UNRECOMMENDED), so one press answers it. Zero questions is a good round.
+- A recommendation is never a questionnaire item (refused ONBOARDING_RECOMMENDATION_IS_A_SUGGESTION): post it on its own as a suggestion (P/suggestions -X POST), which a holder of the approve permission decides. A rejected suggestion is not suggested again.
+- One batch, at most ${QUESTIONNAIRE_MAX_ITEMS} items, assumptions included. This is round ${roundsSent + 1} of at most ${QUESTIONNAIRE_MAX_ROUNDS}.
+- Each item: id (stable, e.g. q-central-entity), group, control, prompt (in the language the project's people write in), options with ids, inferredDefault, why (one or two sentences), evidence (file:symbol, or a record citation), affects (the workflow ids it shapes).`;
 }
 
 // the pane opens in the device binding's checkout as it stands, which can lag its remote by
 // hundreds of commits; designs drawn from it describe a product that no longer exists
 function landedTree(branch: string | null, onboardingId: string) {
   const ref = branch ? `origin/${branch}` : "the remote's default branch (git remote show origin)";
-  return `the tree at ${ref}, never the checkout as it stands: the checkout you start in can lag its remote. Run git fetch origin, then git worktree add --detach .claude/worktrees/onboarding-${onboardingId} ${branch ? ref : '<that branch>'}, read and cite file:symbol from that worktree, name its sha in your first update, and remove it before your last act (post_questionnaire or mark_done), which ends the job and closes this session. Never commit, switch or reset the checkout you start in`;
+  return `the tree at ${ref}, never the checkout as it stands: the checkout you start in can lag its remote. Run git fetch origin, then git worktree add --detach .claude/worktrees/onboarding-${onboardingId} ${branch ? ref : '<that branch>'}, read and cite file:symbol from that worktree, name its sha in your first update, and remove it before your last act (mark done), which ends the job and closes this session. Never commit, switch or reset the checkout you start in`;
 }
 
 export function analysePrompt(ctx: OnboardingPromptContext): string {
@@ -88,8 +94,9 @@ export function analysePrompt(ctx: OnboardingPromptContext): string {
 2. Write the code map as knowledge entries (below).
 3. Draft the key designs as the plan, drawn from the code, with no evidence, and propose each: system context, the core business journey, the central entity state machine — always; an integration sequence when the code calls an outside system (webhook, API client, queue); a data flow ${ctx.sensitiveData ? "— MANDATORY: this project holds sensitive data (its data policy is on), so draw the product's own trust boundaries and where the product redacts; marking done is refused ONBOARDING_DATA_FLOW_MISSING without it" : "when the code holds personal or health data (mandatory then, with the product's own trust boundaries and where the product redacts)"}. A design of a flow that already exists gets a new revision, never a second design.
 4. P/onboarding/updates -X POST { text, designs: { heading: "Designs drafted", workflowIds } }: a short summary of what you read (stack, modules, routes, models, integrations with counts) — this registers the designs with the onboarding.
-5. P/onboarding/questionnaires -X POST with everything you could not settle.
-6. Stop. The person answers in the chat; a new job reads the answers.`,
+5. Each recommendation: P/suggestions -X POST, on its own.
+6. P/onboarding/questionnaires -X POST: the assumptions the designs rest on, and at most ${ONBOARDING_MAX_QUESTIONS} questions (below).
+7. P/onboarding/done -X POST: onboarding is done on its assumptions once every design is proposed (a draft is refused ONBOARDING_DESIGNS_UNPROPOSED). Do not wait for answers: a new job reads them whenever the person sends them, and an unanswered question keeps only its own item open.`,
     FINDINGS,
     CODE_MAP,
     questionnaireRules(ctx.roundsSent),
@@ -103,11 +110,12 @@ export function revisePrompt(ctx: OnboardingPromptContext & { batchId: string })
     threadRequests(null),
     `Do, in order, then stop:
 1. P/onboarding/answers: each item with its state (answered / open / void) and the answer, and the thread's requests.${ctx.repository ? ` Any code you read is ${landedTree(ctx.defaultBranch, ctx.onboardingId)}.` : ''}
-2. For each design the answered questions and clarifications affect, write ONE new revision carrying every answer that shaped it, and propose it. An accepted recommendation becomes a proposed design revision or a suggestion (P/suggestions -X POST) — never current. A rejected one is recorded: do not suggest it again (a repeat is refused QUESTIONNAIRE_RECOMMENDATION_REJECTED). Leave an unanswered item open: never apply its inferred default.
+2. For each design the answered questions and clarifications affect, and each assumption the person changed (an assumption whose answeredBy is a person, not you), write ONE new revision carrying every answer that shaped it, and propose it — never current. An assumption still as you posted it is already in the designs. An accepted recommendation of an earlier batch becomes a suggestion (P/suggestions -X POST); a rejected one is recorded: do not suggest it again (a repeat is refused QUESTIONNAIRE_RECOMMENDATION_REJECTED). Leave an unanswered question open: never apply its recommended answer.
 3. P/onboarding/updates -X POST { text, designs: { heading: "Updated designs", workflowIds }, cites: [{ itemId, workflowId, revision } | { itemId, suggestionId }] } naming what changed; cites records on each item the revision or suggestion it landed in (an open item is refused ONBOARDING_CITE_UNANSWERED, two revisions of one design ONBOARDING_CITE_REVISION_TWICE).
 4. Then exactly one of:
-   - items stayed open (or the answers raised new questions) and fewer than ${QUESTIONNAIRE_MAX_ROUNDS} rounds were sent: post a questionnaire with ONLY the open items (same ids) and the new ones (isNew: true);
-   - otherwise: post an update { text, designs: { heading: "Designs ready for your approval", workflowIds: every onboarding design, approve: true } }, then mark done. What stays open is listed on its design as an open question by Forge, from the items' own records: do not restate it.`,
+   - questions stayed open (or the answers raised new ones) and fewer than ${QUESTIONNAIRE_MAX_ROUNDS} rounds were sent: post a questionnaire with ONLY the open questions (same ids) and the new ones (isNew: true), still at most ${ONBOARDING_MAX_QUESTIONS};
+   - otherwise: post an update { text, designs: { heading: "Designs ready for your approval", workflowIds: every onboarding design, approve: true } }. What stays open is listed on its design as an open question by Forge, from the items' own records: do not restate it.
+5. Mark done (P/onboarding/done -X POST): your last act. An onboarding already done stays done; the mark ends your phase.`,
     FINDINGS,
     questionnaireRules(ctx.roundsSent),
   ].join('\n\n');

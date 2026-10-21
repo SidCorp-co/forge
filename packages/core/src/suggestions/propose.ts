@@ -48,6 +48,7 @@ import {
   fingerprintOf,
   payloadRefusal,
   queueFullRefusal,
+  rejectedBeforeRefusal,
   rejectReasonRefusal,
   unchangedRevisionRefusal,
 } from './rules.js';
@@ -129,11 +130,24 @@ async function proposeIn(
       ),
     );
   const twin = open.find((s) => s.kind === p.kind && s.fingerprint === p.fingerprint);
+  const [rejected] = await tx
+    .select({ id: suggestions.id, reason: suggestions.reason })
+    .from(suggestions)
+    .where(
+      and(
+        onTarget(p.target),
+        eq(suggestions.status, 'rejected'),
+        eq(suggestions.kind, p.kind),
+        eq(suggestions.fingerprint, p.fingerprint),
+      ),
+    )
+    .limit(1);
   const openBreakdown =
     p.kind === 'breakdown' ? open.find((s) => s.kind === 'breakdown') : undefined;
   const refusal =
     breakdownOpenRefusal(openBreakdown?.id ?? null, head) ??
     duplicateRefusal(twin?.id ?? null) ??
+    rejectedBeforeRefusal(rejected ?? null) ??
     queueFullRefusal(open.length);
   if (refusal) return { refusals: [refusal] };
   const [row] = await tx

@@ -45,8 +45,11 @@ describe('project-onboarding designs: each design names the items that shaped it
       row('d', { state: 'open' }),
       row('d', { round: 2, createdAt: T(2), state: 'answered', questionId: 'q-d2' }),
     ];
-    expect(linkItems(D1, items, 2).linkedItems.map((i) => i.questionId)).toEqual(['q-a', 'q-d2']);
-    const orders = linkItems(D2, items, 2).linkedItems;
+    expect(linkItems(D1, items, false).linkedItems.map((i) => i.questionId)).toEqual([
+      'q-a',
+      'q-d2',
+    ]);
+    const orders = linkItems(D2, items, false).linkedItems;
     expect(orders.map((i) => [i.itemId, i.citedRevision])).toEqual([
       ['b', null],
       ['c', 1],
@@ -54,17 +57,17 @@ describe('project-onboarding designs: each design names the items that shaped it
   });
 
   it('drops void items', () => {
-    expect(linkItems(D1, [row('a', { state: 'void' })], 1).linkedItems).toEqual([]);
+    expect(linkItems(D1, [row('a', { state: 'void' })], false).linkedItems).toEqual([]);
   });
 });
 
-describe('project-onboarding what-next: after 3 rounds open items stay on their designs', () => {
+describe('project-onboarding what-next: once settled, open items stay on their designs (REQ-10 BC-11)', () => {
   const items = [row('a', { state: 'open' }), row('b')];
-  it('lists no open questions while a round is left', () => {
-    expect(linkItems(D1, items, 2).openQuestions).toEqual([]);
+  it('lists no open questions while the onboarding is not settled', () => {
+    expect(linkItems(D1, items, false).openQuestions).toEqual([]);
   });
-  it('lists the open linked items once every round is sent', () => {
-    expect(linkItems(D1, items, 3).openQuestions.map((i) => i.itemId)).toEqual(['a']);
+  it('lists the open linked items once done on its assumptions or every round is sent', () => {
+    expect(linkItems(D1, items, true).openQuestions.map((i) => i.itemId)).toEqual(['a']);
   });
 });
 

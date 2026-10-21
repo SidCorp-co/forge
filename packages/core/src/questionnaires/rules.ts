@@ -22,8 +22,9 @@ const EVIDENCE = /^(\S+:\S+|(REQ|ISS|FB|BC)-\d+\b.*|design \S+.*|workflow \S+.*)
 const choiceControls = new Set(['choice', 'multi']);
 
 // each item is answerable as posted: ids unique, options only on choice and multi and two
-// or more, a default naming one of them, a recommendation answered by accept or reject, and
-// evidence that is a file:symbol or a Forge record (QUESTIONNAIRE_ITEM_INVALID)
+// or more, a default naming one of them, a recommendation answered by accept or reject, an
+// assumption a choice naming the option the code suggests, and evidence that is a file:symbol or a
+// Forge record (QUESTIONNAIRE_ITEM_INVALID)
 export function itemRefusals(items: readonly QuestionnaireItem[]): QuestionnaireRefusal[] {
   const out: QuestionnaireRefusal[] = [];
   const seen = new Set<string>();
@@ -63,6 +64,14 @@ export function itemRefusals(items: readonly QuestionnaireItem[]): Questionnaire
       bad(
         '/control',
         `a recommendation is answered by accept or reject, and only a recommendation is; "${item.id}" is a ${item.group} with control ${item.control}.`,
+      );
+    if (
+      item.group === 'assumption' &&
+      (item.control !== 'choice' || item.inferredDefault === undefined)
+    )
+      bad(
+        '/inferredDefault',
+        `an assumption is a choice whose inferredDefault names the option the code suggests, so the person can change it; "${item.id}" is ${withArticle(item.control)}${item.inferredDefault === undefined ? ' with no inferredDefault' : ''}.`,
       );
     item.evidence.forEach((e, j) => {
       if (!EVIDENCE.test(e))
@@ -189,9 +198,10 @@ function fits(item: QuestionnaireItem, a: QuestionnaireAnswer): string | null {
   return null;
 }
 
-// every answer names an item of the batch still open (QUESTIONNAIRE_ITEM_UNKNOWN), fits its
-// control (QUESTIONNAIRE_ANSWER_INVALID), and a send answers at least one (QUESTIONNAIRE_NOTHING_ANSWERED);
-// an unanswered item stays open and an inferred default is never applied for it
+// every answer names an item of the batch still answerable — an open item, or an assumption the
+// person may change — (QUESTIONNAIRE_ITEM_UNKNOWN), fits its control (QUESTIONNAIRE_ANSWER_INVALID),
+// and a send answers at least one (QUESTIONNAIRE_NOTHING_ANSWERED); an unanswered item stays open
+// and an inferred default is never applied for it
 export function answerRefusals(
   items: ReadonlyMap<string, { item: QuestionnaireItem; open: boolean }>,
   answers: readonly QuestionnaireAnswer[],

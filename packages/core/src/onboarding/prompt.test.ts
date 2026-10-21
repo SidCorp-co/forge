@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { analysePrompt, revisePrompt } from './prompt.js';
 
-// An onboarding job's last act (posting the questionnaire, or marking done) ends the job and closes
+// An onboarding job's last act (marking done) ends the job and closes
 // its session, so nothing the prompt leaves "for when you stop" ever runs: a worktree it says to
 // remove then outlives the job. The prompt names the removal before that act.
 
@@ -17,7 +17,7 @@ const ctx = {
 };
 
 const BEFORE_LAST_ACT =
-  'remove it before your last act (post_questionnaire or mark_done), which ends the job and closes this session';
+  'remove it before your last act (mark done), which ends the job and closes this session';
 
 describe('the onboarding prompt', () => {
   it.each([
@@ -35,6 +35,29 @@ describe('the onboarding prompt', () => {
     const prompt = analysePrompt({ ...ctx, repository: null });
     expect(prompt).not.toContain('git worktree add');
     expect(prompt).not.toContain(BEFORE_LAST_ACT);
+  });
+
+  // REQ-10 r4: the job says what the kernel holds — assumptions, at most three recommended
+  // questions, recommendations as suggestions, and done without waiting for answers
+  it.each([
+    ['analyse', analysePrompt(ctx)],
+    ['revise', revisePrompt({ ...ctx, batchId: 'b1' })],
+  ])('%s: asks at most three questions, records assumptions and never waits', (_, prompt) => {
+    expect(prompt).toContain(
+      'group assumption, control choice, inferredDefault the option the code suggests',
+    );
+    expect(prompt).toContain('at most 3 items of group question or clarification in a round');
+    expect(prompt).toContain('ONBOARDING_RECOMMENDATION_IS_A_SUGGESTION');
+    expect(prompt).toContain('P/onboarding/done -X POST');
+    expect(prompt).not.toMatch(/a recommendation is always accept_reject/);
+  });
+
+  it('analyse: marks done after the questionnaire, without waiting for the answers', () => {
+    const prompt = analysePrompt(ctx);
+    expect(prompt.indexOf('P/onboarding/questionnaires -X POST: the assumptions')).toBeLessThan(
+      prompt.indexOf('7. P/onboarding/done -X POST'),
+    );
+    expect(prompt).toContain('Do not wait for answers');
   });
 
   // an observation is written only on a design with an approved revision and a requirement
