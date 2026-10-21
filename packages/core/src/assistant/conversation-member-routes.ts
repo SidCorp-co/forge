@@ -166,7 +166,7 @@ conversationMemberRoutes.post(
     const { userId: joining } = c.req.valid('json');
     const actor = c.get('userId');
     await withMembershipLock(id, actor, async (tx, _room, scope) => {
-      await assertPersonReachesScope(joining, scope, tx);
+      await assertPersonReachesScope(id, joining, scope, tx);
       await addPerson({ conversationId: id, userId: joining, actorUserId: actor, tx });
       await settleShape(tx, id, {
         kind: 'person',

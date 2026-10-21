@@ -734,6 +734,46 @@ describe("groupRows", () => {
 	});
 });
 
+// ISS-1229 r28, judge-80: two different people with no display name headed two identical "Another
+// member" groups, in the order their rows arrived.
+describe("groupRows by creator, people told apart", () => {
+	const creator = (id: string, by: string, label: string) => row({ id, createdById: by, creatorLabel: label });
+	const members = [
+		{ userId: "me", createdAt: "2026-10-04T09:00:00.000Z" },
+		{ userId: "u-late", createdAt: "2026-10-03T09:00:00.000Z" },
+		{ userId: "u-early", createdAt: "2026-10-01T09:00:00.000Z" },
+		{ userId: "u-zed", createdAt: "2026-10-02T09:00:00.000Z" },
+	];
+	const mixed = [
+		creator("a", "u-late", "Another member"),
+		creator("b", "u-zed", "Zed"),
+		row({ id: "c", createdById: "a1", creatorIsAgent: true, creatorLabel: "master" }),
+		creator("d", "me", "Another member"),
+		creator("e", "u-early", "Another member"),
+	];
+
+	it("heads the reader's group first, then names, then the unnamed by when each was added, then agents", () => {
+		const g = groupRows(mixed, "creator", "me", members);
+		expect(g.map((x) => x.key)).toEqual(["me", "u-zed", "u-early", "u-late", "a1"]);
+	});
+
+	it("tells two unnamed creators apart by when each was added to the project", () => {
+		const g = groupRows(mixed, "creator", "me", members);
+		expect(g.map((x) => x.label)).toEqual([
+			"You",
+			"Zed",
+			"Another member (added 1 Oct 2026)",
+			"Another member (added 3 Oct 2026)",
+			"master",
+		]);
+	});
+
+	it("leaves a lone unnamed creator's group as it reads", () => {
+		const g = groupRows(mixed.filter((r) => r.createdById !== "u-early"), "creator", "me", members);
+		expect(g.map((x) => x.label)).toContain("Another member");
+	});
+});
+
 describe("groupRows by module", () => {
 	const mod = (labelId: string, name: string, isPrimary = true) => ({
 		labelId,

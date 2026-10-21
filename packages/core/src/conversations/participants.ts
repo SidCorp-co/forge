@@ -6,7 +6,6 @@
 // asks a per-message question that `scope.ts` cannot answer from the join.
 
 import { and, count, eq, isNull, sql } from 'drizzle-orm';
-import { HTTPException } from 'hono/http-exception';
 import { patIsLive } from '../auth/pat-live.js';
 import { db as defaultDb } from '../db/client.js';
 import { organizationMembers, personalAccessTokens, projectMembers, users } from '../db/schema.js';
@@ -19,9 +18,6 @@ import {
 import { effectiveProjectRole, projectRoleAtLeast } from '../lib/authz.js';
 import type { Executor, TxOnly } from './db-executor.js';
 import { roomRefusal } from './room-refusal.js';
-
-const badRequest = (message: string, code: string) =>
-  new HTTPException(400, { message, cause: { code } });
 
 export interface ParticipantRow {
   id: string;
@@ -331,9 +327,11 @@ export interface AddPersonArgs {
 export async function addPerson(args: AddPersonArgs): Promise<void> {
   const tx = args.tx ?? defaultDb;
   if (!args.userId && !args.externalKey) {
-    throw badRequest(
-      'a person joins a conversation as a Forge user or as the key their channel gave; with neither there is nobody to add',
+    throw roomRefusal(
+      400,
       'PARTICIPANT_UNIDENTIFIED',
+      'Nobody was added to this room: a person joins it as a Forge account or as the key their channel gave, and neither was given',
+      { conversationId: args.conversationId },
     );
   }
   await tx

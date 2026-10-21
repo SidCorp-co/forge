@@ -1,10 +1,17 @@
-import { and, eq, inArray, ne, notExists } from 'drizzle-orm';
+import { and, asc, eq, inArray, ne, notExists } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { HTTPException } from 'hono/http-exception';
 import { agentIsNotAPerson, isAgentAddress, isForgeAddress } from '../auth/agent-account.js';
 import { FORGE_AUTHOR_ID } from '../comments/forge-author.js';
 import { db } from '../db/client.js';
-import { devices, organizationMembers, organizations, users } from '../db/schema.js';
+import {
+  devices,
+  organizationMembers,
+  organizations,
+  projectMembers,
+  projects,
+  users,
+} from '../db/schema.js';
 import { givenName } from '../lib/person-name.js';
 
 /**
@@ -260,6 +267,10 @@ export async function listOrgsForUser(userId: string): Promise<OrgMembership[]> 
 }
 
 /** One member of an org, as both transports report them. */
+/** What taking out or demoting an organization's only owner is told, saying what to do (ISS-1229 r28). */
+export const LAST_OWNER_REFUSAL =
+  'Make someone else an owner first — an organization keeps at least one owner.';
+
 export type OrgMember = {
   userId: string;
   email: string;
@@ -267,6 +278,10 @@ export type OrgMember = {
   displayName: string | null;
   /** The address this member is reached at in this org, or null for a person. */
   handle: string | null;
+  /** A person or an agent account; the organization page lists the two apart (ISS-1229 r28). */
+  kind: 'person' | 'agent';
+  /** The organization's projects an agent serves, by name; empty for a person. */
+  projects: { id: string; name: string }[];
   role: string;
   lenses: string[];
   createdAt: Date;
@@ -274,12 +289,13 @@ export type OrgMember = {
 
 /** The members of `orgId`. Authorization stays at the transport edge. */
 export async function listOrgMembers(orgId: string): Promise<OrgMember[]> {
-  return db
+  const rows = await db
     .select({
       userId: organizationMembers.userId,
       email: users.email,
       displayName: users.displayName,
       handle: organizationMembers.handle,
+      userKind: users.kind,
       role: organizationMembers.role,
       lenses: organizationMembers.lenses,
       createdAt: organizationMembers.createdAt,
@@ -287,4 +303,19 @@ export async function listOrgMembers(orgId: string): Promise<OrgMember[]> {
     .from(organizationMembers)
     .innerJoin(users, eq(users.id, organizationMembers.userId))
     .where(eq(organizationMembers.orgId, orgId));
+  const agentIds = rows.filter((r) => r.userKind === 'agent').map((r) => r.userId);
+  const served =
+    agentIds.length === 0
+      ? []
+      : await db
+          .select({ userId: projectMembers.userId, id: projects.id, name: projects.name })
+          .from(projectMembers)
+          .innerJoin(projects, eq(projects.id, projectMembers.projectId))
+          .where(and(inArray(projectMembers.userId, agentIds), eq(projects.orgId, orgId)))
+          .orderBy(asc(projects.name));
+  return rows.map(({ userKind, ...row }) => ({
+    ...row,
+    kind: userKind === 'agent' ? 'agent' : 'person',
+    projects: served.filter((p) => p.userId === row.userId).map(({ id, name }) => ({ id, name })),
+  }));
 }

@@ -32,6 +32,17 @@ export function ageText(seconds: number | null): string | null {
   return seconds === Number.MAX_SAFE_INTEGER ? "never ran" : formatElapsed(seconds);
 }
 
+/**
+ * What a queue row says of its oldest record, as a phrase: "oldest 3d", or "none has run yet" where
+ * every record it names has never run (ISS-1229 r28, judge-80 read "oldest never ran").
+ */
+export function oldestText(row: Pick<ActionRow, "oldestSeconds" | "records">): string | null {
+  if (row.oldestSeconds === null) return null;
+  if (row.oldestSeconds !== Number.MAX_SAFE_INTEGER) return `oldest ${formatElapsed(row.oldestSeconds)}`;
+  const ran = row.records.some((r) => r.ageSeconds !== null && r.ageSeconds !== Number.MAX_SAFE_INTEGER);
+  return ran ? "the oldest has not run yet" : "none has run yet";
+}
+
 export type SilenceMark = "calm" | "warn" | "alarm";
 
 /**

@@ -10,6 +10,7 @@
 // it alone — so all six stayed on the session surface, which keeps every
 // run-shaped verb it had.
 
+import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   EmptyState,
@@ -29,6 +30,7 @@ import { NewOutput } from "@/features/session/components/new-output";
 import { useStickToBottom } from "@/features/session/components/use-stick-to-bottom";
 import { parseMessages } from "@/features/session/types";
 import { formatApiError } from "@/lib/api/error";
+import { useToast } from "@/providers/toast-provider";
 import {
   useConversation,
   useDraftAgentMode,
@@ -41,6 +43,7 @@ import {
   useWithdrawnDrafts,
 } from "../hooks";
 import { composerRefusal } from "../membership";
+import { isRoomGone, ROOM_DELETED_TITLE, roomDeletedLine } from "../room-gone";
 import { type ConversationMode, type OutboxMessage, conversationTitle } from "../types";
 import { ConversationModeControl, modePlaceholder } from "./mode-control";
 import { ConversationMembers } from "./conversation-members";
@@ -54,6 +57,7 @@ export function ConversationChat({
   onConversationActive,
   onOpenHistory,
   onNew,
+  onRoomGone,
   emptyBody,
 }: {
   projectId: string;
@@ -69,6 +73,8 @@ export function ConversationChat({
   onNew?: () => void;
   /** Rendered beneath the empty state of a room with no messages. */
   emptyBody?: React.ReactNode;
+  /** Fires once this room is found deleted, so the caller can return the reader to the room list. */
+  onRoomGone?: (id: string) => void;
 }) {
   const [activeId, setActiveId] = useState<string | undefined>(conversationId);
   const [membersOpen, setMembersOpen] = useState(false);
@@ -97,6 +103,28 @@ export function ConversationChat({
   const stored = useRef(new Map<string, string[]>());
 
   const [pick, setPick] = useState<ConversationMode>("assistant");
+
+  // A room deleted while it was open says so once, leaves the list and hands the reader back to it:
+  // a retry could only meet the same refusal (ISS-1229 r28, judge-80).
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const [gone, setGone] = useState(false);
+  const goneOnce = useRef(false);
+  const roomWentAway = useCallback(
+    (id: string, sending: boolean) => {
+      if (goneOnce.current) return;
+      goneOnce.current = true;
+      setGone(true);
+      toast({ title: ROOM_DELETED_TITLE, description: roomDeletedLine(sending), tone: "info" });
+      qc.removeQueries({ queryKey: ["conversations", id], exact: true });
+      void qc.invalidateQueries({ queryKey: ["conversations", "list"] });
+      onRoomGone?.(id);
+    },
+    [qc, toast, onRoomGone],
+  );
+  useEffect(() => {
+    if (resolvedId && roomQ.isError && isRoomGone(roomQ.error)) roomWentAway(resolvedId, false);
+  }, [resolvedId, roomQ.isError, roomQ.error, roomWentAway]);
 
   const messages = useMemo(() => roomQ.data?.messages ?? [], [roomQ.data]);
 
@@ -158,11 +186,12 @@ export function ConversationChat({
   };
 
   const retry = useCallback((id: string) => {
+    if (goneOnce.current) return;
     setOutbox((o) => o.map((m) => (m.id === id ? { ...m, state: "queued", error: undefined } : m)));
   }, []);
 
   useEffect(() => {
-    if (sending.current) return;
+    if (sending.current || gone) return;
     if (outbox.some((m) => m.state === "failed")) return;
     const next = outbox.find((m) => m.state === "queued");
     if (!next) return;
@@ -193,11 +222,19 @@ export function ConversationChat({
         stored.current.delete(next.id);
         setOutbox((o) => o.filter((m) => m.id !== next.id));
       } catch (err) {
+        const roomGone = isRoomGone(err) && resolvedId !== undefined;
         setOutbox((o) =>
           o.map((m) =>
-            m.id === next.id ? { ...m, state: "failed", error: formatApiError(err) } : m,
+            m.id === next.id
+              ? {
+                  ...m,
+                  state: "failed",
+                  error: roomGone ? `${ROOM_DELETED_TITLE}. ${roomDeletedLine(true)}` : formatApiError(err),
+                }
+              : m,
           ),
         );
+        if (roomGone && resolvedId) roomWentAway(resolvedId, true);
       } finally {
         sending.current = false;
       }
@@ -213,6 +250,8 @@ export function ConversationChat({
     settled,
     messages.length,
     pick,
+    gone,
+    roomWentAway,
   ]);
 
   const header = (
@@ -251,6 +290,21 @@ export function ConversationChat({
         {header}
         <div className="grid min-h-0 flex-1 place-items-center py-12">
           <ProjectLoader label="loading conversation…" />
+        </div>
+      </div>
+    );
+  }
+
+  if (gone) {
+    return (
+      <div className="flex h-full min-h-0 flex-col" data-testid="conversation-gone">
+        {header}
+        <div className="grid min-h-0 flex-1 place-items-center px-4 py-12">
+          <EmptyState
+            title={ROOM_DELETED_TITLE}
+            message={roomDeletedLine(outbox.some((m) => m.state === "failed"))}
+            {...(onNew ? { action: { label: "New conversation", onClick: onNew, icon: "plus" as const } } : {})}
+          />
         </div>
       </div>
     );

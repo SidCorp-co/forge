@@ -11,3 +11,7 @@ export function roomRefusal(
 ): HTTPException {
   return new HTTPException(status, { message: sentence, cause: { code, details } });
 }
+
+export function roomGone(conversationId: string): HTTPException {
+  return roomRefusal(404, 'CONVERSATION_GONE', 'This room no longer exists.', { conversationId });
+}

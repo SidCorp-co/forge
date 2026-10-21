@@ -135,3 +135,25 @@ describe("the action queue (ISS-1217)", () => {
     for (const figure of parts.slice(2)) expect(figure).toHaveClass("order-2", "sm:order-none");
   });
 });
+
+// ISS-1229 r28, judge-80: a row of projects that have never run read "oldest never ran".
+describe("a row whose projects have never run", () => {
+  const project = (id: string, lastIssueRunAt: string | null) => ({ id, slug: id, name: id, backlog: 2, lastIssueRunAt });
+
+  it('says "none has run yet" where an oldest age would stand', () => {
+    render(
+      <ActionQueue nowMs={NOW} pulse={pulse({ neverRanProjects: { total: 2, shown: [project("a", null), project("b", null)] } })} />,
+    );
+    expect(screen.getByText("none has run yet")).toBeInTheDocument();
+    expect(screen.queryByText(/never ran/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /, none has run yet — open the list$/ })).toBeInTheDocument();
+  });
+
+  it("keeps the oldest age for a row whose projects have run", () => {
+    render(
+      <ActionQueue nowMs={NOW} pulse={pulse({ silentProjects: { total: 1, shown: [project("a", "2026-09-20T14:30:00.000Z")] } })} />,
+    );
+    expect(screen.getByText("oldest 3d")).toBeInTheDocument();
+  });
+});
+

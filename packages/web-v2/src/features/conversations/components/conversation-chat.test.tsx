@@ -6,7 +6,9 @@
 
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ApiError } from "@/lib/api/client";
 import type { ConversationDetail } from "../types";
 
 expect.extend(matchers);
@@ -27,6 +29,8 @@ const stop = vi.fn();
 let room: ConversationDetail | undefined;
 let progress: { entry: string; replaced?: boolean } | null = null;
 let sendPending = false;
+let roomError: unknown = null;
+const toast = vi.fn();
 
 function detail(over: Partial<ConversationDetail> = {}): ConversationDetail {
   return {
@@ -61,9 +65,13 @@ vi.mock("@/features/projects/hooks", () => ({
 }));
 
 vi.mock("./conversation-members", () => ({ ConversationMembers: () => null }));
+vi.mock("@/providers/toast-provider", () => ({ useToast: () => ({ toast }) }));
 
 vi.mock("../hooks", () => ({
-  useConversation: () => ({ data: room, isLoading: false, isError: false, isSuccess: true }),
+  useConversation: () =>
+    roomError
+      ? { data: undefined, isLoading: false, isError: true, isSuccess: false, error: roomError }
+      : { data: room, isLoading: false, isError: false, isSuccess: true },
   useAcceptedMessages: () => ({}),
   useConversationProgress: () => progress,
   useWithdrawnDrafts: () => ({}),
@@ -87,6 +95,8 @@ beforeEach(() => {
   room = detail();
   progress = null;
   sendPending = false;
+  roomError = null;
+  toast.mockClear();
 });
 
 function fileOf(name: string, type: string): File {
@@ -95,9 +105,16 @@ function fileOf(name: string, type: string): File {
   return f;
 }
 
-function open() {
-  render(<ConversationChat projectId="p1" conversationId="c1" />);
+function open(onRoomGone?: (id: string) => void) {
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <ConversationChat projectId="p1" conversationId="c1" {...(onRoomGone ? { onRoomGone } : {})} />
+    </QueryClientProvider>,
+  );
 }
+
+const roomGone = () =>
+  new ApiError(404, "This room no longer exists.", "CONVERSATION_GONE", { conversationId: "c1" });
 
 describe("the header", () => {
   it("no longer claims every room reads the project and not the repository", () => {
@@ -205,5 +222,48 @@ describe("stopping an answer", () => {
     open();
     fireEvent.click(screen.getByLabelText("Stop answering"));
     expect(stop).toHaveBeenCalledWith("c1");
+  });
+});
+
+// ISS-1229 r28, judge-80: another person deleted the open room, and Enter showed "Couldn't send.
+// Conversation not found. Try again" — a retry that could only meet the same refusal — while the room
+// stayed open and listed.
+describe("a room deleted while it is open", () => {
+  it("says it was deleted and the message was not sent, offers no Try again, and hands back to the list", async () => {
+    send.mockRejectedValueOnce(roomGone());
+    const backToList = vi.fn();
+    open(backToList);
+    fireEvent.change(screen.getByLabelText("Message"), { target: { value: "are we still on?" } });
+    fireEvent.click(screen.getByLabelText("Send message"));
+
+    await waitFor(() => expect(backToList).toHaveBeenCalledWith("c1"));
+    expect(toast).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "This room was deleted",
+        description: expect.stringMatching(/your message was not sent/),
+      }),
+    );
+    expect(screen.getByTestId("conversation-gone")).toHaveTextContent("This room was deleted");
+    expect(screen.queryByText("Try again")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Conversation not found/)).not.toBeInTheDocument();
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+
+  it("hands back to the list when reading it again finds it gone", async () => {
+    roomError = roomGone();
+    const backToList = vi.fn();
+    open(backToList);
+    await waitFor(() => expect(backToList).toHaveBeenCalledWith("c1"));
+    expect(toast).toHaveBeenCalledWith(expect.objectContaining({ title: "This room was deleted" }));
+    expect(screen.queryByText("Couldn't load this conversation")).not.toBeInTheDocument();
+  });
+
+  it("still offers Try again for a send that failed for any other reason", async () => {
+    send.mockRejectedValueOnce(new Error("network"));
+    open();
+    fireEvent.change(screen.getByLabelText("Message"), { target: { value: "hello" } });
+    fireEvent.click(screen.getByLabelText("Send message"));
+    expect(await screen.findByText("Try again")).toBeInTheDocument();
+    expect(toast).not.toHaveBeenCalled();
   });
 });

@@ -11,6 +11,7 @@
 // project, so browsing the project list leaves no empty rooms behind it.
 
 import { personChoice } from "@forge/contracts/person-name";
+import { orderPeople } from "@/lib/people/order-people";
 import { useState } from "react";
 import { useAuth } from "@/providers/auth-provider";
 import { Button, Checkbox, ErrorState, Icon, Select, Spinner } from "@/design";
@@ -175,7 +176,9 @@ function Extras({
   const raw = query.data;
   // The opener is in the room by opening it: listed once, as "You", and never offered as someone
   // else to add (ISS-1229 r25, judge-72).
-  const data = raw ? { ...raw, people: raw.people.filter((p) => p.userId !== viewerId) } : raw;
+  const data = raw
+    ? { ...raw, people: orderPeople(raw.people.filter((p) => p.userId !== viewerId), viewerId) }
+    : raw;
   if (!data || (data.people.length === 0 && data.handles.length === 0)) {
     return (
       <p role="status" data-testid="start-candidates-empty" className="fg-body-sm text-subtle">

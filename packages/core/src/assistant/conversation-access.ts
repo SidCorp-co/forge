@@ -5,17 +5,13 @@
 // routers ask the same ones rather than each keeping a copy (ISS-1011).
 
 import { eq } from 'drizzle-orm';
-import { HTTPException } from 'hono/http-exception';
 import type { Executor } from '../conversations/db-executor.js';
 import { listParticipants } from '../conversations/participants.js';
-import { roomRefusal } from '../conversations/room-refusal.js';
+import { roomGone, roomRefusal } from '../conversations/room-refusal.js';
 import { assertConversationReadable, assertConversationWritable } from '../conversations/scope.js';
 import { type ConversationRow, getConversation } from '../conversations/store.js';
 import { db as defaultDb } from '../db/client.js';
 import { conversations } from '../db/schema-conversations.js';
-
-const notFound = (message: string) =>
-  new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
 /**
  * A one-to-one room is read by the people IN it, whatever roles its scope would grant.
@@ -62,7 +58,7 @@ export async function readableConversation(
   userId: string | null | undefined,
 ): Promise<ConversationRow> {
   const row = await getConversation(id);
-  if (!row) throw notFound('conversation not found');
+  if (!row) throw roomGone(id);
   await assertConversationReadable(row.id, userId);
   await assertInTheRoom(row, userId);
   return row;
@@ -72,7 +68,7 @@ export async function readableConversation(
  *  its opener's and its organization admins' to change, whether or not they are in it (ISS-1229 r23). */
 export async function writableConversation(id: string, userId: string): Promise<ConversationRow> {
   const row = await getConversation(id);
-  if (!row) throw notFound('conversation not found');
+  if (!row) throw roomGone(id);
   const scope = await assertConversationWritable(row.id, userId);
   if (scope.length > 0) await assertInTheRoom(row, userId);
   return row;
@@ -96,7 +92,7 @@ export async function withMembershipLock<T>(
       .for('update')
       .limit(1);
     const row = await getConversation(id, tx);
-    if (!row) throw notFound('conversation not found');
+    if (!row) throw roomGone(id);
     const scope = await assertConversationWritable(row.id, userId, tx);
     await assertMembershipActor(row, userId, tx);
     return run(tx, row, scope);

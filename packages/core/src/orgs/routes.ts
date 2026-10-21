@@ -53,6 +53,7 @@ import {
 } from './routes-reference.js';
 import {
   deleteOrganization,
+  LAST_OWNER_REFUSAL,
   listOrgMembers,
   listOrgsForUser,
   PERSONAL_WORKSPACE_REFUSAL,
@@ -422,7 +423,7 @@ orgRoutes.patch(
           .from(organizationMembers)
           .where(and(eq(organizationMembers.orgId, orgId), eq(organizationMembers.role, 'owner')));
         if (Number(ownerCount?.n ?? 0) <= 1) {
-          throw conflict('org must keep at least one owner', 'LAST_OWNER');
+          throw conflict(LAST_OWNER_REFUSAL, 'LAST_OWNER');
         }
       }
     }
@@ -479,7 +480,7 @@ orgRoutes.delete(
         .from(organizationMembers)
         .where(and(eq(organizationMembers.orgId, orgId), eq(organizationMembers.role, 'owner')));
       if (Number(ownerCount?.n ?? 0) <= 1) {
-        throw conflict('org must keep at least one owner', 'LAST_OWNER');
+        throw conflict(LAST_OWNER_REFUSAL, 'LAST_OWNER');
       }
     }
 

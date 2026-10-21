@@ -8,7 +8,24 @@
 
 import type { ReactNode } from "react";
 import { SlideOver } from "@/design/patterns/slide-over";
+import { Banner } from "@/design/primitives/banner";
 import { Button } from "@/design/primitives/button";
+
+export interface PanelFailureView {
+  title: string;
+  description: string;
+}
+
+export function PanelFailure({ failure }: { failure: PanelFailureView }) {
+  return (
+    <div role="alert" data-testid="panel-failure">
+      <Banner tone="danger">
+        <span className="block font-medium">{failure.title}</span>
+        <span className="block">{failure.description}</span>
+      </Banner>
+    </div>
+  );
+}
 
 export interface ConfirmDialogProps {
   open: boolean;
@@ -20,6 +37,8 @@ export interface ConfirmDialogProps {
   /** `danger` renders a red confirm button for destructive actions. */
   tone?: "danger" | "default";
   loading?: boolean;
+  /** A refusal is told inside the panel, never in a toast drawn over it (ISS-1229 r28). */
+  failure?: PanelFailureView | null;
   onConfirm: () => void;
   onClose: () => void;
 }
@@ -32,6 +51,7 @@ export function ConfirmDialog({
   cancelLabel = "Cancel",
   tone = "default",
   loading = false,
+  failure = null,
   onConfirm,
   onClose,
 }: ConfirmDialogProps) {
@@ -39,6 +59,7 @@ export function ConfirmDialog({
     <SlideOver open={open} onClose={onClose} title={title} width={420}>
       <div className="flex h-full flex-col gap-4">
         <p className="fg-body-sm text-fg">{message}</p>
+        {failure && <PanelFailure failure={failure} />}
         <div className="mt-auto flex items-center justify-end gap-2.5 pt-2">
           <Button type="button" variant="ghost" onClick={onClose} disabled={loading}>
             {cancelLabel}

@@ -247,3 +247,43 @@ describe("a member a room cannot lose", () => {
     expect(take("Take yourself out of the room").getAttribute("aria-disabled")).toBeNull();
   });
 });
+
+// ISS-1229 r28, judge-80: the people list followed the order rows arrived in, putting "the second"
+// above "You" and "the first" below; and the reason beside a take-out control was set in the code
+// face on one 980px line out of the panel.
+describe("the order of a room's people", () => {
+  const room = { shape: "group" as const, scopeProjects: [{ id: "p1", name: "Billing", slug: "billing" }] };
+  const row = (id: string, userId: string, displayName: string, addedAt: string) => ({
+    id, kind: "person" as const, userId, projectId: null, label: null, displayName, reachable: null, addedAt,
+  });
+
+  it("leads with You, then names in order, then the unnamed by when each was added", () => {
+    const participants = [
+      row("p2", "u2", "Another member", "2026-10-01T09:00:20Z"),
+      row("pz", "uz", "Zed", "2026-10-01T09:00:00Z"),
+      row("pm", "me", "Another member", "2026-10-01T09:00:30Z"),
+      row("p1", "u1", "Another member", "2026-10-01T09:00:10Z"),
+      row("pa", "ua", "An", "2026-10-01T09:00:40Z"),
+    ];
+    render(<ConversationMembers conversationId="c1" room={{ ...room, participants }} canChange open onClose={() => {}} />);
+    const names = screen.getAllByTestId("member-row-person").map((r) => r.textContent ?? "");
+    expect(names[0]).toMatch(/^Y?You/);
+    expect(names[1]).toContain("An");
+    expect(names[2]).toContain("Zed");
+    expect(names[3]).toMatch(/Another member \(added .*, the first\)/);
+    expect(names[4]).toMatch(/Another member \(added .*, the second\)/);
+  });
+
+  it("sets a take-out control's reason in the text face, wrapped", () => {
+    render(
+      <ConversationMembers conversationId="c1" room={{ ...room, participants: [row("pm", "me", "Lan", "2026-10-01T09:00:00Z")] }} canChange open onClose={() => {}} />,
+    );
+    fireEvent.focus(screen.getByRole("button", { name: "Take yourself out of the room" }));
+    const tip = screen.getByRole("tooltip");
+    expect(tip.className).toContain("font-sans");
+    expect(tip.className).not.toContain("font-mono");
+    // Wrapped at the multiline cap rather than held to one line (jsdom measures no width to cap).
+    expect(tip.className).toContain("text-left");
+    expect(tip.className).toContain("whitespace-normal");
+  });
+});

@@ -4,7 +4,7 @@ import { useState } from "react";
 import {
   SectionTitle,
 } from "@/design";
-import { actionQueue, ageText } from "../derive";
+import { actionQueue, oldestText } from "../derive";
 import type { ActionKey, ActionOwner } from "../derive";
 import type { PulseResponse } from "../types";
 import { RecordPanel } from "./record-panel";
@@ -40,7 +40,7 @@ export function ActionQueue({ pulse, nowMs }: ActionQueueProps) {
                 type="button"
                 onClick={() => setOpen(open === row.key ? null : row.key)}
                 aria-label={`${row.label}: ${row.count}${
-                  row.oldestSeconds === null ? "" : `, oldest ${ageText(row.oldestSeconds)}`
+                  oldestText(row) === null ? "" : `, ${oldestText(row)}`
                 } — open the list`}
                 className="flex w-full flex-wrap items-baseline gap-x-3 gap-y-0.5 rounded-md px-2 py-1.5 text-left hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
               >
@@ -56,9 +56,9 @@ export function ActionQueue({ pulse, nowMs }: ActionQueueProps) {
                 <span className="fg-body-sm order-2 shrink-0 text-subtle sm:order-none">
                   {OWNER_TEXT[row.owner]}
                 </span>
-                {row.oldestSeconds === null ? null : (
-                  <span className="fg-body-sm order-2 shrink-0 tabular-nums text-subtle sm:order-none">
-                    oldest {ageText(row.oldestSeconds)}
+                {oldestText(row) === null ? null : (
+                  <span className="fg-body-sm order-2 shrink-0 tabular-nums text-subtle sm:order-none" data-queue-oldest>
+                    {oldestText(row)}
                   </span>
                 )}
               </button>

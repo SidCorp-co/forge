@@ -110,6 +110,12 @@ export function ConversationPanel({
       onConversationActive={settledIn(mount)}
       onOpenHistory={() => setView("history")}
       onNew={startNew}
+      onRoomGone={(id) => {
+        // A room deleted while open hands the reader back to the list of rooms (ISS-1229 r28).
+        if (openIdRef.current !== id) return;
+        show(undefined);
+        setView("history");
+      }}
       emptyBody={openId === undefined ? list(true) : undefined}
       {...(onClose ? { onClose } : {})}
     />

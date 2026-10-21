@@ -172,6 +172,7 @@ export const MEMBER_REFUSED = {
   HANDLE_NOT_ON_PROJECT: 'the agent is not a member of the project it was named for',
   PERSON_OUT_OF_SCOPE:
     'the person holds no role on a project the room is about, and could not read it',
+  PERSON_NOT_FOUND: 'no account has the id given for the person',
 } as const;
 
 export const HANDLE_FORBIDDEN = {
@@ -179,7 +180,7 @@ export const HANDLE_FORBIDDEN = {
     'adding the agent would make the room about a project the caller holds less than member on',
 } as const;
 
-const noRoom = fail('NOT_FOUND', 'there is no such room');
+const noRoom = fail('CONVERSATION_GONE', 'the room no longer exists, or never did');
 const roomRefused = fail(ROOM_FORBIDDEN);
 const notMember = fail({
   FORBIDDEN: 'the caller holds too little of a role on the project',

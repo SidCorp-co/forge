@@ -348,7 +348,10 @@ export function IssuesListView({
     statusParam?.length === 1 && FINISHED_CUTS.includes(statusParam[0]) ? statusParam[0] : "";
   const pageCount = Math.max(1, Math.ceil(total / ISSUES_PAGE_SIZE));
 
-  const groups = useMemo(() => groupRows(rows, groupBy, viewerId), [rows, groupBy, viewerId]);
+  const groups = useMemo(
+    () => groupRows(rows, groupBy, viewerId, membersQ.data),
+    [rows, groupBy, viewerId, membersQ.data],
+  );
   // The rollup is read only while the list is grouped by module: it supplies the project-wide
   // counts on each group's header, which one page of rows cannot.
   const rollupQ = useModuleRollup(groupBy === "module" ? projectId : undefined);

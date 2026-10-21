@@ -7,6 +7,7 @@ import {
   IconButton,
   PageTitle,
   SlideOver,
+  useMediaQuery,
 } from "@/design";
 import { useActiveOrg } from "@/features/orgs/active-org";
 import { useOrgScopedProjects, useProjects } from "@/features/projects/hooks";
@@ -61,6 +62,7 @@ export function ConversationsScreen() {
     syncTabs: false,
   });
   const [mobileHistoryOpen, setMobileHistoryOpen] = useState(false);
+  const wide = useMediaQuery("(min-width: 768px)");
   const [confirming, setConfirming] = useState<ListedConversation | null>(null);
 
   const rename = useRenameConversation();
@@ -172,6 +174,11 @@ export function ConversationsScreen() {
               onConversationActive={(id) =>
                 setSelection((s) => (s ? { ...s, conversationId: id } : s))
               }
+              onRoomGone={(id) => {
+                // Back to the room list: the sidebar beside it, or the drawer on a phone (ISS-1229 r28).
+                dropIfOpen(id);
+                if (!wide) setMobileHistoryOpen(true);
+              }}
             />
           ) : (
             <StartConversation onStarted={openStarted} />

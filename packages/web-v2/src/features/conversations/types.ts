@@ -136,6 +136,7 @@ export interface PersonCandidate {
   userId: string;
   displayName: string | null;
   email: string;
+  addedAt: string;
 }
 
 export interface HandleCandidate {

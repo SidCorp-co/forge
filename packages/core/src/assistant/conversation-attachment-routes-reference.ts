@@ -13,7 +13,7 @@ export const uploadTicketSchema = z.object({
 
 export const stoppedSchema = z.object({ conversationId: z.string(), stopped: z.number() });
 
-const noRoom = fail('NOT_FOUND', 'there is no such room');
+const noRoom = fail('CONVERSATION_GONE', 'the room no longer exists, or never did');
 const roomRefused = fail(ROOM_FORBIDDEN);
 
 export const mintRoomUpload = describeOperation({
@@ -36,7 +36,10 @@ export const downloadRoomAttachment = describeOperation({
   responses: {
     200: raw('*/*', 'The file, with the content type it was stored under'),
     403: roomRefused,
-    404: fail('NOT_FOUND', 'there is no such room, or no such attachment on it'),
+    404: fail({
+      CONVERSATION_GONE: 'the room no longer exists, or never did',
+      NOT_FOUND: 'there is no such attachment on the room',
+    }),
   },
 });
 

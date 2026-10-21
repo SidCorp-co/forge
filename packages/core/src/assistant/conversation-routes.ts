@@ -31,7 +31,7 @@ import {
 } from '../conversations/membership.js';
 import { addHandle, addPerson, listParticipants } from '../conversations/participants.js';
 import { PresenceValidationError, validateRoomPresence } from '../conversations/presence.js';
-import { roomRefusal } from '../conversations/room-refusal.js';
+import { roomGone, roomRefusal } from '../conversations/room-refusal.js';
 import { derivedScope } from '../conversations/scope.js';
 import { nameSpeakers } from '../conversations/speaker-names.js';
 import {
@@ -158,9 +158,6 @@ function roomNameFrom(content: string, attached: readonly { name: string }[]): s
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
-
-const notFound = (message: string) =>
-  new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
 export const conversationRoutes = new Hono<{ Variables: AuthVars }>();
 conversationRoutes.use('*', requireAuth(), assertEmailVerified());
@@ -298,7 +295,7 @@ conversationRoutes.post(
       }
       const scope = await derivedScope(room.id, tx);
       for (const person of people) {
-        await assertPersonReachesScope(person, scope, tx);
+        await assertPersonReachesScope(room.id, person, scope, tx);
         await addPerson({ conversationId: room.id, userId: person, actorUserId: userId, tx });
       }
       await settleShape(tx, room.id);
@@ -376,7 +373,7 @@ conversationRoutes.patch(
     if (title !== undefined) updated = await renameConversation(id, title);
     if (archived !== undefined) updated = await setConversationArchived(id, archived);
     if (roomPresence !== undefined) updated = await setConversationPresence(id, roomPresence);
-    if (!updated) throw notFound('conversation not found');
+    if (!updated) throw roomGone(id);
     return c.json(answer(conversationSchema, updated));
   },
 );

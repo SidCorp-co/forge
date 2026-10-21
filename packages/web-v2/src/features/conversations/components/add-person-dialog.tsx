@@ -12,6 +12,7 @@ import { personChoice } from "@forge/contracts/person-name";
 import { useState } from "react";
 import { Avatar, Banner, Button, ErrorState, Icon, SlideOver, Spinner } from "@/design";
 import { formatApiError } from "@/lib/api/error";
+import { orderPeople } from "@/lib/people/order-people";
 import { useAddPerson, useConversationCandidates } from "../hooks";
 import { initialsOf, personAdditionClaims } from "../membership";
 import type { ConversationMembership, PersonCandidate } from "../types";
@@ -135,7 +136,8 @@ function CandidateList({
       </div>
     );
   }
-  const people = query.data?.people ?? [];
+  // Named people by name, then the unnamed by when each joined, as every list of people (ISS-1229 r28).
+  const people = orderPeople(query.data?.people ?? [], null);
   if (people.length === 0) {
     return (
       <p role="status" data-testid="person-candidates-empty" className="fg-body-sm text-muted">

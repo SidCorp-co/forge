@@ -35,8 +35,8 @@ describe("the people a room starts with", () => {
   it('lists the reader once, as "You", and another unnamed member as another member', () => {
     candidates = {
       people: [
-        { userId: "me", displayName: null, email: "me@example.com" },
-        { userId: "u2", displayName: null, email: "mai@example.com" },
+        { userId: "me", displayName: null, email: "me@example.com", addedAt: "2026-10-01T09:00:00.000Z" },
+        { userId: "u2", displayName: null, email: "mai@example.com", addedAt: "2026-10-02T09:00:00.000Z" },
       ],
       handles: [],
     };
@@ -44,5 +44,24 @@ describe("the people a room starts with", () => {
     const labels = [...document.querySelectorAll("[data-person-label]")].map((l) => l.textContent);
     expect(labels).toEqual(["You", "Another member"]);
     expect(screen.queryByText("me@example.com")).toBeNull();
+  });
+
+  // ISS-1229 r28, judge-80: the people offered followed address order, so an unnamed person joined
+  // last could lead the list and a named one trail it.
+  it("offers the named by name, then the unnamed by when each joined", () => {
+    candidates = {
+      people: [
+        { userId: "u-late", displayName: null, email: "a-late@example.com", addedAt: "2026-10-03T09:00:00.000Z" },
+        { userId: "u-zed", displayName: "Zed", email: "b-zed@example.com", addedAt: "2026-10-04T09:00:00.000Z" },
+        { userId: "u-early", displayName: null, email: "c-early@example.com", addedAt: "2026-10-01T09:00:00.000Z" },
+        { userId: "u-an", displayName: "An", email: "d-an@example.com", addedAt: "2026-10-05T09:00:00.000Z" },
+      ],
+      handles: [],
+    };
+    pickTheProject();
+    const offered = [...document.querySelectorAll("[data-person-detail]")].map((l) => l.textContent);
+    expect(offered).toEqual(["d-an@example.com", "b-zed@example.com", "c-early@example.com", "a-late@example.com"]);
+    const labels = [...document.querySelectorAll("[data-person-label]")].map((l) => l.textContent);
+    expect(labels[0]).toBe("You");
   });
 });

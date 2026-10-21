@@ -26,6 +26,9 @@ export interface OrgMemberRow {
   email: string;
   /** The name the member gave, or null where they gave none. */
   displayName: string | null;
+  handle?: string | null;
+  kind: "person" | "agent";
+  projects: { id: string; name: string }[];
   role: OrgRole;
   /** Assigned working lens(es) — empty = default (product/non-technical voice). */
   lenses: MemberLens[];
