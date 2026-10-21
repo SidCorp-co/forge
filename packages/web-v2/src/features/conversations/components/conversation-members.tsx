@@ -233,6 +233,7 @@ function MemberRow({
           <span className="fg-caption rounded bg-surface px-1.5 py-0.5 text-muted">can't act</span>
         </Tooltip>
       )}
+      {/* A held control stays focusable, so its reason reaches a keyboard reader too (r27 review F1). */}
       {canChange && (
         <Tooltip label={held ?? removalClaim(member, room, viewerId)}>
           <IconButton
@@ -240,8 +241,10 @@ function MemberRow({
             size="sm"
             aria-label={`Take ${member.kind === "person" && viewerId && member.userId === viewerId ? "yourself" : memberName(member, viewerId, "inside", room)} out of the room`}
             aria-description={held ?? undefined}
-            disabled={busy || held !== null}
-            onClick={onRemove}
+            aria-disabled={held !== null || undefined}
+            className={held ? "cursor-not-allowed opacity-50" : undefined}
+            disabled={busy}
+            onClick={held ? undefined : onRemove}
           />
         </Tooltip>
       )}

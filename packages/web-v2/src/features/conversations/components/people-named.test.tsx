@@ -211,9 +211,14 @@ describe("a member a room cannot lose", () => {
     render(
       <ConversationMembers conversationId="c1" room={{ shape: "direct", scopeProjects: [project], participants: [agent("h1"), me] }} canChange open onClose={() => {}} />,
     );
-    expect(take("Take @ops-h1 out of the room").disabled).toBe(true);
+    for (const name of ["Take @ops-h1 out of the room", "Take yourself out of the room"]) {
+      expect(take(name).getAttribute("aria-disabled")).toBe("true");
+      // Focusable, so a keyboard reader reaches the reason; pressing it asks nothing and removes nobody.
+      expect(take(name).disabled).toBe(false);
+      fireEvent.click(take(name));
+    }
+    expect(screen.queryByText(/out of this room\?$/)).toBeNull();
     expect(take("Take @ops-h1 out of the room").getAttribute("aria-description")).toMatch(/^This room has one agent left/);
-    expect(take("Take yourself out of the room").disabled).toBe(true);
     expect(take("Take yourself out of the room").getAttribute("aria-description")).toMatch(/^This room is a one-to-one room with one person left/);
   });
 
@@ -222,14 +227,14 @@ describe("a member a room cannot lose", () => {
     render(
       <ConversationMembers conversationId="c1" room={{ shape: "direct", scopeProjects: [project], participants: [agent("h1"), agent("h2"), me, other] }} canChange open onClose={() => {}} />,
     );
-    expect(take("Take @ops-h1 out of the room").disabled).toBe(false);
-    expect(take("Take yourself out of the room").disabled).toBe(false);
+    expect(take("Take @ops-h1 out of the room").getAttribute("aria-disabled")).toBeNull();
+    expect(take("Take yourself out of the room").getAttribute("aria-disabled")).toBeNull();
   });
 
   it("offers the last person of a group room, which its agents still reach", () => {
     render(
       <ConversationMembers conversationId="c1" room={{ shape: "group", scopeProjects: [project], participants: [agent("h1"), agent("h2"), me] }} canChange open onClose={() => {}} />,
     );
-    expect(take("Take yourself out of the room").disabled).toBe(false);
+    expect(take("Take yourself out of the room").getAttribute("aria-disabled")).toBeNull();
   });
 });

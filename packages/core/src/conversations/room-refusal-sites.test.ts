@@ -27,7 +27,9 @@ function literals(source: string): Array<{ text: string; line: number }> {
   return out;
 }
 
-const ID_INTERPOLATED = /\$\{[^}]*(?:[a-z]Id|\.id|\bid)\b[^}]*\}/;
+/** An id, a list of ids (`scope`, `projectIds`) or a joined list of anything (r27 review F2). */
+const ID_INTERPOLATED =
+  /\$\{[^}]*(?:[a-z]Ids?\b|\.ids?\b|\bids?\b|\bscope\b(?!\.length)|\.join\()[^}]*\}/;
 /** Literals that are not sentences: a SQL fragment and a URL a client follows. */
 const NOT_A_SENTENCE = /^`(?:count\(|\/api\/)/;
 
