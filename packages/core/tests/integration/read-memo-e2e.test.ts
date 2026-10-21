@@ -18,12 +18,20 @@ import {
 // the page's own reads queued behind them. A read request now asks each of those once.
 // @direct-test-of packages/core/src/development/needs-you-viewer.ts
 // @direct-test-of packages/core/src/development/needs-you-fold.ts
+// @direct-test-of packages/core/src/db/read-memo.ts
+// @direct-test-of packages/core/src/questions/needs-you-read.ts
+// @direct-test-of packages/core/src/suggestions/waiting-read.ts
+// @direct-test-of packages/core/src/mockups/read.ts
+// @direct-test-of packages/core/src/previews/read.ts
+// @direct-test-of packages/core/src/masters/read.ts
+// @direct-test-of packages/core/src/workflows/store.ts
+// @direct-test-of packages/core/src/workflows/health-read.ts
+// @direct-test-of packages/core/src/workflows/design-repin-service.ts
 
-// Amnesty (ISS-495, REQ-41 BC-10, BC-12): the requirement standing every Needs-you read takes now
-// reads its stale design follows and its open merge-or-drop question beside its rows, one statement
-// each per project, which took the measured read from at most 60 to 61 a project. Ends when those
-// two reads join the standing's first wave or the request memo, and the bound returns to 60.
-const PER_PROJECT_BOUND = 61;
+// The rows each project's Needs you read sends once (its two open-question reads, the proposed
+// suggestions and mockups, the approvable previews) are read for every project in one statement each
+// (`needs-you-fold.ts:primeNeedsYouAcross`), so they cost no statement a project: 57, as measured.
+const PER_PROJECT_BOUND = 57;
 
 const queriesOf = (headers: Headers): number => {
   const raw = headers.get('server-timing') ?? '';

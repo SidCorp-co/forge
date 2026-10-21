@@ -1,3 +1,4 @@
+import { isDecisionAct } from '@forge/contracts/needs-you-decisions';
 import type {
   ReleaseAttemptStage,
   ReleaseAttentionGroup,
@@ -10,7 +11,6 @@ import type {
   ReleaseState,
   ReleaseWaitingKind,
 } from '@forge/contracts/releases';
-import { isDecisionAct } from '@forge/contracts/needs-you-decisions';
 import { type BcVerdict, criteriaCoverageOf } from '@forge/contracts/requirements';
 import { type Said, say } from '@forge/contracts/said';
 import {

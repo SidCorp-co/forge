@@ -198,8 +198,9 @@ describe('a draft release reads its gate as words', () => {
   it('waits on an admin to cut it once nothing holds it, and offers the cut to an admin only', async () => {
     await fx.insertIssue('awaiting_release', { section: 'Added', userFacing: 'A new thing' });
     const owner = await detail('owner', '0.1.0');
+    // the cut waits on the admin, but it is no decision, so off Needs you (REQ-48 BC-11)
     expect(owner).toMatchObject({
-      attentionGroup: 'needs_you',
+      attentionGroup: 'waiting',
       waitingOn: { kind: 'you', act: 'cut 0.1.0' },
       can: { cut: true },
     });

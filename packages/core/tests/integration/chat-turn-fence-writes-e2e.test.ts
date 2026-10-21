@@ -218,10 +218,9 @@ describe("every write a turn makes is held to the asker's own role", () => {
   it('refuses the steward note write from chat: a viewer at its door, an owner at the gate', async () => {
     const { agreementGate } = await import('../../src/assistant/agreement/turn-gate.js');
     const before = await count('steward_notes');
-    const viewer = await w.tools('viewer').execute(
-      'forge_steward_note',
-      JSON.stringify(stewardNoteWrite()),
-    );
+    const viewer = await w
+      .tools('viewer')
+      .execute('forge_steward_note', JSON.stringify(stewardNoteWrite()));
     expect(viewer.isError, w.text(viewer)).toBe(true);
     expect(w.text(viewer)).toContain('STEWARD_NOTE_FORBIDDEN');
     const owner = agreementGate(w.tools('asker'), {
@@ -235,7 +234,12 @@ describe("every write a turn makes is held to the asker's own role", () => {
     expect(w.text(write)).toContain('CHAT_WRITE_REFUSED');
     const read = await owner.execute(
       'forge_steward_note',
-      JSON.stringify({ projectId: w.home.id, action: 'get', subjectKind: 'requirement', key: 'REQ-1' }),
+      JSON.stringify({
+        projectId: w.home.id,
+        action: 'get',
+        subjectKind: 'requirement',
+        key: 'REQ-1',
+      }),
     );
     expect(w.text(read)).not.toContain('CHAT_WRITE_REFUSED');
     expect(await count('steward_notes')).toBe(before);

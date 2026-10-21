@@ -183,7 +183,10 @@ describe('an item delivered by several issues names every one of them', () => {
 
   it('waits on its first carrier still open, as that issue’s own standing says', async () => {
     const [a] = carriers.map((x) => x.key);
-    expect(await waitingOn(fb)).toMatchObject({ ref: a, act: expect.stringContaining(a) });
+    expect(await waitingOn(fb)).toMatchObject({
+      ref: a,
+      act: expect.stringContaining(a as string),
+    });
   });
 
   it('stays planned while one carrier is open, the others closed or dropped', async () => {
@@ -193,7 +196,7 @@ describe('an item delivered by several issues names every one of them', () => {
     expect((await read(fb)).phase).toBe('planned');
     expect(await waitingOn(fb)).toMatchObject({
       ref: c?.key,
-      act: expect.stringContaining(c?.key),
+      act: expect.stringContaining(c?.key as string),
     });
   });
 

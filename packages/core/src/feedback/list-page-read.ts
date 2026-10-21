@@ -114,7 +114,7 @@ async function summariesOf(
   query: ListQuery,
   withhold: boolean,
   shown: ReturnType<typeof feedbackEgress>['shown'],
-): Promise<{ all: FeedbackSummary[]; noticesBegan: boolean }> {
+): Promise<{ all: FeedbackSummary[]; noticesBegan: string | null }> {
   const about = query.requirement
     ? await feedbackIdsOfRequirement(projectId, query.requirement)
     : null;
