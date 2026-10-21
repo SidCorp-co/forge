@@ -1,0 +1,1 @@
+**The Ask Agent panel stays open once you open it.** Moving between pages, using the app beside it or reloading no longer closes it; only its close control does, so the pin is gone. On a phone, where the panel covers the page, a link in it still shows the page it opens.

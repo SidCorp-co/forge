@@ -1,5 +1,4 @@
 
-import { usePathname } from "@/lib/navigation/router";
 import { createContext, type RefObject, use, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useBrowserValue } from "@/design";
 import { usePersistedState } from "@/lib/utils/use-persisted-state";
@@ -7,19 +6,14 @@ import { type AskAbout, aboutDraft } from "./ask-about";
 import { type ChatTarget, targetInScope } from "./dock-target";
 import { DOCK_SIZE_KEY, type DockSize, settleDockSize } from "./dock-size";
 
-export const DOCK_OPEN_ON_KEY = "web-v2:chat-dock-open-on";
-export const DOCK_PINNED_KEY = "web-v2:chat-dock-pinned";
+/** Whether the dock is open: once opened it stays open across every page and reload until closed (REQ-11 BC-8). */
+export const DOCK_OPEN_KEY = "web-v2:chat-dock-open";
 /** The room this browser last had open, by project: what a reload opens again (dock-target.ts openingTarget). */
 export const DOCK_ROOM_KEY = "web-v2:chat-dock-room";
-/** Marks the panel whose links and actions carry the dock to the page they open; the phone's slide-over has none. */
-export const DOCK_CARRIES_ATTR = "data-chat-dock-carries";
 
 export interface ChatDockApi {
   projectId: string | null;
   open: boolean;
-  /** Pinned, the dock stays open across navigation; unpinned, a new page closes it. */
-  pinned: boolean;
-  setPinned: (pinned: boolean) => void;
   target: ChatTarget | null;
   /** The room this browser last had open in this project, or null. */
   keptRoom: string | null;
@@ -45,10 +39,8 @@ export type DockDoor = () => Promise<ChatTarget | null>;
 const ChatDockContext = createContext<ChatDockApi | null>(null);
 
 export function useChatDockState(projectId: string | null): ChatDockApi {
-  const [openOn, setOpenOn] = usePersistedState<string | null>(DOCK_OPEN_ON_KEY, null, { syncTabs: false });
+  const [open, setOpen] = usePersistedState(DOCK_OPEN_KEY, false, { syncTabs: false });
   const [size, setSize] = useDockSize();
-  const [pinned, setPinnedState] = usePersistedState(DOCK_PINNED_KEY, false, { syncTabs: false });
-  const pathname = usePathname() ?? "";
   const [picked, setPicked] = useState<ChatTarget | null>(null);
   const [rooms, setRooms] = usePersistedState<Record<string, string>>(DOCK_ROOM_KEY, {}, { syncTabs: false });
 
@@ -59,39 +51,6 @@ export function useChatDockState(projectId: string | null): ChatDockApi {
   useEffect(() => {
     if (projectId && openRoom) setRooms((all) => (all[projectId] === openRoom ? all : { ...all, [projectId]: openRoom }));
   }, [projectId, openRoom, setRooms]);
-
-  // a link or action taken inside the docked panel carries it to the page it opens (owner 2026-10-21):
-  // the last click decides, so a click on the page or its menus, or a browser Back, leaves the rule below
-  const [carry, setCarry] = useState(false);
-  useEffect(() => {
-    const mark = (e: Event) => setCarry(e.target instanceof Element && e.target.closest(`[${DOCK_CARRIES_ATTR}]`) !== null);
-    const drop = () => setCarry(false);
-    document.addEventListener("click", mark, true);
-    window.addEventListener("popstate", drop);
-    return () => {
-      document.removeEventListener("click", mark, true);
-      window.removeEventListener("popstate", drop);
-    };
-  }, []);
-
-  // the dock remembers the page it was opened on, so a new page — reached in the app or loaded
-  // afresh — finds it closed unless pinned or carried (REQ-11 BC-8); a query change (a peek opening) is the same page
-  const open = openOn !== null && (pinned || openOn === pathname || carry);
-  useEffect(() => {
-    if (openOn === null || pinned || openOn === pathname) return;
-    setOpenOn(carry ? pathname : null);
-  }, [openOn, pinned, pathname, carry, setOpenOn]);
-  const setOpen = useCallback(
-    (next: boolean) => setOpenOn(next ? pathname : null),
-    [pathname, setOpenOn],
-  );
-  const setPinned = useCallback(
-    (next: boolean) => {
-      setPinnedState(next);
-      if (!next && open) setOpenOn(pathname);
-    },
-    [open, pathname, setOpenOn, setPinnedState],
-  );
 
   const select = useCallback((t: ChatTarget) => {
     setPicked(t);
@@ -124,8 +83,6 @@ export function useChatDockState(projectId: string | null): ChatDockApi {
     () => ({
       projectId,
       open,
-      pinned,
-      setPinned,
       target,
       keptRoom: projectId ? (rooms[projectId] ?? null) : null,
       generation,
@@ -148,7 +105,7 @@ export function useChatDockState(projectId: string | null): ChatDockApi {
         doorRef.current = d;
       },
     }),
-    [projectId, open, pinned, setPinned, target, rooms, generation, size, setSize, show, setOpen, select, follow, askAbout],
+    [projectId, open, target, rooms, generation, size, setSize, show, setOpen, select, follow, askAbout],
   );
 }
 

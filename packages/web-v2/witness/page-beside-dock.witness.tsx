@@ -15,7 +15,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Component, type ReactElement, type ReactNode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { useNavigate } from "@tanstack/react-router";
-import { type ChatDockApi, DOCK_OPEN_ON_KEY, DOCK_PINNED_KEY, useChatDockState } from "@/features/chat-dock/dock";
+import { type ChatDockApi, DOCK_OPEN_KEY, useChatDockState } from "@/features/chat-dock/dock";
 import { DOCK_SIZE_KEY, PAGE_MIN_WIDTH } from "@/features/chat-dock/dock-size";
 import { ChatDock } from "@/features/conversations/components/chat-dock";
 import { ShellTopBar } from "@/features/shell/components/shell-top-bar";
@@ -44,9 +44,8 @@ window.history.replaceState = (data, unused, url) => {
 
 window.localStorage.clear();
 // the shell reads the route, as the workspace layout's does, and each page is reached by navigating to
-// it: the panel is opened on the first page and pinned, so it stays open as the pages change
-window.localStorage.setItem(DOCK_OPEN_ON_KEY, JSON.stringify(PAGE_PATHS[0]));
-window.localStorage.setItem(DOCK_PINNED_KEY, JSON.stringify(true));
+// it: the panel is opened once and stays open as the pages change (REQ-11 BC-8)
+window.localStorage.setItem(DOCK_OPEN_KEY, JSON.stringify(true));
 // a read no fixture seeded stays in flight, as in the vi walking test; the panel's project list is empty
 window.fetch = (input: RequestInfo | URL) =>
   /\/projects(\?|$)/.test(String(input))

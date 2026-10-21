@@ -144,8 +144,6 @@ function Palette() {
 const dock = (target: ChatDockApi["target"]): ChatDockApi => ({
   projectId: P,
   open: true,
-  pinned: false,
-  setPinned: noop,
   target,
   keptRoom: null,
   generation: 0,
