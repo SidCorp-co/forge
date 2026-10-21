@@ -54,13 +54,27 @@ dest="$HOME/.local/bin"
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 trap 'exit 1' INT TERM
+# Every request gives up on a connection that has not opened in connect_limit seconds, or that has
+# gone quiet (nothing received) for stall_limit seconds. A slow download that is still moving is
+# never cut, so no overall limit is set.
+connect_limit=30
+stall_limit=30
 # curl runs outside any pipe, so its own exit status is the one checked. fetch returns 1 when no
-# HTTP answer came back (refused, DNS, timeout, dropped), with $rc and $why keeping what curl said,
-# and 2 when the server answered with an HTTP error, with $said naming the status and its reason.
+# HTTP answer came back (refused, DNS, a limit above reached, dropped), with $rc and $why keeping
+# what failed, and 2 when the server answered with an HTTP error, with $said naming the status and
+# its reason.
 fetch() {
-  if meta=$(curl -sSL -o "$2" -w '%{http_code} %{content_type}' "$1" 2>"$tmp/curl.err"); then :; else
+  if meta=$(curl -sSL --connect-timeout "$connect_limit" --speed-limit 1 --speed-time "$stall_limit" \\
+    -o "$2" -w '%{http_code} %{num_connects} %{content_type}' "$1" 2>"$tmp/curl.err"); then :; else
     rc=$?
     why=$(tr '\\n' ' ' <"$tmp/curl.err" | sed 's/ *$//')
+    # curl exit 28 is one of the limits above: name which one ran out, not curl's wording of it.
+    if [ "$rc" = 28 ]; then
+      case "$(printf '%s' "$meta" | cut -d' ' -f2)" in
+        ''|0) why="no connection opened within $connect_limit s, the longest this install waits for one";;
+        *) why="the connection went quiet: nothing arrived for $stall_limit s, the longest this install waits on one";;
+      esac
+    fi
     return 1
   fi
   status=$(printf '%s' "$meta" | cut -d' ' -f1)
@@ -69,27 +83,35 @@ fetch() {
   # The server's reason: a JSON body's code with its error, or a problem body's code with its
   # detail; else a plain-text body's first line.
   body=$(tr -d '\\r\\n' <"$2" | cut -c1-2000)
-  code=$(printf '%s' "$body" | sed -n 's/.*"code":"\\([^"]*\\)".*/\\1/p')
-  reason=$(printf '%s' "$body" | sed -n 's/.*"error":"\\([^"]*\\)".*/\\1/p')
-  [ -n "$reason" ] || reason=$(printf '%s' "$body" | sed -n 's/.*"detail":"\\([^"]*\\)".*/\\1/p')
+  code=$(jstr code)
+  reason=$(jstr error)
+  [ -n "$reason" ] || reason=$(jstr detail)
   if [ -n "$code" ] && [ -n "$reason" ]; then reason="$code: $reason"; elif [ -n "$code" ]; then reason=$code; fi
   if [ -z "$reason" ]; then
-    case "$(printf '%s' "$meta" | cut -d' ' -f2-)" in
+    case "$(printf '%s' "$meta" | cut -d' ' -f3-)" in
       text/plain*) reason=$(head -n 1 "$2" | tr -d '\\r' | cut -c1-200);;
     esac
   fi
   if [ -n "$reason" ]; then said="with HTTP $status: $reason"; else said="with HTTP $status and gave no reason"; fi
   return 2
 }
+# The string field $1 of the JSON $body, read as a JSON string: an escaped quote does not end it, and
+# an escaped quote, backslash or slash reads back as itself.
+jstr() {
+  printf '%s' "$body" | sed -nE 's/.*"'"$1"'":"(([^"\\\\]|\\\\.)*)".*/\\1/p' | sed -E 's/\\\\(["\\\\/])/\\1/g'
+}
 # The box reached the server, so the answer is the server's to change, not this box's network.
 admin="This box reached $BASE, so its network is not the cause: show this message to your Forge admin."
 # Read what core publishes first: a platform with no build is refused by name, never a bare 404.
 # A build list that could not be read says nothing about the platform, so it is refused as itself.
 list="$BASE$PREFIX/install/latest.json"
+# Said before the first wait, so a slow or silent server never leaves an empty terminal. A refusal
+# carrying what curl or the server said is written with printf: sh's echo may read a backslash in it.
+echo "Reading the forge-runner builds published at $list..."
 got=0; fetch "$list" "$tmp/latest.json" || got=$?
 case "$got" in
-  1) echo "INSTALL_BUILD_LIST_UNREACHABLE: could not read the published build list at $list (curl exit $rc: $why); this box's platform ($target) was not checked and nothing was installed. Check that this box can reach $BASE, then run the install command again." >&2; exit 1;;
-  2) echo "INSTALL_BUILD_LIST_REFUSED: $BASE answered the build list request at $list $said; this box's platform ($target) was not checked and nothing was installed. $admin" >&2; exit 1;;
+  1) printf '%s\\n' "INSTALL_BUILD_LIST_UNREACHABLE: could not read the published build list at $list (curl exit $rc: $why); this box's platform ($target) was not checked and nothing was installed. Check that this box can reach $BASE, then run the install command again." >&2; exit 1;;
+  2) printf '%s\\n' "INSTALL_BUILD_LIST_REFUSED: $BASE answered the build list request at $list $said; this box's platform ($target) was not checked and nothing was installed. $admin" >&2; exit 1;;
 esac
 manifest=$(tr -d ' \\n' <"$tmp/latest.json")
 case "$manifest" in
@@ -108,8 +130,8 @@ echo "Downloading forge-runner ($target)..."
 bin="$BASE$PREFIX/install/bin/$target"
 got=0; fetch "$bin" "$tmp/forge-runner" || got=$?
 case "$got" in
-  1) echo "INSTALL_DOWNLOAD_FAILED: could not download $bin (curl exit $rc: $why); nothing was installed. Check that this box can reach $BASE, then run the install command again." >&2; exit 1;;
-  2) echo "INSTALL_DOWNLOAD_REFUSED: $BASE answered the download of $bin $said; nothing was installed. $admin" >&2; exit 1;;
+  1) printf '%s\\n' "INSTALL_DOWNLOAD_FAILED: could not download $bin (curl exit $rc: $why); nothing was installed. Check that this box can reach $BASE, then run the install command again." >&2; exit 1;;
+  2) printf '%s\\n' "INSTALL_DOWNLOAD_REFUSED: $BASE answered the download of $bin $said; nothing was installed. $admin" >&2; exit 1;;
 esac
 # Refuse by name unless the download matches the sha256 core publishes for this target.
 if command -v sha256sum >/dev/null 2>&1; then got=$(sha256sum "$tmp/forge-runner" | cut -d' ' -f1); else got=$(shasum -a 256 "$tmp/forge-runner" | cut -d' ' -f1); fi
