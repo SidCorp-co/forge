@@ -9,6 +9,19 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.259] - 2026-10-21
+
+Chat panel stays open on the pages its own links open
+
+### Changed
+
+- **A link or action in the chat panel keeps the panel open on the page it opens.** A click elsewhere, or Back, still closes an unpinned panel; on a phone the chat closes so the page shows.
+
+### Fixed
+
+- **The runner install command no longer blames your network when Forge answers with an error.** It names the HTTP status and Forge's reason, such as no release published, and sends you to your Forge admin.
+- **A requirement revision the assistant proposes with a made-up criterion code is refused before its card is shown.** Before, the card was offered and only refused once you pressed Record it.
+
 ## [0.4.0-dev.258] - 2026-10-21
 
 The project dashboard opens on what needs you instead of a chat window
