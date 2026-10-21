@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.265] - 2026-10-21
+
+Feedback to Forge over MCP records its source project and run
+
+### Fixed
+
+- **Feedback to Forge filed over MCP records the project and run it came from.** The project_feedback call shape and the retired agent-report doors are refused by name, naming the right door, and older own reports stay listed.
+
 ## [0.4.0-dev.264] - 2026-10-21
 
 Onboarding asks at most three questions a round and finishes on assumptions

@@ -1,1 +1,0 @@
-**Feedback to Forge filed over MCP records the project and run it came from.** The project_feedback call shape and the retired agent-report doors are refused by name, naming the right door, and older own reports stay listed.
