@@ -3,6 +3,14 @@ import { declinedNotice, duplicateNotice, messageNotice } from './reporter-notic
 import { feedbackStandingOf } from './standing.js';
 import { duplicateRefusal, messageRefusal, noteActRefusal, snoozeRefusal } from './verb-rules.js';
 
+/** When the times read: a master serves, so no wait here reads stuck by the master alone. */
+const AT = {
+  since: new Date('2026-10-01T00:00:00Z'),
+  master: 'serves' as const,
+  now: new Date('2026-10-02T00:00:00Z'),
+};
+const NO_STANDING_FACTS = { masterOwesTriage: false, carrierRelease: null };
+
 const now = new Date('2026-10-07T00:00:00Z');
 const inDays = (n: number) => new Date(now.getTime() + n * 86_400_000);
 const viewer = {
@@ -39,15 +47,26 @@ describe('snooze', () => {
 
   it('puts a snoozed item out of the viewer’s Needs you until its date', () => {
     const until = inDays(3).toISOString();
-    const parked = feedbackStandingOf('new', null, [], 'Ann', viewer, null, {
-      masterOwesTriage: false,
-      carrierRelease: null,
-      snoozedUntil: until,
-    });
+    const parked = feedbackStandingOf(
+      'new',
+      null,
+      [],
+      'Ann',
+      viewer,
+      null,
+      {
+        masterOwesTriage: false,
+        carrierRelease: null,
+        snoozedUntil: until,
+      },
+      AT,
+    );
     expect(parked.attentionGroup).toBe('waiting');
     expect(parked.waitingOn.dueAt).toBe(until);
-    const back = feedbackStandingOf('new', null, [], 'Ann', viewer, null);
-    expect(back.attentionGroup).toBe('needs_you');
+    const back = feedbackStandingOf('new', null, [], 'Ann', viewer, null, NO_STANDING_FACTS, AT);
+    // back in New it is the viewer's to triage again, which the steward takes, so not Needs you (REQ-48 BC-11)
+    expect(back.waitingOn.kind).toBe('you');
+    expect(back.attentionGroup).toBe('waiting');
   });
 });
 

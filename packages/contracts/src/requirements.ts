@@ -4,6 +4,7 @@
 // labels, so one value keeps one badge on every screen.
 
 import { z } from "zod";
+import { CHECKLIST_REFUSAL_CODES } from "./checklists.js";
 import {
 	type DecisionMaker,
 	type EntityCommentView,
@@ -17,7 +18,6 @@ import type {
 } from "./feedback.js";
 import type { IssueStatusTone } from "./issue-vocabulary.js";
 import { PERMISSION_REFUSAL_CODES } from "./permissions.js";
-import { CHECKLIST_REFUSAL_CODES } from "./checklists.js";
 import type { RefusalStatuses } from "./refusal.js";
 import type {
 	RequirementKind,
@@ -31,6 +31,7 @@ import type {
 	WaitingKind,
 	WaitingOn,
 } from "./standing.js";
+import type { StandingTimes } from "./steward.js";
 import type { CriterionTraceView } from "./workflow-health.js";
 import type { WrittenLang } from "./written-lang.js";
 
@@ -156,9 +157,9 @@ export const REVISION_STATE_HINTS: Record<RevisionState, string> = {
 /** The list's attention groups, in the order they are drawn. */
 export const REQUIREMENT_ATTENTION_GROUPS = [
 	"needs_you",
+	"stuck",
 	"moving",
 	"waiting",
-	"stuck",
 	"deferred",
 	"done",
 ] as const satisfies readonly StandingGroup[];
@@ -172,6 +173,11 @@ export const REQUIREMENT_ATTENTION_LABELS: StandingGroupLabels<RequirementAttent
 			tone: "you",
 			collapsed: false,
 		},
+		stuck: {
+			label: "Stuck",
+			tone: "blocked",
+			collapsed: false,
+		},
 		moving: {
 			label: "Moving",
 			tone: "run",
@@ -179,11 +185,6 @@ export const REQUIREMENT_ATTENTION_LABELS: StandingGroupLabels<RequirementAttent
 		},
 		waiting: {
 			label: "Someone else’s turn",
-			tone: "neutral",
-			collapsed: false,
-		},
-		stuck: {
-			label: "Stuck",
 			tone: "neutral",
 			collapsed: false,
 		},
@@ -294,10 +295,8 @@ export const BC_VERDICT_TONES: Record<BcVerdict, StandingTone> = {
 export const BC_VERDICT_HINTS: Record<BcVerdict, string> = {
 	passing:
 		"passing: the newest verdict that counts is a pass; a short never counts",
-	failing:
-		"failing: the newest verdict on a tracing criterion is a fail",
-	stale:
-		"stale: traces only an earlier wording; tie it again, then judge it",
+	failing: "failing: the newest verdict on a tracing criterion is a fail",
+	stale: "stale: traces only an earlier wording; tie it again, then judge it",
 	not_live:
 		"not_live: judged only on builds the live one lacks; judge it on live",
 	not_judged:
@@ -489,6 +488,8 @@ export interface RequirementStanding
 	owner: { id: string; name: string | null; kind: "human" | "agent" } | null;
 	/** The newest write to the requirement, its revisions or its issues. */
 	touchedAt: string;
+	/** Since when its wait stands, when it falls due, and whether it is stuck and why (REQ-48 BC-8). */
+	times: StandingTimes;
 	/** When it came to stand in `state`: its last status move, or its delivery phase's start; what the
 	 *  list's age reads, which an edit moving no state (an area, a short name) never restarts. */
 	stateSince: string;

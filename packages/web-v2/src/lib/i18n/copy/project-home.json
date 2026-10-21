@@ -6,8 +6,6 @@
     "home.runningMore": "{shown} of {total} shown.",
     "home.atRisk": "At risk",
     "home.atRiskEmpty": "No risks",
-    "home.why.past": "{by} past the latest similar work took",
-    "home.why.waiting": "Waiting on a person, {by} over a day",
-    "home.why.short": "{proven} of {total} criteria proven on the running build"
+    "home.why.past": "{by} past the latest similar work took"
   }
 }

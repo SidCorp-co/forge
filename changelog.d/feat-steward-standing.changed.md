@@ -1,0 +1,1 @@
+**Every surface reads one standing per item.** The Dashboard, requirements, feedback, issues, the board and the status report show the same stuck reading and the steward's note, in place of their own waiting guesses.

@@ -34,6 +34,7 @@
     "label.feedbackAttention.done": "Done",
     "label.feedbackAttention.moving": "Moving",
     "label.feedbackAttention.needs_you": "Needs you",
+    "label.feedbackAttention.stuck": "Stuck",
     "label.feedbackAttention.waiting": "Someone else’s turn",
     "label.feedbackDecision.accepted": "Accepted",
     "label.feedbackDecision.declined": "Declined",

@@ -1,2 +1,2 @@
 export { provideMastersPorts } from './ports.js';
-export { readMasterStanding } from './read.js';
+export { masterServingOf, readMasterStanding } from './read.js';

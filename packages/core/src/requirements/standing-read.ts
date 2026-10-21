@@ -4,6 +4,7 @@
  */
 
 import { type IssueStatus, PARK_STATUSES } from '@forge/contracts/issue-machine';
+import type { IssueStanding } from '@forge/contracts/issue-standing';
 import { issueStatusToneOn } from '@forge/contracts/issue-vocabulary';
 import type { Approvals } from '@forge/contracts/person-gates';
 import { releaseApprovalRequired } from '@forge/contracts/releases';
@@ -30,6 +31,7 @@ import { suggestions } from '../db/schema-suggestions.js';
 import { activeIssuePrefix, issueWaitsOf } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
+import { masterServingOf } from '../masters/index.js';
 import { readEffectivePolicy, readProjectDocument } from '../project-config/index.js';
 import { linkedContractsOf } from './baselines.js';
 import { requirementDependents } from './dependents.js';
@@ -48,7 +50,7 @@ import {
   statusSinceOf,
   unapprovedDesignsOf,
 } from './standing-facts.js';
-import { awaitsReleaseOnly } from './standing-work.js';
+import { awaitsReleaseOnly, type OwnStanding } from './standing-work.js';
 
 interface StandingRow {
   id: string;
@@ -191,8 +193,9 @@ const by = <T extends { requirementId: string | null }>(list: readonly T[], id: 
 
 /**
  * What the turn of a requirement whose issues are worked reads beyond their statuses
- * (`standing-work.ts:workTurn`): each parked issue's own standing wait, and what follows a landing,
- * read once for the page and only where a requirement's every unshipped issue has landed.
+ * (`standing-work.ts:workTurn`): each unshipped issue's own standing (its wait, since when, whether it
+ * reads stuck), and what follows a landing, read once for the page and only where a requirement's
+ * every unshipped issue has landed.
  */
 async function workFactsOf(
   projectId: string,
@@ -201,21 +204,67 @@ async function workFactsOf(
   viewer: StandingViewer | null,
   now: Date,
 ) {
-  const parked = linked.filter((i) => PARK_STATUSES.includes(i.status as IssueStatus));
+  const unshipped = linked.filter((i) => i.status !== 'closed' && i.status !== 'dropped');
   const releaseOwed = rows.some((r) =>
     awaitsReleaseOnly(by(linked, r.id).filter((i) => i.status !== 'dropped')),
   );
-  const [parkedWaits, release] = await Promise.all([
+  const [issueWaits, release] = await Promise.all([
     issueWaitsOf(
       projectId,
-      parked.map((i) => i.id),
+      unshipped.map((i) => i.id),
       viewer ? { userId: viewer.userId } : null,
       now,
     ),
     releaseOwed ? requirementDependents().releaseLeg(projectId, viewer?.userId ?? null) : null,
   ]);
-  return { parkedWaits, release };
+  return { issueWaits, release };
 }
+
+type LinkedIssue = {
+  id: string;
+  issSeq: number;
+  title: string;
+  status: string;
+  updatedAt: Date;
+  plan: string | null;
+  plannedRevision: number | null;
+};
+
+/** One linked issue as the requirement's standing reads it, with its own standing where it is live. */
+function standingIssueOf(
+  i: LinkedIssue,
+  currentRevision: number | null,
+  f: {
+    prefix: string | null;
+    releaseApproval: boolean;
+    times: Awaited<ReturnType<typeof issueTimesOf>>;
+    changedTraced: Map<string, { code: string; revision: number }[]>;
+    issueWaits: Awaited<ReturnType<typeof issueWaitsOf>>;
+  },
+) {
+  const own = f.issueWaits.get(i.id)?.standing;
+  return {
+    id: i.id,
+    displayId: formatIssueRef(f.prefix, i.issSeq),
+    title: i.title,
+    status: i.status,
+    tone: issueStatusToneOn(i.status as IssueStatus, f.releaseApproval),
+    updatedAt: i.updatedAt,
+    closedAt: i.status === 'closed' ? (f.times.closedAt.get(i.id) ?? null) : null,
+    startedAt: f.times.startedAt.get(i.id) ?? null,
+    changedSincePlan: changedSincePlan({
+      ...i,
+      currentRevision,
+      changedTraced: f.changedTraced.get(i.id) ?? [],
+    }),
+    parkedOn: PARK_STATUSES.includes(i.status as IssueStatus) ? (own?.waitingOn ?? null) : null,
+    own: ownOf(own),
+  };
+}
+
+/** An issue's own standing as the roll-up reads it; null where it was not read. */
+const ownOf = (s: IssueStanding | undefined): OwnStanding | null =>
+  s ? { waitingOn: s.waitingOn, since: new Date(s.times.since), stuck: s.times.stuck } : null;
 
 /** The proposed suggestions on these requirements, by kind. */
 const proposedSuggestionsOf = (ids: string[]) =>
@@ -263,6 +312,7 @@ export async function standingsOf(
     unapproved,
     policy,
     runnerBound,
+    master,
   ] = await Promise.all([
     held?.revisions ??
       db
@@ -326,6 +376,7 @@ export async function standingsOf(
     unapprovedDesignsOf(ids),
     readEffectivePolicy(projectId),
     known.runnerBound ?? runnerBoundIn(projectId),
+    masterServingOf(projectId),
   ]);
   const beside = await besideFactsOf(ids);
   const linkedIds = linked.map((i) => i.id);
@@ -337,27 +388,20 @@ export async function standingsOf(
     changedTracedOf(db, linkedIds),
     workFactsOf(projectId, rows, linked, viewer, now),
   ]);
-  const { parkedWaits, release } = work;
+  const { issueWaits, release } = work;
   const liveBuild = await liveBuildOf(projectId, issueCriteria);
   const feedbackBy = feedbackCountsOf(feedbackLinks);
   const out = new Map<string, RequirementStanding>();
   for (const row of rows) {
-    const mine = by(linked, row.id).map((i) => ({
-      id: i.id,
-      displayId: formatIssueRef(prefix, i.issSeq),
-      title: i.title,
-      status: i.status,
-      tone: issueStatusToneOn(i.status as IssueStatus, gates.releaseApproval),
-      updatedAt: i.updatedAt,
-      closedAt: i.status === 'closed' ? (times.closedAt.get(i.id) ?? null) : null,
-      startedAt: times.startedAt.get(i.id) ?? null,
-      changedSincePlan: changedSincePlan({
-        ...i,
-        currentRevision: row.currentRevision,
-        changedTraced: changedTraced.get(i.id) ?? [],
+    const mine = by(linked, row.id).map((i) =>
+      standingIssueOf(i, row.currentRevision, {
+        prefix,
+        releaseApproval: gates.releaseApproval,
+        times,
+        changedTraced,
+        issueWaits,
       }),
-      parkedOn: parkedWaits.get(i.id)?.standing.waitingOn ?? null,
-    }));
+    );
     const issueIds = new Set(mine.map((i) => i.id));
     out.set(
       row.id,
@@ -398,6 +442,7 @@ export async function standingsOf(
         agreedAt: firstBaselineAt(baselineSeqs, row.id, row.currentRevision),
         release: awaitsReleaseOnly(mine.filter((i) => i.status !== 'dropped')) ? release : null,
         updatedAt: row.updatedAt,
+        master,
         now,
       }),
     );

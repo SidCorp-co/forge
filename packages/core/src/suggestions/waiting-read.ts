@@ -1,4 +1,4 @@
-// The suggestions of one project still waiting on a person, as the approval inbox lists them: what
+// The suggestions of one project still waiting on a person, as the one Needs you read lists them: what
 // each is on, by the key and the short title a reader knows it by, who produced it, and which of the
 // two decisions the viewer may take (accept under its kind's gate, reject under suggestions.approve).
 // A suggestion's payload is prose (a change summary, a note, a reason) and is never its title.
@@ -26,8 +26,10 @@ import { type Row, targetOfRow } from './read.js';
 export interface WaitingSuggestion {
   id: string;
   kind: SuggestionKind;
-  /** What it is on: its key, and its short title (a requirement's short name, else its title). */
-  target: { type: SuggestionTargetType; key: string; title: string };
+  /** What it is on: its id, its key, and its short title (a requirement's short name, else its title). */
+  target: { type: SuggestionTargetType; id: string; key: string; title: string };
+  /** What it proposes, as its kind's schema reads it (`SUGGESTION_PAYLOADS`); a reader parses it. */
+  payload: unknown;
   producerKind: SuggestionProducer;
   producerId: string | null;
   createdAt: string;
@@ -121,7 +123,8 @@ export async function waitingSuggestionsFor(
       {
         id: r.id,
         kind: r.kind,
-        target: { type: t.type, ...target },
+        target: { type: t.type, id: t.id, ...target },
+        payload: r.payload,
         producerKind: r.producerKind,
         producerId: r.producerId,
         createdAt: r.createdAt.toISOString(),

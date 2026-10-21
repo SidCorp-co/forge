@@ -197,7 +197,7 @@ const AWAITING_SEED: [QueryKey, unknown][] = [
       progress: { total: 6, shipped: 0, awaitingRelease: 6, toDo: 0 },
       forecast: null,
       delivery: null,
-      next: { label: "forecast", asOf: AT, kind: "paused", ...forecastWait(say("standing.who.you"), say("standing.act.cut", { v: "0.3.0", more: null }), RULE), ref: null, since: AT, late: { reason: "waiting_over_day", since: AT, byMinutes: 2 * 24 * 60 } },
+      next: { label: "forecast", asOf: AT, kind: "paused", ...forecastWait(say("standing.who.you"), say("standing.act.cut", { v: "0.3.0", more: null }), RULE), ref: null, since: AT, late: null },
     },
   ],
 ];

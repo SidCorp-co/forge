@@ -43,6 +43,7 @@ const base = (over: Partial<StandingInput> = {}): StandingInput => ({
   release: null,
   updatedAt: at('2026-10-02T00:00:00Z'),
   statusSince: at('2026-10-02T00:00:00Z'),
+  master: 'serves' as const,
   now: at('2026-10-03T00:00:00Z'),
   ...over,
 });

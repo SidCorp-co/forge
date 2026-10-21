@@ -30,6 +30,7 @@ import { deliveredAmong, nodesOfDesign } from '../requirements/index.js';
 import { feedbackDependents } from './dependents.js';
 import { WITHHELD } from './egress.js';
 import { forgeOriginsOf } from './forge-reads.js';
+import { carriersOf, type StandingFacts, standingFactsOf } from './list-standing.js';
 import { liveMasterOwedTriages } from './owed-triage.js';
 import type { FeedbackActor, Row } from './read.js';
 import { routeIssuesOf } from './relations.js';
@@ -46,7 +47,7 @@ import { targetView } from './target-view.js';
 import { recordCheckOf, verifyHeldOf, verifyWindowDays } from './verify-window.js';
 
 /** Everything the rows point at, loaded once for a page of rows. */
-export interface Linked {
+export interface Linked extends StandingFacts {
   prefix: string | null;
   issues: Map<
     string,
@@ -117,6 +118,19 @@ const ids = (values: (string | null)[]) => [...new Set(values.filter((v): v is s
 /** The MK-n and name of each mockup the rows are about, read through the mockups module's port. */
 const mockupsOf = (rows: Row[]) =>
   feedbackDependents().mockupKeysOf(ids(rows.map((r) => r.mockupId)));
+
+/** Each workflow a row targets: its flow, title, and the words its design gives each step. */
+const workflowsOf = (rows: readonly { id: string; flow: string; document: unknown }[]) =>
+  new Map(
+    rows.map((w) => [
+      w.id,
+      {
+        flow: w.flow,
+        title: ((w.document as { title?: unknown }).title as string | undefined) ?? null,
+        steps: nodesOfDesign(w.document)?.steps ?? new Map<string, string | null>(),
+      },
+    ]),
+  );
 
 export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> {
   const routeIssues = await routeIssuesOf(rows);
@@ -204,13 +218,14 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
   );
   const carrying = new Set([...routeIssues.values()].flat());
   const atGate = issueRows.some((i) => i.status === AT_RELEASE_GATE && carrying.has(i.id));
-  const [owed, release, windowDays, origins] = await Promise.all([
+  const [owed, release, windowDays, origins, standing] = await Promise.all([
     rows.some((r) => r.status === 'new' || r.status === 'reopened')
       ? liveMasterOwedTriages(projectId)
       : [],
     atGate ? readReleaseMode(projectId) : null,
     rows.some((r) => r.status === 'triaged') ? verifyWindowDays(projectId) : 0,
     forgeOriginsOf(rows.map((r) => r.id)),
+    standingFactsOf(projectId, rows, issueRows, carrying),
   ]);
   const releaseHolders =
     release && release !== 'automatic'
@@ -219,6 +234,7 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
   const linked: Linked = {
     untold: NONE_UNTOLD,
     origins,
+    ...standing,
     releaseHolders,
     verifyWindowDays: windowDays || FEEDBACK_VERIFY_WINDOW.defaultDays,
     masterOwed: new Set(owed.map((o) => o.feedbackId)),
@@ -250,16 +266,7 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
       ]),
     ),
     releases: new Map(releaseRows.map((r) => [r.id, r.version ?? r.id])),
-    workflows: new Map(
-      workflowRows.map((w) => [
-        w.id,
-        {
-          flow: w.flow,
-          title: ((w.document as { title?: unknown }).title as string | undefined) ?? null,
-          steps: nodesOfDesign(w.document)?.steps ?? new Map<string, string | null>(),
-        },
-      ]),
-    ),
+    workflows: workflowsOf(workflowRows),
     suggestions: new Map(
       suggestionRows.map((s) => [
         s.id,
@@ -395,6 +402,7 @@ export function summaryOf(
   const reporterName = l.names.get(r.reportedBy) ?? null;
   const reporter = reporterName ?? 'The reporter';
   const owed = owedCarriers(route);
+  const carried = r.route === 'issue' ? carriersOf(r, l) : { carrier: null, draft: null };
   const standing = feedbackStandingOf(
     phase,
     r.route,
@@ -424,7 +432,10 @@ export function summaryOf(
         owed.find((c) => c.release)?.release ??
         (phase === 'resolved' ? route?.carriers.find((c) => c.release)?.release : null) ??
         null,
+      draftCarrier: carried.draft,
+      carrier: carried.carrier,
     },
+    { since: l.decidedAt.get(r.id) ?? r.createdAt, master: l.master, now },
   );
   return {
     reporterNotTold: notToldOf(r.id, l.untold),

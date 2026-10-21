@@ -10,7 +10,6 @@ import { requireHeld } from '../permissions/index.js';
 import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
 import { hydrateCreatorsForIssues } from './creator.js';
 import { loadIssueDependencyEdgesForIssues } from './dependency-read.js';
-import { hydrateHeldForIssues } from './held-hydrator.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
 import { listModulesForIssues } from './label-service.js';
 import { serializeRestListRow } from './list-projection.js';
@@ -138,23 +137,17 @@ searchRoutes.get(
     }
 
     const ids = serialized.map((r) => r.id as string);
-    const [map, heldMap] = await Promise.all([
-      hydrateAgentSessionsForIssues(projectId, ids),
-      hydrateHeldForIssues(ids),
-    ]);
+    const map = await hydrateAgentSessionsForIssues(projectId, ids);
     return c.json(
       withBuckets(
         listResponse(
           c,
           serialized.map((r) => {
             const bucket = map.get(r.id as string);
-            const hold = heldMap.get(r.id as string);
             return {
               ...r,
               agentSessions: bucket?.agentSessions ?? [],
               agentStatus: bucket?.agentStatus ?? null,
-              held: hold?.held,
-              lastCheckInAt: hold?.lastCheckInAt,
             };
           }),
           total,

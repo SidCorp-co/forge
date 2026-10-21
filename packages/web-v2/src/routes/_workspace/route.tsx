@@ -49,8 +49,7 @@ import { usePinnedViews } from "@/lib/navigation/pinned-views";
 import { ChatDock } from "@/features/conversations/components/chat-dock";
 import { ChatDockProvider, useChatDockState } from "@/features/chat-dock";
 import { MockupFeedback } from "@/features/feedback";
-import { useApprovals } from "@/features/approvals";
-import { useNeedsYou } from "@/features/needs-you";
+import { useNeedsYou, useNeedsYouDecisions } from "@/features/needs-you";
 import { WorkspaceSidebar } from "@/features/shell/components/workspace-sidebar";
 import { SidebarSearch } from "@/features/shell/components/sidebar-search";
 import { SidebarBell } from "@/features/shell/components/sidebar-bell";
@@ -165,7 +164,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const releases = useReleases(railRef).data?.releases;
   const tourRelease = (releases?.find((r) => r.current) ?? releases?.[0])?.version ?? null; // any release carries a tour's anchors
   const needsYou = useNeedsYou(railRef).data;
-  const approvals = useApprovals(railRef).data;
+  const decisions = useNeedsYouDecisions(railRef).data;
   const slug = activeSlug(pathname);
 
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -220,7 +219,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
           attentionCount={attentionCount}
           railSlug={railSlug}
           rail={rail}
-          badges={{ needsYou, approvals }}
+          badges={{ needsYou, decisions }}
           onNavigate={navigate}
           onRoute={(href) => router.push(href)}
           onSignOut={() => void logout()}
@@ -238,7 +237,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
         railProjectName={railProject?.name}
         activeKey={activeKey}
         attentionCount={attentionCount}
-        badges={{ needsYou, approvals }}
+        badges={{ needsYou, decisions }}
         scopedProjects={scopedProjects}
         onNavigate={navigate}
         onOpenProject={(s) => router.push(`/projects/${s}`)}

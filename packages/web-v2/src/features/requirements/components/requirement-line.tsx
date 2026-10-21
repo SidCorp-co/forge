@@ -2,10 +2,11 @@
 // The cells a requirement fills in the shared list and its map: a short name, how many of its
 // criteria pass, the stage it stands at, and its wait. The stage and the wait come from contracts, once.
 
-import { failingOf, REQUIREMENT_STAGE_LABELS, type RequirementStage, requirementStageOf, waitsLineOf } from "@forge/contracts/requirement-roadmap";
+import { failingOf, REQUIREMENT_STAGE_LABELS, type RequirementStage, requirementStageOf } from "@forge/contracts/requirement-roadmap";
 import type { RequirementSummary } from "@forge/contracts/requirements";
 import { cn } from "@/lib/utils/cn";
-import { useCopy } from "@/lib/i18n/interface-language";
+import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
+import { saidView } from "@/lib/i18n/said";
 
 const STAGE_DOT: Record<RequirementStage, string> = {
   draft: "border-2 border-subtle bg-transparent",
@@ -45,10 +46,12 @@ export function Passing({ r, wide = true }: { r: RequirementSummary; wide?: bool
 }
 
 export function WaitsText({ r }: { r: RequirementSummary }) {
+  const w = saidView(r.standing.waitingOn, useInterfaceLanguage());
   if (r.standing.attentionGroup === "done") return null;
-  const w = waitsLineOf(r.standing);
+  // core's `says`, read in the viewer's language; nothing here parses the English act
+  const text = w.act ? `${w.who} · ${w.act}` : w.who;
   // an act may name keys and versions, so it wraps rather than being cut (live dev.227, 1440 px)
-  return <span className={cn("min-w-0 break-words text-13 leading-snug", w.kind === "you" ? "font-medium text-accent-text" : "text-muted")} data-testid="req-waits">{w.text}</span>;
+  return <span className={cn("min-w-0 break-words text-13 leading-snug", r.standing.attentionGroup === "needs_you" ? "font-medium text-accent-text" : "text-muted")} data-testid="req-waits">{text}</span>;
 }
 
 /**

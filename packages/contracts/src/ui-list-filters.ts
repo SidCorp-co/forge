@@ -13,7 +13,11 @@ import { ISSUE_STATUSES } from "./issue-machine.js";
 import { REGISTRY_ISSUE_PRIORITIES } from "./pipeline-registry.js";
 import { RELEASE_STATES } from "./releases.js";
 import { REQUIREMENT_STATES } from "./requirements.js";
-import type { StandingGroup, WaitingKind } from "./standing.js";
+import {
+	needsViewer,
+	type StandingGroup,
+	type WaitingKind,
+} from "./standing.js";
 
 /** Who a row waits on, as a list filters it (BC-5): the viewer, an agent, or work that is running. */
 export const UI_WAITING_FILTERS = ["you", "agent", "running"] as const;
@@ -27,14 +31,22 @@ const RUNNING_GROUPS: readonly StandingGroup[] = ["running", "moving"];
 /**
  * The waiting filter a row answers to, from its standing alone; null where it waits on someone the
  * three do not name (another person, a release, a gate, nobody), which only an unfiltered list shows.
- * `you` is the read model's own verdict for the viewer, so it is never guessed from a name.
+ * `you` is the read model's own verdict for the viewer (`needsViewer`, REQ-48 BC-11): a row the
+ * steward may take reads `you` in its kind and is not the viewer's, so the kind never decides it. A
+ * row with no group (a workflow design) has no other verdict than its kind.
  */
 export function waitingFilterOf(s: {
 	attentionGroup?: StandingGroup;
 	waitingOn: { kind: WaitingKind };
 }): UiWaitingFilter | null {
 	const kind = s.waitingOn.kind;
-	if (kind === "you") return "you";
+	const group = s.attentionGroup;
+	if (
+		group === undefined
+			? kind === "you"
+			: needsViewer({ attentionGroup: group })
+	)
+		return "you";
 	if (AGENT_KINDS.includes(kind)) return "agent";
 	if (RUNNING_KINDS.includes(kind)) return "running";
 	if (

@@ -19,7 +19,7 @@ export const SCREENS: ChromeScreen[] = [
         <BaFigures
           slug="hop"
           requirements={[{ state: "in_delivery", count: 2 }, { state: "delivered", count: 1 }] as never}
-          feedback={{ open: 3, untriaged: 1, aging: 1 }}
+          feedback={{ open: 3, untriaged: 1, stuck: 1 }}
           release={null}
           clock={clock}
         />

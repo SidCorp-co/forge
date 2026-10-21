@@ -3,21 +3,6 @@
 // request schemas and the response shapes from here.
 
 import { z } from "zod";
-import type { IssueStatusTone } from "./issue-vocabulary.js";
-import { PERMISSION_REFUSAL_CODES } from "./permissions.js";
-import {
-	REGISTRY_ISSUE_COMPLEXITIES,
-	REGISTRY_ISSUE_PRIORITIES,
-} from "./pipeline-registry.js";
-import { REASON_LINE_MAX } from "./reason-text.js";
-import { titleText } from "./title-text.js";
-import { type Said, saidSchema } from "./said.js";
-import type {
-	Standing,
-	StandingGroup,
-	StandingGroupLabels,
-	WaitingKind,
-} from "./standing.js";
 import {
 	FEEDBACK_KINDS,
 	FEEDBACK_ROUTES,
@@ -27,6 +12,21 @@ import {
 	type FeedbackSeverity,
 } from "./feedback-terms.js";
 import { triageAnswersInput } from "./feedback-triage.js";
+import type { IssueStatusTone } from "./issue-vocabulary.js";
+import { PERMISSION_REFUSAL_CODES } from "./permissions.js";
+import {
+	REGISTRY_ISSUE_COMPLEXITIES,
+	REGISTRY_ISSUE_PRIORITIES,
+} from "./pipeline-registry.js";
+import { REASON_LINE_MAX } from "./reason-text.js";
+import { type Said, saidSchema } from "./said.js";
+import type {
+	Standing,
+	StandingGroup,
+	StandingGroupLabels,
+	WaitingKind,
+} from "./standing.js";
+import { titleText } from "./title-text.js";
 import { type NodeRef, nodeRefSchema } from "./workflow-health.js";
 import {
 	WRITTEN_LANG_SHAPE,
@@ -45,6 +45,8 @@ export {
 	type FeedbackRoute,
 	type FeedbackSeverity,
 } from "./feedback-terms.js";
+
+import type { StandingTimes } from "./steward.js";
 
 /** The stored statuses: each is a person's decision. `planned` and `resolved` are read, never stored (Q1). */
 export const FEEDBACK_STATUSES = [
@@ -114,6 +116,7 @@ export type FeedbackDecision = (typeof FEEDBACK_DECISIONS)[number];
 /** Who a row waits on, as the list groups it for the viewer. */
 export const FEEDBACK_ATTENTION_GROUPS = [
 	"needs_you",
+	"stuck",
 	"moving",
 	"waiting",
 	"done",
@@ -159,6 +162,11 @@ export const FEEDBACK_ATTENTION_LABELS: StandingGroupLabels<FeedbackAttentionGro
 		needs_you: {
 			label: "Needs you",
 			tone: "you",
+			collapsed: false,
+		},
+		stuck: {
+			label: "Stuck",
+			tone: "blocked",
 			collapsed: false,
 		},
 		moving: {
@@ -676,6 +684,8 @@ export interface FeedbackSummary
 	/** Set on an item reported through the Forge door: where it came from; null on any other. */
 	origin: FeedbackOriginView | null;
 	dueAt: string | null;
+	/** Since when its wait stands, when that falls due, and whether it is stuck and why (REQ-48 BC-8). */
+	times: StandingTimes;
 	/** Parked out of New until then, with the reason; null when not snoozed or the snooze ran out. */
 	snoozed: { until: string; reason: string | null } | null;
 	redacted: boolean;

@@ -39,6 +39,7 @@ export const forgeNeedsYouTool: ContextScopedMcpToolFactory = (ctx) => ({
     const read = await readNeedsYouDecisions(
       projectId,
       needsYouViewerOf(access, userId, principalAgency(ctx.principal)),
+      access,
     );
     return { ...read, decisions: read.decisions.slice(0, limit ?? NEEDS_YOU_TOOL_LIMIT_DEFAULT) };
   },

@@ -11,7 +11,6 @@ const hook = { view: empty, isLoading: false, isError: false, error: null as unk
 
 vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble({ useRouter: () => ({ push: vi.fn() }) }));
 vi.mock("@/lib/ws/use-room", () => ({ useRoom: () => undefined }));
-vi.mock("@/features/needs-you/components/needs-you-list", () => ({ NeedsYouList: () => null }));
 vi.mock("@/features/projects/hooks", () => ({ useOrgScopedProjects: () => ({ projects: [], projectSlugs: new Set<string>() }) }));
 vi.mock("../hooks", () => ({ useAttention: () => hook }));
 

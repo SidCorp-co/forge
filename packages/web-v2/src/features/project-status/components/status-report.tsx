@@ -22,6 +22,7 @@ import { needsYouHref, needsYouKeyLabel } from "@/features/needs-you";
 import { verifiedSentence } from "@/features/releases";
 import { personHeading, statusMarkdown, waitGroups } from "../report-markdown";
 import { Written } from "@/lib/i18n/written";
+import { NeedsYouPart, StuckPart } from "./status-lead";
 
 export const STATUS_WINDOWS = ["7", "14", "30"] as const;
 type StatusWindow = (typeof STATUS_WINDOWS)[number];
@@ -362,6 +363,10 @@ export function StatusReport({ s, slug, clock, window, onWindow, actions }: Stat
           </p>
         ) : null}
       </header>
+
+      <StuckPart s={s} clock={clock} />
+
+      <NeedsYouPart s={s} clock={clock} />
 
       <ShippedPart s={s} slug={slug} clock={clock} />
 

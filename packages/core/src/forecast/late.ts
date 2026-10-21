@@ -4,7 +4,7 @@
  * p85 of similar landed work, or a person's turn left unanswered for over a day.
  */
 
-import { FORECAST_WAIT_LATE_MINUTES, type ForecastLate } from '@forge/contracts/forecast';
+import type { ForecastLate } from '@forge/contracts/forecast';
 
 const MINUTE = 60_000;
 
@@ -22,16 +22,6 @@ export function lateAfterP85(
 ): ForecastLate | null {
   if (!startedAt) return null;
   return lateSince('p85_passed', startedAt.getTime() + cycleP85Minutes * MINUTE, now);
-}
-
-/** A person's turn that began at `since` is late a day on; a wait with no known start is never called late. */
-export function lateWaiting(since: string | null, now: Date): ForecastLate | null {
-  if (!since) return null;
-  const began = Date.parse(since);
-  if (Number.isNaN(began)) {
-    throw new Error(`forecast: a wait began at ${JSON.stringify(since)}, which is not a time`);
-  }
-  return lateSince('waiting_over_day', began + FORECAST_WAIT_LATE_MINUTES * MINUTE, now);
 }
 
 /** The latest of several members' lateness: a scope is as late as its latest member. */

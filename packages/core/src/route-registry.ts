@@ -31,7 +31,7 @@ import {
 import { mcpOauthMetadataRoutes } from './credentials/mcp-oauth-metadata.js';
 import { mcpOauthRoutes } from './credentials/mcp-oauth-routes.js';
 import { patRoutes } from './credentials/pat-routes.js';
-import { approvalRoutes, developmentOverviewRoutes, needsYouRoutes } from './development/routes.js';
+import { developmentOverviewRoutes, needsYouRoutes } from './development/routes.js';
 
 import {
   deviceAuthRoutes,
@@ -164,7 +164,9 @@ import { projectSnapshotRoutes, runStandingRoutes } from './runs/routes.js';
 import { scheduleRoutes } from './schedules/routes.js';
 import { projectShareRoutes, shareOpenRoutes } from './shares/routes.js';
 import { deviceSkillRoutes, skillCrudRoutes, skillStudioRoutes } from './skills/routes.js';
+import { standingRoutes } from './standing/routes.js';
 import { statusReportRoutes } from './status-reports/routes.js';
+import { stewardNoteRoutes } from './steward-notes/routes.js';
 import { suggestionRoutes } from './suggestions/routes.js';
 import { uploadRoutes } from './uploads/routes.js';
 import { hostTheWeb } from './web-host/index.js';
@@ -244,6 +246,8 @@ function mountProjectDocumentRoutes(app: Hono<{ Variables: RequestIdVars }>): vo
   app.route('/api/projects', projectPreviewRoutes);
   app.route('/api/projects', projectRoomRoutes);
   app.route('/api/projects', feedbackRoutes);
+  app.route('/api/projects', standingRoutes);
+  app.route('/api/projects', stewardNoteRoutes);
   app.route('/api/projects', feedbackChecklistRoutes);
   app.route('/api/projects', mockupRoutes);
   app.route('/api/projects', baDoorRoutes);
@@ -295,7 +299,6 @@ function mountProjectWorkRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/projects', developmentOverviewRoutes);
   app.route('/api/projects', forecastRoutes);
   app.route('/api/projects', needsYouRoutes);
-  app.route('/api/projects', approvalRoutes);
   app.route('/api/projects', projectStatusRoutes);
   app.route('/api/projects', statusReportRoutes);
   app.route('/api/projects', projectShareRoutes);

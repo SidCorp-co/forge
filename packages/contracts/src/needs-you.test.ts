@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-	asksOf,
 	NEEDS_YOU_AREA_SPACE,
 	NEEDS_YOU_AREAS,
 	type NeedsYouAreaKey,
@@ -9,15 +8,18 @@ import {
 import { say, verbatim } from "./said.js";
 import { waitingOn } from "./standing.js";
 
-// One Needs you: the project home and /attention each read `asksOf` over the rows core marked with
-// `NEEDS_YOU_AREA_SPACE`, so a question waiting on the person (HOP ISS-107) is on both or neither.
-// HOP on 2026-10-08: home 27, /attention 39, the 12 issues the home's own area list left out.
+// The space each row belongs to: what a member owes as a person (`asks`) is what the decisions read
+// classifies (`needs-you-decisions.ts`), and Forge's own upkeep (`ops`) is Development's, so a question
+// waiting on the person (HOP ISS-107) is a member's ask and an agent report is not.
 
 const you = waitingOn("you", {
 	who: say("standing.who.you"),
 	act: say("standing.act.approve"),
 	rule: say("standing.text", { text: "asked" }),
 });
+
+const asksOf = (rows: readonly NeedsYouItem[]) =>
+	rows.filter((r) => r.space === "asks");
 
 const row = (area: NeedsYouAreaKey, key: string): NeedsYouItem => ({
 	area,
@@ -43,7 +45,7 @@ describe("the one Needs you", () => {
 		row("contracts", "c-1"),
 	];
 
-	it("counts the issues and questions a member owes, so home equals /attention's section", () => {
+	it("places the issues and questions a member owes among their asks", () => {
 		const asks = asksOf(hop);
 		expect(asks).toHaveLength(39);
 		expect(asks.map((r) => r.key)).toContain("ISS-107");
@@ -55,6 +57,7 @@ describe("the one Needs you", () => {
 	});
 
 	it("places every area in exactly one space", () => {
-		for (const area of NEEDS_YOU_AREAS) expect(["asks", "ops"]).toContain(NEEDS_YOU_AREA_SPACE[area]);
+		for (const area of NEEDS_YOU_AREAS)
+			expect(["asks", "ops"]).toContain(NEEDS_YOU_AREA_SPACE[area]);
 	});
 });

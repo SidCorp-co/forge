@@ -15,7 +15,6 @@ import {
   criteriaCoverageOf,
   type DeliveryPhase,
   draftIssuesToPromote,
-  type RequirementAttentionGroup,
   type RequirementCoverage,
   type RequirementDelivery,
   type RequirementStanding,
@@ -26,7 +25,9 @@ import {
 import { type Said, say } from '@forge/contracts/said';
 import { DRAFT_STALE_DAYS } from '@forge/contracts/stale-drafts';
 import { type WaitingSays, waitingOn } from '@forge/contracts/standing';
+import type { MasterServing } from '@forge/contracts/steward';
 import type { RequirementStatus } from '../db/schema-requirements.js';
+import { withTimes } from '../lib/standing-times.js';
 import { stateSinceOf, touchedAt } from './standing-age.js';
 import {
   coverageOf,
@@ -43,17 +44,13 @@ import {
 import { actWait, nextStepOf, signerWait } from './standing-gates.js';
 import { proofTurn } from './standing-proof.js';
 import { breakdownTaskOf, checkTaskOf, replanTasksOf, tasksOf } from './standing-tasks.js';
-import { type ParkedWait, workTurn } from './standing-work.js';
+import { type ParkedWait, type WorkTurn, workTurn } from './standing-work.js';
 
 export type {
   LiveBuildHolds,
   StandingIssueCriterion,
   StandingVerdict,
 } from './standing-coverage.js';
-
-/** Untouched this long, an open requirement is listed as stuck. */
-const STUCK_AFTER_DAYS = 21;
-const DAY_MS = 86_400_000;
 
 interface StandingCriterion {
   id: string;
@@ -146,6 +143,8 @@ export interface StandingInput {
    * a placement or short-name edit moves that and must not restart AGE (live dev.227).
    */
   statusSince: Date;
+  /** Whether a live master serves the project (`masters/read.ts:masterServingOf`), so a wait on it can read stuck. */
+  master: MasterServing;
   now: Date;
 }
 
@@ -187,10 +186,7 @@ const MASTER = say('standing.who.master');
 const NONE = say('standing.who.dash');
 const BA = say('requirements.who.ba');
 
-interface Turn {
-  group: RequirementAttentionGroup;
-  waitingOn: RequirementWaitingOn;
-}
+type Turn = WorkTurn;
 
 function feedbackTurn(input: StandingInput): Turn | null {
   const untriaged = input.feedback.untriaged;
@@ -218,7 +214,9 @@ function feedbackTurn(input: StandingInput): Turn | null {
 // re-plans it (its re-plan tasks); 9. no issue → the master breaks it down; 10. only drafts → a signer who can
 // admit promotes them (only they are asked: question 3b8292dc);
 // 11. else whom the work waits on (`standing-work.ts:workTurn`): a parked issue's own wait, the release
-// cut once every issue has landed, the issues while one runs, else the master. Unless it needs you: no owner, or untouched STUCK_AFTER_DAYS → stuck.
+// cut once every issue has landed, the issues while one runs, else the master. Then
+// `lib/standing-times.ts:withTimes` reads the stuck rule over the turn: no owner, nobody serving its
+// wait, only draft issues, an issue stuck by its own standing, or the wait falling overdue.
 function turnOf(
   input: Phased,
   live: readonly StandingIssue[],
@@ -395,9 +393,10 @@ function turnOf(
         ? say('standing.act.promoteDraft')
         : say('standing.act.promoteDrafts', { n: drafts.length });
     const rule = say('requirements.rule.onlyDrafts');
+    const draftCarrier = drafts[0]?.displayId ?? null;
     return viewer?.canSignOff && viewer.canAdmit
-      ? { group: 'needs_you', waitingOn: wait('you', YOU, act, rule) }
-      : { group: 'waiting', waitingOn: wait('person', ADMITTER, act, rule) };
+      ? { group: 'needs_you', waitingOn: wait('you', YOU, act, rule), draftCarrier }
+      : { group: 'waiting', waitingOn: wait('person', ADMITTER, act, rule), draftCarrier };
   }
   return workTurn(live, input.release);
 }
@@ -459,45 +458,45 @@ function signerInsteadOfMaster(
   };
 }
 
-/** The same wait under another rule, still about what it was about. */
-const waitingOn_ = (w: RequirementWaitingOn, rule: Said): RequirementWaitingOn => ({
-  ...waitingOn(w.kind, { ...w.says, rule }, { ref: w.ref, dueAt: w.dueAt }),
-  ...(w.refers ? { refers: w.refers } : {}),
-});
-
 export function deriveStanding(raw: StandingInput): RequirementStanding {
   const shownRevision = raw.currentRevision ?? raw.revisions[0]?.revision ?? null;
   const { live, coverage, delivery } = deliveryAt(raw, shownRevision);
   const input = { ...raw, phase: delivery.phase };
   const touched = touchedAt(input);
-  let { group, waitingOn } = turnOf(input, live, coverage);
+  const turn = turnOf(input, live, coverage);
+  let { group, waitingOn } = turn;
   if (input.runnerBound === false && waitingOn.says.who.key === MASTER.key) {
     ({ group, waitingOn } = signerInsteadOfMaster(input.viewer, waitingOn));
   }
-  if (group !== 'needs_you' && group !== 'done' && group !== 'deferred') {
-    if (input.owner === null) {
-      group = 'stuck';
-      waitingOn = wait(
-        'none',
-        say('requirements.who.noOwner'),
-        say('requirements.act.assignOwner'),
-        say('requirements.rule.noOwner'),
-      );
-    } else if (input.now.getTime() - touched.getTime() >= STUCK_AFTER_DAYS * DAY_MS) {
-      group = 'stuck';
-      waitingOn = waitingOn_(
-        waitingOn,
-        say('requirements.rule.untouched', { days: STUCK_AFTER_DAYS }),
-      );
-    }
+  const ownerless = input.owner === null && !['needs_you', 'done', 'deferred'].includes(group);
+  if (ownerless) {
+    waitingOn = wait(
+      'none',
+      say('requirements.who.noOwner'),
+      say('requirements.act.assignOwner'),
+      say('requirements.rule.noOwner'),
+    );
   }
+  const timed = withTimes(
+    { group, waitingOn },
+    {
+      since: turn.since ?? input.statusSince,
+      master: input.master,
+      ownerless,
+      draftCarrier: turn.draftCarrier ?? null,
+      carried: turn.carried ?? null,
+      now: input.now,
+    },
+    'waiting',
+  );
   const state = stateOf(input.status, input.phase);
   return {
     state,
     next: nextStepOf(state, input.agreedAt),
     delivery,
-    attentionGroup: group,
+    attentionGroup: timed.group,
     waitingOn,
+    times: timed.times,
     facts: {
       ...delivery.criteriaCoverage,
       issuesRunning: live.filter((i) => i.status === 'in_progress').length,

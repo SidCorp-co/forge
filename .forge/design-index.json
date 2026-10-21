@@ -15,7 +15,7 @@
   },
   "REQ-3": {
    "title": "Agent narration is separated from human conversation",
-   "status": "agreed"
+   "status": "accepted"
   },
   "REQ-4": {
    "title": "Business intent has a versioned home",
@@ -27,7 +27,7 @@
   },
   "REQ-6": {
    "title": "Verdicts are typed records, not comment prose",
-   "status": "agreed"
+   "status": "accepted"
   },
   "REQ-7": {
    "title": "Product feedback is a first-class item, triaged and verified by people",
@@ -39,7 +39,7 @@
   },
   "REQ-9": {
    "title": "Cross-project work waits on a contract version",
-   "status": "draft"
+   "status": "agreed"
   },
   "REQ-10": {
    "title": "A new project gets its key journeys drawn with the user before building",
@@ -59,15 +59,15 @@
   },
   "REQ-14": {
    "title": "The Development area and Releases are built to the prototype",
-   "status": "draft"
+   "status": "dropped"
   },
   "REQ-15": {
    "title": "Agents / Runs: a person reads every run's standing, its holder and what the project master is doing, from one core read model",
-   "status": "agreed"
+   "status": "accepted"
   },
   "REQ-16": {
    "title": "Automation: one area shows what fires, what each fire produced, and what needs a person",
-   "status": "agreed"
+   "status": "accepted"
   },
   "REQ-17": {
    "title": "A workflow design shows which steps and lines are outdated, need an update, have a problem or are proposed for removal, each derived from its evidence",
@@ -79,35 +79,35 @@
   },
   "REQ-19": {
    "title": "Chat has two modes: assistant mode answers from a model with the key set in the instance environment, and agent mode runs on the team's runner",
-   "status": "draft"
+   "status": "agreed"
   },
   "REQ-20": {
    "title": "A question an agent parks reaches the people who owe the answer in the team's chat channel, and their reply there answers it",
-   "status": "draft"
+   "status": "agreed"
   },
   "REQ-21": {
    "title": "A project connects its storefront — Autoflow by OAuth, or ePodSystem — and its agents read shop, theme and draft data and publish drafts through Forge without ever holding the credential",
-   "status": "draft"
+   "status": "agreed"
   },
   "REQ-22": {
    "title": "An operator reads Forge's own service health — alert levels, pipeline health and the MCP audit trail — on one console, and is notified when an alert crosses into warn or crit",
-   "status": "draft"
+   "status": "agreed"
   },
   "REQ-23": {
    "title": "A person or an agent reads how each Forge capability is used from one guide corpus Forge serves publicly, and the prompts Forge composes point at the guide instead of restating it",
-   "status": "draft"
+   "status": "agreed"
   },
   "REQ-24": {
    "title": "A member reads each project's health and its trend — throughput, step failures, retries and interventions — on the project dashboard, derived from records Forge already keeps",
-   "status": "draft"
+   "status": "agreed"
   },
   "REQ-25": {
    "title": "A person installs the runner on a box with one command Forge serves, which fetches the published build for that box's platform",
-   "status": "draft"
+   "status": "agreed"
   },
   "REQ-26": {
    "title": "A project pins the plugin version its runs use, and a box serving several projects reports a conflicting pin instead of silently picking one",
-   "status": "draft"
+   "status": "agreed"
   },
   "REQ-27": {
    "title": "People sign in with a password or Google and agents act with personal access tokens, and invitations and notices reach people by mail",
@@ -115,11 +115,11 @@
   },
   "REQ-28": {
    "title": "Every design template carries structured cross-design refs, checked to resolve to an approved revision step",
-   "status": "draft"
+   "status": "agreed"
   },
   "REQ-29": {
    "title": "Requirements carry an area the list groups and filters by",
-   "status": "draft"
+   "status": "agreed"
   },
   "REQ-30": {
    "title": "Assistant and Agent chat: role, routing and limits",
@@ -169,8 +169,40 @@
    "title": "Chat is the way in: it answers what needs you and drives the page beside it",
    "status": "agreed"
   },
+  "REQ-42": {
+   "title": "Throwaway for the ISS-460 judge: dropped at the end of its run",
+   "status": "dropped"
+  },
+  "REQ-43": {
+   "title": "Pages read as state, not prose",
+   "status": "agreed"
+  },
+  "REQ-44": {
+   "title": "POC rooms: build live with the owner, deliver only what is settled",
+   "status": "agreed"
+  },
+  "REQ-45": {
+   "title": "An issue moves on when its work lands",
+   "status": "agreed"
+  },
+  "REQ-46": {
+   "title": "Connect an outside system",
+   "status": "agreed"
+  },
   "REQ-47": {
    "title": "Feedback to Forge is filed by whoever reports it, from any project",
+   "status": "agreed"
+  },
+  "REQ-48": {
+   "title": "An agent stands at every Product and Delivery handoff",
+   "status": "agreed"
+  },
+  "REQ-49": {
+   "title": "A mockup is proposed, tried and discussed on the item it shapes",
+   "status": "agreed"
+  },
+  "REQ-50": {
+   "title": "Forge learns from every correction and stops to ask when a lesson confuses",
    "status": "agreed"
   }
  },
@@ -242,13 +274,34 @@
     "noconfine",
     "nodevice",
     "noissue",
+    "page",
     "perms",
+    "preview",
     "recorded",
     "repo",
     "restate",
     "sandbox",
     "shown",
     "write"
+   ]
+  },
+  "connect-outside-system": {
+   "title": "Connect an outside system",
+   "steps": [
+    "agent-call",
+    "bind",
+    "callback",
+    "github-create",
+    "github-makes",
+    "install",
+    "live",
+    "one-call",
+    "paste",
+    "pick",
+    "project-tab",
+    "return-check",
+    "stranded",
+    "submit-check"
    ]
   },
   "core-components": {
@@ -352,6 +405,8 @@
     "reopened",
     "resolved",
     "start",
+    "steward-note",
+    "steward-triage",
     "triage-check",
     "triaged",
     "verified"
@@ -476,6 +531,7 @@
     "ds-conversations",
     "ds-issues",
     "ds-memory",
+    "ds-recordings",
     "ds-transcripts",
     "ds-uploads",
     "ds-users",
@@ -494,6 +550,7 @@
     "pr-mail",
     "pr-memory",
     "pr-provision",
+    "pr-recorder",
     "pr-signin",
     "src-claude",
     "src-identity",
@@ -570,6 +627,7 @@
     "rev_draft",
     "rev_proposed",
     "rev_superseded",
+    "rev_withdrawn",
     "revisions",
     "start"
    ]
@@ -592,7 +650,7 @@
     "delivered",
     "delivery",
     "drafted",
-    "expect-breakdown",
+    "expect-next",
     "fb-case",
     "fb-filed",
     "forge",
@@ -613,10 +671,37 @@
     "routed",
     "runs",
     "similar",
-    "stalled",
+    "stuck",
     "triage",
     "turn",
     "verdict-result"
+   ]
+  },
+  "steward-handoffs": {
+   "title": "Steward at handoffs",
+   "steps": [
+    "act",
+    "ask",
+    "breakdown-check",
+    "breakdown-proposed",
+    "fb-filed",
+    "follow-through",
+    "forge",
+    "handoff",
+    "intake-check",
+    "output-check",
+    "release-asked",
+    "release-held",
+    "release-shipped",
+    "req-agreed",
+    "standing",
+    "standing-moved",
+    "steward",
+    "steward-note",
+    "steward-result",
+    "stuck-act",
+    "stuck-seen",
+    "triage-draft"
    ]
   },
   "suggestion-lifecycle": {

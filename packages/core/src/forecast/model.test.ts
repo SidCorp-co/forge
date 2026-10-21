@@ -297,23 +297,17 @@ describe('late', () => {
     expect(read.get(past.key)).toMatchObject({ late: { byMinutes: 1 } });
   });
 
-  it('reads a person owing the next move for over a day as late, and a fresh wait or an unknown start as not', () => {
+  // REQ-48 BC-5: a person's wait falls overdue by its standing's due, never by the forecast's day mark
+  it('never reads a paused item late, however long a person has owed the next move', () => {
     const stale = item({ wait: { ...person, since: ago(30 * 60).toISOString() } });
-    const fresh = item({ wait: { ...person, since: ago(120).toISOString() } });
     const unknown = item({ wait: person });
-    const read = run([stale, fresh, unknown]).forecasts;
+    const read = run([stale, unknown]).forecasts;
     expect(read.get(stale.key)).toMatchObject({
       kind: 'paused',
       since: ago(30 * 60).toISOString(),
-      late: { reason: 'waiting_over_day', byMinutes: 6 * 60 },
+      late: null,
     });
-    expect(read.get(fresh.key)).toMatchObject({ kind: 'paused', late: null });
     expect(read.get(unknown.key)).toMatchObject({ kind: 'paused', since: null, late: null });
-  });
-
-  it('refuses a wait that began at no time, by name', () => {
-    const bad = item({ wait: { ...person, since: 'yesterday-ish' } });
-    expect(() => run([bad])).toThrow(/a wait began at "yesterday-ish", which is not a time/);
   });
 
   it('makes a scope as late as its latest member', () => {

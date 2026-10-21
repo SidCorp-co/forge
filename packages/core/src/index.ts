@@ -180,7 +180,10 @@ import { provideSandboxPorts } from './sandbox/index.js';
 import { startTimers, stopTimers } from './schedules/index.js';
 import { provideShareSubjectSources } from './shares/index.js';
 import { seedBuiltinSkills, sweepPolicyLanded } from './skills/index.js';
+import { forgeStandingTool } from './standing/index.js';
+import { provideStandingPorts } from './standing-ports.js';
 import { provideStatusReportsPorts, statusReportShareSource } from './status-reports/index.js';
+import { forgeStewardNoteTool } from './steward-notes/index.js';
 import {
   proposeRequirementDuplicate,
   redactFeedbackSuggestions,
@@ -293,12 +296,15 @@ provideProjectConfigPorts({
 // the chat toolset composed below describes the registered queries, so they are registered first
 registerReportQueries();
 provideReportPorts();
+provideStandingPorts();
 // the needs-me read (REQ-41 BC-1) is the development module's own tool, and the recording read
 // (BC-19) the feedback module's, wired here beside the read models
 provideChatTools([
   ...CHAT_READ_MODEL_TOOLS,
   { factory: forgeNeedsYouTool },
   { factory: forgeRecordingTool },
+  { factory: forgeStandingTool },
+  { factory: forgeStewardNoteTool },
   ...CHAT_RECORD_TOOLS,
   ...CHAT_REPORT_TOOLS,
 ]);
