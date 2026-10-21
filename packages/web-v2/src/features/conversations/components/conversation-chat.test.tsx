@@ -396,6 +396,26 @@ describe("a room deleted while it is open", () => {
     expect(send).not.toHaveBeenCalled();
   });
 
+  // r30 review F2: the kept text was trimmed, so indentation and trailing lines were lost.
+  it("keeps the draft exactly as typed, indentation and trailing lines included", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    const typed = "    indented text\n\n";
+    const tree = () => (
+      <QueryClientProvider client={new QueryClient()}>
+        <ConversationChat projectId="p1" conversationId="c1" onRoomGone={vi.fn()} />
+      </QueryClientProvider>
+    );
+    const { rerender } = render(tree());
+    fireEvent.change(screen.getByLabelText("Message"), { target: { value: typed } });
+    roomError = roomGone();
+    rerender(tree());
+    await waitFor(() => expect(toast).toHaveBeenCalled());
+    const notice = toast.mock.calls[0]?.[0] as { onClick: () => void };
+    notice.onClick();
+    expect(writeText).toHaveBeenCalledWith(typed);
+  });
+
   it("raises the plain notice where nothing was typed, saying once that the room was deleted", async () => {
     roomError = roomGone();
     open(vi.fn());

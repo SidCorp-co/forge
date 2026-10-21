@@ -298,7 +298,9 @@ describe('a message in a room', () => {
       });
       expect(sent.status, await sent.clone().text()).toBeLessThan(300);
       const accepted = publish.mock.calls
-        .filter(([, envelope]) => (envelope as { event?: string }).event === 'conversation.accepted')
+        .filter(
+          ([, envelope]) => (envelope as { event?: string }).event === 'conversation.accepted',
+        )
         .map(([room]) => String(room))
         .sort();
       publish.mockClear();
@@ -363,6 +365,89 @@ describe('deleting a room', () => {
       expect(told.map(([room]) => room)).not.toContain(`user:${outsiderId}`);
     } finally {
       publish.mockRestore();
+    }
+  });
+});
+
+/**
+ * Round 30 review F1: the audience was resolved person by person through the read rule, which put
+ * organization-sized work on every streamed frame. It is resolved for the whole room at once now, and
+ * must still be exactly who that rule lets in.
+ */
+describe('who a room is read by', () => {
+  async function parity(id: string, people: string[]): Promise<void> {
+    const { conversationReaders, assertConversationReadable } = await import(
+      '../../src/conversations/scope.js'
+    );
+    const readers = new Set(await conversationReaders(id));
+    for (const userId of people) {
+      const lets = await assertConversationReadable(id, userId).then(
+        () => true,
+        () => false,
+      );
+      expect([userId, readers.has(userId)]).toEqual([userId, lets]);
+    }
+  }
+
+  it('is exactly who the read rule lets in, for a room about a project', async () => {
+    const { id } = await sharedRoom();
+    const watcherId = await verifiedUser();
+    await harness.db.execute(
+      sql`INSERT INTO project_members (project_id, user_id, role) VALUES (${projectId}, ${watcherId}, 'viewer')`,
+    );
+    await parity(id, [ownerId, openerId, peerId, watcherId, outsiderId]);
+  });
+
+  it('is exactly who the read rule lets in, for a room about no project, group or one-to-one', async () => {
+    const { id } = await sharedRoom();
+    await harness.db.execute(
+      sql`DELETE FROM conversation_participants WHERE conversation_id = ${id} AND kind = 'handle'`,
+    );
+    await parity(id, [ownerId, openerId, peerId, outsiderId]);
+    await harness.db.execute(sql`UPDATE conversations SET shape = 'direct' WHERE id = ${id}`);
+    await parity(id, [ownerId, openerId, peerId, outsiderId]);
+  });
+
+  it('is resolved in a fixed number of reads, whoever the organization holds', async () => {
+    const { id } = await sharedRoom();
+    const orgRows = await harness.db.execute<{ org_id: string }>(
+      sql`SELECT org_id FROM projects WHERE id = ${projectId}`,
+    );
+    const orgId = String(orgRows[0]?.org_id);
+    for (let i = 0; i < 40; i += 1) {
+      const id2 = await verifiedUser();
+      await harness.db.execute(
+        sql`INSERT INTO organization_members (org_id, user_id, role) VALUES (${orgId}, ${id2}, 'member')`,
+      );
+    }
+    const { publishToConversationReaders } = await import(
+      '../../src/assistant/conversation-adapter.js'
+    );
+    const { roomManager } = await import('../../src/ws/server.js');
+    const { closeDb } = await import('../../src/db/client.js');
+    const { logger } = await import('../../src/logger.js');
+    // The client logs every statement it sends once rebuilt with DB_QUERY_LOG=1, which is the count.
+    await closeDb();
+    process.env.DB_QUERY_LOG = '1';
+    const publish = vi.spyOn(roomManager, 'publish');
+    const info = vi.spyOn(logger, 'info');
+    try {
+      await publishToConversationReaders(id, {
+        event: 'conversation.progress',
+        data: { conversationId: id },
+      });
+      const told = publish.mock.calls.map(([room]) => room);
+      expect(told).toEqual(
+        expect.arrayContaining([`user:${ownerId}`, `user:${openerId}`, `user:${peerId}`]),
+      );
+      const statements = info.mock.calls.filter(([, msg]) => msg === 'db.query').length;
+      expect(statements).toBeGreaterThan(0);
+      expect(statements).toBeLessThanOrEqual(5);
+    } finally {
+      info.mockRestore();
+      publish.mockRestore();
+      delete process.env.DB_QUERY_LOG;
+      await closeDb();
     }
   });
 });

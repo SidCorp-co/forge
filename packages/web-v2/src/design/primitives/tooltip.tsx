@@ -75,19 +75,20 @@ export function Tooltip({ label, children, side = "top", multiline = false, pros
     const away = (e: Event) => {
       if (!anchor.current?.contains(e.target as Node)) close();
     };
-    const escape = (e: KeyboardEvent) => {
+    const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") close();
     };
     document.addEventListener("touchstart", away);
     document.addEventListener("pointerdown", away);
-    document.addEventListener("keydown", escape);
+    document.addEventListener("keydown", onKey);
     return () => {
       document.removeEventListener("touchstart", away);
       document.removeEventListener("pointerdown", away);
-      document.removeEventListener("keydown", escape);
+      document.removeEventListener("keydown", onKey);
     };
   }, [open, prose, close]);
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: the span only relays hover, focus and touch from the control it wraps, which is what a reader acts on; it is not a control itself.
     <span
       ref={anchor}
       className="relative inline-flex"

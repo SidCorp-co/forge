@@ -165,14 +165,20 @@ export function ConversationChat({
   const onDraftChange = useCallback((text: string) => {
     draft.current = text;
   }, []);
+  /** The draft as typed, where it holds something not already among `sent` (r30 review F2). */
+  const draftBeside = useCallback((sent: readonly string[]): string | null => {
+    const typed = draft.current;
+    const seen = typed.trim();
+    return seen && !sent.some((s) => s.trim() === seen) ? typed : null;
+  }, []);
   useEffect(() => {
     if (!resolvedId || !roomQ.isError || !isRoomGone(roomQ.error)) return;
     // Messages still waiting their turn will never be sent; one being sent says so when it is refused.
     const waiting = outboxRef.current.filter((m) => m.state === "queued").map((m) => m.content);
-    const typed = draft.current.trim();
-    const unsent = typed && !waiting.includes(typed) ? [...waiting, typed] : waiting;
+    const typed = draftBeside(waiting);
+    const unsent = typed === null ? waiting : [...waiting, typed];
     roomWentAway(resolvedId, unsent.length > 0 ? unsent.join("\n\n") : null);
-  }, [resolvedId, roomQ.isError, roomQ.error, roomWentAway]);
+  }, [resolvedId, roomQ.isError, roomQ.error, roomWentAway, draftBeside]);
 
   const messages = useMemo(() => roomQ.data?.messages ?? [], [roomQ.data]);
 
@@ -283,8 +289,8 @@ export function ConversationChat({
           ),
         );
         if (roomGone && id) {
-          const typed = draft.current.trim();
-          roomWentAway(id, typed && typed !== next.content ? `${next.content}\n\n${typed}` : next.content);
+          const typed = draftBeside([next.content]);
+          roomWentAway(id, typed === null ? next.content : `${next.content}\n\n${typed}`);
         }
       } finally {
         sending.current = false;
@@ -303,6 +309,7 @@ export function ConversationChat({
     pick,
     gone,
     roomWentAway,
+    draftBeside,
   ]);
 
   const header = (

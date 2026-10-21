@@ -1,12 +1,13 @@
-import { and, eq, isNotNull, isNull } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
 import { db as defaultDb } from '../db/client.js';
-import type { ProjectMemberRole } from '../db/schema.js';
+import { organizationMembers, type ProjectMemberRole } from '../db/schema.js';
 import { conversationParticipants, conversations } from '../db/schema-conversations.js';
 import {
   effectiveProjectRole,
   loadOrgRole,
   orgRoleAtLeast,
   projectRoleAtLeast,
+  usersHoldingOnEvery,
 } from '../lib/authz.js';
 import type { Executor } from './db-executor.js';
 import { roomRefusal } from './room-refusal.js';
@@ -161,4 +162,47 @@ async function isOneOfItsPeople(
     )
     .limit(1);
   return row !== undefined;
+}
+
+/**
+ * Everyone assertConversationReadable lets in, resolved for the whole audience at once: the people a
+ * room's events go to, its messages and its deletion alike (ISS-1229 r30). A room about a project is
+ * read by whoever holds a viewer role on every project in it; one about none by the rule
+ * holdsRoomAboutNoProject keeps.
+ */
+export async function conversationReaders(
+  conversationId: string,
+  tx: Executor = defaultDb,
+): Promise<string[]> {
+  const scope = await derivedScope(conversationId, tx);
+  if (scope.length > 0) return usersHoldingOnEvery(scope, 'viewer');
+  const room = await roomAboutNoProject(conversationId, tx);
+  if (!room) return [];
+  if (room.shape === 'direct') {
+    const people = await tx
+      .select({ userId: conversationParticipants.userId })
+      .from(conversationParticipants)
+      .where(
+        and(
+          eq(conversationParticipants.conversationId, conversationId),
+          eq(conversationParticipants.kind, 'person'),
+          isNull(conversationParticipants.removedAt),
+        ),
+      );
+    return [...new Set(people.flatMap((p) => (p.userId ? [p.userId] : [])))];
+  }
+  const out = new Set<string>(room.createdBy ? [room.createdBy] : []);
+  if (room.orgId !== null) {
+    const admins = await tx
+      .select({ userId: organizationMembers.userId })
+      .from(organizationMembers)
+      .where(
+        and(
+          eq(organizationMembers.orgId, room.orgId),
+          inArray(organizationMembers.role, ['admin', 'owner']),
+        ),
+      );
+    for (const a of admins) out.add(a.userId);
+  }
+  return [...out];
 }
