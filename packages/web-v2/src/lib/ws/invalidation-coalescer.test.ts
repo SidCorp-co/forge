@@ -98,3 +98,34 @@ describe("scheduleInvalidation", () => {
 		expect(c.keys).toHaveLength(2);
 	});
 });
+
+// ISS-1228 r25 (criterion 249): a check-in re-read a read Forge refused for good every few seconds.
+describe("a window that spares standing refusals", () => {
+	async function cacheWith() {
+		const { QueryClient } = await import("@tanstack/react-query");
+		const { ApiError } = await import("@/lib/api/client");
+		const qc = new QueryClient();
+		const cache = qc.getQueryCache();
+		qc.setQueryData(["holds", "answered"], { ok: true });
+		const refused = cache.build(qc, { queryKey: ["holds", "refused"] });
+		refused.setState({ status: "error", error: new ApiError(403, "Not a project member.", "FORBIDDEN") });
+		return qc;
+	}
+
+	it("passes the refusal by when every event asked it to", async () => {
+		const qc = await cacheWith();
+		scheduleInvalidation(qc, ["holds"], { spareRefused: true });
+		scheduleInvalidation(qc, ["holds"], { spareRefused: true });
+		vi.advanceTimersByTime(INVALIDATE_WINDOW_MS);
+		expect(qc.getQueryState(["holds", "refused"])?.isInvalidated).toBe(false);
+		expect(qc.getQueryState(["holds", "answered"])?.isInvalidated).toBe(true);
+	});
+
+	it("invalidates it where any event in the window did not", async () => {
+		const qc = await cacheWith();
+		scheduleInvalidation(qc, ["holds"], { spareRefused: true });
+		scheduleInvalidation(qc, ["holds"]);
+		vi.advanceTimersByTime(INVALIDATE_WINDOW_MS);
+		expect(qc.getQueryState(["holds", "refused"])?.isInvalidated).toBe(true);
+	});
+});

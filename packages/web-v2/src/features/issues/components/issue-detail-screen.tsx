@@ -11,7 +11,6 @@
 
 import { useNow } from "@/design/hooks/use-now";
 import {
-  Button,
   Checkbox,
   Collapsible,
   ErrorState,
@@ -31,7 +30,7 @@ import { useSessionsAndHolds } from "@/features/pipeline/hooks";
 import { DecisionPanel, focusDecisionPanel } from "@/features/questions/components/decision-panel";
 import { buildShareLink, useRecents } from "@/features/shell";
 import { formatApiError, isRetryableApiError } from "@/lib/api/error";
-import { couldNotRead, offersRetry } from "@/lib/api/read-failed";
+import { offersRetry } from "@/lib/api/read-failed";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { useToast } from "@/providers/toast-provider";
@@ -73,7 +72,7 @@ import { ActivityFeed } from "./activity-feed";
 import { AwaitingReleaseBanner } from "./awaiting-release-banner";
 import { BlockerBanner } from "./blocker-banner";
 import { IssueHeaderActions } from "./issue-header-actions";
-import { HeaderReadFailure, IssueStickyHeader } from "./issue-sticky-header";
+import { HeaderReadFailures, IssueStickyHeader } from "./issue-sticky-header";
 import { useGuardedTransition } from "./use-guarded-transition";
 import { CommentThread } from "./comment-thread";
 import { DescriptionSection } from "./description-section";
@@ -259,10 +258,16 @@ export function IssueDetailScreen({
       ? { error: q.error, retry: offersRetry(q.error) ? () => void q.refetch() : undefined }
       : undefined;
   const railUnread = { deps: unreadOf(depsQ), cost: unreadOf(costQ) };
-  const sessionUnread = sessionId === "unread" ? unreadOf(holdsQ) : undefined;
-  const sessionUnreadLine = sessionUnread ? (
-    <HeaderReadFailure said={couldNotRead("Its session", sessionUnread.error)} retry={sessionUnread.retry} />
-  ) : null;
+  // Both reads the header rests on say a failure on its one row, never in the chips or the toolbar (ISS-1228 r25).
+  const failedRead = (what: string, q: { error: unknown; refetch: () => unknown }) => ({
+    what,
+    error: q.error,
+    retry: offersRetry(q.error) ? () => void q.refetch() : undefined,
+  });
+  const headerUnread = [
+    ...(runChip.state === "unreadable" ? [failedRead("The run", journalQ)] : []),
+    ...(sessionId === "unread" ? [failedRead("Its session", holdsQ)] : []),
+  ];
 
   const tabs: TabItem[] = [
     {
@@ -293,18 +298,6 @@ export function IssueDetailScreen({
               <span role="status" aria-label="Reading the run" className="inline-flex">
                 <Skeleton className="h-6 w-24" />
               </span>
-            )}
-            {runChip.state === "unreadable" && (
-              <>
-                <span role="status" className="fg-caption text-muted">
-                  {couldNotRead("The run", journalQ.error)}
-                </span>
-                {offersRetry(journalQ.error) && (
-                  <Button variant="secondary" size="sm" icon="rerun" onClick={() => journalQ.refetch()}>
-                    Retry
-                  </Button>
-                )}
-              </>
             )}
             {runWord && (
               <span className="inline-flex" title={runWord.detail}>
@@ -352,7 +345,7 @@ export function IssueDetailScreen({
             />
           </>
         }
-        failure={sessionUnreadLine}
+        failure={headerUnread.length > 0 ? <HeaderReadFailures reads={headerUnread} /> : null}
       />
 
       <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,1fr)_clamp(16rem,32%,22.5rem)] 2xl:grid-cols-[minmax(0,1fr)_clamp(16rem,32%,23.75rem)]">
@@ -390,7 +383,8 @@ export function IssueDetailScreen({
 
           <LeaseDisagreementNotice projectId={projectId} issueId={issue.id} slug={slug} />
 
-          {agentState && (
+          {/* Over a failed run or session read the card would claim a liveness nobody read (ISS-1228 r25). */}
+          {agentState && headerUnread.length === 0 && (
             <LiveAgentPanel
               state={agentState}
               step={liveStep ?? "—"}
