@@ -82,7 +82,8 @@ export function describeCoolifyForbidden(err: CoolifyApiError): string {
   const missing = ability
     ? `the \`${ability}\` ability (\`api.ability:${ability}\`)`
     : 'the ability that route requires';
-  return `Coolify recognised the API token but refused ${route} (HTTP 403): the token is missing ${missing}. Widen this token's abilities in Coolify (Keys & Tokens → edit the token) — the credential itself is valid, so replacing it will not change this.`;
+  const said = /[.!?]$/.test(err.message) ? err.message : `${err.message}.`;
+  return `${said} If this is Coolify, it knows the API token but refused ${route}: the token is missing ${missing}. Widen this token's abilities in Coolify (Keys & Tokens → edit the token); the credential itself is valid, so replacing it will not change this.`;
 }
 
 /** Every refusal reading a Coolify answer words it here, so none says "Coolify answered" (ISS-1421 r17). */

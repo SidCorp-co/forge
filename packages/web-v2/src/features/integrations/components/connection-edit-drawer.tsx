@@ -123,8 +123,8 @@ function HeaderTitle({
 }
 
 /**
- * What a test just run found, in one sentence: the provider's own words where it gave them, and
- * otherwise the status said to a person, never the stored value itself (ISS-1421 r17).
+ * What a test just run found: Forge's worded answer whole where it gave one, and otherwise the
+ * status said to a person in one sentence, never the stored value itself (ISS-1421 r17).
  */
 export function testOutcome(result: { status: string; message?: string | null }): string {
   if (result.message) return result.message;

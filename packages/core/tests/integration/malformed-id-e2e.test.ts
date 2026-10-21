@@ -70,16 +70,20 @@ afterAll(async () => {
 
 const defOf = (schema: unknown): Def => (schema as { _zod: { def: Def } })._zod.def;
 
-/** The declared query parameters of a route that name an id. */
-function idQueries(entry: Entry): string[] {
-  const names = entry.validators
-    .filter((v) => v.target === 'query')
-    .flatMap((v) => {
-      let def = defOf(v.schema);
-      while (def.innerType || (def.type === 'pipe' && def.in)) def = defOf(def.innerType ?? def.in);
-      return Object.keys(def.shape ?? {});
-    });
-  return [...new Set(names)].filter((n) => NAMES_AN_ID.test(n));
+const OPTIONAL = new Set(['optional', 'default', 'prefault', 'catch']);
+
+/** The declared query parameters of a route that name an id, and whether each must be sent. */
+function idQueries(entry: Entry): { name: string; required: boolean }[] {
+  const seen = new Map<string, boolean>();
+  for (const v of entry.validators.filter((d) => d.target === 'query')) {
+    let def = defOf(v.schema);
+    while (def.innerType || (def.type === 'pipe' && def.in)) def = defOf(def.innerType ?? def.in);
+    for (const [name, field] of Object.entries(def.shape ?? {})) {
+      if (!NAMES_AN_ID.test(name)) continue;
+      seen.set(name, (seen.get(name) ?? false) || !OPTIONAL.has(defOf(field).type ?? ''));
+    }
+  }
+  return [...seen].map(([name, required]) => ({ name, required }));
 }
 
 /** The value a well-formed id parameter takes: the project's own id where it names a project. */
@@ -89,7 +93,10 @@ function wellFormed(path: string, name: string, at: number): string {
   return projectish ? projectId : '00000000-0000-4000-8000-000000000000';
 }
 
-/** Each request a route is sent: one per id parameter of its path or query, that one malformed. */
+/**
+ * Each request a route is sent: one per id parameter of its path or query, that one malformed and
+ * every other well formed, a required id query included, so the malformed one is what is judged.
+ */
 function probes(entry: Entry): string[] {
   const ids = [...entry.path.matchAll(/:([A-Za-z0-9_]+)(\{[^}]*\})?\??/g)].filter((m) =>
     NAMES_AN_ID.test(m[1] ?? ''),
@@ -102,8 +109,15 @@ function probes(entry: Entry): string[] {
         return whole === malformed ? MALFORMED : wellFormed(entry.path, name, at);
       },
     );
-  const out = ids.map((m) => pathWith(m[0]));
-  for (const q of idQueries(entry)) out.push(`${pathWith(null)}?${q}=${MALFORMED}`);
+  const queries = idQueries(entry);
+  const queryWith = (malformed: string | null) => {
+    const sent = queries
+      .filter((q) => q.name === malformed || q.required)
+      .map((q) => `${q.name}=${q.name === malformed ? MALFORMED : wellFormed('', q.name, 0)}`);
+    return sent.length > 0 ? `?${sent.join('&')}` : '';
+  };
+  const out = ids.map((m) => `${pathWith(m[0])}${queryWith(null)}`);
+  for (const q of queries) out.push(`${pathWith(null)}${queryWith(q.name)}`);
   return out;
 }
 
@@ -141,6 +155,16 @@ describe('a malformed id on every route', () => {
     expect(sent).toBeGreaterThan(300);
     expect(crashed, 'each line is a route a malformed id crashes').toEqual([]);
   }, 600_000);
+
+  it('sends a required id query well formed beside a malformed path id', () => {
+    const picker = routes.find(
+      (r) => r.key === 'GET /api/projects/:projectId/integrations/github/repositories',
+    );
+    if (!picker) throw new Error('the repository picker is not served any more');
+    expect(probes(picker)).toContain(
+      `/api/projects/${MALFORMED}/integrations/github/repositories?connectionId=00000000-0000-4000-8000-000000000000`,
+    );
+  });
 
   it("refuses judge-73's question read 400, naming the parameter", async () => {
     const res = await answer(
