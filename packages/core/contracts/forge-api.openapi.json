@@ -29710,7 +29710,8 @@
                           "enum": [
                             "question",
                             "clarification",
-                            "recommendation"
+                            "recommendation",
+                            "assumption"
                           ],
                           "type": "string"
                         },

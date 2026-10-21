@@ -62,4 +62,5 @@ export {
   pendingDesignOfPark,
   reaskSupersededDesignQuestions,
   recordItemLandings,
+  replaceAssumedAnswer,
 } from './write.js';

@@ -12,7 +12,7 @@ import type {
   QuestionRefusalCode,
 } from '@forge/contracts/questions';
 import { scrubSecretsDeep } from '@forge/observability';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { type IssueStatus, issues } from '../db/schema.js';
 import {
@@ -457,6 +457,19 @@ export async function insertBatchQuestions(
       payload: { questionId: r.id, projectId: r.projectId, issueId: r.issueId ?? null },
     })),
   );
+}
+
+/** A person's answer replacing the code's on an assumption already answered (REQ-10 BC-7): the status stays answered. */
+export async function replaceAssumedAnswer(
+  tx: Tx,
+  questionId: string,
+  steps: QuestionStep[],
+  at: Date,
+): Promise<void> {
+  await tx
+    .update(agentQuestions)
+    .set({ steps, updatedAt: at })
+    .where(and(eq(agentQuestions.id, questionId), eq(agentQuestions.status, 'answered')));
 }
 
 /** Records where answered questionnaire items landed: each row's whole landing list, as read and extended. */

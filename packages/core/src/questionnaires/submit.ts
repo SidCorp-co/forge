@@ -3,13 +3,14 @@
 import type { QuestionnaireAnswer, QuestionnaireItem } from '@forge/contracts/onboarding';
 import { QUESTIONNAIRE_MACHINE } from '@forge/contracts/onboarding-machine';
 import { QUESTION_MACHINE } from '@forge/contracts/question-machine';
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { db, type TxOnly } from '../db/client.js';
 import { questionnaireBatches } from '../db/schema-onboarding.js';
 import { agentQuestions, type QuestionStep } from '../db/schema-questions.js';
 import { dataPolicyOf, storedAnswers } from '../lib/data-egress.js';
 import { movedRow, transition } from '../lifecycle/index.js';
 import { permissionFactsOf } from '../permissions/index.js';
+import { replaceAssumedAnswer } from '../questions/index.js';
 import { appendMessagesIn, openOrExtendWindow } from './ports.js';
 import {
   type BatchRow,
@@ -96,10 +97,7 @@ async function answerItems(
     ];
     if (entry.row.status === 'answered') {
       // a changed assumption is already answered by the code: the person's answer replaces it
-      await tx
-        .update(agentQuestions)
-        .set({ steps: changed, updatedAt: now })
-        .where(and(eq(agentQuestions.id, entry.row.id), eq(agentQuestions.status, 'answered')));
+      await replaceAssumedAnswer(tx, entry.row.id, changed, now);
       continue;
     }
     const answered = await transition(tx, QUESTION_MACHINE, {
