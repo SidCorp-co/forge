@@ -164,7 +164,10 @@ A workflow design revision drawn under a design issue is that issue's deliverabl
 where the work landed. `decideDesignAs` (`packages/core/src/workflows/design-service.ts`) records it in
 the decision's own transaction through `markApprovedDesign` (`packages/core/src/issues/design-landing.ts`),
 whose one write is `recordDesignLanding` here, its `issue.updated` carrying `via: 'design'`. Where it
-writes, it also sets `merged_artifacts` to the revision's one `design` artifact, `<flow>@rev<n>`.
+writes, it sets `merged_artifacts` to the design artifacts the mark carries with the revision's own,
+`<flow>@rev<n>`: over a mark naming design artifacts alone the revision joins them, replacing only an
+earlier revision of its own flow (`packages/core/src/issues/merge-record.ts:joinedDesignArtifacts`), so an issue drawing several
+designs keeps each approved one (FB-140); over any other mark it is the one artifact.
 
 An issue linked as the build of a workflow (`workflow_builds`, `POST …/workflows/:workflow/builds`) is a
 build issue: its deliverable is that build, so a revision drawn under it is not its landing. The
@@ -181,11 +184,13 @@ design issue the table below holds:
 
 | shape | the row holds | the approval |
 |---|---|---|
-| `outside_git` | no mark, or a mark somebody's word wrote (`asserted`, `landed`) naming no artifacts or only `design` ones | stamps `merged_at` and sets `merged_landing` to the approved revision — `repointed` where a mark stood, the landing it replaced named in the notice it posts |
+| `outside_git` | no mark, or a mark somebody's word wrote (`asserted`, `landed`) naming no artifacts | stamps `merged_at` and sets `merged_landing` to the approved revision — `repointed` where a mark stood, the landing it replaced named in the notice it posts |
+| `outside_git` | a mark naming only `design` artifacts | stamps `merged_at`, joins the revision to them, and sets `merged_landing` to name every one (`packages/core/src/issues/design-landing.ts:designsLandingOf`) — `added` where another design stays beside it, the notice naming those; `repointed` where it replaced the only one, an earlier revision of its own flow |
 | `outside_git` | a mark whose artifacts name a surface other than `design` | keeps it: that is the code the issue landed, and taking it for the design would make the issue design-only |
 | `outside_git` | a merge Forge `observed` | keeps it |
 | `git` | no mark | stamps `merged_at` (`asserted`: a git mark names no revision; the notice names it) |
-| `git` | any mark | keeps it |
+| `git` | the stamp a design approval alone wrote (`packages/core/src/issues/merge-record.ts:designOnlyStamp`) | keeps its `merged_at` and joins the revision to its artifacts — `added` or `repointed` as outside git |
+| `git` | any other mark | keeps it |
 
 A dropped, closed or archived issue, and a project with no project document, are not marked; the
 decision's answer says which (`designIssue.action` `none` with its `why`). A closed issue has shipped

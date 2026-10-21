@@ -24,8 +24,10 @@ const HEADINGS: Record<string, (from: IssueStatus, kind?: WaitingKind | null) =>
   dropped: (from) => `🗑 **Dropped** — moved from \`${from}\``,
 };
 
-/** The first line of every announcement this module writes: a move into a park, or a person leaving one. */
-const ANNOUNCES_A_MOVE = /(?:— moved from `[a-z_]+`|^↩ \*\*Left `[a-z_]+` for `[a-z_]+`\*\*)$/u;
+/** The first line of every announcement this module writes: a move into a park, or a person leaving
+ *  one; and of a park's re-point (`park-repoint.ts:REPOINT_HEADING`), which moves nothing either. */
+const ANNOUNCES_A_MOVE =
+  /(?:— moved from `[a-z_]+`|^↩ \*\*Left `[a-z_]+` for `[a-z_]+`\*\*|^↪ \*\*Re-pointed `[a-z_]+`\*\*)$/u;
 
 /** Whether a comment is one of this module's move announcements rather than something a person wrote. */
 export function announcesAMove(body: string): boolean {

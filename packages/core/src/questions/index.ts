@@ -13,6 +13,8 @@ export { type AwaitedDesign, answerDesignQuestions } from './design-wait.js';
 export {
   holdsOpenHumanQuestion,
   openHumanQuestionIdsOn,
+  openParkWaitsOn,
+  type ParkWait,
   personOwesAnAnswer,
   settleOpenQuestions,
   voidCancelledRunQuestions,

@@ -28,7 +28,7 @@ import { pipelineHealthUnderived, safeHydratePipelineHealthForIssues } from './p
 import {
   buildsWorkflowOf,
   fireOfCaller,
-  proposesWorkflowOf,
+  proposesWorkflowsOf,
   requirementOfIssue,
   shippedReleaseOf,
 } from './ports.js';
@@ -54,7 +54,7 @@ export async function issueDetailOf(issue: IssueRow) {
     buildsWorkflow: await buildsWorkflowOf(issue.id),
     contractWait: await contractWaitHoldOf(issue.projectId, issue.id),
     patterns: await issuePatternsOf(issue.projectId, issue.id),
-    proposesWorkflow: await proposesWorkflowOf(issue.id),
+    proposesWorkflows: await proposesWorkflowsOf(issue.id),
     requirement: await requirementOfIssue(issue.id),
     relations: await loadIssueRelations(issue.id, issue.projectId),
     shippedIn: await shippedReleaseOf(issue.projectId, issue.id),

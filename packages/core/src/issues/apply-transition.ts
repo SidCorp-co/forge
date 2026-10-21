@@ -13,14 +13,20 @@ import { type IssueStatus, issues, type WaitingKind } from '../db/schema.js';
 import type { WorkStep } from '../db/schema-issue-work-state.js';
 import { lockXact } from '../lib/advisory-lock.js';
 import { type Refusal, RefusalError } from '../lib/refusal.js';
-import { type KernelActor, type KernelExecutor, transition } from '../lifecycle/index.js';
-import { actorAgency, type DeviceLite, type TransitionActor } from './actor-agency.js';
+import { type KernelExecutor, transition } from '../lifecycle/index.js';
+import {
+  actorAgency,
+  type DeviceLite,
+  kernelActorFor,
+  type TransitionActor,
+} from './actor-agency.js';
 import { archivedAmong, archiveRefusalForTransition } from './archive.js';
 import { issueChecklistRecord } from './checklist-record.js';
 import { designCheckOf } from './design-record.js';
 import { expireBlocksEdgesOnDrop, type UnblockedDependent } from './drop-cascade.js';
 import { postDropUnblockNotices } from './drop-unblock.js';
-import { mintParkQuestion, needsNotApplicable } from './park-question.js';
+import { type AwaitedDesignRef, mintParkQuestion, needsNotApplicable } from './park-question.js';
+import { repointPark, repointsPark } from './park-repoint.js';
 import { settleOpenQuestions, withdrawParkQuestions } from './ports.js';
 import { moveOf, recordMove } from './record-events/kernel-records.js';
 import { refuseOffRecoveryEdge } from './recovery-move.js';
@@ -87,10 +93,11 @@ interface ApplyStatusTransitionOptions {
    */
   needs?: string | undefined;
   /**
-   * The workflow design revision this park waits on. Its approver's decision answers the question
-   * the park mints, which moves the issue on as an answer does (ISS-254).
+   * The workflow design revisions this park waits on. Each approver's decision answers the question
+   * the park mints for it, and the issue moves on as an answer does once every one is answered
+   * (ISS-254). At `needs_info` already, naming them re-points the park (`park-repoint.ts`).
    */
-  awaitsDesign?: { workflowId: string; revision: number } | undefined;
+  awaitsDesign?: readonly AwaitedDesignRef[] | undefined;
   /**
    * The issue whose merge mark this park waits on — its own or another of its project. The stamp
    * writing the mark answers the question the park mints, which moves the issue on as an answer does.
@@ -122,6 +129,8 @@ export interface StatusTransitionResult {
   unblockedDependents: UnblockedDependent[];
   /** The step the run is at inside the status after this move, or null. */
   step: WorkStep | null;
+  /** A re-point of the park (`park-repoint.ts`): the questions it withdrew and those it asked. */
+  repointed?: { withdrawn: string[]; asked: string[] };
 }
 
 const authorOf = (actor: TransitionActor) => (actor.type === 'user' ? actor.id : actor.ownerId);
@@ -168,6 +177,10 @@ export async function transitionIssueStatus(
   const leftStatus = (work?.leftStatus ?? null) as IssueStatus | null;
 
   if (fromStatus === toStatus) {
+    // naming what a park waits on, at the park, replaces what it waits on: no status moves
+    if (repointsPark(fromStatus, options)) {
+      return repointPark({ issue, actor, options, step: work?.step ?? null });
+    }
     throw transitionRefused('NO_OP', `issue already in status ${toStatus}`, {
       status: fromStatus,
     });
@@ -250,21 +263,6 @@ type TransitionWriteResult = {
   row: { id: string; status: IssueStatus; reopenCount: number; updatedAt: Date };
   unblockedDependents: UnblockedDependent[];
 };
-
-/**
- * ISS-1107 — the transition actor as `kernel_transitions` stores one. The two
- * vocabularies differ: `TransitionActor` has `device`, which
- * `kernelTransitionActorTypes` has not, and a device IS a runner box, so it
- * records under that type carrying its own id. `agency` goes through
- * `actorAgency` rather than a spread — `null` is an agent-driven user there and
- * `undefined` is a human.
- */
-function kernelActorFor(actor: TransitionActor): KernelActor {
-  if (actor.type === 'user') {
-    return { type: 'user', id: actor.id, agency: actorAgency(actor) };
-  }
-  return { type: 'runner', id: actor.id };
-}
 
 /** The work state a move leaves: the park's left status and the step. */
 async function writeWorkStateOfMove(tx: TransitionTx, input: TransitionWriteInput): Promise<void> {
@@ -370,7 +368,7 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
     });
   // a park waiting on a design revision takes the project's workflow lock before the issue row, the
   // order a decision or a superseding write takes them in, so the two cannot deadlock (ISS-254)
-  const moved = options.awaitsDesign
+  const moved = options.awaitsDesign?.length
     ? await db.transaction(async (tx) => {
         await lockXact(tx, 'workflows', issue.projectId);
         return write(tx);

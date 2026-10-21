@@ -181,12 +181,14 @@ describe('a design decision wakes its master', () => {
 
     const issue = ok(await say('owner', 'GET', `/api/issues/${designIssue}`));
     expect(issue.status).toBe('reopen');
-    expect(issue.proposesWorkflow).toMatchObject({
-      workflowId,
-      designStatus: 'returned',
-      decision: 'return',
-      reason: 'the SLA is 48h by contract',
-    });
+    expect(issue.proposesWorkflows).toEqual([
+      expect.objectContaining({
+        workflowId,
+        designStatus: 'returned',
+        decision: 'return',
+        reason: 'the SLA is 48h by contract',
+      }),
+    ]);
     const posted = await rows<{ body: string }>(
       sql`SELECT body FROM comments WHERE issue_id = ${designIssue}`,
     );

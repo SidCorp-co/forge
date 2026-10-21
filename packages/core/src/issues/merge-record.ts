@@ -214,56 +214,92 @@ export async function recordIssueMerge(
   return { wrote: false, ...held };
 }
 
+/** The flow a design artifact's `<flow>@rev<n>` ref names. */
+const flowOfRef = (ref: string) => ref.replace(/@rev\d+$/u, '');
+
 /**
- * The landing the approval of a design revision records on the issue that drew it (ISS-262). On a
- * shape that names landings (`landing` given) it is written over an unmarked row or a mark resting on
- * somebody's word, and the mark then names the approved revision rather than the one proposed; a
+ * The design artifacts a mark carries once `artifact` joins them: where the mark already names design
+ * revisions alone, the approved one is added beside them, replacing only the earlier revision of its
+ * own flow (FB-140); any other mark is replaced by the approved revision alone.
+ */
+export function joinedDesignArtifacts(
+  held: readonly LandingArtifact[] | null,
+  artifact: LandingArtifact,
+): LandingArtifact[] {
+  const designs = held ?? [];
+  if (designs.length === 0 || designs.some((a) => a.surface !== 'design')) return [artifact];
+  const flow = flowOfRef(artifact.ref);
+  return [...designs.filter((a) => flowOfRef(a.ref) !== flow), artifact];
+}
+
+/**
+ * The landing the approval of a design revision records on the issue that drew it (ISS-262). An issue
+ * drawing several designs keeps each approved one on its mark (FB-140): the approved revision joins
+ * the design revisions a design-only mark already names (`joinedDesignArtifacts`). On a shape that
+ * names landings (`landingOf` given) the landing is written over an unmarked row, a mark resting on
+ * somebody's word or a design-only mark, and names every approved revision the mark then carries; a
  * merge Forge observed is never written over, and neither is a landing whose artifacts name anything
  * but design: that is the code the issue landed, and taking it for the design would leave the issue
- * design-only, which `awaiting_release` refuses (`merged-at.ts:mergeNotRecorded`). Where no landing is
- * named (git) it stamps only a row that carries none. Called in the decision's transaction:
+ * design-only, which `awaiting_release` refuses (`merged-at.ts:mergeNotRecorded`). Where no landing
+ * is named (git) it stamps a row that carries no mark, and adds to one a design approval alone wrote
+ * (`designOnlyStamp`), keeping its time. Called in the decision's transaction:
  * docs/modules/issues/merge-mark.md.
  */
 export async function recordDesignLanding(
   executor: Tx,
   args: {
     issueId: string;
-    landing: string | null;
-    /** The design revision's artifact, written on either shape: a revision deploys nothing. */
-    artifacts: LandingArtifact[];
+    /** The landing text naming the design artifacts the mark carries; null on a git project. */
+    landingOf: ((artifacts: readonly LandingArtifact[]) => string) | null;
+    /** The approved revision's artifact, written on either shape: a revision deploys nothing. */
+    artifact: LandingArtifact;
     actor: OutboxActor;
   },
-): Promise<MergeRecord & { before: MergeMarkColumns }> {
-  const { issueId, landing } = args;
+): Promise<MergeRecord & { before: MergeMarkColumns & { artifacts: LandingArtifact[] | null } }> {
+  const { issueId, landingOf } = args;
   const [prior] = await executor
-    .select({ projectId: issues.projectId, ...stampColumns })
+    .select({ projectId: issues.projectId, mergedPaths: issues.mergedPaths, ...stampColumns })
     .from(issues)
     .where(eq(issues.id, issueId))
     .limit(1);
+  const before = {
+    mergedAt: prior?.mergedAt ?? null,
+    mergedCommitSha: prior?.mergedCommitSha ?? null,
+    mergedLanding: prior?.mergedLanding ?? null,
+    artifacts: prior?.mergedArtifacts ?? null,
+  };
+  const designStamp =
+    landingOf === null
+      ? prior !== undefined &&
+        designOnlyStamp({ ...prior, mergedArtifacts: prior.mergedArtifacts ?? null }) !== null
+      : (prior?.mergedArtifacts ?? []).every((a) => a.surface === 'design');
+  const artifacts = joinedDesignArtifacts(
+    designStamp ? (prior?.mergedArtifacts ?? null) : null,
+    args.artifact,
+  );
+  const designOnly = sql`NOT EXISTS (SELECT 1 FROM jsonb_array_elements(coalesce(${issues.mergedArtifacts}, '[]'::jsonb)) a
+                           WHERE a->>'surface' IS DISTINCT FROM 'design')`;
+  // the row as it was read, so a stamp written between the read and this write is not overwritten
+  const unchanged = prior?.mergedArtifacts
+    ? sql`${issues.mergedArtifacts} = ${JSON.stringify(prior.mergedArtifacts)}::jsonb`
+    : isNull(issues.mergedArtifacts);
   const gate =
-    landing === null
-      ? isNull(issues.mergedAt)
-      : and(
-          sql`coalesce(trim(${issues.mergedCommitSha}), '') = ''`,
-          sql`(${issues.mergedAt} IS NULL OR ${issues.mergedLanding} IS DISTINCT FROM ${landing})`,
-          sql`NOT EXISTS (SELECT 1 FROM jsonb_array_elements(coalesce(${issues.mergedArtifacts}, '[]'::jsonb)) a
-                           WHERE a->>'surface' IS DISTINCT FROM 'design')`,
-        );
+    landingOf === null
+      ? designStamp
+        ? and(isNotNull(issues.mergedAt), unchanged)
+        : isNull(issues.mergedAt)
+      : and(sql`coalesce(trim(${issues.mergedCommitSha}), '') = ''`, designOnly, unchanged);
   const [wrote] = await executor
     .update(issues)
     .set({
-      mergedAt: sql`now()`,
-      ...(landing === null ? {} : { mergedLanding: landing }),
-      mergedArtifacts: args.artifacts,
+      // a git stamp a design approval alone wrote keeps its time; any other is written now
+      ...(landingOf === null && designStamp ? {} : { mergedAt: sql`now()` }),
+      ...(landingOf === null ? {} : { mergedLanding: landingOf(artifacts) }),
+      mergedArtifacts: artifacts,
       updatedAt: sql`now()`,
     })
     .where(and(eq(issues.id, issueId), gate))
     .returning(stampColumns);
-  const before: MergeMarkColumns = {
-    mergedAt: prior?.mergedAt ?? null,
-    mergedCommitSha: prior?.mergedCommitSha ?? null,
-    mergedLanding: prior?.mergedLanding ?? null,
-  };
   if (!wrote) return { wrote: false, ...(await readBack(executor, issueId)), before };
   await answerMergeQuestions(executor, {
     issueId,
@@ -281,7 +317,12 @@ export async function recordDesignLanding(
       actor: args.actor,
       fields: STAMP_FIELDS,
       via: 'design',
-      before: { ...before, mergedArtifacts: prior.mergedArtifacts },
+      before: {
+        mergedAt: before.mergedAt,
+        mergedCommitSha: before.mergedCommitSha,
+        mergedLanding: before.mergedLanding,
+        mergedArtifacts: prior.mergedArtifacts,
+      },
       after: { ...wrote },
     });
   }

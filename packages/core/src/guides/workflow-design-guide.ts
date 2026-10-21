@@ -40,16 +40,18 @@ names the workflow it builds is not dispatched while that design is not approved
    revision still owed or a deviation accepted — so read it before linking or building, and a build job is
    given it with the approved revision. An approval records the revision as the landing of the issue it was
    drawn under — its merged mark is written, or re-pointed from a revision only proposed, unless that issue
-   is already closed or dropped — and moves no status: that issue's run, or the release that claims it, takes its next move.
+   is already closed or dropped; an issue drawing several designs keeps each approved one on its mark — and moves no status: that issue's run, or the release that claims it, takes its next move.
    An issue linked as the build of a workflow delivers that build, so a revision drawn under it is never its
    landing: the approval posts a notice naming the revision as evidence, and the issue is marked when its
    build lands. Draw a design that is the deliverable under an issue of its own. A return reopens
    the design's issue with the reason posted on it, and \`GET /api/issues/:id\` shows it under
-   \`proposesWorkflow\`, so the issue is admissible work again; a design issue standing at a park keeps
+   \`proposesWorkflows\` (every design drawn under it, each at the latest revision drawn there), so the issue is admissible work again; a design issue standing at a park keeps
    its park and only gets the reason posted. **To park an issue until the approver decides**, park it at
    \`needs_info\` with \`awaitsDesign: { workflowId, revision }\` naming the revision now waiting: the
    decision, approve or return, is written as the answer to the question that park asks, and the issue
-   moves back to the status it left as any answer moves it. A park naming any other revision is refused
+   moves back to the status it left as any answer moves it. An issue waiting on several revisions sends them as a list,
+   and moves back once every one is decided; one parked on a revision that now waits on another is re-pointed by
+   parking again at \`needs_info\` naming the one it waits on now, which withdraws the earlier wait and moves no status. A park naming any other revision is refused
    \`QUESTION_DESIGN_UNKNOWN\` or \`QUESTION_DESIGN_NOT_AWAITING\`. A \`needs_decision\` park that names no
    revision, on an issue with exactly one revision proposed under it still awaiting its approver, is linked to
    that revision by core, and its question says so (\`linked to <flow> r<N>, proposed under this issue\`); with

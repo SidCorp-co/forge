@@ -1,15 +1,15 @@
 /**
  * What the approval of a design revision records on the issue that drew it (ISS-262): where the
- * revision is that issue's deliverable, its approval is where the work landed, and the mark is written
- * or re-pointed to the approved revision in the decision's transaction, so a mark naming a proposed
- * revision does not outlive its approval. An issue linked as the build of a workflow delivers that
+ * revision is that issue's deliverable, its approval is where the work landed, and the mark is written,
+ * re-pointed or added to with the approved revision in the decision's transaction, so a mark naming a
+ * proposed revision does not outlive its approval and an issue drawing several designs keeps each one. An issue linked as the build of a workflow delivers that
  * build, so a revision drawn under it is evidence its notice records, never its merged mark. Neither
  * moves a status — recording a landing never does (docs/modules/issues/merge-mark.md). A design-only
  * issue needs no release: once every revision it delivers is approved, an agent closes it through the
  * `design_delivered` edge (REQ-45 BC-4); any other issue's run or release takes the next move.
  */
 
-import { designArtifact } from '@forge/contracts/landing-artifacts';
+import { designArtifact, type LandingArtifact } from '@forge/contracts/landing-artifacts';
 import { sql } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
 import type { Actor } from './activity.js';
@@ -22,15 +22,18 @@ import {
 } from './merge-record.js';
 
 export interface DesignLandingOutcome {
-  /** `marked` over no mark, `repointed` over one somebody's word made, `kept` where the mark stands,
-   *  `evidence` on a build issue, whose mark the approval never writes. */
-  action: 'marked' | 'repointed' | 'kept' | 'evidence' | 'none';
+  /** `marked` over no mark, `added` beside the other designs a design-only mark names, `repointed`
+   *  over one somebody's word made or an earlier revision of the same design, `kept` where the mark
+   *  stands, `evidence` on a build issue, whose mark the approval never writes. */
+  action: 'marked' | 'added' | 'repointed' | 'kept' | 'evidence' | 'none';
   /** The mark the issue carries after the approval; null where there is no issue to read. */
   mark: MergeMarkKind | null;
   /** The issue's status, which the approval does not move; null where there is no issue to read. */
   status: string | null;
   /** The landing a re-point replaced, where it named one. */
   replaced: string | null;
+  /** On `added`: the other design revisions the mark already named, which it keeps. */
+  alongside?: string[];
   /** Why nothing was written, where nothing was: a missing, archived, dropped or closed issue, an
    *  undeclared source, or a build issue. */
   why: string | null;
@@ -41,6 +44,17 @@ export interface DesignLandingOutcome {
 /** The landing an approved design revision is: what it is and that it was approved. */
 export function designLandingOf(flow: string, revision: number): string {
   return `workflow design \`${flow}\` revision ${revision}, approved`;
+}
+
+/** The landing a mark naming these approved design revisions is: one by `designLandingOf`, several each by name. */
+export function designsLandingOf(artifacts: readonly LandingArtifact[]): string {
+  const named = artifacts.flatMap((a) => {
+    const m = /^(.+)@rev(\d+)$/u.exec(a.ref);
+    return m?.[1] && m[2] ? [{ flow: m[1], revision: Number(m[2]) }] : [];
+  });
+  const [only] = named;
+  if (named.length === 1 && only) return designLandingOf(only.flow, only.revision);
+  return `workflow designs ${named.map((d) => `\`${d.flow}\` revision ${d.revision}`).join(', ')}, approved`;
 }
 
 const none = (
@@ -99,11 +113,10 @@ export async function markApprovedDesign(
   }
   const shape = await readLandingShape(String(row.project_id), tx);
   if (shape === null) return none(SOURCE_UNDECLARED, kind, status);
-  const landing = shape === 'outside_git' ? designLandingOf(args.flow, args.revision) : null;
   const stamp = await recordDesignLanding(tx, {
     issueId: args.issueId,
-    landing,
-    artifacts: [designArtifact(`${args.flow}@rev${args.revision}`)],
+    landingOf: shape === 'outside_git' ? designsLandingOf : null,
+    artifact: designArtifact(`${args.flow}@rev${args.revision}`),
     actor: { type: args.actor.type, id: args.actor.id, agency: args.actor.agency },
   });
   const mark = mergeMarkKindOf({
@@ -113,13 +126,13 @@ export async function markApprovedDesign(
   });
   if (!stamp.wrote) return { action: 'kept', mark, status, replaced: null, why: null };
   const before = mergeMarkKindOf(stamp.before);
-  return {
-    action: before === 'unmarked' ? 'marked' : 'repointed',
-    mark,
-    status,
-    replaced: stamp.before.mergedLanding,
-    why: null,
-  };
+  if (before === 'unmarked') return { action: 'marked', mark, status, replaced: null, why: null };
+  const ref = `${args.flow}@rev${args.revision}`;
+  const alongside = (stamp.artifacts ?? []).map((a) => a.ref).filter((r) => r !== ref);
+  if (alongside.length > 0) {
+    return { action: 'added', mark, status, replaced: null, why: null, alongside };
+  }
+  return { action: 'repointed', mark, status, replaced: stamp.before.mergedLanding, why: null };
 }
 
 /** The notice the design issue carries saying what the approval recorded on it. */
@@ -128,6 +141,13 @@ export function designLandingNotice(
   outcome: DesignLandingOutcome,
 ): string | null {
   const design = `Design \`${args.flow}\` revision ${args.revision} was approved`;
+  if (outcome.action === 'added') {
+    const names =
+      outcome.mark === 'landed'
+        ? 'Its landing now names every approved revision it carries.'
+        : 'This project lands its work in git, where a mark names no revision, so the mark keeps its time and its design artifacts name each revision.';
+    return `${design}, and it is this issue's deliverable, so this issue's merged mark now records it beside ${outcome.alongside?.join(', ')}, which it already named and keeps. ${names} The approval moves no status. Where design is this issue's only deliverable it needs no release: once every revision it delivers is approved, move it to \`closed\` (the \`design_delivered\` edge); otherwise its run, or the release that claims it, takes its next move.`;
+  }
   if (outcome.action === 'marked' || outcome.action === 'repointed') {
     const was =
       outcome.action === 'repointed'

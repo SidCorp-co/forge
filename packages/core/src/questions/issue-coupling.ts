@@ -21,6 +21,7 @@ type Executor = IssueDependencyExecutor;
 const QUESTION_ENDED_WITH_ISSUE = 'issue_terminal';
 const QUESTION_NOT_NEEDED = 'not_needed';
 const QUESTION_PARK_LEFT = 'park_left';
+const QUESTION_PARK_REPOINTED = 'park_repointed';
 
 /**
  * The marker that a person owes an issue an answer: an open `human` question on it.
@@ -145,15 +146,64 @@ export async function settleOpenQuestions(
 }
 
 /**
- * Withdraw the question a park minted, inside the move that takes its issue out of that park, by
- * whichever door makes the move: once the issue stands elsewhere the question waits on nothing, and
- * an open row would go on saying a person owes it (REQ-41 BC-11, `VISION: state-never-lies`).
- *
- * The park's question is a kernel fact, not a reading of its words: it is the open person question
- * written in the park's own transaction, so its `created_at` is the `created_at` of the issue's
- * latest recorded move into `needs_info` (both are that transaction's `now()`). A question anybody
- * asked before or during the park is theirs and stays open. An answered park has no open question
- * left, so the answer's own resume withdraws nothing.
+ * The open questions the park the issue stands at asked: a kernel fact, never a reading of their
+ * words. One is the open person question written in the park's own transaction, so its
+ * `created_at` is the `created_at` of the issue's latest recorded move into `needs_info` (both are
+ * that transaction's `now()`); the other is an open question waiting on an awaited fact — a design
+ * revision's decision or a merge mark — which only a park writes, whether it entered the park, was
+ * re-pointed there, or was asked again of the revision that superseded the one it waited on. A
+ * question anybody asked before or during the park is theirs and is none of these.
+ */
+function parkQuestionsOf(issueId: string): SQL {
+  return and(
+    eq(agentQuestions.issueId, issueId),
+    eq(agentQuestions.status, 'open'),
+    eq(agentQuestions.blockerKind, 'human'),
+    sql`(${agentQuestions.awaitsWorkflowId} IS NOT NULL
+      OR ${agentQuestions.awaitsMergeIssueId} IS NOT NULL
+      OR ${agentQuestions.createdAt} = (
+          select max(k.created_at) from kernel_transitions k
+           where k.entity = 'issue' and k.entity_id = ${issueId}
+             and k.to_status = ${AUTONOMOUS_QUESTION_STATUS}))`,
+  ) as SQL;
+}
+
+/** One open question the park asked, and the fact that settles it where it waits on one. */
+export interface ParkWait {
+  questionId: string;
+  awaitsDesign: { workflowId: string; revision: number } | null;
+  awaitsMerge: { issueId: string } | null;
+}
+
+/** What the park the issue stands at waits on: each open question it asked (`parkQuestionsOf`). */
+export async function openParkWaitsOn(tx: Executor, issueId: string): Promise<ParkWait[]> {
+  const rows = await tx
+    .select({
+      id: agentQuestions.id,
+      workflowId: agentQuestions.awaitsWorkflowId,
+      revision: agentQuestions.awaitsRevision,
+      mergeIssueId: agentQuestions.awaitsMergeIssueId,
+    })
+    .from(agentQuestions)
+    .where(parkQuestionsOf(issueId))
+    .orderBy(agentQuestions.createdAt, agentQuestions.id);
+  return rows.map((r) => ({
+    questionId: r.id,
+    awaitsDesign:
+      r.workflowId !== null && r.revision !== null
+        ? { workflowId: r.workflowId, revision: r.revision }
+        : null,
+    awaitsMerge: r.mergeIssueId !== null ? { issueId: r.mergeIssueId } : null,
+  }));
+}
+
+/**
+ * Withdraw the questions a park asked (`parkQuestionsOf`), inside the move that takes its issue out
+ * of that park, by whichever door makes the move: once the issue stands elsewhere they wait on
+ * nothing, and an open row would go on saying a person owes it (REQ-41 BC-11,
+ * `VISION: state-never-lies`). A re-point of the park (`issues/park-repoint.ts`) withdraws them the
+ * same way, naming what the park waits on now. An answered park has no open question left, so the
+ * answer's own resume withdraws nothing.
  */
 export async function withdrawParkQuestions(
   tx: Executor,
@@ -164,33 +214,27 @@ export async function withdrawParkQuestions(
     reason: string | null;
     by: string;
     actor: KernelActor;
+    /** The park stays where it is and waits on this instead: a re-point, not a move. */
+    repointedTo?: string | undefined;
   },
 ): Promise<string[]> {
   const open = await tx
     .select({ id: agentQuestions.id })
     .from(agentQuestions)
-    .where(
-      and(
-        eq(agentQuestions.issueId, args.issueId),
-        eq(agentQuestions.status, 'open'),
-        eq(agentQuestions.blockerKind, 'human'),
-        sql`${agentQuestions.createdAt} = (
-          select max(k.created_at) from kernel_transitions k
-           where k.entity = 'issue' and k.entity_id = ${args.issueId}
-             and k.to_status = ${AUTONOMOUS_QUESTION_STATUS})`,
-      ),
-    );
+    .where(parkQuestionsOf(args.issueId));
   if (open.length === 0) return [];
   const ids = open.map((r) => r.id);
   const why = args.reason?.trim();
-  const sentence = `the issue moved from ${ISSUE_STATUS_LABELS[AUTONOMOUS_QUESTION_STATUS]} to ${ISSUE_STATUS_LABELS[args.toStatus]} without this being answered, so the park that asked it no longer waits on a person${why ? `: ${why}` : ''}`;
+  const sentence = args.repointedTo
+    ? `the park that asked this was re-pointed to wait on ${args.repointedTo} instead, so it no longer waits on this${why ? `: ${why}` : ''}`
+    : `the issue moved from ${ISSUE_STATUS_LABELS[AUTONOMOUS_QUESTION_STATUS]} to ${ISSUE_STATUS_LABELS[args.toStatus]} without this being answered, so the park that asked it no longer waits on a person${why ? `: ${why}` : ''}`;
   await transition(tx, QUESTION_MACHINE, {
     to: 'void',
     from: 'open',
     set: {
       voidReason: sentence,
       endedBy: args.by,
-      endedReason: QUESTION_PARK_LEFT,
+      endedReason: args.repointedTo ? QUESTION_PARK_REPOINTED : QUESTION_PARK_LEFT,
       updatedAt: new Date(),
     },
     where: inArray(agentQuestions.id, ids),

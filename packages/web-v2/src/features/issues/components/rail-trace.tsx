@@ -4,6 +4,7 @@
 // release that shipped it and the lease a run holds. Each is one short row, read from the issue and
 // its standing; a row with nothing to say is left out.
 
+import type { DesignStatus } from "@forge/contracts/design-status";
 import type { IssueStanding } from "@forge/contracts/issue-standing";
 import { Link } from "@/lib/navigation/router";
 import { MonoTag, statusReading, ToneBadge } from "@/design";
@@ -23,23 +24,43 @@ export function Row({ label, children }: { label: string; children: React.ReactN
   );
 }
 
-/** The workflow the issue builds, else the one it proposes a revision of. */
-function WorkflowTrace({ issue, slug }: { issue: Pick<IssueDetail, "buildsWorkflow" | "proposesWorkflow">; slug: string }) {
+type TraceIssue = Pick<IssueDetail, "buildsWorkflow" | "proposesWorkflows" | "shippedIn">;
+
+/** One workflow's link, and the revision drawn here where it proposes one. */
+function WorkflowLink({ w, slug, revision }: { w: { flow: string; title: string; designStatus: DesignStatus | null }; slug: string; revision: number | null }) {
   const t = useCopy();
   const language = useInterfaceLanguage();
-  const w = issue.buildsWorkflow ?? issue.proposesWorkflow;
-  if (!w) return null;
-  const proposes = !issue.buildsWorkflow && issue.proposesWorkflow ? issue.proposesWorkflow : null;
   return (
-    <Row label={issue.buildsWorkflow ? t("issues.rail.builds") : t("issues.rail.proposes")}>
-      <span className="grid justify-items-end gap-0.5" data-testid="rail-workflow">
-        <Link href={workflowHref(slug, w.flow)} className="fg-body-sm text-link hover:underline">
-          {w.title}
-        </Link>
-        <span className="text-12 text-muted">
-          {proposes ? `r${proposes.revision} · ` : ""}
-          {w.designStatus ? statusReading("design", w.designStatus, language).label : t("issues.rail.notDrawn")}
-        </span>
+    <span className="grid justify-items-end gap-0.5" data-testid="rail-workflow">
+      <Link href={workflowHref(slug, w.flow)} className="fg-body-sm text-link hover:underline">
+        {w.title}
+      </Link>
+      <span className="text-12 text-muted">
+        {revision !== null ? `r${revision} · ` : ""}
+        {w.designStatus ? statusReading("design", w.designStatus, language).label : t("issues.rail.notDrawn")}
+      </span>
+    </span>
+  );
+}
+
+/** The workflow the issue builds, else every one it proposes a revision of (FB-140), each on its own line. */
+function WorkflowTrace({ issue, slug }: { issue: TraceIssue; slug: string }) {
+  const t = useCopy();
+  if (issue.buildsWorkflow) {
+    return (
+      <Row label={t("issues.rail.builds")}>
+        <WorkflowLink w={issue.buildsWorkflow} slug={slug} revision={null} />
+      </Row>
+    );
+  }
+  const proposes = issue.proposesWorkflows ?? [];
+  if (proposes.length === 0) return null;
+  return (
+    <Row label={t("issues.rail.proposes")}>
+      <span className="grid justify-items-end gap-2">
+        {proposes.map((w) => (
+          <WorkflowLink key={w.workflowId} w={w} slug={slug} revision={w.revision} />
+        ))}
       </span>
     </Row>
   );
@@ -50,7 +71,7 @@ export function RailTraceRows({
   slug,
   standing,
 }: {
-  issue: Pick<IssueDetail, "buildsWorkflow" | "proposesWorkflow" | "shippedIn">;
+  issue: TraceIssue;
   slug: string;
   standing: IssueStanding | undefined;
 }) {

@@ -335,8 +335,8 @@ export async function askParkQuestion(
 /**
  * The revision an agent's park waits on when it names none: the one revision proposed under the
  * parking issue that still awaits its approver, which is a kernel fact rather than a reading of the
- * park's words. None pending is null; two or more are refused by name, since which one settles the
- * park is the agent's to say.
+ * park's words. None pending is null; two or more are refused by name, since which of them settle the
+ * park — one, or a list of several — is the agent's to say.
  */
 export async function pendingDesignOfPark(
   executor: QuestionExecutor,
@@ -350,7 +350,7 @@ export async function pendingDesignOfPark(
     .join(', ');
   throw refuseQuestion(
     'QUESTION_DESIGN_AMBIGUOUS',
-    `this park names no \`awaitsDesign\`, and ${pending.length} design revisions proposed under this issue await their approver: ${named}. Core links the one revision proposed under the issue and cannot pick among several — send \`awaitsDesign: { workflowId, revision }\` naming the one whose decision settles this park; nothing was written`,
+    `this park names no \`awaitsDesign\`, and ${pending.length} design revisions proposed under this issue await their approver: ${named}. Core links the one revision proposed under the issue and cannot pick among several — send \`awaitsDesign\` naming the one whose decision settles this park (\`{ workflowId, revision }\`), or a list of each that must be decided before it returns; nothing was written`,
   );
 }
 

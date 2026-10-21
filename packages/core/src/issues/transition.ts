@@ -28,16 +28,36 @@ import { recordEventRoutes } from './record-events/routes.js';
 import { withRecoveryHint } from './recovery-move.js';
 import { refuseLegacyStatusFields } from './status-input.js';
 
+const awaitedDesignSchema = z
+  .object({ workflowId: z.uuid(), revision: z.number().int().min(1) })
+  .strict();
+
+/** One design revision a park waits on, or several — the park returns once every one is decided. */
+const awaitsDesignSchema = z
+  .union([awaitedDesignSchema, z.array(awaitedDesignSchema).min(1).max(20)])
+  .superRefine((value, ctx) => {
+    if (!Array.isArray(value)) return;
+    const seen = new Set<string>();
+    value.forEach((d, i) => {
+      const key = `${d.workflowId}:${d.revision}`;
+      if (seen.has(key)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: [i],
+          message: `workflow ${d.workflowId} revision ${d.revision} is named twice; name each revision the park waits on once`,
+        });
+      }
+      seen.add(key);
+    });
+  });
+
 const transitionBodySchema = z
   .object({
     toStatus: z.enum(issueStatuses),
     reason: z.string().trim().min(1).max(REASON_PARAGRAPH_MAX).optional(),
     waitingKind: z.enum(waitingKinds).optional(),
     needs: z.string().trim().min(1).max(2000).optional(),
-    awaitsDesign: z
-      .object({ workflowId: z.uuid(), revision: z.number().int().min(1) })
-      .strict()
-      .optional(),
+    awaitsDesign: awaitsDesignSchema.optional(),
     awaitsMerge: z.object({ issueId: z.uuid() }).strict().optional(),
     voidQuestions: z.string().max(2000).optional(),
     recovery: z.literal(true).optional(),
@@ -233,7 +253,11 @@ transitionRoutes.post(
           transitionReason: reason,
           waitingKind,
           needs,
-          awaitsDesign,
+          awaitsDesign: awaitsDesign
+            ? Array.isArray(awaitsDesign)
+              ? awaitsDesign
+              : [awaitsDesign]
+            : undefined,
           awaitsMerge,
           voidQuestions,
           answers,
@@ -265,6 +289,7 @@ transitionRoutes.post(
       step: result.step,
       reopenCount: result.reopenCount,
       transitionedAt: result.updatedAt,
+      ...(result.repointed ? { repointed: result.repointed } : {}),
       ...(unreported ? { afterCommitFailures: [unreported] } : {}),
     });
   },
