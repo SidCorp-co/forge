@@ -37,8 +37,6 @@ function dockOn(target: ChatTarget | null): ChatDockApi {
   return {
     projectId: "p1",
     open: true,
-    pinned: false,
-    setPinned: vi.fn(),
     target,
     keptRoom: null,
     generation: 0,
@@ -114,8 +112,6 @@ describe("the panel's two sizes", () => {
     renderWithQuery(<Panel />);
     await waitFor(() => expect(panel().style.width).toBe("680px"));
     expect(1440 - 280 - 680).toBe(480);
-    // its links and actions carry it to the page they open (dock-carry.test.tsx)
-    expect(panel().hasAttribute("data-chat-dock-carries")).toBe(true);
     expect(marked()).toBe("Large");
     expect(control().getAttribute("aria-label")).toBe("Panel size: Large");
   });
@@ -373,6 +369,4 @@ it("draws no size control in the full-screen panel of a phone-width window", asy
   expect(await screen.findByTestId("chat-dock-body")).toBeTruthy();
   expect(screen.queryByTestId("chat-dock")).toBeNull();
   expect(screen.queryByTestId("chat-dock-size")).toBeNull();
-  // the slide-over covers the page, so a link in it opens the page with the slide-over closed
-  expect(document.querySelector("[data-chat-dock-carries]")).toBeNull();
 });

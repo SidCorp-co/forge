@@ -1,12 +1,12 @@
 
 import { usePathname } from "@/lib/navigation/router";
-import { type RefObject, useCallback, useRef, useState } from "react";
+import { type RefObject, useCallback, useEffect, useRef, useState } from "react";
 import { Icon, IconButton, SecondaryRegion, SlideOver, useMediaQuery } from "@/design";
 import { useProjectEcosystems } from "@/features/ecosystem";
 import { useProjects } from "@/features/projects";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
-import { type ChatDockApi, DOCK_CARRIES_ATTR, usePageRoom } from "@/features/chat-dock";
+import { type ChatDockApi, usePageRoom } from "@/features/chat-dock";
 import { DockPreview } from "./dock-preview";
 import { type DockSize, dockOverPage, dockSizes, dockWidth, sizeAt, sizeFromDrag } from "@/features/chat-dock";
 import { isScopedRoom, targetConversationId } from "@/features/chat-dock";
@@ -90,7 +90,7 @@ function pageLabel(pathname: string | null, t: Copy): string {
 }
 
 /**
- * `fullScreen`: the phone's slide-over, one size and no pin. `overPage`: a panel the window could not hold
+ * `fullScreen`: the phone's slide-over, one size. `overPage`: a panel the window could not hold
  * beside the page (REQ-31 BC-4). Both cover the page, so both lead with the way back to it.
  */
 export function ChatDockBody({ dock, fullScreen, overPage, sizeControl }: { dock: ChatDockApi; fullScreen?: boolean; overPage?: boolean; sizeControl?: React.ReactNode }) {
@@ -212,17 +212,6 @@ export function ChatDockBody({ dock, fullScreen, overPage, sizeControl }: { dock
           </div>
           {!fullScreen && sizeControl}
           <div className="flex flex-none items-center gap-1">
-            {!fullScreen && (
-              <IconButton
-                icon="pin"
-                size="sm"
-                aria-pressed={dock.pinned}
-                aria-label={dock.pinned ? t("shell.dock.unpinLabel") : t("shell.dock.pinLabel")}
-                title={dock.pinned ? t("shell.dock.pinnedTitle") : t("shell.dock.pinTitle")}
-                className={dock.pinned ? "text-accent-text" : undefined}
-                onClick={() => dock.setPinned(!dock.pinned)}
-              />
-            )}
             <IconButton icon="x" size="sm" aria-label={t("shell.dock.close", { title })} title={t("shell.dock.closeShort")} onClick={dock.close} />
           </div>
         </header>
@@ -365,6 +354,22 @@ function ResizeHandle({
   );
 }
 
+/** The phone's slide-over covers the page, so a page opened from inside it is shown with the slide-over closed;
+ *  anywhere wider the panel stays open across pages until closed (REQ-11 BC-8). */
+function PhoneDock({ dock }: { dock: ChatDockApi }) {
+  const pathname = usePathname();
+  const [openedOn] = useState(pathname);
+  const close = dock.close;
+  useEffect(() => {
+    if (pathname !== openedOn) close();
+  }, [pathname, openedOn, close]);
+  return (
+    <SlideOver open onClose={dock.close} hideHeader fitBody width="min(100vw, 560px)">
+      <ChatDockBody dock={dock} fullScreen />
+    </SlideOver>
+  );
+}
+
 /**
  * The panel beside the page, or over it where the window cannot hold the page's readable minimum beside
  * the panel at the width it is drawn (REQ-31 BC-4). `page` is the page column: the panel and the page
@@ -383,11 +388,7 @@ export function ChatDock({ dock, page }: { dock: ChatDockApi; page: RefObject<HT
   const t = useCopy();
   if (!dock.open) return null;
   if (!docked) {
-    return (
-      <SlideOver open onClose={dock.close} hideHeader fitBody width="min(100vw, 560px)">
-        <ChatDockBody dock={dock} fullScreen />
-      </SlideOver>
-    );
+    return <PhoneDock dock={dock} />;
   }
   const kept = dockWidth(dock.size, room);
   // a board open in the conversation widens the panel to the board, never past large
@@ -403,7 +404,6 @@ export function ChatDock({ dock, page }: { dock: ChatDockApi; page: RefObject<HT
       aria-label={dockTitle(t)}
       data-testid="chat-dock"
       data-dock-placement={over ? "over" : "beside"}
-      {...{ [DOCK_CARRIES_ATTR]: "" }}
       className={
         over
           ? "fixed inset-y-0 right-0 z-30 hidden flex-col border-l border-line bg-app md:flex"

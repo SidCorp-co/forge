@@ -64,8 +64,6 @@ function dockOn(target: ChatTarget | null): ChatDockApi {
   return {
     projectId: "p1",
     open: true,
-    pinned: false,
-    setPinned: vi.fn(),
     target,
     keptRoom: null,
     generation: 0,

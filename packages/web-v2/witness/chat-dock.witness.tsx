@@ -15,7 +15,7 @@ import { useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { WIREFRAME_VERSION } from "@forge/contracts/wireframe";
 import { boardStore } from "@/features/board/board-store";
-import { DOCK_OPEN_ON_KEY, useChatDockState } from "@/features/chat-dock/dock";
+import { DOCK_OPEN_KEY, useChatDockState } from "@/features/chat-dock/dock";
 import { DOCK_SIZE_KEY, LEGACY_DOCK_WIDTH_KEY, PAGE_MIN_WIDTH } from "@/features/chat-dock/dock-size";
 import { ChatDock } from "@/features/conversations/components/chat-dock";
 import "./entry";
@@ -28,10 +28,10 @@ const HALF_FLOOR = 360;
 const BOARD = 880;
 
 // every case is a browser's first open after this change: it kept a 650px width under the old key,
-// and the panel was left open on this page, the one InRouter opens at
+// and the panel was left open
 window.localStorage.clear();
 window.localStorage.setItem(LEGACY_DOCK_WIDTH_KEY, "650");
-window.localStorage.setItem(DOCK_OPEN_ON_KEY, JSON.stringify("/"));
+window.localStorage.setItem(DOCK_OPEN_KEY, JSON.stringify(true));
 
 window.fetch = async (input: RequestInfo | URL) =>
   String(input).includes("/projects")
