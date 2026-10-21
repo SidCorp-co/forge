@@ -133,8 +133,9 @@ export function formatApiError(err: unknown): string {
   return 'Unknown error';
 }
 
-/** A read that failed: what failed in the product's words, and the server's own code and message
- *  for whoever reports it, which a screen keeps behind its technical view. */
+/** A read that failed: why, in the words every failure is said in (`formatApiError`, so a refusal
+ *  gives its own sentence), and the server's code and message for whoever reports it, which a screen
+ *  keeps behind its technical view. */
 export interface ReadFailure {
   said: string;
   technical: string;
@@ -142,9 +143,8 @@ export interface ReadFailure {
 
 export function readFailure(err: unknown): ReadFailure {
   if (err instanceof ApiError) {
-    const said = (err.code && FRIENDLY_CODES[err.code]) || unsaidFailure(err.status);
     const code = err.code ? ` ${err.code}` : '';
-    return { said, technical: `${err.status}${code} — ${err.message.trim() || 'no message'}` };
+    return { said: formatApiError(err), technical: `${err.status}${code} — ${err.message.trim() || 'no message'}` };
   }
   const technical = err instanceof Error ? err.message : String(err);
   return { said: UNREACHABLE_SENTENCE, technical };

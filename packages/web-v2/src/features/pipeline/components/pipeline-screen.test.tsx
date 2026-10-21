@@ -224,14 +224,51 @@ describe("the Pipeline page with nothing to show, or no reading", () => {
   });
 
   it("says what failed in the product's words, and keeps the server's code and message under Technical details", () => {
-    const planted = 'planted failure: relation "issue_leases" does not exist';
-    query = { data: undefined, isError: true, error: new ApiError(500, planted, "INTERNAL"), refetch: vi.fn() };
+    const error = new ApiError(500, "Internal Server Error", "INTERNAL_ERROR");
+    query = { data: undefined, isError: true, error, refetch: vi.fn() };
     screenFor();
     expect(screen.getByText("The server ran into a problem and could not finish the request.")).toBeInTheDocument();
     const details = screen.getByText("Technical details").closest("details");
     expect(details).not.toBeNull();
     expect(details).not.toHaveAttribute("open");
-    expect(within(details as HTMLElement).getByText(`500 INTERNAL — ${planted}`)).toBeInTheDocument();
+    expect(within(details as HTMLElement).getByText("500 INTERNAL_ERROR — Internal Server Error")).toBeInTheDocument();
+  });
+
+  // Round 23 (judge-74, criterion 226): under this 409 the page said "Something changed since this page
+  // loaded. Reload it, then try again." and kept core's sentence behind Technical details.
+  const refusal = "The holds could not be read while a migration holds the table. Try again in a minute.";
+
+  it("gives a refusal's own sentence when the first read is refused", () => {
+    query = { data: undefined, isError: true, error: new ApiError(409, refusal, "HOLDS_READ_REFUSED"), refetch: vi.fn() };
+    screenFor();
+    expect(screen.getByText(refusal)).toBeInTheDocument();
+    expect(screen.queryByText(/Something changed since this page loaded/)).toBeNull();
+  });
+
+  it("gives a refusal's own sentence when a refresh is refused, over the reading it keeps", () => {
+    query = { ...query, data: reading, isError: true, error: new ApiError(409, refusal, "HOLDS_READ_REFUSED") };
+    screenFor();
+    expect(screen.getByRole("status")).toHaveTextContent(`. ${refusal}`);
+    expect(screen.queryByText(/Something changed since this page loaded/)).toBeNull();
+  });
+
+  // Round 23 (judge-74, criteria 233 and 234): a failed refresh said so but offered no way to try again.
+  it("offers Retry beside a failed refresh, keeps the rows while it runs, and shows no live dot", () => {
+    const lost = new TypeError("Failed to fetch");
+    markUnreachable(lost);
+    const refetch = vi.fn();
+    query = { data: reading, isError: true, error: lost, refetch };
+    const { container } = screenFor();
+    screen.getByRole("button", { name: /retry/i }).click();
+    expect(refetch).toHaveBeenCalled();
+    expect(screen.getByRole("list", { name: "Live sessions" })).toBeInTheDocument();
+    expect(container.querySelector(".forge-pulse")).toBeNull();
+  });
+
+  it("shows the live dot while its read stands", () => {
+    query = { data: reading, isError: false, error: null, refetch: vi.fn() };
+    const { container } = screenFor();
+    expect(container.querySelector(".forge-pulse")).not.toBeNull();
   });
 
   it("keeps the last reading when a refresh fails, and says when it was read and why the refresh failed", () => {

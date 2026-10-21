@@ -73,6 +73,7 @@ import { integrationTargetRoutes } from './integrations/postman/target-routes.js
 import { registerIntegrationsWorker } from './integrations/queue.js';
 import { registerAllIntegrations } from './integrations/register-all.js';
 import { registerCommentMirror } from './integrations/rocketchat/comment-mirror.js';
+import { registerQuestionNoticeClear } from './integrations/rocketchat/question-delivery.js';
 import {
   startRocketChatManager,
   stopRocketChatManager,
@@ -476,6 +477,7 @@ if (isMain) {
   registerPipelineOrchestrator(hooks);
   registerAnswerResume(hooks);
   registerCommentMirror(hooks);
+  registerQuestionNoticeClear(hooks);
   registerPhaseJournalClose(hooks);
   registerPausedRunWedgeResolve(hooks);
   registerOutboxWorker();

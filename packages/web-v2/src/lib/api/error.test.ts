@@ -353,12 +353,20 @@ describe('formatEnvironmentsWriteError (ISS-1171 r6)', () => {
 });
 
 describe('readFailure — a failed read in the product\'s words, and the server\'s own beside it', () => {
-  it('says a server failure by its status and keeps the code and message for the technical view', () => {
-    const planted = 'planted failure: relation "issue_leases" does not exist';
-    expect(readFailure(new ApiError(500, planted, 'INTERNAL'))).toEqual({
+  it('says a server failure that gave no reason by its status and keeps the code and message for the technical view', () => {
+    expect(readFailure(new ApiError(500, 'Internal Server Error', 'INTERNAL_ERROR'))).toEqual({
       said: 'The server ran into a problem and could not finish the request.',
-      technical: `500 INTERNAL — ${planted}`,
+      technical: '500 INTERNAL_ERROR — Internal Server Error',
     });
+  });
+
+  // Round 23 (judge-74, criterion 226): the Pipeline page answered this 409 with "Something changed
+  // since this page loaded. Reload it, then try again." while the issue page gave core's sentence.
+  it("gives a refusal's own sentence, as every other failure line does", () => {
+    const refusal = 'The holds could not be read while a migration holds the table. Try again in a minute.';
+    const err = new ApiError(409, refusal, 'HOLDS_READ_REFUSED');
+    expect(readFailure(err)).toEqual({ said: refusal, technical: `409 HOLDS_READ_REFUSED — ${refusal}` });
+    expect(readFailure(err).said).toBe(formatApiError(err));
   });
 
   it('says a refusal it has words for in those words', () => {

@@ -14,6 +14,7 @@ import { rocketchatQuestionDeliveries } from '../../db/schema-rocketchat.js';
 import { activeIssuePrefix } from '../../issues/issue-prefix-read.js';
 import { formatIssueRef } from '../../lib/issue-ref.js';
 import { logger } from '../../logger.js';
+import type { HooksBus } from '../../pipeline/hooks.js';
 import { problemsOf } from '../../messaging/contract.js';
 import { screenForDoor } from '../../messaging/proven.js';
 import { resolveNotifications } from '../../notifications/auto-resolve.js';
@@ -90,8 +91,25 @@ export async function owedRounds(now: Date = new Date()): Promise<OwedRound[]> {
   }));
 }
 
-const undeliverableKey = (questionId: string) => `rocketchat-question-undeliverable:${questionId}`;
+const UNDELIVERABLE_PREFIX = 'rocketchat-question-undeliverable:';
+const undeliverableKey = (questionId: string) => `${UNDELIVERABLE_PREFIX}${questionId}`;
 
+/** The issue a question waits on, by its key; null for a question on no issue. */
+async function issueKeyOf(owed: OwedRound): Promise<string | null> {
+  if (!owed.issueId) return null;
+  const [issue] = await db
+    .select({ issSeq: issues.issSeq })
+    .from(issues)
+    .where(eq(issues.id, owed.issueId))
+    .limit(1);
+  return issue?.issSeq ? formatIssueRef(await activeIssuePrefix(owed.projectId), issue.issSeq) : null;
+}
+
+/**
+ * Tell the org's creator a round could not be posted to Rocket.Chat, in words true of where the
+ * question is. A question on an issue is on that issue's page, where it is answered, so the chat room
+ * failing it is information about the room, never a warning that the question went nowhere (ISS-1228).
+ */
 async function reportUndeliverable(
   owed: OwedRound,
   already: boolean,
@@ -105,16 +123,54 @@ async function reportUndeliverable(
     .where(eq(projects.id, owed.projectId))
     .limit(1);
   if (!row?.createdBy) return;
+  const issueKey = await issueKeyOf(owed);
+  const words = issueKey
+    ? {
+        severity: 'info',
+        title: `A question on ${issueKey} could not also be posted to Rocket.Chat`,
+        body: `The question is on ${issueKey}'s page, where it can be answered. Rocket.Chat could not take it as well: ${reason}. A chat room is optional; once this is put right, the question is posted there on the next sweep.`,
+      }
+    : {
+        severity: 'warning',
+        title: `${row.name} has a question waiting that cannot be delivered`,
+        body: `A question is waiting on a person and ${row.slug} has nowhere to put it: ${reason}. Nothing was posted anywhere. Put that right and the question is delivered on the next sweep — whoever asked does not have to ask again.`,
+      };
   await emitNotification({
     userId: row.createdBy,
     projectId: owed.projectId,
     issueId: owed.issueId,
     type: 'ops_alert',
-    severity: 'warning',
-    title: `${row.name} has a question waiting that cannot be delivered`,
-    body: `A question is waiting on a person and ${row.slug} has nowhere to put it: ${reason}. Nothing was posted anywhere. Put that right and the question is delivered on the next sweep — whoever asked does not have to ask again.`,
+    ...words,
     resolutionKey: undeliverableKey(owed.questionId),
   });
+}
+
+/**
+ * End every notice about a question that is no longer open — answered, voided, expired or closed —
+ * so none says a settled question still waits. The answer hook ends one at once; this catches the
+ * rest, and the notices raised before a question's end had a way to end them.
+ */
+export async function clearSettledQuestionNotices(): Promise<number> {
+  const rows = await db.execute<{ key: string }>(sql`
+    SELECT DISTINCT n.resolution_key AS key
+      FROM notifications n
+      JOIN agent_questions q ON n.resolution_key = ${UNDELIVERABLE_PREFIX} || q.id::text
+     WHERE n.resolved_at IS NULL AND q.status <> 'open'
+  `);
+  let cleared = 0;
+  for (const { key } of rows) cleared += await resolveNotifications(key);
+  return cleared;
+}
+
+/** An answered question's notice ends with the answer, not on the next drain. */
+export function registerQuestionNoticeClear(bus: HooksBus): void {
+  bus.on(
+    'questionAnswered',
+    async (p) => {
+      await resolveNotifications(undeliverableKey(p.questionId));
+    },
+    { name: 'rocketchat-question-notice-clear' },
+  );
 }
 
 /**
@@ -225,23 +281,21 @@ export async function deliverOwedRound(
     origin: question.origin ?? null,
     step,
   });
+  if (destination.kind === 'no_room') {
+    if (!owed.issueId) return refuse(owed, 'no Rocket.Chat room is bound to this project', now);
+    // On its issue's page the question is delivered; a room bound later still gets it.
+    await settle(owed, { status: 'undeliverable', lastError: 'no Rocket.Chat room is bound to this project' }, now);
+    await resolveNotifications(undeliverableKey(owed.questionId));
+    return 'undeliverable';
+  }
   if (destination.kind === 'unresolvable') {
     return refuse(owed, destination.reason, now);
   }
 
-  const [issue] = owed.issueId
-    ? await db
-        .select({ issSeq: issues.issSeq })
-        .from(issues)
-        .where(eq(issues.id, owed.issueId))
-        .limit(1)
-    : [];
   const screening = screenForDoor(
     'question-delivery',
     renderRound({
-      issueKey: issue?.issSeq
-        ? formatIssueRef(await activeIssuePrefix(owed.projectId), issue.issSeq)
-        : null,
+      issueKey: await issueKeyOf(owed),
       step,
       rounds: question.steps.length,
       parkDeadlineAt: question.parkDeadlineAt ?? null,
@@ -381,6 +435,7 @@ export async function drainQuestionDeliveries(
   clock: Date | (() => Date) = () => new Date(),
 ): Promise<QuestionDrainResult> {
   const at = typeof clock === 'function' ? clock : (): Date => clock;
+  await clearSettledQuestionNotices();
   const owed = await owedRounds(at());
   const result: QuestionDrainResult = {
     owed: owed.length,

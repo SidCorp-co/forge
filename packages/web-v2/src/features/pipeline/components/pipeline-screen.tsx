@@ -4,9 +4,9 @@
 // and what each is doing, then what is held and why. Read from one route; live through the project
 // room's invalidations and a poll for heartbeats, which move no event.
 
-import { ErrorState, LiveDot, PageTitle, Skeleton } from "@/design";
+import { Button, ErrorState, LiveDot, PageTitle, Skeleton } from "@/design";
 import { useNow } from "@/design/hooks/use-now";
-import { readFailure } from "@/lib/api/error";
+import { isRetryableApiError, readFailure } from "@/lib/api/error";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { readAtLine } from "../derive";
@@ -52,9 +52,16 @@ export function PipelineScreen({ scope }: { scope: { projectId: string; slug: st
         </div>
         <p className="fg-body-sm">What is working on this project now, and what is held.</p>
         {data && q.isError && (
-          <p className="fg-caption fg-caption-stale" role="status">
-            {readAtLine(data.readAt, q.error)}
-          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="fg-caption fg-caption-stale" role="status">
+              {readAtLine(data.readAt, q.error)}
+            </p>
+            {isRetryableApiError(q.error) && (
+              <Button variant="secondary" size="sm" icon="rerun" onClick={() => void q.refetch()}>
+                Retry
+              </Button>
+            )}
+          </div>
         )}
       </header>
 

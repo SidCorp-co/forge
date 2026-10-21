@@ -27,6 +27,11 @@ import { ApiError } from '@/lib/api/client';
 interface AuthState {
   user: User | null;
   isLoading: boolean;
+  /** Why the account could not be read, where Forge did not answer that the person is signed out
+   *  (ISS-1228): a lost connection or a server failure is not a sign-out. Null once read or signed out. */
+  failure: unknown;
+  /** Read the account again. */
+  retry: () => void;
   login: (input: LoginInput) => Promise<void>;
   register: (input: RegisterInput) => Promise<void>;
   logout: () => Promise<void>;
@@ -36,27 +41,37 @@ interface AuthState {
 
 const AuthContext = createContext<AuthState | null>(null);
 
+/** Only Forge answering 401 says a person is signed out; anything else left the question unanswered. */
+function signedOut(err: unknown): boolean {
+  return err instanceof ApiError && err.status === 401;
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [failure, setFailure] = useState<unknown>(null);
+  const [attempt, setAttempt] = useState(0);
   const router = useRouter();
+  const retry = useCallback(() => setAttempt((n) => n + 1), []);
 
-  // On mount, hydrate from /auth/me (cookie may be set from a prior session).
+  // Hydrate from /auth/me (the cookie may be set from a prior session), and again on each retry.
   useEffect(() => {
     let cancelled = false;
     authApi
       .me()
       .then((me) => {
-        if (!cancelled) setUser({ ...me });
+        if (cancelled) return;
+        setUser({ ...me });
+        setFailure(null);
       })
       .catch((err) => {
         if (cancelled) return;
-        // Unauthenticated on mount is the common case on first load — login is
-        // deferred, so we leave user=null and let pages render an empty/error
-        // state. Only log genuinely unexpected (non-401) failures.
-        if (!(err instanceof ApiError && err.status === 401)) {
-          console.warn('auth hydration failed', err);
+        if (signedOut(err)) {
+          setFailure(null);
+          return;
         }
+        console.warn('auth hydration failed', err);
+        setFailure(err);
       })
       .finally(() => {
         if (!cancelled) setIsLoading(false);
@@ -64,7 +79,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [attempt]);
+
+  // A read the connection cut is read again once the browser says the connection is back.
+  useEffect(() => {
+    if (!failure) return;
+    window.addEventListener('online', retry);
+    return () => window.removeEventListener('online', retry);
+  }, [failure, retry]);
 
   const login = useCallback(async (input: LoginInput) => {
     await authApi.login(input);
@@ -72,6 +94,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // localStorage. /auth/me returns the canonical user shape — source of truth.
     const me = await authApi.me();
     setUser({ ...me });
+    setFailure(null);
   }, []);
 
   const register = useCallback(async (input: RegisterInput) => {
@@ -95,7 +118,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, register, logout, setDisplayName }}>
+    <AuthContext.Provider value={{ user, isLoading, failure, retry, login, register, logout, setDisplayName }}>
       {children}
     </AuthContext.Provider>
   );
@@ -104,6 +127,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 const defaultAuth: AuthState = {
   user: null,
   isLoading: true,
+  failure: null,
+  retry: () => {},
   login: async () => {},
   register: async () => {},
   logout: async () => {},

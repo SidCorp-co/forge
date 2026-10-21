@@ -36,7 +36,10 @@ export type QuestionDestination =
       /** True where `tmid` is an anchor this round must TAKE before it posts. */
       takeAnchor: boolean;
     }
-  | { kind: 'unresolvable'; reason: string };
+  | { kind: 'unresolvable'; reason: string }
+  /** The project binds no room, and the question names no conversation to answer it in: a chat room
+   *  is optional, so this is no fault — the question is wherever else Forge shows it. */
+  | { kind: 'no_room' };
 
 /** The shapes `postRoomMessage` raises when the room is not one this bot can post in. */
 const UNREACHABLE_ROOM_ERRORS = [
@@ -139,12 +142,7 @@ export async function resolveQuestionDestination(
 
   if (!input.origin) {
     const room = await roomForProject(input.projectId);
-    if (!room) {
-      return {
-        kind: 'unresolvable',
-        reason: 'no Rocket.Chat room is bound to this project',
-      };
-    }
+    if (!room) return { kind: 'no_room' };
     return {
       kind: 'room',
       connectionId: room.connectionId,
