@@ -283,7 +283,7 @@ describe("the assistant's own toolset records, and offers no way to file an issu
       JSON.stringify({
         kind: 'change_request',
         title: 'A half-width toggle on the Ask Agent panel',
-        requirement: req.key,
+        target: { kind: 'requirement', ref: req.key },
       }),
     );
     expect(filed.isError, toolResultText(filed)).toBeFalsy();

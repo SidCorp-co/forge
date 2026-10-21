@@ -23,7 +23,7 @@ describe('the card names what a held Assistant call would record, and what it li
         kind: 'bug',
         title: 'The dock loses my draft',
         body: 'Switching tabs clears it.',
-        requirement: 'REQ-30',
+        target: { kind: 'requirement', ref: 'REQ-30' },
       }),
     ).toEqual({
       title: 'Feedback (bug): The dock loses my draft',
@@ -31,7 +31,8 @@ describe('the card names what a held Assistant call would record, and what it li
       relates: ['REQ-30'],
     });
     expect(
-      card('forge_feedback', { kind: 'idea', title: 'x', workflow: 'chat-turn' }).relates,
+      card('forge_feedback', { kind: 'idea', title: 'x', target: { kind: 'workflow', ref: 'chat-turn' } })
+        .relates,
     ).toEqual(['workflow chat-turn']);
   });
 
