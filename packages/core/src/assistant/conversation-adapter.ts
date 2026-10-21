@@ -47,21 +47,6 @@ export const WEB_CONVERSATION_PROGRESS_EVENT = 'conversation.progress';
  */
 export const WEB_CONVERSATION_ACCEPTED_EVENT = 'conversation.accepted';
 
-/**
- * Whose sockets may be shown this room, right now.
- */
-async function readersOf(conversationId: string): Promise<string[]> {
-  const out: string[] = [];
-  for (const person of await listParticipants(conversationId)) {
-    if (person.kind !== 'person' || !person.userId) continue;
-    try {
-      await assertConversationReadable(conversationId, person.userId);
-      out.push(person.userId);
-    } catch {}
-  }
-  return out;
-}
-
 /** The event that tells a reader a room is gone, so an open list or thread lets go of it. */
 export const WEB_CONVERSATION_DELETED_EVENT = 'conversation.deleted';
 
@@ -120,13 +105,17 @@ async function everyoneWhoCanRead(conversationId: string): Promise<string[]> {
   return out;
 }
 
-/** Publish to every socket that may currently see this room. Returns how many took it. */
+/**
+ * Publish to every socket that may currently see this room: everyone who can read it, the people its
+ * deletion is told to, and not its people alone (ISS-1229 r30, the master's ruling on judge-86's
+ * finding). Returns how many took it.
+ */
 export async function publishToConversationReaders(
   conversationId: string,
   envelope: { event: string; data: unknown },
 ): Promise<number> {
   let sockets = 0;
-  for (const userId of await readersOf(conversationId)) {
+  for (const userId of await everyoneWhoCanRead(conversationId)) {
     sockets += roomManager.publish(userRoom(userId), envelope);
   }
   return sockets;

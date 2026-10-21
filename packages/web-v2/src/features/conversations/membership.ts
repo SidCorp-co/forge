@@ -268,7 +268,7 @@ export function removalHeld(
   room: Partial<Pick<ConversationMembership, "participants" | "shape">>,
 ): string | null {
   if (participant.kind === "handle" && agentsOf(room).length <= 1) {
-    return "This room has one agent left and a room with none is about no project, so nobody could read it again; add another agent first, or delete the room.";
+    return "This room has one agent left. Without an agent nobody could get an answer in this room, and people who reach it only through its project could no longer open it. Add another agent first, or delete the room.";
   }
   if (participant.kind === "person" && room.shape === "direct" && peopleOf(room).length <= 1) {
     return "This room is a one-to-one room with one person left, and a room with nobody in it is readable by nobody; add another person first, or delete the room.";

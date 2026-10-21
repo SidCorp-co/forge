@@ -160,11 +160,18 @@ export function ConversationChat({
   );
   const outboxRef = useRef(outbox);
   outboxRef.current = outbox;
+  // What the box holds and has not sent goes with the room too, so the notice keeps it (r30, judge-86).
+  const draft = useRef("");
+  const onDraftChange = useCallback((text: string) => {
+    draft.current = text;
+  }, []);
   useEffect(() => {
     if (!resolvedId || !roomQ.isError || !isRoomGone(roomQ.error)) return;
     // Messages still waiting their turn will never be sent; one being sent says so when it is refused.
     const waiting = outboxRef.current.filter((m) => m.state === "queued").map((m) => m.content);
-    roomWentAway(resolvedId, waiting.length > 0 ? waiting.join("\n\n") : null);
+    const typed = draft.current.trim();
+    const unsent = typed && !waiting.includes(typed) ? [...waiting, typed] : waiting;
+    roomWentAway(resolvedId, unsent.length > 0 ? unsent.join("\n\n") : null);
   }, [resolvedId, roomQ.isError, roomQ.error, roomWentAway]);
 
   const messages = useMemo(() => roomQ.data?.messages ?? [], [roomQ.data]);
@@ -275,7 +282,10 @@ export function ConversationChat({
               : m,
           ),
         );
-        if (roomGone && id) roomWentAway(id, next.content);
+        if (roomGone && id) {
+          const typed = draft.current.trim();
+          roomWentAway(id, typed && typed !== next.content ? `${next.content}\n\n${typed}` : next.content);
+        }
       } finally {
         sending.current = false;
       }
@@ -420,6 +430,7 @@ export function ConversationChat({
           sticky={false}
           attachments={CONVERSATION_ATTACHMENTS}
           placeholder={modePlaceholder(settledMode ?? pick)}
+          onDraftChange={onDraftChange}
           {...(progress && resolvedId
             ? { onStop: () => stop.mutate(resolvedId), stopping: stop.isPending }
             : {})}

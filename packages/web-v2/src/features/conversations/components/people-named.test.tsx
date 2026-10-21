@@ -224,6 +224,10 @@ describe("a member a room cannot lose", () => {
     expect(screen.queryByText(/out of this room\?$/)).toBeNull();
     expect(described(take("Take @ops-h1 out of the room"))).toMatch(/^This room has one agent left/);
     expect(described(take("Take yourself out of the room"))).toMatch(/^This room is a one-to-one room with one person left/);
+    // r30, judge-86: "a room with none is about no project" read as jargon.
+    const why = described(take("Take @ops-h1 out of the room"));
+    expect(why).toMatch(/Without an agent nobody could get an answer in this room, and people who reach it only through its project could no longer open it\./);
+    expect(why).not.toMatch(/about no project/);
   });
 
   // r29, judge-84: on a phone a tap on the held control showed no sentence at all.

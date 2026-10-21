@@ -53,3 +53,64 @@ describe("Tooltip", () => {
     expect(e.defaultPrevented).toBe(false);
   });
 });
+
+/**
+ * ISS-1229 r30, judge-86: on a phone the reason showed for about 12 ms. A touch browser follows a tap
+ * with the mouse events it emulates, ending in a mouseleave after the click, and the tooltip closed on
+ * that. These send the events in the order Chrome sends them for a tap, not a bare touchend.
+ */
+describe("a sentence tooltip on a touch screen", () => {
+  function Held() {
+    return (
+      <div>
+        <Tooltip prose label="Add another agent first.">
+          <button type="button">take out</button>
+        </Tooltip>
+        <p>elsewhere</p>
+      </div>
+    );
+  }
+  const tap = (el: Element) => {
+    fireEvent.pointerDown(el, { pointerType: "touch" });
+    fireEvent.touchStart(el);
+    fireEvent.pointerUp(el, { pointerType: "touch" });
+    fireEvent.touchEnd(el);
+    fireEvent.mouseEnter(el);
+    fireEvent.mouseDown(el);
+    fireEvent.focus(el);
+    fireEvent.mouseUp(el);
+    fireEvent.click(el);
+    fireEvent.mouseLeave(el);
+  };
+
+  it("keeps the sentence after the mouse events a tap is followed by", () => {
+    render(<Held />);
+    tap(screen.getByText("take out"));
+    expect(screen.getByRole("tooltip")).toHaveTextContent("Add another agent first.");
+  });
+
+  it("puts it away on a tap anywhere else", () => {
+    render(<Held />);
+    tap(screen.getByText("take out"));
+    fireEvent.pointerDown(screen.getByText("elsewhere"), { pointerType: "touch" });
+    fireEvent.touchStart(screen.getByText("elsewhere"));
+    expect(screen.queryByRole("tooltip")).toBeNull();
+  });
+
+  it("puts it away on Escape", () => {
+    render(<Held />);
+    tap(screen.getByText("take out"));
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("tooltip")).toBeNull();
+  });
+
+  it("still opens on a mouse's hover and closes when the mouse leaves", () => {
+    render(<Held />);
+    const trigger = screen.getByText("take out");
+    fireEvent.pointerDown(trigger, { pointerType: "mouse" });
+    fireEvent.mouseEnter(trigger);
+    expect(screen.getByRole("tooltip")).toBeInTheDocument();
+    fireEvent.mouseLeave(trigger);
+    expect(screen.queryByRole("tooltip")).toBeNull();
+  });
+});

@@ -13,7 +13,7 @@ export const ROOM_DELETED_TITLE = "This room was deleted";
 export function roomDeletedLine(sending: boolean): string {
   return sending
     ? "It was deleted while you had it open, so your message was not sent."
-    : "It was deleted, so it has left your list.";
+    : "It has left your list.";
 }
 
 const UNSENT_QUOTE = 200;

@@ -155,10 +155,12 @@ function CandidateList({
   }
   const handles = (query.data?.handles ?? []).filter((h) => !goneProjects.has(h.project.id));
   if (handles.length === 0) {
+    // Emptied by a project deleted under the panel, the role sentence is not why (ISS-1229 r30, judge-86).
     return (
       <p role="status" data-testid="agent-candidates-empty" className="fg-body-sm text-muted">
-        There is no agent you can add to this room. An agent is added by somebody holding a member
-        role on its project.
+        {goneProjects.size > 0
+          ? "There is no agent left that you can add to this room: the project of the agent you picked was deleted."
+          : "There is no agent you can add to this room. An agent is added by somebody holding a member role on its project."}
       </p>
     );
   }

@@ -205,9 +205,14 @@ export interface AddHandleArgs {
   tx?: Executor;
 }
 
+/**
+ * The agent asked for, or a refusal. `room` rides the refusal's details where the room exists; a room
+ * still being opened has no id worth naming (ISS-1229 r30, judge-86).
+ */
 async function loadHandle(
   tx: Executor,
   handleUserId: string,
+  room: { conversationId: string } | Record<string, never>,
 ): Promise<{ id: string; handle: string }> {
   const [row] = await tx
     .select({ id: users.id, kind: users.kind, handle: organizationMembers.handle })
@@ -220,7 +225,7 @@ async function loadHandle(
       400,
       'HANDLE_NOT_FOUND',
       'The agent asked for is no account here, so nobody was added to this room',
-      { handleUserId },
+      { ...room, handleUserId },
     );
   }
   if (row.kind !== 'agent') {
@@ -228,7 +233,7 @@ async function loadHandle(
       400,
       'HANDLE_NOT_AN_AGENT',
       'The account asked for is a person, not an agent; an agent joins a room as an agent and a person joins it as a person',
-      { handleUserId },
+      { ...room, handleUserId },
     );
   }
   if (!row.handle) {
@@ -236,7 +241,7 @@ async function loadHandle(
       400,
       'HANDLE_HAS_NO_NAME',
       'The agent asked for carries no handle in its organization, so there is no address to put in this room',
-      { handleUserId },
+      { ...room, handleUserId },
     );
   }
   return { id: row.id, handle: row.handle };
@@ -252,7 +257,8 @@ export async function attachOpeningHandle(
   handleUserId: string,
   projectId: string,
 ): Promise<void> {
-  const handle = await loadHandle(tx, handleUserId);
+  // The room is being made in this transaction, so a refusal here names no room that exists.
+  const handle = await loadHandle(tx, handleUserId, {});
 
   const handleProjects = await projectsOfHandle(handleUserId, tx);
   if (!handleProjects.includes(projectId)) {
@@ -260,7 +266,7 @@ export async function attachOpeningHandle(
       400,
       'HANDLE_NOT_ON_PROJECT',
       `@${handle.handle} is not a member of this room's project, so it cannot be the opening agent for a room about that project`,
-      { conversationId, handleUserId, projectId, handleProjectIds: handleProjects },
+      { handleUserId, projectId, handleProjectIds: handleProjects },
     );
   }
 
@@ -299,7 +305,7 @@ export async function addHandle(args: AddHandleArgs): Promise<void> {
     );
   }
   const handleUserId = args.handleUserId ?? (await resolveProjectHandle(tx, args.projectId)).userId;
-  const handle = await loadHandle(tx, handleUserId);
+  const handle = await loadHandle(tx, handleUserId, { conversationId: args.conversationId });
 
   const handleProjects = await projectsOfHandle(handleUserId, tx);
   if (!handleProjects.includes(args.projectId)) {
@@ -437,7 +443,7 @@ async function removeWithin(tx: Executor, args: RemoveParticipantArgs): Promise<
     throw roomRefusal(
       400,
       'CONVERSATION_LAST_HANDLE',
-      'This room has one agent left and a room with none is about no project, so nobody could read it again; add another agent first, or delete the room',
+      'This room has one agent left. Without an agent nobody could get an answer in this room, and people who reach it only through its project could no longer open it. Add another agent first, or delete the room',
       { conversationId: args.conversationId, participantId: args.participantId },
     );
   }
