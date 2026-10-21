@@ -8,6 +8,10 @@
 // (twelve such verdicts went in as Short and counted as passing), never pre-filled the live build on
 // an issue whose merge names no commit, and dead-ended on a screenshot whose name was already
 // attached.
+//
+// It reaches the act through IssueCriteria, so it declares the act and its copy by path.
+// @direct-test-of packages/web-v2/src/features/issues/components/criteria-acts.tsx
+// @direct-test-of packages/web-v2/src/lib/i18n/copy/issues.json
 
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -131,7 +135,7 @@ describe("recording a verdict from a criterion row", () => {
     renderWithQuery(<IssueCriteria issue={issue({ status: "in_progress" })} projectId="p1" checklist={[]} canWrite requirementKey={null} />);
     const { user, form } = await openJudge(1);
     const send = screen.getByRole("button", { name: "Record verdict" });
-    expect(await within(form).findByText(/this issue has not merged/)).toBeInTheDocument();
+    expect(await within(form).findByText("No build")).toBeInTheDocument();
     expect(send).toBeDisabled();
     const sha = within(form).getByRole("textbox", { name: "Judged at commit" });
     await user.type(sha, "0d91ae7");
@@ -185,7 +189,7 @@ describe("recording a verdict from a criterion row", () => {
     );
     renderWithQuery(<IssueCriteria issue={issue()} projectId="p1" checklist={[]} canWrite requirementKey="REQ-32" />);
     const { user, form } = await openJudge(1);
-    await within(form).findByText(/this issue has not merged/);
+    await within(form).findByText("No build");
     await user.click(within(form).getByRole("button", { name: "Could not judge, not a pass" }));
     await user.type(within(form).getByRole("textbox", { name: /Why it could not be judged/ }), "Nothing deployed carries it.");
     await user.click(screen.getByRole("button", { name: "Record verdict" }));
