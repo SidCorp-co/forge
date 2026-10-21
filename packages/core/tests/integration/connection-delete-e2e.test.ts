@@ -313,13 +313,21 @@ describe('a key saved on a connection (criterion 220)', () => {
       lastHealthDetail: 'The key was refused.',
       lastHealthAt: new Date(),
     });
-    await call('DELETE', `/api/integration-connections/${connection.id}`);
     const saved = await call('PATCH', `/api/integration-connections/${connection.id}`, {
-      active: true,
       secrets: { authToken: 'scratch-fresh-token' },
     });
     expect(saved.status, JSON.stringify(saved.body)).toBe(200);
     expect(saved.body.connection).toMatchObject({ lastHealthStatus: null, lastHealthAt: null });
+    expect((await rowOf(connection.id))?.health).toBeNull();
+  });
+
+  it('is cleared by a remove too, which wipes the key it judged', async () => {
+    const connection = await rotatedSentry({ type: 'user', id: ownerId });
+    await store.updateConnection(connection.id, {
+      lastHealthStatus: 'error',
+      lastHealthAt: new Date(),
+    });
+    await call('DELETE', `/api/integration-connections/${connection.id}`);
     expect((await rowOf(connection.id))?.health).toBeNull();
   });
 

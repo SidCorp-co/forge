@@ -194,7 +194,12 @@ describe("the drawer's Danger zone over a connection that was removed", () => {
   // ISS-1421 r21 — judge-89: the drawer sent a removed GitHub connection's owner to an App install
   // that made a second connection, and said the installation held a credential it did not.
   it("says a fresh App install from the project bound to a removed GitHub connection turns it on", () => {
-    bindingsData = { items: [{ id: "b1", projectId: "p-store", active: true, role: "service", stages: [] }] };
+    // The binding is on and its connection off, as a remove leaves them: no "binding disabled".
+    bindingsData = {
+      items: [
+        { id: "b1", projectId: "p-store", active: false, bindingActive: true, role: "service", stages: [] },
+      ],
+    };
     mount({ ...(mine as object), provider: "github", active: false, hasSecrets: false });
     expect(screen.queryByRole("button", { name: "Enable" })).toBeNull();
     expect(screen.queryByText(/Saving a new key above/)).toBeNull();
@@ -204,6 +209,8 @@ describe("the drawer's Danger zone over a connection that was removed", () => {
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText(/The App installation holds this credential/)).toBeNull();
+    expect(screen.queryByText("binding disabled")).toBeNull();
+    expect(screen.queryByText("Configuration")).toBeNull();
   });
 
   it("says nothing turns a removed GitHub connection on where no project is bound to it", () => {
@@ -220,7 +227,7 @@ describe("the drawer's Danger zone over a connection that was removed", () => {
     expect(screen.queryByRole("button", { name: "Remove…" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Clear from list…" }));
     expect(
-      screen.getByText("Clearing this connection deletes it for good, with every project's binding to it."),
+      screen.getByText("Clearing this connection deletes it for good."),
     ).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Clear connection" }));
     expect(removeMutate.mock.calls[0]?.[0]).toBe(connection.id);

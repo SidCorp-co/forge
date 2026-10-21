@@ -234,6 +234,12 @@ function CredentialSection({
   );
 }
 
+/** Whether the Configuration section has anything to say: a removed App connection's installation holds nothing. */
+function hasConfigSection(connection: ConnectionSummary): boolean {
+  if (CONNECTION_SECTIONS.has(connection.provider)) return true;
+  return !(isRemovedConnection(connection) && providerModule(connection.provider)?.secretField === null);
+}
+
 /** The provider's own connection-tier form, or a line saying where its config is edited instead. */
 function ConfigSection({
   connection,
@@ -246,8 +252,6 @@ function ConfigSection({
   const Section = CONNECTION_SECTIONS.get(connection.provider);
 
   if (!Section) {
-    // A removed connection's installation holds nothing (ISS-1421 r21); the Danger zone says what turns it on.
-    if (isRemovedConnection(connection) && module?.secretField === null) return null;
     return (
       <section className="flex flex-col gap-2">
         <CardTitle>Configuration</CardTitle>
@@ -324,7 +328,8 @@ function ProjectsSection({
                     archived
                   </span>
                 )}
-                {!b.active && (
+                {/* The project's own switch; a connection turned off says so in the header (ISS-1421 r21). */}
+                {!b.bindingActive && (
                   <span className="fg-body-sm ml-auto rounded-pill bg-sunken px-2 py-0.5 text-subtle">
                     binding disabled
                   </span>
@@ -400,8 +405,12 @@ export function ConnectionEditDrawer({
     >
       <div className="flex flex-col gap-5">
         <CredentialSection connection={connection} canManage={canManage} />
-        <Divider />
-        <ConfigSection connection={connection} canManage={canManage} />
+        {hasConfigSection(connection) && (
+          <>
+            <Divider />
+            <ConfigSection connection={connection} canManage={canManage} />
+          </>
+        )}
         {/* ISS-1275 — the connection tier of the release runner label. It renders
             itself away unless some project binds this credential as a LIVE deploy
             target, which is the only place the label decides anything. */}
