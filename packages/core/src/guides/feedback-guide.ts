@@ -162,7 +162,8 @@ every decision reason are scrubbed on write. On a \`no_egress\` project every an
 metadata only, and a text search (\`q\`) is \`FEEDBACK_SEARCH_WITHHELD\`: list by phase instead.
 \`DELETE …/feedback/:fb/reporter-data\` deletes an item's text, attachments and embedding while keeping the row; it takes
 \`feedback.redact\` (project admin), which a full token holds where its holder does and a named token only
-where its grant names it (\`PERMISSION_FORBIDDEN\` without it).
+where its grant names it (\`PERMISSION_FORBIDDEN\` without it). It deletes the item's mockups too, so while
+another item is filed about one of them it is \`FEEDBACK_REDACT_MOCKUP_TARGETED\`, naming that item: retarget it first.
 
 ### Reading the list
 \`GET …/feedback\` \`?phase=&q=&requirement=\` answers each item's derived phase and who it waits on, read for the viewer: a holder of

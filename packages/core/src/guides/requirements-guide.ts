@@ -7,7 +7,7 @@ export const REQUIREMENT_LIFECYCLE_GUIDE: CoreGuide = {
   title: 'Requirements: revisions, agreement, baselines and delivery',
   summary:
     'How a requirement (REQ-n) is written in immutable revisions with stable business criteria (BC-n), proposed, accepted and agreed by a holder of requirements.approve under a baseline pinning its designs, re-pinned, deferred, read as delivered, accepted or dropped; and why an issue planned against it reads changed-since-plan.',
-  version: 3,
+  version: 4,
   body: `## Requirements: revisions, agreement, baselines and delivery
 
 A requirement (REQ-n) is the business intent a set of issues delivers. Its text never changes in place:
@@ -93,6 +93,10 @@ it lives in numbered revisions, and each revision carries business criteria unde
    (\`REQUIREMENT_NOT_AGREED\`), and a re-pin with nothing moved is \`REQUIREMENT_PINS_CURRENT\`.
    Nothing re-pins by itself: a design approval only makes the re-pin due, and the requirement waits on
    it (REQ-41 BC-10).
+8. **A mockup shows the screen it describes.** Propose one on the requirement at its open or current
+   revision when the picture's rough sketch will not settle a screen. Once a person has tried and
+   decided it, the next agree or re-pin pins each accepted one beside the designs. A re-pin is taken once a mockup is accepted after the agree. Kinds, review and revisions:
+   ${guideRef('mockups')}.
 
 ### Issues against a requirement
 - **link_issue** once the requirement is agreed or accepted (\`REQUIREMENT_NOT_AGREED\` before that). An

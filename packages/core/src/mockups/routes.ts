@@ -1,4 +1,6 @@
 import {
+  COMMENT_MOCKUP_SHAPE,
+  commentMockupRequestSchema,
   DECIDE_MOCKUP_SHAPE,
   decideMockupRequestSchema,
   listMockupsQuerySchema,
@@ -11,6 +13,7 @@ import { sendBytes, setInertAttachmentHeaders } from '../lib/attachment-headers.
 import { refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { invalid, strictBody, zValidator } from '../middleware/zod-validator.js';
+import { commentOnMockup, mockupCommentsAs } from './comments.js';
 import { getMockupAs, listMockupsAs, mockupBytes } from './list.js';
 import type { MockupActor } from './read.js';
 import {
@@ -124,5 +127,27 @@ mockupRoutes.post(
   async (c) => {
     const { id, mk } = c.req.valid('param');
     return answer(c, await withdrawMockup({ projectId: id, ref: mk, actor: actorOf(c) }));
+  },
+);
+
+mockupRoutes.get('/:id/mockups/:mk/comments', mockupParam, async (c) => {
+  const { id, mk } = c.req.valid('param');
+  return c.json(await mockupCommentsAs(actorOf(c), id, mk));
+});
+
+mockupRoutes.post(
+  '/:id/mockups/:mk/comments',
+  mockupParam,
+  strictBody(commentMockupRequestSchema, COMMENT_MOCKUP_SHAPE),
+  async (c) => {
+    const { id, mk } = c.req.valid('param');
+    const outcome = await commentOnMockup({
+      projectId: id,
+      ref: mk,
+      actor: actorOf(c),
+      body: c.req.valid('json'),
+    });
+    if (!outcome.ok) return refused(c, outcome.refusals, 'MOCKUP_REFUSED');
+    return c.json({ comment: outcome.comment }, 201);
   },
 );

@@ -88,6 +88,7 @@ export const FEEDBACK_TARGET_TYPES = [
 	"workflow",
 	"contract",
 	"endpoint",
+	"mockup",
 	"screen",
 ] as const;
 export type FeedbackTargetType = (typeof FEEDBACK_TARGET_TYPES)[number];
@@ -152,6 +153,7 @@ export const FEEDBACK_TARGET_LABELS: Record<FeedbackTargetType, string> = {
 	workflow: "Workflow",
 	contract: "Contract version",
 	endpoint: "API route or tool",
+	mockup: "Mockup",
 	screen: "Screen",
 };
 
@@ -283,6 +285,8 @@ export const FEEDBACK_REFUSAL_CODES = [
 	"FEEDBACK_NOT_RESOLVED",
 	"FEEDBACK_VERIFY_ASK_SELF",
 	"FEEDBACK_ALREADY_REDACTED",
+	/** A redaction would delete a mockup another item is filed about (REQ-49 BC-4): retarget that item first. */
+	"FEEDBACK_REDACT_MOCKUP_TARGETED",
 	"FEEDBACK_CLARIFICATION_ALREADY_OPEN",
 	"FEEDBACK_CLARIFICATION_CLOSED",
 	"FEEDBACK_ATTACHMENT_INVALID",
@@ -329,6 +333,8 @@ const feedbackTargetFields = {
 	workflow: ref.optional(),
 	/** A route (`METHOD /path`) or tool the project serves, bare or as `<contract>:<element>`. */
 	endpoint: z.string().trim().min(1).max(FEEDBACK_LIMITS.whereSeen).optional(),
+	/** A mockup (MK-n) of this project the item is about (REQ-49 BC-4). */
+	mockup: ref.optional(),
 	screen: z.string().trim().min(1).max(FEEDBACK_LIMITS.whereSeen).optional(),
 	/** With a workflow target, the one step or edge of it the item is about (REQ-17 BC-11). */
 	node: nodeRefSchema.optional(),
@@ -346,7 +352,7 @@ export const createFeedbackRequestSchema = z.strictObject({
 	...feedbackTargetFields,
 });
 export type CreateFeedbackRequest = z.infer<typeof createFeedbackRequestSchema>;
-export const CREATE_FEEDBACK_SHAPE = `{ kind: ${FEEDBACK_KINDS.join(" | ")}, title, body?, severity?: ${FEEDBACK_SEVERITIES.join(" | ")}, whereSeen?, exactly one of requirement | issue | release | workflow | endpoint | screen, node?: { step } | { edge: { from, to, label? } } (with workflow only), ${WRITTEN_LANG_SHAPE} }`;
+export const CREATE_FEEDBACK_SHAPE = `{ kind: ${FEEDBACK_KINDS.join(" | ")}, title, body?, severity?: ${FEEDBACK_SEVERITIES.join(" | ")}, whereSeen?, exactly one of requirement | issue | release | workflow | endpoint | mockup | screen, node?: { step } | { edge: { from, to, label? } } (with workflow only), ${WRITTEN_LANG_SHAPE} }`;
 
 const carrierFields = {
 	/** One issue that carries the route, or every one of them as a list (ISS-265). */
@@ -518,7 +524,7 @@ export const listFeedbackQuerySchema = z.strictObject({
 export interface FeedbackTargetView {
 	type: FeedbackTargetType;
 	/** REQ-n, ISS-n, a release version, a workflow flow, `<provider>/<contract>@<version>`, a served
-	 *  route or tool as `<contract>:<element>`, or the screen as written. */
+	 *  route or tool as `<contract>:<element>`, a mockup's MK-n, or the screen as written. */
 	key: string;
 	title: string | null;
 	/** On a workflow target, the step or edge the item names; absent, it is about the whole workflow. */

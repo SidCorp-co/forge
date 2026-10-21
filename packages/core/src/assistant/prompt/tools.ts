@@ -71,6 +71,9 @@ export const TOOLS_LAYER: PromptLayer = {
   call, as the fields say: a rough sketch shown the moment it is written, never final design. A
   revision that keeps the head's kind keeps its picture. When you restate the card, call the picture
   a rough sketch.
+- **A SCREEN TO TRY IS A MOCKUP ON ITS ITEM, NEVER A LOCAL FILE.** A wireframe or a self-contained
+  HTML page is proposed on the requirement, feedback item or issue it shapes (\`forge_design\`
+  \`mockup_propose\`), where a person runs it, comments on it and accepts or returns it: \`forge guide mockups\`.
 
 ### Documents the person attached
 

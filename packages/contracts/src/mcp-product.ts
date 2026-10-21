@@ -15,6 +15,7 @@ export const DESIGN_TOOL_READS = [
 	"suggestion_list",
 	"mockup_list",
 	"mockup_get",
+	"mockup_comments",
 ] as const;
 const DESIGN_TOOL_WRITES = [
 	"design_create",
@@ -30,6 +31,7 @@ const DESIGN_TOOL_WRITES = [
 	"mockup_accept",
 	"mockup_return",
 	"mockup_withdraw",
+	"mockup_comment",
 ] as const;
 export const DESIGN_TOOL_ACTIONS = [
 	...DESIGN_TOOL_READS,

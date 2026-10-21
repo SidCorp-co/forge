@@ -24,11 +24,6 @@
       "count": 1
     }
   },
-  "src/features/conversations/ui-actions/actions.ts": {
-    "sonarjs/cognitive-complexity": {
-      "count": 1
-    }
-  },
   "src/features/conversations/ui-actions/issues-waiting.test.tsx": {
     "@typescript-eslint/require-await": {
       "count": 1

@@ -4515,6 +4515,24 @@
                               "key"
                             ],
                             "type": "object"
+                          },
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "key": {
+                                "pattern": "^MK-\\d{1,9}$",
+                                "type": "string"
+                              },
+                              "kind": {
+                                "const": "mockup",
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "key"
+                            ],
+                            "type": "object"
                           }
                         ]
                       },
@@ -4754,6 +4772,7 @@
                           "issue",
                           "requirement",
                           "workflow",
+                          "mockup",
                           "other"
                         ],
                         "type": "string"
@@ -23413,6 +23432,11 @@
                     ],
                     "type": "string"
                   },
+                  "mockup": {
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "type": "string"
+                  },
                   "node": {
                     "anyOf": [
                       {
@@ -24803,6 +24827,11 @@
                     "type": "string"
                   },
                   "issue": {
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "mockup": {
                     "maxLength": 200,
                     "minLength": 1,
                     "type": "string"
@@ -28533,6 +28562,29 @@
               "schema": {
                 "additionalProperties": false,
                 "properties": {
+                  "answers": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "comment": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
+                        "note": {
+                          "maxLength": 4000,
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "comment"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 100,
+                    "type": "array"
+                  },
                   "caption": {
                     "maxLength": 500,
                     "type": "string"
@@ -28559,6 +28611,35 @@
                   },
                   "name": {
                     "maxLength": 200,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "resolves": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "comment": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
+                        "note": {
+                          "maxLength": 4000,
+                          "minLength": 1,
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "comment",
+                        "note"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 100,
+                    "type": "array"
+                  },
+                  "revises": {
+                    "maxLength": 64,
                     "minLength": 1,
                     "type": "string"
                   },
@@ -28601,8 +28682,7 @@
                           }
                         },
                         "required": [
-                          "requirement",
-                          "revision"
+                          "requirement"
                         ],
                         "type": "object"
                       },
@@ -28638,7 +28718,6 @@
                   }
                 },
                 "required": [
-                  "target",
                   "kind"
                 ],
                 "type": "object"
@@ -28747,6 +28826,148 @@
                     "type": "string"
                   }
                 },
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-validated": [
+          "json",
+          "param"
+        ]
+      }
+    },
+    "/api/projects/{id}/mockups/{mk}/comments": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "mk",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-validated": [
+          "param"
+        ]
+      },
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "mk",
+            "required": true,
+            "schema": {
+              "maxLength": 64,
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "body": {
+                    "maxLength": 4000,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "pin": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "h": {
+                        "exclusiveMinimum": 0,
+                        "maximum": 1,
+                        "type": "number"
+                      },
+                      "w": {
+                        "exclusiveMinimum": 0,
+                        "maximum": 1,
+                        "type": "number"
+                      },
+                      "x": {
+                        "maximum": 1,
+                        "minimum": 0,
+                        "type": "number"
+                      },
+                      "y": {
+                        "maximum": 1,
+                        "minimum": 0,
+                        "type": "number"
+                      }
+                    },
+                    "required": [
+                      "x",
+                      "y"
+                    ],
+                    "type": "object",
+                    "x-forge-refinements": [
+                      "a region names both w and h; a point names neither",
+                      "a region stays inside the frame: x + w and y + h are at most 1"
+                    ]
+                  }
+                },
+                "required": [
+                  "body"
+                ],
                 "type": "object"
               }
             }

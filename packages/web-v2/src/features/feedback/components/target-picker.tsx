@@ -58,7 +58,8 @@ export function TargetPicker({
   const served = type === "endpoint" ? (endpoints.data?.endpoints ?? []) : [];
   const servesNone = type === "endpoint" && endpoints.data?.endpoints.length === 0;
   const role = useProjects().data?.find((p) => p.id === projectId)?.role;
-  const kinds = PICKABLE_TARGETS.filter((t) => t !== "issue" || canWriteProject(role));
+  // a mockup is named from its own full-screen view, which opens this form already about it
+  const kinds = PICKABLE_TARGETS.filter((t) => (t !== "issue" || canWriteProject(role)) && (t !== "mockup" || type === "mockup"));
   const { choices, loaded } = useChoices(projectId, type);
   const listed = LISTED.has(type);
   const [text, setText] = useState(value);

@@ -5,8 +5,9 @@
  * `ba_suggest` refused SUGGESTION_BASE_STALE ("the target's head is no revision"), twice of three
  * (REQ-31, REQ-36). The model no longer types a base: the tool takes what this turn's
  * ba_read_requirement returned, and a revision_diff may build on the open draft, whose accept
- * rewrites that draft. Its `ba_draw_mockup` queued a requirement mockup for a person to accept;
- * since REQ-35 a requirement's picture is its revision's own, and the door offers that tool no more.
+ * rewrites that draft. REQ-49 BC-5: the door proposes a wireframe or an HTML mockup on its
+ * requirement with `ba_propose_mockup`, which waits for a person like any other mockup, and answers a
+ * returned one with its next revision.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -288,12 +289,78 @@ describe('the base is what the turn read, never re-read behind its back', () => 
   });
 });
 
-// REQ-35: a requirement's picture is its revision's own (PUT …/revisions/:n/picture), shown at once
-// and pinned by nothing, so the door no longer offers ba_draw_mockup, whose board waited in the
-// mockup queue for a person to accept it
-describe('the BA door draws no requirement mockup into the accept queue', () => {
-  it('offers no ba_draw_mockup', async () => {
-    const tools = await turn(await newRequirement('A board nobody queues'));
-    expect(tools.tools.map((t) => t.function.name)).not.toContain('ba_draw_mockup');
+// REQ-49 BC-5 (reversing REQ-35's removal of ba_draw_mockup): the door proposes a mockup on the
+// room's requirement, at its open draft where it has one, and it waits for a person
+describe('the BA door proposes a mockup on its requirement', () => {
+  const PAGE = '<!doctype html><title>Cart</title><button onclick="this.textContent=1">0</button>';
+  const BOARD = {
+    v: 'wireframe-v1',
+    title: 'Cart',
+    shapes: [{ id: 'frame', type: 'frame', x: 20, y: 20, w: 400, h: 300 }],
+  };
+
+  it('proposes a wireframe and an HTML page, each waiting on a person at the open draft', async () => {
+    const key = await newRequirement('The cart shows its count');
+    const tools = await turn(key);
+    const board = await call(tools, 'ba_propose_mockup', { kind: 'wireframe', document: BOARD });
+    expect(board.isError).toBe(false);
+    expect(board.json.mockup).toMatchObject({ status: 'proposed', round: 1, revises: null });
+    const page = await call(tools, 'ba_propose_mockup', {
+      kind: 'html',
+      html: PAGE,
+      name: 'cart.html',
+    });
+    expect(page.isError).toBe(false);
+    const listed = ok(await as('GET', `/mockups?requirement=${key}`)).mockups as Doc[];
+    expect(listed.map((m) => [m.kind, m.status, m.target.revision, m.proposedAgency])).toEqual([
+      ['wireframe', 'proposed', 1, 'human'],
+      ['html', 'proposed', 1, 'human'],
+    ]);
+    const seen = await call(tools, 'ba_read_requirement', {});
+    expect((seen.json.mockups as Doc[]).map((m) => m.key)).toEqual(listed.map((m) => m.key));
+  });
+
+  it('answers a returned mockup with its next revision, settling the comment it names', async () => {
+    const key = await newRequirement('The cart badge is red');
+    const tools = await turn(key);
+    const first = (await call(tools, 'ba_propose_mockup', { kind: 'html', html: PAGE })).json.mockup
+      .key as string;
+    const comment = ok(
+      await as('POST', `/mockups/${first}/comments`, {
+        body: 'Make the badge red',
+        pin: { x: 0.8, y: 0.1 },
+      }),
+      201,
+    ).comment as Doc;
+    ok(await as('POST', `/mockups/${first}/return`, { reason: 'the badge colour' }));
+    const read = await call(tools, 'ba_read_requirement', {});
+    const shown = (read.json.mockups as Doc[]).find((m) => m.key === first) as Doc;
+    expect(shown.comments).toEqual([
+      expect.objectContaining({ id: comment.id, pin: { x: 0.8, y: 0.1 }, settled: null }),
+    ]);
+    const next = await call(tools, 'ba_propose_mockup', {
+      kind: 'html',
+      html: PAGE.replace('<button', '<button style="background:red"'),
+      revises: first,
+      answers: [{ comment: comment.id, note: 'red badge' }],
+    });
+    expect(next.isError).toBe(false);
+    expect(next.json.mockup).toMatchObject({ round: 2, revises: first });
+    const comments = ok(await as('GET', `/mockups/${next.json.mockup.key}/comments`));
+    expect(comments.comments[0].settled).toMatchObject({
+      as: 'answered',
+      by: next.json.mockup.key,
+      note: 'red badge',
+    });
+  });
+
+  it('answers a refused board with the refusal that names it', async () => {
+    const tools = await turn(await newRequirement('A board with a stray shape'));
+    const r = await call(tools, 'ba_propose_mockup', {
+      kind: 'wireframe',
+      document: { v: 'wireframe-v1', shapes: [{ id: 'x', type: 'text', x: 1, y: 1 }] },
+    });
+    expect(r.isError).toBe(true);
+    expect(JSON.stringify(r.json)).toContain('MOCKUP_TYPE_INVALID');
   });
 });

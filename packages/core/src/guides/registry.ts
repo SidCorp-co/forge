@@ -28,6 +28,7 @@ import {
   WHAT_IS_AN_ISSUE_GUIDE,
   WRITING_AN_ISSUE_GUIDE,
 } from './issue-guides.js';
+import { MOCKUPS_GUIDE } from './mockups-guide.js';
 import { RECORDS_GUIDE } from './records-guide.js';
 import { REQUIREMENT_LIFECYCLE_GUIDE } from './requirements-guide.js';
 import { RUNS_AND_MASTERS_GUIDE } from './runs-guide.js';
@@ -313,6 +314,7 @@ section, which is why this migration is what turns the feature on.`,
   WORKFLOW_DESIGN_GUIDE,
   WORKFLOW_TEMPLATES_GUIDE,
   REQUIREMENT_LIFECYCLE_GUIDE,
+  MOCKUPS_GUIDE,
   SUGGESTIONS_GUIDE,
   FEEDBACK_TRIAGE_GUIDE,
   RUNS_AND_MASTERS_GUIDE,

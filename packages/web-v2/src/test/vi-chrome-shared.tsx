@@ -70,8 +70,12 @@ const mockup = (key: string, over: Record<string, unknown>) => ({
   decidedAt: null,
   reason: null,
   pinned: null,
+  round: 1,
+  revises: null,
+  revisedBy: null,
+  comments: { total: 0, open: 0 },
   url: `/m/${key}`,
-  can: { accept: true, return: true, withdraw: true },
+  can: { accept: true, return: true, withdraw: true, comment: true, revise: false },
   ...over,
 });
 const mockups = () => (
@@ -81,8 +85,8 @@ const mockups = () => (
       [["mockups", P, "feedback", "FB-1"], { mockups: [], returned: 0, open: 0 }],
     ]}
   >
-    <MockupList projectId={P} target={{ type: "requirement", key: "REQ-1", revision: 2 }} />
-    <MockupList projectId={P} target={{ type: "feedback", key: "FB-1" }} />
+    <MockupList projectId={P} slug="acme" target={{ type: "requirement", key: "REQ-1" }} />
+    <MockupList projectId={P} slug="acme" target={{ type: "feedback", key: "FB-1" }} />
   </Seeded>
 );
 

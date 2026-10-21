@@ -114,7 +114,7 @@ describe('a endpoint is a target', () => {
 
   it('names endpoint among the targets when none is named', () => {
     expect(targetCountRefusal({}, undefined)?.detail).toContain(
-      'requirement, issue, release, workflow, endpoint or screen',
+      'requirement, issue, release, workflow, endpoint, mockup or screen',
     );
   });
 });

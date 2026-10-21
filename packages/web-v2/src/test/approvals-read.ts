@@ -258,6 +258,7 @@ const MOCKUP: NeedsYouDecision = {
     why: [{ label: "Proposed by", value: "forge-master" }],
     yields: [{ kind: "approved", n: 1 }],
   }),
+  mockup: { key: "MK-4", url: `/api/projects/${P}/mockups/MK-4/content`, kind: "html", name: "approvals.html", round: 2, revises: "MK-3", openComments: 1, consequence: "pinned_next_baseline" },
 };
 
 const SIGN_OFF: NeedsYouDecision = {

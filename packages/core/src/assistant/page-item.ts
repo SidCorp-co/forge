@@ -22,6 +22,7 @@ import { rowIn as feedbackRowIn } from '../feedback/index.js';
 import { isUuid, resolveIssueRouteRef } from '../issues/index.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import { dataPolicyOf, type EgressSurface, egressAt } from '../lib/data-egress.js';
+import { mockupForChat } from '../mockups/index.js';
 import { holds } from '../permissions/index.js';
 import { latestUiSnapshot } from './ui-snapshot.js';
 
@@ -31,6 +32,7 @@ const SURFACE: Record<UiPageItemKind, EgressSurface> = {
   requirement: 'requirement',
   feedback: 'feedback',
   workflow: 'design',
+  mockup: 'mockup.content',
 };
 
 export type LoadedPageItem =
@@ -50,7 +52,11 @@ function missing(err: unknown): null {
  * is carried under its own name (`feedbackKind`, `workflowKind`), never as `kind`, which names
  * the page item's kind.
  */
-type Shown = { key: string; meta: Record<string, unknown>; content: { title: unknown } } | null;
+type Shown = {
+  key: string;
+  meta: Record<string, unknown>;
+  content: { title: unknown } & Record<string, unknown>;
+} | null;
 
 async function issueShown(projectId: string, key: string, userId: string): Promise<Shown> {
   try {
@@ -128,6 +134,17 @@ async function workflowShown(projectId: string, key: string): Promise<Shown> {
   };
 }
 
+async function mockupShown(projectId: string, key: string, userId: string): Promise<Shown> {
+  // a chat about a mockup reads it as the asker; what leaves is read with the assistant's agency
+  const shown = await mockupForChat(projectId, key, { userId, agency: 'agent' });
+  if (!shown) return null;
+  return {
+    key: shown.key,
+    meta: shown.meta,
+    content: { title: shown.content.title, ...shown.content },
+  };
+}
+
 function shownOf(projectId: string, item: UiPageItem, userId: string): Promise<Shown> {
   switch (item.kind) {
     case 'issue':
@@ -138,6 +155,8 @@ function shownOf(projectId: string, item: UiPageItem, userId: string): Promise<S
       return feedbackShown(projectId, item.key);
     case 'workflow':
       return workflowShown(projectId, item.key);
+    case 'mockup':
+      return mockupShown(projectId, item.key, userId);
   }
 }
 
