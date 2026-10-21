@@ -8,6 +8,7 @@ import { Checkbox, IconButton } from "@/design";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import { cn } from "@/lib/utils/cn";
 import { approveOf, declineOf } from "../derive";
+import { MockupStanding, RowMockup } from "./approval-mockup";
 
 const TAG_TONE = {
   plain: "bg-sunken text-muted",
@@ -80,7 +81,9 @@ export function PendingDecision({ d, open, selected, onOpen, onSelect, onApprove
           )}
         </span>
         <DecisionTags d={d} />
+        {d.mockup ? <MockupStanding m={d.mockup} /> : null}
       </button>
+      <RowMockup d={d} />
       <div className="flex items-start gap-1">
         <span className="whitespace-nowrap pt-1 font-mono text-12 text-subtle" title={d.touchedAt ?? undefined}>
           {d.touchedAt ? time.age(d.touchedAt) : ""}

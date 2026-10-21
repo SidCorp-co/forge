@@ -9,7 +9,7 @@
 
 import type { FeedbackKind, FeedbackSeverity } from '@forge/contracts/feedback';
 import { feedbackKey } from '@forge/contracts/feedback';
-import type { MockupView } from '@forge/contracts/mockups';
+import type { MockupAcceptConsequence, MockupView } from '@forge/contracts/mockups';
 import type { NeedsYouAreaKey, NeedsYouEntity } from '@forge/contracts/needs-you';
 import {
   type NeedsYouDecision,
@@ -127,14 +127,38 @@ function suggestionDecision(
   };
 }
 
+/** What accepting a mockup does, by the item it is on (REQ-49 BC-7). */
+const CONSEQUENCE_OF = {
+  requirement: 'pinned_next_baseline',
+  issue: 'given_to_issue_jobs',
+  feedback: 'kept_on_feedback',
+} as const satisfies Record<MockupView['target']['type'], MockupAcceptConsequence>;
+
+const CONSEQUENCE_LINE: Record<MockupAcceptConsequence, (m: MockupView) => string> = {
+  pinned_next_baseline: (m) =>
+    `${m.target.key}'s next agree or re-pin pins it, for its issues' jobs`,
+  given_to_issue_jobs: (m) => `${m.target.key}'s jobs are given it`,
+  kept_on_feedback: (m) => `It is kept on ${m.target.key} as the agreed picture of its fix`,
+};
+
+/** A mockup's round, what it revises and its open comments, as the peek's why lines. */
+function standingOf(m: MockupView): { label: string; value: string }[] {
+  return [
+    { label: 'Proposed by', value: m.proposedByName ?? m.proposedAgency },
+    ...(m.revises ? [{ label: 'Revision', value: `${m.round}, revising ${m.revises}` }] : []),
+    ...(m.comments.open ? [{ label: 'Open comments', value: String(m.comments.open) }] : []),
+  ];
+}
+
 function mockupDecision(projectId: string, m: MockupView): DecisionBody {
+  const consequence = CONSEQUENCE_OF[m.target.type];
   const proposal: DecisionProposal = fitProposal({
     verb: 'Accept mockup',
     what: m.name,
     recommends: false,
     tags: [{ text: m.kind, tone: 'plain' }],
-    consequences: [`${m.key} is accepted for ${m.target.key}`],
-    why: [{ label: 'Proposed by', value: m.proposedByName ?? m.proposedAgency }],
+    consequences: [`${m.key} is accepted for ${m.target.key}`, CONSEQUENCE_LINE[consequence](m)],
+    why: standingOf(m),
     said: null,
     table: null,
     yields: [{ kind: 'approved', n: 1 }],
@@ -180,6 +204,16 @@ function mockupDecision(projectId: string, m: MockupView): DecisionBody {
     id: `mockup:${m.id}`,
     topic: 'mockup',
     proposal,
+    mockup: {
+      key: m.key,
+      url: m.url,
+      kind: m.kind,
+      name: m.name,
+      round: m.round,
+      revises: m.revises,
+      openComments: m.comments.open,
+      consequence,
+    },
   };
 }
 

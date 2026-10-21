@@ -20,7 +20,8 @@ export function useMockupText(url: string, enabled = true) {
 }
 
 /** The mockups and the requirements they hang on, which every mockup write changes. */
-const touched = (projectId: string) => [["mockups", projectId], ["mockup-comments", projectId], ["requirement", projectId], ["approvals"]];
+// the Needs you decisions (`features/needs-you` NEEDS_YOU_ROOT) list each mockup waiting on a person
+const touched = (projectId: string) => [["mockups", projectId], ["mockup-comments", projectId], ["requirement", projectId], ["needs-you", projectId]];
 
 const commentsKey = (projectId: string, key: string) => ["mockup-comments", projectId, key];
 

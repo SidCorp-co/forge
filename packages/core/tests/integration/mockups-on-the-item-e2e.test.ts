@@ -287,25 +287,41 @@ describe("a feedback item's reporter data, while another item is about one of it
   });
 });
 
-describe('Approvals lists a proposed mockup with its preview and what accepting does (BC-7)', () => {
-  it('a requirement mockup waits there, its accept pinning it in the next baseline', async () => {
+describe('Needs you lists a proposed mockup with its preview and what accepting does (BC-7)', () => {
+  it('a revised requirement mockup waits there with its round, what it revises and its open comments', async () => {
     const req = await requirement('A screen waiting on a decision', 'screen');
-    const mk = (await propose({ target: { requirement: req }, ...html() })).key as string;
-    const inbox = ok(await as('owner', 'GET', '/approvals'));
-    const row = (inbox.items as Doc[]).find((i) => i.key === mk);
-    expect(row).toMatchObject({
-      kind: 'mockup',
-      mockupKind: 'html',
+    const first = (await propose({ target: { requirement: req }, ...html() })).key as string;
+    await comment(first, { body: 'The total hides the tax line.' });
+    ok(await decide(first, 'return', 'Show the tax line.'));
+    const mk = (await propose({ revises: first, ...html('cart-2.html') })).key as string;
+    await comment(mk, { body: 'Is the tax rounded?', pin: { x: 0.5, y: 0.5 } });
+    const read = ok(await as('owner', 'GET', '/needs-you/decisions'));
+    const d = (read.decisions as Doc[]).find((x) => x.key === mk);
+    expect(d).toMatchObject({
+      topic: 'mockup',
+      group: 'approve',
       opens: { kind: 'requirement', key: req },
       mockup: {
+        key: mk,
         url: `/api/projects/${w.projectId}/mockups/${mk}/content`,
-        round: 1,
-        revises: null,
-        openComments: 0,
+        kind: 'html',
+        name: 'cart-2.html',
+        round: 2,
+        revises: first,
+        openComments: 1,
         consequence: 'pinned_next_baseline',
       },
-      approve: { act: 'mockup.accept' },
     });
+    if (!d) throw new Error(`${mk} is not among the decisions`);
+    const proposal = d.proposal as Doc;
+    expect(proposal.consequences).toEqual([
+      `${mk} is accepted for ${req}`,
+      `${req}'s next agree or re-pin pins it, for its issues' jobs`,
+    ]);
+    expect((d.answers as Doc[]).map((a) => [a.act, a.needsReason])).toEqual([
+      ['mockup.accept', false],
+      ['mockup.return', true],
+    ]);
   });
 });
 

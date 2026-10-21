@@ -109,3 +109,17 @@ export function MockupPreview({
     </div>
   );
 }
+
+// the page a thumbnail draws: a desktop window, scaled into the 160 x 100 box a list row gives it
+const THUMB_PAGE = { width: 1280, height: 800, scale: 0.125 } as const;
+
+/** A mockup small, as a list row shows it beside the act that decides it: the whole page, scaled. */
+export function MockupThumb({ url, kind, name }: { url: string; kind: MockupKind; name: string }) {
+  return (
+    <div className="pointer-events-none relative h-25 w-40 flex-none overflow-hidden border border-line-subtle bg-surface" aria-hidden data-testid="mockup-thumb">
+      <div className="origin-top-left" style={{ width: THUMB_PAGE.width, height: THUMB_PAGE.height, transform: `scale(${THUMB_PAGE.scale})` }}>
+        <MockupBody url={url} kind={kind} name={name} />
+      </div>
+    </div>
+  );
+}

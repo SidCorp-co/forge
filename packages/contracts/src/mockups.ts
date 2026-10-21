@@ -12,6 +12,19 @@ export const MOCKUP_KINDS = [
 	"html",
 	"api_example",
 ] as const;
+
+/**
+ * What accepting a mockup does, by its item: a requirement's is pinned by the next agree or re-pin
+ * and given to its issues' jobs from there; an issue's is given to that issue's jobs; a feedback
+ * item's is kept on the item as the agreed picture of its fix.
+ */
+export const MOCKUP_ACCEPT_CONSEQUENCES = [
+	"pinned_next_baseline",
+	"given_to_issue_jobs",
+	"kept_on_feedback",
+] as const;
+export type MockupAcceptConsequence =
+	(typeof MOCKUP_ACCEPT_CONSEQUENCES)[number];
 export type MockupKind = (typeof MOCKUP_KINDS)[number];
 
 export const MOCKUP_KIND_LABELS: Record<MockupKind, string> = {
