@@ -298,7 +298,7 @@
         "requirements",
         "suggestions"
       ],
-      "serves": ["REQ-8", "REQ-11", "REQ-14", "automation#needs_you"]
+      "serves": ["REQ-8", "REQ-11", "automation#needs_you"]
     },
     "devices": {
       "kind": "kernel",
@@ -816,12 +816,7 @@
       "kind": "domain",
       "context": "conversations",
       "owns": ["notificationDeliveries", "notificationDeliveryMembers", "notifications"],
-      "serves": [
-        "REQ-11",
-        "REQ-14",
-        "requirement-to-delivery#acceptance",
-        "feedback-triage#verify-ask"
-      ]
+      "serves": ["REQ-11", "requirement-to-delivery#acceptance", "feedback-triage#verify-ask"]
     },
     "onboarding": {
       "kind": "domain",
@@ -1068,7 +1063,7 @@
         "requirement-to-delivery#acceptance",
         "requirement-to-delivery#accept",
         "requirement-to-delivery#accept-result",
-        "requirement-to-delivery#stalled",
+        "requirement-to-delivery#stuck",
         "requirement-to-delivery#pins",
         "requirement-to-delivery#ready",
         "requirement-to-delivery#impact",
@@ -1184,7 +1179,7 @@
     "whats-new": {
       "kind": "domain",
       "context": "release",
-      "serves": ["REQ-14", "issue-delivery#act-release"]
+      "serves": ["issue-delivery#act-release"]
     },
     "widget": {
       "kind": "domain",
@@ -1299,7 +1294,7 @@
       "serves": ["project-onboarding#card", "REQ-19"]
     },
     "development": {
-      "serves": ["REQ-11", "REQ-14"]
+      "serves": ["REQ-11"]
     },
     "docs": {
       "serves": ["REQ-23"]
@@ -1357,7 +1352,7 @@
       "serves": ["REQ-11", "REQ-16", "automation#needs_you"]
     },
     "notifications": {
-      "serves": ["REQ-11", "REQ-14"]
+      "serves": ["REQ-11"]
     },
     "project-home": {
       "serves": ["REQ-41"]
@@ -1415,7 +1410,7 @@
       "serves": ["REQ-2", "agent-run-standing#waiting_person"]
     },
     "releases": {
-      "serves": ["REQ-11", "REQ-14", "issue-delivery#case-release"]
+      "serves": ["REQ-11", "issue-delivery#case-release"]
     },
     "requirements": {
       "serves": [
@@ -1453,7 +1448,7 @@
       "serves": ["REQ-8"]
     },
     "tours": {
-      "serves": ["REQ-23", "REQ-14"]
+      "serves": ["REQ-23"]
     },
     "version": {
       "serves": ["REQ-12"]
@@ -1462,7 +1457,7 @@
       "serves": ["REQ-32"]
     },
     "whats-new": {
-      "serves": ["REQ-14", "issue-delivery#act-release"]
+      "serves": ["issue-delivery#act-release"]
     },
     "widget": {
       "serves": ["REQ-7", "feedback-triage#intake"]
@@ -1517,7 +1512,7 @@
         "REQ-15",
         "agent-run-standing#master",
         "issue-delivery#rule-dispatch",
-        "requirement-to-delivery#stalled"
+        "requirement-to-delivery#stuck"
       ]
     }
   }
