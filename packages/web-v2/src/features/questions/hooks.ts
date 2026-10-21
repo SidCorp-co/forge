@@ -14,6 +14,7 @@ import { runJournalKey } from "@/features/issues/detail-hooks";
 import { questionsApi } from "./api";
 import type { AnswerInput } from "./types";
 import { failureToast } from "@/lib/api/failure-toast";
+import { pollUnlessRefused, refetchRefusedOnFocus } from "@/lib/api/read-failed";
 
 export const issueQuestionsKey = (issueId: string) => ["questions", issueId];
 export const projectQuestionsKey = (projectId: string) => ["questions", "project", projectId];
@@ -25,8 +26,10 @@ export function useIssueQuestions(issueId: string) {
     queryKey: issueQuestionsKey(issueId),
     queryFn: () => questionsApi.listForIssue(issueId),
     enabled: Boolean(issueId),
-    refetchInterval: (query) =>
+    refetchInterval: pollUnlessRefused((query) =>
       (query.state.data?.questions.length ?? 0) > 0 ? FOLLOW_UP_POLL_MS : false,
+    ),
+    refetchOnWindowFocus: refetchRefusedOnFocus,
   });
 }
 
@@ -72,7 +75,8 @@ export function useProjectQuestions(projectId: string | undefined) {
     initialPageParam: null as string | null,
     getNextPageParam: (last) => (last.hasMore ? (last.nextCursor ?? undefined) : undefined),
     enabled: Boolean(projectId),
-    refetchInterval: PROJECT_QUEUE_POLL_MS,
+    refetchInterval: pollUnlessRefused(PROJECT_QUEUE_POLL_MS),
+    refetchOnWindowFocus: refetchRefusedOnFocus,
   });
   const pages = query.data?.pages ?? [];
   return {
