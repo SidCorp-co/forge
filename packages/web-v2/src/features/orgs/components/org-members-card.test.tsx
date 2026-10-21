@@ -176,6 +176,19 @@ describe("the organization page's people and agents", () => {
     expect(screen.getByRole("dialog").textContent).toContain("Leave Northwind? You lose access to all of its projects.");
   });
 
+  // r30, judge-86: Leave on one's own row was a trash can, which reads as deleting something.
+  it("shows leaving as a leave icon beside the word Leave, never a trash can", () => {
+    card();
+    const leave = screen.getByRole("button", { name: "Leave Northwind" });
+    expect(leave.textContent).toBe("Leave");
+    const icon = leave.querySelector("svg")?.getAttribute("class") ?? "";
+    expect(icon).toContain("lucide-log-out");
+    expect(icon).not.toMatch(/trash/);
+    // Taking somebody else out is still the remove control it was.
+    const remove = screen.getByRole("button", { name: /^Remove Mai Tran/ });
+    expect(remove.querySelector("svg")?.getAttribute("class") ?? "").toMatch(/trash/);
+  });
+
   it("tells a refused delete inside its panel, under the question, and in no toast", () => {
     refusal = new ApiError(409, "This organization still holds the project \"Billing\", so the organization was not deleted.", "ORG_NOT_EMPTY");
     card();

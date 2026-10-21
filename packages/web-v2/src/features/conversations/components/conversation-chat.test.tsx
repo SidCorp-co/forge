@@ -373,6 +373,61 @@ describe("a room deleted while it is open", () => {
     expect(screen.queryByText("Couldn't load this conversation")).not.toBeInTheDocument();
   });
 
+  // r30, judge-86: what was typed and not yet sent vanished with the room when its deletion arrived.
+  it("keeps what was typed and not yet sent when the room is found deleted", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    const tree = () => (
+      <QueryClientProvider client={new QueryClient()}>
+        <ConversationChat projectId="p1" conversationId="c1" onRoomGone={vi.fn()} />
+      </QueryClientProvider>
+    );
+    const { rerender } = render(tree());
+    fireEvent.change(screen.getByLabelText("Message"), { target: { value: "half a thought about the invoices" } });
+
+    roomError = roomGone();
+    rerender(tree());
+    await waitFor(() => expect(toast).toHaveBeenCalled());
+    const notice = toast.mock.calls[0]?.[0] as { description: string; keep: boolean; onClick: () => void };
+    expect(notice).toMatchObject({ title: "This room was deleted", keep: true, tone: "error" });
+    expect(notice.description).toContain("“half a thought about the invoices”");
+    notice.onClick();
+    expect(writeText).toHaveBeenCalledWith("half a thought about the invoices");
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  // r30 review F2: the kept text was trimmed, so indentation and trailing lines were lost.
+  it("keeps the draft exactly as typed, indentation and trailing lines included", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    const typed = "    indented text\n\n";
+    const tree = () => (
+      <QueryClientProvider client={new QueryClient()}>
+        <ConversationChat projectId="p1" conversationId="c1" onRoomGone={vi.fn()} />
+      </QueryClientProvider>
+    );
+    const { rerender } = render(tree());
+    fireEvent.change(screen.getByLabelText("Message"), { target: { value: typed } });
+    roomError = roomGone();
+    rerender(tree());
+    await waitFor(() => expect(toast).toHaveBeenCalled());
+    const notice = toast.mock.calls[0]?.[0] as { description: string; onClick: () => void };
+    expect(notice.description).toContain("“indented text”");
+    notice.onClick();
+    expect(writeText).toHaveBeenCalledWith(typed);
+  });
+
+  it("raises the plain notice where nothing was typed, saying once that the room was deleted", async () => {
+    roomError = roomGone();
+    open(vi.fn());
+    await waitFor(() => expect(toast).toHaveBeenCalled());
+    expect(toast.mock.calls[0]?.[0]).toMatchObject({
+      title: "This room was deleted",
+      description: "It has left your list.",
+    });
+    expect(toast.mock.calls[0]?.[0]).not.toHaveProperty("keep", true);
+  });
+
   it("still offers Try again for a send that failed for any other reason", async () => {
     send.mockRejectedValueOnce(new Error("network"));
     open();

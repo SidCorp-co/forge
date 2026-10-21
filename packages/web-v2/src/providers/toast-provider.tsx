@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useMediaQuery } from "@/design/hooks/use-media-query";
 import { Toast, type ToastView } from "@/design/primitives/toast";
 import { cn } from "@/lib/utils/cn";
 
@@ -50,12 +51,13 @@ function ToastStack({ items, remove }: Pick<ToastLaneApi, "items" | "remove">) {
     <div key={t.id} className="pointer-events-auto">
       <Toast
         {...t}
-        // A clickable toast dismisses itself after its action runs.
+        // A clickable toast goes once its action runs; a kept one holds what the reader would lose, so it
+        // stays to be used again and only its Dismiss control puts it away (ISS-1229 r30, judge-86).
         onClick={
           t.onClick
             ? () => {
                 t.onClick?.();
-                remove(t.id);
+                if (!t.keep) remove(t.id);
               }
             : undefined
         }
@@ -64,6 +66,8 @@ function ToastStack({ items, remove }: Pick<ToastLaneApi, "items" | "remove">) {
     </div>
   ));
 }
+
+const WIDE = "(min-width: 768px)";
 
 /**
  * Where a frame's toasts go: an overlay at every width, over the top edge and clear of the bottom
@@ -79,23 +83,47 @@ export function ToastLane({ className }: { className?: string }) {
   const lane = useContext(ToastLaneContext);
   if (!lane) throw new Error("ToastLane must be used within <ToastProvider>");
   const { items, remove, registerLane } = lane;
+  const wide = useMediaQuery(WIDE);
 
   useEffect(() => registerLane(), [registerLane]);
 
   if (items.length === 0 || typeof document === "undefined") return null;
-  return createPortal(
-    <section
-      aria-label="Notifications"
-      data-testid="toast-lane"
-      className={cn(
-        "flex max-h-[35dvh] flex-col items-end gap-2.5 overflow-y-auto px-5 py-3",
-        "pointer-events-none fixed inset-x-0 top-[env(safe-area-inset-top)] z-[60] md:left-auto md:top-14",
-        className,
-      )}
-    >
-      <ToastStack items={items} remove={remove} />
-    </section>,
-    document.body,
+  // On a phone the top of the screen is where a list's first controls and rows are, so a toast that
+  // stays until it is put away waits above the tab bar instead (ISS-1229 r30, judge-86).
+  const kept = wide ? [] : items.filter((t) => t.keep);
+  const passing = wide ? items : items.filter((t) => !t.keep);
+  return (
+    <>
+      {passing.length > 0 &&
+        createPortal(
+          <section
+            aria-label="Notifications"
+            data-testid="toast-lane"
+            className={cn(
+              "flex max-h-[35dvh] flex-col items-end gap-2.5 overflow-y-auto px-5 py-3",
+              "pointer-events-none fixed inset-x-0 top-[env(safe-area-inset-top)] z-[60] md:left-auto md:top-14",
+              className,
+            )}
+          >
+            <ToastStack items={passing} remove={remove} />
+          </section>,
+          document.body,
+        )}
+      {kept.length > 0 &&
+        createPortal(
+          <section
+            aria-label="Kept notices"
+            data-testid="toast-lane-kept"
+            className={cn(
+              "flex max-h-[35dvh] flex-col items-center gap-2.5 overflow-y-auto px-4 py-3",
+              "pointer-events-none fixed inset-x-0 bottom-[calc(56px+env(safe-area-inset-bottom))] z-[60]",
+            )}
+          >
+            <ToastStack items={kept} remove={remove} />
+          </section>,
+          document.body,
+        )}
+    </>
   );
 }
 

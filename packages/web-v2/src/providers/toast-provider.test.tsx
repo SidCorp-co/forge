@@ -7,7 +7,7 @@
 // the painted geometry is measured in a browser.
 
 import * as matchers from "@testing-library/jest-dom/matchers";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SlideOver } from "@/design/patterns/slide-over";
 import { MAX_VISIBLE_TOASTS, ToastLane, ToastProvider, useToast, type ToastInput } from "./toast-provider";
@@ -180,7 +180,8 @@ describe("how many toasts show", () => {
     for (const n of [3, 4]) expect(screen.getByText(`Toast ${n}`)).toBeInTheDocument();
     act(() => vi.advanceTimersByTime(60_000));
     expect(screen.getByText("Your message")).toBeInTheDocument();
-    fireEvent.click(screen.getAllByLabelText("Dismiss")[0] as HTMLElement);
+    const card = screen.getByText("Your message").closest(".pointer-events-auto") as HTMLElement;
+    fireEvent.click(within(card).getByLabelText("Dismiss"));
     expect(screen.queryByText("Your message")).not.toBeInTheDocument();
   });
 
@@ -232,3 +233,76 @@ describe("how many toasts show", () => {
     expect(screen.getByText("Background")).toBeInTheDocument();
   });
 });
+
+/**
+ * ISS-1229 r30, judge-86: the notice holding a deleted room's unsent message closed when it was
+ * selected to copy, so it could be copied once; and at 390 it sat over New conversation and the first
+ * room of the list the reader is returned to.
+ */
+describe("a toast marked keep", () => {
+  const wide = (matches: boolean) => {
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      value: (query: string) => ({
+        matches,
+        media: query,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+      }),
+    });
+  };
+  afterEach(() => {
+    Reflect.deleteProperty(window, "matchMedia");
+  });
+
+  it("stays after it is selected, and goes only by its Dismiss control", () => {
+    const copy = vi.fn();
+    render(<Frame />);
+    act(() => fire({ title: "This room was deleted", keep: true, onClick: copy }));
+
+    fireEvent.click(screen.getByText("This room was deleted"));
+    fireEvent.click(screen.getByText("This room was deleted"));
+    expect(copy).toHaveBeenCalledTimes(2);
+    expect(screen.getByText("This room was deleted")).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText("Dismiss"));
+    expect(screen.queryByText("This room was deleted")).not.toBeInTheDocument();
+  });
+
+  it("still lets a passing toast go once it is selected", () => {
+    const open = vi.fn();
+    render(<Frame />);
+    act(() => fire({ title: "Resolved — ISS-3", duration: 0, onClick: open }));
+    fireEvent.click(screen.getByText("Resolved — ISS-3"));
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("Resolved — ISS-3")).not.toBeInTheDocument();
+  });
+
+  it("sits at the bottom on a phone, above the tab bar, clear of the top of the page", () => {
+    wide(false);
+    render(<Frame />);
+    act(() => {
+      fire({ title: "This room was deleted", keep: true });
+      fire({ title: "Saved", duration: 0 });
+    });
+
+    const kept = screen.getByTestId("toast-lane-kept");
+    expect(kept).toHaveTextContent("This room was deleted");
+    expect(kept.parentElement).toBe(document.body);
+    const classes = kept.className.split(/\s+/);
+    expect(classes).toContain("bottom-[calc(56px+env(safe-area-inset-bottom))]");
+    expect(classes.some((c) => /^top-/.test(c))).toBe(false);
+    expect(classes).toContain("pointer-events-none");
+    expect(screen.getByTestId("toast-lane")).not.toHaveTextContent("This room was deleted");
+    expect(screen.getByTestId("toast-lane")).toHaveTextContent("Saved");
+  });
+
+  it("stays with the other toasts on a wide screen", () => {
+    wide(true);
+    render(<Frame />);
+    act(() => fire({ title: "This room was deleted", keep: true }));
+
+    expect(screen.getByTestId("toast-lane")).toHaveTextContent("This room was deleted");
+    expect(screen.queryByTestId("toast-lane-kept")).not.toBeInTheDocument();
+  });
+});
+

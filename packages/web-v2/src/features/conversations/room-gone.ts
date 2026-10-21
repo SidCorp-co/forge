@@ -13,13 +13,14 @@ export const ROOM_DELETED_TITLE = "This room was deleted";
 export function roomDeletedLine(sending: boolean): string {
   return sending
     ? "It was deleted while you had it open, so your message was not sent."
-    : "It was deleted, so it has left your list.";
+    : "It has left your list.";
 }
 
 const UNSENT_QUOTE = 200;
 
-/** The thread goes with the room, so the notice keeps what was written (ISS-1229 r29). */
+/** The thread goes with the room, so the notice quotes what was written, its outer blank space aside (r29, r30). */
 export function unsentLine(text: string): string {
-  const quoted = text.length > UNSENT_QUOTE ? `${text.slice(0, UNSENT_QUOTE).trimEnd()}…` : text;
+  const shown = text.trim();
+  const quoted = shown.length > UNSENT_QUOTE ? `${shown.slice(0, UNSENT_QUOTE).trimEnd()}…` : shown;
   return `${roomDeletedLine(true)}\nSelect this to copy what you wrote:\n“${quoted}”`;
 }

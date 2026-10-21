@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { Popover } from "@/design/primitives/popover";
 
 export interface TooltipProps {
@@ -13,7 +13,8 @@ export interface TooltipProps {
   multiline?: boolean;
   /** ISS-1229 r28 — a sentence a person reads, set in the app's text face and wrapped at the
    *  multiline cap; the code face stays for identifiers and short labels. A touch screen has no
-   *  hover, so a tap on the trigger shows it too, and a tap anywhere else puts it away (r29). */
+   *  hover, so a tap on the trigger shows it too, and only a tap anywhere else or Escape puts it away:
+   *  the mouseleave a touch browser sends after the tap's click does not (r30, judge-86). */
   prose?: boolean;
 }
 
@@ -59,23 +60,52 @@ export function TooltipPanel({
 export function Tooltip({ label, children, side = "top", multiline = false, prose = false }: TooltipProps) {
   const [open, setOpen] = useState(false);
   const anchor = useRef<HTMLSpanElement>(null);
+  // Opened by a finger, so only a tap elsewhere, a blur or Escape closes it, never an emulated mouse.
+  const byTouch = useRef(false);
+  const close = useCallback(() => {
+    byTouch.current = false;
+    setOpen(false);
+  }, []);
+  const openByTouch = useCallback(() => {
+    byTouch.current = true;
+    setOpen(true);
+  }, []);
   useEffect(() => {
     if (!open || !prose) return;
     const away = (e: Event) => {
-      if (!anchor.current?.contains(e.target as Node)) setOpen(false);
+      if (!anchor.current?.contains(e.target as Node)) close();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") close();
     };
     document.addEventListener("touchstart", away);
-    return () => document.removeEventListener("touchstart", away);
-  }, [open, prose]);
+    document.addEventListener("pointerdown", away);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("touchstart", away);
+      document.removeEventListener("pointerdown", away);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open, prose, close]);
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: the span only relays hover, focus and touch from the control it wraps, which is what a reader acts on; it is not a control itself.
     <span
       ref={anchor}
       className="relative inline-flex"
       onMouseEnter={() => setOpen(true)}
-      onMouseLeave={() => setOpen(false)}
+      onMouseLeave={() => {
+        if (!byTouch.current) close();
+      }}
       onFocus={() => setOpen(true)}
-      onBlur={() => setOpen(false)}
-      onTouchEnd={prose ? () => setOpen(true) : undefined}
+      onBlur={close}
+      onPointerDown={
+        prose
+          ? (e) => {
+              if (e.pointerType !== "mouse") openByTouch();
+            }
+          : undefined
+      }
+      onTouchEnd={prose ? openByTouch : undefined}
     >
       {children}
       <TooltipPanel open={open} anchor={anchor} label={label} side={side} multiline={multiline} prose={prose} />

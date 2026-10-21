@@ -227,6 +227,94 @@ describe('adding the agent of a project that is gone', () => {
     const refusal = (await res.json()) as Refusal;
     expect([res.status, refusal.code]).toEqual([404, 'PROJECT_GONE']);
     expect(refusal.message).toMatch(/^The project this agent would bring into this room/);
+    // r30, judge-86: the details named the id of a room the refusal rolled back, which never existed.
+    expect(refusal.details).not.toHaveProperty('conversationId');
+    expect(Object.keys(refusal.details ?? {})).toEqual(['projectId']);
+    const rooms = await harness.db.execute(sql`SELECT id FROM conversations`);
+    expect(rooms.length).toBe(0);
+  });
+});
+
+/** Round 30, judge-86: HANDLE_NOT_FOUND was the one room refusal carrying no room id. */
+describe('adding an agent by an id that is no account', () => {
+  it('is refused naming the room in its details, beside the id asked for', async () => {
+    const { id } = await sharedRoom();
+    const nobody = randomUUID();
+    const res = await as(openerId, `/api/conversations/${id}/handles`, 'POST', {
+      projectId,
+      userId: nobody,
+    });
+    const refusal = (await res.json()) as Refusal;
+    expect([res.status, refusal.code]).toEqual([400, 'HANDLE_NOT_FOUND']);
+    expect(refusal.message).not.toContain(nobody);
+    expect(refusal.details).toEqual({ conversationId: id, handleUserId: nobody });
+  });
+});
+
+/**
+ * Round 30, the master's ruling on judge-86's finding: a project member with a group room open, not in
+ * it, saw no new message until reload, because message events went to the room's people alone.
+ */
+describe('a message in a room', () => {
+  it('reaches everyone who can read the room, in it or not, and nobody who cannot', async () => {
+    const { id } = await sharedRoom();
+    const watcherId = await verifiedUser();
+    await harness.db.execute(
+      sql`INSERT INTO project_members (project_id, user_id, role) VALUES (${projectId}, ${watcherId}, 'viewer')`,
+    );
+    const { roomManager } = await import('../../src/ws/server.js');
+    const { publishToConversationReaders, WEB_CONVERSATION_EVENT } = await import(
+      '../../src/assistant/conversation-adapter.js'
+    );
+    const publish = vi.spyOn(roomManager, 'publish');
+    try {
+      await publishToConversationReaders(id, {
+        event: WEB_CONVERSATION_EVENT,
+        data: { conversationId: id, messageId: randomUUID(), role: 'assistant', content: 'Done.' },
+      });
+      const told = publish.mock.calls
+        .filter(([, envelope]) => (envelope as { event?: string }).event === 'conversation.message')
+        .map(([room]) => room);
+      expect(told).toEqual(
+        expect.arrayContaining([`user:${openerId}`, `user:${peerId}`, `user:${watcherId}`]),
+      );
+      expect(told).not.toContain(`user:${outsiderId}`);
+    } finally {
+      publish.mockRestore();
+    }
+  });
+
+  it('is told to the same people its deletion is told to', async () => {
+    const { id } = await sharedRoom();
+    const watcherId = await verifiedUser();
+    await harness.db.execute(
+      sql`INSERT INTO project_members (project_id, user_id, role) VALUES (${projectId}, ${watcherId}, 'viewer')`,
+    );
+    const { roomManager } = await import('../../src/ws/server.js');
+    const publish = vi.spyOn(roomManager, 'publish');
+    try {
+      const sent = await as(openerId, `/api/conversations/${id}/messages`, 'POST', {
+        content: 'Is the courier still on for three?',
+      });
+      expect(sent.status, await sent.clone().text()).toBeLessThan(300);
+      const accepted = publish.mock.calls
+        .filter(
+          ([, envelope]) => (envelope as { event?: string }).event === 'conversation.accepted',
+        )
+        .map(([room]) => String(room))
+        .sort();
+      publish.mockClear();
+      const res = await as(openerId, `/api/conversations/${id}`, 'DELETE');
+      expect(res.status, await res.clone().text()).toBe(204);
+      const deleted = publish.mock.calls
+        .filter(([, envelope]) => (envelope as { event?: string }).event === 'conversation.deleted')
+        .map(([room]) => String(room))
+        .sort();
+      expect(accepted).toContain(`user:${watcherId}`);
+      expect(accepted).toEqual(deleted);
+    } finally {
+      publish.mockRestore();
+    }
   });
 });
 
@@ -277,6 +365,89 @@ describe('deleting a room', () => {
       expect(told.map(([room]) => room)).not.toContain(`user:${outsiderId}`);
     } finally {
       publish.mockRestore();
+    }
+  });
+});
+
+/**
+ * Round 30 review F1: the audience was resolved person by person through the read rule, which put
+ * organization-sized work on every streamed frame. It is resolved for the whole room at once now, and
+ * must still be exactly who that rule lets in.
+ */
+describe('who a room is read by', () => {
+  async function parity(id: string, people: string[]): Promise<void> {
+    const { conversationReaders, assertConversationReadable } = await import(
+      '../../src/conversations/scope.js'
+    );
+    const readers = new Set(await conversationReaders(id));
+    for (const userId of people) {
+      const lets = await assertConversationReadable(id, userId).then(
+        () => true,
+        () => false,
+      );
+      expect([userId, readers.has(userId)]).toEqual([userId, lets]);
+    }
+  }
+
+  it('is exactly who the read rule lets in, for a room about a project', async () => {
+    const { id } = await sharedRoom();
+    const watcherId = await verifiedUser();
+    await harness.db.execute(
+      sql`INSERT INTO project_members (project_id, user_id, role) VALUES (${projectId}, ${watcherId}, 'viewer')`,
+    );
+    await parity(id, [ownerId, openerId, peerId, watcherId, outsiderId]);
+  });
+
+  it('is exactly who the read rule lets in, for a room about no project, group or one-to-one', async () => {
+    const { id } = await sharedRoom();
+    await harness.db.execute(
+      sql`DELETE FROM conversation_participants WHERE conversation_id = ${id} AND kind = 'handle'`,
+    );
+    await parity(id, [ownerId, openerId, peerId, outsiderId]);
+    await harness.db.execute(sql`UPDATE conversations SET shape = 'direct' WHERE id = ${id}`);
+    await parity(id, [ownerId, openerId, peerId, outsiderId]);
+  });
+
+  it('is resolved in a fixed number of reads, whoever the organization holds', async () => {
+    const { id } = await sharedRoom();
+    const orgRows = await harness.db.execute<{ org_id: string }>(
+      sql`SELECT org_id FROM projects WHERE id = ${projectId}`,
+    );
+    const orgId = String(orgRows[0]?.org_id);
+    for (let i = 0; i < 40; i += 1) {
+      const id2 = await verifiedUser();
+      await harness.db.execute(
+        sql`INSERT INTO organization_members (org_id, user_id, role) VALUES (${orgId}, ${id2}, 'member')`,
+      );
+    }
+    const { publishToConversationReaders } = await import(
+      '../../src/assistant/conversation-adapter.js'
+    );
+    const { roomManager } = await import('../../src/ws/server.js');
+    const { closeDb } = await import('../../src/db/client.js');
+    const { logger } = await import('../../src/logger.js');
+    // The client logs every statement it sends once rebuilt with DB_QUERY_LOG=1, which is the count.
+    await closeDb();
+    process.env.DB_QUERY_LOG = '1';
+    const publish = vi.spyOn(roomManager, 'publish');
+    const info = vi.spyOn(logger, 'info');
+    try {
+      await publishToConversationReaders(id, {
+        event: 'conversation.progress',
+        data: { conversationId: id },
+      });
+      const told = publish.mock.calls.map(([room]) => room);
+      expect(told).toEqual(
+        expect.arrayContaining([`user:${ownerId}`, `user:${openerId}`, `user:${peerId}`]),
+      );
+      const statements = info.mock.calls.filter(([, msg]) => msg === 'db.query').length;
+      expect(statements).toBeGreaterThan(0);
+      expect(statements).toBeLessThanOrEqual(5);
+    } finally {
+      info.mockRestore();
+      publish.mockRestore();
+      delete process.env.DB_QUERY_LOG;
+      await closeDb();
     }
   });
 });

@@ -160,12 +160,25 @@ export function ConversationChat({
   );
   const outboxRef = useRef(outbox);
   outboxRef.current = outbox;
+  // What the box holds and has not sent goes with the room too, so the notice keeps it (r30, judge-86).
+  const draft = useRef("");
+  const onDraftChange = useCallback((text: string) => {
+    draft.current = text;
+  }, []);
+  /** The draft as typed, where it holds something not already among `sent` (r30 review F2). */
+  const draftBeside = useCallback((sent: readonly string[]): string | null => {
+    const typed = draft.current;
+    const seen = typed.trim();
+    return seen && !sent.some((s) => s.trim() === seen) ? typed : null;
+  }, []);
   useEffect(() => {
     if (!resolvedId || !roomQ.isError || !isRoomGone(roomQ.error)) return;
     // Messages still waiting their turn will never be sent; one being sent says so when it is refused.
     const waiting = outboxRef.current.filter((m) => m.state === "queued").map((m) => m.content);
-    roomWentAway(resolvedId, waiting.length > 0 ? waiting.join("\n\n") : null);
-  }, [resolvedId, roomQ.isError, roomQ.error, roomWentAway]);
+    const typed = draftBeside(waiting);
+    const unsent = typed === null ? waiting : [...waiting, typed];
+    roomWentAway(resolvedId, unsent.length > 0 ? unsent.join("\n\n") : null);
+  }, [resolvedId, roomQ.isError, roomQ.error, roomWentAway, draftBeside]);
 
   const messages = useMemo(() => roomQ.data?.messages ?? [], [roomQ.data]);
 
@@ -275,7 +288,10 @@ export function ConversationChat({
               : m,
           ),
         );
-        if (roomGone && id) roomWentAway(id, next.content);
+        if (roomGone && id) {
+          const typed = draftBeside([next.content]);
+          roomWentAway(id, typed === null ? next.content : `${next.content}\n\n${typed}`);
+        }
       } finally {
         sending.current = false;
       }
@@ -293,6 +309,7 @@ export function ConversationChat({
     pick,
     gone,
     roomWentAway,
+    draftBeside,
   ]);
 
   const header = (
@@ -420,6 +437,7 @@ export function ConversationChat({
           sticky={false}
           attachments={CONVERSATION_ATTACHMENTS}
           placeholder={modePlaceholder(settledMode ?? pick)}
+          onDraftChange={onDraftChange}
           {...(progress && resolvedId
             ? { onStop: () => stop.mutate(resolvedId), stopping: stop.isPending }
             : {})}

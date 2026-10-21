@@ -102,6 +102,8 @@ export interface ChatComposerProps {
   onStop?: () => void;
   /** A stop is in flight. */
   stopping?: boolean;
+  /** What the box holds now, typed and not yet sent, for a caller that must keep it if its place goes. */
+  onDraftChange?: (draft: string) => void;
 }
 
 function bandClass(sticky: boolean, pad: string): string {
@@ -132,8 +134,10 @@ export function ChatComposer({
   slashSkills,
   onStop,
   stopping,
+  onDraftChange,
 }: ChatComposerProps) {
   const [value, setValue] = useState("");
+  useEffect(() => onDraftChange?.(value), [value, onDraftChange]);
   const [files, setFiles] = useState<StagedFile[]>([]);
   const [refusals, setRefusals] = useState<StagingRefusal[]>([]);
   const nextFileId = useRef(0);

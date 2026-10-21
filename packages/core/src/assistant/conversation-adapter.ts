@@ -1,6 +1,4 @@
 import { randomUUID } from 'node:crypto';
-import { eq, inArray } from 'drizzle-orm';
-import { listParticipants } from '../conversations/participants.js';
 import type {
   ConversationAdapterPorts,
   ConversationHistoryMessage,
@@ -8,12 +6,9 @@ import type {
   DeliveryReceipt,
   ScreenedMessage,
 } from '../conversations/ports.js';
-import { assertConversationReadable, derivedScope } from '../conversations/scope.js';
+import { conversationReaders } from '../conversations/scope.js';
 import { findConversation } from '../conversations/store.js';
-import { db } from '../db/client.js';
-import { organizationMembers, projectMembers } from '../db/schema.js';
 import type { ConversationShape } from '../db/schema-conversations.js';
-import { conversations } from '../db/schema-conversations.js';
 import { roomManager } from '../ws/room-manager.js';
 import { userRoom } from '../ws/rooms.js';
 import type { SpeakerResolution } from './identity/speaker-link.js';
@@ -47,21 +42,6 @@ export const WEB_CONVERSATION_PROGRESS_EVENT = 'conversation.progress';
  */
 export const WEB_CONVERSATION_ACCEPTED_EVENT = 'conversation.accepted';
 
-/**
- * Whose sockets may be shown this room, right now.
- */
-async function readersOf(conversationId: string): Promise<string[]> {
-  const out: string[] = [];
-  for (const person of await listParticipants(conversationId)) {
-    if (person.kind !== 'person' || !person.userId) continue;
-    try {
-      await assertConversationReadable(conversationId, person.userId);
-      out.push(person.userId);
-    } catch {}
-  }
-  return out;
-}
-
 /** The event that tells a reader a room is gone, so an open list or thread lets go of it. */
 export const WEB_CONVERSATION_DELETED_EVENT = 'conversation.deleted';
 
@@ -73,60 +53,19 @@ export async function deleteAndTellReaders(
   conversationId: string,
   remove: (id: string) => Promise<unknown>,
 ): Promise<void> {
-  const readers = await everyoneWhoCanRead(conversationId);
+  const readers = await conversationReaders(conversationId);
   await remove(conversationId);
   const envelope = { event: WEB_CONVERSATION_DELETED_EVENT, data: { conversationId } };
   for (const userId of readers) roomManager.publish(userRoom(userId), envelope);
 }
 
-/**
- * Everyone who may read this room, its people or not: a group room is read by whoever holds a role on
- * every project it is about (r29 review F1), so the candidates are its people, its organization's
- * members and its projects' members, each held to the room's own read rule.
- */
-async function everyoneWhoCanRead(conversationId: string): Promise<string[]> {
-  const scope = await derivedScope(conversationId);
-  const [room] = await db
-    .select({ orgId: conversations.orgId, createdBy: conversations.createdBy })
-    .from(conversations)
-    .where(eq(conversations.id, conversationId))
-    .limit(1);
-  const candidates = new Set<string>();
-  for (const person of await listParticipants(conversationId)) {
-    if (person.kind === 'person' && person.userId) candidates.add(person.userId);
-  }
-  if (room?.createdBy) candidates.add(room.createdBy);
-  if (room?.orgId) {
-    const members = await db
-      .select({ userId: organizationMembers.userId })
-      .from(organizationMembers)
-      .where(eq(organizationMembers.orgId, room.orgId));
-    for (const m of members) candidates.add(m.userId);
-  }
-  if (scope.length > 0) {
-    const members = await db
-      .select({ userId: projectMembers.userId })
-      .from(projectMembers)
-      .where(inArray(projectMembers.projectId, scope));
-    for (const m of members) candidates.add(m.userId);
-  }
-  const out: string[] = [];
-  for (const userId of candidates) {
-    try {
-      await assertConversationReadable(conversationId, userId);
-      out.push(userId);
-    } catch {}
-  }
-  return out;
-}
-
-/** Publish to every socket that may currently see this room. Returns how many took it. */
+/** Publish to everyone who can read this room, as its deletion is (ISS-1229 r30); returns how many took it. */
 export async function publishToConversationReaders(
   conversationId: string,
   envelope: { event: string; data: unknown },
 ): Promise<number> {
   let sockets = 0;
-  for (const userId of await readersOf(conversationId)) {
+  for (const userId of await conversationReaders(conversationId)) {
     sockets += roomManager.publish(userRoom(userId), envelope);
   }
   return sockets;

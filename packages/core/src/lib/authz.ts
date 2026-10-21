@@ -118,6 +118,56 @@ export async function effectiveProjectRole(
   };
 }
 
+/**
+ * Every user whose effective role is at least `min` on each of `projectIds`, by the one rule above,
+ * resolved in two reads however many people there are: an audience, where effectiveProjectRole answers
+ * for one caller at a time. A project that does not exist, or one outside the request's token fence,
+ * leaves nobody, as it does for effectiveProjectRole.
+ */
+export async function usersHoldingOnEvery(
+  projectIds: readonly string[],
+  min: ProjectMemberRole,
+): Promise<string[]> {
+  if (projectIds.length === 0) return [];
+  const fence = fencedProjectIds();
+  if (fence && projectIds.some((id) => !fence.includes(id))) return [];
+  const ids = [...projectIds];
+  const [existing, explicit, derived] = await Promise.all([
+    db.select({ id: projects.id }).from(projects).where(inArray(projects.id, ids)),
+    db
+      .select({
+        projectId: projectMembers.projectId,
+        userId: projectMembers.userId,
+        role: projectMembers.role,
+      })
+      .from(projectMembers)
+      .where(inArray(projectMembers.projectId, ids)),
+    db
+      .select({
+        projectId: projects.id,
+        userId: organizationMembers.userId,
+        orgRole: organizationMembers.role,
+      })
+      .from(projects)
+      .innerJoin(organizationMembers, eq(organizationMembers.orgId, projects.orgId))
+      .where(inArray(projects.id, ids)),
+  ]);
+  if (existing.length !== new Set(ids).size) return [];
+  const held = new Map<string, Map<string, ProjectMemberRole | null>>();
+  const hold = (projectId: string, userId: string, role: ProjectMemberRole | null) => {
+    const byUser = held.get(userId) ?? new Map<string, ProjectMemberRole | null>();
+    byUser.set(projectId, maxProjectRole(byUser.get(projectId) ?? null, role));
+    held.set(userId, byUser);
+  };
+  for (const row of explicit) hold(row.projectId, row.userId, row.role);
+  for (const row of derived) hold(row.projectId, row.userId, orgDerivedProjectRole(row.orgRole));
+  const out: string[] = [];
+  for (const [userId, byProject] of held) {
+    if (ids.every((id) => projectRoleAtLeast(byProject.get(id) ?? null, min))) out.push(userId);
+  }
+  return out;
+}
+
 /** Throwing variant for REST routes: 404 on missing project. */
 export async function loadProjectAccess(
   projectId: string,

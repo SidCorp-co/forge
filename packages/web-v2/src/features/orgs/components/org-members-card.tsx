@@ -347,21 +347,28 @@ export function OrgMembersCard({
                       {m.role}
                     </Badge>
                   )}
-                  {/* Anyone may leave; only an owner or admin takes somebody else out (ISS-1229 r29). */}
-                  {(canManage || m.userId === user?.id) && (
-                    <IconButton
-                      icon="trash"
-                      aria-label={
-                        m.userId === user?.id
-                          ? `Leave ${org.name}`
-                          : `Remove ${readerName(m.userId, user?.id, m.displayName, "inside")}, ${m.email}`
-                      }
+                  {/* Anyone may leave; only an owner or admin takes somebody else out (ISS-1229 r29). Leaving
+                      is shown as leaving, never as the trash can that removes somebody else (r30, judge-86). */}
+                  {m.userId === user?.id ? (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      icon="logOut"
+                      aria-label={`Leave ${org.name}`}
                       onClick={() => setMemberToRemove(m)}
-                      disabled={
-                        removeMember.isPending &&
-                        removeMember.variables === m.userId
-                      }
-                    />
+                      disabled={removeMember.isPending && removeMember.variables === m.userId}
+                    >
+                      Leave
+                    </Button>
+                  ) : (
+                    canManage && (
+                      <IconButton
+                        icon="trash"
+                        aria-label={`Remove ${readerName(m.userId, user?.id, m.displayName, "inside")}, ${m.email}`}
+                        onClick={() => setMemberToRemove(m)}
+                        disabled={removeMember.isPending && removeMember.variables === m.userId}
+                      />
+                    )
                   )}
                 </span>
               </li>

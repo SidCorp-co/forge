@@ -30,7 +30,7 @@ import {
 } from '../conversations/membership.js';
 import { addHandle, addPerson, listParticipants } from '../conversations/participants.js';
 import { PresenceValidationError, validateRoomPresence } from '../conversations/presence.js';
-import { roomGone, roomRefusal } from '../conversations/room-refusal.js';
+import { roomGone, roomRefusal, withoutUnsavedRoom } from '../conversations/room-refusal.js';
 import { derivedScope } from '../conversations/scope.js';
 import { nameSpeakers } from '../conversations/speaker-names.js';
 import {
@@ -273,35 +273,42 @@ conversationRoutes.post(
     const handles = input.handles ?? [];
     const people = input.people ?? [];
 
-    const conversation = await db.transaction(async (handle) => {
-      const tx = handle as unknown as typeof db;
-      const room = await openConversationIn(tx, {
-        adapter: 'web',
-        externalId: randomUUID(),
-        shape: 'direct',
-        projectId: input.projectId,
-        title: input.title ?? null,
-        createdBy: userId,
-      });
-      await addPerson({ conversationId: room.id, userId, actorUserId: userId, tx });
-      for (const named of handles) {
-        await addHandle({
-          conversationId: room.id,
-          ...(named.userId ? { handleUserId: named.userId } : {}),
-          projectId: named.projectId,
-          actorUserId: userId,
-          tx,
+    // A refusal while the room is being made rolls it back, so its details name no room (r30, judge-86).
+    let opening: string | null = null;
+    const conversation = await db
+      .transaction(async (handle) => {
+        const tx = handle as unknown as typeof db;
+        const room = await openConversationIn(tx, {
+          adapter: 'web',
+          externalId: randomUUID(),
+          shape: 'direct',
+          projectId: input.projectId,
+          title: input.title ?? null,
+          createdBy: userId,
         });
-      }
-      const scope = await derivedScope(room.id, tx);
-      for (const person of people) {
-        await assertPersonReachesScope(room.id, person, scope, tx);
-        await addPerson({ conversationId: room.id, userId: person, actorUserId: userId, tx });
-      }
-      await settleShape(tx, room.id);
-      const settled = await getConversation(room.id, tx);
-      return settled ?? room;
-    });
+        opening = room.id;
+        await addPerson({ conversationId: room.id, userId, actorUserId: userId, tx });
+        for (const named of handles) {
+          await addHandle({
+            conversationId: room.id,
+            ...(named.userId ? { handleUserId: named.userId } : {}),
+            projectId: named.projectId,
+            actorUserId: userId,
+            tx,
+          });
+        }
+        const scope = await derivedScope(room.id, tx);
+        for (const person of people) {
+          await assertPersonReachesScope(room.id, person, scope, tx);
+          await addPerson({ conversationId: room.id, userId: person, actorUserId: userId, tx });
+        }
+        await settleShape(tx, room.id);
+        const settled = await getConversation(room.id, tx);
+        return settled ?? room;
+      })
+      .catch((err: unknown) => {
+        throw withoutUnsavedRoom(err, opening);
+      });
 
     return c.json(answer(conversationSchema, conversation), 201);
   },
