@@ -110,8 +110,9 @@ async function filed(): Promise<string[]> {
   if (!note.textContent?.includes("FB-212 filed.")) wrong.push(`the note reads "${note.textContent}"`);
   const link = note.querySelector("a");
   if (link?.getAttribute("href") !== "/forge-feedback") wrong.push("the note does not link to Your feedback to Forge");
-  const body = posted[0] as { from?: { project?: string }; whereSeen?: string } | undefined;
+  const body = posted[0] as { from?: { project?: string }; clientVersion?: string } | undefined;
   if (body?.from?.project !== "p-hop") wrong.push("the report does not name the project it came from");
+  if (body?.clientVersion !== "web 0.4.0-dev.260") wrong.push(`the report names client "${body?.clientVersion}", not the version the shell read`);
   return wrong;
 }
 

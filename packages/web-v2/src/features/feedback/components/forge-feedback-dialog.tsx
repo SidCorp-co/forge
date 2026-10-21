@@ -6,7 +6,6 @@ import { FEEDBACK_KINDS, FEEDBACK_LIMITS } from "@forge/contracts/feedback";
 import { useState } from "react";
 import { Button, Dialog, enumLabel, Field, Input, NativeSelect, Textarea, focusOnMount } from "@/design";
 import { useCurrentProject } from "@/features/projects";
-import { useForgeVersion } from "@/features/version";
 import { placeRefusals } from "@/lib/api/field-refusals";
 import { RefusalLine } from "@/lib/api/refusal-line";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
@@ -21,13 +20,12 @@ const FIELDS = { title: ["/title"], kind: ["/kind"], body: ["/body"], where: ["/
 /** Where "your feedback to Forge" lives. */
 export const MY_FORGE_FEEDBACK_HREF = "/forge-feedback";
 
-function ForgeFeedbackForm({ onFiled, onCancel }: { onFiled: (filed: ForgeFeedbackFiled) => void; onCancel: () => void }) {
+function ForgeFeedbackForm({ clientVersion, onFiled, onCancel }: { clientVersion?: string; onFiled: (filed: ForgeFeedbackFiled) => void; onCancel: () => void }) {
   const t = useCopy();
   const language = useInterfaceLanguage();
   const write = useSubmitForgeFeedback();
   const submitting = useSubmitGuard();
   const project = useCurrentProject();
-  const version = useForgeVersion().data?.version?.trim();
   const where = `${usePathname()}${useLocationSearch()}`;
   const [kind, setKind] = useState<FeedbackKind>("bug");
   const [title, setTitle] = useState("");
@@ -46,7 +44,7 @@ function ForgeFeedbackForm({ onFiled, onCancel }: { onFiled: (filed: ForgeFeedba
             title: title.trim(),
             whereSeen: where,
             ...(body.trim() ? { body } : {}),
-            ...(version ? { clientVersion: `web ${version}` } : {}),
+            ...(clientVersion ? { clientVersion } : {}),
             ...(project ? { from: { project: project.id } } : {}),
           },
           { onSuccess: onFiled, onSettled: submitting.release },
@@ -101,8 +99,11 @@ function ForgeFeedbackFiledNote({ filed, onClose }: { filed: ForgeFeedbackFiled;
   );
 }
 
-/** The shell's Feedback to Forge entry: icon-only at phone width, named from `sm`. */
-export function ForgeFeedbackButton() {
+/**
+ * The shell's Feedback to Forge entry: icon-only at phone width, named from `sm`. `clientVersion` is
+ * the client and the version the page is served at (`web 0.4.0-dev.260`), which the shell reads.
+ */
+export function ForgeFeedbackButton({ clientVersion }: { clientVersion?: string | undefined }) {
   const t = useCopy();
   const [open, setOpen] = useState(false);
   const [filed, setFiled] = useState<ForgeFeedbackFiled | null>(null);
@@ -122,7 +123,7 @@ export function ForgeFeedbackButton() {
         description={t("feedback.forge.description")}
         testId="forge-feedback-dialog"
       >
-        {filed ? <ForgeFeedbackFiledNote filed={filed} onClose={close} /> : open ? <ForgeFeedbackForm onFiled={setFiled} onCancel={close} /> : null}
+        {filed ? <ForgeFeedbackFiledNote filed={filed} onClose={close} /> : open ? <ForgeFeedbackForm clientVersion={clientVersion} onFiled={setFiled} onCancel={close} /> : null}
       </Dialog>
     </>
   );

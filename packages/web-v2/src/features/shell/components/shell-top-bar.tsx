@@ -2,6 +2,7 @@
 import { Button, useTopBarSlotTargets } from "@/design";
 import { dockTitle } from "@/features/conversations";
 import { ForgeFeedbackButton } from "@/features/feedback";
+import { useForgeVersion } from "@/features/version";
 import { useCopy } from "@/lib/i18n/interface-language";
 
 // the page's title and primary actions are portalled in by the page itself (PageTitle, TopBarActions), so the bar has no per-route knowledge
@@ -11,11 +12,12 @@ import { useCopy } from "@/lib/i18n/interface-language";
 export function ShellTopBar({ chatOpen, onToggleChat }: { chatOpen: boolean; onToggleChat: () => void }) {
   const { titleRef, actionsRef } = useTopBarSlotTargets();
   const t = useCopy();
+  const version = useForgeVersion().data?.version?.trim();
   return (
     <header className="flex h-12 flex-none items-center gap-3 border-b border-line bg-surface px-4 sm:px-6">
       <div ref={titleRef} className="flex min-w-0 flex-1 items-center gap-2" />
       <div ref={actionsRef} className="flex flex-none items-center gap-2" />
-      <ForgeFeedbackButton />
+      <ForgeFeedbackButton clientVersion={version ? `web ${version}` : undefined} />
       <Button
         type="button"
         variant="secondary"

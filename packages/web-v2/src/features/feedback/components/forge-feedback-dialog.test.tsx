@@ -28,13 +28,7 @@ const ITEM = (key: string) => ({
 });
 
 function served(filing: { status?: number; body: unknown }) {
-  return fakeCore((c) =>
-    c.path === "/version"
-      ? { body: { version: "0.4.0-dev.258", sourceCommit: null, uptimeSeconds: 10 } }
-      : c.method === "POST" && c.path === "/forge/feedback"
-        ? filing
-        : undefined,
-  );
+  return fakeCore((c) => (c.method === "POST" && c.path === "/forge/feedback" ? filing : undefined));
 }
 
 async function fileFrom(path: string) {
@@ -42,7 +36,7 @@ async function fileFrom(path: string) {
   const user = userEvent.setup();
   renderWithQuery(
     <CurrentProjectProvider project={HOP}>
-      <ForgeFeedbackButton />
+      <ForgeFeedbackButton clientVersion="web 0.4.0-dev.258" />
     </CurrentProjectProvider>,
   );
   await user.click(screen.getByTestId("forge-feedback-open"));
