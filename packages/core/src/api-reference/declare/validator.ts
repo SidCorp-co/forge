@@ -85,7 +85,7 @@ const escaped = (k: string) => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 /**
  * Whether a hook's own sentence names every field the parse found the route does not take, quoted
  * or as "field <name>"; a word that merely matches ("required") is no name, and a key reading as a
- * sentence is left unechoed where the hook says "field".
+ * sentence is left unechoed where the hook says to leave fields out.
  */
 function speaksOfStrays(message: string, error: z.core.$ZodError): boolean {
   const strays = error.issues.flatMap((i) =>
@@ -94,7 +94,7 @@ function speaksOfStrays(message: string, error: z.core.$ZodError): boolean {
   const naming = (k: string) =>
     new RegExp(`\`${escaped(k)}\`|"${escaped(k)}"|\\bfields? ${escaped(k)}(?:$|[\\s,.;:])`);
   const unsafe = (k: string) => k.length > 200 || /[^\w.$-]/.test(k);
-  const saysField = /\bfields?\b/i.test(message);
+  const saysField = /\bleave out\b|\btakes only\b|\bnot ones? this call takes\b/i.test(message);
   const unnamed = strays.filter(
     ([k = '', dotted = '']) =>
       !(naming(dotted).test(message) || naming(k).test(message) || (unsafe(k) && saysField)),

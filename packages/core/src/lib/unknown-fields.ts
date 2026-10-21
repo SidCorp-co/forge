@@ -177,13 +177,32 @@ function agreed(readings: StrayAt[][]): StrayAt[] {
 /** The strays inside a value its schema reads, at `path`. */
 function straysIn(schema: ZodType, value: unknown, path: PropertyKey[]): StrayAt[] {
   const node = resolved(schema);
-  const def = defOf(node) as Def & { element?: ZodType };
+  const def = defOf(node) as Def & {
+    element?: ZodType;
+    items?: ZodType[];
+    rest?: ZodType | null;
+    valueType?: ZodType;
+  };
   if (Array.isArray(value)) {
-    if (def.type !== 'array' || !def.element) return [];
-    const element = def.element;
-    return value.flatMap((v, i) => straysIn(element, v, [...path, i]));
+    if (def.type === 'union' && def.options) {
+      const lists = def.options.filter((o) => ['array', 'tuple'].includes(defOf(resolved(o)).type));
+      return agreed(lists.map((o) => straysIn(o, value, path)));
+    }
+    const at = (i: number) =>
+      def.type === 'array'
+        ? def.element
+        : def.type === 'tuple'
+          ? (def.items?.[i] ?? def.rest)
+          : null;
+    return value.flatMap((v, i) => {
+      const entry = at(i);
+      return entry ? straysIn(entry, v, [...path, i]) : [];
+    });
   }
   if (value === null || typeof value !== 'object') return [];
+  const valueType = def.type === 'record' ? def.valueType : undefined;
+  if (valueType)
+    return Object.entries(value).flatMap(([k, v]) => straysIn(valueType, v, [...path, k]));
   // An object taking any field still holds closed objects inside it.
   const keys =
     fieldsPolicy(node) !== 'closed' || refusesItself(node, value) ? [] : unknownFields(node, value);

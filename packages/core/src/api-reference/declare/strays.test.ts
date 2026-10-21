@@ -92,6 +92,25 @@ describe('a route hook that words its own refusal (ISS-1421 r20)', () => {
     expect(refused.details?.formErrors).toEqual([refused.message]);
   });
 
+  // Fifth whole-set read: a key reading as a sentence passed as named wherever the hook said "field".
+  it('is overruled by a stray reading as a sentence where it only says a field is required', async () => {
+    const hooked = refusing((a) =>
+      a.post(
+        '/f',
+        zValidator('json', body, (r) => {
+          if (!r.success)
+            throw new HTTPException(400, {
+              message: 'The field host is required.',
+              cause: { code: 'BAD_REQUEST', details: z.flattenError(r.error as z.core.$ZodError) },
+            });
+        }),
+        (c) => c.json({}),
+      ),
+    );
+    const res = await hooked.request('/f', post({ host: 'h', path: 'p', 'colour code': 1 }));
+    expect(((await res.json()) as Refusal).message).toMatch(/colour code/);
+  });
+
   // Second whole-set read: naming one stray of two left the other unnamed everywhere.
   it('is overruled where it names one stray of two, so both are named', async () => {
     const named = refusing((a) =>
@@ -175,6 +194,42 @@ describe('a field inside a body object that the object does not take (ISS-1421 r
       );
       expect(res.status).toBe(200);
     });
+  });
+
+  // Fifth whole-set read: a list a union takes was not walked, so its entries' strays were dropped.
+  it('is refused inside a list that a union takes', async () => {
+    const listed = z.object({
+      items: z.union([z.array(z.object({ id: z.string() })), z.string()]),
+    });
+    const res = await refusing((a) =>
+      a.post('/i', zValidator('json', listed), (c) => c.json({ ok: true })),
+    ).request('/i', post({ items: [{ id: 'a', colour: 'red' }] }));
+    expect(((await res.json()) as Refusal).message).toBe(
+      'The field items.0.colour is not one this call takes.',
+    );
+  });
+
+  // The shapes a list or a map takes beside an array: a tuple's entries and a record's values.
+  it.each([
+    [
+      'a tuple entry',
+      z.object({ pair: z.tuple([z.string(), z.object({ id: z.string() })]) }),
+      { pair: ['a', { id: 'b', colour: 1 }] },
+      'pair.1.colour',
+    ],
+    [
+      'a record value',
+      z.object({ byName: z.record(z.string(), z.object({ id: z.string() })) }),
+      { byName: { k: { id: 'b', colour: 1 } } },
+      'byName.k.colour',
+    ],
+  ])('is refused inside %s', async (_what, schema, sent, path) => {
+    const res = await refusing((a) =>
+      a.post('/s', zValidator('json', schema as z.ZodType), (c) => c.json({ ok: true })),
+    ).request('/s', post(sent));
+    expect(((await res.json()) as Refusal).message).toBe(
+      `The field ${path} is not one this call takes.`,
+    );
   });
 
   // Fourth whole-set read: an object taking any field, below the root, hid the closed one in it.
