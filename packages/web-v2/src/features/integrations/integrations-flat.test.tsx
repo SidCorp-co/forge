@@ -173,7 +173,7 @@ describe("the connection drawer, over a stubbed connection, draws no box", () =>
     const { ConnectionEditDrawer } = await import("./components/connection-edit-drawer");
     render(wrap(<ConnectionEditDrawer connection={CONNECTION_ROW() as never} onClose={() => {}} />));
     fireEvent.click(await screen.findByRole("button", { name: /Remove/ }));
-    await screen.findByText(/Removing it deletes its stored keys\./);
+    await screen.findByText(/Removing it deletes its stored keys,/);
     await settled([]);
     expect(boxedInTree(document.body)).toEqual([]);
   });

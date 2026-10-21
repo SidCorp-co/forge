@@ -2,11 +2,33 @@
  * ISS-1421 r20 — judge-82: deleting a connection only turned it off, its encrypted key kept, so
  * turning it on again brought the key back; and `GET /api/integration-connections?orgId=` listed
  * every org's connections. Through the real app against real Postgres.
+ *
+ * ISS-1421 r21 — judge-89: a removed GitHub connection stayed listed with nothing able to turn it on
+ * or clear it, an org's removed connections outlived the org, and a key saved on a removed
+ * connection still read the old key's failed check.
  */
 
 import { sql } from 'drizzle-orm';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createTestUser, seedOrg, setupTestDatabase, type TestDatabase } from '../helpers/index.js';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import {
+  createTestProject,
+  createTestUser,
+  seedOrg,
+  setupTestDatabase,
+  type TestDatabase,
+} from '../helpers/index.js';
+
+// The App a fresh install mints, as GitHub's manifest conversion would hand it back.
+vi.mock('../../src/integrations/github/connect.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/integrations/github/connect.js')>()),
+  convertManifestCode: async () => ({
+    appId: '4242',
+    privateKey: 'scratch-new-app-pem',
+    webhookSecret: 'scratch-new-hook-secret',
+    slug: 'forge-reattached',
+    htmlUrl: 'https://github.example.test/apps/forge-reattached',
+  }),
+}));
 
 type AppVars = { Variables: import('../../src/middleware/request-id.js').RequestIdVars };
 type Store = typeof import('../../src/integrations/store.js');
@@ -53,7 +75,8 @@ const call = async (method: string, url: string, body?: unknown) => {
     },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
-  return { status: res.status, body: (await res.json()) as Record<string, unknown> };
+  const text = await res.text();
+  return { status: res.status, body: (text ? JSON.parse(text) : {}) as Record<string, unknown> };
 };
 
 /** A Sentry connection holding a key and a previous one, as a rotation leaves it. */
@@ -100,7 +123,7 @@ describe('deleting a connection (criteria 210, 211)', () => {
     expect(on.status).toBe(409);
     expect(on.body.code).toBe('CONNECTION_HAS_NO_KEY');
     expect(on.body.message).toBe(
-      'This connection holds no key, as deleting it wiped its keys. Save a new key to turn it back on.',
+      'This connection holds no key, as removing it wiped its keys. Save a new key to turn it back on.',
     );
     expect((await secretsOf(connection.id)).active).toBe(false);
   });
@@ -166,5 +189,218 @@ describe('listing connections by organization (criterion 208)', () => {
     const got = await call('GET', '/api/integration-connections?orgId=acme');
     expect(got.status).toBe(400);
     expect(String(got.body.message)).toMatch(/^The field orgId /);
+  });
+});
+
+const rowOf = async (id: string) => {
+  const rows = await harness.db.execute(
+    sql`SELECT active, secrets_enc IS NULL AS wiped, last_health_status AS health
+        FROM integration_connections WHERE id = ${id}`,
+  );
+  return [...rows][0] as { active: boolean; wiped: boolean; health: string | null } | undefined;
+};
+
+describe('a removed connection (criterion 216)', () => {
+  it('is cleared from the list, its bindings with it, by a delete of the removed row', async () => {
+    const connection = await rotatedSentry({ type: 'user', id: ownerId });
+    const project = await createTestProject(harness.db, ownerId);
+    await store.createBinding({
+      connectionId: connection.id,
+      projectId: project.id,
+      provider: 'sentry',
+      role: 'service',
+    });
+    await call('DELETE', `/api/integration-connections/${connection.id}`);
+    expect(await rowOf(connection.id)).toMatchObject({ active: false, wiped: true });
+
+    const cleared = await call('DELETE', `/api/integration-connections/${connection.id}`);
+    expect(cleared.status, JSON.stringify(cleared.body)).toBe(200);
+    expect(await rowOf(connection.id)).toBeUndefined();
+    const bindings = await harness.db.execute(
+      sql`SELECT 1 FROM integration_bindings WHERE connection_id = ${connection.id}`,
+    );
+    expect([...bindings]).toHaveLength(0);
+    const listed = await call('GET', '/api/integration-connections');
+    expect((listed.body.items as { id: string }[]).map((i) => i.id)).not.toContain(connection.id);
+  });
+
+  it('is only switched off and wiped by a first delete, even when it was already disabled', async () => {
+    const connection = await rotatedSentry({ type: 'user', id: ownerId });
+    await call('PATCH', `/api/integration-connections/${connection.id}`, { active: false });
+    await call('DELETE', `/api/integration-connections/${connection.id}`);
+    expect(await rowOf(connection.id)).toMatchObject({ active: false, wiped: true });
+  });
+
+  it('says for GitHub that installing the App again turns it back on, not a key', async () => {
+    const connection = await store.createConnection({
+      ownerType: 'user',
+      ownerId,
+      provider: 'github',
+      displayName: 'GitHub App old',
+      config: {},
+      secrets: { appId: '1', privateKey: 'scratch-old-pem', webhookSecret: 'scratch-old-hook' },
+    });
+    await call('DELETE', `/api/integration-connections/${connection.id}`);
+    const on = await call('PATCH', `/api/integration-connections/${connection.id}`, {
+      active: true,
+    });
+    expect(on.status).toBe(409);
+    expect(on.body.message).toBe(
+      'This connection holds no key, as removing it wiped its keys. Install the GitHub App again from the Integrations tab of a project it is bound to, and it turns back on.',
+    );
+  });
+
+  it('is turned back on by a fresh App install from a project still bound to it', async () => {
+    const org = await seedOrg(harness.db, ownerId);
+    const project = await createTestProject(harness.db, ownerId, { orgId: org.id });
+    const old = await store.createConnection({
+      ownerType: 'org',
+      ownerId: org.id,
+      provider: 'github',
+      displayName: 'GitHub App old',
+      config: {},
+      secrets: { appId: '1', privateKey: 'scratch-old-pem', webhookSecret: 'scratch-old-hook' },
+    });
+    const binding = await store.createBinding({
+      connectionId: old.id,
+      projectId: project.id,
+      provider: 'github',
+      role: 'service',
+      config: { installationId: 99, repository: 'acme/app' },
+      integrationSecret: 'scratch-old-hook',
+    });
+    // A second project on the same App, its own switch off (whole-set review F1).
+    const other = await createTestProject(harness.db, ownerId, { orgId: org.id });
+    const otherBinding = await store.createBinding({
+      connectionId: old.id,
+      projectId: other.id,
+      provider: 'github',
+      role: 'service',
+      config: { installationId: 99 },
+      integrationSecret: 'scratch-old-hook',
+    });
+    await store.updateBinding(otherBinding.id, { active: false });
+    await store.updateConnection(old.id, { lastHealthStatus: 'error', lastHealthAt: new Date() });
+    await call('DELETE', `/api/integration-connections/${old.id}`);
+
+    const { signConnectState } = await import('../../src/integrations/github/connect.js');
+    const state = signConnectState(process.env.JWT_SECRET as string, {
+      projectId: project.id,
+      userId: ownerId,
+      orgId: org.id,
+    });
+    const res = await app.request(
+      `/api/integrations/github/manifest-callback?code=scratch-code&state=${encodeURIComponent(state)}`,
+      { headers: { authorization: `Bearer ${token}` } },
+    );
+    expect(res.status, await res.clone().text()).toBe(302);
+
+    expect(await rowOf(old.id)).toEqual({ active: true, wiped: false, health: null });
+    const githubRows = await harness.db.execute(
+      sql`SELECT id FROM integration_connections WHERE owner_id = ${org.id} AND provider = 'github'`,
+    );
+    expect([...githubRows].map((r) => (r as { id: string }).id)).toEqual([old.id]);
+    const row = await store.findConnectionById(old.id);
+    const { decryptJson } = await import('../../src/integrations/vault.js');
+    expect(decryptJson(row?.secretsEnc as Buffer)).toMatchObject({ appId: '4242' });
+    expect(row?.displayName).toBe('GitHub App forge-reattached');
+    const [after] = [
+      ...(await harness.db.execute(
+        sql`SELECT active, config, integration_secret FROM integration_bindings WHERE id = ${binding.id}`,
+      )),
+    ] as { active: boolean; config: Record<string, unknown>; integration_secret: string }[];
+    expect(after).toEqual({
+      active: true,
+      config: { repository: 'acme/app' },
+      integration_secret: 'scratch-new-hook-secret',
+    });
+    const [second] = [
+      ...(await harness.db.execute(
+        sql`SELECT active, config, integration_secret FROM integration_bindings WHERE id = ${otherBinding.id}`,
+      )),
+    ] as { active: boolean; config: Record<string, unknown>; integration_secret: string }[];
+    expect(second).toEqual({
+      active: false,
+      config: {},
+      integration_secret: 'scratch-new-hook-secret',
+    });
+
+    // Whole-set review F1 (second read): the install GitHub sends back is recorded on the project
+    // the recovery ran from, though the caller administers both and the other binding is newer.
+    const install = new URL(res.headers.get('location') as string);
+    expect(install.pathname).toBe('/apps/forge-reattached/installations/new');
+    const carried = install.searchParams.get('state');
+    expect(carried, 'the install redirect carries state for the setup URL').toBeTruthy();
+    const installed = await app.request(
+      `/api/integrations/github/installed?installation_id=555&state=${encodeURIComponent(carried as string)}`,
+      { headers: { authorization: `Bearer ${token}` } },
+    );
+    expect(installed.status, await installed.clone().text()).toBe(302);
+    const configs = [
+      ...(await harness.db.execute(
+        sql`SELECT id, config FROM integration_bindings WHERE id IN (${binding.id}, ${otherBinding.id})`,
+      )),
+    ] as { id: string; config: Record<string, unknown> }[];
+    expect(Object.fromEntries(configs.map((r) => [r.id, r.config.installationId ?? null]))).toEqual(
+      {
+        [binding.id]: 555,
+        [otherBinding.id]: null,
+      },
+    );
+  });
+});
+
+describe('a key saved on a connection (criterion 220)', () => {
+  it('clears the last check, so the connection reads not checked until it is tested', async () => {
+    const connection = await rotatedSentry({ type: 'user', id: ownerId });
+    await store.updateConnection(connection.id, {
+      lastHealthStatus: 'error',
+      lastHealthDetail: 'The key was refused.',
+      lastHealthAt: new Date(),
+    });
+    const saved = await call('PATCH', `/api/integration-connections/${connection.id}`, {
+      secrets: { authToken: 'scratch-fresh-token' },
+    });
+    expect(saved.status, JSON.stringify(saved.body)).toBe(200);
+    expect(saved.body.connection).toMatchObject({ lastHealthStatus: null, lastHealthAt: null });
+    expect((await rowOf(connection.id))?.health).toBeNull();
+  });
+
+  it('is cleared by a remove too, which wipes the key it judged', async () => {
+    const connection = await rotatedSentry({ type: 'user', id: ownerId });
+    await store.updateConnection(connection.id, {
+      lastHealthStatus: 'error',
+      lastHealthAt: new Date(),
+    });
+    await call('DELETE', `/api/integration-connections/${connection.id}`);
+    expect((await rowOf(connection.id))?.health).toBeNull();
+  });
+
+  it('keeps the last check where no key was sent', async () => {
+    const connection = await rotatedSentry({ type: 'user', id: ownerId });
+    await store.updateConnection(connection.id, {
+      lastHealthStatus: 'ok',
+      lastHealthAt: new Date(),
+    });
+    await call('PATCH', `/api/integration-connections/${connection.id}`, {
+      displayName: 'renamed',
+    });
+    expect((await rowOf(connection.id))?.health).toBe('ok');
+  });
+});
+
+describe('deleting an organization (criterion 219)', () => {
+  it("deletes the connections it owns, removed ones included, and no one else's", async () => {
+    const org = await seedOrg(harness.db, ownerId);
+    const removed = await rotatedSentry({ type: 'org', id: org.id });
+    const live = await rotatedSentry({ type: 'org', id: org.id });
+    const mine = await rotatedSentry({ type: 'user', id: ownerId });
+    await call('DELETE', `/api/integration-connections/${removed.id}`);
+
+    const gone = await call('DELETE', `/api/orgs/${org.id}`);
+    expect(gone.status, JSON.stringify(gone.body)).toBe(204);
+    expect(await rowOf(removed.id)).toBeUndefined();
+    expect(await rowOf(live.id)).toBeUndefined();
+    expect(await rowOf(mine.id)).toMatchObject({ active: true });
   });
 });

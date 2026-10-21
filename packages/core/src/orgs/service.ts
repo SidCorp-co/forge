@@ -6,6 +6,7 @@ import { FORGE_AUTHOR_ID } from '../comments/forge-author.js';
 import { db } from '../db/client.js';
 import {
   devices,
+  integrationConnections,
   organizationMembers,
   organizations,
   projectMembers,
@@ -23,8 +24,8 @@ type DbLike = Pick<typeof db, 'insert' | 'select'>;
 export const PERSONAL_WORKSPACE_NAME = 'Personal';
 
 /**
- * Delete an organization and the agent accounts that belonged to it and to no other, in one
- * transaction (ISS-1229 r22): nothing else names such an agent once the organization's projects are
+ * Delete an organization, the connections it owns, and the agent accounts that belonged to it and
+ * to no other, in one transaction (ISS-1229 r22): nothing else names such an agent once the organization's projects are
  * gone, and left behind it is an account with no membership and no door to remove it. A revoked
  * device of such an agent goes with it; one not yet revoked refuses the delete by name.
  */
@@ -75,6 +76,13 @@ export async function deleteOrganization(orgId: string): Promise<void> {
         });
       }
     }
+    // Its connections go with it (ISS-1421 r21): their owner column names no table, so nothing
+    // cascades, and a removed one was left listed under an organization that no longer exists.
+    await tx
+      .delete(integrationConnections)
+      .where(
+        and(eq(integrationConnections.ownerType, 'org'), eq(integrationConnections.ownerId, orgId)),
+      );
     await tx.delete(organizations).where(eq(organizations.id, orgId));
     if (ids.length > 0) {
       await tx.delete(devices).where(inArray(devices.ownerId, ids));

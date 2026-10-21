@@ -370,6 +370,11 @@ export interface IntegrationDeclaration<
   /** Null where the provider has no agent-facing usage to advertise. */
   readonly usage: IntegrationUsage | null;
   readonly presentation: IntegrationPresentation | null;
+  /**
+   * What turns a removed connection, which holds no key, back on where no key is typed into it:
+   * a sentence of its own. Absent for a provider whose key a person saves by hand (ISS-1421 r21).
+   */
+  readonly noKeyTurnsBackOn?: string;
   /** Absent exactly where nothing is integrated. */
   readonly adapter?: IntegrationAdapterMethods<TConfig, TSecrets>;
 }

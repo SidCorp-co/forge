@@ -115,12 +115,7 @@ async fn beat_with(client: &CoreClient, conditions: &Conditions) -> Result<(Stri
         .timeout(CALL_DEADLINE)
         .send()
         .await
-        .map_err(|e| {
-            Error::Other(format!(
-                "heartbeat request: {}",
-                status::unanswered(&e, CALL_DEADLINE)
-            ))
-        })?;
+        .map_err(|e| status::not_reached_within("heartbeat request", &e, CALL_DEADLINE))?;
     if resp.status().as_u16() == 401 {
         return Err(Error::Unauthorized);
     }

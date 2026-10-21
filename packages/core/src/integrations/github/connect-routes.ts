@@ -29,11 +29,16 @@ import {
   notFound,
 } from '../route-helpers.js';
 import {
+  type BindingWithConnection,
   createBinding,
   createConnection,
   decryptConnectionSecrets,
   type IntegrationConnectionRow,
   listActiveBindingsForProjectProvider,
+  listBindingsForConnection,
+  removedConnectionBoundTo,
+  updateBinding,
+  updateConnection,
 } from '../store.js';
 import {
   buildAppManifest,
@@ -274,40 +279,76 @@ githubCallbackRoutes.get(
     assertVaultConfigured();
 
     const app = await convertManifestCode({ code });
+    const owner = state.orgId
+      ? ({ ownerType: 'org', ownerId: state.orgId } as const)
+      : ({ ownerType: 'user', ownerId: userId } as const);
+    const displayName = app.slug ? `GitHub App ${app.slug}` : 'GitHub App';
+    const secrets = {
+      appId: app.appId,
+      privateKey: app.privateKey,
+      webhookSecret: app.webhookSecret,
+    };
 
-    const connection = await createConnection({
-      ownerType: state.orgId ? 'org' : 'user',
-      ownerId: state.orgId ?? userId,
-      provider: 'github',
-      displayName: app.slug ? `GitHub App ${app.slug}` : 'GitHub App',
-      config: {},
-      secrets: {
-        appId: app.appId,
-        privateKey: app.privateKey,
-        webhookSecret: app.webhookSecret,
-      },
-    });
+    // ISS-1421 r21: the removed connection this project is still bound to takes the new App and turns
+    // back on, rather than a second connection standing beside one nothing could turn on.
+    const removed = await removedConnectionBoundTo(state.projectId, 'github', owner);
+    const connection = removed
+      ? await reattach(removed, { displayName, secrets, webhookSecret: app.webhookSecret })
+      : await createConnection({ ...owner, provider: 'github', displayName, config: {}, secrets });
 
-    await createBinding({
-      connectionId: connection.id,
-      projectId: state.projectId,
-      provider: 'github',
-      role: 'service',
-      config: {},
-      integrationSecret: app.webhookSecret,
-    });
+    if (!removed) {
+      await createBinding({
+        connectionId: connection.id,
+        projectId: state.projectId,
+        provider: 'github',
+        role: 'service',
+        config: {},
+        integrationSecret: app.webhookSecret,
+      });
+    }
 
     logger.info(
       { projectId: state.projectId, appId: app.appId, connectionId: connection.id },
       'github: app created from manifest',
     );
 
-    const install = app.htmlUrl ? `${app.htmlUrl}/installations/new` : null;
+    // GitHub hands `state` on to the setup URL, so the install is recorded on this project's
+    // binding: a reattached connection holds others, and the state-less read takes the first.
+    const install = app.htmlUrl
+      ? `${app.htmlUrl}/installations/new?state=${encodeURIComponent(signConnectState(stateSecret(), state))}`
+      : null;
     return c.redirect(
       install ?? `${webBaseUrl()}/projects/${state.projectId}/settings/integrations`,
     );
   },
 );
+
+/** A removed connection given a new App: its keys, its name, switched on, its old check gone. */
+async function reattach(
+  removed: BindingWithConnection,
+  next: { displayName: string; secrets: Record<string, string>; webhookSecret: string },
+): Promise<{ id: string }> {
+  const updated = await updateConnection(removed.connection.id, {
+    displayName: next.displayName,
+    secrets: next.secrets,
+    active: true,
+    lastHealthStatus: null,
+    lastHealthDetail: null,
+    lastHealthAt: null,
+  });
+  // Every binding of the connection takes the new App's webhook secret and loses the old App's
+  // installation, which is not the new App's: the install step records the new one. Each keeps its
+  // own switch but the one this install was run from, which is turned on.
+  for (const { binding } of await listBindingsForConnection(removed.connection.id)) {
+    const { installationId: _old, ...config } = binding.config as Record<string, unknown>;
+    await updateBinding(binding.id, {
+      config,
+      integrationSecret: next.webhookSecret,
+      ...(binding.id === removed.binding.id ? { active: true } : {}),
+    });
+  }
+  return { id: updated?.id ?? removed.connection.id };
+}
 
 githubCallbackRoutes.get(
   '/integrations/github/installed',
@@ -335,7 +376,6 @@ githubCallbackRoutes.get(
     const projectId = state?.projectId ?? pair.binding.projectId;
     assertAdmin(await assertProjectMember(projectId, userId));
 
-    const { updateBinding } = await import('../store.js');
     await updateBinding(pair.binding.id, {
       config: { ...(pair.binding.config as Record<string, unknown>), installationId },
     });

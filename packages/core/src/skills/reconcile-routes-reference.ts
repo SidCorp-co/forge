@@ -29,8 +29,8 @@ export const spawnReconcile = describeOperation({
   responses: {
     201: json(spawnedSchema, 'The run that was started'),
     400: fail(
-      'BAD_REQUEST',
-      'the context bundle failed its C1 to C5 checks: `details.code` is C1_C5_REFUSED',
+      'C1_C5_REFUSED',
+      'the context bundle failed its C1 to C5 checks; the message names the one that failed',
     ),
     403: notAdmin,
     409: fail('CONFLICT', 'a run is already active for the project, or no runner is online'),

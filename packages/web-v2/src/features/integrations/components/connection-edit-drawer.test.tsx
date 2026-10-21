@@ -12,21 +12,28 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/lib/api/client";
 
 let bindingsError: unknown = null;
+let bindingsData: unknown;
+let bindingsPending = false;
 const updateMutate = vi.fn();
+const removeMutate = vi.fn();
 
 vi.mock("../hooks", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../hooks")>()),
   useConnectionBindings: () => ({
-    data: undefined,
-    isLoading: false,
+    data: bindingsData,
+    isSuccess: bindingsError === null && !bindingsPending,
+    isLoading: bindingsPending,
     isError: bindingsError !== null,
     error: bindingsError,
     refetch: vi.fn(),
   }),
   useUpdateConnection: () => ({ mutate: updateMutate, isPending: false }),
+  useRemoveConnection: () => ({ mutate: removeMutate, isPending: false }),
 }));
 vi.mock("@/features/projects/hooks", () => ({
-  useProjectsIncludingArchived: () => ({ data: [] }),
+  useProjectsIncludingArchived: () => ({
+    data: [{ id: "p-store", name: "Storefront", slug: "storefront", archivedAt: null }],
+  }),
 }));
 vi.mock("@/providers/toast-provider", () => ({ useToast: () => ({ toast: vi.fn() }) }));
 
@@ -62,7 +69,10 @@ function mount(over: Partial<ConnectionDirectoryItem> = {}) {
 
 beforeEach(() => {
   bindingsError = null;
+  bindingsData = undefined;
+  bindingsPending = false;
   updateMutate.mockClear();
+  removeMutate.mockClear();
 });
 afterEach(cleanup);
 
@@ -184,13 +194,77 @@ describe("the drawer's Danger zone over a connection that was removed", () => {
     ).toBeInTheDocument();
   });
 
-  // Consult finding at 068fc82: GitHub's key comes from the App install, so there is no Save key
-  // above for the drawer to point at.
-  it("points a keyless GitHub connection at the App install, never at a Save key it does not have", () => {
+  // ISS-1421 r21 — judge-89: the drawer sent a removed GitHub connection's owner to an App install
+  // that made a second connection, and said the installation held a credential it did not.
+  it("says a fresh App install from the project bound to a removed GitHub connection turns it on", () => {
+    // The binding is on and its connection off, as a remove leaves them: no "binding disabled".
+    bindingsData = {
+      items: [
+        { id: "b1", projectId: "p-store", active: false, bindingActive: true, role: "service", stages: [] },
+      ],
+    };
     mount({ ...(mine as object), provider: "github", active: false, hasSecrets: false });
     expect(screen.queryByRole("button", { name: "Enable" })).toBeNull();
     expect(screen.queryByText(/Saving a new key above/)).toBeNull();
-    expect(screen.getByText(/^This connection holds no key\. The App installation holds/)).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "This connection holds no key. Installing the GitHub App again from the Integrations tab of Storefront turns it back on.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/The App installation holds this credential/)).toBeNull();
+    expect(screen.queryByText("binding disabled")).toBeNull();
+    expect(screen.queryByText("Configuration")).toBeNull();
+  });
+
+  it("says nothing turns a removed GitHub connection on where no project is bound to it", () => {
+    mount({ ...(mine as object), provider: "github", active: false, hasSecrets: false });
+    expect(
+      screen.getByText(
+        "This connection holds no key and no project is bound to it, so nothing can turn it back on. Clear it from the list.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  // Whole-set review F1: an unread binding list is not an empty one.
+  it("claims nothing and offers no Clear while the projects bound to a removed GitHub connection are unread", () => {
+    for (const unread of [() => { bindingsPending = true; }, () => { bindingsError = new ApiError(500, "Boom.", "INTERNAL_ERROR"); }]) {
+      cleanup();
+      bindingsPending = false;
+      bindingsError = null;
+      unread();
+      mount({ ...(mine as object), provider: "github", active: false, hasSecrets: false });
+      expect(screen.queryByText(/no project is bound/)).toBeNull();
+      expect(
+        screen.getByText("This connection holds no key. What turns it back on is said once its projects are read."),
+      ).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Clear from list…" })).toBeDisabled();
+    }
+  });
+
+  it("names the projects a clear deletes the binding of", () => {
+    bindingsData = { items: [{ id: "b1", projectId: "p-store", active: false, bindingActive: true, role: "service", stages: [] }] };
+    mount({ ...(mine as object), provider: "postman", active: false, hasSecrets: false });
+    fireEvent.click(screen.getByRole("button", { name: "Clear from list…" }));
+    expect(
+      screen.getByText("Clearing this connection deletes it for good, with its binding to Storefront."),
+    ).toBeInTheDocument();
+  });
+
+  it("offers to clear a removed connection from the list, and clears it", () => {
+    mount({ ...(mine as object), provider: "postman", active: false, hasSecrets: false });
+    expect(screen.queryByRole("button", { name: "Remove…" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Clear from list…" }));
+    expect(
+      screen.getByText("Clearing this connection deletes it for good."),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Clear connection" }));
+    expect(removeMutate.mock.calls[0]?.[0]).toBe(connection.id);
+  });
+
+  it("offers Remove, never Clear, on a connection that still holds its key", () => {
+    mount({ ...(mine as object), provider: "postman", active: true, hasSecrets: true });
+    expect(screen.getByRole("button", { name: "Remove…" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Clear from list…" })).toBeNull();
   });
 
   it("offers Enable on a disabled connection that still holds its key", () => {

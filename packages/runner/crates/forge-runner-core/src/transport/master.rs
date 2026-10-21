@@ -72,12 +72,7 @@ pub async fn clear_limit(client: &CoreClient) -> Result<()> {
         .timeout(CALL_DEADLINE)
         .send()
         .await
-        .map_err(|e| {
-            Error::Other(format!(
-                "me/limit request: {}",
-                status::unanswered(&e, CALL_DEADLINE)
-            ))
-        })?;
+        .map_err(|e| status::not_reached_within("me/limit request", &e, CALL_DEADLINE))?;
     if resp.status().as_u16() == 401 {
         return Err(Error::Unauthorized);
     }
@@ -112,12 +107,7 @@ async fn post(
         .timeout(deadline)
         .send()
         .await
-        .map_err(|e| {
-            Error::Other(format!(
-                "{what} request: {}",
-                status::unanswered(&e, deadline)
-            ))
-        })?;
+        .map_err(|e| status::not_reached_within(&format!("{what} request"), &e, deadline))?;
     if resp.status().as_u16() == 401 {
         return Err(Error::Unauthorized);
     }
@@ -246,15 +236,13 @@ mod tests {
             .await
             .unwrap_err()
             .to_string();
-        assert!(
-            reported.starts_with("me/limit request: could not connect"),
-            "{reported}"
+        let refused = format!(
+            "me/limit request: Forge could not be reached at http://{addr}, as the connection was \
+             refused."
         );
+        assert!(reported.starts_with(&refused), "{reported}");
         let cleared = clear_limit(&c).await.unwrap_err().to_string();
-        assert!(
-            cleared.starts_with("me/limit request: could not connect"),
-            "{cleared}"
-        );
+        assert!(cleared.starts_with(&refused), "{cleared}");
     }
 
     #[tokio::test]
@@ -374,13 +362,20 @@ mod tests {
         let deadline = Duration::from_millis(150);
         let said = tokio::time::timeout(
             Duration::from_secs(5),
-            register_within(&client(url), "p1", "m", deadline),
+            register_within(&client(url.clone()), "p1", "m", deadline),
         )
         .await
         .expect("the call returns rather than hanging")
         .unwrap_err()
         .to_string();
-        assert_eq!(said, "master-session request: timed out after 150ms");
+        assert_eq!(
+            said,
+            format!(
+                "master-session request: Forge could not be reached at {url}, as no answer came \
+                 within 150ms. Check that core is running there and that this box's core address \
+                 is right."
+            )
+        );
     }
 
     #[test]
@@ -389,22 +384,25 @@ mod tests {
         assert!(CALL_DEADLINE < Duration::from_secs(30));
     }
 
-    /// Criterion 10. A call that reached no status is named by what went wrong
-    /// and by the innermost cause, and carries no url: reqwest's own `Display`
-    /// prints the whole address for a refused connection, a reset and a dead
-    /// network alike.
+    /// Criterion 10, and ISS-1421 criterion 214. A call that reached no status
+    /// is named by the address Forge was sought at, why in words and what to
+    /// check, never by the route: reqwest's own `Display` printed the whole url
+    /// for a refused connection, a reset and a dead network alike.
     #[tokio::test]
-    async fn a_core_that_cannot_be_reached_names_the_cause_and_not_the_address() {
+    async fn a_core_that_cannot_be_reached_names_where_and_why_and_not_the_route() {
         let (_held, addr) = refusing_addr();
         let said = register(&client(format!("http://{addr}")), "p1", "m")
             .await
             .unwrap_err()
             .to_string();
-        assert!(
-            said.starts_with("master-session request: could not connect"),
-            "{said}"
+        assert_eq!(
+            said,
+            format!(
+                "master-session request: Forge could not be reached at http://{addr}, as the \
+                 connection was refused. Check that core is running there and that this box's core \
+                 address is right."
+            )
         );
-        assert!(!said.contains(&addr.to_string()), "{said}");
-        assert!(!said.contains("http"), "{said}");
+        assert!(!said.contains("/api/"), "{said}");
     }
 }

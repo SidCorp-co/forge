@@ -2284,7 +2284,15 @@ mod tests {
             panic!("a read nobody answered is Unread, not {took:?}");
         };
         assert_eq!(failed.status, None);
-        assert_eq!(failed.reason, "pool request: timed out after 300ms");
+        let timed_out = "as no answer came within 300ms";
+        assert!(
+            failed
+                .reason
+                .starts_with("pool request: Forge could not be reached at http://")
+                && failed.reason.contains(timed_out),
+            "{}",
+            failed.reason
+        );
         crate::daemon::pool_reads::note(home.path(), project, &took, t0 + 10_000);
         beat(t0 + 11_000).await;
         let second = &sent(1)["pool"]["projects"][0];
@@ -2292,10 +2300,7 @@ mod tests {
         assert_eq!(second["verdict"], "blind", "{second}");
         assert_eq!(second["consecutive"], 2, "{second}");
         assert_eq!(second["lastFailure"]["status"], serde_json::Value::Null);
-        assert_eq!(
-            second["lastFailure"]["reason"],
-            "pool request: timed out after 300ms"
-        );
+        assert_eq!(second["lastFailure"]["reason"], failed.reason.as_str());
     }
 
     #[tokio::test]

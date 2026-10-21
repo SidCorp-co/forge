@@ -88,7 +88,7 @@ agentSessionLifecycleRoutes.post(
       });
     }
     if (!input.prompt) {
-      throw badRequest({ message: 'prompt is required' });
+      throw badRequest({ prompt: 'is required' });
     }
 
     const project = await loadProjectBySlug(input.projectSlug);
@@ -131,7 +131,7 @@ agentSessionLifecycleRoutes.post(
       const effective = await resolveRegisteredEffectiveSkills(project.id);
       if (!effective.some((s) => s.name === input.skillName && s.installOnly)) {
         throw badRequest({
-          message: `skillName '${input.skillName}' is not install_only for this project`,
+          skillName: `names ${input.skillName}, which is not a skill this project installs to start a session`,
         });
       }
     }

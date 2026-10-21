@@ -32,13 +32,13 @@ import type { ProjectListItem } from "@/features/projects/types";
 import {
   useCanManageConnection,
   useConnectionBindings,
-  useRemoveConnection,
   useTestConnection,
   useUpdateConnection,
 } from "../hooks";
 import { connectionTitle } from "../connection-identity";
 import { deriveConnectionStatus } from "../derive";
 import { ConnectionReleaseRunnerField } from "./release-runner-field";
+import { DangerZone, isRemovedConnection } from "./connection-danger-zone";
 import { PROVIDER_MODULES, providerIcon, providerLabel, providerModule } from "../providers/registry";
 import type { BindingSummary, ConnectionSummary, IntegrationTestResult } from "../types";
 import { DirectoryStatusPill, scopeLabel } from "./status-pill";
@@ -178,7 +178,7 @@ function CredentialSection({
   return (
     <section className="flex flex-col gap-3">
       <CardTitle>Credential</CardTitle>
-      {canManage && secretField === null && (
+      {canManage && secretField === null && !isRemovedConnection(connection) && (
         <p className="fg-body-sm border-b border-line pb-2 text-muted">
           {module?.connectionNote ??
             `${providerLabel(connection.provider)}'s credential is not entered by hand and cannot be replaced here.`}
@@ -232,6 +232,12 @@ function CredentialSection({
       {testError && <Banner tone="danger">{testError}</Banner>}
     </section>
   );
+}
+
+/** Whether the Configuration section has anything to say: a removed App connection's installation holds nothing. */
+function hasConfigSection(connection: ConnectionSummary): boolean {
+  if (CONNECTION_SECTIONS.has(connection.provider)) return true;
+  return !(isRemovedConnection(connection) && providerModule(connection.provider)?.secretField === null);
 }
 
 /** The provider's own connection-tier form, or a line saying where its config is edited instead. */
@@ -322,7 +328,8 @@ function ProjectsSection({
                     archived
                   </span>
                 )}
-                {!b.active && (
+                {/* The project's own switch; a connection turned off says so in the header (ISS-1421 r21). */}
+                {!b.bindingActive && (
                   <span className="fg-body-sm ml-auto rounded-pill bg-sunken px-2 py-0.5 text-subtle">
                     binding disabled
                   </span>
@@ -361,87 +368,6 @@ function ProjectsSection({
   );
 }
 
-/** Disable/Enable + Remove with an inline confirm listing affected projects (AC5). */
-function DangerZone({
-  connection,
-  affectedProjects,
-  onRemoved,
-}: {
-  connection: ConnectionSummary;
-  affectedProjects: string[];
-  onRemoved: () => void;
-}) {
-  const update = useUpdateConnection();
-  const remove = useRemoveConnection();
-  const [confirming, setConfirming] = useState(false);
-
-  return (
-    <section className="flex flex-col gap-3">
-      <CardTitle>Danger zone</CardTitle>
-      <div className="flex items-center gap-2">
-        {connection.active ? (
-          <Button
-            variant="ghost"
-            size="sm"
-            loading={update.isPending}
-            onClick={() => update.mutate({ id: connection.id, body: { active: false } })}
-          >
-            Disable
-          </Button>
-        ) : connection.hasSecrets ? (
-          <Button
-            variant="secondary"
-            size="sm"
-            loading={update.isPending}
-            onClick={() => update.mutate({ id: connection.id, body: { active: true } })}
-          >
-            Enable
-          </Button>
-        ) : (
-          // ISS-1421 r20 — removing wipes the keys, and core refuses to turn a keyless connection
-          // back on (CONNECTION_HAS_NO_KEY), so the drawer says what turns it on instead.
-          <span className="fg-body-sm text-muted">
-            {providerModule(connection.provider)?.secretField === null
-              ? `This connection holds no key. ${providerModule(connection.provider)?.connectionNote ?? ""}`.trim()
-              : "This connection holds no key. Saving a new key above turns it back on."}
-          </span>
-        )}
-        <Button variant="ghost" size="sm" onClick={() => setConfirming((v) => !v)}>
-          Remove…
-        </Button>
-      </div>
-      {confirming && (
-        <div className="flex flex-col gap-2 border-y border-line py-2.5">
-          <p className="fg-body-sm text-fg">
-            {affectedProjects.length > 0
-              ? `Removing this connection stops credential resolution for ${affectedProjects.length} project${affectedProjects.length === 1 ? "" : "s"}: ${affectedProjects.join(", ")}. Their integrations stop working on the next dispatch.`
-              : "No projects are actively using this connection."}{" "}
-            Removing it deletes its stored keys. The connection stays listed as Disabled, and turning
-            it back on takes a new key.
-          </p>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="danger"
-              size="sm"
-              loading={remove.isPending}
-              onClick={() =>
-                remove.mutate(connection.id, {
-                  onSuccess: onRemoved,
-                })
-              }
-            >
-              Remove connection
-            </Button>
-            <Button variant="ghost" size="sm" onClick={() => setConfirming(false)}>
-              Cancel
-            </Button>
-          </div>
-        </div>
-      )}
-    </section>
-  );
-}
-
 export function ConnectionEditDrawer({
   connection,
   onClose,
@@ -463,6 +389,12 @@ export function ConnectionEditDrawer({
     const ids = [...new Set(bindings.filter((b) => b.active).map((b) => b.projectId))];
     return ids.map((id) => byId.get(id) ?? id);
   }, [bindings, projects]);
+  const bindingsRead = bindingsQ.isSuccess;
+  const boundProjects = useMemo(() => {
+    if (!bindingsRead) return null;
+    const byId = new Map(projects.map((p) => [p.id, p.name] as const));
+    return [...new Set(bindings.map((b) => b.projectId))].map((id) => byId.get(id) ?? id);
+  }, [bindings, projects, bindingsRead]);
 
   if (!connection) return null;
 
@@ -475,8 +407,12 @@ export function ConnectionEditDrawer({
     >
       <div className="flex flex-col gap-5">
         <CredentialSection connection={connection} canManage={canManage} />
-        <Divider />
-        <ConfigSection connection={connection} canManage={canManage} />
+        {hasConfigSection(connection) && (
+          <>
+            <Divider />
+            <ConfigSection connection={connection} canManage={canManage} />
+          </>
+        )}
         {/* ISS-1275 — the connection tier of the release runner label. It renders
             itself away unless some project binds this credential as a LIVE deploy
             target, which is the only place the label decides anything. */}
@@ -501,6 +437,7 @@ export function ConnectionEditDrawer({
             <DangerZone
               connection={connection}
               affectedProjects={affectedProjects}
+              boundProjects={boundProjects}
               onRemoved={onClose}
             />
           </>

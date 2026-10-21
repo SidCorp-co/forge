@@ -26,6 +26,9 @@ const GENERIC_SIGNATURE_HEADERS = ['x-hub-signature-256', 'x-forge-signature-256
 
 const badRequest = (details: unknown, code = 'BAD_REQUEST') =>
   new HTTPException(400, { message: 'Invalid input', cause: { code, details } });
+/** A refusal this route words itself, whole, with nothing in its details to say it twice. */
+const refused = (message: string, code: string) =>
+  new HTTPException(400, { message, cause: { code } });
 const unauthorized = (code: string) =>
   new HTTPException(401, { message: 'invalid signature', cause: { code } });
 
@@ -120,15 +123,25 @@ webhookInboundRoutes.post(
     for (const map of providerHeaderMap()) {
       if (!c.req.header(map.header)) continue;
       const adapter = getAdapter(map.provider);
-      if (!adapter) throw badRequest({ provider: map.provider }, 'ADAPTER_NOT_REGISTERED');
+      if (!adapter)
+        throw refused(
+          `Forge has no adapter for ${map.provider}, so its webhook cannot be read.`,
+          'ADAPTER_NOT_REGISTERED',
+        );
 
       const candidatePairs = await listActiveBindingsForProjectProvider(project.id, map.provider);
       if (candidatePairs.length === 0) {
-        throw badRequest({ provider: map.provider }, 'INTEGRATION_NOT_CONFIGURED');
+        throw refused(
+          `This project has no ${map.provider} integration turned on, so its webhook is not taken.`,
+          'INTEGRATION_NOT_CONFIGURED',
+        );
       }
 
       if (!map.signatureHeader) {
-        throw badRequest({ provider: map.provider }, 'PROVIDER_DECLARES_NO_SIGNATURE_HEADER');
+        throw refused(
+          `Forge reads no signature header for ${map.provider}, so its webhook cannot be verified.`,
+          'PROVIDER_DECLARES_NO_SIGNATURE_HEADER',
+        );
       }
       const signatureHeader = c.req.header(map.signatureHeader);
       if (!signatureHeader) {
@@ -150,7 +163,7 @@ webhookInboundRoutes.post(
       try {
         parsed = rawBody.length > 0 ? JSON.parse(rawBody) : {};
       } catch {
-        throw badRequest({ body: 'invalid json' });
+        throw badRequest('The body is not JSON.');
       }
       const ctx = buildContextFromBinding(pair);
       try {
@@ -194,7 +207,10 @@ webhookInboundRoutes.post(
     }
 
     if (!project.secret) {
-      throw badRequest({ slug: 'webhook not enabled' }, 'WEBHOOK_DISABLED');
+      throw refused(
+        'This project has no webhook secret, so its generic webhook is turned off.',
+        'WEBHOOK_DISABLED',
+      );
     }
 
     const signatureHeader =
@@ -208,7 +224,7 @@ webhookInboundRoutes.post(
     try {
       if (rawBody.length > 0) JSON.parse(rawBody);
     } catch {
-      throw badRequest({ body: 'invalid json' });
+      throw badRequest('The body is not JSON.');
     }
 
     logger.info({ slug, bytes: rawBody.length }, 'webhook: generic receive');

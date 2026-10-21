@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { isRefusalSentence, refusalMessage, refusalSentence } from './refusal-sentence.js';
+import {
+  isRefusalSentence,
+  refusalBody,
+  refusalMessage,
+  refusalSentence,
+} from './refusal-sentence.js';
 
 // ISS-1421 r14 — the REST envelope and the MCP tool-error wrapper read every refusal through here.
 describe('refusalSentence', () => {
@@ -102,5 +107,84 @@ describe('a refusal that only labels what it refused', () => {
 
   it('keeps a sentence a door wrote whatever its details say', () => {
     expect(refusalMessage('That label is taken.', flattened)).toBe('That label is taken.');
+  });
+});
+
+// ISS-1421 r21 — judge-89: a handler's own reason kept {"code":"required"} in details beside a
+// message saying "The field code is required.", in no shape a schema refusal's details take.
+describe('refusalBody', () => {
+  const said = (details: unknown) => refusalBody('Invalid input', details);
+
+  it('keeps details already keyed as `{ formErrors }` alone, rather than naming a field formErrors', () => {
+    const body = said({ formErrors: ['ISS-1185 needs ?projectId= to name its project.'] });
+    expect(body.details).toEqual({
+      formErrors: ['ISS-1185 needs ?projectId= to name its project.'],
+      fieldErrors: {},
+    });
+    expect(body.message).toContain('?projectId=');
+  });
+
+  it('keys a record of field to words as a schema refusal, each sentence the message says', () => {
+    const body = said({ code: 'required', state: 'required' });
+    expect(body).toEqual({
+      message: 'The field code is required. The field state is required.',
+      details: {
+        formErrors: [],
+        fieldErrors: {
+          code: ['The field code is required.'],
+          state: ['The field state is required.'],
+        },
+      },
+    });
+  });
+
+  it('names a nested field by its whole path and a list by each of its words', () => {
+    expect(said({ config: { url: 'required' }, textContent: ['is empty'] })).toEqual({
+      message: 'The field config.url is required. The field textContent is empty.',
+      details: {
+        formErrors: [],
+        fieldErrors: {
+          'config.url': ['The field config.url is required.'],
+          textContent: ['The field textContent is empty.'],
+        },
+      },
+    });
+  });
+
+  it("keeps a sentence, a list of them or a lone message as the input's own", () => {
+    expect(said('projectId is required unless scope=all')).toEqual({
+      message: '`projectId` is required unless scope=all.',
+      details: { formErrors: ['`projectId` is required unless scope=all.'], fieldErrors: {} },
+    });
+    expect(said({ message: 'an issue cannot depend on itself' }).details).toEqual({
+      formErrors: ['An issue cannot depend on itself.'],
+      fieldErrors: {},
+    });
+    expect(said(['a is wrong', 'b is wrong']).details).toEqual({
+      formErrors: ['A is wrong.', 'B is wrong.'],
+      fieldErrors: {},
+    });
+  });
+
+  it("quotes a number field's value from what was sent", () => {
+    const body = refusalBody(
+      'Invalid input',
+      { limit: 'Invalid input: expected number, received NaN' },
+      (f) => (f === 'limit' ? 'abc' : undefined),
+    );
+    expect(body.details).toEqual({
+      formErrors: [],
+      fieldErrors: { limit: ['The field limit takes a number, not "abc".'] },
+    });
+    expect(body.message).toBe('The field limit takes a number, not "abc".');
+  });
+
+  it("leaves data a door attached, and a door's own message, as they were", () => {
+    expect(said({ count: 3 })).toEqual({
+      message: 'The input was refused.',
+      details: { count: 3 },
+    });
+    const own = refusalBody('That label is taken.', { label: 'taken' });
+    expect(own).toEqual({ message: 'That label is taken.', details: { label: 'taken' } });
   });
 });

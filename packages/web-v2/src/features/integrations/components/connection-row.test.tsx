@@ -4,7 +4,7 @@
 // title where the title already names it, and on the line beneath only where the title does not.
 
 import * as matchers from "@testing-library/jest-dom/matchers";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { ConnectionDirectoryItem } from "@forge/contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -56,5 +56,33 @@ describe("ConnectionRow", () => {
     row(coolify("Staging deploys"));
     expect(screen.getByText("Staging deploys")).toBeInTheDocument();
     expect(screen.getByText("coolify.example.test")).toBeInTheDocument();
+  });
+});
+
+// ISS-1421 r21 — the after-shots: a removed connection's row still offered Enable, which core
+// refuses CONNECTION_HAS_NO_KEY, and Remove where the drawer says Clear.
+describe("ConnectionRow over a removed connection", () => {
+  const removed = { ...coolify("Old deploys"), active: false, hasSecrets: false };
+
+  it("offers no Enable, and Clear in place of Remove", () => {
+    row(removed);
+    expect(screen.queryByRole("button", { name: "Enable" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Remove" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Clear" }));
+    expect(screen.getByText("Delete it for good?")).toBeInTheDocument();
+  });
+
+  // Whole-set review F2: clearing deletes the bindings too, and the row says so before it does.
+  it("names the bindings a clear deletes", () => {
+    const bound = { id: "b1", projectId: "Storefront", role: "service", stages: [], active: false };
+    row({ ...removed, usage: { bindings: [bound, { ...bound, id: "b2" }] } } as never);
+    fireEvent.click(screen.getByRole("button", { name: "Clear" }));
+    expect(screen.getByText("Delete it for good, with its 2 project bindings?")).toBeInTheDocument();
+  });
+
+  it("keeps Enable on a connection someone disabled that still holds its key", () => {
+    row({ ...removed, hasSecrets: true });
+    expect(screen.getByRole("button", { name: "Enable" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Remove" })).toBeInTheDocument();
   });
 });

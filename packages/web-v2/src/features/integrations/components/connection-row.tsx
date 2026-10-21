@@ -10,6 +10,7 @@ import { useCanManageConnection, useRemoveConnection, useUpdateConnection } from
 import { connectionName, connectionTarget, connectionTitle } from "../connection-identity";
 import { deriveConnectionStatus } from "../derive";
 import { providerIcon, providerLabel as labelFor } from "../providers/registry";
+import { isRemovedConnection } from "./connection-danger-zone";
 import { DirectoryStatusPill, scopeLabel } from "./status-pill";
 import { healthLine } from "@forge/contracts/health-words";
 
@@ -80,6 +81,8 @@ function RemoveButton({ connection }: { connection: ConnectionDirectoryItem }) {
   const remove = useRemoveConnection();
   const [armed, setArmed] = useState(false);
   const count = connection.usage.bindings.length;
+  // A removed connection holds no key; a second delete clears it from the list (ISS-1421 r21).
+  const removed = isRemovedConnection(connection);
 
   if (!armed) {
     return (
@@ -91,14 +94,20 @@ function RemoveButton({ connection }: { connection: ConnectionDirectoryItem }) {
           setArmed(true);
         }}
       >
-        Remove
+        {removed ? "Clear" : "Remove"}
       </Button>
     );
   }
   return (
     <span className="flex items-center gap-2">
       <span className="fg-body-sm text-muted">
-        {count > 0 ? `Disconnects ${count} project${count > 1 ? "s" : ""}.` : "Delete it?"}
+        {removed
+          ? count > 0
+            ? `Delete it for good, with its ${count} project binding${count > 1 ? "s" : ""}?`
+            : "Delete it for good?"
+          : count > 0
+            ? `Disconnects ${count} project${count > 1 ? "s" : ""}.`
+            : "Delete it?"}
       </span>
       <Button
         variant="danger"
@@ -109,7 +118,7 @@ function RemoveButton({ connection }: { connection: ConnectionDirectoryItem }) {
           remove.mutate(connection.id);
         }}
       >
-        Delete
+        {removed ? "Clear" : "Delete"}
       </Button>
       <Button
         variant="ghost"
@@ -228,7 +237,7 @@ export function ConnectionRow({
               >
                 Disable
               </Button>
-            ) : (
+            ) : connection.hasSecrets ? (
               <Button
                 variant="secondary"
                 size="sm"
@@ -240,7 +249,7 @@ export function ConnectionRow({
               >
                 Enable
               </Button>
-            )}
+            ) : null}
             <RemoveButton connection={connection} />
           </>
         ) : (
