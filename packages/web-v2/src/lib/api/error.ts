@@ -133,9 +133,7 @@ export function formatApiError(err: unknown): string {
   return 'Unknown error';
 }
 
-/** A read that failed: why, in the words every failure is said in (`formatApiError`, so a refusal
- *  gives its own sentence), and the server's code and message for whoever reports it, which a screen
- *  keeps behind its technical view. */
+/** A read that failed: why (a refusal's own sentence), and the server's code and message for its technical view. */
 export interface ReadFailure {
   said: string;
   technical: string;
