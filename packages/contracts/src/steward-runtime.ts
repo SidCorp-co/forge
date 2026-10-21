@@ -153,6 +153,27 @@ export interface StewardRunsResponse {
 	runs: StewardRunView[];
 }
 
+/** One share of the steward's day: what it may spend, and what it has spent. */
+export interface StewardShareView {
+	gatewayTurns: { spent: number; of: number };
+	runnerJobs: { spent: number; of: number };
+}
+
+/**
+ * `GET /api/projects/:id/steward-budget`: the steward's UTC day, so a person can see why it is quiet.
+ * `quiet` is `handoffs` where the whole day is spent (no handoff gets a run until `resumesAt`),
+ * `sweep` where only the sweep's share is spent (handoffs still run, `paced` stuck items wait), and
+ * null where neither is.
+ */
+export interface StewardBudgetView {
+	day: string;
+	resumesAt: string;
+	handoff: StewardShareView;
+	sweep: StewardShareView;
+	paced: number;
+	quiet: "handoffs" | "sweep" | null;
+}
+
 /** `GET /api/projects/:id/steward-acts?subject=KEY`: every act the steward took on one item, newest first, uncapped. */
 export interface StewardActsResponse {
 	acts: StewardActRecord[];

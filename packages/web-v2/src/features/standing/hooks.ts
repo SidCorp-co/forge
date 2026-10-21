@@ -57,3 +57,7 @@ export function useStewardActs(projectId: string | undefined, key: string | unde
 /** Undo one act; the item's runs, its standing and every issue read are read again, since an undo can move any. */
 export const useUndoStewardAct = (projectId: string, key: string) =>
   useWrite((actId: string) => standingApi.undo(projectId, actId), { touches: [[...KEY, "acts", projectId, key], ["issues"], ["requirements"], ["feedback"]] });
+
+/** The steward's day on the project (REQ-48 BC-1), read again each minute so a quiet steward is seen. */
+export const useStewardBudget = (projectId: string | undefined) =>
+  useQuery(readOf([...KEY, "budget", projectId], () => standingApi.budget(projectId as string), 60_000)).data ?? null;

@@ -84,7 +84,7 @@ already has it; it moves to second place, above `moving` (BC-9).
 
 | Surface | Reads after | Deleted |
 |---|---|---|
-| Dashboard At risk | `standings` rows where `stuck` is set, then forecast-late moving items, each row's text taken from its standing. | `project-home/derive.ts:atRiskRows` "short" branch and `BUILT_STATES`. `forecast/late.ts:lateWaiting` (the 24h person wait, which `overdue` replaces). `forecast/feedback.ts:feedbackLinesOver` forecasting done items. |
+| Dashboard At risk | `standings` rows where `stuck` is set, then forecast-late moving items, each row's text taken from its standing. "Lands this week" reads the same standing: a stuck requirement or feedback item forecasts `paused` on what its standing names, with the stuck reason, never a landing (`forecast/scope.ts:stuckWaitOf`). | `project-home/derive.ts:atRiskRows` "short" branch and `BUILT_STATES`. `forecast/late.ts:lateWaiting` (the 24h person wait, which `overdue` replaces). `forecast/feedback.ts:feedbackLinesOver` forecasting done items. |
 | Dashboard BA panel | `standings` | `project-dashboard/ba-derive.ts:feedbackFigures` aging and closed rules. The `late`/`worst`/`lateOfDelivery` copy in `planRows`. |
 | Requirement list "Waits on" and groups | `RequirementStanding` (`StandingTimes` included) | `requirement-roadmap.ts:waitsLineOf` English parsing; it reads `says` keys. |
 | Requirement and feedback banners | `waitingOn`, plus `stuck.reason` and the note | `RequirementBanner` no-owner inference. `FeedbackBanner` "ship" for draft carriers (this comes from core). |
@@ -146,7 +146,9 @@ These use `steward_runs` and `steward_acts` (migration 508).
 | Recorded on the item (BC-1) | One `steward_runs` row per run: subject, trigger, folded `events[]` (outbox ids), act, runtime, state, `job_id`/`turn_id`, times. Read through `GET /api/projects/:id/steward-runs?subject=` and on the item page's activity rows. |
 | One live run per item | A partial unique index on (`subject_kind`, `subject_id`) where `state in ('queued','running')`. Insert-or-fold under that index. |
 | Debounce, no act dropped | A new event folds into the queued row, adding its act to `acts_to_run` (distinct; run in `STEWARD_ACTS` order), and `not_before = first event + 2 min` (`STEWARD_DEBOUNCE_MS`). An event arriving while the run runs adds its act to `follow_up`, and the run's end queues those acts as the next run. A breakdown proposed during a note run is therefore still checked. |
-| Start within 5 min | A process timer `steward-dispatch` runs every 30 s and starts queued rows whose `not_before` has passed. Worst case is 2 min + 30 s. |
+| Start within 5 min | A process timer `steward-dispatch` runs every 30 s and claims queued rows whose `not_before` has passed (`steward/runs-store.ts:claimDueRuns`, one materialized `FOR UPDATE SKIP LOCKED` claim that never takes more than its limit). Runs from a handoff event are claimed and taken up before the sweep's `standing.stuck` backlog. The tick does not wait for the runs it starts: a project takes up to `slotsFor(budget)` runs at once (one per 25 daily turns, 1 to 8), core up to 16, and a run over its slots goes back to the queue. `started_at` is stamped when the run is admitted under the budget lock, not at claim. The bound is 2 min + 30 s under a 100-run backlog (`steward-dispatch-bound-e2e`). |
+| One cause, diagnosed once | A requirement or feedback item stuck through a carrier issue that is itself stuck is only noted; the carrier is diagnosed (`steward/sweep.ts:stuckCarrierOf`). |
+| A job whose run ended | The pool never auto-retries a `steward` job (`contracts/jobs.ts:POOL_UNRETRIED_JOB_TYPES`): the steward's own sweep owns a retry. A job counts as live only while its run is queued or running (`runs-store.ts:liveStewardJobOf`), so an ended run's job holds no runner act back. |
 | Idempotent | The outbox delivery commits with the row (`delivery.inbox`). Each run stores the basis it read. A `note` run whose standing basis equals the note's is `skipped` / `basis_unchanged`. A subject that ended is `skipped` / `subject_ended`. |
 | Lost wake | The sweep re-emits a stuck item that holds no run on its current basis. A stuck item already diagnosed on that basis is not diagnosed again until its standing moves. |
 | A refused act | A run whose turn finished but a door refused an act ends `failed` with `failure_kind` `refused` and each refusal named. It holds its basis like a done run, so the sweep does not retry it until the standing moves. A run that broke (`failure_kind` `error`: a turn that did not finish, or a write a door answered 5xx) holds its basis for an hour, then is retried. |
@@ -196,6 +198,10 @@ read that takes it, and `steward_ask` refuses a feedback key; `GET /api/issues/:
 | Daily budget per project, by UTC day | 200 gateway turns and 10 runner jobs (`STEWARD_DAILY_BUDGET`). When spent, the run is `skipped` / `budget_spent` and the note says so. Lowered per project through the project document's `steward` policy key (`{ enabled, budget }`; `enabled` defaults to true). |
 | Usage | Recorded with `recordModelCallUsage`, as `intake/service.ts:recordSpend` does. |
 | No-op | Skip when the basis is unchanged. |
+| Handoffs keep a share | 40% of each day's turns and jobs (`policy.ts:HANDOFF_SHARE`, `sharesOf`) is kept for handoff-event runs; the sweep's `standing.*` runs spend only the rest. A handoff run spends its own share and whatever the sweep left, and is skipped `budget_spent` only when the whole day is spent. A handoff folded into a queued sweep run makes it a handoff run, due on the handoff's own clock (`runs-store.ts:foldTrigger`). On dev.271 the first sweep's backlog spent the whole day, and every later run, handoffs included, ended `skipped budget_spent` (`steward-dispatch-bound-e2e` replays it). |
+| The sweep is paced | The sweep raises no more runs than its share has room for (its spend plus its queued runs), longest stuck first (`sweep.ts:sweepRoom`, `byAge`). A sweep run its share cannot pay for is not ended: it waits in the queue for the next UTC day, in its place (`dispatch.ts:runOne`, `next_day`), so the backlog drains over days, oldest first. |
+| A quiet steward is seen | `GET /api/projects/:id/steward-budget` (`policy.ts:budgetDayOf`) reads each share and what it spent, how many stuck items wait for a later day, and `quiet`: `handoffs` where the day is spent, `sweep` where only the sweep's share is. The Dashboard draws one line under Needs you when `quiet` is set (`web-v2 features/standing/components/steward-budget-line.tsx`). |
+| Concurrent runs | Admission (`steward/policy.ts:admitRun`) holds the `stewardBudget` advisory lock and counts, as spent, the gateway acts still owed by runs already started, so runs started together cannot overspend the day. |
 
 ## 4. Act catalogue (BC-2..6, BC-10, BC-12)
 
@@ -204,6 +210,19 @@ along with its undo. One new door undoes any act: `POST /api/projects/:id/stewar
 (needs `project.write`). The person authorises; the steward account, which made the act, executes
 its inverse door, and the act records who asked (`undone_by`). Without an inverse, it refuses
 `STEWARD_ACT_NOT_UNDOABLE`, naming the override.
+
+Every item page (requirement, feedback, issue) lists the steward's acts in its Activity
+(`web-v2 features/standing/components/steward-acts.tsx`, from `GET …/steward-acts?subject=`, every
+act on the item newest first and uncapped, so newer runs never push an old act off): what each did
+and when, with Undo for a `project.write` member where a door undoes it, the act's
+`override` sentence where none does (`steward/undo-rules.ts:personOverrideOf`), or Undone. A
+question records the account that asked it through `POST /api/questions` (`agent_questions.asked_by`,
+migration 0512), and every question read names it as `asker`, so the steward's questions show
+"Asked by Steward" in the item's Activity. A question the system asked (a sweep, a run's park) names
+no asker.
+
+The steward reads a stuck feedback item's triage proposals with its viewer `project.read`
+(`GET …/suggestions?feedback=FB-n&status=proposed`), so its grant needs no addition.
 
 | Act (BC) | Reads | Acts through (existing door) | Writes | Undo / override | When it may not act, it asks |
 |---|---|---|---|---|---|
@@ -227,12 +246,12 @@ plan or criteria: preparing a draft is the steward's own act, done before it ask
 |---|---|
 | Prepare first | A draft that fails the issue-ready check is prepared by `steward_prepare_draft` (`steward/door-prepare.ts`) as the Steward account, through the issue's own doors: it links the agreed requirement (`POST …/requirements/:req/issues`), saves a short plan (`PATCH /api/issues/:id {plan}`, which records that requirement's current revision as `planned_revision`), and writes the issue's criteria traced to its BCs (`PUT /api/issues/:id/criteria`). The requirement is the carried feedback's triaged one (`criterion: REQ-n BC-m`), else the best agreed one by area and title (`steward_list_requirements`). A criterion is a checkable statement written from the feedback case and the BC text; one reading as an instruction ("Verify …") is refused, as is a requirement not agreed or accepted, or a BC it lacks. Each write is its own act with its own undo. The driver rewrites the short plan in its own phase. |
 | The set | `stewardDecisionsFor(status, stuck code, ready)`: a draft that passes the check offers `open`, `keep`, `drop` (`steward.open`, `steward.keep`, `steward.drop`), recommending `open`; a draft that does not, where no agreed requirement fits, offers `link` (`steward.link:REQ-n:BC-m`, the steward's candidates, at most 3, best first), `requirement` and `drop`, and never `open`. Open, reopen or on_hold work that `nobody_serves` offers `keep`, `drop`. Any other reading offers none, and `steward_decide` tells the turn to wake or note instead. No option asks anyone to write details. |
-| The model's part | `steward_decide { issue, recommended, candidates?, why }`: the recommended decision, the link candidates (each checked agreed with that BC current), and one line of why, which the prompt carries as "Recommended: <label>, because <why>". The labels and the prompt's question are code's. No second question while one is open; none on a standing a person kept. |
+| The model's part | `steward_decide { issue, recommended, candidates?, why }`: the recommended decision, the link candidates (each checked agreed with that BC current), and one line of why, which the prompt carries as "Recommended: <label>, because <why>". The labels and the prompt's question are code's. No second question while any question is open on the issue, of any kind; none where a person answered keep, through any question (the stale-draft one included), since the issue came to read as it does now (`steward/door-decide.ts:keptNow`). |
 | The menus | `stuck_diagnosis` holds `steward_prepare_draft`, `steward_list_requirements` and `steward_decide`, and no `steward_ask`; `steward_ask` takes a requirement key only, for `intake_check`'s content questions. A turn calling a door outside its act's menu is refused by name (`steward/turn.ts:stewardToolset`). |
 | The answer acts | The answer is carried out as the answerer in the act's own transaction (`questions/answer.ts:answerQuestion` → the `carryStewardDecision` port → `steward/decision-act.ts`). `open` moves the draft to open through the kernel: the issue-ready check still applies, and its refusal (`CHECKLIST_INCOMPLETE`) refuses the answer and leaves the question open. `link` links the draft to the requirement it names and emits `standing.stuck`, so a new run prepares it and asks `open`; that run is budgeted like any other and skipped `budget_spent` once the day is spent. `requirement` starts a draft requirement from the carried feedback as the requirement door writes one (`requirements/index.ts:createRequirementIn`), in the answer's own transaction, and the assistant proposes its area as on any new requirement. `drop` drops it with the answerer's `note`; `keep` records the keep with its `note`; either without a note is `STEWARD_DECISION_REASON_REQUIRED`. `open`, `link` or `requirement` on an issue no longer at draft is `STEWARD_DECISION_STALE`. |
 | Logged | Each answer's act is a `steward_acts` row on the run that asked (`POST /api/issues/:id/transition`, the link, the requirement made, or `KEEP ISS-n`). The link is undone by its `DELETE`; the others are refused `STEWARD_ACT_NOT_UNDOABLE` naming the override, like the steward's own move. |
 | Budget | Preparing is part of the diagnosis turn, so it spends that run's gateway turn against the daily budget (`steward/policy.ts`). |
-| Needs you | Group `answer`, recommended `by: steward` with the prompt's why, each button's `effect` saying what it does, `keep` and `drop` with `needsReason`; the typed reason rides as the answer's `note`. |
+| Needs you | Group `answer`, recommended `by: steward` with the prompt's why, each button's `effect` saying what it does to the item (`contracts/steward.ts:stewardDecisionEffect`: "Opens ISS-n as you; its driver plans it…", "Keeps ISS-n as a draft until its standing moves…", "Drops ISS-n as you…"), never the generic run answer, `keep` and `drop` with `needsReason`; the typed reason rides as the answer's `note`. |
 | The questions already asked | `steward/reask-once.ts`, a boot backfill (`steward-free-form-questions-reask`): every open steward question whose options are not the set is voided naming why, and each item its run was on that still reads stuck is emitted `standing.stuck`, so the steward asks again with the set, or not at all. |
 
 ## 5. Needs you (BC-11)
@@ -262,6 +281,7 @@ journal line.
 |---|---|---|---|
 | 0507 | 1826755200000 | `steward_notes` | A |
 | 0508 | 1826841600000 | `steward_runs` (with `acts_to_run`, `follow_up` and `basis`), `steward_acts`. Also `jobs.type` value `steward`, if the column carries a check. | B |
+| 0512 | 1827187200000 | `agent_questions.asked_by` (BC-12) | round 2 |
 
 ## 8. Lane split
 

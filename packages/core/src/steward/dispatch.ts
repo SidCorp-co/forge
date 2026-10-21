@@ -16,10 +16,11 @@ import { logger } from '../lib/logger.js';
 import { stewardAccountOf } from './account.js';
 import { enqueueStewardJob, revokeJobCredential, stewardJobLive } from './job.js';
 import { budgetNote } from './note.js';
-import { admitRun, slotsFor, stewardStanceOf } from './policy.js';
+import { admitRun, nextUtcDay, slotsFor, stewardStanceOf } from './policy.js';
 import { openStandings } from './ports.js';
 import {
   claimDueRuns,
+  deferSweepRun,
   endRun,
   type RunRow,
   requeueRun,
@@ -96,6 +97,12 @@ export async function runOne(run: RunRow, now: Date): Promise<RunOutcome> {
   // one steward job live per project: a run owing one waits, before it spends a turn
   if (runner.length > 0 && (await stewardJobLive(run.projectId))) return 'job_live';
   const refused = await admitRun(run, acts, now);
+  if (refused === 'next_day') {
+    // the sweep's share of today is spent: the run waits for tomorrow's, in its place in the queue,
+    // unless a handoff arrived while it was claimed
+    await deferSweepRun(run.id, nextUtcDay(now));
+    return 'ended';
+  }
   if (refused) {
     await endRun(run.id, { state: 'skipped', reason: refused });
     if (refused === 'budget_spent') await budgetNote(run, standing);

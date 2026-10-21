@@ -2,6 +2,7 @@
 // Dashboard (Needs you capped at three with "+n more" to Approvals, at risk led by what is stuck, the
 // feedback figures counting stuck), the status report (Stuck and Needs you before Shipped), /attention
 // (each project's decisions read by its total) and the pipeline board (a card's stuck reason). The
+// Dashboard also says, under Needs you, when the steward is quiet for its budget (BC-1). The
 // records' pages are `steward-records.witness.tsx`. At 390 px nothing scrolls sideways.
 //
 //   pnpm --filter web-v2 witness witness/steward-surfaces.witness.tsx --out <dir>
@@ -24,7 +25,12 @@ const SURFACES: Surface[] = [
         <ProjectHome projectId={PH} slug="hop" />
       </Live>
     ),
-    check: () => [...has("Needs you", `+${APPROVALS_READ.total - 3} more`), ...has("at risk", "REQ-45"), ...has("at risk", "no master serves")],
+    check: () => [
+      ...has("Needs you", `+${APPROVALS_READ.total - 3} more`),
+      ...has("at risk", "REQ-45"),
+      ...has("at risk", "no master serves"),
+      ...has("the steward's day", "27 stuck items wait for tomorrow; new feedback and requirements still run."),
+    ],
   },
   {
     name: "status-report",

@@ -251,3 +251,154 @@ describe('a steward job is not retried by the pool, nor held behind once its run
     await drain();
   });
 });
+
+describe("a day's sweep backlog never spends the handoffs' share (REQ-48 BC-1, dev.271)", () => {
+  it('starts a feedback.filed and a requirement.agreed run within the bound after the sweep has used its share', async () => {
+    const { db } = await import('../../src/db/client.js');
+    const { foldTrigger, claimDueRuns } = await import('../../src/steward/runs-store.js');
+    const { budgetDayOf, nextUtcDay } = await import('../../src/steward/policy.js');
+    const { STEWARD_DEBOUNCE_MS } = await import('@forge/contracts/steward');
+    const day = (await createTestProject(ownerId)).id;
+    await bindTestRunner(day, await createTestDevice(ownerId));
+    const sweepRun = async (subject: { kind: string; id: string; key: string }, queuedMin = 40) =>
+      rows(sql`
+        INSERT INTO steward_runs (project_id, subject_kind, subject_id, subject_key, trigger, events, acts_to_run,
+                                  state, queued_at, not_before)
+        VALUES (${day}, ${subject.kind}, ${subject.id}, ${subject.key}, 'standing.stuck', '[]'::jsonb,
+                ARRAY['stuck_diagnosis']::text[], 'queued', now() - make_interval(mins => ${queuedMin}),
+                now() - make_interval(mins => ${queuedMin - 10}))
+        RETURNING id`);
+    // the first sweep after a deploy: 119 of the day's turns already spent on stuck items
+    const seed = await createTestIssue(day, ownerId, 1, { status: 'open', createdAt: new Date() });
+    await rows(sql`
+      INSERT INTO steward_runs (project_id, subject_kind, subject_id, subject_key, trigger, events, acts_to_run,
+                                state, turns, not_before, started_at, ended_at)
+      VALUES (${day}, 'issue', ${seed.id}, ${seed.key}, 'standing.stuck', '[]'::jsonb,
+              ARRAY['stuck_diagnosis']::text[], 'done', 119, now(), now(), now())
+      RETURNING id`);
+    // and its backlog: 90 more stuck items queued, the newest of them a feedback item
+    const fbKey = await createTestFeedback(day, ownerId, 1);
+    const [fb] = await rows<{ id: string }>(sql`
+      SELECT id FROM feedback WHERE project_id = ${day} AND fb_seq = 1`);
+    const fbSubject = { kind: 'feedback' as const, id: fb?.id ?? '', key: fbKey };
+    await sweepRun(fbSubject, 35);
+    for (let n = 0; n < 89; n += 1) {
+      const issue = await createTestIssue(day, ownerId, 10 + n, {
+        status: 'open',
+        createdAt: new Date(),
+      });
+      await sweepRun({ kind: 'issue', ...issue });
+    }
+    // the sweep's runs taken up tick after tick until none is due
+    for (let tick = 0; tick < 40; tick += 1) {
+      if ((await dispatch(new Date())).started === 0) break;
+    }
+    // then a person files feedback on that item, and a requirement is agreed
+    const filedAt = new Date(Date.now() - STEWARD_DEBOUNCE_MS - 1_000);
+    const filed = await db.transaction((tx) =>
+      foldTrigger(tx, {
+        projectId: day,
+        subject: fbSubject,
+        trigger: 'feedback.filed',
+        outboxId: 'fb-filed',
+        at: filedAt,
+      }),
+    );
+    const req = await createTestRequirement(day, 1, 'agreed after the sweep');
+    const agreed = await db.transaction((tx) =>
+      foldTrigger(tx, {
+        projectId: day,
+        subject: { kind: 'requirement', id: req.id, key: req.key },
+        trigger: 'requirement.agreed',
+        outboxId: 'req-agreed',
+        at: filedAt,
+      }),
+    );
+    await dispatch(new Date());
+    for (const [what, id, from] of [
+      ['feedback.filed', filed.runId, filedAt],
+      ['requirement.agreed', agreed.runId, filedAt],
+    ] as const) {
+      const [run] = await rows<{
+        state: string;
+        skip_reason: string | null;
+        started_at: string | null;
+      }>(sql`
+        SELECT state, skip_reason, started_at::text FROM steward_runs WHERE id = ${id}`);
+      expect(run?.skip_reason ?? null, `${what} was skipped`).toBeNull();
+      expect(run?.started_at, `${what} was not started`).not.toBeNull();
+      expect(new Date(run?.started_at ?? 0).getTime() - from.getTime()).toBeLessThanOrEqual(
+        BOUND_MS,
+      );
+    }
+    // the sweep spent its share and no more; what it could not pay for waits for tomorrow, not ended
+    const skipped = await rows(sql`
+      SELECT id FROM steward_runs WHERE project_id = ${day} AND skip_reason = 'budget_spent'`);
+    expect(skipped).toEqual([]);
+    const waiting = await rows<{ not_before: string }>(sql`
+      SELECT not_before::text FROM steward_runs
+       WHERE project_id = ${day} AND state = 'queued' AND trigger = 'standing.stuck'`);
+    expect(waiting.length).toBe(88);
+    const tomorrow = nextUtcDay(new Date()).getTime();
+    expect(waiting.every((w) => new Date(w.not_before).getTime() >= tomorrow - 1_000)).toBe(true);
+    expect(await claimDueRuns(new Date(), 5)).toEqual([]);
+    const budget = await budgetDayOf(day, new Date());
+    expect(budget).toMatchObject({ quiet: 'sweep', paced: 88 });
+    expect(budget.sweep.gatewayTurns).toEqual({ spent: 120, of: 120 });
+
+    // a handoff arriving while a sweep run is claimed is not carried into tomorrow with it; FB-1's
+    // triage ends first, as one steward job is live per project at a time
+    await rows(sql`
+      UPDATE steward_runs SET state = 'done', ended_at = now() WHERE id = ${filed.runId} RETURNING id`);
+    const { runOne } = await import('../../src/steward/dispatch.js');
+    const fb2Key = await createTestFeedback(day, ownerId, 2);
+    const [fb2] = await rows<{ id: string }>(sql`
+      SELECT id FROM feedback WHERE project_id = ${day} AND fb_seq = 2`);
+    const fb2Subject = { kind: 'feedback' as const, id: fb2?.id ?? '', key: fb2Key };
+    await rows(sql`
+      INSERT INTO steward_runs (project_id, subject_kind, subject_id, subject_key, trigger, events, acts_to_run,
+                                state, not_before)
+      VALUES (${day}, 'feedback', ${fb2Subject.id}, ${fb2Key}, 'standing.stuck', '[]'::jsonb,
+              ARRAY['stuck_diagnosis']::text[], 'queued', now() - interval '1 second')
+      RETURNING id`);
+    const [claimed] = await claimDueRuns(new Date(), 1);
+    expect(claimed?.subjectKey).toBe(fb2Key);
+    const filedLate = new Date(Date.now() - STEWARD_DEBOUNCE_MS - 1_000);
+    const late = await db.transaction((tx) =>
+      foldTrigger(tx, {
+        projectId: day,
+        subject: fb2Subject,
+        trigger: 'feedback.filed',
+        outboxId: 'fb2-filed',
+        at: filedLate,
+      }),
+    );
+    expect(late.into).toBe('follow_up');
+    if (!claimed) throw new Error('no sweep run was claimed');
+    await runOne(claimed, new Date());
+    await dispatch(new Date());
+    const [promoted] = await rows<{ trigger: string; started_at: string | null }>(sql`
+      SELECT trigger, started_at::text FROM steward_runs WHERE id = ${claimed.id}`);
+    expect(promoted?.trigger).toBe('feedback.filed');
+    expect(promoted?.started_at, 'the handoff waited with the sweep run').not.toBeNull();
+    expect(new Date(promoted?.started_at ?? 0).getTime() - filedLate.getTime()).toBeLessThanOrEqual(
+      BOUND_MS,
+    );
+  });
+
+  it('reads a sweep run debounced a few minutes as due, never as waiting for tomorrow', async () => {
+    const { budgetDayOf } = await import('../../src/steward/policy.js');
+    const fresh = (await createTestProject(ownerId)).id;
+    const issue = await createTestIssue(fresh, ownerId, 1, {
+      status: 'open',
+      createdAt: new Date(),
+    });
+    await rows(sql`
+      INSERT INTO steward_runs (project_id, subject_kind, subject_id, subject_key, trigger, events, acts_to_run,
+                                state, not_before)
+      VALUES (${fresh}, 'issue', ${issue.id}, ${issue.key}, 'standing.stuck', '[]'::jsonb,
+              ARRAY['stuck_diagnosis']::text[], 'queued', now() + interval '2 minutes')
+      RETURNING id`);
+    expect(await budgetDayOf(fresh, new Date())).toMatchObject({ paced: 0, quiet: null });
+  });
+});

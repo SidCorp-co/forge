@@ -63,6 +63,17 @@ const STANDINGS: Record<string, ItemStanding[]> = {
   ],
 };
 
+// ---- the steward's day the Dashboard reads: the sweep's share spent, its backlog paced ----
+
+const STEWARD_DAY = {
+  day: "2026-10-21T00:00:00.000Z",
+  resumesAt: "2026-10-22T00:00:00.000Z",
+  handoff: { gatewayTurns: { spent: 6, of: 80 }, runnerJobs: { spent: 1, of: 4 } },
+  sweep: { gatewayTurns: { spent: 120, of: 120 }, runnerJobs: { spent: 0, of: 6 } },
+  paced: 27,
+  quiet: "sweep",
+};
+
 // ---- the project status the Dashboard and the report read ----
 
 const stuckItem = (kind: "requirement" | "feedback", key: string, title: string, reason: string) => ({
@@ -180,6 +191,7 @@ window.fetch = async (input: RequestInfo | URL) => {
   const noted = /^\/projects\/[^/]+\/steward-notes\/(requirement|feedback)\/([^/]+)$/.exec(path);
   if (noted) return json({ note: note(noted[1] as "requirement" | "feedback", decodeURIComponent(noted[2] ?? "")) });
   if (path === `/projects/${PH}/needs-you/decisions`) return json(APPROVALS_READ);
+  if (path === `/projects/${PH}/steward-budget`) return json(STEWARD_DAY);
   if (path.startsWith(`/projects/${PH}/status`)) return json(WITNESS_STATUS);
   if (path === "/projects") return json([{ id: PH, slug: "hop", name: "Hop", orgId: null, orgRole: null }]);
   if (path === "/me/devices") return json([]);

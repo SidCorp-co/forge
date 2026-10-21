@@ -376,7 +376,7 @@ describe('where no agreed requirement fits, the answer acts (REQ-48 BC-5)', () =
     expect((await openQuestion(issue.id)).id).toBe(id);
   });
 
-  it('the run a link answer starts is skipped budget_spent once the day is spent, before any turn', async () => {
+  it('the run a link answer starts waits for the next day once the day is spent, before any turn', async () => {
     const req = await agreedRequirement(912);
     const issue = await draftIssue(107);
     await diagnose(issue, [decide(issue.key, 'link', [{ requirement: req, bc: 'BC-1' }])]);
@@ -392,7 +392,7 @@ describe('where no agreed requirement fits, the answer acts (REQ-48 BC-5)', () =
     resetScript();
     await dispatch();
     const [rerun] = await runsOf(issue.id);
-    expect(rerun).toMatchObject({ state: 'skipped', skip_reason: 'budget_spent' });
+    expect(rerun).toMatchObject({ state: 'queued', skip_reason: null, turns: 0 });
     expect(script.sent).toEqual([]);
     expect((await issueRow(issue.id))?.planned_revision).toBeNull();
   });
