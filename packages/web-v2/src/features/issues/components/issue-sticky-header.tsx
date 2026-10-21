@@ -33,7 +33,6 @@ export const IssueStickyHeader = forwardRef<
   );
 });
 
-/** A failed read the header rests on: what could not be read, why, and its refetch where Retry is offered. */
 export interface FailedHeaderRead {
   what: string;
   error: unknown;
@@ -50,7 +49,13 @@ export function HeaderReadFailures({ reads }: { reads: ReadonlyArray<FailedHeade
   return (
     <HeaderReadFailure
       said={couldNotReadAll(reads)}
-      retry={retries.length > 0 ? () => retries.forEach((retry) => retry()) : undefined}
+      retry={
+        retries.length > 0
+          ? () => {
+              for (const retry of retries) retry();
+            }
+          : undefined
+      }
     />
   );
 }
