@@ -1155,7 +1155,7 @@ mod not_reached_words {
     #[tokio::test]
     async fn a_host_that_does_not_resolve_is_said_so() {
         let e = direct()
-            .get("http://no-such-host.invalid/api")
+            .get("https://no-such-host.invalid/api")
             .send()
             .await
             .unwrap_err();
