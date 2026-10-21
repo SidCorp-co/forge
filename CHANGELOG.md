@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.261] - 2026-10-21
+
+Feedback the chat assistant proposes now records when you press Record it
+
+### Fixed
+
+- **Feedback the assistant proposes in chat records when you press Record it.** It names its one subject in a single field and is checked before its card appears; before, every card could fail with "Feedback target not one".
+
 ## [0.4.0-dev.260] - 2026-10-21
 
 Runner install command names its limits and stops waiting in silence
