@@ -147,7 +147,7 @@ function IssueAttachments({
     return (
       <section aria-label="Attachments" className="mb-4 space-y-2">
         <StaleReadLine
-          said={couldNotRefresh(readAt, error)}
+          said={`Attachments: ${couldNotRefresh(readAt, error)}`}
           onRetry={onRetry && offersRetry(error) ? onRetry : undefined}
         />
         {rows.length > 0 && <AttachmentList rows={rows} />}

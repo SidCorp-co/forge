@@ -584,3 +584,18 @@ describe("a storm of check-in frames reads the holds one at a time, two seconds 
   });
 });
 
+
+// ISS-1228 r27 (judge-85 under 257, criterion 267): a tab on a deleted project's pages kept "2 live" in
+// the rail 25 s after the delete, since nothing re-read the projects list.
+describe("a deleted project leaves the tab that had it open", () => {
+  it("drops out of the projects list at once, and the list and its holds are read again", () => {
+    const qc = new QueryClient();
+    qc.setQueryData(["projects"], [{ id: "p1", slug: "gone" }, { id: "p2", slug: "kept" }]);
+    qc.setQueryData(["sessions-and-holds", "p1"], { sessions: [], holds: [], runningChats: [], readAt: "2026-10-21T20:00:00.000Z" });
+    routeEvent({ event: "project.deleted", data: { projectId: "p1" }, timestamp: "2026-10-21T20:00:00.000Z" }, qc);
+    expect(qc.getQueryData(["projects"])).toEqual([{ id: "p2", slug: "kept" }]);
+    flushInvalidations();
+    expect(qc.getQueryState(["projects"])?.isInvalidated).toBe(true);
+    expect(qc.getQueryState(["sessions-and-holds", "p1"])?.isInvalidated).toBe(true);
+  });
+});

@@ -8,13 +8,14 @@
 
 import { couldNotRead, couldNotRefresh } from "@/lib/api/read-failed";
 import type { ComponentProps } from "react";
-import { Avatar, Badge, Button, MonoTag, Stat, StatusChip } from "@/design";
+import { Avatar, Badge, Button, MonoTag, Stat } from "@/design";
 import { COMPLEXITY_OPTIONS, PRIORITY_OPTIONS } from "./issue-row-parts";
 import { IssueRefBadge } from "./issue-ref-badge";
 import { LANDING_SHAPE_ROW } from "@/lib/api/error";
 import { LandingShapeControl } from "./landing-shape-control";
 import { LiveReachValue } from "./live-reach-row";
 import { MergeMarkerControl } from "./merge-marker-control";
+import { RunWordChip } from "./run-word-chip";
 import { InlineSelect, StatusEdit } from "./inline-edit-cell";
 import { categoryLabel, creatorInitialsOf, creatorLabelOf, splitBlockedBy } from "../derive";
 import type { RunWord } from "@/features/runs/derive";
@@ -245,6 +246,8 @@ interface PropertiesRailProps {
   park?: ComponentProps<typeof StatusEdit>["park"];
   /** The run's word, the header chip's own (`issueRunChip`); null where there is none to show. */
   runWord?: RunWord | null;
+  /** When that word was read, where the run read has failed since (ISS-1228 r27). */
+  runAsOf?: string | null;
   /** A read of the rail's that failed, said as such with a way to read it again, never drawn as none (ISS-1228). */
   unread?: { deps?: UnreadRead | undefined; cost?: UnreadRead | undefined };
 }
@@ -261,6 +264,7 @@ export function PropertiesRail({
   canMarkMerged,
   park,
   runWord = null,
+  runAsOf = null,
   unread = {},
 }: PropertiesRailProps) {
   const viewerId = useAuth().user?.id;
@@ -298,9 +302,7 @@ export function PropertiesRail({
       </Row>
       {runWord && (
         <Row label="Run">
-          <span className="inline-flex" title={runWord.detail}>
-            <StatusChip status={runWord.status} label={runWord.label} size="sm" domain="session" />
-          </span>
+          <RunWordChip word={runWord} asOf={runAsOf} size="sm" />
         </Row>
       )}
       <Row label="Priority">

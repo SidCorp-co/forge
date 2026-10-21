@@ -30,6 +30,7 @@ import {
 } from '../lib/authz.js';
 import { isEnabled } from '../lib/feature-flags.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { hooks } from '../pipeline/hooks.js';
 import {
   PIPELINE_CONFIG_DEFAULTS,
   type PipelineConfig,
@@ -400,6 +401,7 @@ projectRoutes.delete(
     assertOrgRoleOnProject(access, 'admin', 'org admin required');
 
     await withKernelMarker(db, async (tx) => tx.delete(projects).where(eq(projects.id, id)));
+    await hooks.emit('projectDeleted', { projectId: id });
     return c.body(null, 204);
   },
 );

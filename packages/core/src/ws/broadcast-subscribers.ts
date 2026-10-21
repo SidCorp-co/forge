@@ -44,6 +44,8 @@ export function registerWsBroadcastSubscribers(bus: HooksBus): void {
     });
   });
 
+  registerCommentAndProjectFrames(bus);
+
   bus.on('scheduleRun', (p) => {
     roomManager.publish(projectRoom(p.projectId), {
       event: 'schedule.run',
@@ -209,6 +211,36 @@ export function registerWsBroadcastSubscribers(bus: HooksBus): void {
         newVersion: p.newVersion,
         contentHash: p.contentHash,
       },
+    });
+  });
+}
+
+/** The frames an open issue page or a project's tabs need of a comment changing and a project going. */
+function registerCommentAndProjectFrames(bus: HooksBus): void {
+  // An open issue page re-reads its comments on these, and nothing sent them, so a comment anyone
+  // else posted never appeared there (ISS-1228 r27). Ids only: a member's page reads the body itself.
+  const commentFrame =
+    (event: string) =>
+    (p: { issueId: string; projectId: string; commentId: string; actor: { id: string } }) => {
+      roomManager.publish(projectRoom(p.projectId), {
+        event,
+        data: {
+          issueId: p.issueId,
+          projectId: p.projectId,
+          commentId: p.commentId,
+          actorId: p.actor.id,
+        },
+      });
+    };
+  bus.on('commentCreated', commentFrame('comment.created'));
+  bus.on('commentUpdated', commentFrame('comment.updated'));
+  bus.on('commentDeleted', commentFrame('comment.deleted'));
+
+  // A tab open on a deleted project counted its live sessions until it next read the list (ISS-1228 r27).
+  bus.on('projectDeleted', (p) => {
+    roomManager.publish(projectRoom(p.projectId), {
+      event: 'project.deleted',
+      data: { projectId: p.projectId },
     });
   });
 }

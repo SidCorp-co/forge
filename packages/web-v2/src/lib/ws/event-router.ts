@@ -124,6 +124,19 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 			if (data?.projectId) scheduleInvalidation(qc, ["questions", "project", data.projectId]);
 			return;
 		}
+		case "project.deleted": {
+			// The rail and the projects console counted a deleted project's live sessions until something
+			// re-read the list (ISS-1228 r27): it leaves the list this tab holds at once, and its pages
+			// read their holds now, which answer that the project is gone.
+			if (typeof data?.projectId === "string") {
+				qc.setQueryData<ReadonlyArray<{ id: string }>>(["projects"], (list) =>
+					list?.filter((p) => p.id !== data.projectId),
+				);
+				scheduleInvalidation(qc, [SESSIONS_AND_HOLDS, data.projectId]);
+			}
+			scheduleInvalidation(qc, ["projects"]);
+			return;
+		}
 		case "comment.created":
 		case "comment.updated":
 		case "comment.deleted": {

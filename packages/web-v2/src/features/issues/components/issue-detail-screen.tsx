@@ -33,7 +33,8 @@ import { useSessionsAndHolds } from "@/features/pipeline/hooks";
 import { DecisionPanel, focusDecisionPanel } from "@/features/questions/components/decision-panel";
 import { buildShareLink, useRecents } from "@/features/shell";
 import { formatApiError, isRetryableApiError } from "@/lib/api/error";
-import { asOf, clockAt, couldNotRefresh, heldThroughFailure, offersRetry, projectGone } from "@/lib/api/read-failed";
+import { clockAt, couldNotRefresh, heldThroughFailure, offersRetry, projectGone } from "@/lib/api/read-failed";
+import { useAskAgainWhenAccessReturns } from "@/lib/api/ask-again-when-access-returns";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { useToast } from "@/providers/toast-provider";
@@ -87,6 +88,7 @@ import { type LiveAgentState, LiveAgentPanel } from "./live-agent-panel";
 import { ModulePicker } from "./module-picker";
 import { PropertiesRail } from "./properties-rail";
 import { RunJournalSection } from "./run-journal-section";
+import { RunWordChip } from "./run-word-chip";
 
 interface IssueDetailScreenProps {
   projectId: string;
@@ -126,6 +128,7 @@ export function IssueDetailScreen({
   const holdsQ = useSessionsAndHolds(projectId);
   // The decisions read the panel shows, read here too so the banner never points at a question it could not load.
   const questionsQ = useIssueQuestions(issueQ.data?.id ?? "");
+  useAskAgainWhenAccessReturns([issueQ, journalQ, holdsQ, commentsQ, activityQ, attachmentsQ, depsQ, costQ, questionsQ, membersQ]);
   const now = useNow(10_000);
 
   const patch = usePatchIssue();
@@ -278,12 +281,8 @@ export function IssueDetailScreen({
     { answered: journalQ.data !== undefined, failed: journalQ.isError, readAt: journalQ.dataUpdatedAt },
     now,
   );
-  const runWord =
-    runChip.state === "read"
-      ? runChip.word
-      : runChip.state === "stale" && runChip.word
-        ? { ...runChip.word, label: asOf(runChip.word.label, runChip.readAt) }
-        : null;
+  const runWord = runChip.state === "read" || runChip.state === "stale" ? runChip.word : null;
+  const runAsOf = runChip.state === "stale" ? clockAt(runChip.readAt) : null;
   const isRunActive =
     runChip.state === "read" ? runChip.open || issue.status === "in_progress" || issue.status === "reopen" : null;
 
@@ -311,6 +310,11 @@ export function IssueDetailScreen({
     ...(holdsQ.isError ? [failedRead("Its session", holdsQ)] : []),
   ];
   const agentHolds = canWrite && heldByAgent(issue.status, issue.agentStatus);
+  // The lock line speaks from the same reading as the run chip: kept through a failure, it says as of when (ISS-1228 r27).
+  const keptReadings = [issueStale ? issueQ.dataUpdatedAt : null, runChip.state === "stale" ? runChip.readAt : null].filter(
+    (at): at is number => at !== null,
+  );
+  const keptSince = keptReadings.length > 0 ? Math.min(...keptReadings) : null;
   const heldAt = (q: { isError: boolean; data: unknown; dataUpdatedAt: number }) =>
     heldThroughFailure(q) ? q.dataUpdatedAt : undefined;
 
@@ -346,14 +350,11 @@ export function IssueDetailScreen({
               </span>
             )}
             {runWord && (
-              <span className="inline-flex" title={runWord.detail}>
-                <StatusChip
-                  status={runWord.status}
-                  label={runWord.label}
-                  stage={runChip.state === "read" && runWord.status === "running" ? (liveStep ?? undefined) : undefined}
-                  domain="session"
-                />
-              </span>
+              <RunWordChip
+                word={runWord}
+                asOf={runAsOf}
+                stage={runChip.state === "read" && runWord.status === "running" ? (liveStep ?? undefined) : undefined}
+              />
             )}
             {liveStep && runChip.state === "read" && runWord && runWord.status !== "running" && (
               <span className="fg-caption">{liveStep}</span>
@@ -444,7 +445,7 @@ export function IssueDetailScreen({
           {/* Said once for Description and the rail, which each hold their edits without repeating it (ISS-1228 r26). */}
           {agentHolds && (
             <p role="status" className="fg-body-sm text-subtle">
-              {agentHoldsIssue(issueStale ? clockAt(issueQ.dataUpdatedAt) : null)}
+              {agentHoldsIssue(clockAt(keptSince))}
             </p>
           )}
 
@@ -546,6 +547,7 @@ export function IssueDetailScreen({
             canMarkMerged={mayWrite}
             park={statusPark}
             runWord={runWord}
+            runAsOf={runAsOf}
             unread={railUnread}
           />
         </aside>
@@ -563,6 +565,7 @@ export function IssueDetailScreen({
               canMarkMerged={mayWrite}
               park={statusPark}
               runWord={runWord}
+              runAsOf={runAsOf}
               unread={railUnread}
             />
           </Collapsible>

@@ -29,12 +29,6 @@ export function clockAt(at: number | string | null | undefined): string | null {
 	return `${String(when.getHours()).padStart(2, "0")}:${String(when.getMinutes()).padStart(2, "0")}`;
 }
 
-/** A reading kept through a failed refresh, marked with when it was read: "Running · as of 14:02" (ISS-1228 r26). */
-export function asOf(label: string, readAt: number | string): string {
-	const at = clockAt(readAt);
-	return at ? `${label} · as of ${at}` : label;
-}
-
 export function couldNotRefresh(readAt: number | string, error: unknown): string {
 	return `Could not refresh — showing what was read at ${clockAt(readAt) ?? readAt}. ${formatApiError(error)}`;
 }

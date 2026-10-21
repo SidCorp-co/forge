@@ -61,6 +61,7 @@ function renderRail(
   over: Partial<IssueDetail> = {},
   opts: { writer?: boolean; cost?: IssueCostSummary; unread?: ComponentProps<typeof PropertiesRail>["unread"] } = {},
   runWord: RunWord | null = null,
+  runAsOf: string | null = null,
 ) {
   render(
     <PropertiesRail
@@ -74,6 +75,7 @@ function renderRail(
       onEditModules={opts.writer ? vi.fn() : undefined}
       canMarkMerged={opts.writer ?? false}
       runWord={runWord}
+      runAsOf={runAsOf}
       unread={opts.unread}
     />,
   );
@@ -137,6 +139,17 @@ describe("the rail's two statuses", () => {
     expect(within(run).getByText(word.label)).toBeInTheDocument();
     const status = rowLabel("Status")?.parentElement as HTMLElement;
     expect(within(status).queryByText(word.label)).toBeNull();
+  });
+
+  // ISS-1228 r27 (judge-85, criteria 254 and 265): "Needs an answer · as of 20:24" read "as of 20…".
+  it("shows the whole time a kept word was read beside its chip, outside the label the chip cuts", () => {
+    renderRail({}, {}, { status: "waiting", label: "Needs an answer" }, "20:24");
+    const run = rowLabel("Run")?.parentElement as HTMLElement;
+    const word = within(run).getByText("Needs an answer");
+    const time = within(run).getByText("as of 20:24");
+    expect(word.className).toContain("truncate");
+    expect(word.contains(time)).toBe(false);
+    expect(time.className).toContain("whitespace-nowrap");
   });
 });
 
