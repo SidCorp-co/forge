@@ -1,1 +1,0 @@
-**Onboarding asks you at most three questions and finishes without waiting.** What the code suggests is listed as an assumption you can change, recommendations arrive as suggestions, and an unanswered question keeps only itself open.

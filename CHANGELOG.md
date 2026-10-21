@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.264] - 2026-10-21
+
+Onboarding asks at most three questions a round and finishes on assumptions
+
+### Changed
+
+- **Onboarding asks you at most three questions and finishes without waiting.** What the code suggests is listed as an assumption you can change, recommendations arrive as suggestions, and an unanswered question keeps only itself open.
+
 ## [0.4.0-dev.263] - 2026-10-21
 
 Feedback to Forge: report about Forge itself, as yourself, from any project
