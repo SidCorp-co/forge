@@ -198,6 +198,8 @@ export async function createTestModule(projectId: string, name: string): Promise
  * subject is what a reader does with a row at that status, not how the row got there.
  */
 export async function seedIssueStatus(issueId: string, status: string): Promise<void> {
+  // a blank id is a test that never captured its issue: say so, not Postgres's uuid syntax error
+  if (!issueId) throw new Error(`seedIssueStatus: no issue id given to move to ${status}`);
   const { withKernelMarker } = await import('../../src/db/kernel-marker.js');
   await withKernelMarker(db, (tx) =>
     tx.execute(sql`UPDATE issues SET status = ${status} WHERE id = ${issueId}`),

@@ -175,7 +175,7 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:json:displayName field:json:shortName field:json:request field:json:account
     field:json:lines field:json:sentence field:json:sides`,
   'a structured part of a record core validates and stores; it admits nobody': words`
-    field:json:basis field:json:claims field:json:other field:json:output field:json:answers field:json:artifact field:json:attachments
+    field:json:other field:json:output field:json:answers field:json:artifact field:json:attachments
     field:json:awaitsDesign field:json:awaitsMerge field:json:bindings field:json:block field:json:blocker
     field:json:build field:json:capabilities field:json:carried field:json:category
     field:json:changes field:json:checklist field:json:checkpoint field:json:checks
@@ -201,6 +201,7 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:json:usage field:json:value field:json:verdict field:json:via field:json:voidQuestions
     field:json:workState field:json:workflow field:json:worktree field:json:query
     field:json:error field:json:origin field:json:contentBase64 field:json:binaries
+    field:json:basis field:json:claims
     field:json:endpoint field:json:by field:json:cites field:json:intent field:json:recommended
     field:json:reportedBy`,
   'a time, a version or a time zone': words`

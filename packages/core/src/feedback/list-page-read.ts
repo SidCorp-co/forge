@@ -13,6 +13,7 @@ import {
 } from '@forge/contracts/feedback';
 import { and, desc, eq, ilike, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { memoizedRead } from '../db/read-memo.js';
 import { feedback } from '../db/schema-feedback.js';
 import { dataPolicyOf } from '../lib/data-egress.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
@@ -83,6 +84,37 @@ export async function listFeedbackIn(
   const { withhold, shown } = feedbackEgress(level, viewer.agency, door);
   const searchRefused = searchWithheldRefusal(query.q, withhold);
   if (searchRefused) return { ok: false, refusals: [searchRefused] };
+  // a page reads the whole list more than once (Needs you, design health): one read a request
+  const whole = !query.q && !query.requirement && !query.ids;
+  const read = () => summariesOf(viewer, projectId, query, withhold, shown);
+  const { all, noticesBegan } = whole
+    ? await memoizedRead(
+        `feedbackList:${projectId}:${viewer.userId}:${viewer.agency}:${door.providerBound ?? ''}`,
+        read,
+      )
+    : await read();
+  const listed = query.phases?.length ? all.filter((s) => query.phases?.includes(s.phase)) : all;
+  const counts = Object.fromEntries(FEEDBACK_ATTENTION_GROUPS.map((g) => [g, 0])) as Record<
+    FeedbackAttentionGroup,
+    number
+  >;
+  for (const s of all) counts[s.attentionGroup] += 1;
+  const untold = {
+    owed: all.filter((s) => s.reporterNotTold === 'owed').length,
+    beforeNotices: all.filter((s) => s.reporterNotTold === 'before_notices').length,
+    noticesBegan,
+  };
+  return { ok: true, list: { feedback: listed, counts, untold, sensitive: level !== 'off' } };
+}
+
+/** Every item the query names, as `viewer` reads them, before the phase filter. */
+async function summariesOf(
+  viewer: FeedbackActor,
+  projectId: string,
+  query: ListQuery,
+  withhold: boolean,
+  shown: ReturnType<typeof feedbackEgress>['shown'],
+): Promise<{ all: FeedbackSummary[]; noticesBegan: string | null }> {
   const about = query.requirement
     ? await feedbackIdsOfRequirement(projectId, query.requirement)
     : null;
@@ -104,20 +136,11 @@ export async function listFeedbackIn(
     linkedOf(projectId, rows),
     viewerCanIn(viewer.userId, projectId),
   ]);
-  const all = shown(
-    rows.map((r) => summaryOf(r, linked, viewer, withhold, can)),
-    'the feedback list',
-  );
-  const listed = query.phases?.length ? all.filter((s) => query.phases?.includes(s.phase)) : all;
-  const counts = Object.fromEntries(FEEDBACK_ATTENTION_GROUPS.map((g) => [g, 0])) as Record<
-    FeedbackAttentionGroup,
-    number
-  >;
-  for (const s of all) counts[s.attentionGroup] += 1;
-  const untold = {
-    owed: all.filter((s) => s.reporterNotTold === 'owed').length,
-    beforeNotices: all.filter((s) => s.reporterNotTold === 'before_notices').length,
+  return {
+    all: shown(
+      rows.map((r) => summaryOf(r, linked, viewer, withhold, can)),
+      'the feedback list',
+    ),
     noticesBegan: linked.untold.noticesBegan,
   };
-  return { ok: true, list: { feedback: listed, counts, untold, sensitive: level !== 'off' } };
 }

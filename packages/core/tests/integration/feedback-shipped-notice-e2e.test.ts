@@ -3,6 +3,11 @@
  * `release.shipped` on the outbox once, the notify-feedback consumer writes the reporter a notice naming
  * the item, the release and the user-facing note, and the item's page reads "told" back off that notice.
  * An item still owed another carrier is not told; a reporter with no bell is named, not skipped.
+ * The relay is the triager's own act but no person's decision, so it reads `waiting`, never Needs you (REQ-48 BC-11: a list draws
+ * needs_you only for rows the decisions read holds).
+ *
+ * @direct-test-of packages/core/src/feedback/standing-carrier.ts
+ * @direct-test-of packages/core/src/lib/standing-times.ts
  */
 
 import { randomUUID } from 'node:crypto';
@@ -193,7 +198,7 @@ describe("a project's first release notice is the cutoff: before it nothing was 
     expect(saidDisagreements(d), 'what it says and its English agree').toEqual([]);
   });
 
-  it("keeps an item shipped after the cutoff and never told on the triager's Needs you", async () => {
+  it('keeps an item shipped after the cutoff and never told owed to the triager, off Needs you', async () => {
     const d = (await read(`/feedback/${after}`)).feedback as Body;
     expect(d.shipNotice).toMatchObject({
       state: 'not_told',
@@ -201,7 +206,7 @@ describe("a project's first release notice is the cutoff: before it nothing was 
       beforeNotices: false,
     });
     expect(d.reporterNotTold).toBe('owed');
-    expect(d.attentionGroup).toBe('needs_you');
+    expect(d.attentionGroup).toBe('waiting');
     expect(String((d.waitingOn as Body).act)).toMatch(/^tell .+ that it shipped in 0\.0\.10$/);
     expect(((d.waitingOn as Body).says as Body).act).toMatchObject({
       key: 'standing.act.tellShippedIn',
@@ -377,17 +382,17 @@ describe('a reporter no bell reaches is relayed to by a person, on their Needs y
   const send = (fb: string, body: Body) =>
     api(w.token, 'POST', `/api/projects/${w.projectId}/feedback/${fb}/messages`, body);
 
-  it('names the holders of feedback.approve as owing the relay, on their Needs you', async () => {
+  it('names the holders of feedback.approve as owing the relay, as their own act', async () => {
     const { fb } = await agentItem('0.4.0');
     const d = await detail(fb);
     expect(d.phase).toBe('resolved');
     expect(d.shipNotice).toMatchObject({ state: 'not_told' });
-    expect(d.attentionGroup, "the relay is on the triager's Needs you").toBe('needs_you');
+    expect(d.attentionGroup, "the relay is the triager's act, not a decision").toBe('waiting');
     expect((d.waitingOn as Body).kind).toBe('you');
     expect(String((d.waitingOn as Body).act)).toMatch(/^tell .+ that it shipped in 0\.4\.0$/);
     const list = await api(w.token, 'GET', `/api/projects/${w.projectId}/feedback`);
     const row = (list.body.feedback as Body[]).find((f) => f.key === fb);
-    expect(row?.attentionGroup).toBe('needs_you');
+    expect(row?.attentionGroup).toBe('waiting');
   });
 
   it('refuses a relay told to nobody, and a bell message to a reporter with no bell, by name', async () => {

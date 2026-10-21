@@ -7,6 +7,8 @@
  * week gets one merge-or-drop question with a recommended answer; a younger draft gets none.
  */
 
+// @direct-test-of packages/core/src/lib/standing-times.ts
+
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { RUN_ISSUES_METADATA_KEY } from '@forge/contracts/agent-sessions';
@@ -203,7 +205,9 @@ describe('BC-10: a requirement follows an approved design when its mover re-pins
 
     expect((await baselines(key)).map((b) => b.act)).toEqual(['agree']);
     const s = await standingOf(key);
-    expect(s.attentionGroup).toBe('waiting');
+    // a wait on the master where none serves this project reads stuck (REQ-48 BC-9 nobody_serves)
+    expect(s.attentionGroup).toBe('stuck');
+    expect((s.times as Doc).stuck).toMatchObject({ code: 'nobody_serves' });
     expect(s.waitingOn).toMatchObject({
       kind: 'agent',
       who: 'Master',

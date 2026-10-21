@@ -28,10 +28,19 @@ import { db } from '../db/client.js';
 import { feedback } from '../db/schema-feedback.js';
 import type { ProjectAccess } from '../lib/authz.js';
 import { logger } from '../lib/logger.js';
-import { waitingMockupsAs } from '../mockups/read.js';
+import { primeWaitingMockups, waitingMockupsAs } from '../mockups/read.js';
 import { holds } from '../permissions/index.js';
-import { type ApprovablePreview, approvablePreviewsOf } from '../previews/read.js';
-import { type WaitingSuggestion, waitingSuggestionsFor } from '../suggestions/waiting-read.js';
+import {
+  type ApprovablePreview,
+  approvablePreviewsOf,
+  primeApprovablePreviews,
+} from '../previews/read.js';
+import { primeOpenQuestionReads } from '../questions/index.js';
+import {
+  primeWaitingSuggestions,
+  type WaitingSuggestion,
+  waitingSuggestionsFor,
+} from '../suggestions/waiting-read.js';
 import type { NeedsYouViewer, readAttention } from './needs-you.js';
 import { clip, type DecisionBody, filled } from './needs-you-decision-builders.js';
 import { lessonDecisionsFor } from './needs-you-lessons.js';
@@ -311,6 +320,19 @@ function checked(key: string, build: () => DecisionBody, out: Folded, projectId:
       'needs-you: a waiting record could not be made a decision',
     );
   }
+}
+
+/**
+ * The rows each project's Needs you read sends once a project (its open questions, and the
+ * suggestions, mockups and previews this fold makes decisions of), read for every project in
+ * `projectIds` in one statement each, so the read across projects costs no statement more a project
+ * for them (`needs-you-viewer.ts:readNeedsYouAcross`, `db/read-memo.ts:primeReads`).
+ */
+export function primeNeedsYouAcross(projectIds: readonly string[]): void {
+  primeOpenQuestionReads(projectIds);
+  primeWaitingSuggestions(projectIds);
+  primeWaitingMockups(projectIds);
+  primeApprovablePreviews(projectIds);
 }
 
 export async function foldedDecisions(

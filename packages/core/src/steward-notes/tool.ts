@@ -20,7 +20,7 @@ export const forgeStewardNoteTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_steward_note',
   reach: 'project',
   route: '/api/projects',
-  grant: 'projects:read',
+  grant: { byAction: { get: 'projects:read', write: 'projects:write' } },
   description:
     'Read or write the two-line steward note on a requirement or feedback item. `get` answers the current note (stale where the standing moved since) and the standing it is checked against. `write` takes `note`: line 1 what happened and what blocks, line 2 what is next and by when (each at most 160 characters), 1 to 8 cites, `claims` copied from the standing (group, waitingKind, ref, stuck, stuckCode, dueAt) and its `basis`. A claim that disagrees with the standing is refused naming the field; a moved standing is refused STEWARD_NOTE_STALE with the new basis.',
   inputSchema: zodToMcpSchema(input),
