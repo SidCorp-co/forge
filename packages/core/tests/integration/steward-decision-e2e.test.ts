@@ -1,10 +1,12 @@
 // REQ-48 BC-5, the steward's questions on live dev.269: a stuck issue's question carries Forge's own
-// options (open, keep, drop), the model picking only the recommended one and why; nothing is asked
-// where the wait is somebody's act already, where the question is open, or where a person kept the
-// issue on its standing. Answering carries the act out as the answerer, in the answer's transaction:
-// open admits the draft through the kernel (a gap refused by the kernel's name, the question left
-// open), drop drops it with the reason, keep records the keep. The one-off voids the questions asked
-// with options the model spelled, and diagnoses their items again.
+// options, the model picking only the recommended one and why. A prepared draft (it passes the
+// issue-ready check) is asked open, keep or drop, recommending open; an unprepared one is never asked
+// open. Nothing is asked where the wait is somebody's act already, where the question is open, or
+// where a person kept the issue on its standing. Answering carries the act out as the answerer, in
+// the answer's transaction: open admits the draft through the kernel (a gap refused by the kernel's
+// name, the question left open), drop drops it with the reason, keep records the keep. The one-off
+// voids the questions asked with options the model spelled, and diagnoses their items again. The
+// preparing, the link and the requirement answers: `steward-prepare-e2e.test.ts`.
 //
 // @direct-test-of packages/core/src/steward/door-decide.ts
 // @direct-test-of packages/core/src/steward/decision-act.ts
@@ -59,6 +61,14 @@ const draftIssue = (seq: number) =>
     status: 'draft',
     createdAt: new Date(Date.now() - 16 * 86_400_000),
   });
+
+/** A draft its issue-ready record completes: linked, planned against the revision, criteria traced. */
+async function readyDraft(seq: number) {
+  const issue = await draftIssue(seq);
+  reqSeq += 1;
+  await completeIssueReadyRecord(projectId, ownerId, issue.id, reqSeq);
+  return issue;
+}
 
 const decide = (key: string, recommended: string) => ({
   name: 'steward_decide',
@@ -134,9 +144,12 @@ afterAll(async () => {
 });
 
 describe("a stuck issue's question carries Forge's own options (REQ-48 BC-5)", () => {
-  it('asks a draft open, keep or drop, the model choosing only the recommended one and why', async () => {
-    const issue = await draftIssue(80);
-    const q = await asked(issue, 'keep');
+  it('asks a prepared draft open, keep or drop, recommending open, the model saying only why', async () => {
+    const issue = await readyDraft(80);
+    const kept = await diagnose(issue, [decide(issue.key, 'keep')]);
+    expect(kept.results[0]).toContain('passes the issue-ready check: recommend open');
+    expect(await questionsOn(issue.id)).toHaveLength(0);
+    const q = await asked(issue);
     const step = q.steps.at(-1) as Doc;
     expect((step.options as Doc[]).map((o) => o.id)).toEqual([IDS.open, IDS.keep, IDS.drop]);
     expect((step.options as Doc[]).map((o) => o.label)).toEqual([
@@ -144,13 +157,23 @@ describe("a stuck issue's question carries Forge's own options (REQ-48 BC-5)", (
       'Keep it as a draft',
       'Drop it: it is not work',
     ]);
-    expect(step.recommendedOptionId).toBe(IDS.keep);
+    expect(step.recommendedOptionId).toBe(IDS.open);
+    expect(step.prompt).toContain('Open it, keep it as a draft, or drop it?');
     expect(step.prompt).toContain(
-      'Recommended: Keep it as a draft, because it carries open feedback and nothing else covers it',
+      'Recommended: Open it: admit it for work, because it carries open feedback and nothing else covers it',
     );
     const acts = await actsOn(lastRunId);
     expect(acts).toHaveLength(1);
     expect(acts[0]?.door).toBe('POST /api/questions');
+  });
+
+  it('never asks an unprepared draft open: it names the gaps and the door that prepares it', async () => {
+    const issue = await draftIssue(91);
+    const { out, results } = await diagnose(issue, [decide(issue.key, 'open')]);
+    expect(out).toMatchObject({ acts: [], refused: [] });
+    expect(results[0]).toContain('offers link, requirement, drop; recommend one of them, not open');
+    expect(results[0]).toContain('steward_prepare_draft');
+    expect(await questionsOn(issue.id)).toHaveLength(0);
   });
 
   it('refuses options the model spells, and a recommendation the issue does not offer', async () => {
@@ -206,7 +229,7 @@ describe("a stuck issue's question carries Forge's own options (REQ-48 BC-5)", (
       createdAt: new Date(),
       waitingKind: 'needs_decision',
     });
-    const draft = await draftIssue(83);
+    const draft = await readyDraft(83);
     await asked(draft);
     const { out, results } = await diagnose(waiting, [
       decide(waiting.key, 'keep'),
@@ -224,9 +247,7 @@ describe("a stuck issue's question carries Forge's own options (REQ-48 BC-5)", (
 
 describe('answering a steward decision carries it out as the answerer (REQ-48 BC-5)', () => {
   it('opens a ready draft through the kernel as the answerer, and logs the act on the item', async () => {
-    const issue = await draftIssue(84);
-    reqSeq += 1;
-    await completeIssueReadyRecord(projectId, ownerId, issue.id, reqSeq);
+    const issue = await readyDraft(84);
     const q = await asked(issue);
     const done = await answer(q.id, { optionId: IDS.open });
     expect(done.status, JSON.stringify(done.json)).toBe(200);
@@ -246,8 +267,10 @@ describe('answering a steward decision carries it out as the answerer (REQ-48 BC
   });
 
   it("refuses an open the kernel's ready check refuses, by its name, and leaves the question open", async () => {
-    const issue = await draftIssue(85);
+    const issue = await readyDraft(85);
     const q = await asked(issue);
+    // the draft loses its plan revision between the question and its answer
+    await rows(sql`UPDATE issues SET planned_revision = NULL WHERE id = ${issue.id} RETURNING id`);
     const refused = await answer(q.id, { optionId: IDS.open });
     expect([refused.status, refused.json.code]).toEqual([422, 'CHECKLIST_INCOMPLETE']);
     expect(await statusOf(issue.id)).toBe('draft');
@@ -271,8 +294,8 @@ describe('answering a steward decision carries it out as the answerer (REQ-48 BC
   });
 
   it('keeps it with the reason, and the same question is not asked again on that standing', async () => {
-    const issue = await draftIssue(87);
-    const q = await asked(issue, 'keep');
+    const issue = await readyDraft(87);
+    const q = await asked(issue);
     const askRun = lastRunId;
     const done = await answer(q.id, { optionId: IDS.keep, note: 'Until REQ-50 is agreed.' });
     expect(done.status, JSON.stringify(done.json)).toBe(200);
@@ -280,7 +303,7 @@ describe('answering a steward decision carries it out as the answerer (REQ-48 BC
     const acts = await actsOn(askRun);
     expect(acts.map((a) => a.door)).toEqual(['POST /api/questions', `KEEP ${issue.key}`]);
     expect(acts[1]?.did).toContain('Until REQ-50 is agreed.');
-    const again = await diagnose(issue, [decide(issue.key, 'keep')]);
+    const again = await diagnose(issue, [decide(issue.key, 'open')]);
     expect(again.results[0]).toContain('was kept on the standing it reads now');
     expect(await questionsOn(issue.id)).toHaveLength(1);
     // the keep is undone like any steward act: refused naming how a person overrides it
@@ -290,18 +313,18 @@ describe('answering a steward decision carries it out as the answerer (REQ-48 BC
   });
 
   it("shows in Needs you as the steward's, each button saying what it does, keep and drop asking why", async () => {
-    const issue = await draftIssue(88);
-    const q = await asked(issue, 'drop');
+    const issue = await readyDraft(88);
+    const q = await asked(issue);
     const read = ok(await say('owner', 'GET', at('/needs-you/decisions')));
     const decision = (read.decisions as Doc[]).find((d) => d.key === issue.key);
     if (!decision) throw new Error(`${issue.key} is not in Needs you`);
-    expect(decision.recommended).toMatchObject({ answerId: IDS.drop, by: 'steward' });
+    expect(decision.recommended).toMatchObject({ answerId: IDS.open, by: 'steward' });
     expect((decision.recommended as Doc).why).toContain('because it carries open feedback');
     const answers = decision.answers as Doc[];
     expect(answers.map((a) => [a.id, a.needsReason])).toEqual([
-      [IDS.drop, true],
       [IDS.open, false],
       [IDS.keep, true],
+      [IDS.drop, true],
     ]);
     expect(answers.every((a) => typeof a.effect === 'string' && a.effect.length > 0)).toBe(true);
     expect(answers[0]?.path).toBe(`/api/questions/${q.id}/answer`);

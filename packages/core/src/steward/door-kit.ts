@@ -31,11 +31,17 @@ export interface DoorSpec<A> {
   describe: string;
   params: z.ZodType<A>;
   write: boolean;
-  /** The door's answer, or `correct`: a shape the turn owns, said to it and refused nowhere. */
+  /**
+   * The door's answer, or `correct`: a shape the turn owns, said to it and refused nowhere. `act` is
+   * logged where the answer is ok; `acts`, the writes a door of several steps landed, whatever its
+   * last step answered, so each is undone on its own.
+   */
   call(
     args: A,
     ctx: DoorContext,
-  ): Promise<{ request: DoorRequest; answer: DoorAnswer; act?: ActOf } | { correct: string }>;
+  ): Promise<
+    { request: DoorRequest; answer: DoorAnswer; act?: ActOf; acts?: ActOf[] } | { correct: string }
+  >;
 }
 
 export const key = z.string().trim().min(1).max(40);

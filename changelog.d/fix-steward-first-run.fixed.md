@@ -1,1 +1,1 @@
-**The steward's first live run fails only on what it cannot do.** Stuck issues take notes, claims are copied by code, wrong keys are refused, runner jobs report done, and stuck-issue questions offer open, keep or drop, acted on answer.
+**The steward's first live run fails only on what it cannot do.** Stuck issues take notes, wrong keys are refused, runner jobs report done, and the steward prepares stale drafts itself before asking open, keep or drop, acted on answer.

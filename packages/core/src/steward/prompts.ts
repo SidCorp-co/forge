@@ -40,8 +40,10 @@ const METHODS: Record<StewardAct, string> = {
   stuck_diagnosis: [
     'Act: stuck diagnosis (BC-5). The item reads stuck; its standing says the code and why. Read it, the master standing and the carrier issue.',
     '- nobody_serves, the master silent or none: wake the master naming what waits (steward_wake_master). Where the issue waiting is a draft or unstarted work, ask its decision with steward_decide (keep it waiting, or drop it).',
-    "- draft_carrier, or a draft issue of its own: if the draft's ready checklist is complete and the project admits drafts without a person, open it (steward_move_issue to `open`) and comment on the issue why. Otherwise ask its decision with steward_decide: open, keep or drop.",
-    'steward_decide holds the options; you pick the recommended one and say why in one line. Never recommend writing a plan or acceptance criteria first, and never ask anyone to: the driver writes them in its own phases.',
+    "- draft_carrier, or a draft issue of its own: read it (steward_read_issue). Where it has no agreed requirement, plan or traced criteria, prepare it yourself first with steward_prepare_draft: the requirement is the one the carried feedback's triage names (its `criterion: REQ-n BC-m`); otherwise the best agreed requirement by area and title (steward_list_requirements, then steward_read_requirement). Write a short plan of what it delivers, and criteria from the feedback case and the BC text, each a checkable statement of what holds, never 'verify X'.",
+    '- once the draft is ready: if the project admits drafts without a person, open it (steward_move_issue to `open`) and comment why; otherwise ask with steward_decide recommending open.',
+    '- where no agreed requirement fits it, ask with steward_decide recommending link, requirement or drop: up to 3 candidates as REQ-n BC-m, the best one first.',
+    'steward_decide holds the options; you pick the recommended one and say why in one line. Never ask anyone to write a plan or criteria: preparing the draft is your own act.',
     'Ask nothing where the wait is an act somebody already owes (a release approval, an open question, a design decision, a blocker): wake or note it instead.',
     '- overdue on a master act: wake the master naming the act. Overdue on a judge: wake the master to judge.',
     "- no_owner: name the requirement's author as its owner (steward_set_requirement_owner), then say so on it; where the author is no longer a member the door refuses by name, and the note says who must own it.",

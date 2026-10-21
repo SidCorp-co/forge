@@ -20,6 +20,7 @@ import {
 export const STEWARD_DOOR_TOOLS = [
 	"steward_read_item",
 	"steward_read_standings",
+	"steward_list_requirements",
 	"steward_read_requirement",
 	"steward_read_feedback",
 	"steward_read_issue",
@@ -27,6 +28,7 @@ export const STEWARD_DOOR_TOOLS = [
 	"steward_read_master_standing",
 	"steward_ask",
 	"steward_decide",
+	"steward_prepare_draft",
 	"steward_comment_requirement",
 	"steward_comment_issue",
 	"steward_reject_breakdown",
@@ -64,10 +66,12 @@ export const STEWARD_ACT_DOORS: Readonly<
 	stuck_diagnosis: [
 		"steward_read_item",
 		"steward_read_standings",
+		"steward_list_requirements",
 		"steward_read_requirement",
 		"steward_read_feedback",
 		"steward_read_issue",
 		"steward_read_master_standing",
+		"steward_prepare_draft",
 		"steward_decide",
 		"steward_comment_issue",
 		"steward_move_issue",

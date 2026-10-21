@@ -426,20 +426,46 @@ export type StewardFailureKind = (typeof STEWARD_FAILURE_KINDS)[number];
 /**
  * What the steward asks a person to decide about a stuck issue (REQ-48 BC-5): a set fixed by code,
  * never options the model spells, so every such question reads alike and is answered in bulk. The
- * model picks only the recommended one and says why in one line. Answering carries the act out as
- * the answerer (`core/src/steward/decision-act.ts`): `open` admits the draft through the kernel (its
- * driver writes the plan and criteria in its own phases), `drop` drops it with the reason given,
- * and `keep` records the keep, so the same question is not asked again while the standing holds.
+ * model picks only the recommended one and says why in one line. A draft is prepared by the steward
+ * before anything is asked (its requirement linked, its plan saved, its criteria traced): a draft
+ * that then passes the issue-ready check is asked `open`, `keep` or `drop`, recommending open; one no
+ * agreed requirement fits is asked `link` (one of at most 3 candidates, each a requirement and a BC),
+ * `requirement` (start one from its feedback) or `drop`. Answering carries the act out as the
+ * answerer (`core/src/steward/decision-act.ts`). Nobody is ever asked to write a plan or criteria.
  */
-export const STEWARD_DECISIONS = ["open", "keep", "drop"] as const;
+export const STEWARD_DECISIONS = [
+	"open",
+	"keep",
+	"drop",
+	"link",
+	"requirement",
+] as const;
 export type StewardDecision = (typeof STEWARD_DECISIONS)[number];
 
-/** Each decision's option id: the question's mark, which the answer and the Needs you read key on. */
+/** Each decision's option id but a link's, which names its candidate (`stewardLinkOptionId`). */
 export const STEWARD_DECISION_OPTION_IDS = {
 	open: "steward.open",
 	keep: "steward.keep",
 	drop: "steward.drop",
-} as const satisfies Record<StewardDecision, string>;
+	requirement: "steward.requirement",
+} as const satisfies Record<Exclude<StewardDecision, "link">, string>;
+
+/** At most this many requirements a `link` question offers. */
+export const STEWARD_LINK_CANDIDATES_MAX = 3;
+
+/** A link option's id: the requirement and the BC of it the draft would deliver. */
+export const stewardLinkOptionId = (requirement: string, bc: string) =>
+	`steward.link:${requirement.toUpperCase()}:${bc.toUpperCase()}`;
+
+const LINK_ID = /^steward\.link:(REQ-\d+):(BC-\d+)$/;
+
+/** The requirement and BC a link option names, or null for any other option. */
+export function stewardLinkOf(
+	optionId: string | null | undefined,
+): { requirement: string; bc: string } | null {
+	const hit = LINK_ID.exec(optionId ?? "");
+	return hit?.[1] && hit[2] ? { requirement: hit[1], bc: hit[2] } : null;
+}
 
 /** The decisions that take the answerer's reason: a keep says until when or why, a drop why it is not work. */
 export const STEWARD_DECISIONS_WITH_REASON: readonly StewardDecision[] = [
@@ -447,20 +473,23 @@ export const STEWARD_DECISIONS_WITH_REASON: readonly StewardDecision[] = [
 	"drop",
 ];
 
-/**
- * The decisions an issue owes a person, by what it is and why it reads stuck: a draft is opened,
- * kept or dropped; work nobody started that no master serves is kept waiting or dropped. Any other reading names
- * an act somebody already owes (a release approval, an open question, a blocker), which the steward
- * wakes or notes and never asks about again: null.
- */
 /** Work admitted and not yet taken: what a master would take next. */
 const UNSTARTED_LIVE: readonly string[] = ["open", "reopen", "on_hold"];
 
+/**
+ * The decisions an issue owes a person, by what it is, why it reads stuck and, for a draft, whether it
+ * passes the issue-ready check: a ready draft is opened, kept or dropped; one not ready (no agreed
+ * requirement fits) is linked, given a new requirement, or dropped; unstarted work no master serves
+ * is kept waiting or dropped. Any other reading names an act somebody already owes (a release
+ * approval, an open question, a blocker), which the steward wakes or notes and never asks about: null.
+ */
 export function stewardDecisionsFor(
 	status: string,
 	stuck: StuckCode | null,
+	ready: boolean,
 ): readonly StewardDecision[] | null {
-	if (status === "draft") return STEWARD_DECISIONS;
+	if (status === "draft")
+		return ready ? ["open", "keep", "drop"] : ["link", "requirement", "drop"];
 	if (stuck === "nobody_serves" && UNSTARTED_LIVE.includes(status))
 		return ["keep", "drop"];
 	return null;
@@ -470,6 +499,7 @@ export function stewardDecisionsFor(
 export function stewardDecisionOf(
 	optionId: string | null | undefined,
 ): StewardDecision | null {
+	if (stewardLinkOf(optionId)) return "link";
 	const hit = (
 		Object.entries(STEWARD_DECISION_OPTION_IDS) as [StewardDecision, string][]
 	).find(([, id]) => id === optionId);
@@ -488,19 +518,30 @@ export function isStewardDecisionQuestion(
 
 /** Each decision's button, as a person reads it; a draft's keep and a live issue's differ. */
 export function stewardDecisionLabel(
-	decision: StewardDecision,
+	decision: Exclude<StewardDecision, "link">,
 	draft: boolean,
 ): string {
 	if (decision === "open") return "Open it: admit it for work";
 	if (decision === "drop") return "Drop it: it is not work";
+	if (decision === "requirement") return "Start a requirement from it";
 	return draft ? "Keep it as a draft" : "Keep it waiting";
 }
 
+/** A link option's button: the requirement and BC, and the BC's own words. */
+export const stewardLinkLabel = (
+	requirement: string,
+	bc: string,
+	text: string,
+) => `Link it to ${requirement} ${bc}: ${text}`.slice(0, 200);
+
 /** What answering each decision does, said on its button before it is pressed. */
 export const STEWARD_DECISION_EFFECTS = {
-	open: "Opens the issue as you. Its driver writes the plan and criteria; the kernel's ready check still applies, and a gap is refused by name.",
+	open: "Opens the issue as you. The steward prepared its requirement, plan and criteria; its driver writes the rest.",
 	keep: "Keeps it as it is, with your reason. The steward does not ask again while its standing holds.",
 	drop: "Drops the issue as you, with your reason.",
+	link: "Links the draft to that requirement as you. The steward then writes its plan and criteria, and asks whether to open it.",
+	requirement:
+		"Starts a new requirement from it as you; the intake assistant drafts it, and the draft waits for it to be agreed.",
 } as const satisfies Record<StewardDecision, string>;
 
 /** Why a run was skipped rather than run: said on the item, never silent. */

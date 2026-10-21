@@ -24,6 +24,8 @@ export interface StewardDecisionAnswer {
   projectId: string;
   issueId: string;
   decision: StewardDecision;
+  /** The option chosen: a link's names the requirement and BC (`stewardLinkOf`). */
+  optionId: string;
   by: string;
   /** The answerer's reason, which a keep and a drop take. */
   note: string | null;

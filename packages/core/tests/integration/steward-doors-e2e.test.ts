@@ -406,7 +406,7 @@ describe('an open question is voided with its reason (POST /api/questions/:id/vo
       {
         tool: {
           name: 'steward_decide',
-          args: { issue: draft.key, recommended: 'keep', why: 'nothing asks for it yet' },
+          args: { issue: draft.key, recommended: 'drop', why: 'nothing asks for it yet' },
         },
       },
       { text: 'Asked.' },

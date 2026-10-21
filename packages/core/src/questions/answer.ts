@@ -225,6 +225,7 @@ async function stewardDecisionAnswered(args: AnswerInput): Promise<StewardDecisi
     projectId: row.projectId,
     issueId: row.issueId,
     decision,
+    optionId: args.answer.optionId,
     by: args.by,
     note: args.note?.trim() || null,
     fingerprint: step.options[0]?.fingerprint ?? null,

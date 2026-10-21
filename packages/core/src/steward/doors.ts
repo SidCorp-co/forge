@@ -42,6 +42,12 @@ const READS: DoorSpec<never>[] = [
     (_a, ctx) => `/api/projects/${ctx.projectId}/standings`,
   ),
   read(
+    'steward_list_requirements',
+    "List the project's requirements: key, title, status and area. A draft delivers only an agreed or accepted one.",
+    z.strictObject({}),
+    (_a, ctx) => `/api/projects/${ctx.projectId}/requirements?view=summary`,
+  ),
+  read(
     'steward_read_requirement',
     'Read a requirement by key: its head revision, criteria, links and issues.',
     z.strictObject({ requirement: key }),
@@ -116,7 +122,12 @@ export async function callStewardDoor(
   if ('correct' in called) {
     return { ok: false, text: JSON.stringify({ error: `${name}: ${called.correct}` }) };
   }
-  const { request, answer, act } = called;
+  const { request, answer, act, acts } = called;
+  for (const landed of acts ?? []) {
+    ctx.acts.push(
+      await recordAct({ ...landed, runId: ctx.runId, projectId: ctx.projectId, act: ctx.act }),
+    );
+  }
   if (!answer.ok) {
     if (spec.write) {
       (answer.status >= 500 ? ctx.broken : ctx.refused).push(

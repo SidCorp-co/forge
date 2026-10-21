@@ -14,6 +14,9 @@ const INVERSE_DOORS: readonly RegExp[] = [
   /^DELETE \/api\/projects\/[0-9a-f-]{36}\/requirements\/REQ-\d+\/comments\/[0-9a-f-]{36}$/,
   /^POST \/api\/questions\/[0-9a-f-]{36}\/void$/,
   /^PATCH \/api\/projects\/[0-9a-f-]{36}\/requirements\/REQ-\d+$/,
+  /^DELETE \/api\/projects\/[0-9a-f-]{36}\/requirements\/REQ-\d+\/issues\/[0-9a-f-]{36}$/,
+  /^PATCH \/api\/issues\/[0-9a-f-]{36}$/,
+  /^PUT \/api\/issues\/[0-9a-f-]{36}\/criteria$/,
 ];
 
 export function isInverseDoor(door: string): boolean {
@@ -41,6 +44,11 @@ const OVERRIDES: readonly { door: RegExp; override: string }[] = [
     door: /^POST \/api\/projects\/[^/]+\/lessons\/[^/]+\/confusions$/,
     override:
       "decide the confusion on the Lessons page (keep, edit or retire the lesson): deciding it is a person's act, and keeping the lesson takes it off hold",
+  },
+  {
+    door: /^POST \/api\/projects\/[^/]+\/requirements$/,
+    override:
+      'withdraw the requirement yourself on its page: it was started as a draft from the feedback, and its intake is yours to carry or stop',
   },
   {
     door: /^KEEP /,

@@ -24,6 +24,7 @@ import {
   send,
 } from './door-kit.js';
 import { OWNER } from './door-owner.js';
+import { PREPARE } from './door-prepare.js';
 import { noteWriteOf } from './note.js';
 import { openStandings, stewardPorts } from './ports.js';
 
@@ -349,6 +350,7 @@ const NOTE: DoorSpec<z.infer<typeof noteParams>> = {
 export const WRITE_DOORS = [
   ASK,
   DECIDE,
+  PREPARE,
   COMMENT_REQUIREMENT,
   COMMENT_ISSUE,
   REJECT,
