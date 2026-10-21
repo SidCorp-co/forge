@@ -179,6 +179,26 @@ describe('MCP records where a report came from, as REST does (BC-4)', () => {
     expect(originOf(rest.body)).toMatchObject({ issue: { id: w.issue }, run: w.run });
   });
 
+  it('refuses a body naming another project than the box run is in, naming that one by slug', async () => {
+    const before = await counted();
+    const rest = await api(tokens.boxPat, 'POST', '/api/forge/feedback', {
+      kind: 'bug',
+      title: `doors report ${++n}`,
+      whereSeen: 'route POST /api/forge/feedback',
+      from: { project: w.home },
+    });
+    expect(refusalOf(rest.body), JSON.stringify(rest.body)).toMatchObject({
+      code: 'FORGE_FEEDBACK_SOURCE_MISMATCH',
+      path: '/from/project',
+    });
+    const detail = refusalOf(rest.body)?.detail ?? '';
+    // the declared run's session runs no job: the answer says what the credential is bound to
+    expect(detail).toContain(`project "${w.clientSlug}"`);
+    expect(detail).toContain('runs no job');
+    expect(detail).not.toContain('the job this credential runs');
+    expect(await counted()).toBe(before);
+  });
+
   it('refuses a slug no project has, and one naming a project the reporter cannot read, writing nothing', async () => {
     const before = await counted();
     for (const slug of ['no-such-project', w.homeSlug]) {
@@ -222,6 +242,35 @@ describe('forge_feedback is not the project door (BC-7)', () => {
     });
     expect(refusalOf(called.body)?.detail).toContain('project_feedback');
     expect(await counted()).toBe(before);
+  });
+
+  // every box credential is fenced to one project, so the natural mistake names a project outside
+  // it — Forge's home, or one that does not exist — and meets the same refusal, never NOT_FOUND
+  it('refuses projectId by name whatever the credential is fenced to, and writes nothing', async () => {
+    const before = await counted();
+    const outside = [w.home, '0b6f6a52-4a0e-4b8a-9d2e-2f1f7a0c9f12'];
+    for (const args of outside.flatMap((projectId) => [
+      { ...submit(), projectId },
+      { action: 'list', projectId },
+    ])) {
+      const called = await callTool(tokens.agentPat, 'forge_feedback', args);
+      expect(called.isError).toBe(true);
+      expect(refusalOf(called.body), called.text).toMatchObject({
+        code: 'FORGE_FEEDBACK_PROJECT_DOOR',
+        path: '/projectId',
+      });
+      expect(refusalOf(called.body)?.detail).toContain('project_feedback');
+    }
+    expect(await counted()).toBe(before);
+  });
+
+  it('keeps the fence for a tool that takes a project: project_feedback outside it is not found', async () => {
+    const called = await callTool(tokens.agentPat, 'project_feedback', {
+      action: 'list',
+      projectId: w.home,
+    });
+    expect(called.isError).toBe(true);
+    expect(called.text).toBe('NOT_FOUND: project not found or not accessible');
   });
 
   it('refuses any other wrong argument by name in the envelope, never a validator dump', async () => {

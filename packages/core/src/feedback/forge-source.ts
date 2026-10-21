@@ -9,7 +9,7 @@ import { RUN_ISSUES_METADATA_KEY } from '@forge/contracts/agent-sessions';
 import type { ForgeFeedbackFrom } from '@forge/contracts/forge-feedback';
 import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { issues, pipelineRuns } from '../db/schema.js';
+import { issues, pipelineRuns, projects } from '../db/schema.js';
 import { type PipelineCaller, resolvePipelineContext } from '../jobs/index.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import type { Refusal } from '../lib/refusal.js';
@@ -96,11 +96,38 @@ async function namedRefusal(
   return null;
 }
 
-const mismatch = (field: keyof ForgeFeedbackFrom, said: string, live: string | null) =>
+async function slugOf(projectId: string | null): Promise<string | null> {
+  if (!projectId) return null;
+  const [row] = await db
+    .select({ slug: projects.slug })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1);
+  return row?.slug ?? null;
+}
+
+/**
+ * What a credential's live session is bound to, said as the MCP refusals say a project, by slug:
+ * a declared run's session runs no job, so the answer never claims one it does not run.
+ */
+async function liveBinding(
+  live: { jobId: string | null; issueId: string | null },
+  liveProject: string | null,
+  liveRun: string | null,
+): Promise<string> {
+  const slug = await slugOf(liveProject);
+  const project = slug ? `project "${slug}"` : `project ${liveProject ?? 'none'}`;
+  const work = live.jobId
+    ? `runs a job${live.issueId ? ` on issue ${live.issueId}` : ''}`
+    : 'runs no job';
+  return `this credential is bound to ${project}, where its live session ${work} in run ${liveRun ?? 'none'}`;
+}
+
+const mismatch = (field: keyof ForgeFeedbackFrom, said: string, binding: string) =>
   forgeRefusal(
     'FORGE_FEEDBACK_SOURCE_MISMATCH',
     `/from/${field}`,
-    `from.${field} names ${said}, and the job this credential runs is in ${live ?? 'none'}; leave from.${field} out and it is read from the job, or send the one the job is in.`,
+    `from.${field} names ${said}, and ${binding}; leave from.${field} out and it is read from that session, or send the one it names.`,
   );
 
 /** The source of one report, or the refusal naming the part of `from` that cannot stand. */
@@ -117,11 +144,13 @@ export async function resolveForgeSource(
   // a session running a job is that job's; one running none is its own run's, a declared run's
   const liveRun = live ? (live.runId ?? live.sessionRunId) : null;
   if (live) {
+    const binding = () => liveBinding(live, liveProject, liveRun);
     if (from?.project && from.project !== liveProject)
-      return mismatch('project', `project ${from.project}`, liveProject);
+      return mismatch('project', `project ${from.project}`, await binding());
     if (from?.issue && live.issueId && from.issue !== live.issueId)
-      return mismatch('issue', `issue ${from.issue}`, live.issueId);
-    if (from?.run && from.run !== liveRun) return mismatch('run', `run ${from.run}`, liveRun);
+      return mismatch('issue', `issue ${from.issue}`, await binding());
+    if (from?.run && from.run !== liveRun)
+      return mismatch('run', `run ${from.run}`, await binding());
   }
   let projectId = from?.project ?? liveProject ?? caller.boundProjectId ?? caller.named?.id ?? null;
   const issueId =

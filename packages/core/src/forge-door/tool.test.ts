@@ -80,6 +80,21 @@ describe('forge_feedback is not the project door (REQ-47 BC-7)', () => {
     expect(refusal?.detail).toContain('project_feedback');
   });
 
+  it('describes the kinds, severities and target kinds its input takes, from one source', () => {
+    const props = (tool.inputSchema as { properties: Record<string, Record<string, unknown>> })
+      .properties;
+    const enumOf = (p: Record<string, unknown> | undefined) => (p?.enum ?? []) as string[];
+    const target = props.target as { properties: Record<string, Record<string, unknown>> };
+    for (const [field, values] of [
+      ['kind', enumOf(props.kind)],
+      ['severity?', enumOf(props.severity)],
+      ['target: { kind', enumOf(target.properties.kind)],
+    ] as const) {
+      expect(values.length, field).toBeGreaterThan(0);
+      expect(tool.description).toContain(`${field}: ${values.join(' | ')}`);
+    }
+  });
+
   it('names a wrong argument with the shape it takes, beside the projectId refusal', async () => {
     const answer = await tool.handler({ action: 'get', feedback: 'ISS-7', projectId: 'p' });
     expect(refusalsOf(answer).map((r) => r.path)).toEqual(['/projectId', '/feedback']);

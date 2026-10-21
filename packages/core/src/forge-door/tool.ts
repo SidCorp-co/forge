@@ -54,8 +54,10 @@ const inputSchema = z.strictObject({
 
 type Input = z.infer<typeof inputSchema>;
 
-const SUBMIT_SHAPE =
-  '{ kind: bug | change_request | idea | question, title, target: { kind: page | command | route | tool | guide | skill | other, ref }, body?, severity?, signalKey?, clientVersion?, from?: { project?, issue?, run? } (uuids), writtenLang? }';
+// read off the schemas the input takes, so the description never names a value the input refuses
+// or leaves out one it takes
+const oneOf = (values: readonly string[]) => values.join(' | ');
+const SUBMIT_SHAPE = `{ kind: ${oneOf(request.kind.options)}, title, target: { kind: ${oneOf(forgeFeedbackTargetSchema.shape.kind.options)}, ref }, body?, severity?: ${oneOf(request.severity.unwrap().options)}, signalKey?, clientVersion?, from?: { project?, issue?, run? } (uuids), writtenLang?: ${oneOf(request.writtenLang.unwrap().options)} }`;
 
 /**
  * A submit call as the REST body it stands for, or the refusal naming each field that cannot stand:
@@ -98,7 +100,7 @@ export function forgeSubmitRequestOf(
 const DESCRIPTION = [
   'Feedback about Forge itself — its CLI, routes, MCP tools, guides, web app or pipeline — from any project you work in.',
   'It is filed into Forge’s own home project as you (your own account, person or agent), whether or not you are a member there; it never writes into the project you work in. A project’s own feedback is project_feedback.',
-  `submit ${SUBMIT_SHAPE}: file it. A box credential’s live job names the project, issue and run it came from; from names them otherwise. A report whose signalKey (absent: its kind and title) an open item already holds is added to that item as an occurrence, never filed twice — the answer says created:false.`,
+  `submit ${SUBMIT_SHAPE}: file it. A box credential’s live session names the project, issue and run it came from (its job’s, or its declared run’s); from names them otherwise. A report whose signalKey (absent: its kind and title) an open item already holds is added to that item as an occurrence, never filed twice — the answer says created:false.`,
   'list: the items you reported, each with phase, origin and `progress` (whether work runs, who it waits on, and the forecast or why there is none; repeat `progress.says`, never a date it does not hold).',
   'get {feedback}: one item you reported (a member of the home project reads any). progress {feedback}: its progress block alone.',
   'FORGE_HOME_NOT_SET: this instance names no home project, and nothing was written. A refusal answers { error: { code, message, refusals: [{ code, path, detail }] } } and writes nothing.',

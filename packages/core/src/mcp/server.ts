@@ -49,6 +49,26 @@ function projectIdFromArgs(args: Record<string, unknown>): string | null {
   return null;
 }
 
+type InputSchema = { properties?: Record<string, InputSchema>; additionalProperties?: unknown };
+
+/**
+ * Whether a tool takes the project it works in by argument, where `projectIdFromArgs` reads it: a
+ * `projectId` its input names at the top or under `filters`. Only such a tool is fenced by that
+ * argument before its handler runs. A tool that takes none (`forge_feedback` files into Forge's
+ * home, `forge_uploads` reads an attachment's own project) meets a `projectId` as a wrong argument,
+ * refused by name by its own input, so its input must refuse keys it does not name.
+ */
+export function takesProjectArgument(tool: Pick<McpTool, 'name' | 'inputSchema'>): boolean {
+  const input = tool.inputSchema as InputSchema;
+  if (input.properties?.projectId || input.properties?.filters?.properties?.projectId) return true;
+  if (input.additionalProperties !== false) {
+    throw new Error(
+      `mcp registry: ${tool.name} takes no projectId and its input lets keys it does not name through, so a projectId sent to it would be dropped in silence; make its input strict, or let it take the project it works in`,
+    );
+  }
+  return false;
+}
+
 export function mcpTools(ctx: McpContext): McpTool[] {
   return Object.entries(MCP_TOOLS).map(([name, factory]) => {
     const tool = factory(ctx);
@@ -56,6 +76,7 @@ export function mcpTools(ctx: McpContext): McpTool[] {
       throw new Error(`mcp registry: the entry ${name} built a tool named ${tool.name}`);
     }
     assertToolDeclaresAccess(tool);
+    takesProjectArgument(tool);
     return tool;
   });
 }
@@ -72,6 +93,7 @@ export function createMcpServer(ctx: McpContext): Server {
   const { principal } = ctx;
   const tools = mcpTools(ctx);
   const toolMap = new Map(tools.map((t) => [t.name, t]));
+  const projectTaking = new Set(tools.filter(takesProjectArgument).map((t) => t.name));
 
   const server = new Server(
     { name: '@forge/core', version: pkg.version },
@@ -110,13 +132,15 @@ export function createMcpServer(ctx: McpContext): Server {
     const { name, arguments: rawArgs } = request.params;
     const args = (rawArgs ?? {}) as Record<string, unknown>;
     const tool = toolMap.get(name);
+    // a projectId sent to a tool that takes none names no project the call works in
+    const target = tool && !projectTaking.has(name) ? null : projectIdFromArgs(args);
     const auditBase = {
       userId: principal.userId,
       tokenId: principal.tokenId,
       deviceId: null,
       tool: name,
       action: typeof args.action === 'string' ? args.action : null,
-      projectId: projectIdFromArgs(args),
+      projectId: target,
       requestId: ctx.requestId ?? null,
       ip: ctx.ip ?? null,
       userAgent: ctx.userAgent ?? null,
@@ -131,7 +155,6 @@ export function createMcpServer(ctx: McpContext): Server {
     }
 
     const allow = patEffectiveProjectIds(principal);
-    const target = auditBase.projectId;
     if (allow !== null && target && !allow.includes(target)) {
       writeMcpAudit({ ...auditBase, resultCode: 'not_found' });
       return errorAnswer('NOT_FOUND: project not found or not accessible');
