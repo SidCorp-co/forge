@@ -222,6 +222,15 @@ describe("a member a room cannot lose", () => {
     expect(take("Take yourself out of the room").getAttribute("aria-description")).toMatch(/^This room is a one-to-one room with one person left/);
   });
 
+  it("tells a keyboard reader why, once the held control takes focus", () => {
+    render(
+      <ConversationMembers conversationId="c1" room={{ shape: "direct", scopeProjects: [project], participants: [agent("h1"), me] }} canChange open onClose={() => {}} />,
+    );
+    expect(screen.queryByText(/^This room has one agent left/)).toBeNull();
+    fireEvent.focus(take("Take @ops-h1 out of the room"));
+    expect(screen.getByText(/^This room has one agent left/)).toBeTruthy();
+  });
+
   it("offers either where the room keeps another", () => {
     const other = { ...me, id: "po", userId: "u2", displayName: "Mai Tran" };
     render(
