@@ -115,6 +115,15 @@ describe('a refusal that only labels what it refused', () => {
 describe('refusalBody', () => {
   const said = (details: unknown) => refusalBody('Invalid input', details);
 
+  it('keeps details already keyed as `{ formErrors }` alone, rather than naming a field formErrors', () => {
+    const body = said({ formErrors: ['ISS-1185 needs ?projectId= to name its project.'] });
+    expect(body.details).toEqual({
+      formErrors: ['ISS-1185 needs ?projectId= to name its project.'],
+      fieldErrors: {},
+    });
+    expect(body.message).toContain('?projectId=');
+  });
+
   it('keys a record of field to words as a schema refusal, each sentence the message says', () => {
     const body = said({ code: 'required', state: 'required' });
     expect(body).toEqual({

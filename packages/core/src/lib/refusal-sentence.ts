@@ -91,7 +91,10 @@ const LABEL_ONLY = /^invalid(?:\s+[A-Za-z]+){0,2}\.?$/i;
 function isSchemaDetails(details: unknown): boolean {
   if (Array.isArray(details)) return details.length > 0 && details.every(isIssue);
   if (details === null || typeof details !== 'object') return false;
+  // A resolver may key its reason as `{ formErrors }` alone: the same shape, with no field to name.
   const d = details as { formErrors?: unknown; fieldErrors?: unknown };
+  const keyedOnly = Object.keys(details).every((k) => k === 'formErrors' || k === 'fieldErrors');
+  if (Array.isArray(d.formErrors) && d.fieldErrors === undefined) return keyedOnly;
   return Array.isArray(d.formErrors) && typeof d.fieldErrors === 'object';
 }
 
