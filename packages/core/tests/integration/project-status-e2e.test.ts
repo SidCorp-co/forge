@@ -15,6 +15,8 @@ import {
 // One read of how a project stands (JU-1, JU-3, JU-4, JU-10): what shipped in the window, what is in
 // flight, whom rows wait on, requirements' proven criteria, the draft release and Now/Next/Later —
 // and the same numbers the dashboard's own reads give, because it is assembled from them.
+// @direct-test-of packages/core/src/project-status/lead.ts
+// @direct-test-of packages/core/src/project-status/read.ts
 
 /**
  * A requirement at `status` on a current revision 1, moved there inside a transaction that names
@@ -129,10 +131,14 @@ describe('the project status read', () => {
     for (const { state, count } of byState) {
       expect(count, state).toBe(list.filter((r) => (r.standing as Body).state === state).length);
     }
+    // one Needs you (REQ-48 BC-11): the report counts the needs-me read's decisions, the list's asks
+    // rows are the same ones (it no longer carries a count of its own), and a report with none leaves the section out rather than send a zero
     const needsYou = await get(w, '/needs-you');
     const asks = (needsYou.items as Body[]).filter((i) => i.space === 'asks');
-    expect((status.waits as Body).needsYou).toBe(needsYou.asks);
-    expect(needsYou.asks).toBe(asks.length);
+    const decisions = await get(w, '/needs-you/decisions');
+    expect((status.waits as Body).needsYou).toBeUndefined();
+    expect((status.needsYou as Body | undefined)?.total ?? 0).toBe(decisions.total);
+    expect(asks.length).toBe(decisions.total);
     const releases = (await get(w, '/releases')).releases as Body[];
     const draft = releases.find((r) => r.state === 'draft');
     expect((status.nextRelease as Body).version).toBe(draft?.version ?? null);

@@ -17,7 +17,7 @@ import {
 } from '@forge/contracts/needs-you';
 import {
   byDecisionOrder,
-  isDecisionAct,
+  isDecisionActOn,
   type NeedsYouDecision,
   type NeedsYouDecisions,
   type NeedsYouNotDecisionReason,
@@ -30,6 +30,8 @@ import { type AttentionRow, type NeedsYouViewer, owedOf, readAttention } from '.
 import { acceptDecision, admitDecision, repinDecision } from './needs-you-accept-builders.js';
 import {
   agreeDecision,
+  type CuttableRelease,
+  cutDecision,
   designDecision,
   releaseDecision,
   revisionDecision,
@@ -93,6 +95,9 @@ const SUGGESTION_ACTS: ReadonlySet<string> = new Set([
 /** A moved design's pin-only dependents, cleared by the one re-pin act (`needs-you-repin.ts`). */
 const REPIN_BATCH = 'designs.act.repinBatch';
 
+/** A draft release no gate holds, which only an admin cuts (`release-batch/release-view.ts:draftTurn`). */
+const RELEASE_CUT = 'standing.act.cut';
+
 /** A requirement whose only issues are drafts asks them taken on (`requirements/standing.ts`). */
 const PROMOTE_DRAFTS: ReadonlySet<string> = new Set([
   'standing.act.promoteDraft',
@@ -119,6 +124,8 @@ interface Facts {
   /** Each moved design's re-pin group, by the base's flow. */
   repinOf: ReadonlyMap<string, DesignRepinGroup>;
   releaseOf: ReadonlyMap<string, { runId: string | null; failing: number; total: number }>;
+  /** Each draft release the viewer may cut, by version. */
+  cutOf: ReadonlyMap<string, CuttableRelease>;
   approvalOf: ReadonlyMap<string, string>;
   feedbackAnswerOf: ReadonlyMap<string, string | null>;
   /** Each design whose proposed revision waits on a person, by flow. */
@@ -163,7 +170,7 @@ function classify(row: AttentionRow, area: NeedsYouAreaKey, f: Facts): Classifie
   if (AWAITING_PROPOSAL.has(act.key)) return { reason: 'awaiting_proposal' };
   // a row whose act no person decides is an agent's to take (`isDecisionAct`); slices never group it
   // needs_you, so one reaching here is a question row or a slice outside the three
-  if (row.entity !== 'question' && !isDecisionAct(row.standing.waitingOn.says.act)) {
+  if (row.entity !== 'question' && !isDecisionActOn(row.entity, row.standing.waitingOn.says.act)) {
     return { reason: 'work' };
   }
   if (act.key === MERGE_OR_DROP && (row.entity === 'issue' || row.entity === 'requirement')) {
@@ -201,6 +208,11 @@ function classify(row: AttentionRow, area: NeedsYouAreaKey, f: Facts): Classifie
     const drafts = f.draftsOf.get(row.key) ?? [];
     if (PROMOTE_DRAFTS.has(act.key) && drafts.length > 0) return admitDecision(row, area, drafts);
     return { reason: 'work' };
+  }
+  if (row.entity === 'release' && act.key === RELEASE_CUT) {
+    const cut = f.cutOf.get(row.key);
+    if (!cut) return { reason: 'work' };
+    return cutDecision(row, area, f.projectId, cut);
   }
   if (row.entity === 'release' && act.key === 'standing.act.approveOrReturn') {
     const release = f.releaseOf.get(row.key);
@@ -329,6 +341,13 @@ export async function decisionsOf(
         r.version,
         { runId: r.runId, failing: r.criteria.failing, total: r.criteria.total },
       ]),
+    ),
+    cutOf: new Map(
+      attention.releases.releases.flatMap((r) =>
+        r.can.cut
+          ? [[r.version, { version: r.version, contents: r.contents, criteria: r.criteria }]]
+          : [],
+      ),
     ),
     approvalOf: new Map(approvals.filter((a) => a.decision === null).map((a) => [a.runId, a.id])),
     feedbackAnswerOf: new Map(attention.feedback.map((f) => [f.key, f.route?.answer ?? null])),

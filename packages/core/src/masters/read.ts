@@ -21,6 +21,7 @@ import type { MasterServing } from '@forge/contracts/steward';
 import { type SQL, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db, type Tx } from '../db/client.js';
+import { memoizedRead } from '../db/read-memo.js';
 import { terminalAgentSessionStatuses } from '../db/schema.js';
 import {
   masterLastBeatSql,
@@ -227,10 +228,13 @@ async function liveMaster(projectId: string): Promise<MasterRow | null> {
 // the project master is the live master session whose box spoke last; silent is the reaper's own
 // predicate (devices/master-silence.ts), so the board says silent exactly when the reaper will fail it
 /** Whether a master acts for the project (REQ-48 BC-5): none live, silent, or serving. */
-export async function masterServingOf(projectId: string): Promise<MasterServing> {
-  const master = await liveMaster(projectId);
-  if (!master) return 'none';
-  return master.silent ? 'silent' : 'serves';
+export function masterServingOf(projectId: string): Promise<MasterServing> {
+  // the requirement, feedback and issue standing each ask it, once per project in a read request
+  return memoizedRead(`masterServing:${projectId}`, async () => {
+    const master = await liveMaster(projectId);
+    if (!master) return 'none';
+    return master.silent ? 'silent' : 'serves';
+  });
 }
 
 export async function readMasterStanding(projectId: string): Promise<MasterStanding> {

@@ -6,7 +6,11 @@
 // route and under the same permission, run as the person who presses it (BC-9).
 
 import { z } from "zod";
-import { NEEDS_YOU_AREAS, NEEDS_YOU_ENTITIES } from "./needs-you.js";
+import {
+	NEEDS_YOU_AREAS,
+	NEEDS_YOU_ENTITIES,
+	type NeedsYouEntity,
+} from "./needs-you.js";
 import {
 	decisionProposalSchema,
 	NEEDS_YOU_TOPICS,
@@ -108,6 +112,10 @@ export const DECISION_ACTS = {
 	"feedback.reopen": {
 		path: "/api/projects/:projectId/feedback/:key/reopen",
 		reason: true,
+	},
+	"release.cut": {
+		path: "/api/projects/:projectId/release-batches",
+		reason: false,
 	},
 	"release.decide": {
 		path: "/api/projects/:projectId/release-batches/:runId/approvals/:approvalId/decision",
@@ -375,6 +383,24 @@ export function isDecisionAct(act: SaidAct): boolean {
 			many.length > 0 && many.every((a) => isSaidAct(a) && isDecisionAct(a))
 		);
 	return DECISION_ACT_KEYS.has(act.key);
+}
+
+/**
+ * The said act keys a person decides only on the record that owes them: a release's cut is the
+ * admin's decision on the release itself (`release.cut`), so the requirement or feedback item that
+ * waits on that cut reads it as waiting, and the one decision stays the release's (REQ-48 BC-11).
+ */
+const DECISION_ACT_KEYS_ON: Partial<
+	Record<NeedsYouEntity, ReadonlySet<string>>
+> = {
+	release: new Set(["standing.act.cut"]),
+};
+
+/** Whether a wait's act is a person's decision on a row of `entity` (`isDecisionAct`, and its own acts). */
+export function isDecisionActOn(entity: NeedsYouEntity, act: SaidAct): boolean {
+	return (
+		isDecisionAct(act) || (DECISION_ACT_KEYS_ON[entity]?.has(act.key) ?? false)
+	);
 }
 
 /** The first `cap` decisions a person is shown and how many more wait behind them, never dropped (BC-11). */

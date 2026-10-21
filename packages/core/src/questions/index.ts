@@ -22,6 +22,7 @@ export { type AwaitedMerge, answerMergeQuestions } from './merge-wait.js';
 export {
   type DetachedQuestionRow,
   type OpenPersonQuestion,
+  primeOpenQuestionReads,
   readDetachedOpenQuestions,
   readOpenPersonQuestions,
 } from './needs-you-read.js';
