@@ -1,1 +1,0 @@
-**Approvals is the one Needs you list.** Each row reads the agent's proposal, its peek says what approving changes and why, a bulk approve states what it makes first, and every decision can be undone for five seconds.
