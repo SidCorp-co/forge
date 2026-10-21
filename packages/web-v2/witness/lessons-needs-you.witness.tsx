@@ -30,7 +30,7 @@ const CONFUSION: NeedsYouDecision = {
   recommended: { answerId: "edit", why: "Recommended by the agent that raised it.", by: "steward" },
   noRecommendation: null,
   answers: [
-    { id: "keep", label: "Keep", act: "lesson.confusion", path: decide, body: { resolution: "keep" }, needsReason: false, effect: "L-4 is applied again as it reads.", recommended: false },
+    { id: "keep", label: "Keep", act: "lesson.confusion", path: decide, body: { resolution: "keep" }, needsReason: false, declines: false, effect: "L-4 is applied again as it reads.", recommended: false },
     {
       id: "edit",
       label: "Edit as recommended",
@@ -38,10 +38,11 @@ const CONFUSION: NeedsYouDecision = {
       path: decide,
       body: { resolution: "edit", sentence: "Print patient letters in 16 pt; keep the house style for every other letter." },
       needsReason: false,
+      declines: false,
       effect: "L-4 is applied again, reading: Print patient letters in 16 pt; keep the house style for every other letter.",
       recommended: true,
     },
-    { id: "retire", label: "Retire", act: "lesson.confusion", path: decide, body: { resolution: "retire" }, needsReason: false, effect: "L-4 is retired; no agent applies it.", recommended: false },
+    { id: "retire", label: "Retire", act: "lesson.confusion", path: decide, body: { resolution: "retire" }, needsReason: false, declines: false, effect: "L-4 is retired; no agent applies it.", recommended: false },
   ],
   touchedAt: at(5),
   proposal: null,
@@ -58,8 +59,8 @@ const PROPOSED: NeedsYouDecision = {
   recommended: null,
   noRecommendation: "The steward grouped these corrections; check the sentence says what they meant.",
   answers: [
-    { id: "approve", label: "Approve", act: "lesson.approve", path: `/api/projects/${P}/lessons/L-5/approve`, body: {}, needsReason: false, effect: "Every agent in its scope applies L-5 from now on", recommended: false },
-    { id: "decline", label: "Reject", act: "lesson.reject", path: `/api/projects/${P}/lessons/L-5/reject`, body: {}, needsReason: true, effect: "No agent applies it; your reason is kept on the lesson.", recommended: false },
+    { id: "approve", label: "Approve", act: "lesson.approve", path: `/api/projects/${P}/lessons/L-5/approve`, body: {}, needsReason: false, declines: false, effect: "Every agent in its scope applies L-5 from now on", recommended: false },
+    { id: "decline", label: "Reject", act: "lesson.reject", path: `/api/projects/${P}/lessons/L-5/reject`, body: {}, needsReason: true, declines: true, effect: "No agent applies it; your reason is kept on the lesson.", recommended: false },
   ],
   touchedAt: at(30),
   proposal: {
@@ -89,8 +90,8 @@ const RETIRE: NeedsYouDecision = {
   recommended: { answerId: "approve", why: "No agent applied it in 30 days.", by: "rule" },
   noRecommendation: null,
   answers: [
-    { id: "approve", label: "Retire", act: "lesson.retire", path: `/api/projects/${P}/lessons/L-3/retire`, body: { reason: "No agent applied it in 30 days." }, needsReason: false, effect: "No agent applies it any more; the lesson and its history are kept.", recommended: true },
-    { id: "keep", label: "Keep", act: "lesson.keep", path: `/api/projects/${P}/lessons/L-3/keep`, body: {}, needsReason: false, effect: "It stays in use, and its unused clock starts again.", recommended: false },
+    { id: "approve", label: "Retire", act: "lesson.retire", path: `/api/projects/${P}/lessons/L-3/retire`, body: { reason: "No agent applied it in 30 days." }, needsReason: false, declines: false, effect: "No agent applies it any more; the lesson and its history are kept.", recommended: true },
+    { id: "keep", label: "Keep", act: "lesson.keep", path: `/api/projects/${P}/lessons/L-3/keep`, body: {}, needsReason: false, declines: false, effect: "It stays in use, and its unused clock starts again.", recommended: false },
   ],
   touchedAt: at(2),
   proposal: {

@@ -187,6 +187,37 @@ describe("what each row's ✓ and ✕ send", () => {
     await waitFor(() => expect(posts(calls)).toEqual([expect.objectContaining({ body: { decision: "approve", reason: "Judged green." } })]));
   });
 
+  it("offers in the peek a proposal's answers its ✓ and ✕ do not press (a lesson's Keep)", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const base = READ.decisions.find((d) => d.key === "REQ-48");
+    if (!base?.proposal) throw new Error("no proposal row");
+    const path = `/api/projects/${P}/lessons/LS-3`;
+    const retire = {
+      ...base,
+      id: "lesson-retire:l3",
+      key: "LS-3",
+      title: "Name the branch after the issue",
+      opens: null,
+      answers: [
+        { id: "approve", label: "Retire", act: "lesson.retire" as const, path: `${path}/retire`, body: { reason: "No agent applied it in 30 days." }, needsReason: false, declines: false, effect: null, recommended: true },
+        { id: "keep", label: "Keep", act: "lesson.keep" as const, path: `${path}/keep`, body: {}, needsReason: false, declines: false, effect: null, recommended: false },
+      ],
+    };
+    const calls = fakeCore(({ path: at, method }) => {
+      if (method === "GET" && at === DECISIONS) return { body: { ...READ, total: 1, decisions: [retire] } };
+      if (method === "POST") return { body: { ok: true } };
+      return undefined;
+    });
+    renderWithQuery(<ApprovalsScreen projectId={P} slug="hop" />);
+    await screen.findByTestId("approvals-screen");
+    expect(within(rowOf("LS-3")).queryByTestId("approval-decline")).toBeNull();
+    fireEvent.click(within(rowOf("LS-3")).getByTestId("approval-open"));
+    const peek = await screen.findByTestId("approval-peek");
+    fireEvent.click(within(peek).getByRole("button", { name: "Keep" }));
+    await act(async () => vi.advanceTimersByTimeAsync(UNDO_MS));
+    await waitFor(() => expect(posts(calls)).toEqual([expect.objectContaining({ path: `/projects/${P}/lessons/LS-3/keep` })]));
+  });
+
   it("gives a ✕ to every row with a declining answer, and none to a kind core gives no decline", async () => {
     core();
     renderWithQuery(<ApprovalsScreen projectId={P} slug="hop" />);

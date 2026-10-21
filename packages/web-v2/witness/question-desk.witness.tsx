@@ -35,8 +35,8 @@ const DECISIONS = {
       recommended: { answerId: "keep", why: 'Whoever asked recommends "Keep the old order".', by: "asker" },
       noRecommendation: null,
       answers: [
-        { id: "keep", label: "Keep the old order", act: "question.answer", path: "/api/questions/q1/answer", body: { round: 1, optionId: "keep" }, needsReason: false, effect: "Sends this answer to the run that asked.", recommended: true },
-        { id: "new", label: "Use the new order", act: "question.answer", path: "/api/questions/q1/answer", body: { round: 1, optionId: "new" }, needsReason: false, effect: null, recommended: false },
+        { id: "keep", label: "Keep the old order", act: "question.answer", path: "/api/questions/q1/answer", body: { round: 1, optionId: "keep" }, needsReason: false, declines: false, effect: "Sends this answer to the run that asked.", recommended: true },
+        { id: "new", label: "Use the new order", act: "question.answer", path: "/api/questions/q1/answer", body: { round: 1, optionId: "new" }, needsReason: false, declines: false, effect: null, recommended: false },
       ],
       touchedAt: AT,
       stuck: false,

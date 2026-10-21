@@ -8,7 +8,7 @@ import { useEffect, useRef, useState } from "react";
 import { Button, type FullPage, Kbd, PeekExcerpt, PeekHead, PeekPanel, type PeekState, Table, TBody, TD, TH, THead, TR, Textarea } from "@/design";
 import { Link } from "@/lib/navigation/router";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
-import { approveOf, declineOf } from "../derive";
+import { approveOf, declineOf, otherAnswersOf } from "../derive";
 import { PeekMockup } from "./approval-mockup";
 import { DecisionTags } from "./approval-row";
 
@@ -178,6 +178,11 @@ function Foot({ d, full, typing, onType, onPress }: FootProps) {
               {t("approvals.act.decline")}
             </Button>
           ) : null}
+          {otherAnswersOf(d).map((a) => (
+            <Button key={a.id} title={a.effect ?? undefined} onClick={() => press(a)} data-testid="approval-peek-answer">
+              {a.label}
+            </Button>
+          ))}
           <Link href={full.href} className="px-2 text-13 font-semibold text-fg hover:underline" title={t("approvals.act.editTitle")} data-testid="approval-peek-edit">
             {t("approvals.act.edit")}
           </Link>

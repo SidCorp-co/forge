@@ -87,10 +87,13 @@ describe('on confusion the agent stops, and the lesson is held until a person de
       recommended: null,
       proposal: { verb: 'Approve lesson' },
     });
-    expect(((asked as Doc).answers as Doc[]).map((a) => [a.id, a.needsReason])).toEqual([
-      ['approve', false],
-      ['decline', true],
-    ]);
+    // the Reject is the answer the page's Decline presses: it declines and asks why (ISS-539)
+    expect(((asked as Doc).answers as Doc[]).map((a) => [a.id, a.needsReason, a.declines])).toEqual(
+      [
+        ['approve', false, false],
+        ['decline', true, true],
+      ],
+    );
     expect((await decisions('member')).find((d) => d.key === p.key)).toBeUndefined();
     expect((await press(asked, 'approve')).status).toBe('approved');
   });

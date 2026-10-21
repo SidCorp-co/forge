@@ -73,6 +73,7 @@ function proposedDecision(projectId: string, l: WaitingLesson): DecisionBody {
         path: filled('lesson.reject', params),
         body: {},
         needsReason: true,
+        declines: true,
         effect: 'No agent applies it; your reason is kept on the lesson.',
       }),
     ],

@@ -48,8 +48,9 @@ const press = (who: Who, answer: Doc, reason?: string): Promise<Reply> =>
   });
 
 const READ = '/needs-you/decisions';
-const approveOf = (d: Doc): Doc => d.answers.find((a: Doc) => !a.needsReason);
-const declineOf = (d: Doc): Doc => d.answers.find((a: Doc) => a.needsReason);
+// the page's ✓ and ✕: the answer that does not decline, and the one core marks as declining (ISS-539)
+const approveOf = (d: Doc): Doc => d.answers.find((a: Doc) => !a.declines);
+const declineOf = (d: Doc): Doc => d.answers.find((a: Doc) => a.declines);
 const acts = (d: Doc) => d.answers.map((a: Doc) => `${a.act}${a.needsReason ? ' (reason)' : ''}`);
 
 const design = (projectId: string, flow: string): Doc => {
