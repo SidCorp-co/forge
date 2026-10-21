@@ -262,6 +262,24 @@ Each lane ships a test that plants the defect it fixes and watches it go red:
 | `feedback-lifecycle` r15 → r16 | `planned` needs every carrier past draft; a draft carrier keeps the item triaged and stuck (BC-9). New regions `steward-triage` (BC-4) and `steward-note` (BC-7). `resolved` adds the follow-through (BC-10). `declined` is never late. | Validated. Waits on a drawing issue. |
 | `issue-lifecycle` r18 → r19 | `awaiting_release` and its entry edge drop the stale verdict clause to match `transition-guards.ts` and REQ-45 BC-1/2. Entry starts the steward's output check. `awaiting_release → reopen` names that check. `open`, `reopen` and `draft` carry their due and stuck readings (BC-5). | Validated. Waits on a drawing issue. |
 
+## Honest costs
+
+- **Model spend on every handoff.** At the default budget, a busy project pays for up to 200 gateway
+  turns and 10 runner jobs a day. A project that spends its budget by noon gets no steward for the
+  rest of the day; the note says so, and nothing else does the work.
+- **An agent that moves things.** The steward opens drafts, rejects breakdowns, sends issues back to
+  reopen and routes feedback without anyone pressing a button. A wrong act is visible and undoable,
+  but someone has to notice it first.
+- **A second writer of text on every page.** Notes are agent prose. The vet catches a contradiction
+  of the standing's fields, not a misleading sentence that agrees with them.
+- **Stuck reads louder.** With one-day and two-day dues, many items that read Moving today will read
+  Stuck the day this lands. The Dashboard gets worse before it gets better.
+- **One more consumer and two more timers.** The outbox gets a `steward` consumer, and the cluster
+  gets a 5-minute standing sweep over every open item of every project. That is a read of all
+  standings each time.
+- **A runner wake source.** `steward` must ship in the runner before core sends it. Until then, the
+  wake is a loud refusal on the box, and the durable `stewardAsks` read carries the nudge.
+
 ## 10. Open decisions
 
 Each has a recommendation; the design above is written to it.

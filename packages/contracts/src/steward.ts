@@ -366,7 +366,6 @@ export const STEWARD_RUN_STATES = [
 	"skipped",
 ] as const;
 export type StewardRunState = (typeof STEWARD_RUN_STATES)[number];
-export const STEWARD_LIVE_RUN_STATES = ["queued", "running"] as const satisfies readonly StewardRunState[];
 
 /** Why a run was skipped rather than run: said on the item, never silent. */
 export const STEWARD_SKIP_REASONS = [
