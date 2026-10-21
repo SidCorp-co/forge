@@ -15,16 +15,18 @@ function refusedAccess(read: PageRead): boolean {
 
 /** Access comes back for a whole page: once one 403 answers, every read still refused 403 is asked again (ISS-1228 r27). */
 export function useAskAgainWhenAccessReturns(reads: readonly PageRead[]): void {
-	const refusedBefore = useRef<ReadonlySet<number>>(new Set());
-	const refusedNow = reads.flatMap((read, i) => (refusedAccess(read) ? [i] : []));
-	const key = refusedNow.join(",");
+	// A read refused 403 stays remembered through any other failure, until it answers.
+	const refusedOnce = useRef(new Set<number>());
+	const states = reads.map((read) => (refusedAccess(read) ? "r" : read.isError ? "e" : "a")).join("");
 
-	// biome-ignore lint/correctness/useExhaustiveDependencies: the refused set, as `key`, is what moves
+	// biome-ignore lint/correctness/useExhaustiveDependencies: each read's state, as `states`, is what moves
 	useEffect(() => {
-		const now = new Set(refusedNow);
-		const returned = [...refusedBefore.current].some((i) => !now.has(i) && reads[i] && !reads[i].isError);
-		refusedBefore.current = now;
+		let returned = false;
+		reads.forEach((read, i) => {
+			if (refusedAccess(read)) refusedOnce.current.add(i);
+			else if (!read.isError && refusedOnce.current.delete(i)) returned = true;
+		});
 		if (!returned) return;
-		for (const i of now) void reads[i]?.refetch({ cancelRefetch: false });
-	}, [key]);
+		for (const read of reads) if (refusedAccess(read)) void read.refetch({ cancelRefetch: false });
+	}, [states]);
 }

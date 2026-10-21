@@ -40,6 +40,20 @@ describe("a page whose reads Forge refused for not being a member", () => {
 		expect(cost.refetch).not.toHaveBeenCalled();
 	});
 
+	// Review F2: a 503 between the refusal and the answer dropped the refusal from memory.
+	it("still asks the others again when the refused read failed some other way before it answered", () => {
+		const cost = refused();
+		const hook = renderHook(({ reads }) => useAskAgainWhenAccessReturns(reads), {
+			initialProps: { reads: [refused(), cost] },
+		});
+		const unreachable: PageRead = { isError: true, error: new ApiError(503, "Forge is restarting.", "UNAVAILABLE"), refetch: vi.fn() };
+		hook.rerender({ reads: [unreachable, cost] });
+		expect(cost.refetch).not.toHaveBeenCalled();
+		hook.rerender({ reads: [answered(), cost] });
+		expect(cost.refetch).toHaveBeenCalledTimes(1);
+		expect(cost.refetch).toHaveBeenCalledWith({ cancelRefetch: false });
+	});
+
 	it("asks nothing when no read had been refused", () => {
 		const read = answered();
 		const hook = renderHook(({ reads }) => useAskAgainWhenAccessReturns(reads), {

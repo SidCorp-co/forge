@@ -122,18 +122,20 @@ describe("a read Forge refused for good (criteria 249 and 250)", () => {
 describe("a holds read that fails under a storm of check-ins (criterion 259)", () => {
   const unavailable = new ApiError(503, "Forge is busy.", "UNAVAILABLE");
 
-  async function storm(answerAfterMs: number) {
+  /** `failsWhile` says, by attempt, whether that attempt fails; the rest answer. */
+  async function storm(answerAfterMs: number, failsWhile: (attempt: number) => boolean = () => true) {
     const starts: number[] = [];
     let inFlight = 0;
     let mostInFlight = 0;
     read.mockImplementation(() => {
-      starts.push(Date.now());
+      const attempt = starts.push(Date.now());
       inFlight++;
       mostInFlight = Math.max(mostInFlight, inFlight);
-      return new Promise((_, reject) =>
+      return new Promise((resolve, reject) =>
         setTimeout(() => {
           inFlight--;
-          reject(unavailable);
+          if (failsWhile(attempt)) reject(unavailable);
+          else resolve({ sessions: [], holds: [], runningChats: [], readAt: "2026-10-21T20:00:00.000Z" } as never);
         }, answerAfterMs),
       );
     });
@@ -156,5 +158,13 @@ describe("a holds read that fails under a storm of check-ins (criterion 259)", (
     expect(Math.min(...gaps)).toBeGreaterThanOrEqual(2_000);
     expect(starts.length).toBeLessThanOrEqual(8);
     expect(mostInFlight).toBe(1);
+  });
+
+  // Review F1: a retry that answers starts unannounced, so a window timed from the failure before it
+  // opened about 250 ms after that retry.
+  it("starts no read within two seconds of a retry that answered", async () => {
+    const { starts, gaps } = await storm(0, (attempt) => attempt % 2 === 1);
+    expect(starts.length).toBeGreaterThan(2);
+    expect(Math.min(...gaps)).toBeGreaterThanOrEqual(2_000);
   });
 });
