@@ -29,7 +29,6 @@ type Mode = 'assistant' | 'agent';
 
 const MODES: readonly Mode[] = ['assistant', 'agent'];
 const OTHER = 'Payroll export for the other project';
-
 let w: ChannelWorld;
 let say: (who: string, method: string, path: string, body?: unknown) => Promise<Reply>;
 let callMcp: (who: string, name: string, args: Record<string, unknown>) => Promise<Doc>;
@@ -297,13 +296,10 @@ const NOT_A_PROJECT_WRITE: Record<string, string> = {
   forge_show: 'draws a block of a run this turn made into the room',
   forge_template: "a template run, kept as the asker's own read",
 };
+const onBoard = { kind: 'screen', ref: '/board' };
 /** Each write tool, a call a member could make, and the permission a viewer is refused it by. */
 const viewerWrites = (): [string, Record<string, unknown>, string][] => [
-  [
-    'forge_feedback',
-    { kind: 'bug', title: 'Viewer feedback', target: { kind: 'screen', ref: '/board' } },
-    'project.write',
-  ],
+  ['forge_feedback', { kind: 'bug', title: 'Viewer feedback', target: onBoard }, 'project.write'],
   [
     'forge_requirement_draft',
     { title: 'Viewer requirement', reason: 'A viewer asked.', criteria: [{ body: 'It holds.' }] },
