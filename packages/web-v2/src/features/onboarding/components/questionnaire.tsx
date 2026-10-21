@@ -111,7 +111,8 @@ function Assumption({ item, value, onChange }: { item: QuestionnaireItemView; va
       <div className="mt-0.5 text-12 text-subtle">
         {t("onboarding.q.evidence")}{" "}
         {item.evidence.map((e) => (
-          <code key={e} className="mr-1 font-mono text-12">
+          // a file:symbol has no space to wrap at: on a phone it breaks inside rather than widen the page
+          <code key={e} className="mr-1 font-mono text-12 break-all">
             {e}
           </code>
         ))}
