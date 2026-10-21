@@ -104,7 +104,7 @@ import {
   unaddressableProjectSlug,
 } from './middleware/route-refs.js';
 import { serverTiming } from './middleware/server-timing.js';
-import { deleteFeedbackMockups } from './mockups/index.js';
+import { mockupsForFeedback } from './mockups/index.js';
 import { emitNotification } from './notifications/index.js';
 import {
   declareOutboxQueues,
@@ -342,10 +342,7 @@ provideRequirementDependents({
 });
 provideKeptPreviewWriter({ write: writeKeptPreview });
 provideRoomSettleWriter(roomSettleWriter);
-provideFeedbackDependents({
-  redactSuggestions: redactFeedbackSuggestions,
-  deleteMockups: deleteFeedbackMockups,
-});
+provideFeedbackDependents({ redactSuggestions: redactFeedbackSuggestions, ...mockupsForFeedback });
 
 export const app = new Hono<{ Variables: RequestIdVars }>();
 

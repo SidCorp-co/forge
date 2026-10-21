@@ -1,8 +1,13 @@
-import { MOCKUP_KINDS, MOCKUP_STATUSES } from '@forge/contracts/mockups';
+import {
+  MOCKUP_COMMENT_SETTLEMENTS,
+  MOCKUP_KINDS,
+  MOCKUP_STATUSES,
+} from '@forge/contracts/mockups';
 import { sql } from 'drizzle-orm';
 import {
   type AnyPgColumn,
   check,
+  doublePrecision,
   foreignKey,
   index,
   integer,
@@ -22,11 +27,11 @@ import { actorAgencies } from './schema-vocabulary.js';
 const inList = (values: readonly string[]) => sql.raw(values.map((v) => `'${v}'`).join(', '));
 
 // a mockup (MK-n, ISS-78) is a proposal about exactly one target, as feedback is about one: a
-// feedback item or an issue; its bytes live in the one attachment store and never change, and a
-// person accepts or returns it; migration 0370's trigger refuses a content edit or a status move off
-// that path as MOCKUP_IMMUTABLE. A row about a requirement, at the revision it was proposed against,
-// is history from before REQ-35: no new one is proposed or accepted (a revision's picture replaces
-// it), a waiting one may still be returned or withdrawn, and no baseline pins a mockup (0473)
+// requirement at one of its revisions, a feedback item or an issue (REQ-49); its bytes live in the
+// one attachment store and never change, and a person accepts or returns it; migration 0370's
+// trigger refuses a content edit or a status move off that path as MOCKUP_IMMUTABLE. A returned one
+// is answered by its next revision (`revises_id`, `round`), at most one, both fixed once written
+// (0509); an accepted requirement mockup is pinned by the next agree or re-pin beside the designs
 export const mockups = pgTable(
   'mockups',
   {
@@ -58,9 +63,18 @@ export const mockups = pgTable(
     decidedBy: uuid('decided_by').references(() => users.id, { onDelete: 'restrict' }),
     decidedAt: timestamp('decided_at', { withTimezone: true }),
     reason: text('reason'),
+    revisesId: uuid('revises_id').references((): AnyPgColumn => mockups.id, {
+      onDelete: 'no action',
+    }),
+    round: integer('round').notNull().default(1),
   },
   (t) => ({
     seqUq: uniqueIndex('mockups_project_seq_uq').on(t.projectId, t.mockupSeq),
+    revisesUq: uniqueIndex('mockups_revises_uq').on(t.revisesId).where(sql`revises_id IS NOT NULL`),
+    roundChk: check(
+      'mockups_round_chk',
+      sql`(${t.revisesId} IS NULL AND ${t.round} = 1) OR (${t.revisesId} IS NOT NULL AND ${t.round} >= 2)`,
+    ),
     revisionFk: foreignKey({
       name: 'mockups_revision_fk',
       columns: [t.requirementId, t.revision],
@@ -91,6 +105,51 @@ export const mockups = pgTable(
     returnedChk: check(
       'mockups_returned_reason_chk',
       sql`${t.status} <> 'returned' OR ${t.reason} ~ '[^[:space:]]'`,
+    ),
+  }),
+);
+
+// a comment on one mockup (REQ-49 BC-2), pinned to a point (x, y) or a region (x, y, w, h) of its
+// frame as fractions 0..1, or to none; its text and pin never change, and the next revision that
+// names it settles it once, as answered or resolved (0509's trigger, MOCKUP_COMMENT_IMMUTABLE)
+export const mockupComments = pgTable(
+  'mockup_comments',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: uuid('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    mockupId: uuid('mockup_id')
+      .notNull()
+      .references(() => mockups.id, { onDelete: 'cascade' }),
+    authorId: uuid('author_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    authorAgency: text('author_agency', { enum: actorAgencies }).notNull(),
+    body: text('body').notNull(),
+    pinX: doublePrecision('pin_x'),
+    pinY: doublePrecision('pin_y'),
+    pinW: doublePrecision('pin_w'),
+    pinH: doublePrecision('pin_h'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    settled: text('settled', { enum: MOCKUP_COMMENT_SETTLEMENTS }),
+    settledByMockupId: uuid('settled_by_mockup_id').references(() => mockups.id, {
+      onDelete: 'cascade',
+    }),
+    settledNote: text('settled_note'),
+    settledAt: timestamp('settled_at', { withTimezone: true }),
+  },
+  (t) => ({
+    mockupIdx: index('mockup_comments_mockup_idx').on(t.mockupId, t.createdAt),
+    agencyChk: check('mockup_comments_agency_chk', sql`${t.authorAgency} IN ('human', 'agent')`),
+    bodyChk: check('mockup_comments_body_chk', sql`${t.body} ~ '[^[:space:]]'`),
+    pinChk: check(
+      'mockup_comments_pin_chk',
+      sql`(num_nonnulls(${t.pinX}, ${t.pinY}, ${t.pinW}, ${t.pinH}) IN (0, 2, 4)) AND ((${t.pinX} IS NULL) = (${t.pinY} IS NULL)) AND ((${t.pinW} IS NULL) = (${t.pinH} IS NULL)) AND (${t.pinX} IS NULL OR (${t.pinX} BETWEEN 0 AND 1 AND ${t.pinY} BETWEEN 0 AND 1)) AND (${t.pinW} IS NULL OR (${t.pinW} > 0 AND ${t.pinH} > 0 AND ${t.pinX} + ${t.pinW} <= 1.000001 AND ${t.pinY} + ${t.pinH} <= 1.000001))`,
+    ),
+    settledChk: check(
+      'mockup_comments_settled_chk',
+      sql`(${t.settled} IS NULL AND num_nonnulls(${t.settledByMockupId}, ${t.settledNote}, ${t.settledAt}) = 0) OR (${t.settled} = 'answered' AND ${t.settledByMockupId} IS NOT NULL AND ${t.settledAt} IS NOT NULL) OR (${t.settled} = 'resolved' AND ${t.settledByMockupId} IS NOT NULL AND ${t.settledAt} IS NOT NULL AND ${t.settledNote} ~ '[^[:space:]]')`,
     ),
   }),
 );

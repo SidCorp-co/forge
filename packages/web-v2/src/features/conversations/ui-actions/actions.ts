@@ -16,12 +16,10 @@ import {
   type UiIssueFilter,
   type UiListFilterAction,
   type UiOpenTarget,
-  type UiPageItem,
   type UiProductList,
   type UiRoute,
   type UiSnapshot,
   uiActionNamed,
-  uiPageItemSchema,
 } from "@forge/contracts/ui-actions";
 import {
   describeListFilter,
@@ -34,6 +32,7 @@ import { withArticle } from "@forge/contracts/articles";
 import { ISSUE_STATUSES } from "@forge/contracts/issue-machine";
 import { REGISTRY_ISSUE_PRIORITIES } from "@forge/contracts/pipeline-registry";
 import { applyWireframePatch, type WireframeDoc } from "@forge/contracts/wireframe";
+import { mockupOpenOn, pageItemOf } from "./page-item";
 import { boardStore } from "@/features/board";
 import { toolOutputText } from "@/lib/tool-output";
 import { assistantFilters } from "@/features/chat-dock";
@@ -98,28 +97,7 @@ function listFilterOf(list: UiProductList, search: string): UiListFilterSnapshot
   return Object.keys(filter).length ? ({ list, filter } as UiListFilterSnapshot) : undefined;
 }
 
-// each record page's list segment under /projects/<slug>, and the kind of record it shows
-const ITEM_SEGMENT: Record<string, UiPageItem["kind"]> = {
-  issues: "issue",
-  requirements: "requirement",
-  feedback: "feedback",
-  workflows: "workflow",
-};
-
-/** The record a project path is the page of (`/requirements/REQ-30`), or null: a key its kind does not take names none. */
-export function pageItemOf(rest: string): UiPageItem | null {
-  const m = /^\/([a-z]+)\/([^/]+)$/.exec(rest);
-  const kind = m ? ITEM_SEGMENT[m[1]] : undefined;
-  if (!m || !kind) return null;
-  let key: string;
-  try {
-    key = decodeURIComponent(m[2]);
-  } catch {
-    return null;
-  }
-  const parsed = uiPageItemSchema.safeParse({ kind, key });
-  return parsed.success ? parsed.data : null;
-}
+export { mockupOpenOn, pageItemOf } from "./page-item";
 
 export function uiSnapshotOf(args: {
   pathname: string;
@@ -141,7 +119,7 @@ export function uiSnapshotOf(args: {
   };
   const at = projectPath(args.pathname);
   if (!at) return { ...base, route: "other" };
-  const item = pageItemOf(at.rest);
+  const item = mockupOpenOn(pageItemOf(at.rest), args.search);
   if (item) return { ...base, route: item.kind, item };
   const route = ROUTE_BY_SUFFIX.find(([, suffix]) => suffix === at.rest)?.[0];
   if (!route) return { ...base, route: "other" };
@@ -284,6 +262,15 @@ function applyListFilter(action: UiListFilterAction, env: UiActionEnv): UiAction
  * does not draw at all is refused
  * UI_ACTION_NOT_ON_PAGE, the code core gives a highlight its snapshot already rules out.
  */
+/** Why a highlight names nothing the open record could draw, before the page is looked at; null where it may. */
+function highlightMisfit(h: UiHighlight, item: ReturnType<typeof pageItemOf>, what: string): string | null {
+  if (h.target === "step" && item?.kind !== "workflow") return `names step "${what}" and no workflow is open beside the chat`;
+  if (h.target === "section" && !item) return `names section "${what}" and no record is open beside the chat`;
+  if (h.target !== "row" && h.of !== undefined && item && item.kind !== "workflow" && item.key !== h.of)
+    return `names ${h.of}, but the page beside the chat shows ${item.key}; open ${h.of} first`;
+  return null;
+}
+
 function applyHighlight(h: UiHighlight, env: UiActionEnv): UiActionOutcome {
   const before = env.href();
   const url = new URL(before, "http://x");
@@ -291,10 +278,8 @@ function applyHighlight(h: UiHighlight, env: UiActionEnv): UiActionOutcome {
   const item = at ? pageItemOf(at.rest) : null;
   const what = highlightTargetOf(h);
   const no = (why: string) => refuse("UI_ACTION_NOT_ON_PAGE", `UI_ACTION_NOT_ON_PAGE: ui.highlight ${why}. Nothing was highlighted.`);
-  if (h.target === "step" && item?.kind !== "workflow") return no(`names step "${what}" and no workflow is open beside the chat`);
-  if (h.target === "section" && !item) return no(`names section "${what}" and no record is open beside the chat`);
-  if (h.target !== "row" && h.of !== undefined && item && item.kind !== "workflow" && item.key !== h.of)
-    return no(`names ${h.of}, but the page beside the chat shows ${item.key}; open ${h.of} first`);
+  const misfit = highlightMisfit(h, item, what);
+  if (misfit) return no(misfit);
   const selectors = selectorsOf(h, item?.kind ?? null);
   if (selectors.length === 0) return no(`names section "${what}", which ${withArticle(String(item?.kind))} page does not draw`);
   const onPage = env.find(selectors);

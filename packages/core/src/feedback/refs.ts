@@ -19,6 +19,7 @@ import { projectWorkflows } from '../db/schema-workflows.js';
 import { activeIssuePrefix, isUuid, resolveIssueRouteRef } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { runWearingVersion } from '../pipeline/index.js';
+import { feedbackDependents } from './dependents.js';
 import { endpointIn } from './endpoint-rules.js';
 import { servedEndpointsOf } from './endpoints.js';
 import { type Row, rowIn } from './read.js';
@@ -32,6 +33,7 @@ interface ResolvedTarget {
   workflowId: string | null;
   /** A route or tool the project serves, as its contract's current version names it. */
   endpoint: { contractSlug: string; contractVersion: string; element: string } | null;
+  mockupId: string | null;
   screen: string | null;
 }
 
@@ -170,6 +172,7 @@ export async function resolveTarget(
     releaseRunId: null,
     workflowId: null,
     endpoint: null,
+    mockupId: null,
     screen: null,
   };
   if (fields.requirement) {
@@ -198,6 +201,15 @@ export async function resolveTarget(
           endpoint: { contractSlug: r.contract, contractVersion: r.version, element: r.element },
         };
   }
+  if (fields.mockup) {
+    const m = await feedbackDependents().mockupRefIn(projectId, fields.mockup);
+    if (!m)
+      return unknownTarget(
+        '/mockup',
+        `${fields.mockup} names no mockup of this project; name it as MK-n.`,
+      );
+    return { ...empty, type: 'mockup', mockupId: m.id };
+  }
   return { ...empty, type: 'screen', screen: fields.screen ?? '' };
 }
 
@@ -216,4 +228,6 @@ export const targetTypeOf = (r: Row): FeedbackTargetType =>
             ? 'contract'
             : r.endpointElement
               ? 'endpoint'
-              : 'screen';
+              : r.mockupId
+                ? 'mockup'
+                : 'screen';

@@ -1,6 +1,6 @@
 /**
  * The BA door's tool set (ISS-58): read the room's requirement, an issue and similar requirements;
- * write a suggestion; ask a clarification. It is the whole catalog a BA turn is offered — no forge
+ * write a suggestion; ask a clarification; propose a mockup (REQ-49 BC-5). It is the whole catalog a BA turn is offered — no forge
  * CLI, no requirement or issue write — so the role's bound is what the model can call, not
  * what its prompt asks of it. The requirement is bound when the toolset is built, from the room.
  */
@@ -22,6 +22,7 @@ import {
 import { readRequirementAs, similarRequirements } from '../../requirements/index.js';
 import { createSuggestion, listSuggestions, suggestionBaseOf } from '../../suggestions/index.js';
 import { askClarification, clarificationOf, sendQuestionnaire } from './ba-ask-tools.js';
+import { mockupsForBa, proposeMockupTool } from './ba-mockup-tool.js';
 import { actorOf, type BaRoom, schema } from './ba-room.js';
 import { buildToolset, type ChatToolset } from './mcp-adapter.js';
 
@@ -44,7 +45,7 @@ const readRequirement =
     route: '/api/projects',
     grant: 'projects:read',
     description:
-      'Read the requirement this room is about: its revisions (newest first) with criteria and spec (open questions and assumptions included), the head (currentRevision), the questions standing on it (`questions`, open first, with who answers and whether each blocks the agree; `unclear` counts the open ones), the suggestions waiting on it, the latest clarification question and its answer, and whether its head is embedded for dedup.',
+      'Read the requirement this room is about: its revisions (newest first) with criteria and spec (open questions and assumptions included), the head (currentRevision), the questions standing on it (`questions`, open first, with who answers and whether each blocks the agree; `unclear` counts the open ones), the suggestions waiting on it, its mockups (each with status and round, and the comments on one still discussed), the latest clarification question and its answer, and whether its head is embedded for dedup.',
     inputSchema: schema(z.strictObject({})),
     handler: async () => {
       const detail = await readRequirementAs(
@@ -61,7 +62,7 @@ const readRequirement =
             ? latest.revision
             : null,
       };
-      const [waiting, clarification, embedding] = await Promise.all([
+      const [waiting, clarification, embedding, mockups] = await Promise.all([
         listSuggestions({
           projectId: room.projectId,
           userId: ctx.principal.userId,
@@ -74,6 +75,7 @@ const readRequirement =
           .select({ status: itemEmbeddings.status, version: itemEmbeddings.version })
           .from(itemEmbeddings)
           .where(eq(itemEmbeddings.requirementId, room.requirementId)),
+        mockupsForBa(ctx, room),
       ]);
       const level = await dataPolicyOf(room.projectId);
       const requirement = egressOr(egressAt(level, 'requirement', detail, detail.key), {
@@ -111,6 +113,9 @@ const readRequirement =
         requirement,
         suggestions,
         openSuggestions: waiting.open,
+        mockups: egressOr(egressAt(level, 'requirement', mockups, `the mockups on ${detail.key}`), {
+          keys: mockups.map((m) => m.key),
+        }),
         clarification: asked,
         embedding: embedding[0] ?? { status: 'none', version: null },
       };
@@ -257,5 +262,6 @@ export function buildBaToolset(ctx: McpContext, room: BaRoom): ChatToolset {
     { factory: suggest(room, seen) },
     { factory: askClarification(room) },
     { factory: sendQuestionnaire(room) },
+    { factory: proposeMockupTool(room) },
   ]);
 }

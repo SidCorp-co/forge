@@ -4,7 +4,12 @@
 // calls; a decision stays the act of whoever holds the permission the service checks.
 
 import { DESIGN_TOOL_ACTIONS, DESIGN_TOOL_READS } from '@forge/contracts/mcp-product';
-import { PROPOSE_MOCKUP_SHAPE, proposeMockupRequestSchema } from '@forge/contracts/mockups';
+import {
+  COMMENT_MOCKUP_SHAPE,
+  commentMockupRequestSchema,
+  PROPOSE_MOCKUP_SHAPE,
+  proposeMockupRequestSchema,
+} from '@forge/contracts/mockups';
 import {
   CREATE_SUGGESTION_SHAPE,
   createSuggestionRequestSchema,
@@ -21,8 +26,10 @@ import { type ContextScopedMcpToolFactory, type McpContext, zodToMcpSchema } fro
 import { envelopeOf } from '../lib/write-envelope.js';
 import {
   acceptMockup,
+  commentOnMockup,
   getMockupAs,
   listMockupsAs,
+  mockupCommentsAs,
   proposeMockup,
   returnMockup,
   withdrawMockup,
@@ -72,7 +79,9 @@ const input = z.strictObject({
   body: z
     .unknown()
     .optional()
-    .describe('design_create/_revise, suggestion_create, mockup_propose: the REST body'),
+    .describe(
+      'design_create/_revise, suggestion_create, mockup_propose, mockup_comment: the REST body',
+    ),
   requirement: z.string().max(64).optional(),
   feedback: z.string().max(64).optional(),
   workflow: z.string().max(200).optional(),
@@ -97,10 +106,11 @@ Suggestions (on a requirement, issue, feedback item or workflow):
 - suggestion_create { projectId, body: ${CREATE_SUGGESTION_SHAPE} }.
 - suggestion_accept { projectId, suggestionId, reason? }: accepting writes what it suggests. Accepting a breakdown files its issues at draft: that is how a requirement becomes delivery work, so read every slice before you accept.
 - suggestion_reject { projectId, suggestionId, reason }, suggestion_revise { projectId, suggestionId, payload, reason } (rejects the original, proposes yours), suggestion_withdraw { projectId, suggestionId } (its producer only).
-Mockups (MK-n, on a requirement, feedback item or issue):
-- mockup_list { projectId, requirement | feedback | issue }, mockup_get { projectId, mockup }.
-- mockup_propose { projectId, body: ${PROPOSE_MOCKUP_SHAPE} }.
-- mockup_accept { projectId, mockup, reason? }, mockup_return { projectId, mockup, reason }, mockup_withdraw { projectId, mockup }.`;
+Mockups (MK-n): a screen or call proposed on the requirement, feedback item or issue it shapes, for a person to try, comment on and accept or return; never a local file. Method: GET /api/guides/mockups.md.
+- mockup_list { projectId, requirement | feedback | issue }, mockup_get { projectId, mockup }, mockup_comments { projectId, mockup }: every comment on it and its earlier revisions, with where each points.
+- mockup_propose { projectId, body: ${PROPOSE_MOCKUP_SHAPE} }. An HTML page is one self-contained file (inline CSS, scripts, data: images; only Google Fonts and cdnjs, jsdelivr or unpkg libraries load): it runs sandboxed and calls nothing. A returned one is answered by proposing it again with revises, settling each comment you addressed.
+- mockup_comment { projectId, mockup, body: ${COMMENT_MOCKUP_SHAPE} }.
+- mockup_accept { projectId, mockup, reason? } (an accepted requirement mockup is pinned by the next agree or re-pin), mockup_return { projectId, mockup, reason }, mockup_withdraw { projectId, mockup }.`;
 
 /** A service's outcome as the tool answers it: the value, or its refusals thrown in the envelope. */
 function settled<O extends { ok: true } | { ok: false; refusals: readonly Refusal[] }>(
@@ -376,6 +386,23 @@ async function mockup_get(ctx: McpContext, i: Input) {
   return { mockup: await getMockupAs(actorOf(ctx), i.projectId, mockup, MCP_DOOR) };
 }
 
+async function mockup_comments(ctx: McpContext, i: Input) {
+  const { mockup } = need(i, 'mockup_comments', 'mockup');
+  return mockupCommentsAs(actorOf(ctx), i.projectId, mockup, MCP_DOOR);
+}
+
+async function mockup_comment(ctx: McpContext, i: Input) {
+  const { mockup } = need(i, 'mockup_comment', 'mockup');
+  const body = bodyOf(i, commentMockupRequestSchema, COMMENT_MOCKUP_SHAPE);
+  const outcome = await commentOnMockup({
+    projectId: i.projectId,
+    ref: mockup,
+    actor: actorOf(ctx),
+    body,
+  });
+  return { comment: settled(outcome, 'MOCKUP_REFUSED').comment };
+}
+
 async function mockup_propose(ctx: McpContext, i: Input) {
   const body = bodyOf(i, proposeMockupRequestSchema, PROPOSE_MOCKUP_SHAPE);
   return mockupAnswer(await proposeMockup({ projectId: i.projectId, actor: actorOf(ctx), body }));
@@ -422,6 +449,8 @@ const ACTIONS = {
   suggestion_withdraw,
   mockup_list,
   mockup_get,
+  mockup_comments,
+  mockup_comment,
   mockup_propose,
   mockup_accept,
   mockup_return,

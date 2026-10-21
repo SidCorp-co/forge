@@ -12,6 +12,19 @@ export const MOCKUP_KINDS = [
 	"html",
 	"api_example",
 ] as const;
+
+/**
+ * What accepting a mockup does, by its item: a requirement's is pinned by the next agree or re-pin
+ * and given to its issues' jobs from there; an issue's is given to that issue's jobs; a feedback
+ * item's is kept on the item as the agreed picture of its fix.
+ */
+export const MOCKUP_ACCEPT_CONSEQUENCES = [
+	"pinned_next_baseline",
+	"given_to_issue_jobs",
+	"kept_on_feedback",
+] as const;
+export type MockupAcceptConsequence =
+	(typeof MOCKUP_ACCEPT_CONSEQUENCES)[number];
 export type MockupKind = (typeof MOCKUP_KINDS)[number];
 
 export const MOCKUP_KIND_LABELS: Record<MockupKind, string> = {
@@ -91,6 +104,9 @@ export const MOCKUP_LIMITS = {
 	captionChars: 500,
 	nameChars: 200,
 	reasonChars: 2_000,
+	commentChars: 4_000,
+	commentsPerMockup: 200,
+	answersPerRevision: 100,
 } as const;
 
 const MOCKUP_SOURCES = ["issue", "comment"] as const;
@@ -107,18 +123,24 @@ export const MOCKUP_REFUSAL_CODES = [
 	...PERMISSION_REFUSAL_CODES,
 	"MOCKUP_WITHDRAW_FORBIDDEN",
 	"MOCKUP_REASON_REQUIRED",
+	"MOCKUP_REVISION_SUPERSEDED",
+	"MOCKUP_REVISES_INVALID",
+	"MOCKUP_COMMENT_CLOSED",
+	"MOCKUP_COMMENT_UNKNOWN",
+	"MOCKUP_COMMENT_SETTLED",
+	"MOCKUP_COMMENTS_FULL",
 ] as const;
 export type MockupRefusalCode = (typeof MOCKUP_REFUSAL_CODES)[number];
 
 /**
- * Exactly one target, as feedback names exactly one: a feedback item or an issue. A requirement is
- * still parsed so its proposal is refused by name (MOCKUP_TARGET_INVALID): its picture is its
- * revision's own (REQ-35), and a mockup is no longer proposed about it.
+ * Exactly one target, as feedback names exactly one: a requirement at one of its revisions (the
+ * current one or the open draft; left out, the open draft where there is one, else the current), a
+ * feedback item or an issue (REQ-49).
  */
 export const mockupTargetSchema = z.union([
 	z.strictObject({
 		requirement: z.string().trim().min(1).max(64),
-		revision: z.number().int().min(1),
+		revision: z.number().int().min(1).optional(),
 	}),
 	z.strictObject({ feedback: z.string().trim().min(1).max(64) }),
 	z.strictObject({ issue: z.string().trim().min(1).max(64) }),
@@ -130,9 +152,44 @@ const mockupSourceSchema = z.strictObject({
 	attachmentId: z.uuid(),
 });
 
-/** `POST /api/projects/:id/mockups`: a proposal, as bytes, a wireframe document, or an upload already in this project. */
+/**
+ * A point (`w`, `h` absent) or a region of a mockup's frame, each as a fraction of its width and
+ * height, so it points at the same place whatever size the frame is drawn at (REQ-49 BC-2).
+ */
+export const mockupPinSchema = z
+	.strictObject({
+		x: z.number().min(0).max(1),
+		y: z.number().min(0).max(1),
+		w: z.number().gt(0).max(1).optional(),
+		h: z.number().gt(0).max(1).optional(),
+	})
+	.refine((p) => (p.w === undefined) === (p.h === undefined), {
+		message: "a region names both w and h; a point names neither",
+		path: ["w"],
+	})
+	.refine((p) => p.x + (p.w ?? 0) <= 1 + 1e-9 && p.y + (p.h ?? 0) <= 1 + 1e-9, {
+		message: "a region stays inside the frame: x + w and y + h are at most 1",
+		path: ["x"],
+	});
+export type MockupPin = z.infer<typeof mockupPinSchema>;
+
+/** One comment a next revision settles: `answers` changed the mockup for it, `resolves` closes it with a note and no change. */
+const settledCommentSchema = z.strictObject({
+	comment: z.uuid(),
+	note: z.string().trim().min(1).max(MOCKUP_LIMITS.commentChars).optional(),
+});
+const resolvedCommentSchema = z.strictObject({
+	comment: z.uuid(),
+	note: z.string().trim().min(1).max(MOCKUP_LIMITS.commentChars),
+});
+
+/**
+ * `POST /api/projects/:id/mockups`: a proposal, as bytes, a wireframe document, or an upload already
+ * in this project. `revises` makes it the next revision of a returned mockup (REQ-49 BC-3): it takes
+ * that mockup's target unless one is named, and settles the comments it names.
+ */
 export const proposeMockupRequestSchema = z.strictObject({
-	target: mockupTargetSchema,
+	target: mockupTargetSchema.optional(),
 	kind: z.enum(MOCKUP_KINDS),
 	name: z.string().trim().min(1).max(MOCKUP_LIMITS.nameChars).optional(),
 	mime: z.string().trim().min(3).max(200).optional(),
@@ -140,10 +197,28 @@ export const proposeMockupRequestSchema = z.strictObject({
 	contentBase64: z.string().min(4).optional(),
 	document: z.unknown().optional(),
 	source: mockupSourceSchema.optional(),
+	revises: z.string().trim().min(1).max(64).optional(),
+	answers: z
+		.array(settledCommentSchema)
+		.max(MOCKUP_LIMITS.answersPerRevision)
+		.optional(),
+	resolves: z
+		.array(resolvedCommentSchema)
+		.max(MOCKUP_LIMITS.answersPerRevision)
+		.optional(),
 });
 export type ProposeMockupRequest = z.infer<typeof proposeMockupRequestSchema>;
 export const PROPOSE_MOCKUP_SHAPE =
-	"{ target: { feedback } | { issue }, kind: wireframe | sketch | image | html | api_example, caption?, and exactly one of { name, mime?, contentBase64 }, { document } (a wireframe-v1 board) or { source: { from: issue | comment, attachmentId }, name? } }";
+	"{ target: { requirement, revision? } | { feedback } | { issue } (optional with revises), kind: wireframe | sketch | image | html | api_example, caption?, exactly one of { name, mime?, contentBase64 }, { document } (a wireframe-v1 board) or { source: { from: issue | comment, attachmentId }, name? }, revises?: MK-n (a returned mockup this is the next revision of), answers?: [{ comment, note? }], resolves?: [{ comment, note }] }";
+
+/** `POST …/mockups/:mk/comments`: what the person says, and where on the frame it points. */
+export const commentMockupRequestSchema = z.strictObject({
+	body: z.string().trim().min(1).max(MOCKUP_LIMITS.commentChars),
+	pin: mockupPinSchema.optional(),
+});
+export type CommentMockupRequest = z.infer<typeof commentMockupRequestSchema>;
+export const COMMENT_MOCKUP_SHAPE =
+	"{ body, pin?: { x, y } (a point) | { x, y, w, h } (a region), each a fraction 0..1 of the frame }";
 
 /** `POST …/mockups/:mk/accept | return`: return says why; accept may. */
 export const decideMockupRequestSchema = z.strictObject({
@@ -172,6 +247,41 @@ export interface MockupPinView {
 	seq: number;
 }
 
+/** How a comment was settled by a next revision: `answered` changed the mockup for it, `resolved` closed it with a note. */
+export const MOCKUP_COMMENT_SETTLEMENTS = ["answered", "resolved"] as const;
+export type MockupCommentSettlement =
+	(typeof MOCKUP_COMMENT_SETTLEMENTS)[number];
+
+/** One comment on a mockup, where it points, and the revision that settled it. */
+export interface MockupCommentView {
+	id: string;
+	/** The mockup (MK-n) it was made on. */
+	on: string;
+	body: string;
+	pin: MockupPin | null;
+	authorId: string;
+	authorName: string | null;
+	authorAgency: "human" | "agent";
+	createdAt: string;
+	settled: {
+		as: MockupCommentSettlement;
+		/** The revision (MK-n) that settled it. */
+		by: string;
+		note: string | null;
+		at: string;
+	} | null;
+}
+
+export interface MockupCommentsResponse {
+	/** Every comment on this mockup and on the revisions before it, oldest first. */
+	comments: MockupCommentView[];
+	open: number;
+}
+
+export interface MockupCommentResponse {
+	comment: MockupCommentView;
+}
+
 /** One mockup as every door shows it; `url` serves its bytes to a person. */
 export interface MockupView {
 	id: string;
@@ -192,8 +302,24 @@ export interface MockupView {
 	decidedAt: string | null;
 	reason: string | null;
 	pinned: MockupPinView | null;
+	/** 1 for a first proposal; n + 1 for the next revision of a returned one. */
+	round: number;
+	/** The mockup (MK-n) this one is the next revision of; null on a first proposal. */
+	revises: string | null;
+	/** The mockup (MK-n) proposed as this one's next revision; null while none is. */
+	revisedBy: string | null;
+	/** Comments made on this mockup: how many, and how many no revision has settled yet. */
+	comments: { total: number; open: number };
 	url: string;
-	can: { accept: boolean; return: boolean; withdraw: boolean };
+	can: {
+		accept: boolean;
+		return: boolean;
+		withdraw: boolean;
+		/** Comment on it: it is proposed or returned, and no next revision was proposed yet. */
+		comment: boolean;
+		/** Propose its next revision: it is returned and has none yet. */
+		revise: boolean;
+	};
 }
 
 export interface MockupResponse {

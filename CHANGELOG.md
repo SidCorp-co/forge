@@ -9,6 +9,25 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.268] - 2026-10-21
+
+A steward agent works every handoff; Approvals becomes the one Needs you list
+
+### Added
+
+- **A requirement's owner can be named, an open question voided, and a requirement comment deleted.** The owner must be a project member; a void keeps its reason; a decision or a replied-to comment is kept.
+- **The steward now acts at each handoff an item reaches.** It checks intake, breakdown and output, asks the master about a stuck item within the hour, keeps to a daily budget, and each act is undoable or says why not.
+
+### Changed
+
+- **Every surface reads one standing per item.** The Dashboard, requirements, feedback, issues, the board and the status report show the same stuck reading and the steward's note, in place of their own waiting guesses.
+- **Approvals is the one Needs you list.** Each row reads the agent's proposal, its peek says what approving changes and why, a bulk approve states what it makes first, and every decision can be undone for five seconds.
+
+### Fixed
+
+- **Only a token that may write to the project can write a steward note.** An admin now cuts a ready release in one click from Needs you. The Needs you count across your projects reads faster.
+- **forge_feedback refuses projectId by name whatever the credential reaches.** Naming Forge's home or any project outside the fence no longer answers not found; it points to project_feedback, and nothing is written.
+
 ## [0.4.0-dev.266] - 2026-10-21
 
 The Ask Agent panel stays open once opened; the pin is retired

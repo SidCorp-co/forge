@@ -1,6 +1,6 @@
 import { feedbackKey } from '@forge/contracts/feedback';
 import { and, eq, inArray, or, sql } from 'drizzle-orm';
-import { db } from '../db/client.js';
+import { db, type Tx } from '../db/client.js';
 import { feedback, feedbackAttachments, feedbackDecisions } from '../db/schema-feedback.js';
 import { getStorage } from '../integrations/index.js';
 import { deleteFeedbackEmbedding } from '../knowledge/index.js';
@@ -11,7 +11,7 @@ import { deleteFeedbackQuestions } from '../questions/index.js';
 import { feedbackDependents } from './dependents.js';
 import { redactExternalReporterIn } from './external.js';
 import { type FeedbackActor, rowIn } from './read.js';
-import { redactActRefusal, redactedRefusal } from './rules.js';
+import { redactActRefusal, redactedRefusal, redactMockupTargetedRefusal } from './rules.js';
 import {
   answer,
   decide,
@@ -31,6 +31,27 @@ import {
 /** What stands in for a reporter's words once they are deleted; where_seen stays non-null for a screen item. */
 const REDACTED = 'reporter data deleted';
 
+/** Each item filed about one of this item's mockups, the item itself included, as MK-n and FB-n. */
+async function itemsAboutMockupsOf(tx: Tx, feedbackId: string) {
+  const drawn = await feedbackDependents().mockupsOf(tx, feedbackId);
+  if (!drawn.length) return [];
+  const keyOf = new Map(drawn.map((m) => [m.id, m.key]));
+  const about = await tx
+    .select({ seq: feedback.fbSeq, mockupId: feedback.mockupId })
+    .from(feedback)
+    .where(
+      inArray(
+        feedback.mockupId,
+        drawn.map((m) => m.id),
+      ),
+    )
+    .orderBy(feedback.fbSeq);
+  return about.map((a) => ({
+    mockup: keyOf.get(a.mockupId ?? '') ?? '',
+    feedback: feedbackKey(a.seq),
+  }));
+}
+
 export async function redactReporterData(input: {
   projectId: string;
   ref: string;
@@ -47,6 +68,8 @@ export async function redactReporterData(input: {
     const row = await rowIn(tx, projectId, first.id, true);
     const done = redactedRefusal(row.redactedAt);
     if (done) return [done];
+    const targeted = redactMockupTargetedRefusal(await itemsAboutMockupsOf(tx, row.id));
+    if (targeted) return [targeted];
     // the recordings go first and on their own: a redaction that then fails leaves none standing,
     // and the retry finds them redacted already
     await redactRecordingsOf(row.id, feedbackKernelActor(actor));

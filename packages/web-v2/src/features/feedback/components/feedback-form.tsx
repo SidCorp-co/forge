@@ -28,7 +28,7 @@ const SEND_FIELDS = {
   title: ["/title"],
   kind: ["/kind"],
   severity: ["/severity"],
-  about: ["/requirement", "/issue", "/release", "/workflow", "/endpoint", "/screen", "/node"],
+  about: ["/requirement", "/issue", "/release", "/workflow", "/endpoint", "/mockup", "/screen", "/node"],
   body: ["/body"],
 } as const;
 

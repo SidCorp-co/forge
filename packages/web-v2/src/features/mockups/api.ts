@@ -1,6 +1,14 @@
 import { apiClient } from "@/lib/api/client";
 import { coreFileUrl } from "@/lib/utils/core-url";
-import type { MockupListResponse, MockupResponse, MockupTarget, ProposeMockupRequest } from "./types";
+import type {
+  CommentMockupRequest,
+  MockupCommentResponse,
+  MockupCommentsResponse,
+  MockupListResponse,
+  MockupResponse,
+  MockupTarget,
+  ProposeMockupRequest,
+} from "./types";
 
 const base = (projectId: string) => `/projects/${projectId}/mockups`;
 const post = (body: unknown): RequestInit => ({ method: "POST", body: JSON.stringify(body) });
@@ -9,6 +17,11 @@ export const mockupsApi = {
   list: (projectId: string, target: MockupTarget) =>
     apiClient<MockupListResponse>(`${base(projectId)}?${target.type}=${encodeURIComponent(target.key)}`),
   propose: (projectId: string, body: ProposeMockupRequest) => apiClient<MockupResponse>(base(projectId), post(body)),
+  get: (projectId: string, key: string) => apiClient<MockupResponse>(`${base(projectId)}/${encodeURIComponent(key)}`),
+  /** Every comment on the mockup and on the revisions before it, oldest first (REQ-49 BC-2). */
+  comments: (projectId: string, key: string) => apiClient<MockupCommentsResponse>(`${base(projectId)}/${encodeURIComponent(key)}/comments`),
+  comment: (projectId: string, key: string, body: CommentMockupRequest) =>
+    apiClient<MockupCommentResponse>(`${base(projectId)}/${encodeURIComponent(key)}/comments`, post(body)),
   act: (projectId: string, key: string, act: "accept" | "return" | "withdraw", reason?: string) =>
     apiClient<MockupResponse>(`${base(projectId)}/${encodeURIComponent(key)}/${act}`, post(act === "withdraw" || !reason ? {} : { reason })),
   /** The bytes, through the session cookie: the content route serves every mockup inert. */
@@ -20,7 +33,8 @@ export const mockupsApi = {
 };
 
 export function targetInput(t: MockupTarget): ProposeMockupRequest["target"] {
-  if (t.type === "requirement") return { requirement: t.key, revision: t.revision };
+  // a requirement's mockup goes on its open draft, else its current revision: core picks it
+  if (t.type === "requirement") return { requirement: t.key };
   return t.type === "feedback" ? { feedback: t.key } : { issue: t.key };
 }
 

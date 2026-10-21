@@ -1,1 +1,0 @@
-**A requirement's owner can be named, an open question voided, and a requirement comment deleted.** The owner must be a project member; a void keeps its reason; a decision or a replied-to comment is kept.

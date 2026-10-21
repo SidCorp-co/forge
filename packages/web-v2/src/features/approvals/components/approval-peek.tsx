@@ -9,6 +9,7 @@ import { Button, type FullPage, Kbd, PeekExcerpt, PeekHead, PeekPanel, type Peek
 import { Link } from "@/lib/navigation/router";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import { approveOf, declineOf } from "../derive";
+import { PeekMockup } from "./approval-mockup";
 import { DecisionTags } from "./approval-row";
 
 function Heading({ children }: { children: React.ReactNode }) {
@@ -232,6 +233,7 @@ export function DecisionPeek({ d, peek, full, noun, typing, onType, onPress }: P
       />
       <div className="flex flex-col gap-5 px-4 pb-5">
         <Proposal d={d} />
+        <PeekMockup d={d} itemHref={full.href} />
         <DecisionTags d={d} />
         <Reasons d={d} />
       </div>

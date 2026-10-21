@@ -47,9 +47,16 @@ describe('the BA door as the model is shown it', () => {
     expect(byName('ba_suggest')?.description).toContain('never a key of revision_diff');
   });
 
-  // REQ-35: a requirement's picture is its revision's own, shown at once and pinned by nothing, so
-  // the door offers no tool that queues a requirement mockup for someone to accept
-  it('offers no tool that proposes a requirement mockup', () => {
-    expect(byName('ba_draw_mockup')).toBeUndefined();
+  // REQ-49 BC-5 reverses REQ-35's removal of ba_draw_mockup: the door proposes a wireframe or an
+  // HTML mockup on the room's requirement, or a returned one again as its next revision
+  it('offers ba_propose_mockup, a wireframe board or an HTML page, revisable', () => {
+    const tool = byName('ba_propose_mockup');
+    const schema = JSON.stringify(tool?.parameters);
+    expect(schema).toContain('"enum":["wireframe","html"]');
+    expect(schema).toContain('"const":"arrow"');
+    expect(schema).not.toContain('"const":"pen"');
+    for (const field of ['revises', 'answers', 'resolves', 'html', 'document'])
+      expect(schema).toContain(`"${field}"`);
+    expect(tool?.description).toContain('sandboxed');
   });
 });

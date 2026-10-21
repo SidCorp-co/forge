@@ -7,6 +7,11 @@
 
 import { z } from "zod";
 import {
+	MOCKUP_ACCEPT_CONSEQUENCES,
+	MOCKUP_KINDS,
+	MOCKUP_LIMITS,
+} from "./mockups.js";
+import {
 	NEEDS_YOU_AREAS,
 	NEEDS_YOU_ENTITIES,
 	type NeedsYouEntity,
@@ -276,6 +281,25 @@ export const needsYouDecisionSchema = z
 		topic: z.enum(NEEDS_YOU_TOPICS),
 		/** What the agent proposes, where an agent proposed it; null on a person's question or sign-off. */
 		proposal: decisionProposalSchema.nullable(),
+		/**
+		 * A mockup decision's preview and standing (REQ-49 BC-7): its key, the route serving its bytes, which
+		 * `features/mockups` `MockupPreview` draws in the row and the peek, its kind and name, its round
+		 * and the mockup it revises, the comments still open on it, and what accepting it does. Absent on
+		 * every other decision.
+		 */
+		mockup: z
+			.strictObject({
+				/** Its MK-n, which its item's page opens full screen (`?mockup=MK-n&full=1`). */
+				key: z.string().regex(/^MK-\d{1,9}$/),
+				url: z.string().startsWith("/api/"),
+				kind: z.enum(MOCKUP_KINDS),
+				name: z.string().min(1).max(MOCKUP_LIMITS.nameChars),
+				round: z.int().min(1),
+				revises: z.string().max(200).nullable(),
+				openComments: z.int().min(0),
+				consequence: z.enum(MOCKUP_ACCEPT_CONSEQUENCES),
+			})
+			.optional(),
 	})
 	.superRefine((d, ctx) => {
 		if ((d.recommended === null) === (d.noRecommendation === null)) {

@@ -139,12 +139,17 @@ export const uiOpenParamsSchema = z
 	});
 export type UiOpenTarget = z.output<typeof uiOpenParamsSchema>;
 
-/** The records a page can be about, each the route its own page is read as (REQ-30 BC-6). */
+/**
+ * The records a page can be about, each the route its own page is read as (REQ-30 BC-6). A mockup
+ * opened full screen on its item's page (`?mockup=MK-n`) is what that page is about while it is open
+ * (REQ-49 BC-4).
+ */
 export const UI_PAGE_ITEM_KINDS = [
 	"issue",
 	"requirement",
 	"feedback",
 	"workflow",
+	"mockup",
 ] as const;
 export type UiPageItemKind = (typeof UI_PAGE_ITEM_KINDS)[number];
 
@@ -731,6 +736,10 @@ export const uiPageItemSchema = z.discriminatedUnion("kind", [
 				WORKFLOW_PAGE_REF,
 				"a workflow flow such as chat-turn, or its uuid",
 			),
+	}),
+	z.strictObject({
+		kind: z.literal("mockup"),
+		key: z.string().regex(/^MK-\d{1,9}$/, "a mockup key such as MK-3"),
 	}),
 ]);
 export type UiPageItem = z.infer<typeof uiPageItemSchema>;

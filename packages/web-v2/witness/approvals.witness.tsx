@@ -5,6 +5,9 @@
 // peek with the designs that move, a selection's bar stating what approving makes, a decline's
 // reason step, and the Undo held after an approve. At 390 px the peek is its full-screen sheet and
 // nothing scrolls sideways. The rows are `src/test/approvals-read.ts`, the read the page tests use.
+// A mockup decision (REQ-49 BC-7) shows its page small in its row and runs it in its peek: the page is
+// `<out>/mockup-fixture.js` where one is written there (`mockups-on-the-item.witness.tsx` says how),
+// else a line of HTML.
 //
 //   pnpm --filter web-v2 witness witness/approvals.witness.tsx --out <dir>
 
@@ -19,9 +22,24 @@ import { InRouter } from "./router";
 
 const PHONE = 600;
 
+declare global {
+  interface Window {
+    __mockupHtml?: string;
+  }
+}
+
+const mockupPage = new Promise<string>((ok) => {
+  const s = document.createElement("script");
+  s.src = "mockup-fixture.js";
+  s.onload = () => ok(window.__mockupHtml ?? "");
+  s.onerror = () => ok("<!doctype html><body style='font:16px sans-serif;padding:24px'><h1>Approvals page</h1><button>Approve all</button></body>");
+  document.head.append(s);
+});
+
 window.localStorage.clear();
 window.fetch = async (input: RequestInfo | URL) => {
   const url = String(input);
+  if (url.includes("/mockups/MK-4/content")) return new Response(await mockupPage, { headers: { "content-type": "text/html" } });
   if (url.includes(`/projects/${P}/needs-you/decisions`)) return new Response(JSON.stringify(READ), { headers: { "content-type": "application/json" } });
   return new Promise<Response>(() => {});
 };
@@ -131,6 +149,23 @@ window.__witness = {
         const wrong = open("system-context");
         await settle();
         return [...wrong, ...peekReads("proposal", "consequences", "table", "foot")];
+      },
+    },
+    {
+      name: "peek-mockup-light",
+      run: async () => {
+        theme("light");
+        closePeek();
+        await settle();
+        const row = rows().find((r) => r.dataset.topic === "mockup");
+        const wrong: string[] = [];
+        if (!phone && !row?.querySelector("[data-testid=approval-row-mockup] iframe[sandbox=allow-scripts]")) wrong.push("the mockup row draws no isolated preview");
+        if (!row?.querySelector("[data-testid=approval-mockup-standing]")?.textContent?.includes("Revision 2, answering MK-3")) wrong.push("the mockup row does not say its round and what it revises");
+        wrong.push(...open("REQ-49"));
+        await settle();
+        await new Promise((r) => setTimeout(r, 1500));
+        if (!peek()?.querySelector("[data-testid=approval-peek-mockup] iframe[sandbox=allow-scripts]")) wrong.push("the peek does not run the mockup in the isolated frame");
+        return [...wrong, ...peekReads("proposal", "mockup", "consequences", "foot")];
       },
     },
     {
