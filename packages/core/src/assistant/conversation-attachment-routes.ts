@@ -62,7 +62,7 @@ async function nothingHereToStop(id: string): Promise<HTTPException | null> {
     return roomRefusal(
       409,
       'CONVERSATION_TURN_ON_ANOTHER_CORE',
-      'This room is answering on another server, and no turn for it is running on this one — a stop reaches only the server running the turn, so this one cannot end it',
+      `This room is answering on another server, ${elsewhere.claimedBy}, and no turn for it is running on this one — a stop reaches only the server running the turn, so this one cannot end it`,
       { conversationId: id, windowId: elsewhere.id, claimedBy: elsewhere.claimedBy },
     );
   }
