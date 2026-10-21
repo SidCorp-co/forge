@@ -141,7 +141,8 @@ async function whatTheMockupGot(): Promise<Record<string, string>> {
   } finally {
     proc.kill();
     await new Promise((ok) => (proc.exitCode === null ? proc.once("exit", ok) : ok(null)));
-    rmSync(profile, { recursive: true, force: true });
+    // a helper process can still be writing the profile after the browser exits (ENOTEMPTY on CI)
+    rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 }
 
