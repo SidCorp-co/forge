@@ -274,6 +274,10 @@ async function resetOneWedge(row: WedgeCandidate): Promise<boolean> {
         skip: true,
         beforeStatusWrite: async (tx) => {
           if (await personOwesAnAnswer(tx, row.id)) throw new AskedSinceSelected();
+          const [answered] = await tx.execute<{ recent: boolean }>(
+            sql`SELECT ${answeredSince(sql`${row.id}::uuid`, sql`now() - interval '${sql.raw(WEDGE_GRACE)}'`)} AS recent`,
+          );
+          if (answered?.recent === true) throw new AskedSinceSelected();
           const reading = readWedgeLease(await wedgeLeaseUnderLock(tx, row.id), new Date());
           if (wedgeLeaseHoldsTheIssue(reading)) throw new LeaseRenewedSinceSelected();
           await mintReconcilerActor(tx, row.project_id, actor);
@@ -312,7 +316,7 @@ async function resetOneWedge(row: WedgeCandidate): Promise<boolean> {
     if (err instanceof AskedSinceSelected) {
       logger.info(
         { issueId: row.id },
-        'reconciler: a person was asked since the wedge read, so it stays',
+        'reconciler: a person was asked or answered since the wedge read, so it stays',
       );
       return false;
     }
