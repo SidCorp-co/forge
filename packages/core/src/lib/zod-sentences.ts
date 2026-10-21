@@ -156,7 +156,6 @@ function editDistance(a: string, b: string): number {
   return prev[b.length] ?? 0;
 }
 
-/** "This call takes `documentId`, which may be what `id` meant." for each stray key with a near field. */
 /**
  * "This call takes `documentId`, which may be what `id` meant." for each stray key: the fields near
  * it beside it, or, with none there, those near it one level down (`filters.issueId` for `issueid`).

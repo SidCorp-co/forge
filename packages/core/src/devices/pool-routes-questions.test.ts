@@ -212,7 +212,9 @@ describe('GET /me/questions/:id — the read-back', () => {
   it('serves the answer to the box registered as the waiter under that run', async () => {
     waiterFor.mockResolvedValue({ id: 'w-1' });
     answerOf.mockResolvedValue({ questionId: 'q-1', optionId: 'keep' });
-    const res = await app.request(`/api/devices/me/questions/${QUESTION_ID}?runId=run-7`, { headers: AUTH });
+    const res = await app.request(`/api/devices/me/questions/${QUESTION_ID}?runId=run-7`, {
+      headers: AUTH,
+    });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ answer: { questionId: 'q-1', optionId: 'keep' } });
     expect(waiterFor).toHaveBeenCalledWith({
@@ -224,7 +226,9 @@ describe('GET /me/questions/:id — the read-back', () => {
 
   it('404s a box that registered no waiter, rather than answering `not answered yet`', async () => {
     waiterFor.mockResolvedValue(null);
-    const res = await app.request(`/api/devices/me/questions/${QUESTION_ID}?runId=run-7`, { headers: AUTH });
+    const res = await app.request(`/api/devices/me/questions/${QUESTION_ID}?runId=run-7`, {
+      headers: AUTH,
+    });
     expect(res.status).toBe(404);
     expect(answerOf).not.toHaveBeenCalled();
   });
