@@ -17,6 +17,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -27,6 +28,11 @@ import { ApiError } from '@/lib/api/client';
 interface AuthState {
   user: User | null;
   isLoading: boolean;
+  /** Why the account could not be read, where Forge did not answer that the person is signed out
+   *  (ISS-1228): a lost connection or a server failure is not a sign-out. Null once read or signed out. */
+  failure: unknown;
+  /** Read the account again. */
+  retry: () => void;
   login: (input: LoginInput) => Promise<void>;
   register: (input: RegisterInput) => Promise<void>;
   logout: () => Promise<void>;
@@ -36,35 +42,56 @@ interface AuthState {
 
 const AuthContext = createContext<AuthState | null>(null);
 
+/** Only Forge answering 401 says a person is signed out; anything else left the question unanswered. */
+function signedOut(err: unknown): boolean {
+  return err instanceof ApiError && err.status === 401;
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [failure, setFailure] = useState<unknown>(null);
   const router = useRouter();
+  const mounted = useRef(true);
 
-  // On mount, hydrate from /auth/me (cookie may be set from a prior session).
-  useEffect(() => {
-    let cancelled = false;
+  // Hydrate from /auth/me (the cookie may be set from a prior session); Retry reads it again.
+  const retry = useCallback(() => {
     authApi
       .me()
       .then((me) => {
-        if (!cancelled) setUser({ ...me });
+        if (!mounted.current) return;
+        setUser({ ...me });
+        setFailure(null);
       })
       .catch((err) => {
-        if (cancelled) return;
-        // Unauthenticated on mount is the common case on first load — login is
-        // deferred, so we leave user=null and let pages render an empty/error
-        // state. Only log genuinely unexpected (non-401) failures.
-        if (!(err instanceof ApiError && err.status === 401)) {
-          console.warn('auth hydration failed', err);
+        if (!mounted.current) return;
+        if (signedOut(err)) {
+          setUser(null);
+          setFailure(null);
+          return;
         }
+        console.warn('auth hydration failed', err);
+        setFailure(err);
       })
       .finally(() => {
-        if (!cancelled) setIsLoading(false);
+        if (mounted.current) setIsLoading(false);
       });
-    return () => {
-      cancelled = true;
-    };
   }, []);
+
+  useEffect(() => {
+    mounted.current = true;
+    retry();
+    return () => {
+      mounted.current = false;
+    };
+  }, [retry]);
+
+  // A read the connection cut is read again once the browser says the connection is back.
+  useEffect(() => {
+    if (!failure) return;
+    window.addEventListener('online', retry);
+    return () => window.removeEventListener('online', retry);
+  }, [failure, retry]);
 
   const login = useCallback(async (input: LoginInput) => {
     await authApi.login(input);
@@ -72,6 +99,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // localStorage. /auth/me returns the canonical user shape — source of truth.
     const me = await authApi.me();
     setUser({ ...me });
+    setFailure(null);
   }, []);
 
   const register = useCallback(async (input: RegisterInput) => {
@@ -95,7 +123,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, register, logout, setDisplayName }}>
+    <AuthContext.Provider value={{ user, isLoading, failure, retry, login, register, logout, setDisplayName }}>
       {children}
     </AuthContext.Provider>
   );
@@ -104,6 +132,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 const defaultAuth: AuthState = {
   user: null,
   isLoading: true,
+  failure: null,
+  retry: () => {},
   login: async () => {},
   register: async () => {},
   logout: async () => {},

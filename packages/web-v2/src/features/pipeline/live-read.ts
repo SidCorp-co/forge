@@ -27,9 +27,13 @@ export function withSessionMoved(
   return moved ? { ...read, sessions, holds, runningChats } : read;
 }
 
-/** A box's live count drops as a stop's event arrives, before the re-read lands (ISS-1228). */
+/** A box's live count drops as a stop's event arrives, before the re-read lands (ISS-1228). A frame
+ *  writes only a reading it changes, and never a failed one, which keeps what it last read and when. */
 export function moveSessionInLiveReads(qc: QueryClient, sessionId: string, status: string): void {
-  qc.setQueriesData<SessionsAndHolds>({ queryKey: ["sessions-and-holds"] }, (prev) =>
-    withSessionMoved(prev, sessionId, status),
-  );
+  for (const query of qc.getQueryCache().findAll({ queryKey: ["sessions-and-holds"] })) {
+    if (query.state.status === "error") continue;
+    const prev = query.state.data as SessionsAndHolds | undefined;
+    const next = withSessionMoved(prev, sessionId, status);
+    if (next !== prev) qc.setQueryData(query.queryKey, next);
+  }
 }

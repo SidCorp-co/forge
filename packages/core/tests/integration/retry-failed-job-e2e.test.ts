@@ -190,6 +190,25 @@ describe('a person retries a failed job', () => {
     expect(JSON.stringify(await res.json())).toContain('ISSUE_ARCHIVED');
   });
 
+  // Round 23 (judge-74, criterion 241): after a retry by hand an issue read Open with a queued run.
+  // The scratch issue had never left Open; a retry writes no issue status, which this pins.
+  it.each([
+    ['its run still open', false],
+    ['its run closed', true],
+  ])('leaves an In progress issue In progress, with %s', async (_label, closed) => {
+    const failed = await seedJob('failed');
+    if (closed) {
+      await harness.db.execute(
+        sql`UPDATE pipeline_runs SET status = 'failed', finished_at = now() WHERE id = ${runId}`,
+      );
+    }
+    expect((await retry(failed)).status).toBe(200);
+    const [issue] = await harness.db.execute<{ status: string }>(
+      sql`SELECT status FROM issues WHERE id = ${issueId}`,
+    );
+    expect(issue?.status).toBe('in_progress');
+  });
+
   it('opens a run for the issue where the failed job’s run has closed', async () => {
     const failed = await seedJob('failed');
     await harness.db.execute(

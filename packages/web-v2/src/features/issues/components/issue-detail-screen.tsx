@@ -33,7 +33,7 @@ import { useSessionsAndHolds } from "@/features/pipeline/hooks";
 import { DecisionPanel, focusDecisionPanel } from "@/features/questions/components/decision-panel";
 import { buildShareLink, useRecents } from "@/features/shell";
 import { formatApiError, isRetryableApiError } from "@/lib/api/error";
-import { couldNotRead } from "@/lib/api/read-failed";
+import { couldNotRead, offersRetry } from "@/lib/api/read-failed";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { useToast } from "@/providers/toast-provider";
@@ -257,7 +257,7 @@ export function IssueDetailScreen({
   // A read that failed says so, with why and Retry, never drawn as no relations or no cost (ISS-1228).
   const unreadOf = (q: { isError: boolean; error: unknown; refetch: () => unknown }) =>
     q.isError
-      ? { error: q.error, retry: isRetryableApiError(q.error) ? () => void q.refetch() : undefined }
+      ? { error: q.error, retry: offersRetry(q.error) ? () => void q.refetch() : undefined }
       : undefined;
   const railUnread = { deps: unreadOf(depsQ), cost: unreadOf(costQ) };
 
@@ -304,9 +304,11 @@ export function IssueDetailScreen({
                 <span role="status" className="fg-caption text-muted">
                   {couldNotRead("The run", journalQ.error)}
                 </span>
-                <Button variant="secondary" size="sm" icon="rerun" onClick={() => journalQ.refetch()}>
-                  Retry
-                </Button>
+                {offersRetry(journalQ.error) && (
+                  <Button variant="secondary" size="sm" icon="rerun" onClick={() => journalQ.refetch()}>
+                    Retry
+                  </Button>
+                )}
               </>
             )}
             {runWord && (
@@ -369,7 +371,7 @@ export function IssueDetailScreen({
               onResumePark={onTransition}
               onResumeRun={onResumeRun}
               onProvideInfo={focusDecisions}
-              onRetryPark={park.state === "error" ? park.retry : undefined}
+              onRetryPark={park.state === "error" && offersRetry(park.error) ? park.retry : undefined}
             />
           )}
 

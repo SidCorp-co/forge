@@ -50,3 +50,8 @@ const FALLBACK: WedgeWords = {
 export function wedgeWordsFor(hop: WedgeWordsHop, entity: string): WedgeWords {
   return BY_HOP_AND_ENTITY[`${hop}:${entity}`] ?? FALLBACK;
 }
+
+/** A notice's body from a detector's own words: what is wrong, then the next step on a line of its own. */
+export function wedgeBody(summary: string, nextStep?: string | null): string {
+  return nextStep ? `${summary}\nNext: ${nextStep}` : summary;
+}

@@ -8,6 +8,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ApiError } from "@/lib/api/client";
 import { createQueryClient } from "@/providers/query-provider";
 import { markUnreachable, UNREACHABLE_SENTENCE } from "@/lib/api/transport-failure";
 import { IssueDetailScreen } from "./issue-detail-screen";
@@ -86,7 +87,7 @@ vi.mock("../hooks", () => ({
 
 function renderScreen() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  render(
+  return render(
     <QueryClientProvider client={qc}>
       <IssueDetailScreen projectId="p1" slug="forge-dev" id="ISS-7" />
     </QueryClientProvider>,
@@ -322,6 +323,16 @@ describe("the issue header's run", () => {
     expect(refetch).toHaveBeenCalled();
   });
 
+  it("offers Retry beside a run read the server refused, and none where it answered 401", () => {
+    journal = { data: undefined, isLoading: false, isError: true, error: new ApiError(409, "Try again in a minute.", "X"), refetch: vi.fn() };
+    const { unmount } = renderScreen();
+    expect(within(headerChips()).getByRole("button", { name: "Retry" })).toBeInTheDocument();
+    unmount();
+    journal = { ...journal, error: new ApiError(401, "Unauthenticated", "UNAUTHENTICATED") };
+    renderScreen();
+    expect(within(headerChips()).queryByRole("button", { name: "Retry" })).toBeNull();
+  });
+
   // r20 review F2: the Retry lived in the primary action, which a closed issue never reaches.
   it("offers Retry beside an unreadable run on a closed issue too", () => {
     issueOver = { status: "closed", mergedAt: "2026-09-05T15:00:00Z" };
@@ -451,7 +462,7 @@ describe("which session holds the issue, while it cannot be read", () => {
     { runId: "r1", ordinal: 1, kind: "issue", status: "running", group: null, startedAt: "2026-09-05T14:16:00Z",
       finishedAt: null, costUsd: null, sessionId: "s-run", attempts: [], reading: "running", runningSince: null },
   ];
-  let holds: "fail" | "hang" | "answer" = "fail";
+  let holds: "fail" | "hang" | "answer" | "refuse" = "fail";
   /** A request in flight that has had no answer yet; the browser gives up on it in its own time. */
   const pending: Array<() => void> = [];
   const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
@@ -463,6 +474,10 @@ describe("which session holds the issue, while it cannot be read", () => {
     fetchMock.mockImplementation(async (url: string) => {
       if (!String(url).includes("sessions-and-holds")) return json([]);
       if (holds === "fail") throw new TypeError("Failed to fetch");
+      if (holds === "refuse") {
+        const refused = { code: "HOLDS_READ_REFUSED", message: "The holds could not be read while a migration holds the table. Try again in a minute." };
+        return new Response(JSON.stringify(refused), { status: 409, headers: { "content-type": "application/json" } });
+      }
       if (holds === "hang") {
         return new Promise<Response>((_, reject) => pending.push(() => reject(new TypeError("Failed to fetch"))));
       }
@@ -491,6 +506,14 @@ describe("which session holds the issue, while it cannot be read", () => {
       await new Promise((r) => setTimeout(r, 0));
     });
   };
+
+  // Round 23 (master's read of the r23 after-shots): a refused read said to try again with no Retry.
+  it("offers Retry when the read is refused", async () => {
+    holds = "refuse";
+    renderLive();
+    expect(await within(header()).findByText(/Its session could not be read\. .*Try again in a minute\./)).toBeInTheDocument();
+    expect(within(header()).getByRole("button", { name: "Retry" })).toBeInTheDocument();
+  });
 
   it("opens no session while the read has not answered", () => {
     holds = "hang";

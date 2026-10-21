@@ -22,6 +22,7 @@ import { ConversationDock } from "@/features/conversations/components/conversati
 import { ConversationPanel } from "@/features/conversations/components/conversation-panel";
 import { useConversationDock } from "@/features/conversations/use-conversation-dock";
 import { useLocationSearch } from "@/lib/utils/use-location-search";
+import { ForgeUnreached } from "@/features/auth/forge-unreached";
 import { useSignInRedirect } from "@/features/auth/use-sign-in-redirect";
 import { useAuth, useUserInitials } from "@/providers/auth-provider";
 import { ToastLane, useToast } from "@/providers/toast-provider";
@@ -65,6 +66,9 @@ import {
 } from "@/features/shell";
 
 export default function WorkspaceLayout({ children }: { children: React.ReactNode }) {
+  const { user, failure, retry } = useAuth();
+  // An account Forge could not be asked about is not a signed-out one: say why, and offer Retry.
+  if (!user && failure) return <ForgeUnreached error={failure} onRetry={retry} />;
   return (
     <ActiveOrgProvider>
       <SidebarProvider>

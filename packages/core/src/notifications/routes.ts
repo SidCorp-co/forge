@@ -20,6 +20,7 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { hooks } from '../pipeline/hooks.js';
 import { readPendingInvitations } from '../projects/pending-invitations.js';
 import { readerStuckKindSql } from '../projects/stuck-issue-kinds.js';
+import { liveCapacityWords } from './capacity-live.js';
 import { recordAndDeliver } from './deliver.js';
 import { explanationOfGroupKey } from './explanations.js';
 import {
@@ -337,9 +338,13 @@ notificationRoutes.get(
 
     const named = await projectsNamed(rows.map((r) => r.projectId));
     const titles = await bellTitlesFor(userId, rows);
+    const live = await liveCapacityWords(
+      rows.filter((r) => r.members === 1 && !r.resolvedNotice).map((r) => r.notificationId),
+    );
     const items = rows.map((r, i) => ({
       ...r,
-      title: titles[i] ?? r.title,
+      ...live.get(r.notificationId),
+      title: live.get(r.notificationId)?.title ?? titles[i] ?? r.title,
       explanation: explanationOfGroupKey(r.groupKey),
       projectSlug: (r.projectId && named.get(r.projectId)?.slug) || null,
       projectName: (r.projectId && named.get(r.projectId)?.name) || null,
@@ -459,7 +464,9 @@ notificationRoutes.get(
       )
       .orderBy(desc(notificationDeliveryMembers.deliveredAt));
 
-    return c.json(answer(deliveryMembersSchema, await retitledFor(userId, rows)));
+    const live = await liveCapacityWords(rows.filter((r) => r.open).map((r) => r.id));
+    const worded = rows.map((r) => ({ ...r, ...live.get(r.id) }));
+    return c.json(answer(deliveryMembersSchema, await retitledFor(userId, worded)));
   },
 );
 

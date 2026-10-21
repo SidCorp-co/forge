@@ -4,7 +4,7 @@ import { agentSessions, devices, jobs, notifications, projects, runners } from '
 import { logger } from '../logger.js';
 import { resolveNotifications } from '../notifications/auto-resolve.js';
 import { createNotification } from '../notifications/routes.js';
-import { wedgeWordsFor } from './wedge-words.js';
+import { wedgeBody, wedgeWordsFor } from './wedge-words.js';
 
 export function wedgeResolutionKey(entityId: string): string {
   return `wedge:${entityId}`;
@@ -178,9 +178,7 @@ export async function emitPipelineWedge(ev: PipelineWedgeEvent): Promise<void> {
 
     const plain = wedgeWordsFor(ev.hop, ev.entity);
     const title = ev.title ?? plain.title;
-    const body = ev.summary
-      ? [ev.summary, ev.nextStep ? `Next: ${ev.nextStep}` : null].filter(Boolean).join('\n')
-      : plain.body;
+    const body = ev.summary ? wedgeBody(ev.summary, ev.nextStep) : plain.body;
 
     await createNotification({
       userId: project.createdBy,

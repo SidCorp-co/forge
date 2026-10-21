@@ -8,6 +8,7 @@ import { jobKindLabel } from "@/features/overview/job-kinds";
 import { useState } from "react";
 import { EmptyPanelLine, Icon, STOPPED_WORD } from "@/design";
 import { formatApiError } from "@/lib/api/error";
+import { offersRetry } from "@/lib/api/read-failed";
 import { formatDurationMs, formatDurationSec, formatRelativeTime, formatUsd } from "@/lib/utils/format";
 import { useNow } from "@/design/hooks/use-now";
 import { runReadingChip, runSince } from "@/features/runs/derive";
@@ -58,9 +59,11 @@ export function RunJournalSection({ runs, loading, error, onRetry }: RunJournalS
         detail={formatApiError(error)}
         className={FLAT_PANEL_LINE}
         action={
-          <button type="button" onClick={onRetry} className="fg-caption text-muted hover:text-fg">
-            Retry
-          </button>
+          offersRetry(error) ? (
+            <button type="button" onClick={onRetry} className="fg-caption text-muted hover:text-fg">
+              Retry
+            </button>
+          ) : undefined
         }
       />
     );

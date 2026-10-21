@@ -132,4 +132,67 @@ describe('an answered question names who answered it (criterion 207)', () => {
     expect(answered).toMatchObject({ userId: ownerId, name: 'Ann Lee' });
     expect(Date.parse(answered?.at ?? '')).toBeGreaterThanOrEqual(before - 1000);
   });
+
+  // Round 23 (judge-74, criterion 240): the owner read "Answered by another member" for a member who
+  // answered. A member's own name is read as it stands when the drawer reads it.
+  it('names a second member who answered by the name they hold now, as the owner reads it', async () => {
+    const memberId = (await createTestUser(harness.db, { emailVerifiedAt: new Date() })).id;
+    await harness.db.execute(
+      sql`UPDATE users SET display_name = 'Bao Tran' WHERE id = ${memberId}`,
+    );
+    await createTestProjectMember(harness.db, { userId: memberId, projectId, role: 'member' });
+    const issueId = randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id)
+      VALUES (${issueId}, ${projectId}, 6, 'Scratch import', 'in_progress', ${ownerId})
+    `);
+    const runId = randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO pipeline_runs (id, project_id, issue_id, kind, status)
+      VALUES (${runId}, ${projectId}, ${issueId}, 'issue', 'running')
+    `);
+    const jobId = randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO jobs (id, project_id, pipeline_run_id, issue_id, device_id, created_by, type, status,
+                        dispatched_at, acked_at, payload)
+      VALUES (${jobId}, ${projectId}, ${runId}, ${issueId}, ${deviceId}, ${ownerId}, 'drive', 'running',
+              now(), now(), '{}'::jsonb)
+    `);
+    const { endBlockedJob } = await import('../../src/jobs/blocked.js');
+    const ended = await endBlockedJob({ id: jobId, status: 'running' }, deviceId, {
+      error: 'forge-runner: the pane has been stopped on a question only a human can answer for 2m',
+      asked: {
+        kind: 'dialog',
+        questions: [
+          { question: 'Which database?', options: [{ label: 'Primary' }, { label: 'Replica' }] },
+        ],
+      },
+    });
+    const questionId = ended.questionIds[0];
+    if (!questionId) throw new Error('the job must have asked');
+    const [row] = await harness.db.execute<{
+      steps: Array<{ round: number; options?: Array<{ id: string }> }>;
+    }>(sql`SELECT steps FROM agent_questions WHERE id = ${questionId}`);
+    const step = row?.steps.at(-1);
+    const optionId = step?.options?.[0]?.id;
+    if (!step || !optionId) throw new Error('the question must offer a choice');
+    const { answerAs } = await import('../../src/questions/read.js');
+    await answerAs({
+      questionId,
+      answer: { kind: 'option', optionId },
+      round: step.round,
+      userId: memberId,
+    });
+
+    expect((await attemptsOf(runId))[0]?.questionAnswered).toMatchObject({
+      userId: memberId,
+      name: 'Bao Tran',
+    });
+    await harness.db.execute(sql`UPDATE users SET display_name = 'Bao T.' WHERE id = ${memberId}`);
+    expect((await attemptsOf(runId))[0]?.questionAnswered).toMatchObject({ name: 'Bao T.' });
+    await harness.db.execute(sql`UPDATE users SET display_name = NULL WHERE id = ${memberId}`);
+    expect((await attemptsOf(runId))[0]?.questionAnswered).toMatchObject({
+      name: 'another member',
+    });
+  });
 });

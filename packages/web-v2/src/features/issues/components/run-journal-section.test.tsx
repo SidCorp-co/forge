@@ -6,6 +6,7 @@
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ApiError } from "@/lib/api/client";
 import type { RunView } from "../derive";
 import { RunJournalSection } from "./run-journal-section";
 
@@ -76,5 +77,26 @@ describe("a run's times say which is which", () => {
     const text = line(run({ status: "failed", reading: "asking" }));
     expect(text).toContain("Stopped to ask 1m ago · ran 1m 49s");
     expect(text).not.toContain("Ended");
+  });
+});
+
+describe("a runs read that failed (criterion 226)", () => {
+  it("offers Retry under a refusal", () => {
+    render(
+      <RunJournalSection runs={[]} loading={false} error={new ApiError(409, "Try again in a minute.", "X")} onRetry={() => {}} />,
+    );
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+  });
+
+  it("offers no Retry under a 401, which signs the person out", () => {
+    render(
+      <RunJournalSection
+        runs={[]}
+        loading={false}
+        error={new ApiError(401, "Unauthenticated", "UNAUTHENTICATED")}
+        onRetry={() => {}}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
   });
 });
