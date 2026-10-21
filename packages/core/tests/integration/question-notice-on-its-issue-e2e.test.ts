@@ -103,7 +103,7 @@ async function ask(on: string | null = issueId) {
   return write.askQuestion({
     id: randomUUID(),
     projectId,
-    issueId: on,
+    ...(on ? { issueId: on } : {}),
     prompt: 'Which database should the import read from?',
     blockerKind: 'human',
     answer: { shape: 'choice', options: [SAFE, OTHER], recommendedOptionId: SAFE.id },

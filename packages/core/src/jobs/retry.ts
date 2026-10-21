@@ -21,7 +21,7 @@ import { onlineCapableDeviceIds } from '../runners/select.js';
 import type { RequiredCapabilities } from '../runners/types.js';
 import { buildVerifierPrompt } from '../skills/reconcile-service.js';
 import { admitJob, RunClosedToJobs } from './admit.js';
-import { fleetCopy, readCapacityFleet } from './capacity-fleet.js';
+import { capacityCopy, capacityScope, readCapacityFleet } from './capacity-fleet.js';
 import { resolveStageOverrides } from './stage-overrides.js';
 
 type JobRow = typeof jobs.$inferSelect;
@@ -174,16 +174,7 @@ async function notifyCapacityOutage(
   // Read off the runners the fleet shows online, so the notice never says none is online beside an
   // online one (ISS-1228): each online runner is named by what keeps it from the step.
   const fleet = await readCapacityFleet(job.projectId, required, stagePool);
-  const scope = { scope: stagePool ? `the ${job.type} runner pool` : 'this project' };
-  const all = (n: number) => fleet.online > 0 && n === fleet.online;
-  const copy =
-    fleetCopy(fleet, scope) ??
-    wedgeCopy(
-      all(fleet.bars.limited),
-      fleet.online,
-      all(fleet.bars.too_old) ? fleet.online : 0,
-      scope,
-    );
+  const copy = capacityCopy(fleet, { scope: capacityScope(stagePool ? job.type : 'all') });
 
   await emitPipelineWedge({
     projectId: job.projectId,
@@ -193,52 +184,6 @@ async function notifyCapacityOutage(
     entityId,
     ...copy,
   });
-}
-
-/**
- * What to tell an operator about an empty pool, given which of the three ways
- * it is empty.
- */
-export function wedgeCopy(
-  allLimited: boolean,
-  limitedCount: number,
-  tooOldCount: number,
-  args: { scope: string },
-): { reason: string; action: string; title: string; summary: string; nextStep: string } {
-  const { scope } = args;
-  /** Its runners, as a person counts them: never "all 1" or "all 2". */
-  const its = (n: number, one: string, many: string) =>
-    n === 1 ? `its one runner ${one}` : `${n === 2 ? 'both' : `all ${n}`} of its runners ${many}`;
-  if (allLimited) {
-    return {
-      reason: `all ${limitedCount} capable device(s) are rate-limited or quarantined`,
-      action: 'raise the account limit or wait for the provider reset',
-      title: `No capacity: every runner for ${scope} is limited`,
-      summary: `Work for ${scope} is paused because ${its(limitedCount, 'has', 'have')} hit an account limit. Steps keep waiting and resume by themselves once one frees up.`,
-      nextStep:
-        'Raise the account spend/usage limit, or wait for the provider reset — no other action needed.',
-    };
-  }
-  if (tooOldCount > 0) {
-    return {
-      reason: `all ${tooOldCount} capable device(s) run a build too old to claim work`,
-      action:
-        tooOldCount === 1 ? 'update the runner on that host' : 'update the runner on those hosts',
-      title: `No capacity: every runner for ${scope} is out of date`,
-      summary: `Work for ${scope} is paused because ${its(tooOldCount, 'is', 'are')} online but running a build older than this server requires, so every claim is refused. This does NOT clear by itself.`,
-      nextStep:
-        tooOldCount === 1
-          ? 'Update forge-runner on that host; work resumes on the next tick once it reports the new version.'
-          : 'Update forge-runner on those hosts; work resumes on the next tick once one reports the new version.',
-    };
-  }
-  return {
-    reason: 'no capable device is online',
-    action: 'bring a runner online for this project',
-    title: `No capacity: no runner online for ${scope}`,
-    summary: `Work for ${scope} is paused because none of its runners are online. Steps keep waiting and resume by themselves once one connects.`,
-    nextStep: 'Start a runner for this project (forge-runner on a paired device).',
-  };
 }
 
 /**

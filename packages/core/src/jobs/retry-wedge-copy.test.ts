@@ -1,7 +1,7 @@
 /** ISS-1229 r11: the empty-pool notice counts runners as a person does — never "all 1" or "all 2". */
 
 import { describe, expect, it } from 'vitest';
-import { wedgeCopy } from './retry.js';
+import { wedgeCopy } from './capacity-fleet.js';
 
 describe('the empty-pool notice, counting the runners it names', () => {
   it.each([
