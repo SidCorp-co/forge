@@ -279,6 +279,30 @@ describe("a room deleted while it is open", () => {
     expect(toast.mock.calls.map((c) => (c[0] as { title: string }).title)).not.toContain("What you wrote was copied");
   });
 
+  // r31 review F1: a per-mount count gave a second mount's notice the first one's slot, which replaced it.
+  it("gives each kept notice its own slot, across mounts, and copies into that one", async () => {
+    Object.defineProperty(navigator, "clipboard", { value: { writeText: vi.fn().mockResolvedValue(undefined) }, configurable: true });
+    const slots: string[] = [];
+    for (const text of ["first draft", "second draft"]) {
+      send.mockRejectedValueOnce(roomGone());
+      const { unmount } = render(
+        <QueryClientProvider client={new QueryClient()}>
+          <ConversationChat projectId="p1" conversationId="c1" onRoomGone={vi.fn()} />
+        </QueryClientProvider>,
+      );
+      fireEvent.change(screen.getByLabelText("Message"), { target: { value: text } });
+      fireEvent.click(screen.getByLabelText("Send message"));
+      await waitFor(() => expect(toast).toHaveBeenCalledTimes(slots.length + 1));
+      const notice = toast.mock.calls[slots.length]?.[0] as { slot: string; onClick: () => void };
+      slots.push(notice.slot);
+      unmount();
+    }
+    expect(new Set(slots).size).toBe(2);
+    (toast.mock.calls[0]?.[0] as { onClick: () => void }).onClick();
+    await waitFor(() => expect(toast).toHaveBeenCalledTimes(3));
+    expect(toast.mock.calls[2]?.[0]).toMatchObject({ slot: slots[0], description: expect.stringContaining("“first draft”") });
+  });
+
   // r29 review F2: the deletion event's re-read found the room gone while a send was still out, and
   // the send's own refusal, arriving second, was swallowed with the text it carried.
   it("keeps a message still being sent when a re-read finds the room gone first", async () => {

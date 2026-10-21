@@ -113,10 +113,10 @@ export function ConversationChat({
   // The thread that held an unsent message goes with the room, so its notice keeps the text until the
   // reader copies it or puts the notice away (ISS-1229 r29, judge-84). Copying says so in that notice,
   // where the reader is looking: a second toast landed over the room list on a phone (r31, judge-88).
-  const kept = useRef(0);
   const keepUnsent = useCallback(
     (unsent: string, sent: boolean) => {
-      const slot = `room-gone-unsent-${++kept.current}`;
+      // Its own slot for good: a notice left up by an earlier mount of this room must not be replaced.
+      const slot = `room-gone-unsent-${crypto.randomUUID()}`;
       const show = (copied: boolean) =>
         toast({
           title: ROOM_DELETED_TITLE,
