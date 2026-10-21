@@ -16,7 +16,7 @@ import { type IssueRow, issueRowsByIds, issueRowsOfRequirements } from './facts.
 import { waitOn } from './model.js';
 import { pausedOf, stamp } from './read.js';
 import type { ForecastViewer } from './release.js';
-import { readsFor, scopeOf } from './scope.js';
+import { readsFor, scopeOf, stuckWaitOf } from './scope.js';
 
 export interface LinkRow {
   id: string;
@@ -177,7 +177,9 @@ async function feedbackLinesOver(
       pending.push(s);
       continue;
     }
-    const scope = rows ? scopeOf(reads, rows, 'requirement', scopeKey, null) : null;
+    // a stuck item waits on what its standing names, never on a landing date the simulation guesses
+    const stuck = stuckWaitOf({ stuck: s.times.stuck, waitingOn: s.waitingOn });
+    const scope = rows ? scopeOf(reads, rows, 'requirement', scopeKey, null, stuck) : null;
     own.set(s.id, { key: s.key, triage: null, delivery: scope?.delivery ?? null });
   }
   for (const s of pending) {

@@ -11,8 +11,10 @@ import {
   landHistory,
   MINUTE,
   moved,
+  ownedRequirement,
   read,
   requirement,
+  servingMaster,
   shipRelease,
   type World,
   world,
@@ -46,6 +48,7 @@ describe('feedback reads end to end where production releases on land', () => {
 
   beforeAll(async () => {
     w = await world();
+    await servingMaster(w);
     await seedProductionDeployTrigger(w.projectId, w.userId, 'on-land');
     await shippedHistory(w);
     const open = await issue(w, { status: 'open', createdAt: ago(1) });
@@ -107,6 +110,7 @@ describe('feedback reads end to end where production releases on land', () => {
 describe('a release a person cuts is named, never dated', () => {
   it('forecasts the landing, then names the admin and the version to cut', async () => {
     const w = await world();
+    await servingMaster(w);
     await seedProductionDeployTrigger(w.projectId, w.userId, 'on-request');
     await shippedHistory(w);
     const open = await issue(w, { status: 'open', createdAt: ago(1) });
@@ -139,11 +143,12 @@ describe('requirements list and what comes next on Releases', () => {
 
   beforeAll(async () => {
     w = await world();
+    await servingMaster(w);
     await seedProductionDeployTrigger(w.projectId, w.userId, 'on-land');
     await shippedHistory(w);
-    req.open = await requirement(w, 'The board keeps its cards');
-    req.landed = await requirement(w, 'The board loads fast');
-    req.mixed = await requirement(w, 'The board exports its cards');
+    req.open = await ownedRequirement(w, 'The board keeps its cards');
+    req.landed = await ownedRequirement(w, 'The board loads fast');
+    req.mixed = await ownedRequirement(w, 'The board exports its cards');
     await issue(w, { status: 'open', createdAt: ago(2), requirementId: req.open.id });
     await issue(w, { status: 'open', createdAt: ago(1), requirementId: req.open.id });
     await issue(w, {

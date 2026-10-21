@@ -11,9 +11,12 @@ import {
   issue,
   landHistory,
   MINUTE,
+  ownedRequirement,
   requirement,
+  servingMaster,
   shipRelease,
   type World,
+  workingRun,
   world,
 } from '../helpers/forecast-world.js';
 import { seedProductionDeployTrigger } from '../helpers/release-world.js';
@@ -26,7 +29,7 @@ import { seedProductionDeployTrigger } from '../helpers/release-world.js';
 
 /** A requirement moved to `status` on a current revision 1, inside the kernel's own transaction. */
 async function seeded(w: World, title: string, status: 'agreed' | 'deferred' | 'dropped') {
-  const { id, key } = await requirement(w, title);
+  const { id, key } = await ownedRequirement(w, title);
   await db.transaction(async (tx) => {
     await tx.execute(sql`SELECT set_config('forge.kernel_txn', txid_current()::text, true)`);
     await tx.execute(sql`
@@ -73,10 +76,15 @@ async function seedWorld(w: World, onLand: boolean): Promise<Seeds> {
     await shipRelease(w, [h.id], new Date(h.mergedAt.getTime() + 30 * MINUTE));
   }
   const now = await seeded(w, 'The board keeps its cards', 'agreed');
-  await issue(w, { status: 'in_progress', createdAt: ago(3), requirementId: now.id });
+  const working = await issue(w, {
+    status: 'in_progress',
+    createdAt: ago(3),
+    requirementId: now.id,
+  });
+  await workingRun(w, [working.key]);
   await issue(w, { status: 'open', createdAt: ago(2), requirementId: now.id });
   const next = await seeded(w, 'The board sorts by owner', 'agreed');
-  const laterLinked = await requirement(w, 'The board exports to a sheet');
+  const laterLinked = await ownedRequirement(w, 'The board exports to a sheet');
   await issue(w, { status: 'open', createdAt: ago(1), requirementId: laterLinked.id });
   const laterBare = await requirement(w, 'The board prints');
   const deferred = await seeded(w, 'The board syncs offline', 'deferred');
@@ -142,7 +150,9 @@ describe('the progress report and the Requirements list at one moment', () => {
 
   beforeAll(async () => {
     auto = await world();
+    await servingMaster(auto);
     byHand = await world();
+    await servingMaster(byHand);
     autoSeeds = await seedWorld(auto, true);
     byHandSeeds = await seedWorld(byHand, false);
   }, 180_000);

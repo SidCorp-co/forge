@@ -5,7 +5,6 @@
  * ETA or why there is none (owner rule 2026-10-16).
  */
 
-import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { mintPat } from '../../src/credentials/pat.js';
@@ -16,8 +15,11 @@ import {
   feedback,
   issue,
   landHistory,
+  ownedRequirement,
   requirement,
+  servingMaster,
   type World,
+  workingRun,
   world,
 } from '../helpers/forecast-world.js';
 
@@ -51,20 +53,6 @@ const ok = (c: Called): Body => {
   return c.body;
 };
 
-/** A run a box declared over `issueKey` right now: its run session started a moment ago and beats. */
-async function workingRun(w: World, issueKey: string): Promise<void> {
-  const runId = randomUUID();
-  const metadata = JSON.stringify({ type: 'run_session', runGroup: [issueKey] });
-  await db.execute(sql`
-    INSERT INTO pipeline_runs (id, project_id, kind, status, started_at, metadata)
-    VALUES (${runId}, ${w.projectId}, 'system', 'running', now(), ${metadata}::jsonb)
-  `);
-  await db.execute(sql`
-    INSERT INTO agent_sessions (project_id, device_id, pipeline_run_id, kind, status, started_at, created_at, last_heartbeat_at)
-    VALUES (${w.projectId}, ${w.deviceId}, ${runId}, 'run_session', 'running', now(), now(), now())
-  `);
-}
-
 /** Agrees `requirementId` at a revision 1 its author wrote, through the kernel's marker. */
 async function agreed(w: World, requirementId: string): Promise<void> {
   const { withKernelMarker } = await import('../../src/db/kernel-marker.js');
@@ -92,6 +80,7 @@ describe('forge_requirements over /mcp', () => {
 
   beforeAll(async () => {
     w = await world();
+    await servingMaster(w);
     token = await patToken(w.userId, [w.projectId]);
     readOnly = (
       await mintPat({
@@ -102,14 +91,14 @@ describe('forge_requirements over /mcp', () => {
       })
     ).plaintext;
     await landHistory(w, 20);
-    const running = await requirement(w, 'Invoices export to CSV');
+    const running = await ownedRequirement(w, 'Invoices export to CSV');
     await agreed(w, running.id);
     const work = await issue(w, {
       status: 'in_progress',
       createdAt: ago(2),
       requirementId: running.id,
     });
-    await workingRun(w, work.key);
+    await workingRun(w, [work.key]);
     req.running = running.key;
     runningIssue = work.key;
     req.idle = (await requirement(w, 'Reports in Vietnamese')).key;
@@ -247,10 +236,11 @@ describe('project_feedback over /mcp', () => {
 
   beforeAll(async () => {
     w = await world();
+    await servingMaster(w);
     token = await patToken(w.userId, [w.projectId]);
     await landHistory(w, 20);
     const work = await issue(w, { status: 'in_progress', createdAt: ago(1) });
-    await workingRun(w, work.key);
+    await workingRun(w, [work.key]);
     linkedIssue = work.key;
     fb.untriaged = await feedback(w);
     fb.linked = await feedback(w, [work.id]);
