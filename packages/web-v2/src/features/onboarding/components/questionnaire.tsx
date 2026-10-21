@@ -1,8 +1,10 @@
 
 // The questionnaire: one structured message answered inline and sent once (workflow
 // project-onboarding, BC-6 / BC-7). The same form serves the onboarding thread and a BA requirement
-// room; which thread it sits in decides nothing here. Once sent it collapses into the person's
-// answers message (QuestionnaireSummary); a skipped batch folds to one line that can still be answered.
+// room; which thread it sits in decides nothing here. Its assumptions — what the code suggested —
+// are listed read-only with their evidence and each can be changed in the same send. Once sent it
+// collapses into the person's answers message (QuestionnaireSummary); a skipped batch folds to one
+// line that can still be answered.
 
 import { scrubsOnWrite } from "@forge/contracts/data-policy";
 import { QUESTIONNAIRE_GROUP_LABELS, QUESTIONNAIRE_GROUPS, type QuestionnaireAnswer } from "@forge/contracts/onboarding";
@@ -58,7 +60,7 @@ function Control({ item, value, onChange }: { item: QuestionnaireItemView; value
         options={(item.options ?? []).map((o) => ({
           value: o.id,
           label: o.label,
-          mark: item.inferredDefault === o.id ? <AiMark>{t("onboarding.q.inferred")}</AiMark> : undefined,
+          mark: item.inferredDefault === o.id ? <AiMark>{t(item.group === "assumption" ? "onboarding.q.assumed" : "onboarding.q.inferred")}</AiMark> : undefined,
         }))}
       />
     );
@@ -90,6 +92,35 @@ function Control({ item, value, onChange }: { item: QuestionnaireItemView; value
   );
 }
 
+/** One assumption: what the code suggested and why, read-only until the person chooses to change it. */
+function Assumption({ item, value, onChange }: { item: QuestionnaireItemView; value: Draft; onChange: (v: Draft) => void }) {
+  const t = useCopy();
+  const [changing, setChanging] = useState(false);
+  const assumed = item.options?.find((o) => o.id === item.answer?.choice)?.label ?? item.answer?.choice ?? "";
+  return (
+    <div className="border-b border-line-subtle pt-1.5 pr-3 pb-2 pl-3 last:border-b-0" data-testid="questionnaire-assumption">
+      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-13">
+        <span className="min-w-0 flex-1 text-muted">{item.prompt}</span>
+        <span className="font-medium text-fg">{assumed}</span>
+        {!changing && (
+          <Button size="sm" variant="ghost" onClick={() => setChanging(true)}>
+            {t("onboarding.q.change")}
+          </Button>
+        )}
+      </div>
+      <div className="mt-0.5 text-12 text-subtle">
+        {t("onboarding.q.evidence")}{" "}
+        {item.evidence.map((e) => (
+          <code key={e} className="mr-1 font-mono text-12">
+            {e}
+          </code>
+        ))}
+      </div>
+      {changing && <Control item={item} value={value} onChange={onChange} />}
+    </div>
+  );
+}
+
 function Counter({ ids, done }: { ids: string[]; done: (id: string) => boolean }) {
   const t = useCopy();
   return (
@@ -110,7 +141,9 @@ export function Questionnaire({ projectId, batch, designTitle = (r) => r }: { pr
   const [resumed, setResumed] = useState(false);
   const submit = useSubmitAnswers(projectId, batch.conversationId);
   const open = batch.items.filter((i) => i.state === "open");
+  const assumptions = batch.items.filter((i) => i.group === "assumption" && i.state === "answered");
   const ids = open.map((i) => i.id);
+  const sendable = [...ids, ...assumptions.map((i) => i.id)];
   const done = (id: string) => answered(draft[id]);
 
   if (batch.status === "skipped" && !resumed) {
@@ -126,7 +159,7 @@ export function Questionnaire({ projectId, batch, designTitle = (r) => r }: { pr
   }
 
   const send = (skip: boolean) => {
-    const answers: QuestionnaireAnswer[] = skip ? [] : ids.filter(done).map((id) => ({ itemId: id, ...draft[id] }));
+    const answers: QuestionnaireAnswer[] = skip ? [] : sendable.filter(done).map((id) => ({ itemId: id, ...draft[id] }));
     submit.mutate({ batchId: batch.id, answers, skip });
   };
   const setAnswer = (id: string, v: Draft) =>
@@ -176,6 +209,17 @@ export function Questionnaire({ projectId, batch, designTitle = (r) => r }: { pr
           </div>
         );
       })}
+      {assumptions.length > 0 && (
+        <div>
+          <div className="flex items-baseline gap-2 bg-sunken py-1 pr-3 pl-3 text-12 font-bold text-fg">
+            {QUESTIONNAIRE_GROUP_LABELS.assumption}
+            <span className="font-mono text-12 font-semibold text-subtle">{assumptions.length}</span>
+          </div>
+          {assumptions.map((item) => (
+            <Assumption key={item.id} item={item} value={draft[item.id]} onChange={(v) => setAnswer(item.id, v)} />
+          ))}
+        </div>
+      )}
       <RefusalLine error={submit.error} testid="questionnaire-refusal" />
       <div className="flex flex-wrap items-center gap-1.5 border-t border-line-subtle pt-2 pr-3 pb-2.5 pl-3">
         <Counter ids={ids} done={done} />
@@ -185,7 +229,7 @@ export function Questionnaire({ projectId, batch, designTitle = (r) => r }: { pr
             {t("onboarding.q.skip")}
           </Button>
         )}
-        <Button size="sm" variant="primary" disabled={!ids.some(done) || submit.isPending} onClick={() => send(false)}>
+        <Button size="sm" variant="primary" disabled={!sendable.some(done) || submit.isPending} onClick={() => send(false)}>
           {t("onboarding.q.send")}
         </Button>
       </div>

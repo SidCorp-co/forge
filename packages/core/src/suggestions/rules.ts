@@ -99,6 +99,19 @@ export function duplicateRefusal(twinId: string | null): SuggestionRefusal | nul
   };
 }
 
+// a rejected suggestion is recorded and not suggested again (REQ-10 BC-8): the same change on the
+// same target, rejected once, is refused naming the rejection
+export function rejectedBeforeRefusal(
+  rejected: { id: string; reason: string | null } | null,
+): SuggestionRefusal | null {
+  if (!rejected) return null;
+  return {
+    code: 'SUGGESTION_REJECTED_BEFORE',
+    path: '/payload',
+    detail: `suggestion ${rejected.id} proposed the same change on this target and was rejected${rejected.reason ? ` (${rejected.reason})` : ''}; a rejected suggestion is not suggested again.`,
+  };
+}
+
 // At most 5 proposed suggestions wait on one target; a 6th is SUGGESTION_QUEUE_FULL
 export function queueFullRefusal(openOnTarget: number): SuggestionRefusal | null {
   if (openOnTarget < SUGGESTION_MAX_OPEN_PER_TARGET) return null;

@@ -183,6 +183,22 @@ describe('project-onboarding unanswered: one line, never a blocker', () => {
   });
 });
 
+// REQ-10 BC-6: a batch holding only assumptions asks the person nothing
+describe('project-onboarding hint: a batch of assumptions only', () => {
+  it('does not ask the person to answer when no question is open', () => {
+    const assumed = {
+      id: 'b1',
+      round: 1,
+      open: 0,
+      postedAt: T0.toISOString(),
+      ...batchDue(T0, day(1)),
+    };
+    const h = hintOf(view({ openBatch: assumed }), 'none');
+    expect(h?.action).not.toBe('continue');
+    expect(h?.tone).toBe('run');
+  });
+});
+
 // F5: the banner's sentence reads as English for a master's wait and for a full machine
 describe('project-onboarding banner: the run read model wait as a sentence', () => {
   const queued = {

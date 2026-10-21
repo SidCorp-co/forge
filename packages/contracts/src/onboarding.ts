@@ -57,11 +57,16 @@ export const QUESTIONNAIRE_STATUSES = [
 	"superseded",
 ] as const;
 export type QuestionnaireStatus = (typeof QUESTIONNAIRE_STATUSES)[number];
-/** The three groups a batch is read in, in this order. */
+/**
+ * The groups a batch is read in, in this order. An assumption is an answer the code suggests: it is
+ * recorded as answered when posted, shown read-only with its evidence, and changeable by the person
+ * (REQ-10 BC-6, BC-7); it is never an open question.
+ */
 export const QUESTIONNAIRE_GROUPS = [
 	"question",
 	"clarification",
 	"recommendation",
+	"assumption",
 ] as const;
 export type QuestionnaireGroup = (typeof QUESTIONNAIRE_GROUPS)[number];
 
@@ -69,6 +74,7 @@ export const QUESTIONNAIRE_GROUP_LABELS: Record<QuestionnaireGroup, string> = {
 	question: "Questions",
 	clarification: "Needs clarification",
 	recommendation: "Recommendations",
+	assumption: "Assumptions",
 };
 
 /** How an item is answered: one option, several, a short text, or accept / reject. */
@@ -83,8 +89,10 @@ export const QUESTIONNAIRE_ITEM_STATES = ["open", "answered", "void"] as const;
 export type QuestionnaireItemState = (typeof QUESTIONNAIRE_ITEM_STATES)[number];
 /** At most this many rounds per onboarding (reset by a re-analysis) or per requirement room. */
 export const QUESTIONNAIRE_MAX_ROUNDS = 3;
-/** At most this many items in one batch; the trials landed at 15. */
+/** At most this many items in one batch, assumptions included; the trials landed at 15. */
 export const QUESTIONNAIRE_MAX_ITEMS = 15;
+/** At most this many questions and clarifications put to the person in one onboarding round (REQ-10 BC-6). */
+export const ONBOARDING_MAX_QUESTIONS = 3;
 /** A batch left open this many days raises the dashboard hint to attention. */
 export const QUESTIONNAIRE_DUE_DAYS = 7;
 
@@ -99,6 +107,10 @@ const ONBOARDING_REFUSAL_CODES = [
 	"ONBOARDING_CITE_REVISION_UNKNOWN",
 	"ONBOARDING_CITE_REVISION_TWICE",
 	"ONBOARDING_CITE_SUGGESTION_UNKNOWN",
+	"ONBOARDING_QUESTIONS_OVER_CAP",
+	"ONBOARDING_QUESTION_UNRECOMMENDED",
+	"ONBOARDING_RECOMMENDATION_IS_A_SUGGESTION",
+	"ONBOARDING_DESIGNS_UNPROPOSED",
 ] as const;
 export type OnboardingRefusalCode = (typeof ONBOARDING_REFUSAL_CODES)[number];
 
@@ -150,7 +162,10 @@ export const questionnaireItemSchema = z.strictObject({
 	control: z.enum(QUESTIONNAIRE_CONTROLS),
 	prompt: z.string().trim().min(3).max(500),
 	options: z.array(questionnaireOptionSchema).max(8).optional(),
-	/** The option id inferred from the code: marked, never chosen until a person picks it. */
+	/**
+	 * On a question, the recommended option: marked, never chosen until a person picks it. On an
+	 * assumption, the option the code suggests, recorded as its answer when the batch is posted.
+	 */
 	inferredDefault: itemId.optional(),
 	placeholder: z.string().max(120).optional(),
 	/** Why we ask, in a sentence or two. */

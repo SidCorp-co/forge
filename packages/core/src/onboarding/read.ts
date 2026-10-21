@@ -44,12 +44,14 @@ export async function onboardingOf(
   return row ?? null;
 }
 
-// The status is read, never stored: done once a person closed it (until a re-analysis clears the
-// close), waiting on a person while one of its batches is open or skipped, else with the agent
+// The status is read, never stored: done once it was marked done (until a re-analysis clears the
+// mark), waiting on a person while an answerable batch holds a question still open — an assumption
+// never waits on anyone, and an open question keeps only its own item open once onboarding is done
+// (REQ-10 BC-11) — else with the agent
 const onboardingStatusOf = (
   row: Pick<OnboardingRow, 'doneAt'>,
-  answerable: boolean,
-): OnboardingStatus => (row.doneAt ? 'done' : answerable ? 'waiting_on_you' : 'in_progress');
+  questionOpen: boolean,
+): OnboardingStatus => (row.doneAt ? 'done' : questionOpen ? 'waiting_on_you' : 'in_progress');
 
 const ANSWERABLE = ['open', 'skipped'] as const;
 
@@ -70,10 +72,12 @@ export async function onboardingStatusesOf(
     db
       .selectDistinct({ onboardingId: questionnaireBatches.onboardingId })
       .from(questionnaireBatches)
+      .innerJoin(agentQuestions, eq(agentQuestions.batchId, questionnaireBatches.id))
       .where(
         and(
           inArray(questionnaireBatches.conversationId, [...conversationIds]),
           inArray(questionnaireBatches.status, [...ANSWERABLE]),
+          eq(agentQuestions.status, 'open'),
         ),
       ),
   ]);
@@ -324,7 +328,7 @@ export async function onboardingView(
   const j = job[0];
   const designs: OnboardingDesignView[] = drafted.map((d) => ({
     ...d,
-    ...linkItems(d, series, row.roundsSent),
+    ...linkItems(d, series, row.roundsSent >= QUESTIONNAIRE_MAX_ROUNDS || row.doneAt !== null),
   }));
   const waitingOn =
     j && LIVE.has(j.status) && j.pipelineRunId
@@ -334,7 +338,7 @@ export async function onboardingView(
     id: row.id,
     projectId: row.projectId,
     conversationId: row.conversationId,
-    status: onboardingStatusOf(row, open !== null),
+    status: onboardingStatusOf(row, (open?.open ?? 0) > 0),
     roundsSent: row.roundsSent,
     maxRounds: QUESTIONNAIRE_MAX_ROUNDS,
     startedBy: row.startedBy,

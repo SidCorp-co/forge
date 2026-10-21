@@ -70,6 +70,15 @@ export async function announce(conversationId: string, messageId: string | null,
   });
 }
 
+/** An assumption's step: the option the code suggests, recorded as answered by the agent that posted it. */
+function assumedStep(item: QuestionnaireItem, by: string): QuestionStep {
+  const step = stepOf(item);
+  const stamp = { answeredAt: step.askedAt, answeredBy: by };
+  if (step.answerShape === 'free_text')
+    throw new Error(`questionnaires: assumption ${item.id} is not a choice`);
+  return { ...step, ...stamp, chosenOptionId: item.inferredDefault ?? '' };
+}
+
 function stepOf(item: QuestionnaireItem): QuestionStep {
   const common = { round: 1, prompt: item.prompt, askedAt: new Date().toISOString() };
   if (item.control === 'text') {
@@ -227,18 +236,21 @@ export async function postQuestionnaireIn(
     askedByLabel: input.authorLabel,
     askedByKey: null,
   };
-  await insertBatchQuestions(
+  const rows = input.items.map((item, position) => ({
+    id: crypto.randomUUID(),
+    projectId: input.projectId,
+    batchId: batch.id,
+    item: { ...item, position } satisfies StoredItem,
+    blockerKind: 'human' as const,
+    steps: [item.group === 'assumption' ? assumedStep(item, input.actor.userId) : stepOf(item)],
+    maxRounds: 1,
+    origin,
+  }));
+  await insertBatchQuestions(tx, rows);
+  await recordAssumptions(
     tx,
-    input.items.map((item, position) => ({
-      id: crypto.randomUUID(),
-      projectId: input.projectId,
-      batchId: batch.id,
-      item: { ...item, position } satisfies StoredItem,
-      blockerKind: 'human' as const,
-      steps: [stepOf(item)],
-      maxRounds: 1,
-      origin,
-    })),
+    rows.filter((r) => r.item.group === 'assumption').map((r) => r.id),
+    input.actor,
   );
   await tx
     .update(questionnaireBatches)
@@ -246,6 +258,23 @@ export async function postQuestionnaireIn(
     .where(eq(questionnaireBatches.id, batch.id));
   await settleEarlierBatches(tx, input, batch.id);
   return { batchId: batch.id, messageId: message.id };
+}
+
+// an assumption is answered by the code when it is posted (REQ-10 BC-6): it never waits on the
+// person, and stays theirs to change while its batch is answerable
+async function recordAssumptions(tx: TxOnly, ids: readonly string[], actor: QuestionnaireActor) {
+  if (ids.length === 0) return;
+  const why = 'an assumption is answered by the code it was read from';
+  await transition(tx, QUESTION_MACHINE, {
+    to: 'answered',
+    from: 'open',
+    set: { updatedAt: new Date() },
+    where: inArray(agentQuestions.id, [...ids]),
+    reason: why,
+    actor: questionnaireKernelActor(actor),
+    source: 'questionnaire',
+    returning: ['id'],
+  });
 }
 
 /**

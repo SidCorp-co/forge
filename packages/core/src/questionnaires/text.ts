@@ -25,8 +25,9 @@ export function questionnaireText(input: {
     lines.push('', `${QUESTIONNAIRE_GROUP_LABELS[group]}:`);
     for (const item of mine) {
       n += 1;
+      const mark = item.group === 'assumption' ? ' (assumed)' : ' (recommended)';
       const options = (item.options ?? [])
-        .map((o) => `${o.label}${o.id === item.inferredDefault ? ' (inferred)' : ''}`)
+        .map((o) => `${o.label}${o.id === item.inferredDefault ? mark : ''}`)
         .join(' / ');
       lines.push(
         `${n}. [${item.id}] ${item.prompt}${options ? ` — ${options}` : ''}${item.control === 'accept_reject' ? ' — accept or reject' : ''}`,
@@ -45,7 +46,7 @@ export function answerText(
   if (a.decision) return a.decision === 'accept' ? 'Accepted' : 'Rejected';
   if (a.choices) return a.choices.map(label).join(', ');
   if (a.choice)
-    return `${label(a.choice)}${a.choice === item.inferredDefault ? ' (as inferred)' : ''}`;
+    return `${label(a.choice)}${a.choice === item.inferredDefault ? (item.group === 'assumption' ? ' (as assumed)' : ' (as recommended)') : ''}`;
   return 'Open';
 }
 

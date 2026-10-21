@@ -3,7 +3,7 @@
 import type { QuestionnaireAnswer, QuestionnaireItem } from '@forge/contracts/onboarding';
 import { QUESTIONNAIRE_MACHINE } from '@forge/contracts/onboarding-machine';
 import { QUESTION_MACHINE } from '@forge/contracts/question-machine';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { db, type TxOnly } from '../db/client.js';
 import { questionnaireBatches } from '../db/schema-onboarding.js';
 import { agentQuestions, type QuestionStep } from '../db/schema-questions.js';
@@ -51,6 +51,9 @@ function answeredStep(
     : choice;
 }
 
+const answerable = (r: ItemEntry['row']) =>
+  r.status === 'open' || (r.status === 'answered' && (r.item as StoredItem).group === 'assumption');
+
 interface SubmitInput {
   projectId: string;
   batchId: string;
@@ -63,6 +66,7 @@ interface SubmitInput {
 
 type ItemEntry = {
   item: StoredItem;
+  /** Answerable in this submit: an open item, or an assumption the person changes. */
   open: boolean;
   row: Awaited<ReturnType<typeof itemsOf>>[number];
 };
@@ -86,13 +90,22 @@ async function answerItems(
     const steps = entry.row.steps;
     const last = steps.at(-1);
     if (!last) throw new Error(`questionnaires: item ${a.itemId} has no step`);
+    const changed = [
+      ...steps.slice(0, -1),
+      answeredStep(last, entry.item, a, input.actor.userId, at),
+    ];
+    if (entry.row.status === 'answered') {
+      // a changed assumption is already answered by the code: the person's answer replaces it
+      await tx
+        .update(agentQuestions)
+        .set({ steps: changed, updatedAt: now })
+        .where(and(eq(agentQuestions.id, entry.row.id), eq(agentQuestions.status, 'answered')));
+      continue;
+    }
     const answered = await transition(tx, QUESTION_MACHINE, {
       to: 'answered',
       expect: entry.row.status,
-      set: {
-        steps: [...steps.slice(0, -1), answeredStep(last, entry.item, a, input.actor.userId, at)],
-        updatedAt: now,
-      },
+      set: { steps: changed, updatedAt: now },
       where: eq(agentQuestions.id, entry.row.id),
       actor: questionnaireKernelActor(input.actor),
       source: 'questionnaire-submit',
@@ -116,7 +129,7 @@ async function postAnswers(
   input: SubmitInput,
 ): Promise<string | null> {
   const items = [...byId.values()]
-    .filter((e) => e.open)
+    .filter((e) => e.row.status === 'open' || given.has(e.item.id))
     .sort((x, y) => x.item.position - y.item.position)
     .map((e) => e.item);
   const [message] = await appendMessagesIn(tx, {
@@ -196,7 +209,7 @@ export async function submitAnswers(input: SubmitInput): Promise<QuestionnaireOu
     const byId = new Map<string, ItemEntry>(
       rows.map((r) => [
         (r.item as StoredItem).id,
-        { item: r.item as StoredItem, open: r.status === 'open', row: r },
+        { item: r.item as StoredItem, open: answerable(r), row: r },
       ]),
     );
     const refusals = answerRefusals(byId, answers, skip);

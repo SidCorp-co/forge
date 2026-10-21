@@ -4,7 +4,11 @@
  */
 
 import { OCCUPYING_JOB_STATUSES } from '@forge/contracts/job-machine';
-import type { OnboardingRefusal } from '@forge/contracts/onboarding';
+import {
+  ONBOARDING_MAX_QUESTIONS,
+  type OnboardingRefusal,
+  type QuestionnaireItem,
+} from '@forge/contracts/onboarding';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import { type PermissionFacts, permissionRefusal } from '../permissions/index.js';
 
@@ -100,8 +104,57 @@ export function dataFlowRefusal(
   };
 }
 
-// a phase's last act is the agent's own questionnaire or its mark_done: that write is the
-// evidence the job finished, so the job is settled done there. Left to the runner, an issue-less job
+// an onboarding round asks the person only what the code cannot answer (REQ-10 BC-6): at most
+// ONBOARDING_MAX_QUESTIONS questions and clarifications (ONBOARDING_QUESTIONS_OVER_CAP), each a
+// choice carrying its recommended answer (ONBOARDING_QUESTION_UNRECOMMENDED); what the code
+// suggests is an assumption, and a recommendation lands as a suggestion on its own, never as an item
+// the round waits on (ONBOARDING_RECOMMENDATION_IS_A_SUGGESTION)
+export function onboardingItemRefusals(items: readonly QuestionnaireItem[]): OnboardingRefusal[] {
+  const out: OnboardingRefusal[] = [];
+  const asked = items.filter((i) => i.group === 'question' || i.group === 'clarification');
+  if (asked.length > ONBOARDING_MAX_QUESTIONS)
+    out.push({
+      code: 'ONBOARDING_QUESTIONS_OVER_CAP',
+      path: '/items',
+      detail: `an onboarding round asks at most ${ONBOARDING_MAX_QUESTIONS} questions; this one asks ${asked.length} (${asked.map((i) => i.id).join(', ')}). Post what the code suggests as an assumption (group assumption, inferredDefault the suggested option) and ask only what it cannot answer.`,
+    });
+  items.forEach((item, i) => {
+    if (item.group === 'recommendation')
+      out.push({
+        code: 'ONBOARDING_RECOMMENDATION_IS_A_SUGGESTION',
+        path: `/items/${i}/group`,
+        detail: `"${item.id}" is a recommendation: onboarding posts it as a suggestion on its own (POST /api/projects/:id/suggestions), which a holder of suggestions.approve decides; it is never an item the round waits on.`,
+      });
+    else if (
+      (item.group === 'question' || item.group === 'clarification') &&
+      (item.control === 'text' || item.inferredDefault === undefined)
+    )
+      out.push({
+        code: 'ONBOARDING_QUESTION_UNRECOMMENDED',
+        path: `/items/${i}/inferredDefault`,
+        detail: `"${item.id}" asks the person without a recommended answer: an onboarding question is a choice (or multi) whose inferredDefault names the option you recommend, so one press answers it.`,
+      });
+  });
+  return out;
+}
+
+// onboarding is done on its assumptions once its designs are proposed (REQ-10 BC-11): the agent's
+// mark is refused while a design it registered still stands at draft (ONBOARDING_DESIGNS_UNPROPOSED)
+export function designsUnproposedRefusal(
+  designs: readonly { workflowId: string; flow: string; designStatus: string | null }[],
+): OnboardingRefusal | null {
+  const drafts = designs.filter((d) => d.designStatus === null || d.designStatus === 'draft');
+  if (drafts.length === 0) return null;
+  return {
+    code: 'ONBOARDING_DESIGNS_UNPROPOSED',
+    path: '/designs',
+    detail: `${drafts.map((d) => `${d.flow} (${d.workflowId})`).join(', ')} still stand${drafts.length === 1 ? 's' : ''} at draft; propose each (POST …/workflows/<workflowId>/design/propose { revision }) before marking onboarding done.`,
+  };
+}
+
+// a phase's last act is the agent's mark_done (REQ-10 BC-11: every phase ends with onboarding done
+// on its assumptions, a questionnaire posted before it): that write is the evidence the job
+// finished, so the job is settled done there. Left to the runner, an issue-less job
 // is concluded failed a quarter hour after its last turn, and until then a submit finds it live and
 // queues no revise job
 export function settlesPhaseJob(agency: ActorAgency, jobStatus: string | null): boolean {

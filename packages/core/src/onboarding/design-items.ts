@@ -1,17 +1,16 @@
 /**
  * project-onboarding `designs`, `answer-lands`, `revise` and `what-next`, as pure functions: which
  * questionnaire items shaped each onboarding design, which of them stay open as the design's open
- * questions once every round is sent, and the guards on an update citing the items its revisions
+ * questions once the onboarding is settled, and the guards on an update citing the items its revisions
  * and suggestions came from.
  */
 
-import {
-  type OnboardingCite,
-  type OnboardingLinkedItem,
-  type OnboardingRefusal,
-  QUESTIONNAIRE_MAX_ROUNDS,
-  type QuestionnaireItem,
-  type QuestionnaireItemState,
+import type {
+  OnboardingCite,
+  OnboardingLinkedItem,
+  OnboardingRefusal,
+  QuestionnaireItem,
+  QuestionnaireItemState,
 } from '@forge/contracts/onboarding';
 import type { QuestionnaireLanding } from '../db/schema-questions.js';
 
@@ -56,12 +55,13 @@ const citedRevisionOf = (it: SeriesItem, workflowId: string): number | null => {
 };
 
 // an item links to a design when its `affects` names the design (by id or flow) or an
-// update cited it from one of the design's revisions; once all rounds are sent, the linked items
-// still open are the design's open questions, read from the item rows and never written anywhere
+// update cited it from one of the design's revisions; once the onboarding is settled — done on its
+// assumptions, or every round sent — the linked items still open are the design's open questions,
+// read from the item rows and never written anywhere
 export function linkItems(
   design: Pick<DesignKey, 'workflowId' | 'flow'>,
   items: readonly SeriesItem[],
-  roundsSent: number,
+  settled: boolean,
 ): { linkedItems: OnboardingLinkedItem[]; openQuestions: OnboardingLinkedItem[] } {
   const linkedItems = latestPerItem(items)
     .filter((it) => it.state !== 'void')
@@ -81,8 +81,7 @@ export function linkItems(
         },
       ];
     });
-  const openQuestions =
-    roundsSent >= QUESTIONNAIRE_MAX_ROUNDS ? linkedItems.filter((i) => i.state === 'open') : [];
+  const openQuestions = settled ? linkedItems.filter((i) => i.state === 'open') : [];
   return { linkedItems, openQuestions };
 }
 

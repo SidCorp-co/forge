@@ -168,7 +168,9 @@ export function hintOf(
       mayReanalyze,
     );
   }
-  if (view.openBatch) return openBatchHint(view.openBatch, drafted, mayReanalyze);
+  // a batch holding only assumptions asks the person nothing (REQ-10 BC-6)
+  if (view.openBatch && view.openBatch.open > 0)
+    return openBatchHint(view.openBatch, drafted, mayReanalyze);
   if (view.job?.status === 'failed') {
     return hint(
       'err',
