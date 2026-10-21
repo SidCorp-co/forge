@@ -11,6 +11,7 @@ export const MAX_VISIBLE_TOASTS = 3;
 interface ToastItem extends ToastView {
   id: number;
   slot?: string;
+  keep?: boolean;
 }
 
 export interface ToastInput extends ToastView {
@@ -18,6 +19,9 @@ export interface ToastInput extends ToastView {
   /** A toast naming a slot replaces the visible one holding the same slot, so
    *  a burst of one kind of event takes one card rather than a stack. */
   slot?: string;
+  /** It holds something the reader would otherwise lose: it never expires and never gives up its
+   *  place to a newer toast, so only the reader puts it away (ISS-1229 r29). */
+  keep?: boolean;
 }
 
 interface ToastApi {
@@ -106,13 +110,16 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const toast = useCallback<ToastApi["toast"]>(
-    ({ duration = 4000, slot, ...view }) => {
+    ({ duration = 4000, slot, keep, ...view }) => {
       const id = ++idRef.current;
       setItems((xs) => {
         const kept = slot === undefined ? xs : xs.filter((x) => x.slot !== slot);
-        return [...kept, { id, slot, ...view }].slice(-MAX_VISIBLE_TOASTS);
+        const next = [...kept, { id, slot, keep, ...view }];
+        const room = Math.max(1, MAX_VISIBLE_TOASTS - next.filter((x) => x.keep).length);
+        const shown = new Set(next.filter((x) => !x.keep).slice(-room));
+        return next.filter((x) => x.keep || shown.has(x));
       });
-      if (duration > 0) setTimeout(() => remove(id), duration);
+      if (duration > 0 && !keep) setTimeout(() => remove(id), duration);
     },
     [remove],
   );

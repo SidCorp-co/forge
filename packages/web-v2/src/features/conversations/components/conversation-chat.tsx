@@ -124,7 +124,7 @@ export function ConversationChat({
           title: ROOM_DELETED_TITLE,
           description: unsentLine(unsent),
           tone: "info",
-          duration: 0,
+          keep: true,
           onClick: () => {
             const copied = navigator.clipboard
               ? navigator.clipboard.writeText(unsent)
@@ -136,7 +136,7 @@ export function ConversationChat({
                   title: "What you wrote could not be copied",
                   description: unsent,
                   tone: "error",
-                  duration: 0,
+                  keep: true,
                 }),
             );
           },

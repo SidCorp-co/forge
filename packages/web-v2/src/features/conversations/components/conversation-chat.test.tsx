@@ -261,9 +261,9 @@ describe("a room deleted while it is open", () => {
     fireEvent.click(screen.getByLabelText("Send message"));
 
     await waitFor(() => expect(toast).toHaveBeenCalled());
-    const notice = toast.mock.calls[0]?.[0] as { description: string; duration: number; onClick: () => void };
+    const notice = toast.mock.calls[0]?.[0] as { description: string; keep: boolean; onClick: () => void };
     expect(notice.description).toContain("“the numbers for Friday”");
-    expect(notice.duration).toBe(0);
+    expect(notice.keep).toBe(true);
     notice.onClick();
     expect(writeText).toHaveBeenCalledWith("the numbers for Friday");
     await waitFor(() =>
@@ -285,7 +285,7 @@ describe("a room deleted while it is open", () => {
     notice.onClick();
     await waitFor(() =>
       expect(toast).toHaveBeenLastCalledWith(
-        expect.objectContaining({ title: "What you wrote could not be copied", description: long, duration: 0 }),
+        expect.objectContaining({ title: "What you wrote could not be copied", description: long, keep: true }),
       ),
     );
   });

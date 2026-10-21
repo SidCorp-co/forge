@@ -167,6 +167,23 @@ describe("how many toasts show", () => {
     for (const n of [2, 3, 4]) expect(screen.getByText(`Toast ${n}`)).toBeInTheDocument();
   });
 
+  // ISS-1229 r29 review F1: three later notices pushed out the one holding an unsent message.
+  it("keeps a toast marked keep past any number of newer ones, and past its duration", () => {
+    render(<Frame />);
+    act(() => {
+      fire({ title: "Your message", keep: true });
+      for (const n of [1, 2, 3, 4]) fire({ title: `Toast ${n}`, duration: 0 });
+    });
+
+    expect(screen.getByText("Your message")).toBeInTheDocument();
+    expect(screen.queryByText("Toast 2")).not.toBeInTheDocument();
+    for (const n of [3, 4]) expect(screen.getByText(`Toast ${n}`)).toBeInTheDocument();
+    act(() => vi.advanceTimersByTime(60_000));
+    expect(screen.getByText("Your message")).toBeInTheDocument();
+    fireEvent.click(screen.getAllByLabelText("Dismiss")[0] as HTMLElement);
+    expect(screen.queryByText("Your message")).not.toBeInTheDocument();
+  });
+
   it("gives a burst sharing a slot one card, showing the newest", () => {
     render(<Frame />);
     act(() => {
