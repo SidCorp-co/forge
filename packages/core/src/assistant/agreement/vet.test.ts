@@ -108,7 +108,7 @@ describe("the assistant's draft is checked before its card is offered", () => {
 
 describe('a check, as the gate runs it', () => {
   it('leaves a tool with no check to be held', async () => {
-    expect(await vetHeld('project_feedback', '{}', PROJECT)).toBeNull();
+    expect(await vetHeld('forge_memory_note', '{}', PROJECT)).toBeNull();
   });
 
   it("pins the turn's project, as the toolset does", async () => {

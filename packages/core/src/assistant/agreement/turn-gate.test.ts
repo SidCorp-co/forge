@@ -86,7 +86,12 @@ const text = (r: { content: { type: string; text?: string }[] }) =>
   r.content.map((b) => b.text ?? '').join('\n');
 
 const feedback = (title: string) =>
-  JSON.stringify({ kind: 'bug', title, body: 'The dock loses my draft.', requirement: 'REQ-30' });
+  JSON.stringify({
+    kind: 'bug',
+    title,
+    body: 'The dock loses my draft.',
+    target: { kind: 'requirement', ref: 'REQ-30' },
+  });
 
 beforeEach(() => {
   role = 'member';

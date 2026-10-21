@@ -80,6 +80,11 @@ const FEEDBACK_TARGETS = ['requirement', 'issue', 'release', 'workflow', 'endpoi
 
 /** Feedback's one target, as its link reads. */
 function feedbackTarget(args: Args): string[] {
+  // the chat tool names its one target as { kind, ref }; a REST body, under its own field
+  const one = args.target as { kind?: unknown; ref?: unknown } | undefined;
+  const kind = str(one?.kind);
+  const ref = str(one?.ref);
+  if (kind && ref) return [kind === 'requirement' || kind === 'issue' ? ref : `${kind} ${ref}`];
   for (const field of FEEDBACK_TARGETS) {
     const v = str(args[field]);
     if (v) return [field === 'requirement' || field === 'issue' ? v : `${field} ${v}`];
@@ -95,7 +100,7 @@ function feedbackSummary(args: Args): ChatProposalSummary {
     title: `Feedback (${str(args.kind) ?? 'unknown kind'}): ${str(args.title) ?? 'untitled'}`,
     lines: [
       ...lines,
-      ...restLines(args, ['kind', 'title', 'body', 'whereSeen', ...FEEDBACK_TARGETS]),
+      ...restLines(args, ['kind', 'title', 'body', 'whereSeen', 'target', ...FEEDBACK_TARGETS]),
     ],
     relates: feedbackTarget(args),
   };

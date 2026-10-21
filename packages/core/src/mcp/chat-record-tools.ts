@@ -1,7 +1,7 @@
 // The chat assistant's record tools, beside its read tools (`chat-read-tools.ts`): a different
 // responsibility, so the modules each list reaches stay within the coordinator limit.
 
-import { projectFeedbackTool } from '../feedback/tool.js';
+import { FEEDBACK_RECORD_VETS, projectFeedbackTool } from '../feedback/tool.js';
 import type { ContextScopedMcpToolFactory } from '../lib/tool.js';
 import {
   forgeRequirementDraftTool,
@@ -24,4 +24,4 @@ export const CHAT_RECORD_TOOLS: readonly { factory: ContextScopedMcpToolFactory;
   ];
 
 /** The record tools' own checks, which the agreement gate runs before it holds a call (REQ-35 BC-10). */
-export const CHAT_RECORD_VETS = REQUIREMENT_RECORD_VETS;
+export const CHAT_RECORD_VETS = { ...REQUIREMENT_RECORD_VETS, ...FEEDBACK_RECORD_VETS };
