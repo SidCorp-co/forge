@@ -38607,7 +38607,8 @@
                       {
                         "type": "null"
                       }
-                    ]
+                    ],
+                    "description": "the target's revision you read (a revision_diff on a requirement with an open revision takes that open one), or null where there is none: an issue, a feedback item, a requirement with no current revision"
                   },
                   "feedback": {
                     "maxLength": 64,

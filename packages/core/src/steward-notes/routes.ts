@@ -22,7 +22,9 @@ stewardNoteRoutes.use('/:id/steward-notes/:subjectKind/:key', requireAuth(), ass
 const paramCheck = zValidator(
   'param',
   noteParam,
-  invalid('invalid path: /api/projects/<project>/steward-notes/<requirement|feedback>/<key>'),
+  invalid(
+    `invalid path: /api/projects/<project>/steward-notes/<${STEWARD_NOTE_SUBJECT_KINDS.join('|')}>/<key>`,
+  ),
 );
 
 stewardNoteRoutes.get('/:id/steward-notes/:subjectKind/:key', paramCheck, async (c) => {

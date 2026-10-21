@@ -58,7 +58,9 @@ export function fingerprintOf(kind: SuggestionKind, payload: unknown): string {
 // The base a suggestion names is the target's head when it is written and when it is
 // accepted (compare-and-set); otherwise SUGGESTION_BASE_STALE naming both revisions. A revision_diff
 // on a requirement with an open (draft or proposed) revision builds on that one instead: the BA
-// improves a new requirement's draft (REQ-30 BC-3; owner ruling REQ-34 r2, gate as little as possible)
+// improves a new requirement's draft (REQ-30 BC-3; owner ruling REQ-34 r2, gate as little as possible).
+// A target that holds no revision is based on none, so a number there is answered with the base
+// that is valid, null, rather than an invitation to try another number (FB-152)
 export function baseStaleRefusal(
   base: number | null,
   head: number | null,
@@ -66,13 +68,12 @@ export function baseStaleRefusal(
 ): SuggestionRefusal | null {
   if (base === (open ? open.revision : head)) return null;
   const name = (n: number | null) => (n === null ? 'no revision' : `revision ${n}`);
-  return {
-    code: 'SUGGESTION_BASE_STALE',
-    path: '/baseRevision',
-    detail: open
-      ? `the suggestion is based on ${name(base)}, but revision ${open.revision} is open (${open.state}) and a revision suggestion builds on the open revision; it is stale. Read the requirement and propose against revision ${open.revision}.`
-      : `the suggestion is based on ${name(base)}, but the target's head is ${name(head)}; it is stale. Read the head and propose against it.`,
-  };
+  const detail = open
+    ? `the suggestion is based on ${name(base)}, but revision ${open.revision} is open (${open.state}) and a revision suggestion builds on the open revision; it is stale. Read the requirement and propose against revision ${open.revision}.`
+    : head === null
+      ? `the suggestion is based on ${name(base)}, but the target holds no revision, so a suggestion on it is based on none; send baseRevision: null, not a revision number.`
+      : `the suggestion is based on ${name(base)}, but the target's head is ${name(head)}; it is stale. Read the head and propose against it.`;
+  return { code: 'SUGGESTION_BASE_STALE', path: '/baseRevision', detail };
 }
 
 // A suggestion records the revision it was made against (REQ-8 BC-1): on a target that holds

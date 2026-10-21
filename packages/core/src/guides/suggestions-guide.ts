@@ -46,7 +46,8 @@ the kind does not take is \`SUGGESTION_TARGET_INVALID\`.
   ever agreed (REQ-30 BC-3).
 - It is compared with the head (or that open revision) **when the suggestion is written and again
   when it is accepted**. A moved base is \`SUGGESTION_BASE_STALE\`, naming both revisions. At accept the
-  row is also marked \`stale\`.
+  row is also marked \`stale\`. A number sent against a target that holds no revision is the same
+  refusal, and it says to send \`baseRevision: null\`: no number is valid there, \`0\` included.
 - The BA assistant's \`ba_suggest\` takes no base from the model: it uses what that turn's
   \`ba_read_requirement\` returned, or reads it at creation.
 - Every proposed suggestion on a requirement goes \`stale\` the moment a newer revision of it is

@@ -1,1 +1,0 @@
-**Approvals never sends an answer you cannot see, and Decline always declines.** A question's check names the answer it sends, with its other answers one click away; a release's Decline returns it instead of approving it.
