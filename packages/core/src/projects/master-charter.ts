@@ -39,6 +39,10 @@ export type ParsedCharterWrite =
 const SHAPE =
   'a master charter write is `{ "goal": "<one sentence or more>", "rules": ["<rule>", ...] }`';
 
+function listed(names: readonly string[]): string {
+  return `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
+}
+
 function refuse(field: string, message: string): ParsedCharterWrite {
   return { ok: false, refusal: { field, message } };
 }
@@ -58,7 +62,7 @@ export function parseMasterCharterWrite(raw: unknown): ParsedCharterWrite {
       extra[0] ?? 'body',
       extra.length === 1
         ? `${SHAPE}. This body also carries \`${extra[0]}\`, which a charter has no field for. Remove it rather than have it stored under a name nothing reads.`
-        : `${SHAPE}. This body also carries ${extra.map((k) => `\`${k}\``).join(', ')}, which a charter has no fields for. Remove them rather than have them stored under names nothing reads.`,
+        : `${SHAPE}. This body also carries ${listed(extra.map((k) => `\`${k}\``))}, which a charter has no fields for. Remove them rather than have them stored under names nothing reads.`,
     );
   }
 

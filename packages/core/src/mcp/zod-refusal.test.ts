@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { issueRelationInputSchema } from '../issues/relations-service.js';
+import { forgeCommentsTool } from './tools/forge-comments.js';
 import { forgeKnowledgeTool } from './tools/forge-knowledge.js';
 import { zodRefusalMessage } from './zod-refusal.js';
 
@@ -133,6 +134,19 @@ describe('zodRefusalMessage', () => {
     const relation = { dependsOnID: '7c9e6679-7425-40de-944b-e07fc1f90ae7' };
     expect(said({ action: 'update', data: { relations: [relation] } })).toContain(
       'This call takes `data.relations.0.dependsOnId`, which may be what `data.relations.0.dependsOnID` meant.',
+    );
+  });
+
+  it('points a stray top-level field at the field one level down it may have meant', async () => {
+    const tool = forgeCommentsTool({} as never);
+    const thrown = await Promise.resolve()
+      .then(() => tool.handler({ action: 'list', issueid: '7c9e6679-7425-40de-944b-e07fc1f90ae7' }))
+      .then(
+        () => null,
+        (e: unknown) => e,
+      );
+    expect(zodRefusalMessage(thrown, tool.inputSchema as Record<string, unknown>)).toBe(
+      'BAD_REQUEST: The field `issueid` is not one this call takes. This call takes `filters.issue` and `data.issue`, either of which may be what `issueid` meant.',
     );
   });
 

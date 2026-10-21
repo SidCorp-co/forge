@@ -157,18 +157,29 @@ function editDistance(a: string, b: string): number {
 }
 
 /** "This call takes `documentId`, which may be what `id` meant." for each stray key with a near field. */
+/**
+ * "This call takes `documentId`, which may be what `id` meant." for each stray key: the fields near
+ * it beside it, or, with none there, those near it one level down (`filters.issueId` for `issueid`).
+ */
 function nearSentences(
   keys: readonly string[],
-  at: string,
-  known: readonly string[],
+  path: readonly PropertyKey[],
+  fieldsAt: (path: readonly PropertyKey[]) => readonly string[],
   named: (field: string) => string,
 ): string[] {
+  const at = path.map(String).join('.');
   const full = (k: string) => named(at ? `${at}.${k}` : k);
+  const known = fieldsAt(path);
+  const below = known.flatMap((k) => fieldsAt([...path, k]).map((c) => ({ k, c })));
   return keys.flatMap((key) => {
-    const near = fieldsNear(key, known).map(full);
+    let near = fieldsNear(key, known);
+    if (near.length === 0) {
+      const down = below.filter(({ c }) => c === key || fieldsNear(key, [c]).length > 0);
+      near = down.map(({ k, c }) => `${k}.${c}`);
+    }
     if (near.length === 0) return [];
     const which = near.length === 1 ? 'which' : 'either of which';
-    return [`This call takes ${joined(near)}, ${which} may be what ${full(key)} meant.`];
+    return [`This call takes ${joined(near.map(full))}, ${which} may be what ${full(key)} meant.`];
   });
 }
 
@@ -220,8 +231,7 @@ export function schemaRefusalWords(
           ? `The field ${fields[0]} is not one this call takes.`
           : `The fields ${joined(fields)} are not ones this call takes.`,
       );
-      if (fieldsAt)
-        sentences.push(...nearSentences(issue.keys, field, fieldsAt(issue.path ?? []), named));
+      if (fieldsAt) sentences.push(...nearSentences(issue.keys, issue.path ?? [], fieldsAt, named));
     } else if (!field) {
       sentences.push(zodMessageWords(null, issue.message ?? ''));
     } else if (

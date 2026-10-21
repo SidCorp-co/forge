@@ -81,7 +81,7 @@ describe('parseMasterCharterWrite — negative and boundary (criteria 10-13, 36-
     const two = parseMasterCharterWrite({ goal: 'g', rules: [], colour: 1, size: 2 });
     expect(two.ok).toBe(false);
     if (!two.ok) {
-      expect(two.refusal.message).toContain('`colour`, `size`, which a charter has no fields for');
+      expect(two.refusal.message).toContain('`colour` and `size`, which a charter has no fields for');
       expect(two.refusal.message).toContain('Remove them rather');
     }
   });
