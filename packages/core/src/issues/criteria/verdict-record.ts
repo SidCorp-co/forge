@@ -31,6 +31,7 @@ import {
   environmentFault,
   readSourceDrafts,
 } from './storefront-draft.js';
+import { keepFailAsCorrection } from './verdict-correction.js';
 import {
   type VerdictDraft,
   type VerdictIdentity,
@@ -359,6 +360,14 @@ export async function recordVerdict(
     })
     .returning({ id: criterionVerdicts.id });
   if (!row) throw new Error('criterion_verdicts insert returned no row');
+  await keepFailAsCorrection(tx, {
+    issue,
+    verdictId: row.id,
+    criterion: draft.criterion,
+    verdict: draft.verdict,
+    reason: draft.reason?.trim() || null,
+    author: { userId: author.userId, agency: author.agency },
+  });
   await writeKernelRecord(tx, {
     issueId: issue.id,
     actor: verdictActor(author),

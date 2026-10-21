@@ -53,7 +53,7 @@ function renderRow(runner: ProjectRunner) {
 	const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	return render(
 		<QueryClientProvider client={client}>
-			<RunnerAssignment runner={runner} current={null} projectId="p1" canEdit={false} slug="forge" />
+			<RunnerAssignment runner={runner} current={null} projectId="p1" canEdit={false} />
 		</QueryClientProvider>,
 	);
 }
@@ -66,7 +66,7 @@ describe("the Runners screen row for a limited runner", () => {
 
 	it("names the printed time as what the account said, and never counts down to it", () => {
 		const { container } = renderRow(fb87Runner);
-		expect(screen.getByText(/Account said it resets at .+: its claim, not when work resumes\./)).toBeInTheDocument();
+		expect(screen.getByText(/^Account said it resets at /)).toBeInTheDocument();
 		expect(container.textContent).not.toMatch(printedCountdown);
 	});
 

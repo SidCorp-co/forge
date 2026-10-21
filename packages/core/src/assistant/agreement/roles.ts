@@ -32,6 +32,8 @@ export const ROLE_NEEDED: Record<ChatProposalKind, RoleNeed> = {
   issue_change: WRITE,
   // `projects/routes.ts`: a project's settings, archive and unarchive need the org's admin
   project_change: { org: 'org.admin' },
+  // `lessons/confusions.ts:raiseConfusion`
+  lesson_confusion: WRITE,
 };
 
 /** Throws the refusal naming the right `userId` lacks for a `kind` write in `projectId`. */

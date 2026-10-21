@@ -132,7 +132,7 @@ describe("the share dialog", () => {
     fireEvent.click(createButton());
     expect(await screen.findByTestId("share-link")).toHaveValue(URL_ONCE);
     expect(screen.getByTestId("share-created-title")).toHaveTextContent("Progress by requirement");
-    expect(screen.getByText(/This link is shown once/)).toBeInTheDocument();
+    expect(screen.getByText("Shown once")).toBeInTheDocument();
     expect(screen.getAllByDisplayValue(URL_ONCE)).toHaveLength(1);
     fireEvent.click(screen.getByRole("button", { name: "Done" }));
     await waitFor(() => expect(screen.queryByTestId("share-created")).toBeNull());

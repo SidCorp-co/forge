@@ -1133,20 +1133,33 @@ CI cannot be bypassed — translate the offending strings or add an `i18n-allow:
 ## check-copy-budget.mjs — web copy strings and core's sentences are short
 
 Every English string in `packages/web-v2/src/**/copy*.json` and `lib/i18n/copy/**` is at most 12
-words, a placeholder counting as one (REQ-43 BC-1, BC-2, BC-4, BC-6). So is every English template of
-a sentence registry `sentences` names: `packages/contracts/src/said-keys.ts` (`SAID`), the sentences
-core writes for pages (BC-11). A registry is read from its source's syntax, and one entry whose `en`
-is not a string literal stops the check naming its key, since a sentence skipped is never held. What a key is comes from
-conventions declared in `.forge/conformance.json` (`checkers.copy-budget`), never guessed from its
-sentence:
+words, a placeholder counting as one (REQ-43 BC-1, BC-2, BC-4, BC-6). So is every English sentence
+of a registry `sentences` names, the sentences core writes for pages (BC-11): `packages/contracts/src/said-keys.ts`
+by `symbol` (`SAID`, each entry's `en`), and `packages/contracts/src/checklist-registry.ts` by
+`fields` (every `title`, `prompt`, `fix`, `label`, `recommended` and `note` a checklist's records
+hold, keyed by the ids around it, `feedback_triage.kind.prompt`; `scripts/lib/copy-budget.mjs:fieldSentencesOf`).
+A registry is read from its source's syntax, and a sentence it cannot read — an `en` that is not a
+string literal, a field built by a call or a concatenation — stops the check naming its key, since a
+sentence skipped is never held; a field naming another declaration (`labels[value]`) is a label held
+there, and is not read. What a string is comes first from conventions declared in `.forge/conformance.json`
+(`checkers.copy-budget`) for its key:
 - a refusal or confirmation is a key with a segment that matches `refusalSegments`, and holds at most 20 words;
 - an empty state is a key whose last segment matches `emptySegments`, and holds at most 2;
 - an explanation is a key whose last segment matches `explainSegments` (`hint`, `intro`, `help`,
   `emptyMessage`, …), and is refused at any length.
+Then, for a key naming none of the three, from the string itself (ISS-496 round 2: a release judge
+found the same sentence refused under `summaryHint` and passed under `summary`):
+- a text matching one of `explainShapes` is an explanation, refused naming the shape it took: a
+  second sentence after the first, a gloss after a colon (`Not tracked: it goes live outside Forge`;
+  a value holding a placeholder, or a CODE before the colon, is not one), a purpose clause (`To stop
+  one, run …`);
+- a text `emptyLead` matches — it opens on `No`, `None`, `Nothing` or `Empty` — is an empty state.
+The shapes read the form an explanation takes, not its meaning: a single sentence that explains in
+none of them passes, and that is the check's limit, left to the judge reading the page.
 A registry may declare its own `emptySegments`, which replaces the copy files' one for its keys:
 core names a sentence by its reason (`noRunner`, `noToken`), so `no<X>` there is not an empty
-state, and `SAID` holds only `empty`, `none` and `nothing` to two words.
-A convention the manifest does not declare stops the check with exit 2, and so do a declared
+state, and `SAID` holds only `empty`, `none` and `nothing` to two words by key.
+A convention or a shape the manifest does not declare stops the check with exit 2, and so do a declared
 `baseline` and a missing `sentences`. Each string over budget is refused naming file, key, count and the budget for its
 kind. There is no baseline and no amnesty. Only English is read, since the other languages
 translate it. The rule's text is the Copy rule in `docs/patterns/screen.md`.

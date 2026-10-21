@@ -1,27 +1,16 @@
 
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
-import { masterStandDown, masterStandUp } from "@/lib/utils/runner-commands";
 import type { ResidentMaster as ResidentMasterRow } from "../types";
 
 /**
  * The resident master, on the surface that governs the box (ISS-1118). What
  * core holds is a REGISTRATION and not a pane, so "last reported" is printed
- * rather than smoothed into a green dot; the control is named and not offered,
- * because the box ledger is the only writer of a master's standing.
+ * rather than smoothed into a green dot. No control is offered, because the box
+ * ledger is the only writer of a master's standing.
  */
-export function ResidentMaster({
-	master,
-	slug,
-	deviceName,
-}: {
-	master: ResidentMasterRow | null | undefined;
-	slug: string | undefined;
-	deviceName: string | null;
-}) {
+export function ResidentMaster({ master }: { master: ResidentMasterRow | null | undefined }) {
 	const t = useCopy();
 	const time = useTimeFormat();
-	const named = slug ?? "<project>";
-	const where = deviceName ? t("runners.master.onDevice", { name: deviceName }) : t("runners.master.onThatDevice");
 
 	return (
 		<div className="flex flex-col gap-1 border-line border-t pt-3">
@@ -36,11 +25,6 @@ export function ResidentMaster({
 			) : (
 				<p className="fg-caption text-muted">{t("runners.master.none")}</p>
 			)}
-
-			<p className="fg-caption text-muted">
-				{t("runners.master.toStop")} <code>{masterStandDown(named)}</code> {where}.{" "}
-				<code>--force</code> {t("runners.master.force")} <code>{masterStandUp(named)}</code> {t("runners.master.standUp")}
-			</p>
 		</div>
 	);
 }

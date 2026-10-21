@@ -12,8 +12,8 @@ export function ProvisionStepper({ runner }: { runner: ProjectRunner }) {
 	if (status === "needs_manual_setup" || status === "failed") {
 		return (
 			<Banner tone={status === "failed" ? "attention" : "info"}>
-				<span className="font-semibold">{t(`runners.provision.${status}`)}.</span>{" "}
-				{runner.provisionDetail ?? t("runners.row.seeLogs")}
+				<span className="font-semibold">{t(`runners.provision.${status}`)}.</span>
+				{runner.provisionDetail ? <> {runner.provisionDetail}</> : null}
 			</Banner>
 		);
 	}

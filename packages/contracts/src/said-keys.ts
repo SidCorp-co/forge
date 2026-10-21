@@ -37,7 +37,7 @@ export const SAID = {
 		vars: { status: "code" },
 	},
 	"feedback.notice.noRelease": {
-		en: "No release carries it, so none told the reporter: tell them yourself.",
+		en: "No release",
 	},
 	"feedback.notice.silent": {
 		en: "{release} shipped it and sent the reporter no notice.",
@@ -59,10 +59,10 @@ export const SAID = {
 		en: "a local path no host serves; declare the hosted repository",
 	},
 	"integrations.detail.neverGithub": {
-		en: "Never checked: run Test connection.",
+		en: "Never checked",
 	},
 	"integrations.detail.neverGitlab": {
-		en: "Never checked: run Test connection.",
+		en: "Never checked",
 	},
 	"integrations.detail.neverTested": { en: "never test-connected" },
 	"integrations.detail.noRepository": {
@@ -129,10 +129,10 @@ export const SAID = {
 		en: "Its question was answered, but no left status was recorded.",
 	},
 	"issues.blocker.noResumeAt": {
-		en: "No resume status recorded: use Move anyway… in the status menu.",
+		en: "Resume status unrecorded",
 	},
 	"issues.blocker.noResumeFromHold": {
-		en: "No resume status recorded: pick one in the status menu.",
+		en: "Resume status unrecorded",
 	},
 	"issues.blocker.openMany": {
 		en: "Blocked by {n} open issues.",
@@ -240,7 +240,7 @@ export const SAID = {
 	"issues.gate.job_held_clears.detail": {
 		en: "A step is held until its condition clears.",
 	},
-	"issues.gate.job_held_clears.who": { en: "No action: it resumes itself." },
+	"issues.gate.job_held_clears.who": { en: "No action" },
 	"issues.gate.job_held_stays.detail": {
 		en: "A step is held, and this hold does not clear itself.",
 	},
@@ -251,7 +251,7 @@ export const SAID = {
 		en: "The step failed and waits out a cooldown before retrying.",
 	},
 	"issues.gate.retry_cooldown.who": {
-		en: "No action: the retry fires itself.",
+		en: "No action",
 	},
 	"issues.gate.run_not_running.detail": {
 		en: "The step is queued, but its run is paused or closed.",
@@ -260,7 +260,7 @@ export const SAID = {
 		en: "Resume the run, or cancel it and reopen the issue.",
 	},
 	"issues.gate.runner_stale.detail": {
-		en: "No runner is online for this project.",
+		en: "Runners offline",
 	},
 	"issues.gate.runner_stale.who": { en: "Bring a runner back online." },
 	"issues.gate.runner_too_old.detail": {
@@ -280,7 +280,7 @@ export const SAID = {
 		en: "The run is paused until its condition clears.",
 	},
 	"issues.pause.machine.who": {
-		en: "No action — it resumes itself once the condition clears.",
+		en: "No action",
 	},
 	"issues.pause.operator.detail": {
 		en: "The run is paused; no step dispatches.",
@@ -290,7 +290,7 @@ export const SAID = {
 		en: "The run is paused for a reason this build lacks.",
 	},
 	"issues.pause.sweeper.who": {
-		en: "No action: the sweeper frees it next tick.",
+		en: "No action",
 	},
 	"issues.rule.admitted": {
 		en: "admitted and not withheld: the master owes it a run",
@@ -783,11 +783,11 @@ export const SAID = {
 	},
 	"standing.gate.empty": { en: "Nothing waiting" },
 	"standing.gate.heldBack": {
-		en: "{owes}. {they} held back until {their} criteria are earned; the others ship.",
+		en: "{owes}; {they} held back until {their} criteria are earned",
 		vars: { owes: "saidList", they: "agreement", their: "agreement" },
 	},
 	"standing.gate.nearGate": {
-		en: "Nothing at the gate; {n} {issues} {verb} at {their} test step.",
+		en: "{n} {issues} {verb} at {their} test step",
 		vars: {
 			n: "count",
 			issues: "agreement",
@@ -798,16 +798,16 @@ export const SAID = {
 	"standing.gate.noGate": {
 		en: "A release has nowhere to go until one is declared.",
 	},
-	"standing.gate.noRunner": { en: "No runner is paired to this project." },
+	"standing.gate.noRunner": { en: "None paired" },
 	"standing.gate.noRunnerOnline": {
-		en: "No paired runner can take a release now.",
+		en: "None online",
 	},
 	"standing.gate.noteMissing": {
 		en: "{subject} {verb} no release note.",
 		vars: { subject: "said", verb: "agreement" },
 	},
 	"standing.gate.nowhere": {
-		en: "No production environment: an admin completes it in the project document.",
+		en: "Production target undeclared",
 	},
 	"standing.gate.on": { en: " on {subject}", vars: { subject: "said" } },
 	"standing.gate.oversize": {
@@ -828,7 +828,7 @@ export const SAID = {
 		vars: { key: "key", word: "agreement", list: "text" },
 	},
 	"standing.gate.preference": {
-		en: "No runner carries the release label; the pool takes it.",
+		en: "The pool takes the release",
 	},
 	"standing.gate.running": {
 		en: "Another release is already running for this project.",
@@ -851,9 +851,9 @@ export const SAID = {
 	"standing.gate.title.claimed": { en: "Issues already claimed" },
 	"standing.gate.title.empty": { en: "Gate empty" },
 	"standing.gate.title.heldBack": { en: "Some issues held back" },
-	"standing.gate.title.noGate": { en: "No production environment" },
-	"standing.gate.title.noRunner": { en: "No runner paired" },
-	"standing.gate.title.noRunnerOnline": { en: "No runner can take it" },
+	"standing.gate.title.noGate": { en: "No production" },
+	"standing.gate.title.noRunner": { en: "No runner" },
+	"standing.gate.title.noRunnerOnline": { en: "Runners offline" },
 	"standing.gate.title.noteMissing": { en: "Release note missing" },
 	"standing.gate.title.nowhere": { en: "Nowhere to land" },
 	"standing.gate.title.oversize": { en: "Too many issues" },
@@ -871,7 +871,7 @@ export const SAID = {
 		vars: { subject: "said", verb: "agreement" },
 	},
 	"standing.gate.unearned": {
-		en: "{owes}. Unattended release needs every criterion proven.",
+		en: "{owes}",
 		vars: { owes: "saidList" },
 	},
 	"standing.gate.unevaluated": {
@@ -886,7 +886,7 @@ export const SAID = {
 		en: "Production declares no source-commit probe: an admin adds one.",
 	},
 	"standing.gate.unreadable": {
-		en: "Nothing can read what production serves.",
+		en: "Production runtime unrouted",
 	},
 	"standing.more": { en: " and {n} more", vars: { n: "count" } },
 	"standing.overdueSince": {
@@ -1413,7 +1413,7 @@ export const SAID = {
 		vars: { r: "count" },
 	},
 	"requirements.rule.replanUnknown": {
-		en: "planned against an earlier revision than r? (REQUIREMENT_CHANGED_SINCE_PLAN)",
+		en: "planned against an earlier revision (REQUIREMENT_CHANGED_SINCE_PLAN)",
 	},
 	"requirements.rule.breakdownDue": {
 		en: "agreed with no linked issue; breakdown due {date}, {days} working days after",
@@ -1686,7 +1686,7 @@ export const SAID = {
 	"modules.act.counts": { en: "{parts}", vars: { parts: "saidDots" } },
 	"modules.act.nothingOpen": { en: "nothing open" },
 	"modules.rule.quiet": {
-		en: "Nothing here waits on you, is stuck or holds a lease",
+		en: "Nothing pending",
 	},
 	"questions.rule.unheld": {
 		en: "a question no issue, requirement or feedback holds: answer it on Agents",
@@ -1993,7 +1993,7 @@ export const SAID = {
 		en: "Post-merge jobs run on GitHub; none stored.",
 	},
 	"overview.signal.noSlotsNote": {
-		en: "No live master, so no slots declared.",
+		en: "No master",
 	},
 	"overview.record.waiting": {
 		en: "{n} {issues} waiting",
@@ -2151,11 +2151,11 @@ export const SAID = {
 		vars: { why: "said", runs: "saidList" },
 	},
 	"masters.verdict.keptDrains": {
-		en: "outdated ({why}); replacement waits: {held}. It drains, taking no new run",
+		en: "outdated ({why}); draining; replacement waits: {held}",
 		vars: { why: "said", held: "saidList" },
 	},
 	"masters.verdict.keptCold": {
-		en: "outdated ({why}); replacement waits: {held}. Kept: a successor would start cold",
+		en: "outdated ({why}); kept; replacement waits: {held}",
 		vars: { why: "said", held: "saidList" },
 	},
 	"masters.verdict.keptNudge": {
@@ -2275,9 +2275,9 @@ export const SAID = {
 		en: "System context not approved yet.",
 	},
 	"onboarding.hint.contextDrafted": {
-		en: "System-context design drafted: approve it in Workflows.",
+		en: "System-context design drafted.",
 	},
-	"onboarding.hint.noContext": { en: "No system context yet." },
+	"onboarding.hint.noContext": { en: "System context missing." },
 	"onboarding.hint.agentCan": {
 		en: "The agent can draft the key designs from the code.",
 	},
@@ -2327,7 +2327,7 @@ export const SAID = {
 		vars: { designs: "said" },
 	},
 	"onboarding.hint.updating": { en: "Onboarding: updating designs." },
-	"onboarding.hint.reading": { en: "Onboarding: reading the code." },
+	"onboarding.hint.reading": { en: "Reading the code." },
 	"onboarding.hint.failed": { en: "Onboarding analysis failed." },
 	"onboarding.hint.mapStays": { en: "The last code map stays." },
 	"onboarding.hint.drewNothing": {

@@ -1,4 +1,10 @@
-import { type AlwaysInjectFact, selectAlwaysInjectFromKnowledge } from '../knowledge/index.js';
+import {
+  type AlwaysInjectFact,
+  type LessonEntry,
+  selectAlwaysInjectFromKnowledge,
+  selectLessonEntries,
+} from '../knowledge/index.js';
+import { lessonsBlockText, RAISE_BY_DOOR } from '../lessons/index.js';
 import { logger } from '../lib/logger.js';
 import { projectRulesText } from './facts/project-rules.js';
 import { OPERATING_AFFORDANCES_TEXT } from './facts/registry.js';
@@ -15,7 +21,9 @@ export const ORIENTATION_GENERATED_LINE =
  * The project's always-applied rules as an orientation reads them: its `injection: 'always'`
  * knowledge entries, or `unreadable` where the knowledge store could not be read.
  */
-export type OrientationRules = { entries: readonly AlwaysInjectFact[] } | { unreadable: true };
+export type OrientationRules =
+  | { entries: readonly AlwaysInjectFact[]; lessons?: readonly LessonEntry[] }
+  | { unreadable: true };
 
 /** The rules block, or a named absence: a box told nothing would read a project with no rules. */
 function rulesText(projectId: string, rules: OrientationRules): string | null {
@@ -23,7 +31,22 @@ function rulesText(projectId: string, rules: OrientationRules): string | null {
     return `## Project rules (always applied)
 
 The project's knowledge could not be read when this orientation was written, so its rules are not here. Read them before you work: \`GET /api/projects/${projectId}/knowledge?injection=always\`.`;
-  return rules.entries.length > 0 ? projectRulesText(rules.entries, 2) : null;
+  // a master and the runs it declares build issues, breakdowns, designs and revisions, and work
+  // across areas, so every area lesson is shown labelled with its area (REQ-50 BC-3)
+  const lessons = lessonsBlockText(
+    rules.lessons ?? [],
+    {
+      produces: ['issue', 'suggestion', 'requirement', 'workflow'],
+      area: 'any',
+      raise: RAISE_BY_DOOR,
+    },
+    2,
+  );
+  const parts = [
+    rules.entries.length > 0 ? projectRulesText(rules.entries, 2) : null,
+    lessons,
+  ].filter((p): p is string => p !== null);
+  return parts.length > 0 ? parts.join('\n\n') : null;
 }
 
 /**
@@ -71,7 +94,11 @@ ${projectRules ? `\n${projectRules.trimEnd()}\n` : ''}`;
 export async function servedCheckoutOrientation(projectId: string, slug: string): Promise<string> {
   let rules: OrientationRules;
   try {
-    rules = { entries: await selectAlwaysInjectFromKnowledge(projectId) };
+    const [entries, lessons] = await Promise.all([
+      selectAlwaysInjectFromKnowledge(projectId),
+      selectLessonEntries(projectId),
+    ]);
+    rules = { entries, lessons };
   } catch (err) {
     logger.error(
       { err: (err as Error).message, projectId },

@@ -59,6 +59,7 @@ export const NEEDS_YOU_ENTITIES = [
 	"schedule",
 	"workflow",
 	"question",
+	"lesson",
 ] as const;
 export type NeedsYouEntity = (typeof NEEDS_YOU_ENTITIES)[number];
 

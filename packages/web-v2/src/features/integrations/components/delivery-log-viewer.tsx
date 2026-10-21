@@ -73,11 +73,7 @@ export function DeliveryLogViewer({
 
   if (!bindingId) {
     return (
-      <EmptyState
-        title={t("integrations.delivery.none")}
-        message={t("integrations.delivery.saveFirst")}
-        mascot={false}
-      />
+      <EmptyState message={t("integrations.delivery.none")} mascot={false} />
     );
   }
   if (deliveries.isLoading) {

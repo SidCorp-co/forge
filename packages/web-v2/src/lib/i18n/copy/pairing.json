@@ -1,7 +1,7 @@
 {
   "en": {
     "pairing.actsAsAgent": "Acts as {name} ({address}) on {n} project(s).",
-    "pairing.actsAsYou": "Acts as you. Reaches no project; runs the daemon only.",
+    "pairing.actsAsYou": "Acts as you, daemon only",
     "pairing.agentsFailed": "Agents could not load. Approving now pairs the box as you.",
     "pairing.agentsLoading": "Loading agents…",
     "pairing.approve": "Approve device",

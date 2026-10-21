@@ -5,16 +5,24 @@
 // English inline, where none of this could read it. Every English string in the
 // copy files — packages/web-v2/src/**/copy*.json and lib/i18n/copy/** — and every English template
 // of the sentence registries `sentences` names is at most `budget` words, a refusal or confirmation
-// at most `refusalBudget`, an empty state at most `emptyBudget`, and a string whose key names an
-// explanation is refused at any length. What a key is comes from the segment conventions
-// `.forge/conformance.json` declares; a convention it does not declare stops the check, since reading
-// nothing as an explanation would pass every page.
+// at most `refusalBudget`, an empty state at most `emptyBudget`, and an explanation is refused at any
+// length. What a string is comes from the segment conventions `.forge/conformance.json` declares for
+// its key, and then from the string itself: a text of one of the declared `explainShapes` explains,
+// and one `emptyLead` matches is an empty state, whatever its key. A convention or a shape it does not
+// declare stops the check, since reading nothing as an explanation would pass every page.
 
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import process from 'node:process';
 import { checkerConfig } from './lib/checker-config.mjs';
-import { faults, inlineCopyOf, inlineFaults, overBudget, sentencesOf } from './lib/copy-budget.mjs';
+import {
+  faults,
+  fieldSentencesOf,
+  inlineCopyOf,
+  inlineFaults,
+  overBudget,
+  sentencesOf,
+} from './lib/copy-budget.mjs';
 import { dieAs, ROOT, walkFiles } from './lib/gate.mjs';
 
 const die = dieAs('copy-budget');
@@ -36,8 +44,21 @@ const pattern = (where, value) => {
   }
 };
 const segments = {};
-for (const name of ['refusalSegments', 'emptySegments', 'explainSegments'])
+for (const name of ['refusalSegments', 'emptySegments', 'explainSegments', 'emptyLead'])
   segments[name] = pattern(`checkers.copy-budget.${name}`, CFG[name]);
+if (!Array.isArray(CFG.explainShapes) || CFG.explainShapes.length === 0)
+  die(
+    'checkers.copy-budget declares no explainShapes: a sentence that explains under any key would pass',
+  );
+segments.explainShapes = CFG.explainShapes.map((shape, i) => {
+  const where = `checkers.copy-budget.explainShapes[${i}]`;
+  if (typeof shape?.name !== 'string' || shape.name === '' || typeof shape?.why !== 'string')
+    die(`${where} must name the shape (\`name\`), its \`pattern\` and \`why\` it explains`);
+  return {
+    name: shape.name,
+    pattern: pattern(`${where}.pattern`, shape.pattern),
+  };
+});
 if (!Array.isArray(CFG.sentences) || CFG.sentences.length === 0)
   die(
     'checkers.copy-budget declares no sentences: the sentences core writes for pages would go unread',
@@ -77,17 +98,20 @@ const over = overBudget(entries, { ...CFG, ...segments });
 let sentences = 0;
 for (const [i, registry] of CFG.sentences.entries()) {
   const where = `checkers.copy-budget.sentences[${i}]`;
-  if (typeof registry?.file !== 'string' || typeof registry?.symbol !== 'string')
-    die(`${where} must name a \`file\` and the \`symbol\` of its registry`);
+  const bySymbol = typeof registry?.symbol === 'string';
+  const byFields = typeof registry?.fields === 'string';
+  if (typeof registry?.file !== 'string' || bySymbol === byFields)
+    die(
+      `${where} must name a \`file\` and either the \`symbol\` of its registry or the \`fields\` its records hold sentences in`,
+    );
   if (!existsSync(join(ROOT, registry.file)))
     die(`${where}.file ${registry.file} does not exist: its sentences would go unread`);
   let read;
   try {
-    read = sentencesOf(
-      readFileSync(join(ROOT, registry.file), 'utf8'),
-      registry.file,
-      registry.symbol,
-    );
+    const source = readFileSync(join(ROOT, registry.file), 'utf8');
+    read = bySymbol
+      ? sentencesOf(source, registry.file, registry.symbol)
+      : fieldSentencesOf(source, registry.file, pattern(`${where}.fields`, registry.fields));
   } catch (err) {
     die(err.message);
   }
@@ -131,6 +155,6 @@ console.log(
 );
 if (found.length === 0) process.exit(0);
 console.error(
-  `\ncopy-budget: ${found.length} refusal(s) — at most ${CFG.budget} words, ${CFG.refusalBudget} for a refusal or confirmation, ${CFG.emptyBudget} for an empty state, none that explains, none written inline:\n  ${found.slice(0, 40).join('\n  ')}${found.length > 40 ? `\n  (+${found.length - 40} more)` : ''}\n`,
+  `\ncopy-budget: ${found.length} refusal(s) — at most ${CFG.budget} words, ${CFG.refusalBudget} for a refusal or confirmation, ${CFG.emptyBudget} for an empty state, none that explains, by its key or its shape, none written inline:\n  ${found.slice(0, 40).join('\n  ')}${found.length > 40 ? `\n  (+${found.length - 40} more)` : ''}\n`,
 );
 process.exit(1);

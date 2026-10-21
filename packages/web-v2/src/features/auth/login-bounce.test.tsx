@@ -5,7 +5,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SignInStopped } from "./components/sign-in-stopped";
-import { BOUNCE_WINDOW_MS, bouncedRecently, clearBounce, leaveForLogin } from "./login-bounce";
+import { BOUNCE_WINDOW_MS, bouncedRecently, clearBounce, goToLogin, leaveForLogin } from "./login-bounce";
 import { useLoginRedirect } from "./use-login-redirect";
 
 const assign = vi.fn();
@@ -86,5 +86,68 @@ describe("SignInStopped", () => {
     vi.stubGlobal("top", {});
     render(<SignInStopped />);
     expect(screen.getByText("This frame cannot keep you signed in")).toBeTruthy();
+  });
+});
+
+// ISS-529 c7 (REQ-46 BC-7): a GitHub return with no session lands on /integrations?connect=no_session,
+// and the bounce to /login must carry that place, or the person signs in to Home and never reads why.
+describe("the bounce carries the page it left", () => {
+  const at = (path: string, search = "", hash = "") =>
+    vi.stubGlobal("location", { origin: window.location.origin, pathname: path, search, hash, assign });
+  const login = (query = "") => new URL(`/login${query}`, window.location.origin);
+
+  it("sends /login the path and query it was sent to, as next", () => {
+    at("/integrations", "?connect=no_session");
+    expect(leaveForLogin(1_000)).toBe("left");
+    expect(assign).toHaveBeenCalledWith(login("?next=%2Fintegrations%3Fconnect%3Dno_session"));
+  });
+
+  it("keeps the hash, and carries no next from Home or from a sign-in page", () => {
+    at("/projects/forge/issues/ISS-1", "?tab=criteria", "#c7");
+    goToLogin();
+    expect(assign).toHaveBeenLastCalledWith(login("?next=%2Fprojects%2Fforge%2Fissues%2FISS-1%3Ftab%3Dcriteria%23c7"));
+    at("/");
+    goToLogin();
+    expect(assign).toHaveBeenLastCalledWith(login());
+    at("/login", "?next=%2Fintegrations");
+    goToLogin();
+    expect(assign).toHaveBeenLastCalledWith(login());
+    at("/register");
+    goToLogin();
+    expect(assign).toHaveBeenLastCalledWith(login());
+  });
+
+  it.each([
+    ["a protocol-relative path", "//attacker.example/x"],
+    ["a backslash the browser reads as a slash", "/\\attacker.example"],
+    ["a control character", "/\u0009/attacker.example"],
+  ])("carries no next for %s, the rule return-path.ts:safeReturnPath enforces", (_what, path) => {
+    at(path);
+    goToLogin();
+    expect(assign).toHaveBeenCalledWith(login());
+  });
+
+  it("still stops the second bounce inside the window, and the stopped page's retry carries next", () => {
+    at("/integrations", "?connect=no_session");
+    expect(leaveForLogin(1_000)).toBe("left");
+    expect(leaveForLogin(2_000)).toBe("stopped");
+    expect(assign).toHaveBeenCalledTimes(1);
+    render(<SignInStopped />);
+    screen.getByRole("button", { name: "Go to sign in" }).click();
+    expect(assign).toHaveBeenLastCalledWith(login("?next=%2Fintegrations%3Fconnect%3Dno_session"));
+  });
+
+  it("strips the base path the app is served under, which the router adds back", async () => {
+    vi.resetModules();
+    vi.stubEnv("BASE_URL", "/forge/");
+    const based = await import("./login-bounce");
+    at("/forge/integrations", "?connect=no_session");
+    based.goToLogin();
+    expect(assign).toHaveBeenCalledWith(new URL("/forge/login?next=%2Fintegrations%3Fconnect%3Dno_session", window.location.origin));
+    at("/elsewhere/integrations");
+    based.goToLogin();
+    expect(assign).toHaveBeenLastCalledWith(new URL("/forge/login", window.location.origin));
+    vi.unstubAllEnvs();
+    vi.resetModules();
   });
 });

@@ -26,6 +26,6 @@ describe("Shipped recently on the dashboard", () => {
 
   it("says no release has reached users when none ever shipped", () => {
     renderWithQuery(<ShippedRecently shipped={{ ...STATUS.shipped, latest: null, releases: [], releaseCount: 0 }} slug="hop" clock={clock} />);
-    expect(screen.getByTestId("shipped-recently-none").textContent).toBe("No release has reached users yet.");
+    expect(screen.getByTestId("shipped-recently-none").textContent).toBe("Nothing shipped");
   });
 });

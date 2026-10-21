@@ -38,10 +38,72 @@ const d = {
   },
 } as unknown as RequirementDetail;
 
+// REQ-40 BC-4 (QA 0.4.0-dev.218): a verdict's own evidence note and the clip it kept
+const kept = {
+  criteria: [{ code: "BC-1", form: "plain", sinceRevision: 1 }],
+  standing: {
+    shownRevision: 1,
+    coverage: [
+      {
+        code: "BC-1",
+        body: "Each release has a page.",
+        verdict: "passing",
+        issues: [
+          {
+            issueId: "i1",
+            displayId: "ISS-492",
+            title: "A release page a person can read",
+            status: "developed",
+            tone: "done",
+            criterion: 1,
+            verdict: "pass",
+            verdictAt: "2026-10-09T10:00:00Z",
+            note: "Opened 0.4.0 and read its version, date, commit and approver.",
+            files: [{ attachmentId: "00000000-0000-4000-8000-0000000000aa", name: "bc1-header.webm", mime: "video/webm" }],
+            stale: false,
+          },
+        ],
+      },
+    ],
+  },
+} as unknown as RequirementDetail;
+
+// ISS-489 r2: an earlier wording and a build the live one lacks
+const earlierAndOther = {
+  criteria: [
+    { code: "BC-10", form: "plain", sinceRevision: 1 },
+    { code: "BC-11", form: "plain", sinceRevision: 1 },
+  ],
+  standing: {
+    shownRevision: 2,
+    coverage: [
+      {
+        code: "BC-10",
+        body: "One.",
+        verdict: "stale",
+        counts: null,
+        why: "ISS-7 trace only an earlier wording of this criterion, so no verdict on them counts: tie it again from the issue's Criteria tab, then judge it",
+        issues: [{ issueId: "i7", displayId: "ISS-7", title: "Seven", status: "closed", tone: "done", note: null, files: [], criterion: 1, verdict: "pass", verdictAt: "2026-10-01T09:30:00Z", identity: "commit aaaaaaaaaaaa", commit: "a".repeat(40), inLiveBuild: null, notCounted: null, stale: true }],
+      },
+      {
+        code: "BC-11",
+        body: "Two.",
+        verdict: "not_live",
+        counts: null,
+        why: "judged only at builds the live one does not hold (ISS-8 criterion 1: commit bbbbbbbbbbbb): judge it again on the live build",
+        issues: [{ issueId: "i8", displayId: "ISS-8", title: "Eight", status: "closed", tone: "done", note: null, files: [], criterion: 1, verdict: "pass", verdictAt: "2026-10-01T09:30:00Z", identity: "commit bbbbbbbbbbbb", commit: "b".repeat(40), inLiveBuild: false, notCounted: "judged at commit bbbbbbbbbbbb, which the live build does not hold", stale: false }],
+      },
+    ],
+  },
+} as unknown as RequirementDetail;
+
 describe("a criterion's evidence", () => {
   it("says what passed and when, with the issue key secondary", async () => {
     render(<CriteriaChecklist d={d} slug="epod" />);
-    await userEvent.click(screen.getByText(/What the evidence says/));
+    // the fold names what it holds and counts nothing: counts live in the filter (REQ-43 BC-10)
+    const fold = screen.getByText(/^Evidence$/);
+    expect(fold.textContent).not.toMatch(/\d/);
+    await userEvent.click(fold);
     const row = screen.getByTestId("criterion-evidence-row");
     expect(row).toHaveTextContent("Pass");
     expect(row.querySelector("span[title]")).not.toBeNull();
@@ -53,39 +115,11 @@ describe("a criterion's evidence", () => {
   // REQ-40 BC-4 (QA 0.4.0-dev.218): the row printed the issue title where the verdict's own evidence
   // note belongs, and the clip the verdict kept was not reachable from the criterion
   it("shows the verdict's own evidence note, not the issue title, and plays the clip it kept", async () => {
-    const kept = {
-      criteria: [{ code: "BC-1", form: "plain", sinceRevision: 1 }],
-      standing: {
-        shownRevision: 1,
-        coverage: [
-          {
-            code: "BC-1",
-            body: "Each release has a page.",
-            verdict: "passing",
-            issues: [
-              {
-                issueId: "i1",
-                displayId: "ISS-492",
-                title: "A release page a person can read",
-                status: "developed",
-                tone: "done",
-                criterion: 1,
-                verdict: "pass",
-                verdictAt: "2026-10-09T10:00:00Z",
-                note: "Opened 0.4.0 and read its version, date, commit and approver.",
-                files: [{ attachmentId: "00000000-0000-4000-8000-0000000000aa", name: "bc1-header.webm", mime: "video/webm" }],
-                stale: false,
-              },
-            ],
-          },
-        ],
-      },
-    } as unknown as RequirementDetail;
     stubObjectUrls();
-    const fetchMock = vi.fn(async () => new Response("webm", { headers: { "content-type": "video/webm" } }));
+    const fetchMock = vi.fn(() => Promise.resolve(new Response("webm", { headers: { "content-type": "video/webm" } })));
     vi.stubGlobal("fetch", fetchMock);
     render(<CriteriaChecklist d={kept} slug="epod" />);
-    await userEvent.click(screen.getByText(/What the evidence says/));
+    await userEvent.click(screen.getByText(/^Evidence$/));
     const row = screen.getByTestId("criterion-evidence-row");
     expect(within(row).getByTestId("verdict-note")).toHaveTextContent("Opened 0.4.0 and read its version, date, commit and approver.");
     expect(row).not.toHaveTextContent("A release page a person can read");
@@ -138,7 +172,7 @@ describe("a criterion's evidence", () => {
     const counts = screen.getByTestId("criterion-counts");
     expect(counts).toHaveTextContent("Counts: Short on ISS-31 criterion 4, the newest verdict");
     expect(counts).toHaveTextContent("runtime 0fecd0850aa1");
-    await userEvent.click(screen.getByText(/What the evidence says/));
+    await userEvent.click(screen.getByText(/^Evidence$/));
     const [old, fresh] = screen.getAllByTestId("criterion-evidence-row");
     expect(old).toHaveTextContent("commit e523c4b0ff90");
     expect(old).toHaveTextContent("does not count: judged at commit e523c4b0ff90, which the live build does not hold");
@@ -148,39 +182,12 @@ describe("a criterion's evidence", () => {
   // ISS-489 r2: "Stale" meant an earlier wording and a build the live one lacks alike, and the reason
   // sat only inside the evidence expander; each now has its own word and its reason on the row
   it("gives an earlier wording and another build each its own word, with its reason on the row", () => {
-    const two = {
-      criteria: [
-        { code: "BC-10", form: "plain", sinceRevision: 1 },
-        { code: "BC-11", form: "plain", sinceRevision: 1 },
-      ],
-      standing: {
-        shownRevision: 2,
-        coverage: [
-          {
-            code: "BC-10",
-            body: "One.",
-            verdict: "stale",
-            counts: null,
-            why: "ISS-7 trace only an earlier wording of this criterion, so no verdict on them counts: tie it again from the issue's Criteria tab, then judge it",
-            issues: [{ issueId: "i7", displayId: "ISS-7", title: "Seven", status: "closed", tone: "done", note: null, files: [], criterion: 1, verdict: "pass", verdictAt: "2026-10-01T09:30:00Z", identity: "commit aaaaaaaaaaaa", commit: "a".repeat(40), inLiveBuild: null, notCounted: null, stale: true }],
-          },
-          {
-            code: "BC-11",
-            body: "Two.",
-            verdict: "not_live",
-            counts: null,
-            why: "judged only at builds the live one does not hold (ISS-8 criterion 1: commit bbbbbbbbbbbb): judge it again on the live build",
-            issues: [{ issueId: "i8", displayId: "ISS-8", title: "Eight", status: "closed", tone: "done", note: null, files: [], criterion: 1, verdict: "pass", verdictAt: "2026-10-01T09:30:00Z", identity: "commit bbbbbbbbbbbb", commit: "b".repeat(40), inLiveBuild: false, notCounted: "judged at commit bbbbbbbbbbbb, which the live build does not hold", stale: false }],
-          },
-        ],
-      },
-    } as unknown as RequirementDetail;
-    render(<CriteriaChecklist d={two} slug="epod" />);
+    render(<CriteriaChecklist d={earlierAndOther} slug="epod" />);
     const [earlier, other] = screen.getAllByTestId("criterion-row");
-    expect(within(earlier as HTMLElement).getByTestId("verdict-dot")).toHaveAccessibleName("Stale");
-    expect(within(earlier as HTMLElement).getByTestId("criterion-why")).toHaveTextContent("tie it again from the issue's Criteria tab");
-    expect(within(other as HTMLElement).getByTestId("verdict-dot")).toHaveAccessibleName("Not live");
-    expect(within(other as HTMLElement).getByTestId("criterion-why")).toHaveTextContent("judged only at builds the live one does not hold");
+    expect(within(earlier).getByTestId("verdict-dot")).toHaveAccessibleName("Stale");
+    expect(within(earlier).getByTestId("criterion-why")).toHaveTextContent("tie it again from the issue's Criteria tab");
+    expect(within(other).getByTestId("verdict-dot")).toHaveAccessibleName("Not live");
+    expect(within(other).getByTestId("criterion-why")).toHaveTextContent("judged only at builds the live one does not hold");
   });
 
   it("names no counting verdict where none is judged", () => {

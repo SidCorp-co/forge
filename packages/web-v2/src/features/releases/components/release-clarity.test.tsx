@@ -30,7 +30,7 @@ describe("a release's rail, in plain words (BC-19)", () => {
     const { container } = render(<WhereReleaseStands r={draft as never} />);
     expect(screen.getByTestId("standing-status")).toHaveTextContent("Not cut yet");
     expect(screen.getByTestId("standing-approver")).toHaveTextContent("A project admin");
-    expect(screen.getByTestId("standing-goes-to")).toHaveTextContent("No production environment yet");
+    expect(screen.getByTestId("standing-goes-to")).toHaveTextContent("No production");
     expect(screen.getByTestId("standing-verified")).toHaveTextContent("Not checked yet");
     expect(screen.getByTestId("standing-next")).toHaveTextContent("Next: Add a production environment, then cut");
     expect(container.innerHTML).not.toMatch(/max-(sm|md|lg):hidden/);

@@ -79,7 +79,7 @@ export function useSetRunnerAdmission(projectId: string) {
 	const t = useCopy();
 	return useToastWrite(({ runnerId, admit }: { runnerId: string; admit: boolean }) => runnersApi.patchRunnerStatus(runnerId, admit ? "online" : "draining"), {
 		touches: [runnerKeys.projectRunners(projectId)],
-		said: (_d, v) => (v.admit ? t("runners.toast.backInPool") : { title: t("runners.toast.drained"), description: t("runners.toast.drainedBody") }),
+		said: (_d, v) => (v.admit ? t("runners.toast.backInPool") : t("runners.toast.drained")),
 		failed: t("runners.toast.saveFailed"),
 	});
 }

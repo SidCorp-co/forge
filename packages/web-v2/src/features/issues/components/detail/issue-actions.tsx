@@ -97,7 +97,6 @@ export function IssueActions({
       <span className="contents max-column-md:hidden">
         <AskAboutThis about={null} />
         <HelpButton
-        summary={t("issues.help.summary")}
         actions={[t("issues.help.action1"), t("issues.help.action2"), t("issues.help.action3")]}
         shortcuts={[{ keys: "⌘K", desc: t("issues.help.palette") }]}
         />

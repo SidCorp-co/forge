@@ -193,7 +193,7 @@ describe("a process that links a workflow (criteria 19, 20)", () => {
     await screen.findByTestId("canvas-stub");
     const f = screen.getByRole("figure");
     expect(f).toHaveAccessibleName("The Checkout workflow; none of its traced steps remain: shipping.");
-    expect(within(f).getByText("No traced step is in the current design.")).toBeInTheDocument();
+    expect(within(f).getByText("Traced steps gone")).toBeInTheDocument();
     expect(canvases.at(-1)?.highlight ?? null).toBeNull();
   });
 

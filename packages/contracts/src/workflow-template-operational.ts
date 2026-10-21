@@ -234,7 +234,7 @@ export const operationalFlow: WorkflowTemplate = {
     {
       id: 'OUTCOME',
       label: 'Outcome',
-      tooltip: 'The recorded result, one of a closed set (`values`). It feeds back.',
+      tooltip: 'The recorded result, one of a closed set (`values`).',
       icon: 'check-circle',
       colour: 'emerald',
       required: ['label', 'values'],

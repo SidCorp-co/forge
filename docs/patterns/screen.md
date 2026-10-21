@@ -61,17 +61,21 @@ carries it, and so does the checkout orientation a box writes for the runs a mas
 
 Held by `scripts/check-copy-budget.mjs` (the `language` axis): a copy string over budget is refused
 naming its file, key and word count, with no baseline. The sentences core writes for pages
-(`packages/contracts/src/said-keys.ts`) are held to the same budget. What a key is comes from its name, by the
+(`packages/contracts/src/said-keys.ts`, and the prompts and fixes of `packages/contracts/src/checklist-registry.ts`)
+are held to the same budget. What a string is comes first from its key, by the
 conventions `checkers.copy-budget` in `.forge/conformance.json` declares: a refusal or
 confirmation when a segment matches `refusalSegments` (20 words); an empty state when its last
 segment matches `emptySegments` (2 words, rule 4); an explanation when its last segment matches
-`explainSegments` (`hint`, `intro`, `help` and the like), refused at any length (rule 2). A label
+`explainSegments` (`hint`, `intro`, `help` and the like), refused at any length (rule 2). Then from
+the string, whatever its key: a second sentence, a gloss after a colon or a purpose clause
+(`explainShapes`) explains and is refused (rule 2), and a string opening on No, None, Nothing or
+Empty is an empty state (rule 4). A label
 is never keyed as a hint. `ViewHeading`, `ListGroup` and `PageTitle` take no explaining line. A
 person-facing English string written inline in source (JSX text, a `title`, `label` or
 `placeholder` literal, a `{x || "Document"}` fallback, a `{ label: "Runs" }` table entry) is refused naming its file and line, so every
 word a page shows passes through a copy file the budget reads. The first-screen budget is held for the
-nine record pages — issue, requirement, feedback item, release, run, session, workflow design,
-contract and agent report — by `packages/web-v2/witness/record-pages.witness.tsx`, each with the
+eight record pages — issue, requirement, feedback item, release, run, session, workflow design
+and contract — by `packages/web-v2/witness/record-pages.witness.tsx`, each with the
 Developer view `packages/web-v2/src/design/patterns/record-view.tsx` draws, and for the issue page
 also by `packages/web-v2/src/features/issues/components/issue-detail-screen.test.tsx`. The issue page
 is the reference for rules 1, 3, 5, 6 and 7.

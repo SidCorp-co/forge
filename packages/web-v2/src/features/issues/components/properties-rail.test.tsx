@@ -19,7 +19,7 @@ vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation"
   useSearchParams: () => new URLSearchParams(),
 }));
 
-const READ_ONLY = "Read only: ask a project admin for write access";
+const READ_ONLY = "Read only";
 
 function issue(over: Partial<IssueDetail>): IssueDetail {
   return {

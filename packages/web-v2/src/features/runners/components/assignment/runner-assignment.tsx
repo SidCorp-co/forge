@@ -35,15 +35,12 @@ export function RunnerAssignment({
 	current,
 	projectId,
 	canEdit,
-	slug,
 }: {
 	runner: ProjectRunner;
 	/** The job this runner is executing right now, or null when idle. */
 	current: ActiveRunnerJob | null;
 	projectId: string;
 	canEdit: boolean;
-	/** The project slug, as `forge-runner master stand-down` takes it. */
-	slug: string | undefined;
 }) {
 	const [showActivity, setShowActivity] = useState(false);
 	const deviceDisabled = Boolean(runner.deviceDisabledAt);
@@ -95,11 +92,7 @@ export function RunnerAssignment({
 				canEdit={canEdit}
 			/>
 
-			<ResidentMaster
-				master={runner.residentMaster}
-				slug={slug}
-				deviceName={runner.deviceName}
-			/>
+			<ResidentMaster master={runner.residentMaster} />
 
 			<div className="flex justify-start">
 				<Button

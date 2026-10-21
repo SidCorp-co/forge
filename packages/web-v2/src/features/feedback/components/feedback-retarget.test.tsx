@@ -63,7 +63,7 @@ describe("changing what a feedback item is about", () => {
     fireEvent.click(screen.getByRole("button", { name: "Change what it is about…" }));
     await screen.findByTestId("feedback-choices");
     fireEvent.change(screen.getByLabelText("Target"), { target: { value: "Nothing like this" } });
-    expect(screen.getByTestId("feedback-target-unmatched")).toHaveTextContent("No requirement titled or keyed “Nothing like this”: pick one from the list.");
+    expect(screen.getByTestId("feedback-target-unmatched")).toHaveTextContent("No match");
     expect(screen.getByRole("button", { name: "Move it" })).toBeDisabled();
     fireEvent.change(screen.getByLabelText("Target"), { target: { value: "labels" } });
     expect(screen.queryByTestId("feedback-target-unmatched")).toBeNull();
@@ -105,7 +105,7 @@ describe("changing what a feedback item is about", () => {
     renderWithQuery(<FeedbackActions projectId="p1" f={view()} />);
     fireEvent.click(screen.getByRole("button", { name: "Change what it is about…" }));
     fireEvent.change(screen.getByLabelText("Target type"), { target: { value: "endpoint" } });
-    expect(await screen.findByTestId("feedback-endpoints-none")).toHaveTextContent("file it as a Screen.");
+    expect(await screen.findByTestId("feedback-endpoints-none")).toHaveTextContent("Nothing served");
   });
 
   it("shows a refusal by its code and keeps what was typed", async () => {

@@ -64,6 +64,13 @@ const EGRESS_SURFACES = {
     holds: 'project memory: entries and chunks drawn from issues, comments, jobs, notes, decisions',
   },
   knowledge: { class: 'product', holds: 'knowledge entries: title and body' },
+  // a correction quotes whatever its source holds (a chat reply, a returned requirement, a failing
+  // verdict), so it is operational on every target, as the most guarded of its sources is
+  lessons: {
+    class: 'operational',
+    holds:
+      'corrections and lessons: reasons said on returns, rejections, verdicts and chat replies',
+  },
   'agent-session': {
     class: 'product',
     holds: "a person's messages to a coding agent in an agent session",

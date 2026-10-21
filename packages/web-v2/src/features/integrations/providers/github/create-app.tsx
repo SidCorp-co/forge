@@ -81,8 +81,6 @@ export function CreateApp(props: { projectId: string; returnTo?: "integrations" 
         <PageSectionTitle>{t("integrations.github.createTitle")}</PageSectionTitle>
       </PageSectionHeader>
       <PageSectionBody className="flex flex-col gap-4">
-        <p className="fg-body-sm text-muted">{t("integrations.github.ownerInstance")}</p>
-
         {connect.isError && <Banner tone="danger">{formatApiError(connect.error)}</Banner>}
 
         {completing ? (

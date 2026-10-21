@@ -13,6 +13,7 @@ import {
   requirementCriteria,
   requirementRevisions,
 } from '../db/schema-requirements.js';
+import { recordCorrection } from '../lessons/index.js';
 import { dataPolicyOf, storedText } from '../lib/data-egress.js';
 import { emitEvent } from '../outbox/index.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
@@ -176,11 +177,31 @@ export async function returnRevision(input: {
       .update(requirementRevisions)
       .set({ state: 'draft', returnReason: reason })
       .where(revisionWhere(row.id, target.revision));
-    await tx.insert(requirementReturns).values({
-      requirementId: row.id,
-      revision: target.revision,
-      returnedBy: actor.userId,
+    const [returned] = await tx
+      .insert(requirementReturns)
+      .values({
+        requirementId: row.id,
+        revision: target.revision,
+        returnedBy: actor.userId,
+        reason,
+      })
+      .returning({ id: requirementReturns.id });
+    if (!returned)
+      throw new Error(`requirements: the return of ${row.id} r${target.revision} wrote no row`);
+    // the reason is a correction a lesson learns from (REQ-50 BC-1), kept with the return itself
+    await recordCorrection(tx, {
+      projectId,
+      source: 'revision_returned',
+      sourceRef: returned.id,
+      item: {
+        kind: 'requirement',
+        id: row.id,
+        key: `${requirementKey(row.reqSeq)} r${target.revision}`,
+        title: row.shortName ?? row.title,
+      },
+      areaId: row.areaId,
       reason,
+      by: { userId: actor.userId, agency: actor.agency },
     });
     // told on the outbox in the return's own transaction: an agent's revision is its master's to revise
     await emitEvent(tx, 'requirement.returned', {

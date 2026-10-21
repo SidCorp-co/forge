@@ -17,6 +17,8 @@ export const knowledgeKindEnum = [
   'guide',
   'reference',
   'glossary',
+  // one approved lesson's text (REQ-50); written only by the lessons module (`lesson-entries.ts`)
+  'lesson',
 ] as const satisfies readonly (typeof knowledgeKinds)[number][];
 
 export const knowledgeInjectionEnum = ['always', 'on_demand', 'none'] as const;

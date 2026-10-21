@@ -59,7 +59,9 @@ export async function startOnboarding(input: {
   request?: string | undefined;
 }): Promise<OnboardingOutcome> {
   const { projectId, actor } = input;
-  const who = await refusalFor(actor, projectId, (f) => personActRefusal(f, 'starting onboarding'));
+  const who = await refusalFor(actor, projectId, (f) =>
+    personActRefusal(actor.agency, f, 'starting onboarding'),
+  );
   if (who) return { ok: false, refusals: [who] };
   const [project] = await db
     .select({ name: projects.name })
@@ -128,7 +130,7 @@ export async function reanalyzeOnboarding(input: {
 }): Promise<OnboardingOutcome> {
   const { projectId, actor } = input;
   const who = await refusalFor(actor, projectId, (f) =>
-    personActRefusal(f, 'asking for a re-analysis'),
+    personActRefusal(actor.agency, f, 'asking for a re-analysis'),
   );
   if (who) return { ok: false, refusals: [who] };
   const asker = await nameOf(actor.userId);

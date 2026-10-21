@@ -165,7 +165,7 @@ export const RELEASE_PROOF_LABELS: Record<ReleaseProof, string> = {
 	failing: "Failing",
 	open: "Not judged yet",
 	unproven: "Judged, not proven",
-	unrecorded: "No criteria recorded",
+	unrecorded: "No criteria",
 };
 
 export const RELEASE_PROOF_TONES: Record<ReleaseProof, IssueStatusTone> = {

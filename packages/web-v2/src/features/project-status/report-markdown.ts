@@ -104,7 +104,7 @@ function shippedPart(s: ProjectStatus, w: ReportWords): string[] {
   const when = (iso: string) => formatDateTime(iso, clock.lang, clock.timeZone);
   const out: string[] = [];
   out.push(`## ${t("status.shipped")}`, "");
-  if (s.shipped.releases.length === 0) out.push(t("status.shippedNone", { days: s.days }));
+  if (s.shipped.releases.length === 0) out.push(t("status.shippedNone"));
   for (const r of s.shipped.releases) {
     out.push(`- **${r.version}** · ${join([when(r.releasedAt), t("dash.shippedIssues", { n: r.issueCount }), verifiedSentence(r.verified, t)])}`);
     for (const g of r.contents) {

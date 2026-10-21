@@ -10,7 +10,7 @@
 // cannot read inside, so it counts it as listing the root; it reads only its own fresh profile.
 // @gate-input whole-tree
 
-import { type ChildProcess, spawn } from "node:child_process";
+import { type ChildProcess, execFileSync, spawn } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -76,21 +76,58 @@ afterAll(() => new Promise<void>((ok) => server.close(() => ok())));
 
 const pause = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/** Ends Chrome's whole process group, waits until none of it is left, then removes its profile. The
+ * browser exiting was not enough on CI: something went on writing `Default` past a 5.5s retried
+ * rmSync (ENOTEMPTY). A profile still not removable names every process whose arguments hold it. */
+async function stop(proc: ChildProcess, profile: string): Promise<void> {
+  const group = proc.pid;
+  const alive = () => {
+    try {
+      if (group !== undefined) process.kill(-group, 0);
+      return group !== undefined;
+    } catch {
+      return false;
+    }
+  };
+  if (alive()) process.kill(-(group as number), "SIGKILL");
+  for (let i = 0; i < 100 && alive(); i++) await pause(100);
+  if (alive()) throw new Error(`Chrome's process group ${group} outlived SIGKILL by 10s; its profile ${profile} is left in place`);
+  try {
+    rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  } catch (e) {
+    const holders = execFileSync("ps", ["-eo", "pid,pgid,args"], { encoding: "utf8" })
+      .split("\n")
+      .filter((line) => line.includes(profile));
+    throw new Error(`${(e as Error).message}, with Chrome's group ${group} gone; still naming the profile: ${holders.join(" | ") || "no process"}`);
+  }
+}
+
 /** Chrome headless on a fresh profile, and the DevTools socket of its one page. */
 async function chrome(): Promise<{ proc: ChildProcess; page: string; profile: string }> {
   const bin = process.env.WITNESS_CHROME ?? "google-chrome";
   const profile = mkdtempSync(join(tmpdir(), "mockup-isolation-"));
   const proc = spawn(bin, ["--headless=new", "--no-first-run", "--no-default-browser-check", "--disable-gpu", "--remote-debugging-port=0", "--remote-allow-origins=*", `--user-data-dir=${profile}`, "about:blank"], {
-    stdio: "ignore",
+    stdio: ["ignore", "ignore", "pipe"],
+    // its own process group, so `stop` can end every helper and not the browser alone
+    detached: true,
   });
+  // what Chrome said on stderr, so a start that never answers is named by Chrome's own words
+  let said = "";
+  proc.stderr?.on("data", (d) => (said = (said + String(d)).slice(-2000)));
   const start: { failed?: Error } = {};
   proc.on("error", (e) => (start.failed = new Error(`${bin} could not start (${e.message}): this test needs Chrome; set WITNESS_CHROME to its binary`)));
   const portFile = join(profile, "DevToolsActivePort");
-  for (let i = 0; i < 150 && !existsSync(portFile); i++) {
+  const refuse = async (why: string) => {
+    await stop(proc, profile);
+    return new Error(`${bin} ${why}. Chrome said: ${said.trim() || "nothing"}`);
+  };
+  // 30s: a cold Chrome beside the web suite's workers on a CI runner has taken over 15s to start
+  for (let i = 0; i < 300 && !existsSync(portFile); i++) {
     if (start.failed) throw start.failed;
+    if (proc.exitCode !== null || proc.signalCode !== null) throw await refuse(`exited (${proc.exitCode ?? proc.signalCode}) before it wrote DevToolsActivePort`);
     await pause(100);
   }
-  if (!existsSync(portFile)) throw new Error(`${bin} wrote no DevToolsActivePort in 15s`);
+  if (!existsSync(portFile)) throw await refuse("wrote no DevToolsActivePort in 30s");
   const port = readFileSync(portFile, "utf8").split("\n")[0];
   for (let i = 0; i < 50; i++) {
     const targets = (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()) as { type: string; webSocketDebuggerUrl: string }[];
@@ -98,7 +135,7 @@ async function chrome(): Promise<{ proc: ChildProcess; page: string; profile: st
     if (page) return { proc, page: page.webSocketDebuggerUrl, profile };
     await pause(100);
   }
-  throw new Error(`${bin} opened no page to drive`);
+  throw await refuse("opened no page to drive");
 }
 
 /** Loads the parent page and answers what the mockup's script reported, once it has. */
@@ -139,10 +176,7 @@ async function whatTheMockupGot(): Promise<Record<string, string>> {
     }
     throw new Error(`the mockup's script reported nothing in 10s: it did not run. The page said: ${said.join(" | ") || "nothing"}`);
   } finally {
-    proc.kill();
-    await new Promise((ok) => (proc.exitCode === null ? proc.once("exit", ok) : ok(null)));
-    // a helper process can still be writing the profile after the browser exits (ENOTEMPTY on CI)
-    rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    await stop(proc, profile);
   }
 }
 
@@ -159,5 +193,5 @@ describe("an HTML mockup in Chrome", () => {
     });
     // nothing it tried — a call, through the parent or not, nor an image — reached the server
     expect(apiCalls).toEqual([]);
-  }, 30_000);
+  }, 60_000);
 });

@@ -120,7 +120,6 @@ export function ForgeFeedbackButton({ clientVersion }: { clientVersion?: string 
         open={open}
         onOpenChange={(next) => (next ? setOpen(true) : close())}
         title={t("feedback.forge.title")}
-        description={t("feedback.forge.description")}
         testId="forge-feedback-dialog"
       >
         {filed ? <ForgeFeedbackFiledNote filed={filed} onClose={close} /> : open ? <ForgeFeedbackForm clientVersion={clientVersion} onFiled={setFiled} onCancel={close} /> : null}

@@ -7,11 +7,13 @@ import type { ItemStanding, StewardAct } from '@forge/contracts/steward';
 import { recordModelCallUsage } from '../agent-sessions/index.js';
 import { type ChatToolset, fenceToolsetToOrigin, runTurnEvents } from '../assistant/index.js';
 import { type ChatStreamUsage, fastModelName, openChat } from '../integrations/llm/index.js';
+import { recordAppliedFromText } from '../lessons/index.js';
 import type { EgressSurface } from '../lib/data-egress.js';
 import { env } from '../lib/env.js';
 import { logger } from '../lib/logger.js';
 import { mintStewardCredential, STEWARD_TURN_TTL_MS } from './credential.js';
 import { callStewardDoor, type DoorContext, doorJsonSchema, doorsOf } from './doors.js';
+import { stewardLessonsBlock } from './lessons-block.js';
 import { actContext, actPrompt } from './prompts.js';
 import type { RunRow } from './runs-store.js';
 
@@ -108,11 +110,12 @@ export async function runGatewayAct(args: {
       what: `steward ${act} on ${run.subjectKey}`,
     });
     const model = act === 'note' ? fastModelName() : opened.model;
+    const lessons = await stewardLessonsBlock(run);
     const gen = runTurnEvents({
       provider: opened.provider,
       model,
       messages: [
-        { role: 'system', content: actPrompt(act) },
+        { role: 'system', content: lessons ? `${actPrompt(act)}\n\n${lessons}` : actPrompt(act) },
         { role: 'user', content: actContext(run, args.standing) },
       ],
       tools: stewardToolset(ctx, args.stewardId),
@@ -124,6 +127,13 @@ export async function runGatewayAct(args: {
     while (!step.done) step = await gen.next();
     const result = step.value;
     await recordSpend(run.projectId, model, result.usage, result.iterations);
+    // the lessons its answer says shaped it are kept against the run (REQ-50 BC-4)
+    await recordAppliedFromText({
+      projectId: run.projectId,
+      text: result.finalText,
+      output: { kind: 'steward_run', ref: run.id },
+      agentUserId: args.stewardId,
+    });
     return {
       refused: ctx.refused,
       broken: ctx.broken,

@@ -1,6 +1,7 @@
 // REQ-39 BC-11: how a project's preview starts is a project setting. The section writes the project
 // document's `preview` and `fastLane` keys at the revision it read, leaves a key out where nothing is
 // set (so the preview is read from the repository), and shows what core refused at the field it names.
+// @direct-test-of packages/web-v2/src/lib/i18n/copy/project-settings.json
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -117,7 +118,7 @@ describe("the preview setting", () => {
     core({ declared: false } as V1Read);
     mount();
     expect(await field("Start command")).toBeDisabled();
-    expect(screen.getByText(/no project document|undeclared|declared/i)).toBeInTheDocument();
+    expect(screen.getByText(/No document/)).toBeInTheDocument();
   });
 
   it("is read-only for a reader who cannot edit, with no save bar", async () => {

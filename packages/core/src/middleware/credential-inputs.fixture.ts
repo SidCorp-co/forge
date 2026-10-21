@@ -159,7 +159,8 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:json:userId field:json:workflowId field:json:signalKey field:json:detectorKey
     field:json:operationId field:json:issuePrefix field:query:deploymentUuid field:query:target
     field:query:provider field:query:requestId field:json:reviewers field:json:teamReviewers
-    field:param:actId field:query:subject field:json:owner field:json:mockup field:json:revises`,
+    field:param:actId field:query:subject field:json:owner field:json:mockup field:json:revises
+    field:json:corrections field:param:n field:param:rid`,
   'prose a person or an agent writes: a title, a body, a message, a note': words`
     field:json:about field:json:acceptanceCriteria field:json:alt field:json:answer
     field:json:assistantInstructions field:json:assumed field:json:body field:json:brief
@@ -172,9 +173,9 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:json:raw field:json:localGuide field:json:skillMd field:json:decision
     field:json:suggestion field:json:evidence field:json:emoji field:json:name
     field:json:displayName field:json:shortName field:json:request field:json:account
-    field:json:lines`,
+    field:json:lines field:json:sentence field:json:sides`,
   'a structured part of a record core validates and stores; it admits nobody': words`
-    field:json:answers field:json:artifact field:json:attachments
+    field:json:other field:json:output field:json:answers field:json:artifact field:json:attachments
     field:json:awaitsDesign field:json:awaitsMerge field:json:bindings field:json:block field:json:blocker
     field:json:build field:json:capabilities field:json:carried field:json:category
     field:json:changes field:json:checklist field:json:checkpoint field:json:checks
@@ -230,7 +231,7 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:query:after field:query:archived field:query:before field:query:category
     field:query:cites field:query:cursor field:query:includeFiles field:query:intent
     field:query:key field:query:kind field:query:label field:query:metadataType
-    field:query:module field:query:party field:query:q field:query:search field:query:status
+    field:query:module field:query:month field:query:party field:query:q field:query:search field:query:status
     field:query:step field:query:steps field:query:verb field:query:view field:query:error
     field:query:errorCode field:query:method field:query:path field:query:query field:query:release
     field:query:window`,

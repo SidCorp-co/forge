@@ -183,7 +183,7 @@ export function TestingSettings({ projectId, canEdit }: { projectId: string; can
   const unused = (secrets.data?.secrets ?? []).filter((s) => !named.has(s.ref));
   return (
     <div>
-      <SettingsGroup id="test-accounts" title={t("settings.project.testing.title")} summary={t("settings.project.testing.summary")}>
+      <SettingsGroup id="test-accounts" title={t("settings.project.testing.title")}>
         {profiles.data.profiles.length + pending.length === 0 ? <p className="fg-body-sm text-muted">{t("settings.project.raw.noProfiles")}</p> : null}
         {profiles.data.profiles.map((p) => (
           <ProfileAccounts key={p.profileId} projectId={projectId} profileId={p.profileId} read={p} usedIn={byProfile.get(p.profileId) ?? []} stored={stored} canEdit={canEdit} onReload={() => profiles.refetch()} />

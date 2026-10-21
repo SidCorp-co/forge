@@ -96,7 +96,7 @@ describe("a group room the agent stayed out of says why", () => {
       "Asked to stop by cuong; quiet until mentioned.",
     );
     expect(silenceDetailSentence("nothing-to-say", { reason: "quiet-until-mentioned", by: "cuong", since: "2026-09-15T02:26:04Z" })).toMatch(
-      /^Quiet since .+, as asked by cuong\. The agent answers here again once someone mentions it\.$/,
+      /^Quiet since .+ until mentioned, as asked by cuong\.$/,
     );
   });
 
@@ -104,6 +104,6 @@ describe("a group room the agent stayed out of says why", () => {
     expect(silenceDetailSentence("nothing-to-say", { reason: "addressed-to-person" })).toBe(
       "This was addressed to someone else, so the agent stayed quiet.",
     );
-    expect(silenceDetailSentence("guard-dormant", null)).toBe("Left unanswered: no person has spoken here for a long time.");
+    expect(silenceDetailSentence("guard-dormant", null)).toBe("Unanswered: room dormant.");
   });
 });

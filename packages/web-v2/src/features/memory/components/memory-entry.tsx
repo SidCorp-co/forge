@@ -112,7 +112,6 @@ function MemoryFlag({ flagged, day }: { flagged: NonNullable<MemoryEntry["flagge
       {flagged.reason !== null ? (
         <>
           {t("memory.flaggedBecause", { by: flagged.by ?? "—", date: day(flagged.since) })} <Written text={flagged.reason} lang={null} />
-          {t("memory.flaggedCheck")}
         </>
       ) : (
         t("memory.flaggedNoReason", { by: flagged.by ?? "—", date: day(flagged.since) })

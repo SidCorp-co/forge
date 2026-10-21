@@ -28,6 +28,7 @@ import {
   useUrlTab,
 } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
+import { FEEDBACK_UNTRIAGED_PHASES } from "@forge/contracts/feedback";
 import { FeedbackChecklists } from "@/features/checklists";
 import { IntakeDraft } from "@/features/intake";
 import { MockupList } from "@/features/mockups";
@@ -160,8 +161,10 @@ export function FeedbackPage({
           { value: "mockups" as const, label: t("feedback.tab.mockups"), count: mockups.data?.returned },
           { value: "activity" as const, label: t("feedback.tab.activity") },
         ];
-        // the triage checklist is the work while triage is owed; once passed, it is a past item
+        // the triage checklist is the work while triage is owed and the reader may triage; once the item is
+        // past triage it is a past item, whoever reads it, and sits under Activity (REQ-43 BC-8)
         const checklists = <FeedbackChecklists projectId={projectId} fbKey={f.key} canTriage={f.can.triage} developer={developer} />;
+        const triageOwed = f.can.triage && (FEEDBACK_UNTRIAGED_PHASES as readonly string[]).includes(f.phase);
         return (
           <DetailLayout
             testId="feedback-detail"
@@ -188,7 +191,7 @@ export function FeedbackPage({
                   <FeedbackEvidence projectId={projectId} slug={slug} f={f} />
                   <Proposals projectId={projectId} f={f} />
                   {developer ? <IntakeDraft projectId={projectId} slug={slug} itemKey={f.key} assumptions /> : null}
-                  {f.can.triage ? checklists : null}
+                  {triageOwed ? checklists : null}
                   {f.can.triage || f.can.verify || f.can.reopen || f.can.askVerify || f.can.redact ? (
                     <section id="feedback-act" data-highlight="triage verify">
                       <FeedbackActions projectId={projectId} f={f} />
@@ -210,7 +213,7 @@ export function FeedbackPage({
               {tab === "activity" ? (
                 <section className="grid grid-cols-1 gap-8" aria-label={t("feedback.tab.activity")} data-testid="view-activity">
                   <FeedbackHistory f={f} />
-                  {f.can.triage ? null : checklists}
+                  {triageOwed ? null : checklists}
                 </section>
               ) : null}
             </DetailPane>

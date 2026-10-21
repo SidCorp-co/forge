@@ -177,7 +177,7 @@ describe("the bind drawer opens on what core matched", () => {
     expect(forge).toBeChecked();
     expect(within(flow).getByRole("combobox", { name: "Repository for Forge" })).toHaveValue("SidCorp-co/forge");
     expect(within(flow).getByRole("checkbox", { name: "Shop" })).not.toBeChecked();
-    expect(flow.textContent).toContain("Several repositories match: SidCorp-co/shop, chuongld/shop.");
+    expect(flow.textContent).toContain("Several repositories match: SidCorp-co/shop, chuongld/shop");
     expect(within(flow).getByRole("checkbox", { name: "Notes" })).not.toBeChecked();
 
     await userEvent.click(within(flow).getByRole("button", { name: "Bind (1)" }));
@@ -224,7 +224,7 @@ describe("the instance App's row", () => {
     expect(screen.getByText("This Forge")).toBeTruthy();
     const detail = await screen.findByTestId("github-app-row-detail");
     expect(detail.textContent).toContain("Installed on SidCorp-co, not used by any project.");
-    expect(detail.textContent).toContain("This App is private, so it installs only on SidCorp-co.");
+    expect(detail.textContent).toContain("Private; installs only on SidCorp-co");
     expect(within(detail).getByRole("link", { name: "Make it public on GitHub to install it on an organization" }).getAttribute("href")).toBe(
       "https://github.com/organizations/SidCorp-co/settings/apps/forge-dev-env/advanced",
     );

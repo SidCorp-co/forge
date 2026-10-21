@@ -45,11 +45,11 @@ describe("the feedback About picker", () => {
   it("offers a route or tool beside the other targets, and an issue only to a member of the Development space", async () => {
     core(() => undefined);
     renderWithQuery(<FeedbackForm projectId="p1" slug="hop" onDone={() => {}} />);
-    const options = () => [...(screen.getByLabelText("Target type") as HTMLSelectElement).options].map((o) => o.textContent);
+    const options = () => [...screen.getByLabelText<HTMLSelectElement>("Target type").options].map((o) => o.textContent);
     await waitFor(() => expect(options()).toEqual(["Requirement", "Issue", "Release", "Workflow", "API route or tool", "Screen"]));
   });
 
-  it("holds the title to the length core keeps, so a pasted title never reaches the refusal (FB-118)", async () => {
+  it("holds the title to the length core keeps, so a pasted title never reaches the refusal (FB-118)", () => {
     core(() => undefined);
     renderWithQuery(<FeedbackForm projectId="p1" slug="hop" onDone={() => {}} />);
     expect(screen.getByLabelText(/^Title/).getAttribute("maxlength")).toBe("300");
@@ -59,7 +59,7 @@ describe("the feedback About picker", () => {
     core((c) => (c.path === "/projects" ? { body: [{ id: "p1", role: "viewer" }] } : undefined));
     renderWithQuery(<FeedbackForm projectId="p1" slug="hop" onDone={() => {}} />);
     await screen.findByTestId("feedback-choices");
-    const options = [...(screen.getByLabelText("Target type") as HTMLSelectElement).options].map((o) => o.textContent);
+    const options = [...screen.getByLabelText<HTMLSelectElement>("Target type").options].map((o) => o.textContent);
     expect(options).toEqual(["Requirement", "Release", "Workflow", "API route or tool", "Screen"]);
   });
 
@@ -73,7 +73,7 @@ describe("the feedback About picker", () => {
     ]);
     fireEvent.change(screen.getByRole("textbox", { name: /Title/ }), { target: { value: "Cards vanish" } });
     fireEvent.change(screen.getByLabelText("Target"), { target: { value: "The board kept cards" } });
-    expect(screen.getByTestId("feedback-target-unmatched")).toHaveTextContent("No requirement titled or keyed “The board kept cards”: pick one from the list.");
+    expect(screen.getByTestId("feedback-target-unmatched")).toHaveTextContent("No match");
     expect(screen.getByRole("button", { name: "Send feedback" })).toBeDisabled();
     fireEvent.change(screen.getByLabelText("Target"), { target: { value: "The board keeps its cards" } });
     fireEvent.click(screen.getByRole("button", { name: "Send feedback" }));
@@ -90,7 +90,7 @@ describe("the feedback About picker", () => {
     );
     renderWithQuery(<FeedbackForm projectId="p1" slug="hop" onDone={() => {}} />);
     await waitFor(() =>
-      expect([...(screen.getByLabelText("Target type") as HTMLSelectElement).options].map((o) => o.value)).toContain("issue"),
+      expect([...screen.getByLabelText<HTMLSelectElement>("Target type").options].map((o) => o.value)).toContain("issue"),
     );
     fireEvent.change(screen.getByLabelText("Target type"), { target: { value: "issue" } });
     fireEvent.change(screen.getByRole("textbox", { name: /Title/ }), { target: { value: "Snooze ends early" } });
@@ -117,12 +117,12 @@ describe("the feedback About picker", () => {
   });
 
   // ISS-279's judge: on a project serving nothing the refusal came only after Send, in API terms
-  it("says before Send that a project serving nothing has no route or tool to name, and to file it as a Screen", async () => {
+  it("says before Send that a project serving nothing has no route or tool to name", async () => {
     const calls = core((c) => (c.path.endsWith("/endpoints") ? { body: { endpoints: [] } } : undefined));
     renderWithQuery(<FeedbackForm projectId="p1" slug="hop" onDone={() => {}} />);
     fireEvent.change(screen.getByLabelText("Target type"), { target: { value: "endpoint" } });
     const note = await screen.findByTestId("feedback-endpoints-none");
-    expect(note).toHaveTextContent("No API routes or tools here; file it as a Screen.");
+    expect(note).toHaveTextContent("Nothing served");
     expect(note.textContent).not.toMatch(/\/api|interface|endpoint/i);
     expect(calls.filter((c) => c.method !== "GET")).toEqual([]);
   });

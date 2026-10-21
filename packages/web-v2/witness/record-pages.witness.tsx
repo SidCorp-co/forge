@@ -1,5 +1,5 @@
 // A record page's first screen (REQ-43 BC-3): the issue, requirement, feedback item, release, run,
-// session, workflow design, contract and agent report pages, each in the shell as src/routes/_workspace/route.tsx draws it, at 1440 by 900. Every stage counts the
+// session, workflow design and contract pages (the agent report page left with REQ-47, f7d0308af), each in the shell as src/routes/_workspace/route.tsx draws it, at 1440 by 900. Every stage counts the
 // words a person sees before scrolling — the top bar the page puts its header in and the page under
 // it — and fails a page over 300.
 //
@@ -12,7 +12,6 @@ import { ShellTopBar } from "@/features/shell/components/shell-top-bar";
 import { TopBarSlotProvider } from "@/design";
 import type { ChromeScreen } from "@/test/vi-chrome-screens";
 import { SCREENS as AGENT_SCREENS } from "@/test/vi-chrome-agents";
-import { SCREENS as AUTOMATION_SCREENS } from "@/test/vi-chrome-automation";
 import { SCREENS as CONTRACT_SCREENS } from "@/test/vi-chrome-contracts";
 import { SCREENS as FEEDBACK_SCREENS } from "@/test/vi-chrome-feedback";
 import { SCREENS as ISSUE_SCREENS } from "@/test/vi-chrome-issues";
@@ -54,7 +53,6 @@ const PAGES = [
   { name: "session-chat", path: "/projects/hop/agents/s-chat", screen: named(SESSION_SCREENS, "Session · chat") },
   { name: "workflow", path: "/projects/hop/workflows/onboarding", screen: named(RELEASE_SCREENS, "Workflow design") },
   { name: "contract", path: "/projects/hop/contracts/hop/orders", screen: named(CONTRACT_SCREENS, "Contract detail") },
-  { name: "report", path: "/projects/hop/automation/reports/a-report-0001", screen: named(AUTOMATION_SCREENS, "Automation · report page") },
 ] as const;
 
 const at: { show: (i: number) => void } = { show: () => {} };

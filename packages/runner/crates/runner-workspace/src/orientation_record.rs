@@ -12,6 +12,13 @@
 //! lock. The write is idempotent: a second start over what the first left
 //! writes nothing and records [`Outcome::Current`].
 //!
+//! The orientation carries project knowledge (`injection: always` entries),
+//! which changes while a daemon runs and moves no build, so the daemon also
+//! converges every checkout again on a steady interval ([`Point::Refresh`])
+//! from the same assignment read: a checkout already holding what core serves
+//! is left untouched, and a pass that could not reach core writes nothing and
+//! records why.
+//!
 //! The level-triggered shape of a controller that reconciles the whole set it
 //! owns on start rather than waiting for the next event about each item
 //! (kubernetes-sigs/controller-runtime `pkg/internal/controller/controller.go`,
@@ -115,6 +122,8 @@ impl Outcome {
 pub enum Point {
     Start,
     Provision,
+    /// The daemon's steady re-convergence while it runs.
+    Refresh,
 }
 
 impl Point {
@@ -122,6 +131,7 @@ impl Point {
         match self {
             Point::Start => "at daemon start",
             Point::Provision => "at provision",
+            Point::Refresh => "at refresh",
         }
     }
 }
@@ -266,10 +276,11 @@ async fn converge_one(b: &Bound, lock_dir: Option<&Path>) -> Outcome {
     ))
 }
 
-/// Write every bound checkout's orientation once, at daemon start, and record
-/// a line for each. `census_from` is when the set was read, and `None` where
-/// it is not the whole census, which then prunes nothing.
+/// Write every bound checkout's orientation once, at `point` (a daemon start
+/// or a refresh), and record a line for each. `census_from` is when the set was
+/// read, and `None` where it is not the whole census, which then prunes nothing.
 pub async fn converge_every(
+    point: Point,
     bound: &[Bound],
     lock_dir: Option<&Path>,
     record_dir: Option<&Path>,
@@ -277,12 +288,7 @@ pub async fn converge_every(
 ) -> Vec<Entry> {
     let mut entries = Vec::with_capacity(bound.len());
     for b in bound {
-        let entry = Entry::now(
-            &b.slug,
-            &b.repo,
-            Point::Start,
-            converge_one(b, lock_dir).await,
-        );
+        let entry = Entry::now(&b.slug, &b.repo, point, converge_one(b, lock_dir).await);
         log(&entry);
         entries.push(entry);
     }

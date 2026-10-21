@@ -38,6 +38,11 @@ const OVERRIDES: readonly { door: RegExp; override: string }[] = [
       'write the note yourself (`PUT /api/projects/:id/steward-notes/:kind/:key`), which overrides it',
   },
   {
+    door: /^POST \/api\/projects\/[^/]+\/lessons\/[^/]+\/confusions$/,
+    override:
+      "decide the confusion on the Lessons page (keep, edit or retire the lesson): deciding it is a person's act, and keeping the lesson takes it off hold",
+  },
+  {
     door: /^KEEP /,
     override:
       'nothing to undo: a keep moved nothing, and the steward asks again once the standing moves; to decide now, move the issue yourself',

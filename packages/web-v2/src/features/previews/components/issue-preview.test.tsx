@@ -163,7 +163,7 @@ describe("BC-3: the frame", () => {
       await act(async () => {
         await vi.advanceTimersByTimeAsync(13_000);
       });
-      expect(screen.getByTestId("preview-frame-slow")).toHaveTextContent("Open the preview in its own tab");
+      expect(screen.getByTestId("preview-frame-slow")).toHaveTextContent("Still blank");
       fireEvent.load(screen.getByTitle("Preview of ISS-491"));
       await waitFor(() => expect(screen.queryByTestId("preview-frame-slow")).toBeNull());
     } finally {
@@ -239,7 +239,7 @@ describe("BC-9: a closed preview says which way it closed", () => {
   it("abandoned and approved: say so and offer no frame", async () => {
     core({ [`GET ${PREVIEW}`]: () => ({ body: { preview: previewOf({ state: "abandoned", detail: "the run ended" }) } }) });
     mount();
-    expect(await screen.findByText("This preview was abandoned. Its link is closed.")).toBeInTheDocument();
+    expect(await screen.findByText("Abandoned, link closed")).toBeInTheDocument();
     expect(screen.getByText("the run ended")).toBeInTheDocument();
     expect(screen.queryByTestId("preview-frame")).toBeNull();
   });
@@ -311,7 +311,7 @@ describe("approve, abandon and the lane", () => {
     mount();
     const lane = await screen.findByTestId("preview-lane");
     expect(lane).toHaveAttribute("data-lane", "fast");
-    expect(lane).toHaveTextContent("typecheck, touched tests, merge, then a web-only deploy");
+    expect(lane).toHaveTextContent("Fast lane");
   });
 
   it("an approved preview on the full lane says why, in core's words", async () => {

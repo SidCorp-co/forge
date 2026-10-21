@@ -79,6 +79,9 @@ export const OUTBOX_CONSUMERS = {
 	"issue.pushed": ["ws-broadcast"],
 	"conversation.pushed": ["ws-broadcast"],
 	"preview.transitioned": ["ws-broadcast"],
+	// the corrections a lesson learns from (REQ-50 BC-1, `core/src/lessons/`)
+	"mockup.transitioned": ["lessons-corrections"],
+	"chat.replied": ["lessons-chat"],
 	// the steward's own triggers (REQ-48 BC-1, `core/src/steward/consumer.ts`)
 	"suggestion.proposed": ["steward"],
 	"standing.stuck": ["steward"],

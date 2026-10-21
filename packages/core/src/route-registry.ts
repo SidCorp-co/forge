@@ -108,6 +108,7 @@ import {
 } from './jobs/routes.js';
 import { knowledgeRoutes } from './knowledge/routes.js';
 import { labelProjectRoutes, labelRoutes } from './labels/routes.js';
+import { lessonRoutes } from './lessons/index.js';
 import { deviceMasterRoutes, masterStandingRoutes } from './masters/routes.js';
 import { mcpHandler, mcpRequestClass } from './mcp/index.js';
 import { meAttentionRoutes, mePulseRoutes } from './me/routes.js';
@@ -252,6 +253,7 @@ function mountProjectDocumentRoutes(app: Hono<{ Variables: RequestIdVars }>): vo
   app.route('/api/projects', stewardNoteRoutes);
   app.route('/api/projects', feedbackChecklistRoutes);
   app.route('/api/projects', mockupRoutes);
+  app.route('/api/projects', lessonRoutes);
   app.route('/api/projects', baDoorRoutes);
   app.route('/api/projects', onboardingRoutes);
   app.route('/api/projects', questionnaireRoutes);

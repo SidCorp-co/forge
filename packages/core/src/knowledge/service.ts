@@ -1,8 +1,9 @@
-import { and, asc, eq, isNull, or, sql } from 'drizzle-orm';
+import { and, asc, eq, isNull, ne, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, knowledgeEntries } from '../db/schema.js';
 import type { MasterVerb } from '../db/schema-master-charter.js';
 import type { knowledgeInjectionEnum, knowledgeKindEnum } from './entry-input.js';
+import { lessonOwnedRefusal } from './lesson-entries.js';
 import type { ReadWhenCondition } from './read-when.js';
 
 const MAX_RESPONSE_CHARS = 38_000;
@@ -165,6 +166,8 @@ export async function getKnowledgeEntry(
 }
 
 export async function deleteKnowledgeEntry(projectId: string, slug: string): Promise<number> {
+  const owned = await lessonOwnedRefusal(projectId, [{ slug }]);
+  if (owned) throw owned;
   const result = await db
     .delete(knowledgeEntries)
     .where(and(eq(knowledgeEntries.projectId, projectId), eq(knowledgeEntries.slug, slug)))
@@ -192,6 +195,8 @@ export async function selectAlwaysInjectFromKnowledge(
         eq(knowledgeEntries.projectId, projectId),
         eq(knowledgeEntries.injection, 'always'),
         isNull(knowledgeEntries.archivedAt),
+        // a lesson is carried in its own scoped block (`prompt/facts/lessons.ts`), never as a rule
+        ne(knowledgeEntries.kind, 'lesson'),
       ),
     )
     .orderBy(asc(knowledgeEntries.orderIndex), asc(knowledgeEntries.slug));

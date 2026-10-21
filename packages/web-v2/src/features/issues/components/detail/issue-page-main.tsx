@@ -56,28 +56,31 @@ export function IssuePageMain(props: {
   const developer = view === "developer";
   const standing = standingQ.data?.standing;
   const note = useStewardNote(projectId, "issue", issue.displayId);
+  const needsPanels = (
+    <div className="grid gap-3 empty:hidden" data-testid="issue-needs-you-panels">
+      <IssueQuestions
+        show="now"
+        issueId={issue.id}
+        parkedForInfo={issue.status === "needs_info"}
+        threadQuestion={props.threadQuestion}
+        onAnswerInThread={props.onAnswerInThread}
+      />
+      <IssuePatternList issueId={issue.id} projectId={issue.projectId} show="open" />
+      {props.reasonDialog}
+    </div>
+  );
   return (
           <div className="px-8 pb-16 pt-5 max-md:px-4" data-testid="issue-page-main">
             <div className="mb-3 flex justify-end" data-testid="issue-view-switch">
               <RecordViewSwitch view={view} onView={props.onView} />
             </div>
+            {/* what the reader answers on the page is Needs you's, before Done by and the criteria (REQ-43 BC-9) */}
             <div data-highlight="waiting question">
-              {standing ? <IssueStateHead standing={standing} forecast={forecast} act={props.needsYouAct} /> : null}
+              {standing ? <IssueStateHead standing={standing} forecast={forecast} act={props.needsYouAct} needs={needsPanels} /> : needsPanels}
             </div>
             {/* a stuck issue says why, then the steward's note on it (REQ-48 BC-5, BC-7) */}
             {standing ? <IssueStuckBanner standing={standing} className="mt-3 rounded-md" /> : null}
             <StewardNoteLines note={note} slug={slug} />
-            <div className="grid gap-3 empty:hidden" data-testid="issue-needs-you-panels">
-              <IssueQuestions
-                show="now"
-                issueId={issue.id}
-                parkedForInfo={issue.status === "needs_info"}
-                threadQuestion={props.threadQuestion}
-                onAnswerInThread={props.onAnswerInThread}
-              />
-              <IssuePatternList issueId={issue.id} projectId={issue.projectId} show="open" />
-              {props.reasonDialog}
-            </div>
             {developer && blocker ? (
               <div className="mt-3">
                 <BlockerBanner

@@ -48,12 +48,12 @@ describe("the feedback item's progress block", () => {
   });
 
   it.each([
-    ["FB-11", "untriaged", "No estimate until it is triaged"],
-    ["FB-20", "history", "No estimate: 3 of 10 landed issues needed"],
-    ["FB-14", "no_issues", "No estimate: no issue carries it yet"],
-    ["FB-15", "no_work", "No estimate: no work ships for it"],
-    ["FB-17", "waits", "No estimate while it waits on Dana Lee"],
-    ["FB-19", "ended", "No estimate: its issues were dropped"],
+    ["FB-11", "untriaged", "No estimate"],
+    ["FB-20", "history", "Too few landed issues (3 of 10)"],
+    ["FB-14", "no_issues", "No estimate"],
+    ["FB-15", "no_work", "No estimate"],
+    ["FB-17", "waits", "Waits on Dana Lee"],
+    ["FB-19", "ended", "No estimate"],
     ["FB-13", "release_waits", "Built; no date until Dana Lee releases it"],
   ])("%s with no date says why: %s", async (key, reason, line) => {
     await shown(CASE(key));
@@ -66,7 +66,7 @@ describe("the feedback item's progress block", () => {
     await shown(CASE("FB-18"));
     const none = screen.getByTestId("feedback-progress-no-date");
     expect(none.dataset.reason).toBe("snoozed");
-    expect(none.textContent).toMatch(/^No estimate: snoozed until \S/);
+    expect(none.textContent).toMatch(/^Snoozed until \S/);
   });
 
   it("names who triages an untriaged item", async () => {

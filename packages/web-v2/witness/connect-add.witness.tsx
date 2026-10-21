@@ -36,7 +36,7 @@ function directory(): string[] {
   const wrong = sideways();
   if (!document.body.textContent?.includes("This Forge")) wrong.push("the App's row is not named this Forge's");
   if (!d.textContent?.includes("Installed on SidCorp-co, not used by any project.")) wrong.push("the unused installation is not named");
-  if (!d.textContent?.includes("This App is private, so it installs only on SidCorp-co.")) wrong.push("the private App is not named");
+  if (!d.textContent?.includes("Private; installs only on SidCorp-co")) wrong.push("the private App is not named");
   return wrong;
 }
 

@@ -54,9 +54,7 @@ function announceCreated(created: CreatedIssue, toast: ReturnType<typeof useToas
     const one = dropped.length === 1;
     toast({
       title: one ? t("issues.newIssue.droppedOne") : t("issues.newIssue.droppedMany", { n: dropped.length }),
-      description: t(one ? "issues.newIssue.droppedHintOne" : "issues.newIssue.droppedHintMany", {
-        files: dropped.map((e) => `${e.name} — ${attachmentErrorCopy(e, t)}`).join("; "),
-      }),
+      description: dropped.map((e) => `${e.name} — ${attachmentErrorCopy(e, t)}`).join("; "),
       tone: "error",
     });
   } else {

@@ -281,6 +281,7 @@
       "reads": [
         "agentSessions",
         "contractVersions",
+        "corrections",
         "devices",
         "feedback",
         "issueLabels",
@@ -805,6 +806,12 @@
         "via:ws"
       ]
     },
+    "lessons": {
+      "kind": "domain",
+      "context": "work",
+      "owns": ["corrections", "lessonApplications", "lessonConfusions", "lessons"],
+      "serves": ["REQ-50"]
+    },
     "mockups": {
       "kind": "domain",
       "context": "design",
@@ -1280,6 +1287,9 @@
     },
     "approvals": {
       "serves": ["REQ-8", "REQ-11", "REQ-41"]
+    },
+    "lessons": {
+      "serves": ["REQ-50"]
     },
     "attachments": {
       "serves": ["via:issues", "via:feedback"]

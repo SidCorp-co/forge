@@ -114,7 +114,7 @@ function StateNotes({ view, slug, held, names }: { view: DocumentView; slug: str
     <>
       {held ? (
         <div role="status" className="rounded-md border px-3 py-2 text-13" style={{ borderColor: "var(--amber-50)", background: "var(--amberw-50)", color: "var(--amberw-600)" }}>
-          {t("ecosystem.doc.held")} <HoldLine hold={held} names={names} />
+          <HoldLine hold={held} names={names} />
         </div>
       ) : null}
       {d.state === "withdrawn" ? (

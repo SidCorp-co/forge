@@ -167,8 +167,7 @@ export function SetRepository({
       </PageSectionHeader>
       <PageSectionBody className="flex flex-col gap-4">
         <p className="fg-body-sm text-muted">
-          {t("integrations.github.using")} <span className="font-semibold">{connectionLabel}</span>.{" "}
-          {t("integrations.github.alreadyBound")}
+          {t("integrations.github.using")} <span className="font-semibold">{connectionLabel}</span>
         </p>
 
         <RepositoryField repos={repos} value={fullName} onChange={setFullName} />

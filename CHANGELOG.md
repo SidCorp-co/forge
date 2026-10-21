@@ -9,6 +9,19 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.269] - 2026-10-21
+
+Mockups run full screen, take pinned comments and revisions on the item they shape
+
+### Added
+
+- **A mockup is tried, commented and revised on the item it shapes.** HTML mockups run isolated full screen, comments pin to a point or region, returned ones come back as their next revision, and the BA assistant proposes them.
+
+### Fixed
+
+- **Signing in returns you to the page that sent you.** A signed-out visit to a deep link, such as Integrations after a GitHub return, comes back there after sign-in instead of Home; only a path on this site is followed.
+- **Onboarding start and re-analysis are a person's ask.** An agent's credential is now refused both by name (ONBOARDING_PERSON_ACT_FORBIDDEN), whatever its grant holds; a person holding onboarding.request still starts onboarding and asks for a re-analysis (ISS-63, REQ-10 BC-2).
+
 ## [0.4.0-dev.268] - 2026-10-21
 
 A steward agent works every handoff; Approvals becomes the one Needs you list

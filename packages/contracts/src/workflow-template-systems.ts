@@ -320,7 +320,7 @@ export const decisionModel: WorkflowTemplate = {
     {
       id: 'BKM',
       label: 'Business knowledge',
-      tooltip: 'Reusable decision logic: a function more than one decision calls.',
+      tooltip: 'Reusable decision logic.',
       icon: 'filter',
       colour: 'indigo',
       required: ['label'],

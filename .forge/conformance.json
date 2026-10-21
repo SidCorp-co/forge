@@ -77,7 +77,7 @@
   },
   "checkers": {
     "copy-budget": {
-      "$comment": "REQ-43 BC-1, BC-2, BC-4, BC-6, BC-11 (ISS-496) — the copy rule's budget. Every English string in packages/web-v2/src/**/copy*.json and lib/i18n/copy/**, and every English template of a sentence registry `sentences` names (the sentences core writes for pages), is at most `budget` words, each {placeholder} one word. What a key is comes from a convention declared here and never guessed from the sentence: a refusal or confirmation (any segment matching `refusalSegments`) holds at most `refusalBudget`; an empty state (last segment matching `emptySegments`) at most `emptyBudget`; an explanation of a section, a button or who can see something (last segment matching `explainSegments`) is refused at any length. English only, because a key's other languages translate it (the owner ruled Forge not multilingual, 2026-10-08). A registry's own `emptySegments` replaces the copy files' one for its keys, because core names a sentence by its reason (`noRunner`, `noToken`) and `no<X>` there is not an empty state. No baseline: every string holds the budget.",
+      "$comment": "REQ-43 BC-1, BC-2, BC-4, BC-6, BC-11 (ISS-496) — the copy rule's budget. Every English string in packages/web-v2/src/**/copy*.json and lib/i18n/copy/**, and every English sentence of a registry `sentences` names (the sentences core writes for pages), is at most `budget` words, each {placeholder} one word. What a string is comes first from a convention declared here for its key: a refusal or confirmation (any segment matching `refusalSegments`) holds at most `refusalBudget`; an empty state (last segment matching `emptySegments`) at most `emptyBudget`; an explanation of a section, a button or who can see something (last segment matching `explainSegments`) is refused at any length. Then, for a key naming none of the three, from the string itself (ISS-496 round 2: a key name alone let the same sentence pass under another key): a text of one of `explainShapes` explains and is refused, and a text `emptyLead` matches is an empty state. The shapes read the form an explanation takes, not its meaning, so a single sentence that explains in none of them is the check's limit, left to the judge reading the page. English only, because a key's other languages translate it (the owner ruled Forge not multilingual, 2026-10-08). A registry's own `emptySegments` replaces the copy files' one for its keys, because core names a sentence by its reason (`noRunner`, `noToken`) and `no<X>` there is not an empty state. A registry is read by `symbol` (`{ key: { en } }`) or by `fields` (every string a record's property of those names holds, keyed by the ids around it). No baseline: every string holds the budget.",
       "scanRoot": "packages/web-v2/src",
       "copyDirs": [
         "packages/web-v2/src/lib/i18n/copy"
@@ -88,11 +88,33 @@
       "refusalSegments": "^(refusal|refused|authority-refused|denied\\w*|cannot\\w*|confirm\\w*|error|failed|revoked|declineMessage|moveConfirm|remove\\w*|delete\\w*(Message|Body)|\\w*(Refused|Refuse\\w*|Denied|Confirm|Confirmation|Error|Failed|Cannot\\w*))$",
       "emptySegments": "^(empty|empty[A-Z]\\w*|\\w*Empty|none|none[A-Z]\\w*|nothing\\w*|no[A-Z]\\w*)$",
       "explainSegments": "^(hint|\\w*Hint|intro|\\w*Intro|help|\\w*Help|explain\\w*|\\w*Explainer|lede|\\w*Lede|tagline|blurb|effect|\\w*Effect|emptyMessage|emptyBody|noneBody)$",
+      "explainShapes": [
+        {
+          "name": "a second sentence",
+          "pattern": "(?<!\\b(?:e\\.g|i\\.e|etc|vs))[.!?]\\s+[\"“(]?[A-Z{]",
+          "why": "a state is one sentence at most; a second one glosses it, or says what to do or what will happen"
+        },
+        {
+          "name": "a gloss after a colon",
+          "pattern": "^[A-Z][a-z][^\\s:{}]*(?: [^\\s:{}]+){0,2}:(?: +[^\\s{}`]+){3,}$",
+          "why": "'Not tracked: it goes live outside Forge' names a state, then explains it in a clause; a value after a colon holds a placeholder, and a CODE before one is the Developer view's"
+        },
+        {
+          "name": "a purpose clause",
+          "pattern": "^To [a-z]+\\b[^,]*,",
+          "why": "'To stop one, run …' tells the reader how to work a control"
+        }
+      ],
+      "emptyLead": "^(No|None|Nothing|Empty)\\b",
       "sentences": [
         {
           "file": "packages/contracts/src/said-keys.ts",
           "symbol": "SAID",
           "emptySegments": "^(empty|none|nothing)$"
+        },
+        {
+          "file": "packages/contracts/src/checklist-registry.ts",
+          "fields": "^(title|prompt|fix|label|recommended|note)$"
         }
       ],
       "inline": {

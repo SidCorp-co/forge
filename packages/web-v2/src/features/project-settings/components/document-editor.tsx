@@ -178,7 +178,6 @@ function RefusedNotice({ write, mode }: { write: Write; mode: string }) {
 				{mode === "json" && refusals.length > stale.length && (
 					<RefusalList refusals={refusals.filter((r) => r.code !== STALE_BASE)} />
 				)}
-				{mode === "fields" && refusals.length > stale.length && <p>{t("settings.project.raw.refusedAtFields")}</p>}
 			</div>
 		</Banner>
 	);
@@ -223,9 +222,6 @@ export function DocumentEditor({
 				{actions}
 			</div>
 			{description ? <div className="fg-body-sm mt-1 mb-3 text-muted">{description}</div> : null}
-			{!read.declared && (
-				<Banner tone="attention">{t("settings.project.raw.fromTemplate")}</Banner>
-			)}
 			{moved && (
 				<MovedNotice
 					held={held}

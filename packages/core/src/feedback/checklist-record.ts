@@ -29,7 +29,7 @@ export function requirementAnswerOf(row: TriageRecordRow): RecordAnswer {
   if (row.criterionSeq !== null) {
     return { value: `${requirementKey(row.criterionSeq)}, whose criterion it violates` };
   }
-  return { value: 'None: it is about no requirement.' };
+  return { value: 'None' };
 }
 
 export function triageRecordOf(row: TriageRecordRow): RecordAnswers {

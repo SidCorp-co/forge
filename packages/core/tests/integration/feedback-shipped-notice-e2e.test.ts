@@ -78,7 +78,7 @@ describe('the release that ships an item tells its reporter', () => {
     const before = await detail(fb);
     expect(before.shipNotice).toMatchObject({
       state: 'not_told',
-      reason: 'No release carries it, so none told the reporter: tell them yourself.',
+      reason: 'No release',
       shipped: { release: null },
       beforeNotices: false,
     });

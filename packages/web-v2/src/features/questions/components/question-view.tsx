@@ -22,6 +22,7 @@ import {
   EnumBadge,
   StatusBadge,
   Textarea,
+  useRecordView,
 } from "@/design";
 import { type IssuePick, IssuePicker } from "@/features/issue-picker";
 import {
@@ -54,6 +55,11 @@ const EXECUTOR_MEANS: Record<OptionExecutor, ProductCopyKey> = {
   human: "agents.question.executor.human",
 };
 
+/**
+ * Who may choose an option, what it binds and who carries it out, and the call it names: what the
+ * option means to the run that acts on it, so the Developer view's. A person's view reads the option
+ * and its button, and a locked one says why it is locked (REQ-43 BC-4, BC-7).
+ */
 function OptionMeaning({ option, id }: { option: VisibleOption; id: string }) {
   const t = useCopy();
   return (
@@ -86,6 +92,8 @@ function QuestionOption({
 }) {
   const describedBy = `decision-option-${option.id}`;
   const t = useCopy();
+  const [view] = useRecordView();
+  const developer = view === "developer";
   return (
     <div className="border-t border-line-subtle py-2.5">
       <div className="flex flex-wrap items-start gap-2">
@@ -101,7 +109,7 @@ function QuestionOption({
             loading={pending}
             data-first-option={first ? "true" : undefined}
             aria-label={t("agents.question.chooseLabel", { label: option.label })}
-            aria-describedby={describedBy}
+            aria-describedby={developer ? describedBy : undefined}
             onClick={() => onChoose(option.id)}
           >
             {t("agents.question.choose")}
@@ -113,7 +121,7 @@ function QuestionOption({
           {t("agents.question.needsAuthority", { authority: option.authority })}
         </p>
       )}
-      <OptionMeaning option={option} id={describedBy} />
+      {developer ? <OptionMeaning option={option} id={describedBy} /> : null}
     </div>
   );
 }

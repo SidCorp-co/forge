@@ -377,8 +377,8 @@ export const ENUM_LABELS = {
 		heartbeat_timeout: "Heartbeat timed out",
 		queue_timeout: "Queue timed out",
 		turn_never_reported: "Turn never reported",
-		no_client_ack: "No client acknowledgement",
-		checkout_unbound: "No checkout bound",
+		no_client_ack: "No acknowledgement",
+		checkout_unbound: "Checkout unbound",
 		credential_mint_failed: "Credential not minted",
 		attachment_unreadable: "Attachment unreadable",
 		box_cannot_confine_chat: "Box cannot confine a chat",
@@ -416,7 +416,7 @@ export const ENUM_LABELS = {
 	/** Why an environment's state is unknown (web `project-config/types.ts`). */
 	environmentCause: {
 		external: "Deployed outside Forge",
-		"no-record": "No deployment record",
+		"no-record": "No record",
 		"adapter-error": "Platform adapter error",
 		"binding-refused": "Binding refused",
 	},
@@ -461,7 +461,7 @@ export const ENUM_LABELS = {
 		turn_ended: "Turn ended",
 		abandoned_quiet: "Abandoned: quiet",
 		abandoned_restart: "Abandoned: daemon restarted",
-		abandoned_orphan: "Abandoned: no record on the box",
+		abandoned_orphan: "Abandoned: orphaned",
 		session_gone: "Closed with its session",
 		unrecorded: "Closed: not recorded",
 	} satisfies Record<MasterPassCloseReason, string>,
@@ -518,9 +518,9 @@ export const ENUM_LABELS = {
 	} satisfies Record<ScheduleRunTrigger, string>,
 	/** Why a fire ran nothing (contracts `schedules.ts:SCHEDULE_RUN_SKIP_REASONS`). */
 	fireSkipReason: {
-		"no-device": "No box could take it",
+		"no-device": "No box",
 		"project-not-found": "Its target project is gone",
-		"nothing-to-do": "Nothing to do",
+		"nothing-to-do": "Nothing due",
 		"gate-refused": "The gate refused it",
 	} satisfies Record<ScheduleRunSkipReason, string>,
 } as const satisfies Record<string, Record<string, string>>;

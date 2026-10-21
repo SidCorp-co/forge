@@ -1,5 +1,6 @@
 import type { Said } from '@forge/contracts/said';
 import type { Tx } from '../db/client.js';
+import { recordCorrection } from '../lessons/index.js';
 import { emitEvent } from '../outbox/index.js';
 import type { DesignDecision } from './design.js';
 import { workflowApprovalRecord } from './design-checklist-record.js';
@@ -71,6 +72,17 @@ export async function recordDecision(
     by: decider.userId,
     agency: decider.agency,
   });
+  // a returned design's reason is a correction a lesson learns from (REQ-50 BC-1)
+  if (decision === 'return') {
+    await recordCorrection(tx, {
+      projectId,
+      source: 'design_returned',
+      sourceRef: `${id}:r${revision}`,
+      item: { kind: 'workflow', id, key: `${row.flow} r${revision}`, title: row.flow },
+      reason,
+      by: { userId: decider.userId, agency: decider.agency },
+    });
+  }
   await emitEvent(tx, 'workflow.designDecided', {
     projectId,
     workflowId: id,

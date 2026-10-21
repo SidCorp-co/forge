@@ -95,7 +95,7 @@ describe("the triage verbs", () => {
   });
 
   it("shows each refusal core names on the question it names", async () => {
-    const detail = "Was it reproduced, and with what evidence? It has no answer yet. Say how it was reproduced and what shows it, or why it could not be.";
+    const detail = "Was it reproduced, and with what evidence? It has no answer yet. Give the reproduction and its evidence, or why there is none.";
     core((c) =>
       c.method === "POST"
         ? { status: 422, body: { status: 422, code: "CHECKLIST_INCOMPLETE", detail, error: { code: "CHECKLIST_INCOMPLETE", message: detail, refusals: [{ code: "CHECKLIST_INCOMPLETE", path: "/answers/reproduced", detail }] } } }

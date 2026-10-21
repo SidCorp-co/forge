@@ -20,6 +20,7 @@ import forecastCopy from "./copy/forecast.json";
 import intakeCopy from "./copy/intake.json";
 import integrationsCopy from "./copy/integrations.json";
 import issuesCopy from "./copy/issues.json";
+import lessonsCopy from "./copy/lessons.json";
 import memoryCopy from "./copy/memory.json";
 import modulesCopy from "./copy/modules.json";
 import needsYouCopy from "./copy/needs-you.json";
@@ -81,6 +82,7 @@ export const COPY_FILES = {
   "lib/i18n/copy/intake.json": intakeCopy,
   "lib/i18n/copy/integrations.json": integrationsCopy,
   "lib/i18n/copy/issues.json": issuesCopy,
+  "lib/i18n/copy/lessons.json": lessonsCopy,
   "lib/i18n/copy/memory.json": memoryCopy,
   "lib/i18n/copy/modules.json": modulesCopy,
   "lib/i18n/copy/needs-you.json": needsYouCopy,

@@ -131,7 +131,7 @@ describe("What changes", () => {
     const design = changes.surfaces[2];
     if (!design) throw new Error("fixture lost its design surface");
     expect(changesSentence({ surfaces: [design], risks: [], unclassified: [], boxRead: [], shipsNothing: true }, productCopy("en"), labelCopy("en"))).toBe(
-      "Ships nothing: every change in it is a design revision.",
+      "Ships nothing.",
     );
   });
 });

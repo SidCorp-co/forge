@@ -78,6 +78,20 @@ describe("a feedback item's triage checklist on its page", () => {
     expect(await within(activity).findByTestId("checklist")).toHaveTextContent("Feedback triage");
   });
 
+  it("keeps a passed triage under Activity for a reader who may still triage (REQ-43 BC-8)", async () => {
+    // FB-130 on forge-dev 0.4.0-dev.268: triaged, yet its passed checklist led a triager's Overview
+    const triager = { phase: "planned", can: { triage: true, drop: false, verify: false, reopen: false, askVerify: false, redact: false, retarget: false, snooze: false, message: false, tellShipped: false, note: false, attach: false, clarify: false } } as const;
+    fakeCore((c: Call) => (c.path === "/projects/p1/feedback/FB-2/checklist" ? { body: { feedbackId: "f2", key: "FB-2", checklists: [readOf(FEEDBACK_TRIAGE_CHECKLIST, record(FEEDBACK_TRIAGE_CHECKLIST, { kind: "bug" }))] } } : HANG));
+    const top = renderWithQuery(feedbackDetail(triager));
+    await screen.findAllByText("Muc FB-2");
+    expect(within(screen.getByTestId("view-overview")).queryByTestId("checklist")).toBeNull();
+    top.unmount();
+    window.history.replaceState(null, "", "/?tab=activity");
+    renderWithQuery(feedbackDetail(triager));
+    const activity = await screen.findByTestId("view-activity");
+    expect(await within(activity).findByTestId("checklist")).toHaveTextContent("Feedback triage");
+  });
+
   it("leaves where each answer came from to the developer view (REQ-43 BC-7)", async () => {
     feedbackPage(readOf(FEEDBACK_TRIAGE_CHECKLIST, record(FEEDBACK_TRIAGE_CHECKLIST, { kind: "bug", requirement: "REQ-1" })));
     const section = await screen.findByTestId("checklist");

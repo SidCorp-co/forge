@@ -224,7 +224,7 @@ describe("what nobody using the product sees, counted apart (BC-16)", () => {
     const rows = screen.getAllByTestId("page-internal-row");
     expect(rows.map((r) => r.getAttribute("data-row-key") ?? r.textContent)).toHaveLength(2);
     expect(screen.getByTestId("page-internal")).toHaveTextContent("Carries another change out");
-    expect(screen.getByTestId("page-internal")).toHaveTextContent("No change a user sees");
+    expect(screen.getByTestId("page-internal")).toHaveTextContent("Internal only");
     expect(screen.queryByTestId("page-internal-line")).toBeNull();
   });
 });
@@ -297,7 +297,7 @@ describe("highlights and their clip (BC-2, BC-3)", () => {
     const bare = { ...h, requirement: { key: "REQ-41", title: "Other" }, media: null, mediaGap: "QA recorded no clip for this build" };
     renderWithQuery(<ReleaseReader page={{ ...page, highlights: { ...page.highlights, highlights: [picture, bare] } }} authed={false} />);
     expect(screen.getByTestId("release-media-picture")).toHaveAttribute("src", "/api/uploads/download/t1");
-    expect(screen.getByTestId("page-highlight-gap")).toHaveTextContent("No clip: QA recorded no clip for this build");
+    expect(screen.getByTestId("page-highlight-gap")).toHaveTextContent(/^No clip$/);
   });
 
   it("names no criterion code in a highlight's text", () => {

@@ -121,7 +121,7 @@ export function TargetPicker({
       </span>
       {unmatched ? (
         <span className="text-12 text-danger" data-testid="feedback-target-unmatched" role="alert">
-          {t("feedback.target.unmatched", { noun, text: text.trim() })}
+          {t("feedback.target.unmatched")}
         </span>
       ) : null}
       {servesNone ? (

@@ -94,6 +94,7 @@ const HELD: Record<string, string> = {
   forge_memory_note: 'a project memory note',
   forge_preferences: 'a change to reply preferences',
   forge_template_save: 'a saved report',
+  forge_lesson_confusion: 'a lesson held for a decision',
   'forge comment': 'a comment',
   'forge attach': 'an attachment',
   'forge issue': 'a change to an issue',

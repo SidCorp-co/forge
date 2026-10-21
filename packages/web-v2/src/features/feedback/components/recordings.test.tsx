@@ -119,7 +119,7 @@ describe("the item's recordings", () => {
     const rows = await screen.findAllByTestId("recording-row");
     expect(rows[0]).toHaveTextContent("Failed · the app's own security policy kept the recorder out");
     fireEvent.click(within(rows[1]).getByRole("button", { name: "Show" }));
-    expect(await screen.findByText("Its events were deleted after 30 days. The timeline stays.")).toBeInTheDocument();
+    expect(await screen.findByText("Events deleted after 30 days; timeline kept")).toBeInTheDocument();
     expect(screen.getByTestId("recording-timeline")).toHaveTextContent("Clicked Save order");
     expect(screen.queryByTestId("recording-replay")).toBeNull();
   });

@@ -120,7 +120,7 @@ function ShippedPart({ s, slug, clock }: PartProps) {
   return (
   <Section title={t("status.shipped")} asOf={s.shipped.asOf} clock={clock} testId="status-shipped">
     {s.shipped.releases.length === 0 ? (
-      <Quiet>{t("status.shippedNone", { days: s.days })}</Quiet>
+      <Quiet>{t("status.shippedNone")}</Quiet>
     ) : (
       <ul className={LIST}>
         {s.shipped.releases.map((r) => (
