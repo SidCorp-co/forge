@@ -390,9 +390,8 @@ export async function clearRemovedConnection(id: string): Promise<void> {
 }
 
 /**
- * The removed connection a project's service binding for `provider` still points at, where `owner`
- * owns it: the one a fresh install from that project turns back on rather than standing a second
- * beside it.
+ * What a fresh install turns back on instead of standing a second connection beside it: the
+ * keyless, switched-off connection `owner` holds that this project's service binding still names.
  */
 export async function removedConnectionBoundTo(
   projectId: string,
