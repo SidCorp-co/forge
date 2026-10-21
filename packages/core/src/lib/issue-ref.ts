@@ -64,6 +64,21 @@ export function issueRefNeedsHeldPrefixes(raw: string): boolean {
   return given !== null && given !== LEGACY_ISSUE_PREFIX;
 }
 
+/** The record keys an issue reference is most often confused with, and the read each belongs to. */
+const OTHER_RECORD_PREFIX: Readonly<Record<string, { what: string; door: string; tool: string }>> =
+  {
+    FB: {
+      what: 'a feedback item',
+      door: 'GET /api/projects/<project>/feedback/<key>',
+      tool: 'forge_feedback',
+    },
+    REQ: {
+      what: 'a requirement',
+      door: 'GET /api/projects/<project>/requirements/<key>',
+      tool: 'forge_requirement',
+    },
+  };
+
 type ParsedIssueRef =
   | { ok: true; issSeq: number }
   | { ok: false; code: 'SHAPE' | 'FOREIGN_PREFIX' | 'RANGE'; message: string };
@@ -82,6 +97,15 @@ export function parseIssueRef(raw: string, accepts: readonly string[] = []): Par
   const given = hit[1]?.toUpperCase();
   const held = [LEGACY_ISSUE_PREFIX, ...accepts.map((p) => p.toUpperCase())];
   if (given && !held.includes(given)) {
+    const other = OTHER_RECORD_PREFIX[given];
+    if (other) {
+      // a requirement's or feedback item's key sent to an issue read: name the read it belongs to
+      return {
+        ok: false,
+        code: 'FOREIGN_PREFIX',
+        message: `\`${raw}\` is ${other.what}'s key, not an issue's: read it at ${other.door} (${other.tool}). An issue reference is a display id like \`${held[held.length - 1] ?? LEGACY_ISSUE_PREFIX}-42\`.`,
+      };
+    }
     return {
       ok: false,
       code: 'FOREIGN_PREFIX',

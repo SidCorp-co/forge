@@ -1,6 +1,7 @@
 import {
   STANDING_SUBJECT_KINDS,
   STEWARD_ACTS,
+  STEWARD_FAILURE_KINDS,
   STEWARD_RUN_STATES,
   STEWARD_SKIP_REASONS,
   STEWARD_TRIGGERS,
@@ -73,6 +74,8 @@ export const stewardRuns = pgTable(
     state: text('state', { enum: STEWARD_RUN_STATES }).notNull().default('queued'),
     skipReason: text('skip_reason', { enum: STEWARD_SKIP_REASONS }),
     failure: text('failure'),
+    /** Why it failed (`STEWARD_FAILURE_KINDS`): a refused act is not tried again on the same basis. */
+    failureKind: text('failure_kind', { enum: STEWARD_FAILURE_KINDS }),
     jobId: uuid('job_id').references(() => jobs.id, { onDelete: 'set null' }),
     turnId: uuid('turn_id'),
     turns: integer('turns').notNull().default(0),
@@ -113,6 +116,14 @@ export const stewardRuns = pgTable(
     failureChk: check(
       'steward_runs_failure_chk',
       sql`(${t.state} = 'failed') = (${t.failure} IS NOT NULL)`,
+    ),
+    failureKindChk: check(
+      'steward_runs_failure_kind_chk',
+      sql`${t.failureKind} IS NULL OR ${t.failureKind} IN (${inList(STEWARD_FAILURE_KINDS)})`,
+    ),
+    failureKindSetChk: check(
+      'steward_runs_failure_kind_set_chk',
+      sql`(${t.state} = 'failed') = (${t.failureKind} IS NOT NULL)`,
     ),
     turnsChk: check('steward_runs_turns_chk', sql`${t.turns} >= 0`),
     eventsChk: check(

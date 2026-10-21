@@ -1153,8 +1153,11 @@
         "agentQuestions",
         "comments",
         "criterionVerdicts",
+        "feedback",
         "issues",
         "pipelineRuns",
+        "projectWorkflows",
+        "requirements",
         "suggestions"
       ],
       "serves": ["REQ-48"]

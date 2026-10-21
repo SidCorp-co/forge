@@ -3277,6 +3277,13 @@
       "when": 1827014400000,
       "tag": "0510_forge_learns_from_every_correction",
       "breakpoints": true
+    },
+    {
+      "idx": 511,
+      "version": "7",
+      "when": 1827100800000,
+      "tag": "0511_every_stuck_item_takes_a_steward_note",
+      "breakpoints": true
     }
   ]
 }

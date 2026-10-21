@@ -5,6 +5,7 @@ import type { ComponentProps, ReactNode } from "react";
 import { DetailLeadEnd, type RecordView, RecordViewSwitch } from "@/design";
 import { useIssueForecast } from "@/features/forecast";
 import { IssuePreview } from "@/features/previews";
+import { StewardNoteLines, useStewardNote } from "@/features/standing";
 import { settingsHref } from "@/features/project-settings";
 import { IssueQuestions } from "@/features/questions";
 import type { useActivity, useAttachments, useComments } from "../../detail-hooks";
@@ -17,6 +18,7 @@ import { IssueCriteria } from "../issue-criteria";
 import { type LiveAgentState, LiveAgent } from "../live-agent";
 import { IssuePatternList } from "../issue-pattern-list";
 import { IssueDetails } from "./issue-details";
+import { IssueStuckBanner } from "../issue-standing-bits";
 import { IssueStateHead } from "./issue-state-head";
 
 /** The main column of the page: the state head, what needs a person, the criteria, the preview, the change and the Details. */
@@ -53,6 +55,7 @@ export function IssuePageMain(props: {
   const forecast = useIssueForecast(issue.projectId, issue.displayId).data?.forecast;
   const developer = view === "developer";
   const standing = standingQ.data?.standing;
+  const note = useStewardNote(projectId, "issue", issue.displayId);
   const needsPanels = (
     <div className="grid gap-3 empty:hidden" data-testid="issue-needs-you-panels">
       <IssueQuestions
@@ -75,6 +78,9 @@ export function IssuePageMain(props: {
             <div data-highlight="waiting question">
               {standing ? <IssueStateHead standing={standing} forecast={forecast} act={props.needsYouAct} needs={needsPanels} /> : needsPanels}
             </div>
+            {/* a stuck issue says why, then the steward's note on it (REQ-48 BC-5, BC-7) */}
+            {standing ? <IssueStuckBanner standing={standing} className="mt-3 rounded-md" /> : null}
+            <StewardNoteLines note={note} slug={slug} />
             {developer && blocker ? (
               <div className="mt-3">
                 <BlockerBanner

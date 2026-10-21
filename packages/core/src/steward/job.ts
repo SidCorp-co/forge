@@ -4,18 +4,21 @@
 // claims the job and handed in the brief, never stored with the job; it is revoked when the job ends.
 // Where no runner is bound the run ends failed naming it: it never falls back to a gateway guess.
 
-import { LIVE_JOB_STATUSES } from '@forge/contracts/job-machine';
-import { STEWARD_ACTS, type StewardAct } from '@forge/contracts/steward';
+import { LIVE_JOB_STATUSES, OCCUPYING_JOB_STATUSES } from '@forge/contracts/job-machine';
+import { STEWARD_ACTS, type StewardAct, type StewardRefusalCode } from '@forge/contracts/steward';
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { revokePat } from '../credentials/pat.js';
 import { db } from '../db/client.js';
 import { jobs, personalAccessTokens, runners } from '../db/schema.js';
+import { finalizeJobDone } from '../jobs/index.js';
 import { env } from '../lib/env.js';
+import { refuser } from '../lib/refusal.js';
+import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { insertAndEnqueueJob, openOneShotRun } from '../pipeline/index.js';
 import { stewardAccountOf } from './account.js';
 import { mintStewardCredential } from './credential.js';
 import { actContext, actPrompt } from './prompts.js';
-import type { RunRow } from './runs-store.js';
+import { endRun, type RunRow, runOfProject } from './runs-store.js';
 
 /** The job's own limit, and its token's life past it. */
 const JOB_TIMEOUT_SECONDS = 3600;
@@ -48,11 +51,20 @@ export async function stewardJobLive(projectId: string): Promise<boolean> {
   return row !== undefined;
 }
 
+/** The job's last act: the door that settles it, named with its body, so the job never ends unsettled. */
+export const jobDoneStep = (run: RunRow) =>
+  [
+    `Your last act, whatever happened: \`POST /api/projects/${run.projectId}/steward-runs/${run.id}/done\` with \`{"refused": []}\`.`,
+    'Name in `refused` each write a door refused (a 4xx), as `METHOD path: CODE detail`, and in `broken` each a door could not answer (a 5xx); leave both empty where every write landed.',
+    'This is what ends the job. Without it the box reads a finished agent as a failed job a quarter hour later, and the run fails with it.',
+  ].join('\n');
+
 function brief(run: RunRow, acts: readonly StewardAct[]): string {
   return [
     ...acts.map((a) => actPrompt(a)),
     actContext(run, null),
     `Project id: ${run.projectId}. Steward run: ${run.id}.`,
+    jobDoneStep(run),
   ].join('\n\n');
 }
 
@@ -143,4 +155,78 @@ export async function revokeJobCredential(projectId: string, jobId: string): Pro
       ),
     );
   for (const row of live) await revokePat(row.id, stewardId);
+}
+
+/**
+ * A steward job that ended holds no live token, whatever ended it: the job's own transition
+ * delivers this, and a failed delivery is retried, so a revoke a done call lost still lands.
+ */
+export async function revokeEndedJobCredential(projectId: string, jobId: string): Promise<void> {
+  const [job] = await db.select({ type: jobs.type }).from(jobs).where(eq(jobs.id, jobId)).limit(1);
+  if (job?.type === 'steward') await revokeJobCredential(projectId, jobId);
+}
+
+const refuse = refuser<StewardRefusalCode>('STEWARD_RUN_UNKNOWN');
+
+/**
+ * A steward job's last act (REQ-48 BC-1): the steward account says its acts are over, and which
+ * writes a door refused or could not answer. The run ends `done`, or `failed` naming each (a refused
+ * act waits for the standing to move, a broken one is tried again), the job is settled done so the
+ * box never reads the quiet pane as a failed job, and its token is revoked last. A call that finds
+ * the run ended and its job still live settles the job, so a settlement cut short is finished by
+ * the retry. Only the project's steward settles its own run.
+ */
+export async function finishStewardJob(input: {
+  projectId: string;
+  runId: string;
+  userId: string;
+  refused: readonly string[];
+  broken?: readonly string[];
+}): Promise<'done' | 'failed'> {
+  await requireCan(actorFor(input.userId), 'project.read', projectResource(input.projectId));
+  const stewardId = await stewardAccountOf(input.projectId);
+  if (input.userId !== stewardId) {
+    throw refuse(
+      'STEWARD_RUN_FORBIDDEN',
+      "a steward run's job is settled by the project's steward account alone.",
+    );
+  }
+  const run = await runOfProject(input.projectId, input.runId);
+  const [job] = run?.jobId
+    ? await db.select().from(jobs).where(eq(jobs.id, run.jobId)).limit(1)
+    : [];
+  if (!run)
+    throw refuse('STEWARD_RUN_UNKNOWN', `no steward run ${input.runId} in this project`, '/runId');
+  const jobLive =
+    job !== undefined && (OCCUPYING_JOB_STATUSES as readonly string[]).includes(job.status);
+  const ended = run.state === 'done' || run.state === 'failed';
+  if (!job || !(run.state === 'running' || (ended && jobLive))) {
+    throw refuse(
+      'STEWARD_RUN_NOT_JOB',
+      `steward run ${run.id} is ${run.state}${job ? '' : ' with no job'}; only a running run's own job settles it.`,
+      '/runId',
+    );
+  }
+  let state: 'done' | 'failed' = run.state === 'failed' ? 'failed' : 'done';
+  if (run.state === 'running') {
+    const acts = run.actsToRun.join(', ');
+    const failures = [
+      ...input.refused.map((r) => `${acts}: the door refused ${r}`),
+      ...(input.broken ?? []).map((r) => `${acts}: the door broke ${r}`),
+    ];
+    state = failures.length > 0 ? 'failed' : 'done';
+    await endRun(
+      run.id,
+      state === 'failed'
+        ? {
+            state,
+            failure: failures.join('\n'),
+            kind: (input.broken ?? []).length > 0 ? 'error' : 'refused',
+          }
+        : { state },
+    );
+  }
+  if (jobLive) await finalizeJobDone(job, 'steward_run_settled');
+  await revokeJobCredential(input.projectId, job.id);
+  return state;
 }

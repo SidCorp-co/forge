@@ -1,14 +1,17 @@
 // REQ-48, lanes A and B together: a requirement nobody owns is read stuck `no_owner` by lane A's real
 // standing read (`openStandings`, provided at boot, no fake), the steward's sweep emits it, the next
-// run acts on it, and the note it writes goes through `writeStewardNote`'s vet: a note whose claims
-// contradict the standing is refused naming the field and writes nothing, and one that copies the
-// standing's fields is kept as the item's current note, not stale. The gateway is a scripted provider.
+// run acts on it, and the note it writes goes through `writeStewardNote`'s vet. The model writes the
+// two lines alone; the door copies the claims, basis and cites from the standing the run read, so a
+// note is kept as the item's current note, not stale. A note whose words contradict the standing is
+// refused naming the line and writes nothing, a model that sends claims is refused by the tool before
+// any door, and a standing that moved under the run is read again and the note written once against
+// it. The gateway is a scripted provider.
 //
 // @direct-test-of packages/core/src/standing-ports.ts
 // @direct-test-of packages/core/src/steward/door-writes.ts
 
 import type { ItemStanding } from '@forge/contracts/steward';
-import { basisFieldsOf, STEWARD_DEBOUNCE_MS } from '@forge/contracts/steward';
+import { STEWARD_DEBOUNCE_MS } from '@forge/contracts/steward';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
@@ -67,26 +70,11 @@ async function ownerless(title: string): Promise<{ key: string; id: string }> {
 /** A tick past the debounce of anything queued at `from`. */
 const later = (from: Date) => new Date(from.getTime() + STEWARD_DEBOUNCE_MS + 30_000);
 
-/** The note the standing itself supports: its claims copied field for field from the read. */
-function noteFor(standing: ItemStanding) {
-  const f = basisFieldsOf(standing);
-  return {
-    lines: [
-      `${standing.subject.key} is agreed and nobody owns it, so nothing it owes reaches anyone.`,
-      'Next: the steward names its author as owner today.',
-    ],
-    cites: [{ kind: 'requirement', ref: standing.subject.key }],
-    claims: {
-      group: f.group,
-      waitingKind: f.waitingKind,
-      ref: f.ref,
-      stuck: f.stuckCode !== null,
-      stuckCode: f.stuckCode,
-      dueAt: f.dueAt,
-    },
-    basis: standing.basis,
-  };
-}
+/** The two lines the model writes; everything else the door copies from the standing. */
+const linesOf = (key: string) => [
+  `${key} is agreed and nobody owns it, so nothing it owes reaches anyone.`,
+  'Next: the steward names its author as owner today.',
+];
 
 beforeAll(async () => {
   testEnv();
@@ -133,40 +121,95 @@ async function diagnose(title: string, steps: (read: ItemStanding) => unknown[])
 }
 
 describe("a real stuck item, read through lane A's standing, is acted on and noted (BC-5, BC-7, BC-8)", () => {
-  it("keeps the note that copies the standing as the item's current note", async () => {
-    let good: ReturnType<typeof noteFor> | null = null;
-    const { req, run, acts, notes } = await diagnose('Ward lists read by floor', (read) => {
-      good = noteFor(read);
-      return [{ tool: { name: 'steward_write_note', args: good } }, { text: 'Wrote the note.' }];
+  it("keeps the note whose claims the door copied from the standing as the item's current note", async () => {
+    let lines: string[] = [];
+    const { req, read, run, acts, notes } = await diagnose('Ward lists read by floor', (read) => {
+      lines = linesOf(read.subject.key);
+      return [
+        { tool: { name: 'steward_write_note', args: { lines } } },
+        { text: 'Wrote the note.' },
+      ];
     });
-    const lines = (good as ReturnType<typeof noteFor> | null)?.lines;
     expect(run).toMatchObject({ state: 'done', failure: null });
     expect(acts.map((a) => a.door)).toEqual([
       `PUT /api/projects/${projectId}/steward-notes/requirement/${req.key}`,
     ]);
     expect(notes).toEqual([{ run_id: run.id, lines }]);
     const after = (await openStandings(projectId)).find((s) => s.subject.id === req.id);
-    expect(after?.note).toMatchObject({ lines, stale: false, runId: run.id });
+    expect(after?.note).toMatchObject({
+      lines,
+      stale: false,
+      runId: run.id,
+      basis: read.basis,
+      claims: { stuck: true, stuckCode: 'no_owner', ref: read.waitingOn.ref },
+      cites: [{ kind: 'requirement', ref: req.key }],
+    });
     expect(after?.note?.writtenBy.kind).toBe('agent');
   });
 
-  it('refuses a note that contradicts the standing by name, and writes nothing', async () => {
-    const { run, acts, notes } = await diagnose('Discharge letters in large type', (read) => {
-      const bad = noteFor(read);
-      return [
-        {
-          tool: {
-            name: 'steward_write_note',
-            args: { ...bad, claims: { ...bad.claims, stuck: false, stuckCode: null } },
-          },
+  it('refuses a note whose words contradict the standing by name, and writes nothing', async () => {
+    const { run, acts, notes } = await diagnose('Discharge letters in large type', (read) => [
+      {
+        tool: {
+          name: 'steward_write_note',
+          args: { lines: [`${read.subject.key} is moving: its owner works on it.`] },
         },
-        { text: 'Wrote the note.' },
-      ];
-    });
-    expect(run.state).toBe('failed');
+      },
+      { text: 'Wrote the note.' },
+    ]);
+    expect(run).toMatchObject({ state: 'failed' });
     expect(run.failure).toContain('STEWARD_NOTE_CONTRADICTS');
-    expect(run.failure).toContain('the note claims stuck false; the standing reads true');
+    expect(run.failure).toContain('STEWARD_NOTE_CONTRADICTS at /lines/0: line 1 says');
     expect(acts).toEqual([]);
     expect(notes).toEqual([]);
+  });
+
+  it('refuses claims from the model before any door, so a guess never reaches the vet', async () => {
+    const { run, acts, notes } = await diagnose('Ward rounds list the night nurse', (read) => [
+      {
+        tool: {
+          name: 'steward_write_note',
+          args: { lines: linesOf(read.subject.key), claims: { ref: 'Master' } },
+        },
+      },
+      { text: 'Could not write the note.' },
+    ]);
+    // the tool refused the shape in the turn; no door was called, so nothing was refused or written
+    expect(run).toMatchObject({ state: 'done', failure: null });
+    expect(acts).toEqual([]);
+    expect(notes).toEqual([]);
+    const reply = JSON.stringify(script.sent.at(-1));
+    expect(reply).toContain('steward_write_note');
+    expect(reply).toContain('claims');
+  });
+
+  it('reads a standing that moved under the run again, and writes the note once against it', async () => {
+    let lines: string[] = [];
+    const { req, read, run, acts, notes } = await diagnose(
+      'Ward boards show the shift lead',
+      (read) => {
+        lines = [`${read.subject.key} had no owner; the steward named its author.`];
+        return [
+          // naming the owner moves the standing off the basis the run read
+          {
+            tool: {
+              name: 'steward_set_requirement_owner',
+              args: { requirement: read.subject.key },
+            },
+          },
+          { tool: { name: 'steward_write_note', args: { lines } } },
+          { text: 'Named the owner and wrote the note.' },
+        ];
+      },
+    );
+    expect(run).toMatchObject({ state: 'done', failure: null });
+    expect(acts.map((a) => a.door)).toEqual([
+      `PATCH /api/projects/${projectId}/requirements/${req.key}`,
+      `PUT /api/projects/${projectId}/steward-notes/requirement/${req.key}`,
+    ]);
+    expect(notes).toEqual([{ run_id: run.id, lines }]);
+    const after = (await openStandings(projectId)).find((s) => s.subject.id === req.id);
+    expect(after?.basis).not.toBe(read.basis);
+    expect(after?.note).toMatchObject({ lines, stale: false, basis: after?.basis });
   });
 });

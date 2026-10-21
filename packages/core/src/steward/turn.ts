@@ -26,6 +26,8 @@ const SURFACE: Record<RunRow['subjectKind'], EgressSurface> = {
 export interface GatewayActResult {
   /** The writes a door refused, each named with its door and code. */
   refused: string[];
+  /** The writes a door could not answer (5xx), which are no refusal. */
+  broken: string[];
   /** The act rows written. */
   acts: string[];
   /** Why the turn itself did not finish, or null. */
@@ -41,6 +43,11 @@ export function stewardToolset(ctx: DoorContext, stewardId: string): ChatToolset
       function: { name: d.name, description: d.describe, parameters: doorJsonSchema(d) },
     })),
     execute: async (name, argsJson) => {
+      // the act's own menu, not the whole catalogue: a door another act holds is refused by name
+      if (!doors.some((d) => d.name === name)) {
+        const error = `${name} is not a door of ${ctx.act}; its doors are ${doors.map((d) => d.name).join(', ')}`;
+        return { content: [{ type: 'text', text: JSON.stringify({ error }) }], isError: true };
+      }
       const out = await callStewardDoor(name, argsJson, ctx);
       return { content: [{ type: 'text', text: out.text }], ...(out.ok ? {} : { isError: true }) };
     },
@@ -90,8 +97,10 @@ export async function runGatewayAct(args: {
     runId: run.id,
     act,
     subject: { kind: run.subjectKind, id: run.subjectId, key: run.subjectKey },
+    standing: args.standing,
     token: credential.token,
     refused: [],
+    broken: [],
     acts: [],
   };
   try {
@@ -127,6 +136,7 @@ export async function runGatewayAct(args: {
     });
     return {
       refused: ctx.refused,
+      broken: ctx.broken,
       acts: ctx.acts,
       error:
         result.terminal === 'error' ? (result.errorMessage ?? 'the turn ended in an error') : null,
@@ -134,6 +144,7 @@ export async function runGatewayAct(args: {
   } catch (err) {
     return {
       refused: ctx.refused,
+      broken: ctx.broken,
       acts: ctx.acts,
       error: err instanceof Error ? err.message : String(err),
     };

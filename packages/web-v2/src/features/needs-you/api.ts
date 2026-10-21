@@ -14,11 +14,14 @@ export const needsYouApi = {
 };
 
 /**
- * The body a button posts: its own, and what the person typed under the field its route reads, the
- * answer's `text` for a question and the `reason` for every other act that takes one.
+ * The body a button posts: its own, and what the person typed under the field its route reads: for a
+ * question, the answer's `text`, or the `note` an option carries (a steward decision's reason); the
+ * `reason` for every other act that takes one.
  */
 export function pressBody(answer: DecisionAnswer, typed: string | null): Record<string, unknown> {
   const body = { ...(answer.body ?? {}) };
-  if (answer.needsReason) body[answer.act === "question.answer" ? "text" : "reason"] = typed ?? "";
+  if (!answer.needsReason) return body;
+  const field = answer.act !== "question.answer" ? "reason" : "optionId" in body ? "note" : "text";
+  body[field] = typed ?? "";
   return body;
 }

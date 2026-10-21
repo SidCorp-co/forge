@@ -16,6 +16,12 @@ import {
   isStaleDraftQuestion,
   STALE_DRAFT_OPTION_IDS,
 } from '@forge/contracts/stale-drafts';
+import {
+  isStewardDecisionQuestion,
+  STEWARD_DECISION_EFFECTS,
+  STEWARD_DECISIONS_WITH_REASON,
+  stewardDecisionOf,
+} from '@forge/contracts/steward';
 import { type ChoiceStep, isChoiceStep, type QuestionStep } from '../db/schema-questions.js';
 import type { OpenPersonQuestion } from '../questions/index.js';
 import type { AttentionRow } from './needs-you.js';
@@ -121,6 +127,55 @@ function staleDraftDecision(
   };
 }
 
+/**
+ * A stuck issue's decision the steward asked (REQ-48 BC-5): Forge's own options, each button saying
+ * what answering it does, keep and drop taking the answerer's reason, recommended by the steward
+ * with the one line it wrote into the prompt.
+ */
+function stewardDecision(
+  base: Omit<DecisionBody, 'recommended' | 'noRecommendation' | 'answers'>,
+  q: OpenPersonQuestion,
+  step: ChoiceStep,
+  path: string,
+): Built {
+  const recommended = step.options.find((o) => o.id === step.recommendedOptionId);
+  if (!recommended) {
+    throw new Error(
+      `needs-you: steward decision ${q.id} recommends ${step.recommendedOptionId}, which it does not offer`,
+    );
+  }
+  const shown = [recommended, ...step.options.filter((o) => o.id !== recommended.id)];
+  const tail = step.prompt.slice(step.prompt.lastIndexOf('Recommended: '));
+  const at = tail.indexOf(', because ');
+  const because = at < 0 ? '' : tail.slice(at + ', because '.length).trim();
+  const lead = `The steward recommends "${clip(recommended.label, 200)}"`;
+  return {
+    questionId: q.id,
+    decision: {
+      ...base,
+      recommended: {
+        answerId: recommended.id,
+        why: clip(because ? `${lead} because ${because}` : `${lead}.`, 600),
+        by: 'steward',
+      },
+      noRecommendation: null,
+      answers: shown.map((o) => {
+        const decision = stewardDecisionOf(o.id);
+        return answer({
+          id: o.id,
+          label: clip(o.label, 120),
+          act: 'question.answer',
+          path,
+          body: { round: step.round, optionId: o.id },
+          effect: decision ? STEWARD_DECISION_EFFECTS[decision] : null,
+          needsReason: decision !== null && STEWARD_DECISIONS_WITH_REASON.includes(decision),
+          recommended: o.id === recommended.id,
+        });
+      }),
+    },
+  };
+}
+
 /** The one line a suggestion shows: the text, why, and the records it read. */
 function suggestionWhy(text: string, why: string, from: readonly string[]): string {
   return clip(`"${clip(text, 320)}" ${why}${from.length ? ` (read ${from.join(', ')})` : ''}`, 600);
@@ -216,6 +271,9 @@ export function questionDecision(
   };
   if (isChoiceStep(step) && isStaleDraftQuestion(step.options)) {
     return staleDraftDecision(base, q, step, path);
+  }
+  if (isChoiceStep(step) && isStewardDecisionQuestion(step.options)) {
+    return stewardDecision(base, q, step, path);
   }
   if (isChoiceStep(step)) {
     const asked = step.options.find((o) => o.id === step.recommendedOptionId);

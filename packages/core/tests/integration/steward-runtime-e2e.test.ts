@@ -5,7 +5,8 @@
 // hour, not again on the same basis, and its acts are undone through the undo door or refused by
 // name; and a steward turn reaches nothing outside its act's menu. The standing read is replaced
 // here by a scripted one of its contract type (`OpenStandingsRead`), so each case states exactly the
-// standing it acts on; the real read, provided at boot, is driven in steward-standing-e2e.
+// standing it acts on; the real read, provided at boot, is driven in steward-standing-e2e. A run a
+// door refused waits for its standing to move, never tried again on the same basis.
 //
 // @direct-test-of packages/core/src/steward/consumer.ts
 // @direct-test-of packages/core/src/steward/runs-store.ts
@@ -388,5 +389,100 @@ describe('a stuck item is acted on within the hour, once per basis (BC-5)', () =
 
     const unknown = await as('POST', '/steward-acts/00000000-0000-4000-8000-000000000000/undo');
     expect([unknown.status, unknown.json.code]).toEqual([404, 'STEWARD_ACT_UNKNOWN']);
+  });
+});
+
+describe('a run a door refused waits for its standing to move (no retry loop)', () => {
+  it('ends failed naming the refusal, and is not diagnosed again on that basis an hour later', async () => {
+    const issue = await createTestIssue(projectId, ownerId, 42, {
+      status: 'reopen',
+      createdAt: new Date(),
+    });
+    standings = [stuckIssue(issue, 'refused-1')];
+    const t0 = new Date();
+    expect((await steward.sweepStandings(t0)).stuck).toBe(1);
+    await settleOutbox();
+    resetScript();
+    script.steps = [
+      // the issue door refuses a key this project holds no issue for
+      {
+        tool: {
+          name: 'steward_comment_issue',
+          args: { issue: 'ISS-9999', body: 'Asked the master.' },
+        },
+      },
+      { text: 'Could not comment.' },
+    ];
+    await steward.dispatchStewardRuns(new Date(t0.getTime() + STEWARD_DEBOUNCE_MS + 30_000));
+    const failed = await rows<{ state: string; failure: string; failure_kind: string }>(sql`
+      SELECT state, failure, failure_kind FROM steward_runs WHERE subject_id = ${issue.id}`);
+    expect(failed).toHaveLength(1);
+    expect(failed[0]).toMatchObject({ state: 'failed', failure_kind: 'refused' });
+    expect(failed[0]?.failure).toContain(
+      'stuck_diagnosis: the door refused GET /api/issues/ISS-9999',
+    );
+    // an hour on, the same standing would earn the same refusal: the sweep leaves it to the standing
+    await rows(
+      sql`UPDATE steward_runs SET ended_at = now() - interval '2 hours' WHERE subject_id = ${issue.id}`,
+    );
+    expect((await steward.sweepStandings(new Date())).stuck).toBe(0);
+    // a moved standing is diagnosed again
+    standings = [stuckIssue(issue, 'refused-2')];
+    expect((await steward.sweepStandings(new Date())).stuck).toBe(1);
+    await settleOutbox();
+    const runs = await runsOf(issue.id);
+    await steward.claimDueRuns(new Date(Date.now() + STEWARD_DEBOUNCE_MS + 1_000), 50);
+    await steward.endRun(runs.at(-1)?.id ?? '', { state: 'skipped', reason: 'subject_ended' });
+    standings = [];
+  });
+
+  it('ends failed as broken where a door could not answer, so the hour tries it again', async () => {
+    const issue = await createTestIssue(projectId, ownerId, 46, {
+      status: 'reopen',
+      createdAt: new Date(),
+    });
+    standings = [stuckIssue(issue, 'broken-1')];
+    const t0 = new Date();
+    expect((await steward.sweepStandings(t0)).stuck).toBe(1);
+    await settleOutbox();
+    const { stewardPorts, provideStewardPorts } = await import('../../src/steward/ports.js');
+    const given = stewardPorts();
+    // the comment door is down: a 503 is no refusal, and an unchanged standing may yet succeed
+    provideStewardPorts({
+      ...given,
+      doorFetch: (request) =>
+        request.method === 'POST' && new URL(request.url).pathname.endsWith('/comments')
+          ? Promise.resolve(Response.json({ error: 'upstream down' }, { status: 503 }))
+          : given.doorFetch(request),
+    });
+    try {
+      resetScript();
+      script.steps = [
+        {
+          tool: {
+            name: 'steward_comment_issue',
+            args: { issue: issue.key, body: 'Asked the master.' },
+          },
+        },
+        { text: 'The comment door was down.' },
+      ];
+      await steward.dispatchStewardRuns(new Date(t0.getTime() + STEWARD_DEBOUNCE_MS + 30_000));
+    } finally {
+      provideStewardPorts(given);
+    }
+    const failed = await rows<{ state: string; failure: string; failure_kind: string }>(sql`
+      SELECT state, failure, failure_kind FROM steward_runs WHERE subject_id = ${issue.id}`);
+    expect(failed).toHaveLength(1);
+    expect(failed[0]).toMatchObject({ state: 'failed', failure_kind: 'error' });
+    expect(failed[0]?.failure).toContain('stuck_diagnosis: the door broke POST');
+    await rows(
+      sql`UPDATE steward_runs SET ended_at = now() - interval '2 hours' WHERE subject_id = ${issue.id}`,
+    );
+    expect((await steward.sweepStandings(new Date())).stuck).toBe(1);
+    await settleOutbox();
+    const runs = await runsOf(issue.id);
+    await steward.claimDueRuns(new Date(Date.now() + STEWARD_DEBOUNCE_MS + 1_000), 50);
+    await steward.endRun(runs.at(-1)?.id ?? '', { state: 'skipped', reason: 'subject_ended' });
+    standings = [];
   });
 });

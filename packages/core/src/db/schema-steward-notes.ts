@@ -16,7 +16,7 @@ import { projects } from './schema-projects.js';
 const inList = (values: readonly string[]) => sql.raw(values.map((v) => `'${v}'`).join(', '));
 
 /**
- * The steward's two-line note on a requirement or a feedback item (REQ-48 BC-7, BC-8): what happened
+ * The steward's two-line note on a requirement, a feedback item or an issue (REQ-48 BC-7, BC-8): what happened
  * and what blocks, then what is next and by when, each claim vetted against the standing at write.
  * Insert-only (trigger `steward_notes_guard`): a write supersedes the current row in the same
  * transaction, so `superseded_at` is the one column that ever changes, once.
@@ -29,7 +29,7 @@ export const stewardNotes = pgTable(
       .notNull()
       .references(() => projects.id, { onDelete: 'cascade' }),
     subjectKind: text('subject_kind', { enum: STEWARD_NOTE_SUBJECT_KINDS }).notNull(),
-    /** The requirement's or feedback item's id; removed with its project. */
+    /** The requirement's, feedback item's or issue's id; removed with its project. */
     subjectId: uuid('subject_id').notNull(),
     lines: text('lines').array().notNull(),
     cites: jsonb('cites').notNull(),

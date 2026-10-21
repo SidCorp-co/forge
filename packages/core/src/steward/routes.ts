@@ -7,11 +7,12 @@ import { z } from 'zod';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { invalid, zValidator } from '../middleware/zod-validator.js';
 import { undoAct } from './acts-store.js';
+import { finishStewardJob } from './job.js';
 import { readStewardRuns } from './read.js';
 
 export const stewardRoutes = new Hono<{ Variables: AuthVars }>();
 
-for (const path of ['/:id/steward-runs', '/:id/steward-acts/*']) {
+for (const path of ['/:id/steward-runs', '/:id/steward-runs/*', '/:id/steward-acts/*']) {
   stewardRoutes.use(path, requireAuth(), assertEmailVerified());
 }
 
@@ -25,6 +26,23 @@ const projectParam = zValidator(
   'param',
   z.object({ id: z.uuid() }),
   invalid('invalid path: the project id is a uuid'),
+);
+
+const runParam = zValidator(
+  'param',
+  z.object({ id: z.uuid(), runId: z.uuid() }),
+  invalid('invalid path: a project uuid and a steward run uuid'),
+);
+
+const doneBody = zValidator(
+  'json',
+  z.strictObject({
+    refused: z.array(z.string().trim().min(3).max(600)).max(20),
+    broken: z.array(z.string().trim().min(3).max(600)).max(20).default([]),
+  }),
+  invalid(
+    'invalid body: { refused: ["METHOD path: CODE detail", ...], broken?: [...] }, both empty where every write landed',
+  ),
 );
 
 const actParam = zValidator(
@@ -57,4 +75,17 @@ stewardRoutes.post('/:id/steward-acts/:actId/undo', actParam, async (c) => {
     });
   }
   return c.json({ act: outcome.act, undone: outcome.undone });
+});
+
+// a steward job's last act: its acts are over, and these writes were refused (REQ-48 BC-1)
+stewardRoutes.post('/:id/steward-runs/:runId/done', runParam, doneBody, async (c) => {
+  const { id, runId } = c.req.valid('param');
+  const state = await finishStewardJob({
+    projectId: id,
+    runId,
+    userId: c.get('userId'),
+    refused: c.req.valid('json').refused,
+    broken: c.req.valid('json').broken,
+  });
+  return c.json({ state });
 });

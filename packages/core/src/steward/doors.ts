@@ -9,18 +9,43 @@ import { STEWARD_ACT_DOORS } from '@forge/contracts/steward-runtime';
 import { z } from 'zod';
 import { recordAct } from './acts-store.js';
 import { doorName, refusalCodeOfAnswer } from './door-call.js';
-import { type DoorContext, type DoorSpec, key, read } from './door-kit.js';
+import { type DoorContext, type DoorSpec, issueKey, key, read } from './door-kit.js';
 import { LESSON_CONFUSION } from './door-lessons.js';
 import { WRITE_DOORS } from './door-writes.js';
 
 export type { DoorContext } from './door-kit.js';
 
+/** The door that reads this run's own item, by its kind: the read a turn needs first, whatever it is. */
+const ITEM_PATH: Record<string, (ctx: DoorContext) => string> = {
+  requirement: (ctx) =>
+    `/api/projects/${ctx.projectId}/requirements/${encodeURIComponent(ctx.subject.key)}`,
+  feedback: (ctx) =>
+    `/api/projects/${ctx.projectId}/feedback/${encodeURIComponent(ctx.subject.key)}`,
+  issue: (ctx) => `/api/issues/${encodeURIComponent(ctx.subject.key)}?projectId=${ctx.projectId}`,
+};
+
 const READS: DoorSpec<never>[] = [
+  read(
+    'steward_read_item',
+    "Read this run's own item, whatever its kind: a requirement, a feedback item (its route and carrier issues) or an issue.",
+    z.strictObject({}),
+    (_a, ctx) => {
+      const path = ITEM_PATH[ctx.subject.kind];
+      if (!path) throw new Error(`steward: a run on a ${ctx.subject.kind} has no item read`);
+      return path(ctx);
+    },
+  ),
   read(
     'steward_read_standings',
     "Read the project's open items' standings: group, waiting on, due, stuck and basis.",
     z.strictObject({}),
     (_a, ctx) => `/api/projects/${ctx.projectId}/standings`,
+  ),
+  read(
+    'steward_list_requirements',
+    "List the project's requirements: key, title, status and area. A draft delivers only an agreed or accepted one.",
+    z.strictObject({}),
+    (_a, ctx) => `/api/projects/${ctx.projectId}/requirements?view=summary`,
   ),
   read(
     'steward_read_requirement',
@@ -36,8 +61,8 @@ const READS: DoorSpec<never>[] = [
   ),
   read(
     'steward_read_issue',
-    'Read an issue by key: status, plan, criteria and their verdicts.',
-    z.strictObject({ issue: key }),
+    'Read an issue by key (ISS-n): status, plan, criteria and their verdicts. A requirement or feedback key is refused naming its own read.',
+    z.strictObject({ issue: issueKey }),
     (a, ctx) => `/api/issues/${encodeURIComponent(a.issue)}?projectId=${ctx.projectId}`,
   ),
   read(
@@ -93,10 +118,19 @@ export async function callStewardDoor(
       text: JSON.stringify({ error: `${name}: ${z.prettifyError(parsed.error)}` }),
     };
   }
-  const { request, answer, act } = await spec.call(parsed.data, ctx);
+  const called = await spec.call(parsed.data, ctx);
+  if ('correct' in called) {
+    return { ok: false, text: JSON.stringify({ error: `${name}: ${called.correct}` }) };
+  }
+  const { request, answer, act, acts } = called;
+  for (const landed of acts ?? []) {
+    ctx.acts.push(
+      await recordAct({ ...landed, runId: ctx.runId, projectId: ctx.projectId, act: ctx.act }),
+    );
+  }
   if (!answer.ok) {
     if (spec.write) {
-      ctx.refused.push(
+      (answer.status >= 500 ? ctx.broken : ctx.refused).push(
         `${doorName(request)}: ${refusalCodeOfAnswer(answer) ?? answer.status} ${answer.text.slice(0, 300)}`,
       );
     }

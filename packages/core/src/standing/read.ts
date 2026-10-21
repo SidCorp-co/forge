@@ -59,12 +59,11 @@ async function issueItems(projectId: string): Promise<ItemStanding[]> {
 
 /** Each item with its current steward note, the note marked stale where the item's basis moved. */
 async function withNotes(projectId: string, items: ItemStanding[]): Promise<ItemStanding[]> {
-  const noted = items.filter((i) => i.subject.kind !== 'issue');
   const rows = await currentNoteRowsOf(
     projectId,
-    noted.map((i) => i.subject.id),
+    items.map((i) => i.subject.id),
   );
-  const byId = new Map(noted.map((i) => [i.subject.id, i]));
+  const byId = new Map(items.map((i) => [i.subject.id, i]));
   const notes: Map<string, StewardNote> = await notesOf(
     [...rows.values()],
     (r) => byId.get(r.subjectId)?.subject.key ?? r.subjectId,
@@ -89,14 +88,19 @@ export const openStandings: OpenStandingsRead = async (projectId) => {
   );
 };
 
-/** One requirement's or feedback item's standing with its note, by key; null where the project holds none. */
+const ITEMS_OF: Record<StewardNoteSubjectKind, (projectId: string) => Promise<ItemStanding[]>> = {
+  requirement: requirementItems,
+  feedback: feedbackItems,
+  issue: issueItems,
+};
+
+/** One requirement's, feedback item's or open issue's standing with its note, by key; null where the project holds none. */
 export async function standingOfSubject(
   projectId: string,
   kind: StewardNoteSubjectKind,
   key: string,
 ): Promise<ItemStanding | null> {
-  const items =
-    kind === 'requirement' ? await requirementItems(projectId) : await feedbackItems(projectId);
+  const items = await ITEMS_OF[kind](projectId);
   const wanted = key.trim().toUpperCase();
   const item = items.find((i) => i.subject.key.toUpperCase() === wanted || i.subject.id === key);
   if (!item) return null;

@@ -4,6 +4,7 @@ import type { PersonVia } from '@forge/contracts/ecosystem';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import { QUESTION_MACHINE } from '@forge/contracts/question-machine';
 import type { AnswerCredential, AnswerHold } from '@forge/contracts/questions';
+import { isStewardDecisionQuestion, stewardDecisionOf } from '@forge/contracts/steward';
 import { and, eq } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { issues } from '../db/schema.js';
@@ -15,7 +16,7 @@ import { emitEvent } from '../outbox/index.js';
 import { holds, type PermissionFacts, requireHeld } from '../permissions/index.js';
 import { recordOnRequirement } from './answer-decision.js';
 import { recordAnswerOnIssue } from './answer-record.js';
-import { decideChannelGate } from './ports.js';
+import { carryStewardDecision, decideChannelGate, type StewardDecisionAnswer } from './ports.js';
 import { answeredBody, optionPermission, refuseQuestion, view } from './write.js';
 
 export type GivenAnswer = { kind: 'option'; optionId: string } | { kind: 'text'; text: string };
@@ -70,10 +71,11 @@ function refuseAnswerTo(row: QuestionRow, args: AnswerInput, now: Date): Questio
   }
   const current = row.steps[row.steps.length - 1];
   if (!current) throw new Error(`question ${row.id} has no round to answer`);
-  if (args.note !== undefined && row.origin?.kind !== 'channel_gate') {
+  const decision = isChoiceStep(current) && isStewardDecisionQuestion(current.options);
+  if (args.note !== undefined && row.origin?.kind !== 'channel_gate' && !decision) {
     throw refuseQuestion(
       'QUESTION_NOTE_NOT_TAKEN',
-      'a note travels only with an answer that carries it somewhere, and this question carries none — a channel gate takes one; here, answer with the option alone',
+      'a note travels only with an answer that carries it somewhere, and this question carries none — a channel gate and a steward decision take one; here, answer with the option alone',
     );
   }
   if (current.round !== args.round) {
@@ -204,11 +206,49 @@ async function answerRound(
   );
 }
 
+/** The steward decision an option answer names, read from the question's current round; else null. */
+async function stewardDecisionAnswered(args: AnswerInput): Promise<StewardDecisionAnswer | null> {
+  if (args.answer.kind !== 'option') return null;
+  const decision = stewardDecisionOf(args.answer.optionId);
+  if (!decision) return null;
+  const [row] = await db
+    .select()
+    .from(agentQuestions)
+    .where(eq(agentQuestions.id, args.questionId))
+    .limit(1);
+  const step = row?.steps.at(-1);
+  if (!row?.issueId || !step || !isChoiceStep(step) || !isStewardDecisionQuestion(step.options)) {
+    return null;
+  }
+  return {
+    questionId: row.id,
+    projectId: row.projectId,
+    issueId: row.issueId,
+    decision,
+    optionId: args.answer.optionId,
+    by: args.by,
+    note: args.note?.trim() || null,
+    fingerprint: step.options[0]?.fingerprint ?? null,
+  };
+}
+
 /**
- * Record one answer, or refuse and leave the row exactly as it was.
+ * Record one answer, or refuse and leave the row exactly as it was. A steward decision's answer is
+ * carried out as the answerer in the same transaction (REQ-48 BC-5): an act the kernel refuses
+ * refuses the answer, by its own name, and the question stays open.
  */
 export async function answerQuestion(args: AnswerInput) {
-  const committed = await db.transaction(async (tx) => {
+  const decision = await stewardDecisionAnswered(args);
+  const answerIn = (tx: Tx) => answerQuestionIn(tx, args);
+  const committed = decision
+    ? await carryStewardDecision(decision, answerIn)
+    : await db.transaction(answerIn);
+  return view(committed);
+}
+
+/** The answer's writes inside `tx`: the round, the issue's record, the requirement's, and the event. */
+export async function answerQuestionIn(tx: Tx, args: AnswerInput) {
+  {
     const [row] = await tx
       .select()
       .from(agentQuestions)
@@ -249,6 +289,5 @@ export async function answerQuestion(args: AnswerInput) {
       body: answeredBody(answered),
     });
     return { ...row, steps, status: 'answered' as const };
-  });
-  return view(committed);
+  }
 }

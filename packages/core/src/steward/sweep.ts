@@ -1,9 +1,10 @@
 // The `standing-sweep` cluster timer (REQ-48 BC-1): every 5 minutes it reads every open item's
 // standing in each project whose steward is on, and starts the steward where nothing else would. An
 // item stuck on a basis no run of its diagnosis holds is emitted `standing.stuck`, so an item turning
-// stuck by time alone is seen within 5 minutes, a lost wake is re-emitted, and an issue (which takes
-// no note) is not diagnosed again on every sweep. A requirement or feedback item whose basis moved off
-// its note is emitted `standing.changed`. An ask of the master stands until its item's basis moves.
+// stuck by time alone is seen within 5 minutes, and a lost wake is re-emitted. A requirement or
+// feedback item whose basis moved off its note is emitted `standing.changed`, and so is an issue that
+// holds a note: an issue is noted once its diagnosis writes one, never on every sweep for being open.
+// An ask of the master stands until its item's basis moves.
 
 import type { ItemStanding } from '@forge/contracts/steward';
 import { and, eq, isNotNull, isNull } from 'drizzle-orm';
@@ -56,7 +57,9 @@ async function sweepRow(
     tally.stuck += 1;
     return;
   }
-  if (row.subject.kind === 'issue' || row.note?.basis === row.basis) return;
+  if (row.note?.basis === row.basis) return;
+  // an open issue takes its first note from its diagnosis, not from being open
+  if (row.subject.kind === 'issue' && !row.note) return;
   // a note this basis already had a run for is not asked again: a refused write says so on that run
   if (await ranOnBasis(subject, 'note', row.basis)) return;
   await db.transaction((tx) =>

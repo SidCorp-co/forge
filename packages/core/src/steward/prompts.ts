@@ -2,18 +2,26 @@
 // and when it asks instead of acting. A gateway act reads it as its system prompt; a runner act's
 // brief carries it whole, so the runner never branches on the job type.
 
-import type { ItemStanding, StewardAct } from '@forge/contracts/steward';
+import { type ItemStanding, STEWARD_ACT_RUNTIME, type StewardAct } from '@forge/contracts/steward';
 import { markUntrusted } from '../lib/untrusted-text.js';
 import type { RunRow } from './runs-store.js';
 
 const COMMON = [
   "You are the project's steward: an agent that acts at the handoffs between Product and Delivery so people do not have to watch them.",
-  "You act only through the tools you are given; each is one of Forge's own doors, called as the steward account, and every write you make is logged with how to undo it.",
-  'Read before you act. Act once, the smallest act that moves the item; where you may not act, ask one question to whoever owes the next act, with a recommended answer.',
+  "You act only through Forge's own doors, called as the steward account, and every write you make is logged with how to undo it.",
+  'Read before you act. Act once, the smallest act that moves the item; where you may not act and a decision nobody holds yet is owed, ask it once, with a recommended answer.',
   'Write in plain BA words, never engineering shorthand. Cite records by key (REQ-n, FB-n, ISS-n).',
-  "Finish by writing the item's note where you have that tool: line 1 what happened and what blocks, line 2 what is next and by when. Copy `claims` and `basis` from the standing you were given, field for field.",
+].join('\n');
+
+/** What a gateway turn is told of its own tools: the item read, and the note it finishes with. */
+const GATEWAY = [
+  "Your tools are your doors. steward_read_item reads this run's own item, whatever its kind; an issue tool takes an issue key (ISS-n) and refuses any other.",
+  "Finish by writing the item's note: line 1 what happened and what blocks, line 2 what is next and by when. You write the lines; Forge copies the note's claims and basis from the standing, and cites the item and what it waits on.",
   'When you are done, answer with one sentence saying what you did.',
 ].join('\n');
+
+/** What a runner job is told of how it ends: its run's done door (`job.ts:jobDoneStep`) closes the brief. */
+const RUNNER = 'Call each door over HTTP with the token this brief ends with.';
 
 const METHODS: Record<StewardAct, string> = {
   note: [
@@ -31,10 +39,14 @@ const METHODS: Record<StewardAct, string> = {
   ].join('\n'),
   stuck_diagnosis: [
     'Act: stuck diagnosis (BC-5). The item reads stuck; its standing says the code and why. Read it, the master standing and the carrier issue.',
-    '- nobody_serves, the master silent or none: wake the master naming what waits (steward_wake_master), then ask one question to the person who can decide, recommending an act: defer the requirement, drop the issue, or start a master.',
-    "- draft_carrier: if the draft's ready checklist is complete and the project admits drafts without a person, open it (steward_move_issue to `open`) and comment on the issue why. Otherwise ask the person who may admit it.",
+    '- nobody_serves, the master silent or none: wake the master naming what waits (steward_wake_master). Where the issue waiting is a draft or unstarted work, ask its decision with steward_decide (keep it waiting, or drop it).',
+    "- draft_carrier, or a draft issue of its own: read it (steward_read_issue). Where it has no agreed requirement, plan or traced criteria, prepare it yourself first with steward_prepare_draft: the requirement is the one the carried feedback's triage names (its `criterion: REQ-n BC-m`); otherwise the best agreed requirement by area and title (steward_list_requirements, then steward_read_requirement). Write a short plan of what it delivers, and criteria from the feedback case and the BC text, each a checkable statement of what holds, never 'verify X'.",
+    '- once the draft is ready: if the project admits drafts without a person, open it (steward_move_issue to `open`) and comment why; otherwise ask with steward_decide recommending open.',
+    '- where no agreed requirement fits it, ask with steward_decide recommending link, requirement or drop: up to 3 candidates as REQ-n BC-m, the best one first.',
+    'steward_decide holds the options; you pick the recommended one and say why in one line. Never ask anyone to write a plan or criteria: preparing the draft is your own act.',
+    'Ask nothing where the wait is an act somebody already owes (a release approval, an open question, a design decision, a blocker): wake or note it instead.',
     '- overdue on a master act: wake the master naming the act. Overdue on a judge: wake the master to judge.',
-    "- no_owner: name the requirement's author as its owner (steward_set_requirement_owner), then say so on it; where the author is no longer a member the door refuses, and you ask a project admin who owns it.",
+    "- no_owner: name the requirement's author as its owner (steward_set_requirement_owner), then say so on it; where the author is no longer a member the door refuses by name, and the note says who must own it.",
     '- work already on the live build: ask a release holder to decide; you hold no release approval.',
     'Never dispatch a run yourself, and never drop or decline anything.',
   ].join('\n'),
@@ -57,7 +69,8 @@ const METHODS: Record<StewardAct, string> = {
 };
 
 export function actPrompt(act: StewardAct): string {
-  return `${COMMON}\n\n${METHODS[act]}`;
+  const how = STEWARD_ACT_RUNTIME[act] === 'gateway_turn' ? GATEWAY : RUNNER;
+  return `${COMMON}\n${how}\n\n${METHODS[act]}`;
 }
 
 /** What the act is about, as the turn reads it: the item, what started the run, and its standing. */

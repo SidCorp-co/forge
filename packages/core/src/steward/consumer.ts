@@ -2,10 +2,12 @@
 // about, inserted or folded inside the delivery's own transaction (`delivery.inbox`), so a redelivery
 // after the commit finds the trigger already folded. A steward job's end settles its run.
 
+import { TERMINAL_JOB_STATUSES } from '@forge/contracts/job-machine';
 import type { StandingSubjectKind, StewardTrigger } from '@forge/contracts/steward';
 import { consume, type Delivery } from '../outbox/index.js';
 import { isUndoOverride } from './acts-store.js';
 import { settleJobRun } from './dispatch.js';
+import { revokeEndedJobCredential } from './job.js';
 import { foldTrigger, runOfJob } from './runs-store.js';
 import { issueSubjects, type SubjectRow, subjectOf } from './subjects.js';
 
@@ -132,6 +134,9 @@ export function registerSteward(): void {
     handle: async (p) => {
       const run = await runOfJob(p.id);
       if (run) await settleJobRun(run, p.to);
+      else if ((TERMINAL_JOB_STATUSES as readonly string[]).includes(p.to)) {
+        await revokeEndedJobCredential(p.projectId, p.id);
+      }
     },
   });
 }
