@@ -1,5 +1,5 @@
-// REQ-41 BC-13: the project home opens on chat, and beside it are three flat lists: what needs you
-// (the decisions read, with the buttons that answer them), what is running, and what is at risk.
+// REQ-41 BC-13: the project home opens on three flat lists: what needs you (the decisions read, with
+// the buttons that answer them), what is running, and what is at risk. No chat is drawn in the page.
 
 import { needsYouDecisionsSchema } from "@forge/contracts/needs-you-decisions";
 import type { ProjectStatus } from "@forge/contracts/project-status";
@@ -13,11 +13,7 @@ import { ProjectHome } from "./components/project-home";
 
 vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble({ useRouter: () => ({ push: vi.fn() }) }));
 vi.mock("@/features/conversations/components/conversation-chat", () => ({
-  ConversationChat: ({ conversationId }: { conversationId?: string }) => (
-    <div data-testid="chat" data-conversation={conversationId ?? "new"}>
-      <textarea aria-label="Composer" />
-    </div>
-  ),
+  ConversationChat: () => <div data-testid="chat" />,
 }));
 
 afterEach(() => vi.unstubAllGlobals());
@@ -88,15 +84,16 @@ function core(s: ProjectStatus = status()) {
 }
 
 describe("the project home (REQ-41 BC-13)", () => {
-  it("leads with the composer, then three flat lists: 3 decisions, 2 running, 1 at risk beside 1 short", async () => {
+  it("leads with what needs you, then two flat lists: 3 decisions, 2 running, 1 at risk beside 1 short", async () => {
     core();
     renderWithQuery(<ProjectHome projectId={PROJECT} slug="hop" />);
     const home = await screen.findByTestId("project-home");
     await screen.findAllByTestId("needs-you-decision");
     await screen.findAllByTestId("home-running-row");
-    // the composer is the first control on the page, ahead of any button the sections carry
-    expect(home.querySelector("textarea, button, a, input")).toBe(screen.getByLabelText("Composer"));
-    expect(screen.getByTestId("chat")).toHaveAttribute("data-conversation", "c-1");
+    // no chat on the page: no composer, no thread, and the first control is a decision's own button
+    expect(screen.queryByTestId("chat")).toBeNull();
+    expect(home.querySelector("textarea")).toBeNull();
+    expect(screen.getByTestId("home-needs-you").contains(home.querySelector("button, a, input"))).toBe(true);
     expect(within(screen.getByTestId("home-needs-you")).getAllByTestId("needs-you-decision")).toHaveLength(3);
     expect(screen.getAllByTestId("home-running-row").map((r) => r.getAttribute("data-row-key"))).toEqual(["ISS-20", "ISS-21"]);
     expect(screen.getAllByTestId("home-at-risk-row").map((r) => r.getAttribute("data-row-key"))).toEqual(["REQ-4", "REQ-7"]);
@@ -111,14 +108,14 @@ describe("the project home (REQ-41 BC-13)", () => {
     expect(screen.getByRole("list", { name: "At risk" })).toBeInTheDocument();
   });
 
-  it("stacks on one column below lg and puts the chat column first", async () => {
+  it("stacks on one column below lg and puts what needs you first", async () => {
     core();
     renderWithQuery(<ProjectHome projectId={PROJECT} slug="hop" />);
     const home = await screen.findByTestId("project-home");
-    // one column (chat, then the side), side by side from lg with a 26rem side column
+    // one column (needs you, then the side), side by side from lg with a 26rem side column
     expect(home.className).toMatch(/\bflex-col\b/);
     expect(home.className).toContain("lg:flex-row");
-    expect(home.firstElementChild).toBe(screen.getByTestId("home-chat"));
+    expect(home.firstElementChild).toBe(screen.getByTestId("home-needs-you"));
     expect(home.lastElementChild?.className).toContain("lg:w-104");
   });
 
@@ -150,7 +147,6 @@ describe("the project home (REQ-41 BC-13)", () => {
     expect(await screen.findByText("Nothing running")).toBeInTheDocument();
     expect(screen.getByText("No risks")).toBeInTheDocument();
     expect(screen.getByText("Nothing")).toBeInTheDocument();
-    expect(screen.getByTestId("chat")).toHaveAttribute("data-conversation", "new");
   });
 
   it("refuses to call a requirement at risk that core did not call late or that holds every criterion", () => {

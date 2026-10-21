@@ -1,6 +1,6 @@
-
-// The project home's first screen (REQ-41 BC-13): the conversation, and beside it, or below it on a
-// phone, what needs you, what is running and what is at risk. Flat tables on hairlines, no cards.
+// The project home's first screen (REQ-41 BC-13): what needs you, and beside it, or below it on a
+// phone, what is running and what is at risk. Flat tables on hairlines, no cards. The conversation
+// is not drawn here: it opens from the top bar's Ask Agent, so the dashboard reads as state.
 // Needs you is the one decisions read the chat answers from (`useNeedsYouDecisions`, `DecisionList`).
 
 import { DecisionList } from "@/features/needs-you";
@@ -9,7 +9,6 @@ import { useProjectStatus } from "@/features/project-status";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { atRiskRows, runningRows } from "../derive";
-import { HomeChat } from "./home-chat";
 import { AtRiskTable, HomeSectionTitle, RunningTable } from "./home-tables";
 
 export function ProjectHome({ projectId, slug }: { projectId: string; slug: string }) {
@@ -19,18 +18,17 @@ export function ProjectHome({ projectId, slug }: { projectId: string; slug: stri
   const status = statusQ.data;
   return (
     <div className="flex flex-col gap-6 lg:flex-row" data-testid="project-home">
-      <HomeChat projectId={projectId} />
+      <section aria-label={t("home.needsYou")} data-testid="home-needs-you" className="min-w-0 lg:flex-1">
+        <HomeSectionTitle count={decisionsQ.data?.total}>{t("home.needsYou")}</HomeSectionTitle>
+        {decisionsQ.data ? (
+          <DecisionList read={decisionsQ.data} slug={slug} />
+        ) : decisionsQ.isError ? (
+          <p className="fg-caption text-danger" role="alert">
+            {formatApiError(decisionsQ.error)}
+          </p>
+        ) : null}
+      </section>
       <div className="flex min-w-0 flex-col gap-6 lg:w-104 lg:flex-none">
-        <section aria-label={t("home.needsYou")} data-testid="home-needs-you">
-          <HomeSectionTitle count={decisionsQ.data?.total}>{t("home.needsYou")}</HomeSectionTitle>
-          {decisionsQ.data ? (
-            <DecisionList read={decisionsQ.data} slug={slug} />
-          ) : decisionsQ.isError ? (
-            <p className="fg-caption text-danger" role="alert">
-              {formatApiError(decisionsQ.error)}
-            </p>
-          ) : null}
-        </section>
         {statusQ.isError ? (
           <p className="fg-caption text-danger" role="alert">
             {formatApiError(statusQ.error)}

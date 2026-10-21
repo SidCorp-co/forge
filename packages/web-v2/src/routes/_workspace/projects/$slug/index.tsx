@@ -142,7 +142,7 @@ function ProjectOverviewPage() {
       </header>
 
       <div className="space-y-6">
-        {/* the home opens on the conversation, with what needs you, what is running and what is at risk beside it */}
+        {/* the home opens on what needs you, with what is running and what is at risk beside it; chat opens from Ask Agent */}
         <ProjectHome projectId={project.id} slug={project.slug} />
 
         {/* what the project is and where it stands comes first; the system map follows, the asks below it */}
