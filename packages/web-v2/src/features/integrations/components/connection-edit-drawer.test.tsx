@@ -28,7 +28,7 @@ vi.mock("@/features/projects/hooks", () => ({
 }));
 vi.mock("@/providers/toast-provider", () => ({ useToast: () => ({ toast: vi.fn() }) }));
 
-const { ConnectionEditDrawer } = await import("./connection-edit-drawer");
+const { ConnectionEditDrawer, testOutcome } = await import("./connection-edit-drawer");
 
 expect.extend(matchers);
 
@@ -80,5 +80,29 @@ describe("the drawer's Projects using it panel over a refusal", () => {
     mount();
 
     expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument();
+  });
+});
+
+// ISS-1421 r17 — judge-73 read "Test failed: error — …" and "Test failed: needs_reauth — …": the
+// failure said twice, and a stored status value set beside a badge that words it for a person.
+describe("the drawer's Test connection line", () => {
+  it("is the provider's own sentence when it gave one, with no stored status before it", () => {
+    const said =
+      "Forge could not check Coolify. The server at example.com answered 404 Not Found to GET /api/v1/resources, so it may not be Coolify. Check the address saved on this connection, then test again.";
+    expect(testOutcome({ status: "error", message: said })).toBe(said);
+    expect(testOutcome({ status: "needs_reauth", message: "Postman refused the stored credential." })).toBe(
+      "Postman refused the stored credential.",
+    );
+  });
+
+  it("words a status for a person when the provider gave no sentence", () => {
+    expect(testOutcome({ status: "ok" })).toBe("The connection works.");
+    expect(testOutcome({ status: "needs_reauth" })).toBe("It needs signing in again.");
+    expect(testOutcome({ status: "error" })).toBe("The last check failed.");
+    for (const status of ["error", "needs_reauth", "needs_scope"]) {
+      const line = testOutcome({ status });
+      expect(line).not.toContain(status);
+      expect(line).not.toMatch(/Test failed/);
+    }
   });
 });

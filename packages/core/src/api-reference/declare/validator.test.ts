@@ -3,6 +3,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
+import { issueRelationInputSchema } from '../../issues/relations-service.js';
 import { declaresInput, validatorDeclarations, zValidator } from './validator.js';
 
 const schema = z.object({ n: z.coerce.number().int().min(1) });
@@ -228,7 +229,7 @@ describe('zValidator on a JSON body', () => {
     });
     expect(await (await sent('{"colour":"red"}')).json()).toEqual({
       refused: 400,
-      message: 'The field colour is not one this call takes. The field n takes a number, not NaN.',
+      message: 'The field colour is not one this call takes. The field n is required.',
     });
     expect((await sent('{"n":1}')).status).toBe(200);
   });
@@ -242,5 +243,45 @@ describe('zValidator on a JSON body', () => {
       body: '{"n":1,"colour":"red"}',
     });
     expect(res.status).toBe(200);
+  });
+});
+
+// ISS-1421 r17 — judge-73: a slip of letter case alone named no near field, and `?limit=abc` was
+// answered "takes a number, not NaN", a word the caller never typed.
+describe('a REST refusal says what the caller sent', () => {
+  const body = z.object({
+    documentId: z.string().optional(),
+    relations: z.array(issueRelationInputSchema).optional(),
+  });
+  const app = new Hono();
+  app.post('/j', zValidator('json', body), (c) => c.json({ ok: true }));
+  app.get('/q', zValidator('query', schema), (c) => c.json({ ok: true }));
+  app.onError((err, c) =>
+    err instanceof HTTPException
+      ? c.json({ refused: err.status, message: err.message }, err.status)
+      : c.json({}, 500),
+  );
+  const said = async (path: string, init?: RequestInit) =>
+    ((await (await app.request(path, init)).json()) as { message?: string }).message;
+
+  it('names the field a stray one differs from in letter case alone, arrays included', async () => {
+    expect(await said('/j', post({ documentid: 'x' }))).toBe(
+      'The field documentid is not one this call takes. This call takes documentId, which may be what documentid meant.',
+    );
+    expect(await said('/j', post({ documentID: 'x' }))).toContain(
+      'This call takes documentId, which may be what documentID meant.',
+    );
+    const relation = { dependsOnID: '7c9e6679-7425-40de-944b-e07fc1f90ae7' };
+    expect(await said('/j', post({ relations: [relation] }))).toContain(
+      'This call takes relations.0.dependsOnId, which may be what relations.0.dependsOnID meant.',
+    );
+    expect(await said('/j', post({ colour: 'red' }))).toBe(
+      'The field colour is not one this call takes.',
+    );
+  });
+
+  it('quotes a value a number could not be read from, never NaN', async () => {
+    expect(await said('/q?n=abc')).toBe('The field n takes a number, not "abc".');
+    expect(await said('/q')).toBe('The field n is required.');
   });
 });

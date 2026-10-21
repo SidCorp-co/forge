@@ -96,7 +96,7 @@ masterCharterRoutes.put(
   '/:id/master-charter',
   writeMasterCharter,
   takesBodyAsSent(
-    'parseMasterCharterWrite reads the body itself and refuses every field but goal and rules by name',
+    'the charter reads its own body and refuses every field but goal and rules by name, in its own sentence',
   ),
   zValidator('param', idParamSchema, (r) => {
     if (!r.success) throw badRequest('invalid project id');

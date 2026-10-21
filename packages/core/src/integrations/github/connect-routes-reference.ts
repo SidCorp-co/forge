@@ -1,15 +1,15 @@
 import { z } from 'zod';
 import { describeOperation, fail, json, redirect } from '../../api-reference/declare/describe.js';
-import { declaresInput } from '../../api-reference/declare/validator.js';
+import { declaresInput, zValidator } from '../../api-reference/declare/validator.js';
 import { noRoleOnProject, notProjectAdmin, onProject, vaultMissing } from '../routes-reference.js';
 
 /** Which org owns the App on github.com (`org`) and which Forge org owns the connection (`orgId`). */
 export const connectQuerySchema = z.object({
   org: z.string().optional(),
-  orgId: z.string().optional(),
+  orgId: z.uuid().optional(),
 });
 
-export const repositoriesQuerySchema = z.object({ connectionId: z.string().optional() });
+export const repositoriesQuerySchema = z.object({ connectionId: z.uuid() });
 
 /** GitHub hands the code and the state back on the first redirect, the installation on the second. */
 export const manifestCallbackQuerySchema = z.object({
@@ -116,7 +116,7 @@ export const githubInstalled = describeOperation({
   },
 });
 
-export const declaresConnectQuery = declaresInput('query', connectQuerySchema);
-export const declaresRepositoriesQuery = declaresInput('query', repositoriesQuerySchema);
+export const declaresConnectQuery = zValidator('query', connectQuerySchema);
+export const declaresRepositoriesQuery = zValidator('query', repositoriesQuerySchema);
 export const declaresManifestCallbackQuery = declaresInput('query', manifestCallbackQuerySchema);
 export const declaresInstalledQuery = declaresInput('query', installedQuerySchema);

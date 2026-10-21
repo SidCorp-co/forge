@@ -104,3 +104,32 @@ export function unknownFields(schema: ZodType, body: unknown): string[] {
   if (!named) return [];
   return Object.keys(record).filter((k) => !named.has(k));
 }
+
+/** The schemas a node stands for: itself unwrapped, and each branch of its unions and intersections. */
+function branchesOf(schema: ZodType): ZodType[] {
+  const at = unwrap(schema);
+  const def = defOf(at) as Def & { getter?: () => ZodType };
+  if (def.type === 'lazy' && def.getter) return branchesOf(def.getter());
+  if (def.type === 'union') return (def.options ?? []).flatMap(branchesOf);
+  if (def.type === 'intersection' && def.left && def.right)
+    return [def.left, def.right].flatMap(branchesOf);
+  return [at];
+}
+
+/** Every field the schema names at `path`, across every branch: what a stray field there may have meant. */
+export function fieldsNamedAt(schema: ZodType, path: readonly PropertyKey[]): string[] {
+  let nodes = branchesOf(schema);
+  for (const segment of path) {
+    nodes = nodes.flatMap((n) => {
+      const def = defOf(n) as Def & { element?: ZodType };
+      if (typeof segment === 'number') return def.element ? branchesOf(def.element) : [];
+      const next = def.type === 'object' ? def.shape?.[String(segment)] : undefined;
+      return next ? branchesOf(next as ZodType) : [];
+    });
+  }
+  const names = nodes.flatMap((n) => {
+    const def = defOf(n);
+    return def.type === 'object' ? Object.keys(def.shape ?? {}) : [];
+  });
+  return [...new Set(names)];
+}

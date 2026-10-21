@@ -23,7 +23,7 @@ function failure(err: unknown, READ: string, lacks: string): CoolifyReadFailedEr
   if (err instanceof SyntaxError) {
     return new CoolifyReadFailedError(
       'not-json',
-      `Coolify answered ${READ} with something that is not JSON (${said}), so Forge has no ${lacks} to read.`,
+      `The address saved on this connection answered ${READ} with something that is not JSON (${said}), so it may not be Coolify, and Forge has no ${lacks} to read.`,
     );
   }
   const cause = err instanceof Error ? (err.cause as { code?: unknown } | undefined) : undefined;

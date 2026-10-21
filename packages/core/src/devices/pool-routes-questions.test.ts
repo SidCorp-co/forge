@@ -206,15 +206,19 @@ describe('POST /me/questions — the body a box actually sends', () => {
   });
 });
 
+const QUESTION_ID = '5b0f8a2e-0c1d-4e6f-9a3b-7c2d1e0f4a5b';
+
 describe('GET /me/questions/:id — the read-back', () => {
   it('serves the answer to the box registered as the waiter under that run', async () => {
     waiterFor.mockResolvedValue({ id: 'w-1' });
     answerOf.mockResolvedValue({ questionId: 'q-1', optionId: 'keep' });
-    const res = await app.request('/api/devices/me/questions/q-1?runId=run-7', { headers: AUTH });
+    const res = await app.request(`/api/devices/me/questions/${QUESTION_ID}?runId=run-7`, {
+      headers: AUTH,
+    });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ answer: { questionId: 'q-1', optionId: 'keep' } });
     expect(waiterFor).toHaveBeenCalledWith({
-      questionId: 'q-1',
+      questionId: QUESTION_ID,
       deviceId: 'dev-1',
       runId: 'run-7',
     });
@@ -222,8 +226,18 @@ describe('GET /me/questions/:id — the read-back', () => {
 
   it('404s a box that registered no waiter, rather than answering `not answered yet`', async () => {
     waiterFor.mockResolvedValue(null);
-    const res = await app.request('/api/devices/me/questions/q-1?runId=run-7', { headers: AUTH });
+    const res = await app.request(`/api/devices/me/questions/${QUESTION_ID}?runId=run-7`, {
+      headers: AUTH,
+    });
     expect(res.status).toBe(404);
     expect(answerOf).not.toHaveBeenCalled();
+  });
+
+  // ISS-1421 r17 — judge-73 read `q-j73` and got 500: the id reached a uuid column.
+  it('refuses an id that is not a uuid 400 by name, before any waiter is read', async () => {
+    const res = await app.request('/api/devices/me/questions/q-j73?runId=run-7', { headers: AUTH });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { message: string }).message).toContain('questionId');
+    expect(waiterFor).not.toHaveBeenCalled();
   });
 });

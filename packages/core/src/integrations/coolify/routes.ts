@@ -34,7 +34,7 @@ import {
 import { buildContextFromBinding, findBindingWithConnectionById } from '../store.js';
 import {
   CoolifyApiError,
-  describeCoolifyForbidden,
+  describeCoolifyAnswer,
   describeCoolifyRollbackImagesRefusal,
 } from './client.js';
 import {
@@ -82,11 +82,6 @@ import type { CoolifyConfig, CoolifySecrets } from './types.js';
 /** A refusal's message ends as a sentence does, whatever Coolify's own words ended on (ISS-1421 r6). */
 export const asSentence = (message: string): string =>
   /[.!?]$/.test(message.trimEnd()) ? message.trimEnd() : `${message.trimEnd()}.`;
-
-const describeCoolifyAnswer = (err: CoolifyApiError): string =>
-  err.status === 403
-    ? describeCoolifyForbidden(err)
-    : `Coolify answered HTTP ${err.status} to ${err.route ?? 'the request Forge made'}`;
 
 const asHttp = (err: unknown): never => {
   if (err instanceof CoolifyCommandError) {

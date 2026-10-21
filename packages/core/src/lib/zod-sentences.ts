@@ -1,5 +1,6 @@
 import { HTTPException } from 'hono/http-exception';
-import { z } from 'zod';
+import { type ZodType, z } from 'zod';
+import { fieldsNamedAt } from './unknown-fields.js';
 
 /**
  * A schema refusal in a reader's words: what was wrong and where, one capitalised sentence each,
@@ -77,10 +78,18 @@ function boundWords(subject: string, m: RegExpExecArray): string {
   return `${subject} takes ${BOUND_WORDS[op] ?? op} ${bound}${units ? ` ${units}` : ''}.`;
 }
 
+/** A value a coerced number read as NaN, quoted as the caller sent it where that is known. */
+function notANumber(subject: string, sent: unknown): string {
+  const quoted =
+    typeof sent === 'string' || typeof sent === 'boolean' ? JSON.stringify(sent) : null;
+  return `${subject} takes a number, ${quoted ? `not ${quoted}` : 'and the value sent is not one'}.`;
+}
+
 /** zod's default messages, each with the words it is said in; the first pattern that matches wins. */
 const ZOD_WORDS: ReadonlyArray<[RegExp, (subject: string, m: RegExpExecArray) => string]> = [
   [/^Invalid input: expected \w+, received undefined$/, (s) => `${s} is required.`],
   [/^Invalid input: expected date, received Date$/, (s) => `${s} is not a valid date.`],
+  [/^Invalid input: expected number, received NaN$/, (s) => notANumber(s, undefined)],
   [
     /^Invalid input: expected (\w+), received (\w+)$/,
     (s, m) => `${s} takes ${article(m[1] ?? '')}, not ${article(m[2] ?? '')}.`,
@@ -128,8 +137,8 @@ export function flattenedRefusalWords(details: unknown, at = ''): string[] {
 export function fieldsNear(sent: string, known: readonly string[]): string[] {
   const s = sent.toLowerCase();
   return known.filter((k) => {
+    if (k === sent) return false;
     const name = k.toLowerCase();
-    if (name === s) return false;
     return name.endsWith(s) || editDistance(name, s) <= 2;
   });
 }
@@ -147,6 +156,41 @@ function editDistance(a: string, b: string): number {
   return prev[b.length] ?? 0;
 }
 
+/**
+ * "This call takes `documentId`, which may be what `id` meant." for each stray key: the fields near
+ * it beside it, or, with none there, those near it one level down (`filters.issue` for `issueid`).
+ */
+function nearSentences(
+  keys: readonly string[],
+  path: readonly PropertyKey[],
+  fieldsAt: (path: readonly PropertyKey[]) => readonly string[],
+  named: (field: string) => string,
+): string[] {
+  const at = path.map(String).join('.');
+  const full = (k: string) => named(at ? `${at}.${k}` : k);
+  const known = fieldsAt(path);
+  const below = known.flatMap((k) => fieldsAt([...path, k]).map((c) => ({ k, c })));
+  return keys.flatMap((key) => {
+    let near = fieldsNear(key, known);
+    if (near.length === 0) {
+      const down = below.filter(({ c }) => c === key || fieldsNear(key, [c]).length > 0);
+      near = down.map(({ k, c }) => `${k}.${c}`);
+    }
+    if (near.length === 0) return [];
+    const which = near.length === 1 ? 'which' : 'either of which';
+    return [`This call takes ${joined(near.map(full))}, ${which} may be what ${full(key)} meant.`];
+  });
+}
+
+function valueAt(input: unknown, path: readonly PropertyKey[]): unknown {
+  let at = input;
+  for (const segment of path) {
+    if (at === null || typeof at !== 'object') return undefined;
+    at = (at as Record<PropertyKey, unknown>)[segment];
+  }
+  return at;
+}
+
 function joined(names: readonly string[]): string {
   return names.length <= 1
     ? names.join('')
@@ -159,7 +203,19 @@ function joined(names: readonly string[]): string {
  */
 export function schemaRefusalWords(
   issues: readonly SchemaIssue[],
-  { quote = false, valuesAre }: { quote?: boolean; valuesAre: string },
+  {
+    quote = false,
+    valuesAre,
+    fieldsAt,
+    input,
+  }: {
+    quote?: boolean;
+    valuesAre: string;
+    /** The body or query exactly as the caller sent it. */
+    input?: unknown;
+    /** The fields the schema names at a path, so a stray field there is followed by those near it. */
+    fieldsAt?: (path: readonly PropertyKey[]) => readonly string[];
+  },
 ): SchemaRefusalWords {
   const pathOf = (path: readonly PropertyKey[] = []) => path.map(String).join('.');
   const named = (field: string) => (quote ? `\`${field}\`` : field);
@@ -174,6 +230,7 @@ export function schemaRefusalWords(
           ? `The field ${fields[0]} is not one this call takes.`
           : `The fields ${joined(fields)} are not ones this call takes.`,
       );
+      if (fieldsAt) sentences.push(...nearSentences(issue.keys, issue.path ?? [], fieldsAt, named));
     } else if (!field) {
       sentences.push(zodMessageWords(null, issue.message ?? ''));
     } else if (
@@ -190,6 +247,14 @@ export function schemaRefusalWords(
       accepted.push({ field, values: (issue.values ?? issue.options ?? []).map(String) });
     } else if (issue.code === 'invalid_type' && /received undefined$/.test(issue.message ?? '')) {
       sentences.push(`The field ${named(field)} is required.`);
+    } else if (issue.code === 'invalid_type' && /received NaN$/.test(issue.message ?? '')) {
+      // A coerced number that read as NaN: "NaN" is a word the caller never typed (ISS-1421 r17).
+      const sent = valueAt(input, issue.path ?? []);
+      sentences.push(
+        input !== undefined && sent === undefined
+          ? `The field ${named(field)} is required.`
+          : notANumber(`The field ${named(field)}`, sent),
+      );
     } else {
       sentences.push(zodMessageWords(named(field), issue.message ?? ''));
     }
@@ -201,9 +266,15 @@ export function schemaRefusalWords(
  * A REST door's 400 for an input its schema refused: the sentences as its message, and in details
  * the flattened errors it always carried, beside the values each fixed-set field takes.
  */
-export function schemaRefused(error: z.core.$ZodError): HTTPException {
+export function schemaRefused(
+  error: z.core.$ZodError,
+  schema?: ZodType,
+  input?: unknown,
+): HTTPException {
   const { sentences, accepted } = schemaRefusalWords(error.issues, {
     valuesAre: 'listed in details.accepted',
+    input,
+    ...(schema ? { fieldsAt: (path: readonly PropertyKey[]) => fieldsNamedAt(schema, path) } : {}),
   });
   const details = {
     ...z.flattenError(error),
