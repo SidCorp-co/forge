@@ -18,8 +18,8 @@ import {
 } from '@forge/contracts/stale-drafts';
 import {
   isStewardDecisionQuestion,
-  STEWARD_DECISION_EFFECTS,
   STEWARD_DECISIONS_WITH_REASON,
+  stewardDecisionEffect,
   stewardDecisionOf,
 } from '@forge/contracts/steward';
 import { type ChoiceStep, isChoiceStep, type QuestionStep } from '../db/schema-questions.js';
@@ -145,6 +145,11 @@ function stewardDecision(
     );
   }
   const shown = [recommended, ...step.options.filter((o) => o.id !== recommended.id)];
+  // only a draft is offered open, link or requirement; work no master serves is kept or dropped
+  const draft = shown.some((o) => {
+    const d = stewardDecisionOf(o.id);
+    return d === 'open' || d === 'link' || d === 'requirement';
+  });
   const tail = step.prompt.slice(step.prompt.lastIndexOf('Recommended: '));
   const at = tail.indexOf(', because ');
   const because = at < 0 ? '' : tail.slice(at + ', because '.length).trim();
@@ -161,13 +166,16 @@ function stewardDecision(
       noRecommendation: null,
       answers: shown.map((o) => {
         const decision = stewardDecisionOf(o.id);
+        const effect = decision
+          ? stewardDecisionEffect(decision, { key: base.key, draft, option: o.id })
+          : null;
         return answer({
           id: o.id,
           label: clip(o.label, 120),
           act: 'question.answer',
           path,
           body: { round: step.round, optionId: o.id },
-          effect: decision ? STEWARD_DECISION_EFFECTS[decision] : null,
+          effect,
           needsReason: decision !== null && STEWARD_DECISIONS_WITH_REASON.includes(decision),
           recommended: o.id === recommended.id,
         });

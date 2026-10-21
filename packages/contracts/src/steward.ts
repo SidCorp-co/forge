@@ -534,15 +534,34 @@ export const stewardLinkLabel = (
 	text: string,
 ) => `Link it to ${requirement} ${bc}: ${text}`.slice(0, 200);
 
-/** What answering each decision does, said on its button before it is pressed. */
-export const STEWARD_DECISION_EFFECTS = {
-	open: "Opens the issue as you. The steward prepared its requirement, plan and criteria; its driver writes the rest.",
-	keep: "Keeps it as it is, with your reason. The steward does not ask again while its standing holds.",
-	drop: "Drops the issue as you, with your reason.",
-	link: "Links the draft to that requirement as you. The steward then writes its plan and criteria, and asks whether to open it.",
-	requirement:
-		"Starts a new requirement from it as you; the intake assistant drafts it, and the draft waits for it to be agreed.",
-} as const satisfies Record<StewardDecision, string>;
+/**
+ * What answering a steward decision does to the item, said on its button in Approvals (REQ-48
+ * BC-11), naming the item: never "sends this answer to the run that asked". `option` is the
+ * answer's option id, which names the requirement and BC a link answer links to.
+ */
+export function stewardDecisionEffect(
+	decision: StewardDecision,
+	item: { key: string; draft: boolean; option: string },
+): string {
+	const { key } = item;
+	switch (decision) {
+		case "open":
+			return `Opens ${key} as you; its driver plans it from the requirement, plan and criteria the steward prepared.`;
+		case "keep":
+			return item.draft
+				? `Keeps ${key} as a draft until its standing moves, with your reason; the steward does not ask again until then.`
+				: `Keeps ${key} waiting for a master until its standing moves, with your reason; the steward does not ask again until then.`;
+		case "drop":
+			return `Drops ${key} as you, with your reason.`;
+		case "link": {
+			const to = stewardLinkOf(item.option);
+			const target = to ? `${to.requirement} ${to.bc}` : "that requirement";
+			return `Links ${key} to ${target} as you; the steward then writes its plan and criteria, and asks whether to open it.`;
+		}
+		case "requirement":
+			return `Starts a requirement from ${key}'s feedback as you; ${key} stays a draft until that requirement is agreed.`;
+	}
+}
 
 /** Why a run was skipped rather than run: said on the item, never silent. */
 export const STEWARD_SKIP_REASONS = [

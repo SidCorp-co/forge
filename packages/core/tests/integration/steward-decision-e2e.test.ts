@@ -326,7 +326,12 @@ describe('answering a steward decision carries it out as the answerer (REQ-48 BC
       [IDS.keep, true],
       [IDS.drop, true],
     ]);
-    expect(answers.every((a) => typeof a.effect === 'string' && a.effect.length > 0)).toBe(true);
+    // each button says what it does to this issue, never that it sends the answer to a run
+    expect(answers.map((a) => a.effect)).toEqual([
+      `Opens ${issue.key} as you; its driver plans it from the requirement, plan and criteria the steward prepared.`,
+      `Keeps ${issue.key} as a draft until its standing moves, with your reason; the steward does not ask again until then.`,
+      `Drops ${issue.key} as you, with your reason.`,
+    ]);
     expect(answers[0]?.path).toBe(`/api/questions/${q.id}/answer`);
   });
 });

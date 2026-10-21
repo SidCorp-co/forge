@@ -22,6 +22,7 @@ import {
   testEnv,
 } from '../helpers/ecosystem-world.js';
 import {
+  createTestFeedback,
   createTestIssue,
   createTestProject,
   createTestRequirement,
@@ -35,7 +36,7 @@ vi.mock('../../src/integrations/llm/chat.js', async (importOriginal) => ({
   openChat: (await import('../helpers/scripted-chat.js')).scriptedOpenChat,
 }));
 
-let say: (who: 'owner', method: string, path: string, body?: unknown) => Promise<Reply>;
+let say: (who: 'owner' | 'steward', method: string, path: string, body?: unknown) => Promise<Reply>;
 let projectId = '';
 let ownerId = '';
 let stewardId = '';
@@ -132,7 +133,11 @@ beforeAll(async () => {
   projectId = (await createTestProject(ownerId)).id;
   const { stewardAccountOf } = await import('../../src/steward/account.js');
   stewardId = await stewardAccountOf(projectId);
-  say = requester(app, { owner: await signUserToken(ownerId) });
+  const { mintStewardCredential } = await import('../../src/steward/credential.js');
+  const steward = (
+    await mintStewardCredential({ projectId, stewardId, acts: ['stuck_diagnosis'], ttlMs: 600_000 })
+  ).token;
+  say = requester(app, { owner: await signUserToken(ownerId), steward });
   const { db } = await import('../../src/db/client.js');
   const { stewardRuns } = await import('../../src/db/schema-steward-runs.js');
   const { runGatewayAct } = await import('../../src/steward/turn.js');
@@ -260,5 +265,26 @@ describe('one cause is diagnosed once, at its carrier (REQ-48 BC-5)', () => {
     ];
     const tally = await sweep(new Date());
     expect([tally.stuck, tally.changed]).toEqual([1, 0]);
+  });
+});
+
+describe("the steward reads a stuck feedback item's triage proposals with its own grant (REQ-48 BC-11)", () => {
+  it('lists the proposed triage on a feedback item through its viewer read, as a person does', async () => {
+    const fb = await createTestFeedback(projectId, ownerId, 31);
+    const [item] = await rows<{ id: string }>(sql`
+      SELECT id FROM feedback WHERE project_id = ${projectId} AND fb_seq = 31`);
+    await rows(sql`
+      INSERT INTO suggestions (project_id, kind, fingerprint, producer_kind, feedback_id, payload, status)
+      VALUES (${projectId}, 'feedback_triage', 'fp-fb-31', 'agent', ${item?.id ?? null},
+              ${JSON.stringify({ route: 'answer', answer: 'It works as designed.' })}::jsonb, 'proposed')
+      RETURNING id`);
+    const path = `/api/projects/${projectId}/suggestions?feedback=${fb}&status=proposed`;
+    const asSteward = await say('steward', 'GET', path);
+    expect(asSteward.status, JSON.stringify(asSteward.json)).toBe(200);
+    const asOwner = ok(await say('owner', 'GET', path));
+    expect(asSteward.json.open).toBe(1);
+    expect((asSteward.json.suggestions as unknown[]).length).toBe(
+      (asOwner.suggestions as unknown[]).length,
+    );
   });
 });

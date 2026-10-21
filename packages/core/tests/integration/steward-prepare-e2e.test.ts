@@ -271,12 +271,19 @@ describe('where no agreed requirement fits, the answer acts (REQ-48 BC-5)', () =
     expect(JSON.stringify(step)).not.toMatch(/write the (details|plan)/i);
     const read = ok(await say('owner', 'GET', at('/needs-you/decisions')));
     const row = (read.decisions as Doc[]).find((d) => d.key === issue.key);
-    expect(
-      ((row?.answers ?? []) as Doc[]).map((a) => [a.id, a.needsReason, Boolean(a.effect)]),
-    ).toEqual([
-      [link, false, true],
-      [IDS.requirement, false, true],
-      [IDS.drop, true, true],
+    // each button says what it does to this issue, never that it sends the answer to a run
+    expect(((row?.answers ?? []) as Doc[]).map((a) => [a.id, a.needsReason, a.effect])).toEqual([
+      [
+        link,
+        false,
+        `Links ${issue.key} to ${req} BC-1 as you; the steward then writes its plan and criteria, and asks whether to open it.`,
+      ],
+      [
+        IDS.requirement,
+        false,
+        `Starts a requirement from ${issue.key}'s feedback as you; ${issue.key} stays a draft until that requirement is agreed.`,
+      ],
+      [IDS.drop, true, `Drops ${issue.key} as you, with your reason.`],
     ]);
 
     const done = await answer(id, { optionId: link });
