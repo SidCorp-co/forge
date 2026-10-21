@@ -24,8 +24,13 @@ import {
 } from '../types.js';
 import { thrownDiagnostics } from '../unreached.js';
 import { breakerAllowsDispatch, maybeResetBreaker, maybeTripBreaker } from './circuit-breaker.js';
-import { CoolifyApiError, coolifyAbilityForRoute, describeCoolifyAnswer } from './client.js';
+import { CoolifyApiError } from './client.js';
 import { type CoolifyConfirmJob, enqueueCoolifyConfirm } from './confirm.js';
+import {
+  checkFailureWords,
+  classifyCoolifyFailure,
+  describeCoolifyFailure,
+} from './failure-words.js';
 import { buildClient } from './log-fetch.js';
 import {
   COOLIFY_BINDING_CONFIG_KEYS,
@@ -45,46 +50,6 @@ interface DeployPayload extends Record<string, unknown> {
   targetId: string;
   targetLabel: string;
   resourceUuid: string;
-}
-
-interface CoolifyFailureVerdict {
-  health: 'needs_reauth' | 'needs_scope' | 'error';
-  /** Operator-facing sentence for a 403; `null` leaves the raw error message. */
-  message: string | null;
-  route: string | null;
-  missingAbility: string | null;
-}
-
-/**
- * Which health state a failed Coolify call earns. 401 and 403 are DIFFERENT
- * conditions and the only place they can still be told apart is here, at the
- * call that failed (ISS-924).
- */
-function classifyCoolifyFailure(err: unknown): CoolifyFailureVerdict {
-  const status = err instanceof CoolifyApiError ? err.status : null;
-  const route = err instanceof CoolifyApiError ? err.route : null;
-  if (err instanceof CoolifyApiError && (status === 401 || status === 403)) {
-    const health = status === 401 ? 'needs_reauth' : 'needs_scope';
-    const missingAbility = status === 403 ? coolifyAbilityForRoute(route) : null;
-    return { health, message: describeCoolifyAnswer(err), route, missingAbility };
-  }
-  return { health: 'error', message: null, route, missingAbility: null };
-}
-
-/** A failed check in words, with what to do where the host's answer says the address may be wrong. */
-function checkFailureWords(err: unknown): string {
-  if (!(err instanceof Error)) return 'unknown error';
-  if (!(err instanceof CoolifyApiError)) return err.message;
-  if (err.addressSuspect)
-    return `${err.message} Check the address saved on this connection, then test again.`;
-  return err.status >= 500 ? `${err.message} Test again once it answers.` : err.message;
-}
-
-/** The message a failure is recorded and reported under. */
-function describeCoolifyFailure(err: unknown): string {
-  const verdict = classifyCoolifyFailure(err);
-  if (verdict.message) return verdict.message;
-  return err instanceof Error ? err.message : 'unknown error';
 }
 
 interface DispatchOutcome {
@@ -168,25 +133,28 @@ const coolifyAdapterMethods: DispatchingAdapterMethods<CoolifyConfig, CoolifySec
         diagnostics: { targetCount: 0 },
       } satisfies HealthCheckResult;
     }
+    // An answer only the previous token got is the new one's refusal, and what else it found (ISS-1421 r20).
+    const answeredOnPrevious = async (also?: string): Promise<HealthCheckResult> => {
+      const refused = newKeyRefused(`The server at ${client.address}`, ctx.secrets);
+      await updateConnection(ctx.connectionId, {
+        lastHealthStatus: refused.status,
+        lastHealthAt: new Date(),
+      });
+      const message = also ? `${refused.message} ${also}` : refused.message;
+      const diagnostics = {
+        ...refused.diagnostics,
+        saidOfAddress: true,
+        targetCount: targets.length,
+      };
+      return { ...refused, message, diagnostics };
+    };
     try {
       const names: string[] = [];
       for (const t of targets) {
         const res = await client.getResource(t.resourceUuid);
         names.push(res.name ? `${t.label} → "${res.name}"` : `${t.label} → ${t.resourceUuid}`);
       }
-      // Test connection judges the key last saved: an answer only the previous token got is its
-      // refusal, saying until when Forge's own calls still run on the previous one (ISS-1421 r20).
-      if (client.usedPreviousToken) {
-        const refused = newKeyRefused(`The server at ${client.address}`, ctx.secrets);
-        await updateConnection(ctx.connectionId, {
-          lastHealthStatus: refused.status,
-          lastHealthAt: new Date(),
-        });
-        return {
-          ...refused,
-          diagnostics: { ...refused.diagnostics, saidOfAddress: true, targetCount: targets.length },
-        } satisfies HealthCheckResult;
-      }
+      if (client.usedPreviousToken) return await answeredOnPrevious();
       const durationMs = Date.now() - started;
       await updateConnection(ctx.connectionId, {
         lastHealthStatus: 'ok',
@@ -208,6 +176,7 @@ const coolifyAdapterMethods: DispatchingAdapterMethods<CoolifyConfig, CoolifySec
       const status = err instanceof CoolifyApiError ? err.status : null;
       const verdict = classifyCoolifyFailure(err);
       const message = verdict.message ?? checkFailureWords(err);
+      if (client.usedPreviousToken) return await answeredOnPrevious(message);
       await updateConnection(ctx.connectionId, {
         lastHealthStatus: verdict.health,
         lastHealthAt: new Date(),

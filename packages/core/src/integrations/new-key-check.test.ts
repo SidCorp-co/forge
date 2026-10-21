@@ -140,6 +140,16 @@ describe('Coolify, which keeps the previous token for its own calls', () => {
     );
   });
 
+  // Second whole-set read: the previous token answered, but its list lacked the binding's resource.
+  it('says the new token was refused where the answer to the previous one fails a later check', async () => {
+    answeringOnly('cf-old', []);
+    const res = await coolifyAdapter.healthcheck(ctx(secrets, COOLIFY));
+    expect(res.status).toBe('needs_reauth');
+    expect(res.message).toMatch(
+      /^The server at coolify\.example refused the new key\. Forge is still using the previous key until .+ UTC\. .*res-1/,
+    );
+  });
+
   it('keeps the new token refused where the previous token cannot connect', async () => {
     globalThis.fetch = vi.fn(async (_url: unknown, init?: RequestInit) =>
       new Headers(init?.headers).get('authorization') === 'Bearer cf-new'

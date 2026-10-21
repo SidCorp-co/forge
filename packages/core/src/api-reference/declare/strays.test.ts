@@ -91,6 +91,27 @@ describe('a route hook that words its own refusal (ISS-1421 r20)', () => {
     expect(refused.message).toBe('Leave out `colour`, because a mark takes only host and path.');
     expect(refused.details?.formErrors).toEqual([refused.message]);
   });
+
+  // Second whole-set read: naming one stray of two left the other unnamed everywhere.
+  it('is overruled where it names one stray of two, so both are named', async () => {
+    const named = refusing((a) =>
+      a.post(
+        '/m',
+        zValidator('json', body, (r) => {
+          if (!r.success)
+            throw new HTTPException(400, {
+              message: 'Leave out `colour`, because a mark takes only host and path.',
+              cause: { code: 'BAD_REQUEST', details: z.flattenError(r.error as z.core.$ZodError) },
+            });
+        }),
+        (c) => c.json({}),
+      ),
+    );
+    const res = await named.request('/m', post({ host: 'h', path: 'p', colour: 'red', hue: 'b' }));
+    const refused = (await res.json()) as Refusal;
+    expect(refused.message).toMatch(/colour/);
+    expect(refused.message).toMatch(/hue/);
+  });
 });
 
 describe('a field inside a body object that the object does not take (ISS-1421 r20)', () => {
@@ -153,6 +174,28 @@ describe('a field inside a body object that the object does not take (ISS-1421 r
         post({ size: 1, metadata: { name: 'n', colour: 'red' } }),
       );
       expect(res.status).toBe(200);
+    });
+  });
+
+  // Second whole-set read: a root taking any field skipped the closed objects inside it.
+  describe('under a root that takes any field', () => {
+    const loose = z.looseObject({ metadata: z.object({ name: z.string() }) });
+    const sent = { extra: 1, metadata: { name: 'n', colour: 'red' } };
+
+    it.each([
+      [
+        'zValidator',
+        (a: Hono) => a.post('/l', zValidator('json', loose), (c) => c.json({ ok: true })),
+      ],
+      [
+        'declaresInput',
+        (a: Hono) => a.post('/l', declaresInput('json', loose), (c) => c.json({ ok: true })),
+      ],
+    ])('is refused through %s, the extra root field let through', async (_door, mount) => {
+      const res = await refusing((a) => void mount(a)).request('/l', post(sent));
+      expect(((await res.json()) as Refusal).message).toBe(
+        'The field metadata.colour is not one this call takes.',
+      );
     });
   });
 

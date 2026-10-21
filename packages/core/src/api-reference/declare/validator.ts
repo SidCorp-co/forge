@@ -83,17 +83,24 @@ function ownSentenceDetails(
 const escaped = (k: string) => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /**
- * Whether a hook's own sentence names a field the parse found the route does not take, quoted or as
- * "field <name>": a word that merely matches ("required") is not a name. A door that declines to echo
- * a key reading as a sentence keeps its words where every stray is one, and it says "field".
+ * Whether a hook's own sentence names every field the parse found the route does not take, quoted
+ * or as "field <name>"; a word that merely matches ("required") is no name, and a key reading as a
+ * sentence is left unechoed where the hook says "field".
  */
 function speaksOfStrays(message: string, error: z.core.$ZodError): boolean {
-  const keys = error.issues.flatMap((i) => (i.code === 'unrecognized_keys' ? i.keys : []));
+  const strays = error.issues.flatMap((i) =>
+    i.code === 'unrecognized_keys' ? i.keys.map((k) => [k, [...i.path, k].join('.')]) : [],
+  );
   const naming = (k: string) =>
     new RegExp(`\`${escaped(k)}\`|"${escaped(k)}"|\\bfields? ${escaped(k)}(?:$|[\\s,.;:])`);
-  if (keys.some((k) => naming(k).test(message))) return true;
   const unsafe = (k: string) => k.length > 200 || /[^\w.$-]/.test(k);
-  return keys.length > 0 && keys.every(unsafe) && /\bfields?\b/i.test(message);
+  const saysField = /\bfields?\b/i.test(message);
+  const unnamed = strays.filter(
+    ([k = '', dotted = '']) =>
+      !(naming(dotted).test(message) || naming(k).test(message) || (unsafe(k) && saysField)),
+  );
+  // A door that shortens a long list ("`k0` and 9 more") counts the ones it leaves unnamed.
+  return unnamed.length <= Number(/\band (\d+) more\b/.exec(message)?.[1] ?? 0);
 }
 
 /** Whether every sentence flattened details hold is one the message says already. */
@@ -202,9 +209,10 @@ function sentenced(
  * One that declares it takes any (`.loose()`, `.catchall()`) is that schema's own say and is kept.
  */
 export function refusingUnknownFields(schema: ZodType): ZodType {
-  if (fieldsPolicy(schema) === 'open') return schema;
+  // A root that takes any field still holds closed objects inside it, whose strays are refused.
+  const open = fieldsPolicy(schema) === 'open';
   const straysOf = (body: unknown): StrayAt[] => {
-    const keys = refusesItself(schema, body) ? [] : unknownFields(schema, body);
+    const keys = open || refusesItself(schema, body) ? [] : unknownFields(schema, body);
     return [...(keys.length > 0 ? [{ path: [], keys }] : []), ...nestedStrays(schema, body)];
   };
   const refuse = (body: unknown, ctx: z.RefinementCtx, found: StrayAt[]) => {
@@ -353,11 +361,11 @@ export function declaresInput(
       const issues = queryIssues(schema, query);
       if (issues.length > 0) throw queryRefused(issues, schema, query);
     }
-    if (target === 'json' && fieldsPolicy(schema) !== 'open') {
+    if (target === 'json') {
       // Hono keeps the parsed body, so the handler's own read gets the same one.
       const body = await c.req.json().catch(() => undefined);
       const keys = [
-        ...unknownFields(schema, body),
+        ...(fieldsPolicy(schema) === 'open' ? [] : unknownFields(schema, body)),
         ...nestedStrays(schema, body).flatMap(({ path, keys: inner }) =>
           inner.map((k) => [...path, k].join('.')),
         ),

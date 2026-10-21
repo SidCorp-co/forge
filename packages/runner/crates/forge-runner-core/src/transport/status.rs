@@ -1122,11 +1122,20 @@ mod tests {
 mod not_reached_words {
     use super::not_reached;
 
+    /// A client that asks the network itself, so a proxy in the environment cannot answer for it.
+    fn direct() -> reqwest::Client {
+        reqwest::Client::builder()
+            .no_proxy()
+            .timeout(std::time::Duration::from_secs(10))
+            .build()
+            .unwrap()
+    }
+
     /// ISS-1421 r20 — judge-82's `question ask` against a core that was not
     /// listening printed `error sending request for url (…)`.
     #[tokio::test]
     async fn a_refused_connection_says_where_forge_was_sought_and_why() {
-        let e = reqwest::Client::new()
+        let e = direct()
             .post("http://127.0.0.1:9/api/devices/me/questions?x=1")
             .send()
             .await
@@ -1145,7 +1154,7 @@ mod not_reached_words {
 
     #[tokio::test]
     async fn a_host_that_does_not_resolve_is_said_so() {
-        let e = reqwest::Client::new()
+        let e = direct()
             .get("http://no-such-host.invalid/api")
             .send()
             .await
