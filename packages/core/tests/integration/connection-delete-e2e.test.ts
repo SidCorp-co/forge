@@ -6,6 +6,9 @@
  * ISS-1421 r21 — judge-89: a removed GitHub connection stayed listed with nothing able to turn it on
  * or clear it, an org's removed connections outlived the org, and a key saved on a removed
  * connection still read the old key's failed check.
+ *
+ * ISS-1421 r22 — judge-91: an install left every other project bound to a reattached App without an
+ * installation. Sharing and testing a removed connection: `removed-connection-e2e.test.ts`.
  */
 
 import { sql } from 'drizzle-orm';
@@ -341,12 +344,40 @@ describe('a removed connection (criterion 216)', () => {
         sql`SELECT id, config FROM integration_bindings WHERE id IN (${binding.id}, ${otherBinding.id})`,
       )),
     ] as { id: string; config: Record<string, unknown> }[];
+    // Criterion 226 (ISS-1421 r22, the master's ruling): one installation belongs to its connection,
+    // so the project the reattach left with none takes it too.
     expect(Object.fromEntries(configs.map((r) => [r.id, r.config.installationId ?? null]))).toEqual(
       {
         [binding.id]: 555,
-        [otherBinding.id]: null,
+        [otherBinding.id]: 555,
       },
     );
+
+    // Criterion 227: a later install from one project replaces no installation another holds.
+    const third = await createTestProject(harness.db, ownerId, { orgId: org.id });
+    const thirdBinding = await store.createBinding({
+      connectionId: old.id,
+      projectId: third.id,
+      provider: 'github',
+      role: 'service',
+      config: { installationId: 777 },
+      integrationSecret: 'scratch-new-hook-secret',
+    });
+    const again = await app.request(
+      `/api/integrations/github/installed?installation_id=888&state=${encodeURIComponent(carried as string)}`,
+      { headers: { authorization: `Bearer ${token}` } },
+    );
+    expect(again.status, await again.clone().text()).toBe(302);
+    const held = [
+      ...(await harness.db.execute(
+        sql`SELECT id, config FROM integration_bindings WHERE id IN (${binding.id}, ${otherBinding.id}, ${thirdBinding.id})`,
+      )),
+    ] as { id: string; config: Record<string, unknown> }[];
+    expect(Object.fromEntries(held.map((r) => [r.id, r.config.installationId ?? null]))).toEqual({
+      [binding.id]: 888,
+      [otherBinding.id]: 555,
+      [thirdBinding.id]: 777,
+    });
   });
 });
 

@@ -35,7 +35,10 @@ import {
 import type { AgentAccess } from "../../types";
 import { ConnectionOwnerField } from "../../components/connection-owner-field";
 import { postman } from "./index";
-import { IntegrationEnabledControl } from "../../components/integration-enabled-control";
+import {
+  bindsRemovedConnection,
+  IntegrationEnabledControl,
+} from "../../components/integration-enabled-control";
 import { bindingBadge } from "../../derive";
 
 const DEFAULT_WORKSPACE = "Forge Integration";
@@ -183,7 +186,9 @@ export function PostmanSection({ projectId }: { projectId: string }) {
         <Field
           label="API key"
           hint={
-            existing
+            existing && !existing.hasSecrets
+              ? "No key is stored: the shared connection was removed. Enter one to store it."
+              : existing
               ? "A key is stored. Leave blank to keep it; enter a new one to rotate."
               : "Postman API key (PMAK-…). Stored encrypted; never shown again."
           }
@@ -192,7 +197,7 @@ export function PostmanSection({ projectId }: { projectId: string }) {
           <Input
             type="password"
             autoComplete="off"
-            placeholder={existing ? "•••••••• (unchanged)" : "PMAK-…"}
+            placeholder={existing?.hasSecrets ? "•••••••• (unchanged)" : "PMAK-…"}
             value={form.apiKey}
             onChange={(e) => set("apiKey", e.target.value)}
             disabled={orgLocked}
@@ -310,7 +315,7 @@ export function PostmanSection({ projectId }: { projectId: string }) {
             >
               {existing ? "Save" : "Create integration"}
             </Button>
-            {existing && (
+            {existing && !bindsRemovedConnection(existing) && (
               <Button
                 variant="secondary"
                 onClick={handleTest}

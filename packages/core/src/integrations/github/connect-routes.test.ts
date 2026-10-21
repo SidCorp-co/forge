@@ -111,6 +111,7 @@ const store = vi.hoisted(() => ({
   })),
   listActiveBindingsForProjectProvider: vi.fn(async () => [] as unknown[]),
   listBindingsForConnection: vi.fn(async (): Promise<unknown[]> => []),
+  listBindingsForProject: vi.fn(async (): Promise<unknown[]> => []),
   removedConnectionBoundTo: vi.fn(async (): Promise<unknown> => null),
   updateBinding: vi.fn(async () => ({})),
   updateConnection: vi.fn(async (id: string) => ({ id })),

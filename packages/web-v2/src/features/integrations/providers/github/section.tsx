@@ -37,7 +37,10 @@ import type { AgentAccess } from "../../types";
 import { text } from "../config-read";
 import { github } from "./index";
 import { bindableApps, unbindableReason } from "./reuse";
-import { IntegrationEnabledControl } from "../../components/integration-enabled-control";
+import {
+  bindsRemovedConnection,
+  IntegrationEnabledControl,
+} from "../../components/integration-enabled-control";
 import { scopeLabel } from "../../components/status-pill";
 
 function submitManifest(start: GitHubConnectStart): void {
@@ -448,6 +451,74 @@ function CreateApp({
 }
 
 /**
+ * A project whose GitHub binding names a removed connection (ISS-1421 r22). The removed connection
+ * holds no App, so there is no repository to list and no credential to enable; the one way back is
+ * the install, which core's callback turns into that same connection. Disconnect stays the way to
+ * leave it, which is also the answer when the App would belong to someone else.
+ */
+function RemovedApp({
+  projectId,
+  binding,
+  connectionLabel,
+}: {
+  projectId: string;
+  binding: IntegrationSummary;
+  connectionLabel: string;
+}) {
+  const connect = useGitHubConnect(projectId);
+  const remove = useDeleteProviderIntegration(projectId);
+  const [org, setOrg] = useState("");
+
+  const start = async () => {
+    const res = await connect.mutateAsync({ org: org.trim() || undefined });
+    submitManifest(res);
+  };
+
+  return (
+    <SettingsSection>
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <CardTitle>GitHub App</CardTitle>
+      </div>
+      <div className="flex flex-col gap-4">
+        <p className="fg-body-sm text-muted">
+          <span className="font-semibold">{connectionLabel}</span> was removed, so this project&apos;s
+          GitHub has no App. Installing the GitHub App again creates it on GitHub and turns that
+          connection back on.
+        </p>
+
+        <AppOwner projectId={projectId} />
+
+        <Field label="GitHub organization" hint="Leave blank to create the App on your personal account.">
+          <Input
+            value={org}
+            onChange={(e) => setOrg(e.target.value)}
+            placeholder="SidCorp-co"
+            aria-label="GitHub organization"
+          />
+        </Field>
+
+        {connect.isError && <Banner tone="danger">{formatApiError(connect.error)}</Banner>}
+        {remove.isError && <Banner tone="danger">{formatApiError(remove.error)}</Banner>}
+
+        <div className="flex flex-wrap items-center gap-3">
+          <Button onClick={start} disabled={connect.isPending}>
+            {connect.isPending ? "Preparing…" : "Install the GitHub App again"}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => remove.mutate(binding.id)}
+            disabled={remove.isPending}
+          >
+            Disconnect from this project
+          </Button>
+        </div>
+      </div>
+    </SettingsSection>
+  );
+}
+
+/**
  * One App per organization, one binding per project. An existing App is offered
  * first; creating another is the deliberate path, not the default.
  */
@@ -490,6 +561,11 @@ export function GitHubSection({ projectId }: { projectId: string }) {
     (binding
       ? (connections.data?.items ?? []).find((c) => c.id === binding.connectionId)?.displayName
       : null) ?? "the existing GitHub App";
+
+  // A removed connection holds no App: no picker, no Enable credential, one way back (ISS-1421 r22).
+  if (binding && bindsRemovedConnection(binding)) {
+    return <RemovedApp projectId={projectId} binding={binding} connectionLabel={connectionLabel} />;
+  }
 
   if (binding && repository && !changing) {
     return (

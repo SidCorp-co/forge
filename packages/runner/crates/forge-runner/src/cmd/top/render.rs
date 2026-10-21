@@ -68,9 +68,10 @@ fn projects(s: &Snapshot, out: &mut Vec<String>) {
             read_ago(s.now_ms, s.discovery_at)
         ),
         (Ok(_), Err(e)) => format!(
-            "PROJECTS  {e}. Listed are only the {bound} project(s) bound in {}; any core serves this box beyond them cannot be seen",
-            s.config_path
-        ),
+            "PROJECTS  {closed} Listed are only the {bound} project(s) bound in {}; any core serves this box beyond them cannot be seen",
+            s.config_path,
+            closed = forge_runner_core::transport::status::ended(&e.to_string()),
+),
     });
     if s.projects.is_empty() {
         out.push(match (&s.config, &s.discovery) {

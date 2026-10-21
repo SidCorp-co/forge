@@ -1263,8 +1263,9 @@ impl Masters {
             ),
             Served::Read(_) => match reg.unplaced.get(project_id) {
                 Some(why) => format!(
-                    "this daemon has placed no master for {project_id}: {why}. That is the state its last sweep found, and the next sweep finds the same until it changes"
-                ),
+                    "this daemon has placed no master for {project_id}: {closed} That is the state its last sweep found, and the next sweep finds the same until it changes",
+            closed = crate::transport::status::ended(&why.to_string()),
+),
                 None => format!(
                     "this daemon does not yet hold a master session for {project_id}; its next sweep places one, and a declaration made after that is served"
                 ),
@@ -2240,7 +2241,7 @@ async fn release_held_tree(
         }
         Ok(terminate::Release::Terminal { why, after, close }) => {
             tracing::error!(
-                "[master] run {} will not be released and is over: {why}. {} — so it is not one a \
+                "[master] run {} will not be released and is over: {closed} {} — so it is not one a \
                  retry gets past. Its leases are back ({}/{}) and its checkout is still on disk, \
                  which nothing on this box will remove. Fix what the refusal names and run \
                  `forge-runner run release {}` to have the next sweep try again.",
@@ -2255,8 +2256,9 @@ async fn release_held_tree(
                 },
                 close.leases_returned,
                 close.leases_total,
-                r.run_id
-            );
+                r.run_id,
+            closed = crate::transport::status::ended(&why.to_string()),
+);
             // Not `is_closed()`: the checkout is still there by decision, so
             // the run is over without that mark and the caller must not read
             // this as a close.
@@ -3602,9 +3604,10 @@ async fn ensure_master(
                         .set(&name, pane_now, MasterAuthority::UNKNOWN, Some(&why));
                     if masters.note_capability(project_id, MasterAuthority::UNKNOWN) {
                         tracing::warn!(
-                            "[master] {}: cannot tell whether {name}'s capability is current: {why}. Saying nothing about it rather than calling it stale — an unreadable map is not evidence about any pane.",
-                            resolved.slug
-                        );
+                            "[master] {}: cannot tell whether {name}'s capability is current: {closed} Saying nothing about it rather than calling it stale — an unreadable map is not evidence about any pane.",
+                            resolved.slug,
+            closed = crate::transport::status::ended(&why.to_string()),
+);
                     }
                     PaneState::Adopted
                 }
@@ -4013,8 +4016,9 @@ fn capability_of(
 async fn end_deaf_pane(name: &str, slug: &str, session_id: &str, deaf: &DeafSink) -> bool {
     if let Err(e) = terminal::kill(name).await {
         tracing::error!(
-            "[master] {slug}: {name} holds a capability for a session this box no longer has and could not be ended: {e}. It stays up and stays deaf — every declaration it makes is refused — and `forge-runner master kill {slug}` is the same act by hand."
-        );
+            "[master] {slug}: {name} holds a capability for a session this box no longer has and could not be ended: {closed} It stays up and stays deaf — every declaration it makes is refused — and `forge-runner master kill {slug}` is the same act by hand.",
+            closed = crate::transport::status::ended(&e.to_string()),
+);
         deaf.set(
             slug,
             name,
@@ -4136,8 +4140,9 @@ async fn deaf_pane_outlived_its_kill(
             "[master] {slug}: {name} was ended as a deaf pane and tmux still holds a session of that name, so nothing was replaced — the capability minted for {session_id} has been withdrawn rather than left standing as proof of a replacement this box did not make. The pane is still deaf and every declaration it makes is refused: `forge-runner master kill {slug}` is the same act by hand."
         ),
         Err(why) => tracing::error!(
-            "[master] {slug}: {name} was ended as a deaf pane and is still running, and the capability minted for {session_id} could NOT be withdrawn: {why}. The map on disk now names a session no pane holds, so this daemon holds that fact itself and goes on reading {slug} as stale — it will report this and try the pane again every sweep, and a placement that works clears it. What it cannot survive is its own restart, which would read the map at face value again: fix whatever stopped this box writing its capability map, or `forge-runner master kill {slug}` and let the replacement mint cleanly."
-        ),
+            "[master] {slug}: {name} was ended as a deaf pane and is still running, and the capability minted for {session_id} could NOT be withdrawn: {closed} The map on disk now names a session no pane holds, so this daemon holds that fact itself and goes on reading {slug} as stale — it will report this and try the pane again every sweep, and a placement that works clears it. What it cannot survive is its own restart, which would read the map at face value again: fix whatever stopped this box writing its capability map, or `forge-runner master kill {slug}` and let the replacement mint cleanly.",
+            closed = crate::transport::status::ended(&why.to_string()),
+),
     }
     ports.deaf.set(
         slug,
@@ -4653,8 +4658,9 @@ async fn outdated_resident(
             if let Err(e) = terminal::kill(pane_name).await {
                 if masters.note_outdated(project_id, Some(format!("unkillable: {why}")), true) {
                     tracing::error!(
-                        "[master] {slug}: {pane_name} is outdated ({why}) and holds no run and no turn, and tmux would not end it: {e}. It is left running and still nudged for the work waiting; `forge-runner master kill {slug}` ends it, and the next sweep places its successor"
-                    );
+                        "[master] {slug}: {pane_name} is outdated ({why}) and holds no run and no turn, and tmux would not end it: {closed} It is left running and still nudged for the work waiting; `forge-runner master kill {slug}` ends it, and the next sweep places its successor",
+            closed = crate::transport::status::ended(&e.to_string()),
+);
                 }
                 return;
             }
@@ -4972,8 +4978,9 @@ async fn end_master(
 /// one contradicting its own rule (ISS-1379 judge 3, finding 3).
 fn outdated_left_line(slug: &str, pane_name: &str, why: &str, reason: &str) -> String {
     format!(
-        "[master] {slug}: {pane_name} is outdated ({why}) and is left running: {reason}. It is nudged for admissible work as any pane is, and is replaced on the first sweep that finds it holding no run, at its prompt, with work for its successor and a conversation that can be resumed; `forge-runner master kill {slug}` replaces it now, ending whatever it is doing"
-    )
+        "[master] {slug}: {pane_name} is outdated ({why}) and is left running: {closed} It is nudged for admissible work as any pane is, and is replaced on the first sweep that finds it holding no run, at its prompt, with work for its successor and a conversation that can be resumed; `forge-runner master kill {slug}` replaces it now, ending whatever it is doing",
+            closed = crate::transport::status::ended(reason),
+)
 }
 #[cfg(test)]
 mod tests {

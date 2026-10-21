@@ -154,9 +154,10 @@ pub async fn open_declared_runs(
                     named.join("; ")
                 );
                 tracing::error!(
-                    "[run-record] run {}: {said} — {why}. The run is ended here rather than re-sent",
-                    run.run_id
-                );
+                    "[run-record] run {}: {said} — {closed} The run is ended here rather than re-sent",
+                    run.run_id,
+            closed = crate::transport::status::ended(&why.to_string()),
+);
                 if let Err(e) = led.end_run(&run.run_id, "run-record", &why) {
                     tracing::error!(
                         "[run-record] run {}: the refusal could not be written onto the row: {e} — the next sweep will send it again",

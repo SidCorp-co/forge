@@ -37,7 +37,7 @@ const KIND_COPY: Record<
 };
 
 /** Which tier turned a binding off: this project's Enabled switch, the shared credential, or both. */
-export type TurnedOff = "binding" | "credential" | "both";
+export type TurnedOff = "binding" | "credential" | "both" | "removed" | "removed-and-binding";
 
 /** Where the switch is read from: inside the provider's drawer, or the Agent MCP servers panel. */
 export type ReadFrom = "drawer" | "panel";
@@ -47,6 +47,10 @@ const OFF = "Agents get nothing from it while it is turned off.";
 /** Each control that turns it back on, named as its drawer labels it, and where it is (ISS-1421 r11, r12). */
 function backOn(tier: TurnedOff, from: ReadFrom): string {
   const where = from === "drawer" ? "in this drawer" : "in its drawer, opened from the list above,";
+  // A removed connection has no Enable credential: it comes back as its drawer says (ISS-1421 r22).
+  if (tier === "removed") return "once its shared connection, which was removed, is turned back on";
+  if (tier === "removed-and-binding")
+    return `once its shared connection, which was removed, is turned back on and Enabled ${where} is switched back on`;
   if (tier === "both") {
     const both = from === "drawer" ? "both in this drawer" : "both in its drawer, opened from the list above";
     return `once you press Enable credential and switch Enabled back on, ${both}`;
@@ -67,9 +71,11 @@ export function turnedOffCopy(tier: TurnedOff, from: ReadFrom): { granted: strin
 
 /** The tier a saved binding is turned off at, or null where both are on. */
 export function turnedOffTier(
-  binding: Pick<IntegrationSummary, "active" | "bindingActive" | "connectionActive">,
+  binding: Pick<IntegrationSummary, "active" | "bindingActive" | "connectionActive" | "hasSecrets">,
 ): TurnedOff | null {
   if (binding.active) return null;
+  if (!binding.connectionActive && !binding.hasSecrets)
+    return binding.bindingActive ? "removed" : "removed-and-binding";
   if (binding.bindingActive) return "credential";
   return binding.connectionActive ? "binding" : "both";
 }
@@ -172,7 +178,7 @@ export function AgentAccessControl({
   projectId: string;
   binding: Pick<
     IntegrationSummary,
-    "id" | "agentAccess" | "agentPathKind" | "active" | "bindingActive" | "connectionActive"
+    "id" | "agentAccess" | "agentPathKind" | "active" | "bindingActive" | "connectionActive" | "hasSecrets"
   >;
   /** May the caller edit this project's integrations at all. The GRANT's own tier is applied here. */
   canEdit: boolean;

@@ -479,3 +479,60 @@ describe("the screen that creates a new App", () => {
     expect(screen.queryByLabelText("Credential owner")).toBeNull();
   });
 });
+
+// ISS-1421 r22, judge-91: the drawer sent an admin here to install the App again, and the panel
+// listed no repositories, said the App "was never finished" and offered an Enable credential core
+// refuses. A removed connection is switched off and holds no key.
+describe("a project bound to a removed GitHub connection (criterion 224)", () => {
+  const REMOVED = binding({
+    active: false,
+    connectionActive: false,
+    hasSecrets: false,
+    config: { owner: "SidCorp-co", repo: "forge" },
+    bindingConfig: { owner: "SidCorp-co", repo: "forge" },
+  });
+
+  beforeEach(() => {
+    items = [REMOVED];
+    connections = [connection({ active: false, hasSecrets: false })];
+    repos = { isLoading: false, isError: false, error: null };
+  });
+
+  it("says the connection was removed and offers the install, with no picker and no Enable credential", () => {
+    mount();
+
+    expect(
+      screen.getByText(/was removed, so this project's GitHub has no App/),
+    ).toBeInTheDocument();
+    expect(screen.getByText("SidCorp-co App")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Install the GitHub App again" })).toBeInTheDocument();
+    expect(picker()).toBeNull();
+    expect(screen.queryByText("SidCorp-co/forge")).toBeNull();
+    expect(screen.queryByRole("button", { name: /enable credential/i })).toBeNull();
+    expect(screen.queryByText(/never finished/)).toBeNull();
+    expect(screen.queryByRole("button", { name: /create a separate app/i })).toBeNull();
+  });
+
+  it("starts creating the App on GitHub for this project when Install is pressed", async () => {
+    const submit = vi
+      .spyOn(HTMLFormElement.prototype, "submit")
+      .mockImplementation(() => undefined);
+    connectStart.mockClear();
+    mount();
+
+    fireEvent.click(screen.getByRole("button", { name: "Install the GitHub App again" }));
+    await waitFor(() => expect(submit).toHaveBeenCalled());
+
+    expect(connectStart).toHaveBeenCalledTimes(1);
+    expect(connectStart.mock.calls[0][0]).toStrictEqual({ org: undefined });
+    submit.mockRestore();
+  });
+
+  it("keeps Disconnect as the way to leave the connection", () => {
+    mount();
+
+    fireEvent.click(screen.getByRole("button", { name: /disconnect from this project/i }));
+
+    expect(remove).toHaveBeenCalledWith(BINDING);
+  });
+});

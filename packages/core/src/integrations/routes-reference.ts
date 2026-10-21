@@ -282,6 +282,7 @@ export const testIntegration = onBinding(
       400: fail('NO_ADAPTER', 'no adapter is registered for the binding provider'),
       403: noRoleOnProject,
       404: noSuchBinding,
+      409: fail('CONNECTION_REMOVED', 'the connection was removed and holds no key to test'),
     },
   }),
 );

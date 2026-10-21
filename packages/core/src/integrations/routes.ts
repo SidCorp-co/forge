@@ -41,6 +41,7 @@ import {
   alreadyExists,
   assertAdmin,
   assertNoActiveBindingClash,
+  assertNotRemoved,
   assertProjectMember,
   assertVaultConfigured,
   authorizeAgentAccessWrite,
@@ -331,13 +332,13 @@ integrationsRoutes.delete('/:projectId/integrations/:id', ...removeIntegration, 
 });
 
 integrationsRoutes.post('/:projectId/integrations/:id/test', ...testIntegration, async (c) => {
-  const projectId = c.req.param('projectId');
-  const id = c.req.param('id');
+  const { projectId, id } = c.req.param();
   const userId = c.get('userId');
   await assertProjectMember(projectId, userId);
 
   const existing = await findBindingWithConnectionById(id);
   if (!existing || existing.binding.projectId !== projectId) throw notFound();
+  assertNotRemoved(existing.connection, 'tested');
 
   const adapter = getAdapter(existing.binding.provider);
   if (!adapter) {
@@ -346,8 +347,7 @@ integrationsRoutes.post('/:projectId/integrations/:id/test', ...testIntegration,
       cause: { code: 'NO_ADAPTER' },
     });
   }
-  const ctx = buildContextFromBinding(existing);
-  const result = await adapter.healthcheck(ctx);
+  const result = await adapter.healthcheck(buildContextFromBinding(existing));
   return c.json(answer(healthResultSchema, healthAnswer(existing.binding.provider, result)));
 });
 

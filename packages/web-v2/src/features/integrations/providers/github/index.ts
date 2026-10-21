@@ -21,4 +21,6 @@ export const github: ProviderModule = {
   connectionSection: null,
   connectionNote:
     "The App installation holds this credential. Replace it by re-running the App install from a project's settings → Integrations; the repository each project points at is set there too.",
+  removedLine:
+    "The shared GitHub connection was removed, so it holds no App. Installing the GitHub App again here turns it back on.",
 };

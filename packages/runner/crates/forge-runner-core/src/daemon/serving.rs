@@ -778,9 +778,10 @@ fn drain_lines(drain: &DrainState, now_ms: i64) -> Vec<String> {
             };
             if let Some(why) = failed {
                 return vec![format!(
-                    "{INDENT}the handover for {cause} did not happen {} ago — {why}. Nothing was outstanding; admission is open, this process serves the build it started with, and the next attempt is {next_attempt}, {due}",
-                    ago(now_ms, *gave_up_at_ms)
-                )];
+                    "{INDENT}the handover for {cause} did not happen {} ago — {closed} Nothing was outstanding; admission is open, this process serves the build it started with, and the next attempt is {next_attempt}, {due}",
+                    ago(now_ms, *gave_up_at_ms),
+            closed = crate::transport::status::ended(&why.to_string()),
+)];
             }
             vec![format!(
                 "{INDENT}the handover for {cause} was deferred {} ago with {} outstanding{}; admission is open, and the next attempt is {next_attempt}, {due}",

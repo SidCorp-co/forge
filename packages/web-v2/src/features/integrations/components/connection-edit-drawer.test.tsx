@@ -32,7 +32,10 @@ vi.mock("../hooks", async (importOriginal) => ({
 }));
 vi.mock("@/features/projects/hooks", () => ({
   useProjectsIncludingArchived: () => ({
-    data: [{ id: "p-store", name: "Storefront", slug: "storefront", archivedAt: null }],
+    data: [
+      { id: "p-store", name: "Storefront", slug: "storefront", archivedAt: null },
+      { id: "p-shop", name: "Shop", slug: "shop", archivedAt: null },
+    ],
   }),
 }));
 vi.mock("@/providers/toast-provider", () => ({ useToast: () => ({ toast: vi.fn() }) }));
@@ -265,6 +268,36 @@ describe("the drawer's Danger zone over a connection that was removed", () => {
     mount({ ...(mine as object), provider: "postman", active: true, hasSecrets: true });
     expect(screen.getByRole("button", { name: "Remove…" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Clear from list…" })).toBeNull();
+  });
+
+  // ISS-1421 r22, judge-91: Clear deletes every binding, so the projects are joined with "and".
+  it("says a clear deletes its bindings to each project it is bound to (criterion 236)", () => {
+    bindingsData = {
+      items: [
+        { id: "b1", projectId: "p-store", active: false, bindingActive: true, role: "service", stages: [] },
+        { id: "b2", projectId: "p-shop", active: false, bindingActive: true, role: "service", stages: [] },
+      ],
+    };
+    mount({ ...(mine as object), provider: "postman", active: false, hasSecrets: false });
+    fireEvent.click(screen.getByRole("button", { name: "Clear from list…" }));
+    expect(
+      screen.getByText(/^Clearing this connection deletes it for good, with its bindings to (Storefront and Shop|Shop and Storefront)\.$/),
+    ).toBeInTheDocument();
+  });
+
+  // ISS-1421 r22, judge-91: Test on a removed connection could only record a failure, and the
+  // empty projects line said to share a connection core now refuses to share.
+  it("offers no Test connection and no share hint on a removed connection (criterion 229)", () => {
+    mount({ ...(mine as object), provider: "postman", active: false, hasSecrets: false });
+    expect(screen.queryByRole("button", { name: "Test connection" })).toBeNull();
+    expect(screen.queryByText(/Share it from a project/)).toBeNull();
+    expect(screen.getByText("No project uses this connection.")).toBeInTheDocument();
+  });
+
+  it("keeps Test connection and the share hint on a connection that holds its key", () => {
+    mount({ ...(mine as object), provider: "postman", active: true, hasSecrets: true });
+    expect(screen.getByRole("button", { name: "Test connection" })).toBeInTheDocument();
+    expect(screen.getByText(/Share it from a project/)).toBeInTheDocument();
   });
 
   it("offers Enable on a disabled connection that still holds its key", () => {

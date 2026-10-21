@@ -25,7 +25,10 @@ import {
   AgentAccessControl, agentAccessBody} from "../../components/agent-access-control";
 import type { AgentAccess } from "../../types";
 import { ConnectionOwnerField } from "../../components/connection-owner-field";
-import { IntegrationEnabledControl } from "../../components/integration-enabled-control";
+import {
+  bindsRemovedConnection,
+  IntegrationEnabledControl,
+} from "../../components/integration-enabled-control";
 import { coolify } from "./index";
 import { CoolifyTargetsField } from "./targets-field";
 import { STAGE_OPTIONS } from "../../components/status-pill";
@@ -255,7 +258,9 @@ function StagePanel({
         <Field
           label="API token"
           hint={
-            existing
+            existing && !existing.hasSecrets
+              ? "No token is stored: the shared connection was removed. Enter one to store it."
+              : existing
               ? "A token is stored. Leave blank to keep it; enter a new one to rotate."
               : "Coolify API token. Stored encrypted; never shown again."
           }
@@ -266,7 +271,7 @@ function StagePanel({
             autoComplete="new-password"
             value={apiToken}
             onChange={(e) => setApiToken(e.target.value)}
-            placeholder={existing ? "•••••••• (unchanged)" : "Coolify API token"}
+            placeholder={existing?.hasSecrets ? "•••••••• (unchanged)" : "Coolify API token"}
             disabled={orgLocked}
           />
         </Field>
@@ -323,7 +328,7 @@ function StagePanel({
         <Button variant="primary" onClick={handleSave} loading={saving}>
           {existing ? "Save" : "Create integration"}
         </Button>
-        {existing && (
+        {existing && !bindsRemovedConnection(existing) && (
           <Button
             variant="secondary"
             onClick={handleTest}

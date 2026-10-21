@@ -214,7 +214,8 @@ function CredentialSection({
         </Field>
       )}
       <div className="flex items-center gap-3">
-        {canManage && (
+        {/* A removed connection holds nothing a check could pass; core refuses it (ISS-1421 r22). */}
+        {canManage && !isRemovedConnection(connection) && (
           <Button variant="secondary" size="sm" loading={test.isPending} onClick={runTest}>
             Test connection
           </Button>
@@ -308,9 +309,11 @@ function ProjectsSection({
       ) : bindingsError ? (
         <ErrorState message={bindingsError} onRetry={onRetry} />
       ) : bindings.length === 0 ? (
+        // A removed connection cannot be shared (ISS-1421 r22): its Danger zone says what it can do.
         <p className="fg-body-sm border-b border-line pb-2 text-muted">
-          No projects use this connection yet. Share it from a project&apos;s settings →
-          Integrations.
+          {isRemovedConnection(connection)
+            ? "No project uses this connection."
+            : "No projects use this connection yet. Share it from a project's settings → Integrations."}
         </p>
       ) : (
         <ul className="flex flex-col divide-y divide-line">

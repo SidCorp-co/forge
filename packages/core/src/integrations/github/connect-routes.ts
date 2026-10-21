@@ -19,6 +19,7 @@ import { organizations, projects } from '../../db/schema.js';
 import { loadOrgRole, orgRoleAtLeast } from '../../lib/authz.js';
 import { logger } from '../../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../../middleware/auth.js';
+import { isRemovedConnection } from '../held-key.js';
 import { findReachableConnection } from '../reach.js';
 import {
   assertAdmin,
@@ -36,6 +37,7 @@ import {
   type IntegrationConnectionRow,
   listActiveBindingsForProjectProvider,
   listBindingsForConnection,
+  listBindingsForProject,
   removedConnectionBoundTo,
   updateBinding,
   updateConnection,
@@ -173,6 +175,10 @@ githubConnectRoutes.post(
       asked: asked ?? null,
       userId,
     });
+    await assertRemovedConnectionTakesTheApp(
+      projectId,
+      orgId ? { ownerType: 'org', ownerId: orgId } : { ownerType: 'user', ownerId: userId },
+    );
 
     const api = apiBaseUrl();
     assertApiOriginReachable(c, api);
@@ -197,6 +203,37 @@ githubConnectRoutes.post(
 );
 
 /**
+ * The removed GitHub connection this project's binding names, when the App about to be created would
+ * not belong to its owner: the callback could not turn that connection back on, and its binding holds
+ * the project's one GitHub slot, so the App would be left on GitHub with nowhere to go. Refused here,
+ * before anything is created (ISS-1421 r22).
+ */
+async function assertRemovedConnectionTakesTheApp(
+  projectId: string,
+  owner: { ownerType: 'user' | 'org'; ownerId: string },
+): Promise<void> {
+  const removed = (await listBindingsForProject(projectId)).find(
+    (p) =>
+      p.binding.provider === 'github' &&
+      p.binding.role === 'service' &&
+      isRemovedConnection(p.connection),
+  );
+  if (!removed) return;
+  const { ownerType, ownerId } = removed.connection;
+  if (ownerType === owner.ownerType && ownerId === owner.ownerId) return;
+  throw new HTTPException(409, {
+    message:
+      "This project's GitHub binding names a removed connection that an App created here would not " +
+      'belong to, so the new App could not take its place. Disconnect it from this project, then ' +
+      'create the App.',
+    cause: {
+      code: 'REMOVED_CONNECTION_OTHER_OWNER',
+      details: { connectionId: removed.connection.id },
+    },
+  });
+}
+
+/**
  * A GitHub connection whose App was never finished: the manifest round trip that stores the App's
  * key never came back. Its own code, since the web words `BAD_REQUEST` as a generic "Invalid input"
  * and this sentence is the one that says what is missing and what to press (ISS-1421 r8).
@@ -207,6 +244,15 @@ const githubAppUnfinished = (connectionId: string) =>
       'This GitHub connection has no App yet: creating it on GitHub was never finished. ' +
       'Use Create a separate App instead.',
     cause: { code: 'GITHUB_APP_UNFINISHED', details: { connectionId } },
+  });
+
+/** A removed GitHub connection's repositories asked for: it holds no App until one is installed again. */
+const githubConnectionRemoved = (connectionId: string) =>
+  new HTTPException(409, {
+    message:
+      'This GitHub connection was removed, so it holds no App. Install the GitHub App again from ' +
+      "this project's Integrations tab, and it turns back on.",
+    cause: { code: 'CONNECTION_REMOVED', details: { connectionId } },
   });
 
 /**
@@ -243,6 +289,8 @@ githubConnectRoutes.get(
     const { connectionId } = c.req.valid('query');
 
     const connection = await githubConnectionForPicker({ userId, connectionId });
+    // Removed is not unfinished: the App was there, and a remove took it (ISS-1421 r22).
+    if (isRemovedConnection(connection)) throw githubConnectionRemoved(connectionId);
 
     const { appId, privateKey } = decryptConnectionSecrets<{
       appId?: string;
@@ -337,8 +385,8 @@ async function reattach(
     lastHealthAt: null,
   });
   // Every binding of the connection takes the new App's webhook secret and loses the old App's
-  // installation, which is not the new App's: the install step records the new one. Each keeps its
-  // own switch but the one this install was run from, which is turned on.
+  // installation, which is not the new App's: the install step records the new one on each of them.
+  // Each keeps its own switch but the one this install was run from, which is turned on.
   for (const { binding } of await listBindingsForConnection(removed.connection.id)) {
     const { installationId: _old, ...config } = binding.config as Record<string, unknown>;
     await updateBinding(binding.id, {
@@ -379,6 +427,15 @@ githubCallbackRoutes.get(
     await updateBinding(pair.binding.id, {
       config: { ...(pair.binding.config as Record<string, unknown>), installationId },
     });
+    // One installation belongs to its connection (the master's ruling, ISS-1421 r22): every other
+    // project bound to it that holds none, as a reattach leaves them, takes it. One already held is
+    // never replaced, since an App installed on two GitHub accounts has two.
+    for (const other of await listBindingsForConnection(pair.binding.connectionId)) {
+      const config = other.binding.config as Record<string, unknown>;
+      if (other.binding.id === pair.binding.id || other.binding.provider !== 'github') continue;
+      if (config.installationId !== undefined) continue;
+      await updateBinding(other.binding.id, { config: { ...config, installationId } });
+    }
 
     return c.redirect(`${webBaseUrl()}/projects/${projectId}/settings/integrations`);
   },
