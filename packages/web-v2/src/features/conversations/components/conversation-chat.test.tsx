@@ -411,7 +411,8 @@ describe("a room deleted while it is open", () => {
     roomError = roomGone();
     rerender(tree());
     await waitFor(() => expect(toast).toHaveBeenCalled());
-    const notice = toast.mock.calls[0]?.[0] as { onClick: () => void };
+    const notice = toast.mock.calls[0]?.[0] as { description: string; onClick: () => void };
+    expect(notice.description).toContain("“indented text”");
     notice.onClick();
     expect(writeText).toHaveBeenCalledWith(typed);
   });

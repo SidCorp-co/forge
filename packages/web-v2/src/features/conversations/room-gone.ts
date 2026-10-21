@@ -20,6 +20,8 @@ const UNSENT_QUOTE = 200;
 
 /** The thread goes with the room, so the notice keeps what was written (ISS-1229 r29). */
 export function unsentLine(text: string): string {
-  const quoted = text.length > UNSENT_QUOTE ? `${text.slice(0, UNSENT_QUOTE).trimEnd()}…` : text;
+  // Copying hands back the text exactly; the quote only shows it, so its outer blank space goes.
+  const shown = text.trim();
+  const quoted = shown.length > UNSENT_QUOTE ? `${shown.slice(0, UNSENT_QUOTE).trimEnd()}…` : shown;
   return `${roomDeletedLine(true)}\nSelect this to copy what you wrote:\n“${quoted}”`;
 }

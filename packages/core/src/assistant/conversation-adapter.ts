@@ -59,11 +59,7 @@ export async function deleteAndTellReaders(
   for (const userId of readers) roomManager.publish(userRoom(userId), envelope);
 }
 
-/**
- * Publish to every socket that may currently see this room: everyone who can read it, the people its
- * deletion is told to, and not its people alone (ISS-1229 r30, the master's ruling on judge-86's
- * finding). Returns how many took it.
- */
+/** Publish to everyone who can read this room, as its deletion is (ISS-1229 r30); returns how many took it. */
 export async function publishToConversationReaders(
   conversationId: string,
   envelope: { event: string; data: unknown },
