@@ -1,1 +1,1 @@
-**A link or action in the chat panel keeps the panel open on the page it opens.** Before, every new page closed an unpinned panel; now only a page reached from outside the panel (its menus, the page itself, or Back) does. On a phone the chat still closes so the page shows.
+**A link or action in the chat panel keeps the panel open on the page it opens.** A click elsewhere, or Back, still closes an unpinned panel; on a phone the chat closes so the page shows.
