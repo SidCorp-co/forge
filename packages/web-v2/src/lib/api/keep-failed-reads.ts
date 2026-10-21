@@ -7,19 +7,29 @@ interface Failed {
 	dataUpdatedAt: number;
 }
 
-/** A read that failed stays failed until a refetch answers (ISS-1228). Two things are not an answer:
- *  the refetch react-query starts, which resets a query holding no data to `pending`, and a cache
- *  write (`setQueryData`, as a socket frame makes), which it records as a success. Each is put back. */
+/** A read that failed stays failed until a refetch answers (ISS-1228). Three things are not an
+ *  answer and are put back: the refetch react-query starts, which resets a query holding no data to
+ *  `pending`; a cache write (`setQueryData`, as a socket frame makes), which it records as a success;
+ *  and a refetch that cuts short a failing one, which drops the failure before it was ever recorded. */
 export function keepFailedReadsFailed(cache: QueryCache): () => void {
 	const lastFailure = new WeakMap<Query, Failed>();
+	const failingAttempt = new WeakMap<Query, unknown>();
+	const fail = (query: Query, error: unknown) => {
+		const { data, dataUpdatedAt } = query.state;
+		lastFailure.set(query, { error, data, dataUpdatedAt });
+	};
 	return cache.subscribe((event) => {
 		if (event.type !== "updated") return;
 		const { query } = event;
 		const action = event.action as { type: string; error?: unknown; manual?: boolean };
 		const failed = lastFailure.get(query);
+		if (action.type === "failed") {
+			failingAttempt.set(query, action.error);
+			return;
+		}
 		if (action.type === "error") {
-			const { data, dataUpdatedAt } = query.state;
-			lastFailure.set(query, { error: action.error, data, dataUpdatedAt });
+			failingAttempt.delete(query);
+			fail(query, action.error);
 			return;
 		}
 		if (action.type === "success") {
@@ -32,12 +42,21 @@ export function keepFailedReadsFailed(cache: QueryCache): () => void {
 				});
 				return;
 			}
+			if (action.manual) return;
+			failingAttempt.delete(query);
 			lastFailure.delete(query);
 			return;
 		}
-		if (action.type !== "fetch" || !failed) return;
+		if (action.type !== "fetch") return;
+		if (failingAttempt.has(query)) {
+			const error = failingAttempt.get(query);
+			failingAttempt.delete(query);
+			fail(query, error);
+			query.setState({ status: "error", error: error as never });
+			return;
+		}
 		const { state } = query;
-		if (state.status !== "pending" || state.data !== undefined || state.errorUpdateCount === 0) return;
+		if (!failed || state.status !== "pending" || state.data !== undefined || state.errorUpdateCount === 0) return;
 		query.setState({ status: "error", error: failed.error as never });
 	});
 }

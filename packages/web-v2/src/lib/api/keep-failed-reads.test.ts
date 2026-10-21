@@ -121,3 +121,37 @@ describe("a read that answered and then failed stays failed until a refetch answ
 		unsubscribe();
 	});
 });
+
+// Round 23, on the rig: with a frame each second every failing refetch was cut short by the next one,
+// silently, before its retries ran out, so the read never once said it had failed.
+describe("a failing refetch cut short by another still says the read failed (criterion 233)", () => {
+	it("records the failed attempt as the read's failure when a refetch replaces it", async () => {
+		const client = createQueryClient();
+		let calls = 0;
+		const lost = new ApiError(503, "Forge is restarting.", "UNAVAILABLE");
+		const observer = new QueryObserver(client, {
+			queryKey: ["sessions-and-holds", "cut"],
+			queryFn: () => (calls++ === 0 ? Promise.resolve("answered") : Promise.reject(lost)),
+			retry: 2,
+			retryDelay: 60_000,
+		});
+		const unsubscribe = observer.subscribe(() => {});
+		await settle();
+		expect(observer.getCurrentResult()).toMatchObject({ isSuccess: true, data: "answered" });
+
+		// A refetch whose first attempt fails and waits a minute to retry.
+		void observer.refetch();
+		await settle();
+		expect(observer.getCurrentResult()).toMatchObject({ isSuccess: true, failureCount: 1 });
+
+		// A frame's invalidation starts another before that retry: the failure is said, not dropped.
+		void client.invalidateQueries({ queryKey: ["sessions-and-holds"] });
+		await settle();
+		expect(observer.getCurrentResult()).toMatchObject({ isError: true, error: lost, data: "answered" });
+		void client.invalidateQueries({ queryKey: ["sessions-and-holds"] });
+		await settle();
+		expect(observer.getCurrentResult()).toMatchObject({ isError: true, error: lost, data: "answered" });
+		unsubscribe();
+		client.clear();
+	});
+});
