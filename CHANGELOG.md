@@ -9,6 +9,18 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.270] - 2026-10-21
+
+Pages show state instead of explaining themselves; empty lists read as a word
+
+### Added
+
+- **Forge now learns from your corrections.** Returned mockups, rejected suggestions, failed verdicts and chat replies become lessons you approve on the Lessons page; agents name the lessons they apply, and a confusing lesson waits in Needs you.
+
+### Fixed
+
+- **Pages no longer explain themselves, and empty states read as a word or two.** The copy check reads each sentence itself, core's checklist prompts are held to it, and a runner keeps its checkouts' copy rule current while it runs.
+
 ## [0.4.0-dev.269] - 2026-10-21
 
 Mockups run full screen, take pinned comments and revisions on the item they shape
