@@ -16,7 +16,7 @@ vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})));
 const AT = "2026-10-07T08:00:00.000Z";
 const OPTS = { status: ["awaiting_release"], sort: "createdAt:asc", pageSize: 50 };
 const issue = (n: number) => ({ id: `i${n}`, displayId: `ISS-${n}`, title: `Issue ${n}`, status: "awaiting_release" });
-const draft = (late: boolean) => ({
+const draft = () => ({
   label: "forecast",
   asOf: AT,
   scope: "release",
@@ -25,7 +25,7 @@ const draft = (late: boolean) => ({
   progress: { total: 72, shipped: 0, awaitingRelease: 72, toDo: 0 },
   forecast: null,
   delivery: null,
-  next: { label: "forecast", asOf: AT, kind: "paused", ...forecastWait(say("standing.who.you"), say("standing.act.cut", { v: "0.3.0", more: null }), RULE), ref: null, since: AT, late: late ? { reason: "waiting_over_day", since: AT, byMinutes: 2 * 24 * 60 } : null },
+  next: { label: "forecast", asOf: AT, kind: "paused", ...forecastWait(say("standing.who.you"), say("standing.act.cut", { v: "0.3.0", more: null }), RULE), ref: null, since: AT, late: null },
 });
 
 function mount(seed: [QueryKey, unknown][]) {
@@ -44,12 +44,12 @@ describe("the awaiting-release card", () => {
     expect(screen.getAllByTestId("awaiting-release-issue")).toHaveLength(5);
   });
 
-  it("names the draft release's turn and its lateness as the dashboard does", () => {
+  it("names the draft release's turn as the dashboard does, and no lateness of its own", () => {
     mount([
       [["issues", "search", "p1", OPTS], { items: [issue(1)], totalCount: 72 }],
-      [["issues", "standing", "forecast", "release-draft", "p1"], draft(true)],
+      [["issues", "standing", "forecast", "release-draft", "p1"], draft()],
     ]);
-    expect(screen.getByTestId("awaiting-release-turn").textContent).toBe("Waiting on You · 2 d over a day");
+    expect(screen.getByTestId("awaiting-release-turn").textContent).toBe("waiting on You to cut 0.3.0");
   });
 
   it("says nothing waits only where no issue stands at awaiting_release", () => {

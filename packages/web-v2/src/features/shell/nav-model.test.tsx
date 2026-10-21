@@ -53,15 +53,15 @@ describe("the nav model", () => {
     expect(delivery?.items.find((it) => it.key === "proj-modules")?.badge).toBeUndefined();
   });
 
-  it("puts Approvals beside the Dashboard, counted by the inbox's own read, and lights it on its page", () => {
-    const approvals = { generatedAt: "2026-10-16T00:00:00.000Z", items: [], unreadable: [], total: 4 };
-    const row = projectMenu({ approvals }).find((e) => e.key === "proj-approvals");
+  it("puts Approvals beside the Dashboard, counted by the one Needs you decisions read, and lights it on its page", () => {
+    const decisions = { total: 4 };
+    const row = projectMenu({ decisions }).find((e) => e.key === "proj-approvals");
     expect(row).toMatchObject({ label: "Approvals", badge: 4, badgeHint: "4 waiting on your decision" });
     expect(PROJECT_ITEMS.find((it) => it.key === "proj-approvals")?.sub).toBe("/approvals");
     expect(buildActiveKey("/projects/hop/approvals", "hop")).toBe("proj-approvals");
     // nothing read yet: no count rather than a zero that is not known
     expect(projectMenu({}).find((e) => e.key === "proj-approvals")?.badge).toBeUndefined();
-    expect(projectMenu({ approvals: { ...approvals, total: 0 } }).find((e) => e.key === "proj-approvals")).toMatchObject({ badge: 0 });
+    expect(projectMenu({ decisions: { total: 0 } }).find((e) => e.key === "proj-approvals")).toMatchObject({ badge: 0 });
   });
 
   it("lights a Product row on its own page", () => {

@@ -13,9 +13,17 @@ const says = {
   rule: say('standing.act.none'),
 };
 const nobody = { kind: 'none', who: 'Nobody', act: '', rule: '', ref: null, dueAt: null, says };
+const times = {
+  actClass: 'other',
+  since: asOf,
+  dueAt: null,
+  stuck: null,
+  carriedBy: null,
+  basis: 'waiting|none',
+};
 
 function standing(state: RequirementState, over: Partial<RequirementSummary['standing']> = {}) {
-  return { standing: { state, waitingOn: nobody, tasks: [], ...over } } as unknown as Pick<
+  return { standing: { state, waitingOn: nobody, tasks: [], times, ...over } } as unknown as Pick<
     RequirementSummary,
     'standing'
   >;
@@ -86,6 +94,7 @@ function item(key: string, over: Partial<FeedbackSummary> = {}): FeedbackSummary
     route: null,
     snoozed: null,
     waitingOn: nobody,
+    times,
     ...over,
   } as unknown as FeedbackSummary;
 }

@@ -55,6 +55,7 @@ const input = (issues: StandingIssue[]) => ({
   release: null,
   updatedAt: at('2026-09-26T00:00:00Z'),
   statusSince: at('2026-09-26T00:00:00Z'),
+  master: 'serves' as const,
   now: at('2026-09-28T00:00:00Z'),
 });
 
@@ -127,7 +128,8 @@ describe('whose turn an open draft revision is', () => {
 
   it('waits on the viewer when the viewer wrote it themselves', () => {
     const s = deriveStanding(draftBy('human'));
-    expect(s.attentionGroup).toBe('needs_you');
+    // the viewer's own draft to finish is their work, not a decision, so not Needs you (REQ-48 BC-11)
+    expect(s.attentionGroup).toBe('waiting');
     expect(s.waitingOn).toMatchObject({ kind: 'you', who: 'You', act: 'propose r1' });
   });
 
@@ -140,7 +142,7 @@ describe('whose turn an open draft revision is', () => {
   // FB-77: with no runner bound no master can take it, so the signer owes it, told why
   it('waits on you, naming why, when no runner is bound to carry the master', () => {
     const s = deriveStanding({ ...draftBy('agent'), runnerBound: false });
-    expect(s.attentionGroup).toBe('needs_you');
+    expect(s.attentionGroup).toBe('waiting');
     expect(s.waitingOn).toMatchObject({ kind: 'you', who: 'You', act: 'propose or drop r1' });
     expect(s.waitingOn.says.rule.key).toBe('requirements.rule.noRunner');
   });
@@ -244,7 +246,9 @@ describe('an agreed requirement whose live issues are drafts', () => {
     ['an admitter who cannot sign', { userId: 'u3', canSignOff: false, canAdmit: true }],
   ])('names a BA or owner who can admit issues to %s, and does not ask them', (_, viewer) => {
     const s = deriveStanding({ ...input([issue(1, 'draft', false)]), viewer });
-    expect(s.attentionGroup).toBe('waiting');
+    // nothing takes a draft on by itself, so a requirement only drafts carry reads stuck (REQ-48 BC-5)
+    expect(s.attentionGroup).toBe('stuck');
+    expect(s.times.stuck).toMatchObject({ code: 'draft_carrier', via: 'ISS-1' });
     expect(s.waitingOn).toMatchObject({
       kind: 'person',
       who: 'a BA or owner who can admit issues',

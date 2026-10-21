@@ -8,7 +8,8 @@ import type { AttentionItem, AttentionView } from "./types";
 /**
  * Cross-project attention/inbox view: the `/me/attention` buckets merged with
  * offline runners derived client-side from `/me/devices`. `total` includes the
- * offline-runner count so the rail badge and the screen agree.
+ * offline-runner count so the rail badge and the screen agree, and each project's
+ * Needs you part counts its whole `total`.
  */
 export function useAttention() {
   const attentionQ = useQuery({
@@ -32,7 +33,11 @@ export function useAttention() {
     statusReports: base?.statusReports ?? [],
     offlineRunners,
   };
-  const view: AttentionView = { ...buckets, total: Object.values(buckets).reduce((n, b) => n + b.length, 0) };
+  // a project's Needs you part counts its whole `total`, the number its Approvals page and menu badge read
+  // (REQ-48 BC-11); every other bucket counts its rows
+  const { needsYou, ...rest } = buckets;
+  const total = needsYou.reduce((n, p) => n + p.total, 0) + Object.values(rest).reduce((n, b) => n + b.length, 0);
+  const view: AttentionView = { ...buckets, total };
 
   return {
     view,

@@ -25,8 +25,8 @@ export const requirementAffected = (projectId: string, requirement: string): Que
   ["requirements", projectId],
 ];
 
-/** Its author revises or withdraws a suggestion; what it was on is read again, and the approval inbox with it. */
+/** Its author revises or withdraws a suggestion; what it was on is read again, and the Needs you read with it. */
 export const useSuggestionAuthorAct = (projectId: string, affected: readonly QueryKey[]) =>
   useWrite((a: SuggestionAuthorAct) => suggestionsApi.author(projectId, a), {
-    touches: [["suggestions", projectId], ["approvals"], ...affected],
+    touches: [["suggestions", projectId], ["needs-you"], ...affected],
   });

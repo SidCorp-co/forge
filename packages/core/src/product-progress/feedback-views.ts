@@ -60,10 +60,11 @@ function workOf(s: FeedbackSummary, reads: FeedbackReads): WorkIssue[] {
   return [];
 }
 
-/** Why an item has no delivery to forecast, said from its phase and route. */
+/** Why an item has no delivery to forecast: its stuck reading where it is stuck (REQ-48 BC-8), else said from its phase and route. */
 function noDeliveryOf(s: FeedbackSummary, root: FeedbackSummary): string {
   const of = root === s ? '' : `it duplicates ${root.key}, and `;
   const r = root.route;
+  if (root.times.stuck) return `${of}${root.times.stuck.reason}`;
   if (root.snoozed) return `${of}it is snoozed until ${root.snoozed.until.slice(0, 10)}`;
   if (root.phase === 'new' || root.phase === 'reopened') return `${of}it is not triaged yet`;
   if (root.phase === 'declined') return `${of}it was declined, so no work will ship for it`;

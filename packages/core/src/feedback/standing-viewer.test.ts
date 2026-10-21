@@ -2,6 +2,14 @@ import { saidDisagreements } from '@forge/contracts/said';
 import { describe, expect, it } from 'vitest';
 import { feedbackStandingOf as feedbackStandingOf_, type StandingViewer } from './standing.js';
 
+/** When the times read: a master serves, so no wait here reads stuck by the master alone. */
+const AT = {
+  since: new Date('2026-10-01T00:00:00Z'),
+  master: 'serves' as const,
+  now: new Date('2026-10-02T00:00:00Z'),
+};
+const NO_STANDING_FACTS = { masterOwesTriage: false, carrierRelease: null };
+
 /** Every sentence the producer said agrees with the English beside it (`saidDisagreements`). */
 const checked = <T>(v: T): T => {
   expect(saidDisagreements(v)).toEqual([]);
@@ -21,7 +29,16 @@ const viewer = (over: Partial<StandingViewer> = {}): StandingViewer => ({
 
 describe('an untriaged item waits on whoever can triage it, read for this viewer', () => {
   it('names a holder of feedback.approve, not You, for a viewer who cannot triage', () => {
-    const s = feedbackStandingOf('new', null, [], 'Reporter', viewer(), null);
+    const s = feedbackStandingOf(
+      'new',
+      null,
+      [],
+      'Reporter',
+      viewer(),
+      null,
+      NO_STANDING_FACTS,
+      AT,
+    );
     expect(s.waitingOn.kind).toBe('person');
     expect(s.waitingOn.who).toBe('A holder of feedback.approve');
     expect(s.attentionGroup).toBe('waiting');
@@ -35,16 +52,28 @@ describe('an untriaged item waits on whoever can triage it, read for this viewer
       'Reporter',
       viewer({ canTriage: true }),
       null,
+      NO_STANDING_FACTS,
+      AT,
     );
     expect(s.waitingOn).toMatchObject({ kind: 'you', who: 'You', act: 'triage it' });
-    expect(s.attentionGroup).toBe('needs_you');
+    // a triage is the steward's to take (REQ-48 BC-4, BC-11): it is the viewer's, never their Needs you
+    expect(s.attentionGroup).toBe('waiting');
   });
 
   it('names the project master for an item it owes a triage, whoever reads it', () => {
-    const s = feedbackStandingOf('new', null, [], 'Reporter', viewer({ canTriage: true }), null, {
-      masterOwesTriage: true,
-      carrierRelease: null,
-    });
+    const s = feedbackStandingOf(
+      'new',
+      null,
+      [],
+      'Reporter',
+      viewer({ canTriage: true }),
+      null,
+      {
+        masterOwesTriage: true,
+        carrierRelease: null,
+      },
+      AT,
+    );
     expect(s.waitingOn).toMatchObject({
       kind: 'agent',
       who: "The project's master",
@@ -61,11 +90,20 @@ describe('an item planned on an issue at the release gate names who releases it'
     v = viewer(),
     releaseHolders: readonly string[] = ['Ana', 'Bo'],
   ) =>
-    feedbackStandingOf('planned', 'issue', ['ISS-9'], 'Reporter', v, null, {
-      masterOwesTriage: false,
-      carrierRelease: release,
-      releaseHolders,
-    });
+    feedbackStandingOf(
+      'planned',
+      'issue',
+      ['ISS-9'],
+      'Reporter',
+      v,
+      null,
+      {
+        masterOwesTriage: false,
+        carrierRelease: release,
+        releaseHolders,
+      },
+      AT,
+    );
 
   it('names the writers who release it where the project declares no release model', () => {
     const s = planned('none');

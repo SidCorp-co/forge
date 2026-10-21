@@ -103,6 +103,14 @@ export async function readFeedbackForecastsOver(
   };
 }
 
+/**
+ * A declined item carries no work, whatever route it kept (`feedback/service.ts:declineIn` keeps it):
+ * it is never forecast, late or at risk (REQ-48 BC-9). A verified one keeps its shipped line, which
+ * is never late.
+ */
+export const noWorkLine = (s: Pick<FeedbackSummary, 'key' | 'phase'>): FeedbackForecast | null =>
+  s.phase === 'declined' ? { key: s.key, triage: null, delivery: null } : null;
+
 async function feedbackLinesOver(
   listedItems: readonly FeedbackSummary[],
   projectId: string,
@@ -140,6 +148,11 @@ async function feedbackLinesOver(
   const own = new Map<string, FeedbackForecast>();
   const pending: FeedbackSummary[] = [];
   for (const s of items) {
+    const none = noWorkLine(s);
+    if (none) {
+      own.set(s.id, none);
+      continue;
+    }
     const link = links.get(s.id);
     if (untriaged(s)) {
       const w = s.waitingOn;

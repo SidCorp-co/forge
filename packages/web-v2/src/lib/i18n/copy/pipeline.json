@@ -13,9 +13,6 @@
     "pipeline.activity.showAll": "Show all",
     "pipeline.activity.title": "Activity",
     "pipeline.board.empty": "No issues",
-    "pipeline.board.lastCheckIn": "Last check-in {clock} · {ago} ago",
-    "pipeline.board.noCheckIn": "No check-in",
-    "pipeline.board.noCheckInRecord": "No check-in",
     "pipeline.board.queued": "Queued",
     "pipeline.board.title": "Pipeline",
     "pipeline.control.cancelled": "Run cancelled",
@@ -82,8 +79,6 @@
     "pipeline.run.tokensOut": "Output"
   },
   "vi": {
-    "pipeline.board.lastCheckIn": "Lần báo cuối {clock} · {ago} trước",
-    "pipeline.board.noCheckIn": "Chưa báo",
     "pipeline.board.queued": "Đang xếp hàng",
     "pipeline.board.title": "Pipeline"
   }

@@ -56,7 +56,7 @@ export function BaFigures({ slug, requirements, feedback, release, clock }: BaFi
       <Group label={t("dash.feedback")} share="md:flex-6">
         <Figure href={feedbackListHref(slug)} label={t("dash.fbOpen")} value={feedback.open} />
         <Figure href={feedbackListHref(slug)} label={t("dash.fbUntriaged")} value={feedback.untriaged} accent={feedback.untriaged > 0} />
-        <Figure href={feedbackListHref(slug)} label={t("dash.fbAging")} value={feedback.aging} accent={feedback.aging > 0} />
+        <Figure href={feedbackListHref(slug)} label={t("dash.fbStuck")} value={feedback.stuck} accent={feedback.stuck > 0} />
       </Group>
       <Group label={t("dash.nextRelease")} share="md:flex-5">
         {release ? (

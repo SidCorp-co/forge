@@ -54,6 +54,7 @@ export * from './schema-schedules.js';
 export * from './schema-shares.js';
 export * from './schema-skills.js';
 export * from './schema-status-reports.js';
+export * from './schema-steward-notes.js';
 export { MEMORY_EMBEDDING_DIM, pgVector, tsVector } from './schema-types.js';
 export * from './schema-uploads.js';
 export * from './schema-usage-records.js';

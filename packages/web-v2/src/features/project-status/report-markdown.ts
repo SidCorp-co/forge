@@ -71,6 +71,33 @@ function waitLine(x: StatusWait, s: ProjectStatus, w: ReportWords): string {
   return `- **${needsYouKeyLabel(x, (a) => w.label("needsYouArea", a))}** ${said(x.says.title, w.clock.lang)} — ${waitText(x.waitingOn, w.clock.lang, s.viewer.name)}`;
 }
 
+/** What is stuck and why, with the steward's line under it; a report stored before the read has none. */
+function stuckPart(s: ProjectStatus, w: ReportWords): string[] {
+  const { t, clock } = w;
+  if (!s.stuck) return [];
+  const out: string[] = [`## ${t("status.stuck")}`, ""];
+  if (s.stuck.items.length === 0) out.push(t("status.stuckNone"));
+  for (const i of s.stuck.items) {
+    out.push(`- **${i.key}** ${i.title} — ${said(i.says.reason, clock.lang)}`);
+    if (i.note) out.push(`  - ${i.note}`);
+  }
+  if (s.stuck.count > s.stuck.items.length) out.push(`- ${t("status.stuckMore", { n: s.stuck.count - s.stuck.items.length })}`);
+  out.push("", readAt(s.stuck.asOf, w), "");
+  return out;
+}
+
+/** The viewer's decisions, at most three, the rest counted (REQ-48 BC-11). */
+function needsYouPart(s: ProjectStatus, w: ReportWords): string[] {
+  const { t } = w;
+  if (!s.needsYou) return [];
+  const out: string[] = [`## ${t("status.needsYou")}`, ""];
+  if (s.needsYou.decisions.length === 0) out.push(t("status.needsYouNone"));
+  for (const d of s.needsYou.decisions) out.push(`- **${d.key}** ${join([d.question, d.recommended ? t("status.recommended", { answer: d.recommended }) : null])}`);
+  if (s.needsYou.more > 0) out.push(`- ${t("needsYou.decisions.capMore", { n: s.needsYou.more })}`);
+  out.push("", readAt(s.needsYou.asOf, w), "");
+  return out;
+}
+
 /** What shipped in the window: each release and its issues, and the requirements it shipped or still owes proof for. */
 function shippedPart(s: ProjectStatus, w: ReportWords): string[] {
   const { t, clock } = w;
@@ -200,6 +227,6 @@ export function statusMarkdown(s: ProjectStatus, w: ReportWords): string {
   const out: string[] = [];
   out.push(`# ${s.name} — ${t("status.title")}`, "");
   out.push(`${t("status.asOf", { at: when(s.asOf) })} · ${t("status.window", { days: s.days })}`, "");
-  out.push(...shippedPart(s, w), ...inFlightPart(s, w), ...waitsPart(s, w), ...requirementsPart(s, w), ...nextReleasePart(s, w), ...latePart(s, w), ...roadmapPart(s, w));
+  out.push(...stuckPart(s, w), ...needsYouPart(s, w), ...shippedPart(s, w), ...inFlightPart(s, w), ...waitsPart(s, w), ...requirementsPart(s, w), ...nextReleasePart(s, w), ...latePart(s, w), ...roadmapPart(s, w));
   return out.join("\n");
 }

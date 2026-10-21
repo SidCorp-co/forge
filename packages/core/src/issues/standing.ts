@@ -22,14 +22,17 @@ import type {
   IssueStanding,
   IssueWaitingKind,
   IssueWithheld,
-  IssueWithheldCode,
 } from '@forge/contracts/issue-standing';
 import { issueStatusToneOn, type WorkStep } from '@forge/contracts/issue-vocabulary';
 import type { ParkAnsweredView } from '@forge/contracts/park';
 import { type Said, say, verbatim } from '@forge/contracts/said';
-import { holdersWho, nobodyHoldsAct, type WaitingOn, waitingOn } from '@forge/contracts/standing';
+import { holdersWho, nobodyHoldsAct, type WaitingOn } from '@forge/contracts/standing';
+import type { MasterServing } from '@forge/contracts/steward';
+import { withTimes } from '../lib/standing-times.js';
 import { answeredWait } from './answered-wait.js';
+import { awaitsJudge, blockerAct, blockerTurn, withheldTurn } from './standing-held.js';
 import { releaseTurn } from './standing-release.js';
+import { wait } from './standing-wait.js';
 import { landedWait } from './strand-rules.js';
 
 /** Settled blockers release their dependents (`dependency-effects.ts:BLOCKER_SETTLED_STATUSES`). */
@@ -112,18 +115,14 @@ export interface IssueStandingInput {
   admins: readonly string[];
   /** The refusal the admissible list withholds it by (`devices/admissible.ts`), first that holds. */
   withheld: IssueWithheld | null;
+  /** When it came to its status: its newest kernel move there, else its creation (never a write). */
+  statusSince: Date;
+  /** Whether a live master serves the project (`masters/read.ts:masterServingOf`). */
+  master: MasterServing;
   now: Date;
 }
 
 export type IssueWaitingOn = WaitingOn<IssueWaitingKind>;
-
-const wait = (
-  kind: IssueWaitingKind,
-  who: Said,
-  act: Said,
-  rule: Said,
-  ref: string | null = null,
-): IssueWaitingOn => waitingOn(kind, { who, act, rule }, { ref });
 
 const YOU = say('standing.who.you');
 const MASTER = say('standing.who.master');
@@ -172,8 +171,8 @@ const held = (lease: IssueLeaseView | null) =>
 // moving; a live unsettled blocker → stuck on the first, worded as waiting on its judge where its
 // change landed; a landed row nothing holds → queued for its judge
 // (`strand-rules.ts:landedWait`); a takeable row the admissible list withholds → stuck, its
-// refusal named; in_progress with no holder or reopen → stuck; open or approved → queued for a
-// master slot.
+// refusal named; in_progress with no holder → stuck; reopen, open or approved → queued for a
+// master slot. Then `lib/standing-times.ts:withTimes` reads the stuck rule over the turn.
 export type Turn = { group: IssueAttentionGroup; waitingOn: IssueWaitingOn };
 
 const clip = (text: string, max: number) =>
@@ -232,7 +231,7 @@ function answeredParkTurn(
   if (w.on === 'run') {
     return { group: 'moving', waitingOn: wait('run', say('issues.standing.who.run'), w.act, rule) };
   }
-  return { group: 'stuck', waitingOn: wait('master', MASTER, w.act, rule) };
+  return { group: 'queued', waitingOn: wait('master', MASTER, w.act, rule) };
 }
 
 /** A status only a person moves on from: done, paused, a question owed, a draft. */
@@ -279,7 +278,7 @@ function personTurn(input: IssueStandingInput): Turn | null {
   }
   if (stale?.refused) {
     return {
-      group: 'stuck',
+      group: 'queued',
       waitingOn: wait(
         'master',
         MASTER,
@@ -322,67 +321,8 @@ function runningTurn(input: IssueStandingInput): Turn {
   };
 }
 
-function blockerTurn(blocker: StandingEdge): Turn {
-  const design = SETTLED.includes(blocker.status) ? blocker.designHold : null;
-  const judged = awaitsJudge(blocker);
-  return {
-    group: 'stuck',
-    waitingOn: wait(
-      'issue',
-      named(blocker.key),
-      design
-        ? say('issues.standing.act.designApproval')
-        : judged
-          ? say('issues.standing.act.landedWaitsJudge')
-          : blockerAct(blocker.status),
-      design
-        ? say('issues.rule.blockedDesign', { key: blocker.key, design })
-        : judged
-          ? say('issues.rule.blockedLanded', { key: blocker.key })
-          : say('issues.rule.blocked', { key: blocker.key }),
-      blocker.key,
-    ),
-  };
-}
-
-// the project document is declared by a holder of project.admin (`project-config/routes.ts`), so a
-// policy refusal names them
-const WITHHELD_ACT: Record<IssueWithheldCode, { who: Said | 'admins'; act: Said }> = {
-  POLICY_UNDECLARED: { who: 'admins', act: say('issues.standing.act.declarePolicy') },
-  POLICY_STATE_UNDECLARED: { who: 'admins', act: say('issues.standing.act.declarePolicyState') },
-  WORKFLOW_DESIGN_NOT_APPROVED: {
-    who: say('issues.standing.who.designApprover'),
-    act: say('issues.standing.act.approveDesign'),
-  },
-  CONTRACT_WAIT_UNSETTLED: {
-    who: say('issues.standing.who.contractProvider'),
-    act: say('issues.standing.act.approveContract'),
-  },
-  PATTERN_REVIEW_PENDING: {
-    who: say('issues.standing.who.patternReviewer'),
-    act: say('issues.standing.act.decidePattern'),
-  },
-};
-
-/** A takeable issue no master is handed: stuck, the dispatch door's refusal named as its rule. */
-function withheldTurn(withheld: IssueWithheld, admins: readonly string[]): Turn {
-  const owed = WITHHELD_ACT[withheld.code];
-  const nobody = owed.who === 'admins' && admins.length === 0;
-  const who = owed.who === 'admins' ? holdersWho(admins) : owed.who;
-  const act = nobody ? nobodyHoldsAct(owed.act, 'project.admin') : owed.act;
-  return {
-    group: 'stuck',
-    waitingOn: wait(
-      'person',
-      who,
-      act,
-      say('issues.rule.withheld', { code: withheld.code, detail: withheld.detail }),
-      withheld.code,
-    ),
-  };
-}
-
-/** Nothing holds it and no person owes a move: stuck in progress or after a reopen, else queued. */
+/** Nothing holds it and no person owes a move: stuck in progress with no holder, else queued for the
+ *  master, which `withTimes` reads stuck where no master serves or the take falls overdue. */
 function idleTurn(status: IssueStatus): Turn {
   if (status === 'in_progress') {
     return {
@@ -397,7 +337,7 @@ function idleTurn(status: IssueStatus): Turn {
   }
   if (status === 'reopen') {
     return {
-      group: 'stuck',
+      group: 'queued',
       waitingOn: wait(
         'master',
         MASTER,
@@ -453,22 +393,18 @@ function turnOf(input: IssueStandingInput): Turn {
 const withheldOf = (input: IssueStandingInput): IssueWithheld | null =>
   TAKEABLE_STATUSES.includes(input.status) ? input.withheld : null;
 
-const awaitsJudge = (e: StandingEdge) => landedWait(e.status, e) !== null;
-
-function blockerAct(status: IssueStatus): Said {
-  if (status === 'in_progress') return say('issues.standing.act.running');
-  if (status === 'needs_info' || status === 'draft') return say('issues.standing.act.needsPerson');
-  if (status === 'on_hold') return say('issues.standing.act.paused');
-  if (status === 'reopen') return say('issues.standing.act.cameBack');
-  return say('issues.standing.act.notStarted');
-}
-
 export function deriveIssueStanding(
   input: IssueStandingInput,
   edgeGroups: ReadonlyMap<string, IssueAttentionGroup> = new Map(),
   wave: number | null = null,
 ): IssueStanding {
-  const { group, waitingOn } = turnOf(input);
+  const turn = turnOf(input);
+  const { waitingOn } = turn;
+  const { group, times } = withTimes(
+    turn,
+    { since: sinceOf(input), master: input.master, now: input.now },
+    'queued',
+  );
   const ref = (e: StandingEdge): IssueEdgeRef => ({
     key: e.key,
     title: e.title,
@@ -502,5 +438,12 @@ export function deriveIssueStanding(
     wave: DONE.includes(input.status) ? null : wave,
     touchedAt: input.touchedAt.toISOString(),
     withheld: withheldOf(input),
+    times,
   };
 }
+
+/** When the wait began: the step a run is on, else the move into its status. */
+const sinceOf = (input: IssueStandingInput): Date =>
+  input.stepStartedAt && input.stepStartedAt > input.statusSince
+    ? input.stepStartedAt
+    : input.statusSince;
