@@ -174,7 +174,7 @@ integrationConnectionsRoutes.post(
 // always mints a NEW connection from the request body's secrets.
 const bindExistingSchema = z
   .object({
-    projectId: z.string().min(1),
+    projectId: z.uuid(),
     role: roleSchema,
     stages: stagesSchema.optional(),
     // Binding-tier overrides (coolify resourceUuid/branch) so a shared connection
