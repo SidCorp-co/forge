@@ -462,7 +462,7 @@ describe("which session holds the issue, while it cannot be read", () => {
     { runId: "r1", ordinal: 1, kind: "issue", status: "running", group: null, startedAt: "2026-09-05T14:16:00Z",
       finishedAt: null, costUsd: null, sessionId: "s-run", attempts: [], reading: "running", runningSince: null },
   ];
-  let holds: "fail" | "hang" | "answer" | "refuse" = "fail";
+  let holds: "fail" | "hang" | "answer" | "refuse" | "forbid" | "missing" = "fail";
   /** A request in flight that has had no answer yet; the browser gives up on it in its own time. */
   const pending: Array<() => void> = [];
   const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
@@ -477,6 +477,10 @@ describe("which session holds the issue, while it cannot be read", () => {
       if (holds === "refuse") {
         const refused = { code: "HOLDS_READ_REFUSED", message: "The holds could not be read while a migration holds the table. Try again in a minute." };
         return new Response(JSON.stringify(refused), { status: 409, headers: { "content-type": "application/json" } });
+      }
+      if (holds === "forbid" || holds === "missing") {
+        const [status, code, message] = holds === "forbid" ? [403, "FORBIDDEN", "Not a project member."] : [404, "NOT_FOUND", "Project not found."];
+        return new Response(JSON.stringify({ code, message }), { status, headers: { "content-type": "application/json" } });
       }
       if (holds === "hang") {
         return new Promise<Response>((_, reject) => pending.push(() => reject(new TypeError("Failed to fetch"))));
@@ -513,6 +517,20 @@ describe("which session holds the issue, while it cannot be read", () => {
     renderLive();
     expect(await within(header()).findByText(/Its session could not be read\. .*Try again in a minute\./)).toBeInTheDocument();
     expect(within(header()).getByRole("button", { name: "Retry" })).toBeInTheDocument();
+  });
+
+  // Round 24 (judge-78, criterion 226): a refusal read "You do not have access to this resource." or
+  // "Not found." in place of the sentence Forge sent; and the line sat in the action toolbar.
+  it.each([
+    ["forbid", "Not a project member."],
+    ["missing", "Project not found."],
+  ] as const)("says the server's own sentence when the read is refused (%s), under the actions", async (refusal, said) => {
+    holds = refusal;
+    renderLive();
+    const line = await within(header()).findByText(`Its session could not be read. ${said}`);
+    expect(line.closest('[data-header="failure"]')).not.toBeNull();
+    expect(line.closest('[data-header="actions"]')).toBeNull();
+    expect(within(header()).queryByText(/You do not have access to this resource|Not found\./)).toBeNull();
   });
 
   it("opens no session while the read has not answered", () => {

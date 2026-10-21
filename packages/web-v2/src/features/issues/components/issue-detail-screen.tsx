@@ -16,11 +16,9 @@ import {
   Collapsible,
   ErrorState,
   HelpButton,
-  IconButton,
   Markdown,
   MonoTag,
   PageContainer,
-  PageTitle,
   ProjectLoader,
   Skeleton,
   StatusChip,
@@ -75,6 +73,7 @@ import { ActivityFeed } from "./activity-feed";
 import { AwaitingReleaseBanner } from "./awaiting-release-banner";
 import { BlockerBanner } from "./blocker-banner";
 import { IssueHeaderActions } from "./issue-header-actions";
+import { HeaderReadFailure, IssueStickyHeader } from "./issue-sticky-header";
 import { useGuardedTransition } from "./use-guarded-transition";
 import { CommentThread } from "./comment-thread";
 import { DescriptionSection } from "./description-section";
@@ -260,6 +259,10 @@ export function IssueDetailScreen({
       ? { error: q.error, retry: offersRetry(q.error) ? () => void q.refetch() : undefined }
       : undefined;
   const railUnread = { deps: unreadOf(depsQ), cost: unreadOf(costQ) };
+  const sessionUnread = sessionId === "unread" ? unreadOf(holdsQ) : undefined;
+  const sessionUnreadLine = sessionUnread ? (
+    <HeaderReadFailure said={couldNotRead("Its session", sessionUnread.error)} retry={sessionUnread.retry} />
+  ) : null;
 
   const tabs: TabItem[] = [
     {
@@ -276,21 +279,13 @@ export function IssueDetailScreen({
 
   return (
     <PageContainer className="min-h-dvh">
-      {/* Sticky action + state bar — keeps the id, live status, and the primary
-          actions reachable while scrolling a long issue (ISS-347). The shell's
-          TopBar now carries the breadcrumb trail (ISS-358/359), so the in-page
-          breadcrumb was removed to stop the doubled header that hid the detail
-          (ISS-360 regression). Full-bleed via negative gutters. Opaque with a visible line: content
-          scrolling under a see-through bar read as a ghost control beside the status chip (ISS-1228). */}
-      <div ref={stickyHeader} className="sticky top-0 z-20 -mx-4 mb-5 flex flex-wrap items-start gap-3 border-b border-line bg-app px-4 py-3 sm:-mx-8 sm:px-8">
-        <IconButton
-          icon="arrowRight"
-          aria-label="Back to issues"
-          className="rotate-180"
-          onClick={() => router.push(`/projects/${slug}/issues`)}
-        />
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
+      {/* Sticky action + state bar — keeps the id, live status, and the primary actions reachable
+          while scrolling a long issue (ISS-347). Full-bleed via negative gutters. */}
+      <IssueStickyHeader
+        ref={stickyHeader}
+        onBack={() => router.push(`/projects/${slug}/issues`)}
+        chips={
+          <>
             <MonoTag hue="cobalt">{issue.displayId}</MonoTag>
             {/* Issue lifecycle (pill) vs live agent run (squared, agent glyph). */}
             <StatusChip status={statusToChip(issue.status)} label={statusLabel(issue.status)} />
@@ -324,41 +319,41 @@ export function IssueDetailScreen({
             {liveStep && runWord && runWord.status !== "running" && (
               <span className="fg-caption">{liveStep}</span>
             )}
-          </div>
-          <PageTitle className="fg-h3 mt-1.5 break-words">{issue.title}</PageTitle>
-        </div>
-        {/* Its own row under the title at phone width rather than hidden there: the help tells a
-            reader to choose Reopen at the top of the issue page, on whatever screen they read it. */}
-        <div className="flex basis-full flex-wrap items-center gap-2 sm:flex-none sm:basis-auto">
-          <HelpButton
-            compact
-            summary="The full record for one issue: pipeline progress, description, acceptance criteria, the agent plan, and Comments / Activity."
-            actions={[
-              "Edit properties (status, priority, complexity) in the rail",
-              "Run / pause / reopen the pipeline from the header",
-              "Jump to related sessions, pipeline, and runs",
-            ]}
-            shortcuts={[{ keys: "⌘K", desc: "Open the command palette" }]}
-          />
-          <IssueHeaderActions
-            slug={slug}
-            sessionHref={sessionId && sessionId !== "unread" ? `/projects/${slug}/agents/${sessionId}` : null}
-            sessionUnread={sessionId === "unread" ? unreadOf(holdsQ) : undefined}
-            status={issue.status}
-            releaseRunId={issue.releaseBatchRunId}
-            canWrite={canWrite}
-            pending={pending}
-            isRunActive={isRunActive}
-            runWaitsOn={runChip.state === "read" ? runChip.waitsOn : null}
-            onAnswer={focusDecisions}
-            runsUnreadable={runChip.state === "unreadable"}
-            onTransition={onTransition}
-            onRun={() => runIssue.mutate(issue.id, { onSuccess: refreshIssue })}
-            running={runIssue.isPending}
-            onCopyLink={copyLink}
-          />
-        </div>
-      </div>
+          </>
+        }
+        title={issue.title}
+        actions={
+          <>
+            <HelpButton
+              compact
+              summary="The full record for one issue: pipeline progress, description, acceptance criteria, the agent plan, and Comments / Activity."
+              actions={[
+                "Edit properties (status, priority, complexity) in the rail",
+                "Run / pause / reopen the pipeline from the header",
+                "Jump to related sessions, pipeline, and runs",
+              ]}
+              shortcuts={[{ keys: "⌘K", desc: "Open the command palette" }]}
+            />
+            <IssueHeaderActions
+              slug={slug}
+              sessionHref={sessionId && sessionId !== "unread" ? `/projects/${slug}/agents/${sessionId}` : null}
+              status={issue.status}
+              releaseRunId={issue.releaseBatchRunId}
+              canWrite={canWrite}
+              pending={pending}
+              isRunActive={isRunActive}
+              runWaitsOn={runChip.state === "read" ? runChip.waitsOn : null}
+              onAnswer={focusDecisions}
+              runsUnreadable={runChip.state === "unreadable"}
+              onTransition={onTransition}
+              onRun={() => runIssue.mutate(issue.id, { onSuccess: refreshIssue })}
+              running={runIssue.isPending}
+              onCopyLink={copyLink}
+            />
+          </>
+        }
+        failure={sessionUnreadLine}
+      />
 
       <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,1fr)_clamp(16rem,32%,22.5rem)] 2xl:grid-cols-[minmax(0,1fr)_clamp(16rem,32%,23.75rem)]">
         <div className="min-w-0 space-y-4">
