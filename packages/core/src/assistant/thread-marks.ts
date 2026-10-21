@@ -1,6 +1,6 @@
 import type { OnboardingStatus } from '@forge/contracts/onboarding';
 import { requirementKey } from '@forge/contracts/requirements';
-import { and, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNull, lte, ne, sql } from 'drizzle-orm';
 import {
   CONVERSATION_AGENT_MARKER,
   readConversationAgentMeta,
@@ -8,6 +8,7 @@ import {
 } from '../conversations/index.js';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
+import { chatProposals } from '../db/schema-chat-proposals.js';
 import { conversationMessages, conversationWindows } from '../db/schema-conversations.js';
 import { questionnaireBatches } from '../db/schema-onboarding.js';
 import { requirements } from '../db/schema-requirements.js';
@@ -28,14 +29,17 @@ export interface ThreadFacts {
   batchOpen: boolean;
   /** A message in this room waits for its reply: a window not yet settled, or a runner turn still out. */
   replyPending: boolean;
-  /** The room's newest said message is an agent reply recorded as awaiting the viewer's answer. */
+  /**
+   * The room's newest said message is an agent reply recorded as awaiting the viewer's answer, and
+   * the viewer has not yet decided the cards its turn held.
+   */
   agentAsked: boolean;
 }
 
 // an onboarding thread wears its onboarding's own status; any other room waits on the viewer
 // while a batch they may answer is open, is in progress while a reply is still being made, waits on
-// the viewer when the agent's last reply was recorded as awaiting their answer, and is done
-// otherwise, for a reader the agent's question was not put to as well — the prototype's
+// the viewer when the agent's last reply was recorded as awaiting their answer and they have not
+// decided the cards its turn held, and is done otherwise, for a reader the agent's question was not put to as well — the prototype's
 // conversation status, so every row of the list carries one (REQ-11 BC-8, ISS-277)
 export function threadStatusOf(f: ThreadFacts): OnboardingStatus {
   if (f.onboarding) return f.onboarding;
@@ -52,7 +56,10 @@ export function threadStatusOf(f: ThreadFacts): OnboardingStatus {
  * (`awaits_reply_from`, the person its turn answered). Neither the reply's text nor who wrote
  * before it is read: no rule over prose can tell a question that waits from one the agent answered
  * or echoed, and the newest person to write before the reply may have written while the turn was
- * out (ISS-277, probe P7). A reply that awaits an answer and names nobody waits on nobody.
+ * out (ISS-277, probe P7). A reply that awaits an answer and names nobody waits on nobody. A reply
+ * whose turn held cards for the viewer is answered when the viewer has decided every one of them:
+ * pressing Record it or Decline writes no message, so the reply would otherwise stay newest and wait
+ * for ever.
  */
 async function roomsWhereAgentAsked(
   conversationIds: readonly string[],
@@ -61,6 +68,7 @@ async function roomsWhereAgentAsked(
   if (conversationIds.length === 0) return new Set();
   const newest = await db
     .selectDistinctOn([conversationMessages.conversationId], {
+      id: conversationMessages.id,
       conversationId: conversationMessages.conversationId,
       role: conversationMessages.role,
       awaitsReply: conversationMessages.awaitsReply,
@@ -75,11 +83,48 @@ async function roomsWhereAgentAsked(
       ),
     )
     .orderBy(conversationMessages.conversationId, desc(conversationMessages.seq));
-  return new Set(
-    newest
-      .filter((m) => m.role === 'assistant' && m.awaitsReply && m.awaitsReplyFrom === viewerId)
-      .map((m) => m.conversationId),
+  const asking = newest.filter(
+    (m) => m.role === 'assistant' && m.awaitsReply && m.awaitsReplyFrom === viewerId,
   );
+  const decided = await repliesWithEveryCardDecided(
+    asking.map((m) => m.id),
+    viewerId,
+  );
+  return new Set(asking.filter((m) => !decided.has(m.id)).map((m) => m.conversationId));
+}
+
+/**
+ * The replies among these whose turn held at least one card for the viewer, every one of them no
+ * longer pending. A turn's cards are the room's proposals to the viewer made after the agent's
+ * previous message and no later than the reply; a card put to another person is never the viewer's
+ * answer, and a pending one still waits on them.
+ */
+async function repliesWithEveryCardDecided(
+  replyIds: readonly string[],
+  viewerId: string,
+): Promise<Set<string>> {
+  if (replyIds.length === 0) return new Set();
+  const previousAgentMessage = sql`coalesce((
+    SELECT max(prior.created_at) FROM conversation_messages prior
+    WHERE prior.conversation_id = ${conversationMessages.conversationId}
+      AND prior.role = 'assistant' AND prior.seq < ${conversationMessages.seq}
+  ), '-infinity'::timestamptz)`;
+  const rows = await db
+    .select({ id: conversationMessages.id })
+    .from(conversationMessages)
+    .innerJoin(
+      chatProposals,
+      and(
+        eq(chatProposals.conversationId, conversationMessages.conversationId),
+        eq(chatProposals.proposedTo, viewerId),
+        lte(chatProposals.createdAt, conversationMessages.createdAt),
+        gt(chatProposals.createdAt, previousAgentMessage),
+      ),
+    )
+    .where(inArray(conversationMessages.id, [...replyIds]))
+    .groupBy(conversationMessages.id)
+    .having(sql`bool_and(${chatProposals.status} <> 'pending')`);
+  return new Set(rows.map((r) => r.id));
 }
 
 /**
