@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { Banner, Button, Field, Input } from '@/design';
 import { useAuth } from '@/providers/auth-provider';
+import { formatApiError } from '@/lib/api/error';
 import { extractFieldErrors } from './extract-field-errors';
 import { rateLimitedOf } from './rate-limit-words';
 import { validateLogin, type LoginFieldErrors, type LoginFieldKey } from './validation';
@@ -40,7 +41,7 @@ export function LoginForm({ presetEmail = '', returnTo = '/' }: { presetEmail?: 
       if (Object.keys(fieldMap).length > 0) {
         setFieldErrors(fieldMap);
       } else {
-        setTopError(rateLimitedOf(err) ?? (err instanceof Error ? err.message : 'Sign in failed'));
+        setTopError(rateLimitedOf(err) ?? (err instanceof Error ? formatApiError(err) : 'Sign in failed'));
       }
     } finally {
       setLoading(false);

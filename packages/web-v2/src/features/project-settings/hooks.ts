@@ -464,11 +464,6 @@ export function useRunAssistantWeekly(id: string | undefined) {
 					tone: "error",
 				});
 		},
-		onError: (err) =>
-			toast({
-				title: "Couldn't run the weekly reading",
-				description: err instanceof Error ? err.message : String(err),
-				tone: "error",
-			}),
+		onError: (err) => toast(failureToast(err, "The weekly reading did not run")),
 	});
 }

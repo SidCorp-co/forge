@@ -262,7 +262,7 @@ describe("DescriptionSection — a failed attachments read", () => {
         onRetryAttachments={vi.fn()}
       />,
     );
-    expect(screen.getByRole("alert")).toHaveTextContent("You do not have access to this resource.");
+    expect(screen.getByRole("alert")).toHaveTextContent("not a member");
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
   });
 });

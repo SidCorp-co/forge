@@ -83,3 +83,30 @@ describe("the sign-in form's refusal by its rate limit", () => {
     );
   });
 });
+
+// ISS-1228 round 24 (criteria 211 and 226): a sign-in that never reached Forge showed the browser's
+// own "Failed to fetch"; one Forge refused shows the sentence Forge sent.
+describe("the sign-in form's failure in Forge's words", () => {
+  async function refusedWith(err: unknown) {
+    login.mockRejectedValueOnce(err as never);
+    render(<LoginForm />);
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'a@example.test' } });
+    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'a-long-enough-password' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
+  }
+
+  it('says Forge could not be reached, never the browser\'s words', async () => {
+    const { markUnreachable, UNREACHABLE_SENTENCE } = await import('@/lib/api/transport-failure');
+    const lost = new TypeError('Failed to fetch');
+    markUnreachable(lost);
+    await refusedWith(lost);
+    await screen.findByText(UNREACHABLE_SENTENCE);
+    expect(screen.queryByText('Failed to fetch')).not.toBeInTheDocument();
+  });
+
+  it("says the server's own sentence for a refusal", async () => {
+    const { ApiError } = await import('@/lib/api/client');
+    await refusedWith(new ApiError(401, 'That email and password do not match an account.', 'INVALID_CREDENTIALS'));
+    await screen.findByText('That email and password do not match an account.');
+  });
+});

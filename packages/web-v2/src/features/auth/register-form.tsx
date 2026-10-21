@@ -7,6 +7,7 @@ import { ApiError } from '@/lib/api/client';
 import { useAuth } from '@/providers/auth-provider';
 import { AGENT_ADDRESS_MESSAGE } from './agent-address';
 import { PasswordMeter } from './components/password-meter';
+import { formatApiError } from '@/lib/api/error';
 import { extractFieldErrors } from './extract-field-errors';
 import { rateLimitedOf } from './rate-limit-words';
 import { validateRegister, type RegisterFieldErrors } from './validation';
@@ -59,7 +60,7 @@ export function RegisterForm() {
         setTopError(
           agentAddress
             ? AGENT_ADDRESS_MESSAGE
-            : (rateLimitedOf(err) ?? (err instanceof Error ? err.message : 'Registration failed')),
+            : (rateLimitedOf(err) ?? (err instanceof Error ? formatApiError(err) : 'Registration failed')),
         );
         bannerAddress.current = aboutAddress ? email : null;
       }

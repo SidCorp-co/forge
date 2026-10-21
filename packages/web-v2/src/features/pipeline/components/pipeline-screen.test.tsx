@@ -252,6 +252,27 @@ describe("the Pipeline page with nothing to show, or no reading", () => {
     expect(screen.queryByText(/Something changed since this page loaded/)).toBeNull();
   });
 
+  // Round 24 (judge-78, criterion 226): beta refused a non-member with "Not a project member." and a
+  // missing project with "Project not found.", and the page said its own stock sentence over both.
+  it.each([
+    ["403", new ApiError(403, "Not a project member.", "FORBIDDEN"), "Not a project member."],
+    ["404", new ApiError(404, "Project not found.", "NOT_FOUND"), "Project not found."],
+  ])("gives the server's own sentence when a refresh is refused with a %s", (_, error, said) => {
+    query = { ...query, data: reading, isError: true, error, refetch: vi.fn() };
+    screenFor();
+    expect(screen.getByRole("status")).toHaveTextContent(`. ${said}`);
+    expect(screen.queryByText(/You do not have access to this resource|Not found\./)).toBeNull();
+  });
+
+  it.each([
+    ["403", new ApiError(403, "Not a project member.", "FORBIDDEN"), "Not a project member."],
+    ["404", new ApiError(404, "Project not found.", "NOT_FOUND"), "Project not found."],
+  ])("gives the server's own sentence when the first read is refused with a %s", (_, error, said) => {
+    query = { data: undefined, isError: true, error, refetch: vi.fn() };
+    screenFor();
+    expect(screen.getByText(said)).toBeInTheDocument();
+  });
+
   // Round 23 (judge-74, criteria 233 and 234): a failed refresh said so but offered no way to try again.
   it("offers Retry beside a failed refresh, keeps the rows while it runs, and shows no live dot", () => {
     const lost = new TypeError("Failed to fetch");
