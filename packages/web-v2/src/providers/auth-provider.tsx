@@ -17,6 +17,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -50,22 +51,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [failure, setFailure] = useState<unknown>(null);
-  const [attempt, setAttempt] = useState(0);
   const router = useRouter();
-  const retry = useCallback(() => setAttempt((n) => n + 1), []);
+  const mounted = useRef(true);
 
-  // Hydrate from /auth/me (the cookie may be set from a prior session), and again on each retry.
-  useEffect(() => {
-    let cancelled = false;
+  // Hydrate from /auth/me (the cookie may be set from a prior session); Retry reads it again.
+  const retry = useCallback(() => {
     authApi
       .me()
       .then((me) => {
-        if (cancelled) return;
+        if (!mounted.current) return;
         setUser({ ...me });
         setFailure(null);
       })
       .catch((err) => {
-        if (cancelled) return;
+        if (!mounted.current) return;
         if (signedOut(err)) {
           setFailure(null);
           return;
@@ -74,12 +73,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setFailure(err);
       })
       .finally(() => {
-        if (!cancelled) setIsLoading(false);
+        if (mounted.current) setIsLoading(false);
       });
+  }, []);
+
+  useEffect(() => {
+    mounted.current = true;
+    retry();
     return () => {
-      cancelled = true;
+      mounted.current = false;
     };
-  }, [attempt]);
+  }, [retry]);
 
   // A read the connection cut is read again once the browser says the connection is back.
   useEffect(() => {

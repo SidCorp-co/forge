@@ -103,7 +103,9 @@ async function goOffline(deviceId: string): Promise<void> {
 
 type Row = { id: string; title: string; body: string | null; type: string };
 async function bellRows(): Promise<Row[]> {
-  const res = await app.request('/api/notifications', { headers: { authorization: `Bearer ${token}` } });
+  const res = await app.request('/api/notifications', {
+    headers: { authorization: `Bearer ${token}` },
+  });
   expect(res.status).toBe(200);
   return ((await res.json()) as { items: Row[] }).items.filter((r) => r.type === 'pipeline_wedge');
 }
@@ -120,12 +122,16 @@ describe('the capacity notice counts the runners online when it is read (criteri
   it('says both while both are online, and its one runner once the other went offline', async () => {
     await raiseNotice();
     const [raised] = await bellRows();
-    expect(raised?.title).toMatch(/^ISS-1 — No capacity: every runner for this project is out of date$/);
+    expect(raised?.title).toMatch(
+      /^ISS-1 — No capacity: every runner for this project is out of date$/,
+    );
     expect(raised?.body).toContain('both of its runners are online but running a build older');
 
     await goOffline(boxes[1] as string);
     const [read] = await bellRows();
-    expect(read?.title).toMatch(/^ISS-1 — No capacity: every runner for this project is out of date$/);
+    expect(read?.title).toMatch(
+      /^ISS-1 — No capacity: every runner for this project is out of date$/,
+    );
     expect(read?.body).toContain('its one runner is online but running a build older');
     expect(read?.body).toContain('Next: Update forge-runner on that host;');
     expect(read?.body).not.toContain('both');

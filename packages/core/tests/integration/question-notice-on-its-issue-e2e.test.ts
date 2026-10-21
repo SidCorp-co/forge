@@ -127,7 +127,13 @@ async function answer(questionId: string) {
     sql`SELECT steps FROM agent_questions WHERE id = ${questionId}`,
   );
   const round = row?.steps.at(-1)?.round ?? 1;
-  await write.answerQuestion({ questionId, answer: { kind: 'option', optionId: SAFE.id }, round, by: ownerId, role: 'admin' });
+  await write.answerQuestion({
+    questionId,
+    answer: { kind: 'option', optionId: SAFE.id },
+    round,
+    by: ownerId,
+    role: 'admin',
+  });
 }
 
 describe('a question asked on an issue of a project with no room (criterion 236)', () => {
@@ -172,7 +178,9 @@ describe('a bound room that cannot take a question asked on an issue (criterion 
     await deliverAll();
     const [notice] = await noticesFor(q.id);
     expect(notice?.severity).toBe('info');
-    expect(notice?.title).toMatch(/^A question on [A-Z]+-6 could not also be posted to Rocket\.Chat$/);
+    expect(notice?.title).toMatch(
+      /^A question on [A-Z]+-6 could not also be posted to Rocket\.Chat$/,
+    );
     expect(notice?.body).toMatch(/^The question is on [A-Z]+-6's page, where it can be answered\./);
     expect(notice?.body).toContain('A chat room is optional');
     expect(notice?.body).not.toContain('Nothing was posted anywhere');
@@ -185,7 +193,13 @@ describe('a notice about a question ends with the question (criterion 238)', () 
     await deliverAll();
     expect(await noticesFor(q.id)).toMatchObject([{ resolved: false }]);
     await answer(q.id);
-    await bus.emit('questionAnswered', { questionId: q.id, projectId, issueId: null, answeredBy: ownerId, body: 'x' });
+    await bus.emit('questionAnswered', {
+      questionId: q.id,
+      projectId,
+      issueId: null,
+      answeredBy: ownerId,
+      body: 'x',
+    });
     expect(await noticesFor(q.id)).toMatchObject([{ resolved: true }]);
   });
 
@@ -197,7 +211,7 @@ describe('a notice about a question ends with the question (criterion 238)', () 
     expect(await noticesFor(q.id)).toMatchObject([{ resolved: true }]);
   });
 
-  it('ends on the next drain for an answer no hook carried, and leaves an open question\'s notice', async () => {
+  it("ends on the next drain for an answer no hook carried, and leaves an open question's notice", async () => {
     const answered = await ask(null);
     const open = await ask(null);
     await deliverAll();

@@ -137,7 +137,9 @@ describe('an answered question names who answered it (criterion 207)', () => {
   // answered. A member's own name is read as it stands when the drawer reads it.
   it('names a second member who answered by the name they hold now, as the owner reads it', async () => {
     const memberId = (await createTestUser(harness.db, { emailVerifiedAt: new Date() })).id;
-    await harness.db.execute(sql`UPDATE users SET display_name = 'Bao Tran' WHERE id = ${memberId}`);
+    await harness.db.execute(
+      sql`UPDATE users SET display_name = 'Bao Tran' WHERE id = ${memberId}`,
+    );
     await createTestProjectMember(harness.db, { userId: memberId, projectId, role: 'member' });
     const issueId = randomUUID();
     await harness.db.execute(sql`
@@ -175,12 +177,22 @@ describe('an answered question names who answered it (criterion 207)', () => {
     const optionId = step?.options?.[0]?.id;
     if (!step || !optionId) throw new Error('the question must offer a choice');
     const { answerAs } = await import('../../src/questions/read.js');
-    await answerAs({ questionId, answer: { kind: 'option', optionId }, round: step.round, userId: memberId });
+    await answerAs({
+      questionId,
+      answer: { kind: 'option', optionId },
+      round: step.round,
+      userId: memberId,
+    });
 
-    expect((await attemptsOf(runId))[0]?.questionAnswered).toMatchObject({ userId: memberId, name: 'Bao Tran' });
+    expect((await attemptsOf(runId))[0]?.questionAnswered).toMatchObject({
+      userId: memberId,
+      name: 'Bao Tran',
+    });
     await harness.db.execute(sql`UPDATE users SET display_name = 'Bao T.' WHERE id = ${memberId}`);
     expect((await attemptsOf(runId))[0]?.questionAnswered).toMatchObject({ name: 'Bao T.' });
     await harness.db.execute(sql`UPDATE users SET display_name = NULL WHERE id = ${memberId}`);
-    expect((await attemptsOf(runId))[0]?.questionAnswered).toMatchObject({ name: 'another member' });
+    expect((await attemptsOf(runId))[0]?.questionAnswered).toMatchObject({
+      name: 'another member',
+    });
   });
 });

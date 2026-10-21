@@ -73,11 +73,11 @@ import { integrationTargetRoutes } from './integrations/postman/target-routes.js
 import { registerIntegrationsWorker } from './integrations/queue.js';
 import { registerAllIntegrations } from './integrations/register-all.js';
 import { registerCommentMirror } from './integrations/rocketchat/comment-mirror.js';
-import { registerQuestionNoticeClear } from './integrations/rocketchat/question-delivery.js';
 import {
   startRocketChatManager,
   stopRocketChatManager,
 } from './integrations/rocketchat/connection-manager.js';
+import { registerQuestionNoticeClear } from './integrations/rocketchat/question-delivery.js';
 import { integrationConnectionsRoutes, integrationsRoutes } from './integrations/routes.js';
 import { assertVaultBootSafety } from './integrations/vault.js';
 import { issueActivityRoutes, projectActivityRoutes } from './issues/activity-routes.js';

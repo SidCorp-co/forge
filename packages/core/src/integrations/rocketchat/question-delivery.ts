@@ -14,11 +14,11 @@ import { rocketchatQuestionDeliveries } from '../../db/schema-rocketchat.js';
 import { activeIssuePrefix } from '../../issues/issue-prefix-read.js';
 import { formatIssueRef } from '../../lib/issue-ref.js';
 import { logger } from '../../logger.js';
-import type { HooksBus } from '../../pipeline/hooks.js';
 import { problemsOf } from '../../messaging/contract.js';
 import { screenForDoor } from '../../messaging/proven.js';
 import { resolveNotifications } from '../../notifications/auto-resolve.js';
 import { emitNotification } from '../../notifications/emit.js';
+import type { HooksBus } from '../../pipeline/hooks.js';
 import { sendFixedReply } from './outbound.js';
 import { isUnreachableRoom, resolveQuestionDestination } from './question-destination.js';
 import { renderRound } from './question-render.js';
@@ -102,7 +102,9 @@ async function issueKeyOf(owed: OwedRound): Promise<string | null> {
     .from(issues)
     .where(eq(issues.id, owed.issueId))
     .limit(1);
-  return issue?.issSeq ? formatIssueRef(await activeIssuePrefix(owed.projectId), issue.issSeq) : null;
+  return issue?.issSeq
+    ? formatIssueRef(await activeIssuePrefix(owed.projectId), issue.issSeq)
+    : null;
 }
 
 /**
@@ -284,7 +286,11 @@ export async function deliverOwedRound(
   if (destination.kind === 'no_room') {
     if (!owed.issueId) return refuse(owed, 'no Rocket.Chat room is bound to this project', now);
     // On its issue's page the question is delivered; a room bound later still gets it.
-    await settle(owed, { status: 'undeliverable', lastError: 'no Rocket.Chat room is bound to this project' }, now);
+    await settle(
+      owed,
+      { status: 'undeliverable', lastError: 'no Rocket.Chat room is bound to this project' },
+      now,
+    );
     await resolveNotifications(undeliverableKey(owed.questionId));
     return 'undeliverable';
   }

@@ -20,8 +20,8 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { hooks } from '../pipeline/hooks.js';
 import { readPendingInvitations } from '../projects/pending-invitations.js';
 import { readerStuckKindSql } from '../projects/stuck-issue-kinds.js';
-import { recordAndDeliver } from './deliver.js';
 import { liveCapacityWords } from './capacity-live.js';
+import { recordAndDeliver } from './deliver.js';
 import { explanationOfGroupKey } from './explanations.js';
 import {
   closedSchema,

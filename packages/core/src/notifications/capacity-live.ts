@@ -50,7 +50,8 @@ async function waitingStep(
   if (!job) return stageKey === 'all' ? { required: undefined, pool: null } : null;
   const required = (job.payload as { requiredCapabilities?: RequiredCapabilities } | null)
     ?.requiredCapabilities;
-  const pool = stageKey === 'all' ? null : (await resolveStageOverrides(projectId, job.payload)).deviceIds;
+  const pool =
+    stageKey === 'all' ? null : (await resolveStageOverrides(projectId, job.payload)).deviceIds;
   return { required, pool };
 }
 

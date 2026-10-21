@@ -268,6 +268,11 @@ export function capacityCopy(
   const all = (n: number) => fleet.online > 0 && n === fleet.online;
   return (
     fleetCopy(fleet, args) ??
-    wedgeCopy(all(fleet.bars.limited), fleet.online, all(fleet.bars.too_old) ? fleet.online : 0, args)
+    wedgeCopy(
+      all(fleet.bars.limited),
+      fleet.online,
+      all(fleet.bars.too_old) ? fleet.online : 0,
+      args,
+    )
   );
 }
