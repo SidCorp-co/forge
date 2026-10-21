@@ -23,7 +23,7 @@ import {
 } from '../types.js';
 import { thrownDiagnostics } from '../unreached.js';
 import { breakerAllowsDispatch, maybeResetBreaker, maybeTripBreaker } from './circuit-breaker.js';
-import { CoolifyApiError, coolifyAbilityForRoute, describeCoolifyForbidden } from './client.js';
+import { CoolifyApiError, coolifyAbilityForRoute, describeCoolifyAnswer } from './client.js';
 import { type CoolifyConfirmJob, enqueueCoolifyConfirm } from './confirm.js';
 import { buildClient } from './log-fetch.js';
 import {
@@ -62,16 +62,10 @@ interface CoolifyFailureVerdict {
 function classifyCoolifyFailure(err: unknown): CoolifyFailureVerdict {
   const status = err instanceof CoolifyApiError ? err.status : null;
   const route = err instanceof CoolifyApiError ? err.route : null;
-  if (status === 401) {
-    return { health: 'needs_reauth', message: null, route, missingAbility: null };
-  }
-  if (status === 403 && err instanceof CoolifyApiError) {
-    return {
-      health: 'needs_scope',
-      message: describeCoolifyForbidden(err),
-      route,
-      missingAbility: coolifyAbilityForRoute(route),
-    };
+  if (err instanceof CoolifyApiError && (status === 401 || status === 403)) {
+    const health = status === 401 ? 'needs_reauth' : 'needs_scope';
+    const missingAbility = status === 403 ? coolifyAbilityForRoute(route) : null;
+    return { health, message: describeCoolifyAnswer(err), route, missingAbility };
   }
   return { health: 'error', message: null, route, missingAbility: null };
 }
@@ -218,6 +212,7 @@ const coolifyAdapterMethods: DispatchingAdapterMethods<CoolifyConfig, CoolifySec
         message,
         diagnostics: {
           httpStatus: status,
+          saidOfAddress: true,
           // Not an answer Coolify gave: why the request never reached it, or that it failed first.
           ...(err instanceof CoolifyApiError ? {} : thrownDiagnostics(err)),
           ...(verdict.route ? { route: verdict.route } : {}),

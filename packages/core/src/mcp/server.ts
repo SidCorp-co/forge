@@ -92,8 +92,9 @@ import { zodRefusalMessage } from './zod-refusal.js';
 export function classifyError(
   err: unknown,
   inputSchema?: Record<string, unknown>,
+  args?: unknown,
 ): { code: AuditResultCode; message: string } {
-  const refused = zodRefusalMessage(err, inputSchema);
+  const refused = zodRefusalMessage(err, inputSchema, args);
   const message = refused === null ? redactedMessage(err) : redactedMessage(new Error(refused));
   if (message.startsWith('NOT_FOUND')) return { code: 'not_found', message };
   if (message.startsWith('FORBIDDEN')) return { code: 'forbidden', message };
@@ -269,7 +270,7 @@ export function createMcpServer(ctx: McpContext): Server {
       writeMcpAudit({ ...auditBase, resultCode: 'ok' });
       return toToolCallContent(result);
     } catch (err) {
-      const { code, message } = classifyError(err, tool.inputSchema);
+      const { code, message } = classifyError(err, tool.inputSchema, args);
       writeMcpAudit({ ...auditBase, resultCode: code });
       return {
         content: [{ type: 'text', text: toolErrorText(message) }],

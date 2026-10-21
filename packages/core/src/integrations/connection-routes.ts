@@ -43,10 +43,11 @@ import { ownerNamesOf } from './owner-names.js';
 import { raceWithTimeout } from './probe.js';
 import {
   applySecretsPatch,
-  configSchemaForProvider,
+  bindingConfigPatch,
   connectionConfigSchemaForProvider,
   connectionCreateSchema,
   connectionUpdateSchema,
+  parseProviderHalf,
   splitProviderConfig,
 } from './provider-schemas.js';
 import {
@@ -233,9 +234,8 @@ integrationConnectionsRoutes.post(
     // provider's partial schema then reduced to binding-tier keys only.
     let bindingConfig: Record<string, unknown> = {};
     if (body.config) {
-      const parsed = configSchemaForProvider(provider).safeParse(body.config);
-      if (!parsed.success) throw badRequest(z.flattenError(parsed.error));
-      bindingConfig = splitProviderConfig(provider, parsed.data as Record<string, unknown>).binding;
+      const config = bindingConfigPatch(provider, body.config);
+      bindingConfig = splitProviderConfig(provider, config).binding;
     }
 
     // Same tier rule as the two project-side doors (ISS-1071 rule 5): a `direct-mcp` grant puts the
@@ -364,13 +364,13 @@ integrationConnectionsRoutes.patch(
     if (patch.displayName !== undefined) connPatch.displayName = patch.displayName;
     if (patch.active !== undefined) connPatch.active = patch.active;
     if (patch.config) {
-      const parsed = connectionConfigSchemaForProvider(existing.provider).safeParse(patch.config);
-      if (!parsed.success) throw badRequest(z.flattenError(parsed.error));
+      const schema = connectionConfigSchemaForProvider(existing.provider);
+      const config = parseProviderHalf(schema, patch.config, 'config');
       // `withdrawNulls` as the binding PATCH does: a key sent as null is REMOVED. Storing one
       // left a withdrawn `releaseRunnerLabel` on the row as a null forever (ISS-1127, ISS-1275).
       connPatch.config = withdrawNulls({
         ...((existing.config ?? {}) as object),
-        ...(parsed.data as Record<string, unknown>),
+        ...config,
       });
     }
     if (patch.secrets) {

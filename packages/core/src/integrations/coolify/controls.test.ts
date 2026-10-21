@@ -263,7 +263,7 @@ describe('listCoolifyRollbackImages', () => {
     const err = await listCoolifyRollbackImages({ projectId: PROJECT_ID }).catch((e) => e);
 
     expect(err.name).toBe('CoolifyReadFailedError');
-    expect(err.message).toContain('Could not reach Coolify');
+    expect(err.message).toContain('Forge could not reach the address saved on this connection');
   });
 });
 
@@ -299,7 +299,7 @@ describe('resolveCoolifyTargets', () => {
 
     expect(err.name).toBe('CoolifyReadFailedError');
     expect(err.message).toBe(
-      'Could not reach Coolify for GET /api/v1/applications (fetch failed ENOTFOUND), so Forge has no application list to read.',
+      'Forge could not reach the address saved on this connection for GET /api/v1/applications, because its host name does not resolve. Forge has no application list to read.',
     );
   });
 });

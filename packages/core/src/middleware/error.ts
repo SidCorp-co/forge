@@ -91,17 +91,40 @@ function notAnError(thrown: unknown): Error {
   });
 }
 
-export const errorHandler: ErrorHandler<{ Variables: RequestIdVars }> = (err, c) => {
+/**
+ * What the request sent at a field (`limit`, `data.n`), read off its query and then its JSON body,
+ * so a refusal whose door kept only the field's error can still quote the value (ISS-1421 r18).
+ */
+async function sentReader(c: Context): Promise<(field: string) => unknown> {
+  const query = c.req.query();
+  const json = c.req.header('content-type')?.includes('application/json')
+    ? await c.req.json().catch(() => undefined)
+    : undefined;
+  return (field) => {
+    if (Object.hasOwn(query, field)) return query[field];
+    let at: unknown = json;
+    for (const key of field.split('.')) {
+      if (at === null || typeof at !== 'object') return undefined;
+      at = (at as Record<string, unknown>)[key];
+    }
+    return at;
+  };
+}
+
+export const errorHandler: ErrorHandler<{ Variables: RequestIdVars }> = async (err, c) => {
   const log = getLogger(c);
 
   if (err instanceof HTTPException) {
     const status = err.status;
     const { code: causeCode, details, wwwAuthenticate } = extractCause(err.cause);
+    const sent = status === 400 && details !== undefined ? await sentReader(c) : undefined;
     const body: ErrorBody = {
       code: causeCode ?? statusToCode(status),
       // ISS-1421 r14: every refusal a caller reads is a sentence, whichever door worded it.
       message:
-        status < 500 ? refusalMessage(err.message, details) : err.message || statusToCode(status),
+        status < 500
+          ? refusalMessage(err.message, details, sent)
+          : err.message || statusToCode(status),
     };
     if (details !== undefined) body.details = details;
 

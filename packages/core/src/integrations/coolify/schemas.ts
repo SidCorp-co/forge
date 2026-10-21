@@ -12,7 +12,7 @@ import { z } from 'zod';
 import { RELEASE_CHANNEL_KEYS, releaseChannelFields } from '../release-channel-schema.js';
 
 const coolifyTargetSchema = z
-  .object({
+  .strictObject({
     id: z.string().min(1).max(64).optional(),
     label: z.string().min(1).max(100),
     resourceUuid: z.string().min(1).max(200),
@@ -57,7 +57,7 @@ const coolifyRollbackSchema = z
   .transform((value) => value as { mode: typeof COOLIFY_ROLLBACK_MODE } | undefined)
   .optional();
 
-export const coolifyConfigSchema = z.object({
+export const coolifyConfigSchema = z.strictObject({
   baseUrl: z.string().url().max(500),
   targets: z
     .array(coolifyTargetSchema)
@@ -80,7 +80,7 @@ export const coolifyConfigSchema = z.object({
   rollback: coolifyRollbackSchema,
 });
 
-export const coolifySecretsSchema = z.object({
+export const coolifySecretsSchema = z.strictObject({
   apiToken: z.string().min(8).max(2000),
 });
 

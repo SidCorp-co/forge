@@ -23,6 +23,16 @@ describe('healthAnswer', () => {
     expect(answered.status).toBe('needs_reauth');
   });
 
+  // ISS-1421 r18 — a 401 from a server that is not Coolify read "Coolify refused the stored credential".
+  it('leads with no provider claim where the adapter says what the server at the address answered', () => {
+    const answered = healthAnswer('postman', {
+      status: 'needs_reauth',
+      message: 'The server at example.com answered 401 Unauthorized to GET /x.',
+      diagnostics: { httpStatus: 401, saidOfAddress: true },
+    });
+    expect(answered.message).toBe('The server at example.com answered 401 Unauthorized to GET /x.');
+  });
+
   it('says a failed check could not be made, by the provider label', () => {
     expect(
       healthAnswer('postman', { status: 'error', message: 'No Postman API key is saved.' }).message,

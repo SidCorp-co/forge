@@ -70,15 +70,16 @@ const questionOptionSchema = z.object({
  * sent it, which is why other keys are let through. A box sends `null` for what it has none of.
  */
 export const askQuestionBodySchema = z.looseObject({
-  id: z.string().min(1),
-  projectId: z.string().min(1),
+  // Each id below is compared with a uuid column, so a malformed one is refused by name (ISS-1421 r18).
+  id: z.uuid(),
+  projectId: z.uuid(),
   prompt: z.string().min(1),
   runId: z
     .string()
     .nullish()
     .describe('When present, the box is registered to read the answer back'),
-  issueId: z.string().optional(),
-  agentSessionId: z.string().optional(),
+  issueId: z.uuid().optional(),
+  agentSessionId: z.uuid().optional(),
   blockerKind: z.enum(questionBlockerKinds).nullish().describe('`human` when absent'),
   answerShape: z.enum(answerShapes).nullish().describe('`choice` when absent'),
   options: z.array(questionOptionSchema).nullish(),

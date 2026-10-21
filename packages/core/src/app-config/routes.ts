@@ -4,7 +4,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { answer } from '../api-reference/declare/describe.js';
 import { zValidator } from '../api-reference/declare/validator.js';
-import { chatTurnKinds } from '../assistant/providers/registry.js';
+import { chatTurnKinds, listProviders } from '../assistant/providers/registry.js';
 import { db } from '../db/client.js';
 import { appConfig } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
@@ -32,6 +32,22 @@ const upsertSchema = z
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
+
+/**
+ * A provider id nothing registered names was stored and then passed over for the fallback on every
+ * turn, so the setting read as taken and did nothing (ISS-1421 r18). It is refused by name.
+ */
+function refuseUnknownChatProvider(id: string): void {
+  const providers = listProviders();
+  if (providers.includes(id)) return;
+  throw new HTTPException(400, {
+    message:
+      providers.length === 0
+        ? `No chat provider is named "${id}": this deployment has none, so chatProviderId takes only null.`
+        : `No chat provider is named "${id}". This deployment has ${providers.join(', ')}.`,
+    cause: { code: 'CHAT_PROVIDER_UNKNOWN', details: { chatProviderId: id, providers } },
+  });
+}
 
 export const appConfigRoutes = new Hono<{ Variables: AuthVars }>();
 appConfigRoutes.use('*', requireAuth(), assertEmailVerified());
@@ -74,6 +90,7 @@ appConfigRoutes.put(
 
     const access = await loadProjectAccess(projectId, userId);
     assertProjectRole(access, 'admin', 'insufficient permission');
+    if (patch.chatProviderId) refuseUnknownChatProvider(patch.chatProviderId);
 
     const updates: Record<string, unknown> = {};
     if (patch.chatProviderId !== undefined) updates.chatProviderId = patch.chatProviderId;

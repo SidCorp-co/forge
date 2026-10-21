@@ -15,16 +15,19 @@ const clientWith = (fetchImpl: typeof fetch, timeoutMs?: number) =>
 const refused = (c: CoolifyClient) => readRollbackImagesNamingFailure(c, 'app-1').catch((e) => e);
 
 describe('readRollbackImagesNamingFailure', () => {
-  it('names an unreachable Coolify, with what the transport said and its cause code', async () => {
+  // ISS-1421 r18 — the transport's own "fetch failed ENOTFOUND" was shown to a person, and the
+  // server it could not reach was called Coolify.
+  it('names the server it could not reach and why, in its own words', async () => {
     const fetchImpl = (async () => {
       throw new TypeError('fetch failed', { cause: { code: 'ECONNREFUSED' } });
     }) as typeof fetch;
     const err = await refused(clientWith(fetchImpl));
     expect(err).toBeInstanceOf(CoolifyReadFailedError);
     expect(err.kind).toBe('unreachable');
-    expect(err.message).toContain('Could not reach Coolify');
-    expect(err.message).toContain('fetch failed ECONNREFUSED');
-    expect(err.message).toContain('GET /api/v1/applications/app-1/rollback-images');
+    expect(err.message).toBe(
+      'Forge could not reach the server at coolify.example for GET /api/v1/applications/app-1/rollback-images, because nothing accepted the connection at its address. Forge has no rollback image list to read.',
+    );
+    expect(err.message).not.toMatch(/fetch failed|ECONNREFUSED/);
   });
 
   it('names a Coolify that did not answer in time', async () => {
@@ -37,7 +40,8 @@ describe('readRollbackImagesNamingFailure', () => {
     const err = await refused(clientWith(fetchImpl, 5));
     expect(err).toBeInstanceOf(CoolifyReadFailedError);
     expect(err.kind).toBe('timeout');
-    expect(err.message).toContain('Coolify timed out');
+    expect(err.message).toContain('Forge got no answer to');
+    expect(err.message).toContain('in time from the server at coolify.example.');
     expect(err.message).toContain('GET /api/v1/applications/app-1/rollback-images');
   });
 
@@ -47,7 +51,10 @@ describe('readRollbackImagesNamingFailure', () => {
     const err = await refused(clientWith(fetchImpl));
     expect(err).toBeInstanceOf(CoolifyReadFailedError);
     expect(err.kind).toBe('not-json');
-    expect(err.message).toContain('something that is not JSON');
+    expect(err.message).toContain(
+      'The server at coolify.example answered GET /api/v1/applications/app-1/rollback-images with something that is not JSON, so it may not be Coolify.',
+    );
+    expect(err.message).not.toContain('Unexpected token');
     expect(err.message).toContain('GET /api/v1/applications/app-1/rollback-images');
   });
 

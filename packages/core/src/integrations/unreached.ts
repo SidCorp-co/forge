@@ -74,6 +74,11 @@ const BECAUSE: Readonly<Record<UnreachedReason, string>> = {
 
 const REASONS = new Set<string>(Object.keys(BECAUSE));
 
+/** Why a request never reached its host, as the clause after "because". */
+export function unreachedBecause(reason: UnreachedReason): string {
+  return BECAUSE[reason];
+}
+
 export function unreachedWords(label: string, reason: UnreachedReason): string {
   const check =
     reason === 'timed_out'

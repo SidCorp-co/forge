@@ -62,3 +62,20 @@ describe("SlideOver and the page's stacking contexts", () => {
     expect(dialog.parentElement?.parentElement).toBe(document.body);
   });
 });
+
+// ISS-1421 r18 — a long title pushed Close off a 390 screen; jsdom does no layout, so this pins the
+// property the browser measurement (in the issue's evidence) rested on.
+describe("SlideOver's header with a title wider than the drawer", () => {
+  it("lets the title shrink and keeps Close its own size", () => {
+    render(
+      <SlideOver open onClose={() => {}} title={"j75 Coolify production eu-west primary box number one again"}>
+        <p>body</p>
+      </SlideOver>,
+    );
+    const title = screen.getByTestId("slide-over-title");
+    expect(title.className).toMatch(/\bmin-w-0\b/);
+    expect(title.className).toMatch(/\bflex-1\b/);
+    expect(screen.getByRole("button", { name: "Close" }).className).toMatch(/\bshrink-0\b/);
+  });
+});
+

@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { RELEASE_CHANNEL_KEYS, releaseChannelFields } from '../release-channel-schema.js';
 import { parseServiceAccountKey } from './auth.js';
 
-export const googleConfigBase = z.object({
+export const googleConfigBase = z.strictObject({
   clientEmail: z.string().min(1).max(320).optional(),
   projectId: z.string().min(1).max(200).optional(),
   defaultSpreadsheetId: z.string().min(1).max(200).optional(),
@@ -31,7 +31,7 @@ export const googleConnectionConfigSchema = z
 const SERVICE_ACCOUNT_SHAPE_REFUSAL =
   'serviceAccountJson must be the whole service-account key file Google issued — a JSON object with "type":"service_account", "client_email" and "private_key". Download it from the Google Cloud console under IAM & Admin → Service Accounts → Keys → Add key → JSON, and paste the file unchanged.';
 
-export const googleSecretsSchema = z.object({
+export const googleSecretsSchema = z.strictObject({
   serviceAccountJson: z
     .string()
     .min(100)

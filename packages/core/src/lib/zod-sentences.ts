@@ -78,18 +78,36 @@ function boundWords(subject: string, m: RegExpExecArray): string {
   return `${subject} takes ${BOUND_WORDS[op] ?? op} ${bound}${units ? ` ${units}` : ''}.`;
 }
 
-/** A value a coerced number read as NaN, quoted as the caller sent it where that is known. */
-function notANumber(subject: string, sent: unknown): string {
-  const quoted =
-    typeof sent === 'string' || typeof sent === 'boolean' ? JSON.stringify(sent) : null;
+/** A field whose value a refusal never repeats, by the last word of its name: a secret, a token, a key. */
+const SECRET_FIELD = /(?:secret|token|password|passphrase|credential|key|pem)$/i;
+
+/** The most of a sent value a refusal quotes. */
+const QUOTED_MOST = 40;
+
+/**
+ * What the caller sent, quoted as they typed it (ISS-1421 r18): no JSON escaping, at most
+ * `QUOTED_MOST` characters, and nothing at all for a field that holds a secret.
+ */
+export function quotedSent(field: string, sent: unknown): string | null {
+  if (SECRET_FIELD.test(field)) return null;
+  if (typeof sent === 'boolean') return String(sent);
+  if (typeof sent !== 'string') return null;
+  return `"${sent.length > QUOTED_MOST ? `${sent.slice(0, QUOTED_MOST)}…` : sent}"`;
+}
+
+/** A field that takes a number, said with the value sent where it is known. */
+function notANumber(subject: string, quoted: string | null): string {
   return `${subject} takes a number, ${quoted ? `not ${quoted}` : 'and the value sent is not one'}.`;
 }
+
+/** zod's message for a number field sent no number, whether coerced (NaN) or not. */
+const NUMBER_NOT_SENT = /^Invalid input: expected number, received (?:NaN|string|boolean)$/;
 
 /** zod's default messages, each with the words it is said in; the first pattern that matches wins. */
 const ZOD_WORDS: ReadonlyArray<[RegExp, (subject: string, m: RegExpExecArray) => string]> = [
   [/^Invalid input: expected \w+, received undefined$/, (s) => `${s} is required.`],
   [/^Invalid input: expected date, received Date$/, (s) => `${s} is not a valid date.`],
-  [/^Invalid input: expected number, received NaN$/, (s) => notANumber(s, undefined)],
+  [/^Invalid input: expected number, received NaN$/, (s) => notANumber(s, null)],
   [
     /^Invalid input: expected (\w+), received (\w+)$/,
     (s, m) => `${s} takes ${article(m[1] ?? '')}, not ${article(m[2] ?? '')}.`,
@@ -110,7 +128,11 @@ const ZOD_WORDS: ReadonlyArray<[RegExp, (subject: string, m: RegExpExecArray) =>
  * Sentences for refusal details already flattened to `{ formErrors, fieldErrors }`, or to a plain
  * record of field to message, for a door that kept only those.
  */
-export function flattenedRefusalWords(details: unknown, at = ''): string[] {
+export function flattenedRefusalWords(
+  details: unknown,
+  at = '',
+  sent?: (field: string) => unknown,
+): string[] {
   if (details === null || typeof details !== 'object' || Array.isArray(details)) return [];
   const d = details as { formErrors?: unknown; fieldErrors?: unknown };
   const listOf = (v: unknown): string[] =>
@@ -124,8 +146,11 @@ export function flattenedRefusalWords(details: unknown, at = ''): string[] {
       const field = at ? `${at}.${key}` : key;
       // A record nested under a field ("config": { "url": "required" }) names each field inside it.
       if (v !== null && typeof v === 'object' && !Array.isArray(v))
-        return flattenedRefusalWords(v, field);
-      return listOf(v).map((m) => zodMessageWords(field, m));
+        return flattenedRefusalWords(v, field, sent);
+      return listOf(v).map((m) => {
+        const quoted = NUMBER_NOT_SENT.test(m) ? quotedSent(field, sent?.(field)) : null;
+        return quoted ? notANumber(`The field ${field}`, quoted) : zodMessageWords(field, m);
+      });
     }),
   ];
 }
@@ -208,11 +233,14 @@ export function schemaRefusalWords(
     valuesAre,
     fieldsAt,
     input,
+    quoteFrom = input,
   }: {
     quote?: boolean;
     valuesAre: string;
     /** The body or query exactly as the caller sent it. */
     input?: unknown;
+    /** What a refused value is quoted from where `input` is not the parsed value itself. */
+    quoteFrom?: unknown;
     /** The fields the schema names at a path, so a stray field there is followed by those near it. */
     fieldsAt?: (path: readonly PropertyKey[]) => readonly string[];
   },
@@ -253,8 +281,18 @@ export function schemaRefusalWords(
       sentences.push(
         input !== undefined && sent === undefined
           ? `The field ${named(field)} is required.`
-          : notANumber(`The field ${named(field)}`, sent),
+          : notANumber(
+              `The field ${named(field)}`,
+              quotedSent(field, valueAt(quoteFrom, issue.path ?? [])),
+            ),
       );
+    } else if (
+      NUMBER_NOT_SENT.test(issue.message ?? '') &&
+      quotedSent(field, valueAt(quoteFrom, issue.path ?? []))
+    ) {
+      // A number field sent a word is told what it was sent, not only its type (ISS-1421 r18).
+      const quoted = quotedSent(field, valueAt(quoteFrom, issue.path ?? []));
+      sentences.push(notANumber(`The field ${named(field)}`, quoted));
     } else {
       sentences.push(zodMessageWords(named(field), issue.message ?? ''));
     }

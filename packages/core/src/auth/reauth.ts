@@ -29,7 +29,7 @@ reauthRoutes.post('/reauth', reauth, zValidator('json', reauthSchema), async (c)
 
   const invalid = () =>
     new HTTPException(401, {
-      message: 'invalid credentials',
+      message: 'That password is not the one on this account.',
       cause: { code: 'INVALID_CREDENTIALS' },
     });
 

@@ -3,7 +3,9 @@ import {
   CoolifyApiError,
   CoolifyClient,
   coolifyAbilityForRoute,
+  describeCoolifyAnswer,
   describeCoolifyForbidden,
+  describeCoolifyRollbackImagesRefusal,
 } from './client.js';
 
 function makeFetch(handler: (req: { url: string; init: RequestInit }) => Response) {
@@ -394,5 +396,85 @@ describe('CoolifyClient controls', () => {
   it('still names read for the routes that only read', () => {
     expect(coolifyAbilityForRoute('GET /api/v1/deployments/dep-1')).toBe('read');
     expect(coolifyAbilityForRoute('GET /api/v1/applications/app-1/logs')).toBe('read');
+  });
+});
+
+// ISS-1421 r18 — judge-75: httpbin.org/anything answered the application list with a JSON object,
+// read as an empty list, so the drawer said "Coolify does not list this application" beside a test
+// line saying the server may not be Coolify; a 401 from a server that is not Coolify read as Coolify
+// refusing the token; a 404 quoted a page of HTML.
+describe('a server at the saved address that may not be Coolify', () => {
+  const objectAnswer = makeFetch(
+    () =>
+      new Response(JSON.stringify({ args: {} }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+  );
+  const at = (fetchImpl: typeof fetch) =>
+    new CoolifyClient({ baseUrl: 'https://httpbin.org/anything', apiToken: 'tok', fetchImpl });
+
+  it('refuses an application list that is no list, never reading it as an empty one', async () => {
+    const refused = await at(objectAnswer)
+      .listApplications()
+      .catch((e: unknown) => e);
+    expect(refused).toMatchObject({ status: 200, addressSuspect: true });
+    expect(describeCoolifyAnswer(refused as CoolifyApiError)).toBe(
+      'The server at httpbin.org/anything answered GET /api/v1/applications with something other than a list of applications, so it may not be Coolify. Check the address saved on this connection.',
+    );
+  });
+
+  it('refuses a rollback image list whose images are no list', async () => {
+    const fetchImpl = makeFetch(
+      () => new Response(JSON.stringify({ images: 'x' }), { status: 200 }),
+    );
+    const refused = await at(fetchImpl)
+      .listRollbackImages('app-1')
+      .catch((e: unknown) => e);
+    expect(refused).toMatchObject({ addressSuspect: true });
+    expect((refused as Error).message).toContain('something other than a rollback image list');
+    const echo = makeFetch(
+      () => new Response(JSON.stringify({ args: {}, url: 'x' }), { status: 200 }),
+    );
+    expect(
+      await at(echo)
+        .listRollbackImages('app-1')
+        .catch((e: unknown) => e),
+    ).toMatchObject({
+      addressSuspect: true,
+    });
+  });
+
+  it('refuses images that are no list of images even beside current, and takes current alone', async () => {
+    const answering = (body: unknown) =>
+      at(makeFetch(() => new Response(JSON.stringify(body), { status: 200 })))
+        .listRollbackImages('app-1')
+        .catch((e: unknown) => e);
+    expect(await answering({ current: null, images: 'x' })).toMatchObject({ addressSuspect: true });
+    expect(await answering({ current: 'sha-a', images: ['sha-a'] })).toMatchObject({
+      addressSuspect: true,
+    });
+    expect(await answering({ current: null })).toEqual({ current: null });
+  });
+
+  it('says a 401 of the server at the address, and what to do either way', async () => {
+    const fetchImpl = makeFetch(() => new Response('{}', { status: 401 }));
+    const refused = (await at(fetchImpl)
+      .getResource('r')
+      .catch((e: unknown) => e)) as CoolifyApiError;
+    const said = describeCoolifyAnswer(refused);
+    expect(said).toBe(
+      'The server at httpbin.org/anything answered 401 Unauthorized to GET /api/v1/resources. If this is Coolify, it refused the stored API token, so save a new token from Keys & Tokens in Coolify. If it is not, check the address saved on this connection.',
+    );
+    expect(said).not.toMatch(/^Coolify refused/);
+  });
+
+  it('says a 404 sent a web page rather than quoting its HTML', () => {
+    const page = '<!doctype html><html lang=en><head><title>Not found</title></head></html>';
+    const said = describeCoolifyRollbackImagesRefusal(
+      new CoolifyApiError(404, page, 'The server at example.com answered 404 Not Found.', 'GET /x'),
+    );
+    expect(said).toContain('It sent a web page, not an answer from an API.');
+    expect(said).not.toContain('<');
   });
 });

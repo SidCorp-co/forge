@@ -27,7 +27,7 @@ import { healthAnswer } from './health-words.js';
 import { buildMcpPreview } from './mcp-preview-service.js';
 import {
   applySecretsPatch,
-  configSchemaForProvider,
+  bindingConfigPatch,
   createSchema,
   splitProviderConfig,
   updateSchema,
@@ -220,9 +220,8 @@ integrationsRoutes.patch(
     let mergedConfig: Record<string, unknown> | undefined;
     let mergedBindingConfig: Record<string, unknown> | undefined;
     if (patch.config) {
-      const parsed = configSchemaForProvider(binding.provider).safeParse(patch.config);
-      if (!parsed.success) throw badRequest(z.flattenError(parsed.error));
-      const tiers = splitProviderConfig(binding.provider, parsed.data as Record<string, unknown>);
+      const config = bindingConfigPatch(binding.provider, patch.config);
+      const tiers = splitProviderConfig(binding.provider, config);
       if (Object.keys(tiers.connection).length > 0) {
         mergedConfig = withdrawNulls({
           ...((connection.config ?? {}) as object),

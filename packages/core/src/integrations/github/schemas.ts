@@ -3,7 +3,7 @@
 import { z } from 'zod';
 import { RELEASE_CHANNEL_KEYS, releaseChannelFields } from '../release-channel-schema.js';
 
-export const githubConfigBase = z.object({
+export const githubConfigBase = z.strictObject({
   installationId: z.number().int().positive().optional(),
   owner: z.string().min(1).max(200).optional(),
   repo: z.string().min(1).max(200).optional(),
@@ -12,7 +12,7 @@ export const githubConfigBase = z.object({
   ...releaseChannelFields,
 });
 
-export const githubSecretsSchema = z.object({
+export const githubSecretsSchema = z.strictObject({
   appId: z.string().min(1).max(50),
   privateKey: z.string().min(100).max(20000),
   webhookSecret: z.string().min(8).max(500),

@@ -95,8 +95,10 @@ describe('POST /api/auth/reauth', () => {
     const res = await post({ password: 'wrong' }, '10.0.0.2');
 
     expect(res.status).toBe(401);
-    const body = (await res.json()) as { code: string };
+    const body = (await res.json()) as { code: string; message: string };
     expect(body.code).toBe('INVALID_CREDENTIALS');
+    // ISS-1421 r18 — judge-75 read "invalid credentials" here, a label rather than a sentence.
+    expect(body.message).toBe('That password is not the one on this account.');
     expect(updateFn).not.toHaveBeenCalled();
   });
 

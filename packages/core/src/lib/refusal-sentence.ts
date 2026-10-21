@@ -61,7 +61,7 @@ function isIssue(v: unknown): v is { message: string; path?: PropertyKey[] } {
  * The reason a door wrote into a refusal's `details`, in sentences: a sentence of its own, a list
  * of them, a schema's issues, a lone `message`, or a record naming fields at any depth.
  */
-export function reasonWords(details: unknown): string[] {
+export function reasonWords(details: unknown, sent?: (field: string) => unknown): string[] {
   if (typeof details === 'string') return details.trim() ? [refusalSentence(details.trim())] : [];
   if (Array.isArray(details)) {
     if (details.length > 0 && details.every(isIssue))
@@ -73,7 +73,7 @@ export function reasonWords(details: unknown): string[] {
   const lone = keys.length === 1 && LONE_REASON_KEYS.includes(keys[0] ?? '');
   const said = lone ? (details as Record<string, unknown>)[keys[0] ?? ''] : undefined;
   if (typeof said === 'string') return reasonWords(said);
-  return flattenedRefusalWords(details);
+  return flattenedRefusalWords(details, '', sent);
 }
 
 /** Whether `details` hold any text a reader could be told: a string anywhere inside them. */
@@ -85,11 +85,34 @@ export function holdsReason(details: unknown): boolean {
   return false;
 }
 
-/** A 4xx message, the envelope's funnel: a bare refusal says the reason its details carry. */
-export function refusalMessage(message: string, details: unknown): string {
+/** A label and nothing more ("invalid params"), which yields to the fields its details name. */
+const LABEL_ONLY = /^invalid(?:\s+[A-Za-z]+){0,2}\.?$/i;
+
+function isSchemaDetails(details: unknown): boolean {
+  if (Array.isArray(details)) return details.length > 0 && details.every(isIssue);
+  if (details === null || typeof details !== 'object') return false;
+  const d = details as { formErrors?: unknown; fieldErrors?: unknown };
+  return Array.isArray(d.formErrors) && typeof d.fieldErrors === 'object';
+}
+
+export function isLabelOnly(message: string): boolean {
+  return LABEL_ONLY.test(message.trim());
+}
+
+/**
+ * A 4xx message, the envelope's funnel: a bare refusal says the reason its details carry, and
+ * `sent` reads what the request sent at a field, so a refused value is quoted.
+ */
+export function refusalMessage(
+  message: string,
+  details: unknown,
+  sent?: (field: string) => unknown,
+): string {
   const said = message.trim();
-  if (isBareRefusal(said)) {
-    const words = reasonWords(details);
+  const labelled =
+    LABEL_ONLY.test(said) && isSchemaDetails(details) && reasonWords(details, sent).length > 0;
+  if (isBareRefusal(said) || labelled) {
+    const words = reasonWords(details, sent);
     if (words.length > 0) return words.join(' ');
     return said === '' ? NOTHING_SAID : INPUT_REFUSED;
   }

@@ -1,4 +1,7 @@
+import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import { fieldsNamedAt } from '../lib/unknown-fields.js';
+import { fieldsNear, schemaRefusalWords } from '../lib/zod-sentences.js';
 import { AGENT_ACCESS_VALUES } from './agent-access.js';
 import { bindingShapeFields, checkBindingShape, stagesSchema } from './binding-shape.js';
 import { getIntegration, providerNames } from './registry.js';
@@ -27,6 +30,37 @@ function declarationOrIssue(provider: string, ctx: z.RefinementCtx): Integration
   return null;
 }
 
+/**
+ * A provider schema's issues said under `key`, each stray field one issue of its own that names
+ * the fields near it the provider takes (ISS-1421 r18): the envelope's `config` is a record, so
+ * the route's own schema cannot say what a field inside it may have meant.
+ */
+function issuesUnder(
+  schema: z.ZodTypeAny,
+  issues: readonly z.core.$ZodIssue[],
+  key: 'config' | 'secrets',
+): z.core.$ZodIssue[] {
+  return issues.flatMap((issue): z.core.$ZodIssue[] => {
+    const path = [key, ...issue.path];
+    if (issue.code !== 'unrecognized_keys') return [{ ...issue, path }];
+    const known = fieldsNamedAt(schema, issue.path);
+    const full = (k: string) => [...path, k].map(String).join('.');
+    return issue.keys.map((stray) => {
+      const near = fieldsNear(stray, known).map(full);
+      const meant =
+        near.length === 0
+          ? ''
+          : ` This call takes ${near.join(' and ')}, ${near.length === 1 ? 'which' : 'either of which'} may be what ${full(stray)} meant.`;
+      return {
+        code: 'custom',
+        path: [...path, stray],
+        message: `is not one this call takes.${meant}`,
+        input: undefined,
+      } as z.core.$ZodIssue;
+    });
+  });
+}
+
 /** Validate one half of a body against a provider-declared schema, reporting under its own key. */
 function parseInto(
   schema: z.ZodTypeAny,
@@ -36,10 +70,51 @@ function parseInto(
 ): Record<string, unknown> | undefined {
   const parsed = schema.safeParse(value ?? {});
   if (parsed.success) return parsed.data as Record<string, unknown>;
-  for (const issue of parsed.error.issues) {
-    ctx.addIssue({ ...issue, path: [key, ...issue.path] });
-  }
+  for (const issue of issuesUnder(schema, parsed.error.issues, key)) ctx.addIssue(issue as never);
   return undefined;
+}
+
+/** A provider half parsed, or refused by `providerHalfRefused`. */
+export function parseProviderHalf(
+  schema: z.ZodTypeAny,
+  sent: unknown,
+  key: 'config' | 'secrets',
+): Record<string, unknown> {
+  const parsed = schema.safeParse(sent);
+  if (!parsed.success) throw providerHalfRefused(parsed.error, schema, key, sent);
+  return parsed.data as Record<string, unknown>;
+}
+
+/** A binding PATCH's config against the provider's partial schema. */
+export function bindingConfigPatch(provider: string, sent: unknown): Record<string, unknown> {
+  return parseProviderHalf(configSchemaForProvider(provider), sent, 'config');
+}
+
+/** A PATCH's provider half refused, in the sentences the create door says it in. */
+export function providerHalfRefused(
+  error: z.core.$ZodError,
+  schema: z.ZodTypeAny,
+  key: 'config' | 'secrets',
+  sent: unknown,
+): HTTPException {
+  const issues = issuesUnder(schema, error.issues, key);
+  const { sentences, accepted } = schemaRefusalWords(issues, {
+    valuesAre: 'listed in details.accepted',
+    input: { [key]: sent },
+  });
+  const listed = accepted.length > 0;
+  return new HTTPException(400, {
+    message: sentences.join(' '),
+    cause: {
+      code: 'BAD_REQUEST',
+      details: {
+        issues: issues.map(({ path, message }) => ({ path, message })),
+        ...(listed
+          ? { accepted: Object.fromEntries(accepted.map((a) => [a.field, a.values])) }
+          : {}),
+      },
+    },
+  });
 }
 
 const agentAccessField = z.enum(AGENT_ACCESS_VALUES).optional();
@@ -169,7 +244,13 @@ export async function applySecretsPatch(opts: {
   if (!decl || !primaryField) return undefined;
   if (opts.vaultGuardTiming === 'before-parse') assertVaultConfigured();
   const parsedSecrets = decl.schemas.patchSecrets.safeParse(opts.rawSecrets);
-  if (!parsedSecrets.success) throw badRequest(z.flattenError(parsedSecrets.error));
+  if (!parsedSecrets.success)
+    throw providerHalfRefused(
+      parsedSecrets.error,
+      decl.schemas.patchSecrets,
+      'secrets',
+      opts.rawSecrets,
+    );
   const incoming = parsedSecrets.data as Record<string, unknown>;
   // A field a rotation does not touch is writable on its own only where the provider DECLARES it
   // so. Rocket.Chat's bot `userId` is the only one today. Treating every non-primary field as

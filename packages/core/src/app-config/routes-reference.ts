@@ -53,6 +53,10 @@ export const putAppConfig = describeOperation({
   description: 'Project admins only. `chatModelByKind` replaces the whole map, so read it first.',
   responses: {
     200: json(configRowSchema, 'The settings after the change'),
+    400: fail(
+      'CHAT_PROVIDER_UNKNOWN',
+      '`chatProviderId` names no chat provider this deployment has',
+    ),
     403: notAdmin,
     404: noProject,
   },

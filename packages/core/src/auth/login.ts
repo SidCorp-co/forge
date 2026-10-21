@@ -31,7 +31,7 @@ loginRoutes.post('/local', login, zValidator('json', loginSchema), async (c) => 
 
   const invalidCredentials = () =>
     new HTTPException(401, {
-      message: 'invalid credentials',
+      message: 'That email and password do not match an account here.',
       cause: { code: 'INVALID_CREDENTIALS' },
     });
 

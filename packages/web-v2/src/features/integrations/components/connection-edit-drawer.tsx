@@ -97,7 +97,9 @@ function HeaderTitle({
         </span>
       ) : (
         <>
-          <span className="truncate">{label}</span>
+          <span className="min-w-0 max-w-full truncate" title={label} data-testid="connection-drawer-name">
+            {label}
+          </span>
           {canManage && (
             <Button
               variant="ghost"

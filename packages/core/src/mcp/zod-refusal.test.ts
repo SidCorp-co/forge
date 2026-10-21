@@ -165,3 +165,15 @@ describe('zodRefusalMessage', () => {
     );
   });
 });
+
+// ISS-1421 r18, criterion 173 — forge_issues and forge_comments with limit "abc" said "not a string".
+describe('zodRefusalMessage with the arguments as sent', () => {
+  it('quotes the value a number field was sent', () => {
+    const sent = { metric: 'cost', nested: { n: 'abc' } };
+    const r = schema.safeParse(sent);
+    if (r.success) throw new Error('expected the schema to refuse');
+    expect(zodRefusalMessage(r.error, undefined, sent)).toBe(
+      'BAD_REQUEST: The field `nested.n` takes a number, not "abc".',
+    );
+  });
+});

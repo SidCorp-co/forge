@@ -3,7 +3,7 @@
 import { z } from 'zod';
 import { RELEASE_CHANNEL_KEYS, releaseChannelFields } from '../release-channel-schema.js';
 
-export const postmanConfigBase = z.object({
+export const postmanConfigBase = z.strictObject({
   workspaceId: z.string().min(1).max(200).optional(),
   workspaceName: z.string().min(1).max(200),
   collectionId: z.string().min(1).max(200).optional(),
@@ -18,7 +18,7 @@ export const postmanConfigSchema = postmanConfigBase.extend({
   mode: postmanConfigBase.shape.mode.default('minimal'),
 });
 
-export const postmanSecretsSchema = z.object({
+export const postmanSecretsSchema = z.strictObject({
   apiKey: z.string().min(8).max(2000),
 });
 
