@@ -1,4 +1,4 @@
-import { isDecisionAct } from '@forge/contracts/needs-you-decisions';
+import { isDecisionActOn } from '@forge/contracts/needs-you-decisions';
 import type {
   ReleaseAttemptStage,
   ReleaseAttentionGroup,
@@ -63,8 +63,9 @@ const RELEASE_RUN = say('standing.who.releaseRun');
 
 /**
  * A release's turn. Needs you holds decisions only (REQ-48 BC-11, `lib/standing-times.ts:withTimes`
- * for the other slices): an act of the viewer's that no decision carries, a cut or a target to
- * declare, reads `waiting` on them, so the list and the needs-me read count the same rows.
+ * for the other slices): an act of the viewer's that no decision carries, a target to declare or a
+ * runner to bring online, reads `waiting` on them, so the list and the needs-me read count the same
+ * rows. The cut is one: only an admin makes it, so it stays theirs as the `release.cut` decision.
  */
 const turn = (
   attentionGroup: ReleaseAttentionGroup,
@@ -72,7 +73,9 @@ const turn = (
   says: WaitingSays,
 ): Turn => ({
   attentionGroup:
-    attentionGroup === 'needs_you' && !isDecisionAct(says.act) ? 'waiting' : attentionGroup,
+    attentionGroup === 'needs_you' && !isDecisionActOn('release', says.act)
+      ? 'waiting'
+      : attentionGroup,
   waitingOn: waitingOn(kind, says),
 });
 

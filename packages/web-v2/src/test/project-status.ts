@@ -20,8 +20,8 @@ const release = {
     {
       requirement: { key: "REQ-3", title: "The board keeps its cards" },
       issues: [
-        { key: "ISS-11", title: "Saved boards keep every card", status: "closed", proof: "proven" as const },
-        { key: "ISS-12", title: "Export keeps the order", status: "closed", proof: "unrecorded" as const },
+        { id: "i-11", key: "ISS-11", title: "Saved boards keep every card", status: "closed", proof: "proven" as const },
+        { id: "i-12", key: "ISS-12", title: "Export keeps the order", status: "closed", proof: "unrecorded" as const },
       ],
     },
   ],

@@ -1,8 +1,15 @@
 // The approve-group decisions the needs-me read builds (REQ-41 BC-2): a requirement revision's
-// accept or return, a requirement's agree or drop, a release's approve or return, and a workflow
-// design revision's approve or return, each with the rule's recommendation and the buttons that send it.
+// accept or return, a requirement's agree or drop, a release's cut and its approve or return, and a
+// workflow design revision's approve or return, each with the rule's recommendation and the buttons
+// that send it.
 
 import type { NeedsYouAreaKey } from '@forge/contracts/needs-you';
+import { type DecisionProposal, fitProposal } from '@forge/contracts/needs-you-proposal';
+import {
+  RELEASE_PROOF_LABELS,
+  type ReleaseContentGroup,
+  type ReleaseCriteriaTotals,
+} from '@forge/contracts/releases';
 import type { AttentionRow } from './needs-you.js';
 import { answer, type Built, clip, filled } from './needs-you-decision-builders.js';
 
@@ -153,6 +160,97 @@ export function releaseDecision(
         }),
       ],
       touchedAt: row.touchedAt,
+    },
+  };
+}
+
+/** A draft release the viewer may cut: its version, the issues it carries and what they prove. */
+export interface CuttableRelease {
+  version: string;
+  contents: readonly ReleaseContentGroup[];
+  criteria: ReleaseCriteriaTotals;
+}
+
+/** Whether the criteria a cut carries say it is ready: every one earned, else what is not, and why. */
+function cutRecommendation(n: number, c: ReleaseCriteriaTotals) {
+  if (c.total > 0 && c.proven === c.total) {
+    return { why: `All ${c.total} criteria its ${n} issues carry are earned.`, clean: true };
+  }
+  if (c.total === 0) {
+    return {
+      why: `None of its ${n} issues records a criterion, so nothing says it is ready; check it before you cut it.`,
+      clean: false,
+    };
+  }
+  const parts = [
+    c.failing && `${c.failing} failing`,
+    c.open && `${c.open} not judged yet`,
+    c.unproven && `${c.unproven} judged, not proven`,
+  ].filter(Boolean);
+  return {
+    why: `${c.proven} of the ${c.total} criteria its issues carry are earned (${parts.join(', ')}); check them before you cut it.`,
+    clean: false,
+  };
+}
+
+/**
+ * A draft release no gate holds, waiting on the admin who may cut it (REQ-48 BC-11): the steward
+ * may not cut, so the admin's cut is the decision, sent through the release page's own door
+ * (`release.cut`, `POST …/release-batches {issueIds}`) with every issue the draft carries. The
+ * peek lists those issues and what each proves; the rule recommends the cut only where every
+ * criterion they carry is earned.
+ */
+export function cutDecision(
+  row: AttentionRow,
+  area: NeedsYouAreaKey,
+  projectId: string,
+  release: CuttableRelease,
+): Built {
+  const issues = release.contents.flatMap((g) => g.issues);
+  const keys = issues.map((i) => i.key);
+  const { why, clean } = cutRecommendation(issues.length, release.criteria);
+  const carries = `Cuts ${release.version} carrying ${keys.join(', ')}`;
+  const proposal: DecisionProposal = fitProposal({
+    verb: `Cut ${release.version}`,
+    what: `${issues.length} ${issues.length === 1 ? 'issue' : 'issues'}`,
+    recommends: clean,
+    tags: [],
+    consequences: [carries],
+    why: [{ label: 'Criteria', value: why }],
+    said: null,
+    table: {
+      title: 'Issues it carries',
+      columns: ['Issue', 'Title', 'Criteria'],
+      rows: issues.map((i) => [i.key, i.title, RELEASE_PROOF_LABELS[i.proof]]),
+    },
+    yields: [],
+  });
+  return {
+    questionId: null,
+    decision: {
+      group: 'approve',
+      area,
+      entity: row.entity,
+      key: row.key,
+      title: clip(row.title, 500),
+      opens: { kind: 'release', key: row.key },
+      question: `Cut release ${release.version} with the ${issues.length} ${issues.length === 1 ? 'issue' : 'issues'} waiting for it?`,
+      recommended: clean ? { answerId: 'cut', why, by: 'rule' } : null,
+      noRecommendation: clean ? null : why,
+      answers: [
+        answer({
+          id: 'cut',
+          label: `Cut ${release.version}`,
+          act: 'release.cut',
+          path: filled('release.cut', { projectId }),
+          body: { issueIds: issues.map((i) => i.id) },
+          effect: carries,
+          recommended: clean,
+        }),
+      ],
+      touchedAt: row.touchedAt,
+      topic: 'release',
+      proposal,
     },
   };
 }

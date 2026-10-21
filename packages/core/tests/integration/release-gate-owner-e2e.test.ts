@@ -166,9 +166,9 @@ describe('a draft release held by a missing release note', () => {
     expect(after.work.owed).toBe(0);
     expect(after.work.owedLine).not.toContain('release note');
     expect(after.verdict.nudge).toBe(false);
-    // a cut is no decision the Needs you read holds, so it waits on the admin off it (REQ-48 BC-11)
+    // only an admin cuts, so the cut is their one-click decision in Needs you (REQ-48 BC-11)
     expect(await draft()).toMatchObject({
-      attentionGroup: 'waiting',
+      attentionGroup: 'needs_you',
       waitingOn: { kind: 'you', act: 'cut 0.1.0' },
     });
   });
