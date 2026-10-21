@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.271] - 2026-10-21
+
+The steward's questions now act when you answer, and it stops retrying refused acts
+
+### Fixed
+
+- **Approvals never sends an answer you cannot see, and Decline always declines.** A question's check names the answer it sends, with its other answers one click away; a release's Decline returns it instead of approving it.
+- **The steward's first live run fails only on what it cannot do.** Stuck issues take notes, wrong keys are refused, runner jobs report done, and the steward prepares stale drafts itself before asking open, keep or drop, acted on answer.
+
 ## [0.4.0-dev.270] - 2026-10-21
 
 Pages show state instead of explaining themselves; empty lists read as a word
