@@ -1,0 +1,1 @@
+**A suggestion on a target with no revision is told to send `baseRevision: null`.** The create shape names `number | null`, and the stale-base refusal on an issue, a feedback item or an unagreed requirement says to send null.

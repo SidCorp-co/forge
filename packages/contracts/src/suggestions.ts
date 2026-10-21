@@ -354,15 +354,26 @@ const targetFields = {
 	workflow: z.string().trim().min(1).max(200).optional(),
 };
 
+/** What `baseRevision` holds, said the same in the shape, the schema and the stale refusal (REQ-8 BC-1). */
+const BASE_REVISION_MEANING =
+	"the target's revision you read (a revision_diff on a requirement with an open revision takes that open one), or null where there is none: an issue, a feedback item, a requirement with no current revision";
+const BASE_REVISION_BELOW_ONE =
+	"a revision is 1 or more; a target that holds no revision takes baseRevision: null";
+
 /** `POST /api/projects/:id/suggestions` — one of `requirement`, `issue`, `feedback` or `workflow`. */
 export const createSuggestionRequestSchema = z.strictObject({
 	kind: z.enum(SUGGESTION_KINDS),
 	...targetFields,
-	baseRevision: z.number().int().min(1).nullable(),
+	baseRevision: z
+		.number()
+		.int()
+		.min(1, BASE_REVISION_BELOW_ONE)
+		.nullable()
+		.describe(BASE_REVISION_MEANING),
 	payload: z.unknown(),
 	model: z.string().max(200).nullable().optional(),
 });
-export const CREATE_SUGGESTION_SHAPE = `{ kind: ${SUGGESTION_KINDS.join(" | ")}, requirement | issue | feedback | workflow, baseRevision, payload, model? }`;
+export const CREATE_SUGGESTION_SHAPE = `{ kind: ${SUGGESTION_KINDS.join(" | ")}, requirement | issue | feedback | workflow, baseRevision: number | null, payload, model? } — baseRevision is ${BASE_REVISION_MEANING}`;
 
 /** `POST /api/projects/:id/suggestions/:sid/accept` — the person's reason, kept on the row. */
 export const acceptSuggestionRequestSchema = z.strictObject({

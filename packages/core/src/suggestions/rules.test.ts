@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { blockerFaults, breakdownFaults } from './rules.js';
+import { baseStaleRefusal, blockerFaults, breakdownFaults } from './rules.js';
 
 // ISS-281's judge: splitting `blockerFaults` out of `breakdownFaults` kept the refusal order only by
 // reading, and no test pinned it. A breakdown's propose and accept refuse in this order — the edge
@@ -38,5 +38,33 @@ describe("a breakdown's refusals, in the order its accept names them", () => {
       issues: [slice(['BC-1'], [1, 0]), slice(['BC-1'], [0, 7]), slice(['BC-1'], [2])],
     } as unknown as Breakdown;
     expect(breakdownFaults(p, codes, 3)).toEqual(blockerFaults(p));
+  });
+});
+
+// FB-152: a number sent against a target that holds no revision was answered "the target's head is
+// no revision ... propose against it", and callers tried 0 and 1 before null. The refusal names null.
+describe('the stale-base refusal on a target with no revision', () => {
+  it('tells the caller to send baseRevision: null, whatever number it sent', () => {
+    for (const base of [1, 2, 7]) {
+      const r = baseStaleRefusal(base, null);
+      expect(r?.code).toBe('SUGGESTION_BASE_STALE');
+      expect(r?.path).toBe('/baseRevision');
+      expect(r?.detail).toContain(`based on revision ${base}`);
+      expect(r?.detail).toContain('send baseRevision: null, not a revision number');
+    }
+  });
+
+  it('takes null there, and a revisioned head still names its revision, not null', () => {
+    expect(baseStaleRefusal(null, null)).toBeNull();
+    expect(baseStaleRefusal(3, 3)).toBeNull();
+    const moved = baseStaleRefusal(2, 3);
+    expect(moved?.detail).toContain("the target's head is revision 3");
+    expect(moved?.detail).not.toContain('null');
+  });
+
+  it('an open revision a revision_diff builds on is named instead of null', () => {
+    const r = baseStaleRefusal(null, null, { revision: 1, state: 'draft' });
+    expect(r?.detail).toContain('propose against revision 1');
+    expect(r?.detail).not.toContain('baseRevision: null');
   });
 });
