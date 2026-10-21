@@ -115,3 +115,56 @@ describe("a read Forge refused for good (criteria 249 and 250)", () => {
     expect(read).toHaveBeenCalledTimes(4);
   });
 });
+
+// ISS-1228 r27 (judge-85, criterion 259): with the holds read failing, reads started 21–260 ms apart,
+// about 15 per 16 s: the read's own retries (1 s, then 2 s) ran beside the frame windows' 2.1 s gap,
+// which counted only a read's first attempt. Retries now count inside the same budget.
+describe("a holds read that fails under a storm of check-ins (criterion 259)", () => {
+  const unavailable = new ApiError(503, "Forge is busy.", "UNAVAILABLE");
+
+  /** `failsWhile` says, by attempt, whether that attempt fails; the rest answer. */
+  async function storm(answerAfterMs: number, failsWhile: (attempt: number) => boolean = () => true) {
+    const starts: number[] = [];
+    let inFlight = 0;
+    let mostInFlight = 0;
+    read.mockImplementation(() => {
+      const attempt = starts.push(Date.now());
+      inFlight++;
+      mostInFlight = Math.max(mostInFlight, inFlight);
+      return new Promise((resolve, reject) =>
+        setTimeout(() => {
+          inFlight--;
+          if (failsWhile(attempt)) reject(unavailable);
+          else resolve({ sessions: [], holds: [], runningChats: [], readAt: "2026-10-21T20:00:00.000Z" } as never);
+        }, answerAfterMs),
+      );
+    });
+    const { frame } = mount();
+    // Sixteen seconds of check-ins, one every 100 ms, as seven sessions checking in every 5 s send.
+    for (let ms = 0; ms < 16_000; ms += 100) {
+      frame("running");
+      await act(() => vi.advanceTimersByTimeAsync(100));
+    }
+    const gaps = starts.slice(1).map((at, i) => at - (starts[i] as number));
+    return { starts, gaps, mostInFlight };
+  }
+
+  it.each([
+    ["at once", 0],
+    ["after 1.5 s", 1_500],
+  ])("starts no read within two seconds of the last, its own retries included, when it fails %s", async (_name, ms) => {
+    const { starts, gaps, mostInFlight } = await storm(ms);
+    expect(starts.length).toBeGreaterThan(1);
+    expect(Math.min(...gaps)).toBeGreaterThanOrEqual(2_000);
+    expect(starts.length).toBeLessThanOrEqual(8);
+    expect(mostInFlight).toBe(1);
+  });
+
+  // Review F1: a retry that answers starts unannounced, so a window timed from the failure before it
+  // opened about 250 ms after that retry.
+  it("starts no read within two seconds of a retry that answered", async () => {
+    const { starts, gaps } = await storm(0, (attempt) => attempt % 2 === 1);
+    expect(starts.length).toBeGreaterThan(2);
+    expect(Math.min(...gaps)).toBeGreaterThanOrEqual(2_000);
+  });
+});

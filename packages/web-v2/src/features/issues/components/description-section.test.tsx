@@ -290,3 +290,28 @@ describe("DescriptionSection, when writes are withdrawn mid-edit", () => {
   });
 });
 
+
+// ISS-1228 r27 (judge-85, criterion 269): the attachments read's refresh line said only "Could not
+// refresh — …", which under Description on an issue with no attachments read as the description gone stale.
+describe("DescriptionSection — an attachments refresh that failed after it answered", () => {
+  const READ_AT = new Date(2026, 9, 21, 20, 51).getTime();
+  const refused = new ApiError(403, "Not a project member.", "FORBIDDEN");
+
+  it("says the line is about the attachments, and drops it once the attachments read answers", () => {
+    const { rerender } = render(
+      <DescriptionSection
+        issue={issue("the body")}
+        attachments={[]}
+        attachmentsError={refused}
+        attachmentsReadAt={READ_AT}
+        canWrite={false}
+      />,
+    );
+    expect(
+      screen.getByText("Attachments: Could not refresh — showing what was read at 20:51. Not a project member."),
+    ).toBeInTheDocument();
+
+    rerender(<DescriptionSection issue={issue("the body")} attachments={[]} canWrite={false} />);
+    expect(screen.queryByText(/Could not refresh/)).toBeNull();
+  });
+});

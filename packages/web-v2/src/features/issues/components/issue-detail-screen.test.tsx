@@ -20,6 +20,8 @@ const ok = <T,>(data: T) => ({ data, isLoading: false, isError: false, error: nu
 let journal: ReturnType<typeof ok> | Record<string, unknown> = ok([]);
 let attachments: ReturnType<typeof ok> | Record<string, unknown> = ok([]);
 let comments: ReturnType<typeof ok> | Record<string, unknown> = ok({ items: [], totalCount: 0 });
+let costRead: ReturnType<typeof ok> | Record<string, unknown> = ok(undefined);
+let depsRead: ReturnType<typeof ok> | Record<string, unknown> = ok(undefined);
 let pipelineHealth: Record<string, unknown> | undefined;
 let status = "open";
 let issueOver: Record<string, unknown> = {};
@@ -84,8 +86,8 @@ vi.mock("../detail-hooks", async (importActual) => ({
 }));
 vi.mock("../park", () => ({ useIssuePark: () => park }));
 vi.mock("../hooks", () => ({
-  useIssueCost: () => ok(undefined),
-  useIssueDeps: () => ok(undefined),
+  useIssueCost: () => costRead,
+  useIssueDeps: () => depsRead,
   usePatchIssue: () => ({ mutate: vi.fn(), isPending: false }),
   useProjectMembers: () => ok([]),
   useRunPipelineStep: () => ({ mutate: vi.fn(), isPending: false }),
@@ -120,6 +122,8 @@ beforeEach(() => {
   journal = ok([]);
   attachments = ok([]);
   comments = ok({ items: [], totalCount: 0 });
+  costRead = ok(undefined);
+  depsRead = ok(undefined);
   pipelineHealth = undefined;
   status = "open";
   issueOver = {};
@@ -713,6 +717,65 @@ describe("which session holds the issue, while it cannot be read", () => {
     expect(refetchIssue).toHaveBeenCalled();
   });
 
+  // Round 27 (judge-85, criteria 254 and 265): the time sat inside the chip's label, which the chip cuts
+  // at 28 characters, so "Needs an answer · as of 20:24" read "as of 20…" at 1280 and 390.
+  it("shows the whole time a kept run word was read beside its chip, never inside the label the chip cuts", async () => {
+    status = "in_progress";
+    holds = "answer";
+    journal = { ...staleRun(), data: [{ ...SESSION_RUN[0], reading: "asking" }] };
+    renderLive();
+    await within(header()).findByText("The run could not be read. Not a project member.");
+    const word = within(header()).getByText("Needs an answer");
+    const time = within(header()).getByText("as of 14:02");
+    expect(word.className).toContain("truncate");
+    expect(word.contains(time)).toBe(false);
+    expect(time.className).not.toContain("truncate");
+    expect(time.className).toContain("whitespace-nowrap");
+  });
+
+  // Round 27 (judge-85 under 262, criterion 266): the line still said an agent "is working" in the
+  // present tense while the header said the run could not be read.
+  it("says as of then that an agent was working, while the run read is kept through a failure", async () => {
+    status = "in_progress";
+    holds = "answer";
+    issueOver = { ...LIVE, agentStatus: "running" };
+    journal = staleRun();
+    renderLive();
+    expect(
+      await screen.findByText(
+        "As of 14:02 an agent was working this issue, so an edit to its description or properties would be overwritten.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/An agent is working this issue/)).toBeNull();
+  });
+
+  // Round 27 (judge-85 under 233, criterion 270): access back, the header answered while Cost and
+  // Relations kept "Not a project member" until each one's own Retry.
+  it("asks Cost and Relations again once the issue read answers after a 403", async () => {
+    status = "in_progress";
+    holds = "answer";
+    const refetchCost = vi.fn();
+    const refetchDeps = vi.fn();
+    costRead = { data: undefined, isLoading: false, isError: true, error: refused, refetch: refetchCost };
+    depsRead = { data: undefined, isLoading: false, isError: true, error: refused, refetch: refetchDeps };
+    issueRead = { isError: true, error: refused, dataUpdatedAt: READ_AT, refetch: vi.fn() };
+    const qc = createQueryClient();
+    qc.setDefaultOptions({ queries: { ...qc.getDefaultOptions().queries, retry: false } });
+    const tree = () => (
+      <QueryClientProvider client={qc}>
+        <IssueDetailScreen projectId="p1" slug="forge-dev" id="ISS-7" />
+      </QueryClientProvider>
+    );
+    const view = render(tree());
+    await within(header()).findByText(/The issue could not be read/);
+    expect(refetchCost).not.toHaveBeenCalled();
+
+    issueRead = null;
+    view.rerender(tree());
+    expect(refetchCost).toHaveBeenCalledWith({ cancelRefetch: false });
+    expect(refetchDeps).toHaveBeenCalledWith({ cancelRefetch: false });
+  });
+
   // Criterion 257: a deleted project's page spoke of its session beside a Running chip and Pause.
   it("says the project was not found, for the page and with nothing to act on, when its holds read answers 404", async () => {
     status = "in_progress";
@@ -732,14 +795,15 @@ describe("a section of the issue page whose refresh fails after it answered", ()
   const RUN = { runId: "r1", ordinal: 1, kind: "issue", status: "completed", group: null, startedAt: "2026-09-21T11:00:00Z", finishedAt: "2026-09-21T11:00:12Z", costUsd: null, attempts: [{ phase: "code", attempt: 1, source: "agent", outcome: "ok", startedAt: "2026-09-21T11:00:00Z", endedAt: "2026-09-21T11:00:12Z", durationSeconds: 12, artifact: null, handoff: null, handoffAt: null }] };
 
   it.each([
-    ["Runs", () => { journal = lost([RUN]); }, () => screen.getByText("code")],
-    ["the comment thread", () => { comments = lost({ items: [], totalCount: 0 }); }, () => screen.getByText("comments")],
-    ["the attachments", () => { attachments = lost([{ id: "a1", name: "trace.txt", mime: "text/plain", size: 10, url: "/x", createdAt: "2026-09-21T11:00:00Z" }]); }, () => screen.getByText("trace.txt")],
-  ])("keeps %s as it was read, with a line saying when and Retry", (_name, fail, kept) => {
+    ["Runs", () => { journal = lost([RUN]); }, () => screen.getByText("code"), ""],
+    ["the comment thread", () => { comments = lost({ items: [], totalCount: 0 }); }, () => screen.getByText("comments"), ""],
+    // Round 27 (criterion 269): under Description the line names what it is about.
+    ["the attachments", () => { attachments = lost([{ id: "a1", name: "trace.txt", mime: "text/plain", size: 10, url: "/x", createdAt: "2026-09-21T11:00:00Z" }]); }, () => screen.getByText("trace.txt"), "Attachments: "],
+  ])("keeps %s as it was read, with a line saying when and Retry", (_name, fail, kept, about) => {
     fail();
     renderScreen();
     expect(kept()).toBeInTheDocument();
-    const line = screen.getByText(/^Could not refresh — showing what was read at 14:02\. /);
+    const line = screen.getByText(new RegExp(`^${about}Could not refresh — showing what was read at 14:02\\. `));
     expect(line).toBeInTheDocument();
     expect(screen.queryByText(/Couldn't load/)).toBeNull();
   });

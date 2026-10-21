@@ -105,3 +105,51 @@ describe('questionAnswered WS bridge (ISS-1228 round 22)', () => {
     });
   });
 });
+
+describe('comment WS bridge (ISS-1228 round 27)', () => {
+  const ISSUE_ID = '55555555-5555-4555-8555-555555555555';
+  const COMMENT_ID = '66666666-6666-4666-8666-666666666666';
+  const actor = { type: 'user' as const, id: USER_ID, agency: 'human' as const };
+  const ids = { issueId: ISSUE_ID, projectId: PROJECT_ID, commentId: COMMENT_ID, actorId: USER_ID };
+
+  it('tells the project room a comment was posted, edited or deleted, with ids and never the body', async () => {
+    await bus.emit('commentCreated', {
+      issueId: ISSUE_ID,
+      projectId: PROJECT_ID,
+      actor,
+      authored: 'human',
+      commentId: COMMENT_ID,
+      body: 'a body the room is not sent',
+    });
+    await bus.emit('commentUpdated', {
+      issueId: ISSUE_ID,
+      projectId: PROJECT_ID,
+      actor,
+      commentId: COMMENT_ID,
+      before: 'old words',
+      after: 'new words',
+    });
+    await bus.emit('commentDeleted', {
+      issueId: ISSUE_ID,
+      projectId: PROJECT_ID,
+      actor,
+      commentId: COMMENT_ID,
+    });
+
+    expect(publishMock.mock.calls).toEqual([
+      [projectRoom(PROJECT_ID), { event: 'comment.created', data: ids }],
+      [projectRoom(PROJECT_ID), { event: 'comment.updated', data: ids }],
+      [projectRoom(PROJECT_ID), { event: 'comment.deleted', data: ids }],
+    ]);
+    expect(JSON.stringify(publishMock.mock.calls)).not.toMatch(/body|words/);
+  });
+});
+
+describe('projectDeleted WS bridge (ISS-1228 round 27)', () => {
+  it('tells the deleted project’s room it is gone, and nothing else', async () => {
+    await bus.emit('projectDeleted', { projectId: PROJECT_ID });
+    expect(publishMock.mock.calls).toEqual([
+      [projectRoom(PROJECT_ID), { event: 'project.deleted', data: { projectId: PROJECT_ID } }],
+    ]);
+  });
+});

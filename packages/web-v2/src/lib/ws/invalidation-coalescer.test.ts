@@ -129,3 +129,35 @@ describe("a window that spares standing refusals", () => {
 		expect(qc.getQueryState(["holds", "refused"])?.isInvalidated).toBe(true);
 	});
 });
+
+// ISS-1228 r27 (review F1 of the final read): an attempt's start is kept on the query itself, so a
+// query the cache dropped and made again does not wait out a gap its predecessor started.
+describe("a holds read's own attempt start", () => {
+	it("holds a window off for the read's gap, and goes with the query the cache drops", async () => {
+		vi.useFakeTimers();
+		try {
+			const { QueryClient } = await import("@tanstack/react-query");
+			const { noteAttemptStart } = await import("./invalidation-coalescer");
+			const qc = new QueryClient();
+			const key = ["sessions-and-holds", "p1"];
+			const invalidate = vi.spyOn(qc, "invalidateQueries");
+			qc.setQueryData(key, { sessions: [] }, { updatedAt: Date.now() - 10_000 });
+			noteAttemptStart(qc, key);
+			scheduleInvalidation(qc, key);
+			await vi.advanceTimersByTimeAsync(INVALIDATE_WINDOW_MS);
+			expect(invalidate).not.toHaveBeenCalled();
+			await vi.advanceTimersByTimeAsync(2_100);
+			expect(invalidate).toHaveBeenCalledTimes(1);
+
+			noteAttemptStart(qc, key);
+			qc.removeQueries({ queryKey: key });
+			qc.setQueryData(key, { sessions: [] }, { updatedAt: Date.now() - 10_000 });
+			scheduleInvalidation(qc, key);
+			await vi.advanceTimersByTimeAsync(INVALIDATE_WINDOW_MS);
+			expect(invalidate).toHaveBeenCalledTimes(2);
+		} finally {
+			flushInvalidations();
+			vi.useRealTimers();
+		}
+	});
+});

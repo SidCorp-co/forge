@@ -108,6 +108,9 @@ export interface HookPayloads {
     actor: Actor;
     commentId: string;
   };
+  projectDeleted: {
+    projectId: string;
+  };
   commentMentioned: {
     issueId: string;
     projectId: string;

@@ -25,6 +25,11 @@ const open = new Map<string, Window>();
 /** When each query's latest read started, whatever started it: a window, a poll, focus or Retry. */
 const startedAt = new WeakMap<Query, number>();
 const watched = new WeakSet<QueryCache>();
+/** A read's own retries start announced to no subscriber, so a read with a gap notes each attempt itself (ISS-1228 r27). */
+export function noteAttemptStart(qc: QueryClient, queryKey: readonly unknown[]): void {
+	const query = qc.getQueryCache().find({ queryKey: [...queryKey], exact: true });
+	if (query) startedAt.set(query, Date.now());
+}
 
 function watchStarts(qc: QueryClient): void {
 	const cache = qc.getQueryCache();
@@ -35,9 +40,13 @@ function watchStarts(qc: QueryClient): void {
 	});
 }
 
+export function readGapOf(queryKey: readonly unknown[]): number {
+	return MIN_READ_GAP_MS[String(queryKey[0])] ?? 0;
+}
+
 /** The earliest a read of `queryKey` may start again, from the latest start of any read it names. */
 function notBefore(clients: Iterable<QueryClient>, queryKey: readonly unknown[]): number {
-	const gap = MIN_READ_GAP_MS[String(queryKey[0])] ?? 0;
+	const gap = readGapOf(queryKey);
 	if (gap === 0) return 0;
 	let latest = 0;
 	for (const qc of clients) {
