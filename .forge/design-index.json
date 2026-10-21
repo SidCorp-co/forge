@@ -196,6 +196,14 @@
   "REQ-48": {
    "title": "An agent stands at every Product and Delivery handoff",
    "status": "agreed"
+  },
+  "REQ-49": {
+   "title": "A mockup is proposed, tried and discussed on the item it shapes",
+   "status": "agreed"
+  },
+  "REQ-50": {
+   "title": "Forge learns from every correction and stops to ask when a lesson confuses",
+   "status": "agreed"
   }
  },
  "workflows": {

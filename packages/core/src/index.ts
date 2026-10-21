@@ -71,6 +71,7 @@ import {
   resolvePipelineContext,
 } from './jobs/index.js';
 import { provideKnowledgePorts } from './knowledge/index.js';
+import { provideLessonsPorts } from './lessons/index.js';
 import { provideProjectOrg, provideVisibleProjects } from './lib/authz.js';
 import { provideContractVersionReads } from './lib/contract-versions.js';
 import { provideDataPolicy } from './lib/data-egress.js';
@@ -104,7 +105,7 @@ import {
   unaddressableProjectSlug,
 } from './middleware/route-refs.js';
 import { serverTiming } from './middleware/server-timing.js';
-import { deleteFeedbackMockups } from './mockups/index.js';
+import { deleteFeedbackMockups, getMockupAs } from './mockups/index.js';
 import { emitNotification } from './notifications/index.js';
 import {
   declareOutboxQueues,
@@ -360,6 +361,11 @@ provideStewardPorts({
   wakeMasters: wakeMastersForSteward,
 });
 provideSuggestionsPorts({ stewardOf: heldStewardOf });
+// a mockup's correction is read through the mockup's own view, never its table (REQ-50 BC-1)
+provideLessonsPorts({
+  mockupOf: async (projectId, mockupId, viewer) =>
+    (await getMockupAs(viewer, projectId, mockupId)) ?? null,
+});
 
 app.use(
   '*',

@@ -18,6 +18,8 @@ export interface BuildSystemPromptInput {
   persona?: string | null | undefined;
   /** Deterministic project-progress block (ISS-671); always appended when set. */
   progressFacts?: string | null | undefined;
+  /** The approved lessons that reach the assistant (REQ-50 BC-3), already rendered; absent renders nothing. */
+  lessons?: string | null | undefined;
   /** The project's content language block (`@forge/contracts/content-language`); appended after an override too. */
   contentLanguage?: string | null | undefined;
 }
@@ -51,6 +53,9 @@ export function buildSystemPrompt(input: BuildSystemPromptInput): string {
   if (progressFacts) {
     sections.push(progressFacts);
   }
+
+  const lessons = input.lessons?.trim();
+  if (lessons) sections.push(lessons);
 
   const contentLanguage = input.contentLanguage?.trim();
   if (contentLanguage) sections.push(contentLanguage);

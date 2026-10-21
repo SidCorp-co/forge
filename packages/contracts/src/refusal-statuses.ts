@@ -40,6 +40,7 @@ import { RECORDING_REFUSAL_STATUSES } from "./reproduce.js";
 import { REQUIREMENT_REFUSAL_STATUSES } from "./requirements.js";
 import { SHARE_REFUSAL_STATUSES } from "./shares.js";
 import { STATE_MACHINE_REFUSAL_STATUSES } from "./state-machine.js";
+import { LESSON_REFUSAL_STATUSES } from "./lessons.js";
 import { STEWARD_REFUSAL_STATUSES } from "./steward.js";
 import { STATUS_REPORT_REFUSAL_STATUSES } from "./status-reports.js";
 import { SUGGESTION_REFUSAL_STATUSES } from "./suggestions.js";
@@ -74,6 +75,7 @@ const DECLARED: ReadonlyArray<
 	ISSUE_UPDATE_REFUSAL_STATUSES,
 	ISSUE_DESIGN_REFUSAL_STATUSES,
 	MCP_AUTH_REFUSAL_STATUSES,
+	LESSON_REFUSAL_STATUSES,
 	MEMORY_REFUSAL_STATUSES,
 	PATTERN_REFUSAL_STATUSES,
 	PIPELINE_REFUSAL_STATUSES,

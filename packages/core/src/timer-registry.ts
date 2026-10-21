@@ -35,7 +35,7 @@ import { sweepExpiredExecutions, sweepExpiredReportRuns } from './reports/index.
 import { sweepDeliveredRequirements, sweepStaleDrafts } from './requirements/index.js';
 import { reapGhostRunners, runRunnerStaleSweep } from './runners/index.js';
 import type { Timer } from './schedules/index.js';
-import { dispatchStewardRuns, sweepStandings } from './steward/index.js';
+import { dispatchStewardRuns, runLessonsPass, sweepStandings } from './steward/index.js';
 import { sweepSuggestions } from './suggestions/index.js';
 import { drainWidgetConversationWindows } from './widget/index.js';
 
@@ -149,6 +149,27 @@ function stewardTimers(): Timer[] {
             settledAsks: number;
           };
           return stuck > 0 || changed > 0 || settledAsks > 0;
+        },
+      ),
+    },
+    {
+      // REQ-50 BC-2, BC-6, BC-7: corrections grouped into proposed lessons, retirements proposed,
+      // checks filed (`steward/lessons-pass.ts`)
+      kind: 'cluster',
+      name: 'lessons-pass',
+      cron: '*/10 * * * *',
+      run: logged(
+        'lessons-pass: ran',
+        () => runLessonsPass(),
+        (r) => {
+          const { linked, proposed, retirements, checks, failed } = r as {
+            linked: number;
+            proposed: number;
+            retirements: number;
+            checks: number;
+            failed: number;
+          };
+          return linked + proposed + retirements + checks + failed > 0;
         },
       ),
     },

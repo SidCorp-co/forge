@@ -13,6 +13,7 @@ import { db } from '../db/client.js';
 import type { ConversationAdapter, ConversationMessageRole } from '../db/schema-conversations.js';
 import { conversations } from '../db/schema-conversations.js';
 import type { ChatContentPart, ChatMessage } from '../integrations/llm/index.js';
+import { noteTurnLessons } from './turn-lessons.js';
 
 /** How many stored turns a turn is allowed to read back. Storage is unbounded; the window is not. */
 const CONVERSATION_READ_WINDOW = 200;
@@ -28,6 +29,8 @@ interface PendingMessage {
 
 export interface ConversationTurn {
   conversationId: string;
+  /** The project this turn answers for, whose lessons its stored messages owe (REQ-50). */
+  projectId: string;
   /** The handle speaking here — the one carrying this turn's project. An assistant row is BY it. */
   handleUserId: string | null;
   /** The window read back at load, oldest first. */
@@ -77,6 +80,7 @@ export async function openTurn(opts: {
   }
   return {
     conversationId: row.id,
+    projectId: opts.projectId,
     handleUserId: await handleForProject(row.id, opts.projectId),
     history: await readMessages(row.id, CONVERSATION_READ_WINDOW),
     pending: [],
@@ -121,7 +125,9 @@ export async function persistMessages(turn: ConversationTurn): Promise<void> {
     messages: turn.pending.map((m) => ({ ...m, blocks: null, deliveryProof: null })),
   });
   turn.pending.length = 0;
+  const before = turn.history.at(-1);
   turn.history.push(...written);
+  await noteTurnLessons(turn.projectId, turn.conversationId, before, written);
 }
 
 /**

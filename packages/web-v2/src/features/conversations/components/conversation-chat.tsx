@@ -221,7 +221,7 @@ export function ConversationChat({
         scroll={{ scrollRef, bottomRef, onScroll, newOutput, toBottom }}
         empty={messages.length === 0 && outbox.length === 0}
         data={{ projectId, projectSlug: projectRow?.slug, conversationId: resolvedId ?? "", kind: roomQ.data?.kind ?? null, questionnaires: roomQ.data?.questionnaires ?? [] }}
-        thread={{ projectId, projectSlug: projectRow?.slug, atBottom, messages, windows: roomQ.data?.windows ?? [], outbox, progress, withdrawn, agentTurns: roomQ.data?.agentTurns ?? [], onRetry: retry, afterEntry }}
+        thread={{ projectId, projectSlug: projectRow?.slug, conversationId: resolvedId, atBottom, messages, windows: roomQ.data?.windows ?? [], outbox, progress, withdrawn, agentTurns: roomQ.data?.agentTurns ?? [], onRetry: retry, afterEntry }}
         stage={stage ? <TurnStage stage={stage} detail={doing} /> : null}
       />
 

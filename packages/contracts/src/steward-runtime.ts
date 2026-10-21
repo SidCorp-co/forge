@@ -32,6 +32,7 @@ export const STEWARD_DOOR_TOOLS = [
 	"steward_set_requirement_owner",
 	"steward_wake_master",
 	"steward_write_note",
+	"steward_raise_lesson_confusion",
 ] as const;
 export type StewardDoorTool = (typeof STEWARD_DOOR_TOOLS)[number];
 
@@ -46,6 +47,7 @@ export const STEWARD_ACT_DOORS: Readonly<
 		"steward_ask",
 		"steward_comment_requirement",
 		"steward_write_note",
+		"steward_raise_lesson_confusion",
 	],
 	breakdown_check: [
 		"steward_read_standings",
@@ -53,6 +55,7 @@ export const STEWARD_ACT_DOORS: Readonly<
 		"steward_read_suggestion",
 		"steward_reject_breakdown",
 		"steward_write_note",
+		"steward_raise_lesson_confusion",
 	],
 	stuck_diagnosis: [
 		"steward_read_standings",
@@ -66,6 +69,7 @@ export const STEWARD_ACT_DOORS: Readonly<
 		"steward_set_requirement_owner",
 		"steward_wake_master",
 		"steward_write_note",
+		"steward_raise_lesson_confusion",
 	],
 	output_check: [
 		"steward_read_standings",
@@ -75,6 +79,7 @@ export const STEWARD_ACT_DOORS: Readonly<
 		"steward_move_issue",
 		"steward_wake_master",
 		"steward_write_note",
+		"steward_raise_lesson_confusion",
 	],
 	triage_draft: [],
 	release_followthrough: [],

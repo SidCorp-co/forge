@@ -41,7 +41,10 @@ interface Named {
 }
 
 /** Each target's key and short title, one set read per target type. */
-async function targetsOf(projectId: string, rows: readonly Row[]): Promise<Map<string, Named>> {
+export async function targetsOf(
+  projectId: string,
+  rows: readonly Row[],
+): Promise<Map<string, Named>> {
   const ids = (type: SuggestionTargetType) => [
     ...new Set(rows.map(targetOfRow).flatMap((t) => (t.type === type ? [t.id] : []))),
   ];

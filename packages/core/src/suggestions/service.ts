@@ -39,6 +39,7 @@ import { lockRequirements } from '../requirements/index.js';
 import { acceptFenceRefusal } from './accept-fence.js';
 import { acceptGateOf } from './accept-gate.js';
 import { breakdownChecklistRecord } from './breakdown-checklist-record.js';
+import { keepRejectionAsCorrection } from './correction.js';
 import { type AcceptChannel, type Effect, type EffectWritten, writeEffect } from './effects.js';
 import { reviseSuggestion as reviseProposed } from './propose.js';
 import {
@@ -341,6 +342,7 @@ export async function rejectSuggestion(input: {
     });
     movedRow(decidedRejected);
     await recordDecision(tx, row, actor, 'rejected', reason);
+    await keepRejectionAsCorrection(tx, row, actor, reason);
     return null;
   });
   if (refusals) return { ok: false, refusals };
