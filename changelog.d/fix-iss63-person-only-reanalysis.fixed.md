@@ -1,0 +1,1 @@
+**Onboarding start and re-analysis are a person's ask.** An agent's credential is now refused both by name (ONBOARDING_PERSON_ACT_FORBIDDEN), whatever its grant holds; a person holding onboarding.request still starts onboarding and asks for a re-analysis (ISS-63, REQ-10 BC-2).
