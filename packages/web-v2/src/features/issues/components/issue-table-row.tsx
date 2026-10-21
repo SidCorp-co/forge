@@ -193,32 +193,24 @@ export function DepBadges({
   );
 }
 
-/** How long the row has sat where it is. A settled row renders a dash rather
- *  than a figure, and a row past the stale threshold is told apart by its
- *  colour and its icon before the number is read at all. */
-export function LastWriteCell({
-  written,
-}: {
-  written: { ms: number; stale: boolean } | null;
-}) {
+/**
+ * How long since the row was last written, and whether core reads the issue stuck (REQ-48 BC-5,
+ * `times.stuck` from the one standing read). Nothing here grades the age: an issue untouched for a
+ * day is not stuck unless its standing says so, and a stuck one is marked whatever its age.
+ */
+export function LastWriteCell({ ms, stuck }: { ms: number | null; stuck: string | null }) {
   const t = useCopy();
   const time = useTimeFormat();
-  if (!written) return <span className="fg-caption">—</span>;
-  const label = time.elapsed(written.ms);
+  if (ms === null) return <span className="fg-caption">—</span>;
+  const label = time.elapsed(ms);
   return (
     <span
-      className={
-        written.stale
-          ? "fg-caption fg-caption-stale inline-flex items-center gap-1 tabular-nums"
-          : "fg-caption inline-flex items-center gap-1 tabular-nums"
-      }
-      title={
-        written.stale
-          ? t("issues.lastWrite.stale", { age: label })
-          : t("issues.lastWrite.fresh", { age: label })
-      }
+      className={stuck ? "fg-caption fg-caption-stale inline-flex items-center gap-1 tabular-nums" : "fg-caption inline-flex items-center gap-1 tabular-nums"}
+      title={stuck ?? t("issues.lastWrite.fresh", { age: label })}
+      data-testid="issue-last-write"
+      data-stuck={stuck ? "true" : "false"}
     >
-      {written.stale && <Icon name="clock" size={12} />}
+      {stuck ? <Icon name="clock" size={12} /> : null}
       {label}
     </span>
   );

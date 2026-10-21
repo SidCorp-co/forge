@@ -2,9 +2,9 @@
 // each row and count is taken from the read model the list it opens draws, under the one predicate
 // `standing.ts:needsViewer`, so a menu count, the dashboard, the overview and the inbox never disagree.
 
-import type { WrittenLang } from "./written-lang.js";
 import type { Said } from "./said.js";
 import type { WaitingOn } from "./standing.js";
+import type { WrittenLang } from "./written-lang.js";
 
 export const NEEDS_YOU_AREAS = [
 	"requirements",
@@ -49,10 +49,6 @@ export const NEEDS_YOU_AREA_SPACE: Record<NeedsYouAreaKey, NeedsYouSpace> = {
 	automation: "ops",
 };
 
-/** The rows a person owes, in their order: the one filter every person-facing list reads. */
-export const asksOf = <T extends { space: NeedsYouSpace }>(items: readonly T[]): T[] =>
-	items.filter((i) => i.space === "asks");
-
 /** What a needs-you row is, so a screen can open it. */
 export const NEEDS_YOU_ENTITIES = [
 	"requirement",
@@ -84,12 +80,6 @@ export interface NeedsYouItem {
 	says: { title: Said };
 }
 
-/** A member's ask read across every project the viewer can see (`GET /api/me/attention`); ops rows stay in each project's Development. */
-export interface NeedsYouProjectItem extends NeedsYouItem {
-	projectSlug: string;
-	projectName: string;
-}
-
 export interface NeedsYouAct {
 	act: string;
 	count: number;
@@ -108,8 +98,6 @@ export interface NeedsYouResponse {
 	areas: Record<NeedsYouAreaKey, NeedsYouArea>;
 	/** Every row behind the counts, area by area in `NEEDS_YOU_AREAS` order, newest first. */
 	items: NeedsYouItem[];
-	/** How many of `items` are a member's asks: the one Needs you count the home, /attention and the status report show. */
-	asks: number;
 	requirementsInDelivery: number;
 	untriagedFeedback: number;
 }

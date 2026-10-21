@@ -13,7 +13,6 @@
     "attention.kind.runner_offline": "Runner offline",
     "attention.kind.status_report": "Status report",
     "attention.loading": "loading attention…",
-    "attention.needsYou.empty": "Nothing",
     "attention.needsYou.in": "Needs you in {name}",
     "attention.needsYou.title": "Needs you · {name}",
     "attention.runnerOffline": "{name} is offline",

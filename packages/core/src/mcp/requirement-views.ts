@@ -34,17 +34,18 @@ const TASK_ACT = {
 
 type Standing = RequirementSummary['standing'];
 
-/** Whom the requirement itself waits on, and the open tasks of its delivery with their due dates. */
+/** Whom the requirement itself waits on, by its standing's times, and the open tasks of its delivery with their due dates. */
 function standingWaits(s: Standing): ProgressWait[] {
   const out: ProgressWait[] = [];
-  if (s.waitingOn.kind !== 'none') {
+  if (s.waitingOn.kind !== 'none' || s.times.stuck) {
     out.push({
       who: s.waitingOn.who,
       act: s.waitingOn.act,
-      why: s.waitingOn.rule,
+      // a stuck requirement says why in one sentence, the issue it was carried from named (REQ-48 BC-8)
+      why: s.times.stuck?.reason ?? s.waitingOn.rule,
       ref: s.waitingOn.ref,
-      at: s.waitingOn.dueAt,
-      late: false,
+      at: s.times.dueAt,
+      late: s.times.stuck?.code === 'overdue',
     });
   }
   for (const t of s.tasks) {

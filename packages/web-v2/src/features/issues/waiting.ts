@@ -1,28 +1,6 @@
 
-import { ISSUE_TERMINAL_STATUSES } from "@forge/contracts/issue-machine";
 import { formatCountdown } from "@/lib/utils/format";
-import type { IssueStatus, PipelineHealth, PipelineReading, WaitingReason } from "./types";
-
-const STALE_AFTER_MS = 24 * 60 * 60 * 1000;
-
-const SETTLED: ReadonlySet<IssueStatus> = new Set<IssueStatus>(ISSUE_TERMINAL_STATUSES);
-
-/**
- * How long since the issue ROW itself was last written, graded against a caller-held instant so
- * every row in one render is comparable. It is NOT how long the issue has been at this status, and
- * NOT how long since anything happened to it; each surface showing it says which of the three it
- * is, because the three differ by hours on live rows.
- */
-export function sinceLastWrite(
-	row: { status: IssueStatus; updatedAt: string },
-	now: number,
-): { ms: number; stale: boolean } | null {
-	if (SETTLED.has(row.status)) return null;
-	const since = new Date(row.updatedAt).getTime();
-	if (Number.isNaN(since)) return null;
-	const ms = Math.max(0, now - since);
-	return { ms, stale: ms >= STALE_AFTER_MS };
-}
+import type { PipelineHealth, PipelineReading, WaitingReason } from "./types";
 
 /** A queued step's gate: core's reason and its reading (`issues/pipeline-health-reasons.ts`). */
 interface QueuedStepGate extends PipelineReading {

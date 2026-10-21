@@ -45,6 +45,7 @@ import { FEEDBACK_LIST, feedbackHref } from "@/lib/routes/feedback";
 import type { FeedbackListResponse, FeedbackSummary } from "../types";
 import { FeedbackForm } from "./feedback-form";
 import { FeedbackPeek } from "./feedback-peek";
+import { useNoteLines } from "@/features/standing";
 
 const FUNNEL = ["new", "triaged", "planned", "resolved", "verified"] as const;
 
@@ -142,7 +143,7 @@ function groupsOf(rows: FeedbackSummary[], by: Grouping, label: ReturnType<typeo
 }
 
 const rowOf =
-  (slug: string, etaOf: (key: string) => Eta | null, clock: EtaClock, t: Copy, time: ReturnType<typeof useTimeFormat>) =>
+  (slug: string, etaOf: (key: string) => Eta | null, clock: EtaClock, t: Copy, time: ReturnType<typeof useTimeFormat>, notes: ReadonlyMap<string, string>) =>
   (r: FeedbackSummary): ListRowView => {
     const language = clock.lang;
     const reporter = r.reporter.name ?? t("feedback.unknownReporter");
@@ -151,6 +152,8 @@ const rowOf =
       href: feedbackHref(slug, r.key),
       title: <Written text={r.title} lang={r.writtenLang} />,
       facts: [
+        // the steward's current line 1 leads the secondary line (REQ-48 BC-7)
+        ...(notes.has(r.key) ? [<span key="note" data-testid="row-note">{notes.get(r.key)}</span>] : []),
         ...(r.snoozed ? [t("feedback.row.snoozedUntil", { date: time.dateTime(r.snoozed.until) })] : []),
         enumLabel("feedbackKind", r.kind, language),
         t("feedback.row.about", { about: aboutLine(r, t, language) }),
@@ -178,6 +181,7 @@ export function FeedbackScreen({ projectId, slug }: { projectId: string; slug: s
   const [grouping, setGrouping] = useViewMode(modes);
   const [creating, setCreating] = useState(false);
   const forecastQ = useFeedbackForecasts(projectId);
+  const notes = useNoteLines(projectId, "feedback");
   const forecasts = new Map((forecastQ.data?.items ?? []).map((i) => [i.key, i]));
   const clock = useEtaClock();
   const [etaSorted, toggleEtaSort] = useEtaSort();
@@ -244,7 +248,7 @@ export function FeedbackScreen({ projectId, slug }: { projectId: string; slug: s
                 ariaLabel={t("feedback.title")}
                 groups={list.groups}
                 fold={list.fold}
-                row={rowOf(slug, etaOf, clock, t, time)}
+                row={rowOf(slug, etaOf, clock, t, time, notes)}
                 eta={{ label: ETA_COPY[clock.lang].header, sortLabel: ETA_COPY[clock.lang].sortBy, sorted: etaSorted, onSort: toggleEtaSort }}
                 selected={peek.open}
                 onPeek={list.togglePeek}

@@ -12,6 +12,7 @@ import type { OutboxActor } from '@forge/contracts/outbox-events';
 import type { Approvals } from '@forge/contracts/person-gates';
 import type { PolicyQaMode, PolicyRefusalCode } from '@forge/contracts/project-config';
 import type { AnswerHold, AnswerResume } from '@forge/contracts/questions';
+import type { MasterServing } from '@forge/contracts/steward';
 import type { JudgedBuild } from '@forge/contracts/verdict-identity';
 import type { SQL, SQLWrapper } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
@@ -184,6 +185,8 @@ interface IssuePorts {
   readProjectDocument: (projectId: string) => Promise<{ document: IssueProjectDocument } | null>;
   /** The project's judge (`qa` in its policy), which the verified rule reads; null where it declares none. */
   readJudge: (projectId: string) => Promise<PolicyQaMode | null>;
+  /** Whether a live master serves the project (`masters/read.ts:masterServingOf`), so a wait on it can read stuck. */
+  masterServingOf: (projectId: string) => Promise<MasterServing>;
   changedTracedOf: (
     executor: Pick<Tx, 'execute'>,
     issueIds: readonly string[],
@@ -347,6 +350,7 @@ const { port } = slot;
 export const projectCreatorOf = port('projectCreatorOf');
 
 export const settleOpenQuestions = port('settleOpenQuestions');
+export const masterServingOf = port('masterServingOf');
 export const withdrawParkQuestions = port('withdrawParkQuestions');
 export const holdsOpenHumanQuestion = port('holdsOpenHumanQuestion');
 export const personOwesAnAnswer = port('personOwesAnAnswer');

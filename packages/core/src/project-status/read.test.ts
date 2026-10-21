@@ -78,10 +78,6 @@ describe("the status report's waiting-on-people list", () => {
       'hop-recall-ux',
     ]);
   });
-
-  it("counts the reader's own asks as the home and /attention do", () => {
-    expect(read.needsYou).toBe(2);
-  });
 });
 
 describe('delivered in full', () => {

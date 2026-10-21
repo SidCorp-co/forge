@@ -1424,6 +1424,10 @@ export const SAID = {
 		en: "its only live issues are drafts awaiting promotion",
 	},
 	"requirements.rule.moving": { en: "agreed and its issues are being worked" },
+	"requirements.rule.carried": {
+		en: "{keys} stuck; {key} waits because {rule}",
+		vars: { keys: "key", key: "key", rule: "said" },
+	},
 	"requirements.rule.parked": {
 		en: "{keys} parked; {key} waits because {rule}",
 		vars: { keys: "key", key: "key", rule: "said" },
@@ -1442,10 +1446,6 @@ export const SAID = {
 	"requirements.who.noOwner": { en: "No owner" },
 	"requirements.act.assignOwner": { en: "assign one" },
 	"requirements.rule.noOwner": { en: "no owner is set" },
-	"requirements.rule.untouched": {
-		en: "untouched for {days} days or more",
-		vars: { days: "count" },
-	},
 	"requirements.rule.tracedStepChanged": {
 		en: "a traced step was removed or renamed: the assistant drafts a revision",
 	},
@@ -2676,5 +2676,46 @@ export const SAID = {
 	"designs.reason.pinOnlyKernel": {
 		en: "Forge approved it: only pins ({pins}) differ; fingerprint {fp} matches r{r}.",
 		vars: { r: "count", pins: "text", fp: "code" },
+	},
+	"standing.who.someone": { en: "Someone" },
+	"standing.act.takeOn": { en: "take on {key}", vars: { key: "key" } },
+	"feedback.rule.carrierWaits": {
+		en: "{key} carries it and waits because {rule}",
+		vars: { key: "key", rule: "said" },
+	},
+	"feedback.rule.carrierUnread": {
+		en: "{key} carries it, and its own standing could not be read",
+		vars: { key: "key" },
+	},
+	"feedback.rule.draftCarrier": {
+		en: "routed to {key}, a draft nothing takes on by itself",
+		vars: { key: "key" },
+	},
+	"standing.stuck.noOwner": { en: "Nobody owns it, so nobody moves it on." },
+	"standing.stuck.noMaster": {
+		en: "It waits on the master, and no master serves this project.",
+	},
+	"standing.stuck.masterSilent": {
+		en: "It waits on the master, and the project's master has gone silent.",
+	},
+	"standing.stuck.nobodyActs": {
+		en: "Nobody acts on it: {rule}.",
+		vars: { rule: "said" },
+	},
+	"standing.stuck.draftCarrier": {
+		en: "{key} is a draft, and nothing takes a draft on by itself.",
+		vars: { key: "key" },
+	},
+	"standing.stuck.blocked": {
+		en: "It waits on {who} first: {rule}.",
+		vars: { who: "said", rule: "said" },
+	},
+	"standing.stuck.overdue": {
+		en: "{who} owed it by {date}: {act}.",
+		vars: { who: "said", date: "date", act: "said" },
+	},
+	"standing.stuck.via": {
+		en: "{key}: {reason}",
+		vars: { key: "key", reason: "said" },
 	},
 } as const satisfies Record<string, SaidEntry>;

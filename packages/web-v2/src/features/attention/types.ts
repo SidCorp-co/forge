@@ -1,5 +1,5 @@
 
-import type { NeedsYouProjectItem } from "@/features/needs-you";
+import type { NeedsYouProjectDecisions } from "@forge/contracts/needs-you-decisions";
 
 export type AttentionKind = "mention" | "failed_job" | "runner_offline" | "channel_gate" | "status_report";
 
@@ -19,8 +19,8 @@ export interface AttentionItem {
 }
 
 export interface AttentionResponse {
-  /** Every project's needs-you rows, from core's one needs-you read model. */
-  needsYou: NeedsYouProjectItem[];
+  /** Each project's Needs you `total` and its first decisions, from core's one decisions read (REQ-48 BC-11). */
+  needsYou: NeedsYouProjectDecisions[];
   mentions: AttentionItem[];
   failedJobs: AttentionItem[];
   channelGates: AttentionItem[];

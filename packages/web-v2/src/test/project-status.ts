@@ -78,7 +78,6 @@ export const STATUS: ProjectStatus = {
       },
     ],
     peopleCount: 1,
-    needsYou: 1,
   },
   requirements: {
     asOf: AT,

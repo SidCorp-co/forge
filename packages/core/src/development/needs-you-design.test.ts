@@ -87,12 +87,19 @@ describe('the design row on Needs you', () => {
 
 describe('the re-pin row on Needs you', () => {
   const group = {
+    baseId: 'wf-access',
     flow: 'access',
+    title: 'Access',
     revision: 13,
-    ready: ['operational-case', 'complaint-intake', 'complaint-ux'].map((flow) => ({
+    ready: ['operational-case', 'complaint-intake', 'complaint-ux'].map((flow, i) => ({
+      workflowId: `wf-${flow}`,
       flow,
       source: 'approved' as const,
+      revision: 2 + i,
+      approves: 3 + i,
+      pins: [{ workflow: 'access', from: 12, to: 13 }],
     })),
+    refused: 0,
     approvedAt: '2026-10-08T08:00:00.000Z',
   };
 

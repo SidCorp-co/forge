@@ -50,6 +50,8 @@ needsYouRoutes.get(
     if (!agency) throw new Error('needs-you: a request reached its handler without an auth gate');
     const access = await loadProjectAccess(projectId, userId);
     requireHeld(access, 'project.read');
-    return c.json(await readNeedsYouDecisions(projectId, needsYouViewerOf(access, userId, agency)));
+    return c.json(
+      await readNeedsYouDecisions(projectId, needsYouViewerOf(access, userId, agency), access),
+    );
   },
 );

@@ -45,12 +45,17 @@ describe("who a row waits on, as every list filters it (BC-5)", () => {
 			).toBeNull();
 	});
 
-	it("never reads another person's wait as yours", () => {
+	it("reads you from the viewer's group, never from the wait's kind (REQ-48 BC-11)", () => {
+		// a decision the viewer's read holds is theirs whoever the wait names
 		expect(
 			waitingFilterOf({
 				attentionGroup: "needs_you",
 				waitingOn: wait("person"),
 			}),
+		).toBe("you");
+		// an act the steward may take keeps `you` in its kind and leaves Needs you: not the viewer's
+		expect(
+			waitingFilterOf({ attentionGroup: "waiting", waitingOn: wait("you") }),
 		).toBeNull();
 	});
 });

@@ -1,4 +1,4 @@
-import type { NeedsYouProjectItem } from '@forge/contracts/needs-you';
+import type { NeedsYouProjectDecisions } from '@forge/contracts/needs-you-decisions';
 import { Hono } from 'hono';
 import { readNeedsYouAcross } from '../development/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
@@ -32,7 +32,8 @@ interface AttentionItem {
 
 interface AttentionResponse {
   /** Every project's needs-you rows, read by the one needs-you read model. */
-  needsYou: NeedsYouProjectItem[];
+  /** Each project's Needs you, as its own page counts it (REQ-48 BC-11). */
+  needsYou: NeedsYouProjectDecisions[];
   mentions: AttentionItem[];
   failedJobs: AttentionItem[];
   /** Documents waiting at an approve gate that this person's role may decide. */
@@ -124,7 +125,7 @@ meAttentionRoutes.get('/attention', async (c) => {
     channelGates,
     statusReports,
     total:
-      needsYou.length +
+      needsYou.reduce((n, p) => n + p.total, 0) +
       mentions.length +
       failedJobs.length +
       channelGates.length +

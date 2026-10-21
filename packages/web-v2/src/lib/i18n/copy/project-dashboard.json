@@ -1,6 +1,6 @@
 {
   "en": {
-    "dash.fbAging": "waiting over a week",
+    "dash.fbStuck": "stuck",
     "dash.fbOpen": "open",
     "dash.fbUntriaged": "untriaged",
     "dash.feedback": "Feedback",
@@ -18,7 +18,6 @@
     "dash.landWhenB": "is cut — waits on {who}",
     "dash.landsEmpty": "Nothing landing",
     "dash.landsThisWeek": "Lands this week",
-    "dash.lateWaiting": "Waiting on {who} · {by} over a day",
     "dash.loadFailed": "Couldn't load project",
     "dash.loading": "loading project…",
     "dash.needsAttention": "needs attention {count}",
@@ -56,7 +55,6 @@
     "dash.statusReport": "Status report"
   },
   "vi": {
-    "dash.fbAging": "chờ hơn một tuần",
     "dash.fbOpen": "đang mở",
     "dash.fbUntriaged": "chưa phân loại",
     "dash.feedback": "Phản hồi",
@@ -66,7 +64,6 @@
     "dash.landWhenA": "{count} xong code, tới người dùng khi",
     "dash.landWhenB": "được cắt — chờ {who}",
     "dash.landsThisWeek": "Xong code trong tuần này",
-    "dash.lateWaiting": "Đang chờ {who} · {by}, hơn một ngày",
     "dash.loadFailed": "Không tải được project",
     "dash.loading": "đang tải project…",
     "dash.needsAttention": "cần chú ý {count}",

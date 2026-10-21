@@ -52,6 +52,11 @@ export function FeedbackBanner({ f, slug, className }: { f: FeedbackView; slug?:
   const language = useInterfaceLanguage();
   const w = f.waitingOn;
   const g = f.attentionGroup;
+  const stuck = g === "stuck" ? f.times.stuck : null;
+  // stuck says why in core's sentence (REQ-48 BC-5): a draft carrier reads so here, never "ship"
+  if (stuck) {
+    return <WaitBanner tone="blocked" head={t("feedback.banner.stuck")} body={said(stuck.says.reason, language)} rule={said(w.says.rule, language)} className={className} />;
+  }
   const tone = FEEDBACK_ATTENTION_LABELS[g].tone;
   const version = f.route?.carriers.find((c) => c.release)?.release ?? null;
   const approving = g !== "done" && version !== null && w.ref === version && slug && saysKey(w.says.act, "standing.act.approveReleaseV");

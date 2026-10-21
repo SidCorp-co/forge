@@ -69,6 +69,7 @@ export function IssuesTable({
   now,
   memberNames,
   selection,
+  stuck,
 }: {
   rows: IssueRow[];
   groupBy: GroupBy;
@@ -80,6 +81,8 @@ export function IssuesTable({
   memberNames: Map<string, RowAssignee>;
   /** Absent when the reader cannot act on rows in bulk. */
   selection?: TableSelection;
+  /** Core's stuck sentence by issue key, from the one standing read (REQ-48 BC-8). */
+  stuck: ReadonlyMap<string, string>;
 }) {
   const t = useCopy();
   const L = useLabel();
@@ -147,6 +150,7 @@ export function IssuesTable({
                 slug={slug}
                 actions={actions}
                 now={now}
+                stuck={stuck.get(row.displayId) ?? null}
                 assignee={assigneeOf(row, memberNames, t)}
                 selection={
                   selection

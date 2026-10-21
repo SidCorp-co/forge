@@ -66,6 +66,16 @@ export function workStateOf(
 /** The route the item's work follows: its own, or its root's where it is a duplicate. */
 type Carried = Pick<FeedbackSummary, 'route' | 'phase' | 'snoozed'>;
 
+/** The item as its estimate reads it: its route, and the standing its banner draws. */
+type Item = Carried & Pick<FeedbackSummary, 'waitingOn' | 'times'>;
+
+/** What the item waits on, as its standing says it: the stuck reason where it is stuck (REQ-48 BC-8). */
+const standingSays = (item: Item): ForecastWaitSays => ({
+  who: item.waitingOn.says.who,
+  act: item.waitingOn.says.act,
+  reason: item.times.stuck?.says.reason ?? item.waitingOn.says.rule,
+});
+
 const none = (
   reason: FeedbackNoEstimateReason,
   more: {
@@ -83,15 +93,12 @@ const none = (
 
 /**
  * The item's estimate off its line: the dates where the line holds a range, shipped once it has,
- * else the one reason no date is given. `item` is the item itself (its snooze and its own triage),
- * `carried` the route whose work it reads (its root's for a duplicate).
+ * else the one reason no date is given. `item` is the item itself (its snooze, its triage and the
+ * standing whose wait every wait here names, so the body and the banner say one thing), `carried`
+ * the route whose work it reads (its root's for a duplicate).
  */
-export function estimateOf(
-  item: Carried,
-  carried: Carried,
-  line: FeedbackForecast,
-): FeedbackEstimate {
-  if (line.triage) return none('untriaged', { waits: line.triage.says });
+export function estimateOf(item: Item, carried: Carried, line: FeedbackForecast): FeedbackEstimate {
+  if (line.triage) return none('untriaged', { waits: standingSays(item) });
   if (!item.route && item.snoozed) return none('snoozed', { until: item.snoozed.until });
   const d = line.delivery;
   if (!d) {
@@ -106,7 +113,7 @@ export function estimateOf(
   const landing = d.landing;
   switch (landing.kind) {
     case 'paused':
-      return none('waits', { waits: landing.says });
+      return none('waits', { waits: standingSays(item) });
     case 'not_enough_history':
       return none('history', { history: { n: landing.n, floor: landing.floor } });
     case 'ended':

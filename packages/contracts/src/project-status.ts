@@ -13,6 +13,7 @@ import type {
 } from "./forecast.js";
 import type { IssueStatus } from "./issue-machine.js";
 import type { NeedsYouAreaKey, NeedsYouEntity } from "./needs-you.js";
+import type { NeedsYouDecisionGroup } from "./needs-you-decisions.js";
 import type {
 	ReleaseContentGroup,
 	ReleaseState,
@@ -21,6 +22,7 @@ import type {
 import type { RequirementState } from "./requirements.js";
 import type { Said } from "./said.js";
 import type { WaitingKind, WaitingOn } from "./standing.js";
+import type { StandingSubjectKind, StuckCode } from "./steward.js";
 import type { WrittenLang } from "./written-lang.js";
 
 export const PROJECT_STATUS_DAYS_DEFAULT = 7;
@@ -127,8 +129,57 @@ export interface StatusWaits extends Stamped {
 	/** The persons `people` is grouped by, in its order; absent on a report stored before the grouping. */
 	byPerson?: StatusWaitPerson[];
 	peopleCount: number;
-	/** The viewer's own asks (`NeedsYouResponse.asks`), the number the home and /attention show. */
-	needsYou: number;
+}
+
+/** Where a stuck item opens: the requirement's, feedback item's or issue's own page. */
+export const statusItemHref = (
+	slug: string,
+	kind: StandingSubjectKind,
+	key: string,
+): string =>
+	`/projects/${encodeURIComponent(slug)}/${kind === "requirement" ? "requirements" : kind === "feedback" ? "feedback" : "issues"}/${encodeURIComponent(key)}`;
+
+/** One item the standing read reads stuck (REQ-48 BC-8): why in one sentence, and the steward's line. */
+export interface StatusStuckItem {
+	kind: StandingSubjectKind;
+	key: string;
+	title: string;
+	code: StuckCode;
+	/** The stuck reading's one BA sentence (`StuckReading.reason`). */
+	reason: string;
+	/** The issue it was carried from, where it was (BC-9). */
+	via: string | null;
+	since: string;
+	/** Line 1 of its current steward note; null where none is written or it is stale. */
+	note: string | null;
+	href: string;
+	says: { reason: Said };
+}
+
+/** Every stuck item of the project, oldest first; the report leads with it (REQ-48 chat report). */
+export interface StatusStuck extends Stamped {
+	items: StatusStuckItem[];
+	count: number;
+}
+
+/** One decision the viewer owes, with the answer recommended and its act (BC-11). */
+export interface StatusDecision {
+	group: NeedsYouDecisionGroup;
+	key: string;
+	title: string;
+	question: string;
+	/** The recommended answer's label, or null where none is offered. */
+	recommended: string | null;
+	stuck: boolean;
+	dueAt: string | null;
+	href: string | null;
+}
+
+/** The viewer's Needs you: the first `NEEDS_YOU_PERSON_CAP` decisions, the rest counted, never dropped. */
+export interface StatusNeedsYou extends Stamped {
+	decisions: StatusDecision[];
+	more: number;
+	total: number;
 }
 
 export interface StatusRequirement {
@@ -216,6 +267,9 @@ export interface ProjectStatus {
 	asOf: string;
 	days: number;
 	viewer: { id: string; name: string | null };
+	/** What is stuck, and what the viewer owes: the two the report leads with (REQ-48). Absent on a report stored before them. */
+	stuck?: StatusStuck;
+	needsYou?: StatusNeedsYou;
 	shipped: StatusShipped;
 	inFlight: StatusInFlight;
 	waits: StatusWaits;

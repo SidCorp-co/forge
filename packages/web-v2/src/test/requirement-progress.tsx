@@ -11,7 +11,7 @@ import { RequirementPage } from "@/features/requirements/components/requirement-
 import { RequirementPeek } from "@/features/requirements/components/requirement-peek";
 import type { RequirementDetail } from "@/features/requirements/types";
 import { productCopy } from "@/lib/i18n/product-copy";
-import { saidView } from "@/lib/i18n/said";
+import { said, saidView } from "@/lib/i18n/said";
 import { type Call, fakeCore, HANG, renderWithQuery } from "@/test/render";
 import { forecastWait, RULE, say } from "@/test/said";
 import { reqDetail } from "@/test/vi-chrome-requirements";
@@ -153,7 +153,7 @@ function bannerSentences(s: RequirementDetail["standing"]): Set<string> {
   const w = saidView(s.waitingOn, "en");
   const heads = ["requirements.banner.stuck", "requirements.banner.waitingOnYou"].map((k) => t(k as Parameters<typeof t>[0]));
   heads.push(t("requirements.banner.waitingOn", { who: w.who }));
-  const bodies = [w.act, t("requirements.banner.noOwner")];
+  const bodies = [w.act, ...(s.times.stuck ? [said(s.times.stuck.says.reason, "en")] : [])];
   // an ended one says only that nothing is owed: the header's badge says how it ended (REQ-43 BC-5)
   return new Set([...heads.flatMap((h) => bodies.map((b) => `${h} ${b}`.trim())), t("requirements.banner.nothingOwed")]);
 }
@@ -191,7 +191,7 @@ function barStray(bar: Element, s: RequirementDetail["standing"]): string | null
   const lists = bar.querySelectorAll("ol, ul, [role='list']");
   if (lists.length !== 1) return `a step bar holding ${lists.length} lists`;
   // the header's badge says the state, so the bar's steps are named on its segments, not drawn (REQ-43 BC-5)
-  const words = [...(lists[0] as Element).children].map((li) => li.getAttribute("aria-label") ?? "");
+  const words = [...(lists[0]?.children ?? [])].map((li) => li.getAttribute("aria-label") ?? "");
   if (words.join("|") !== STEP_WORDS.join("|")) return `a step list that is not the lifecycle: "${words.join(", ")}"`;
   const allowed = new Set([captionOf(s.state, s.next) ?? ""]);
   const walker = document.createTreeWalker(bar, NodeFilter.SHOW_TEXT);
@@ -216,25 +216,38 @@ export function strayInStrip(strip: HTMLElement, s: RequirementDetail["standing"
   if (barWhy) return barWhy;
   const banners = strip.querySelectorAll('[data-testid="wait-banner"]');
   if (banners.length !== 1) return `${banners.length} banners`;
-  const bannerWhy = bannerStray(banners[0] as Element, s);
+  const banner = banners[0];
+  const bannerWhy = banner ? bannerStray(banner, s) : null;
   if (bannerWhy) return bannerWhy;
-  const own = (el: Element | null) => !!el?.closest('[data-testid="step-bar"], [data-testid="wait-banner"]');
   for (const list of strip.querySelectorAll("ol, ul, [role='list']")) {
-    if (own(list)) continue;
+    if (ownPart(list)) continue;
     return `a list of its own: "${[...list.children].map((li) => (li.textContent ?? "").trim()).join(", ")}"`;
   }
+  return textStray(strip, s) ?? attrStray(strip);
+}
+
+/** Inside the step bar or the banner, which say their own words and are read by their own checks. */
+const ownPart = (el: Element | null) => !!el?.closest('[data-testid="step-bar"], [data-testid="wait-banner"]');
+
+/** The first text outside the bar and banner that is not a verdict's word, a glyph, a number or k/n verified. */
+function textStray(strip: HTMLElement, s: RequirementDetail["standing"]): string | null {
   const { passing: k, criteria: n } = criteriaCoverageOf(s.coverage);
   const words = new Set<string>([...VERDICT_WORDS, ...GLYPHS, t("requirements.verified", { a: k, b: n })]);
   const walker = document.createTreeWalker(strip, NodeFilter.SHOW_TEXT);
   for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-    if (own(node.parentElement)) continue;
+    if (ownPart(node.parentElement)) continue;
     const text = (node.textContent ?? "").trim();
     if (!text || /^\d+$/.test(text)) continue;
     if (A_STEP.test(text)) return `a lifecycle step outside the step bar: "${text}"`;
     if (!words.has(text)) return `the text "${text}"`;
   }
+  return null;
+}
+
+/** The first tooltip or accessible name outside the bar and banner that names a step or is not a verdict's hint. */
+function attrStray(strip: HTMLElement): string | null {
   for (const el of [strip, ...strip.querySelectorAll("*")]) {
-    if (own(el)) continue;
+    if (ownPart(el)) continue;
     for (const attr of LABELS) {
       const v = el.getAttribute(attr);
       if (v === null) continue;
