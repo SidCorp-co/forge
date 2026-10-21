@@ -10,6 +10,7 @@ import type {
 } from '@forge/contracts/preview';
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { memoizedRead, primeReads } from '../db/read-memo.js';
 import { type PreviewRow, previews } from '../db/schema-previews.js';
 import { issueKeysAndTitles } from '../issues/index.js';
 import { type PreviewSite, previewOrigin } from './domain.js';
@@ -222,23 +223,35 @@ export interface ApprovablePreview {
   since: string;
 }
 
+/** Every issue preview of these projects a person may approve, oldest first. */
+function approvableRowsOf(projectIds: readonly string[]): Promise<PreviewRow[]> {
+  return db
+    .select()
+    .from(previews)
+    .where(
+      and(
+        inArray(previews.projectId, [...projectIds]),
+        eq(previews.subjectKind, 'issue'),
+        inArray(previews.state, [...APPROVABLE_STATES]),
+      ),
+    )
+    .orderBy(asc(previews.createdAt));
+}
+
+const approvableKey = (projectId: string) => `approvablePreviews:${projectId}`;
+
+/** The approvable previews of every project in `projectIds` in one statement (`db/read-memo.ts:primeReads`). */
+export function primeApprovablePreviews(projectIds: readonly string[]): void {
+  primeReads(projectIds, approvableKey, approvableRowsOf, (r) => r.projectId);
+}
+
 /**
  * The issue previews of `projectId` waiting to be approved, oldest first: an issue's preview serving
  * its run's change, or closed idle with it kept. An idea's or a past build's preview is never
  * approved down a lane, so none is listed.
  */
 export async function approvablePreviewsOf(projectId: string): Promise<ApprovablePreview[]> {
-  const rows = await db
-    .select()
-    .from(previews)
-    .where(
-      and(
-        eq(previews.projectId, projectId),
-        eq(previews.subjectKind, 'issue'),
-        inArray(previews.state, [...APPROVABLE_STATES]),
-      ),
-    )
-    .orderBy(asc(previews.createdAt));
+  const rows = await memoizedRead(approvableKey(projectId), () => approvableRowsOf([projectId]));
   const issueIds = rows.flatMap((r) => (r.issueId ? [r.issueId] : []));
   const named = await issueKeysAndTitles(projectId, issueIds);
   return rows.map((r) => {

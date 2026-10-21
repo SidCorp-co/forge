@@ -36,7 +36,9 @@ describe('a draft while another release runs', () => {
       blocker('NO_RUNNER_ONLINE'),
       blocker('BATCH_IN_FLIGHT', { runId: 'r1', version: '0.2.0' }),
     ]);
-    expect(turn.attentionGroup).toBe('needs_you');
+    // the admin's act is no decision, so it waits on them off Needs you (REQ-48 BC-11), not queued
+    expect(turn.attentionGroup).toBe('waiting');
+    expect(turn.waitingOn.kind).toBe('you');
     expect(turn.waitingOn.act).toBe('bring a runner online and 1 more');
   });
 

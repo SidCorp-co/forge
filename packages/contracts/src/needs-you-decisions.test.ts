@@ -5,6 +5,8 @@ import {
 	type DecisionAnswer,
 	decisionActParams,
 	decisionPath,
+	isDecisionAct,
+	isDecisionActOn,
 	type NeedsYouDecision,
 	needsYouDecisionSchema,
 	needsYouDecisionsSchema,
@@ -197,5 +199,23 @@ describe("the read", () => {
 			notDecisions: [{ reason: "applies_itself", count: 13, keys: [] }],
 		});
 		expect(bad.success).toBe(false);
+	});
+});
+
+describe("a release's cut (REQ-48 BC-11)", () => {
+	const cut = { key: "standing.act.cut", vars: { v: "0.4.0", more: null } };
+
+	it("is the admin's decision on the release, posted through the release page's own door", () => {
+		expect(isDecisionActOn("release", cut)).toBe(true);
+		expect(decisionPath("release.cut", { projectId: "p" })).toEqual({
+			ok: true,
+			path: "/api/projects/p/release-batches",
+		});
+	});
+
+	it("is no decision on a requirement or feedback item that waits on it", () => {
+		expect(isDecisionAct(cut)).toBe(false);
+		expect(isDecisionActOn("requirement", cut)).toBe(false);
+		expect(isDecisionActOn("feedback", cut)).toBe(false);
 	});
 });

@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
@@ -10,7 +11,11 @@ import { seedProductionDeployTrigger } from '../helpers/release-world.js';
 // ISS-461 round 3 (REQ-35 BC-5): a requirement's standing names whom it actually waits on, read
 // through the requirement route a page reads: the person owing the release cut once every issue has
 // landed, the release linked; what a parked issue waits on, the issue linked; its issues only while
-// one is worked. The page's strip reads nothing else.
+// one is worked. The page's strip reads nothing else. REQ-48 BC-9 rolls an issue stuck by its own
+// standing up first: here a master serves and every running issue holds a run, so none is stuck and
+// each rule below is the one that answers (the roll-up is `standing-stuck.test.ts`'s).
+// @direct-test-of packages/core/src/requirements/standing-work.ts
+// @direct-test-of packages/core/src/lib/standing-times.ts
 
 /** An agreed requirement at r1 with an owner, moved inside the kernel's own transaction, so the turn reaches its issues. */
 async function agreed(w: World, title: string): Promise<{ id: string; key: string }> {
@@ -28,6 +33,26 @@ async function agreed(w: World, title: string): Promise<{ id: string; key: strin
   return r;
 }
 
+/** A live master session serving the project, so a wait on the master is not stuck by nobody serving. */
+async function servingMaster(w: World): Promise<void> {
+  const runId = randomUUID();
+  await db.execute(sql`
+    INSERT INTO pipeline_runs (id, project_id, kind, status) VALUES (${runId}, ${w.projectId}, 'interactive', 'running')
+  `);
+  await db.execute(sql`
+    INSERT INTO agent_sessions (id, project_id, user_id, pipeline_run_id, kind, status, device_id, last_heartbeat_at)
+    VALUES (${randomUUID()}, ${w.projectId}, ${w.userId}, ${runId}, 'master', 'running', ${w.deviceId}, now())
+  `);
+}
+
+/** An issue a run is moving right now: a running pipeline run on it. */
+async function running(w: World, issueId: string): Promise<void> {
+  await db.execute(sql`
+    INSERT INTO pipeline_runs (id, project_id, issue_id, kind, status, started_at)
+    VALUES (${randomUUID()}, ${w.projectId}, ${issueId}, 'issue', 'running', now())
+  `);
+}
+
 async function waitOf(w: World, token: string, key: string): Promise<Body> {
   const res = await api(token, 'GET', `/api/projects/${w.projectId}/requirements/${key}`);
   expect(res.status, JSON.stringify(res.body)).toBe(200);
@@ -43,6 +68,7 @@ describe('whom a requirement waits on once its issues exist', () => {
 
   beforeAll(async () => {
     w = await world();
+    await servingMaster(w);
     // a person cuts each release: the admin holds project.admin
     await seedProductionDeployTrigger(w.projectId, w.userId, 'on-request');
     const member = await createTestUser({ verified: true });
@@ -76,18 +102,24 @@ describe('whom a requirement waits on once its issues exist', () => {
         requirementId: parked.id,
       })
     ).key;
-    await issue(w, { status: 'in_progress', createdAt: ago(2), requirementId: parked.id });
+    await running(
+      w,
+      (await issue(w, { status: 'in_progress', createdAt: ago(2), requirementId: parked.id })).id,
+    );
     req.parked = parked.key;
 
-    const running = await agreed(w, 'The board keeps its cards');
-    await issue(w, { status: 'in_progress', createdAt: ago(2), requirementId: running.id });
+    const moving = await agreed(w, 'The board keeps its cards');
+    await running(
+      w,
+      (await issue(w, { status: 'in_progress', createdAt: ago(2), requirementId: moving.id })).id,
+    );
     await issue(w, {
       status: 'awaiting_release',
       createdAt: ago(3),
       mergedAt: ago(1),
-      requirementId: running.id,
+      requirementId: moving.id,
     });
-    req.running = running.key;
+    req.running = moving.key;
 
     const queued = await agreed(w, 'The board prints its cards');
     await issue(w, { status: 'open', createdAt: ago(2), requirementId: queued.id });

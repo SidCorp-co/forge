@@ -11,6 +11,7 @@ import { createLimiter } from '../lib/bounded-concurrency.js';
 import { holds } from '../permissions/index.js';
 import type { NeedsYouViewer } from './needs-you.js';
 import { readNeedsYouDecisions } from './needs-you-decisions.js';
+import { primeNeedsYouAcross } from './needs-you-fold.js';
 
 /** The viewer each list's route builds for this caller, so the counts read as the lists do. */
 export const needsYouViewerOf = (
@@ -48,6 +49,8 @@ export async function readNeedsYouAcross(
     .select({ id: projects.id, slug: projects.slug, name: projects.name })
     .from(projects)
     .where(inArray(projects.id, ids));
+  // the rows every project's read sends once, read for all of them at once
+  primeNeedsYouAcross(names.map((p) => p.id));
   const limiter = createLimiter(NEEDS_YOU_ACROSS_CONCURRENCY);
   const perProject = await Promise.all(
     names.map((p) =>

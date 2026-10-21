@@ -31,6 +31,7 @@
 // read in github-connect-routes.ts reached dev unselected and went red only in the whole suite).
 // @direct-test-of packages/core/src/integration-door/
 // @direct-test-of packages/core/src/middleware/zod-validator.ts
+// @direct-test-of packages/core/src/steward-notes/
 
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';

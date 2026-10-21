@@ -34,6 +34,7 @@ import {
   type StoredDesign,
   type StoredWorkflow,
   workflowsOf,
+  workflowsRead,
 } from './store.js';
 
 interface Loaded {
@@ -160,7 +161,7 @@ export interface RepinGroup {
 
 /** Every moved base of the project with pin-only dependents ready for the act. */
 export async function repinGroupsOf(projectId: string): Promise<RepinGroup[]> {
-  const rows = await workflowsOf(db, projectId);
+  const rows = await workflowsRead(projectId);
   // a design whose document declares no base has no pin to move, as stored or as approved
   if (!rows.some((r) => readStoredWorkflow(r.document)?.basedOn)) return [];
   const { templates } = await templatesOf(projectId);

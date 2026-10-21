@@ -166,6 +166,7 @@ describe('a draft release held by a missing release note', () => {
     expect(after.work.owed).toBe(0);
     expect(after.work.owedLine).not.toContain('release note');
     expect(after.verdict.nudge).toBe(false);
+    // only an admin cuts, so the cut is their one-click decision in Needs you (REQ-48 BC-11)
     expect(await draft()).toMatchObject({
       attentionGroup: 'needs_you',
       waitingOn: { kind: 'you', act: 'cut 0.1.0' },
@@ -197,6 +198,7 @@ describe('a gate reason no issue act clears', () => {
       kind: 'person',
       who: expect.not.stringMatching(/^(A project (writer|admin)|A holder of .+|Nobody)$/),
     });
-    expect(release).toMatchObject({ attentionGroup: 'needs_you', waitingOn: { kind: 'you' } });
+    // the admin's act is no decision, so it waits on them off Needs you (REQ-48 BC-11)
+    expect(release).toMatchObject({ attentionGroup: 'waiting', waitingOn: { kind: 'you' } });
   });
 });
