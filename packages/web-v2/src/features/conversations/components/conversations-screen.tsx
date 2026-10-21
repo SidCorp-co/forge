@@ -138,8 +138,10 @@ export function ConversationsScreen() {
     />
   );
 
+  // As tall as the frame's main at every width, whose content box ends above a phone's tab bar: a
+  // full-screen floor below md put a room's message box under that bar (ISS-1229 r31, judge-88).
   return (
-    <div className="flex min-h-dvh flex-col md:h-full md:min-h-0 md:overflow-hidden">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden" data-testid="conversations-screen">
       {orgProjects.map((p) => (
         <RoomSub key={p.id} projectId={p.id} />
       ))}

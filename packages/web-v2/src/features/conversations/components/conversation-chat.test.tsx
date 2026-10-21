@@ -267,9 +267,16 @@ describe("a room deleted while it is open", () => {
     expect(notice).toMatchObject({ tone: "error" });
     notice.onClick();
     expect(writeText).toHaveBeenCalledWith("the numbers for Friday");
-    await waitFor(() =>
-      expect(toast).toHaveBeenLastCalledWith(expect.objectContaining({ title: "What you wrote was copied" })),
-    );
+    // r31, judge-88: the word that it was copied replaced the notice in place, never a second toast that
+    // landed over New conversation on a phone.
+    await waitFor(() => expect(toast).toHaveBeenCalledTimes(2));
+    const copied = toast.mock.calls[1]?.[0] as { slot: string; description: string; keep: boolean; onClick: () => void };
+    expect(copied).toMatchObject({ title: "This room was deleted", keep: true, slot: (notice as { slot?: string }).slot });
+    expect(copied.slot).toEqual(expect.any(String));
+    expect(copied.description).toMatch(/^What you wrote was copied\. Select this to copy it again:\n“the numbers for Friday”$/);
+    copied.onClick();
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(2));
+    expect(toast.mock.calls.map((c) => (c[0] as { title: string }).title)).not.toContain("What you wrote was copied");
   });
 
   // r29 review F2: the deletion event's re-read found the room gone while a send was still out, and
@@ -321,6 +328,10 @@ describe("a room deleted while it is open", () => {
       expect(toast).toHaveBeenCalledWith(
         expect.objectContaining({ keep: true, description: expect.stringContaining("“second, still queued”") }),
       ),
+    );
+    // Send was pressed for it, so this one was not sent (r31).
+    expect(toast).toHaveBeenCalledWith(
+      expect.objectContaining({ keep: true, description: expect.stringMatching(/your message was not sent/) }),
     );
     reject(new Error("aborted"));
   });
@@ -391,6 +402,9 @@ describe("a room deleted while it is open", () => {
     const notice = toast.mock.calls[0]?.[0] as { description: string; keep: boolean; onClick: () => void };
     expect(notice).toMatchObject({ title: "This room was deleted", keep: true, tone: "error" });
     expect(notice.description).toContain("“half a thought about the invoices”");
+    // r31, judge-88: nobody pressed Send, so nothing "was not sent"; what was being written is kept.
+    expect(notice.description).toContain("What you were writing is kept below — select it to copy.");
+    expect(notice.description).not.toMatch(/not sent/);
     notice.onClick();
     expect(writeText).toHaveBeenCalledWith("half a thought about the invoices");
     expect(send).not.toHaveBeenCalled();

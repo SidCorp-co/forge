@@ -111,38 +111,44 @@ export function ConversationChat({
   const [gone, setGone] = useState(false);
   const goneOnce = useRef(false);
   // The thread that held an unsent message goes with the room, so its notice keeps the text until the
-  // reader copies it or puts the notice away (ISS-1229 r29, judge-84).
+  // reader copies it or puts the notice away (ISS-1229 r29, judge-84). Copying says so in that notice,
+  // where the reader is looking: a second toast landed over the room list on a phone (r31, judge-88).
+  const kept = useRef(0);
   const keepUnsent = useCallback(
-    (unsent: string) => {
-      toast({
-        title: ROOM_DELETED_TITLE,
-        description: unsentLine(unsent),
-        tone: "error",
-        keep: true,
-        onClick: () => {
-          const copied = navigator.clipboard
-            ? navigator.clipboard.writeText(unsent)
-            : Promise.reject(new Error("no clipboard"));
-          void copied.then(
-            () => toast({ title: "What you wrote was copied", tone: "success" }),
-            () =>
-              toast({
-                title: "What you wrote could not be copied",
-                description: unsent,
-                tone: "error",
-                keep: true,
-              }),
-          );
-        },
-      });
+    (unsent: string, sent: boolean) => {
+      const slot = `room-gone-unsent-${++kept.current}`;
+      const show = (copied: boolean) =>
+        toast({
+          title: ROOM_DELETED_TITLE,
+          description: unsentLine(unsent, sent, copied),
+          tone: "error",
+          keep: true,
+          slot,
+          onClick: () => {
+            const copying = navigator.clipboard
+              ? navigator.clipboard.writeText(unsent)
+              : Promise.reject(new Error("no clipboard"));
+            void copying.then(
+              () => show(true),
+              () =>
+                toast({
+                  title: "What you wrote could not be copied",
+                  description: unsent,
+                  tone: "error",
+                  keep: true,
+                }),
+            );
+          },
+        });
+      show(false);
     },
     [toast],
   );
   const roomWentAway = useCallback(
-    (id: string, unsent: string | null) => {
+    (id: string, unsent: string | null, sent: boolean) => {
       // A send refused after a re-read already found the room gone still hands back its text (r29 F2).
       if (goneOnce.current) {
-        if (unsent !== null) keepUnsent(unsent);
+        if (unsent !== null) keepUnsent(unsent, sent);
         return;
       }
       goneOnce.current = true;
@@ -150,7 +156,7 @@ export function ConversationChat({
       if (unsent === null) {
         toast({ title: ROOM_DELETED_TITLE, description: roomDeletedLine(false), tone: "error" });
       } else {
-        keepUnsent(unsent);
+        keepUnsent(unsent, sent);
       }
       qc.removeQueries({ queryKey: ["conversations", id], exact: true });
       void qc.invalidateQueries({ queryKey: ["conversations", "list"] });
@@ -177,7 +183,7 @@ export function ConversationChat({
     const waiting = outboxRef.current.filter((m) => m.state === "queued").map((m) => m.content);
     const typed = draftBeside(waiting);
     const unsent = typed === null ? waiting : [...waiting, typed];
-    roomWentAway(resolvedId, unsent.length > 0 ? unsent.join("\n\n") : null);
+    roomWentAway(resolvedId, unsent.length > 0 ? unsent.join("\n\n") : null, waiting.length > 0);
   }, [resolvedId, roomQ.isError, roomQ.error, roomWentAway, draftBeside]);
 
   const messages = useMemo(() => roomQ.data?.messages ?? [], [roomQ.data]);
@@ -290,7 +296,7 @@ export function ConversationChat({
         );
         if (roomGone && id) {
           const typed = draftBeside([next.content]);
-          roomWentAway(id, typed === null ? next.content : `${next.content}\n\n${typed}`);
+          roomWentAway(id, typed === null ? next.content : `${next.content}\n\n${typed}`, true);
         }
       } finally {
         sending.current = false;

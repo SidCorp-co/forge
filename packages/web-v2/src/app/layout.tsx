@@ -31,11 +31,13 @@ export const metadata: Metadata = {
 };
 
 // `viewport-fit=cover` lets the UI extend under notches/home indicators so our
-// `env(safe-area-inset-*)` padding (mobile drawer / topbar) actually applies.
+// `env(safe-area-inset-*)` padding (mobile drawer / topbar) actually applies. An on-screen keyboard
+// shortens the layout, so a frame one screen tall keeps a focused box and its Send in view (ISS-1229 r31).
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
+  interactiveWidget: "resizes-content",
 };
 
 export default function RootLayout({
