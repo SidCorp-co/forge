@@ -25,7 +25,7 @@ export function ItemMemory({ projectId, slug, cites }: { projectId: string; slug
   const actError = acts.correct.error ?? acts.retire.error ?? acts.verify.error;
   const busy = acts.correct.isPending || acts.retire.isPending || acts.verify.isPending;
   const hidden = q.data ? (retired ? q.data.counts.live : q.data.counts.retired) : 0;
-  const none = retired ? t("memory.itemNoneRetired") : cites === null ? t("memory.projectNone") : t("memory.itemNone", { ref: cites });
+  const none = retired ? t("memory.itemNoneRetired") : t("memory.itemNone");
   return (
     <section className="grid gap-3" data-testid="item-memory" aria-label={t("memory.title")}>
       <ViewHeading>{t("memory.title")}</ViewHeading>

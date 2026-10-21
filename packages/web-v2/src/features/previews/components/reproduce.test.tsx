@@ -117,7 +117,7 @@ describe("BC-20: the reporter confirms the fix in its preview", () => {
     });
     mount(["ISS-7"]);
     fireEvent.click(await screen.findByRole("button", { name: "Fixed" }));
-    expect(await screen.findByTestId("fix-recorded")).toHaveTextContent("Recorded: fixed, on patch aaaaaaaaaaaa. When this change ships it closes FB-52.");
+    expect(await screen.findByTestId("fix-recorded")).toHaveTextContent("Recorded: fixed, on patch aaaaaaaaaaaa.");
     expect(calls.find((c) => c.path === `/previews/${PREVIEW_ID}/confirm`)?.body).toEqual({ verdict: "fixed" });
   });
 

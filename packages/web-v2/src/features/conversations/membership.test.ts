@@ -31,14 +31,14 @@ describe("membership claims", () => {
     expect(removalClaim({ id: "p", kind: "person", displayName: null } as never, {}, t)).not.toMatch(ENGLISH);
     expect(roomOpeningClaims({ projects: [hop], agentCount: 1, t }).map((x) => x.text)).toEqual([
       "About Hop.",
-      "One-to-one: only the people in it read it.",
+      "One-to-one.",
     ]);
   });
 });
 
 describe("the product copy", () => {
   it("has an English reason word for every failure cause, which a vi page reads where no vi word was written", () => {
-    const en = strings.en as Record<string, string>;
+    const en = strings.en;
     for (const cause of FAILURE_CAUSES) expect(en[`sessions.reason.${cause}`], `en sessions.reason.${cause}`).toBeTruthy();
   });
 });

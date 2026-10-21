@@ -27,7 +27,7 @@ describe("what a release verified, in words", () => {
       "Partly verified: 1 of 2 checks met, and the deploy checked by the production probes",
     );
     expect(verifiedSentence({ level: "deploy_only", proven: 0, total: 0, check: "probed", provider: null }, en)).toBe(
-      "Deploy check only: no checks recorded",
+      "Deploy check only",
     );
   });
 });

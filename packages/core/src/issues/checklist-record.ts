@@ -52,7 +52,7 @@ export function requirementAnswer(p: Planned): RecordAnswer {
   if (p.key === null) {
     return {
       gap: 'The issue is not linked to a requirement.',
-      fix: 'Link it to the agreed or accepted requirement it delivers, then write its plan: saving the plan records the revision of that requirement it is written against.',
+      fix: 'Link it to the agreed requirement it delivers, then write its plan.',
     };
   }
   if (!DELIVERABLE.includes(p.status ?? '')) {
@@ -104,7 +104,7 @@ export function criteriaAnswerOf(rows: readonly CriterionTrace[], p: Planned): R
   if (rows.length === 0) {
     return {
       gap: 'The issue has no acceptance criteria.',
-      fix: 'Write its numbered acceptance criteria and trace each one to a business criterion (BC) of the requirement revision its plan is written against.',
+      fix: 'Write numbered criteria, each traced to a business criterion of that revision.',
     };
   }
   if (p.key === null || p.plannedRevision === null) {

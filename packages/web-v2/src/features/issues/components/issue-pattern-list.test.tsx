@@ -142,7 +142,7 @@ describe("what the issue page says around a review (judge at 9988a9335, comment 
     await user.click(within(form).getByRole("textbox"));
     await user.paste("x".repeat(2001));
     expect(within(form).getByRole("alert")).toHaveTextContent(
-      "The reason is 2001 characters, over 2000. Shorten it.",
+      "The reason is 2001 characters, over 2000",
     );
     expect(within(form).getByRole("button", { name: "Approve" })).toBeDisabled();
     expect(within(form).getByRole("button", { name: "Return" })).toBeDisabled();
@@ -199,7 +199,7 @@ describe("what the issue page says around a review (judge at 9988a9335, comment 
     raced("u-ana");
     const form = await decideAndLose("nothing catalogued consumes a queue");
     await waitFor(() =>
-      expect(within(form).getByRole("alert")).toHaveTextContent("Not recorded: Ana already approved it. Your reason is kept."),
+      expect(within(form).getByRole("alert")).toHaveTextContent("Ana already approved it"),
     );
     expect(within(form).getByRole("textbox")).toHaveValue("nothing catalogued consumes a queue");
     expect(within(form).queryByRole("button", { name: "Approve" })).toBeNull();
@@ -209,14 +209,14 @@ describe("what the issue page says around a review (judge at 9988a9335, comment 
   it("names a run that decided first as a run", async () => {
     raced("u-box", "s-run");
     const form = await decideAndLose("mine");
-    await waitFor(() => expect(within(form).getByRole("alert")).toHaveTextContent("Not recorded: A run already approved it."));
+    await waitFor(() => expect(within(form).getByRole("alert")).toHaveTextContent("A run already approved it"));
   });
 
   it("names a decider who is not a member as another reviewer", async () => {
     raced("u-gone");
     const form = await decideAndLose("mine");
     await waitFor(() =>
-      expect(within(form).getByRole("alert")).toHaveTextContent("Not recorded: Another reviewer already approved it."),
+      expect(within(form).getByRole("alert")).toHaveTextContent("Another reviewer already approved it"),
     );
   });
 

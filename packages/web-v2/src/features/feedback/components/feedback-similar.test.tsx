@@ -42,10 +42,10 @@ describe("similar feedback on an item's page", () => {
   });
 
   it.each([
-    ["not_embedded", "Not compared yet: this item has no vector"],
-    ["provider_not_configured", "Not compared: no embedding provider is set up"],
+    ["not_embedded", "Not compared yet"],
+    ["provider_not_configured", "Provider not set up"],
     ["failed", "Not compared: the embedding provider failed"],
-    ["withheld_by_policy", "Not compared: the data policy keeps text in Forge"],
+    ["withheld_by_policy", "Withheld by policy"],
   ] as const)("a read core could not compare (%s) says why, never 'none found'", async (status, line) => {
     fakeCore(() => ({ body: { status, message: "core's words", hits: [] } }));
     renderWithQuery(<SimilarFeedback projectId={P} slug="hop" fbKey="FB-4" />);

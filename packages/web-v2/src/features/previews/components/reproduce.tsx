@@ -89,7 +89,7 @@ export function Reproduction({ projectId, fbKey, carriers, redacted }: Reproduct
         </>
       )}
       {carriers.map((key) => (
-        <FixConfirm key={key} projectId={projectId} issueKey={key} fbKey={fbKey} />
+        <FixConfirm key={key} projectId={projectId} issueKey={key} />
       ))}
     </section>
   );
@@ -128,7 +128,7 @@ function ReproduceBody({ preview, fbKey, t }: { preview: PreviewRecord; fbKey: s
 }
 
 /** The routed issue's live preview, and the reporter's Fixed or Not fixed on it (BC-20). */
-function FixConfirm({ projectId, issueKey, fbKey }: { projectId: string; issueKey: string; fbKey: string }) {
+function FixConfirm({ projectId, issueKey }: { projectId: string; issueKey: string }) {
   const t = useCopy();
   const previewQ = usePreview(issueKey, projectId);
   const [note, setNote] = useState("");
@@ -154,7 +154,7 @@ function FixConfirm({ projectId, issueKey, fbKey }: { projectId: string; issueKe
       <PreviewFrame preview={preview} issueLabel={issueKey} height={420} />
       {said ? (
         <p role="status" data-testid="fix-recorded" data-verdict={said.verdict} className="fg-body-sm text-fg">
-          {t(said.verdict === "fixed" ? "previews.fix.recorded.fixed" : "previews.fix.recorded.not_fixed", { patch: shortSha(said.patchId), fb: fbKey })}
+          {t(said.verdict === "fixed" ? "previews.fix.recorded.fixed" : "previews.fix.recorded.not_fixed", { patch: shortSha(said.patchId) })}
         </p>
       ) : (
         <div className="flex flex-wrap items-center gap-2">

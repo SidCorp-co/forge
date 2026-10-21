@@ -1,7 +1,7 @@
 {
   "en": {
     "steward.note.label": "Steward note",
-    "steward.note.stale": "Out of date: the standing moved"
+    "steward.note.stale": "Out of date"
   },
   "vi": {
     "standing.act.acceptR": "nghiệm thu r{r}",
@@ -90,7 +90,7 @@
     "standing.effect.contractAt": "{contract} {v}",
     "standing.effect.designAt": "{title} bản sửa {r}",
     "standing.empty": "",
-    "standing.gate.heldBack": "{owes}. Các issue này bị giữ lại cho tới khi tiêu chí đạt; các issue khác vẫn phát hành.",
+    "standing.gate.heldBack": "{owes}; tạm giữ đến khi đạt tiêu chí",
     "standing.gate.on": " cho {subject}",
     "standing.gate.owes": "{key} còn nợ tiêu chí {list}",
     "standing.gate.subject.atGate": "Các issue ở cổng release",
@@ -100,9 +100,9 @@
     "standing.gate.subject.some": "Một số issue",
     "standing.gate.title.claimed": "Issue đã bị giữ",
     "standing.gate.title.heldBack": "Một số issue bị giữ lại",
-    "standing.gate.title.noGate": "Chưa có môi trường production",
-    "standing.gate.title.noRunner": "Chưa ghép runner",
-    "standing.gate.title.noRunnerOnline": "Không runner nào nhận được",
+    "standing.gate.title.noGate": "Chưa có production",
+    "standing.gate.title.noRunner": "Chưa có runner",
+    "standing.gate.title.noRunnerOnline": "Runner đang ngoại tuyến",
     "standing.gate.title.noteMissing": "Thiếu ghi chú release",
     "standing.gate.title.nowhere": "Chưa có nơi đưa lên",
     "standing.gate.title.oversize": "Quá nhiều issue",

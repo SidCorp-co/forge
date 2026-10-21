@@ -54,7 +54,7 @@ describe("the plugin pin conflicts", () => {
     const banner = await screen.findByTestId("plugin-pin-conflicts");
     expect(banner).toHaveTextContent("SidCorp-co/forge-plugin has conflicting pins on shared-box:");
     expect(banner).toHaveTextContent("hop forge@aaaaaaa · ops forge-codemap@bbbbbbb");
-    expect(banner).toHaveTextContent("The box follows latest until one pin is changed.");
+    expect(banner).toHaveTextContent("The box follows latest");
   });
 
   it("shows nothing where no box conflicts", async () => {

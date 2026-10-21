@@ -138,7 +138,7 @@ describe("release state reads as a state, not an alarm", () => {
         <ReleaseSettings projectId={P} slug="hop" />
       </Seeded>,
     );
-    const line = screen.getByText(/No runner is paired/).closest("[data-code]");
+    const line = screen.getByText("None paired").closest("[data-code]");
     expect(line?.getAttribute("data-tone")).toBe("problem");
   });
 

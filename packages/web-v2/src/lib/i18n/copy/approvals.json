@@ -2,7 +2,7 @@
   "en": {
     "approvals.title": "Approvals",
     "approvals.sub": "{n} waiting on you · oldest {age}",
-    "approvals.subNone": "Nothing waiting on you",
+    "approvals.subNone": "Nothing waiting",
     "approvals.loading": "Loading approvals",
     "approvals.loadFailed": "Approvals did not load",
     "approvals.empty": "Nothing waiting",
@@ -57,7 +57,7 @@
     "approvals.act.cancel": "Cancel",
     "approvals.act.edit": "Edit, then approve",
     "approvals.act.editTitle": "Change the proposal on its page before approving it",
-    "approvals.declineWhy": "Why not? The agent reads it and will not propose it again.",
+    "approvals.declineWhy": "Why not?",
     "approvals.declineNeeded": "A decline needs a reason",
     "approvals.typedLabel": "Your words for {label}",
     "approvals.keys.move": "move",

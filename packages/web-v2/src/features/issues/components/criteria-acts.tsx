@@ -45,7 +45,7 @@ function namedBuildHint(t: Copy, build: JudgedBuild): string {
   if (build.source === "live") return t("issues.verdictAct.commitLive", named);
   if (build.source === "shipped") return t("issues.verdictAct.commitShipped", named);
   if (build.source === "merged") return t("issues.verdictAct.commitMerged", named);
-  return t("issues.verdictAct.commitNone", named);
+  return t("issues.verdictAct.commitNone");
 }
 
 export function RecordVerdict({ issueId, row }: { issueId: string; row: CriterionRow }) {
@@ -152,7 +152,7 @@ function shaHintOf(
 ): string {
   if (typed !== null && sha.trim() !== named) {
     if (sha.trim()) return t("issues.verdictAct.commitTyped");
-    return skipped ? t("issues.verdictAct.commitSkipped") : t("issues.verdictAct.commitNone", { basis: build.data?.basis ?? "" });
+    return skipped ? t("issues.verdictAct.commitSkipped") : t("issues.verdictAct.commitNone");
   }
   if (build.isPending) return t("issues.verdictAct.commitLoading");
   if (build.isError) return t("issues.verdictAct.commitUnread", { error: formatApiError(build.error) });

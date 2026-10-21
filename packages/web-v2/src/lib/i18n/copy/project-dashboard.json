@@ -50,7 +50,7 @@
     "dash.shippedAll": "Everything shipped in the last {days} days",
     "dash.shippedCompletes": "completes {keys}",
     "dash.shippedIssues": "{n} issues",
-    "dash.shippedNone": "No release has reached users yet.",
+    "dash.shippedNone": "Nothing shipped",
     "dash.shippedRecently": "Shipped recently",
     "dash.statusReport": "Status report"
   },
@@ -77,7 +77,7 @@
     "dash.shippedAll": "Mọi thứ đã tới người dùng trong {days} ngày qua",
     "dash.shippedCompletes": "hoàn tất {keys}",
     "dash.shippedIssues": "{n} issue",
-    "dash.shippedNone": "Chưa có release nào tới người dùng.",
+    "dash.shippedNone": "Chưa có gì tới người dùng",
     "dash.shippedRecently": "Đã tới người dùng gần đây",
     "dash.statusReport": "Báo cáo tình trạng"
   }

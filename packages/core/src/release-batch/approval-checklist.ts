@@ -78,7 +78,7 @@ export function approvalAnswersOf(f: ApprovalFacts): RecordAnswers {
             0,
             2000,
           ),
-          fix: "Have each judged a pass on the commit it ships, by the project's judge; a fail is filed as feedback.",
+          fix: "Have the project's judge pass each on the commit it ships.",
         }
       : { value: 'Every carried criterion is proven.' };
   return { carried, verdicts };

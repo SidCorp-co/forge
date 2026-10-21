@@ -1,6 +1,7 @@
 /**
  * The guards of workflow project-onboarding rev 1 (rules `may-start`, `which-designs`,
- * `approve-guard`), as pure functions over what the service read. Who may act is a permission.
+ * `approve-guard`), as pure functions over what the service read. Who may act is a permission, and
+ * a start or a re-analysis is a person's alone.
  */
 
 import { OCCUPYING_JOB_STATUSES } from '@forge/contracts/job-machine';
@@ -69,9 +70,24 @@ export function doneRefusal(row: { doneAt: Date | null }): OnboardingRefusal | n
   };
 }
 
-/** Start and re-analysis: each spends a job, so asking takes onboarding.request. */
-export const personActRefusal = (facts: PermissionFacts, act: string): OnboardingRefusal | null =>
-  permissionRefusal(facts, 'onboarding.request', act);
+/**
+ * Start and re-analysis are a person's ask (REQ-10 BC-1, BC-2): an agent's credential is refused
+ * them by name, whatever its grant holds (ONBOARDING_PERSON_ACT_FORBIDDEN); a person's spends a job,
+ * so it takes onboarding.request.
+ */
+export function personActRefusal(
+  agency: ActorAgency,
+  facts: PermissionFacts,
+  act: string,
+): OnboardingRefusal | null {
+  if (agency === 'agent')
+    return {
+      code: 'ONBOARDING_PERSON_ACT_FORBIDDEN',
+      path: '',
+      detail: `${act} is a person's ask (REQ-10 BC-2), and this request carries an agent's credential. A person of the project holding onboarding.request asks for it, signed in or with their own token.`,
+    };
+  return permissionRefusal(facts, 'onboarding.request', act);
+}
 
 /** The thread's agent messages. */
 export const agentWriteRefusal = (facts: PermissionFacts): OnboardingRefusal | null =>

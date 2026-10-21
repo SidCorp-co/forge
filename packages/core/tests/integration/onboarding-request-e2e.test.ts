@@ -1,3 +1,11 @@
+/**
+ * Who starts onboarding and asks for a re-analysis, and what the start hands the job, over the real
+ * routes (REQ-10 BC-2: a start or a re-analysis is a person's ask, one analysis job runs at a time).
+ *
+ * @direct-test-of packages/core/src/onboarding/service.ts
+ * @direct-test-of packages/contracts/src/onboarding.ts
+ */
+
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
@@ -12,11 +20,12 @@ import {
 } from '../helpers/ecosystem-world.js';
 import { addProjectMember, createTestProject, createTestUser, rows } from '../helpers/factories.js';
 
-type Who = 'owner' | 'viewer' | 'master';
+type Who = 'owner' | 'viewer' | 'master' | 'agent';
 let say: (who: Who, method: string, path: string, body?: unknown) => Promise<Reply>;
 let projectId = '';
 let otherId = '';
 let ownerEmail = '';
+let thirdId = '';
 
 const REQUEST = 'Draw against REQ-1; leave every design proposed.';
 
@@ -33,6 +42,7 @@ beforeAll(async () => {
   const project = await createTestProject(owner.id);
   projectId = project.id;
   otherId = (await createTestProject(owner.id)).id;
+  thirdId = (await createTestProject(owner.id)).id;
   await addProjectMember(projectId, viewer, 'viewer');
   // A project's agent is its handle, so it carries one on its org membership, as a minted one does.
   await db.execute(sql`
@@ -40,6 +50,7 @@ beforeAll(async () => {
     VALUES (${project.orgId}, ${agent}, 'member', 'onboarding-master')
   `);
   await addProjectMember(projectId, agent, 'admin');
+  await addProjectMember(thirdId, agent, 'admin');
   say = requester(app, {
     owner: await signUserToken(owner.id),
     viewer: await signUserToken(viewer),
@@ -50,6 +61,16 @@ beforeAll(async () => {
         userId: agent,
         name: 'master',
         projectIds: [projectId],
+      })
+    ).plaintext,
+    // a full grant holds onboarding.request as the agent's admin role does: what lets it past the
+    // permission, so only the person rule can refuse it (REQ-10 BC-2)
+    agent: (
+      await mintPat({
+        permissions: ['*'],
+        userId: agent,
+        name: 'agent',
+        projectIds: [projectId, thirdId],
       })
     ).plaintext,
   });
@@ -82,15 +103,19 @@ describe('a start is refused by name before anything is opened', () => {
     expect(await jobsOf(projectId)).toEqual([]);
   });
 
-  it('refuses a viewer, and an agent token whose named grant does not name onboarding.request', async () => {
+  it('refuses a viewer the onboarding.request it does not hold', async () => {
     expect(refusedBy(await say('viewer', 'POST', at(projectId, '/start'), {}), 403)).toEqual([
       'PERMISSION_FORBIDDEN',
     ]);
-    const agent = await say('master', 'POST', at(projectId, '/start'), { request: REQUEST });
-    expect(refusedBy(agent, 403)).toEqual(['PERMISSION_FORBIDDEN']);
-    expect(agent.json.detail).toMatch(
-      /A named token grant holds onboarding\.request only where it names it/,
-    );
+    expect(await jobsOf(projectId)).toEqual([]);
+  });
+
+  it('refuses an agent a start by name, whatever its grant holds: a person starts onboarding', async () => {
+    for (const who of ['agent', 'master'] as const) {
+      const agent = await say(who, 'POST', at(projectId, '/start'), { request: REQUEST });
+      expect(refusedBy(agent, 403)).toEqual(['ONBOARDING_PERSON_ACT_FORBIDDEN']);
+      expect(agent.json.detail).toMatch(/starting onboarding is a person's ask/);
+    }
     expect(await jobsOf(projectId)).toEqual([]);
   });
 
@@ -135,5 +160,40 @@ describe("the owner's request reaches the job that draws the designs", () => {
     expect([200, 201], JSON.stringify(started.json)).toContain(started.status);
     expect(ok(await say('owner', 'GET', at(otherId, '/answers'))).requests).toEqual([]);
     expect(await jobsOf(otherId)).toHaveLength(1);
+  });
+});
+
+describe('BC-2: a re-analysis runs only when a person asks for it', () => {
+  // the analysis ends, so no live job refuses the ask and only who asks decides it
+  const settle = async (id: string) => {
+    const { withKernelMarker } = await import('../../src/db/kernel-marker.js');
+    await withKernelMarker(db, (tx) =>
+      tx.execute(
+        sql`UPDATE jobs SET status = 'done' WHERE project_id = ${id} AND type = 'onboarding'`,
+      ),
+    );
+  };
+
+  it('refuses an agent holding onboarding.request a re-analysis by name, and queues no job', async () => {
+    ok(await say('owner', 'POST', at(thirdId, '/start'), {}), 201);
+    await settle(thirdId);
+    const asked = await say('agent', 'POST', at(thirdId, '/reanalyze'), { reason: 'refactor' });
+    expect(refusedBy(asked, 403)).toEqual(['ONBOARDING_PERSON_ACT_FORBIDDEN']);
+    expect(asked.json.detail).toMatch(
+      /asking for a re-analysis is a person's ask \(REQ-10 BC-2\), and this request carries an agent's credential/,
+    );
+    expect(await jobsOf(thirdId)).toHaveLength(1);
+  });
+
+  it('runs one for a person holding onboarding.request', async () => {
+    ok(await say('owner', 'POST', at(thirdId, '/reanalyze'), { reason: 'refactor' }));
+    expect(await jobsOf(thirdId)).toHaveLength(2);
+  });
+
+  it('refuses a person a second re-analysis while one runs, naming the running job', async () => {
+    const again = await say('owner', 'POST', at(thirdId, '/reanalyze'), {});
+    expect(refusedBy(again, again.status)).toEqual(['ONBOARDING_ALREADY_RUNNING']);
+    expect(again.json.detail).toMatch(/analysis job [0-9a-f-]{36} is queued/);
+    expect(await jobsOf(thirdId)).toHaveLength(2);
   });
 });

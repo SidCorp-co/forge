@@ -198,7 +198,7 @@ const READINGS: Record<ReleaseReasonCode, Reading> = {
       const n = heldOf(d).length;
       return say('standing.gate.heldBack', {
         owes: owes(d, say('standing.gate.subject.some')),
-        they: agrees(n, 'It is', 'They are'),
+        they: agrees(n, 'it is', 'they are'),
         their: agrees(n, 'its', 'their'),
       });
     },

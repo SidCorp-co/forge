@@ -222,7 +222,7 @@ describe("the widget settings", () => {
     expect(within(signing).queryByText("whsec_widget_once")).toBeNull();
     await userEvent.click(within(signing).getByRole("button", { name: "Rotate secret" }));
     expect(await within(signing).findByText("whsec_widget_once")).toBeInTheDocument();
-    expect(within(signing).getByText("Shown once. Copy it now.")).toBeInTheDocument();
+    expect(within(signing).getByText("Shown once")).toBeInTheDocument();
     expect(calls.filter((c) => c.path.endsWith("/rotate-secret"))).toHaveLength(1);
   });
 });

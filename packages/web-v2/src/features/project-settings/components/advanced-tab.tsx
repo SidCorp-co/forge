@@ -22,7 +22,7 @@ export function AdvancedSettings({ project, canEdit }: { project: ProjectDetail;
     <div className="space-y-6">
       <ComputeSettings projectId={project.id} slug={project.slug} canEdit={canEdit} />
       <PluginSettings projectId={project.id} canEdit={canEdit} />
-      <SettingsGroup id="documents" title={t("settings.project.raw.documents")} summary={t("settings.project.raw.documentsSummary")}>
+      <SettingsGroup id="documents" title={t("settings.project.raw.documents")}>
         <div>
           <Disclosure title={t("settings.project.raw.projectDocument")} testId="raw-project">
             <ProjectDocumentEditor project={project} canEdit={canEdit} />

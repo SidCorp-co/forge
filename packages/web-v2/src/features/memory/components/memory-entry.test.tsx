@@ -97,6 +97,7 @@ describe("a memory on the record it names", () => {
     expect(screen.getByTestId("memory-stale-refs").textContent).toBe("Names what no longer exists: ISS-1 (dropped), REQ-9 (no such requirement)");
     expect(screen.getByTestId("memory-flagged").textContent).toContain("ISS-126");
     expect(screen.getByTestId("memory-flagged").textContent).toContain("ISS-126 replaced the theme this note names");
+    expect(screen.getByTestId("memory-flagged").textContent).not.toContain("Check it");
   });
 
   it("links each source it cites where it lives, and says when a key belongs to a project it does not name", () => {
@@ -203,7 +204,7 @@ describe("a memory on the record it names", () => {
     expect(screen.getByTestId("memory-corrections").textContent).toBe("Corrected by Lan on 08/10/2026: the owner restated it");
     const earlier = screen.getByTestId("memory-revisions");
     expect(earlier.querySelector("summary")?.textContent).toBe("Earlier text · 1");
-    expect(screen.getByTestId("memory-revision").textContent).toBe("Replaced on 08/10/2026. Written by runner (agent):The board is flat.");
+    expect(screen.getByTestId("memory-revision").textContent).toBe("Written by runner (agent), replaced on 08/10/2026The board is flat.");
   });
 
   it("shows no earlier text on a memory never replaced, and says how many when more are kept than shown", () => {

@@ -113,7 +113,7 @@ describe("the item's record answers", () => {
       value: 'REQ-3, whose criterion it violates',
     });
     expect(requirementAnswerOf({ kind: 'idea', targetSeq: null, criterionSeq: null })).toEqual({
-      value: 'None: it is about no requirement.',
+      value: 'None',
     });
   });
 

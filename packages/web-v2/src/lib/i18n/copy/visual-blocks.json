@@ -30,7 +30,7 @@
     "visual.timeline.forecast": "Forecast, p50 to p85",
     "visual.timeline.planned": "Planned",
     "visual.timeline.span": "{from} to {to}",
-    "visual.timeline.undated": "No date in the data for: {items}.",
+    "visual.timeline.undated": "Undated: {items}",
     "visual.unsupported": "This answer has a {kind} block this screen cannot show.",
     "visual.unsupported.because": "This answer has a {kind} block this screen cannot show: {reason}."
   }

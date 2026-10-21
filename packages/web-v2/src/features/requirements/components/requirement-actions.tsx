@@ -111,14 +111,13 @@ function AgreeAct({ projectId, reqKey, revision, held }: { projectId: string; re
   );
 }
 
-/** Core's raw state names stay as written in English, as they always read there; another language reads their label. */
+/** Core's raw design status stays as written in English, as it always reads there; another language reads its label. */
 function useStateWords() {
   const t = useCopy();
   const label = useLabel();
   const lang = useInterfaceLanguage();
-  const word = (family: "requirementState" | "designStatus", st: string) => (lang === "en" ? st : label(family, st).toLowerCase());
+  const word = (family: "designStatus", st: string) => (lang === "en" ? st : label(family, st).toLowerCase());
   return {
-    statusWord: (st: string | undefined) => (st ? word("requirementState", st) : undefined),
     designWord: (st: string | null) => (st ? word("designStatus", st) : t("requirements.act.noDesignYet")),
   };
 }
@@ -139,7 +138,6 @@ export function PrimaryActions({
 }) {
   const t = useCopy();
   const lang = useInterfaceLanguage();
-  const { statusWord } = useStateWords();
   const act = useRequirementAction(projectId, d.key);
   const proposed = d.revisions.find((r) => r.state === "proposed");
   const draft = d.revisions.find((r) => r.state === "draft");
@@ -154,7 +152,7 @@ export function PrimaryActions({
         reqKey={d.key}
         label={t("requirements.act.undefer")}
         primary
-        tip={t("requirements.act.undeferTip", { reason: d.deferral?.reason ?? "", from: statusWord(d.deferral?.from) ?? t("requirements.act.itsStatus") })}
+        tip={t("requirements.act.undeferTip", { reason: d.deferral?.reason ?? "" })}
         whyLabel={t("requirements.act.undeferWhyLabel")}
         whyHint={t("requirements.act.undeferWhy")}
         build={(reason) => ({ kind: "undefer", reason })}

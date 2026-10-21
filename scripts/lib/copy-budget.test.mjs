@@ -1,6 +1,10 @@
+// @direct-test-of scripts/check-copy-budget.mjs
+// @direct-test-of .forge/conformance.json
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   faults,
+  fieldSentencesOf,
   inlineCopyOf,
   inlineFaults,
   keyEndsWith,
@@ -35,20 +39,114 @@ describe('wordsOf', () => {
 });
 
 describe('kindOf', () => {
+  const kind = (key, text = 'Runs') => kindOf(key, text, CFG).kind;
   it('reads an explanation and an empty state from the last segment only', () => {
-    expect(kindOf('x.views.hint', CFG)).toBe('explain');
-    expect(kindOf('x.hint.title', CFG)).toBe('copy');
-    expect(kindOf('x.list.none', CFG)).toBe('empty');
-    expect(kindOf('x.none.title', CFG)).toBe('copy');
+    expect(kind('x.views.hint')).toBe('explain');
+    expect(kind('x.hint.title')).toBe('copy');
+    expect(kind('x.list.none')).toBe('empty');
+    expect(kind('x.none.title')).toBe('copy');
   });
   it('reads a refusal from any segment, whole', () => {
-    expect(kindOf('x.refusal.moved', CFG)).toBe('refusal');
+    expect(kind('x.refusal.moved')).toBe('refusal');
     expect(keyHasSegment('x.refusals.list', CFG.refusalSegments)).toBe(false);
     expect(keyEndsWith('x.emptyHint', CFG.explainSegments)).toBe(true);
   });
   it('lets an explanation win, so an empty state that explains is refused, not budgeted', () => {
-    expect(kindOf('x.emptyMessage', CFG)).toBe('explain');
-    expect(kindOf('x.refusal.hint', CFG)).toBe('explain');
+    expect(kind('x.emptyMessage')).toBe('explain');
+    expect(kind('x.refusal.hint')).toBe('explain');
+  });
+});
+
+// The shapes and the empty lead the repository declares, read from .forge/conformance.json, so a
+// pattern weakened there turns these red rather than a copy of it kept here.
+const DECLARED = JSON.parse(
+  readFileSync(new URL('../../.forge/conformance.json', import.meta.url), 'utf8'),
+).checkers['copy-budget'];
+const LIVE = {
+  ...CFG,
+  refusalSegments: new RegExp(DECLARED.refusalSegments),
+  emptySegments: new RegExp(DECLARED.emptySegments),
+  explainSegments: new RegExp(DECLARED.explainSegments),
+  emptyLead: new RegExp(DECLARED.emptyLead),
+  explainShapes: DECLARED.explainShapes.map(({ name, pattern }) => ({
+    name,
+    pattern: new RegExp(pattern),
+  })),
+};
+const liveRefused = (...e) => [...overBudget(e, LIVE).values()].map((o) => `${o.key}:${o.kind}`);
+
+describe('kindOf by text — a sentence explains whatever key it sits under (REQ-43 BC-4, BC-6)', () => {
+  // Each string a release judge read on forge-dev 0.4.0-dev.268, under the key it was served from:
+  // on 840ffd104 the gate read all of them as plain copy and passed them.
+  const served = [
+    [
+      'settings.project.testing.summary',
+      'Who a run signs in as, per environment. Values are never shown.',
+    ],
+    [
+      'settings.project.raw.documentsSummary',
+      'What every tab reads its fields from. Edit with care.',
+    ],
+    ['settings.project.env.liveOutside', 'Not tracked: it goes live outside Forge'],
+    ['feedback.progress.state.drafted', 'Not started: its issues are drafts'],
+    ['runners.master.toStop', 'To stop one, run'],
+  ];
+  it('refuses each explaining line the judge saw, as an explanation', () => {
+    expect(liveRefused(...served.map(([k, t]) => entry(k, t)))).toEqual(
+      served.map(([k]) => `${k}:explain`),
+    );
+  });
+  it('holds each empty state the judge saw to two words', () => {
+    expect(
+      liveRefused(
+        entry('releases.bannerNothingOwed', 'Nothing is owed on it.'),
+        entry('settings.project.testing.usedNowhere', 'No environment uses it'),
+      ),
+    ).toEqual(['releases.bannerNothingOwed:empty', 'settings.project.testing.usedNowhere:empty']);
+  });
+  it('refuses the same sentence under a plain key as under an explaining one', () => {
+    const line = 'Who a run signs in as, per environment. Values are never shown.';
+    expect(liveRefused(entry('x.summaryHint', line), entry('x.summary', line))).toEqual([
+      'x.summaryHint:explain',
+      'x.summary:explain',
+    ]);
+  });
+  it('lets a state through: a value after a colon, one sentence, a CODE, an abbreviation, a short empty', () => {
+    expect(
+      liveRefused(
+        entry('a.running', 'Running: {n} of {total} issues in progress'),
+        entry('a.checks', 'Checks: {passed} met, {open} open'),
+        entry('a.merged', 'Merged into {into} as {sha}.'),
+        entry('a.placeholder', 'e.g. CI deploy token'),
+        entry('a.notJudged', 'Not judged yet'),
+        entry('a.rule', 'CONTRACT_WAIT_UNSETTLED: waits on a contract version not yet approved'),
+        entry('a.nothing', 'Nothing'),
+        entry('a.runs', 'No runs'),
+        entry('a.choose', 'Why it goes back'),
+      ),
+    ).toEqual([]);
+  });
+  it('keeps a refusal its second sentence, since it says what was wrong and then what to do', () => {
+    expect(
+      liveRefused(entry('x.refusal.access', 'No access to this project. Ask an admin.')),
+    ).toEqual([]);
+  });
+  it('names the shape an explanation took and what to do', () => {
+    expect(
+      faults(
+        overBudget(
+          [
+            entry(
+              'releases.trainNonePlanned',
+              'No release planned. Issues queue at Awaiting release.',
+            ),
+          ],
+          LIVE,
+        ),
+      ),
+    ).toEqual([
+      'a/copy.json · releases.trainNonePlanned: "No release planned. Issues queue at Awaiting release." explains (a second sentence); keep the state, delete the explanation',
+    ]);
   });
 });
 
@@ -56,7 +154,11 @@ describe('overBudget', () => {
   it('passes 12 words and refuses 13', () => {
     const over = overBudget([entry('a.ok', words(12)), entry('a.long', words(13))], CFG);
     expect([...over.keys()]).toEqual(['a/copy.json::a.long']);
-    expect(over.get('a/copy.json::a.long')).toMatchObject({ kind: 'copy', words: 13, budget: 12 });
+    expect(over.get('a/copy.json::a.long')).toMatchObject({
+      kind: 'copy',
+      words: 13,
+      budget: 12,
+    });
   });
   it('allows a refusal or confirmation 20 and no more, by its key path', () => {
     expect(
@@ -135,7 +237,11 @@ describe('sentencesOf — the sentences core writes for pages (REQ-43 BC-11)', (
       'SAID',
     );
     expect(read).toEqual([
-      { file: FILE, key: 'runs.holder.queued', text: 'no holder yet: the run is queued' },
+      {
+        file: FILE,
+        key: 'runs.holder.queued',
+        text: 'no holder yet: the run is queued',
+      },
       { file: FILE, key: 'standing.who.named', text: '{name}' },
     ]);
   });
@@ -163,6 +269,60 @@ describe('sentencesOf — the sentences core writes for pages (REQ-43 BC-11)', (
     );
     expect(() => sentencesOf(registry(''), FILE, 'OTHER')).toThrow(/declares no `const OTHER/);
     expect(() => sentencesOf(registry(''), FILE, 'SAID')).toThrow(/declares no sentence/);
+  });
+});
+
+describe('fieldSentencesOf — sentences held as fields of records (REQ-43 BC-11)', () => {
+  const FILE = 'packages/contracts/src/checklist-registry.ts';
+  const FIELDS = new RegExp(DECLARED.sentences.find((r) => r.file === FILE).fields);
+  const checklist = (question) =>
+    `export const C = defineChecklist({\n\tid: "feedback_triage",\n\ttitle: "Feedback triage",\n\tquestions: [\n\t\t${question},\n\t],\n});\n`;
+
+  it('reads each sentence a record holds, keyed by the ids around it', () => {
+    const read = fieldSentencesOf(
+      checklist(
+        '{ id: "kind", prompt: "What kind is it?", fix: `Answer "${NONE}".`, answer: { kind: "text" } }',
+      ),
+      FILE,
+      FIELDS,
+    );
+    expect(read).toEqual([
+      { file: FILE, key: 'feedback_triage.title', text: 'Feedback triage' },
+      {
+        file: FILE,
+        key: 'feedback_triage.kind.prompt',
+        text: 'What kind is it?',
+      },
+      { file: FILE, key: 'feedback_triage.kind.fix', text: 'Answer "{x}".' },
+    ]);
+  });
+  it('refuses a planted 40-word fix by its record, which the gate read as nothing on 840ffd104', () => {
+    const read = fieldSentencesOf(
+      checklist(`{ id: "kind", prompt: "What kind is it?", fix: "${words(40)}" }`),
+      FILE,
+      FIELDS,
+    );
+    expect(faults(overBudget(read, LIVE))).toEqual([
+      `${FILE} · feedback_triage.kind.fix: 40 words, budget 12 for a copy string`,
+    ]);
+  });
+  it('leaves a label named from another declaration, and refuses one it cannot read', () => {
+    expect(
+      fieldSentencesOf(
+        checklist('{ id: "k", label: LABELS[value], prompt: "Which?" }'),
+        FILE,
+        FIELDS,
+      ),
+    ).toEqual([
+      { file: FILE, key: 'feedback_triage.title', text: 'Feedback triage' },
+      { file: FILE, key: 'feedback_triage.k.prompt', text: 'Which?' },
+    ]);
+    expect(() =>
+      fieldSentencesOf(checklist('{ id: "k", fix: "Pick " + one }'), FILE, FIELDS),
+    ).toThrow(/feedback_triage\.k\.fix: a `fix` must be a string written here/);
+    expect(() => fieldSentencesOf('export const C = {};', FILE, FIELDS)).toThrow(
+      /the scan read nothing/,
+    );
   });
 });
 

@@ -23,13 +23,9 @@ export function RunnerActivity({ runnerId }: { runnerId: string }) {
 	}
 	const events = activity.data?.events ?? [];
 	const sessions = activity.data?.sessions ?? [];
-	const retentionDays = activity.data?.retentionDays;
 	if (events.length === 0 && sessions.length === 0) {
 		return (
-			<p className="fg-body-sm text-subtle">
-				{t("runners.activity.none")}
-				{typeof retentionDays === "number" ? ` ${t("runners.activity.retention", { n: retentionDays })}` : null}
-			</p>
+			<p className="fg-body-sm text-subtle">{t("runners.activity.none")}</p>
 		);
 	}
 

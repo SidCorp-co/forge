@@ -46,7 +46,7 @@ describe("the session page's held reply section", () => {
     const section = screen.getByTestId("session-held-reply");
     expect(section.textContent).toContain("issue-keys-exist");
     expect(section.textContent).toContain(
-      "This check could not run: the issues it names could not be read from the tracker this turn. Forge's side failed, not the reply.",
+      "Check could not run: the issues it names could not be read from the tracker this turn",
     );
     expect(section.textContent).not.toContain("leave the issue keys out");
   });

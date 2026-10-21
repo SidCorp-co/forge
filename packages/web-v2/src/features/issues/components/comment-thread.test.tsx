@@ -169,7 +169,7 @@ describe("a decision that answers the issue's open question", () => {
     );
     renderWithQuery(<CommentThread issueId="i1" comments={[]} members={[]} />);
     const { user, box } = await openDecisionMode();
-    await user.click(await within(box).findByRole("radio", { name: "None of these questions" }));
+    await user.click(await within(box).findByRole("radio", { name: "None" }));
     await user.type(within(box).getByRole("textbox", { name: "Decision" }), "ship it");
     await user.type(within(box).getByRole("textbox", { name: "Reason" }), "safe");
     await user.click(within(box).getByRole("button", { name: "Record decision" }));

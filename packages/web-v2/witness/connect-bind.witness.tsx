@@ -38,7 +38,7 @@ function prematched(): string[] {
   if (JSON.stringify(selects) !== JSON.stringify(["SidCorp-co/autoflow", "SidCorp-co/forge"])) {
     wrong.push(`the drawer opens on ${JSON.stringify(selects)}, not Forge's and Autoflow's matches`);
   }
-  if (!f.textContent?.includes("Several repositories match: SidCorp-co/musetools, chuongld/musetools.")) {
+  if (!f.textContent?.includes("Several repositories match: SidCorp-co/musetools, chuongld/musetools")) {
     wrong.push("Musetools' candidates are not named");
   }
   const submit = [...f.querySelectorAll("button")].find((b) => b.textContent?.startsWith("Bind ("));

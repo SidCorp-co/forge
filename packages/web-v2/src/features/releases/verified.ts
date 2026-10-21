@@ -2,7 +2,7 @@ import type { RecordedReleaseVerification, ReleaseVerified } from "@forge/contra
 import type { Copy } from "@/lib/i18n/product-copy";
 
 // What a release verified, in words (JU-11): the level core read off its criteria and its deploy
-// check, so "No criteria recorded" beside a deploy probe is never read as proof of the change.
+// check, so "No criteria" beside a deploy probe is never read as proof of the change.
 
 /** "Verified: 3 criteria proven, and the deploy checked by the production probes". */
 export function verifiedSentence(v: ReleaseVerified, t: Copy): string {

@@ -68,7 +68,7 @@ function exceptionsOf(doc: WorkflowWrite): RecordAnswer {
   if (conditions + tests + failSteps + failEdges === 0) {
     return {
       gap: 'It draws no condition, test, failure point or failure edge.',
-      fix: 'Draw each refusal, return and failure as a condition, test or failure edge.',
+      fix: 'Draw refusals, returns and failures as conditions, tests or failure edges.',
     };
   }
   return {

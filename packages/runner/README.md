@@ -210,7 +210,11 @@ and slug), and changes no tracked file (`crates/runner-workspace/src/orientation
   committed `CLAUDE.md`, gets nothing added.
 - **Every daemon start writes it again** into every bound checkout, under that checkout's provision
   lock (`crates/runner-workspace/src/orientation_record.rs`), so a box that upgrades onto a build
-  that moves the orientation converges without a re-bind. A second start writes nothing.
+  that moves the orientation converges without a re-bind. A second start writes nothing. A start
+  that cannot reach core asks again until core answers, then runs the start's pass. While the
+  daemon runs it converges every checkout again every 15 minutes (`at refresh`), so project
+  knowledge edited after the start reaches the checkout. A checkout already holding what core
+  serves is not rewritten, and a refresh core did not answer leaves each checkout as it is.
   `forge-runner status` prints each checkout's last outcome under `orient`, and names any not
   converted with why.
 - **A checkout an older runner held under `skip-worktree`** is converted by the next daemon start,
