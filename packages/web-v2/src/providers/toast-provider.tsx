@@ -19,8 +19,7 @@ export interface ToastInput extends ToastView {
   /** A toast naming a slot replaces the visible one holding the same slot, so
    *  a burst of one kind of event takes one card rather than a stack. */
   slot?: string;
-  /** It holds something the reader would otherwise lose: it never expires and never gives up its
-   *  place to a newer toast, so only the reader puts it away (ISS-1229 r29). */
+  /** Holds what the reader would otherwise lose, so it neither expires nor yields its place. */
   keep?: boolean;
 }
 
