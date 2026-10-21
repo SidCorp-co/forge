@@ -8,6 +8,7 @@
 export const BOUNCE_WINDOW_MS = 30_000;
 
 import { assetPath } from "@/lib/asset";
+import { loginHref } from "./return-path";
 
 const KEY = "forge.loginBounce";
 const NAME_PREFIX = "forge.loginBounce:";
@@ -54,13 +55,31 @@ export function bouncedRecently(now = Date.now()): boolean {
   return at !== null && Number.isFinite(at) && now - at < BOUNCE_WINDOW_MS;
 }
 
+/** The pages that sign a person in: a bounce from one of them carries no return to it. */
+const SIGN_IN_PAGE = /^\/(login|register)(\/|\?|#|$)/;
+
+/**
+ * Where this page is inside the app: its path without the base the app is served under, with its
+ * query and hash, which /login hands back to the router (ISS-529 c7: the GitHub return's
+ * /integrations?connect=<cause>). Null for Home, a sign-in page, or a path outside the base.
+ */
+function hereInApp(): string | null {
+  const { pathname, search, hash } = window.location;
+  const base = assetPath("");
+  if (base && pathname !== base && !pathname.startsWith(`${base}/`)) return null;
+  const here = `${pathname.slice(base.length) || "/"}${search}${hash}`;
+  return here === "/" || SIGN_IN_PAGE.test(here) ? null : here;
+}
+
 /**
  * A hard navigation to /login, never the client router: /login may answer with a redirect to an API
  * route (the router fetches that as a page and ends blank). The URL carries the base path the app is
- * served under, which a bare "/login" left out.
+ * served under, and `next`, the page to return to. What `next` may be is return-path.ts's one rule
+ * (`safeReturnPath`, through `loginHref`): a path on this origin, never another origin.
  */
 export function goToLogin(): void {
-  window.location.assign(new URL(assetPath("/login"), window.location.origin));
+  const here = hereInApp();
+  window.location.assign(new URL(assetPath(here ? loginHref(here) : "/login"), window.location.origin));
 }
 
 // What the last bounce decided, as a store a component reads with useSyncExternalStore.

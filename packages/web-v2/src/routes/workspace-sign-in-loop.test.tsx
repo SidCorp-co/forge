@@ -53,4 +53,15 @@ describe("a workspace page with no session", () => {
     await workspace(() => <div />);
     await waitFor(() => expect(assign).toHaveBeenCalledWith(new URL("/login", window.location.origin)));
   });
+
+  // ISS-529 c7: GitHub sends a person with no session to /integrations?connect=no_session; the
+  // bounce carries that place, so signing in lands on the page that says why.
+  it("carries the page it was sent to, query included, to /login as next", async () => {
+    vi.stubGlobal("location", { origin: window.location.origin, pathname: "/integrations", search: "?connect=no_session", hash: "", assign });
+    await workspace(() => <div />);
+    await waitFor(() =>
+      expect(assign).toHaveBeenCalledWith(new URL("/login?next=%2Fintegrations%3Fconnect%3Dno_session", window.location.origin)),
+    );
+    expect(assign).toHaveBeenCalledTimes(1);
+  });
 });
