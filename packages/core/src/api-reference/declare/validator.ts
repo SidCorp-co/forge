@@ -83,16 +83,13 @@ function ownSentenceDetails(
 const escaped = (k: string) => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /**
- * Whether a hook's own sentence names every field the parse found the route does not take, quoted,
- * as "field <name>", or in the sentence the schema wrote for that one field; a word that merely
- * matches ("required") is no name, and a key reading as a sentence is left unechoed where the hook
- * says to leave fields out.
+ * Whether a hook's own sentence names every field the parse found the route does not take, quoted
+ * or as "field <name>"; a word that merely matches ("required") is no name, and a key reading as a
+ * sentence is left unechoed where the hook says to leave fields out.
  */
 function speaksOfStrays(message: string, error: z.core.$ZodError): boolean {
   const strays = error.issues.flatMap((i) =>
-    i.code !== 'unrecognized_keys' || (i.keys.length === 1 && message.includes(i.message))
-      ? []
-      : i.keys.map((k) => [k, [...i.path, k].join('.')]),
+    i.code === 'unrecognized_keys' ? i.keys.map((k) => [k, [...i.path, k].join('.')]) : [],
   );
   const naming = (k: string) =>
     new RegExp(`\`${escaped(k)}\`|"${escaped(k)}"|\\bfields? ${escaped(k)}(?:$|[\\s,.;:])`);

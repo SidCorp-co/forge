@@ -132,29 +132,23 @@ describe('a route hook that words its own refusal (ISS-1421 r20)', () => {
     expect(refused.message).toMatch(/hue/);
   });
 
-  // Tenth integration run: PATCH /api/issues/:id's sentence for `status`, the schema's own, was overruled.
-  it("keeps the schema's own sentence for the one stray it was written for, and no other", async () => {
-    const said = 'An update never writes a status. A status moves through POST /transition.';
-    const update = z.strictObject(
-      { title: z.string().optional() },
-      {
-        error: (i) =>
-          i.code === 'unrecognized_keys' && i.keys.includes('status') ? said : undefined,
-      },
-    );
+  // Eleventh whole-set read: a schema's catch-all sentence, repeated by its hook, names no stray.
+  it("is overruled where the hook repeats a schema's sentence for every refusal", async () => {
+    const said = 'Host and path are required.';
+    const all = z.strictObject({ host: z.string(), path: z.string() }, { error: () => said });
     const own = refusing((a) =>
-      a.patch(
-        '/u',
-        zValidator('json', update, (r) => {
+      a.post(
+        '/a',
+        zValidator('json', all, (r) => {
           if (!r.success) throw new HTTPException(400, { message: said });
         }),
         (c) => c.json({}),
       ),
     );
-    const sent = (body: unknown) => own.request('/u', { ...post(body), method: 'PATCH' });
-    expect(((await (await sent({ status: 'x' })).json()) as Refusal).message).toBe(said);
-    const both = ((await (await sent({ status: 'x', colour: 1 })).json()) as Refusal).message;
-    expect(both).toMatch(/colour/);
+    const res = await own.request('/a', post({ host: 'h', path: 'p', colour: 1 }));
+    expect(((await res.json()) as Refusal).message).toBe(
+      'The field colour is not one this call takes.',
+    );
   });
 });
 

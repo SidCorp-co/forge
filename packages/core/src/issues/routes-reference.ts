@@ -56,7 +56,7 @@ export type IssueCreateInput = z.infer<typeof issueCreateSchema>;
 /** An update that carries `status` is told where a status moves, rather than only that the key is
  *  unknown: a reader told "unrecognized" tries another spelling (ISS-1421 round 2). */
 export const STATUS_IS_NOT_AN_UPDATE =
-  'An issue update never writes a status, so this one wrote nothing. A status moves through ' +
+  'An issue update never writes `status`, so this one wrote nothing. A status moves through ' +
   'POST /api/issues/:id/transition, or `forge_issues` `transition`, and only starting a release ' +
   'puts an issue at Releasing.';
 
