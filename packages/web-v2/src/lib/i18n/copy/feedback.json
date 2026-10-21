@@ -261,7 +261,6 @@
     "feedback.forge.joined": "Added to {key}, already reported.",
     "feedback.forge.mine": "Your feedback to Forge",
     "feedback.forge.done": "Done",
-    "feedback.forge.home": "Filed into {project}",
     "feedback.forge.empty": "No feedback to Forge yet",
     "feedback.forge.unreadable": "Your feedback to Forge could not be read",
     "feedback.forge.running": "Work running",

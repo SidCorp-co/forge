@@ -34,11 +34,7 @@ export function MyForgeFeedback() {
   const [open, setOpen] = useState<string | null>(null);
   const items = q.data?.feedback ?? [];
   return (
-    <ListPage
-      title={t("feedback.forge.mine")}
-      testId="my-forge-feedback"
-      lead={q.data ? <p className="px-4 pb-2 text-13 text-muted sm:px-7">{t("feedback.forge.home", { project: q.data.home.name })}</p> : null}
-    >
+    <ListPage title={t("feedback.forge.mine")} testId="my-forge-feedback">
       {q.isPending ? (
         <LoadingState label={t("feedback.forge.mine")} rows={4} />
       ) : q.error ? (
