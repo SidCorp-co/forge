@@ -217,9 +217,9 @@ export class CoolifyClient {
             res.status !== 401 && res.status !== 403 && res.status < 500,
           );
         }
+        const data = res.status === 204 ? undefined : await res.json();
         if (token !== this.apiToken) this.answeredOnPrevious = true;
-        if (res.status === 204) return { status: res.status, data: undefined as unknown as T };
-        return { status: res.status, data: (await res.json()) as T };
+        return { status: res.status, data: data as T };
       } catch (err) {
         clearTimeout(timer);
         // Only the new token's 401 earns a try with the previous one, and that 401 stays the answer.

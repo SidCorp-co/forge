@@ -184,8 +184,9 @@ function straysIn(schema: ZodType, value: unknown, path: PropertyKey[]): StrayAt
     return value.flatMap((v, i) => straysIn(element, v, [...path, i]));
   }
   if (value === null || typeof value !== 'object') return [];
-  if (fieldsPolicy(node) !== 'closed') return [];
-  const keys = refusesItself(node, value) ? [] : unknownFields(node, value);
+  // An object taking any field still holds closed objects inside it.
+  const keys =
+    fieldsPolicy(node) !== 'closed' || refusesItself(node, value) ? [] : unknownFields(node, value);
   return [...(keys.length > 0 ? [{ path, keys }] : []), ...nestedStrays(node, value, path)];
 }
 

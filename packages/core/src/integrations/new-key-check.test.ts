@@ -173,6 +173,18 @@ describe('Coolify, which keeps the previous token for its own calls', () => {
     expect(res.message).not.toMatch(/refused the new key/);
   });
 
+  // Fourth whole-set read: an answer to the previous token that was no JSON was taken as it working.
+  it('promises no previous key where its answer could not be read', async () => {
+    globalThis.fetch = vi.fn(async (_url: unknown, init?: RequestInit) =>
+      new Headers(init?.headers).get('authorization') === 'Bearer cf-new'
+        ? new Response('{}', { status: 401 })
+        : new Response('<html>', { status: 200 }),
+    ) as unknown as typeof fetch;
+    const res = await coolifyAdapter.healthcheck(ctx(secrets, COOLIFY));
+    expect(res.status).toBe('needs_reauth');
+    expect(res.message).not.toMatch(/previous key/);
+  });
+
   it('answers Connected where the new token is accepted', async () => {
     answeringOnly('cf-new', [{ uuid: 'res-1', name: 'app' }]);
     expect((await coolifyAdapter.healthcheck(ctx(secrets, COOLIFY))).status).toBe('ok');

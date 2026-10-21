@@ -177,6 +177,17 @@ describe('a field inside a body object that the object does not take (ISS-1421 r
     });
   });
 
+  // Fourth whole-set read: an object taking any field, below the root, hid the closed one in it.
+  it('is refused inside a closed object held by an open one', async () => {
+    const deep = z.object({ outer: z.looseObject({ inner: z.object({ name: z.string() }) }) });
+    const res = await refusing((a) =>
+      a.post('/d', zValidator('json', deep), (c) => c.json({ ok: true })),
+    ).request('/d', post({ outer: { extra: 1, inner: { name: 'n', colour: 'red' } } }));
+    expect(((await res.json()) as Refusal).message).toBe(
+      'The field outer.inner.colour is not one this call takes.',
+    );
+  });
+
   // Second whole-set read: a root taking any field skipped the closed objects inside it.
   describe('under a root that takes any field', () => {
     const loose = z.looseObject({ metadata: z.object({ name: z.string() }) });
