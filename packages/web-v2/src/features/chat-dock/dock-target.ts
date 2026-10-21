@@ -44,13 +44,19 @@ const liveIn = <R extends DockRoom>(rows: R[], projectId: string) =>
   rows.filter((r) => r.projectId === projectId && r.archivedAt === null);
 
 /**
- * What the dock opens on when nothing is picked: the page's own rooms first, then the project's; a
- * draft only when it has none. A room scoped to a record is reused off that record's page only when
+ * What the dock opens on when nothing is picked: the room this browser last had open in the project,
+ * while it is live, so a reload never swaps the conversation under the person (owner 2026-10-21);
+ * else the page's own rooms first, then the project's; a draft only when it has none. A room scoped to a record is reused off that record's page only when
  * it waits on the person: a whole-project question asked there is refused by a room that reads one
  * requirement, and nothing told the person why (FB-100).
  */
-export function openingTarget(rows: DockRoom[], at: { projectId: string; pageKey: string | null }): ChatTarget {
+export function openingTarget(
+  rows: DockRoom[],
+  at: { projectId: string; pageKey: string | null; kept?: string | null },
+): ChatTarget {
   const live = liveIn(rows, at.projectId);
+  const kept = at.kept ? live.find((r) => r.id === at.kept) : undefined;
+  if (kept) return { kind: "room", projectId: at.projectId, conversationId: kept.id };
   const own = live.filter((r) => at.pageKey !== null && r.subjectKey === at.pageKey);
   const pick = first(own) ?? first(live.filter((r) => !isScopedRoom(r) || waitsOnYou(r)));
   return pick ? { kind: "room", projectId: at.projectId, conversationId: pick.id } : { kind: "draft", projectId: at.projectId };

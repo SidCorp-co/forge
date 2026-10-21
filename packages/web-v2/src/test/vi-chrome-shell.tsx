@@ -147,6 +147,7 @@ const dock = (target: ChatDockApi["target"]): ChatDockApi => ({
   pinned: false,
   setPinned: noop,
   target,
+  keptRoom: null,
   generation: 0,
   size: "large",
   setSize: noop,

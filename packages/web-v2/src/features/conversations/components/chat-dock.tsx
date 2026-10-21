@@ -137,7 +137,7 @@ export function ChatDockBody({ dock, fullScreen, overPage, sizeControl }: { dock
       );
     }
     if (target.kind === "latest") {
-      return <DockOpening projectId={target.projectId} pageKey={pageKey} onResolved={dock.select} />;
+      return <DockOpening projectId={target.projectId} pageKey={pageKey} kept={dock.keptRoom} onResolved={dock.select} />;
     }
     if (!project) {
       return (
