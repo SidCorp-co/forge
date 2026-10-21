@@ -127,6 +127,12 @@ describe("the workspace breadcrumb", () => {
     expect(crumbsAt("/").at(-1)?.label).toBe("Overview");
   });
 
+  it("lights no rail row on a workspace page the rail does not list, never Overview", () => {
+    for (const path of ["/org", "/pair", "/projects", "/settings"]) expect(buildActiveKey(path, null)).toBe("");
+    expect(buildActiveKey("/", null)).toBe("overview");
+    expect(buildActiveKey("/runners", null)).toBe("runners");
+  });
+
   it("calls a path no page answers nothing rather than Overview", () => {
     expect(crumbsAt("/no-such-page").map((c) => c.label)).toEqual(["Workspace"]);
   });

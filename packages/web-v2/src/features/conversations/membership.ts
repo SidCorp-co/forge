@@ -262,6 +262,23 @@ export function removalClaim(
 }
 
 /**
+ * Why this member cannot be taken out, in the words core refuses it with, or null where they can:
+ * the room's last agent, and the last person of a one-to-one room (ISS-1229 r27).
+ */
+export function removalHeld(
+  participant: ConversationParticipant,
+  room: Partial<Pick<ConversationMembership, "participants" | "shape">>,
+): string | null {
+  if (participant.kind === "handle" && agentsOf(room).length <= 1) {
+    return "This room has one agent left and a room with none is about no project, so nobody could read it again; add another agent first, or delete the room.";
+  }
+  if (participant.kind === "person" && room.shape === "direct" && peopleOf(room).length <= 1) {
+    return "This room is a one-to-one room with one person left, and a room with nobody in it is readable by nobody; add another person first, or delete the room.";
+  }
+  return null;
+}
+
+/**
  * Why a room takes no messages from Forge, where it takes none.
  */
 export function composerRefusal(

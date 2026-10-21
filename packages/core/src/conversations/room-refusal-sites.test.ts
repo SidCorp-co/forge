@@ -47,6 +47,9 @@ describe('a refusal about a room', () => {
     });
     expect(refused.status).toBe(403);
     expect(refused.message).toBe('This room has no agent in it');
-    expect(refused.cause).toEqual({ code: 'CONVERSATION_NO_SCOPE', details: { conversationId: 'c-1' } });
+    expect(refused.cause).toEqual({
+      code: 'CONVERSATION_NO_SCOPE',
+      details: { conversationId: 'c-1' },
+    });
   });
 });

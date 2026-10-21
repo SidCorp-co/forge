@@ -63,7 +63,7 @@ export function StreamBand({
     <figure className={cn("m-0 flex w-full flex-col gap-2", className)}>
       {/* The strip's scale sits in a column of its own, so the band and the strip share one width
           and a week's point on the line stands over that week's blocks. */}
-      <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-2 gap-y-1">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-2 gap-y-3">
         <svg
           role="img"
           aria-label={label}

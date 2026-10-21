@@ -29,6 +29,7 @@ import {
   memberName,
   peopleOf,
   removalClaim,
+  removalHeld,
   removalQuestion,
   scopeDerivation,
 } from "../membership";
@@ -200,6 +201,7 @@ function MemberRow({
 }) {
   const isAgent = member.kind === "handle";
   const project = (room.scopeProjects ?? []).find((p) => p.id === member.projectId);
+  const held = removalHeld(member, room);
   return (
     <div
       data-testid={isAgent ? "member-row-agent" : "member-row-person"}
@@ -232,12 +234,13 @@ function MemberRow({
         </Tooltip>
       )}
       {canChange && (
-        <Tooltip label={removalClaim(member, room, viewerId)}>
+        <Tooltip label={held ?? removalClaim(member, room, viewerId)}>
           <IconButton
             icon="x"
             size="sm"
             aria-label={`Take ${member.kind === "person" && viewerId && member.userId === viewerId ? "yourself" : memberName(member, viewerId, "inside", room)} out of the room`}
-            disabled={busy}
+            aria-description={held ?? undefined}
+            disabled={busy || held !== null}
             onClick={onRemove}
           />
         </Tooltip>
