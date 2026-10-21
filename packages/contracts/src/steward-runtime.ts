@@ -4,6 +4,7 @@
 // act records themselves are `steward.ts`'s, shared with lane A.
 
 import { z } from "zod";
+import type { ProjectPermission } from "./permissions.js";
 import {
 	STEWARD_DAILY_BUDGET,
 	type StewardAct,
@@ -28,6 +29,7 @@ export const STEWARD_DOOR_TOOLS = [
 	"steward_comment_issue",
 	"steward_reject_breakdown",
 	"steward_move_issue",
+	"steward_set_requirement_owner",
 	"steward_wake_master",
 	"steward_write_note",
 ] as const;
@@ -61,7 +63,8 @@ export const STEWARD_ACT_DOORS: Readonly<
 		"steward_ask",
 		"steward_comment_issue",
 		"steward_move_issue",
-			"steward_wake_master",
+		"steward_set_requirement_owner",
+		"steward_wake_master",
 		"steward_write_note",
 	],
 	output_check: [
@@ -75,6 +78,25 @@ export const STEWARD_ACT_DOORS: Readonly<
 	],
 	triage_draft: [],
 	release_followthrough: [],
+};
+
+/**
+ * The approvals each act's token names (REQ-48 r2 decision 2, as the coordinator amended it on
+ * 2026-10-21): a named token holds an approval only where it names it, so an act whose token names
+ * none cannot approve whatever its account holds. `breakdown_check` rejects a breakdown and never
+ * accepts one, which its door menu holds to; `triage_draft` accepts only its own `feedback_triage`
+ * suggestion, which the accept door holds to (`suggestions/accept-fence.ts`). Nothing declines.
+ */
+export const STEWARD_ACT_APPROVALS: Readonly<
+	Record<StewardAct, readonly ProjectPermission[]>
+> = {
+	note: [],
+	intake_check: [],
+	breakdown_check: ["suggestions.approve"],
+	triage_draft: ["feedback.approve", "suggestions.approve"],
+	stuck_diagnosis: [],
+	output_check: [],
+	release_followthrough: ["feedback.approve"],
 };
 
 /** The name the steward's agent account carries on every page (BC-1). */

@@ -48,6 +48,7 @@ export async function budgetNote(run: RunRow, standing: ItemStanding | null): Pr
   const credential = await mintStewardCredential({
     projectId: run.projectId,
     stewardId: await stewardAccountOf(run.projectId),
+    acts: ['note'],
     ttlMs: STEWARD_TURN_TTL_MS,
   });
   try {

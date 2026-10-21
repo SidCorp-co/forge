@@ -176,9 +176,10 @@ import { startTimers, stopTimers } from './schedules/index.js';
 import { provideShareSubjectSources } from './shares/index.js';
 import { seedBuiltinSkills, sweepPolicyLanded } from './skills/index.js';
 import { provideStatusReportsPorts, statusReportShareSource } from './status-reports/index.js';
-import { provideStewardPorts } from './steward/index.js';
+import { heldStewardOf, provideStewardPorts } from './steward/index.js';
 import {
   proposeRequirementDuplicate,
+  provideSuggestionsPorts,
   redactFeedbackSuggestions,
   staleOnTargetRevised,
   writeKeptPreview,
@@ -358,6 +359,7 @@ provideStewardPorts({
   doorFetch: (request) => Promise.resolve(app.fetch(request)),
   wakeMasters: wakeMastersForSteward,
 });
+provideSuggestionsPorts({ stewardOf: heldStewardOf });
 
 app.use(
   '*',

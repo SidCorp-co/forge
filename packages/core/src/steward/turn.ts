@@ -80,6 +80,7 @@ export async function runGatewayAct(args: {
   const credential = await mintStewardCredential({
     projectId: run.projectId,
     stewardId: args.stewardId,
+    acts: [act],
     ttlMs: STEWARD_TURN_TTL_MS,
   });
   const ctx: DoorContext = {

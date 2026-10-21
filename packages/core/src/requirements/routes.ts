@@ -6,7 +6,9 @@ import {
   DROP_REQUIREMENT_SHAPE,
   deferRequirementRequestSchema,
   dropRequirementRequestSchema,
+  PATCH_REQUIREMENT_SHAPE,
   PROMOTE_REQUIREMENT_DRAFTS_SHAPE,
+  patchRequirementRequestSchema,
   promoteRequirementDraftsRequestSchema,
   REPIN_REQUIREMENT_SHAPE,
   REQUIREMENT_AREAS_SHAPE,
@@ -34,6 +36,7 @@ import { readRequirementDecisionsAs } from './decisions-read.js';
 import { deferRequirement, undeferRequirement } from './deferral.js';
 import { draftRequirement } from './draft-linked.js';
 import { requirementLinkRoutes } from './link-routes.js';
+import { setRequirementOwner } from './owner.js';
 import {
   acceptPlacement,
   areasOf,
@@ -195,6 +198,26 @@ requirementRoutes.put(
     return answer(
       c,
       await setPlacement({ projectId: id, ref: req, actor: actorOf(c), ...c.req.valid('json') }),
+    );
+  },
+);
+
+// who owns the requirement: a member of the project, or null for nobody (REQ-48 BC-5)
+requirementRoutes.patch(
+  '/:id/requirements/:req',
+  reqParam,
+  strictBody(patchRequirementRequestSchema, PATCH_REQUIREMENT_SHAPE),
+  holdChatWrite('requirement_revision'),
+  async (c) => {
+    const { id, req } = c.req.valid('param');
+    return answer(
+      c,
+      await setRequirementOwner({
+        projectId: id,
+        ref: req,
+        actor: actorOf(c),
+        owner: c.req.valid('json').owner,
+      }),
     );
   },
 );

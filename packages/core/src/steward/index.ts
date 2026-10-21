@@ -1,3 +1,4 @@
+export { heldStewardOf } from './account.js';
 export { registerSteward } from './consumer.js';
 export { dispatchStewardRuns } from './dispatch.js';
 export { breakdownsHeldBySteward } from './holds.js';

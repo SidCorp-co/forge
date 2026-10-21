@@ -4,6 +4,7 @@
 import type { StewardAct, StewardCite } from '@forge/contracts/steward';
 import type { StewardDoorTool } from '@forge/contracts/steward-runtime';
 import { z } from 'zod';
+import type { StewardUndo } from '../db/schema-steward-runs.js';
 import type { ActWrite } from './acts-store.js';
 import { bearer, callDoor, type DoorAnswer, type DoorRequest } from './door-call.js';
 
@@ -66,6 +67,19 @@ export async function issueIdOf(issue: string, ctx: DoorContext): Promise<string
   const id = answer.json?.id;
   return answer.ok && typeof id === 'string' ? id : answer;
 }
+
+/** The undo of a comment the steward posted on a requirement: its delete door. */
+export const requirementCommentUndo = (
+  ctx: DoorContext,
+  requirement: string,
+  commentId: unknown,
+): StewardUndo | null =>
+  typeof commentId === 'string'
+    ? {
+        door: `DELETE /api/projects/${ctx.projectId}/requirements/${requirement}/comments/${commentId}`,
+        body: null,
+      }
+    : null;
 
 export const cite = (kind: StewardCite['kind'], ref: unknown): StewardCite | null =>
   typeof ref === 'string' && ref ? { kind, ref } : null;

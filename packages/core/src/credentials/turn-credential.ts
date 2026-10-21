@@ -43,8 +43,9 @@ export const CHAT_TURN_MENU: readonly PatPermission[] = [
 
 /**
  * What a steward act reaches (REQ-48 BC-1): the record doors its act catalogue calls, as the
- * project's steward account. `STEWARD_TURN_GRANTS` names the one approval it holds, which a named
- * grant reaches only where it names it.
+ * project's steward account. The approvals a token names besides are its act's
+ * (`@forge/contracts/steward-runtime:STEWARD_ACT_APPROVALS`), which a named grant reaches only where
+ * it names them.
  */
 export const STEWARD_TURN_MENU: readonly PatPermission[] = [
   'issues:read',
@@ -55,9 +56,6 @@ export const STEWARD_TURN_MENU: readonly PatPermission[] = [
   'questions:write',
   'pipeline:read',
 ];
-
-/** The token-explicit permissions a steward token names: triage and route, never decline (REQ-48 r2 decision 2). */
-export const STEWARD_TURN_GRANTS: readonly ProjectPermission[] = ['feedback.approve'];
 
 /** What a session on a paired box reaches: every permission a project-fenced token may hold. */
 export const AGENT_TURN_MENU: readonly PatPermission[] = PAT_PERMISSION_NAMES.filter(

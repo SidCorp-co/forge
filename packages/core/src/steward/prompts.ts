@@ -34,7 +34,7 @@ const METHODS: Record<StewardAct, string> = {
     '- nobody_serves, the master silent or none: wake the master naming what waits (steward_wake_master), then ask one question to the person who can decide, recommending an act: defer the requirement, drop the issue, or start a master.',
     "- draft_carrier: if the draft's ready checklist is complete and the project admits drafts without a person, open it (steward_move_issue to `open`) and comment on the issue why. Otherwise ask the person who may admit it.",
     '- overdue on a master act: wake the master naming the act. Overdue on a judge: wake the master to judge.',
-    "- no_owner: ask the requirement's author whether they take ownership; no door sets an owner for you.",
+    "- no_owner: name the requirement's author as its owner (steward_set_requirement_owner), then say so on it; where the author is no longer a member the door refuses, and you ask a project admin who owns it.",
     '- work already on the live build: ask a release holder to decide; you hold no release approval.',
     'Never dispatch a run yourself, and never drop or decline anything.',
   ].join('\n'),

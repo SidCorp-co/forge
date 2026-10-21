@@ -5,7 +5,16 @@ import type { StewardCite } from '@forge/contracts/steward';
 import { z } from 'zod';
 import type { StewardUndo } from '../db/schema-steward-runs.js';
 import { type DoorAnswer, type DoorRequest, doorName } from './door-call.js';
-import { cite, type DoorSpec, issueIdOf, key, reason, send } from './door-kit.js';
+import {
+  cite,
+  type DoorSpec,
+  issueIdOf,
+  key,
+  reason,
+  requirementCommentUndo,
+  send,
+} from './door-kit.js';
+import { OWNER } from './door-owner.js';
 import { stewardPorts } from './ports.js';
 
 const optionsParam = z
@@ -52,7 +61,7 @@ const ASK: DoorSpec<z.infer<typeof askParams>> = {
           door: doorName(sent.request),
           did: `Asked on ${args.about}: ${args.prompt}`,
           wrote: cite('comment', comment?.id),
-          undo: null,
+          undo: requirementCommentUndo(ctx, args.about, comment?.id),
         },
       };
     }
@@ -72,6 +81,8 @@ const ASK: DoorSpec<z.infer<typeof askParams>> = {
             authority: 'writer',
             bindsTo: 'this_call',
             executedBy: 'human',
+            // the one decision this run asks for: an answer binds to it and to nothing after it
+            fingerprint: `steward:${ctx.runId}:${o.id}`,
           })),
           recommendedOptionId: args.recommended,
           blockerKind: 'human',
@@ -79,13 +90,20 @@ const ASK: DoorSpec<z.infer<typeof askParams>> = {
       },
       ctx,
     );
+    const id = sent.answer.json?.id;
     return {
       ...sent,
       act: {
         door: doorName(sent.request),
         did: `Asked on ${args.about}: ${args.prompt}`,
-        wrote: cite('question', sent.answer.json?.id),
-        undo: null,
+        wrote: cite('question', id),
+        undo:
+          typeof id === 'string'
+            ? {
+                door: `POST /api/questions/${id}/void`,
+                body: { reason: "A person undid the steward's question, so it needs no answer." },
+              }
+            : null,
       },
     };
   },
@@ -116,7 +134,7 @@ const COMMENT_REQUIREMENT: DoorSpec<z.infer<typeof commentRequirementParams>> = 
         door: doorName(sent.request),
         did: `Wrote a note on ${args.requirement}`,
         wrote: cite('comment', comment?.id),
-        undo: null,
+        undo: requirementCommentUndo(ctx, args.requirement, comment?.id),
       },
     };
   },
@@ -313,6 +331,7 @@ export const WRITE_DOORS = [
   COMMENT_ISSUE,
   REJECT,
   MOVE,
+  OWNER,
   WAKE,
   NOTE,
 ] as unknown as DoorSpec<never>[];

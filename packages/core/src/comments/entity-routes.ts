@@ -16,6 +16,7 @@ import { refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { holdChatWrite } from '../middleware/chat-write-hold.js';
 import { invalid, strictBody, zValidator } from '../middleware/zod-validator.js';
+import { deleteEntityComment } from './entity-delete.js';
 import { type EntityCommentActor, listEntityCommentsAs } from './entity-read.js';
 import {
   type EntityCommentOutcome,
@@ -170,6 +171,23 @@ entityCommentRoutes.patch(
   commentParam(REQUIREMENT),
   editBody,
   (c) => editFor(c, REQUIREMENT, c.req.valid('param') as Params, c.req.valid('json')),
+);
+// its author, or a holder of project.write, takes a comment back (REQ-48 BC-12)
+entityCommentRoutes.delete(
+  '/:id/requirements/:req/comments/:comment',
+  commentParam(REQUIREMENT),
+  async (c) => {
+    const params = c.req.valid('param') as Params;
+    const outcome = await deleteEntityComment({
+      projectId: params.id as string,
+      scope: REQUIREMENT.scope,
+      ref: params.req as string,
+      commentId: params.comment as string,
+      actor: actorOf(c),
+    });
+    if (!outcome.ok) return refused(c, outcome.refusals, 'COMMENT_REFUSED');
+    return c.body(null, 204);
+  },
 );
 
 entityCommentRoutes.get(

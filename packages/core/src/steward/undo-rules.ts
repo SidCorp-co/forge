@@ -3,11 +3,17 @@
 // checked against it again before it is called, so a row can never send a person's credential to a
 // door the catalogue did not name.
 
-/** The doors an undo may call: re-propose a rejected breakdown, reopen a routed item, delete an issue comment. */
+/**
+ * The doors an undo may call: re-propose a rejected breakdown, reopen a routed item, delete an issue
+ * comment or a requirement comment, void a question, and set a requirement's owner back.
+ */
 const INVERSE_DOORS: readonly RegExp[] = [
   /^POST \/api\/projects\/[0-9a-f-]{36}\/suggestions$/,
   /^POST \/api\/projects\/[0-9a-f-]{36}\/feedback\/[^/]+\/reopen$/,
   /^DELETE \/api\/comments\/[0-9a-f-]{36}$/,
+  /^DELETE \/api\/projects\/[0-9a-f-]{36}\/requirements\/REQ-\d+\/comments\/[0-9a-f-]{36}$/,
+  /^POST \/api\/questions\/[0-9a-f-]{36}\/void$/,
+  /^PATCH \/api\/projects\/[0-9a-f-]{36}\/requirements\/REQ-\d+$/,
 ];
 
 export function isInverseDoor(door: string): boolean {
@@ -16,16 +22,6 @@ export function isInverseDoor(door: string): boolean {
 
 /** How a person overrides an act no door undoes, by the door the act called. */
 const OVERRIDES: readonly { door: RegExp; override: string }[] = [
-  {
-    door: /^POST \/api\/questions$/,
-    override:
-      'answer the question, or move its issue on with `voidQuestions` (`POST /api/issues/:id/transition`), which voids it: no door voids a question by itself',
-  },
-  {
-    door: /^POST \/api\/projects\/[^/]+\/requirements\/[^/]+\/comments$/,
-    override:
-      'edit the comment (`PATCH /api/projects/:id/requirements/:req/comments/:comment`): no door deletes a requirement comment',
-  },
   {
     door: /^POST \/api\/issues\/[^/]+\/transition$/,
     override:

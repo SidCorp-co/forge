@@ -5,7 +5,7 @@
 // Where no runner is bound the run ends failed naming it: it never falls back to a gateway guess.
 
 import { LIVE_JOB_STATUSES } from '@forge/contracts/job-machine';
-import type { StewardAct } from '@forge/contracts/steward';
+import { STEWARD_ACTS, type StewardAct } from '@forge/contracts/steward';
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import { revokePat } from '../credentials/pat.js';
 import { db } from '../db/client.js';
@@ -92,6 +92,18 @@ export async function enqueueStewardJob(
 
 const jobTokenName = (jobId: string) => `steward job ${jobId}`;
 
+/** The acts a steward job was enqueued for, which its token's approvals follow; a job naming none is refused. */
+function jobActsOf(job: { id: string; payload: unknown }): StewardAct[] {
+  const named = (job.payload as { stewardActs?: unknown } | null)?.stewardActs;
+  const acts = Array.isArray(named) ? STEWARD_ACTS.filter((a) => named.includes(a)) : [];
+  if (acts.length === 0 || !Array.isArray(named) || acts.length !== named.length) {
+    throw new Error(
+      `steward: job ${job.id} names no steward acts its token can be minted for (payload.stewardActs is ${JSON.stringify(named)})`,
+    );
+  }
+  return acts;
+}
+
 /**
  * The credential section a claimed steward job's brief ends with: the steward account's token for
  * this job, minted now and named for the job so its end revokes it.
@@ -99,11 +111,13 @@ const jobTokenName = (jobId: string) => `steward job ${jobId}`;
 export async function stewardJobCredential(job: {
   id: string;
   projectId: string;
+  payload: unknown;
 }): Promise<string> {
   const stewardId = await stewardAccountOf(job.projectId);
   const credential = await mintStewardCredential({
     projectId: job.projectId,
     stewardId,
+    acts: jobActsOf(job),
     ttlMs: JOB_TOKEN_TTL_MS,
     name: jobTokenName(job.id),
   });
