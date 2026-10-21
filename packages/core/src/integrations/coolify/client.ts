@@ -222,9 +222,8 @@ export class CoolifyClient {
         return { status: res.status, data: (await res.json()) as T };
       } catch (err) {
         clearTimeout(timer);
-        if (token !== this.apiToken && lastErr) throw lastErr;
-        if (err instanceof CoolifyApiError && err.status !== 401) throw err;
-        lastErr = err as Error;
+        // Only the new token's 401 earns a try with the previous one, and that 401 stays the answer.
+        throw token === this.apiToken ? err : (lastErr ?? err);
       }
     }
     throw lastErr ?? new Error('Coolify request failed');
