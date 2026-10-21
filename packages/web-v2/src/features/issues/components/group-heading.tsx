@@ -1,6 +1,6 @@
 "use client";
 
-import { couldNotRead } from "@/lib/api/read-failed";
+import { couldNotRead, offersRetry } from "@/lib/api/read-failed";
 import { Button, SectionTitle } from "@/design";
 import type { IssueGroup } from "../derive";
 import type { GroupBy, ModuleCounts, ModuleRollupResponse } from "../types";
@@ -8,7 +8,7 @@ import type { GroupBy, ModuleCounts, ModuleRollupResponse } from "../types";
 /** What the module rollup says about one group's module, or why it says nothing. */
 export type ModuleGroupCounts =
   | { state: "loading" }
-  | { state: "unavailable"; why?: string }
+  | { state: "unavailable"; why?: string; retry?: () => void }
   | { state: "read"; primary: ModuleCounts; secondaryTotal: number };
 
 interface RollupRead {
@@ -16,6 +16,7 @@ interface RollupRead {
   isError: boolean;
   error: unknown;
   data: ModuleRollupResponse | undefined;
+  refetch: () => unknown;
 }
 
 /** The counts for a module group's header. A group is the issues whose primary module this is, which
@@ -23,7 +24,12 @@ interface RollupRead {
  *  that failed, or a module the rollup does not hold, is `unavailable` and said so, never a zero. */
 export function moduleGroupCounts(group: IssueGroup, rollup: RollupRead): ModuleGroupCounts {
   if (rollup.isLoading) return { state: "loading" };
-  if (rollup.isError) return { state: "unavailable", why: couldNotRead("Project counts", rollup.error) };
+  if (rollup.isError) {
+    const why = couldNotRead("Project counts", rollup.error);
+    return offersRetry(rollup.error)
+      ? { state: "unavailable", why, retry: () => void rollup.refetch() }
+      : { state: "unavailable", why };
+  }
   if (!rollup.data) return { state: "unavailable" };
   if (group.moduleId === null || group.moduleId === undefined) {
     return { state: "read", primary: rollup.data.unassigned, secondaryTotal: 0 };
@@ -64,6 +70,11 @@ export function GroupHeading({ group, groupBy, counts, onlyThisModule }: GroupHe
                 counts.secondaryTotal > 0 ? ` · also tagged on ${counts.secondaryTotal}` : ""
               }`}
       </span>
+      {counts?.state === "unavailable" && counts.retry ? (
+        <Button variant="secondary" size="sm" icon="rerun" onClick={counts.retry}>
+          Retry
+        </Button>
+      ) : null}
       {group.moduleId && onlyThisModule ? (
         <Button
           variant="ghost"

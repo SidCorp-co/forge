@@ -74,6 +74,7 @@ const ITEMS: IssueRow[] = [
 
 let rollup: { data?: ModuleRollupResponse; isLoading: boolean; isError: boolean; error: unknown };
 let rollupAskedFor: (string | undefined)[] = [];
+const rollupRefetch = vi.fn();
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/projects/forge-dev/issues",
@@ -98,7 +99,7 @@ vi.mock("../hooks", async () => {
     }),
     useModuleRollup: (projectId: string | undefined) => {
       rollupAskedFor.push(projectId);
-      return { ...rollup, refetch: vi.fn() };
+      return { ...rollup, refetch: rollupRefetch };
     },
     useProjectMembers: () => ({ data: [] }),
     useProjectLabels: () => ({ data: [] }),
@@ -196,6 +197,22 @@ describe("Group: module", () => {
     mountAt("?groupBy=module");
     expect(headings().every((t) => /^Project counts could not be read\. \S/.test(t))).toBe(true);
     expect(screen.queryByText(/in the project/)).toBeNull();
+  });
+
+  // ISS-1228 round 23 (master's read of the r23 after-shots): a failed read said to try again with no Retry.
+  it("offers Retry beside counts the server refused, and refetches the rollup", () => {
+    rollup = { data: undefined, isLoading: false, isError: true, error: new ApiError(409, "Try again in a minute.", "X") };
+    mountAt("?groupBy=module");
+    const retries = screen.getAllByRole("button", { name: "Retry" });
+    expect(retries.length).toBeGreaterThan(0);
+    fireEvent.click(retries[0] as HTMLElement);
+    expect(rollupRefetch).toHaveBeenCalled();
+  });
+
+  it("offers no Retry beside counts Forge answered 401 for", () => {
+    rollup = { data: undefined, isLoading: false, isError: true, error: new ApiError(401, "Unauthenticated", "UNAUTHENTICATED") };
+    mountAt("?groupBy=module");
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
   });
 
   it("says so for a module the rollup does not hold", () => {
