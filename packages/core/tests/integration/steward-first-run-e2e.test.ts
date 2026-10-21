@@ -131,6 +131,14 @@ describe('a stuck issue takes its note end to end (first live run: PUT …/stewa
     const row = (await openStandings(projectId)).find((s) => s.subject.id === issue.id);
     expect(row?.note).toMatchObject({ lines, stale: false });
   });
+
+  it('names every kind the note door takes, issue included, where the kind is wrong', async () => {
+    const read = await say('owner', 'GET', at('/steward-notes/bug/ISS-1'));
+    expect(read.status).toBe(400);
+    expect(JSON.stringify(read.json)).toContain(
+      'invalid path: /api/projects/<project>/steward-notes/<requirement|feedback|issue>/<key>',
+    );
+  });
 });
 
 describe('a key of another kind is refused at an issue tool by name, before any door (affordance)', () => {
