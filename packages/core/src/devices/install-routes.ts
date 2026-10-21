@@ -54,16 +54,43 @@ dest="$HOME/.local/bin"
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 trap 'exit 1' INT TERM
-# curl runs outside any pipe, so its own exit status is the one checked; $rc and $why keep what it said.
+# curl runs outside any pipe, so its own exit status is the one checked. fetch returns 1 when no
+# HTTP answer came back (refused, DNS, timeout, dropped), with $rc and $why keeping what curl said,
+# and 2 when the server answered with an HTTP error, with $said naming the status and its reason.
 fetch() {
-  if curl -fsSL "$1" -o "$2" 2>"$tmp/curl.err"; then return 0; else rc=$?; fi
-  why=$(tr '\\n' ' ' <"$tmp/curl.err" | sed 's/ *$//')
-  return 1
+  if meta=$(curl -sSL -o "$2" -w '%{http_code} %{content_type}' "$1" 2>"$tmp/curl.err"); then :; else
+    rc=$?
+    why=$(tr '\\n' ' ' <"$tmp/curl.err" | sed 's/ *$//')
+    return 1
+  fi
+  status=$(printf '%s' "$meta" | cut -d' ' -f1)
+  # 000 is a read with no HTTP status at all (a file:// mirror): curl succeeding is the answer.
+  case "$status" in 2??|000) return 0;; esac
+  # The server's reason: a JSON body's code with its error, or a problem body's code with its
+  # detail; else a plain-text body's first line.
+  body=$(tr -d '\\r\\n' <"$2" | cut -c1-2000)
+  code=$(printf '%s' "$body" | sed -n 's/.*"code":"\\([^"]*\\)".*/\\1/p')
+  reason=$(printf '%s' "$body" | sed -n 's/.*"error":"\\([^"]*\\)".*/\\1/p')
+  [ -n "$reason" ] || reason=$(printf '%s' "$body" | sed -n 's/.*"detail":"\\([^"]*\\)".*/\\1/p')
+  if [ -n "$code" ] && [ -n "$reason" ]; then reason="$code: $reason"; elif [ -n "$code" ]; then reason=$code; fi
+  if [ -z "$reason" ]; then
+    case "$(printf '%s' "$meta" | cut -d' ' -f2-)" in
+      text/plain*) reason=$(head -n 1 "$2" | tr -d '\\r' | cut -c1-200);;
+    esac
+  fi
+  if [ -n "$reason" ]; then said="with HTTP $status: $reason"; else said="with HTTP $status and gave no reason"; fi
+  return 2
 }
+# The box reached the server, so the answer is the server's to change, not this box's network.
+admin="This box reached $BASE, so its network is not the cause: show this message to your Forge admin."
 # Read what core publishes first: a platform with no build is refused by name, never a bare 404.
 # A build list that could not be read says nothing about the platform, so it is refused as itself.
 list="$BASE$PREFIX/install/latest.json"
-fetch "$list" "$tmp/latest.json" || { echo "INSTALL_BUILD_LIST_UNREACHABLE: could not read the published build list at $list (curl exit $rc: $why); this box's platform ($target) was not checked and nothing was installed. Check that this box can reach $BASE, then run the install command again." >&2; exit 1; }
+got=0; fetch "$list" "$tmp/latest.json" || got=$?
+case "$got" in
+  1) echo "INSTALL_BUILD_LIST_UNREACHABLE: could not read the published build list at $list (curl exit $rc: $why); this box's platform ($target) was not checked and nothing was installed. Check that this box can reach $BASE, then run the install command again." >&2; exit 1;;
+  2) echo "INSTALL_BUILD_LIST_REFUSED: $BASE answered the build list request at $list $said; this box's platform ($target) was not checked and nothing was installed. $admin" >&2; exit 1;;
+esac
 manifest=$(tr -d ' \\n' <"$tmp/latest.json")
 case "$manifest" in
   *'"assets":{'*) ;;
@@ -79,7 +106,11 @@ want=$(printf '%s' "$manifest" | sed -n 's/.*"'"$target"'":{[^}]*"sha256":"\\([0
 [ -n "$want" ] || { echo "INSTALL_SHA256_UNPUBLISHED: core publishes no sha256 for $target, so the download cannot be verified; nothing was installed." >&2; exit 1; }
 echo "Downloading forge-runner ($target)..."
 bin="$BASE$PREFIX/install/bin/$target"
-fetch "$bin" "$tmp/forge-runner" || { echo "INSTALL_DOWNLOAD_FAILED: could not download $bin (curl exit $rc: $why); nothing was installed. Check that this box can reach $BASE, then run the install command again." >&2; exit 1; }
+got=0; fetch "$bin" "$tmp/forge-runner" || got=$?
+case "$got" in
+  1) echo "INSTALL_DOWNLOAD_FAILED: could not download $bin (curl exit $rc: $why); nothing was installed. Check that this box can reach $BASE, then run the install command again." >&2; exit 1;;
+  2) echo "INSTALL_DOWNLOAD_REFUSED: $BASE answered the download of $bin $said; nothing was installed. $admin" >&2; exit 1;;
+esac
 # Refuse by name unless the download matches the sha256 core publishes for this target.
 if command -v sha256sum >/dev/null 2>&1; then got=$(sha256sum "$tmp/forge-runner" | cut -d' ' -f1); else got=$(shasum -a 256 "$tmp/forge-runner" | cut -d' ' -f1); fi
 [ "$got" = "$want" ] || { echo "INSTALL_SHA256_MISMATCH: forge-runner for $target hashed $got, core publishes $want; nothing was installed. Run the install command again; if it fails the same way, something between this box and $BASE is changing the download, so tell your Forge admin." >&2; exit 1; }
