@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.272] - 2026-10-21
+
+Suggestion refusals tell you to send no base revision when there is none
+
+### Fixed
+
+- **A suggestion on a target with no revision is told to send `baseRevision: null`.** The create shape names `number | null`, and the stale-base refusal on an issue, a feedback item or an unagreed requirement says to send null.
+- **A wrong steward-note kind is refused naming every kind the door takes.** The refusal listed requirement and feedback only; it now names issue too, read from the same list the door checks.
+
 ## [0.4.0-dev.271] - 2026-10-21
 
 The steward's questions now act when you answer, and it stops retrying refused acts
