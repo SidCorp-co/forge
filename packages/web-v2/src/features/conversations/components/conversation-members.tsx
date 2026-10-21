@@ -29,6 +29,7 @@ import {
   memberName,
   peopleOf,
   removalClaim,
+  removalHeld,
   removalQuestion,
   scopeDerivation,
 } from "../membership";
@@ -200,6 +201,7 @@ function MemberRow({
 }) {
   const isAgent = member.kind === "handle";
   const project = (room.scopeProjects ?? []).find((p) => p.id === member.projectId);
+  const held = removalHeld(member, room);
   return (
     <div
       data-testid={isAgent ? "member-row-agent" : "member-row-person"}
@@ -231,14 +233,18 @@ function MemberRow({
           <span className="fg-caption rounded bg-surface px-1.5 py-0.5 text-muted">can't act</span>
         </Tooltip>
       )}
+      {/* A held control stays focusable, so its reason reaches a keyboard reader too (r27 review F1). */}
       {canChange && (
-        <Tooltip label={removalClaim(member, room, viewerId)}>
+        <Tooltip label={held ?? removalClaim(member, room, viewerId)}>
           <IconButton
             icon="x"
             size="sm"
             aria-label={`Take ${member.kind === "person" && viewerId && member.userId === viewerId ? "yourself" : memberName(member, viewerId, "inside", room)} out of the room`}
+            aria-description={held ?? undefined}
+            aria-disabled={held !== null || undefined}
+            className={held ? "cursor-not-allowed opacity-50" : undefined}
             disabled={busy}
-            onClick={onRemove}
+            onClick={held ? undefined : onRemove}
           />
         </Tooltip>
       )}

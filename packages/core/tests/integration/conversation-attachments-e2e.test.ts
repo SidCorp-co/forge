@@ -199,7 +199,8 @@ describe('the message a file arrives on', () => {
     ]);
   });
 
-  it('refuses an id from another room, naming that id', async () => {
+  // ISS-1229 r27: a person reads "This room"; the foreign file's id rides `details`, never the sentence.
+  it('refuses an id from another room, carrying that id in details', async () => {
     const mine = await room();
     const theirs = await room();
     const foreign = await upload(theirs);
@@ -208,9 +209,15 @@ describe('the message a file arrives on', () => {
       attachmentIds: [foreign],
     });
     expect(res.status).toBe(409);
-    const body = (await res.json()) as { message: string; code: string };
-    expect(body.message).toContain(foreign);
+    const body = (await res.json()) as {
+      message: string;
+      code: string;
+      details?: { attachmentIds?: string[] };
+    };
     expect(body.code).toBe('CONVERSATION_ATTACHMENT_FOREIGN');
+    expect(body.message).toMatch(/^One attached file is not in this room/);
+    expect(body.message).not.toContain(foreign);
+    expect(body.details?.attachmentIds).toEqual([foreign]);
   });
 
   it('takes nothing in when one of several ids is foreign', async () => {

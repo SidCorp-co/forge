@@ -44,16 +44,20 @@ export function ActionQueue({ pulse, nowMs }: ActionQueueProps) {
                 } — open the list`}
                 className="flex w-full flex-wrap items-baseline gap-x-3 gap-y-0.5 rounded-md px-2 py-1.5 text-left hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
               >
-                <span className="fg-h3 tabular-nums">{row.count}</span>
-                <span className="fg-body-sm min-w-0 flex-1">
+                {/* Narrow, the sentence takes the row's whole width and the figures go under it; from
+                    sm up they sit in one line, the count first (ISS-1229 r27, judge-77 at 390). */}
+                <span className="fg-body-sm min-w-0 basis-full sm:basis-0 sm:flex-1" data-queue-sentence>
                   <span className="block font-medium">{row.label}</span>
                   <span className="block text-muted">{row.hint}</span>
                 </span>
-                <span className="fg-body-sm shrink-0 text-subtle">
+                <span className="fg-h3 order-1 tabular-nums sm:order-first" data-queue-count>
+                  {row.count}
+                </span>
+                <span className="fg-body-sm order-2 shrink-0 text-subtle sm:order-none">
                   {OWNER_TEXT[row.owner]}
                 </span>
                 {row.oldestSeconds === null ? null : (
-                  <span className="fg-body-sm shrink-0 tabular-nums text-subtle">
+                  <span className="fg-body-sm order-2 shrink-0 tabular-nums text-subtle sm:order-none">
                     oldest {ageText(row.oldestSeconds)}
                   </span>
                 )}

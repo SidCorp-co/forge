@@ -94,7 +94,7 @@ export function buildActiveKey(pathname: string, slug: string | null): string {
   const ws = WORKSPACE_ITEMS.find((it) =>
     it.href === "/" ? pathname === "/" : pathname.startsWith(it.href),
   );
-  return ws?.key ?? "overview";
+  return ws?.key ?? "";
 }
 
 export function buildBottomActiveKey(pathname: string, slug: string | null): string {
@@ -167,6 +167,18 @@ export function bottomTabItems(
   ];
 }
 
+/**
+ * Workspace pages neither the rail nor ⌘K's destinations list, each named by its own page title, so
+ * the crumb never reads Overview on a page that is not Overview (ISS-1229 r27, judge-77 on /org).
+ */
+const WORKSPACE_OFF_RAIL_PAGES: Record<string, string> = {
+  "/projects": "Projects",
+  "/org": "Organization",
+  "/pair": "Approve a device",
+  "/whats-new": "What's New",
+  "/docs": "Docs",
+};
+
 /** Project pages the rail does not list: the rail lights none of its rows, the crumb names them. */
 const OFF_RAIL_PAGES: Record<string, string> = {
   pipeline: "Pipeline",
@@ -195,11 +207,14 @@ export function buildCrumbs(opts: {
     ];
   }
 
-  if (pathname.startsWith("/whats-new")) return [wsRoot, { label: "What's New" }];
-  if (pathname.startsWith("/docs")) return [wsRoot, { label: "Docs" }];
-  // Resolve the page label from the rail destinations; longest href match wins.
-  const hit = [...WORKSPACE_ITEMS, ...SECONDARY_DESTINATIONS]
-    .filter((it) => it.href !== "/" && pathname.startsWith(it.href))
+  // Resolve the page label from every named workspace page; longest href match wins. A page none
+  // of them names is left unnamed rather than called Overview.
+  const named = [
+    ...[...WORKSPACE_ITEMS, ...SECONDARY_DESTINATIONS].map((it) => ({ href: it.href, label: it.label })),
+    ...Object.entries(WORKSPACE_OFF_RAIL_PAGES).map(([href, label]) => ({ href, label })),
+  ];
+  const hit = named
+    .filter((it) => it.href !== "/" && (pathname === it.href || pathname.startsWith(`${it.href}/`)))
     .sort((a, b) => b.href.length - a.href.length)[0];
-  return hit ? [wsRoot, { label: hit.label }] : [wsRoot, { label: "Overview" }];
+  return hit ? [wsRoot, { label: hit.label }] : [wsRoot];
 }

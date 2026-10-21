@@ -100,4 +100,38 @@ describe("the action queue (ISS-1217)", () => {
       screen.getByRole("button", { name: "Waiting to be released: 1, oldest 2h — open the list" }),
     ).toHaveTextContent("oldest 2h");
   });
+
+  // ISS-1229 r27, judge-77 at 390: the count, the owner and the age kept their widths beside the
+  // sentence, which was squeezed to one word a line. Narrow, the sentence takes the whole row and
+  // the figures wrap under it; from sm up they share one line with the count first.
+  it("gives the sentence the row's width when narrow and puts the figures under it", () => {
+    render(
+      <ActionQueue
+        nowMs={NOW}
+        pulse={pulse({
+          releaseWaiting: {
+            total: 1,
+            shown: [
+              {
+                documentId: "d1",
+                issueRef: "ISS-1",
+                title: "waiting",
+                status: "awaiting_release",
+                projectSlug: "sid-desk",
+                ageSeconds: 7200,
+              },
+            ],
+          },
+        })}
+      />,
+    );
+    const row = screen.getByRole("button", { name: /Waiting to be released/ });
+    expect(row).toHaveClass("flex-wrap");
+    const parts = [...row.children] as HTMLElement[];
+    const sentence = row.querySelector("[data-queue-sentence]") as HTMLElement;
+    expect(parts[0]).toBe(sentence);
+    expect(sentence).toHaveClass("basis-full", "min-w-0", "sm:basis-0", "sm:flex-1");
+    expect(row.querySelector("[data-queue-count]")).toHaveClass("order-1", "sm:order-first");
+    for (const figure of parts.slice(2)) expect(figure).toHaveClass("order-2", "sm:order-none");
+  });
 });

@@ -13,8 +13,9 @@ vi.mock("../hooks", () => ({
     isLoading: false,
     isError: false,
     data: [
-      { userId: "me", email: "lan@example.com", role: "owner", lenses: ["technical"] },
-      { userId: "u2", email: "a-long-address-for-a-member@example.com", role: "member", lenses: [] },
+      { userId: "me", email: "lan@example.com", displayName: "Lan", role: "owner", lenses: ["technical"] },
+      { userId: "u2", email: "a-long-address-for-a-member@example.com", displayName: "Mai Tran", role: "member", lenses: [] },
+      { userId: "u3", email: "unnamed@example.com", displayName: null, role: "member", lenses: [] },
     ],
   }),
   useOrgProjects: () => ({ isLoading: false, isError: false, data: [] }),
@@ -36,7 +37,7 @@ describe("a member's row on the organization page", () => {
   it("wraps its controls under the member rather than squeezing who the member is", () => {
     render(<OrgMembersCard org={{ id: "o1", name: "Northwind", slug: "northwind", role: "owner" } as never} onDeleted={() => {}} />);
     const rows = screen.getAllByTestId("org-member-row");
-    expect(rows).toHaveLength(2);
+    expect(rows).toHaveLength(3);
     for (const row of rows) {
       expect(row.classList.contains("flex-wrap")).toBe(true);
       const who = row.querySelector("[data-testid=org-member-who]");
@@ -52,5 +53,22 @@ describe("a member's row on the organization page", () => {
       expect(row.className).not.toMatch(/\bborder\b|\brounded/);
       expect(row.parentElement?.classList.contains("divide-y")).toBe(true);
     }
+  });
+
+  // Round 27, judge-77: each row showed only the member's address, never the name they gave.
+  it("names each member first, You for the reader, with the address under the name", () => {
+    render(<OrgMembersCard org={{ id: "o1", name: "Northwind", slug: "northwind", role: "owner" } as never} onDeleted={() => {}} />);
+    const read = screen.getAllByTestId("org-member-row").map((row) => [
+      row.querySelector("[data-testid=org-member-name]")?.textContent,
+      row.querySelector("[data-testid=org-member-email]")?.textContent,
+    ]);
+    expect(read).toEqual([
+      ["You", "lan@example.com"],
+      ["Mai Tran", "a-long-address-for-a-member@example.com"],
+      ["Another member", "unnamed@example.com"],
+    ]);
+    const who = screen.getAllByTestId("org-member-who")[1];
+    expect(who.firstElementChild?.getAttribute("data-testid")).toBe("org-member-name");
+    expect(screen.getByRole("button", { name: "Remove Mai Tran, a-long-address-for-a-member@example.com" })).toBeTruthy();
   });
 });

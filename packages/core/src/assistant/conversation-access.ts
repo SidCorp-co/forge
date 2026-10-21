@@ -8,6 +8,7 @@ import { eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import type { Executor } from '../conversations/db-executor.js';
 import { listParticipants } from '../conversations/participants.js';
+import { roomRefusal } from '../conversations/room-refusal.js';
 import { assertConversationReadable, assertConversationWritable } from '../conversations/scope.js';
 import { type ConversationRow, getConversation } from '../conversations/store.js';
 import { db as defaultDb } from '../db/client.js';
@@ -27,10 +28,12 @@ export async function assertInTheRoom(
   if (row.shape !== 'direct') return;
   const people = await listParticipants(row.id, tx);
   if (people.some((p) => p.kind === 'person' && p.userId === userId)) return;
-  throw new HTTPException(403, {
-    message: `conversation ${row.id} is a one-to-one room and you are not one of its people, so there is nothing here for you to read`,
-    cause: { code: 'NOT_IN_THE_ROOM' },
-  });
+  throw roomRefusal(
+    403,
+    'NOT_IN_THE_ROOM',
+    'This room is a one-to-one room and you are not one of its people, so there is nothing here for you to read',
+    { conversationId: row.id },
+  );
 }
 
 /**
@@ -43,12 +46,14 @@ export async function assertMembershipActor(
 ): Promise<void> {
   const people = await listParticipants(row.id, tx);
   if (people.some((p) => p.kind === 'person' && p.userId === userId)) return;
-  throw new HTTPException(403, {
-    message: people.some((p) => p.kind === 'person')
-      ? `conversation ${row.id} is changed by the people in it and you are not one of them`
-      : `conversation ${row.id} records none of its people — it is a ${row.adapter} room, and who is in it is decided where it lives rather than here`,
-    cause: { code: 'NOT_IN_THE_ROOM' },
-  });
+  throw roomRefusal(
+    403,
+    'NOT_IN_THE_ROOM',
+    people.some((p) => p.kind === 'person')
+      ? 'This room is changed by the people in it and you are not one of them'
+      : `This room records none of its people — it is a ${row.adapter} room, and who is in it is decided where it lives rather than here`,
+    { conversationId: row.id },
+  );
 }
 
 /** The room, if this caller may look at it. */

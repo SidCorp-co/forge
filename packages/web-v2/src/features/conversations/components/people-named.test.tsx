@@ -197,3 +197,53 @@ describe("the people list, told apart", () => {
     expect(screen.getByText("Take another member (added 4 Oct 2026) out of this room?")).toBeTruthy();
   });
 });
+
+// ISS-1229 r27: the people list offered to take out the room's last agent, promising "This room will
+// then be about no project", and core refused it every time; so too the last person of a one-to-one
+// room. Neither is offered now, and the control says why in core's own words.
+describe("a member a room cannot lose", () => {
+  const project = { id: "p1", name: "Billing", slug: "billing" };
+  const agent = (id: string) => ({ id, kind: "handle" as const, userId: `a-${id}`, projectId: "p1", label: `ops-${id}`, displayName: null, reachable: true, addedAt: "2026-10-01T09:00:00Z" });
+  const me = { id: "pm", kind: "person" as const, userId: "me", projectId: null, label: null, displayName: "Lan", reachable: null, addedAt: "2026-10-01T09:00:00Z" };
+  const take = (name: string) => screen.getByRole("button", { name }) as HTMLButtonElement;
+
+  it("holds the last agent and the last person of a one-to-one room, saying why", () => {
+    render(
+      <ConversationMembers conversationId="c1" room={{ shape: "direct", scopeProjects: [project], participants: [agent("h1"), me] }} canChange open onClose={() => {}} />,
+    );
+    for (const name of ["Take @ops-h1 out of the room", "Take yourself out of the room"]) {
+      expect(take(name).getAttribute("aria-disabled")).toBe("true");
+      // Focusable, so a keyboard reader reaches the reason; pressing it asks nothing and removes nobody.
+      expect(take(name).disabled).toBe(false);
+      fireEvent.click(take(name));
+    }
+    expect(screen.queryByText(/out of this room\?$/)).toBeNull();
+    expect(take("Take @ops-h1 out of the room").getAttribute("aria-description")).toMatch(/^This room has one agent left/);
+    expect(take("Take yourself out of the room").getAttribute("aria-description")).toMatch(/^This room is a one-to-one room with one person left/);
+  });
+
+  it("tells a keyboard reader why, once the held control takes focus", () => {
+    render(
+      <ConversationMembers conversationId="c1" room={{ shape: "direct", scopeProjects: [project], participants: [agent("h1"), me] }} canChange open onClose={() => {}} />,
+    );
+    expect(screen.queryByText(/^This room has one agent left/)).toBeNull();
+    fireEvent.focus(take("Take @ops-h1 out of the room"));
+    expect(screen.getByText(/^This room has one agent left/)).toBeTruthy();
+  });
+
+  it("offers either where the room keeps another", () => {
+    const other = { ...me, id: "po", userId: "u2", displayName: "Mai Tran" };
+    render(
+      <ConversationMembers conversationId="c1" room={{ shape: "direct", scopeProjects: [project], participants: [agent("h1"), agent("h2"), me, other] }} canChange open onClose={() => {}} />,
+    );
+    expect(take("Take @ops-h1 out of the room").getAttribute("aria-disabled")).toBeNull();
+    expect(take("Take yourself out of the room").getAttribute("aria-disabled")).toBeNull();
+  });
+
+  it("offers the last person of a group room, which its agents still reach", () => {
+    render(
+      <ConversationMembers conversationId="c1" room={{ shape: "group", scopeProjects: [project], participants: [agent("h1"), agent("h2"), me] }} canChange open onClose={() => {}} />,
+    );
+    expect(take("Take yourself out of the room").getAttribute("aria-disabled")).toBeNull();
+  });
+});

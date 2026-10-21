@@ -3,6 +3,9 @@
 // badge: a failure drawn as nothing owed is the silence this repairs.
 
 import { describe, expect, it } from "vitest";
+import { existsSync, readdirSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { bottomTabItems, buildActiveKey, buildBottomActiveKey, buildCrumbs, compactWorkspaceRailItems, OPEN_WORK_COUNTS, openWorkFigure, projectRailItems, workspaceNavItems } from "./nav-model";
 
 const OPEN_WORK_29 = { badge: 29, badgeCounts: OPEN_WORK_COUNTS };
@@ -96,6 +99,42 @@ describe("the project breadcrumb", () => {
   it("keeps the rail's label for a rail page and Dashboard for the project root", () => {
     expect(crumbAt("/projects/shop/issues/abc")).toBe("Issues");
     expect(crumbAt("/projects/shop")).toBe("Dashboard");
+  });
+});
+
+// ISS-1229 r27, judge-77: the organization page's crumb read "Workspace / Overview", because a
+// workspace page the rail does not list fell back to Overview. Every page the workspace serves is named.
+describe("the workspace breadcrumb", () => {
+  const WORKSPACE = join(dirname(fileURLToPath(import.meta.url)), "../../app/(workspace)");
+  const pages = readdirSync(WORKSPACE).filter(
+    (name) => name !== "projects" && existsSync(join(WORKSPACE, name, "page.tsx")),
+  );
+  const crumbsAt = (pathname: string) =>
+    buildCrumbs({ pathname, slug: null, activeKey: "", projectName: null });
+
+  it("names the organization page Organization", () => {
+    expect(crumbsAt("/org").map((c) => c.label)).toEqual(["Workspace", "Organization"]);
+  });
+
+  it.each(pages)("names /%s by a page of its own, never Overview", (page) => {
+    const crumbs = crumbsAt(`/${page}`);
+    expect(crumbs).toHaveLength(2);
+    expect(crumbs.at(-1)?.label).not.toBe("Overview");
+  });
+
+  it("names the projects list Projects and the workspace root Overview", () => {
+    expect(crumbsAt("/projects").at(-1)?.label).toBe("Projects");
+    expect(crumbsAt("/").at(-1)?.label).toBe("Overview");
+  });
+
+  it("lights no rail row on a workspace page the rail does not list, never Overview", () => {
+    for (const path of ["/org", "/pair", "/projects", "/settings"]) expect(buildActiveKey(path, null)).toBe("");
+    expect(buildActiveKey("/", null)).toBe("overview");
+    expect(buildActiveKey("/runners", null)).toBe("runners");
+  });
+
+  it("calls a path no page answers nothing rather than Overview", () => {
+    expect(crumbsAt("/no-such-page").map((c) => c.label)).toEqual(["Workspace"]);
   });
 });
 

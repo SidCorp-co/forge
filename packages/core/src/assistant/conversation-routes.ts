@@ -31,6 +31,7 @@ import {
 } from '../conversations/membership.js';
 import { addHandle, addPerson, listParticipants } from '../conversations/participants.js';
 import { PresenceValidationError, validateRoomPresence } from '../conversations/presence.js';
+import { roomRefusal } from '../conversations/room-refusal.js';
 import { derivedScope } from '../conversations/scope.js';
 import { nameSpeakers } from '../conversations/speaker-names.js';
 import {
@@ -173,10 +174,14 @@ conversationRoutes.route('/', conversationAttachmentRoutes);
 function soleProject(row: ConversationRow, scope: string[]): string {
   const only = scope[0];
   if (scope.length !== 1 || !only) {
-    throw new HTTPException(409, {
-      message: `conversation ${row.id} is about ${scope.length} projects (${scope.join(', ') || 'none'}) and a turn runs under exactly one, so there is no project for this message to be answered under`,
-      cause: { code: 'CONVERSATION_SCOPE_AMBIGUOUS' },
-    });
+    throw roomRefusal(
+      409,
+      'CONVERSATION_SCOPE_AMBIGUOUS',
+      scope.length === 0
+        ? 'This room is about no project and a turn runs under exactly one, so there is no project for this message to be answered under'
+        : `This room is about ${scope.length} projects and a turn runs under exactly one, so there is no project for this message to be answered under`,
+      { conversationId: row.id, projectIds: scope },
+    );
   }
   return only;
 }
@@ -410,10 +415,12 @@ conversationRoutes.post(
 
     const conversation = await writableConversation(id, userId);
     if (conversation.adapter !== 'web') {
-      throw new HTTPException(409, {
-        message: `conversation ${id} is a ${conversation.adapter} room, and the Forge UI speaks only in the rooms it opened — answer there instead`,
-        cause: { code: 'CONVERSATION_NOT_WEB' },
-      });
+      throw roomRefusal(
+        409,
+        'CONVERSATION_NOT_WEB',
+        `This room is a ${conversation.adapter} room, and the Forge UI speaks only in the rooms it opened — answer there instead`,
+        { conversationId: id },
+      );
     }
     const scope = await derivedScope(id);
     const projectId = soleProject(conversation, scope);
@@ -421,26 +428,32 @@ conversationRoutes.post(
     const already = await readMessages(id, 1);
     const settled = conversation.mode !== null || already.length > 0;
     if (mode !== undefined && settled) {
-      throw new HTTPException(409, {
-        message: `conversation ${id} already answers in ${effectiveConversationMode(conversation)} mode; a room's mode is written by its first message and never changes, so open another conversation to talk to the other one`,
-        cause: { code: 'CONVERSATION_MODE_SETTLED' },
-      });
+      throw roomRefusal(
+        409,
+        'CONVERSATION_MODE_SETTLED',
+        `This room already answers in ${effectiveConversationMode(conversation)} mode; a room's mode is written by its first message and never changes, so open another conversation to talk to the other one`,
+        { conversationId: id },
+      );
     }
     const asking = mode ?? effectiveConversationMode(conversation);
     if (asking === 'agent' && !(await conversationAgentDeviceAvailable(projectId))) {
-      throw new HTTPException(409, {
-        message: `no paired device is free to take an Agent turn for project ${projectId}, so this message was not taken in — nothing was answered in Assistant mode in its place`,
-        cause: { code: 'CONVERSATION_AGENT_NO_DEVICE', details: { projectId } },
-      });
+      throw roomRefusal(
+        409,
+        'CONVERSATION_AGENT_NO_DEVICE',
+        "No paired device is free to take an Agent turn for this room's project, so this message was not taken in — nothing was answered in Assistant mode in its place",
+        { conversationId: id, projectId },
+      );
     }
 
     const attached = await listConversationAttachmentsByIds(id, attachmentIds ?? []);
     const foreign = foreignAttachmentIds(attachmentIds ?? [], attached);
     if (foreign.length > 0) {
-      throw new HTTPException(409, {
-        message: `attachment ${foreign.join(', ')} ${foreign.length === 1 ? 'is' : 'are'} not on conversation ${id}, so this message was not taken in — upload the file to this room and send its id, rather than citing one from another`,
-        cause: { code: 'CONVERSATION_ATTACHMENT_FOREIGN', details: { attachmentIds: foreign } },
-      });
+      throw roomRefusal(
+        409,
+        'CONVERSATION_ATTACHMENT_FOREIGN',
+        `${foreign.length === 1 ? 'One attached file is' : `${foreign.length} attached files are`} not in this room, so this message was not taken in — upload the file to this room and send it from here, rather than citing one from another`,
+        { conversationId: id, attachmentIds: foreign },
+      );
     }
 
     let sent: Awaited<ReturnType<typeof sendWebConversationMessage>>;
@@ -461,10 +474,12 @@ conversationRoutes.post(
       });
     } catch (err) {
       if (err instanceof ConversationModeSettledError) {
-        throw new HTTPException(409, {
-          message: `conversation ${id} was opened in ${err.settled} mode by a message that landed first; this one was not taken in — send it again, or open another conversation to talk to the other mode`,
-          cause: { code: 'CONVERSATION_MODE_SETTLED' },
-        });
+        throw roomRefusal(
+          409,
+          'CONVERSATION_MODE_SETTLED',
+          `This room was opened in ${err.settled} mode by a message that landed first; this one was not taken in — send it again, or open another conversation to talk to the other mode`,
+          { conversationId: id },
+        );
       }
       throw err;
     }

@@ -156,12 +156,20 @@ describe('a room whose project was deleted', () => {
 
     expect(await listed(memberId)).toEqual([]);
     const res = await as(memberId, `/api/conversations/${id}`, 'DELETE');
-    const body = (await res.json()) as { code?: string; message?: string };
+    const body = (await res.json()) as {
+      code?: string;
+      message?: string;
+      details?: { conversationId?: string };
+    };
     expect(res.status).toBe(403);
     expect(body.code).toBe('CONVERSATION_NO_SCOPE');
     expect(body.message).toMatch(
       /only the person who opened it or an admin of its organization can reach it/,
     );
+    // Round 27, judge-77: the sentence a person reads says "This room" and never the room's id.
+    expect(body.message).toMatch(/^This room has no agent in it, so it is about no project;/);
+    expect(body.message).not.toContain(id);
+    expect(body.details?.conversationId).toBe(id);
     expect(await roomExists(id)).toBe(true);
   });
 
@@ -178,6 +186,7 @@ describe('a room whose project was deleted', () => {
     expect(res.status).toBe(403);
     expect(body.message).toMatch(/it is a one-to-one room, so only the people in it can reach it/);
     expect(body.message).not.toMatch(/admin/);
+    expect(body.message).not.toContain(id);
     expect(await roomExists(id)).toBe(true);
     expect((await as(creatorId, `/api/conversations/${id}`)).status).toBe(200);
     expect((await as(creatorId, `/api/conversations/${id}`, 'DELETE')).status).toBe(204);
