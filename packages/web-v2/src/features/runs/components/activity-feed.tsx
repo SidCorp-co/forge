@@ -248,6 +248,7 @@ function ActivityRow({ entry }: { entry: ActivityEntry }) {
             {entry.action}
           </p>
         )}
+        {entry.note && <p className="fg-caption break-words text-muted">{entry.note}</p>}
 
         <div className="fg-caption flex flex-wrap items-center gap-x-3 gap-y-1 text-subtle">
           {entry.device ? (

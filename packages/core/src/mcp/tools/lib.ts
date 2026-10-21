@@ -1,5 +1,10 @@
 import { z } from 'zod';
-import { type ActorAgency, actorAgency, type TransitionActor } from '../../issues/actor-agency.js';
+import {
+  type ActorAgency,
+  actorAgency,
+  credentialActor,
+  type TransitionActor,
+} from '../../issues/actor-agency.js';
 import {
   loadVisibleProjectIds,
   maxProjectRole,
@@ -127,10 +132,9 @@ export function principalUserId(principal: McpPrincipal): string {
   return principal.userId;
 }
 
+/** The actor an MCP call writes as: the same one the REST door builds for the same credential. */
 export function principalActor(principal: McpPrincipal): TransitionActor {
-  return principal.agency === 'agent'
-    ? { type: 'device', id: principal.tokenId, ownerId: principal.userId }
-    : { type: 'user', id: principal.userId, agency: principal.agency };
+  return credentialActor(principal);
 }
 
 /**

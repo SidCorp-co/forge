@@ -4,6 +4,7 @@
 // issue, each linking where it names, a sentence where a list is empty, placeholders while reading,
 // a refusal with Retry when the read fails, and the last reading kept when a refresh fails.
 
+import { markUnreachable } from "@/lib/api/transport-failure";
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -233,10 +234,14 @@ describe("the Pipeline page with nothing to show, or no reading", () => {
     expect(within(details as HTMLElement).getByText(`500 INTERNAL — ${planted}`)).toBeInTheDocument();
   });
 
-  it("keeps the last reading when a refresh fails, and says when it was read", () => {
-    query = { ...query, isError: true, error: new Error("blip") };
+  it("keeps the last reading when a refresh fails, and says when it was read and why the refresh failed", () => {
+    const lost = new TypeError("Failed to fetch");
+    markUnreachable(lost);
+    query = { ...query, isError: true, error: lost };
     screenFor();
-    expect(screen.getByRole("status")).toHaveTextContent(/^Could not refresh — showing what was read at \d\d:\d\d\.$/);
+    expect(screen.getByRole("status")).toHaveTextContent(
+      /^Could not refresh — showing what was read at \d\d:\d\d\. Forge could not be reached\. Check your connection, then try again\.$/,
+    );
     expect(screen.getByRole("list", { name: "Live sessions" })).toBeInTheDocument();
   });
 });

@@ -1,5 +1,6 @@
 "use client";
 
+import { couldNotRead } from "@/lib/api/read-failed";
 import { Button, SectionTitle } from "@/design";
 import type { IssueGroup } from "../derive";
 import type { GroupBy, ModuleCounts, ModuleRollupResponse } from "../types";
@@ -7,12 +8,13 @@ import type { GroupBy, ModuleCounts, ModuleRollupResponse } from "../types";
 /** What the module rollup says about one group's module, or why it says nothing. */
 export type ModuleGroupCounts =
   | { state: "loading" }
-  | { state: "unavailable" }
+  | { state: "unavailable"; why?: string }
   | { state: "read"; primary: ModuleCounts; secondaryTotal: number };
 
 interface RollupRead {
   isLoading: boolean;
   isError: boolean;
+  error: unknown;
   data: ModuleRollupResponse | undefined;
 }
 
@@ -21,7 +23,8 @@ interface RollupRead {
  *  that failed, or a module the rollup does not hold, is `unavailable` and said so, never a zero. */
 export function moduleGroupCounts(group: IssueGroup, rollup: RollupRead): ModuleGroupCounts {
   if (rollup.isLoading) return { state: "loading" };
-  if (rollup.isError || !rollup.data) return { state: "unavailable" };
+  if (rollup.isError) return { state: "unavailable", why: couldNotRead("Project counts", rollup.error) };
+  if (!rollup.data) return { state: "unavailable" };
   if (group.moduleId === null || group.moduleId === undefined) {
     return { state: "read", primary: rollup.data.unassigned, secondaryTotal: 0 };
   }
@@ -56,7 +59,7 @@ export function GroupHeading({ group, groupBy, counts, onlyThisModule }: GroupHe
         {counts === undefined || counts.state === "loading"
           ? "Counting the project…"
           : counts.state === "unavailable"
-            ? "Project counts unavailable"
+            ? (counts.why ?? "Project counts unavailable")
             : `${counts.primary.total} in the project · ${counts.primary.open} open${
                 counts.secondaryTotal > 0 ? ` · also tagged on ${counts.secondaryTotal}` : ""
               }`}

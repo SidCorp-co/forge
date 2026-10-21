@@ -21,3 +21,19 @@ describe('the empty-pool notice, counting the runners it names', () => {
     expect(wedgeCopy(false, 0, n, { scope: 'this project' }).summary).toContain(tooOld);
   });
 });
+
+// ISS-1228 r22 (judge-71): two out-of-date runners were told to update "that host", one runner
+// "those hosts". The remedy names as many hosts as the notice counted.
+describe('the out-of-date remedy, agreeing with the runners it counted', () => {
+  it('names that host for one runner', () => {
+    const one = wedgeCopy(false, 0, 1, { scope: 'this project' });
+    expect(one.action).toBe('update the runner on that host');
+    expect(one.nextStep).toMatch(/^Update forge-runner on that host; .* once it reports/);
+  });
+
+  it.each([2, 3])('names those hosts for %i runners', (n) => {
+    const many = wedgeCopy(false, 0, n, { scope: 'this project' });
+    expect(many.action).toBe('update the runner on those hosts');
+    expect(many.nextStep).toMatch(/^Update forge-runner on those hosts; .* once one reports/);
+  });
+});

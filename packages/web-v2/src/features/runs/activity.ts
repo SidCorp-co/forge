@@ -32,6 +32,8 @@ export interface ActivityEntry {
   cause: FailureCause | null;
   /** One-line remedy, on the run's latest attempt alone; null when there is nothing to act on. */
   action: string | null;
+  /** A settled fact that asks nothing of the reader, drawn neutral, apart from a remedy (ISS-1228). */
+  note: string | null;
   tone: ActivityTone;
   /** The box the attempt landed on, by name; null where no box took it. */
   device: string | null;
@@ -149,26 +151,26 @@ function answeredText(a: PipelineRunAttempt, viewerId: string | null): string | 
   return when ? `Answered by ${who}, ${when}.` : `Answered by ${who}.`;
 }
 
-/** A person's remedy, naming no control the drawer lacks. A later attempt nobody cancelled is core's
- *  resend, so it asks nothing here; a cancelled one ended the resend, and the remedy stands. */
-function actionOf(
+/** A remedy naming no control the drawer lacks, or a note: core's uncancelled resend asks nothing. */
+function followUpOf(
   a: PipelineRunAttempt,
   cause: FailureCause | null,
   later: readonly PipelineRunAttempt[],
   viewerId: string | null,
-): string | null {
-  if (a.status === "held") return a.hold && !a.hold.resumesItself ? HELD_STUCK_ACTION : null;
-  if (OPEN_STATUSES.has(a.status) || a.status === "cancelled" || !cause) return null;
+): { action: string | null; note: string | null } {
+  const act = (action: string | null) => ({ action, note: null });
+  if (a.status === "held") return act(a.hold && !a.hold.resumesItself ? HELD_STUCK_ACTION : null);
+  if (OPEN_STATUSES.has(a.status) || a.status === "cancelled" || !cause) return act(null);
   // A question a person answered asks nothing more of anyone: it says who answered, and when.
   const answered = cause === "stopped_on_question" ? answeredText(a, viewerId) : null;
   const resent = later.find((b) => b.status !== "cancelled");
   const resend = resent ? nextAttemptText(resent.status === "held" ? "held" : "sent") : null;
-  if (answered) return resend ? `${answered} ${resend}` : answered;
-  if (resend) return resend;
-  if (cause === "stopped_on_question" && a.questionOn === "issue") return QUESTION_ON_ISSUE;
-  if (!neverTook(a, cause)) return failureReasonAction(cause, null, a.ranAt != null);
+  if (answered) return { action: null, note: resend ? `${answered} ${resend}` : answered };
+  if (resend) return { action: null, note: resend };
+  if (cause === "stopped_on_question" && a.questionOn === "issue") return act(QUESTION_ON_ISSUE);
+  if (!neverTook(a, cause)) return act(failureReasonAction(cause, null, a.ranAt != null));
   const box = boxOf(a);
-  return box ? `Check that ${box} is online and its runner is running.` : "Check that a box bound to this project is online.";
+  return act(box ? `Check that ${box} is online and its runner is running.` : "Check that a box bound to this project is online.");
 }
 
 /** Two attempts collapse into one line only when every readable field agrees, their answers included. */
@@ -207,7 +209,7 @@ export function deriveActivityFeed(
     const position = index + 1;
     const cause = causeOf(a);
     const outcome = outcomeOf(a, cause, viewerId);
-    const action = actionOf(a, cause, list.slice(index + 1), viewerId);
+    const { action, note } = followUpOf(a, cause, list.slice(index + 1), viewerId);
     const sig = signature(a, cause, outcome);
     const previous = entries[entries.length - 1];
 
@@ -218,6 +220,7 @@ export function deriveActivityFeed(
       previous.at = a.finishedAt ?? a.startedAt ?? a.queuedAt ?? previous.at;
       previous.open = OPEN_STATUSES.has(a.status);
       previous.action = action;
+      previous.note = note;
       return;
     }
 
@@ -229,6 +232,7 @@ export function deriveActivityFeed(
       outcome,
       cause,
       action,
+      note,
       tone: toneOf(a, cause),
       device: boxOf(a),
       noBox: noBoxLine(a, cause),

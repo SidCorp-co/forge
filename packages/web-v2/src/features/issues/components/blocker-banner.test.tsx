@@ -5,6 +5,7 @@
 // demand on this deployment, so the paused `BlockerState` is built here and the
 // banner is asserted against it.
 
+import { markUnreachable, UNREACHABLE_SENTENCE } from "@/lib/api/transport-failure";
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -178,8 +179,10 @@ describe("BlockerBanner — a park resumes where its record says (ISS-1310)", ()
 
 // ISS-1228 round 21: what an issue waits on, unread, said "reload the page" and offered nothing.
 describe("BlockerBanner — what the issue waits on could not be read", () => {
-  it("says so and Retry reads it again", () => {
-    const blocker = deriveBlockerState({ status: "needs_info" }, undefined, undefined, { state: "error" });
+  it("says so, and why, and Retry reads it again", () => {
+    const lost = new TypeError("Failed to fetch");
+    markUnreachable(lost);
+    const blocker = deriveBlockerState({ status: "needs_info" }, undefined, undefined, { state: "error", error: lost });
     if (!blocker) throw new Error("a park that could not be read must still say so");
     const retry = vi.fn();
     render(
@@ -194,7 +197,7 @@ describe("BlockerBanner — what the issue waits on could not be read", () => {
         onRetryPark={retry}
       />,
     );
-    expect(screen.getByText("What it waits on could not be read.")).toBeInTheDocument();
+    expect(screen.getByText(`What it waits on could not be read. ${UNREACHABLE_SENTENCE}`)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(retry).toHaveBeenCalledTimes(1);
   });

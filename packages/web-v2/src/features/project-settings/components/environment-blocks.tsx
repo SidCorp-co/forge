@@ -5,6 +5,7 @@
 // environments draft the Shape & release page holds; a connection is named here and edited on
 // Integrations, where its credential lives.
 
+import { couldNotRead } from "@/lib/api/read-failed";
 import Link from "next/link";
 import { useState } from "react";
 import {
@@ -63,7 +64,7 @@ function Connections({
       {q.isLoading ? (
         <p className="fg-caption text-muted">Reading…</p>
       ) : q.isError ? (
-        <p className="fg-caption text-muted">The connections could not be read just now.</p>
+        <p className="fg-caption text-muted">{couldNotRead("The connections", q.error)}</p>
       ) : serving.length === 0 ? (
         <p className="fg-caption text-muted">{none}</p>
       ) : (

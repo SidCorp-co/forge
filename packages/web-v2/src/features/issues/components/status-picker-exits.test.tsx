@@ -5,6 +5,7 @@
 // render a status target: a menu that cannot say which of them it is in is the
 // defect, not merely a missing feature.
 
+import { markUnreachable, UNREACHABLE_SENTENCE } from "@/lib/api/transport-failure";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
@@ -16,6 +17,15 @@ import { IssueLine } from "./issue-row-actions";
 import { StatusEdit } from "./inline-edit-cell";
 import { statusLabel } from "../derive";
 import type { IssueRow, IssueStatus } from "../types";
+
+/** A request the browser never got an answer for, as the client marks it. */
+function lostRequest(): Error {
+  const err = new TypeError("Failed to fetch");
+  markUnreachable(err);
+  return err;
+}
+const UNLOADED_LOST = `Couldn't load status moves. ${UNREACHABLE_SENTENCE}`;
+const UNLOADED_UNSENT = "Couldn't load status moves. Forge answered without the status moves.";
 
 expect.extend(matchers);
 
@@ -142,20 +152,20 @@ describe("StatusEdit, before the exits have answered", () => {
     expect(screen.getByRole("menuitem")).toHaveAttribute("aria-disabled", "true");
   });
 
-  it("says the moves could not be loaded once the read has failed", async () => {
-    get.mockRejectedValue(new Error("offline"));
+  it("says the moves could not be loaded, and why, once the read has failed", async () => {
+    get.mockRejectedValue(lostRequest());
     openPicker("open");
     expect(labels()).toEqual(["Loading status moves…"]);
-    await screen.findByText("Couldn't load status moves");
-    expect(labels()).toEqual(["Couldn't load status moves"]);
+    await screen.findByText(UNLOADED_LOST);
+    expect(labels()).toEqual([UNLOADED_LOST]);
   });
 
   it("treats an answer carrying no statusExits as a failed read", async () => {
     get.mockResolvedValue({ version: 6, runnerCapabilities: { "claude-code": ["drive"] } });
     openPicker("open");
     expect(labels()).toEqual(["Loading status moves…"]);
-    await screen.findByText("Couldn't load status moves");
-    expect(labels()).toEqual(["Couldn't load status moves"]);
+    await screen.findByText(UNLOADED_UNSENT);
+    expect(labels()).toEqual([UNLOADED_UNSENT]);
   });
 });
 
@@ -176,12 +186,12 @@ describe("BulkActionBar", () => {
     expect(describedBy(btn())).toBe("Loading the status moves…");
   });
 
-  it("disables Set status once the read has failed, saying so", async () => {
-    get.mockRejectedValue(new Error("offline"));
+  it("disables Set status once the read has failed, saying so and why", async () => {
+    get.mockRejectedValue(lostRequest());
     const btn = bulk([row({ status: "open" })]);
-    await screen.findByText("Couldn't load the status moves");
+    await screen.findByText(UNLOADED_LOST);
     expect(btn()).toBeDisabled();
-    expect(describedBy(btn())).toBe("Couldn't load the status moves");
+    expect(describedBy(btn())).toBe(UNLOADED_LOST);
   });
 
   it("names the empty intersection differently from an unread read", async () => {
@@ -227,11 +237,11 @@ describe("row overflow menu", () => {
   });
 
   it("offers no status target once the read has failed, and says so", async () => {
-    get.mockRejectedValue(new Error("offline"));
+    get.mockRejectedValue(lostRequest());
     openRowMenu("open");
     expect(statusItems()).toEqual(["Loading status moves…"]);
-    await screen.findByText("Couldn't load status moves");
-    expect(statusItems()).toEqual(["Couldn't load status moves"]);
+    await screen.findByText(UNLOADED_LOST);
+    expect(statusItems()).toEqual([UNLOADED_LOST]);
   });
 
   it("offers the rung's own row once the read has answered", async () => {

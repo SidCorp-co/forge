@@ -222,11 +222,14 @@ export function wedgeCopy(
   if (tooOldCount > 0) {
     return {
       reason: `all ${tooOldCount} capable device(s) run a build too old to claim work`,
-      action: 'update the runner on those hosts',
+      action:
+        tooOldCount === 1 ? 'update the runner on that host' : 'update the runner on those hosts',
       title: `No capacity: every runner for ${scope} is out of date`,
       summary: `Work for ${scope} is paused because ${its(tooOldCount, 'is', 'are')} online but running a build older than this server requires, so every claim is refused. This does NOT clear by itself.`,
       nextStep:
-        'Update forge-runner on those hosts; work resumes on the next tick once they report the new version.',
+        tooOldCount === 1
+          ? 'Update forge-runner on that host; work resumes on the next tick once it reports the new version.'
+          : 'Update forge-runner on those hosts; work resumes on the next tick once one reports the new version.',
     };
   }
   return {

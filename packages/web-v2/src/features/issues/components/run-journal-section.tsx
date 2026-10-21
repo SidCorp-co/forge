@@ -133,9 +133,12 @@ function RunBlock({ run, open, onToggle }: { run: RunView; open: boolean; onTogg
       ? { word: "Started", at: run.startedAt }
       : runSince({ ...run, reading: run.reading, liveJobs: 0, lastSessionBeatAt: null }, now);
   // Each time says which it is: a finished run when it ended and how long it ran, one still going
-  // when its work started, or when it opened while nothing works it yet (ISS-1228).
+  // when its work started, or when it opened while nothing works it yet; one waiting on an answer
+  // has not ended, and says when it stopped to ask (ISS-1228).
   const facts = [
-    run.finishedAt ? `Ended ${formatRelativeTime(run.finishedAt)}` : `${since.word} ${formatRelativeTime(since.at)}`,
+    run.finishedAt
+      ? `${run.reading === "asking" ? "Stopped to ask" : "Ended"} ${formatRelativeTime(run.finishedAt)}`
+      : `${since.word} ${formatRelativeTime(since.at)}`,
     span ? `ran ${span}` : null,
     run.costUsd != null ? formatUsd(run.costUsd) : null,
   ].filter(Boolean);

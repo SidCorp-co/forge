@@ -74,12 +74,12 @@ function ordinaryItems(args: {
   status: IssueStatus;
   grouped: ReturnType<typeof groupedTransitions>;
   isPending: boolean;
-  isError: boolean;
+  failure: string | null;
   onTransition: (toStatus: IssueStatus) => void;
 }): MenuItem[] {
-  const { status, grouped, isPending, isError, onTransition } = args;
+  const { status, grouped, isPending, failure, onTransition } = args;
   if (isPending) return [{ label: "Loading status moves…", disabled: true }];
-  if (isError) return [{ label: "Couldn't load status moves", disabled: true }];
+  if (failure) return [{ label: failure, disabled: true }];
   if (status === "releasing") return [{ label: RELEASING_HAS_NO_MOVE, disabled: true }];
   if (grouped.length === 0) {
     return [{ label: `No move from ${statusLabel(status)} — re-file instead`, disabled: true }];
@@ -110,14 +110,14 @@ interface StatusEditProps {
  * with no exit says so rather than opening empty (ISS-982).
  */
 export function StatusEdit({ status, agentStatus, onTransition, disabled, size, park }: StatusEditProps) {
-  const { exits, isPending, isError } = useStatusExits();
+  const { exits, isPending, isError, failure } = useStatusExits();
   const grouped = groupedTransitions(exits, status);
   const held = heldByAgent(status, agentStatus);
   let items: MenuItem[];
   if (held) {
     items = [{ label: AGENT_HOLDS_MOVE, disabled: true }];
   } else {
-    items = ordinaryItems({ status, grouped, isPending, isError, onTransition });
+    items = ordinaryItems({ status, grouped, isPending, failure, onTransition });
     const mapRead = !isPending && !isError;
     const parkItems = park
       ? parkMenuItems({

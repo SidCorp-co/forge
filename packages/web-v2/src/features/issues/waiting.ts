@@ -85,9 +85,29 @@ export const WAITING_REASON_COPY: Record<
 	runner_too_old: {
 		reason:
 			"Every online runner for this project is running a build too old to claim work.",
-		who: "Update the runner on that host; the step dispatches on the next tick once it reports the new version.",
+		who: "Update the runner on each online host; the step dispatches on the next tick once one reports the new version.",
 	},
 };
+
+/** A `runner_too_old` wait, its remedy counted from the runners core read online, so two
+ *  runners are never told to update "that host" (ISS-1228). */
+function tooOldCopy(details: Record<string, unknown> | undefined): { reason: string; who: string } {
+	const online = details?.online;
+	const fallback = WAITING_REASON_COPY.runner_too_old;
+	if (online === 1) {
+		return {
+			reason: "The one online runner for this project is running a build too old to claim work.",
+			who: "Update the runner on that host; the step dispatches on the next tick once it reports the new version.",
+		};
+	}
+	if (typeof online === "number" && Number.isInteger(online) && online > 1) {
+		return {
+			reason: `${online === 2 ? "Both" : `All ${online}`} online runners for this project are running a build too old to claim work.`,
+			who: `Update the runner on ${online === 2 ? "both hosts" : `all ${online} hosts`}; the step dispatches on the next tick once one reports the new version.`,
+		};
+	}
+	return fallback;
+}
 
 
 export const WAITING_REASON_SHORT: Record<WaitingReason, string> = {
@@ -167,7 +187,9 @@ export function gateView(waitingOn: PipelineHealth["waitingOn"]): GateView | nul
 			? heldCopy(waitingOn.details?.holdReason)
 			: waitingOn.reason === "runner_capacity"
 				? capacityCopy(waitingOn.details)
-				: (WAITING_REASON_COPY[waitingOn.reason] ?? UNKNOWN_GATE_COPY);
+				: waitingOn.reason === "runner_too_old"
+					? tooOldCopy(waitingOn.details)
+					: (WAITING_REASON_COPY[waitingOn.reason] ?? UNKNOWN_GATE_COPY);
 	return {
 		reason: waitingOn.reason,
 		short: WAITING_REASON_SHORT[waitingOn.reason] ?? "Waiting",

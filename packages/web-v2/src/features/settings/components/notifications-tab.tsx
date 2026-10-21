@@ -163,6 +163,7 @@ export function NotificationsTab() {
                   onLoad: () => void feedQ.fetchNextPage(),
                   loading: feedQ.isFetchingNextPage,
                   failed: feedQ.isFetchNextPageError,
+                  why: feedQ.isFetchNextPageError ? formatApiError(feedQ.error) : undefined,
                 }
               : undefined
           }
@@ -474,7 +475,7 @@ function MemberList({ deliveryId, onOpened }: { deliveryId: string; onOpened: ()
   if (membersQ.isError) {
     return (
       <p className="fg-caption py-2">
-        Couldn&apos;t load these.{" "}
+        Couldn&apos;t load these. {formatApiError(membersQ.error)}{" "}
         <button type="button" onClick={() => membersQ.refetch()} className="text-link hover:underline">
           Retry
         </button>

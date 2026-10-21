@@ -83,7 +83,8 @@ describe("deriveActivityFeed", () => {
 
     expect(feed).toHaveLength(2);
     // The earlier attempt core already sent again asks nothing of a person (round 19).
-    expect(feed[0]?.action).toBe("Core already sent it again, so nothing is asked of you.");
+    expect(feed[0]?.note).toBe("Core already sent it again, so nothing is asked of you.");
+    expect(feed[0]?.action).toBeNull();
     expect(feed[1]?.action).toEqual(
       starts[1] ? expect.stringContaining("stopped answering") : "Check that ubuntu5 is online and its runner is running.",
     );
@@ -273,9 +274,9 @@ describe("deriveActivityFeed", () => {
       attempt({ status: "failed", ranAt: null, failureCause: "queue_timeout", deviceName: "box-a" }),
       attempt({ status: "queued", startedAt: null, ranAt: null, finishedAt: null, deviceId: null, deviceName: null }),
     ]);
-    expect(feed.map((e) => [e.verb, e.action])).toEqual([
-      ["Never started", "Core already sent it again, so nothing is asked of you."],
-      ["Queued", null],
+    expect(feed.map((e) => [e.verb, e.action, e.note])).toEqual([
+      ["Never started", null, "Core already sent it again, so nothing is asked of you."],
+      ["Queued", null, null],
     ]);
   });
 
@@ -324,7 +325,7 @@ describe("round 19: held, cancelled, question and control-free remedies", () => 
         hold: { reason: "all_devices_exhausted", resumesItself: true, recheckAt: null, since: null },
       }),
     ]);
-    expect(feed[0]?.action).toBe("Core holds the next try, so nothing is asked of you here.");
+    expect(feed[0]?.note).toBe("Core holds the next try, so nothing is asked of you here.");
     expect([feed[1]?.verb, feed[1]?.outcome, feed[1]?.action]).toEqual([
       "Held",
       "No box could take it. Core sends it again once a box can take it.",
@@ -370,7 +371,7 @@ describe("round 19: held, cancelled, question and control-free remedies", () => 
       attempt({ status: "cancelled", ranAt: null, failureCause: null, cancelledBy: { kind: "person", userId: "u1", name: "Sam" } }),
       attempt(third),
     ]);
-    expect(feed[0]?.action).toBe("Core already sent it again, so nothing is asked of you.");
+    expect(feed[0]?.note).toBe("Core already sent it again, so nothing is asked of you.");
   });
 
   it("says Cancelled by you to the person who cancelled, and their name to anyone else", () => {
@@ -481,10 +482,12 @@ describe("what was answered or cut off reads so", () => {
   it("names who answered a question and when, and asks nothing", () => {
     const at = new Date(Date.now() - 4 * 60_000).toISOString();
     const [mine] = deriveActivityFeed([asked({ questionAnswered: { userId: "u-1", name: "Ann Lee", at } })], undefined, "u-1");
-    expect(mine?.action).toBe("Answered by you, 4m ago.");
+    // ISS-1228 round 22 (criterion 229): a settled note, never the amber remedy.
+    expect(mine?.note).toBe("Answered by you, 4m ago.");
+    expect(mine?.action).toBeNull();
     const [theirs] = deriveActivityFeed([asked({ questionAnswered: { userId: "u-1", name: "Ann Lee", at } })], undefined, "u-2");
-    expect(theirs?.action).toBe("Answered by Ann Lee, 4m ago.");
-    expect(theirs?.action).not.toMatch(/Answer its question/);
+    expect(theirs?.note).toBe("Answered by Ann Lee, 4m ago.");
+    expect(theirs?.action).toBeNull();
   });
 
   it("still sends the reader to a question nobody has answered", () => {
@@ -498,7 +501,7 @@ describe("what was answered or cut off reads so", () => {
       asked({ questionAnswered: { userId: "u-1", name: "Ann Lee", at } }),
       attempt({ status: "queued", ranAt: null, finishedAt: null }),
     ]);
-    expect(first?.action).toBe("Answered by Ann Lee, 1m ago. Core already sent it again, so nothing is asked of you.");
+    expect(first?.note).toBe("Answered by Ann Lee, 1m ago. Core already sent it again, so nothing is asked of you.");
   });
 
   it("never folds two questions with different answers into one line", () => {
@@ -509,13 +512,13 @@ describe("what was answered or cut off reads so", () => {
       asked({ jobId: "j-2", questionAnswered: null }),
     ]);
     expect(thenAsked).toHaveLength(2);
-    expect(thenAsked[0]?.action).toMatch(/^Answered by Ann Lee, 1m ago\./);
+    expect(thenAsked[0]?.note).toMatch(/^Answered by Ann Lee, 1m ago\./);
     expect(thenAsked[1]?.action).toBe("Answer its question on its issue's page.");
     const twoPeople = deriveActivityFeed([
       asked({ jobId: "j-1", questionAnswered: { userId: "u-1", name: "Ann Lee", at } }),
       asked({ jobId: "j-2", questionAnswered: { userId: "u-2", name: "Bo Tran", at: later } }),
     ]);
-    expect(twoPeople.map((e) => e.action?.split(",")[0])).toEqual(["Answered by Ann Lee", "Answered by Bo Tran"]);
+    expect(twoPeople.map((e) => e.note?.split(",")[0])).toEqual(["Answered by Ann Lee", "Answered by Bo Tran"]);
   });
 
   it("shows no box for an attempt no box took, and says so where its outcome does not", () => {

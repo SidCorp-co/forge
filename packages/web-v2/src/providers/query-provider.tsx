@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ApiError } from "@/lib/api/client";
+import { keepFailedReadsFailed } from "@/lib/api/keep-failed-reads";
 
 export const QUERY_MAX_RETRIES = 2;
 
@@ -16,7 +17,7 @@ export function shouldRetryQuery(failureCount: number, error: unknown): boolean 
  * asserts the same object the app runs on rather than a copy of it.
  */
 export function createQueryClient(): QueryClient {
-	return new QueryClient({
+	const client = new QueryClient({
 		defaultOptions: {
 			queries: {
 				staleTime: 60_000,
@@ -26,6 +27,8 @@ export function createQueryClient(): QueryClient {
 			},
 		},
 	});
+	keepFailedReadsFailed(client.getQueryCache());
+	return client;
 }
 
 export function QueryProvider({ children }: { children: React.ReactNode }) {

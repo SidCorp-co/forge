@@ -7,6 +7,7 @@
 //    on this page beside the project's counts from the module rollup — or says it cannot, rather
 //    than printing a zero for a read that failed.
 
+import { ApiError } from "@/lib/api/client";
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
@@ -190,10 +191,10 @@ describe("Group: module", () => {
     expect(headings()).toContain("33 in the project · 5 open");
   });
 
-  it("says the project counts are unavailable when the rollup could not be read, never a zero", () => {
-    rollup = { data: undefined, isLoading: false, isError: true, error: new Error("503") };
+  it("says the project counts could not be read, and why, never a zero", () => {
+    rollup = { data: undefined, isLoading: false, isError: true, error: new ApiError(503, "Service Unavailable") };
     mountAt("?groupBy=module");
-    expect(headings().every((t) => t === "Project counts unavailable")).toBe(true);
+    expect(headings().every((t) => /^Project counts could not be read\. \S/.test(t))).toBe(true);
     expect(screen.queryByText(/in the project/)).toBeNull();
   });
 

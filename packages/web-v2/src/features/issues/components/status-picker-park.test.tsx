@@ -4,6 +4,7 @@
 // exits below are core's own rows for these rungs (`pipeline/state-machine.ts`), so what the fold
 // offers is what the map holds.
 
+import { markUnreachable, UNREACHABLE_SENTENCE } from "@/lib/api/transport-failure";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
@@ -15,6 +16,16 @@ import { statusLabel } from "../derive";
 import type { ParkMenuActions } from "../park";
 import type { IssuePark, IssueStatus } from "../types";
 import { StatusEdit } from "./inline-edit-cell";
+
+/** A request the browser never got an answer for, as the client marks it. */
+function lostRequest(): Error {
+  const err = new TypeError("Failed to fetch");
+  markUnreachable(err);
+  return err;
+}
+const PARK_UNREAD = `Couldn't read what this issue is waiting on, so no resume is offered. ${UNREACHABLE_SENTENCE}`;
+const readingOf = (state: "loading" | "error"): ParkReading =>
+  state === "error" ? { state, error: lostRequest() } : { state };
 
 expect.extend(matchers);
 
@@ -168,24 +179,24 @@ describe("the status control at a park (ISS-1310)", () => {
 
   it.each([
     ["loading", "Reading what this issue is waiting on…"],
-    ["error", "Couldn't read what this issue is waiting on, so no resume is offered"],
+    ["error", PARK_UNREAD],
   ] as const)("while the park is %s it offers no resume and says which", async (state, said) => {
-    await openAt("waiting", { state });
+    await openAt("waiting", readingOf(state));
     expect(labels()).toEqual([said, "Move anyway…"]);
   });
 
   it.each([
     ["loading", "Reading what this issue is waiting on…"],
-    ["error", "Couldn't read what this issue is waiting on, so no resume is offered"],
+    ["error", PARK_UNREAD],
   ] as const)("says the park is %s while the map is unread too, and offers no Move anyway", async (state, said) => {
     get.mockReturnValue(new Promise(() => {}));
-    wrap(<StatusEdit status="waiting" onTransition={vi.fn()} park={{ reading: { state }, actions: actions() }} />);
+    wrap(<StatusEdit status="waiting" onTransition={vi.fn()} park={{ reading: readingOf(state), actions: actions() }} />);
     fireEvent.click(screen.getByLabelText(`Change status (currently ${statusLabel("waiting")})`));
     expect(labels()).toEqual([said, "Loading status moves…"]);
   });
 
   it("offers the recorded rung while the map cannot be read, and says the map failed", async () => {
-    get.mockRejectedValue(new Error("down"));
+    get.mockRejectedValue(lostRequest());
     const acts = actions();
     wrap(
       <StatusEdit
@@ -195,7 +206,9 @@ describe("the status control at a park (ISS-1310)", () => {
       />,
     );
     fireEvent.click(screen.getByLabelText(`Change status (currently ${statusLabel("waiting")})`));
-    await waitFor(() => expect(labels()).toEqual(["Resume at Developed", "Couldn't load status moves"]));
+    await waitFor(() =>
+      expect(labels()).toEqual(["Resume at Developed", `Couldn't load status moves. ${UNREACHABLE_SENTENCE}`]),
+    );
     fireEvent.click(screen.getByText("Resume at Developed"));
     expect(acts.move).toHaveBeenCalledWith("developed");
   });

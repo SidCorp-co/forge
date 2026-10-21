@@ -8,6 +8,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createQueryClient } from "@/providers/query-provider";
+import { markUnreachable, UNREACHABLE_SENTENCE } from "@/lib/api/transport-failure";
 import { IssueDetailScreen } from "./issue-detail-screen";
 
 expect.extend(matchers);
@@ -305,12 +307,14 @@ describe("the issue header's run", () => {
     }
   });
 
-  it("says the run could not be read and offers Retry, with no run word or run action", () => {
+  it("says the run could not be read, and why, and offers Retry, with no run word or run action", () => {
     issueOver = { agentStatus: "completed" };
     const refetch = vi.fn();
-    journal = { data: undefined, isLoading: false, isError: true, error: new Error("boom"), refetch };
+    const lost = new TypeError("Failed to fetch");
+    markUnreachable(lost);
+    journal = { data: undefined, isLoading: false, isError: true, error: lost, refetch };
     renderScreen();
-    expect(within(headerChips()).getByText("The run could not be read.")).toBeInTheDocument();
+    expect(within(headerChips()).getByText(`The run could not be read. ${UNREACHABLE_SENTENCE}`)).toBeInTheDocument();
     expect(within(headerChips()).queryByText("Completed")).toBeNull();
     expect(screen.queryByRole("button", { name: /^Run$/ })).toBeNull();
     const header = screen.getByText("ISS-7").closest(".sticky") as HTMLElement;
@@ -436,5 +440,87 @@ describe("the issue page of work a person owes an answer", () => {
     park = { state: "ready", park: null };
     renderScreen();
     expect(screen.queryByText(WAITING_FOR_INFORMATION)).toBeNull();
+  });
+});
+
+// ISS-1228 round 22 (judge-71, criteria 223–225): a holds read that had never answered went back to
+// pending on every poll, and the page read pending as "holds nothing": the header opened the newest
+// run's session between retries and the failure sentence dropped out.
+describe("which session holds the issue, while it cannot be read", () => {
+  const SESSION_RUN = [
+    { runId: "r1", ordinal: 1, kind: "issue", status: "running", group: null, startedAt: "2026-09-05T14:16:00Z",
+      finishedAt: null, costUsd: null, sessionId: "s-run", attempts: [], reading: "running", runningSince: null },
+  ];
+  let holds: "fail" | "hang" | "answer" = "fail";
+  /** A request in flight that has had no answer yet; the browser gives up on it in its own time. */
+  const pending: Array<() => void> = [];
+  const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+
+  beforeEach(() => {
+    holds = "fail";
+    pending.length = 0;
+    journal = ok(SESSION_RUN);
+    fetchMock.mockImplementation(async (url: string) => {
+      if (!String(url).includes("sessions-and-holds")) return json([]);
+      if (holds === "fail") throw new TypeError("Failed to fetch");
+      if (holds === "hang") {
+        return new Promise<Response>((_, reject) => pending.push(() => reject(new TypeError("Failed to fetch"))));
+      }
+      return json({ readAt: "2026-09-05T14:20:00Z", sessions: [], holds: [
+        { issueId: ISSUE.id, displayId: "ISS-7", title: ISSUE.title, status: "in_progress",
+          holders: [{ by: "session", sessionId: "s-holder", since: "2026-09-05T14:16:00Z" }] },
+      ] });
+    });
+  });
+
+  function renderLive() {
+    const qc = createQueryClient();
+    qc.setDefaultOptions({ queries: { ...qc.getDefaultOptions().queries, retry: false } });
+    render(
+      <QueryClientProvider client={qc}>
+        <IssueDetailScreen projectId="p1" slug="forge-dev" id="ISS-7" />
+      </QueryClientProvider>,
+    );
+    return qc;
+  }
+  const header = () => screen.getByText("ISS-7").closest(".sticky") as HTMLElement;
+  const unread = `Its session could not be read. ${UNREACHABLE_SENTENCE}`;
+  const poll = async (qc: QueryClient) => {
+    await act(async () => {
+      void qc.invalidateQueries({ queryKey: ["sessions-and-holds"] });
+      await new Promise((r) => setTimeout(r, 0));
+    });
+  };
+
+  it("opens no session while the read has not answered", () => {
+    holds = "hang";
+    renderLive();
+    expect(within(header()).queryByRole("link", { name: "Open session" })).toBeNull();
+  });
+
+  it("keeps saying it could not be read, and why, across two polls, and opens no other session", async () => {
+    const qc = renderLive();
+    expect(await within(header()).findByText(unread)).toBeInTheDocument();
+    const stillUnread = () => {
+      expect(within(header()).getByText(unread)).toBeInTheDocument();
+      expect(within(header()).queryByRole("link", { name: "Open session" })).toBeNull();
+    };
+    for (let n = 0; n < 2; n++) {
+      // The poll's request is in flight: the read has still not answered.
+      holds = "hang";
+      await poll(qc);
+      stillUnread();
+      // It fails as well.
+      await act(async () => {
+        pending.shift()?.();
+        await new Promise((r) => setTimeout(r, 0));
+      });
+      stillUnread();
+    }
+    holds = "answer";
+    await poll(qc);
+    const open = await within(header()).findByRole("link", { name: "Open session" });
+    expect(open).toHaveAttribute("href", "/projects/forge-dev/agents/s-holder");
+    expect(within(header()).queryByText(unread)).toBeNull();
   });
 });

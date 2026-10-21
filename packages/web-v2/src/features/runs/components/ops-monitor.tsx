@@ -163,7 +163,7 @@ export function OpsMonitor() {
           <RunsTab
             durations={durations}
             loading={durationsQ.isLoading}
-            isError={durationsQ.isError}
+            error={durationsQ.isError ? durationsQ.error : null}
             onRetry={() => durationsQ.refetch()}
             nameById={nameById}
             onOpen={setRunId}
@@ -371,14 +371,15 @@ function Metric({ label, value }: { label: string; value: string }) {
 function RunsTab({
   durations,
   loading,
-  isError,
+  error,
   onRetry,
   nameById,
   onOpen,
 }: {
   durations: StepDurationRow[] | undefined;
   loading: boolean;
-  isError: boolean;
+  /** Why the runs could not be read, or null where they were. */
+  error: unknown;
   onRetry: () => void;
   nameById: Map<string, string>;
   onOpen: (runId: string) => void;
@@ -390,7 +391,7 @@ function RunsTab({
       </div>
     );
   }
-  if (isError) return <ErrorState message="Failed to load runs." onRetry={onRetry} />;
+  if (error != null) return <ErrorState title="Couldn't load runs" message={formatApiError(error)} onRetry={onRetry} />;
   const rows = durations ?? [];
   if (rows.length === 0) {
     return <EmptyState title="No recent runs" message="No pipeline steps in the last 7 days." />;

@@ -151,6 +151,36 @@ describe("a wait no online runner can take", () => {
   });
 });
 
+// ISS-1228 r22 (judge-71): two out-of-date runners online read "Update the runner on that host".
+describe("a wait every online runner is too old for", () => {
+	const gate = (details: Record<string, unknown>) =>
+		deriveQueuedStep(
+			health({ waitingOn: { reason: "runner_too_old", since: QUEUED_AT, details } }),
+			false,
+		)?.gate;
+
+	it("names that host where one runner is online", () => {
+		const g = gate({ online: 1 });
+		expect(g?.detail).toBe("The one online runner for this project is running a build too old to claim work.");
+		expect(g?.who).toMatch(/^Update the runner on that host;/);
+	});
+
+	it("names both hosts where two are online, never that host", () => {
+		const g = gate({ online: 2 });
+		expect(g?.detail).toBe("Both online runners for this project are running a build too old to claim work.");
+		expect(g?.who).toMatch(/^Update the runner on both hosts;/);
+		expect(g?.who).not.toMatch(/that host/);
+	});
+
+	it("counts three and more", () => {
+		expect(gate({ online: 3 })?.who).toMatch(/^Update the runner on all 3 hosts;/);
+	});
+
+	it("names no single host where core sent no count", () => {
+		expect(gate({})?.who).not.toMatch(/that host/);
+	});
+});
+
 describe("gate tone", () => {
 	it("asks for attention only where the copy asks the reader to act", () => {
 		const needs = (reason: WaitingReason, details: Record<string, unknown> = {}) =>

@@ -11,6 +11,27 @@ export function actorAgency(actor: {
 
 export type DeviceLite = { id: string; ownerId: string };
 
-export type TransitionActor =
-  | { type: 'user'; id: string; agency?: ActorAgency | undefined }
-  | ({ type: 'device' } & DeviceLite);
+/** A person or an agent account acting through a credential; `deviceId` is the box that credential
+ *  was issued to, where it names one (a checkout's workspace credential does). */
+export type UserActor = {
+  type: 'user';
+  id: string;
+  agency?: ActorAgency | undefined;
+  deviceId?: string | undefined;
+};
+
+export type TransitionActor = UserActor | ({ type: 'device' } & DeviceLite);
+
+/** Built the same way by REST and MCP, so a write reads the same whichever door it came through. */
+export function credentialActor(credential: {
+  userId: string;
+  agency: ActorAgency;
+  deviceId: string | null | undefined;
+}): UserActor & { agency: ActorAgency } {
+  return {
+    type: 'user',
+    id: credential.userId,
+    agency: credential.agency,
+    ...(credential.deviceId ? { deviceId: credential.deviceId } : {}),
+  };
+}

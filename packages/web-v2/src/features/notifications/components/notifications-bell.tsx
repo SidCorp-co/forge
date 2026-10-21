@@ -251,6 +251,13 @@ export function NotificationsBell({ open, onClose, anchor }: NotificationsBellPr
           items={notificationItems}
           loading={notificationsQuery.isLoading || pendingQuery.isLoading}
           error={notificationsQuery.isError || pendingQuery.isError}
+          errorWhy={
+            notificationsQuery.isError
+              ? formatApiError(notificationsQuery.error)
+              : pendingQuery.isError
+                ? formatApiError(pendingQuery.error)
+                : undefined
+          }
           onRetry={() => {
             notificationsQuery.refetch();
             pendingQuery.refetch();

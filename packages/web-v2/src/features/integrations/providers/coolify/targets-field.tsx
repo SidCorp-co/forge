@@ -1,5 +1,6 @@
 "use client";
 
+import { formatApiError } from "@/lib/api/error";
 import { Badge, Button, Input, NativeSelect } from "@/design";
 import { useMemo } from "react";
 import { useCoolifyApplications, useCoolifyTargets } from "../../hooks";
@@ -71,7 +72,7 @@ export function CoolifyTargetsField({
       </p>
       {apps.isError && (
         <p className="fg-body-sm text-muted">
-          Could not read the application list from Coolify — enter the resource
+          Could not read the application list from Coolify: {formatApiError(apps.error)} Enter the resource
           UUID by hand, or fix the base URL and token above and try again.
         </p>
       )}

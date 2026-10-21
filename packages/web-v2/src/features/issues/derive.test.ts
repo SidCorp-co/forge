@@ -1,3 +1,4 @@
+import { markUnreachable, UNREACHABLE_SENTENCE } from "@/lib/api/transport-failure";
 import { toAutonomousLabel } from "@forge/contracts/issue-vocabulary";
 import { describe, expect, it } from "vitest";
 import {
@@ -1215,11 +1216,14 @@ describe("deriveBlockerState", () => {
 		});
 
 		// ISS-1228 round 21: a failed read is a sentence and Retry, never "reload the page".
-		it("says the park could not be read and offers Retry", () => {
+		it("says the park could not be read, and why, and offers Retry", () => {
+			const lost = new TypeError("Failed to fetch");
+			markUnreachable(lost);
 			const failed = deriveBlockerState(blockerIssue({ status: "needs_info" }), undefined, undefined, {
 				state: "error",
+				error: lost,
 			});
-			expect(failed?.whoMustAct).toBe("What it waits on could not be read.");
+			expect(failed?.whoMustAct).toBe(`What it waits on could not be read. ${UNREACHABLE_SENTENCE}`);
 			expect(failed?.cta).toEqual({ label: "Retry", kind: "retry-park" });
 		});
 	});

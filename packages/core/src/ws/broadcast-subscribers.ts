@@ -35,6 +35,15 @@ export function registerWsBroadcastSubscribers(bus: HooksBus): void {
     });
   });
 
+  // An answer changes what every open page of its issue reads — "Needs an answer", the Answer action,
+  // the run's word — and nothing else tells a browser it came (ISS-1228 round 22).
+  bus.on('questionAnswered', (p) => {
+    roomManager.publish(projectRoom(p.projectId), {
+      event: 'question.answered',
+      data: { questionId: p.questionId, projectId: p.projectId, issueId: p.issueId },
+    });
+  });
+
   bus.on('scheduleRun', (p) => {
     roomManager.publish(projectRoom(p.projectId), {
       event: 'schedule.run',

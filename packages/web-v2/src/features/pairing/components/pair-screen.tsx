@@ -179,7 +179,7 @@ export function PairScreen() {
                   }
                 >
                   The agents of this organization could not be loaded, so there is nothing to pick
-                  from yet. Approving now pairs the box as you.
+                  from yet. {formatApiError(agentsQ.error)} Approving now pairs the box as you.
                 </Banner>
               )}
               {isOrgAdmin && !agentsQ.isLoading && !agentsQ.isError && agents.length === 0 && (

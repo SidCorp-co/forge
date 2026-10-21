@@ -191,6 +191,7 @@ export function IntegrationsScreen() {
         {projectsQ.isError ? (
           <p className="pb-10 text-center text-sm text-muted" data-testid="add-connection">
             The projects in {scopeName} could not be read, so none is offered to add a connection in.{" "}
+            {formatApiError(projectsQ.error)}{" "}
             <button type="button" className={ADD_LINK} onClick={() => projectsQ.refetch()}>
               Read them again
             </button>
