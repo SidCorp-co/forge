@@ -2,8 +2,8 @@ import { eq } from 'drizzle-orm';
 import type { Tx } from '../../db/client.js';
 import { issues } from '../../db/schema.js';
 import { requirements } from '../../db/schema-requirements.js';
-import { recordCorrection } from '../../lessons/index.js';
 import { issueDisplayIds } from '../display-ids.js';
+import { keepCorrection } from '../ports.js';
 
 /**
  * A failing verdict said with a reason is a correction a lesson learns from (REQ-50 BC-1), kept in
@@ -27,7 +27,7 @@ export async function keepFailAsCorrection(
     .leftJoin(requirements, eq(requirements.id, issues.requirementId))
     .where(eq(issues.id, input.issue.id));
   const key = (await issueDisplayIds([input.issue.id], tx)).get(input.issue.id) ?? input.issue.id;
-  await recordCorrection(tx, {
+  await keepCorrection(tx, {
     projectId: input.issue.projectId,
     source: 'verdict_failed',
     sourceRef: input.verdictId,

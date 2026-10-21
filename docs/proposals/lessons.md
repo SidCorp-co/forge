@@ -114,10 +114,14 @@ applied once.
 - **Decide.** `POST …/lessons/confusions/:id/decide {resolution, sentence?}` (`suggestions.approve`).
   `keep` moves held → approved. `edit` rewrites the sentence and its entry, then approves. `retire`
   retires the lesson. The time from raise to decision is the BC-8 figure.
-- **Needs you.** The confusion is an owed decision, with both sides and the recommended act as its
-  one click. Needs you is lane A's (`development/needs-you*`, `contracts/needs-you-decisions.ts`). The
-  kind `lesson.confusion` is added there once lane A has landed and been merged into this branch. Until
-  then, the Lessons page leads with the open confusions.
+- **Needs you.** `development/needs-you-lessons.ts:lessonDecisionsFor` folds the lessons into the one
+  Needs you read under topic `lesson`, entity `lesson`: each open confusion is an `answer` decision
+  whose question carries both sides, its answers Keep, Edit as recommended (the raiser's sentence) and
+  Retire through `lesson.confusion`, the raiser's recommendation marked; each proposed lesson is an
+  `approve` decision (`lesson.approve`, `lesson.reject` with a reason); and each retirement proposal is
+  an `approve` decision whose ✓ retires with the rule's own reason (`lesson.retire`) beside Keep
+  (`lesson.keep`). Only a viewer the Lessons read grants the act is offered it. The Lessons page leads
+  with the same open confusions.
 
 ## 5. A repeat becomes a check (BC-6)
 
@@ -145,3 +149,18 @@ It creates `corrections`, `lessons`, `lesson_applications` and `lesson_confusion
 `lessons.status` with the kernel (`forge_guard_status_column`). It seeds the event types
 `mockup.transitioned` and `chat.replied`. The knowledge kind has no database CHECK, so `lesson` needs
 no statement. Every table is new, so no existing row can fail a check.
+
+## Honest costs
+
+- **A gateway call on every chat reply.** Each person's message after an assistant turn is read by
+  the fast model to decide whether it corrects the answer. A busy chat pays one small call per reply,
+  and a missed correction (confidence under 0.7) is never kept.
+- **A steward call every ten minutes per project with unheld corrections.** The grouping is a model
+  judgement; a grouping that reads two corrections as one point proposes a lesson nobody meant, and
+  only the person approving it catches that.
+- **Every prompt grows.** Each approved lesson is one more line in the run preamble, the checkout
+  orientation, the assistant's and the steward's prompts. Retiring unused lessons is the only brake.
+- **A held lesson is absent until someone decides.** A confusion withdraws the lesson from every
+  prompt at once, so the error it fixed can come back while the decision waits in Needs you.
+- **Agents report what they applied.** The `Lessons applied:` line is the agent's own claim; a lesson
+  that shaped an output without being named is never counted, and an unused one may be retired.

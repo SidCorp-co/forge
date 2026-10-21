@@ -74,14 +74,11 @@ function Body({ projectId }: { projectId: string }) {
         {confusions.length === 0 ? (
           <p className="py-2 text-13 text-muted">{t("lessons.confusionsNone")}</p>
         ) : (
-          <>
-            <p className="mb-2 text-13 text-muted">{t("lessons.confusionsLead")}</p>
-            <RowList label={t("lessons.confusions")}>
-              {confusions.map((c) => (
-                <ConfusionItem key={c.id} projectId={projectId} confusion={c} canDecide={canDecide} sentence={sentenceOf(c.lessonKey)} />
-              ))}
-            </RowList>
-          </>
+          <RowList label={t("lessons.confusions")}>
+            {confusions.map((c) => (
+              <ConfusionItem key={c.id} projectId={projectId} confusion={c} canDecide={canDecide} sentence={sentenceOf(c.lessonKey)} />
+            ))}
+          </RowList>
         )}
       </Section>
       <LessonGroup projectId={projectId} lessons={of("proposed")} label={t("lessons.proposed")} none={t("lessons.proposedNone")} testId="lessons-proposed" />

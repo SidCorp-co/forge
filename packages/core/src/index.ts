@@ -71,7 +71,6 @@ import {
   resolvePipelineContext,
 } from './jobs/index.js';
 import { provideKnowledgePorts } from './knowledge/index.js';
-import { provideLessonsPorts } from './lessons/index.js';
 import { provideProjectOrg, provideVisibleProjects } from './lib/authz.js';
 import { provideContractVersionReads } from './lib/contract-versions.js';
 import { provideDataPolicy } from './lib/data-egress.js';
@@ -105,7 +104,7 @@ import {
   unaddressableProjectSlug,
 } from './middleware/route-refs.js';
 import { serverTiming } from './middleware/server-timing.js';
-import { deleteFeedbackMockups, getMockupAs } from './mockups/index.js';
+import { deleteFeedbackMockups } from './mockups/index.js';
 import { emitNotification } from './notifications/index.js';
 import {
   declareOutboxQueues,
@@ -179,11 +178,10 @@ import { seedBuiltinSkills, sweepPolicyLanded } from './skills/index.js';
 import { forgeStandingTool } from './standing/index.js';
 import { provideStandingPorts } from './standing-ports.js';
 import { provideStatusReportsPorts, statusReportShareSource } from './status-reports/index.js';
-import { heldStewardOf, provideStewardPorts } from './steward/index.js';
 import { forgeStewardNoteTool } from './steward-notes/index.js';
+import { provideStewardDomainPorts } from './steward-ports.js';
 import {
   proposeRequirementDuplicate,
-  provideSuggestionsPorts,
   redactFeedbackSuggestions,
   staleOnTargetRevised,
   writeKeptPreview,
@@ -194,7 +192,7 @@ import { readServing } from './whats-new/index.js';
 import { registerWidgetConversationAdapter, widgetCors } from './widget/index.js';
 import { provideWorkPorts } from './work-ports.js';
 import { workflowDesign, workflowFlowsOf } from './workflows/index.js';
-import { attachWs, closeWs, publishEphemeralFrame, wakeMastersForSteward } from './ws/index.js';
+import { attachWs, closeWs, publishEphemeralFrame } from './ws/index.js';
 
 provideProjectOrg(findProjectOrgId);
 provideRouteRefSources({
@@ -362,16 +360,7 @@ provideAgreementReplay((request) => Promise.resolve(app.fetch(request)));
 // a script's ctx.forge.get is answered by this app in-process, under its owner's read token (REQ-37)
 provideSandboxPorts({ restFetch: (request) => Promise.resolve(app.fetch(request)) });
 // a steward act calls each door through this app as the project's steward account (REQ-48 BC-12)
-provideStewardPorts({
-  doorFetch: (request) => Promise.resolve(app.fetch(request)),
-  wakeMasters: wakeMastersForSteward,
-});
-provideSuggestionsPorts({ stewardOf: heldStewardOf });
-// a mockup's correction is read through the mockup's own view, never its table (REQ-50 BC-1)
-provideLessonsPorts({
-  mockupOf: async (projectId, mockupId, viewer) =>
-    (await getMockupAs(viewer, projectId, mockupId)) ?? null,
-});
+provideStewardDomainPorts((request) => Promise.resolve(app.fetch(request)));
 
 app.use(
   '*',

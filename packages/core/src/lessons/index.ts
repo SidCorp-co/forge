@@ -16,4 +16,5 @@ export {
   recordCheckIssue,
 } from './gather.js';
 export { provideLessonsPorts } from './ports.js';
+export { readLessons } from './read.js';
 export { lessonRoutes } from './routes.js';

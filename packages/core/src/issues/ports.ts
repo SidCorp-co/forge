@@ -334,6 +334,22 @@ interface IssuePorts {
     actor: Actor;
     reason: Record<string, unknown>;
   }) => Promise<{ startedAt: string }>;
+  /**
+   * Keep a failing verdict's reason as a correction a lesson learns from, in the verdict's own
+   * transaction (`lessons/index.ts:recordCorrection`, REQ-50 BC-1); a domain the kernel may not import.
+   */
+  keepCorrection: (
+    tx: Tx,
+    input: {
+      projectId: string;
+      source: 'verdict_failed';
+      sourceRef: string;
+      item: { kind: 'issue'; id: string; key: string; title: string | null };
+      areaId: string | null;
+      reason: string;
+      by: { userId: string | null; agency: 'human' | 'agent' };
+    },
+  ) => Promise<string | null>;
   /** Why a fast-lane merge check may not stand for this issue, or null (`fast-lane/index.ts`, REQ-39 BC-7). */
   fastLaneMergeRefusal: (args: {
     issueId: string;
@@ -361,6 +377,7 @@ export const openHumanQuestionIdsOn = port('openHumanQuestionIdsOn');
 export const answeredSince = port('answeredSince');
 export const answeredSinceSql = port('answeredSinceSql');
 export const postIssueNotice = port('postIssueNotice');
+export const keepCorrection = port('keepCorrection');
 
 export const readProjectDocument = port('readProjectDocument');
 export const readJudge = port('readJudge');

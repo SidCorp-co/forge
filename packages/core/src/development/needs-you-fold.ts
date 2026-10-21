@@ -1,6 +1,7 @@
 /**
  * The approvals folded into the one Needs you read (REQ-48 BC-11): every suggestion an agent proposed
- * that the viewer may decide, every mockup they may accept and every preview they may approve, each a
+ * that the viewer may decide, every mockup they may accept, every preview they may approve and every
+ * lesson decision they may take (`needs-you-lessons.ts`), each a
  * decision with the act that decides it where it is listed and what it proposes (`needs-you-proposals.ts`).
  * There is no second approvals read: the page, the Dashboard, /attention, the nav and the chat count
  * this one. Each is checked against the decision schema on its own, so a record no decision can be
@@ -33,6 +34,7 @@ import { type ApprovablePreview, approvablePreviewsOf } from '../previews/read.j
 import { type WaitingSuggestion, waitingSuggestionsFor } from '../suggestions/waiting-read.js';
 import type { NeedsYouViewer, readAttention } from './needs-you.js';
 import { clip, type DecisionBody, filled } from './needs-you-decision-builders.js';
+import { lessonDecisionsFor } from './needs-you-lessons.js';
 import {
   type BrokenDown,
   breakdownProposal,
@@ -317,10 +319,11 @@ export async function foldedDecisions(
   access: ProjectAccess,
   attention: Attention,
 ): Promise<Folded> {
-  const [suggestions, mockups, previews] = await Promise.all([
+  const [suggestions, mockups, previews, lessons] = await Promise.all([
     waitingSuggestionsFor(projectId, (p) => holds(access, p)),
     waitingMockupsAs(projectId, { userId: viewer.userId, agency: viewer.agency }),
     holds(access, 'previews.approve') ? approvablePreviewsOf(projectId) : [],
+    lessonDecisionsFor(projectId, viewer.userId),
   ]);
   const items = await triagedItemsOf(
     suggestions.filter((s) => s.kind === 'feedback_triage').map((s) => s.target.id),
@@ -337,5 +340,6 @@ export async function foldedDecisions(
   }
   for (const m of mockups) checked(m.key, () => mockupDecision(projectId, m), out, projectId);
   for (const p of previews) checked(p.issueKey, () => previewDecision(p), out, projectId);
+  for (const l of lessons) checked(l.key, l.build, out, projectId);
   return out;
 }

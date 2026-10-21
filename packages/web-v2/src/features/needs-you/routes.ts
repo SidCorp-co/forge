@@ -3,6 +3,7 @@ import { scheduleHref } from "@/lib/routes/automation";
 import { contractHref } from "@/lib/routes/contracts";
 import { feedbackHref } from "@/lib/routes/feedback";
 import { issueHref, issuesHref } from "@/lib/routes/issues";
+import { lessonsHref } from "@/lib/routes/lessons";
 import { releaseHref } from "@/lib/routes/releases";
 import { requirementHref } from "@/lib/routes/requirements";
 import { workflowHref } from "@/lib/routes/workflows";
@@ -25,6 +26,8 @@ export function needsYouHref(slug: string, n: Pick<NeedsYouItem, "entity" | "key
       return scheduleHref(slug, n.key);
     case "question":
       return questionHref(slug, n.key);
+    case "lesson":
+      return lessonsHref(slug);
     case "workflow":
       // core words a revision waiting on the viewer as `you`, and a health marker owed as a person: the first is decided on the revisions tab
       return n.waitingOn?.kind === "you" ? `${workflowHref(slug, n.key)}?tab=revisions` : workflowHref(slug, n.key);
@@ -32,7 +35,7 @@ export function needsYouHref(slug: string, n: Pick<NeedsYouItem, "entity" | "key
 }
 
 /** The page a decision opens on, or null where no record holds it. */
-export function decisionHref(slug: string, opens: { kind: "issue" | "requirement" | "feedback" | "workflow" | "release"; key: string } | null): string | null {
+export function decisionHref(slug: string, opens: { kind: "issue" | "requirement" | "feedback" | "workflow" | "release" | "lesson"; key: string } | null): string | null {
   if (!opens) return null;
   switch (opens.kind) {
     case "issue":
@@ -45,6 +48,8 @@ export function decisionHref(slug: string, opens: { kind: "issue" | "requirement
       return workflowHref(slug, opens.key);
     case "release":
       return releaseHref(slug, opens.key);
+    case "lesson":
+      return lessonsHref(slug);
   }
 }
 

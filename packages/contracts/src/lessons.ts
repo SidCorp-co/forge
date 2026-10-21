@@ -125,7 +125,8 @@ export const LESSON_LIMITS = {
 export const lessonKey = (number: number) => `L-${number}`;
 
 /** The line an output ends with when lessons shaped it: `Lessons applied: L-3, L-7`. */
-const APPLIED_LINE = /^\s*Lessons applied:\s*(L-\d+(?:\s*,\s*L-\d+)*)\s*\.?\s*$/im;
+const APPLIED_LINE =
+	/^\s*Lessons applied:\s*(L-\d+(?:\s*,\s*L-\d+)*)\s*\.?\s*$/im;
 
 /** The lesson numbers an output's `Lessons applied:` line names, in order, once each. */
 export function appliedLessonsIn(text: string): number[] {
@@ -179,10 +180,7 @@ const SCOPE_SHAPE =
 export const proposeLessonRequestSchema = z.strictObject({
 	sentence,
 	scope: lessonScopeSchema,
-	corrections: z
-		.array(z.uuid())
-		.min(1)
-		.max(LESSON_LIMITS.correctionsPerLesson),
+	corrections: z.array(z.uuid()).min(1).max(LESSON_LIMITS.correctionsPerLesson),
 	supersedes: lessonNumber.optional(),
 });
 export type ProposeLessonRequest = z.infer<typeof proposeLessonRequestSchema>;
@@ -202,10 +200,7 @@ export const LESSON_REASON_SHAPE = "{ reason }";
 
 /** `POST /api/projects/:id/lessons/applied`: the lessons one output applied. */
 export const recordAppliedRequestSchema = z.strictObject({
-	lessons: z
-		.array(lessonNumber)
-		.min(1)
-		.max(LESSON_LIMITS.appliedPerOutput),
+	lessons: z.array(lessonNumber).min(1).max(LESSON_LIMITS.appliedPerOutput),
 	output: z.strictObject({
 		kind: z.enum(LESSON_OUTPUT_KINDS),
 		ref: z.string().trim().min(1).max(200),
@@ -241,7 +236,9 @@ export const decideConfusionRequestSchema = z.strictObject({
 	resolution: z.enum(LESSON_RESOLUTIONS),
 	sentence: sentence.optional(),
 });
-export type DecideConfusionRequest = z.infer<typeof decideConfusionRequestSchema>;
+export type DecideConfusionRequest = z.infer<
+	typeof decideConfusionRequestSchema
+>;
 export const DECIDE_CONFUSION_SHAPE =
 	"{ resolution: keep | edit | retire, sentence? (edit needs one) }";
 

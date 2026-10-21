@@ -39,6 +39,7 @@ import { type ConversationMode, liveRenderBlocks, type OutboxMessage } from "../
 import { ComposerFooter, RoomEmpty, RoomHeader, RoomLoading, RoomUnreadable, useComposerPlaceholder } from "./conversation-room-parts";
 import { ConversationMembers } from "./conversation-members";
 import { ConversationThread } from "./conversation-thread";
+import { EntryAfter } from "./entry-after";
 import { ScopeNotice } from "./scope-notice";
 import { seesDetail, useUiActions, useUiSnapshot } from "../ui-actions/use-ui-actions";
 import { useActOffers } from "../act-offers";
@@ -162,16 +163,10 @@ export function ConversationChat({
   const acts = useActOffers({ messages, progress });
   const { cardsFor } = ui;
   const { offersFor } = acts;
-  const afterEntry = (entryId: string) => {
-    const cards = cardsFor(entryId);
-    const offers = offersFor(entryId);
-    return cards || offers ? (
-      <>
-        {cards}
-        {offers}
-      </>
-    ) : null;
-  };
+  const lessonsOf = projectId && resolvedId ? { projectId, conversationId: resolvedId } : null;
+  const afterEntry = (entryId: string) => (
+    <EntryAfter entryId={entryId} lessonsOf={lessonsOf} cards={cardsFor(entryId)} offers={offersFor(entryId)} />
+  );
 
   const settledMode: ConversationMode | null = settled ? (roomQ.data?.mode ?? "assistant") : null;
   const draftOfferQ = useDraftAgentMode(projectId, !resolvedId);
@@ -221,7 +216,7 @@ export function ConversationChat({
         scroll={{ scrollRef, bottomRef, onScroll, newOutput, toBottom }}
         empty={messages.length === 0 && outbox.length === 0}
         data={{ projectId, projectSlug: projectRow?.slug, conversationId: resolvedId ?? "", kind: roomQ.data?.kind ?? null, questionnaires: roomQ.data?.questionnaires ?? [] }}
-        thread={{ projectId, projectSlug: projectRow?.slug, conversationId: resolvedId, atBottom, messages, windows: roomQ.data?.windows ?? [], outbox, progress, withdrawn, agentTurns: roomQ.data?.agentTurns ?? [], onRetry: retry, afterEntry }}
+        thread={{ projectId, projectSlug: projectRow?.slug, atBottom, messages, windows: roomQ.data?.windows ?? [], outbox, progress, withdrawn, agentTurns: roomQ.data?.agentTurns ?? [], onRetry: retry, afterEntry }}
         stage={stage ? <TurnStage stage={stage} detail={doing} /> : null}
       />
 

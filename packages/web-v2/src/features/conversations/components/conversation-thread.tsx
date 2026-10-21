@@ -24,7 +24,6 @@ import { executionFactsIn, runFactsIn, VisualBlockProvider } from "@/features/vi
 import { type MessageEntry } from "@/features/session";
 import { TurnDecisions } from "../turn-decisions";
 import { TurnReproduce } from "@/features/previews";
-import { ChatLessonLine } from "@/features/lessons";
 import { type AgentTurn, type ConversationMessage, type ConversationWindow, type ConversationProgressEntry, type OutboxMessage, silenceDetailSentence, silenceSentence, threadEntries, turnFailureOf, undeliveredReplyOf } from "../types";
 import { AgentTurnEntry, LiveTurn } from "./thread-turns";
 import { AssistantTurn, ReplacedDraftNote } from "./assistant-turn";
@@ -255,7 +254,6 @@ function Unsent({ item, onRetry }: { item: OutboxMessage; onRetry?: (id: string)
 export function ConversationThread({
   projectId,
   projectSlug,
-  conversationId,
   messages,
   windows,
   outbox = [],
@@ -270,8 +268,6 @@ export function ConversationThread({
   projectId?: string | undefined;
   /** The project's slug, for the links a report block's refs open; plain text until it is known. */
   projectSlug?: string | undefined;
-  /** The room, so each message draws the lessons it corrected or applied (REQ-50); none without it. */
-  conversationId?: string | undefined;
   messages: ConversationMessage[];
   windows: ConversationWindow[];
   /** What this browser has accepted and the server has not confirmed (ISS-1031). */
@@ -315,7 +311,6 @@ export function ConversationThread({
                 firstDesigns={entry.message.id === firstDesignsId}
                 share={projectId ? { projectId, projectSlug } : undefined}
               />
-              {projectId && conversationId ? <ChatLessonLine projectId={projectId} conversationId={conversationId} messageId={entry.message.id} /> : null}
               {afterEntry?.(entry.message.id)}
               <TurnDecisions blocks={entry.message.blocks} slug={projectSlug} />
               <TurnReproduce blocks={entry.message.blocks} slug={projectSlug} />

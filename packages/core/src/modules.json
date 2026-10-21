@@ -281,6 +281,7 @@
       "reads": [
         "agentSessions",
         "contractVersions",
+        "corrections",
         "devices",
         "feedback",
         "issueLabels",

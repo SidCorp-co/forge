@@ -59,7 +59,7 @@ export async function classifyChatReply(
 
 /** Whether a verdict keeps the reply as a correction. */
 export const keepsCorrection = (v: ChatVerdict | null): v is ChatVerdict =>
-  v !== null && v.correction && v.confidence >= CHAT_CORRECTION_THRESHOLD && v.what.trim() !== '';
+  v?.correction === true && v.confidence >= CHAT_CORRECTION_THRESHOLD && v.what.trim() !== '';
 
 export async function correctionFromChat(p: {
   projectId: string;

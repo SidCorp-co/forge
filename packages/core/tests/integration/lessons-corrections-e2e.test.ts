@@ -124,7 +124,7 @@ beforeEach(() => {
   classify.calls = 0;
 });
 
-describe('a correction is kept, linked to its item, from each source (BC-1)', () => {
+describe('a correction is kept, linked to its item, from each person return (BC-1)', () => {
   it('a suggestion rejected with a reason', async () => {
     const req = await agreedRequirement('Boards keep their cards');
     const made = ok(
@@ -216,7 +216,9 @@ describe('a correction is kept, linked to its item, from each source (BC-1)', ()
       }),
     ]);
   });
+});
 
+describe('a correction is kept from a verdict, a mockup and a chat reply, and never doubled (BC-1)', () => {
   it('a failing verdict with a reason, and not a passing one', async () => {
     const unplant = plantLiveBuild(LIVE);
     try {

@@ -1,13 +1,14 @@
 // A project chat's lesson lines witnessed as drawn (REQ-50 BC-1, BC-4), at phone and desktop width,
 // light and dark: under the person's reply the classifier kept, "Kept as a correction · Not a
 // correction"; under the answer, the lessons it applied, each with "Wrongly applied". Mounted inside
-// the real thread, so the lines sit where a reader meets them.
+// the real thread through the chat's own after-entry composition, so the lines sit where a reader meets them.
 //
 //   pnpm --filter web-v2 witness witness/lessons-chat.witness.tsx --out <dir>
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createRoot } from "react-dom/client";
 import { ConversationThread } from "@/features/conversations/components/conversation-thread";
+import { EntryAfter } from "@/features/conversations/components/entry-after";
 import type { ConversationMessage } from "@/features/conversations/types";
 import "./entry";
 import { stubLessonsCore } from "./lessons.fixture";
@@ -33,7 +34,13 @@ createRoot(document.getElementById("root") as HTMLElement).render(
     <QueryClientProvider client={client}>
       <div className="min-h-screen bg-app p-4" data-testid="witness-chat">
         <div className="mx-auto max-w-3xl">
-          <ConversationThread projectId="p1" projectSlug="forge-dev" conversationId="cv1" messages={MESSAGES} windows={[]} />
+          <ConversationThread
+            projectId="p1"
+            projectSlug="forge-dev"
+            messages={MESSAGES}
+            windows={[]}
+            afterEntry={(id) => <EntryAfter entryId={id} lessonsOf={{ projectId: "p1", conversationId: "cv1" }} cards={null} offers={null} />}
+          />
         </div>
       </div>
     </QueryClientProvider>

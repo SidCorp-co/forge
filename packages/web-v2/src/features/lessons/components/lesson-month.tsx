@@ -44,7 +44,7 @@ export function LessonMonth({ projectId, now: given }: { projectId: string; now?
           <StatRow cells={5} cellMin={120}>
             <StatCell label={t("lessons.month.corrections")} value={read.corrections.total} />
             <StatCell label={t("lessons.month.approved")} value={read.lessonsApproved} />
-            <StatCell label={t("lessons.month.repeats")} value={read.repeats} hint={t("lessons.month.repeatsHint")} testId="lessons-month-repeats" />
+            <StatCell label={t("lessons.month.repeats")} value={read.repeats} testId="lessons-month-repeats" />
             <StatCell label={t("lessons.month.raised")} value={read.confusions.raised} hint={`${t("lessons.month.open")}: ${read.confusions.open}`} />
             <StatCell label={t("lessons.month.decide")} value={meanHours ?? "–"} />
           </StatRow>
