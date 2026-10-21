@@ -94,7 +94,7 @@ class RocketChatConnectionManager {
     this.started = true;
     this.startReloadListener();
     registerConversationTransport(rocketChatConversationPorts);
-    this.stopQuestionDrain = startQuestionDrainLoop(() => this.started);
+    this.stopQuestionDrain = startQuestionDrainLoop(() => this.started, hooks);
     this.stopWindowDrain = startWindowDrainLoop(
       () => this.started,
       () => drainConversationWindows(this.conns, webBaseUrl()),

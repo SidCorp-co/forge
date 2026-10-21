@@ -164,8 +164,11 @@ export async function clearSettledQuestionNotices(): Promise<number> {
   return cleared;
 }
 
-/** An answered question's notice ends with the answer, not on the next drain. */
+/** An answered question's notice ends with the answer, not on the next drain; once per bus. */
+const clearingOn = new WeakSet<HooksBus>();
 export function registerQuestionNoticeClear(bus: HooksBus): void {
+  if (clearingOn.has(bus)) return;
+  clearingOn.add(bus);
   bus.on(
     'questionAnswered',
     async (p) => {
@@ -463,7 +466,8 @@ const DRAIN_INTERVAL_MS = 30_000;
 /**
  * Run the drain on a timer until the returned stopper is called.
  */
-export function startQuestionDrainLoop(alive: () => boolean): () => void {
+export function startQuestionDrainLoop(alive: () => boolean, bus: HooksBus): () => void {
+  registerQuestionNoticeClear(bus);
   let running = false;
   const tick = (): void => {
     if (running || !alive()) return;

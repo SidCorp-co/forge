@@ -3198,7 +3198,7 @@
 - **Test connection shows its answer alone**, without "Test failed: error" before it, and says what the address answered instead of claiming Coolify did. (ISS-1421)
 - **A failed read stays failed while live updates arrive.** A live update made it look current again, offering the session it last read; it now says the read failed, with Retry, until a read succeeds. (ISS-1228)
 - **The Pipeline page gives a refusal's own sentence**, as the issue page does, instead of asking you to reload. (ISS-1228)
-- **Losing the connection no longer signs you out.** A page opened while Forge could not be reached says so, with Retry, and tries again once the connection is back; only Forge saying you are signed out leads to Sign in. (ISS-1228)
+- **Losing the connection no longer signs you out.** A page opened while Forge could not be reached says so, with Retry, and tries again once the connection is back; only Forge saying you are signed out does. (ISS-1228)
 - **A question on an issue no longer warns it cannot be delivered when the project has no chat room**: its issue page delivers it. Any notice about a question clears once it is answered, withdrawn or expires. (ISS-1228)
 - **The no-capacity notice counts the runners online when you read it**, so it no longer says both are online after one went offline. (ISS-1228)
 - **A read that failed keeps saying so until it answers.** Retrying blanked it to loading, so the issue header offered a session as if nothing held it; it now keeps its sentence and Retry, and opens no session meanwhile. (ISS-1228)

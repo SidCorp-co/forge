@@ -77,7 +77,6 @@ import {
   startRocketChatManager,
   stopRocketChatManager,
 } from './integrations/rocketchat/connection-manager.js';
-import { registerQuestionNoticeClear } from './integrations/rocketchat/question-delivery.js';
 import { integrationConnectionsRoutes, integrationsRoutes } from './integrations/routes.js';
 import { assertVaultBootSafety } from './integrations/vault.js';
 import { issueActivityRoutes, projectActivityRoutes } from './issues/activity-routes.js';
@@ -477,7 +476,6 @@ if (isMain) {
   registerPipelineOrchestrator(hooks);
   registerAnswerResume(hooks);
   registerCommentMirror(hooks);
-  registerQuestionNoticeClear(hooks);
   registerPhaseJournalClose(hooks);
   registerPausedRunWedgeResolve(hooks);
   registerOutboxWorker();
