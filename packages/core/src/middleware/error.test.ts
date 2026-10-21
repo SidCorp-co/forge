@@ -218,13 +218,24 @@ describe('error middleware', () => {
     });
   });
 
-  it('answers "Invalid input" over flattened errors as a sentence per field, details kept', async () => {
+  it('answers "Invalid input" over flattened errors as a sentence per field, details in the same words', async () => {
     const res = await makeApp().request('/invalid-input');
     expect(await res.json()).toEqual({
       code: 'BAD_REQUEST',
       message: 'The field id is not a valid UUID.',
-      details: { formErrors: [], fieldErrors: { id: ['Invalid UUID'] } },
+      details: { formErrors: [], fieldErrors: { id: ['The field id is not a valid UUID.'] } },
     });
+  });
+
+  // ISS-1421 r19 — judge-79: the message quoted "abc" while details.fieldErrors still said NaN.
+  it("carries in details.fieldErrors the message's words for a number sent a word, never NaN", async () => {
+    const res = await makeApp().request('/flattened-number?limit=abc');
+    const body = (await res.json()) as { message: string; details: unknown };
+    expect(body.details).toEqual({
+      formErrors: [],
+      fieldErrors: { limit: ['The field limit takes a number, not "abc".'] },
+    });
+    expect(JSON.stringify(body)).not.toMatch(/NaN|Invalid input/);
   });
 
   it('generic thrown Error → 500 with INTERNAL_ERROR code, logs at error', async () => {

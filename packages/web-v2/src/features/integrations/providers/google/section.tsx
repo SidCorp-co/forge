@@ -201,7 +201,7 @@ function GoogleBindingPanel({
       {showRotate && !orgLocked && (
         <Field
           label="New service-account key"
-          hint="Paste the whole JSON key file Google issued. The old key keeps working for 24 hours so in-flight work is not stranded."
+          hint="Paste the whole JSON key file Google issued. Forge keeps the previous key for 24 hours and signs in with it wherever Google refuses the new one."
         >
           <Textarea
             rows={5}

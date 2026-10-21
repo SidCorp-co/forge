@@ -1,7 +1,7 @@
 import { redactedMessage, redactQueryParams } from '@forge/observability';
 import type { Context, ErrorHandler, NotFoundHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { refusalMessage } from '../lib/refusal-sentence.js';
+import { refusalMessage, wordedDetails } from '../lib/refusal-sentence.js';
 import { getLogger } from '../logger.js';
 import {
   holdServerTags,
@@ -126,7 +126,7 @@ export const errorHandler: ErrorHandler<{ Variables: RequestIdVars }> = async (e
           ? refusalMessage(err.message, details, sent)
           : err.message || statusToCode(status),
     };
-    if (details !== undefined) body.details = details;
+    if (details !== undefined) body.details = status < 500 ? wordedDetails(details, sent) : details;
 
     const logPayload = { status, code: body.code, err: redactedMessage(err) };
     if (status >= 500) log.error(logPayload, 'http.error');

@@ -1,7 +1,11 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { fieldsPolicy, refusesItself, unknownFields } from '../../lib/unknown-fields.js';
-import { refusingUnknownFields, type ValidatorDeclaration } from '../declare/validator.js';
+import {
+  queryIssues,
+  refusingUnknownFields,
+  type ValidatorDeclaration,
+} from '../declare/validator.js';
 import { type RouteEntry, type RouteSource, readRoutes } from '../document/registry.js';
 
 /**
@@ -76,6 +80,47 @@ describe('a JSON body field no schema names', () => {
     expect(parsed.error?.issues).toContainEqual(
       expect.objectContaining({ code: 'unrecognized_keys', keys: ['colour'] }),
     );
+  });
+});
+
+/** Queries that take any key: redirects a third party shapes, each with why (ISS-1421 r19). */
+const QUERY_TAKES_ANY: Record<string, string> = {
+  'GET /api/integrations/github/installed': "GitHub's install redirect adds setup_action",
+  'GET /api/integrations/github/manifest-callback':
+    "GitHub's manifest redirect is GitHub's to shape",
+};
+
+describe('a query key no schema names', () => {
+  const queries = () =>
+    routes.flatMap((r) =>
+      r.validators
+        .filter((v) => v.target === 'query')
+        .map((v) => ({ key: r.key, schema: v.schema })),
+    );
+
+  it('is refused on every route that declares a query, but the redirects named here', () => {
+    // Not vacuous: over a hundred routes declare a query, judge-79's knowledge list among them.
+    expect(queries().length).toBeGreaterThan(100);
+    expect(queries().map((q) => q.key)).toContain('GET /api/projects/:id/knowledge');
+    const open = queries().filter((q) => fieldsPolicy(q.schema) !== 'closed');
+    expect(open.map((q) => q.key).sort()).toEqual(Object.keys(QUERY_TAKES_ANY).sort());
+    const silent = queries()
+      .filter((q) => !(q.key in QUERY_TAKES_ANY))
+      .filter((q) => {
+        // A strict schema names the stray key itself; any other has the gate name it.
+        const own = q.schema.safeParse({ colour: 'red' }).error?.issues ?? [];
+        const issues = [...queryIssues(q.schema, { colour: 'red' }), ...own];
+        return !issues.some(
+          (i) => i.code === 'unrecognized_keys' && (i.keys as string[]).includes('colour'),
+        );
+      })
+      .map((q) => q.key);
+    expect(silent, 'each route takes a query key it does not name').toEqual([]);
+  });
+
+  it('names its reason in words for every query that takes any key', () => {
+    for (const [key, why] of Object.entries(QUERY_TAKES_ANY))
+      expect(why, key).toMatch(/^GitHub's .{20,}[^.]$/);
   });
 });
 

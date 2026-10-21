@@ -186,7 +186,7 @@ function CredentialSection({
           label="Replace key"
           hint={
             connection.hasSecrets
-              ? "A key is stored (never shown). Enter a new one to rotate — the previous key stays valid for 24h."
+              ? `A key is stored (never shown). ${module?.previousKeyNote ?? "Enter a new one to replace it."}`
               : "No credential stored yet. Enter one to activate this connection."
           }
         >

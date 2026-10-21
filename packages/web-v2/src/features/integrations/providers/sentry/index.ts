@@ -7,6 +7,7 @@ export const sentry: ProviderModule = {
   icon: "shield",
   secretField: "authToken",
   secretPlaceholder: "sntryu_…",
+  previousKeyNote: null,
   drillable: true,
   agentPathKind: "direct-mcp",
   mcpServerName: "sentry",

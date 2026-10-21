@@ -4,6 +4,7 @@ import { HTTPException } from 'hono/http-exception';
 import { matchedRoutes } from 'hono/route';
 import { findTargetHandler } from 'hono/utils/handler';
 import { type ZodType, z } from 'zod';
+import { queryRefused, strayKeys } from '../../lib/query-strict.js';
 import { isBareRefusal, isLabelOnly } from '../../lib/refusal-sentence.js';
 import {
   fieldsNamedAt,
@@ -11,7 +12,12 @@ import {
   refusesItself,
   unknownFields,
 } from '../../lib/unknown-fields.js';
-import { schemaRefusalWords, schemaRefused } from '../../lib/zod-sentences.js';
+import {
+  quotedSent,
+  schemaRefusalWords,
+  schemaRefused,
+  wordedFlatten,
+} from '../../lib/zod-sentences.js';
 
 /** What a route's input validator was built from, which the mounted middleware no longer shows. */
 export type ValidatorDeclaration = {
@@ -33,17 +39,26 @@ function inWords(
   schema: ZodType,
   input: unknown,
 ): { message: string; details: unknown } {
-  const { sentences, accepted } = schemaRefusalWords(error.issues, {
+  const words = {
     valuesAre: 'listed in details.accepted',
     input,
-    fieldsAt: (path) => fieldsNamedAt(schema, path),
-  });
-  if (accepted.length === 0) return { message: sentences.join(' '), details };
+    fieldsAt: (path: readonly PropertyKey[]) => fieldsNamedAt(schema, path),
+  };
+  const { sentences, accepted } = schemaRefusalWords(error.issues, words);
+  // A hook's flattened errors keep only each top-level key, so `config.baseUrl` read as `config`:
+  // they are said again from the parse's own issues, as the message is (ISS-1421 r19).
+  const flattened =
+    details !== null &&
+    typeof details === 'object' &&
+    Array.isArray((details as { formErrors?: unknown }).formErrors) &&
+    typeof (details as { fieldErrors?: unknown }).fieldErrors === 'object';
+  const said = flattened ? { ...details, ...wordedFlatten(error.issues, words) } : details;
+  if (accepted.length === 0) return { message: sentences.join(' '), details: said };
   const values = { accepted: Object.fromEntries(accepted.map((a) => [a.field, a.values])) };
-  const held = details !== null && typeof details === 'object' && !Array.isArray(details);
+  const held = said !== null && typeof said === 'object' && !Array.isArray(said);
   return {
     message: sentences.join(' '),
-    details: held ? { ...details, ...values } : details == null ? values : details,
+    details: held ? { ...said, ...values } : said == null ? values : said,
   };
 }
 
@@ -86,9 +101,19 @@ async function wordedAnswer(
  * refusal keeps its status and code and loses only a message that was not a sentence; with no hook,
  * or one that let the failure through, the answer is `schemaRefused`, not the library's raw parse.
  */
-function sentenced(hook: Hook | undefined, schema: ZodType): Hook {
+function sentenced(
+  hook: Hook | undefined,
+  schema: ZodType,
+  target: ValidatorDeclaration['target'],
+): Hook {
   return async (result, c) => {
     if (result.success || !result.error) return hook?.(result, c);
+    // A stray or blank query parameter is this gate's refusal, not the route's (ISS-1421 r19).
+    if (
+      target === 'query' &&
+      (queryIssues(schema, result.data).length > 0 || strayKeys(result.error.issues).length > 0)
+    )
+      throw queryRefused(result.error.issues, schema, result.data);
     const failed = { ...result, error: result.error };
     let answered: unknown;
     try {
@@ -142,27 +167,54 @@ function bare(schema: ZodType): QueryDef {
 
 const EMPTY_NUMBER = 'is empty. Send a number, or leave the field out.';
 
-/**
- * A query's schema that refuses a number parameter sent empty (`?limit=`), which a coerced number
- * reads as 0 and answers about, or takes, as if 0 had been sent (ISS-1421 r18).
- */
-export function refusingEmptyNumbers(schema: ZodType): ZodType {
+/** The words for a number sent blank, quoting the spaces where some were sent. */
+function blankNumber(key: string, sent: string): string {
+  const quoted = sent === '' ? null : quotedSent(key, sent);
+  return quoted
+    ? `is empty: ${quoted} holds no number. Send a number, or leave the field out.`
+    : EMPTY_NUMBER;
+}
+
+export type QueryIssue =
+  | { code: 'unrecognized_keys'; keys: string[]; path: []; message: string }
+  | { code: 'custom'; path: [string]; message: string };
+
+/** The parameters of a query's schema that take a number. */
+function numberKeys(schema: ZodType): string[] {
   const shape = bare(schema).shape;
-  if (!shape) return schema;
-  const numbers = Object.keys(shape).filter((k) => bare(shape[k] as ZodType).type === 'number');
-  if (numbers.length === 0) return schema;
+  if (!shape) return [];
+  return Object.keys(shape).filter((k) => bare(shape[k] as ZodType).type === 'number');
+}
+
+/**
+ * What a query's schema refuses before it parses. A key it does not name, which it would drop and
+ * answer 200 without (ISS-1421 r19, judge-79's `?colour=red`), unless the schema says it takes any.
+ * A number sent empty or as spaces, which a coerced number reads as 0 (r18, r19).
+ */
+export function queryIssues(schema: ZodType, query: unknown): QueryIssue[] {
+  if (query === null || typeof query !== 'object') return [];
+  const issues: QueryIssue[] = [];
+  if (fieldsPolicy(schema) !== 'open' && !refusesItself(schema, query)) {
+    const keys = unknownFields(schema, query);
+    if (keys.length > 0)
+      issues.push({ code: 'unrecognized_keys', keys, path: [], message: 'Unrecognized keys' });
+  }
+  for (const key of numberKeys(schema)) {
+    const sent = (query as Record<string, unknown>)[key];
+    if (typeof sent !== 'string' || sent.trim() !== '') continue;
+    issues.push({ code: 'custom', path: [key], message: blankNumber(key, sent) });
+  }
+  return issues;
+}
+
+/** A query's schema that refuses what `queryIssues` names, then parses as declared. */
+export function refusingQueryInput(schema: ZodType): ZodType {
+  if (fieldsPolicy(schema) === 'open' && numberKeys(schema).length === 0) return schema;
   return z
     .unknown()
     .superRefine((query, ctx) => {
-      if (query === null || typeof query !== 'object') return;
-      for (const key of numbers) {
-        if ((query as Record<string, unknown>)[key] !== '') continue;
-        ctx.addIssue({
-          code: 'custom',
-          path: [key],
-          message: EMPTY_NUMBER,
-        });
-      }
+      for (const issue of queryIssues(schema, query))
+        ctx.addIssue({ ...issue, input: query } as never);
     })
     .pipe(schema as z.ZodType<unknown>);
 }
@@ -174,13 +226,13 @@ export const zValidator: typeof honoZValidator = ((
   hook?: ValidatorDeclaration['hook'],
   options?: unknown,
 ) => {
-  const refusing = sentenced((hook ?? undefined) as Hook | undefined, schema);
+  const refusing = sentenced((hook ?? undefined) as Hook | undefined, schema, target);
   const middleware = (honoZValidator as (...args: unknown[]) => MiddlewareHandler)(
     target,
     target === 'json'
       ? refusingUnknownFields(schema)
       : target === 'query'
-        ? refusingEmptyNumbers(schema)
+        ? refusingQueryInput(schema)
         : schema,
     refusing,
     options,
@@ -203,35 +255,19 @@ export function unknownFieldsRefused(keys: string[], schema?: ZodType): HTTPExce
 
 /**
  * Declares the schema a handler parses an input with itself. The handler keeps its own refusals;
- * a JSON body field the schema does not name is refused here first, as the shared validator does.
+ * a JSON body field or a query parameter the schema does not name is refused here first, as the
+ * shared validator does.
  */
 export function declaresInput(
   target: ValidatorDeclaration['target'],
   schema: ZodType,
 ): MiddlewareHandler {
-  const emptyNumbers = target === 'query' ? refusingEmptyNumbers(schema) : null;
   const middleware: MiddlewareHandler = async (c, next) => {
-    if (emptyNumbers && emptyNumbers !== schema) {
-      // Only the empty number is judged here: the handler parses the rest with its own refusals.
+    if (target === 'query') {
+      // Only what `queryIssues` names is judged here: the handler parses the rest with its own refusals.
       const query = c.req.query();
-      const empty = Object.keys(query).filter((k) => query[k] === '');
-      const r =
-        empty.length > 0
-          ? emptyNumbers.safeParse(Object.fromEntries(empty.map((k) => [k, ''])))
-          : null;
-      const issues = r?.error?.issues.filter((i) => i.message === EMPTY_NUMBER) ?? [];
-      if (issues.length > 0) {
-        const { sentences } = schemaRefusalWords(issues, {
-          valuesAre: 'listed in details.accepted',
-        });
-        throw new HTTPException(400, {
-          message: sentences.join(' '),
-          cause: {
-            code: 'BAD_REQUEST',
-            details: { emptyFields: issues.map((i) => i.path.join('.')) },
-          },
-        });
-      }
+      const issues = queryIssues(schema, query);
+      if (issues.length > 0) throw queryRefused(issues, schema, query);
     }
     if (target === 'json' && fieldsPolicy(schema) !== 'open') {
       // Hono keeps the parsed body, so the handler's own read gets the same one.

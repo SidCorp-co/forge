@@ -88,7 +88,7 @@ describe('backlog stream routes — what they refuse', () => {
   it('refuses a status the tracker does not hold rather than dropping it', async () => {
     const res = await call('/ordering?status=open,banana');
     expect(res.status).toBe(400);
-    expect(JSON.stringify(await res.json())).toContain('each status must be one of');
+    expect(JSON.stringify(await res.json())).toContain('Each status must be one of');
   });
 
   it('refuses a query parameter it does not take, and lists the ones it does', async () => {
