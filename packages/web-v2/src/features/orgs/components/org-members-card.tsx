@@ -245,12 +245,12 @@ export function OrgMembersCard({
             onRetry={() => membersQ.refetch()}
           />
         ) : (
-          <ul className="space-y-1.5">
+          <ul className="divide-y divide-line" data-testid="org-card-rows">
             {(membersQ.data ?? []).map((m) => (
               <li
                 key={m.userId}
                 data-testid="org-member-row"
-                className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 rounded-md border border-line px-3 py-2"
+                className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 py-2.5"
               >
                 <span className="flex min-w-[12rem] flex-1 items-center gap-2" data-testid="org-member-who">
                   <span className="min-w-0 truncate text-fg">{m.email}</span>
@@ -332,11 +332,11 @@ export function OrgMembersCard({
           ) : (projectsQ.data ?? []).length === 0 ? (
             <p className="fg-body-sm text-subtle">No projects yet.</p>
           ) : (
-            <ul className="space-y-1.5">
+            <ul className="divide-y divide-line" data-testid="org-card-rows">
               {(projectsQ.data ?? []).map((p) => (
                 <li
                   key={p.id}
-                  className="flex items-center justify-between gap-3 rounded-md border border-line px-3 py-2"
+                  className="flex items-center justify-between gap-3 py-2.5"
                 >
                   <span className="min-w-0 truncate text-fg">{p.name}</span>
                   <span className="flex shrink-0 items-center gap-2">
@@ -362,11 +362,11 @@ export function OrgMembersCard({
             ) : (invitationsQ.data ?? []).length === 0 ? (
               <p className="fg-body-sm text-subtle">No pending invitations.</p>
             ) : (
-              <ul className="space-y-1.5">
+              <ul className="divide-y divide-line" data-testid="org-card-rows">
                 {(invitationsQ.data ?? []).map((inv) => (
                   <li
                     key={inv.email}
-                    className="flex items-center justify-between gap-3 rounded-md border border-line px-3 py-2"
+                    className="flex items-center justify-between gap-3 py-2.5"
                   >
                     <span className="min-w-0 truncate text-fg">
                       {inv.email}

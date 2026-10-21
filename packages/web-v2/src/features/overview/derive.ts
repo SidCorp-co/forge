@@ -69,7 +69,7 @@ export function bucketHref(slug: string, bucket: OpenWorkState): string {
   return `/projects/${slug}/issues?filter=${bucket}`;
 }
 
-export interface WaffleCell {
+export interface CompositionCell {
   key: OpenWorkState;
   label: string;
   count: number;
@@ -77,8 +77,8 @@ export interface WaffleCell {
   destination: Destination;
 }
 
-/** The four buckets as waffle categories, workspace-wide. */
-export function waffleCells(buckets: PulseWorkBuckets): WaffleCell[] {
+/** The four buckets as composition categories, workspace-wide. */
+export function compositionCells(buckets: PulseWorkBuckets): CompositionCell[] {
   return BUCKET_ORDER.map((key) => ({
     key,
     label: WORK_STATE_LABELS[key],

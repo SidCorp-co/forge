@@ -82,14 +82,16 @@ export function LivenessBand({ liveness, thresholds }: LivenessBandProps) {
         </Link>
       </div>
 
-      {liveness.heartbeat.length > 0 ? (
+      {liveness.heartbeat.length > 0 && liveness.heartbeat.every((d) => d.issueRuns === 0) ? (
+        <p className="fg-body-sm text-muted" data-testid="heartbeat-none">
+          No issue run started in the last {liveness.heartbeat.length} days, so there is no trace to draw.
+        </p>
+      ) : liveness.heartbeat.length > 0 ? (
         <Heartbeat
           days={liveness.heartbeat.map((d) => ({ date: d.date, value: d.issueRuns }))}
-          label={`Issue runs started each day for the last ${liveness.heartbeat.length} days. ${
-            liveness.heartbeat.every((d) => d.issueRuns === 0)
-              ? "Nothing ran on any of them."
-              : `Busiest day: ${Math.max(...liveness.heartbeat.map((d) => d.issueRuns))} runs.`
-          }`}
+          label={`Issue runs started each day for the last ${liveness.heartbeat.length} days. Busiest day: ${Math.max(
+            ...liveness.heartbeat.map((d) => d.issueRuns),
+          )} runs.`}
         />
       ) : (
         <p className="fg-body-sm text-muted">

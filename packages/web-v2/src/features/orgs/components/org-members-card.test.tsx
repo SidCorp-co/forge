@@ -44,4 +44,13 @@ describe("a member's row on the organization page", () => {
       expect(who?.classList.contains("flex-1")).toBe(true);
     }
   });
+
+  // The master's read of the r25 shots: each row was its own bordered box inside the bordered card.
+  it("is a flush row under a hairline, never a box of its own", () => {
+    render(<OrgMembersCard org={{ id: "o1", name: "Northwind", slug: "northwind", role: "owner" } as never} onDeleted={() => {}} />);
+    for (const row of screen.getAllByTestId("org-member-row")) {
+      expect(row.className).not.toMatch(/\bborder\b|\brounded/);
+      expect(row.parentElement?.classList.contains("divide-y")).toBe(true);
+    }
+  });
 });

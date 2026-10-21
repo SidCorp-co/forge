@@ -1,4 +1,10 @@
+import { useId } from "react";
 import { cn } from "@/lib/utils/cn";
+
+/** The fewest issues a full bar or the line's top stands for, so one issue never fills the band. */
+export const STREAM_SCALE_FLOOR = 4;
+/** Inset that keeps the line off the band's edges. */
+const LINE_INSET = 8;
 
 export interface StreamWeek {
   key: string;
@@ -31,20 +37,21 @@ export function StreamBand({
   label,
   className,
 }: StreamBandProps) {
+  const clip = useId();
   if (weeks.length === 0) return null;
 
   const width = 640;
   const height = 120;
   const mid = height / 2;
-  const maxBar = Math.max(1, ...weeks.map((w) => Math.max(w.inbound, w.outbound)));
-  const maxLine = Math.max(1, ...weeks.map((w) => w.line));
+  const maxBar = Math.max(STREAM_SCALE_FLOOR, ...weeks.map((w) => Math.max(w.inbound, w.outbound)));
+  const maxLine = Math.max(STREAM_SCALE_FLOOR, ...weeks.map((w) => w.line));
   const slot = width / weeks.length;
-  const barW = Math.max(2, slot * 0.55);
+  const barW = Math.max(2, Math.min(slot * 0.55, 24));
 
   const linePath = weeks
     .map((w, i) => {
       const x = i * slot + slot / 2;
-      const y = height - (w.line / maxLine) * (height - 4) - 2;
+      const y = height - LINE_INSET - (w.line / maxLine) * (height - 2 * LINE_INSET);
       return `${i === 0 ? "M" : "L"}${x.toFixed(2)},${y.toFixed(2)}`;
     })
     .join(" ");
@@ -59,6 +66,12 @@ export function StreamBand({
         className="block h-32 w-full"
       >
         <title>{label}</title>
+        <defs>
+          <clipPath id={clip}>
+            <rect x={0} y={0} width={width} height={height} />
+          </clipPath>
+        </defs>
+        <g clipPath={`url(#${clip})`} data-stream-plot>
         {weeks.map((w, i) => {
           const x = i * slot + (slot - barW) / 2;
           const up = (w.inbound / maxBar) * (mid - 2);
@@ -93,6 +106,7 @@ export function StreamBand({
           strokeDasharray="4 3"
           vectorEffect="non-scaling-stroke"
         />
+        </g>
       </svg>
       <ul className="flex flex-wrap gap-x-4 gap-y-1">
         <li className="fg-body-sm flex items-center gap-1.5 text-muted">

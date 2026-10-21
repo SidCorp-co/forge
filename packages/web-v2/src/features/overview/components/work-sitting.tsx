@@ -5,13 +5,13 @@ import {
   CardTitle,
   DataTable,
   type DataTableColumn,
+  CompositionBar,
   DotStrip,
   SectionTitle,
   Truncated,
-  Waffle,
 } from "@/design";
 import { WORK_STATE_LABELS } from "@forge/contracts/work-state";
-import { BUCKET_ORDER, bucketHref, formatElapsed, type ProjectSilenceRow, projectSilenceRows, waffleCells } from "../derive";
+import { BUCKET_ORDER, bucketHref, formatElapsed, type ProjectSilenceRow, projectSilenceRows, compositionCells } from "../derive";
 import type { PulseResponse } from "../types";
 
 const LINK =
@@ -67,7 +67,7 @@ export interface WorkSittingProps {
 
 /** Section 2 — where is the work sitting? */
 export function WorkSitting({ pulse, nowMs }: WorkSittingProps) {
-  const cells = waffleCells(pulse.work.buckets);
+  const cells = compositionCells(pulse.work.buckets);
   const rows = projectSilenceRows(pulse, nowMs);
   const ages = pulse.work.blockedOnPersonAges;
 
@@ -76,7 +76,7 @@ export function WorkSitting({ pulse, nowMs }: WorkSittingProps) {
       <SectionTitle id="overview-work" className="fg-h3">Where the work is sitting</SectionTitle>
 
       {cells.some((c) => c.count > 0) ? (
-        <Waffle
+        <CompositionBar
           categories={cells.map((c) => ({
             key: c.key,
             label: c.label,

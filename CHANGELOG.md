@@ -3217,6 +3217,7 @@
 - **A refused write says what was wrong.** An organization name past 200 characters names the field and its limit; a repository path that is not absolute is refused, saying what a valid one looks like. (ISS-1229)
 - **Your own mention reads "mentioned you" on the Activity tab**, the project list and the overview count runners the same way, "1/2 runners online", and Organization is spelled with a z throughout. (ISS-1229)
 - **On a phone, the organization page keeps each member readable**, and a room's people list wraps a name instead of cutting off when each person was added. (ISS-1229)
+- **Overview draws what is there:** no issue run is said in words, not an empty band; work in flight fills its bar by share; one new issue no longer fills the flow chart. Organization rows sit flush, unboxed. (ISS-1229)
 - **Activity names a priority, complexity or category as the issue panel does** ("from Small to XL"). Two same-named people in a room are told apart by when each was added, and the Runners sentence agrees in number. (ISS-1229)
 - **An answered question's run drawer names who answered it and when**, instead of still asking you to answer it. (ISS-1228)
 - **The issue page says why a queued step waits once**, in its banner, not again in the panel under it. (ISS-1228)
