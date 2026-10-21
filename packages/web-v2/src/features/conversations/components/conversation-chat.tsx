@@ -43,7 +43,7 @@ import {
   useWithdrawnDrafts,
 } from "../hooks";
 import { composerRefusal } from "../membership";
-import { isRoomGone, ROOM_DELETED_TITLE, roomDeletedLine } from "../room-gone";
+import { isRoomGone, ROOM_DELETED_TITLE, roomDeletedLine, unsentLine } from "../room-gone";
 import { type ConversationMode, type OutboxMessage, conversationTitle } from "../types";
 import { ConversationModeControl, modePlaceholder } from "./mode-control";
 import { ConversationMembers } from "./conversation-members";
@@ -110,20 +110,61 @@ export function ConversationChat({
   const { toast } = useToast();
   const [gone, setGone] = useState(false);
   const goneOnce = useRef(false);
+  // The thread that held an unsent message goes with the room, so its notice keeps the text until the
+  // reader copies it or puts the notice away (ISS-1229 r29, judge-84).
+  const keepUnsent = useCallback(
+    (unsent: string) => {
+      toast({
+        title: ROOM_DELETED_TITLE,
+        description: unsentLine(unsent),
+        tone: "error",
+        keep: true,
+        onClick: () => {
+          const copied = navigator.clipboard
+            ? navigator.clipboard.writeText(unsent)
+            : Promise.reject(new Error("no clipboard"));
+          void copied.then(
+            () => toast({ title: "What you wrote was copied", tone: "success" }),
+            () =>
+              toast({
+                title: "What you wrote could not be copied",
+                description: unsent,
+                tone: "error",
+                keep: true,
+              }),
+          );
+        },
+      });
+    },
+    [toast],
+  );
   const roomWentAway = useCallback(
-    (id: string, sending: boolean) => {
-      if (goneOnce.current) return;
+    (id: string, unsent: string | null) => {
+      // A send refused after a re-read already found the room gone still hands back its text (r29 F2).
+      if (goneOnce.current) {
+        if (unsent !== null) keepUnsent(unsent);
+        return;
+      }
       goneOnce.current = true;
       setGone(true);
-      toast({ title: ROOM_DELETED_TITLE, description: roomDeletedLine(sending), tone: "info" });
+      if (unsent === null) {
+        toast({ title: ROOM_DELETED_TITLE, description: roomDeletedLine(false), tone: "error" });
+      } else {
+        keepUnsent(unsent);
+      }
       qc.removeQueries({ queryKey: ["conversations", id], exact: true });
       void qc.invalidateQueries({ queryKey: ["conversations", "list"] });
       onRoomGone?.(id);
     },
-    [qc, toast, onRoomGone],
+    [qc, toast, onRoomGone, keepUnsent],
   );
+  const outboxRef = useRef(outbox);
+  outboxRef.current = outbox;
   useEffect(() => {
-    if (resolvedId && roomQ.isError && isRoomGone(roomQ.error)) roomWentAway(resolvedId, false);
+    if (!resolvedId || !roomQ.isError || !isRoomGone(roomQ.error)) return;
+    // Messages still waiting their turn will never be sent; one being sent says so when it is refused.
+    const waiting = outboxRef.current.filter((m) => m.state === "queued").map((m) => m.content);
+    roomWentAway(resolvedId, waiting.length > 0 ? waiting.join("\n\n") : null);
   }, [resolvedId, roomQ.isError, roomQ.error, roomWentAway]);
 
   const messages = useMemo(() => roomQ.data?.messages ?? [], [roomQ.data]);
@@ -234,7 +275,7 @@ export function ConversationChat({
               : m,
           ),
         );
-        if (roomGone && id) roomWentAway(id, true);
+        if (roomGone && id) roomWentAway(id, next.content);
       } finally {
         sending.current = false;
       }

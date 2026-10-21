@@ -49,7 +49,8 @@ import {
   type OrgRole,
 } from "../types";
 import { ConfirmDialog, PanelFailure, type PanelFailureView } from "@/design/primitives/confirm-dialog";
-import { orderPeople } from "@/lib/people/order-people";
+import { addedApart, orderPeople } from "@/lib/people/order-people";
+import { readOrgName } from "../org-name";
 
 /**
  * Per-member working-lens control (role-aware chat). Two toggle-chips — a
@@ -161,11 +162,18 @@ export function OrgMembersCard({
   // People lead with the reader, then by name, then the unnamed by when they joined; agents are listed
   // apart, and one serving none of the organization's projects is not listed at all (ISS-1229 r28).
   const members = membersQ.data ?? [];
+  const listed = (m: OrgMemberRow) => ({ userId: m.userId, displayName: m.displayName, addedAt: m.createdAt });
   const people = orderPeople(
     members.filter((m) => m.kind !== "agent"),
     user?.id,
-    (m) => ({ userId: m.userId, displayName: m.displayName, addedAt: m.createdAt }),
+    listed,
   );
+  // Two who read the same name are told apart by when each joined, as the issue groups do (ISS-1229 r29).
+  const nameApart = (m: OrgMemberRow) => {
+    const name = readerName(m.userId, user?.id, m.displayName);
+    const apart = addedApart(listed(m), people.map(listed), user?.id);
+    return apart ? `${name} (${apart})` : name;
+  };
   const agents = members
     .filter((m) => m.kind === "agent" && (m.projects ?? []).length > 0)
     .sort((a, b) => agentName(a).localeCompare(agentName(b)));
@@ -215,8 +223,11 @@ export function OrgMembersCard({
     });
   }
 
+  const nameReading = readOrgName(renameValue);
+
   function submitRename(e: React.FormEvent) {
     e.preventDefault();
+    if (nameReading.error) return;
     const trimmed = renameValue.trim();
     if (!trimmed || trimmed === org.name) {
       setRenameOpen(false);
@@ -282,8 +293,8 @@ export function OrgMembersCard({
               >
                 {/* The member's name first, You for the reader, the address under it (ISS-1229 r27). */}
                 <span className="flex min-w-[12rem] flex-1 flex-col" data-testid="org-member-who">
-                  <span className="min-w-0 truncate text-fg" data-testid="org-member-name">
-                    {readerName(m.userId, user?.id, m.displayName)}
+                  <span className="min-w-0 break-words text-fg" data-testid="org-member-name">
+                    {nameApart(m)}
                   </span>
                   <span className="fg-body-sm min-w-0 truncate text-muted" data-testid="org-member-email">
                     {m.email}
@@ -336,7 +347,8 @@ export function OrgMembersCard({
                       {m.role}
                     </Badge>
                   )}
-                  {canManage && (
+                  {/* Anyone may leave; only an owner or admin takes somebody else out (ISS-1229 r29). */}
+                  {(canManage || m.userId === user?.id) && (
                     <IconButton
                       icon="trash"
                       aria-label={
@@ -569,7 +581,7 @@ export function OrgMembersCard({
         width={420}
       >
         <form onSubmit={submitRename} className="flex h-full flex-col gap-4">
-          <Field label="Organization name">
+          <Field label="Organization name" {...nameReading}>
             <Input
               value={renameValue}
               onChange={(e) => {
@@ -594,7 +606,7 @@ export function OrgMembersCard({
               type="submit"
               variant="primary"
               loading={renameOrg.isPending}
-              disabled={!renameValue.trim()}
+              disabled={!renameValue.trim() || nameReading.error !== undefined}
             >
               Save
             </Button>

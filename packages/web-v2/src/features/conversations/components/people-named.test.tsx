@@ -34,6 +34,10 @@ vi.mock("@/features/projects/hooks", () => ({
 
 afterEach(cleanup);
 
+/** The sentence a control is described by, read off the node its aria-describedby names. */
+const described = (el: HTMLElement) =>
+  document.getElementById(el.getAttribute("aria-describedby") ?? "")?.textContent ?? null;
+
 /** Each offered person as "<name> · <address>", read off the rows the picker shows. */
 const offered = (rows: HTMLElement[]) =>
   rows.map((row) => [row.querySelector("[data-person-label]"), row.querySelector("[data-person-detail]")]
@@ -218,17 +222,29 @@ describe("a member a room cannot lose", () => {
       fireEvent.click(take(name));
     }
     expect(screen.queryByText(/out of this room\?$/)).toBeNull();
-    expect(take("Take @ops-h1 out of the room").getAttribute("aria-description")).toMatch(/^This room has one agent left/);
-    expect(take("Take yourself out of the room").getAttribute("aria-description")).toMatch(/^This room is a one-to-one room with one person left/);
+    expect(described(take("Take @ops-h1 out of the room"))).toMatch(/^This room has one agent left/);
+    expect(described(take("Take yourself out of the room"))).toMatch(/^This room is a one-to-one room with one person left/);
+  });
+
+  // r29, judge-84: on a phone a tap on the held control showed no sentence at all.
+  it("shows why on a tap, where there is no hover and no focus, and puts it away on a tap elsewhere", () => {
+    render(
+      <ConversationMembers conversationId="c1" room={{ shape: "direct", scopeProjects: [project], participants: [agent("h1"), me] }} canChange open onClose={() => {}} />,
+    );
+    expect(screen.queryByRole("tooltip")).toBeNull();
+    fireEvent.touchEnd(take("Take @ops-h1 out of the room"));
+    expect(screen.getByRole("tooltip").textContent).toMatch(/^This room has one agent left/);
+    fireEvent.touchStart(document.body);
+    expect(screen.queryByRole("tooltip")).toBeNull();
   });
 
   it("tells a keyboard reader why, once the held control takes focus", () => {
     render(
       <ConversationMembers conversationId="c1" room={{ shape: "direct", scopeProjects: [project], participants: [agent("h1"), me] }} canChange open onClose={() => {}} />,
     );
-    expect(screen.queryByText(/^This room has one agent left/)).toBeNull();
+    expect(screen.queryByRole("tooltip")).toBeNull();
     fireEvent.focus(take("Take @ops-h1 out of the room"));
-    expect(screen.getByText(/^This room has one agent left/)).toBeTruthy();
+    expect(screen.getByRole("tooltip").textContent).toMatch(/^This room has one agent left/);
   });
 
   it("offers either where the room keeps another", () => {

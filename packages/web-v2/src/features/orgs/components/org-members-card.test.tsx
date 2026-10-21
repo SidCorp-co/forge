@@ -119,6 +119,26 @@ describe("the organization page's people and agents", () => {
     ]);
   });
 
+  // r29, the master's ruling: two unnamed members read as two identical "Another member" rows.
+  it("tells two people with no name apart by when each joined, in the issue groups' words", () => {
+    members = [
+      person("me", "lan@example.com", "Lan", "owner", "2026-10-01T09:00:00Z"),
+      person("u-late", "late@example.com", null, "member", "2026-10-05T09:00:00Z"),
+      person("u-early", "early@example.com", null, "member", "2026-10-02T09:00:00Z"),
+    ];
+    card();
+    expect(screen.getAllByTestId("org-member-name").map((n) => n.textContent)).toEqual([
+      "You",
+      "Another member (added 2 Oct 2026)",
+      "Another member (added 5 Oct 2026)",
+    ]);
+    // At 390 a cut-off name hid the words that tell the two apart, so a name wraps (jsdom lays nothing out).
+    for (const name of screen.getAllByTestId("org-member-name")) {
+      expect(name.className).not.toContain("truncate");
+      expect(name.className).toContain("break-words");
+    }
+  });
+
   it("lists agents apart, each with the projects it serves and no control, and leaves out one serving none", () => {
     members = [
       ...members,
@@ -144,6 +164,18 @@ describe("the organization page's people and agents", () => {
     expect(panel.textContent).not.toMatch(/Remove you|They lose access/);
   });
 
+  // r29, judge-84: a plain member had no Leave control at all, though core lets anyone leave.
+  it("lets a plain member leave, and take nobody else out", () => {
+    members = [
+      person("me", "lan@example.com", "Lan", "member", "2026-10-01T09:00:00Z"),
+      person("u2", "mai@example.com", "Mai Tran", "owner", "2026-10-02T09:00:00Z"),
+    ];
+    render(<OrgMembersCard org={{ id: "o1", name: "Northwind", slug: "northwind", role: "member" } as never} onDeleted={() => {}} />);
+    expect(screen.queryByRole("button", { name: /^Remove / })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Leave Northwind" }));
+    expect(screen.getByRole("dialog").textContent).toContain("Leave Northwind? You lose access to all of its projects.");
+  });
+
   it("tells a refused delete inside its panel, under the question, and in no toast", () => {
     refusal = new ApiError(409, "This organization still holds the project \"Billing\", so the organization was not deleted.", "ORG_NOT_EMPTY");
     card();
@@ -156,14 +188,42 @@ describe("the organization page's people and agents", () => {
   });
 
   it("tells a refused rename inside its panel, under the name field, and in no toast", () => {
-    refusal = new ApiError(400, "An organization's name is at most 200 characters, so it was not saved.", "BAD_REQUEST");
+    refusal = new ApiError(403, "Only an owner of this organization renames it.", "FORBIDDEN");
     card();
     fireEvent.click(screen.getByRole("button", { name: "Rename" }));
-    fireEvent.change(screen.getByLabelText("Organization name"), { target: { value: "x".repeat(201) } });
+    fireEvent.change(screen.getByLabelText("Organization name"), { target: { value: "Northwind Labs" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     const failure = within(screen.getByRole("dialog")).getByTestId("panel-failure");
     expect(failure.textContent).toContain("The organization was not renamed");
-    expect(failure.textContent).toContain("at most 200 characters");
+    expect(failure.textContent).toContain("Only an owner");
     expect(toast).not.toHaveBeenCalled();
+  });
+
+  // r29, the master's ruling: a 232-character name was refused only after Save, by the server.
+  it("counts the name's characters under the field once it nears the limit", () => {
+    card();
+    fireEvent.click(screen.getByRole("button", { name: "Rename" }));
+    const field = screen.getByLabelText("Organization name");
+    fireEvent.change(field, { target: { value: "x".repeat(150) } });
+    expect(within(screen.getByRole("dialog")).queryByText(/of 200 characters/)).toBeNull();
+    fireEvent.change(field, { target: { value: "x".repeat(190) } });
+    expect(within(screen.getByRole("dialog")).getByText("190 of 200 characters")).toBeTruthy();
+  });
+
+  it("refuses a name past the limit in the field, before anything is sent", () => {
+    const rename = vi.spyOn(refusing, "mutate");
+    card();
+    fireEvent.click(screen.getByRole("button", { name: "Rename" }));
+    fireEvent.change(screen.getByLabelText("Organization name"), { target: { value: "x".repeat(232) } });
+    const panel = screen.getByRole("dialog");
+    expect(within(panel).getByRole("alert").textContent).toBe(
+      "232 of 200 characters. An organization's name is at most 200 characters; shorten it to save.",
+    );
+    expect(screen.getByLabelText("Organization name").getAttribute("aria-invalid")).toBe("true");
+    const save = within(panel).getByRole("button", { name: "Save" }) as HTMLButtonElement;
+    expect(save.disabled).toBe(true);
+    fireEvent.submit(save.closest("form") as HTMLFormElement);
+    expect(rename).not.toHaveBeenCalled();
+    rename.mockRestore();
   });
 });

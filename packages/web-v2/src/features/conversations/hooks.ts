@@ -68,6 +68,8 @@ export function useConversation(id: string | undefined) {
     queryKey: ["conversations", id],
     queryFn: () => conversationsApi.detail(id as string),
     enabled: !!id,
+    // Opened from a list that may be behind: a room deleted meanwhile says so now (ISS-1229 r29).
+    refetchOnMount: "always",
     refetchInterval: (query) => {
       const live = query.state.data?.agentTurns?.some(
         (t) => t.state === "dispatched" || t.state === "running",

@@ -17,7 +17,6 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { answer } from '../api-reference/declare/describe.js';
 import { zValidator } from '../api-reference/declare/validator.js';
-import { resolveProjectHandle } from '../conversations/handles.js';
 import {
   addableHandles,
   addablePeople,
@@ -195,8 +194,13 @@ conversationMemberRoutes.post(
     const { userId, projectId } = c.req.valid('json');
     const actor = c.get('userId');
     await withMembershipLock(id, actor, async (tx) => {
-      const handleUserId = userId ?? (await resolveProjectHandle(tx, projectId)).userId;
-      await addHandle({ conversationId: id, handleUserId, projectId, actorUserId: actor, tx });
+      await addHandle({
+        conversationId: id,
+        ...(userId ? { handleUserId: userId } : {}),
+        projectId,
+        actorUserId: actor,
+        tx,
+      });
       await settleShape(tx, id);
     });
     return c.json(answer(membershipSchema, await membershipOf(id, actor)), 201);

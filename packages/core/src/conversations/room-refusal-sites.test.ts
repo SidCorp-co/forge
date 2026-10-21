@@ -4,8 +4,8 @@
 // Round 28, judge-80: a room that is gone answered "conversation not found" from a 404 built beside
 // `roomRefusal`, so every refusal a room door builds now goes through it, and that sentence is gone.
 
-import { readdirSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { dirname, join, normalize } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { roomGone, roomRefusal } from './room-refusal.js';
 
@@ -20,6 +20,23 @@ const ROOM_DOORS = [
   'assistant/conversation-member-routes.ts',
   'conversations/membership.ts',
 ];
+
+/**
+ * The modules a room door calls straight into, outside the doors themselves. Round 29, judge-84: a
+ * door adding an agent by its project alone met `conversations/handles.ts`'s "no project <id>", a
+ * refusal built one call away from the doors, which the list above never named.
+ */
+function calledByDoors(): string[] {
+  const reached = new Set<string>();
+  for (const door of ROOM_DOORS) {
+    const source = readFileSync(join(SRC, door), 'utf8');
+    for (const m of source.matchAll(/from '(\.\.?\/[^']+)\.js'/g)) {
+      const module = normalize(join(dirname(door), `${m[1]}.ts`));
+      if (!ROOM_DOORS.includes(module) && existsSync(join(SRC, module))) reached.add(module);
+    }
+  }
+  return [...reached].sort();
+}
 
 /** Every `.ts` source under core's `src`, tests left out. */
 function sources(dir: string): string[] {
@@ -72,6 +89,21 @@ describe('a refusal about a room', () => {
 
   it.each(ROOM_DOORS)('in %s is built through roomRefusal, never beside it', (file) => {
     expect(builtBeside(readFileSync(join(SRC, file), 'utf8'))).toEqual([]);
+  });
+
+  it('built by a module a room door calls names no id either', () => {
+    const modules = calledByDoors();
+    expect(modules).toContain('conversations/handles.ts');
+    const offenders = modules.flatMap((file) =>
+      [
+        ...readFileSync(join(SRC, file), 'utf8').matchAll(
+          /new HTTPException\(\s*\d+\s*,\s*\{\s*message\s*:\s*(`(?:[^`\\]|\\.)*`|'(?:[^'\\\n]|\\.)*')/g,
+        ),
+      ]
+        .filter((m) => ID_INTERPOLATED.test(m[1] ?? ''))
+        .map((m) => `${file} ${(m[1] ?? '').slice(0, 80)}`),
+    );
+    expect(offenders).toEqual([]);
   });
 
   it('never says "conversation not found", anywhere in core', () => {

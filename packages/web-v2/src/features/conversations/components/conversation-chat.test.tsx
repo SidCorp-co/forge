@@ -251,6 +251,99 @@ describe("a room deleted while it is open", () => {
     expect(send).toHaveBeenCalledTimes(1);
   });
 
+  // r29, judge-84: the typed message was kept nowhere once the room and its thread were gone.
+  it("keeps the unsent message in the notice until the reader copies it", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    send.mockRejectedValueOnce(roomGone());
+    open(vi.fn());
+    fireEvent.change(screen.getByLabelText("Message"), { target: { value: "the numbers for Friday" } });
+    fireEvent.click(screen.getByLabelText("Send message"));
+
+    await waitFor(() => expect(toast).toHaveBeenCalled());
+    const notice = toast.mock.calls[0]?.[0] as { description: string; keep: boolean; onClick: () => void };
+    expect(notice.description).toContain("“the numbers for Friday”");
+    expect(notice.keep).toBe(true);
+    expect(notice).toMatchObject({ tone: "error" });
+    notice.onClick();
+    expect(writeText).toHaveBeenCalledWith("the numbers for Friday");
+    await waitFor(() =>
+      expect(toast).toHaveBeenLastCalledWith(expect.objectContaining({ title: "What you wrote was copied" })),
+    );
+  });
+
+  // r29 review F2: the deletion event's re-read found the room gone while a send was still out, and
+  // the send's own refusal, arriving second, was swallowed with the text it carried.
+  it("keeps a message still being sent when a re-read finds the room gone first", async () => {
+    let reject: (err: unknown) => void = () => {};
+    send.mockImplementationOnce(() => new Promise((_, no) => (reject = no)));
+    const tree = () => (
+      <QueryClientProvider client={new QueryClient()}>
+        <ConversationChat projectId="p1" conversationId="c1" onRoomGone={vi.fn()} />
+      </QueryClientProvider>
+    );
+    const { rerender } = render(tree());
+    fireEvent.change(screen.getByLabelText("Message"), { target: { value: "the courier moved to 3 pm" } });
+    fireEvent.click(screen.getByLabelText("Send message"));
+    await waitFor(() => expect(send).toHaveBeenCalled());
+
+    roomError = roomGone();
+    rerender(tree());
+    await waitFor(() => expect(toast).toHaveBeenCalledWith(expect.objectContaining({ title: "This room was deleted" })));
+    reject(roomGone());
+
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith(
+        expect.objectContaining({ keep: true, description: expect.stringContaining("“the courier moved to 3 pm”") }),
+      ),
+    );
+  });
+
+  it("keeps a message still waiting its turn when a re-read finds the room gone", async () => {
+    let reject: (err: unknown) => void = () => {};
+    send.mockImplementationOnce(() => new Promise((_, no) => (reject = no)));
+    const tree = () => (
+      <QueryClientProvider client={new QueryClient()}>
+        <ConversationChat projectId="p1" conversationId="c1" onRoomGone={vi.fn()} />
+      </QueryClientProvider>
+    );
+    const { rerender } = render(tree());
+    const box = screen.getByLabelText("Message");
+    fireEvent.change(box, { target: { value: "first" } });
+    fireEvent.click(screen.getByLabelText("Send message"));
+    await waitFor(() => expect(send).toHaveBeenCalled());
+    fireEvent.change(box, { target: { value: "second, still queued" } });
+    fireEvent.click(screen.getByLabelText("Send message"));
+
+    roomError = roomGone();
+    rerender(tree());
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith(
+        expect.objectContaining({ keep: true, description: expect.stringContaining("“second, still queued”") }),
+      ),
+    );
+    reject(new Error("aborted"));
+  });
+
+  it("shows the whole unsent message where it cannot be copied", async () => {
+    Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
+    const long = "x".repeat(260);
+    send.mockRejectedValueOnce(roomGone());
+    open(vi.fn());
+    fireEvent.change(screen.getByLabelText("Message"), { target: { value: long } });
+    fireEvent.click(screen.getByLabelText("Send message"));
+
+    await waitFor(() => expect(toast).toHaveBeenCalled());
+    const notice = toast.mock.calls[0]?.[0] as { description: string; onClick: () => void };
+    expect(notice.description).toContain(`“${"x".repeat(200)}…”`);
+    notice.onClick();
+    await waitFor(() =>
+      expect(toast).toHaveBeenLastCalledWith(
+        expect.objectContaining({ title: "What you wrote could not be copied", description: long, keep: true }),
+      ),
+    );
+  });
+
   it("hands back the room its own first send opened, when that room is deleted before the message lands", async () => {
     send.mockRejectedValueOnce(roomGone());
     const backToList = vi.fn();
@@ -275,7 +368,8 @@ describe("a room deleted while it is open", () => {
     const backToList = vi.fn();
     open(backToList);
     await waitFor(() => expect(backToList).toHaveBeenCalledWith("c1"));
-    expect(toast).toHaveBeenCalledWith(expect.objectContaining({ title: "This room was deleted" }));
+    // The refusal's own face, as every other refusal toast wears it (r29, the master's ruling).
+    expect(toast).toHaveBeenCalledWith(expect.objectContaining({ title: "This room was deleted", tone: "error" }));
     expect(screen.queryByText("Couldn't load this conversation")).not.toBeInTheDocument();
   });
 

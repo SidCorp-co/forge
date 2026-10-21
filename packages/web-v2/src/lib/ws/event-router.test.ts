@@ -265,6 +265,15 @@ describe("a turn's progress frames are written, never fetched (ISS-1078)", () =>
     expect(c.invalidated(["conversations", "c1"])).toBe(true);
   });
 
+  // ISS-1229 r29, the master's ruling: a room another member deleted stayed in this list, and opened
+  // from it, until the next 60-second re-read.
+  it("lets go of a deleted room: its own read and the room list are both read again", () => {
+    const c = cache();
+    c.frame("conversation.deleted", { conversationId: "c1" });
+    expect(c.invalidated(["conversations", "c1"])).toBe(true);
+    expect(c.invalidated(["conversations", "list"])).toBe(true);
+  });
+
   it("leaves a frame with no revision alone rather than writing a rewind", () => {
     const c = cache();
     c.frame("conversation.progress", { conversationId: "c1", entry: entry("two iss") });

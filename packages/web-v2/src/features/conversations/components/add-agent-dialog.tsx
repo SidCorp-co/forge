@@ -13,6 +13,7 @@
 
 import { useState } from "react";
 import { Banner, Button, ErrorState, Icon, Spinner } from "@/design";
+import { ApiError } from "@/lib/api/client";
 import { formatApiError } from "@/lib/api/error";
 import { useAddHandle, useConversationCandidates } from "../hooks";
 import { agentAdditionClaims } from "../membership";
@@ -31,20 +32,32 @@ export function AddAgentDialog({
   onClose: () => void;
 }) {
   const [picked, setPicked] = useState<HandleCandidate | null>(null);
+  // Projects found deleted since the list was read: their agents leave it now, not at the next read.
+  const [goneProjects, setGoneProjects] = useState<ReadonlySet<string>>(new Set());
   const candidates = useConversationCandidates(conversationId, open);
   const add = useAddHandle(conversationId);
 
   const close = () => {
     setPicked(null);
+    setGoneProjects(new Set());
     add.reset();
     onClose();
   };
 
   const confirm = () => {
     if (!picked) return;
+    const projectId = picked.project.id;
     add.mutate(
-      { userId: picked.userId, projectId: picked.project.id },
-      { onSuccess: close },
+      { userId: picked.userId, projectId },
+      {
+        onSuccess: close,
+        onError: (err) => {
+          if (!(err instanceof ApiError) || err.code !== PROJECT_GONE) return;
+          setGoneProjects((ids) => new Set([...ids, projectId]));
+          setPicked(null);
+          void candidates.refetch();
+        },
+      },
     );
   };
 
@@ -54,7 +67,14 @@ export function AddAgentDialog({
         {picked ? (
           <Confirmation candidate={picked} room={room} />
         ) : (
-          <CandidateList query={candidates} onPick={setPicked} />
+          <CandidateList
+            query={candidates}
+            goneProjects={goneProjects}
+            onPick={(candidate) => {
+              add.reset();
+              setPicked(candidate);
+            }}
+          />
         )}
 
         {add.isError && (
@@ -104,11 +124,15 @@ function Confirmation({
   );
 }
 
+const PROJECT_GONE = "PROJECT_GONE";
+
 function CandidateList({
   query,
+  goneProjects,
   onPick,
 }: {
   query: ReturnType<typeof useConversationCandidates>;
+  goneProjects: ReadonlySet<string>;
   onPick: (c: HandleCandidate) => void;
 }) {
   if (query.isLoading) {
@@ -129,7 +153,7 @@ function CandidateList({
       </div>
     );
   }
-  const handles = query.data?.handles ?? [];
+  const handles = (query.data?.handles ?? []).filter((h) => !goneProjects.has(h.project.id));
   if (handles.length === 0) {
     return (
       <p role="status" data-testid="agent-candidates-empty" className="fg-body-sm text-muted">

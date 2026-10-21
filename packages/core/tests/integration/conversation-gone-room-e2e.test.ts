@@ -8,7 +8,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createTestProject,
   createTestUser,
@@ -182,5 +182,101 @@ describe('adding a person to a room', () => {
     const { people } = (await res.json()) as { people: Array<{ userId: string; addedAt: string }> };
     const offered = people.find((p) => p.userId === outsiderId);
     expect(offered?.addedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+});
+
+/**
+ * Round 29 — judge-84 added an agent by its project alone after deleting that project and was told
+ * "No project <id>, so it has no handle to address.": an id in the sentence, the room unnamed, no
+ * details. The web panel, which names the agent too, was told the agent is not on its project.
+ */
+describe('adding the agent of a project that is gone', () => {
+  it('is refused for the project, in the room words, by the project alone or with its agent named', async () => {
+    const { id } = await sharedRoom();
+    const orgRows = await harness.db.execute<{ org_id: string }>(
+      sql`SELECT org_id FROM projects WHERE id = ${projectId}`,
+    );
+    const retired = (
+      await createTestProject(harness.db, ownerId, {
+        slug: 'retired',
+        name: 'Retired',
+        orgId: String(orgRows[0]?.org_id),
+      })
+    ).id;
+    const { resolveProjectHandle } = await import('../../src/conversations/handles.js');
+    const agent = await harness.db.transaction((tx) => resolveProjectHandle(tx as never, retired));
+    await harness.db.execute(sql`DELETE FROM projects WHERE id = ${retired}`);
+
+    for (const body of [{ projectId: retired }, { projectId: retired, userId: agent.userId }]) {
+      const res = await as(openerId, `/api/conversations/${id}/handles`, 'POST', body);
+      const refusal = (await res.json()) as Refusal;
+      expect([res.status, refusal.code, refusal.message]).toEqual([
+        404,
+        'PROJECT_GONE',
+        'The project this agent would bring into this room no longer exists, so there is no agent of it to add.',
+      ]);
+      expect(refusal.details).toEqual({ conversationId: id, projectId: retired });
+    }
+  });
+
+  it('is refused the same way when a room is opened naming it', async () => {
+    const res = await as(openerId, '/api/conversations', 'POST', {
+      projectId,
+      handles: [{ projectId: randomUUID() }],
+    });
+    const refusal = (await res.json()) as Refusal;
+    expect([res.status, refusal.code]).toEqual([404, 'PROJECT_GONE']);
+    expect(refusal.message).toMatch(/^The project this agent would bring into this room/);
+  });
+});
+
+describe('a message appended to a room that is gone', () => {
+  it('is refused as a gone room, naming no id', async () => {
+    const { id } = await sharedRoom();
+    await harness.db.execute(sql`DELETE FROM conversations WHERE id = ${id}`);
+    const { appendMessages } = await import('../../src/conversations/store.js');
+    const err = await appendMessages({
+      conversationId: id,
+      messages: [{ role: 'user', content: 'still there?' }],
+    } as never).catch((e: unknown) => e);
+    const refused = err as { status?: number; message?: string; cause?: unknown };
+    expect([refused.status, refused.message]).toEqual([404, 'This room no longer exists.']);
+    expect(refused.cause).toEqual({ code: 'CONVERSATION_GONE', details: { conversationId: id } });
+  });
+});
+
+/**
+ * Round 29, the master's ruling (5): a room another member deleted stayed in everyone else's open
+ * list, and opened from it, until a 60-second re-read found it gone. The delete now tells every
+ * person who could read the room, on their own socket.
+ */
+describe('deleting a room', () => {
+  it('tells every person who could read it, in it or not, and nobody who could not', async () => {
+    const { id } = await sharedRoom();
+    // Holds a role on the room's project without being in the room, so reads it from the project's
+    // list (r29 review F1).
+    const watcherId = await verifiedUser();
+    await harness.db.execute(
+      sql`INSERT INTO project_members (project_id, user_id, role) VALUES (${projectId}, ${watcherId}, 'viewer')`,
+    );
+    const { roomManager } = await import('../../src/ws/server.js');
+    const publish = vi.spyOn(roomManager, 'publish');
+    try {
+      const res = await as(openerId, `/api/conversations/${id}`, 'DELETE');
+      expect(res.status, await res.clone().text()).toBe(204);
+      const told = publish.mock.calls
+        .filter(([, envelope]) => (envelope as { event?: string }).event === 'conversation.deleted')
+        .map(([room, envelope]) => [room, (envelope as { data: unknown }).data]);
+      expect(told).toEqual(
+        expect.arrayContaining([
+          [`user:${openerId}`, { conversationId: id }],
+          [`user:${peerId}`, { conversationId: id }],
+          [`user:${watcherId}`, { conversationId: id }],
+        ]),
+      );
+      expect(told.map(([room]) => room)).not.toContain(`user:${outsiderId}`);
+    } finally {
+      publish.mockRestore();
+    }
   });
 });

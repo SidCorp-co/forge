@@ -23,7 +23,6 @@ import {
 import { answer } from '../api-reference/declare/describe.js';
 import { zValidator } from '../api-reference/declare/validator.js';
 import { listConversationAttachmentsByIds } from '../conversations/attachment-service.js';
-import { resolveProjectHandle } from '../conversations/handles.js';
 import {
   assertPersonReachesScope,
   projectsNamed,
@@ -57,6 +56,7 @@ import {
   readableConversation,
   writableConversation,
 } from './conversation-access.js';
+import { deleteAndTellReaders } from './conversation-adapter.js';
 import { agentModeOffer } from './conversation-agent-offer.js';
 import { conversationAttachmentRoutes } from './conversation-attachment-routes.js';
 import { foreignAttachmentIds, imagesFromAttachments } from './conversation-images.js';
@@ -287,7 +287,7 @@ conversationRoutes.post(
       for (const named of handles) {
         await addHandle({
           conversationId: room.id,
-          handleUserId: named.userId ?? (await resolveProjectHandle(tx, named.projectId)).userId,
+          ...(named.userId ? { handleUserId: named.userId } : {}),
           projectId: named.projectId,
           actorUserId: userId,
           tx,
@@ -388,7 +388,7 @@ conversationRoutes.delete(
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
     await writableConversation(id, userId);
-    await deleteConversation(id);
+    await deleteAndTellReaders(id, (room) => deleteConversation(room));
     return c.body(null, 204);
   },
 );

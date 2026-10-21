@@ -170,6 +170,7 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 			scheduleInvalidation(qc, ["conversations", data.conversationId]);
 			return;
 		}
+		case "conversation.deleted":
 		case "conversation.settled":
 		case "conversation.message": {
 			if (data?.conversationId) {
