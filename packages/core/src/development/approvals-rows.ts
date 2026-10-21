@@ -337,6 +337,18 @@ export const mockupRows = (projectId: string, mockups: readonly MockupView[]): B
         asker: { kind: m.proposedAgency === 'agent' ? 'agent' : 'person', userId: m.proposedBy },
         since: m.createdAt,
         opens,
+        mockup: {
+          url: m.url,
+          round: m.round,
+          revises: m.revises,
+          openComments: m.comments.open,
+          consequence:
+            m.target.type === 'requirement'
+              ? 'pinned_next_baseline'
+              : m.target.type === 'issue'
+                ? 'given_to_issue_jobs'
+                : 'kept_on_feedback',
+        },
         approve: actFor('mockup.accept', { projectId, mockupKey: m.key }),
         decline: m.can.return
           ? actFor('mockup.return', { projectId, mockupKey: m.key }, true)

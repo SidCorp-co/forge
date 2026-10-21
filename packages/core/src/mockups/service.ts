@@ -1,19 +1,18 @@
 /**
- * The writes of mockups (MK-n, ISS-78): a person or an agent proposes one about a feedback item or
- * an issue, a holder of mockups.approve accepts it or returns it with a reason, and its author
- * may withdraw it while it waits. Each write runs in one transaction under the project's mockup
- * lock and returns its refusals; the bytes reach the one store before the row is written.
+ * The writes of mockups (MK-n, ISS-78, REQ-49): a person or an agent proposes one about a
+ * requirement revision, a feedback item or an issue, or proposes a returned one again as its next
+ * revision, settling the comments it names; a holder of mockups.approve accepts it or returns it
+ * with a reason, and its author may withdraw it while it waits. Each write runs in one transaction
+ * under the project's mockup lock and returns its refusals; the bytes reach the one store before the
+ * row is written.
  */
 
 import { randomUUID } from 'node:crypto';
 import { MOCKUP_MACHINE } from '@forge/contracts/mockup-machine';
-import type { MockupTargetInput, MockupView, ProposeMockupRequest } from '@forge/contracts/mockups';
-import { requirementKey } from '@forge/contracts/requirements';
-import { and, eq, sql } from 'drizzle-orm';
+import type { MockupView, ProposeMockupRequest } from '@forge/contracts/mockups';
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
-import { mockups } from '../db/schema-mockups.js';
-import { requirements } from '../db/schema-requirements.js';
-import { feedbackRefIn, issueRefIn, requirementRefIn } from '../feedback/index.js';
+import { mockupComments, mockups } from '../db/schema-mockups.js';
 import { getStorage } from '../integrations/index.js';
 import { lockXact } from '../lib/advisory-lock.js';
 import { dataPolicyOf } from '../lib/data-egress.js';
@@ -21,57 +20,33 @@ import { logger } from '../lib/logger.js';
 import { movedRow, transition } from '../lifecycle/index.js';
 import { actorFor, permissionFactsOf, projectResource, requireCan } from '../permissions/index.js';
 import { mockupContent } from './content.js';
-import { type MockupActor, type MockupRow, mockupKey, mockupViews, rowIn } from './read.js';
+import {
+  chainIds,
+  type MockupActor,
+  type MockupRow,
+  mockupKey,
+  mockupViews,
+  rowIn,
+} from './read.js';
 import {
   decidedRefusal,
   deciderRefusal,
   type MockupRefusal,
   queueRefusal,
-  requirementTargetRefusal,
   returnReasonRefusal,
+  revisesRefusal,
+  settleRefusals,
+  settlesWithoutRevisesRefusal,
   withdrawRefusal,
 } from './rules.js';
+import { proposalTarget, revisedRow, type Target } from './target.js';
 
 export type MockupOutcome =
   | { ok: true; mockup: MockupView; created?: boolean }
   | { ok: false; refusals: MockupRefusal[] };
 
-async function lockMockups(tx: Tx, projectId: string): Promise<void> {
+export async function lockMockups(tx: Tx, projectId: string): Promise<void> {
   await lockXact(tx, 'mockups', projectId);
-}
-
-interface Target {
-  feedbackId: string | null;
-  issueId: string | null;
-  label: string;
-}
-
-const invalidTarget = (path: string, detail: string): MockupRefusal => ({
-  code: 'MOCKUP_TARGET_INVALID',
-  path,
-  detail,
-});
-
-/** The one target a proposal names, inside `projectId`, or the refusal naming why it is not one. */
-async function resolveMockupTarget(
-  projectId: string,
-  target: MockupTargetInput,
-  userId: string,
-): Promise<Target | MockupRefusal> {
-  const none = { feedbackId: null, issueId: null };
-  if ('issue' in target) {
-    const issue = await issueRefIn(projectId, target.issue, userId, '/target/issue');
-    if ('code' in issue) return invalidTarget(issue.path, issue.detail);
-    return { ...none, issueId: issue.id, label: issue.key };
-  }
-  if ('feedback' in target) {
-    const item = await feedbackRefIn(projectId, target.feedback, '/target/feedback');
-    if ('code' in item) return invalidTarget(item.path, item.detail);
-    return { ...none, feedbackId: item.id, label: item.key };
-  }
-  const req = await requirementRefIn(projectId, target.requirement, '/target/requirement');
-  if ('code' in req) return invalidTarget(req.path, req.detail);
-  return requirementTargetRefusal(projectId, req.key, 'propose', target.revision);
 }
 
 async function answer(
@@ -89,10 +64,57 @@ async function answer(
 const openOn = (t: Target) =>
   and(
     eq(mockups.status, 'proposed'),
-    t.feedbackId ? eq(mockups.feedbackId, t.feedbackId) : eq(mockups.issueId, t.issueId ?? ''),
+    t.requirementId
+      ? eq(mockups.requirementId, t.requirementId)
+      : t.feedbackId
+        ? eq(mockups.feedbackId, t.feedbackId)
+        : eq(mockups.issueId, t.issueId ?? ''),
   );
 
-/** A person or an agent proposes a mockup about one target. */
+/** The refusals a next revision meets at its write, read under the lock: the mockup it revises and the comments it settles. */
+async function revisionRefusals(
+  tx: Tx,
+  revised: MockupRow,
+  body: ProposeMockupRequest,
+): Promise<MockupRefusal[]> {
+  const key = mockupKey(revised.mockupSeq);
+  const now = await rowIn(tx, revised.projectId, revised.id);
+  const [next] = await tx
+    .select({ seq: mockups.mockupSeq })
+    .from(mockups)
+    .where(eq(mockups.revisesId, revised.id));
+  const refused = revisesRefusal(key, now.status, next ? mockupKey(next.seq) : null);
+  if (refused) return [refused];
+  const named = [...(body.answers ?? []), ...(body.resolves ?? [])];
+  if (!named.length) return [];
+  const comments = await tx
+    .select({ id: mockupComments.id, settled: mockupComments.settled })
+    .from(mockupComments)
+    .where(inArray(mockupComments.mockupId, await chainIds(tx, revised)));
+  return settleRefusals(
+    key,
+    new Map(comments.map((c) => [c.id, c])),
+    (body.answers ?? []).map((a) => a.comment),
+    (body.resolves ?? []).map((r) => r.comment),
+  );
+}
+
+/** What the new revision settles: each comment it answers or resolves, once, naming it. */
+async function settleComments(tx: Tx, by: string, body: ProposeMockupRequest) {
+  const at = new Date();
+  const settle = (comment: string, as: 'answered' | 'resolved', note: string | null) =>
+    tx
+      .update(mockupComments)
+      .set({ settled: as, settledByMockupId: by, settledNote: note, settledAt: at })
+      .where(and(eq(mockupComments.id, comment), isNull(mockupComments.settled)));
+  for (const a of body.answers ?? []) await settle(a.comment, 'answered', a.note ?? null);
+  for (const r of body.resolves ?? []) await settle(r.comment, 'resolved', r.note);
+}
+
+/**
+ * A person or an agent proposes a mockup about one target, or a returned one again as its next
+ * revision (`revises`), which answers or resolves the comments it names (REQ-49 BC-2, BC-3).
+ */
 export async function proposeMockup(input: {
   projectId: string;
   actor: MockupActor;
@@ -100,7 +122,11 @@ export async function proposeMockup(input: {
 }): Promise<MockupOutcome> {
   const { projectId, actor, body } = input;
   await requireCan(actorFor(actor.userId), 'project.write', projectResource(projectId));
-  const target = await resolveMockupTarget(projectId, body.target, actor.userId);
+  const loose = settlesWithoutRevisesRefusal(body);
+  if (loose) return { ok: false, refusals: [loose] };
+  const revised = body.revises ? await revisedRow(projectId, body.revises) : null;
+  if (revised && 'code' in revised) return { ok: false, refusals: [revised] };
+  const target = await proposalTarget(projectId, body, actor.userId, revised);
   if ('code' in target) return { ok: false, refusals: [target] };
   const got = await mockupContent(projectId, await dataPolicyOf(projectId), body);
   if (!got.ok) return { ok: false, refusals: got.refusals };
@@ -113,6 +139,10 @@ export async function proposeMockup(input: {
   let id = '';
   const refusals = await db.transaction(async (tx) => {
     await lockMockups(tx, projectId);
+    if (revised) {
+      const refused = await revisionRefusals(tx, revised, body);
+      if (refused.length) return refused;
+    }
     const [{ open } = { open: 0 }] = await tx
       .select({ open: sql<number>`count(*)::int` })
       .from(mockups)
@@ -128,6 +158,8 @@ export async function proposeMockup(input: {
       .values({
         projectId,
         mockupSeq: next,
+        requirementId: target.requirementId,
+        revision: target.revision,
         feedbackId: target.feedbackId,
         issueId: target.issueId,
         kind: content.kind,
@@ -138,9 +170,12 @@ export async function proposeMockup(input: {
         storagePath: stored.path,
         proposedBy: actor.userId,
         proposedAgency: actor.agency,
+        revisesId: revised?.id ?? null,
+        round: revised ? revised.round + 1 : 1,
       })
       .returning({ id: mockups.id });
     id = row?.id ?? '';
+    if (revised) await settleComments(tx, id, body);
     return null;
   });
   if (refusals) {
@@ -195,15 +230,7 @@ async function deciderFor(
   return deciderRefusal(await permissionFactsOf(actor.userId, projectId), key, act);
 }
 
-async function requirementKeyOf(requirementId: string): Promise<string> {
-  const [req] = await db
-    .select({ seq: requirements.reqSeq })
-    .from(requirements)
-    .where(eq(requirements.id, requirementId));
-  return req ? requirementKey(req.seq) : requirementId;
-}
-
-/** A holder of mockups.approve accepts a proposed mockup about a feedback item or an issue, its author included. */
+/** A holder of mockups.approve accepts a proposed mockup, its author included; an accepted requirement mockup is pinned by the next agree or re-pin. */
 export function acceptMockup(input: {
   projectId: string;
   ref: string;
@@ -214,15 +241,7 @@ export function acceptMockup(input: {
     input.projectId,
     input.ref,
     input.actor,
-    async (row, key) =>
-      row.requirementId !== null && row.revision !== null
-        ? requirementTargetRefusal(
-            input.projectId,
-            await requirementKeyOf(row.requirementId),
-            'accept',
-            row.revision,
-          )
-        : deciderFor(input.actor, input.projectId, key, 'accept'),
+    (_row, key) => deciderFor(input.actor, input.projectId, key, 'accept'),
     { status: 'accepted', reason: input.reason?.trim() || null },
   );
 }

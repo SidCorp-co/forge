@@ -2,18 +2,17 @@
  * REQ-35 slice 1 (ISS-459), built to Requirement lifecycle r14 (picture, picture_none,
  * picture_shown, kind.corrected, agreed) and Requirement to delivery r15 (pins, ready, turn): a
  * requirement revision names its kind and holds one picture fitting it, written by anyone who may edit
- * the requirement and shown at once with no accept; each replace stays in the history; nothing gates
- * on it; no baseline pins a picture or a mockup; and the mockup accept queue takes no requirement.
+ * the requirement and shown at once with no accept; each replace stays in the history; and nothing
+ * gates on it. REQ-35's criteria 10 and 11 (no baseline pins a mockup, no mockup is proposed about a
+ * requirement) were reversed by REQ-49, whose suite is `mockups-on-the-item-e2e.test.ts`.
  */
 
-import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { beforeAll, describe, expect, it, onTestFinished } from 'vitest';
 import { type Doc, ok, refusal, refusedByDb } from '../helpers/ecosystem-world.js';
 import { rows, seedIssueStatus } from '../helpers/factories.js';
 import { plantLiveBuild } from '../helpers/live-build.js';
 import {
-  BOARD,
   openPictureWorld,
   PICTURES,
   pictureDoors,
@@ -23,25 +22,6 @@ import {
 const w = openPictureWorld();
 const { as, read, requirement, revision, history, picture, kindOf, agreeR1, ready } =
   pictureDoors(w);
-
-/** A mockup row about a requirement, as REQ-35's predecessors left them on forge-dev (MK-1, MK-2). */
-async function requirementMockup(requirementId: string, status: 'proposed' | 'accepted') {
-  const { withKernelMarker } = await import('../../src/db/kernel-marker.js');
-  const { db } = await import('../../src/db/client.js');
-  const id = randomUUID();
-  const [{ seq } = { seq: 1 }] = await rows<{ seq: number }>(sql`
-    SELECT coalesce(max(mockup_seq), 0)::int + 1 AS seq FROM mockups WHERE project_id = ${w.projectId}`);
-  await withKernelMarker(db, (tx) =>
-    tx.execute(sql`
-      INSERT INTO mockups (id, project_id, mockup_seq, requirement_id, revision, kind, name, mime, size,
-                           storage_path, status, proposed_by, proposed_agency, decided_by, decided_at)
-      VALUES (${id}, ${w.projectId}, ${seq}, ${requirementId}, 1, 'wireframe', 'board.wireframe.json',
-              'application/json', 10, ${`mockups/${w.projectId}/${id}`}, ${status}, ${w.ownerId}, 'human',
-              ${status === 'accepted' ? w.ownerId : null},
-              CASE WHEN ${status} = 'accepted' THEN now() END)`),
-  );
-  return { id, key: `MK-${seq}` };
-}
 
 describe('a revision names its kind, and its picture fits it (criteria 1, 6)', () => {
   it.each(Object.entries(PICTURES))('a %s requirement holds its picture', async (kind, body) => {
@@ -259,85 +239,5 @@ describe('no picture gates the requirement (criterion 5)', () => {
     expect((done.revisions as Doc[]).every((r) => r.kind === null && r.picture === null)).toBe(
       true,
     );
-  });
-});
-
-describe('no baseline pins a picture or a mockup (criterion 10)', () => {
-  it('an agree pins no accepted mockup, and one accepted since moves no re-pin', async () => {
-    const key = await requirement('The receipt lists every line', 'screen');
-    ok(await picture(key, 1, PICTURES.screen));
-    const [req] = await rows<{ id: string }>(
-      sql`SELECT id FROM requirements WHERE project_id = ${w.projectId} AND req_seq = ${Number(key.slice(4))}`,
-    );
-    if (!req) throw new Error('no requirement row');
-    await requirementMockup(req.id, 'accepted');
-    await agreeR1(key);
-    const pins = ((await read(key)).baselines as Doc[]).flatMap((b) => b.pins as Doc[]);
-    expect(pins.filter((p) => p.kind === 'mockup')).toEqual([]);
-    await requirementMockup(req.id, 'accepted');
-    expect(
-      refusal(
-        await as('owner', 'POST', `/requirements/${key}/repin`, {
-          revision: 1,
-          reason: 'Agreed with the owner for this test.',
-        }),
-      ),
-    ).toEqual(['REQUIREMENT_PINS_CURRENT /revision']);
-  });
-
-  it('the database refuses a pin naming a mockup', async () => {
-    const key = await requirement('The receipt prints', 'screen');
-    await agreeR1(key);
-    const [b] = await rows<{ requirement_id: string }>(sql`
-      SELECT b.requirement_id FROM requirement_baselines b JOIN requirements r ON r.id = b.requirement_id
-       WHERE r.project_id = ${w.projectId} AND r.req_seq = ${Number(key.slice(4))}`);
-    if (!b) throw new Error('no baseline');
-    const mk = await requirementMockup(b.requirement_id, 'accepted');
-    await refusedByDb(
-      rows(sql`INSERT INTO requirement_baseline_pins (requirement_id, revision, baseline_seq, mockup_id)
-               VALUES (${b.requirement_id}, 1, 1, ${mk.id})`),
-      /REQUIREMENT_PIN_MOCKUP/,
-    );
-  });
-});
-
-describe('the mockup accept queue takes no requirement (criterion 11)', () => {
-  let key = '';
-  let requirementId = '';
-  beforeAll(async () => {
-    key = await requirement('The cart badge counts items', 'screen');
-    const [req] = await rows<{ id: string }>(
-      sql`SELECT id FROM requirements WHERE project_id = ${w.projectId} AND req_seq = ${Number(key.slice(4))}`,
-    );
-    requirementId = req?.id ?? '';
-  });
-
-  it('a proposal about a requirement is refused, pointing at its picture', async () => {
-    const r = await as('owner', 'POST', '/mockups', {
-      target: { requirement: key, revision: 1 },
-      kind: 'wireframe',
-      document: BOARD,
-    });
-    expect(refusal(r)).toEqual(['MOCKUP_TARGET_INVALID /target/requirement']);
-    // criterion 16: the route is the one to call, the project's own id filled in
-    const said = JSON.stringify(r.json);
-    expect(said).toContain(`/api/projects/${w.projectId}/requirements/${key}/revisions/1/picture`);
-    expect(said).not.toContain(':id');
-  });
-
-  it('one already waiting is readable, offers no accept, and is refused one; a return still closes it', async () => {
-    const mk = await requirementMockup(requirementId, 'proposed');
-    const listed = ok(await as('owner', 'GET', `/mockups?requirement=${key}`)).mockups as Doc[];
-    expect(listed.map((m) => [m.key, m.can.accept, m.can.return])).toEqual([[mk.key, false, true]]);
-    const accept = await as('owner', 'POST', `/mockups/${mk.key}/accept`, {});
-    expect(refusal(accept)).toEqual(['MOCKUP_TARGET_INVALID /target']);
-    expect(JSON.stringify(accept.json)).toContain(
-      `/api/projects/${w.projectId}/requirements/${key}/revisions/1/picture`,
-    );
-    expect(JSON.stringify(accept.json)).not.toContain(':id');
-    const returned = ok(
-      await as('owner', 'POST', `/mockups/${mk.key}/return`, { reason: 'the picture replaces it' }),
-    );
-    expect(returned.mockup.status).toBe('returned');
   });
 });

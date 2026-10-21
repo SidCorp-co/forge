@@ -31,7 +31,7 @@ import {
 } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { EntityCommentThread } from "@/features/comments";
-import { MockupList } from "@/features/mockups";
+import { MockupList, RequirementMockups } from "@/features/mockups";
 import { useMockups } from "@/features/mockups";
 import { PendingBadge } from "@/features/suggestions";
 import { useWaitingSuggestions } from "@/features/suggestions";
@@ -205,12 +205,7 @@ export function RequirementPage({
   const developer = view === "developer";
   const q = useRequirement(projectId, reqKey);
   const memories = useRequirementMemoryCount(projectId, reqKey);
-  const proposedAt =
-    q.data?.revisions.find((r) => r.state === "draft" || r.state === "proposed")?.revision ??
-    q.data?.currentRevision ??
-    q.data?.revisions[0]?.revision ??
-    1;
-  const mockupTarget = { type: "requirement" as const, key: reqKey, revision: proposedAt };
+  const mockupTarget = { type: "requirement" as const, key: reqKey };
   const mockups = useMockups(projectId, mockupTarget);
   return (
     <QueryBoundary query={q} loadingLabel={t("requirements.loadingOne")}>
@@ -234,6 +229,7 @@ export function RequirementPage({
             rail={
               <FactsRail testId="relations-rail">
                 <RequirementProperties d={d} slug={slug} onOpenRevisions={() => onTab("revisions")} projectId={projectId} developer={developer} />
+                <RequirementMockups projectId={projectId} slug={slug} reqKey={d.key} />
               </FactsRail>
             }
           >
@@ -247,7 +243,7 @@ export function RequirementPage({
               {shownTab === "overview" ? <RequirementOverview d={d} projectId={projectId} slug={slug} onRevise={() => onTab("revisions")} developer={developer} /> : null}
               {shownTab === "criteria" ? <Criteria d={d} projectId={projectId} slug={slug} developer={developer} /> : null}
               {shownTab === "revisions" ? <Revisions d={d} projectId={projectId} /> : null}
-              {shownTab === "mockups" ? <MockupList projectId={projectId} target={mockupTarget} /> : null}
+              {shownTab === "mockups" ? <MockupList projectId={projectId} slug={slug} target={mockupTarget} hostViewer={false} /> : null}
               {shownTab === "memory" ? <RequirementMemory projectId={projectId} slug={slug} reqKey={d.key} /> : null}
               {shownTab === "activity" ? <RequirementActivity projectId={projectId} slug={slug} d={d} /> : null}
             </DetailPane>

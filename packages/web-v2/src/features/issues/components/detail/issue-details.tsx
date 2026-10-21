@@ -126,7 +126,7 @@ export function IssueDetails({
               />,
             )
           : null}
-        {developer ? row("mockups", t("common.mockups.title"), mockupCount ?? null, <MockupList projectId={projectId} target={mockupTarget} />) : null}
+        {developer ? row("mockups", t("common.mockups.title"), mockupCount ?? null, <MockupList projectId={projectId} slug={slug} target={mockupTarget} />) : null}
         {developer ? row("memory", t("memory.title"), null, <IssueMemoryTab projectId={projectId} slug={slug} issueKey={issue.displayId} />) : null}
       </div>
     </section>

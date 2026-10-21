@@ -30,6 +30,19 @@ export const APPROVAL_KINDS = [
 ] as const;
 export type ApprovalKind = (typeof APPROVAL_KINDS)[number];
 
+/**
+ * What accepting a mockup does, by its item: a requirement's is pinned by the next agree or re-pin
+ * and given to its issues' jobs from there; an issue's is given to that issue's jobs; a feedback
+ * item's is kept on the item as the agreed picture of its fix.
+ */
+export const MOCKUP_ACCEPT_CONSEQUENCES = [
+	"pinned_next_baseline",
+	"given_to_issue_jobs",
+	"kept_on_feedback",
+] as const;
+export type MockupAcceptConsequence =
+	(typeof MOCKUP_ACCEPT_CONSEQUENCES)[number];
+
 /** Who asked: a person, an agent's credential, or the assistant on a person's behalf. */
 export const APPROVAL_ASKERS = ["person", "agent", "assistant"] as const;
 export type ApprovalAsker = (typeof APPROVAL_ASKERS)[number];
@@ -88,6 +101,20 @@ export const approvalItemSchema = z
 		suggestionKind: z.enum(SUGGESTION_KINDS).nullable(),
 		/** A mockup's kind; null on every other row. */
 		mockupKind: z.enum(MOCKUP_KINDS).nullable(),
+		/**
+		 * A mockup row's preview and what deciding it does (REQ-49 BC-7): the route serving its bytes,
+		 * which `features/mockups` `MockupPreview` draws inline, its round and the mockup it revises,
+		 * the comments still open on it, and the consequence of an accept. Absent on every other row.
+		 */
+		mockup: z
+			.strictObject({
+				url: z.string().startsWith("/api/"),
+				round: z.int().min(1),
+				revises: z.string().max(LIMITS.key).nullable(),
+				openComments: z.int().min(0),
+				consequence: z.enum(MOCKUP_ACCEPT_CONSEQUENCES),
+			})
+			.optional(),
 		/** The revision a revision, agreement or design row decides; null on the rest. */
 		revision: z.int().min(1).nullable(),
 		/** Null where no record keeps who asked. */

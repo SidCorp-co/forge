@@ -50,6 +50,7 @@ export interface TargetFields {
   release?: string | undefined;
   workflow?: string | undefined;
   endpoint?: string | undefined;
+  mockup?: string | undefined;
   screen?: string | undefined;
   node?: NodeRef | undefined;
 }
@@ -62,15 +63,15 @@ export function targetCountRefusal(
   whereSeen: string | undefined,
 ): FeedbackRefusal | null {
   const named = (
-    ['requirement', 'issue', 'release', 'workflow', 'endpoint', 'screen'] as const
+    ['requirement', 'issue', 'release', 'workflow', 'endpoint', 'mockup', 'screen'] as const
   ).filter((k) => fields[k] !== undefined);
   if (named.length !== 1) {
     return refusal(
       'FEEDBACK_TARGET_NOT_ONE',
       named.length ? `/${named[1]}` : '',
       named.length
-        ? `an item is about one target, and this names ${named.join(' and ')}; name exactly one of requirement, issue, release, workflow, endpoint or screen.`
-        : 'an item is about one target; name exactly one of requirement, issue, release, workflow, endpoint or screen.',
+        ? `an item is about one target, and this names ${named.join(' and ')}; name exactly one of requirement, issue, release, workflow, endpoint, mockup or screen.`
+        : 'an item is about one target; name exactly one of requirement, issue, release, workflow, endpoint, mockup or screen.',
     );
   }
   if (named[0] === 'screen' && whereSeen?.trim()) {
@@ -121,7 +122,7 @@ export function retargetRefusal(f: RetargetFacts): FeedbackRefusal | null {
     return refusal(
       'FEEDBACK_ALREADY_REDACTED',
       '/screen',
-      `${f.key}'s reporter data was deleted, and a screen named in words is reporter data; retarget it to a requirement, issue, release, workflow or endpoint instead.`,
+      `${f.key}'s reporter data was deleted, and a screen named in words is reporter data; retarget it to a requirement, issue, release, workflow, endpoint or mockup instead.`,
     );
   }
   if (f.revision && f.revision.revises !== f.revision.nextRequirement) {

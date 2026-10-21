@@ -9,7 +9,7 @@ import {
 } from '../db/schema-requirements.js';
 import { personGateOf } from '../project-config/index.js';
 import { signoffReasonRefusal } from './acceptance-rules.js';
-import { latestBaselineIn, linkedContracts, writePinsIn } from './baselines.js';
+import { acceptedMockupIds, latestBaselineIn, linkedContracts, writePinsIn } from './baselines.js';
 import { linkedDesigns, type RequirementActor, rowIn, signerRefusal } from './read.js';
 import { type RequirementRefusal, repinRefusals } from './rules.js';
 import { answer, inTx, lockRequirements, type RequirementOutcome } from './write-tx.js';
@@ -19,8 +19,8 @@ import { answer, inTx, lockRequirements, type RequirementOutcome } from './write
 // revision pinning each linked design's approved revision and each linked contract's current
 // version, with no text revision; the earlier baseline stays, and an issue whose plan read it
 // reads changed-since-plan until it is re-planned; the text is unchanged, so the readiness result
-// the agree recorded carries over (ISS-86, ISS-98); no picture or mockup is pinned, so neither makes
-// a re-pin due (Requirement lifecycle r14 `agreed`). Nothing re-pins by itself: a design approval
+// the agree recorded carries over (ISS-86, ISS-98); a mockup accepted after the agree is pinned the
+// same way, beside the designs (ISS-78, REQ-49 BC-6), and the picture never is. Nothing re-pins by itself: a design approval
 // only makes this act due, and its mover takes it as the project's `revisions` person gate asks
 // (`personGateOf`): a signer where the gate is on, any project writer, an agent included, where it
 // is off (REQ-41 BC-10, owner ruling 2026-10-14)
@@ -86,6 +86,8 @@ export async function repinIn(
   const designs = await linkedDesigns(tx, current.id);
   const contracts = await linkedContracts(tx, current.id);
   const latest = head === null ? null : await latestBaselineIn(tx, current.id, head);
+  const accepted = head === null ? [] : await acceptedMockupIds(tx, current.id, head);
+  const pinnedMockups = new Set(latest?.pins.flatMap((p) => (p.mockupId ? [p.mockupId] : [])));
   const refused = repinRefusals({
     status: current.status as RequirementStatus,
     named: input.revision,
@@ -111,6 +113,8 @@ export async function repinIn(
             ]
           : [],
       ) ?? [],
+    mockupsMoved:
+      accepted.length !== pinnedMockups.size || accepted.some((id) => !pinnedMockups.has(id)),
   });
   if (refused.length || head === null || !latest) return refused;
   const seq = latest.seq + 1;

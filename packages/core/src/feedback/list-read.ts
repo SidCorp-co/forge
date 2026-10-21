@@ -27,6 +27,7 @@ import { userNames } from '../lib/people.js';
 import { holderNames, holds } from '../permissions/index.js';
 import { readReleaseMode } from '../project-config/index.js';
 import { deliveredAmong, nodesOfDesign } from '../requirements/index.js';
+import { feedbackDependents } from './dependents.js';
 import { WITHHELD } from './egress.js';
 import { forgeOriginsOf } from './forge-reads.js';
 import { liveMasterOwedTriages } from './owed-triage.js';
@@ -61,6 +62,8 @@ export interface Linked {
     { flow: string; title: string | null; steps: ReadonlyMap<string, string | null> }
   >;
   providers: Map<string, string>;
+  /** Each mockup an item is about: its MK-n and its name (REQ-49 BC-4). */
+  mockups?: Map<string, { key: string; name: string }>;
   suggestions: Map<
     string,
     {
@@ -110,6 +113,10 @@ export async function viewerCanIn(userId: string, projectId: string): Promise<Vi
 const AT_RELEASE_GATE = 'awaiting_release';
 
 const ids = (values: (string | null)[]) => [...new Set(values.filter((v): v is string => !!v))];
+
+/** The MK-n and name of each mockup the rows are about, read through the mockups module's port. */
+const mockupsOf = (rows: Row[]) =>
+  feedbackDependents().mockupKeysOf(ids(rows.map((r) => r.mockupId)));
 
 export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> {
   const routeIssues = await routeIssuesOf(rows);
@@ -218,6 +225,7 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
     release,
     prefix,
     providers: new Map(providerRows.map((p) => [p.id, p.slug])),
+    mockups: await mockupsOf(rows),
     issues: new Map(
       issueRows.map((i) => [
         i.id,

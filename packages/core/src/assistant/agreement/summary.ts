@@ -76,7 +76,15 @@ export function kindOfToolCall(name: string, argsJson: string): ChatProposalKind
   );
 }
 
-const FEEDBACK_TARGETS = ['requirement', 'issue', 'release', 'workflow', 'endpoint', 'screen'];
+const FEEDBACK_TARGETS = [
+  'requirement',
+  'issue',
+  'release',
+  'workflow',
+  'endpoint',
+  'mockup',
+  'screen',
+];
 
 /** Feedback's one target, as its link reads. */
 function feedbackTarget(args: Args): string[] {

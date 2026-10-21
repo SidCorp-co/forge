@@ -225,6 +225,7 @@ export async function preparedFeedback(
       releaseRunId: target.releaseRunId,
       workflowId: target.workflowId,
       ...endpointColumns(target.endpoint),
+      mockupId: target.mockupId,
       ...node.columns,
       reportedBy: actor.userId,
       reporterAgency: actor.agency,

@@ -179,7 +179,7 @@ export function FeedbackPage({
             <ViewBar view={view} onView={onView} />
             <DetailTabs tabs={tabs} value={tab} onChange={onTab} testId="feedback-tabs" />
             <DetailPane label={tabs.find((x) => x.value === tab)?.label ?? t("feedback.tab.overview")}>
-              {tab === "mockups" ? <MockupList projectId={projectId} target={{ type: "feedback", key: f.key }} canPropose={!f.redacted} /> : null}
+              {tab === "mockups" ? <MockupList projectId={projectId} slug={slug} target={{ type: "feedback", key: f.key }} canPropose={!f.redacted} /> : null}
               {tab === "overview" ? (
                 <div className="grid gap-8" data-testid="view-overview">
                   <FeedbackEvidence projectId={projectId} slug={slug} f={f} />

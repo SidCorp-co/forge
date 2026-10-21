@@ -16,13 +16,22 @@ import { createFeedback } from './service.js';
 // The item's one target is ONE field here, not the REST body's six optional ones: a gateway model
 // fills every optional property, so six of them came back filled (or blank) on every call and each
 // card failed FEEDBACK_TARGET_NOT_ONE at the person's press (forge-dev chat a760cd5f, 2026-10-21).
-const TARGET_KINDS = ['requirement', 'issue', 'release', 'workflow', 'endpoint', 'screen'] as const;
+const TARGET_KINDS = [
+  'requirement',
+  'issue',
+  'release',
+  'workflow',
+  'endpoint',
+  'mockup',
+  'screen',
+] as const;
 const {
   requirement: _requirement,
   issue: _issue,
   release: _release,
   workflow: _workflow,
   endpoint: _endpoint,
+  mockup: _mockup,
   screen: _screen,
   ...requestFields
 } = createFeedbackRequestSchema.shape;
@@ -35,7 +44,7 @@ const input = z.strictObject({
       ref: z.string().trim().min(1).max(FEEDBACK_LIMITS.whereSeen),
     })
     .describe(
-      'the ONE thing the item is about: { kind: requirement, ref: "REQ-n" } is best; else issue (ISS-n), release (version), workflow (its slug), endpoint (METHOD /path or tool) or screen (the page route)',
+      'the ONE thing the item is about: { kind: requirement, ref: "REQ-n" } is best; else issue (ISS-n), release (version), workflow (its slug), endpoint (METHOD /path or tool), mockup (MK-n) or screen (the page route)',
     ),
 });
 type Input = z.infer<typeof input>;

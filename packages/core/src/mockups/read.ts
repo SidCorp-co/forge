@@ -1,17 +1,18 @@
 /**
  * The reads of mockups (MK-n, ISS-78): one by key, the list on one target, and the view every door
- * answers, with the baseline pin a requirement mockup has and the acts the viewer may take.
+ * answers, with the baseline pin a requirement mockup has, the revision it answers and the one that
+ * answers it, its comment counts, and the acts the viewer may take.
  */
 
 import { feedbackKey } from '@forge/contracts/feedback';
 import type { MockupTargetType, MockupView } from '@forge/contracts/mockups';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import { requirementKey } from '@forge/contracts/requirements';
-import { and, asc, desc, eq, inArray, isNotNull } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { feedback } from '../db/schema-feedback.js';
-import { mockups } from '../db/schema-mockups.js';
+import { mockupComments, mockups } from '../db/schema-mockups.js';
 import {
   requirementBaselinePins,
   requirementBaselines,
@@ -54,6 +55,53 @@ export async function rowIn(tx: Tx, projectId: string, ref: string): Promise<Moc
     );
   if (!row) throw notFound(`project ${projectId} holds no mockup ${ref}`);
   return row;
+}
+
+/** The ids of `row` and of every revision before it, newest first (REQ-49 BC-3). */
+export async function chainIds(tx: Tx, row: MockupRow): Promise<string[]> {
+  const ids = [row.id];
+  let back = row.revisesId;
+  while (back && !ids.includes(back)) {
+    ids.push(back);
+    const [prev] = await tx
+      .select({ revisesId: mockups.revisesId })
+      .from(mockups)
+      .where(eq(mockups.id, back));
+    back = prev?.revisesId ?? null;
+  }
+  return ids;
+}
+
+/** For each of `rows`: the key it revises, the key that revises it, and its comment counts. */
+async function revisionFacts(rows: readonly MockupRow[]) {
+  const ids = rows.map((m) => m.id);
+  const back = [...new Set(rows.flatMap((m) => (m.revisesId ? [m.revisesId] : [])))];
+  const [prev, next, counts] = await Promise.all([
+    back.length
+      ? db
+          .select({ id: mockups.id, seq: mockups.mockupSeq })
+          .from(mockups)
+          .where(inArray(mockups.id, back))
+      : [],
+    db
+      .select({ revisesId: mockups.revisesId, seq: mockups.mockupSeq })
+      .from(mockups)
+      .where(inArray(mockups.revisesId, ids)),
+    db
+      .select({
+        mockupId: mockupComments.mockupId,
+        total: sql<number>`count(*)::int`,
+        open: sql<number>`(count(*) filter (where ${mockupComments.settled} is null))::int`,
+      })
+      .from(mockupComments)
+      .where(inArray(mockupComments.mockupId, ids))
+      .groupBy(mockupComments.mockupId),
+  ]);
+  return {
+    revises: new Map(prev.map((p) => [p.id, mockupKey(p.seq)])),
+    revisedBy: new Map(next.flatMap((n) => (n.revisesId ? [[n.revisesId, mockupKey(n.seq)]] : []))),
+    comments: new Map(counts.map((c) => [c.mockupId, { total: c.total, open: c.open }])),
+  };
 }
 
 function targetTypeOf(m: MockupRow): MockupTargetType {
@@ -140,14 +188,16 @@ export async function mockupViews(
   door: MockupDoor = {},
 ): Promise<MockupView[]> {
   if (!rows.length) return [];
-  const [keys, people, pins, access, level] = await Promise.all([
+  const [keys, people, pins, access, level, facts] = await Promise.all([
     targetKeys(projectId, rows),
     peopleOf(rows.flatMap((m) => [m.proposedBy, m.decidedBy])),
     latestMockupPins(rows.flatMap((m) => (m.requirementId ? [m.requirementId] : []))),
     effectiveProjectRole(viewer.userId, projectId),
     dataPolicyOf(projectId),
+    revisionFacts(rows),
   ]);
   const approver = access ? holds(access, 'mockups.approve') : false;
+  const writer = access ? holds(access, 'project.write') : false;
   const fbReading = egressReading(level, { agency: viewer.agency, ...door }, 'feedback');
   return rows.map((m) => {
     const type = targetTypeOf(m);
@@ -156,6 +206,8 @@ export async function mockupViews(
     const pin = m.requirementId ? pins.get(m.requirementId) : undefined;
     const open = m.status === 'proposed';
     const hidden = type === 'feedback' && fbReading.withhold;
+    const revisedBy = facts.revisedBy.get(m.id) ?? null;
+    const discussed = (m.status === 'proposed' || m.status === 'returned') && !revisedBy;
     return {
       id: m.id,
       key,
@@ -175,12 +227,17 @@ export async function mockupViews(
       decidedAt: m.decidedAt?.toISOString() ?? null,
       reason: hidden ? null : m.reason,
       pinned: pin?.mockupIds.has(m.id) ? { revision: pin.revision, seq: pin.seq } : null,
+      round: m.round,
+      revises: m.revisesId ? (facts.revises.get(m.revisesId) ?? null) : null,
+      revisedBy,
+      comments: facts.comments.get(m.id) ?? { total: 0, open: 0 },
       url: `/api/projects/${projectId}/mockups/${key}/content`,
       can: {
-        // a requirement's picture is its revision's own (REQ-35): one waiting on it is returned or withdrawn, never accepted
-        accept: open && approver && type !== 'requirement',
+        accept: open && approver,
         return: open && approver,
         withdraw: open && m.proposedBy === viewer.userId,
+        comment: discussed && writer && !hidden,
+        revise: m.status === 'returned' && !revisedBy && writer && !hidden,
       },
     };
   });
@@ -202,10 +259,7 @@ export async function mockupRowsOn(
     .orderBy(asc(mockups.mockupSeq));
 }
 
-/**
- * The proposed mockups of `projectId` the viewer may accept, oldest first, for the approval inbox. A
- * requirement's mockup is decided with its revision (REQ-35), so it never waits here on its own.
- */
+/** The proposed mockups of `projectId` the viewer may accept, oldest first, for the approval inbox. */
 export async function waitingMockupsAs(
   projectId: string,
   viewer: MockupActor,

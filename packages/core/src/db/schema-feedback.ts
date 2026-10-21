@@ -27,6 +27,7 @@ import {
 import { users } from './schema-auth.js';
 import { contractVersions } from './schema-ecosystem.js';
 import { issues } from './schema-issues.js';
+import { mockups } from './schema-mockups.js';
 import { pipelineRuns } from './schema-pipeline.js';
 import { integrationBindings } from './schema-project-config.js';
 import { projects } from './schema-projects.js';
@@ -98,6 +99,10 @@ export const feedback = pgTable(
     endpointContractSlug: text('endpoint_contract_slug'),
     endpointContractVersion: text('endpoint_contract_version'),
     endpointElement: text('endpoint_element'),
+    // the seventh is a mockup (REQ-49 BC-4): an item about one proposed screen or call
+    mockupId: uuid('mockup_id').references((): AnyPgColumn => mockups.id, {
+      onDelete: 'no action',
+    }),
     dueAt: timestamp('due_at', { withTimezone: true }),
     /** Parked out of New until then, with the reason a triager reads on return; only while new or reopened. */
     snoozedUntil: timestamp('snoozed_until', { withTimezone: true }),
@@ -153,7 +158,7 @@ export const feedback = pgTable(
     ),
     arcChk: check(
       'feedback_arc_chk',
-      sql`num_nonnulls(${t.requirementId}, ${t.issueId}, ${t.releaseRunId}, ${t.workflowId}, ${t.contractVersion}, ${t.endpointElement}) = 1 OR (num_nonnulls(${t.requirementId}, ${t.issueId}, ${t.releaseRunId}, ${t.workflowId}, ${t.contractVersion}, ${t.endpointElement}) = 0 AND ${t.whereSeen} IS NOT NULL)`,
+      sql`num_nonnulls(${t.requirementId}, ${t.issueId}, ${t.releaseRunId}, ${t.workflowId}, ${t.contractVersion}, ${t.endpointElement}, ${t.mockupId}) = 1 OR (num_nonnulls(${t.requirementId}, ${t.issueId}, ${t.releaseRunId}, ${t.workflowId}, ${t.contractVersion}, ${t.endpointElement}, ${t.mockupId}) = 0 AND ${t.whereSeen} IS NOT NULL)`,
     ),
     nodeChk: check(
       'feedback_node_chk',
@@ -237,6 +242,7 @@ export const feedback = pgTable(
     violatedCriterionIdx: index('feedback_violated_criterion_idx')
       .on(t.violatedCriterionId)
       .where(sql`violated_criterion_id IS NOT NULL`),
+    mockupIdx: index('feedback_mockup_idx').on(t.mockupId).where(sql`mockup_id IS NOT NULL`),
     signalIdx: index('feedback_project_signal_idx')
       .on(t.projectId, t.signalKey)
       .where(sql`signal_key IS NOT NULL`),

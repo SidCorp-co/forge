@@ -48,6 +48,7 @@ import { useRecents } from "@/lib/navigation/recents";
 import { usePinnedViews } from "@/lib/navigation/pinned-views";
 import { ChatDock } from "@/features/conversations/components/chat-dock";
 import { ChatDockProvider, useChatDockState } from "@/features/chat-dock";
+import { MockupFeedback } from "@/features/feedback";
 import { useApprovals } from "@/features/approvals";
 import { useNeedsYou } from "@/features/needs-you";
 import { WorkspaceSidebar } from "@/features/shell/components/workspace-sidebar";
@@ -206,6 +207,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
     <WorkspaceInterfaceLanguage>
     <TourReleaseProvider value={tourRelease}>
     <ChatDockProvider value={dock}>
+    <MockupFeedback>
     <TopBarSlotProvider>
     <div className="flex h-dvh overflow-hidden bg-shell" data-print="frame" data-shell>
       <div className="hidden h-full md:block" data-testid="desktop-sidebar" data-print="chrome">
@@ -299,6 +301,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
       />
     </div>
     </TopBarSlotProvider>
+    </MockupFeedback>
     </ChatDockProvider>
     </TourReleaseProvider>
     </WorkspaceInterfaceLanguage>

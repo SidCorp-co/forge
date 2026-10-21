@@ -61,5 +61,9 @@ export function targetView(r: Row, l: Linked): FeedbackTargetView {
       title: `${r.endpointContractSlug} ${r.endpointContractVersion}`,
     };
   }
+  if (type === 'mockup') {
+    const m = l.mockups?.get(r.mockupId as string);
+    return { type, key: m?.key ?? (r.mockupId as string), title: m?.name ?? null };
+  }
   return { type, key: r.whereSeen ?? '', title: null };
 }

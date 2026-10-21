@@ -2,7 +2,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { readOf, useWrite } from "@/lib/api/query-kit";
 import { mockupsApi } from "./api";
-import type { MockupTarget, ProposeMockupRequest } from "./types";
+import { useCallback } from "react";
+import { notifyLocationChange, useLocationSearch } from "@/lib/utils/use-location-search";
+import type { CommentMockupRequest, MockupTarget, ProposeMockupRequest } from "./types";
 
 const listKey = (projectId: string, t: MockupTarget) => ["mockups", projectId, t.type, t.key];
 
@@ -18,7 +20,46 @@ export function useMockupText(url: string, enabled = true) {
 }
 
 /** The mockups and the requirements they hang on, which every mockup write changes. */
-const touched = (projectId: string) => [["mockups", projectId], ["requirement", projectId]];
+const touched = (projectId: string) => [["mockups", projectId], ["mockup-comments", projectId], ["requirement", projectId], ["approvals"]];
+
+const commentsKey = (projectId: string, key: string) => ["mockup-comments", projectId, key];
+
+export const useMockupComments = (projectId: string, key: string, enabled = true) =>
+  useQuery({ ...readOf(commentsKey(projectId, key), () => mockupsApi.comments(projectId, key)), enabled });
+
+export const useCommentMockup = (projectId: string, key: string) =>
+  useWrite((body: CommentMockupRequest) => mockupsApi.comment(projectId, key, body), { touches: touched(projectId) });
+
+/**
+ * The mockup this page is about (`?mockup=MK-n`), and whether it is open full screen (`&full=1`). While
+ * a mockup is named the Ask Agent chat is about it (REQ-49 BC-4): opening it full screen names it,
+ * closing it clears both, and asking the agent from it closes the view and keeps it named.
+ */
+export function useOpenMockup() {
+  const search = useLocationSearch();
+  const params = new URLSearchParams(search);
+  const named = params.get("mockup");
+  const subject = named && /^MK-\d{1,9}$/.test(named) ? named : null;
+  const write = useCallback(
+    (mockup: string | null, full: boolean) => {
+      const sp = new URLSearchParams(window.location.search);
+      if (mockup) sp.set("mockup", mockup);
+      else sp.delete("mockup");
+      if (full) sp.set("full", "1");
+      else sp.delete("full");
+      const qs = sp.toString();
+      window.history.replaceState(window.history.state, "", `${window.location.pathname}${qs ? `?${qs}` : ""}`);
+      notifyLocationChange();
+    },
+    [],
+  );
+  return {
+    subject,
+    full: subject !== null && params.get("full") === "1",
+    open: useCallback((key: string) => write(key, true), [write]),
+    close: useCallback((keep = false) => write(keep ? subject : null, false), [write, subject]),
+  };
+}
 
 export const useProposeMockup = (projectId: string) => useWrite((body: ProposeMockupRequest) => mockupsApi.propose(projectId, body), { touches: touched(projectId) });
 
