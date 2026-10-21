@@ -26,6 +26,7 @@ vi.mock('../../src/integrations/github/connect.js', async (importOriginal) => ({
     privateKey: 'scratch-new-app-pem',
     webhookSecret: 'scratch-new-hook-secret',
     slug: 'forge-reattached',
+    htmlUrl: 'https://github.example.test/apps/forge-reattached',
   }),
 }));
 
@@ -323,6 +324,29 @@ describe('a removed connection (criterion 216)', () => {
       config: {},
       integration_secret: 'scratch-new-hook-secret',
     });
+
+    // Whole-set review F1 (second read): the install GitHub sends back is recorded on the project
+    // the recovery ran from, though the caller administers both and the other binding is newer.
+    const install = new URL(res.headers.get('location') as string);
+    expect(install.pathname).toBe('/apps/forge-reattached/installations/new');
+    const carried = install.searchParams.get('state');
+    expect(carried, 'the install redirect carries state for the setup URL').toBeTruthy();
+    const installed = await app.request(
+      `/api/integrations/github/installed?installation_id=555&state=${encodeURIComponent(carried as string)}`,
+      { headers: { authorization: `Bearer ${token}` } },
+    );
+    expect(installed.status, await installed.clone().text()).toBe(302);
+    const configs = [
+      ...(await harness.db.execute(
+        sql`SELECT id, config FROM integration_bindings WHERE id IN (${binding.id}, ${otherBinding.id})`,
+      )),
+    ] as { id: string; config: Record<string, unknown> }[];
+    expect(Object.fromEntries(configs.map((r) => [r.id, r.config.installationId ?? null]))).toEqual(
+      {
+        [binding.id]: 555,
+        [otherBinding.id]: null,
+      },
+    );
   });
 });
 

@@ -312,7 +312,11 @@ githubCallbackRoutes.get(
       'github: app created from manifest',
     );
 
-    const install = app.htmlUrl ? `${app.htmlUrl}/installations/new` : null;
+    // GitHub hands `state` on to the setup URL, so the install is recorded on this project's
+    // binding: a reattached connection holds others, and the state-less read takes the first.
+    const install = app.htmlUrl
+      ? `${app.htmlUrl}/installations/new?state=${encodeURIComponent(signConnectState(stateSecret(), state))}`
+      : null;
     return c.redirect(
       install ?? `${webBaseUrl()}/projects/${state.projectId}/settings/integrations`,
     );
