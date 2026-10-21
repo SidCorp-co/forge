@@ -86,8 +86,11 @@ describe("a read Forge refused for good (criteria 249 and 250)", () => {
     });
     expect(read).toHaveBeenCalledTimes(2);
 
+    // The holds read starts no sooner than two seconds after the focus read started (ISS-1228 r26).
     frame("failed");
     await act(() => vi.advanceTimersByTimeAsync(1_000));
+    expect(read).toHaveBeenCalledTimes(2);
+    await act(() => vi.advanceTimersByTimeAsync(1_200));
     expect(read).toHaveBeenCalledTimes(3);
 
     await act(async () => {

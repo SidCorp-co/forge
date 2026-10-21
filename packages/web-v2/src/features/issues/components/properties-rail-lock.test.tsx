@@ -71,9 +71,11 @@ describe("PropertiesRail, while an agent is working the issue", () => {
     expect(control("Complexity")).toBeDisabled();
   });
 
-  it("states why, where a reader sees it without hovering", () => {
+  // ISS-1228 r26 (criterion 262): the rail said it beside Description saying it too; the page says it once.
+  it("leaves why to the page's one line rather than saying it again here", () => {
     render(rail("in_progress", "running"));
-    expect(screen.getByText(HELD)).toBeInTheDocument();
+    expect(screen.queryByText(HELD)).toBeNull();
+    expect(screen.queryByText(/would be overwritten/)).toBeNull();
   });
 
   it("accepts a priority change on a needs_info issue", () => {

@@ -7,13 +7,14 @@
 // typed wrong at create stayed wrong forever.
 
 import { useState } from "react";
-import { BodyView, Button, Skeleton } from "@/design";
+import { BodyView, Button, Skeleton, StaleReadLine } from "@/design";
 import { formatApiError, isRetryableApiError } from "@/lib/api/error";
+import { couldNotRefresh, offersRetry } from "@/lib/api/read-failed";
 import type { AttachmentRow, IssueDetail } from "../types";
 import { AttachmentList } from "./attachment-list";
 import { BodyEditor } from "./body-editor";
 import { FlatSection } from "./flat-section";
-import { AGENT_HOLDS_EDIT, heldByAgent } from "../edit-lock";
+import { heldByAgent } from "../edit-lock";
 import { useSaveDescription } from "../hooks";
 
 export interface DescriptionSectionProps {
@@ -25,6 +26,8 @@ export interface DescriptionSectionProps {
   attachmentsError?: unknown;
   /** Read the attachments again, offered where retrying could change the answer (ISS-1160). */
   onRetryAttachments?: (() => void) | undefined;
+  /** When the attachments still listed were read, where their read answered before it failed (ISS-1228 r26). */
+  attachmentsReadAt?: number | undefined;
 }
 
 export function DescriptionSection({
@@ -34,6 +37,7 @@ export function DescriptionSection({
   attachmentsLoading = false,
   attachmentsError = null,
   onRetryAttachments,
+  attachmentsReadAt,
 }: DescriptionSectionProps) {
   const [draft, setDraft] = useState<string | null>(null);
   const save = useSaveDescription(issue.id);
@@ -49,17 +53,14 @@ export function DescriptionSection({
     <FlatSection
       title="Description"
       action={
+        // Held by an agent, Edit is withheld; the page says why once, above this section (ISS-1228 r26).
         canWrite &&
         !editing &&
-        (held ? (
-          <span role="status" className="fg-body-sm text-subtle">
-            {AGENT_HOLDS_EDIT}
-          </span>
-        ) : (
+        !held && (
           <Button variant="ghost" size="sm" onClick={() => setDraft(issue.description ?? "")}>
             Edit
           </Button>
-        ))
+        )
       }
     >
       <IssueAttachments
@@ -67,6 +68,7 @@ export function DescriptionSection({
         loading={attachmentsLoading}
         error={attachmentsError}
         onRetry={onRetryAttachments}
+        readAt={attachmentsReadAt}
       />
       {editing ? (
         <BodyEditor
@@ -85,11 +87,14 @@ export function DescriptionSection({
               >
                 Cancel
               </Button>
+              {/* A draft begun before the issue's read failed stays, but is not saved over what was not re-read (ISS-1228 r26). */}
               <Button
                 variant="primary"
                 size="sm"
                 loading={save.isPending}
+                disabled={!canWrite}
                 onClick={() =>
+                  canWrite &&
                   save.mutate(
                     { id: issue.id, body: { description: draft } },
                     { onSuccess: () => setDraft(null) },
@@ -110,7 +115,7 @@ export function DescriptionSection({
         />
       ) : (
         <p className="fg-body-sm text-muted">
-          {canWrite ? "No description yet — Edit adds one." : "No description."}
+          {canWrite && !held ? "No description yet — Edit adds one." : "No description."}
         </p>
       )}
     </FlatSection>
@@ -123,17 +128,30 @@ function IssueAttachments({
   loading,
   error,
   onRetry,
+  readAt,
 }: {
   rows: AttachmentRow[];
   loading: boolean;
   error: unknown;
   onRetry: (() => void) | undefined;
+  readAt: number | undefined;
 }) {
   if (loading) {
     return (
       <div className="mb-4" aria-busy>
         <Skeleton variant="text" className="w-40" />
       </div>
+    );
+  }
+  if (error && readAt) {
+    return (
+      <section aria-label="Attachments" className="mb-4 space-y-2">
+        <StaleReadLine
+          said={couldNotRefresh(readAt, error)}
+          onRetry={onRetry && offersRetry(error) ? onRetry : undefined}
+        />
+        {rows.length > 0 && <AttachmentList rows={rows} />}
+      </section>
     );
   }
   if (error) {

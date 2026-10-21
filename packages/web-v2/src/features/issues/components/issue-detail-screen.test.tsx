@@ -18,11 +18,14 @@ expect.extend(matchers);
 const ok = <T,>(data: T) => ({ data, isLoading: false, isError: false, error: null, refetch: vi.fn() });
 
 let journal: ReturnType<typeof ok> | Record<string, unknown> = ok([]);
-let attachments: ReturnType<typeof ok> = ok([]);
+let attachments: ReturnType<typeof ok> | Record<string, unknown> = ok([]);
+let comments: ReturnType<typeof ok> | Record<string, unknown> = ok({ items: [], totalCount: 0 });
 let pipelineHealth: Record<string, unknown> | undefined;
 let status = "open";
 let issueOver: Record<string, unknown> = {};
 let park: Record<string, unknown> = { state: "ready", park: null };
+/** The issue read itself, where a case makes it fail after it answered; null reads it as answering. */
+let issueRead: Record<string, unknown> | null = null;
 const requestTransition = vi.hoisted(() => vi.fn());
 
 const ISSUE = {
@@ -44,7 +47,11 @@ const ISSUE = {
 };
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), prefetch: vi.fn() }) }));
-vi.mock("@/features/projects/hooks", () => ({ useProjects: () => ({ data: [{ id: "p1", role: "admin" }] }) }));
+vi.mock("@/features/projects/hooks", () => ({
+  useProjects: () => ({ data: [{ id: "p1", role: "admin" }] }),
+  useProjectsIncludingArchived: () => ({ data: [], isLoading: false }),
+}));
+vi.mock("@/features/project-settings/hooks", () => ({ useUnarchiveProject: () => ({ mutate: vi.fn(), isPending: false }) }));
 vi.mock("@/features/runs/hooks", () => ({ useResumeRun: () => ({ mutate: vi.fn(), isPending: false }) }));
 vi.mock("@/features/questions/components/decision-panel", () => ({
   DecisionPanel: () => null,
@@ -68,8 +75,8 @@ vi.mock("@/lib/api/auth-api", () => ({ getAccessToken: () => "test-token" }));
 // The rest of the module stays real, so a read added back to it reaches `fetch` below instead of vanishing into a mock.
 vi.mock("../detail-hooks", async (importActual) => ({
   ...(await importActual<typeof import("../detail-hooks")>()),
-  useIssue: () => ok({ ...ISSUE, ...issueOver, status, pipelineHealth }),
-  useComments: () => ok({ items: [], totalCount: 0 }),
+  useIssue: () => ({ ...ok({ ...ISSUE, ...issueOver, status, pipelineHealth }), ...issueRead }),
+  useComments: () => comments,
   useActivity: () => ok({ items: [] }),
   useAttachments: () => attachments,
   useRunJournal: () => journal,
@@ -99,17 +106,25 @@ const precedes = (a: Element, b: Element) =>
   (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
 
 const fetchMock = vi.fn();
+/** What every read a case does not plant answers: the decisions read its own shape, the rest an empty list. */
+const answerOther = (url: string) =>
+  new Response(String(url).includes("/api/questions") ? JSON.stringify({ questions: [] }) : "[]", {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
 
 beforeEach(() => {
   fetchMock.mockReset();
-  fetchMock.mockImplementation(async () => new Response("[]", { status: 200, headers: { "content-type": "application/json" } }));
+  fetchMock.mockImplementation(async (url: string) => answerOther(url));
   vi.stubGlobal("fetch", fetchMock);
   journal = ok([]);
   attachments = ok([]);
+  comments = ok({ items: [], totalCount: 0 });
   pipelineHealth = undefined;
   status = "open";
   issueOver = {};
   park = { state: "ready", park: null };
+  issueRead = null;
   requestTransition.mockReset();
 });
 afterEach(() => {
@@ -481,7 +496,7 @@ describe("which session holds the issue, while it cannot be read", () => {
     pending.length = 0;
     journal = ok(SESSION_RUN);
     fetchMock.mockImplementation(async (url: string) => {
-      if (!String(url).includes("sessions-and-holds")) return json([]);
+      if (!String(url).includes("sessions-and-holds")) return answerOther(url);
       if (holds === "fail") throw new TypeError("Failed to fetch");
       if (holds === "refuse") {
         const refused = { code: "HOLDS_READ_REFUSED", message: "The holds could not be read while a migration holds the table. Try again in a minute." };
@@ -532,7 +547,6 @@ describe("which session holds the issue, while it cannot be read", () => {
   // "Not found." in place of the sentence Forge sent; and the line sat in the action toolbar.
   it.each([
     ["forbid", "Not a project member."],
-    ["missing", "Project not found."],
   ] as const)("says the server's own sentence when the read is refused (%s), under the actions", async (refusal, said) => {
     holds = refusal;
     renderLive();
@@ -630,5 +644,123 @@ describe("which session holds the issue, while it cannot be read", () => {
     issueOver = { agentSessions: [{ id: "s-run", status: "running", skill: "forge-code", startedAt: "2026-09-05T14:16:00Z", lastHeartbeatAt: new Date().toISOString() }] };
     renderLive();
     expect(await screen.findByText("Agent running")).toBeInTheDocument();
+  });
+
+  // Judge-83 (244, 248, 252): once answered, a failed run read still read "Running · Issue work" with
+  // Pause and the agent card, and a removed member's Retry re-asked the session read alone.
+  const READ_AT = new Date(2026, 9, 21, 14, 2).getTime();
+  const refused = new ApiError(403, "Not a project member.", "FORBIDDEN");
+  const LIVE = { agentSessions: [{ id: "s-run", status: "running", skill: "forge-code", startedAt: "2026-09-05T14:16:00Z", lastHeartbeatAt: new Date().toISOString() }] };
+  const staleRun = (refetch = vi.fn()) => ({ data: SESSION_RUN, dataUpdatedAt: READ_AT, isLoading: false, isError: true, error: refused, refetch });
+
+  it("says a run read that answered and then failed on the failure row, keeps its word as of then, and offers no Pause or agent card", async () => {
+    status = "in_progress";
+    holds = "answer";
+    issueOver = LIVE;
+    const refetchRun = vi.fn();
+    journal = staleRun(refetchRun);
+    renderLive();
+    const line = await within(header()).findByText("The run could not be read. Not a project member.");
+    expect(line.closest('[data-header="failure"]')).not.toBeNull();
+    expect(within(header()).getByText(/as of 14:02/)).toBeInTheDocument();
+    expect(within(header()).queryByRole("button", { name: "Pause" })).toBeNull();
+    expect(within(header()).queryByRole("button", { name: "Answer" })).toBeNull();
+    expect(within(header()).queryByRole("button", { name: "Run" })).toBeNull();
+    expect(screen.queryByText(/Agent (running|queued)/)).toBeNull();
+    expect(screen.queryByText("Heartbeat alive")).toBeNull();
+    fireEvent.click(within(header()).getByRole("button", { name: "Retry" }));
+    expect(refetchRun).toHaveBeenCalled();
+  });
+
+  it("names both reads on its one row once each answered and then failed, and its one Retry reads both again", async () => {
+    status = "in_progress";
+    holds = "answer";
+    issueOver = LIVE;
+    const refetchRun = vi.fn();
+    journal = staleRun(refetchRun);
+    const qc = renderLive();
+    expect(await within(header()).findByRole("link", { name: "Open session" })).toBeInTheDocument();
+
+    holds = "forbid";
+    await poll(qc);
+    const line = await within(header()).findByText("The run and its session could not be read. Not a project member.");
+    expect(line.closest('[data-header="failure"]')).not.toBeNull();
+    expect(within(header()).getAllByRole("button", { name: "Retry" })).toHaveLength(1);
+    expect(within(header()).queryByRole("link", { name: "Open session" })).toBeNull();
+    expect(screen.queryByText(/Agent (running|queued)/)).toBeNull();
+
+    const asked = fetchMock.mock.calls.filter(([url]) => String(url).includes("sessions-and-holds")).length;
+    await act(async () => {
+      fireEvent.click(within(header()).getByRole("button", { name: "Retry" }));
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(refetchRun).toHaveBeenCalled();
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).includes("sessions-and-holds")).length).toBe(asked + 1);
+  });
+
+  it("keeps the issue as read when its own read fails after it answered, names it on the row and offers no write", async () => {
+    status = "in_progress";
+    holds = "answer";
+    const refetchIssue = vi.fn();
+    issueRead = { isError: true, error: refused, dataUpdatedAt: READ_AT, refetch: refetchIssue };
+    renderLive();
+    expect(await within(header()).findByText("The issue could not be read. Not a project member.")).toBeInTheDocument();
+    expect(within(header()).getByText(ISSUE.title)).toBeInTheDocument();
+    expect(within(header()).getByText("as of 14:02")).toBeInTheDocument();
+    expect(within(header()).queryByRole("button", { name: "Pause" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
+    fireEvent.click(within(header()).getByRole("button", { name: "Retry" }));
+    expect(refetchIssue).toHaveBeenCalled();
+  });
+
+  // Criterion 257: a deleted project's page spoke of its session beside a Running chip and Pause.
+  it("says the project was not found, for the page and with nothing to act on, when its holds read answers 404", async () => {
+    status = "in_progress";
+    holds = "missing";
+    renderLive();
+    expect(await screen.findByText("Project not found")).toBeInTheDocument();
+    expect(screen.getByText("This project doesn't exist or you don't have access to it.")).toBeInTheDocument();
+    expect(screen.queryByText("ISS-7")).toBeNull();
+    expect(screen.queryByRole("button")).toBeNull();
+  });
+});
+
+// ISS-1228 r26 (criterion 233): a refresh that failed after it answered replaced what the section showed.
+describe("a section of the issue page whose refresh fails after it answered", () => {
+  const READ_AT = new Date(2026, 9, 21, 14, 2).getTime();
+  const lost = (data: unknown, refetch = vi.fn()) => ({ data, dataUpdatedAt: READ_AT, isLoading: false, isError: true, error: new ApiError(503, "Forge is restarting.", "UNAVAILABLE"), refetch });
+  const RUN = { runId: "r1", ordinal: 1, kind: "issue", status: "completed", group: null, startedAt: "2026-09-21T11:00:00Z", finishedAt: "2026-09-21T11:00:12Z", costUsd: null, attempts: [{ phase: "code", attempt: 1, source: "agent", outcome: "ok", startedAt: "2026-09-21T11:00:00Z", endedAt: "2026-09-21T11:00:12Z", durationSeconds: 12, artifact: null, handoff: null, handoffAt: null }] };
+
+  it.each([
+    ["Runs", () => { journal = lost([RUN]); }, () => screen.getByText("code")],
+    ["the comment thread", () => { comments = lost({ items: [], totalCount: 0 }); }, () => screen.getByText("comments")],
+    ["the attachments", () => { attachments = lost([{ id: "a1", name: "trace.txt", mime: "text/plain", size: 10, url: "/x", createdAt: "2026-09-21T11:00:00Z" }]); }, () => screen.getByText("trace.txt")],
+  ])("keeps %s as it was read, with a line saying when and Retry", (_name, fail, kept) => {
+    fail();
+    renderScreen();
+    expect(kept()).toBeInTheDocument();
+    const line = screen.getByText(/^Could not refresh — showing what was read at 14:02\. /);
+    expect(line).toBeInTheDocument();
+    expect(screen.queryByText(/Couldn't load/)).toBeNull();
+  });
+});
+
+// Criteria 260 and 262: one lock line, and no hairline dividing nothing.
+describe("the issue page's main column with an agent on the issue", () => {
+  it("says once that an edit would be overwritten, not beside Description again", () => {
+    status = "in_progress";
+    issueOver = { agentStatus: "running" };
+    renderScreen();
+    expect(screen.getAllByText(/would be overwritten/)).toHaveLength(1);
+    expect(screen.getByText("An agent is working this issue, so an edit to its description or properties now would be overwritten.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
+  });
+
+  it("draws no hairline above the section that comes first under the header", () => {
+    renderScreen();
+    const description = screen.getByRole("region", { name: "Description" });
+    const column = description.parentElement as HTMLElement;
+    expect(column.querySelector(":scope > section")).toBe(description);
+    expect(column.className).toContain("[&>section:first-child]:border-t-0");
   });
 });

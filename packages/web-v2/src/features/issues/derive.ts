@@ -199,12 +199,14 @@ export function openRunWord(runs: readonly RunWordSource[], nowMs: number): RunW
 /**
  * The issue page's run chip, read from the run journal alone: its open run's word, else its newest
  * run's, else none. Until the journal has answered it is `unread`, and `unreadable` where its first
- * read failed: no surface fills that gap with the sessions' verdict (ISS-1228 round 20).
+ * read failed: no surface fills that gap with the sessions' verdict (ISS-1228 round 20); `stale` once
+ * it answered and has failed since, its last word as of `readAt`, with no act resting on it (r26).
  */
 export type IssueRunChip =
 	| { state: "unread" }
 	| { state: "unreadable" }
-	| { state: "read"; word: RunWord | null; open: boolean; waitsOn: RunWaitsOn };
+	| { state: "read"; word: RunWord | null; open: boolean; waitsOn: RunWaitsOn }
+	| { state: "stale"; word: RunWord | null; readAt: number };
 
 /** What the run the chip reads waits on, which decides the header's primary action (ISS-1228 r21):
  *  a person's answer, nothing at all (Nothing working), or neither. */
@@ -217,16 +219,22 @@ function waitsOnOf(run: RunWordSource, word: RunWord): RunWaitsOn {
 
 export function issueRunChip(
 	runs: readonly (RunWordSource & Pick<RunView, "ordinal">)[],
-	journal: { answered: boolean; failed: boolean },
+	journal: { answered: boolean; failed: boolean; readAt?: number },
 	nowMs: number,
 ): IssueRunChip {
 	if (!journal.answered) return { state: journal.failed ? "unreadable" : "unread" };
 	const openRun = runs.find((r) => r.status === "running" || r.status === "paused");
+	const newest = runs.reduce<(typeof runs)[number] | null>((n, r) => (n === null || r.ordinal > n.ordinal ? r : n), null);
+	const shown = openRun ?? newest;
+	// A word read before the journal failed is told at the time it was read, never at `nowMs`.
+	if (journal.failed) {
+		const readAt = journal.readAt ?? nowMs;
+		return { state: "stale", word: shown ? wordOf(shown, readAt) : null, readAt };
+	}
 	if (openRun) {
 		const word = wordOf(openRun, nowMs);
 		return { state: "read", word, open: true, waitsOn: waitsOnOf(openRun, word) };
 	}
-	const newest = runs.reduce<(typeof runs)[number] | null>((n, r) => (n === null || r.ordinal > n.ordinal ? r : n), null);
 	const word = newest ? wordOf(newest, nowMs) : null;
 	return { state: "read", word, open: false, waitsOn: newest && word ? waitsOnOf(newest, word) : null };
 }
@@ -806,11 +814,17 @@ export const ANSWERED_COPY = {
 export const NOTHING_TO_RESUME_AT =
 	"Nothing says where this issue picks up again — Move anyway… in the status menu lists every move.";
 
-function parkBlocker(park: IssuePark, blockingRefs: BlockingRef[]): BlockerState {
+/** Who answers a question the decisions read could not load: it points at nothing below (ISS-1228 r26). */
+export const QUESTION_UNREAD_WHO = "Anyone on the project can answer it, once its question can be read again.";
+
+function parkBlocker(park: IssuePark, blockingRefs: BlockingRef[], questionsUnread: boolean): BlockerState {
 	const answered = threadQuestionOf(park)?.answer ? ANSWERED_COPY : null;
 	const copy = answered ?? PARK_OWES_COPY[park.owes ?? "unstated"];
 	const refs = blockingRefs.length ? { blockingRefs } : {};
 	if (parkAsksAQuestion(park)) {
+		if (questionsUnread && park.openQuestionIds.length > 0) {
+			return { tone: "attention", reason: copy.reason, whoMustAct: QUESTION_UNREAD_WHO, cta: { label: "", kind: "none" }, ...refs };
+		}
 		return {
 			tone: "attention",
 			reason: copy.reason,
@@ -918,6 +932,8 @@ export function deriveBlockerState(
 	deps: IssueDependencies | undefined,
 	/** The park view: what a person owes this issue, read once for the banner and the status control. */
 	park: ParkReading = NO_PARK,
+	/** The issue's decisions read failed with nothing held, so the banner points at no question below it. */
+	questionsUnread = false,
 ): BlockerState | null {
 	const blockingRefs = openBlockingRefs(deps);
 
@@ -935,7 +951,7 @@ export function deriveBlockerState(
 		};
 	}
 
-	if (park.state === "ready" && park.park) return parkBlocker(park.park, blockingRefs);
+	if (park.state === "ready" && park.park) return parkBlocker(park.park, blockingRefs, questionsUnread);
 
 	if (statusesForLabels("needs_human").includes(issue.status)) {
 		return {

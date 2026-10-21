@@ -33,6 +33,8 @@ vi.mock("next/link", () => ({
 vi.mock("@/lib/ws/use-room", () => ({ useRoom: () => undefined }));
 vi.mock("@/design/hooks/use-now", () => ({ useNow: () => Date.parse("2026-10-15T02:00:00.000Z") }));
 vi.mock("../hooks", () => ({ useSessionsAndHolds: () => query }));
+vi.mock("@/features/projects/hooks", () => ({ useProjectsIncludingArchived: () => ({ data: [], isLoading: false }) }));
+vi.mock("@/features/project-settings/hooks", () => ({ useUnarchiveProject: () => ({ mutate: vi.fn(), isPending: false }) }));
 
 const reading: SessionsAndHolds = {
   readAt: "2026-10-15T01:59:50.000Z",
@@ -256,7 +258,6 @@ describe("the Pipeline page with nothing to show, or no reading", () => {
   // missing project with "Project not found.", and the page said its own stock sentence over both.
   it.each([
     ["403", new ApiError(403, "Not a project member.", "FORBIDDEN"), "Not a project member."],
-    ["404", new ApiError(404, "Project not found.", "NOT_FOUND"), "Project not found."],
   ])("gives the server's own sentence when a refresh is refused with a %s", (_, error, said) => {
     query = { ...query, data: reading, isError: true, error, refetch: vi.fn() };
     screenFor();
@@ -266,11 +267,25 @@ describe("the Pipeline page with nothing to show, or no reading", () => {
 
   it.each([
     ["403", new ApiError(403, "Not a project member.", "FORBIDDEN"), "Not a project member."],
-    ["404", new ApiError(404, "Project not found.", "NOT_FOUND"), "Project not found."],
   ])("gives the server's own sentence when the first read is refused with a %s", (_, error, said) => {
     query = { data: undefined, isError: true, error, refetch: vi.fn() };
     screenFor();
     expect(screen.getByText(said)).toBeInTheDocument();
+  });
+
+  // ISS-1228 r26 (criterion 257): a project deleted while its Pipeline page was open left the page
+  // keeping its last reading under "Could not refresh … Project not found.", with Retry.
+  it.each([
+    ["a refresh", () => reading],
+    ["the first read", () => undefined],
+  ])("says the project was not found, once and with nothing to act on, when %s answers 404", (_, held) => {
+    query = { data: held(), isError: true, error: new ApiError(404, "Project not found.", "NOT_FOUND"), refetch: vi.fn() };
+    screenFor();
+    expect(screen.getByText("Project not found")).toBeInTheDocument();
+    expect(screen.getByText("This project doesn't exist or you don't have access to it.")).toBeInTheDocument();
+    expect(screen.queryByRole("button")).toBeNull();
+    expect(screen.queryByRole("list", { name: "Live sessions" })).toBeNull();
+    expect(screen.queryByText(/Could not refresh/)).toBeNull();
   });
 
   // Round 23 (judge-74, criteria 233 and 234): a failed refresh said so but offered no way to try again.

@@ -1181,6 +1181,25 @@ describe("deriveBlockerState", () => {
 			expect(b?.cta.kind).toBe("provide-info");
 		});
 
+		// ISS-1228 r26 (criterion 261): the banner said "the question is below" over a decisions line
+		// saying the decisions could not be read.
+		it("points at no question below when the decisions read failed with nothing held", () => {
+			const park = readPark({ status: "needs_info", owes: "information", openQuestionIds: ["q1"] });
+			const unread = deriveBlockerState(blockerIssue({ status: "needs_info" }), undefined, undefined, park, true);
+			expect(unread?.whoMustAct).not.toMatch(/below/);
+			expect(unread?.whoMustAct).toBe("Anyone on the project can answer it, once its question can be read again.");
+			expect(unread?.cta.kind).toBe("none");
+			const read = deriveBlockerState(blockerIssue({ status: "needs_info" }), undefined, undefined, park, false);
+			expect(read?.whoMustAct).toMatch(/the question is below/);
+			expect(read?.cta.kind).toBe("provide-info");
+		});
+
+		it("still points below at a question the thread carries, which the decisions read does not hold", () => {
+			const park = readPark({ status: "needs_info", owes: "information", openQuestionIds: [], reason: "Which replica?" });
+			const b = deriveBlockerState(blockerIssue({ status: "needs_info" }), undefined, undefined, park, true);
+			expect(b?.cta.kind).toBe("provide-info");
+		});
+
 		it("says the park did not say what it waits for, and offers no move it cannot back", () => {
 			const b = deriveBlockerState(
 				blockerIssue({ status: "waiting" }),
@@ -1863,10 +1882,13 @@ describe("the issue page's run chip, from the run journal alone (round 20)", () 
     expect(working).toMatchObject({ state: "read", waitsOn: null });
   });
 
-  it("keeps a reading already shown when a later refresh fails", () => {
-    expect(issueRunChip([run({ reading: "running" })], { answered: true, failed: true }, now)).toMatchObject({
-      state: "read",
-      open: true,
-    });
+  // Judge-83 (244): Pause stayed on offer over a journal refused after it had answered.
+  it("keeps the word a journal last read once a later refresh fails, as of when it was read, and no act", () => {
+    const readAt = now - 60_000;
+    const chip = issueRunChip([run({ reading: "running" })], { answered: true, failed: true, readAt }, now);
+    expect(chip).toMatchObject({ state: "stale", readAt });
+    expect(chip.state === "stale" && chip.word?.status).toBe("running");
+    expect(chip).not.toHaveProperty("open");
+    expect(chip).not.toHaveProperty("waitsOn");
   });
 });

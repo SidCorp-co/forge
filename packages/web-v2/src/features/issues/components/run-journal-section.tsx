@@ -6,9 +6,9 @@
 
 import { jobKindLabel } from "@/features/overview/job-kinds";
 import { useState } from "react";
-import { EmptyPanelLine, Icon, STOPPED_WORD } from "@/design";
+import { EmptyPanelLine, Icon, STOPPED_WORD, StaleReadLine } from "@/design";
 import { formatApiError } from "@/lib/api/error";
-import { offersRetry } from "@/lib/api/read-failed";
+import { couldNotRefresh, offersRetry } from "@/lib/api/read-failed";
 import { formatDurationMs, formatDurationSec, formatRelativeTime, formatUsd } from "@/lib/utils/format";
 import { useNow } from "@/design/hooks/use-now";
 import { runReadingChip, runSince } from "@/features/runs/derive";
@@ -42,13 +42,16 @@ interface RunJournalSectionProps {
   loading: boolean;
   error: unknown;
   onRetry: () => void;
+  /** When the runs still shown were read, where the journal answered before it failed (ISS-1228 r26). */
+  readAt?: number | undefined;
 }
 
-export function RunJournalSection({ runs, loading, error, onRetry }: RunJournalSectionProps) {
+export function RunJournalSection({ runs, loading, error, onRetry, readAt }: RunJournalSectionProps) {
   const [openRuns, setOpenRuns] = useState<ReadonlySet<string> | null>(null);
 
   if (loading) return <EmptyPanelLine title={TITLE} status="Loading…" flat />;
-  if (error) {
+  const stale = error && readAt ? couldNotRefresh(readAt, error) : null;
+  if (error && !stale) {
     return (
       <EmptyPanelLine
         title={TITLE}
@@ -65,7 +68,7 @@ export function RunJournalSection({ runs, loading, error, onRetry }: RunJournalS
       />
     );
   }
-  if (runs.length === 0) {
+  if (runs.length === 0 && !stale) {
     return (
       <EmptyPanelLine
         title={TITLE}
@@ -88,6 +91,9 @@ export function RunJournalSection({ runs, loading, error, onRetry }: RunJournalS
   return (
     <section aria-label={TITLE} className="border-t border-line-subtle pt-4">
       <h2 className="fg-label mb-1">{TITLE}</h2>
+      {stale && (
+        <StaleReadLine said={stale} onRetry={offersRetry(error) ? onRetry : undefined} className="mb-2" />
+      )}
       <ol>
         {runs.map((run) => (
           <RunBlock

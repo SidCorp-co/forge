@@ -2,7 +2,7 @@ import { unrecognised } from "@/features/overview/job-kinds";
 import { liveSessionWord } from "@/features/sessions/session-word";
 import { BOX_SENT_NO_REPORT, MASTER_HAS_NO_REPORT, quietWhyText, waitingOnText } from "@/features/sessions/status-sentences";
 import { STALLED_THRESHOLD_MS, sessionSilence, sessionTitle } from "@/features/sessions/types";
-import { readFailure } from "@/lib/api/error";
+import { clockAt, couldNotRefresh } from "@/lib/api/read-failed";
 import { formatElapsed } from "@/lib/utils/format";
 import type { HeldIssue, Holder, LiveSession, PersonOwes } from "./types";
 
@@ -114,12 +114,7 @@ function ago(iso: string | null, now: number): string | null {
   return Number.isNaN(at) ? null : `${formatElapsed(Math.max(0, now - at))} ago`;
 }
 
-function clock(iso: string | null): string | null {
-  if (!iso) return null;
-  const at = new Date(iso);
-  if (Number.isNaN(at.getTime())) return null;
-  return `${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}`;
-}
+const clock = (iso: string | null): string | null => clockAt(iso);
 
 /** Why a session holds an issue: what that session is doing, in its Live sessions row's words, and
  *  for a quiet one how long it has been unheard. A session the read did not return claims nothing. */
@@ -184,5 +179,5 @@ export function orderHolds(holds: readonly HeldIssue[]): HeldIssue[] {
 /** The line a failed refresh shows: the clock time of the reading kept on screen, and why the refresh
  *  failed (ISS-1228 round 22). */
 export function readAtLine(readAt: string, error: unknown): string {
-  return `Could not refresh — showing what was read at ${clock(readAt) ?? readAt}. ${readFailure(error).said}`;
+  return couldNotRefresh(readAt, error);
 }

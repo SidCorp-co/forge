@@ -1,5 +1,5 @@
 import { QueryClient, QueryObserver } from "@tanstack/react-query";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/lib/api/client";
 import { refusalStands } from "@/lib/api/read-failed";
 import { invalidateThroughInFlight } from "./invalidate-through-inflight";
@@ -129,3 +129,53 @@ describe("a deferred re-read under a predicate", () => {
 		expect(calls).toBe(expected);
 	});
 });
+
+// ISS-1228 r26: an invalidation cancelled the read in flight and started another, so a stream of frames
+// kept one read always restarting and, with the cancelled one still out, two at once.
+describe("a read in flight", () => {
+	it("is never cut short, and is followed by one re-read however many invalidations arrive meanwhile", async () => {
+		const qc = client();
+		let calls = 0;
+		const gates = [deferred<string>(), deferred<string>(), deferred<string>()];
+		const observer = mount(qc, ["holds", "p1"], () => {
+			const gate = gates[calls];
+			calls += 1;
+			return gate?.promise ?? Promise.resolve("late");
+		});
+		await tick(5);
+		gates[0]?.resolve("v1");
+		await tick(5);
+		expect(calls).toBe(1);
+
+		invalidateThroughInFlight(qc, { queryKey: ["holds"] });
+		await tick(5);
+		expect(calls).toBe(2);
+		for (let n = 0; n < 5; n += 1) invalidateThroughInFlight(qc, { queryKey: ["holds"] });
+		await tick(5);
+		expect(calls, "an invalidation started a read over the one in flight").toBe(2);
+
+		gates[1]?.resolve("v2");
+		await tick();
+		expect(observer.getCurrentResult().data).toBe("v2");
+		expect(calls, "one re-read follows the read in flight").toBe(3);
+		gates[2]?.resolve("v3");
+		await tick();
+		expect(calls).toBe(3);
+	});
+
+	it("hands its re-read to the caller's requeue where one is given, with the widest predicate asked", async () => {
+		const qc = client();
+		const gate = deferred<string>();
+		mount(qc, ["holds", "p1"], () => gate.promise);
+		await tick(5);
+		const requeue = vi.fn();
+		const spare = () => true;
+		invalidateThroughInFlight(qc, { queryKey: ["holds"], predicate: spare }, requeue);
+		invalidateThroughInFlight(qc, { queryKey: ["holds"] }, requeue);
+		gate.resolve("v1");
+		await tick();
+		expect(requeue).toHaveBeenCalledTimes(1);
+		expect(requeue).toHaveBeenCalledWith(["holds", "p1"], undefined);
+	});
+});
+
