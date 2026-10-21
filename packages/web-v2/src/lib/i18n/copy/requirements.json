@@ -621,7 +621,6 @@
     "requirements.rule.replanUnknown": "được lên kế hoạch theo bản sửa cũ hơn r? (REQUIREMENT_CHANGED_SINCE_PLAN)",
     "requirements.rule.unagreed": "một bản sửa hiện hành chưa được đồng ý đang chờ ký duyệt",
     "requirements.rule.unjudged": "{codes} chưa có kết luận đạt",
-    "requirements.rule.untouched": "không ai động đến trong {days} ngày trở lên",
     "requirements.rule.untraced": "chưa tiêu chí issue nào truy về {codes}",
     "requirements.searchNoun": "yêu cầu",
     "requirements.suggestion.acceptBreakdown": "Chấp nhận sẽ tạo {n} issue ở bản nháp.",

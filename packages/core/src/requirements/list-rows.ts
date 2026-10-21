@@ -4,9 +4,11 @@
  * Needs-you count, once per project, so neither fact is a statement of its own.
  */
 
+import { requirementKey } from '@forge/contracts/requirements';
 import { desc, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { requirements } from '../db/schema-requirements.js';
+import { standingsOf } from './standing-read.js';
 
 export async function listRowsOf(projectId: string) {
   const held = await db
@@ -33,4 +35,17 @@ export async function listRowsOf(projectId: string) {
     areas: areas as ReadonlyMap<string, string>,
     runnerBound: held[0]?.runnerBound === true,
   };
+}
+
+/**
+ * Every requirement's standing as no viewer reads it, keyed by id with its key and title: the one
+ * standing read (REQ-48 BC-8) and the steward's sweep, where nothing reads as anyone's own.
+ */
+export async function requirementStandingsOf(projectId: string) {
+  const { rows, runnerBound } = await listRowsOf(projectId);
+  const standings = await standingsOf(projectId, rows, null, undefined, { runnerBound });
+  return rows.flatMap((r) => {
+    const standing = standings.get(r.id);
+    return standing ? [{ id: r.id, key: requirementKey(r.reqSeq), title: r.title, standing }] : [];
+  });
 }

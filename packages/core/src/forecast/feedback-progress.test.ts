@@ -9,7 +9,9 @@ import type {
   ForecastWaitSays,
 } from '@forge/contracts/forecast';
 import { say } from '@forge/contracts/said';
+import { waitingOn } from '@forge/contracts/standing';
 import { describe, expect, it } from 'vitest';
+import { noWorkLine } from './feedback.js';
 import { estimateOf, workStateOf } from './feedback-progress.js';
 
 const asOf = '2026-10-16T09:00:00.000Z';
@@ -31,11 +33,21 @@ const paused: ForecastPaused = {
   late: null,
 };
 
-type Item = Pick<FeedbackSummary, 'route' | 'phase' | 'snoozed'>;
+type Item = Pick<FeedbackSummary, 'route' | 'phase' | 'snoozed' | 'waitingOn' | 'times'>;
+// the item's own standing says what the forecast's wait said, so every wait below reads `says`
 const item = (over: Partial<Item> = {}): Item => ({
   route: { route: 'issue', carriers: [{ key: 'ISS-1', status: 'open' }], answer: null },
   phase: 'planned',
   snoozed: null,
+  waitingOn: waitingOn('you', { who: says.who, act: says.act, rule: says.reason }),
+  times: {
+    actClass: 'person_decide',
+    since: asOf,
+    dueAt: null,
+    stuck: null,
+    carriedBy: null,
+    basis: 'waiting|person',
+  },
   ...over,
 });
 const line = (over: Partial<FeedbackForecast> = {}): FeedbackForecast => ({
@@ -167,5 +179,55 @@ describe('when it is done, or why no date is given', () => {
     const dup = item({ route: { route: 'duplicate', carriers: [], answer: null } });
     const root = item({ route: { route: 'answer', carriers: [], answer: 'a' } });
     expect(estimateOf(dup, root, line())).toMatchObject({ reason: 'no_work' });
+  });
+});
+
+// REQ-48 BC-9: FB-74's body said "You to take on or drop" off its draft carrier's forecast while its
+// banner said "ship"; the body now names the item's own standing, so the two say one thing
+describe("FB-74's shape: the body reads the item's own standing", () => {
+  const draftCarrier = item({
+    phase: 'triaged',
+    waitingOn: waitingOn('person', {
+      who: say('standing.who.someone'),
+      act: say('standing.act.takeOn', { key: 'ISS-284' }),
+      rule: say('feedback.rule.draftCarrier', { key: 'ISS-284' }),
+    }),
+    times: {
+      actClass: 'person_decide',
+      since: asOf,
+      dueAt: null,
+      stuck: {
+        code: 'draft_carrier',
+        since: asOf,
+        reason: 'ISS-284 is a draft, and nothing takes a draft on by itself.',
+        via: 'ISS-284',
+        says: { reason: say('standing.stuck.draftCarrier', { key: 'ISS-284' }) },
+      },
+      carriedBy: null,
+      basis: 'stuck|person',
+    },
+  });
+
+  it('names whom the standing waits on and why it is stuck, never the carrier forecast’s own wait', () => {
+    const e = estimate(draftCarrier, line({ delivery: delivery(paused) }));
+    expect(e).toMatchObject({ kind: 'none', reason: 'waits' });
+    expect(e.kind === 'none' && e.waits).toEqual({
+      who: say('standing.who.someone'),
+      act: say('standing.act.takeOn', { key: 'ISS-284' }),
+      reason: say('standing.stuck.draftCarrier', { key: 'ISS-284' }),
+    });
+  });
+});
+
+// FB-89 was declined and still read At risk: the decline keeps its route, and its carriers' forecast
+// ran on past p85
+describe("FB-89's shape: a declined item", () => {
+  it('has no forecast line to be late on, whatever route it kept', () => {
+    expect(noWorkLine({ key: 'FB-89', phase: 'declined' })).toEqual({
+      key: 'FB-89',
+      triage: null,
+      delivery: null,
+    });
+    expect(noWorkLine({ key: 'FB-90', phase: 'planned' })).toBeNull();
   });
 });

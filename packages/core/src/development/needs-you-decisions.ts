@@ -17,6 +17,7 @@ import {
 } from '@forge/contracts/needs-you';
 import {
   byDecisionOrder,
+  isDecisionAct,
   type NeedsYouDecision,
   type NeedsYouDecisions,
   type NeedsYouNotDecisionReason,
@@ -25,12 +26,19 @@ import {
 import { type OpenPersonQuestion, readOpenPersonQuestions } from '../questions/index.js';
 import { type AttentionRow, type NeedsYouViewer, owedOf, readAttention } from './needs-you.js';
 import {
+  acceptDecision,
+  admitDecision,
+  repinDecision,
+  suggestionDecision,
+} from './needs-you-accept-builders.js';
+import {
   agreeDecision,
   designDecision,
   releaseDecision,
   revisionDecision,
 } from './needs-you-approve-builders.js';
 import { type Built, feedbackDecision, questionDecision } from './needs-you-decision-builders.js';
+import { proposedSuggestionsOf } from './needs-you-suggestions.js';
 import { releaseApprovalsOfRuns } from './ports.js';
 
 /** How many decisions one answer carries; `total` counts them all. */
@@ -60,6 +68,25 @@ const ANSWER_ACTS: ReadonlySet<string> = new Set([
   'issues.standing.act.answer',
   'issues.standing.act.answerOther',
   'issues.standing.act.decide',
+  'issues.standing.act.supply',
+]);
+
+/** A reporter's verify of a shipped fix (`feedback/standing.ts`). */
+const VERIFY_FIX: ReadonlySet<string> = new Set([
+  'standing.act.verifyFix',
+  'standing.act.verifyFixIn',
+]);
+
+/** A suggestion a signer decides on a requirement: its breakdown, or a revision it suggested. */
+const SUGGESTION_ACTS: ReadonlySet<string> = new Set([
+  'standing.act.reviewBreakdown',
+  'standing.act.reviewSuggestedRevision',
+]);
+
+/** A requirement whose only issues are drafts asks them taken on (`requirements/standing.ts`). */
+const PROMOTE_DRAFTS: ReadonlySet<string> = new Set([
+  'standing.act.promoteDraft',
+  'standing.act.promoteDrafts',
 ]);
 
 type Classified = Built | { reason: NeedsYouNotDecisionReason };
@@ -67,7 +94,20 @@ type Classified = Built | { reason: NeedsYouNotDecisionReason };
 interface Facts {
   questions: OpenPersonQuestion[];
   issueIdOf: ReadonlyMap<string, string>;
-  requirementOf: ReadonlyMap<string, { id: string; proposed: number | null; head: number | null }>;
+  requirementOf: ReadonlyMap<
+    string,
+    {
+      id: string;
+      proposed: number | null;
+      head: number | null;
+      current: number | null;
+      criteria: { passing: number; total: number };
+    }
+  >;
+  /** Each requirement's draft issues, by requirement key. */
+  draftsOf: ReadonlyMap<string, { id: string; key: string }[]>;
+  /** Each requirement's proposed breakdown or revision suggestion, by requirement id. */
+  suggestionOf: ReadonlyMap<string, { id: string; kind: string }>;
   releaseOf: ReadonlyMap<string, { runId: string | null; failing: number; total: number }>;
   approvalOf: ReadonlyMap<string, string>;
   feedbackAnswerOf: ReadonlyMap<string, string | null>;
@@ -111,6 +151,11 @@ function classify(row: AttentionRow, area: NeedsYouAreaKey, f: Facts): Classifie
   const act = actOf(row);
   if (OWN_WORK.has(act.key)) return { reason: 'own_work' };
   if (AWAITING_PROPOSAL.has(act.key)) return { reason: 'awaiting_proposal' };
+  // a row whose act no person decides is an agent's to take (`isDecisionAct`); slices never group it
+  // needs_you, so one reaching here is a question row or a slice outside the three
+  if (row.entity !== 'question' && !isDecisionAct(row.standing.waitingOn.says.act)) {
+    return { reason: 'work' };
+  }
   if (act.key === MERGE_OR_DROP && (row.entity === 'issue' || row.entity === 'requirement')) {
     const q = questionOf(row, f, row.entity === 'issue' ? row.key : null);
     if (!q) return { reason: 'awaiting_proposal' };
@@ -136,6 +181,18 @@ function classify(row: AttentionRow, area: NeedsYouAreaKey, f: Facts): Classifie
     if ((act.key === 'standing.act.agreeR' || act.key === 'standing.act.agreeIt') && req?.head) {
       return agreeDecision(row, area, f.projectId, req.head);
     }
+    if (act.key === 'standing.acts' && req?.head) {
+      return repinDecision(row, area, f.projectId, req.head);
+    }
+    const suggestion = req ? f.suggestionOf.get(req.id) : undefined;
+    if (SUGGESTION_ACTS.has(act.key) && suggestion) {
+      return suggestionDecision(row, area, f.projectId, suggestion);
+    }
+    if (act.key === 'standing.act.check' && req?.current) {
+      return acceptDecision(row, area, f.projectId, req.current, req.criteria);
+    }
+    const drafts = f.draftsOf.get(row.key) ?? [];
+    if (PROMOTE_DRAFTS.has(act.key) && drafts.length > 0) return admitDecision(row, area, drafts);
     return { reason: 'work' };
   }
   if (row.entity === 'release' && act.key === 'standing.act.approveOrReturn') {
@@ -158,7 +215,34 @@ function classify(row: AttentionRow, area: NeedsYouAreaKey, f: Facts): Classifie
   if (row.entity === 'feedback' && act.key === 'standing.act.confirmAnswer') {
     return feedbackDecision(row, area, f.projectId, f.feedbackAnswerOf.get(row.key) ?? null);
   }
+  if (row.entity === 'feedback' && VERIFY_FIX.has(act.key)) {
+    return feedbackDecision(row, area, f.projectId, null, 'fix');
+  }
   return { reason: 'work' };
+}
+
+/** Whether the row's item reads stuck and when its act falls due: what orders Needs you (BC-11). */
+function dueOfRow(row: AttentionRow): { stuck: boolean; dueAt: string | null } {
+  const dueAt = row.due?.dueAt ?? row.standing.waitingOn.dueAt ?? null;
+  return { stuck: row.due?.stuck ?? false, dueAt: dueAt ? new Date(dueAt).toISOString() : null };
+}
+
+/** Each requirement's draft issues, by its key. */
+function draftsByRequirement(
+  issues: readonly {
+    id: string;
+    key: string;
+    status: string;
+    standing: { requirement: { key: string } | null };
+  }[],
+): Map<string, { id: string; key: string }[]> {
+  const out = new Map<string, { id: string; key: string }[]>();
+  for (const i of issues) {
+    const req = i.standing.requirement?.key;
+    if (i.status !== 'draft' || !req) continue;
+    out.set(req, [...(out.get(req) ?? []), { id: i.id, key: i.key }]);
+  }
+  return out;
 }
 
 /** One row the viewer owes, built into the decision it is. */
@@ -197,9 +281,13 @@ export async function decisionsOf(
           id: r.id,
           proposed: r.standing.facts.proposedRevision,
           head: r.latestRevision?.revision ?? r.currentRevision,
+          current: r.currentRevision,
+          criteria: { passing: r.standing.facts.passing, total: r.standing.facts.criteria },
         },
       ]),
     ),
+    draftsOf: draftsByRequirement(attention.issues.issues),
+    suggestionOf: await proposedSuggestionsOf(attention.requirements.map((r) => r.id)),
     releaseOf: new Map(
       attention.releases.releases.map((r) => [
         r.version,
@@ -234,7 +322,7 @@ export async function decisionsOf(
     // a requirement held up by an issue's question and the issue itself are one decision
     if (c.questionId && asked.has(c.questionId)) continue;
     if (c.questionId) asked.add(c.questionId);
-    owed.push({ area, row, decision: c.decision });
+    owed.push({ area, row, decision: { ...c.decision, ...dueOfRow(row) } });
   }
   return { owed, left };
 }

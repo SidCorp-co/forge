@@ -19,9 +19,12 @@ export type StandingSubjectKind = (typeof STANDING_SUBJECT_KINDS)[number];
 
 /** What a steward note is written on (BC-7): requirements and feedback, never an issue. */
 export const STEWARD_NOTE_SUBJECT_KINDS = ["requirement", "feedback"] as const;
-export type StewardNoteSubjectKind = (typeof STEWARD_NOTE_SUBJECT_KINDS)[number];
+export type StewardNoteSubjectKind =
+	(typeof STEWARD_NOTE_SUBJECT_KINDS)[number];
 
-export interface StandingSubject<K extends StandingSubjectKind = StandingSubjectKind> {
+export interface StandingSubject<
+	K extends StandingSubjectKind = StandingSubjectKind,
+> {
 	kind: K;
 	id: string;
 	/** REQ-n, FB-n or ISS-n. */
@@ -35,15 +38,22 @@ export interface StandingSubject<K extends StandingSubjectKind = StandingSubject
  *   master where the project's master standing reads `none` or `silent`, a permission nobody holds,
  *   or a named person who is not a member.
  * - `draft_carrier`: it is carried by a draft issue, which nothing opens by itself.
+ * - `blocked`: an issue a live blocker holds, or one the dispatch door refuses: something else moves
+ *   first. A requirement never reads stuck by a blocked issue alone, since the blocker is read itself.
  * - `overdue`: its next act is past its due (`dueAt`, or the default `STANDING_DUE` gives).
  */
 export const STUCK_CODES = [
 	"no_owner",
 	"nobody_serves",
 	"draft_carrier",
+	"blocked",
 	"overdue",
 ] as const;
 export type StuckCode = (typeof STUCK_CODES)[number];
+
+/** Whether the project's master acts on what waits on it: `none` and `silent` read `nobody_serves`. */
+export const MASTER_SERVINGS = ["serves", "none", "silent"] as const;
+export type MasterServing = (typeof MASTER_SERVINGS)[number];
 
 /** The class of act a wait names, which picks its default due where the wait carries none. */
 export const STANDING_ACT_CLASSES = [
@@ -108,7 +118,7 @@ export interface StandingTimes {
 	since: string;
 	/** The wait's own due, else the default `STANDING_DUE_WORKING_DAYS` gives from `since`; null where none applies. */
 	dueAt: string | null;
-	/** Set exactly when the slice groups it `stuck`. */
+	/** Set exactly when the slice groups it `stuck`, or on a `needs_you` row whose due has passed (the person is told, so it keeps its group). */
 	stuck: StuckReading | null;
 	/** The issue whose own standing this wait was rolled up from (BC-9); else null. */
 	carriedBy: string | null;
@@ -166,18 +176,48 @@ export function standingBasisOf(s: StandingBasisFields): string {
 	].join("|");
 }
 
-export const basisFieldsOf = (
-	s: StandingTimes & { group: StandingGroup; waitingOn: WaitingOn },
-): StandingBasisFields => ({
-	group: s.group,
-	waitingKind: s.waitingOn.kind,
-	who: s.waitingOn.who,
-	actKey: s.waitingOn.says.act.key,
-	ref: s.waitingOn.ref,
-	stuckCode: s.stuck?.code ?? null,
-	dueAt: s.dueAt,
-	carriedBy: s.carriedBy,
-});
+const PERSON_KINDS: readonly WaitingKind[] = [
+	"you",
+	"person",
+	"admins",
+	"writers",
+];
+
+/**
+ * The fields a basis hashes, read the same for every viewer: `needs_you` reads as the group the item
+ * has for nobody in particular (`stuck`, else `waiting`), and a person's wait as `person`, never as
+ * "You" or a name the viewer changes.
+ */
+export function basisFieldsOf(
+	s: Pick<StandingTimes, "stuck" | "dueAt" | "carriedBy"> & {
+		group: StandingGroup;
+		waitingOn: Pick<WaitingOn, "kind" | "who" | "ref" | "says">;
+	},
+): StandingBasisFields {
+	const person = PERSON_KINDS.includes(s.waitingOn.kind);
+	return {
+		group: s.group === "needs_you" ? (s.stuck ? "stuck" : "waiting") : s.group,
+		waitingKind: person ? "person" : s.waitingOn.kind,
+		who: person ? "person" : s.waitingOn.who,
+		actKey: s.waitingOn.says.act.key,
+		ref: s.waitingOn.ref,
+		stuckCode: s.stuck?.code ?? null,
+		dueAt: s.dueAt,
+		carriedBy: s.carriedBy,
+	};
+}
+
+/** What a note claims about a standing, from its basis fields: the claims the vet compares field by field. */
+export function claimsOf(f: StandingBasisFields): StewardClaims {
+	return {
+		group: f.group,
+		waitingKind: f.waitingKind,
+		ref: f.ref,
+		stuck: f.stuckCode !== null,
+		stuckCode: f.stuckCode,
+		dueAt: f.dueAt,
+	};
+}
 
 /** At most this many lines, each at most this long (BC-7). */
 export const STEWARD_NOTE_MAX_LINES = 2;
@@ -385,7 +425,10 @@ export const STEWARD_STUCK_ACT_WITHIN_MS = 60 * 60_000;
 export const STANDING_SWEEP_MS = 5 * 60_000;
 
 /** Per project and UTC day, unless the project's `steward` policy lowers them. */
-export const STEWARD_DAILY_BUDGET = { gatewayTurns: 200, runnerJobs: 10 } as const;
+export const STEWARD_DAILY_BUDGET = {
+	gatewayTurns: 200,
+	runnerJobs: 10,
+} as const;
 
 /**
  * A steward run as the item's page and the run log read it (BC-1). A run carries every distinct act

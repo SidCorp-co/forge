@@ -74,6 +74,18 @@ export const DECISION_ACTS = {
 		path: "/api/projects/:projectId/requirements/:key/drop",
 		reason: true,
 	},
+	"requirement.repin": {
+		path: "/api/projects/:projectId/requirements/:key/repin",
+		reason: false,
+	},
+	"requirement.defer": {
+		path: "/api/projects/:projectId/requirements/:key/defer",
+		reason: true,
+	},
+	"issue.admit": {
+		path: "/api/issues/:issueId/transition",
+		reason: false,
+	},
 	"suggestion.accept": {
 		path: "/api/projects/:projectId/suggestions/:suggestionId/accept",
 		reason: false,
@@ -178,8 +190,8 @@ export const decisionRecommendationSchema = z.strictObject({
 	/** The `id` of the answer it recommends. */
 	answerId: z.string().min(1).max(100),
 	why: z.string().min(1).max(LIMITS.why),
-	/** Who recommended it: the question's asker, the assistant's proposal, Forge's own rule. */
-	by: z.enum(["asker", "assistant", "rule"]),
+	/** Who recommended it: the question's asker, the assistant's proposal, Forge's own rule, the steward (REQ-48 BC-11). */
+	by: z.enum(["asker", "assistant", "rule", "steward"]),
 });
 
 /** One decision only a person can make (BC-1), with what BC-2 asks of it. */
@@ -214,6 +226,10 @@ export const needsYouDecisionSchema = z
 		noRecommendation: z.string().min(1).max(LIMITS.why).nullable(),
 		answers: z.array(decisionAnswerSchema).min(1).max(8),
 		touchedAt: z.iso.datetime().nullable(),
+		/** The item it decides reads stuck (`steward.ts:StuckReading`): it leads the list. */
+		stuck: z.boolean(),
+		/** When the act falls due (`StandingTimes.dueAt`), null where it never does. */
+		dueAt: z.iso.datetime().nullable(),
 	})
 	.superRefine((d, ctx) => {
 		if ((d.recommended === null) === (d.noRecommendation === null)) {
@@ -263,14 +279,85 @@ export const needsYouDecisionsSchema = z.strictObject({
 });
 export type NeedsYouDecisions = z.infer<typeof needsYouDecisionsSchema>;
 
-/** The order decisions are listed in: group, then oldest first, so what has waited longest leads. */
+/**
+ * The order decisions are listed in (REQ-48 BC-11): one carrying a stuck item first, then the
+ * soonest due, then group, then oldest first, so what holds work up leads.
+ */
 export function byDecisionOrder(
 	a: NeedsYouDecision,
 	b: NeedsYouDecision,
 ): number {
+	if (a.stuck !== b.stuck) return a.stuck ? -1 : 1;
+	if (a.dueAt !== b.dueAt) {
+		if (a.dueAt === null) return 1;
+		if (b.dueAt === null) return -1;
+		return a.dueAt.localeCompare(b.dueAt);
+	}
 	const g =
 		NEEDS_YOU_DECISION_GROUPS.indexOf(a.group) -
 		NEEDS_YOU_DECISION_GROUPS.indexOf(b.group);
 	if (g !== 0) return g;
 	return (a.touchedAt ?? "").localeCompare(b.touchedAt ?? "");
+}
+
+/**
+ * The said act keys a person decides, each one a decision the needs-me read builds (BC-11): an
+ * answer to a question, an approval, an acceptance, a verify. A row whose act is none of these is
+ * work an agent takes, never Needs you, so every list and the needs-me read hold the same rows.
+ */
+export const DECISION_ACT_KEYS: ReadonlySet<string> = new Set([
+	"issues.standing.act.answer",
+	"issues.standing.act.answerOther",
+	"issues.standing.act.decide",
+	"issues.standing.act.supply",
+	"standing.act.mergeOrDrop",
+	"standing.act.acceptR",
+	"standing.act.agreeR",
+	"standing.act.agreeIt",
+	"standing.act.check",
+	"standing.act.approveOrReturn",
+	"designs.act.approveOrReturn",
+	"standing.act.confirmAnswer",
+	"standing.act.verifyFix",
+	"standing.act.verifyFixIn",
+	"standing.act.promoteDraft",
+	"standing.act.promoteDrafts",
+	"standing.act.updateToDesign",
+	"standing.act.updateToContract",
+	"standing.act.reviewBreakdown",
+	"standing.act.reviewSuggestedRevision",
+]);
+
+type SaidAct = {
+	key: string;
+	vars?: Readonly<Record<string, unknown>> | undefined;
+};
+
+const isSaidAct = (v: unknown): v is SaidAct =>
+	typeof v === "object" && v !== null && "key" in v;
+
+/**
+ * Whether a wait's act is a person's decision: a requirement's wait on one of its issues reads the
+ * issue's act, and several acts said as one (`standing.acts`) are a decision when each of them is.
+ */
+export function isDecisionAct(act: SaidAct): boolean {
+	const inner = act.key === "standing.act.onIssue" ? act.vars?.act : undefined;
+	if (isSaidAct(inner)) return isDecisionAct(inner);
+	const many = act.key === "standing.acts" ? act.vars?.acts : undefined;
+	if (Array.isArray(many))
+		return (
+			many.length > 0 && many.every((a) => isSaidAct(a) && isDecisionAct(a))
+		);
+	return DECISION_ACT_KEYS.has(act.key);
+}
+
+/** The first `cap` decisions a person is shown and how many more wait behind them, never dropped (BC-11). */
+export function capDecisions<T>(
+	decisions: readonly T[],
+	cap: number,
+): { shown: T[]; more: number } {
+	return {
+		shown: decisions.slice(0, cap),
+		more: Math.max(0, decisions.length - cap),
+	};
 }

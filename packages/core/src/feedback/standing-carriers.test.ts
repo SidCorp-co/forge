@@ -1,6 +1,21 @@
-import { sayEn } from '@forge/contracts/said';
+import { say, sayEn } from '@forge/contracts/said';
+import { waitingOn } from '@forge/contracts/standing';
 import { describe, expect, it } from 'vitest';
-import { carriersPhrase, feedbackStandingOf, type PhaseFacts, phaseOf } from './standing.js';
+import {
+  type CarrierStanding,
+  carriersPhrase,
+  feedbackStandingOf,
+  type PhaseFacts,
+  phaseOf,
+} from './standing.js';
+
+/** When the times read: a master serves, so no wait here reads stuck by the master alone. */
+const AT = {
+  since: new Date('2026-10-01T00:00:00Z'),
+  master: 'serves' as const,
+  now: new Date('2026-10-02T00:00:00Z'),
+};
+const NO_STANDING_FACTS = { masterOwesTriage: false, carrierRelease: null };
 
 const routedTo = (...statuses: string[]): PhaseFacts => ({
   status: 'triaged',
@@ -63,7 +78,18 @@ describe('a planned item waits on every carrier still owed, each named', () => {
     });
   });
 
-  it('waits on the open carriers to ship, naming every one', () => {
+  // REQ-48 BC-9: before the release leg, the item reads its carrier's own wait, never "ship"
+  it('waits on what its first carrier waits on, naming it, before every carrier is at the gate', () => {
+    const carrier: CarrierStanding = {
+      key: 'ISS-4',
+      waitingOn: waitingOn('master', {
+        who: say('standing.who.master'),
+        act: say('issues.standing.act.rerun'),
+        rule: say('issues.rule.reopen'),
+      }),
+      since: AT.since,
+      stuck: null,
+    };
     const w = feedbackStandingOf(
       'planned',
       'issue',
@@ -71,22 +97,33 @@ describe('a planned item waits on every carrier still owed, each named', () => {
       'R',
       reader,
       null,
+      { ...NO_STANDING_FACTS, carrier },
+      AT,
     ).waitingOn;
     expect(w).toMatchObject({
-      kind: 'issue',
-      who: 'ISS-4 and ISS-7',
-      act: 'ship',
+      kind: 'agent',
+      who: 'Master',
       ref: 'ISS-4',
-      rule: 'planned: its issues carry it',
     });
+    expect(w.act).toContain('on ISS-4');
+    expect(w.rule).toContain('ISS-4 carries it and waits because');
   });
 
   it('names every carrier at the release gate in the act a writer owes', () => {
-    const w = feedbackStandingOf('planned', 'issue', ['ISS-4', 'ISS-7'], 'R', reader, null, {
-      masterOwesTriage: false,
-      carrierRelease: 'manual',
-      releaseHolders: ['Ada'],
-    }).waitingOn;
+    const w = feedbackStandingOf(
+      'planned',
+      'issue',
+      ['ISS-4', 'ISS-7'],
+      'R',
+      reader,
+      null,
+      {
+        masterOwesTriage: false,
+        carrierRelease: 'manual',
+        releaseHolders: ['Ada'],
+      },
+      AT,
+    ).waitingOn;
     expect(w.act).toBe('cut the release that carries ISS-4 and ISS-7');
     expect(w.rule).toContain('ISS-4 and ISS-7 wait at awaiting_release');
   });

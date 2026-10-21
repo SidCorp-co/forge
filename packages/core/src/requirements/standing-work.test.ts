@@ -58,6 +58,7 @@ const input = (issues: StandingIssue[]) => ({
   release: null,
   updatedAt: at('2026-09-26T00:00:00Z'),
   statusSince: at('2026-09-26T00:00:00Z'),
+  master: 'serves' as const,
   now: at('2026-09-28T00:00:00Z'),
 });
 
@@ -113,7 +114,8 @@ describe('whom a requirement waits on while its issues are worked', () => {
       act: 'cut 0.2.0',
       ref: '0.2.0',
     });
-    expect(mine.attentionGroup).toBe('needs_you');
+    // the cut is owed on the release itself; the requirement names it and is not a second Needs you row (REQ-48 BC-11)
+    expect(mine.attentionGroup).toBe('waiting');
     const nobody = deriveStanding({
       ...input(landed),
       release: releaseLegOf({ mode: 'manual', nextVersion: '0.2.0', lags: [], holders: [] }),

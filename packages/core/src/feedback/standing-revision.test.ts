@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { feedbackStandingOf, revisionStageOf, type StandingViewer } from './standing.js';
 
+/** When the times read: a master serves, so no wait here reads stuck by the master alone. */
+const AT = {
+  since: new Date('2026-10-01T00:00:00Z'),
+  master: 'serves' as const,
+  now: new Date('2026-10-02T00:00:00Z'),
+};
+const NO_STANDING_FACTS = { masterOwesTriage: false, carrierRelease: null };
+
 const reader: StandingViewer = {
   isReporter: false,
   canTriage: false,
@@ -10,8 +18,16 @@ const reader: StandingViewer = {
 };
 
 const planned = (stage: Parameters<typeof revisionStageOf>[0]) =>
-  feedbackStandingOf('planned', 'revision', [], 'Reporter', reader, revisionStageOf(stage))
-    .waitingOn;
+  feedbackStandingOf(
+    'planned',
+    'revision',
+    [],
+    'Reporter',
+    reader,
+    revisionStageOf(stage),
+    NO_STANDING_FACTS,
+    AT,
+  ).waitingOn;
 
 describe('a revision-routed item waits on whoever owes the next act of its revision', () => {
   it('waits on a person while the proposal is undecided', () => {
@@ -69,7 +85,16 @@ describe('a revision-routed item waits on whoever owes the next act of its revis
 
   it('names no stage it cannot read: a revision route with no suggestion read falls back to the proposal', () => {
     expect(revisionStageOf(null)).toBeNull();
-    const w = feedbackStandingOf('planned', 'revision', [], 'Reporter', reader, null).waitingOn;
+    const w = feedbackStandingOf(
+      'planned',
+      'revision',
+      [],
+      'Reporter',
+      reader,
+      null,
+      NO_STANDING_FACTS,
+      AT,
+    ).waitingOn;
     expect(w.kind).toBe('person');
   });
 });

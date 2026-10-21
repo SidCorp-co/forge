@@ -23,7 +23,9 @@ import type { AttentionRow } from './needs-you.js';
 const QUESTION_MAX = 2000;
 
 /** A decision, and the question it answers where it is one, so one question is one decision. */
-export type Built = { decision: NeedsYouDecision; questionId: string | null };
+/** A decision as its record builds it; `decisionsOf` adds whether its item is stuck and when it falls due. */
+export type DecisionBody = Omit<NeedsYouDecision, 'stuck' | 'dueAt'>;
+export type Built = { decision: DecisionBody; questionId: string | null };
 
 export const clip = (text: string, max: number) =>
   text.length <= max ? text : `${text.slice(0, max - 1).trimEnd()}…`;
@@ -70,7 +72,7 @@ function staleDraftWhy(step: ChoiceStep, label: string): string {
 
 /** A merge-or-drop round Forge asked about a stale draft (REQ-41 BC-12), grouped as one. */
 function staleDraftDecision(
-  base: Omit<NeedsYouDecision, 'group' | 'recommended' | 'noRecommendation' | 'answers'>,
+  base: Omit<DecisionBody, 'group' | 'recommended' | 'noRecommendation' | 'answers'>,
   q: OpenPersonQuestion,
   step: ChoiceStep,
   path: string,
@@ -136,7 +138,7 @@ function noRecommendationOf(
  * it drafted one (REQ-41 BC-2), sent as it stands by one click; else the reason there is none.
  */
 function unrecommendedDecision(
-  base: Omit<NeedsYouDecision, 'group' | 'recommended' | 'noRecommendation' | 'answers'> & {
+  base: Omit<DecisionBody, 'group' | 'recommended' | 'noRecommendation' | 'answers'> & {
     group: 'answer';
   },
   q: OpenPersonQuestion,
@@ -292,6 +294,8 @@ export function feedbackDecision(
   area: NeedsYouAreaKey,
   projectId: string,
   answered: string | null,
+  /** `fix`: a shipped fix the reporter verifies; `answer`: an answer they confirm. */
+  settles: 'answer' | 'fix' = 'answer',
 ): Built {
   const params = { projectId: projectId, key: row.key };
   return {
@@ -304,14 +308,19 @@ export function feedbackDecision(
       title: clip(row.title, 500),
       opens: { kind: 'feedback', key: row.key },
       question: clip(
-        answered
-          ? `Does this answer settle ${row.key}? "${answered}"`
-          : `Does the answer given on ${row.key} settle it?`,
+        settles === 'fix'
+          ? `Is ${row.key} fixed in what shipped?`
+          : answered
+            ? `Does this answer settle ${row.key}? "${answered}"`
+            : `Does the answer given on ${row.key} settle it?`,
         QUESTION_MAX,
       ),
       recommended: {
         answerId: 'verify',
-        why: 'It was answered and nobody has reopened it; reopen it with a reason if the answer misses the point.',
+        why:
+          settles === 'fix'
+            ? 'The work that carries it shipped; reopen it with a reason if the problem is still there.'
+            : 'It was answered and nobody has reopened it; reopen it with a reason if the answer misses the point.',
         by: 'rule',
       },
       noRecommendation: null,

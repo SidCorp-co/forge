@@ -9,6 +9,7 @@ import {
   type FeedbackAttentionGroup,
   type FeedbackListResponse,
   type FeedbackPhase,
+  type FeedbackSummary,
 } from '@forge/contracts/feedback';
 import { and, desc, eq, ilike, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
@@ -37,6 +38,25 @@ const LIST_WINDOW = 500;
 type ListAnswer =
   | { ok: true; list: FeedbackListResponse }
   | { ok: false; refusals: FeedbackRefusal[] };
+
+/** No viewer: nothing reads as anyone's own, so no item groups needs_you (REQ-48 BC-8). */
+const NO_VIEWER: FeedbackActor = { userId: '', agency: 'agent' };
+const NO_CAN = { canTriage: false, canApproveRelease: false, canWrite: false, canAdmin: false };
+
+/**
+ * The newest items' summaries as no viewer reads them: the one standing read (REQ-48 BC-8) and the
+ * steward's sweep. Titles are whole; the door that answers a person applies its egress.
+ */
+export async function feedbackStandingsOf(projectId: string): Promise<FeedbackSummary[]> {
+  const rows = await db
+    .select()
+    .from(feedback)
+    .where(eq(feedback.projectId, projectId))
+    .orderBy(desc(feedback.createdAt))
+    .limit(LIST_WINDOW);
+  const linked = await linkedOf(projectId, rows);
+  return rows.map((r) => summaryOf(r, linked, NO_VIEWER, false, NO_CAN));
+}
 
 export async function listFeedbackAs(
   viewer: FeedbackActor,

@@ -21,6 +21,7 @@ import {
 import type { ActorAgency } from '@forge/contracts/permissions';
 import { say } from '@forge/contracts/said';
 import { needsViewer, type Standing } from '@forge/contracts/standing';
+import type { StandingTimes } from '@forge/contracts/steward';
 import type { WorkflowHealth } from '@forge/contracts/workflow-health';
 import { automationViewerOf, readAutomationStanding } from '../automation/index.js';
 import { readContractStanding } from '../ecosystem/standing/read.js';
@@ -48,6 +49,8 @@ export interface AttentionRow extends RowTitle {
   key: string;
   standing: Standing;
   touchedAt: string | null;
+  /** Whether its item reads stuck and when its act falls due (`StandingTimes`), where its slice says. */
+  due?: { stuck: boolean; dueAt: string | null };
 }
 
 function areaOf(rows: readonly AttentionRow[]): NeedsYouArea {
@@ -96,6 +99,11 @@ function designRowsOf(
   ];
 }
 
+const dueOf = (t: Pick<StandingTimes, 'stuck' | 'dueAt'>) => ({
+  stuck: t.stuck !== null,
+  dueAt: t.dueAt,
+});
+
 const newestFirst = (a: AttentionRow, b: AttentionRow) =>
   (b.touchedAt ?? '').localeCompare(a.touchedAt ?? '');
 
@@ -142,6 +150,7 @@ export async function readAttention(
       ...writtenTitle(r.title, null),
       standing: r.standing,
       touchedAt: r.standing.touchedAt,
+      due: dueOf(r.standing.times),
     })),
     releases: releases.releases.map((r) => ({
       entity: 'release',
@@ -158,6 +167,7 @@ export async function readAttention(
       ...writtenTitle(f.title, f.writtenLang),
       standing: f,
       touchedAt: f.updatedAt,
+      due: dueOf(f.times),
     })),
     issues: issues.issues.map((i) => ({
       entity: 'issue',
@@ -165,6 +175,7 @@ export async function readAttention(
       ...writtenTitle(i.title, i.writtenLang),
       standing: i.standing,
       touchedAt: i.standing.touchedAt,
+      due: dueOf(i.standing.times),
     })),
     contracts: contracts.contracts.map((c) => ({
       entity: 'contract',

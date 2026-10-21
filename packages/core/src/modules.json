@@ -1145,11 +1145,23 @@
       "owns": ["skillActivityEvents", "skills"],
       "serves": ["REQ-1", "REQ-13"]
     },
+    "standing": {
+      "kind": "read-model",
+      "context": "operations",
+      "reads": ["agentQuestions", "comments", "criterionVerdicts", "feedback", "issues", "pipelineRuns", "requirements", "suggestions"],
+      "serves": ["REQ-48"]
+    },
     "status-reports": {
       "kind": "domain",
       "context": "operations",
       "owns": ["statusReports"],
       "serves": ["REQ-11", "REQ-19"]
+    },
+    "steward-notes": {
+      "kind": "domain",
+      "context": "design",
+      "owns": ["stewardNotes"],
+      "serves": ["REQ-48"]
     },
     "suggestions": {
       "kind": "domain",

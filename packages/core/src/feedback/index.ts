@@ -30,7 +30,7 @@ export {
   withDuplicateRoots,
 } from './forge-reads.js';
 export { type ForgeCaller, resolveForgeSource } from './forge-source.js';
-export { listFeedbackAs, listFeedbackIn } from './list-page-read.js';
+export { feedbackStandingsOf, listFeedbackAs, listFeedbackIn } from './list-page-read.js';
 export { linkedOf, phaseIn } from './list-read.js';
 export { sweepResolvedFeedback } from './loop-check.js';
 export { owedTriages } from './owed-triage.js';

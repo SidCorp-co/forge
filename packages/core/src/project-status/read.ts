@@ -40,9 +40,10 @@ import {
   type RequirementState,
   type RequirementSummary,
 } from '@forge/contracts/requirements';
-import { needsViewer, type WaitingKind } from '@forge/contracts/standing';
+import type { WaitingKind } from '@forge/contracts/standing';
 import {
   type AttentionRow,
+  decisionsOf,
   type NeedsYouViewer,
   needsYouViewerOf,
   readAttention,
@@ -53,6 +54,8 @@ import { peopleOf } from '../lib/people.js';
 import { holds } from '../permissions/index.js';
 import { projectOrgHead } from '../projects/index.js';
 import { deferralOf } from '../requirements/index.js';
+import { openStandings } from '../standing/index.js';
+import { needsYouOf, stuckOf } from './lead.js';
 
 const DAY_MS = 86_400_000;
 
@@ -241,7 +244,6 @@ export function waitsOf(rows: Record<string, AttentionRow[]>, asOf: string): Sta
     people: people.slice(0, PROJECT_STATUS_ROWS),
     byPerson: ordered.map((g) => g.person),
     peopleCount: people.length,
-    needsYou: all.filter(({ row }) => needsViewer(row.standing)).length,
   };
 }
 
@@ -451,15 +453,17 @@ export async function readProjectStatus(
   now: Date = new Date(),
 ): Promise<ProjectStatus> {
   const since = new Date(now.getTime() - days * DAY_MS);
-  const [head, attention, line, feedback, people] = await Promise.all([
+  const [head, attention, line, feedback, people, standings] = await Promise.all([
     projectOrgHead(projectId),
     stamped(readAttention(projectId, viewer, now)),
     readForecastLine(projectId, viewer, now),
     readFeedbackForecasts({ userId: viewer.userId, agency: viewer.agency }, projectId, viewer, now),
     peopleOf([viewer.userId]),
+    stamped(openStandings(projectId)),
   ]);
   if (!head) throw new Error(`project status: project ${projectId} has no head row`);
   const { value: read, at } = attention;
+  const { owed } = await decisionsOf(projectId, read);
   const scopes = new Map(line.requirements.map((s) => [s.key, s]));
   const delivery = new Map(line.requirements.map((s) => [s.key, s.delivery]));
   const moved = new Map(line.requirements.map((s) => [s.key, s.moved]));
@@ -471,7 +475,14 @@ export async function readProjectStatus(
     asOf: now.toISOString(),
     days,
     viewer: { id: viewer.userId, name: people.get(viewer.userId)?.name ?? null },
-    // the small sections first and the long lists last, for the reader a cap cuts short
+    // what is stuck and what the viewer owes lead (REQ-48); then the small sections, and the long
+    // lists last, for the reader a cap cuts short
+    stuck: stuckOf(standings.value, head.slug, standings.at),
+    needsYou: needsYouOf(
+      owed.map((o) => o.decision),
+      head.slug,
+      at,
+    ),
     nextRelease: nextReleaseOf(read.releases, line.coming.draft, line.coming.asOf),
     inFlight: inFlightOf(read.issues, at),
     late: lateOf(line.coming, feedback, {

@@ -7,13 +7,14 @@ import type {
 	StandingGroupLabels,
 	WaitingKind,
 } from "./standing.js";
+import type { StandingTimes } from "./steward.js";
 import type { WrittenLang } from "./written-lang.js";
 
 /** The list's attention groups, in the order they are drawn. */
 export const ISSUE_ATTENTION_GROUPS = [
 	"needs_you",
-	"moving",
 	"stuck",
+	"moving",
 	"queued",
 	"paused",
 	"done",
@@ -200,6 +201,8 @@ export interface IssueStanding
 	touchedAt: string;
 	/** Set while the issue sits at a takeable status the admissible list withholds; it reads stuck. */
 	withheld: IssueWithheld | null;
+	/** Since when its wait stands, when it falls due, and whether it is stuck and why (REQ-48 BC-8). */
+	times: StandingTimes;
 }
 
 /** One issue as the list reads it; the derived facts are the server's, never the client's. */

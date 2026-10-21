@@ -7,8 +7,8 @@
  * in the order its masters are handed work, its `blocks` edges and its observed concurrency.
  */
 
-import type { Said } from "./said.js";
 import type { ProjectPermission } from "./permissions.js";
+import type { Said } from "./said.js";
 
 /** Fewer landed issues than this in the window and no number is given. */
 export const FORECAST_HISTORY_FLOOR = 10;
@@ -18,15 +18,20 @@ export const FORECAST_TRIALS = 1000;
 /** The recent days the most runs live at once is read over: the simulation never works more. */
 export const FORECAST_PEAK_DAYS = 14;
 export const FORECAST_LABEL = "forecast" as const;
-/** A person's turn that has gone unanswered this long reads late, whatever the forecast says. */
-export const FORECAST_WAIT_LATE_MINUTES = 24 * 60;
-
-export const FORECAST_LATE_REASONS = ["p85_passed", "waiting_over_day"] as const;
+/**
+ * `waiting_over_day` is read only on a report stored before REQ-48: a person's wait now falls
+ * overdue by its standing's due (`steward.ts:STANDING_DUE_WORKING_DAYS`), and nothing computes it.
+ * Removed when: no row of `status_reports` holds it, by a migration that rewrites those reports.
+ */
+export const FORECAST_LATE_REASONS = [
+	"p85_passed",
+	"waiting_over_day",
+] as const;
 export type ForecastLateReason = (typeof FORECAST_LATE_REASONS)[number];
 
 /**
  * An open item taking longer than it should: its work has run past the p85 of similar landed work
- * (`p85_passed`), or a person has owed the next act for over a day (`waiting_over_day`). Core
+ * (`p85_passed`); a stored report may also say a person owed the next act a day (`waiting_over_day`). Core
  * decides it once, at read time, so no screen computes its own lateness.
  */
 export interface ForecastLate {
@@ -62,7 +67,8 @@ interface ForecastStamp {
 }
 
 export const FORECAST_CONFIDENCE_LEVELS = ["high", "medium", "low"] as const;
-export type ForecastConfidenceLevel = (typeof FORECAST_CONFIDENCE_LEVELS)[number];
+export type ForecastConfidenceLevel =
+	(typeof FORECAST_CONFIDENCE_LEVELS)[number];
 
 /**
  * How far a range can be leaned on, read off what it was sampled from: `high` with at least three
@@ -228,12 +234,7 @@ export interface ScopeForecast extends ForecastStamp {
  * releases.approve approves (`approval`), one an admin cuts (`manual`), or none at all (`none`: no
  * production environment, so a person releases it by hand).
  */
-const RELEASE_MODES = [
-	"automatic",
-	"approval",
-	"manual",
-	"none",
-] as const;
+const RELEASE_MODES = ["automatic", "approval", "manual", "none"] as const;
 export type ReleaseMode = (typeof RELEASE_MODES)[number];
 
 /**
@@ -321,10 +322,14 @@ export interface DeliveryDates {
  * (`core report-queries/roadmap-eta.ts:etaOf`). In hands where the forecast holds that span, else
  * the landing range where only the landing is forecast, else none; shipped work shows none.
  */
-export function deliveryDatesOf(d: DeliveryForecast | null | undefined): DeliveryDates | null {
+export function deliveryDatesOf(
+	d: DeliveryForecast | null | undefined,
+): DeliveryDates | null {
 	if (!d || d.shipped) return null;
-	if (d.inHands) return { p50At: d.inHands.p50At, p85At: d.inHands.p85At, of: "hands" };
-	if (d.landing.kind === "forecast") return { p50At: d.landing.p50At, p85At: d.landing.p85At, of: "landing" };
+	if (d.inHands)
+		return { p50At: d.inHands.p50At, p85At: d.inHands.p85At, of: "hands" };
+	if (d.landing.kind === "forecast")
+		return { p50At: d.landing.p50At, p85At: d.landing.p85At, of: "landing" };
 	return null;
 }
 

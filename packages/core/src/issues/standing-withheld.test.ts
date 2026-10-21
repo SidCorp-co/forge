@@ -35,6 +35,8 @@ const input = (status: IssueStatus, withheld: IssueWithheld | null): IssueStandi
   writers: [],
   admins: ['Ada'],
   withheld,
+  statusSince: now,
+  master: 'serves',
   now,
 });
 

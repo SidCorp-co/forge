@@ -3249,6 +3249,13 @@
       "when": 1826668800000,
       "tag": "0506_feedback_about_forge_is_filed_by_its_reporter",
       "breakpoints": true
+    },
+    {
+      "idx": 507,
+      "version": "7",
+      "when": 1826755200000,
+      "tag": "0507_a_steward_note_says_where_an_item_stands",
+      "breakpoints": true
     }
   ]
 }
