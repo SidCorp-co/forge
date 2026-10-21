@@ -20,17 +20,20 @@ import {
   PageContainer,
   ProjectLoader,
   Skeleton,
+  StaleReadLine,
   StatusChip,
   Tabs,
   type TabItem,
 } from "@/design";
 import { useResumeRun } from "@/features/runs/hooks";
 import { useProjects } from "@/features/projects/hooks";
+import { ProjectMissing } from "@/features/projects/components/project-missing";
+import { useIssueQuestions } from "@/features/questions/hooks";
 import { useSessionsAndHolds } from "@/features/pipeline/hooks";
 import { DecisionPanel, focusDecisionPanel } from "@/features/questions/components/decision-panel";
 import { buildShareLink, useRecents } from "@/features/shell";
 import { formatApiError, isRetryableApiError } from "@/lib/api/error";
-import { offersRetry } from "@/lib/api/read-failed";
+import { asOf, clockAt, couldNotRefresh, heldThroughFailure, offersRetry, projectGone } from "@/lib/api/read-failed";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { useToast } from "@/providers/toast-provider";
@@ -66,6 +69,7 @@ import {
   useProjectMembers,
   useRunPipelineStep,
 } from "../hooks";
+import { agentHoldsIssue, heldByAgent } from "../edit-lock";
 import { useIssuePark } from "../park";
 import type { IssueAgentSession, IssueStatus } from "../types";
 import { ActivityFeed } from "./activity-feed";
@@ -120,6 +124,8 @@ export function IssueDetailScreen({
   const membersQ = useProjectMembers(projectId);
   const journalQ = useRunJournal(projectId, canonicalId);
   const holdsQ = useSessionsAndHolds(projectId);
+  // The decisions read the panel shows, read here too so the banner never points at a question it could not load.
+  const questionsQ = useIssueQuestions(issueQ.data?.id ?? "");
   const now = useNow(10_000);
 
   const patch = usePatchIssue();
@@ -187,7 +193,16 @@ export function IssueDetailScreen({
       </div>
     );
   }
-  if (issueQ.isError || !issue) {
+  // The project's own read answering 404 is the project gone: the page says so once, with nothing to act on (ISS-1228 r26).
+  if (holdsQ.isError && projectGone(holdsQ.error)) {
+    return (
+      <div className="grid min-h-[60vh] place-items-center">
+        <ProjectMissing slug={slug} />
+      </div>
+    );
+  }
+  // An issue read that answered and then failed keeps the page as it was read; only one that never answered blanks it.
+  if (!issue) {
     return (
       <div className="grid min-h-[60vh] place-items-center">
         <ErrorState
@@ -199,6 +214,10 @@ export function IssueDetailScreen({
     );
   }
 
+  const issueStale = heldThroughFailure(issueQ);
+  // Every write rests on the issue as read: while its refresh fails, none is offered (ISS-1228 r26).
+  const mayWrite = canWrite && !issueStale;
+
   const onTransition = (toStatus: IssueStatus) =>
     requestTransition(issue.id, toStatus, { onSuccess: refreshIssue });
   const onPatch = (body: Parameters<typeof patch.mutate>[0]["body"]) =>
@@ -207,7 +226,13 @@ export function IssueDetailScreen({
   const onBannerResume = () =>
     requestTransition(issue.id, "reopen", { successMessage: "Issue resumed", onSuccess: refreshIssue });
 
-  const blocker = deriveBlockerState(issue, issue.pipelineHealth, depsQ.data, park);
+  const blocker = deriveBlockerState(
+    issue,
+    issue.pipelineHealth,
+    depsQ.data,
+    park,
+    questionsQ.isError && questionsQ.data === undefined,
+  );
   const liveStep = liveStepWords(issue.pipelineHealth?.activeSession);
   // A group run names its members by the canonical key, never the project prefix (ISS-992).
   const runs = deriveRunView(journalQ.data, issue.agentSessions, `ISS-${issue.issSeq}`);
@@ -242,32 +267,52 @@ export function IssueDetailScreen({
     moveAnyway: (targets: IssueStatus[]) =>
       requestParkLeave(issue.id, "move_anyway", targets, { onSuccess: refreshIssue }),
   };
-  const statusPark = canWrite ? { reading: park, actions: parkActions } : undefined;
+  const statusPark = mayWrite ? { reading: park, actions: parkActions } : undefined;
   const threadQuestion = park.state === "ready" && park.park ? threadQuestionOf(park.park) : null;
 
   // The run's state is a session chip beside the issue's lifecycle chip, never merged into it (ISS-360, ISS-1150),
-  // read from the run journal alone: until it answers, the header says nothing about the run (ISS-1228).
-  const runChip = issueRunChip(runs, { answered: journalQ.data !== undefined, failed: journalQ.isError }, now);
-  const runWord = runChip.state === "read" ? runChip.word : null;
+  // read from the run journal alone: until it answers, the header says nothing about the run (ISS-1228). A journal
+  // that answered and then failed keeps its word as of when it was read, and no act rests on it (ISS-1228 r26).
+  const runChip = issueRunChip(
+    runs,
+    { answered: journalQ.data !== undefined, failed: journalQ.isError, readAt: journalQ.dataUpdatedAt },
+    now,
+  );
+  const runWord =
+    runChip.state === "read"
+      ? runChip.word
+      : runChip.state === "stale" && runChip.word
+        ? { ...runChip.word, label: asOf(runChip.word.label, runChip.readAt) }
+        : null;
   const isRunActive =
     runChip.state === "read" ? runChip.open || issue.status === "in_progress" || issue.status === "reopen" : null;
 
-  // A read that failed says so, with why and Retry, never drawn as no relations or no cost (ISS-1228).
-  const unreadOf = (q: { isError: boolean; error: unknown; refetch: () => unknown }) =>
+  // A read that failed says so, with why and Retry, never drawn as no relations or no cost (ISS-1228); one that
+  // answered first says when what it still lists was read (r26).
+  const unreadOf = (q: { isError: boolean; error: unknown; data: unknown; dataUpdatedAt: number; refetch: () => unknown }) =>
     q.isError
-      ? { error: q.error, retry: offersRetry(q.error) ? () => void q.refetch() : undefined }
+      ? {
+          error: q.error,
+          retry: offersRetry(q.error) ? () => void q.refetch() : undefined,
+          readAt: heldThroughFailure(q) ? q.dataUpdatedAt : undefined,
+        }
       : undefined;
   const railUnread = { deps: unreadOf(depsQ), cost: unreadOf(costQ) };
-  // Both reads the header rests on say a failure on its one row, never in the chips or the toolbar (ISS-1228 r25).
+  // Every read the header rests on says a failure on its one row, never in the chips or the toolbar (ISS-1228 r25),
+  // whether or not it answered before it failed (r26).
   const failedRead = (what: string, q: { error: unknown; refetch: () => unknown }) => ({
     what,
     error: q.error,
     retry: offersRetry(q.error) ? () => void q.refetch() : undefined,
   });
   const headerUnread = [
-    ...(runChip.state === "unreadable" ? [failedRead("The run", journalQ)] : []),
-    ...(sessionId === "unread" ? [failedRead("Its session", holdsQ)] : []),
+    ...(issueQ.isError ? [failedRead("The issue", issueQ)] : []),
+    ...(journalQ.isError ? [failedRead("The run", journalQ)] : []),
+    ...(holdsQ.isError ? [failedRead("Its session", holdsQ)] : []),
   ];
+  const agentHolds = canWrite && heldByAgent(issue.status, issue.agentStatus);
+  const heldAt = (q: { isError: boolean; data: unknown; dataUpdatedAt: number }) =>
+    heldThroughFailure(q) ? q.dataUpdatedAt : undefined;
 
   const tabs: TabItem[] = [
     {
@@ -294,6 +339,7 @@ export function IssueDetailScreen({
             <MonoTag hue="cobalt">{issue.displayId}</MonoTag>
             {/* Issue lifecycle (pill) vs live agent run (squared, agent glyph). */}
             <StatusChip status={statusToChip(issue.status)} label={statusLabel(issue.status)} />
+            {issueStale && <span className="fg-caption fg-caption-stale">as of {clockAt(issueQ.dataUpdatedAt)}</span>}
             {runChip.state === "unread" && (
               <span role="status" aria-label="Reading the run" className="inline-flex">
                 <Skeleton className="h-6 w-24" />
@@ -304,12 +350,12 @@ export function IssueDetailScreen({
                 <StatusChip
                   status={runWord.status}
                   label={runWord.label}
-                  stage={runWord.status === "running" ? (liveStep ?? undefined) : undefined}
+                  stage={runChip.state === "read" && runWord.status === "running" ? (liveStep ?? undefined) : undefined}
                   domain="session"
                 />
               </span>
             )}
-            {liveStep && runWord && runWord.status !== "running" && (
+            {liveStep && runChip.state === "read" && runWord && runWord.status !== "running" && (
               <span className="fg-caption">{liveStep}</span>
             )}
           </>
@@ -332,12 +378,12 @@ export function IssueDetailScreen({
               sessionHref={sessionId && sessionId !== "unread" ? `/projects/${slug}/agents/${sessionId}` : null}
               status={issue.status}
               releaseRunId={issue.releaseBatchRunId}
-              canWrite={canWrite}
+              canWrite={mayWrite}
               pending={pending}
               isRunActive={isRunActive}
               runWaitsOn={runChip.state === "read" ? runChip.waitsOn : null}
               onAnswer={focusDecisions}
-              runsUnreadable={runChip.state === "unreadable"}
+              runsUnreadable={runChip.state === "unreadable" || runChip.state === "stale"}
               onTransition={onTransition}
               onRun={() => runIssue.mutate(issue.id, { onSuccess: refreshIssue })}
               running={runIssue.isPending}
@@ -349,12 +395,13 @@ export function IssueDetailScreen({
       />
 
       <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,1fr)_clamp(16rem,32%,22.5rem)] 2xl:grid-cols-[minmax(0,1fr)_clamp(16rem,32%,23.75rem)]">
-        <div className="min-w-0 space-y-4">
+        {/* The header's own border rules off whatever comes first: a hairline there would divide nothing (ISS-1228 r26). */}
+        <div className="min-w-0 space-y-4 [&>section:first-child]:border-t-0 [&>section:first-child]:pt-0">
           {blocker && (
             <BlockerBanner
               blocker={blocker}
               slug={slug}
-              pending={pending || !canWrite}
+              pending={pending || !mayWrite}
               onResume={onBannerResume}
               onResumePark={onTransition}
               onResumeRun={onResumeRun}
@@ -375,7 +422,7 @@ export function IssueDetailScreen({
           <AwaitingReleaseBanner
             projectId={issue.projectId}
             issueId={issue.id}
-            canWrite={canWrite}
+            canWrite={mayWrite}
             mergeMark={issue.mergeMark}
           />
 
@@ -394,13 +441,21 @@ export function IssueDetailScreen({
 
           <ReleaseNoteSection issue={issue} />
 
+          {/* Said once for Description and the rail, which each hold their edits without repeating it (ISS-1228 r26). */}
+          {agentHolds && (
+            <p role="status" className="fg-body-sm text-subtle">
+              {agentHoldsIssue(issueStale ? clockAt(issueQ.dataUpdatedAt) : null)}
+            </p>
+          )}
+
           <DescriptionSection
             issue={issue}
             attachments={attachmentsQ.data ?? []}
             attachmentsLoading={attachmentsQ.isLoading}
             attachmentsError={attachmentsQ.isError ? attachmentsQ.error : null}
             onRetryAttachments={() => attachmentsQ.refetch()}
-            canWrite={canWrite}
+            attachmentsReadAt={heldAt(attachmentsQ)}
+            canWrite={mayWrite}
           />
 
           <RunJournalSection
@@ -408,6 +463,7 @@ export function IssueDetailScreen({
             loading={journalQ.isLoading}
             error={journalQ.isError ? journalQ.error : null}
             onRetry={() => journalQ.refetch()}
+            readAt={heldAt(journalQ)}
           />
 
           {checklist.length > 0 && (
@@ -441,10 +497,11 @@ export function IssueDetailScreen({
           >
             <Tabs tabs={tabs} value={tab} onChange={setTab} />
             <div className="mt-4">
+              {tab === "comments" && <StaleTabLine query={commentsQ} />}
               {tab === "comments" &&
                 (commentsQ.isLoading ? (
                   <TabLoading />
-                ) : commentsQ.isError ? (
+                ) : commentsQ.isError && !heldThroughFailure(commentsQ) ? (
                   <TabError query={commentsQ} what="comments" />
                 ) : (
                   <CommentThread
@@ -454,10 +511,11 @@ export function IssueDetailScreen({
                     readOnly={!canWrite}
                   />
                 ))}
+              {tab === "activity" && <StaleTabLine query={activityQ} />}
               {tab === "activity" &&
                 (activityQ.isLoading ? (
                   <TabLoading />
-                ) : activityQ.isError ? (
+                ) : activityQ.isError && !heldThroughFailure(activityQ) ? (
                   <TabError query={activityQ} what="activity" />
                 ) : (
                   <ActivityFeed items={activityQ.data?.items ?? []} />
@@ -481,11 +539,11 @@ export function IssueDetailScreen({
             slug={slug}
             cost={costQ.data}
             deps={depsQ.data}
-            pending={pending || !canWrite}
+            pending={pending || !mayWrite}
             onPatch={onPatch}
             onTransition={onTransition}
-            onEditModules={canWrite ? () => setModulePickerOpen(true) : undefined}
-            canMarkMerged={canWrite}
+            onEditModules={mayWrite ? () => setModulePickerOpen(true) : undefined}
+            canMarkMerged={mayWrite}
             park={statusPark}
             runWord={runWord}
             unread={railUnread}
@@ -498,11 +556,11 @@ export function IssueDetailScreen({
               slug={slug}
               cost={costQ.data}
               deps={depsQ.data}
-              pending={pending || !canWrite}
+              pending={pending || !mayWrite}
               onPatch={onPatch}
               onTransition={onTransition}
-              onEditModules={canWrite ? () => setModulePickerOpen(true) : undefined}
-              canMarkMerged={canWrite}
+              onEditModules={mayWrite ? () => setModulePickerOpen(true) : undefined}
+              canMarkMerged={mayWrite}
               park={statusPark}
               runWord={runWord}
               unread={railUnread}
@@ -538,6 +596,22 @@ function TabLoading() {
         </div>
       ))}
     </div>
+  );
+}
+
+/** A tab whose refresh failed after it answered: what it still shows, as of when, with Retry (ISS-1228 r26). */
+function StaleTabLine({
+  query,
+}: {
+  query: { isError: boolean; data: unknown; dataUpdatedAt: number; error: unknown; refetch: () => unknown };
+}) {
+  if (!heldThroughFailure(query)) return null;
+  return (
+    <StaleReadLine
+      className="mb-3"
+      said={couldNotRefresh(query.dataUpdatedAt, query.error)}
+      onRetry={offersRetry(query.error) ? () => void query.refetch() : undefined}
+    />
   );
 }
 

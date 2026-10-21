@@ -24,6 +24,13 @@ export const AGENT_HOLDS_MOVE =
 export const AGENT_HOLDS_EDIT =
 	"An agent is working this — your edit would be overwritten";
 
+/** Said once on the issue page for Description and the rail alike (ISS-1228 r26), as of the issue's reading. */
+export function agentHoldsIssue(asOfClock: string | null): string {
+	return asOfClock
+		? `As of ${asOfClock} an agent was working this issue, so an edit to its description or properties would be overwritten.`
+		: "An agent is working this issue, so an edit to its description or properties now would be overwritten.";
+}
+
 /** Said in place of a bulk action, naming how much of the selection is held. */
 export function agentHoldsSelection(held: number, total: number): string {
 	return held === total

@@ -11,10 +11,11 @@ import {
   EmptyPanelLine,
   Field,
   Skeleton,
+  StaleReadLine,
   Textarea,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
-import { offersRetry } from "@/lib/api/read-failed";
+import { couldNotRefresh, offersRetry } from "@/lib/api/read-failed";
 import { useAnsweringQuestions, useAnswerQuestion, useIssueQuestions } from "../hooks";
 import { QuestionCard } from "./question-card";
 
@@ -180,32 +181,40 @@ export function DecisionPanel({
   threadQuestion?: ThreadQuestion | null;
   onAnswerInThread?: (text: string) => Promise<unknown>;
 }) {
-  const { data, isLoading, isError, error, refetch } = useIssueQuestions(issueId);
+  const { data, isLoading, isError, error, refetch, dataUpdatedAt } = useIssueQuestions(issueId);
   const mutation = useAnswerQuestion(issueId);
   const { answering, answer } = useAnsweringQuestions(mutation.mutateAsync);
   const questions = data?.questions ?? [];
+  const retry = offersRetry(error) ? () => void refetch() : undefined;
+  // A refresh that failed keeps the questions it showed, mounted, so an answer being typed stays (ISS-1228 r26).
+  const held = isError && data !== undefined;
 
   if (!parkedForInfo && !isLoading && !isError && questions.length === 0) return null;
 
   return (
     <div id={DECISION_PANEL_ANCHOR} className="space-y-3">
+      {held && <StaleReadLine said={`Decisions: ${couldNotRefresh(dataUpdatedAt, error)}`} onRetry={retry} />}
       {isLoading ? (
         <Skeleton variant="rect" className="h-24 w-full" />
-      ) : isError ? (
-        // A secondary read that failed is one line in its own section, never a block above the issue (ISS-1228 r25).
-        <EmptyPanelLine
-          flat
-          title="Decisions"
-          status="Couldn't load"
-          detail={formatApiError(error)}
-          action={
-            offersRetry(error) ? (
-              <button type="button" onClick={() => void refetch()} className="fg-caption text-muted hover:text-fg">
-                Retry
-              </button>
-            ) : undefined
-          }
-        />
+      ) : isError && !held ? (
+        <>
+          {/* A secondary read that failed is one line in its own section, never a block above the issue (ISS-1228 r25). */}
+          <EmptyPanelLine
+            flat
+            title="Decisions"
+            status="Couldn't load"
+            detail={formatApiError(error)}
+            action={
+              retry ? (
+                <button type="button" onClick={retry} className="fg-caption text-muted hover:text-fg">
+                  Retry
+                </button>
+              ) : undefined
+            }
+          />
+          {/* The park carries a thread question itself: no question row was read to stand in its way. */}
+          {threadQuestion && <ThreadQuestionCard question={threadQuestion} onAnswer={onAnswerInThread} />}
+        </>
       ) : questions.length === 0 && threadQuestion ? (
         <ThreadQuestionCard question={threadQuestion} onAnswer={onAnswerInThread} />
       ) : questions.length === 0 ? (

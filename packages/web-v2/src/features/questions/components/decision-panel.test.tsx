@@ -203,3 +203,66 @@ describe("focusDecisionPanel", () => {
     panel.remove();
   });
 });
+
+// ISS-1228 r26 (judge-83, criteria 233 and 263): one failed 30 s poll replaced the question card with
+// the failure line, and what a person had typed into its answer box went with it; Retry brought the
+// card back empty.
+describe("DecisionPanel, when a refresh fails after it answered", () => {
+  const FREE_TEXT = {
+    id: "q-free",
+    projectId: "p-1",
+    issueId: "i-1",
+    status: "open",
+    blockerKind: "human",
+    steps: [{ round: 1, prompt: "Which synonyms should sofa match in search?", askedAt: "2026-10-21T10:00:00.000Z", answerShape: "free_text", needed: "One per line" }],
+    maxRounds: 3,
+    voidReason: null,
+    endedReason: null,
+    parkDeadlineAt: null,
+    createdAt: "2026-10-21T10:00:00.000Z",
+    updatedAt: "2026-10-21T10:00:00.000Z",
+    answerShape: "free_text",
+    options: [],
+    recommendedOptionId: "",
+    needed: "One per line",
+    locked: false,
+  };
+  const readAt = new Date(2026, 9, 21, 14, 2).getTime();
+  const failing = (refetch = vi.fn()) => ({
+    data: { questions: [FREE_TEXT] },
+    dataUpdatedAt: readAt,
+    isLoading: false,
+    isError: true,
+    error: new TypeError("Failed to fetch"),
+    refetch,
+  });
+
+  it("keeps the question and what was typed into its box, with a line saying it could not refresh and Retry", () => {
+    questionsQuery = { ...found([FREE_TEXT]), dataUpdatedAt: readAt };
+    const { rerender } = render(<DecisionPanel issueId="i-1" />);
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "couch\nsettee" } });
+
+    const refetch = vi.fn();
+    questionsQuery = failing(refetch);
+    rerender(<DecisionPanel issueId="i-1" />);
+
+    expect(screen.getByText("Which synonyms should sofa match in search?")).toBeInTheDocument();
+    expect(screen.getByRole("textbox")).toHaveValue("couch\nsettee");
+    expect(screen.getByText(/^Decisions: Could not refresh — showing what was read at 14:02\./)).toBeInTheDocument();
+    expect(screen.queryByText("Couldn't load")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(refetch).toHaveBeenCalled();
+
+    questionsQuery = { ...found([FREE_TEXT]), dataUpdatedAt: readAt + 60_000 };
+    rerender(<DecisionPanel issueId="i-1" />);
+    expect(screen.getByRole("textbox")).toHaveValue("couch\nsettee");
+    expect(screen.queryByText(/Could not refresh/)).toBeNull();
+  });
+
+  it("offers no Retry where the refresh was refused 401", () => {
+    questionsQuery = { ...failing(), error: new ApiError(401, "Your session has ended. Sign in again.", "UNAUTHORIZED") };
+    render(<DecisionPanel issueId="i-1" />);
+    expect(screen.getByText(/Could not refresh/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+  });
+});

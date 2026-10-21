@@ -39,7 +39,7 @@ export function IssueHeaderActions({
   runWaitsOn?: "answer" | "nothing" | null;
   /** Bring the question the run waits on into view. */
   onAnswer?: () => void;
-  /** The run journal's first read failed: the action's place offers reading it again. */
+  /** The run journal's read is failing, before or after it answered: no action rests on the run (ISS-1228 r26). */
   runsUnreadable?: boolean;
   onTransition: (to: IssueStatus) => void;
   /** Offer the issue to the project's masters; only at Open, the one status a press can start. */
@@ -145,7 +145,7 @@ function PrimaryAction(props: {
   }
   // Pause, Run and Open pipeline each say something about the run: none is offered before it is read.
   if (props.isRunActive === null) {
-    // Unreadable, the Retry stands beside the chip row's "could not be read", for every reader.
+    // Unreadable, the header's failure row says so with its Retry, for every reader.
     return props.runsUnreadable ? null : (
       <span role="status" aria-label="Reading the run" className="inline-flex">
         <Skeleton className="h-8 w-28" />

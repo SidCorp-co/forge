@@ -127,7 +127,8 @@ describe("DescriptionSection, while an agent is working the issue", () => {
     expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
   });
 
-  it("names the reason where the Edit control was", () => {
+  // ISS-1228 r26 (criterion 262): the reason stood here and again atop Properties; the page says it once.
+  it("leaves the reason to the page's one line rather than saying it again here", () => {
     render(
       <DescriptionSection
         issue={issue("body", { agentStatus: "running" })}
@@ -135,7 +136,8 @@ describe("DescriptionSection, while an agent is working the issue", () => {
         canWrite
       />,
     );
-    expect(screen.getByText(held)).toBeInTheDocument();
+    expect(screen.queryByText(held)).toBeNull();
+    expect(screen.queryByText(/would be overwritten/)).toBeNull();
   });
 
   it("still offers Edit on a needs_info issue", () => {

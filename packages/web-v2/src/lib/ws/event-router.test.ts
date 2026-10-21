@@ -1,5 +1,5 @@
-import { QueryClient } from "@tanstack/react-query";
-import { afterEach, describe, expect, it } from "vitest";
+import { QueryClient, QueryObserver } from "@tanstack/react-query";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { routeEvent } from "./event-router";
 import { flushInvalidations } from "./invalidation-coalescer";
 
@@ -533,3 +533,54 @@ describe("an answered question reaches every open page of its issue", () => {
     expect(qc.getQueryState(runJournalKey("i3"))?.isInvalidated).toBe(true);
   });
 });
+
+// ISS-1228 r26 (master's read of judge-83's run, criteria 258 and 259): with about nine sessions checking
+// in, an open page read the holds about 20 times in 12 s, each frame's window cancelling the read in
+// flight and starting another.
+describe("a storm of check-in frames reads the holds one at a time, two seconds apart", () => {
+  it.each([[300], [2_500]])("with each read taking %i ms", async (ms) => {
+    vi.useFakeTimers();
+    try {
+      const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 0 } } });
+      const starts: number[] = [];
+      let inFlight = 0;
+      let most = 0;
+      const observer = new QueryObserver(qc, {
+        queryKey: ["sessions-and-holds", "p1"],
+        queryFn: async () => {
+          starts.push(Date.now());
+          inFlight += 1;
+          most = Math.max(most, inFlight);
+          await new Promise((r) => setTimeout(r, ms));
+          inFlight -= 1;
+          return { sessions: [], holds: [], runningChats: [], readAt: "2026-10-21T10:00:00.000Z" };
+        },
+      });
+      const off = observer.subscribe(() => {});
+      await vi.advanceTimersByTimeAsync(ms + 10);
+
+      const frame = (i: number) =>
+        routeEvent(
+          { event: "agent-session.updated", data: { sessionId: `storm-${ms}-${i % 9}`, status: "running" }, timestamp: "2026-10-21T10:00:00.000Z" },
+          qc,
+        );
+      // Nine sessions, a frame every 100 ms for a minute: the first of each a status the tab had not heard.
+      for (let t = 0; t < 600; t += 1) {
+        frame(t);
+        await vi.advanceTimersByTimeAsync(100);
+      }
+      await vi.advanceTimersByTimeAsync(6_000);
+      off();
+
+      const gaps = starts.slice(1).map((at, i) => at - (starts[i] ?? at));
+      expect(most, "reads of the holds in flight at once").toBe(1);
+      expect(Math.min(...gaps), `starts ${starts.join(", ")}`).toBeGreaterThanOrEqual(2_000);
+      expect(starts.length).toBeLessThanOrEqual(33);
+      expect(starts.length, "the frames still refresh the holds").toBeGreaterThan(10);
+    } finally {
+      flushInvalidations();
+      vi.useRealTimers();
+    }
+  });
+});
+
