@@ -22,6 +22,7 @@ import { Hono } from 'hono';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { notFoundHandler } from '../middleware/error.js';
+import type { RequestIdVars } from '../middleware/request-id.js';
 
 // REQ-25: the install command Forge serves fetches the published build for the box's platform,
 // refuses a build whose sha256 is not the published one, and refuses by name a platform with no
@@ -52,7 +53,7 @@ beforeAll(async () => {
   process.env.RUNNER_RELEASE_DIR = releaseDir;
   const { installRoutes } = await import('./install-routes.js');
 
-  const app = new Hono();
+  const app = new Hono<{ Variables: RequestIdVars }>();
   // A byte added on the way, as a proxy or a corrupted transfer would: core still publishes the
   // sha256 of the build it holds, and the download no longer matches it.
   app.use('/api/install/bin/*', async (c, next) => {
