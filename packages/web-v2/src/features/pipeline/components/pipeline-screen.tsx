@@ -6,7 +6,8 @@
 
 import { Button, ErrorState, LiveDot, PageTitle, Skeleton } from "@/design";
 import { useNow } from "@/design/hooks/use-now";
-import { isRetryableApiError, readFailure } from "@/lib/api/error";
+import { readFailure } from "@/lib/api/error";
+import { offersRetry } from "@/lib/api/read-failed";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { readAtLine } from "../derive";
@@ -56,7 +57,7 @@ export function PipelineScreen({ scope }: { scope: { projectId: string; slug: st
             <p className="fg-caption fg-caption-stale" role="status">
               {readAtLine(data.readAt, q.error)}
             </p>
-            {isRetryableApiError(q.error) && (
+            {offersRetry(q.error) && (
               <Button variant="secondary" size="sm" icon="rerun" onClick={() => void q.refetch()}>
                 Retry
               </Button>
@@ -70,7 +71,7 @@ export function PipelineScreen({ scope }: { scope: { projectId: string; slug: st
           title="Couldn't read sessions and holds"
           message={failure.said}
           technical={failure.technical}
-          onRetry={() => void q.refetch()}
+          onRetry={offersRetry(q.error) ? () => void q.refetch() : undefined}
         />
       ) : (
         <>

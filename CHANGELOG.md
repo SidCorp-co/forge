@@ -3201,6 +3201,7 @@
 - **Losing the connection no longer signs you out.** A page opened while Forge could not be reached says so, with Retry, and tries again once the connection is back; only Forge saying you are signed out does. (ISS-1228)
 - **A question on an issue no longer warns it cannot be delivered when the project has no chat room**: its issue page delivers it. Any notice about a question clears once it is answered, withdrawn or expires. (ISS-1228)
 - **The no-capacity notice counts the runners online when you read it**, so it no longer says both are online after one went offline. (ISS-1228)
+- **A refused refresh offers Retry.** The Pipeline page and the issue page's live reads gave a refusal's "Try again in a minute." with no way to; every failure but a sign-out now offers Retry. (ISS-1228)
 - **A read that failed keeps saying so until it answers.** Retrying blanked it to loading, so the issue header offered a session as if nothing held it; it now keeps its sentence and Retry, and opens no session meanwhile. (ISS-1228)
 - **Every failed read names its cause.** Forge being unreachable reads "Forge could not be reached", and a refusal reads as the refusal's own sentence, on the issue, pipeline, notifications, integrations, runners, monitor and project pages alike. (ISS-1228)
 - **An agent account dropping an issue ends its jobs the same way over the API and the agent tools**, and a job its own drop ended done is no longer also sent a cancel. (ISS-1228)

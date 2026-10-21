@@ -265,6 +265,32 @@ describe("the Pipeline page with nothing to show, or no reading", () => {
     expect(container.querySelector(".forge-pulse")).toBeNull();
   });
 
+  // Round 23 (master's read of the r23 after-shots): a refused refresh said "Try again in a minute."
+  // with no Retry beside it; only a transport failure or a 5xx offered one.
+  it.each([
+    ["a 409 refusal", new ApiError(409, refusal, "HOLDS_READ_REFUSED")],
+    ["a 403 refusal", new ApiError(403, "Forbidden", "FORBIDDEN")],
+    ["a 500", new ApiError(500, "Internal Server Error", "INTERNAL_ERROR")],
+  ])("offers Retry beside a refresh failed by %s", (_, error) => {
+    const refetch = vi.fn();
+    query = { data: reading, isError: true, error, refetch };
+    screenFor();
+    screen.getByRole("button", { name: /retry/i }).click();
+    expect(refetch).toHaveBeenCalled();
+  });
+
+  it("offers Retry when a refused first read fails", () => {
+    query = { data: undefined, isError: true, error: new ApiError(409, refusal, "HOLDS_READ_REFUSED"), refetch: vi.fn() };
+    screenFor();
+    expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument();
+  });
+
+  it("offers no Retry where Forge answered 401, which signs the person out", () => {
+    query = { data: reading, isError: true, error: new ApiError(401, "Unauthenticated", "UNAUTHENTICATED"), refetch: vi.fn() };
+    screenFor();
+    expect(screen.queryByRole("button", { name: /retry/i })).toBeNull();
+  });
+
   it("shows the live dot while its read stands", () => {
     query = { data: reading, isError: false, error: null, refetch: vi.fn() };
     const { container } = screenFor();
