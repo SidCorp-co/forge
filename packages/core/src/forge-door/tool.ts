@@ -18,9 +18,11 @@ import {
   refusedAnswer,
   zodToMcpSchema,
 } from '../lib/tool.js';
+import { findProjectIdBySlug } from '../projects/index.js';
 import {
   type Answer,
   type ForgeDoorCaller,
+  fencedProjectOfCredential,
   getForgeFeedback,
   listOwnForgeFeedback,
   submitForgeFeedback,
@@ -111,13 +113,47 @@ const GRANT = {
   },
 } as const;
 
-function callerOf(ctx: McpContext): ForgeDoorCaller {
+/**
+ * The caller as the Forge door reads them, as REST reads them (`routes.ts:callerOf`): their account,
+ * their box and the one project their credential is fenced to; and, on MCP, the project the
+ * connection names, which every other tool resolves its project from.
+ */
+async function callerOf(ctx: McpContext): Promise<ForgeDoorCaller> {
+  const slug = ctx.projectSlug;
   return {
     userId: ctx.principal.userId,
     agency: principalAgency(ctx.principal),
     deviceId: ctx.principal.deviceId,
-    boundProjectId: ctx.boundProjectId ?? ctx.principal.boundProjectId,
+    boundProjectId: fencedProjectOfCredential() ?? ctx.boundProjectId ?? null,
+    named: slug ? { slug, id: await findProjectIdBySlug(slug) } : null,
   };
+}
+
+const PROJECT_DOOR: Refusal = {
+  code: 'FORGE_FEEDBACK_PROJECT_DOOR',
+  path: '/projectId',
+  detail:
+    "forge_feedback files feedback about Forge itself into Forge's own home project, never into a project you name, so it takes no projectId; a project's own feedback is filed with project_feedback. To say which project this report came from, send from.project.",
+};
+
+/** The call's input, or each argument that cannot stand refused by name with the valid shape. */
+function inputOf(
+  args: Record<string, unknown>,
+): { ok: true; input: Input } | { ok: false; refusals: Refusal[] } {
+  const { projectId, ...rest } = args;
+  const refusals: Refusal[] = projectId === undefined ? [] : [PROJECT_DOOR];
+  const parsed = inputSchema.safeParse(rest);
+  if (!parsed.success) {
+    for (const i of parsed.error.issues) {
+      refusals.push({
+        code: 'BAD_REQUEST',
+        path: `/${i.path.join('/')}`,
+        detail: `${i.message}; forge_feedback takes { action: ${ACTIONS.join(' | ')}, feedback? } and, to submit, ${SUBMIT_SHAPE}`,
+      });
+    }
+  }
+  if (refusals.length > 0 || !parsed.success) return { ok: false, refusals };
+  return { ok: true, input: parsed.data };
 }
 
 function need(input: Input): string {
@@ -134,11 +170,11 @@ async function submit(ctx: McpContext, input: Input) {
   const { action: _a, ...rest } = input;
   const judged = forgeSubmitRequestOf(rest);
   if (!judged.ok) return refusedAnswer(judged.refusals, 'FORGE_FEEDBACK_REFUSED');
-  return out(await submitForgeFeedback(callerOf(ctx), judged.request, MCP_DOOR));
+  return out(await submitForgeFeedback(await callerOf(ctx), judged.request, MCP_DOOR));
 }
 
 async function progress(ctx: McpContext, input: Input) {
-  const one = await getForgeFeedback(callerOf(ctx), need(input), MCP_DOOR);
+  const one = await getForgeFeedback(await callerOf(ctx), need(input), MCP_DOOR);
   if (!one.ok) return out(one);
   const { key, title, phase } = one.value;
   return { key, title, phase, progress: one.value.progress };
@@ -146,9 +182,9 @@ async function progress(ctx: McpContext, input: Input) {
 
 const HANDLERS = {
   submit,
-  list: async (ctx: McpContext) => out(await listOwnForgeFeedback(callerOf(ctx), MCP_DOOR)),
+  list: async (ctx: McpContext) => out(await listOwnForgeFeedback(await callerOf(ctx), MCP_DOOR)),
   get: async (ctx: McpContext, input: Input) =>
-    out(await getForgeFeedback(callerOf(ctx), need(input), MCP_DOOR)),
+    out(await getForgeFeedback(await callerOf(ctx), need(input), MCP_DOOR)),
   progress,
 } as const;
 
@@ -160,7 +196,8 @@ export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
   description: DESCRIPTION,
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
-    const input = inputSchema.parse(args);
-    return HANDLERS[input.action](ctx, input);
+    const read = inputOf(args);
+    if (!read.ok) return refusedAnswer(read.refusals, 'FORGE_FEEDBACK_REFUSED');
+    return HANDLERS[read.input.action](ctx, read.input);
   },
 });

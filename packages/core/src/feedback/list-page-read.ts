@@ -25,7 +25,15 @@ type ListQuery = {
   phases?: readonly FeedbackPhase[] | undefined;
   q?: string | undefined;
   requirement?: string | undefined;
+  /**
+   * The items a door has already chosen, read whole: no page window applies, so an item the door
+   * names is never dropped for being older than the newest page (REQ-47 BC-3).
+   */
+  ids?: readonly string[] | undefined;
 };
+
+/** The newest items a project's own list shows; a door naming its items reads past it. */
+const LIST_WINDOW = 500;
 type ListAnswer =
   | { ok: true; list: FeedbackListResponse }
   | { ok: false; refusals: FeedbackRefusal[] };
@@ -58,6 +66,7 @@ export async function listFeedbackIn(
   const about = query.requirement
     ? await feedbackIdsOfRequirement(projectId, query.requirement)
     : null;
+  const named = query.ids ? [...query.ids] : null;
   const rows = await db
     .select()
     .from(feedback)
@@ -66,10 +75,11 @@ export async function listFeedbackIn(
         eq(feedback.projectId, projectId),
         query.q ? ilike(feedback.title, `%${query.q}%`) : undefined,
         about ? inArray(feedback.id, about.length ? about : [NO_FEEDBACK]) : undefined,
+        named ? inArray(feedback.id, named.length ? named : [NO_FEEDBACK]) : undefined,
       ),
     )
     .orderBy(desc(feedback.createdAt))
-    .limit(500);
+    .limit(named ? Math.max(named.length, 1) : LIST_WINDOW);
   const [linked, can] = await Promise.all([
     linkedOf(projectId, rows),
     viewerCanIn(viewer.userId, projectId),

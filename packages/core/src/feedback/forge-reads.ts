@@ -28,6 +28,44 @@ export async function ownForgeFeedbackIds(homeId: string, userId: string): Promi
   return rows.map((r) => r.id).reverse();
 }
 
+/** The id of the home project's item FB-n, or null where it holds none. */
+export async function forgeFeedbackIdOfKey(homeId: string, key: string): Promise<string | null> {
+  const seq = Number(/^FB-(\d+)$/.exec(key)?.[1]);
+  if (!Number.isSafeInteger(seq)) return null;
+  const [row] = await db
+    .select({ id: feedback.id })
+    .from(feedback)
+    .where(and(eq(feedback.projectId, homeId), eq(feedback.fbSeq, seq)))
+    .limit(1);
+  return row?.id ?? null;
+}
+
+/**
+ * The items `ids` names and every item one of them duplicates, followed to its root: an item's
+ * progress is read from its root's (`product-progress/feedback-views.ts`), so a door reading only
+ * the items it shows reads their roots with them.
+ */
+export async function withDuplicateRoots(
+  homeId: string,
+  ids: readonly string[],
+): Promise<string[]> {
+  const seen = new Set(ids);
+  for (let frontier = [...seen]; frontier.length > 0; ) {
+    const rows = await db
+      .select({ duplicateOf: feedback.duplicateOf })
+      .from(feedback)
+      .where(and(eq(feedback.projectId, homeId), inArray(feedback.id, frontier)));
+    frontier = [];
+    for (const r of rows) {
+      if (r.duplicateOf && !seen.has(r.duplicateOf)) {
+        seen.add(r.duplicateOf);
+        frontier.push(r.duplicateOf);
+      }
+    }
+  }
+  return [...seen];
+}
+
 /** Whether `userId` reported item `feedbackId`, by filing it or by a later report of it. */
 export async function reportedForge(feedbackId: string, userId: string): Promise<boolean> {
   const [row] = await db

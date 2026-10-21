@@ -4,7 +4,8 @@
 
 import { describe, expect, it } from 'vitest';
 import { signalKeyOf } from '../feedback/forge-intake.js';
-import { forgeSubmitRequestOf } from './tool.js';
+import type { McpContext } from '../lib/tool.js';
+import { forgeFeedbackTool, forgeSubmitRequestOf } from './tool.js';
 
 describe('forge_feedback submit is judged whole', () => {
   it('stands a target for whereSeen, as kind then ref', () => {
@@ -54,6 +55,34 @@ describe('forge_feedback submit is judged whole', () => {
     expect(judged.ok).toBe(false);
     if (judged.ok) return;
     expect(judged.refusals.map((r) => r.path)).toEqual(['/clientVersion']);
+  });
+});
+
+describe('forge_feedback is not the project door (REQ-47 BC-7)', () => {
+  // refused before the caller is read, so the context the call came in on is never touched
+  const tool = forgeFeedbackTool({ projectSlug: null } as unknown as McpContext);
+  const refusalsOf = (answer: unknown) =>
+    (answer as { error: { refusals: { code: string; path: string; detail: string }[] } }).error
+      .refusals;
+
+  it('refuses projectId by name, pointing to project_feedback', async () => {
+    const answer = await tool.handler({
+      action: 'submit',
+      projectId: 'd1bb4907-74d9-4228-85ff-76121523af7d',
+      kind: 'bug',
+      title: 'x',
+      target: { kind: 'tool', ref: 'forge_issues' },
+    });
+    expect(answer).toMatchObject({ _mcpIsError: true, status: 400 });
+    const [refusal, ...rest] = refusalsOf(answer);
+    expect(rest).toEqual([]);
+    expect(refusal).toMatchObject({ code: 'FORGE_FEEDBACK_PROJECT_DOOR', path: '/projectId' });
+    expect(refusal?.detail).toContain('project_feedback');
+  });
+
+  it('names a wrong argument with the shape it takes, beside the projectId refusal', async () => {
+    const answer = await tool.handler({ action: 'get', feedback: 'ISS-7', projectId: 'p' });
+    expect(refusalsOf(answer).map((r) => r.path)).toEqual(['/projectId', '/feedback']);
   });
 });
 

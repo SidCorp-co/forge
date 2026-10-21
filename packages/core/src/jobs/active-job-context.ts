@@ -10,6 +10,8 @@ type ActiveJobContext = {
   /** Null for a session with no job — a steward or schedule run (ISS-557). */
   jobId: string | null;
   runId: string | null;
+  /** The pipeline run the session itself belongs to: a declared run's own, where it runs no job. */
+  sessionRunId: string;
   issueId: string | null;
   /** The job's type — `review`, `test`, `code`, … — recorded as the emitting stage. */
   stage: string | null;
@@ -59,6 +61,7 @@ export async function resolvePipelineContext(
       agentSessionId: agentSessions.id,
       jobId: jobs.id,
       runId: jobs.pipelineRunId,
+      sessionRunId: agentSessions.pipelineRunId,
       issueId: jobs.issueId,
       stage: jobs.type,
       deviceId: agentSessions.deviceId,

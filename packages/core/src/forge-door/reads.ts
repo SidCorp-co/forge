@@ -8,7 +8,7 @@
 import type { FeedbackSummary } from '@forge/contracts/feedback';
 import type { ForgeFeedbackItem } from '@forge/contracts/forge-feedback';
 import type { ActorAgency } from '@forge/contracts/permissions';
-import { listFeedbackIn, type ReadDoor } from '../feedback/index.js';
+import { listFeedbackIn, type ReadDoor, withDuplicateRoots } from '../feedback/index.js';
 import {
   type ForecastViewer,
   forecastViewerOf,
@@ -41,16 +41,26 @@ async function forecastViewer(homeId: string, userId: string): Promise<ForecastV
   return { userId, isAdmin: false, mayApprove: false, canWrite: false };
 }
 
-/** Every item of the home project and what their progress reads share, read once per answer. */
+/**
+ * The home project's items `ids` names, with the roots they duplicate, and what their progress reads
+ * share, read once per answer. Read by id, never through the project list's page window, so an item
+ * of the reporter's is never dropped for being older than the newest page (REQ-47 BC-3).
+ */
 export async function homeReads(
   viewer: ForgeViewer,
   homeId: string,
   door: ReadDoor,
+  ids: readonly string[],
 ): Promise<{ all: FeedbackSummary[]; reads: FeedbackReads }> {
-  const listed = await listFeedbackIn(viewer, homeId, {}, door);
+  const listed = await listFeedbackIn(
+    viewer,
+    homeId,
+    { ids: await withDuplicateRoots(homeId, ids) },
+    door,
+  );
   if (!listed.ok) {
     throw new Error(
-      `forge feedback: the home project's list refused an unfiltered read: ${listed.refusals[0]?.detail}`,
+      `forge feedback: the home project's list refused a read by id: ${listed.refusals[0]?.detail}`,
     );
   }
   const all = listed.list.feedback;

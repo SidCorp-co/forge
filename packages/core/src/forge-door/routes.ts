@@ -5,7 +5,6 @@ import {
 } from '@forge/contracts/forge-feedback';
 import { type Context, Hono } from 'hono';
 import { z } from 'zod';
-import { fencedProjectIds } from '../credentials/pat-scope.js';
 import { carryAgentReports } from '../feedback/index.js';
 import { refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
@@ -14,6 +13,7 @@ import { invalid, strictBody, zValidator } from '../middleware/zod-validator.js'
 import {
   type Answer,
   type ForgeDoorCaller,
+  fencedProjectOfCredential,
   getForgeFeedback,
   listOwnForgeFeedback,
   submitForgeFeedback,
@@ -28,12 +28,11 @@ const REST_DOOR = {};
  * credential is bound to, from which an agent's live job is read (`feedback/forge-source.ts`).
  */
 function callerOf(c: Ctx): ForgeDoorCaller {
-  const fence = fencedProjectIds();
   return {
     userId: c.get('userId'),
     agency: restActor(c).agency,
     deviceId: c.get('patDeviceId') ?? null,
-    boundProjectId: fence?.length === 1 ? (fence[0] ?? null) : null,
+    boundProjectId: fencedProjectOfCredential(),
   };
 }
 

@@ -23,7 +23,12 @@ export {
   forgeRefusal,
   HOME_NOT_SET,
 } from './forge-intake.js';
-export { ownForgeFeedbackIds, reportedForge } from './forge-reads.js';
+export {
+  forgeFeedbackIdOfKey,
+  ownForgeFeedbackIds,
+  reportedForge,
+  withDuplicateRoots,
+} from './forge-reads.js';
 export { type ForgeCaller, resolveForgeSource } from './forge-source.js';
 export { listFeedbackAs, listFeedbackIn } from './list-page-read.js';
 export { linkedOf, phaseIn } from './list-read.js';

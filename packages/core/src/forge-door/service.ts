@@ -9,9 +9,11 @@ import type {
   ForgeFeedbackList,
   ForgeFeedbackRequest,
 } from '@forge/contracts/forge-feedback';
+import { fencedProjectIds } from '../credentials/pat-scope.js';
 import {
   type ForgeCaller,
   fileForgeFeedback,
+  forgeFeedbackIdOfKey,
   forgeRefusal,
   HOME_NOT_SET,
   ownForgeFeedbackIds,
@@ -30,16 +32,38 @@ const refused = <T>(refusal: Refusal): Answer<T> => ({ ok: false, refusals: [ref
 
 export interface ForgeDoorCaller extends ForgeCaller, ForgeViewer {}
 
+/** The project the credential is fenced to, where it is fenced to one: a box's token names its own. */
+export function fencedProjectOfCredential(): string | null {
+  const fence = fencedProjectIds();
+  return fence?.length === 1 ? (fence[0] ?? null) : null;
+}
+
+/** The items `ids` names, in that order; one that does not read back is a loud failure, never a gap. */
+async function itemsById(
+  viewer: ForgeViewer,
+  homeId: string,
+  ids: readonly string[],
+  door: ReadDoor,
+): Promise<{ items: ForgeFeedbackItem[]; asOf: string }> {
+  const { all, reads } = await homeReads(viewer, homeId, door, ids);
+  const byId = new Map(all.map((s) => [s.id, s]));
+  const items = ids.map((id) => {
+    const s = byId.get(id);
+    if (!s) throw new Error(`forge feedback: item ${id} of the home project does not read back`);
+    return forgeItemOf(s, reads);
+  });
+  return { items, asOf: reads.asOf };
+}
+
 async function itemById(
   viewer: ForgeViewer,
   homeId: string,
   id: string,
   door: ReadDoor,
 ): Promise<ForgeFeedbackItem> {
-  const { all, reads } = await homeReads(viewer, homeId, door);
-  const s = all.find((x) => x.id === id);
-  if (!s) throw new Error(`forge feedback: item ${id} was written and does not read back`);
-  return forgeItemOf(s, reads);
+  const [item] = (await itemsById(viewer, homeId, [id], door)).items;
+  if (!item) throw new Error(`forge feedback: item ${id} of the home project does not read back`);
+  return item;
 }
 
 export async function submitForgeFeedback(
@@ -77,15 +101,10 @@ export async function listOwnForgeFeedback(
   const home = await forgeHomeProject();
   if (!home) return refused(HOME_NOT_SET);
   const ids = await ownForgeFeedbackIds(home.id, viewer.userId);
-  const { all, reads } = await homeReads(viewer, home.id, door);
-  const byId = new Map(all.map((s) => [s.id, s]));
-  const feedback = ids.flatMap((id) => {
-    const s = byId.get(id);
-    return s ? [forgeItemOf(s, reads)] : [];
-  });
+  const { items: feedback, asOf } = await itemsById(viewer, home.id, ids, door);
   return {
     ok: true,
-    value: { feedback, returned: feedback.length, home, asOf: reads.asOf },
+    value: { feedback, returned: feedback.length, home, asOf },
   };
 }
 
@@ -102,10 +121,10 @@ export async function getForgeFeedback(
     '/feedback',
     `${key} is not feedback to Forge you reported; GET /api/forge/feedback lists yours.`,
   );
-  const { all, reads } = await homeReads(viewer, home.id, door);
-  const s = all.find((x) => x.key === key);
-  if (!s) return refused(notFound);
+  const id = await forgeFeedbackIdOfKey(home.id, key);
+  if (!id) return refused(notFound);
   const may =
-    (await readsHomeAsMember(home.id, viewer.userId)) || (await reportedForge(s.id, viewer.userId));
-  return may ? { ok: true, value: forgeItemOf(s, reads) } : refused(notFound);
+    (await readsHomeAsMember(home.id, viewer.userId)) || (await reportedForge(id, viewer.userId));
+  if (!may) return refused(notFound);
+  return { ok: true, value: await itemById(viewer, home.id, id, door) };
 }

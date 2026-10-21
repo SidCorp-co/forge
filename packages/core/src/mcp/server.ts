@@ -10,6 +10,7 @@ import { HTTPException } from 'hono/http-exception';
 import pkg from '../../package.json' with { type: 'json' };
 import { type AuditResultCode, digestArgs, writeMcpAudit } from '../credentials/mcp-audit.js';
 import { runWithPatScope } from '../credentials/pat-scope.js';
+import { RETIRED_MCP_TOOLS } from '../forge-door/index.js';
 import { env } from '../lib/env.js';
 import { RefusalError } from '../lib/refusal.js';
 import {
@@ -124,6 +125,8 @@ export function createMcpServer(ctx: McpContext): Server {
 
     if (!tool) {
       writeMcpAudit({ ...auditBase, resultCode: 'not_found' });
+      const retired = RETIRED_MCP_TOOLS[name];
+      if (retired) return toToolCallContent(refusedAnswer([retired], retired.code));
       return errorAnswer(`Unknown tool: ${name}`);
     }
 

@@ -58,7 +58,11 @@ import {
 import { issueLaneRoutes } from './fast-lane/routes.js';
 import { feedbackChecklistRoutes, feedbackRoutes } from './feedback/routes.js';
 import { forecastRoutes } from './forecast/index.js';
-import { forgeFeedbackAdminRoutes, forgeFeedbackRoutes } from './forge-door/index.js';
+import {
+  agentReportsRetiredRoutes,
+  forgeFeedbackAdminRoutes,
+  forgeFeedbackRoutes,
+} from './forge-door/index.js';
 import { guideRoutes } from './guides/routes.js';
 import { projectHealthRoutes, publicHealthRoutes } from './health/routes.js';
 import { instanceSettingsRoutes } from './instance-settings/index.js';
@@ -383,6 +387,8 @@ function mountRemainingRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/projects', releasePageRoutes);
   app.route('/api/schedules', scheduleRoutes);
   app.route('/api/forge/feedback', forgeFeedbackRoutes);
+  // retired by REQ-47 BC-8: each route answers where reports about Forge go now
+  app.route('/api/agent-reports', agentReportsRetiredRoutes);
   app.route('/api/shares', shareOpenRoutes);
   app.route('/api/projects', knowledgeRoutes);
   app.route('/api/skills', skillCrudRoutes);
