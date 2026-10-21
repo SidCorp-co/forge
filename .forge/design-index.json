@@ -172,6 +172,10 @@
   "REQ-47": {
    "title": "Feedback to Forge is filed by whoever reports it, from any project",
    "status": "agreed"
+  },
+  "REQ-48": {
+   "title": "An agent stands at every Product and Delivery handoff",
+   "status": "agreed"
   }
  },
  "workflows": {

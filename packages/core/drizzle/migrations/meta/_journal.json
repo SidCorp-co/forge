@@ -3249,6 +3249,13 @@
       "when": 1826668800000,
       "tag": "0506_feedback_about_forge_is_filed_by_its_reporter",
       "breakpoints": true
+    },
+    {
+      "idx": 508,
+      "version": "7",
+      "when": 1826841600000,
+      "tag": "0508_the_steward_acts_at_every_handoff",
+      "breakpoints": true
     }
   ]
 }

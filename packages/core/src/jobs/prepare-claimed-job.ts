@@ -186,7 +186,12 @@ export async function prepareClaimedJob(args: {
   });
   const { systemPrompt, deniedTools } = built;
 
-  const promptString = await promptStringFor(job, resume, systemPrompt);
+  const brief = await promptStringFor(job, resume, systemPrompt);
+  // a steward job acts as the project's steward account, whose token is minted now, at the claim
+  const promptString =
+    job.type === 'steward' && brief
+      ? `${brief}\n\n${await jobsPorts().stewardJobCredential(job)}`
+      : brief;
   const { model, revision, status, from, profile, qa } = args.policy;
   const issueKey =
     issueRow[0]?.issSeq == null ? null : formatIssueRef(issuePrefix, issueRow[0].issSeq);

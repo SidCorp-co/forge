@@ -22,9 +22,10 @@ export const OUTBOX_CONSUMERS = {
 		"issue-move-reactions",
 		"requirement-delivery",
 		"notify-requirement-step",
+		"steward",
 	],
 	"issue.dependency.changed": ["ws-broadcast", "dependency-health"],
-	"job.transitioned": ["phase-journal-close", "memory-extraction"],
+	"job.transitioned": ["phase-journal-close", "memory-extraction", "steward"],
 	"run.transitioned": [
 		"paused-run-wedge-resolve",
 		"release-batch-claims",
@@ -57,16 +58,16 @@ export const OUTBOX_CONSUMERS = {
 	"contract.requested": ["master-wake"],
 	"ecosystem.buildOwed": ["master-wake"],
 	"requirement.created": ["intake-assistant"],
-	"requirement.agreed": ["master-wake"],
+	"requirement.agreed": ["master-wake", "steward"],
 	"requirement.returned": ["master-wake"],
 	"requirement.transitioned": ["notify-requirements"],
 	"requirement.delivered": ["notify-requirements"],
 	"requirement.accepted": ["notify-requirements"],
-	"feedback.filed": ["master-wake", "intake-assistant"],
+	"feedback.filed": ["master-wake", "intake-assistant", "steward"],
 	"feedback.verifyAsked": ["notify-feedback"],
 	"feedback.verifySettled": ["notify-feedback"],
 	"feedback.reporterTold": ["notify-feedback"],
-	"release.shipped": ["notify-feedback"],
+	"release.shipped": ["notify-feedback", "steward"],
 	"release.approvalDecided": ["release-approval-wake"],
 	"verdict.recorded": ["release-highlights"],
 	"credential.tokenChanged": ["ws-broadcast"],
@@ -78,6 +79,11 @@ export const OUTBOX_CONSUMERS = {
 	"issue.pushed": ["ws-broadcast"],
 	"conversation.pushed": ["ws-broadcast"],
 	"preview.transitioned": ["ws-broadcast"],
+	// the steward's own triggers (REQ-48 BC-1, `core/src/steward/consumer.ts`)
+	"suggestion.proposed": ["steward"],
+	"standing.stuck": ["steward"],
+	"standing.changed": ["steward"],
+	"release.held": ["steward"],
 } as const satisfies {
 	readonly [T in OutboxEventType]: readonly string[];
 };

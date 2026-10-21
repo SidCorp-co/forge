@@ -20,8 +20,11 @@ export {
 export { runTranscriptIndexSweepOnce } from './conversation-index-drain.js';
 export { composeLayers } from './prompt/layer.js';
 export { METHOD_LAYERS } from './prompt/layers.js';
+export { type PreCall, runTurnEvents, type ToolCallRecord } from './run-turn-core.js';
+export { type ChatToolset, toolError } from './tools/mcp-adapter.js';
 export { provideChatTools } from './tools/registry.js';
 export type { WidgetDraftParams } from './tools/widget-draft-tool.js';
+export { fenceToolsetToOrigin } from './turn-origin.js';
 export {
   runWidgetTurn,
   WIDGET_DRAFT_TOOL,

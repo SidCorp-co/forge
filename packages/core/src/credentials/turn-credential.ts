@@ -9,6 +9,7 @@
 
 import { randomBytes } from 'node:crypto';
 import { TURN_AUTHORITY_REFUSAL_CODES, type TurnAuthorityRefusalCode } from '@forge/contracts/auth';
+import type { ProjectPermission } from '@forge/contracts/permissions';
 import { and, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { personalAccessTokens, users } from '../db/schema.js';
@@ -40,6 +41,24 @@ export const CHAT_TURN_MENU: readonly PatPermission[] = [
   'pipeline:read',
 ];
 
+/**
+ * What a steward act reaches (REQ-48 BC-1): the record doors its act catalogue calls, as the
+ * project's steward account. `STEWARD_TURN_GRANTS` names the one approval it holds, which a named
+ * grant reaches only where it names it.
+ */
+export const STEWARD_TURN_MENU: readonly PatPermission[] = [
+  'issues:read',
+  'issues:write',
+  'projects:read',
+  'projects:write',
+  'questions:read',
+  'questions:write',
+  'pipeline:read',
+];
+
+/** The token-explicit permissions a steward token names: triage and route, never decline (REQ-48 r2 decision 2). */
+export const STEWARD_TURN_GRANTS: readonly ProjectPermission[] = ['feedback.approve'];
+
 /** What a session on a paired box reaches: every permission a project-fenced token may hold. */
 export const AGENT_TURN_MENU: readonly PatPermission[] = PAT_PERMISSION_NAMES.filter(
   (name) => PAT_PERMISSION_GROUPS[name].reach === 'project',
@@ -65,10 +84,11 @@ export function turnAuthorityRefusalOf(
 }
 
 /**
- * Why a turn runs: a person's message, or the onboarding hand-off, which acts for the onboarding's
- * starter with nothing but the suggestion acts (`assistant/turn-origin.ts`).
+ * Why a turn runs: a person's message; the onboarding hand-off, which acts for the onboarding's
+ * starter with nothing but the suggestion acts; or a steward act, which acts as the project's
+ * steward account with nothing but its act catalogue's doors (`assistant/turn-origin.ts`).
  */
-export type TurnOrigin = 'message' | 'onboarding_handoff';
+export type TurnOrigin = 'message' | 'onboarding_handoff' | 'steward';
 
 /** The person a turn acts as, and the bounds their own credential sets. */
 export interface TurnAuthority {
@@ -124,14 +144,16 @@ export async function mintTurnCredential(args: {
   authority: TurnAuthority;
   /** What the turn's tools reach; the token is granted this, cut to the person's own grant. */
   menu: readonly PatPermission[];
+  /** Token-explicit permissions the token names besides its menu, cut to the person's own grant. */
+  explicit?: readonly ProjectPermission[];
   /** A name the token is found by; unique among the person's live tokens. */
   name?: string;
   ttlMs: number;
   deviceId?: string | null;
 }): Promise<TurnCredential> {
   const { authority } = args;
-  const granted = args.menu.filter((p) => patGrantCovers(authority.grant, p));
-  if (!patGrantIsStated(granted)) {
+  const routes = args.menu.filter((p) => patGrantCovers(authority.grant, p));
+  if (!patGrantIsStated(routes)) {
     throw turnRefused(
       'TURN_GRANT_EMPTY',
       `I cannot act on this: the access token it was sent with grants none of what my tools use (${args.menu.join(', ')}).`,
@@ -143,8 +165,12 @@ export async function mintTurnCredential(args: {
     .where(eq(users.id, authority.userId))
     .limit(1);
   if (!owner) throw new Error(`turn credential: user ${authority.userId} does not exist`);
+  const named = (args.explicit ?? []).filter(
+    (p) => authority.grant === null || authority.grant.includes(p),
+  );
+  const granted: [string, ...string[]] = [...routes, ...named] as [string, ...string[]];
   // a token granted no write permission holds no write scope either
-  const writes = granted.some((p) => p.endsWith(':write'));
+  const writes = routes.some((p) => p.endsWith(':write'));
   const scopes = ['read', 'write'].filter(
     (s) => authority.scopes.includes(s) && (s === 'read' || writes),
   );

@@ -1,3 +1,4 @@
+import { STEWARD_DOOR_TOOLS } from '@forge/contracts/steward-runtime';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { describe, expect, it } from 'vitest';
 import { firstRequirementsVenue } from '../onboarding/first-requirements.js';
@@ -57,6 +58,31 @@ describe('the onboarding hand-off turn origin (project-onboarding req-case)', ()
       expect(text(refused)).toContain(other);
       expect(fenced.ranAs(other)).toBeNull();
     }
+  });
+
+  it('offers a steward turn its doors alone, and refuses any other by name with nothing run', async () => {
+    const ran: string[] = [];
+    const all = [...STEWARD_DOOR_TOOLS, 'forge_cli', 'ba_suggest_requirement', 'forge_issues'];
+    const fenced = fenceToolsetToOrigin(
+      {
+        ...toolset(all),
+        execute: async (name) => {
+          ran.push(name);
+          return ok(name);
+        },
+      },
+      'steward',
+    );
+    expect(fenced.tools.map((t) => t.function.name)).toEqual([...STEWARD_DOOR_TOOLS]);
+    expect(text(await fenced.execute('steward_comment_issue', '{}'))).toBe('steward_comment_issue');
+    for (const other of ['forge_cli', 'ba_suggest_requirement', 'forge_issues']) {
+      const refused = await fenced.execute(other, '{}');
+      expect(refused.isError).toBe(true);
+      expect(text(refused)).toContain('TURN_ORIGIN_REFUSED');
+      expect(text(refused)).toContain(`${other}\\" is not an act of a steward turn`);
+      expect(fenced.ranAs(other)).toBeNull();
+    }
+    expect(ran).toEqual(['steward_comment_issue']);
   });
 
   it('leaves a message turn its whole catalog', () => {

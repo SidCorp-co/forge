@@ -4,6 +4,7 @@ import { HTTPException } from 'hono/http-exception';
 import { insertAgentAccount } from '../auth/index.js';
 import { handleNameForProject } from '../credentials/agent-account.js';
 import { organizationMembers, projectMembers, projects, users } from '../db/schema.js';
+import { stewardAccounts } from '../db/schema-steward-runs.js';
 import { lockXact } from '../lib/advisory-lock.js';
 import { addOrgMember, addProjectMembers } from '../permissions/index.js';
 import type { Executor } from './db-executor.js';
@@ -17,7 +18,8 @@ export interface ProjectHandle {
 }
 
 /**
- * The handle this project ALREADY has, or null — the look without the mint.
+ * The handle this project ALREADY has, or null — the look without the mint. The project's steward
+ * (REQ-48) is also an agent member of this project alone, and is never its handle.
  */
 export async function existingProjectHandle(
   tx: Executor,
@@ -38,6 +40,12 @@ export async function existingProjectHandle(
             .select({ one: sql`1` })
             .from(other)
             .where(and(eq(other.userId, users.id), ne(other.projectId, projectId))),
+        ),
+        notExists(
+          tx
+            .select({ one: sql`1` })
+            .from(stewardAccounts)
+            .where(eq(stewardAccounts.userId, users.id)),
         ),
       ),
     )

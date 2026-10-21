@@ -310,10 +310,14 @@ export interface StewardEventPayloads {
 		subject: StandingSubject;
 		basis: string;
 	};
-	/** A release batch held issues back for an unearned criterion (`release-batch/criteria-hold.ts`). */
+	/**
+	 * A release held issues back for an unearned criterion: the automatic release recorded a criteria
+	 * hold on them (`release-batch/hold.ts:writeReleaseHolds`), in the hold's own transaction.
+	 */
 	"release.held": {
 		projectId: string;
-		runId: string;
+		/** The release run that held them; null for the automatic release, which holds before any run is cut. */
+		runId: string | null;
 		held: { issueId: string; criteria: string[] }[];
 	};
 }
@@ -407,6 +411,8 @@ export interface StewardRunView {
 	basis: string;
 	state: StewardRunState;
 	skipReason: StewardSkipReason | null;
+	/** Why a `failed` run failed, naming the door, the code or the missing runner; null otherwise. */
+	failure: string | null;
 	/** The job a runner act ran as, or the assistant turn a gateway act ran as. */
 	jobId: string | null;
 	turnId: string | null;

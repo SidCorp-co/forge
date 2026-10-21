@@ -46,6 +46,8 @@ const LOCK_NAMESPACES = {
   issueScope: 32,
   widgetPrincipal: 33,
   instanceSettings: 34,
+  stewardRun: 36,
+  stewardAccount: 37,
   releaseVersion: 1120,
 } as const;
 

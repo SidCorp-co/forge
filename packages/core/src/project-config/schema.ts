@@ -10,6 +10,7 @@ import { approvalsSchema } from '@forge/contracts/person-gates';
 import { previewSettingsSchema } from '@forge/contracts/preview';
 import { SCHEMA_BASE } from '@forge/contracts/project-config';
 import { REQUIREMENT_READINESS_GATES } from '@forge/contracts/requirements';
+import { stewardPolicySchema } from '@forge/contracts/steward-runtime';
 import { widgetBindingConfigSchema } from '@forge/contracts/widget';
 import { rewriteThresholdSchema } from '@forge/contracts/workflow-health';
 import {
@@ -286,6 +287,9 @@ export const projectDocumentSchema = z.strictObject({
   // project adds to the built-in ones, and the deploy targets a web-only deploy fans out to (REQ-39
   // BC-7, BC-8; `@forge/contracts/fast-lane:classifyLane`). Absent, every change is full lane.
   fastLane: fastLaneSettingsSchema.optional(),
+  // whether the steward acts at this project's handoffs, and a daily budget lowering its default of
+  // 200 gateway turns and 10 runner jobs (REQ-48, `steward/policy.ts`). Absent is on at the default.
+  steward: stewardPolicySchema.optional(),
   // the language agents write this project's prose in (owner, 2026-10-04): a BCP-47 tag,
   // absent is `en`. Policy over the kernel: no write is refused for its language, only a tag that
   // is not one (`rules.ts:checkContentLanguage`, CONTENT_LANGUAGE_INVALID). Code, identifiers,

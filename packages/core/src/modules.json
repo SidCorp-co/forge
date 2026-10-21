@@ -1151,6 +1151,12 @@
       "owns": ["statusReports"],
       "serves": ["REQ-11", "REQ-19"]
     },
+    "steward": {
+      "kind": "domain",
+      "context": "conversations",
+      "owns": ["stewardAccounts", "stewardActs", "stewardRuns"],
+      "serves": ["REQ-48"]
+    },
     "suggestions": {
       "kind": "domain",
       "context": "design",

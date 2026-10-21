@@ -16,6 +16,7 @@ const none = {
   warnedNotes: [],
   unnamedReleases: [] as { version: string }[],
   answers: [],
+  stewardAsks: [] as { actId: string; ask: string }[],
   contentLanguage: 'en',
 };
 
@@ -80,6 +81,16 @@ describe('owedLine: what a pass is told it owes besides issues', () => {
       answers: [{ ...answered, outcome: { kind: 'resumed' as const, to: 'open', at: 't' } }],
     });
     expect(new Set([before, landed, acted]).size).toBe(3);
+  });
+
+  // REQ-48 BC-5: a steward wake the box missed is still read on its next sweep, and the work moves
+  it("names each of the steward's asks, counts it owed, and moves the digest", () => {
+    const ask = { actId: 'a1', ask: 'ISS-498: no master has taken it since 10-14' };
+    const line = owedLine({ ...none, stewardAsks: [ask] });
+    expect(line).toContain("The project's steward asks you to act on 1 item");
+    expect(line).toContain('ISS-498: no master has taken it since 10-14');
+    expect(masterWork([], { ...none, stewardAsks: [ask] }).owed).toBe(1);
+    expect(workDigest([], { ...none, stewardAsks: [ask] })).not.toBe(workDigest([], none));
   });
 
   it('names an owed triage by its key, and its method', () => {

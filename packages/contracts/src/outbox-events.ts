@@ -4,6 +4,7 @@
 
 import type { FeedbackSeverity } from "./feedback.js";
 import type { MachineEntity, StateOf } from "./machines.js";
+import type { StewardEventPayloads } from "./steward.js";
 
 export const OUTBOX_EVENT_TYPES = [
 	"issue.created",
@@ -59,6 +60,10 @@ export const OUTBOX_EVENT_TYPES = [
 	"issue.pushed",
 	"conversation.pushed",
 	"preview.transitioned",
+	"suggestion.proposed",
+	"standing.stuck",
+	"standing.changed",
+	"release.held",
 ] as const;
 export type OutboxEventType = (typeof OUTBOX_EVENT_TYPES)[number];
 
@@ -204,7 +209,7 @@ interface IssueSnapshot {
 	labels: string[];
 }
 
-export interface OutboxEventPayloads {
+export interface OutboxEventPayloads extends StewardEventPayloads {
 	"issue.created": {
 		issueId: string;
 		projectId: string;

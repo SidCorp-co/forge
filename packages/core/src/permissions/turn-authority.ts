@@ -1,13 +1,21 @@
 /**
  * Whether a turn may act as the person whose message it answers (ISS-17): the person must hold
  * `project.read` on the project, and the token they reached Forge with, when there was one, must
- * still be live and reach the project. The token a turn then acts under is minted by
+ * still be live and reach the project. A steward turn (REQ-48) acts as the project's own steward
+ * account and no other. The token a turn then acts under is minted by
  * `credentials/turn-credential.ts:mintTurnCredential`.
  */
 
 import type { TurnAuthorityRefusalCode } from '@forge/contracts/auth';
+import { and, eq } from 'drizzle-orm';
 import { PAT_GRANT_EPOCH, patGrantIsStated } from '../credentials/pat-permissions.js';
-import { liveTurnToken, type TurnAuthorityOutcome } from '../credentials/turn-credential.js';
+import {
+  liveTurnToken,
+  type TurnAuthorityOutcome,
+  type TurnOrigin,
+} from '../credentials/turn-credential.js';
+import { db } from '../db/client.js';
+import { stewardAccounts } from '../db/schema-steward-runs.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import { holds } from './can.js';
 
@@ -25,7 +33,15 @@ export async function resolveTurnAuthority(args: {
   userId: string;
   projectId: string;
   viaTokenId: string | null;
+  /** `steward`: the turn acts as `userId` only where it is this project's steward account. */
+  origin?: TurnOrigin;
 }): Promise<TurnAuthorityOutcome> {
+  if (args.origin === 'steward' && !(await isProjectSteward(args.userId, args.projectId))) {
+    return refuse(
+      'TURN_ORIGIN_REFUSED',
+      `I will not act on this: a steward turn acts only as this project's steward account, and ${args.userId} is not it.`,
+    );
+  }
   const access = await effectiveProjectRole(args.userId, args.projectId);
   if (!(access ? holds(access, 'project.read') : false)) {
     return refuse(
@@ -70,7 +86,7 @@ export async function resolveTurnAuthority(args: {
     authority: {
       userId: args.userId,
       projectId: args.projectId,
-      origin: 'message',
+      origin: args.origin ?? 'message',
       viaTokenId: args.viaTokenId,
       grant,
       fence,
@@ -78,4 +94,13 @@ export async function resolveTurnAuthority(args: {
       grantEpoch,
     },
   };
+}
+
+async function isProjectSteward(userId: string, projectId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ userId: stewardAccounts.userId })
+    .from(stewardAccounts)
+    .where(and(eq(stewardAccounts.projectId, projectId), eq(stewardAccounts.userId, userId)))
+    .limit(1);
+  return row !== undefined;
 }
