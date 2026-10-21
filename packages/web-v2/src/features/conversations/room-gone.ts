@@ -27,12 +27,18 @@ export type KeptCopy = "offered" | "copied" | "by-hand" | "refused";
 /**
  * The thread goes with the room, so the notice quotes what was written, its outer blank space aside
  * (r29, r30). Only a message the reader sent "was not sent"; text still in the box is kept (r31). Text to
- * be copied by hand is quoted whole, since what is cut from the quote could not be selected (r32).
+ * be copied by hand is quoted whole and as typed, since what the quote leaves out could not be selected
+ * (r32); its toast is asked to keep that text's spaces (`verbatim`).
  */
 export function unsentLine(text: string, sent: boolean, copy: KeptCopy = "offered"): string {
-  const shown = text.trim();
   const byHand = copy === "by-hand" || copy === "refused";
-  const quoted = !byHand && shown.length > UNSENT_QUOTE ? `${shown.slice(0, UNSENT_QUOTE).trimEnd()}…` : shown;
+  const shown = text.trim();
+  // Selected by hand, the quote is the text exactly as typed, as an automatic copy writes it (r32 F1).
+  const quoted = byHand
+    ? text
+    : shown.length > UNSENT_QUOTE
+      ? `${shown.slice(0, UNSENT_QUOTE).trimEnd()}…`
+      : shown;
   const context = sent
     ? roomDeletedLine(true)
     : "It was deleted while you had it open. What you were writing is kept below.";

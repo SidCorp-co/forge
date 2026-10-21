@@ -380,7 +380,28 @@ describe("a room deleted while it is open", () => {
     expect(byHand.description).toMatch(/^It could not be copied here\. Select the text below and copy it by hand:\n/);
     expect(byHand.description).toContain(`“${long}”`);
     expect(byHand.onClick).toBeUndefined();
+    expect(byHand).toMatchObject({ verbatim: true });
     expect(toast.mock.calls.map((c) => (c[0] as { title: string }).title)).not.toContain("What you wrote could not be copied");
+  });
+
+  // r32 review F1: what is selected by hand is the text exactly as typed, as an automatic copy is.
+  it("quotes the text to copy by hand exactly as typed, its spaces and blank lines kept", async () => {
+    Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
+    const typed = "    indented text\n\n";
+    const tree = () => (
+      <QueryClientProvider client={new QueryClient()}>
+        <ConversationChat projectId="p1" conversationId="c1" onRoomGone={vi.fn()} />
+      </QueryClientProvider>
+    );
+    const { rerender } = render(tree());
+    fireEvent.change(screen.getByLabelText("Message"), { target: { value: typed } });
+    roomError = roomGone();
+    rerender(tree());
+
+    await waitFor(() => expect(toast).toHaveBeenCalled());
+    const notice = toast.mock.calls[0]?.[0] as { description: string; verbatim?: boolean };
+    expect(notice.description).toContain(`“${typed}”`);
+    expect(notice.verbatim).toBe(true);
   });
 
   it("offers the text to copy by hand from the start where there is no clipboard", async () => {

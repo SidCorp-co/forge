@@ -306,3 +306,21 @@ describe("a toast marked keep", () => {
   });
 });
 
+
+// ISS-1229 r32 review F1: a notice whose text is to be selected by hand keeps that text's spaces and
+// blank lines; the usual description collapses them.
+describe("a toast whose description is verbatim", () => {
+  it("keeps runs of spaces and blank lines as written", () => {
+    render(<Frame />);
+    act(() => fire({ title: "Kept", description: "    indented\n\n", verbatim: true, keep: true }));
+    const text = screen.getByText((_, el) => el?.tagName === "P" && el.textContent === "    indented\n\n");
+    expect(text).toHaveClass("whitespace-pre-wrap");
+    expect(text).not.toHaveClass("whitespace-pre-line");
+  });
+
+  it("is not asked of an ordinary toast", () => {
+    render(<Frame />);
+    act(() => fire({ title: "Saved", description: "All good." }));
+    expect(screen.getByText("All good.")).toHaveClass("whitespace-pre-line");
+  });
+});

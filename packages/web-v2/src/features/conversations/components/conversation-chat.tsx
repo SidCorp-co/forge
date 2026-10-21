@@ -136,7 +136,7 @@ export function ConversationChat({
           keep: true,
           slot,
           ...(byHand
-            ? {}
+            ? { verbatim: true }
             : {
                 onClick: () => {
                   void navigator.clipboard.writeText(unsent).then(
