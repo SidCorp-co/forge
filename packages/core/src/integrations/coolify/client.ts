@@ -162,7 +162,6 @@ export class CoolifyClient {
     return hostOf(this.baseUrl);
   }
 
-  /** Whether a call this client made was answered only on the previous token (ISS-1421 r20). */
   get usedPreviousToken(): boolean {
     return this.answeredOnPrevious;
   }
@@ -222,7 +221,6 @@ export class CoolifyClient {
         return { status: res.status, data: data as T };
       } catch (err) {
         clearTimeout(timer);
-        // Only the new token's 401 earns a try with the previous one, and that 401 stays the answer.
         throw token === this.apiToken ? err : (lastErr ?? err);
       }
     }
