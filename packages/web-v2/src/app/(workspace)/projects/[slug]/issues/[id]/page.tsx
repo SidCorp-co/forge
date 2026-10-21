@@ -33,14 +33,11 @@ export default function ProjectIssueDetailPage() {
   }
 
   const project = projects?.find((p) => p.slug === slug);
+  // The route always names an issue: what can be missing here is the project, said as its Pipeline page says it (ISS-1228 r27).
   if (!project || !id) {
     return (
       <div className="grid min-h-[60vh] place-items-center">
-        <ProjectMissing
-          slug={slug}
-          title="Issue not found"
-          message="This project or issue doesn't exist or you don't have access to it."
-        />
+        <ProjectMissing slug={slug} />
       </div>
     );
   }
