@@ -52,7 +52,7 @@ export interface DeviceRow {
 }
 
 /**
- * A row of `GET /api/orgs/:orgId/devices` — the organisation's devices, over the
+ * A row of `GET /api/orgs/:orgId/devices` — the organization's devices, over the
  * projects this caller can see, whoever paired them (ISS-1162).
  *
  * Narrower than `DeviceRow`: `capabilities` and `gate` are a box's own
@@ -64,9 +64,9 @@ export interface DeviceRow {
 export interface OrgDeviceRow extends Omit<DeviceRow, "capabilities" | "gate"> {
 	runnerCount: number;
 	projectNames: string[];
-	/** The organisation's agent holding the box, as `@handle`; null for a person's (ISS-1229 r23). */
+	/** The organization's agent holding the box, as `@handle`; null for a person's (ISS-1229 r23). */
 	heldBy: string | null;
-	/** Whether the viewer may revoke it: its pairer, or an admin where this organisation's agent paired it. */
+	/** Whether the viewer may revoke it: its pairer, or an admin where this organization's agent paired it. */
 	canRevoke: boolean;
 }
 

@@ -7,6 +7,7 @@ import { formatApiError } from "@/lib/api/error";
 import type { TurnRow, TurnsResponse } from "./types";
 import { refreshAfterStop, SESSION_STOPPED } from "@/features/sessions/hooks";
 import { type EditTurnOpts, type ForkOpts, type SendOpts, sessionApi } from "./api";
+import { failureToast } from "@/lib/api/failure-toast";
 
 /** Session detail row. Keyed `['agent-session', id]` — WS-invalidated. */
 export function useSession(id: string | undefined) {
@@ -52,7 +53,7 @@ function useInvalidateSession(id: string) {
 function useToastError() {
   const { toast } = useToast();
   return (err: unknown) =>
-    toast({ title: "Action failed", description: formatApiError(err), tone: "error" });
+    toast(failureToast(err, "The session was not changed"));
 }
 
 /**
@@ -74,11 +75,7 @@ export function useSendMessage(id: string) {
           const att = await sessionApi.uploadAttachment(opts.sessionId, file);
           ids.push(att.id);
         } catch (err) {
-          toast({
-            title: "An attachment failed to upload",
-            description: `${file.name}: ${formatApiError(err)}`,
-            tone: "error",
-          });
+          toast(failureToast(err, "An attachment was not uploaded", `${file.name}: ${formatApiError(err)}`));
         }
       }
       return sessionApi.send({ ...opts, attachmentIds: ids.length ? ids : undefined });

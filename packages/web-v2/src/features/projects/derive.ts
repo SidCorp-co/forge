@@ -67,6 +67,7 @@ export function mergeProjects(
       liveSessions: read ? (h?.liveSessions ?? 0) : null,
       openIssues: read ? (h?.totalActive ?? 0) : null,
       runnerCount: read ? (h?.runnerCount ?? 0) : null,
+      runnerTotal: read ? (h?.runnerTotal ?? 0) : null,
       spend24hUsd: read ? (h?.spend24hUsd ?? 0) : null,
       memberCount: read ? (h?.memberCount ?? 0) : null,
       members: h?.members ?? [],
@@ -79,7 +80,15 @@ export function mergeProjects(
 /** Workspace summary across all console items, for the stats band. Its figures are null until the health read is `read`. */
 export function workspaceTotals(items: ProjectConsoleItem[], healthRead: QueryRead): WorkspaceTotals {
   if (healthRead !== 'read') {
-    return { projects: items.length, healthRead, liveSessions: null, openIssues: null, runners: null, spend24hUsd: null };
+    return {
+      projects: items.length,
+      healthRead,
+      liveSessions: null,
+      openIssues: null,
+      runners: null,
+      runnersTotal: null,
+      spend24hUsd: null,
+    };
   }
   return items.reduce<WorkspaceTotals>(
     (acc, p) => ({
@@ -88,9 +97,10 @@ export function workspaceTotals(items: ProjectConsoleItem[], healthRead: QueryRe
       liveSessions: (acc.liveSessions ?? 0) + (p.liveSessions ?? 0),
       openIssues: (acc.openIssues ?? 0) + (p.openIssues ?? 0),
       runners: (acc.runners ?? 0) + (p.runnerCount ?? 0),
+      runnersTotal: (acc.runnersTotal ?? 0) + (p.runnerTotal ?? 0),
       spend24hUsd: (acc.spend24hUsd ?? 0) + (p.spend24hUsd ?? 0),
     }),
-    { projects: 0, healthRead, liveSessions: 0, openIssues: 0, runners: 0, spend24hUsd: 0 },
+    { projects: 0, healthRead, liveSessions: 0, openIssues: 0, runners: 0, runnersTotal: 0, spend24hUsd: 0 },
   );
 }
 

@@ -48,6 +48,7 @@ const projectHealthSchema = z.object({
   liveRuns: z.number(),
   liveSessions: z.number(),
   runnerCount: z.number(),
+  runnerTotal: z.number(),
   spend24hUsd: z.number(),
   memberCount: z.number(),
   members: z.array(z.string()),

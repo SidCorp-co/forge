@@ -83,7 +83,7 @@ export default function ProjectOverviewPage() {
 
   // Card data — every hook reuses an existing source. Project-scoped hooks gate
   // on `projectId` so they no-op until the slug resolves.
-  // The project's own organisation, whichever one the rail has open: its counts are this project's.
+  // The project's own organization, whichever one the rail has open: its counts are this project's.
   const attentionQ = useAttention({ orgId: project?.orgId ?? null });
   const retryJob = useRetryFailedJob();
   const runsQ = useProjectRuns(projectId);

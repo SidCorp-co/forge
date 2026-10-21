@@ -75,9 +75,10 @@ async function assertConversationRole(
   if (scope.length === 0) {
     // A room about no project is still its organization's (ISS-1229 r23): whoever opened it, or an
     // admin of that organization, reaches it, to look at it and to delete it.
-    if (await holdsRoomAboutNoProject(conversationId, userId, tx)) return [];
+    const room = await roomAboutNoProject(conversationId, tx);
+    if (room && (await holdsRoomAboutNoProject(room, userId, tx))) return [];
     throw forbidden(
-      `conversation ${conversationId} has no agent in it, so it is about no project; only the person who opened it or an admin of its organization can reach it`,
+      `conversation ${conversationId} has no agent in it, so it is about no project; ${whoReaches(room)} can reach it`,
       'CONVERSATION_NO_SCOPE',
     );
   }
@@ -93,18 +94,68 @@ async function assertConversationRole(
   return scope;
 }
 
-/** Whether this caller opened the room or holds the admin role in the organization it belongs to. */
-export async function holdsRoomAboutNoProject(
+interface RoomAboutNoProject {
+  id: string;
+  orgId: string | null;
+  createdBy: string | null;
+  shape: string;
+}
+
+async function roomAboutNoProject(
   conversationId: string,
-  userId: string,
-  tx: Executor = defaultDb,
-): Promise<boolean> {
+  tx: Executor,
+): Promise<RoomAboutNoProject | null> {
   const [room] = await tx
-    .select({ orgId: conversations.orgId, createdBy: conversations.createdBy })
+    .select({
+      id: conversations.id,
+      orgId: conversations.orgId,
+      createdBy: conversations.createdBy,
+      shape: conversations.shape,
+    })
     .from(conversations)
     .where(eq(conversations.id, conversationId))
     .limit(1);
-  if (!room) return false;
+  return room ?? null;
+}
+
+/** Who a room about no project is reached by, in the words its refusal names them (ISS-1229 r25). */
+function whoReaches(room: RoomAboutNoProject | null): string {
+  if (room?.shape === 'direct') return 'it is a one-to-one room, so only the people in it';
+  if (room && room.orgId === null)
+    return 'no organization holds it, so only the person who opened it';
+  return 'only the person who opened it or an admin of its organization';
+}
+
+/**
+ * Whether this caller reaches a room about no project: a one-to-one room by the people in it alone,
+ * whatever role they hold (ISS-1229 r25); any other by its opener or an admin of its organization.
+ */
+export async function holdsRoomAboutNoProject(
+  room: RoomAboutNoProject,
+  userId: string,
+  tx: Executor = defaultDb,
+): Promise<boolean> {
+  if (room.shape === 'direct') return isOneOfItsPeople(room.id, userId, tx);
   if (room.createdBy === userId) return true;
   return room.orgId !== null && orgRoleAtLeast(await loadOrgRole(room.orgId, userId), 'admin');
+}
+
+async function isOneOfItsPeople(
+  conversationId: string,
+  userId: string,
+  tx: Executor,
+): Promise<boolean> {
+  const [row] = await tx
+    .select({ id: conversationParticipants.id })
+    .from(conversationParticipants)
+    .where(
+      and(
+        eq(conversationParticipants.conversationId, conversationId),
+        eq(conversationParticipants.kind, 'person'),
+        eq(conversationParticipants.userId, userId),
+        isNull(conversationParticipants.removedAt),
+      ),
+    )
+    .limit(1);
+  return row !== undefined;
 }

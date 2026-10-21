@@ -375,3 +375,20 @@ describe('readFailure — a failed read in the product\'s words, and the server\
     });
   });
 });
+
+// ISS-1229 r25, judge-72: an organization name past its limit was refused with core's sentence naming
+// the field and the limit, and the toast read the stock "Invalid input — please check the fields".
+describe('a refused body core said why about', () => {
+  const sentence =
+    "An organization's name is at most 200 characters, so it was not saved. Shorten it, then save again.";
+
+  it("shows core's own sentence", () => {
+    expect(formatApiError(new ApiError(400, sentence, 'BAD_REQUEST'))).toBe(sentence);
+  });
+
+  it('keeps the stock sentence where core said only "Invalid input"', () => {
+    expect(formatApiError(new ApiError(400, 'Invalid input', 'BAD_REQUEST'))).toBe(
+      'Invalid input — please check the fields and try again.',
+    );
+  });
+});

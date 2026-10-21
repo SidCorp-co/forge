@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { OPEN_WORK_STATES, WORK_STATE_LABELS } from "@forge/contracts/work-state";
-import { actionQueue, ageText, bucketHref, projectSilenceRows, waffleCells } from "./derive";
+import { actionQueue, ageText, bucketHref, projectSilenceRows, compositionCells } from "./derive";
 import type { PulseResponse, PulseWork } from "./types";
 
 function pulse(work: Partial<PulseWork>): PulseResponse {
@@ -156,8 +156,8 @@ describe("the action queue's production rows (ISS-1217)", () => {
 });
 
 describe("the buckets are the open work states (ISS-1156)", () => {
-  it("draws one waffle cell per open state, worded and counted as the state is", () => {
-    const cells = waffleCells({ open: 56, in_flight: 11, awaiting_release: 1, blocked_on_person: 4 });
+  it("draws one composition category per open state, worded and counted as the state is", () => {
+    const cells = compositionCells({ open: 56, in_flight: 11, awaiting_release: 1, blocked_on_person: 4 });
     expect(cells.map((c) => [c.key, c.label, c.count])).toEqual([
       ["open", "Open, not picked up", 56],
       ["in_flight", "In flight", 11],

@@ -41,6 +41,7 @@ import {
   type PatTokenCreated,
 } from "../types";
 import { TokenList } from "./token-list";
+import { failureToast } from "@/lib/api/failure-toast";
 
 // Where the SSO reauth round-trip returns to (this tab).
 const RETURN_PATH = "/settings?tab=tokens";
@@ -324,7 +325,7 @@ export function TokensTab() {
             slot: FORM_NOTICE,
           });
         } else {
-          toast({ title: "Couldn't create token", description: formatApiError(err), tone: "error", slot: FORM_NOTICE });
+          toast({ ...failureToast(err, "The token was not created"), slot: FORM_NOTICE });
         }
       },
     });
@@ -341,7 +342,7 @@ export function TokensTab() {
     reauth.mutate(password, {
       onSuccess: () => runCreate(input),
       onError: (err) =>
-        toast({ title: "Re-authentication failed", description: formatApiError(err), tone: "error", slot: FORM_NOTICE }),
+        toast({ ...failureToast(err, "You were not re-authenticated"), slot: FORM_NOTICE }),
     });
   }
 

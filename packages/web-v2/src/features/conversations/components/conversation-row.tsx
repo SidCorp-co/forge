@@ -88,7 +88,7 @@ export function ConversationRow({
 
   return (
     <div
-      className={`group flex min-h-[44px] w-full items-center gap-2 rounded-lg border px-2 py-1.5 transition-colors focus-within:border-[color:var(--link)] hover:bg-hover ${
+      className={`group relative flex min-h-[44px] w-full items-center gap-2 rounded-lg border px-2 py-1.5 transition-colors focus-within:border-[color:var(--link)] hover:bg-hover ${
         open ? "border-[color:var(--link)] bg-hover" : "border-transparent"
       }`}
     >
@@ -108,7 +108,11 @@ export function ConversationRow({
         </div>
       </button>
 
-      <div className="flex flex-none items-center gap-0.5 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+      {/* Over the row's end, so hidden controls hold no width from the title (ISS-1229 r25). */}
+      <div
+        className="absolute right-1.5 top-1/2 flex -translate-y-1/2 items-center gap-0.5 rounded-md bg-hover opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
+        data-testid="conversation-row-actions"
+      >
         {onRename && (
           <IconButton
             icon="rename"

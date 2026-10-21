@@ -253,7 +253,7 @@ describe('GET /api/projects/health, the rollups beside each project', () => {
     queryQueue.push([]); // throughputRows
     queryQueue.push([]); // cycleRows (avgCycleTimeDays)
     queryQueue.push([{ projectId: PROJECT_A_ID, n: 3 }]); // liveRunRows
-    queryQueue.push([{ projectId: PROJECT_A_ID, n: 2 }]); // runnerRows
+    queryQueue.push([{ projectId: PROJECT_A_ID, n: 2, total: 3 }]); // runnerRows
     queryQueue.push([{ project_id: PROJECT_A_ID, spend: 13.38 }]); // spendRows (db.execute)
     queryQueue.push([
       memberOfA('u-ada', 'Ada Lovelace'),
@@ -278,6 +278,7 @@ describe('GET /api/projects/health, the rollups beside each project', () => {
       repoPath: string | null;
       liveRuns: number;
       runnerCount: number;
+      runnerTotal: number;
       spend24hUsd: number;
       memberCount: number;
       members: string[];
@@ -290,6 +291,7 @@ describe('GET /api/projects/health, the rollups beside each project', () => {
     expect(alpha?.description).toBe('Alpha project');
     expect(alpha?.repoPath).toBe('org/alpha');
     expect(alpha?.runnerCount).toBe(2);
+    expect(alpha?.runnerTotal).toBe(3); // every runner, for "2/3 runners online" (ISS-1229 r25)
     expect(alpha?.spend24hUsd).toBeCloseTo(13.38);
     expect(alpha?.memberCount).toBe(5);
     expect(alpha?.members).toEqual(['AL', 'BO', 'AM', 'AM', 'Y']); // from the name, never the address
@@ -298,6 +300,7 @@ describe('GET /api/projects/health, the rollups beside each project', () => {
     const counts = body.map((p) => [p.liveRuns, (p as { liveSessions?: number }).liveSessions]);
     expect(counts.flat()).toEqual([3, 1, 0, 0]); // open runs and live sessions: two counts, never one
     expect(beta?.runnerCount).toBe(0);
+    expect(beta?.runnerTotal).toBe(0);
     expect(beta?.spend24hUsd).toBe(0);
     expect(beta?.memberCount).toBe(0);
     expect(beta?.members).toEqual([]);

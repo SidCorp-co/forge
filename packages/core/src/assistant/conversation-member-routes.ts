@@ -114,7 +114,8 @@ conversationMemberRoutes.get(
     ]);
     return c.json(
       answer(candidatesSchema, {
-        people: await namePeople(people),
+        // The opener is in the room by opening it, so they are not offered to themself (ISS-1229 r25).
+        people: await namePeople(people.filter((p) => p.userId !== userId)),
         handles: await nameLostReaders(handles),
       }),
     );

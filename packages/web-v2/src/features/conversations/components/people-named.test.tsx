@@ -64,7 +64,9 @@ describe("starting a conversation", () => {
     render(<StartConversation onStarted={() => {}} />);
     fireEvent.click(screen.getByRole("combobox"));
     fireEvent.click(screen.getByRole("option", { name: "Billing" }));
+    // The reader heads the list once, as "You", and is never offered to themself (ISS-1229 r25).
     expect(offered(screen.getAllByRole("checkbox").map((c) => c.closest("label") as HTMLElement))).toEqual([
+      "You · ",
       "Mai Tran · mai.tran@example.com",
       "Another member · lan.pham@example.com",
       "Another member · kim@example.org",

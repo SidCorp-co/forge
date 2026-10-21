@@ -3,9 +3,9 @@
 // web-v2 feature module: settings — React Query hooks. User-scoped keys.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/providers/toast-provider";
-import { formatApiError } from "@/lib/api/error";
 import { settingsApi } from "./api";
 import type { CreatePatInput } from "./types";
+import { failureToast } from "@/lib/api/failure-toast";
 
 export function usePreferences() {
   return useQuery({
@@ -25,7 +25,7 @@ export function useUpdatePreferences() {
       toast({ title: "Preferences saved", tone: "success" });
     },
     onError: (err) => {
-      toast({ title: "Couldn't save preferences", description: formatApiError(err), tone: "error" });
+      toast(failureToast(err, "Your preferences were not saved"));
     },
   });
 }
@@ -57,7 +57,7 @@ export function useRevokeToken() {
       toast({ title: "Token revoked", tone: "success" });
     },
     onError: (err) => {
-      toast({ title: "Couldn't revoke token", description: formatApiError(err), tone: "error" });
+      toast(failureToast(err, "The token was not revoked"));
     },
   });
 }
@@ -85,7 +85,7 @@ export function useUpdateAssistantPreferences() {
       toast({ title: "Answer preferences saved", tone: "success" });
     },
     onError: (err) => {
-      toast({ title: "Couldn't save answer preferences", description: formatApiError(err), tone: "error" });
+      toast(failureToast(err, "Your answer preferences were not saved"));
     },
   });
 }

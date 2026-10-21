@@ -198,8 +198,11 @@ export function personAdditionClaims(args: {
   ];
 }
 
-const ADDED_DAY = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
-const ADDED_TIME = new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "UTC" });
+// In the reader's own time zone, as every time the room shows is (ISS-1229 r25).
+const addedDay = (iso: string) =>
+  new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric" }).format(new Date(iso));
+const addedTime = (iso: string) =>
+  new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
 const ORDINALS = ["first", "second", "third", "fourth", "fifth"];
 
 /**
@@ -218,8 +221,8 @@ function addedWords(
     .filter((p) => p.kind === "person" && p.addedAt && base(p) === base(participant))
     .sort((a, b) => (a.addedAt as string).localeCompare(b.addedAt as string) || a.id.localeCompare(b.id));
   if (alike.length < 2) return null;
-  const day = (p: ConversationParticipant) => ADDED_DAY.format(new Date(p.addedAt as string));
-  const minute = (p: ConversationParticipant) => `${day(p)}, ${ADDED_TIME.format(new Date(p.addedAt as string))} UTC`;
+  const day = (p: ConversationParticipant) => addedDay(p.addedAt as string);
+  const minute = (p: ConversationParticipant) => `${day(p)}, ${addedTime(p.addedAt as string)}`;
   const sameDay = alike.filter((p) => day(p) === day(participant));
   if (sameDay.length < 2) return `added ${day(participant)}`;
   const sameMinute = alike.filter((p) => minute(p) === minute(participant));

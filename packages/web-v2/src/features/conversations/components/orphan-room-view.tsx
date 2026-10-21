@@ -1,8 +1,8 @@
 "use client";
 
 // A room whose every project was deleted, opened read-only (ISS-1229 r24): everything said in it, so
-// its opener or an admin of its organization can see what it held before deleting it. It takes no
-// message — there is no project left to answer under — so no composer is drawn.
+// whoever may delete it sees what it held first. It takes no message — there is no project left to
+// answer under — so no composer is drawn.
 
 import { useState } from "react";
 import { Button, ConfirmDialog, EmptyState, ErrorState, PageTitle, ProjectLoader } from "@/design";
@@ -10,13 +10,16 @@ import { formatApiError } from "@/lib/api/error";
 import { useConversation, useDeleteConversation } from "../hooks";
 import type { RoomWithoutAProject } from "../types";
 import { ConversationThread } from "./conversation-thread";
-import { orphanRoomFacts, orphanTitleOf } from "./orphan-rooms";
+import { type OrphanFacts, orphanDeleteQuestion, orphanRoomFacts, orphanTitleOf } from "./orphan-rooms";
 
 export function OrphanRoomView({
   room,
+  facts,
   onDeleted,
 }: {
   room: RoomWithoutAProject;
+  /** What told this room apart in the list it was opened from, said again on its Delete. */
+  facts: OrphanFacts;
   onDeleted: () => void;
 }) {
   const roomQ = useConversation(room.id);
@@ -30,9 +33,9 @@ export function OrphanRoomView({
       <header className="flex flex-none flex-wrap items-center justify-between gap-2 border-b border-line px-4 py-3">
         <div className="min-w-0">
           <PageTitle className="fg-h3 truncate">{title}</PageTitle>
-          <p className="fg-caption truncate text-subtle">{orphanRoomFacts(room)}</p>
+          <p className="fg-caption truncate text-subtle">{orphanRoomFacts(facts)}</p>
         </div>
-        <Button variant="ghost" size="sm" icon="trash" aria-label={`Delete ${title}`} onClick={() => setConfirming(true)}>
+        <Button variant="ghost" size="sm" icon="trash" aria-label={`Delete ${title}, ${orphanRoomFacts(facts)}`} onClick={() => setConfirming(true)}>
           Delete
         </Button>
       </header>
@@ -60,7 +63,7 @@ export function OrphanRoomView({
       <ConfirmDialog
         open={confirming}
         title="Delete this conversation?"
-        message={`“${title}” and everything said in it will be gone. Its project was deleted, so it cannot be archived and opened again.`}
+        message={orphanDeleteQuestion(room, facts)}
         confirmLabel="Delete"
         tone="danger"
         loading={remove.isPending}

@@ -13,7 +13,6 @@
 // had to carve an exception for.
 
 import { randomUUID } from 'node:crypto';
-import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -33,6 +32,7 @@ import {
 import { addHandle, addPerson, listParticipants } from '../conversations/participants.js';
 import { PresenceValidationError, validateRoomPresence } from '../conversations/presence.js';
 import { derivedScope } from '../conversations/scope.js';
+import { nameSpeakers } from '../conversations/speaker-names.js';
 import {
   type ConversationRow,
   deleteConversation,
@@ -47,11 +47,9 @@ import {
 } from '../conversations/store.js';
 import { listWindowsForConversation } from '../conversations/windows.js';
 import { db } from '../db/client.js';
-import { users } from '../db/schema.js';
 import { conversationModes } from '../db/schema-conversations.js';
 import { assertProjectRole, effectiveProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { fromPage, listResponse } from '../lib/pagination.js';
-import { personName } from '../lib/person-name.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import {
   mayChangeMembership,
@@ -319,7 +317,7 @@ conversationRoutes.get(
     const conversation = await readableConversation(id, userId);
     const [participants, messages, scope, windows, agentTurns] = await Promise.all([
       listParticipants(id),
-      readMessages(id, READ_WINDOW),
+      readMessages(id, READ_WINDOW).then(nameSpeakers),
       derivedScope(id),
       listWindowsForConversation(id, WINDOW_PAGE),
       readConversationAgentTurns(id),
@@ -445,12 +443,6 @@ conversationRoutes.post(
       });
     }
 
-    const [me] = await db
-      .select({ displayName: users.displayName })
-      .from(users)
-      .where(eq(users.id, userId))
-      .limit(1);
-
     let sent: Awaited<ReturnType<typeof sendWebConversationMessage>>;
     try {
       sent = await sendWebConversationMessage({
@@ -461,7 +453,6 @@ conversationRoutes.post(
         },
         projectId,
         userId,
-        userLabel: me ? personName(me.displayName, 'start') : null,
         content,
         mode: asking,
         namedMode: mode !== undefined,
@@ -483,7 +474,7 @@ conversationRoutes.post(
     }
 
     const [messages, windows, agentTurns] = await Promise.all([
-      readMessages(id, READ_WINDOW),
+      readMessages(id, READ_WINDOW).then(nameSpeakers),
       listWindowsForConversation(id, WINDOW_PAGE),
       readConversationAgentTurns(id),
     ]);

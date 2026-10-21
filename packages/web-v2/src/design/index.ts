@@ -23,7 +23,7 @@ export { Skeleton, type SkeletonProps } from "./primitives/skeleton";
 export { ProgressBar, type ProgressBarProps } from "./primitives/progress-bar";
 export { Sparkline, type SparklineProps } from "./primitives/sparkline";
 export { Heartbeat, type HeartbeatProps, type HeartbeatDay } from "./primitives/heartbeat";
-export { Waffle, type WaffleProps, type WaffleCategory } from "./primitives/waffle";
+export { CompositionBar, type CompositionBarProps, type CompositionCategory } from "./primitives/composition-bar";
 export { DotStrip, type DotStripProps, type DotStripItem } from "./primitives/dot-strip";
 export { BulletBar, type BulletBarProps } from "./primitives/bullet-bar";
 export { StreamBand, type StreamBandProps, type StreamWeek } from "./primitives/stream-band";

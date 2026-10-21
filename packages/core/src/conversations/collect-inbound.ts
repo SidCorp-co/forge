@@ -1,4 +1,6 @@
 import { db } from '../db/client.js';
+import { carriesAnAddress } from '../lib/person-name.js';
+import { logger } from '../logger.js';
 import type { Executor } from './db-executor.js';
 import type { ConversationAdapterPorts } from './ports.js';
 import { appendMessagesIn, type ConversationImage, openConversation } from './store.js';
@@ -15,7 +17,8 @@ export interface InboundCollection<Frame> {
   externalMessageId?: string | null;
   /** The transport's own id for the message this one replies to or quotes, where it named one (ISS-1087). */
   replyToExternalId?: string | null;
-  /** The name the transport shows for the speaker. */
+  /** The name the transport shows for the speaker; none where the speaker is a Forge person on Forge's
+   *  own surface, whose name is read from their row when the room is read (ISS-1229 r25). */
   speakerLabel?: string | null;
   /** Image references as the transport names them — no bytes, which are fetched at route time. */
   images?: readonly ConversationImage[];
@@ -66,7 +69,9 @@ export async function collectInboundMessage<Frame>(
           role: 'user',
           content: inbound.message,
           authorUserId,
-          authorLabel: inbound.speakerLabel ?? inbound.speakerKey,
+          authorLabel: transportLabel(
+            inbound.speakerLabel ?? (authorUserId ? null : inbound.speakerKey),
+          ),
           authorKey: inbound.speakerKey,
           externalId: inbound.externalMessageId ?? null,
           replyToExternalId: inbound.replyToExternalId ?? null,
@@ -97,4 +102,13 @@ export async function collectInboundMessage<Frame>(
       messageId: row.id,
     };
   });
+}
+
+/** A transport's handle for its speaker, dropped where it holds an address (ISS-1229 r25). */
+function transportLabel(label: string | null): string | null {
+  if (label === null || !carriesAnAddress(label)) return label;
+  logger.warn(
+    'conversations: a transport named its speaker by an email address, so no label was stored',
+  );
+  return null;
 }

@@ -3,10 +3,10 @@
 import { type QueryClient, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/providers/toast-provider";
 import { moveSessionInLiveReads } from "@/features/pipeline/live-read";
-import { formatApiError } from "@/lib/api/error";
 import { type ListSessionsOpts, sessionsApi } from "./api";
 import { endedSilentText } from "./status-sentences";
 import { isInteractiveSession, LIVE_READ_POLL_MS } from "./types";
+import { failureToast } from "@/lib/api/failure-toast";
 
 /** Sessions list. Keyed `['agent-sessions','list',opts]` — WS-invalidated, and re-read on the live
  *  period while it shows a running session, whose check-ins move no event. */
@@ -65,7 +65,7 @@ function useSessionMutation<TArgs, TData>(
       }
     },
     onError: (err) => {
-      toast({ title: "Action failed", description: formatApiError(err), tone: "error" });
+      toast(failureToast(err, "The session was not changed"));
     },
   });
 }

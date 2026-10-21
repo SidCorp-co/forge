@@ -39,7 +39,7 @@ describe('what an installation is short of (ISS-1153)', () => {
     ]);
   });
 
-  it('points an organisation-owned App at its own settings page', () => {
+  it('points an organization-owned App at its own settings page', () => {
     expect(
       appPermissionsPageUrl({
         slug: 'forge-dev',

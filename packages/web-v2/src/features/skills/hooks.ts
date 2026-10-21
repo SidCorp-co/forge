@@ -5,8 +5,8 @@
 // the whole subtree (list + sync-status + registrations) in one shot.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/providers/toast-provider";
-import { formatApiError } from "@/lib/api/error";
 import { skillsApi, type SkillCreateInput, type SkillUpdateInput } from "./api";
+import { failureToast } from "@/lib/api/failure-toast";
 
 export function useSkills(projectId: string | undefined) {
   return useQuery({
@@ -73,7 +73,7 @@ export function useRunSmokeVerify(projectId: string | undefined) {
       });
     },
     onError: (err) => {
-      toast({ title: "Smoke-verify failed", description: formatApiError(err), tone: "error" });
+      toast(failureToast(err, "The skill was not smoke-verified"));
     },
   });
 }
@@ -92,7 +92,7 @@ function useSkillMutation<TArgs, TData = unknown>(
       toast({ title: successMessage, tone: "success" });
     },
     onError: (err) => {
-      toast({ title: "Action failed", description: formatApiError(err), tone: "error" });
+      toast(failureToast(err, "The skill was not changed"));
     },
   });
 }

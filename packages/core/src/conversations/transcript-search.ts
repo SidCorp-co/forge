@@ -19,6 +19,7 @@ import { db as defaultDb } from '../db/client.js';
 import { conversationMessages } from '../db/schema-conversations.js';
 import { conversationIndexState, conversationPassages } from '../db/schema-transcript-index.js';
 import { identifierTsQuery } from '../db/schema-types.js';
+import { speakerNameSql } from './speaker-names.js';
 import { hasText, PASSAGE_MAX_MESSAGES, WATERMARK_EMPTY } from './transcript-index.js';
 
 /** Passages one call may return, however many the caller asks for. */
@@ -252,7 +253,7 @@ async function shapeHit(
       id: conversationMessages.id,
       seq: conversationMessages.seq,
       externalId: conversationMessages.externalId,
-      authorLabel: conversationMessages.authorLabel,
+      authorLabel: speakerNameSql(),
       createdAt: conversationMessages.createdAt,
     })
     .from(conversationMessages)

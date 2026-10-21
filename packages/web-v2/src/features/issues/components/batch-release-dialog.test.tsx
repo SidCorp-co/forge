@@ -344,7 +344,7 @@ describe("a refusal, said once and where it can be read", () => {
     press();
 
     await within(screen.getByRole("dialog")).findByRole("alert");
-    expect(screen.queryByText("Batch release failed")).not.toBeInTheDocument();
+    expect(screen.queryByText("The batch was not released")).not.toBeInTheDocument();
   });
 
   it("toasts a refusal that lands after the dialog was closed, with the server's sentence", async () => {
@@ -354,7 +354,7 @@ describe("a refusal, said once and where it can be read", () => {
     view.reopen(false);
 
     answerLate(409, { code: "RELEASE_PROBES_UNREADABLE", message: REFUSAL });
-    const title = await screen.findByText("Batch release failed");
+    const title = await screen.findByText("The batch was not released");
     expect(title.parentElement?.parentElement).toHaveTextContent(REFUSAL);
   });
 
@@ -368,7 +368,7 @@ describe("a refusal, said once and where it can be read", () => {
     answerLate(409, { code: "RELEASE_PROBES_UNREADABLE", message: REFUSAL });
     const alert = await within(screen.getByRole("dialog")).findByRole("alert");
     expect(alert).toHaveTextContent(REFUSAL);
-    expect(screen.queryByText("Batch release failed")).not.toBeInTheDocument();
+    expect(screen.queryByText("The batch was not released")).not.toBeInTheDocument();
   });
 });
 

@@ -18,6 +18,7 @@ import type {
   LandingShape,
   WaitingCause,
 } from "./types";
+import { failureToast } from "@/lib/api/failure-toast";
 
 /**
  * Create an issue in `projectId`. On success invalidates `['issues']` so the new
@@ -152,16 +153,11 @@ export function useSetIssueModules(issueId: string | undefined) {
       toast({ title: "Modules updated", tone: "success" });
     },
     onError: (err) =>
-      toast({
-        title: "Couldn't update modules",
-        description: formatApiError(err),
-        tone: "error",
-      }),
+      toast(failureToast(err, "The modules were not changed")),
   });
 }
 
-/** Shared mutation factory: invalidate `['issues']` on success, toast on error
- *  (409 ILLEGAL_TRANSITION / 400 ASSIGNEE_NOT_MEMBER map to friendly copy). */
+/** Shared mutation factory: invalidate `['issues']` on success, a failure toast on error. */
 function useIssueMutation<TArgs, TData>(
   fn: (args: TArgs) => Promise<TData>,
   opts: { successMessage?: string } = {},
@@ -175,7 +171,7 @@ function useIssueMutation<TArgs, TData>(
       if (opts.successMessage) toast({ title: opts.successMessage, tone: "success" });
     },
     onError: (err) => {
-      toast({ title: "Update failed", description: formatApiError(err), tone: "error" });
+      toast(failureToast(err, "The issue was not updated"));
     },
   });
 }
@@ -272,7 +268,7 @@ export function useTransitionIssue() {
             options.onOpenQuestions(ids);
             return;
           }
-          toast({ title: "Update failed", description: formatApiError(err), tone: "error" });
+          toast(failureToast(err, "The issue was not updated"));
         },
       });
     },
@@ -396,7 +392,7 @@ export function useRunPipelineStep() {
       toast({ title: runAnswerText(answer), tone: answer.taken > 0 ? "success" : "default" });
     },
     onError: (err) => {
-      toast({ title: "Run refused", description: formatApiError(err), tone: "error" });
+      toast(failureToast(err, "The run was not started"));
     },
   });
 }
@@ -483,11 +479,7 @@ function useBatchReleaseMutation(projectId: string, showsRefusal: (() => boolean
       qc.invalidateQueries({ queryKey: ["issues"] });
       qc.invalidateQueries({ queryKey: ["release-roster"] });
       if (showsRefusal?.()) return;
-      toast({
-        title: "Batch release failed",
-        description: formatApiError(err),
-        tone: "error",
-      });
+      toast(failureToast(err, "The batch was not released"));
     },
   });
 }
@@ -536,7 +528,7 @@ export function useBulkUpdateIssues() {
       });
     },
     onError: (err) => {
-      toast({ title: "Bulk update failed", description: formatApiError(err), tone: "error" });
+      toast(failureToast(err, "The issues were not updated"));
     },
   });
 }

@@ -124,7 +124,7 @@ async function refuseArchivedProject(projectId: string): Promise<void> {
 
 /** The refusal's sentence, which every door that files an issue sends as it is. */
 export function archivedProjectRefusal(archivedOn: string): string {
-  return `this project was archived on ${archivedOn}, so it takes no new issues; an owner or admin of its organisation can unarchive it first`;
+  return `this project was archived on ${archivedOn}, so it takes no new issues; an owner or admin of its organization can unarchive it first`;
 }
 
 export async function createIssue(

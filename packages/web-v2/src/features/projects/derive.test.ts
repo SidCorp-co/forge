@@ -15,7 +15,7 @@ const row = (id: string, over: Partial<ProjectHealthRow> = {}): ProjectHealthRow
     id, projectName: id, projectSlug: id, description: "d", repoPath: "r", throughput: 0, totalActive: 29,
     work: { open: 1, in_flight: 2, awaiting_release: 3, blocked_on_person: 4, draft: 0, finished: 0 },
     blockers: [], blockersTotal: 0, pendingEscalations: 0, avgCycleTimeDays: 0, liveSessions: 2, runnerCount: 1,
-    spend24hUsd: 1.5, memberCount: 3, members: ["AB"], lastActivityAt: "2026-10-02T00:00:00Z", ...over,
+    runnerTotal: 2, spend24hUsd: 1.5, memberCount: 3, members: ["AB"], lastActivityAt: "2026-10-02T00:00:00Z", ...over,
   }) as ProjectHealthRow;
 const none = new Set<string>();
 
@@ -49,12 +49,13 @@ describe("mergeProjects", () => {
 describe("workspaceTotals", () => {
   it("sums the figures where the rollup was read", () => {
     const items = mergeProjects([list("a"), list("b")], [row("a"), row("b", { totalActive: 1, liveSessions: 0 })], none, "read");
-    expect(workspaceTotals(items, "read")).toEqual({ projects: 2, healthRead: "read", liveSessions: 2, openIssues: 30, runners: 2, spend24hUsd: 3 });
+    // Runners online out of every runner, as Overview counts them (ISS-1229 r25).
+    expect(workspaceTotals(items, "read")).toEqual({ projects: 2, healthRead: "read", liveSessions: 2, openIssues: 30, runners: 2, runnersTotal: 4, spend24hUsd: 3 });
   });
 
   it.each(["pending", "failed"] as const)("states no figure where the rollup is %s, and still counts the projects", (read) => {
     const items = mergeProjects([list("a"), list("b")], undefined, none, read);
-    expect(workspaceTotals(items, read)).toEqual({ projects: 2, healthRead: read, liveSessions: null, openIssues: null, runners: null, spend24hUsd: null });
+    expect(workspaceTotals(items, read)).toEqual({ projects: 2, healthRead: read, liveSessions: null, openIssues: null, runners: null, runnersTotal: null, spend24hUsd: null });
   });
 });
 

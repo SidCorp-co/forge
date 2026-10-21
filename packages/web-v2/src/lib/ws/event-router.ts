@@ -296,7 +296,7 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 			return;
 		}
 		// ISS-305, ISS-1162 — the Runners surface keys its own list under
-		// ['devices','me'] and the organisation's under ['devices','org']. These ride
+		// ['devices','me'] and the organization's under ['devices','org']. These ride
 		// the owner's user room, so pending→approved and revoke reflect live; another
 		// member's pairing rides THEIR room and reaches no client here, which is what
 		// the reconnect replay is for.

@@ -189,11 +189,11 @@ export const pairDevice = describeOperation({
 });
 
 export const listOwnDevices = describeOperation({
-  summary: "List the caller's devices, optionally narrowed to one organisation's projects",
+  summary: "List the caller's devices, optionally narrowed to one organization's projects",
   responses: {
     200: json(z.array(ownDeviceSchema)),
-    403: fail('FORBIDDEN', 'orgId names an organisation the caller is not in'),
-    404: fail('NOT_FOUND', 'orgId names no organisation'),
+    403: fail('FORBIDDEN', 'orgId names an organization the caller is not in'),
+    404: fail('NOT_FOUND', 'orgId names no organization'),
   },
 });
 

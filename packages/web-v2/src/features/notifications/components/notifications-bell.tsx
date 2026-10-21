@@ -22,6 +22,7 @@ import { memberTexts, secondaryHref, subjectHref } from "../subject";
 import type { PendingInvitation } from "../types";
 import { type DeliveryNotification, useNotificationDelivery } from "../use-notification-delivery";
 import { useOpenIndicator } from "../use-open-indicator";
+import { failureToast } from "@/lib/api/failure-toast";
 
 export interface NotificationsBellProps {
   /** Dropdown visibility — toggled by the TopBar bell button in the layout. */
@@ -55,7 +56,7 @@ export function NotificationsBell({ open, onClose, anchor }: NotificationsBellPr
           onSuccess: () =>
             toast({ title: `You joined ${inv.name} as ${inv.role}`, tone: "success" }),
           onError: (err) =>
-            toast({ title: "Failed to accept invitation", description: formatApiError(err), tone: "error" }),
+            toast(failureToast(err, "The invitation was not accepted")),
         },
       );
     },
@@ -73,7 +74,7 @@ export function NotificationsBell({ open, onClose, anchor }: NotificationsBellPr
           setDeclineTarget(null);
         },
         onError: (err) => {
-          toast({ title: "Failed to decline invitation", description: formatApiError(err), tone: "error" });
+          toast(failureToast(err, "The invitation was not declined"));
           setDeclineTarget(null);
         },
       },

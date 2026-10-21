@@ -2255,6 +2255,13 @@
       "when": 1813536000000,
       "tag": "0353_a_room_remembers_its_deleted_projects",
       "breakpoints": true
+    },
+    {
+      "idx": 354,
+      "version": "7",
+      "when": 1813622400000,
+      "tag": "0354_a_name_is_read_when_shown",
+      "breakpoints": true
     }
   ]
 }

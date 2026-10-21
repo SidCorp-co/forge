@@ -2,9 +2,9 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/providers/toast-provider";
-import { formatApiError } from "@/lib/api/error";
 import { pmApi } from "./api";
 import type { PmConfigPatch } from "./types";
+import { failureToast } from "@/lib/api/failure-toast";
 
 export function usePmConfig(projectId: string | undefined) {
   return useQuery({
@@ -32,7 +32,7 @@ export function useUpdatePmConfig(projectId: string | undefined) {
       toast({ title: "PM configuration saved", tone: "success" });
     },
     onError: (err) => {
-      toast({ title: "Couldn't save PM config", description: formatApiError(err), tone: "error" });
+      toast(failureToast(err, "The PM settings were not saved"));
     },
   });
 }

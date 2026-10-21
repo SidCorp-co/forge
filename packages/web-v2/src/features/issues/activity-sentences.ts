@@ -93,7 +93,10 @@ function named(p: Payload, what: string): string {
   return name ? `${what} "${name}"` : `${what === "attached" ? "attached a file" : `${what} an attachment`}`;
 }
 
-const SENTENCES: Record<IssueActivityAction, (p: Payload) => { icon: IconName; did: SentencePart[] }> = {
+const SENTENCES: Record<
+  IssueActivityAction,
+  (p: Payload, viewerId: string | null) => { icon: IconName; did: SentencePart[] }
+> = {
   "issue.created": () => ({ icon: "plus", did: ["created this issue"] }),
   "issue.updated": (p) => ({ icon: "rename", did: edited(p) }),
   "issue.assigned": (p) => ({ icon: "agent", did: [p.after ? "assigned this issue" : "unassigned this issue"] }),
@@ -120,8 +123,21 @@ const SENTENCES: Record<IssueActivityAction, (p: Payload) => { icon: IconName; d
   "comment.created": () => ({ icon: "chat", did: ["commented"] }),
   "comment.updated": () => ({ icon: "chat", did: ["edited a comment"] }),
   "comment.deleted": () => ({ icon: "chat", did: ["deleted a comment"] }),
-  "comment.mentioned": (p) => {
-    const n = Array.isArray(p.mentionedUserIds) ? p.mentionedUserIds.length : 0;
+  "comment.mentioned": (p, viewerId) => {
+    const ids = Array.isArray(p.mentionedUserIds) ? (p.mentionedUserIds as unknown[]) : [];
+    const n = ids.length;
+    // A mention of the reader says "you", as every other place names the reader (ISS-1229 r25).
+    if (viewerId && ids.includes(viewerId)) {
+      const others = n - 1;
+      return {
+        icon: "chat",
+        did: [
+          others === 0
+            ? "mentioned you in a comment"
+            : `mentioned you and ${others === 1 ? "another member" : `${others} other members`} in a comment`,
+        ],
+      };
+    }
     return { icon: "chat", did: [n > 1 ? `mentioned ${n} members in a comment` : "mentioned a member in a comment"] };
   },
   "agent-session.created": () => ({ icon: "agent", did: ["started an agent session"] }),
@@ -147,7 +163,7 @@ function actorOf(item: ActivityItem, viewerId?: string | null): string {
 export function activitySentence(item: ActivityItem, viewerId?: string | null): ActivitySentence {
   const payload = (item.payload ?? {}) as Payload;
   const said = known.has(item.action)
-    ? SENTENCES[item.action as IssueActivityAction](payload)
+    ? SENTENCES[item.action as IssueActivityAction](payload, viewerId ?? null)
     : { icon: "dot" as const, did: ["changed this issue"] };
   return { icon: said.icon, actor: actorOf(item, viewerId), did: said.did };
 }

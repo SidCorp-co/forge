@@ -24,18 +24,12 @@ export function connectionTitle(connection: {
   return connectionName(connection) ?? providerLabel(connection.provider);
 }
 
-const ADDED_DAY = new Intl.DateTimeFormat("en-GB", {
-  day: "numeric",
-  month: "short",
-  year: "numeric",
-  timeZone: "UTC",
-});
+// In the reader's own time zone, as every time the web shows is (ISS-1229 r25).
+const addedDay = (iso: string) =>
+  new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric" }).format(new Date(iso));
 
-const ADDED_TIME = new Intl.DateTimeFormat("en-GB", {
-  hour: "2-digit",
-  minute: "2-digit",
-  timeZone: "UTC",
-});
+const addedTime = (iso: string) =>
+  new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
 
 /** Each row's label, made longer by `more` only for the rows that still read like another one. */
 function apart(
@@ -85,11 +79,11 @@ export function connectionLabels(
     Number.isNaN(Date.parse(c.createdAt)) ? null : new Date(c.createdAt);
   const dated = apart(byOrder, base, (c) => {
     const when = at(c);
-    return when ? ` · added ${ADDED_DAY.format(when)}` : null;
+    return when ? ` · added ${addedDay(c.createdAt)}` : null;
   });
   const timed = apart(byOrder, dated, (c) => {
     const when = at(c);
-    return when ? `, ${ADDED_TIME.format(when)} UTC` : null;
+    return when ? `, ${addedTime(c.createdAt)}` : null;
   });
   const out = new Map<string, string>();
   const seen = new Map<string, number>();

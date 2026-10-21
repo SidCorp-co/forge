@@ -2,7 +2,6 @@
 
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useSyncExternalStore } from "react";
-import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import { conversationsApi, type OpenConversationArgs } from "./api";
 import type {
@@ -12,6 +11,7 @@ import type {
   ConversationProgressEntry,
   ConversationRow,
 } from "./types";
+import { failureToast } from "@/lib/api/failure-toast";
 
 /** A room in a list that spans projects — the project is the query it came from, not a column. */
 export interface ListedConversation extends ConversationRow {
@@ -225,7 +225,7 @@ export function useStopConversation() {
   return useMutation({
     mutationFn: (conversationId: string) => conversationsApi.stop(conversationId),
     onError: (err) =>
-      toast({ title: "Couldn't stop this answer", description: formatApiError(err), tone: "error" }),
+      toast(failureToast(err, "The answer was not stopped")),
   });
 }
 
@@ -237,7 +237,7 @@ export function useRenameConversation() {
       conversationsApi.rename(args.id, args.title),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["conversations"] }),
     onError: (err) =>
-      toast({ title: "Couldn't rename", description: formatApiError(err), tone: "error" }),
+      toast(failureToast(err, "The conversation was not renamed")),
   });
 }
 
@@ -248,7 +248,7 @@ export function useDeleteConversation() {
     mutationFn: (id: string) => conversationsApi.remove(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["conversations"] }),
     onError: (err) =>
-      toast({ title: "Couldn't delete", description: formatApiError(err), tone: "error" }),
+      toast(failureToast(err, "The conversation was not deleted")),
   });
 }
 
@@ -260,11 +260,7 @@ export function useArchiveConversation() {
       conversationsApi.setArchived(args.id, args.archived),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["conversations"] }),
     onError: (err, args) =>
-      toast({
-        title: args.archived ? "Couldn't archive" : "Couldn't unarchive",
-        description: formatApiError(err),
-        tone: "error",
-      }),
+      toast(failureToast(err, args.archived ? "The conversation was not archived" : "The conversation was not brought back")),
   });
 }
 

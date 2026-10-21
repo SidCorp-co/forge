@@ -66,13 +66,13 @@ export function capped<T extends { limit: (n: number) => unknown }>(query: T, li
   return limit === null ? query : query.limit(limit);
 }
 
-/** Which organisation's projects a read covers; none named reads every one the caller can see. */
+/** Which organization's projects a read covers; none named reads every one the caller can see. */
 export interface AttentionScope {
   orgId?: string | undefined;
 }
 
 /**
- * Applied before each cap, so a cap filled by one organisation cannot empty another (ISS-1229 r13).
+ * Applied before each cap, so a cap filled by one organization cannot empty another (ISS-1229 r13).
  * An archived project's page answers not found, so nothing of it is counted or listed (ISS-1229 r15).
  */
 export function inScope(scope: AttentionScope): SQL {

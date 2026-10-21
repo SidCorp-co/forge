@@ -6,6 +6,7 @@ import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import { issueDetailApi } from "./detail-api";
 import { canonicalIssueId, issueQueryKey } from "./derive";
+import { failureToast } from "@/lib/api/failure-toast";
 
 // ISS-1160 — `id` is the display key as often as the row uuid; `projectId` is
 // what lets it resolve. Optional here (some callers hold only a uuid already),
@@ -83,11 +84,13 @@ export function useCreateComment(id: string) {
           try {
             await issueDetailApi.uploadCommentAttachment(created.id, file);
           } catch (err) {
-            toast({
-              title: "Comment posted, but an attachment failed",
-              description: `${file.name}: ${formatApiError(err)}`,
-              tone: "error",
-            });
+            toast(
+              failureToast(
+                err,
+                "Comment posted, but an attachment was not uploaded",
+                `${file.name}: ${formatApiError(err)}`,
+              ),
+            );
           }
         }
       }
@@ -98,7 +101,7 @@ export function useCreateComment(id: string) {
       qc.invalidateQueries({ queryKey: ["activities", id] });
     },
     onError: (err) => {
-      toast({ title: "Couldn't post comment", description: formatApiError(err), tone: "error" });
+      toast(failureToast(err, "The comment was not posted"));
     },
   });
 }

@@ -17,6 +17,7 @@ const totals = (n: number): WorkspaceTotals => ({
   liveSessions: n,
   openIssues: n,
   runners: n,
+  runnersTotal: n,
   spend24hUsd: 0,
 });
 
@@ -34,11 +35,24 @@ describe("the projects page agrees in number", () => {
   });
 
   it.each([
-    [1, ["1 project", "1 runner"], ["1 projects", "1 runners"]],
-    [2, ["2 projects", "2 runners"], []],
+    [1, ["1 project", "1/1 runner online"], ["1 projects", "runners online"]],
+    [2, ["2 projects", "2/2 runners online"], ["runner online"]],
   ])("the workspace band at %i", (n, said, never) => {
     const { container } = render(<StatsBand totals={totals(n)} />);
     for (const words of said) expect(text(container)).toContain(words);
     for (const words of never) expect(text(container)).not.toContain(words);
+  });
+});
+
+// ISS-1229 r25, judge-72: the band said "0 runners" where Overview said "0/1 runners online" for the
+// same organization. The band counts runners as Overview does: online out of every runner.
+describe("the workspace band counts runners as Overview does", () => {
+  it.each([
+    [0, 1, "0/1 runner online"],
+    [1, 2, "1/2 runners online"],
+    [0, 0, "0/0 runners online"],
+  ])("%i online of %i reads %j", (online, total, said) => {
+    const { container } = render(<StatsBand totals={{ ...totals(1), runners: online, runnersTotal: total }} />);
+    expect(text(container)).toContain(said);
   });
 });

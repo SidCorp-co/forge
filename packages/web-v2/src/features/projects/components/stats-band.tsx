@@ -9,6 +9,9 @@ import { OPEN_WORK_DEFINITION, OPEN_WORK_LABEL } from '@forge/contracts/work-sta
 /** What the Issues figure counts: open work, in the words of the rail's row. */
 const OPEN_WORK_COUNTS = `in ${OPEN_WORK_LABEL.toLowerCase()}`;
 
+/** "runner online" out of one, "runners online" out of any other number. */
+export const runnersOnline = (total: number | null): string => (total === 1 ? "runner online" : "runners online");
+
 export interface StatsBandProps {
   totals: WorkspaceTotals;
 }
@@ -30,9 +33,12 @@ export function StatsBand({ totals }: StatsBandProps) {
       <Stat icon="inbox" title={`${OPEN_WORK_LABEL}: ${OPEN_WORK_DEFINITION}`}>
         <ReadFigure value={totals.openIssues} read={totals.healthRead} counts={OPEN_WORK_COUNTS} /> {OPEN_WORK_LABEL.toLowerCase()}
       </Stat>
+      {/* Runners online out of every runner, in Overview's words, so the two never disagree (ISS-1229 r25). */}
       <Stat icon="server">
-        <ReadFigure value={totals.runners} read={totals.healthRead} counts="runners" />{" "}
-        {totals.runners === 1 ? "runner" : "runners"}
+        <ReadFigure value={totals.runners} read={totals.healthRead} counts="runners online">
+          {(online) => `${online}/${totals.runnersTotal ?? 0}`}
+        </ReadFigure>{" "}
+        {runnersOnline(totals.runnersTotal)}
       </Stat>
       <Stat icon="dollar" title="Trailing 24h spend">
         <ReadFigure value={totals.spend24hUsd} read={totals.healthRead} counts="dollars spent in 24h">{formatSpend}</ReadFigure> / 24h

@@ -38,7 +38,7 @@ Element.prototype.scrollIntoView = vi.fn();
 const project = (name: string, over: Partial<ProjectConsoleItem> = {}): ProjectConsoleItem => ({
   id: name, slug: name, name, orgId: "o1", orgName: "Org", orgIsPersonal: false, role: "admin",
   createdAt: "2026-10-01T00:00:00Z", description: `${name} desc`, repoPath: `repo/${name}`, healthRead: "read",
-  health: "healthy", liveSessions: 0, openIssues: 1, runnerCount: 1, spend24hUsd: 1, memberCount: 1, members: ["AB"],
+  health: "healthy", liveSessions: 0, openIssues: 1, runnerCount: 1, runnerTotal: 1, spend24hUsd: 1, memberCount: 1, members: ["AB"],
   lastActivityAt: "2026-10-02T00:00:00Z", pinned: false, ...over,
 });
 

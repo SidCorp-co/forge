@@ -1,7 +1,7 @@
 /**
  * The claims about this route a mock is the right instrument for: a malformed
  * `orgId` is refused BEFORE any database read (ISS-1162), and nothing is read
- * past the organisation's agents where there is nothing to list. Which rows
+ * past the organization's agents where there is nothing to list. Which rows
  * the route returns is decided by a join and a visibility predicate, and is
  * proved against real Postgres in
  * `tests/integration/org-devices-scope-e2e.test.ts` and, for an agent's
@@ -26,7 +26,7 @@ vi.mock('../config/env.js', () => ({
 
 const chain: Record<string, unknown> = {};
 const selectOrderBy = vi.fn(async () => [] as Array<Record<string, unknown>>);
-/** The organisation's agents, the first read; a thenable chain so `await` reads the rows. */
+/** The organization's agents, the first read; a thenable chain so `await` reads the rows. */
 const agentRows = vi.fn(() => [] as Array<{ id: string; handle: string | null }>);
 chain.innerJoin = vi.fn(() => chain);
 chain.where = vi.fn(() => ({

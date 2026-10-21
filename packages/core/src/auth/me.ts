@@ -4,6 +4,7 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { answer } from '../api-reference/declare/describe.js';
 import { zValidator } from '../api-reference/declare/validator.js';
+import { rebuildWhereTheySpoke } from '../conversations/transcript-index.js';
 import { db } from '../db/client.js';
 import { oauthAccounts, userPreferences, users } from '../db/schema.js';
 import { assertOrgAccess } from '../lib/authz.js';
@@ -116,6 +117,7 @@ meRoutes.patch(
         .where(eq(users.id, userId))
         .returning({ id: users.id, email: users.email, displayName: users.displayName });
       await followDisplayName(tx, userId, was.displayName, after);
+      if (was.displayName !== after) await rebuildWhereTheySpoke(tx, userId);
       return now;
     });
     if (!row) {

@@ -219,7 +219,7 @@ function MemberRow({
         </span>
       )}
       <div className="min-w-0 flex-1">
-        <span className={`fg-body-sm block truncate ${isAgent ? "font-mono" : ""}`}>
+        <span className={`fg-body-sm block ${isAgent ? "truncate font-mono" : "break-words"}`}>
           {memberName(member, viewerId, "start", room)}
         </span>
         <span className="fg-caption block truncate text-subtle">

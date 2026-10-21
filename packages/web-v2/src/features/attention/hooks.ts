@@ -2,13 +2,13 @@
 
 import { useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import { useActiveOrg } from "@/features/orgs/active-org";
 import { useDevices } from "@/features/runners/hooks";
 import { badgeFigure, queryRead } from "@/design/patterns/badge-read";
 import { attentionApi } from "./api";
 import { ATTENTION_BUCKETS, type AttentionBucket, type AttentionItem, type AttentionView } from "./types";
+import { failureToast } from "@/lib/api/failure-toast";
 
 const NO_BUCKET_TOTALS = Object.fromEntries(ATTENTION_BUCKETS.map((b) => [b, 0])) as Record<
   AttentionBucket,
@@ -18,7 +18,7 @@ const NO_BUCKET_TOTALS = Object.fromEntries(ATTENTION_BUCKETS.map((b) => [b, 0])
 /**
  * The `/me/attention` buckets merged with offline runners from `/me/devices`. `total` is every item
  * the buckets hold, listed or not, plus the offline runners, undefined until both were read
- * (ISS-1229 r14). `expand` lists buckets whole; `orgId` reads one organisation in place of the
+ * (ISS-1229 r14). `expand` lists buckets whole; `orgId` reads one organization in place of the
  * active one. State a figure or empty list only from `read`; `badge` is never a held count after a
  * failed refetch.
  */
@@ -34,14 +34,14 @@ export function useAttention(
     queryKey: ["attention", orgId, expanded],
     queryFn: () => attentionApi.list(orgId, expanded),
     enabled: own ? orgId !== null : active.scopeRead,
-    // Asking for a group whole keeps the page on screen while it is read; another organisation never
+    // Asking for a group whole keeps the page on screen while it is read; another organization never
     // shows this one's rows meanwhile.
     placeholderData: (previous, previousQuery) =>
       previousQuery?.queryKey[1] === orgId ? previous : undefined,
   });
   // `['devices','me']` is already WS-invalidated on device.login/paired/revoked
-  // and reconnect — reusing the runners hook keeps the offline bucket live. The organisation read is
-  // the devices' too: a box bound only to another organisation's projects is not this one's (ISS-1229 r16).
+  // and reconnect — reusing the runners hook keeps the offline bucket live. The organization read is
+  // the devices' too: a box bound only to another organization's projects is not this one's (ISS-1229 r16).
   const devicesQ = useDevices(orgId);
 
   const offlineRunners: AttentionItem[] = useMemo(() => {
@@ -121,7 +121,7 @@ export function useRetryFailedJob() {
       toast({ title: "Job queued again", tone: "success" });
     },
     onError: (err) => {
-      toast({ title: "The job was not retried", description: formatApiError(err), tone: "error" });
+      toast(failureToast(err, "The job was not retried"));
     },
   });
 }

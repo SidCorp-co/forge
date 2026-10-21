@@ -16,10 +16,10 @@ import {
   type SelectOption,
   SettingsSection,
 } from "@/design";
-import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import { usePreferenceChanges, useRestorePreferenceChange } from "../hooks";
 import type { AccountDraft } from "./account-tab";
+import { failureToast } from "@/lib/api/failure-toast";
 
 export const ANSWER_STYLE_OPTIONS: SelectOption[] = [
   { value: "default", label: "Default — let the assistant judge" },
@@ -55,7 +55,7 @@ export function AssistantPreferencesCard({ form }: { form: SettingsForm<AccountD
       await restore.mutateAsync(change.id);
       toast({ title: "Restored", description: describeChange(change), tone: "success" });
     } catch (err) {
-      toast({ title: "Could not restore", description: formatApiError(err), tone: "error" });
+      toast(failureToast(err, "Nothing was restored"));
     }
   }
 

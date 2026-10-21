@@ -1,6 +1,6 @@
 "use client";
 
-import { BulletBar, CardTitle, SectionTitle, Waffle } from "@/design";
+import { BulletBar, CardTitle, SectionTitle, CompositionBar } from "@/design";
 import { TONE_META } from "@/design/status";
 import { failureReasonLabel } from "@/features/sessions/types";
 import { formatElapsed, qualityRates } from "../derive";
@@ -27,7 +27,7 @@ export function QualitySection({ quality }: QualitySectionProps) {
       <SectionTitle id="overview-quality" className="fg-h3">Whether the output holds</SectionTitle>
 
       {rates.finishedTotal > 0 ? (
-        <Waffle
+        <CompositionBar
           categories={[
             {
               key: "merged",

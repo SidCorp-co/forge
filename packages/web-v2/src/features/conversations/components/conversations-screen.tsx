@@ -24,7 +24,7 @@ import { conversationTitle, type RoomWithoutAProject } from "../types";
 import { ConversationChat } from "./conversation-chat";
 import { ConversationSidebar } from "./conversation-sidebar";
 import { OrphanRoomView } from "./orphan-room-view";
-import { RoomsWithoutAProject } from "./orphan-rooms";
+import { type OrphanFacts, RoomsWithoutAProject } from "./orphan-rooms";
 import { StartConversation } from "./start-conversation";
 
 const SIDEBAR_COLLAPSED_KEY = "web-v2:conversations-sidebar-collapsed";
@@ -55,7 +55,7 @@ export function ConversationsScreen() {
 
   const [selection, setSelection] = useState<Selection | null>(null);
   /** A room whose project was deleted, opened read-only in place of a chat (ISS-1229 r24). */
-  const [orphan, setOrphan] = useState<RoomWithoutAProject | null>(null);
+  const [orphan, setOrphan] = useState<{ room: RoomWithoutAProject; facts: OrphanFacts } | null>(null);
   const selectionKeyRef = useRef(0);
   const [collapsed, setCollapsed] = usePersistedState<boolean>(SIDEBAR_COLLAPSED_KEY, false, {
     syncTabs: false,
@@ -120,11 +120,11 @@ export function ConversationsScreen() {
         showArchived ? null : (
           <RoomsWithoutAProject
             orgId={activeOrgId ?? null}
-            openId={orphan?.id}
-            onDeleted={(id) => setOrphan((o) => (o?.id === id ? null : o))}
-            onOpen={(room) => {
+            openId={orphan?.room.id}
+            onDeleted={(id) => setOrphan((o) => (o?.room.id === id ? null : o))}
+            onOpen={(room, facts) => {
               setSelection(null);
-              setOrphan(room);
+              setOrphan({ room, facts });
               setMobileHistoryOpen(false);
             }}
           />
@@ -154,9 +154,16 @@ export function ConversationsScreen() {
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <div className="hidden md:flex md:min-h-0">{sidebar(false)}</div>
 
-        <div className="min-h-0 flex-1 bg-app">
+        {/* min-w-0: a long title in the view below is cut to this column, never widens it past the
+            screen (ISS-1229 r25, judge-72: 611px wide at 390). */}
+        <div className="min-h-0 min-w-0 flex-1 bg-app" data-testid="conversation-main">
           {orphan ? (
-            <OrphanRoomView key={orphan.id} room={orphan} onDeleted={() => setOrphan(null)} />
+            <OrphanRoomView
+              key={orphan.room.id}
+              room={orphan.room}
+              facts={orphan.facts}
+              onDeleted={() => setOrphan(null)}
+            />
           ) : selection ? (
             <ConversationChat
               key={selection.key}

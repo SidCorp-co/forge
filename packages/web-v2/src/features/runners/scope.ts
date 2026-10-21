@@ -10,7 +10,7 @@ export type DeviceCount = number | typeof UNKNOWN_COUNT;
 export const SCOPES: DeviceScope[] = ["mine", "org"];
 
 export function scopeName(scope: DeviceScope): string {
-	return scope === "mine" ? "Mine" : "Organisation";
+	return scope === "mine" ? "Mine" : "Organization";
 }
 
 /** The count beside a scope's name, always saying what is being counted. */
@@ -23,7 +23,7 @@ export function scopeCountLabel(count: DeviceCount): string {
 export function populationLine(scope: DeviceScope): string {
 	return scope === "mine"
 		? "Every device you have paired, including one that serves no project yet."
-		: "Every device assigned to a project you can see in this organisation, whoever paired it, and every device this organisation's agents hold.";
+		: "Every device assigned to a project you can see in this organization, whoever paired it, and every device this organization's agents hold.";
 }
 
 /** Reconciles this page's device count with the Overview's runner count. */
@@ -67,7 +67,7 @@ export interface ScopeEmptyState {
 }
 
 /** Why this list is empty. The other scope's count is quoted only once known:
- *  "your organisation runs 0" in flight states a zero nothing measured. */
+ *  "your organization runs 0" in flight states a zero nothing measured. */
 export function emptyState(
 	scope: DeviceScope,
 	counts: { mine: DeviceCount; org: DeviceCount },
@@ -84,25 +84,25 @@ export function emptyState(
 			return {
 				title: "You have not paired any machines",
 				message:
-					"Pair a runner with the command above, then assign it to a project. No device is assigned to a project you can see in this organisation either.",
+					"Pair a runner with the command above, then assign it to a project. No device is assigned to a project you can see in this organization either.",
 			};
 		}
 		return {
 			title: "You have not paired any machines",
-			message: `Your organisation runs ${scopeCountLabel(org)} on projects you can see — open the Organisation scope to read them.`,
+			message: `Your organization runs ${scopeCountLabel(org)} on projects you can see — open the Organization scope to read them.`,
 		};
 	}
 
 	const mine = counts.mine;
 	if (mine !== UNKNOWN_COUNT && mine > 0) {
 		return {
-			title: "No device is assigned to a project you can see in this organisation, and none of its agents holds one",
-			message: `You have paired ${scopeCountLabel(mine)}. Assign one to a project in this organisation to see it here.`,
+			title: "No device is assigned to a project you can see in this organization, and none of its agents holds one",
+			message: `You have paired ${scopeCountLabel(mine)}. Assign one to a project in this organization to see it here.`,
 		};
 	}
 	return {
-		title: "No device is assigned to a project you can see in this organisation, and none of its agents holds one",
+		title: "No device is assigned to a project you can see in this organization, and none of its agents holds one",
 		message:
-			"Pair a runner with the command above, then assign it to a project in this organisation.",
+			"Pair a runner with the command above, then assign it to a project in this organization.",
 	};
 }

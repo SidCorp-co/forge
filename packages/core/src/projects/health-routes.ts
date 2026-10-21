@@ -58,6 +58,8 @@ interface ProjectHealthRow {
   liveSessions: number;
   /** Runners in the `online` state. */
   runnerCount: number;
+  /** Every runner the project has, online or not: the band reads "online/total runners online". */
+  runnerTotal: number;
   /** Trailing-24h spend (USD) from the `pipeline_run_step_durations` view. */
   spend24hUsd: number;
   /** True total project membership count. */
@@ -192,7 +194,11 @@ projectHealthRoutes.get('/health', readProjectHealth, async (c) => {
   }
 
   const runnersByProject = new Map<string, number>();
-  for (const r of agg.runnerRows) runnersByProject.set(r.projectId, Number(r.n));
+  const runnerTotals = new Map<string, number>();
+  for (const r of agg.runnerRows) {
+    runnersByProject.set(r.projectId, Number(r.n));
+    runnerTotals.set(r.projectId, Number(r.total));
+  }
 
   const spendByProject = new Map<string, number>();
   for (const r of agg.spendRows) spendByProject.set(r.project_id, Number(r.spend));
@@ -235,6 +241,7 @@ projectHealthRoutes.get('/health', readProjectHealth, async (c) => {
       liveRuns: liveRunsByProject.get(p.id) ?? 0,
       liveSessions: liveSessionsByProject.get(p.id) ?? 0,
       runnerCount: runnersByProject.get(p.id) ?? 0,
+      runnerTotal: runnerTotals.get(p.id) ?? 0,
       spend24hUsd: spendByProject.get(p.id) ?? 0,
       memberCount: memberCountByProject.get(p.id) ?? 0,
       members: membersByProject.get(p.id) ?? [],

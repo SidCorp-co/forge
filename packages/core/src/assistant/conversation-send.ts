@@ -19,6 +19,7 @@ import { collectInboundMessage } from '../conversations/collect-inbound.js';
 import { type ProjectHandle, resolveProjectHandle } from '../conversations/handles.js';
 import { type ConversationVenue, codeAuthored } from '../conversations/ports.js';
 import { routeWindow, type WindowTurnInputs } from '../conversations/route-window.js';
+import { nameSpeakers, roomSpeakerNames, speakerOf } from '../conversations/speaker-names.js';
 import {
   type ConversationImage,
   effectiveConversationMode,
@@ -208,7 +209,6 @@ export async function sendWebConversationMessage(args: {
   room: WebConversationRoom;
   projectId: string;
   userId: string;
-  userLabel: string | null;
   content: string;
   /** What this send asks the room to answer in — honoured on the FIRST message and nowhere else. */
   mode: ConversationMode;
@@ -231,7 +231,6 @@ export async function sendWebConversationMessage(args: {
     frame,
     message: args.content,
     speakerKey: args.userId,
-    speakerLabel: args.userLabel,
     manySpeakersPrincipalUserId: args.userId,
     ...(args.images && args.images.length > 0 ? { images: args.images } : {}),
     withinCollection: async (tx, { conversationId, seq }) => {
@@ -308,8 +307,10 @@ async function webWindowSubject(
 const AGENT_CONTEXT_MESSAGES = 20;
 
 async function agentConversationContext(window: ConversationWindowRow): Promise<string | null> {
-  const before = (await readMessages(window.conversationId, AGENT_CONTEXT_MESSAGES + 1)).filter(
-    (m) => m.seq < window.firstSeq,
+  const before = await nameSpeakers(
+    (await readMessages(window.conversationId, AGENT_CONTEXT_MESSAGES + 1)).filter(
+      (m) => m.seq < window.firstSeq,
+    ),
   );
   if (before.length === 0) return null;
   return before
@@ -330,6 +331,7 @@ export async function routeWebWindow(
     entryId: randomUUID(),
   });
 
+  const speakers = await roomSpeakerNames(window.conversationId);
   const stop = registerTurnStop(window.conversationId);
   let outcome: Awaited<ReturnType<typeof routeWindow>>;
   try {
@@ -344,7 +346,7 @@ export async function routeWebWindow(
         webConversationTurn({
           project: subject.project,
           handleName: subject.handle.handle,
-          askedBy: messages.filter((m) => m.role === 'user').at(-1)?.authorLabel ?? null,
+          askedBy: askerOf(messages, speakers),
           window: {
             venue,
             conversationId,
@@ -406,4 +408,13 @@ async function routeOneWebWindow(
       'web conversations: a window is routed under its claim, and this one holds none',
     );
   return routeWebWindow(window, claim);
+}
+
+/** Who asked a window, by what they are called now (ISS-1229 r25). */
+function askerOf(
+  messages: readonly { role: string; authorUserId: string | null; authorLabel: string | null }[],
+  speakers: ReadonlyMap<string, string>,
+): string | null {
+  const asker = messages.filter((m) => m.role === 'user').at(-1);
+  return asker ? speakerOf(asker, speakers) : null;
 }

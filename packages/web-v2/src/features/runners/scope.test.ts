@@ -41,14 +41,14 @@ describe("the population sentence", () => {
 
 	it("names the org scope as the projects this caller can see, not the org whole", () => {
 		const line = populationLine("org");
-		expect(line).toContain("a project you can see in this organisation");
+		expect(line).toContain("a project you can see in this organization");
 		expect(line).toContain("whoever paired it");
 	});
 
 	it("gives the two scopes two different sentences", () => {
 		expect(populationLine("mine")).not.toBe(populationLine("org"));
 		expect(scopeName("mine")).toBe("Mine");
-		expect(scopeName("org")).toBe("Organisation");
+		expect(scopeName("org")).toBe("Organization");
 	});
 });
 
@@ -96,7 +96,7 @@ describe("what stands in for the owner's controls on the org list", () => {
 		expect(rowActionNote("org", false)).toBe("read only");
 	});
 
-	it("stands aside for the Revoke control where an admin may revoke an organisation agent's box", () => {
+	it("stands aside for the Revoke control where an admin may revoke an organization agent's box", () => {
 		expect(rowActionNote("org", false, true)).toBeNull();
 		expect(rowActionNote("org", false, false)).toBe("read only");
 	});
@@ -112,30 +112,30 @@ describe("what stands in for the owner's controls on the org list", () => {
 });
 
 describe("an empty own-scope list", () => {
-	it("says the caller has paired nothing and quotes the organisation's count", () => {
+	it("says the caller has paired nothing and quotes the organization's count", () => {
 		const state = emptyState("mine", { mine: 0, org: 40 });
 		expect(state.title).toBe("You have not paired any machines");
 		expect(state.message).toContain("40 devices");
-		expect(state.message).toContain("Organisation scope");
+		expect(state.message).toContain("Organization scope");
 	});
 
-	it("quotes no organisation figure while that query has not answered", () => {
+	it("quotes no organization figure while that query has not answered", () => {
 		const state = emptyState("mine", { mine: 0, org: UNKNOWN_COUNT });
 		expect(state.message).not.toMatch(/\d/);
 		expect(state.message).not.toContain("counting");
 	});
 
-	it("says so plainly when the organisation really does run none", () => {
+	it("says so plainly when the organization really does run none", () => {
 		const state = emptyState("mine", { mine: 0, org: 0 });
 		expect(state.message).toContain("No device is assigned to a project you can see");
 	});
 });
 
-describe("an empty organisation-scope list", () => {
-	it("never claims the organisation whole, only what this caller can see", () => {
+describe("an empty organization-scope list", () => {
+	it("never claims the organization whole, only what this caller can see", () => {
 		const state = emptyState("org", { mine: 3, org: 0 });
 		expect(state.title).toBe(
-			"No device is assigned to a project you can see in this organisation, and none of its agents holds one",
+			"No device is assigned to a project you can see in this organization, and none of its agents holds one",
 		);
 		expect(state.title).not.toBe("No devices yet");
 	});

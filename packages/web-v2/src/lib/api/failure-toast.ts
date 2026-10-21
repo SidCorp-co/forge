@@ -8,7 +8,8 @@ export const FAULT_TITLE = "Request failed";
 export function failureToast(
   err: unknown,
   notDone: string,
+  description: string = formatApiError(err),
 ): { title: string; description: string; tone: "error" } {
   const refused = err instanceof ApiError && err.status >= 400 && err.status < 500;
-  return { title: refused ? notDone : FAULT_TITLE, description: formatApiError(err), tone: "error" };
+  return { title: refused ? notDone : FAULT_TITLE, description, tone: "error" };
 }
