@@ -26,7 +26,7 @@ export {
   readDetachedOpenQuestions,
   readOpenPersonQuestions,
 } from './needs-you-read.js';
-export { provideQuestionPorts } from './ports.js';
+export { provideQuestionPorts, type StewardDecisionAnswer } from './ports.js';
 export {
   answerAs,
   answerOf,
@@ -52,6 +52,7 @@ export {
   suggestAnswerFor,
   sweepQuestionSuggestions,
 } from './suggest-answer.js';
+export { voidQuestionAs } from './void-door.js';
 export {
   type AskInput,
   askParkQuestion,

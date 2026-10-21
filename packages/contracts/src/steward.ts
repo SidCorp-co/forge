@@ -423,6 +423,86 @@ export type StewardRunState = (typeof STEWARD_RUN_STATES)[number];
 export const STEWARD_FAILURE_KINDS = ["refused", "error"] as const;
 export type StewardFailureKind = (typeof STEWARD_FAILURE_KINDS)[number];
 
+/**
+ * What the steward asks a person to decide about a stuck issue (REQ-48 BC-5): a set fixed by code,
+ * never options the model spells, so every such question reads alike and is answered in bulk. The
+ * model picks only the recommended one and says why in one line. Answering carries the act out as
+ * the answerer (`core/src/steward/decision-act.ts`): `open` admits the draft through the kernel (its
+ * driver writes the plan and criteria in its own phases), `drop` drops it with the reason given,
+ * and `keep` records the keep, so the same question is not asked again while the standing holds.
+ */
+export const STEWARD_DECISIONS = ["open", "keep", "drop"] as const;
+export type StewardDecision = (typeof STEWARD_DECISIONS)[number];
+
+/** Each decision's option id: the question's mark, which the answer and the Needs you read key on. */
+export const STEWARD_DECISION_OPTION_IDS = {
+	open: "steward.open",
+	keep: "steward.keep",
+	drop: "steward.drop",
+} as const satisfies Record<StewardDecision, string>;
+
+/** The decisions that take the answerer's reason: a keep says until when or why, a drop why it is not work. */
+export const STEWARD_DECISIONS_WITH_REASON: readonly StewardDecision[] = [
+	"keep",
+	"drop",
+];
+
+/**
+ * The decisions an issue owes a person, by what it is and why it reads stuck: a draft is opened,
+ * kept or dropped; work nobody started that no master serves is kept waiting or dropped. Any other reading names
+ * an act somebody already owes (a release approval, an open question, a blocker), which the steward
+ * wakes or notes and never asks about again: null.
+ */
+/** Work admitted and not yet taken: what a master would take next. */
+const UNSTARTED_LIVE: readonly string[] = ["open", "reopen", "on_hold"];
+
+export function stewardDecisionsFor(
+	status: string,
+	stuck: StuckCode | null,
+): readonly StewardDecision[] | null {
+	if (status === "draft") return STEWARD_DECISIONS;
+	if (stuck === "nobody_serves" && UNSTARTED_LIVE.includes(status))
+		return ["keep", "drop"];
+	return null;
+}
+
+/** The decision an option id names, or null for an option the steward's set does not hold. */
+export function stewardDecisionOf(
+	optionId: string | null | undefined,
+): StewardDecision | null {
+	const hit = (
+		Object.entries(STEWARD_DECISION_OPTION_IDS) as [StewardDecision, string][]
+	).find(([, id]) => id === optionId);
+	return hit ? hit[0] : null;
+}
+
+/** Whether a round's options are a steward decision's: every one of them is from the fixed set. */
+export function isStewardDecisionQuestion(
+	options: readonly { id: string }[] | undefined,
+): boolean {
+	return (
+		(options?.length ?? 0) > 0 &&
+		(options ?? []).every((o) => stewardDecisionOf(o.id) !== null)
+	);
+}
+
+/** Each decision's button, as a person reads it; a draft's keep and a live issue's differ. */
+export function stewardDecisionLabel(
+	decision: StewardDecision,
+	draft: boolean,
+): string {
+	if (decision === "open") return "Open it: admit it for work";
+	if (decision === "drop") return "Drop it: it is not work";
+	return draft ? "Keep it as a draft" : "Keep it waiting";
+}
+
+/** What answering each decision does, said on its button before it is pressed. */
+export const STEWARD_DECISION_EFFECTS = {
+	open: "Opens the issue as you. Its driver writes the plan and criteria; the kernel's ready check still applies, and a gap is refused by name.",
+	keep: "Keeps it as it is, with your reason. The steward does not ask again while its standing holds.",
+	drop: "Drops the issue as you, with your reason.",
+} as const satisfies Record<StewardDecision, string>;
+
 /** Why a run was skipped rather than run: said on the item, never silent. */
 export const STEWARD_SKIP_REASONS = [
 	"basis_unchanged",
@@ -514,6 +594,8 @@ export const STEWARD_REFUSAL_CODES = [
 	"STEWARD_ACT_NOT_UNDOABLE",
 	"STEWARD_ACT_SUPERSEDED",
 	"STEWARD_BUDGET_SPENT",
+	"STEWARD_DECISION_REASON_REQUIRED",
+	"STEWARD_DECISION_STALE",
 ] as const;
 export type StewardRefusalCode = (typeof STEWARD_REFUSAL_CODES)[number];
 
@@ -527,6 +609,7 @@ export const STEWARD_REFUSAL_STATUSES = {
 	STEWARD_ACT_UNKNOWN: 404,
 	STEWARD_ACT_SUPERSEDED: 409,
 	STEWARD_BUDGET_SPENT: 409,
+	STEWARD_DECISION_STALE: 409,
 } as const satisfies RefusalStatuses<StewardRefusalCode>;
 
 /** At most this many decisions per person in Needs you at a time (BC-11); the rest are counted, never dropped. */

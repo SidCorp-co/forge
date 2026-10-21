@@ -397,25 +397,21 @@ describe('an open question is voided with its reason (POST /api/questions/:id/vo
   });
 
   it("undoes the steward's question on an issue through the void door, once", async () => {
+    const draft = await createTestIssue(projectId, ownerId, 64, {
+      status: 'draft',
+      createdAt: new Date(),
+    });
     resetScript();
     script.steps = [
       {
         tool: {
-          name: 'steward_ask',
-          args: {
-            about: issue.key,
-            prompt: 'No master serves this project. Defer it or start a master?',
-            options: [
-              { id: 'defer', label: 'Defer it' },
-              { id: 'start', label: 'I will start a master' },
-            ],
-            recommended: 'start',
-          },
+          name: 'steward_decide',
+          args: { issue: draft.key, recommended: 'keep', why: 'nothing asks for it yet' },
         },
       },
       { text: 'Asked.' },
     ];
-    const out = await actAs('stuck_diagnosis', { kind: 'issue', ...issue });
+    const out = await actAs('stuck_diagnosis', { kind: 'issue', ...draft });
     expect(out).toMatchObject({ refused: [], error: null });
     const [act] = await actRow(out.acts[0] ?? '');
     expect(act?.undo?.door).toMatch(/^POST \/api\/questions\/[0-9a-f-]{36}\/void$/);

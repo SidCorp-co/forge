@@ -1,8 +1,9 @@
-// What a question needs from the contexts below work: the channel gate it may decide, the door a
+// What a question needs from the contexts below work: the steward decision an answer carries out, the channel gate it may decide, the door a
 // person answered through, the conversation turn that asked it, and the requirement or contract it
 // is about. The composition root provides them at boot.
 
 import type { PersonVia } from '@forge/contracts/ecosystem';
+import type { StewardDecision } from '@forge/contracts/steward';
 import type { Context } from 'hono';
 import type { Tx } from '../db/client.js';
 import type { ConversationAdapter } from '../db/schema-conversations.js';
@@ -17,7 +18,28 @@ interface ConversationTurnMeta {
   askedByLabel: string | null;
 }
 
+/** An answer to a steward decision question (REQ-48 BC-5), which the steward carries out as the answerer. */
+export interface StewardDecisionAnswer {
+  questionId: string;
+  projectId: string;
+  issueId: string;
+  decision: StewardDecision;
+  by: string;
+  /** The answerer's reason, which a keep and a drop take. */
+  note: string | null;
+  /** The fingerprint its options carry: the run that asked and the basis it read. */
+  fingerprint: string | null;
+}
+
 interface QuestionPorts {
+  /**
+   * Carry a steward decision out as the answerer, recording the answer (`answerIn`) in the act's own
+   * transaction, so the answer and the act it names commit together or not at all.
+   */
+  carryStewardDecision: <R>(
+    answer: StewardDecisionAnswer,
+    answerIn: (tx: Tx) => Promise<R>,
+  ) => Promise<R>;
   decideChannelGate: (
     tx: Tx,
     args: {
@@ -55,6 +77,10 @@ const slot = portSlot<QuestionPorts>('questions', 'provideQuestionPorts');
 export const provideQuestionPorts = slot.provide;
 const { port } = slot;
 
+export const carryStewardDecision = <R>(
+  answer: StewardDecisionAnswer,
+  answerIn: (tx: Tx) => Promise<R>,
+): Promise<R> => slot.get().carryStewardDecision(answer, answerIn);
 export const decideChannelGate = port('decideChannelGate');
 export const doorOfRequest = port('doorOfRequest');
 export const doorOfToken = port('doorOfToken');

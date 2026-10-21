@@ -11,6 +11,7 @@ import {
 import { z } from 'zod';
 import type { StewardUndo } from '../db/schema-steward-runs.js';
 import { type DoorAnswer, type DoorRequest, doorName, refusalCodeOfAnswer } from './door-call.js';
+import { DECIDE } from './door-decide.js';
 import {
   cite,
   type DoorContext,
@@ -36,16 +37,18 @@ const optionsParam = z
   .min(2)
   .max(4);
 
-/** What a question may be about: an issue, or a requirement, never a feedback item's key. */
+/** What a question may be about: a requirement. A stuck issue's question is `steward_decide`'s. */
 const askAbout = key
   .superRefine((value, ctx) => {
-    if (!/^FB-\d+$/i.test(value)) return;
+    if (/^REQ-\d+$/i.test(value)) return;
     ctx.addIssue({
       code: 'custom',
-      message: `${value} is a feedback item, which takes no question here: ask on the issue that carries it or the requirement it is about (read its route with steward_read_feedback or steward_read_item).`,
+      message: /^FB-\d+$/i.test(value)
+        ? `${value} is a feedback item, which takes no question here: ask about the requirement it is about, or decide its carrier issue with steward_decide (read its route with steward_read_feedback or steward_read_item).`
+        : `${value} is no requirement: a question about an issue is a decision with Forge's own options, asked with steward_decide.`,
     });
   })
-  .describe('ISS-n or REQ-n: the issue or requirement the question is about');
+  .describe('REQ-n: the requirement the question is about');
 
 const askParams = z.strictObject({
   about: askAbout,
@@ -57,73 +60,30 @@ const askParams = z.strictObject({
 const ASK: DoorSpec<z.infer<typeof askParams>> = {
   name: 'steward_ask',
   describe:
-    'Ask whoever owes the next act one question, with 2-4 options and the one you recommend. About an issue it is a choice question on that issue; about a requirement it is a question comment on it.',
+    "Ask a requirement's author one question about what it says, with 2-4 options and the one you recommend: a question comment on the requirement.",
   params: askParams,
   write: true,
   async call(args, ctx) {
     const choices = args.options.map((o) => `${o.id}: ${o.label}`).join('; ');
-    if (/^REQ-\d+$/i.test(args.about)) {
-      const sent = await send(
-        {
-          method: 'POST',
-          path: `/api/projects/${ctx.projectId}/requirements/${args.about}/comments`,
-          body: {
-            intent: 'question',
-            body: `${args.prompt}\n\nOptions: ${choices}. Recommended: ${args.recommended}.`,
-          },
-        },
-        ctx,
-      );
-      const comment = sent.answer.json?.comment as { id?: unknown } | undefined;
-      return {
-        ...sent,
-        act: {
-          door: doorName(sent.request),
-          did: `Asked on ${args.about}: ${args.prompt}`,
-          wrote: cite('comment', comment?.id),
-          undo: requirementCommentUndo(ctx, args.about, comment?.id),
-        },
-      };
-    }
-    const issueId = await issueIdOf(args.about, ctx);
-    if (typeof issueId !== 'string')
-      return { request: { method: 'GET', path: `/api/issues/${args.about}` }, answer: issueId };
     const sent = await send(
       {
         method: 'POST',
-        path: '/api/questions',
+        path: `/api/projects/${ctx.projectId}/requirements/${args.about}/comments`,
         body: {
-          issueId,
-          prompt: args.prompt,
-          options: args.options.map((o) => ({
-            id: o.id,
-            label: o.label,
-            authority: 'writer',
-            bindsTo: 'this_call',
-            executedBy: 'human',
-            // the one decision this run asks for: an answer binds to it and to nothing after it
-            fingerprint: `steward:${ctx.runId}:${o.id}`,
-          })),
-          recommendedOptionId: args.recommended,
-          blockerKind: 'human',
+          intent: 'question',
+          body: `${args.prompt}\n\nOptions: ${choices}. Recommended: ${args.recommended}.`,
         },
       },
       ctx,
     );
-    const id = sent.answer.json?.id;
+    const comment = sent.answer.json?.comment as { id?: unknown } | undefined;
     return {
       ...sent,
       act: {
         door: doorName(sent.request),
         did: `Asked on ${args.about}: ${args.prompt}`,
-        wrote: cite('question', id),
-        undo:
-          typeof id === 'string'
-            ? {
-                door: `POST /api/questions/${id}/void`,
-                body: { reason: "A person undid the steward's question, so it needs no answer." },
-              }
-            : null,
+        wrote: cite('comment', comment?.id),
+        undo: requirementCommentUndo(ctx, args.about, comment?.id),
       },
     };
   },
@@ -388,6 +348,7 @@ const NOTE: DoorSpec<z.infer<typeof noteParams>> = {
 /** Every write door, in the catalogue's order. */
 export const WRITE_DOORS = [
   ASK,
+  DECIDE,
   COMMENT_REQUIREMENT,
   COMMENT_ISSUE,
   REJECT,

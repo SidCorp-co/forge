@@ -108,7 +108,11 @@ export async function callStewardDoor(
       text: JSON.stringify({ error: `${name}: ${z.prettifyError(parsed.error)}` }),
     };
   }
-  const { request, answer, act } = await spec.call(parsed.data, ctx);
+  const called = await spec.call(parsed.data, ctx);
+  if ('correct' in called) {
+    return { ok: false, text: JSON.stringify({ error: `${name}: ${called.correct}` }) };
+  }
+  const { request, answer, act } = called;
   if (!answer.ok) {
     if (spec.write) {
       (answer.status >= 500 ? ctx.broken : ctx.refused).push(

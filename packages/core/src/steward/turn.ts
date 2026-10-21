@@ -41,6 +41,11 @@ export function stewardToolset(ctx: DoorContext, stewardId: string): ChatToolset
       function: { name: d.name, description: d.describe, parameters: doorJsonSchema(d) },
     })),
     execute: async (name, argsJson) => {
+      // the act's own menu, not the whole catalogue: a door another act holds is refused by name
+      if (!doors.some((d) => d.name === name)) {
+        const error = `${name} is not a door of ${ctx.act}; its doors are ${doors.map((d) => d.name).join(', ')}`;
+        return { content: [{ type: 'text', text: JSON.stringify({ error }) }], isError: true };
+      }
       const out = await callStewardDoor(name, argsJson, ctx);
       return { content: [{ type: 'text', text: out.text }], ...(out.ok ? {} : { isError: true }) };
     },

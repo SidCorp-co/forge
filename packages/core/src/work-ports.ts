@@ -127,6 +127,7 @@ import {
 import { runnerEventsRetention } from './runners/index.js';
 import { latestRunsOfIssues, runWaitingOf } from './runs/index.js';
 import { lastFires, readScheduleStreaks, streakFails } from './schedules/index.js';
+import { carryStewardDecision } from './steward/index.js';
 import { provideUploadPorts } from './uploads/index.js';
 import {
   assertDesignApprovedForIssue,
@@ -337,6 +338,7 @@ export function provideWorkPorts(): void {
   });
 
   provideQuestionPorts({
+    carryStewardDecision,
     decideChannelGate,
     doorOfRequest: (c) => doorOf(tokenIdOf(c)),
     doorOfToken: doorOf,
