@@ -21,9 +21,20 @@ interface DevelopmentPorts {
 }
 
 export interface DesignRepinGroup {
+  baseId: string;
   flow: string;
+  title: string;
   revision: number;
-  ready: { flow: string; source: 'approved' | 'proposal' }[];
+  /** Each design the one act approves: at the revision read, the one it leaves approved, the pins that move. */
+  ready: {
+    workflowId: string;
+    flow: string;
+    source: 'approved' | 'proposal';
+    revision: number;
+    approves: number;
+    pins: { workflow: string; from: number; to: number }[];
+  }[];
+  refused: number;
   approvedAt: string | null;
 }
 

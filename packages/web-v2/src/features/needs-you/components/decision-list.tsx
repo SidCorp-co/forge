@@ -20,40 +20,9 @@ import { useState } from "react";
 import { Button, Icon, Textarea } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
-import { feedbackHref } from "@/lib/routes/feedback";
-import { issueHref } from "@/lib/routes/issues";
-import { releaseHref } from "@/lib/routes/releases";
-import { requirementHref } from "@/lib/routes/requirements";
-import { workflowHref } from "@/lib/routes/workflows";
-import { needsYouApi } from "../api";
+import { needsYouApi, pressBody } from "../api";
 import { NEEDS_YOU_ROOT } from "../hooks";
-
-/** The page a decision opens on, or null where no record holds it. */
-function decisionHref(slug: string, opens: NeedsYouDecision["opens"]): string | null {
-  if (!opens) return null;
-  switch (opens.kind) {
-    case "issue":
-      return issueHref(slug, opens.key);
-    case "requirement":
-      return requirementHref(slug, opens.key);
-    case "feedback":
-      return feedbackHref(slug, opens.key);
-    case "workflow":
-      return workflowHref(slug, opens.key);
-    case "release":
-      return releaseHref(slug, opens.key);
-  }
-}
-
-/**
- * The body a button posts: its own, and what the person typed under the field its route reads, the
- * answer's `text` for a question and the `reason` for every other act that takes one.
- */
-function pressBody(answer: DecisionAnswer, typed: string | null): Record<string, unknown> {
-  const body = { ...(answer.body ?? {}) };
-  if (answer.needsReason) body[answer.act === "question.answer" ? "text" : "reason"] = typed ?? "";
-  return body;
-}
+import { decisionHref } from "../routes";
 
 function OwedDecision({ d, slug }: { d: NeedsYouDecision; slug: string | undefined }) {
   const t = useCopy();
@@ -181,14 +150,16 @@ export function DecisionList({
   cap,
   moreHref,
 }: {
-  read: NeedsYouDecisions;
+  read: Pick<NeedsYouDecisions, "decisions" | "total" | "notDecisions">;
   slug?: string | undefined;
   only?: NeedsYouDecisionGroup;
   cap?: number;
   moreHref?: string;
 }) {
   const t = useCopy();
-  const { shown, more } = cap === undefined ? { shown: read.decisions, more: 0 } : capDecisions(read.decisions, cap);
+  // the rest are counted from the read's total, which holds every decision however many it carries
+  const shown = cap === undefined ? read.decisions : capDecisions(read.decisions, cap).shown;
+  const more = cap === undefined ? 0 : Math.max(0, read.total - shown.length);
   const groups = NEEDS_YOU_DECISION_GROUPS.filter((g) => !only || g === only)
     .map((g) => ({ g, rows: shown.filter((d) => d.group === g) }))
     .filter((x) => x.rows.length > 0);
@@ -203,7 +174,7 @@ export function DecisionList({
           </h3>
           <ul className="flex flex-col divide-y divide-line-subtle">
             {rows.map((d) => (
-              <OwedDecision key={`${d.group}:${d.key}`} d={d} slug={slug} />
+              <OwedDecision key={d.id} d={d} slug={slug} />
             ))}
           </ul>
         </div>

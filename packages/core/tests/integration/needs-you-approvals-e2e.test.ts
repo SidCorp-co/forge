@@ -1,7 +1,9 @@
-// GET /api/projects/:id/approvals: one list of what waits on the viewer's approve-type decision,
-// each row with who asked, since when, and the buttons that decide it through the record's own route.
-// The business rule under test: a row is listed only for a person who may decide it, and a suggestion
-// is withdrawn or revised as the author's own act only by its author.
+// GET /api/projects/:id/needs-you/decisions, the one Needs you read the Approvals page, the Dashboard,
+// /attention and the menu count (REQ-48 BC-11): every approval an agent or a person asked of the viewer
+// folded in beside the questions, each with the buttons that decide it through the record's own route
+// and, where an agent proposed it, the proposal. The business rules under test: a decision is listed
+// only for a person who may decide it; pressing its button decides it and it leaves the read; and a
+// suggestion is withdrawn or revised as the author's own act only by its author.
 
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -38,12 +40,17 @@ const as =
   (who: Who, method: string, path: string, body?: unknown): Promise<Reply> =>
     requester(app, tokens)(who, method, `/api/projects/${projectId}${path}`, body);
 
-/** A button pressed as `who`: its body, with `reason` where the act takes one. */
-const press = (who: Who, act: Doc, reason?: string): Promise<Reply> =>
-  requester(app, tokens)(who, 'POST', act.path, {
-    ...(act.body ?? {}),
+/** A decision's button pressed as `who`: its body, with `reason` where the act takes one. */
+const press = (who: Who, answer: Doc, reason?: string): Promise<Reply> =>
+  requester(app, tokens)(who, 'POST', answer.path, {
+    ...(answer.body ?? {}),
     ...(reason === undefined ? {} : { reason }),
   });
+
+const READ = '/needs-you/decisions';
+const approveOf = (d: Doc): Doc => d.answers.find((a: Doc) => !a.needsReason);
+const declineOf = (d: Doc): Doc => d.answers.find((a: Doc) => a.needsReason);
+const acts = (d: Doc) => d.answers.map((a: Doc) => `${a.act}${a.needsReason ? ' (reason)' : ''}`);
 
 const design = (projectId: string, flow: string): Doc => {
   const d: Doc = JSON.parse(
@@ -159,126 +166,106 @@ beforeAll(async () => {
 
 afterAll(closeWorld);
 
-describe('GET /approvals lists what waits on the viewer, and only what they may decide', () => {
-  it('gives an approver every kind, oldest first, each with who asked, since when and its acts', async () => {
+describe('the Needs you read lists every approval waiting on the viewer, and only what they may decide', () => {
+  it('gives an approver every kind folded into one read, each with its buttons and what it proposes', async () => {
     const w = await world();
-    const inbox = ok(await as(w.projectId)('owner', 'GET', '/approvals'));
-    const kinds = inbox.items.map((i: Doc) => i.kind);
-    expect(kinds).toEqual(
-      expect.arrayContaining(['suggestion', 'mockup', 'design', 'revision', 'preview']),
-    );
-    expect(inbox.unreadable).toEqual([]);
-    expect(inbox.total).toBe(inbox.items.length);
-    // the member's suggestion was asked four days ago: nothing has waited longer
-    expect(kinds[0]).toBe('suggestion');
-    const since = inbox.items.map((i: Doc) => i.since as string);
-    expect([...since].sort()).toEqual(since);
+    const read = ok(await as(w.projectId)('owner', 'GET', READ));
+    expect(read.notDecisions.filter((n: Doc) => n.reason === 'unreadable')).toEqual([]);
+    expect(read.total).toBe(read.decisions.length);
+    const ids = read.decisions.map((d: Doc) => d.id as string);
+    expect(new Set(ids).size).toBe(ids.length);
 
-    const suggestion = inbox.items.find((i: Doc) => i.kind === 'suggestion');
+    const suggestion = read.decisions.find((d: Doc) => d.id === `suggestion:${w.ownSuggestion}`);
     // titled by the issue it is on, never by its payload's note
     expect(suggestion).toMatchObject({
+      group: 'approve',
       key: w.issueKey,
       title: 'issue 1',
-      suggestionKind: 'triage',
-      askedBy: { kind: 'person' },
       opens: { kind: 'issue', key: w.issueKey },
-      approve: { act: 'suggestion.accept', reason: 'optional' },
-      decline: { act: 'suggestion.reject', reason: 'required' },
+      proposal: { verb: `Triage ${w.issueKey}`, what: 'route this to the checkout team' },
     });
-    expect(suggestion.askedBy.name).toBeTruthy();
+    expect(acts(suggestion)).toEqual(['suggestion.accept', 'suggestion.reject (reason)']);
 
-    const mockup = inbox.items.find((i: Doc) => i.kind === 'mockup');
+    const mockup = read.decisions.find((d: Doc) => d.topic === 'mockup');
     // titled by its name, never by its caption
     expect(mockup).toMatchObject({
       key: 'MK-1',
       title: 'checkout.html',
-      mockupKind: 'html',
-      approve: { act: 'mockup.accept' },
-      decline: { act: 'mockup.return', reason: 'required' },
+      proposal: { verb: 'Accept mockup' },
     });
+    expect(acts(mockup)).toEqual(['mockup.accept', 'mockup.return (reason)']);
 
-    const designRow = inbox.items.find((i: Doc) => i.kind === 'design');
-    expect(designRow).toMatchObject({
-      key: 'post-discharge',
-      revision: 1,
-      askedBy: { kind: 'person' },
-      approve: { act: 'design.decide', body: { revision: 1, decision: 'approve' } },
-      decline: {
-        act: 'design.decide',
-        body: { revision: 1, decision: 'return' },
-        reason: 'required',
-      },
-    });
+    const designRow = read.decisions.find((d: Doc) => d.entity === 'workflow');
+    expect(designRow).toMatchObject({ group: 'approve', key: 'post-discharge', topic: 'design' });
+    expect(designRow.answers.map((a: Doc) => a.body)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ revision: 1, decision: 'approve' }),
+        expect.objectContaining({ revision: 1, decision: 'return' }),
+      ]),
+    );
 
-    const revision = inbox.items.find((i: Doc) => i.kind === 'revision');
-    expect(revision).toMatchObject({
-      revision: 1,
-      title: 'The case reaches its owner',
-      approve: { act: 'revision.accept' },
-      decline: { act: 'revision.return', reason: 'required' },
-    });
+    const revision = read.decisions.find((d: Doc) => d.entity === 'requirement');
+    expect(revision.title).toContain('The case reaches its owner');
+    expect(acts(revision)).toEqual(
+      expect.arrayContaining(['revision.accept', 'revision.return (reason)']),
+    );
 
-    // the design is the same decision the home and the chat show, with the same buttons
-    const decisions = ok(await as(w.projectId)('owner', 'GET', '/needs-you/decisions'));
-    const owed = decisions.decisions.find((d: Doc) => d.entity === 'workflow');
-    expect(owed).toMatchObject({ group: 'approve', key: 'post-discharge' });
-    expect(owed.answers.map((a: Doc) => a.path)).toContain(designRow.approve.path);
-
-    const preview = inbox.items.find((i: Doc) => i.kind === 'preview');
-    expect(preview).toMatchObject({
-      id: `preview:${w.previewId}`,
-      key: w.issueKey,
-      approve: {
+    const preview = read.decisions.find((d: Doc) => d.topic === 'preview');
+    expect(preview).toMatchObject({ id: `preview:${w.previewId}`, key: w.issueKey });
+    expect(preview.answers).toEqual([
+      expect.objectContaining({
         act: 'preview.approve',
         path: `/api/previews/${w.previewId}/approve`,
-        reason: 'none',
-      },
-      decline: null,
-    });
+        needsReason: false,
+      }),
+    ]);
   }, 60_000);
 
   it('lists to a member only what they may decide: never a suggestion, mockup, revision or preview', async () => {
     const w = await world();
-    const inbox = ok(await as(w.projectId)('member', 'GET', '/approvals'));
+    const read = ok(await as(w.projectId)('member', 'GET', READ));
     // this project's approvals switch leaves a design to any writer, so the design is the member's to decide
-    expect(inbox.items.map((i: Doc) => `${i.kind} ${i.key}`)).toEqual(['design post-discharge']);
-    expect(inbox.total).toBe(1);
+    expect(read.decisions.map((d: Doc) => `${d.entity} ${d.key}`)).toEqual([
+      'workflow post-discharge',
+    ]);
+    expect(read.total).toBe(1);
     // and what it lists the member can press: the route agrees they may decide it
-    ok(await press('member', inbox.items[0].approve));
-    expect(ok(await as(w.projectId)('member', 'GET', '/approvals'))).toMatchObject({
-      items: [],
+    const approve = read.decisions[0].answers.find((a: Doc) => a.body?.decision === 'approve');
+    ok(await press('member', approve));
+    expect(ok(await as(w.projectId)('member', 'GET', READ))).toMatchObject({
+      decisions: [],
       total: 0,
     });
   }, 60_000);
 
-  it('answers an empty inbox on a project where nothing waits', async () => {
+  it('answers an empty read on a project where nothing waits', async () => {
     const { id } = await createTestProject(ownerId);
-    expect(ok(await as(id)('owner', 'GET', '/approvals'))).toMatchObject({
-      items: [],
-      unreadable: [],
+    expect(ok(await as(id)('owner', 'GET', READ))).toMatchObject({
+      decisions: [],
+      notDecisions: [],
       total: 0,
     });
   });
 
   it('refuses a person outside the project, and a query it does not take', async () => {
     const { id } = await createTestProject(ownerId);
-    expect((await as(id)('outsider', 'GET', '/approvals')).status).toBeGreaterThanOrEqual(403);
-    expect((await as(id)('owner', 'GET', '/approvals?status=all')).status).toBe(400);
+    expect((await as(id)('outsider', 'GET', READ)).status).toBeGreaterThanOrEqual(403);
+    expect((await as(id)('owner', 'GET', `${READ}?status=all`)).status).toBe(400);
   });
 
-  it('decides through the record’s own route: an accept leaves the list, a return without a reason is refused', async () => {
+  it('decides through the record’s own route: an approve leaves the read, a return without a reason is refused', async () => {
     const w = await world();
     const say = as(w.projectId);
-    const before = ok(await say('owner', 'GET', '/approvals'));
-    const suggestion = before.items.find((i: Doc) => i.kind === 'suggestion');
-    ok(await press('owner', suggestion.approve));
-    const mockup = before.items.find((i: Doc) => i.kind === 'mockup');
-    const unexplained = await press('owner', mockup.decline);
+    const before = ok(await say('owner', 'GET', READ));
+    const suggestion = before.decisions.find((d: Doc) => d.id === `suggestion:${w.ownSuggestion}`);
+    ok(await press('owner', approveOf(suggestion)));
+    const mockup = before.decisions.find((d: Doc) => d.topic === 'mockup');
+    const unexplained = await press('owner', declineOf(mockup));
     expect(unexplained.status).toBeGreaterThanOrEqual(400);
 
-    const after = ok(await say('owner', 'GET', '/approvals'));
-    expect(after.items.map((i: Doc) => i.id)).not.toContain(suggestion.id);
-    expect(after.items.map((i: Doc) => i.id)).toContain(mockup.id);
+    const after = ok(await say('owner', 'GET', READ));
+    expect(after.decisions.map((d: Doc) => d.id)).not.toContain(suggestion.id);
+    expect(after.decisions.map((d: Doc) => d.id)).toContain(mockup.id);
     expect(after.total).toBe(before.total - 1);
   }, 60_000);
 });
@@ -301,8 +288,8 @@ describe('a suggestion’s author revises or withdraws it; nobody else does', ()
     expect(original?.status).toBe('withdrawn');
     expect(original?.reason).toContain('revised by its producer');
 
-    const inbox = ok(await say('owner', 'GET', '/approvals'));
-    const ids = inbox.items.map((i: Doc) => i.id);
+    const read = ok(await say('owner', 'GET', READ));
+    const ids = read.decisions.map((d: Doc) => d.id);
     expect(ids).toContain(`suggestion:${revised.suggestion.id}`);
     expect(ids).not.toContain(`suggestion:${w.ownSuggestion}`);
   }, 60_000);
@@ -333,12 +320,12 @@ describe('a suggestion’s author revises or withdraws it; nobody else does', ()
     expect(refusalCodes(withdrawn)).toContain('SUGGESTION_WITHDRAW_FORBIDDEN');
   }, 60_000);
 
-  it('lets the author withdraw their own, which leaves the inbox', async () => {
+  it('lets the author withdraw their own, which leaves the read', async () => {
     const w = await world();
     const say = as(w.projectId);
     ok(await say('member', 'POST', `/suggestions/${w.ownSuggestion}/withdraw`, {}));
-    const inbox = ok(await say('owner', 'GET', '/approvals'));
-    expect(inbox.items.map((i: Doc) => i.id)).not.toContain(`suggestion:${w.ownSuggestion}`);
+    const read = ok(await say('owner', 'GET', READ));
+    expect(read.decisions.map((d: Doc) => d.id)).not.toContain(`suggestion:${w.ownSuggestion}`);
   }, 60_000);
 
   it('still holds a reviewer to a reason when revising another’s suggestion', async () => {

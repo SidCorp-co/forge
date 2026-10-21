@@ -22,7 +22,9 @@ import { QueryBoundary } from "@/lib/api/query-boundary";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
-import { NeedsYouList } from "@/features/needs-you";
+import { DecisionList } from "@/features/needs-you";
+import { approvalsHref } from "@/features/approvals";
+import { NEEDS_YOU_PERSON_CAP } from "@forge/contracts/steward";
 import { useAttention } from "../hooks";
 import type { AttentionItem, AttentionKind, AttentionView } from "../types";
 import { PageTitle, SectionTitle } from "@/design/primitives/heading";
@@ -199,9 +201,13 @@ function Inbox({ view }: { view: AttentionView }) {
     offlineRunners: view.offlineRunners.filter(keep),
   };
   const needsYou = view.needsYou.filter((n) => projectSlugs.has(n.projectSlug));
-  const needsYouProjects = projects.filter((p) => needsYou.some((n) => n.projectSlug === p.slug));
+  const needsYouProjects = projects.flatMap((p) => {
+    const part = needsYou.find((n) => n.projectSlug === p.slug);
+    return part ? [{ p, part }] : [];
+  });
+  // a project's part counts its whole total, the number its Approvals page and its menu badge read
   const total =
-    needsYou.length +
+    needsYou.reduce((n, part) => n + part.total, 0) +
     scoped.mentions.length +
     scoped.failedJobs.length +
     scoped.channelGates.length +
@@ -222,15 +228,10 @@ function Inbox({ view }: { view: AttentionView }) {
         </div>
       ) : (
         <div className="flex flex-col gap-6">
-          {needsYouProjects.map((p) => (
-            <section key={p.id} className="flex flex-col gap-2" aria-label={t("attention.needsYou.in", { name: p.name })}>
+          {needsYouProjects.map(({ p, part }) => (
+            <section key={p.id} className="flex flex-col gap-2" aria-label={t("attention.needsYou.in", { name: p.name })} data-testid="attention-needs-you" data-total={part.total}>
               <SectionTitle className="fg-label text-fg">{t("attention.needsYou.title", { name: p.name })}</SectionTitle>
-              <NeedsYouList
-                items={needsYou.filter((n) => n.projectSlug === p.slug)}
-                slug={p.slug}
-                foldKey={`web-v2:attention:${p.slug}`}
-                empty={t("attention.needsYou.empty")}
-              />
+              <DecisionList read={{ decisions: part.decisions, total: part.total, notDecisions: [] }} slug={p.slug} cap={NEEDS_YOU_PERSON_CAP} moreHref={approvalsHref(p.slug)} />
             </section>
           ))}
           <Group title={t("attention.group.channelGates")} items={scoped.channelGates} onOpen={(href) => router.push(href)} />

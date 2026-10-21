@@ -22,9 +22,13 @@ import type { AttentionRow } from './needs-you.js';
 
 const QUESTION_MAX = 2000;
 
+/**
+ * A decision as its record builds it; `decisionsOf` adds whether its item is stuck and when it falls
+ * due, and its page group where the builder leaves it to the entity it decides.
+ */
+export type DecisionBody = Omit<NeedsYouDecision, 'id' | 'stuck' | 'dueAt' | 'topic' | 'proposal'> &
+  Partial<Pick<NeedsYouDecision, 'id' | 'topic' | 'proposal'>>;
 /** A decision, and the question it answers where it is one, so one question is one decision. */
-/** A decision as its record builds it; `decisionsOf` adds whether its item is stuck and when it falls due. */
-export type DecisionBody = Omit<NeedsYouDecision, 'stuck' | 'dueAt'>;
 export type Built = { decision: DecisionBody; questionId: string | null };
 
 export const clip = (text: string, max: number) =>

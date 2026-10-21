@@ -31,7 +31,7 @@ import {
 import { mcpOauthMetadataRoutes } from './credentials/mcp-oauth-metadata.js';
 import { mcpOauthRoutes } from './credentials/mcp-oauth-routes.js';
 import { patRoutes } from './credentials/pat-routes.js';
-import { approvalRoutes, developmentOverviewRoutes, needsYouRoutes } from './development/routes.js';
+import { developmentOverviewRoutes, needsYouRoutes } from './development/routes.js';
 
 import {
   deviceAuthRoutes,
@@ -299,7 +299,6 @@ function mountProjectWorkRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/projects', developmentOverviewRoutes);
   app.route('/api/projects', forecastRoutes);
   app.route('/api/projects', needsYouRoutes);
-  app.route('/api/projects', approvalRoutes);
   app.route('/api/projects', projectStatusRoutes);
   app.route('/api/projects', statusReportRoutes);
   app.route('/api/projects', projectShareRoutes);

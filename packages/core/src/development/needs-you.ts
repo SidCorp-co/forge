@@ -8,7 +8,6 @@
 import { AUTOMATION_FIRES_DEFAULT } from '@forge/contracts/automation-standing';
 import { FEEDBACK_UNTRIAGED_PHASES, type FeedbackPhase } from '@forge/contracts/feedback';
 import {
-  asksOf,
   NEEDS_YOU_AREA_SPACE,
   NEEDS_YOU_AREAS,
   type NeedsYouAct,
@@ -198,7 +197,7 @@ export async function readAttention(
       ),
     ],
   };
-  return { rows, requirements, releases, issues, feedback: items, health };
+  return { rows, requirements, releases, issues, feedback: items, health, repins };
 }
 
 /** Each area's rows that wait on the viewer, newest first: the one filter every Needs you read takes. */
@@ -241,7 +240,6 @@ export async function readNeedsYou(
       Object.entries(owed).map(([area, list]) => [area, areaOf(list)]),
     ) as Record<NeedsYouAreaKey, NeedsYouArea>,
     items,
-    asks: asksOf(items).length,
     requirementsInDelivery: requirements.filter((r) => r.standing.state === 'in_delivery').length,
     untriagedFeedback: feedback.filter((f) => UNTRIAGED.has(f.phase)).length,
   };

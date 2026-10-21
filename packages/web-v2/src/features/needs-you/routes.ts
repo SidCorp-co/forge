@@ -31,6 +31,23 @@ export function needsYouHref(slug: string, n: Pick<NeedsYouItem, "entity" | "key
   }
 }
 
+/** The page a decision opens on, or null where no record holds it. */
+export function decisionHref(slug: string, opens: { kind: "issue" | "requirement" | "feedback" | "workflow" | "release"; key: string } | null): string | null {
+  if (!opens) return null;
+  switch (opens.kind) {
+    case "issue":
+      return issueHref(slug, opens.key);
+    case "requirement":
+      return requirementHref(slug, opens.key);
+    case "feedback":
+      return feedbackHref(slug, opens.key);
+    case "workflow":
+      return workflowHref(slug, opens.key);
+    case "release":
+      return releaseHref(slug, opens.key);
+  }
+}
+
 /** What a row is called in a list: its key, or for a schedule or a question (keyed by an id no reader knows) the area it sits in. */
 export const needsYouKeyLabel = (n: Pick<NeedsYouItem, "entity" | "key" | "area">, areaLabel: (area: string) => string): string =>
   n.entity === "schedule" || n.entity === "question" ? areaLabel(n.area) : n.key;

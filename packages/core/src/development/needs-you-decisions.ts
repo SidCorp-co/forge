@@ -23,23 +23,26 @@ import {
   type NeedsYouNotDecisionReason,
   needsYouDecisionsSchema,
 } from '@forge/contracts/needs-you-decisions';
+import type { NeedsYouTopic } from '@forge/contracts/needs-you-proposal';
+import type { ProjectAccess } from '../lib/authz.js';
 import { type OpenPersonQuestion, readOpenPersonQuestions } from '../questions/index.js';
 import { type AttentionRow, type NeedsYouViewer, owedOf, readAttention } from './needs-you.js';
-import {
-  acceptDecision,
-  admitDecision,
-  repinDecision,
-  suggestionDecision,
-} from './needs-you-accept-builders.js';
+import { acceptDecision, admitDecision, repinDecision } from './needs-you-accept-builders.js';
 import {
   agreeDecision,
   designDecision,
   releaseDecision,
   revisionDecision,
 } from './needs-you-approve-builders.js';
-import { type Built, feedbackDecision, questionDecision } from './needs-you-decision-builders.js';
-import { proposedSuggestionsOf } from './needs-you-suggestions.js';
-import { releaseApprovalsOfRuns } from './ports.js';
+import {
+  type Built,
+  type DecisionBody,
+  feedbackDecision,
+  questionDecision,
+} from './needs-you-decision-builders.js';
+import { foldedDecisions } from './needs-you-fold.js';
+import { repinDecision as designRepinDecision } from './needs-you-repin.js';
+import { type DesignRepinGroup, releaseApprovalsOfRuns } from './ports.js';
 
 /** How many decisions one answer carries; `total` counts them all. */
 const DECISIONS_MAX = 200;
@@ -77,11 +80,18 @@ const VERIFY_FIX: ReadonlySet<string> = new Set([
   'standing.act.verifyFixIn',
 ]);
 
-/** A suggestion a signer decides on a requirement: its breakdown, or a revision it suggested. */
+/**
+ * A suggestion a signer decides on a requirement: its breakdown, or a revision it suggested. The
+ * suggestion is its own decision, folded from the suggestions read (`needs-you-fold.ts`) with what it
+ * proposes, so the requirement's row is not a second one.
+ */
 const SUGGESTION_ACTS: ReadonlySet<string> = new Set([
   'standing.act.reviewBreakdown',
   'standing.act.reviewSuggestedRevision',
 ]);
+
+/** A moved design's pin-only dependents, cleared by the one re-pin act (`needs-you-repin.ts`). */
+const REPIN_BATCH = 'designs.act.repinBatch';
 
 /** A requirement whose only issues are drafts asks them taken on (`requirements/standing.ts`). */
 const PROMOTE_DRAFTS: ReadonlySet<string> = new Set([
@@ -89,7 +99,7 @@ const PROMOTE_DRAFTS: ReadonlySet<string> = new Set([
   'standing.act.promoteDrafts',
 ]);
 
-type Classified = Built | { reason: NeedsYouNotDecisionReason };
+type Classified = Built | { reason: NeedsYouNotDecisionReason } | { folded: true };
 
 interface Facts {
   questions: OpenPersonQuestion[];
@@ -106,8 +116,8 @@ interface Facts {
   >;
   /** Each requirement's draft issues, by requirement key. */
   draftsOf: ReadonlyMap<string, { id: string; key: string }[]>;
-  /** Each requirement's proposed breakdown or revision suggestion, by requirement id. */
-  suggestionOf: ReadonlyMap<string, { id: string; kind: string }>;
+  /** Each moved design's re-pin group, by the base's flow. */
+  repinOf: ReadonlyMap<string, DesignRepinGroup>;
   releaseOf: ReadonlyMap<string, { runId: string | null; failing: number; total: number }>;
   approvalOf: ReadonlyMap<string, string>;
   feedbackAnswerOf: ReadonlyMap<string, string | null>;
@@ -184,10 +194,7 @@ function classify(row: AttentionRow, area: NeedsYouAreaKey, f: Facts): Classifie
     if (act.key === 'standing.acts' && req?.head) {
       return repinDecision(row, area, f.projectId, req.head);
     }
-    const suggestion = req ? f.suggestionOf.get(req.id) : undefined;
-    if (SUGGESTION_ACTS.has(act.key) && suggestion) {
-      return suggestionDecision(row, area, f.projectId, suggestion);
-    }
+    if (SUGGESTION_ACTS.has(act.key)) return { folded: true };
     if (act.key === 'standing.act.check' && req?.current) {
       return acceptDecision(row, area, f.projectId, req.current, req.criteria);
     }
@@ -207,6 +214,11 @@ function classify(row: AttentionRow, area: NeedsYouAreaKey, f: Facts): Classifie
       approvalId,
     );
   }
+  if (row.entity === 'workflow' && act.key === REPIN_BATCH) {
+    const group = f.repinOf.get(row.key);
+    if (!group || row.standing.waitingOn.kind !== 'you') return { reason: 'work' };
+    return designRepinDecision(row, area, f.projectId, group);
+  }
   if (row.entity === 'workflow' && act.key === DESIGN_PROPOSED) {
     const design = f.designOf.get(row.key);
     if (!design || row.standing.waitingOn.kind !== 'you') return { reason: 'work' };
@@ -219,6 +231,30 @@ function classify(row: AttentionRow, area: NeedsYouAreaKey, f: Facts): Classifie
     return feedbackDecision(row, area, f.projectId, null, 'fix');
   }
   return { reason: 'work' };
+}
+
+/** The page group a decision its builder did not place is read under, by what it decides. */
+function topicOf(d: DecisionBody): NeedsYouTopic {
+  if (d.group === 'answer' || d.group === 'merge_or_drop' || d.entity === 'question')
+    return 'question';
+  if (d.entity === 'feedback') return 'feedback';
+  if (d.entity === 'release') return 'release';
+  if (d.entity === 'workflow') return 'design';
+  return 'requirement';
+}
+
+/** A built decision with its id, page group and proposal, and whether its item is stuck and due. */
+function completed(
+  d: DecisionBody,
+  due: { stuck: boolean; dueAt: string | null },
+): NeedsYouDecision {
+  return {
+    ...d,
+    ...due,
+    id: d.id ?? `${d.entity}:${d.key}:${d.answers[0]?.act ?? 'none'}`,
+    topic: d.topic ?? topicOf(d),
+    proposal: d.proposal ?? null,
+  };
 }
 
 /** Whether the row's item reads stuck and when its act falls due: what orders Needs you (BC-11). */
@@ -287,7 +323,7 @@ export async function decisionsOf(
       ]),
     ),
     draftsOf: draftsByRequirement(attention.issues.issues),
-    suggestionOf: await proposedSuggestionsOf(attention.requirements.map((r) => r.id)),
+    repinOf: new Map(attention.repins.groups.map((g) => [g.flow, g])),
     releaseOf: new Map(
       attention.releases.releases.map((r) => [
         r.version,
@@ -315,6 +351,7 @@ export async function decisionsOf(
     ...asks.filter((a) => heldUp(a.row)),
   ]) {
     const c = classify(row, area, facts);
+    if ('folded' in c) continue;
     if ('reason' in c) {
       left.set(c.reason, [...(left.get(c.reason) ?? []), row.key]);
       continue;
@@ -322,18 +359,62 @@ export async function decisionsOf(
     // a requirement held up by an issue's question and the issue itself are one decision
     if (c.questionId && asked.has(c.questionId)) continue;
     if (c.questionId) asked.add(c.questionId);
-    owed.push({ area, row, decision: { ...c.decision, ...dueOfRow(row) } });
+    owed.push({ area, row, decision: completed(c.decision, dueOfRow(row)) });
   }
   return { owed, left };
 }
 
+/** Every decision of one attention read, in the list's order, and what was left out by why. */
+async function allDecisionsOf(
+  projectId: string,
+  viewer: NeedsYouViewer,
+  access: ProjectAccess,
+  attention: Attention,
+) {
+  const [{ owed, left }, folded] = await Promise.all([
+    decisionsOf(projectId, attention),
+    foldedDecisions(projectId, viewer, access, attention),
+  ]);
+  if (folded.unreadable.length > 0) left.set('unreadable', folded.unreadable);
+  const decisions = uniqueIds([...owed.map((o) => o.decision), ...folded.decisions]).sort(
+    byDecisionOrder,
+  );
+  return { decisions, left };
+}
+
+/** The viewer's whole Needs you from an attention read already made: what the status report counts. */
+export async function needsYouDecisionsOf(
+  projectId: string,
+  viewer: NeedsYouViewer,
+  access: ProjectAccess,
+  attention: Attention,
+): Promise<NeedsYouDecision[]> {
+  return (await allDecisionsOf(projectId, viewer, access, attention)).decisions;
+}
+
+/** Each decision's id once in the read, a second built for the same record numbered after it. */
+function uniqueIds(decisions: NeedsYouDecision[]): NeedsYouDecision[] {
+  const seen = new Map<string, number>();
+  return decisions.map((d) => {
+    const n = (seen.get(d.id) ?? 0) + 1;
+    seen.set(d.id, n);
+    return n === 1 ? d : { ...d, id: `${d.id}#${n}` };
+  });
+}
+
+/**
+ * The one Needs you read (REQ-48 BC-11): the viewer's decisions from their owed rows, and every
+ * agent's proposal, mockup and preview waiting on them folded in. The page, the Dashboard, /attention,
+ * the nav and the chat all count `total` from here, so no two surfaces count their own.
+ */
 export async function readNeedsYouDecisions(
   projectId: string,
   viewer: NeedsYouViewer,
+  access: ProjectAccess,
   now: Date = new Date(),
 ): Promise<NeedsYouDecisions> {
-  const { owed, left } = await decisionsOf(projectId, await readAttention(projectId, viewer, now));
-  const decisions = owed.map((o) => o.decision).sort(byDecisionOrder);
+  const attention = await readAttention(projectId, viewer, now);
+  const { decisions, left } = await allDecisionsOf(projectId, viewer, access, attention);
   return needsYouDecisionsSchema.parse({
     generatedAt: now.toISOString(),
     decisions: decisions.slice(0, DECISIONS_MAX),

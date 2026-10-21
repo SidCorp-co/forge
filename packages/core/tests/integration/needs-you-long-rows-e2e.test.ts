@@ -1,17 +1,17 @@
-// GET /api/projects/:id/approvals on the rows a live project really holds (dev.251, project
+// GET /api/projects/:id/needs-you/decisions on the rows a live project really holds (dev.251, project
 // d1bb4907): a suggestion whose payload leads with a paragraph, an issue and a requirement whose
-// title runs past the inbox's 500-character cap. The read's own output schema refused those titles and
-// the whole list answered 500. The business rules under test: each row is titled by its record's
-// short title, never by a prose field; a title over the cap is cut at a word boundary with an
-// ellipsis; and the number of statements the read spends does not grow with the number of rows.
+// title runs past a decision's 500-character cap. An output schema that refused those titles once
+// answered the whole list 500. The business rules under test (REQ-48 BC-11): each decision is titled
+// by its record's title, never by a prose field; a title over the cap is cut at a word boundary with
+// an ellipsis; a record no decision can be made of is named, never the read's failure; and the number
+// of statements the read spends does not grow with the number of rows.
 //
-// @direct-test-of packages/core/src/development/approvals.ts
-// @direct-test-of packages/core/src/development/approvals-rows.ts
+// @direct-test-of packages/core/src/development/needs-you-fold.ts
+// @direct-test-of packages/core/src/development/needs-you-decisions.ts
 // @direct-test-of packages/core/src/suggestions/waiting-read.ts
 
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { APPROVAL_INBOX_MAX } from '@forge/contracts/approvals';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
@@ -171,50 +171,40 @@ beforeAll(async () => {
 
 afterAll(closeWorld);
 
-describe('an approval row is titled by its record’s short title, and one long title never fails the list', () => {
-  it('answers the list where a suggestion leads with prose and an issue and a requirement run past the cap', async () => {
+const READ = (projectId: string) => `/api/projects/${projectId}/needs-you/decisions`;
+const byId = (read: Doc, prefix: string) =>
+  (read.decisions as Doc[]).filter((d) => d.id.startsWith(prefix));
+
+describe('a decision is titled by its record’s title, and one long title never fails the read', () => {
+  it('answers the read where a suggestion leads with prose and an issue and a requirement run past the cap', async () => {
     const w = await world(1, { longTitles: true });
-    const inbox = expectOk(await api(owner, 'GET', `/api/projects/${w.projectId}/approvals`));
-    expect(inbox.unreadable).toEqual([]);
-    const byKind = (k: string) => (inbox.items as Doc[]).filter((i) => i.kind === k);
-    expect(byKind('suggestion')).toHaveLength(1);
-    expect(byKind('preview')).toHaveLength(1);
-    expect(byKind('revision')).toHaveLength(1);
-    expect(byKind('mockup')).toHaveLength(1);
-    for (const item of inbox.items as Doc[]) {
-      expect(item.title.length, `${item.kind} ${item.key}`).toBeLessThanOrEqual(TITLE_MAX);
-      expect(item.title, `${item.kind} ${item.key} reads prose`).not.toContain('because');
+    const read = expectOk(await api(owner, 'GET', READ(w.projectId)));
+    expect(read.notDecisions.filter((n: Doc) => n.reason === 'unreadable')).toEqual([]);
+    expect(byId(read, 'suggestion:')).toHaveLength(1);
+    expect(byId(read, 'preview:')).toHaveLength(1);
+    expect(byId(read, 'mockup:')).toHaveLength(1);
+    for (const d of read.decisions as Doc[]) {
+      expect(d.title.length, d.id).toBeLessThanOrEqual(TITLE_MAX);
+      expect(d.title, `${d.id} reads prose`).not.toContain('because');
     }
 
     // a suggestion reads the title of the record it is on, never its payload's note
-    const [suggestion] = byKind('suggestion');
-    expectCutAtWord(suggestion?.title, LONG_ISSUE_TITLE);
+    expectCutAtWord(byId(read, 'suggestion:')[0]?.title, LONG_ISSUE_TITLE);
     // the preview reads the same issue's title, cut the same way
-    expectCutAtWord(byKind('preview')[0]?.title, LONG_ISSUE_TITLE);
-    // a requirement with no short name reads its title, cut at a word
-    expectCutAtWord(byKind('revision')[0]?.title, LONG_REQUIREMENT_TITLE);
+    expectCutAtWord(byId(read, 'preview:')[0]?.title, LONG_ISSUE_TITLE);
     // a mockup reads its name, never its caption
-    expect(byKind('mockup')[0]?.title).toBe('checkout-1.html');
-    expect(suggestion?.askedBy).toEqual({ kind: 'person', name: 'Lan Nguyen' });
+    expect(byId(read, 'mockup:')[0]?.title).toBe('checkout-1.html');
+    // the note is the proposal's object, read beside the title and never in its place, cut at a word
+    const what = byId(read, 'suggestion:')[0]?.proposal.what as string;
+    expect(what.length).toBeLessThanOrEqual(600);
+    expect(what.endsWith('…')).toBe(true);
+    expect(PROSE.startsWith(what.slice(0, -1))).toBe(true);
   }, 120_000);
 
-  it('reads a requirement by its short name where it has one', async () => {
-    const w = await world(1, { longTitles: true });
-    await db.execute(sql`
-      UPDATE requirements SET short_name = 'Case reaches its owner' WHERE project_id = ${w.projectId}`);
-    const inbox = expectOk(await api(owner, 'GET', `/api/projects/${w.projectId}/approvals`));
-    const revision = (inbox.items as Doc[]).find((i) => i.kind === 'revision');
-    expect(revision?.title).toBe('Case reaches its owner');
-  }, 120_000);
-
-  it('names a row it cannot build beside the rest, which still answer', async () => {
+  it('names a record it cannot make a decision of beside the rest, which still answer', async () => {
     const w = await world(1, { longTitles: false });
-    const asker = (await createTestUser({ verified: true })).id;
-    await addProjectMember(w.projectId, asker, 'member');
-    // a name past the row's 200-character bound: no write takes one, so the row is not built from it
-    await db.execute(sql`UPDATE users SET display_name = ${'n'.repeat(260)} WHERE id = ${asker}`);
     const made = expectOk(
-      await api(await userToken(asker), 'POST', `/api/projects/${w.projectId}/suggestions`, {
+      await api(member, 'POST', `/api/projects/${w.projectId}/suggestions`, {
         kind: 'triage',
         issue: w.issues[0]?.key,
         baseRevision: null,
@@ -222,36 +212,31 @@ describe('an approval row is titled by its record’s short title, and one long 
       }),
       201,
     );
-    const inbox = expectOk(await api(owner, 'GET', `/api/projects/${w.projectId}/approvals`));
-    expect(inbox.unreadable).toEqual([
-      {
-        kind: 'suggestion',
-        id: `suggestion:${made.suggestion.id}`,
-        key: w.issues[0]?.key,
-        opens: { kind: 'issue', key: w.issues[0]?.key },
-        problem: "the asker's name is longer than 200 characters",
-      },
-    ]);
-    expect((inbox.items as Doc[]).map((i) => i.kind).sort()).toEqual([
-      'design',
-      'mockup',
-      'preview',
-      'revision',
-      'suggestion',
-    ]);
-    expect(inbox.total).toBe(6);
+    // a payload no write takes: its kind's schema refuses it, so no proposal can be read from it
+    await db.execute(
+      sql`UPDATE suggestions SET payload = '{}'::jsonb WHERE id = ${made.suggestion.id}`,
+    );
+    const read = expectOk(await api(owner, 'GET', READ(w.projectId)));
+    expect(read.notDecisions).toContainEqual({
+      reason: 'unreadable',
+      count: 1,
+      keys: [w.issues[0]?.key],
+    });
+    expect(read.decisions.map((d: Doc) => d.id)).not.toContain(`suggestion:${made.suggestion.id}`);
+    expect(byId(read, 'suggestion:')).toHaveLength(1);
+    expect(byId(read, 'mockup:')).toHaveLength(1);
+    expect(byId(read, 'preview:')).toHaveLength(1);
   }, 120_000);
 
   it('spends no more statements on four rows of each kind than on one', async () => {
     const one = await world(1, { longTitles: false });
     const four = await world(4, { longTitles: false });
-    const a = await api(owner, 'GET', `/api/projects/${one.projectId}/approvals`);
-    const b = await api(owner, 'GET', `/api/projects/${four.projectId}/approvals`);
-    expect(expectOk(a).items).toHaveLength(5);
-    expect(expectOk(b).items).toHaveLength(20);
-    expect(expectOk(b).items.length).toBeLessThanOrEqual(APPROVAL_INBOX_MAX);
+    const a = await api(owner, 'GET', READ(one.projectId));
+    const b = await api(owner, 'GET', READ(four.projectId));
+    const [n1, n4] = [expectOk(a).total as number, expectOk(b).total as number];
+    expect(n4).toBeGreaterThanOrEqual(n1 * 4);
     const [at1, at4] = [queriesOf(a.headers), queriesOf(b.headers)];
-    console.info(`approvals read: ${at1} statements at 5 rows, ${at4} at 20 rows`);
-    expect(at4, `${at1} statements at 5 rows, ${at4} at 20 rows`).toBeLessThanOrEqual(at1);
+    console.info(`needs-you decisions read: ${at1} statements at ${n1} rows, ${at4} at ${n4} rows`);
+    expect(at4, `${at1} statements at ${n1} rows, ${at4} at ${n4} rows`).toBeLessThanOrEqual(at1);
   }, 180_000);
 });

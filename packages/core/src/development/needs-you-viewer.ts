@@ -1,14 +1,16 @@
 // Who reads needs-you and across which projects: the viewer each list's route builds, and the visible-project sweep.
 
-import { asksOf, type NeedsYouProjectItem } from '@forge/contracts/needs-you';
+import type { NeedsYouProjectDecisions } from '@forge/contracts/needs-you-decisions';
 import type { ActorAgency } from '@forge/contracts/permissions';
+import { NEEDS_YOU_PERSON_CAP } from '@forge/contracts/steward';
 import { inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
 import { effectiveProjectRole, loadVisibleProjectIds, type ProjectAccess } from '../lib/authz.js';
 import { createLimiter } from '../lib/bounded-concurrency.js';
 import { holds } from '../permissions/index.js';
-import { type NeedsYouViewer, readNeedsYou } from './needs-you.js';
+import type { NeedsYouViewer } from './needs-you.js';
+import { readNeedsYouDecisions } from './needs-you-decisions.js';
 
 /** The viewer each list's route builds for this caller, so the counts read as the lists do. */
 export const needsYouViewerOf = (
@@ -30,12 +32,16 @@ export const needsYouViewerOf = (
  */
 export const NEEDS_YOU_ACROSS_CONCURRENCY = 2;
 
-/** A member's asks across every project the viewer can see, each project read by `readNeedsYou` and kept by `asksOf`, so a project's section equals its home's Needs you. */
+/**
+ * The viewer's decisions across every project they can see, each project's the one Needs you read
+ * (`needs-you-decisions.ts:readNeedsYouDecisions`), so /attention counts what each project's own
+ * Needs you page and Dashboard count (REQ-48 BC-11). A project nothing waits in is left out.
+ */
 export async function readNeedsYouAcross(
   userId: string,
   agency: ActorAgency,
   now: Date = new Date(),
-): Promise<NeedsYouProjectItem[]> {
+): Promise<NeedsYouProjectDecisions[]> {
   const ids = await loadVisibleProjectIds(userId);
   if (ids.length === 0) return [];
   const names = await db
@@ -45,11 +51,24 @@ export async function readNeedsYouAcross(
   const limiter = createLimiter(NEEDS_YOU_ACROSS_CONCURRENCY);
   const perProject = await Promise.all(
     names.map((p) =>
-      limiter.run(async () => {
+      limiter.run(async (): Promise<NeedsYouProjectDecisions[]> => {
         const access = await effectiveProjectRole(userId, p.id);
         if (!access || !holds(access, 'project.read')) return [];
-        const read = await readNeedsYou(p.id, needsYouViewerOf(access, userId, agency), now);
-        return asksOf(read.items).map((i) => ({ ...i, projectSlug: p.slug, projectName: p.name }));
+        const read = await readNeedsYouDecisions(
+          p.id,
+          needsYouViewerOf(access, userId, agency),
+          access,
+          now,
+        );
+        if (read.total === 0) return [];
+        return [
+          {
+            projectSlug: p.slug,
+            projectName: p.name,
+            total: read.total,
+            decisions: read.decisions.slice(0, NEEDS_YOU_PERSON_CAP),
+          },
+        ];
       }),
     ),
   );

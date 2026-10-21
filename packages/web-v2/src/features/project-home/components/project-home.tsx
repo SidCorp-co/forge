@@ -7,6 +7,7 @@
 import { NEEDS_YOU_PERSON_CAP } from "@forge/contracts/steward";
 import { DecisionList } from "@/features/needs-you";
 import { useNeedsYouDecisions } from "@/features/needs-you";
+import { approvalsHref } from "@/features/approvals";
 import { useProjectStatus } from "@/features/project-status";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
@@ -23,7 +24,7 @@ export function ProjectHome({ projectId, slug }: { projectId: string; slug: stri
       <section aria-label={t("home.needsYou")} data-testid="home-needs-you" className="min-w-0 lg:flex-1">
         <HomeSectionTitle count={decisionsQ.data?.total}>{t("home.needsYou")}</HomeSectionTitle>
         {decisionsQ.data ? (
-          <DecisionList read={decisionsQ.data} slug={slug} cap={NEEDS_YOU_PERSON_CAP} moreHref="/attention" />
+          <DecisionList read={decisionsQ.data} slug={slug} cap={NEEDS_YOU_PERSON_CAP} moreHref={approvalsHref(slug)} />
         ) : decisionsQ.isError ? (
           <p className="fg-caption text-danger" role="alert">
             {formatApiError(decisionsQ.error)}

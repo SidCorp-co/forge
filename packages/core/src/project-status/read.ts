@@ -43,8 +43,8 @@ import {
 import type { WaitingKind } from '@forge/contracts/standing';
 import {
   type AttentionRow,
-  decisionsOf,
   type NeedsYouViewer,
+  needsYouDecisionsOf,
   needsYouViewerOf,
   readAttention,
 } from '../development/index.js';
@@ -76,6 +76,8 @@ const byKey = (a: { key: string }, b: { key: string }) =>
 /** The reader: whom the needs-you rows name as You, and whose act a forecast's person leg is. */
 export interface StatusViewer extends NeedsYouViewer {
   canWrite: boolean;
+  /** What the viewer holds on the project: which waiting proposals are theirs to decide. */
+  access: ProjectAccess;
 }
 
 export const statusViewerOf = (
@@ -85,6 +87,7 @@ export const statusViewerOf = (
 ): StatusViewer => ({
   ...needsYouViewerOf(access, userId, agency),
   canWrite: holds(access, 'project.write'),
+  access,
 });
 
 const NO_PROGRESS: IssueProgress = { total: 0, shipped: 0, awaitingRelease: 0, toDo: 0 };
@@ -463,7 +466,7 @@ export async function readProjectStatus(
   ]);
   if (!head) throw new Error(`project status: project ${projectId} has no head row`);
   const { value: read, at } = attention;
-  const { owed } = await decisionsOf(projectId, read);
+  const decisions = await needsYouDecisionsOf(projectId, viewer, viewer.access, read);
   const scopes = new Map(line.requirements.map((s) => [s.key, s]));
   const delivery = new Map(line.requirements.map((s) => [s.key, s.delivery]));
   const moved = new Map(line.requirements.map((s) => [s.key, s.moved]));
@@ -478,11 +481,7 @@ export async function readProjectStatus(
     // what is stuck and what the viewer owes lead (REQ-48); then the small sections, and the long
     // lists last, for the reader a cap cuts short
     stuck: stuckOf(standings.value, head.slug, standings.at),
-    needsYou: needsYouOf(
-      owed.map((o) => o.decision),
-      head.slug,
-      at,
-    ),
+    needsYou: needsYouOf(decisions, head.slug, at),
     nextRelease: nextReleaseOf(read.releases, line.coming.draft, line.coming.asOf),
     inFlight: inFlightOf(read.issues, at),
     late: lateOf(line.coming, feedback, {

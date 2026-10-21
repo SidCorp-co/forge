@@ -47,6 +47,11 @@ const iss451: NeedsYouDecision = {
 		}),
 	],
 	touchedAt: "2026-10-07T17:00:00.000Z",
+	stuck: false,
+	dueAt: null,
+	id: "question:q-1",
+	topic: "question",
+	proposal: null,
 };
 
 describe("a decision shows its question, a recommended answer and a button (BC-2)", () => {

@@ -45,6 +45,9 @@ const decision = (key: string, group: "answer" | "approve", question: string) =>
   touchedAt: "2026-10-08T10:00:00.000Z",
   stuck: false,
   dueAt: null,
+  id: `question:${key}`,
+  topic: "question",
+  proposal: null,
 });
 const DECISIONS = needsYouDecisionsSchema.parse({
   generatedAt: "2026-10-09T12:00:00.000Z",

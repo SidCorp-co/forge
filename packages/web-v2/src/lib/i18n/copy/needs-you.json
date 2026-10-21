@@ -16,7 +16,8 @@
     "needsYou.decisions.leftOut": "Left out, not decisions: {list}.",
     "needsYou.decisions.reason.own_work": "{n} of your own drafts to finish",
     "needsYou.decisions.reason.work": "{n} tasks to carry out",
-    "needsYou.decisions.reason.awaiting_proposal": "{n} drafts nobody has proposed merging or dropping yet"
+    "needsYou.decisions.reason.awaiting_proposal": "{n} drafts nobody has proposed merging or dropping yet",
+    "needsYou.decisions.reason.unreadable": "{n} not readable here, each opens on its own page"
   },
   "vi": {
     "needs.lastActivity": "Hoạt động gần nhất {at}",

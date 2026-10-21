@@ -99,51 +99,6 @@ export function repinDecision(
   };
 }
 
-/** A suggestion a person approves under a switch the steward does not hold: a breakdown, a revision. */
-export function suggestionDecision(
-  row: AttentionRow,
-  area: NeedsYouAreaKey,
-  projectId: string,
-  suggestion: { id: string; kind: string },
-): Built {
-  const params = { projectId, suggestionId: suggestion.id };
-  const what = suggestion.kind === 'breakdown' ? 'the breakdown' : 'the suggested revision';
-  return {
-    questionId: null,
-    decision: {
-      group: 'approve',
-      area,
-      entity: row.entity,
-      key: row.key,
-      title: clip(row.title, 500),
-      opens: { kind: 'requirement', key: row.key },
-      question: `Accept ${what} of ${row.key}, or reject it with a reason?`,
-      recommended: null,
-      noRecommendation: `Whether ${what} fits is yours to judge on its page; no rule recommends either.`,
-      answers: [
-        answer({
-          id: 'accept',
-          label: 'Accept',
-          act: 'suggestion.accept',
-          path: filled('suggestion.accept', params),
-          body: {},
-          effect: `${what[0]?.toUpperCase()}${what.slice(1)} is applied to ${row.key}.`,
-        }),
-        answer({
-          id: 'reject',
-          label: 'Reject with a reason',
-          act: 'suggestion.reject',
-          path: filled('suggestion.reject', params),
-          body: {},
-          needsReason: true,
-          effect: 'It is set aside with your reason.',
-        }),
-      ],
-      touchedAt: row.touchedAt,
-    },
-  };
-}
-
 /** A requirement whose only issues are drafts: take each on, so the master can build it. */
 export function admitDecision(
   row: AttentionRow,
