@@ -28,20 +28,19 @@ interface ProjectInfo {
 }
 
 /**
- * The projects a listed room is about, by name, from its own scope: the same names whichever project's
- * list the row came through (ISS-1229 r33, judge-92). A project with no name to hand is left out.
+ * The projects a listed room is about, by name, from its own scope and in its order, which the room's
+ * About line takes too: the same names whichever project's list the row came through (ISS-1229 r33,
+ * judge-92). A project with no name to hand is left out.
  */
 export function projectsOfRow(
   row: Pick<ListedConversation, "scope" | "projectId">,
   nameOf: (projectId: string) => ProjectInfo | undefined,
 ): ProjectInfo[] {
   const ids = row.scope.length > 0 ? row.scope : [row.projectId];
-  return ids
-    .flatMap((id) => {
-      const named = nameOf(id);
-      return named ? [named] : [];
-    })
-    .sort((a, b) => a.name.localeCompare(b.name));
+  return ids.flatMap((id) => {
+    const named = nameOf(id);
+    return named ? [named] : [];
+  });
 }
 
 const namesOf = (projects: readonly ProjectInfo[]): string => {

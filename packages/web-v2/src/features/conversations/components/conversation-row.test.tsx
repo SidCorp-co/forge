@@ -82,7 +82,7 @@ describe("a row of the conversation history", () => {
       return [open.getAttribute("aria-label"), caption];
     });
     expect(captions[0]).toEqual(captions[1]);
-    expect(captions[0]?.[0]).toBe(`Open ${row.title} in Desk and Ledger`);
-    expect(captions[0]?.[1]).toContain("Desk and Ledger");
+    expect(captions[0]?.[0]).toBe(`Open ${row.title} in Ledger and Desk`);
+    expect(captions[0]?.[1]).toContain("Ledger and Desk");
   });
 });
