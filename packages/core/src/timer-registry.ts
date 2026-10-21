@@ -179,7 +179,7 @@ function stewardTimers(): Timer[] {
       everyMs: 30_000,
       run: logged(
         'steward-dispatch: ran',
-        () => dispatchStewardRuns(),
+        () => dispatchStewardRuns(new Date(), { wait: false }),
         (r) => {
           const { started, settled } = r as { started: number; settled: number };
           return started > 0 || settled > 0;

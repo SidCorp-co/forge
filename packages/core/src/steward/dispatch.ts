@@ -1,7 +1,9 @@
-// The `steward-dispatch` process timer (REQ-48 BC-1): every 30 seconds it starts the queued runs whose
-// debounce has passed, so a trigger is acted on within 2 minutes and 30 seconds, and it ends the runs
-// nothing else will (a cancelled job sends no event; a gateway run whose process died). A run takes
-// its acts in `STEWARD_ACTS` order: the gateway acts as turns, then its runner acts as one job.
+// The `steward-dispatch` process timer (REQ-48 BC-1): every 30 seconds it takes up the queued runs
+// whose debounce has passed, a handoff event's run ahead of the standing's backlog and several at
+// once, so a trigger is acted on within 2 minutes and 30 seconds however long the backlog, and it
+// ends the runs nothing else will (a cancelled job sends no event; a gateway run whose process died).
+// A run takes its acts in `STEWARD_ACTS` order: the gateway acts as turns, then its runner acts as
+// one job.
 
 import { randomUUID } from 'node:crypto';
 import {
@@ -14,7 +16,7 @@ import { logger } from '../lib/logger.js';
 import { stewardAccountOf } from './account.js';
 import { enqueueStewardJob, revokeJobCredential, stewardJobLive } from './job.js';
 import { budgetNote } from './note.js';
-import { refusalOf } from './policy.js';
+import { admitRun, slotsFor, stewardStanceOf } from './policy.js';
 import { openStandings } from './ports.js';
 import {
   claimDueRuns,
@@ -27,8 +29,8 @@ import {
 import { actsOwedAt, subjectOf } from './subjects.js';
 import { runGatewayAct } from './turn.js';
 
-/** How many runs one tick starts; the rest wait for the next. */
-const CLAIM_LIMIT = 10;
+/** How many runs this core takes up at once, across its projects. */
+const CORE_SLOTS = 16;
 /** How long a run behind its project's live steward job waits before it is tried again. */
 const JOB_LIVE_RETRY_MS = 60_000;
 
@@ -89,17 +91,17 @@ export async function runOne(run: RunRow, now: Date): Promise<RunOutcome> {
     await endRun(run.id, { state: 'skipped', reason: 'basis_unchanged' });
     return 'ended';
   }
-  const refused = await refusalOf(run.projectId, acts, now);
+  const gateway = acts.filter((a) => STEWARD_ACT_RUNTIME[a] === 'gateway_turn');
+  const runner = acts.filter((a) => STEWARD_ACT_RUNTIME[a] === 'runner_job');
+  // one steward job live per project: a run owing one waits, before it spends a turn
+  if (runner.length > 0 && (await stewardJobLive(run.projectId))) return 'job_live';
+  const refused = await admitRun(run, acts, now);
   if (refused) {
     await endRun(run.id, { state: 'skipped', reason: refused });
     if (refused === 'budget_spent') await budgetNote(run, standing);
     return 'ended';
   }
   await stampRun(run.id, { actsToRun: acts, basis: standing?.basis ?? run.basis });
-  const gateway = acts.filter((a) => STEWARD_ACT_RUNTIME[a] === 'gateway_turn');
-  const runner = acts.filter((a) => STEWARD_ACT_RUNTIME[a] === 'runner_job');
-  // one steward job live per project: a run owing one waits, before it spends a turn
-  if (runner.length > 0 && (await stewardJobLive(run.projectId))) return 'job_live';
   const ran = gateway.length > 0 ? await runGatewayActs(run, gateway, standing) : null;
   if (ran && ran.failures.length > 0) {
     await endRun(run.id, { state: 'failed', failure: ran.failures.join('\n'), kind: ran.kind });
@@ -131,23 +133,57 @@ export async function settleJobRun(run: RunRow, jobStatus: string | null): Promi
   await endRun(run.id, { state: 'failed', failure, kind: 'error' });
 }
 
+/** The runs this core has taken up and not yet finished, by run id, with the project each is of. */
+const inFlight = new Map<string, string>();
+
+/** One claimed run taken as far as it goes, its failure ended on the run rather than thrown. */
+async function takeUp(run: RunRow, now: Date): Promise<void> {
+  try {
+    if ((await runOne(run, now)) === 'job_live') await requeueRun(run.id, JOB_LIVE_RETRY_MS);
+  } catch (err) {
+    logger.error({ err, runId: run.id, subject: run.subjectKey }, 'steward: a run failed');
+    await endRun(run.id, {
+      state: 'failed',
+      failure: err instanceof Error ? err.message : String(err),
+      kind: 'error',
+    });
+  } finally {
+    inFlight.delete(run.id);
+  }
+}
+
+/**
+ * Settle the runs nothing else ends, then take up the due runs this core has slots for: up to
+ * `CORE_SLOTS` at once, and per project the slots its daily budget sizes (`policy.ts:slotsFor`).
+ * A run beyond its project's slots goes back to the queue, due now. The timer does not wait for the
+ * runs it took up (`wait: false`), so a long turn never holds the next tick's claim; a caller that
+ * reads what the runs did waits for them.
+ */
 export async function dispatchStewardRuns(
   now = new Date(),
+  opts: { wait?: boolean } = {},
 ): Promise<{ started: number; settled: number }> {
   const stranded = await runsToSettle(now);
-  for (const { run, jobStatus } of stranded) await settleJobRun(run, jobStatus);
-  const claimed = await claimDueRuns(now, CLAIM_LIMIT);
-  for (const run of claimed) {
-    try {
-      if ((await runOne(run, now)) === 'job_live') await requeueRun(run.id, JOB_LIVE_RETRY_MS);
-    } catch (err) {
-      logger.error({ err, runId: run.id, subject: run.subjectKey }, 'steward: a run failed');
-      await endRun(run.id, {
-        state: 'failed',
-        failure: err instanceof Error ? err.message : String(err),
-        kind: 'error',
-      });
-    }
+  for (const { run, jobStatus } of stranded) {
+    if (!inFlight.has(run.id)) await settleJobRun(run, jobStatus);
   }
-  return { started: claimed.length, settled: stranded.length };
+  const claimed = await claimDueRuns(now, CORE_SLOTS - inFlight.size);
+  const launched: Promise<void>[] = [];
+  const slots = new Map<string, number>();
+  for (const run of claimed) {
+    let free = slots.get(run.projectId);
+    if (free === undefined) {
+      const busy = [...inFlight.values()].filter((p) => p === run.projectId).length;
+      free = slotsFor((await stewardStanceOf(run.projectId)).budget) - busy;
+    }
+    if (free <= 0) {
+      await requeueRun(run.id, 0);
+      continue;
+    }
+    slots.set(run.projectId, free - 1);
+    inFlight.set(run.id, run.projectId);
+    launched.push(takeUp(run, now));
+  }
+  if (opts.wait !== false) await Promise.all(launched);
+  return { started: launched.length, settled: stranded.length };
 }

@@ -2,6 +2,7 @@ import {
   AUTO_RETRY_PAYLOAD_KEY,
   type AutoRetryPayload,
   FAILOVER_MAX_ATTEMPTS,
+  POOL_UNRETRIED_JOB_TYPES,
   RETRY_MAX_ATTEMPTS,
   readAutoRetryPayload,
 } from '@forge/contracts/jobs';
@@ -307,6 +308,10 @@ export async function scheduleAutoRetryWithVerify(
 ): Promise<RetryOutcome> {
   const classified = await classifyAndPersist(job, reason);
   if (job.cancellationRequested) return { scheduled: false, reason: 'cancellation_requested' };
+  if (Object.hasOwn(POOL_UNRETRIED_JOB_TYPES, job.type)) {
+    logger.info({ jobId: job.id, type: job.type }, 'retry: its owner retries this type, not the pool');
+    return { scheduled: false, reason: 'owner_retries' };
+  }
   await bumpSession(job, 'recoveryStats', (id) => incrementRecoveryStats(id, classified.kind));
   const settled = await settleByVerdict(job);
   if (settled) return settled;

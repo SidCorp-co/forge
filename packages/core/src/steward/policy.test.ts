@@ -8,9 +8,10 @@ import { describe, expect, it, vi } from 'vitest';
 vi.mock('../project-config/index.js', () => ({ readProjectDocument: async () => null }));
 vi.mock('./runs-store.js', () => ({
   spentSince: async () => ({ gatewayTurns: 0, runnerJobs: 0 }),
+  markStarted: async () => undefined,
 }));
 
-const { costOf, fits, utcDayStart } = await import('./policy.js');
+const { costOf, fits, slotsFor, utcDayStart } = await import('./policy.js');
 
 describe('the steward cost guard', () => {
   it('prices a gateway turn per gateway act and one job for all runner acts', () => {
@@ -34,6 +35,14 @@ describe('the steward cost guard', () => {
     expect(fits({ gatewayTurns: 0, runnerJobs: 0 }, { gatewayTurns: 0, runnerJobs: 0 }, one)).toBe(
       false,
     );
+  });
+
+  it('takes up runs at once by the budget: a slot per 25 daily turns, at least 1 and at most 8', () => {
+    expect(slotsFor(STEWARD_DAILY_BUDGET)).toBe(8);
+    expect(slotsFor({ gatewayTurns: 50, runnerJobs: 10 })).toBe(2);
+    expect(slotsFor({ gatewayTurns: 24, runnerJobs: 10 })).toBe(1);
+    expect(slotsFor({ gatewayTurns: 0, runnerJobs: 0 })).toBe(1);
+    expect(slotsFor({ gatewayTurns: 10_000, runnerJobs: 10 })).toBe(8);
   });
 
   it("counts the day from UTC midnight, whatever the box's zone", () => {

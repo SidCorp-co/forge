@@ -8,8 +8,10 @@ import {
   type StewardAct,
   type StewardSkipReason,
 } from '@forge/contracts/steward';
+import { db, type Tx } from '../db/client.js';
+import { lockXact } from '../lib/advisory-lock.js';
 import { readProjectDocument } from '../project-config/index.js';
-import { spentSince } from './runs-store.js';
+import { markStarted, spentSince } from './runs-store.js';
 
 export interface StewardBudget {
   gatewayTurns: number;
@@ -58,9 +60,35 @@ export async function refusalOf(
   projectId: string,
   acts: readonly StewardAct[],
   now: Date,
+  opts: { exceptRunId?: string; tx?: Tx } = {},
 ): Promise<StewardSkipReason | null> {
   const stance = await stewardStanceOf(projectId);
   if (!stance.enabled) return 'steward_off';
-  const spent = await spentSince(projectId, utcDayStart(now));
+  const spent = await spentSince(projectId, utcDayStart(now), opts);
   return fits(stance.budget, spent, costOf(acts)) ? null : 'budget_spent';
 }
+
+/**
+ * Take the claimed run up, or say why it may not run: the budget read and the start stamped under
+ * the project's lock, so runs of one project taken up at once each see the others' cost.
+ */
+export async function admitRun(
+  run: { id: string; projectId: string },
+  acts: readonly StewardAct[],
+  now: Date,
+): Promise<StewardSkipReason | null> {
+  return db.transaction(async (tx) => {
+    await lockXact(tx, 'stewardBudget', run.projectId);
+    const refused = await refusalOf(run.projectId, acts, now, { exceptRunId: run.id, tx });
+    if (!refused) await markStarted(run.id, new Date(), tx);
+    return refused;
+  });
+}
+
+/** How many runs of one project are taken up at once: a slot per 25 gateway turns of its daily budget, 1 to 8. */
+export function slotsFor(budget: StewardBudget): number {
+  return Math.max(1, Math.min(STEWARD_MAX_SLOTS, Math.floor(budget.gatewayTurns / TURNS_PER_SLOT)));
+}
+
+const TURNS_PER_SLOT = 25;
+export const STEWARD_MAX_SLOTS = 8;
