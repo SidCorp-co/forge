@@ -21,9 +21,12 @@ function listed(names: string[]): string {
  * above for a provider that takes one; for GitHub, a fresh App install from a project still bound to
  * it, which core turns into this connection again; otherwise nothing, and the line says so.
  */
-export function turnsBackOn(connection: ConnectionSummary, boundProjects: string[]): string {
+export function turnsBackOn(connection: ConnectionSummary, boundProjects: string[] | null): string {
   if (providerModule(connection.provider)?.secretField !== null)
     return "This connection holds no key. Saving a new key above turns it back on.";
+  // Unread is not none: which projects are bound decides what turns it on, so nothing is claimed yet.
+  if (boundProjects === null)
+    return "This connection holds no key. What turns it back on is said once its projects are read.";
   if (boundProjects.length > 0)
     return `This connection holds no key. Installing the GitHub App again from the Integrations tab of ${listed(boundProjects)} turns it back on.`;
   return "This connection holds no key and no project is bound to it, so nothing can turn it back on. Clear it from the list.";
@@ -38,8 +41,8 @@ export function DangerZone({
 }: {
   connection: ConnectionSummary;
   affectedProjects: string[];
-  /** Every project bound to this connection, by name, its binding on or off. */
-  boundProjects: string[];
+  /** Every project bound to this connection, by name, its binding on or off; null until they are read. */
+  boundProjects: string[] | null;
   onRemoved: () => void;
 }) {
   const update = useUpdateConnection();
@@ -73,7 +76,12 @@ export function DangerZone({
           // Core refuses to turn a keyless connection back on (CONNECTION_HAS_NO_KEY).
           <span className="fg-body-sm text-muted">{turnsBackOn(connection, boundProjects)}</span>
         )}
-        <Button variant="ghost" size="sm" onClick={() => setConfirming((v) => !v)}>
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={removed && boundProjects === null}
+          onClick={() => setConfirming((v) => !v)}
+        >
           {removed ? "Clear from list…" : "Remove…"}
         </Button>
       </div>
@@ -81,7 +89,7 @@ export function DangerZone({
         <div className="flex flex-col gap-2 border-y border-line py-2.5">
           <p className="fg-body-sm text-fg">
             {removed
-              ? `Clearing this connection deletes it for good${boundProjects.length > 0 ? ", with every project's binding to it" : ""}.`
+              ? `Clearing this connection deletes it for good${boundProjects?.length ? `, with its binding to ${listed(boundProjects)}` : ""}.`
               : `${
                   affectedProjects.length > 0
                     ? `Removing this connection stops credential resolution for ${affectedProjects.length} project${affectedProjects.length === 1 ? "" : "s"}: ${affectedProjects.join(", ")}. Their integrations stop working on the next dispatch.`

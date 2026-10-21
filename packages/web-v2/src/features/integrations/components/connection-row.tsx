@@ -102,7 +102,9 @@ function RemoveButton({ connection }: { connection: ConnectionDirectoryItem }) {
     <span className="flex items-center gap-2">
       <span className="fg-body-sm text-muted">
         {removed
-          ? "Clear it from the list?"
+          ? count > 0
+            ? `Delete it for good, with its ${count} project binding${count > 1 ? "s" : ""}?`
+            : "Delete it for good?"
           : count > 0
             ? `Disconnects ${count} project${count > 1 ? "s" : ""}.`
             : "Delete it?"}

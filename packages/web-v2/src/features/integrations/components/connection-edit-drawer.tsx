@@ -389,10 +389,12 @@ export function ConnectionEditDrawer({
     const ids = [...new Set(bindings.filter((b) => b.active).map((b) => b.projectId))];
     return ids.map((id) => byId.get(id) ?? id);
   }, [bindings, projects]);
+  const bindingsRead = bindingsQ.isSuccess;
   const boundProjects = useMemo(() => {
+    if (!bindingsRead) return null;
     const byId = new Map(projects.map((p) => [p.id, p.name] as const));
     return [...new Set(bindings.map((b) => b.projectId))].map((id) => byId.get(id) ?? id);
-  }, [bindings, projects]);
+  }, [bindings, projects, bindingsRead]);
 
   if (!connection) return null;
 

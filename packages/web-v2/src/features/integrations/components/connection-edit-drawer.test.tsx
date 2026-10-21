@@ -13,6 +13,7 @@ import { ApiError } from "@/lib/api/client";
 
 let bindingsError: unknown = null;
 let bindingsData: unknown;
+let bindingsPending = false;
 const updateMutate = vi.fn();
 const removeMutate = vi.fn();
 
@@ -20,7 +21,8 @@ vi.mock("../hooks", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../hooks")>()),
   useConnectionBindings: () => ({
     data: bindingsData,
-    isLoading: false,
+    isSuccess: bindingsError === null && !bindingsPending,
+    isLoading: bindingsPending,
     isError: bindingsError !== null,
     error: bindingsError,
     refetch: vi.fn(),
@@ -68,6 +70,7 @@ function mount(over: Partial<ConnectionDirectoryItem> = {}) {
 beforeEach(() => {
   bindingsError = null;
   bindingsData = undefined;
+  bindingsPending = false;
   updateMutate.mockClear();
   removeMutate.mockClear();
 });
@@ -219,6 +222,31 @@ describe("the drawer's Danger zone over a connection that was removed", () => {
       screen.getByText(
         "This connection holds no key and no project is bound to it, so nothing can turn it back on. Clear it from the list.",
       ),
+    ).toBeInTheDocument();
+  });
+
+  // Whole-set review F1: an unread binding list is not an empty one.
+  it("claims nothing and offers no Clear while the projects bound to a removed GitHub connection are unread", () => {
+    for (const unread of [() => { bindingsPending = true; }, () => { bindingsError = new ApiError(500, "Boom.", "INTERNAL_ERROR"); }]) {
+      cleanup();
+      bindingsPending = false;
+      bindingsError = null;
+      unread();
+      mount({ ...(mine as object), provider: "github", active: false, hasSecrets: false });
+      expect(screen.queryByText(/no project is bound/)).toBeNull();
+      expect(
+        screen.getByText("This connection holds no key. What turns it back on is said once its projects are read."),
+      ).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Clear from list…" })).toBeDisabled();
+    }
+  });
+
+  it("names the projects a clear deletes the binding of", () => {
+    bindingsData = { items: [{ id: "b1", projectId: "p-store", active: false, bindingActive: true, role: "service", stages: [] }] };
+    mount({ ...(mine as object), provider: "postman", active: false, hasSecrets: false });
+    fireEvent.click(screen.getByRole("button", { name: "Clear from list…" }));
+    expect(
+      screen.getByText("Clearing this connection deletes it for good, with its binding to Storefront."),
     ).toBeInTheDocument();
   });
 

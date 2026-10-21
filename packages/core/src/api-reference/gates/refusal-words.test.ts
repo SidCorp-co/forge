@@ -137,14 +137,36 @@ function literalAt(text: string, from: number): string {
 
 const STRING = /^(['"`])((?:\\.|(?!\1).)*)\1$/s;
 
-/** A written value as the envelope would read it: a literal's words, anything computed a door's phrase. */
+/** A computed value the gate cannot read the words of: the site owes a case of its own. */
+class Computed {
+  constructor(readonly expression: string) {}
+}
+
+/** A computation that names words by what it reads: a message, an error, a detail or a reason. */
+const NAMES_WORDS = /(?:[Mm]essage|[Ee]rror|[Dd]etail|[Rr]eason)(?:\([^)]*\))?$/;
+
+/**
+ * A written value as the envelope would read it: a literal's words, a computation that names words
+ * a door's phrase, and any other computation a `Computed` the walk reports rather than vouches for.
+ */
 function wordsOf(value: string): unknown {
   const v = value.trim();
   const literal = STRING.exec(v);
   if (literal) return (literal[2] ?? '').replace(/\$\{[^}]*\}/g, 'X1');
   if (v.startsWith('[')) return [wordsOf(v.slice(1, -1))];
   if (v.startsWith('{')) return detailsOf(v);
-  return 'is refused for X1';
+  // `err.detail ?? 'a fallback'`: words on either side, so words whichever is taken.
+  const sides = v.split('??').map((side) => side.trim());
+  const words = sides.every((side) => STRING.test(side) || NAMES_WORDS.test(side));
+  return words ? 'is refused for X1' : new Computed(v);
+}
+
+function computedIn(details: unknown): string[] {
+  if (details instanceof Computed) return [details.expression];
+  if (Array.isArray(details)) return details.flatMap(computedIn);
+  if (details !== null && typeof details === 'object')
+    return Object.values(details).flatMap(computedIn);
+  return [];
 }
 
 /** The details a `badRequest({ … })` literal hands the envelope, its spreads opened. */
@@ -214,6 +236,13 @@ function withSchemas(file: string, text: string): string {
   return [text, ...imported].join('\n');
 }
 
+describe('the walk over handler-worded records', () => {
+  it('reports a computed value no name says holds words, rather than vouching for it', () => {
+    const literal = "{ count: computedCount, reason: err.reason, note: x.detail ?? 'none' }";
+    expect(computedIn(detailsOf(literal))).toEqual(['computedCount']);
+  });
+});
+
 // ISS-1421 r21 — judge-89 read {"code":"required"} in the details of a message that said "The field
 // code is required.", and a field `message` named where the route's field is `prompt`.
 describe('every refusal a handler words in a record, as the error envelope answers it', () => {
@@ -222,6 +251,11 @@ describe('every refusal a handler words in a record, as the error envelope answe
     expect(written.length).toBeGreaterThan(40);
     const wrong: string[] = [];
     for (const { file, text, details } of written) {
+      const unread = computedIn(details);
+      if (unread.length > 0) {
+        wrong.push(`${file}: ${unread.join(', ')} is computed, and no name says it holds words`);
+        continue;
+      }
       const mini = new Hono<{ Variables: RequestIdVars }>();
       mini.onError(errorHandler);
       mini.all('*', () => {
