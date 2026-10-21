@@ -1,9 +1,15 @@
+import { randomBytes } from 'node:crypto';
 import postgres from 'postgres';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { setup as globalSetup, teardown as globalTeardown } from '../helpers/global-setup.js';
 import { MIGRATIONS_FOLDER } from '../helpers/migrate.js';
-import { drainRetiredScratchDbs, retireScratchDb } from '../helpers/scratch-db.js';
-import { hashMigrations, sharedTemplateName } from '../helpers/shared-template.js';
+import {
+  bornAt,
+  drainRetiredScratchDbs,
+  retireScratchDb,
+  TEMPLATE_PREFIX,
+} from '../helpers/scratch-db.js';
+import { hashMigrations, sharedTemplateName, stamp } from '../helpers/shared-template.js';
 import { templateRow, useLockHolders } from '../helpers/shared-template-probe.js';
 
 // The real global setup and teardown against this run's own instance: which mode builds what, and
@@ -142,13 +148,41 @@ describe('global setup, run for real against this instance', () => {
       process.env.TEST_DATABASE_URL = adminUrl;
       process.env.TEST_TEMPLATE_MODE = 'sharde';
       const before = process.env.TEST_PG_TEMPLATE;
-      const count = async () =>
-        (await admin<{ n: number }[]>`SELECT count(*)::int AS n FROM pg_database`)[0]?.n;
-      const dbs = await count();
+      // Other files create and drop databases on this cluster in parallel, so only a name this setup
+      // would build counts: this content's shared template, or a private one minted during the call.
+      const shared = sharedTemplateName(hashMigrations(MIGRATIONS_FOLDER));
+      const from = Date.now();
+      const built = async () => {
+        const to = Date.now();
+        const rows = await admin<{ datname: string }[]>`
+          SELECT datname FROM pg_database WHERE datname LIKE ${`${TEMPLATE_PREFIX}%`}`;
+        return rows
+          .map((r) => r.datname)
+          .filter((name) => {
+            if (name === shared) return true;
+            const born = bornAt(name);
+            const stampOnly = /^[0-9a-z]+_[0-9a-f]{8}$/.test(name.slice(TEMPLATE_PREFIX.length));
+            return stampOnly && born !== null && born >= from && born <= to;
+          })
+          .sort();
+      };
+      const dbs = await built();
+      const planted = [
+        `test_case_${process.env.TEST_PG_RUN_TOKEN}_planted_${stamp()}`,
+        sharedTemplateName(randomBytes(12).toString('hex')),
+      ];
 
-      await expect(globalSetup(project)).rejects.toThrow(/TEST_TEMPLATE_MODE="sharde"/);
+      await Promise.all([
+        expect(globalSetup(project)).rejects.toThrow(/TEST_TEMPLATE_MODE="sharde"/),
+        ...planted.map((name) => admin.unsafe(`CREATE DATABASE "${name}"`)),
+      ]);
 
-      expect(await count()).toBe(dbs);
+      try {
+        expect(await built()).toEqual(dbs);
+      } finally {
+        for (const name of planted) retireScratchDb(adminUrl, name);
+        await drainRetiredScratchDbs(60_000);
+      }
       expect(process.env.TEST_PG_TEMPLATE).toBe(before);
     },
     SLOW,
