@@ -9,7 +9,7 @@ import { type ChatToolset, toolResultText } from './tools/mcp-adapter.js';
 
 const CLI_TOOL = 'forge';
 /** The tools that record a new item under a title: a retry naming the same title is the same record. */
-const RECORD_TOOLS: ReadonlySet<string> = new Set(['forge_feedback', 'forge_requirement_draft']);
+const RECORD_TOOLS: ReadonlySet<string> = new Set(['project_feedback', 'forge_requirement_draft']);
 const RESULT_CHARS = 300;
 const ARGUMENT_CHARS = 200;
 const LISTED_CALLS = 16;
@@ -32,7 +32,7 @@ const HELP_FLAG = /^(-h|--help)$/;
 const WRITE_TOOLS: ReadonlySet<string> = new Set([
   'forge_memory_note',
   'forge_preferences',
-  'forge_feedback',
+  'project_feedback',
   'forge_requirement_draft',
   'forge_requirement_revise',
   'forge_template_save',

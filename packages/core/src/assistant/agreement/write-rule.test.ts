@@ -72,7 +72,7 @@ describe('a REST write is held, passed or refused, and never let through unnamed
 describe('a tool call meets the same rule, read from the grant it declares', () => {
   it('holds the record tools and the forge CLI forms that write', () => {
     expect(
-      decideToolCall('forge_feedback', '{"kind":"bug","title":"x"}', 'projects:write'),
+      decideToolCall('project_feedback', '{"kind":"bug","title":"x"}', 'projects:write'),
     ).toEqual({ verdict: 'hold', kind: 'feedback' });
     expect(
       decideToolCall('forge', '{"argv":["issue","ISS-1","--set","priority=low"]}', null),

@@ -5,7 +5,7 @@
 import { describe, expect, it } from 'vitest';
 import { FEEDBACK_RECORD_VETS } from './tool.js';
 
-const vet = FEEDBACK_RECORD_VETS.forge_feedback;
+const vet = FEEDBACK_RECORD_VETS.project_feedback;
 const PROJECT = '6f0ee160-8432-4b84-98cf-956b6cd65a29';
 const said = (r: unknown) => JSON.stringify(r);
 

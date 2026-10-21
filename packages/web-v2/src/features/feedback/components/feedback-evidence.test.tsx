@@ -66,7 +66,7 @@ const view = (over: Partial<FeedbackView> = {}): FeedbackView =>
     whereSeen: null,
     duplicateOf: null,
     duplicates: [],
-    source: null,
+    origin: null,
     decisions: [],
     attachments: [],
     reporters: [],

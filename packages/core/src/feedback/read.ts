@@ -29,7 +29,6 @@ import { actorFor, holds, projectResource, requireCan } from '../permissions/ind
 import { rowIn as requirementRowIn } from '../requirements/index.js';
 import { feedbackEgress, type ReadDoor, WITHHELD } from './egress.js';
 import { linkedOf, summaryOf, viewerCanOf } from './list-read.js';
-import { sourceOf } from './relations.js';
 import { reportersOf } from './reporters.js';
 import { clarificationRefusal, redactedRefusal } from './rules.js';
 import { shipNoticeOf } from './ship-notice.js';
@@ -252,7 +251,6 @@ export async function detailAs(
     questions,
     pointing,
     [open],
-    source,
     reporters,
     messages,
     mergedAttachments,
@@ -285,7 +283,6 @@ export async function detailAs(
       .select({ n: count() })
       .from(suggestions)
       .where(and(eq(suggestions.feedbackId, row.id), eq(suggestions.status, 'proposed'))),
-    sourceOf(row.id),
     reportersOf(db, row),
     db
       .select()
@@ -341,8 +338,6 @@ export async function detailAs(
       whereSeen: withhold ? null : row.whereSeen,
       duplicateOf: root ? feedbackKey(root.fbSeq) : null,
       duplicates: pointing,
-      source:
-        source && withhold ? { agentReport: { ...source.agentReport, targetRef: null } } : source,
       decisions: decisions.map(
         (d): FeedbackDecisionView => ({
           decision: d.decision,

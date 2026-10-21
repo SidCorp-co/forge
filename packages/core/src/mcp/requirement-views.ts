@@ -8,7 +8,12 @@ import type {
   RequirementSummary,
 } from '@forge/contracts/requirements';
 import type { RunStanding } from '@forge/contracts/run-standing';
-import { type Progress, type ProgressWait, pausedWait, progressOf } from './product-progress.js';
+import {
+  type Progress,
+  type ProgressWait,
+  pausedWait,
+  progressOf,
+} from '../product-progress/index.js';
 
 /** Why a requirement with no issue has no estimate, by where it stands. */
 const NO_ISSUE: Record<RequirementState, string> = {

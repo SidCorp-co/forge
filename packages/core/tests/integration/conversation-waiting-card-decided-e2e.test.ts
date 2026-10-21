@@ -65,7 +65,7 @@ async function card(conversationId: string, status: Card, to: string, at: string
       (id, project_id, conversation_id, proposed_to, kind, form, call, summary, status, agreed_via,
        decided_by, decided_at, created_at)
     VALUES (${id}, ${projectId}, ${conversationId}, ${to}, 'feedback', 'tool',
-      ${JSON.stringify({ name: 'forge_feedback', arguments: '{}' })}::jsonb,
+      ${JSON.stringify({ name: 'project_feedback', arguments: '{}' })}::jsonb,
       ${JSON.stringify({ title: 'Feedback (bug): the dock loses a draft' })}::jsonb, ${status},
       ${agreed ? 'card' : null}, ${decided ? to : null}, ${decided ? at : null}, ${at})
   `);

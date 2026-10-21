@@ -1,8 +1,7 @@
-// one declaration of the automation read model (design automation rev 1, steps streak, settle,
-// needs_you and wait_triage; ISS-114): core derives every value below from the rows that own it, and
-// the web, MCP and the needs-you count read it, so no screen derives a schedule state of its own
+// one declaration of the automation read model (design automation rev 1, steps streak, settle and
+// needs_you; ISS-114): core derives every value below from the rows that own it, and the web, MCP
+// and the needs-you count read it, so no screen derives a schedule state of its own
 
-import type { AgentReportTriage, AgentReportView } from "./agent-reports.js";
 import type { Said } from "./said.js";
 import type {
 	ScheduleRunSkipReason,
@@ -27,22 +26,16 @@ export const SCHEDULE_STATES = [
 export type ScheduleState = (typeof SCHEDULE_STATES)[number];
 
 /** What a person owes automation, as needs-you names it (design automation rev 1, step needs_you). */
-export const AUTOMATION_ACTS = [
-	"triage_report",
-	"fix_schedule",
-	"reassign_owner",
-] as const;
+export const AUTOMATION_ACTS = ["fix_schedule", "reassign_owner"] as const;
 export type AutomationAct = (typeof AUTOMATION_ACTS)[number];
 
-/** Whom a schedule, fire or report waits on: the viewer, its owner, the admins or writers, where a
- *  filed report went, or nobody. `act` is the owed act's words (core `automation/standing.ts:ACT_SAID`). */
+/** Whom a schedule or fire waits on: the viewer, its owner, the admins or writers, or nobody.
+ *  `act` is the owed act's words (core `automation/standing.ts:ACT_SAID`). */
 export const AUTOMATION_WAITING_KINDS = [
 	"you",
 	"person",
 	"admins",
 	"writers",
-	"issue",
-	"feedback",
 	"none",
 ] as const satisfies readonly WaitingKind[];
 export type AutomationWaitingKind = (typeof AUTOMATION_WAITING_KINDS)[number];
@@ -64,14 +57,6 @@ export const FIRE_GROUPS = [
 	"failed_or_skipped",
 ] as const satisfies readonly StandingGroup[];
 export type FireGroup = (typeof FIRE_GROUPS)[number];
-
-export const REPORT_GROUPS = [
-	"needs_you",
-	"waiting",
-	"filed",
-	"closed",
-] as const satisfies readonly StandingGroup[];
-export type ReportGroup = (typeof REPORT_GROUPS)[number];
 
 export const SCHEDULE_GROUP_LABELS: StandingGroupLabels<ScheduleGroup> = {
 	needs_you: {
@@ -116,29 +101,8 @@ export const FIRE_GROUP_LABELS: StandingGroupLabels<FireGroup> = {
 	},
 };
 
-export const REPORT_GROUP_LABELS: StandingGroupLabels<ReportGroup> = {
-	needs_you: {
-		label: "Needs you",
-		tone: "you",
-		collapsed: false,
-	},
-	waiting: {
-		label: "Waiting for triage",
-		tone: "blocked",
-		collapsed: false,
-	},
-	filed: { label: "Filed", tone: "ready", collapsed: false },
-	closed: {
-		label: "Dismissed or duplicate",
-		tone: "done",
-		collapsed: true,
-	},
-};
-
 export const AUTOMATION_FIRES_DEFAULT = 50;
 export const AUTOMATION_FIRES_MAX = 200;
-/** Every report at triage new is served; of the triaged ones, the newest this many. */
-export const AUTOMATION_TRIAGED_REPORTS = 50;
 
 export interface AutomationPerson {
 	id: string;
@@ -185,9 +149,6 @@ export interface ScheduleStanding
 
 /** What a fire produced, each counted by its join to the fire, never by a stored total. */
 export interface FireProduced {
-	reports: number;
-	/** Of those, the ones still at triage new. */
-	newReports: number;
 	/** Steward actions proposed or applied, read through the fire's session. */
 	proposals: number;
 	issues: number;
@@ -219,18 +180,6 @@ export interface FireStanding
 	produced: FireProduced;
 }
 
-export interface ReportFireRef {
-	id: string;
-	scheduleId: string;
-	scheduleName: string;
-}
-
-export interface ReportStanding
-	extends AgentReportView,
-		Standing<ReportGroup, AutomationWaitingKind> {
-	fire: ReportFireRef | null;
-}
-
 export interface FireProposal {
 	fireId: string;
 	scheduleId: string;
@@ -250,20 +199,11 @@ export interface AutomationStandingResponse {
 	fires: FireStanding[];
 	firesTotal: number;
 	firesHasMore: boolean;
-	reports: ReportStanding[];
-	reportCounts: Record<AgentReportTriage, number>;
 	/** The proposals of the fires served, newest first. */
 	proposals: FireProposal[];
 }
 
 export interface FireProducedItems {
-	reports: Array<{
-		id: string;
-		summary: string;
-		kind: string;
-		severity: string;
-		triage: AgentReportTriage;
-	}>;
 	proposals: FireProposal[];
 	issues: Array<{ id: string; key: string; title: string; status: string }>;
 	runs: Array<{ id: string; kind: string; status: string }>;
@@ -281,16 +221,10 @@ export interface FireDetailResponse {
 	produced: FireProducedItems;
 }
 
-export interface ReportDetailResponse {
-	report: ReportStanding;
-}
-
 export interface ScheduleDetailResponse {
 	schedule: ScheduleStanding;
 	fires: Array<FireStanding & { output: string | null }>;
 	firesTotal: number;
 	firesHasMore: boolean;
-	/** Every report this schedule's fires filed. */
-	reports: ReportStanding[];
 	proposals: FireProposal[];
 }

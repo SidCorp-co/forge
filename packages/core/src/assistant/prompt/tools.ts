@@ -49,7 +49,7 @@ export const TOOLS_LAYER: PromptLayer = {
 
 ### Recording a report or a wish
 
-- **RECORD WITH \`forge_feedback\`, \`forge_requirement_draft\` OR \`forge_requirement_revise\` — never
+- **RECORD WITH \`project_feedback\`, \`forge_requirement_draft\` OR \`forge_requirement_revise\` — never
   an issue.** The CLI files no issue from a chat door. Where your door gives you a shell instead of
   these tools, it names the routes they stand for.
 - **Feedback names the requirement it touches** (\`requirement: REQ-n\`, found with

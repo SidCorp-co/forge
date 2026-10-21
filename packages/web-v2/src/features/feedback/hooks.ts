@@ -3,8 +3,16 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { feedbackForecastKey } from "@/features/forecast";
 import { recordingsKey, reproduceApi } from "@/features/previews";
 import { readOf, useWrite } from "@/lib/api/query-kit";
-import { feedbackApi } from "./api";
-import type { CreateFeedbackRequest, FeedbackAction, FeedbackMessageAudience, PromoteAgentReportRequest, SimilarFeedbackDraft } from "./types";
+import { feedbackApi, forgeFeedbackApi } from "./api";
+import type { CreateFeedbackRequest, FeedbackAction, FeedbackMessageAudience, ForgeFeedbackRequest, SimilarFeedbackDraft } from "./types";
+
+/** The signed-in person's feedback to Forge, whichever project it came from. */
+export const forgeFeedbackKeys = { mine: ["forge-feedback", "mine"] as const };
+
+export const useMyForgeFeedback = () => useQuery(readOf(forgeFeedbackKeys.mine, forgeFeedbackApi.mine));
+
+export const useSubmitForgeFeedback = () =>
+  useWrite((body: ForgeFeedbackRequest) => forgeFeedbackApi.submit(body), { touches: [forgeFeedbackKeys.mine] });
 
 /** While a reproduce recording is still taking batches the list is read again on this clock. */
 const RECORDING_POLL_MS = 10_000;
@@ -59,9 +67,6 @@ export const useAttachFeedback = (projectId: string) =>
     shows: ({ key }) => feedbackKeys.item(projectId, key),
     touches: touched(projectId),
   });
-
-export const usePromoteFeedback = (projectId: string) =>
-  useWrite((body: PromoteAgentReportRequest) => feedbackApi.promote(projectId, body), { touches: [...touched(projectId), ["agent-reports", projectId]] });
 
 /** A write to one item whose answer is the item as it reads next. */
 const useItemWrite = <V,>(projectId: string, key: string, write: (vars: V) => ReturnType<typeof feedbackApi.get>) =>

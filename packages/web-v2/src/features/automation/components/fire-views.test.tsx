@@ -37,7 +37,7 @@ const detail = (fire: Partial<FireDetailResponse["fire"]>): Pick<FireDetailRespo
       startedAt: AT,
       finishedAt: AT,
       durationSeconds: 1,
-      produced: { reports: 0, newReports: 0, proposals: 0, issues: 0, runs: 0, notifications: 0 },
+      produced: { proposals: 0, issues: 0, runs: 0, notifications: 0 },
       output: null,
       ...fire,
     },

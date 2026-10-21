@@ -24,7 +24,7 @@ import { needsViewer, type Standing } from '@forge/contracts/standing';
 import type { WorkflowHealth } from '@forge/contracts/workflow-health';
 import { automationViewerOf, readAutomationStanding } from '../automation/index.js';
 import { readContractStanding } from '../ecosystem/standing/read.js';
-import { listFeedbackAs } from '../feedback/list-read.js';
+import { listFeedbackAs } from '../feedback/list-page-read.js';
 import { listIssueStanding } from '../issues/standing-read.js';
 import { listReleases } from '../release-batch/release-read.js';
 import { listRequirementsAs } from '../requirements/read.js';
@@ -183,15 +183,6 @@ export async function readAttention(
           ...writtenTitle(s.name, null),
           standing: s,
           touchedAt: s.lastFire?.startedAt ?? s.createdAt,
-        }),
-      ),
-      ...automation.reports.map(
-        (r): AttentionRow => ({
-          entity: 'report',
-          key: r.id,
-          ...writtenTitle(r.summary, r.writtenLang),
-          standing: r,
-          touchedAt: r.createdAt,
         }),
       ),
     ],

@@ -155,7 +155,7 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:json:providerRef field:json:recommendedOptionId field:json:ref field:json:requirement
     field:json:resourceUuid field:json:run field:json:runId field:json:runIds field:json:runnerId
     field:json:sessionId field:json:slug field:json:sourceRef field:json:subjectId
-    field:json:targetProjectSlug field:json:targetRef field:json:templateId field:json:turnId
+    field:json:targetProjectSlug field:json:templateId field:json:turnId
     field:json:userId field:json:workflowId field:json:signalKey field:json:detectorKey
     field:json:operationId field:json:issuePrefix field:query:deploymentUuid field:query:target
     field:query:provider field:query:requestId field:json:reviewers field:json:teamReviewers`,
@@ -169,14 +169,14 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:json:releaseNotes field:json:soul field:json:summary field:json:text
     field:json:textContent field:json:title field:json:tldr field:json:why field:json:whereSeen
     field:json:raw field:json:localGuide field:json:skillMd field:json:decision
-    field:json:triage field:json:suggestion field:json:evidence field:json:emoji field:json:name
+    field:json:suggestion field:json:evidence field:json:emoji field:json:name
     field:json:displayName field:json:shortName field:json:request field:json:account`,
   'a structured part of a record core validates and stores; it admits nobody': words`
-    field:json:agentReport field:json:answers field:json:artifact field:json:attachments
+    field:json:answers field:json:artifact field:json:attachments
     field:json:awaitsDesign field:json:awaitsMerge field:json:bindings field:json:block field:json:blocker
     field:json:build field:json:capabilities field:json:carried field:json:category
     field:json:changes field:json:checklist field:json:checkpoint field:json:checks
-    field:json:codes field:json:color field:json:config field:json:contract field:json:contracts
+    field:json:clientVersion field:json:codes field:json:color field:json:config field:json:contract field:json:contracts
     field:json:createIssue field:json:criteria field:json:cron field:json:designs
     field:json:dialog field:json:diff field:json:disk field:json:document field:json:drift
     field:json:ecosystem field:json:edges field:json:events field:json:expect field:json:facts
@@ -186,7 +186,7 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:json:mergeRefused field:json:merged field:json:messages field:json:metadata
     field:json:mime field:json:model field:json:modules field:json:names field:json:needed
     field:json:needs field:json:node field:json:options field:json:params field:json:path
-    field:json:paths field:json:pattern field:json:payload field:json:people field:json:phase
+    field:json:patch field:json:paths field:json:pattern field:json:payload field:json:people field:json:phase
     field:json:picture field:json:plugins field:json:pool field:json:presence field:json:probe
     field:json:probes field:json:record field:json:relations field:json:release
     field:json:salvage field:json:scope field:json:screen field:json:script field:json:semantic

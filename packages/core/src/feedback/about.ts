@@ -1,11 +1,10 @@
-import type { AgentReportFeedbackLink } from '@forge/contracts/agent-reports';
-import { type FeedbackSummary, feedbackKey } from '@forge/contracts/feedback';
+import type { FeedbackSummary } from '@forge/contracts/feedback';
 import { inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { feedback } from '../db/schema-feedback.js';
 import { dataPolicyOf } from '../lib/data-egress.js';
 import { feedbackEgress, type ReadDoor } from './egress.js';
-import { linkedOf, phaseIn, routeView, summaryOf, viewerCanIn } from './list-read.js';
+import { linkedOf, summaryOf, viewerCanIn } from './list-read.js';
 import type { FeedbackActor } from './read.js';
 
 // Feedback read from another entity's page (a requirement's rail) passes the same egress
@@ -32,36 +31,5 @@ export async function summariesAs(
   return shown(
     mine.map((r) => summaryOf(r, linked, viewer, withhold, can)),
     'feedback about this requirement',
-  );
-}
-
-export async function reportLinksOf(
-  projectId: string,
-  ids: readonly string[],
-): Promise<Map<string, AgentReportFeedbackLink>> {
-  if (ids.length === 0) return new Map();
-  const rows = await db
-    .select()
-    .from(feedback)
-    .where(inArray(feedback.id, [...ids]));
-  const linked = await linkedOf(projectId, rows);
-  return new Map(
-    rows.map((r) => {
-      const route = routeView(r, linked);
-      return [
-        r.id,
-        {
-          id: r.id,
-          key: feedbackKey(r.fbSeq),
-          phase: phaseIn(r, linked),
-          route: route
-            ? {
-                route: route.route,
-                carriers: route.carriers.flatMap((c) => (c.key ? [c.key] : [])),
-              }
-            : null,
-        },
-      ];
-    }),
   );
 }

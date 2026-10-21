@@ -30,7 +30,7 @@ import { issueHref } from "@/lib/routes/issues";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import { said } from "@/lib/i18n/said";
 import { useFireDetail } from "../hooks";
-import { fireHref, reportHref, scheduleHref, sessionHref } from "@/lib/routes/automation";
+import { fireHref, scheduleHref, sessionHref } from "@/lib/routes/automation";
 import type { FireDetailResponse, FireStanding } from "../types";
 import { fireWhy, producedLine, type RowCtx, shortId } from "../view";
 import { formatDurationSec } from "@/lib/i18n/format";
@@ -221,29 +221,12 @@ const FIRE_TABS = ["produced", "output"] as const;
 
 function Produced({ d, slug }: { d: FireDetailResponse; slug: string }) {
   const t = useCopy();
-  const language = useInterfaceLanguage();
   const time = useTimeFormat();
   const p = d.produced;
-  const empty = !p.reports.length && !p.issues.length && !p.proposals.length && !p.runs.length && !p.notifications.length;
+  const empty = !p.issues.length && !p.proposals.length && !p.runs.length && !p.notifications.length;
   if (empty) return <FactsEmpty>{t("schedules.fire.nothing")}</FactsEmpty>;
   return (
     <div className="grid gap-8" data-testid="fire-produced-items">
-      {p.reports.length ? (
-        <section>
-          <ViewHeading right={<span className="text-13 text-muted">{p.reports.length}</span>}>{t("schedules.fire.reports")}</ViewHeading>
-          <ul className="border-t border-line-subtle">
-            {p.reports.map((r) => (
-              <li key={r.id} className="flex flex-wrap items-center gap-2 border-b border-line-subtle py-2 text-13">
-                <StatusBadge family="reportTriage" value={r.triage} />
-                <Link href={reportHref(slug, r.id)} className="text-link hover:underline">
-                  {r.summary}
-                </Link>
-                <span className="text-subtle">{enumLabel("agentReportKind", r.kind, language)}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
       {p.issues.length ? (
         <section>
           <ViewHeading right={<span className="text-13 text-muted">{p.issues.length}</span>}>{t("schedules.fire.issues")}</ViewHeading>

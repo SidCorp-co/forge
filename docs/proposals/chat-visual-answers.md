@@ -34,7 +34,7 @@ into ports and adapters.
 
 | Piece | Where | What it gives this design |
 |---|---|---|
-| Port slots handed in at boot | `packages/core/src/lib/port-slot.ts:portSlot`; `packages/core/src/status-reports/ports.ts`, `packages/core/src/agent-reports/ports.ts` | the shape every port below takes: a domain declares what it needs, the process entry provides it, and the domain never imports the provider |
+| Port slots handed in at boot | `packages/core/src/lib/port-slot.ts:portSlot`; `packages/core/src/status-reports/ports.ts`, `packages/core/src/automation/ports.ts` | the shape every port below takes: a domain declares what it needs, the process entry provides it, and the domain never imports the provider |
 | A registered adapter set | `packages/core/src/integrations/registry.ts:registerIntegration` | a Map keyed by id that refuses a duplicate and refuses to be read empty; the registry shape every port below copies |
 | Module kinds and direction | ADR 0006, ADR 0008, `packages/core/src/modules.json`, `scripts/lib/module-boundaries.mjs` | door → read-model → domain → kernel → platform; a vendor only inside `integrations/<port>`; `assistant` sits in the `conversations` context, which may not import `operations` |
 | Tools composed into chat without the assistant importing them | `packages/core/src/assistant/tools/registry.ts:provideChatTools`, `packages/core/src/mcp/chat-read-tools.ts:CHAT_READ_MODEL_TOOLS` | the route a new chat tool takes; the assistant module needs no edit to gain one |

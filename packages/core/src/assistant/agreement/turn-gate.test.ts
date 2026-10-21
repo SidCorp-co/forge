@@ -54,7 +54,7 @@ const inner = {
   tools: [
     {
       type: 'function' as const,
-      function: { name: 'forge_feedback', description: '', parameters: {} },
+      function: { name: 'project_feedback', description: '', parameters: {} },
     },
   ],
   ranAs: () => 'u-1',
@@ -69,7 +69,7 @@ const inner = {
 const GRANTS: Record<string, ToolGrantEntry> = {
   forge_requirements: 'projects:read',
   forge_requirement_draft: 'projects:write',
-  forge_feedback: 'projects:write',
+  project_feedback: 'projects:write',
   forge_channel: 'projects:write',
   forge_show: 'assistant:write',
   forge: { none: 'it runs the forge CLI under the turn token' },
@@ -102,7 +102,7 @@ beforeEach(() => {
 
 describe('a chat write is held until the person agrees', () => {
   const calls: [string, string, string][] = [
-    ['forge_feedback', feedback('Draft lost'), 'feedback'],
+    ['project_feedback', feedback('Draft lost'), 'feedback'],
     [
       'forge_requirement_draft',
       JSON.stringify({
@@ -163,9 +163,9 @@ describe('a chat write is held until the person agrees', () => {
 
   it('holds one proposal per title in a turn, the latest wording restating it', async () => {
     const gate = await agreementGate(inner, turn);
-    await gate.tools.execute('forge_feedback', feedback('Tags sync from Hub'));
-    await gate.tools.execute('forge_feedback', feedback('  tags sync from hub. '));
-    await gate.tools.execute('forge_feedback', feedback('A second report'));
+    await gate.tools.execute('project_feedback', feedback('Tags sync from Hub'));
+    await gate.tools.execute('project_feedback', feedback('  tags sync from hub. '));
+    await gate.tools.execute('project_feedback', feedback('A second report'));
     expect(held.map((h) => h.id)).toEqual(['p-1', 'p-2']);
     expect(restated).toEqual([{ id: 'p-1', args: feedback('  tags sync from hub. ') }]);
   });
@@ -173,8 +173,8 @@ describe('a chat write is held until the person agrees', () => {
   it('holds one proposal when the model asks for the same record twice in one round', async () => {
     const gate = await agreementGate(inner, turn);
     await Promise.all([
-      gate.tools.execute('forge_feedback', feedback('Same title')),
-      gate.tools.execute('forge_feedback', feedback('Same title')),
+      gate.tools.execute('project_feedback', feedback('Same title')),
+      gate.tools.execute('project_feedback', feedback('Same title')),
     ]);
     expect(held).toHaveLength(1);
   });
@@ -183,13 +183,13 @@ describe('a chat write is held until the person agrees', () => {
 describe('a typed reply agrees to nothing: the turn has no tool that agrees', () => {
   it('offers no agreeing tool, whether or not a proposal waits', async () => {
     const gate = await agreementGate(inner, turn);
-    await gate.tools.execute('forge_feedback', feedback('Draft lost'));
-    expect(gate.tools.tools.map((t) => t.function.name)).toEqual(['forge_feedback']);
+    await gate.tools.execute('project_feedback', feedback('Draft lost'));
+    expect(gate.tools.tools.map((t) => t.function.name)).toEqual(['project_feedback']);
   });
 
   it('tells the model only the press records it, and a typed yes or no writes nothing', async () => {
     const gate = await agreementGate(inner, turn);
-    const r = await gate.tools.execute('forge_feedback', feedback('Draft lost'));
+    const r = await gate.tools.execute('project_feedback', feedback('Draft lost'));
     expect(text(r)).toContain('Only their press records it');
     expect(text(r)).toContain('a reply they type, yes or no, writes nothing');
     expect(text(r)).not.toContain('forge_agree');
@@ -221,7 +221,7 @@ describe("a write the person's role could not make is refused for that, not held
   it('refuses a viewer by the permission it lacks, and holds nothing', async () => {
     role = 'viewer';
     const gate = await agreementGate(inner, turn);
-    const r = await gate.tools.execute('forge_feedback', feedback('Draft lost'));
+    const r = await gate.tools.execute('project_feedback', feedback('Draft lost'));
     expect(r.isError).toBe(true);
     expect(text(r)).toContain('needs project.write');
     expect(text(r)).not.toContain('CHAT_WRITE_AWAITS_AGREEMENT');

@@ -167,7 +167,7 @@ export async function holdChatRestWrite(c: Context, kind: ChatProposalKind): Pro
       for (const projectId of scope.projectIds ?? []) await requireRole(c, kind, projectId);
       throw refuse(
         'CHAT_WRITE_AWAITS_AGREEMENT',
-        "this is the assistant's turn token, and a chat's write waits for the person to agree: it is held through the turn's own tools (forge_feedback, the requirement tools, forge comment, forge attach, forge issue and forge project), which show the person a confirm card. Nothing was written.",
+        "this is the assistant's turn token, and a chat's write waits for the person to agree: it is held through the turn's own tools (project_feedback, the requirement tools, forge comment, forge attach, forge issue and forge project), which show the person a confirm card. Nothing was written.",
       );
     case 'box-session':
       for (const projectId of scope.projectIds ?? []) await requireRole(c, kind, projectId);

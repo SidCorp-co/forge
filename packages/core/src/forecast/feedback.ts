@@ -82,7 +82,34 @@ export async function readFeedbackLines(
       `forecast: the feedback list refused an unfiltered read: ${listed.refusals[0]?.detail}`,
     );
   }
-  const items = listed.list.feedback;
+  return feedbackLinesOver(listed.list.feedback, projectId, forecastViewer, now);
+}
+
+/** Each of `items`' line, for a door that read the items itself (`feedback/index.ts:listFeedbackIn`). */
+export async function readFeedbackForecastsOver(
+  items: readonly FeedbackSummary[],
+  projectId: string,
+  forecastViewer: ForecastViewer | null,
+  now: Date = new Date(),
+): Promise<FeedbackForecasts> {
+  const read = await feedbackLinesOver(items, projectId, forecastViewer, now);
+  return {
+    ...stamp(read.asOf),
+    projectId,
+    items: read.items.flatMap((s) => {
+      const f = read.lines.get(s.id);
+      return f ? [f] : [];
+    }),
+  };
+}
+
+async function feedbackLinesOver(
+  listedItems: readonly FeedbackSummary[],
+  projectId: string,
+  forecastViewer: ForecastViewer | null,
+  now: Date,
+): Promise<FeedbackLines> {
+  const items = [...listedItems];
   const links = await linksOf(projectId);
   const carrierIds = [
     ...new Set(

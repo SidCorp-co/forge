@@ -1,106 +1,58 @@
-import type { AgentReportView } from '@forge/contracts/agent-reports';
 import { saidDisagreements } from '@forge/contracts/said';
 import { needsViewer } from '@forge/contracts/standing';
 import { describe, expect, it } from 'vitest';
-import { type ReportFacts, reportStandingOf as reportStandingOf_ } from './standing.js';
+import { type ScheduleFacts, scheduleStandingOf as scheduleStandingOf_ } from './standing.js';
 
 /** Every sentence the producer said agrees with the English beside it (`saidDisagreements`). */
 const checked = <T>(v: T): T => {
   expect(saidDisagreements(v)).toEqual([]);
   return v;
 };
-const reportStandingOf = ((...a: Parameters<typeof reportStandingOf_>) =>
-  checked(reportStandingOf_(...a))) as typeof reportStandingOf_;
+const scheduleStandingOf = ((...a: Parameters<typeof scheduleStandingOf_>) =>
+  checked(scheduleStandingOf_(...a))) as typeof scheduleStandingOf_;
 
-const view = (over: Partial<AgentReportView> = {}): AgentReportView => ({
-  id: 'r1',
+const NOW = new Date('2026-10-06T01:00:00.000Z');
+
+const schedule = (over: Partial<ScheduleFacts> = {}): ScheduleFacts => ({
+  id: 's1',
   projectId: 'p1',
-  projectSlug: 'hop',
-  issueId: 'i1',
-  runId: null,
-  jobId: null,
-  stage: null,
-  kind: 'bug',
-  severity: 'medium',
-  target: 'tool',
-  targetRef: 'forge record',
-  summary: 'forge record verdict refuses every verdict',
-  detail: null,
-  suggestion: null,
-  writtenLang: null,
-  signalKey: 'self_report:tool:forge record:bug',
-  sessionId: null,
-  scheduleRunId: null,
-  triage: 'new',
-  triagedBy: null,
-  triagedAt: null,
-  triageReason: null,
-  duplicateOf: null,
-  linkedIssueId: null,
-  feedback: null,
-  createdAt: '2026-10-06T01:00:00.000Z',
+  name: 'Nightly steward',
+  kind: 'prompt',
+  cron: '0 2 * * *',
+  enabled: true,
+  targetProjectSlug: null,
+  nextRunAt: null,
+  createdAt: NOW,
+  owner: null,
   ...over,
 });
 
-const owner = { id: 'u1', name: 'Owner' };
-const writer = {
-  userId: 'u1',
-  canWrite: true,
-  isAdmin: true,
-  holders: { admins: [], writers: [] },
-};
-
-// F9: a report an issue run filed is about the harness it ran under, not the viewer's to-do
-describe('whom a new agent report waits on', () => {
-  it('a report no fire filed waits on harness triage, never in the viewer’s Needs you', () => {
-    const facts: ReportFacts = { view: view(), fire: null, issue: null };
-    const s = reportStandingOf(facts, writer);
-    expect(needsViewer(s)).toBe(false);
-    expect(s.attentionGroup).toBe('waiting');
-    expect(s.waitingOn).toMatchObject({
-      kind: 'writers',
-      who: 'Harness triage',
-      act: 'triage a report',
-    });
-  });
-
-  it('a report a fire filed still waits on its schedule owner, in their Needs you', () => {
-    const facts: ReportFacts = {
-      view: view({ scheduleRunId: 'f1' }),
-      fire: { id: 'f1', scheduleId: 's1', scheduleName: 'Nightly steward', owner },
-      issue: null,
-    };
-    const s = reportStandingOf(facts, writer);
-    expect(needsViewer(s)).toBe(true);
-    expect(s.waitingOn).toMatchObject({ kind: 'you', act: 'triage a report' });
-  });
+const reader = (admins: string[], isAdmin = false) => ({
+  userId: 'u9',
+  canWrite: isAdmin,
+  isAdmin,
+  holders: { admins, writers: [] },
 });
 
-// H3: a group's wait read "A project writer" whoever held write, and when nobody did
-describe('a report whose schedule has no owner', () => {
-  const facts: ReportFacts = {
-    view: view({ scheduleRunId: 'f1' }),
-    fire: { id: 'f1', scheduleId: 's1', scheduleName: 'Nightly steward', owner: null },
-    issue: null,
-  };
-  const reader = (writers: string[]) => ({
-    userId: 'u9',
-    canWrite: false,
-    isAdmin: false,
-    holders: { admins: ['Ada'], writers },
+const standingOf = (viewer: ReturnType<typeof reader>) =>
+  scheduleStandingOf(schedule(), null, null, { viewer, failStreak: 3, now: NOW });
+
+// H3: a group's wait read "A project admin" whoever held admin, and when nobody did
+describe('a schedule whose owner is gone', () => {
+  it('names the admins who take it over', () => {
+    const s = standingOf(reader(['Ada', 'Bo']));
+    expect(s.state).toBe('owner_gone');
+    expect(s.attentionGroup).toBe('waiting');
+    expect(s.waitingOn).toMatchObject({ kind: 'admins', who: 'Ada, Bo' });
   });
 
-  it('names the writers who triage it', () => {
-    expect(reportStandingOf(facts, reader(['Ana', 'Bo'])).waitingOn).toMatchObject({
-      kind: 'writers',
-      who: 'Ana, Bo',
-      act: 'triage a report',
-    });
+  it('is in an admin viewer’s Needs you', () => {
+    expect(needsViewer(standingOf(reader(['Ada'], true)))).toBe(true);
   });
 
-  it('says nobody holds write, and where it is granted, when nobody does', () => {
-    const w = reportStandingOf(facts, reader([])).waitingOn;
+  it('says nobody holds admin, and where it is granted, when nobody does', () => {
+    const w = standingOf(reader([])).waitingOn;
     expect(w).toMatchObject({ kind: 'none', who: 'Nobody' });
-    expect(w.rule).toContain('nobody holds project.write; grant it under Settings → Members');
+    expect(w.rule).toContain('nobody holds project.admin; grant it under Settings → Members');
   });
 });

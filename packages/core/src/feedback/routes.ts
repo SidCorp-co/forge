@@ -24,8 +24,6 @@ import {
   feedbackTriageSchema,
   feedbackVerifyRequestSchema,
   listFeedbackQuerySchema,
-  PROMOTE_AGENT_REPORT_SHAPE,
-  promoteAgentReportRequestSchema,
   SIMILAR_FEEDBACK_DRAFT_SHAPE,
   similarFeedbackDraftSchema,
 } from '@forge/contracts/feedback';
@@ -40,9 +38,8 @@ import { invalid, strictBody, zValidator } from '../middleware/zod-validator.js'
 import { addAttachment, askClarification, attachmentBytes } from './attachments.js';
 import { similarFeedbackAs, similarToDraftAs } from './embeddings.js';
 import { servedEndpointsAs } from './endpoints.js';
-import { listFeedbackAs } from './list-read.js';
+import { listFeedbackAs } from './list-page-read.js';
 import { previewMessage, sendMessage } from './messages.js';
-import { promoteAgentReport } from './promote.js';
 import { detailAs, type FeedbackActor } from './read.js';
 import { redactReporterData } from './redact.js';
 import { retargetFeedback } from './retarget.js';
@@ -131,21 +128,6 @@ feedbackRoutes.post(
         request: c.req.valid('json'),
       }),
     ),
-);
-
-feedbackRoutes.post(
-  '/:id/feedback/promote',
-  projectParam,
-  strictBody(promoteAgentReportRequestSchema, PROMOTE_AGENT_REPORT_SHAPE),
-  async (c) => {
-    const out = await promoteAgentReport({
-      projectId: c.req.valid('param').id,
-      actor: actorOf(c),
-      request: c.req.valid('json'),
-    });
-    if (!out.ok) return refused(c, out.refusals, 'FEEDBACK_REFUSED');
-    return c.json({ feedback: out.feedback, effect: out.effect }, 201);
-  },
 );
 
 // a draft not yet filed: before `/:fb`, which would read `similar` as an item key

@@ -1,5 +1,5 @@
 import { questionHref } from "@/lib/routes/agents";
-import { reportHref, scheduleHref } from "@/lib/routes/automation";
+import { scheduleHref } from "@/lib/routes/automation";
 import { contractHref } from "@/lib/routes/contracts";
 import { feedbackHref } from "@/lib/routes/feedback";
 import { issueHref, issuesHref } from "@/lib/routes/issues";
@@ -23,8 +23,6 @@ export function needsYouHref(slug: string, n: Pick<NeedsYouItem, "entity" | "key
       return contractHref(slug, n.key);
     case "schedule":
       return scheduleHref(slug, n.key);
-    case "report":
-      return reportHref(slug, n.key);
     case "question":
       return questionHref(slug, n.key);
     case "workflow":
@@ -33,9 +31,9 @@ export function needsYouHref(slug: string, n: Pick<NeedsYouItem, "entity" | "key
   }
 }
 
-/** What a row is called in a list: its key, or for a schedule, a harness report or a question (keyed by an id no reader knows) the area it sits in. */
+/** What a row is called in a list: its key, or for a schedule or a question (keyed by an id no reader knows) the area it sits in. */
 export const needsYouKeyLabel = (n: Pick<NeedsYouItem, "entity" | "key" | "area">, areaLabel: (area: string) => string): string =>
-  n.entity === "schedule" || n.entity === "report" || n.entity === "question" ? areaLabel(n.area) : n.key;
+  n.entity === "schedule" || n.entity === "question" ? areaLabel(n.area) : n.key;
 
 /** An issue opens in the list's peek; everything else opens its page. */
 export const needsYouPeekHref = (slug: string, n: Parameters<typeof needsYouHref>[1]): string =>

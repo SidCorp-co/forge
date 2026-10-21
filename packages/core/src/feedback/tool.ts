@@ -76,15 +76,15 @@ async function vetFeedback(args: Record<string, unknown>) {
   const count = targetCountRefusal(request.data, request.data.whereSeen);
   return count ? refusedAnswer([count], 'FEEDBACK_REFUSED') : null;
 }
-export const FEEDBACK_RECORD_VETS = { forge_feedback: vetFeedback };
+export const FEEDBACK_RECORD_VETS = { project_feedback: vetFeedback };
 
-export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
-  name: 'forge_feedback',
+export const projectFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
+  name: 'project_feedback',
   reach: 'project',
   route: '/api/projects',
   grant: 'projects:write',
   description: [
-    "File a person's report or wish as Feedback (FB-n), as the person you are talking to. From a",
+    "File a person's report or wish about this project as its Feedback (FB-n), as the person you are talking to. From a",
     'chat it is held for their agreement: core keeps it as a proposal they see as a confirm card.',
     'kind: bug (something broken or wrong), change_request (different behaviour of something that',
     'exists), idea (something new), question.',

@@ -50,7 +50,7 @@ const argvOf = (args: Args): string[] =>
 /** The kind of record an Assistant write tool call makes; every call `isWriteCall` marks has one. */
 export function kindOfToolCall(name: string, argsJson: string): ChatProposalKind {
   switch (name) {
-    case 'forge_feedback':
+    case 'project_feedback':
       return 'feedback';
     case 'forge_requirement_draft':
       return 'requirement_draft';

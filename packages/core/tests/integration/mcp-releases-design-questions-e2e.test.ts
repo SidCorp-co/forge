@@ -367,7 +367,7 @@ describe('forge_issues', () => {
     });
     expect(codeOf(refused)).toBe('MCP_FILES_FEEDBACK_NOT_ISSUES');
     expect((refused.json as { status?: number }).status).toBe(403);
-    expect(refused.text).toContain('forge_feedback');
+    expect(refused.text).toContain('project_feedback');
     expect(refused.text).toContain('forge_requirements');
     expect(await issueCount()).toBe(before);
   });

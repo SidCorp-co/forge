@@ -1,4 +1,4 @@
-// What forge_feedback answers for one item: the feedback screen's own read, cut to what a BA acts
+// What project_feedback and forge_feedback answer for one item: the feedback screen's own read, cut to what a BA acts
 // on, and the progress block (`product-progress.ts`) of the work the item was routed to.
 
 import type { FeedbackSummary, FeedbackView } from '@forge/contracts/feedback';
@@ -12,7 +12,7 @@ import {
   progressOf,
   runsOn,
   type WorkIssue,
-} from './product-progress.js';
+} from './progress.js';
 
 /** What one answer reads once and every item of it shares. */
 export interface FeedbackReads {

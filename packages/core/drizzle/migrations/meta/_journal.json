@@ -3242,6 +3242,13 @@
       "when": 1826582400000,
       "tag": "0505_a_widget_visitor_files_feedback_behind_a_session",
       "breakpoints": true
+    },
+    {
+      "idx": 506,
+      "version": "7",
+      "when": 1826668800000,
+      "tag": "0506_feedback_about_forge_is_filed_by_its_reporter",
+      "breakpoints": true
     }
   ]
 }

@@ -24,7 +24,7 @@ const DESCRIPTION = [
   readFormsLine(),
   'Send one as it stands, `-` being where `body` is substituted; do NOT guess a flag.',
   '`-h` is for a verb whose form this description does not carry.',
-  'It files no issue: a report or a wish is recorded with forge_feedback or forge_requirement_draft.',
+  'It files no issue: a report or a wish is recorded with project_feedback or forge_requirement_draft.',
 ].join(' ');
 
 export const forgeCliTool: ContextScopedMcpToolFactory = (ctx) => ({

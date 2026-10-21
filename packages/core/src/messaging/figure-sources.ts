@@ -70,7 +70,7 @@ const NEEDS_YOU_NAMES = [/\bneeds? (?:you|me)\b|\bwait(?:s|ing)? on (?:you|me)\b
  * scores, `ba_read_journeys` the designs onboarding drafted. `forge_decisions` answers the decision
  * records as written. `forge_memory` is a dated source (MJ-5): it is named only by its date.
  *
- * Absent on purpose: `forge_show`, `forge_feedback`, `forge_requirement_revise`, `forge_memory_note`
+ * Absent on purpose: `forge_show`, `project_feedback`, `forge_requirement_revise`, `forge_memory_note`
  * and `ba_suggest`, which answer with what the model sent them; `ba_read_issue`, an issue's free
  * text as someone wrote it, as `forge_issue` is; and `forge`, the CLI, whose verbs write as well as
  * read and whose output is no one shape.

@@ -167,7 +167,7 @@ export function FeedbackPage({
             rail={
               <FactsRail>
                 {/* the forecast is the answer line's, above: the rail does not say when a second time */}
-                <LinkedFeedback f={f} slug={slug} developer={developer} />
+                <LinkedFeedback f={f} slug={slug} />
               </FactsRail>
             }
           >

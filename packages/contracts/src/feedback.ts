@@ -3,11 +3,6 @@
 // request schemas and the response shapes from here.
 
 import { z } from "zod";
-import type {
-	AgentReportKind,
-	AgentReportSeverity,
-	AgentReportTarget,
-} from "./agent-reports.js";
 import type { IssueStatusTone } from "./issue-vocabulary.js";
 import { PERMISSION_REFUSAL_CODES } from "./permissions.js";
 import {
@@ -292,9 +287,6 @@ export const FEEDBACK_REFUSAL_CODES = [
 	"CHECKLIST_ANSWER_INVALID",
 	...PERMISSION_REFUSAL_CODES,
 	"FEEDBACK_SEARCH_WITHHELD",
-	"FEEDBACK_SOURCE_ALREADY_PROMOTED",
-	"FEEDBACK_SOURCE_NOT_IN_PROJECT",
-	"FEEDBACK_SOURCE_ROUTED_ELSEWHERE",
 	"FEEDBACK_NODE_NEEDS_WORKFLOW",
 	"WORKFLOW_NODE_UNKNOWN",
 	"WORKFLOW_NODE_AMBIGUOUS",
@@ -421,20 +413,6 @@ export const feedbackDedupSchema = z.strictObject({
 	says: z.strictObject({ why: saidSchema }).optional(),
 });
 export type FeedbackDedup = z.infer<typeof feedbackDedupSchema>;
-
-export const promoteAgentReportRequestSchema = z.strictObject({
-	agentReport: z.uuid(),
-	kind: z.enum(FEEDBACK_KINDS),
-	severity: z.enum(FEEDBACK_SEVERITIES).optional(),
-	title: titleText(FEEDBACK_LIMITS.title).optional(),
-	body: z.string().max(FEEDBACK_LIMITS.body).optional(),
-	whereSeen: z.string().trim().max(FEEDBACK_LIMITS.whereSeen).optional(),
-	...feedbackTargetFields,
-});
-export type PromoteAgentReportRequest = z.infer<
-	typeof promoteAgentReportRequestSchema
->;
-export const PROMOTE_AGENT_REPORT_SHAPE = `{ agentReport: uuid, kind: ${FEEDBACK_KINDS.join(" | ")}, title?, body?, severity?, whereSeen?, exactly one of requirement | issue | release | workflow | endpoint | screen, node?: { step } | { edge: { from, to, label? } } (with workflow only) }`;
 
 /**
  * `POST …/feedback/:fb/retarget`: what the item is about, corrected by a holder of feedback.approve.
@@ -629,15 +607,19 @@ export interface FeedbackMessagePreviewResponse {
 	preview: FeedbackMessagePreview;
 }
 
-export interface FeedbackSourceView {
-	agentReport: {
-		id: string;
-		kind: AgentReportKind;
-		severity: AgentReportSeverity;
-		target: AgentReportTarget;
-		targetRef: string | null;
-		createdAt: string;
-	};
+/**
+ * Where an item reported through the Forge door came from (REQ-47 BC-4): its first report's reporter
+ * and the project, issue, run and client they were in, and how many times it was reported.
+ */
+export interface FeedbackOriginView {
+	/** The filing and every later report of its signal key while it was open. */
+	occurrences: number;
+	project: { id: string; slug: string; name: string } | null;
+	issue: { id: string; key: string } | null;
+	run: string | null;
+	clientVersion: string | null;
+	reporter: { id: string; name: string | null; agency: "human" | "agent" };
+	at: string;
 }
 
 export interface FeedbackAttachmentView {
@@ -685,6 +667,8 @@ export interface FeedbackSummary
 	target: FeedbackTargetView;
 	route: FeedbackRouteView | null;
 	reporter: { id: string; name: string | null; agency: "human" | "agent" };
+	/** Set on an item reported through the Forge door: where it came from; null on any other. */
+	origin: FeedbackOriginView | null;
 	dueAt: string | null;
 	/** Parked out of New until then, with the reason; null when not snoozed or the snooze ran out. */
 	snoozed: { until: string; reason: string | null } | null;
@@ -761,7 +745,6 @@ export interface FeedbackView extends FeedbackSummary {
 	whereSeen: string | null;
 	duplicateOf: string | null;
 	duplicates: string[];
-	source: FeedbackSourceView | null;
 	decisions: FeedbackDecisionView[];
 	attachments: FeedbackAttachmentView[];
 	/** Everyone who reported it: its own reporter first, then the reporters of the duplicates merged into it. */
@@ -830,12 +813,6 @@ export interface SimilarFeedbackResponse {
 		phase: FeedbackPhase;
 		similarity: number;
 	}[];
-}
-
-export interface FeedbackPromoteEffect {
-	feedback: string;
-	agentReport: string;
-	copied: ("title" | "body")[];
 }
 
 /** What a triage accept wrote, read back for the caller. */

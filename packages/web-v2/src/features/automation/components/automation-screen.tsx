@@ -1,12 +1,10 @@
 
 // Development > Automation (ISS-116, prototype #/dev/automation, design automation rev 1 step
-// screen): one area with tabs Schedules, Fires and Reports (`?tab=`), each the shared GroupedList with
+// screen): one area with tabs Schedules and Fires (`?tab=`), each the shared GroupedList with
 // Needs you first, a peek (`?peek=`) and a full page per row, all read from GET /automation/standing
 import {
   FIRE_GROUPS,
   FIRE_GROUP_LABELS,
-  REPORT_GROUPS,
-  REPORT_GROUP_LABELS,
   SCHEDULE_GROUPS,
   SCHEDULE_GROUP_LABELS,
 } from "@forge/contracts/automation-standing";
@@ -28,31 +26,28 @@ import { useCreateSchedule } from "../schedule-hooks";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { Copy, ProductCopyKey } from "@/lib/i18n/product-copy";
 import { useAutomationStanding } from "../hooks";
-import { AUTOMATION_LIST, AUTOMATION_TABS, type AutomationTab, fireHref, reportHref, scheduleHref } from "@/lib/routes/automation";
-import type { AutomationStandingResponse, FireStanding, ReportStanding, ScheduleStanding } from "../types";
+import { AUTOMATION_LIST, AUTOMATION_TABS, type AutomationTab, fireHref, scheduleHref } from "@/lib/routes/automation";
+import type { AutomationStandingResponse, FireStanding, ScheduleStanding } from "../types";
 import { automationGroups, type RowCtx } from "../view";
 import { FirePeek, fireRow } from "./fire-views";
-import { ReportPeek, reportRow } from "./report-views";
 import { ScheduleForm } from "./schedule-form";
 import { type AutomationAccess, SchedulePeek, scheduleRow } from "./schedule-views";
 
-type Row = ScheduleStanding | FireStanding | ReportStanding;
+type Row = ScheduleStanding | FireStanding;
 
 const searchOf: Record<AutomationTab, (r: Row) => string> = {
   schedules: (r) => { const s = r as ScheduleStanding; return [s.name, s.targetProjectSlug, s.owner?.name].join(" "); },
   fires: (r) => { const f = r as FireStanding; return [f.id, f.scheduleName].join(" "); },
-  reports: (r) => { const x = r as ReportStanding; return [x.id, x.summary, x.fire?.scheduleName, x.targetRef].join(" "); },
 };
 
 function rowsOf(d: AutomationStandingResponse | undefined, tab: AutomationTab): Row[] {
   if (!d) return [];
-  return tab === "schedules" ? d.schedules : tab === "fires" ? d.fires : d.reports;
+  return tab === "schedules" ? d.schedules : d.fires;
 }
 
 function groupsOf(rows: Row[], tab: AutomationTab, t: Copy): ListGroup<Row>[] {
   if (tab === "schedules") return automationGroups(rows as ScheduleStanding[], SCHEDULE_GROUPS, SCHEDULE_GROUP_LABELS, "schedule", t);
-  if (tab === "fires") return automationGroups(rows as FireStanding[], FIRE_GROUPS, FIRE_GROUP_LABELS, "fire", t);
-  return automationGroups(rows as ReportStanding[], REPORT_GROUPS, REPORT_GROUP_LABELS, "report", t);
+  return automationGroups(rows as FireStanding[], FIRE_GROUPS, FIRE_GROUP_LABELS, "fire", t);
 }
 
 const columnsOf = (tab: AutomationTab, t: Copy) => ({
@@ -77,7 +72,6 @@ export function AutomationScreen({ access }: { access: AutomationAccess }) {
   const hrefOf = {
     schedules: (id: string) => scheduleHref(slug, id),
     fires: (id: string) => fireHref(slug, id),
-    reports: (id: string) => reportHref(slug, id),
   };
   const list = useListPage<Row>({
     rows: rowsOf(q.data, tab),
@@ -97,14 +91,11 @@ export function AutomationScreen({ access }: { access: AutomationAccess }) {
         const tabs = [
           { value: "schedules", label: t("schedules.tab.schedules"), count: d.schedules.length },
           { value: "fires", label: t("schedules.tab.fires"), count: d.firesTotal },
-          { value: "reports", label: t("schedules.tab.reports"), count: d.reportCounts.new },
         ];
         const row = (r: Row) =>
           tab === "schedules"
             ? scheduleRow(hrefOf.schedules, ctx)(r as ScheduleStanding)
-            : tab === "fires"
-              ? fireRow(hrefOf.fires, ctx)(r as FireStanding)
-              : reportRow(hrefOf.reports, ctx)(r as ReportStanding);
+            : fireRow(hrefOf.fires, ctx)(r as FireStanding);
         const open = peek.open ? list.rows.find((r) => r.id === peek.open) : undefined;
         const scheduleOf = (id: string) => d.schedules.find((s) => s.id === id);
 
@@ -127,17 +118,6 @@ export function AutomationScreen({ access }: { access: AutomationAccess }) {
                         f={open as FireStanding}
                         schedule={scheduleOf((open as FireStanding).scheduleId)}
                         slug={slug}
-                        peek={peek}
-                        full={fullOf(open.id)}
-                      />
-                    ) : null}
-                    {tab === "reports" ? (
-                      <ReportPeek
-                        key={open.id}
-                        r={open as ReportStanding}
-                        projectId={projectId}
-                        slug={slug}
-                        canWrite={access.canWrite}
                         peek={peek}
                         full={fullOf(open.id)}
                       />

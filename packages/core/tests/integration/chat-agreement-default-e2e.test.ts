@@ -230,7 +230,7 @@ describe('the Assistant meets the same rule through its own tools and its turn t
       dataBase64: 'iVBORw0K',
     };
     await w.gate([image]).tools.execute(
-      'forge_feedback',
+      'project_feedback',
       JSON.stringify({
         kind: 'bug',
         title: 'The dock loses my draft',
@@ -260,7 +260,7 @@ describe('only a recorded proposal grounds a claim to have recorded something', 
         sessionId: null,
         kind: 'feedback',
         form: 'tool',
-        call: { name: 'forge_feedback', arguments: JSON.stringify({ title }) },
+        call: { name: 'project_feedback', arguments: JSON.stringify({ title }) },
         body: null,
         summary: { title, lines: [], relates: [] },
       });

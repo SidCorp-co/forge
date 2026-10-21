@@ -19,7 +19,7 @@ const card = (name: string, args: unknown) => {
 describe('the card names what a held Assistant call would record, and what it links to', () => {
   it('Feedback: its kind, title, body, and the one target it links', () => {
     expect(
-      card('forge_feedback', {
+      card('project_feedback', {
         kind: 'bug',
         title: 'The dock loses my draft',
         body: 'Switching tabs clears it.',
@@ -31,7 +31,7 @@ describe('the card names what a held Assistant call would record, and what it li
       relates: ['REQ-30'],
     });
     expect(
-      card('forge_feedback', {
+      card('project_feedback', {
         kind: 'idea',
         title: 'x',
         target: { kind: 'workflow', ref: 'chat-turn' },
@@ -269,10 +269,10 @@ describe('the card shows everything the press writes (ISS-439 round 3, criterion
 
   it('the images a Feedback item attaches on the press, by name', () => {
     const args = JSON.stringify({ kind: 'bug', title: 'x' });
-    expect(imagesLine('feedback', 'forge_feedback', args, ['a.png', 'b.png'])).toBe(
+    expect(imagesLine('feedback', 'project_feedback', args, ['a.png', 'b.png'])).toBe(
       'Attaches the 2 images sent with this message: a.png, b.png',
     );
-    expect(imagesLine('feedback', 'forge_feedback', args, [])).toBeNull();
+    expect(imagesLine('feedback', 'project_feedback', args, [])).toBeNull();
   });
 
   it('the images a comment attaches after it lands, and none for a comment with no body file', () => {

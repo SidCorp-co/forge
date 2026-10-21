@@ -21,6 +21,7 @@ import { Route as AuthRegisterIndexRouteImport } from './routes/_auth/register/i
 import { Route as WorkspaceAttentionIndexRouteImport } from './routes/_workspace/attention/index'
 import { Route as WorkspaceDocsIndexRouteImport } from './routes/_workspace/docs/index'
 import { Route as WorkspaceEcosystemsIndexRouteImport } from './routes/_workspace/ecosystems/index'
+import { Route as WorkspaceForgeFeedbackIndexRouteImport } from './routes/_workspace/forge-feedback/index'
 import { Route as WorkspaceIntegrationsIndexRouteImport } from './routes/_workspace/integrations/index'
 import { Route as WorkspaceOpsIndexRouteImport } from './routes/_workspace/ops/index'
 import { Route as WorkspaceOrgIndexRouteImport } from './routes/_workspace/org/index'
@@ -77,7 +78,6 @@ import { Route as WorkspaceProjectsSlugRoomsRoomIndexRouteImport } from './route
 import { Route as WorkspaceProjectsSlugWorkflowsWorkflowIndexRouteImport } from './routes/_workspace/projects/$slug/workflows/$workflow/index'
 import { Route as WorkspaceProjectsSlugAgentsRunsRunIdIndexRouteImport } from './routes/_workspace/projects/$slug/agents/runs/$runId/index'
 import { Route as WorkspaceProjectsSlugAutomationFiresFireIdIndexRouteImport } from './routes/_workspace/projects/$slug/automation/fires/$fireId/index'
-import { Route as WorkspaceProjectsSlugAutomationReportsReportIdIndexRouteImport } from './routes/_workspace/projects/$slug/automation/reports/$reportId/index'
 import { Route as WorkspaceProjectsSlugAutomationSchedulesScheduleIdIndexRouteImport } from './routes/_workspace/projects/$slug/automation/schedules/$scheduleId/index'
 import { Route as WorkspaceProjectsSlugContractsProviderContractIndexRouteImport } from './routes/_workspace/projects/$slug/contracts/$provider/$contract/index'
 import { Route as WorkspaceProjectsSlugEcosystemChannelRefIndexRouteImport } from './routes/_workspace/projects/$slug/ecosystem/channel/$ref/index'
@@ -140,6 +140,12 @@ const WorkspaceEcosystemsIndexRoute =
   WorkspaceEcosystemsIndexRouteImport.update({
     id: '/ecosystems/',
     path: '/ecosystems/',
+    getParentRoute: () => WorkspaceRouteRoute,
+  } as any)
+const WorkspaceForgeFeedbackIndexRoute =
+  WorkspaceForgeFeedbackIndexRouteImport.update({
+    id: '/forge-feedback/',
+    path: '/forge-feedback/',
     getParentRoute: () => WorkspaceRouteRoute,
   } as any)
 const WorkspaceIntegrationsIndexRoute =
@@ -460,12 +466,6 @@ const WorkspaceProjectsSlugAutomationFiresFireIdIndexRoute =
     path: '/automation/fires/$fireId/',
     getParentRoute: () => WorkspaceProjectsSlugRouteRoute,
   } as any)
-const WorkspaceProjectsSlugAutomationReportsReportIdIndexRoute =
-  WorkspaceProjectsSlugAutomationReportsReportIdIndexRouteImport.update({
-    id: '/automation/reports/$reportId/',
-    path: '/automation/reports/$reportId/',
-    getParentRoute: () => WorkspaceProjectsSlugRouteRoute,
-  } as any)
 const WorkspaceProjectsSlugAutomationSchedulesScheduleIdIndexRoute =
   WorkspaceProjectsSlugAutomationSchedulesScheduleIdIndexRouteImport.update({
     id: '/automation/schedules/$scheduleId/',
@@ -503,6 +503,7 @@ export interface FileRoutesByFullPath {
   '/attention/': typeof WorkspaceAttentionIndexRoute
   '/docs/': typeof WorkspaceDocsIndexRoute
   '/ecosystems/': typeof WorkspaceEcosystemsIndexRoute
+  '/forge-feedback/': typeof WorkspaceForgeFeedbackIndexRoute
   '/integrations/': typeof WorkspaceIntegrationsIndexRoute
   '/ops/': typeof WorkspaceOpsIndexRoute
   '/org/': typeof WorkspaceOrgIndexRoute
@@ -558,7 +559,6 @@ export interface FileRoutesByFullPath {
   '/projects/$slug/workflows/$workflow/': typeof WorkspaceProjectsSlugWorkflowsWorkflowIndexRoute
   '/projects/$slug/agents/runs/$runId/': typeof WorkspaceProjectsSlugAgentsRunsRunIdIndexRoute
   '/projects/$slug/automation/fires/$fireId/': typeof WorkspaceProjectsSlugAutomationFiresFireIdIndexRoute
-  '/projects/$slug/automation/reports/$reportId/': typeof WorkspaceProjectsSlugAutomationReportsReportIdIndexRoute
   '/projects/$slug/automation/schedules/$scheduleId/': typeof WorkspaceProjectsSlugAutomationSchedulesScheduleIdIndexRoute
   '/projects/$slug/contracts/$provider/$contract/': typeof WorkspaceProjectsSlugContractsProviderContractIndexRoute
   '/projects/$slug/ecosystem/channel/$ref/': typeof WorkspaceProjectsSlugEcosystemChannelRefIndexRoute
@@ -574,6 +574,7 @@ export interface FileRoutesByTo {
   '/attention': typeof WorkspaceAttentionIndexRoute
   '/docs': typeof WorkspaceDocsIndexRoute
   '/ecosystems': typeof WorkspaceEcosystemsIndexRoute
+  '/forge-feedback': typeof WorkspaceForgeFeedbackIndexRoute
   '/integrations': typeof WorkspaceIntegrationsIndexRoute
   '/ops': typeof WorkspaceOpsIndexRoute
   '/org': typeof WorkspaceOrgIndexRoute
@@ -629,7 +630,6 @@ export interface FileRoutesByTo {
   '/projects/$slug/workflows/$workflow': typeof WorkspaceProjectsSlugWorkflowsWorkflowIndexRoute
   '/projects/$slug/agents/runs/$runId': typeof WorkspaceProjectsSlugAgentsRunsRunIdIndexRoute
   '/projects/$slug/automation/fires/$fireId': typeof WorkspaceProjectsSlugAutomationFiresFireIdIndexRoute
-  '/projects/$slug/automation/reports/$reportId': typeof WorkspaceProjectsSlugAutomationReportsReportIdIndexRoute
   '/projects/$slug/automation/schedules/$scheduleId': typeof WorkspaceProjectsSlugAutomationSchedulesScheduleIdIndexRoute
   '/projects/$slug/contracts/$provider/$contract': typeof WorkspaceProjectsSlugContractsProviderContractIndexRoute
   '/projects/$slug/ecosystem/channel/$ref': typeof WorkspaceProjectsSlugEcosystemChannelRefIndexRoute
@@ -650,6 +650,7 @@ export interface FileRoutesById {
   '/_workspace/attention/': typeof WorkspaceAttentionIndexRoute
   '/_workspace/docs/': typeof WorkspaceDocsIndexRoute
   '/_workspace/ecosystems/': typeof WorkspaceEcosystemsIndexRoute
+  '/_workspace/forge-feedback/': typeof WorkspaceForgeFeedbackIndexRoute
   '/_workspace/integrations/': typeof WorkspaceIntegrationsIndexRoute
   '/_workspace/ops/': typeof WorkspaceOpsIndexRoute
   '/_workspace/org/': typeof WorkspaceOrgIndexRoute
@@ -705,7 +706,6 @@ export interface FileRoutesById {
   '/_workspace/projects/$slug/workflows/$workflow/': typeof WorkspaceProjectsSlugWorkflowsWorkflowIndexRoute
   '/_workspace/projects/$slug/agents/runs/$runId/': typeof WorkspaceProjectsSlugAgentsRunsRunIdIndexRoute
   '/_workspace/projects/$slug/automation/fires/$fireId/': typeof WorkspaceProjectsSlugAutomationFiresFireIdIndexRoute
-  '/_workspace/projects/$slug/automation/reports/$reportId/': typeof WorkspaceProjectsSlugAutomationReportsReportIdIndexRoute
   '/_workspace/projects/$slug/automation/schedules/$scheduleId/': typeof WorkspaceProjectsSlugAutomationSchedulesScheduleIdIndexRoute
   '/_workspace/projects/$slug/contracts/$provider/$contract/': typeof WorkspaceProjectsSlugContractsProviderContractIndexRoute
   '/_workspace/projects/$slug/ecosystem/channel/$ref/': typeof WorkspaceProjectsSlugEcosystemChannelRefIndexRoute
@@ -725,6 +725,7 @@ export interface FileRouteTypes {
     | '/attention/'
     | '/docs/'
     | '/ecosystems/'
+    | '/forge-feedback/'
     | '/integrations/'
     | '/ops/'
     | '/org/'
@@ -780,7 +781,6 @@ export interface FileRouteTypes {
     | '/projects/$slug/workflows/$workflow/'
     | '/projects/$slug/agents/runs/$runId/'
     | '/projects/$slug/automation/fires/$fireId/'
-    | '/projects/$slug/automation/reports/$reportId/'
     | '/projects/$slug/automation/schedules/$scheduleId/'
     | '/projects/$slug/contracts/$provider/$contract/'
     | '/projects/$slug/ecosystem/channel/$ref/'
@@ -796,6 +796,7 @@ export interface FileRouteTypes {
     | '/attention'
     | '/docs'
     | '/ecosystems'
+    | '/forge-feedback'
     | '/integrations'
     | '/ops'
     | '/org'
@@ -851,7 +852,6 @@ export interface FileRouteTypes {
     | '/projects/$slug/workflows/$workflow'
     | '/projects/$slug/agents/runs/$runId'
     | '/projects/$slug/automation/fires/$fireId'
-    | '/projects/$slug/automation/reports/$reportId'
     | '/projects/$slug/automation/schedules/$scheduleId'
     | '/projects/$slug/contracts/$provider/$contract'
     | '/projects/$slug/ecosystem/channel/$ref'
@@ -871,6 +871,7 @@ export interface FileRouteTypes {
     | '/_workspace/attention/'
     | '/_workspace/docs/'
     | '/_workspace/ecosystems/'
+    | '/_workspace/forge-feedback/'
     | '/_workspace/integrations/'
     | '/_workspace/ops/'
     | '/_workspace/org/'
@@ -926,7 +927,6 @@ export interface FileRouteTypes {
     | '/_workspace/projects/$slug/workflows/$workflow/'
     | '/_workspace/projects/$slug/agents/runs/$runId/'
     | '/_workspace/projects/$slug/automation/fires/$fireId/'
-    | '/_workspace/projects/$slug/automation/reports/$reportId/'
     | '/_workspace/projects/$slug/automation/schedules/$scheduleId/'
     | '/_workspace/projects/$slug/contracts/$provider/$contract/'
     | '/_workspace/projects/$slug/ecosystem/channel/$ref/'
@@ -1031,6 +1031,13 @@ declare module '@tanstack/react-router' {
       path: '/ecosystems'
       fullPath: '/ecosystems/'
       preLoaderRoute: typeof WorkspaceEcosystemsIndexRouteImport
+      parentRoute: typeof WorkspaceRouteRoute
+    }
+    '/_workspace/forge-feedback/': {
+      id: '/_workspace/forge-feedback/'
+      path: '/forge-feedback'
+      fullPath: '/forge-feedback/'
+      preLoaderRoute: typeof WorkspaceForgeFeedbackIndexRouteImport
       parentRoute: typeof WorkspaceRouteRoute
     }
     '/_workspace/integrations/': {
@@ -1425,13 +1432,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof WorkspaceProjectsSlugAutomationFiresFireIdIndexRouteImport
       parentRoute: typeof WorkspaceProjectsSlugRouteRoute
     }
-    '/_workspace/projects/$slug/automation/reports/$reportId/': {
-      id: '/_workspace/projects/$slug/automation/reports/$reportId/'
-      path: '/automation/reports/$reportId'
-      fullPath: '/projects/$slug/automation/reports/$reportId/'
-      preLoaderRoute: typeof WorkspaceProjectsSlugAutomationReportsReportIdIndexRouteImport
-      parentRoute: typeof WorkspaceProjectsSlugRouteRoute
-    }
     '/_workspace/projects/$slug/automation/schedules/$scheduleId/': {
       id: '/_workspace/projects/$slug/automation/schedules/$scheduleId/'
       path: '/automation/schedules/$scheduleId'
@@ -1510,7 +1510,6 @@ interface WorkspaceProjectsSlugRouteRouteChildren {
   WorkspaceProjectsSlugWorkflowsWorkflowIndexRoute: typeof WorkspaceProjectsSlugWorkflowsWorkflowIndexRoute
   WorkspaceProjectsSlugAgentsRunsRunIdIndexRoute: typeof WorkspaceProjectsSlugAgentsRunsRunIdIndexRoute
   WorkspaceProjectsSlugAutomationFiresFireIdIndexRoute: typeof WorkspaceProjectsSlugAutomationFiresFireIdIndexRoute
-  WorkspaceProjectsSlugAutomationReportsReportIdIndexRoute: typeof WorkspaceProjectsSlugAutomationReportsReportIdIndexRoute
   WorkspaceProjectsSlugAutomationSchedulesScheduleIdIndexRoute: typeof WorkspaceProjectsSlugAutomationSchedulesScheduleIdIndexRoute
   WorkspaceProjectsSlugContractsProviderContractIndexRoute: typeof WorkspaceProjectsSlugContractsProviderContractIndexRoute
   WorkspaceProjectsSlugEcosystemChannelRefIndexRoute: typeof WorkspaceProjectsSlugEcosystemChannelRefIndexRoute
@@ -1582,8 +1581,6 @@ const WorkspaceProjectsSlugRouteRouteChildren: WorkspaceProjectsSlugRouteRouteCh
       WorkspaceProjectsSlugAgentsRunsRunIdIndexRoute,
     WorkspaceProjectsSlugAutomationFiresFireIdIndexRoute:
       WorkspaceProjectsSlugAutomationFiresFireIdIndexRoute,
-    WorkspaceProjectsSlugAutomationReportsReportIdIndexRoute:
-      WorkspaceProjectsSlugAutomationReportsReportIdIndexRoute,
     WorkspaceProjectsSlugAutomationSchedulesScheduleIdIndexRoute:
       WorkspaceProjectsSlugAutomationSchedulesScheduleIdIndexRoute,
     WorkspaceProjectsSlugContractsProviderContractIndexRoute:
@@ -1605,6 +1602,7 @@ interface WorkspaceRouteRouteChildren {
   WorkspaceAttentionIndexRoute: typeof WorkspaceAttentionIndexRoute
   WorkspaceDocsIndexRoute: typeof WorkspaceDocsIndexRoute
   WorkspaceEcosystemsIndexRoute: typeof WorkspaceEcosystemsIndexRoute
+  WorkspaceForgeFeedbackIndexRoute: typeof WorkspaceForgeFeedbackIndexRoute
   WorkspaceIntegrationsIndexRoute: typeof WorkspaceIntegrationsIndexRoute
   WorkspaceOpsIndexRoute: typeof WorkspaceOpsIndexRoute
   WorkspaceOrgIndexRoute: typeof WorkspaceOrgIndexRoute
@@ -1625,6 +1623,7 @@ const WorkspaceRouteRouteChildren: WorkspaceRouteRouteChildren = {
   WorkspaceAttentionIndexRoute: WorkspaceAttentionIndexRoute,
   WorkspaceDocsIndexRoute: WorkspaceDocsIndexRoute,
   WorkspaceEcosystemsIndexRoute: WorkspaceEcosystemsIndexRoute,
+  WorkspaceForgeFeedbackIndexRoute: WorkspaceForgeFeedbackIndexRoute,
   WorkspaceIntegrationsIndexRoute: WorkspaceIntegrationsIndexRoute,
   WorkspaceOpsIndexRoute: WorkspaceOpsIndexRoute,
   WorkspaceOrgIndexRoute: WorkspaceOrgIndexRoute,

@@ -19,6 +19,16 @@ export async function principalOf(tx: Executor, bindingId: string): Promise<stri
   return row?.userId ?? null;
 }
 
+/** Whether `userId` is a widget binding's own account, which files only for that binding's visitors. */
+export async function isWidgetPrincipal(userId: string): Promise<boolean> {
+  const [row] = await db
+    .select({ userId: widgetPrincipals.userId })
+    .from(widgetPrincipals)
+    .where(eq(widgetPrincipals.userId, userId))
+    .limit(1);
+  return row !== undefined;
+}
+
 export async function insertPrincipal(
   tx: Tx,
   row: { bindingId: string; projectId: string; userId: string },

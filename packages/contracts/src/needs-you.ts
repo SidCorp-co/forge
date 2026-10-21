@@ -61,7 +61,6 @@ export const NEEDS_YOU_ENTITIES = [
 	"issue",
 	"contract",
 	"schedule",
-	"report",
 	"workflow",
 	"question",
 ] as const;
@@ -73,7 +72,7 @@ export interface NeedsYouItem {
 	/** Whose list it belongs on (`NEEDS_YOU_AREA_SPACE`): a member's ask, or Forge ops' upkeep. */
 	space: NeedsYouSpace;
 	entity: NeedsYouEntity;
-	/** The row's key: ISS-n, REQ-n, FB-n, a release version, a contract ref, a schedule or report id, a design's flow, a question's id. */
+	/** The row's key: ISS-n, REQ-n, FB-n, a release version, a contract ref, a schedule id, a design's flow, a question's id. */
 	key: string;
 	/** The row's title in English: its writer's words, or Forge's own where nobody wrote one. */
 	title: string;

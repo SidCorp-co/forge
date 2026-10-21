@@ -1,18 +1,23 @@
 
 import { Button, useTopBarSlotTargets } from "@/design";
 import { dockTitle } from "@/features/conversations";
+import { ForgeFeedbackButton } from "@/features/feedback";
+import { useForgeVersion } from "@/features/version";
 import { useCopy } from "@/lib/i18n/interface-language";
 
 // the page's title and primary actions are portalled in by the page itself (PageTitle, TopBarActions), so the bar has no per-route knowledge
+// Feedback to Forge is on every page (REQ-47 BC-9), so it stands in the bar beside the page's own acts
 // Ask Agent is desktop-only: below md the bottom tabs carry it, and a second entry there would be the same control twice
 // open, it reads as pressed rather than turning primary: the page's one primary action keeps that colour (prototype-gap-audit)
 export function ShellTopBar({ chatOpen, onToggleChat }: { chatOpen: boolean; onToggleChat: () => void }) {
   const { titleRef, actionsRef } = useTopBarSlotTargets();
   const t = useCopy();
+  const version = useForgeVersion().data?.version?.trim();
   return (
     <header className="flex h-12 flex-none items-center gap-3 border-b border-line bg-surface px-4 sm:px-6">
       <div ref={titleRef} className="flex min-w-0 flex-1 items-center gap-2" />
       <div ref={actionsRef} className="flex flex-none items-center gap-2" />
+      <ForgeFeedbackButton clientVersion={version ? `web ${version}` : undefined} />
       <Button
         type="button"
         variant="secondary"

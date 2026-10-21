@@ -155,6 +155,8 @@ const rowOf =
         enumLabel("feedbackKind", r.kind, language),
         t("feedback.row.about", { about: aboutLine(r, t, language) }),
         reporter,
+        ...(r.origin?.project ? [t("feedback.row.from", { project: r.origin.project.name })] : []),
+        ...(r.origin && r.origin.occurrences > 1 ? [t("feedback.row.reports", { n: r.origin.occurrences })] : []),
         t("feedback.row.severity", { severity: statusReading("severity", r.severity, language).label }),
       ],
       eta: <EtaCell eta={etaOf(r.key)} clock={clock} />,

@@ -727,7 +727,6 @@ export const SAID = {
 		en: "triage {n} feedback items",
 		vars: { n: "count" },
 	},
-	"standing.act.triageReport": { en: "triage a report" },
 	"standing.act.updateToContract": {
 		en: "Update to the current version of {contract} ({v})",
 		vars: { contract: "name", v: "version" },
@@ -1118,35 +1117,9 @@ export const SAID = {
 		vars: { at: "instant" },
 	},
 	"automation.rule.noNextFire": { en: "no next fire set" },
-	"automation.rule.toOwner": {
-		en: "a report a fire filed goes to its schedule owner first",
-	},
-	"automation.rule.toWriters": {
-		en: "no schedule owner: any member with write access triages it",
-	},
-	"automation.who.harnessTriage": { en: "Harness triage" },
-	"automation.rule.harness": {
-		en: "a run's harness report, triaged under Automation, Reports",
-	},
-	"automation.rule.reportsWait": {
-		en: "{n} of its reports wait for triage: {rule}",
-		vars: { n: "count", rule: "said" },
-	},
 	"automation.rule.running": { en: "running" },
 	"automation.rule.fireWaitsOnNobody": {
 		en: "nothing about this fire waits on a person",
-	},
-	"automation.rule.filedFeedback": {
-		en: "filed as {key}, at {phase}",
-		vars: { key: "key", phase: "code" },
-	},
-	"automation.rule.filedIssue": {
-		en: "filed as {key}, at {status}",
-		vars: { key: "key", status: "status" },
-	},
-	"automation.rule.triaged": {
-		en: "triaged {triage}",
-		vars: { triage: "code" },
 	},
 	"standing.keysAnd": {
 		en: "{keys} and {last}",

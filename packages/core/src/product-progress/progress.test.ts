@@ -8,7 +8,7 @@ import type {
 import type { RunStanding, RunState } from '@forge/contracts/run-standing';
 import { say } from '@forge/contracts/said';
 import { describe, expect, it } from 'vitest';
-import { progressOf } from './product-progress.js';
+import { progressOf } from './progress.js';
 
 const asOf = '2026-10-16T09:00:00.000Z';
 const stamp = { label: 'forecast' as const, asOf };
