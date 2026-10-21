@@ -5,8 +5,7 @@
 // worth offering, and what the room becomes once somebody walks through
 // (ISS-1011).
 
-import { and, eq, inArray, isNull, ne } from 'drizzle-orm';
-import { HTTPException } from 'hono/http-exception';
+import { and, eq, inArray, isNull, min, ne } from 'drizzle-orm';
 import { db as defaultDb } from '../db/client.js';
 import { organizationMembers, projectMembers, projects, users } from '../db/schema.js';
 import {
@@ -19,10 +18,8 @@ import { personName } from '../lib/person-name.js';
 import type { Executor, TxOnly } from './db-executor.js';
 import { existingProjectHandle, handleNameForProject } from './handles.js';
 import { conversationTransport } from './ports.js';
+import { roomRefusal } from './room-refusal.js';
 import { appendMessagesIn } from './store.js';
-
-const badRequest = (message: string, code: string) =>
-  new HTTPException(400, { message, cause: { code } });
 
 export interface NamedProject {
   id: string;
@@ -36,6 +33,8 @@ export interface NamedProject {
 export interface PersonCandidate {
   userId: string;
   email: string;
+  /** When they first joined an organization the room's projects are in, which orders the unnamed (ISS-1229 r28). */
+  addedAt: Date;
 }
 
 export interface HandleCandidate {
@@ -188,20 +187,37 @@ async function liveUserIds(conversationId: string | null, tx: Executor): Promise
 }
 
 /**
- * A person may be added only where they could have read the room already.
+ * A person may be added only where they could have read the room already, and only a person with an
+ * account: an id that is none is refused as that, never as a missing role (ISS-1229 r28).
  */
 export async function assertPersonReachesScope(
+  conversationId: string,
   userId: string,
   scope: readonly string[],
   tx: Executor = defaultDb,
 ): Promise<void> {
+  const [account] = await tx
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  if (!account) {
+    throw roomRefusal(
+      400,
+      'PERSON_NOT_FOUND',
+      'No Forge account has the id given for the person, so nobody was added to this room',
+      { conversationId, userId },
+    );
+  }
   for (const projectId of scope) {
     const access = await effectiveProjectRole(userId, projectId);
     if (access?.role) continue;
     const [named] = await projectsNamed([projectId], tx);
-    throw badRequest(
-      `that person holds no role on ${named ? `project ${named.name}` : `project ${projectId}`}, and a room is read only by somebody holding one on every project in it — give them a role there first`,
+    throw roomRefusal(
+      400,
       'PERSON_OUT_OF_SCOPE',
+      `This room is read only by somebody holding a role on every project it is about, and that person holds none on ${named ? `the project ${named.name}` : 'one of them'}; give them a role there first`,
+      { conversationId, userId, projectId },
     );
   }
 }
@@ -226,13 +242,15 @@ export async function addablePeople(
   if (orgIds.length === 0) return [];
 
   const pool = await tx
-    .selectDistinct({
+    .select({
       userId: users.id,
       email: users.email,
+      addedAt: min(organizationMembers.createdAt).mapWith(organizationMembers.createdAt),
     })
     .from(organizationMembers)
     .innerJoin(users, eq(users.id, organizationMembers.userId))
-    .where(and(inArray(organizationMembers.orgId, orgIds), ne(users.kind, 'agent')));
+    .where(and(inArray(organizationMembers.orgId, orgIds), ne(users.kind, 'agent')))
+    .groupBy(users.id, users.email);
 
   const out: PersonCandidate[] = [];
   for (const person of pool) {
@@ -241,7 +259,7 @@ export async function addablePeople(
     for (const projectId of scope) {
       if (!(await effectiveProjectRole(person.userId, projectId))?.role) reaches = false;
     }
-    if (reaches) out.push(person);
+    if (reaches && person.addedAt) out.push({ ...person, addedAt: person.addedAt });
   }
   return out.sort((a, b) => a.email.localeCompare(b.email));
 }

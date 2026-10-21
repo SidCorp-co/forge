@@ -27,7 +27,7 @@ import { useRemoveParticipant } from "../hooks";
 import {
   agentsOf,
   memberName,
-  peopleOf,
+  orderedPeopleOf,
   removalClaim,
   removalHeld,
   removalQuestion,
@@ -60,7 +60,7 @@ export function ConversationMembers({
   const asked = removing ? removalQuestion(removing, viewerId, room) : null;
 
   const agents = agentsOf(room);
-  const people = peopleOf(room);
+  const people = orderedPeopleOf(room, viewerId);
 
   return (
     <>
@@ -229,13 +229,13 @@ function MemberRow({
         </span>
       </div>
       {isAgent && member.reachable === false && (
-        <Tooltip label="This agent holds no live credential or has lost its project role, so it cannot answer here.">
+        <Tooltip prose label="This agent holds no live credential or has lost its project role, so it cannot answer here.">
           <span className="fg-caption rounded bg-surface px-1.5 py-0.5 text-muted">can't act</span>
         </Tooltip>
       )}
       {/* A held control stays focusable, so its reason reaches a keyboard reader too (r27 review F1). */}
       {canChange && (
-        <Tooltip label={held ?? removalClaim(member, room, viewerId)}>
+        <Tooltip prose label={held ?? removalClaim(member, room, viewerId)}>
           <IconButton
             icon="x"
             size="sm"

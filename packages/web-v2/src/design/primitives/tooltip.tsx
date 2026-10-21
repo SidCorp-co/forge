@@ -11,27 +11,38 @@ export interface TooltipProps {
    *  failure reason). Without it the label keeps one line and wraps only where
    *  the viewport is narrower than that line. */
   multiline?: boolean;
+  /** ISS-1229 r28 — a sentence a person reads, set in the app's text face and wrapped at the
+   *  multiline cap; the code face stays for identifiers and short labels. */
+  prose?: boolean;
 }
 
-export interface TooltipPanelProps extends Pick<TooltipProps, "label" | "side" | "multiline"> {
+export interface TooltipPanelProps extends Pick<TooltipProps, "label" | "side" | "multiline" | "prose"> {
   open: boolean;
   anchor: RefObject<HTMLElement | null>;
 }
 
 /** The bubble a Tooltip draws, for a trigger that cannot sit inside a Tooltip's wrapper. */
-export function TooltipPanel({ open, anchor, label, side = "top", multiline = false }: TooltipPanelProps) {
+export function TooltipPanel({
+  open,
+  anchor,
+  label,
+  side = "top",
+  multiline = false,
+  prose = false,
+}: TooltipPanelProps) {
+  const wraps = multiline || prose;
   return (
     <Popover
       open={open}
       anchor={anchor}
       placement={side}
-      maxWidth={multiline ? 240 : undefined}
+      maxWidth={wraps ? 240 : undefined}
       role="tooltip"
-      className={`forge-fade pointer-events-none w-max whitespace-normal rounded-md px-2 py-1 font-mono ${
-        multiline ? "text-left" : ""
-      }`}
+      className={`forge-fade pointer-events-none w-max whitespace-normal rounded-md px-2 py-1 ${
+        prose ? "font-sans leading-snug" : "font-mono"
+      } ${wraps ? "text-left" : ""}`}
       style={{
-        fontSize: "var(--text-11)",
+        fontSize: prose ? "var(--text-12)" : "var(--text-11)",
         color: "var(--fg-on-accent)",
         background: "var(--ink-900)",
         boxShadow: "var(--shadow-md)",
@@ -44,7 +55,7 @@ export function TooltipPanel({ open, anchor, label, side = "top", multiline = fa
 
 /** Hover/focus tooltip, placed by Popover: kept inside the viewport and flipped
  *  to the other side of its trigger when the preferred one lacks room. */
-export function Tooltip({ label, children, side = "top", multiline = false }: TooltipProps) {
+export function Tooltip({ label, children, side = "top", multiline = false, prose = false }: TooltipProps) {
   const [open, setOpen] = useState(false);
   const anchor = useRef<HTMLSpanElement>(null);
   return (
@@ -57,7 +68,7 @@ export function Tooltip({ label, children, side = "top", multiline = false }: To
       onBlur={() => setOpen(false)}
     >
       {children}
-      <TooltipPanel open={open} anchor={anchor} label={label} side={side} multiline={multiline} />
+      <TooltipPanel open={open} anchor={anchor} label={label} side={side} multiline={multiline} prose={prose} />
     </span>
   );
 }

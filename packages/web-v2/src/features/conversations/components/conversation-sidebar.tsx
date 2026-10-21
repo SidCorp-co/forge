@@ -70,8 +70,11 @@ export function ConversationSidebar({
 }: ConversationSidebarProps) {
   return (
     <div
+      data-testid="conversation-sidebar"
+      // In the drawer the list fills it, so a phone shows no blank white beside a 280px column
+      // (ISS-1229 r28, judge-80 at 390).
       className={`flex h-full min-h-0 flex-none flex-col border-r border-line bg-surface transition-[width] ${
-        collapsed ? "w-[64px]" : "w-[280px]"
+        onClose ? "w-full" : collapsed ? "w-[64px]" : "w-[280px]"
       }`}
     >
       <div className={`flex flex-none items-center gap-1.5 border-b border-line p-2 ${collapsed ? "flex-col" : ""}`}>

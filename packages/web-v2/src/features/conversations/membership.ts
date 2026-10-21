@@ -13,6 +13,7 @@
 // the agent is shown what has already been said, and it says the bound.
 
 import { personName, readerName } from "@forge/contracts/person-name";
+import { addedApart, type ListedPerson, orderPeople } from "@/lib/people/order-people";
 import type {
   ConversationMembership,
   ConversationParticipant,
@@ -198,37 +199,34 @@ export function personAdditionClaims(args: {
   ];
 }
 
-// In the reader's own time zone, as every time the room shows is (ISS-1229 r25).
-const addedDay = (iso: string) =>
-  new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric" }).format(new Date(iso));
-const addedTime = (iso: string) =>
-  new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
-const ORDINALS = ["first", "second", "third", "fourth", "fifth"];
+/** A room's member as a list of people reads them, keyed by its own row. */
+const listedMember = (p: ConversationParticipant): ListedPerson => ({
+  userId: p.userId,
+  displayName: p.displayName,
+  addedAt: p.addedAt,
+  key: p.id,
+});
 
 /**
  * What tells a person apart from others in the room who read the same name (ISS-1229 r24): the day
- * they were added, then the minute, then their place in the order added — the way a connection is
- * told apart (`connectionLabels`). Null where nobody else reads like them.
+ * they were added, then the minute, then their place in the order added (`addedApart`).
  */
 function addedWords(
   participant: ConversationParticipant,
   room: Partial<Pick<ConversationMembership, "participants">>,
   viewerId?: string | null,
 ): string | null {
-  if (participant.kind !== "person" || !participant.addedAt) return null;
-  const base = (p: ConversationParticipant) => readerName(p.userId, viewerId, p.displayName).toLowerCase();
-  const alike = (room.participants ?? [])
-    .filter((p) => p.kind === "person" && p.addedAt && base(p) === base(participant))
-    .sort((a, b) => (a.addedAt as string).localeCompare(b.addedAt as string) || a.id.localeCompare(b.id));
-  if (alike.length < 2) return null;
-  const day = (p: ConversationParticipant) => addedDay(p.addedAt as string);
-  const minute = (p: ConversationParticipant) => `${day(p)}, ${addedTime(p.addedAt as string)}`;
-  const sameDay = alike.filter((p) => day(p) === day(participant));
-  if (sameDay.length < 2) return `added ${day(participant)}`;
-  const sameMinute = alike.filter((p) => minute(p) === minute(participant));
-  if (sameMinute.length < 2) return `added ${minute(participant)}`;
-  const place = sameMinute.findIndex((p) => p.id === participant.id);
-  return `added ${minute(participant)}, the ${ORDINALS[place] ?? `number ${place + 1}`}`;
+  if (participant.kind !== "person") return null;
+  return addedApart(listedMember(participant), peopleOf(room).map(listedMember), viewerId);
+}
+
+/** A room's people in the order every list of people takes: the reader, names, then the unnamed by
+ *  when each was added (ISS-1229 r28). */
+export function orderedPeopleOf(
+  room: Partial<Pick<ConversationMembership, "participants">>,
+  viewerId?: string | null,
+): ConversationParticipant[] {
+  return orderPeople(peopleOf(room), viewerId, listedMember);
 }
 
 /** How a member is named in the room's list: the reader's own row reads "You" (ISS-1229 r23), and

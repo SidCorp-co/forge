@@ -89,6 +89,10 @@ export const orgMemberSchema = z.object({
   email: z.string(),
   displayName: z.string().nullable(),
   handle: z.string().nullable().describe('The address of an agent member, null for a person'),
+  kind: z.enum(['person', 'agent']).describe('A person, or an agent account'),
+  projects: z
+    .array(z.object({ id: z.string(), name: z.string() }))
+    .describe("The organization's projects an agent serves; empty for a person"),
   role: z.string(),
   lenses: z.array(z.string()),
   createdAt: z.date(),

@@ -1,5 +1,6 @@
 
 import { couldNotRead } from "@/lib/api/read-failed";
+import { addedApart, comparePeople, type ListedPerson } from "@/lib/people/order-people";
 import { personChoice, personInitials, readerInitials, readerName } from "@forge/contracts/person-name";
 import { jobKindLabel } from "@/features/overview/job-kinds";
 import {
@@ -51,6 +52,7 @@ import type {
 	IssueStatus,
 	ParkOwes,
 	PipelineHealth,
+	ProjectMember,
 	JournalAttempt,
 	JournalRun,
 } from "./types";
@@ -510,7 +512,12 @@ export function creatorInitialsOf(
  * deterministic (by the natural enum/status order, Unassigned last for people, modules by name with
  * the issues that have none last).
  */
-export function groupRows(rows: IssueRow[], groupBy: GroupBy, viewerId?: string | null): IssueGroup[] {
+export function groupRows(
+	rows: IssueRow[],
+	groupBy: GroupBy,
+	viewerId?: string | null,
+	members?: readonly Pick<ProjectMember, "userId" | "createdAt">[],
+): IssueGroup[] {
 	if (groupBy === "none") {
 		return [{ key: "all", label: "All issues", rows }];
 	}
@@ -531,15 +538,40 @@ export function groupRows(rows: IssueRow[], groupBy: GroupBy, viewerId?: string 
 			groupBy === "creator" ? creatorLabelOf(groupRowsArr[0], viewerId) : key;
 		groups.push({ key, label, rows: groupRowsArr });
 	}
-	if (groupBy === "creator") {
-		// An agent is an account with a name, not a class (ISS-1137).
-		const isAgentGroup = (g: IssueGroup) => g.rows[0].creatorIsAgent;
-		groups.sort((a, b) => {
-			const byKind = Number(isAgentGroup(a)) - Number(isAgentGroup(b));
-			return byKind !== 0 ? byKind : a.label.localeCompare(b.label);
-		});
-	}
+	if (groupBy === "creator") return creatorGroups(groups, viewerId, members);
 	return groups;
+}
+
+/**
+ * Creator groups in the order every list of people takes — the reader, names, then the unnamed by
+ * when each was added to the project — with the agents after them, an agent being an account with a
+ * name, not a class (ISS-1137). Two unnamed people are told apart by when each was added, in the words
+ * a room's people list uses (ISS-1229 r28, judge-80 read two identical "Another member" groups).
+ */
+function creatorGroups(
+	groups: IssueGroup[],
+	viewerId?: string | null,
+	members?: readonly Pick<ProjectMember, "userId" | "createdAt">[],
+): IssueGroup[] {
+	const added = new Map((members ?? []).map((m) => [m.userId, m.createdAt]));
+	const listed = (g: IssueGroup): ListedPerson => ({
+		userId: g.key,
+		displayName: g.rows[0].creatorLabel,
+		addedAt: added.get(g.key) ?? null,
+	});
+	const people = groups.filter((g) => !g.rows[0].creatorIsAgent);
+	const everyone = people.map(listed);
+	const compare = comparePeople(viewerId);
+	const named = people
+		.map((g) => {
+			const apart = addedApart(listed(g), everyone, viewerId);
+			return apart ? { ...g, label: `${g.label} (${apart})` } : g;
+		})
+		.sort((a, b) => compare(listed(a), listed(b)));
+	const agents = groups
+		.filter((g) => g.rows[0].creatorIsAgent)
+		.sort((a, b) => a.label.localeCompare(b.label));
+	return [...named, ...agents];
 }
 
 function openingLine(body: string): string {

@@ -48,7 +48,8 @@ import {
   type OrgMemberRow,
   type OrgRole,
 } from "../types";
-import { ConfirmDialog } from "@/design/primitives/confirm-dialog";
+import { ConfirmDialog, PanelFailure, type PanelFailureView } from "@/design/primitives/confirm-dialog";
+import { orderPeople } from "@/lib/people/order-people";
 
 /**
  * Per-member working-lens control (role-aware chat). Two toggle-chips — a
@@ -153,16 +154,34 @@ export function OrgMembersCard({
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameValue, setRenameValue] = useState(org.name);
+  // A refused delete or rename is told inside its own panel, never in a toast over it (ISS-1229 r28).
+  const [deleteFailure, setDeleteFailure] = useState<PanelFailureView | null>(null);
+  const [renameFailure, setRenameFailure] = useState<PanelFailureView | null>(null);
+
+  // People lead with the reader, then by name, then the unnamed by when they joined; agents are listed
+  // apart, and one serving none of the organization's projects is not listed at all (ISS-1229 r28).
+  const members = membersQ.data ?? [];
+  const people = orderPeople(
+    members.filter((m) => m.kind !== "agent"),
+    user?.id,
+    (m) => ({ userId: m.userId, displayName: m.displayName, addedAt: m.createdAt }),
+  );
+  const agents = members
+    .filter((m) => m.kind === "agent" && (m.projects ?? []).length > 0)
+    .sort((a, b) => agentName(a).localeCompare(agentName(b)));
+  const leaving = memberToRemove !== null && memberToRemove.userId === user?.id;
 
   function confirmRemoveMember() {
     if (!memberToRemove) return;
+    const self = memberToRemove.userId === user?.id;
     removeMember.mutate(memberToRemove.userId, {
       onSuccess: () => {
-        toast({ title: "Member removed", tone: "success" });
+        toast({ title: self ? `You left ${org.name}` : "Member removed", tone: "success" });
         setMemberToRemove(null);
+        if (self) onDeleted();
       },
       onError: (err) => {
-        toast(failureToast(err, "The member was not removed"));
+        toast(failureToast(err, self ? `You did not leave ${org.name}` : "The member was not removed"));
         setMemberToRemove(null);
       },
     });
@@ -189,8 +208,10 @@ export function OrgMembersCard({
         setDeleteOpen(false);
         onDeleted();
       },
-      onError: (err) =>
-        toast(failureToast(err, "The organization was not deleted")),
+      onError: (err) => {
+        const { title, description } = failureToast(err, "The organization was not deleted");
+        setDeleteFailure({ title, description });
+      },
     });
   }
 
@@ -206,8 +227,10 @@ export function OrgMembersCard({
         toast({ title: "Organization renamed", tone: "success" });
         setRenameOpen(false);
       },
-      onError: (err) =>
-        toast(failureToast(err, "The organization was not renamed")),
+      onError: (err) => {
+        const { title, description } = failureToast(err, "The organization was not renamed");
+        setRenameFailure({ title, description });
+      },
     });
   }
 
@@ -223,6 +246,7 @@ export function OrgMembersCard({
                 size="sm"
                 onClick={() => {
                   setRenameValue(org.name);
+                  setRenameFailure(null);
                   setRenameOpen(true);
                 }}
               >
@@ -231,7 +255,10 @@ export function OrgMembersCard({
               <Button
                 variant="danger"
                 size="sm"
-                onClick={() => setDeleteOpen(true)}
+                onClick={() => {
+                  setDeleteFailure(null);
+                  setDeleteOpen(true);
+                }}
               >
                 Delete
               </Button>
@@ -247,7 +274,7 @@ export function OrgMembersCard({
           />
         ) : (
           <ul className="divide-y divide-line" data-testid="org-card-rows">
-            {(membersQ.data ?? []).map((m) => (
+            {people.map((m) => (
               <li
                 key={m.userId}
                 data-testid="org-member-row"
@@ -312,7 +339,11 @@ export function OrgMembersCard({
                   {canManage && (
                     <IconButton
                       icon="trash"
-                      aria-label={`Remove ${readerName(m.userId, user?.id, m.displayName, "inside")}, ${m.email}`}
+                      aria-label={
+                        m.userId === user?.id
+                          ? `Leave ${org.name}`
+                          : `Remove ${readerName(m.userId, user?.id, m.displayName, "inside")}, ${m.email}`
+                      }
                       onClick={() => setMemberToRemove(m)}
                       disabled={
                         removeMember.isPending &&
@@ -324,6 +355,24 @@ export function OrgMembersCard({
               </li>
             ))}
           </ul>
+        )}
+
+        {agents.length > 0 && (
+          <div className="mt-4 space-y-3 border-t border-line pt-4" data-testid="org-agents">
+            <CardTitle className="fg-label text-fg">Agents</CardTitle>
+            <ul className="divide-y divide-line" data-testid="org-card-rows">
+              {agents.map((a) => (
+                <li key={a.userId} data-testid="org-agent-row" className="flex flex-col py-2.5">
+                  <span className="min-w-0 truncate font-mono text-fg" data-testid="org-agent-name">
+                    {agentName(a)}
+                  </span>
+                  <span className="fg-body-sm min-w-0 text-muted" data-testid="org-agent-projects">
+                    {a.projects.map((p) => p.name).join(", ")}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
 
         <div className="mt-4 space-y-3 border-t border-line pt-4">
@@ -456,18 +505,24 @@ export function OrgMembersCard({
 
       <ConfirmDialog
         open={!!memberToRemove}
-        title="Remove member"
+        title={leaving ? "Leave organization" : "Remove member"}
         message={
-          <>
-            Remove{" "}
-            <strong>
-              {readerName(memberToRemove?.userId, user?.id, memberToRemove?.displayName, "inside")}
-            </strong>{" "}
-            ({memberToRemove?.email}) from {org.name}?
-            They lose access to all of its projects.
-          </>
+          leaving ? (
+            <>
+              Leave <strong>{org.name}</strong>? You lose access to all of its projects.
+            </>
+          ) : (
+            <>
+              Remove{" "}
+              <strong>
+                {readerName(memberToRemove?.userId, user?.id, memberToRemove?.displayName, "inside")}
+              </strong>{" "}
+              ({memberToRemove?.email}) from {org.name}?
+              They lose access to all of its projects.
+            </>
+          )
         }
-        confirmLabel="Remove member"
+        confirmLabel={leaving ? "Leave organization" : "Remove member"}
         tone="danger"
         loading={removeMember.isPending}
         onConfirm={confirmRemoveMember}
@@ -502,6 +557,7 @@ export function OrgMembersCard({
         confirmLabel="Delete organization"
         tone="danger"
         loading={deleteOrg.isPending}
+        failure={deleteFailure}
         onConfirm={confirmDeleteOrg}
         onClose={() => setDeleteOpen(false)}
       />
@@ -516,11 +572,15 @@ export function OrgMembersCard({
           <Field label="Organization name">
             <Input
               value={renameValue}
-              onChange={(e) => setRenameValue(e.target.value)}
+              onChange={(e) => {
+                setRenameValue(e.target.value);
+                setRenameFailure(null);
+              }}
               placeholder={org.name}
               autoFocus
             />
           </Field>
+          {renameFailure && <PanelFailure failure={renameFailure} />}
           <div className="mt-auto flex items-center justify-end gap-2.5 pt-2">
             <Button
               type="button"
@@ -543,4 +603,10 @@ export function OrgMembersCard({
       </SlideOver>
     </Card>
   );
+}
+
+/** An agent is named by the address it is reached at, else by the name it was given. */
+function agentName(member: OrgMemberRow): string {
+  if (member.handle) return `@${member.handle}`;
+  return member.displayName?.trim() || "An agent";
 }

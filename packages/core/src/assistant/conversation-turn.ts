@@ -1,6 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { handleForProject } from '../conversations/participants.js';
+import { roomGone } from '../conversations/room-refusal.js';
 import { assertConversationWritable } from '../conversations/scope.js';
 import {
   appendMessages,
@@ -70,9 +71,6 @@ export interface OpenTurnOptions {
   db?: typeof defaultDb;
 }
 
-const notFound = (message: string) =>
-  new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
-
 const badRequest = (message: string, code: string) =>
   new HTTPException(400, { message, cause: { code } });
 
@@ -98,7 +96,7 @@ export async function openTurn(opts: OpenTurnOptions): Promise<ConversationTurn>
       .from(conversations)
       .where(eq(conversations.id, opts.conversationId))
       .limit(1);
-    if (!row) throw notFound('conversation not found');
+    if (!row) throw roomGone(opts.conversationId);
     const scope = await assertConversationWritable(row.id, opts.readerUserId ?? null);
     if (!scope.includes(opts.projectId)) {
       throw conflict(

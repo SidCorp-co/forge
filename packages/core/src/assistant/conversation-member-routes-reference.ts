@@ -22,6 +22,9 @@ const personCandidateSchema = z.object({
   userId: z.string(),
   email: z.string(),
   displayName: z.string().nullable(),
+  addedAt: z
+    .date()
+    .describe('When the person joined an organization the room is in, ordering the unnamed'),
 });
 
 const handleCandidateSchema = z.object({
@@ -36,7 +39,7 @@ export const candidatesSchema = z.object({
   handles: z.array(handleCandidateSchema),
 });
 
-const noRoom = fail('NOT_FOUND', 'there is no such room');
+const noRoom = fail('CONVERSATION_GONE', 'the room no longer exists, or never did');
 const roomRefused = fail(ROOM_FORBIDDEN);
 
 export const candidatesBeforeRoom = describeOperation({
@@ -65,7 +68,10 @@ export const addPersonToRoom = describeOperation({
     "Who reads the room changes and nothing about what it can see does. Answers with the room's whole membership.",
   responses: {
     201: json(membershipSchema, 'The membership after the change'),
-    400: fail({ PERSON_OUT_OF_SCOPE: MEMBER_REFUSED.PERSON_OUT_OF_SCOPE }),
+    400: fail({
+      PERSON_OUT_OF_SCOPE: MEMBER_REFUSED.PERSON_OUT_OF_SCOPE,
+      PERSON_NOT_FOUND: MEMBER_REFUSED.PERSON_NOT_FOUND,
+    }),
     403: roomRefused,
     404: noRoom,
   },
@@ -84,7 +90,10 @@ export const addHandleToRoom = describeOperation({
       HANDLE_NOT_ON_PROJECT: MEMBER_REFUSED.HANDLE_NOT_ON_PROJECT,
     }),
     403: fail({ ...ROOM_FORBIDDEN, ...HANDLE_FORBIDDEN }),
-    404: fail('NOT_FOUND', 'there is no such room, or no such project to give an agent'),
+    404: fail({
+      CONVERSATION_GONE: 'the room no longer exists, or never did',
+      NOT_FOUND: 'there is no such project to give an agent',
+    }),
     500: fail('HANDLE_HAS_NO_NAME', 'the project has an agent that carries no handle'),
   },
 });
@@ -100,6 +109,9 @@ export const removeFromRoom = describeOperation({
         'the person is the last in a one-to-one room, which nobody could then read',
     }),
     403: roomRefused,
-    404: fail('NOT_FOUND', 'there is no such room, or no live member by that id'),
+    404: fail({
+      CONVERSATION_GONE: 'the room no longer exists, or never did',
+      NOT_FOUND: 'there is no live member by that id',
+    }),
   },
 });
