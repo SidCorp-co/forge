@@ -94,7 +94,6 @@ export function buildActiveKey(pathname: string, slug: string | null): string {
   const ws = WORKSPACE_ITEMS.find((it) =>
     it.href === "/" ? pathname === "/" : pathname.startsWith(it.href),
   );
-  // A workspace page the rail does not list lights no row, never Overview (ISS-1229 r27).
   return ws?.key ?? "";
 }
 
