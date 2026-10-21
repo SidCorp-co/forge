@@ -244,6 +244,101 @@ describe("a job's question is its issue's (criteria 201, 202)", () => {
   });
 });
 
+/** A person answers the question the issue's job stopped on, `ago` before the sweeps read it. */
+async function answerItsQuestion(issueId: string, ago = '0 minutes'): Promise<void> {
+  const [row] = await harness.db.execute<{
+    id: string;
+    steps: Array<{ round: number; options?: Array<{ id: string }> }>;
+  }>(sql`SELECT id, steps FROM agent_questions WHERE issue_id = ${issueId}`);
+  const step = row?.steps.at(-1);
+  const optionId = step?.options?.[0]?.id;
+  if (!row || !step || !optionId) throw new Error('the job must have asked a choice');
+  const { answerQuestion } = await import('../../src/questions/write.js');
+  await answerQuestion({
+    questionId: row.id,
+    answer: { kind: 'option', optionId },
+    round: step.round,
+    by: ownerId,
+    role: 'admin',
+  });
+  await harness.db.execute(
+    sql`UPDATE agent_questions SET updated_at = now() - ${ago}::interval WHERE id = ${row.id}`,
+  );
+}
+
+/** The stranded-work notice first, so it reads the issue before any reset could move it out of reach. */
+async function sweep(): Promise<void> {
+  const { detectOrphanedRunAssertions } = await import('../../src/pipeline/issue-run-invariant.js');
+  await detectOrphanedRunAssertions();
+  const { resetAutonomousWedgesOnce } = await import('../../src/pipeline/reconciler.js');
+  await resetAutonomousWedgesOnce();
+}
+
+// ISS-1228 round 24 (judge-78): an answer woke the masters to resume the in-progress issue, and about
+// 40 seconds later the wedge net moved it back to Open (reconciler_autonomous_wedge_reset), while a
+// "work in progress with no run behind it" notice fired on it in between.
+describe('an answered question resumes its issue where it stands (round 24)', () => {
+  it('leaves an in-progress issue in progress, with no notice, past the reset window of its last write', async () => {
+    const { issueId, runId } = await stopOnQuestion('in_progress');
+    await leftForTwoDays(issueId, runId, 'failed');
+    await answerItsQuestion(issueId);
+    await sweep();
+    expect(await issueState(issueId)).toEqual({ status: 'in_progress', comments: 0, stranded: 0 });
+  });
+
+  it('still leaves it nine minutes after the answer, while the masters may still be taking it up', async () => {
+    const { issueId, runId } = await stopOnQuestion('in_progress');
+    await leftForTwoDays(issueId, runId, 'failed');
+    await answerItsQuestion(issueId, '9 minutes');
+    await sweep();
+    expect(await issueState(issueId)).toEqual({ status: 'in_progress', comments: 0, stranded: 0 });
+  });
+
+  it('reads it as wedged once the grace has run from an answer nothing took up', async () => {
+    const { issueId, runId } = await stopOnQuestion('in_progress');
+    await leftForTwoDays(issueId, runId, 'failed');
+    await answerItsQuestion(issueId, '11 minutes');
+    const { resetAutonomousWedgesOnce } = await import('../../src/pipeline/reconciler.js');
+    expect(await resetAutonomousWedgesOnce()).toBe(1);
+    expect((await issueState(issueId)).status).toBe('open');
+  });
+
+  it('resolves a stranded notice already standing once the question is answered', async () => {
+    const { issueId, runId } = await stopOnQuestion('in_progress');
+    await leftForTwoDays(issueId, runId, 'failed');
+    await harness.db.execute(
+      sql`UPDATE agent_questions SET status = 'void' WHERE issue_id = ${issueId}`,
+    );
+    const { detectOrphanedRunAssertions } = await import(
+      '../../src/pipeline/issue-run-invariant.js'
+    );
+    await detectOrphanedRunAssertions();
+    const standing = sql`SELECT 1 FROM notifications WHERE issue_id = ${issueId} AND type = 'issue_stranded' AND resolved_at IS NULL`;
+    expect(await harness.db.execute(standing)).toHaveLength(1);
+    await harness.db.execute(
+      sql`UPDATE agent_questions SET status = 'open' WHERE issue_id = ${issueId}`,
+    );
+    await answerItsQuestion(issueId);
+    await detectOrphanedRunAssertions();
+    expect(await harness.db.execute(standing)).toHaveLength(0);
+  });
+
+  it("drops the stopped job from the asker's failed jobs once its question is answered", async () => {
+    const { issueId, runId } = await stopOnQuestion('in_progress');
+    await leftForTwoDays(issueId, runId, 'failed');
+    const { selectFailedJobs } = await import('../../src/me/attention-failed-jobs.js');
+    await harness.db.execute(
+      sql`UPDATE agent_questions SET status = 'void' WHERE issue_id = ${issueId}`,
+    );
+    expect((await selectFailedJobs(ownerId)).map((r) => r.issueDocId)).toEqual([issueId]);
+    await harness.db.execute(
+      sql`UPDATE agent_questions SET status = 'open' WHERE issue_id = ${issueId}`,
+    );
+    await answerItsQuestion(issueId);
+    expect(await selectFailedJobs(ownerId)).toEqual([]);
+  });
+});
+
 describe('migration 0347 links the questions already standing at project level (criterion 203)', () => {
   async function standingQuestion(issueStatus: string, questionStatus: string) {
     const issueId = randomUUID();

@@ -5,12 +5,15 @@
 // this page", and below `sm` it was a bare icon. Its words show at every width; the after-shots at
 // 390 are the measurement of the row.
 
+import { ApiError } from "@/lib/api/client";
+import { couldNotRead } from "@/lib/api/read-failed";
 import { markUnreachable, UNREACHABLE_SENTENCE } from "@/lib/api/transport-failure";
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { IssueStatus } from "../types";
 import { IssueHeaderActions } from "./issue-header-actions";
+import { HeaderReadFailure } from "./issue-sticky-header";
 
 expect.extend(matchers);
 
@@ -147,32 +150,27 @@ describe("the primary action follows what the run waits on", () => {
 });
 
 // ISS-1228 round 21: a failed read of which session holds the issue fell back to the run's own
-// session without a word; it now says so where Open session goes, with Retry.
+// session without a word; it now says so, with Retry. Round 24: on the header's own failure line,
+// never in the action toolbar, where it squeezed the title and broke the actions into four rows.
 describe("a session the page could not read", () => {
-  it("says so, and why, with Retry and links to no other session", () => {
+  it("says so, and why, with Retry, on a line of its own", () => {
     const retry = vi.fn();
     const lost = new TypeError("Failed to fetch");
     markUnreachable(lost);
-    render(
-      <IssueHeaderActions
-        slug="forge"
-        sessionHref={null}
-        sessionUnread={{ error: lost, retry }}
-        status="in_progress"
-        releaseRunId={null}
-        canWrite
-        pending={false}
-        isRunActive
-        onTransition={vi.fn()}
-        onRun={onRun}
-        running={false}
-        onCopyLink={vi.fn()}
-      />,
-    );
+    render(<HeaderReadFailure said={couldNotRead("Its session", lost)} retry={retry} />);
     expect(screen.getByRole("status")).toHaveTextContent(`Its session could not be read. ${UNREACHABLE_SENTENCE}`);
-    expect(screen.queryByRole("link", { name: "Open session" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(retry).toHaveBeenCalledTimes(1);
   });
-});
 
+  it("says the server's own sentence for a refusal", () => {
+    render(<HeaderReadFailure said={couldNotRead("Its session", new ApiError(403, "Not a project member.", "FORBIDDEN"))} />);
+    expect(screen.getByRole("status")).toHaveTextContent("Its session could not be read. Not a project member.");
+  });
+
+  it("leaves the toolbar its actions alone, and links to no other session", () => {
+    renderAt("in_progress", null, null);
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.queryByRole("link", { name: "Open session" })).toBeNull();
+  });
+});

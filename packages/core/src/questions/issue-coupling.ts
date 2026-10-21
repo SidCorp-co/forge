@@ -28,6 +28,16 @@ export function holdsOpenHumanQuestion(issueId: SQLWrapper): SQL {
     where q.issue_id = ${issueId} and q.status = 'open' and q.blocker_kind = 'human')`;
 }
 
+/**
+ * A question on the issue a person answered at or after `since`. The answer woke the project's masters
+ * to resume the issue where it stands, so until the sweep's grace has run from the answer the issue is
+ * resuming, not idle: no sweep resets it or names it stranded in that window (ISS-1228 round 24).
+ */
+export function answeredSince(issueId: SQLWrapper, since: SQLWrapper): SQL {
+  return sql`exists (select 1 from agent_questions aq
+    where aq.issue_id = ${issueId} and aq.status = 'answered' and aq.updated_at >= ${since})`;
+}
+
 /** Whether a person owes the issue an answer. A transition calls it after locking the row, so an ask in flight commits first. */
 export async function personOwesAnAnswer(executor: Executor, issueId: string): Promise<boolean> {
   const rows = await executor.execute(

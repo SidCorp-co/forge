@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ApiError } from './client';
+import { ApiError, unsaidFailure } from './client';
 import {
   describeSettings,
   formatApiError,
@@ -216,8 +216,10 @@ describe('the connection refusals (ISS-1216)', () => {
     expect(formatApiError(err)).toBe(sentence);
   });
 
-  it('still prints the generic phrase for a plain NOT_FOUND, which is what the named codes are not', () => {
-    expect(formatApiError(new ApiError(404, 'connection not found', 'NOT_FOUND'))).toBe('Not found.');
+  // Round 24 (the master's ruling): the server's own sentence wins over the stock one for every code.
+  it("prints a plain NOT_FOUND's own sentence, and the generic phrase only where it said none", () => {
+    expect(formatApiError(new ApiError(404, 'Project not found.', 'NOT_FOUND'))).toBe('Project not found.');
+    expect(formatApiError(new ApiError(404, 'Not Found', 'NOT_FOUND'))).toBe('Not found.');
   });
 });
 
@@ -369,11 +371,19 @@ describe('readFailure — a failed read in the product\'s words, and the server\
     expect(readFailure(err).said).toBe(formatApiError(err));
   });
 
-  it('says a refusal it has words for in those words', () => {
-    expect(readFailure(new ApiError(403, 'not a project member', 'FORBIDDEN'))).toEqual({
-      said: 'You do not have access to this resource.',
-      technical: '403 FORBIDDEN — not a project member',
+  // Round 24 (judge-78, criterion 226): beta refused a non-member with "Not a project member." and the
+  // page said "You do not have access to this resource." over it.
+  it("says a refusal by the server's own sentence, over the stock one its code has", () => {
+    expect(readFailure(new ApiError(403, 'Not a project member.', 'FORBIDDEN'))).toEqual({
+      said: 'Not a project member.',
+      technical: '403 FORBIDDEN — Not a project member.',
     });
+  });
+
+  it('says the stock sentence only for a refusal that said nothing of its own', () => {
+    expect(readFailure(new ApiError(403, 'Forbidden', 'FORBIDDEN')).said).toBe('You do not have access to this resource.');
+    expect(readFailure(new ApiError(403, unsaidFailure(403), 'FORBIDDEN')).said).toBe('You do not have access to this resource.');
+    expect(readFailure(new ApiError(403, unsaidFailure(403))).said).toBe(unsaidFailure(403));
   });
 
   it('says an unreached server as one, and keeps what the browser said', () => {
