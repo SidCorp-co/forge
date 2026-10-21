@@ -168,6 +168,10 @@
   "REQ-41": {
    "title": "Chat is the way in: it answers what needs you and drives the page beside it",
    "status": "agreed"
+  },
+  "REQ-47": {
+   "title": "Feedback to Forge is filed by whoever reports it, from any project",
+   "status": "agreed"
   }
  },
  "workflows": {

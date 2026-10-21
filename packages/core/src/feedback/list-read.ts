@@ -1,11 +1,9 @@
 /** The list's derived facts per item: phase, who it waits on, the carrier's own status. Phases come from `standing.ts:phaseOf`; nothing here stores one. */
 
 import {
-  FEEDBACK_ATTENTION_GROUPS,
   FEEDBACK_VERIFY_WINDOW,
-  type FeedbackAttentionGroup,
   type FeedbackCarrierView,
-  type FeedbackListResponse,
+  type FeedbackOriginView,
   type FeedbackPhase,
   type FeedbackRouteView,
   type FeedbackSummary,
@@ -15,7 +13,7 @@ import { RELEASE_ACT_PERMISSION } from '@forge/contracts/forecast';
 import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
 import { requirementKey } from '@forge/contracts/requirements';
 import type { SuggestionStatus } from '@forge/contracts/suggestions';
-import { and, desc, eq, ilike, inArray } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, pipelineRuns, projects } from '../db/schema.js';
 import { feedback } from '../db/schema-feedback.js';
@@ -24,17 +22,16 @@ import { suggestions } from '../db/schema-suggestions.js';
 import { projectWorkflows } from '../db/schema-workflows.js';
 import { activeIssuePrefix } from '../issues/index.js';
 import { effectiveProjectRole } from '../lib/authz.js';
-import { dataPolicyOf } from '../lib/data-egress.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { userNames } from '../lib/people.js';
-import { actorFor, holderNames, holds, projectResource, requireCan } from '../permissions/index.js';
+import { holderNames, holds } from '../permissions/index.js';
 import { readReleaseMode } from '../project-config/index.js';
 import { deliveredAmong, nodesOfDesign } from '../requirements/index.js';
-import { feedbackEgress, type ReadDoor, WITHHELD } from './egress.js';
+import { WITHHELD } from './egress.js';
+import { forgeOriginsOf } from './forge-reads.js';
 import { liveMasterOwedTriages } from './owed-triage.js';
 import type { FeedbackActor, Row } from './read.js';
-import { feedbackIdsOfRequirement, NO_FEEDBACK, routeIssuesOf } from './relations.js';
-import { type FeedbackRefusal, searchWithheldRefusal } from './rules.js';
+import { routeIssuesOf } from './relations.js';
 import { NONE_UNTOLD, notToldOf, type UntoldAmong, untoldAmong } from './ship-notice.js';
 import {
   type CarrierRelease,
@@ -87,6 +84,8 @@ export interface Linked {
   verifyWindowDays: number;
   /** Whose reporter nothing told among these rows (`ship-notice.ts:untoldAmong`). */
   untold: UntoldAmong;
+  /** Where each row reported through the Forge door came from (`forge-reads.ts:forgeOriginsOf`). */
+  origins: Map<string, FeedbackOriginView>;
 }
 
 /** The viewer's acts on this project's feedback, by the same checks a detail's `can` reads. */
@@ -198,12 +197,13 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
   );
   const carrying = new Set([...routeIssues.values()].flat());
   const atGate = issueRows.some((i) => i.status === AT_RELEASE_GATE && carrying.has(i.id));
-  const [owed, release, windowDays] = await Promise.all([
+  const [owed, release, windowDays, origins] = await Promise.all([
     rows.some((r) => r.status === 'new' || r.status === 'reopened')
       ? liveMasterOwedTriages(projectId)
       : [],
     atGate ? readReleaseMode(projectId) : null,
     rows.some((r) => r.status === 'triaged') ? verifyWindowDays(projectId) : 0,
+    forgeOriginsOf(rows.map((r) => r.id)),
   ]);
   const releaseHolders =
     release && release !== 'automatic'
@@ -211,6 +211,7 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
       : [];
   const linked: Linked = {
     untold: NONE_UNTOLD,
+    origins,
     releaseHolders,
     verifyWindowDays: windowDays || FEEDBACK_VERIFY_WINDOW.defaultDays,
     masterOwed: new Set(owed.map((o) => o.feedbackId)),
@@ -431,6 +432,7 @@ export function summaryOf(
     target: targetView(r, l),
     route: withhold && route?.answer ? { ...route, answer: null } : route,
     reporter: { id: r.reportedBy, name: reporterName, agency: r.reporterAgency },
+    origin: l.origins.get(r.id) ?? null,
     dueAt: r.dueAt?.toISOString() ?? null,
     snoozed: withhold && snoozed ? { ...snoozed, reason: null } : snoozed,
     redacted: r.redactedAt !== null,
@@ -438,58 +440,6 @@ export function summaryOf(
     createdAt: r.createdAt.toISOString(),
     updatedAt: r.updatedAt.toISOString(),
   };
-}
-
-export async function listFeedbackAs(
-  viewer: FeedbackActor,
-  projectId: string,
-  query: {
-    phases?: readonly FeedbackPhase[] | undefined;
-    q?: string | undefined;
-    requirement?: string | undefined;
-  } = {},
-  door: ReadDoor = {},
-): Promise<{ ok: true; list: FeedbackListResponse } | { ok: false; refusals: FeedbackRefusal[] }> {
-  await requireCan(actorFor(viewer.userId), 'project.read', projectResource(projectId));
-  const level = await dataPolicyOf(projectId);
-  const { withhold, shown } = feedbackEgress(level, viewer.agency, door);
-  const searchRefused = searchWithheldRefusal(query.q, withhold);
-  if (searchRefused) return { ok: false, refusals: [searchRefused] };
-  const about = query.requirement
-    ? await feedbackIdsOfRequirement(projectId, query.requirement)
-    : null;
-  const rows = await db
-    .select()
-    .from(feedback)
-    .where(
-      and(
-        eq(feedback.projectId, projectId),
-        query.q ? ilike(feedback.title, `%${query.q}%`) : undefined,
-        about ? inArray(feedback.id, about.length ? about : [NO_FEEDBACK]) : undefined,
-      ),
-    )
-    .orderBy(desc(feedback.createdAt))
-    .limit(500);
-  const [linked, can] = await Promise.all([
-    linkedOf(projectId, rows),
-    viewerCanIn(viewer.userId, projectId),
-  ]);
-  const all = shown(
-    rows.map((r) => summaryOf(r, linked, viewer, withhold, can)),
-    'the feedback list',
-  );
-  const listed = query.phases?.length ? all.filter((s) => query.phases?.includes(s.phase)) : all;
-  const counts = Object.fromEntries(FEEDBACK_ATTENTION_GROUPS.map((g) => [g, 0])) as Record<
-    FeedbackAttentionGroup,
-    number
-  >;
-  for (const s of all) counts[s.attentionGroup] += 1;
-  const untold = {
-    owed: all.filter((s) => s.reporterNotTold === 'owed').length,
-    beforeNotices: all.filter((s) => s.reporterNotTold === 'before_notices').length,
-    noticesBegan: linked.untold.noticesBegan,
-  };
-  return { ok: true, list: { feedback: listed, counts, untold, sensitive: level !== 'off' } };
 }
 
 /** The phase of one item as a write reads it, under the write's own transaction where given. */

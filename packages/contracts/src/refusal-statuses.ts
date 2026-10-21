@@ -9,6 +9,8 @@ import { CONVERSATION_REFUSAL_STATUSES } from "./conversations.js";
 import { DEVICE_REFUSAL_STATUSES } from "./devices.js";
 import { ECOSYSTEM_REFUSAL_STATUSES } from "./ecosystem.js";
 import { FAST_LANE_REFUSAL_STATUSES } from "./fast-lane.js";
+import { FORGE_FEEDBACK_REFUSAL_STATUSES } from "./forge-feedback.js";
+import { INSTANCE_SETTINGS_REFUSAL_STATUSES } from "./instance-settings.js";
 import { INTAKE_REFUSAL_STATUSES } from "./intake-drafts.js";
 import { INTEGRATION_REFUSAL_STATUSES } from "./integrations.js";
 import { ISSUE_DESIGN_REFUSAL_STATUSES } from "./issue-design.js";
@@ -61,6 +63,8 @@ const DECLARED: ReadonlyArray<
 	DEVICE_REFUSAL_STATUSES,
 	ECOSYSTEM_REFUSAL_STATUSES,
 	FAST_LANE_REFUSAL_STATUSES,
+	FORGE_FEEDBACK_REFUSAL_STATUSES,
+	INSTANCE_SETTINGS_REFUSAL_STATUSES,
 	INTAKE_REFUSAL_STATUSES,
 	INTEGRATION_REFUSAL_STATUSES,
 	ISSUE_TRANSITION_REFUSAL_STATUSES,

@@ -136,6 +136,11 @@ export const feedback = pgTable(
     // one item per consumer per breaking contract version (E3), held by a unique key the filer
     // names, so a retried approval cannot file a twin
     dedupKey: text('dedup_key'),
+    /**
+     * What a report through the Forge door is about, said the same way by everyone who meets it
+     * (REQ-47 BC-5): a later report naming it while the item is open is an occurrence of this item.
+     */
+    signalKey: text('signal_key'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
     /** The language the text was written in (`@forge/contracts/written-lang`); null where it was written before the language was stored. */
@@ -232,6 +237,13 @@ export const feedback = pgTable(
     violatedCriterionIdx: index('feedback_violated_criterion_idx')
       .on(t.violatedCriterionId)
       .where(sql`violated_criterion_id IS NOT NULL`),
+    signalIdx: index('feedback_project_signal_idx')
+      .on(t.projectId, t.signalKey)
+      .where(sql`signal_key IS NOT NULL`),
+    signalChk: check(
+      'feedback_signal_key_chk',
+      sql`${t.signalKey} IS NULL OR ${t.signalKey} ~ '[^[:space:]]'`,
+    ),
   }),
 );
 
@@ -411,6 +423,50 @@ export const feedbackExternalReporters = pgTable(
     pageContextChk: check(
       'feedback_external_reporters_page_context_chk',
       sql`${t.pageContext} IS NULL OR jsonb_typeof(${t.pageContext}) = 'object'`,
+    ),
+  }),
+);
+
+/**
+ * Each time somebody reported an item through the Forge door (REQ-47): the filing itself and every
+ * later report of its signal key while it was open. Each names its own reporter's account, person or
+ * agent, and where it came from: the project, issue and run they were in and the client they used.
+ * An item's source is its first row; its occurrences are its rows.
+ */
+export const feedbackOccurrences = pgTable(
+  'feedback_occurrences',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    feedbackId: uuid('feedback_id')
+      .notNull()
+      .references(() => feedback.id, { onDelete: 'cascade' }),
+    reportedBy: uuid('reported_by')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    reporterAgency: text('reporter_agency', { enum: ['human', 'agent'] }).notNull(),
+    sourceProjectId: uuid('source_project_id').references(() => projects.id, {
+      onDelete: 'set null',
+    }),
+    sourceIssueId: uuid('source_issue_id').references((): AnyPgColumn => issues.id, {
+      onDelete: 'set null',
+    }),
+    sourceRunId: uuid('source_run_id').references((): AnyPgColumn => pipelineRuns.id, {
+      onDelete: 'set null',
+    }),
+    clientVersion: text('client_version'),
+    /** What this row was carried from, so a carry run twice writes it once (`agent_report:<id>`). */
+    dedupKey: text('dedup_key'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    feedbackIdx: index('feedback_occurrences_feedback_idx').on(t.feedbackId, t.createdAt),
+    reporterIdx: index('feedback_occurrences_reporter_idx').on(t.reportedBy),
+    dedupUq: uniqueIndex('feedback_occurrences_dedup_uq')
+      .on(t.dedupKey)
+      .where(sql`dedup_key IS NOT NULL`),
+    agencyChk: check(
+      'feedback_occurrences_agency_chk',
+      sql`${t.reporterAgency} IN ('human', 'agent')`,
     ),
   }),
 );

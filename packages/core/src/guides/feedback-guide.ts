@@ -31,10 +31,6 @@ into FB-n when it is product feedback after all.
   contracts serve the same name (\`FEEDBACK_TARGET_NOT_ONE\` until you do). A name the project does not
   serve is \`FEEDBACK_TARGET_UNKNOWN\`, naming what it does serve; a project that provides no such
   contract serves nothing, and the refusal says so. The item reads back keyed \`<contract>:<element>\`.
-- \`promote\` \`{ agentReport, kind, … }\` copies a report's summary and detail into a new item once:
-  a second promotion is \`FEEDBACK_SOURCE_ALREADY_PROMOTED\`, another project's report
-  \`FEEDBACK_SOURCE_NOT_IN_PROJECT\`, a report already curated into an issue
-  \`FEEDBACK_SOURCE_ROUTED_ELSEWHERE\`.
 
 ### Correcting what an item is about
 - \`retarget\` \`{ requirement | issue | release | workflow | endpoint | screen, node?, reason? }\` moves the item to

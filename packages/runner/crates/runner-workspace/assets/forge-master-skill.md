@@ -277,8 +277,8 @@ in the pane as well as recording it.
 When the method, a verb or a guide cannot do what a pass needed, you may work around it. You may not
 let the workaround become the way this project works:
 
-- Record the gap with an agent report (`agent-reports`, POST) as part of the workaround, not after
-  it has become habit.
+- Record the gap as feedback about Forge (`forge/feedback`, POST) as part of the workaround, not
+  after it has become habit.
 - Mark what you did as local and temporary where you record it, with what it stood in for.
 - Never promote it to a rule, a convention or an instruction to a later pass. The next master
   inherits your record, and a workaround written as a rule is indistinguishable from one.

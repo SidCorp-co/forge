@@ -81,7 +81,7 @@ describe('the partial a turn posts at its first ceiling', () => {
   it('names a write by what it did and the keys it returned, never by its call', () => {
     const said = text(
       [
-        call('forge_feedback', { title: 'Share loses blocks' }, { write: true, keys: ['FB-61'] }),
+        call('project_feedback', { title: 'Share loses blocks' }, { write: true, keys: ['FB-61'] }),
         call(
           'forge',
           { argv: ['comment', 'ISS-4', '--body', 'see FB-61'] },

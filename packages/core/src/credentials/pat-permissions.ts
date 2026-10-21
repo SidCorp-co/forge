@@ -67,13 +67,15 @@ export const PAT_PERMISSION_RESOURCES = {
     reach: 'project',
     prefixes: { '/api/conversations': 2 },
   },
-  // Product feedback FB-n mounts under `/api/projects/:id/feedback`, so `projects:*` grants it as it
-  // grants requirements and suggestions. `/api/agent-reports` is `/api/feedback-reports` renamed — the
-  // same rows — so it takes that prefix's epoch rather than the next.
-  'agent-reports': {
+  // A project's own feedback FB-n mounts under `/api/projects/:id/feedback`, so `projects:*` grants
+  // it as it grants requirements and suggestions. Feedback about Forge itself (REQ-47) is filed from
+  // any project into Forge's home, which a reporter need not reach: what it fences is the project a
+  // report says it came from. It replaces `/api/agent-reports` (once `/api/feedback-reports`), whose
+  // grant migration 0506 renamed to it, so it takes that prefix's epoch rather than the next.
+  'forge-feedback': {
     reach: 'project',
     prefixes: {
-      '/api/agent-reports': 2,
+      '/api/forge/feedback': 2,
     },
   },
   account: {
@@ -102,7 +104,9 @@ export const PAT_NESTED_SURFACES = Object.freeze({
   '/api/projects/:id/runners': '/api/runners',
   '/api/projects/:id/masters/standing': '/api/agent-sessions',
   '/api/projects/:id/masters/passes': '/api/agent-sessions',
-  '/api/projects/:id/automation': '/api/agent-reports',
+  // the schedules' fires are the sessions they ran; it took /api/agent-reports' epoch (2) while it
+  // listed reports too, and keeps that epoch now they are retired (REQ-47)
+  '/api/projects/:id/automation': '/api/agent-sessions',
   '/api/issues/:id/cost-summary': '/api/pipeline',
 } as const satisfies Record<string, PatPrefix>);
 

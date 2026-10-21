@@ -2,7 +2,6 @@
 // imports only kernel and platform modules and each execution domain only its own context or one
 // before it (ADR 0008), so what they need from above is handed in here, from the owners' faces.
 
-import { provideAgentReportsPorts } from './agent-reports/index.js';
 import { provideAgentSessionsPorts } from './agent-sessions/index.js';
 import { latestIssueCommentWith, postIssueNotice, postIssueNoticeOnce } from './comments/index.js';
 import { registerConversationAgentBridge, resolveProjectHandle } from './conversations/index.js';
@@ -20,7 +19,7 @@ import {
   renderContractContext,
   unansweredDocuments,
 } from './ecosystem/index.js';
-import { owedTriages, reportLinksOf } from './feedback/index.js';
+import { owedTriages } from './feedback/index.js';
 import { cmpVersion, mainRunnerHead } from './integrations/github/index.js';
 import {
   applyGrantedMcpServers,
@@ -193,8 +192,6 @@ export function provideExecutionPorts(): void {
     createReleaseBatch,
     sendStatusReport,
   });
-
-  provideAgentReportsPorts({ reportLinksOf });
 
   provideMastersPorts({
     channelOwed: async (projectId) => ({

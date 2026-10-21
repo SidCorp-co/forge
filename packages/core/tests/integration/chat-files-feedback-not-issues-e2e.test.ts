@@ -262,7 +262,11 @@ describe("the assistant's own toolset records, and offers no way to file an issu
       buildChatToolContext({ credential: chatCredential, projectSlug }),
     );
     const offered = tools.tools.map((t) => t.function.name);
-    for (const name of ['forge_feedback', 'forge_requirement_draft', 'forge_requirement_revise']) {
+    for (const name of [
+      'project_feedback',
+      'forge_requirement_draft',
+      'forge_requirement_revise',
+    ]) {
       expect(offered).toContain(name);
     }
     const draft = await tools.execute(
@@ -279,7 +283,7 @@ describe("the assistant's own toolset records, and offers no way to file an issu
     const req = JSON.parse(toolResultText(draft)).requirement;
     expect(req.state).toBe('draft');
     const filed = await tools.execute(
-      'forge_feedback',
+      'project_feedback',
       JSON.stringify({
         kind: 'change_request',
         title: 'A half-width toggle on the Ask Agent panel',

@@ -1,35 +1,23 @@
-// The automation read model's four reads (ISS-114): the standing of a project's schedules, fires
-// and reports, one fire with what it produced, one schedule with its fires, and one report; the
-// REST routes and needs-you call these, with the viewer `automationViewerOf` builds
+// The automation read model's three reads (ISS-114): the standing of a project's schedules and
+// fires, one fire with what it produced, and one schedule with its fires; the REST routes and
+// needs-you call these, with the viewer `automationViewerOf` builds
 
-import {
-  AUTOMATION_TRIAGED_REPORTS,
-  type AutomationStandingResponse,
-  type FireDetailResponse,
-  type FireProposal,
-  type ReportDetailResponse,
-  type ScheduleDetailResponse,
-  type ScheduleStanding,
+import type {
+  AutomationStandingResponse,
+  FireDetailResponse,
+  FireProposal,
+  ScheduleDetailResponse,
+  ScheduleStanding,
 } from '@forge/contracts/automation-standing';
 import { ADMIN_THRESHOLDS } from '../lib/admin-thresholds.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { holderNames, holds } from '../permissions/index.js';
-import {
-  type FireRow,
-  fireFacts,
-  producedItems,
-  reportCounts,
-  reportFacts,
-  scheduleFacts,
-  stewardActions,
-} from './facts.js';
-import { lastFires, readScheduleStreaks, reportRow, reportRows } from './ports.js';
+import { type FireRow, fireFacts, producedItems, scheduleFacts, stewardActions } from './facts.js';
+import { lastFires, readScheduleStreaks } from './ports.js';
 import {
   type AutomationViewer,
   fireProposals,
   fireStandingOf,
-  reportOrder,
-  reportStandingOf,
   type ScheduleFacts,
   type StewardAction,
   scheduleStandingOf,
@@ -84,31 +72,16 @@ async function schedulesOf(
 
 const publicStanding = ({ facts: _facts, ...s }: ScheduleStanding & { facts: ScheduleFacts }) => s;
 
-async function firesOf(fires: readonly FireRow[], standings: Standings, viewer: AutomationViewer) {
+async function firesOf(fires: readonly FireRow[], standings: Standings) {
   const actions = await stewardActions(fires.flatMap((f) => (f.sessionId ? [f.sessionId] : [])));
   const actionsOf = (f: FireRow): StewardAction[] | null =>
     f.sessionId ? (actions.get(f.sessionId) ?? null) : null;
   const proposals: FireProposal[] = fires.flatMap((f) => fireProposals(f, actionsOf(f)));
   const standingsOut = fires.map((f) => ({
     row: f,
-    standing: fireStandingOf(
-      f,
-      fireProposals(f, actionsOf(f)).length,
-      standings.get(f.scheduleId),
-      viewer,
-    ),
+    standing: fireStandingOf(f, fireProposals(f, actionsOf(f)).length, standings.get(f.scheduleId)),
   }));
   return { fires: standingsOut, proposals };
-}
-
-async function reportsOf(
-  scope: { projectId: string; scheduleId?: string },
-  viewer: AutomationViewer,
-) {
-  const views = await reportRows({ ...scope, triaged: AUTOMATION_TRIAGED_REPORTS });
-  return (await reportFacts(scope.projectId, views))
-    .map((r) => reportStandingOf(r, viewer))
-    .sort(reportOrder);
 }
 
 export async function readAutomationStanding(
@@ -118,12 +91,8 @@ export async function readAutomationStanding(
   now: Date = new Date(),
 ): Promise<AutomationStandingResponse> {
   const { standings, failStreak } = await schedulesOf(projectId, viewer, now);
-  const [fired, reports, counts] = await Promise.all([
-    fireFacts({ projectId, limit: opts.firesLimit }),
-    reportsOf({ projectId }, viewer),
-    reportCounts(projectId),
-  ]);
-  const { fires, proposals } = await firesOf(fired.fires, standings, viewer);
+  const fired = await fireFacts({ projectId, limit: opts.firesLimit });
+  const { fires, proposals } = await firesOf(fired.fires, standings);
   return {
     generatedAt: now.toISOString(),
     failStreak,
@@ -131,8 +100,6 @@ export async function readAutomationStanding(
     fires: fires.map((f) => f.standing),
     firesTotal: fired.total,
     firesHasMore: fired.total > fires.length,
-    reports,
-    reportCounts: counts,
     proposals,
   };
 }
@@ -147,17 +114,13 @@ export async function readScheduleDetail(
   const { standings } = await schedulesOf(projectId, viewer, now, scheduleId);
   const standing = standings.get(scheduleId);
   if (!standing) return null;
-  const [fired, reports] = await Promise.all([
-    fireFacts({ projectId, scheduleId, limit: opts.firesLimit }),
-    reportsOf({ projectId, scheduleId }, viewer),
-  ]);
-  const { fires, proposals } = await firesOf(fired.fires, standings, viewer);
+  const fired = await fireFacts({ projectId, scheduleId, limit: opts.firesLimit });
+  const { fires, proposals } = await firesOf(fired.fires, standings);
   return {
     schedule: publicStanding(standing),
     fires: fires.map((f) => ({ ...f.standing, output: f.row.output })),
     firesTotal: fired.total,
     firesHasMore: fired.total > fires.length,
-    reports,
     proposals,
   };
 }
@@ -174,7 +137,7 @@ export async function readFireDetail(
   const { standings } = await schedulesOf(projectId, viewer, now, row.scheduleId);
   const standing = standings.get(row.scheduleId);
   if (!standing) return null;
-  const { fires, proposals } = await firesOf([row], standings, viewer);
+  const { fires, proposals } = await firesOf([row], standings);
   const fire = fires[0];
   if (!fire) return null;
   return {
@@ -182,13 +145,4 @@ export async function readFireDetail(
     schedule: publicStanding(standing),
     produced: await producedItems(projectId, row, proposals),
   };
-}
-
-export async function readReportDetail(
-  projectId: string,
-  reportId: string,
-  viewer: AutomationViewer,
-): Promise<ReportDetailResponse | null> {
-  const [facts] = await reportFacts(projectId, await reportRow(projectId, reportId));
-  return facts ? { report: reportStandingOf(facts, viewer) } : null;
 }

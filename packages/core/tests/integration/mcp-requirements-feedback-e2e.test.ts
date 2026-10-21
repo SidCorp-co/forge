@@ -1,6 +1,6 @@
 /**
  * The product tools on /mcp, through the transport a BA's MCP client speaks: forge_requirements and
- * forge_feedback read, write and refuse as their REST twins do, and every requirement and feedback
+ * project_feedback read, write and refuse as their REST twins do, and every requirement and feedback
  * answer carries the progress block — whether work runs now, what waits on whom, and the forecast
  * ETA or why there is none (owner rule 2026-10-16).
  */
@@ -239,7 +239,7 @@ describe('forge_requirements over /mcp', () => {
   });
 });
 
-describe('forge_feedback over /mcp', () => {
+describe('project_feedback over /mcp', () => {
   let w: World;
   let token: string;
   const fb = { untriaged: '', linked: '' };
@@ -257,8 +257,9 @@ describe('forge_feedback over /mcp', () => {
   }, 180_000);
 
   it('lists items with progress: untriaged waits on its triage, routed work runs', async () => {
-    const rows = ok(await call(token, 'forge_feedback', { action: 'list', projectId: w.projectId }))
-      .feedback as Body[];
+    const rows = ok(
+      await call(token, 'project_feedback', { action: 'list', projectId: w.projectId }),
+    ).feedback as Body[];
     const untriaged = rows.find((r) => r.key === fb.untriaged) as Body;
     expect(etaOf(untriaged)).toEqual({
       estimate: false,
@@ -276,7 +277,7 @@ describe('forge_feedback over /mcp', () => {
 
   it('files an item, asks its reporter, and refuses a second open question by name', async () => {
     const filed = ok(
-      await call(token, 'forge_feedback', {
+      await call(token, 'project_feedback', {
         action: 'submit',
         projectId: w.projectId,
         kind: 'bug',
@@ -290,7 +291,7 @@ describe('forge_feedback over /mcp', () => {
     expect(etaOf(item)).toMatchObject({ estimate: false, why: 'it is not triaged yet' });
 
     const asked = ok(
-      await call(token, 'forge_feedback', {
+      await call(token, 'project_feedback', {
         action: 'clarify',
         projectId: w.projectId,
         feedback: item.key,
@@ -300,7 +301,7 @@ describe('forge_feedback over /mcp', () => {
     ).feedback as Body;
     expect(asked.clarification).toMatchObject({ status: 'open' });
 
-    const again = await call(token, 'forge_feedback', {
+    const again = await call(token, 'project_feedback', {
       action: 'clarify',
       projectId: w.projectId,
       feedback: item.key,
@@ -312,7 +313,7 @@ describe('forge_feedback over /mcp', () => {
   });
 
   it('refuses a submit naming no target, saying the shape', async () => {
-    const c = await call(token, 'forge_feedback', {
+    const c = await call(token, 'project_feedback', {
       action: 'submit',
       projectId: w.projectId,
       kind: 'idea',
@@ -324,7 +325,7 @@ describe('forge_feedback over /mcp', () => {
 
   it('reads one item and its similar ones', async () => {
     const got = ok(
-      await call(token, 'forge_feedback', {
+      await call(token, 'project_feedback', {
         action: 'get',
         projectId: w.projectId,
         feedback: fb.linked,
@@ -333,7 +334,7 @@ describe('forge_feedback over /mcp', () => {
     expect(got).toMatchObject({ key: fb.linked, route: { route: 'issue' } });
     expect(progressOf(got).running).toBe(true);
     const similar = ok(
-      await call(token, 'forge_feedback', {
+      await call(token, 'project_feedback', {
         action: 'similar',
         projectId: w.projectId,
         feedback: fb.linked,

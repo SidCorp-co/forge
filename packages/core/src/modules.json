@@ -83,16 +83,7 @@
       "kind": "domain",
       "context": "execution",
       "owns": ["agentReports"],
-      "serves": [
-        "REQ-16",
-        "automation#report",
-        "automation#triage",
-        "automation#promote",
-        "REQ-7",
-        "automation#dismiss",
-        "automation#file",
-        "automation#reports_table"
-      ]
+      "serves": ["REQ-47", "automation#settle"]
     },
     "agent-sessions": {
       "kind": "kernel",
@@ -159,7 +150,6 @@
       "kind": "read-model",
       "context": "work",
       "reads": [
-        "agentReports",
         "agentSessions",
         "issues",
         "notifications",
@@ -169,7 +159,6 @@
       ],
       "serves": [
         "REQ-16",
-        "automation#wait_triage",
         "automation#skipped",
         "automation#streak",
         "automation#settle",
@@ -376,6 +365,7 @@
         "feedbackDecisions",
         "feedbackExternalReporters",
         "feedbackMessages",
+        "feedbackOccurrences",
         "feedbackRouteIssues"
       ],
       "serves": [
@@ -396,8 +386,14 @@
         "feedback-triage#resolve",
         "feedback-triage#verify-ask",
         "feedback-triage#verify",
-        "feedback-triage#dedup"
+        "feedback-triage#dedup",
+        "REQ-47"
       ]
+    },
+    "forge-door": {
+      "kind": "door",
+      "context": "platform",
+      "serves": ["REQ-47", "core-components#door-rest", "core-components#door-mcp"]
     },
     "forecast": {
       "kind": "read-model",
@@ -436,6 +432,12 @@
         "users"
       ],
       "serves": ["REQ-22"]
+    },
+    "instance-settings": {
+      "kind": "domain",
+      "context": "project-config",
+      "owns": ["instanceSettings"],
+      "serves": ["REQ-47"]
     },
     "intake": {
       "kind": "domain",
@@ -929,6 +931,12 @@
       "kind": "door",
       "context": "platform",
       "serves": ["core-components#door-mcp", "REQ-11", "REQ-40"]
+    },
+    "product-progress": {
+      "kind": "read-model",
+      "context": "operations",
+      "reads": [],
+      "serves": ["REQ-11", "REQ-47", "core-components#door-mcp"]
     },
     "project-config": {
       "kind": "domain",

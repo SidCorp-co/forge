@@ -43,7 +43,6 @@ import { automationListHref, fireHref } from "@/lib/routes/automation";
 import type { ScheduleDetailResponse, ScheduleStanding } from "../types";
 import { type RowCtx } from "../view";
 import { FireLines } from "./fire-views";
-import { ReportLines } from "./report-views";
 import { ScheduleForm } from "./schedule-form";
 import { formatWhen } from "@/lib/i18n/format";
 
@@ -216,7 +215,7 @@ export function SchedulePeek({
   );
 }
 
-const SCHEDULE_TABS = ["overview", "fires", "reports"] as const;
+const SCHEDULE_TABS = ["overview", "fires"] as const;
 const useScheduleTab = () => useUrlTab(SCHEDULE_TABS);
 
 /** Pause, edit, take over or delete: its owner for their own, an admin for any (the read model says which). */
@@ -355,7 +354,6 @@ export function SchedulePage({ access, scheduleId }: { access: AutomationAccess;
         const tabs = [
           { value: "overview" as const, label: t("schedules.tab.overview") },
           { value: "fires" as const, label: t("schedules.tab.fires"), count: d.firesTotal },
-          { value: "reports" as const, label: t("schedules.tab.reports"), count: d.reports.length },
         ];
         return (
           <DetailLayout
@@ -374,7 +372,6 @@ export function SchedulePage({ access, scheduleId }: { access: AutomationAccess;
             <DetailPane label={tabs.find((x) => x.value === tab)?.label ?? t("schedules.tab.overview")}>
               {tab === "overview" ? <Overview d={d} access={access} /> : null}
               {tab === "fires" ? <FireLines fires={d.fires} slug={access.slug} /> : null}
-              {tab === "reports" ? <ReportLines reports={d.reports} slug={access.slug} /> : null}
             </DetailPane>
           </DetailLayout>
         );

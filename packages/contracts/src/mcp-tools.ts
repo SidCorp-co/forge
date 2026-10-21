@@ -4,11 +4,11 @@
  * list, so a name with no tool, or a tool with no name, does not compile.
  */
 export const MCP_TOOL_NAMES = [
-	"forge_agent_report",
 	"forge_uploads",
 	"forge_channel",
 	"forge_ecosystem",
 	"forge_requirements",
+	"project_feedback",
 	"forge_feedback",
 	"forge_releases",
 	"forge_design",

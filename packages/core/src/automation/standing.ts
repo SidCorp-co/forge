@@ -1,8 +1,7 @@
-// Where a schedule, a fire and an agent report stand and whom each waits on, derived from what
-// `automation/facts.ts` read and nothing else (design automation rev 1, steps streak, settle,
-// needs_you and wait_triage; ISS-114): pure, so every rule is a unit test, and no screen derives one
+// Where a schedule and a fire stand and whom each waits on, derived from what
+// `automation/facts.ts` read and nothing else (design automation rev 1, steps streak, settle and
+// needs_you; ISS-114): pure, so every rule is a unit test, and no screen derives one
 
-import type { AgentReportView } from '@forge/contracts/agent-reports';
 import type {
   AutomationAct,
   AutomationPerson,
@@ -11,9 +10,6 @@ import type {
   FireProduced,
   FireProposal,
   FireStanding,
-  ReportFireRef,
-  ReportGroup,
-  ReportStanding,
   ScheduleGroup,
   ScheduleLastFire,
   ScheduleStanding,
@@ -33,7 +29,7 @@ import { type LastFire, type ScheduleStreak, streakFails } from './ports.js';
 
 export interface AutomationViewer {
   userId: string;
-  /** member or above: may triage a report. */
+  /** member or above: may edit a schedule of their own. */
   canWrite: boolean;
   /** admin or above: may change any schedule, taking over one that is not theirs. */
   isAdmin: boolean;
@@ -64,8 +60,6 @@ export interface FireFacts extends LastFireFacts {
   pipelineRunId: string | null;
   runAs: AutomationPerson | null;
   reads: ScriptRead[] | null;
-  reports: number;
-  newReports: number;
   issues: number;
   notifications: number;
 }
@@ -76,13 +70,6 @@ export interface StewardAction {
   summary: string;
 }
 
-export interface ReportFacts {
-  view: AgentReportView;
-  fire: (ReportFireRef & { owner: AutomationPerson | null }) | null;
-  /** The key and status of the issue a filed report went to, when it went to one. */
-  issue: { key: string; status: string } | null;
-}
-
 const iso = (d: Date | null) => (d ? d.toISOString() : null);
 
 type AutomationWaitingOn = WaitingOn<AutomationWaitingKind>;
@@ -91,7 +78,6 @@ const NOBODY = nobodyWaits;
 
 /** What each owed act says (`AutomationAct`). */
 const ACT_SAID: Record<AutomationAct, Said> = {
-  triage_report: say('standing.act.triageReport'),
   fix_schedule: say('standing.act.fixSchedule'),
   reassign_owner: say('standing.act.takeOverSchedule'),
 };
@@ -240,25 +226,6 @@ function viewerMayOf(s: Pick<ScheduleFacts, 'owner'>, viewer: AutomationViewer) 
   return { edit, takeOver: edit && needs === 'project.admin' };
 }
 
-/** Who triages a report: its fire's schedule owner first, otherwise any member with write access. */
-function triageWaitOf(
-  fire: { owner: AutomationPerson | null } | null,
-  viewer: AutomationViewer,
-): AutomationWaitingOn {
-  if (fire?.owner) {
-    return personWait(fire.owner, viewer, 'triage_report', say('automation.rule.toOwner'));
-  }
-  return groupWait('writers', viewer, 'triage_report', say('automation.rule.toWriters'));
-}
-
-const harnessTriage = (): AutomationWaitingOn =>
-  owed(
-    'writers',
-    say('automation.who.harnessTriage'),
-    'triage_report',
-    say('automation.rule.harness'),
-  );
-
 /** The steward actions a fire's session proposed or applied; feedback and skipped are not proposals. */
 function proposalsOf(actions: readonly StewardAction[] | null): StewardAction[] {
   return (actions ?? []).filter((a) => a.kind === 'proposed' || a.kind === 'applied');
@@ -288,8 +255,6 @@ export function fireProposals(
 
 function producedOf(f: FireFacts, proposals: number): FireProduced {
   return {
-    reports: f.reports,
-    newReports: f.newReports,
     proposals,
     issues: f.issues,
     runs: f.sessionId === null && f.pipelineRunId !== null ? 1 : 0,
@@ -297,25 +262,12 @@ function producedOf(f: FireFacts, proposals: number): FireProduced {
   };
 }
 
-const producedTotal = (p: FireProduced) =>
-  p.reports + p.proposals + p.issues + p.runs + p.notifications;
+const producedTotal = (p: FireProduced) => p.proposals + p.issues + p.runs + p.notifications;
 
 function fireWaitOf(
   f: FireFacts,
   schedule: (ScheduleStanding & { facts: ScheduleFacts }) | undefined,
-  viewer: AutomationViewer,
 ): AutomationWaitingOn {
-  if (f.newReports > 0) {
-    const wait = triageWaitOf(schedule ? { owner: schedule.facts.owner } : null, viewer);
-    return waitingOn(
-      wait.kind,
-      {
-        ...wait.says,
-        rule: say('automation.rule.reportsWait', { n: f.newReports, rule: wait.says.rule }),
-      },
-      { ref: wait.ref, dueAt: wait.dueAt },
-    );
-  }
   const newest = schedule?.lastFire?.id === f.id;
   if (
     newest &&
@@ -341,10 +293,9 @@ export function fireStandingOf(
   f: FireFacts,
   proposals: number,
   schedule: (ScheduleStanding & { facts: ScheduleFacts }) | undefined,
-  viewer: AutomationViewer,
 ): FireStanding {
   const produced = producedOf(f, proposals);
-  const waitingOn = fireWaitOf(f, schedule, viewer);
+  const waitingOn = fireWaitOf(f, schedule);
   return {
     id: f.id,
     scheduleId: f.scheduleId,
@@ -368,61 +319,4 @@ export function fireStandingOf(
     attentionGroup: fireGroupOf(f, produced, waitingOn),
     waitingOn,
   };
-}
-
-function reportWaitOf(r: ReportFacts, viewer: AutomationViewer): AutomationWaitingOn {
-  const v = r.view;
-  if (v.triage === 'new') return r.fire ? triageWaitOf(r.fire, viewer) : harnessTriage();
-  if (v.triage === 'filed' && v.feedback) {
-    const key = v.feedback.key;
-    return waitingOn(
-      'feedback',
-      {
-        who: say('standing.who.named', { name: key }),
-        act: say('standing.act.none'),
-        rule: say('automation.rule.filedFeedback', { key, phase: v.feedback.phase }),
-      },
-      { ref: key },
-    );
-  }
-  if (v.triage === 'filed' && r.issue) {
-    const key = r.issue.key;
-    return waitingOn(
-      'issue',
-      {
-        who: say('standing.who.named', { name: key }),
-        act: say('standing.act.none'),
-        rule: say('automation.rule.filedIssue', { key, status: r.issue.status }),
-      },
-      { ref: key },
-    );
-  }
-  return NOBODY(say('automation.rule.triaged', { triage: v.triage }));
-}
-
-function reportGroupOf(r: AgentReportView, wait: AutomationWaitingOn): ReportGroup {
-  if (r.triage === 'new') return wait.kind === 'you' ? 'needs_you' : 'waiting';
-  return r.triage === 'filed' ? 'filed' : 'closed';
-}
-
-export function reportStandingOf(r: ReportFacts, viewer: AutomationViewer): ReportStanding {
-  const waitingOn = reportWaitOf(r, viewer);
-  const fire = r.fire
-    ? { id: r.fire.id, scheduleId: r.fire.scheduleId, scheduleName: r.fire.scheduleName }
-    : null;
-  return { ...r.view, fire, attentionGroup: reportGroupOf(r.view, waitingOn), waitingOn };
-}
-
-const SEVERITY_RANK: Record<string, number> = { high: 0, medium: 1, low: 2 };
-
-/** Reports waiting for triage first, high severity then oldest; then the triaged, newest first. */
-export function reportOrder(a: ReportStanding, b: ReportStanding): number {
-  const aNew = a.triage === 'new';
-  const bNew = b.triage === 'new';
-  if (aNew !== bNew) return aNew ? -1 : 1;
-  if (aNew) {
-    const sev = (SEVERITY_RANK[a.severity] ?? 3) - (SEVERITY_RANK[b.severity] ?? 3);
-    return sev !== 0 ? sev : a.createdAt.localeCompare(b.createdAt);
-  }
-  return (b.triagedAt ?? b.createdAt).localeCompare(a.triagedAt ?? a.createdAt);
 }

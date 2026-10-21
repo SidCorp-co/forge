@@ -2,17 +2,18 @@
 // The at-a-glance facts of one feedback item: where it stands on the phases, what it is about, what
 // carries it, and who sent it. The full page's sticky rail and the peek draw this one component, so the
 // main column holds only what the reporter said, the acts, and the history. The phase is the header's
-// badge and whose turn it is the banner's, so neither is a row here (REQ-43 BC-5); the agent report an
-// item was filed from is the developer view's (BC-7).
+// badge and whose turn it is the banner's, so neither is a row here (REQ-43 BC-5). An item reported
+// through the Forge door says where its report came from, and how many times it was made (REQ-47 BC-4).
 
 import { Link } from "@/lib/navigation/router";
-import { ActorChip, EnumBadge, enumLabel, Fact, FactsEmpty, FactsGroup, StatusBadge, type StatusFamily, StepBar, WaitBanner, keyedByContent } from "@/design";
+import { ActorChip, EnumBadge, Fact, FactsEmpty, FactsGroup, StatusBadge, type StatusFamily, StepBar, WaitBanner, keyedByContent } from "@/design";
 import { requirementHref } from "@/lib/routes/requirements";
 import { issueHref } from "@/lib/routes/issues";
 import { useCopy, useInterfaceLanguage, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
 import { said, saysKey } from "@/lib/i18n/said";
 import { feedbackHref } from "@/lib/routes/feedback";
 import type { FeedbackPhase, FeedbackRoute, FeedbackView } from "../types";
+import type { FeedbackOriginView } from "@forge/contracts/feedback";
 import { FEEDBACK_ATTENTION_LABELS } from "@forge/contracts/feedback";
 import type { FeedbackShipNotice } from "@forge/contracts/feedback";
 import { releaseHref } from "@/lib/routes/releases";
@@ -243,19 +244,48 @@ function WhatCarriesIt({ f, slug }: { f: FeedbackView; slug: string }) {
   );
 }
 
+/** Where a report through the Forge door came from: the project, issue and client, and how often. */
+function WhereReportedFrom({ origin }: { origin: FeedbackOriginView }) {
+  const tr = useCopy();
+  return (
+    <>
+      <Fact label={tr("feedback.fact.origin")} testId="facts-origin">
+        {origin.project ? (
+          <Link href={`/projects/${encodeURIComponent(origin.project.slug)}`} className="text-link hover:underline">
+            {origin.project.name}
+          </Link>
+        ) : (
+          <span className="text-muted">—</span>
+        )}
+      </Fact>
+      {origin.issue && origin.project ? (
+        <Fact label={tr("feedback.fact.originIssue")}>
+          <Link href={issueHref(origin.project.slug, origin.issue.key)} className="text-link hover:underline">
+            {origin.issue.key}
+          </Link>
+        </Fact>
+      ) : null}
+      {origin.clientVersion ? (
+        <Fact label={tr("feedback.fact.client")}>
+          <span className="text-13">{origin.clientVersion}</span>
+        </Fact>
+      ) : null}
+      <Fact label={tr("feedback.fact.reports")} testId="facts-reports">
+        <span className="tabular-nums">{origin.occurrences}</span>
+      </Fact>
+    </>
+  );
+}
+
 export function LinkedFeedback({
   f,
   slug,
-  developer = false,
 }: {
   f: FeedbackView;
   slug: string;
-  /** The developer view: the agent report the item was filed from. */
-  developer?: boolean;
 }) {
   const tr = useCopy();
   const time = useTimeFormat();
-  const language = useInterfaceLanguage();
   const t = f.target;
   const stepName = (id: string) => t.stepNames?.[id] ?? id;
   return (
@@ -319,21 +349,7 @@ export function LinkedFeedback({
             </span>
           </Fact>
         ) : null}
-        {developer && f.source ? (
-          <Fact label={tr("feedback.fact.from")} testId="facts-source">
-            <Link
-              href={`/projects/${encodeURIComponent(slug)}/automation?tab=reports`}
-              className="text-link hover:underline"
-              title={tr("feedback.fact.agentReportTitle", { id: f.source.agentReport.id, at: time.dateTime(f.source.agentReport.createdAt) })}
-            >
-              {tr("feedback.fact.agentReport", { id: f.source.agentReport.id.slice(0, 8) })}
-            </Link>
-            <span className="text-13 text-muted">
-              {enumLabel("agentReportKind", f.source.agentReport.kind, language)} · {enumLabel("agentReportTarget", f.source.agentReport.target, language)}
-              {f.source.agentReport.targetRef ? ` ${f.source.agentReport.targetRef}` : ""}
-            </span>
-          </Fact>
-        ) : null}
+        {f.origin ? <WhereReportedFrom origin={f.origin} /> : null}
         {f.clarification ? (
           <Fact label={tr("feedback.fact.clarification")}>
             <span className="grid gap-0.5" title={f.clarification.prompt ?? undefined}>

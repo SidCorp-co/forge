@@ -75,7 +75,7 @@ const view = (over: Partial<FeedbackView> = {}): FeedbackView =>
     whereSeen: "/du-an",
     duplicateOf: null,
     duplicates: ["FB-9"],
-    source: null,
+    origin: null,
     decisions: [
       { decision: "triaged", route: "issue", carrier: "ISS-4", reason: null, says: { reason: null }, decidedBy: "u2", decidedByName: "Minh", decidedAgency: "human", decidedAt: AT, fromSuggestionId: null, acceptReason: "co the" },
       { decision: "verified", route: null, carrier: null, ...noted(say("feedback.notice.autoVerified", { n: 14 })), decidedBy: null, decidedByName: null, decidedAgency: "system", decidedAt: AT, fromSuggestionId: null, acceptReason: null },
@@ -162,10 +162,8 @@ const feedbackFacts = () => (
         route: { route: "issue", carriers: [{ key: "ISS-4", status: "closed", release: "0.2.0" }], answer: null },
         shipNotice: { state: "not_told", ...noted(say("feedback.notice.turnedOff")), shipped: { at: AT, release: "0.2.0" }, beforeNotices: false, noticesBegan: null },
         snoozed: { until: "2026-10-10T09:00:00.000Z", reason: "cho" },
-        source: { agentReport: { id: "0123456789ab", kind: "bug", severity: "high", target: "issue", targetRef: "ISS-4", createdAt: AT } },
         sensitive: true,
       } as never)}
-      developer
     />
     <LinkedFeedback slug="hop" f={view({ phase: "verified", attentionGroup: "done", verified: { at: AT, how: "automatic", by: null, byName: null, byReporter: false, ...noted(say("feedback.notice.autoVerified", { n: 14 })) }, shipNotice: { state: "told", how: "notice", at: AT, release: "0.2.0", by: null, shipped: { at: AT, release: "0.2.0" }, told: null, says: { told: null } }, route: null })} />
     <LinkedFeedback slug="hop" f={view({ phase: "verified", attentionGroup: "done", verified: { at: AT, how: "person", by: "u1", byName: "Lan", byReporter: true, reason: null, says: { reason: null } }, recordCheck: null })} />
@@ -189,7 +187,6 @@ const feedbackFacts = () => (
 const feedbackFilingForm = () => (
   <Seeded>
     <FeedbackForm projectId={P} slug="hop" onDone={() => {}} />
-    <FeedbackForm projectId={P} slug="hop" onDone={() => {}} agentReport="0123456789ab" />
   </Seeded>
 );
 

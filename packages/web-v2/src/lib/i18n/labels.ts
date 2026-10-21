@@ -110,8 +110,6 @@ export const LABEL_GROUPS = {
   hintMockupStatus: sentencesOf(MOCKUP_STATUS_HINTS),
   mockupKind: MOCKUP_KIND_LABELS,
   notificationType: NOTIFICATION_TYPE_LABELS,
-  agentReportKind: ENUM_LABELS.agentReportKind,
-  agentReportTarget: ENUM_LABELS.agentReportTarget,
   role: ENUM_LABELS.role,
   templateTitle: Object.fromEntries(BUILTIN_WORKFLOW_TEMPLATES.map((t) => [t.id, t.title])),
   templateNode: builtin((t) => t.nodeTypes, (n) => n.label),

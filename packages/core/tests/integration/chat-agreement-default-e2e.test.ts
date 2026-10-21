@@ -232,7 +232,7 @@ describe('the Assistant meets the same rule through its own tools and its turn t
     await w
       .gate([image])
       .tools.execute(
-        'forge_feedback',
+        'project_feedback',
         JSON.stringify({ kind: 'bug', title: 'The dock loses my draft', body: 'Tabs clear it.' }),
       );
     const card = (await proposals()).find((p) => p.kind === 'feedback' && p.status === 'pending');
@@ -257,7 +257,7 @@ describe('only a recorded proposal grounds a claim to have recorded something', 
         sessionId: null,
         kind: 'feedback',
         form: 'tool',
-        call: { name: 'forge_feedback', arguments: JSON.stringify({ title }) },
+        call: { name: 'project_feedback', arguments: JSON.stringify({ title }) },
         body: null,
         summary: { title, lines: [], relates: [] },
       });

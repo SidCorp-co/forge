@@ -1,15 +1,13 @@
 
 // each automation page's sticky header is the shared DetailHeader: "← Automation" back to the
-// list view it was opened from (or to its schedule, for a fire; to its fire, for a report), the key,
+// list view it was opened from (or to its schedule, for a fire), the key,
 // the title, the state badge and the one primary act
 import { useCopy } from "@/lib/i18n/interface-language";
-import { DetailHeader, StatusBadge, useListOrigin, useRecordView } from "@/design";
-import { useFireDetail, useReportDetail, useScheduleDetail } from "../hooks";
-import { AUTOMATION_LIST, automationListHref, automationTabHref, fireHref, scheduleHref } from "@/lib/routes/automation";
+import { DetailHeader, StatusBadge, useListOrigin } from "@/design";
+import { useFireDetail, useScheduleDetail } from "../hooks";
+import { AUTOMATION_LIST, automationListHref, automationTabHref, scheduleHref } from "@/lib/routes/automation";
 import { shortId } from "../view";
 import { FirePage } from "./fire-views";
-import { ReportPage } from "./report-page";
-import { ReportPrimary } from "./report-views";
 import { type AutomationAccess, RunNow, SchedulePage } from "./schedule-views";
 
 export function ScheduleItemScreen({ access, scheduleId }: { access: AutomationAccess; scheduleId: string }) {
@@ -46,31 +44,6 @@ export function FireItemScreen({ access, fireId }: { access: AutomationAccess; f
         badge={d ? <StatusBadge family="scheduleRun" value={d.fire.status} /> : null}
       />
       <FirePage projectId={access.projectId} slug={access.slug} fireId={fireId} />
-    </div>
-  );
-}
-
-// a report's id and its fire's are agent text, drawn in the Developer view (REQ-43 BC-7)
-export function ReportItemScreen({ access, reportId }: { access: AutomationAccess; reportId: string }) {
-  const t = useCopy();
-  const [view] = useRecordView();
-  const developer = view === "developer";
-  const r = useReportDetail(access.projectId, reportId).data?.report;
-  const origin = useListOrigin(AUTOMATION_LIST, automationListHref(access.slug));
-  const back = r?.fire
-    ? { href: fireHref(access.slug, r.fire.id), label: developer ? t("schedules.fire.fireShort", { id: shortId(r.fire.id) }) : t("schedules.noun.fire") }
-    : { href: origin, label: t("schedules.title") };
-  return (
-    <div className="min-h-full bg-app" data-testid="report-item-screen">
-      <DetailHeader
-        back={back}
-        itemKey={developer ? shortId(reportId) : undefined}
-        keyTitle={developer ? reportId : undefined}
-        title={r?.summary ?? t("schedules.item.agentReport")}
-        badge={r ? <StatusBadge family="reportTriage" value={r.triage} /> : null}
-        action={r ? <ReportPrimary r={r} projectId={access.projectId} canWrite={access.canWrite} /> : null}
-      />
-      <ReportPage projectId={access.projectId} slug={access.slug} reportId={reportId} canWrite={access.canWrite} />
     </div>
   );
 }

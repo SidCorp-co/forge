@@ -9,19 +9,19 @@ import { StatusReport } from "./status-report";
 
 vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble());
 
-// hop /status in vi, 2026-10-08: 25 of its English lines were harness reports agents wrote in English,
+// hop /status in vi, 2026-10-08: 25 of its English lines were texts agents wrote in English,
 // quoted with nothing saying so. A quoted text now carries its language where it is not the reader's.
 
 const clock = { lang: "vi" as const, now: Date.parse(AT), timeZone: "UTC" };
 const report = (title: string, titleLang: "en" | "vi" | null) => ({
   area: "automation" as const,
-  entity: "report" as const,
+  entity: "schedule" as const,
   key: `r-${title.length}`,
   title,
   titleLang,
   says: { title: verbatim(title) },
   touchedAt: AT,
-  waitingOn: waitingOn("writers", { who: say("automation.who.harnessTriage"), act: say("standing.act.triageReport"), rule: RULE }),
+  waitingOn: waitingOn("person", { who: say("standing.who.named", { name: "Ana" }), act: say("standing.act.fixSchedule"), rule: RULE }),
 });
 
 function shown() {

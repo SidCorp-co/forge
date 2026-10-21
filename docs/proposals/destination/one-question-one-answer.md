@@ -67,12 +67,13 @@ product moves. Decide the mechanism once and the keep-list becomes a field.
 Owner rule, 2026-10-04: the REST API is the primary door and the CLI sits on it. Owner rule,
 2026-10-16: delivery leaves MCP entirely — the source host, Coolify, Sentry and the storefront target
 are REST under `/api/projects/:id/integrations/…`, where the credential still stays in core — and MCP
-is for the product layer a BA works in. That layer adds `forge_requirements` and `forge_feedback`,
+is for the product layer a BA works in. That layer adds `forge_requirements` and `project_feedback`,
 each action a call into the service its REST route calls and each answer carrying the progress block
-(work running, waits, forecast ETA). Of what was there, the registry keeps 4: `forge_uploads`
-(fetch, for the transport reason above) and three with REST twins, `forge_agent_report` (`/api/agent-reports`), `forge_channel` and `forge_ecosystem`
+(work running, waits, forecast ETA), and `forge_feedback` takes feedback about Forge itself from any
+project (REQ-47). Of what was there, the registry keeps 3: `forge_uploads`
+(fetch, for the transport reason above) and two with REST twins, `forge_channel` and `forge_ecosystem`
 (`/api/projects/:id/channel|interface|links|builder-runs`; only `forge_ecosystem action=context` has
-no route). No prompt in this repository names those three; they stay while the forge-plugin skills
+no route). No prompt in this repository names those two; they stay while the forge-plugin skills
 call them. Reading and writing the record, memory, knowledge and project settings are REST.
 
 ## Carried over from ISS-894, still true

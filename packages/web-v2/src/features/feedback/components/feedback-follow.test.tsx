@@ -28,7 +28,7 @@ const view = (over: Partial<FeedbackView> = {}): FeedbackView =>
     reporter: { id: "u9", name: "Ana", agency: "human" },
     whereSeen: null,
     duplicates: [],
-    source: null,
+    origin: null,
     createdAt: "2026-10-01T00:00:00.000Z",
     updatedAt: "2026-10-01T00:00:00.000Z",
     can: NONE,
@@ -93,3 +93,29 @@ describe("feedback follows its work to the release", () => {
   });
 });
 
+
+describe("feedback reported through the Forge door (REQ-47 BC-4)", () => {
+  const origin = {
+    occurrences: 3,
+    project: { id: "p-hop", slug: "hop", name: "HOP" },
+    issue: { id: "i-4", key: "ISS-4" },
+    run: "r-1",
+    clientVersion: "forge-plugin 3.36.542",
+    reporter: { id: "a1", name: "hop-runner", agency: "agent" as const },
+    at: at(-60),
+  };
+
+  it("says where it came from and how many times it was reported, to every reader", () => {
+    renderWithQuery(<LinkedFeedback f={view({ origin, reporter: origin.reporter })} slug="forge" />);
+    const from = screen.getByTestId("facts-origin");
+    expect(within(from).getByRole("link", { name: "HOP" }).getAttribute("href")).toBe("/projects/hop");
+    expect(screen.getByRole("link", { name: "ISS-4" }).getAttribute("href")).toBe("/projects/hop/issues/ISS-4");
+    expect(screen.getByText("forge-plugin 3.36.542")).toBeTruthy();
+    expect(screen.getByTestId("facts-reports").textContent).toContain("3");
+  });
+
+  it("draws no origin for an item filed through the project's own door", () => {
+    renderWithQuery(<LinkedFeedback f={view()} slug="hop" />);
+    expect(screen.queryByTestId("facts-origin")).toBeNull();
+  });
+});

@@ -260,7 +260,6 @@ export const STATUS_COMMON: ReadonlySet<StatusFamily> = new Set<StatusFamily>([
   "job",
   "scheduleRun",
   "scheduleStanding",
-  "reportTriage",
   "question",
   "stewardAction",
   "runStep",
@@ -316,8 +315,6 @@ const ENUM_GROUP: Partial<Record<EnumFamily, LabelGroup>> = {
   artifactChange: "artifactChange",
   mockupKind: "mockupKind",
   notificationType: "notificationType",
-  agentReportKind: "agentReportKind",
-  agentReportTarget: "agentReportTarget",
   role: "role",
 };
 

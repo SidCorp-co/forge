@@ -9,13 +9,13 @@ import { createFeedback } from './service.js';
 // Feedback, and the issue it may become is a triage's act, never the chat's.
 const input = z.strictObject({ projectId: z.uuid(), ...createFeedbackRequestSchema.shape });
 
-export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
-  name: 'forge_feedback',
+export const projectFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({
+  name: 'project_feedback',
   reach: 'project',
   route: '/api/projects',
   grant: 'projects:write',
   description: [
-    "File a person's report or wish as Feedback (FB-n), as the person you are talking to. From a",
+    "File a person's report or wish about this project as its Feedback (FB-n), as the person you are talking to. From a",
     'chat it is held for their agreement: core keeps it as a proposal they see as a confirm card.',
     'kind: bug (something broken or wrong), change_request (different behaviour of something that',
     'exists), idea (something new), question.',

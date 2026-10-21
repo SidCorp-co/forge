@@ -299,7 +299,11 @@ const NOT_A_PROJECT_WRITE: Record<string, string> = {
 };
 /** Each write tool, a call a member could make, and the permission a viewer is refused it by. */
 const viewerWrites = (): [string, Record<string, unknown>, string][] => [
-  ['forge_feedback', { kind: 'bug', title: 'Viewer feedback', screen: '/board' }, 'project.write'],
+  [
+    'project_feedback',
+    { kind: 'bug', title: 'Viewer feedback', screen: '/board' },
+    'project.write',
+  ],
   [
     'forge_requirement_draft',
     { title: 'Viewer requirement', reason: 'A viewer asked.', criteria: [{ body: 'It holds.' }] },

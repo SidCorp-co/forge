@@ -1,4 +1,4 @@
-// forge_feedback: a BA's door onto a project's feedback (FB-n) over /mcp (owner direction
+// project_feedback: a BA's door onto a project's own feedback (FB-n) over /mcp (owner direction
 // 2026-10-16: /mcp serves the product layer). Every action is a REST route's own service call —
 // GET/POST /api/projects/:id/feedback, …/:fb, …/:fb/similar, …/:fb/clarification — and every read
 // carries the progress block of the work the item was routed to (`product-progress.ts`).
@@ -27,19 +27,21 @@ import {
   refusedAnswer,
   zodToMcpSchema,
 } from '../lib/tool.js';
-import { resolveEffectiveProjectId } from '../projects/index.js';
 import {
   type FeedbackReads,
   feedbackDetail,
   feedbackProgress,
   feedbackRow,
+  issuesOfRequirements,
+  liveRunsByIssue,
+  requirementIdsOf,
   routedRequirements,
-} from './feedback-views.js';
-import { issuesOfRequirements, liveRunsByIssue, requirementIdsOf } from './product-progress.js';
+} from '../product-progress/index.js';
+import { resolveEffectiveProjectId } from '../projects/index.js';
 
 const ACTIONS = ['list', 'get', 'progress', 'similar', 'submit', 'clarify'] as const;
 const READS = ['list', 'get', 'progress', 'similar'] as const;
-export const FEEDBACK_READ_ACTIONS: readonly string[] = READS;
+export const PROJECT_FEEDBACK_READ_ACTIONS: readonly string[] = READS;
 
 const feedbackKey = z
   .string()
@@ -64,7 +66,7 @@ const inputSchema = z.strictObject({
 type Input = z.infer<typeof inputSchema>;
 
 const DESCRIPTION = [
-  "A project's feedback (FB-n) — what people report or wish — for a BA: read it, file it, ask its reporter, and tell them how the work it became is going.",
+  "A project's own feedback (FB-n) — what people report or wish about that project's product — for a BA: read it, file it, ask its reporter, and tell them how the work it became is going. Feedback about Forge itself is forge_feedback.",
   'Every list row and get answer carries `progress` for the work the item was routed to (its issues, or the requirement it became; a duplicate reads its root’s): `running` (a run works on it right now), `runs` (unfinished runs: issue, state, step), `waitingOn` (who owes what: a triage, a release act, an answer), `work` (issues total, shipped, awaitingRelease, toDo) and `eta` — {estimate:true, likelyBy (p50), almostSurelyBy (p85), of: hands|landing, basis, confidence}, or {estimate:false, done, why} saying why no date can be given (not triaged yet, declined, answered, routed to a revision, no issue yet).',
   '`progress.says` is the block in one paragraph: tell it to the person, and never give a date the block does not hold.',
   'Actions.',
@@ -246,8 +248,8 @@ async function clarify(ctx: McpContext, projectId: string, input: Input) {
 
 const HANDLERS = { list, get, progress, similar, submit, clarify } as const;
 
-export const forgeFeedbackMcpTool: ContextScopedMcpToolFactory = (ctx) => ({
-  name: 'forge_feedback',
+export const projectFeedbackMcpTool: ContextScopedMcpToolFactory = (ctx) => ({
+  name: 'project_feedback',
   reach: 'project',
   route: '/api/projects',
   grant: GRANT,

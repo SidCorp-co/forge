@@ -3,9 +3,9 @@ import {
   createFeedbackRequestSchema,
   feedbackMessageRequestSchema,
 } from '@forge/contracts/feedback';
+import { forgeFeedbackRequestSchema } from '@forge/contracts/forge-feedback';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { submitReportSchema } from '../agent-reports/reports.js';
 import { commentBodySchema, commentCreateSchema } from '../comments/body-input.js';
 import { issueCreateSchema, issuePatchSchema } from '../issues/request-schemas.js';
 import { revisionFields } from '../requirements/route-kit.js';
@@ -23,14 +23,9 @@ const DOORS: Array<[string, z.ZodType, Record<string, unknown>]> = [
   ['entity comment', createEntityCommentRequestSchema, { intent: 'note', body: 'b' }],
   ['requirement revision', z.strictObject(revisionFields), { reason: 'r', criteria: [] }],
   [
-    'agent report',
-    submitReportSchema,
-    {
-      projectId: '00000000-0000-4000-8000-000000000000',
-      kind: 'bug',
-      target: 'skill',
-      summary: 's',
-    },
+    'feedback to Forge',
+    forgeFeedbackRequestSchema,
+    { kind: 'bug', title: 't', whereSeen: 'forge claim' },
   ],
 ];
 

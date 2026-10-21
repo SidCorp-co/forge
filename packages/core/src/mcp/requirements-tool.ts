@@ -20,6 +20,7 @@ import {
   refusedAnswer,
   zodToMcpSchema,
 } from '../lib/tool.js';
+import { issuesOfRequirements, liveRunsByIssue, runsOn } from '../product-progress/index.js';
 import { resolveEffectiveProjectId } from '../projects/index.js';
 import { ANSWER_SHAPE, answerBody, answerWithToken } from '../questions/index.js';
 import {
@@ -31,7 +32,6 @@ import {
   similarRequirements,
   writeRevision,
 } from '../requirements/index.js';
-import { issuesOfRequirements, liveRunsByIssue, runsOn } from './product-progress.js';
 import { requirementDetail, requirementProgress, requirementRow } from './requirement-views.js';
 
 const ACTIONS = [

@@ -12,13 +12,11 @@ import {
   automationViewerOf,
   readAutomationStanding,
   readFireDetail,
-  readReportDetail,
   readScheduleDetail,
 } from './read.js';
 
 const scheduleParam = z.object({ id: z.uuid(), scheduleId: z.uuid() });
 const fireParam = z.object({ id: z.uuid(), fireId: z.uuid() });
-const reportParam = z.object({ id: z.uuid(), reportId: z.uuid() });
 const firesQuery = z.strictObject({
   firesLimit: z.coerce
     .number()
@@ -96,25 +94,6 @@ automationRoutes.get(
     if (!detail) throw notFound(`fire ${fireId} is not a fire of a schedule of this project`);
     return c.json(
       await egressForRequest(restActor(c).agency, projectId, 'issue', detail, `fire ${fireId}`),
-    );
-  },
-);
-
-automationRoutes.get(
-  '/:id/automation/reports/:reportId',
-  zValidator(
-    'param',
-    reportParam,
-    invalid('invalid path: /api/projects/<project uuid>/automation/reports/<report uuid>'),
-  ),
-  zValidator('query', noQuery),
-  async (c) => {
-    const { id: projectId, reportId } = c.req.valid('param');
-    const viewer = await viewerOf(projectId, c.get('userId'));
-    const detail = await readReportDetail(projectId, reportId, viewer);
-    if (!detail) throw notFound(`report ${reportId} is not an agent report of this project`);
-    return c.json(
-      await egressForRequest(restActor(c).agency, projectId, 'issue', detail, `report ${reportId}`),
     );
   },
 );

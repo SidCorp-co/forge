@@ -32,8 +32,8 @@ describe('what a turn already did, as a retry is told it', () => {
   it('lists a write that landed, and leaves out one that was refused', async () => {
     const t = tracker(true);
     const writes = turnWrites(t.tools);
-    await writes.tools?.execute('forge_feedback', filing('First'));
-    await writes.tools?.execute('forge_feedback', filing('Second'));
+    await writes.tools?.execute('project_feedback', filing('First'));
+    await writes.tools?.execute('project_feedback', filing('Second'));
     expect(writes.calls().map((c) => c.write)).toEqual([true]);
     expect(writes.doneSoFar()).toContain('Second');
     expect(writes.doneSoFar()).not.toContain('First');
@@ -74,7 +74,7 @@ describe('what a turn already did, as a retry is told it', () => {
   });
 
   it('reads the title a record tool files under, and nothing from any other call', () => {
-    expect(filingTitle('forge_feedback', filing('Hello'))).toBe('Hello');
+    expect(filingTitle('project_feedback', filing('Hello'))).toBe('Hello');
     expect(filingTitle('forge_requirement_draft', JSON.stringify({ title: 'Panel width' }))).toBe(
       'Panel width',
     );

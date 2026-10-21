@@ -3,7 +3,6 @@
 // through the shared badge and never prints the stored token. An enum that moves into contracts
 // takes its reading with it (docs/patterns/core-module.md, "Badges"); until then this file is its one reading.
 
-import type { AgentReportTriage } from "./agent-reports.js";
 import type { ScheduleState } from "./automation-standing.js";
 import type { IssueStatusTone } from "./issue-vocabulary.js";
 import type { JobStatus } from "./job-machine.js";
@@ -203,13 +202,6 @@ export const STATE_READINGS = {
 		owner_gone: ["Owner gone", "you", "!"],
 		off: ["Off", "done", "–"],
 	} satisfies Record<ScheduleState, Reading>,
-	/** What a person decided an agent report is (contracts `agent-reports.ts:AGENT_REPORT_TRIAGES`). */
-	reportTriage: {
-		new: ["New", "you", "●"],
-		filed: ["Filed", "ready", "✓"],
-		dismissed: ["Dismissed", "done", "–"],
-		duplicate: ["Duplicate", "done", "="],
-	} satisfies Record<AgentReportTriage, Reading>,
 	/** Whether a C4 design names an outside system's integration as settled (web `workflows/c4/geometry.ts:IntegrationState`). */
 	integration: {
 		confirmed: ["Confirmed", "ready", "✓"],
@@ -436,25 +428,6 @@ export const ENUM_LABELS = {
 	},
 	/** A connection binding's role (core `project-config/schema.ts:BINDING_ROLES`). */
 	bindingRole: { deploy: "Deploy", source: "Source", service: "Service" },
-	/** An agent report's kind and target (core `db/schema-agent-reports.ts:agentReportKinds`). */
-	agentReportKind: {
-		friction: "Friction",
-		bug: "Bug",
-		skill_gap: "Skill gap",
-		unclear_step: "Unclear step",
-		redundant_step: "Redundant step",
-		learning: "Learning",
-		suggestion: "Suggestion",
-	},
-	agentReportTarget: {
-		skill: "Skill",
-		prompt: "Prompt",
-		tool: "Tool",
-		doc: "Doc",
-		orientation: "Orientation",
-		pipeline: "Pipeline",
-		other: "Other",
-	},
 	/** The model tier a run used (core `db/schema.ts:modelTiers`). */
 	modelTier: { haiku: "Haiku", sonnet: "Sonnet", opus: "Opus" },
 	runStuckRule: {

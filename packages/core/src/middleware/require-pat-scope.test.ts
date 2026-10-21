@@ -60,12 +60,12 @@ describe('a /mcp write from a token without the write scope', () => {
   });
 
   it('is refused by name, saying the scope and the tool', async () => {
-    const res = await call(tool('forge_agent_report', { action: 'submit' }));
+    const res = await call(tool('forge_feedback', { action: 'submit' }));
     expect(res.status).toBe(403);
     const body = (await res.json()) as { message: string; cause: { code: string } };
     expect(body.cause.code).toBe('INSUFFICIENT_SCOPE');
     expect(body.message).toContain("'write' scope");
-    expect(body.message).toContain('forge_agent_report action=submit');
+    expect(body.message).toContain('forge_feedback action=submit');
   });
 
   it("is refused for a write action that shares a name with another tool's read", async () => {
@@ -80,8 +80,8 @@ describe('a /mcp write from a token without the write scope', () => {
 
   it('is refused when a read hides in a batch with a write', async () => {
     const res = await call([
-      tool('forge_agent_report', { action: 'list' }),
-      tool('forge_agent_report', { action: 'submit' }),
+      tool('forge_feedback', { action: 'list' }),
+      tool('forge_feedback', { action: 'submit' }),
     ]);
     expect(res.status).toBe(403);
   });
@@ -93,18 +93,22 @@ describe('a /mcp write from a token without the write scope', () => {
   it('reads requirements and feedback on a read token, and refuses their writes', async () => {
     for (const action of ['list', 'get', 'progress', 'similar']) {
       expect((await call(tool('forge_requirements', { action }))).status).toBe(200);
+      expect((await call(tool('project_feedback', { action }))).status).toBe(200);
+    }
+    for (const action of ['list', 'get', 'progress']) {
       expect((await call(tool('forge_feedback', { action }))).status).toBe(200);
     }
     for (const action of ['create', 'revise', 'propose']) {
       expect((await call(tool('forge_requirements', { action }))).status).toBe(403);
     }
     for (const action of ['submit', 'clarify']) {
-      expect((await call(tool('forge_feedback', { action }))).status).toBe(403);
+      expect((await call(tool('project_feedback', { action }))).status).toBe(403);
     }
+    expect((await call(tool('forge_feedback', { action: 'submit' }))).status).toBe(403);
   });
 
   it('lets a read through', async () => {
-    expect((await call(tool('forge_agent_report', { action: 'list' }))).status).toBe(200);
+    expect((await call(tool('forge_feedback', { action: 'list' }))).status).toBe(200);
     expect((await call({ jsonrpc: '2.0', id: 1, method: 'tools/list' })).status).toBe(200);
   });
 
@@ -131,6 +135,6 @@ describe('a /mcp write from a token without the write scope', () => {
 
   it('lets a token holding write do the same write', async () => {
     scopes.held = ['read', 'write'];
-    expect((await call(tool('forge_agent_report', { action: 'submit' }))).status).toBe(200);
+    expect((await call(tool('forge_feedback', { action: 'submit' }))).status).toBe(200);
   });
 });

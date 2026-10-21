@@ -1,7 +1,7 @@
 /**
  * REQ-30 BC-4 (workflow chat-turn r2, steps restate 	 confirm 	 write 	 recorded): a chat writes
  * nothing until the person agrees. Before ISS-439 the agreement was an instruction to the model,
- * and forge_feedback, the requirement tools and an Agent session's REST POST wrote the moment they
+ * and project_feedback, the requirement tools and an Agent session's REST POST wrote the moment they
  * were called. Here the real routes, the real toolset and the real database answer: a held write
  * leaves no row; only the person's press on the card writes exactly the held call, once, as them,
  * linked to what it named. A typed reply, yes or no, writes nothing (ISS-439 round 2: the judge's
@@ -60,11 +60,11 @@ afterAll(async () => {
 describe('an Assistant write is held, and the card writes it as the person', () => {
   let held = '';
 
-  it('refuses forge_feedback by name and writes no Feedback', async () => {
+  it('refuses project_feedback by name and writes no Feedback', async () => {
     const gate = await gateFor(QUESTION);
     const before = await count('feedback');
     const r = await gate.tools.execute(
-      'forge_feedback',
+      'project_feedback',
       JSON.stringify({
         kind: 'bug',
         title: 'The dock loses a draft on a tab switch',
@@ -141,7 +141,7 @@ describe('an Assistant write is held, and the card writes it as the person', () 
   it('declines a proposal, and a press after it writes nothing', async () => {
     const gate = await gateFor(QUESTION);
     const r = await gate.tools.execute(
-      'forge_feedback',
+      'project_feedback',
       JSON.stringify({ kind: 'idea', title: 'Autosave the dock', requirement: reqKey }),
     );
     const id = heldId(text(r));

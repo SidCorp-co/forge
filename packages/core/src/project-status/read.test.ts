@@ -5,7 +5,7 @@ import type { AttentionRow } from '../development/index.js';
 import { requirementsShippedOf, waitsOf } from './read.js';
 
 // What a person reads about where a project stands must be what a member owes and what was proven
-// (HOP journey walk, 2026-10-08): an agent report's triage is Forge upkeep, and "delivered in full"
+// (HOP journey walk, 2026-10-08): a schedule's upkeep is Forge ops, and "delivered in full"
 // is a claim about every live criterion, not about the last issue shipping.
 
 const AS_OF = '2026-10-08T09:00:00.000Z';
@@ -28,10 +28,10 @@ function row(
   };
 }
 
-const writers = waitingOn('writers', {
+const admins = waitingOn('admins', {
   who: say('standing.who.named', { name: 'Ana, Bo' }),
-  act: say('standing.act.triageReport'),
-  rule: say('automation.rule.toWriters'),
+  act: say('standing.act.takeOverSchedule'),
+  rule: say('automation.rule.ownerGone'),
 });
 const you = waitingOn('you', {
   who: say('standing.who.you'),
@@ -45,12 +45,12 @@ const minh = waitingOn('person', {
 });
 
 describe("the status report's waiting-on-people list", () => {
-  const reports = Array.from({ length: 85 }, (_, i) =>
-    row('report', `r${i}`, writers, `2026-10-08T0${i % 9}:00:00.000Z`),
+  const schedules = Array.from({ length: 85 }, (_, i) =>
+    row('schedule', `s${i}`, admins, `2026-10-08T0${i % 9}:00:00.000Z`),
   );
   const read = waitsOf(
     {
-      automation: reports,
+      automation: schedules,
       issues: [row('issue', 'ISS-107', you, '2026-10-07T10:00:00.000Z', 'needs_you')],
       designs: [
         row('workflow', 'hop-recall-ux', minh, '2026-10-07T12:00:00.000Z'),
@@ -61,7 +61,7 @@ describe("the status report's waiting-on-people list", () => {
     AS_OF,
   );
 
-  it('lists no agent report: triaging one is Forge ops upkeep, read in Development', () => {
+  it("lists no automation row: a schedule's upkeep is Forge ops, read in Development", () => {
     expect(read.people.map((w) => w.area)).not.toContain('automation');
     expect(read.peopleCount).toBe(4);
   });

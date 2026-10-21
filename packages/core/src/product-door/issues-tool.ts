@@ -29,7 +29,7 @@ export const ISSUE_CREATE_STEER =
   'An MCP client files no issue. Issues are the delivery side: Forge files one only when a ' +
   "requirement's breakdown is accepted, or when feedback is triaged as delivery work, so the " +
   'product record always leads. Record what the person means instead, after they confirm it: ' +
-  '(1) a problem, bug, change or idea someone reported is Feedback (forge_feedback; kind bug | ' +
+  '(1) a problem, bug, change or idea someone reported is Feedback (project_feedback; kind bug | ' +
   'change_request | idea | question), linked to the requirement it touches, and its triage files ' +
   'the issue; (2) new or changed behaviour is a Requirement or a revision of one ' +
   '(forge_requirements), and accepting its breakdown (forge_design suggestion_accept) files the ' +

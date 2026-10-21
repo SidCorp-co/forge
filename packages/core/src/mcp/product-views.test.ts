@@ -3,7 +3,7 @@ import type { FeedbackForecast, ForecastPaused } from '@forge/contracts/forecast
 import type { RequirementState, RequirementSummary } from '@forge/contracts/requirements';
 import { say } from '@forge/contracts/said';
 import { describe, expect, it } from 'vitest';
-import { type FeedbackReads, feedbackProgress } from './feedback-views.js';
+import { type FeedbackReads, feedbackProgress } from '../product-progress/index.js';
 import { requirementProgress } from './requirement-views.js';
 
 const asOf = '2026-10-16T09:00:00.000Z';

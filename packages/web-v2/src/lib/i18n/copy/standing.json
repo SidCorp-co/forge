@@ -74,7 +74,6 @@
     "standing.act.triageAgain": "phân loại lại",
     "standing.act.triageIt": "phân loại",
     "standing.act.triageMany": "phân loại {n} phản hồi",
-    "standing.act.triageReport": "phân loại một báo cáo",
     "standing.act.updateToContract": "Cập nhật theo phiên bản hiện hành của {contract} ({v})",
     "standing.act.updateToDesign": "Cập nhật theo thiết kế đã duyệt: {design} (bản {r})",
     "standing.act.verdictsNotReread": "chưa đọc lại các kết luận",

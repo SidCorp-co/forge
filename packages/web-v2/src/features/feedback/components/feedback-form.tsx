@@ -8,7 +8,7 @@ import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { useSubmitGuard } from "@/lib/utils/use-submit-guard";
 import { StagedFileList } from "@/features/attachments";
 import { AttachFailed } from "../api";
-import { useAttachFeedback, useCreateFeedback, usePromoteFeedback } from "../hooks";
+import { useAttachFeedback, useCreateFeedback } from "../hooks";
 import type { CreateFeedbackRequest, FeedbackKind, FeedbackSeverity } from "../types";
 import { useFeedbackStaging } from "./feedback-attachments";
 import { DraftDuplicates } from "./feedback-similar";
@@ -38,21 +38,17 @@ export function FeedbackForm({
   projectId,
   slug,
   onDone,
-  agentReport,
   draft = BLANK,
 }: {
   projectId: string;
   /** The project the likely duplicates link into. */
   slug: string;
   onDone: (key: string) => void;
-  agentReport?: string;
   draft?: FeedbackDraft;
 }) {
   const t = useCopy();
   const language = useInterfaceLanguage();
-  const create = useCreateFeedback(projectId);
-  const promote = usePromoteFeedback(projectId);
-  const write = agentReport ? promote : create;
+  const write = useCreateFeedback(projectId);
   const attach = useAttachFeedback(projectId);
   const staged = useFeedbackStaging(0);
   const submitting = useSubmitGuard();
@@ -72,7 +68,7 @@ export function FeedbackForm({
   return (
     <form
       className="grid max-w-2xl gap-3 bg-surface px-4 py-4 sm:px-7"
-      data-testid={agentReport ? "feedback-promote" : "feedback-create"}
+      data-testid="feedback-create"
       onPaste={staged.onPaste}
       onSubmit={(e) => {
         e.preventDefault();
@@ -85,8 +81,7 @@ export function FeedbackForm({
         };
         if (attach.isPending || failed || !submitting.claim()) return;
         const settle = { onSuccess: (r: { feedback: { key: string } }) => filed(r.feedback.key), onSettled: submitting.release };
-        if (agentReport) promote.mutate({ ...request, agentReport }, settle);
-        else create.mutate(request, settle);
+        write.mutate(request, settle);
       }}
     >
       <Field label={t("feedback.form.title")} error={refused.at("title")} required>
@@ -124,7 +119,6 @@ export function FeedbackForm({
       </div>
       <StagedFileList files={staged.files} warnings={staged.warnings} remove={staged.remove} />
       <DraftDuplicates projectId={projectId} slug={slug} title={title} body={body} />
-      {agentReport ? <p className="text-13 text-muted">{t("feedback.form.copied", { id: agentReport.slice(0, 8) })}</p> : null}
       <RefusalLine error={write.error} onField={refused.onField} />
       {failed ? (
         <div className="grid gap-1.5" data-testid="feedback-attach-failed">
@@ -145,7 +139,7 @@ export function FeedbackForm({
             loading={write.isPending || attach.isPending}
             disabled={!title.trim() || !target.trim()}
           >
-            {agentReport ? t("feedback.form.promote") : t("feedback.form.send")}
+            {t("feedback.form.send")}
           </Button>
           <Button type="button" variant="ghost" size="sm" icon="plus" onClick={staged.choose} disabled={write.isPending || attach.isPending}>
             {t("feedback.attach.choose")}

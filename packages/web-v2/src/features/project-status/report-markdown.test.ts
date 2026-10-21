@@ -27,12 +27,12 @@ describe("the status report as Markdown", () => {
     expect(md).not.toMatch(/— You —/);
   });
 
-  it("calls a harness report by the area it waits in, never by the id no reader knows", () => {
+  it("calls a schedule by the area it waits in, never by the id no reader knows", () => {
     const id = "b4e9546d-5dad-4dec-b7c6-9a0becf852c0";
-    const report = { area: "automation" as const, entity: "report" as const, key: id, title: "Harness run failed", titleLang: "en" as const, says: { title: verbatim("Harness run failed") }, touchedAt: AT, waitingOn: waitingOn("writers", { who: say("automation.who.harnessTriage"), act: say("standing.act.triageReport"), rule: RULE }) };
+    const report = { area: "automation" as const, entity: "schedule" as const, key: id, title: "Nightly steward", titleLang: "en" as const, says: { title: verbatim("Nightly steward") }, touchedAt: AT, waitingOn: waitingOn("person", { who: say("standing.who.named", { name: "Ana" }), act: say("standing.act.fixSchedule"), rule: RULE }) };
     const md = statusMarkdown({ ...STATUS, waits: { ...STATUS.waits, people: [report], peopleCount: 1 } }, words("en"));
     expect(md).not.toContain(id);
-    expect(md).toContain(`**${labelCopy("en")("needsYouArea", "automation")}** Harness run failed`);
+    expect(md).toContain(`**${labelCopy("en")("needsYouArea", "automation")}** Nightly steward`);
   });
 
   it("says what each shipped release verified and dates each section", () => {

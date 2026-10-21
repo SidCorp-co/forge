@@ -97,7 +97,7 @@ describe('forge_issues create', () => {
     expect(isRefusal(err, 'MCP_FILES_FEEDBACK_NOT_ISSUES')).toBe(true);
     const detail = err.refusals[0]?.detail ?? '';
     expect(detail).toContain('An MCP client files no issue');
-    expect(detail).toContain('forge_feedback');
+    expect(detail).toContain('project_feedback');
     expect(detail).toContain('forge_requirements');
     expect(detail).toContain('forge_design suggestion_accept');
     expect(detail).toContain('forge_questions ask');

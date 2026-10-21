@@ -1,7 +1,6 @@
-// What the automation read model needs from the contexts below work: the agent reports and the
-// schedule fires. The composition root provides them at boot.
+// What the automation read model needs from the contexts below work: the schedule fires. The
+// composition root provides them at boot.
 
-import type { AgentReportView } from '@forge/contracts/agent-reports';
 import type {
   ScheduleRunSkipReason,
   ScheduleRunStatus,
@@ -28,12 +27,6 @@ export interface ScheduleStreak {
 }
 
 interface AutomationPorts {
-  reportRows: (scope: {
-    projectId: string;
-    scheduleId?: string;
-    triaged: number;
-  }) => Promise<AgentReportView[]>;
-  reportRow: (projectId: string, reportId: string) => Promise<AgentReportView[]>;
   lastFires: (projectId: string, scheduleIds?: readonly string[]) => Promise<Map<string, LastFire>>;
   readScheduleStreaks: (scope?: {
     projectId?: string;
@@ -52,8 +45,6 @@ const slot = portSlot<AutomationPorts>('automation', 'provideAutomationPorts');
 export const provideAutomationPorts = slot.provide;
 const { port } = slot;
 
-export const reportRows = port('reportRows');
-export const reportRow = port('reportRow');
 export const lastFires = port('lastFires');
 export const readScheduleStreaks = port('readScheduleStreaks');
 export const streakFails = port('streakFails');

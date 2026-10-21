@@ -28,7 +28,7 @@ const { screenReplyAtDoor } = await import('./reply-screen.js');
 
 type Call = { name: string; arguments: string; isError?: boolean };
 const PID = 'd1bb4907-74d9-4228-85ff-76121523af7d';
-const FEEDBACK: Call = { name: 'forge_feedback', arguments: JSON.stringify({ projectId: PID }) };
+const FEEDBACK: Call = { name: 'project_feedback', arguments: JSON.stringify({ projectId: PID }) };
 const DRAFT: Call = {
   name: 'forge_requirement_draft',
   arguments: JSON.stringify({ projectId: PID }),

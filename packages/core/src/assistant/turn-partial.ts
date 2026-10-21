@@ -74,7 +74,7 @@ const AND: Record<ReplyLanguage, string> = { en: 'and', vi: 'và' }; // i18n-all
 
 /** The writes, by tool, and for the CLI by its verb. */
 const WRITES: Record<string, Record<ReplyLanguage, string>> = {
-  forge_feedback: { en: 'recorded feedback', vi: 'ghi nhận góp ý' }, // i18n-allow: user-facing channel reply
+  project_feedback: { en: 'recorded feedback', vi: 'ghi nhận góp ý' }, // i18n-allow: user-facing channel reply
   forge_requirement_draft: { en: 'drafted a requirement', vi: 'soạn requirement' }, // i18n-allow: user-facing channel reply
   forge_requirement_revise: { en: 'revised a requirement', vi: 'sửa requirement' }, // i18n-allow: user-facing channel reply
   forge_memory_note: { en: 'noted it in project memory', vi: 'ghi vào bộ nhớ dự án' }, // i18n-allow: user-facing channel reply
@@ -88,7 +88,7 @@ const WRITES: Record<string, Record<ReplyLanguage, string>> = {
  * new copy is English only (owner ruling ISS-403).
  */
 const HELD: Record<string, string> = {
-  forge_feedback: 'Feedback',
+  project_feedback: 'Feedback',
   forge_requirement_draft: 'a draft requirement',
   forge_requirement_revise: 'a requirement revision',
   forge_memory_note: 'a project memory note',

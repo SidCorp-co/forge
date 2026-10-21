@@ -41,7 +41,7 @@ describe('every chat door routes a report or a wish to Feedback or a Requirement
         '`change_request`',
         'draft Requirement',
         'CHAT_FILES_FEEDBACK_NOT_ISSUES',
-        'forge_feedback',
+        'project_feedback',
       ]) {
         expect(prompt, `${door} does not say ${says}`).toContain(says);
       }
@@ -75,7 +75,7 @@ describe('every chat door routes a report or a wish to Feedback or a Requirement
   it('closes `forge new` at the chat door, naming where a record goes instead', () => {
     const refused = admitVerb(['new', '-', '--title', 'Panel width', '--category', 'feature']);
     expect(refused).toContain('a chat files no issue');
-    expect(refused).toContain('forge_feedback');
+    expect(refused).toContain('project_feedback');
     expect(refused).toContain('forge_requirement_draft');
     expect(readFormsLine()).not.toContain('new');
     expect(admitVerb(['issue', '--search', 'panel'])).toBeNull();

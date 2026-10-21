@@ -3,4 +3,6 @@ export { type FeedbackDraft, FeedbackForm } from "./components/feedback-form";
 export { FeedbackItemScreen } from "./components/feedback-item-screen";
 export { FeedbackRailItem } from "./components/feedback-rail-item";
 export { FeedbackScreen } from "./components/feedback-screen";
+export { ForgeFeedbackButton } from "./components/forge-feedback-dialog";
+export { MyForgeFeedback } from "./components/my-forge-feedback";
 export { useFeedbackList } from "./hooks";

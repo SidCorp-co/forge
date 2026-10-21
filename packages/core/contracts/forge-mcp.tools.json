@@ -4,196 +4,6 @@
   "generator": "packages/core/src/contracts-generate.ts",
   "tools": [
     {
-      "description": "Submit, list, get, or triage agent friction reports. action=submit: report friction, skill gaps, unclear steps, or learnings mid-run. Pipeline context (issueId/runId/jobId/stage) is resolved server-side from your active job — do NOT supply it; a report filed from a scheduled run also carries scheduleRunId, the fire that ran it. Required fields: projectId, kind, target, summary. projectId names the project the report is ABOUT, which need not be the one you are working in; it is REQUIRED and never inferred, because a report filed into the wrong feed is never read (`GET /api/projects` prints it beside each slug). Optional: severity (default low), targetRef, detail, suggestion, writtenLang (en | vi — the language you wrote the text in; absent, the project content language; any other value is refused WRITTEN_LANG_INVALID). Returns {ok:true,id,signalKey} on success; {ok:false,reason:\"rate_limited\"} when the per-job cap is hit (not a 500 — agent continues). action=list: read the friction feed. Supports filters.kind/target/severity/triage (new | filed | dismissed | duplicate), limit (default 25, fleet default 50). scope=\"project\" (default) reads the resolved project; scope=\"all\" unions every project you own or are a member of and adds projectId/projectSlug to each row. EVERY list response carries `returned`, `limit` and `hasMore` — read `hasMore` before reporting a count as complete. `truncated:true` + `truncatedBy` say which cap bit (your limit, or the hard response-size cap). action=get: fetch one report by reportId, resolving its project from the row itself — no projectId needed. NOT_FOUND if missing or not visible to you. Every report carries triage (new | filed | dismissed | duplicate) with triagedBy, triagedAt and triageReason; a filed one has exactly one target, linkedIssueId or `feedback` { key, phase, route } (promote with `POST /api/projects/:id/feedback/promote`, which files it). action=triage: decide what a report is, with act: file (exactly one of issue: <uuid of an issue in any project you can see> | createIssue: { title?, description? }, which creates the issue at draft in the report's project with the report as its evidence) · dismiss (reason REQUIRED: AGENT_REPORT_DISMISS_REASON_REQUIRED) · duplicate (duplicateOf: an earlier report of the same project, else AGENT_REPORT_DUPLICATE_UNKNOWN; reason?) · reopen (back to new; AGENT_REPORT_NOT_TRIAGED when it is new already, AGENT_REPORT_PROMOTED when it became feedback). A report is triaged once: a second file, dismiss or duplicate is AGENT_REPORT_ALREADY_TRIAGED naming who triaged it and how — reopen it first. reportId triages one report (projectId resolves which project it must sit in). signalKey triages every report sharing it — add scope=\"all\" for every project you can see (scope=\"all\" without signalKey is a BAD_REQUEST; createIssue needs scope project). A bulk act moves the reports it applies to (file, dismiss and duplicate move the new ones, reopen the triaged ones) and lists the others under `untouched`; N reports of one defect fold into ONE issue in a single call. Returns { effect: { act, triage, reports, issue: { id, key, created } | null, untouched } }.",
-      "inputSchema": {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "additionalProperties": false,
-        "properties": {
-          "act": {
-            "enum": [
-              "file",
-              "dismiss",
-              "duplicate",
-              "reopen"
-            ],
-            "type": "string"
-          },
-          "action": {
-            "enum": [
-              "submit",
-              "list",
-              "triage",
-              "get"
-            ],
-            "type": "string"
-          },
-          "createIssue": {
-            "additionalProperties": false,
-            "properties": {
-              "description": {
-                "maxLength": 20000,
-                "type": "string"
-              },
-              "title": {
-                "maxLength": 200,
-                "minLength": 1,
-                "type": "string"
-              }
-            },
-            "type": "object"
-          },
-          "detail": {
-            "maxLength": 5000,
-            "type": "string"
-          },
-          "duplicateOf": {
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-            "type": "string"
-          },
-          "filters": {
-            "additionalProperties": false,
-            "properties": {
-              "kind": {
-                "enum": [
-                  "friction",
-                  "bug",
-                  "skill_gap",
-                  "unclear_step",
-                  "redundant_step",
-                  "learning",
-                  "suggestion"
-                ],
-                "type": "string"
-              },
-              "severity": {
-                "enum": [
-                  "low",
-                  "medium",
-                  "high"
-                ],
-                "type": "string"
-              },
-              "target": {
-                "enum": [
-                  "skill",
-                  "prompt",
-                  "tool",
-                  "doc",
-                  "orientation",
-                  "pipeline",
-                  "other"
-                ],
-                "type": "string"
-              },
-              "triage": {
-                "enum": [
-                  "new",
-                  "filed",
-                  "dismissed",
-                  "duplicate"
-                ],
-                "type": "string"
-              }
-            },
-            "type": "object"
-          },
-          "issue": {
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-            "type": "string"
-          },
-          "kind": {
-            "enum": [
-              "friction",
-              "bug",
-              "skill_gap",
-              "unclear_step",
-              "redundant_step",
-              "learning",
-              "suggestion"
-            ],
-            "type": "string"
-          },
-          "limit": {
-            "maximum": 200,
-            "minimum": 1,
-            "type": "integer"
-          },
-          "projectId": {
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-            "type": "string"
-          },
-          "reason": {
-            "maxLength": 2000,
-            "type": "string"
-          },
-          "reportId": {
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-            "type": "string"
-          },
-          "scope": {
-            "enum": [
-              "project",
-              "all"
-            ],
-            "type": "string"
-          },
-          "severity": {
-            "enum": [
-              "low",
-              "medium",
-              "high"
-            ],
-            "type": "string"
-          },
-          "signalKey": {
-            "maxLength": 500,
-            "type": "string"
-          },
-          "suggestion": {
-            "maxLength": 2000,
-            "type": "string"
-          },
-          "summary": {
-            "maxLength": 2000,
-            "minLength": 1,
-            "type": "string"
-          },
-          "target": {
-            "enum": [
-              "skill",
-              "prompt",
-              "tool",
-              "doc",
-              "orientation",
-              "pipeline",
-              "other"
-            ],
-            "type": "string"
-          },
-          "targetRef": {
-            "maxLength": 500,
-            "type": "string"
-          },
-          "writtenLang": {
-            "enum": [
-              "en",
-              "vi"
-            ],
-            "type": "string"
-          }
-        },
-        "required": [
-          "action"
-        ],
-        "type": "object"
-      },
-      "name": "forge_agent_report"
-    },
-    {
       "description": "Act in a project's ecosystem channel under the credential's own role: a viewer reads, a member writes. Reads: register, inbox, outbox, unanswered (what this side owes a reply to: the work a master takes), read (one document), thread, contracts (a project API page). Writes: draft, reply (a draft answering a number), edit, submit (publishes, or waits at the approve gate), hold and release a conversation, withdraw, supersede, gate (approve or return a document waiting at the approve gate; an admin decides). The author is stamped from the credential and never read from the arguments: in chat the person, via assistant; on /mcp an agent token writes via master and a personal one via cli. Show a person a draft and submit it only once they confirm; hold, withdraw and supersede need a reason. You read only documents this project sends or receives, never another pair or a counterparty internal; in a chat at ecosystem scope you also read those of the person's other projects in that ecosystem, and you still write only as this project. A refusal comes back as { code, path, detail }; say what was refused and why.",
       "inputSchema": {
         "additionalProperties": false,
@@ -551,19 +361,17 @@
       "name": "forge_ecosystem"
     },
     {
-      "description": "A project's feedback (FB-n) — what people report or wish — for a BA: read it, file it, ask its reporter, and tell them how the work it became is going. Every list row and get answer carries `progress` for the work the item was routed to (its issues, or the requirement it became; a duplicate reads its root’s): `running` (a run works on it right now), `runs` (unfinished runs: issue, state, step), `waitingOn` (who owes what: a triage, a release act, an answer), `work` (issues total, shipped, awaitingRelease, toDo) and `eta` — {estimate:true, likelyBy (p50), almostSurelyBy (p85), of: hands|landing, basis, confidence}, or {estimate:false, done, why} saying why no date can be given (not triaged yet, declined, answered, routed to a revision, no issue yet). `progress.says` is the block in one paragraph: tell it to the person, and never give a date the block does not hold. Actions. list {phase?: [new|triaged|planned|resolved|reopened|verified|declined], q?, requirement? (REQ-n)}: the items with phase, route, whom each waits on, and progress. get {feedback}: one in full — body, where seen, route and carriers, decisions, the open clarification and its answer, progress. NOT_FOUND when the project holds no such key. progress {feedback}: the progress block alone. similar {feedback}: the items nearest it, to spot a duplicate; not_embedded, provider_not_configured, failed or withheld_by_policy does not mean none is similar. submit { kind: bug | change_request | question | idea | contract_change, title, body?, severity?: low | medium | high | critical, whereSeen?, exactly one of requirement | issue | release | workflow | endpoint | screen, node?: { step } | { edge: { from, to, label? } } (with workflow only), writtenLang?: en | vi }: file it as the person you speak for, at phase new. Name exactly one target; a requirement it touches is best (find it with forge_requirements). clarify {feedback, prompt, needed}: ask the reporter one question; `needed` says what would settle it. Refused while one is open, or when the item is past triage. Triage, decline, verify and retarget are a person’s acts on the Feedback page; this tool does none of them. Issues are never filed from here: triage routes an item to its work. A refusal answers { error: { code, message, refusals: [{ code, path, detail }] } } and writes nothing: tell the person the detail.",
+      "description": "Feedback about Forge itself — its CLI, routes, MCP tools, guides, web app or pipeline — from any project you work in. It is filed into Forge’s own home project as you (your own account, person or agent), whether or not you are a member there; it never writes into the project you work in. A project’s own feedback is project_feedback. submit { kind: bug | change_request | idea | question, title, target: { kind: page | command | route | tool | guide | skill | other, ref }, body?, severity?, signalKey?, clientVersion?, from?: { project?, issue?, run? } (uuids), writtenLang? }: file it. A box credential’s live job names the project, issue and run it came from; from names them otherwise. A report whose signalKey (absent: its kind and title) an open item already holds is added to that item as an occurrence, never filed twice — the answer says created:false. list: the items you reported, each with phase, origin and `progress` (whether work runs, who it waits on, and the forecast or why there is none; repeat `progress.says`, never a date it does not hold). get {feedback}: one item you reported (a member of the home project reads any). progress {feedback}: its progress block alone. FORGE_HOME_NOT_SET: this instance names no home project, and nothing was written. A refusal answers { error: { code, message, refusals: [{ code, path, detail }] } } and writes nothing.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
           "action": {
             "enum": [
+              "submit",
               "list",
               "get",
-              "progress",
-              "similar",
-              "submit",
-              "clarify"
+              "progress"
             ],
             "type": "string"
           },
@@ -571,20 +379,37 @@
             "maxLength": 20000,
             "type": "string"
           },
-          "endpoint": {
-            "maxLength": 500,
+          "clientVersion": {
+            "maxLength": 100,
             "minLength": 1,
+            "pattern": "^[^\\p{Cc}]+$",
             "type": "string"
           },
           "feedback": {
-            "description": "the feedback key, e.g. FB-12",
-            "pattern": "^FB-\\d+$",
+            "description": "get, progress: the item, FB-n",
+            "pattern": "^FB-\\d{1,9}$",
             "type": "string"
           },
-          "issue": {
-            "maxLength": 200,
-            "minLength": 1,
-            "type": "string"
+          "from": {
+            "additionalProperties": false,
+            "properties": {
+              "issue": {
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "type": "string"
+              },
+              "project": {
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "type": "string"
+              },
+              "run": {
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "type": "string"
+              }
+            },
+            "type": "object"
           },
           "kind": {
             "enum": [
@@ -596,108 +421,6 @@
             ],
             "type": "string"
           },
-          "needed": {
-            "maxLength": 1000,
-            "minLength": 3,
-            "type": "string"
-          },
-          "node": {
-            "anyOf": [
-              {
-                "additionalProperties": false,
-                "properties": {
-                  "step": {
-                    "pattern": "^[a-z][a-z0-9_-]{0,62}$",
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "step"
-                ],
-                "type": "object"
-              },
-              {
-                "additionalProperties": false,
-                "properties": {
-                  "edge": {
-                    "additionalProperties": false,
-                    "properties": {
-                      "from": {
-                        "pattern": "^[a-z][a-z0-9_-]{0,62}$",
-                        "type": "string"
-                      },
-                      "label": {
-                        "maxLength": 120,
-                        "minLength": 1,
-                        "type": "string"
-                      },
-                      "to": {
-                        "pattern": "^[a-z][a-z0-9_-]{0,62}$",
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "from",
-                      "to"
-                    ],
-                    "type": "object"
-                  }
-                },
-                "required": [
-                  "edge"
-                ],
-                "type": "object"
-              }
-            ]
-          },
-          "phase": {
-            "description": "list: keep these phases",
-            "items": {
-              "enum": [
-                "new",
-                "triaged",
-                "planned",
-                "resolved",
-                "reopened",
-                "verified",
-                "declined"
-              ],
-              "type": "string"
-            },
-            "minItems": 1,
-            "type": "array"
-          },
-          "projectId": {
-            "description": "the project; left out, the X-Forge-Project-Slug header or the token’s one project",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-            "type": "string"
-          },
-          "prompt": {
-            "maxLength": 2000,
-            "minLength": 5,
-            "type": "string"
-          },
-          "q": {
-            "description": "list: words the title holds",
-            "maxLength": 200,
-            "type": "string"
-          },
-          "release": {
-            "maxLength": 200,
-            "minLength": 1,
-            "type": "string"
-          },
-          "requirement": {
-            "maxLength": 200,
-            "minLength": 1,
-            "type": "string"
-          },
-          "screen": {
-            "maxLength": 500,
-            "minLength": 1,
-            "type": "string"
-          },
           "severity": {
             "enum": [
               "low",
@@ -707,17 +430,42 @@
             ],
             "type": "string"
           },
+          "signalKey": {
+            "maxLength": 200,
+            "minLength": 1,
+            "pattern": "^[^\\p{Cc}]+$",
+            "type": "string"
+          },
+          "target": {
+            "additionalProperties": false,
+            "description": "submit: the ONE place in Forge it was met — { kind: command, ref: \"forge claim --next\" }; kind is page (a web address), command, route (METHOD /path), tool (an MCP tool), guide, skill or other",
+            "properties": {
+              "kind": {
+                "enum": [
+                  "page",
+                  "command",
+                  "route",
+                  "tool",
+                  "guide",
+                  "skill",
+                  "other"
+                ],
+                "type": "string"
+              },
+              "ref": {
+                "maxLength": 490,
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "kind",
+              "ref"
+            ],
+            "type": "object"
+          },
           "title": {
             "maxLength": 300,
-            "minLength": 1,
-            "type": "string"
-          },
-          "whereSeen": {
-            "maxLength": 500,
-            "type": "string"
-          },
-          "workflow": {
-            "maxLength": 200,
             "minLength": 1,
             "type": "string"
           },
@@ -737,7 +485,7 @@
       "name": "forge_feedback"
     },
     {
-      "description": "Delivery work as a person following it reads it: each issue's status, whether an agent is working on it now, and when it is likely done (the forecast's dates, or plainly why there is none). It reads; it files nothing.\n- action=list { projectId, status?, statusNot?, search?, limit?, offset? }: issues most recently changed first, each with key, title, status, priority and `progress`. `pause` names a wait that holds the whole project, such as no runner online.\n- action=get { projectId, issue }: one issue with its description, the questions it waits on, and `progress`.\n- action=create: refused (MCP_FILES_FEEDBACK_NOT_ISSUES). An MCP client files no issue. Issues are the delivery side: Forge files one only when a requirement's breakdown is accepted, or when feedback is triaged as delivery work, so the product record always leads. Record what the person means instead, after they confirm it: (1) a problem, bug, change or idea someone reported is Feedback (forge_feedback; kind bug | change_request | idea | question), linked to the requirement it touches, and its triage files the issue; (2) new or changed behaviour is a Requirement or a revision of one (forge_requirements), and accepting its breakdown (forge_design suggestion_accept) files the issues, so read every slice first; (3) a question about work already under way is forge_questions ask on that issue. When to step in: ask the person before recording anything, and never accept a breakdown or a triage on your own: each files delivery work, so the person decides it. Work so urgent it fits none of these is filed by the person in the Forge web app, not from here.",
+      "description": "Delivery work as a person following it reads it: each issue's status, whether an agent is working on it now, and when it is likely done (the forecast's dates, or plainly why there is none). It reads; it files nothing.\n- action=list { projectId, status?, statusNot?, search?, limit?, offset? }: issues most recently changed first, each with key, title, status, priority and `progress`. `pause` names a wait that holds the whole project, such as no runner online.\n- action=get { projectId, issue }: one issue with its description, the questions it waits on, and `progress`.\n- action=create: refused (MCP_FILES_FEEDBACK_NOT_ISSUES). An MCP client files no issue. Issues are the delivery side: Forge files one only when a requirement's breakdown is accepted, or when feedback is triaged as delivery work, so the product record always leads. Record what the person means instead, after they confirm it: (1) a problem, bug, change or idea someone reported is Feedback (project_feedback; kind bug | change_request | idea | question), linked to the requirement it touches, and its triage files the issue; (2) new or changed behaviour is a Requirement or a revision of one (forge_requirements), and accepting its breakdown (forge_design suggestion_accept) files the issues, so read every slice first; (3) a question about work already under way is forge_questions ask on that issue. When to step in: ask the person before recording anything, and never accept a breakdown or a triage on your own: each files delivery work, so the person decides it. Work so urgent it fits none of these is filed by the person in the Forge web app, not from here.",
       "inputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
@@ -1642,6 +1390,192 @@
         "type": "object"
       },
       "name": "forge_uploads"
+    },
+    {
+      "description": "A project's own feedback (FB-n) — what people report or wish about that project's product — for a BA: read it, file it, ask its reporter, and tell them how the work it became is going. Feedback about Forge itself is forge_feedback. Every list row and get answer carries `progress` for the work the item was routed to (its issues, or the requirement it became; a duplicate reads its root’s): `running` (a run works on it right now), `runs` (unfinished runs: issue, state, step), `waitingOn` (who owes what: a triage, a release act, an answer), `work` (issues total, shipped, awaitingRelease, toDo) and `eta` — {estimate:true, likelyBy (p50), almostSurelyBy (p85), of: hands|landing, basis, confidence}, or {estimate:false, done, why} saying why no date can be given (not triaged yet, declined, answered, routed to a revision, no issue yet). `progress.says` is the block in one paragraph: tell it to the person, and never give a date the block does not hold. Actions. list {phase?: [new|triaged|planned|resolved|reopened|verified|declined], q?, requirement? (REQ-n)}: the items with phase, route, whom each waits on, and progress. get {feedback}: one in full — body, where seen, route and carriers, decisions, the open clarification and its answer, progress. NOT_FOUND when the project holds no such key. progress {feedback}: the progress block alone. similar {feedback}: the items nearest it, to spot a duplicate; not_embedded, provider_not_configured, failed or withheld_by_policy does not mean none is similar. submit { kind: bug | change_request | question | idea | contract_change, title, body?, severity?: low | medium | high | critical, whereSeen?, exactly one of requirement | issue | release | workflow | endpoint | screen, node?: { step } | { edge: { from, to, label? } } (with workflow only), writtenLang?: en | vi }: file it as the person you speak for, at phase new. Name exactly one target; a requirement it touches is best (find it with forge_requirements). clarify {feedback, prompt, needed}: ask the reporter one question; `needed` says what would settle it. Refused while one is open, or when the item is past triage. Triage, decline, verify and retarget are a person’s acts on the Feedback page; this tool does none of them. Issues are never filed from here: triage routes an item to its work. A refusal answers { error: { code, message, refusals: [{ code, path, detail }] } } and writes nothing: tell the person the detail.",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "list",
+              "get",
+              "progress",
+              "similar",
+              "submit",
+              "clarify"
+            ],
+            "type": "string"
+          },
+          "body": {
+            "maxLength": 20000,
+            "type": "string"
+          },
+          "endpoint": {
+            "maxLength": 500,
+            "minLength": 1,
+            "type": "string"
+          },
+          "feedback": {
+            "description": "the feedback key, e.g. FB-12",
+            "pattern": "^FB-\\d+$",
+            "type": "string"
+          },
+          "issue": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "bug",
+              "change_request",
+              "question",
+              "idea",
+              "contract_change"
+            ],
+            "type": "string"
+          },
+          "needed": {
+            "maxLength": 1000,
+            "minLength": 3,
+            "type": "string"
+          },
+          "node": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "step": {
+                    "pattern": "^[a-z][a-z0-9_-]{0,62}$",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "step"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "edge": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "from": {
+                        "pattern": "^[a-z][a-z0-9_-]{0,62}$",
+                        "type": "string"
+                      },
+                      "label": {
+                        "maxLength": 120,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "to": {
+                        "pattern": "^[a-z][a-z0-9_-]{0,62}$",
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "from",
+                      "to"
+                    ],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "edge"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "phase": {
+            "description": "list: keep these phases",
+            "items": {
+              "enum": [
+                "new",
+                "triaged",
+                "planned",
+                "resolved",
+                "reopened",
+                "verified",
+                "declined"
+              ],
+              "type": "string"
+            },
+            "minItems": 1,
+            "type": "array"
+          },
+          "projectId": {
+            "description": "the project; left out, the X-Forge-Project-Slug header or the token’s one project",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "type": "string"
+          },
+          "prompt": {
+            "maxLength": 2000,
+            "minLength": 5,
+            "type": "string"
+          },
+          "q": {
+            "description": "list: words the title holds",
+            "maxLength": 200,
+            "type": "string"
+          },
+          "release": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "requirement": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "screen": {
+            "maxLength": 500,
+            "minLength": 1,
+            "type": "string"
+          },
+          "severity": {
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "critical"
+            ],
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 300,
+            "minLength": 1,
+            "type": "string"
+          },
+          "whereSeen": {
+            "maxLength": 500,
+            "type": "string"
+          },
+          "workflow": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "writtenLang": {
+            "enum": [
+              "en",
+              "vi"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "type": "object"
+      },
+      "name": "project_feedback"
     }
   ]
 }

@@ -95,8 +95,6 @@ const badges = () => (
     {(["off", "redact", "no_egress"] as const).map((v) => <StatusBadge key={v} family="dataPolicy" value={v} />)}
     {(["in_progress", "waiting_on_you", "done"] as const).map((v) => <StatusBadge key={v} family="thread" value={v} />)}
     {(["proposed", "accepted", "returned", "withdrawn"] as const).map((v) => <StatusBadge key={v} family="mockup" value={v} />)}
-    {(["friction", "bug", "skill_gap", "unclear_step", "redundant_step", "learning", "suggestion"] as const).map((v) => <EnumBadge key={v} family="agentReportKind" value={v} />)}
-    {(["skill", "prompt", "tool", "doc", "orientation", "pipeline", "other"] as const).map((v) => <EnumBadge key={v} family="agentReportTarget" value={v} />)}
     {(["mention", "pipeline_wedge", "feedback_shipped", "channel_gate_pending"] as const).map((v) => <EnumBadge key={v} family="notificationType" value={v} />)}
     {(["image", "wireframe", "html", "sketch", "api_example"] as const).map((v) => <EnumBadge key={v} family="mockupKind" value={v} />)}
     <EnumBadge family="feedbackKind" value="bug" />

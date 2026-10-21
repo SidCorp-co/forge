@@ -13,7 +13,6 @@ export type {
   FeedbackMessagePreviewResponse,
   FeedbackMessageView,
   FeedbackPhase,
-  FeedbackPromoteEffect,
   FeedbackResponse,
   FeedbackRetargetRequest,
   FeedbackRoute,
@@ -23,10 +22,15 @@ export type {
   FeedbackTargetType,
   FeedbackTriage,
   FeedbackView,
-  PromoteAgentReportRequest,
   SimilarFeedbackDraft,
   SimilarFeedbackResponse,
 } from "@forge/contracts/feedback";
+export type {
+  ForgeFeedbackFiled,
+  ForgeFeedbackItem,
+  ForgeFeedbackList,
+  ForgeFeedbackRequest,
+} from "@forge/contracts/forge-feedback";
 
 /** One act a person takes on an item from its page; each answers the item as it reads next. */
 export type FeedbackAction =

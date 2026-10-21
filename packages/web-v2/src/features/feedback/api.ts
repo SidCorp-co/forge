@@ -6,11 +6,13 @@ import type {
   FeedbackListResponse,
   FeedbackMessageAudience,
   FeedbackMessagePreviewResponse,
-  FeedbackPromoteEffect,
   FeedbackResponse,
-  PromoteAgentReportRequest,
   SimilarFeedbackDraft,
   SimilarFeedbackResponse,
+  ForgeFeedbackFiled,
+  ForgeFeedbackItem,
+  ForgeFeedbackList,
+  ForgeFeedbackRequest,
 } from "./types";
 
 const base = (projectId: string) => `/projects/${projectId}/feedback`;
@@ -80,8 +82,6 @@ export const feedbackApi = {
   similarToDraft: (projectId: string, draft: SimilarFeedbackDraft) => apiClient<SimilarFeedbackResponse>(`${base(projectId)}/similar`, post(draft)),
   endpoints: (projectId: string) => apiClient<FeedbackEndpointsResponse>(`${base(projectId)}/endpoints`),
   create: (projectId: string, body: CreateFeedbackRequest) => apiClient<FeedbackResponse>(base(projectId), post(body)),
-  promote: (projectId: string, body: PromoteAgentReportRequest) =>
-    apiClient<FeedbackResponse & { effect: FeedbackPromoteEffect }>(`${base(projectId)}/promote`, post(body)),
   /** The exact notice a send would deliver, and to whom; nothing is written. */
   previewMessage: (projectId: string, key: string, body: { audience: Exclude<FeedbackMessageAudience, "internal">; text: string }) =>
     apiClient<FeedbackMessagePreviewResponse>(`${one(projectId, key)}/messages/preview`, post(body)),
@@ -105,4 +105,12 @@ export const feedbackApi = {
     const [path, init] = actionRequest(projectId, key, a);
     return apiClient<FeedbackResponse>(path, init);
   },
+};
+
+/** Feedback about Forge itself (REQ-47): filed from any page as the signed-in person, into Forge's home project. */
+export const forgeFeedbackApi = {
+  submit: (body: ForgeFeedbackRequest) => apiClient<ForgeFeedbackFiled>("/forge/feedback", post(body)),
+  /** The items the signed-in person reported, each with its phase, origin and progress. */
+  mine: () => apiClient<ForgeFeedbackList>("/forge/feedback"),
+  get: (key: string) => apiClient<ForgeFeedbackItem>(`/forge/feedback/${encodeURIComponent(key)}`),
 };

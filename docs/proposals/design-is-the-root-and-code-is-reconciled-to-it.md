@@ -161,7 +161,7 @@ a decision clears it; "Absorbed by" names the issue whose rule covers it, else t
 | 10 | A re-proposal of a returned requirement revision overwrites `proposed_at` / `proposed_by`, with no row per proposal; returns have their own rows (walkthrough D6) | review |
 | 14 | An agency check older than the redesign: `packages/core/src/issues/merge-marker.ts:applyMergeMarker` asks an actor whose agency is `agent` for work evidence a person is not asked for | review (still standing after ISS-159) |
 | 15 | Body validation outside `strictBody`: criteria and record events use `zValidator` with no shape hint; agent-report triage bodies take `strictBody` since ISS-113 | review |
-| 16 | `forge_agent_report` is a singular name; its `submit` inserts through `packages/core/src/agent-reports/service.ts:insertReport` but checks its input inline; its REST twin is `POST /api/agent-reports` | ISS-168 |
+| 16 | Closed: `forge_agent_report` and `/api/agent-reports` are retired (REQ-47); feedback about Forge is `forge_feedback` and `POST /api/forge/feedback` | ISS-168 |
 | 17 | The ISS-54/55/56 `cm:hack` annotations carry no `ISS-n until:` (`packages/core/src/issues/criteria/event-verdicts.ts`, `packages/core/src/issues/record-events/mirror.ts`) | review |
 | 20 | The BA door posts a questionnaire through its bound tool (`packages/core/src/assistant/tools/ba-tools.ts`, `ba_send_questionnaire`) without the `questionnaires.write` permission REST posting takes (`packages/core/src/questionnaires/rules.ts:posterRefusal`); the room binding stands in for it | review (still standing after ISS-159) |
 | 22 | Feedback's target arc holds requirement, issue, release and workflow; a screen is `where_seen` text with no key, as the approved design has it, not the arc member REQ-7 BC-1 lists. A release is a `pipeline_runs` row | review |
@@ -176,7 +176,7 @@ a decision clears it; "Absorbed by" names the issue whose rule covers it, else t
 | 41 | A projection runs after the whole read: a write still reads the full detail (`packages/core/src/requirements/read.ts:detailOf`, `packages/core/src/workflows/design-service.ts:designView`) and the door drops most of it | review |
 | 42 | Closed: `forge_suggestions` is not served since the MCP slimming of 2026-10-04; suggestions are `/api/projects/:id/suggestions` | ISS-168 |
 | 43 | A master pass has no key: refusals name it by its verb and start time, and its history (`GET /api/projects/:id/masters/passes`) pages by `before`, the last start a page served (`packages/core/src/masters/read.ts:listMasterPasses`), not by a key | review |
-| 44 | Agent-report triage (ISS-113) keeps its outcome on the report row (`packages/core/src/db/schema-agent-reports.ts:agentReports`, triage columns): a reopen clears it and a later triage overwrites it, with no row per decision, so a re-triaged report loses who decided before; writes serialise on a row lock (`packages/core/src/agent-reports/triage.ts:triageReports`), not an advisory lock; reports migrated by 0368 carry no `triaged_by` | ISS-116 |
+| 44 | Closed: agent-report triage is retired with the reports (REQ-47 BC-8); what was untriaged is carried into Forge feedback, whose decisions are rows | ISS-116 |
 
 ## Phase 2 — pilot observation (requirement-to-delivery)
 

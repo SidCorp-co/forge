@@ -4,7 +4,6 @@
 
 import type { Hono } from 'hono';
 import { adminAggregateRoutes, adminAlertRoutes, adminRoutes } from './admin/routes.js';
-import { agentReportRoutes } from './agent-reports/routes.js';
 import {
   agentSessionAttachmentRoutes,
   agentSessionProjectReadRoutes,
@@ -59,8 +58,10 @@ import {
 import { issueLaneRoutes } from './fast-lane/routes.js';
 import { feedbackChecklistRoutes, feedbackRoutes } from './feedback/routes.js';
 import { forecastRoutes } from './forecast/index.js';
+import { forgeFeedbackAdminRoutes, forgeFeedbackRoutes } from './forge-door/index.js';
 import { guideRoutes } from './guides/routes.js';
 import { projectHealthRoutes, publicHealthRoutes } from './health/routes.js';
+import { instanceSettingsRoutes } from './instance-settings/index.js';
 import { intakeRoutes } from './intake/routes.js';
 import {
   deviceGitCredentialRoutes,
@@ -363,6 +364,8 @@ function mountAdminAndDeviceRoutes(app: Hono<{ Variables: RequestIdVars }>): voi
   app.route('/api/admin', adminAggregateRoutes);
   app.route('/api/admin', adminAlertRoutes);
   app.route('/api/admin', outboxAdminRoutes);
+  app.route('/api/admin', instanceSettingsRoutes);
+  app.route('/api/admin', forgeFeedbackAdminRoutes);
   app.route('/api/devices', deviceLoginRoutes);
   app.route('/api/devices', deviceGitCredentialRoutes);
   app.route('/api/devices', deviceAuthRoutes);
@@ -379,7 +382,7 @@ function mountRemainingRoutes(app: Hono<{ Variables: RequestIdVars }>): void {
   app.route('/api/projects', releaseBatchRoutes);
   app.route('/api/projects', releasePageRoutes);
   app.route('/api/schedules', scheduleRoutes);
-  app.route('/api/agent-reports', agentReportRoutes);
+  app.route('/api/forge/feedback', forgeFeedbackRoutes);
   app.route('/api/shares', shareOpenRoutes);
   app.route('/api/projects', knowledgeRoutes);
   app.route('/api/skills', skillCrudRoutes);

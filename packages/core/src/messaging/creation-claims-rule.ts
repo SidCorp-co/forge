@@ -7,7 +7,7 @@
  * shown as (`assistant/agreement`): the tool the model calls, or an Agent session's REST POST, is
  * held and writes nothing. So "I recorded this as FB-112" is true only where this conversation holds
  * FB-112 as a record written through an agreement (`facts.ts:MessageFacts.agreedRecords`), and a
- * held call — `forge_feedback`, a POST to the `feedback` route — grounds nothing. At a
+ * held call — `project_feedback`, a POST to the `feedback` route — grounds nothing. At a
  * requirement's BA door `ba_suggest` and `ba_suggest_requirement` are the door's own writes and
  * ground its claim. "I created an issue" is false whatever the turn did.
  *

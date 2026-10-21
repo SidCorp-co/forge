@@ -2,7 +2,7 @@
 // one ask in a group room filed a record, the reply promised a follow-up, the screen refused it as
 // a future promise, and the rewrite filed the same record again — twice per ask, four in 32 s.
 // The model is scripted here exactly as it behaved: every attempt records, then names what it made.
-// A chat records Feedback, never an issue (owner ruling 2026-10-08), so the filing is forge_feedback,
+// A chat records Feedback, never an issue (owner ruling 2026-10-08), so the filing is project_feedback,
 // and since REQ-30 BC-4 a chat's record is held until the person agrees (`agreement/turn-gate.ts`):
 // both attempts hold ONE proposal, nothing is written, and the reply waits on the person.
 
@@ -58,7 +58,7 @@ vi.mock('./external-chat.js', () => ({
     tools?: { execute: (n: string, a: string) => Promise<{ content: { text: string }[] }> };
   }) => {
     asked.push(args.message);
-    const result = await args.tools?.execute('forge_feedback', FILING);
+    const result = await args.tools?.execute('project_feedback', FILING);
     const said = result?.content.map((b) => b.text).join('\n') ?? '';
     readBack.push(said);
     const key = /FB-\d+/.exec(said)?.[0] ?? 'nothing';
@@ -71,7 +71,7 @@ vi.mock('./external-chat.js', () => ({
       terminal: 'done',
       error: null,
       iterations: 2,
-      toolCalls: [{ name: 'forge_feedback', arguments: FILING }],
+      toolCalls: [{ name: 'project_feedback', arguments: FILING }],
       progress: null,
     };
   },
@@ -96,11 +96,11 @@ const { composeReply } = await import('./turn-compose.js');
 
 const trackerTools = {
   tools: [
-    { type: 'function', function: { name: 'forge_feedback', description: '', parameters: {} } },
+    { type: 'function', function: { name: 'project_feedback', description: '', parameters: {} } },
   ],
   ranAs: () => 'u-1',
   async execute(name: string) {
-    if (name !== 'forge_feedback') throw new Error('the test scripted only a feedback filing');
+    if (name !== 'project_feedback') throw new Error('the test scripted only a feedback filing');
     tracker.filed += 1;
     const key = `FB-${60 + tracker.filed}`;
     return { content: [{ type: 'text', text: JSON.stringify({ feedback: { key } }) }] };
@@ -145,7 +145,7 @@ describe('a screen rewrite does not repeat what the first attempt already did', 
     const reply = await composeReply(ctx());
     expect(tracker.filed).toBe(0);
     expect(held).toHaveLength(1);
-    expect(held[0]?.call).toMatchObject({ name: 'forge_feedback', arguments: FILING });
+    expect(held[0]?.call).toMatchObject({ name: 'project_feedback', arguments: FILING });
     expect(restated).toEqual(['proposal-1']);
     expect(reply).toMatchObject({ send: true, awaitsReply: true });
   });

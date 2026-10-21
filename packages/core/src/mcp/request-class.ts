@@ -8,9 +8,10 @@ import {
 import type { McpToolName } from '@forge/contracts/mcp-tools';
 import type { MiddlewareHandler } from 'hono';
 import { ECOSYSTEM_READS } from '../ecosystem/index.js';
+import { FORGE_FEEDBACK_READ_ACTIONS } from '../forge-door/index.js';
 import type { PatRequestClass } from '../lib/rate-limits.js';
 import type { PrincipalVars } from '../middleware/require-pat.js';
-import { FEEDBACK_READ_ACTIONS } from './feedback-tool.js';
+import { PROJECT_FEEDBACK_READ_ACTIONS } from './feedback-tool.js';
 import { REQUIREMENT_READ_ACTIONS } from './requirements-tool.js';
 
 /**
@@ -37,12 +38,12 @@ const READ_METHODS: ReadonlySet<string> = new Set([
  * serves is write-class (it is refused on the server either way).
  */
 const READ_ACTIONS = {
-  forge_agent_report: new Set(['list', 'get']),
   forge_uploads: new Set(['fetch']),
   forge_channel: new Set<string>(CHANNEL_READS),
   forge_ecosystem: new Set<string>(ECOSYSTEM_READS),
   forge_requirements: new Set(REQUIREMENT_READ_ACTIONS),
-  forge_feedback: new Set(FEEDBACK_READ_ACTIONS),
+  project_feedback: new Set(PROJECT_FEEDBACK_READ_ACTIONS),
+  forge_feedback: new Set(FORGE_FEEDBACK_READ_ACTIONS),
   forge_releases: new Set<string>(RELEASES_TOOL_READS),
   forge_design: new Set<string>(DESIGN_TOOL_READS),
   forge_questions: new Set<string>(QUESTIONS_TOOL_READS),
@@ -77,7 +78,7 @@ function classifyMcpEnvelope(envelope: unknown): PatRequestClass {
 
 /**
  * What in one envelope makes it write-class, named as the caller wrote it
- * (`forge_agent_report action=submit`, a method), so a refusal says which call.
+ * (`forge_feedback action=submit`, a method), so a refusal says which call.
  */
 function writeCallsOf(envelope: unknown): string[] {
   if (Array.isArray(envelope)) return envelope.flatMap(writeCallsOf);
