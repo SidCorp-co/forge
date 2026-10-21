@@ -230,16 +230,29 @@ describe("a member a room cannot lose", () => {
     expect(why).not.toMatch(/about no project/);
   });
 
-  // r29, judge-84: on a phone a tap on the held control showed no sentence at all.
-  it("shows why on a tap, where there is no hover and no focus, and puts it away on a tap elsewhere", () => {
+  // r29, judge-84: on a phone a tap on the held control showed no sentence at all. r31, judge-88: the
+  // bubble it then showed sat over the Agents section's Add agent button, the remedy it names, so a tap
+  // shows the reason under the control's own row, in the panel's flow, and draws no bubble.
+  it("shows why under the row on a tap, covering nothing, and puts it away on a tap elsewhere", () => {
     render(
       <ConversationMembers conversationId="c1" room={{ shape: "direct", scopeProjects: [project], participants: [agent("h1"), me] }} canChange open onClose={() => {}} />,
     );
+    expect(screen.queryByTestId("member-held-reason")).toBeNull();
+    const control = take("Take @ops-h1 out of the room");
+    fireEvent.pointerDown(control, { pointerType: "touch" });
+    fireEvent.touchEnd(control);
+    fireEvent.mouseEnter(control);
+    fireEvent.focus(control);
+    fireEvent.click(control);
+    const reason = screen.getByTestId("member-held-reason");
+    expect(reason.textContent).toMatch(/^This room has one agent left/);
     expect(screen.queryByRole("tooltip")).toBeNull();
-    fireEvent.touchEnd(take("Take @ops-h1 out of the room"));
-    expect(screen.getByRole("tooltip").textContent).toMatch(/^This room has one agent left/);
+    const row = control.closest('[data-testid="member-row-agent"]');
+    expect(row?.nextElementSibling).toBe(reason);
+    expect(screen.getByRole("button", { name: "Add agent" })).toBeTruthy();
+    fireEvent.pointerDown(document.body, { pointerType: "touch" });
     fireEvent.touchStart(document.body);
-    expect(screen.queryByRole("tooltip")).toBeNull();
+    expect(screen.queryByTestId("member-held-reason")).toBeNull();
   });
 
   it("tells a keyboard reader why, once the held control takes focus", () => {

@@ -203,56 +203,70 @@ function MemberRow({
   const project = (room.scopeProjects ?? []).find((p) => p.id === member.projectId);
   const held = removalHeld(member, room);
   const heldReasonId = useId();
+  // A tapped held control says why under its row: a bubble above it covered the section's Add
+  // agent button, the very remedy the reason names (ISS-1229 r31, judge-88).
+  const [heldTapped, setHeldTapped] = useState(false);
   return (
-    <div
-      data-testid={isAgent ? "member-row-agent" : "member-row-person"}
-      className={`flex min-h-[40px] items-center gap-2 rounded-md px-2.5 py-1.5 ${
-        isAgent
-          ? "border border-[color:var(--accent)] bg-[color:var(--accent-tint)]"
-          : "border border-transparent"
-      }`}
-    >
-      {isAgent ? (
-        <span data-testid="member-mark-agent" className="flex-none">
-          <Icon name="agent" size={15} className="text-[color:var(--accent-text)]" />
-        </span>
-      ) : (
-        <span data-testid="member-mark-person" className="flex-none">
-          <Avatar initials={readerInitials(member.userId, viewerId, member.displayName)} size={20} />
-        </span>
-      )}
-      <div className="min-w-0 flex-1">
-        <span className={`fg-body-sm block ${isAgent ? "truncate font-mono" : "break-words"}`}>
-          {memberName(member, viewerId, "start", room)}
-        </span>
-        <span className="fg-caption block truncate text-subtle">
-          {isAgent ? (project?.name ?? "a project this room is no longer about") : "Person"}
-        </span>
+    <div className="flex flex-col">
+      <div
+        data-testid={isAgent ? "member-row-agent" : "member-row-person"}
+        className={`flex min-h-[40px] items-center gap-2 rounded-md px-2.5 py-1.5 ${
+          isAgent
+            ? "border border-[color:var(--accent)] bg-[color:var(--accent-tint)]"
+            : "border border-transparent"
+        }`}
+      >
+        {isAgent ? (
+          <span data-testid="member-mark-agent" className="flex-none">
+            <Icon name="agent" size={15} className="text-[color:var(--accent-text)]" />
+          </span>
+        ) : (
+          <span data-testid="member-mark-person" className="flex-none">
+            <Avatar initials={readerInitials(member.userId, viewerId, member.displayName)} size={20} />
+          </span>
+        )}
+        <div className="min-w-0 flex-1">
+          <span className={`fg-body-sm block ${isAgent ? "truncate font-mono" : "break-words"}`}>
+            {memberName(member, viewerId, "start", room)}
+          </span>
+          <span className="fg-caption block truncate text-subtle">
+            {isAgent ? (project?.name ?? "a project this room is no longer about") : "Person"}
+          </span>
+        </div>
+        {isAgent && member.reachable === false && (
+          <Tooltip prose label="This agent holds no live credential or has lost its project role, so it cannot answer here.">
+            <span className="fg-caption rounded bg-surface px-1.5 py-0.5 text-muted">can't act</span>
+          </Tooltip>
+        )}
+        {/* A held control stays focusable, so its reason reaches a keyboard reader too (r27 review F1). */}
+        {canChange && (
+          <Tooltip
+            prose
+            label={held ?? removalClaim(member, room, viewerId)}
+            {...(held ? { onTouchShown: setHeldTapped } : {})}
+          >
+            <IconButton
+              icon="x"
+              size="sm"
+              aria-label={`Take ${member.kind === "person" && viewerId && member.userId === viewerId ? "yourself" : memberName(member, viewerId, "inside", room)} out of the room`}
+              aria-describedby={held ? heldReasonId : undefined}
+              aria-disabled={held !== null || undefined}
+              className={held ? "cursor-not-allowed opacity-50" : undefined}
+              disabled={busy}
+              onClick={held ? undefined : onRemove}
+            />
+          </Tooltip>
+        )}
+        {canChange && held && (
+          <span id={heldReasonId} className="sr-only">
+            {held}
+          </span>
+        )}
       </div>
-      {isAgent && member.reachable === false && (
-        <Tooltip prose label="This agent holds no live credential or has lost its project role, so it cannot answer here.">
-          <span className="fg-caption rounded bg-surface px-1.5 py-0.5 text-muted">can't act</span>
-        </Tooltip>
-      )}
-      {/* A held control stays focusable, so its reason reaches a keyboard reader too (r27 review F1). */}
-      {canChange && (
-        <Tooltip prose label={held ?? removalClaim(member, room, viewerId)}>
-          <IconButton
-            icon="x"
-            size="sm"
-            aria-label={`Take ${member.kind === "person" && viewerId && member.userId === viewerId ? "yourself" : memberName(member, viewerId, "inside", room)} out of the room`}
-            aria-describedby={held ? heldReasonId : undefined}
-            aria-disabled={held !== null || undefined}
-            className={held ? "cursor-not-allowed opacity-50" : undefined}
-            disabled={busy}
-            onClick={held ? undefined : onRemove}
-          />
-        </Tooltip>
-      )}
-      {canChange && held && (
-        <span id={heldReasonId} className="sr-only">
+      {canChange && held && heldTapped && (
+        <p className="fg-caption px-2.5 pt-1.5 text-muted" data-testid="member-held-reason" aria-hidden="true">
           {held}
-        </span>
+        </p>
       )}
     </div>
   );

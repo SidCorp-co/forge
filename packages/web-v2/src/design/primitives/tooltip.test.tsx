@@ -7,7 +7,7 @@
 
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { Tooltip } from "./tooltip";
 
 expect.extend(matchers);
@@ -102,6 +102,29 @@ describe("a sentence tooltip on a touch screen", () => {
     tap(screen.getByText("take out"));
     fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.queryByRole("tooltip")).toBeNull();
+  });
+
+  // r31, judge-88: a bubble over a crowded panel covered the control its sentence names.
+  it("draws no bubble for a tap where the caller shows the sentence itself, and tells it when to stop", () => {
+    const shown = vi.fn();
+    render(
+      <div>
+        <Tooltip prose label="Add another agent first." onTouchShown={shown}>
+          <button type="button">take out</button>
+        </Tooltip>
+        <p>elsewhere</p>
+      </div>,
+    );
+    tap(screen.getByText("take out"));
+    expect(screen.queryByRole("tooltip")).toBeNull();
+    expect(shown).toHaveBeenLastCalledWith(true);
+    fireEvent.pointerDown(screen.getByText("elsewhere"), { pointerType: "touch" });
+    expect(shown).toHaveBeenLastCalledWith(false);
+    const trigger = screen.getByText("take out");
+    fireEvent.pointerDown(trigger, { pointerType: "mouse" });
+    fireEvent.mouseEnter(trigger);
+    expect(screen.getByRole("tooltip")).toBeInTheDocument();
+    expect(shown).toHaveBeenLastCalledWith(false);
   });
 
   it("still opens on a mouse's hover and closes when the mouse leaves", () => {

@@ -16,6 +16,9 @@ export interface TooltipProps {
    *  hover, so a tap on the trigger shows it too, and only a tap anywhere else or Escape puts it away:
    *  the mouseleave a touch browser sends after the tap's click does not (r30, judge-86). */
   prose?: boolean;
+  /** Told whether a tap has the label up, and then no bubble is drawn: the caller shows the label in
+   *  its own flow, where a bubble would cover what the label names (ISS-1229 r31, judge-88). */
+  onTouchShown?: (shown: boolean) => void;
 }
 
 export interface TooltipPanelProps extends Pick<TooltipProps, "label" | "side" | "multiline" | "prose"> {
@@ -57,19 +60,33 @@ export function TooltipPanel({
 
 /** Hover/focus tooltip, placed by Popover: kept inside the viewport and flipped
  *  to the other side of its trigger when the preferred one lacks room. */
-export function Tooltip({ label, children, side = "top", multiline = false, prose = false }: TooltipProps) {
+export function Tooltip({
+  label,
+  children,
+  side = "top",
+  multiline = false,
+  prose = false,
+  onTouchShown,
+}: TooltipProps) {
   const [open, setOpen] = useState(false);
   const anchor = useRef<HTMLSpanElement>(null);
   // Opened by a finger, so only a tap elsewhere, a blur or Escape closes it, never an emulated mouse.
   const byTouch = useRef(false);
+  const [touched, setTouched] = useState(false);
   const close = useCallback(() => {
     byTouch.current = false;
+    setTouched(false);
     setOpen(false);
   }, []);
   const openByTouch = useCallback(() => {
     byTouch.current = true;
+    setTouched(true);
     setOpen(true);
   }, []);
+  const inFlow = touched && onTouchShown !== undefined;
+  useEffect(() => {
+    onTouchShown?.(open && touched);
+  }, [open, touched, onTouchShown]);
   useEffect(() => {
     if (!open || !prose) return;
     const away = (e: Event) => {
@@ -108,7 +125,7 @@ export function Tooltip({ label, children, side = "top", multiline = false, pros
       onTouchEnd={prose ? openByTouch : undefined}
     >
       {children}
-      <TooltipPanel open={open} anchor={anchor} label={label} side={side} multiline={multiline} prose={prose} />
+      <TooltipPanel open={open && !inFlow} anchor={anchor} label={label} side={side} multiline={multiline} prose={prose} />
     </span>
   );
 }

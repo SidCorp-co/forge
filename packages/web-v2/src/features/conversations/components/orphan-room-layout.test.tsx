@@ -102,3 +102,17 @@ describe("a project-deleted room opened read-only", () => {
     expect(title?.parentElement?.classList.contains("min-w-0")).toBe(true);
   });
 });
+
+// ISS-1229 r31, judge-88: at 390 a room opened with 19px of its message box above the tab bar and Send
+// below the screen. Below md the screen kept a one-screen floor (min-h-dvh) inside a main that is shorter
+// by the top bar, its last 56px under the tab bar, so the room's column ran past both. The screen is
+// therefore held to main's height at every width, and never to a floor of its own.
+describe("the screen's height", () => {
+  it("is main's own height at every width, with no floor of its own", () => {
+    render(<ConversationsScreen />);
+    const root = screen.getByTestId("conversations-screen");
+    const classes = [...root.classList];
+    expect(classes).toEqual(expect.arrayContaining(["h-full", "min-h-0", "overflow-hidden"]));
+    expect(classes.filter((c) => /(^|:)min-h-(dvh|screen|svh|lvh)$/.test(c) || /^max-md:|^sm:h-|^md:h-/.test(c))).toEqual([]);
+  });
+});
