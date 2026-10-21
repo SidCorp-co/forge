@@ -21,6 +21,7 @@ import {
   useDeleteConversation,
   useRenameConversation,
 } from "../hooks";
+import { STEPS_ASIDE } from "../composing";
 import { conversationTitle, type RoomWithoutAProject } from "../types";
 import { ConversationChat } from "./conversation-chat";
 import { ConversationSidebar } from "./conversation-sidebar";
@@ -146,7 +147,10 @@ export function ConversationsScreen() {
         <RoomSub key={p.id} projectId={p.id} />
       ))}
 
-      <header className="flex flex-none items-center justify-between gap-3 border-b border-line px-4 py-3 md:hidden">
+      <header
+        className="flex flex-none items-center justify-between gap-3 border-b border-line px-4 py-3 md:hidden"
+        {...STEPS_ASIDE}
+      >
         <PageTitle className="fg-h2">Conversations</PageTitle>
         <IconButton
           icon="clock"

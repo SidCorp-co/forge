@@ -359,7 +359,52 @@ describe("a room deleted while it is open", () => {
     reject(new Error("aborted"));
   });
 
-  it("shows the whole unsent message where it cannot be copied", async () => {
+  // r32, judge-90: a refused copy raised a second toast and left the notice saying "select it to copy",
+  // so the next tap failed the same way. The notice itself turns into one to copy by hand.
+  it("turns the notice into one to copy by hand when the browser refuses the copy", async () => {
+    const writeText = vi.fn().mockRejectedValue(new Error("NotAllowedError"));
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    const long = "x".repeat(260);
+    send.mockRejectedValueOnce(roomGone());
+    open(vi.fn());
+    fireEvent.change(screen.getByLabelText("Message"), { target: { value: long } });
+    fireEvent.click(screen.getByLabelText("Send message"));
+
+    await waitFor(() => expect(toast).toHaveBeenCalled());
+    const notice = toast.mock.calls[0]?.[0] as { slot: string; description: string; onClick: () => void };
+    expect(notice.description).toContain(`“${"x".repeat(200)}…”`);
+    notice.onClick();
+    await waitFor(() => expect(toast).toHaveBeenCalledTimes(2));
+    const byHand = toast.mock.calls[1]?.[0] as { slot: string; title: string; description: string; keep: boolean; onClick?: unknown };
+    expect(byHand).toMatchObject({ title: "This room was deleted", slot: notice.slot, keep: true });
+    expect(byHand.description).toMatch(/^It could not be copied here\. Select the text below and copy it by hand:\n/);
+    expect(byHand.description).toContain(`“${long}”`);
+    expect(byHand.onClick).toBeUndefined();
+    expect(byHand).toMatchObject({ verbatim: true });
+    expect(toast.mock.calls.map((c) => (c[0] as { title: string }).title)).not.toContain("What you wrote could not be copied");
+  });
+
+  // r32 review F1: what is selected by hand is the text exactly as typed, as an automatic copy is.
+  it("quotes the text to copy by hand exactly as typed, its spaces and blank lines kept", async () => {
+    Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
+    const typed = "    indented text\n\n";
+    const tree = () => (
+      <QueryClientProvider client={new QueryClient()}>
+        <ConversationChat projectId="p1" conversationId="c1" onRoomGone={vi.fn()} />
+      </QueryClientProvider>
+    );
+    const { rerender } = render(tree());
+    fireEvent.change(screen.getByLabelText("Message"), { target: { value: typed } });
+    roomError = roomGone();
+    rerender(tree());
+
+    await waitFor(() => expect(toast).toHaveBeenCalled());
+    const notice = toast.mock.calls[0]?.[0] as { description: string; verbatim?: boolean };
+    expect(notice.description).toContain(`“${typed}”`);
+    expect(notice.verbatim).toBe(true);
+  });
+
+  it("offers the text to copy by hand from the start where there is no clipboard", async () => {
     Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
     const long = "x".repeat(260);
     send.mockRejectedValueOnce(roomGone());
@@ -368,14 +413,11 @@ describe("a room deleted while it is open", () => {
     fireEvent.click(screen.getByLabelText("Send message"));
 
     await waitFor(() => expect(toast).toHaveBeenCalled());
-    const notice = toast.mock.calls[0]?.[0] as { description: string; onClick: () => void };
-    expect(notice.description).toContain(`“${"x".repeat(200)}…”`);
-    notice.onClick();
-    await waitFor(() =>
-      expect(toast).toHaveBeenLastCalledWith(
-        expect.objectContaining({ title: "What you wrote could not be copied", description: long, keep: true }),
-      ),
-    );
+    const notice = toast.mock.calls[0]?.[0] as { description: string; onClick?: unknown; keep: boolean };
+    expect(notice.description).toMatch(/Select the text below and copy it by hand:\n/);
+    expect(notice.description).toContain(`“${long}”`);
+    expect(notice.onClick).toBeUndefined();
+    expect(notice.keep).toBe(true);
   });
 
   it("hands back the room its own first send opened, when that room is deleted before the message lands", async () => {
@@ -472,5 +514,43 @@ describe("a room deleted while it is open", () => {
     fireEvent.click(screen.getByLabelText("Send message"));
     expect(await screen.findByText("Try again")).toBeInTheDocument();
     expect(toast).not.toHaveBeenCalled();
+  });
+});
+
+// r32, judge-90: with the keyboard up at 390 the bars above and below a room left about 50 px of thread.
+describe("a room's message box with focus", () => {
+  const marked = () => document.documentElement.dataset.composing !== undefined;
+  const scoped = () => detail({ scopeProjects: [{ id: "p1", name: "Desk", slug: "desk" }] });
+
+  it("on a phone marks the document and folds the About panel, until focus leaves the box", () => {
+    room = scoped();
+    open();
+    const about = screen.getByRole("button", { name: /About Desk/ });
+    expect(about).toHaveAttribute("aria-expanded", "true");
+    fireEvent.focusIn(screen.getByLabelText("Message"));
+    expect(marked()).toBe(true);
+    expect(about).toHaveAttribute("aria-expanded", "false");
+    fireEvent.focusOut(screen.getByLabelText("Message"), { relatedTarget: null });
+    expect(marked()).toBe(false);
+    expect(about).toHaveAttribute("aria-expanded", "true");
+  });
+
+  it("on a wide screen leaves the document and the About panel as they were", () => {
+    const matchMedia = window.matchMedia;
+    window.matchMedia = ((query: string) => ({
+      matches: query === "(min-width: 768px)",
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    })) as unknown as typeof window.matchMedia;
+    try {
+      room = scoped();
+      open();
+      fireEvent.focusIn(screen.getByLabelText("Message"));
+      expect(marked()).toBe(false);
+      expect(screen.getByRole("button", { name: /About Desk/ })).toHaveAttribute("aria-expanded", "true");
+    } finally {
+      window.matchMedia = matchMedia;
+    }
   });
 });

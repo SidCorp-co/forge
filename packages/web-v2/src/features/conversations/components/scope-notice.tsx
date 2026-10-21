@@ -7,17 +7,25 @@
 // close control on it and there is no project picker anywhere near it: the only
 // way to change what a room is about is to change which agents are in it.
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Icon } from "@/design";
 import { composerRefusal, scopeDerivation } from "../membership";
 import type { ConversationMembership } from "../types";
 
 export function ScopeNotice({
   room,
+  folded = false,
 }: {
   room: Partial<Pick<ConversationMembership, "scopeProjects">>;
+  /** Shown folded to its one line, whatever the reader left it at: the room's message box has focus
+   *  on a phone, and the thread needs the height (ISS-1229 r32, judge-90). */
+  folded?: boolean;
 }) {
   const [open, setOpen] = useState(true);
+  const shown = open && !folded;
+  // A press on the folded line takes focus from the box, which unfolds it before the click lands; the
+  // click then means "open", not "toggle what just unfolded".
+  const foldedAtPress = useRef(false);
   const refusal = composerRefusal(room);
   const scopeProjects = room.scopeProjects ?? [];
   if (scopeProjects.length === 0) return null;
@@ -32,15 +40,21 @@ export function ScopeNotice({
     >
       <button
         type="button"
-        aria-expanded={open}
-        onClick={() => setOpen((o) => !o)}
+        aria-expanded={shown}
+        onPointerDown={() => {
+          foldedAtPress.current = folded;
+        }}
+        onClick={() => {
+          setOpen((o) => (foldedAtPress.current ? true : !o));
+          foldedAtPress.current = false;
+        }}
         className="flex w-full items-center gap-2 text-left focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
       >
         <Icon
           name="chevronRight"
           size={13}
           className="flex-none text-subtle transition-transform duration-[150ms]"
-          style={{ transform: open ? "rotate(90deg)" : "none" }}
+          style={{ transform: shown ? "rotate(90deg)" : "none" }}
         />
         <span className="fg-caption truncate text-muted">
           {spans
@@ -48,7 +62,7 @@ export function ScopeNotice({
             : `About ${scopeProjects[0]?.name}`}
         </span>
       </button>
-      {open && (
+      {shown && (
         <div className="forge-fade mt-1.5 pl-[21px]">
           <p className="fg-caption text-subtle">{scopeDerivation({ scopeProjects })}</p>
           {refusal && (

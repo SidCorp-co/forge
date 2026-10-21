@@ -58,3 +58,30 @@ describe("a room's people list", () => {
     }
   });
 });
+
+// r32, judge-90: an agent answering in the room was marked "can't act" for holding no personal token,
+// which answering in a room never uses. The mark now says what is true of the agent in that room.
+describe("an agent's row", () => {
+  const roster = (reachable: boolean) => (
+    <ConversationMembers
+      conversationId="c1"
+      room={{ ...room, participants: [{ ...agent, reachable }] }}
+      canChange
+      open
+      onClose={() => {}}
+    />
+  );
+
+  it("carries no mark while the agent can answer here", () => {
+    render(roster(true));
+    const row = screen.getByTestId("member-row-agent");
+    expect(row.textContent).not.toMatch(/can.t (act|answer)/);
+  });
+
+  it("says it cannot answer here once the agent has lost its role on the room's project", () => {
+    render(roster(false));
+    const mark = screen.getByTestId("member-cannot-answer");
+    expect(mark.textContent).toBe("can't answer");
+    expect(screen.getByTestId("member-row-agent").textContent).not.toMatch(/can't act/);
+  });
+});

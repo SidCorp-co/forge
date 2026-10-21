@@ -39,6 +39,7 @@ import { inlineCode } from "@/features/project-settings/components/inline-code";
 import { useIssueSearchCommands } from "@/features/shell/issue-search-commands";
 import { useOpenCount } from "@/features/notifications/hooks";
 import { NotificationsBell } from "@/features/notifications/components/notifications-bell";
+import { STEPS_ASIDE } from "@/features/conversations/composing";
 import {
   useSidebarContext,
   SidebarProvider,
@@ -437,7 +438,8 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
       />
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="relative">
+        {/* The bars below step aside while a room's message box has focus on a phone (ISS-1229 r32). */}
+        <div className="relative" {...STEPS_ASIDE}>
           <TopBar
             breadcrumb={crumbs}
             onBreadcrumbNavigate={(href) => router.push(href)}
@@ -486,15 +488,18 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
           </div>
         )}
 
-        <PinnedTabBar
-          tabs={pinnedViews.views}
-          activeHref={`${pathname}${locationSearch}`}
-          onSelect={(href) => router.push(href)}
-          onRemove={pinnedViews.remove}
-        />
+        <div className="contents" {...STEPS_ASIDE}>
+          <PinnedTabBar
+            tabs={pinnedViews.views}
+            activeHref={`${pathname}${locationSearch}`}
+            onSelect={(href) => router.push(href)}
+            onRemove={pinnedViews.remove}
+          />
+        </div>
 
         <main
           ref={mainRef}
+          data-frame-main
           className="min-h-0 flex-1 overflow-y-auto pb-[calc(56px+env(safe-area-inset-bottom))] md:pb-0"
           onScroll={(e) => {
             const top = (e.target as HTMLElement).scrollTop;
@@ -516,7 +521,9 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
         />
       )}
 
-      <BottomTabBar items={bottomItems} activeKey={bottomActiveKey} onSelect={onBottomSelect} />
+      <div className="contents" {...STEPS_ASIDE}>
+        <BottomTabBar items={bottomItems} activeKey={bottomActiveKey} onSelect={onBottomSelect} />
+      </div>
 
       <CommandPalette
         open={paletteOpen}

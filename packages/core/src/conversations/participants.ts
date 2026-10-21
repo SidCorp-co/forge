@@ -5,16 +5,9 @@
 // somebody holding a role on every project its handles derive — so nothing here
 // asks a per-message question that `scope.ts` cannot answer from the join.
 
-import { and, count, eq, isNull, sql } from 'drizzle-orm';
-import { patIsLive } from '../auth/pat-live.js';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import { db as defaultDb } from '../db/client.js';
-import {
-  organizationMembers,
-  personalAccessTokens,
-  projectMembers,
-  projects,
-  users,
-} from '../db/schema.js';
+import { organizationMembers, projectMembers, projects, users } from '../db/schema.js';
 import {
   type ConversationParticipantKind,
   conversationMessages,
@@ -34,26 +27,28 @@ export interface ParticipantRow {
   projectId: string | null;
   externalKey: string | null;
   label: string | null;
-  /**
-   * Whether this handle can still act — it holds a live credential and the
-   * authority its room's project needs.
-   */
+  /** Whether this agent can answer in the room: `answersHere`. Null for a person. */
   reachable: boolean | null;
   /** When this member was added; what tells apart two people who read the same name (ISS-1229 r24). */
   addedAt: Date;
+}
+
+/**
+ * Whether a room member can answer in it. An agent answers through core by its role on the project it
+ * was added for, the join `handleForProject` picks the answering agent by; its own personal token is
+ * never asked for, so it is no part of this (ISS-1229 r32, judge-90). A person is not asked.
+ */
+export function answersHere(
+  kind: ConversationParticipantKind,
+  projectRole: string | null,
+): boolean | null {
+  return kind === 'handle' ? projectRole !== null : null;
 }
 
 export async function listParticipants(
   conversationId: string,
   tx: Executor = defaultDb,
 ): Promise<ParticipantRow[]> {
-  const live = tx
-    .select({ userId: personalAccessTokens.userId, n: count().as('n') })
-    .from(personalAccessTokens)
-    .where(patIsLive())
-    .groupBy(personalAccessTokens.userId)
-    .as('live');
-
   const rows = await tx
     .select({
       id: conversationParticipants.id,
@@ -63,11 +58,9 @@ export async function listParticipants(
       externalKey: conversationParticipants.externalKey,
       label: conversationParticipants.label,
       addedAt: conversationParticipants.addedAt,
-      liveTokens: live.n,
       memberRole: projectMembers.role,
     })
     .from(conversationParticipants)
-    .leftJoin(live, eq(live.userId, conversationParticipants.userId))
     .leftJoin(
       projectMembers,
       and(
@@ -89,7 +82,7 @@ export async function listParticipants(
     projectId: row.projectId,
     externalKey: row.externalKey,
     label: row.label,
-    reachable: row.kind === 'handle' ? (row.liveTokens ?? 0) > 0 && row.memberRole !== null : null,
+    reachable: answersHere(row.kind, row.memberRole),
     addedAt: row.addedAt,
   }));
 }

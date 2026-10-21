@@ -11,6 +11,7 @@
 // `membership.ts`, each of which is a fact about what the code does. Removal is
 // named there as a narrowing and never as an undo, because it is not one.
 
+import Link from "next/link";
 import { useState } from "react";
 import { Banner, Button, ErrorState, Icon, Spinner } from "@/design";
 import { ApiError } from "@/lib/api/client";
@@ -155,12 +156,22 @@ function CandidateList({
   }
   const handles = (query.data?.handles ?? []).filter((h) => !goneProjects.has(h.project.id));
   if (handles.length === 0) {
-    // Emptied by a project deleted under the panel, the role sentence is not why (ISS-1229 r30, judge-86).
+    // Emptied by a project deleted under the panel, that is why (ISS-1229 r30, judge-86). Otherwise every
+    // agent the reader may add is in the room already: a role sentence there blamed a role an admin held
+    // (r32, judge-90), so it says where another agent comes from instead.
     return (
       <p role="status" data-testid="agent-candidates-empty" className="fg-body-sm text-muted">
-        {goneProjects.size > 0
-          ? "There is no agent left that you can add to this room: the project of the agent you picked was deleted."
-          : "There is no agent you can add to this room. An agent is added by somebody holding a member role on its project."}
+        {goneProjects.size > 0 ? (
+          "There is no agent left that you can add to this room: the project of the agent you picked was deleted."
+        ) : (
+          <>
+            Every agent you can add is already in this room. Each project has its own agent, so another one
+            comes with another project in this organization.{" "}
+            <Link href="/projects?new=1" className="text-link underline-offset-2 hover:underline">
+              Start a new project
+            </Link>
+          </>
+        )}
       </p>
     );
   }

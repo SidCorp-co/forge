@@ -18,6 +18,7 @@ import {
   IconButton,
   PageTitle,
   ProjectLoader,
+  useMediaQuery,
 } from "@/design";
 import { useProjects } from "@/features/projects/hooks";
 import { CONVERSATION_ATTACHMENTS } from "@/features/chat/attachments";
@@ -42,8 +43,9 @@ import {
   useUploadAttachment,
   useWithdrawnDrafts,
 } from "../hooks";
+import { useComposingMark, useMessageBoxFocus } from "../composing";
 import { composerRefusal } from "../membership";
-import { isRoomGone, ROOM_DELETED_TITLE, roomDeletedLine, unsentLine } from "../room-gone";
+import { isRoomGone, type KeptCopy, ROOM_DELETED_TITLE, roomDeletedLine, unsentLine } from "../room-gone";
 import { type ConversationMode, type OutboxMessage, conversationTitle } from "../types";
 import { ConversationModeControl, modePlaceholder } from "./mode-control";
 import { ConversationMembers } from "./conversation-members";
@@ -104,6 +106,12 @@ export function ConversationChat({
 
   const [pick, setPick] = useState<ConversationMode>("assistant");
 
+  // On a phone the thread gets the room while its message box has focus (ISS-1229 r32, judge-90).
+  const box = useMessageBoxFocus<HTMLDivElement>();
+  const wide = useMediaQuery("(min-width: 768px)");
+  const composing = box.focused && !wide;
+  useComposingMark(composing);
+
   // A room deleted while it was open says so once, leaves the list and hands the reader back to it:
   // a retry could only meet the same refusal (ISS-1229 r28, judge-80).
   const qc = useQueryClient();
@@ -113,34 +121,33 @@ export function ConversationChat({
   // The thread that held an unsent message goes with the room, so its notice keeps the text until the
   // reader copies it or puts the notice away (ISS-1229 r29, judge-84). Copying says so in that notice,
   // where the reader is looking: a second toast landed over the room list on a phone (r31, judge-88).
+  // A copy the browser refuses turns the notice into one to copy by hand, with no tap left to fail the
+  // same way again (r32, judge-90).
   const keepUnsent = useCallback(
     (unsent: string, sent: boolean) => {
       // Its own slot for good: a notice left up by an earlier mount of this room must not be replaced.
       const slot = `room-gone-unsent-${crypto.randomUUID()}`;
-      const show = (copied: boolean) =>
+      const show = (copy: KeptCopy) => {
+        const byHand = copy === "by-hand" || copy === "refused";
         toast({
           title: ROOM_DELETED_TITLE,
-          description: unsentLine(unsent, sent, copied),
+          description: unsentLine(unsent, sent, copy),
           tone: "error",
           keep: true,
           slot,
-          onClick: () => {
-            const copying = navigator.clipboard
-              ? navigator.clipboard.writeText(unsent)
-              : Promise.reject(new Error("no clipboard"));
-            void copying.then(
-              () => show(true),
-              () =>
-                toast({
-                  title: "What you wrote could not be copied",
-                  description: unsent,
-                  tone: "error",
-                  keep: true,
-                }),
-            );
-          },
+          ...(byHand
+            ? { verbatim: true }
+            : {
+                onClick: () => {
+                  void navigator.clipboard.writeText(unsent).then(
+                    () => show("copied"),
+                    () => show("refused"),
+                  );
+                },
+              }),
         });
-      show(false);
+      };
+      show(typeof navigator.clipboard?.writeText === "function" ? "offered" : "by-hand");
     },
     [toast],
   );
@@ -393,7 +400,7 @@ export function ConversationChat({
     <div className="flex h-full min-h-0 flex-col">
       {header}
 
-      {roomQ.data && <ScopeNotice room={roomQ.data} />}
+      {roomQ.data && <ScopeNotice room={roomQ.data} folded={composing} />}
 
       <div ref={scrollRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-3xl px-4 py-8 sm:px-8 xl:max-w-4xl">
@@ -436,6 +443,7 @@ export function ConversationChat({
           <p className="fg-caption mt-0.5 text-muted">{refusal.wayOut}</p>
         </div>
       ) : canWrite ? (
+        <div className="flex-none" ref={box.ref}>
         <ChatComposer
           onSend={handleSend}
           busy={busy}
@@ -457,6 +465,7 @@ export function ConversationChat({
             />
           }
         />
+        </div>
       ) : (
         <ReadOnlyComposerNote sticky={false} />
       )}

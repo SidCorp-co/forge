@@ -231,6 +231,14 @@
 .forge-caret > .forge-caret-anchor > :is(ul, ol):last-child > li:last-child::after,
 .forge-caret > .forge-caret-anchor:empty::after { content: ""; display: inline-block; width: 2px; height: 1em; margin-left: 1px; vertical-align: text-bottom; background: var(--accent); animation: forge-caret 1s steps(1) infinite; }
 
+/* While a room's message box has focus on a phone the thread gets the room: the frame's bars and the
+   screen's heading step aside, and main gives up the tab bar's clearance. Unlayered, so it outranks the
+   utilities that show them (ISS-1229 r32; the mark is `features/conversations/composing.ts`). */
+@media (max-width: 767.98px) {
+  html[data-composing] [data-steps-aside="composing"] { display: none; }
+  html[data-composing] [data-frame-main] { padding-bottom: 0; }
+}
+
 /* ── Accessibility: respect reduced-motion ─────────────────── */
 @media (prefers-reduced-motion: reduce) {
   .forge-pulse, .skeleton::after, .forge-indeterminate, .forge-highlight,
