@@ -2,7 +2,12 @@
 // is spent, the item's note says so, through the note door like any other, so no model is spent to
 // say that no model may be. Its claims are the standing's own fields, so the door's vet holds.
 
-import { basisFieldsOf, type ItemStanding, type StewardCite } from '@forge/contracts/steward';
+import {
+  basisFieldsOf,
+  type ItemStanding,
+  type StewardCite,
+  type StewardNoteWrite,
+} from '@forge/contracts/steward';
 import { logger } from '../lib/logger.js';
 import { stewardAccountOf } from './account.js';
 import { mintStewardCredential, STEWARD_TURN_TTL_MS } from './credential.js';
@@ -17,7 +22,7 @@ function citeOf(ref: string): StewardCite {
   return { kind: 'issue', ref };
 }
 
-export function budgetNoteBody(run: RunRow, standing: ItemStanding) {
+export function budgetNoteBody(run: RunRow, standing: ItemStanding): StewardNoteWrite {
   const fields = basisFieldsOf(standing);
   const cites: StewardCite[] = [citeOf(run.subjectKey)];
   if (standing.waitingOn.ref && standing.waitingOn.ref !== run.subjectKey) {

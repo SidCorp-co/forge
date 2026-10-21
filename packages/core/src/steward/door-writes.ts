@@ -1,7 +1,7 @@
 // The steward's write doors (REQ-48 BC-2..BC-7): ask, comment, reject a breakdown, move an issue,
 // wake the master and write the note, each one existing door and each logged with how it is undone.
 
-import type { StewardCite } from '@forge/contracts/steward';
+import { type StewardCite, stewardNoteWriteSchema } from '@forge/contracts/steward';
 import { z } from 'zod';
 import type { StewardUndo } from '../db/schema-steward-runs.js';
 import { type DoorAnswer, type DoorRequest, doorName } from './door-call.js';
@@ -288,15 +288,9 @@ const WAKE: DoorSpec<z.infer<typeof wakeParams>> = {
   },
 };
 
-const noteParams = z.strictObject({
-  lines: z.array(z.string().trim().min(1).max(160)).min(1).max(2),
-  cites: z
-    .array(z.strictObject({ kind: z.string().min(1).max(20), ref: z.string().min(1).max(200) }))
-    .min(1)
-    .max(8),
-  claims: z.record(z.string(), z.unknown()),
-  basis: z.string().min(1).max(400),
-});
+// the note door's own body (`stewardNoteWriteSchema`), less the run id the act adds itself: a note the
+// model writes is checked against the same shape `writeStewardNote` vets, before it is sent
+const noteParams = stewardNoteWriteSchema.omit({ runId: true });
 const NOTE: DoorSpec<z.infer<typeof noteParams>> = {
   name: 'steward_write_note',
   describe:
