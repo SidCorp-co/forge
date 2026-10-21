@@ -150,7 +150,7 @@ pub async fn open(
         .json(&body)
         .send()
         .await
-        .map_err(|e| Error::Other(format!("run-session open: {e}")))?;
+        .map_err(|e| crate::transport::status::not_reached("run-session open", &e))?;
     if resp.status().as_u16() == 401 {
         return Err(Error::Unauthorized);
     }
@@ -165,7 +165,7 @@ pub async fn open(
     let parsed: OpenReply = resp
         .json()
         .await
-        .map_err(|e| Error::Other(format!("run-session open decode: {e}")))?;
+        .map_err(|e| crate::transport::status::not_reached("run-session open decode", &e))?;
     Ok((parsed.session_id, parsed.run_id))
 }
 
@@ -220,7 +220,7 @@ pub async fn close(
         .json(&body)
         .send()
         .await
-        .map_err(|e| Error::Other(format!("run-session close: {e}")))?;
+        .map_err(|e| crate::transport::status::not_reached("run-session close", &e))?;
     if resp.status().as_u16() == 401 {
         return Err(Error::Unauthorized);
     }
@@ -263,7 +263,7 @@ pub async fn report_resume_choice(
         .json(&choice)
         .send()
         .await
-        .map_err(|e| Error::Other(format!("resume-choice report: {e}")))?;
+        .map_err(|e| crate::transport::status::not_reached("resume-choice report", &e))?;
     if resp.status().as_u16() == 401 {
         return Err(Error::Unauthorized);
     }
@@ -294,7 +294,7 @@ pub async fn report_held_worktree(
         .json(&held)
         .send()
         .await
-        .map_err(|e| Error::Other(format!("held-worktree report: {e}")))?;
+        .map_err(|e| crate::transport::status::not_reached("held-worktree report", &e))?;
     if resp.status().as_u16() == 401 {
         return Err(Error::Unauthorized);
     }
@@ -323,7 +323,7 @@ pub async fn is_terminal(client: &CoreClient, session_id: &str) -> Result<bool> 
         .bearer_auth(client.device_token())
         .send()
         .await
-        .map_err(|e| Error::Other(format!("run-session state: {e}")))?;
+        .map_err(|e| crate::transport::status::not_reached("run-session state", &e))?;
     if resp.status().as_u16() == 401 {
         return Err(Error::Unauthorized);
     }
@@ -349,7 +349,7 @@ pub async fn is_terminal(client: &CoreClient, session_id: &str) -> Result<bool> 
     let parsed: Reply = resp
         .json()
         .await
-        .map_err(|e| Error::Other(format!("run-session state decode: {e}")))?;
+        .map_err(|e| crate::transport::status::not_reached("run-session state decode", &e))?;
     Ok(parsed.session_terminal)
 }
 
@@ -430,7 +430,7 @@ pub async fn lease_state(
         .bearer_auth(client.device_token())
         .send()
         .await
-        .map_err(|e| Error::Other(format!("issue-lease read: {e}")))?;
+        .map_err(|e| crate::transport::status::not_reached("issue-lease read", &e))?;
     if resp.status().as_u16() == 401 {
         return Err(Error::Unauthorized);
     }
@@ -456,7 +456,7 @@ pub async fn lease_state(
     let parsed: LeaseState = resp
         .json()
         .await
-        .map_err(|e| Error::Other(format!("issue-lease decode: {e}")))?;
+        .map_err(|e| crate::transport::status::not_reached("issue-lease decode", &e))?;
     Ok(parsed)
 }
 
@@ -472,7 +472,7 @@ pub async fn release_lease(
         .bearer_auth(client.device_token())
         .send()
         .await
-        .map_err(|e| Error::Other(format!("issue-lease release: {e}")))?;
+        .map_err(|e| crate::transport::status::not_reached("issue-lease release", &e))?;
     if resp.status().as_u16() == 401 {
         return Err(Error::Unauthorized);
     }

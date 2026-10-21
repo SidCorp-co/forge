@@ -1,7 +1,7 @@
-import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { describeOperation, fail, json } from '../api-reference/declare/describe.js';
 import { jobStatuses } from '../db/schema.js';
+import { schemaRefused } from '../lib/zod-sentences.js';
 import { blockedEndSchema } from './blocked-routes-reference.js';
 import { salvageSchema } from './prior-attempts.js';
 
@@ -39,10 +39,7 @@ export async function readReasonBody(req: {
   const raw = await req.json().catch(() => ({}));
   const parsed = cancelBodySchema.safeParse(raw ?? {});
   if (parsed.success) return parsed.data;
-  throw new HTTPException(400, {
-    message: 'Invalid input',
-    cause: { code: 'BAD_REQUEST', details: z.flattenError(parsed.error) },
-  });
+  throw schemaRefused(parsed.error, cancelBodySchema, raw);
 }
 
 export const killAckBodySchema = z

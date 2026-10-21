@@ -12,11 +12,13 @@ import { handleCallback, handleStart } from './handler.js';
 import { getEnabledProviders, type ProviderId, toPublic } from './providers.js';
 import {
   callbackOAuth,
+  callbackQuerySchema,
   listOAuthProviders,
   providerParamSchema,
   providersSchema,
   reauthStartOAuth,
   startOAuth,
+  startQuerySchema,
 } from './routes-reference.js';
 
 export const oauthRoutes = new Hono<{ Variables: AuthVars }>();
@@ -47,6 +49,7 @@ oauthRoutes.get(
   '/oauth/:provider/start',
   startOAuth,
   declaresInput('param', providerParamSchema),
+  declaresInput('query', startQuerySchema),
   (c) => {
     gate();
     const p = providerParamSchema.parse(c.req.param()).provider;
@@ -61,6 +64,7 @@ oauthRoutes.get(
   '/oauth/:provider/callback',
   callbackOAuth,
   declaresInput('param', providerParamSchema),
+  declaresInput('query', callbackQuerySchema),
   (c) => {
     gate();
     const p = providerParamSchema.parse(c.req.param()).provider;
@@ -76,6 +80,7 @@ oauthRoutes.get(
   requireAuth(),
   reauthStartOAuth,
   declaresInput('param', providerParamSchema),
+  declaresInput('query', startQuerySchema),
   async (c) => {
     gate();
     const p = providerParamSchema.parse(c.req.param()).provider;

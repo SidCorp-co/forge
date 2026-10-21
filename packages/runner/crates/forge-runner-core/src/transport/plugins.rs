@@ -48,7 +48,7 @@ pub async fn list_designated(client: &CoreClient) -> Result<Vec<DesignatedPlugin
         .bearer_auth(client.device_token())
         .send()
         .await
-        .map_err(|e| Error::Other(format!("me/plugins request: {e}")))?;
+        .map_err(|e| crate::transport::status::not_reached("me/plugins request", &e))?;
     if resp.status().as_u16() == 401 {
         return Err(Error::Unauthorized);
     }
@@ -77,7 +77,7 @@ pub async fn list_designated(client: &CoreClient) -> Result<Vec<DesignatedPlugin
     resp.json::<MePluginsResponse>()
         .await
         .map(|r| r.plugins)
-        .map_err(|e| Error::Other(format!("me/plugins decode: {e}")))
+        .map_err(|e| crate::transport::status::not_reached("me/plugins decode", &e))
 }
 
 #[cfg(test)]

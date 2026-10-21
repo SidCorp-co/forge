@@ -257,7 +257,12 @@ githubCallbackRoutes.get(
   declaresManifestCallbackQuery,
   async (c) => {
     const { code, state: rawState } = manifestCallbackQuerySchema.parse(c.req.query());
-    if (!code || !rawState) throw badRequest({ query: 'code and state are required' });
+    // Each parameter GitHub's redirect left out is named (ISS-1421 r20: "The field query was refused.").
+    if (!code || !rawState)
+      throw badRequest({
+        ...(code ? {} : { code: 'required' }),
+        ...(rawState ? {} : { state: 'required' }),
+      });
 
     const state = verifyConnectState(stateSecret(), rawState);
     if (!state) throw badRequest({ state: 'invalid or expired' });

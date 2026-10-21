@@ -69,7 +69,7 @@ async fn send(client: &CoreClient, url: &str, body: serde_json::Value) -> Result
         .json(&body)
         .send()
         .await
-        .map_err(|e| Error::Other(format!("lifecycle request: {e}")))?;
+        .map_err(|e| crate::transport::status::not_reached("lifecycle request", &e))?;
     if !resp.status().is_success() {
         return Err(Refused::read(resp).await.error);
     }
@@ -130,7 +130,7 @@ pub async fn blocked(
         .json(&serde_json::json!({ "error": error, "asked": asked }))
         .send()
         .await
-        .map_err(|e| Error::Other(format!("lifecycle request: {e}")))?;
+        .map_err(|e| crate::transport::status::not_reached("lifecycle request", &e))?;
     if resp.status().is_success() {
         return Ok(BlockedDoor::Recorded);
     }

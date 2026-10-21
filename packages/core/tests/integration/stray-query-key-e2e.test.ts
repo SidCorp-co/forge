@@ -23,6 +23,7 @@ type Entry = ReturnType<Registry['readRoutes']>[number];
 
 /** The redirects a third party shapes, which take any key (the unit gate names why). */
 const TAKES_ANY = new Set([
+  'GET /api/auth/oauth/:provider/callback',
   'GET /api/integrations/github/installed',
   'GET /api/integrations/github/manifest-callback',
 ]);
@@ -134,6 +135,30 @@ describe('a query key the route does not take', () => {
     // Not vacuous: over a hundred GET routes declare a query.
     expect(sent).toBeGreaterThan(90);
     expect(answered, 'each route answered a stray key with something but its refusal').toEqual([]);
+  }, 600_000);
+
+  // ISS-1421 r20 — judge-82: `GET /api/integration-connections?orgId=` listed every org's connections,
+  // the key dropped by a route that declares no query.
+  it('is refused 400 by name on every GET route that declares no query, before any other gate', async () => {
+    const answered: string[] = [];
+    let sent = 0;
+    for (const entry of routes) {
+      if (entry.method !== 'GET' || !entry.path.startsWith('/api/')) continue;
+      if (entry.validators.some((v) => v.target === 'query')) continue;
+      const box = entry.path.startsWith('/api/devices/me');
+      const got = await get(`${pathOf(entry)}?colour=red`, box ? deviceToken : personToken);
+      sent++;
+      if (got.status !== 400 || got.code !== 'UNKNOWN_QUERY_PARAMETER')
+        answered.push(`${entry.key} ${got.status} ${got.code}`);
+      else if (
+        got.message !== 'The field colour is not one this call takes. It takes no query parameter.'
+      )
+        answered.push(`${entry.key} said ${got.message}`);
+    }
+    expect(sent).toBeGreaterThan(50);
+    expect(answered, 'each route answered a stray key with something but its refusal').toEqual([]);
+    const listed = await get('/api/integration-connections?colour=red');
+    expect(listed.raw).not.toContain('"items"');
   }, 600_000);
 });
 

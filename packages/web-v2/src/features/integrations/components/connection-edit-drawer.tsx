@@ -156,8 +156,11 @@ function CredentialSection({
     if (next.length < 8 || secretField === null) return;
     // mutate (not mutateAsync) — the hook's onError toast handles failure; the
     // input clears only on success so a rejected key isn't silently dropped.
+    // A connection holding no key is turned on by the key that arrives (ISS-1421 r20): removing one
+    // wiped its keys, and the line under this field says a new key activates it.
+    const turnOn = !connection.hasSecrets && !connection.active ? { active: true } : {};
     update.mutate(
-      { id: connection.id, body: { secrets: { [secretField]: next } } },
+      { id: connection.id, body: { secrets: { [secretField]: next }, ...turnOn } },
       { onSuccess: () => setKey("") },
     );
   };
@@ -187,7 +190,7 @@ function CredentialSection({
           hint={
             connection.hasSecrets
               ? `A key is stored (never shown). ${module?.previousKeyNote ?? "Enter a new one to replace it."}`
-              : "No credential stored yet. Enter one to activate this connection."
+              : "No key is stored. Enter one to activate this connection."
           }
         >
           <div className="flex items-center gap-2">
@@ -385,7 +388,7 @@ function DangerZone({
           >
             Disable
           </Button>
-        ) : (
+        ) : connection.hasSecrets ? (
           <Button
             variant="secondary"
             size="sm"
@@ -394,6 +397,14 @@ function DangerZone({
           >
             Enable
           </Button>
+        ) : (
+          // ISS-1421 r20 — removing wipes the keys, and core refuses to turn a keyless connection
+          // back on (CONNECTION_HAS_NO_KEY), so the drawer says what turns it on instead.
+          <span className="fg-body-sm text-muted">
+            {providerModule(connection.provider)?.secretField === null
+              ? `This connection holds no key. ${providerModule(connection.provider)?.connectionNote ?? ""}`.trim()
+              : "This connection holds no key. Saving a new key above turns it back on."}
+          </span>
         )}
         <Button variant="ghost" size="sm" onClick={() => setConfirming((v) => !v)}>
           Remove…
@@ -404,8 +415,9 @@ function DangerZone({
           <p className="fg-body-sm text-fg">
             {affectedProjects.length > 0
               ? `Removing this connection stops credential resolution for ${affectedProjects.length} project${affectedProjects.length === 1 ? "" : "s"}: ${affectedProjects.join(", ")}. Their integrations stop working on the next dispatch.`
-              : "No projects are actively using this connection. Removing it disables the stored credential."}{" "}
-            The connection stays listed as Disabled so it can be re-enabled later.
+              : "No projects are actively using this connection."}{" "}
+            Removing it deletes its stored keys. The connection stays listed as Disabled, and turning
+            it back on takes a new key.
           </p>
           <div className="flex items-center gap-2">
             <Button

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mergeRotatedSecrets, ROTATION_WINDOW_MS } from './rotation.js';
+import { mergeRotatedSecrets, newKeyRefused, ROTATION_WINDOW_MS } from './rotation.js';
 
 /**
  * ISS-1421 r19 — the Connections drawer's Replace key sends the new key alone. A rotation wrote the
@@ -51,5 +51,44 @@ describe('mergeRotatedSecrets', () => {
 
   it('is no rotation where no new key was sent', () => {
     expect(mergeRotatedSecrets(rocketchat, { authToken: 'a' }, { userId: 'b' })).toBeNull();
+  });
+});
+
+/**
+ * ISS-1421 r20 — judge-82 found Postman's and Epodsystem's replaced key kept and tried by Test
+ * connection, so a wrong new key passed the check and failed a day later. A provider whose previous
+ * key nothing reads keeps none, and a stale one is not carried into the new record.
+ */
+describe('a provider that keeps no previous key', () => {
+  const postman = {
+    schemas: { primaryCredentialField: 'apiKey', previousCredentialField: null },
+  } as never;
+
+  it('stores the new key alone, with no previous key', () => {
+    const merged = mergeRotatedSecrets(postman, { apiKey: 'old-key-1' }, { apiKey: 'new-key-2' });
+    expect(merged).toEqual({ apiKey: 'new-key-2' });
+  });
+
+  it('drops a previous key and its expiry stored before', () => {
+    const merged = mergeRotatedSecrets(
+      postman,
+      { apiKey: 'old', previousApiKey: 'older', previousTokenExpiresAt: '2026-10-22T00:00:00Z' },
+      { apiKey: 'new' },
+    );
+    expect(merged).toEqual({ apiKey: 'new' });
+  });
+});
+
+describe('newKeyRefused', () => {
+  it("says who refused the new key and until when Forge's own calls use the previous one", () => {
+    const refused = newKeyRefused('Sentry', { previousTokenExpiresAt: '2026-10-22T14:53:00.000Z' });
+    expect(refused.status).toBe('needs_reauth');
+    expect(refused.message).toBe(
+      'Sentry refused the new key. Forge is still using the previous key until 22 October 2026, 14:53 UTC.',
+    );
+    expect(refused.diagnostics).toEqual({
+      newKeyRefused: true,
+      previousKeyUntil: '2026-10-22T14:53:00.000Z',
+    });
   });
 });

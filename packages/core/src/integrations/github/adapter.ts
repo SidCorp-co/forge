@@ -396,7 +396,7 @@ export const githubIntegration = declareIntegration<GitHubConfig, GitHubSecrets>
     secrets: githubSecretsSchema,
     patchSecrets: githubSecretsSchema.partial(),
     primaryCredentialField: 'privateKey',
-    previousCredentialField: 'previousPrivateKey',
+    previousCredentialField: null,
     independentSecretFields: [],
     bindingConfigKeys: GITHUB_BINDING_CONFIG_KEYS,
   },

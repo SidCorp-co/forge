@@ -44,7 +44,7 @@ describe('an issue update carrying a status', () => {
 describe('an issue update carrying a status is told where a status moves', () => {
   it('says an update writes no status and names POST /api/issues/:id/transition', () => {
     expect(refusals({ title: 'a title', status: 'releasing' })).toEqual([
-      'An issue update never writes a status, so this one wrote nothing. A status moves through POST /api/issues/:id/transition, or `forge_issues` `transition`, and only starting a release puts an issue at Releasing.',
+      'An issue update never writes `status`, so this one wrote nothing. A status moves through POST /api/issues/:id/transition, or `forge_issues` `transition`, and only starting a release puts an issue at Releasing.',
     ]);
   });
 

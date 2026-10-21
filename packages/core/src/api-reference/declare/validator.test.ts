@@ -107,7 +107,7 @@ describe('a failed parse is refused in sentences (ISS-1421 r14)', () => {
     expect(err.cause).toEqual({ code: 'BAD_N', details: { kept: true } });
   });
 
-  it('gives the accepted values a details of their own where the hook threw none', async () => {
+  it('gives a hook that threw no details the sentences by field, and the accepted values', async () => {
     const app = new Hono();
     const status = z.object({ status: z.enum(['open', 'closed']) });
     app.post(
@@ -129,7 +129,13 @@ describe('a failed parse is refused in sentences (ISS-1421 r14)', () => {
     );
     expect(thrown?.cause).toEqual({
       code: 'BAD_STATUS',
-      details: { accepted: { status: ['open', 'closed'] } },
+      details: {
+        formErrors: [],
+        fieldErrors: {
+          status: ['The field status takes one of the values listed in details.accepted.'],
+        },
+        accepted: { status: ['open', 'closed'] },
+      },
     });
   });
 

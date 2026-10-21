@@ -71,7 +71,7 @@ pub async fn admissible(
         .bearer_auth(client.device_token())
         .send()
         .await
-        .map_err(|e| Error::Other(format!("admissible request: {e}")))?;
+        .map_err(|e| crate::transport::status::not_reached("admissible request", &e))?;
     if resp.status().as_u16() == 401 {
         return Err(Error::Unauthorized);
     }
@@ -87,7 +87,7 @@ pub async fn admissible(
     let parsed: AdmissibleResponse = resp
         .json()
         .await
-        .map_err(|e| Error::Other(format!("admissible decode: {e}")))?;
+        .map_err(|e| crate::transport::status::not_reached("admissible decode", &e))?;
     Ok(parsed.items)
 }
 

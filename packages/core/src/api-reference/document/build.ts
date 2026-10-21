@@ -1,5 +1,3 @@
-import { UNKNOWN_QUERY_PARAMETER } from '../../lib/query-strict.js';
-import { fieldsPolicy } from '../../lib/unknown-fields.js';
 import { PAT_DOOR_REFUSALS } from '../../middleware/pat-rest-surface.js';
 import { type Answer, codeFor } from '../declare/describe.js';
 import {
@@ -9,8 +7,9 @@ import {
   errorResponse,
 } from '../declare/errors.js';
 import { type JsonSchema, renderSchema } from '../declare/schema.js';
-import { BODY_NOT_TAKEN_WHEN, type ValidatorDeclaration } from '../declare/validator.js';
+import type { ValidatorDeclaration } from '../declare/validator.js';
 import { type Access, accessOf, accessProse, asksForBearer } from './access.js';
+import { inputGateCodes } from './input-gates.js';
 import { type InputRefusal, probeInputRefusal } from './probe-hook.js';
 import { type RouteEntry, type RouteSource, readRoutes } from './registry.js';
 import type { Rule } from './rules.js';
@@ -221,14 +220,6 @@ function inputsOf(entry: RouteEntry, doc: Document) {
   return { parameters, bodies };
 }
 
-const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
-
-/** A write route `refuseBodyNotTaken` holds to no body: it declares none and names no reason. */
-function takesNoBody(entry: RouteEntry): boolean {
-  if (!WRITE_METHODS.has(entry.method) || entry.bodyAsSent !== null) return false;
-  return !entry.validators.some((v) => v.target === 'json' || v.target === 'form');
-}
-
 type ErrorCodes = Map<number, Map<string, string[]>>;
 
 function addCode(into: ErrorCodes, status: number, code: string, when: string): void {
@@ -250,10 +241,6 @@ async function refusalOf(entry: RouteEntry, declaration: ValidatorDeclaration, d
   }
   return refusal;
 }
-
-/** What the reference states for a query key a route does not take. */
-const STRAY_QUERY_KEY_WHEN =
-  'a query parameter this route does not take; details lists the ones it does';
 
 async function responsesOf(entry: RouteEntry, access: Access | null, doc: Document) {
   const responses: Record<string, JsonSchema> = {};
@@ -298,7 +285,7 @@ async function responsesOf(entry: RouteEntry, access: Access | null, doc: Docume
   };
   for (const [status, a] of Object.entries(declared?.responses ?? {})) answer(Number(status), a);
   for (const refusal of entry.refusals) addCode(errors, refusal.status, refusal.code, refusal.when);
-  if (takesNoBody(entry)) addCode(errors, 400, 'BAD_REQUEST', BODY_NOT_TAKEN_WHEN);
+  for (const gate of inputGateCodes(entry)) addCode(errors, gate.status, gate.code, gate.when);
   // A route that reads no bearer never meets the token door. One kept out of the grant still meets
   // it when a token is sent to it, and the door turns the token away there by name.
   const doorRefusals = !asksForBearer(access, entry.takesBearer)
@@ -316,9 +303,6 @@ async function responsesOf(entry: RouteEntry, access: Access | null, doc: Docume
     'an unexpected failure; nothing about the request is to blame',
   );
   for (const declaration of entry.validators) {
-    // Every query refuses a key it does not take, whoever parses it (ISS-1421 r19).
-    if (declaration.target === 'query' && fieldsPolicy(declaration.schema) !== 'open')
-      addCode(errors, 400, UNKNOWN_QUERY_PARAMETER, STRAY_QUERY_KEY_WHEN);
     if (declaration.enforced === false) continue;
     const refusal = await refusalOf(entry, declaration, doc);
     if (refusal.kind === 'refused')

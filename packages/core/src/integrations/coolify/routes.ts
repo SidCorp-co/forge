@@ -19,9 +19,10 @@
 
 import type { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { z } from 'zod';
+import type { z } from 'zod';
 import { answer } from '../../api-reference/declare/describe.js';
 import { declaresInput } from '../../api-reference/declare/validator.js';
+import { schemaRefused } from '../../lib/zod-sentences.js';
 import type { AuthVars } from '../../middleware/auth.js';
 import { DeployEnvironmentLockedError } from '../../pipeline/deploy-lock.js';
 import {
@@ -135,11 +136,8 @@ const readAsHttp = (err: unknown, describe: (e: CoolifyApiError) => string): nev
   return asHttp(err);
 };
 
-const invalidBody = (error: z.core.$ZodError) =>
-  new HTTPException(400, {
-    message: 'Invalid input',
-    cause: { code: 'BAD_REQUEST', details: z.flattenError(error) },
-  });
+const invalidBody = (error: z.core.$ZodError, schema: z.ZodType, sent: unknown) =>
+  schemaRefused(error, schema, sent);
 
 function registerCoolifyCommandRoutes(routes: Hono<{ Variables: AuthVars }>): void {
   routes.get('/:projectId/integrations/coolify', ...listCoolify, async (c) => {
@@ -182,7 +180,7 @@ function registerCoolifyCommandRoutes(routes: Hono<{ Variables: AuthVars }>): vo
 
       const raw = await c.req.json().catch(() => ({}));
       const parsed = deployBodySchema.safeParse(raw ?? {});
-      if (!parsed.success) throw invalidBody(parsed.error);
+      if (!parsed.success) throw invalidBody(parsed.error, deployBodySchema, raw);
 
       try {
         return c.json(
@@ -203,7 +201,7 @@ function registerCoolifyCommandRoutes(routes: Hono<{ Variables: AuthVars }>): vo
       await assertProjectWriter(projectId, c.get('userId'));
       const raw = await c.req.json().catch(() => ({}));
       const parsed = cancelBodySchema.safeParse(raw ?? {});
-      if (!parsed.success) throw invalidBody(parsed.error);
+      if (!parsed.success) throw invalidBody(parsed.error, cancelBodySchema, raw);
       try {
         return c.json(answer(controlSchema, await runCoolifyCancel({ projectId, ...parsed.data })));
       } catch (err) {
@@ -247,7 +245,7 @@ function registerCoolifyCommandRoutes(routes: Hono<{ Variables: AuthVars }>): vo
       await assertProjectWriter(projectId, c.get('userId'));
       const raw = await c.req.json().catch(() => ({}));
       const parsed = rollbackBodySchema.safeParse(raw ?? {});
-      if (!parsed.success) throw invalidBody(parsed.error);
+      if (!parsed.success) throw invalidBody(parsed.error, rollbackBodySchema, raw);
       try {
         return c.json(
           answer(controlSchema, await runCoolifyRollback({ projectId, ...parsed.data })),
@@ -269,7 +267,7 @@ function registerCoolifyPickerRoutes(routes: Hono<{ Variables: AuthVars }>): voi
       await assertProjectMember(projectId, c.get('userId'));
       const raw = await c.req.json().catch(() => ({}));
       const parsed = applicationsBodySchema.safeParse(raw ?? {});
-      if (!parsed.success) throw invalidBody(parsed.error);
+      if (!parsed.success) throw invalidBody(parsed.error, applicationsBodySchema, raw);
       const body = parsed.data;
       let auth: { baseUrl: string; apiToken: string; previousApiToken?: string };
       if ('integrationId' in body) {

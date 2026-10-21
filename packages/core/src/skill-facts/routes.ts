@@ -1,9 +1,9 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { z } from 'zod';
 import { answer } from '../api-reference/declare/describe.js';
 import { declaresInput } from '../api-reference/declare/validator.js';
 import { loadProjectAccess } from '../lib/authz.js';
+import { schemaRefused } from '../lib/zod-sentences.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { listResolvedFacts } from '../prompt/facts/resolve.js';
 import { factsQuerySchema, factsSchema, listSkillFacts } from './routes-reference.js';
@@ -23,16 +23,9 @@ skillFactsRoutes.get(
   listSkillFacts,
   declaresInput('query', factsQuerySchema),
   async (c) => {
-    const parsed = factsQuerySchema.safeParse({
-      projectId: c.req.query('projectId'),
-      stage: c.req.query('stage'),
-    });
-    if (!parsed.success) {
-      throw new HTTPException(400, {
-        message: 'Invalid input',
-        cause: { code: 'BAD_REQUEST', details: z.flattenError(parsed.error) },
-      });
-    }
+    const sent = { projectId: c.req.query('projectId'), stage: c.req.query('stage') };
+    const parsed = factsQuerySchema.safeParse(sent);
+    if (!parsed.success) throw schemaRefused(parsed.error, factsQuerySchema, sent);
 
     const userId = c.get('userId');
     const access = await loadProjectAccess(parsed.data.projectId, userId);

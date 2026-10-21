@@ -217,6 +217,19 @@ fn issue_id_of(issue: Option<&str>) -> anyhow::Result<Option<String>> {
 /// is written, and the read-back this verb prints refuses forever. A run is
 /// kernel input, where a representable-looking wrong value is how state starts
 /// lying, so it is refused by name.
+/// `--issue` and `--project` read together, so a call wrong at both is told
+/// both in one answer rather than one per attempt (ISS-1421 r20, judge-82).
+fn flags_read(cfg: &Config, a: &AskArgs) -> anyhow::Result<String> {
+    match (
+        issue_id_of(a.issue.as_deref()),
+        project_id_of(cfg, &a.project),
+    ) {
+        (Ok(_), Ok(project_id)) => Ok(project_id),
+        (Err(issue), Err(project)) => Err(anyhow::anyhow!("{project}\n{issue}")),
+        (Err(e), Ok(_)) | (Ok(_), Err(e)) => Err(e),
+    }
+}
+
 fn run_identity(run: Option<&str>) -> anyhow::Result<String> {
     match run {
         None => Ok(uuid::Uuid::new_v4().to_string()),
@@ -284,9 +297,8 @@ async fn ask(ctx: Ctx, a: AskArgs) -> anyhow::Result<()> {
     // costs no round trip and reads as this verb's refusal, not core's.
     shape_of(&a)?;
     run_identity(a.run.as_deref())?;
-    issue_id_of(a.issue.as_deref())?;
     let cfg = Config::load()?;
-    let project_id = project_id_of(&cfg, &a.project)?;
+    let project_id = flags_read(&cfg, &a)?;
     let client = client_for(&ctx, &cfg)?;
     let id = uuid::Uuid::new_v4().to_string();
     let run_id = run_identity(a.run.as_deref())?;
@@ -554,6 +566,19 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(none.contains("bound no project"), "{none}");
+    }
+
+    #[test]
+    fn a_wrong_project_and_a_wrong_issue_are_refused_together() {
+        let mut a = args();
+        a.project = "typo-dev".into();
+        a.issue = Some("ISS-12".into());
+        let err = flags_read(&Config::default(), &a).unwrap_err().to_string();
+        assert!(
+            err.contains("`--project typo-dev` is neither a slug"),
+            "{err}"
+        );
+        assert!(err.contains("`--issue ISS-12` is not an issue id"), "{err}");
     }
 
     #[test]

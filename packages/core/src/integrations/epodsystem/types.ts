@@ -24,9 +24,6 @@ export interface EpodsystemConfig extends Record<string, unknown> {
 export interface EpodsystemSecrets extends Record<string, unknown> {
   /** Epodsystem API key (`crmk_...`). Bearer for both the MCP server and the GraphQL `apiKeyContext` call. */
   apiKey: string;
-  previousApiKey?: string;
-  /** ISO-8601 timestamp; if past, `previousApiKey` is ignored. */
-  previousTokenExpiresAt?: string;
 }
 
 export interface ApiKeyStore {

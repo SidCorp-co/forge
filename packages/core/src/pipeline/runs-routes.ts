@@ -13,6 +13,7 @@ import { z } from 'zod';
 import { answer } from '../api-reference/declare/describe.js';
 import { declaresInput, zValidator } from '../api-reference/declare/validator.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { schemaRefused } from '../lib/zod-sentences.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { readPipelineRun } from './runs.js';
 import {
@@ -113,8 +114,9 @@ pipelineRunRoutes.post(
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
     await loadRunWithAccess(id, userId);
-    const body = cancelBodySchema.safeParse(await c.req.json().catch(() => ({})));
-    if (!body.success) throw badRequest(z.flattenError(body.error));
+    const raw = await c.req.json().catch(() => ({}));
+    const body = cancelBodySchema.safeParse(raw);
+    if (!body.success) throw schemaRefused(body.error, cancelBodySchema, raw);
     try {
       const result = await cancelPipelineRun(id, {
         actorUserId: userId,

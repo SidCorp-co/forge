@@ -88,7 +88,7 @@ async fn post_batch(client: &CoreClient, job_id: &str, events: &[JobEventInput])
             }
             Err(e) => {
                 if attempt == MAX_ATTEMPTS {
-                    return Err(Error::Other(format!("post_job_events transport: {e}")));
+                    return Err(super::status::not_reached("post_job_events", &e));
                 }
             }
         }

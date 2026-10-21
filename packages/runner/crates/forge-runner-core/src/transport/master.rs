@@ -36,7 +36,7 @@ pub async fn register_within(
     let resp = post(client, "master-session", &url, body, deadline).await?;
     resp.json()
         .await
-        .map_err(|e| Error::Other(format!("master-session decode: {e}")))
+        .map_err(|e| crate::transport::status::not_reached("master-session decode", &e))
 }
 
 pub async fn close(client: &CoreClient, session_id: &str, reason: &str) -> Result<()> {

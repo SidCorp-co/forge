@@ -16,9 +16,6 @@ export interface PostmanConfig extends Record<string, unknown> {
 export interface PostmanSecrets extends Record<string, unknown> {
   /** Postman API key (PMAK-...). Bearer for MCP, X-Api-Key for the REST /me call. */
   apiKey: string;
-  previousApiKey?: string;
-  /** ISO-8601 timestamp; if past, `previousApiKey` is ignored. */
-  previousTokenExpiresAt?: string;
 }
 
 /** Shape of a successful Postman `GET /me` response (the fields we surface). */

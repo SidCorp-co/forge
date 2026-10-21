@@ -148,6 +148,7 @@ export class CoolifyClient {
   private readonly previousApiToken: string | undefined;
   private readonly timeoutMs: number;
   private readonly fetchImpl: typeof fetch;
+  private answeredOnPrevious = false;
 
   constructor(opts: CoolifyClientOptions) {
     this.baseUrl = opts.baseUrl;
@@ -159,6 +160,10 @@ export class CoolifyClient {
 
   get address(): string {
     return hostOf(this.baseUrl);
+  }
+
+  get usedPreviousToken(): boolean {
+    return this.answeredOnPrevious;
   }
 
   private async request<T>(method: 'GET' | 'POST', path: string, body?: unknown): Promise<T> {
@@ -199,12 +204,7 @@ export class CoolifyClient {
         const res = await this.fetchImpl(url, init);
         clearTimeout(timer);
         if (res.status === 401 && this.previousApiToken && token === this.apiToken) {
-          lastErr = new CoolifyApiError(
-            401,
-            await safeText(res),
-            'unauthorized (will retry with previous token)',
-            route,
-          );
+          lastErr = new CoolifyApiError(401, await safeText(res), this.answered(401, route), route);
           continue;
         }
         if (!res.ok) {
@@ -216,12 +216,12 @@ export class CoolifyClient {
             res.status !== 401 && res.status !== 403 && res.status < 500,
           );
         }
-        if (res.status === 204) return { status: res.status, data: undefined as unknown as T };
-        return { status: res.status, data: (await res.json()) as T };
+        const data = res.status === 204 ? undefined : await res.json();
+        if (token !== this.apiToken) this.answeredOnPrevious = true;
+        return { status: res.status, data: data as T };
       } catch (err) {
         clearTimeout(timer);
-        if (err instanceof CoolifyApiError && err.status !== 401) throw err;
-        lastErr = err as Error;
+        throw token === this.apiToken ? err : (lastErr ?? err);
       }
     }
     throw lastErr ?? new Error('Coolify request failed');

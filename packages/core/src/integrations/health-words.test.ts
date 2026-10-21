@@ -23,6 +23,20 @@ describe('healthAnswer', () => {
     expect(answered.status).toBe('needs_reauth');
   });
 
+  // ISS-1421 r20 — a new key refused while the previous one works is said once, as the adapter
+  // worded it, never behind "refused the stored credential", which would name the wrong key.
+  it("says a refused new key in the adapter's own sentence, with no lead before it", () => {
+    const answered = healthAnswer('postman', {
+      status: 'needs_reauth',
+      message:
+        'Postman refused the new key. Forge is still using the previous key until 22 October 2026, 14:53 UTC.',
+      diagnostics: { newKeyRefused: true, previousKeyUntil: '2026-10-22T14:53:00.000Z' },
+    });
+    expect(answered.message).toBe(
+      'Postman refused the new key. Forge is still using the previous key until 22 October 2026, 14:53 UTC.',
+    );
+  });
+
   // ISS-1421 r18 — a 401 from a server that is not Coolify read "Coolify refused the stored credential".
   it('leads with no provider claim where the adapter says what the server at the address answered', () => {
     const answered = healthAnswer('postman', {

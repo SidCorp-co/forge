@@ -9,7 +9,7 @@
  */
 
 import { logger } from '../../logger.js';
-import { isPreviousCredentialValid } from '../rotation.js';
+import { isPreviousCredentialValid, newKeyRefused } from '../rotation.js';
 import { findConnectionById, updateConnection } from '../store.js';
 import {
   declareIntegration,
@@ -67,13 +67,15 @@ async function mintForHealthcheck(
       typeof secrets.previousServiceAccountJson === 'string' &&
       isPreviousCredentialValid(secrets);
     if (!recoverable) throw err;
-    const { token } = await googleAccessToken({
+    // The new key's refusal is the answer wherever the previous key does not sign in either.
+    const previous = await googleAccessToken({
       connectionId,
       serviceAccountJson: secrets.previousServiceAccountJson as string,
       scope: SHEETS_READONLY_SCOPE,
       forceMint: true,
-    });
-    return { token, usedPrevious: true };
+    }).catch(() => null);
+    if (!previous) throw err;
+    return { token: previous.token, usedPrevious: true };
   }
 }
 
@@ -132,6 +134,12 @@ const googleAdapterMethods: IntegrationAdapterMethods<GoogleConfig, GoogleSecret
       );
       return failHealth(ctx.connectionId, 'error', message, thrownDiagnostics(err));
     }
+    // Test connection judges the key last saved: a sign-in only the previous key made is its
+    // refusal, saying until when Forge still signs in with the previous one (ISS-1421 r20).
+    if (mint.usedPrevious) {
+      const refused = newKeyRefused('Google', ctx.secrets);
+      return failHealth(ctx.connectionId, refused.status, refused.message, refused.diagnostics);
+    }
 
     const identity = identityFrom(serviceAccountJson);
     const spreadsheetId = ctx.config?.defaultSpreadsheetId;
@@ -144,7 +152,7 @@ const googleAdapterMethods: IntegrationAdapterMethods<GoogleConfig, GoogleSecret
       return {
         status: 'degraded',
         message: `Google accepted ${identity.clientEmail}, but this project declares no default spreadsheet, so nothing was read. Set one on the binding to prove the account can reach it.`,
-        diagnostics: { ...identity, usedPreviousCredential: mint.usedPrevious },
+        diagnostics: identity,
       };
     }
 
@@ -152,9 +160,7 @@ const googleAdapterMethods: IntegrationAdapterMethods<GoogleConfig, GoogleSecret
       const sheet = await getSpreadsheet(
         {
           connectionId: ctx.connectionId,
-          serviceAccountJson: mint.usedPrevious
-            ? (ctx.secrets.previousServiceAccountJson as string)
-            : serviceAccountJson,
+          serviceAccountJson,
         },
         spreadsheetId,
       );
@@ -171,7 +177,6 @@ const googleAdapterMethods: IntegrationAdapterMethods<GoogleConfig, GoogleSecret
           spreadsheetId,
           title: sheet.title,
           sheetTitles: sheet.sheetTitles,
-          usedPreviousCredential: mint.usedPrevious,
         },
       };
     } catch (err) {

@@ -133,3 +133,113 @@ export function fieldsNamedAt(schema: ZodType, path: readonly PropertyKey[]): st
   });
   return [...new Set(names)];
 }
+
+/** A field inside a body object that the object does not take: where the object sits, and its keys. */
+export type StrayAt = { path: PropertyKey[]; keys: string[] };
+
+/** A node with its wrappers and any `z.lazy` taken off. */
+function resolved(schema: ZodType): ZodType {
+  let at = unwrap(schema);
+  for (;;) {
+    const def = defOf(at) as Def & { getter?: () => ZodType };
+    if (def.type !== 'lazy' || !def.getter) return at;
+    at = unwrap(def.getter());
+  }
+}
+
+/** The kinds of option that can take a list: a list itself, anything, or a choice among them. */
+const LIST_TAKERS = new Set(['array', 'tuple', 'unknown', 'any', 'union', 'intersection']);
+
+/** What reads a field that a branch takes whatever it holds: it names no stray inside it. */
+const ANYTHING = { _zod: { def: { type: 'unknown' } } } as unknown as ZodType;
+
+function fieldSchemas(schema: ZodType, body: Record<string, unknown>, key: string): ZodType[] {
+  const def = defOf(resolved(schema)) as Def & { valueType?: ZodType };
+  if (def.type === 'object') {
+    const field =
+      (def.shape?.[key] as ZodType | undefined) ?? (takesAny(def) ? def.catchall : undefined);
+    return field ? [field] : [];
+  }
+  if (def.type === 'record' && def.valueType) return [def.valueType];
+  if (def.type === 'unknown' || def.type === 'any') return [ANYTHING];
+  let parts: ZodType[] = [];
+  if (def.type === 'intersection' && def.left && def.right) parts = [def.left, def.right];
+  else if (def.type === 'union' && def.options) {
+    const by = def.discriminator;
+    parts = by ? def.options.filter((o) => optionTakes(o, by, body[by])) : def.options;
+  }
+  return parts.flatMap((p) => fieldSchemas(p, body, key));
+}
+
+/** The strays every reading of one field agrees on: a key any branch takes is not refused. */
+function agreed(readings: StrayAt[][]): StrayAt[] {
+  const [first, ...rest] = readings;
+  const at = (s: StrayAt) => s.path.map(String).join('.');
+  return (first ?? []).flatMap((s) => {
+    const keys = s.keys.filter((k) =>
+      rest.every((r) => r.some((o) => at(o) === at(s) && o.keys.includes(k))),
+    );
+    return keys.length > 0 ? [{ path: s.path, keys }] : [];
+  });
+}
+
+/** The strays inside a value its schema reads, at `path`. */
+function straysIn(schema: ZodType, value: unknown, path: PropertyKey[]): StrayAt[] {
+  const node = resolved(schema);
+  const def = defOf(node) as Def & {
+    element?: ZodType;
+    items?: ZodType[];
+    rest?: ZodType | null;
+    valueType?: ZodType;
+  };
+  if (Array.isArray(value)) {
+    if (def.type === 'union' && def.options) {
+      // An option taking anything takes the list as sent; one taking no list cannot.
+      const takes = def.options.filter((o) => LIST_TAKERS.has(defOf(resolved(o)).type));
+      return agreed(takes.map((o) => straysIn(o, value, path)));
+    }
+    if (def.type === 'intersection' && def.left && def.right)
+      return agreed([def.left, def.right].map((side) => straysIn(side, value, path)));
+    const at = (i: number) =>
+      def.type === 'array'
+        ? def.element
+        : def.type === 'tuple'
+          ? (def.items?.[i] ?? def.rest)
+          : null;
+    return value.flatMap((v, i) => {
+      const entry = at(i);
+      return entry ? straysIn(entry, v, [...path, i]) : [];
+    });
+  }
+  if (value === null || typeof value !== 'object') return [];
+  const valueType = def.type === 'record' ? def.valueType : undefined;
+  if (valueType)
+    return Object.entries(value).flatMap(([k, v]) => straysIn(valueType, v, [...path, k]));
+  // An object taking any field still holds closed objects inside it.
+  const keys =
+    fieldsPolicy(node) !== 'closed' || refusesItself(node, value) ? [] : unknownFields(node, value);
+  return [...(keys.length > 0 ? [{ path, keys }] : []), ...nestedStrays(node, value, path)];
+}
+
+/**
+ * The fields inside a body's objects that those objects do not take, at any depth below the top
+ * (ISS-1421 r20, judge-82's `provenance.colour`): a nested `z.object` drops one as silently as the
+ * body's own does. An object that takes any field, or a record, holds none.
+ */
+export function nestedStrays(schema: ZodType, body: unknown, at: PropertyKey[] = []): StrayAt[] {
+  if (body === null || typeof body !== 'object' || Array.isArray(body)) return [];
+  const record = body as Record<string, unknown>;
+  return Object.keys(record).flatMap((key) => {
+    const readings = fieldSchemas(schema, record, key);
+    return agreed(readings.map((child) => straysIn(child, record[key], [...at, key])));
+  });
+}
+
+/**
+ * Whether a body schema is a union of several options without a discriminator. Zod returns the option
+ * that parsed and drops every issue raised before it, so a stray refused ahead of it is lost.
+ */
+export function dropsEarlierIssues(schema: ZodType): boolean {
+  const def = defOf(resolved(schema));
+  return def.type === 'union' && !def.discriminator && (def.options?.length ?? 0) > 1;
+}

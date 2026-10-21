@@ -48,10 +48,13 @@ const unreachable =
 const unmanageable =
   'the caller can see the connection but is not its owner (or an org owner or admin where an org owns it)';
 
+/** `orgId` narrows the list to the connections that organization owns (ISS-1421 r20). */
+export const listConnectionsQuerySchema = z.object({ orgId: z.uuid().optional() }).strict();
+
 export const listConnections = describeOperation({
   summary: 'The credentials the caller can reach, each with where it is used',
   description:
-    'A connection is visible to its owner, to the members of the org that owns it and to an admin of a project it is bound to. `access.canManage` says which of them may change it.',
+    'A connection is visible to its owner, to the members of the org that owns it and to an admin of a project it is bound to. `access.canManage` says which of them may change it. `orgId` lists only the connections that organization owns.',
   responses: { 200: json(directorySchema) },
 });
 
@@ -131,6 +134,10 @@ export const changeConnection = onConnection(
         CONNECTION_NOT_REACHABLE: unreachable,
         NOT_FOUND: 'the connection was removed while the change was made',
       }),
+      409: fail(
+        'CONNECTION_HAS_NO_KEY',
+        'the connection was deleted and holds no key, so it is turned on only with a new key',
+      ),
       503: vaultMissing,
     },
   }),
@@ -138,7 +145,8 @@ export const changeConnection = onConnection(
 
 export const removeConnection = onConnection(
   describeOperation({
-    summary: 'Remove a credential: it is switched off and its bindings stop resolving',
+    summary:
+      'Remove a credential: every key stored on it is wiped, it is switched off and its bindings stop resolving',
     responses: {
       200: json(okSchema),
       403: fail('CONNECTION_NOT_MANAGEABLE', unmanageable),

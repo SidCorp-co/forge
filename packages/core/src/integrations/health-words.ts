@@ -37,6 +37,8 @@ export function healthAnswer(provider: string, result: HealthCheckResult): Healt
   if (result.status === 'ok') message = asSentence(said) || `${label} answered the check.`;
   else if (isUnreachedReason(diagnostics.unreached))
     message = unreachedWords(label, diagnostics.unreached);
+  // The adapter worded which key was refused and until when the previous one runs (ISS-1421 r20).
+  else if (diagnostics.newKeyRefused === true) message = asSentence(said);
   else if (diagnostics.thrown === true)
     message = `${lead[result.status]} The check failed, and what failed is kept in the diagnostics.`;
   else message = [lead[result.status], asSentence(said)].filter(Boolean).join(' ');

@@ -5,6 +5,7 @@
 
 import { z } from 'zod';
 import { utf16String } from '../lib/utf16-string.js';
+import { issueSentences } from '../lib/zod-sentences.js';
 import { logger } from '../logger.js';
 
 export const gateVerdicts = ['clear', 'marked', 'failing_open'] as const;
@@ -71,9 +72,7 @@ export function readHeartbeatGate(gate: unknown): {
   if (gate === undefined) return {};
   const parsed = gateReportSchema.safeParse(gate);
   if (parsed.success) return { report: parsed.data };
-  const first = parsed.error.issues[0];
-  const at = first?.path.length ? `gate.${first.path.join('.')}` : 'gate';
-  return { refused: `${at}: ${first?.message ?? 'not a gate condition core can read'}` };
+  return { refused: issueSentences(parsed.error.issues, ['gate']) };
 }
 
 /**

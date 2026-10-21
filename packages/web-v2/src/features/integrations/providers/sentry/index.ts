@@ -7,7 +7,8 @@ export const sentry: ProviderModule = {
   icon: "shield",
   secretField: "authToken",
   secretPlaceholder: "sntryu_…",
-  previousKeyNote: null,
+  previousKeyNote:
+    "Forge keeps the previous key for 24 hours and uses it for its own calls wherever Sentry refuses the new one.",
   drillable: true,
   agentPathKind: "direct-mcp",
   mcpServerName: "sentry",

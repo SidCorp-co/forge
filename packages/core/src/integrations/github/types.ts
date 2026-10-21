@@ -10,8 +10,6 @@ export interface GitHubConfig extends Record<string, unknown> {
 export interface GitHubSecrets extends Record<string, unknown> {
   appId?: string;
   privateKey?: string;
-  previousPrivateKey?: string;
-  previousTokenExpiresAt?: string;
   /** The App's own webhook secret, as returned by the manifest conversion. */
   webhookSecret?: string;
 }

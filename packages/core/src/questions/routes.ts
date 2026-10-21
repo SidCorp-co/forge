@@ -18,6 +18,7 @@ import {
   questionBlockerKinds,
   questionStatuses,
 } from '../db/schema-questions.js';
+import { schemaRefused } from '../lib/zod-sentences.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import {
   answerAs,
@@ -188,7 +189,8 @@ questionRoutes.get(
         limit: query.limit,
         cursor: query.cursor,
       });
-      if (!page.success) throw badRequest(z.prettifyError(page.error));
+      if (!page.success)
+        throw schemaRefused(page.error, pageSchema, { limit: query.limit, cursor: query.cursor });
       try {
         const open = await projectQuestionsFor(
           projectId,
@@ -214,7 +216,7 @@ questionRoutes.get(
 questionRoutes.post('/', askQuestionRoute, declaresInput('json', askSchema), async (c) => {
   const body = await c.req.json().catch(() => null);
   const parsed = askSchema.safeParse(body);
-  if (!parsed.success) throw badRequest(z.prettifyError(parsed.error));
+  if (!parsed.success) throw schemaRefused(parsed.error, askSchema, body);
   const { parkDeadlineAt, blockerKind, options, recommendedOptionId, ...rest } = parsed.data;
   try {
     const asked = await askAs({

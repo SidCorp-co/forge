@@ -1,9 +1,9 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { z } from 'zod';
 import { answer } from '../api-reference/declare/describe.js';
 import { declaresInput } from '../api-reference/declare/validator.js';
 import { loadProjectAccess } from '../lib/authz.js';
+import { schemaRefused } from '../lib/zod-sentences.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { assertPlatformAdmin } from '../middleware/require-admin.js';
 import { checkSkillActivityChainIntegrity } from './activity-chain-integrity.js';
@@ -37,14 +37,15 @@ skillActivityRoutes.get(
   readSkillActivity,
   declaresInput('query', activityQuerySchema),
   async (c) => {
-    const parsed = activityQuerySchema.safeParse({
+    const sent = {
       projectId: c.req.query('projectId'),
       skillId: c.req.query('skillId'),
       deviceId: c.req.query('deviceId'),
       packetId: c.req.query('packetId'),
       limit: c.req.query('limit'),
-    });
-    if (!parsed.success) throw badRequest(z.flattenError(parsed.error));
+    };
+    const parsed = activityQuerySchema.safeParse(sent);
+    if (!parsed.success) throw schemaRefused(parsed.error, activityQuerySchema, sent);
     const { projectId, skillId, deviceId, packetId, limit } = parsed.data;
 
     if (packetId) {

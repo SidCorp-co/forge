@@ -8,6 +8,7 @@ import { eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
+import { issueSentences } from '../lib/zod-sentences.js';
 import {
   credentialFaults,
   type EnvironmentsConfig,
@@ -89,7 +90,7 @@ export async function updateEnvironments(
       throw new EnvironmentsError('ENVIRONMENTS_INVALID', 'the merged environments are not valid', {
         conflicts: parsed.error.issues.map((i) => ({
           path: i.path.join('.'),
-          message: i.message,
+          message: issueSentences([i]),
         })),
       });
     }
