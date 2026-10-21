@@ -137,6 +137,9 @@ describe('a number field sent no number', () => {
     expect(said({ inputTokens: 1, apiKey: 'sk-live-123' })).toBe(
       'The field apiKey takes a number, not a string.',
     );
+    expect(said({ inputTokens: 1, apiKey: true })).toBe(
+      'The field apiKey takes a number, not a boolean.',
+    );
   });
 
   it('says a boolean as itself', () => {

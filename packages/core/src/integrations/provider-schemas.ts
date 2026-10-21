@@ -98,15 +98,21 @@ export function providerHalfRefused(
   sent: unknown,
 ): HTTPException {
   const issues = issuesUnder(schema, error.issues, key);
-  const { sentences } = schemaRefusalWords(issues, {
+  const { sentences, accepted } = schemaRefusalWords(issues, {
     valuesAre: 'listed in details.accepted',
     input: { [key]: sent },
   });
+  const listed = accepted.length > 0;
   return new HTTPException(400, {
     message: sentences.join(' '),
     cause: {
       code: 'BAD_REQUEST',
-      details: { issues: issues.map(({ path, message }) => ({ path, message })) },
+      details: {
+        issues: issues.map(({ path, message }) => ({ path, message })),
+        ...(listed
+          ? { accepted: Object.fromEntries(accepted.map((a) => [a.field, a.values])) }
+          : {}),
+      },
     },
   });
 }

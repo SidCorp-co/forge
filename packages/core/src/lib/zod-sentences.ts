@@ -89,8 +89,9 @@ const QUOTED_MOST = 40;
  * `QUOTED_MOST` characters, and nothing at all for a field that holds a secret.
  */
 export function quotedSent(field: string, sent: unknown): string | null {
+  if (SECRET_FIELD.test(field)) return null;
   if (typeof sent === 'boolean') return String(sent);
-  if (typeof sent !== 'string' || SECRET_FIELD.test(field)) return null;
+  if (typeof sent !== 'string') return null;
   return `"${sent.length > QUOTED_MOST ? `${sent.slice(0, QUOTED_MOST)}…` : sent}"`;
 }
 

@@ -87,32 +87,42 @@ describe('a provider config field the provider does not take, at the REST doors'
     expect(await bindings()).toEqual([]);
   });
 
-  it('is refused on a binding PATCH and on a connection PATCH, leaving the stored config as it was', async () => {
+  it('is refused on a binding PATCH and on a connection PATCH, writing no part of either', async () => {
     const made = await create({});
     expect(made.status).toBe(201);
     const [binding] = await bindings();
     if (!binding) throw new Error('the binding was not created');
+    const stored = async () =>
+      (
+        await harness.db.execute<{ binding: unknown; connection: unknown; connection_id: string }>(
+          sql`SELECT b.config AS binding, c.config AS connection, b.connection_id
+                FROM integration_bindings b JOIN integration_connections c ON c.id = b.connection_id
+               WHERE b.id = ${binding.id}`,
+        )
+      )[0];
+    const before = await stored();
+    if (!before) throw new Error('the binding has no stored config');
 
+    // Each refused PATCH carries a well-formed change beside its stray field: a door that wrote the
+    // part it could read before refusing the rest would change what is stored.
     const patch = await send('PATCH', `/api/projects/${projectId}/integrations/${binding.id}`, {
-      config: { targets: [{ ...target, healthURL: 'https://h.example.com/health' }] },
+      config: {
+        targets: [
+          { label: 'api', resourceUuid: 'app-uuid-2', healthURL: 'https://h.example.com/h' },
+        ],
+      },
     });
     expect(patch.status).toBe(400);
     expect(patch.body.message).toBe(
       'The field config.targets.0.healthURL is not one this call takes. This call takes config.targets.0.healthUrl, which may be what config.targets.0.healthURL meant.',
     );
 
-    const [row] = await harness.db.execute<{ config: { targets?: unknown[] } }>(
-      sql`SELECT config FROM integration_bindings WHERE id = ${binding.id}`,
-    );
-    expect(JSON.stringify(row?.config)).not.toMatch(/health/i);
-
-    const [conn] = await harness.db.execute<{ connection_id: string }>(
-      sql`SELECT connection_id FROM integration_bindings WHERE id = ${binding.id}`,
-    );
-    const connPatch = await send('PATCH', `/api/integration-connections/${conn?.connection_id}`, {
-      config: { colour: 'red' },
+    const connPatch = await send('PATCH', `/api/integration-connections/${before.connection_id}`, {
+      config: { baseUrl: 'https://other.example.com', colour: 'red' },
     });
     expect(connPatch.status).toBe(400);
     expect(connPatch.body.message).toBe('The field config.colour is not one this call takes.');
+
+    expect(await stored()).toEqual(before);
   });
 });

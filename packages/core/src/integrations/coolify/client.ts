@@ -134,6 +134,14 @@ function joinUrl(base: string, path: string): string {
   return `${b}${p}`;
 }
 
+/** Coolify's rollback answer: `images` a list of objects where sent, else `current` alone. */
+function isRollbackImageList(data: unknown): data is CoolifyRollbackImagesResponse {
+  if (data === null || typeof data !== 'object' || Array.isArray(data)) return false;
+  const { images } = data as { images?: unknown };
+  if (images === undefined) return 'current' in data;
+  return Array.isArray(images) && images.every((i) => i !== null && typeof i === 'object');
+}
+
 export class CoolifyClient {
   private readonly baseUrl: string;
   private readonly apiToken: string;
@@ -296,11 +304,9 @@ export class CoolifyClient {
   async listRollbackImages(resourceUuid: string): Promise<CoolifyRollbackImagesResponse> {
     const path = `/api/v1/applications/${encodeURIComponent(resourceUuid)}/rollback-images`;
     const { status, data } = await this.send<unknown>('GET', path);
-    const images = (data as { images?: unknown } | null)?.images;
-    // Coolify's answer carries `images` or `current`; an object with neither is some other server's.
-    if (!Array.isArray(images) && !(data !== null && typeof data === 'object' && 'current' in data))
+    if (!isRollbackImageList(data))
       throw this.notCoolify(status, `GET ${path}`, 'a rollback image list');
-    return data as CoolifyRollbackImagesResponse;
+    return data;
   }
 
   /** A 2xx whose body is not the shape Coolify sends: the address may not be Coolify's. */

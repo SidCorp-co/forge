@@ -445,6 +445,18 @@ describe('a server at the saved address that may not be Coolify', () => {
     });
   });
 
+  it('refuses images that are no list of images even beside current, and takes current alone', async () => {
+    const answering = (body: unknown) =>
+      at(makeFetch(() => new Response(JSON.stringify(body), { status: 200 })))
+        .listRollbackImages('app-1')
+        .catch((e: unknown) => e);
+    expect(await answering({ current: null, images: 'x' })).toMatchObject({ addressSuspect: true });
+    expect(await answering({ current: 'sha-a', images: ['sha-a'] })).toMatchObject({
+      addressSuspect: true,
+    });
+    expect(await answering({ current: null })).toEqual({ current: null });
+  });
+
   it('says a 401 of the server at the address, and what to do either way', async () => {
     const fetchImpl = makeFetch(() => new Response('{}', { status: 401 }));
     const refused = (await at(fetchImpl)

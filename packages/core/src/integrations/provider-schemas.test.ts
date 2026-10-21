@@ -113,6 +113,18 @@ describe('a provider config field the provider does not take', () => {
     }
   });
 
+  it('lists the values an enum takes where its refusal says they are listed', () => {
+    const schema = configSchemaForProvider('postman');
+    const sent = { region: 'asia' };
+    const r = schema.safeParse(sent);
+    if (r.success) throw new Error('expected the region to be refused');
+    const refused = providerHalfRefused(r.error, schema, 'config', sent);
+    expect(refused.message).toContain('details.accepted');
+    expect((refused.cause as { details: { accepted?: unknown } }).details.accepted).toEqual({
+      'config.region': ['us', 'eu'],
+    });
+  });
+
   it('still takes every field the provider names', () => {
     const r = configSchemaForProvider('coolify').safeParse({
       targets: [{ ...target, healthUrl: 'https://x.example.com/health' }],
