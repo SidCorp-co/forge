@@ -198,8 +198,8 @@ export function ConversationChat({
     sending.current = true;
     setOutbox((o) => o.map((m) => (m.id === next.id ? { ...m, state: "sending" } : m)));
     void (async () => {
+      let id = resolvedId;
       try {
-        let id = resolvedId;
         if (!id) {
           id = (await open.mutateAsync({ projectId })).id;
           setActiveId(id);
@@ -222,7 +222,7 @@ export function ConversationChat({
         stored.current.delete(next.id);
         setOutbox((o) => o.filter((m) => m.id !== next.id));
       } catch (err) {
-        const roomGone = isRoomGone(err) && resolvedId !== undefined;
+        const roomGone = isRoomGone(err) && id !== undefined;
         setOutbox((o) =>
           o.map((m) =>
             m.id === next.id
@@ -234,7 +234,7 @@ export function ConversationChat({
               : m,
           ),
         );
-        if (roomGone && resolvedId) roomWentAway(resolvedId, true);
+        if (roomGone && id) roomWentAway(id, true);
       } finally {
         sending.current = false;
       }

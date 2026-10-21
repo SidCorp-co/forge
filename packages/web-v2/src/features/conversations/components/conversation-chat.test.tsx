@@ -26,6 +26,7 @@ interface SendArgs {
 const send = vi.fn(async (_args: SendArgs) => undefined);
 const uploadOne = vi.fn(async ({ file }: { file: File }) => ({ id: `att-${file.name}` }));
 const stop = vi.fn();
+const openRoom = vi.fn(async (_args: { projectId: string }) => ({ id: "c9" }));
 let room: ConversationDetail | undefined;
 let progress: { entry: string; replaced?: boolean } | null = null;
 let sendPending = false;
@@ -76,7 +77,7 @@ vi.mock("../hooks", () => ({
   useConversationProgress: () => progress,
   useWithdrawnDrafts: () => ({}),
   useDraftAgentMode: () => ({ data: { available: true, reason: null } }),
-  useOpenConversation: () => ({ isPending: false, mutateAsync: vi.fn() }),
+  useOpenConversation: () => ({ isPending: false, mutateAsync: openRoom }),
   useSendMessage: () => ({ isPending: sendPending, mutateAsync: send }),
   useUploadAttachment: () => ({ mutateAsync: uploadOne }),
   useStopConversation: () => ({ mutate: stop, isPending: false }),
@@ -92,6 +93,7 @@ beforeEach(() => {
   send.mockClear();
   uploadOne.mockClear();
   stop.mockClear();
+  openRoom.mockClear();
   room = detail();
   progress = null;
   sendPending = false;
@@ -247,6 +249,25 @@ describe("a room deleted while it is open", () => {
     expect(screen.queryByText("Try again")).not.toBeInTheDocument();
     expect(screen.queryByText(/Conversation not found/)).not.toBeInTheDocument();
     expect(send).toHaveBeenCalledTimes(1);
+  });
+
+  it("hands back the room its own first send opened, when that room is deleted before the message lands", async () => {
+    send.mockRejectedValueOnce(roomGone());
+    const backToList = vi.fn();
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ConversationChat projectId="p1" onRoomGone={backToList} />
+      </QueryClientProvider>,
+    );
+    fireEvent.change(screen.getByLabelText("Message"), { target: { value: "are we still on?" } });
+    fireEvent.click(screen.getByLabelText("Send message"));
+
+    await waitFor(() => expect(backToList).toHaveBeenCalledWith("c9"));
+    expect(openRoom).toHaveBeenCalledTimes(1);
+    expect(toast).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "This room was deleted", description: expect.stringMatching(/not sent/) }),
+    );
+    expect(screen.queryByText("Try again")).not.toBeInTheDocument();
   });
 
   it("hands back to the list when reading it again finds it gone", async () => {
