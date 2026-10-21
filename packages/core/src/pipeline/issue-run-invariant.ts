@@ -11,7 +11,7 @@ import { resolveNotifications } from '../notifications/auto-resolve.js';
 import { emitNotification } from '../notifications/emit.js';
 import { sweepGroup } from '../notifications/explanations.js';
 import { projectAdminUserIds } from '../notifications/project-admins.js';
-import { holdsOpenHumanQuestion } from '../questions/issue-coupling.js';
+import { answeredSince, holdsOpenHumanQuestion } from '../questions/issue-coupling.js';
 import {
   outrankedSql,
   retireOutrankedNotices,
@@ -54,7 +54,7 @@ const ORPHAN_KEY_SUFFIX = ':run-assertion-orphaned' satisfies StuckNoticeSuffix;
 
 /**
  * Resolve every named orphan whose cause has ended: the issue left the asserting statuses, its
- * project was archived, a person now owes it an answer, or a job, run or lease is behind it again. The detector's predicate without its grace, so a write
+ * project was archived, a person now owes it an answer or answered within the grace, or a job, run or lease is behind it again. The detector's predicate without its grace, so a write
  * that only moves the issue's clock ends nothing.
  */
 export async function resolveEndedOrphanAssertions(): Promise<number> {
@@ -74,6 +74,7 @@ export async function resolveEndedOrphanAssertions(): Promise<number> {
          -- An archived project raises no stuck-issue notice (archived-project-notices.ts).
          OR p.archived_at IS NOT NULL
          OR ${holdsOpenHumanQuestion(sql`i.id`)}
+         OR ${answeredSince(sql`i.id`, sql`now() - ${ORPHAN_ASSERTION_GRACE_MS} * interval '1 millisecond'`)}
          OR ${issueWorkInFlightSql({
            issueId: sql`i.id`,
            projectId: sql`i.project_id`,
@@ -159,6 +160,8 @@ async function orphanedAssertions(now: Date): Promise<OrphanRow[]> {
        AND NOT ${outrankedSql(sql`i.id`, ORPHAN_KEY_SUFFIX)}
        -- An issue whose question stands waits on a person, which is not "no run behind it" (ISS-1228).
        AND NOT ${holdsOpenHumanQuestion(sql`i.id`)}
+       -- Nor one a person answered within the grace: a master was woken to resume it (ISS-1228 r24).
+       AND NOT ${answeredSince(sql`i.id`, sql`${cutoff}::timestamptz`)}
   `)) as unknown as OrphanRow[];
 }
 

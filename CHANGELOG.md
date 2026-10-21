@@ -3194,6 +3194,10 @@
 
 ### Fixed
 
+- **A refusal shows the sentence Forge sent.** A read Forge refused said "You do not have access to this resource." or "Not found." over Forge's own words, such as "Not a project member."; it now shows Forge's sentence. (ISS-1228)
+- **An issue's failed session read sits on its own line under the header**, so the title keeps its width and the actions stay on one row on a phone. (ISS-1228)
+- **Answering a question keeps an in-progress issue in progress** while it is taken up again, instead of moving it back to Open, and no warning says nothing is working on it. (ISS-1228)
+- **An answered question leaves "Needs your attention"**: the step that stopped to ask is no longer listed as failed. (ISS-1228)
 - **A misspelt integration setting is refused, never dropped.** A Coolify target sent `healthURL` was saved without its health check; every integration now refuses a field it does not take and names the one you meant. (ISS-1421)
 - **A wrong value is quoted back.** A number sent as a word, in a query, a body or an agent tool, is refused showing it, never a secret; an empty number is refused, not read as 0. (ISS-1421)
 - **An address that is not Coolify is not called Coolify.** A list that is not a list, a refused token and an unreachable host are each said of the server at the saved address, with what to do. (ISS-1421)

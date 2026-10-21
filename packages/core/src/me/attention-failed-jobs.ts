@@ -20,6 +20,7 @@ import {
 import { alias } from 'drizzle-orm/pg-core';
 import { db } from '../db/client.js';
 import { issues, jobs, projects } from '../db/schema.js';
+import { agentQuestions } from '../db/schema-questions.js';
 import { issueArchiveSide } from '../issues/archive.js';
 import { ISSUE_RESOLVED_STATUSES, ISSUE_TERMINAL_STATUSES } from '../issues/status-sets.js';
 import { LIVE_JOB_STATUSES } from '../jobs/status-sets.js';
@@ -38,6 +39,27 @@ import {
 const retryJobs = alias(jobs, 'retry_jobs');
 const laterJob = alias(jobs, 'later_failed_job');
 const liveJob = alias(jobs, 'live_job_of_its_kind');
+const answeredAsk = alias(agentQuestions, 'answered_ask_of_job');
+
+/** A job that stopped on a question a person has since answered: the answer hands its issue back to
+ *  the masters, so the stop is no failure of anyone's (ISS-1228 round 24). */
+function stoppedOnAnsweredQuestion(job: typeof jobs | typeof laterJob): SQL {
+  return and(
+    sql`coalesce(${job.failureReason}, '') = 'stopped_on_question'`,
+    exists(
+      db
+        .select({ one: sql`1` })
+        .from(answeredAsk)
+        .where(
+          and(
+            eq(answeredAsk.agentSessionId, job.agentSessionId),
+            eq(answeredAsk.status, 'answered'),
+            sql`${answeredAsk.createdAt} >= ${job.createdAt}`,
+          ),
+        ),
+    ),
+  ) as SQL;
+}
 
 /**
  * A failed job of the caller's that nothing retried, from the last week: the part read off `jobs`.
@@ -49,6 +71,7 @@ export function failedJobOwnWhere(userId: string, job: typeof jobs | typeof late
     eq(job.createdBy, userId),
     eq(job.status, 'failed'),
     sql`${job.createdAt} >= now() - interval '7 days'`,
+    not(stoppedOnAnsweredQuestion(job)),
     notExists(db.select({ one: sql`1` }).from(retryJobs).where(eq(retryJobs.retryOf, job.id))),
     notExists(
       db

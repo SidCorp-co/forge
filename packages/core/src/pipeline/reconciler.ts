@@ -5,7 +5,11 @@ import type { IssueStatus } from '../db/schema.js';
 import { transitionIssueStatus } from '../issues/apply-transition.js';
 import { logger } from '../logger.js';
 import { isSentryEnabled, Sentry } from '../observability/sentry.js';
-import { holdsOpenHumanQuestion, personOwesAnAnswer } from '../questions/issue-coupling.js';
+import {
+  answeredSince,
+  holdsOpenHumanQuestion,
+  personOwesAnAnswer,
+} from '../questions/issue-coupling.js';
 import { wakeMastersForProject } from '../ws/master-wake.js';
 import {
   AUTONOMOUS_ENTRY_STATUS,
@@ -188,6 +192,8 @@ async function selectWedgeCandidates(after: string | null): Promise<WedgeCandida
       AND i.updated_at < now() - interval '${sql.raw(WEDGE_GRACE)}'
       AND lj.type = ${AUTONOMOUS_JOB_TYPE}
       AND NOT ${holdsOpenHumanQuestion(sql`i.id`)}
+      -- An answer a person gave within the grace resumes the issue where it stands (ISS-1228 r24).
+      AND NOT ${answeredSince(sql`i.id`, sql`now() - interval '${sql.raw(WEDGE_GRACE)}'`)}
       AND NOT EXISTS (
         SELECT 1 FROM jobs j2
         WHERE j2.issue_id = i.id
