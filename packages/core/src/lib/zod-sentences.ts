@@ -158,7 +158,7 @@ function editDistance(a: string, b: string): number {
 
 /**
  * "This call takes `documentId`, which may be what `id` meant." for each stray key: the fields near
- * it beside it, or, with none there, those near it one level down (`filters.issueId` for `issueid`).
+ * it beside it, or, with none there, those near it one level down (`filters.issue` for `issueid`).
  */
 function nearSentences(
   keys: readonly string[],
