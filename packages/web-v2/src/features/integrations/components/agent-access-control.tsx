@@ -93,7 +93,7 @@ export function mayWriteAgentAccess(
 /** Who the caller has to be, said in the same terms the server refuses in. */
 export function agentAccessDeniedReason(pathKind: AgentPathKind): string {
   return pathKind === "direct-mcp"
-    ? "Granting this sends the integration's credential to the runner, so only an organisation owner or admin can grant it."
+    ? "Granting this sends the integration's credential to the runner, so only an organization owner or admin can grant it."
     : "Only a project admin can change this.";
 }
 

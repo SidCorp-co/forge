@@ -2,7 +2,6 @@
 
 import type { ConnectionDirectoryItem } from "@forge/contracts";
 import { useProjects } from "@/features/projects/hooks";
-import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import { type QueryClient, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { integrationConnectionsApi, integrationsApi } from "./api";
@@ -14,6 +13,7 @@ import type {
   CreateIntegrationInput,
   UpdateIntegrationInput,
 } from "./types";
+import { failureToast } from "@/lib/api/failure-toast";
 
 /** Integration status cards for a project. Keyed `['integrations','status',id]`. */
 export function useIntegrationsStatus(projectId: string | undefined) {
@@ -107,9 +107,8 @@ export function useProbeRocketchatRooms(projectId: string | undefined) {
   });
 }
 
-/** Start the GitHub App manifest flow. Deliberately NOT invalidating anything
- *  on success: no connection exists until GitHub redirects back through the
- *  callback, so a refetch here would only re-read the same empty list. */
+/** Start the GitHub App manifest flow. It invalidates nothing: no connection exists until GitHub
+ *  redirects back through the callback, so a refetch would re-read the same empty list. */
 export function useGitHubConnect(projectId: string | undefined) {
   return useMutation({
     mutationFn: (params: { org?: string; environment?: string; orgId?: string }) =>
@@ -173,11 +172,7 @@ export function useCreateProviderIntegration(projectId: string | undefined) {
       toast({ title: "Integration saved", tone: "success" });
     },
     onError: (err) =>
-      toast({
-        title: "Couldn't save integration",
-        description: formatApiError(err),
-        tone: "error",
-      }),
+      toast(failureToast(err, "The integration was not saved")),
   });
 }
 
@@ -195,11 +190,7 @@ export function useUpdateProviderIntegration(projectId: string | undefined) {
       toast({ title: "Integration saved", tone: "success" });
     },
     onError: (err) =>
-      toast({
-        title: "Couldn't save integration",
-        description: formatApiError(err),
-        tone: "error",
-      }),
+      toast(failureToast(err, "The integration was not saved")),
   });
 }
 
@@ -214,11 +205,7 @@ export function useDeleteProviderIntegration(projectId: string | undefined) {
       toast({ title: "Integration removed", tone: "success" });
     },
     onError: (err) =>
-      toast({
-        title: "Couldn't remove integration",
-        description: formatApiError(err),
-        tone: "error",
-      }),
+      toast(failureToast(err, "The integration was not removed")),
   });
 }
 
@@ -240,11 +227,7 @@ export function useConfirmProdDeploy(projectId: string | undefined) {
       });
     },
     onError: (err) =>
-      toast({
-        title: "Couldn't confirm deploy",
-        description: formatApiError(err),
-        tone: "error",
-      }),
+      toast(failureToast(err, "The deploy was not confirmed")),
   });
 }
 
@@ -285,11 +268,7 @@ export function useRetryDelivery(
       toast({ title: "Retry queued", tone: "success" });
     },
     onError: (err) =>
-      toast({
-        title: "Couldn't retry delivery",
-        description: formatApiError(err),
-        tone: "error",
-      }),
+      toast(failureToast(err, "The delivery was not retried")),
   });
 }
 
@@ -337,13 +316,8 @@ export function useOrgConnectionLocked(
   return orgRole !== "owner" && orgRole !== "admin";
 }
 
-/**
- * Can the caller MANAGE (rename/key/config/remove) a connection at the workspace directory?
- * Read off the row: the server states it (`access.canManage`) because it is the one deciding, and
- * the old mirror of that rule assumed every user-owned row in the list was the caller's own, which
- * stopped being true once a connection is also listed to the admins of a project it is bound to
- * (ISS-1216). A row without the field is read as not manageable.
- */
+/** Whether the caller may manage a connection, read off the server's own `access.canManage`; a row
+ *  without the field is not manageable (ISS-1216). */
 export function useCanManageConnection(
   connection: Pick<ConnectionDirectoryItem, "access"> | null,
 ): boolean {
@@ -372,11 +346,7 @@ export function useUpdateConnection() {
       toast({ title: "Connection saved", tone: "success" });
     },
     onError: (err) =>
-      toast({
-        title: "Couldn't save connection",
-        description: formatApiError(err),
-        tone: "error",
-      }),
+      toast(failureToast(err, "The connection was not saved")),
   });
 }
 
@@ -399,11 +369,7 @@ export function useRemoveConnection() {
       toast({ title: "Connection removed", tone: "success" });
     },
     onError: (err) =>
-      toast({
-        title: "Couldn't remove connection",
-        description: formatApiError(err),
-        tone: "error",
-      }),
+      toast(failureToast(err, "The connection was not removed")),
   });
 }
 
@@ -452,10 +418,6 @@ export function useBindExistingConnection() {
       toast({ title: "Connection shared", tone: "success" });
     },
     onError: (err) =>
-      toast({
-        title: "Couldn't share connection",
-        description: formatApiError(err),
-        tone: "error",
-      }),
+      toast(failureToast(err, "The connection was not shared")),
   });
 }

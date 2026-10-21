@@ -31,13 +31,13 @@
 - **The Attention inbox no longer shows you issues from projects you were removed from.**
   The "Awaiting input" list picked an issue because you were its assignee, or because you filed it
   and nobody else owns it. That is a fair question to ask — is this mine to answer? — but it was the
-  only question asked, so leaving a project, or leaving the organisation that owns it, did not take
+  only question asked, so leaving a project, or leaving the organization that owns it, did not take
   its rows out of your inbox. You kept seeing the title, the status, how long the work had been
   waiting and what the wait was costing, for as long as your account existed. The list now also asks
   the question the rest of the product asks before showing you anything: do you hold a role on this
   project? Rows that fail it are gone rather than greyed out or blanked, because a placeholder still
   tells you the issue exists. Nobody who holds a role loses a row — read-only members keep theirs,
-  and so do organisation owners and admins who were never added to the project by name.
+  and so do organization owners and admins who were never added to the project by name.
 
 - **A question recorded against one project can no longer be read, counted, or acted on through an
   issue in another.** A question and the issue it hangs off named their projects separately, and
@@ -478,7 +478,7 @@
   it was pasted. Google Sheets is now an app you connect like any other: paste the service-account
   key file Google issued, share the spreadsheet with the address the key names, and the agents
   working that project can read it and write back to it. One account can belong to your
-  organisation and be used by every project in it, or belong to a single project, and either way
+  organization and be used by every project in it, or belong to a single project, and either way
   the key is entered once. Each project then names its own default spreadsheet, so projects sharing
   one account do not share one sheet.
   The key never leaves Forge. It is not put into a prompt, it is not written to the machine a job
@@ -495,7 +495,7 @@
 - **The workspace connections page is now one list per app, not a wall of equal cards.** Every
   credential used to be an identical card in a three-column grid, and the only way to find one was
   to already know what to type into the search box. That reads fine with one credential per app and
-  stops working the moment an organisation holds several of the same kind — a deploy token per
+  stops working the moment an organization holds several of the same kind — a deploy token per
   environment is already the normal case. The page now opens on the apps themselves, each one a
   line saying how many credentials sit under it, how many of those need attention and how many are
   switched off, so you can tell whether a shut section is worth opening without opening it. Open the
@@ -687,7 +687,7 @@
   Anyone can read it at `/api/guides/answering-as-the-assistant.md`, and the assistant itself can
   now fetch it mid-answer — guides were previously readable by every other kind of agent Forge runs
   and not by the one talking to you. It can only read them: a chat can list guides and open one,
-  and the two actions that would let it rewrite your organisation's own integration guides are
+  and the two actions that would let it rewrite your organization's own integration guides are
   refused at the door.
 
 - **Your conversations in Forge are conversations now, not sessions.** Opening a chat in the Forge
@@ -2438,7 +2438,7 @@
   `$FORGE_PAT` supplies it per-shell, and `doctor` says whether one is present. A token bound to a
   project reaches that project and answers 404 on every other, which is the same answer a project
   that does not exist gives, so a token cannot be used to find out which project ids are real. The
-  handful of routes that resolve no project at all — access tokens, organisations, admin, and the
+  handful of routes that resolve no project at all — access tokens, organizations, admin, and the
   personal inbox — refuse it outright rather than quietly serving the whole account, and a token
   minted read-only is refused on anything that writes. Failures are told twice, once for a person
   and once for a program: the HTTP outcome
@@ -2603,7 +2603,7 @@
   { "githubIntake": { "enabled": true } }
   ```
 
-  An organisation admin makes that request; `GET` the same path back and
+  An organization admin makes that request; `GET` the same path back and
   `pipelineConfig.githubIntake.enabled` reads `true`. Opening it admits new reports only; the edit
   and close copying is gone for every project and no setting restores it. Issues already copied are
   untouched.
@@ -3200,7 +3200,7 @@
 - **An open issue page shows an answer within seconds**, for whoever answered it and anyone else looking, instead of keeping "Needs an answer" for a minute. (ISS-1228)
 - **A run that stopped to ask reads "Stopped to ask" in the Runs section, never "Ended"**, and an answered question's line reads in a neutral tone. (ISS-1228)
 - **Runners too old to take work are told to update as many hosts as are online**: "that host" for one, "both hosts" for two. (ISS-1228)
-- **An organization whose agent still holds a device can now be deleted.** Runners, Organisation lists every device its agents hold, an admin revokes them there, and the refusal to delete names every such device. (ISS-1229)
+- **An organization whose agent still holds a device can now be deleted.** Runners, Organization lists every device its agents hold, an admin revokes them there, and the refusal to delete names every such device. (ISS-1229)
 - **You read as "You", not "Another member", in a room's people list, on the Activity tab and as an issue's creator.** Taking someone out of a room asks first, naming who; adding reads "Add to room". (ISS-1229)
 - **Clear beside your display name empties the field and no longer wipes your saved name**, and a typed name that differs from it counts as an unsaved change until you save or discard it. (ISS-1229)
 - **The Activity tab names a changed field in words**, and a merge reads "recorded the merge" rather than listing stored field names. (ISS-1229)
@@ -3208,6 +3208,15 @@
 - **You read as "You" on your own comments and messages, in the issue list's creator groups and filter, and "via you" on your agent's comments**; your own avatar shows your initials, never "AM". (ISS-1229)
 - **Each conversation under "Project deleted" names the project, when it was opened and its last message, and opens read-only** before you decide to delete it. One whose organization is unknown is listed only in your personal workspace. (ISS-1229)
 - **A refused action is titled by what did not happen**, such as "The organization was not deleted", rather than "Request failed", which now means a fault. Deleting an organization that still holds projects names how many and which. (ISS-1229)
+- **A conversation shows each person by their current name.** A rename reaches messages sent before it, and no speaker is named by an email address; the deploy drops stored names and stops on any address no single account holds. (ISS-1229)
+- **A one-to-one conversation whose project was deleted is listed, read and deleted only by the people in it**, never by an admin who cannot read it; one with no organization says only its opener can reach it. (ISS-1229)
+- **A read-only conversation with a long title fits a phone screen**, and the conversation history shows each title to the column's width. (ISS-1229)
+- **Starting a room lists you once, as "You"**; your own messages sit on the right and everyone else's on the left. (ISS-1229)
+- **When someone joined a room, or a connection was made, reads in your local time**, and same-titled conversations under "Project deleted" are told apart by when each was opened, in the list and before deleting. (ISS-1229)
+- **Every refused action across the app is titled by what did not happen**, never "Update failed" or "Action failed". (ISS-1229)
+- **A refused write says what was wrong.** An organization name past 200 characters names the field and its limit; a repository path that is not absolute is refused, saying what a valid one looks like. (ISS-1229)
+- **Your own mention reads "mentioned you" on the Activity tab**, the project list and the overview count runners the same way, "1/2 runners online", and Organization is spelled with a z throughout. (ISS-1229)
+- **On a phone, the organization page keeps each member readable**, and a room's people list wraps a name instead of cutting off when each person was added. (ISS-1229)
 - **Activity names a priority, complexity or category as the issue panel does** ("from Small to XL"). Two same-named people in a room are told apart by when each was added, and the Runners sentence agrees in number. (ISS-1229)
 - **An answered question's run drawer names who answered it and when**, instead of still asking you to answer it. (ISS-1228)
 - **The issue page says why a queued step waits once**, in its banner, not again in the panel under it. (ISS-1228)
@@ -3506,7 +3515,7 @@
 - **A delivered notice keeps the count it was delivered with,** so a resolved row says how long the issue had stood when you were told. (ISS-1229)
 - **Plainer words on the project page and in notices:** "2 jobs failed." where it said "Work is failing"; a park says it waits for your decision or for something only you can supply; the runner-label warning is four sentences. (ISS-1229)
 - **An idle-issue notice clears on the next sweep once the issue is worked again,** however many issues are stuck. (ISS-1229)
-- **Attention shows the open organisation's items** even when another organisation holds more than the list's limit, so it no longer reads "Inbox zero" while items wait. (ISS-1229)
+- **Attention shows the open organization's items** even when another organization holds more than the list's limit, so it no longer reads "Inbox zero" while items wait. (ISS-1229)
 - **The User flow diagram names a step in words** where its module gave it no label, "Pipeline run" rather than `pipeline_run`. (ISS-1229)
 - **On a phone, an Attention row gives its title a line of its own** instead of cutting it to one word beside the tags. (ISS-1229)
 - **The project page, the bell and Attention count stuck work alike:** the headline counts each kind in the bell's words; Needs you names each stuck or parked issue by its title, the reason after it; Attention rows are flat. (ISS-1229)
@@ -3527,13 +3536,13 @@
 - **Someone else's waiting issue is never said to be waiting for you.** The row, the project headline and the bell name who owes the answer, "waiting for Mai's decision", and count yours apart. (ISS-1229)
 - **A notice that has cleared leaves its bell group and the group's count;** nothing in the bell is struck through. (ISS-1229)
 - **The project page's failed-job button retries the job.** It read "Approve & retry" and only opened the issue; Retry job now queues it again for any project member. A dropped issue's failure is no longer listed. (ISS-1229)
-- **An archived project's page says it is archived,** since when, and lets an organisation admin unarchive it, where it said the project did not exist. (ISS-1229)
+- **An archived project's page says it is archived,** since when, and lets an organization admin unarchive it, where it said the project did not exist. (ISS-1229)
 - **What's New has its own icon,** so its dot is no longer read as unread notifications beside the bell. (ISS-1229)
 - **The never-closed notice counts from when the merge mark was set,** not from when the code merged, so a mark four minutes old no longer reads as seven hours. (ISS-1229)
 - **Idle-issue notices, the never-closed explanation and the comments Forge leaves when it moves a stalled issue are in plain words,** with no job types, commands, ids in code or machine timestamps. (ISS-1229)
 - **A bell row spanning two projects is counted once,** not once in each project's count. (ISS-1229)
-- **One organisation's Attention no longer lists another organisation's runners.** (ISS-1229)
-- **Opening a project in another organisation no longer switches your saved organisation;** only the organisation switcher does. (ISS-1229)
+- **One organization's Attention no longer lists another organization's runners.** (ISS-1229)
+- **Opening a project in another organization no longer switches your saved organization;** only the organization switcher does. (ISS-1229)
 - **An issue stuck for two reasons at once reaches the bell once,** under the more specific one, even when both ripen in the same minute. (ISS-1229)
 - **Stuck-issue notices held behind a stall that has ended go out.** A status change that was never processed stops holding them once its issue moves on, and stalls recorded before stalls had keys are cleared. (ISS-1229)
 - **A failed job whose work is already queued again leaves Needs your attention,** and a refused retry says the work is queued in words. A viewer's retry is refused naming the role it holds. (ISS-1229)
@@ -3606,7 +3615,7 @@
 - **The assistant's per-chat-turn credentials are one line on API Tokens, not a row each.** The line says how many exist and how many are live. (ISS-1166)
 - **The Agents table says once what every agent needs.** The advice and what giving a credential does stand above the table, not in each row; the action has one name, and a row with nothing to revoke has none. (ISS-1169)
 - **An agent's project is never shown as an id.** One that cannot be named reads as removed or not shared with you, and says projects are loading while they are. (ISS-1169)
-- **A new agent's projects are searched, not scrolled.** The picker opens on a search field and the projects chosen, so Create agent stays on the screen however many projects the organisation has. (ISS-1169)
+- **A new agent's projects are searched, not scrolled.** The picker opens on a search field and the projects chosen, so Create agent stays on the screen however many projects the organization has. (ISS-1169)
 - **A table that scrolls sideways keeps its first column in view.** On a phone, the projects list, the Overview's longest-without-a-run table, API Tokens and Agents no longer lose which project, token or agent a row is. (ISS-1166)
 - **A name in a table that scrolls sideways reads whole.** On a phone a project, token or agent name is never broken mid-word; one too long is cut on one line, whole on hover. (ISS-1166)
 - **Every Agents action fits inside the table.** At desktop width the third action, Self, sat past the table's edge behind a faint shadow; the actions now wrap onto a second line instead. (ISS-1169)
@@ -3900,7 +3909,7 @@
 - **An issue waiting for a runner now shows as Queued everywhere on its page and in the board drawer.** The run chips said nothing while the agent panel said queued. A paused run reads Paused, not Idle.
 - **A run the control plane refuses as malformed now stops after one attempt.** It was re-sent every twenty seconds for ever. The box now names the field refused, ends the run, and builds names and reasons that fit.
 - **The automatic release now asks your live host what it is serving, instead of a commit written on the issue weeks ago.** A verdict judged at what is running counts; where nothing can be asked, it still counts.
-- **The Runners page says which devices it lists, and can show your organisation's.** It listed only boxes you paired while promising the organisation, so an admin read zero beside an Overview reading forty. Both counts now show at once.
+- **The Runners page says which devices it lists, and can show your organization's.** It listed only boxes you paired while promising the organization, so an admin read zero beside an Overview reading forty. Both counts now show at once.
 - **A red integration suite now means the code is wrong, not that two suites ran at once.** Each
   test tore down its own database on its own clock, and that teardown waits on the whole
   server.
@@ -4465,7 +4474,7 @@
   project that had set none of its own silently inherited the first one's, and a project that had
   deliberately left its release ungated found itself gated on somebody else's checks. Test
   connection now writes back only what it actually discovered about the account itself — the
-  organisation, the store, the theme, the domain — and leaves every project's own settings where
+  organization, the store, the theme, the domain — and leaves every project's own settings where
   they belong.
 
 - **When work stops part-way, the issue now says what was left behind and what the work itself
@@ -4973,7 +4982,7 @@
   stale instead of silently settling the newer question. The run is told only once the answer is
   durable.
 
-- **A signed-in person who belongs to neither a project nor its organisation could read that
+- **A signed-in person who belongs to neither a project nor its organization could read that
   project's parked decisions, and answer them.** The check that decided who may look asked whether
   any access record existed rather than whether the person held a role, and the check that decided
   who may choose asked only that they were not a viewer — so someone with no relationship to a
@@ -6634,7 +6643,7 @@
   the other did not, so the same fleet read as busy through one door and idle through the other.
   There is one count now, and it no longer asks the database once per runner.
 
-- Listing an organisation's members now returns the same record whether the caller is the web UI or
+- Listing an organization's members now returns the same record whether the caller is the web UI or
   an agent. The two had drifted: one of them reported each member's lenses and the other quietly
   left that field out, because each transport carried its own copy of the query. Both now read
   through one, and the health snapshot the two surfaces report was de-duplicated the same way.

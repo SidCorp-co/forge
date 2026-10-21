@@ -5,8 +5,18 @@
 // that asks first.
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RoomWithoutAProject } from "../types";
+
+// Every time the list shows is in the reader's own time zone (ISS-1229 r25); this reader is at UTC+7.
+const zone = vi.hoisted(() => {
+  const was = process.env.TZ;
+  process.env.TZ = "Asia/Ho_Chi_Minh";
+  return was;
+});
+afterAll(() => {
+  process.env.TZ = zone;
+});
 
 let rooms: RoomWithoutAProject[] = [];
 let failed: Error | null = null;
@@ -65,9 +75,9 @@ describe("rooms whose project was deleted", () => {
     expect(screen.getByText(/projects are gone, so nobody can write in them/)).toBeTruthy();
     expect(screen.getByText("Untitled conversation")).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "Delete Release chat" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Delete Release chat, / }));
     expect(removeMutate).not.toHaveBeenCalled();
-    expect(screen.getByText(/“Release chat” and everything said in it will be gone/)).toBeTruthy();
+    expect(screen.getByText(/“Release chat” \(Billing \(deleted\) · opened 3 Oct · last message 5 Oct\) and everything said in it will be gone/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     expect(removeMutate).toHaveBeenCalledTimes(1);
     expect(removeMutate.mock.calls[0]?.[0]).toBe("r1");
@@ -114,7 +124,7 @@ describe("a room whose project was deleted, told apart", () => {
     rooms = [room()];
     render(<RoomsWithoutAProject orgId="o1" onOpen={onOpen} />);
     fireEvent.click(screen.getByRole("button", { name: /^Open Release chat/ }));
-    expect(onOpen).toHaveBeenCalledWith(rooms[0]);
+    expect(onOpen).toHaveBeenCalledWith(rooms[0], ["Billing (deleted)", "opened 3 Oct · last message 5 Oct"]);
   });
 
   it("shows everything said in it, read-only, with no way to write", () => {
@@ -124,10 +134,60 @@ describe("a room whose project was deleted, told apart", () => {
       ],
       windows: [],
     };
-    render(<OrphanRoomView room={room()} onDeleted={vi.fn()} />);
+    render(<OrphanRoomView room={room()} facts={["Billing (deleted)", "opened 3 Oct · last message 5 Oct"]} onDeleted={vi.fn()} />);
     expect(screen.getByText("ship it friday")).toBeTruthy();
     expect(screen.getByText(/read-only/i)).toBeTruthy();
     expect(screen.queryByRole("textbox")).toBeNull();
-    expect(screen.getByRole("button", { name: "Delete Release chat" })).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Delete Release chat, Billing (deleted) · opened 3 Oct · last message 5 Oct" }),
+    ).toBeTruthy();
+  });
+});
+
+// ISS-1229 r25, judge-72: two untitled rooms orphaned before names were kept, opened two minutes
+// apart, read word for word alike, their Delete controls and questions included. Each now reads apart,
+// to the minute where the day is the same and by its place in the order where the minute is too.
+describe("two rooms that would read alike", () => {
+  const untitled = (id: string, createdAt: string, lastMessageAt: string | null) =>
+    room({ id, title: null, deletedProjectNames: [], createdAt, lastMessageAt });
+
+  it("are told apart to the minute, in the reader's time zone, on the row, its Delete and its question", () => {
+    rooms = [
+      untitled("r1", "2026-10-20T06:33:00Z", "2026-10-20T06:40:00Z"),
+      untitled("r2", "2026-10-20T06:35:00Z", "2026-10-20T06:40:00Z"),
+    ];
+    render(<RoomsWithoutAProject orgId="o1" onOpen={vi.fn()} />);
+    const deletes = screen.getAllByRole("button", { name: /^Delete Untitled conversation/ });
+    expect(deletes.map((b) => b.getAttribute("aria-label"))).toEqual([
+      "Delete Untitled conversation, its project's name was not kept · opened 20 Oct, 13:33 · last message 20 Oct, 13:40",
+      "Delete Untitled conversation, its project's name was not kept · opened 20 Oct, 13:35 · last message 20 Oct, 13:40",
+    ]);
+    const rows = screen.getAllByTestId("room-without-a-project").map((r) => r.textContent);
+    expect(new Set(rows).size).toBe(2);
+    fireEvent.click(deletes[1] as HTMLElement);
+    expect(screen.getByText(/\(its project's name was not kept · opened 20 Oct, 13:35 · last message 20 Oct, 13:40\)/)).toBeTruthy();
+  });
+
+  it("are told apart by the order they were opened where the minute is the same too", () => {
+    rooms = [
+      untitled("r2", "2026-10-20T06:33:40Z", null),
+      untitled("r1", "2026-10-20T06:33:10Z", null),
+    ];
+    render(<RoomsWithoutAProject orgId="o1" onOpen={vi.fn()} />);
+    const names = screen
+      .getAllByRole("button", { name: /^Open Untitled conversation/ })
+      .map((b) => b.getAttribute("aria-label"));
+    expect(names).toEqual([
+      "Open Untitled conversation, read-only: its project's name was not kept · opened 20 Oct, 13:33 · nothing said · the second opened that minute",
+      "Open Untitled conversation, read-only: its project's name was not kept · opened 20 Oct, 13:33 · nothing said · the first opened that minute",
+    ]);
+  });
+
+  it("keep the day alone where it already tells them apart", () => {
+    rooms = [untitled("r1", "2026-10-19T06:33:00Z", null), untitled("r2", "2026-10-20T06:33:00Z", null)];
+    render(<RoomsWithoutAProject orgId="o1" onOpen={vi.fn()} />);
+    const rows = screen.getAllByTestId("room-without-a-project").map((r) => r.textContent ?? "");
+    expect(rows[0]).toContain("opened 19 Oct · nothing said");
+    expect(rows[1]).toContain("opened 20 Oct · nothing said");
   });
 });

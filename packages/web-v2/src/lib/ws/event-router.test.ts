@@ -59,7 +59,7 @@ describe("the workspace pulse is refreshed by every event that moves one of its 
   });
 });
 
-describe("a device event reaches the organisation's list as well as the caller's own", () => {
+describe("a device event reaches the organization's list as well as the caller's own", () => {
 	// ISS-1162 criterion 21. The Runners page reads two populations from two keys;
 	// one refreshed and the other left stale is the same screen disagreeing with
 	// itself that this change exists to remove.

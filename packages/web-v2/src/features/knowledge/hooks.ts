@@ -4,9 +4,9 @@
 // `['knowledge', projectId, ...]`; mutations invalidate the relevant query on success.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/providers/toast-provider";
-import { formatApiError } from "@/lib/api/error";
 import { knowledgeApi } from "./api";
 import type { IngestDocument, ModuleDiagramKind, UpsertKnowledgeBody } from "./types";
+import { failureToast } from "@/lib/api/failure-toast";
 
 export function useKnowledgeEntries(projectId: string | undefined, kind?: string) {
   return useQuery({
@@ -45,7 +45,7 @@ export function useUpsertEntry(projectId: string | undefined) {
       toast({ title: "Entry saved", tone: "success" });
     },
     onError: (err) => {
-      toast({ title: "Couldn't save entry", description: formatApiError(err), tone: "error" });
+      toast(failureToast(err, "The entry was not saved"));
     },
   });
 }
@@ -60,7 +60,7 @@ export function useDeleteEntry(projectId: string | undefined) {
       toast({ title: "Entry deleted", tone: "success" });
     },
     onError: (err) => {
-      toast({ title: "Couldn't delete entry", description: formatApiError(err), tone: "error" });
+      toast(failureToast(err, "The entry was not deleted"));
     },
   });
 }
@@ -83,7 +83,7 @@ export function useDeleteEdge(projectId: string | undefined) {
       toast({ title: "Edge deleted", tone: "success" });
     },
     onError: (err) => {
-      toast({ title: "Couldn't delete edge", description: formatApiError(err), tone: "error" });
+      toast(failureToast(err, "The link was not deleted"));
     },
   });
 }
@@ -103,7 +103,7 @@ export function useIngestKnowledge(projectId: string | undefined) {
       });
     },
     onError: (err) => {
-      toast({ title: "Ingest failed", description: formatApiError(err), tone: "error" });
+      toast(failureToast(err, "Nothing was ingested"));
     },
   });
 }

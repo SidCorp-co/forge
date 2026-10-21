@@ -43,7 +43,7 @@ whose status is not re-derived is a claim, not a status.
 | A2 | What roles a human holds, and who grants them | `authority.html` §2 | not checked |
 | A3 | Delegation — an agent acting for a human, as a record | `authority.html` §3 | not checked |
 | A4 | Revoking a principal's authority | `authority.html` §4 | not checked |
-| A5 | The project / organisation boundary | `authority.html` §1 | not checked |
+| A5 | The project / organization boundary | `authority.html` §1 | not checked |
 | A6 | How a cross-project read or write is refused | `authority.html` §1 | not checked |
 
 ## B · Intent — 6 / 6

@@ -1,8 +1,8 @@
 /**
- * `GET /api/orgs/:orgId/devices` — the organisation's devices, whoever paired
+ * `GET /api/orgs/:orgId/devices` — the organization's devices, whoever paired
  * them, over `loadVisibleProjectIds` intersected with the org: the set the
  * Overview's runner figure is taken over, so both answer for one project set;
- * and every live device the organisation's own agents hold.
+ * and every live device the organization's own agents hold.
  */
 
 import { and, desc, eq, inArray, ne, or, sql } from 'drizzle-orm';
@@ -34,7 +34,7 @@ deviceOrgRoutes.get(
     const userId = c.get('userId');
     const { role } = await assertOrgAccess(orgId, userId, 'member');
 
-    // The organisation's own agents: a box one of them paired is the organisation's to see and, for
+    // The organization's own agents: a box one of them paired is the organization's to see and, for
     // whoever holds the admin role, to revoke, whether or not it serves a project yet (ISS-1229 r23).
     const agents = await db
       .select({ id: users.id, handle: organizationMembers.handle })

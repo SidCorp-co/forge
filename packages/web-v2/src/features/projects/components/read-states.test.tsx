@@ -44,18 +44,18 @@ afterEach(() => {
 const unread = (read: QueryRead): ProjectConsoleItem => ({
   id: "p1", slug: "sable", name: "Sable", orgId: "o1", orgName: "Org", orgIsPersonal: true, role: "admin",
   createdAt: "2026-10-01T00:00:00Z", description: null, repoPath: null, healthRead: read, health: null,
-  liveSessions: null, openIssues: null, runnerCount: null, spend24hUsd: null, memberCount: null, members: [],
+  liveSessions: null, openIssues: null, runnerCount: null, runnerTotal: null, spend24hUsd: null, memberCount: null, members: [],
   lastActivityAt: null, pinned: false,
 });
 const read: ProjectConsoleItem = {
-  ...unread("read"), health: "healthy", liveSessions: 2, openIssues: 29, runnerCount: 1, spend24hUsd: 1.5, memberCount: 3, members: ["AB"],
+  ...unread("read"), health: "healthy", liveSessions: 2, openIssues: 29, runnerCount: 1, runnerTotal: 1, spend24hUsd: 1.5, memberCount: 3, members: ["AB"],
   lastActivityAt: "2026-10-02T00:00:00Z",
 };
 const SORT = DEFAULT_PROJECT_SORT;
 const totals = (healthRead: QueryRead): WorkspaceTotals =>
   healthRead === "read"
-    ? { projects: 2, healthRead, liveSessions: 2, openIssues: 29, runners: 1, spend24hUsd: 1.5 }
-    : { projects: 2, healthRead, liveSessions: null, openIssues: null, runners: null, spend24hUsd: null };
+    ? { projects: 2, healthRead, liveSessions: 2, openIssues: 29, runners: 1, runnersTotal: 1, spend24hUsd: 1.5 }
+    : { projects: 2, healthRead, liveSessions: null, openIssues: null, runners: null, runnersTotal: null, spend24hUsd: null };
 
 const FAILED = /could not be read/;
 const PENDING = /^reading /;
@@ -236,9 +236,9 @@ describe("the workspace band and the attention banner, with two organizations", 
     consoleState.read = "read";
     consoleState.activeOrgId = "o1";
     consoleState.items = [
-      inOrg("alpha", "o1", { openIssues: 29, liveSessions: 2, runnerCount: 1, spend24hUsd: 1.5, health: "attention" }),
-      inOrg("beta", "o2", { openIssues: 5, liveSessions: 1, runnerCount: 3, spend24hUsd: 2, health: "attention" }),
-      inOrg("gamma", "o2", { openIssues: 7, liveSessions: 1, runnerCount: 1, spend24hUsd: 1, health: "attention" }),
+      inOrg("alpha", "o1", { openIssues: 29, liveSessions: 2, runnerCount: 1, runnerTotal: 2, spend24hUsd: 1.5, health: "attention" }),
+      inOrg("beta", "o2", { openIssues: 5, liveSessions: 1, runnerCount: 3, runnerTotal: 3, spend24hUsd: 2, health: "attention" }),
+      inOrg("gamma", "o2", { openIssues: 7, liveSessions: 1, runnerCount: 1, runnerTotal: 1, spend24hUsd: 1, health: "attention" }),
     ];
     render(<ProjectsConsole />);
     const band = screen.getByText("Workspace").parentElement as HTMLElement;
@@ -246,8 +246,7 @@ describe("the workspace band and the attention banner, with two organizations", 
     expect(band.textContent).not.toContain("1 projects");
     expect(band.textContent).toContain("29 open work");
     expect(band.textContent).toContain("2 live sessions");
-    expect(band.textContent).toContain("1 runner");
-    expect(band.textContent).not.toContain("1 runners");
+    expect(band.textContent).toContain("1/2 runners online");
     expect(band.textContent).toContain("$1.50 / 24h");
     expect(screen.getByText("alpha")).toBeTruthy();
     expect(screen.queryByText("beta")).toBeNull();

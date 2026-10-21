@@ -8,6 +8,7 @@
 // Split out of `schema.ts` for size, like `schema-questions.ts`, and registered
 // in `drizzle.config.ts` and the client's schema map beside it.
 
+import { ADDRESS_PATTERN } from '@forge/contracts/person-name';
 import { relations, sql } from 'drizzle-orm';
 import {
   check,
@@ -199,6 +200,10 @@ export const conversationMessages = pgTable(
     roleKnown: check(
       'conversation_messages_role_known',
       sql`${t.role} IN ('user','assistant','system')`,
+    ),
+    labelHoldsNoAddress: check(
+      'conversation_messages_label_holds_no_address',
+      sql`${t.authorLabel} IS NULL OR ${t.authorLabel} !~ ${sql.raw(`'${ADDRESS_PATTERN}'`)}`,
     ),
   }),
 );

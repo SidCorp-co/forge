@@ -9,11 +9,11 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 import { ApiError } from "@/lib/api/client";
-import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import { runJournalKey } from "@/features/issues/detail-hooks";
 import { questionsApi } from "./api";
 import type { AnswerInput } from "./types";
+import { failureToast } from "@/lib/api/failure-toast";
 
 export const issueQuestionsKey = (issueId: string) => ["questions", issueId];
 export const projectQuestionsKey = (projectId: string) => ["questions", "project", projectId];
@@ -55,7 +55,7 @@ export function useAnswerQuestion(issueId: string) {
     },
     onError: (err) => {
       qc.invalidateQueries({ queryKey: issueQuestionsKey(issueId) });
-      toast({ title: "Not recorded", description: formatApiError(err), tone: "error" });
+      toast(failureToast(err, "The answer was not recorded"));
     },
   });
 }
@@ -128,7 +128,7 @@ export function useAnswerProjectQuestion(projectId: string) {
     },
     onError: (err) => {
       qc.invalidateQueries({ queryKey: projectQuestionsKey(projectId) });
-      toast({ title: "Not recorded", description: formatApiError(err), tone: "error" });
+      toast(failureToast(err, "The answer was not recorded"));
     },
   });
 }

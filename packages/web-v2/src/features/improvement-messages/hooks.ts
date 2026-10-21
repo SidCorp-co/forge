@@ -4,9 +4,9 @@
 // Keyed `['improvement-messages', projectId]`; mutations invalidate on success.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/providers/toast-provider";
-import { formatApiError } from "@/lib/api/error";
 import { improvementMessagesApi } from "./api";
 import type { ImprovementMessageEntry } from "./types";
+import { failureToast } from "@/lib/api/failure-toast";
 
 export function useImprovementMessages(projectId: string | undefined) {
   return useQuery({
@@ -43,7 +43,7 @@ export function useEnableImprovementMessage(projectId: string | undefined) {
       toast({ title: "Message enabled", tone: "success" });
     },
     onError: (err) => {
-      toast({ title: "Failed to enable", description: formatApiError(err), tone: "error" });
+      toast(failureToast(err, "The message was not turned on"));
     },
   });
 }
@@ -84,7 +84,7 @@ export function useToggleImprovementMessage(projectId: string | undefined) {
       if (ctx?.prev) {
         qc.setQueryData(["improvement-messages", projectId], ctx.prev);
       }
-      toast({ title: "Toggle failed", description: formatApiError(err), tone: "error" });
+      toast(failureToast(err, "The message was not switched"));
     },
 
     onSuccess: () => {
@@ -109,7 +109,7 @@ export function useUpdateImprovementMessage(projectId: string | undefined) {
       toast({ title: "Message updated", tone: "success" });
     },
     onError: (err) => {
-      toast({ title: "Update failed", description: formatApiError(err), tone: "error" });
+      toast(failureToast(err, "The message was not updated"));
     },
   });
 }
@@ -124,7 +124,7 @@ export function useRunImprovementMessage(projectId: string | undefined) {
       toast({ title: "Run triggered", tone: "success" });
     },
     onError: (err) => {
-      toast({ title: "Run failed", description: formatApiError(err), tone: "error" });
+      toast(failureToast(err, "The message was not run"));
     },
   });
 }

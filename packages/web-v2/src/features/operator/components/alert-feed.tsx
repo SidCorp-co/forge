@@ -14,10 +14,10 @@ import {
 } from "@/design";
 import { TONE_META } from "@/design/status";
 import { useToast } from "@/providers/toast-provider";
-import { formatApiError } from "@/lib/api/error";
 import { useReapJob } from "../hooks";
 import { formatSince } from "../format";
 import type { AdminAlert, AdminAlertStatus } from "../types";
+import { failureToast } from "@/lib/api/failure-toast";
 
 const ALERT_TITLE: Record<string, string> = {
   A1: "Orphan jobs",
@@ -80,7 +80,7 @@ function ReapButton({ jobId, label }: { jobId: string; label: string }) {
       },
       onError: (err) => {
         setConfirming(false);
-        toast({ tone: "error", title: "Couldn't reap the job", description: formatApiError(err) });
+        toast(failureToast(err, "The job was not reaped"));
       },
     });
   }

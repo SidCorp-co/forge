@@ -18,6 +18,7 @@ import {
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import { useAgentSelf, useUpdateAgentSelf } from "../hooks";
+import { failureToast } from "@/lib/api/failure-toast";
 
 const ANSWER_IN_GROUP: SelectOption[] = [
   { value: "window", label: "Every settled window — answer whatever is said" },
@@ -120,7 +121,7 @@ export function AgentSelfEditor({
       await save.mutateAsync({ agentUserId, patch: patchOf(draft) });
       toast({ title: `Saved @${handle}'s self`, tone: "success" });
     } catch (err) {
-      toast({ title: "Could not save", description: formatApiError(err), tone: "error" });
+      toast(failureToast(err, "The agent was not saved"));
     }
   }
 

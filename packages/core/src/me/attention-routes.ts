@@ -199,7 +199,7 @@ export const meAttentionRoutes = new Hono<{ Variables: AuthVars }>();
 meAttentionRoutes.use('/attention', requireAuth(), assertEmailVerified());
 
 /**
- * The organisation the caller has open: every bucket and total is cut to it before its cap. `expand`
+ * The organization the caller has open: every bucket and total is cut to it before its cap. `expand`
  * names the buckets to list whole rather than capped, so a person can reach every item a count names
  * without answering the ones above it first (ISS-1229 r14).
  */
@@ -217,7 +217,7 @@ meAttentionRoutes.get(
   zValidator('query', attentionQuerySchema, (r) => {
     if (!r.success) {
       throw new HTTPException(400, {
-        message: `orgId must be the uuid of an organisation, or left out to read every one; expand names buckets to list whole, each one of ${ATTENTION_BUCKETS.join(', ')}`,
+        message: `orgId must be the uuid of an organization, or left out to read every one; expand names buckets to list whole, each one of ${ATTENTION_BUCKETS.join(', ')}`,
         cause: { code: 'BAD_REQUEST', details: z.flattenError(r.error) },
       });
     }

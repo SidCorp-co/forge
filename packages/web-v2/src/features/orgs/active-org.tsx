@@ -3,12 +3,12 @@
 import { createContext, useContext, useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/providers/toast-provider";
-import { formatApiError } from "@/lib/api/error";
 import { settingsApi } from "@/features/settings/api";
 import type { Preferences } from "@/features/settings/types";
 import { usePreferences } from "@/features/settings/hooks";
 import { useOrgs } from "./hooks";
 import type { OrgListItem } from "./types";
+import { failureToast } from "@/lib/api/failure-toast";
 
 const PREFS_KEY = ["settings", "preferences"] as const;
 
@@ -80,7 +80,7 @@ export function ActiveOrgProvider({ children }: { children: React.ReactNode }) {
     },
     onError: (err, _orgId, ctx) => {
       if (ctx?.prev) qc.setQueryData(PREFS_KEY, ctx.prev);
-      toast({ title: "Couldn't switch organization", description: formatApiError(err), tone: "error" });
+      toast(failureToast(err, "The organization was not switched"));
     },
     onSuccess: (data) => {
       qc.setQueryData(PREFS_KEY, data);

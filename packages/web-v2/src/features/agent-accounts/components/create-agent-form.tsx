@@ -8,7 +8,7 @@
 // The projects are a SET and not a single select, because `projectIds` is the whole
 // reach a credential for this agent will be fenced to (`orgs/agent-accounts.ts:fenceFor`),
 // and one box serving eight projects is the case that made this issue. The set is chosen
-// through a searchable picker, so an organisation with two dozen projects does not push
+// through a searchable picker, so an organization with two dozen projects does not push
 // the submit button off the screen (ISS-1169).
 
 import { useState } from "react";

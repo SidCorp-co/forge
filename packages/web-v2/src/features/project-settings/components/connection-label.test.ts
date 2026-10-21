@@ -3,7 +3,17 @@
 // r6 — judge-37 saw two unnamed connections both read "Sentry" in the picker, and an older name's
 // "coolify · " prefix still on Connections. One naming rule, read by every surface.
 
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
+
+// Every time the web shows is in the reader's own time zone (ISS-1229 r25); this reader is at UTC+7.
+const zone = vi.hoisted(() => {
+  const was = process.env.TZ;
+  process.env.TZ = "Asia/Ho_Chi_Minh";
+  return was;
+});
+afterAll(() => {
+  process.env.TZ = zone;
+});
 import {
   connectionLabels,
   connectionName,
@@ -69,9 +79,9 @@ describe("the picker's labels", () => {
       conn({ id: "c", provider: "sentry", createdAt: "2026-10-02T10:05:00.000Z" }),
     ]);
     expect(labels).toEqual([
-      "Sentry · added 2 Oct 2026, 09:00 UTC",
+      "Sentry · added 2 Oct 2026, 16:00",
       "Sentry · added 1 Oct 2026",
-      "Sentry · added 2 Oct 2026, 10:05 UTC",
+      "Sentry · added 2 Oct 2026, 17:05",
     ]);
     expect(labels.join(" ")).not.toMatch(/\(\d\)/);
   });
@@ -82,7 +92,16 @@ describe("the picker's labels", () => {
         conn({ id: "a", provider: "sentry", createdAt: "2026-10-02T09:00:10.000Z" }),
         conn({ id: "b", provider: "sentry", createdAt: "2026-10-02T09:00:40.000Z" }),
       ]),
-    ).toEqual(["Sentry · added 2 Oct 2026, 09:00 UTC", "Sentry · added 2 Oct 2026, 09:00 UTC (2)"]);
+    ).toEqual(["Sentry · added 2 Oct 2026, 16:00", "Sentry · added 2 Oct 2026, 16:00 (2)"]);
+  });
+
+  it("reads the day in the reader's time zone, not the server's", () => {
+    expect(
+      labelsOf([
+        conn({ id: "a", provider: "sentry", createdAt: "2026-10-02T20:30:00.000Z" }),
+        conn({ id: "b", provider: "sentry", createdAt: "2026-10-02T09:00:00.000Z" }),
+      ]),
+    ).toEqual(["Sentry · added 3 Oct 2026", "Sentry · added 2 Oct 2026"]);
   });
 });
 

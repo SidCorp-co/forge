@@ -60,8 +60,12 @@ import {
   refuseNonPersonAsMember,
 } from './service.js';
 
-const badRequest = (details: unknown) =>
-  new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
+const badRequest = (details: unknown, message = 'Invalid input') =>
+  new HTTPException(400, { message, cause: { code: 'BAD_REQUEST', details } });
+
+/** A refused organization name says which field and why in its own sentence (ISS-1229 r25). */
+const refusedOrg = (error: z.core.$ZodError) =>
+  badRequest(z.flattenError(error), error.issues.find((i) => i.path[0] === 'name')?.message);
 
 const notFound = (message = 'not found', code = 'NOT_FOUND') =>
   new HTTPException(404, { message, cause: { code } });
@@ -87,7 +91,7 @@ orgRoutes.post(
   '/',
   createOrg,
   zValidator('json', createOrgSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw refusedOrg(result.error);
   }),
   async (c) => {
     const { slug, name } = c.req.valid('json');
@@ -125,7 +129,7 @@ orgRoutes.patch(
     if (!result.success) throw badRequest(z.flattenError(result.error));
   }),
   zValidator('json', patchOrgSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw refusedOrg(result.error);
   }),
   async (c) => {
     const { orgId } = c.req.valid('param');
@@ -308,7 +312,8 @@ orgRoutes.post(
         role: organizationMembers.role,
         createdAt: organizationMembers.createdAt,
       });
-    if (!inserted) throw conflict('user is already an org member', 'ALREADY_MEMBER');
+    if (!inserted)
+      throw conflict('this person is already a member of the organization', 'ALREADY_MEMBER');
     return c.json(answer(addedMemberSchema, { ...inserted, email }), 201);
   },
 );
@@ -488,7 +493,7 @@ orgRoutes.delete(
 );
 
 orgRoutes.route('/', agentAccountRoutes);
-// ISS-1162 — the organisation's devices, mounted here so the router carries no
+// ISS-1162 — the organization's devices, mounted here so the router carries no
 // auth of its own and answers under the same org gate every sibling does.
 orgRoutes.route('/', deviceOrgRoutes);
 orgRoutes.route('/', orgRoomRoutes);

@@ -17,7 +17,7 @@ export const runnersApi = {
 		apiClient<DeviceRow[]>(orgId ? `/me/devices?orgId=${encodeURIComponent(orgId)}` : `/me/devices`),
 
 	/**
-	 * `GET /api/orgs/:orgId/devices` — the organisation's devices over the
+	 * `GET /api/orgs/:orgId/devices` — the organization's devices over the
 	 * projects this caller can see. A different population from `/me/devices`,
 	 * whose `orgId` narrows the caller's own list rather than widening it.
 	 */

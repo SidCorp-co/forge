@@ -1,5 +1,5 @@
 /**
- * ISS-1178 — an organisation's integration guide is a row, not a registry entry, and the table
+ * ISS-1178 — an organization's integration guide is a row, not a registry entry, and the table
  * holds no audience column: the home admits agents alone. What `forge_guide` hands back for one
  * says so all the same, on the full guide and in the index.
  */
@@ -25,7 +25,7 @@ const { INTEGRATION_GUIDE_SLUG_PREFIX, providerFromGuideSlug, resolveGuide, reso
   await import('./integration-guides.js');
 const { FORGE_GUIDES } = await import('./registry.js');
 
-describe("an organisation's integration guide", () => {
+describe("an organization's integration guide", () => {
   it('carries the agent audience when read in full', async () => {
     const guide = await resolveGuide('integration-epodsystem', 'org-1');
     expect(guide?.body).toBe(ROW.body);

@@ -81,8 +81,8 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("useAttention", () => {
-  // ISS-1229 r16, judge-41: one organisation's Attention listed a runner bound only to another's.
-  it("reads the offline runners of the organisation it reads, and every one's where none is active", async () => {
+  // ISS-1229 r16, judge-41: one organization's Attention listed a runner bound only to another's.
+  it("reads the offline runners of the organization it reads, and every one's where none is active", async () => {
     const asked: Array<string | null | undefined> = [];
     server.devices = async (orgId) => {
       asked.push(orgId);
@@ -98,10 +98,10 @@ describe("useAttention", () => {
     expect(asked).toEqual(["org-a", null]);
   });
 
-  // ISS-1229 r13, judge-30: the cap was filled across organisations and the screen filtered after it,
-  // so the active organisation's items could be cut before the filter saw them. The read asks the
-  // route for the active organisation, which cuts before its cap.
-  it("asks for the active organisation's items, and every organisation's where none is active", async () => {
+  // ISS-1229 r13, judge-30: the cap was filled across organizations and the screen filtered after it,
+  // so the active organization's items could be cut before the filter saw them. The read asks the
+  // route for the active organization, which cuts before its cap.
+  it("asks for the active organization's items, and every organization's where none is active", async () => {
     const asked: Array<string | null | undefined> = [];
     server.attention = async (orgId) => {
       asked.push(orgId);
@@ -116,7 +116,7 @@ describe("useAttention", () => {
     expect(asked).toEqual(["11111111-1111-4111-8111-111111111111", null]);
   });
 
-  it("asks nothing while the active organisation is still being read, then asks for it alone", async () => {
+  it("asks nothing while the active organization is still being read, then asks for it alone", async () => {
     const asked: Array<string | null | undefined> = [];
     server.attention = async (orgId) => {
       asked.push(orgId);
@@ -217,7 +217,7 @@ describe("useAttention", () => {
     expect(result.current.badge).toEqual({ badge: 32, badgeCounts: "need attention" });
   });
 
-  it("asks for a group whole where it is named, and for the project's own organisation where one is given", async () => {
+  it("asks for a group whole where it is named, and for the project's own organization where one is given", async () => {
     const asked: Array<[string | null | undefined, readonly string[] | undefined]> = [];
     server.attention = async (orgId, expand) => {
       asked.push([orgId, expand]);

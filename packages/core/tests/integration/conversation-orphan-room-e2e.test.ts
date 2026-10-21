@@ -35,6 +35,11 @@ beforeAll(async () => {
   ({ app } = (await import('../../src/index.js')) as unknown as {
     app: import('hono').Hono<AppVars>;
   });
+  // The web transport, registered as the drain registers it at boot, so a room's shape follows who is
+  // in it: two people make a group, one person and an agent a one-to-one room.
+  const { registerConversationTransport } = await import('../../src/conversations/ports.js');
+  const { webConversationPorts } = await import('../../src/assistant/conversation-adapter.js');
+  registerConversationTransport(webConversationPorts);
 }, 120_000);
 
 afterAll(async () => {
@@ -44,6 +49,7 @@ afterAll(async () => {
 let ownerId: string;
 let creatorId: string;
 let memberId: string;
+let peerId: string;
 let orgId: string;
 let projectId: string;
 
@@ -58,8 +64,9 @@ beforeEach(async () => {
   ownerId = await verifiedUser();
   creatorId = await verifiedUser();
   memberId = await verifiedUser();
+  peerId = await verifiedUser();
   orgId = (await seedOrg(harness.db, ownerId)).id;
-  for (const id of [creatorId, memberId]) {
+  for (const id of [creatorId, memberId, peerId]) {
     await harness.db.execute(
       sql`INSERT INTO organization_members (org_id, user_id, role) VALUES (${orgId}, ${id}, 'member')`,
     );
@@ -67,9 +74,11 @@ beforeEach(async () => {
   projectId = (
     await createTestProject(harness.db, ownerId, { slug: 'billing', name: 'Billing', orgId })
   ).id;
-  await harness.db.execute(
-    sql`INSERT INTO project_members (project_id, user_id, role) VALUES (${projectId}, ${creatorId}, 'member')`,
-  );
+  for (const id of [creatorId, peerId]) {
+    await harness.db.execute(
+      sql`INSERT INTO project_members (project_id, user_id, role) VALUES (${projectId}, ${id}, 'member')`,
+    );
+  }
 });
 
 async function as(userId: string, path: string, method = 'GET', body?: unknown): Promise<Response> {
@@ -84,11 +93,13 @@ async function as(userId: string, path: string, method = 'GET', body?: unknown):
   });
 }
 
-/** A room the creator opens in the project, which is then deleted under it. */
-async function roomWhoseProjectIsGone(): Promise<string> {
+/** A room the creator opens in the project, which is then deleted under it: one-to-one with the
+ *  project's agent, or a group where `withPeer` brings a second person in. */
+async function roomWhoseProjectIsGone(withPeer = false): Promise<string> {
   const opened = await as(creatorId, '/api/conversations', 'POST', {
     projectId,
     title: 'Release chat',
+    ...(withPeer ? { people: [peerId] } : {}),
   });
   expect(opened.status, await opened.clone().text()).toBe(201);
   const { id } = (await opened.json()) as { id: string };
@@ -132,7 +143,7 @@ describe('a room whose project was deleted', () => {
   });
 
   it('is found and deleted by an admin of its organization who was never in it', async () => {
-    const id = await roomWhoseProjectIsGone();
+    const id = await roomWhoseProjectIsGone(true);
 
     expect(await listed(ownerId)).toEqual([id]);
     const res = await as(ownerId, `/api/conversations/${id}`, 'DELETE');
@@ -141,15 +152,42 @@ describe('a room whose project was deleted', () => {
   });
 
   it('is neither listed to nor deletable by a member of the organization who did not open it', async () => {
-    const id = await roomWhoseProjectIsGone();
+    const id = await roomWhoseProjectIsGone(true);
 
     expect(await listed(memberId)).toEqual([]);
     const res = await as(memberId, `/api/conversations/${id}`, 'DELETE');
     const body = (await res.json()) as { code?: string; message?: string };
     expect(res.status).toBe(403);
     expect(body.code).toBe('CONVERSATION_NO_SCOPE');
-    expect(body.message).toMatch(/opened it or an admin of its organization/);
+    expect(body.message).toMatch(
+      /only the person who opened it or an admin of its organization can reach it/,
+    );
     expect(await roomExists(id)).toBe(true);
+  });
+
+  // ISS-1229 r25, judge-72: an admin was listed a member's one-to-one room, offered Delete, and refused
+  // its read. The master's ruling: a one-to-one room is its people's alone, listed, read and deleted.
+  it('is listed, read and deleted by the people in it alone where it is one-to-one', async () => {
+    const id = await roomWhoseProjectIsGone();
+
+    expect(await listed(ownerId)).toEqual([]);
+    expect(await listed(creatorId)).toEqual([id]);
+    expect((await as(ownerId, `/api/conversations/${id}`)).status).toBe(403);
+    const res = await as(ownerId, `/api/conversations/${id}`, 'DELETE');
+    const body = (await res.json()) as { code?: string; message?: string };
+    expect(res.status).toBe(403);
+    expect(body.message).toMatch(/it is a one-to-one room, so only the people in it can reach it/);
+    expect(body.message).not.toMatch(/admin/);
+    expect(await roomExists(id)).toBe(true);
+    expect((await as(creatorId, `/api/conversations/${id}`)).status).toBe(200);
+    expect((await as(creatorId, `/api/conversations/${id}`, 'DELETE')).status).toBe(204);
+  });
+
+  it('is still listed to and read by an admin of its organization where it is a group', async () => {
+    const id = await roomWhoseProjectIsGone(true);
+
+    expect(await listed(ownerId)).toEqual([id]);
+    expect((await as(ownerId, `/api/conversations/${id}`)).status).toBe(200);
   });
 
   it('takes no message, refused by name, rather than answering under no project', async () => {
@@ -162,14 +200,21 @@ describe('a room whose project was deleted', () => {
   // Consult F1: 0350 finds no organization for a room whose projects were gone before it ran. Round 24:
   // it is listed under its opener's personal workspace alone, never under every organization they read.
   it('stays its opener’s to find and delete where no organization is recorded for it', async () => {
-    const id = await roomWhoseProjectIsGone();
+    const id = await roomWhoseProjectIsGone(true);
     const personal = (await seedOrg(harness.db, creatorId, { isPersonal: true })).id;
     await harness.db.execute(sql`UPDATE conversations SET org_id = NULL WHERE id = ${id}`);
 
     expect(await listed(creatorId)).toEqual([]);
     expect(await listedUnder(creatorId, personal)).toEqual([id]);
     expect(await listed(ownerId)).toEqual([]);
-    expect((await as(ownerId, `/api/conversations/${id}`, 'DELETE')).status).toBe(403);
+    const refused = await as(ownerId, `/api/conversations/${id}`, 'DELETE');
+    expect(refused.status).toBe(403);
+    // Round 25: the refusal names only who can reach it; no organization holds it, so no admin can.
+    const { message } = (await refused.json()) as { message: string };
+    expect(message).toMatch(
+      /no organization holds it, so only the person who opened it can reach it/,
+    );
+    expect(message).not.toMatch(/admin/);
     expect((await as(creatorId, `/api/conversations/${id}`, 'DELETE')).status).toBe(204);
     expect(await roomExists(id)).toBe(false);
   });
@@ -177,7 +222,7 @@ describe('a room whose project was deleted', () => {
   // Review F1: the opener who has since left the organization still finds it, under one they hold.
   // Round 24: under their personal workspace alone, while the organization's admins still find it.
   it('stays findable by its opener after they leave its organization', async () => {
-    const id = await roomWhoseProjectIsGone();
+    const id = await roomWhoseProjectIsGone(true);
     const elsewhere = (await seedOrg(harness.db, creatorId)).id;
     const personal = (await seedOrg(harness.db, creatorId, { isPersonal: true })).id;
     await harness.db.execute(

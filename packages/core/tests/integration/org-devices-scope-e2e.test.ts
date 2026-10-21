@@ -1,5 +1,5 @@
 /**
- * The organisation's devices are a different population from the caller's own,
+ * The organization's devices are a different population from the caller's own,
  * and the route that serves them says which is which (ISS-1162).
  *
  * Measured on forge-beta 2026-09-21: `/runners` reported "No devices yet" to an
@@ -60,7 +60,7 @@ async function addRunner(
  * The caller is an ordinary org MEMBER, not an owner: `visibleProjectsWhere`
  * hands an owner or admin every project in the org, so only a plain member can
  * have a project in their own org they cannot see — which is the case that
- * separates "the organisation's devices" from "the devices this reader is
+ * separates "the organization's devices" from "the devices this reader is
  * entitled to know about".
  */
 async function seed(): Promise<Fixture> {
@@ -274,14 +274,14 @@ describe('GET /api/orgs/:orgId/devices', () => {
     expect(mineBody.map((d) => d.id)).toContain(f.unboundDeviceId);
   });
 
-  it('refuses a caller who is not a member of the organisation', async () => {
+  it('refuses a caller who is not a member of the organization', async () => {
     const f = await seed();
 
     const res = await app.fetch(get(`/api/orgs/${f.orgId}/devices`, f.outsiderToken));
     expect(res.status).toBe(403);
   });
 
-  it('refuses an organisation that does not exist', async () => {
+  it('refuses an organization that does not exist', async () => {
     const f = await seed();
 
     const res = await app.fetch(
@@ -297,7 +297,7 @@ describe('GET /api/orgs/:orgId/devices', () => {
     expect(res.status).toBe(400);
   });
 
-  it('answers empty for an organisation the caller belongs to with nothing visible in it', async () => {
+  it('answers empty for an organization the caller belongs to with nothing visible in it', async () => {
     const f = await seed();
     await harness.db.execute(sql`
       INSERT INTO organization_members (org_id, user_id, role)

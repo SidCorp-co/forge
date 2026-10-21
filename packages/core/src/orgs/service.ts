@@ -95,7 +95,7 @@ export function heldDevicesRefusal(
     const handle = agents.find((a) => a.id === ownerId)?.handle;
     return { at: handle ? `@${handle}` : `the agent ${ownerId}`, names };
   });
-  const way = `Revoke ${held.length === 1 ? 'it' : 'them'} on the Runners page under Organisation, then delete the organization.`;
+  const way = `Revoke ${held.length === 1 ? 'it' : 'them'} on the Runners page under Organization, then delete the organization.`;
   const [only] = holders;
   if (holders.length === 1 && only) {
     const what = only.names.length === 1 ? 'the device' : `${only.names.length} devices,`;
@@ -112,7 +112,9 @@ export function projectsStandRefusal(names: readonly string[]): string {
       ? `the project ${quotedList(names)}`
       : `${names.length} projects, ${quotedList(names)}`;
   const where =
-    names.length === 1 ? 'it first, from its settings' : "them first, from each project's settings";
+    names.length === 1
+      ? 'that project first, from its settings'
+      : "those projects first, from each project's settings";
   return `This organization still holds ${held}, so the organization was not deleted. Delete ${where}, then delete the organization.`;
 }
 

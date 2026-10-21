@@ -9,6 +9,7 @@ import { devices, runners } from '../db/schema.js';
 import { liveMasterOf } from '../devices/master-owner.js';
 import { residentMasterSql } from '../devices/master-session.js';
 import { readRunnerPoolRead } from '../devices/pool-read-report.js';
+import { refusedRepoPath, repoPathField } from '../lib/absolute-path.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import type { AuthVars } from '../middleware/auth.js';
 import { hooks } from '../pipeline/hooks.js';
@@ -48,7 +49,7 @@ const createRunnerBodySchema = z
     capabilities: z.record(z.string(), z.unknown()).optional(),
     // ISS-271 — per (device × project) repo checkout. Optional at bind time:
     // a web bind may leave them null until the operator sets the path later.
-    repoPath: z.string().trim().max(500).nullable().optional(),
+    repoPath: repoPathField.nullable().optional(),
     branch: z.string().trim().max(100).nullable().optional(),
   })
   .strict();
@@ -142,7 +143,8 @@ projectRunnerRoutes.post(
     if (!result.success) throw badRequest(z.flattenError(result.error));
   }),
   zValidator('json', createRunnerBodySchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success)
+      throw refusedRepoPath(result.error) ?? badRequest(z.flattenError(result.error));
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -267,7 +269,7 @@ const runnerParamSchema = z.object({ id: z.uuid(), runnerId: z.uuid() });
 // server stays the single source of truth for the runner working dir.
 const patchRunnerBodySchema = z
   .object({
-    repoPath: z.string().trim().max(500).nullable().optional(),
+    repoPath: repoPathField.nullable().optional(),
     branch: z.string().trim().max(100).nullable().optional(),
     capabilities: z.record(z.string(), z.unknown()).optional(),
     labels: z.array(z.string().trim().min(1).max(60)).max(20).optional(),
@@ -281,7 +283,8 @@ projectRunnerRoutes.patch(
     if (!result.success) throw badRequest(z.flattenError(result.error));
   }),
   zValidator('json', patchRunnerBodySchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success)
+      throw refusedRepoPath(result.error) ?? badRequest(z.flattenError(result.error));
   }),
   async (c) => {
     const { id, runnerId } = c.req.valid('param');

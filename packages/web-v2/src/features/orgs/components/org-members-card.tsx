@@ -249,9 +249,10 @@ export function OrgMembersCard({
             {(membersQ.data ?? []).map((m) => (
               <li
                 key={m.userId}
-                className="flex items-center justify-between gap-3 rounded-md border border-line px-3 py-2"
+                data-testid="org-member-row"
+                className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 rounded-md border border-line px-3 py-2"
               >
-                <span className="flex min-w-0 items-center gap-2">
+                <span className="flex min-w-[12rem] flex-1 items-center gap-2" data-testid="org-member-who">
                   <span className="min-w-0 truncate text-fg">{m.email}</span>
                   {user?.id === m.userId && <Badge tone="accent">You</Badge>}
                 </span>
@@ -272,11 +273,7 @@ export function OrgMembersCard({
                         { userId: m.userId, lenses: next },
                         {
                           onError: (err) =>
-                            toast({
-                              title: "Couldn't update lens",
-                              description: formatApiError(err),
-                              tone: "error",
-                            }),
+                            toast(failureToast(err, "The lens was not changed")),
                         },
                       );
                     }}

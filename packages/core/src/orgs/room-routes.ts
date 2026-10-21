@@ -2,11 +2,12 @@
  * `GET /api/orgs/:orgId/rooms-without-a-project` — the rooms an organization holds that are about no
  * project any more, because every project an agent brought them is deleted (ISS-1229 r23). They are
  * listed nowhere else, since every other list is a project's, so this is where their opener or an
- * admin of the organization finds them, reads them and deletes them. Each row says which project went,
+ * admin of the organization finds them, reads them and deletes them; a one-to-one room only its two
+ * people (r25). Each row says which project went,
  * when the room was opened and when it was last spoken in, so rooms with one title are told apart.
  */
 
-import { and, desc, eq, isNotNull, isNull, max, notExists, or, sql } from 'drizzle-orm';
+import { and, desc, eq, exists, isNotNull, isNull, max, ne, notExists, or, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -96,6 +97,24 @@ orgRoomRoutes.get(
                     ),
                 ),
               ),
+            ),
+          ),
+          // A one-to-one room is its two people's alone, whatever role a reader holds (ISS-1229 r25):
+          // an admin is never listed a room they cannot read.
+          or(
+            ne(conversations.shape, 'direct'),
+            exists(
+              db
+                .select({ id: conversationParticipants.id })
+                .from(conversationParticipants)
+                .where(
+                  and(
+                    eq(conversationParticipants.conversationId, conversations.id),
+                    eq(conversationParticipants.kind, 'person'),
+                    eq(conversationParticipants.userId, userId),
+                    isNull(conversationParticipants.removedAt),
+                  ),
+                ),
             ),
           ),
           notExists(

@@ -333,7 +333,7 @@ describe('an organization the delete cannot take yet', () => {
     expect(body.message).toMatch(/^This organization still holds 2 projects, /);
     expect(body.message).toContain('"Billing"');
     expect(body.message).toMatch(
-      /so the organization was not deleted\. Delete them first, from each project's settings, then delete the organization\.$/,
+      /so the organization was not deleted\. Delete those projects first, from each project's settings, then delete the organization\.$/,
     );
     const rows = await harness.db.execute<{ n: number }>(
       sql`SELECT count(*)::int AS n FROM organizations WHERE id = ${teamId}`,
@@ -345,7 +345,7 @@ describe('an organization the delete cannot take yet', () => {
     const res = await deleteOrg(teamId);
     const body = (await res.json()) as { message?: string };
     expect(body.message).toMatch(
-      /^This organization still holds the project "[^"]+", so the organization was not deleted\. Delete it first, from its settings, then delete the organization\.$/,
+      /^This organization still holds the project "[^"]+", so the organization was not deleted\. Delete that project first, from its settings, then delete the organization\.$/,
     );
   });
 

@@ -198,6 +198,7 @@ export const patchProject = describeOperation({
       ENVIRONMENTS_MOVED:
         '`environments` was sent: it is written through `PATCH /api/projects/:id/environments`',
       RELEASE_CHAIN_BASE_MISMATCH: 'the release chain starts on a branch other than `baseBranch`',
+      REPO_PATH_NOT_ABSOLUTE: '`repoPath` is not an absolute path, so nothing was saved',
       BAD_REQUEST: 'the issue prefix is not a valid prefix',
     }),
     403: NEEDS_ORG_ADMIN,

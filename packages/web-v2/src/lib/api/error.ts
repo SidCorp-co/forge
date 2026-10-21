@@ -107,12 +107,23 @@ function landingShapeSentence(err: ApiError): string | null {
   );
 }
 
+/** Core's stock word for a body it could not read, which names no field; anything else it wrote does. */
+const UNREAD_BODY = 'Invalid input';
+
+/** Whether a refused body came with core's own sentence naming what was wrong (ISS-1229 r25): an
+ *  organization name over its limit read "Invalid input — please check the fields" here. */
+function saysWhy(message: string): boolean {
+  const text = message.trim();
+  return text.length > 0 && text !== UNREAD_BODY && !isReasonPhrase(text);
+}
+
 export function formatApiError(err: unknown): string {
   if (err instanceof ApiError) {
     const worded = mergeMarkSentence(err) ?? strandedWorkSentence(err) ?? landingShapeSentence(err);
     if (worded) return worded;
     const claimed = err.code === 'CLAIM_CONFLICT' ? claimConflictSentence(err.details) : null;
     if (claimed) return claimed;
+    if (err.code === 'BAD_REQUEST' && saysWhy(err.message)) return err.message;
     if (err.code && FRIENDLY_CODES[err.code]) return FRIENDLY_CODES[err.code];
     if (!err.message.trim() || isReasonPhrase(err.message)) return unsaidFailure(err.status);
     return err.message;

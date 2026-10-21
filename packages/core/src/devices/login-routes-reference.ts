@@ -55,7 +55,7 @@ export const loginApproveBodySchema = z.object({
     .regex(UUID_PATTERN, { error: AGENT_MESSAGE })
     .nullish()
     .describe(
-      "An agent in the approver's organisation to pair the box as; the approver's own account when absent",
+      "An agent in the approver's organization to pair the box as; the approver's own account when absent",
     ),
 });
 
@@ -170,12 +170,12 @@ export const approveDeviceLogin = describeOperation({
     }),
     403: fail({
       PAT_MINT_NEEDS_FULL_GRANT: 'the caller is a token granted less than `*`',
-      FORBIDDEN: 'the agent belongs to an organisation where the caller is not an admin',
+      FORBIDDEN: 'the agent belongs to an organization where the caller is not an admin',
     }),
     404: fail({
       PAIRING_CODE_NOT_FOUND: 'the code is unknown, already approved, consumed or expired',
       AGENT_NOT_FOUND: '`agent_id` is not an agent user',
-      NOT_FOUND: "the agent's organisation does not exist",
+      NOT_FOUND: "the agent's organization does not exist",
     }),
   },
 });

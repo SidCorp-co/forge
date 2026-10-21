@@ -7,10 +7,10 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import { skillUpdatesApi } from "./api";
 import type { ReconcileRunSummary } from "./types";
+import { failureToast } from "@/lib/api/failure-toast";
 
 /** Every reconcile run for the project, newest first. */
 export function useReconcileRuns(projectId: string) {
@@ -50,7 +50,7 @@ export function useApplyReconcileRun(projectId: string) {
       });
     },
     onError: (err) =>
-      toast({ title: "Publish failed", description: formatApiError(err), tone: "error" }),
+      toast(failureToast(err, "The skill update was not published")),
   });
 }
 
@@ -69,7 +69,7 @@ export function useRejectReconcileRun(projectId: string) {
       });
     },
     onError: (err) =>
-      toast({ title: "Reject failed", description: formatApiError(err), tone: "error" }),
+      toast(failureToast(err, "The skill update was not rejected")),
   });
 }
 
@@ -85,6 +85,6 @@ export function useAcknowledgeReconcileRun(projectId: string) {
       toast({ title: "Acknowledged", tone: "success" });
     },
     onError: (err) =>
-      toast({ title: "Acknowledge failed", description: formatApiError(err), tone: "error" }),
+      toast(failureToast(err, "The skill update was not acknowledged")),
   });
 }

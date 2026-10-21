@@ -92,12 +92,18 @@ export const listProjectRunners = describeOperation({
   },
 });
 
+const REPO_PATH_REFUSED = fail(
+  'REPO_PATH_NOT_ABSOLUTE',
+  '`repoPath` is not an absolute path, so nothing was saved',
+);
+
 export const bindRunner = describeOperation({
   summary: 'Bind a device to the project as a runner, and queue provisioning of its checkout',
   description:
     'An upsert: binding a device that is bound already updates the binding and queues provisioning again.',
   responses: {
     201: json(runnerBindingSchema, 'The runner binding'),
+    400: REPO_PATH_REFUSED,
     403: NEEDS_ADMIN,
     404: fail({ NOT_FOUND: NO_PROJECT, DEVICE_NOT_FOUND: 'no device has this id' }),
     409: fail(
@@ -112,6 +118,7 @@ export const updateRunner = describeOperation({
   summary: "Change a runner's checkout path, branch, capabilities or labels",
   responses: {
     200: json(runnerBindingSchema, 'The runner binding after the change'),
+    400: REPO_PATH_REFUSED,
     403: NEEDS_ADMIN,
     404: fail({
       NOT_FOUND: NO_PROJECT,

@@ -133,10 +133,12 @@ const readRunnerRows = (projectIds: string[]) =>
   db
     .select({
       projectId: runners.projectId,
-      n: sql<number>`count(*)::int`,
+      n: sql<number>`(count(*) FILTER (WHERE ${runners.status} = 'online'))::int`,
+      // Every runner, so the band reads "online/total" as Overview does (ISS-1229 r25).
+      total: sql<number>`count(*)::int`,
     })
     .from(runners)
-    .where(and(inArray(runners.projectId, projectIds), eq(runners.status, 'online')))
+    .where(inArray(runners.projectId, projectIds))
     .groupBy(runners.projectId);
 
 export type SpendRow = { project_id: string; spend: number };

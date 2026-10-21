@@ -6,6 +6,7 @@ import { useToast } from "@/providers/toast-provider";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { resourcesApi } from "./api";
 import type { SshKeyCreateInput, SshKeyUsedByProject } from "./types";
+import { failureToast } from "@/lib/api/failure-toast";
 
 /** 409 payload shape for a safe-delete rejection (`ApiError.details`). */
 export interface KeyInUseDetails {
@@ -66,7 +67,7 @@ export function useDeleteSshKey(orgId: string) {
 		},
 		onError: (err) => {
 			if (keyInUseDetails(err)) return; // surfaced inline by the confirm dialog, not a toast
-			toast({ title: "Couldn't delete key", description: formatApiError(err), tone: "error" });
+			toast(failureToast(err, "The key was not deleted"));
 		},
 	});
 }
@@ -78,6 +79,6 @@ export function useTestSshKey(orgId: string) {
 		mutationFn: ({ keyId, repoUrl }: { keyId: string; repoUrl: string }) =>
 			resourcesApi.testSshKey(orgId, keyId, repoUrl),
 		onError: (err) =>
-			toast({ title: "Couldn't test connection", description: formatApiError(err), tone: "error" }),
+			toast(failureToast(err, "The connection was not tested")),
 	});
 }

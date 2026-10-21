@@ -61,7 +61,7 @@ export const CAPABILITY_AREAS: readonly CapabilityArea[] = [
   {
     area: 'Connected services',
     covers:
-      'How a project reaches an external service without holding its key. A service an organisation has documented has its own guide, `integration-<provider>`, in the same index.',
+      'How a project reaches an external service without holding its key. A service an organization has documented has its own guide, `integration-<provider>`, in the same index.',
     guides: ['google-sheets'],
   },
   {

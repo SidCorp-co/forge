@@ -23,11 +23,12 @@ import { db as defaultDb } from '../db/client.js';
 import type { ConversationMessageRole } from '../db/schema-conversations.js';
 import { conversationMessages, conversations } from '../db/schema-conversations.js';
 import { conversationIndexState, conversationPassages } from '../db/schema-transcript-index.js';
+import { speakerNameSql } from './speaker-names.js';
 
 /**
  * The version of the rule below. A room indexed under an older one is rebuilt.
  */
-export const PASSAGE_BUILDER_REVISION = 1;
+export const PASSAGE_BUILDER_REVISION = 2;
 
 /** Source characters a passage may hold. Every passage is under it; the tail of a long message is a passage of its own. */
 export const PASSAGE_MAX_CHARS = 2000;
@@ -61,7 +62,7 @@ type IndexTx = Parameters<Parameters<typeof defaultDb.transaction>[0]>[0];
 const MESSAGE_COLUMNS = {
   seq: conversationMessages.seq,
   role: conversationMessages.role,
-  authorLabel: conversationMessages.authorLabel,
+  authorLabel: speakerNameSql(),
   content: conversationMessages.content,
   createdAt: conversationMessages.createdAt,
 } as const;
@@ -217,7 +218,7 @@ interface ResumePoint {
  */
 export async function indexConversationOnce(
   conversationId: string,
-  opts: { rebuild?: boolean; db?: typeof defaultDb } = {},
+  opts: { rebuild?: boolean; db?: Pick<typeof defaultDb, 'transaction'> } = {},
 ): Promise<IndexPass> {
   const dbi = opts.db ?? defaultDb;
   return dbi.transaction(async (tx) => {
@@ -433,4 +434,23 @@ export async function conversationsNeedingIndex(
     ? (rows as Array<{ conversation_id: string }>)
     : ((rows as { rows?: Array<{ conversation_id: string }> }).rows ?? []);
   return list.map((r) => r.conversation_id);
+}
+
+/** A rename reaches every passage naming that person: each room they spoke in that the index has read
+ *  is built again in the rename's own transaction, so search never serves the name they had. */
+export async function rebuildWhereTheySpoke(
+  dbh: Pick<typeof defaultDb, 'selectDistinct' | 'transaction'>,
+  userId: string,
+): Promise<void> {
+  const rooms = await dbh
+    .selectDistinct({ id: conversationIndexState.conversationId })
+    .from(conversationIndexState)
+    .innerJoin(
+      conversationMessages,
+      eq(conversationMessages.conversationId, conversationIndexState.conversationId),
+    )
+    .where(
+      and(eq(conversationMessages.authorUserId, userId), eq(conversationMessages.role, 'user')),
+    );
+  for (const { id } of rooms) await indexConversationOnce(id, { rebuild: true, db: dbh });
 }

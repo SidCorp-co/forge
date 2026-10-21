@@ -2,10 +2,10 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { LIVE_READ_POLL_MS } from "@/features/sessions/types";
-import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import { runsApi } from "./api";
 import type { AnalyticsOpts } from "./types";
+import { failureToast } from "@/lib/api/failure-toast";
 
 /** Per-project run list. Keyed `['pipeline-runs','list',projectId]` — the
  *  router invalidates the `['pipeline-runs','list']` prefix. */
@@ -67,7 +67,7 @@ function useRunControl(
       toast({ title: successMessage, tone: "success" });
     },
     onError: (err) => {
-      toast({ title: "Run control failed", description: formatApiError(err), tone: "error" });
+      toast(failureToast(err, "The run was not changed"));
     },
   });
 }

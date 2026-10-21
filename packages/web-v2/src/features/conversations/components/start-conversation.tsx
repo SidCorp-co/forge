@@ -12,6 +12,7 @@
 
 import { personChoice } from "@forge/contracts/person-name";
 import { useState } from "react";
+import { useAuth } from "@/providers/auth-provider";
 import { Button, Checkbox, ErrorState, Icon, Select, Spinner } from "@/design";
 import { useOrgScopedProjects } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
@@ -152,6 +153,7 @@ function Extras({
   onTogglePerson: (userId: string) => void;
   onToggleHandle: (h: PickedHandle) => void;
 }) {
+  const viewerId = useAuth().user?.id ?? null;
   if (query.isLoading) {
     return (
       <p role="status" data-testid="start-candidates-loading" className="fg-body-sm text-muted">
@@ -170,7 +172,10 @@ function Extras({
       </div>
     );
   }
-  const data = query.data;
+  const raw = query.data;
+  // The opener is in the room by opening it: listed once, as "You", and never offered as someone
+  // else to add (ISS-1229 r25, judge-72).
+  const data = raw ? { ...raw, people: raw.people.filter((p) => p.userId !== viewerId) } : raw;
   if (!data || (data.people.length === 0 && data.handles.length === 0)) {
     return (
       <p role="status" data-testid="start-candidates-empty" className="fg-body-sm text-subtle">
@@ -206,6 +211,7 @@ function Extras({
         <div>
           <p className="fg-overline text-subtle">People — who reads the room</p>
           <div className="mt-1 flex flex-col gap-1">
+            <Checkbox checked disabled onChange={() => {}} label={<span data-person-label>You</span>} />
             {data.people.map((p) => (
               <Checkbox
                 key={p.userId}

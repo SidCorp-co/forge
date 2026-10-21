@@ -19,6 +19,10 @@ const WHY_NOT_THE_READER: Record<string, { calls: number; why: string }> = {
     calls: 1,
     why: "the people a new room could take in, which never lists the reader",
   },
+  "features/conversations/components/conversation-thread.tsx": {
+    calls: 1,
+    why: "a person core could not name; the reader's own message reads You before this fallback is reached",
+  },
   "features/conversations/components/add-person-dialog.tsx": {
     calls: 2,
     why: "the people a room could still take in, which never lists the reader, who is in it",

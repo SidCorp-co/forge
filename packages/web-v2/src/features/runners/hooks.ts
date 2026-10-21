@@ -14,11 +14,8 @@ import { runnersApi } from "./api";
  * and reconnect) still refreshes every variant; pending→approved and revoke
  * reflect live with no extra wiring.
  *
- * `orgId` NARROWS this list to the caller's devices that serve a project in that
- * org. ISS-477 had the Runners surface pass it; ISS-1162 reversed that, because a
- * just-paired device has no runner row and so belongs to no org scope — under the
- * filter it was on no screen in the app. The Runners surface now reads the whole
- * owner-scoped list here and the organisation's from `useOrgDevices`.
+ * `orgId` narrows it to devices serving a project in that org; Runners passes none, so a just-paired
+ * device with no runner row is still listed (ISS-1162), and reads the org's from `useOrgDevices`.
  */
 export function useDevices(orgId?: string | null) {
 	return useQuery({
@@ -28,7 +25,7 @@ export function useDevices(orgId?: string | null) {
 }
 
 /**
- * The organisation's devices, over the projects this caller can see. Keyed
+ * The organization's devices, over the projects this caller can see. Keyed
  * `['devices','org', orgId]`, which the event-router invalidates beside
  * `['devices','me']`. That is not enough on its own: a pairing, revoke or
  * turn-off by ANOTHER member publishes to that member's own room and reaches no
@@ -54,7 +51,7 @@ export function useRevokeDevice() {
 		mutationFn: (id: string) => runnersApi.revokeDevice(id),
 		onSuccess: () => {
 			qc.invalidateQueries({ queryKey: ["devices", "me"] });
-			// An admin revoking an organisation agent's box reads it on the organisation list.
+			// An admin revoking an organization agent's box reads it on the organization list.
 			qc.invalidateQueries({ queryKey: ["devices", "org"] });
 			toast({ title: "Device revoked", tone: "success" });
 		},
@@ -83,12 +80,8 @@ export function useSetDeviceDisabled() {
 				tone: "success",
 			});
 		},
-		onError: (err) =>
-			toast({
-				title: "Couldn't update device",
-				description: formatApiError(err),
-				tone: "error",
-			}),
+		onError: (err, { disabled }) =>
+			toast(failureToast(err, disabled ? "The device was not turned off" : "The device was not turned on")),
 	});
 }
 
@@ -97,11 +90,7 @@ export function useInitPairing() {
 	return useMutation({
 		mutationFn: (deviceLabel: string) => runnersApi.initPairing(deviceLabel),
 		onError: (err) =>
-			toast({
-				title: "Could not mint code",
-				description: formatApiError(err),
-				tone: "error",
-			}),
+			toast(failureToast(err, "No pairing code was made")),
 	});
 }
 
@@ -304,7 +293,7 @@ export function useSetGitCredential(projectId: string) {
 				err instanceof ApiError && err.code === "WRONG_ORG"
 					? "That key belongs to a different organization — pick one from this project's org."
 					: formatApiError(err);
-			toast({ title: "Could not set key", description, tone: "error" });
+			toast(failureToast(err, "The key was not set", description));
 		},
 	});
 }
@@ -335,11 +324,7 @@ export function useTestGitCredential(projectId: string) {
 	return useMutation({
 		mutationFn: () => runnersApi.testGitCredential(projectId),
 		onError: (err) =>
-			toast({
-				title: "Could not test connection",
-				description: formatApiError(err),
-				tone: "error",
-			}),
+			toast(failureToast(err, "The connection was not tested")),
 	});
 }
 
@@ -399,7 +384,7 @@ export function useSetDefaultDevice(projectId: string) {
       });
     },
     onError: (err) =>
-      toast({ title: "Couldn't set primary", description: formatApiError(err), tone: "error" }),
+      toast(failureToast(err, "The primary device was not changed")),
   });
 }
 
@@ -423,11 +408,7 @@ export function useClearRunnerError(projectId: string) {
 			});
 		},
 		onError: (err) =>
-			toast({
-				title: "Couldn't clear the error",
-				description: formatApiError(err),
-				tone: "error",
-			}),
+			toast(failureToast(err, "The error was not cleared")),
 	});
 }
 

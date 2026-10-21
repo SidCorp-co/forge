@@ -48,9 +48,30 @@ describe("what a stored turn carries for its reader", () => {
     expect(screen.getByTestId("message-actions")).toHaveTextContent("Colin");
   });
 
-  it("names the account when the transport labelled nobody", () => {
+  // ISS-1229 r25: a message core could not name read "You" to everyone; "You" is the reader's word alone.
+  it("names another member where nobody is named, never You", () => {
     render(<ConversationThread messages={[said({ authorLabel: null })]} windows={[]} />);
-    expect(screen.getByTestId("message-actions")).toHaveTextContent("You");
+    expect(screen.getByTestId("message-actions")).toHaveTextContent("Another member");
+    expect(screen.getByTestId("message-actions")).not.toHaveTextContent("You");
+  });
+
+  // ISS-1229 r25, judge-72: every person's bubble was right-aligned and orange, so only the caption
+  // told the reader's own line from a teammate's.
+  it("draws the reader's own turn on the right in the accent, and another's on the left in a neutral tone", () => {
+    render(
+      <ConversationThread
+        messages={[said({ id: "m1", authorUserId: "me" }), said({ id: "m2", seq: 1, authorUserId: "u2", authorLabel: "Mai Tran" })]}
+        windows={[]}
+      />,
+    );
+    const mine = screen.getByTestId("said-by-you");
+    const theirs = screen.getByTestId("said-by-another");
+    expect(mine.className).toContain("items-end");
+    expect(mine.querySelector(".bg-accent")).not.toBeNull();
+    expect(theirs.className).toContain("items-start");
+    expect(theirs.querySelector(".bg-accent")).toBeNull();
+    expect(theirs.querySelector(".bg-surface")).not.toBeNull();
+    expect(theirs).toHaveTextContent("Mai Tran");
   });
 
   // ISS-1229 r24: the reader's own message, in a room where core labels them like anyone else.

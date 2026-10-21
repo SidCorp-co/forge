@@ -43,6 +43,7 @@ import { agentAddress, agentLabel, agentProjectNames, reachOf } from "../label";
 import type { AgentAccountRow } from "../types";
 import { AgentSelfEditor } from "./agent-self-editor";
 import { CreateAgentForm } from "./create-agent-form";
+import { failureToast } from "@/lib/api/failure-toast";
 
 export function AgentsTab() {
   const [selfOpen, setSelfOpen] = useState<string | null>(null);
@@ -81,7 +82,7 @@ export function AgentsTab() {
       const { plaintext } = await mint.mutateAsync(agent.userId);
       setRevealed({ userId: agent.userId, plaintext });
     } catch (err) {
-      toast({ title: "Could not mint a credential", description: formatApiError(err), tone: "error" });
+      toast(failureToast(err, "No credential was made"));
     }
   }
 
@@ -95,7 +96,7 @@ export function AgentsTab() {
         tone: "success",
       });
     } catch (err) {
-      toast({ title: "Could not revoke", description: formatApiError(err), tone: "error" });
+      toast(failureToast(err, "The credential was not revoked"));
     }
   }
 
@@ -107,7 +108,7 @@ export function AgentsTab() {
       });
       setRenaming(null);
     } catch (err) {
-      toast({ title: "Could not set the name", description: formatApiError(err), tone: "error" });
+      toast(failureToast(err, "The name was not set"));
     }
   }
 

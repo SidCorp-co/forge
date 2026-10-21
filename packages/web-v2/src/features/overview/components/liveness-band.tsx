@@ -69,14 +69,14 @@ export function LivenessBand({ liveness, thresholds }: LivenessBandProps) {
 
         <Link
           href="/runners"
-          aria-label={`${liveness.devices.online} of ${liveness.devices.total} runners online — open Runners`}
+          aria-label={`${liveness.devices.online} of ${liveness.devices.total} ${liveness.devices.total === 1 ? "runner" : "runners"} online — open Runners`}
           className="rounded-sm px-1 py-0.5 hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
         >
           <span className="fg-h2 block tabular-nums">
             {liveness.devices.online}/{liveness.devices.total}
           </span>
           <span className="fg-body-sm text-muted">
-            runners online
+            {liveness.devices.total === 1 ? "runner online" : "runners online"}
             {liveness.devices.draining > 0 ? ` · ${liveness.devices.draining} draining` : ""}
           </span>
         </Link>

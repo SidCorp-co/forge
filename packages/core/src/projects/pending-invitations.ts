@@ -10,7 +10,7 @@ import {
 import { personNameSql } from '../lib/person-name.js';
 
 /**
- * The invitations a person may still accept, project and organisation alike: the rows the bell offers
+ * The invitations a person may still accept, project and organization alike: the rows the bell offers
  * with Accept and Decline. The pending route lists them and the bell's open count counts them, from
  * this one read, so the badge never counts an invitation the panel does not offer (ISS-1229 r14).
  */
@@ -23,7 +23,7 @@ export interface PendingInvitation {
   role: string;
   expiresAt: Date;
   createdAt: Date;
-  /** The project a project invitation is to; null for an organisation's. */
+  /** The project a project invitation is to; null for an organization's. */
   projectId: string | null;
 }
 

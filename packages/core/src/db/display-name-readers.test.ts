@@ -30,8 +30,8 @@ const PRESENTATION_AND_MAPPING: Record<string, string> = {
     'the name a mention notice prints its mentioner by, through `personName`, in place of the part of their address before the "@" (ISS-1229 r20). It decides nothing: who is told is read off the mentioned user ids',
   'projects/health-aggregates.ts':
     'the name a project card’s member avatars take their initials from, through `personName`, in place of their address (ISS-1229 r20). It decides nothing: who is a member is read off the membership rows',
-  'assistant/conversation-routes.ts':
-    'the name a person’s own message is attributed by in a conversation transcript, which is a label read by whoever opens the room and by the model answering in it — it addresses nobody and resolves nothing',
+  'conversations/speaker-names.ts':
+    'the name a person’s own message is attributed by in a conversation transcript, read from the person each time it is shown and never stored, through `personNameSql` (ISS-1229 r25). It is a label read by whoever opens the room and by the model answering in it — it addresses nobody and resolves nothing',
   'conversations/membership.ts':
     'the name the line a room is told when somebody joins or leaves prints them by, through `personName`, in place of their address (ISS-1229 r21). It decides nothing: who is in the room is read off the participant rows',
   'issues/attributes/read.ts':

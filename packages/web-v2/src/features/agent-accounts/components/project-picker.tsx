@@ -1,7 +1,7 @@
 "use client";
 
 // A long list inside a form is searched, not scrolled: the picker opens on the projects already chosen
-// and a search field, and shows the ones that match what was typed. An organisation with two dozen
+// and a search field, and shows the ones that match what was typed. An organization with two dozen
 // projects costs the form one line until a person asks for them.
 import { useId, useState } from "react";
 import { Button, Checkbox, Icon, Input } from "@/design";

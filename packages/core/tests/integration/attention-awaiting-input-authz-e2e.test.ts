@@ -5,7 +5,7 @@
  * Ownership and visibility are two different questions. `ownedForAnswer` asks
  * whether the question is the caller's to answer; it has never asked whether
  * the caller may see the project it is asked about, so a person removed from a
- * project and from its organisation kept receiving that project's rows
+ * project and from its organization kept receiving that project's rows
  * (ISS-989).
  *
  * Real Postgres, because the claim IS the WHERE clause. The unit lane's mock
@@ -110,7 +110,7 @@ describe('awaiting input reaches only a caller with a role on the project (real 
       expect(rows.map((r) => r.id)).not.toContain(hidden);
     });
 
-    it('receives no row when their only organisation role is plain member', async () => {
+    it('receives no row when their only organization role is plain member', async () => {
       await createTestOrgMember(harness.db, { orgId, userId: outsider, role: 'member' });
       await blockedIssue();
 

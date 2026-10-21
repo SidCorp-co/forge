@@ -6,7 +6,6 @@
 
 import { ApiError } from "@/lib/api/client";
 import {
-	formatApiError,
 	formatPipelineConfigError,
 	formatSettingsWriteError,
 } from "@/lib/api/error";
@@ -23,6 +22,7 @@ import type {
 	PluginDesignation,
 	ProjectUpdateInput,
 } from "./types";
+import { failureToast } from "@/lib/api/failure-toast";
 
 /** Where a page says the outcome of a save itself, a toast from the hook would say it a second time. */
 export interface SaveToastOptions {
@@ -48,11 +48,7 @@ export function useUpdateProject(
 		},
 		onError: (err) => {
 			if (!toastFailure) return;
-			toast({
-				title: "Couldn't save project",
-				description: formatApiError(err),
-				tone: "error",
-			});
+			toast(failureToast(err, "The project was not saved"));
 		},
 	});
 }
@@ -70,11 +66,7 @@ export function useArchiveProject(id: string | undefined) {
 			toast({ title: "Project archived", tone: "success" });
 		},
 		onError: (err) =>
-			toast({
-				title: "Couldn't archive project",
-				description: formatApiError(err),
-				tone: "error",
-			}),
+			toast(failureToast(err, "The project was not archived")),
 	});
 }
 
@@ -90,11 +82,7 @@ export function useUnarchiveProject(id: string | undefined) {
 			toast({ title: "Project unarchived", tone: "success" });
 		},
 		onError: (err) =>
-			toast({
-				title: "Couldn't unarchive project",
-				description: formatApiError(err),
-				tone: "error",
-			}),
+			toast(failureToast(err, "The project was not brought back")),
 	});
 }
 
@@ -132,11 +120,7 @@ export function useUpdatePipelineConfig(
 		},
 		onError: (err) => {
 			if (!toastFailure) return;
-			toast({
-				title: "Couldn't save pipeline config",
-				description: formatPipelineConfigError(err),
-				tone: "error",
-			});
+			toast(failureToast(err, "The pipeline settings were not saved", formatPipelineConfigError(err)));
 		},
 	});
 }
@@ -172,11 +156,7 @@ export function useUpdateEnvironments(
 		},
 		onError: (err) => {
 			if (!toastFailure) return;
-			toast({
-				title: "Couldn't save Shape & release",
-				description: formatSettingsWriteError(err),
-				tone: "error",
-			});
+			toast(failureToast(err, "Shape & release was not saved", formatSettingsWriteError(err)));
 		},
 	});
 }
@@ -198,11 +178,7 @@ export function useUpdatePlugins(
 		},
 		onError: (err) => {
 			if (!toastFailure) return;
-			toast({
-				title: "Couldn't save plugins",
-				description: formatApiError(err),
-				tone: "error",
-			});
+			toast(failureToast(err, "The plugins were not saved"));
 		},
 	});
 }
@@ -252,11 +228,7 @@ export function useInviteMember(id: string | undefined) {
 			toast({ title: "Invitation sent", tone: "success" });
 		},
 		onError: (err) =>
-			toast({
-				title: "Couldn't invite member",
-				description: formatApiError(err),
-				tone: "error",
-			}),
+			toast(failureToast(err, "The member was not invited")),
 	});
 }
 
@@ -275,11 +247,7 @@ export function useDirectAddMember(id: string | undefined) {
 			toast({ title: "Member added", tone: "success" });
 		},
 		onError: (err) =>
-			toast({
-				title: "Couldn't add member",
-				description: formatApiError(err),
-				tone: "error",
-			}),
+			toast(failureToast(err, "The member was not added")),
 	});
 }
 
@@ -304,11 +272,7 @@ export function useRevokeInvitation(id: string | undefined) {
 			toast({ title: "Invitation cancelled", tone: "success" });
 		},
 		onError: (err) =>
-			toast({
-				title: "Couldn't cancel invitation",
-				description: formatApiError(err),
-				tone: "error",
-			}),
+			toast(failureToast(err, "The invitation was not cancelled")),
 	});
 }
 
@@ -327,11 +291,7 @@ export function useUpdateMemberRole(id: string | undefined) {
 			toast({ title: "Role updated", tone: "success" });
 		},
 		onError: (err) =>
-			toast({
-				title: "Couldn't update role",
-				description: formatApiError(err),
-				tone: "error",
-			}),
+			toast(failureToast(err, "The role was not changed")),
 	});
 }
 
@@ -347,11 +307,7 @@ export function useRemoveMember(id: string | undefined) {
 			toast({ title: "Member removed", tone: "success" });
 		},
 		onError: (err) =>
-			toast({
-				title: "Couldn't remove member",
-				description: formatApiError(err),
-				tone: "error",
-			}),
+			toast(failureToast(err, "The member was not removed")),
 	});
 }
 
@@ -378,11 +334,7 @@ export function useCreateLabel(id: string | undefined) {
 			});
 		},
 		onError: (err, body) =>
-			toast({
-				title: body.kind === "module" ? "Couldn't create module" : "Couldn't create label",
-				description: formatApiError(err),
-				tone: "error",
-			}),
+			toast(failureToast(err, body.kind === "module" ? "The module was not created" : "The label was not created")),
 	});
 }
 
@@ -400,11 +352,7 @@ export function useUpdateLabel(id: string | undefined) {
 			toast({ title: "Saved", tone: "success" });
 		},
 		onError: (err) =>
-			toast({
-				title: "Couldn't save",
-				description: formatApiError(err),
-				tone: "error",
-			}),
+			toast(failureToast(err, "The label was not saved")),
 	});
 }
 
@@ -420,11 +368,7 @@ export function useDeleteLabel(id: string | undefined) {
 			toast({ title: "Deleted", tone: "success" });
 		},
 		onError: (err) =>
-			toast({
-				title: "Couldn't delete",
-				description: formatApiError(err),
-				tone: "error",
-			}),
+			toast(failureToast(err, "The label was not deleted")),
 	});
 }
 
@@ -481,11 +425,7 @@ export function useSetMemoryModel(id: string | undefined) {
 		},
 		onError: (err) => {
 			if (isReindexLiveError(err)) return;
-			toast({
-				title: "Couldn't change the memory model",
-				description: formatApiError(err),
-				tone: "error",
-			});
+			toast(failureToast(err, "The memory model was not changed"));
 		},
 	});
 }
@@ -499,11 +439,7 @@ export function useCancelMemoryReindex(id: string | undefined) {
 			qc.invalidateQueries({ queryKey: ["project", id, "memory-model"] });
 		},
 		onError: (err) =>
-			toast({
-				title: "Couldn't cancel the reindex",
-				description: formatApiError(err),
-				tone: "error",
-			}),
+			toast(failureToast(err, "The reindex was not cancelled")),
 	});
 }
 

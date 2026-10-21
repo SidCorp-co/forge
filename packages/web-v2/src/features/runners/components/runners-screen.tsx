@@ -292,7 +292,7 @@ function DeviceActions({
   if (confirming === d.id) {
     return <RevokeDeviceControl deviceId={d.id} deviceName={d.name} onDone={onRevokeDone} />;
   }
-  // An organisation agent's box: an admin revokes it here, and its other controls stay its pairer's.
+  // An organization agent's box: an admin revokes it here, and its other controls stay its pairer's.
   if (!d.ownedByMe) {
     return revoked ? null : (
       <Button variant="ghost" size="sm" icon="trash" onClick={() => onAskRevoke(d.id)}>
@@ -393,8 +393,8 @@ export function RunnersScreen() {
           summary="Each device is a machine running the forge-runner agent. Pair new devices with a browser-approved login, watch their online status live, turn a device off to park it, or revoke access when a device is retired."
           actions={[
             "Mine — every device you paired, whether or not it serves a project",
-            "Organisation — every device assigned to a project you can see here, whoever paired it",
-            "Turn off and rename are the device owner's alone; a device this organisation's agent holds is revoked by an admin of it here",
+            "Organization — every device assigned to a project you can see here, whoever paired it",
+            "Turn off and rename are the device owner's alone; a device this organization's agent holds is revoked by an admin of it here",
           ]}
           docPath="pair-a-runner"
         />

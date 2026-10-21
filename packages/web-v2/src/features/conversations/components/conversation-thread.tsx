@@ -13,7 +13,7 @@
 // drawn by it: a person's own bubble, which carries an `authorLabel` a session
 // has no notion of, and the four non-message entries below.
 
-import { readerName } from "@forge/contracts/person-name";
+import { personName, readerName } from "@forge/contracts/person-name";
 import { useAuth } from "@/providers/auth-provider";
 import { useState } from "react";
 import { Icon } from "@/design";
@@ -110,7 +110,11 @@ function MessageActions({ message }: { message: ConversationMessage }) {
   const viewerId = useAuth().user?.id ?? null;
   // The reader's own message is "You" whatever label core stored for it (ISS-1229 r24).
   const own = Boolean(viewerId) && message.authorUserId === viewerId;
-  const author = own ? "You" : (message.authorLabel ?? (message.role === "user" ? "You" : "Assistant"));
+  // Core names every other person when the room is read (ISS-1229 r25); one it could not name is
+  // another member, never "You", which is the reader's word alone.
+  const author = own
+    ? "You"
+    : (message.authorLabel ?? (message.role === "user" ? personName(null, "start") : "Assistant"));
   const from = own ? "you" : readerName(null, null, author, "inside");
   const copy = () => {
     navigator.clipboard?.writeText(message.content).then(
@@ -149,9 +153,9 @@ function MessageActions({ message }: { message: ConversationMessage }) {
  * The files a person sent with a turn, as the thread shows them — stored, or
  * still on their way with a message this browser has not had confirmed.
  */
-function SentFiles({ files }: { files: readonly { key: string; name: string }[] }) {
+function SentFiles({ files, start = false }: { files: readonly { key: string; name: string }[]; start?: boolean }) {
   return (
-    <ul className="mt-1 flex flex-wrap justify-end gap-1.5" data-testid="message-files">
+    <ul className={`mt-1 flex flex-wrap gap-1.5 ${start ? "justify-start" : "justify-end"}`} data-testid="message-files">
       {files.map((file) => (
         <li
           key={file.key}
@@ -195,27 +199,41 @@ function Said({
     );
   }
   if (message.role === "user") {
-    return (
-      <div className="flex flex-col items-end">
-        {message.content && (
-          <div className={`${USER_BUBBLE} rounded-lg rounded-br-sm bg-accent px-3.5 py-2.5 text-on-accent`}>
-            <p className="fg-body whitespace-pre-wrap text-on-accent">{message.content}</p>
-          </div>
-        )}
-        {message.images && message.images.length > 0 && (
-          <SentFiles files={message.images.map((image) => ({ key: image.ref, name: image.name }))} />
-        )}
-        <div className="mt-1">
-          <MessageActions message={message} />
-        </div>
-      </div>
-    );
+    return <PersonSaid message={message} />;
   }
   return (
     <div className="flex flex-col gap-2">
       {withdrawn && <WithdrawnDraft draft={withdrawn} />}
       <AssistantTurn entry={entryOf(message)} {...(newestAgentId ? { newestAgentId } : {})} />
       <MessageActions message={message} />
+    </div>
+  );
+}
+
+/**
+ * A person's turn: the reader's own on the right in the accent, everyone else's on the left in a
+ * neutral tone, so whose line is whose reads before any caption does (ISS-1229 r25, judge-72).
+ */
+function PersonSaid({ message }: { message: ConversationMessage }) {
+  const viewerId = useAuth().user?.id ?? null;
+  const own = Boolean(viewerId) && message.authorUserId === viewerId;
+  return (
+    <div className={`flex flex-col ${own ? "items-end" : "items-start"}`} data-testid={own ? "said-by-you" : "said-by-another"}>
+      {message.content && (
+        <div
+          className={`${USER_BUBBLE} rounded-lg px-3.5 py-2.5 ${
+            own ? "rounded-br-sm bg-accent text-on-accent" : "rounded-bl-sm border border-line bg-surface text-fg"
+          }`}
+        >
+          <p className={`fg-body whitespace-pre-wrap ${own ? "text-on-accent" : "text-fg"}`}>{message.content}</p>
+        </div>
+      )}
+      {message.images && message.images.length > 0 && (
+        <SentFiles files={message.images.map((image) => ({ key: image.ref, name: image.name }))} start={!own} />
+      )}
+      <div className="mt-1">
+        <MessageActions message={message} />
+      </div>
     </div>
   );
 }

@@ -2,6 +2,23 @@ import { z } from 'zod';
 import { describeOperation, empty, fail, json } from '../api-reference/declare/describe.js';
 import { memberLenses, orgMemberRoles } from '../db/schema.js';
 
+/** How long an organization's name may be, and the refusals that name the field and its limit (ISS-1229 r25). */
+export const ORG_NAME_LIMIT = 200;
+const orgName = z
+  .string({
+    error:
+      "An organization's name is text, and none was given, so it was not saved. Type a name, then save again.",
+  })
+  .trim()
+  .min(
+    1,
+    "An organization's name cannot be empty, so it was not saved. Type a name, then save again.",
+  )
+  .max(
+    ORG_NAME_LIMIT,
+    `An organization's name is at most ${ORG_NAME_LIMIT} characters, so it was not saved. Shorten it, then save again.`,
+  );
+
 export const createOrgSchema = z.object({
   slug: z
     .string()
@@ -9,11 +26,11 @@ export const createOrgSchema = z.object({
     .regex(/^[a-z0-9-]+$/, 'slug must be lowercase letters, digits, or hyphens')
     .min(3)
     .max(64),
-  name: z.string().trim().min(1).max(200),
+  name: orgName,
 });
 
 export const patchOrgSchema = z
-  .object({ name: z.string().trim().min(1).max(200).optional() })
+  .object({ name: orgName.optional() })
   .refine((o) => Object.keys(o).length > 0, { message: 'no fields to update' });
 
 export const addMemberSchema = z.object({

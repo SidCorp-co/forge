@@ -232,7 +232,7 @@ describe('createIssue — an archived project', () => {
     expect(refused).toBeInstanceOf(IssueCreateError);
     expect((refused as { code: string }).code).toBe('PROJECT_ARCHIVED');
     expect((refused as Error).message).toBe(
-      'PROJECT_ARCHIVED: this project was archived on 2026-10-18, so it takes no new issues; an owner or admin of its organisation can unarchive it first',
+      'PROJECT_ARCHIVED: this project was archived on 2026-10-18, so it takes no new issues; an owner or admin of its organization can unarchive it first',
     );
     expect(claimMock).not.toHaveBeenCalled();
     expect(txInsert).not.toHaveBeenCalled();

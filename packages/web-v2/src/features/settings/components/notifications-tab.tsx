@@ -49,6 +49,7 @@ import {
   setEnabled as setSoundEnabled,
 } from "@/lib/notifications/sound";
 import { usePreferences, useUpdatePreferences } from "../hooks";
+import { failureToast } from "@/lib/api/failure-toast";
 
 function fmtTime(iso: string): string {
   const d = new Date(iso);
@@ -85,7 +86,7 @@ export function NotificationsTab() {
     markAll.mutate(undefined, {
       onSuccess: (res) => toast({ title: `Marked ${res.updated} read`, tone: "success" }),
       onError: (err) =>
-        toast({ title: "Action failed", description: formatApiError(err), tone: "error" }),
+        toast(failureToast(err, "Nothing was marked read")),
     });
   }
 

@@ -134,7 +134,7 @@ deviceOwnerRoutes.get(
     // ISS-477 — optional org scope, NARROWING this owner-scoped list: the filter
     // sits on top of `devices.ownerId`, so the answer is always a subset of the
     // caller's own, and an unassigned box has no runner row and so falls under no
-    // org scope at all. The organisation's devices are a different population,
+    // org scope at all. The organization's devices are a different population,
     // served by `/api/orgs/:orgId/devices` in `devices/org-routes.ts` (ISS-1162).
     const orgIdParam = c.req.query('orgId');
     let orgId: string | undefined;

@@ -18,6 +18,7 @@ import {
   projects,
   runners,
 } from '../db/schema.js';
+import { refusedRepoPath, repoPathField } from '../lib/absolute-path.js';
 import {
   assertOrgAccess,
   assertOrgRoleOnProject,
@@ -105,7 +106,7 @@ export const updateProjectSchema = z
     name: z.string().trim().min(1).max(200).optional(),
     description: z.string().trim().max(2000).nullable().optional(),
     kind: z.enum(projectKinds).optional(),
-    repoPath: z.string().trim().max(500).nullable().optional(),
+    repoPath: repoPathField.nullable().optional(),
     repoUrl: z.string().trim().max(500).nullable().optional(),
     workspaceSetup: z.string().trim().max(8000).nullable().optional(),
     baseBranch: z.string().trim().max(100).nullable().optional(),
@@ -299,7 +300,7 @@ projectRoutes.patch(
   zValidator('json', updateProjectPatchSchema, (result) => {
     if (result.success) return;
     refuseByName(result.error, ENVIRONMENTS_MOVED_MESSAGE, 'ENVIRONMENTS_MOVED');
-    throw badRequest(flatten(result.error));
+    throw refusedRepoPath(result.error) ?? badRequest(flatten(result.error));
   }),
   async (c) => {
     const { id } = c.req.valid('param');

@@ -37,6 +37,16 @@ describe("an Activity event, said as a sentence", () => {
     );
   });
 
+  // ISS-1229 r25, judge-72: the reader mentioned read "mentioned a member" in their own Activity.
+  it('says "mentioned you" where the reader was mentioned', () => {
+    const toMe = (ids: string[]) =>
+      sentenceText(activitySentence(item("comment.mentioned", { payload: { mentionedUserIds: ids } }), "me"));
+    expect(toMe(["me"])).toBe("Lan Pham mentioned you in a comment");
+    expect(toMe(["me", "a"])).toBe("Lan Pham mentioned you and another member in a comment");
+    expect(toMe(["a", "me", "b"])).toBe("Lan Pham mentioned you and 2 other members in a comment");
+    expect(toMe(["a"])).toBe("Lan Pham mentioned a member in a comment");
+  });
+
   it("names both statuses of a move by their labels", () => {
     expect(said(item("issue.statusChanged", { payload: { from: "releasing", to: "awaiting_release" } }))).toBe(
       "Lan Pham moved this issue from Releasing to Awaiting release",

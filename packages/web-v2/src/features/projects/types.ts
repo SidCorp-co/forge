@@ -72,6 +72,8 @@ export interface ProjectHealthRow {
   liveSessions: number;
   /** Runners in the `online` state. */
   runnerCount: number;
+  /** Every runner the project has, online or not, the figure Overview counts runners out of. */
+  runnerTotal: number;
   /** Trailing-24h spend (USD). */
   spend24hUsd: number;
   /** True total membership count. */
@@ -151,6 +153,7 @@ export interface ProjectConsoleItem {
   liveSessions: number | null;
   openIssues: number | null;
   runnerCount: number | null;
+  runnerTotal: number | null;
   spend24hUsd: number | null;
   memberCount: number | null;
   members: string[];
@@ -164,6 +167,8 @@ export interface WorkspaceTotals {
   healthRead: QueryRead;
   liveSessions: number | null;
   openIssues: number | null;
+  /** Runners online, out of `runnersTotal`, read "1/2 runners online" as Overview reads it (ISS-1229 r25). */
   runners: number | null;
+  runnersTotal: number | null;
   spend24hUsd: number | null;
 }
