@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.266] - 2026-10-21
+
+The Ask Agent panel stays open once opened; the pin is retired
+
+### Changed
+
+- **The Ask Agent panel stays open once you open it.** Changing page, working beside it or reloading no longer closes it, so the pin is gone. On a phone, a link in it still shows the page it opens.
+
 ## [0.4.0-dev.265] - 2026-10-21
 
 Feedback to Forge over MCP records its source project and run
