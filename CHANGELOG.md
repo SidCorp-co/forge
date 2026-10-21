@@ -3196,6 +3196,11 @@
 
 - **A misspelt field points to the one you meant**, a slip of letter case included, in the API as in the agent tools; a malformed id is refused by name, never a server error. (ISS-1421)
 - **Test connection shows its answer alone**, without "Test failed: error" before it, and says what the address answered instead of claiming Coolify did. (ISS-1421)
+- **A failed read stays failed while live updates arrive.** A page whose read had answered and then failed went back to looking current at the next live update, offering the session it last read and showing the Pipeline page as live; it now keeps saying the read failed, with Retry, until a read succeeds, and the Pipeline page offers Retry beside a failed refresh. (ISS-1228)
+- **The Pipeline page gives a refusal's own sentence**, as the issue page does, instead of asking you to reload. (ISS-1228)
+- **Losing the connection no longer signs you out.** A page opened while Forge could not be reached went to Sign in; it now says Forge could not be reached, with Retry, and tries again by itself when the connection is back. Only Forge saying you are signed out sends you to Sign in. (ISS-1228)
+- **A question on an issue no longer warns that it cannot be delivered when the project has no Rocket.Chat room.** The issue page is where it is answered and a chat room is optional; where a bound room cannot take it, the notice says so as information. Any notice about a question clears once the question is answered, withdrawn or expires. (ISS-1228)
+- **The no-capacity notice counts the runners online when you read it**, so it no longer says both are online after one went offline. (ISS-1228)
 - **A read that failed keeps saying so until it answers.** Retrying blanked it to loading, so the issue header offered a session as if nothing held it; it now keeps its sentence and Retry, and opens no session meanwhile. (ISS-1228)
 - **Every failed read names its cause.** Forge being unreachable reads "Forge could not be reached", and a refusal reads as the refusal's own sentence, on the issue, pipeline, notifications, integrations, runners, monitor and project pages alike. (ISS-1228)
 - **An agent account dropping an issue ends its jobs the same way over the API and the agent tools**, and a job its own drop ended done is no longer also sent a cancel. (ISS-1228)
