@@ -254,31 +254,50 @@ fn origin(url: &reqwest::Url) -> String {
     }
 }
 
-/// Why a call reached nothing, in words, read off the innermost cause.
+/// Why a call reached nothing, in words.
 pub(crate) fn why_not_reached(e: &reqwest::Error) -> String {
     if e.is_timeout() {
         return "no answer came in time".to_string();
     }
+    reached_nothing_because(e, e.is_connect()).to_string()
+}
+
+/// Why a cause chain reached nothing. The socket's own `io::ErrorKind` decides
+/// where one is in the chain, so every OS reads alike: Windows words a refusal
+/// as os error 10061, "No connection could be made…", where Linux says
+/// "Connection refused". A name lookup or a certificate carries no kind of its
+/// own, so those are read off the deepest cause's words.
+fn reached_nothing_because(e: &(dyn std::error::Error + 'static), connect: bool) -> &'static str {
+    use std::io::ErrorKind;
+    let mut at = Some(e);
+    while let Some(err) = at {
+        if let Some(io) = err.downcast_ref::<std::io::Error>() {
+            match io.kind() {
+                ErrorKind::ConnectionRefused => return "the connection was refused",
+                ErrorKind::ConnectionReset
+                | ErrorKind::ConnectionAborted
+                | ErrorKind::BrokenPipe => return "the connection was cut",
+                ErrorKind::TimedOut => return "no answer came in time",
+                _ => {}
+            }
+        }
+        at = err.source();
+    }
     let cause = innermost(e).unwrap_or_default().to_lowercase();
-    let said = if cause.contains("connection refused") {
-        "the connection was refused"
-    } else if cause.contains("dns")
+    if cause.contains("dns")
         || cause.contains("lookup")
         || cause.contains("name or service not known")
         || cause.contains("no such host")
         || cause.contains("nodename nor servname")
     {
         "its host name does not resolve"
-    } else if cause.contains("reset") || cause.contains("broken pipe") {
-        "the connection was cut"
     } else if cause.contains("certificate") || cause.contains("tls") || cause.contains("ssl") {
         "its certificate was not accepted"
-    } else if e.is_connect() {
+    } else if connect {
         "no connection could be made"
     } else {
         "the request failed"
-    };
-    said.to_string()
+    }
 }
 
 /// The deepest source's own words, which is where the fault is named: hyper
@@ -1150,6 +1169,63 @@ mod not_reached_words {
         );
         assert!(!said.contains("error sending request"), "{said}");
         assert!(!said.contains("/api/devices"), "{said}");
+    }
+
+    /// The cause a connector wraps the socket's error in, as hyper's does.
+    #[derive(Debug)]
+    struct Wrapped(std::io::Error);
+    impl std::fmt::Display for Wrapped {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str("tcp connect error")
+        }
+    }
+    impl std::error::Error for Wrapped {
+        fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+            Some(&self.0)
+        }
+    }
+
+    /// ISS-1421 r20 — full CI's windows-latest leg: a refusal worded as
+    /// Windows words it read as "no connection could be made".
+    #[test]
+    fn a_cause_is_read_by_its_kind_whatever_the_os_calls_it() {
+        use std::io::{Error, ErrorKind};
+        let windows = "No connection could be made because the target machine actively refused \
+                       it. (os error 10061)";
+        for (kind, words, said) in [
+            (
+                ErrorKind::ConnectionRefused,
+                windows,
+                "the connection was refused",
+            ),
+            (
+                ErrorKind::ConnectionRefused,
+                "Connection refused (os error 111)",
+                "the connection was refused",
+            ),
+            (
+                ErrorKind::ConnectionReset,
+                "An existing connection was forcibly closed",
+                "the connection was cut",
+            ),
+            (
+                ErrorKind::TimedOut,
+                "A connection attempt failed",
+                "no answer came in time",
+            ),
+        ] {
+            let cause = Wrapped(Error::new(kind, words));
+            assert_eq!(
+                super::reached_nothing_because(&cause, true),
+                said,
+                "{kind:?}: {words}"
+            );
+        }
+        let unnamed = Wrapped(Error::other("something else"));
+        assert_eq!(
+            super::reached_nothing_because(&unnamed, true),
+            "no connection could be made"
+        );
     }
 
     #[tokio::test]

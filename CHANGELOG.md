@@ -3216,7 +3216,7 @@
 - **Deleting a connection deletes its keys.** It used to be turned off with its key kept. Saving a new key in its drawer turns it back on, and Enable no longer appears on one holding no key. (ISS-1421)
 - **A field a call does not take is named whatever else is wrong**, inside an object too, and a refusal's details say what its message says. (ISS-1421)
 - **A key sent to a call that takes no query is refused**, so listing connections by `orgId` now lists only that organization's. (ISS-1421)
-- **forge-runner says when Forge cannot be reached**, where it looked and why, never "error sending request". (ISS-1421)
+- **forge-runner says when Forge cannot be reached**, where it looked and why, never "error sending request", and a refused connection reads as refused on Windows too. (ISS-1421)
 - **A misspelt integration setting is refused, never dropped.** A Coolify target sent `healthURL` was saved without its health check; every integration now refuses a field it does not take and names the one you meant. (ISS-1421)
 - **A wrong value is quoted back.** A number sent as a word, in a query, a body or an agent tool, is refused showing it, never a secret; an empty number is refused, not read as 0. (ISS-1421)
 - **An address that is not Coolify is not called Coolify.** A list that is not a list, a refused token and an unreachable host are each said of the server at the saved address, with what to do. (ISS-1421)
