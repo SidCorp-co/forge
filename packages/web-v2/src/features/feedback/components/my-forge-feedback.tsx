@@ -42,7 +42,7 @@ export function MyForgeFeedback() {
       ) : items.length === 0 ? (
         <EmptyState message={t("feedback.forge.empty")} />
       ) : (
-        <RowList label={t("feedback.forge.mine")}>
+        <RowList label={t("feedback.forge.mine")} pageGutter>
           {items.map((item) => (
             <RowItem
               key={item.key}

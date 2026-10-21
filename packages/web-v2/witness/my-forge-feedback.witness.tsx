@@ -83,6 +83,9 @@ function listed(): string[] {
   const wrong = sideways();
   if (rows().length !== 3) wrong.push(`${rows().length} rows are drawn, not 3`);
   const text = document.body.textContent ?? "";
+  const title = document.querySelector("header h1")?.getBoundingClientRect().left;
+  const key = rows()[0]?.querySelector(".font-mono")?.getBoundingClientRect().left;
+  if (title === undefined || key === undefined || Math.abs(title - key) > 1) wrong.push(`the first key starts at x=${key}, not under the page title at x=${title}`);
   for (const said of ["Your feedback to Forge", "from HOP", "4 reports", "Work running"]) if (!text.includes(said)) wrong.push(`the page never says "${said}"`);
   return wrong;
 }

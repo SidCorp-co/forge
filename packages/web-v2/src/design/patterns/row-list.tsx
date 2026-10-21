@@ -9,9 +9,30 @@ import type { ReactNode } from "react";
 import { cn } from "@/lib/utils/cn";
 import { keyedNodes } from "../keyed";
 
-export function RowList({ children, label, header, testId, className }: { children: ReactNode; label?: string; header?: ReactNode; testId?: string; className?: string }) {
+/**
+ * The shell top bar's gutter (`shell-top-bar.tsx`), given to each row in place of its own inset: a list
+ * that is the whole page draws its keys under the page's title, its hairlines still running edge to edge.
+ */
+const PAGE_GUTTER = "[&_li>*]:px-4 sm:[&_li>*]:px-6";
+
+export function RowList({
+  children,
+  label,
+  header,
+  testId,
+  className,
+  pageGutter,
+}: {
+  children: ReactNode;
+  label?: string;
+  header?: ReactNode;
+  testId?: string;
+  className?: string;
+  /** The list is the page: its rows take the page title's gutter, so the keys line up under it. */
+  pageGutter?: boolean;
+}) {
   return (
-    <div className={cn("border-t border-line-subtle", className)} data-testid={testId ?? "row-list"}>
+    <div className={cn("border-t border-line-subtle", pageGutter && PAGE_GUTTER, className)} data-testid={testId ?? "row-list"}>
       {header ? <div className="flex items-center gap-3 border-b border-line-subtle bg-sunken px-3 py-1.5 text-11-5 font-semibold text-subtle">{header}</div> : null}
       <ul aria-label={label}>{children}</ul>
     </div>
