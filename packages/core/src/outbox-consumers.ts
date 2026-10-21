@@ -37,6 +37,7 @@ import {
   registerRequirementDelivery,
   registerStaleDraftAct,
 } from './requirements/index.js';
+import { registerSteward } from './steward/index.js';
 import { registerMasterWakeSubscribers, registerWsBroadcastSubscribers } from './ws/index.js';
 
 /**
@@ -74,4 +75,5 @@ export function registerOutboxConsumers(): void {
   registerQuestionSuggest();
   registerFeedbackNotifications();
   registerIntakeAssistant();
+  registerSteward();
 }

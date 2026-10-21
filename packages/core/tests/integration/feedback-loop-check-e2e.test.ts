@@ -5,7 +5,11 @@
  * (Feedback lifecycle r14 loop-check): nothing verifies it by itself, a record that reads it gone
  * included (`feedback-triage-checklist-e2e.test.ts` proves that case; the owner's ruling of
  * 2026-10-14); an item still inside its window is left alone; the BA's Needs you holds no verify row.
- * An item that names no criterion promises no record date, and is never held in silence.
+ * An item that names no criterion promises no record date, and is never held in silence. Saying
+ * whether a held item's problem is gone is the holder's own act but no person's decision, so it reads `waiting`, never Needs you (REQ-48 BC-11: a list draws
+ * needs_you only for rows the decisions read holds).
+ *
+ * @direct-test-of packages/core/src/lib/standing-times.ts
  */
 
 import { sql } from 'drizzle-orm';
@@ -235,7 +239,9 @@ describe('an item triaged before a criterion could be named (FB-19, 31, 36, 48, 
         rule: { key: 'feedback.rule.verifyHeld' },
       },
     });
-    expect(held.attentionGroup, 'a holder of feedback.approve owes the answer').toBe('needs_you');
+    expect(held.attentionGroup, 'a holder of feedback.approve owes the answer, off Needs you').toBe(
+      'waiting',
+    );
 
     const first = await heldAt();
     expect(first).not.toBeNull();

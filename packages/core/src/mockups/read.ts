@@ -10,6 +10,7 @@ import type { ActorAgency } from '@forge/contracts/permissions';
 import { requirementKey } from '@forge/contracts/requirements';
 import { and, asc, desc, eq, inArray, isNotNull, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
+import { memoizedRead, primeReads } from '../db/read-memo.js';
 import { issues } from '../db/schema.js';
 import { feedback } from '../db/schema-feedback.js';
 import { mockupComments, mockups } from '../db/schema-mockups.js';
@@ -259,15 +260,27 @@ export async function mockupRowsOn(
     .orderBy(asc(mockups.mockupSeq));
 }
 
-/** The proposed mockups of `projectId` the viewer may accept, oldest first, for the approval inbox. */
+/** Every proposed mockup of these projects, oldest first. */
+function proposedRowsOf(projectIds: readonly string[]): Promise<MockupRow[]> {
+  return db
+    .select()
+    .from(mockups)
+    .where(and(inArray(mockups.projectId, [...projectIds]), eq(mockups.status, 'proposed')))
+    .orderBy(asc(mockups.createdAt));
+}
+
+const proposedKey = (projectId: string) => `proposedMockups:${projectId}`;
+
+/** The proposed mockups of every project in `projectIds` in one statement (`db/read-memo.ts:primeReads`). */
+export function primeWaitingMockups(projectIds: readonly string[]): void {
+  primeReads(projectIds, proposedKey, proposedRowsOf, (r) => r.projectId);
+}
+
+/** The proposed mockups of `projectId` the viewer may accept, oldest first, for Needs you (REQ-49 BC-7). */
 export async function waitingMockupsAs(
   projectId: string,
   viewer: MockupActor,
 ): Promise<MockupView[]> {
-  const rows = await db
-    .select()
-    .from(mockups)
-    .where(and(eq(mockups.projectId, projectId), eq(mockups.status, 'proposed')))
-    .orderBy(asc(mockups.createdAt));
+  const rows = await memoizedRead(proposedKey(projectId), () => proposedRowsOf([projectId]));
   return (await mockupViews(projectId, rows, viewer)).filter((m) => m.can.accept);
 }

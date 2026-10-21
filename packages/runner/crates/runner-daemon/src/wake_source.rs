@@ -26,13 +26,16 @@ pub enum WakeSource {
     Requirement,
     /// Feedback was filed, at whatever severity.
     Feedback,
+    /// The project's steward asks the master to act on an item: nobody serves it, or its act is
+    /// overdue (REQ-48 BC-5). Core keeps the ask among the owed work until the item's standing moves.
+    Steward,
 }
 
 impl WakeSource {
     /// The source `data` names, or why it is refused.
     pub fn of_frame(data: &serde_json::Value) -> Result<Self, String> {
         match data.get("source") {
-            None => Err("it names no source (issue, answer, channel, ecosystem_build, workflow_design, comment, requirement, feedback)".to_string()),
+            None => Err("it names no source (issue, answer, channel, ecosystem_build, workflow_design, comment, requirement, feedback, steward)".to_string()),
             Some(serde_json::Value::String(s)) => match s.as_str() {
                 "issue" => Ok(WakeSource::Issue),
                 "answer" => Ok(WakeSource::Answer),
@@ -42,8 +45,9 @@ impl WakeSource {
                 "comment" => Ok(WakeSource::Comment),
                 "requirement" => Ok(WakeSource::Requirement),
                 "feedback" => Ok(WakeSource::Feedback),
+                "steward" => Ok(WakeSource::Steward),
                 other => Err(format!(
-                    "source {other:?} is not one this runner reads (issue, answer, channel, ecosystem_build, workflow_design, comment, requirement, feedback)"
+                    "source {other:?} is not one this runner reads (issue, answer, channel, ecosystem_build, workflow_design, comment, requirement, feedback, steward)"
                 )),
             },
             Some(other) => Err(format!("source {other} is not a string")),
@@ -60,6 +64,7 @@ impl WakeSource {
             WakeSource::Comment => "comment",
             WakeSource::Requirement => "requirement",
             WakeSource::Feedback => "feedback",
+            WakeSource::Steward => "steward",
         }
     }
 }
@@ -80,6 +85,18 @@ mod tests {
         let refused = WakeSource::of_frame(&serde_json::json!({ "projectId": "p" }))
             .expect_err("a frame with no source was read as a wake");
         assert!(refused.contains("names no source"), "{refused}");
+    }
+
+    #[test]
+    fn a_steward_wake_is_read_by_its_name() {
+        let source = WakeSource::of_frame(&serde_json::json!({
+            "source": "steward",
+            "subjectKey": "ISS-498",
+            "ask": "ISS-498: no master has taken it since 10-14"
+        }))
+        .expect("the runner refused a steward wake");
+        assert_eq!(source, WakeSource::Steward);
+        assert_eq!(source.label(), "steward");
     }
 
     #[test]

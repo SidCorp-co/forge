@@ -1,3 +1,14 @@
+/**
+ * Whom a feedback item waits on, by who reads it. A triage owed to a holder of feedback.approve is
+ * the viewer's own act but no person's decision, so it reads `waiting`, never Needs you (REQ-48
+ * BC-11: a list draws needs_you only for rows the decisions read holds). A carrier filed at draft
+ * holds the item triaged and stuck until it is taken on (BC-9, draft_carrier).
+ *
+ * @direct-test-of packages/core/src/feedback/standing.ts
+ * @direct-test-of packages/core/src/feedback/standing-carrier.ts
+ * @direct-test-of packages/core/src/lib/standing-times.ts
+ */
+
 import { afterAll, beforeAll, describe, expect, it, type MockInstance, vi } from 'vitest';
 import {
   closeWorld,
@@ -118,12 +129,12 @@ async function owedTriages(): Promise<string[]> {
 }
 
 describe('with no live master, an untriaged item waits on a holder of feedback.approve', () => {
-  it('is the owner’s own act, and its filing still wakes the bound box', async () => {
+  it('is the owner’s own act, off their Needs you, and its filing still wakes the bound box', async () => {
     await settleOutbox();
     publish.mockClear();
     ids.low = await file('low', 'The board drops a column on resize');
     expect(await standingAs('owner', ids.low)).toEqual({
-      attentionGroup: 'needs_you',
+      attentionGroup: 'waiting',
       waitingOn: expect.objectContaining({ kind: 'you', who: 'You', act: 'triage it' }),
     });
     expect(await feedbackWakes()).toEqual([
@@ -147,7 +158,7 @@ describe('with no live master, an untriaged item waits on a holder of feedback.a
   it('does not name an absent master even for a high item', async () => {
     ids.high = await file('high', 'Saving the board loses every card');
     expect(await standingAs('owner', ids.high)).toEqual({
-      attentionGroup: 'needs_you',
+      attentionGroup: 'waiting',
       waitingOn: expect.objectContaining({ kind: 'you', who: 'You', act: 'triage it' }),
     });
   });
@@ -201,7 +212,8 @@ describe('a high item is triaged onto an issue', () => {
       }),
     );
     const read = ok(await say('owner', 'GET', at(`/${ids.high}`))).feedback;
-    expect(read.phase).toBe('planned');
+    expect(read.phase, 'the carrier is filed at draft, which plans nothing yet').toBe('triaged');
+    expect(read.times.stuck).toMatchObject({ code: 'draft_carrier' });
     expect(read.route.carriers).toHaveLength(1);
     ids.carrierKey = read.route.carriers[0].key;
     expect(ids.carrierKey).toMatch(/^ISS-\d+$/);
@@ -210,9 +222,11 @@ describe('a high item is triaged onto an issue', () => {
     );
     expect(carrier).toMatchObject({ complexity: 's', category: 'bug', priority: 'high' });
     ids.carrier = carrier.id;
+    await seedIssueStatus(ids.carrier, 'open');
+    expect(ok(await say('owner', 'GET', at(`/${ids.high}`))).feedback.phase).toBe('planned');
     expect(await standingAs('member', ids.high)).toEqual({
       attentionGroup: 'moving',
-      waitingOn: expect.objectContaining({ kind: 'issue', act: 'ship', ref: ids.carrierKey }),
+      waitingOn: expect.objectContaining({ ref: ids.carrierKey }),
     });
   });
 });
@@ -221,8 +235,9 @@ describe('a carrier at the release gate waits on whoever makes that release', ()
   it('names the project writers to release it by hand where no release model is declared', async () => {
     await seedIssueStatus(ids.carrier, 'awaiting_release');
     const act = `release ${ids.carrierKey} by hand and close it`;
+    // releasing by hand is the writer's own work, not a decision: off Needs you (REQ-48 BC-11)
     expect(await standingAs('member', ids.high)).toEqual({
-      attentionGroup: 'needs_you',
+      attentionGroup: 'waiting',
       waitingOn: expect.objectContaining({ kind: 'you', who: 'You', act }),
     });
     expect(await standingAs('viewer', ids.high)).toEqual({

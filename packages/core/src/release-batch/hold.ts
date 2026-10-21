@@ -14,6 +14,7 @@ import { releaseHolds } from '../db/schema-release-ledger.js';
 import { sqlTimestamp } from '../db/sql-timestamp.js';
 import type { IssueCriteriaReport, RuntimeReading } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
+import { emitEvent } from '../outbox/index.js';
 import { type ServingReading, servingClause } from './serving-reading.js';
 import { type ShippedEarlierUnsettled, withShippedEarlier } from './shipped-earlier-hold.js';
 
@@ -24,6 +25,8 @@ export interface ReleaseHold {
   readonly reason: string;
   readonly owes: ReleaseHoldOwer;
   readonly waitingFor: string;
+  /** A criteria hold's unearned criteria, by number: what the steward's output check names (REQ-48 BC-6). */
+  readonly criteria?: readonly number[];
 }
 
 /**
@@ -133,6 +136,7 @@ export function criteriaHold(report: IssueCriteriaReport): ReleaseHold {
     owes: 'human',
     waitingFor:
       'a verdict on each criterion named at the running deployment, or the issue closed by hand',
+    criteria: report.unearned.map((c) => c.criterion),
   };
 }
 
@@ -381,6 +385,15 @@ export async function writeReleaseHolds(args: {
         waitingFor: hold.waitingFor,
         heldAt: args.now,
       });
+      // a release holding work back for an unearned criterion is answered by the steward's output
+      // check (REQ-48 BC-6, decision 1): a reaction to the hold, never a gate of its own
+      if (hold.code === 'RELEASE_CRITERIA_UNEARNED') {
+        await emitEvent(tx, 'release.held', {
+          projectId: args.projectId,
+          runId: null,
+          held: [{ issueId, criteria: (hold.criteria ?? []).map(String) }],
+        });
+      }
       return 'written' as const;
     });
     tally[wrote] += 1;

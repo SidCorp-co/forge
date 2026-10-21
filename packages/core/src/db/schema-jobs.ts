@@ -41,6 +41,9 @@ export const jobTypes = [
   // the project-onboarding analysis (ISS-63): an issue-less job whose prompt carries the whole
   // method, so the runner, which never branches on the type, needs no change
   'onboarding',
+  // a steward act that needs the codebase or the running build (REQ-48 BC-4, BC-10): issue-less,
+  // its prompt the act's method, so again the runner needs no change
+  'steward',
 ] as const;
 
 export type JobType = (typeof jobTypes)[number];

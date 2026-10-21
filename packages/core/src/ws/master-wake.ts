@@ -15,7 +15,7 @@ const MASTER_WAKE_STATUSES: readonly IssueStatus[] = [
   'awaiting_release',
 ];
 
-// a wake names what fired it, and the runner (`daemon/master.rs:WakeSource`) refuses one it does not know by name, so a source added here without its reader is a loud line on the box, never a dropped signal
+// a wake names what fired it, and the runner (`runner-daemon/src/wake_source.rs:WakeSource`) refuses one it does not know by name, so a source added here without its reader is a loud line on the box, never a dropped signal
 export const MASTER_WAKE_SOURCES = [
   'issue',
   'answer',
@@ -25,6 +25,7 @@ export const MASTER_WAKE_SOURCES = [
   'comment',
   'requirement',
   'feedback',
+  'steward',
 ] as const;
 type MasterWakeSource = (typeof MASTER_WAKE_SOURCES)[number];
 
@@ -128,6 +129,23 @@ async function wakeMastersForFeedback(args: {
     source: 'feedback',
     feedbackId: args.feedbackId,
     severity: args.severity,
+  });
+}
+
+/**
+ * The steward asks the master to act on an item (REQ-48 BC-5): no master serves it, or its act is
+ * overdue. The durable half is `masters/owed.ts` stewardAsks, read on the next box sweep.
+ */
+export async function wakeMastersForSteward(args: {
+  projectId: string;
+  subjectKey: string;
+  ask: string;
+}): Promise<{ boxes: number; delivered: number }> {
+  return publishWake(args.projectId, {
+    projectId: args.projectId,
+    source: 'steward',
+    subjectKey: args.subjectKey,
+    ask: args.ask,
   });
 }
 

@@ -158,7 +158,8 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:json:targetProjectSlug field:json:templateId field:json:turnId
     field:json:userId field:json:workflowId field:json:signalKey field:json:detectorKey
     field:json:operationId field:json:issuePrefix field:query:deploymentUuid field:query:target
-    field:query:provider field:query:requestId field:json:reviewers field:json:teamReviewers`,
+    field:query:provider field:query:requestId field:json:reviewers field:json:teamReviewers
+    field:param:actId field:query:subject field:json:owner field:json:mockup field:json:revises`,
   'prose a person or an agent writes: a title, a body, a message, a note': words`
     field:json:about field:json:acceptanceCriteria field:json:alt field:json:answer
     field:json:assistantInstructions field:json:assumed field:json:body field:json:brief
@@ -170,7 +171,8 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:json:textContent field:json:title field:json:tldr field:json:why field:json:whereSeen
     field:json:raw field:json:localGuide field:json:skillMd field:json:decision
     field:json:suggestion field:json:evidence field:json:emoji field:json:name
-    field:json:displayName field:json:shortName field:json:request field:json:account`,
+    field:json:displayName field:json:shortName field:json:request field:json:account
+    field:json:lines`,
   'a structured part of a record core validates and stores; it admits nobody': words`
     field:json:answers field:json:artifact field:json:attachments
     field:json:awaitsDesign field:json:awaitsMerge field:json:bindings field:json:block field:json:blocker
@@ -198,8 +200,9 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:json:usage field:json:value field:json:verdict field:json:via field:json:voidQuestions
     field:json:workState field:json:workflow field:json:worktree field:json:query
     field:json:error field:json:origin field:json:contentBase64 field:json:binaries
+    field:json:basis field:json:claims
     field:json:endpoint field:json:by field:json:cites field:json:intent field:json:recommended
-    field:json:reportedBy`,
+    field:json:reportedBy field:json:resolves`,
   'a time, a version or a time zone': words`
     field:json:agentVersion field:json:dueAt field:json:dueBy field:json:expectedEditedAt
     field:json:expiresAt field:json:minVersion field:json:parkDeadlineAt field:json:readAt

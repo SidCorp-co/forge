@@ -5,6 +5,8 @@
  * which its shell sends to REST and /mcp. A viewer is refused by the permission it lacks; an owner
  * passes the role and meets the hold that waits for their go-ahead.
  */
+// @direct-test-of packages/core/src/standing/tool.ts
+// @direct-test-of packages/core/src/steward-notes/tool.ts
 
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
@@ -48,6 +50,7 @@ const NOT_A_PROJECT_WRITE: Record<string, string> = {
   forge_release: 'a read',
   forge_decisions: 'a read',
   forge_needs_you: 'a read',
+  forge_standing: 'a read',
   forge_recording: 'a read: a diagnosis it is given is checked and answered, never written',
   forge_metrics_project_step_durations: 'a read',
   forge_metrics_project_timeseries: 'a read',
@@ -55,6 +58,28 @@ const NOT_A_PROJECT_WRITE: Record<string, string> = {
   forge_show: 'draws a block of a run this turn made into the room',
   forge_template: "a template run, kept as the asker's own read",
 };
+
+/** A steward note a member could write on the project's first requirement (REQ-48 BC-7). */
+const stewardNoteWrite = (): Record<string, unknown> => ({
+  projectId: w.home.id,
+  action: 'write',
+  subjectKind: 'requirement',
+  key: 'REQ-1',
+  note: {
+    lines: ['A viewer writes the steward note.'],
+    cites: [{ kind: 'requirement', ref: 'REQ-1' }],
+    claims: {
+      group: 'moving',
+      waitingKind: 'agent',
+      ref: null,
+      stuck: false,
+      stuckCode: null,
+      dueAt: null,
+    },
+    basis: 'basis',
+    runId: null,
+  },
+});
 
 /** Each write tool, a call a member could make, and the permission a viewer is refused it by. */
 const viewerWrites = (): [string, Record<string, unknown>, string][] => [
@@ -167,7 +192,7 @@ describe("every write a turn makes is held to the asker's own role", () => {
 
   it('classifies every tool the Assistant is offered, so a new write cannot join unplanted', () => {
     const offered = w.tools('viewer').tools.map((t) => t.function.name);
-    const planted = viewerWrites().map(([name]) => name);
+    const planted = [...viewerWrites().map(([name]) => name), 'forge_steward_note'];
     const unclassified = offered.filter((n) => !planted.includes(n) && !(n in NOT_A_PROJECT_WRITE));
     expect(
       unclassified,
@@ -186,6 +211,38 @@ describe("every write a turn makes is held to the asker's own role", () => {
       expect(w.text(r), name).toContain(`needs ${permission}`);
     }
     expect(await Promise.all(tables.map(count))).toEqual(before);
+  });
+
+  // a steward note is the steward's or a person's override on the page (REQ-48 BC-7, BC-12); no
+  // confirm card carries one, so the Assistant is offered it as a read and refused its write by name
+  it('refuses the steward note write from chat: a viewer at its door, an owner at the gate', async () => {
+    const { agreementGate } = await import('../../src/assistant/agreement/turn-gate.js');
+    const before = await count('steward_notes');
+    const viewer = await w
+      .tools('viewer')
+      .execute('forge_steward_note', JSON.stringify(stewardNoteWrite()));
+    expect(viewer.isError, w.text(viewer)).toBe(true);
+    expect(w.text(viewer)).toContain('STEWARD_NOTE_FORBIDDEN');
+    const owner = agreementGate(w.tools('asker'), {
+      projectId: w.home.id,
+      conversationId: randomUUID(),
+      personId: w.asker,
+      handleUserId: null,
+    }).tools;
+    const write = await owner.execute('forge_steward_note', JSON.stringify(stewardNoteWrite()));
+    expect(write.isError, w.text(write)).toBe(true);
+    expect(w.text(write)).toContain('CHAT_WRITE_REFUSED');
+    const read = await owner.execute(
+      'forge_steward_note',
+      JSON.stringify({
+        projectId: w.home.id,
+        action: 'get',
+        subjectKind: 'requirement',
+        key: 'REQ-1',
+      }),
+    );
+    expect(w.text(read)).not.toContain('CHAT_WRITE_REFUSED');
+    expect(await count('steward_notes')).toBe(before);
   });
 
   // a channel document speaks to another project's team, which no card in this room answers for:

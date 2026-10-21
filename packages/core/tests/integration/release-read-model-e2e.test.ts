@@ -5,6 +5,9 @@
  *
  * @direct-test-of packages/core/src/release-page/sections.ts
  * @direct-test-of packages/contracts/src/release-page.ts
+ * @direct-test-of packages/core/src/release-batch/release-view.ts
+ * @direct-test-of packages/core/src/development/needs-you-approve-builders.ts
+ * @direct-test-of packages/contracts/src/needs-you-decisions.ts
  */
 
 import { sql } from 'drizzle-orm';
@@ -198,6 +201,7 @@ describe('a draft release reads its gate as words', () => {
   it('waits on an admin to cut it once nothing holds it, and offers the cut to an admin only', async () => {
     await fx.insertIssue('awaiting_release', { section: 'Added', userFacing: 'A new thing' });
     const owner = await detail('owner', '0.1.0');
+    // only an admin cuts, so the cut is their one-click decision in Needs you (REQ-48 BC-11)
     expect(owner).toMatchObject({
       attentionGroup: 'needs_you',
       waitingOn: { kind: 'you', act: 'cut 0.1.0' },
@@ -217,6 +221,71 @@ describe('a draft release reads its gate as words', () => {
   it('refuses a version that is neither cut nor the draft, by name', async () => {
     await fx.insertIssue('awaiting_release', { section: 'Added', userFacing: 'A new thing' });
     expect((await call('owner', 'GET', '/releases/0.9.0')).status).toBe(404);
+  });
+});
+
+type Decision = {
+  entity: string;
+  key: string;
+  topic: string;
+  opens: { kind: string; key: string };
+  recommended: { answerId: string } | null;
+  answers: Array<{ id: string; act: string; path: string; body: unknown; effect: string | null }>;
+  proposal: { consequences: string[]; table: { rows: string[][] } | null } | null;
+};
+
+const decisions = async (who: keyof typeof tokens) => {
+  const r = await call(who, 'GET', '/needs-you/decisions');
+  expect(r.status, JSON.stringify(r.body)).toBe(200);
+  return (r.body.decisions as Decision[]).filter((d) => d.entity === 'release');
+};
+
+// only an admin cuts and the steward may not, so the cut stays the admin's one-click decision
+// through the release page's own door (REQ-48 BC-11, `release.cut`)
+describe('a draft release nothing holds is its admin’s cut, in Needs you', () => {
+  it('offers the holder the cut with the issues it carries, and the press cuts it', async () => {
+    const id = await fx.insertIssue('awaiting_release', {
+      section: 'Added',
+      userFacing: 'A new thing',
+    });
+    const keys = (await detail('owner', '0.1.0')).contents.flatMap((g) =>
+      g.issues.map((i) => i.key),
+    );
+    expect(keys).toHaveLength(1);
+    const [cut, ...more] = await decisions('owner');
+    expect(more).toEqual([]);
+    expect(cut).toMatchObject({
+      key: '0.1.0',
+      topic: 'release',
+      opens: { kind: 'release', key: '0.1.0' },
+      proposal: {
+        consequences: [`Cuts 0.1.0 carrying ${keys.join(', ')}`],
+        table: { rows: [expect.arrayContaining([keys[0]])] },
+      },
+    });
+    const [press] = cut?.answers ?? [];
+    expect(press).toMatchObject({
+      act: 'release.cut',
+      path: `/api/projects/${projectId}/release-batches`,
+      body: { issueIds: [id] },
+    });
+    const res = await api(tokens.owner, 'POST', press?.path ?? '', press?.body);
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    expect(await decisions('owner')).toEqual([]);
+  });
+
+  it('is not offered to a member who may not cut, whose release waits on its holder', async () => {
+    await fx.insertIssue('awaiting_release', { section: 'Added', userFacing: 'A new thing' });
+    expect(await decisions('member')).toEqual([]);
+    expect(await detail('member', '0.1.0')).toMatchObject({
+      attentionGroup: 'waiting',
+      waitingOn: {
+        kind: 'person',
+        who: expect.stringContaining(String((await userNames([ownerId])).get(ownerId))),
+        act: 'cut 0.1.0',
+      },
+      can: { cut: false },
+    });
   });
 });
 

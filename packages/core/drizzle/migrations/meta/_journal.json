@@ -3258,6 +3258,13 @@
       "breakpoints": true
     },
     {
+      "idx": 508,
+      "version": "7",
+      "when": 1826841600000,
+      "tag": "0508_the_steward_acts_at_every_handoff",
+      "breakpoints": true
+    },
+    {
       "idx": 509,
       "version": "7",
       "when": 1826928000000,

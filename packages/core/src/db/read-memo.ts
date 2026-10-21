@@ -24,9 +24,37 @@ export function memoizedRead<T>(key: string, read: () => Promise<T>): Promise<T>
   if (!memo) return read();
   let held = memo.get(key) as Promise<T> | undefined;
   if (!held) {
-    held = read();
+    // a query builder sends its statement again on every `then`: send it once
+    held = Promise.resolve(read());
     memo.set(key, held);
     held.catch(() => memo.delete(key));
   }
   return held.then((value) => structuredClone(value));
+}
+
+/**
+ * Answers `keyOf(id)` for every project in `projectIds` from one statement, `readAll`, inside a
+ * {@link withReadMemo} scope: a read across projects primes what each project's own read would
+ * otherwise send once a project (`development/needs-you-viewer.ts:readNeedsYouAcross`). A key already
+ * held keeps its answer; outside a scope nothing is read, and each project's read reads on its own.
+ * A failed statement is not kept, so each project's read then tries on its own and fails there.
+ */
+export function primeReads<R>(
+  projectIds: readonly string[],
+  keyOf: (projectId: string) => string,
+  readAll: (projectIds: readonly string[]) => Promise<R[]>,
+  projectOf: (row: R) => string,
+): void {
+  const memo = memos.getStore();
+  if (!memo) return;
+  const ids = projectIds.filter((id) => !memo.has(keyOf(id)));
+  if (ids.length === 0) return;
+  // a query builder is a thenable that sends its statement again on every `then`: send it once
+  const all = Promise.resolve(readAll(ids));
+  for (const id of ids) {
+    const key = keyOf(id);
+    const held = all.then((rows) => rows.filter((r) => projectOf(r) === id));
+    memo.set(key, held);
+    held.catch(() => memo.delete(key));
+  }
 }

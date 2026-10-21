@@ -676,6 +676,8 @@ export const REQUIREMENT_REFUSAL_CODES = [
 	/** An area left out of the list still holds requirements: move them first, so none loses its area unseen. */
 	"REQUIREMENT_AREA_IN_USE",
 	"REQUIREMENT_SHORT_NAME_TOO_LONG",
+	/** The owner named is not a member of the project, so nothing it owns would reach them. */
+	"REQUIREMENT_OWNER_NOT_MEMBER",
 	"REQUIREMENT_PLACEMENT_NOT_PROPOSED",
 	"REQUIREMENT_REVISION_NOT_PROPOSED",
 	"REQUIREMENT_REVISION_WITHDRAWN",
@@ -1078,3 +1080,10 @@ export const requirementPlacementRequestSchema = z
 	});
 export const REQUIREMENT_PLACEMENT_SHAPE =
 	"{ areaId?: uuid | null, shortName?: string (at most 6 words) | null }, at least one of them";
+
+/** `PATCH …/requirements/:req`: name the requirement's owner, a member of the project, or null for none. */
+export const patchRequirementRequestSchema = z.strictObject({
+	owner: z.uuid().nullable(),
+});
+export const PATCH_REQUIREMENT_SHAPE =
+	"{ owner: uuid | null } the user id of a project member who owns the requirement, or null for none";

@@ -13,6 +13,7 @@ import type {
 } from '@forge/contracts/suggestions';
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { memoizedRead, primeReads } from '../db/read-memo.js';
 import { issues } from '../db/schema.js';
 import { feedback } from '../db/schema-feedback.js';
 import { requirements } from '../db/schema-requirements.js';
@@ -90,6 +91,22 @@ async function targetsOf(projectId: string, rows: readonly Row[]): Promise<Map<s
   return named;
 }
 
+/** Every proposed suggestion of these projects, oldest first. */
+function proposedRowsOf(projectIds: readonly string[]): Promise<Row[]> {
+  return db
+    .select()
+    .from(suggestions)
+    .where(and(inArray(suggestions.projectId, [...projectIds]), eq(suggestions.status, 'proposed')))
+    .orderBy(asc(suggestions.createdAt));
+}
+
+const proposedKey = (projectId: string) => `proposedSuggestions:${projectId}`;
+
+/** The proposed suggestions of every project in `projectIds` in one statement (`db/read-memo.ts:primeReads`). */
+export function primeWaitingSuggestions(projectIds: readonly string[]): void {
+  primeReads(projectIds, proposedKey, proposedRowsOf, (r) => r.projectId);
+}
+
 /**
  * Every proposed suggestion of `projectId` the viewer may decide, oldest first. `holds` answers
  * whether the viewer holds a permission on the project; a suggestion they may neither accept nor
@@ -103,11 +120,7 @@ export async function waitingSuggestionsFor(
   const breakdownGate = await acceptGateOf(projectId, 'breakdown');
   const mayBreakdown = holds(breakdownGate.permission);
   if (!mayReject && !mayBreakdown) return [];
-  const rows = await db
-    .select()
-    .from(suggestions)
-    .where(and(eq(suggestions.projectId, projectId), eq(suggestions.status, 'proposed')))
-    .orderBy(asc(suggestions.createdAt));
+  const rows = await memoizedRead(proposedKey(projectId), () => proposedRowsOf([projectId]));
   const named = await targetsOf(projectId, rows);
   return rows.flatMap((r): WaitingSuggestion[] => {
     const mayAccept = r.kind === 'breakdown' ? mayBreakdown : mayReject;

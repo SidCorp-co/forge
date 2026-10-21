@@ -188,6 +188,8 @@ export interface ReleaseCriteriaTotals {
 }
 
 export interface ReleaseContentIssue {
+	/** The issue's id, what a cut names it by (`POST …/release-batches {issueIds}`). */
+	id: string;
 	key: string;
 	title: string;
 	status: string;

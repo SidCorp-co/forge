@@ -186,6 +186,7 @@ function contentsOf(p: Part, s: Shared): ReleaseContentGroup[] {
       issues: [],
     };
     group.issues.push({
+      id,
       key: issue.key,
       title: issue.title,
       status: issue.status,

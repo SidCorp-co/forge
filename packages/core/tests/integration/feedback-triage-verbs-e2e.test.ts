@@ -5,8 +5,12 @@
  * preview named, with the text the preview showed; an internal note is kept for members and never
  * becomes a notice.
  *
+ * A triage is the viewer's own act but no person's decision, so it reads `waiting`, never Needs you (REQ-48 BC-11: a list draws
+ * needs_you only for rows the decisions read holds).
+ *
  * It reads the item over HTTP, so it names the read model it guards:
  * @direct-test-of packages/core/src/feedback/read.ts
+ * @direct-test-of packages/core/src/lib/standing-times.ts
  */
 
 import { randomUUID } from 'node:crypto';
@@ -278,7 +282,7 @@ describe('snooze: parked out of New until a date, returned by the clock', () => 
     ).toBe('FEEDBACK_STATUS_INVALID');
   });
 
-  it('shows snoozed until its date, leaves the viewer’s Needs you, and returns on its own', async () => {
+  it('shows snoozed until its date, is owed no triage, and returns to the viewer’s triage on its own', async () => {
     const fb = await file('ann', 'Revisit after the release');
     const until = later(5);
     const out = ok(
@@ -296,7 +300,8 @@ describe('snooze: parked out of New until a date, returned by the clock', () => 
     `);
     const back = await read(fb);
     expect(back.snoozed, 'a snooze that ran out reads as none').toBeNull();
-    expect(back.attentionGroup).toBe('needs_you');
+    expect(back.attentionGroup).toBe('waiting');
+    expect(back.waitingOn).toMatchObject({ kind: 'you', act: 'triage it' });
     expect((await owedTriages(projectId)).map((o) => o.key)).toContain(fb);
   });
 

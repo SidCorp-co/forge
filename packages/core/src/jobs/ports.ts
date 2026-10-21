@@ -115,6 +115,11 @@ interface JobsPorts {
       projectId: string,
     ): Promise<{ map: Record<string, unknown> | null; produced: ProducedMcpServer[] }>;
   };
+  /**
+   * The credential section a claimed `steward` job's brief ends with (REQ-48): the steward account's
+   * token, minted at the claim so it is never stored with the job.
+   */
+  stewardJobCredential(job: { id: string; projectId: string; payload: unknown }): Promise<string>;
   /** Re-dispatches a schedule's session on another box after a failover-class failure. */
   redispatchScheduleSessionOnFailover(
     sessionId: string,

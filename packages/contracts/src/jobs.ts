@@ -26,6 +26,7 @@ export type JobRefusalCode = (typeof JOB_REFUSAL_CODES)[number];
 export const UNMINTABLE_JOB_TYPES = {
 	release_batch: "core mints it from the release flow (POST /api/projects/:id/release-batches)",
 	onboarding: "core mints it from project onboarding",
+	steward: "core mints it from the steward runtime, for an act that needs the codebase (REQ-48)",
 	drive: "core no longer mints drive jobs: a master opens a run session over the issue instead",
 	triage: "the staged lane that minted it was removed",
 	clarify: "the staged lane that minted it was removed",

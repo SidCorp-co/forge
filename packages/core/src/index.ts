@@ -104,12 +104,7 @@ import {
   unaddressableProjectSlug,
 } from './middleware/route-refs.js';
 import { serverTiming } from './middleware/server-timing.js';
-import {
-  deleteFeedbackMockups,
-  feedbackMockupsOf,
-  mockupKeysOf,
-  mockupRefIn,
-} from './mockups/index.js';
+import { mockupsForFeedback } from './mockups/index.js';
 import { emitNotification } from './notifications/index.js';
 import {
   declareOutboxQueues,
@@ -183,9 +178,11 @@ import { seedBuiltinSkills, sweepPolicyLanded } from './skills/index.js';
 import { forgeStandingTool } from './standing/index.js';
 import { provideStandingPorts } from './standing-ports.js';
 import { provideStatusReportsPorts, statusReportShareSource } from './status-reports/index.js';
+import { heldStewardOf, provideStewardPorts } from './steward/index.js';
 import { forgeStewardNoteTool } from './steward-notes/index.js';
 import {
   proposeRequirementDuplicate,
+  provideSuggestionsPorts,
   redactFeedbackSuggestions,
   staleOnTargetRevised,
   writeKeptPreview,
@@ -196,7 +193,7 @@ import { readServing } from './whats-new/index.js';
 import { registerWidgetConversationAdapter, widgetCors } from './widget/index.js';
 import { provideWorkPorts } from './work-ports.js';
 import { workflowDesign, workflowFlowsOf } from './workflows/index.js';
-import { attachWs, closeWs, publishEphemeralFrame } from './ws/index.js';
+import { attachWs, closeWs, publishEphemeralFrame, wakeMastersForSteward } from './ws/index.js';
 
 provideProjectOrg(findProjectOrgId);
 provideRouteRefSources({
@@ -346,13 +343,7 @@ provideRequirementDependents({
 });
 provideKeptPreviewWriter({ write: writeKeptPreview });
 provideRoomSettleWriter(roomSettleWriter);
-provideFeedbackDependents({
-  redactSuggestions: redactFeedbackSuggestions,
-  deleteMockups: deleteFeedbackMockups,
-  mockupsOf: feedbackMockupsOf,
-  mockupRefIn,
-  mockupKeysOf,
-});
+provideFeedbackDependents({ redactSuggestions: redactFeedbackSuggestions, ...mockupsForFeedback });
 
 export const app = new Hono<{ Variables: RequestIdVars }>();
 
@@ -366,6 +357,12 @@ provideChatWriteHold({
 provideAgreementReplay((request) => Promise.resolve(app.fetch(request)));
 // a script's ctx.forge.get is answered by this app in-process, under its owner's read token (REQ-37)
 provideSandboxPorts({ restFetch: (request) => Promise.resolve(app.fetch(request)) });
+// a steward act calls each door through this app as the project's steward account (REQ-48 BC-12)
+provideStewardPorts({
+  doorFetch: (request) => Promise.resolve(app.fetch(request)),
+  wakeMasters: wakeMastersForSteward,
+});
+provideSuggestionsPorts({ stewardOf: heldStewardOf });
 
 app.use(
   '*',

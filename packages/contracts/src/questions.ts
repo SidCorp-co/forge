@@ -6,6 +6,8 @@ import type { RefusalStatuses } from "./refusal.js";
 export const QUESTION_REFUSAL_CODES = [
 	"QUESTION_REFUSED",
 	"QUESTION_NOT_OPEN",
+	/** The question is its issue's park: it ends when the issue leaves the park, never by a void of its own. */
+	"QUESTION_IS_PARK",
 	"QUESTION_EXPIRED",
 	"QUESTION_ROUND_STALE",
 	"QUESTION_OPTION_UNKNOWN",

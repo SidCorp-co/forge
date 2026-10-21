@@ -166,6 +166,7 @@ import { projectShareRoutes, shareOpenRoutes } from './shares/routes.js';
 import { deviceSkillRoutes, skillCrudRoutes, skillStudioRoutes } from './skills/routes.js';
 import { standingRoutes } from './standing/routes.js';
 import { statusReportRoutes } from './status-reports/routes.js';
+import { stewardRoutes } from './steward/index.js';
 import { stewardNoteRoutes } from './steward-notes/routes.js';
 import { suggestionRoutes } from './suggestions/routes.js';
 import { uploadRoutes } from './uploads/routes.js';
@@ -242,6 +243,7 @@ function mountProjectDocumentRoutes(app: Hono<{ Variables: RequestIdVars }>): vo
   app.route('/api/projects', workflowRoutes);
   app.route('/api/projects', requirementRoutes);
   app.route('/api/projects', suggestionRoutes);
+  app.route('/api/projects', stewardRoutes);
   app.route('/api/projects', intakeRoutes);
   app.route('/api/projects', projectPreviewRoutes);
   app.route('/api/projects', projectRoomRoutes);

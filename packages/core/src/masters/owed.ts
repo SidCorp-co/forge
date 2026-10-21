@@ -36,6 +36,8 @@ interface Owed {
   unnamedReleases: { version: string }[];
   /** Park questions answered since the master's last finished pass began, with what each did. */
   answers: { issueKey: string; questionId: string; outcome: AnswerResume | null }[];
+  /** What the steward asked the master to act on, each standing until its item's standing moves. */
+  stewardAsks: { actId: string; ask: string }[];
   /** The project's content language tag, which a release note is written in. */
   contentLanguage: string;
 }
@@ -82,6 +84,12 @@ function outcomeOf(outcome: AnswerResume | null): string {
   }
 }
 
+/** REQ-48 BC-5: the durable half of a steward wake, so a wake the box missed is read on its next sweep. */
+function stewardAsksLine(asks: Owed['stewardAsks']): string {
+  if (asks.length === 0) return '';
+  return ` The project's steward asks you to act on ${asks.length} item${plural(asks.length, '', 's')} (${asks.map((a) => a.ask).join('; ')}): read each item's standing (\`forge-runner api projects/<projectId>/standings\`) and take the act it waits on, or record why it waits; the ask stands until the item's standing moves.`;
+}
+
 function answersLine(answers: Owed['answers']): string {
   if (answers.length === 0) return '';
   const keys = answers.map(
@@ -92,7 +100,7 @@ function answersLine(answers: Owed['answers']): string {
 
 /** The sentence a nudge or a first brief carries for what is owed besides issues; empty when nothing is. */
 export function owedLine(owed: Owed): string {
-  let line = returnedLine(owed) + answersLine(owed.answers);
+  let line = returnedLine(owed) + answersLine(owed.answers) + stewardAsksLine(owed.stewardAsks);
   const {
     breakdowns,
     triages,
@@ -159,6 +167,7 @@ function workLines(admissible: Admissible[], owed: Owed): string[] {
     ...owed.triages.map((t) => `triage:${t.key}`),
     ...owed.comments.map((c) => `comment:${c.commentId}`),
     ...owed.answers.map((a) => `answer:${a.questionId}|${a.outcome?.kind ?? ''}`),
+    ...owed.stewardAsks.map((a) => `steward-ask:${a.actId}`),
     ...owed.documents.map((d) => `document:${d.id}`),
     ...owed.builderRuns.map((r) => `builder-run:${r.id}`),
     // the gate's identity: the reason and the issue it names, so a note owed reads the same every sweep
@@ -218,6 +227,7 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
     releaseNotes,
     unnamedReleases,
     contentLanguage,
+    stewardAsks,
   ] = await Promise.all([
     readAdmissibleIssues({ deviceId, projectId }),
     readOwedComments(projectId),
@@ -229,14 +239,17 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
     ports.releaseNotesOwed(projectId),
     ports.releasesUnnamed(projectId),
     ports.contentLanguageOf(projectId),
+    ports.stewardAsks(projectId),
   ]);
+  const held = new Set(await ports.breakdownsHeldBySteward(projectId));
+  const breakdownsDue = breakdowns.filter((b) => !held.has(b.key));
   const warnedNotes = await ports.releaseNotesWarned(projectId, contentLanguage);
   const lastPass = await lastFinishedPassStart(projectId);
   const answers = lastPass ? await ports.answersSince(projectId, lastPass) : [];
   return masterWork(admissible.items, {
     designs,
     revisions,
-    breakdowns,
+    breakdowns: breakdownsDue,
     triages,
     comments: comments.items,
     documents: channel.documents,
@@ -245,6 +258,7 @@ export async function readMasterWork(deviceId: string, projectId: string): Promi
     warnedNotes,
     unnamedReleases,
     answers,
+    stewardAsks,
     contentLanguage,
   });
 }
