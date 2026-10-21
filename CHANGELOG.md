@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.262] - 2026-10-21
+
+Chat reopens the room you had open; decided cards stop waiting on you
+
+### Fixed
+
+- **Reloading the page reopens the conversation you had open in the chat dock.** The open room is kept per project in this browser; before, a reload opened the page's own room, a waiting one or the newest instead.
+- **A chat room stops reading Waiting on you once you decide the agent's card.** Pressing Record it or Decline now answers the reply that asked for it, and rooms already stuck clear on their own.
+
 ## [0.4.0-dev.261] - 2026-10-21
 
 Feedback the chat assistant proposes now records when you press Record it

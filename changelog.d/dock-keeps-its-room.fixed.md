@@ -1,1 +1,0 @@
-**Reloading the page reopens the conversation you had open in the chat dock.** The open room is kept per project in this browser; before, a reload opened the page's own room, a waiting one or the newest instead.
