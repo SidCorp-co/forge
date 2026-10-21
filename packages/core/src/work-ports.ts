@@ -58,6 +58,7 @@ import {
   requestJobKill,
 } from './jobs/index.js';
 import { provideLabelPorts, refreshModuleKnowledgeForIssue } from './labels/index.js';
+import { recordCorrection } from './lessons/index.js';
 import { masterServingOf } from './masters/index.js';
 import { deleteMemory } from './memory/index.js';
 import { retryRescuesSince } from './metrics/index.js';
@@ -196,6 +197,7 @@ export function provideWorkPorts(): void {
 
   provideIssuePorts({
     projectCreatorOf,
+    keepCorrection: recordCorrection,
     settleOpenQuestions,
     withdrawParkQuestions,
     holdsOpenHumanQuestion,

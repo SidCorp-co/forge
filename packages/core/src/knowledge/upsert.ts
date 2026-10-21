@@ -10,6 +10,7 @@ import {
   type UpsertKnowledgeInput,
   type UpsertKnowledgeResult,
 } from './entry-input.js';
+import { lessonOwnedRefusal } from './lesson-entries.js';
 import { parseReadWhen, type ReadWhenCondition, readWhenRefusal } from './read-when.js';
 
 export async function upsertKnowledgeEntry(
@@ -161,6 +162,13 @@ export async function upsertKnowledgeEntries(
 ): Promise<UpsertKnowledgeResult[]> {
   if (inputs.length === 0) return [];
   const entries = lastPerKey(inputs);
+  for (const projectId of new Set(entries.map((e) => e.projectId))) {
+    const owned = await lessonOwnedRefusal(
+      projectId,
+      entries.filter((e) => e.projectId === projectId),
+    );
+    if (owned) throw owned;
+  }
   const embedded = await embedEntries(entries);
   const rows = await writeEntries(entries, embedded);
   const idByKey = new Map(rows.map((r) => [entryKey(r), r.id]));

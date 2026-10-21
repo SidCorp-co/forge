@@ -18,6 +18,7 @@ import {
   computeProjectProgress,
   type ProjectProgress,
 } from '../issues/index.js';
+import { type LessonAudience, lessonsBlockFor } from '../lessons/index.js';
 import { dataPolicyOf, EgressRefused, egressAt, egressText } from '../lib/data-egress.js';
 import { env } from '../lib/env.js';
 import { logger } from '../lib/logger.js';
@@ -150,12 +151,20 @@ interface TurnSetup {
   what: string;
 }
 
+/** The assistant drafts requirements, designs, mockups and suggestions as well as answering, and
+ *  works across areas, so every area lesson reaches it labelled (REQ-50 BC-3). */
+const ASSISTANT_LESSONS: LessonAudience = {
+  produces: ['chat', 'requirement', 'workflow', 'mockup', 'suggestion'],
+  area: 'any',
+  raise: 'the `forge_lesson_confusion` tool',
+};
+
 /** The prompt, the room's window and this message, egressed for the model. */
 async function setUpTurn(
   args: ExternalChatTurnArgs,
 ): Promise<TurnSetup & { level: SensitiveDataLevel }> {
   // the reads a turn is set up from do not depend on one another, so they go out together
-  const [[project], progress, language, turn, level] = await Promise.all([
+  const [[project], progress, language, turn, level, lessons] = await Promise.all([
     db
       .select({ name: projects.name })
       .from(projects)
@@ -172,6 +181,7 @@ async function setUpTurn(
         })
       : null,
     dataPolicyOf(args.projectId),
+    lessonsBlockFor(args.projectId, ASSISTANT_LESSONS, 2),
   ]);
   if (!project) throw new Error(`project not found: ${args.projectId}`);
   const images = args.images ?? [];
@@ -195,6 +205,7 @@ async function setUpTurn(
     persona: args.persona ?? null,
     progressFacts: progress ? buildProgressFactsBlock(progress) : null,
     contentLanguage: contentLanguageBlock(language, 'chat'),
+    lessons,
   });
   const history = turn ? [...turn.history, ...turn.pending].slice(-PROVIDER_HISTORY_WINDOW) : [];
   const [resolvedImages, resolvedDocuments] = await Promise.all([

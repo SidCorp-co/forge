@@ -360,6 +360,9 @@
     "web-feature-shell": [
       "packages/web-v2/src/features/shell/**"
     ],
+    "web-feature-lessons": [
+      "packages/web-v2/src/features/lessons/**"
+    ],
     "web-feature-suggestions": [
       "packages/web-v2/src/features/suggestions/**"
     ],
@@ -515,6 +518,7 @@
         "web-feature-feedback",
         "web-feature-workflows",
         "web-feature-comments",
+        "web-feature-lessons",
         "web-feature-suggestions",
         "web-feature-mockups",
         "web-feature-board",

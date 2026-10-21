@@ -76,6 +76,7 @@ describe('a document shown to the model', () => {
     const doc = file('criteria.md');
     const turn: ConversationTurn = {
       conversationId: 'c',
+      projectId: 'p',
       handleUserId: null,
       history: [],
       pending: [

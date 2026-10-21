@@ -1,0 +1,1 @@
+**Forge now learns from your corrections.** Returned mockups, rejected suggestions, failed verdicts and chat replies become lessons you approve on the Lessons page; agents name the lessons they apply, and a confusing lesson waits in Needs you.

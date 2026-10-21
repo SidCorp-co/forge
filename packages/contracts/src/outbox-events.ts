@@ -3,6 +3,7 @@
 // to its consumers by the outbox worker. A type is listed only while a consumer reads it.
 
 import type { FeedbackSeverity } from "./feedback.js";
+import type { LessonEventPayloads } from "./lessons.js";
 import type { MachineEntity, StateOf } from "./machines.js";
 import type { StewardEventPayloads } from "./steward.js";
 
@@ -60,6 +61,8 @@ export const OUTBOX_EVENT_TYPES = [
 	"issue.pushed",
 	"conversation.pushed",
 	"preview.transitioned",
+	"mockup.transitioned",
+	"chat.replied",
 	"suggestion.proposed",
 	"standing.stuck",
 	"standing.changed",
@@ -136,6 +139,8 @@ export const TRANSITION_EVENTS = {
 	preview: "every",
 	// each stored move is a step change its author is told of (REQ-34 BC-21, notify-requirements.ts)
 	requirement: "every",
+	// a reason given on a decision is a correction a lesson learns from (REQ-50 BC-1, lessons/mockup-corrections.ts)
+	mockup: ["accepted", "returned"],
 } as const satisfies {
 	readonly [E in MachineEntity]?: "every" | readonly StateOf<E>[];
 };
@@ -209,7 +214,7 @@ interface IssueSnapshot {
 	labels: string[];
 }
 
-export interface OutboxEventPayloads extends StewardEventPayloads {
+export interface OutboxEventPayloads extends StewardEventPayloads, LessonEventPayloads {
 	"issue.created": {
 		issueId: string;
 		projectId: string;
@@ -233,6 +238,8 @@ export interface OutboxEventPayloads extends StewardEventPayloads {
 	"question.transitioned": TransitionEvent<"question">;
 	/** A preview moved (REQ-39); a failure's `reason` is its `PreviewFailureReason`. */
 	"preview.transitioned": TransitionEvent<"preview">;
+	/** A mockup was accepted or returned; its `reason` is what the decider said. */
+	"mockup.transitioned": TransitionEvent<"mockup">;
 	/** A requirement's stored status moved (agree, defer, undefer, accept, drop). */
 	"requirement.transitioned": TransitionEvent<"requirement">;
 	/** A question was written open, by any door; an answer, a void and an expiry are its `question.transitioned`. */

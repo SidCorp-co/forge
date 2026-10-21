@@ -289,6 +289,7 @@
     "shell.thread.withdrawn": "A draft was replaced by the reply check and answered below.",
     "nav.proj-approvals": "Approvals",
     "nav.proj-questions": "Questions",
+    "nav.proj-lessons": "Lessons",
     "shell.approvalsCount": "{n} waiting on your decision"
   },
   "vi": {

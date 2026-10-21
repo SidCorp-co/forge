@@ -11,6 +11,14 @@ export {
   unembeddedCounts,
   writeItemEmbedding,
 } from './item-embeddings.js';
+export {
+  type LessonEntry,
+  type LessonEntryMeta,
+  lessonEntrySlug,
+  putLessonEntry,
+  selectLessonEntries,
+  setLessonEntryInjection,
+} from './lesson-entries.js';
 export { provideKnowledgePorts } from './ports.js';
 export { searchKnowledge } from './search.js';
 export {

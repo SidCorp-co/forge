@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const store = vi.hoisted(() => ({ read: vi.fn() }));
-vi.mock('../knowledge/index.js', () => ({ selectAlwaysInjectFromKnowledge: store.read }));
+const store = vi.hoisted(() => ({ read: vi.fn(), lessons: vi.fn() }));
+vi.mock('../knowledge/index.js', () => ({
+  selectAlwaysInjectFromKnowledge: store.read,
+  selectLessonEntries: store.lessons,
+}));
 
 import {
   checkoutOrientation,
@@ -71,13 +74,35 @@ describe('a run a master declares on a box reads the rules a core-built prompt c
 });
 
 describe('the orientation core serves reads the rules from the knowledge store', () => {
-  beforeEach(() => store.read.mockReset());
+  beforeEach(() => {
+    store.read.mockReset();
+    store.lessons.mockReset().mockResolvedValue([]);
+  });
 
   it("reads this project's always-applied entries", async () => {
     store.read.mockResolvedValue(RULES.entries);
     const body = await servedCheckoutOrientation('p-1', 'forge');
     expect(store.read).toHaveBeenCalledWith('p-1');
     expect(body).toBe(checkoutOrientation('p-1', 'forge', RULES));
+  });
+
+  it("carries the project's approved lessons beside its rules (REQ-50 BC-3)", async () => {
+    store.read.mockResolvedValue(RULES.entries);
+    const lesson = {
+      slug: 'lesson-3',
+      sentence: 'Slice a breakdown by screen, never by table.',
+      meta: {
+        lessonId: 'l3',
+        number: 3,
+        scope: { kind: 'project' as const, areaId: null, areaName: null, itemKind: null },
+      },
+    };
+    store.lessons.mockResolvedValue([lesson]);
+    const body = await servedCheckoutOrientation('p-1', 'forge');
+    expect(store.lessons).toHaveBeenCalledWith('p-1');
+    expect(body).toBe(checkoutOrientation('p-1', 'forge', { ...RULES, lessons: [lesson] }));
+    expect(body).toContain('L-3');
+    expect(body).toContain('Slice a breakdown by screen, never by table.');
   });
 
   it('serves a named absence, not a failed read, when the store throws', async () => {

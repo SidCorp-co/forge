@@ -23,13 +23,15 @@ import {
 // @direct-test-of packages/core/src/suggestions/waiting-read.ts
 // @direct-test-of packages/core/src/mockups/read.ts
 // @direct-test-of packages/core/src/previews/read.ts
+// @direct-test-of packages/core/src/lessons/waiting.ts
 // @direct-test-of packages/core/src/masters/read.ts
 // @direct-test-of packages/core/src/workflows/store.ts
 // @direct-test-of packages/core/src/workflows/health-read.ts
 // @direct-test-of packages/core/src/workflows/design-repin-service.ts
 
 // The rows each project's Needs you read sends once (its two open-question reads, the proposed
-// suggestions and mockups, the approvable previews) are read for every project in one statement each
+// suggestions and mockups, the approvable previews, the lessons and confusions waiting on a
+// decision) are read for every project in one statement each
 // (`needs-you-fold.ts:primeNeedsYouAcross`), so they cost no statement a project: 57, as measured.
 const PER_PROJECT_BOUND = 57;
 

@@ -10,6 +10,7 @@ import { z } from 'zod';
 import { recordAct } from './acts-store.js';
 import { doorName, refusalCodeOfAnswer } from './door-call.js';
 import { type DoorContext, type DoorSpec, key, read } from './door-kit.js';
+import { LESSON_CONFUSION } from './door-lessons.js';
 import { WRITE_DOORS } from './door-writes.js';
 
 export type { DoorContext } from './door-kit.js';
@@ -55,7 +56,10 @@ const READS: DoorSpec<never>[] = [
 ] as unknown as DoorSpec<never>[];
 
 const CATALOGUE: ReadonlyMap<string, DoorSpec<never>> = new Map(
-  [...READS, ...WRITE_DOORS].map((d) => [d.name, d]),
+  [...READS, ...WRITE_DOORS, LESSON_CONFUSION as unknown as DoorSpec<never>].map((d) => [
+    d.name,
+    d,
+  ]),
 );
 
 /** The doors one act may call, as tools: its menu in `STEWARD_ACT_DOORS`. */

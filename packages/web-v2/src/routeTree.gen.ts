@@ -54,6 +54,7 @@ import { Route as WorkspaceProjectsSlugContractsIndexRouteImport } from './route
 import { Route as WorkspaceProjectsSlugDecisionsIndexRouteImport } from './routes/_workspace/projects/$slug/decisions/index'
 import { Route as WorkspaceProjectsSlugFeedbackIndexRouteImport } from './routes/_workspace/projects/$slug/feedback/index'
 import { Route as WorkspaceProjectsSlugIssuesIndexRouteImport } from './routes/_workspace/projects/$slug/issues/index'
+import { Route as WorkspaceProjectsSlugLessonsIndexRouteImport } from './routes/_workspace/projects/$slug/lessons/index'
 import { Route as WorkspaceProjectsSlugMemoryIndexRouteImport } from './routes/_workspace/projects/$slug/memory/index'
 import { Route as WorkspaceProjectsSlugModulesIndexRouteImport } from './routes/_workspace/projects/$slug/modules/index'
 import { Route as WorkspaceProjectsSlugOverviewIndexRouteImport } from './routes/_workspace/projects/$slug/overview/index'
@@ -322,6 +323,12 @@ const WorkspaceProjectsSlugIssuesIndexRoute =
     path: '/issues/',
     getParentRoute: () => WorkspaceProjectsSlugRouteRoute,
   } as any)
+const WorkspaceProjectsSlugLessonsIndexRoute =
+  WorkspaceProjectsSlugLessonsIndexRouteImport.update({
+    id: '/lessons/',
+    path: '/lessons/',
+    getParentRoute: () => WorkspaceProjectsSlugRouteRoute,
+  } as any)
 const WorkspaceProjectsSlugMemoryIndexRoute =
   WorkspaceProjectsSlugMemoryIndexRouteImport.update({
     id: '/memory/',
@@ -535,6 +542,7 @@ export interface FileRoutesByFullPath {
   '/projects/$slug/decisions/': typeof WorkspaceProjectsSlugDecisionsIndexRoute
   '/projects/$slug/feedback/': typeof WorkspaceProjectsSlugFeedbackIndexRoute
   '/projects/$slug/issues/': typeof WorkspaceProjectsSlugIssuesIndexRoute
+  '/projects/$slug/lessons/': typeof WorkspaceProjectsSlugLessonsIndexRoute
   '/projects/$slug/memory/': typeof WorkspaceProjectsSlugMemoryIndexRoute
   '/projects/$slug/modules/': typeof WorkspaceProjectsSlugModulesIndexRoute
   '/projects/$slug/overview/': typeof WorkspaceProjectsSlugOverviewIndexRoute
@@ -606,6 +614,7 @@ export interface FileRoutesByTo {
   '/projects/$slug/decisions': typeof WorkspaceProjectsSlugDecisionsIndexRoute
   '/projects/$slug/feedback': typeof WorkspaceProjectsSlugFeedbackIndexRoute
   '/projects/$slug/issues': typeof WorkspaceProjectsSlugIssuesIndexRoute
+  '/projects/$slug/lessons': typeof WorkspaceProjectsSlugLessonsIndexRoute
   '/projects/$slug/memory': typeof WorkspaceProjectsSlugMemoryIndexRoute
   '/projects/$slug/modules': typeof WorkspaceProjectsSlugModulesIndexRoute
   '/projects/$slug/overview': typeof WorkspaceProjectsSlugOverviewIndexRoute
@@ -682,6 +691,7 @@ export interface FileRoutesById {
   '/_workspace/projects/$slug/decisions/': typeof WorkspaceProjectsSlugDecisionsIndexRoute
   '/_workspace/projects/$slug/feedback/': typeof WorkspaceProjectsSlugFeedbackIndexRoute
   '/_workspace/projects/$slug/issues/': typeof WorkspaceProjectsSlugIssuesIndexRoute
+  '/_workspace/projects/$slug/lessons/': typeof WorkspaceProjectsSlugLessonsIndexRoute
   '/_workspace/projects/$slug/memory/': typeof WorkspaceProjectsSlugMemoryIndexRoute
   '/_workspace/projects/$slug/modules/': typeof WorkspaceProjectsSlugModulesIndexRoute
   '/_workspace/projects/$slug/overview/': typeof WorkspaceProjectsSlugOverviewIndexRoute
@@ -757,6 +767,7 @@ export interface FileRouteTypes {
     | '/projects/$slug/decisions/'
     | '/projects/$slug/feedback/'
     | '/projects/$slug/issues/'
+    | '/projects/$slug/lessons/'
     | '/projects/$slug/memory/'
     | '/projects/$slug/modules/'
     | '/projects/$slug/overview/'
@@ -828,6 +839,7 @@ export interface FileRouteTypes {
     | '/projects/$slug/decisions'
     | '/projects/$slug/feedback'
     | '/projects/$slug/issues'
+    | '/projects/$slug/lessons'
     | '/projects/$slug/memory'
     | '/projects/$slug/modules'
     | '/projects/$slug/overview'
@@ -903,6 +915,7 @@ export interface FileRouteTypes {
     | '/_workspace/projects/$slug/decisions/'
     | '/_workspace/projects/$slug/feedback/'
     | '/_workspace/projects/$slug/issues/'
+    | '/_workspace/projects/$slug/lessons/'
     | '/_workspace/projects/$slug/memory/'
     | '/_workspace/projects/$slug/modules/'
     | '/_workspace/projects/$slug/overview/'
@@ -1264,6 +1277,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof WorkspaceProjectsSlugIssuesIndexRouteImport
       parentRoute: typeof WorkspaceProjectsSlugRouteRoute
     }
+    '/_workspace/projects/$slug/lessons/': {
+      id: '/_workspace/projects/$slug/lessons/'
+      path: '/lessons'
+      fullPath: '/projects/$slug/lessons/'
+      preLoaderRoute: typeof WorkspaceProjectsSlugLessonsIndexRouteImport
+      parentRoute: typeof WorkspaceProjectsSlugRouteRoute
+    }
     '/_workspace/projects/$slug/memory/': {
       id: '/_workspace/projects/$slug/memory/'
       path: '/memory'
@@ -1486,6 +1506,7 @@ interface WorkspaceProjectsSlugRouteRouteChildren {
   WorkspaceProjectsSlugDecisionsIndexRoute: typeof WorkspaceProjectsSlugDecisionsIndexRoute
   WorkspaceProjectsSlugFeedbackIndexRoute: typeof WorkspaceProjectsSlugFeedbackIndexRoute
   WorkspaceProjectsSlugIssuesIndexRoute: typeof WorkspaceProjectsSlugIssuesIndexRoute
+  WorkspaceProjectsSlugLessonsIndexRoute: typeof WorkspaceProjectsSlugLessonsIndexRoute
   WorkspaceProjectsSlugMemoryIndexRoute: typeof WorkspaceProjectsSlugMemoryIndexRoute
   WorkspaceProjectsSlugModulesIndexRoute: typeof WorkspaceProjectsSlugModulesIndexRoute
   WorkspaceProjectsSlugOverviewIndexRoute: typeof WorkspaceProjectsSlugOverviewIndexRoute
@@ -1533,6 +1554,8 @@ const WorkspaceProjectsSlugRouteRouteChildren: WorkspaceProjectsSlugRouteRouteCh
       WorkspaceProjectsSlugFeedbackIndexRoute,
     WorkspaceProjectsSlugIssuesIndexRoute:
       WorkspaceProjectsSlugIssuesIndexRoute,
+    WorkspaceProjectsSlugLessonsIndexRoute:
+      WorkspaceProjectsSlugLessonsIndexRoute,
     WorkspaceProjectsSlugMemoryIndexRoute:
       WorkspaceProjectsSlugMemoryIndexRoute,
     WorkspaceProjectsSlugModulesIndexRoute:

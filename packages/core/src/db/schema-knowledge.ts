@@ -21,6 +21,8 @@ export const knowledgeKinds = [
   'guide',
   'reference',
   'glossary',
+  // one approved lesson's text (REQ-50); written only by the lessons module (`lesson-entries.ts`)
+  'lesson',
 ] as const;
 
 export const knowledgeEntries = pgTable(

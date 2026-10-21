@@ -5,10 +5,13 @@ import { alias } from 'drizzle-orm/pg-core';
 import { db } from '../../db/client.js';
 import { type IssueStatus, type JobType, labels, projects } from '../../db/schema.js';
 import {
+  type LessonEntry,
   selectAllSlugsFromKnowledge,
   selectAlwaysInjectFromKnowledge,
+  selectLessonEntries,
   selectOnDemandSlugsFromKnowledge,
 } from '../../knowledge/index.js';
+import { lessonsBlockText, RAISE_BY_DOOR } from '../../lessons/index.js';
 import { logger } from '../../lib/logger.js';
 import type { ProjectDocument, TestingProfile } from '../../project-config/index.js';
 import {
@@ -57,6 +60,8 @@ interface ProjectFactInputs {
    *  into the preamble (like a mandatory ForgeFact), and excluded from the
    *  fetch-on-demand index. Paired with their full body, in order. */
   alwaysInjectFacts: Array<{ key: string; text: string }>;
+  /** This project's approved lessons (REQ-50), carried in their own scoped block, never as rules. */
+  lessons: LessonEntry[];
   /** The knowledge store could not be read for this project. The index is then
    *  rendered as a named absence rather than left out: an agent told nothing is
    *  an agent that concludes this project has no guides. */
@@ -126,6 +131,7 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
   let integrations: IntegrationRow[] = [];
   let modules: ProjectModuleFact[] = [];
   let alwaysInjectFacts: Array<{ key: string; text: string }> = [];
+  let lessons: LessonEntry[] = [];
   let projectFactKeys: string[] = [];
   let factsUnavailable = false;
   let missingObligations: KnowledgeObligation[] = [];
@@ -154,10 +160,11 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
 
   try {
     let heldSlugs: string[];
-    [alwaysInjectFacts, projectFactKeys, heldSlugs] = await Promise.all([
+    [alwaysInjectFacts, projectFactKeys, heldSlugs, lessons] = await Promise.all([
       selectAlwaysInjectFromKnowledge(projectId),
       selectOnDemandSlugsFromKnowledge(projectId),
       selectAllSlugsFromKnowledge(projectId),
+      selectLessonEntries(projectId),
     ]);
     missingObligations = missingProjectKnowledge(
       { repository: repositoryOf(document), production },
@@ -166,6 +173,7 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
   } catch (err) {
     factsUnavailable = true;
     alwaysInjectFacts = [];
+    lessons = [];
     projectFactKeys = [];
     missingObligations = [];
     logger.error(
@@ -187,6 +195,7 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
     }),
     projectFactKeys,
     alwaysInjectFacts,
+    lessons,
     factsUnavailable,
     missingObligations,
     modules,
@@ -243,6 +252,15 @@ export function renderStageFactsText(
     }
     projectParts.push(projectRulesText(alwaysInject, 3));
   }
+
+  // a run builds an issue, so it carries the project's lessons and those about issues; an area
+  // lesson is shown labelled with its area, since the run's subject is the issue it was handed
+  const lessons = lessonsBlockText(
+    inputs.lessons,
+    { produces: ['issue'], area: 'any', raise: RAISE_BY_DOOR },
+    3,
+  );
+  if (lessons) projectParts.push(lessons);
 
   const integrations = inputs.project('integrations');
   if (integrations) projectParts.push(demoteHeadings(integrations));

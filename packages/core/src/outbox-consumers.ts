@@ -7,6 +7,7 @@ import {
   registerHostMergeStamp,
   registerIssueMoveReactions,
 } from './issues/index.js';
+import { registerLessonCorrections } from './lessons/index.js';
 import {
   registerMemoryExtraction,
   registerMemoryIndexer,
@@ -76,4 +77,5 @@ export function registerOutboxConsumers(): void {
   registerFeedbackNotifications();
   registerIntakeAssistant();
   registerSteward();
+  registerLessonCorrections();
 }

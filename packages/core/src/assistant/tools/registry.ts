@@ -1,5 +1,6 @@
 import { forgeChannelTool } from '../../ecosystem/tool.js';
 import { forgeKnowledgeTool } from '../../knowledge/tool.js';
+import { lessonConfusionTool } from '../../lessons/tool.js';
 import type { McpContext } from '../../lib/tool.js';
 import { forgeMemoryTool } from '../../memory/tool.js';
 import { forgeProjectPipelineRunsTool } from '../../pipeline/tool.js';
@@ -20,6 +21,7 @@ const CHAT_TOOL_ALLOWLIST: ChatToolSpec[] = [
   { factory: forgePreferencesTool },
   { factory: forgeMemoryNoteTool },
   { factory: forgeChannelTool },
+  { factory: lessonConfusionTool },
 ];
 
 let providedSpecs: readonly ChatToolSpec[] | null = null;
