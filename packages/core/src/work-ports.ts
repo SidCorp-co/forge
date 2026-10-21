@@ -58,6 +58,7 @@ import {
   requestJobKill,
 } from './jobs/index.js';
 import { provideLabelPorts, refreshModuleKnowledgeForIssue } from './labels/index.js';
+import { masterServingOf } from './masters/index.js';
 import { deleteMemory } from './memory/index.js';
 import { retryRescuesSince } from './metrics/index.js';
 import {
@@ -208,6 +209,7 @@ export function provideWorkPorts(): void {
     postIssueNotice,
     readProjectDocument,
     readJudge: async (projectId) => (await readEffectivePolicy(projectId))?.document.qa ?? null,
+    masterServingOf,
     changedTracedOf,
     readLandingBranches,
     issueRefPattern,

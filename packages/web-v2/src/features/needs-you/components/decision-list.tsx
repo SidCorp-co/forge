@@ -6,6 +6,7 @@
 // the chat draw the same list.
 
 import {
+  capDecisions,
   type DecisionAnswer,
   NEEDS_YOU_DECISION_GROUP_LABELS,
   NEEDS_YOU_DECISION_GROUPS,
@@ -19,40 +20,9 @@ import { useState } from "react";
 import { Button, Icon, Textarea } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
-import { feedbackHref } from "@/lib/routes/feedback";
-import { issueHref } from "@/lib/routes/issues";
-import { releaseHref } from "@/lib/routes/releases";
-import { requirementHref } from "@/lib/routes/requirements";
-import { workflowHref } from "@/lib/routes/workflows";
-import { needsYouApi } from "../api";
+import { needsYouApi, pressBody } from "../api";
 import { NEEDS_YOU_ROOT } from "../hooks";
-
-/** The page a decision opens on, or null where no record holds it. */
-function decisionHref(slug: string, opens: NeedsYouDecision["opens"]): string | null {
-  if (!opens) return null;
-  switch (opens.kind) {
-    case "issue":
-      return issueHref(slug, opens.key);
-    case "requirement":
-      return requirementHref(slug, opens.key);
-    case "feedback":
-      return feedbackHref(slug, opens.key);
-    case "workflow":
-      return workflowHref(slug, opens.key);
-    case "release":
-      return releaseHref(slug, opens.key);
-  }
-}
-
-/**
- * The body a button posts: its own, and what the person typed under the field its route reads, the
- * answer's `text` for a question and the `reason` for every other act that takes one.
- */
-function pressBody(answer: DecisionAnswer, typed: string | null): Record<string, unknown> {
-  const body = { ...(answer.body ?? {}) };
-  if (answer.needsReason) body[answer.act === "question.answer" ? "text" : "reason"] = typed ?? "";
-  return body;
-}
+import { decisionHref } from "../routes";
 
 function OwedDecision({ d, slug }: { d: NeedsYouDecision; slug: string | undefined }) {
   const t = useCopy();
@@ -169,12 +139,29 @@ function OwedDecision({ d, slug }: { d: NeedsYouDecision; slug: string | undefin
 /**
  * The decisions, one heading per group in the contract's order, and one line naming what was left out.
  * `only` draws one group of the same read (a page about that act), so the two never disagree; the rows
- * that are not decisions belong to the whole list, so that line is the whole list's alone.
+ * that are not decisions belong to the whole list, so that line is the whole list's alone. `cap`
+ * shows the first decisions in core's order (a stuck item's first, then the soonest due) and counts
+ * the rest as "+n more", linked to `moreHref`, never dropping one (REQ-48 BC-11).
  */
-export function DecisionList({ read, slug, only }: { read: NeedsYouDecisions; slug?: string | undefined; only?: NeedsYouDecisionGroup }) {
+export function DecisionList({
+  read,
+  slug,
+  only,
+  cap,
+  moreHref,
+}: {
+  read: Pick<NeedsYouDecisions, "decisions" | "total" | "notDecisions">;
+  slug?: string | undefined;
+  only?: NeedsYouDecisionGroup;
+  cap?: number;
+  moreHref?: string;
+}) {
   const t = useCopy();
+  // the rest are counted from the read's total, which holds every decision however many it carries
+  const shown = cap === undefined ? read.decisions : capDecisions(read.decisions, cap).shown;
+  const more = cap === undefined ? 0 : Math.max(0, read.total - shown.length);
   const groups = NEEDS_YOU_DECISION_GROUPS.filter((g) => !only || g === only)
-    .map((g) => ({ g, rows: read.decisions.filter((d) => d.group === g) }))
+    .map((g) => ({ g, rows: shown.filter((d) => d.group === g) }))
     .filter((x) => x.rows.length > 0);
   const leftOut = only ? [] : read.notDecisions.map((n) => t(`needsYou.decisions.reason.${n.reason}`, { n: n.count }));
   return (
@@ -187,12 +174,22 @@ export function DecisionList({ read, slug, only }: { read: NeedsYouDecisions; sl
           </h3>
           <ul className="flex flex-col divide-y divide-line-subtle">
             {rows.map((d) => (
-              <OwedDecision key={`${d.group}:${d.key}`} d={d} slug={slug} />
+              <OwedDecision key={d.id} d={d} slug={slug} />
             ))}
           </ul>
         </div>
       ))}
-      {read.total > read.decisions.length && (
+      {more > 0 &&
+        (moreHref ? (
+          <Link href={moreHref} className="fg-caption text-fg underline-offset-2 hover:underline" data-testid="needs-you-more">
+            {t("needsYou.decisions.capMore", { n: more })}
+          </Link>
+        ) : (
+          <p className="fg-caption text-subtle" data-testid="needs-you-more">
+            {t("needsYou.decisions.capMore", { n: more })}
+          </p>
+        ))}
+      {cap === undefined && read.total > read.decisions.length && (
         <p className="fg-caption text-subtle">{t("needsYou.decisions.more", { shown: read.decisions.length, total: read.total })}</p>
       )}
       {leftOut.length > 0 && (

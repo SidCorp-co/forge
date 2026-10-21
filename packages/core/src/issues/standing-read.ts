@@ -13,12 +13,12 @@ import type {
   IssueStandingList,
   IssueStandingRow,
   IssueStandingScope,
-  IssueStepHandoff,
   IssueWithheld,
 } from '@forge/contracts/issue-standing';
 import type { WorkStep } from '@forge/contracts/issue-vocabulary';
 import type { AnswerHold, AnswerResume } from '@forge/contracts/questions';
 import { changedSincePlan } from '@forge/contracts/requirements';
+import type { MasterServing } from '@forge/contracts/steward';
 import { verdictEarns } from '@forge/contracts/verdict-identity';
 import type { WrittenLang } from '@forge/contracts/written-lang';
 import { type SQL, sql } from 'drizzle-orm';
@@ -42,8 +42,8 @@ import {
   approvalRequired,
   changedTracedOf,
   designUnapprovedSql,
-  handoffContextsOf,
   holdsOpenHumanQuestion,
+  masterServingOf,
 } from './ports.js';
 import { classifyLease } from './session-claim.js';
 import { type StaleDraftQuestionRaw, staleDraftOf, staleDraftQuestionSql } from './stale-drafts.js';
@@ -59,7 +59,8 @@ import {
 } from './standing-facts-read.js';
 import { wavesOf } from './standing-waves.js';
 import { withheldOf } from './standing-withheld-read.js';
-import { type StepDurationFact, stepOutcomesOf } from './step-outcomes.js';
+import { stepFactsOf } from './step-facts-read.js';
+import { stepOutcomesOf } from './step-outcomes.js';
 
 /** The most rows one read answers; the list says so when a scope holds more. */
 export const STANDING_LIMIT = 500;
@@ -109,6 +110,7 @@ interface IssueRowRaw {
   design_unapproved: boolean;
   contract_unsettled: boolean;
   pattern_pending: boolean;
+  status_since: string;
 }
 
 // The design revision drawn under this issue that its approver returned and nobody has redrawn yet.
@@ -138,6 +140,9 @@ async function issueRows(projectId: string, where: SQL, limit: number): Promise<
              w.step, w.step_started_at, w.steps, w.lease, w.branch, w.head_sha, w.left_status,
              w.updated_at AS ws_updated_at, ${designOnlyMarkSql(sql`i`)} AS design_only,
              (SELECT max(a.created_at) FROM activity_log a WHERE a.issue_id = i.id) AS last_activity,
+             coalesce((SELECT max(kt.created_at) FROM kernel_transitions kt
+                        WHERE kt.entity = 'issue' AND kt.entity_id = i.id AND kt.to_status = i.status),
+                      i.created_at) AS status_since,
              ${holdsOpenHumanQuestion(sql`i.id`)} AS owes_answer,
              CASE WHEN i.status = 'draft' THEN ${staleDraftQuestionSql(sql`i`)} END AS stale_draft,
              ${blockerUnsettledSql(sql`i`)} AS holds_dependents,
@@ -217,6 +222,7 @@ type Facts = {
   writers: string[];
   admins: string[];
   withheld: Map<string, IssueWithheld>;
+  master: MasterServing;
   now: Date;
 };
 
@@ -313,6 +319,8 @@ function standingInputOf(r: IssueRowRaw, f: Facts): IssueStandingInput {
     writers: f.writers,
     admins: f.admins,
     withheld: f.withheld.get(r.id) ?? null,
+    statusSince: new Date(r.status_since),
+    master: f.master,
     now: f.now,
   };
 }
@@ -336,6 +344,7 @@ async function standingRows(
     withheld,
     writers,
     admins,
+    master,
   ] = await Promise.all([
     activeIssuePrefix(projectId),
     blockingEdgesIn(db, projectId, ids),
@@ -347,6 +356,7 @@ async function standingRows(
     withheldOf(projectId, raws),
     holderNames('project.write', projectId),
     holderNames('project.admin', projectId),
+    masterServingOf(projectId),
   ]);
   const [requirements, people, changedTraced] = await Promise.all([
     requirementsOf([...new Set(raws.map((r) => r.requirement_id).filter((x): x is string => !!x))]),
@@ -368,6 +378,7 @@ async function standingRows(
     writers,
     admins,
     withheld,
+    master,
     now,
   };
   const inputs = raws.map((r): [IssueRowRaw, IssueStandingInput] => [r, standingInputOf(r, facts)]);
@@ -501,51 +512,4 @@ export async function readIssueStanding(
     blocker,
     stepOutcomes: stepOutcomesOf({ ...steps, activeStep: active }),
   };
-}
-
-/** The handoffs, step durations and newest failed job one issue's step outcomes are read from. */
-async function stepFactsOf(projectId: string, issueId: string) {
-  const [contexts, durations, failed] = await Promise.all([
-    handoffContextsOf(projectId, issueId),
-    db.execute(sql`
-      SELECT run_id, step, duration_seconds, cost_usd, coalesce(finished_at, started_at) AS at
-        FROM pipeline_run_step_durations
-       WHERE project_id = ${projectId} AND issue_id = ${issueId} AND duration_seconds IS NOT NULL`),
-    db.execute(sql`
-      SELECT type FROM jobs WHERE issue_id = ${issueId} AND status = 'failed'
-       ORDER BY finished_at DESC NULLS LAST LIMIT 1`),
-  ]);
-  const handoffs: IssueStepHandoff[] = contexts.flatMap((c) =>
-    c.step
-      ? [
-          {
-            id: c.id,
-            step: c.step,
-            attempt: c.attempt,
-            pipelineRunId: c.pipelineRunId,
-            payload:
-              c.payload && typeof c.payload === 'object'
-                ? (c.payload as Record<string, unknown>)
-                : null,
-            createdAt: c.createdAt.toISOString(),
-            updatedAt: c.updatedAt.toISOString(),
-          },
-        ]
-      : [],
-  );
-  const facts: StepDurationFact[] = rowsOf<{
-    run_id: string;
-    step: string;
-    duration_seconds: number;
-    cost_usd: number | null;
-    at: string | Date;
-  }>(durations).map((d) => ({
-    runId: d.run_id,
-    step: d.step,
-    durationSeconds: Number(d.duration_seconds),
-    costUsd: Number(d.cost_usd ?? 0),
-    at: new Date(d.at).toISOString(),
-  }));
-  const [last] = rowsOf<{ type: string }>(failed);
-  return { handoffs, durations: facts, failedStep: last?.type ?? null };
 }

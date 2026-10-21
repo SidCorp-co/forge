@@ -54,6 +54,24 @@ describe("the status report as Markdown", () => {
     expect(md).toContain(`**0.3.0** · ${labelCopy("en")("releaseState", "awaiting_approval")} · 0 shipped · 26 landed, awaiting release · 0 to do · Lan — Approve release 0.3.0 · draft 0.4.0 waits behind it with 2 issues`);
   });
 
+  it("leads with what is stuck and why, then the viewer's decisions capped with the rest counted (REQ-48)", () => {
+    const stuck = {
+      asOf: AT,
+      count: 1,
+      items: [{ kind: "requirement" as const, key: "REQ-45", title: "Pricing", code: "nobody_serves" as const, reason: "ISS-498 waits on a master and no master serves this project", via: "ISS-498", since: AT, note: "ISS-498 was sent back; the steward asked the owner to take it on", href: "/projects/hop/requirements/REQ-45", says: { reason: verbatim("ISS-498 waits on a master and no master serves this project") } }],
+    };
+    const decision = (key: string) => ({ group: "accept" as const, key, title: key, question: `Admit ${key}?`, recommended: "Admit", stuck: false, dueAt: null, href: null });
+    const needsYou = { asOf: AT, decisions: [decision("ISS-1"), decision("ISS-2"), decision("ISS-3")], more: 2, total: 5 };
+    const md = statusMarkdown({ ...STATUS, stuck, needsYou }, words("en"));
+    const at = (h: string) => md.indexOf(`## ${h}`);
+    expect(at("Stuck")).toBeGreaterThan(0);
+    expect(at("Stuck")).toBeLessThan(at("Needs you"));
+    expect(at("Needs you")).toBeLessThan(at(productCopy("en")("status.shipped")));
+    expect(md).toContain("- **REQ-45** Pricing — ISS-498 waits on a master and no master serves this project\n  - ISS-498 was sent back; the steward asked the owner to take it on");
+    expect(md.match(/^- \*\*ISS-\d\*\* Admit/gm)).toHaveLength(3);
+    expect(md).toContain("- +2 more");
+  });
+
   it("says plainly when nothing shipped in the window", () => {
     const quiet = { ...STATUS, shipped: { ...STATUS.shipped, releases: [], releaseCount: 0, issueCount: 0, requirementsShipped: [] } };
     expect(statusMarkdown(quiet, words("en"))).toContain("Nothing reached users in the last 7 days.");

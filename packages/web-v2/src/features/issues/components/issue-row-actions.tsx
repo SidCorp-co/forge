@@ -31,7 +31,6 @@ import {
 } from "../waiting";
 import { agentHoldsEdit, heldByAgent } from "../edit-lock";
 import { useGateReading } from "../gate-reading";
-import { sinceLastWrite } from "../waiting";
 import {
   ISSUE_COMPLEXITIES,
   ISSUE_PRIORITIES,
@@ -45,6 +44,7 @@ import {
   LastWriteCell,
 } from "./issue-table-row";
 import { WaitingOnPersonChip } from "./waiting-on-person-chip";
+import { ISSUE_TERMINAL_STATUSES } from "@forge/contracts/issue-machine";
 
 /** ISS-700 — shared row-open behaviour: a pending flag set synchronously
  *  before navigation (so the row can dim + show a spinner) and a double-click
@@ -244,6 +244,13 @@ function AssigneeCell({ assignee }: { assignee: RowAssignee | null }) {
   );
 }
 
+/** Since the row was last written, against the table's one instant; a settled issue shows a dash. */
+function msSinceWrite(row: IssueRow, now: number): number | null {
+  if ((ISSUE_TERMINAL_STATUSES as readonly string[]).includes(row.status)) return null;
+  const at = Date.parse(row.updatedAt);
+  return Number.isNaN(at) ? null : Math.max(0, now - at);
+}
+
 export function IssueTableLine({
   row,
   slug,
@@ -251,6 +258,7 @@ export function IssueTableLine({
   selection,
   assignee,
   now,
+  stuck,
 }: {
   row: IssueRow;
   slug: string;
@@ -260,6 +268,8 @@ export function IssueTableLine({
   /** One instant for the whole table, so the waiting figures on two rows are a
    *  comparison and not two independent readings of the clock. */
   now: number;
+  /** Core's stuck sentence for this issue from the one standing read, or null. */
+  stuck: string | null;
 }) {
   const { open, pending } = useOpenIssue(slug, row.id);
   const t = useCopy();
@@ -328,7 +338,7 @@ export function IssueTableLine({
         <AssigneeCell assignee={assignee} />
       </TD>
       <TD className="whitespace-nowrap">
-        <LastWriteCell written={sinceLastWrite(row, now)} />
+        <LastWriteCell ms={msSinceWrite(row, now)} stuck={stuck} />
       </TD>
       <TD className="w-px text-right">
         <div className="opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 max-lg:opacity-100">

@@ -47,7 +47,7 @@ import { RequirementMemory, useRequirementMemoryCount } from "./requirement-memo
 import { RequirementOverview } from "./requirement-overview";
 import { RequirementPicture } from "./requirement-picture";
 import { DraftRevisionEditor, NewRevision } from "./revision-editor";
-import { RequirementProgress } from "./standing-bits";
+import { RequirementStandingHead } from "./standing-bits";
 
 const REQUIREMENT_TABS = ["overview", "criteria", "revisions", "mockups", "activity", "memory"] as const;
 type RequirementTab = (typeof REQUIREMENT_TABS)[number];
@@ -238,7 +238,7 @@ export function RequirementPage({
             }
           >
             <DetailMobileTitle itemKey={d.key} title={d.title} badge={<StatusBadge family="requirement" value={s.state} />} />
-            <RequirementProgress standing={s} slug={slug} inset="px-8 max-md:px-4" />
+            <RequirementStandingHead projectId={projectId} reqKey={reqKey} standing={s} slug={slug} inset="px-8 max-md:px-4" />
             <RequirementPicture d={d} projectId={projectId} slug={slug} inset="px-8 max-md:px-4" />
             <DetailLeadEnd />
             <ViewBar view={view} onView={onView} />

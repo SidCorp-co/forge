@@ -158,7 +158,8 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:json:targetProjectSlug field:json:templateId field:json:turnId
     field:json:userId field:json:workflowId field:json:signalKey field:json:detectorKey
     field:json:operationId field:json:issuePrefix field:query:deploymentUuid field:query:target
-    field:query:provider field:query:requestId field:json:reviewers field:json:teamReviewers`,
+    field:query:provider field:query:requestId field:json:reviewers field:json:teamReviewers
+    field:param:actId field:query:subject field:json:owner`,
   'prose a person or an agent writes: a title, a body, a message, a note': words`
     field:json:about field:json:acceptanceCriteria field:json:alt field:json:answer
     field:json:assistantInstructions field:json:assumed field:json:body field:json:brief
@@ -170,9 +171,10 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:json:textContent field:json:title field:json:tldr field:json:why field:json:whereSeen
     field:json:raw field:json:localGuide field:json:skillMd field:json:decision
     field:json:suggestion field:json:evidence field:json:emoji field:json:name
-    field:json:displayName field:json:shortName field:json:request field:json:account`,
+    field:json:displayName field:json:shortName field:json:request field:json:account
+    field:json:lines`,
   'a structured part of a record core validates and stores; it admits nobody': words`
-    field:json:answers field:json:artifact field:json:attachments
+    field:json:basis field:json:claims field:json:answers field:json:artifact field:json:attachments
     field:json:awaitsDesign field:json:awaitsMerge field:json:bindings field:json:block field:json:blocker
     field:json:build field:json:capabilities field:json:carried field:json:category
     field:json:changes field:json:checklist field:json:checkpoint field:json:checks

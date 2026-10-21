@@ -10,6 +10,14 @@ import { gateViews } from '../release-batch/release-gates.js';
 import { turnOf } from '../release-batch/release-view.js';
 import { deriveStanding, type StandingIssue } from './standing.js';
 
+/** When the times read: a master serves, so no wait here reads stuck by the master alone. */
+const AT = {
+  since: new Date('2026-10-01T00:00:00Z'),
+  master: 'serves' as const,
+  now: new Date('2026-10-02T00:00:00Z'),
+};
+const NO_STANDING_FACTS = { masterOwesTriage: false, carrierRelease: null };
+
 const at = (iso: string) => new Date(iso);
 const KERNEL = /re-pin|repin|roster|[a-z]+-[a-z-]+ r\d+\b/i;
 
@@ -44,6 +52,7 @@ const base = {
   release: null,
   updatedAt: at('2026-09-26T00:00:00Z'),
   statusSince: at('2026-09-26T00:00:00Z'),
+  master: 'serves' as const,
   now: at('2026-09-28T00:00:00Z'),
 };
 
@@ -113,12 +122,21 @@ describe('the act a feedback item waits on reads in a BA’s words', () => {
   });
 
   it('asks to approve the release by its version, with no issue named in the act', () => {
-    const s = feedbackStandingOf('planned', 'issue', ['ISS-9'], 'Reporter', viewer(), null, {
-      masterOwesTriage: false,
-      carrierRelease: 'approval',
-      carrierVersion: '0.4.0-dev.97',
-      releaseHolders: ['Ana'],
-    });
+    const s = feedbackStandingOf(
+      'planned',
+      'issue',
+      ['ISS-9'],
+      'Reporter',
+      viewer(),
+      null,
+      {
+        masterOwesTriage: false,
+        carrierRelease: 'approval',
+        carrierVersion: '0.4.0-dev.97',
+        releaseHolders: ['Ana'],
+      },
+      AT,
+    );
     expect(s.waitingOn.act).toBe('Approve release 0.4.0-dev.97');
     expect(s.waitingOn.ref).toBe('0.4.0-dev.97');
     expect(s.waitingOn.act).not.toMatch(/ISS-/);
@@ -132,12 +150,23 @@ describe('the act a feedback item waits on reads in a BA’s words', () => {
       'Reporter',
       viewer({ isReporter: true }),
       null,
+      NO_STANDING_FACTS,
+      AT,
     );
     expect(s.waitingOn).toMatchObject({ kind: 'you', act: 'Confirm the answer' });
   });
 
   it('still asks to verify the fix where a fix resolved it', () => {
-    const s = feedbackStandingOf('resolved', 'issue', ['ISS-9'], 'Reporter', viewer(), null);
+    const s = feedbackStandingOf(
+      'resolved',
+      'issue',
+      ['ISS-9'],
+      'Reporter',
+      viewer(),
+      null,
+      NO_STANDING_FACTS,
+      AT,
+    );
     expect(s.waitingOn.act).toBe('verify the fix');
   });
 });

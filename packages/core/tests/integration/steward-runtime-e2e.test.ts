@@ -3,8 +3,9 @@
 // proposed fold into one debounced run; what arrives while a run runs is its one rerun, no act
 // dropped; a spent budget skips the run and the item says so; a stuck item is acted on within the
 // hour, not again on the same basis, and its acts are undone through the undo door or refused by
-// name; and a steward turn reaches nothing outside its act's menu. The standing read is lane A's,
-// faked here by its contract type (`OpenStandingsRead`).
+// name; and a steward turn reaches nothing outside its act's menu. The standing read is replaced
+// here by a scripted one of its contract type (`OpenStandingsRead`), so each case states exactly the
+// standing it acts on; the real read, provided at boot, is driven in steward-standing-e2e.
 //
 // @direct-test-of packages/core/src/steward/consumer.ts
 // @direct-test-of packages/core/src/steward/runs-store.ts

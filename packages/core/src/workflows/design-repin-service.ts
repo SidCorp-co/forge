@@ -10,7 +10,7 @@
 import { randomUUID } from 'node:crypto';
 import { type Said, say, sayEn } from '@forge/contracts/said';
 import { findTemplate, type WorkflowTemplate } from '@forge/contracts/workflow-templates';
-import type { RepinActResult, RepinPlan } from '@forge/contracts/workflows';
+import type { PinMove, RepinActResult, RepinPlan } from '@forge/contracts/workflows';
 import { db, type Tx } from '../db/client.js';
 import { userNames } from '../lib/people.js';
 import { RefusalError } from '../lib/refusal.js';
@@ -141,8 +141,20 @@ export interface RepinGroup {
   flow: string;
   title: string;
   revision: number;
-  /** The designs the act would approve; a filed proposal among them is not a row of its own. */
-  ready: { workflowId: string; flow: string; source: RepinStep['source'] }[];
+  /**
+   * The designs the act would approve, each at the revision read (the act names it back), the one it
+   * leaves approved and the pins that move; a filed proposal among them is not a row of its own.
+   */
+  ready: {
+    workflowId: string;
+    flow: string;
+    source: RepinStep['source'];
+    revision: number;
+    approves: number;
+    pins: PinMove[];
+  }[];
+  /** Designs resting on the base's old revision that the act will not take yet. */
+  refused: number;
   approvedAt: string | null;
 }
 
@@ -163,7 +175,7 @@ export async function repinGroupsOf(projectId: string): Promise<RepinGroup[]> {
       ),
   );
   return roots.flatMap((b): RepinGroup[] => {
-    const { ready } = planRepins(b.flow, loaded.designs);
+    const { ready, refused } = planRepins(b.flow, loaded.designs);
     if (ready.length === 0) return [];
     return [
       {
@@ -175,7 +187,11 @@ export async function repinGroupsOf(projectId: string): Promise<RepinGroup[]> {
           workflowId: s.design.id,
           flow: s.design.flow,
           source: s.source,
+          revision: s.design.revision,
+          approves: s.approves,
+          pins: s.change.pins,
         })),
+        refused: refused.length,
         approvedAt: loaded.approvedAt.get(b.id)?.toISOString() ?? null,
       },
     ];

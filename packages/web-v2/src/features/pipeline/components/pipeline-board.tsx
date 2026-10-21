@@ -27,6 +27,7 @@ import type { PipelineIssueRow } from "../types";
 import { RunDetail } from "./run-detail";
 import { TopBarActions } from "@/design/primitives/top-bar-slot";
 import { formatUsd } from "@/lib/i18n/format";
+import { useStuckReasons } from "@/features/standing";
 
 interface PipelineBoardProps {
   scope: { projectId: string; slug: string };
@@ -46,6 +47,8 @@ export function PipelineBoard({ scope }: PipelineBoardProps) {
 
   const issuesQ = useProjectIssues(projectId);
   const runsQ = useProjectRuns(projectId);
+  // whether a card is stuck is its standing's, from the one standing read (REQ-48 BC-8)
+  const stuck = useStuckReasons(projectId, "issue");
 
   const runIndex = runsByIssue(runsQ.data?.items);
   const t = useCopy();
@@ -96,7 +99,8 @@ export function PipelineBoard({ scope }: PipelineBoardProps) {
             >
               {group.issues.map((issue) => {
                 const run = issue.id ? runIndex.get(issue.id) : undefined;
-                const card = cardStatus(issue, run, Date.now(), language);
+                const card = cardStatus(issue, run, language);
+                const stuckWhy = stuck.get(issue.displayId);
                 return (
                   <KanbanCard
                     key={issue.id}
@@ -111,7 +115,7 @@ export function PipelineBoard({ scope }: PipelineBoardProps) {
                     }
                     held={issue.status === "on_hold"}
                     {...(card.waitingReason ? { waitingReason: card.waitingReason } : {})}
-                    {...(card.note ? { note: card.note } : {})}
+                    {...(stuckWhy ? { note: stuckWhy } : card.note ? { note: card.note } : {})}
                     cost={
                       run && run.cost.estimatedCost > 0
                         ? formatUsd(run.cost.estimatedCost)

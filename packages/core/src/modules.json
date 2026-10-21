@@ -291,7 +291,6 @@
         "masterPasses",
         "mockups",
         "previews",
-        "projectWorkflowDesigns",
         "projects",
         "releaseApprovals",
         "requirementRevisions",
@@ -1146,6 +1145,19 @@
       "owns": ["skillActivityEvents", "skills"],
       "serves": ["REQ-1", "REQ-13"]
     },
+    "standing": {
+      "kind": "read-model",
+      "context": "operations",
+      "reads": [
+        "agentQuestions",
+        "comments",
+        "criterionVerdicts",
+        "issues",
+        "pipelineRuns",
+        "suggestions"
+      ],
+      "serves": ["REQ-48"]
+    },
     "status-reports": {
       "kind": "domain",
       "context": "operations",
@@ -1156,6 +1168,12 @@
       "kind": "domain",
       "context": "conversations",
       "owns": ["stewardAccounts", "stewardActs", "stewardRuns"],
+      "serves": ["REQ-48"]
+    },
+    "steward-notes": {
+      "kind": "domain",
+      "context": "design",
+      "owns": ["stewardNotes"],
       "serves": ["REQ-48"]
     },
     "suggestions": {
@@ -1480,6 +1498,9 @@
         "workflow-step-health#d-list-summary",
         "design-reconciliation#revise-design"
       ]
+    },
+    "standing": {
+      "serves": ["REQ-48"]
     }
   },
   "runner": {

@@ -49,6 +49,8 @@ const input = (
   writers: [],
   admins: [],
   withheld: null,
+  statusSince: now,
+  master: 'serves',
   now,
   ...over,
 });

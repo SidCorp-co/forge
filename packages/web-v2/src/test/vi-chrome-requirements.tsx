@@ -64,6 +64,7 @@ const standing = {
   owner: { id: "u1", name: "Lan", kind: "human" },
   touchedAt: at,
   stateSince: at,
+  times: { actClass: "other", since: at, dueAt: null, stuck: null, carriedBy: null, basis: "b" },
 } as unknown as RequirementSummary["standing"];
 
 const criterion = (code: string, body: string, since: number) => ({ id: code, code, body, form: "statement" as const, sinceRevision: since, retiredRevision: null });

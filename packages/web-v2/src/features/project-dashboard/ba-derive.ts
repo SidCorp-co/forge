@@ -30,23 +30,19 @@ export function requirementsByState(list: readonly Pick<RequirementSummary, "sta
   return states.map((state) => ({ state, count: tally[state] ?? 0 }));
 }
 
-/** Feedback this old, still open, is aging. */
-const FEEDBACK_AGING_DAYS = 7;
-const CLOSED_PHASES: ReadonlySet<string> = new Set(["verified", "declined"]);
-
 export interface FeedbackFigures {
   open: number;
   untriaged: number;
-  aging: number;
+  /** Open items core reads stuck (`times.stuck`, REQ-48 BC-5): its rule, never an age this page picks. */
+  stuck: number;
 }
 
-export function feedbackFigures(list: readonly Pick<FeedbackSummary, "phase" | "createdAt" | "snoozed">[] | undefined, now: number): FeedbackFigures {
-  const open = (list ?? []).filter((f) => !CLOSED_PHASES.has(f.phase));
-  const cutoff = now - FEEDBACK_AGING_DAYS * 86_400_000;
+export function feedbackFigures(list: readonly Pick<FeedbackSummary, "phase" | "attentionGroup" | "times" | "snoozed">[] | undefined): FeedbackFigures {
+  const open = (list ?? []).filter((f) => f.attentionGroup !== "done");
   return {
     open: open.length,
     untriaged: open.filter((f) => (FEEDBACK_UNTRIAGED_PHASES as readonly string[]).includes(f.phase) && !f.snoozed).length,
-    aging: open.filter((f) => Date.parse(f.createdAt) < cutoff).length,
+    stuck: open.filter((f) => f.times.stuck !== null).length,
   };
 }
 
@@ -81,10 +77,6 @@ const releaseOf = (d: DeliveryForecast | null | undefined): PlanRow["release"] =
 
 const lateOfDelivery = (d: DeliveryForecast | null | undefined): ForecastLate | null => lateOfForecast(d?.landing);
 
-function worst(...lates: (ForecastLate | null)[]): ForecastLate | null {
-  return lates.reduce<ForecastLate | null>((a, l) => (l && (!a || l.byMinutes > a.byMinutes) ? l : a), null);
-}
-
 export function planRows(i: PlanInputs, clock: EtaClock): PlanRow[] {
   const rows: PlanRow[] = [];
   for (const s of i.requirements?.requirements ?? []) {
@@ -97,7 +89,7 @@ export function planRows(i: PlanInputs, clock: EtaClock): PlanRow[] {
       title: i.feedbackTitles.get(f.key) ?? f.key,
       href: feedbackHref(i.slug, f.key),
       eta: etaOfFeedback(f, clock),
-      late: worst(f.triage?.late ?? null, lateOfDelivery(f.delivery)),
+      late: lateOfDelivery(f.delivery),
       release: f.triage ? null : releaseOf(f.delivery),
     });
   }
@@ -110,7 +102,7 @@ export function planRows(i: PlanInputs, clock: EtaClock): PlanRow[] {
       title: summary.name ?? "",
       href: releaseHref(i.slug, summary.version),
       eta: etaOfScope(scope, clock),
-      late: worst(lateOfDelivery(scope.delivery), scope.next?.late ?? null),
+      late: lateOfDelivery(scope.delivery),
       release: null,
     });
   }

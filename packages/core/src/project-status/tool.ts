@@ -8,6 +8,7 @@ import { principalAgency } from '../issues/index.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { type ContextScopedMcpToolFactory, zodToMcpSchema } from '../lib/tool.js';
 import { requireHeld } from '../permissions/index.js';
+import { pruneStatus } from './prune.js';
 import { readProjectStatus, statusViewerOf } from './read.js';
 
 const input = z.strictObject({
@@ -20,17 +21,19 @@ export const forgeProjectStatusTool: ContextScopedMcpToolFactory = (ctx) => ({
   reach: 'project',
   route: '/api/projects',
   grant: 'projects:read',
-  description: `How this project stands now: the read the dashboard and status report draw. Call it FIRST for status, progress, what shipped, what is in progress, late or blocked, who owes what, the next release or the roadmap. Sections, each with its asOf: shipped (releaseCount and issueCount count the whole last \`days\`, default ${PROJECT_STATUS_DAYS_DEFAULT}; \`releases\` lists only the newest ${PROJECT_STATUS_ROWS}, so count from releaseCount; each with issues, requirements, what was verified), inFlight (open issues by status; those a run is on), waits (what project members owe as people — questions, approvals, decisions, accept, promote or drop — grouped by person in byPerson; agent-report triage is Development's, not here), requirements (BCs proven of total; issues as progress shipped/awaitingRelease/toDo; delivery forecast), nextRelease (nearest users: a release already cut before the draft; state, progress, whose turn, a draft behind it), late (items core calls late, why), roadmap (now/next/later by requirement state). A forecast is a p50-p85 range, never a promise.`,
+  description: `How this project stands now, as the dashboard and status report read it. Call it FIRST for status, progress, what shipped, what is stuck or late, who owes what, the next release or the roadmap. Say stuck first (items core reads stuck: reason, the steward's line 1 as note, href), then needsYou (your top 3 decisions with the recommended answer; more counts the rest). A section holding nothing is left out and named in \`omitted\`: never report it as zeros. Each section has its asOf: shipped (counts cover the last \`days\`, default ${PROJECT_STATUS_DAYS_DEFAULT}; \`releases\` lists only the newest ${PROJECT_STATUS_ROWS}), inFlight (open issues by status; those a run is on), waits (what members owe as people, by person), requirements (BCs proven; issue progress; delivery forecast), nextRelease (state, progress, whose turn, a draft behind it), late (past their usual time), roadmap (now/next/later). A forecast is a p50-p85 range, never a promise.`,
   inputSchema: zodToMcpSchema(input),
   handler: async (args) => {
     const { projectId, days } = input.parse(args);
     const userId = ctx.principal.userId;
     const access = await loadProjectAccess(projectId, userId);
     requireHeld(access, 'project.read');
-    return readProjectStatus(
-      projectId,
-      statusViewerOf(access, userId, principalAgency(ctx.principal)),
-      days ?? PROJECT_STATUS_DAYS_DEFAULT,
+    return pruneStatus(
+      await readProjectStatus(
+        projectId,
+        statusViewerOf(access, userId, principalAgency(ctx.principal)),
+        days ?? PROJECT_STATUS_DAYS_DEFAULT,
+      ),
     );
   },
 });

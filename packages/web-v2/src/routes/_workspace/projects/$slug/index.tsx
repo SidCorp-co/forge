@@ -172,7 +172,7 @@ function ProjectOverviewPage() {
         <BaFigures
           slug={project.slug}
           requirements={requirementsByState(requirementsQ.data?.requirements)}
-          feedback={feedbackFigures(feedbackQ.data?.feedback, clock.now)}
+          feedback={feedbackFigures(feedbackQ.data?.feedback)}
           release={draft ? { version: draft.version, eta: etaOfScope(comingQ.data?.draft, clock) } : null}
           clock={clock}
         />

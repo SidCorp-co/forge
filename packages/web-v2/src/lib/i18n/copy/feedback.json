@@ -28,6 +28,7 @@
     "feedback.banner.answeredBy": "{by} answered: ",
     "feedback.banner.approveRelease": "Approve release",
     "feedback.banner.nothingOwed": "Nothing owed",
+    "feedback.banner.stuck": "Stuck:",
     "feedback.banner.verifyShippedIn": "Verify the fix shipped in",
     "feedback.banner.waitingOn": "Waiting on {who}:",
     "feedback.banner.you": "you",

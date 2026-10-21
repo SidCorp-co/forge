@@ -5,6 +5,7 @@
 
 import { REQUIREMENT_ATTENTION_GROUPS, type RequirementSummary } from "@forge/contracts/requirements";
 import { GroupedList, type ListGroup, useGroupFold } from "@/design";
+import { useNoteLines } from "@/features/standing";
 import { useCopy, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
 import { requirementHref } from "@/lib/routes/requirements";
 import { ageShort, nameOf, Passing, RowState, WaitsText } from "./requirement-line";
@@ -23,7 +24,10 @@ export function listGroupsOf(rows: RequirementSummary[], by: ListGrouping, areas
   return groups.filter((g) => g.rows.length > 0).map((g) => ({ ...g, rows: [...g.rows].sort(newest) }));
 }
 
-export function RequirementsList({ groups, slug, now, selected, onPeek }: { groups: ListGroup<RequirementSummary>[]; slug: string; now: number; selected: string | null; onPeek: (key: string) => void }) {
+/** The steward's current line 1 for a row (REQ-48 BC-7), by requirement key; a stale note is not shown on a row. */
+export type NoteLines = ReadonlyMap<string, string>;
+
+export function RequirementsList({ groups, slug, now, selected, onPeek, notes }: { groups: ListGroup<RequirementSummary>[]; slug: string; now: number; selected: string | null; onPeek: (key: string) => void; notes?: NoteLines }) {
   const t = useCopy();
   const time = useTimeFormat();
   const fold = useGroupFold("requirements-list");
@@ -46,7 +50,7 @@ export function RequirementsList({ groups, slug, now, selected, onPeek }: { grou
               <RowState r={r} />
             </span>
           ),
-          facts: [],
+          facts: notes?.has(r.key) ? [<span key="note" data-testid="row-note">{notes.get(r.key)}</span>] : [],
           state: <Passing r={r} wide={false} />,
           waitingOn: <WaitsText r={r} />,
           owner: null,
@@ -62,4 +66,12 @@ export function RequirementsList({ groups, slug, now, selected, onPeek }: { grou
 export function useAttentionLabel() {
   const label = useLabel();
   return (g: string) => label("requirementAttention", g);
+}
+
+type ListProps = Parameters<typeof RequirementsList>[0];
+
+/** The list with each row's line from the steward's current note, read from the one standing read (REQ-48 BC-7). */
+export function NotedRequirementsList({ projectId, ...props }: Omit<ListProps, "notes"> & { projectId: string }) {
+  const notes = useNoteLines(projectId, "requirement");
+  return <RequirementsList {...props} notes={notes} />;
 }

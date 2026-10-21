@@ -45,6 +45,7 @@ import { FeedbackAttachments } from "./feedback-attachments";
 import { FeedbackEvidence } from "./feedback-evidence";
 import { ClarifyReporter } from "./feedback-clarify";
 import { FeedbackBanner, LinkedFeedback } from "./feedback-facts";
+import { StewardNoteLines, useStewardNote } from "@/features/standing";
 import { Messages } from "./feedback-messages";
 import { FeedbackProgress } from "./feedback-progress";
 import { FeedbackRoom } from "./feedback-room";
@@ -146,6 +147,7 @@ export function FeedbackPage({
   const [view, onView] = useRecordView();
   const developer = view === "developer";
   const q = useFeedbackItem(projectId, fbKey);
+  const note = useStewardNote(projectId, "feedback", fbKey);
   const forecasts = useFeedbackForecasts(projectId);
   const clock = useEtaClock();
   const mockups = useMockups(projectId, { type: "feedback", key: fbKey });
@@ -174,6 +176,7 @@ export function FeedbackPage({
             <DetailMobileTitle itemKey={f.key} title={<Written text={f.title} lang={f.writtenLang} />} badge={<StatusBadge family="feedbackPhase" value={f.phase} />} />
             <FeedbackAnswer f={f} slug={slug} forecast={forecasts.data?.items.find((i) => i.key === f.key)} clock={clock} className="px-8 pt-4 pb-2 max-md:px-4" />
             <FeedbackBanner f={f} slug={slug} className="px-8 py-2.5 max-md:px-4" />
+            <StewardNoteLines note={note} slug={slug} className="px-8 max-md:px-4" />
             <FeedbackProgress projectId={projectId} slug={slug} fbKey={f.key} className="px-8 pt-3 pb-1 max-md:px-4" />
             <DetailLeadEnd />
             <ViewBar view={view} onView={onView} />

@@ -19,7 +19,7 @@ import type { SuggestionView as Suggestion } from "@/features/suggestions";
 import { useEtaClock } from "@/lib/i18n/eta-clock";
 import { useCreateRequirement, useRequirementAreas, useRequirements } from "../hooks";
 import { AreasEditor, PlacementBanner } from "./requirement-placement";
-import { listGroupsOf, RequirementsList, useAttentionLabel } from "./requirements-list";
+import { listGroupsOf, NotedRequirementsList, useAttentionLabel } from "./requirements-list";
 import { RequirementsMap } from "./requirements-map";
 import { useChatDock } from "@/features/chat-dock";
 import { useWorkflows } from "@/features/workflows";
@@ -229,7 +229,7 @@ export function RequirementsScreen({ projectId, slug }: { projectId: string; slu
           ) : mode === "map" ? (
             <RequirementsMap rows={list.rows} areas={areas} slug={slug} onPeek={list.togglePeek} />
           ) : (
-            <RequirementsList groups={list.groups} slug={slug} now={clock.now} selected={peek.open} onPeek={list.togglePeek} />
+            <NotedRequirementsList projectId={projectId} groups={list.groups} slug={slug} now={clock.now} selected={peek.open} onPeek={list.togglePeek} />
           )}
         </ListPage>
       )}

@@ -32,11 +32,10 @@ describe("the BA dashboard", () => {
     expect(landsThisWeek(rows, tz).map((r) => r.key)).toEqual(["REQ-1"]);
   });
 
-  it("leaves a paused item out of the week (no time), with who it waits on", () => {
-    const late: ForecastLate = { reason: "waiting_over_day", since: "2026-10-06T00:00:00Z", byMinutes: 360 };
-    const rows = planRows(inputs(reqs(scope("REQ-3", paused(late)), scope("REQ-4", range("2026-10-08T10:00:00Z", { reason: "p85_passed", since: "x", byMinutes: 90 })))), clock);
+  it("leaves a paused item out of the week (no time), with who it waits on, late only by core's p85", () => {
+    const rows = planRows(inputs(reqs(scope("REQ-3", paused(null)), scope("REQ-4", range("2026-10-08T10:00:00Z", { reason: "p85_passed", since: "x", byMinutes: 90 })))), clock);
     expect(landsThisWeek(rows, clock).map((r) => r.key)).toEqual(["REQ-4"]);
-    expect(rows.map((r) => [r.key, r.late?.byMinutes])).toEqual([["REQ-3", 360], ["REQ-4", 90]]);
+    expect(rows.map((r) => [r.key, r.late?.byMinutes ?? null])).toEqual([["REQ-3", null], ["REQ-4", 90]]);
     expect(rows.find((r) => r.key === "REQ-3")?.eta).toMatchObject({ kind: "waits", who: say("standing.who.holderOf", { perm: "project.write" }) });
   });
 
@@ -56,11 +55,12 @@ describe("the BA dashboard", () => {
     expect(planRows(inputs(reqs(scope("REQ-1", range("2026-10-08T10:00:00Z")))), clock).map((r) => r.late)).toEqual([null]);
   });
 
-  it("counts requirements by state in lifecycle order, and feedback open, untriaged and aging", () => {
+  it("counts requirements by state in lifecycle order, and feedback open, untriaged and stuck by core's reading", () => {
     const r = (state: string) => ({ standing: { state } }) as never;
     expect(requirementsByState([r("draft"), r("in_delivery"), r("in_delivery")]).map((x) => `${x.state}:${x.count}`)).toEqual(["draft:1", "agreed:0", "in_delivery:2", "delivered:0", "accepted:0"]);
     expect(requirementsByState([r("deferred")]).at(-1)).toEqual({ state: "deferred", count: 1 });
-    const f = (phase: string, daysOld: number) => ({ phase, createdAt: new Date(NOW - daysOld * 86_400_000).toISOString() }) as never;
-    expect(feedbackFigures([f("new", 9), f("triaged", 2), f("verified", 30), f("declined", 30), f("reopened", 8)], NOW)).toEqual({ open: 3, untriaged: 2, aging: 2 });
+    const f = (phase: string, attentionGroup: string, stuck: boolean) => ({ phase, attentionGroup, times: { stuck: stuck ? { code: "nobody_serves" } : null } }) as never;
+    // a month-old item core does not read stuck is not counted, whatever its age; a declined one is not open
+    expect(feedbackFigures([f("new", "needs_you", false), f("triaged", "stuck", true), f("verified", "done", false), f("declined", "done", false), f("reopened", "needs_you", true)])).toEqual({ open: 3, untriaged: 2, stuck: 2 });
   });
 });

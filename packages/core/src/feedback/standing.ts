@@ -11,16 +11,21 @@ import type {
   FeedbackStatus,
   FeedbackWaitingKind,
 } from '@forge/contracts/feedback';
-import { RELEASE_ACT_PERMISSION, type ReleaseMode } from '@forge/contracts/forecast';
+import type { ReleaseMode } from '@forge/contracts/forecast';
 import { type Said, say } from '@forge/contracts/said';
-import {
-  holdersWho,
-  nobodyHoldsAct,
-  type Standing,
-  type WaitingOn,
-  waitingOn,
-} from '@forge/contracts/standing';
+import { type Standing, type WaitingOn, waitingOn } from '@forge/contracts/standing';
+import type { MasterServing, StandingTimes } from '@forge/contracts/steward';
 import type { SuggestionStatus } from '@forge/contracts/suggestions';
+import { withTimes } from '../lib/standing-times.js';
+import {
+  type CarrierStanding,
+  carrierWait,
+  draftCarrierWait,
+  issueWait,
+  relayWait,
+} from './standing-carrier.js';
+
+export { type CarrierStanding, carriersPhrase } from './standing-carrier.js';
 
 type FeedbackWaitingOn = WaitingOn<FeedbackWaitingKind>;
 
@@ -39,14 +44,15 @@ export interface PhaseFacts {
 
 // planned and resolved are computed on read from the linked work (Q1); a route whose
 // carrier died (issue dropped, suggestion rejected, requirement dropped) reads triaged, so a person
-// routes it again. An issue route reads every carrier: a dropped one carries nothing, and the item is
-// resolved once each that still carries it is closed. verified is only ever the stored decision of a person
+// routes it again. An issue route reads every carrier: a dropped one carries nothing, a draft one
+// plans nothing yet (nothing takes a draft on by itself), and the item is resolved once each that
+// still carries it is closed. verified is only ever the stored decision of a person
 export function phaseOf(f: PhaseFacts): FeedbackPhase {
   if (f.status !== 'triaged') return f.status;
   switch (f.route) {
     case 'issue': {
       const carrying = f.routedIssueStatuses.filter((s) => s !== 'dropped');
-      if (carrying.length === 0) return 'triaged';
+      if (carrying.length === 0 || carrying.includes('draft')) return 'triaged';
       return carrying.every((s) => s === 'closed') ? 'resolved' : 'planned';
     }
     case 'revision':
@@ -150,21 +156,23 @@ export interface StandingFacts {
   relayOwed?: boolean;
   /** Who holds feedback.approve, by name: those who owe the relay. */
   relayHolders?: readonly string[];
+  /** The first draft issue carrying it, where one does: it reads triaged and stuck (draft_carrier). */
+  draftCarrier?: string | null;
+  /** An owed carrier's own standing, a stuck one first: what a planned item rolls up (REQ-48 BC-9). */
+  carrier?: CarrierStanding | null;
 }
 
-const NO_FACTS: StandingFacts = { masterOwesTriage: false, carrierRelease: null };
+/** What the times read beyond the turn (`lib/standing-times.ts:withTimes`). */
+export interface FeedbackTimesFacts {
+  /** Its newest triage decision, else its filing; a rolled-up carrier's own since replaces it. */
+  since: Date;
+  master: MasterServing;
+  now: Date;
+}
 
-type Owed = { wait: FeedbackWaitingOn; yours: boolean };
+export type Owed = { wait: FeedbackWaitingOn; yours: boolean };
 
 const TRIAGER = say('standing.who.holderOf', { perm: 'feedback.approve' });
-
-/** Several carriers named in one phrase: `ISS-1`, `ISS-1 and ISS-2`, `ISS-1, ISS-2 and ISS-3`. */
-export function carriersPhrase(keys: readonly string[]): Said | null {
-  const last = keys[keys.length - 1];
-  if (last === undefined) return null;
-  if (keys.length === 1) return named(last);
-  return say('standing.keysAnd', { keys: keys.slice(0, -1).join(', '), last });
-}
 
 /** Who or what an item waits on, and whether that act is one the viewer holds. */
 function waitingOf(
@@ -210,6 +218,7 @@ function waitingOf(
         yours: viewer.canTriage,
       };
     case 'triaged':
+      if (facts.draftCarrier) return draftCarrierWait(facts.draftCarrier);
       if (route === null) {
         return {
           wait: wait('person', TRIAGER, say('feedback.act.route'), say('feedback.rule.noRoute')),
@@ -226,7 +235,11 @@ function waitingOf(
         yours: viewer.canTriage,
       };
     case 'planned':
-      if (route === 'issue') return issueWait(carriers, viewer, facts);
+      if (route === 'issue') {
+        return facts.carrierRelease
+          ? issueWait(carriers, viewer, { ...facts, carrierRelease: facts.carrierRelease })
+          : carrierWait(facts.carrier ?? null, carriers);
+      }
       return theirs(plannedWait(route, carriers[0] ?? null, revision));
     case 'resolved':
       if (route === 'answer') {
@@ -278,94 +291,6 @@ function waitingOf(
         ),
       );
   }
-}
-
-// no notice reached the reporter (an agent, a person off Forge's bell, a notice turned off, or work
-// no release carried), so the holders of feedback.approve tell them, and it is on their Needs you
-// until a message or a recorded relay does (Linear's customer requests reopen the support
-// conversation for a person to answer in the same way: the requester is outside the tracker)
-function relayWait(reporter: string, viewer: StandingViewer, facts: StandingFacts): Owed {
-  const act = facts.carrierVersion
-    ? say('standing.act.tellShippedIn', { who: reporter, v: facts.carrierVersion })
-    : say('standing.act.tellShipped', { who: reporter });
-  const rule = say('feedback.rule.relay');
-  const extra = { ref: facts.carrierVersion ?? null };
-  const holders = facts.relayHolders ?? [];
-  const yours = viewer.canTriage && !viewer.isReporter;
-  if (holders.length === 0 && !yours) {
-    return {
-      wait: wait('none', holdersWho(holders), nobodyHoldsAct(act, 'feedback.approve'), rule, extra),
-      yours: false,
-    };
-  }
-  return { wait: wait('person', holdersWho(holders), act, rule, extra), yours };
-}
-
-// a carrier at the release gate waits on whoever makes that release, by name: never a bare "ship"
-// in a project where nothing ships it (eco round 4, #45), never a role naming nobody. `carriers` are
-// the issues still owed, every one named; `ref` is the first of them
-function issueWait(
-  carriers: readonly string[],
-  viewer: StandingViewer,
-  facts: StandingFacts,
-): Owed {
-  const carrier = carriersPhrase(carriers);
-  const issue = carrier ?? say('feedback.who.theLinkedIssue');
-  const ref = { ref: carriers[0] ?? null };
-  const waits = carriers.length > 1 ? 'wait' : 'waits';
-  const release = facts.carrierRelease;
-  if (release === null || release === 'automatic') {
-    return {
-      wait: wait(
-        'issue',
-        carrier ?? say('standing.who.linkedIssue'),
-        say('standing.act.ship'),
-        say(carriers.length > 1 ? 'feedback.rule.issuesCarry' : 'feedback.rule.issueCarries'),
-        ref,
-      ),
-      yours: false,
-    };
-  }
-  const version = facts.carrierVersion ?? null;
-  const owed = {
-    none: {
-      act: say('standing.act.releaseByHand', { what: issue }),
-      rule: say('feedback.rule.noReleaseModel', { issue, waits }),
-      extra: ref,
-      yours: viewer.canWrite,
-    },
-    approval: {
-      act: version
-        ? say('standing.act.approveReleaseV', { v: version })
-        : say('standing.act.approveCarrierRelease'),
-      rule: say('feedback.rule.approvalRequired', { issue, waits }),
-      extra: { ref: version },
-      yours: viewer.canApproveRelease,
-    },
-    manual: {
-      act: say('standing.act.cutCarrierRelease', { what: issue }),
-      rule: say('feedback.rule.manualCut', { issue, waits }),
-      extra: ref,
-      yours: viewer.canAdmin,
-    },
-  }[release];
-  const holders = facts.releaseHolders ?? [];
-  if (holders.length === 0 && !owed.yours) {
-    return {
-      wait: wait(
-        'none',
-        holdersWho(holders),
-        nobodyHoldsAct(owed.act, RELEASE_ACT_PERMISSION[release]),
-        owed.rule,
-        owed.extra,
-      ),
-      yours: false,
-    };
-  }
-  return {
-    wait: wait('person', holdersWho(holders), owed.act, owed.rule, owed.extra),
-    yours: owed.yours,
-  };
 }
 
 function plannedWait(
@@ -486,18 +411,32 @@ export function feedbackStandingOf(
   reporter: string,
   viewer: StandingViewer,
   revision: RevisionStage | null,
-  facts: StandingFacts = NO_FACTS,
-): Standing<FeedbackAttentionGroup, FeedbackWaitingKind> {
+  facts: StandingFacts,
+  at: FeedbackTimesFacts,
+): Standing<FeedbackAttentionGroup, FeedbackWaitingKind> & { times: StandingTimes } {
   const owed = waitingOf(phase, route, carriers, reporter, revision, viewer, facts);
-  const attentionGroup = groupOf(phase, owed);
-  return {
-    attentionGroup,
-    waitingOn: owed.yours
-      ? waitingOn(
-          'you',
-          { ...owed.wait.says, who: say('standing.who.you') },
-          { ref: owed.wait.ref, dueAt: owed.wait.dueAt },
-        )
-      : owed.wait,
-  };
+  const waiting = owed.yours
+    ? waitingOn(
+        'you',
+        { ...owed.wait.says, who: say('standing.who.you') },
+        { ref: owed.wait.ref, dueAt: owed.wait.dueAt },
+      )
+    : owed.wait;
+  const carrier = phase === 'planned' && route === 'issue' ? (facts.carrier ?? null) : null;
+  const carried =
+    carrier?.stuck && carrier.stuck.code !== 'blocked'
+      ? { key: carrier.key, stuck: carrier.stuck }
+      : null;
+  const { group, times } = withTimes(
+    { group: groupOf(phase, owed), waitingOn: waiting },
+    {
+      since: carrier?.since ?? at.since,
+      master: at.master,
+      draftCarrier: phase === 'triaged' ? (facts.draftCarrier ?? null) : null,
+      carried,
+      now: at.now,
+    },
+    'waiting',
+  );
+  return { attentionGroup: group, waitingOn: waiting, times };
 }

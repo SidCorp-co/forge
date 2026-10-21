@@ -28,7 +28,7 @@ import {
   confidenceOf,
   type History,
 } from './capacity.js';
-import { lateAfterP85, latestLate, lateWaiting } from './late.js';
+import { lateAfterP85, latestLate } from './late.js';
 
 export { type CycleSample, concurrencyOf, confidenceOf, type History };
 
@@ -193,7 +193,8 @@ export function pausedOf(asOf: string, wait: Wait): ForecastPaused {
     ref: wait.ref,
     since,
     says: wait.says,
-    late: lateWaiting(since, new Date(asOf)),
+    // a paused item is late by its standing's due (REQ-48 BC-5, `overdue`), never by the forecast
+    late: null,
   };
 }
 
