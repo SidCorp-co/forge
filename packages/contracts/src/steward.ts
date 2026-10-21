@@ -142,6 +142,10 @@ export type OpenStandingsRead = (projectId: string) => Promise<ItemStanding[]>;
 export interface StandingBasisFields {
 	group: StandingGroup;
 	waitingKind: WaitingKind;
+	/** Who the wait names, as written with no viewer ("Master", "Minh", "ISS-12"). */
+	who: string;
+	/** The registry key of the act owed (`says.act.key`), so a new act is a new basis. */
+	actKey: string;
 	ref: string | null;
 	stuckCode: StuckCode | null;
 	dueAt: string | null;
@@ -153,6 +157,8 @@ export function standingBasisOf(s: StandingBasisFields): string {
 	return [
 		s.group,
 		s.waitingKind,
+		s.who,
+		s.actKey,
 		s.ref ?? "-",
 		s.stuckCode ?? "-",
 		s.dueAt ?? "-",
@@ -165,6 +171,8 @@ export const basisFieldsOf = (
 ): StandingBasisFields => ({
 	group: s.group,
 	waitingKind: s.waitingOn.kind,
+	who: s.waitingOn.who,
+	actKey: s.waitingOn.says.act.key,
 	ref: s.waitingOn.ref,
 	stuckCode: s.stuck?.code ?? null,
 	dueAt: s.dueAt,
@@ -380,15 +388,24 @@ export const STANDING_SWEEP_MS = 5 * 60_000;
 /** Per project and UTC day, unless the project's `steward` policy lowers them. */
 export const STEWARD_DAILY_BUDGET = { gatewayTurns: 200, runnerJobs: 10 } as const;
 
-/** A steward run as the item's page and the run log read it (BC-1). */
+/**
+ * A steward run as the item's page and the run log read it (BC-1). A run carries every distinct act
+ * its folded triggers asked for and runs them in `STEWARD_ACTS` order; a trigger arriving while it
+ * runs adds its act to `followUp`, which the run's end queues as the next run, never dropping one.
+ */
 export interface StewardRunView {
 	id: string;
 	subject: StandingSubject;
 	trigger: StewardTrigger;
 	/** Every trigger folded into this run, oldest first. */
 	events: { trigger: StewardTrigger; outboxId: string; at: string }[];
-	act: StewardAct;
-	runtime: StewardRuntime;
+	/** Distinct, in `STEWARD_ACTS` order. */
+	actsToRun: StewardAct[];
+	/** Acts asked for while this run ran: the next run's `actsToRun`. */
+	followUp: StewardAct[];
+	/** The standing basis the run read at start: the sweep starts no stuck diagnosis for a subject
+	 *  already holding a run on the same basis, notes or none (issues take no note). */
+	basis: string;
 	state: StewardRunState;
 	skipReason: StewardSkipReason | null;
 	/** The job a runner act ran as, or the assistant turn a gateway act ran as. */

@@ -50,7 +50,7 @@ same functions. The `forge_standing` tool and the lane B sweep read it through `
 | `dueAt` | The wait's own due (an SLA task, a snooze, the verify window), else `since + STANDING_DUE_WORKING_DAYS[actClass]` (`lib/working-days.ts:addWorkingDays`). | |
 | `stuck` | `{code, since, reason (in BA words), via, says}`, or null. | The stuck rule below. |
 | `carriedBy` | The issue the wait was rolled up from. | The roll-up below. |
-| `basis` | `standingBasisOf(group, waitingKind, ref, stuckCode, dueAt, carriedBy)`, always taken from the read with no viewer (no `needs_you`, no `you`). | What a note is vetted against. Every viewer compares the same basis. |
+| `basis` | `standingBasisOf(group, waitingKind, who, actKey, ref, stuckCode, dueAt, carriedBy)`, always taken from the read with no viewer (no `needs_you`, no `you`). | What a note is vetted against. Every viewer compares the same basis. |
 
 ### Stuck rule, first that holds wins (replaces r17 `turn`'s "no owner or untouched 21 days")
 
@@ -126,9 +126,12 @@ They come through the existing outbox: one consumer named `steward` (`contracts/
 
 The **standing sweep** is a cluster timer `standing-sweep` in `timer-registry.ts:coreTimers`, running
 every 5 minutes (`STANDING_SWEEP_MS`). For each project with the steward on, it calls
-`OpenStandingsRead`. For each item it emits `standing.stuck` when `stuck` is set and the note's
-`claims.stuck` is false (or there is no note), and otherwise `standing.changed` when `basis` ≠ the
-note's basis.
+`OpenStandingsRead`. It emits `standing.stuck` for a stuck item that holds no steward run on its current
+basis (`steward_runs.basis`), notes or none. That is what keeps an issue, which takes no note, from
+being diagnosed again on every sweep. A stuck issue that carries a requirement or a feedback item is
+diagnosed through that item, because the roll-up makes the carrier stuck with `via` set. Only an issue
+nothing carries is a subject of its own. For a requirement or feedback item it otherwise emits
+`standing.changed` when `basis` ≠ the note's basis.
 
 An item turning stuck by time alone is seen within 5 minutes. Nothing else needs a timer.
 
@@ -140,10 +143,10 @@ These use `steward_runs` and `steward_acts` (migration 508).
 |---|---|
 | Recorded on the item (BC-1) | One `steward_runs` row per run: subject, trigger, folded `events[]` (outbox ids), act, runtime, state, `job_id`/`turn_id`, times. Read through `GET /api/projects/:id/steward-runs?subject=` and on the item page's activity rows. |
 | One live run per item | A partial unique index on (`subject_kind`, `subject_id`) where `state in ('queued','running')`. Insert-or-fold under that index. |
-| Debounce | A new event folds into the queued row, and `not_before = first event + 2 min` (`STEWARD_DEBOUNCE_MS`). If the run is already running, `rerun = true`, and its end queues one `note` run. |
+| Debounce, no act dropped | A new event folds into the queued row, adding its act to `acts_to_run` (distinct; run in `STEWARD_ACTS` order), and `not_before = first event + 2 min` (`STEWARD_DEBOUNCE_MS`). An event arriving while the run runs adds its act to `follow_up`, and the run's end queues those acts as the next run. A breakdown proposed during a note run is therefore still checked. |
 | Start within 5 min | A process timer `steward-dispatch` runs every 30 s and starts queued rows whose `not_before` has passed. Worst case is 2 min + 30 s. |
-| Idempotent | The outbox delivery commits with the row (`delivery.inbox`). A `note` run whose standing basis equals the note's is `skipped` / `basis_unchanged`. A subject that ended is `skipped` / `subject_ended`. |
-| Lost wake | The sweep re-emits a stuck item that has no live run and no note claiming stuck. |
+| Idempotent | The outbox delivery commits with the row (`delivery.inbox`). Each run stores the basis it read. A `note` run whose standing basis equals the note's is `skipped` / `basis_unchanged`. A subject that ended is `skipped` / `subject_ended`. |
+| Lost wake | The sweep re-emits a stuck item that holds no run on its current basis. A stuck item already diagnosed on that basis is not diagnosed again until its standing moves. |
 
 ### Where each act runs
 
@@ -221,7 +224,7 @@ journal line.
 | Index | `when` | Tables | Lane |
 |---|---|---|---|
 | 0507 | 1826755200000 | `steward_notes` | A |
-| 0508 | 1826841600000 | `steward_runs`, `steward_acts`. Also `jobs.type` value `steward`, if the column carries a check. | B |
+| 0508 | 1826841600000 | `steward_runs` (with `acts_to_run`, `follow_up` and `basis`), `steward_acts`. Also `jobs.type` value `steward`, if the column carries a check. | B |
 
 ## 8. Lane split
 
