@@ -31,8 +31,11 @@ describe('the card names what a held Assistant call would record, and what it li
       relates: ['REQ-30'],
     });
     expect(
-      card('forge_feedback', { kind: 'idea', title: 'x', target: { kind: 'workflow', ref: 'chat-turn' } })
-        .relates,
+      card('forge_feedback', {
+        kind: 'idea',
+        title: 'x',
+        target: { kind: 'workflow', ref: 'chat-turn' },
+      }).relates,
     ).toEqual(['workflow chat-turn']);
   });
 
