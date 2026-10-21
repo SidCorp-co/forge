@@ -268,3 +268,25 @@ describe("DescriptionSection — a failed attachments read", () => {
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
   });
 });
+
+// ISS-1228 r26 (review F1): a draft begun before the issue's read failed could still be saved over it.
+describe("DescriptionSection, when writes are withdrawn mid-edit", () => {
+  const issueOf = { id: "i1", description: "old", descriptionFormat: "markdown", status: "open", agentStatus: null } as unknown as IssueDetail;
+
+  it("keeps the draft and saves nothing until writing is offered again", () => {
+    const { rerender } = render(<DescriptionSection issue={issueOf} attachments={[]} canWrite />);
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    fireEvent.change(screen.getByLabelText("Issue description"), { target: { value: "new words" } });
+
+    rerender(<DescriptionSection issue={issueOf} attachments={[]} canWrite={false} />);
+    expect(screen.getByLabelText("Issue description")).toHaveValue("new words");
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(save).not.toHaveBeenCalled();
+
+    rerender(<DescriptionSection issue={issueOf} attachments={[]} canWrite />);
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(save).toHaveBeenCalledWith({ id: "i1", body: { description: "new words" } }, expect.anything());
+  });
+});
+

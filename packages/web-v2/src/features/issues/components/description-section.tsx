@@ -87,11 +87,14 @@ export function DescriptionSection({
               >
                 Cancel
               </Button>
+              {/* A draft begun before the issue's read failed stays, but is not saved over what was not re-read (ISS-1228 r26). */}
               <Button
                 variant="primary"
                 size="sm"
                 loading={save.isPending}
+                disabled={!canWrite}
                 onClick={() =>
+                  canWrite &&
                   save.mutate(
                     { id: issue.id, body: { description: draft } },
                     { onSuccess: () => setDraft(null) },

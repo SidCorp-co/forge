@@ -3206,7 +3206,7 @@
 - **An issue whose run or session stops being readable says so in its header**, even after one reading: the run's word is marked "as of" that reading, and Pause, Open session and the agent card wait. (ISS-1228)
 - **A section that cannot refresh keeps what it showed**, with a line saying when it was read and Retry. An answer being typed to a question is no longer erased when the decisions fail to refresh. (ISS-1228)
 - **A project deleted while its issue or Pipeline page is open now says the project was not found**, instead of saying an agent is running. (ISS-1228)
-- **A busy project's pages read which sessions hold what at most once every two seconds**, instead of on every check-in. (ISS-1228)
+- **Check-ins on a busy project re-read which sessions hold what at most once every two seconds**, instead of on every check-in; Retry and returning to the tab still read at once. (ISS-1228)
 - **The issue page says once that an agent's work would overwrite an edit**, not twice; its banner no longer points below at questions that could not be read; and no empty divider sits above Description. (ISS-1228)
 - **A query parameter a call does not take is refused, never ignored.** `?colour=red` used to answer as if it had not been sent; every call now names it, the one you may have meant and the ones it takes. (ISS-1421)
 - **A number sent as spaces is refused as empty**, quoting what was sent, instead of being read as 0; a refusal's details now say what its message says, never "NaN". (ISS-1421)
