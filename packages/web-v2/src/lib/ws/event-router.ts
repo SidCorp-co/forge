@@ -37,10 +37,12 @@ function statusUnmoved(data: any): data is { sessionId: string; status: string; 
 /** A session's check-in that leaves its status alone moves no count, no issue page and no rollup:
  *  only the session's own page and the lists that show the session re-read (ISS-1228). */
 function rereadWhatShowsSession(qc: QueryClient, sessionId: string): void {
-	scheduleInvalidation(qc, ["agent-session", sessionId]);
-	scheduleInvalidation(qc, ["agent-sessions"]);
-	scheduleInvalidation(qc, [SESSIONS_AND_HOLDS]);
-	scheduleInvalidation(qc, [RUN_SESSIONS]);
+	// A check-in changes no refusal's answer, so a read Forge refused for good is passed by (ISS-1228 r25).
+	const spareRefused = { spareRefused: true };
+	scheduleInvalidation(qc, ["agent-session", sessionId], spareRefused);
+	scheduleInvalidation(qc, ["agent-sessions"], spareRefused);
+	scheduleInvalidation(qc, [SESSIONS_AND_HOLDS], spareRefused);
+	scheduleInvalidation(qc, [RUN_SESSIONS], spareRefused);
 }
 
 /** Every read that says a run's word: its row on the runs tab, its open drawer and the issue page's Runs. */

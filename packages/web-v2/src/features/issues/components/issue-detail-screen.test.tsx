@@ -308,39 +308,48 @@ describe("the issue header's run", () => {
     }
   });
 
-  it("says the run could not be read, and why, and offers Retry, with no run word or run action", () => {
+  // r25 (judge-81, criterion 244): the run's failure sat in the chips above the title, pushing it down.
+  const failureRow = () => screen.getByText("ISS-7").closest(".sticky")?.querySelector('[data-header="failure"]') as HTMLElement;
+
+  it("says the run could not be read, and why, on the failure row under the title, with Retry and no run word or run action", () => {
     issueOver = { agentStatus: "completed" };
     const refetch = vi.fn();
     const lost = new TypeError("Failed to fetch");
     markUnreachable(lost);
     journal = { data: undefined, isLoading: false, isError: true, error: lost, refetch };
     renderScreen();
-    expect(within(headerChips()).getByText(`The run could not be read. ${UNREACHABLE_SENTENCE}`)).toBeInTheDocument();
+    expect(within(failureRow()).getByText(`The run could not be read. ${UNREACHABLE_SENTENCE}`)).toBeInTheDocument();
+    expect(within(headerChips()).queryByText(/could not be read/)).toBeNull();
+    expect(within(headerChips()).queryByRole("button", { name: "Retry" })).toBeNull();
     expect(within(headerChips()).queryByText("Completed")).toBeNull();
     expect(screen.queryByRole("button", { name: /^Run$/ })).toBeNull();
-    const header = screen.getByText("ISS-7").closest(".sticky") as HTMLElement;
-    fireEvent.click(within(header).getByRole("button", { name: "Retry" }));
+    fireEvent.click(within(failureRow()).getByRole("button", { name: "Retry" }));
     expect(refetch).toHaveBeenCalled();
   });
 
-  it("offers Retry beside a run read the server refused, and none where it answered 401", () => {
+  it("offers Retry for a run read the server refused, and none where it answered 401", () => {
     journal = { data: undefined, isLoading: false, isError: true, error: new ApiError(409, "Try again in a minute.", "X"), refetch: vi.fn() };
     const { unmount } = renderScreen();
-    expect(within(headerChips()).getByRole("button", { name: "Retry" })).toBeInTheDocument();
+    expect(within(failureRow()).getByRole("button", { name: "Retry" })).toBeInTheDocument();
     unmount();
     journal = { ...journal, error: new ApiError(401, "Unauthenticated", "UNAUTHENTICATED") };
     renderScreen();
-    expect(within(headerChips()).queryByRole("button", { name: "Retry" })).toBeNull();
+    expect(within(failureRow()).queryByRole("button", { name: "Retry" })).toBeNull();
   });
 
   // r20 review F2: the Retry lived in the primary action, which a closed issue never reaches.
-  it("offers Retry beside an unreadable run on a closed issue too", () => {
+  it("offers Retry for an unreadable run on a closed issue too", () => {
     issueOver = { status: "closed", mergedAt: "2026-09-05T15:00:00Z" };
     const refetch = vi.fn();
     journal = { data: undefined, isLoading: false, isError: true, error: new Error("boom"), refetch };
     renderScreen();
-    fireEvent.click(within(headerChips()).getByRole("button", { name: "Retry" }));
+    fireEvent.click(within(failureRow()).getByRole("button", { name: "Retry" }));
     expect(refetch).toHaveBeenCalled();
+  });
+
+  it("draws no failure row while every read the header rests on answers", () => {
+    renderScreen();
+    expect(failureRow()).toBeNull();
   });
 
   it("reads a held run Held, never the failed session's verdict, once the journal answers", () => {
@@ -563,5 +572,63 @@ describe("which session holds the issue, while it cannot be read", () => {
     const open = await within(header()).findByRole("link", { name: "Open session" });
     expect(open).toHaveAttribute("href", "/projects/forge-dev/agents/s-holder");
     expect(within(header()).queryByText(unread)).toBeNull();
+  });
+
+  // Round 25 (judge-81, criteria 244 and 248): with both reads failing the header said one above the
+  // title and one below the actions, each with its own Retry.
+  it("says the run and its session on one row under the actions, with one Retry that reads both again", async () => {
+    holds = "forbid";
+    const refetchRun = vi.fn();
+    journal = { data: undefined, isLoading: false, isError: true, error: new ApiError(403, "Not a project member.", "FORBIDDEN"), refetch: refetchRun };
+    renderLive();
+    const line = await within(header()).findByText("The run and its session could not be read. Not a project member.");
+    expect(line.closest('[data-header="failure"]')).not.toBeNull();
+    expect(within(header()).getAllByText(/could not be read/)).toHaveLength(1);
+    expect(within(header()).getAllByRole("button", { name: "Retry" })).toHaveLength(1);
+    const asked = fetchMock.mock.calls.filter(([url]) => String(url).includes("sessions-and-holds")).length;
+    await act(async () => {
+      fireEvent.click(within(header()).getByRole("button", { name: "Retry" }));
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(refetchRun).toHaveBeenCalled();
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).includes("sessions-and-holds")).length).toBe(asked + 1);
+  });
+
+  it("names each reason once where the two reads failed for different reasons", async () => {
+    holds = "fail";
+    journal = { data: undefined, isLoading: false, isError: true, error: new ApiError(429, "Too many reads from this account. Try again in a minute.", "RATE_LIMITED"), refetch: vi.fn() };
+    renderLive();
+    expect(
+      await within(header()).findByText(
+        `The run could not be read. Too many reads from this account. Try again in a minute. Its session could not be read. ${UNREACHABLE_SENTENCE}`,
+      ),
+    ).toBeInTheDocument();
+    expect(within(header()).getAllByRole("button", { name: "Retry" })).toHaveLength(1);
+  });
+
+  // Round 25 (master's read of judge-81's shots, criterion 252): "Agent running · Heartbeat alive"
+  // stayed under a header saying the run and its session could not be read.
+  it.each([
+    ["the session read", () => { holds = "forbid"; }],
+    ["the run read", () => {
+      holds = "answer";
+      journal = { data: undefined, isLoading: false, isError: true, error: new ApiError(403, "Not a project member.", "FORBIDDEN"), refetch: vi.fn() };
+    }],
+  ])("draws no agent card claiming a live agent while %s has failed", async (_name, fail) => {
+    status = "in_progress";
+    issueOver = { agentSessions: [{ id: "s-run", status: "running", skill: "forge-code", startedAt: "2026-09-05T14:16:00Z", lastHeartbeatAt: new Date().toISOString() }] };
+    fail();
+    renderLive();
+    await within(header()).findByText(/could not be read/);
+    expect(screen.queryByText(/Agent (running|queued)/)).toBeNull();
+    expect(screen.queryByText("Heartbeat alive")).toBeNull();
+  });
+
+  it("draws the agent card once both reads answer", async () => {
+    status = "in_progress";
+    holds = "answer";
+    issueOver = { agentSessions: [{ id: "s-run", status: "running", skill: "forge-code", startedAt: "2026-09-05T14:16:00Z", lastHeartbeatAt: new Date().toISOString() }] };
+    renderLive();
+    expect(await screen.findByText("Agent running")).toBeInTheDocument();
   });
 });

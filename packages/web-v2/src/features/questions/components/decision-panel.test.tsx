@@ -10,7 +10,8 @@
 // must never say again.
 
 import * as matchers from "@testing-library/jest-dom/matchers";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { ApiError } from "@/lib/api/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DecisionPanel, focusDecisionPanel } from "./decision-panel";
 
@@ -81,8 +82,42 @@ describe("DecisionPanel, when the query itself could not be made", () => {
       refetch: vi.fn(),
     };
     const { container } = render(<DecisionPanel issueId="i-1" parkedForInfo />);
-    expect(screen.getByText(/Couldn't load this issue's decisions/i)).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Decisions" })).toHaveTextContent("Couldn't load");
     expect(container.textContent ?? "").not.toMatch(/No questions on this issue/i);
+  });
+
+  // ISS-1228 r25 (criterion 251): the failure was a full-height block, mascot and heading, at the top
+  // of the main column. It is one flat line in its own Decisions section, with Retry.
+  it("says so on one flat line in a Decisions section, with Retry and the reason", () => {
+    const refetch = vi.fn();
+    questionsQuery = {
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      error: new ApiError(403, "Not a project member.", "FORBIDDEN"),
+      refetch,
+    };
+    render(<DecisionPanel issueId="i-1" />);
+    const line = screen.getByRole("region", { name: "Decisions" });
+    expect(line).toHaveTextContent("Not a project member.");
+    expect(line.className).toContain("border-t");
+    expect(line.className).not.toMatch(/\bpy-12\b|\brounded-lg\b/);
+    expect(screen.queryByRole("heading", { level: 3, name: /Couldn't load/ })).toBeNull();
+    expect(screen.queryByText(/Couldn't load this issue's decisions/)).toBeNull();
+    fireEvent.click(within(line).getByRole("button", { name: "Retry" }));
+    expect(refetch).toHaveBeenCalled();
+  });
+
+  it("offers no Retry where Forge answered 401", () => {
+    questionsQuery = {
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      error: new ApiError(401, "Unauthenticated", "UNAUTHENTICATED"),
+      refetch: vi.fn(),
+    };
+    render(<DecisionPanel issueId="i-1" />);
+    expect(within(screen.getByRole("region", { name: "Decisions" })).queryByRole("button", { name: "Retry" })).toBeNull();
   });
 });
 

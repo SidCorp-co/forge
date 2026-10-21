@@ -21,9 +21,6 @@ import {
 
 const TITLE = "Runs";
 
-/** An empty or unread line drawn flush: a hairline above in place of the card's border. */
-const FLAT_PANEL_LINE = "rounded-none border-0 border-t border-line-subtle bg-transparent px-0 shadow-none";
-
 const RUN_STATUS: Record<RunView["status"], { label: string; dot: string }> = {
   running: { label: "Running", dot: "var(--pipeline-active)" },
   paused: { label: "Paused", dot: "var(--amber-500)" },
@@ -50,14 +47,14 @@ interface RunJournalSectionProps {
 export function RunJournalSection({ runs, loading, error, onRetry }: RunJournalSectionProps) {
   const [openRuns, setOpenRuns] = useState<ReadonlySet<string> | null>(null);
 
-  if (loading) return <EmptyPanelLine title={TITLE} status="Loading…" className={FLAT_PANEL_LINE} />;
+  if (loading) return <EmptyPanelLine title={TITLE} status="Loading…" flat />;
   if (error) {
     return (
       <EmptyPanelLine
         title={TITLE}
         status="Couldn't load"
         detail={formatApiError(error)}
-        className={FLAT_PANEL_LINE}
+        flat
         action={
           offersRetry(error) ? (
             <button type="button" onClick={onRetry} className="fg-caption text-muted hover:text-fg">
@@ -74,7 +71,7 @@ export function RunJournalSection({ runs, loading, error, onRetry }: RunJournalS
         title={TITLE}
         status="None yet"
         detail="Each run appears here with the phases it recorded."
-        className={FLAT_PANEL_LINE}
+        flat
       />
     );
   }

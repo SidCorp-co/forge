@@ -1,5 +1,7 @@
 import { QueryClient, QueryObserver } from "@tanstack/react-query";
 import { afterEach, describe, expect, it } from "vitest";
+import { ApiError } from "@/lib/api/client";
+import { refusalStands } from "@/lib/api/read-failed";
 import { invalidateThroughInFlight } from "./invalidate-through-inflight";
 
 function deferred<T>() {
@@ -101,5 +103,29 @@ describe("invalidateThroughInFlight", () => {
 
 		expect(issues).toBe(2);
 		expect(jobs).toBe(1);
+	});
+});
+
+// ISS-1228 r25 (review F2): a check-in's window that closed while a first read was in flight
+// re-asked it once it settled, though it settled refused for good.
+describe("a deferred re-read under a predicate", () => {
+	const spare = (q: { state: { error: unknown } }) => !refusalStands(q.state.error);
+
+	it.each([
+		["passes by a first read that settles refused for good", spare, 1],
+		["re-asks it where no predicate spares it", undefined, 2],
+	] as const)("%s", async (_name, predicate, expected) => {
+		const qc = client();
+		let calls = 0;
+		const gate = deferred<string>();
+		mount(qc, ["holds", "p1"], () => {
+			calls += 1;
+			return calls === 1 ? gate.promise.then(() => Promise.reject(new ApiError(403, "Not a project member.", "FORBIDDEN"))) : Promise.resolve("v2");
+		});
+		await tick(5);
+		invalidateThroughInFlight(qc, predicate ? { queryKey: ["holds"], predicate } : { queryKey: ["holds"] });
+		gate.resolve("go");
+		await tick();
+		expect(calls).toBe(expected);
 	});
 });

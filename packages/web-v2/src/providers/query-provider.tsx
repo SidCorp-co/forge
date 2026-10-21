@@ -4,6 +4,7 @@ import { useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ApiError } from "@/lib/api/client";
 import { keepFailedReadsFailed } from "@/lib/api/keep-failed-reads";
+import { refetchRefusedOnFocus } from "@/lib/api/read-failed";
 
 export const QUERY_MAX_RETRIES = 2;
 
@@ -23,7 +24,8 @@ export function createQueryClient(): QueryClient {
 				staleTime: 60_000,
 				gcTime: 300_000,
 				retry: shouldRetryQuery,
-				refetchOnWindowFocus: false,
+				// Only a read Forge refused for good is asked again when the person comes back (ISS-1228 r25).
+				refetchOnWindowFocus: refetchRefusedOnFocus,
 			},
 		},
 	});

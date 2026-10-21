@@ -17,6 +17,7 @@ afterAll(() => closeChrome());
 const HARNESS = fileURLToPath(new URL("../../../test-support/issue-header-harness.tsx", import.meta.url));
 
 interface Laid {
+  titleTop: number;
   titleWidth: number;
   titleLines: number;
   headerHeight: number;
@@ -34,6 +35,7 @@ const MEASURE = `(() => {
   const actions = document.querySelector('[data-header="actions"]');
   const failure = document.querySelector('[data-header="failure"]');
   return {
+    titleTop: Math.round(box(title).top - box(document.querySelector(".sticky")).top),
     titleWidth: Math.round(box(title).width),
     titleLines: Math.round(box(title).height / line),
     headerHeight: Math.round(box(document.querySelector(".sticky")).height),
@@ -50,14 +52,31 @@ function laidOut(scenario: string, width: number): Promise<Laid> {
 }
 
 describe("the issue header with a failed read, in a real Chrome", () => {
-  it.each([1280, 390])("keeps the title's width and the toolbar's one row at %ipx, the sentence on a line under both", async (width) => {
+  // Round 25 (judge-81, criteria 244 and 248): the run read's failure, and both reads failing, take
+  // the same one row as the session read's, under the title and the actions.
+  it.each([
+    ["failed", 1280],
+    ["failed", 390],
+    ["run-failed", 1280],
+    ["run-failed", 390],
+    ["both-failed", 1280],
+    ["both-failed", 390],
+  ])("keeps the title's place, width and the toolbar's one row with %s at %ipx, the sentence on a line under both", async (scenario, width) => {
     const clear = await laidOut("none", width);
-    const failed = await laidOut("failed", width);
+    const failed = await laidOut(scenario, width);
+    expect(failed.titleTop).toBe(clear.titleTop);
     expect(failed.titleWidth).toBe(clear.titleWidth);
     expect(failed.titleLines).toBe(clear.titleLines);
     expect(failed.actionRows).toBe(1);
     expect(clear.actionRows).toBe(1);
     expect(failed.failureBelowActions).toBe(true);
+  });
+
+  // ...and the measure goes red on the layout round 24 drew: the run's failure in the chip row.
+  it("would read the round 24 layout, the run's failure above the title, as the defect it was", async () => {
+    const clear = await laidOut("none", 390);
+    const inChips = await laidOut("in-chips", 390);
+    expect(inChips.titleTop).toBeGreaterThan(clear.titleTop + 20);
   });
 
   // The measurement goes red on the layout round 23 drew: the same sentence inside the toolbar.

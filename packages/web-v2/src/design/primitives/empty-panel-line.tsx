@@ -9,15 +9,18 @@ export interface EmptyPanelLineProps {
   detail?: string;
   className?: string;
   action?: ReactNode;
+  /** Drawn as a flat main-column section: a hairline above, no frame, fill or shadow. */
+  flat?: boolean;
 }
 
 /** A secondary panel with nothing in it is one line from sm up, never a second. */
-export function EmptyPanelLine({ title, status, detail, className, action }: EmptyPanelLineProps) {
+export function EmptyPanelLine({ title, status, detail, className, action, flat = false }: EmptyPanelLineProps) {
   return (
     <section
       aria-label={title}
       className={cn(
         "flex min-h-10 min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 rounded-lg border border-line bg-surface px-3 py-2 shadow-sm sm:h-10 sm:flex-nowrap sm:py-0",
+        flat && "rounded-none border-0 border-t border-line-subtle bg-transparent px-0 shadow-none",
         className,
       )}
     >

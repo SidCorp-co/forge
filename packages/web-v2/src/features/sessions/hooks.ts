@@ -7,6 +7,7 @@ import { type ListSessionsOpts, sessionsApi } from "./api";
 import { endedSilentText } from "./status-sentences";
 import { isInteractiveSession, LIVE_READ_POLL_MS } from "./types";
 import { failureToast } from "@/lib/api/failure-toast";
+import { pollUnlessRefused } from "@/lib/api/read-failed";
 
 /** Sessions list. Keyed `['agent-sessions','list',opts]` — WS-invalidated, and re-read on the live
  *  period while it shows a running session, whose check-ins move no event. */
@@ -15,9 +16,12 @@ export function useSessions(opts: ListSessionsOpts) {
     queryKey: ["agent-sessions", "list", opts],
     queryFn: () => sessionsApi.list(opts),
     refetchInterval: (query) =>
-      query.state.data?.items.some((row) => row.status === "running" && !isInteractiveSession(row))
-        ? LIVE_READ_POLL_MS
-        : false,
+      pollUnlessRefused(
+        query,
+        query.state.data?.items.some((row) => row.status === "running" && !isInteractiveSession(row))
+          ? LIVE_READ_POLL_MS
+          : false,
+      ),
   });
 }
 

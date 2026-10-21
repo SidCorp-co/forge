@@ -8,12 +8,13 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
-  ErrorState,
+  EmptyPanelLine,
   Field,
   Skeleton,
   Textarea,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
+import { offersRetry } from "@/lib/api/read-failed";
 import { useAnsweringQuestions, useAnswerQuestion, useIssueQuestions } from "../hooks";
 import { QuestionCard } from "./question-card";
 
@@ -191,10 +192,19 @@ export function DecisionPanel({
       {isLoading ? (
         <Skeleton variant="rect" className="h-24 w-full" />
       ) : isError ? (
-        <ErrorState
-          title="Couldn't load this issue's decisions"
-          message={formatApiError(error)}
-          onRetry={() => refetch()}
+        // A secondary read that failed is one line in its own section, never a block above the issue (ISS-1228 r25).
+        <EmptyPanelLine
+          flat
+          title="Decisions"
+          status="Couldn't load"
+          detail={formatApiError(error)}
+          action={
+            offersRetry(error) ? (
+              <button type="button" onClick={() => void refetch()} className="fg-caption text-muted hover:text-fg">
+                Retry
+              </button>
+            ) : undefined
+          }
         />
       ) : questions.length === 0 && threadQuestion ? (
         <ThreadQuestionCard question={threadQuestion} onAnswer={onAnswerInThread} />
