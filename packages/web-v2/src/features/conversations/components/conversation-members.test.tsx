@@ -6,6 +6,7 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ConversationMembers } from "./conversation-members";
+import { ScopeNotice } from "./scope-notice";
 
 vi.mock("../hooks", () => ({
   useConversationCandidates: () => ({ isLoading: false, isError: false, data: { people: [], handles: [] } }),
@@ -32,7 +33,7 @@ const agent = {
   kind: "handle" as const,
   userId: "agent",
   projectId: "p1",
-  label: "@billing-agent-with-a-long-handle",
+  label: "billing-agent-with-a-long-handle",
   displayName: null,
   reachable: true,
 };
@@ -83,5 +84,35 @@ describe("an agent's row", () => {
     const mark = screen.getByTestId("member-cannot-answer");
     expect(mark.textContent).toBe("can't answer");
     expect(screen.getByTestId("member-row-agent").textContent).not.toMatch(/can't act/);
+  });
+
+  // r33, judge-92: the reason was a bubble a tap put over the next agent's take-out control at 390.
+  it("gives its reason in its own row, in the flow, with no bubble to cover another control", () => {
+    render(roster(false));
+    const reason = screen.getByTestId("member-cannot-answer-reason");
+    expect(reason.textContent).toBe("This agent no longer holds a role on Billing, so it cannot answer here.");
+    expect(reason.closest(".flex-col")?.contains(screen.getByTestId("member-row-agent"))).toBe(true);
+    expect(screen.getByTestId("member-cannot-answer").closest("[data-tooltip],[role=tooltip]")).toBeNull();
+    expect(screen.queryByRole("tooltip")).toBeNull();
+  });
+
+  it("gives no reason while the agent can answer here", () => {
+    render(roster(true));
+    expect(screen.queryByTestId("member-cannot-answer-reason")).toBeNull();
+  });
+});
+
+// r33, judge-92: About kept naming the project of an agent that cannot answer, with nothing saying so.
+describe("the About panel of a room holding an agent that cannot answer", () => {
+  it("says the agent cannot answer and that the room stays about its project while it is in", () => {
+    render(<ScopeNotice room={{ ...room, participants: [{ ...agent, reachable: false }] }} />);
+    expect(screen.getByTestId("scope-notice-unanswering").textContent).toBe(
+      "@billing-agent-with-a-long-handle can't answer: it no longer holds a role on Billing. This room stays about Billing while @billing-agent-with-a-long-handle is in it.",
+    );
+  });
+
+  it("says nothing of the kind while every agent can answer", () => {
+    render(<ScopeNotice room={{ ...room, participants: [agent] }} />);
+    expect(screen.queryByTestId("scope-notice-unanswering")).toBeNull();
   });
 });

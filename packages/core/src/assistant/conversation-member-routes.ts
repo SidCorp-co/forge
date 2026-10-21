@@ -20,6 +20,7 @@ import { zValidator } from '../api-reference/declare/validator.js';
 import {
   addableHandles,
   addablePeople,
+  agentsBeyondReach,
   assertPersonReachesScope,
   personLabel,
   projectsNamed,
@@ -107,15 +108,17 @@ conversationMemberRoutes.get(
     const access = await loadProjectAccess(projectId, userId);
     assertProjectRole(access, 'member', 'not a project member');
     const scope = [projectId];
-    const [people, handles] = await Promise.all([
+    const [people, handles, beyondReach] = await Promise.all([
       addablePeople(null, scope),
       addableHandles(null, userId, scope),
+      agentsBeyondReach(userId, scope),
     ]);
     return c.json(
       answer(candidatesSchema, {
         // The opener is in the room by opening it, so they are not offered to themself (ISS-1229 r25).
         people: await namePeople(people.filter((p) => p.userId !== userId)),
         handles: await nameLostReaders(handles),
+        beyondReach,
       }),
     );
   },
@@ -135,14 +138,16 @@ conversationMemberRoutes.get(
     const userId = c.get('userId');
     await readableConversation(id, userId);
     const scope = await derivedScope(id);
-    const [people, handles] = await Promise.all([
+    const [people, handles, beyondReach] = await Promise.all([
       addablePeople(id, scope),
       addableHandles(id, userId, scope),
+      agentsBeyondReach(userId, scope),
     ]);
     return c.json(
       answer(candidatesSchema, {
         people: await namePeople(people),
         handles: await nameLostReaders(handles),
+        beyondReach,
       }),
     );
   },

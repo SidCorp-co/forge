@@ -15,6 +15,7 @@
 import { personName, readerName } from "@forge/contracts/person-name";
 import { addedApart, type ListedPerson, orderPeople } from "@/lib/people/order-people";
 import type {
+  BeyondReach,
   ConversationMembership,
   ConversationParticipant,
   ConversationProject,
@@ -70,6 +71,55 @@ export function scopeDerivation(
   room: Partial<Pick<ConversationMembership, "scopeProjects">>,
 ): string {
   return `Read from the agents in this room — ${list(room.scopeProjects)}. Nobody chooses it.`;
+}
+
+/**
+ * Where the agents the reader cannot add come from: a member of each such project adds its agent. A
+ * project the reader can see is named; one they hold no role on is only counted (ISS-1229 r33, judge-92).
+ */
+export function beyondReachLines(beyond: BeyondReach | undefined): string[] {
+  const lines: string[] = [];
+  const named = beyond?.named ?? [];
+  if (named.length === 1) {
+    lines.push(
+      `${named[0]?.name}'s agent is added by a member of ${named[0]?.name}; you hold the viewer role there.`,
+    );
+  } else if (named.length > 1) {
+    lines.push(
+      `The agents of ${list(named)} are each added by a member of their project; you hold the viewer role on them.`,
+    );
+  }
+  const unnamed = beyond?.unnamed ?? 0;
+  if (unnamed === 1) {
+    lines.push(
+      "Another project in this organization has its own agent, added by a member of that project; you hold no role on it.",
+    );
+  } else if (unnamed > 1) {
+    lines.push(
+      `${unnamed} other projects in this organization have their own agents, each added by a member of its project; you hold no role on them.`,
+    );
+  }
+  return lines;
+}
+
+/** Why an agent in the room cannot answer: core's `reachable`, read off its role on its own project. */
+export function cannotAnswerReason(projectName: string | undefined): string {
+  return `This agent no longer holds a role on ${projectName ?? "the project it was added for"}, so it cannot answer here.`;
+}
+
+/**
+ * The About panel's word on each agent that cannot answer: the room is still about that agent's project,
+ * which is why About names it, until the agent is taken out (ISS-1229 r33, judge-92).
+ */
+export function unansweringAgentLines(
+  room: Partial<Pick<ConversationMembership, "participants" | "scopeProjects">>,
+): string[] {
+  return agentsOf(room)
+    .filter((p) => p.reachable === false)
+    .map((p) => {
+      const project = (room.scopeProjects ?? []).find((s) => s.id === p.projectId)?.name ?? "its project";
+      return `${memberName(p)} can't answer: it no longer holds a role on ${project}. This room stays about ${project} while ${memberName(p)} is in it.`;
+    });
 }
 
 /** The live agents in a room. */

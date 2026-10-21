@@ -9,14 +9,14 @@
 
 import { useRef, useState } from "react";
 import { Icon } from "@/design";
-import { composerRefusal, scopeDerivation } from "../membership";
+import { composerRefusal, scopeDerivation, unansweringAgentLines } from "../membership";
 import type { ConversationMembership } from "../types";
 
 export function ScopeNotice({
   room,
   folded = false,
 }: {
-  room: Partial<Pick<ConversationMembership, "scopeProjects">>;
+  room: Partial<Pick<ConversationMembership, "scopeProjects" | "participants">>;
   /** Shown folded to its one line, whatever the reader left it at: the room's message box has focus
    *  on a phone, and the thread needs the height (ISS-1229 r32, judge-90). */
   folded?: boolean;
@@ -65,6 +65,11 @@ export function ScopeNotice({
       {shown && (
         <div className="forge-fade mt-1.5 pl-[21px]">
           <p className="fg-caption text-subtle">{scopeDerivation({ scopeProjects })}</p>
+          {unansweringAgentLines(room).map((line) => (
+            <p key={line} className="fg-caption mt-1 text-muted" data-testid="scope-notice-unanswering">
+              {line}
+            </p>
+          ))}
           {refusal && (
             <p className="fg-caption mt-1 text-muted" data-testid="scope-notice-refusal">
               {refusal.reason} {refusal.wayOut}

@@ -7,6 +7,7 @@ import type {
   ConversationMembership,
   ConversationMode,
   ConversationRow,
+  ListedRoom,
   RoomWithoutAProject,
 } from "./types";
 
@@ -46,9 +47,9 @@ export interface ConversationAttachment {
 }
 
 export const conversationsApi = {
-  /** `GET /api/conversations?projectId=` — the rooms this project's handle speaks in. */
+  /** `GET /api/conversations?projectId=` — the rooms about this project that the reader can open. */
   list: (projectId: string, pageSize = 50, archived = false) =>
-    apiClientList<ConversationRow>(
+    apiClientList<ListedRoom>(
       `/conversations?${new URLSearchParams({
         projectId,
         page: "1",

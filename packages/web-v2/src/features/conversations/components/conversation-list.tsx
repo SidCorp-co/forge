@@ -17,15 +17,17 @@ import { useState } from "react";
 import { Button, ConfirmDialog, EmptyState, ErrorState, SessionRowSkeleton } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { groupByRecency } from "../grouping";
+import { useProjects } from "@/features/projects/hooks";
 import {
   type ListedConversation,
+  listedUnder,
   useArchiveConversation,
   useConversations,
   useDeleteConversation,
   useRenameConversation,
 } from "../hooks";
 import { conversationTitle } from "../types";
-import { ConversationRow } from "./conversation-row";
+import { ConversationRow, projectsOfRow } from "./conversation-row";
 
 const SKELETON_ROWS = ["s1", "s2", "s3", "s4", "s5", "s6"];
 
@@ -58,11 +60,12 @@ export function ConversationList({
   const archive = useArchiveConversation();
   const remove = useDeleteConversation();
 
-  const rows: ListedConversation[] = (listQ.data?.items ?? []).map((row) => ({
-    ...row,
-    projectId,
-  }));
-  const project = { name: projectName, slug: projectSlug };
+  const projectsQ = useProjects();
+  const rows: ListedConversation[] = (listQ.data?.items ?? []).map((row) => listedUnder(row, projectId));
+  const nameOf = (id: string) =>
+    id === projectId
+      ? { name: projectName, slug: projectSlug }
+      : projectsQ.data?.find((p) => p.id === id);
 
   const doArchive = (row: ListedConversation, archived: boolean) => {
     archive.mutate({ id: row.id, archived }, { onSuccess: () => onGone(row.id) });
@@ -140,7 +143,7 @@ export function ConversationList({
                     <ConversationRow
                       key={row.id}
                       row={row}
-                      project={project}
+                      projects={projectsOfRow(row, nameOf)}
                       open={row.id === activeConversationId}
                       onOpen={() => onOpen(row)}
                       onRename={(title) => rename.mutate({ id: row.id, title })}

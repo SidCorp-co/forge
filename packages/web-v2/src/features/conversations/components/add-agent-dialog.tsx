@@ -17,7 +17,7 @@ import { Banner, Button, ErrorState, Icon, Spinner } from "@/design";
 import { ApiError } from "@/lib/api/client";
 import { formatApiError } from "@/lib/api/error";
 import { useAddHandle, useConversationCandidates } from "../hooks";
-import { agentAdditionClaims } from "../membership";
+import { agentAdditionClaims, beyondReachLines } from "../membership";
 import type { ConversationMembership, HandleCandidate } from "../types";
 import { SlideOver } from "@/design";
 
@@ -155,41 +155,64 @@ function CandidateList({
     );
   }
   const handles = (query.data?.handles ?? []).filter((h) => !goneProjects.has(h.project.id));
+  // Agents of projects the reader holds no member role on: who adds them, beside a new project (r33).
+  const beyond = beyondReachLines(query.data?.beyondReach);
   if (handles.length === 0) {
     // Emptied by a project deleted under the panel, that is why (ISS-1229 r30, judge-86). Otherwise every
     // agent the reader may add is in the room already: a role sentence there blamed a role an admin held
     // (r32, judge-90), so it says where another agent comes from instead.
+    if (goneProjects.size > 0) {
+      return (
+        <p role="status" data-testid="agent-candidates-empty" className="fg-body-sm text-muted">
+          There is no agent left that you can add to this room: the project of the agent you picked was
+          deleted.
+        </p>
+      );
+    }
     return (
-      <p role="status" data-testid="agent-candidates-empty" className="fg-body-sm text-muted">
-        {goneProjects.size > 0 ? (
-          "There is no agent left that you can add to this room: the project of the agent you picked was deleted."
-        ) : (
-          <>
-            Every agent you can add is already in this room. Each project has its own agent, so another one
-            comes with another project in this organization.{" "}
-            <Link href="/projects?new=1" className="text-link underline-offset-2 hover:underline">
-              Start a new project
-            </Link>
-          </>
-        )}
-      </p>
+      <div role="status" data-testid="agent-candidates-empty" className="fg-body-sm flex flex-col gap-2 text-muted">
+        <p>
+          Every agent you can add is already in this room.
+          {beyond.length === 0 &&
+            " Each project has its own agent, so another one comes with another project in this organization."}
+        </p>
+        {beyond.map((line) => (
+          <p key={line} data-testid="agent-beyond-reach">
+            {line}
+          </p>
+        ))}
+        <p>
+          {beyond.length > 0 && "Ask a member of the project to add its agent, or "}
+          <Link href="/projects?new=1" className="text-link underline-offset-2 hover:underline">
+            {beyond.length > 0 ? "start a new project" : "Start a new project"}
+          </Link>
+          {beyond.length > 0 && "."}
+        </p>
+      </div>
     );
   }
   return (
-    <ul className="flex flex-col gap-1">
-      {handles.map((handle) => (
-        <li key={`${handle.userId ?? "unminted"}:${handle.project.id}`}>
-          <button
-            type="button"
-            onClick={() => onPick(handle)}
-            className="flex w-full items-center gap-2 rounded-md border border-line px-3 py-2 text-left hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
-          >
-            <Icon name="agent" size={15} className="flex-none text-[color:var(--accent-text)]" />
-            <span className="fg-body-sm font-mono">@{handle.handle}</span>
-            <span className="fg-caption ml-auto text-muted">{handle.project.name}</span>
-          </button>
-        </li>
+    <div className="flex flex-col gap-3">
+      <ul className="flex flex-col gap-1">
+        {handles.map((handle) => (
+          <li key={`${handle.userId ?? "unminted"}:${handle.project.id}`}>
+            <button
+              type="button"
+              onClick={() => onPick(handle)}
+              className="flex w-full items-center gap-2 rounded-md border border-line px-3 py-2 text-left hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+            >
+              <Icon name="agent" size={15} className="flex-none text-[color:var(--accent-text)]" />
+              <span className="fg-body-sm font-mono">@{handle.handle}</span>
+              <span className="fg-caption ml-auto text-muted">{handle.project.name}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+      {beyond.map((line) => (
+        <p key={line} data-testid="agent-beyond-reach" className="fg-caption text-muted">
+          {line}
+        </p>
       ))}
-    </ul>
+    </div>
   );
 }

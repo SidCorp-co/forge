@@ -11,7 +11,6 @@
 
 import { and, desc, eq, isNotNull, isNull } from 'drizzle-orm';
 import { db as defaultDb } from '../db/client.js';
-import { projectMembers } from '../db/schema.js';
 import {
   type ConversationAdapter,
   type ConversationMode,
@@ -21,6 +20,7 @@ import {
   type RoomPresence,
 } from '../db/schema-conversations.js';
 import type { Executor } from './db-executor.js';
+import { liveAgentRow } from './scope.js';
 
 export interface ConversationRow {
   id: string;
@@ -83,29 +83,27 @@ export async function findConversation(
   return row ?? null;
 }
 
+/** A room's live agent added for this project: the scope's own rows, so a room is listed under exactly
+ *  the projects it is about, whatever roles its agents hold now (ISS-1229 r33, judge-92). */
+const aboutProject = (projectId: string) =>
+  and(
+    eq(conversationParticipants.conversationId, conversations.id),
+    liveAgentRow(),
+    eq(conversationParticipants.projectId, projectId),
+  );
+
+/** A room as a list carries it: the row and when it last moved, the order the list keeps. */
+export type ListedConversationRow = ConversationRow & { updatedAt: Date };
+
 export async function listConversationsInProject(
   projectId: string,
   opts: { limit?: number; offset?: number } & ConversationListFilter = {},
   tx: Executor = defaultDb,
-): Promise<ConversationRow[]> {
+): Promise<ListedConversationRow[]> {
   const bounded = tx
     .selectDistinct({ ...selection, updatedAt: conversations.updatedAt })
     .from(conversations)
-    .innerJoin(
-      conversationParticipants,
-      and(
-        eq(conversationParticipants.conversationId, conversations.id),
-        eq(conversationParticipants.kind, 'handle'),
-        isNull(conversationParticipants.removedAt),
-      ),
-    )
-    .innerJoin(
-      projectMembers,
-      and(
-        eq(projectMembers.userId, conversationParticipants.userId),
-        eq(projectMembers.projectId, projectId),
-      ),
-    )
+    .innerJoin(conversationParticipants, aboutProject(projectId))
     .where(archiveSide(opts.archived))
     .orderBy(desc(conversations.updatedAt));
   if (opts.limit === undefined) return bounded;
@@ -120,21 +118,7 @@ export async function countConversationsInProject(
   const rows = await tx
     .selectDistinct({ id: conversations.id })
     .from(conversations)
-    .innerJoin(
-      conversationParticipants,
-      and(
-        eq(conversationParticipants.conversationId, conversations.id),
-        eq(conversationParticipants.kind, 'handle'),
-        isNull(conversationParticipants.removedAt),
-      ),
-    )
-    .innerJoin(
-      projectMembers,
-      and(
-        eq(projectMembers.userId, conversationParticipants.userId),
-        eq(projectMembers.projectId, projectId),
-      ),
-    )
+    .innerJoin(conversationParticipants, aboutProject(projectId))
     .where(archiveSide(opts.archived));
   return rows.length;
 }

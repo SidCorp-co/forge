@@ -8,7 +8,11 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ConversationCandidates } from "../types";
 
-let candidates: ConversationCandidates = { people: [], handles: [] };
+let candidates: ConversationCandidates = {
+  people: [],
+  handles: [],
+  beyondReach: { named: [], unnamed: 0 },
+};
 
 vi.mock("@/providers/auth-provider", () => ({ useAuth: () => ({ user: { id: "me" } }) }));
 vi.mock("@/features/projects/hooks", () => ({
@@ -39,6 +43,7 @@ describe("the people a room starts with", () => {
         { userId: "u2", displayName: null, email: "mai@example.com", addedAt: "2026-10-02T09:00:00.000Z" },
       ],
       handles: [],
+      beyondReach: { named: [], unnamed: 0 },
     };
     pickTheProject();
     const labels = [...document.querySelectorAll("[data-person-label]")].map((l) => l.textContent);
@@ -57,6 +62,7 @@ describe("the people a room starts with", () => {
         { userId: "u-an", displayName: "An", email: "d-an@example.com", addedAt: "2026-10-05T09:00:00.000Z" },
       ],
       handles: [],
+      beyondReach: { named: [], unnamed: 0 },
     };
     pickTheProject();
     const offered = [...document.querySelectorAll("[data-person-detail]")].map((l) => l.textContent);

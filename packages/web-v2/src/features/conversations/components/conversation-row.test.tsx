@@ -8,7 +8,7 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ListedConversation } from "../hooks";
-import { ConversationRow } from "./conversation-row";
+import { ConversationRow, projectsOfRow } from "./conversation-row";
 
 afterEach(cleanup);
 
@@ -21,6 +21,7 @@ const row: ListedConversation = {
   title: "Quarterly invoice export for the finance team",
   updatedAt: "2026-10-20T06:40:00Z",
   archivedAt: null,
+  scope: ["p1"],
   projectId: "p1",
 };
 
@@ -29,7 +30,7 @@ describe("a row of the conversation history", () => {
     render(
       <ConversationRow
         row={row}
-        project={{ name: "Billing", slug: "billing" }}
+        projects={[{ name: "Billing", slug: "billing" }]}
         onOpen={vi.fn()}
         onRename={vi.fn()}
         onArchive={vi.fn()}
@@ -49,7 +50,7 @@ describe("a row of the conversation history", () => {
     render(
       <ConversationRow
         row={row}
-        project={{ name: "Billing", slug: "billing" }}
+        projects={[{ name: "Billing", slug: "billing" }]}
         onOpen={vi.fn()}
         onRename={vi.fn()}
         onArchive={vi.fn()}
@@ -58,5 +59,30 @@ describe("a row of the conversation history", () => {
     );
     expect(screen.getByRole("button", { name: `Rename ${row.title}` })).toBeTruthy();
     expect(screen.getAllByRole("button").length).toBeGreaterThanOrEqual(4);
+  });
+
+  // ISS-1229 r33, judge-92: a two-project room's row named whichever project's list found it first.
+  it("names every project the room is about, the same through either project's list", () => {
+    const names = new Map([
+      ["p1", { name: "Ledger", slug: "ledger" }],
+      ["p2", { name: "Desk", slug: "desk" }],
+    ]);
+    const both = { ...row, scope: ["p1", "p2"] };
+    const captions = ["p1", "p2"].map((listedIn) => {
+      render(
+        <ConversationRow
+          row={{ ...both, projectId: listedIn }}
+          projects={projectsOfRow({ ...both, projectId: listedIn }, (id) => names.get(id))}
+          onOpen={vi.fn()}
+        />,
+      );
+      const open = screen.getByRole("button", { name: /^Open Quarterly invoice export/ });
+      const caption = open.textContent;
+      cleanup();
+      return [open.getAttribute("aria-label"), caption];
+    });
+    expect(captions[0]).toEqual(captions[1]);
+    expect(captions[0]?.[0]).toBe(`Open ${row.title} in Desk and Ledger`);
+    expect(captions[0]?.[1]).toContain("Desk and Ledger");
   });
 });

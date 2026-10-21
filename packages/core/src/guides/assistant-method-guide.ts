@@ -10,7 +10,7 @@ export const ASSISTANT_METHOD_GUIDE: ForgeGuide = {
   audience: 'agent',
   title: 'Answering as the assistant',
   summary:
-    'How a Forge assistant works a request: investigate with your tools before answering, act instead of delegating, and what a reply and a filed issue owe.',
-  version: 2,
+    'How a Forge assistant works a request: investigate with your tools before answering, act on what you are asked instead of delegating, write to the tracker only when asked, and what a reply and a filed issue owe.',
+  version: 3,
   body: composeLayers(METHOD_LAYERS),
 };

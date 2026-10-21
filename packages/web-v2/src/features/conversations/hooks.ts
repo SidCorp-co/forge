@@ -9,13 +9,19 @@ import type {
   ConversationMembership,
   ConversationMode,
   ConversationProgressEntry,
-  ConversationRow,
+  ListedRoom,
 } from "./types";
 import { failureToast } from "@/lib/api/failure-toast";
 
-/** A room in a list that spans projects — the project is the query it came from, not a column. */
-export interface ListedConversation extends ConversationRow {
+/** A room in a list: the project it opens under is its own scope's, never the query that found it, so a
+ *  room about two projects reads the same through either list (ISS-1229 r33, judge-92). */
+export interface ListedConversation extends ListedRoom {
   projectId: string;
+}
+
+/** The listed room under the project it is about, `listedIn` only where a room carries no scope. */
+export function listedUnder(row: ListedRoom, listedIn: string): ListedConversation {
+  return { ...row, projectId: row.scope[0] ?? listedIn };
 }
 
 export function useConversations(projectId: string | undefined, archived = false) {
@@ -44,7 +50,7 @@ export function useConversationsAcrossProjects(projectIds: string[], archived = 
     for (const row of r.data.items) {
       if (listed.has(row.id)) continue;
       listed.add(row.id);
-      rows.push({ ...row, projectId });
+      rows.push(listedUnder(row, projectId));
     }
   }
   rows.sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : a.updatedAt > b.updatedAt ? -1 : 0));

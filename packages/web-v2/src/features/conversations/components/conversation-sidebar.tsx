@@ -8,7 +8,7 @@ import { Button, EmptyState, ErrorState, IconButton, SessionRowSkeleton, Tooltip
 import { formatApiError } from "@/lib/api/error";
 import { groupByRecency } from "../grouping";
 import type { ListedConversation } from "../hooks";
-import { ConversationRow } from "./conversation-row";
+import { ConversationRow, projectsOfRow } from "./conversation-row";
 
 const SKELETON_ROWS = ["s1", "s2", "s3", "s4", "s5", "s6"];
 
@@ -154,7 +154,7 @@ export function ConversationSidebar({
                       <ConversationRow
                         key={row.id}
                         row={row}
-                        project={nameById.get(row.projectId)}
+                        projects={projectsOfRow(row, (id) => nameById.get(id))}
                         open={row.id === activeConversationId}
                         onOpen={() => onOpen(row)}
                         {...(onRename ? { onRename: (title) => onRename(title, row) } : {})}

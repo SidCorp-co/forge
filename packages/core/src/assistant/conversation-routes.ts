@@ -48,12 +48,13 @@ import {
 import { listWindowsForConversation } from '../conversations/windows.js';
 import { db } from '../db/client.js';
 import { conversationModes } from '../db/schema-conversations.js';
-import { assertProjectRole, effectiveProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { fromPage, listResponse } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import {
   mayChangeMembership,
   readableConversation,
+  scopeIfReadable,
   writableConversation,
 } from './conversation-access.js';
 import { deleteAndTellReaders } from './conversation-adapter.js';
@@ -198,24 +199,10 @@ conversationRoutes.get(
 
     const rows = await listConversationsInProject(projectId, { archived });
 
-    const roleByProject = new Map<string, boolean>();
-    const visible: ConversationRow[] = [];
+    const visible: Array<(typeof rows)[number] & { scope: string[] }> = [];
     for (const row of rows) {
-      const scope = await derivedScope(row.id);
-      let ok = scope.length > 0;
-      for (const pid of scope) {
-        let held = roleByProject.get(pid);
-        if (held === undefined) {
-          held = Boolean((await effectiveProjectRole(userId, pid))?.role);
-          roleByProject.set(pid, held);
-        }
-        if (!held) ok = false;
-      }
-      if (ok && row.shape === 'direct') {
-        const people = await listParticipants(row.id);
-        ok = people.some((p) => p.kind === 'person' && p.userId === userId);
-      }
-      if (ok) visible.push(row);
+      const scope = await scopeIfReadable(row, userId);
+      if (scope) visible.push({ ...row, scope });
     }
 
     const offset = (page - 1) * pageSize;

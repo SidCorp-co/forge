@@ -37,6 +37,11 @@ const handleCandidateSchema = z.object({
 export const candidatesSchema = z.object({
   people: z.array(personCandidateSchema),
   handles: z.array(handleCandidateSchema),
+  beyondReach: z
+    .object({ named: z.array(namedProjectSchema), unnamed: z.number() })
+    .describe(
+      "The organization's other projects whose agent the caller cannot add, holding less than a member role there: named where the caller holds the viewer role, counted where they hold none",
+    ),
 });
 
 const noRoom = fail('CONVERSATION_GONE', 'the room no longer exists, or never did');

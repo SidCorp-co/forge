@@ -123,8 +123,14 @@ export const agentModeOfferSchema = z.object({
   reason: z.string().nullable(),
 });
 
+/** A room as a list shows it: when it last moved, and every project it is about (ISS-1229 r33). */
+export const listedConversationSchema = conversationSchema.extend({
+  updatedAt: z.date(),
+  scope: z.array(z.string()),
+});
+
 export const conversationListSchema = z.object({
-  items: z.array(conversationSchema),
+  items: z.array(listedConversationSchema),
   returned: z.number(),
   total: z.number(),
   limit: z.number(),
@@ -190,9 +196,9 @@ export const roomNotFound = noRoom;
 export const roomForbidden = roomRefused;
 
 export const listRooms = describeOperation({
-  summary: "List the rooms a project's agents speak in that the caller can reach",
+  summary: 'List the rooms about a project that the caller can open',
   description:
-    'Archived rooms are listed alone when `archived` is `1` or `true`. A one-to-one room is listed only to the people in it.',
+    'A room is about the projects its agents were added for, whether or not each still holds a role there, and each listed room carries them as `scope`. A room is listed to exactly the people its own read admits. Archived rooms are listed alone when `archived` is `1` or `true`.',
   responses: {
     200: json(conversationListSchema, 'One page of rooms'),
     403: notMember,
