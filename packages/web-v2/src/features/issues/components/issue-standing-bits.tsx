@@ -111,6 +111,29 @@ export function IssueBanner({ standing, className }: { standing: IssueStanding; 
   );
 }
 
+/**
+ * The issue page's Stuck banner (REQ-48 BC-5): why core reads it stuck, in core's sentence
+ * (`times.stuck`), and whom it waits on; nothing here infers it. An issue not stuck draws none.
+ */
+export function IssueStuckBanner({ standing, className }: { standing: IssueStanding; className?: string }) {
+  const t = useCopy();
+  const language = useInterfaceLanguage();
+  const stuck = standing.attentionGroup === "stuck" ? standing.times.stuck : null;
+  if (!stuck) return null;
+  const w = saidView(standing.waitingOn, language);
+  return (
+    <WaitBanner
+      tone="blocked"
+      head={t("issues.banner.stuck")}
+      body={said(stuck.says.reason, language)}
+      effect={[w.who, w.act].filter(Boolean).join(" · ")}
+      rule={w.rule}
+      className={className}
+      testId="issue-stuck-banner"
+    />
+  );
+}
+
 /** Triage → … → Release with the current step lit; an issue past release is all done. */
 export function IssueSteps({ standing, caption = true, named = true }: { standing: IssueStanding; caption?: boolean; named?: boolean }) {
   const t = useCopy();

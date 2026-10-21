@@ -24,6 +24,8 @@ const SURFACE: Record<RunRow['subjectKind'], EgressSurface> = {
 export interface GatewayActResult {
   /** The writes a door refused, each named with its door and code. */
   refused: string[];
+  /** The writes a door could not answer (5xx), which are no refusal. */
+  broken: string[];
   /** The act rows written. */
   acts: string[];
   /** Why the turn itself did not finish, or null. */
@@ -88,8 +90,10 @@ export async function runGatewayAct(args: {
     runId: run.id,
     act,
     subject: { kind: run.subjectKind, id: run.subjectId, key: run.subjectKey },
+    standing: args.standing,
     token: credential.token,
     refused: [],
+    broken: [],
     acts: [],
   };
   try {
@@ -117,6 +121,7 @@ export async function runGatewayAct(args: {
     await recordSpend(run.projectId, model, result.usage, result.iterations);
     return {
       refused: ctx.refused,
+      broken: ctx.broken,
       acts: ctx.acts,
       error:
         result.terminal === 'error' ? (result.errorMessage ?? 'the turn ended in an error') : null,
@@ -124,6 +129,7 @@ export async function runGatewayAct(args: {
   } catch (err) {
     return {
       refused: ctx.refused,
+      broken: ctx.broken,
       acts: ctx.acts,
       error: err instanceof Error ? err.message : String(err),
     };

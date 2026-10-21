@@ -18,6 +18,7 @@ import {
  * by name (`assistant/turn-origin.ts:fenceToolsetToOrigin`).
  */
 export const STEWARD_DOOR_TOOLS = [
+	"steward_read_item",
 	"steward_read_standings",
 	"steward_read_requirement",
 	"steward_read_feedback",
@@ -39,8 +40,9 @@ export type StewardDoorTool = (typeof STEWARD_DOOR_TOOLS)[number];
 export const STEWARD_ACT_DOORS: Readonly<
 	Record<StewardAct, readonly StewardDoorTool[]>
 > = {
-	note: ["steward_read_standings", "steward_write_note"],
+	note: ["steward_read_item", "steward_read_standings", "steward_write_note"],
 	intake_check: [
+		"steward_read_item",
 		"steward_read_standings",
 		"steward_read_requirement",
 		"steward_ask",
@@ -48,6 +50,7 @@ export const STEWARD_ACT_DOORS: Readonly<
 		"steward_write_note",
 	],
 	breakdown_check: [
+		"steward_read_item",
 		"steward_read_standings",
 		"steward_read_requirement",
 		"steward_read_suggestion",
@@ -55,6 +58,7 @@ export const STEWARD_ACT_DOORS: Readonly<
 		"steward_write_note",
 	],
 	stuck_diagnosis: [
+		"steward_read_item",
 		"steward_read_standings",
 		"steward_read_requirement",
 		"steward_read_feedback",
@@ -68,6 +72,7 @@ export const STEWARD_ACT_DOORS: Readonly<
 		"steward_write_note",
 	],
 	output_check: [
+		"steward_read_item",
 		"steward_read_standings",
 		"steward_read_issue",
 		"steward_read_requirement",
@@ -112,7 +117,9 @@ export const stewardPolicySchema = z.strictObject({
 		.strictObject({
 			gatewayTurns: z
 				.number()
-				.int({ error: "steward.budget.gatewayTurns is a whole number of turns" })
+				.int({
+					error: "steward.budget.gatewayTurns is a whole number of turns",
+				})
 				.min(0)
 				.max(STEWARD_DAILY_BUDGET.gatewayTurns, {
 					error: `steward.budget.gatewayTurns is at most ${STEWARD_DAILY_BUDGET.gatewayTurns}: the project policy lowers the steward's daily budget, never raises it`,

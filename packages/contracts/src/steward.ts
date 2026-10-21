@@ -17,8 +17,12 @@ export const STANDING_SUBJECT_KINDS = [
 ] as const;
 export type StandingSubjectKind = (typeof STANDING_SUBJECT_KINDS)[number];
 
-/** What a steward note is written on (BC-7): requirements and feedback, never an issue. */
-export const STEWARD_NOTE_SUBJECT_KINDS = ["requirement", "feedback"] as const;
+/** What a steward note is written on (BC-7): every item the standing read lists, an issue included. */
+export const STEWARD_NOTE_SUBJECT_KINDS = [
+	"requirement",
+	"feedback",
+	"issue",
+] as const;
 export type StewardNoteSubjectKind =
 	(typeof STEWARD_NOTE_SUBJECT_KINDS)[number];
 
@@ -411,6 +415,14 @@ export const STEWARD_RUN_STATES = [
 ] as const;
 export type StewardRunState = (typeof STEWARD_RUN_STATES)[number];
 
+/**
+ * Why a run failed: `refused`, a door refused one of its acts, which only a moved standing changes,
+ * so the sweep never starts that act again on the same basis; `error`, the turn or its job did not
+ * finish, which the sweep tries again an hour later.
+ */
+export const STEWARD_FAILURE_KINDS = ["refused", "error"] as const;
+export type StewardFailureKind = (typeof STEWARD_FAILURE_KINDS)[number];
+
 /** Why a run was skipped rather than run: said on the item, never silent. */
 export const STEWARD_SKIP_REASONS = [
 	"basis_unchanged",
@@ -496,6 +508,8 @@ export const STEWARD_REFUSAL_CODES = [
 	"STEWARD_NOTE_FORBIDDEN",
 	"STEWARD_RUN_LIVE",
 	"STEWARD_RUN_UNKNOWN",
+	"STEWARD_RUN_NOT_JOB",
+	"STEWARD_RUN_FORBIDDEN",
 	"STEWARD_ACT_UNKNOWN",
 	"STEWARD_ACT_NOT_UNDOABLE",
 	"STEWARD_ACT_SUPERSEDED",
@@ -509,6 +523,7 @@ export const STEWARD_REFUSAL_STATUSES = {
 	STEWARD_NOTE_STALE: 409,
 	STEWARD_RUN_LIVE: 409,
 	STEWARD_RUN_UNKNOWN: 404,
+	STEWARD_RUN_NOT_JOB: 409,
 	STEWARD_ACT_UNKNOWN: 404,
 	STEWARD_ACT_SUPERSEDED: 409,
 	STEWARD_BUDGET_SPENT: 409,

@@ -1,21 +1,30 @@
 // The steward's write doors (REQ-48 BC-2..BC-7): ask, comment, reject a breakdown, move an issue,
 // wake the master and write the note, each one existing door and each logged with how it is undone.
 
-import { type StewardCite, stewardNoteWriteSchema } from '@forge/contracts/steward';
+import {
+  type ItemStanding,
+  STEWARD_NOTE_CITES_MAX,
+  type StewardCite,
+  stewardCiteSchema,
+  stewardNoteWriteSchema,
+} from '@forge/contracts/steward';
 import { z } from 'zod';
 import type { StewardUndo } from '../db/schema-steward-runs.js';
-import { type DoorAnswer, type DoorRequest, doorName } from './door-call.js';
+import { type DoorAnswer, type DoorRequest, doorName, refusalCodeOfAnswer } from './door-call.js';
 import {
   cite,
+  type DoorContext,
   type DoorSpec,
   issueIdOf,
+  issueKey,
   key,
   reason,
   requirementCommentUndo,
   send,
 } from './door-kit.js';
 import { OWNER } from './door-owner.js';
-import { stewardPorts } from './ports.js';
+import { noteWriteOf } from './note.js';
+import { openStandings, stewardPorts } from './ports.js';
 
 const optionsParam = z
   .array(
@@ -27,8 +36,19 @@ const optionsParam = z
   .min(2)
   .max(4);
 
+/** What a question may be about: an issue, or a requirement, never a feedback item's key. */
+const askAbout = key
+  .superRefine((value, ctx) => {
+    if (!/^FB-\d+$/i.test(value)) return;
+    ctx.addIssue({
+      code: 'custom',
+      message: `${value} is a feedback item, which takes no question here: ask on the issue that carries it or the requirement it is about (read its route with steward_read_feedback or steward_read_item).`,
+    });
+  })
+  .describe('ISS-n or REQ-n: the issue or requirement the question is about');
+
 const askParams = z.strictObject({
-  about: key.describe('ISS-n or REQ-n: the issue or requirement the question is about'),
+  about: askAbout,
   prompt: z.string().trim().min(10).max(2000),
   options: optionsParam,
   recommended: z.string().trim().min(1).max(40).describe('the id of the option you recommend'),
@@ -140,7 +160,10 @@ const COMMENT_REQUIREMENT: DoorSpec<z.infer<typeof commentRequirementParams>> = 
   },
 };
 
-const commentIssueParams = z.strictObject({ issue: key, body: z.string().trim().min(3).max(8000) });
+const commentIssueParams = z.strictObject({
+  issue: issueKey,
+  body: z.string().trim().min(3).max(8000),
+});
 const COMMENT_ISSUE: DoorSpec<z.infer<typeof commentIssueParams>> = {
   name: 'steward_comment_issue',
   describe: 'Post a comment on an issue saying why the steward acted on it.',
@@ -223,7 +246,7 @@ const REJECT: DoorSpec<z.infer<typeof rejectParams>> = {
 };
 
 const moveParams = z.strictObject({
-  issue: key,
+  issue: issueKey,
   to: z
     .enum(['open', 'reopen'])
     .describe('open: take a ready draft on; reopen: send it back naming the missing evidence'),
@@ -288,24 +311,68 @@ const WAKE: DoorSpec<z.infer<typeof wakeParams>> = {
   },
 };
 
-// the note door's own body (`stewardNoteWriteSchema`), less the run id the act adds itself: a note the
-// model writes is checked against the same shape `writeStewardNote` vets, before it is sent
-const noteParams = stewardNoteWriteSchema.omit({ runId: true });
+const noteParams = z.strictObject({
+  lines: stewardNoteWriteSchema.shape.lines.describe(
+    'line 1: what happened and what blocks; line 2: what is next and by when',
+  ),
+  cites: z
+    .array(stewardCiteSchema)
+    .max(STEWARD_NOTE_CITES_MAX - 2)
+    .optional()
+    .describe(
+      'records the lines name beyond the item and what it waits on, which are cited for you',
+    ),
+});
+
+/** A refusal a re-read standing answers: it moved since the run read it. */
+const MOVED: ReadonlySet<string> = new Set([
+  'STEWARD_NOTE_STALE',
+  'STEWARD_NOTE_CONTRADICTS',
+  'STEWARD_NOTE_CITE_MISSING',
+]);
+
+/** The item's standing now, from the one standing read; null where it holds no open row. */
+async function standingNow(ctx: DoorContext): Promise<ItemStanding | null> {
+  return (await openStandings(ctx.projectId)).find((r) => r.subject.id === ctx.subject.id) ?? null;
+}
+
+/**
+ * The model writes the two lines; code copies the claims, the basis and the item's own cites from the
+ * standing the run read (`note.ts:noteWriteOf`), so a note never guesses a field. A refusal that says
+ * the standing moved is answered by reading it again and writing the same lines once more against it.
+ */
 const NOTE: DoorSpec<z.infer<typeof noteParams>> = {
   name: 'steward_write_note',
   describe:
-    "Write the item's two-line note: line 1 what happened and what blocks, line 2 what is next and by when. Its claims and basis are the standing's own fields; a note that contradicts them is refused naming the field.",
+    "Write the item's two-line note: line 1 what happened and what blocks, line 2 what is next and by when. Give the lines, and any record they name beyond the item and what it waits on; the claims, basis and those two cites are copied from the standing for you.",
   params: noteParams,
   write: true,
   async call(args, ctx) {
-    const sent = await send(
-      {
-        method: 'PUT',
-        path: `/api/projects/${ctx.projectId}/steward-notes/${ctx.subject.kind}/${ctx.subject.key}`,
-        body: { ...args, runId: ctx.runId },
-      },
-      ctx,
-    );
+    const path = `/api/projects/${ctx.projectId}/steward-notes/${ctx.subject.kind}/${ctx.subject.key}`;
+    const put = (standing: ItemStanding) =>
+      send(
+        {
+          method: 'PUT',
+          path,
+          body: noteWriteOf(standing, args.lines, args.cites ?? [], ctx.runId),
+        },
+        ctx,
+      );
+    const read = ctx.standing ?? (await standingNow(ctx));
+    if (!read) {
+      const text = `the standing read holds no open row for ${ctx.subject.key}, so no note can be checked against it`;
+      return {
+        request: { method: 'PUT', path },
+        answer: { status: 404, ok: false, json: { code: 'STEWARD_NOTE_SUBJECT_UNKNOWN' }, text },
+      };
+    }
+    let sent = await put(read);
+    const code = refusalCodeOfAnswer(sent.answer);
+    if (!sent.answer.ok && code && MOVED.has(code)) {
+      // only a standing that did move is written against again; one that holds keeps its refusal
+      const now = await standingNow(ctx);
+      if (now && now.basis !== read.basis) sent = await put(now);
+    }
     return {
       ...sent,
       act: {

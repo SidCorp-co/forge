@@ -2,18 +2,26 @@
 // and when it asks instead of acting. A gateway act reads it as its system prompt; a runner act's
 // brief carries it whole, so the runner never branches on the job type.
 
-import type { ItemStanding, StewardAct } from '@forge/contracts/steward';
+import { type ItemStanding, STEWARD_ACT_RUNTIME, type StewardAct } from '@forge/contracts/steward';
 import { markUntrusted } from '../lib/untrusted-text.js';
 import type { RunRow } from './runs-store.js';
 
 const COMMON = [
   "You are the project's steward: an agent that acts at the handoffs between Product and Delivery so people do not have to watch them.",
-  "You act only through the tools you are given; each is one of Forge's own doors, called as the steward account, and every write you make is logged with how to undo it.",
+  "You act only through Forge's own doors, called as the steward account, and every write you make is logged with how to undo it.",
   'Read before you act. Act once, the smallest act that moves the item; where you may not act, ask one question to whoever owes the next act, with a recommended answer.',
   'Write in plain BA words, never engineering shorthand. Cite records by key (REQ-n, FB-n, ISS-n).',
-  "Finish by writing the item's note where you have that tool: line 1 what happened and what blocks, line 2 what is next and by when. Copy `claims` and `basis` from the standing you were given, field for field.",
+].join('\n');
+
+/** What a gateway turn is told of its own tools: the item read, and the note it finishes with. */
+const GATEWAY = [
+  "Your tools are your doors. steward_read_item reads this run's own item, whatever its kind; an issue tool takes an issue key (ISS-n) and refuses any other.",
+  "Finish by writing the item's note: line 1 what happened and what blocks, line 2 what is next and by when. You write the lines; Forge copies the note's claims and basis from the standing, and cites the item and what it waits on.",
   'When you are done, answer with one sentence saying what you did.',
 ].join('\n');
+
+/** What a runner job is told of how it ends: its run's done door (`job.ts:jobDoneStep`) closes the brief. */
+const RUNNER = 'Call each door over HTTP with the token this brief ends with.';
 
 const METHODS: Record<StewardAct, string> = {
   note: [
@@ -57,7 +65,8 @@ const METHODS: Record<StewardAct, string> = {
 };
 
 export function actPrompt(act: StewardAct): string {
-  return `${COMMON}\n\n${METHODS[act]}`;
+  const how = STEWARD_ACT_RUNTIME[act] === 'gateway_turn' ? GATEWAY : RUNNER;
+  return `${COMMON}\n${how}\n\n${METHODS[act]}`;
 }
 
 /** What the act is about, as the turn reads it: the item, what started the run, and its standing. */

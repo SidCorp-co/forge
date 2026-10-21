@@ -4,7 +4,12 @@
 // its acts in `STEWARD_ACTS` order: the gateway acts as turns, then its runner acts as one job.
 
 import { randomUUID } from 'node:crypto';
-import { type ItemStanding, STEWARD_ACT_RUNTIME, type StewardAct } from '@forge/contracts/steward';
+import {
+  type ItemStanding,
+  STEWARD_ACT_RUNTIME,
+  type StewardAct,
+  type StewardFailureKind,
+} from '@forge/contracts/steward';
 import { logger } from '../lib/logger.js';
 import { stewardAccountOf } from './account.js';
 import { enqueueStewardJob, revokeJobCredential, stewardJobLive } from './job.js';
@@ -50,13 +55,21 @@ async function runGatewayActs(
   const stewardId = await stewardAccountOf(run.projectId);
   await stampRun(run.id, { turnId: randomUUID() });
   const failures: string[] = [];
+  let unfinished = false;
   for (const act of acts) {
     const result = await runGatewayAct({ run, act, standing, stewardId });
     await stampRun(run.id, { addTurns: 1 });
-    if (result.error) failures.push(`${act}: the turn did not finish: ${result.error}`);
+    if (result.error) {
+      unfinished = true;
+      failures.push(`${act}: the turn did not finish: ${result.error}`);
+    }
     for (const r of result.refused) failures.push(`${act}: the door refused ${r}`);
+    for (const r of result.broken) failures.push(`${act}: the door broke ${r}`);
+    if (result.broken.length > 0) unfinished = true;
   }
-  return failures;
+  // only refusals: the same act on the same standing is refused again, so it waits for the standing
+  const kind: StewardFailureKind = unfinished ? 'error' : 'refused';
+  return { failures, kind };
 }
 
 /** Where a run stands after a tick: ended, waiting on the job it started, or behind its project's live steward job. */
@@ -87,9 +100,9 @@ export async function runOne(run: RunRow, now: Date): Promise<RunOutcome> {
   const runner = acts.filter((a) => STEWARD_ACT_RUNTIME[a] === 'runner_job');
   // one steward job live per project: a run owing one waits, before it spends a turn
   if (runner.length > 0 && (await stewardJobLive(run.projectId))) return 'job_live';
-  const failures = gateway.length > 0 ? await runGatewayActs(run, gateway, standing) : [];
-  if (failures.length > 0) {
-    await endRun(run.id, { state: 'failed', failure: failures.join('\n') });
+  const ran = gateway.length > 0 ? await runGatewayActs(run, gateway, standing) : null;
+  if (ran && ran.failures.length > 0) {
+    await endRun(run.id, { state: 'failed', failure: ran.failures.join('\n'), kind: ran.kind });
     return 'ended';
   }
   if (runner.length === 0) {
@@ -98,7 +111,7 @@ export async function runOne(run: RunRow, now: Date): Promise<RunOutcome> {
   }
   const started = await enqueueStewardJob(run, runner);
   if (!started.ok) {
-    await endRun(run.id, { state: 'failed', failure: started.failure });
+    await endRun(run.id, { state: 'failed', failure: started.failure, kind: 'error' });
     return 'ended';
   }
   await stampRun(run.id, { jobId: started.jobId });
@@ -115,7 +128,7 @@ export async function settleJobRun(run: RunRow, jobStatus: string | null): Promi
   const failure = run.jobId
     ? `the steward job ${run.jobId} ended ${jobStatus ?? 'unread'} before its acts were done`
     : 'the process running this run ended before the run did';
-  await endRun(run.id, { state: 'failed', failure });
+  await endRun(run.id, { state: 'failed', failure, kind: 'error' });
 }
 
 export async function dispatchStewardRuns(
@@ -132,6 +145,7 @@ export async function dispatchStewardRuns(
       await endRun(run.id, {
         state: 'failed',
         failure: err instanceof Error ? err.message : String(err),
+        kind: 'error',
       });
     }
   }

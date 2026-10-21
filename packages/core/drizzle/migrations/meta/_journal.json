@@ -3270,6 +3270,13 @@
       "when": 1826928000000,
       "tag": "0509_a_mockup_is_tried_and_discussed_on_its_item",
       "breakpoints": true
+    },
+    {
+      "idx": 511,
+      "version": "7",
+      "when": 1827100800000,
+      "tag": "0511_every_stuck_item_takes_a_steward_note",
+      "breakpoints": true
     }
   ]
 }

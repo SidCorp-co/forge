@@ -11,6 +11,7 @@ import {
   STEWARD_TRIGGER_ACT,
   type StandingSubject,
   type StewardAct,
+  type StewardFailureKind,
   type StewardSkipReason,
   type StewardTrigger,
 } from '@forge/contracts/steward';
@@ -144,7 +145,7 @@ export async function claimDueRuns(now: Date, limit: number): Promise<RunRow[]> 
 
 export type RunEnd =
   | { state: 'done' }
-  | { state: 'failed'; failure: string }
+  | { state: 'failed'; failure: string; kind: StewardFailureKind }
   | { state: 'skipped'; reason: StewardSkipReason };
 
 /**
@@ -163,6 +164,7 @@ export async function endRun(runId: string, end: RunEnd, now = new Date()): Prom
         endedAt: now,
         skipReason: end.state === 'skipped' ? end.reason : null,
         failure: end.state === 'failed' ? end.failure : null,
+        failureKind: end.state === 'failed' ? end.kind : null,
       })
       .where(and(eq(stewardRuns.id, runId), inArray(stewardRuns.state, [...LIVE])))
       .returning();
@@ -204,6 +206,16 @@ export async function stampRun(
     .where(eq(stewardRuns.id, runId));
 }
 
+/** One run of the project by id, whatever its state; null where the project holds none. */
+export async function runOfProject(projectId: string, runId: string): Promise<RunRow | null> {
+  const [row] = await db
+    .select()
+    .from(stewardRuns)
+    .where(and(eq(stewardRuns.projectId, projectId), eq(stewardRuns.id, runId)))
+    .limit(1);
+  return row ?? null;
+}
+
 export async function runOfJob(jobId: string): Promise<RunRow | null> {
   const [row] = await db
     .select()
@@ -230,8 +242,10 @@ export async function spentSince(
 
 /**
  * Whether a run of `act` on the subject holds `basis`: the sweep starts nothing twice on one basis. A
- * run skipped for its budget or the steward being off never acted, so it does not count; a failed one
- * counts for an hour, after which the sweep tries again.
+ * run skipped for its budget or the steward being off never acted, so it does not count. A run a door
+ * refused counts for as long as the basis holds, since the same act on the same standing earns the
+ * same refusal; one whose turn or job did not finish counts for an hour, after which the sweep tries
+ * again.
  */
 export async function ranOnBasis(
   subject: StandingSubject,
@@ -247,7 +261,7 @@ export async function ranOnBasis(
         eq(stewardRuns.subjectId, subject.id),
         eq(stewardRuns.basis, basis),
         sql`${act} = ANY(${stewardRuns.actsToRun})`,
-        sql`(${stewardRuns.state} IN ('queued', 'running', 'done') OR (${stewardRuns.state} = 'failed' AND ${stewardRuns.endedAt} > now() - interval '1 hour'))`,
+        sql`(${stewardRuns.state} IN ('queued', 'running', 'done') OR (${stewardRuns.state} = 'failed' AND (${stewardRuns.failureKind} = 'refused' OR ${stewardRuns.endedAt} > now() - interval '1 hour')))`,
       ),
     )
     .limit(1);

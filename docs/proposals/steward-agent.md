@@ -98,12 +98,14 @@ already has it; it moves to second place, above `moving` (BC-9).
 
 | Item | Decision |
 |---|---|
-| Storage | `steward_notes` (migration 507). It is insert-only, and a write supersedes the current row in the same transaction. Columns: `id`, `project_id`, `subject_kind` (requirement or feedback), `subject_id`, `lines text[]`, `cites jsonb`, `claims jsonb`, `basis`, `written_by`, `run_id`, `written_at`, `superseded_at`. A partial unique index on (`subject_kind`, `subject_id`) where `superseded_at` is null. |
+| Storage | `steward_notes` (migration 507). It is insert-only, and a write supersedes the current row in the same transaction. Columns: `id`, `project_id`, `subject_kind` (requirement, feedback or issue; issue added by migration 511), `subject_id`, `lines text[]`, `cites jsonb`, `claims jsonb`, `basis`, `written_by`, `run_id`, `written_at`, `superseded_at`. A partial unique index on (`subject_kind`, `subject_id`) where `superseded_at` is null. |
 | Door | `PUT /api/projects/:id/steward-notes/:subjectKind/:key`, with body `stewardNoteWriteSchema`. The tool is `forge_steward_note`, whose actions are `get` and `write` and which share one function with the route. The writer is the project's steward account, or a person holding `project.write` (an override, BC-12). Anyone else gets `STEWARD_NOTE_FORBIDDEN`. |
 | Shape | Line 1 says what happened and what blocks. Line 2 says what is next and by when. The note has 1–2 lines of at most 160 characters each, 1–8 cites, and `claims` (group, waitingKind, ref, stuck, stuckCode, dueAt). |
 | Vet at write | 1. The subject is in the project, else `STEWARD_NOTE_SUBJECT_UNKNOWN` 404. 2. No line holds a line break, else `STEWARD_NOTE_TOO_LONG` naming `/lines/i`. 3. Every cite resolves, else `STEWARD_NOTE_CITE_UNKNOWN` naming `/cites/i`. 4. A non-null `waitingOn.ref` is cited, else `STEWARD_NOTE_CITE_MISSING`. 5. `basis` equals the current standing's, else `STEWARD_NOTE_STALE` 409, returning the current basis. 6. Each claim equals the standing's field, else `STEWARD_NOTE_CONTRADICTS` naming `/claims/<field>` with both values. 7. A stuck standing's lines do not use another group's label ("Moving", "Planned", "On track"), and a not-stuck one does not say "stuck", else `STEWARD_NOTE_CONTRADICTS` naming `/lines/i`. |
+| Written by the steward | The model writes the lines and may add cites. Code copies `claims` and `basis` from the standing the run read (`steward/note.ts:noteWriteOf`), with the subject and the waited-on `ref` always cited; the note door takes no claims from the model. If the door still refuses `STEWARD_NOTE_STALE`, `_CONTRADICTS` or `_CITE_MISSING` and a re-read shows the basis moved, the door rewrites from the new standing once; an unmoved basis returns the refusal as it is. |
+| Cites | A `question` cite resolves to an `agent_questions` row or a question-intent comment on any of the project's records (requirement, feedback, issue, workflow); a `comment` cite to any of the project's comments (`standing/cites.ts`). |
 | Rewritten when | Every steward act, plus `standing.changed` (the sweep sees the basis move off the note's). |
-| Shown | On the requirement and feedback pages, as the two lines above the properties, with cites as links, then the properties, then the raw status row below them (BC-7). If `stale`, it is shown greyed with "Out of date: the standing moved", and the standing's own banner leads. Lists show line 1 as the row's secondary text. The chat report quotes line 1 on Stuck and Needs you rows. |
+| Shown | On the requirement, feedback and issue pages; the issue page leads with a Stuck banner (core's stuck reason and whom it waits on) when the issue is stuck, as the two lines above the properties, with cites as links, then the properties, then the raw status row below them (BC-7). If `stale`, it is shown greyed with "Out of date: the standing moved", and the standing's own banner leads. Lists show line 1 as the row's secondary text. The chat report quotes line 1 on Stuck and Needs you rows. |
 | Text | It is agent-written, so `verbatim` (`said.ts`) is used, with no registry keys. |
 
 ## 3. Steward runtime (BC-1)
@@ -127,11 +129,11 @@ They come through the existing outbox: one consumer named `steward` (`contracts/
 The **standing sweep** is a cluster timer `standing-sweep` in `timer-registry.ts:coreTimers`, running
 every 5 minutes (`STANDING_SWEEP_MS`). For each project with the steward on, it calls
 `OpenStandingsRead`. It emits `standing.stuck` for a stuck item that holds no steward run on its current
-basis (`steward_runs.basis`), notes or none. That is what keeps an issue, which takes no note, from
-being diagnosed again on every sweep. A stuck issue that carries a requirement or a feedback item is
+basis (`steward_runs.basis`). A stuck issue that carries a requirement or a feedback item is
 diagnosed through that item, because the roll-up makes the carrier stuck with `via` set. Only an issue
-nothing carries is a subject of its own. For a requirement or feedback item it otherwise emits
-`standing.changed` when `basis` ≠ the note's basis.
+nothing carries is a subject of its own, and its diagnosis writes it a note like any item. The sweep
+otherwise emits `standing.changed` when an item's note exists and `basis` ≠ the note's basis; an
+issue with no note is not noted by the sweep.
 
 An item turning stuck by time alone is seen within 5 minutes. Nothing else needs a timer.
 
@@ -147,6 +149,7 @@ These use `steward_runs` and `steward_acts` (migration 508).
 | Start within 5 min | A process timer `steward-dispatch` runs every 30 s and starts queued rows whose `not_before` has passed. Worst case is 2 min + 30 s. |
 | Idempotent | The outbox delivery commits with the row (`delivery.inbox`). Each run stores the basis it read. A `note` run whose standing basis equals the note's is `skipped` / `basis_unchanged`. A subject that ended is `skipped` / `subject_ended`. |
 | Lost wake | The sweep re-emits a stuck item that holds no run on its current basis. A stuck item already diagnosed on that basis is not diagnosed again until its standing moves. |
+| A refused act | A run whose turn finished but a door refused an act ends `failed` with `failure_kind` `refused` and each refusal named. It holds its basis like a done run, so the sweep does not retry it until the standing moves. A run that broke (`failure_kind` `error`: a turn that did not finish, or a write a door answered 5xx) holds its basis for an hour, then is retried. |
 
 ### Where each act runs
 
@@ -160,6 +163,19 @@ There is no provider key. Gateway turns use the assistant's gateway (`integratio
 
 The runner job is claimed like any pool job (`devices/claim.ts`). Where no runner is bound, the run
 ends `failed` naming it, and the note says so. It never falls back to a gateway guess.
+
+The brief's last step is the job's done door, `POST /api/projects/:id/steward-runs/:runId/done`
+`{ refused: string[], broken?: string[] }`, fenced to the project (`project.read`) and callable only
+by its steward account (`STEWARD_RUN_FORBIDDEN`) on a running job run, or an ended one whose job is
+still live (`STEWARD_RUN_NOT_JOB`), so a settlement cut short is finished by the retry. It ends the
+run done, or `failed` naming each write (`refused` for a 4xx, `error` for a 5xx), ends the job as
+onboarding's done door does, and revokes the job's token last. The job's own `job.transitioned` delivery
+also revokes a steward job's token whenever the job ends, so a revoke a done call lost still lands. Without it an issue-less pane idles until
+the runner reaps it as an infra failure, which failed job 3fb50ccb after its acts were done.
+
+Each gateway menu opens with `steward_read_item`, the read for the run's own subject by its kind.
+An issue door (`steward_read_issue`, comment, move) refuses a `REQ-` or `FB-` key by name, naming the
+read that takes it, and `steward_ask` refuses a feedback key; `GET /api/issues/:key` does the same.
 
 ### Account, grants and turn identity
 

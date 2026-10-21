@@ -1,0 +1,1 @@
+**The steward's first live run no longer fails on its own mistakes.** Stuck issues take notes and a Stuck banner, claims are copied by code, question comments cite, wrong keys are refused by name, and runner jobs report done.

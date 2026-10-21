@@ -11,6 +11,20 @@ import { rowsOf } from '../db/raw-sql.js';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const seqOf = (ref: string) => /-(\d{1,9})$/.exec(ref)?.[1] ?? (/^\d{1,9}$/.test(ref) ? ref : null);
 
+/**
+ * A comment of the project by id, on any record a comment hangs on: an issue, a requirement, a
+ * feedback item or a workflow. `intent` narrows it to one kind, a question asked as a comment.
+ */
+const commentSql = (projectId: string, id: string, intent: string | null) => sql`
+  SELECT 1 FROM comments c
+    LEFT JOIN issues i ON i.id = c.issue_id
+    LEFT JOIN requirements r ON r.id = c.requirement_id
+    LEFT JOIN feedback f ON f.id = c.feedback_id
+    LEFT JOIN project_workflows w ON w.id = c.workflow_id
+   WHERE c.id = ${id}::uuid
+     AND ${projectId}::uuid IN (i.project_id, r.project_id, f.project_id, w.project_id)
+     ${intent ? sql`AND c.intent = ${intent}` : sql``}`;
+
 /** The statement that answers whether `ref` names a record of `kind` in the project. */
 function existsSql(projectId: string, kind: StewardCiteKind, ref: string): SQL | null {
   const id = UUID.test(ref) ? ref : null;
@@ -40,9 +54,11 @@ function existsSql(projectId: string, kind: StewardCiteKind, ref: string): SQL |
       return id
         ? sql`SELECT 1 FROM suggestions WHERE project_id = ${projectId} AND id = ${id}::uuid`
         : null;
+    // a run's question, or one asked as a question comment on a requirement (the steward's ask there)
     case 'question':
       return id
-        ? sql`SELECT 1 FROM agent_questions WHERE project_id = ${projectId} AND id = ${id}::uuid`
+        ? sql`SELECT 1 FROM agent_questions WHERE project_id = ${projectId} AND id = ${id}::uuid
+              UNION ALL ${commentSql(projectId, id, 'question')}`
         : null;
     case 'verdict':
       return id
@@ -50,10 +66,7 @@ function existsSql(projectId: string, kind: StewardCiteKind, ref: string): SQL |
                WHERE i.project_id = ${projectId} AND v.id = ${id}::uuid`
         : null;
     case 'comment':
-      return id
-        ? sql`SELECT 1 FROM comments c JOIN issues i ON i.id = c.issue_id
-               WHERE i.project_id = ${projectId} AND c.id = ${id}::uuid`
-        : null;
+      return id ? commentSql(projectId, id, null) : null;
   }
 }
 
