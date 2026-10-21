@@ -1,4 +1,8 @@
 {
+  "en": {
+    "steward.note.label": "Steward note",
+    "steward.note.stale": "Out of date: the standing moved"
+  },
   "vi": {
     "standing.act.acceptR": "nghiệm thu r{r}",
     "standing.act.acceptRevision": "chấp nhận bản sửa",

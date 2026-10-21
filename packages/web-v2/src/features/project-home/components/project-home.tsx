@@ -1,8 +1,10 @@
 // The project home's first screen (REQ-41 BC-13): what needs you, and beside it, or below it on a
 // phone, what is running and what is at risk. Flat tables on hairlines, no cards. The conversation
 // is not drawn here: it opens from the top bar's Ask Agent, so the dashboard reads as state.
-// Needs you is the one decisions read the chat answers from (`useNeedsYouDecisions`, `DecisionList`).
+// Needs you is the one decisions read the chat answers from (`useNeedsYouDecisions`, `DecisionList`),
+// at most `NEEDS_YOU_PERSON_CAP` at a time with the rest counted (REQ-48 BC-11).
 
+import { NEEDS_YOU_PERSON_CAP } from "@forge/contracts/steward";
 import { DecisionList } from "@/features/needs-you";
 import { useNeedsYouDecisions } from "@/features/needs-you";
 import { useProjectStatus } from "@/features/project-status";
@@ -21,7 +23,7 @@ export function ProjectHome({ projectId, slug }: { projectId: string; slug: stri
       <section aria-label={t("home.needsYou")} data-testid="home-needs-you" className="min-w-0 lg:flex-1">
         <HomeSectionTitle count={decisionsQ.data?.total}>{t("home.needsYou")}</HomeSectionTitle>
         {decisionsQ.data ? (
-          <DecisionList read={decisionsQ.data} slug={slug} />
+          <DecisionList read={decisionsQ.data} slug={slug} cap={NEEDS_YOU_PERSON_CAP} moreHref="/attention" />
         ) : decisionsQ.isError ? (
           <p className="fg-caption text-danger" role="alert">
             {formatApiError(decisionsQ.error)}

@@ -40,9 +40,15 @@ export function RunningTable({ rows, total, slug }: { rows: StatusInFlightIssue[
 }
 
 function whyText(r: AtRiskReason, t: Copy, lang: "en" | "vi"): string {
-  if (r.kind === "short") return t("home.why.short", { proven: r.proven, total: r.total });
-  const by = spanText(r.late.byMinutes, lang);
-  return r.late.reason === "p85_passed" ? t("home.why.past", { by }) : t("home.why.waiting", { by });
+  if (r.kind === "stuck") return r.reason;
+  // a live read is late only past its p85; a person's wait is late by its standing's due, read stuck above
+  return t("home.why.past", { by: spanText(r.late.byMinutes, lang) });
+}
+
+/** The steward's line 1 under a stuck row, where one is written and current (REQ-48 BC-7). */
+function noteOf(r: AtRiskRow): string | null {
+  for (const x of r.reasons) if (x.kind === "stuck" && x.note) return x.note;
+  return null;
 }
 
 export function AtRiskTable({ rows }: { rows: AtRiskRow[] }) {
@@ -63,7 +69,12 @@ export function AtRiskTable({ rows }: { rows: AtRiskRow[] }) {
               href={r.href}
               lead={r.key}
               title={r.title}
-              note={<span className="text-accent-text" data-testid="home-at-risk-why">{r.reasons.map((x) => whyText(x, t, lang)).join(" · ")}</span>}
+              note={
+                <span className="flex flex-col">
+                  <span className="text-accent-text" data-testid="home-at-risk-why">{r.reasons.map((x) => whyText(x, t, lang)).join(" · ")}</span>
+                  {noteOf(r) && <span className="text-muted" data-testid="home-at-risk-note">{noteOf(r)}</span>}
+                </span>
+              }
             />
           ))}
         </RowList>

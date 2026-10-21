@@ -29,6 +29,7 @@ import { REQUIREMENT_TITLE_MAX } from "@forge/contracts/title-text";
 import { matchesListFilter, waitingFilterOf } from "@forge/contracts/ui-list-filters";
 import { ListFilterBar, useListNarrowing } from "@/features/chat-dock";
 import { RequirementPeek } from "./requirement-peek";
+import { useNoteLines } from "@/features/standing";
 
 // a title alone creates it: the assistant drafts the rest and its author is asked why (REQ-34 BC-4, BC-17);
 // the title owns the path core refuses a create on, so a refusal is read where it is fixed (BC-18)
@@ -147,6 +148,7 @@ export function RequirementsScreen({ projectId, slug }: { projectId: string; slu
   const label = useAttentionLabel();
   const modes = modesIn(t);
   const q = useRequirements(projectId);
+  const notes = useNoteLines(projectId, "requirement");
   useProjectWaitingSuggestions(projectId);
   const [mode, setMode] = useViewMode(modes);
   const [creating, setCreating] = useState(false);
@@ -229,7 +231,7 @@ export function RequirementsScreen({ projectId, slug }: { projectId: string; slu
           ) : mode === "map" ? (
             <RequirementsMap rows={list.rows} areas={areas} slug={slug} onPeek={list.togglePeek} />
           ) : (
-            <RequirementsList groups={list.groups} slug={slug} now={clock.now} selected={peek.open} onPeek={list.togglePeek} />
+            <RequirementsList groups={list.groups} slug={slug} now={clock.now} selected={peek.open} onPeek={list.togglePeek} notes={notes} />
           )}
         </ListPage>
       )}

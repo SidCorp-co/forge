@@ -5,17 +5,17 @@ import { slotAt } from '../schedules/cron.js';
 import { digestText } from './digest.js';
 import copy from './digest-copy.json' with { type: 'json' };
 
-// The first lines a recipient reads, in their language: what shipped, what is late, who is waited
-// on, the next release with its date, and what changed since the last report, every figure the
-// stored report's or the diff's.
+// The first lines a recipient reads, in their language: what is stuck, what needs a decision, what
+// shipped, the next release with its date, and what changed since the last report (REQ-48), every
+// figure the stored report's or the diff's.
 
 const status = {
   name: 'Hop',
   asOf: '2026-10-05T02:00:00.000Z',
   days: 7,
   shipped: { releaseCount: 2, issueCount: 5 },
-  late: { items: [{ key: 'REQ-4' }] },
-  waits: { peopleCount: 1, people: [{ key: 'ISS-9' }] },
+  stuck: { count: 1, items: [{ key: 'REQ-45' }] },
+  needsYou: { total: 4, decisions: [{ key: 'ISS-1' }, { key: 'FB-2' }, { key: 'REQ-3' }] },
   nextRelease: {
     version: '0.4.0',
     forecast: {
@@ -43,9 +43,9 @@ describe('a status report notice', () => {
     const { title, body } = digestText(status, diff, 'en', 'Asia/Ho_Chi_Minh');
     expect(title).toBe('Hop status report, 5 Oct 2026');
     expect(body.split('\n')).toEqual([
+      'Stuck: 1 (REQ-45)',
+      'Needs you: 4 (ISS-1, FB-2, REQ-3)',
       'Shipped in the last 7 days: 2 releases, 5 issues',
-      'Late: 1 (REQ-4)',
-      'Waiting on people: 1 (ISS-9)',
       'Next release: 0.4.0, around 9 Oct 2026',
       'Since the last report (28 Sept 2026): 1 releases shipped, 1 newly late, 0 no longer waiting, 2 dates moved',
     ]);
@@ -58,6 +58,14 @@ describe('a status report notice', () => {
     ).toBe(true);
     expect(body).toContain(copy.vi.next.split('{version}')[0] as string);
     expect(body.split('\n').at(-1)).toBe(copy.vi.first);
+    // a line written in English only reads in English rather than as its key
+    expect(body.split('\n')[0]).toBe('Stuck: 1 (REQ-45)');
+  });
+
+  it('leaves the stuck and needs-you lines out of a report stored before the standing read', () => {
+    const { stuck: _s, needsYou: _n, ...old } = status;
+    const { body } = digestText(old as ProjectStatus, null, 'en', null);
+    expect(body.split('\n')[0]).toBe('Shipped in the last 7 days: 2 releases, 5 issues');
   });
 });
 

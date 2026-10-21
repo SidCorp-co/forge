@@ -83,7 +83,6 @@
     "requirements.assumptions.heading": "Assumptions",
     "requirements.assumptions.none": "None",
     "requirements.assumptions.owner": "Owned by {who}",
-    "requirements.banner.noOwner": "No owner",
     "requirements.banner.nothingOwed": "Nothing owed",
     "requirements.banner.stuck": "Stuck:",
     "requirements.banner.waitingOn": "Waiting on {who}:",

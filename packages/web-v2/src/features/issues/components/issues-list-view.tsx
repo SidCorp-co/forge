@@ -27,6 +27,7 @@ import { useIssueFilterOptions } from "./list/use-filter-options";
 import { DEFAULT_FILTER, useIssueListParams } from "./list/use-list-params";
 import { usePageSelection } from "./list/use-page-selection";
 import { useGuardedTransition } from "./use-guarded-transition";
+import { useStuckReasons } from "@/features/standing";
 
 const segmentsOf = (t: Copy): SegmentOption<IssueFilter>[] => [
   { value: "open", label: t("issues.segment.open") },
@@ -89,6 +90,7 @@ export function IssuesListView({
     pageSize: ISSUES_PAGE_SIZE,
   });
   const options = useIssueFilterOptions(projectId, moduleId);
+  const stuck = useStuckReasons(projectId, "issue");
   const patch = usePatchIssue();
   const {
     requestTransition,
@@ -196,6 +198,7 @@ export function IssuesListView({
             slug={slug}
             actions={actions}
             now={now}
+            stuck={stuck}
             memberNames={options.memberNames}
             selection={bulkEnabled ? selection : undefined}
           />

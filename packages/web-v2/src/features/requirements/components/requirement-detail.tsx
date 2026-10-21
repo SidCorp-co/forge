@@ -48,6 +48,7 @@ import { RequirementOverview } from "./requirement-overview";
 import { RequirementPicture } from "./requirement-picture";
 import { DraftRevisionEditor, NewRevision } from "./revision-editor";
 import { RequirementProgress } from "./standing-bits";
+import { StewardNoteLines, useStewardNote } from "@/features/standing";
 
 const REQUIREMENT_TABS = ["overview", "criteria", "revisions", "mockups", "activity", "memory"] as const;
 type RequirementTab = (typeof REQUIREMENT_TABS)[number];
@@ -204,6 +205,7 @@ export function RequirementPage({
   const [view, onView] = useRecordView();
   const developer = view === "developer";
   const q = useRequirement(projectId, reqKey);
+  const note = useStewardNote(projectId, "requirement", reqKey);
   const memories = useRequirementMemoryCount(projectId, reqKey);
   const proposedAt =
     q.data?.revisions.find((r) => r.state === "draft" || r.state === "proposed")?.revision ??
@@ -239,6 +241,7 @@ export function RequirementPage({
           >
             <DetailMobileTitle itemKey={d.key} title={d.title} badge={<StatusBadge family="requirement" value={s.state} />} />
             <RequirementProgress standing={s} slug={slug} inset="px-8 max-md:px-4" />
+            <StewardNoteLines note={note} slug={slug} className="px-8 max-md:px-4" />
             <RequirementPicture d={d} projectId={projectId} slug={slug} inset="px-8 max-md:px-4" />
             <DetailLeadEnd />
             <ViewBar view={view} onView={onView} />

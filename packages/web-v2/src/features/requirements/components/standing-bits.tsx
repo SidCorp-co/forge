@@ -19,7 +19,7 @@ import {
 import { type BannerTone, LEGEND, StepBar, statusReading, WaitBanner } from "@/design";
 import { useCopy, useInterfaceLanguage, useLabel } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
-import { saidView } from "@/lib/i18n/said";
+import { said, saidView } from "@/lib/i18n/said";
 import { issueHref } from "@/lib/routes/issues";
 import { releaseHref } from "@/lib/routes/releases";
 import { cn } from "@/lib/utils/cn";
@@ -108,17 +108,21 @@ function WaitAct({ act, w, slug }: { act: string; w: RequirementWaitingOn; slug:
   );
 }
 
-/** The strip's first line: whom it waits on and for what, or that nothing is owed (the badge says it ended). */
+/**
+ * The strip's first line: whom it waits on and for what, or that nothing is owed (the badge says it
+ * ended). A stuck one says why in core's sentence (`times.stuck`, REQ-48 BC-5); nothing here infers it.
+ */
 function RequirementBanner({ standing, slug, className }: { standing: RequirementStanding; slug: string; className?: string }) {
   const t = useCopy();
-  const w = saidView(standing.waitingOn, useInterfaceLanguage());
-  const stuck = standing.attentionGroup === "stuck" && w.kind === "none";
+  const language = useInterfaceLanguage();
+  const w = saidView(standing.waitingOn, language);
+  const stuck = standing.attentionGroup === "stuck" ? standing.times.stuck : null;
   const done = standing.attentionGroup === "done";
   return (
     <WaitBanner
-      tone={stuck ? "you" : BANNER_TONE[w.kind]}
+      tone={stuck ? "blocked" : BANNER_TONE[w.kind]}
       head={t(done ? "requirements.banner.nothingOwed" : stuck ? "requirements.banner.stuck" : w.kind === "you" ? "requirements.banner.waitingOnYou" : "requirements.banner.waitingOn", { who: w.who })}
-      body={done ? null : stuck ? t("requirements.banner.noOwner") : <WaitAct act={w.act} w={standing.waitingOn} slug={slug} />}
+      body={done ? null : stuck ? said(stuck.says.reason, language) : <WaitAct act={w.act} w={standing.waitingOn} slug={slug} />}
       rule={w.rule}
       effect={done ? undefined : w.effect}
       className={className}

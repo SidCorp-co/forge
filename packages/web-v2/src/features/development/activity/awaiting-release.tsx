@@ -8,7 +8,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "@/lib/navigation/router";
 import { Button, Checkbox, Icon, Section, StatusBadge, useIdSet } from "@/design";
 import { useDraftReleaseForecast } from "@/features/forecast";
-import { spanText } from "@/features/forecast";
 import { BatchReleaseDialog, type BatchReleaseIssue } from "@/features/issues";
 import { useIssues } from "@/features/issues";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
@@ -19,16 +18,13 @@ const COLLAPSED_LIMIT = 5;
 /** The page the card reads; past it the card counts the rest and links the list. */
 const READ_LIMIT = 50;
 
-/** Who the draft release waits on, and how late, as the dashboard says it. */
+/** Who the draft release waits on, as the dashboard says it; how long it may wait is its standing's due (REQ-48), not this line's. */
 function DraftTurn({ projectId }: { projectId: string }) {
   const t = useCopy();
   const language = useInterfaceLanguage();
   const next = useDraftReleaseForecast(projectId, true).data?.next ?? null;
   if (!next) return null;
-  const who = said(next.says.who, language);
-  const line = next.late
-    ? t("dash.lateWaiting", { who, by: spanText(next.late.byMinutes, language === "vi" ? "vi" : "en") })
-    : t("fc.waitingOnTo", { who, act: said(next.says.act, language) });
+  const line = t("fc.waitingOnTo", { who: said(next.says.who, language), act: said(next.says.act, language) });
   return (
     <p className="fg-body-sm pb-2 text-muted" title={said(next.says.reason, language)} data-testid="awaiting-release-turn">
       {line}

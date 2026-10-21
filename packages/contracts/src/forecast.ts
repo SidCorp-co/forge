@@ -126,7 +126,7 @@ export interface ForecastPaused extends ForecastStamp {
 	ref: string | null;
 	/** When the wait began, where the read knows it; null where it does not, which is never late. */
 	since: string | null;
-	/** Non-null once a person has owed the act for more than a day. */
+	/** Null on every live read: a wait is late by its standing's due (REQ-48 `overdue`); a stored report may hold `waiting_over_day`. */
 	late: ForecastLate | null;
 }
 

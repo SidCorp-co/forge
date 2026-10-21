@@ -33,6 +33,8 @@ const READ: NeedsYouDecisions = needsYouDecisionsSchema.parse({
         { id: "keep", label: "Keep the old format", act: "question.answer", path: `/api/questions/${Q}/answer`, body: { round: 1, optionId: "keep" }, needsReason: false, effect: null, recommended: false },
       ],
       touchedAt: "2026-10-08T10:00:00.000Z",
+      stuck: false,
+      dueAt: null,
     },
     {
       group: "approve",
@@ -49,6 +51,8 @@ const READ: NeedsYouDecisions = needsYouDecisionsSchema.parse({
         { id: "return", label: "Return with a reason", act: "revision.return", path: `/api/projects/${PROJECT}/requirements/REQ-1/revisions/2/return`, body: {}, needsReason: true, effect: null, recommended: false },
       ],
       touchedAt: "2026-10-08T11:00:00.000Z",
+      stuck: false,
+      dueAt: null,
     },
   ],
   notDecisions: [
@@ -64,7 +68,8 @@ describe("the decisions only you can make (REQ-41 BC-2)", () => {
     renderWithQuery(<DecisionList read={READ} slug="hop" />);
     const rows = screen.getAllByTestId("needs-you-decision");
     expect(rows.map((r) => r.getAttribute("data-group"))).toEqual(["answer", "approve"]);
-    const first = rows[0] as HTMLElement;
+    const first = rows[0];
+    if (!first) throw new Error("no decision row");
     expect(within(first).getByTestId("needs-you-decision-question")).toHaveTextContent("Keep the old export format or move to the new one?");
     expect(within(first).getByTestId("needs-you-decision-recommended")).toHaveTextContent('Recommended: Move to the new one. Whoever asked recommends "Move to the new one".');
     expect(within(first).getAllByTestId("needs-you-decision-answer").map((b) => b.textContent)).toEqual(["Move to the new one", "Keep the old format"]);
@@ -95,6 +100,8 @@ describe("the decisions only you can make (REQ-41 BC-2)", () => {
             { id: "write", label: "Write another answer", act: "question.answer", path: `/api/questions/${Q}/answer`, body: { round: 1 }, needsReason: true, effect: null, recommended: false },
           ],
           touchedAt: "2026-10-08T10:00:00.000Z",
+          stuck: false,
+          dueAt: null,
         },
       ],
       notDecisions: [],

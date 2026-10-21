@@ -5,11 +5,10 @@ import {
   statusToTone,
   workStepOf,
 } from "@/features/issues";
-import { type SemanticTone, STATUS_KEY_TONE, type StatusKey, TONE_META } from "@/design/status";
+import { type SemanticTone, type StatusKey, TONE_META } from "@/design/status";
 import type { IssueStatus } from "@/features/issues";
 import type { StageKey } from "@/design/stages";
 import { gateReasonLine } from "@/features/runners";
-import { formatElapsed } from "@/lib/utils/format";
 import { formatElapsed as formatElapsedIn } from "@/lib/i18n/format";
 import { productCopy } from "@/lib/i18n/product-copy";
 import { labelCopy } from "@/lib/i18n/labels";
@@ -58,11 +57,10 @@ export function runsByIssue(
 }
 
 /**
- * A board column's key: one of the statuses, or `unheld` — the `in_progress` rows nothing holds.
- * `in_progress` says a run holds the issue; where nothing has checked in for it the board files the
- * row beside the held ones rather than calling it in progress (ISS-1213).
+ * A board column's key: one of the statuses. Whether a row is stuck is its standing's (REQ-48 BC-5,
+ * the card's note), never a column the board infers from a missing check-in.
  */
-type BoardColumnKey = IssueStatus | "unheld";
+type BoardColumnKey = IssueStatus;
 
 /** One column of the board: its key, the word and colour it reads in, and its issues. */
 interface BoardColumnGroup {
@@ -72,19 +70,11 @@ interface BoardColumnGroup {
   issues: PipelineIssueRow[];
 }
 
-/** How the `unheld` column and card read: its word, and the chip of work nothing is moving. */
-const UNHELD_VIEW: { status: StatusKey } = {
-  status: "paused",
-};
-
 /** `in_progress` at step `test` reads "In progress · Test", in the language `label` reads. */
 const statusStepIn = (status: IssueStatus, step: string | null, label: ReturnType<typeof labelCopy>): string =>
   status === "in_progress" && step ? `${label("issueStatus", status)} · ${label("workStep", step)}` : label("issueStatus", status);
 
-/**
- * The board's columns: one per status the board's own query CAN RETURN, in the registry's order,
- * with `unheld` right after `in_progress` while `in_progress` is one of them.
- */
+/** The board's columns: one per status the board's own query CAN RETURN, in the registry's order. */
 export function boardColumns(
   excluded: readonly string[] = BOARD_EXCLUDED_STATUSES,
 ): BoardColumnKey[] {
@@ -92,26 +82,18 @@ export function boardColumns(
   for (const status of ISSUE_STATUSES) {
     if (excluded.includes(status)) continue;
     out.push(status);
-    if (status === "in_progress") out.push("unheld");
   }
   return out;
 }
 
 /** The colour a column reads in — the same `SemanticTone` its status chip resolves through. */
-function columnTone(key: BoardColumnKey): SemanticTone {
-  return key === "unheld" ? STATUS_KEY_TONE[UNHELD_VIEW.status] : statusToTone(key);
-}
+const columnTone = (key: BoardColumnKey): SemanticTone => statusToTone(key);
 
-/** The column's heading: the status's own word, or `No check-in`, in `language`. */
-function columnTitle(key: BoardColumnKey, language: string): string {
-  return key === "unheld" ? productCopy(language)("pipeline.board.noCheckIn") : labelCopy(language)("issueStatus", key);
-}
+/** The column's heading: the status's own word, in `language`. */
+const columnTitle = (key: BoardColumnKey, language: string): string => labelCopy(language)("issueStatus", key);
 
-/** The column a board row files under: its status, or `unheld` for an `in_progress` row nothing holds. */
-function rowColumn(issue: PipelineIssueRow): BoardColumnKey {
-  const status = issue.status as IssueStatus;
-  return status === "in_progress" && !issue.held ? "unheld" : status;
-}
+/** The column a board row files under: its status. */
+const rowColumn = (issue: PipelineIssueRow): BoardColumnKey => issue.status as IssueStatus;
 
 /** Group issues into the board's columns by the column each row files under. */
 export function groupIssuesByColumn(issues: PipelineIssueRow[] | undefined, language = "en"): BoardColumnGroup[] {
@@ -150,14 +132,6 @@ interface CardStatusView {
  * What the board can say about a row nothing holds: when anything last spoke for it. Core cannot
  * tell a quiet run from a gone one, so the card gives the time and leaves the gap to the reader.
  */
-function checkInLine(lastCheckInAt: string | null, now: number, language: string): string {
-  const t = productCopy(language);
-  if (lastCheckInAt === null) return t("pipeline.board.noCheckInRecord");
-  const at = new Date(lastCheckInAt);
-  const clock = `${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}`;
-  return t("pipeline.board.lastCheckIn", { clock, ago: language === "en" ? formatElapsed(now - at.getTime()) : formatElapsedIn(now - at.getTime(), language) });
-}
-
 /** ISS-1192 — what a reviewer opening a run session is told about the box's
  *  gate. `none` and `clear` are different facts and never share a picture. */
 export interface RunGateNote {
@@ -204,22 +178,10 @@ export function runGateNote(gate: RunGate | null | undefined, language = "en"): 
 export function cardStatus(
   issue: PipelineIssueRow,
   run: { status: PipelineRunStatus } | undefined,
-  now: number = Date.now(),
   language = "en",
 ): CardStatusView {
   const t = productCopy(language);
   const label = labelCopy(language);
-  // Nothing holds the row, so a run or a queued step the board kept for it is history, not what
-  // the card is now: a queued job would have made the row held.
-  if (rowColumn(issue) === "unheld") {
-    return {
-      status: UNHELD_VIEW.status,
-      label: t("pipeline.board.noCheckIn"),
-      domain: "issue",
-      waitingReason: "",
-      note: checkInLine(issue.lastCheckInAt, now, language),
-    };
-  }
   const queued = deriveQueuedStep(issue.pipelineHealth, hasLiveAgentSession(issue.agentStatus));
   if (queued) {
     const gate = gateReadingIn(queued.gate, t);

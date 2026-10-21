@@ -80,11 +80,6 @@
       "count": 3
     }
   },
-  "src/features/needs-you/decision-list.test.tsx": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    }
-  },
   "src/features/previews/idea-snapshot.test.ts": {
     "@typescript-eslint/no-unsafe-assignment": {
       "count": 1
@@ -194,14 +189,6 @@
       "count": 1
     }
   },
-  "src/features/requirements/write-draft.test.ts": {
-    "@typescript-eslint/no-base-to-string": {
-      "count": 1
-    },
-    "@typescript-eslint/require-await": {
-      "count": 1
-    }
-  },
   "src/features/shares/shared-answer.test.tsx": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 1
@@ -278,14 +265,6 @@
       "count": 2
     },
     "@typescript-eslint/no-unsafe-assignment": {
-      "count": 1
-    }
-  },
-  "src/test/requirement-progress.tsx": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 2
-    },
-    "sonarjs/cognitive-complexity": {
       "count": 1
     }
   },

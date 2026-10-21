@@ -23,7 +23,10 @@ export function listGroupsOf(rows: RequirementSummary[], by: ListGrouping, areas
   return groups.filter((g) => g.rows.length > 0).map((g) => ({ ...g, rows: [...g.rows].sort(newest) }));
 }
 
-export function RequirementsList({ groups, slug, now, selected, onPeek }: { groups: ListGroup<RequirementSummary>[]; slug: string; now: number; selected: string | null; onPeek: (key: string) => void }) {
+/** The steward's current line 1 for a row (REQ-48 BC-7), by requirement key; a stale note is not shown on a row. */
+export type NoteLines = ReadonlyMap<string, string>;
+
+export function RequirementsList({ groups, slug, now, selected, onPeek, notes }: { groups: ListGroup<RequirementSummary>[]; slug: string; now: number; selected: string | null; onPeek: (key: string) => void; notes?: NoteLines }) {
   const t = useCopy();
   const time = useTimeFormat();
   const fold = useGroupFold("requirements-list");
@@ -46,7 +49,7 @@ export function RequirementsList({ groups, slug, now, selected, onPeek }: { grou
               <RowState r={r} />
             </span>
           ),
-          facts: [],
+          facts: notes?.has(r.key) ? [<span key="note" data-testid="row-note">{notes.get(r.key)}</span>] : [],
           state: <Passing r={r} wide={false} />,
           waitingOn: <WaitsText r={r} />,
           owner: null,

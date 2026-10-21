@@ -2,6 +2,7 @@
 // the buttons that answer them), what is running, and what is at risk. No chat is drawn in the page.
 
 import { needsYouDecisionsSchema } from "@forge/contracts/needs-you-decisions";
+import { verbatim } from "@forge/contracts/said";
 import type { ProjectStatus } from "@forge/contracts/project-status";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -42,6 +43,8 @@ const decision = (key: string, group: "answer" | "approve", question: string) =>
   noRecommendation: null,
   answers: [answer("yes", "Yes", true), answer("no", "No", false)],
   touchedAt: "2026-10-08T10:00:00.000Z",
+  stuck: false,
+  dueAt: null,
 });
 const DECISIONS = needsYouDecisionsSchema.parse({
   generatedAt: "2026-10-09T12:00:00.000Z",
@@ -61,12 +64,15 @@ const status = (over: Partial<ProjectStatus> = {}): ProjectStatus => ({
   ...STATUS,
   inFlight: { ...STATUS.inFlight, running: [running("ISS-20", "Referral screens"), running("ISS-21", "Export order")], runningCount: 2 },
   late: { asOf: STATUS.asOf, items: [{ kind: "requirement", key: "REQ-4", title: "Referrals", late: { reason: "p85_passed", since: "2026-10-07T08:00:00.000Z", byMinutes: 120 } }] },
-  requirements: {
-    ...STATUS.requirements,
-    items: [{ ...(STATUS.requirements.items[0]), key: "REQ-7", title: "Checkout", state: "delivered", criteria: { proven: 3, total: 5 } }],
-  },
+  stuck: { asOf: STATUS.asOf, count: 1, items: [stuckItem("REQ-7")] },
   ...over,
 });
+
+/** A requirement core reads stuck (REQ-45's shape: a reopen carrier no master serves), with the steward's line. */
+function stuckItem(key: string) {
+  const reason = "ISS-498 waits on a master and no master serves this project";
+  return { kind: "requirement" as const, key, title: "Checkout", code: "nobody_serves" as const, reason, via: "ISS-498", since: STATUS.asOf, note: "Sent back on 14 Oct; asked the owner to take it on", href: `/projects/hop/requirements/${key}`, says: { reason: verbatim(reason) } };
+}
 
 const ROOM = {
   id: "c-1", adapter: "web", externalId: "c-1", shape: "direct", mode: "assistant", title: "Hello", updatedAt: "2026-10-08T10:00:00Z",
@@ -84,7 +90,7 @@ function core(s: ProjectStatus = status()) {
 }
 
 describe("the project home (REQ-41 BC-13)", () => {
-  it("leads with what needs you, then two flat lists: 3 decisions, 2 running, 1 at risk beside 1 short", async () => {
+  it("leads with what needs you, then two flat lists: 3 decisions, 2 running, the stuck item before the late one", async () => {
     core();
     renderWithQuery(<ProjectHome projectId={PROJECT} slug="hop" />);
     const home = await screen.findByTestId("project-home");
@@ -96,10 +102,10 @@ describe("the project home (REQ-41 BC-13)", () => {
     expect(screen.getByTestId("home-needs-you").contains(home.querySelector("button, a, input"))).toBe(true);
     expect(within(screen.getByTestId("home-needs-you")).getAllByTestId("needs-you-decision")).toHaveLength(3);
     expect(screen.getAllByTestId("home-running-row").map((r) => r.getAttribute("data-row-key"))).toEqual(["ISS-20", "ISS-21"]);
-    expect(screen.getAllByTestId("home-at-risk-row").map((r) => r.getAttribute("data-row-key"))).toEqual(["REQ-4", "REQ-7"]);
+    expect(screen.getAllByTestId("home-at-risk-row").map((r) => r.getAttribute("data-row-key"))).toEqual(["REQ-7", "REQ-4"]);
     expect(screen.getAllByTestId("home-at-risk-why").map((n) => n.textContent)).toEqual([
+      "ISS-498 waits on a master and no master serves this project",
       "2.0 h past the latest similar work took",
-      "3 of 5 criteria proven on the running build",
     ]);
     // flat: row lists on hairlines, no card or shadow
     const surfaces = [...home.querySelectorAll("section, table, ul, li, div")].map((n) => n.className).join(" ");
@@ -140,7 +146,7 @@ describe("the project home (REQ-41 BC-13)", () => {
     fakeCore(({ path }) => {
       if (path.startsWith("/conversations?")) return { body: { items: [], total: 0 } };
       if (path.endsWith("/needs-you/decisions")) return { body: { ...DECISIONS, total: 0, decisions: [] } };
-      if (path.includes("/status")) return { body: status({ inFlight: { ...STATUS.inFlight, running: [], runningCount: 0 }, late: { asOf: STATUS.asOf, items: [] }, requirements: { ...STATUS.requirements, items: [] } }) };
+      if (path.includes("/status")) return { body: status({ inFlight: { ...STATUS.inFlight, running: [], runningCount: 0 }, late: { asOf: STATUS.asOf, items: [] }, stuck: { asOf: STATUS.asOf, count: 0, items: [] } }) };
       return undefined;
     });
     renderWithQuery(<ProjectHome projectId={PROJECT} slug="hop" />);
@@ -149,20 +155,33 @@ describe("the project home (REQ-41 BC-13)", () => {
     expect(screen.getByText("Nothing")).toBeInTheDocument();
   });
 
-  it("refuses to call a requirement at risk that core did not call late or that holds every criterion", () => {
-    const s = status({ late: { asOf: STATUS.asOf, items: [] } });
+  it("calls nothing at risk that core neither read stuck nor late, however few criteria it has proven", () => {
+    const s = status({ late: { asOf: STATUS.asOf, items: [] }, stuck: { asOf: STATUS.asOf, count: 0, items: [] } });
     const item = s.requirements.items[0];
-    const held = { ...s, requirements: { ...s.requirements, items: [{ ...item, criteria: { proven: 5, total: 5 } }, { ...item, key: "REQ-8", state: "in_delivery" as const }] } };
-    expect(atRiskRows(held, "hop")).toEqual([]);
+    const short = { ...s, requirements: { ...s.requirements, items: item ? [{ ...item, key: "REQ-8", state: "delivered" as const, criteria: { proven: 1, total: 5 } }] : [] } };
+    expect(atRiskRows(short, "hop")).toEqual([]);
     expect(runningRows(undefined)).toEqual([]);
   });
 
-  it("names a requirement once where it is both late and short", () => {
-    const s = status();
-    const item = s.requirements.items[0];
-    const both = { ...s, requirements: { ...s.requirements, items: [{ ...item, key: "REQ-4" }] } };
-    const rows = atRiskRows(both, "hop");
+  it("names a requirement once where it is both stuck and late, stuck first, with the steward's line", () => {
+    const rows = atRiskRows(status({ stuck: { asOf: STATUS.asOf, count: 1, items: [stuckItem("REQ-4")] } }), "hop");
     expect(rows).toHaveLength(1);
-    expect(rows[0]?.reasons.map((r) => r.kind)).toEqual(["late", "short"]);
+    expect(rows[0]?.reasons.map((r) => r.kind)).toEqual(["stuck", "late"]);
+    expect(rows[0]?.reasons[0]).toMatchObject({ note: "Sent back on 14 Oct; asked the owner to take it on" });
+  });
+
+  it("shows three decisions and counts the rest as +n more, linking the one Needs you list (REQ-48 BC-11)", async () => {
+    const five = { ...DECISIONS, total: 5, decisions: ["ISS-1", "ISS-2", "ISS-3", "ISS-4", "ISS-5"].map((k) => decision(k, "answer", `Decide ${k}?`)) };
+    fakeCore(({ path }) => {
+      if (path.startsWith("/conversations?")) return { body: { items: [], total: 0 } };
+      if (path.endsWith("/needs-you/decisions")) return { body: five };
+      if (path.includes("/status")) return { body: status() };
+      return undefined;
+    });
+    renderWithQuery(<ProjectHome projectId={PROJECT} slug="hop" />);
+    await screen.findAllByTestId("needs-you-decision");
+    expect(within(screen.getByTestId("home-needs-you")).getAllByTestId("needs-you-decision")).toHaveLength(3);
+    const more = screen.getByTestId("needs-you-more");
+    expect(more).toHaveTextContent("+2 more");
   });
 });

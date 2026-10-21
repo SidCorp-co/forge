@@ -6,6 +6,7 @@
 // the chat draw the same list.
 
 import {
+  capDecisions,
   type DecisionAnswer,
   NEEDS_YOU_DECISION_GROUP_LABELS,
   NEEDS_YOU_DECISION_GROUPS,
@@ -169,12 +170,27 @@ function OwedDecision({ d, slug }: { d: NeedsYouDecision; slug: string | undefin
 /**
  * The decisions, one heading per group in the contract's order, and one line naming what was left out.
  * `only` draws one group of the same read (a page about that act), so the two never disagree; the rows
- * that are not decisions belong to the whole list, so that line is the whole list's alone.
+ * that are not decisions belong to the whole list, so that line is the whole list's alone. `cap`
+ * shows the first decisions in core's order (a stuck item's first, then the soonest due) and counts
+ * the rest as "+n more", linked to `moreHref`, never dropping one (REQ-48 BC-11).
  */
-export function DecisionList({ read, slug, only }: { read: NeedsYouDecisions; slug?: string | undefined; only?: NeedsYouDecisionGroup }) {
+export function DecisionList({
+  read,
+  slug,
+  only,
+  cap,
+  moreHref,
+}: {
+  read: NeedsYouDecisions;
+  slug?: string | undefined;
+  only?: NeedsYouDecisionGroup;
+  cap?: number;
+  moreHref?: string;
+}) {
   const t = useCopy();
+  const { shown, more } = cap === undefined ? { shown: read.decisions, more: 0 } : capDecisions(read.decisions, cap);
   const groups = NEEDS_YOU_DECISION_GROUPS.filter((g) => !only || g === only)
-    .map((g) => ({ g, rows: read.decisions.filter((d) => d.group === g) }))
+    .map((g) => ({ g, rows: shown.filter((d) => d.group === g) }))
     .filter((x) => x.rows.length > 0);
   const leftOut = only ? [] : read.notDecisions.map((n) => t(`needsYou.decisions.reason.${n.reason}`, { n: n.count }));
   return (
@@ -192,7 +208,17 @@ export function DecisionList({ read, slug, only }: { read: NeedsYouDecisions; sl
           </ul>
         </div>
       ))}
-      {read.total > read.decisions.length && (
+      {more > 0 &&
+        (moreHref ? (
+          <Link href={moreHref} className="fg-caption text-fg underline-offset-2 hover:underline" data-testid="needs-you-more">
+            {t("needsYou.decisions.capMore", { n: more })}
+          </Link>
+        ) : (
+          <p className="fg-caption text-subtle" data-testid="needs-you-more">
+            {t("needsYou.decisions.capMore", { n: more })}
+          </p>
+        ))}
+      {cap === undefined && read.total > read.decisions.length && (
         <p className="fg-caption text-subtle">{t("needsYou.decisions.more", { shown: read.decisions.length, total: read.total })}</p>
       )}
       {leftOut.length > 0 && (

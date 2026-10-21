@@ -12,6 +12,7 @@
     "needsYou.decisions.sent": "Sent: {label}",
     "needsYou.decisions.none": "Nothing",
     "needsYou.decisions.more": "{shown} of {total} decisions shown.",
+    "needsYou.decisions.capMore": "+{n} more",
     "needsYou.decisions.leftOut": "Left out, not decisions: {list}.",
     "needsYou.decisions.reason.own_work": "{n} of your own drafts to finish",
     "needsYou.decisions.reason.work": "{n} tasks to carry out",
