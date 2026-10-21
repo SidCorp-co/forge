@@ -119,6 +119,7 @@ describe("a refusal's details say what its message says (criteria 193, 205)", ()
   it('on POST /api/orgs sent a colour alone', async () => {
     const got = await send('POST', '/api/orgs', { colour: 'red' });
     expect(got.status).toBe(400);
+    expect(detailSentences(got.details).length, got.raw).toBeGreaterThan(0);
     for (const said of detailSentences(got.details))
       expect(got.message, `details say "${said}"`).toContain(said);
   });
