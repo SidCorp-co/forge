@@ -3,6 +3,9 @@
 // for the projects list (or the issue) to say which uuid to ask about, and switching to the uuid
 // once it is known sends none of them twice. Drawn the way devtools draws a page load.
 // @direct-test-of packages/web-v2/src/test/waterfall.ts
+// @direct-test-of packages/web-v2/src/features/issues/components/use-issue-reads.ts
+// @direct-test-of packages/web-v2/src/features/issues/components/issue-detail-screen.tsx
+// @direct-test-of packages/web-v2/src/features/issues/components/detail/
 
 import { act, cleanup } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -128,6 +131,7 @@ describe("a project page's first reads", () => {
         "/issues/ISS-7/patterns",
         "/issues/ISS-7/preview",
         "/projects/forge/issues/standing/ISS-7",
+        "/projects/forge/steward-notes/issue/ISS-7",
       ]),
     );
     expect(waterfall.serialDepth).toBe(1);

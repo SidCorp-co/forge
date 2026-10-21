@@ -3,6 +3,7 @@ import { useIssueForecast } from "@/features/forecast";
 import { useMockups } from "@/features/mockups";
 import { usePreview } from "@/features/previews";
 import { useIssueQuestions } from "@/features/questions";
+import { useStewardNote } from "@/features/standing";
 import { issueRekey, isUuid, useBridgedRef } from "@/lib/api/ref-bridge";
 import { useCriteria } from "../criteria";
 import { useActivity, useAttachments, useComments, useIssue } from "../detail-hooks";
@@ -37,6 +38,7 @@ export function useIssueReads(id: string, projectId: string) {
   useAttachments(canonicalId, projectId);
   useIssueQuestions(canonicalId ?? "", projectId);
   useIssueForecast(projectId, displayKey);
+  useStewardNote(projectId, "issue", displayKey);
   useProjectMembers(projectId);
   useProjectModules(projectId);
   useReleaseRoster(projectId);
