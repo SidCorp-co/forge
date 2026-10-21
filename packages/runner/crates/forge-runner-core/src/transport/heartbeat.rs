@@ -132,7 +132,7 @@ async fn beat_with(client: &CoreClient, conditions: &Conditions) -> Result<(Stri
     let parsed = resp
         .json::<HeartbeatResponse>()
         .await
-        .map_err(|e| Error::Other(format!("heartbeat decode: {e}")))?;
+        .map_err(|e| crate::transport::status::not_reached("heartbeat decode", &e))?;
     Ok((
         parsed.server_time.unwrap_or_default(),
         Refused {

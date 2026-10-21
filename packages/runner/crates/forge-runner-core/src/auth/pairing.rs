@@ -160,7 +160,7 @@ pub async fn login_init(core_url: &str, name: &str) -> Result<LoginInitResponse>
         .json(&body)
         .send()
         .await
-        .map_err(|e| Error::Other(format!("login init request: {e}")))?;
+        .map_err(|e| crate::transport::status::not_reached("login init request", &e))?;
     let status = resp.status();
     if !status.is_success() {
         let text = resp.text().await.unwrap_or_default();
@@ -170,7 +170,7 @@ pub async fn login_init(core_url: &str, name: &str) -> Result<LoginInitResponse>
     }
     resp.json::<LoginInitResponse>()
         .await
-        .map_err(|e| Error::Other(format!("login init decode: {e}")))
+        .map_err(|e| crate::transport::status::not_reached("login init decode", &e))
 }
 
 /// Poll once for approval. Maps HTTP 204/200/410 to [`LoginPoll`]; 5xx/429/
@@ -207,7 +207,7 @@ pub async fn login_poll(core_url: &str, pairing_code: &str) -> Result<LoginPoll>
             let approved = resp
                 .json::<LoginApproved>()
                 .await
-                .map_err(|e| Error::Other(format!("login poll decode: {e}")))?;
+                .map_err(|e| crate::transport::status::not_reached("login poll decode", &e))?;
             Ok(LoginPoll::Approved(Box::new(approved)))
         }
     }
@@ -242,7 +242,7 @@ pub async fn pair(core_url: &str, code: &str, name: &str) -> Result<PairResponse
         .json(&body)
         .send()
         .await
-        .map_err(|e| Error::Other(format!("pair request: {e}")))?;
+        .map_err(|e| crate::transport::status::not_reached("pair request", &e))?;
     let status = resp.status();
     if !status.is_success() {
         let text = resp.text().await.unwrap_or_default();
@@ -250,7 +250,7 @@ pub async fn pair(core_url: &str, code: &str, name: &str) -> Result<PairResponse
     }
     resp.json::<PairResponse>()
         .await
-        .map_err(|e| Error::Other(format!("pair decode: {e}")))
+        .map_err(|e| crate::transport::status::not_reached("pair decode", &e))
 }
 
 #[cfg(test)]

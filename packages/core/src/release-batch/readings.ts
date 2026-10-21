@@ -8,6 +8,7 @@ import { asc, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { releaseReadings } from '../db/schema-release-ledger.js';
+import { issueSentences } from '../lib/zod-sentences.js';
 import { bindingName } from './channel.js';
 import { ReleaseReadingUnreadableError } from './errors.js';
 import type { CloseVerification, ProbedChannel } from './plan.js';
@@ -60,11 +61,17 @@ const bindingsSchema = z.array(
 function readingOf(row: typeof releaseReadings.$inferSelect): ReleaseReading {
   const bindings = bindingsSchema.safeParse(row.bindings);
   if (!bindings.success) {
-    throw new ReleaseReadingUnreadableError(row.id, `bindings: ${z.prettifyError(bindings.error)}`);
+    throw new ReleaseReadingUnreadableError(
+      row.id,
+      issueSentences(bindings.error.issues, ['bindings']),
+    );
   }
   const unread = stringList.safeParse(row.unread);
   if (!unread.success) {
-    throw new ReleaseReadingUnreadableError(row.id, `unread: ${z.prettifyError(unread.error)}`);
+    throw new ReleaseReadingUnreadableError(
+      row.id,
+      issueSentences(unread.error.issues, ['unread']),
+    );
   }
   return {
     id: row.id,

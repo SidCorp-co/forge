@@ -10,6 +10,7 @@ import { z } from 'zod';
 import { answer } from '../api-reference/declare/describe.js';
 import { declaresInput, zValidator } from '../api-reference/declare/validator.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { schemaRefused } from '../lib/zod-sentences.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import {
   type ArchiveDirection,
@@ -33,8 +34,9 @@ const refusedHttp = (err: IssueArchiveRefusedError) =>
 function archiveHandler(direction: ArchiveDirection) {
   return async (c: Context<{ Variables: AuthVars }>) => {
     const { id: projectId } = projectIdParamSchema.parse(c.req.param());
-    const parsed = issueArchiveRequestSchema.safeParse(await c.req.json().catch(() => null));
-    if (!parsed.success) throw badRequest(z.flattenError(parsed.error));
+    const raw = await c.req.json().catch(() => null);
+    const parsed = issueArchiveRequestSchema.safeParse(raw);
+    if (!parsed.success) throw schemaRefused(parsed.error, issueArchiveRequestSchema, raw);
     const access = await loadProjectAccess(projectId, c.get('userId'));
     assertProjectRole(access, 'admin', `${direction} requires project admin access`);
     try {

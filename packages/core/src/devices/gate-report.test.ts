@@ -64,8 +64,9 @@ describe('readHeartbeatGate', () => {
 
   it('refuses a key it does not know, so a newer box is told rather than half-read', () => {
     const read = readHeartbeatGate({ degraded: condition(), undeclared: condition() });
-    // A refusal at the root names the root once: it read `gate.gate: ...` (ISS-1234).
-    expect(read.refused).toMatch(/^gate: Unrecognized key/);
+    // A refusal at the root names the root once: it read `gate.gate: ...` (ISS-1234). It is a
+    // sentence naming the key, never zod's "Unrecognized key" (ISS-1421 r20).
+    expect(read.refused).toBe('The field gate.undeclared is not one this call takes.');
   });
 });
 

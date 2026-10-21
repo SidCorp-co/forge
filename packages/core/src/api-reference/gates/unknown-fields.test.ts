@@ -1,7 +1,18 @@
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { dirname, join, relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { HTTPException } from 'hono/http-exception';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { z } from 'zod';
-import { fieldsPolicy, refusesItself, unknownFields } from '../../lib/unknown-fields.js';
+import { type ZodType, z } from 'zod';
 import {
+  fieldsNamedAt,
+  fieldsPolicy,
+  nestedStrays,
+  refusesItself,
+  unknownFields,
+} from '../../lib/unknown-fields.js';
+import {
+  QUERY_GATE_KEYS,
   queryIssues,
   refusingUnknownFields,
   type ValidatorDeclaration,
@@ -85,6 +96,8 @@ describe('a JSON body field no schema names', () => {
 
 /** Queries that take any key: redirects a third party shapes, each with why (ISS-1421 r19). */
 const QUERY_TAKES_ANY: Record<string, string> = {
+  'GET /api/auth/oauth/:provider/callback':
+    "the identity provider's redirect adds keys of its own, such as Google's scope and authuser",
   'GET /api/integrations/github/installed': "GitHub's install redirect adds setup_action",
   'GET /api/integrations/github/manifest-callback':
     "GitHub's manifest redirect is GitHub's to shape",
@@ -120,7 +133,132 @@ describe('a query key no schema names', () => {
 
   it('names its reason in words for every query that takes any key', () => {
     for (const [key, why] of Object.entries(QUERY_TAKES_ANY))
-      expect(why, key).toMatch(/^GitHub's .{20,}[^.]$/);
+      expect(why, key).toMatch(/^(?:GitHub's|the identity provider's) .{20,}[^.]$/);
+  });
+});
+
+/** What a route's validator answers a body carrying `colour`, read off the hook it mounted. */
+async function answerTo(declaration: ValidatorDeclaration, body: unknown): Promise<string | null> {
+  const parsed = await refusingUnknownFields(declaration.schema).safeParseAsync(body);
+  if (parsed.success) return null;
+  const json = (b: unknown, status = 200) =>
+    new Response(JSON.stringify(b), { status, headers: { 'content-type': 'application/json' } });
+  const c = { json, req: { header: () => undefined, param: () => ({}), query: () => ({}) } };
+  try {
+    const answered = await (declaration.hook as (r: unknown, c: unknown) => unknown)(
+      { success: false, error: parsed.error, data: body },
+      c,
+    );
+    if (answered instanceof Response)
+      return ((await answered.json()) as { message: string }).message;
+    return null;
+  } catch (thrown) {
+    return thrown instanceof HTTPException ? thrown.message : String(thrown);
+  }
+}
+
+/**
+ * Routes whose body names its shape before its fields: a body choosing no option, or not the
+ * `{ base, patch }` envelope, is refused for that first, so the colour rides on a body of that shape.
+ */
+const SHAPE_FIRST: Record<string, Record<string, unknown>> = {
+  'POST /api/orgs/:orgId/ssh-keys': { mode: 'generate' },
+  'PATCH /api/projects/:id/environments': { base: {}, patch: {} },
+  'PATCH /api/projects/:id/pipeline-config': { base: {}, patch: {} },
+};
+
+/**
+ * ISS-1421 r20 — judge-82 sent the git credential helper {host, path, colour} and was told "host and
+ * path are required": a route whose hook words its own refusal swallowed the stray field. Every
+ * route's validator, hook and all, is sent a colour and must name it.
+ */
+describe('a JSON body field no schema names, past a route hook', () => {
+  it('is named whatever the route hook says, on every route', async () => {
+    const hooked = bodies().filter(
+      ({ key, declaration }) => !bodyAsSent(key) && declaration.enforced !== false,
+    );
+    expect(hooked.length).toBeGreaterThan(150);
+    expect(hooked.map((h) => h.key)).toContain('POST /api/devices/me/git-credential');
+    const silent: string[] = [];
+    for (const { key, declaration } of hooked) {
+      const said = await answerTo(declaration, { ...(SHAPE_FIRST[key] ?? {}), colour: 'red' });
+      if (said === null || !/\bcolour\b/.test(said)) silent.push(`${key}: ${said}`);
+    }
+    expect(silent, 'each route answered a colour without naming it').toEqual([]);
+  });
+
+  it('is named inside a body object on every route whose object takes named fields', () => {
+    const silent: string[] = [];
+    let walked = 0;
+    for (const { key, declaration } of bodies()) {
+      if (bodyAsSent(key)) continue;
+      const shape = (declaration.schema as unknown as { shape?: Record<string, unknown> }).shape;
+      for (const field of Object.keys(shape ?? {})) {
+        const body = {
+          [field]: { ...chosenOption(fieldOf(declaration.schema, field)), colour: 'red' },
+        };
+        const strays = nestedStrays(declaration.schema, body);
+        const own = (declaration.schema as never as z.ZodType).safeParse(body).error?.issues ?? [];
+        const named =
+          strays.some((s) => s.keys.includes('colour')) ||
+          own.some(
+            (i) =>
+              i.code === 'unrecognized_keys' && i.path[0] === field && i.keys.includes('colour'),
+          );
+        const isObject = fieldsNamedAt(declaration.schema, [field]).length > 0;
+        if (!isObject) continue;
+        walked++;
+        if (!named && fieldsPolicy(fieldOf(declaration.schema, field)) === 'closed')
+          silent.push(`${key}: ${field}`);
+      }
+    }
+    expect(walked, 'the walk reaches nested objects').toBeGreaterThan(10);
+    expect(silent, 'each line is a nested object that drops a field it does not name').toEqual([]);
+  });
+});
+
+/**
+ * ISS-1421 r20 — `GET /api/integration-connections?orgId=` listed every org's connections: a GET
+ * route that declares no query dropped the key. The gate refuses every key there, so a handler
+ * that reads one must declare it, or it would be refused the key it reads.
+ */
+describe('a query key on a GET route that declares no query', () => {
+  const READS_A_QUERY = /req\.(?:query|queries)\(|searchParams/;
+
+  it('is never read by the route, which would be refused it', () => {
+    const undeclared = routes
+      .filter((r) => r.method === 'GET' && r.path.startsWith('/api/'))
+      .filter((r) => !r.validators.some((v) => v.target === 'query'))
+      .filter((r) => READS_A_QUERY.test(String(r.handler)))
+      .map((r) => r.key);
+    expect(undeclared, 'each route reads a query it does not declare').toEqual([]);
+  });
+
+  it('is read undeclared nowhere in the source: every file reading a raw query declares one', () => {
+    // The walk above reads a handler's own text; a helper it calls (`handleCallback`) is not in
+    // it. So any file that reads a query raw must also declare one, or say here who declares it.
+    const DECLARED_ELSEWHERE: Record<string, string> = {
+      'auth/oauth/handler.ts': 'read by the OAuth routes in auth/oauth/routes.ts, which declare it',
+      'middleware/error.ts': 'reads back what a refused request sent, to quote it',
+      'api-reference/declare/validator.ts': 'the gate itself',
+    };
+    const root = join(dirname(fileURLToPath(import.meta.url)), '../..');
+    const unread: string[] = [];
+    for (const file of sourceFiles(root)) {
+      const text = readFileSync(join(root, file), 'utf8');
+      if (!/req\.(?:query|queries)\(/.test(text) || file in DECLARED_ELSEWHERE) continue;
+      // A route file's declarations may sit in its `-reference.ts` beside it.
+      const reference = join(root, file.replace(/\.ts$/, '-reference.ts'));
+      const declared = [text, existsSync(reference) ? readFileSync(reference, 'utf8') : ''];
+      if (!declared.some((t) => /(?:declaresInput|zValidator)\(\s*'query'/.test(t)))
+        unread.push(file);
+    }
+    expect(unread, 'each file reads a query raw and declares none').toEqual([]);
+  });
+
+  it('names no gate key without a reason', () => {
+    for (const [key, why] of Object.entries(QUERY_GATE_KEYS))
+      expect(why, key).toMatch(/^[a-z].{20,}[^.]$/);
   });
 });
 
@@ -185,3 +323,48 @@ describe('unknownFields', () => {
     expect(loose.success).toBe(true);
   });
 });
+
+/** The schema a top-level field is read by, its wrappers off. */
+function fieldOf(schema: ZodType, field: string): ZodType {
+  let at = schema as unknown as { _zod: { def: Record<string, unknown> } };
+  for (;;) {
+    const def = at._zod.def as {
+      type: string;
+      innerType?: unknown;
+      shape?: Record<string, unknown>;
+    };
+    if (def.type === 'object') return (def.shape?.[field] ?? z.never()) as ZodType;
+    if (!def.innerType) return z.never();
+    at = def.innerType as typeof at;
+  }
+}
+
+/** For a discriminated union, a body choosing its first option; for anything else, nothing. */
+function chosenOption(schema: ZodType): Record<string, unknown> {
+  let at = schema as unknown as { _zod: { def: Record<string, unknown> } };
+  for (;;) {
+    const def = at._zod.def as {
+      type: string;
+      innerType?: unknown;
+      discriminator?: string;
+      options?: { _zod: { propValues?: Record<string, Set<unknown>> } }[];
+    };
+    if (def.type === 'union' && def.discriminator && def.options?.[0]) {
+      const [value] = def.options[0]._zod.propValues?.[def.discriminator] ?? [];
+      return { [def.discriminator]: value };
+    }
+    if (!def.innerType) return {};
+    at = def.innerType as typeof at;
+  }
+}
+
+/** Every non-test `.ts` file under `root`, relative to it. */
+function sourceFiles(root: string, at = root): string[] {
+  return readdirSync(at, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(at, entry.name);
+    if (entry.isDirectory()) return sourceFiles(root, path);
+    return entry.name.endsWith('.ts') && !/\.test\.ts$/.test(entry.name)
+      ? [relative(root, path)]
+      : [];
+  });
+}

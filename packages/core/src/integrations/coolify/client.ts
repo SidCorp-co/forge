@@ -148,6 +148,7 @@ export class CoolifyClient {
   private readonly previousApiToken: string | undefined;
   private readonly timeoutMs: number;
   private readonly fetchImpl: typeof fetch;
+  private answeredOnPrevious = false;
 
   constructor(opts: CoolifyClientOptions) {
     this.baseUrl = opts.baseUrl;
@@ -159,6 +160,11 @@ export class CoolifyClient {
 
   get address(): string {
     return hostOf(this.baseUrl);
+  }
+
+  /** Whether a call this client made was answered only on the previous token (ISS-1421 r20). */
+  get usedPreviousToken(): boolean {
+    return this.answeredOnPrevious;
   }
 
   private async request<T>(method: 'GET' | 'POST', path: string, body?: unknown): Promise<T> {
@@ -216,6 +222,7 @@ export class CoolifyClient {
             res.status !== 401 && res.status !== 403 && res.status < 500,
           );
         }
+        if (token !== this.apiToken) this.answeredOnPrevious = true;
         if (res.status === 204) return { status: res.status, data: undefined as unknown as T };
         return { status: res.status, data: (await res.json()) as T };
       } catch (err) {

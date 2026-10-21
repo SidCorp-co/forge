@@ -32,7 +32,7 @@ pub async fn ask(client: &CoreClient, host: &str, path: &str) -> Result<GitCrede
         .json(&serde_json::json!({ "protocol": "https", "host": host, "path": path }))
         .send()
         .await
-        .map_err(|e| Error::Other(format!("git-credential request: {e}")))?;
+        .map_err(|e| crate::transport::status::not_reached("git-credential request", &e))?;
     if resp.status().as_u16() == 401 {
         return Err(Error::Unauthorized);
     }
@@ -56,5 +56,5 @@ pub async fn ask(client: &CoreClient, host: &str, path: &str) -> Result<GitCrede
     }
     resp.json::<GitCredentialGrant>()
         .await
-        .map_err(|e| Error::Other(format!("git-credential decode: {e}")))
+        .map_err(|e| crate::transport::status::not_reached("git-credential decode", &e))
 }

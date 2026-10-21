@@ -13,6 +13,7 @@ import {
   releaseDeployLocksForRun,
 } from '../../pipeline/deploy-lock.js';
 import { recordDelivery, updateDelivery } from '../deliveries.js';
+import { newKeyRefused } from '../rotation.js';
 import { findConnectionById, updateConnection } from '../store.js';
 import {
   type DispatchingAdapterMethods,
@@ -172,6 +173,19 @@ const coolifyAdapterMethods: DispatchingAdapterMethods<CoolifyConfig, CoolifySec
       for (const t of targets) {
         const res = await client.getResource(t.resourceUuid);
         names.push(res.name ? `${t.label} → "${res.name}"` : `${t.label} → ${t.resourceUuid}`);
+      }
+      // Test connection judges the key last saved: an answer only the previous token got is its
+      // refusal, saying until when Forge's own calls still run on the previous one (ISS-1421 r20).
+      if (client.usedPreviousToken) {
+        const refused = newKeyRefused(`The server at ${client.address}`, ctx.secrets);
+        await updateConnection(ctx.connectionId, {
+          lastHealthStatus: refused.status,
+          lastHealthAt: new Date(),
+        });
+        return {
+          ...refused,
+          diagnostics: { ...refused.diagnostics, saidOfAddress: true, targetCount: targets.length },
+        } satisfies HealthCheckResult;
       }
       const durationMs = Date.now() - started;
       await updateConnection(ctx.connectionId, {

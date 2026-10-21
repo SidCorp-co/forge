@@ -9,6 +9,7 @@ import { isBareRefusal, isLabelOnly } from '../../lib/refusal-sentence.js';
 import {
   fieldsNamedAt,
   fieldsPolicy,
+  nestedStrays,
   refusesItself,
   unknownFields,
 } from '../../lib/unknown-fields.js';
@@ -47,12 +48,10 @@ function inWords(
   const { sentences, accepted } = schemaRefusalWords(error.issues, words);
   // A hook's flattened errors keep only each top-level key, so `config.baseUrl` read as `config`:
   // they are said again from the parse's own issues, as the message is (ISS-1421 r19).
-  const flattened =
-    details !== null &&
-    typeof details === 'object' &&
-    Array.isArray((details as { formErrors?: unknown }).formErrors) &&
-    typeof (details as { fieldErrors?: unknown }).fieldErrors === 'object';
-  const said = flattened ? { ...details, ...wordedFlatten(error.issues, words) } : details;
+  // A hook that kept no details gets the same sentences by field (ISS-1421 r20).
+  const said = isFlattened(details)
+    ? { ...details, ...wordedFlatten(error.issues, words) }
+    : (details ?? wordedFlatten(error.issues, words));
   if (accepted.length === 0) return { message: sentences.join(' '), details: said };
   const values = { accepted: Object.fromEntries(accepted.map((a) => [a.field, a.values])) };
   const held = said !== null && typeof said === 'object' && !Array.isArray(said);
@@ -62,17 +61,90 @@ function inWords(
   };
 }
 
-/** A route hook's thrown refusal, re-worded from the parse's own issues where it was not a sentence. */
+/** Whether refusal details hold `z.flattenError`'s shape, the parse's own account of each field. */
+function isFlattened(details: unknown): details is { formErrors: unknown[]; fieldErrors: object } {
+  return (
+    details !== null &&
+    typeof details === 'object' &&
+    Array.isArray((details as { formErrors?: unknown }).formErrors) &&
+    typeof (details as { fieldErrors?: unknown }).fieldErrors === 'object'
+  );
+}
+
+/**
+ * A hook's own sentence as its details: under the one field the parse refused, or the whole input,
+ * so details never say what the message does not (ISS-1421 r20, judge-82's merge mark).
+ */
+function ownSentenceDetails(
+  message: string,
+  error: z.core.$ZodError,
+): { formErrors: string[]; fieldErrors: Record<string, string[]> } {
+  const fields = new Set(error.issues.map((i) => i.path[0]));
+  const [only] = [...fields];
+  return fields.size === 1 && only !== undefined
+    ? { formErrors: [], fieldErrors: { [String(only)]: [message] } }
+    : { formErrors: [message], fieldErrors: {} };
+}
+
+/**
+ * Whether a hook's own sentence speaks of the fields the parse found the route does not take: it
+ * names one of them, or none is a plain field name a sentence could carry. A door that shortens a
+ * long list ("`k0` and 9 more") or declines to echo a key that reads as a sentence keeps its words.
+ */
+function speaksOfStrays(message: string, error: z.core.$ZodError): boolean {
+  const keys = error.issues.flatMap((i) => (i.code === 'unrecognized_keys' ? i.keys : []));
+  const plain = keys.filter((k) => /^[A-Za-z_]\w{0,39}$/.test(k));
+  return (
+    plain.length === 0 || plain.some((k) => new RegExp(`(?:^|\\W)${k}(?:$|\\W)`).test(message))
+  );
+}
+
+/** Whether every sentence flattened details hold is one the message says already. */
+function saysOnly(
+  details: { formErrors: unknown[]; fieldErrors: object },
+  message: string,
+): boolean {
+  const said = [...details.formErrors, ...Object.values(details.fieldErrors).flat()];
+  return said.every((s) => typeof s === 'string' && message.includes(s));
+}
+
+/**
+ * A route hook's refusal, said again from the parse's own issues where it was not a sentence, or
+ * where the parse found a body field the route does not take: that field is this gate's to name,
+ * whatever the hook said (ISS-1421 r20, judge-82's git credential and POST /api/orgs). A hook's own
+ * sentence otherwise stands, with that sentence as its details.
+ */
+function rewordedRefusal(
+  message: string,
+  details: unknown,
+  result: Parsed & { error: z.core.$ZodError },
+  schema: ZodType,
+  stray: boolean,
+): { message: string; details: unknown } | null {
+  if (stray && !speaksOfStrays(message, result.error))
+    return inWords(result.error, details, schema, result.data);
+  if (isBareRefusal(message) || isLabelOnly(message))
+    return inWords(result.error, details, schema, result.data);
+  if (isFlattened(details) && !saysOnly(details, message))
+    return { message, details: { ...details, ...ownSentenceDetails(message, result.error) } };
+  return null;
+}
+
+/** A route hook's thrown refusal, re-worded by `rewordedRefusal`. */
 function worded(
   thrown: unknown,
   result: Parsed & { error: z.core.$ZodError },
   schema: ZodType,
+  stray: boolean,
 ): unknown {
   if (!(thrown instanceof HTTPException) || thrown.status >= 500) return thrown;
-  if (!isBareRefusal(thrown.message) && !isLabelOnly(thrown.message)) return thrown;
   const cause = (thrown.cause ?? {}) as { code?: unknown; details?: unknown };
-  const { message, details } = inWords(result.error, cause.details, schema, result.data);
-  return new HTTPException(thrown.status, { message, cause: { ...cause, details } });
+  const said = rewordedRefusal(thrown.message, cause.details, result, schema, stray);
+  if (!said) return thrown;
+  return new HTTPException(thrown.status, {
+    message: said.message,
+    cause: { ...cause, details: said.details },
+  });
 }
 
 /** A refusal a hook answered itself, re-worded the same way; any other answer passes untouched. */
@@ -80,6 +152,7 @@ async function wordedAnswer(
   answered: Response,
   result: Parsed & { error: z.core.$ZodError },
   schema: ZodType,
+  stray: boolean,
 ): Promise<Response> {
   if (answered.status < 400 || answered.status >= 500) return answered;
   if (!answered.headers.get('content-type')?.includes('application/json')) return answered;
@@ -88,9 +161,9 @@ async function wordedAnswer(
     .json()
     .catch(() => null)) as Record<string, unknown> | null;
   if (!body || typeof body.message !== 'string') return answered;
-  if (!isBareRefusal(body.message) && !isLabelOnly(body.message)) return answered;
-  const { message, details } = inWords(result.error, body.details, schema, result.data);
-  return new Response(JSON.stringify({ ...body, message, details }), {
+  const said = rewordedRefusal(body.message, body.details, result, schema, stray);
+  if (!said) return answered;
+  return new Response(JSON.stringify({ ...body, ...said }), {
     status: answered.status,
     headers: answered.headers,
   });
@@ -115,13 +188,15 @@ function sentenced(
     )
       throw queryRefused(result.error.issues, schema, result.data);
     const failed = { ...result, error: result.error };
+    const stray =
+      target === 'json' && result.error.issues.some((i) => i.code === 'unrecognized_keys');
     let answered: unknown;
     try {
       answered = await hook?.(result, c);
     } catch (thrown) {
-      throw worded(thrown, failed, schema);
+      throw worded(thrown, failed, schema, stray);
     }
-    if (answered instanceof Response) return wordedAnswer(answered, failed, schema);
+    if (answered instanceof Response) return wordedAnswer(answered, failed, schema, stray);
     if (answered && typeof answered === 'object' && 'response' in answered) return answered;
     throw schemaRefused(result.error, schema, result.data);
   };
@@ -140,6 +215,8 @@ export function refusingUnknownFields(schema: ZodType): ZodType {
       if (keys.length > 0 && !refusesItself(schema, body)) {
         ctx.addIssue({ code: 'unrecognized_keys', keys, input: body as never });
       }
+      for (const { path, keys: inner } of nestedStrays(schema, body))
+        ctx.addIssue({ code: 'unrecognized_keys', keys: inner, path, input: body as never });
     })
     .pipe(schema as z.ZodType<unknown>);
 }
@@ -274,7 +351,12 @@ export function declaresInput(
     if (target === 'json' && fieldsPolicy(schema) !== 'open') {
       // Hono keeps the parsed body, so the handler's own read gets the same one.
       const body = await c.req.json().catch(() => undefined);
-      const keys = unknownFields(schema, body);
+      const keys = [
+        ...unknownFields(schema, body),
+        ...nestedStrays(schema, body).flatMap(({ path, keys: inner }) =>
+          inner.map((k) => [...path, k].join('.')),
+        ),
+      ];
       if (keys.length > 0) throw unknownFieldsRefused(keys, schema);
     }
     return next();
@@ -379,5 +461,46 @@ export function refuseBodyNotTaken(): MiddlewareHandler {
       message: 'This call takes no body.',
       cause: { code: 'BAD_REQUEST', details: { takesNoBody: true } },
     });
+  };
+}
+
+/**
+ * Query keys a gate in front of the routes reads, which no route declares, each with why. None
+ * today: no middleware on `/api` reads a query. A key added here is one every GET route takes.
+ */
+export const QUERY_GATE_KEYS: Readonly<Record<string, string>> = {};
+
+const READS = new Set(['GET', 'HEAD']);
+
+/** Why a read refuses a query key, in the reference, where the route declares no query. */
+export const QUERY_NOT_TAKEN_WHEN = 'the request carries a query key, and this call takes no query';
+
+/** Whether a route is held to no query at all, the one predicate the gate and the reference share. */
+export function takesNoQuery(method: string, validators: readonly ValidatorDeclaration[]): boolean {
+  return READS.has(method) && !validators.some((v) => v.target === 'query');
+}
+
+/** The schema a route that declares no query is held to: it takes no key. */
+const NO_QUERY = z.object({}).strict();
+
+/**
+ * A GET route that declares no query refuses every key sent, naming each, before any gate or
+ * handler runs: `GET /api/integration-connections?orgId=` listed every org's connections while the
+ * key was dropped unread (ISS-1421 r20). A route reading a query declares it.
+ */
+export function refuseQueryNotTaken(): MiddlewareHandler {
+  return async (c, next) => {
+    if (!READS.has(c.req.method)) return next();
+    const handlers = ownHandlers(c);
+    if (!handlers) return next();
+    const declared = handlers.flatMap((h) => validatorDeclarations.get(h) ?? []);
+    if (!takesNoQuery(c.req.method, declared)) return next();
+    const keys = Object.keys(c.req.queries()).filter((k) => !Object.hasOwn(QUERY_GATE_KEYS, k));
+    if (keys.length === 0) return next();
+    throw queryRefused(
+      [{ code: 'unrecognized_keys', path: [], keys, message: 'Unrecognized keys' }],
+      NO_QUERY,
+      c.req.query(),
+    );
   };
 }

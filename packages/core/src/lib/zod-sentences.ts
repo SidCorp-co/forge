@@ -363,3 +363,18 @@ export function schemaRefused(
     cause: { code: 'BAD_REQUEST', details },
   });
 }
+
+/**
+ * A parse's issues as one run of sentences for a reader with no details to look in: an MCP answer,
+ * a box's refusal, an error a stored row raised. Each field is named under `at`, and a fixed set's
+ * values follow its sentence (ISS-1421 r20: these sites said zod's own words).
+ */
+export function issueSentences(
+  issues: readonly SchemaIssue[],
+  at: readonly PropertyKey[] = [],
+): string {
+  const placed = issues.map((i) => ({ ...i, path: [...at, ...(i.path ?? [])] }));
+  const { sentences, accepted } = schemaRefusalWords(placed, { valuesAre: 'named next' });
+  const values = accepted.map((a) => `The values ${a.field} takes are ${a.values.join(', ')}.`);
+  return [...sentences, ...values].join(' ');
+}

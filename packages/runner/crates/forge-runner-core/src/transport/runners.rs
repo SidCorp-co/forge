@@ -77,7 +77,7 @@ pub async fn list_me_within(client: &CoreClient, deadline: Duration) -> Result<V
     }
     resp.json::<Vec<MeRunner>>()
         .await
-        .map_err(|e| Error::Other(format!("me/runners decode: {e}")))
+        .map_err(|e| crate::transport::status::not_reached("me/runners decode", &e))
 }
 
 /// Push this device's repo path/branch for one runner row up to the server.

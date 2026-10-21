@@ -1,5 +1,5 @@
 import { logger } from '../../logger.js';
-import { isPreviousCredentialValid } from '../rotation.js';
+import { isPreviousCredentialValid, newKeyRefused } from '../rotation.js';
 import { updateConnection } from '../store.js';
 import {
   declareIntegration,
@@ -44,9 +44,8 @@ const sentryAdapterMethods: IntegrationAdapterMethods<SentryConfig, SentrySecret
 
     const base = sentryRestBase(ctx.config.host);
 
-    // One attempt with a given token. Returns the parsed result OR a 401/403
-    // sentinel so the caller can fall back to the previous token (ISS-405 dual-
-    // token rotation, mirrors postman/adapter.ts).
+    // One attempt with a given token. Returns the parsed result OR a 401/403 sentinel, so the check
+    // can say whether the previous token still works where the new one was refused.
     type AttemptResult =
       | { kind: 'ok'; body: SentryOrg[] }
       | { kind: 'unauthorized'; status: number }
@@ -74,21 +73,26 @@ const sentryAdapterMethods: IntegrationAdapterMethods<SentryConfig, SentrySecret
     }
 
     try {
-      let result = await attempt(authToken);
-      // If the primary token is rejected AND the operator just rotated within
-      // the overlap window, retry once with the retained previous token.
+      const result = await attempt(authToken);
+      // Test connection judges the key last saved. The previous one is tried only to say whether
+      // Forge's own calls still run on it, never to pass the check (ISS-1421 r20).
       if (
         result.kind === 'unauthorized' &&
         ctx.secrets.previousAuthToken &&
-        isPreviousCredentialValid(ctx.secrets)
+        isPreviousCredentialValid(ctx.secrets) &&
+        (await attempt(ctx.secrets.previousAuthToken)).kind === 'ok'
       ) {
-        result = await attempt(ctx.secrets.previousAuthToken);
+        const refused = newKeyRefused('Sentry', ctx.secrets);
+        await updateConnection(ctx.connectionId, {
+          lastHealthStatus: refused.status,
+          lastHealthAt: new Date(),
+        });
+        return refused;
       }
 
       if (result.kind !== 'ok') {
-        // unauthorized = token rejected even after the ISS-405 previous-token
-        // retry → the operator must re-enter it → needs_reauth (ISS-409). A
-        // non-auth HTTP error stays a generic error.
+        // unauthorized = the key last saved was refused → the operator must re-enter it →
+        // needs_reauth (ISS-409). A non-auth HTTP error stays a generic error.
         const healthStatus = result.kind === 'unauthorized' ? 'needs_reauth' : 'error';
         await updateConnection(ctx.connectionId, {
           lastHealthStatus: healthStatus,

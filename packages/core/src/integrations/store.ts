@@ -353,10 +353,11 @@ export async function createBinding(input: CreateBindingInput): Promise<Integrat
   return row;
 }
 
+/** A deleted connection: switched off, with every key stored on it wiped, the previous one included. */
 export async function softDeleteConnection(id: string): Promise<void> {
   await db
     .update(integrationConnections)
-    .set({ active: false, updatedAt: new Date() })
+    .set({ active: false, secretsEnc: null, updatedAt: new Date() })
     .where(eq(integrationConnections.id, id));
 }
 

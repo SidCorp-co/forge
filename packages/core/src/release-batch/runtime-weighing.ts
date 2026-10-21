@@ -14,6 +14,7 @@ import { db } from '../db/client.js';
 import { devices, issues, projects, runners } from '../db/schema.js';
 import { latestCriterionVerdicts } from '../issues/criteria-verdicts.js';
 import { issueIdentities } from '../issues/verdict-standing.js';
+import { issueSentences } from '../lib/zod-sentences.js';
 import { recognisableIdentity, sameIdentity } from '../messaging/verdict-identity.js';
 import {
   type ReleaseRuntimesConfig,
@@ -53,7 +54,7 @@ async function declaredRuntimes(projectId: string): Promise<ReleaseRuntimesConfi
   const parsed = releaseRuntimesSchema.safeParse(pc.releaseRuntimes);
   if (!parsed.success) {
     throw new Error(
-      `this project's stored pipelineConfig.releaseRuntimes is not a valid declaration: ${parsed.error.issues.map((i) => i.message).join('; ')}`,
+      `this project's stored pipelineConfig.releaseRuntimes is not a valid declaration: ${issueSentences(parsed.error.issues, ['releaseRuntimes'])}`,
     );
   }
   return parsed.data;

@@ -4,6 +4,19 @@ import { describeOperation, fail, json, redirect } from '../../api-reference/dec
 /** The provider is any string: one the server does not know is refused with a 404, not a 400. */
 export const providerParamSchema = z.object({ provider: z.string() });
 
+/** Where to land after sign-in; `handleStart` reads it (ISS-1421 r20: it was read undeclared). */
+export const startQuerySchema = z.object({ redirect: z.string().optional() }).strict();
+
+/**
+ * The provider's redirect back: the code and the state, or its error. It takes any other key, as
+ * the provider shapes this redirect and adds keys of its own (Google's `scope`, `authuser`).
+ */
+export const callbackQuerySchema = z.looseObject({
+  code: z.string().optional(),
+  state: z.string().optional(),
+  error: z.string().optional(),
+});
+
 export const providersSchema = z.object({
   providers: z.array(z.object({ id: z.enum(['github', 'google', 'oidc']), label: z.string() })),
 });

@@ -96,7 +96,7 @@ pub async fn ask(client: &CoreClient, req: Ask<'_>) -> Result<String> {
         .json(&body)
         .send()
         .await
-        .map_err(|e| Error::Other(format!("question ask: {e}")))?;
+        .map_err(|e| crate::transport::status::not_reached("question ask", &e))?;
     if resp.status().as_u16() == 401 {
         return Err(Error::Unauthorized);
     }
@@ -112,7 +112,7 @@ pub async fn ask(client: &CoreClient, req: Ask<'_>) -> Result<String> {
     let parsed: AskReply = resp
         .json()
         .await
-        .map_err(|e| Error::Other(format!("question ask decode: {e}")))?;
+        .map_err(|e| crate::transport::status::not_reached("question ask decode", &e))?;
     Ok(parsed.question_id)
 }
 
@@ -135,7 +135,7 @@ pub async fn answer(
         .bearer_auth(client.device_token())
         .send()
         .await
-        .map_err(|e| Error::Other(format!("question read: {e}")))?;
+        .map_err(|e| crate::transport::status::not_reached("question read", &e))?;
     if resp.status().as_u16() == 401 {
         return Err(Error::Unauthorized);
     }
@@ -160,7 +160,7 @@ pub async fn answer(
     let parsed: AnswerReply = resp
         .json()
         .await
-        .map_err(|e| Error::Other(format!("question read decode: {e}")))?;
+        .map_err(|e| crate::transport::status::not_reached("question read decode", &e))?;
     Ok(parsed.answer)
 }
 

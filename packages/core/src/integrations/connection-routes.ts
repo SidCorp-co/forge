@@ -33,6 +33,7 @@ import {
   healthResultSchema,
   listConnectionBindings,
   listConnections,
+  listConnectionsQuerySchema,
   okSchema,
   removeConnection,
   storeConnection,
@@ -114,27 +115,35 @@ async function loadManageableConnection(
 export const integrationConnectionsRoutes = new Hono<{ Variables: AuthVars }>();
 integrationConnectionsRoutes.use('*', requireAuth(), assertEmailVerified());
 
-integrationConnectionsRoutes.get('/', listConnections, async (c) => {
-  const userId = c.get('userId');
-  const reached = await listReachableConnections(userId);
-  const bindings = await listBindingsByConnectionIds(reached.map((r) => r.connection.id));
-  const ownerNames = await ownerNamesOf(reached.map((r) => r.connection));
-  return c.json(
-    answer(directorySchema, {
-      items: reached.map((r) =>
-        summarizeConnectionWithUsage(
-          r.connection,
-          bindingsVisibleTo(r, bindings.get(r.connection.id) ?? [], (b) => b.projectId),
-          {
-            reach: r.reach,
-            canManage: r.canManage,
-            ownerName: ownerNames.get(r.connection.id) ?? null,
-          },
+integrationConnectionsRoutes.get(
+  '/',
+  listConnections,
+  zValidator('query', listConnectionsQuerySchema),
+  async (c) => {
+    const userId = c.get('userId');
+    const { orgId } = c.req.valid('query');
+    const reached = (await listReachableConnections(userId)).filter(
+      (r) => !orgId || (r.connection.ownerType === 'org' && r.connection.ownerId === orgId),
+    );
+    const bindings = await listBindingsByConnectionIds(reached.map((r) => r.connection.id));
+    const ownerNames = await ownerNamesOf(reached.map((r) => r.connection));
+    return c.json(
+      answer(directorySchema, {
+        items: reached.map((r) =>
+          summarizeConnectionWithUsage(
+            r.connection,
+            bindingsVisibleTo(r, bindings.get(r.connection.id) ?? [], (b) => b.projectId),
+            {
+              reach: r.reach,
+              canManage: r.canManage,
+              ownerName: ownerNames.get(r.connection.id) ?? null,
+            },
+          ),
         ),
-      ),
-    }),
-  );
-});
+      }),
+    );
+  },
+);
 
 integrationConnectionsRoutes.post(
   '/',
@@ -384,6 +393,21 @@ integrationConnectionsRoutes.patch(
       if (merged !== undefined) connPatch.secrets = merged;
     }
 
+    // A deleted connection holds no key, and turning it on again takes a new one (ISS-1421 r20).
+    const keyed =
+      connPatch.secrets !== undefined ? connPatch.secrets !== null : existing.secretsEnc !== null;
+    if (
+      patch.active === true &&
+      !keyed &&
+      getIntegration(existing.provider)?.schemas.primaryCredentialField
+    ) {
+      throw new HTTPException(409, {
+        message:
+          'This connection holds no key, as deleting it wiped its keys. Save a new key to turn it back on.',
+        cause: { code: 'CONNECTION_HAS_NO_KEY' },
+      });
+    }
+
     const updated = await updateConnection(id, connPatch);
     if (!updated) throw notFound('connection');
     notifyConnectionChanged(existing.provider, id);
@@ -395,9 +419,8 @@ integrationConnectionsRoutes.delete('/:id', ...removeConnection, async (c) => {
   const id = c.req.param('id');
   const userId = c.get('userId');
   const existing = await loadManageableConnection(id, userId);
-  // Cascade: bindings reference the connection with ON DELETE CASCADE, but we
-  // only soft-delete here (active=false) so existing bindings stop resolving via
-  // findActiveBinding's `connection.active` filter without dropping audit rows.
+  // The row stays for the bindings' audit rows and is switched off, so its bindings stop resolving
+  // (findActiveBinding's `connection.active` filter); every key on it is wiped (ISS-1421 r20).
   await softDeleteConnection(id);
   notifyConnectionChanged(existing.provider, id);
   return c.json(answer(okSchema, { ok: true }));

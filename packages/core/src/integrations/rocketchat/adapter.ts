@@ -66,24 +66,32 @@ const rocketChatAdapterMethods: IntegrationAdapterMethods<RocketChatConfig, Rock
         headers: { 'X-Auth-Token': authToken, 'X-User-Id': userId, Accept: 'application/json' },
         signal: controller.signal,
       });
-      if (res.status === 401 || res.status === 403) {
+      // Whether the server at the saved address is Rocket.Chat is what its answer is about, so each
+      // answer is said of that server, as Coolify's are (ISS-1421 r20, criterion 176).
+      const server = `The server at ${hostOf(serverUrl)}`;
+      const ofAddress = { httpStatus: res.status, saidOfAddress: true };
+      if (res.status === 401 || res.status === 403)
         return fail(
           'needs_reauth',
-          `Rocket.Chat refused the bot credential with HTTP ${res.status}.`,
-          {
-            httpStatus: res.status,
-          },
+          `${server} refused the bot credential with HTTP ${res.status}.`,
+          ofAddress,
         );
-      }
       if (!res.ok)
-        return fail('error', `Rocket.Chat answered HTTP ${res.status} when asked who the bot is.`, {
-          httpStatus: res.status,
-        });
-      const body = (await res.json()) as { success?: boolean; username?: string };
+        return fail(
+          'error',
+          `${server} answered HTTP ${res.status} when asked who the bot is.`,
+          ofAddress,
+        );
+      const body = (await res.json().catch(() => null)) as {
+        success?: boolean;
+        username?: string;
+      } | null;
       if (!body?.success && !body?.username)
-        return fail('error', 'Rocket.Chat answered, but did not say who the bot is.', {
-          httpStatus: res.status,
-        });
+        return fail(
+          'error',
+          `${server} answered, but did not say who the bot is, so it may not be Rocket.Chat.`,
+          ofAddress,
+        );
       await updateConnection(ctx.connectionId, {
         lastHealthStatus: 'ok',
         lastHealthAt: new Date(),
@@ -129,7 +137,7 @@ export const rocketchatIntegration = declareIntegration<RocketChatConfig, Rocket
     secrets: rocketchatSecretsSchema,
     patchSecrets: rocketchatSecretsSchema.partial(),
     primaryCredentialField: 'authToken',
-    previousCredentialField: 'previousAuthToken',
+    previousCredentialField: null,
     independentSecretFields: ['userId'],
     bindingConfigKeys: ROCKETCHAT_BINDING_CONFIG_KEYS,
   },
@@ -146,3 +154,12 @@ export const rocketchatIntegration = declareIntegration<RocketChatConfig, Rocket
 });
 
 export const rocketChatAdapter = rocketChatAdapterMethods;
+
+/** The host a saved address names, or the address itself where it is not one. */
+function hostOf(address: string): string {
+  try {
+    return new URL(address).host;
+  } catch {
+    return address;
+  }
+}

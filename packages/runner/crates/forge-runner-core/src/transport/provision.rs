@@ -136,7 +136,15 @@ pub async fn pull_pending(client: &CoreClient) -> std::result::Result<Pending, P
         .bearer_auth(client.device_token())
         .send()
         .await
-        .map_err(|e| PullRefusal::unanswered(&url, &format!("never got an answer: {e}")))?;
+        .map_err(|e| {
+            PullRefusal::unanswered(
+                &url,
+                &format!(
+                    "never got an answer, as {}",
+                    super::status::why_not_reached(&e)
+                ),
+            )
+        })?;
     let status = resp.status();
     // The status as `status::named` says it, and never as `StatusCode`'s own
     // `Display`: that prints `520 <unknown status code>` for the whole 52x
@@ -432,7 +440,7 @@ pub async fn report_status(
         .json(&ReportBody { status, detail })
         .send()
         .await
-        .map_err(|e| Error::Other(format!("provision-status request: {e}")))?;
+        .map_err(|e| crate::transport::status::not_reached("provision-status request", &e))?;
     if !resp.status().is_success() {
         let code = resp.status().as_u16();
         let text = resp.text().await.unwrap_or_default();

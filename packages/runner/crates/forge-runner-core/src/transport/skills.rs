@@ -112,14 +112,14 @@ pub async fn pull_manifest(
         .bearer_auth(client.device_token())
         .send()
         .await
-        .map_err(|e| Error::Other(format!("skills manifest request: {e}")))?;
+        .map_err(|e| crate::transport::status::not_reached("skills manifest request", &e))?;
     if !resp.status().is_success() {
         return Err(map_status("skills manifest", resp.status()));
     }
     let body = resp
         .json::<SkillManifestResponse>()
         .await
-        .map_err(|e| Error::Other(format!("skills manifest decode: {e}")))?;
+        .map_err(|e| crate::transport::status::not_reached("skills manifest decode", &e))?;
     Ok(body.skills)
 }
 
@@ -138,13 +138,13 @@ pub async fn pull_content(
         .bearer_auth(client.device_token())
         .send()
         .await
-        .map_err(|e| Error::Other(format!("skill content request: {e}")))?;
+        .map_err(|e| crate::transport::status::not_reached("skill content request", &e))?;
     if !resp.status().is_success() {
         return Err(map_status("skill content", resp.status()));
     }
     resp.json::<SkillContent>()
         .await
-        .map_err(|e| Error::Other(format!("skill content decode: {e}")))
+        .map_err(|e| crate::transport::status::not_reached("skill content decode", &e))
 }
 
 /// Report the hashes the runner installed for each seeded skill, plus the
@@ -173,7 +173,7 @@ pub async fn report_installed(
         .json(&body)
         .send()
         .await
-        .map_err(|e| Error::Other(format!("skills report request: {e}")))?;
+        .map_err(|e| crate::transport::status::not_reached("skills report request", &e))?;
     if !resp.status().is_success() {
         return Err(map_status("skills report", resp.status()));
     }

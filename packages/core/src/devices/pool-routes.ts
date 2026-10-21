@@ -18,6 +18,7 @@ import {
   resolveLeaseKey,
 } from '../issues/issue-lease.js';
 import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
+import { schemaRefused } from '../lib/zod-sentences.js';
 import { type DeviceVars, requireDevice } from '../middleware/require-device.js';
 import { PARK_PROTECTIONS } from '../questions/protections.js';
 import { answerOf, registerWaiter, waiterFor } from '../questions/read.js';
@@ -364,8 +365,9 @@ devicePoolRoutes.post(
   ),
   declaresInput('json', askQuestionBodySchema),
   async (c) => {
-    const parsed = askQuestionBodySchema.safeParse(await c.req.json().catch(() => null));
-    if (!parsed.success) throw badRequest(z.flattenError(parsed.error));
+    const raw = await c.req.json().catch(() => null);
+    const parsed = askQuestionBodySchema.safeParse(raw);
+    if (!parsed.success) throw schemaRefused(parsed.error, askQuestionBodySchema, raw);
     const body = parsed.data as AskBody;
     await assertDeviceBoundToProject(c.get('device').id, body.projectId);
     try {

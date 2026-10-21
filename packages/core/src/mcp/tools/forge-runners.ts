@@ -7,6 +7,7 @@ import {
 } from '../../db/runner-vocabulary.js';
 import { readRunnerPoolRead } from '../../devices/pool-read-report.js';
 import { countInFlightByRunner, countInFlightForOneRunner } from '../../jobs/in-flight.js';
+import { issueSentences } from '../../lib/zod-sentences.js';
 import { setRunnerStatus as auditedSetRunnerStatus } from '../../runners/runner-events.js';
 import {
   findRunnerById,
@@ -79,9 +80,9 @@ function publicRunnerRow(r: RunnerRow) {
 function parseCapabilitiesOrThrow(input: unknown): Record<string, unknown> {
   const parsed = runnerCapabilitiesSchema.safeParse(input ?? {});
   if (!parsed.success) {
-    const first = parsed.error.issues[0];
-    const path = first?.path?.join('.') ?? '<root>';
-    throw new Error(`BAD_REQUEST: INVALID_CAPABILITIES: ${path}: ${first?.message ?? 'invalid'}`);
+    throw new Error(
+      `BAD_REQUEST: INVALID_CAPABILITIES: ${issueSentences(parsed.error.issues, ['capabilities'])}`,
+    );
   }
   return parsed.data as Record<string, unknown>;
 }

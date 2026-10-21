@@ -10,7 +10,6 @@
  */
 
 import { logger } from '../../logger.js';
-import { isPreviousCredentialValid } from '../rotation.js';
 import { updateConnection } from '../store.js';
 import {
   declareIntegration,
@@ -48,9 +47,7 @@ const postmanAdapterMethods: IntegrationAdapterMethods<PostmanConfig, PostmanSec
 
     const base = postmanRestBase(ctx.config.region ?? 'us');
 
-    // One attempt with a given key. Returns the parsed result OR a 401/403
-    // sentinel so the caller can fall back to the previous key (ISS-405 dual-
-    // token rotation, mirrors coolify/client.ts:50-79).
+    // One attempt with the key. Returns the parsed result OR a 401/403 sentinel.
     type AttemptResult =
       | { kind: 'ok'; body: PostmanMeResponse }
       | { kind: 'unauthorized'; status: number }
@@ -78,21 +75,12 @@ const postmanAdapterMethods: IntegrationAdapterMethods<PostmanConfig, PostmanSec
     }
 
     try {
-      let result = await attempt(apiKey);
-      // If the primary key is rejected AND the operator just rotated within
-      // the overlap window, retry once with the retained previous key.
-      if (
-        result.kind === 'unauthorized' &&
-        ctx.secrets.previousApiKey &&
-        isPreviousCredentialValid(ctx.secrets)
-      ) {
-        result = await attempt(ctx.secrets.previousApiKey);
-      }
+      // The key last saved alone: Postman keeps no previous key (ISS-1421 r20).
+      const result = await attempt(apiKey);
 
       if (result.kind !== 'ok') {
-        // unauthorized = key rejected even after the ISS-405 previous-key retry
-        // above, so the operator must re-enter it → needs_reauth (ISS-409). A
-        // non-auth HTTP error stays a generic error.
+        // unauthorized = the key was refused, so the operator must re-enter it →
+        // needs_reauth (ISS-409). A non-auth HTTP error stays a generic error.
         const healthStatus = result.kind === 'unauthorized' ? 'needs_reauth' : 'error';
         await updateConnection(ctx.connectionId, {
           lastHealthStatus: healthStatus,
@@ -183,7 +171,7 @@ export const postmanIntegration = declareIntegration<PostmanConfig, PostmanSecre
     secrets: postmanSecretsSchema,
     patchSecrets: postmanSecretsSchema.partial(),
     primaryCredentialField: 'apiKey',
-    previousCredentialField: 'previousApiKey',
+    previousCredentialField: null,
     independentSecretFields: [],
     bindingConfigKeys: POSTMAN_BINDING_CONFIG_KEYS,
   },

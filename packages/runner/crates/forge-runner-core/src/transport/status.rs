@@ -220,6 +220,67 @@ pub fn unanswered(e: &reqwest::Error, deadline: std::time::Duration) -> String {
     }
 }
 
+/// A call core never answered, or answered with a body this box could not
+/// read, said for whoever reads the box's log or its terminal: where Forge was
+/// sought, why it was not reached in words, and what to check. reqwest's own
+/// `error sending request for url (…)` named none of the three (ISS-1421 r20).
+pub fn not_reached(what: &str, e: &reqwest::Error) -> crate::error::Error {
+    let at = e
+        .url()
+        .map(origin)
+        .unwrap_or_else(|| "the core address".to_string());
+    let said = if e.is_decode() || e.is_body() {
+        format!(
+            "{what}: Forge at {at} answered, but {}.",
+            unanswered(e, std::time::Duration::ZERO)
+        )
+    } else {
+        format!(
+            "{what}: Forge could not be reached at {at}, as {}. Check that core is running there \
+             and that this box's core address is right.",
+            why_not_reached(e)
+        )
+    };
+    crate::error::Error::Other(said)
+}
+
+/// The scheme, host and port of a url: where Forge was sought, without the
+/// route or query the call carried.
+fn origin(url: &reqwest::Url) -> String {
+    match (url.host_str(), url.port()) {
+        (Some(host), Some(port)) => format!("{}://{host}:{port}", url.scheme()),
+        (Some(host), None) => format!("{}://{host}", url.scheme()),
+        _ => url.to_string(),
+    }
+}
+
+/// Why a call reached nothing, in words, read off the innermost cause.
+pub(crate) fn why_not_reached(e: &reqwest::Error) -> String {
+    if e.is_timeout() {
+        return "no answer came in time".to_string();
+    }
+    let cause = innermost(e).unwrap_or_default().to_lowercase();
+    let said = if cause.contains("connection refused") {
+        "the connection was refused"
+    } else if cause.contains("dns")
+        || cause.contains("lookup")
+        || cause.contains("name or service not known")
+        || cause.contains("no such host")
+        || cause.contains("nodename nor servname")
+    {
+        "its host name does not resolve"
+    } else if cause.contains("reset") || cause.contains("broken pipe") {
+        "the connection was cut"
+    } else if cause.contains("certificate") || cause.contains("tls") || cause.contains("ssl") {
+        "its certificate was not accepted"
+    } else if e.is_connect() {
+        "no connection could be made"
+    } else {
+        "the request failed"
+    };
+    said.to_string()
+}
+
 /// The deepest source's own words, which is where the fault is named: hyper
 /// and the socket sit under reqwest's wrapper, and the wrapper names the url.
 fn innermost(e: &(dyn std::error::Error + 'static)) -> Option<String> {
@@ -680,10 +741,15 @@ mod tests {
         let mut out = String::new();
         let mut rest = said;
         loop {
-            let next = ["status::named(", "status::refused(", "status::unanswered("]
-                .iter()
-                .filter_map(|h| rest.find(h).map(|at| (at, h.len())))
-                .min_by_key(|(at, _)| *at);
+            let next = [
+                "status::named(",
+                "status::refused(",
+                "status::unanswered(",
+                "status::why_not_reached(",
+            ]
+            .iter()
+            .filter_map(|h| rest.find(h).map(|at| (at, h.len())))
+            .min_by_key(|(at, _)| *at);
             match next {
                 None => {
                     out.push_str(rest);
@@ -1049,5 +1115,42 @@ mod tests {
             format!("{refused_open}").contains("runner_withdrawn"),
             "the operator reads the predicate in the journal: {refused_open}"
         );
+    }
+}
+
+#[cfg(test)]
+mod not_reached_words {
+    use super::not_reached;
+
+    /// ISS-1421 r20 — judge-82's `question ask` against a core that was not
+    /// listening printed `error sending request for url (…)`.
+    #[tokio::test]
+    async fn a_refused_connection_says_where_forge_was_sought_and_why() {
+        let e = reqwest::Client::new()
+            .post("http://127.0.0.1:9/api/devices/me/questions?x=1")
+            .send()
+            .await
+            .unwrap_err();
+        let said = not_reached("question ask", &e).to_string();
+        assert!(
+            said.starts_with(
+                "question ask: Forge could not be reached at http://127.0.0.1:9, as the connection \
+                 was refused. Check that core is running there"
+            ),
+            "{said}"
+        );
+        assert!(!said.contains("error sending request"), "{said}");
+        assert!(!said.contains("/api/devices"), "{said}");
+    }
+
+    #[tokio::test]
+    async fn a_host_that_does_not_resolve_is_said_so() {
+        let e = reqwest::Client::new()
+            .get("http://no-such-host.invalid/api")
+            .send()
+            .await
+            .unwrap_err();
+        let said = not_reached("heartbeat", &e).to_string();
+        assert!(said.contains("as its host name does not resolve"), "{said}");
     }
 }

@@ -7,11 +7,12 @@
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ConnectionDirectoryItem } from "@forge/contracts";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/lib/api/client";
 
 let bindingsError: unknown = null;
+const updateMutate = vi.fn();
 
 vi.mock("../hooks", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../hooks")>()),
@@ -22,6 +23,7 @@ vi.mock("../hooks", async (importOriginal) => ({
     error: bindingsError,
     refetch: vi.fn(),
   }),
+  useUpdateConnection: () => ({ mutate: updateMutate, isPending: false }),
 }));
 vi.mock("@/features/projects/hooks", () => ({
   useProjectsIncludingArchived: () => ({ data: [] }),
@@ -60,6 +62,7 @@ function mount(over: Partial<ConnectionDirectoryItem> = {}) {
 
 beforeEach(() => {
   bindingsError = null;
+  updateMutate.mockClear();
 });
 afterEach(cleanup);
 
@@ -126,7 +129,8 @@ describe("the drawer header's connection name", () => {
 
 // ISS-1421 r19 — judge-79 read "the previous key stays valid for 24h" on a Coolify token: nothing
 // keeps a key valid at Coolify. Forge keeps the replaced key and falls back to it, and only where
-// it is used is that said, as it is used; Rocket.Chat stores it and never reads it.
+// it is used is that said, as it is used. r20 — judge-82 found Sentry keeps and uses it too, so its
+// line says so; Postman, Epodsystem, Rocket.Chat and GitHub keep none, and theirs say nothing.
 describe("the drawer's Replace key line", () => {
   const managed = { access: { ...connection.access, canManage: true } };
 
@@ -134,10 +138,17 @@ describe("the drawer's Replace key line", () => {
     mount({ ...managed, provider: "coolify" });
     expect(
       screen.getByText(
-        "A key is stored (never shown). Forge keeps the previous key for 24 hours and uses it wherever Coolify refuses the new one.",
+        "A key is stored (never shown). Forge keeps the previous key for 24 hours and uses it for its own calls wherever Coolify refuses the new one.",
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText(/stays valid/)).toBeNull();
+    cleanup();
+    mount({ ...managed, provider: "sentry" });
+    expect(
+      screen.getByText(
+        "A key is stored (never shown). Forge keeps the previous key for 24 hours and uses it for its own calls wherever Sentry refuses the new one.",
+      ),
+    ).toBeInTheDocument();
     cleanup();
     mount({ ...managed, provider: "google" });
     expect(
@@ -147,12 +158,60 @@ describe("the drawer's Replace key line", () => {
     ).toBeInTheDocument();
   });
 
-  it("makes no 24-hour claim for a provider that never reads the previous key", () => {
-    for (const provider of ["rocketchat", "sentry", "postman", "epodsystem"] as const) {
+  it("makes no 24-hour claim for a provider that keeps no previous key", () => {
+    for (const provider of ["rocketchat", "postman", "epodsystem"] as const) {
       mount({ ...managed, provider });
       expect(screen.getByText("A key is stored (never shown). Enter a new one to replace it.")).toBeInTheDocument();
       expect(screen.queryByText(/24 hours|24h/)).toBeNull();
       cleanup();
     }
+    mount({ ...managed, provider: "github" });
+    expect(screen.queryByText(/previous key|24 hours|24h/)).toBeNull();
+  });
+});
+
+// ISS-1421 r20 — judge-82: a removed connection kept its keys, so Enable brought them back. Removing
+// now wipes them and core refuses to turn a keyless connection on, so the drawer offers no Enable
+// that can only be refused, and says what turns it on.
+describe("the drawer's Danger zone over a connection that was removed", () => {
+  const mine = { access: { reach: "owner", canManage: true, ownerName: null } } as never;
+
+  it("offers no Enable on a connection holding no key, and says a new key turns it on", () => {
+    mount({ ...(mine as object), active: false, hasSecrets: false });
+    expect(screen.queryByRole("button", { name: "Enable" })).toBeNull();
+    expect(
+      screen.getByText("This connection holds no key. Saving a new key above turns it back on."),
+    ).toBeInTheDocument();
+  });
+
+  it("offers Enable on a disabled connection that still holds its key", () => {
+    mount({ ...(mine as object), active: false, hasSecrets: true });
+    expect(screen.getByRole("button", { name: "Enable" })).toBeInTheDocument();
+    expect(screen.queryByText(/holds no key/)).toBeNull();
+  });
+});
+
+describe("the drawer's Save key over a connection holding no key", () => {
+  const mine = { access: { reach: "owner", canManage: true, ownerName: null } } as never;
+  const save = () => {
+    fireEvent.change(document.querySelector("input[type=password]") as HTMLInputElement, {
+      target: { value: "scratch-fresh-key" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save key" }));
+    return updateMutate.mock.calls[0]?.[0];
+  };
+
+  it("turns a removed connection back on with the key it saves, as the line under it says", () => {
+    mount({ ...(mine as object), provider: "postman", active: false, hasSecrets: false });
+    expect(screen.getByText("No key is stored. Enter one to activate this connection.")).toBeInTheDocument();
+    expect(save()).toEqual({
+      id: connection.id,
+      body: { secrets: { apiKey: "scratch-fresh-key" }, active: true },
+    });
+  });
+
+  it("leaves a connection someone disabled turned off when its key is replaced", () => {
+    mount({ ...(mine as object), provider: "postman", active: false, hasSecrets: true });
+    expect(save()).toEqual({ id: connection.id, body: { secrets: { apiKey: "scratch-fresh-key" } } });
   });
 });

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { extractIssueBranchOverride, resolveIssueBranches } from '../../branches/resolve.js';
+import { issueSentences } from '../../lib/zod-sentences.js';
 import {
   PIPELINE_CONFIG_DEFAULTS,
   pipelineConfigPatchSchema,
@@ -126,7 +127,7 @@ export const forgeConfigTool: ContextScopedMcpToolFactory = (ctx) => ({
         const patch = pipelineConfigPatchSchema.safeParse(input.pipelineConfig);
         if (!patch.success) {
           throw new Error(
-            `BAD_REQUEST: CONFIG_PATCH_INVALID: ${patch.error.issues.map((i) => i.message).join(' ')}`,
+            `BAD_REQUEST: CONFIG_PATCH_INVALID: ${issueSentences(patch.error.issues, ['pipelineConfig'])}`,
           );
         }
         try {

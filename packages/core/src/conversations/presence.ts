@@ -12,6 +12,7 @@ import {
   type PresenceConfig,
 } from '../db/schema-agent-selves.js';
 import type { RoomPresence } from '../db/schema-conversations.js';
+import { issueSentences } from '../lib/zod-sentences.js';
 
 /**
  * Today's constants, and what an unset key folds as. `proactivity.ts` reads
@@ -76,7 +77,7 @@ export const presenceConfigSchema = z
 export class PresenceValidationError extends Error {
   readonly issues: string[];
   constructor(issues: string[]) {
-    super(issues.join('; '));
+    super(issues.join(' '));
     this.name = 'PresenceValidationError';
     this.issues = issues;
   }
@@ -90,9 +91,9 @@ export function validatePresence(input: unknown): PresenceConfig {
     const path = i.path.length ? `presence.${i.path.join('.')}` : 'presence';
     if (i.code === 'unrecognized_keys') {
       const inner = i.path.length ? HEARTBEAT_KEYS : PRESENCE_KEYS;
-      return `${path}: unknown key(s) ${i.keys.map((k) => `\`${k}\``).join(', ')}; it takes only: ${inner.join(', ')}`;
+      return `${issueSentences([i], ['presence'])} ${path} takes only ${inner.join(', ')}.`;
     }
-    return `${path}: ${i.message}`;
+    return issueSentences([i], ['presence']);
   });
   throw new PresenceValidationError(issues);
 }
@@ -163,15 +164,14 @@ export function validateRoomPresence(input: unknown): RoomPresence {
   const parsed = roomPresenceSchema.safeParse(input);
   if (parsed.success) return parsed.data;
   const issues = parsed.error.issues.map((i) => {
-    const path = i.path.length ? `presence.${i.path.join('.')}` : 'presence';
     if (i.code === 'unrecognized_keys') {
       const own = i.keys.filter((k) => k === 'heartbeat');
       const lead = own.length
-        ? `${path}: \`heartbeat\` is a handle's own and is not set on a room; `
-        : `${path}: unknown key(s) ${i.keys.map((k) => `\`${k}\``).join(', ')}; `;
-      return `${lead}a room takes only: ${ROOM_PRESENCE_KEYS.join(', ')}`;
+        ? "The field presence.heartbeat is a handle's own and is not set on a room."
+        : issueSentences([i], ['presence']);
+      return `${lead} A room's presence takes only ${ROOM_PRESENCE_KEYS.join(', ')}.`;
     }
-    return `${path}: ${i.message}`;
+    return issueSentences([i], ['presence']);
   });
   throw new PresenceValidationError(issues);
 }

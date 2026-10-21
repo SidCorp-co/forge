@@ -9,7 +9,12 @@ import {
   errorResponse,
 } from '../declare/errors.js';
 import { type JsonSchema, renderSchema } from '../declare/schema.js';
-import { BODY_NOT_TAKEN_WHEN, type ValidatorDeclaration } from '../declare/validator.js';
+import {
+  BODY_NOT_TAKEN_WHEN,
+  QUERY_NOT_TAKEN_WHEN,
+  takesNoQuery,
+  type ValidatorDeclaration,
+} from '../declare/validator.js';
 import { type Access, accessOf, accessProse, asksForBearer } from './access.js';
 import { type InputRefusal, probeInputRefusal } from './probe-hook.js';
 import { type RouteEntry, type RouteSource, readRoutes } from './registry.js';
@@ -299,6 +304,8 @@ async function responsesOf(entry: RouteEntry, access: Access | null, doc: Docume
   for (const [status, a] of Object.entries(declared?.responses ?? {})) answer(Number(status), a);
   for (const refusal of entry.refusals) addCode(errors, refusal.status, refusal.code, refusal.when);
   if (takesNoBody(entry)) addCode(errors, 400, 'BAD_REQUEST', BODY_NOT_TAKEN_WHEN);
+  if (takesNoQuery(entry.method, entry.validators))
+    addCode(errors, 400, UNKNOWN_QUERY_PARAMETER, QUERY_NOT_TAKEN_WHEN);
   // A route that reads no bearer never meets the token door. One kept out of the grant still meets
   // it when a token is sent to it, and the door turns the token away there by name.
   const doorRefusals = !asksForBearer(access, entry.takesBearer)

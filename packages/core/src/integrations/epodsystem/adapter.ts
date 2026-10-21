@@ -1,6 +1,5 @@
 import { redactedMessage } from '@forge/observability';
 import { logger } from '../../logger.js';
-import { isPreviousCredentialValid } from '../rotation.js';
 import { findConnectionById, updateConnection } from '../store.js';
 import {
   declareIntegration,
@@ -104,23 +103,13 @@ const epodsystemAdapterMethods: IntegrationAdapterMethods<EpodsystemConfig, Epod
     }
 
     try {
-      let result = await probeApiKeyContext(apiKey);
-      // If the primary key is rejected AND a retained previous key is still
-      // inside the rotation window, retry once with it. Mirrors
-      // coolify/client.ts:50-79 and the dual-token PATCH path.
-      let activeKey = apiKey;
-      if (
-        result.kind === 'unauthorized' &&
-        ctx.secrets.previousApiKey &&
-        isPreviousCredentialValid(ctx.secrets)
-      ) {
-        result = await probeApiKeyContext(ctx.secrets.previousApiKey);
-        if (result.kind === 'ok') activeKey = ctx.secrets.previousApiKey;
-      }
+      // The key last saved alone: Epodsystem keeps no previous key (ISS-1421 r20).
+      const result = await probeApiKeyContext(apiKey);
+      const activeKey = apiKey;
 
       if (result.kind !== 'ok') {
         // unauthorized (HTTP 401/403 OR a 200 + GraphQL errors[] auth rejection)
-        // = key rejected even after the ISS-405 previous-key retry above, so the
+        // = the key was refused, so the
         // operator must re-enter it → needs_reauth (ISS-409). A non-auth HTTP
         // error stays a generic error.
         const healthStatus = result.kind === 'unauthorized' ? 'needs_reauth' : 'error';
@@ -279,7 +268,7 @@ export const epodsystemIntegration = declareIntegration<EpodsystemConfig, Epodsy
     secrets: epodsystemSecretsSchema,
     patchSecrets: epodsystemSecretsSchema.partial(),
     primaryCredentialField: 'apiKey',
-    previousCredentialField: 'previousApiKey',
+    previousCredentialField: null,
     independentSecretFields: [],
     bindingConfigKeys: EPODSYSTEM_BINDING_CONFIG_KEYS,
   },

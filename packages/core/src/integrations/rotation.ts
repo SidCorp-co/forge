@@ -2,9 +2,17 @@ import type { IntegrationDeclaration } from './types.js';
 
 export const ROTATION_WINDOW_MS = 24 * 60 * 60_000;
 
+/** Stored secrets without a previous key and its expiry, which a rotation sets afresh or not at all. */
+function withoutPrevious(secrets: Record<string, unknown> | null): Record<string, unknown> {
+  return Object.fromEntries(
+    Object.entries(secrets ?? {}).filter(([k]) => !/^previous[A-Z]/.test(k)),
+  );
+}
+
 /**
  * The secrets after a new primary credential: every stored and sent field kept, as the drawer
- * sends the key alone (ISS-1421 r19), and the replaced one held for `ROTATION_WINDOW_MS`.
+ * sends the key alone (ISS-1421 r19), and the replaced one held for `ROTATION_WINDOW_MS` by a provider
+ * that declares a field for it. A stale previous key is never carried into the new record.
  */
 export function mergeRotatedSecrets(
   decl: Pick<IntegrationDeclaration, 'schemas'>,
@@ -13,13 +21,14 @@ export function mergeRotatedSecrets(
 ): Record<string, unknown> | null {
   const primaryField = decl.schemas.primaryCredentialField;
   const previousField = decl.schemas.previousCredentialField;
-  if (!primaryField || !previousField) return null;
+  if (!primaryField) return null;
   const incomingPrimary = incoming[primaryField];
   if (typeof incomingPrimary !== 'string' || incomingPrimary.length === 0) return null;
 
   const currentPrimary = currentSecrets?.[primaryField];
-  const result: Record<string, unknown> = { ...currentSecrets, ...incoming };
-  if (typeof currentPrimary === 'string' && currentPrimary.length > 0) {
+  const result: Record<string, unknown> = { ...withoutPrevious(currentSecrets), ...incoming };
+  // A provider whose previous key nothing reads keeps none (ISS-1421 r20).
+  if (previousField && typeof currentPrimary === 'string' && currentPrimary.length > 0) {
     result[previousField] = currentPrimary;
     result.previousTokenExpiresAt = new Date(Date.now() + ROTATION_WINDOW_MS).toISOString();
   }
@@ -34,4 +43,44 @@ export function isPreviousCredentialValid(
   const parsed = Date.parse(expiresAt);
   if (Number.isNaN(parsed)) return false;
   return parsed > Date.now();
+}
+
+/** "21 October 2026, 14:53 UTC", the time a previous key stops being used. */
+function untilWords(iso: string): string {
+  const at = new Date(iso);
+  const day = at.toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+    timeZone: 'UTC',
+  });
+  const time = at.toLocaleTimeString('en-GB', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZone: 'UTC',
+  });
+  return `${day}, ${time} UTC`;
+}
+
+/**
+ * Test connection's answer where the key just saved was refused and the previous one still works:
+ * the check judges the new key alone, so it is Needs re-auth, and it says until when Forge's own
+ * calls still run on the previous key (ISS-1421 r20, criteria 199 and 200). `subject` is who refused
+ * it: the provider by name, or "The server at <host>" where the address is the person's own.
+ */
+export function newKeyRefused(
+  subject: string,
+  secrets: { previousTokenExpiresAt?: string | null },
+): {
+  status: 'needs_reauth';
+  message: string;
+  diagnostics: { newKeyRefused: true; previousKeyUntil: string };
+} {
+  const until = String(secrets.previousTokenExpiresAt);
+  return {
+    status: 'needs_reauth',
+    message: `${subject} refused the new key. Forge is still using the previous key until ${untilWords(until)}.`,
+    diagnostics: { newKeyRefused: true, previousKeyUntil: until },
+  };
 }

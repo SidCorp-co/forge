@@ -133,3 +133,60 @@ export function fieldsNamedAt(schema: ZodType, path: readonly PropertyKey[]): st
   });
   return [...new Set(names)];
 }
+
+/** A field inside a body object that the object does not take: where the object sits, and its keys. */
+export type StrayAt = { path: PropertyKey[]; keys: string[] };
+
+/** A node with its wrappers and any `z.lazy` taken off. */
+function resolved(schema: ZodType): ZodType {
+  let at = unwrap(schema);
+  for (;;) {
+    const def = defOf(at) as Def & { getter?: () => ZodType };
+    if (def.type !== 'lazy' || !def.getter) return at;
+    at = unwrap(def.getter());
+  }
+}
+
+/** The schema a field of `body` is read by, or null where no one branch names it. */
+function fieldSchema(schema: ZodType, body: Record<string, unknown>, key: string): ZodType | null {
+  const def = defOf(resolved(schema));
+  if (def.type === 'object') return (def.shape?.[key] as ZodType | undefined) ?? null;
+  let parts: ZodType[] = [];
+  if (def.type === 'intersection' && def.left && def.right) parts = [def.left, def.right];
+  else if (def.type === 'union' && def.options) {
+    const by = def.discriminator;
+    parts = by ? def.options.filter((o) => optionTakes(o, by, body[by])) : def.options;
+  }
+  const found = parts.map((p) => fieldSchema(p, body, key)).filter((s): s is ZodType => !!s);
+  return found.length === 1 ? (found[0] as ZodType) : null;
+}
+
+/** The strays inside a value its schema reads, at `path`. */
+function straysIn(schema: ZodType, value: unknown, path: PropertyKey[]): StrayAt[] {
+  const node = resolved(schema);
+  const def = defOf(node) as Def & { element?: ZodType };
+  if (Array.isArray(value)) {
+    if (def.type !== 'array' || !def.element) return [];
+    const element = def.element;
+    return value.flatMap((v, i) => straysIn(element, v, [...path, i]));
+  }
+  if (value === null || typeof value !== 'object') return [];
+  if (fieldsPolicy(node) !== 'closed') return [];
+  // A strict object names its own strays, so they are not refused twice.
+  const keys = refusesItself(node, value) ? [] : unknownFields(node, value);
+  return [...(keys.length > 0 ? [{ path, keys }] : []), ...nestedStrays(node, value, path)];
+}
+
+/**
+ * The fields inside a body's objects that those objects do not take, at any depth below the top
+ * (ISS-1421 r20, judge-82's `provenance.colour`): a nested `z.object` drops one as silently as the
+ * body's own does. An object that takes any field, or a record, holds none.
+ */
+export function nestedStrays(schema: ZodType, body: unknown, at: PropertyKey[] = []): StrayAt[] {
+  if (body === null || typeof body !== 'object' || Array.isArray(body)) return [];
+  const record = body as Record<string, unknown>;
+  return Object.keys(record).flatMap((key) => {
+    const child = fieldSchema(schema, record, key);
+    return child ? straysIn(child, record[key], [...at, key]) : [];
+  });
+}

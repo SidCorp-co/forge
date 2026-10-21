@@ -84,7 +84,7 @@ async fn post_chunk(client: &CoreClient, session_id: &str, events: &[LineEvent])
             }
             Err(e) => {
                 if attempt == MAX_ATTEMPTS {
-                    return Err(Error::Other(format!("post_events transport: {e}")));
+                    return Err(super::status::not_reached("post_events", &e));
                 }
             }
         }
@@ -173,7 +173,7 @@ pub async fn ack_session(client: &CoreClient, session_id: &str) -> Result<()> {
             }
             Err(e) => {
                 if attempt == 2 {
-                    return Err(Error::Other(format!("ack_session transport: {e}")));
+                    return Err(super::status::not_reached("ack_session", &e));
                 }
             }
         }
@@ -224,7 +224,7 @@ pub async fn patch_session(
             }
             Err(e) => {
                 if attempt == MAX_ATTEMPTS {
-                    return Err(Error::Other(format!("patch_session transport: {e}")));
+                    return Err(super::status::not_reached("patch_session", &e));
                 }
             }
         }

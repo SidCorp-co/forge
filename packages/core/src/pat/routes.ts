@@ -17,6 +17,7 @@ import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import { mcpAuditLog, personalAccessTokens } from '../db/schema.js';
 import { loadVisibleProjectIds } from '../lib/authz.js';
+import { schemaRefused } from '../lib/zod-sentences.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { requireFreshAuth } from '../middleware/require-fresh-auth.js';
 import { forgetPatThrottle } from '../middleware/require-pat.js';
@@ -324,7 +325,7 @@ patRoutes.post(
       const raw = await c.req.json().catch(() => null);
       if (raw && typeof raw === 'object') {
         const parsed = rotateBodySchema.safeParse(raw);
-        if (!parsed.success) throw badRequest(z.flattenError(parsed.error));
+        if (!parsed.success) throw schemaRefused(parsed.error, rotateBodySchema, raw);
         if (parsed.data.expiresAt) expiresAt = new Date(parsed.data.expiresAt);
       }
     } catch (err) {
