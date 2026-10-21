@@ -28,7 +28,7 @@ const MEASURE = `(() => {
   const box = (el) => el.getBoundingClientRect();
   const title = document.querySelector("h1, h2");
   const line = parseFloat(getComputedStyle(title).lineHeight);
-  const controls = [...document.querySelectorAll('[data-header="actions"] > button, [data-header="actions"] > a')];
+  const controls = [...document.querySelectorAll('[data-header="actions"] > *')].filter((c) => box(c).width > 0);
   // Controls of unequal height share a row by their centre line, which items-center aligns.
   const rows = new Set(controls.map((c) => Math.round((box(c).top + box(c).bottom) / 2)));
   const actions = document.querySelector('[data-header="actions"]');
