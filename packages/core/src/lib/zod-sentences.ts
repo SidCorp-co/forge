@@ -64,7 +64,8 @@ function fieldLed(field: string, said: string): string | null {
   const first = said.match(/^\S+/)?.[0] ?? '';
   if (first !== bare && !first.endsWith(`.${bare}`)) return null;
   const rest = said.slice(first.length).trim();
-  if (!rest) return null;
+  // "metric `vibes` is …" uses the field's name as a noun; only a word after it makes it the subject.
+  if (!/^[a-z]/.test(rest)) return null;
   return `The field ${first === bare ? field : first} ${/[.!?]$/.test(rest) ? rest : `${rest}.`}`;
 }
 
@@ -284,13 +285,11 @@ export function schemaRefusalWords(
       // The issue does not say whether the field was absent or held another value, so neither is claimed.
       // A schema's own message ("`pass_rate` is retired") says more than the library's default, and a
       // discriminator's ("Invalid discriminator value. Expected …") is the library's own (ISS-1421 r15).
+      // A schema's own reason leads, the values after it (ISS-1421 r19).
       const own = issue.message && !/^Invalid (?:option|input|discriminator)\b/.test(issue.message);
-      const ownWords = own
-        ? (fieldLed(named(field), issue.message ?? '') ?? asSentence(issue.message ?? ''))
-        : '';
-      sentences.push(
-        `The field ${named(field)} takes one of the values ${valuesAre}.${own ? ` ${ownWords}` : ''}`,
-      );
+      const values = `The field ${named(field)} takes one of the values ${valuesAre}.`;
+      const reason = fieldLed(named(field), issue.message ?? '') ?? asSentence(issue.message ?? '');
+      sentences.push(own ? `${reason} ${values}` : values);
       accepted.push({ field, values: (issue.values ?? issue.options ?? []).map(String) });
     } else if (issue.code === 'invalid_type' && /received undefined$/.test(issue.message ?? '')) {
       sentences.push(`The field ${named(field)} is required.`);

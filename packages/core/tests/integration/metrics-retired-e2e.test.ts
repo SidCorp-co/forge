@@ -121,7 +121,8 @@ describe.each(['pass_rate', 'approve_rate'])('the retired metric %s', (metric) =
     const { projectId, pat } = await seed();
     const res = await callMcp(pat, projectId, metric);
     expect(res.isError).toBe(true);
-    expect(res.text.startsWith('Error: The field `metric` ')).toBe(true);
+    // The retired reason leads the refusal (ISS-1421 r19).
+    expect(res.text.startsWith(`Error: Metric \`${metric}\` is retired: `)).toBe(true);
     expect(res.text).not.toMatch(/"code"|"path"|invalid_value|^Error: \[/);
     expect(() => JSON.parse(res.text.replace(/^Error: /, ''))).toThrow();
   });
@@ -132,8 +133,9 @@ describe('a name that was never a metric, through the MCP tool', () => {
     const { projectId, pat } = await seed();
     const res = await callMcp(pat, projectId, 'vibes');
     expect(res.isError).toBe(true);
-    expect(res.text).toContain(
-      'The field `metric` takes one of the values listed below. Metric `vibes` is not a metric this project serves.',
+    // The reason leads; the values sentence follows it (ISS-1421 r19).
+    expect(res.text).toMatch(
+      /Metric `vibes` is not a metric this project serves\.[^\n]*The field `metric` takes one of the values listed below\./,
     );
     expect(res.text).not.toContain('is retired');
     expect(res.text).not.toMatch(/"code"|invalid_value/);

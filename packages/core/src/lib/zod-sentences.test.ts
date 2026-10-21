@@ -113,13 +113,27 @@ describe('schemaRefused', () => {
     );
   });
 
-  it("keeps a schema's own message for a fixed-set field", () => {
+  it("leads with a schema's own reason for a fixed-set field, the values after it", () => {
     const own = z.object({ metric: z.enum(['cost'], { error: '`pass_rate` is retired' }) });
     const r = own.safeParse({ metric: 'pass_rate' });
     if (r.success) throw new Error('expected a refusal');
     expect(schemaRefused(r.error).message).toBe(
-      'The field metric takes one of the values listed in details.accepted. `pass_rate` is retired.',
+      '`pass_rate` is retired. The field metric takes one of the values listed in details.accepted.',
     );
+  });
+
+  it('says a reason naming the field as a noun as its own sentence, and one with a verb as the field', () => {
+    const noun = z.object({ metric: z.enum(['cost'], { error: 'metric `vibes` is not served' }) });
+    const verb = z.object({
+      eligible: z.enum(['true'], { error: 'eligible must be true or false' }),
+    });
+    const a = noun.safeParse({ metric: 'vibes' });
+    const b = verb.safeParse({ eligible: 'x' });
+    if (a.success || b.success) throw new Error('expected refusals');
+    expect(schemaRefused(a.error).message).toMatch(
+      /^Metric `vibes` is not served\. The field metric/,
+    );
+    expect(schemaRefused(b.error).message).toMatch(/^The field eligible must be true or false\. /);
   });
 
   it('opens a whole-body refusal with a capital', () => {
