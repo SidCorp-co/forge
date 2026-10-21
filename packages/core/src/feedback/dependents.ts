@@ -14,6 +14,8 @@ export interface FeedbackDependents {
     feedbackId: string,
     args: { why: string; now: Date; actor: KernelActor },
   ): Promise<void>;
+  /** The mockups drawn on the item, by id and MK-n, read in `tx`. */
+  mockupsOf(tx: Tx, feedbackId: string): Promise<{ id: string; key: string }[]>;
   /** Every mockup of the item is deleted, in `tx`; answers the storage paths to remove after commit. */
   deleteMockups(tx: Tx, feedbackId: string): Promise<string[]>;
   /** The mockup (MK-n or uuid) an item is filed about, inside `projectId`; null where it names none there (REQ-49 BC-4). */

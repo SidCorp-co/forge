@@ -243,6 +243,22 @@ export function redactedRefusal(redactedAt: Date | null): FeedbackRefusal | null
   );
 }
 
+/**
+ * A redaction deletes the item's mockups (UC15), and a mockup another item is filed about would leave
+ * that item's target pointing at nothing: refused, naming each mockup and each item about it.
+ */
+export function redactMockupTargetedRefusal(
+  hits: readonly { mockup: string; feedback: string }[],
+): FeedbackRefusal | null {
+  if (!hits.length) return null;
+  const named = hits.map((h) => `${h.mockup} is the target of ${h.feedback}`).join('; ');
+  return refusal(
+    'FEEDBACK_REDACT_MOCKUP_TARGETED',
+    '/mockups',
+    `${named}. Deleting the reporter data deletes this item's mockups; retarget those items first. Nothing was deleted.`,
+  );
+}
+
 /** Picking a route, declining, marking a duplicate, verifying, reopening: approvals (ADR 0007). */
 export const decideActRefusal = (facts: PermissionFacts, act: string) =>
   permissionRefusal(facts, 'feedback.approve', act);

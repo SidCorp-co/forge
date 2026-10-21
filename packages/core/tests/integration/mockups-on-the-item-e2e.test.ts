@@ -260,6 +260,33 @@ describe('feedback about a mockup (BC-4)', () => {
   });
 });
 
+describe("a feedback item's reporter data, while another item is about one of its mockups", () => {
+  it('is refused by name, naming the item that still targets the mockup; nothing is deleted', async () => {
+    const reported = ok(
+      await as('member', 'POST', '/feedback', {
+        kind: 'bug',
+        title: 'The cart double charges',
+        screen: 'Cart',
+      }),
+      201,
+    );
+    const fbA = ((reported.feedback ?? reported) as Doc).key as string;
+    const mk = (await propose({ target: { feedback: fbA }, ...html() })).key as string;
+    const about = ok(
+      await as('member', 'POST', '/feedback', { kind: 'bug', title: 'Pay is hidden', mockup: mk }),
+      201,
+    );
+    const fbB = ((about.feedback ?? about) as Doc).key as string;
+    const res = await as('owner', 'DELETE', `/feedback/${fbA}/reporter-data`);
+    expect(refusal(res)).toEqual(['FEEDBACK_REDACT_MOCKUP_TARGETED /mockups']);
+    expect(JSON.stringify(res.json)).toContain(`${mk} is the target of ${fbB}`);
+    // nothing went: the item keeps its words and the mockup still stands
+    const still = ok(await as('owner', 'GET', `/feedback/${fbA}`));
+    expect(((still.feedback ?? still) as Doc).redactedAt ?? null).toBeNull();
+    ok(await as('owner', 'GET', `/mockups/${mk}`));
+  });
+});
+
 describe('Approvals lists a proposed mockup with its preview and what accepting does (BC-7)', () => {
   it('a requirement mockup waits there, its accept pinning it in the next baseline', async () => {
     const req = await requirement('A screen waiting on a decision', 'screen');

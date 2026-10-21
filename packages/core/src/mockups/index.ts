@@ -4,6 +4,7 @@ export { mockupForChat, mockupKeysOf, mockupRefIn } from './ref.js';
 export {
   acceptMockup,
   deleteFeedbackMockups,
+  feedbackMockupsOf,
   proposeMockup,
   returnMockup,
   withdrawMockup,

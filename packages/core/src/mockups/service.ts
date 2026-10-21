@@ -279,6 +279,18 @@ export function withdrawMockup(input: {
   );
 }
 
+/** The mockups drawn on a feedback, each by id and MK-n, read before a redaction removes them. */
+export async function feedbackMockupsOf(
+  tx: Tx,
+  feedbackId: string,
+): Promise<{ id: string; key: string }[]> {
+  const found = await tx
+    .select({ id: mockups.id, seq: mockups.mockupSeq })
+    .from(mockups)
+    .where(eq(mockups.feedbackId, feedbackId));
+  return found.map((m) => ({ id: m.id, key: mockupKey(m.seq) }));
+}
+
 /** The mockups drawn on a feedback, removed with what the reporter gave (UC15); answers their bytes' paths. */
 export async function deleteFeedbackMockups(tx: Tx, feedbackId: string): Promise<string[]> {
   const gone = await tx
