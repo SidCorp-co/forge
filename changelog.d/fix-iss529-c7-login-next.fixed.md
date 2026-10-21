@@ -1,1 +1,0 @@
-**Signing in returns you to the page that sent you.** A signed-out visit to a deep link, such as Integrations after a GitHub return, comes back there after sign-in instead of Home; only a path on this site is followed.

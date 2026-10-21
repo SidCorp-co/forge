@@ -1,1 +1,0 @@
-**A mockup is tried, commented and revised on the item it shapes.** HTML mockups run isolated full screen, comments pin to a point or region, returned ones come back as their next revision, and the BA assistant proposes them.
