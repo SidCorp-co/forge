@@ -14,8 +14,8 @@ interface HelpShortcut {
 }
 
 interface HelpContent {
-  /** One-paragraph "what this page does". */
-  summary: string;
+  /** One-paragraph "what this page does"; a page that reads as state carries none. */
+  summary?: string;
   /** Primary actions available on the page. */
   actions?: string[];
   /** Keyboard shortcuts (keys + what they do). */
@@ -108,7 +108,7 @@ export function HelpButton({
           </button>
         </div>
         <div className="flex flex-col gap-3 px-4 py-3">
-          <p className="fg-body-sm text-muted">{summary}</p>
+          {summary ? <p className="fg-body-sm text-muted">{summary}</p> : null}
 
           {actions && actions.length > 0 && (
             <div className="flex flex-col gap-1.5">

@@ -2,6 +2,9 @@
 // 900 in the person's view, however long the record behind it. ISS-451's page was 2,325 words: a plan
 // of rounds, thirteen file chips, a voided question on top, "Running" three times. The fixture is that
 // shape (18 criteria, a 26-step plan, 13 files, a voided question, a run, two relations).
+// @direct-test-of packages/web-v2/src/features/issues/components/detail/issue-page-main.tsx
+// @direct-test-of packages/web-v2/src/features/issues/components/detail/issue-state-head.tsx
+// @direct-test-of packages/web-v2/src/features/questions/components/question-view.tsx
 
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -249,6 +252,54 @@ describe("an issue page in the person's view", () => {
     const root = await page();
     expect(within(within(root).getByTestId("rail-holds-up")).getAllByRole("link")).toHaveLength(2);
     expect(within(root).getByRole("button", { name: "4 more" })).toBeInTheDocument();
+  });
+});
+
+// ISS-581 on forge-dev 0.4.0-dev.268: a decision waiting on the reader drew between Done by and the
+// criteria, each option under four lines saying who may choose it and the call it names (REQ-43 BC-9).
+const decision = {
+  ...question,
+  id: "q2",
+  status: "open",
+  answerShape: "choice",
+  recommendedOptionId: "drop",
+  options: [
+    { id: "drop", label: "Drop it", authority: "writer", bindsTo: "this_call", executedBy: "human", fingerprint: "steward:q2:drop", locked: false },
+    { id: "keep", label: "Keep it", authority: "writer", bindsTo: "this_call", executedBy: "human", fingerprint: "steward:q2:keep", locked: false },
+  ],
+  steps: [{ round: 1, prompt: "Drop or keep this draft?", askedAt: AT, answerShape: "choice", options: [], recommendedOptionId: "drop" }],
+};
+
+async function decisionPage(search = "") {
+  window.history.replaceState(null, "", `/projects/forge/issues/ISS-451${search}`);
+  fakeCore((c) => (c.path.split("?")[0]?.endsWith("/questions") ? { body: { questions: [decision] } } : core(c)));
+  renderWithQuery(<IssueDetailScreen projectId={P} slug="forge" id="ISS-451" />);
+  const root = await screen.findByTestId("issue-detail");
+  await screen.findByTestId("criterion-18-verdict");
+  await within(root).findByText("Drop or keep this draft?");
+  return root;
+}
+
+describe("an issue page whose decision waits on the reader", () => {
+  it("draws the decision under Needs you, so Done by and then the criteria rows follow it (BC-9)", async () => {
+    const root = await decisionPage();
+    const order = ["issue-now", "issue-needs-you", "issue-needs-you-panels", "issue-done-by", "view-criteria"].map((id) => within(root).getByTestId(id));
+    for (const [i, el] of order.slice(1).entries()) {
+      expect(order[i]?.compareDocumentPosition(el) ?? 0).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    }
+    expect(within(root).getByTestId("issue-state-head")).toContainElement(within(root).getByText("Drop or keep this draft?"));
+  });
+
+  it("reads each option and its button, and leaves who may choose it and the call it names to the developer view (BC-4, BC-7)", async () => {
+    const person = await decisionPage();
+    expect(within(person).getByRole("button", { name: /Drop it/ })).toBeInTheDocument();
+    expect(person.textContent).not.toMatch(/steward:q2:drop/);
+    expect(person.textContent).not.toMatch(/Any project member can choose this/);
+  });
+
+  it("draws what an option means in the developer view", async () => {
+    const developer = await decisionPage("?view=developer");
+    expect(within(developer).getAllByText(/steward:q2:drop/).length).toBeGreaterThan(0);
   });
 });
 

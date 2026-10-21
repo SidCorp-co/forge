@@ -47,7 +47,7 @@ describe("files chosen for a new issue", () => {
     expect(screen.getAllByRole("button", { name: /^Remove shot-/ })).toHaveLength(8);
     expect(
       screen.getByText(
-        `At most ${ISSUE_CREATE_ATTACHMENTS_MAX} files; 12 chosen. Attach the rest to a comment.`,
+        `At most ${ISSUE_CREATE_ATTACHMENTS_MAX} files; 12 chosen`,
       ),
     ).toBeInTheDocument();
   });

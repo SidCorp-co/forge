@@ -12,7 +12,7 @@ describe('a project with no production environment, said by its gate', () => {
   const [gate] = gateViews([blocker('NO_RELEASE_GATE')], [], ['orchestrator']);
 
   it('names what is missing, in the words the banner and the rail use', () => {
-    expect(gate?.title).toBe('No production environment');
+    expect(gate?.title).toBe('No production');
     expect(gate?.sentence).toBe('A release has nowhere to go until one is declared.');
     expect(gate?.owner.act).toBe('declare a production environment');
   });

@@ -91,6 +91,6 @@ describe("a production release whose notes call it a demo", () => {
   // Address); the banner of an ended release says only that nothing is owed
   it("says nothing is owed on a live release, and leaves where it runs to the page's facts", () => {
     renderWithQuery(<ReleaseBanner r={r050 as never} />);
-    expect(screen.getByTestId("wait-banner")).toHaveTextContent(/^Nothing is owed on it\.$/);
+    expect(screen.getByTestId("wait-banner")).toHaveTextContent(/^Nothing owed$/);
   });
 });

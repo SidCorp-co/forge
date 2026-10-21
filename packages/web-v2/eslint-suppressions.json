@@ -19,11 +19,6 @@
       "count": 1
     }
   },
-  "src/features/conversations/membership.test.ts": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    }
-  },
   "src/features/conversations/ui-actions/issues-waiting.test.tsx": {
     "@typescript-eslint/require-await": {
       "count": 1
@@ -34,14 +29,6 @@
   },
   "src/features/feedback/components/feedback-accept.test.tsx": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 1
-    }
-  },
-  "src/features/feedback/components/feedback-form.test.tsx": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 3
-    },
-    "@typescript-eslint/require-await": {
       "count": 1
     }
   },
@@ -130,17 +117,6 @@
   "src/features/releases/components/release-requirements.test.tsx": {
     "@typescript-eslint/no-unnecessary-type-assertion": {
       "count": 6
-    }
-  },
-  "src/features/requirements/components/criteria-evidence.test.tsx": {
-    "@typescript-eslint/no-unnecessary-type-assertion": {
-      "count": 4
-    },
-    "@typescript-eslint/require-await": {
-      "count": 1
-    },
-    "max-lines-per-function": {
-      "count": 1
     }
   },
   "src/features/requirements/components/readiness.test.tsx": {

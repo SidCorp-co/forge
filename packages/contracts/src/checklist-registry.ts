@@ -18,13 +18,13 @@ export const ISSUE_READY_CHECKLIST = defineChecklist({
 	title: "Issue ready",
 	gates: { machine: "issue", from: ["draft"], to: "open" },
 	design: { flow: "issue-lifecycle", revision: 12, step: "ready-check" },
-	shapes: ["df56d5bf", "31b93801"],
+	shapes: ["df56d5bf", "31b93801", "bff3a99f"],
 	questions: [
 		{
 			id: "requirement",
 			prompt:
 				"Which agreed requirement does this issue deliver, and at which revision?",
-			fix: "Link the issue to the agreed or accepted requirement it delivers, then write its plan: saving the plan records the revision of that requirement it is written against.",
+			fix: "Link the agreed requirement it delivers, then write its plan.",
 			answer: { kind: "text", maxLength: 200 },
 			answeredBy: {
 				by: "record",
@@ -35,9 +35,8 @@ export const ISSUE_READY_CHECKLIST = defineChecklist({
 		},
 		{
 			id: "criteria",
-			prompt:
-				"What are its criteria, each traced to a business criterion of that revision?",
-			fix: "Write the issue's numbered acceptance criteria and trace each one to a business criterion (BC) of the requirement revision its plan is written against.",
+			prompt: "What are its criteria, each traced to a BC of that revision?",
+			fix: "Write numbered criteria, each traced to a business criterion of that revision.",
 			answer: { kind: "text", maxLength: 2000 },
 			answeredBy: {
 				by: "record",
@@ -60,18 +59,17 @@ export const ISSUE_READY_CHECKLIST = defineChecklist({
 		},
 		{
 			id: "hotfix",
-			prompt:
-				"Is it a hotfix for a production failure? If so, which FB-n or Sentry issue does it fix, and which criterion does it restore, or which requirement revision will add one?",
-			fix: "If it is a hotfix, answer it. If not, leave it unanswered and the assumed answer is taken.",
+			prompt: "Is it a hotfix, and for which FB-n or Sentry issue?",
+			fix: "Answer it if it is a hotfix.",
 			answer: { kind: "text", maxLength: 500 },
 			answeredBy: { by: "mover" },
 			need: {
 				blocking: false,
-				recommended: "Not a hotfix: it fixes no production failure.",
+				recommended: "Not a hotfix.",
 			},
 			open: {
 				question: "0769f177-2941-42db-81a6-5346b00252bb",
-				note: "REQ-34 does not yet say what hotfix obligations are; Issue lifecycle r12 draws this reading as an assumed answer.",
+				note: "REQ-34 leaves hotfix obligations open; this is an assumed answer.",
 			},
 		},
 	],
@@ -97,12 +95,12 @@ export const FEEDBACK_TRIAGE_CHECKLIST = defineChecklist({
 	title: "Feedback triage",
 	gates: { machine: "feedback", from: ["new", "reopened"], to: "triaged" },
 	design: { flow: "feedback-lifecycle", revision: 14, step: "triage-check" },
-	shapes: ["641ec09f"],
+	shapes: ["641ec09f", "cffd5d25"],
 	questions: [
 		{
 			id: "kind",
 			prompt:
-				"Is it a bug, a change request, a question, an idea or a contract change?",
+				"Is it a bug, change request, question, idea or contract change?",
 			fix: "Correct what it is with the triage.",
 			answer: {
 				kind: "choice",
@@ -114,7 +112,7 @@ export const FEEDBACK_TRIAGE_CHECKLIST = defineChecklist({
 		{
 			id: "requirement",
 			prompt: "Which requirement is it about, or none?",
-			fix: "Retarget the item to the requirement it is about, or name the criterion it violates.",
+			fix: "Retarget it to its requirement, or name the criterion it violates.",
 			answer: { kind: "text", maxLength: 200 },
 			answeredBy: {
 				by: "record",
@@ -145,7 +143,7 @@ export const FEEDBACK_TRIAGE_CHECKLIST = defineChecklist({
 		{
 			id: "reproduced",
 			prompt: "Was it reproduced, and with what evidence?",
-			fix: "Say how it was reproduced and what shows it, or why it could not be.",
+			fix: "Give the reproduction and its evidence, or why there is none.",
 			answer: { kind: "text", maxLength: 2000 },
 			answeredBy: { by: "mover" },
 			need: { blocking: true },
@@ -288,12 +286,12 @@ export const REQUIREMENT_ACCEPTANCE_CHECKLIST = defineChecklist({
 		revision: 15,
 		step: "acceptance_check",
 	},
-	shapes: ["57f88d2f"],
+	shapes: ["57f88d2f", "68920344"],
 	questions: [
 		{
 			id: "shipped",
 			prompt: "Has a release shipped every live issue?",
-			fix: "Wait for a release to ship each one, or drop those not being built.",
+			fix: "Wait for each to ship, or drop those not being built.",
 			answer: text(2000),
 			answeredBy: {
 				by: "record",
@@ -305,7 +303,7 @@ export const REQUIREMENT_ACCEPTANCE_CHECKLIST = defineChecklist({
 		{
 			id: "verdicts",
 			prompt: "Does every current criterion pass on the running build?",
-			fix: "Have each one judged on the running build; a fail is filed as feedback.",
+			fix: "Have each one judged on the running build.",
 			answer: text(2000),
 			answeredBy: {
 				by: "record",
@@ -335,7 +333,7 @@ export const WORKFLOW_APPROVAL_CHECKLIST = defineChecklist({
 	title: "Workflow approval",
 	gates: { machine: "workflow_design", from: ["proposed"], to: "approved" },
 	design: { flow: "requirement-lifecycle", revision: 15, step: "design_check" },
-	shapes: ["b534fd6d"],
+	shapes: ["b534fd6d", "2f34c12d"],
 	questions: [
 		{
 			id: "shape",
@@ -385,7 +383,7 @@ export const WORKFLOW_APPROVAL_CHECKLIST = defineChecklist({
 		{
 			id: "exceptions",
 			prompt: "Is each refusal, return and failure drawn?",
-			fix: "Draw each refusal, return and failure as a condition, test or failure edge.",
+			fix: "Draw refusals, returns and failures as conditions, tests or failure edges.",
 			answer: text(2000),
 			answeredBy: {
 				by: "record",
@@ -420,12 +418,12 @@ export const BREAKDOWN_CHECKLIST = defineChecklist({
 		revision: 15,
 		step: "breakdown_check",
 	},
-	shapes: ["2fe61f83"],
+	shapes: ["2fe61f83", "50bd2ab0"],
 	questions: [
 		{
 			id: "kind",
 			prompt: "Is it a breakdown?",
-			fix: "Nothing to fix: the kind is the suggestion's own.",
+			fix: "Propose a breakdown instead.",
 			answer: {
 				kind: "choice",
 				options: [
@@ -456,7 +454,7 @@ export const BREAKDOWN_CHECKLIST = defineChecklist({
 			id: "coverage",
 			prompt:
 				"Is every current business criterion traced, or listed uncovered?",
-			fix: "Trace each one from an issue, or list it uncovered with a reason.",
+			fix: "Trace each from an issue, or list it uncovered with a reason.",
 			answer: text(2000),
 			answeredBy: {
 				by: "record",
@@ -498,7 +496,7 @@ export const RELEASE_APPROVAL_CHECKLIST = defineChecklist({
 		revision: 15,
 		step: "release_check",
 	},
-	shapes: ["48b305a2", "0e81fd2f"],
+	shapes: ["48b305a2", "0e81fd2f", "29ba4259"],
 	questions: [
 		{
 			id: "carried",
@@ -515,7 +513,7 @@ export const RELEASE_APPROVAL_CHECKLIST = defineChecklist({
 		{
 			id: "verdicts",
 			prompt: "Is every carried criterion proven on the commit it ships?",
-			fix: "Have each judged a pass on the commit it ships, by the project's judge; a fail is filed as feedback.",
+			fix: "Have the project's judge pass each on the commit it ships.",
 			answer: text(2000),
 			answeredBy: {
 				by: "record",

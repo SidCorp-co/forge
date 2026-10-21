@@ -130,7 +130,7 @@ impl std::fmt::Display for Refused {
             Refused::Io { path, error } => write!(f, "{path} could not be written: {error}"),
             Refused::NotServed { slug } => write!(
                 f,
-                "PROVISION_ORIENTATION_NOT_SERVED: core sent no orientation for project {slug}, so nothing was written — core serves it on every provision and assignment read, and a core older than this runner, or a checkout bound only in config.toml while core was unreachable, sends none"
+                "PROVISION_ORIENTATION_NOT_SERVED: core sent no orientation for project {slug}, so nothing was written — core serves it on every provision and assignment read, a core older than this runner sends none, and a daemon start or refresh that could not reach core has none to write, so the checkout keeps what the last write left until a pass reaches core"
             ),
             Refused::NotGenerated { slug } => write!(
                 f,

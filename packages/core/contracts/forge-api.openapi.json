@@ -14454,7 +14454,7 @@
                     "description": "The answers to the checklist the move's edge names, each question the mover answers by its id. The kernel parses them by that checklist at every door: a wrong one is refused CHECKLIST_ANSWER_INVALID on its question's path, and the refused move is recorded.",
                     "properties": {
                       "hotfix": {
-                        "description": "Is it a hotfix for a production failure? If so, which FB-n or Sentry issue does it fix, and which criterion does it restore, or which requirement revision will add one? Left unanswered, it is assumed: Not a hotfix: it fixes no production failure.",
+                        "description": "Is it a hotfix, and for which FB-n or Sentry issue? Left unanswered, it is assumed: Not a hotfix.",
                         "maxLength": 500,
                         "minLength": 1,
                         "type": "string"
@@ -25145,7 +25145,7 @@
                   },
                   "answers": {
                     "additionalProperties": false,
-                    "description": "The answers to the Feedback triage checklist (version 1) the triager gives, by question. The route is sent as `route`. A bug naming the criterion it violates needs only criterion, reproduced and severity.",
+                    "description": "The answers to the Feedback triage checklist (version 2) the triager gives, by question. The route is sent as `route`. A bug naming the criterion it violates needs only criterion, reproduced and severity.",
                     "properties": {
                       "criterion": {
                         "description": "Which business criterion does it violate, or none? Required: Name it as REQ-n BC-m, or answer \"none\".",
@@ -25154,7 +25154,7 @@
                         "type": "string"
                       },
                       "reproduced": {
-                        "description": "Was it reproduced, and with what evidence? Required: Say how it was reproduced and what shows it, or why it could not be.",
+                        "description": "Was it reproduced, and with what evidence? Required: Give the reproduction and its evidence, or why there is none.",
                         "maxLength": 2000,
                         "minLength": 1,
                         "type": "string"

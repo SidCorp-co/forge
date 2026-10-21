@@ -176,19 +176,19 @@ export const serviceBlueprint: WorkflowTemplate = {
       {
         id: 'customer',
         label: 'Customer',
-        tooltip: 'What the customer does. Line of interaction below.',
+        tooltip: 'What the customer does.',
         types: ['CUSTOMER_ACTION'],
       },
       {
         id: 'frontstage',
         label: 'Frontstage',
-        tooltip: 'What is done in front of them. Line of visibility below.',
+        tooltip: 'What is done in front of them.',
         types: ['FRONTSTAGE', 'GATEWAY', 'WAIT', 'FAIL_POINT'],
       },
       {
         id: 'backstage',
         label: 'Backstage',
-        tooltip: 'What is done out of sight. Line of internal interaction below.',
+        tooltip: 'What is done out of sight.',
         types: ['BACKSTAGE', 'GATEWAY', 'WAIT', 'FAIL_POINT'],
       },
       {

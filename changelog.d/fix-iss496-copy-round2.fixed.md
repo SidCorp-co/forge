@@ -1,0 +1,1 @@
+**Pages no longer explain themselves, and empty states read as a word or two.** The copy check reads each sentence itself, core's checklist prompts are held to it, and a runner keeps its checkouts' copy rule current while it runs.

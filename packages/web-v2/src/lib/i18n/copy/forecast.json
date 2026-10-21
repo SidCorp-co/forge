@@ -72,7 +72,7 @@
     "fc.landsUnknown": "{lands} · release time not known yet",
     "fc.legAutomatic": " Auto-released: {n} releases in {days} days, lag p50 {p50}, p85 {p85}.",
     "fc.legNotEnough": " Auto-released, but {n} of {floor} releases on record: no range.",
-    "fc.legPerson": " Then {who} owes the release: {act}. Not forecast: {reason}.",
+    "fc.legPerson": " Then {who} owes the release: {act}.",
     "fc.moved.earlier": "moved {by} earlier because {because}",
     "fc.moved.later": "moved {by} later because {because}",
     "fc.noIssues": "No issues",

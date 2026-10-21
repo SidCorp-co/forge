@@ -19,9 +19,10 @@ type GrantedPathKind = Exclude<AgentPathKind, "none" | "permission">;
 const takesGrant = (pathKind: AgentPathKind): pathKind is GrantedPathKind =>
   pathKind === "direct-mcp" || pathKind === "core-mediated";
 
-const KIND_COPY: Record<GrantedPathKind, { granted: ProductCopyKey; withheld: ProductCopyKey }> = {
-  "direct-mcp": { granted: "integrations.access.directGranted", withheld: "integrations.access.directWithheld" },
-  "core-mediated": { granted: "integrations.access.coreGranted", withheld: "integrations.access.coreWithheld" },
+/** Where the credential sits once granted, the state the toggle leaves behind. */
+const GRANTED_COPY: Record<GrantedPathKind, ProductCopyKey> = {
+  "direct-mcp": "integrations.access.directGranted",
+  "core-mediated": "integrations.access.coreGranted",
 };
 
 export function agentAccessBody(
@@ -71,8 +72,8 @@ export function AgentAccessChoice({
   failure?: string | null;
 }) {
   const t = useCopy();
-  const copy = takesGrant(pathKind) ? KIND_COPY[pathKind] : undefined;
-  if (!copy) return null;
+  if (!takesGrant(pathKind)) return null;
+  const grantedCopy = GRANTED_COPY[pathKind];
 
   const granted = value !== AGENT_ACCESS_CLOSED;
 
@@ -87,7 +88,7 @@ export function AgentAccessChoice({
         />
         <span className="fg-body-sm text-fg">{t("integrations.access.grant")}</span>
       </span>
-      <p className="fg-body-sm text-muted">{t(granted ? copy.granted : copy.withheld)}</p>
+      {granted && <p className="fg-body-sm text-muted">{t(grantedCopy)}</p>}
       {!canEdit && (
         <p className="fg-body-sm text-subtle">{t(disabledReason ?? "integrations.access.deniedProject")}</p>
       )}

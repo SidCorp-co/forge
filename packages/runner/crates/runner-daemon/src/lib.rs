@@ -15,6 +15,7 @@ mod actors;
 mod ancestry_read;
 mod box_frames;
 mod checkout_frame;
+mod checkout_passes;
 pub mod control;
 pub mod dispatch;
 pub mod drain;
@@ -58,7 +59,9 @@ use runner_proto::frames::{job_id_of, session_id_of, Frame};
 use runner_transport::runners::{self, MeRunner};
 use runner_transport::ws::{self, WsConfig};
 use runner_transport::{heartbeat, CoreClient};
+use runner_workspace::orientation_record::Point;
 
+use checkout_passes::StartPlaces;
 use dispatch::resolve_repo;
 
 pub(crate) const POOL_SUPERVISE_INTERVAL: std::time::Duration = std::time::Duration::from_secs(60);
@@ -375,7 +378,9 @@ async fn close_parked_sessions(runner: &Arc<ClaudeCodeRunner>) -> usize {
 
 /// What a daemon reconciles before it starts anything: which projects route here, the hooks the
 /// daemon it replaced installed, and the forge-master skill and orientation in every checkout.
-async fn boot(cfg: &Config, client: &CoreClient) {
+/// Answers whether core said which projects are assigned here; where it did not, the start's
+/// pass is owed and `checkout_passes::start_pass_once_core_answers` runs it again when core does.
+async fn boot(cfg: &Config, client: &CoreClient) -> bool {
     probation::serve();
     // Discover server-side assignments (`/me/runners`). This is the source of
     // truth for which projects route to this device and for their repo paths;
@@ -411,27 +416,8 @@ async fn boot(cfg: &Config, client: &CoreClient) {
 
     // Before any pane is prepared: whatever the daemon this one replaced wrote
     // into these checkouts is still there, and this process CAN name itself.
-    repair_installed_hooks(server.as_deref(), cfg, "boot");
-    let census_from = agent_activity::now_ms();
-    let (fresh, census_from) = match Config::load() {
-        Ok(fresh) => (fresh, Some(census_from)),
-        Err(e) => {
-            tracing::warn!(
-                "[skill] config.toml could not be read again ({e}), so the forge-master install covers the bindings read at start and prunes no line of its record"
-            );
-            (cfg.clone(), None)
-        }
-    };
-    let record_dir = runner_platform::config::config_dir();
-    let lock_dir = record_dir.as_deref().map(|d| d.join("locks"));
-    reconcile_checkouts(
-        server.as_deref(),
-        &fresh,
-        census_from,
-        record_dir.as_deref(),
-        lock_dir.as_deref(),
-    )
-    .await;
+    checkout_passes::start_pass(server.as_deref(), cfg, "boot", &StartPlaces::this_box()).await;
+    server.is_some()
 }
 
 /// What every start writes into every bound checkout, whatever the daemon it
@@ -446,15 +432,17 @@ async fn reconcile_checkouts(
     lock_dir: Option<&std::path::Path>,
 ) {
     install_master_skills(server, cfg, census_from, record_dir);
-    converge_orientations(server, cfg, census_from, record_dir, lock_dir).await;
+    converge_orientations(Point::Start, server, cfg, census_from, record_dir, lock_dir).await;
 }
 
 /// Write the running build's orientation into every checkout this box is
 /// bound to, once per checkout, so a box that upgraded onto a build that
 /// moves it converges without anybody re-binding each checkout. A start is
 /// the one moment every build change passes through: an update's handover
-/// execs a new process.
+/// execs a new process. A [`Point::Refresh`] runs it again while the daemon
+/// runs, for the project knowledge the orientation carries.
 async fn converge_orientations(
+    point: Point,
     server: Option<&[MeRunner]>,
     cfg: &Config,
     census_from: Option<i64>,
@@ -466,7 +454,8 @@ async fn converge_orientations(
     let bound = bound_checkouts(rows, cfg);
     if server.is_none() {
         tracing::warn!(
-            "[orientation] this box could not ask core which projects are assigned to it, so core served no orientation and none of the {} checkout(s) config.toml names is written",
+            "[orientation] {}: this box could not ask core which projects are assigned to it, so core served no orientation and none of the {} checkout(s) config.toml names is written",
+            point.word(),
             bound.checkouts.len()
         );
     }
@@ -487,6 +476,7 @@ async fn converge_orientations(
         })
         .collect();
     converge_every(
+        point,
         &checkouts,
         lock_dir,
         record_dir,
@@ -630,9 +620,10 @@ pub async fn run(
         (cfg.runner.duplex_max_sessions as usize).max(1),
     ));
 
-    boot(&cfg, &client).await;
+    let answered = boot(&cfg, &client).await;
 
     let (cancel_tx, cancel_rx) = watch::channel(false);
+    checkout_passes::spawn_checkout_passes(answered, &client, &cfg, &cancel_rx);
     let (frame_tx, frame_rx) = mpsc::channel::<Frame>(256);
     let (ledger_tx, ledger_rx) = watch::channel::<Option<String>>(None);
 
@@ -748,7 +739,7 @@ mod start_tests {
     use std::path::{Path, PathBuf};
 
     const PROD: &str = "da368b0a-8e21-4763-9d90-8f7b9d0c7115";
-    const DEV: &str = "d1bb4907-74d9-4228-85ff-76121523af7d";
+    pub(crate) const DEV: &str = "d1bb4907-74d9-4228-85ff-76121523af7d";
 
     /// An orientation of the shape core serves (`prompt/checkout-orientation.ts`).
     fn orientation_body(project_id: &str, slug: &str) -> String {
@@ -770,7 +761,7 @@ mod start_tests {
         .unwrap()]
     }
 
-    fn git(dir: &Path, args: &[&str]) -> String {
+    pub(crate) fn git(dir: &Path, args: &[&str]) -> String {
         let out = std::process::Command::new("git")
             .arg("-C")
             .arg(dir)
@@ -845,7 +836,7 @@ mod start_tests {
         .collect()
     }
 
-    fn outcomes(dir: &Path) -> Vec<(String, Outcome)> {
+    pub(crate) fn outcomes(dir: &Path) -> Vec<(String, Outcome)> {
         match orientation_record::read(dir) {
             orientation_record::Read::Record(r) => {
                 r.entries.into_iter().map(|e| (e.slug, e.outcome)).collect()
@@ -940,7 +931,7 @@ mod start_tests {
             },
         );
 
-        converge_orientations(None, &cfg, None, Some(&records), Some(&locks)).await;
+        converge_orientations(Point::Start, None, &cfg, None, Some(&records), Some(&locks)).await;
 
         assert!(
             !co.join("CLAUDE.local.md").exists(),

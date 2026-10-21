@@ -6,10 +6,8 @@ import { useSetRunnerAdmission } from "../hooks";
 /**
  * Whether this runner may be offered jobs from the pool.
  *
- * What it does NOT reach is said out loud (ISS-1118): both `draining` and
- * `disabled` decide whether a NEW master is placed and end no pane already up,
- * and this was the control an owner reached for to stop one. `ResidentMaster`
- * below names the control that does.
+ * Neither `draining` nor `disabled` ends a master pane already up (ISS-1118):
+ * both decide only whether a NEW master is placed.
  */
 export function PoolAdmission({
 	projectId,

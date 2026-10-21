@@ -24,10 +24,10 @@ const toneOf = (g: ReleaseReadiness["gates"][number]): GateTone =>
 	STATE_CODES.has(g.code) ? "state" : g.kind === "blocker" ? "problem" : "warning";
 
 /** The knowledge entries a release owes, each written here by a person. */
-const KNOWLEDGE_GAPS: Partial<Record<Gap, { name: ProductCopyKey; why: ProductCopyKey; placeholder: ProductCopyKey }>> = {
-	"build-commands": { name: "settings.project.release.gap.buildCommands", why: "settings.project.release.gap.buildCommandsWhy", placeholder: "settings.project.release.gap.buildCommandsPlaceholder" },
-	"test-commands": { name: "settings.project.release.gap.testCommands", why: "settings.project.release.gap.testCommandsWhy", placeholder: "settings.project.release.gap.testCommandsPlaceholder" },
-	"release-procedure": { name: "settings.project.release.gap.releaseProcedure", why: "settings.project.release.gap.releaseProcedureWhy", placeholder: "settings.project.release.gap.releaseProcedurePlaceholder" },
+const KNOWLEDGE_GAPS: Partial<Record<Gap, { name: ProductCopyKey; placeholder: ProductCopyKey }>> = {
+	"build-commands": { name: "settings.project.release.gap.buildCommands", placeholder: "settings.project.release.gap.buildCommandsPlaceholder" },
+	"test-commands": { name: "settings.project.release.gap.testCommands", placeholder: "settings.project.release.gap.testCommandsPlaceholder" },
+	"release-procedure": { name: "settings.project.release.gap.releaseProcedure", placeholder: "settings.project.release.gap.releaseProcedurePlaceholder" },
 };
 
 /** The gaps a field elsewhere on this page or on Connections closes. */
@@ -60,7 +60,7 @@ function KnowledgeGap({ projectId, slug, gap }: { projectId: string; slug: Gap; 
 			<Dot tone="attention" />
 			<div className="min-w-0 flex-1">
 				<p>
-					<b className="font-semibold">{t("settings.project.release.gap.notWritten", { name })}</b> {t(gap.why)}
+					<b className="font-semibold">{t("settings.project.release.gap.notWritten", { name })}</b>
 				</p>
 				{open ? (
 					<div className="mt-2 space-y-2">

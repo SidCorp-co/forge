@@ -132,7 +132,6 @@ export function LeaseLanes({ moving, slug }: { moving: OverviewMoving; slug: str
           ))}
         </div>
       </div>
-      <p className="mt-2.5 text-12 text-muted">{t("overview.lane.legend")}</p>
     </div>
   );
 }

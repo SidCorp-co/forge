@@ -151,7 +151,7 @@ const ROWS: IssueRow[] = [
     pipelineHealth: {
       stage: "open",
       queuedStep: { jobId: "j1", jobType: "triage", stageStatus: null, queuedAt: AT, retryAfterAt: null },
-      waitingOn: { reason: "runner_stale", since: AT, details: {}, reading: { short: "No runner online", detail: "No runner is online for this project.", who: "Bring a runner back online.", needsAction: true } },
+      waitingOn: { reason: "runner_stale", since: AT, details: {}, reading: { short: "No runner online", detail: "Runners offline", who: "Bring a runner back online.", needsAction: true } },
     },
   }),
   row(4, { status: "awaiting_release", agentStatus: "completed", releaseBatchRunId: null }),
@@ -188,7 +188,7 @@ const ISSUE: IssueDetail = {
   pipelineHealth: {
     stage: "needs_info",
     queuedStep: { jobId: "j2", jobType: "build", stageStatus: null, queuedAt: AT, retryAfterAt: "2026-10-07T09:00:00.000Z" },
-    waitingOn: { reason: "retry_cooldown", since: AT, details: {}, reading: { short: "Retry cooldown", detail: "The step failed and waits out a cooldown before retrying.", who: "No action: the retry fires itself.", needsAction: false } },
+    waitingOn: { reason: "retry_cooldown", since: AT, details: {}, reading: { short: "Retry cooldown", detail: "The step failed and waits out a cooldown before retrying.", who: "No action", needsAction: false } },
   },
 } as unknown as IssueDetail;
 

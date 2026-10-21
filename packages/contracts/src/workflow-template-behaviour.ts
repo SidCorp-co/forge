@@ -141,7 +141,7 @@ export const uxFlow: WorkflowTemplate = {
     {
       id: 'returns',
       label: 'Returns',
-      tooltip: 'The system answers: a screen or a state.',
+      tooltip: 'The system answers with a screen or a state.',
       direction: 'forward',
       required: [],
       fromTypes: ['SYSTEM'],

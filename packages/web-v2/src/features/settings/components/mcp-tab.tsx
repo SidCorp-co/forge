@@ -64,14 +64,6 @@ export function McpTab() {
 
   return (
     <div className="space-y-6">
-      <Banner tone="info">
-        {t("settings.mcp.authLead")}{" "}
-        <Link href={TOKENS_TAB_HREF} className="font-semibold text-fg underline underline-offset-2">
-          {t("shell.settings.tab.tokens")}
-        </Link>{" "}
-        {t("settings.mcp.authTail")}
-      </Banner>
-
       <PageSection>
         <PageSectionBody>
           <SectionTitle className="fg-h3 mb-4">{t("settings.mcp.connectClient")}</SectionTitle>
@@ -211,11 +203,10 @@ function recoveryHint(err: unknown, t: Copy): ReactNode | null {
     if (err.status === 401)
       return (
         <>
-          {t("settings.mcp.hint401")}{" "}
+          {t("settings.mcp.hint401")} ·{" "}
           <Link href={TOKENS_TAB_HREF} className="font-semibold underline underline-offset-2">
             {t("shell.settings.tab.tokens")}
           </Link>
-          .
         </>
       );
     if (err.status === 403) return t("settings.mcp.hint403");

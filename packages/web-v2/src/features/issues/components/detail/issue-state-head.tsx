@@ -1,7 +1,9 @@
 
 // What is true of an issue right now, in three lines and a stepper: Now, Needs you, Done by. The
 // words are the standing's own (core's `waitingOn`) and the forecast's, so the page writes no
-// sentence of its own here.
+// sentence of its own here. What a person answers on the page itself — an open question or a
+// decision, a pattern to approve — sits under Needs you, before Done by, so the page reads Now,
+// Needs you, Done by and then the criteria rows whatever waits on the reader (REQ-43 BC-9).
 
 import type { Forecast } from "@forge/contracts/forecast";
 import type { IssueStanding } from "@forge/contracts/issue-standing";
@@ -26,11 +28,14 @@ export function IssueStateHead({
   standing,
   forecast,
   act,
+  needs,
 }: {
   standing: IssueStanding;
   forecast: Forecast | undefined;
   /** The one thing a person can do about what the issue owes them: a button, or nothing. */
   act?: ReactNode;
+  /** What the reader answers here, drawn under Needs you: the open questions and patterns. */
+  needs?: ReactNode;
 }) {
   const t = useCopy();
   const language = useInterfaceLanguage();
@@ -58,6 +63,7 @@ export function IssueStateHead({
           </span>
         )}
       </Line>
+      {needs}
       {done ? null : (
         <Line label={t("issues.now.doneBy")} testId="issue-done-by">
           {eta ? <EtaInline eta={eta} clock={clock} /> : <span className="text-muted">{t("issues.now.unknown")}</span>}

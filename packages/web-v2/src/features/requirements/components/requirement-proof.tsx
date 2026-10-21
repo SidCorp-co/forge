@@ -276,7 +276,7 @@ export function CriteriaChecklist({ d, slug, developer = false }: { d: Requireme
               </div>
               {c.issues.length > 0 ? (
                 <details className="mt-1.5 text-13" data-testid="criterion-evidence">
-                  <summary className="cursor-pointer select-none font-medium text-muted hover:text-fg">{t("requirements.criteria.evidence", { n: c.issues.length })}</summary>
+                  <summary className="cursor-pointer select-none font-medium text-muted hover:text-fg">{t("requirements.criteria.evidence")}</summary>
                   <ul className="mt-1 grid gap-0.5 pl-3">
                     {issues.flatMap(({ i, links }) =>
                       links.map((l) => (

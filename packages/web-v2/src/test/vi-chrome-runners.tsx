@@ -137,7 +137,7 @@ export const SCREENS = [
     name: "Runner row · activity and labels",
     render: () => (
       <Seeded data={projectQueries()}>
-        <RunnerAssignment runner={RUNNERS[1]} current={null} projectId={P} canEdit slug="hop" />
+        <RunnerAssignment runner={RUNNERS[1]} current={null} projectId={P} canEdit />
         <PoolReadBanner poolRead={blind} />
         <PoolReadBanner poolRead={{ ...blind, receivedAt: new Date(NOW - 3_600_000).toISOString() }} />
         <PoolReadBanner poolRead={{ ...blind, verdict: "intermittent", countIsFloor: true, recoveredAt: NOW - 30_000 }} />
@@ -149,5 +149,5 @@ export const SCREENS = [
       clickKey("runners.labels.add")();
     },
   },
-  { name: "Runner row · unassign", render: () => <Seeded data={projectQueries()}><RunnerAssignment runner={RUNNERS[0]} current={null} projectId={P} canEdit slug="hop" /></Seeded>, act: clickKey("runners.row.unassign") },
+  { name: "Runner row · unassign", render: () => <Seeded data={projectQueries()}><RunnerAssignment runner={RUNNERS[0]} current={null} projectId={P} canEdit /></Seeded>, act: clickKey("runners.row.unassign") },
 ];

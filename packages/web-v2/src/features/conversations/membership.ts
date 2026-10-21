@@ -103,7 +103,7 @@ export function agentAdditionClaims(args: {
     },
     {
       key: "scope-after",
-      text: t("conversations.claim.scopeAfter", { at, project: candidate.project.name, projects: list(after, t) }),
+      text: t("conversations.claim.scopeAfter", { at, project: candidate.project.name }),
     },
   ];
 

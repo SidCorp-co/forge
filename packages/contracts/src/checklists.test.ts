@@ -330,7 +330,7 @@ describe("the registered issue-ready checklist", () => {
 		const edge = ISSUE_MACHINE.edges.find((e) => e.from === "draft" && e.to === "open");
 		expect(edge).toMatchObject({ guards: ["admit", "checklist"], checklist: "issue_ready" });
 		expect(checklistsOn(ISSUE_MACHINE)).toEqual([CHECKLISTS.issue_ready]);
-		expect(ISSUE_READY_CHECKLIST.version).toBe(2);
+		expect(ISSUE_READY_CHECKLIST.version).toBe(3);
 	});
 
 	it("asks hotfix obligations as an assumed answer, naming the open owner question", () => {
@@ -345,7 +345,7 @@ describe("the registered issue-ready checklist", () => {
 		expect(judged.complete).toBe(true);
 		expect(judged.answers.at(-1)).toEqual({
 			question: "hotfix",
-			value: "Not a hotfix: it fixes no production failure.",
+			value: "Not a hotfix.",
 			provenance: "assumed",
 			source: "recommended",
 			open: "0769f177-2941-42db-81a6-5346b00252bb",
@@ -367,7 +367,7 @@ describe("each refusal says in plain words what to fix (REQ-34 BC-18)", () => {
 			expect.objectContaining({
 				code: "CHECKLIST_ANSWER_INVALID",
 				path: "/answers/hotfix",
-				detail: `The answer to "${prompt}" was empty. An answer is required: write one. Or leave the question out of the move to take the assumed answer: "Not a hotfix: it fixes no production failure."`,
+				detail: `The answer to "${prompt}" was empty. An answer is required: write one. Or leave the question out of the move to take the assumed answer: "Not a hotfix."`,
 			}),
 		]);
 	});
@@ -396,7 +396,7 @@ describe("each refusal says in plain words what to fix (REQ-34 BC-18)", () => {
 			"text",
 		]);
 		expect(refused({ hotfix: { text: "yes" } })[0]?.detail).toBe(
-			`The answer to "${prompt}" was sent as an object. Send it as text. Or leave the question out of the move to take the assumed answer: "Not a hotfix: it fixes no production failure."`,
+			`The answer to "${prompt}" was sent as an object. Send it as text. Or leave the question out of the move to take the assumed answer: "Not a hotfix."`,
 		);
 		expect(refused("yes")[0]?.detail).toMatch(/^The answers to the Issue ready checklist were sent as text\. /);
 		expect(refused(5)[0]?.detail).toMatch(/were sent as a number\. /);
@@ -418,7 +418,7 @@ describe("each refusal says in plain words what to fix (REQ-34 BC-18)", () => {
 
 	it("an answer that is not text says to send text", () => {
 		expect(refused({ hotfix: 5 })[0]?.detail).toBe(
-			`The answer to "${prompt}" was sent as a number. Send it as text. Or leave the question out of the move to take the assumed answer: "Not a hotfix: it fixes no production failure."`,
+			`The answer to "${prompt}" was sent as a number. Send it as text. Or leave the question out of the move to take the assumed answer: "Not a hotfix."`,
 		);
 	});
 

@@ -74,6 +74,6 @@ describe("the status report as Markdown", () => {
 
   it("says plainly when nothing shipped in the window", () => {
     const quiet = { ...STATUS, shipped: { ...STATUS.shipped, releases: [], releaseCount: 0, issueCount: 0, requirementsShipped: [] } };
-    expect(statusMarkdown(quiet, words("en"))).toContain("Nothing reached users in the last 7 days.");
+    expect(statusMarkdown(quiet, words("en"))).toContain("Nothing shipped");
   });
 });

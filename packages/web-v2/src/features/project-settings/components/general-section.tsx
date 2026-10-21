@@ -30,7 +30,7 @@ export function UndeclaredNotice({ slug }: { slug: string }) {
 	const t = useCopy();
 	return (
 		<p className="fg-body-sm border-y border-line py-3 text-muted">
-			{t("settings.project.undeclared")}{" "}
+			{t("settings.project.undeclared")} ·{" "}
 			<Link href={settingsHref(slug, "advanced", "documents")} className="font-semibold text-link hover:underline">
 				{t("settings.project.undeclaredAct")}
 			</Link>

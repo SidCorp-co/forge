@@ -21,7 +21,6 @@ import {
   Section,
 } from "@/design";
 import { useProjectDocument } from "@/features/project-config";
-import { useProject } from "@/features/projects";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { projectRoom } from "@/lib/ws/rooms";
@@ -128,7 +127,6 @@ function AssignDevice({
 						<div className="mt-2">
 							<SetupCommand />
 						</div>
-						<p className="fg-body-sm mt-1.5 text-subtle">{t("runners.assign.setupBody")}</p>
 					</div>
 				</div>
 			</Section>
@@ -147,7 +145,6 @@ export function ProjectRunnersScreen({
 	embedded?: boolean;
 }) {
 	useRoom(projectRoom(projectId));
-	const project = useProject(projectId);
 	const projectDocument = useProjectDocument(projectId);
 	const repository = repositoryOf(projectDocument.data?.document);
 	const runners = useProjectRunners(projectId);
@@ -201,7 +198,6 @@ export function ProjectRunnersScreen({
 									current={currentByRunner.get(r.runnerId) ?? null}
 									projectId={projectId}
 									canEdit={!!canEdit}
-									slug={project.data?.slug}
 								/>
 							))}
 						</div>

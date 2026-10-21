@@ -292,7 +292,7 @@ export function acceptanceAnswersOf(
         : proof.unshipped.length > 0
           ? {
               gap: `${proof.unshipped.join(', ')} ${proof.unshipped.length === 1 ? 'has' : 'have'} not shipped.`,
-              fix: 'Wait for a release to ship each one, or drop those not being built.',
+              fix: 'Wait for each to ship, or drop those not being built.',
             }
           : {
               value: `All ${proof.liveIssues} live ${proof.liveIssues === 1 ? 'issue' : 'issues'} shipped.`,
@@ -306,7 +306,7 @@ export function acceptanceAnswersOf(
                   `${c.code} (${c.verdict.replace('_', ' ')}${c.why ? `: ${clipped(c.why)}` : ''})`,
               )
               .join('; ')}.`,
-            fix: 'Have each one judged on the running build; a fail is filed as feedback.',
+            fix: 'Have each one judged on the running build.',
           }
         : { value: 'Every current criterion passes on the running build.' },
     evidence:

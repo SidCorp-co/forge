@@ -14,7 +14,7 @@
     "shares.created.done": "Done",
     "shares.created.link": "Share link",
     "shares.created.manage": "Share links",
-    "shares.created.once": "This link is shown once. Copy it now.",
+    "shares.created.once": "Shown once",
     "shares.created.until": "until",
     "shares.dialog.audience": "Who can open it",
     "shares.dialog.audiencesError": "Couldn't read audiences. Only project members are offered.",

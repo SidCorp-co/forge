@@ -127,7 +127,7 @@ describe('a triage missing an answer is refused naming the question (criterion 1
       { question: 'kind', value: 'bug', provenance: 'given', source: 'record:kind' },
       {
         question: 'requirement',
-        value: 'None: it is about no requirement.',
+        value: 'None',
         provenance: 'given',
         source: 'record:requirementId',
       },

@@ -203,7 +203,7 @@ describe("timeline block", () => {
 
   it("lists an item with no date instead of placing it", () => {
     show(tl);
-    expect(screen.getByTestId("timeline-undated").textContent).toBe("No date in the data for: W3.");
+    expect(screen.getByTestId("timeline-undated").textContent).toBe("Undated: W3");
   });
 
   it("groups by lane and carries the text alternative", () => {

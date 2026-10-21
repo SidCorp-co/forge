@@ -146,7 +146,7 @@ const legDetail = (leg: ReleaseLeg, c: EtaClock): string => {
     case "not_enough_history":
       return t("fc.legNotEnough", { n: leg.n, floor: leg.floor });
     case "person":
-      return t("fc.legPerson", { who: said(leg.says.who, c.lang), act: said(leg.says.act, c.lang), reason: said(leg.says.reason, c.lang) });
+      return t("fc.legPerson", { who: said(leg.says.who, c.lang), act: said(leg.says.act, c.lang) });
   }
 };
 
