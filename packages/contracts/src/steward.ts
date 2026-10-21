@@ -633,6 +633,8 @@ export interface StewardActRecord {
 	/** The record it wrote (a question id, a suggestion id, a comment id, ISS-n). */
 	wrote: StewardCite | null;
 	undo: { door: string; body: Record<string, unknown> | null } | null;
+	/** How a person overrides it on the item's page, where `undo` is null; null where a door undoes it. */
+	override: string | null;
 	undoneAt: string | null;
 	undoneBy: string | null;
 	at: string;

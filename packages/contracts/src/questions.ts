@@ -69,6 +69,17 @@ export interface QuestionRoundFacts {
 }
 
 /**
+ * The account that asked a question through its own door, by name and kind (REQ-48 BC-12): a person,
+ * an agent token's account, the Steward. Null on a question the system asked (a sweep, a run's park)
+ * and on every question written before migration 0512 recorded its asker.
+ */
+export interface QuestionAsker {
+	id: string;
+	name: string;
+	kind: "human" | "agent";
+}
+
+/**
  * What an answer says the issue still waits on, stored on the round it answers (ISS-257). It keeps
  * the answer from returning the issue to the status its park left; `blockedBy` is the issue whose
  * `blocks` edge the answer wrote onto it.

@@ -81,6 +81,8 @@ export type AskInput = {
    * recommends (REQ-41 BC-2), as a choice round owes its recommended option.
    */
   askedByRun?: true;
+  /** The account asking through its own door, recorded as the question's asker (REQ-48 BC-12). */
+  askedBy?: string;
 };
 
 export const refuseQuestion = refuser<QuestionRefusalCode>('QUESTION_REFUSED');
@@ -400,6 +402,7 @@ async function insertQuestion(executor: QuestionExecutor, input: AskInput, about
       requirementId: input.requirementId,
       feedbackId: input.feedbackId,
       agentSessionId: input.agentSessionId,
+      askedBy: input.askedBy,
       blockerKind: input.blockerKind,
       steps: [step(1, input.prompt, input.answer, input.sensitive)],
       assumed: scrubSecretsDeep(input.assumed),

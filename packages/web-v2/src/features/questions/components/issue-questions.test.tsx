@@ -125,6 +125,20 @@ describe("answering a question on an issue", () => {
     expect(screen.queryByTestId("still-waits")).toBeNull();
   });
 
+  it("names the account that asked it, and no asker where the system asked (REQ-48 BC-12)", async () => {
+    fakeCore(() => ({
+      body: {
+        questions: [
+          { ...asked, asker: { id: "u9", name: "Steward", kind: "agent" } },
+          { ...asked, id: "q2", asker: null },
+        ],
+      },
+    }));
+    renderWithQuery(<IssueQuestions issueId="i1" />);
+    expect(await screen.findByText("Asked by Steward")).toBeTruthy();
+    expect(screen.getAllByTestId("question-asker")).toHaveLength(1);
+  });
+
   it("names the merge mark an open question waits on, and drops it once answered", async () => {
     fakeCore(() => ({
       body: {

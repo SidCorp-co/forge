@@ -153,6 +153,11 @@ export interface StewardRunsResponse {
 	runs: StewardRunView[];
 }
 
+/** `GET /api/projects/:id/steward-acts?subject=KEY`: every act the steward took on one item, newest first, uncapped. */
+export interface StewardActsResponse {
+	acts: StewardActRecord[];
+}
+
 /** `POST /api/projects/:id/steward-acts/:actId/undo`: the act as it stands now, and what its undo door answered. */
 export interface StewardUndoResponse {
 	act: StewardActRecord;

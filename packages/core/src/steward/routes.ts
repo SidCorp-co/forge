@@ -1,4 +1,4 @@
-// The steward's two doors (REQ-48 BC-1, BC-12): an item's runs, and the undo of one act, which a
+// The steward's doors (REQ-48 BC-1, BC-12): an item's runs, its acts, and the undo of one act, which a
 // holder of project.write asks for and the steward account executes.
 
 import { Hono } from 'hono';
@@ -8,11 +8,16 @@ import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/a
 import { invalid, zValidator } from '../middleware/zod-validator.js';
 import { undoAct } from './acts-store.js';
 import { finishStewardJob } from './job.js';
-import { readStewardRuns } from './read.js';
+import { readStewardActs, readStewardRuns } from './read.js';
 
 export const stewardRoutes = new Hono<{ Variables: AuthVars }>();
 
-for (const path of ['/:id/steward-runs', '/:id/steward-runs/*', '/:id/steward-acts/*']) {
+for (const path of [
+  '/:id/steward-runs',
+  '/:id/steward-runs/*',
+  '/:id/steward-acts',
+  '/:id/steward-acts/*',
+]) {
   stewardRoutes.use(path, requireAuth(), assertEmailVerified());
 }
 
@@ -54,6 +59,16 @@ const actParam = zValidator(
 stewardRoutes.get('/:id/steward-runs', projectParam, runsQuery, async (c) =>
   c.json(
     await readStewardRuns({
+      projectId: c.req.valid('param').id,
+      userId: c.get('userId'),
+      subjectKey: c.req.valid('query').subject,
+    }),
+  ),
+);
+
+stewardRoutes.get('/:id/steward-acts', projectParam, runsQuery, async (c) =>
+  c.json(
+    await readStewardActs({
       projectId: c.req.valid('param').id,
       userId: c.get('userId'),
       subjectKey: c.req.valid('query').subject,

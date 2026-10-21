@@ -36,6 +36,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 import { agentSessions } from './schema-agent-sessions.js';
+import { users } from './schema-auth.js';
 import { feedback } from './schema-feedback.js';
 import { issues } from './schema-issues.js';
 import { questionnaireBatches } from './schema-onboarding.js';
@@ -157,6 +158,11 @@ export const agentQuestions = pgTable(
     agentSessionId: uuid('agent_session_id').references(() => agentSessions.id, {
       onDelete: 'set null',
     }),
+    /**
+     * The account that asked through a door of its own (`POST /api/questions`): a person, an agent
+     * token, the steward. Null where the system asked (a sweep, a park) or the ask predates 0512.
+     */
+    askedBy: uuid('asked_by').references(() => users.id, { onDelete: 'set null' }),
     /** The questionnaire batch this item was asked in (ISS-63); null on every other question. */
     batchId: uuid('batch_id').references(() => questionnaireBatches.id, { onDelete: 'cascade' }),
     /** The item as posted: group, control, options, inferred default, evidence, the designs it shapes. */

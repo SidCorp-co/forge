@@ -6,7 +6,7 @@
 
 import { OCCUPYING_JOB_STATUSES } from '@forge/contracts/job-machine';
 import { STEWARD_ACTS, type StewardAct, type StewardRefusalCode } from '@forge/contracts/steward';
-import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import { revokePat } from '../credentials/pat.js';
 import { db } from '../db/client.js';
 import { rowsOf } from '../db/raw-sql.js';

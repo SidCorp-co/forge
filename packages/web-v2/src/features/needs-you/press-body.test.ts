@@ -13,6 +13,7 @@ const button = (over: Partial<DecisionAnswer>): DecisionAnswer => ({
   path: "/api/questions/q/answer",
   body: null,
   needsReason: true,
+  declines: false,
   effect: null,
   recommended: false,
   ...over,

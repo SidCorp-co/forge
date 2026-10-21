@@ -9,15 +9,15 @@ import type {
   StewardCite,
   StewardRefusalCode,
 } from '@forge/contracts/steward';
-import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
-import { type StewardUndo, stewardActs } from '../db/schema-steward-runs.js';
+import { type StewardUndo, stewardActs, stewardRuns } from '../db/schema-steward-runs.js';
 import { refuser } from '../lib/refusal.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { stewardAccountOf } from './account.js';
 import { mintStewardCredential } from './credential.js';
 import { bearer, callDoor, type DoorAnswer, type DoorMethod } from './door-call.js';
-import { isInverseDoor, overrideOf } from './undo-rules.js';
+import { isInverseDoor, overrideOf, personOverrideOf } from './undo-rules.js';
 
 const refuse = refuser<StewardRefusalCode>('STEWARD_ACT_UNKNOWN');
 
@@ -53,6 +53,7 @@ export function actRecordOf(row: ActRow): StewardActRecord {
     says: { did: verbatim(row.did) },
     wrote: row.wrote ?? null,
     undo: row.undo ?? null,
+    override: row.undo ? null : personOverrideOf(row.door),
     undoneAt: row.undoneAt?.toISOString() ?? null,
     undoneBy: row.undoneBy,
     at: row.at.toISOString(),
@@ -72,6 +73,20 @@ export async function actsOfRuns(
     .orderBy(asc(stewardActs.at));
   for (const row of rows) out.set(row.runId, [...(out.get(row.runId) ?? []), actRecordOf(row)]);
   return out;
+}
+
+/**
+ * Every act the steward took on one item, across all its runs, newest first: an item page's Activity
+ * reads this, not the runs list, so an act on an old run is never cut off by newer runs (REQ-48 BC-12).
+ */
+export async function actsOfSubject(projectId: string, key: string): Promise<StewardActRecord[]> {
+  const rows = await db
+    .select({ act: stewardActs })
+    .from(stewardActs)
+    .innerJoin(stewardRuns, eq(stewardRuns.id, stewardActs.runId))
+    .where(and(eq(stewardActs.projectId, projectId), eq(stewardRuns.subjectKey, key)))
+    .orderBy(desc(stewardActs.at), desc(stewardActs.id));
+  return rows.map((r) => actRecordOf(r.act));
 }
 
 /** The record an inverse door wrote, from its answer: a re-proposed suggestion, a reopened item. */

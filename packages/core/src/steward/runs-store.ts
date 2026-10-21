@@ -16,7 +16,7 @@ import {
   type StewardSkipReason,
   type StewardTrigger,
 } from '@forge/contracts/steward';
-import { and, eq, gte, inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { rowsOf } from '../db/raw-sql.js';
 import { type StewardRunEvent, stewardRuns } from '../db/schema-steward-runs.js';

@@ -4,9 +4,13 @@
 // open there. One cause is diagnosed once: a requirement stuck through a carrier issue that is
 // itself stuck is only noted, its note citing the carrier, and the carrier is diagnosed (REQ-45 and
 // ISS-498). The standing read is a scripted one of its contract type, so each case states it.
+// What the steward asks names it as the asker, and each act it took shows on the item with the
+// door that undoes it, or how a person overrides it where none does (REQ-48 BC-12).
 //
 // @direct-test-of packages/core/src/steward/door-decide.ts
 // @direct-test-of packages/core/src/steward/sweep.ts
+// @direct-test-of packages/core/src/questions/read.ts
+// @direct-test-of packages/core/src/steward/undo-rules.ts
 
 import type { Said } from '@forge/contracts/said';
 import { STALE_DRAFT_OPTION_IDS } from '@forge/contracts/stale-drafts';
@@ -286,5 +290,65 @@ describe("the steward reads a stuck feedback item's triage proposals with its ow
     expect((asSteward.json.suggestions as unknown[]).length).toBe(
       (asOwner.suggestions as unknown[]).length,
     );
+  });
+});
+
+describe("the steward's questions and acts show on their item, the Steward named (REQ-48 BC-12)", () => {
+  it('records the Steward as the asker of its question, and a person as the asker of theirs', async () => {
+    const issue = await draft(137);
+    const kept = await keptThroughStaleDraft(issue.id);
+    standings = [stuck({ kind: 'issue', ...issue }, new Date(Date.now() + 60_000).toISOString())];
+    await diagnose(issue, 'drop');
+    const listed = ok(await say('owner', 'GET', `/api/questions?issueId=${issue.id}`))
+      .questions as { id: string; status: string; asker: unknown }[];
+    const asked = listed.find((q) => q.status === 'open');
+    expect(asked?.asker).toEqual({ id: stewardId, name: 'Steward', kind: 'agent' });
+    expect(listed.find((q) => q.id === kept)?.asker).toMatchObject({ id: ownerId, kind: 'human' });
+    const one = ok(await say('owner', 'GET', `/api/questions/${asked?.id ?? ''}`));
+    expect(one.asker).toEqual({ id: stewardId, name: 'Steward', kind: 'agent' });
+  });
+
+  it('lists each act on the item with its undo door, or how to override it where none undoes it', async () => {
+    const issue = await draft(138);
+    standings = [stuck({ kind: 'issue', ...issue }, new Date(Date.now() + 60_000).toISOString())];
+    await diagnose(issue, 'drop');
+    const [run] = await rows<{ id: string }>(sql`
+      SELECT id FROM steward_runs WHERE project_id = ${projectId} AND subject_key = ${issue.key}`);
+    await rows(sql`
+      INSERT INTO steward_acts (run_id, project_id, act, door, did)
+      VALUES (${run?.id ?? ''}, ${projectId}, 'stuck_diagnosis',
+              ${`POST /api/issues/${issue.id}/transition`}, ${`Moved ${issue.key} to on_hold.`})
+      RETURNING id`);
+    const acts = ok(
+      await say('owner', 'GET', `/api/projects/${projectId}/steward-acts?subject=${issue.key}`),
+    ).acts as { door: string; undo: unknown; override: string | null }[];
+    const asked = acts.find((a) => a.door === 'POST /api/questions');
+    expect(asked?.undo).toMatchObject({
+      door: expect.stringMatching(/^POST \/api\/questions\/.+\/void$/),
+    });
+    expect(asked?.override).toBeNull();
+    const moved = acts.find((a) => a.door.endsWith('/transition'));
+    expect(moved?.undo).toBeNull();
+    expect(moved?.override).toBe(
+      'Move the issue yourself: put it on hold, drop it, or send it on.',
+    );
+  });
+
+  it('keeps an act on the oldest run in the list after 60 newer runs that took none', async () => {
+    const issue = await draft(139);
+    standings = [stuck({ kind: 'issue', ...issue }, new Date(Date.now() + 60_000).toISOString())];
+    await diagnose(issue, 'drop');
+    await rows(sql`
+      INSERT INTO steward_runs (project_id, subject_kind, subject_id, subject_key, trigger, events, acts_to_run,
+                                state, skip_reason, not_before, queued_at, started_at, ended_at)
+      SELECT ${projectId}, 'issue', ${issue.id}, ${issue.key}, 'standing.stuck', '[]'::jsonb,
+             ARRAY['stuck_diagnosis']::text[], 'skipped', 'basis_unchanged',
+             now() + g * interval '1 second', now() + g * interval '1 second', NULL, now() + g * interval '1 second'
+        FROM generate_series(1, 60) g
+      RETURNING id`);
+    const acts = ok(
+      await say('owner', 'GET', `/api/projects/${projectId}/steward-acts?subject=${issue.key}`),
+    ).acts as { door: string; undo: unknown }[];
+    expect(acts.filter((a) => a.door === 'POST /api/questions')).toHaveLength(1);
   });
 });

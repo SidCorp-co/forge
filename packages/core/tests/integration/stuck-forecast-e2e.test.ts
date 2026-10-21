@@ -62,7 +62,8 @@ describe('a stuck item never forecasts a landing (REQ-48 BC-8)', () => {
     const forecasts = (await read(w, '/requirements')).requirements as Body[];
     const mine = forecasts.find((f) => f.key === req.key);
     expect(mine?.forecast).toMatchObject({ kind: 'paused', reason });
-    expect(((mine?.delivery as Body).landing as Body).kind).not.toBe('forecast');
+    expect(mine, `${req.key} is not in the forecasts`).toBeDefined();
+    expect(((mine as Body).delivery as Body).landing).not.toMatchObject({ kind: 'forecast' });
     const one = await read(w, `/requirements/${req.key}`);
     expect(one.forecast).toMatchObject({ kind: 'paused', reason });
   });
@@ -73,7 +74,8 @@ describe('a stuck item never forecasts a landing (REQ-48 BC-8)', () => {
     expect(times.stuck, JSON.stringify(times)).not.toBeNull();
     const lines = (await read(w, '/feedback')).items as Body[];
     const line = lines.find((l) => l.key === fb);
-    expect((line?.delivery as Body).landing).toMatchObject({
+    expect(line, `${fb} is not in the feedback lines`).toBeDefined();
+    expect(((line as Body).delivery as Body).landing).toMatchObject({
       kind: 'paused',
       reason: times.stuck?.reason,
     });

@@ -1,5 +1,10 @@
 import type { QuestionSuggestion } from "@forge/contracts/question-suggestion";
-import type { AnswerHold, AnswerResume, QuestionRoundFacts } from "@forge/contracts/questions";
+import type {
+  AnswerHold,
+  AnswerResume,
+  QuestionAsker,
+  QuestionRoundFacts,
+} from "@forge/contracts/questions";
 
 
 export type OptionAuthority = "writer" | "admin";
@@ -83,6 +88,8 @@ export interface AgentQuestion extends QuestionRoundFacts {
   origin?: { kind: string; documentId?: string; number?: string } | null;
   /** The issue whose merge mark answers this question, by its key; recording the mark answers it. */
   awaitsMerge?: { issueId: string; key: string } | null;
+  /** Who asked it through their own door; null where the system asked or the row predates 0512. */
+  asker?: QuestionAsker | null;
 }
 
 export interface QuestionListResponse {

@@ -212,6 +212,8 @@ export interface Surface {
   render: () => ReactNode;
   /** What the surface must draw, each a sentence when it does not. */
   check: () => string[];
+  /** What to open before it is checked and shot: a fold, a tab's row. */
+  open?: () => void;
 }
 
 const text = () => document.querySelector("[data-witness=page]")?.textContent ?? "";
@@ -266,6 +268,10 @@ export function mountSurfaces(SURFACES: Surface[]) {
           theme(t);
           at.show(i);
           await pause(700);
+          if (s.open) {
+            s.open();
+            await pause(500);
+          }
           if (!document.querySelector(`[data-witness-page=${s.name}]`)) return [`the ${s.name} surface is not the one drawn`];
           const threw = document.querySelector<HTMLElement>("[data-witness=threw]");
           if (threw) return [`the ${s.name} surface threw: ${threw.innerText.slice(0, 300)}`];

@@ -309,7 +309,10 @@ export async function scheduleAutoRetryWithVerify(
   const classified = await classifyAndPersist(job, reason);
   if (job.cancellationRequested) return { scheduled: false, reason: 'cancellation_requested' };
   if (Object.hasOwn(POOL_UNRETRIED_JOB_TYPES, job.type)) {
-    logger.info({ jobId: job.id, type: job.type }, 'retry: its owner retries this type, not the pool');
+    logger.info(
+      { jobId: job.id, type: job.type },
+      'retry: its owner retries this type, not the pool',
+    );
     return { scheduled: false, reason: 'owner_retries' };
   }
   await bumpSession(job, 'recoveryStats', (id) => incrementRecoveryStats(id, classified.kind));

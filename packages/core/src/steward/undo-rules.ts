@@ -23,53 +23,71 @@ export function isInverseDoor(door: string): boolean {
   return INVERSE_DOORS.some((re) => re.test(door));
 }
 
-/** How a person overrides an act no door undoes, by the door the act called. */
-const OVERRIDES: readonly { door: RegExp; override: string }[] = [
+/**
+ * How a person overrides an act no door undoes, by the door the act called: `override` for the
+ * refusal a caller of the undo door reads, `person` for the item page's Activity, which names no route.
+ */
+const OVERRIDES: readonly { door: RegExp; override: string; person: string }[] = [
   {
     door: /^POST \/api\/issues\/[^/]+\/transition$/,
     override:
       "move the issue yourself (`POST /api/issues/:id/transition`): park it `on_hold`, drop it, or send it on; the move is the kernel's, and no door reverses one",
+    person: 'Move the issue yourself: put it on hold, drop it, or send it on.',
   },
   {
     door: /^POST \/api\/issues\/[^/]+\/verdicts$/,
     override:
       'record your own verdict on the criterion: verdicts are insert-only, and the newest counts',
+    person: 'Record your own verdict on the criterion; the newest one counts.',
   },
   {
     door: /^PUT \/api\/projects\/[^/]+\/steward-notes\//,
     override:
       'write the note yourself (`PUT /api/projects/:id/steward-notes/:kind/:key`), which overrides it',
+    person: 'Write the note yourself; yours replaces it.',
   },
   {
     door: /^POST \/api\/projects\/[^/]+\/lessons\/[^/]+\/confusions$/,
     override:
       "decide the confusion on the Lessons page (keep, edit or retire the lesson): deciding it is a person's act, and keeping the lesson takes it off hold",
+    person: 'Decide the confusion on the Lessons page.',
   },
   {
     door: /^POST \/api\/projects\/[^/]+\/requirements$/,
     override:
       'withdraw the requirement yourself on its page: it was started as a draft from the feedback, and its intake is yours to carry or stop',
+    person: 'Withdraw the requirement on its own page.',
   },
   {
     door: /^KEEP /,
     override:
       'nothing to undo: a keep moved nothing, and the steward asks again once the standing moves; to decide now, move the issue yourself',
+    person: 'Nothing to undo: a keep moved nothing. Move the issue yourself to decide now.',
   },
   {
     door: /^WAKE /,
     override: 'nothing to undo: a wake only asks the master to look, and moves nothing',
+    person: 'Nothing to undo: a wake only asks the master to look.',
   },
   {
     door: /^POST \/api\/projects\/[^/]+\/feedback\/[^/]+\/(tell-shipped|verify-ask|clarification)$/,
     override:
       'the reporter was told: answer them on the item instead; a notice once sent is not withdrawn',
+    person: 'The reporter was told. Answer them on the item instead.',
   },
 ];
 
+const NO_INVERSE = {
+  override: 'act on the record yourself through its own door; this act names no inverse',
+  person: 'Act on the record yourself; this act has no undo.',
+};
+
+/** How a person overrides the act on its item's page, for an act no door undoes (REQ-48 BC-12). */
+export function personOverrideOf(door: string): string {
+  return (OVERRIDES.find((o) => o.door.test(door)) ?? NO_INVERSE).person;
+}
+
 /** The sentence a refused undo names, for the act's own door. */
 export function overrideOf(door: string): string {
-  return (
-    OVERRIDES.find((o) => o.door.test(door))?.override ??
-    'act on the record yourself through its own door; this act names no inverse'
-  );
+  return (OVERRIDES.find((o) => o.door.test(door)) ?? NO_INVERSE).override;
 }

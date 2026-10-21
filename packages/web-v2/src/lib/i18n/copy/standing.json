@@ -1,5 +1,11 @@
 {
   "en": {
+    "steward.acts.loadFailed": "Could not load the steward's acts.",
+    "steward.acts.override": "Override: {how}",
+    "steward.acts.title": "Steward's acts",
+    "steward.acts.undo": "Undo",
+    "steward.acts.undone": "Undone",
+    "steward.acts.who": "Steward",
     "steward.note.label": "Steward note",
     "steward.note.stale": "Out of date"
   },

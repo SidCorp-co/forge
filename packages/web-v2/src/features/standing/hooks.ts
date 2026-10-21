@@ -1,7 +1,7 @@
-import type { ItemStanding, StandingSubjectKind, StewardNoteSubjectKind } from "@forge/contracts/steward";
+import type { ItemStanding, StandingSubjectKind, StewardActRecord, StewardNoteSubjectKind } from "@forge/contracts/steward";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
-import { readOf } from "@/lib/api/query-kit";
+import { readOf, useWrite } from "@/lib/api/query-kit";
 import { useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { said } from "@/lib/i18n/said";
 import { standingApi } from "./api";
@@ -45,3 +45,15 @@ export const standingKeyOf = (kind: StandingSubjectKind, key: string) => `${kind
 /** One item's current steward note (BC-7), null where none is written. */
 export const useStewardNote = (projectId: string | undefined, kind: StewardNoteSubjectKind, key: string | undefined) =>
   useQuery(readOf([...KEY, "note", projectId, kind, key], () => standingApi.note(projectId as string, kind, key as string), 10_000)).data?.note ?? null;
+
+const NO_ACTS: StewardActRecord[] = [];
+
+/** Every act the steward took on one item, newest first, whichever run took it (REQ-48 BC-12). */
+export function useStewardActs(projectId: string | undefined, key: string | undefined) {
+  const q = useQuery(readOf([...KEY, "acts", projectId, key], () => standingApi.acts(projectId as string, key as string), 10_000));
+  return { acts: q.data?.acts ?? NO_ACTS, isLoading: q.isLoading, isError: q.isError };
+}
+
+/** Undo one act; the item's runs, its standing and every issue read are read again, since an undo can move any. */
+export const useUndoStewardAct = (projectId: string, key: string) =>
+  useWrite((actId: string) => standingApi.undo(projectId, actId), { touches: [[...KEY, "acts", projectId, key], ["issues"], ["requirements"], ["feedback"]] });

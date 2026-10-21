@@ -30,7 +30,6 @@ import {
   ViewHeading,
 } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
-import { EntityCommentThread } from "@/features/comments";
 import { MockupList, RequirementMockups } from "@/features/mockups";
 import { useMockups } from "@/features/mockups";
 import { PendingBadge } from "@/features/suggestions";
@@ -41,8 +40,8 @@ import type { RequirementDetail, RequirementRevision } from "../types";
 import { ProposalDecision, ProposeChange } from "./requirement-actions";
 import { CriteriaTrace } from "./criteria-trace";
 import { RequirementProperties } from "./requirement-facts";
-import { CriteriaChanges, CriteriaChecklist, History, Readiness, RevisionDiff, RevisionList } from "./requirement-proof";
-import { RequirementDecisions } from "./requirement-decisions";
+import { CriteriaChanges, CriteriaChecklist, Readiness, RevisionDiff } from "./requirement-proof";
+import { RequirementActivity } from "./requirement-activity";
 import { RequirementMemory, useRequirementMemoryCount } from "./requirement-memory";
 import { RequirementOverview } from "./requirement-overview";
 import { RequirementPicture } from "./requirement-picture";
@@ -145,36 +144,6 @@ function Revisions({ d, projectId }: { d: RequirementDetail; projectId: string }
       ) : null}
       {!open && !canPropose ? <p className="text-13 text-subtle">{t("requirements.revision.noneOpen")}</p> : null}
     </div>
-  );
-}
-
-/**
- * The Activity view: the requirement's comments, where a person asks, notes or records a decision on
- * it; its history of revisions and sign-offs; every revision; and the decisions taken on it. These are
- * the past items (REQ-43 BC-8), each folded until opened; a thread is read only once its fold opens.
- */
-function RequirementActivity({ projectId, slug, d }: { projectId: string; slug: string; d: RequirementDetail }) {
-  const t = useCopy();
-  return (
-    <section data-testid="view-activity" aria-label={t("requirements.tab.activity")}>
-      <Disclosure title={t("requirements.activity.comments")}>
-        <EntityCommentThread projectId={projectId} scope="requirement" targetRef={d.key} />
-      </Disclosure>
-      <div className="-mt-px">
-        <Disclosure title={t("requirements.activity.history")} count={d.history.length}>
-          <History entries={d.history} />
-        </Disclosure>
-      </div>
-      <div className="-mt-px" data-testid="revision-fold">
-        <Disclosure title={t("requirements.revision.all")} count={d.revisions.length}>
-          <RevisionList d={d} />
-        </Disclosure>
-      </div>
-      {/* the decisions fold themselves, by decisions and answers, beside the composer that records one */}
-      <div className="mt-6" data-testid="view-decisions">
-        <RequirementDecisions key={d.key} projectId={projectId} slug={slug} reqKey={d.key} />
-      </div>
-    </section>
   );
 }
 
