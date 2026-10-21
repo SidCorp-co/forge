@@ -42,15 +42,19 @@ export function queryRefused(
   query: unknown,
 ): HTTPException {
   const unknown = strayKeys(issues);
+  // The gate and a strict schema can both name the same stray key: it is said once, first.
+  const rest = issues.filter((i) => i.code !== 'unrecognized_keys' || (i.path ?? []).length > 0);
+  const said =
+    unknown.length > 0 ? [{ code: 'unrecognized_keys', path: [], keys: unknown }, ...rest] : rest;
   const words = {
     valuesAre: 'listed in details.accepted',
     input: query,
     fieldsAt: (path: readonly PropertyKey[]) => fieldsNamedAt(schema, path),
   };
-  const { sentences, accepted } = schemaRefusalWords(issues, words);
+  const { sentences, accepted } = schemaRefusalWords(said, words);
   const takes = fieldsNamedAt(schema, []).sort();
   if (unknown.length > 0) sentences.push(`It takes ${joined(takes)}.`);
-  const empty = issues.flatMap((i) =>
+  const empty = rest.flatMap((i) =>
     /^is empty[.:]/.test(i.message ?? '') ? [(i.path ?? []).map(String).join('.')] : [],
   );
   return new HTTPException(400, {
@@ -60,7 +64,7 @@ export function queryRefused(
       details: {
         ...(unknown.length > 0 ? { unknownParameters: unknown, takes } : {}),
         ...(empty.length > 0 ? { emptyFields: empty } : {}),
-        ...wordedFlatten(issues, words),
+        ...wordedFlatten(said, words),
         ...(accepted.length > 0
           ? { accepted: Object.fromEntries(accepted.map((a) => [a.field, a.values])) }
           : {}),

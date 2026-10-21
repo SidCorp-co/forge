@@ -194,7 +194,9 @@ function numberKeys(schema: ZodType): string[] {
 export function queryIssues(schema: ZodType, query: unknown): QueryIssue[] {
   if (query === null || typeof query !== 'object') return [];
   const issues: QueryIssue[] = [];
-  if (fieldsPolicy(schema) !== 'open' && !refusesItself(schema, query)) {
+  // A strict schema names its stray keys too, but only when the parse gets that far: a blank
+  // number stops it first, so the keys are named here and `queryRefused` says them once.
+  if (fieldsPolicy(schema) !== 'open') {
     const keys = unknownFields(schema, query);
     if (keys.length > 0)
       issues.push({ code: 'unrecognized_keys', keys, path: [], message: 'Unrecognized keys' });

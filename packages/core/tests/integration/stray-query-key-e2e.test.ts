@@ -27,6 +27,8 @@ const TAKES_ANY = new Set([
   'GET /api/integrations/github/manifest-callback',
 ]);
 
+const ADMIN_EMAIL = 'stray-query-admin@test.forge.local';
+
 let harness: TestDatabase;
 let app: import('hono').Hono<AppVars>;
 let routes: Entry[];
@@ -44,13 +46,15 @@ beforeAll(async () => {
   process.env.CORS_ORIGINS ??= 'http://localhost:3000';
   process.env.INTEGRATION_MASTER_KEY ??= Buffer.alloc(32, 7).toString('base64');
   process.env.NODE_ENV = 'test';
+  // The admin pages refuse anyone else before their query is read; the caller is a platform admin.
+  process.env.ADMIN_EMAILS = ADMIN_EMAIL;
   ({ app } = (await import('../../src/index.js')) as unknown as {
     app: import('hono').Hono<AppVars>;
   });
   const { readRoutes } = (await import('../../src/api-reference/document/registry.js')) as Registry;
   routes = readRoutes(app as never);
 
-  const owner = await createTestUser(harness.db);
+  const owner = await createTestUser(harness.db, { email: ADMIN_EMAIL });
   await harness.db.execute(sql`UPDATE users SET email_verified_at = now() WHERE id = ${owner.id}`);
   const project = await createTestProject(harness.db, owner.id);
   projectId = project.id;
@@ -81,13 +85,26 @@ async function get(url: string, token = personToken): Promise<Answer> {
   return { status: res.status, ...body, raw };
 }
 
+/** The first value a path parameter's declared enum takes, so its own check passes. */
+function enumValue(entry: Entry, name: string): string | null {
+  for (const v of entry.validators.filter((d) => d.target === 'param')) {
+    const shape = (v.schema as { _zod: { def: { shape?: Record<string, unknown> } } })._zod.def
+      .shape;
+    const field = shape?.[name] as { options?: unknown[] } | undefined;
+    if (field?.options?.length) return String(field.options[0]);
+  }
+  return null;
+}
+
 /** A path to the route: the project's id where a parameter names a project, a uuid elsewhere. */
 function pathOf(entry: Entry): string {
-  return entry.path.replace(/:([A-Za-z0-9_]+)(\{[^}]*\})?\??/g, (_w, name: string, _r, at) =>
-    name === 'projectId' || (name === 'id' && /\/projects\/$/.test(entry.path.slice(0, at)))
+  return entry.path.replace(/:([A-Za-z0-9_]+)(\{[^}]*\})?\??/g, (_w, name: string, _r, at) => {
+    const listed = enumValue(entry, name);
+    if (listed) return listed;
+    return name === 'projectId' || (name === 'id' && /\/projects\/$/.test(entry.path.slice(0, at)))
       ? projectId
-      : '00000000-0000-4000-8000-000000000000',
-  );
+      : '00000000-0000-4000-8000-000000000000';
+  });
 }
 
 describe('a query key the route does not take', () => {
@@ -101,25 +118,22 @@ describe('a query key the route does not take', () => {
     expect(known.status).toBe(200);
   });
 
-  it('is never taken on any GET route that declares a query, for a person or a paired box', async () => {
-    const taken: string[] = [];
-    const worded: string[] = [];
+  it('is refused 400 by name on every GET route that declares a query, for a person or a paired box', async () => {
+    const answered: string[] = [];
     let sent = 0;
     for (const entry of routes) {
       if (entry.method !== 'GET' || TAKES_ANY.has(entry.key)) continue;
       if (!entry.validators.some((v) => v.target === 'query')) continue;
       const box = entry.path.startsWith('/api/devices/me');
-      const url = `${pathOf(entry)}?colour=red`;
-      const got = await get(url, box ? deviceToken : personToken);
+      const got = await get(`${pathOf(entry)}?colour=red`, box ? deviceToken : personToken);
       sent++;
-      if (got.status < 400 || got.status >= 500) taken.push(`${entry.key} ${got.status}`);
-      else if (got.status === 400 && got.code !== 'UNKNOWN_QUERY_PARAMETER')
-        worded.push(`${entry.key}: ${got.code} ${got.message}`);
+      // A gate refusing before the query is read would hide a route that takes the key: none may.
+      if (got.status !== 400 || got.code !== 'UNKNOWN_QUERY_PARAMETER')
+        answered.push(`${entry.key} ${got.status} ${got.code}`);
     }
     // Not vacuous: over a hundred GET routes declare a query.
     expect(sent).toBeGreaterThan(90);
-    expect(taken, 'each route answered a stray key as if it were not sent, or crashed').toEqual([]);
-    expect(worded, 'each route refused a stray key under another code').toEqual([]);
+    expect(answered, 'each route answered a stray key with something but its refusal').toEqual([]);
   }, 600_000);
 });
 
