@@ -2,7 +2,17 @@
 // into; the script reads only this file's scratch directory and the routes on loopback.
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { chmod, mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  readdir,
+  readFile,
+  rename,
+  rm,
+  stat,
+  writeFile,
+} from 'node:fs/promises';
 import { type AddressInfo, createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -10,6 +20,8 @@ import { join } from 'node:path';
 import { type ServerType, serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+
+import { notFoundHandler } from '../middleware/error.js';
 
 // REQ-25: the install command Forge serves fetches the published build for the box's platform,
 // refuses a build whose sha256 is not the published one, and refuses by name a platform with no
@@ -25,6 +37,7 @@ let server: ServerType;
 let base: string;
 let tamper = false;
 let downloadBroken = false;
+let downloadDropped = false;
 /** A loopback port nothing listens on: the build list there is unreachable. */
 let closedPort: number;
 
@@ -34,7 +47,7 @@ beforeAll(async () => {
   await mkdir(releaseDir);
   await writeFile(join(releaseDir, `forge-runner-${PUBLISHED}`), BUILD);
   await writeFile(join(releaseDir, 'VERSION'), '9.9.9-test\n');
-  await writeFile(join(releaseDir, 'COMMIT'), 'a'.repeat(40) + '\n');
+  await writeFile(join(releaseDir, 'COMMIT'), `${'a'.repeat(40)}\n`);
   // published-build.ts reads RUNNER_RELEASE_DIR once, when it is first imported.
   process.env.RUNNER_RELEASE_DIR = releaseDir;
   const { installRoutes } = await import('./install-routes.js');
@@ -56,11 +69,24 @@ beforeAll(async () => {
     if (!downloadBroken) return next();
     return c.text('bad gateway', 502);
   });
+  // The connection dropping mid-download, as a box losing its network would see: no HTTP answer.
+  app.use('/api/install/bin/*', async (c, next) => {
+    if (!downloadDropped) return next();
+    (c.env as { incoming: { socket: { destroy(): void } } }).incoming.socket.destroy();
+    return new Response(null);
+  });
   app.route('/api', installRoutes);
+  // Core answers a path it does not serve with its own problem body, as the running app does.
+  app.notFound(notFoundHandler);
   // Something that answers 200 at the build list's path but is not core: a captive portal, or a
   // web host serving its index page for every path.
   app.get('/portal/install/latest.json', (c) =>
     c.html('<html><body>Sign in to continue</body></html>'),
+  );
+
+  // A proxy in front of core answering with its own error page rather than core's reason.
+  app.get('/maintenance/install/latest.json', (c) =>
+    c.html('<html><body>Down for maintenance</body></html>', 503),
   );
 
   await new Promise<void>((resolve) => {
@@ -151,6 +177,9 @@ const exists = (p: string) =>
     () => true,
     () => false,
   );
+/** What every refusal of an HTTP answer ends with: the box reached core, so the next step is the admin's. */
+const admin = () =>
+  `This box reached ${base}, so its network is not the cause: show this message to your Forge admin.`;
 const sha256 = (s: string | Buffer) => createHash('sha256').update(s).digest('hex');
 
 describe('REQ-25 BC-1: the served install command fetches the published build for the box platform', () => {
@@ -247,13 +276,46 @@ describe('REQ-25 BC-3: a platform with no published build is refused by name, na
       expect(await exists(join(run.home, '.local'))).toBe(false);
     });
 
-    it('build list answering 404: INSTALL_BUILD_LIST_UNREACHABLE names the URL and the HTTP status', async () => {
+    // Core reached and answering with an HTTP error is not a network failure: the person is told
+    // what core said and sent to the Forge admin, never to check a network that just worked.
+    it("core with no release published: INSTALL_BUILD_LIST_REFUSED carries HTTP 404 and core's reason", async () => {
+      const version = join(releaseDir, 'VERSION');
+      const held = join(root, 'VERSION.held');
+      await rename(version, held);
+      try {
+        const res = await fetch(`${base}/api/install/latest.json`);
+        expect(res.status).toBe(404);
+        expect(await res.json()).toEqual({ error: 'no release published' });
+        const run = await install('list-no-release', 'Linux', 'x86_64');
+        expect(run.code).toBe(1);
+        expect(run.stderr).not.toContain('can reach');
+        expect(run.stderr).toBe(
+          `INSTALL_BUILD_LIST_REFUSED: ${base} answered the build list request at ${base}/api/install/latest.json with HTTP 404: no release published; this box's platform (${PUBLISHED}) was not checked and nothing was installed. ${admin()}\n`,
+        );
+        expect(await exists(join(run.home, '.local'))).toBe(false);
+      } finally {
+        await rename(held, version);
+      }
+    });
+
+    it("a path core does not serve: INSTALL_BUILD_LIST_REFUSED carries HTTP 404 and the problem body's code and detail", async () => {
       const run = await install('list-404', 'Linux', 'x86_64', {
         servedBy: { base, prefix: '/api/no-such-prefix' },
       });
       expect(run.code).toBe(1);
       expect(run.stderr).toBe(
-        `INSTALL_BUILD_LIST_UNREACHABLE: could not read the published build list at ${base}/api/no-such-prefix/install/latest.json (curl exit 22: curl: (22) The requested URL returned error: 404); this box's platform (${PUBLISHED}) was not checked and nothing was installed. Check that this box can reach ${base}, then run the install command again.\n`,
+        `INSTALL_BUILD_LIST_REFUSED: ${base} answered the build list request at ${base}/api/no-such-prefix/install/latest.json with HTTP 404: NOT_FOUND: Not Found: GET /api/no-such-prefix/install/latest.json; this box's platform (${PUBLISHED}) was not checked and nothing was installed. ${admin()}\n`,
+      );
+      expect(await exists(join(run.home, '.local'))).toBe(false);
+    });
+
+    it('an error page with no reason in it: INSTALL_BUILD_LIST_REFUSED says the status and that no reason was given', async () => {
+      const run = await install('list-503', 'Linux', 'x86_64', {
+        servedBy: { base, prefix: '/maintenance' },
+      });
+      expect(run.code).toBe(1);
+      expect(run.stderr).toBe(
+        `INSTALL_BUILD_LIST_REFUSED: ${base} answered the build list request at ${base}/maintenance/install/latest.json with HTTP 503 and gave no reason; this box's platform (${PUBLISHED}) was not checked and nothing was installed. ${admin()}\n`,
       );
       expect(await exists(join(run.home, '.local'))).toBe(false);
     });
@@ -272,7 +334,7 @@ describe('REQ-25 BC-3: a platform with no published build is refused by name, na
 });
 
 describe('a download that fails is refused by name, and the box keeps what it had', () => {
-  it('the build download answering 502: INSTALL_DOWNLOAD_FAILED names the URL, and no partial file is left', async () => {
+  it('the build download answering 502: INSTALL_DOWNLOAD_REFUSED carries the status and the reason, and no partial file is left', async () => {
     downloadBroken = true;
     try {
       const run = await install('download-502', 'Linux', 'x86_64', {
@@ -281,12 +343,47 @@ describe('a download that fails is refused by name, and the box keeps what it ha
       expect(run.code).toBe(1);
       expect(run.stdout).toContain(`Downloading forge-runner (${PUBLISHED})`);
       expect(run.stderr).toBe(
-        `INSTALL_DOWNLOAD_FAILED: could not download ${base}/api/install/bin/${PUBLISHED} (curl exit 22: curl: (22) The requested URL returned error: 502); nothing was installed. Check that this box can reach ${base}, then run the install command again.\n`,
+        `INSTALL_DOWNLOAD_REFUSED: ${base} answered the download of ${base}/api/install/bin/${PUBLISHED} with HTTP 502: bad gateway; nothing was installed. ${admin()}\n`,
       );
       expect(await readFile(run.bin, 'utf8')).toBe('the build this box already had');
       expect(await exists(`${run.bin}.new`)).toBe(false);
     } finally {
       downloadBroken = false;
+    }
+  });
+
+  it('a file:// mirror of the build list and the build installs, though it answers no HTTP status', async () => {
+    const mirror = join(root, 'mirror');
+    await mkdir(join(mirror, 'install', 'bin'), { recursive: true });
+    await writeFile(
+      join(mirror, 'install', 'latest.json'),
+      await (await fetch(`${base}/api/install/latest.json`)).text(),
+    );
+    await writeFile(join(mirror, 'install', 'bin', PUBLISHED), BUILD);
+    const run = await install('file-mirror', 'Linux', 'x86_64', {
+      servedBy: { base: `file://${mirror}`, prefix: '' },
+    });
+    expect(run.stderr).toBe('');
+    expect(run.code).toBe(0);
+    expect(sha256(await readFile(run.bin))).toBe(sha256(BUILD));
+  });
+
+  it('the connection dropping mid-download: INSTALL_DOWNLOAD_FAILED keeps the network advice', async () => {
+    downloadDropped = true;
+    try {
+      const run = await install('download-dropped', 'Linux', 'x86_64', {
+        existing: 'the build this box already had',
+      });
+      expect(run.code).toBe(1);
+      expect(run.stderr).toMatch(
+        new RegExp(
+          `^INSTALL_DOWNLOAD_FAILED: could not download ${base}/api/install/bin/${PUBLISHED} \\(curl exit \\d+: curl: \\(\\d+\\) [^\\n]*\\); nothing was installed\\. Check that this box can reach ${base}, then run the install command again\\.\\n$`,
+        ),
+      );
+      expect(await readFile(run.bin, 'utf8')).toBe('the build this box already had');
+      expect(await exists(`${run.bin}.new`)).toBe(false);
+    } finally {
+      downloadDropped = false;
     }
   });
 });

@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.258] - 2026-10-21
+
+The project dashboard opens on what needs you instead of a chat window
+
+### Changed
+
+- **The project dashboard no longer draws a chat window.** It opens on what needs you, with what is running and what is at risk beside it; chat opens from Ask Agent in the top bar.
+
 ## [0.4.0-dev.257] - 2026-10-20
 
 Runner install names an unreachable Forge instead of blaming your platform
