@@ -37,26 +37,33 @@ export function groupsOf(rows: readonly NeedsYouDecision[]): { topic: NeedsYouTo
 export const drawnOrder = (rows: readonly NeedsYouDecision[]): NeedsYouDecision[] => groupsOf(rows).flatMap((g) => g.rows);
 
 /**
- * The answer a row's ✓ presses: the proposal's approve, else the one recommended, else the only
- * answer that takes no words. A question with several choices and none recommended has none: it is
- * answered in its peek, never guessed.
+ * The answer a row's ✓ presses: the proposal's approve, else the recommended answer that does not
+ * decline, else the only one that does not. A question with several answers and none recommended
+ * has none: it is answered in its peek, never guessed. Where the act takes words, the ✓ asks for them.
  */
 export function approveOf(d: NeedsYouDecision): DecisionAnswer | null {
   if (d.proposal) return d.answers.find((a) => a.id === "approve") ?? null;
-  const recommended = d.answers.find((a) => a.recommended && !a.needsReason);
-  if (recommended) return recommended;
-  const plain = d.answers.filter((a) => !a.needsReason);
-  return plain.length === 1 ? (plain[0] ?? null) : null;
+  const yes = d.answers.filter((a) => !a.declines);
+  return yes.find((a) => a.recommended) ?? (yes.length === 1 ? (yes[0] ?? null) : null);
 }
 
-/** The answer a row's ✕ presses: the one that takes a reason (a decline, a return, a drop). */
-export const declineOf = (d: NeedsYouDecision): DecisionAnswer | null => d.answers.find((a) => a.needsReason && a !== approveOf(d)) ?? null;
+/** The answer a row's ✕ presses: the one core marks as saying no. A kind with none has no ✕. */
+export const declineOf = (d: NeedsYouDecision): DecisionAnswer | null => d.answers.find((a) => a.declines) ?? null;
+
+/** The answers a row's ✓ does not press and its ✕ does not either: what its peek offers besides. */
+export const otherAnswersOf = (d: NeedsYouDecision): DecisionAnswer[] => d.answers.filter((a) => a !== approveOf(d) && a !== declineOf(d));
+
+/** What a bulk approve sends for a row: its ✓, where that takes no words a shared approve cannot carry. */
+export function bulkApproveOf(d: NeedsYouDecision): DecisionAnswer | null {
+  const a = approveOf(d);
+  return a && !a.needsReason ? a : null;
+}
 
 export interface BulkSummary {
   yields: { kind: NeedsYouYield; n: number }[];
   /** Selected rows the agent asks to be checked first. */
   checkFirst: number;
-  /** Selected rows no ✓ can approve here, left for their peek. */
+  /** Selected rows a bulk approve cannot send, left for their peek. */
   noApprove: number;
 }
 
@@ -65,7 +72,7 @@ export function bulkSummary(selected: readonly NeedsYouDecision[]): BulkSummary 
   const tally = new Map<NeedsYouYield, number>();
   let noApprove = 0;
   for (const d of selected) {
-    if (!approveOf(d)) {
+    if (!bulkApproveOf(d)) {
       noApprove += 1;
       continue;
     }

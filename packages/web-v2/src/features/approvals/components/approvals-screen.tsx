@@ -11,7 +11,7 @@ import { decisionHref, useNeedsYouDecisions } from "@/features/needs-you";
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import { useRouter } from "@/lib/navigation/router";
-import { approveOf, CHIPS, declineOf, drawnOrder, groupsOf, narrowed, oldestOf, recommends } from "../derive";
+import { approveOf, bulkApproveOf, CHIPS, declineOf, drawnOrder, groupsOf, narrowed, oldestOf, recommends } from "../derive";
 import { approvalsHref } from "@/lib/routes/approvals";
 import { type Decided, useDecide } from "../use-decide";
 import { useDecisionKeys } from "../use-decision-keys";
@@ -25,7 +25,7 @@ const decidedOf = (d: NeedsYouDecision, answer: DecisionAnswer, reason: string |
   key: d.key,
   answer,
   reason,
-  how: answer.id === declineOf(d)?.id ? "declined" : "approved",
+  how: answer.declines ? "declined" : "approved",
 });
 
 function Sub({ read }: { read: NeedsYouDecisions }) {
@@ -109,7 +109,8 @@ function Decisions({ read, slug }: { read: NeedsYouDecisions; slug: string }) {
   };
   const approveRow = (d: NeedsYouDecision) => {
     const a = approveOf(d);
-    if (a) press(d, a, null);
+    if (a?.needsReason) askWords(d, a);
+    else if (a) press(d, a, null);
   };
   const declineRow = (d: NeedsYouDecision) => {
     const a = declineOf(d);
@@ -123,7 +124,7 @@ function Decisions({ read, slug }: { read: NeedsYouDecisions; slug: string }) {
 
   const bulk = (how: "approve" | "decline", reason: string | null) => {
     const batch = selected.flatMap((d) => {
-      const a = how === "approve" ? approveOf(d) : declineOf(d);
+      const a = how === "approve" ? bulkApproveOf(d) : declineOf(d);
       return a ? [decidedOf(d, a, reason)] : [];
     });
     setPicked(new Set());

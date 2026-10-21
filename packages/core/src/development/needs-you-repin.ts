@@ -84,6 +84,7 @@ export function repinDecision(
             designs: group.ready.map((d) => ({ workflowId: d.workflowId, revision: d.revision })),
           },
           needsReason: false,
+          declines: false,
           effect: `${designs(n)} ${n === 1 ? 'is' : 'are'} approved at the revision that follows r${group.revision}.`,
           recommended: true,
         },

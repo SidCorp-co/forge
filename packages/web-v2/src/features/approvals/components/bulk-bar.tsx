@@ -7,7 +7,7 @@ import type { NeedsYouDecision } from "@forge/contracts/needs-you-decisions";
 import { useEffect, useRef, useState } from "react";
 import { Button, Textarea } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
-import { approveOf, bulkSummary, declineOf } from "../derive";
+import { bulkApproveOf, bulkSummary, declineOf } from "../derive";
 
 function Summary({ selected }: { selected: readonly NeedsYouDecision[] }) {
   const t = useCopy();
@@ -65,7 +65,7 @@ interface BulkProps {
 export function BulkBar({ selected, onApprove, onDecline, onClear }: BulkProps) {
   const t = useCopy();
   const [declining, setDeclining] = useState(false);
-  const approvable = selected.filter((d) => approveOf(d)).length;
+  const approvable = selected.filter((d) => bulkApproveOf(d)).length;
   const declinable = selected.filter((d) => declineOf(d)).length;
   return (
     <div className="flex flex-col gap-2 border-b border-line-subtle bg-accent-tint px-5 py-3 max-md:px-3" data-testid="approval-bulk">

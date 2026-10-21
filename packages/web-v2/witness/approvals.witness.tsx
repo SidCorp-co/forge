@@ -3,7 +3,8 @@
 // proposal and its tags, with ✓ / ✕ on the right. Then a feedback item's peek (what the agent proposes,
 // if you approve, why, what the reporter said, and the footer that decides it), a design update's
 // peek with the designs that move, a selection's bar stating what approving makes, a decline's
-// reason step, and the Undo held after an approve. At 390 px the peek is its full-screen sheet and
+// reason step, and the Undo held after an approve. A question's ✓ names the answer it sends, and its
+// other answers open its peek; a release's ✕ asks why and is never its approve (ISS-539). At 390 px the peek is its full-screen sheet and
 // nothing scrolls sideways. The rows are `src/test/approvals-read.ts`, the read the page tests use.
 // A mockup decision (REQ-49 BC-7) shows its page small in its row and runs it in its peek: the page is
 // `<out>/mockup-fixture.js` where one is written there (`mockups-on-the-item.witness.tsx` says how),
@@ -180,6 +181,40 @@ window.__witness = {
         await settle();
         const alert = peek()?.querySelector("[role=alert]")?.textContent ?? "";
         return alert.includes("A decline needs a reason") ? sideways() : ["an empty decline is not refused in place"];
+      },
+    },
+    {
+      name: "question-named-dark",
+      run: async () => {
+        theme("dark");
+        closePeek();
+        await settle();
+        const row = rowOf("ISS-41");
+        const sends = row?.querySelector<HTMLElement>("[data-testid=approval-approve]");
+        const wrong: string[] = [];
+        if (!sends?.textContent?.includes("Keep the old order")) wrong.push(`the question's ✓ reads "${sends?.textContent ?? ""}", not the answer it sends`);
+        if (row?.querySelector("[data-testid=approval-decline]")) wrong.push("a question with no declining answer draws a ✕");
+        row?.querySelector<HTMLElement>("[data-testid=approval-other-answers]")?.click();
+        await settle();
+        const answers = [...(peek()?.querySelectorAll("[data-testid=approval-peek-answer]") ?? [])].map((b) => b.textContent);
+        if (answers.join("|") !== "Keep the old order|Use the new order") wrong.push(`its peek offers "${answers.join("|")}"`);
+        return [...wrong, ...peekReads("proposal", "foot")];
+      },
+    },
+    {
+      name: "release-decline-light",
+      run: async () => {
+        theme("light");
+        closePeek();
+        await settle();
+        const row = rowOf("0.4.0-dev.270");
+        const wrong: string[] = [];
+        if (!row?.querySelector("[data-testid=approval-approve]")?.textContent?.includes("Approve 0.4.0-dev.270")) wrong.push("the release's ✓ does not name its approve");
+        row?.querySelector<HTMLElement>("[data-testid=approval-decline]")?.click();
+        await settle();
+        const field = peek()?.querySelector<HTMLTextAreaElement>("[data-testid=approval-words]");
+        if (field?.placeholder !== "Why not?") wrong.push(`the release's ✕ asks "${field?.placeholder ?? "nothing"}", not why`);
+        return [...wrong, ...sideways()];
       },
     },
     {

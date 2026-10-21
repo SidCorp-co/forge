@@ -1,13 +1,15 @@
 // One decision on the Approvals page, read as a decision (REQ-48 BC-11): the key and the subject's title,
 // then what the agent proposes as a verb and its object (or what is asked, where a person asked it),
 // then its tags, and on the right how long it has waited and the ✓ / ✕ that decide it in place. Flat:
-// a hairline under each row, the open one marked by a left rule.
+// a hairline under each row, the open one marked by a left rule. A decision with no proposal names the
+// answer its ✓ sends on the ✓ itself, and how many others its peek offers (ISS-539): a row never sends
+// an answer the person cannot see.
 
 import type { NeedsYouDecision } from "@forge/contracts/needs-you-decisions";
-import { Checkbox, IconButton } from "@/design";
+import { Button, Checkbox, IconButton } from "@/design";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import { cn } from "@/lib/utils/cn";
-import { approveOf, declineOf } from "../derive";
+import { approveOf, declineOf, otherAnswersOf } from "../derive";
 import { MockupStanding, RowMockup } from "./approval-mockup";
 
 const TAG_TONE = {
@@ -47,6 +49,28 @@ interface RowProps {
   onDecline: () => void;
 }
 
+/** A decision with no proposal: the ✓ carrying the words of the answer it sends, and the rest behind its peek. */
+function NamedAnswer({ d, onOpen, onApprove }: Pick<RowProps, "d" | "onOpen" | "onApprove">) {
+  const t = useCopy();
+  const approve = approveOf(d);
+  const others = otherAnswersOf(d).length;
+  const rest = approve ? (others === 1 ? t("approvals.otherAnswers", { n: others }) : t("approvals.otherAnswers.many", { n: others })) : t("approvals.answers", { n: others });
+  return (
+    <span className="flex min-w-0 flex-wrap items-center gap-2" data-testid="approval-answer">
+      {approve ? (
+        <Button size="sm" icon="check" className="min-w-0 max-w-full" aria-label={t("approvals.sendRow", { label: approve.label, key: d.key })} onClick={onApprove} data-testid="approval-approve">
+          <span className="truncate">{approve.label}</span>
+        </Button>
+      ) : null}
+      {others > 0 ? (
+        <button type="button" className="text-12 font-semibold text-link hover:underline" onClick={onOpen} data-testid="approval-other-answers">
+          {rest}
+        </button>
+      ) : null}
+    </span>
+  );
+}
+
 export function PendingDecision({ d, open, selected, onOpen, onSelect, onApprove, onDecline }: RowProps) {
   const t = useCopy();
   const time = useTimeFormat();
@@ -66,7 +90,8 @@ export function PendingDecision({ d, open, selected, onOpen, onSelect, onApprove
       <div className="pt-0.5">
         <Checkbox checked={selected} onChange={onSelect} ariaLabel={t("approvals.selectRow", { key: d.key })} />
       </div>
-      <button type="button" className="flex min-w-0 flex-1 cursor-pointer flex-col gap-1 text-left" onClick={onOpen} data-testid="approval-open">
+      <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+      <button type="button" className="flex min-w-0 cursor-pointer flex-col gap-1 text-left" onClick={onOpen} data-testid="approval-open">
         <span className="flex w-full min-w-0 items-baseline gap-2">
           <span className="shrink-0 whitespace-nowrap font-mono text-12 text-link">{d.key}</span>
           <span className="min-w-0 truncate text-14 font-medium text-fg">{d.title || d.key}</span>
@@ -83,12 +108,14 @@ export function PendingDecision({ d, open, selected, onOpen, onSelect, onApprove
         <DecisionTags d={d} />
         {d.mockup ? <MockupStanding m={d.mockup} /> : null}
       </button>
+      {d.proposal ? null : <NamedAnswer d={d} onOpen={onOpen} onApprove={onApprove} />}
+      </div>
       <RowMockup d={d} />
       <div className="flex items-start gap-1">
         <span className="whitespace-nowrap pt-1 font-mono text-12 text-subtle" title={d.touchedAt ?? undefined}>
           {d.touchedAt ? time.age(d.touchedAt) : ""}
         </span>
-        {approve ? <IconButton icon="check" size="sm" aria-label={t("approvals.approveRow", { key: d.key })} onClick={onApprove} data-testid="approval-approve" /> : null}
+        {approve && d.proposal ? <IconButton icon="check" size="sm" aria-label={t("approvals.approveRow", { key: d.key })} onClick={onApprove} data-testid="approval-approve" /> : null}
         {decline ? <IconButton icon="x" size="sm" aria-label={t("approvals.declineRow", { key: d.key })} onClick={onDecline} data-testid="approval-decline" /> : null}
       </div>
     </li>

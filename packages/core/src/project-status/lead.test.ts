@@ -24,6 +24,7 @@ const decision = (key: string, over: Partial<NeedsYouDecision> = {}): NeedsYouDe
       path: `/api/projects/p/requirements/${key}/agree`,
       body: {},
       needsReason: false,
+      declines: false,
       effect: null,
       recommended: true,
     },

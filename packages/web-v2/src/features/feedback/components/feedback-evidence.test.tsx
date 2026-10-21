@@ -147,6 +147,17 @@ describe("a feedback item opens on its evidence", () => {
   });
 });
 
+// K31 on ISS-539: the question asked of the reporter was only a hover title, which a touch screen never shows
+describe("the clarification asked of the reporter", () => {
+  it("reads its question on the rail, beside its state and the answer", () => {
+    renderWithQuery(<LinkedFeedback f={view({ clarification: { id: "c1", status: "answered", prompt: "Which browser were you on?", answer: "Safari 18" } })} slug="hop" />);
+    const fact = screen.getByTestId("feedback-clarification");
+    expect(fact).toHaveTextContent("Which browser were you on?");
+    expect(fact).toHaveTextContent("Safari 18");
+    expect(fact).not.toHaveAttribute("title");
+  });
+});
+
 describe("the workflow step a report hits", () => {
   const onWorkflow = (node: unknown, stepNames?: Record<string, string>) =>
     view({ target: { type: "workflow", key: "checkout", title: "Checkout", node, ...(stepNames ? { stepNames } : {}) } as FeedbackView["target"] });

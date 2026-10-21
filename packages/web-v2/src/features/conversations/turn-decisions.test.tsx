@@ -25,8 +25,8 @@ const READ = needsYouDecisionsSchema.parse({
       recommended: { answerId: "later", why: 'Whoever asked recommends "At the next release".', by: "asker" },
       noRecommendation: null,
       answers: [
-        { id: "later", label: "At the next release", act: "question.answer", path: `/api/questions/${Q}/answer`, body: { round: 1, optionId: "later" }, needsReason: false, effect: null, recommended: true },
-        { id: "now", label: "Now", act: "question.answer", path: `/api/questions/${Q}/answer`, body: { round: 1, optionId: "now" }, needsReason: false, effect: null, recommended: false },
+        { id: "later", label: "At the next release", act: "question.answer", path: `/api/questions/${Q}/answer`, body: { round: 1, optionId: "later" }, needsReason: false, declines: false, effect: null, recommended: true },
+        { id: "now", label: "Now", act: "question.answer", path: `/api/questions/${Q}/answer`, body: { round: 1, optionId: "now" }, needsReason: false, declines: false, effect: null, recommended: false },
       ],
       touchedAt: null,
       stuck: false,

@@ -28,6 +28,7 @@ const answer = (id: string, label: string, recommended: boolean) => ({
   path: `/api/questions/${Q}/answer`,
   body: { round: 1, optionId: id },
   needsReason: false,
+  declines: false,
   effect: null,
   recommended,
 });

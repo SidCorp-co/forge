@@ -48,6 +48,20 @@ describe("asking the reporter a clarification", () => {
     expect(screen.getByRole("button", { name: "Send question" })).toBeDisabled();
   });
 
+  it("will not send a question shorter than core takes (K31: 'Why?' was refused by the schema's own words)", () => {
+    fakeCore(() => undefined);
+    renderWithQuery(<ClarifyReporter projectId="p1" f={view(true)} />);
+    fireEvent.click(screen.getByTestId("feedback-clarify-open"));
+    fireEvent.change(screen.getByTestId("feedback-clarify-prompt"), { target: { value: " Why? " } });
+    fireEvent.change(screen.getByTestId("feedback-clarify-needed"), { target: { value: "Steps" } });
+    expect(screen.getByRole("button", { name: "Send question" })).toBeDisabled();
+    fireEvent.change(screen.getByTestId("feedback-clarify-prompt"), { target: { value: "Why so?" } });
+    fireEvent.change(screen.getByTestId("feedback-clarify-needed"), { target: { value: "OS" } });
+    expect(screen.getByRole("button", { name: "Send question" })).toBeDisabled();
+    fireEvent.change(screen.getByTestId("feedback-clarify-needed"), { target: { value: "iOS" } });
+    expect(screen.getByRole("button", { name: "Send question" })).toBeEnabled();
+  });
+
   it("shows core's refusal on the field it names and keeps what was typed", async () => {
     fakeCore((c) =>
       c.method === "POST"

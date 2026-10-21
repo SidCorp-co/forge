@@ -1,6 +1,6 @@
 // One Needs you decisions read shaped as core's fold makes it (REQ-48 BC-11), for the Approvals page's
 // tests and its witness: feedback triages routed four ways, a breakdown, two design updates, a mockup,
-// a requirement sign-off and a run's question. Every decision is parsed by the contract's own schema,
+// a requirement sign-off, a release approval and a run's question. Every decision is parsed by the contract's own schema,
 // so a fixture that drifts from what core sends fails here, not on the page.
 
 import { type DecisionAnswer, type NeedsYouDecision, type NeedsYouDecisions, needsYouDecisionsSchema } from "@forge/contracts/needs-you-decisions";
@@ -18,6 +18,7 @@ const approve = (path: string, effect: string | null, recommended: boolean, act:
   path,
   body: {},
   needsReason: false,
+  declines: false,
   effect,
   recommended,
 });
@@ -28,6 +29,7 @@ const decline = (path: string, act: DecisionAnswer["act"] = "suggestion.reject")
   path,
   body: {},
   needsReason: true,
+  declines: true,
   effect: "The agent reads your reason and does not propose the same again.",
   recommended: false,
 });
@@ -210,6 +212,7 @@ function repin(base: string, title: string, revision: number, hours: number, mov
         path: `/api/projects/${P}/workflows/wf-${base}/design/repins`,
         body: { revision, designs: moving.map(([d], i) => ({ workflowId: `wf-${d}`, revision: 10 + i })) },
         needsReason: false,
+        declines: false,
         effect: `${designs} ${n === 1 ? "is" : "are"} approved at the revision that follows r${revision}.`,
         recommended: true,
       },
@@ -273,8 +276,8 @@ const SIGN_OFF: NeedsYouDecision = {
   recommended: null,
   noRecommendation: "Nobody recommended an answer.",
   answers: [
-    { id: "accept", label: "Accept r3", act: "revision.accept", path: `/api/projects/${P}/requirements/REQ-41/revisions/3/accept`, body: {}, needsReason: false, effect: "r3 becomes the agreed revision.", recommended: false },
-    { id: "return", label: "Return", act: "revision.return", path: `/api/projects/${P}/requirements/REQ-41/revisions/3/return`, body: {}, needsReason: true, effect: "Its author revises it.", recommended: false },
+    { id: "accept", label: "Accept r3", act: "revision.accept", path: `/api/projects/${P}/requirements/REQ-41/revisions/3/accept`, body: {}, needsReason: false, declines: false, effect: "r3 becomes the agreed revision.", recommended: false },
+    { id: "return", label: "Return", act: "revision.return", path: `/api/projects/${P}/requirements/REQ-41/revisions/3/return`, body: {}, needsReason: true, declines: true, effect: "Its author revises it.", recommended: false },
   ],
   touchedAt: ago(50),
   stuck: true,
@@ -295,8 +298,8 @@ const QUESTION: NeedsYouDecision = {
   recommended: { answerId: "keep", why: "Whoever asked recommends “Keep the old order”.", by: "asker" },
   noRecommendation: null,
   answers: [
-    { id: "keep", label: "Keep the old order", act: "question.answer", path: "/api/questions/q41/answer", body: { round: 1, optionId: "keep" }, needsReason: false, effect: "Sends this answer to the run that asked.", recommended: true },
-    { id: "new", label: "Use the new order", act: "question.answer", path: "/api/questions/q41/answer", body: { round: 1, optionId: "new" }, needsReason: false, effect: null, recommended: false },
+    { id: "keep", label: "Keep the old order", act: "question.answer", path: "/api/questions/q41/answer", body: { round: 1, optionId: "keep" }, needsReason: false, declines: false, effect: "Sends this answer to the run that asked.", recommended: true },
+    { id: "new", label: "Use the new order", act: "question.answer", path: "/api/questions/q41/answer", body: { round: 1, optionId: "new" }, needsReason: false, declines: false, effect: null, recommended: false },
   ],
   touchedAt: ago(6),
   stuck: false,
@@ -305,7 +308,31 @@ const QUESTION: NeedsYouDecision = {
   proposal: null,
 };
 
-const ALL = [SIGN_OFF, ...FEEDBACK, BREAKDOWN, ...DESIGN_UPDATES, MOCKUP, QUESTION];
+/** A release approval as core's `releaseDecision` builds it: both answers take words, and only Return declines. */
+const RELEASE_PATH = `/api/projects/${P}/release-batches/run-7/approvals/ap-7/decision`;
+const RELEASE: NeedsYouDecision = {
+  id: "row:0.4.0-dev.270",
+  group: "approve",
+  area: "releases",
+  entity: "release",
+  key: "0.4.0-dev.270",
+  title: "Approvals decline round",
+  opens: { kind: "release", key: "0.4.0-dev.270" },
+  question: "Approve release 0.4.0-dev.270 for production, or return it to the master?",
+  recommended: { answerId: "approve", why: "None of the 4 criteria it carries is failing.", by: "rule" },
+  noRecommendation: null,
+  answers: [
+    { id: "approve", label: "Approve 0.4.0-dev.270", act: "release.decide", path: RELEASE_PATH, body: { decision: "approve" }, needsReason: true, declines: false, effect: "The release may go to production.", recommended: true },
+    { id: "return", label: "Return with a reason", act: "release.decide", path: RELEASE_PATH, body: { decision: "return" }, needsReason: true, declines: true, effect: "The master is told why and does not take it to production.", recommended: false },
+  ],
+  touchedAt: ago(8),
+  stuck: false,
+  dueAt: null,
+  topic: "release",
+  proposal: null,
+};
+
+const ALL = [SIGN_OFF, ...FEEDBACK, BREAKDOWN, ...DESIGN_UPDATES, MOCKUP, RELEASE, QUESTION];
 
 /** The read the Approvals page, the Dashboard, the menu badge and /attention all count from. */
 export const APPROVALS_READ: NeedsYouDecisions = needsYouDecisionsSchema.parse({

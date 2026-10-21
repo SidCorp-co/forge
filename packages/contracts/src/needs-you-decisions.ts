@@ -223,6 +223,11 @@ export const decisionAnswerSchema = z.strictObject({
 	body: z.record(z.string(), z.unknown()).nullable(),
 	/** The person types a reason before it is sent (a return, a drop, a reopen). */
 	needsReason: z.boolean(),
+	/**
+	 * It says no to what is asked: a return, a reject, a drop, a defer, a reopen. A page's Decline
+	 * presses this answer and no other; a decision none of whose acts says no has none (ISS-539).
+	 */
+	declines: z.boolean(),
 	/** What pressing it changes, read before pressing (`WaitingOn.effect`'s rule). */
 	effect: z.string().max(LIMITS.effect).nullable(),
 	recommended: z.boolean(),
@@ -316,6 +321,21 @@ export const needsYouDecisionSchema = z
 				code: "custom",
 				path: ["answers"],
 				message: "answer ids are unique within a decision",
+			});
+		}
+		const declining = d.answers.filter((a) => a.declines);
+		if (declining.length > 1) {
+			ctx.addIssue({
+				code: "custom",
+				path: ["answers"],
+				message: "at most one answer declines a decision",
+			});
+		}
+		for (const a of declining.filter((x) => !x.needsReason)) {
+			ctx.addIssue({
+				code: "custom",
+				path: ["answers", d.answers.indexOf(a), "needsReason"],
+				message: "a declining answer asks why: it takes a reason",
 			});
 		}
 		const marked = d.answers.filter((a) => a.recommended).map((a) => a.id);

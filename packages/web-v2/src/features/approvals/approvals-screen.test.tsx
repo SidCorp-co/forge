@@ -2,6 +2,11 @@
 // a verb and its object, and tags, never the record's machinery; chips narrow it; a selection states
 // what approving makes before it acts; a decline is refused without a reason; a decision is held five
 // seconds for Undo before anything is posted; and the peek steps on to the next row once one is decided.
+//
+// @direct-test-of packages/web-v2/src/features/approvals/components/approval-row.tsx
+// @direct-test-of packages/web-v2/src/features/approvals/components/approval-peek.tsx
+// @direct-test-of packages/web-v2/src/features/approvals/components/bulk-bar.tsx
+// @direct-test-of packages/web-v2/src/test/approvals-read.ts
 
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -44,7 +49,7 @@ describe("the Approvals page", () => {
     expect(screen.getAllByTestId("approval-row")).toHaveLength(READ.total);
     expect(screen.getByTestId("approvals-count")).toHaveTextContent(`${READ.total} waiting on you`);
     const groups = [...document.querySelectorAll("[data-testid^=approval-group-]")].map((g) => g.getAttribute("data-testid"));
-    expect(groups).toEqual(["approval-group-feedback", "approval-group-breakdown", "approval-group-design_update", "approval-group-mockup", "approval-group-requirement", "approval-group-question"]);
+    expect(groups).toEqual(["approval-group-feedback", "approval-group-breakdown", "approval-group-design_update", "approval-group-mockup", "approval-group-requirement", "approval-group-release", "approval-group-question"]);
 
     const fb = rowOf("FB-135");
     expect(within(fb).getByTestId("approval-proposal")).toHaveTextContent("New issue “Do not reset merged issues as wedges”");
@@ -135,6 +140,62 @@ describe("the Approvals page", () => {
   });
 });
 
+// ISS-539 c2 (K31, 0.4.0-dev.269): a row never sends an answer its person cannot see, and its ✕ is
+// the answer core marks as declining, never whichever answer happens to take words.
+describe("what each row's ✓ and ✕ send", () => {
+  it("names on a question row the answer its ✓ sends, and opens its other answers in the peek", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const calls = core();
+    renderWithQuery(<ApprovalsScreen projectId={P} slug="hop" />);
+    await screen.findByTestId("approvals-screen");
+    const row = rowOf("ISS-41");
+    expect(within(row).getByTestId("approval-approve")).toHaveTextContent("Keep the old order");
+    expect(within(row).getByTestId("approval-approve")).toHaveAccessibleName("Send “Keep the old order” for ISS-41");
+    fireEvent.click(within(row).getByTestId("approval-other-answers"));
+    const peek = await screen.findByTestId("approval-peek");
+    expect(within(peek).getAllByTestId("approval-peek-answer").map((b) => b.textContent)).toEqual(["Keep the old order", "Use the new order"]);
+    fireEvent.click(within(peek).getByRole("button", { name: "Use the new order" }));
+    await act(async () => vi.advanceTimersByTimeAsync(UNDO_MS));
+    await waitFor(() => expect(posts(calls)).toEqual([expect.objectContaining({ path: "/questions/q41/answer", body: { round: 1, optionId: "new" } })]));
+  });
+
+  it("declines a release with the reason typed, and never sends its approve from the ✕", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const calls = core();
+    renderWithQuery(<ApprovalsScreen projectId={P} slug="hop" />);
+    await screen.findByTestId("approvals-screen");
+    fireEvent.click(within(rowOf("0.4.0-dev.270")).getByTestId("approval-decline"));
+    const peek = await screen.findByTestId("approval-peek");
+    fireEvent.click(within(peek).getByTestId("approval-words-send"));
+    expect(within(peek).getByRole("alert")).toHaveTextContent("A decline needs a reason");
+    fireEvent.change(within(peek).getByTestId("approval-words"), { target: { value: "Two criteria still red." } });
+    fireEvent.click(within(peek).getByTestId("approval-words-send"));
+    await act(async () => vi.advanceTimersByTimeAsync(UNDO_MS));
+    await waitFor(() => expect(posts(calls)).toEqual([expect.objectContaining({ path: `/projects/${P}/release-batches/run-7/approvals/ap-7/decision`, body: { decision: "return", reason: "Two criteria still red." } })]));
+  });
+
+  it("asks the words a release approval takes before its ✓ sends it", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const calls = core();
+    renderWithQuery(<ApprovalsScreen projectId={P} slug="hop" />);
+    await screen.findByTestId("approvals-screen");
+    fireEvent.click(within(rowOf("0.4.0-dev.270")).getByTestId("approval-approve"));
+    const peek = await screen.findByTestId("approval-peek");
+    fireEvent.change(within(peek).getByTestId("approval-words"), { target: { value: "Judged green." } });
+    fireEvent.click(within(peek).getByTestId("approval-words-send"));
+    await act(async () => vi.advanceTimersByTimeAsync(UNDO_MS));
+    await waitFor(() => expect(posts(calls)).toEqual([expect.objectContaining({ body: { decision: "approve", reason: "Judged green." } })]));
+  });
+
+  it("gives a ✕ to every row with a declining answer, and none to a kind core gives no decline", async () => {
+    core();
+    renderWithQuery(<ApprovalsScreen projectId={P} slug="hop" />);
+    await screen.findByTestId("approvals-screen");
+    for (const key of ["FB-135", "REQ-41", "REQ-49", "0.4.0-dev.270"]) expect(within(rowOf(key)).getByTestId("approval-decline")).toBeTruthy();
+    for (const key of ["system-context", "ISS-41"]) expect(within(rowOf(key)).queryByTestId("approval-decline")).toBeNull();
+  });
+});
+
 describe("bulkSummary", () => {
   it("counts each proposal's yields, the rows marked Check first, and the ones no ✓ approves", () => {
     const s = bulkSummary(READ.decisions);
@@ -147,8 +208,9 @@ describe("bulkSummary", () => {
       { kind: "approved", n: 1 },
     ]);
     expect(s.checkFirst).toBe(3);
-    // the sign-off's one plain answer and the question's recommended one are each an ✓
-    expect(s.noApprove).toBe(0);
+    // the sign-off's one plain answer and the question's recommended one are each an ✓; the release's
+    // approve takes words, so a bulk approve leaves it for its peek
+    expect(s.noApprove).toBe(1);
     // a question with two plain answers and none recommended is answered in its peek, never guessed
     const open = READ.decisions.filter((d) => d.key === "ISS-41").map((d) => ({ ...d, answers: d.answers.map((a) => ({ ...a, recommended: false })) }));
     expect(bulkSummary(open)).toEqual({ yields: [], checkFirst: 0, noApprove: 1 });

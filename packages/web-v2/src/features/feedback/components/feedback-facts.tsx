@@ -357,8 +357,9 @@ export function LinkedFeedback({
         {f.origin ? <WhereReportedFrom origin={f.origin} /> : null}
         {f.clarification ? (
           <Fact label={tr("feedback.fact.clarification")}>
-            <span className="grid gap-0.5" title={f.clarification.prompt ?? undefined}>
+            <span className="grid gap-0.5" data-testid="feedback-clarification">
               <StatusBadge family="question" value={f.clarification.status} />
+              {f.clarification.prompt ? <span className="text-13 text-fg">{f.clarification.prompt}</span> : null}
               {f.clarification.answer ? <span className="text-13 text-muted">{f.clarification.answer}</span> : null}
             </span>
           </Fact>

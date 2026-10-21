@@ -51,6 +51,7 @@ export function acceptDecision(
           path: filled('requirement.defer', params),
           body: {},
           needsReason: true,
+          declines: true,
           effect: `${row.key} leaves the current release with your reason.`,
           recommended: !proven,
         }),

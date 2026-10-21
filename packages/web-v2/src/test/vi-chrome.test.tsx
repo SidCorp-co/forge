@@ -1,3 +1,5 @@
+// @direct-test-of packages/web-v2/src/test/vi-chrome-question-desk.tsx
+
 import { act, render } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";

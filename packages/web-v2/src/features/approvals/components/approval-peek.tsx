@@ -112,7 +112,7 @@ function Words({ answer, onSend, onCancel }: { answer: DecisionAnswer; onSend: (
   const fieldRef = useRef<HTMLTextAreaElement>(null);
   // the words are asked for because a press asked for them: the caret goes where they are typed
   useEffect(() => fieldRef.current?.focus(), []);
-  const decline = answer.act !== "question.answer";
+  const decline = answer.declines;
   return (
     <form
       className="flex flex-col gap-2"
@@ -133,7 +133,7 @@ function Words({ answer, onSend, onCancel }: { answer: DecisionAnswer; onSend: (
       />
       {refused ? (
         <p role="alert" className="text-12 text-danger-11">
-          {t("approvals.declineNeeded")}
+          {t(decline ? "approvals.declineNeeded" : "approvals.wordsNeeded")}
         </p>
       ) : null}
       <div className="flex gap-2">

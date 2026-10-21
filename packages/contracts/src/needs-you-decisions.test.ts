@@ -19,6 +19,7 @@ const answer = (over: Partial<DecisionAnswer>): DecisionAnswer => ({
 	path: "/api/questions/q-1/answer",
 	body: { round: 1, optionId: "a" },
 	needsReason: false,
+	declines: false,
 	effect: null,
 	recommended: false,
 	...over,
@@ -115,6 +116,40 @@ describe("a decision shows its question, a recommended answer and a button (BC-2
 			],
 		});
 		expect(r.success).toBe(false);
+	});
+
+	it("refuses a declining answer that does not ask why, and two answers that each decline (ISS-539)", () => {
+		const no = (over: Partial<DecisionAnswer>) =>
+			answer({
+				act: "revision.return",
+				path: "/api/projects/p/requirements/REQ-1/revisions/2/return",
+				body: {},
+				declines: true,
+				needsReason: true,
+				...over,
+			});
+		const ok = needsYouDecisionSchema.safeParse({
+			...iss451,
+			answers: [answer({ id: "a", recommended: true }), no({ id: "b" })],
+		});
+		expect(ok.success).toBe(true);
+		const silent = needsYouDecisionSchema.safeParse({
+			...iss451,
+			answers: [
+				answer({ id: "a", recommended: true }),
+				no({ id: "b", needsReason: false }),
+			],
+		});
+		expect(JSON.stringify(silent.error?.issues)).toContain(
+			"a declining answer asks why",
+		);
+		const twice = needsYouDecisionSchema.safeParse({
+			...iss451,
+			answers: [answer({ id: "a", recommended: true }), no({ id: "b" }), no({ id: "c" })],
+		});
+		expect(JSON.stringify(twice.error?.issues)).toContain(
+			"at most one answer declines a decision",
+		);
 	});
 
 	it("refuses a decision with no button at all", () => {

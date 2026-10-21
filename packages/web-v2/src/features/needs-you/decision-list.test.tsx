@@ -29,8 +29,8 @@ const READ: NeedsYouDecisions = needsYouDecisionsSchema.parse({
       recommended: { answerId: "move", why: 'Whoever asked recommends "Move to the new one".', by: "asker" },
       noRecommendation: null,
       answers: [
-        { id: "move", label: "Move to the new one", act: "question.answer", path: `/api/questions/${Q}/answer`, body: { round: 1, optionId: "move" }, needsReason: false, effect: "Sends this answer to the run that asked.", recommended: true },
-        { id: "keep", label: "Keep the old format", act: "question.answer", path: `/api/questions/${Q}/answer`, body: { round: 1, optionId: "keep" }, needsReason: false, effect: null, recommended: false },
+        { id: "move", label: "Move to the new one", act: "question.answer", path: `/api/questions/${Q}/answer`, body: { round: 1, optionId: "move" }, needsReason: false, declines: false, effect: "Sends this answer to the run that asked.", recommended: true },
+        { id: "keep", label: "Keep the old format", act: "question.answer", path: `/api/questions/${Q}/answer`, body: { round: 1, optionId: "keep" }, needsReason: false, declines: false, effect: null, recommended: false },
       ],
       touchedAt: "2026-10-08T10:00:00.000Z",
       stuck: false,
@@ -50,8 +50,8 @@ const READ: NeedsYouDecisions = needsYouDecisionsSchema.parse({
       recommended: { answerId: "accept", why: "Its author proposed revision 2 for sign-off.", by: "rule" },
       noRecommendation: null,
       answers: [
-        { id: "accept", label: "Accept revision 2", act: "revision.accept", path: `/api/projects/${PROJECT}/requirements/REQ-1/revisions/2/accept`, body: {}, needsReason: false, effect: null, recommended: true },
-        { id: "return", label: "Return with a reason", act: "revision.return", path: `/api/projects/${PROJECT}/requirements/REQ-1/revisions/2/return`, body: {}, needsReason: true, effect: null, recommended: false },
+        { id: "accept", label: "Accept revision 2", act: "revision.accept", path: `/api/projects/${PROJECT}/requirements/REQ-1/revisions/2/accept`, body: {}, needsReason: false, declines: false, effect: null, recommended: true },
+        { id: "return", label: "Return with a reason", act: "revision.return", path: `/api/projects/${PROJECT}/requirements/REQ-1/revisions/2/return`, body: {}, needsReason: true, declines: true, effect: null, recommended: false },
       ],
       touchedAt: "2026-10-08T11:00:00.000Z",
       stuck: false,
@@ -102,8 +102,8 @@ describe("the decisions only you can make (REQ-41 BC-2)", () => {
           recommended: { answerId: "suggested", why: `"${text}" REQ-1 says referrals match by clinic code. (read ISS-1, REQ-1)`, by: "assistant" },
           noRecommendation: null,
           answers: [
-            { id: "suggested", label: "Send the suggested answer", act: "question.answer", path: `/api/questions/${Q}/answer`, body: { round: 1, text }, needsReason: false, effect: null, recommended: true },
-            { id: "write", label: "Write another answer", act: "question.answer", path: `/api/questions/${Q}/answer`, body: { round: 1 }, needsReason: true, effect: null, recommended: false },
+            { id: "suggested", label: "Send the suggested answer", act: "question.answer", path: `/api/questions/${Q}/answer`, body: { round: 1, text }, needsReason: false, declines: false, effect: null, recommended: true },
+            { id: "write", label: "Write another answer", act: "question.answer", path: `/api/questions/${Q}/answer`, body: { round: 1 }, needsReason: true, declines: false, effect: null, recommended: false },
           ],
           touchedAt: "2026-10-08T10:00:00.000Z",
           stuck: false,

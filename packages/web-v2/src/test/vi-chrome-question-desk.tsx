@@ -26,7 +26,7 @@ const DECISIONS = {
       question: "Giu dinh dang cu?",
       recommended: null,
       noRecommendation: "Chua co",
-      answers: [{ id: "giu", label: "Giu", act: "question.answer", path: "/api/questions/q1/answer", body: { round: 1, optionId: "giu" }, needsReason: false, effect: null, recommended: false }],
+      answers: [{ id: "giu", label: "Giu", act: "question.answer", path: "/api/questions/q1/answer", body: { round: 1, optionId: "giu" }, needsReason: false, declines: false, effect: null, recommended: false }],
       touchedAt: AT,
       stuck: false,
       dueAt: null,

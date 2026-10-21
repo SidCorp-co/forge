@@ -484,10 +484,32 @@ export const FEEDBACK_MESSAGE_SHAPE = `{ audience: ${FEEDBACK_MESSAGE_AUDIENCES.
 export const feedbackEmptyRequestSchema = z.strictObject({});
 export const FEEDBACK_EMPTY_SHAPE = "{}";
 
+/** How long a clarification's question and what it needs back may be, which the form and core both hold. */
+export const FEEDBACK_CLARIFICATION_LIMITS = {
+	prompt: { min: 5, max: 2_000 },
+	needed: { min: 3, max: 1_000 },
+} as const;
+const L = FEEDBACK_CLARIFICATION_LIMITS;
 /** `POST …/feedback/:fb/clarification`: one open question to the reporter (Q5). */
 export const feedbackClarificationRequestSchema = z.strictObject({
-	prompt: z.string().trim().min(5).max(2_000),
-	needed: z.string().trim().min(3).max(1_000),
+	prompt: z
+		.string()
+		.trim()
+		.min(L.prompt.min, {
+			error: `the question is at least ${L.prompt.min} characters`,
+		})
+		.max(L.prompt.max, {
+			error: `the question is at most ${L.prompt.max} characters`,
+		}),
+	needed: z
+		.string()
+		.trim()
+		.min(L.needed.min, {
+			error: `what is needed back is at least ${L.needed.min} characters`,
+		})
+		.max(L.needed.max, {
+			error: `what is needed back is at most ${L.needed.max} characters`,
+		}),
 });
 export const FEEDBACK_CLARIFICATION_SHAPE = "{ prompt, needed }";
 

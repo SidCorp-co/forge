@@ -48,10 +48,17 @@ export function filled(
 }
 
 export function answer(
-  over: Omit<DecisionAnswer, 'needsReason' | 'effect' | 'recommended' | 'body'> &
-    Partial<Pick<DecisionAnswer, 'needsReason' | 'effect' | 'recommended' | 'body'>>,
+  over: Omit<DecisionAnswer, 'needsReason' | 'declines' | 'effect' | 'recommended' | 'body'> &
+    Partial<Pick<DecisionAnswer, 'needsReason' | 'declines' | 'effect' | 'recommended' | 'body'>>,
 ): DecisionAnswer {
-  return { needsReason: false, effect: null, recommended: false, body: null, ...over };
+  return {
+    needsReason: false,
+    declines: false,
+    effect: null,
+    recommended: false,
+    body: null,
+    ...over,
+  };
 }
 
 /** What pressing a merge-or-drop answer makes core do (`requirements/stale-draft-act.ts`). */
@@ -345,6 +352,7 @@ export function feedbackDecision(
           path: filled('feedback.reopen', params),
           body: {},
           needsReason: true,
+          declines: true,
           effect: `${row.key} is reopened with your reason.`,
         }),
       ],

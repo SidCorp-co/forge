@@ -107,6 +107,7 @@ function suggestionDecision(
         path: filled('suggestion.accept', params),
         body: {},
         needsReason: false,
+        declines: false,
         effect: proposal.consequences[0] ?? null,
         recommended: false,
       }
@@ -119,6 +120,7 @@ function suggestionDecision(
         path: filled('suggestion.reject', params),
         body: {},
         needsReason: true,
+        declines: true,
         effect: 'The agent reads your reason and does not propose the same again.',
         recommended: false,
       }
@@ -183,6 +185,7 @@ function mockupDecision(projectId: string, m: MockupView): DecisionBody {
     path: filled('mockup.accept', params),
     body: {},
     needsReason: false,
+    declines: false,
     effect: proposal.consequences[0] ?? null,
     recommended: false,
   };
@@ -194,6 +197,7 @@ function mockupDecision(projectId: string, m: MockupView): DecisionBody {
         path: filled('mockup.return', params),
         body: {},
         needsReason: true,
+        declines: true,
         effect: 'It goes back to its author with your reason.',
         recommended: false,
       }
@@ -258,6 +262,7 @@ function previewDecision(p: ApprovablePreview): DecisionBody {
         path: filled('preview.approve', { previewId: p.id }),
         body: null,
         needsReason: false,
+        declines: false,
         effect: proposal.consequences[0] ?? null,
         recommended: false,
       },
