@@ -15,18 +15,21 @@ import { conversationTitle } from "../types";
 export function DockOpening({
   projectId,
   pageKey,
+  kept,
   onResolved,
 }: {
   projectId: string;
   pageKey: string | null;
+  /** The room this browser last had open in the project: opened again while it is live. */
+  kept: string | null;
   onResolved: (target: ChatTarget) => void;
 }) {
   const q = useProjectConversations(projectId);
   const t = useCopy();
   const rows = q.data;
   useEffect(() => {
-    if (rows) onResolved(openingTarget(rows, { projectId, pageKey }));
-  }, [rows, projectId, pageKey, onResolved]);
+    if (rows) onResolved(openingTarget(rows, { projectId, pageKey, kept }));
+  }, [rows, projectId, pageKey, kept, onResolved]);
   if (q.isError) {
     return (
       <ErrorState

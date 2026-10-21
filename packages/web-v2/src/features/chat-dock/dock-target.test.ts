@@ -83,6 +83,39 @@ describe("openingTarget", () => {
   });
 });
 
+// Owner 2026-10-21: a reload swapped the open conversation for the page's or a waiting room.
+describe("openingTarget after a reload", () => {
+  const kept = (rows: DockRoom[], id: string | null, pageKey: string | null = null) =>
+    openingTarget(rows, { projectId: "p1", pageKey, kept: id });
+
+  it("reopens the room this browser last had open, before the page's own, a waiting or a newer room", () => {
+    const rows = [
+      room("was-open"),
+      room("about-req", { subjectKey: "REQ-1" }),
+      room("asked", { threadStatus: "waiting_on_you" }),
+      room("newest"),
+    ];
+    expect(kept(rows, "was-open", "REQ-1")).toEqual({ kind: "room", projectId: "p1", conversationId: "was-open" });
+    expect(kept(rows, "was-open")).toMatchObject({ conversationId: "was-open" });
+  });
+
+  it("reopens a kept room scoped to a record, off that record's page", () => {
+    const rows = [room("project"), room("req-17", { kind: "requirement", subjectKey: "REQ-17" })];
+    expect(kept(rows, "req-17")).toMatchObject({ conversationId: "req-17" });
+  });
+
+  it("opens as before when the kept room was archived, deleted, or belongs to another project", () => {
+    const rows = [
+      room("archived", { archivedAt: "2026-10-06T17:00:00Z" }),
+      room("elsewhere", { projectId: "p2" }),
+      room("newest"),
+    ];
+    for (const id of ["archived", "gone", "elsewhere", null]) {
+      expect(kept(rows, id)).toMatchObject({ conversationId: "newest" });
+    }
+  });
+});
+
 describe("waitingRoom", () => {
   it("names the newest room waiting on the person that is not the one open", () => {
     const rows = [room("a", { threadStatus: "waiting_on_you" }), room("b", { threadStatus: "waiting_on_you" }), room("c")];

@@ -9,6 +9,8 @@ import { DOCK_SIZE_KEY, type DockSize, settleDockSize } from "./dock-size";
 
 export const DOCK_OPEN_ON_KEY = "web-v2:chat-dock-open-on";
 export const DOCK_PINNED_KEY = "web-v2:chat-dock-pinned";
+/** The room this browser last had open, by project: what a reload opens again (dock-target.ts openingTarget). */
+export const DOCK_ROOM_KEY = "web-v2:chat-dock-room";
 /** Marks the panel whose links and actions carry the dock to the page they open; the phone's slide-over has none. */
 export const DOCK_CARRIES_ATTR = "data-chat-dock-carries";
 
@@ -19,6 +21,8 @@ export interface ChatDockApi {
   pinned: boolean;
   setPinned: (pinned: boolean) => void;
   target: ChatTarget | null;
+  /** The room this browser last had open in this project, or null. */
+  keptRoom: string | null;
   generation: number;
   /** The size this browser keeps (REQ-31 BC-5); the panel resolves it to px against the room it has. */
   size: DockSize;
@@ -46,9 +50,15 @@ export function useChatDockState(projectId: string | null): ChatDockApi {
   const [pinned, setPinnedState] = usePersistedState(DOCK_PINNED_KEY, false, { syncTabs: false });
   const pathname = usePathname() ?? "";
   const [picked, setPicked] = useState<ChatTarget | null>(null);
+  const [rooms, setRooms] = usePersistedState<Record<string, string>>(DOCK_ROOM_KEY, {}, { syncTabs: false });
+
   const [generation, setGeneration] = useState(0);
   const doorRef = useRef<DockDoor | null>(null);
   const target = targetInScope(picked, projectId);
+  const openRoom = target?.kind === "room" ? target.conversationId : null;
+  useEffect(() => {
+    if (projectId && openRoom) setRooms((all) => (all[projectId] === openRoom ? all : { ...all, [projectId]: openRoom }));
+  }, [projectId, openRoom, setRooms]);
 
   // a link or action taken inside the docked panel carries it to the page it opens (owner 2026-10-21):
   // the last click decides, so a click on the page or its menus, or a browser Back, leaves the rule below
@@ -117,6 +127,7 @@ export function useChatDockState(projectId: string | null): ChatDockApi {
       pinned,
       setPinned,
       target,
+      keptRoom: projectId ? (rooms[projectId] ?? null) : null,
       generation,
       size,
       setSize,
@@ -137,7 +148,7 @@ export function useChatDockState(projectId: string | null): ChatDockApi {
         doorRef.current = d;
       },
     }),
-    [projectId, open, pinned, setPinned, target, generation, size, setSize, show, setOpen, select, follow, askAbout],
+    [projectId, open, pinned, setPinned, target, rooms, generation, size, setSize, show, setOpen, select, follow, askAbout],
   );
 }
 
