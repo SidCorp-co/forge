@@ -133,19 +133,19 @@ const coolifyAdapterMethods: DispatchingAdapterMethods<CoolifyConfig, CoolifySec
         diagnostics: { targetCount: 0 },
       } satisfies HealthCheckResult;
     }
-    // An answer only the previous token got is the new one's refusal, and what else it found (ISS-1421 r20).
-    const answeredOnPrevious = async (also?: string): Promise<HealthCheckResult> => {
+    // An answer only the previous token got is the new one's refusal (ISS-1421 r20); the previous
+    // key is promised only where that answer was Coolify's.
+    const answeredOnPrevious = async (also?: string, works = true): Promise<HealthCheckResult> => {
       const refused = newKeyRefused(`The server at ${client.address}`, ctx.secrets);
+      const said = works ? refused.message : `The server at ${client.address} refused the new key.`;
       await updateConnection(ctx.connectionId, {
         lastHealthStatus: refused.status,
         lastHealthAt: new Date(),
       });
-      const message = also ? `${refused.message} ${also}` : refused.message;
-      const diagnostics = {
-        ...refused.diagnostics,
-        saidOfAddress: true,
-        targetCount: targets.length,
-      };
+      const message = also ? `${said} ${also}` : said;
+      const diagnostics = works
+        ? { ...refused.diagnostics, saidOfAddress: true, targetCount: targets.length }
+        : { newKeyRefused: true, saidOfAddress: true, targetCount: targets.length };
       return { ...refused, message, diagnostics };
     };
     try {
@@ -176,7 +176,11 @@ const coolifyAdapterMethods: DispatchingAdapterMethods<CoolifyConfig, CoolifySec
       const status = err instanceof CoolifyApiError ? err.status : null;
       const verdict = classifyCoolifyFailure(err);
       const message = verdict.message ?? checkFailureWords(err);
-      if (client.usedPreviousToken) return await answeredOnPrevious(message);
+      if (client.usedPreviousToken)
+        return await answeredOnPrevious(
+          message,
+          !(err instanceof CoolifyApiError && err.addressSuspect),
+        );
       await updateConnection(ctx.connectionId, {
         lastHealthStatus: verdict.health,
         lastHealthAt: new Date(),

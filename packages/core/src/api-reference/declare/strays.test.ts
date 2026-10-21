@@ -209,6 +209,49 @@ describe('a field inside a body object that the object does not take (ISS-1421 r
     );
   });
 
+  // Seventh whole-set read: a union whose other option takes anything was refused for a stray.
+  it('lets a list through where another option of its union takes anything', async () => {
+    const either = z.object({
+      items: z.union([z.array(z.object({ id: z.string() })), z.unknown()]),
+    });
+    const res = await refusing((a) =>
+      a.post('/e', zValidator('json', either), (c) => c.json({ ok: true })),
+    ).request('/e', post({ items: [{ id: 'a', colour: 'red' }] }));
+    expect(res.status).toBe(200);
+  });
+
+  // A field one branch reads closed and another takes whatever it holds is not refused, and a
+  // catchall's values are read by the catchall.
+  it.each([
+    [
+      'a record branch',
+      z.union([z.object({ meta: z.object({ a: z.string() }) }), z.record(z.string(), z.unknown())]),
+    ],
+    [
+      'a loose branch',
+      z.union([z.object({ meta: z.object({ a: z.string() }) }), z.looseObject({})]),
+    ],
+    [
+      'an intersection with a loose side',
+      z.intersection(z.object({ meta: z.object({ a: z.string() }) }), z.looseObject({})),
+    ],
+  ])('lets a nested field through where %s takes it', async (_what, schema) => {
+    const res = await refusing((a) =>
+      a.post('/b', zValidator('json', schema as z.ZodType), (c) => c.json({ ok: true })),
+    ).request('/b', post({ meta: { a: 'x', colour: 'red' } }));
+    expect(res.status).toBe(200);
+  });
+
+  it('is refused inside a value a catchall reads', async () => {
+    const caught = z.object({ id: z.string() }).catchall(z.object({ n: z.number() }));
+    const res = await refusing((a) =>
+      a.post('/c', zValidator('json', caught), (c) => c.json({ ok: true })),
+    ).request('/c', post({ id: 'a', extra: { n: 1, colour: 'red' } }));
+    expect(((await res.json()) as Refusal).message).toBe(
+      'The field extra.colour is not one this call takes.',
+    );
+  });
+
   // The shapes a list or a map takes beside an array: a tuple's entries and a record's values.
   it.each([
     [

@@ -147,12 +147,18 @@ function resolved(schema: ZodType): ZodType {
   }
 }
 
+/** What reads a field that a branch takes whatever it holds: it names no stray inside it. */
+const ANYTHING = { _zod: { def: { type: 'unknown' } } } as unknown as ZodType;
+
 function fieldSchemas(schema: ZodType, body: Record<string, unknown>, key: string): ZodType[] {
-  const def = defOf(resolved(schema));
+  const def = defOf(resolved(schema)) as Def & { valueType?: ZodType };
   if (def.type === 'object') {
-    const field = def.shape?.[key] as ZodType | undefined;
+    const field =
+      (def.shape?.[key] as ZodType | undefined) ?? (takesAny(def) ? def.catchall : undefined);
     return field ? [field] : [];
   }
+  if (def.type === 'record' && def.valueType) return [def.valueType];
+  if (def.type === 'unknown' || def.type === 'any') return [ANYTHING];
   let parts: ZodType[] = [];
   if (def.type === 'intersection' && def.left && def.right) parts = [def.left, def.right];
   else if (def.type === 'union' && def.options) {
@@ -185,8 +191,12 @@ function straysIn(schema: ZodType, value: unknown, path: PropertyKey[]): StrayAt
   };
   if (Array.isArray(value)) {
     if (def.type === 'union' && def.options) {
-      const lists = def.options.filter((o) => ['array', 'tuple'].includes(defOf(resolved(o)).type));
-      return agreed(lists.map((o) => straysIn(o, value, path)));
+      // An option taking anything takes the list as sent; one taking no list cannot.
+      const takes = def.options.filter(
+        (o) =>
+          !['string', 'number', 'boolean', 'object', 'record'].includes(defOf(resolved(o)).type),
+      );
+      return agreed(takes.map((o) => straysIn(o, value, path)));
     }
     const at = (i: number) =>
       def.type === 'array'

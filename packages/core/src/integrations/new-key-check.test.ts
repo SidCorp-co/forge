@@ -185,6 +185,15 @@ describe('Coolify, which keeps the previous token for its own calls', () => {
     expect(res.message).not.toMatch(/previous key/);
   });
 
+  // Seventh whole-set read: a previous-token answer that was no Coolify list was taken as it working.
+  it("promises no previous key where its answer was not Coolify's", async () => {
+    answeringOnly('cf-old', {});
+    const res = await coolifyAdapter.healthcheck(ctx(secrets, COOLIFY));
+    expect(res.status).toBe('needs_reauth');
+    expect(res.message).toMatch(/^The server at coolify\.example refused the new key\. /);
+    expect(res.message).not.toMatch(/previous key/);
+  });
+
   it('answers Connected where the new token is accepted', async () => {
     answeringOnly('cf-new', [{ uuid: 'res-1', name: 'app' }]);
     expect((await coolifyAdapter.healthcheck(ctx(secrets, COOLIFY))).status).toBe('ok');
