@@ -11,8 +11,8 @@ const SESSIONS_AND_HOLDS = "sessions-and-holds";
 export function useSessionsAndHolds(projectId: string | undefined) {
   return useQuery({
     queryKey: [SESSIONS_AND_HOLDS, projectId],
-    queryFn: ({ queryKey }) => {
-      noteAttemptStart(queryKey);
+    queryFn: ({ client, queryKey }) => {
+      noteAttemptStart(client, queryKey);
       return pipelineApi.sessionsAndHolds(projectId as string);
     },
     enabled: !!projectId,

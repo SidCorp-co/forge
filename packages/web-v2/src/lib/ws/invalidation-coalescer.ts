@@ -1,6 +1,6 @@
 "use client";
 
-import { hashKey, type Query, type QueryCache, type QueryClient } from "@tanstack/react-query";
+import type { Query, QueryCache, QueryClient } from "@tanstack/react-query";
 import { refusalStands } from "@/lib/api/read-failed";
 import { invalidateThroughInFlight } from "./invalidate-through-inflight";
 
@@ -25,11 +25,10 @@ const open = new Map<string, Window>();
 /** When each query's latest read started, whatever started it: a window, a poll, focus or Retry. */
 const startedAt = new WeakMap<Query, number>();
 const watched = new WeakSet<QueryCache>();
-/** A read's own retries start announced to no subscriber, so a read with a gap notes each attempt here (ISS-1228 r27). */
-const attemptStartedAt = new Map<string, number>();
-
-export function noteAttemptStart(queryKey: readonly unknown[]): void {
-	attemptStartedAt.set(hashKey(queryKey), Date.now());
+/** A read's own retries start announced to no subscriber, so a read with a gap notes each attempt itself (ISS-1228 r27). */
+export function noteAttemptStart(qc: QueryClient, queryKey: readonly unknown[]): void {
+	const query = qc.getQueryCache().find({ queryKey: [...queryKey], exact: true });
+	if (query) startedAt.set(query, Date.now());
 }
 
 function watchStarts(qc: QueryClient): void {
@@ -53,11 +52,7 @@ function notBefore(clients: Iterable<QueryClient>, queryKey: readonly unknown[])
 	for (const qc of clients) {
 		for (const q of qc.getQueryCache().findAll({ queryKey: [...queryKey] })) {
 			// A read that started before this client was watched is known only by when it ended, which is later.
-			latest = Math.max(
-				latest,
-				startedAt.get(q) ?? Math.max(q.state.dataUpdatedAt, q.state.errorUpdatedAt),
-				attemptStartedAt.get(q.queryHash) ?? 0,
-			);
+			latest = Math.max(latest, startedAt.get(q) ?? Math.max(q.state.dataUpdatedAt, q.state.errorUpdatedAt));
 		}
 	}
 	return latest === 0 ? 0 : latest + gap;
