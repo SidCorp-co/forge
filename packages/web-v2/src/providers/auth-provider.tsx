@@ -66,6 +66,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .catch((err) => {
         if (!mounted.current) return;
         if (signedOut(err)) {
+          setUser(null);
           setFailure(null);
           return;
         }

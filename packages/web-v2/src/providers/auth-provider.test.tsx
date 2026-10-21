@@ -64,6 +64,17 @@ describe("what the account read failing says about the person (criterion 235)", 
     expect(seen.failure).toBeNull();
   });
 
+  it("signs out a person read in once a later read answers 401", async () => {
+    me.mockResolvedValueOnce({ id: "u1", email: "a@b.c", displayName: null }).mockRejectedValueOnce(
+      new ApiError(401, "Unauthenticated", "UNAUTHENTICATED"),
+    );
+    await mounted();
+    expect(screen.getByText("signed in")).toBeTruthy();
+    await act(async () => seen.retry());
+    await settle();
+    expect(screen.getByText("signed out")).toBeTruthy();
+  });
+
   it("reads the account again on Retry, and once it answers the person is signed in", async () => {
     me.mockRejectedValueOnce(lost()).mockResolvedValueOnce({ id: "u1", email: "a@b.c", displayName: null });
     await mounted();
