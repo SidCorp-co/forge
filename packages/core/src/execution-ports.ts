@@ -90,6 +90,7 @@ import {
 } from './schedules/index.js';
 import { recordSkillActivityEvent, resolveRegisteredEffectiveSkills } from './skills/index.js';
 import { sendStatusReport } from './status-reports/index.js';
+import { breakdownsHeldBySteward, openStewardAsks, stewardJobCredential } from './steward/index.js';
 import {
   issueMockupsOf,
   loadArtifactContext,
@@ -127,6 +128,7 @@ export function provideExecutionPorts(): void {
     },
     vault: { isVaultConfigured, decryptSecret },
     mcpServers: { applyGrantedMcpServers },
+    stewardJobCredential,
     redispatchScheduleSessionOnFailover,
   });
 
@@ -212,6 +214,8 @@ export function provideExecutionPorts(): void {
         outcome: a.resume,
       })),
     contentLanguageOf: async (projectId) => (await readContentLanguage(projectId)).contentLanguage,
+    stewardAsks: openStewardAsks,
+    breakdownsHeldBySteward,
   });
 
   registerConversationAgentBridge();

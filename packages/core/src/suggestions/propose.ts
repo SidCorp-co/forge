@@ -25,6 +25,7 @@ import {
 import { designNodesIn, nodeSetRefusals } from '../workflows/index.js';
 import { breakdownGuardIn } from './breakdown.js';
 import { firstRequirementRefusalsIn } from './first-requirement.js';
+import { emitSuggestionProposed } from './proposed-event.js';
 import {
   headOf,
   onTarget,
@@ -170,6 +171,13 @@ async function proposeIn(
     })
     .returning({ id: suggestions.id });
   if (!row) throw new Error('suggestions: the insert returned no row');
+  await emitSuggestionProposed(tx, {
+    projectId: p.projectId,
+    suggestionId: row.id,
+    kind: p.kind,
+    targetKind: p.target.type,
+    targetId: p.target.id,
+  });
   return { id: row.id };
 }
 

@@ -35,6 +35,7 @@ import { sweepExpiredExecutions, sweepExpiredReportRuns } from './reports/index.
 import { sweepDeliveredRequirements, sweepStaleDrafts } from './requirements/index.js';
 import { reapGhostRunners, runRunnerStaleSweep } from './runners/index.js';
 import type { Timer } from './schedules/index.js';
+import { dispatchStewardRuns, sweepStandings } from './steward/index.js';
 import { sweepSuggestions } from './suggestions/index.js';
 import { drainWidgetConversationWindows } from './widget/index.js';
 
@@ -122,6 +123,45 @@ function requirementTimers(): Timer[] {
         (r) => {
           const { asked, refused } = r as { asked: number; refused: number };
           return asked > 0 || refused > 0;
+        },
+      ),
+    },
+  ];
+}
+
+/**
+ * REQ-48 BC-1: the steward starts a queued run once its debounce passes, within 2 minutes and 30
+ * seconds of the trigger, and an item turning stuck by time alone is seen within 5 minutes.
+ */
+function stewardTimers(): Timer[] {
+  return [
+    {
+      kind: 'cluster',
+      name: 'standing-sweep',
+      cron: '*/5 * * * *',
+      run: logged(
+        'standing-sweep: emitted',
+        () => sweepStandings(),
+        (r) => {
+          const { stuck, changed, settledAsks } = r as {
+            stuck: number;
+            changed: number;
+            settledAsks: number;
+          };
+          return stuck > 0 || changed > 0 || settledAsks > 0;
+        },
+      ),
+    },
+    {
+      kind: 'process',
+      name: 'steward-dispatch',
+      everyMs: 30_000,
+      run: logged(
+        'steward-dispatch: ran',
+        () => dispatchStewardRuns(),
+        (r) => {
+          const { started, settled } = r as { started: number; settled: number };
+          return started > 0 || settled > 0;
         },
       ),
     },
@@ -344,6 +384,7 @@ export function coreTimers(): Timer[] {
       ),
     },
     ...requirementTimers(),
+    ...stewardTimers(),
 
     // Process timers: faster than a minute, or bound to this process's sockets, memory or disk.
     // A preview idles, or fails when its box's tunnel is away: the tunnels are this process's sockets.

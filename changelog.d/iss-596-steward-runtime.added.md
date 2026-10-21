@@ -1,0 +1,1 @@
+**The steward now acts at each handoff an item reaches.** It checks intake, breakdown and output, asks the master about a stuck item within the hour, keeps to a daily budget, and each act is undoable or says why not.

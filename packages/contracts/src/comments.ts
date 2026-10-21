@@ -42,6 +42,8 @@ export const COMMENT_REFUSAL_CODES = [
 	"COMMENT_DEPTH_EXCEEDED",
 	...PERMISSION_REFUSAL_CODES,
 	"COMMENT_RECORD_KEPT",
+	/** A comment others replied to is kept, so no reply is left answering nothing. */
+	"COMMENT_HAS_REPLIES",
 	"COMMENT_DECISION_NODE_SCOPE",
 	"WORKFLOW_NODE_UNKNOWN",
 	"WORKFLOW_NODE_AMBIGUOUS",

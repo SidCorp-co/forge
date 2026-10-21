@@ -158,7 +158,8 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:json:targetProjectSlug field:json:templateId field:json:turnId
     field:json:userId field:json:workflowId field:json:signalKey field:json:detectorKey
     field:json:operationId field:json:issuePrefix field:query:deploymentUuid field:query:target
-    field:query:provider field:query:requestId field:json:reviewers field:json:teamReviewers`,
+    field:query:provider field:query:requestId field:json:reviewers field:json:teamReviewers
+    field:param:actId field:query:subject field:json:owner`,
   'prose a person or an agent writes: a title, a body, a message, a note': words`
     field:json:about field:json:acceptanceCriteria field:json:alt field:json:answer
     field:json:assistantInstructions field:json:assumed field:json:body field:json:brief

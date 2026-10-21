@@ -2,6 +2,7 @@
 //
 // A rule refusal leaves as the refusal envelope `middleware/error.ts` answers a thrown refusal with.
 
+import { REASON_TEXT_MAX } from '@forge/contracts/comments';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import {
   QUESTION_ABOUT_SHAPE_SENTENCE,
@@ -33,6 +34,7 @@ import {
   readQuestionsForIssue,
 } from './read.js';
 import { type ShownQuestion, shownQuestion as shown } from './shown.js';
+import { voidQuestionAs } from './void-door.js';
 
 const uuid = z.uuid();
 
@@ -217,4 +219,21 @@ questionRoutes.post(
       }),
     );
   },
+);
+
+questionRoutes.post(
+  '/:id/void',
+  strictBody(
+    z.strictObject({ reason: z.string().trim().min(1).max(REASON_TEXT_MAX) }),
+    '{ reason } says why the question no longer needs its answer',
+  ),
+  async (c) =>
+    c.json(
+      await voidQuestionAs({
+        questionId: questionId(c),
+        userId: c.get('userId'),
+        agency: restActor(c).agency,
+        reason: c.req.valid('json').reason,
+      }),
+    ),
 );

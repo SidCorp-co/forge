@@ -12,12 +12,14 @@ const VOCABULARIES = {
   job: { file: 'packages/contracts/src/job-machine.ts', symbol: 'JOB_STATUSES' },
   session: { file: 'packages/contracts/src/session-machine.ts', symbol: 'AGENT_SESSION_STATUSES' },
   run: { file: 'packages/contracts/src/run-machine.ts', symbol: 'PIPELINE_RUN_STATUSES' },
+  steward: { file: 'packages/contracts/src/steward.ts', symbol: 'STEWARD_RUN_STATES' },
 };
 const DISCRIMINATOR = {
   issue: /\bissues?\b|IssueStatus/,
   job: /\bjobs?\b|JobStatus/,
   session: /agentSessions?|AgentSession/i,
   run: /pipelineRuns?|PipelineRun|\bruns?\b/i,
+  steward: /steward/i,
 };
 // A status literal in either quote style: `packages/core` and `packages/contracts`
 // are formatted with single quotes and `packages/web-v2` with double, so a

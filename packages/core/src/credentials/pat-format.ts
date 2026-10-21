@@ -91,6 +91,16 @@ const PROBE_REPLAY_NAME_PREFIX = 'probe replay ';
 export const probeReplayTokenName = (at: Date, nonce: string) =>
   `${PROBE_REPLAY_NAME_PREFIX}${at.toISOString()} ${nonce}`;
 
+const STEWARD_NAME_PREFIX = 'steward ';
+
+/**
+ * The token one steward act is made under, as the project's steward account
+ * (`steward/credential.ts`): fenced to the project, narrowed to the steward's menu, and revoked once
+ * the act ends. It is not a chat door: the steward's writes are its own, never held for a person.
+ */
+export const stewardTokenName = (at: Date, nonce: string) =>
+  `${STEWARD_NAME_PREFIX}${at.toISOString()} ${nonce}`;
+
 export const isTurnTokenName = (name: string) =>
   name.startsWith(TURN_TOKEN_NAME_PREFIX) ||
   name.startsWith(TURN_DEFAULT_NAME_PREFIX) ||
@@ -137,6 +147,7 @@ const CORE_NAME_PREFIXES = [
   AGREEMENT_NAME_PREFIX,
   SCRIPT_READ_NAME_PREFIX,
   PROBE_REPLAY_NAME_PREFIX,
+  STEWARD_NAME_PREFIX,
   MCP_OAUTH_NAME_PREFIX,
 ];
 

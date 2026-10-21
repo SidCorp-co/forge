@@ -36,6 +36,7 @@ import {
   requireCan,
 } from '../permissions/index.js';
 import { lockRequirements } from '../requirements/index.js';
+import { acceptFenceRefusal } from './accept-fence.js';
 import { acceptGateOf } from './accept-gate.js';
 import { breakdownChecklistRecord } from './breakdown-checklist-record.js';
 import { type AcceptChannel, type Effect, type EffectWritten, writeEffect } from './effects.js';
@@ -255,6 +256,13 @@ export async function acceptSuggestion(input: {
     gate.act,
   );
   if (forbidden) return { ok: false, refusals: [forbidden] };
+  const fenced = await acceptFenceRefusal(actor.agency, {
+    projectId,
+    actorId: actor.userId,
+    kind: first.kind,
+    producerId: first.producerId,
+  });
+  if (fenced) return { ok: false, refusals: [fenced] };
   const target = targetOfRow(first);
   if (first.kind === 'duplicate' && target.type === 'issue' && first.status === 'proposed') {
     return acceptDuplicateOfIssue(projectId, first, actor, reason);
