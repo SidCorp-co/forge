@@ -1,1 +1,0 @@
-**Feedback to Forge, from every page and any project.** Filed as you into Forge's home project, with where it came from; a repeat joins the open item. Agents use forge_feedback; a project's own feedback is project_feedback.

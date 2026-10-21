@@ -9,6 +9,18 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.263] - 2026-10-21
+
+Feedback to Forge: report about Forge itself, as yourself, from any project
+
+### Added
+
+- **Feedback to Forge, from every page and any project.** Filed as you into Forge's home project, with where it came from; a repeat joins the open item. Agents use forge_feedback; a project's own feedback is project_feedback.
+
+### Removed
+
+- **Agent reports are retired into Forge feedback.** forge_agent_report and its routes are gone; an admin carries existing reports in once. The table stays read-only until a later migration drops it.
+
 ## [0.4.0-dev.262] - 2026-10-21
 
 Chat reopens the room you had open; decided cards stop waiting on you
