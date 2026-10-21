@@ -4,6 +4,8 @@
 // stuck by time alone is seen within 5 minutes, and a lost wake is re-emitted. A requirement or
 // feedback item whose basis moved off its note is emitted `standing.changed`, and so is an issue that
 // holds a note: an issue is noted once its diagnosis writes one, never on every sweep for being open.
+// A requirement or feedback item stuck through a carrier issue that is itself stuck is not diagnosed:
+// the carrier is, and the item is noted, its note citing the carrier it waits on.
 // An ask of the master stands until its item's basis moves.
 
 import type { ItemStanding } from '@forge/contracts/steward';
@@ -24,27 +26,26 @@ export interface SweepTally {
   settledAsks: number;
 }
 
-/** The issues another item was rolled up from: their stuck reading is diagnosed through that item. */
-function carriedIssues(rows: readonly ItemStanding[]): Set<string> {
-  const out = new Set<string>();
-  for (const r of rows) {
-    if (r.subject.kind === 'issue') continue;
-    if (r.carriedBy) out.add(r.carriedBy);
-    if (r.stuck?.via) out.add(r.stuck.via);
-  }
-  return out;
+/**
+ * The issue whose stuck reading a requirement or feedback item reads stuck through, where that issue
+ * is itself stuck: the issue is diagnosed, and the item only takes a note citing it, so one cause
+ * is never diagnosed twice (REQ-45 and its carrier ISS-498 on dev.270).
+ */
+function stuckCarrierOf(row: ItemStanding, stuckIssues: ReadonlySet<string>): string | null {
+  if (row.subject.kind === 'issue') return null;
+  const carrier = row.stuck?.via ?? row.carriedBy;
+  return carrier && stuckIssues.has(carrier) ? carrier : null;
 }
 
 async function sweepRow(
   projectId: string,
   row: ItemStanding,
-  carried: Set<string>,
+  stuckIssues: ReadonlySet<string>,
   tally: SweepTally,
 ) {
   const subject = { kind: row.subject.kind, id: row.subject.id, key: row.subject.key };
   const stuck = row.stuck;
-  if (stuck) {
-    if (row.subject.kind === 'issue' && carried.has(row.subject.key)) return;
+  if (stuck && !stuckCarrierOf(row, stuckIssues)) {
     if (await ranOnBasis(subject, 'stuck_diagnosis', row.basis)) return;
     await db.transaction((tx) =>
       emitEvent(tx, 'standing.stuck', {
@@ -102,8 +103,10 @@ export async function sweepProjectStandings(
   tally: SweepTally,
 ): Promise<void> {
   const rows = await openStandings(projectId);
-  const carried = carriedIssues(rows);
-  for (const row of rows) await sweepRow(projectId, row, carried, tally);
+  const stuckIssues = new Set(
+    rows.filter((r) => r.subject.kind === 'issue' && r.stuck).map((r) => r.subject.key),
+  );
+  for (const row of rows) await sweepRow(projectId, row, stuckIssues, tally);
   tally.settledAsks += await settleAsks(projectId, rows, now);
 }
 

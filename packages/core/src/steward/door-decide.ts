@@ -40,25 +40,50 @@ interface AskedRow {
   id: string;
   status: string;
   chosen: string | null;
+  chosen_label: string | null;
+  answered_at: string | null;
   fingerprint: string | null;
-  answered_by: string | null;
 }
 
-/** The steward decision questions on an issue, newest first: open ones, and answered keeps. */
-async function decisionsAskedOn(issueId: string): Promise<AskedRow[]> {
-  const mark = JSON.stringify([{ id: STEWARD_DECISION_OPTION_IDS.drop }]);
+/**
+ * Every question on the issue, of every kind, newest first: the steward's own, the stale-draft
+ * merge-or-drop, a park's, a run's. A person's answer on any of them is read before the steward
+ * asks again (ISS-134 and ISS-284, kept on 2026-10-14 through the stale-draft question).
+ */
+async function questionsAskedOn(issueId: string): Promise<AskedRow[]> {
   return rowsOf<AskedRow>(
     await db.execute(sql`
       SELECT q.id, q.status,
              q.steps -> -1 ->> 'chosenOptionId' AS chosen,
-             q.steps -> -1 -> 'options' -> 0 ->> 'fingerprint' AS fingerprint,
-             q.steps -> -1 ->> 'answeredBy' AS answered_by
+             (SELECT o ->> 'label' FROM jsonb_array_elements(q.steps -> -1 -> 'options') o
+               WHERE o ->> 'id' = q.steps -> -1 ->> 'chosenOptionId' LIMIT 1) AS chosen_label,
+             q.steps -> -1 ->> 'answeredAt' AS answered_at,
+             q.steps -> -1 -> 'options' -> 0 ->> 'fingerprint' AS fingerprint
         FROM agent_questions q
        WHERE q.issue_id = ${issueId}
          AND q.status IN ('open', 'answered')
-         AND q.steps -> -1 -> 'options' @> ${mark}::jsonb
        ORDER BY q.created_at DESC`),
   );
+}
+
+/** Whether an answer chose to keep the issue as it is, whichever question asked it. */
+export function choseKeep(chosen: string | null, label: string | null): boolean {
+  if (!chosen) return false;
+  return /(^|[._:-])keep([._:-]|$)/i.test(chosen) || /^\s*keep\b/i.test(label ?? '');
+}
+
+/**
+ * The person's keep that still holds on the standing read now: the steward's own on this basis, or
+ * a keep of any other question answered since the issue came to read as it does.
+ */
+function keptNow(asked: readonly AskedRow[], basis: string, since: string | null) {
+  return asked.find((q) => {
+    if (q.status !== 'answered' || !choseKeep(q.chosen, q.chosen_label)) return false;
+    const own = fingerprintOf(q.fingerprint ?? undefined);
+    if (own && q.chosen === STEWARD_DECISION_OPTION_IDS.keep) return own.basis === basis;
+    if (!since || !q.answered_at) return true;
+    return new Date(q.answered_at).getTime() >= new Date(since).getTime();
+  });
 }
 
 const candidate = z.strictObject({
@@ -219,18 +244,14 @@ export const DECIDE: DoorSpec<z.infer<typeof decideParams>> = {
         : options.find((o) => o.decision === args.recommended);
     if (!recommended) return correct(`${args.issue} offers no ${args.recommended} here.`);
     const basis = standing?.basis ?? 'none';
-    const asked = await decisionsAskedOn(issue.id);
+    const asked = await questionsAskedOn(issue.id);
     const open = asked.find((q) => q.status === 'open');
     if (open)
       return correct(`question ${open.id} on ${args.issue} already asks it; ask nothing more.`);
-    const kept = asked.find(
-      (q) =>
-        q.chosen === STEWARD_DECISION_OPTION_IDS.keep &&
-        fingerprintOf(q.fingerprint ?? undefined)?.basis === basis,
-    );
+    const kept = keptNow(asked, basis, standing?.since ?? null);
     if (kept) {
       return correct(
-        `${args.issue} was kept on the standing it reads now (question ${kept.id}): ask nothing until it moves.`,
+        `${args.issue} was kept on the standing it reads now (question ${kept.id}, answered ${kept.chosen_label ?? kept.chosen}): ask nothing until it moves.`,
       );
     }
     const why = standing?.stuck?.reason ?? 'it reads stuck';
