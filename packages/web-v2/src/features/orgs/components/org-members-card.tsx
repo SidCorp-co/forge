@@ -293,7 +293,7 @@ export function OrgMembersCard({
               >
                 {/* The member's name first, You for the reader, the address under it (ISS-1229 r27). */}
                 <span className="flex min-w-[12rem] flex-1 flex-col" data-testid="org-member-who">
-                  <span className="min-w-0 truncate text-fg" data-testid="org-member-name">
+                  <span className="min-w-0 break-words text-fg" data-testid="org-member-name">
                     {nameApart(m)}
                   </span>
                   <span className="fg-body-sm min-w-0 truncate text-muted" data-testid="org-member-email">

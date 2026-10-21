@@ -132,6 +132,11 @@ describe("the organization page's people and agents", () => {
       "Another member (added 2 Oct 2026)",
       "Another member (added 5 Oct 2026)",
     ]);
+    // At 390 a cut-off name hid the words that tell the two apart, so a name wraps (jsdom lays nothing out).
+    for (const name of screen.getAllByTestId("org-member-name")) {
+      expect(name.className).not.toContain("truncate");
+      expect(name.className).toContain("break-words");
+    }
   });
 
   it("lists agents apart, each with the projects it serves and no control, and leaves out one serving none", () => {
