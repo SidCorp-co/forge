@@ -12,6 +12,7 @@ import { readConversationAgentTurns } from '../agent-sessions/conversation-agent
 import { answer } from '../api-reference/declare/describe.js';
 import { zValidator } from '../api-reference/declare/validator.js';
 import { loadConversationAttachment } from '../conversations/attachment-service.js';
+import { roomRefusal } from '../conversations/room-refusal.js';
 import { listWindowsForConversation } from '../conversations/windows.js';
 import { contentDisposition } from '../lib/attachment-headers.js';
 import { allowedSetForTarget } from '../lib/attachment-mime.js';
@@ -44,13 +45,12 @@ async function nothingHereToStop(id: string): Promise<HTTPException | null> {
     (t) => t.state === 'dispatched' || t.state === 'running',
   );
   if (handed) {
-    return new HTTPException(409, {
-      message: `conversation ${id} handed this turn to a paired box, so there is nothing here to stop — end agent session ${handed.sessionId} instead`,
-      cause: {
-        code: 'CONVERSATION_TURN_HANDED_OFF',
-        details: { sessionId: handed.sessionId },
-      },
-    });
+    return roomRefusal(
+      409,
+      'CONVERSATION_TURN_HANDED_OFF',
+      'This room handed this turn to a paired box, so there is nothing here to stop — end the agent session it runs in instead',
+      { conversationId: id, sessionId: handed.sessionId },
+    );
   }
 
   const elsewhere = (await listWindowsForConversation(id, 5)).find(
@@ -59,19 +59,20 @@ async function nothingHereToStop(id: string): Promise<HTTPException | null> {
   // A turn that registered during those reads is this core's to stop after all.
   if (isTurnRunning(id)) return null;
   if (elsewhere) {
-    return new HTTPException(409, {
-      message: `conversation ${id} has window ${elsewhere.id} still open under claim "${elsewhere.claimedBy}", and no turn for it is running on this core — a stop reaches only the core running the turn, so this one cannot end it`,
-      cause: {
-        code: 'CONVERSATION_TURN_ON_ANOTHER_CORE',
-        details: { windowId: elsewhere.id, claimedBy: elsewhere.claimedBy },
-      },
-    });
+    return roomRefusal(
+      409,
+      'CONVERSATION_TURN_ON_ANOTHER_CORE',
+      'This room is answering on another server, and no turn for it is running on this one — a stop reaches only the server running the turn, so this one cannot end it',
+      { conversationId: id, windowId: elsewhere.id, claimedBy: elsewhere.claimedBy },
+    );
   }
 
-  return new HTTPException(409, {
-    message: `conversation ${id} is not answering anything right now, so there was nothing to stop`,
-    cause: { code: 'CONVERSATION_NOTHING_RUNNING', details: {} },
-  });
+  return roomRefusal(
+    409,
+    'CONVERSATION_NOTHING_RUNNING',
+    'This room is not answering anything right now, so there was nothing to stop',
+    { conversationId: id },
+  );
 }
 
 const attachmentTicketSchema = z
@@ -83,9 +84,6 @@ const attachmentTicketSchema = z
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
-
-const notFound = (message: string) =>
-  new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
 export const conversationAttachmentRoutes = new Hono<{ Variables: AuthVars }>();
 
@@ -158,7 +156,12 @@ conversationAttachmentRoutes.get(
     const { id, attachmentId } = c.req.valid('param');
     await readableConversation(id, c.get('userId'));
     const att = await loadConversationAttachment(id, attachmentId);
-    if (!att) throw notFound(`no attachment ${attachmentId} on conversation ${id}`);
+    if (!att) {
+      throw roomRefusal(404, 'NOT_FOUND', 'That file is not in this room', {
+        conversationId: id,
+        attachmentId,
+      });
+    }
     const bytes = await getStorage().get(att.path);
     return c.body(new Uint8Array(bytes), 200, {
       'content-type': att.mime,

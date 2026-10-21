@@ -24,6 +24,8 @@ export interface OrgListItem {
 export interface OrgMemberRow {
   userId: string;
   email: string;
+  /** The name the member gave, or null where they gave none. */
+  displayName: string | null;
   role: OrgRole;
   /** Assigned working lens(es) — empty = default (product/non-technical voice). */
   lenses: MemberLens[];

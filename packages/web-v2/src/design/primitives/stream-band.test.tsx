@@ -5,7 +5,7 @@
 
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { STREAM_SCALE_FLOOR, StreamBand } from "./stream-band";
+import { LINE_STRIP_HEIGHT, STREAM_SCALE_FLOOR, StreamBand } from "./stream-band";
 
 afterEach(cleanup);
 
@@ -33,14 +33,40 @@ describe("the flow band", () => {
     expect(Math.max(...heights)).toBeLessThanOrEqual(half / 4);
   });
 
-  it("keeps the backlog line inside the band and draws it under the band's clip", () => {
+  // Round 27, judge-77: the line's zero sat at the band's bottom edge while the blocks' zero is the
+  // midline, so a backlog of 0 or 1 was drawn under the axis, inside Finished, and read as negative.
+  it("draws the backlog in a strip of its own, where a level of 0 sits on that strip's zero", () => {
     const svg = draw();
-    const path = svg.querySelector("path")?.getAttribute("d") ?? "";
-    const ys = [...path.matchAll(/,(-?[\d.]+)/g)].map((m) => Number(m[1]));
-    expect(Math.min(...ys)).toBeGreaterThan(0);
-    expect(Math.max(...ys)).toBeLessThan(120);
+    expect(svg.querySelector("path")).toBeNull();
+    const strip = document.querySelector("[data-stream-line-strip]") as SVGSVGElement;
+    expect(strip).not.toBeNull();
+    const zero = Number(strip.querySelector("[data-line-zero]")?.getAttribute("y1"));
+    const ys = pathYs(strip);
+    expect(ys).toHaveLength(12);
+    for (const y of ys.slice(0, 11)) expect(y).toBe(zero);
+    expect(ys[11]).toBeLessThan(zero);
+    expect(Math.min(...ys)).toBeGreaterThanOrEqual(0);
+    expect(zero).toBeLessThanOrEqual(LINE_STRIP_HEIGHT);
+  });
+
+  it("says the strip's scale, from 0 at its baseline to the level its top stands for", () => {
+    draw();
+    const scale = document.querySelector("[data-line-scale]");
+    expect([...(scale?.children ?? [])].map((c) => c.textContent)).toEqual([
+      String(STREAM_SCALE_FLOOR),
+      "0",
+    ]);
+  });
+
+  it("keeps the band's blocks under its clip", () => {
+    const svg = draw();
     const plot = svg.querySelector("[data-stream-plot]");
     expect(plot?.getAttribute("clip-path")).toMatch(/^url\(#.+\)$/);
-    expect(plot?.contains(svg.querySelector("path"))).toBe(true);
+    expect(plot?.querySelectorAll("rect[fill]").length).toBe(24);
   });
 });
+
+function pathYs(root: Element): number[] {
+  const d = root.querySelector("path")?.getAttribute("d") ?? "";
+  return [...d.matchAll(/,(-?[\d.]+)/g)].map((m) => Number(m[1]));
+}

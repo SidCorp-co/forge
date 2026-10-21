@@ -18,9 +18,7 @@ import {
 } from '../db/schema-conversations.js';
 import { effectiveProjectRole, projectRoleAtLeast } from '../lib/authz.js';
 import type { Executor, TxOnly } from './db-executor.js';
-
-const forbidden = (message: string, code: string) =>
-  new HTTPException(403, { message, cause: { code } });
+import { roomRefusal } from './room-refusal.js';
 
 const badRequest = (message: string, code: string) =>
   new HTTPException(400, { message, cause: { code } });
@@ -214,18 +212,27 @@ async function loadHandle(
     .where(eq(users.id, handleUserId))
     .limit(1);
   if (!row) {
-    throw badRequest(`no user ${handleUserId}, so it is no handle`, 'HANDLE_NOT_FOUND');
+    throw roomRefusal(
+      400,
+      'HANDLE_NOT_FOUND',
+      'The agent asked for is no account here, so nobody was added to this room',
+      { handleUserId },
+    );
   }
   if (row.kind !== 'agent') {
-    throw badRequest(
-      `user ${handleUserId} is a person, not an agent; a handle is an agent account and a person joins as a person`,
+    throw roomRefusal(
+      400,
       'HANDLE_NOT_AN_AGENT',
+      'The account asked for is a person, not an agent; an agent joins a room as an agent and a person joins it as a person',
+      { handleUserId },
     );
   }
   if (!row.handle) {
-    throw badRequest(
-      `agent ${handleUserId} carries no handle on its org membership, so there is no address to put in a room`,
+    throw roomRefusal(
+      400,
       'HANDLE_HAS_NO_NAME',
+      'The agent asked for carries no handle in its organization, so there is no address to put in this room',
+      { handleUserId },
     );
   }
   return { id: row.id, handle: row.handle };
@@ -245,9 +252,11 @@ export async function attachOpeningHandle(
 
   const handleProjects = await projectsOfHandle(handleUserId, tx);
   if (!handleProjects.includes(projectId)) {
-    throw badRequest(
-      `@${handle.handle} is a member of ${handleProjects.length === 0 ? 'no project' : handleProjects.join(', ')} and not of ${projectId}, so it cannot be the opening handle for a room about that project`,
+    throw roomRefusal(
+      400,
       'HANDLE_NOT_ON_PROJECT',
+      `@${handle.handle} is not a member of this room's project, so it cannot be the opening agent for a room about that project`,
+      { conversationId, handleUserId, projectId, handleProjectIds: handleProjects },
     );
   }
 
@@ -274,17 +283,26 @@ export async function addHandle(args: AddHandleArgs): Promise<void> {
 
   const handleProjects = await projectsOfHandle(args.handleUserId, tx);
   if (!handleProjects.includes(args.projectId)) {
-    throw badRequest(
-      `@${handle.handle} is a member of ${handleProjects.length === 0 ? 'no project' : handleProjects.join(', ')} and not of ${args.projectId}, so it cannot be the handle for a room about that project`,
+    throw roomRefusal(
+      400,
       'HANDLE_NOT_ON_PROJECT',
+      `@${handle.handle} is not a member of the project it would bring into this room, so it cannot be the agent for a room about that project`,
+      {
+        conversationId: args.conversationId,
+        handleUserId: args.handleUserId,
+        projectId: args.projectId,
+        handleProjectIds: handleProjects,
+      },
     );
   }
 
   const access = await effectiveProjectRole(args.actorUserId, args.projectId);
   if (!projectRoleAtLeast(access?.role ?? null, 'member')) {
-    throw forbidden(
-      `@${handle.handle} would make this room about project ${args.projectId} and you hold ${access?.role ?? 'no role'} on it; a handle is added to a room by somebody who holds at least a member role on its project`,
+    throw roomRefusal(
+      403,
       'HANDLE_PROJECT_FORBIDDEN',
+      `@${handle.handle} would make this room about a project on which you hold ${access?.role ? `the ${access.role} role` : 'no role'}; an agent is added to a room by somebody who holds at least a member role on its project`,
+      { conversationId: args.conversationId, projectId: args.projectId },
     );
   }
 
@@ -371,10 +389,12 @@ async function removeWithin(tx: Executor, args: RemoveParticipantArgs): Promise<
     )
     .limit(1);
   if (!row) {
-    throw new HTTPException(404, {
-      message: `no live participant ${args.participantId} in conversation ${args.conversationId}`,
-      cause: { code: 'NOT_FOUND' },
-    });
+    throw roomRefusal(
+      404,
+      'NOT_FOUND',
+      'Whoever was asked for is not in this room, so nobody was taken out of it',
+      { conversationId: args.conversationId, participantId: args.participantId },
+    );
   }
 
   const liveOfKind = async (kind: ConversationParticipantKind): Promise<number> => {
@@ -392,16 +412,20 @@ async function removeWithin(tx: Executor, args: RemoveParticipantArgs): Promise<
   };
 
   if (row.kind === 'handle' && (await liveOfKind('handle')) <= 1) {
-    throw badRequest(
-      `conversation ${args.conversationId} has one handle left and a room with none is about no project, so nobody could read it again; add another handle first, or delete the conversation`,
+    throw roomRefusal(
+      400,
       'CONVERSATION_LAST_HANDLE',
+      'This room has one agent left and a room with none is about no project, so nobody could read it again; add another agent first, or delete the room',
+      { conversationId: args.conversationId, participantId: args.participantId },
     );
   }
 
   if (row.kind === 'person' && room?.shape === 'direct' && (await liveOfKind('person')) <= 1) {
-    throw badRequest(
-      `conversation ${args.conversationId} is a one-to-one room and this is the last person in it; such a room is read by the people in it, so taking the last one out would leave it readable by nobody — add another person first, or delete the conversation`,
+    throw roomRefusal(
+      400,
       'CONVERSATION_LAST_PERSON',
+      'This room is a one-to-one room and this is the last person in it; such a room is read by the people in it, so taking the last one out would leave it readable by nobody — add another person first, or delete the room',
+      { conversationId: args.conversationId, participantId: args.participantId },
     );
   }
 

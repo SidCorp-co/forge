@@ -6,6 +6,7 @@
 // invitations, list the org's projects, and (owner only) rename/delete the org.
 // Behavior is unchanged from the original Settings embedding.
 import { useState } from "react";
+import { readerName } from "@forge/contracts/person-name";
 import {
   Badge,
   Button,
@@ -252,9 +253,14 @@ export function OrgMembersCard({
                 data-testid="org-member-row"
                 className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 py-2.5"
               >
-                <span className="flex min-w-[12rem] flex-1 items-center gap-2" data-testid="org-member-who">
-                  <span className="min-w-0 truncate text-fg">{m.email}</span>
-                  {user?.id === m.userId && <Badge tone="accent">You</Badge>}
+                {/* The member's name first, You for the reader, the address under it (ISS-1229 r27). */}
+                <span className="flex min-w-[12rem] flex-1 flex-col" data-testid="org-member-who">
+                  <span className="min-w-0 truncate text-fg" data-testid="org-member-name">
+                    {readerName(m.userId, user?.id, m.displayName)}
+                  </span>
+                  <span className="fg-body-sm min-w-0 truncate text-muted" data-testid="org-member-email">
+                    {m.email}
+                  </span>
                 </span>
                 <span className="flex shrink-0 items-center gap-2">
                   <LensControl
@@ -306,7 +312,7 @@ export function OrgMembersCard({
                   {canManage && (
                     <IconButton
                       icon="trash"
-                      aria-label={`Remove ${m.email}`}
+                      aria-label={`Remove ${readerName(m.userId, user?.id, m.displayName, "inside")}, ${m.email}`}
                       onClick={() => setMemberToRemove(m)}
                       disabled={
                         removeMember.isPending &&
@@ -453,7 +459,11 @@ export function OrgMembersCard({
         title="Remove member"
         message={
           <>
-            Remove <strong>{memberToRemove?.email}</strong> from {org.name}?
+            Remove{" "}
+            <strong>
+              {readerName(memberToRemove?.userId, user?.id, memberToRemove?.displayName, "inside")}
+            </strong>{" "}
+            ({memberToRemove?.email}) from {org.name}?
             They lose access to all of its projects.
           </>
         }

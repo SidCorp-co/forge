@@ -1,5 +1,4 @@
 import { and, eq, isNotNull, isNull } from 'drizzle-orm';
-import { HTTPException } from 'hono/http-exception';
 import { db as defaultDb } from '../db/client.js';
 import type { ProjectMemberRole } from '../db/schema.js';
 import { conversationParticipants, conversations } from '../db/schema-conversations.js';
@@ -10,9 +9,7 @@ import {
   projectRoleAtLeast,
 } from '../lib/authz.js';
 import type { Executor } from './db-executor.js';
-
-const forbidden = (message: string, code: string) =>
-  new HTTPException(403, { message, cause: { code } });
+import { roomRefusal } from './room-refusal.js';
 
 /**
  * The project ids this conversation is about, sorted so two reads of one
@@ -66,9 +63,11 @@ async function assertConversationRole(
   tx: Executor = defaultDb,
 ): Promise<string[]> {
   if (!userId) {
-    throw forbidden(
-      `conversation ${conversationId} was reached with no authority named; a turn or a read names the user it runs as, and nothing here is anonymous`,
+    throw roomRefusal(
+      403,
       'CONVERSATION_NO_AUTHORITY',
+      'This room was reached with no authority named; a turn or a read names the user it runs as, and nothing here is anonymous',
+      { conversationId },
     );
   }
   const scope = await derivedScope(conversationId, tx);
@@ -77,17 +76,21 @@ async function assertConversationRole(
     // admin of that organization, reaches it, to look at it and to delete it.
     const room = await roomAboutNoProject(conversationId, tx);
     if (room && (await holdsRoomAboutNoProject(room, userId, tx))) return [];
-    throw forbidden(
-      `conversation ${conversationId} has no agent in it, so it is about no project; ${whoReaches(room)} can reach it`,
+    throw roomRefusal(
+      403,
       'CONVERSATION_NO_SCOPE',
+      `This room has no agent in it, so it is about no project; ${whoReaches(room)} can reach it`,
+      { conversationId },
     );
   }
   for (const projectId of scope) {
     const access = await effectiveProjectRole(userId, projectId);
     if (!projectRoleAtLeast(access?.role ?? null, min)) {
-      throw forbidden(
-        `conversation ${conversationId} is about project ${projectId} and you hold no ${min} role on it; a room is reached only by someone who holds one on every project in it`,
+      throw roomRefusal(
+        403,
         'CONVERSATION_OUT_OF_SCOPE',
+        `This room is about a project on which you hold no ${min} role; a room is reached only by someone who holds one on every project in it`,
+        { conversationId, projectId },
       );
     }
   }
