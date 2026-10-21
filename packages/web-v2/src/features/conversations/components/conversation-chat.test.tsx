@@ -282,7 +282,7 @@ describe("a room deleted while it is open", () => {
   // r31 review F1: a per-mount count gave a second mount's notice the first one's slot, which replaced it.
   it("gives each kept notice its own slot, across mounts, and copies into that one", async () => {
     Object.defineProperty(navigator, "clipboard", { value: { writeText: vi.fn().mockResolvedValue(undefined) }, configurable: true });
-    const slots: string[] = [];
+    const notices: { slot: string; onClick: () => void }[] = [];
     for (const text of ["first draft", "second draft"]) {
       send.mockRejectedValueOnce(roomGone());
       const { unmount } = render(
@@ -292,15 +292,14 @@ describe("a room deleted while it is open", () => {
       );
       fireEvent.change(screen.getByLabelText("Message"), { target: { value: text } });
       fireEvent.click(screen.getByLabelText("Send message"));
-      await waitFor(() => expect(toast).toHaveBeenCalledTimes(slots.length + 1));
-      const notice = toast.mock.calls[slots.length]?.[0] as { slot: string; onClick: () => void };
-      slots.push(notice.slot);
+      await waitFor(() => expect(toast).toHaveBeenCalledTimes(notices.length + 1));
+      notices.push(toast.mock.calls[notices.length]?.[0] as { slot: string; onClick: () => void });
       unmount();
     }
-    expect(new Set(slots).size).toBe(2);
-    (toast.mock.calls[0]?.[0] as { onClick: () => void }).onClick();
+    expect(new Set(notices.map((n) => n.slot)).size).toBe(2);
+    notices[0]?.onClick();
     await waitFor(() => expect(toast).toHaveBeenCalledTimes(3));
-    expect(toast.mock.calls[2]?.[0]).toMatchObject({ slot: slots[0], description: expect.stringContaining("“first draft”") });
+    expect(toast.mock.calls[2]?.[0]).toMatchObject({ slot: notices[0]?.slot, description: expect.stringContaining("“first draft”") });
   });
 
   // r29 review F2: the deletion event's re-read found the room gone while a send was still out, and
