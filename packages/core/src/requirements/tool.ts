@@ -15,6 +15,7 @@ import { criteriaFromDocument } from './document-criteria.js';
 import { designsNamed, draftLinked } from './draft-linked.js';
 import { draftPictureRefusals, landingIn, NEW_REQUIREMENT } from './draft-picture.js';
 import { listRequirementsAs, readRequirementAs, rowIn } from './read.js';
+import { criteriaRefusalsAt } from './revision-criteria.js';
 import { revisionFields } from './route-kit.js';
 import { writeRevision } from './service.js';
 import type { RequirementOutcome } from './write-tx.js';
@@ -195,8 +196,9 @@ const DRAWS =
 
 /**
  * The assistant's draft leaves its revision showing a picture (REQ-35 BC-10): a new requirement names
- * its kind and draws, and a revision draws unless it keeps the head's kind and picture. Refusals, or
- * none; nothing is written. A criteria preview writes nothing, so it draws nothing.
+ * its kind and draws, and a revision draws unless it keeps the head's kind and picture. A revision's
+ * criteria list is judged against its base as the write would judge it. Refusals, or none; nothing
+ * is written. A criteria preview writes nothing, so it draws nothing.
  */
 async function undrawn(
   name: 'forge_requirement_draft' | 'forge_requirement_revise',
@@ -209,7 +211,12 @@ async function undrawn(
   const revise = reviseInput.parse(args);
   const row = await rowIn(db, revise.projectId, revise.requirement);
   const landing = await landingIn(db, row.id, { head: row.currentRevision });
-  return draftPictureRefusals(landing, revise, true);
+  // its criteria are judged here too, so a card is never offered whose press would only be
+  // refused for a code the head does not hold (forge-dev 2026-10-21, REQ-45 BC-8..BC-10)
+  return [
+    ...draftPictureRefusals(landing, revise, true),
+    ...(await criteriaRefusalsAt(db, row.id, revise.baseRevision, revise.criteria)),
+  ];
 }
 
 /**
@@ -352,7 +359,7 @@ export const forgeRequirementReviseTool: ContextScopedMcpToolFactory = (ctx) => 
   reach: 'project',
   route: '/api/projects',
   grant: 'projects:write',
-  description: `Draft a revision of an EXISTING requirement (REQ-n) a wish changes: read it with forge_requirement first and write the whole revision on top of its head — every criterion that stays, kept with its code, plus the change. Kind left out keeps the head's, and with it the head's picture; spec left out keeps the head's, and spec {} clears it; where the kind changes or the head shows none, draw it: ${DRAWS} ${WRITE_RULE}`,
+  description: `Draft a revision of an EXISTING requirement (REQ-n) a wish changes: read it with forge_requirement first and write the whole revision on top of its head — every criterion that stays, kept with its code, plus the change: a new criterion carries no code (Forge numbers it), and a code the head does not hold is refused (CRITERION_CODE_UNKNOWN). Kind left out keeps the head's, and with it the head's picture; spec left out keeps the head's, and spec {} clears it; where the kind changes or the head shows none, draw it: ${DRAWS} ${WRITE_RULE}`,
   inputSchema: zodToMcpSchema(reviseInput),
   handler: async (args) => {
     const { projectId, requirement, baseRevision, ...write } = reviseInput.parse(args);

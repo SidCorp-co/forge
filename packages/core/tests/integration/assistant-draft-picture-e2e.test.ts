@@ -231,6 +231,22 @@ describe("the Assistant's revision shows a picture with no second act (criterion
       }),
     );
 
+  it('refuses a new criterion that names a code its base does not hold, before any card is offered', async () => {
+    // forge-dev 2026-10-21: the REQ-45 card named BC-8..BC-10 for its new criteria and was refused
+    // only at the person's press
+    const before = await count('chat_proposals');
+    const r = await revise({
+      criteria: [
+        { code: 'BC-1', body: 'A buyer asks for a refund from the order page.' },
+        { code: 'BC-2', body: 'A refund names the order it returns.' },
+      ],
+    });
+    expect(text(r)).toContain('CRITERION_CODE_UNKNOWN');
+    expect(text(r)).toContain('a new criterion carries no code');
+    expect(heldId(text(r))).toBe('');
+    expect(await count('chat_proposals')).toBe(before);
+  });
+
   it('refuses a revision whose kind changes and draws nothing: it would show none', async () => {
     const r = await revise({ kind: 'rule' });
     expect(text(r)).toContain('REQUIREMENT_PICTURE_NOT_DRAWN');
