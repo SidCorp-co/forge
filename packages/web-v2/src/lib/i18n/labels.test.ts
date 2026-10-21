@@ -1,3 +1,7 @@
+// A contract enum gaining a value, or a copy file losing a label, selects this test (ISS-600's
+// `mockup` feedback target landed with no label and the merge check never ran it).
+// @direct-test-of packages/contracts/src/
+// @direct-test-of packages/web-v2/src/lib/i18n/copy/
 import { describe, expect, it } from "vitest";
 import { LABEL_GROUPS, labelCopy, labelKey } from "./labels";
 import { PRODUCT_STRINGS as product } from "./product-copy";
