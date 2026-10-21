@@ -185,7 +185,8 @@ ends `failed` naming it, and the note says so. It never falls back to a gateway 
 
 Every act goes through an existing door, as the steward account, and is logged in `steward_acts`
 along with its undo. One new door undoes any act: `POST /api/projects/:id/steward-acts/:actId/undo`
-(needs `project.write`). It calls the act's inverse door. Without one, it refuses
+(needs `project.write`). The person authorises; the steward account, which made the act, executes
+its inverse door, and the act records who asked (`undone_by`). Without an inverse, it refuses
 `STEWARD_ACT_NOT_UNDOABLE`, naming the override.
 
 | Act (BC) | Reads | Acts through (existing door) | Writes | Undo / override | When it may not act, it asks |

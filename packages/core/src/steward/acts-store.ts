@@ -1,5 +1,6 @@
 // The steward's act log (REQ-48 BC-12): each act a run took through an existing door, what it wrote
-// and the door that undoes it, and the one undo door that calls that inverse as the person who asked.
+// and the door that undoes it, and the one undo door. A person authorises an undo, and the steward
+// account, which made the act, executes its inverse; the log keeps who asked.
 
 import { verbatim } from '@forge/contracts/said';
 import type {
@@ -13,7 +14,9 @@ import { db, type Tx } from '../db/client.js';
 import { type StewardUndo, stewardActs } from '../db/schema-steward-runs.js';
 import { refuser } from '../lib/refusal.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
-import { callDoor, type DoorAnswer, type DoorMethod } from './door-call.js';
+import { stewardAccountOf } from './account.js';
+import { mintStewardCredential } from './credential.js';
+import { bearer, callDoor, type DoorAnswer, type DoorMethod } from './door-call.js';
 import { isInverseDoor, overrideOf } from './undo-rules.js';
 
 const refuse = refuser<StewardRefusalCode>('STEWARD_ACT_UNKNOWN');
@@ -91,17 +94,40 @@ export type UndoOutcome =
     }
   | { ok: false; answer: DoorAnswer };
 
+/** How long the token an inverse runs under lives: one door call. */
+const UNDO_TOKEN_TTL_MS = 2 * 60_000;
+
 /**
- * Undo one act (`POST /api/projects/:id/steward-acts/:actId/undo`): its inverse door is called with
- * the asking person's own credential, so that door decides whether they may. An act with no inverse
- * is refused `STEWARD_ACT_NOT_UNDOABLE`, naming how a person overrides it; one already undone,
- * `STEWARD_ACT_SUPERSEDED`. A refused inverse is answered as its door answered.
+ * Call an act's inverse as the steward account, which made the act (the author of the comment it
+ * posted, the proposer of what it wrote), under a token for that act's approvals alone, revoked once
+ * the call is answered.
+ */
+async function inverseAsSteward(row: ActRow, request: Parameters<typeof callDoor>[0]) {
+  const credential = await mintStewardCredential({
+    projectId: row.projectId,
+    stewardId: await stewardAccountOf(row.projectId),
+    acts: [row.act],
+    ttlMs: UNDO_TOKEN_TTL_MS,
+    name: `steward undo ${row.id}`,
+  });
+  try {
+    return await callDoor(request, bearer(credential.token));
+  } finally {
+    await credential.revoke();
+  }
+}
+
+/**
+ * Undo one act (`POST /api/projects/:id/steward-acts/:actId/undo`). The person asking authorises it
+ * with `project.write`; the steward account executes the inverse door, and the act records who
+ * asked (`undone_by`). An act with no inverse is refused `STEWARD_ACT_NOT_UNDOABLE`, naming how a
+ * person overrides it; one already undone, `STEWARD_ACT_SUPERSEDED`. A refused inverse is answered
+ * as its door answered.
  */
 export async function undoAct(args: {
   projectId: string;
   actId: string;
   userId: string;
-  credential: Record<string, string>;
 }): Promise<UndoOutcome> {
   await requireCan(actorFor(args.userId), 'project.write', projectResource(args.projectId));
   const [row] = await db
@@ -132,10 +158,11 @@ export async function undoAct(args: {
     );
   }
   const [method, path] = row.undo.door.split(' ') as [DoorMethod, string];
-  const answer = await callDoor(
-    { method, path, ...(row.undo.body ? { body: row.undo.body } : {}) },
-    args.credential,
-  );
+  const answer = await inverseAsSteward(row, {
+    method,
+    path,
+    ...(row.undo.body ? { body: row.undo.body } : {}),
+  });
   if (!answer.ok) return { ok: false, answer };
   const wrote = wroteOf(answer);
   const [updated] = await db

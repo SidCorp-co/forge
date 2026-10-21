@@ -429,3 +429,39 @@ describe('an open question is voided with its reason (POST /api/questions/:id/vo
     expect([again.status, again.json.code]).toEqual([409, 'STEWARD_ACT_SUPERSEDED']);
   });
 });
+
+describe('a person authorises an undo, and the steward executes its inverse', () => {
+  it("lets a project.write member undo the steward's issue comment, refuses a viewer, and records who asked", async () => {
+    const issue = await createTestIssue(projectId, ownerId, 62, {
+      status: 'reopen',
+      createdAt: new Date(),
+    });
+    resetScript();
+    script.steps = [
+      {
+        tool: {
+          name: 'steward_comment_issue',
+          args: { issue: issue.key, body: 'No master serves this project; the master was asked.' },
+        },
+      },
+      { text: 'Commented.' },
+    ];
+    const out = await actAs('stuck_diagnosis', { kind: 'issue', ...issue });
+    expect(out).toMatchObject({ refused: [], error: null });
+    const actId = out.acts[0] ?? '';
+    const comments = () =>
+      rows<{ n: number }>(
+        sql`SELECT count(*)::int AS n FROM comments WHERE issue_id = ${issue.id}`,
+      );
+    expect((await comments())[0]?.n).toBe(1);
+
+    const viewer = await say('viewer', 'POST', at(`/steward-acts/${actId}/undo`));
+    expect(viewer.status).toBe(403);
+    expect((await comments())[0]?.n).toBe(1);
+
+    const member = await say('member', 'POST', at(`/steward-acts/${actId}/undo`));
+    expect(member.status, JSON.stringify(member.json)).toBe(200);
+    expect(member.json.act.undoneBy).toBe(memberId);
+    expect((await comments())[0]?.n).toBe(0);
+  });
+});

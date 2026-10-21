@@ -1,5 +1,5 @@
-// The steward's two doors (REQ-48 BC-1, BC-12): an item's runs, and the undo of one act, which calls
-// that act's inverse door with the asking person's own credential.
+// The steward's two doors (REQ-48 BC-1, BC-12): an item's runs, and the undo of one act, which a
+// holder of project.write asks for and the steward account executes.
 
 import { Hono } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
@@ -43,23 +43,12 @@ stewardRoutes.get('/:id/steward-runs', projectParam, runsQuery, async (c) =>
   ),
 );
 
-/** The credential the request arrived with, forwarded so the inverse door checks the person's own access. */
-function credentialOf(headers: Headers): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const name of ['authorization', 'cookie']) {
-    const value = headers.get(name);
-    if (value) out[name] = value;
-  }
-  return out;
-}
-
 stewardRoutes.post('/:id/steward-acts/:actId/undo', actParam, async (c) => {
   const { id, actId } = c.req.valid('param');
   const outcome = await undoAct({
     projectId: id,
     actId,
     userId: c.get('userId'),
-    credential: credentialOf(c.req.raw.headers),
   });
   if (!outcome.ok) {
     // the inverse door refused: answered as it answered, so its refusal names what was wrong
