@@ -184,7 +184,7 @@ pub async fn list_within(
         .await
         .map_err(|e| ReadFailure {
             status: None,
-            reason: format!("pool request: {}", super::status::unanswered(&e, deadline)),
+            reason: super::status::not_reached_words("pool request", &e, Some(deadline)),
         })?;
     let status = resp.status().as_u16();
     if !resp.status().is_success() {
@@ -200,7 +200,7 @@ pub async fn list_within(
     }
     let parsed: PoolResponse = resp.json().await.map_err(|e| ReadFailure {
         status: None,
-        reason: format!("pool response: {}", super::status::unanswered(&e, deadline)),
+        reason: super::status::not_reached_words("pool response", &e, Some(deadline)),
     })?;
     Ok(parsed.items)
 }
@@ -267,12 +267,7 @@ async fn post(
         .timeout(deadline)
         .send()
         .await
-        .map_err(|e| {
-            Error::Other(format!(
-                "pool {path}: {}",
-                super::status::unanswered(&e, deadline)
-            ))
-        })?;
+        .map_err(|e| super::status::not_reached_within(&format!("pool {path}"), &e, deadline))?;
     if resp.status().as_u16() == 401 {
         return Err(Error::Unauthorized);
     }
@@ -286,10 +281,7 @@ async fn post(
         )));
     }
     resp.json().await.map_err(|e| {
-        Error::Other(format!(
-            "pool {path} response: {}",
-            super::status::unanswered(&e, deadline)
-        ))
+        super::status::not_reached_within(&format!("pool {path} response"), &e, deadline)
     })
 }
 
@@ -365,20 +357,16 @@ mod tests {
             .unwrap_err();
         assert_eq!(failed.status, None);
         assert!(
-            failed
-                .reason
-                .starts_with("pool request: could not connect: "),
+            failed.reason.starts_with(
+                "pool request: Forge could not be reached at http://127.0.0.1:1, as the \
+                 connection was refused. Check that core is running there"
+            ),
             "{}",
             failed.reason
         );
         assert!(
-            failed.reason.to_lowercase().contains("refused"),
-            "the cause is named: {}",
-            failed.reason
-        );
-        assert!(
-            !failed.reason.contains("http://") && !failed.reason.contains("projectId="),
-            "no url in a reason an operator reads on the runner card: {}",
+            !failed.reason.contains("/api/") && !failed.reason.contains("projectId="),
+            "the core address, never the route, in a reason an operator reads on the runner card: {}",
             failed.reason
         );
     }
@@ -392,13 +380,24 @@ mod tests {
         let url = fake_core::serve_silent().await;
         let failed = tokio::time::timeout(
             Duration::from_secs(10),
-            list_within(&client(url), Some("p1"), 20, Duration::from_millis(300)),
+            list_within(
+                &client(url.clone()),
+                Some("p1"),
+                20,
+                Duration::from_millis(300),
+            ),
         )
         .await
         .expect("a silent peer held the pool read past its deadline")
         .expect_err("no answer is a failed read, not a pool");
         assert_eq!(failed.status, None);
-        assert_eq!(failed.reason, "pool request: timed out after 300ms");
+        assert_eq!(
+            failed.reason,
+            format!(
+                "pool request: Forge could not be reached at {url}, as no answer came within \
+                 300ms. Check that core is running there and that this box's core address is right."
+            )
+        );
     }
 
     /// The boundary past the status line: headers arrived and the body stalled.
@@ -407,13 +406,21 @@ mod tests {
         let url = fake_core::serve_stalled_body("200 OK").await;
         let failed = tokio::time::timeout(
             Duration::from_secs(10),
-            list_within(&client(url), Some("p1"), 20, Duration::from_millis(300)),
+            list_within(
+                &client(url.clone()),
+                Some("p1"),
+                20,
+                Duration::from_millis(300),
+            ),
         )
         .await
         .expect("a stalled body held the pool read past its deadline")
         .expect_err("half a body is a failed read, not a pool");
         assert_eq!(failed.status, None);
-        assert_eq!(failed.reason, "pool response: timed out after 300ms");
+        assert_eq!(
+            failed.reason,
+            "pool response: Forge answered, but the rest of its answer did not come within 300ms."
+        );
     }
 
     /// The claim that follows a read is bounded the same way, or a hung
@@ -423,7 +430,7 @@ mod tests {
         let url = fake_core::serve_silent().await;
         let Err(e) = tokio::time::timeout(
             Duration::from_secs(10),
-            prepare_within(&client(url), "j1", "s1", Duration::from_millis(300)),
+            prepare_within(&client(url.clone()), "j1", "s1", Duration::from_millis(300)),
         )
         .await
         .expect("a silent peer held the preparation past its deadline") else {
@@ -431,7 +438,11 @@ mod tests {
         };
         assert_eq!(
             e.to_string(),
-            "pool /api/devices/me/pool/prepare: timed out after 300ms"
+            format!(
+                "pool /api/devices/me/pool/prepare: Forge could not be reached at {url}, as no \
+                 answer came within 300ms. Check that core is running there and that this box's \
+                 core address is right."
+            )
         );
     }
 
@@ -442,7 +453,12 @@ mod tests {
         let url = fake_core::serve_stalled_body("503 Whatever").await;
         let failed = tokio::time::timeout(
             Duration::from_secs(10),
-            list_within(&client(url), Some("p1"), 20, Duration::from_millis(300)),
+            list_within(
+                &client(url.clone()),
+                Some("p1"),
+                20,
+                Duration::from_millis(300),
+            ),
         )
         .await
         .expect("a refusal's stalled body held the pool read past its deadline")
@@ -457,7 +473,7 @@ mod tests {
         let url = fake_core::serve_stalled_body("200 OK").await;
         let Err(e) = tokio::time::timeout(
             Duration::from_secs(10),
-            prepare_within(&client(url), "j1", "s1", Duration::from_millis(300)),
+            prepare_within(&client(url.clone()), "j1", "s1", Duration::from_millis(300)),
         )
         .await
         .expect("a stalled body held the preparation past its deadline") else {
@@ -465,7 +481,8 @@ mod tests {
         };
         assert_eq!(
             e.to_string(),
-            "pool /api/devices/me/pool/prepare response: timed out after 300ms"
+            "pool /api/devices/me/pool/prepare response: Forge answered, but the rest of its \
+             answer did not come within 300ms."
         );
     }
 
@@ -477,12 +494,14 @@ mod tests {
     #[tokio::test]
     async fn a_body_that_will_not_decode_has_no_status_and_says_why() {
         let url = fake_core::serve_always("200 OK", "not json").await;
-        let failed = list(&client(url), Some("p1"), 20).await.unwrap_err();
+        let failed = list(&client(url.clone()), Some("p1"), 20)
+            .await
+            .unwrap_err();
         assert_eq!(failed.status, None);
         assert!(
             failed
                 .reason
-                .starts_with("pool response: the body did not decode: "),
+                .starts_with("pool response: Forge answered, but the body did not decode: "),
             "{}",
             failed.reason
         );

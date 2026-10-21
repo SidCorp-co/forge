@@ -120,7 +120,7 @@ issueDependencyRoutes.post(
     const userId = c.get('userId');
 
     if (fromIssueId === toIssueId) {
-      throw badRequest({ message: 'self-edge not allowed' }, 'SELF_DEP');
+      throw badRequest({ message: 'An issue cannot depend on itself.' }, 'SELF_DEP');
     }
 
     const sides = await db
@@ -132,7 +132,7 @@ issueDependencyRoutes.post(
     if (!a || !b) throw notFound('one or both issues not found');
     if (a.projectId !== b.projectId) {
       throw badRequest(
-        { message: 'cross-project edges not supported via this route' },
+        { message: 'An edge between two projects cannot be set through this route.' },
         'CROSS_PROJECT',
       );
     }
@@ -173,14 +173,14 @@ export function toHttpDependencyError(
   const edge = input ? { fromIssueId: input.fromIssueId, toIssueId: input.toIssueId } : undefined;
   switch (err.code) {
     case 'SELF_DEP':
-      return badRequest({ message: 'self-edge not allowed' }, 'SELF_DEP');
+      return badRequest({ message: 'An issue cannot depend on itself.' }, 'SELF_DEP');
     case 'NOT_FOUND':
       return notFound('one or both issues not found');
     case 'HOLD_NEEDS_BLOCKS':
       return badRequest({ message: err.detail ?? 'holdsUntil needs a blocks edge' }, err.code);
     case 'CROSS_PROJECT':
       return badRequest(
-        { message: 'cross-project edges not supported via this route' },
+        { message: 'An edge between two projects cannot be set through this route.' },
         'CROSS_PROJECT',
       );
     case 'CYCLE_DETECTED':
@@ -227,7 +227,7 @@ issueDependencyRoutes.delete(
     assertProjectRole(access, 'member', projectWriteRefusal(access.role));
 
     if (edge.fromIssueId !== issueId && edge.toIssueId !== issueId) {
-      throw badRequest({ message: 'edge does not involve this issue' }, 'EDGE_MISMATCH');
+      throw badRequest({ message: 'That edge does not name this issue.' }, 'EDGE_MISMATCH');
     }
 
     await db.delete(issueDependencies).where(eq(issueDependencies.id, edgeId));

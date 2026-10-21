@@ -193,55 +193,82 @@ pub(crate) fn refusal(what: &str, status: u16, text: &str) -> crate::error::Erro
     }
 }
 
-/// A call that got no status at all, named by what went wrong and then by the
-/// innermost cause the transport gave. `reqwest::Error`'s `Display` is neither:
-/// it prints `error sending request for url (<the whole url>)` for a refused
-/// connection, a reset and a dead network alike, and drops the source that says
-/// which, so three faults read as one phrase with a query string in it — the
-/// same shape as the status codes above, one level down (ISS-1234).
-pub fn unanswered(e: &reqwest::Error, deadline: std::time::Duration) -> String {
-    if e.is_timeout() {
-        return format!("timed out after {}", span(deadline));
+/// A call core never answered, or answered with a body this box could not
+/// read, said for whoever reads the box's log or its terminal: where Forge was
+/// sought, why it was not reached in words, and what to check. reqwest's own
+/// `error sending request for url (…)` named none of the three (ISS-1421 r20),
+/// and every call that cannot reach core says it this one way (ISS-1421 r21).
+pub fn not_reached(what: &str, e: &reqwest::Error) -> crate::error::Error {
+    crate::error::Error::Other(not_reached_words(what, e, None))
+}
+
+/// [`not_reached`], for a call made under `deadline`, which a timeout names.
+pub fn not_reached_within(
+    what: &str,
+    e: &reqwest::Error,
+    deadline: std::time::Duration,
+) -> crate::error::Error {
+    crate::error::Error::Other(not_reached_words(what, e, Some(deadline)))
+}
+
+/// The sentence [`not_reached`] says, for a caller that keeps a reason rather
+/// than an error.
+pub fn not_reached_words(
+    what: &str,
+    e: &reqwest::Error,
+    deadline: Option<std::time::Duration>,
+) -> String {
+    format!("{what}: {}", not_reached_sentence(e, deadline))
+}
+
+/// Where Forge was sought, why it was not reached and what to check, for a
+/// caller that names the call itself.
+pub fn not_reached_sentence(e: &reqwest::Error, deadline: Option<std::time::Duration>) -> String {
+    let at = e
+        .url()
+        .map(origin)
+        .unwrap_or_else(|| "the core address".to_string());
+    let within = |d: Option<std::time::Duration>| match d {
+        Some(d) => format!("within {}", span(d)),
+        None => "in time".to_string(),
+    };
+    if e.is_decode() || e.is_body() {
+        // A body's error carries no url, so the address is named only where it is known.
+        let who = e
+            .url()
+            .map(|u| format!("Forge at {}", origin(u)))
+            .unwrap_or_else(|| "Forge".to_string());
+        return if e.is_timeout() {
+            format!(
+                "{who} answered, but the rest of its answer did not come {}.",
+                within(deadline)
+            )
+        } else {
+            format!("{who} answered, but {}.", unread_body(e))
+        };
     }
-    let what = if e.is_connect() {
-        "could not connect"
-    } else if e.is_decode() {
-        "the body did not decode"
-    } else if e.is_body() {
-        "the body did not arrive whole"
-    } else if e.is_redirect() {
-        "the redirect could not be followed"
+    let why = if e.is_timeout() {
+        format!("no answer came {}", within(deadline))
     } else {
-        "the request failed"
+        why_not_reached(e)
+    };
+    format!(
+        "Forge could not be reached at {at}, as {why}. Check that core is running there and that \
+         this box's core address is right."
+    )
+}
+
+/// Why an answer that arrived could not be read, with the cause the transport gave.
+fn unread_body(e: &reqwest::Error) -> String {
+    let what = if e.is_decode() {
+        "the body did not decode"
+    } else {
+        "the body did not arrive whole"
     };
     match innermost(e) {
         Some(cause) => format!("{what}: {cause}"),
         None => what.to_string(),
     }
-}
-
-/// A call core never answered, or answered with a body this box could not
-/// read, said for whoever reads the box's log or its terminal: where Forge was
-/// sought, why it was not reached in words, and what to check. reqwest's own
-/// `error sending request for url (…)` named none of the three (ISS-1421 r20).
-pub fn not_reached(what: &str, e: &reqwest::Error) -> crate::error::Error {
-    let at = e
-        .url()
-        .map(origin)
-        .unwrap_or_else(|| "the core address".to_string());
-    let said = if e.is_decode() || e.is_body() {
-        format!(
-            "{what}: Forge at {at} answered, but {}.",
-            unanswered(e, std::time::Duration::ZERO)
-        )
-    } else {
-        format!(
-            "{what}: Forge could not be reached at {at}, as {}. Check that core is running there \
-             and that this box's core address is right.",
-            why_not_reached(e)
-        )
-    };
-    crate::error::Error::Other(said)
 }
 
 /// The scheme, host and port of a url: where Forge was sought, without the
@@ -763,7 +790,7 @@ mod tests {
             let next = [
                 "status::named(",
                 "status::refused(",
-                "status::unanswered(",
+                "status::not_reached_words(",
                 "status::why_not_reached(",
             ]
             .iter()

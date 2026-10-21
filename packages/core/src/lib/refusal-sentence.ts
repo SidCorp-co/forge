@@ -119,6 +119,84 @@ export function refusalMessage(
   return refusalSentence(message);
 }
 
+/** A refusal's details in the shape a schema's take: the input's own sentences, and each field's. */
+export interface KeyedReasons {
+  formErrors: string[];
+  fieldErrors: Record<string, string[]>;
+}
+
+/** Each field a record of reasons names, nested ones by their whole path; false where a value is data. */
+function keyFields(
+  record: Record<string, unknown>,
+  at: string,
+  into: Record<string, string[]>,
+  sent?: (field: string) => unknown,
+): boolean {
+  for (const [key, v] of Object.entries(record)) {
+    const field = at ? `${at}.${key}` : key;
+    if (v !== null && typeof v === 'object' && !Array.isArray(v)) {
+      if (!keyFields(v as Record<string, unknown>, field, into, sent)) return false;
+      continue;
+    }
+    const list = Array.isArray(v) ? v : [v];
+    if (list.length === 0 || !list.every((x) => typeof x === 'string')) return false;
+    into[field] = flattenedRefusalWords({ [field]: list }, '', sent);
+  }
+  return true;
+}
+
+/**
+ * A reason a door wrote in its own shape (a sentence, a list of them, a lone `message`, a record of
+ * field to words), keyed as a schema's refusal is and said in the message's sentences (ISS-1421
+ * r21). Null for details that are a schema's already, or that carry anything but words.
+ */
+export function keyedReasons(
+  details: unknown,
+  sent?: (field: string) => unknown,
+): KeyedReasons | null {
+  if (typeof details === 'string') {
+    const said = reasonWords(details);
+    return said.length > 0 ? { formErrors: said, fieldErrors: {} } : null;
+  }
+  if (Array.isArray(details)) {
+    if (details.length === 0 || !details.every((d) => typeof d === 'string')) return null;
+    return { formErrors: details.flatMap((d) => reasonWords(d)), fieldErrors: {} };
+  }
+  if (details === null || typeof details !== 'object' || isSchemaDetails(details)) return null;
+  const keys = Object.keys(details);
+  const only = keys.length === 1 ? (keys[0] ?? '') : '';
+  if (LONE_REASON_KEYS.includes(only)) {
+    const said = (details as Record<string, unknown>)[only];
+    return typeof said === 'string' ? keyedReasons(said) : null;
+  }
+  const fieldErrors: Record<string, string[]> = {};
+  if (!keyFields(details as Record<string, unknown>, '', fieldErrors, sent)) return null;
+  return Object.keys(fieldErrors).length > 0 ? { formErrors: [], fieldErrors } : null;
+}
+
+/**
+ * A 4xx refusal's message and details as the envelope answers them. Where the message is the
+ * door's reason, read off its details, those details are keyed as a schema's refusal is and say
+ * each sentence the message says, so a reader fixing its call from either reads one account.
+ */
+export function refusalBody(
+  message: string,
+  details: unknown,
+  sent?: (field: string) => unknown,
+): { message: string; details?: unknown } {
+  if (isBareRefusal(message)) {
+    const keyed = keyedReasons(details, sent);
+    if (keyed) {
+      const said = [...keyed.formErrors, ...Object.values(keyed.fieldErrors).flat()];
+      return { message: said.join(' '), details: keyed };
+    }
+  }
+  return {
+    message: refusalMessage(message, details, sent),
+    ...(details === undefined ? {} : { details: wordedDetails(details, sent) }),
+  };
+}
+
 /**
  * Refusal details in `z.flattenError`'s shape with each message a door kept as the library wrote it
  * ("Invalid input: expected number, received NaN") said as the sentence the message says it in;

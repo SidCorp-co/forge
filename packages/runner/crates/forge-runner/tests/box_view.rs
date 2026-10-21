@@ -1568,7 +1568,12 @@ fn a_core_that_cannot_be_reached_is_named_by_its_cause_on_every_row() {
     let b = plant(&url);
     let text = String::from_utf8_lossy(&top(&b, &["--once"]).stdout).into_owned();
     let projects = section(&text, "PROJECTS");
-    assert!(projects.contains("could not connect"), "{projects}");
+    assert!(
+        projects.contains(&format!(
+            "Forge could not be reached at {url}, as the connection was refused."
+        )),
+        "{projects}"
+    );
     let waiting = section(&text, "WAITING ON A PERSON");
     let rows: Vec<&str> = waiting
         .lines()
@@ -1581,7 +1586,9 @@ fn a_core_that_cannot_be_reached_is_named_by_its_cause_on_every_row() {
     );
     for row in &rows {
         assert!(
-            row.contains("could not connect: ") && !row.contains("error sending request"),
+            row.contains("Forge could not be reached at ")
+                && row.contains("the connection was refused")
+                && !row.contains("error sending request"),
             "{row}"
         );
     }

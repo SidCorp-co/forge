@@ -79,7 +79,10 @@ reconcileRoutes.post(
     if (!result.ok) {
       if (result.reason === 'already-active') throw conflict(result.detail);
       if (result.reason === 'c1-c5-refused')
-        throw badRequest({ code: 'C1_C5_REFUSED', message: result.detail });
+        throw new HTTPException(400, {
+          message: result.detail,
+          cause: { code: 'C1_C5_REFUSED' },
+        });
       if (result.reason === 'no-runner') throw conflict(`NO_RUNNER_ONLINE: ${result.detail}`);
       throw new HTTPException(500, { message: result.detail });
     }

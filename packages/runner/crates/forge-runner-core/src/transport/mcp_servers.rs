@@ -66,10 +66,7 @@ pub async fn fetch_within(
         .send()
         .await
         .map_err(|e| {
-            Error::Other(format!(
-                "{ROUTE} request: {}",
-                super::status::unanswered(&e, deadline)
-            ))
+            super::status::not_reached_within(&format!("{ROUTE} request"), &e, deadline)
         })?;
     let status = resp.status().as_u16();
     if !resp.status().is_success() {
@@ -80,12 +77,9 @@ pub async fn fetch_within(
         }
         return Err(Error::Other(reason));
     }
-    resp.json::<ProjectMcpServers>().await.map_err(|e| {
-        Error::Other(format!(
-            "{ROUTE} response: {}",
-            super::status::unanswered(&e, deadline)
-        ))
-    })
+    resp.json::<ProjectMcpServers>()
+        .await
+        .map_err(|e| super::status::not_reached_within(&format!("{ROUTE} response"), &e, deadline))
 }
 
 /// The route as every failure of it is named.
@@ -161,14 +155,18 @@ mod tests {
         let url = fake_core::serve_silent().await;
         let e = tokio::time::timeout(
             Duration::from_secs(10),
-            fetch_within(&client(url), "p1", Duration::from_millis(300)),
+            fetch_within(&client(url.clone()), "p1", Duration::from_millis(300)),
         )
         .await
         .expect("a silent peer held the read past its deadline")
         .expect_err("no answer is a failed read, not a declaration");
         assert_eq!(
             e.to_string(),
-            "me/mcp-servers request: timed out after 300ms"
+            format!(
+                "me/mcp-servers request: Forge could not be reached at {url}, as no answer came \
+                 within 300ms. Check that core is running there and that this box's core address \
+                 is right."
+            )
         );
     }
 
@@ -184,10 +182,13 @@ mod tests {
             .expect_err("a refused connection is a failed read")
             .to_string();
         assert!(
-            e.starts_with("me/mcp-servers request: could not connect: "),
+            e.starts_with(
+                "me/mcp-servers request: Forge could not be reached at http://127.0.0.1:1, as the \
+                 connection was refused."
+            ),
             "{e}"
         );
-        assert!(!e.contains("projectId="), "the url is not the cause: {e}");
+        assert!(!e.contains("projectId="), "the route is not the cause: {e}");
     }
 
     #[tokio::test]

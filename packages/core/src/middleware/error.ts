@@ -1,7 +1,7 @@
 import { redactedMessage, redactQueryParams } from '@forge/observability';
 import type { Context, ErrorHandler, NotFoundHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { refusalMessage, wordedDetails } from '../lib/refusal-sentence.js';
+import { refusalBody } from '../lib/refusal-sentence.js';
 import { getLogger } from '../logger.js';
 import {
   holdServerTags,
@@ -118,15 +118,13 @@ export const errorHandler: ErrorHandler<{ Variables: RequestIdVars }> = async (e
     const status = err.status;
     const { code: causeCode, details, wwwAuthenticate } = extractCause(err.cause);
     const sent = status === 400 && details !== undefined ? await sentReader(c) : undefined;
-    const body: ErrorBody = {
-      code: causeCode ?? statusToCode(status),
-      // ISS-1421 r14: every refusal a caller reads is a sentence, whichever door worded it.
-      message:
-        status < 500
-          ? refusalMessage(err.message, details, sent)
-          : err.message || statusToCode(status),
-    };
-    if (details !== undefined) body.details = status < 500 ? wordedDetails(details, sent) : details;
+    // ISS-1421 r14: every refusal a caller reads is a sentence, whichever door worded it.
+    const said =
+      status < 500
+        ? refusalBody(err.message, details, sent)
+        : { message: err.message || statusToCode(status), details };
+    const body: ErrorBody = { code: causeCode ?? statusToCode(status), message: said.message };
+    if (said.details !== undefined) body.details = said.details;
 
     const logPayload = { status, code: body.code, err: redactedMessage(err) };
     if (status >= 500) log.error(logPayload, 'http.error');

@@ -110,7 +110,9 @@ const store = vi.hoisted(() => ({
     privateKey: 'pk',
   })),
   listActiveBindingsForProjectProvider: vi.fn(async () => [] as unknown[]),
+  removedConnectionBoundTo: vi.fn(async (): Promise<unknown> => null),
   updateBinding: vi.fn(async () => ({})),
+  updateConnection: vi.fn(async (id: string) => ({ id })),
 }));
 vi.mock('../store.js', () => store);
 
@@ -232,9 +234,10 @@ describe('GET /:projectId/integrations/github/repositories — what the door doe
     const res = await repositories();
 
     expect(res.status).toBe(400);
-    expect((await bodyOf(res)).details).toEqual({
-      connectionId: 'is not a GitHub App, so it has no repositories to list',
-    });
+    const said = 'The field connectionId is not a GitHub App, so it has no repositories to list.';
+    const body = await bodyOf(res);
+    expect(body.message).toBe(said);
+    expect(body.details).toEqual({ formErrors: [], fieldErrors: { connectionId: [said] } });
   });
 
   it('refuses a caller who is a project member but not an admin, before any lookup', async () => {
@@ -390,6 +393,42 @@ describe('GET /integrations/github/manifest-callback — what the mint writes', 
     expect(store.createConnection).toHaveBeenCalledWith(
       expect.objectContaining({ ownerType: 'user', ownerId: ADMIN_B }),
     );
+  });
+
+  // ISS-1421 r21 — judge-89: a removed GitHub connection stayed listed, and a fresh install stood a
+  // second one beside it that nothing could turn on.
+  it('turns the removed connection the project is bound to back on with the new App', async () => {
+    store.removedConnectionBoundTo.mockResolvedValueOnce({
+      binding: { id: 'binding-old', config: { installationId: 7, repository: 'acme/app' } },
+      connection: { id: 'connection-removed' },
+    });
+    const state = signConnectState(process.env.JWT_SECRET as string, {
+      projectId: PROJECT_ID,
+      userId: ADMIN_B,
+      orgId: ORG_ID,
+    });
+
+    await callback(state);
+
+    expect(store.removedConnectionBoundTo).toHaveBeenCalledWith(PROJECT_ID, 'github', {
+      ownerType: 'org',
+      ownerId: ORG_ID,
+    });
+    expect(store.createConnection).not.toHaveBeenCalled();
+    expect(store.createBinding).not.toHaveBeenCalled();
+    expect(store.updateConnection).toHaveBeenCalledWith('connection-removed', {
+      displayName: 'GitHub App forge-test',
+      secrets: { appId: '42', privateKey: 'pk', webhookSecret: 'whsec_x' },
+      active: true,
+      lastHealthStatus: null,
+      lastHealthDetail: null,
+      lastHealthAt: null,
+    });
+    expect(store.updateBinding).toHaveBeenCalledWith('binding-old', {
+      config: { repository: 'acme/app' },
+      integrationSecret: 'whsec_x',
+      active: true,
+    });
   });
 
   it('creates nothing for a state issued to another user', async () => {

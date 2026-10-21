@@ -197,3 +197,38 @@ describe("GitHub's manifest callback (criterion 213)", () => {
     expect(half.message).toBe('The field state is required.');
   });
 });
+
+// ISS-1421 r21 — judge-89: 48 handler-worded refusals kept their raw words in details, the manifest
+// callback's {"code":"required"} beside its own code, and the session start named a field `message`.
+describe('the details of a refusal a handler words itself (criterion 193)', () => {
+  const keyedAs = (got: Answer, fieldErrors: Record<string, string[]>) => {
+    expect(got.status, got.raw).toBe(400);
+    expect(got.details).toEqual({ formErrors: [], fieldErrors });
+    for (const s of detailSentences(got.details)) expect(got.message).toContain(s);
+    expect(got.raw).not.toMatch(LIBRARY_WORDS);
+  };
+
+  it("keys the manifest callback's missing parameters as fields, never beside its code", async () => {
+    keyedAs(await send('GET', '/api/integrations/github/manifest-callback'), {
+      code: ['The field code is required.'],
+      state: ['The field state is required.'],
+    });
+    keyedAs(await send('GET', '/api/integrations/github/manifest-callback?code=x&state=forged'), {
+      state: ['The field state was refused. Invalid or expired.'],
+    });
+  });
+
+  it('keys the feedback routes by the field each refuses', async () => {
+    keyedAs(await send('GET', '/api/feedback-reports'), {
+      projectId: ['The field projectId is required unless scope=all.'],
+    });
+    keyedAs(await send('POST', '/api/feedback-reports/abc/reviewed', { reviewed: true }), {
+      id: ['The field id must be a valid uuid.'],
+    });
+  });
+
+  it('names `prompt` where a session start sends none, the field the route takes', async () => {
+    const got = await send('POST', '/api/agent-sessions/start', { projectSlug: 'any' });
+    keyedAs(got, { prompt: ['The field prompt is required.'] });
+  });
+});

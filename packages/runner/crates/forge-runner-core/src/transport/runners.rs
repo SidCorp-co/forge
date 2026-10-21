@@ -61,12 +61,7 @@ pub async fn list_me_within(client: &CoreClient, deadline: Duration) -> Result<V
         .timeout(deadline)
         .send()
         .await
-        .map_err(|e| {
-            Error::Other(format!(
-                "me/runners request: {}",
-                status::unanswered(&e, deadline)
-            ))
-        })?;
+        .map_err(|e| status::not_reached_within("me/runners request", &e, deadline))?;
     if resp.status().as_u16() == 401 {
         return Err(Error::Unauthorized);
     }
@@ -104,12 +99,7 @@ pub async fn patch_runner(
         .timeout(CALL_DEADLINE)
         .send()
         .await
-        .map_err(|e| {
-            Error::Other(format!(
-                "patch runner request: {}",
-                status::unanswered(&e, CALL_DEADLINE)
-            ))
-        })?;
+        .map_err(|e| status::not_reached_within("patch runner request", &e, CALL_DEADLINE))?;
     if resp.status().as_u16() == 401 {
         return Err(Error::Unauthorized);
     }
@@ -201,8 +191,32 @@ mod tests {
         .expect("the call returns rather than hanging")
         .unwrap_err()
         .to_string();
-        assert_eq!(said, "me/runners request: timed out after 150ms");
+        assert_eq!(
+            said,
+            format!(
+                "me/runners request: Forge could not be reached at http://{addr}, as no answer \
+                 came within 150ms. Check that core is running there and that this box's core \
+                 address is right."
+            )
+        );
         drop(stop);
+    }
+
+    /// ISS-1421 criterion 214 (judge-89): `forge-runner runners` printed the
+    /// OS's "Connection refused (os error 111)" with no address and nothing to check.
+    #[tokio::test]
+    async fn a_core_that_refuses_is_named_by_its_address_why_and_what_to_check() {
+        let said = list_me(&client("http://127.0.0.1:1".to_string()))
+            .await
+            .unwrap_err()
+            .to_string();
+        assert_eq!(
+            said,
+            "me/runners request: Forge could not be reached at http://127.0.0.1:1, as the \
+             connection was refused. Check that core is running there and that this box's core \
+             address is right."
+        );
+        assert!(!said.contains("os error"), "{said}");
     }
 
     #[test]

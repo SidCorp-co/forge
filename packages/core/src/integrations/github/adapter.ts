@@ -404,6 +404,8 @@ export const githubIntegration = declareIntegration<GitHubConfig, GitHubSecrets>
     hint: "Read and write this repository through `forge_github` — a pull request diff, a failing check run's log, a comment, a new pull request, a review request, a review verdict. Never `gh`: the App is the identity, and no credential reaches this box. Nothing here merges.",
   },
   presentation: null,
+  noKeyTurnsBackOn:
+    'Install the GitHub App again from the Integrations tab of a project it is bound to, and it turns back on.',
   adapter: githubAdapterMethods,
 });
 

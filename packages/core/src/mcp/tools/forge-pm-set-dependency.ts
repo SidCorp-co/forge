@@ -46,7 +46,7 @@ function toMcpDependencyError(err: unknown): unknown {
   if (!(err instanceof IssueDependencyError)) return err;
   switch (err.code) {
     case 'SELF_DEP':
-      return new Error('BAD_REQUEST: self-edge not allowed');
+      return new Error('BAD_REQUEST: An issue cannot depend on itself.');
     case 'NOT_FOUND':
       return new Error('NOT_FOUND: one or both issues not found');
     case 'HOLD_NEEDS_BLOCKS':

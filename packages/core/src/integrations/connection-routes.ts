@@ -80,9 +80,11 @@ import {
 } from './route-helpers.js';
 import {
   buildContextFromBinding,
+  clearRemovedConnection,
   createBinding,
   createConnection,
   type IntegrationConnectionRow,
+  isRemovedConnection,
   listBindingsByConnectionIds,
   listBindingsForConnection,
   softDeleteConnection,
@@ -406,10 +408,20 @@ integrationConnectionsRoutes.patch(
     const keyed = !primary || (typeof held?.[primary] === 'string' && held[primary] !== '');
     if (patch.active === true && !keyed) {
       throw new HTTPException(409, {
-        message:
-          'This connection holds no key, as deleting it wiped its keys. Save a new key to turn it back on.',
+        message: noKeyRefusal(existing.provider),
         cause: { code: 'CONNECTION_HAS_NO_KEY' },
       });
+    }
+
+    // A new key makes the last check a check of a key no longer used (ISS-1421 r21): the connection
+    // reads Not checked yet until Test connection judges the key just saved.
+    const sentKey = primary
+      ? typeof (patch.secrets as Record<string, unknown> | undefined)?.[primary] === 'string'
+      : patch.secrets !== undefined;
+    if (sentKey) {
+      connPatch.lastHealthStatus = null;
+      connPatch.lastHealthDetail = null;
+      connPatch.lastHealthAt = null;
     }
 
     const updated = await updateConnection(id, connPatch);
@@ -419,13 +431,21 @@ integrationConnectionsRoutes.patch(
   },
 );
 
+/** What turns a connection that holds no key back on: a new key, or what its provider declares. */
+function noKeyRefusal(provider: string): string {
+  const turnsOn =
+    getIntegration(provider)?.noKeyTurnsBackOn ?? 'Save a new key to turn it back on.';
+  return `This connection holds no key, as removing it wiped its keys. ${turnsOn}`;
+}
+
 integrationConnectionsRoutes.delete('/:id', ...removeConnection, async (c) => {
   const id = c.req.param('id');
   const userId = c.get('userId');
   const existing = await loadManageableConnection(id, userId);
-  // The row stays for the bindings' audit rows and is switched off, so its bindings stop resolving
-  // (findActiveBinding's `connection.active` filter); every key on it is wiped (ISS-1421 r20).
-  await softDeleteConnection(id);
+  // The first delete switches the row off and wipes every key on it (ISS-1421 r20), so its bindings
+  // stop resolving; a delete of a connection already removed clears it from the list (ISS-1421 r21).
+  if (isRemovedConnection(existing)) await clearRemovedConnection(id);
+  else await softDeleteConnection(id);
   notifyConnectionChanged(existing.provider, id);
   return c.json(answer(okSchema, { ok: true }));
 });

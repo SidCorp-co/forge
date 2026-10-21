@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
   type BindingRole,
@@ -359,6 +359,56 @@ export async function softDeleteConnection(id: string): Promise<void> {
     .update(integrationConnections)
     .set({ active: false, secretsEnc: null, updatedAt: new Date() })
     .where(eq(integrationConnections.id, id));
+}
+
+/** A removed connection is one switched off with no key left on it: what a delete leaves. */
+export function isRemovedConnection(row: { active: boolean; secretsEnc: unknown }): boolean {
+  return !row.active && row.secretsEnc === null;
+}
+
+/** Clears a removed connection from the list: the row goes, and its bindings with it (cascade). */
+export async function clearRemovedConnection(id: string): Promise<void> {
+  await db
+    .delete(integrationConnections)
+    .where(
+      and(
+        eq(integrationConnections.id, id),
+        eq(integrationConnections.active, false),
+        isNull(integrationConnections.secretsEnc),
+      ),
+    );
+}
+
+/**
+ * The removed connection a project's service binding for `provider` still points at, where `owner`
+ * owns it: the one a fresh install from that project turns back on rather than standing a second
+ * beside it.
+ */
+export async function removedConnectionBoundTo(
+  projectId: string,
+  provider: IntegrationProvider,
+  owner: { ownerType: 'user' | 'org'; ownerId: string },
+): Promise<BindingWithConnection | null> {
+  const [pair] = await db
+    .select({ binding: integrationBindings, connection: integrationConnections })
+    .from(integrationBindings)
+    .innerJoin(
+      integrationConnections,
+      eq(integrationBindings.connectionId, integrationConnections.id),
+    )
+    .where(
+      and(
+        eq(integrationBindings.projectId, projectId),
+        eq(integrationBindings.provider, provider),
+        eq(integrationBindings.role, 'service'),
+        eq(integrationConnections.active, false),
+        isNull(integrationConnections.secretsEnc),
+        eq(integrationConnections.ownerType, owner.ownerType),
+        eq(integrationConnections.ownerId, owner.ownerId),
+      ),
+    )
+    .limit(1);
+  return pair ?? null;
 }
 
 export async function softDeleteBinding(id: string): Promise<void> {

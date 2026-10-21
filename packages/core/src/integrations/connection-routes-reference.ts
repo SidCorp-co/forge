@@ -146,7 +146,7 @@ export const changeConnection = onConnection(
 export const removeConnection = onConnection(
   describeOperation({
     summary:
-      'Remove a credential: every key stored on it is wiped, it is switched off and its bindings stop resolving',
+      'Remove a credential: every key stored on it is wiped, it is switched off and its bindings stop resolving; removing one already removed clears it from the list, its bindings with it',
     responses: {
       200: json(okSchema),
       403: fail('CONNECTION_NOT_MANAGEABLE', unmanageable),

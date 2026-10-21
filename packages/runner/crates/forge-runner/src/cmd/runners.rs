@@ -19,7 +19,12 @@ pub async fn run(ctx: Ctx, _args: Args) -> anyhow::Result<()> {
             match runners::list_me(&client).await {
                 Ok(rows) => Some(rows),
                 Err(e) => {
-                    eprintln!("warning: could not fetch server assignments ({e}); showing local config only");
+                    // The reason whole, on a line of its own (ISS-1421 r21): where Forge was
+                    // sought, why it was not reached and what to check.
+                    eprintln!(
+                        "warning: this box's assignments could not be read from Forge, so only \
+                         its local config is shown.\n{e}"
+                    );
                     None
                 }
             }

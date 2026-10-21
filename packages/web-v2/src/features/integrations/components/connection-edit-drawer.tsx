@@ -32,13 +32,13 @@ import type { ProjectListItem } from "@/features/projects/types";
 import {
   useCanManageConnection,
   useConnectionBindings,
-  useRemoveConnection,
   useTestConnection,
   useUpdateConnection,
 } from "../hooks";
 import { connectionTitle } from "../connection-identity";
 import { deriveConnectionStatus } from "../derive";
 import { ConnectionReleaseRunnerField } from "./release-runner-field";
+import { DangerZone, isRemovedConnection } from "./connection-danger-zone";
 import { PROVIDER_MODULES, providerIcon, providerLabel, providerModule } from "../providers/registry";
 import type { BindingSummary, ConnectionSummary, IntegrationTestResult } from "../types";
 import { DirectoryStatusPill, scopeLabel } from "./status-pill";
@@ -178,7 +178,7 @@ function CredentialSection({
   return (
     <section className="flex flex-col gap-3">
       <CardTitle>Credential</CardTitle>
-      {canManage && secretField === null && (
+      {canManage && secretField === null && !isRemovedConnection(connection) && (
         <p className="fg-body-sm border-b border-line pb-2 text-muted">
           {module?.connectionNote ??
             `${providerLabel(connection.provider)}'s credential is not entered by hand and cannot be replaced here.`}
@@ -246,6 +246,8 @@ function ConfigSection({
   const Section = CONNECTION_SECTIONS.get(connection.provider);
 
   if (!Section) {
+    // A removed connection's installation holds nothing (ISS-1421 r21); the Danger zone says what turns it on.
+    if (isRemovedConnection(connection) && module?.secretField === null) return null;
     return (
       <section className="flex flex-col gap-2">
         <CardTitle>Configuration</CardTitle>
@@ -361,87 +363,6 @@ function ProjectsSection({
   );
 }
 
-/** Disable/Enable + Remove with an inline confirm listing affected projects (AC5). */
-function DangerZone({
-  connection,
-  affectedProjects,
-  onRemoved,
-}: {
-  connection: ConnectionSummary;
-  affectedProjects: string[];
-  onRemoved: () => void;
-}) {
-  const update = useUpdateConnection();
-  const remove = useRemoveConnection();
-  const [confirming, setConfirming] = useState(false);
-
-  return (
-    <section className="flex flex-col gap-3">
-      <CardTitle>Danger zone</CardTitle>
-      <div className="flex items-center gap-2">
-        {connection.active ? (
-          <Button
-            variant="ghost"
-            size="sm"
-            loading={update.isPending}
-            onClick={() => update.mutate({ id: connection.id, body: { active: false } })}
-          >
-            Disable
-          </Button>
-        ) : connection.hasSecrets ? (
-          <Button
-            variant="secondary"
-            size="sm"
-            loading={update.isPending}
-            onClick={() => update.mutate({ id: connection.id, body: { active: true } })}
-          >
-            Enable
-          </Button>
-        ) : (
-          // ISS-1421 r20 — removing wipes the keys, and core refuses to turn a keyless connection
-          // back on (CONNECTION_HAS_NO_KEY), so the drawer says what turns it on instead.
-          <span className="fg-body-sm text-muted">
-            {providerModule(connection.provider)?.secretField === null
-              ? `This connection holds no key. ${providerModule(connection.provider)?.connectionNote ?? ""}`.trim()
-              : "This connection holds no key. Saving a new key above turns it back on."}
-          </span>
-        )}
-        <Button variant="ghost" size="sm" onClick={() => setConfirming((v) => !v)}>
-          Remove…
-        </Button>
-      </div>
-      {confirming && (
-        <div className="flex flex-col gap-2 border-y border-line py-2.5">
-          <p className="fg-body-sm text-fg">
-            {affectedProjects.length > 0
-              ? `Removing this connection stops credential resolution for ${affectedProjects.length} project${affectedProjects.length === 1 ? "" : "s"}: ${affectedProjects.join(", ")}. Their integrations stop working on the next dispatch.`
-              : "No projects are actively using this connection."}{" "}
-            Removing it deletes its stored keys. The connection stays listed as Disabled, and turning
-            it back on takes a new key.
-          </p>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="danger"
-              size="sm"
-              loading={remove.isPending}
-              onClick={() =>
-                remove.mutate(connection.id, {
-                  onSuccess: onRemoved,
-                })
-              }
-            >
-              Remove connection
-            </Button>
-            <Button variant="ghost" size="sm" onClick={() => setConfirming(false)}>
-              Cancel
-            </Button>
-          </div>
-        </div>
-      )}
-    </section>
-  );
-}
-
 export function ConnectionEditDrawer({
   connection,
   onClose,
@@ -462,6 +383,10 @@ export function ConnectionEditDrawer({
     const byId = new Map(projects.map((p) => [p.id, p.name] as const));
     const ids = [...new Set(bindings.filter((b) => b.active).map((b) => b.projectId))];
     return ids.map((id) => byId.get(id) ?? id);
+  }, [bindings, projects]);
+  const boundProjects = useMemo(() => {
+    const byId = new Map(projects.map((p) => [p.id, p.name] as const));
+    return [...new Set(bindings.map((b) => b.projectId))].map((id) => byId.get(id) ?? id);
   }, [bindings, projects]);
 
   if (!connection) return null;
@@ -501,6 +426,7 @@ export function ConnectionEditDrawer({
             <DangerZone
               connection={connection}
               affectedProjects={affectedProjects}
+              boundProjects={boundProjects}
               onRemoved={onClose}
             />
           </>
