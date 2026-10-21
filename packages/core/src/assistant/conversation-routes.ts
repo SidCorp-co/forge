@@ -56,6 +56,7 @@ import {
   readableConversation,
   writableConversation,
 } from './conversation-access.js';
+import { deleteAndTellReaders } from './conversation-adapter.js';
 import { agentModeOffer } from './conversation-agent-offer.js';
 import { conversationAttachmentRoutes } from './conversation-attachment-routes.js';
 import { foreignAttachmentIds, imagesFromAttachments } from './conversation-images.js';
@@ -387,7 +388,7 @@ conversationRoutes.delete(
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
     await writableConversation(id, userId);
-    await deleteConversation(id);
+    await deleteAndTellReaders(id, (room) => deleteConversation(room));
     return c.body(null, 204);
   },
 );

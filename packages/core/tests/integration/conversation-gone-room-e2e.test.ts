@@ -8,7 +8,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createTestProject,
   createTestUser,
@@ -242,5 +242,34 @@ describe('a message appended to a room that is gone', () => {
     const refused = err as { status?: number; message?: string; cause?: unknown };
     expect([refused.status, refused.message]).toEqual([404, 'This room no longer exists.']);
     expect(refused.cause).toEqual({ code: 'CONVERSATION_GONE', details: { conversationId: id } });
+  });
+});
+
+/**
+ * Round 29, the master's ruling (5): a room another member deleted stayed in everyone else's open
+ * list, and opened from it, until a 60-second re-read found it gone. The delete now tells every
+ * person who could read the room, on their own socket.
+ */
+describe('deleting a room', () => {
+  it('tells every person who could read it, the deleter included, that it is gone', async () => {
+    const { id } = await sharedRoom();
+    const { roomManager } = await import('../../src/ws/server.js');
+    const publish = vi.spyOn(roomManager, 'publish');
+    try {
+      const res = await as(openerId, `/api/conversations/${id}`, 'DELETE');
+      expect(res.status, await res.clone().text()).toBe(204);
+      const told = publish.mock.calls
+        .filter(([, envelope]) => (envelope as { event?: string }).event === 'conversation.deleted')
+        .map(([room, envelope]) => [room, (envelope as { data: unknown }).data]);
+      expect(told).toEqual(
+        expect.arrayContaining([
+          [`user:${openerId}`, { conversationId: id }],
+          [`user:${peerId}`, { conversationId: id }],
+        ]),
+      );
+      expect(told.map(([room]) => room)).not.toContain(`user:${outsiderId}`);
+    } finally {
+      publish.mockRestore();
+    }
   });
 });

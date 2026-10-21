@@ -58,6 +58,23 @@ async function readersOf(conversationId: string): Promise<string[]> {
   return out;
 }
 
+/** The event that tells a reader a room is gone, so an open list or thread lets go of it. */
+export const WEB_CONVERSATION_DELETED_EVENT = 'conversation.deleted';
+
+/**
+ * Delete a room through `remove`, then tell everyone who could read it beforehand: once it is
+ * gone there is nobody left to ask (ISS-1229 r29, the master's ruling).
+ */
+export async function deleteAndTellReaders(
+  conversationId: string,
+  remove: (id: string) => Promise<unknown>,
+): Promise<void> {
+  const readers = await readersOf(conversationId);
+  await remove(conversationId);
+  const envelope = { event: WEB_CONVERSATION_DELETED_EVENT, data: { conversationId } };
+  for (const userId of readers) roomManager.publish(userRoom(userId), envelope);
+}
+
 /** Publish to every socket that may currently see this room. Returns how many took it. */
 export async function publishToConversationReaders(
   conversationId: string,

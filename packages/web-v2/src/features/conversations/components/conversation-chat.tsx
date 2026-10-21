@@ -116,14 +116,14 @@ export function ConversationChat({
       goneOnce.current = true;
       setGone(true);
       if (unsent === null) {
-        toast({ title: ROOM_DELETED_TITLE, description: roomDeletedLine(false), tone: "info" });
+        toast({ title: ROOM_DELETED_TITLE, description: roomDeletedLine(false), tone: "error" });
       } else {
         // The thread that held the message goes with the room, so the notice keeps it until the
         // reader copies it or puts the notice away (ISS-1229 r29, judge-84).
         toast({
           title: ROOM_DELETED_TITLE,
           description: unsentLine(unsent),
-          tone: "info",
+          tone: "error",
           keep: true,
           onClick: () => {
             const copied = navigator.clipboard

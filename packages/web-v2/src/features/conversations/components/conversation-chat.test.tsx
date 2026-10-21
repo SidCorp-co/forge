@@ -264,6 +264,7 @@ describe("a room deleted while it is open", () => {
     const notice = toast.mock.calls[0]?.[0] as { description: string; keep: boolean; onClick: () => void };
     expect(notice.description).toContain("“the numbers for Friday”");
     expect(notice.keep).toBe(true);
+    expect(notice).toMatchObject({ tone: "error" });
     notice.onClick();
     expect(writeText).toHaveBeenCalledWith("the numbers for Friday");
     await waitFor(() =>
@@ -314,7 +315,8 @@ describe("a room deleted while it is open", () => {
     const backToList = vi.fn();
     open(backToList);
     await waitFor(() => expect(backToList).toHaveBeenCalledWith("c1"));
-    expect(toast).toHaveBeenCalledWith(expect.objectContaining({ title: "This room was deleted" }));
+    // The refusal's own face, as every other refusal toast wears it (r29, the master's ruling).
+    expect(toast).toHaveBeenCalledWith(expect.objectContaining({ title: "This room was deleted", tone: "error" }));
     expect(screen.queryByText("Couldn't load this conversation")).not.toBeInTheDocument();
   });
 

@@ -106,10 +106,10 @@ export function heldDevicesRefusal(
   const [only] = holders;
   if (holders.length === 1 && only) {
     const what = only.names.length === 1 ? 'the device' : `${only.names.length} devices,`;
-    return `This organization's agent ${only.at} still holds ${what} ${quotedList(only.names)}, so the organization was not deleted. ${way}`;
+    return `This organization's agent ${only.at} still holds ${what} ${quotedList(only.names)}. ${way}`;
   }
   const each = holders.map((h) => `${h.at} holds ${quotedList(h.names)}`).join('; ');
-  return `This organization's agents still hold ${held.length} devices not yet revoked (${each}), so the organization was not deleted. ${way}`;
+  return `This organization's agents still hold ${held.length} devices not yet revoked (${each}). ${way}`;
 }
 
 /** The refusal of a delete while projects still live in the organization, each named (ISS-1229 r24). */
@@ -122,7 +122,7 @@ export function projectsStandRefusal(names: readonly string[]): string {
     names.length === 1
       ? 'that project first, from its settings'
       : "those projects first, from each project's settings";
-  return `This organization still holds ${held}, so the organization was not deleted. Delete ${where}, then delete the organization.`;
+  return `This organization still holds ${held}. Delete ${where}, then delete the organization.`;
 }
 
 export const PERSONAL_WORKSPACE_REFUSAL =
