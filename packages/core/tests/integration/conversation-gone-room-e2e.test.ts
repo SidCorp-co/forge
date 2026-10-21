@@ -184,3 +184,63 @@ describe('adding a person to a room', () => {
     expect(offered?.addedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 });
+
+/**
+ * Round 29 — judge-84 added an agent by its project alone after deleting that project and was told
+ * "No project <id>, so it has no handle to address.": an id in the sentence, the room unnamed, no
+ * details. The web panel, which names the agent too, was told the agent is not on its project.
+ */
+describe('adding the agent of a project that is gone', () => {
+  it('is refused for the project, in the room words, by the project alone or with its agent named', async () => {
+    const { id } = await sharedRoom();
+    const orgRows = await harness.db.execute<{ org_id: string }>(
+      sql`SELECT org_id FROM projects WHERE id = ${projectId}`,
+    );
+    const retired = (
+      await createTestProject(harness.db, ownerId, {
+        slug: 'retired',
+        name: 'Retired',
+        orgId: String(orgRows[0]?.org_id),
+      })
+    ).id;
+    const { resolveProjectHandle } = await import('../../src/conversations/handles.js');
+    const agent = await harness.db.transaction((tx) => resolveProjectHandle(tx as never, retired));
+    await harness.db.execute(sql`DELETE FROM projects WHERE id = ${retired}`);
+
+    for (const body of [{ projectId: retired }, { projectId: retired, userId: agent.userId }]) {
+      const res = await as(openerId, `/api/conversations/${id}/handles`, 'POST', body);
+      const refusal = (await res.json()) as Refusal;
+      expect([res.status, refusal.code, refusal.message]).toEqual([
+        404,
+        'PROJECT_GONE',
+        'The project this agent would bring into this room no longer exists, so there is no agent of it to add.',
+      ]);
+      expect(refusal.details).toEqual({ conversationId: id, projectId: retired });
+    }
+  });
+
+  it('is refused the same way when a room is opened naming it', async () => {
+    const res = await as(openerId, '/api/conversations', 'POST', {
+      projectId,
+      handles: [{ projectId: randomUUID() }],
+    });
+    const refusal = (await res.json()) as Refusal;
+    expect([res.status, refusal.code]).toEqual([404, 'PROJECT_GONE']);
+    expect(refusal.message).toMatch(/^The project this agent would bring into this room/);
+  });
+});
+
+describe('a message appended to a room that is gone', () => {
+  it('is refused as a gone room, naming no id', async () => {
+    const { id } = await sharedRoom();
+    await harness.db.execute(sql`DELETE FROM conversations WHERE id = ${id}`);
+    const { appendMessages } = await import('../../src/conversations/store.js');
+    const err = await appendMessages({
+      conversationId: id,
+      messages: [{ role: 'user', content: 'still there?' }],
+    } as never).catch((e: unknown) => e);
+    const refused = err as { status?: number; message?: string; cause?: unknown };
+    expect([refused.status, refused.message]).toEqual([404, 'This room no longer exists.']);
+    expect(refused.cause).toEqual({ code: 'CONVERSATION_GONE', details: { conversationId: id } });
+  });
+});

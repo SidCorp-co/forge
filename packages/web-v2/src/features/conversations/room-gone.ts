@@ -15,3 +15,11 @@ export function roomDeletedLine(sending: boolean): string {
     ? "It was deleted while you had it open, so your message was not sent."
     : "It was deleted while you had it open, so it has left your list.";
 }
+
+const UNSENT_QUOTE = 200;
+
+/** The thread goes with the room, so the notice keeps what was written (ISS-1229 r29). */
+export function unsentLine(text: string): string {
+  const quoted = text.length > UNSENT_QUOTE ? `${text.slice(0, UNSENT_QUOTE).trimEnd()}…` : text;
+  return `${roomDeletedLine(true)}\nSelect this to copy what you wrote:\n“${quoted}”`;
+}

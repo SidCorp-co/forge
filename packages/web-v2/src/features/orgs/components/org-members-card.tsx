@@ -336,7 +336,8 @@ export function OrgMembersCard({
                       {m.role}
                     </Badge>
                   )}
-                  {canManage && (
+                  {/* Anyone may leave; only an owner or admin takes somebody else out (ISS-1229 r29). */}
+                  {(canManage || m.userId === user?.id) && (
                     <IconButton
                       icon="trash"
                       aria-label={

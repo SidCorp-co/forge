@@ -9,7 +9,7 @@
 // the surface behind it: the difference is meant to be seen rather than read.
 
 import { readerInitials } from "@forge/contracts/person-name";
-import { useState } from "react";
+import { useId, useState } from "react";
 import {
   Avatar,
   Banner,
@@ -202,6 +202,7 @@ function MemberRow({
   const isAgent = member.kind === "handle";
   const project = (room.scopeProjects ?? []).find((p) => p.id === member.projectId);
   const held = removalHeld(member, room);
+  const heldReasonId = useId();
   return (
     <div
       data-testid={isAgent ? "member-row-agent" : "member-row-person"}
@@ -240,13 +241,18 @@ function MemberRow({
             icon="x"
             size="sm"
             aria-label={`Take ${member.kind === "person" && viewerId && member.userId === viewerId ? "yourself" : memberName(member, viewerId, "inside", room)} out of the room`}
-            aria-description={held ?? undefined}
+            aria-describedby={held ? heldReasonId : undefined}
             aria-disabled={held !== null || undefined}
             className={held ? "cursor-not-allowed opacity-50" : undefined}
             disabled={busy}
             onClick={held ? undefined : onRemove}
           />
         </Tooltip>
+      )}
+      {canChange && held && (
+        <span id={heldReasonId} className="sr-only">
+          {held}
+        </span>
       )}
     </div>
   );

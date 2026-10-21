@@ -144,6 +144,18 @@ describe("the organization page's people and agents", () => {
     expect(panel.textContent).not.toMatch(/Remove you|They lose access/);
   });
 
+  // r29, judge-84: a plain member had no Leave control at all, though core lets anyone leave.
+  it("lets a plain member leave, and take nobody else out", () => {
+    members = [
+      person("me", "lan@example.com", "Lan", "member", "2026-10-01T09:00:00Z"),
+      person("u2", "mai@example.com", "Mai Tran", "owner", "2026-10-02T09:00:00Z"),
+    ];
+    render(<OrgMembersCard org={{ id: "o1", name: "Northwind", slug: "northwind", role: "member" } as never} onDeleted={() => {}} />);
+    expect(screen.queryByRole("button", { name: /^Remove / })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Leave Northwind" }));
+    expect(screen.getByRole("dialog").textContent).toContain("Leave Northwind? You lose access to all of its projects.");
+  });
+
   it("tells a refused delete inside its panel, under the question, and in no toast", () => {
     refusal = new ApiError(409, "This organization still holds the project \"Billing\", so the organization was not deleted.", "ORG_NOT_EMPTY");
     card();

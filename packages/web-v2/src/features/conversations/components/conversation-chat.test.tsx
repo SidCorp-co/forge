@@ -251,6 +251,45 @@ describe("a room deleted while it is open", () => {
     expect(send).toHaveBeenCalledTimes(1);
   });
 
+  // r29, judge-84: the typed message was kept nowhere once the room and its thread were gone.
+  it("keeps the unsent message in the notice until the reader copies it", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    send.mockRejectedValueOnce(roomGone());
+    open(vi.fn());
+    fireEvent.change(screen.getByLabelText("Message"), { target: { value: "the numbers for Friday" } });
+    fireEvent.click(screen.getByLabelText("Send message"));
+
+    await waitFor(() => expect(toast).toHaveBeenCalled());
+    const notice = toast.mock.calls[0]?.[0] as { description: string; duration: number; onClick: () => void };
+    expect(notice.description).toContain("“the numbers for Friday”");
+    expect(notice.duration).toBe(0);
+    notice.onClick();
+    expect(writeText).toHaveBeenCalledWith("the numbers for Friday");
+    await waitFor(() =>
+      expect(toast).toHaveBeenLastCalledWith(expect.objectContaining({ title: "What you wrote was copied" })),
+    );
+  });
+
+  it("shows the whole unsent message where it cannot be copied", async () => {
+    Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
+    const long = "x".repeat(260);
+    send.mockRejectedValueOnce(roomGone());
+    open(vi.fn());
+    fireEvent.change(screen.getByLabelText("Message"), { target: { value: long } });
+    fireEvent.click(screen.getByLabelText("Send message"));
+
+    await waitFor(() => expect(toast).toHaveBeenCalled());
+    const notice = toast.mock.calls[0]?.[0] as { description: string; onClick: () => void };
+    expect(notice.description).toContain(`“${"x".repeat(200)}…”`);
+    notice.onClick();
+    await waitFor(() =>
+      expect(toast).toHaveBeenLastCalledWith(
+        expect.objectContaining({ title: "What you wrote could not be copied", description: long, duration: 0 }),
+      ),
+    );
+  });
+
   it("hands back the room its own first send opened, when that room is deleted before the message lands", async () => {
     send.mockRejectedValueOnce(roomGone());
     const backToList = vi.fn();

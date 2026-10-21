@@ -77,8 +77,9 @@ export async function resolveProjectHandle(
   }
   if (existing) {
     throw new HTTPException(500, {
-      message: `project ${projectId} has agent ${existing.userId} as its handle but that agent carries no handle on its org membership, so it has no address to be reached at`,
-      cause: { code: 'HANDLE_HAS_NO_NAME' },
+      message:
+        "This project's agent carries no handle on its organization membership, so it has no address to be reached at",
+      cause: { code: 'HANDLE_HAS_NO_NAME', details: { projectId, handleUserId: existing.userId } },
     });
   }
 
@@ -89,8 +90,8 @@ export async function resolveProjectHandle(
     .limit(1);
   if (!project) {
     throw new HTTPException(404, {
-      message: `no project ${projectId}, so it has no handle to address`,
-      cause: { code: 'NOT_FOUND' },
+      message: 'There is no such project, so it has no agent to address',
+      cause: { code: 'NOT_FOUND', details: { projectId } },
     });
   }
 

@@ -43,7 +43,7 @@ import {
   useWithdrawnDrafts,
 } from "../hooks";
 import { composerRefusal } from "../membership";
-import { isRoomGone, ROOM_DELETED_TITLE, roomDeletedLine } from "../room-gone";
+import { isRoomGone, ROOM_DELETED_TITLE, roomDeletedLine, unsentLine } from "../room-gone";
 import { type ConversationMode, type OutboxMessage, conversationTitle } from "../types";
 import { ConversationModeControl, modePlaceholder } from "./mode-control";
 import { ConversationMembers } from "./conversation-members";
@@ -111,11 +111,37 @@ export function ConversationChat({
   const [gone, setGone] = useState(false);
   const goneOnce = useRef(false);
   const roomWentAway = useCallback(
-    (id: string, sending: boolean) => {
+    (id: string, unsent: string | null) => {
       if (goneOnce.current) return;
       goneOnce.current = true;
       setGone(true);
-      toast({ title: ROOM_DELETED_TITLE, description: roomDeletedLine(sending), tone: "info" });
+      if (unsent === null) {
+        toast({ title: ROOM_DELETED_TITLE, description: roomDeletedLine(false), tone: "info" });
+      } else {
+        // The thread that held the message goes with the room, so the notice keeps it until the
+        // reader copies it or puts the notice away (ISS-1229 r29, judge-84).
+        toast({
+          title: ROOM_DELETED_TITLE,
+          description: unsentLine(unsent),
+          tone: "info",
+          duration: 0,
+          onClick: () => {
+            const copied = navigator.clipboard
+              ? navigator.clipboard.writeText(unsent)
+              : Promise.reject(new Error("no clipboard"));
+            void copied.then(
+              () => toast({ title: "What you wrote was copied", tone: "success" }),
+              () =>
+                toast({
+                  title: "What you wrote could not be copied",
+                  description: unsent,
+                  tone: "error",
+                  duration: 0,
+                }),
+            );
+          },
+        });
+      }
       qc.removeQueries({ queryKey: ["conversations", id], exact: true });
       void qc.invalidateQueries({ queryKey: ["conversations", "list"] });
       onRoomGone?.(id);
@@ -123,7 +149,7 @@ export function ConversationChat({
     [qc, toast, onRoomGone],
   );
   useEffect(() => {
-    if (resolvedId && roomQ.isError && isRoomGone(roomQ.error)) roomWentAway(resolvedId, false);
+    if (resolvedId && roomQ.isError && isRoomGone(roomQ.error)) roomWentAway(resolvedId, null);
   }, [resolvedId, roomQ.isError, roomQ.error, roomWentAway]);
 
   const messages = useMemo(() => roomQ.data?.messages ?? [], [roomQ.data]);
@@ -234,7 +260,7 @@ export function ConversationChat({
               : m,
           ),
         );
-        if (roomGone && id) roomWentAway(id, true);
+        if (roomGone && id) roomWentAway(id, next.content);
       } finally {
         sending.current = false;
       }

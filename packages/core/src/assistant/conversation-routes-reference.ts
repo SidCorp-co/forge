@@ -215,7 +215,10 @@ export const openRoom = describeOperation({
     201: json(conversationSchema, 'The new room, as its membership settled it'),
     400: fail({ ...MEMBER_REFUSED }),
     403: fail({ FORBIDDEN: 'the caller is not a member of the project', ...HANDLE_FORBIDDEN }),
-    404: fail('NOT_FOUND', 'there is no such project'),
+    404: fail({
+      NOT_FOUND: 'there is no such project',
+      PROJECT_GONE: 'a project an agent was named for no longer exists, or never did',
+    }),
     500: fail('HANDLE_HAS_NO_NAME', 'the project has an agent that carries no handle'),
   },
 });

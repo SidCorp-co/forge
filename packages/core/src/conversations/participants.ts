@@ -8,7 +8,13 @@
 import { and, count, eq, isNull, sql } from 'drizzle-orm';
 import { patIsLive } from '../auth/pat-live.js';
 import { db as defaultDb } from '../db/client.js';
-import { organizationMembers, personalAccessTokens, projectMembers, users } from '../db/schema.js';
+import {
+  organizationMembers,
+  personalAccessTokens,
+  projectMembers,
+  projects,
+  users,
+} from '../db/schema.js';
 import {
   type ConversationParticipantKind,
   conversationMessages,
@@ -17,6 +23,7 @@ import {
 } from '../db/schema-conversations.js';
 import { effectiveProjectRole, projectRoleAtLeast } from '../lib/authz.js';
 import type { Executor, TxOnly } from './db-executor.js';
+import { resolveProjectHandle } from './handles.js';
 import { roomRefusal } from './room-refusal.js';
 
 export interface ParticipantRow {
@@ -186,7 +193,8 @@ export async function handleForProject(
 
 export interface AddHandleArgs {
   conversationId: string;
-  handleUserId: string;
+  /** The agent asked for; absent, the project's own agent, reused or minted. */
+  handleUserId?: string;
   /**
    * Which of the handle's projects this room is about. Recorded on the row and
    * checked against both the handle's membership and the caller's role.
@@ -275,9 +283,25 @@ export async function attachOpeningHandle(
  */
 export async function addHandle(args: AddHandleArgs): Promise<void> {
   const tx = args.tx ?? defaultDb;
-  const handle = await loadHandle(tx, args.handleUserId);
+  // Before any agent is looked up or minted: an agent of a deleted project is refused for its
+  // project, never as an agent that is not on it (ISS-1229 r29, judge-84).
+  const [project] = await tx
+    .select({ id: projects.id })
+    .from(projects)
+    .where(eq(projects.id, args.projectId))
+    .limit(1);
+  if (!project) {
+    throw roomRefusal(
+      404,
+      'PROJECT_GONE',
+      'The project this agent would bring into this room no longer exists, so there is no agent of it to add',
+      { conversationId: args.conversationId, projectId: args.projectId },
+    );
+  }
+  const handleUserId = args.handleUserId ?? (await resolveProjectHandle(tx, args.projectId)).userId;
+  const handle = await loadHandle(tx, handleUserId);
 
-  const handleProjects = await projectsOfHandle(args.handleUserId, tx);
+  const handleProjects = await projectsOfHandle(handleUserId, tx);
   if (!handleProjects.includes(args.projectId)) {
     throw roomRefusal(
       400,
@@ -285,7 +309,7 @@ export async function addHandle(args: AddHandleArgs): Promise<void> {
       `@${handle.handle} is not a member of the project it would bring into this room, so it cannot be the agent for a room about that project`,
       {
         conversationId: args.conversationId,
-        handleUserId: args.handleUserId,
+        handleUserId,
         projectId: args.projectId,
         handleProjectIds: handleProjects,
       },
@@ -307,7 +331,7 @@ export async function addHandle(args: AddHandleArgs): Promise<void> {
     .values({
       conversationId: args.conversationId,
       kind: 'handle',
-      userId: args.handleUserId,
+      userId: handleUserId,
       projectId: args.projectId,
       addedBy: args.actorUserId,
       label: handle.handle,

@@ -92,7 +92,7 @@ export const addHandleToRoom = describeOperation({
     403: fail({ ...ROOM_FORBIDDEN, ...HANDLE_FORBIDDEN }),
     404: fail({
       CONVERSATION_GONE: 'the room no longer exists, or never did',
-      NOT_FOUND: 'there is no such project to give an agent',
+      PROJECT_GONE: 'the project the agent was named for no longer exists, or never did',
     }),
     500: fail('HANDLE_HAS_NO_NAME', 'the project has an agent that carries no handle'),
   },

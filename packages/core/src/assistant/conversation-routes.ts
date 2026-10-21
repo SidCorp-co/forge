@@ -23,7 +23,6 @@ import {
 import { answer } from '../api-reference/declare/describe.js';
 import { zValidator } from '../api-reference/declare/validator.js';
 import { listConversationAttachmentsByIds } from '../conversations/attachment-service.js';
-import { resolveProjectHandle } from '../conversations/handles.js';
 import {
   assertPersonReachesScope,
   projectsNamed,
@@ -287,7 +286,7 @@ conversationRoutes.post(
       for (const named of handles) {
         await addHandle({
           conversationId: room.id,
-          handleUserId: named.userId ?? (await resolveProjectHandle(tx, named.projectId)).userId,
+          ...(named.userId ? { handleUserId: named.userId } : {}),
           projectId: named.projectId,
           actorUserId: userId,
           tx,

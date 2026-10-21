@@ -22,6 +22,7 @@ import type { Executor, TxOnly } from './db-executor.js';
 import { resolveProjectHandle } from './handles.js';
 import { attachOpeningHandle } from './participants.js';
 import type { ConversationVenue } from './ports.js';
+import { roomGone } from './room-refusal.js';
 import { derivedScope } from './scope.js';
 
 export { asBlocks, toCanonicalEntry } from './canonical-entry.js';
@@ -218,12 +219,7 @@ export async function appendMessagesIn(
       .where(eq(conversations.id, args.conversationId))
       .for('update')
       .limit(1);
-    if (!live) {
-      throw new HTTPException(404, {
-        message: `no conversation ${args.conversationId} to append to`,
-        cause: { code: 'NOT_FOUND' },
-      });
-    }
+    if (!live) throw roomGone(args.conversationId);
 
     const [top] = await tx
       .select({ seq: conversationMessages.seq })

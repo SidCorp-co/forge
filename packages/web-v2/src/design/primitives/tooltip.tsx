@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, type ReactNode, type RefObject } from "react";
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { Popover } from "@/design/primitives/popover";
 
 export interface TooltipProps {
@@ -12,7 +12,8 @@ export interface TooltipProps {
    *  the viewport is narrower than that line. */
   multiline?: boolean;
   /** ISS-1229 r28 — a sentence a person reads, set in the app's text face and wrapped at the
-   *  multiline cap; the code face stays for identifiers and short labels. */
+   *  multiline cap; the code face stays for identifiers and short labels. A touch screen has no
+   *  hover, so a tap on the trigger shows it too, and a tap anywhere else puts it away (r29). */
   prose?: boolean;
 }
 
@@ -58,6 +59,14 @@ export function TooltipPanel({
 export function Tooltip({ label, children, side = "top", multiline = false, prose = false }: TooltipProps) {
   const [open, setOpen] = useState(false);
   const anchor = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    if (!open || !prose) return;
+    const away = (e: Event) => {
+      if (!anchor.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("touchstart", away);
+    return () => document.removeEventListener("touchstart", away);
+  }, [open, prose]);
   return (
     <span
       ref={anchor}
@@ -66,6 +75,7 @@ export function Tooltip({ label, children, side = "top", multiline = false, pros
       onMouseLeave={() => setOpen(false)}
       onFocus={() => setOpen(true)}
       onBlur={() => setOpen(false)}
+      onTouchEnd={prose ? () => setOpen(true) : undefined}
     >
       {children}
       <TooltipPanel open={open} anchor={anchor} label={label} side={side} multiline={multiline} prose={prose} />
