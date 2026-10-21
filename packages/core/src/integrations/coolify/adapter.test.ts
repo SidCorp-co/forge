@@ -86,40 +86,6 @@ function buildCtx(secrets: Record<string, unknown>) {
   } as any;
 }
 
-// ISS-1421 r20 — Test connection judges the token last saved: an answer only the previous token got
-// is Needs re-auth, said of the server at the saved address, with until when Forge still uses it.
-describe('coolifyAdapter.healthcheck after a token was replaced', () => {
-  const until = new Date(Date.now() + 3_600_000).toISOString();
-  const secrets = { apiToken: 'cf-new', previousApiToken: 'cf-old', previousTokenExpiresAt: until };
-  const answering = (works: string) =>
-    vi.fn(async (_url: unknown, init?: RequestInit) =>
-      new Headers(init?.headers).get('authorization') === `Bearer ${works}`
-        ? new Response(JSON.stringify([{ uuid: 'res-1', name: 'app' }]), {
-            status: 200,
-            headers: { 'content-type': 'application/json' },
-          })
-        : new Response('unauthorized', { status: 401 }),
-    ) as unknown as typeof fetch;
-
-  it('answers Needs re-auth where only the previous token is accepted', async () => {
-    globalThis.fetch = answering('cf-old');
-    const res = await coolifyAdapter.healthcheck(buildCtx(secrets));
-    expect(res.status).toBe('needs_reauth');
-    expect(res.message).toMatch(
-      /^The server at coolify\.example refused the new key\. Forge is still using the previous key until .+ UTC\.$/,
-    );
-    expect(updateConnectionMock).toHaveBeenCalledWith(
-      CONN_ID,
-      expect.objectContaining({ lastHealthStatus: 'needs_reauth' }),
-    );
-  });
-
-  it('answers Connected where the new token is accepted', async () => {
-    globalThis.fetch = answering('cf-new');
-    expect((await coolifyAdapter.healthcheck(buildCtx(secrets))).status).toBe('ok');
-  });
-});
-
 describe('coolifyAdapter.healthcheck — 401 and 403 are different verdicts (ISS-409/ISS-924)', () => {
   it('surfaces needs_reauth when the API token is rejected (401)', async () => {
     globalThis.fetch = vi.fn(

@@ -29,6 +29,7 @@ const { epodsystemAdapter } = await import('./epodsystem/adapter.js');
 const { googleAdapter } = await import('./google/adapter.js');
 const { GoogleAuthError } = await import('./google/types.js');
 const { rocketChatAdapter } = await import('./rocketchat/adapter.js');
+const { coolifyAdapter } = await import('./coolify/adapter.js');
 
 const UNTIL = new Date(Date.now() + 3_600_000).toISOString();
 const originalFetch = globalThis.fetch;
@@ -99,6 +100,33 @@ describe('Sentry, which keeps the previous key for its own calls', () => {
     const res = await sentryAdapter.healthcheck(ctx(secrets, SENTRY));
     expect(res.status).toBe('needs_reauth');
     expect(res.message).not.toMatch(/previous key/);
+  });
+});
+
+// Coolify's check is said of the server at the saved address, as the address is the person's own.
+describe('Coolify, which keeps the previous token for its own calls', () => {
+  const secrets = { apiToken: 'cf-new', previousApiToken: 'cf-old', previousTokenExpiresAt: UNTIL };
+  const COOLIFY = {
+    baseUrl: 'https://coolify.example',
+    targets: [{ id: 't-1', label: 'App', resourceUuid: 'res-1' }],
+  };
+
+  it('answers Needs re-auth where only the previous token is accepted', async () => {
+    answeringOnly('cf-old', [{ uuid: 'res-1', name: 'app' }]);
+    const res = await coolifyAdapter.healthcheck(ctx(secrets, COOLIFY));
+    expect(res.status).toBe('needs_reauth');
+    expect(res.message).toMatch(
+      /^The server at coolify\.example refused the new key\. Forge is still using the previous key until .+ UTC\.$/,
+    );
+    expect(updateConnectionMock).toHaveBeenCalledWith(
+      'conn-1',
+      expect.objectContaining({ lastHealthStatus: 'needs_reauth' }),
+    );
+  });
+
+  it('answers Connected where the new token is accepted', async () => {
+    answeringOnly('cf-new', [{ uuid: 'res-1', name: 'app' }]);
+    expect((await coolifyAdapter.healthcheck(ctx(secrets, COOLIFY))).status).toBe('ok');
   });
 });
 

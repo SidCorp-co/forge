@@ -64,10 +64,8 @@ function untilWords(iso: string): string {
 }
 
 /**
- * Test connection's answer where the key just saved was refused and the previous one still works:
- * the check judges the new key alone, so it is Needs re-auth, and it says until when Forge's own
- * calls still run on the previous key (ISS-1421 r20, criteria 199 and 200). `subject` is who refused
- * it: the provider by name, or "The server at <host>" where the address is the person's own.
+ * Test connection's Needs re-auth where the new key was refused and the previous one works, saying
+ * until when Forge's calls use the previous key (ISS-1421 r20). `subject` names who refused it.
  */
 export function newKeyRefused(
   subject: string,

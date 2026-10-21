@@ -80,9 +80,8 @@ const epodsystemAdapterMethods: IntegrationAdapterMethods<EpodsystemConfig, Epod
     // resolves the org/store on its own.
     const url = epodsystemGraphqlBase();
 
-    // One probe with a given key. Treats both an HTTP 401/403 and a 200 + GraphQL
-    // `errors[]` (the platform's resolver-layer auth rejection) as `unauthorized`
-    // so the rotation-window fallback covers both shapes (ISS-405).
+    // An HTTP 401/403 and a 200 carrying GraphQL `errors[]` (the platform's
+    // resolver-layer auth rejection) both read as `unauthorized` (ISS-405).
     type ProbeResult =
       | { kind: 'ok'; body: ApiKeyContextResponse }
       | { kind: 'unauthorized'; status: number }
@@ -108,10 +107,8 @@ const epodsystemAdapterMethods: IntegrationAdapterMethods<EpodsystemConfig, Epod
       const activeKey = apiKey;
 
       if (result.kind !== 'ok') {
-        // unauthorized (HTTP 401/403 OR a 200 + GraphQL errors[] auth rejection)
-        // = the key was refused, so the
-        // operator must re-enter it → needs_reauth (ISS-409). A non-auth HTTP
-        // error stays a generic error.
+        // A refused key is the operator's to re-enter (ISS-409); any other
+        // HTTP failure stays a generic error.
         const healthStatus = result.kind === 'unauthorized' ? 'needs_reauth' : 'error';
         await updateConnection(ctx.connectionId, {
           lastHealthStatus: healthStatus,

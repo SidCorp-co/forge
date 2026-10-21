@@ -365,9 +365,8 @@ export function schemaRefused(
 }
 
 /**
- * A parse's issues as one run of sentences for a reader with no details to look in: an MCP answer,
- * a box's refusal, an error a stored row raised. Each field is named under `at`, and a fixed set's
- * values follow its sentence (ISS-1421 r20: these sites said zod's own words).
+ * A parse's issues as sentences for a reader with no details to look in (an MCP answer, a box's
+ * refusal), each field named under `at` and a fixed set's values after it (ISS-1421 r20).
  */
 export function issueSentences(
   issues: readonly SchemaIssue[],

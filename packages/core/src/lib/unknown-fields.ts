@@ -147,7 +147,6 @@ function resolved(schema: ZodType): ZodType {
   }
 }
 
-/** The schema a field of `body` is read by, or null where no one branch names it. */
 function fieldSchema(schema: ZodType, body: Record<string, unknown>, key: string): ZodType | null {
   const def = defOf(resolved(schema));
   if (def.type === 'object') return (def.shape?.[key] as ZodType | undefined) ?? null;
@@ -172,7 +171,6 @@ function straysIn(schema: ZodType, value: unknown, path: PropertyKey[]): StrayAt
   }
   if (value === null || typeof value !== 'object') return [];
   if (fieldsPolicy(node) !== 'closed') return [];
-  // A strict object names its own strays, so they are not refused twice.
   const keys = refusesItself(node, value) ? [] : unknownFields(node, value);
   return [...(keys.length > 0 ? [{ path, keys }] : []), ...nestedStrays(node, value, path)];
 }

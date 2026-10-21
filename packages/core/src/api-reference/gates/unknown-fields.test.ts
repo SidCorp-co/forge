@@ -11,8 +11,8 @@ import {
   refusesItself,
   unknownFields,
 } from '../../lib/unknown-fields.js';
+import { QUERY_GATE_KEYS } from '../declare/input-not-taken.js';
 import {
-  QUERY_GATE_KEYS,
   queryIssues,
   refusingUnknownFields,
   type ValidatorDeclaration,
@@ -241,6 +241,7 @@ describe('a query key on a GET route that declares no query', () => {
       'auth/oauth/handler.ts': 'read by the OAuth routes in auth/oauth/routes.ts, which declare it',
       'middleware/error.ts': 'reads back what a refused request sent, to quote it',
       'api-reference/declare/validator.ts': 'the gate itself',
+      'api-reference/declare/input-not-taken.ts': 'the gate refusing a query no route declares',
     };
     const root = join(dirname(fileURLToPath(import.meta.url)), '../..');
     const unread: string[] = [];

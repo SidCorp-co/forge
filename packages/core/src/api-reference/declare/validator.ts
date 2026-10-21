@@ -109,10 +109,8 @@ function saysOnly(
 }
 
 /**
- * A route hook's refusal, said again from the parse's own issues where it was not a sentence, or
- * where the parse found a body field the route does not take: that field is this gate's to name,
- * whatever the hook said (ISS-1421 r20, judge-82's git credential and POST /api/orgs). A hook's own
- * sentence otherwise stands, with that sentence as its details.
+ * Re-says a hook's refusal from the parse when it was no sentence or passed over a stray body field
+ * (judge-82: the git credential helper, POST /api/orgs); otherwise the hook's sentence stands.
  */
 function rewordedRefusal(
   message: string,
@@ -385,7 +383,7 @@ const WRITES = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 export const BODY_NOT_TAKEN_WHEN = 'the request carries a body, and this call takes none';
 
 /** The handlers of the route that answers this request, its gates mounted for every path aside. */
-function ownHandlers(c: Context): object[] | null {
+export function ownHandlers(c: Context): object[] | null {
   const matched = matchedRoutes(c);
   const route = matched.find((r) => r.method !== 'ALL');
   if (!route) return null;
@@ -461,46 +459,5 @@ export function refuseBodyNotTaken(): MiddlewareHandler {
       message: 'This call takes no body.',
       cause: { code: 'BAD_REQUEST', details: { takesNoBody: true } },
     });
-  };
-}
-
-/**
- * Query keys a gate in front of the routes reads, which no route declares, each with why. None
- * today: no middleware on `/api` reads a query. A key added here is one every GET route takes.
- */
-export const QUERY_GATE_KEYS: Readonly<Record<string, string>> = {};
-
-const READS = new Set(['GET', 'HEAD']);
-
-/** Why a read refuses a query key, in the reference, where the route declares no query. */
-export const QUERY_NOT_TAKEN_WHEN = 'the request carries a query key, and this call takes no query';
-
-/** Whether a route is held to no query at all, the one predicate the gate and the reference share. */
-export function takesNoQuery(method: string, validators: readonly ValidatorDeclaration[]): boolean {
-  return READS.has(method) && !validators.some((v) => v.target === 'query');
-}
-
-/** The schema a route that declares no query is held to: it takes no key. */
-const NO_QUERY = z.object({}).strict();
-
-/**
- * A GET route that declares no query refuses every key sent, naming each, before any gate or
- * handler runs: `GET /api/integration-connections?orgId=` listed every org's connections while the
- * key was dropped unread (ISS-1421 r20). A route reading a query declares it.
- */
-export function refuseQueryNotTaken(): MiddlewareHandler {
-  return async (c, next) => {
-    if (!READS.has(c.req.method)) return next();
-    const handlers = ownHandlers(c);
-    if (!handlers) return next();
-    const declared = handlers.flatMap((h) => validatorDeclarations.get(h) ?? []);
-    if (!takesNoQuery(c.req.method, declared)) return next();
-    const keys = Object.keys(c.req.queries()).filter((k) => !Object.hasOwn(QUERY_GATE_KEYS, k));
-    if (keys.length === 0) return next();
-    throw queryRefused(
-      [{ code: 'unrecognized_keys', path: [], keys, message: 'Unrecognized keys' }],
-      NO_QUERY,
-      c.req.query(),
-    );
   };
 }

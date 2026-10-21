@@ -4,12 +4,8 @@ import { HTTPException } from 'hono/http-exception';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { issueRelationInputSchema } from '../../issues/relations-service.js';
-import {
-  declaresInput,
-  refuseQueryNotTaken,
-  validatorDeclarations,
-  zValidator,
-} from './validator.js';
+import { refuseQueryNotTaken } from './input-not-taken.js';
+import { declaresInput, validatorDeclarations, zValidator } from './validator.js';
 
 const schema = z.object({ n: z.coerce.number().int().min(1) });
 
