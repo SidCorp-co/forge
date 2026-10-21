@@ -8,6 +8,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/lib/api/client";
 import { AddAgentDialog } from "./add-agent-dialog";
 
+vi.mock("next/link", () => ({
+  default: ({ href, children }: { href: string; children: React.ReactNode }) => <a href={href}>{children}</a>,
+}));
+
 const candidate = (handle: string, projectId: string, name: string) => ({
   userId: `u-${handle}`,
   handle,
@@ -73,9 +77,15 @@ describe("adding the agent of a project that was deleted", () => {
     expect(empty).not.toMatch(/member role/);
   });
 
-  it("still says who adds an agent where there was never one to offer", () => {
+  // r32, judge-90: an admin whose project's one agent was already in the room read that an agent is
+  // added by somebody holding a member role, a role they held. The panel says what is true instead.
+  it("says every agent the reader can add is already here, and where another one comes from", () => {
     handles = [];
     render(<AddAgentDialog conversationId="c1" room={{ shape: "group", scopeProjects: [] }} open onClose={() => {}} />);
-    expect(screen.getByTestId("agent-candidates-empty").textContent).toMatch(/member role on its project/);
+    const empty = screen.getByTestId("agent-candidates-empty");
+    expect(empty.textContent).toMatch(/^Every agent you can add is already in this room\./);
+    expect(empty.textContent).toMatch(/Each project has its own agent/);
+    expect(empty.textContent).not.toMatch(/role/);
+    expect(screen.getByRole("link", { name: "Start a new project" }).getAttribute("href")).toBe("/projects?new=1");
   });
 });

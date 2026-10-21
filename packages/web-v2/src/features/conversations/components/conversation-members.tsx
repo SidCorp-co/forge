@@ -233,9 +233,16 @@ function MemberRow({
             {isAgent ? (project?.name ?? "a project this room is no longer about") : "Person"}
           </span>
         </div>
+        {/* Core marks an agent by its role on the room's project, the one thing answering here asks of
+            it (ISS-1229 r32, judge-90): a mark read off its personal tokens sat beside its answers. */}
         {isAgent && member.reachable === false && (
-          <Tooltip prose label="This agent holds no live credential or has lost its project role, so it cannot answer here.">
-            <span className="fg-caption rounded bg-surface px-1.5 py-0.5 text-muted">can't act</span>
+          <Tooltip
+            prose
+            label={`This agent no longer holds a role on ${project?.name ?? "the project it was added for"}, so it cannot answer here.`}
+          >
+            <span data-testid="member-cannot-answer" className="fg-caption rounded bg-surface px-1.5 py-0.5 text-muted">
+              can't answer
+            </span>
           </Tooltip>
         )}
         {/* A held control stays focusable, so its reason reaches a keyboard reader too (r27 review F1). */}
