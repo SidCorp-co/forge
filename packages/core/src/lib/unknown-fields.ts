@@ -198,6 +198,8 @@ function straysIn(schema: ZodType, value: unknown, path: PropertyKey[]): StrayAt
       const takes = def.options.filter((o) => LIST_TAKERS.has(defOf(resolved(o)).type));
       return agreed(takes.map((o) => straysIn(o, value, path)));
     }
+    if (def.type === 'intersection' && def.left && def.right)
+      return agreed([def.left, def.right].map((side) => straysIn(side, value, path)));
     const at = (i: number) =>
       def.type === 'array'
         ? def.element

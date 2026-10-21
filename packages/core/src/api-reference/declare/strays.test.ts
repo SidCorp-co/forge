@@ -196,6 +196,51 @@ describe('a field inside a body object that the object does not take (ISS-1421 r
     });
   });
 
+  // Fourth whole-set read: an object taking any field, below the root, hid the closed one in it.
+  it('is refused inside a closed object held by an open one', async () => {
+    const deep = z.object({ outer: z.looseObject({ inner: z.object({ name: z.string() }) }) });
+    const res = await refusing((a) =>
+      a.post('/d', zValidator('json', deep), (c) => c.json({ ok: true })),
+    ).request('/d', post({ outer: { extra: 1, inner: { name: 'n', colour: 'red' } } }));
+    expect(((await res.json()) as Refusal).message).toBe(
+      'The field outer.inner.colour is not one this call takes.',
+    );
+  });
+
+  // Second whole-set read: a root taking any field skipped the closed objects inside it.
+  describe('under a root that takes any field', () => {
+    const loose = z.looseObject({ metadata: z.object({ name: z.string() }) });
+    const sent = { extra: 1, metadata: { name: 'n', colour: 'red' } };
+
+    it.each([
+      [
+        'zValidator',
+        (a: Hono) => a.post('/l', zValidator('json', loose), (c) => c.json({ ok: true })),
+      ],
+      [
+        'declaresInput',
+        (a: Hono) => a.post('/l', declaresInput('json', loose), (c) => c.json({ ok: true })),
+      ],
+    ])('is refused through %s, the extra root field let through', async (_door, mount) => {
+      const res = await refusing((a) => void mount(a)).request('/l', post(sent));
+      expect(((await res.json()) as Refusal).message).toBe(
+        'The field metadata.colour is not one this call takes.',
+      );
+    });
+  });
+
+  it('is refused by a route that parses its own body too', async () => {
+    const own = refusing((a) =>
+      a.post('/o', declaresInput('json', body), (c) => c.json({ ok: true })),
+    );
+    const res = await own.request('/o', post({ story: 's', provenance: { colour: 'red' } }));
+    expect(((await res.json()) as Refusal).message).toBe(
+      'The field provenance.colour is not one this call takes.',
+    );
+  });
+});
+
+describe('a field inside a list, a tuple or a map that a body holds (ISS-1421 r20)', () => {
   // Fifth whole-set read: a list a union takes was not walked, so its entries' strays were dropped.
   it('is refused inside a list that a union takes', async () => {
     const listed = z.object({
@@ -220,6 +265,24 @@ describe('a field inside a body object that the object does not take (ISS-1421 r
     expect(((await res.json()) as Refusal).message).toBe(
       'The field items.0.colour is not one this call takes.',
     );
+  });
+
+  // Ninth whole-set read: a list two intersected list schemas both read was not walked.
+  it('is refused inside a list an intersection reads, and let through where one side takes it', async () => {
+    const entry = z.object({ id: z.string() });
+    const both = z.object({ items: z.intersection(z.array(entry), z.array(entry)) });
+    const either = z.object({ items: z.intersection(z.array(entry), z.array(entry.loose())) });
+    const app = refusing((a) =>
+      a
+        .post('/b', zValidator('json', both), (c) => c.json({ ok: true }))
+        .post('/o', zValidator('json', either), (c) => c.json({ ok: true })),
+    );
+    const sent = { items: [{ id: 'a', colour: 'red' }] };
+    const refused = await app.request('/b', post(sent));
+    expect(((await refused.json()) as Refusal).message).toBe(
+      'The field items.0.colour is not one this call takes.',
+    );
+    expect((await app.request('/o', post(sent))).status).toBe(200);
   });
 
   // Seventh whole-set read: a union whose other option takes anything was refused for a stray.
@@ -285,49 +348,6 @@ describe('a field inside a body object that the object does not take (ISS-1421 r
     ).request('/s', post(sent));
     expect(((await res.json()) as Refusal).message).toBe(
       `The field ${path} is not one this call takes.`,
-    );
-  });
-
-  // Fourth whole-set read: an object taking any field, below the root, hid the closed one in it.
-  it('is refused inside a closed object held by an open one', async () => {
-    const deep = z.object({ outer: z.looseObject({ inner: z.object({ name: z.string() }) }) });
-    const res = await refusing((a) =>
-      a.post('/d', zValidator('json', deep), (c) => c.json({ ok: true })),
-    ).request('/d', post({ outer: { extra: 1, inner: { name: 'n', colour: 'red' } } }));
-    expect(((await res.json()) as Refusal).message).toBe(
-      'The field outer.inner.colour is not one this call takes.',
-    );
-  });
-
-  // Second whole-set read: a root taking any field skipped the closed objects inside it.
-  describe('under a root that takes any field', () => {
-    const loose = z.looseObject({ metadata: z.object({ name: z.string() }) });
-    const sent = { extra: 1, metadata: { name: 'n', colour: 'red' } };
-
-    it.each([
-      [
-        'zValidator',
-        (a: Hono) => a.post('/l', zValidator('json', loose), (c) => c.json({ ok: true })),
-      ],
-      [
-        'declaresInput',
-        (a: Hono) => a.post('/l', declaresInput('json', loose), (c) => c.json({ ok: true })),
-      ],
-    ])('is refused through %s, the extra root field let through', async (_door, mount) => {
-      const res = await refusing((a) => void mount(a)).request('/l', post(sent));
-      expect(((await res.json()) as Refusal).message).toBe(
-        'The field metadata.colour is not one this call takes.',
-      );
-    });
-  });
-
-  it('is refused by a route that parses its own body too', async () => {
-    const own = refusing((a) =>
-      a.post('/o', declaresInput('json', body), (c) => c.json({ ok: true })),
-    );
-    const res = await own.request('/o', post({ story: 's', provenance: { colour: 'red' } }));
-    expect(((await res.json()) as Refusal).message).toBe(
-      'The field provenance.colour is not one this call takes.',
     );
   });
 });
