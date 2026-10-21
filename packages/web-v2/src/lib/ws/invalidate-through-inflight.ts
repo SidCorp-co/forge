@@ -22,7 +22,8 @@ export function invalidateThroughInFlight(qc: QueryClient, filters: QueryFilters
 			}
 			if (q.state.fetchStatus !== "idle") continue;
 			outstanding.delete(q);
-			qc.invalidateQueries({ queryKey: q.queryKey, exact: true });
+			// The caller's predicate is asked again of the settled query: it may have just been refused.
+			qc.invalidateQueries({ queryKey: q.queryKey, exact: true, predicate: filters.predicate });
 		}
 		if (outstanding.size === 0) off?.();
 	};

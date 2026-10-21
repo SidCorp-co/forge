@@ -6,7 +6,7 @@ import { useToast } from "@/providers/toast-provider";
 import { runsApi } from "./api";
 import type { AnalyticsOpts } from "./types";
 import { failureToast } from "@/lib/api/failure-toast";
-import { pollUnlessRefused, refetchRefusedOnFocus } from "@/lib/api/read-failed";
+import { pollUnlessRefused } from "@/lib/api/read-failed";
 
 /** Per-project run list. Keyed `['pipeline-runs','list',projectId]` — the
  *  router invalidates the `['pipeline-runs','list']` prefix. */
@@ -16,8 +16,7 @@ export function useProjectRuns(projectId: string | undefined) {
     queryFn: () => runsApi.runsForProject({ projectId: projectId as string }),
     enabled: !!projectId,
     // A box's ledger report moves a run's word without an event, so the list polls with the report.
-    refetchInterval: pollUnlessRefused(LIVE_READ_POLL_MS),
-    refetchOnWindowFocus: refetchRefusedOnFocus,
+    refetchInterval: (query) => pollUnlessRefused(query, LIVE_READ_POLL_MS),
   });
 }
 
@@ -28,8 +27,7 @@ export function useRun(runId: string | undefined, enabled = true) {
     queryKey: ["pipeline-run", runId],
     queryFn: () => runsApi.run(runId as string),
     enabled: enabled && !!runId,
-    refetchInterval: pollUnlessRefused(LIVE_READ_POLL_MS),
-    refetchOnWindowFocus: refetchRefusedOnFocus,
+    refetchInterval: (query) => pollUnlessRefused(query, LIVE_READ_POLL_MS),
   });
 }
 

@@ -83,11 +83,10 @@ describe("a refusal that stands", () => {
 	});
 
 	it("stops the poll on a standing refusal and keeps it otherwise", () => {
-		const poll = pollUnlessRefused(20_000);
-		expect(poll(at(new ApiError(403, "Not a project member.", "FORBIDDEN")))).toBe(false);
-		expect(poll(at(new ApiError(503, "Restarting.", "UNAVAILABLE")))).toBe(20_000);
-		expect(poll(at(null))).toBe(20_000);
-		expect(pollUnlessRefused(() => false)(at(null))).toBe(false);
+		expect(pollUnlessRefused(at(new ApiError(403, "Not a project member.", "FORBIDDEN")), 20_000)).toBe(false);
+		expect(pollUnlessRefused(at(new ApiError(503, "Restarting.", "UNAVAILABLE")), 20_000)).toBe(20_000);
+		expect(pollUnlessRefused(at(null), 20_000)).toBe(20_000);
+		expect(pollUnlessRefused(at(null), false)).toBe(false);
 	});
 
 	it("asks a standing refusal again on focus, whatever its age, and leaves the rest to the poll", () => {

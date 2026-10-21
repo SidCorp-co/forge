@@ -37,9 +37,8 @@ export function refusalStands(error: unknown): boolean {
 type LiveQuery = Pick<Query, "state">;
 
 /** A live poll that stops on a standing refusal, read again on Retry, focus or a frame naming a change. */
-export function pollUnlessRefused<Q extends LiveQuery>(ms: number | ((query: Q) => number | false)) {
-	return (query: Q): number | false =>
-		refusalStands(query.state.error) ? false : typeof ms === "number" ? ms : ms(query);
+export function pollUnlessRefused(query: LiveQuery, ms: number | false): number | false {
+	return refusalStands(query.state.error) ? false : ms;
 }
 
 /** The person coming back to the tab is the moment a standing refusal is asked again. */
