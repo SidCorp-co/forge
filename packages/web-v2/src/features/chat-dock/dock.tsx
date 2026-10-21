@@ -9,6 +9,8 @@ import { DOCK_SIZE_KEY, type DockSize, settleDockSize } from "./dock-size";
 
 export const DOCK_OPEN_ON_KEY = "web-v2:chat-dock-open-on";
 export const DOCK_PINNED_KEY = "web-v2:chat-dock-pinned";
+/** Marks the panel whose links and actions carry the dock to the page they open; the phone's slide-over has none. */
+export const DOCK_CARRIES_ATTR = "data-chat-dock-carries";
 
 export interface ChatDockApi {
   projectId: string | null;
@@ -48,12 +50,27 @@ export function useChatDockState(projectId: string | null): ChatDockApi {
   const doorRef = useRef<DockDoor | null>(null);
   const target = targetInScope(picked, projectId);
 
-  // the dock remembers the page it was opened on, so a new page — reached in the app or loaded
-  // afresh — finds it closed unless pinned (REQ-11 BC-8); a query change (a peek opening) is the same page
-  const open = openOn !== null && (pinned || openOn === pathname);
+  // a link or action taken inside the docked panel carries it to the page it opens (owner 2026-10-21):
+  // the last click decides, so a click on the page or its menus, or a browser Back, leaves the rule below
+  const [carry, setCarry] = useState(false);
   useEffect(() => {
-    if (openOn !== null && !pinned && openOn !== pathname) setOpenOn(null);
-  }, [openOn, pinned, pathname, setOpenOn]);
+    const mark = (e: Event) => setCarry(e.target instanceof Element && e.target.closest(`[${DOCK_CARRIES_ATTR}]`) !== null);
+    const drop = () => setCarry(false);
+    document.addEventListener("click", mark, true);
+    window.addEventListener("popstate", drop);
+    return () => {
+      document.removeEventListener("click", mark, true);
+      window.removeEventListener("popstate", drop);
+    };
+  }, []);
+
+  // the dock remembers the page it was opened on, so a new page — reached in the app or loaded
+  // afresh — finds it closed unless pinned or carried (REQ-11 BC-8); a query change (a peek opening) is the same page
+  const open = openOn !== null && (pinned || openOn === pathname || carry);
+  useEffect(() => {
+    if (openOn === null || pinned || openOn === pathname) return;
+    setOpenOn(carry ? pathname : null);
+  }, [openOn, pinned, pathname, carry, setOpenOn]);
   const setOpen = useCallback(
     (next: boolean) => setOpenOn(next ? pathname : null),
     [pathname, setOpenOn],

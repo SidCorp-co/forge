@@ -6,7 +6,7 @@ import { useProjectEcosystems } from "@/features/ecosystem";
 import { useProjects } from "@/features/projects";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
-import { type ChatDockApi, usePageRoom } from "@/features/chat-dock";
+import { type ChatDockApi, DOCK_CARRIES_ATTR, usePageRoom } from "@/features/chat-dock";
 import { DockPreview } from "./dock-preview";
 import { type DockSize, dockOverPage, dockSizes, dockWidth, sizeAt, sizeFromDrag } from "@/features/chat-dock";
 import { isScopedRoom, targetConversationId } from "@/features/chat-dock";
@@ -403,6 +403,7 @@ export function ChatDock({ dock, page }: { dock: ChatDockApi; page: RefObject<HT
       aria-label={dockTitle(t)}
       data-testid="chat-dock"
       data-dock-placement={over ? "over" : "beside"}
+      {...{ [DOCK_CARRIES_ATTR]: "" }}
       className={
         over
           ? "fixed inset-y-0 right-0 z-30 hidden flex-col border-l border-line bg-app md:flex"
