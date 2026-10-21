@@ -10,6 +10,7 @@ import type {
   ReleaseState,
   ReleaseWaitingKind,
 } from '@forge/contracts/releases';
+import { isDecisionAct } from '@forge/contracts/needs-you-decisions';
 import { type BcVerdict, criteriaCoverageOf } from '@forge/contracts/requirements';
 import { type Said, say } from '@forge/contracts/said';
 import {
@@ -60,11 +61,20 @@ const YOU = say('standing.who.you');
 const MASTER = say('standing.who.master');
 const RELEASE_RUN = say('standing.who.releaseRun');
 
+/**
+ * A release's turn. Needs you holds decisions only (REQ-48 BC-11, `lib/standing-times.ts:withTimes`
+ * for the other slices): an act of the viewer's that no decision carries, a cut or a target to
+ * declare, reads `waiting` on them, so the list and the needs-me read count the same rows.
+ */
 const turn = (
   attentionGroup: ReleaseAttentionGroup,
   kind: ReleaseWaitingKind,
   says: WaitingSays,
-): Turn => ({ attentionGroup, waitingOn: waitingOn(kind, says) });
+): Turn => ({
+  attentionGroup:
+    attentionGroup === 'needs_you' && !isDecisionAct(says.act) ? 'waiting' : attentionGroup,
+  waitingOn: waitingOn(kind, says),
+});
 
 /**
  * A draft a gate holds waits on whoever owes the first act someone can take: the master for an act

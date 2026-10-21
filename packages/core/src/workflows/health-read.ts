@@ -29,7 +29,7 @@ import { type HealthViewer, openFeedbackOf } from './health-ports.js';
 import { deriveHealth, type HealthFacts, type PlannedTarget } from './health-rules.js';
 import { rootedOfAll } from './rooted.js';
 import { readStoredWorkflow } from './schema.js';
-import { workflowsOf } from './store.js';
+import { type workflowsOf, workflowsRead } from './store.js';
 import { templateOf } from './template-check.js';
 
 interface WorkflowRow {
@@ -60,7 +60,7 @@ async function contextOf(projectId: string, viewer: HealthViewer): Promise<Proje
     db.execute(sql`SELECT slug FROM projects WHERE id = ${projectId}`),
     openFeedbackOf(viewer, projectId),
     permissionFactsOf(viewer.userId, projectId),
-    workflowsOf(db, projectId),
+    workflowsRead(projectId),
   ]);
   const workflows = doc?.document.workflows;
   return {

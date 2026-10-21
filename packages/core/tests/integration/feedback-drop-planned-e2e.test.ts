@@ -3,7 +3,10 @@
  * `triaged`, which reads planned while an issue carries it). QA of dev.219 could not drop FB-110: it
  * read planned, the item page offered no control, and the decline route refused it. Now a holder of
  * feedback.approve drops it with a reason; every other route is still refused for a planned item;
- * the carrying issue keeps its link and says the item was dropped.
+ * the carrying issue keeps its link and says the item was dropped. The carrier is taken on first: a
+ * draft carrier plans nothing, so the item would read triaged (REQ-48 BC-9, draft_carrier).
+ *
+ * @direct-test-of packages/core/src/feedback/standing.ts
  */
 
 import { sql } from 'drizzle-orm';
@@ -55,6 +58,7 @@ async function planned(title: string): Promise<{ fb: string; issue: string; issu
       issue,
     }),
   );
+  await seedIssueStatus(made2.id as string, 'open');
   return { fb, issue, issueId: made2.id as string };
 }
 
@@ -78,6 +82,15 @@ afterAll(async () => {
 });
 
 describe('a planned item can be dropped with a reason', () => {
+  it('reads triaged and stuck while its carrier is still a draft', async () => {
+    const { fb, issueId } = await planned('Still a draft');
+    await seedIssueStatus(issueId, 'draft');
+    const view = await read(fb);
+    expect(view.phase).toBe('triaged');
+    expect(view.attentionGroup).toBe('stuck');
+    expect(view.times.stuck).toMatchObject({ code: 'draft_carrier' });
+  });
+
   it('offers Drop to a holder of feedback.approve and to nobody else', async () => {
     const { fb } = await planned('The probe item');
     const view = await read(fb);

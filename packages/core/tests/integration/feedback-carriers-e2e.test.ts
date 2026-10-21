@@ -1,6 +1,11 @@
 /**
  * An issue route names one or more carriers (ISS-265): an item delivered by several issues names every
- * one, each carrier lists it, and its phase and waiting-on read all of them.
+ * one, each carrier lists it, and its phase and waiting-on read all of them. A draft carrier plans
+ * nothing yet, so the item reads triaged and stuck until it is taken on (REQ-48 BC-9, draft_carrier).
+ *
+ * @direct-test-of packages/core/src/feedback/standing.ts
+ * @direct-test-of packages/core/src/feedback/standing-carrier.ts
+ * @direct-test-of packages/core/src/feedback/list-standing.ts
  */
 
 import { sql } from 'drizzle-orm';
@@ -58,10 +63,15 @@ async function issue(title: string): Promise<Issue> {
 
 const read = async (fb: string): Promise<Doc> => ok(await say('owner', 'GET', item(fb))).feedback;
 
-async function waitingOn(fb: string): Promise<Doc> {
+async function listed(fb: string): Promise<Doc> {
   const list = ok(await say('member', 'GET', at('/feedback')));
-  return list.feedback.find((f: Doc) => f.key === fb).waitingOn;
+  return list.feedback.find((f: Doc) => f.key === fb);
 }
+
+const waitingOn = async (fb: string): Promise<Doc> => (await listed(fb)).waitingOn;
+
+/** A draft carrier taken on: nothing takes a draft on by itself (issue-lifecycle `draft`). */
+const admit = (issueId: string) => seedIssueStatus(issueId, 'open');
 
 /** A carrier that shipped: `closed` follows a merge mark (ISS-1108), so both are seeded. */
 async function ship(issueId: string): Promise<void> {
@@ -125,12 +135,27 @@ describe('an item delivered by several issues names every one of them', () => {
       carriers: carriers.map((c) => c.key),
     });
     const routed = await read(fb);
-    expect(routed.phase).toBe('planned');
+    expect(routed.phase, 'a draft carrier plans nothing yet').toBe('triaged');
     expect(routed.route).toEqual({
       route: 'issue',
       carriers: carriers.map((c) => ({ key: c.key, status: 'draft' })),
       answer: null,
     });
+  });
+
+  it('reads stuck while its carriers are drafts, waiting on someone to take the first one on', async () => {
+    const [a] = carriers.map((x) => x.key);
+    const row = await listed(fb);
+    expect(row.attentionGroup).toBe('stuck');
+    expect(row.times.stuck).toMatchObject({ code: 'draft_carrier', via: a });
+    expect(row.waitingOn).toMatchObject({ kind: 'person', act: `take on ${a}`, ref: a });
+  });
+
+  it('reads planned once its carriers are taken on', async () => {
+    for (const c of carriers) await admit(c.id);
+    const routed = await read(fb);
+    expect(routed.phase).toBe('planned');
+    expect(routed.route.carriers).toEqual(carriers.map((c) => ({ key: c.key, status: 'open' })));
   });
 
   it('records the triage naming every carrier, and the routing on each carrier issue', async () => {
@@ -156,13 +181,9 @@ describe('an item delivered by several issues names every one of them', () => {
     expect(req.feedback.map((f: Doc) => [f.key, f.via.type])).toContainEqual([fb, 'route']);
   });
 
-  it('waits on every carrier still open, each named', async () => {
-    const [a, b, c] = carriers.map((x) => x.key);
-    expect(await waitingOn(fb)).toMatchObject({
-      kind: 'issue',
-      who: `${a}, ${b} and ${c}`,
-      act: 'ship',
-    });
+  it('waits on its first carrier still open, as that issue’s own standing says', async () => {
+    const [a] = carriers.map((x) => x.key);
+    expect(await waitingOn(fb)).toMatchObject({ ref: a, act: expect.stringContaining(a) });
   });
 
   it('stays planned while one carrier is open, the others closed or dropped', async () => {
@@ -170,7 +191,10 @@ describe('an item delivered by several issues names every one of them', () => {
     await ship(a?.id as string);
     await seedIssueStatus(b?.id as string, 'dropped');
     expect((await read(fb)).phase).toBe('planned');
-    expect(await waitingOn(fb)).toMatchObject({ kind: 'issue', who: c?.key, ref: c?.key });
+    expect(await waitingOn(fb)).toMatchObject({
+      ref: c?.key,
+      act: expect.stringContaining(c?.key),
+    });
   });
 
   it('reads resolved once every carrier that is not dropped is closed', async () => {
@@ -194,9 +218,10 @@ describe('an item whose every carrier is dropped goes back to triage', () => {
     expect((await read(fb)).phase).toBe('triaged');
     const next = await issue('Flicker, for real');
     ok(await triage(fb, { answers: TRIAGE_ANSWERS, route: 'issue', issue: next.key }));
+    await admit(next.id);
     const again = await read(fb);
     expect(again.phase).toBe('planned');
-    expect(again.route.carriers).toEqual([{ key: next.key, status: 'draft' }]);
+    expect(again.route.carriers).toEqual([{ key: next.key, status: 'open' }]);
   });
 });
 

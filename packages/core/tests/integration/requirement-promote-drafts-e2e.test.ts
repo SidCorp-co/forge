@@ -7,6 +7,8 @@
  * the waiting line and the act read the same drafts, so both go once they are promoted.
  */
 
+// @direct-test-of packages/core/src/lib/standing-times.ts
+
 import { sql } from 'drizzle-orm';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { api, type Body, userToken } from '../helpers/api.js';
@@ -252,7 +254,9 @@ describe('who may promote, and what there is to promote', () => {
     const asBa = await ok(api(ba, 'GET', at(`/requirements/${req}`)));
     expect(asBa.canSignOff).toBe(true);
     expect(asBa.canPromote).toBe(false);
-    expect((asBa.standing as Body).attentionGroup).toBe('waiting');
+    // only drafts carry it, and nothing opens a draft by itself: stuck at once (REQ-48 BC-9 draft_carrier)
+    expect((asBa.standing as Body).attentionGroup).toBe('stuck');
+    expect(((asBa.standing as Body).times as Body).stuck).toMatchObject({ code: 'draft_carrier' });
     expect((asBa.standing as Body).waitingOn).toMatchObject({
       kind: 'person',
       who: 'a BA or owner who can admit issues',
