@@ -15,9 +15,9 @@ function Summary({ selected }: { selected: readonly NeedsYouDecision[] }) {
   const made = s.yields.map((y) => t(y.n === 1 ? `approvals.yield.${y.kind}` : `approvals.yield.${y.kind}.many`, { n: y.n }));
   return (
     <span className="text-13 text-muted" data-testid="approval-bulk-summary">
-      {made.length > 0 ? t("approvals.bulk.makes", { list: made.join(" · ") }) : t("approvals.bulk.nothing")}
+      {made.length > 0 ? t("approvals.bulk.makes", { list: made.join(" · ") }) : t("approvals.bulk.makesNoChange")}
       {s.checkFirst > 0 ? <span className="font-semibold text-warn-11"> · {t("approvals.bulk.checkFirst", { n: s.checkFirst })}</span> : null}
-      {s.noApprove > 0 ? <span> · {t("approvals.bulk.noApprove", { n: s.noApprove })}</span> : null}
+      {s.noApprove > 0 ? <span> · {t("approvals.bulk.peekOnly", { n: s.noApprove })}</span> : null}
     </span>
   );
 }

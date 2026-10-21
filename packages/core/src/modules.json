@@ -291,7 +291,6 @@
         "masterPasses",
         "mockups",
         "previews",
-        "projectWorkflowDesigns",
         "projects",
         "releaseApprovals",
         "requirementRevisions",
@@ -1148,7 +1147,14 @@
     "standing": {
       "kind": "read-model",
       "context": "operations",
-      "reads": ["agentQuestions", "comments", "criterionVerdicts", "feedback", "issues", "pipelineRuns", "requirements", "suggestions"],
+      "reads": [
+        "agentQuestions",
+        "comments",
+        "criterionVerdicts",
+        "issues",
+        "pipelineRuns",
+        "suggestions"
+      ],
       "serves": ["REQ-48"]
     },
     "status-reports": {
@@ -1482,6 +1488,9 @@
         "workflow-step-health#d-list-summary",
         "design-reconciliation#revise-design"
       ]
+    },
+    "standing": {
+      "serves": ["REQ-48"]
     }
   },
   "runner": {

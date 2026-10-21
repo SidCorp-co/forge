@@ -178,7 +178,7 @@ import { seedBuiltinSkills, sweepPolicyLanded } from './skills/index.js';
 import { forgeStandingTool } from './standing/index.js';
 import { provideStandingPorts } from './standing-ports.js';
 import { provideStatusReportsPorts, statusReportShareSource } from './status-reports/index.js';
-import { forgeStewardNoteTool } from './steward-notes/tool.js';
+import { forgeStewardNoteTool } from './steward-notes/index.js';
 import {
   proposeRequirementDuplicate,
   redactFeedbackSuggestions,

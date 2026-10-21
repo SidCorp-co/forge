@@ -23,7 +23,7 @@ import { useCopy } from "@/lib/i18n/interface-language";
 import { projectRoom } from "@/lib/ws/rooms";
 import { useRoom } from "@/lib/ws/use-room";
 import { DecisionList } from "@/features/needs-you";
-import { approvalsHref } from "@/features/approvals";
+import { approvalsHref } from "@/lib/routes/approvals";
 import { NEEDS_YOU_PERSON_CAP } from "@forge/contracts/steward";
 import { useAttention } from "../hooks";
 import type { AttentionItem, AttentionKind, AttentionView } from "../types";

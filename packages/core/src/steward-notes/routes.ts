@@ -7,7 +7,6 @@ import { invalid, zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { readStewardNote, writeStewardNote } from './service.js';
 
-const NOTE_PATH = '/:id/steward-notes/:subjectKind/:key';
 const NOTE_SHAPE =
   '{ lines: [line 1, line 2?], cites: [{ kind, ref }], claims: { group, waitingKind, ref, stuck, stuckCode, dueAt }, basis, runId }';
 
@@ -18,7 +17,7 @@ const noteParam = z.strictObject({
 });
 
 export const stewardNoteRoutes = new Hono<{ Variables: AuthVars }>();
-stewardNoteRoutes.use(NOTE_PATH, requireAuth(), assertEmailVerified());
+stewardNoteRoutes.use('/:id/steward-notes/:subjectKind/:key', requireAuth(), assertEmailVerified());
 
 const paramCheck = zValidator(
   'param',
@@ -26,7 +25,7 @@ const paramCheck = zValidator(
   invalid('invalid path: /api/projects/<project>/steward-notes/<requirement|feedback>/<key>'),
 );
 
-stewardNoteRoutes.get(NOTE_PATH, paramCheck, async (c) => {
+stewardNoteRoutes.get('/:id/steward-notes/:subjectKind/:key', paramCheck, async (c) => {
   const { id, subjectKind, key } = c.req.valid('param');
   requireHeld(await loadProjectAccess(id, c.get('userId')), 'project.read');
   const { note } = await readStewardNote(id, subjectKind, key);
@@ -34,7 +33,7 @@ stewardNoteRoutes.get(NOTE_PATH, paramCheck, async (c) => {
 });
 
 stewardNoteRoutes.put(
-  NOTE_PATH,
+  '/:id/steward-notes/:subjectKind/:key',
   paramCheck,
   zValidator('json', stewardNoteWriteSchema, invalid(`invalid body: ${NOTE_SHAPE}`)),
   async (c) => {

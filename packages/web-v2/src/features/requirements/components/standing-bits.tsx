@@ -17,6 +17,7 @@ import {
   type RequirementWaitingOn,
 } from "@forge/contracts/requirements";
 import { type BannerTone, LEGEND, StepBar, statusReading, WaitBanner } from "@/design";
+import { StewardNoteLines, useStewardNote } from "@/features/standing";
 import { useCopy, useInterfaceLanguage, useLabel } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
 import { said, saidView } from "@/lib/i18n/said";
@@ -166,3 +167,14 @@ export const agreedTitle = (t: Copy, at: string, name: string | null) =>
 
 /** The diff's inserted and deleted text, in the legend's ready and came-back colours. */
 export const diffColours = { ins: LEGEND.ready, del: LEGEND.err };
+
+/** A requirement page's head: its progress, then the steward's current note under it (REQ-48 BC-7). */
+export function RequirementStandingHead({ projectId, reqKey, standing, slug, inset }: { projectId: string; reqKey: string; standing: RequirementStanding; slug: string; inset: string }) {
+  const note = useStewardNote(projectId, "requirement", reqKey);
+  return (
+    <>
+      <RequirementProgress standing={standing} slug={slug} inset={inset} />
+      <StewardNoteLines note={note} slug={slug} className={inset} />
+    </>
+  );
+}

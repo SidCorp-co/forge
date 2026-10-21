@@ -7,7 +7,7 @@
 import { NEEDS_YOU_PERSON_CAP } from "@forge/contracts/steward";
 import { DecisionList } from "@/features/needs-you";
 import { useNeedsYouDecisions } from "@/features/needs-you";
-import { approvalsHref } from "@/features/approvals";
+import { approvalsHref } from "@/lib/routes/approvals";
 import { useProjectStatus } from "@/features/project-status";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";

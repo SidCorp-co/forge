@@ -12,7 +12,7 @@ import { QueryBoundary } from "@/lib/api/query-boundary";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import { useRouter } from "@/lib/navigation/router";
 import { approveOf, CHIPS, declineOf, drawnOrder, groupsOf, narrowed, oldestOf, recommends } from "../derive";
-import { approvalsHref } from "../routes";
+import { approvalsHref } from "@/lib/routes/approvals";
 import { type Decided, useDecide } from "../use-decide";
 import { useDecisionKeys } from "../use-decision-keys";
 import { DecisionPeek } from "./approval-peek";
