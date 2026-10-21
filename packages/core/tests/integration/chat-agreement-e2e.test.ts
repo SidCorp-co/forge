@@ -68,7 +68,7 @@ describe('an Assistant write is held, and the card writes it as the person', () 
       JSON.stringify({
         kind: 'bug',
         title: 'The dock loses a draft on a tab switch',
-        requirement: reqKey,
+        target: { kind: 'requirement', ref: reqKey },
       }),
     );
     expect(r.isError).toBe(true);
@@ -142,7 +142,11 @@ describe('an Assistant write is held, and the card writes it as the person', () 
     const gate = await gateFor(QUESTION);
     const r = await gate.tools.execute(
       'forge_feedback',
-      JSON.stringify({ kind: 'idea', title: 'Autosave the dock', requirement: reqKey }),
+      JSON.stringify({
+        kind: 'idea',
+        title: 'Autosave the dock',
+        target: { kind: 'requirement', ref: reqKey },
+      }),
     );
     const id = heldId(text(r));
     const declined = await say(

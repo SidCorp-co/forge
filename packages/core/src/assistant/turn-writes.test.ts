@@ -3,7 +3,7 @@ import { toolError } from './tools/mcp-adapter.js';
 import { filingTitle, isWriteCall, turnWrites } from './turn-writes.js';
 
 const filing = (title: string) =>
-  JSON.stringify({ kind: 'bug', title, body: 'x', screen: '/projects/hop/tags' });
+  JSON.stringify({ kind: 'bug', title, body: 'x', target: { kind: 'screen', ref: '/projects/hop/tags' } });
 
 function tracker(failFirst = false) {
   let filed = 0;

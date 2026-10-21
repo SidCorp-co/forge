@@ -14,7 +14,7 @@ const FILING = JSON.stringify({
   kind: 'change_request',
   title: TITLE,
   body: 'Several issues are still drafts and nobody has reviewed them.',
-  screen: '/projects/hop/issues',
+  target: { kind: 'screen', ref: '/projects/hop/issues' },
 });
 
 const tracker = { filed: 0 };

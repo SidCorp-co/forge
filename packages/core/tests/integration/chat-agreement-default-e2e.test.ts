@@ -233,7 +233,12 @@ describe('the Assistant meets the same rule through its own tools and its turn t
       .gate([image])
       .tools.execute(
         'forge_feedback',
-        JSON.stringify({ kind: 'bug', title: 'The dock loses my draft', body: 'Tabs clear it.' }),
+        JSON.stringify({
+          kind: 'bug',
+          title: 'The dock loses my draft',
+          body: 'Tabs clear it.',
+          target: { kind: 'screen', ref: '/projects/hop/issues' },
+        }),
       );
     const card = (await proposals()).find((p) => p.kind === 'feedback' && p.status === 'pending');
     expect(card?.summary.lines).toContain('Attaches the 1 image sent with this message: dock.png');
