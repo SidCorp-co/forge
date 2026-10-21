@@ -110,6 +110,7 @@ const store = vi.hoisted(() => ({
     privateKey: 'pk',
   })),
   listActiveBindingsForProjectProvider: vi.fn(async () => [] as unknown[]),
+  listBindingsForConnection: vi.fn(async (): Promise<unknown[]> => []),
   removedConnectionBoundTo: vi.fn(async (): Promise<unknown> => null),
   updateBinding: vi.fn(async () => ({})),
   updateConnection: vi.fn(async (id: string) => ({ id })),
@@ -398,10 +399,15 @@ describe('GET /integrations/github/manifest-callback — what the mint writes', 
   // ISS-1421 r21 — judge-89: a removed GitHub connection stayed listed, and a fresh install stood a
   // second one beside it that nothing could turn on.
   it('turns the removed connection the project is bound to back on with the new App', async () => {
+    const old = { id: 'binding-old', config: { installationId: 7, repository: 'acme/app' } };
     store.removedConnectionBoundTo.mockResolvedValueOnce({
-      binding: { id: 'binding-old', config: { installationId: 7, repository: 'acme/app' } },
+      binding: old,
       connection: { id: 'connection-removed' },
     });
+    store.listBindingsForConnection.mockResolvedValueOnce([
+      { binding: old },
+      { binding: { id: 'binding-other', config: { installationId: 7 } } },
+    ]);
     const state = signConnectState(process.env.JWT_SECRET as string, {
       projectId: PROJECT_ID,
       userId: ADMIN_B,
@@ -428,6 +434,12 @@ describe('GET /integrations/github/manifest-callback — what the mint writes', 
       config: { repository: 'acme/app' },
       integrationSecret: 'whsec_x',
       active: true,
+    });
+    // Whole-set review F1: a second project on the same App keeps neither the old installation nor
+    // the old secret, and keeps its own switch.
+    expect(store.updateBinding).toHaveBeenCalledWith('binding-other', {
+      config: {},
+      integrationSecret: 'whsec_x',
     });
   });
 

@@ -268,6 +268,17 @@ describe('a removed connection (criterion 216)', () => {
       config: { installationId: 99, repository: 'acme/app' },
       integrationSecret: 'scratch-old-hook',
     });
+    // A second project on the same App, its own switch off (whole-set review F1).
+    const other = await createTestProject(harness.db, ownerId, { orgId: org.id });
+    const otherBinding = await store.createBinding({
+      connectionId: old.id,
+      projectId: other.id,
+      provider: 'github',
+      role: 'service',
+      config: { installationId: 99 },
+      integrationSecret: 'scratch-old-hook',
+    });
+    await store.updateBinding(otherBinding.id, { active: false });
     await store.updateConnection(old.id, { lastHealthStatus: 'error', lastHealthAt: new Date() });
     await call('DELETE', `/api/integration-connections/${old.id}`);
 
@@ -300,6 +311,16 @@ describe('a removed connection (criterion 216)', () => {
     expect(after).toEqual({
       active: true,
       config: { repository: 'acme/app' },
+      integration_secret: 'scratch-new-hook-secret',
+    });
+    const [second] = [
+      ...(await harness.db.execute(
+        sql`SELECT active, config, integration_secret FROM integration_bindings WHERE id = ${otherBinding.id}`,
+      )),
+    ] as { active: boolean; config: Record<string, unknown>; integration_secret: string }[];
+    expect(second).toEqual({
+      active: false,
+      config: {},
       integration_secret: 'scratch-new-hook-secret',
     });
   });

@@ -35,6 +35,7 @@ import {
   decryptConnectionSecrets,
   type IntegrationConnectionRow,
   listActiveBindingsForProjectProvider,
+  listBindingsForConnection,
   removedConnectionBoundTo,
   updateBinding,
   updateConnection,
@@ -331,13 +332,17 @@ async function reattach(
     lastHealthDetail: null,
     lastHealthAt: null,
   });
-  // The old App's installation is not the new App's: the install step records the new one.
-  const { installationId: _old, ...config } = removed.binding.config as Record<string, unknown>;
-  await updateBinding(removed.binding.id, {
-    config,
-    integrationSecret: next.webhookSecret,
-    active: true,
-  });
+  // Every binding of the connection takes the new App's webhook secret and loses the old App's
+  // installation, which is not the new App's: the install step records the new one. Each keeps its
+  // own switch but the one this install was run from, which is turned on.
+  for (const { binding } of await listBindingsForConnection(removed.connection.id)) {
+    const { installationId: _old, ...config } = binding.config as Record<string, unknown>;
+    await updateBinding(binding.id, {
+      config,
+      integrationSecret: next.webhookSecret,
+      ...(binding.id === removed.binding.id ? { active: true } : {}),
+    });
+  }
   return { id: updated?.id ?? removed.connection.id };
 }
 
