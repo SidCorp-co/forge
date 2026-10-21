@@ -272,6 +272,59 @@ describe("a room deleted while it is open", () => {
     );
   });
 
+  // r29 review F2: the deletion event's re-read found the room gone while a send was still out, and
+  // the send's own refusal, arriving second, was swallowed with the text it carried.
+  it("keeps a message still being sent when a re-read finds the room gone first", async () => {
+    let reject: (err: unknown) => void = () => {};
+    send.mockImplementationOnce(() => new Promise((_, no) => (reject = no)));
+    const tree = () => (
+      <QueryClientProvider client={new QueryClient()}>
+        <ConversationChat projectId="p1" conversationId="c1" onRoomGone={vi.fn()} />
+      </QueryClientProvider>
+    );
+    const { rerender } = render(tree());
+    fireEvent.change(screen.getByLabelText("Message"), { target: { value: "the courier moved to 3 pm" } });
+    fireEvent.click(screen.getByLabelText("Send message"));
+    await waitFor(() => expect(send).toHaveBeenCalled());
+
+    roomError = roomGone();
+    rerender(tree());
+    await waitFor(() => expect(toast).toHaveBeenCalledWith(expect.objectContaining({ title: "This room was deleted" })));
+    reject(roomGone());
+
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith(
+        expect.objectContaining({ keep: true, description: expect.stringContaining("“the courier moved to 3 pm”") }),
+      ),
+    );
+  });
+
+  it("keeps a message still waiting its turn when a re-read finds the room gone", async () => {
+    let reject: (err: unknown) => void = () => {};
+    send.mockImplementationOnce(() => new Promise((_, no) => (reject = no)));
+    const tree = () => (
+      <QueryClientProvider client={new QueryClient()}>
+        <ConversationChat projectId="p1" conversationId="c1" onRoomGone={vi.fn()} />
+      </QueryClientProvider>
+    );
+    const { rerender } = render(tree());
+    const box = screen.getByLabelText("Message");
+    fireEvent.change(box, { target: { value: "first" } });
+    fireEvent.click(screen.getByLabelText("Send message"));
+    await waitFor(() => expect(send).toHaveBeenCalled());
+    fireEvent.change(box, { target: { value: "second, still queued" } });
+    fireEvent.click(screen.getByLabelText("Send message"));
+
+    roomError = roomGone();
+    rerender(tree());
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith(
+        expect.objectContaining({ keep: true, description: expect.stringContaining("“second, still queued”") }),
+      ),
+    );
+    reject(new Error("aborted"));
+  });
+
   it("shows the whole unsent message where it cannot be copied", async () => {
     Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
     const long = "x".repeat(260);

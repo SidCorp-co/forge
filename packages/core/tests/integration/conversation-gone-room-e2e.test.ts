@@ -251,8 +251,14 @@ describe('a message appended to a room that is gone', () => {
  * person who could read the room, on their own socket.
  */
 describe('deleting a room', () => {
-  it('tells every person who could read it, the deleter included, that it is gone', async () => {
+  it('tells every person who could read it, in it or not, and nobody who could not', async () => {
     const { id } = await sharedRoom();
+    // Holds a role on the room's project without being in the room, so reads it from the project's
+    // list (r29 review F1).
+    const watcherId = await verifiedUser();
+    await harness.db.execute(
+      sql`INSERT INTO project_members (project_id, user_id, role) VALUES (${projectId}, ${watcherId}, 'viewer')`,
+    );
     const { roomManager } = await import('../../src/ws/server.js');
     const publish = vi.spyOn(roomManager, 'publish');
     try {
@@ -265,6 +271,7 @@ describe('deleting a room', () => {
         expect.arrayContaining([
           [`user:${openerId}`, { conversationId: id }],
           [`user:${peerId}`, { conversationId: id }],
+          [`user:${watcherId}`, { conversationId: id }],
         ]),
       );
       expect(told.map(([room]) => room)).not.toContain(`user:${outsiderId}`);
