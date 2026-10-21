@@ -2,6 +2,10 @@ import type { IntegrationDeclaration } from './types.js';
 
 export const ROTATION_WINDOW_MS = 24 * 60 * 60_000;
 
+/**
+ * The secrets after a new primary credential: every stored and sent field kept, as the drawer
+ * sends the key alone (ISS-1421 r19), and the replaced one held for `ROTATION_WINDOW_MS`.
+ */
 export function mergeRotatedSecrets(
   decl: Pick<IntegrationDeclaration, 'schemas'>,
   currentSecrets: Record<string, unknown> | null,
@@ -14,7 +18,7 @@ export function mergeRotatedSecrets(
   if (typeof incomingPrimary !== 'string' || incomingPrimary.length === 0) return null;
 
   const currentPrimary = currentSecrets?.[primaryField];
-  const result: Record<string, unknown> = { [primaryField]: incomingPrimary };
+  const result: Record<string, unknown> = { ...currentSecrets, ...incoming };
   if (typeof currentPrimary === 'string' && currentPrimary.length > 0) {
     result[previousField] = currentPrimary;
     result.previousTokenExpiresAt = new Date(Date.now() + ROTATION_WINDOW_MS).toISOString();

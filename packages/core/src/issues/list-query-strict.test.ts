@@ -94,8 +94,8 @@ describe('GET /api/projects/:id/issues — unregistered query parameters', () =>
   it('lists every parameter the route does filter on', async () => {
     const { body } = await list('nonsense=1');
 
-    const accepted = (body.details as { accepted: string[] }).accepted;
-    expect(accepted).toEqual(Object.keys(issueFiltersSchema.shape).sort());
+    const takes = (body.details as { takes: string[] }).takes;
+    expect(takes).toEqual(Object.keys(issueFiltersSchema.shape).sort());
     for (const name of ['status', 'priority', 'assigneeId', 'category', 'key', 'limit', 'offset']) {
       expect(body.message).toContain(name);
     }
@@ -107,9 +107,9 @@ describe('GET /api/projects/:id/issues — unregistered query parameters', () =>
     const parsed = grown.safeParse({ nonsense: '1' });
 
     const cause = queryBadRequest(grown, parsed.error as never).cause as {
-      details: { accepted: string[] };
+      details: { takes: string[] };
     };
-    expect(cause.details.accepted).toContain('freshlyAdded');
+    expect(cause.details.takes).toContain('freshlyAdded');
   });
 
   it('carries UNKNOWN_QUERY_PARAMETER, not a bare BAD_REQUEST', async () => {

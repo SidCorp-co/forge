@@ -7,6 +7,7 @@ export const postman: ProviderModule = {
   icon: "command",
   secretField: "apiKey",
   secretPlaceholder: "PMAK-…",
+  previousKeyNote: null,
   drillable: true,
   agentPathKind: "direct-mcp",
   mcpServerName: "postman",

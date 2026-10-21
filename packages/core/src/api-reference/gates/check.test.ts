@@ -15,7 +15,11 @@ const hook = (r: { success: boolean }) => {
 };
 
 /** Every code the build adds on its own, written as a source file would write it. */
-const BUILT_IN = [...PAT_DOOR_REFUSALS.map((r) => `'${r.code}'`), "'INTERNAL_ERROR'"].join(' ');
+const BUILT_IN = [
+  ...PAT_DOOR_REFUSALS.map((r) => `'${r.code}'`),
+  "'INTERNAL_ERROR'",
+  "'UNKNOWN_QUERY_PARAMETER'",
+].join(' ');
 
 /** What the source files write, the built-in codes and the given file texts. */
 const writing = (...files: string[]) =>

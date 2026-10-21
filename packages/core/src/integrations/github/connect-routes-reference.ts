@@ -11,13 +11,17 @@ export const connectQuerySchema = z.object({
 
 export const repositoriesQuerySchema = z.object({ connectionId: z.uuid() });
 
-/** GitHub hands the code and the state back on the first redirect, the installation on the second. */
-export const manifestCallbackQuerySchema = z.object({
+/**
+ * GitHub hands the code and the state back on the first redirect, the installation on the second.
+ * Both take any other key: GitHub shapes these redirects and adds keys of its own (`setup_action`),
+ * so a key Forge does not read is GitHub's, never a caller's slip (ISS-1421 r19).
+ */
+export const manifestCallbackQuerySchema = z.looseObject({
   code: z.string().optional(),
   state: z.string().optional(),
 });
 
-export const installedQuerySchema = z.object({
+export const installedQuerySchema = z.looseObject({
   installation_id: z.string().optional(),
   state: z.string().optional(),
 });

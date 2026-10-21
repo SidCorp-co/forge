@@ -1,4 +1,4 @@
-import { flattenedRefusalWords, schemaRefusalWords } from './zod-sentences.js';
+import { flattenedRefusalWords, schemaRefusalWords, zodMessageWords } from './zod-sentences.js';
 
 /** Codes that lead an MCP refusal (`BAD_REQUEST: ISSUE_KEY_NOT_HELD: …`); they stay as written. */
 const LEADING_CODES = /^(?:[A-Z][A-Z0-9_]*:\s*)*/;
@@ -117,4 +117,27 @@ export function refusalMessage(
     return said === '' ? NOTHING_SAID : INPUT_REFUSED;
   }
   return refusalSentence(message);
+}
+
+/**
+ * Refusal details in `z.flattenError`'s shape with each message a door kept as the library wrote it
+ * ("Invalid input: expected number, received NaN") said as the sentence the message says it in;
+ * a sentence already, and every other shape of details, is kept as sent (ISS-1421 r19).
+ */
+export function wordedDetails(details: unknown, sent?: (field: string) => unknown): unknown {
+  if (!isSchemaDetails(details) || Array.isArray(details)) return details;
+  const d = details as { formErrors: unknown[]; fieldErrors: Record<string, unknown> };
+  const said = (m: unknown, field: string | null): unknown => {
+    if (typeof m !== 'string' || isRefusalSentence(m)) return m;
+    return field === null
+      ? zodMessageWords(null, m)
+      : (flattenedRefusalWords({ [field]: m }, '', sent)[0] ?? m);
+  };
+  const fieldErrors = Object.fromEntries(
+    Object.entries(d.fieldErrors ?? {}).map(([field, v]) => [
+      field,
+      Array.isArray(v) ? v.map((m) => said(m, field)) : said(v, field),
+    ]),
+  );
+  return { ...d, formErrors: d.formErrors.map((m) => said(m, null)), fieldErrors };
 }

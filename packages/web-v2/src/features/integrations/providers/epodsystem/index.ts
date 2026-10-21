@@ -7,6 +7,7 @@ export const epodsystem: ProviderModule = {
   icon: "command",
   secretField: "apiKey",
   secretPlaceholder: "crmk_…",
+  previousKeyNote: null,
   drillable: true,
   agentPathKind: "direct-mcp",
   mcpServerName: "epodsystem",

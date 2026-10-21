@@ -6,6 +6,7 @@ export const agent: ProviderModule = {
   icon: "agent",
   secretField: null,
   secretPlaceholder: null,
+  previousKeyNote: null,
   drillable: false,
   agentPathKind: "none",
   mcpServerName: null,

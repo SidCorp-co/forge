@@ -50,10 +50,10 @@ const connection: ConnectionDirectoryItem = {
   access: { reach: "binding", canManage: false, ownerName: "Dana Reyes" },
 };
 
-function mount() {
+function mount(over: Partial<ConnectionDirectoryItem> = {}) {
   render(
     <QueryClientProvider client={new QueryClient()}>
-      <ConnectionEditDrawer connection={connection} onClose={() => {}} />
+      <ConnectionEditDrawer connection={{ ...connection, ...over }} onClose={() => {}} />
     </QueryClientProvider>,
   );
 }
@@ -123,3 +123,36 @@ describe("the drawer header's connection name", () => {
   });
 });
 
+
+// ISS-1421 r19 — judge-79 read "the previous key stays valid for 24h" on a Coolify token: nothing
+// keeps a key valid at Coolify. Forge keeps the replaced key and falls back to it, and only where
+// it is used is that said, as it is used; Rocket.Chat stores it and never reads it.
+describe("the drawer's Replace key line", () => {
+  const managed = { access: { ...connection.access, canManage: true } };
+
+  it("says what Forge does with the previous key for a provider that uses it", () => {
+    mount({ ...managed, provider: "coolify" });
+    expect(
+      screen.getByText(
+        "A key is stored (never shown). Forge keeps the previous key for 24 hours and uses it wherever Coolify refuses the new one.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/stays valid/)).toBeNull();
+    cleanup();
+    mount({ ...managed, provider: "google" });
+    expect(
+      screen.getByText(
+        "A key is stored (never shown). Forge keeps the previous key for 24 hours and signs in with it wherever Google refuses the new one.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("makes no 24-hour claim for a provider that never reads the previous key", () => {
+    for (const provider of ["rocketchat", "sentry", "postman", "epodsystem"] as const) {
+      mount({ ...managed, provider });
+      expect(screen.getByText("A key is stored (never shown). Enter a new one to replace it.")).toBeInTheDocument();
+      expect(screen.queryByText(/24 hours|24h/)).toBeNull();
+      cleanup();
+    }
+  });
+});

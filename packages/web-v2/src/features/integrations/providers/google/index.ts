@@ -7,6 +7,7 @@ export const google: ProviderModule = {
   icon: "rows",
   secretField: "serviceAccountJson",
   secretPlaceholder: "the service-account JSON file, whole",
+  previousKeyNote: "Forge keeps the previous key for 24 hours and signs in with it wherever Google refuses the new one.",
   drillable: true,
   agentPathKind: "core-mediated",
   mcpServerName: null,

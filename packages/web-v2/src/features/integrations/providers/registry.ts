@@ -26,6 +26,13 @@ export interface ProviderModule {
   secretField: string | null;
   /** Shown in the replace-key box. Null exactly where `secretField` is. */
   secretPlaceholder: string | null;
+  /**
+   * What core does with a replaced key, where it keeps one: Coolify retries a refused call with it
+   * and Google signs in with it, for 24 hours (`ROTATION_WINDOW_MS`). Null where nothing uses it:
+   * Sentry's, Postman's and Epodsystem's MCP entry carries the new key alone, and Rocket.Chat
+   * stores the old one and never reads it.
+   */
+  previousKeyNote: string | null;
   /** Does this provider resolve to a connection a person can drill into (Test / Rotate / Remove)? */
   drillable: boolean;
   agentPathKind: AgentPathKind;

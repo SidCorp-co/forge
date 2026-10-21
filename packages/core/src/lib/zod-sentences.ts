@@ -1,5 +1,5 @@
 import { HTTPException } from 'hono/http-exception';
-import { type ZodType, z } from 'zod';
+import type { ZodType, z } from 'zod';
 import { fieldsNamedAt } from './unknown-fields.js';
 
 /**
@@ -49,7 +49,24 @@ export function zodMessageWords(field: string | null, message: string): string {
   if (!field && said) return asSentence(said);
   const phrase = ownPhrase(said);
   if (field && phrase) return `${subject} ${phrase}`;
+  const named = field ? fieldLed(field, said) : null;
+  if (named) return named;
   return `${subject} was refused. ${asSentence(said || 'It did not match its schema')}`;
+}
+
+/**
+ * A door's own message that opens on the field it is about ("limit must be between 1 and 500",
+ * "agentConfig.stateContext decides nothing"), said as one sentence of that field, so its name is
+ * neither said twice nor capitalised into a name it does not have (ISS-1421 r19).
+ */
+function fieldLed(field: string, said: string): string | null {
+  const bare = field.replace(/`/g, '');
+  const first = said.match(/^\S+/)?.[0] ?? '';
+  if (first !== bare && !first.endsWith(`.${bare}`)) return null;
+  const rest = said.slice(first.length).trim();
+  // "metric `vibes` is …" uses the field's name as a noun; only a word after it makes it the subject.
+  if (!/^[a-z]/.test(rest)) return null;
+  return `The field ${first === bare ? field : first} ${/[.!?]$/.test(rest) ? rest : `${rest}.`}`;
 }
 
 /** A door's own phrase about a field ("required", "must be a uuid"), said of that field. */
@@ -268,10 +285,11 @@ export function schemaRefusalWords(
       // The issue does not say whether the field was absent or held another value, so neither is claimed.
       // A schema's own message ("`pass_rate` is retired") says more than the library's default, and a
       // discriminator's ("Invalid discriminator value. Expected …") is the library's own (ISS-1421 r15).
+      // A schema's own reason leads, the values after it (ISS-1421 r19).
       const own = issue.message && !/^Invalid (?:option|input|discriminator)\b/.test(issue.message);
-      sentences.push(
-        `The field ${named(field)} takes one of the values ${valuesAre}.${own ? ` ${asSentence(issue.message ?? '')}` : ''}`,
-      );
+      const values = `The field ${named(field)} takes one of the values ${valuesAre}.`;
+      const reason = fieldLed(named(field), issue.message ?? '') ?? asSentence(issue.message ?? '');
+      sentences.push(own ? `${reason} ${values}` : values);
       accepted.push({ field, values: (issue.values ?? issue.options ?? []).map(String) });
     } else if (issue.code === 'invalid_type' && /received undefined$/.test(issue.message ?? '')) {
       sentences.push(`The field ${named(field)} is required.`);
@@ -301,21 +319,41 @@ export function schemaRefusalWords(
 }
 
 /**
+ * `z.flattenError`'s shape, each message the sentence the refusal says it in, so `details` never
+ * carries the library's own words ("received NaN") that the message replaced (ISS-1421 r19).
+ */
+export function wordedFlatten(
+  issues: readonly SchemaIssue[],
+  words: Parameters<typeof schemaRefusalWords>[1],
+): { formErrors: string[]; fieldErrors: Record<string, string[]> } {
+  const formErrors: string[] = [];
+  const fieldErrors: Record<string, string[]> = {};
+  for (const issue of issues) {
+    const { sentences } = schemaRefusalWords([issue], words);
+    const key = issue.path?.[0];
+    if (key === undefined) formErrors.push(...sentences);
+    else fieldErrors[String(key)] = [...(fieldErrors[String(key)] ?? []), ...sentences];
+  }
+  return { formErrors, fieldErrors };
+}
+
+/**
  * A REST door's 400 for an input its schema refused: the sentences as its message, and in details
- * the flattened errors it always carried, beside the values each fixed-set field takes.
+ * the same sentences by field, beside the values each fixed-set field takes.
  */
 export function schemaRefused(
   error: z.core.$ZodError,
   schema?: ZodType,
   input?: unknown,
 ): HTTPException {
-  const { sentences, accepted } = schemaRefusalWords(error.issues, {
+  const words = {
     valuesAre: 'listed in details.accepted',
     input,
     ...(schema ? { fieldsAt: (path: readonly PropertyKey[]) => fieldsNamedAt(schema, path) } : {}),
-  });
+  };
+  const { sentences, accepted } = schemaRefusalWords(error.issues, words);
   const details = {
-    ...z.flattenError(error),
+    ...wordedFlatten(error.issues, words),
     ...(accepted.length > 0
       ? { accepted: Object.fromEntries(accepted.map((a) => [a.field, a.values])) }
       : {}),

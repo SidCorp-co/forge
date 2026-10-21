@@ -1,3 +1,5 @@
+import { UNKNOWN_QUERY_PARAMETER } from '../../lib/query-strict.js';
+import { fieldsPolicy } from '../../lib/unknown-fields.js';
 import { PAT_DOOR_REFUSALS } from '../../middleware/pat-rest-surface.js';
 import { type Answer, codeFor } from '../declare/describe.js';
 import {
@@ -249,6 +251,10 @@ async function refusalOf(entry: RouteEntry, declaration: ValidatorDeclaration, d
   return refusal;
 }
 
+/** What the reference states for a query key a route does not take. */
+const STRAY_QUERY_KEY_WHEN =
+  'a query parameter this route does not take; details lists the ones it does';
+
 async function responsesOf(entry: RouteEntry, access: Access | null, doc: Document) {
   const responses: Record<string, JsonSchema> = {};
   const errors: ErrorCodes = new Map();
@@ -310,6 +316,9 @@ async function responsesOf(entry: RouteEntry, access: Access | null, doc: Docume
     'an unexpected failure; nothing about the request is to blame',
   );
   for (const declaration of entry.validators) {
+    // Every query refuses a key it does not take, whoever parses it (ISS-1421 r19).
+    if (declaration.target === 'query' && fieldsPolicy(declaration.schema) !== 'open')
+      addCode(errors, 400, UNKNOWN_QUERY_PARAMETER, STRAY_QUERY_KEY_WHEN);
     if (declaration.enforced === false) continue;
     const refusal = await refusalOf(entry, declaration, doc);
     if (refusal.kind === 'refused')

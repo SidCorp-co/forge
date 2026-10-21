@@ -111,7 +111,7 @@ export function useProbeRocketchatRooms(projectId: string | undefined) {
  *  redirects back through the callback, so a refetch would re-read the same empty list. */
 export function useGitHubConnect(projectId: string | undefined) {
   return useMutation({
-    mutationFn: (params: { org?: string; environment?: string; orgId?: string }) =>
+    mutationFn: (params: { org?: string; orgId?: string }) =>
       integrationsApi.githubConnect(projectId as string, params),
   });
 }

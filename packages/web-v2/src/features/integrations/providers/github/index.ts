@@ -7,6 +7,7 @@ export const github: ProviderModule = {
   icon: "github",
   secretField: null,
   secretPlaceholder: null,
+  previousKeyNote: null,
   drillable: true,
   agentPathKind: "core-mediated",
   mcpServerName: null,

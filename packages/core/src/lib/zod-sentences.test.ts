@@ -31,10 +31,28 @@ describe('schemaRefused', () => {
     expect(r.message).not.toMatch(/in_progress|awaiting_release|Invalid input/);
   });
 
-  it('keeps the flattened field errors every caller already read', () => {
+  it('keeps the flattened field errors every caller already read, in the words of the message', () => {
     const r = refused({ toStatus: 'shipped' });
-    expect(r.details.fieldErrors).toHaveProperty('toStatus');
+    expect(r.details.fieldErrors).toEqual({
+      toStatus: ['The field toStatus takes one of the values listed in details.accepted.'],
+    });
     expect(r.details.formErrors).toEqual([]);
+  });
+
+  // ISS-1421 r19 — judge-79: details.fieldErrors said "received NaN" where the message quoted the value.
+  it('says a number sent a word the same way in details as in the message, never NaN', () => {
+    const query = z.object({ limit: z.coerce.number() }).strict();
+    const r = query.safeParse({ limit: 'abc', colour: 'red' });
+    if (r.success) throw new Error('expected a refusal');
+    const err = schemaRefused(r.error, query, { limit: 'abc', colour: 'red' });
+    const details = (err.cause as { details: { formErrors: string[]; fieldErrors: unknown } })
+      .details;
+    expect(details.fieldErrors).toEqual({ limit: ['The field limit takes a number, not "abc".'] });
+    expect(details.formErrors).toEqual(['The field colour is not one this call takes.']);
+    expect(err.message).toBe(
+      'The field limit takes a number, not "abc". The field colour is not one this call takes.',
+    );
+    expect(JSON.stringify(details)).not.toMatch(/NaN|Invalid input|Unrecognized/);
   });
 
   it("words a discriminator outside its values as Forge's sentence, never zod's (ISS-1421 r15)", () => {
@@ -95,13 +113,27 @@ describe('schemaRefused', () => {
     );
   });
 
-  it("keeps a schema's own message for a fixed-set field", () => {
+  it("leads with a schema's own reason for a fixed-set field, the values after it", () => {
     const own = z.object({ metric: z.enum(['cost'], { error: '`pass_rate` is retired' }) });
     const r = own.safeParse({ metric: 'pass_rate' });
     if (r.success) throw new Error('expected a refusal');
     expect(schemaRefused(r.error).message).toBe(
-      'The field metric takes one of the values listed in details.accepted. `pass_rate` is retired.',
+      '`pass_rate` is retired. The field metric takes one of the values listed in details.accepted.',
     );
+  });
+
+  it('says a reason naming the field as a noun as its own sentence, and one with a verb as the field', () => {
+    const noun = z.object({ metric: z.enum(['cost'], { error: 'metric `vibes` is not served' }) });
+    const verb = z.object({
+      eligible: z.enum(['true'], { error: 'eligible must be true or false' }),
+    });
+    const a = noun.safeParse({ metric: 'vibes' });
+    const b = verb.safeParse({ eligible: 'x' });
+    if (a.success || b.success) throw new Error('expected refusals');
+    expect(schemaRefused(a.error).message).toMatch(
+      /^Metric `vibes` is not served\. The field metric/,
+    );
+    expect(schemaRefused(b.error).message).toMatch(/^The field eligible must be true or false\. /);
   });
 
   it('opens a whole-body refusal with a capital', () => {

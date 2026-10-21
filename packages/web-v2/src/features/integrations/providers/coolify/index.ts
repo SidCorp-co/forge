@@ -7,6 +7,7 @@ export const coolify: ProviderModule = {
   icon: "server",
   secretField: "apiToken",
   secretPlaceholder: "Coolify API token",
+  previousKeyNote: "Forge keeps the previous key for 24 hours and uses it wherever Coolify refuses the new one.",
   drillable: true,
   agentPathKind: "core-mediated",
   mcpServerName: null,

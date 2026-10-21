@@ -179,8 +179,9 @@ describe('lanes the pool cannot brief are refused by name', () => {
       });
       expect(res.status).toBe(400);
       const body = await res.text();
-      expect(body).toContain(
-        `job type '${type}' was a stage of the staged pipeline and is retired`,
+      // The retired stage is the reason, so it is the refusal's opening sentence (ISS-1421 r19).
+      expect(JSON.parse(body).message).toMatch(
+        new RegExp(`^Job type '${type}' was a stage of the staged pipeline and is retired`),
       );
       expect(body).toContain('custom, pm, smoke, release_batch, reconcile, verify_skill, drive');
       expect(await count('jobs')).toBe(0);

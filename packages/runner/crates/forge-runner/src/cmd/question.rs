@@ -45,7 +45,8 @@ pub enum Command {
 
 #[derive(ClapArgs)]
 pub struct AskArgs {
-    /// The project to ask under: the slug `bind` knows, or the project's id.
+    /// The project to ask under: a slug this box has bound with `bind`, or the
+    /// project's id (a uuid). Any other value is refused here, before it is sent.
     #[arg(long)]
     pub project: String,
     /// What is being asked, in the words the person will read.
@@ -60,8 +61,9 @@ pub struct AskArgs {
     /// Which option is recommended, by id.
     #[arg(long)]
     pub recommend: Option<String>,
-    /// The issue this is about. Left out, the question is the box's own and is
-    /// answered on the Agents screen's Questions tab rather than on an issue.
+    /// The issue this is about, by its id (a uuid), not its key such as ISS-12.
+    /// Left out, the question is the box's own and is answered on the Agents
+    /// screen's Questions tab rather than on an issue.
     #[arg(long)]
     pub issue: Option<String>,
     /// The run this question belongs to. Minted where absent, and printed
@@ -160,13 +162,49 @@ fn options_of(raw: &[String], authority: &str) -> anyhow::Result<serde_json::Val
 }
 
 /// The project id to ask under: a slug this box has bound resolves to the id
-/// core knows it by, and anything else is sent as given so core refuses the
-/// value the caller actually typed rather than one this verb invented.
-fn project_id_of(cfg: &Config, project: &str) -> String {
-    cfg.bindings
-        .get(project)
-        .and_then(|b| b.project_id.clone())
-        .unwrap_or_else(|| project.to_string())
+/// core knows it by, and a project id (a uuid) is sent as given. Anything else
+/// is refused here, naming the slugs this box has bound: core reads the field as
+/// an id and could only say the slug "is not a valid UUID" (ISS-1421 r19).
+fn project_id_of(cfg: &Config, project: &str) -> anyhow::Result<String> {
+    if let Some(id) = cfg.bindings.get(project).and_then(|b| b.project_id.clone()) {
+        return Ok(id);
+    }
+    let given = project.trim();
+    if uuid::Uuid::parse_str(given).is_ok() {
+        return Ok(given.to_string());
+    }
+    let mut bound: Vec<&str> = cfg
+        .bindings
+        .iter()
+        .filter(|(_, b)| b.project_id.is_some())
+        .map(|(slug, _)| slug.as_str())
+        .collect();
+    bound.sort_unstable();
+    let choices = if bound.is_empty() {
+        "This box has bound no project, so pass the project's id.".to_string()
+    } else {
+        format!("This box has bound {}.", bound.join(", "))
+    };
+    anyhow::bail!(
+        "`--project {project}` is neither a slug this box has bound nor a project id. \
+         `--project` takes a bound slug or the project's id, which is a uuid. {choices}"
+    )
+}
+
+/// The issue this ask is about, by id. A key such as `ISS-12` is refused here
+/// rather than sent, because core reads the field as an id and could only say it
+/// "is not a valid UUID" (ISS-1421 r19).
+fn issue_id_of(issue: Option<&str>) -> anyhow::Result<Option<String>> {
+    let Some(given) = issue.map(str::trim) else {
+        return Ok(None);
+    };
+    if uuid::Uuid::parse_str(given).is_ok() {
+        return Ok(Some(given.to_string()));
+    }
+    anyhow::bail!(
+        "`--issue {given}` is not an issue id. `--issue` takes the issue's id, which is a uuid, \
+         not its key such as ISS-12. Leave `--issue` off to ask on the Agents screen instead."
+    )
 }
 
 /// The identity this ask is registered under.
@@ -225,7 +263,7 @@ async fn send_ask(
             id,
             project_id,
             run_id,
-            issue_id: a.issue.as_deref(),
+            issue_id: a.issue.as_deref().map(str::trim),
             agent_session_id: None,
             prompt: &a.prompt,
             blocker_kind: &a.blocker,
@@ -246,9 +284,10 @@ async fn ask(ctx: Ctx, a: AskArgs) -> anyhow::Result<()> {
     // costs no round trip and reads as this verb's refusal, not core's.
     shape_of(&a)?;
     run_identity(a.run.as_deref())?;
+    issue_id_of(a.issue.as_deref())?;
     let cfg = Config::load()?;
+    let project_id = project_id_of(&cfg, &a.project)?;
     let client = client_for(&ctx, &cfg)?;
-    let project_id = project_id_of(&cfg, &a.project);
     let id = uuid::Uuid::new_v4().to_string();
     let run_id = run_identity(a.run.as_deref())?;
     match send_ask(&client, &a, &project_id, &id, &run_id).await {
@@ -485,13 +524,46 @@ mod tests {
                 project_id: Some("p-uuid".into()),
             },
         );
-        assert_eq!(project_id_of(&cfg, "forge-dev"), "p-uuid");
+        assert_eq!(project_id_of(&cfg, "forge-dev").unwrap(), "p-uuid");
     }
 
     #[test]
-    fn an_unbound_project_is_sent_exactly_as_it_was_typed() {
+    fn a_project_id_is_sent_as_given() {
         let cfg = Config::default();
-        assert_eq!(project_id_of(&cfg, "typo-dev"), "typo-dev");
+        let id = "0b7c1f4e-2a9d-4c3b-8e5f-6a7b8c9d0e1f";
+        assert_eq!(project_id_of(&cfg, id).unwrap(), id);
+    }
+
+    #[test]
+    fn an_unbound_slug_is_refused_here_naming_what_project_takes_and_what_is_bound() {
+        let mut cfg = Config::default();
+        cfg.bindings.insert(
+            "forge-dev".into(),
+            forge_runner_core::config::Binding {
+                repo_path: std::path::PathBuf::from("/tmp/forge-dev"),
+                branch: None,
+                project_id: Some("p-uuid".into()),
+            },
+        );
+        let err = project_id_of(&cfg, "typo-dev").unwrap_err().to_string();
+        assert!(err.contains("`--project typo-dev`"), "{err}");
+        assert!(err.contains("uuid"), "{err}");
+        assert!(err.contains("This box has bound forge-dev."), "{err}");
+        assert!(!err.contains("not a valid UUID"), "{err}");
+        let none = project_id_of(&Config::default(), "typo-dev")
+            .unwrap_err()
+            .to_string();
+        assert!(none.contains("bound no project"), "{none}");
+    }
+
+    #[test]
+    fn an_issue_key_is_refused_here_naming_that_issue_takes_an_id() {
+        let err = issue_id_of(Some("ISS-12")).unwrap_err().to_string();
+        assert!(err.contains("`--issue ISS-12` is not an issue id"), "{err}");
+        assert!(err.contains("uuid"), "{err}");
+        let id = "0b7c1f4e-2a9d-4c3b-8e5f-6a7b8c9d0e1f";
+        assert_eq!(issue_id_of(Some(id)).unwrap().as_deref(), Some(id));
+        assert_eq!(issue_id_of(None).unwrap(), None);
     }
 
     #[test]

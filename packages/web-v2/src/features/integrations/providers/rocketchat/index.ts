@@ -7,6 +7,7 @@ export const rocketchat: ProviderModule = {
   icon: "inbox",
   secretField: "authToken",
   secretPlaceholder: "bot personal-access token",
+  previousKeyNote: null,
   drillable: true,
   agentPathKind: "none",
   mcpServerName: null,
