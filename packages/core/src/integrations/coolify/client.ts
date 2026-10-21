@@ -39,9 +39,11 @@ function statusWords(status: number): string {
   return name ? `${status} ${name}` : `HTTP ${status}`;
 }
 
+/** The saved address without its scheme: its host, and the path a request was sent under where it has one. */
 function hostOf(baseUrl: string): string {
   try {
-    return new URL(baseUrl).host || baseUrl;
+    const url = new URL(baseUrl);
+    return `${url.host}${url.pathname.replace(/\/+$/, '')}` || baseUrl;
   } catch {
     return baseUrl;
   }
@@ -83,13 +85,19 @@ export function describeCoolifyForbidden(err: CoolifyApiError): string {
   return `Coolify recognised the API token but refused ${route} (HTTP 403): the token is missing ${missing}. Widen this token's abilities in Coolify (Keys & Tokens → edit the token) — the credential itself is valid, so replacing it will not change this.`;
 }
 
-/** A 404 here does not say whether the route or the application is missing, so the refusal says that and quotes Coolify's body. */
-export function describeCoolifyRollbackImagesRefusal(err: CoolifyApiError): string {
+/** Every refusal reading a Coolify answer words it here, so none says "Coolify answered" (ISS-1421 r17). */
+export function describeCoolifyAnswer(err: CoolifyApiError): string {
   if (err.status === 403) return describeCoolifyForbidden(err);
-  const said = `Coolify answered HTTP ${err.status} to ${err.route ?? 'the request Forge made'}`;
-  if (err.status !== 404) return said;
+  const said = /[.!?]$/.test(err.message) ? err.message : `${err.message}.`;
+  return err.addressSuspect ? `${said} Check the address saved on this connection.` : said;
+}
+
+/** A 404 here does not say whether the route or the application is missing, so the refusal says that and quotes the body. */
+export function describeCoolifyRollbackImagesRefusal(err: CoolifyApiError): string {
+  if (err.status !== 404) return describeCoolifyAnswer(err);
   const body = err.body.replace(/\s+/g, ' ').trim().slice(0, 200);
-  return `${said}, so Forge has no rollback image list to read and no tag to roll back to. A 404 reads the same whether this Coolify lacks the route or does not know the application (the targets read says whether it lists it).${body ? ` Coolify's body: ${body}` : ''}`;
+  const said = /[.!?]$/.test(err.message) ? err.message : `${err.message}.`;
+  return `${said} Forge has no rollback image list to read and no tag to roll back to. A 404 here reads the same whether the server lacks the route or does not know the application (the targets read says whether it lists it), so check the address saved on this connection first.${body ? ` The body it sent: ${body}` : ''}`;
 }
 
 export interface CoolifyClientOptions {

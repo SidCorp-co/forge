@@ -95,7 +95,7 @@ export const askQuestionBodySchema = z.looseObject({
   sensitive: z.boolean().optional(),
 });
 
-export const questionParamSchema = z.object({ questionId: z.string() });
+export const questionParamSchema = z.object({ questionId: z.uuid() });
 export const questionQuerySchema = z.object({
   runId: z
     .string()

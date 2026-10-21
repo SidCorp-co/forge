@@ -4,7 +4,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { answer } from '../api-reference/declare/describe.js';
-import { declaresInput, zValidator } from '../api-reference/declare/validator.js';
+import { zValidator } from '../api-reference/declare/validator.js';
 import { RULES } from '../config/rate-limits.js';
 import { db } from '../db/client.js';
 import { devices, pairingCodes, projects, runners } from '../db/schema.js';
@@ -42,7 +42,6 @@ import {
   mintCodeParamSchema,
   mintedCodeSchema,
   mintPairingCode,
-  orgIdSchema,
   ownDeviceSchema,
   ownDevicesQuerySchema,
   pairBodySchema,
@@ -128,7 +127,7 @@ deviceOwnerRoutes.get(
   requireAuth(),
   assertEmailVerified(),
   listOwnDevices,
-  declaresInput('query', ownDevicesQuerySchema),
+  zValidator('query', ownDevicesQuerySchema),
   async (c) => {
     const userId = c.get('userId');
     // ISS-477 — optional org scope, NARROWING this owner-scoped list: the filter
@@ -136,14 +135,8 @@ deviceOwnerRoutes.get(
     // caller's own, and an unassigned box has no runner row and so falls under no
     // org scope at all. The organisation's devices are a different population,
     // served by `/api/orgs/:orgId/devices` in `devices/org-routes.ts` (ISS-1162).
-    const orgIdParam = c.req.query('orgId');
-    let orgId: string | undefined;
-    if (orgIdParam !== undefined) {
-      const parsed = orgIdSchema.safeParse(orgIdParam);
-      if (!parsed.success) throw badRequest(z.flattenError(parsed.error));
-      orgId = parsed.data;
-      await assertOrgAccess(orgId, userId, 'member');
-    }
+    const { orgId } = c.req.valid('query');
+    if (orgId !== undefined) await assertOrgAccess(orgId, userId, 'member');
 
     const rows = orgId
       ? await db

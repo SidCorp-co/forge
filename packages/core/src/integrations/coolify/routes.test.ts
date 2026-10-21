@@ -168,9 +168,11 @@ describe('GET rollback-images, when Coolify refuses the read', () => {
     await coolifyAnswers(404, '{"message":"Not found."}');
     const body = (await (await images()).json()) as { code: string; message: string };
     expect(body.code).toBe('COOLIFY_API_ERROR');
+    // ISS-1421 r17 — said of the host that answered, which may not be Coolify.
     expect(body.message).toContain(
-      'Coolify answered HTTP 404 to GET /api/v1/applications/app-uuid/rollback-images',
+      'The server at coolify.example answered 404 Not Found to GET /api/v1/applications/app-uuid/rollback-images, so it may not be Coolify.',
     );
+    expect(body.message).not.toContain('Coolify answered');
     expect(body.message).toContain('no rollback image list to read and no tag to roll back to');
     expect(body.message).toContain('lacks the route or does not know the application');
     expect(body.message).toContain('Not found.');
@@ -183,7 +185,7 @@ describe('GET rollback-images, when Coolify refuses the read', () => {
     const body = (await res.json()) as { message: string };
     // ISS-1421 r6, criterion 98: it ends as a sentence does.
     expect(body.message).toBe(
-      'Coolify answered HTTP 500 to GET /api/v1/applications/app-uuid/rollback-images.',
+      'The server at coolify.example answered 500 Internal Server Error to GET /api/v1/applications/app-uuid/rollback-images.',
     );
   });
 
@@ -291,8 +293,8 @@ describe('the other Coolify routes, when Coolify refuses', () => {
     );
     const res = await app.request(`/${PROJECT_ID}/integrations/coolify/status`);
     expect(res.status).toBe(502);
-    expect(JSON.stringify(await res.json())).toContain(
-      'Coolify answered HTTP 500 to GET /api/v1/resources',
+    expect(((await res.json()) as { message: string }).message).toBe(
+      'The server answered HTTP 500 to GET /api/v1/resources.',
     );
   });
 });
@@ -352,7 +354,7 @@ describe('the application list reads, when Coolify cannot be reached', () => {
     });
     expect(res.status).toBe(424);
     expect(((await res.json()) as { message: string }).message).toBe(
-      'Coolify answered HTTP 500 to GET /api/v1/applications.',
+      'The server answered HTTP 500 to GET /api/v1/applications.',
     );
   });
 });

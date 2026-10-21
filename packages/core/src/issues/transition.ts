@@ -217,10 +217,10 @@ transitionRoutes.post(
   '/:id/transition',
   transitionIssue,
   zValidator('param', idParamSchema, (result) => {
-    if (!result.success) throw schemaRefused(result.error);
+    if (!result.success) throw schemaRefused(result.error, idParamSchema, result.data);
   }),
   zValidator('json', transitionBodySchema, (result) => {
-    if (!result.success) throw schemaRefused(result.error);
+    if (!result.success) throw schemaRefused(result.error, transitionBodySchema, result.data);
   }),
   async (c) => {
     const { id } = c.req.valid('param');

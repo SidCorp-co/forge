@@ -72,7 +72,7 @@ export function CoolifyTargetsField({
       </p>
       {apps.isError && (
         <p className="fg-body-sm text-muted">
-          Could not read the application list from Coolify: {formatApiError(apps.error)} Enter the resource
+          Could not read the application list. {formatApiError(apps.error)} Enter the resource
           UUID by hand, or fix the base URL and token above and try again.
         </p>
       )}

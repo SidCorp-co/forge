@@ -238,7 +238,7 @@ describe('CoolifyClient reading a resource it was not given', () => {
     const refused = await client.getResource('res-uuid').catch((e: unknown) => e);
     expect(refused).toMatchObject({ status: 200, addressSuspect: true });
     expect((refused as Error).message).toBe(
-      'The server at httpbin.org answered GET /api/v1/resources with something other than a list of resources, so it may not be Coolify.',
+      'The server at httpbin.org/anything answered GET /api/v1/resources with something other than a list of resources, so it may not be Coolify.',
     );
     expect((refused as Error).message).not.toMatch(/Coolify API error|404/);
   });

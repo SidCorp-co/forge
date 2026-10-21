@@ -397,11 +397,11 @@ devicePoolRoutes.get(
   '/me/questions/:questionId',
   requireDevice(),
   readQuestionAnswer,
-  declaresInput('param', questionParamSchema),
-  declaresInput('query', questionQuerySchema),
+  zValidator('param', questionParamSchema),
+  zValidator('query', questionQuerySchema),
   async (c) => {
-    const { questionId } = questionParamSchema.parse({ questionId: c.req.param('questionId') });
-    const { runId } = questionQuerySchema.parse({ runId: c.req.query('runId') });
+    const { questionId } = c.req.valid('param');
+    const { runId } = c.req.valid('query');
     const waiter = await waiterFor({ questionId, deviceId: c.get('device').id, runId });
     if (!waiter) throw notFound('question');
     return c.json(answer(questionAnswerSchema, { answer: await answerOf(questionId) }));

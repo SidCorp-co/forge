@@ -139,7 +139,7 @@ const commandRefused = fail(
 );
 const coolifyAnswered = fail(
   'COOLIFY_API_ERROR',
-  'Coolify answered with an error status, which the message names',
+  'the address saved on the connection answered with an error status, which the message names',
 );
 
 export const listCoolify = onProject(
@@ -218,8 +218,10 @@ export const rollbackCoolify = onProject(
 
 /** A read of Coolify that got no answer Forge could use, named: 424, which Cloudflare passes through. */
 const coolifyReadFailed = fail({
-  COOLIFY_API_ERROR: 'Coolify refused the read, which the message names',
-  COOLIFY_ANSWER_NOT_JSON: 'Coolify answered something that is not JSON',
+  COOLIFY_API_ERROR:
+    'the address saved on the connection refused the read, which the message names',
+  COOLIFY_ANSWER_NOT_JSON:
+    'the address saved on the connection answered something that is not JSON',
   COOLIFY_UNREACHABLE: 'Forge could not connect to Coolify',
 });
 

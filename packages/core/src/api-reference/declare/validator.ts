@@ -5,7 +5,12 @@ import { matchedRoutes } from 'hono/route';
 import { findTargetHandler } from 'hono/utils/handler';
 import { type ZodType, z } from 'zod';
 import { isBareRefusal } from '../../lib/refusal-sentence.js';
-import { fieldsPolicy, refusesItself, unknownFields } from '../../lib/unknown-fields.js';
+import {
+  fieldsNamedAt,
+  fieldsPolicy,
+  refusesItself,
+  unknownFields,
+} from '../../lib/unknown-fields.js';
 import { schemaRefusalWords, schemaRefused } from '../../lib/zod-sentences.js';
 
 /** What a route's input validator was built from, which the mounted middleware no longer shows. */
@@ -18,13 +23,20 @@ export type ValidatorDeclaration = {
 
 export const validatorDeclarations = new WeakMap<object, ValidatorDeclaration>();
 
-type Parsed = { success: boolean; error?: z.core.$ZodError };
+type Parsed = { success: boolean; error?: z.core.$ZodError; data?: unknown };
 type Hook = (result: Parsed, c: Context) => unknown;
 
 /** The parse's own issues as sentences, and its details with the values each fixed-set field takes. */
-function inWords(error: z.core.$ZodError, details: unknown): { message: string; details: unknown } {
+function inWords(
+  error: z.core.$ZodError,
+  details: unknown,
+  schema: ZodType,
+  input: unknown,
+): { message: string; details: unknown } {
   const { sentences, accepted } = schemaRefusalWords(error.issues, {
     valuesAre: 'listed in details.accepted',
+    input,
+    fieldsAt: (path) => fieldsNamedAt(schema, path),
   });
   if (accepted.length === 0) return { message: sentences.join(' '), details };
   const values = { accepted: Object.fromEntries(accepted.map((a) => [a.field, a.values])) };
@@ -36,16 +48,24 @@ function inWords(error: z.core.$ZodError, details: unknown): { message: string; 
 }
 
 /** A route hook's thrown refusal, re-worded from the parse's own issues where it was not a sentence. */
-function worded(thrown: unknown, error: z.core.$ZodError): unknown {
+function worded(
+  thrown: unknown,
+  result: Parsed & { error: z.core.$ZodError },
+  schema: ZodType,
+): unknown {
   if (!(thrown instanceof HTTPException) || thrown.status >= 500) return thrown;
   if (!isBareRefusal(thrown.message)) return thrown;
   const cause = (thrown.cause ?? {}) as { code?: unknown; details?: unknown };
-  const { message, details } = inWords(error, cause.details);
+  const { message, details } = inWords(result.error, cause.details, schema, result.data);
   return new HTTPException(thrown.status, { message, cause: { ...cause, details } });
 }
 
 /** A refusal a hook answered itself, re-worded the same way; any other answer passes untouched. */
-async function wordedAnswer(answered: Response, error: z.core.$ZodError): Promise<Response> {
+async function wordedAnswer(
+  answered: Response,
+  result: Parsed & { error: z.core.$ZodError },
+  schema: ZodType,
+): Promise<Response> {
   if (answered.status < 400 || answered.status >= 500) return answered;
   if (!answered.headers.get('content-type')?.includes('application/json')) return answered;
   const body = (await answered
@@ -53,7 +73,7 @@ async function wordedAnswer(answered: Response, error: z.core.$ZodError): Promis
     .json()
     .catch(() => null)) as Record<string, unknown> | null;
   if (!body || typeof body.message !== 'string' || !isBareRefusal(body.message)) return answered;
-  const { message, details } = inWords(error, body.details);
+  const { message, details } = inWords(result.error, body.details, schema, result.data);
   return new Response(JSON.stringify({ ...body, message, details }), {
     status: answered.status,
     headers: answered.headers,
@@ -65,18 +85,19 @@ async function wordedAnswer(answered: Response, error: z.core.$ZodError): Promis
  * refusal keeps its status and code and loses only a message that was not a sentence; with no hook,
  * or one that let the failure through, the answer is `schemaRefused`, not the library's raw parse.
  */
-function sentenced(hook: Hook | undefined): Hook {
+function sentenced(hook: Hook | undefined, schema: ZodType): Hook {
   return async (result, c) => {
     if (result.success || !result.error) return hook?.(result, c);
+    const failed = { ...result, error: result.error };
     let answered: unknown;
     try {
       answered = await hook?.(result, c);
     } catch (thrown) {
-      throw worded(thrown, result.error);
+      throw worded(thrown, failed, schema);
     }
-    if (answered instanceof Response) return wordedAnswer(answered, result.error);
+    if (answered instanceof Response) return wordedAnswer(answered, failed, schema);
     if (answered && typeof answered === 'object' && 'response' in answered) return answered;
-    throw schemaRefused(result.error);
+    throw schemaRefused(result.error, schema, result.data);
   };
 }
 
@@ -104,7 +125,7 @@ export const zValidator: typeof honoZValidator = ((
   hook?: ValidatorDeclaration['hook'],
   options?: unknown,
 ) => {
-  const refusing = sentenced((hook ?? undefined) as Hook | undefined);
+  const refusing = sentenced((hook ?? undefined) as Hook | undefined, schema);
   const middleware = (honoZValidator as (...args: unknown[]) => MiddlewareHandler)(
     target,
     target === 'json' ? refusingUnknownFields(schema) : schema,
@@ -116,9 +137,10 @@ export const zValidator: typeof honoZValidator = ((
 }) as typeof honoZValidator;
 
 /** A body refused for the fields named, in the sentence the shared validator says it in. */
-export function unknownFieldsRefused(keys: string[]): HTTPException {
+export function unknownFieldsRefused(keys: string[], schema?: ZodType): HTTPException {
   const { sentences } = schemaRefusalWords([{ code: 'unrecognized_keys', keys, path: [] }], {
     valuesAre: 'listed in details.accepted',
+    ...(schema ? { fieldsAt: (path: readonly PropertyKey[]) => fieldsNamedAt(schema, path) } : {}),
   });
   return new HTTPException(400, {
     message: sentences.join(' '),
@@ -139,7 +161,7 @@ export function declaresInput(
       // Hono keeps the parsed body, so the handler's own read gets the same one.
       const body = await c.req.json().catch(() => undefined);
       const keys = unknownFields(schema, body);
-      if (keys.length > 0) throw unknownFieldsRefused(keys);
+      if (keys.length > 0) throw unknownFieldsRefused(keys, schema);
     }
     return next();
   };

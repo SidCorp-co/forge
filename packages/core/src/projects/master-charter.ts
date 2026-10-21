@@ -56,7 +56,9 @@ export function parseMasterCharterWrite(raw: unknown): ParsedCharterWrite {
   if (extra.length > 0) {
     return refuse(
       extra[0] ?? 'body',
-      `${SHAPE}. This body also carries ${extra.map((k) => `\`${k}\``).join(', ')}, which a charter has no field for. Remove them rather than have them stored under a name nothing reads.`,
+      extra.length === 1
+        ? `${SHAPE}. This body also carries \`${extra[0]}\`, which a charter has no field for. Remove it rather than have it stored under a name nothing reads.`
+        : `${SHAPE}. This body also carries ${extra.map((k) => `\`${k}\``).join(', ')}, which a charter has no fields for. Remove them rather than have them stored under names nothing reads.`,
     );
   }
 

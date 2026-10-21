@@ -70,7 +70,19 @@ describe('parseMasterCharterWrite — negative and boundary (criteria 10-13, 36-
     expect(parsed.ok).toBe(false);
     if (!parsed.ok) {
       expect(parsed.refusal.field).toBe('extra');
-      expect(parsed.refusal.message).toContain('extra');
+      expect(parsed.refusal.message).toContain(
+        'also carries `extra`, which a charter has no field for. Remove it rather',
+      );
+    }
+  });
+
+  // ISS-1421 r17 — judge-73 read "Remove them" for the one field it sent.
+  it('agrees with the count of the fields it refuses', () => {
+    const two = parseMasterCharterWrite({ goal: 'g', rules: [], colour: 1, size: 2 });
+    expect(two.ok).toBe(false);
+    if (!two.ok) {
+      expect(two.refusal.message).toContain('`colour`, `size`, which a charter has no fields for');
+      expect(two.refusal.message).toContain('Remove them rather');
     }
   });
 

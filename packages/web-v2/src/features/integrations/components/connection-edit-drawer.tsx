@@ -42,7 +42,7 @@ import { ConnectionReleaseRunnerField } from "./release-runner-field";
 import { PROVIDER_MODULES, providerIcon, providerLabel, providerModule } from "../providers/registry";
 import type { BindingSummary, ConnectionSummary, IntegrationTestResult } from "../types";
 import { DirectoryStatusPill, scopeLabel } from "./status-pill";
-import { healthLine } from "@forge/contracts/health-words";
+import { healthLine, healthWords } from "@forge/contracts/health-words";
 
 const CONNECTION_SECTIONS = new Map(
   PROVIDER_MODULES.flatMap((m) =>
@@ -72,7 +72,7 @@ function HeaderTitle({
   };
 
   return (
-    <span className="flex min-w-0 items-center gap-2.5">
+    <span className="flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1">
       <Icon name={providerIcon(connection.provider)} size={18} className="shrink-0 text-muted" />
       {editing ? (
         <span className="flex items-center gap-1.5">
@@ -120,6 +120,15 @@ function HeaderTitle({
       )}
     </span>
   );
+}
+
+/**
+ * What a test just run found, in one sentence: the provider's own words where it gave them, and
+ * otherwise the status said to a person, never the stored value itself (ISS-1421 r17).
+ */
+export function testOutcome(result: { status: string; message?: string | null }): string {
+  if (result.message) return result.message;
+  return result.status === "ok" ? "The connection works." : healthWords(result.status);
 }
 
 /** Replace-key (write-only) + Test + truthful last-health line (AC2, AC6). */
@@ -212,8 +221,7 @@ function CredentialSection({
       </div>
       {testResult && (
         <Banner tone={testResult.status === "ok" ? "success" : "danger"}>
-          {testResult.status === "ok" ? "Connection healthy" : `Test failed: ${testResult.status}`}
-          {testResult.message ? ` — ${testResult.message}` : ""}
+          {testOutcome(testResult)}
         </Banner>
       )}
       {testError && <Banner tone="danger">{testError}</Banner>}

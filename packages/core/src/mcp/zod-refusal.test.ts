@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
+import { issueRelationInputSchema } from '../issues/relations-service.js';
+import { forgeKnowledgeTool } from './tools/forge-knowledge.js';
 import { zodRefusalMessage } from './zod-refusal.js';
 
 const schema = z
@@ -101,6 +103,51 @@ describe('zodRefusalMessage', () => {
     );
     expect(said({ action: 'get', colour: 'x' })).toBe(
       'BAD_REQUEST: The field `colour` is not one this call takes.',
+    );
+  });
+
+  // ISS-1421 r17 — judge-73 sent `documentid`, `documentID`, `issueid` and an array entry's
+  // `dependsOnID`, and was told only that each is not taken: a name wrong in case alone matched nothing.
+  it('names the field a stray one differs from in letter case alone, arrays included', () => {
+    const tool = z.strictObject({
+      action: z.enum(['get', 'update']),
+      documentId: z.string().optional(),
+      issueId: z.string().optional(),
+      data: z.strictObject({ relations: z.array(issueRelationInputSchema).optional() }).optional(),
+    });
+    const json = z.toJSONSchema(tool, { io: 'input' }) as Record<string, unknown>;
+    const said = (input: unknown) => {
+      const r = tool.safeParse(input);
+      if (r.success) throw new Error('expected the schema to refuse');
+      return zodRefusalMessage(r.error, json);
+    };
+    expect(said({ action: 'get', documentid: 'x' })).toBe(
+      'BAD_REQUEST: The field `documentid` is not one this call takes. This call takes `documentId`, which may be what `documentid` meant.',
+    );
+    expect(said({ action: 'get', documentID: 'x' })).toContain(
+      'This call takes `documentId`, which may be what `documentID` meant.',
+    );
+    expect(said({ action: 'get', issueid: 'x' })).toContain(
+      'This call takes `issueId`, which may be what `issueid` meant.',
+    );
+    const relation = { dependsOnID: '7c9e6679-7425-40de-944b-e07fc1f90ae7' };
+    expect(said({ action: 'update', data: { relations: [relation] } })).toContain(
+      'This call takes `data.relations.0.dependsOnId`, which may be what `data.relations.0.dependsOnID` meant.',
+    );
+  });
+
+  it("connects forge_knowledge's missing projectId to the projectid that was sent", async () => {
+    const tool = forgeKnowledgeTool({} as never);
+    const thrown = await Promise.resolve()
+      .then(() =>
+        tool.handler({ action: 'list', projectid: '7c9e6679-7425-40de-944b-e07fc1f90ae7' }),
+      )
+      .then(
+        () => null,
+        (e: unknown) => e,
+      );
+    expect(zodRefusalMessage(thrown, tool.inputSchema as Record<string, unknown>)).toBe(
+      'BAD_REQUEST: The field `projectId` is required. The field `projectid` is not one this call takes. This call takes `projectId`, which may be what `projectid` meant.',
     );
   });
 });

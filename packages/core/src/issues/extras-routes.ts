@@ -170,7 +170,7 @@ issueExtrasRoutes.patch(
   '/batch',
   patchIssuesBatch,
   zValidator('json', batchPatchBodySchema, (r) => {
-    if (!r.success) throw schemaRefused(r.error);
+    if (!r.success) throw schemaRefused(r.error, batchPatchBodySchema, r.data);
   }),
   async (c) => {
     const { ids, data } = c.req.valid('json');
@@ -282,7 +282,7 @@ issueExtrasRoutes.post(
   '/:id/enrich',
   enrichIssue,
   zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw schemaRefused(r.error);
+    if (!r.success) throw schemaRefused(r.error, idParamSchema, r.data);
   }),
   async (c) => {
     const { id: issueId } = c.req.valid('param');
@@ -308,10 +308,10 @@ issueExtrasRoutes.post(
   '/:id/run-pipeline-step',
   runPipelineStep,
   zValidator('param', idParamSchema, (r) => {
-    if (!r.success) throw schemaRefused(r.error);
+    if (!r.success) throw schemaRefused(r.error, idParamSchema, r.data);
   }),
   zValidator('json', runPipelineStepBodySchema, (r) => {
-    if (!r.success) throw schemaRefused(r.error);
+    if (!r.success) throw schemaRefused(r.error, runPipelineStepBodySchema, r.data);
   }),
   async (c) => {
     const { id: issueId } = c.req.valid('param');
@@ -365,7 +365,7 @@ issueExtrasRoutes.get(
   '/pipeline-timing',
   readPipelineTiming,
   zValidator('query', pipelineTimingQuerySchema, (r) => {
-    if (!r.success) throw schemaRefused(r.error);
+    if (!r.success) throw schemaRefused(r.error, pipelineTimingQuerySchema, r.data);
   }),
   async (c) => {
     const { projectId, from, to, limit } = c.req.valid('query');
@@ -451,10 +451,10 @@ issueExtrasRoutes.get(
   '/:id/cost-summary',
   readCostSummary,
   zValidator('param', issueRouteIdParamSchema, (r) => {
-    if (!r.success) throw schemaRefused(r.error);
+    if (!r.success) throw schemaRefused(r.error, issueRouteIdParamSchema, r.data);
   }),
   zValidator('query', projectScopeQuerySchema, (r) => {
-    if (!r.success) throw schemaRefused(r.error);
+    if (!r.success) throw schemaRefused(r.error, projectScopeQuerySchema, r.data);
   }),
   async (c) => {
     const { id: rawId } = c.req.valid('param');

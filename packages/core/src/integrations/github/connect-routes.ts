@@ -54,7 +54,6 @@ import {
   listGithubRepositories,
   manifestCallbackQuerySchema,
   manifestSchema,
-  repositoriesQuerySchema,
   repositoriesSchema,
   startGithubConnect,
 } from './connect-routes-reference.js';
@@ -160,14 +159,13 @@ githubConnectRoutes.post(
       .limit(1);
     if (!project) throw notFound('project');
 
-    const url = new URL(c.req.url);
-    const org = url.searchParams.get('org');
+    const { org, orgId: asked } = c.req.valid('query');
     const orgId = await ownerOrgForProjectApp({
       // A solo operator's org row is their PERSONAL one, and the connections
       // directory scopes such an org to `ownerType:'user'` — an App owned by it
       // would be invisible to its only admin. So: no shared owner.
       projectOrgId: project.orgIsPersonal ? null : project.orgId,
-      asked: url.searchParams.get('orgId'),
+      asked: asked ?? null,
       userId,
     });
 
@@ -237,8 +235,7 @@ githubConnectRoutes.get(
     const userId = c.get('userId');
     assertAdmin(await assertProjectMember(projectId, userId));
 
-    const { connectionId } = repositoriesQuerySchema.parse(c.req.query());
-    if (!connectionId) throw badRequest({ connectionId: 'required' });
+    const { connectionId } = c.req.valid('query');
 
     const connection = await githubConnectionForPicker({ userId, connectionId });
 
