@@ -10,10 +10,14 @@
 -- and the two outbox event types the lessons module reads: mockup.transitioned and chat.replied.
 -- knowledge_entries.kind carries no CHECK (its enum is the column's TypeScript type alone), so the
 -- new kind `lesson` needs no statement here. Every table is new, so no existing row can fail a check.
+-- A confusion the Assistant raises from a chat is held for the person's press like every chat write
+-- (REQ-30 BC-4), so chat_proposals.kind widens to `lesson_confusion`; every stored row holds one of
+-- the eleven kinds it keeps, so none can fail it.
 --
 -- ROLLBACK: DROP TABLE lesson_confusions, lesson_applications, corrections, lessons; DELETE FROM
 -- outbox_event_types WHERE type IN ('mockup.transitioned', 'chat.replied'), once no pipeline_outbox
--- row names them; DELETE FROM knowledge_entries WHERE kind = 'lesson'.
+-- row names them; DELETE FROM knowledge_entries WHERE kind = 'lesson'; DELETE FROM chat_proposals
+-- WHERE kind = 'lesson_confusion', then restore the eleven-kind chat_proposals_kind_chk.
 SET LOCAL lock_timeout = '10s';--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "lessons" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
@@ -174,4 +178,6 @@ ALTER TABLE "lesson_confusions" DROP CONSTRAINT IF EXISTS "lesson_confusions_dec
 ALTER TABLE "lesson_confusions" ADD CONSTRAINT "lesson_confusions_decided_by_users_id_fk" FOREIGN KEY ("decided_by") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "lesson_confusions_open_idx" ON "lesson_confusions" USING btree ("project_id","raised_at") WHERE decided_at IS NULL;--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "lesson_confusions_lesson_idx" ON "lesson_confusions" USING btree ("lesson_id");--> statement-breakpoint
-INSERT INTO "outbox_event_types" ("type") VALUES ('mockup.transitioned'), ('chat.replied') ON CONFLICT DO NOTHING;
+INSERT INTO "outbox_event_types" ("type") VALUES ('mockup.transitioned'), ('chat.replied') ON CONFLICT DO NOTHING;--> statement-breakpoint
+ALTER TABLE "chat_proposals" DROP CONSTRAINT IF EXISTS "chat_proposals_kind_chk";--> statement-breakpoint
+ALTER TABLE "chat_proposals" ADD CONSTRAINT "chat_proposals_kind_chk" CHECK ("chat_proposals"."kind" IN ('feedback', 'requirement_draft', 'requirement_revision', 'comment', 'attachment', 'memory_note', 'preferences', 'report_save', 'issue_change', 'requirement_link', 'project_change', 'lesson_confusion'));

@@ -7,6 +7,7 @@
  */
 // @direct-test-of packages/core/src/standing/tool.ts
 // @direct-test-of packages/core/src/steward-notes/tool.ts
+// @direct-test-of packages/core/src/lessons/tool.ts
 
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
@@ -81,6 +82,13 @@ const stewardNoteWrite = (): Record<string, unknown> => ({
   },
 });
 
+/** A confusion about lesson L-1: it withdraws the lesson from every prompt (REQ-50 BC-5). */
+const confusion = () => ({
+  kind: 'unclear',
+  sides: { lesson: 'Name the screen in every bug.', other: 'This bug has no screen.' },
+  recommended: { resolution: 'keep' },
+});
+
 /** Each write tool, a call a member could make, and the permission a viewer is refused it by. */
 const viewerWrites = (): [string, Record<string, unknown>, string][] => [
   [
@@ -104,6 +112,7 @@ const viewerWrites = (): [string, Record<string, unknown>, string][] => [
     'project.write',
   ],
   ['forge_memory_note', { text: 'A viewer remembers this.' }, 'project.write'],
+  ['forge_lesson_confusion', { lesson: 1, ...confusion() }, 'project.write'],
   ['forge_template_save', { templateId: 'status', runIds: [randomUUID()] }, 'project.write'],
   [
     'forge_compute',
@@ -139,12 +148,13 @@ const restWrites = (): [string, string, string, unknown][] => [
   ],
   ['a comment', 'POST', `/api/issues/${w.homeIssue}/comments`, { body: 'A viewer comments.' }],
   ['an issue field', 'PATCH', `/api/issues/${w.homeIssue}`, { priority: 'high' }],
+  ['a lesson confusion', 'POST', `/api/projects/${w.home.id}/lessons/1/confusions`, confusion()],
 ];
 
 describe("every write a turn makes is held to the asker's own role", () => {
   for (const mode of MODES) {
     it(`refuses each REST write of a viewer's ${mode} token, by the permission it lacks`, async () => {
-      const tables = ['feedback', 'requirements', 'knowledge_entries'];
+      const tables = ['feedback', 'requirements', 'knowledge_entries', 'lesson_confusions'];
       const before = await Promise.all(tables.map(count));
       for (const [what, method, path, body] of restWrites()) {
         const r = await w.say(`viewer:${mode}`, method, path, body);
@@ -190,6 +200,36 @@ describe("every write a turn makes is held to the asker's own role", () => {
     expect(await count('feedback')).toBe(before);
   });
 
+  // a confusion withdraws its lesson from every prompt, so an owner's raise from chat waits on a
+  // card like any write (REQ-50 BC-5, REQ-30 BC-4): over REST in both modes and as the tool
+  it("holds an owner's lesson confusion for their go-ahead, by REST and by the tool", async () => {
+    const { agreementGate } = await import('../../src/assistant/agreement/turn-gate.js');
+    const before = await count('lesson_confusions');
+    const path = `/api/projects/${w.home.id}/lessons/1/confusions`;
+    for (const mode of MODES) {
+      const r = await w.say(`asker:${mode}`, 'POST', path, confusion());
+      expect(r.status, `${mode}: ${JSON.stringify(r.json)}`).toBe(409);
+      expect(JSON.stringify(r.json), mode).toContain('CHAT_WRITE_AWAITS_AGREEMENT');
+    }
+    const conversationId = randomUUID();
+    await rows(sql`
+      INSERT INTO conversations (id, adapter, external_id, shape, mode, title)
+      VALUES (${conversationId}, 'web', ${`fence-${conversationId}`}, 'direct', 'assistant', 'L-1')`);
+    const owner = agreementGate(w.tools('asker'), {
+      projectId: w.home.id,
+      conversationId,
+      personId: w.asker,
+      handleUserId: null,
+    }).tools;
+    const held = await owner.execute(
+      'forge_lesson_confusion',
+      JSON.stringify({ lesson: 1, ...confusion() }),
+    );
+    expect(w.text(held)).toContain('CHAT_WRITE_AWAITS_AGREEMENT');
+    expect(w.text(held)).toContain('kind lesson_confusion');
+    expect(await count('lesson_confusions')).toBe(before);
+  });
+
   it('classifies every tool the Assistant is offered, so a new write cannot join unplanted', () => {
     const offered = w.tools('viewer').tools.map((t) => t.function.name);
     const planted = [...viewerWrites().map(([name]) => name), 'forge_steward_note'];
@@ -203,7 +243,7 @@ describe("every write a turn makes is held to the asker's own role", () => {
 
   it("refuses each of the Assistant's write tools for a viewer, and writes nothing", async () => {
     const set = w.tools('viewer');
-    const tables = ['feedback', 'requirements', 'memories'];
+    const tables = ['feedback', 'requirements', 'memories', 'lesson_confusions'];
     const before = await Promise.all(tables.map(count));
     for (const [name, args, permission] of viewerWrites()) {
       const r = await set.execute(name, JSON.stringify(args));

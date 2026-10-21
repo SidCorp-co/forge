@@ -16,6 +16,7 @@ import {
 import { type Context, Hono } from 'hono';
 import { z } from 'zod';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { holdChatWrite } from '../middleware/chat-write-hold.js';
 import { invalid, strictBody, zValidator } from '../middleware/zod-validator.js';
 import { recordApplied } from './applied.js';
 import { decideConfusion, markWronglyApplied, raiseConfusion } from './confusions.js';
@@ -211,6 +212,7 @@ lessonRoutes.post(
   '/:id/lessons/:n/confusions',
   lessonParam,
   strictBody(raiseConfusionRequestSchema, RAISE_CONFUSION_SHAPE),
+  holdChatWrite('lesson_confusion'),
   async (c) => {
     const { id, n } = c.req.valid('param');
     const lesson = await raiseConfusion({

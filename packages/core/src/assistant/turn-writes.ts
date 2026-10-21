@@ -36,6 +36,7 @@ const WRITE_TOOLS: ReadonlySet<string> = new Set([
   'forge_requirement_draft',
   'forge_requirement_revise',
   'forge_template_save',
+  'forge_lesson_confusion',
 ]);
 
 /** One call that landed this turn, as the partial reply and the retry name it. */

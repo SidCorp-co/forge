@@ -26,6 +26,7 @@ import { cutAtWord } from '@forge/contracts/title-text';
 import { inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { feedback } from '../db/schema-feedback.js';
+import { primeLessonsWaiting } from '../lessons/index.js';
 import type { ProjectAccess } from '../lib/authz.js';
 import { logger } from '../lib/logger.js';
 import { primeWaitingMockups, waitingMockupsAs } from '../mockups/read.js';
@@ -358,7 +359,7 @@ function checked(key: string, build: () => DecisionBody, out: Folded, projectId:
 
 /**
  * The rows each project's Needs you read sends once a project (its open questions, and the
- * suggestions, mockups and previews this fold makes decisions of), read for every project in
+ * suggestions, mockups, previews and lessons this fold makes decisions of), read for every project in
  * `projectIds` in one statement each, so the read across projects costs no statement more a project
  * for them (`needs-you-viewer.ts:readNeedsYouAcross`, `db/read-memo.ts:primeReads`).
  */
@@ -367,6 +368,7 @@ export function primeNeedsYouAcross(projectIds: readonly string[]): void {
   primeWaitingSuggestions(projectIds);
   primeWaitingMockups(projectIds);
   primeApprovablePreviews(projectIds);
+  primeLessonsWaiting(projectIds);
 }
 
 export async function foldedDecisions(
@@ -379,7 +381,7 @@ export async function foldedDecisions(
     waitingSuggestionsFor(projectId, (p) => holds(access, p)),
     waitingMockupsAs(projectId, { userId: viewer.userId, agency: viewer.agency }),
     holds(access, 'previews.approve') ? approvablePreviewsOf(projectId) : [],
-    lessonDecisionsFor(projectId, viewer.userId),
+    lessonDecisionsFor(projectId, holds(access, 'suggestions.approve')),
   ]);
   const items = await triagedItemsOf(
     suggestions.filter((s) => s.kind === 'feedback_triage').map((s) => s.target.id),

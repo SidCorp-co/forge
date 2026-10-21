@@ -106,8 +106,11 @@ applied once.
 - who raised it and when, who decided it and when, and the decision.
 
 - **Raise.** Agents raise one with `POST /api/projects/:id/lessons/:n/confusions` (`project.write`).
-  The steward raises one through its door tool `steward_raise_lesson_confusion`. The Lessons block
-  says: stop, do not guess, raise it, and go on without that lesson.
+  The steward raises one through its door tool `steward_raise_lesson_confusion`. The Assistant
+  raises one with `forge_lesson_confusion`; it withdraws the lesson from every prompt, so it is held
+  as a confirm card like every chat write (`lesson_confusion`, REQ-30 BC-4) and raised as the person
+  once they record it. The Lessons block says: stop, do not guess, raise it, and go on without that
+  lesson.
 - **Hold.** Raising moves the lesson approved → held in the same transaction, and its knowledge entry
   turns to `injection: none`. From that moment no prompt carries it. A lesson that is already held
   takes the new confusion beside the open one.
@@ -120,7 +123,8 @@ applied once.
   Retire through `lesson.confusion`, the raiser's recommendation marked; each proposed lesson is an
   `approve` decision (`lesson.approve`, `lesson.reject` with a reason); and each retirement proposal is
   an `approve` decision whose ✓ retires with the rule's own reason (`lesson.retire`) beside Keep
-  (`lesson.keep`). Only a viewer the Lessons read grants the act is offered it. The Lessons page leads
+  (`lesson.keep`). Only a viewer holding `suggestions.approve` is offered them. What waits is read
+  by `lessons/waiting.ts:lessonsWaiting`, one statement each across every project the person sees. The Lessons page leads
   with the same open confusions.
 
 ## 5. A repeat becomes a check (BC-6)

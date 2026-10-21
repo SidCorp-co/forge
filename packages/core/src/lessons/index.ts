@@ -18,3 +18,9 @@ export {
 export { provideLessonsPorts } from './ports.js';
 export { readLessons } from './read.js';
 export { lessonRoutes } from './routes.js';
+export {
+  lessonsWaiting,
+  primeLessonsWaiting,
+  type WaitingConfusion,
+  type WaitingLesson,
+} from './waiting.js';

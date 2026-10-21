@@ -6,14 +6,10 @@
  * the same route and under the same permission, so only a viewer the read grants it is offered it.
  */
 
-import {
-  type ConfusionView,
-  LESSON_CONFUSION_LABELS,
-  type LessonView,
-} from '@forge/contracts/lessons';
+import { LESSON_CONFUSION_LABELS } from '@forge/contracts/lessons';
 import { type DecisionProposal, fitProposal } from '@forge/contracts/needs-you-proposal';
 import { cutAtWord } from '@forge/contracts/title-text';
-import { readLessons } from '../lessons/index.js';
+import { lessonsWaiting, type WaitingConfusion, type WaitingLesson } from '../lessons/index.js';
 import { answer, clip, type DecisionBody, filled } from './needs-you-decision-builders.js';
 
 const LESSON = {
@@ -26,7 +22,7 @@ const LESSON = {
 const opens = (key: string) => ({ kind: 'lesson' as const, key });
 
 function proposalOf(
-  l: LessonView,
+  l: WaitingLesson,
   verb: string,
   consequence: string,
   recommends = false,
@@ -44,7 +40,7 @@ function proposalOf(
   });
 }
 
-function proposedDecision(projectId: string, l: LessonView): DecisionBody {
+function proposedDecision(projectId: string, l: WaitingLesson): DecisionBody {
   const proposal = proposalOf(
     l,
     'Approve lesson',
@@ -62,38 +58,30 @@ function proposedDecision(projectId: string, l: LessonView): DecisionBody {
     noRecommendation:
       'The steward grouped these corrections; check the sentence says what they meant.',
     answers: [
-      ...(l.can.approve
-        ? [
-            answer({
-              id: 'approve',
-              label: 'Approve',
-              act: 'lesson.approve',
-              path: filled('lesson.approve', params),
-              body: {},
-              effect: proposal.consequences[0] ?? null,
-            }),
-          ]
-        : []),
-      ...(l.can.reject
-        ? [
-            answer({
-              id: 'decline',
-              label: 'Reject',
-              act: 'lesson.reject',
-              path: filled('lesson.reject', params),
-              body: {},
-              needsReason: true,
-              effect: 'No agent applies it; your reason is kept on the lesson.',
-            }),
-          ]
-        : []),
+      answer({
+        id: 'approve',
+        label: 'Approve',
+        act: 'lesson.approve',
+        path: filled('lesson.approve', params),
+        body: {},
+        effect: proposal.consequences[0] ?? null,
+      }),
+      answer({
+        id: 'decline',
+        label: 'Reject',
+        act: 'lesson.reject',
+        path: filled('lesson.reject', params),
+        body: {},
+        needsReason: true,
+        effect: 'No agent applies it; your reason is kept on the lesson.',
+      }),
     ],
     touchedAt: l.proposedAt,
     proposal,
   };
 }
 
-function retireDecision(projectId: string, l: LessonView): DecisionBody {
+function retireDecision(projectId: string, l: WaitingLesson): DecisionBody {
   const why =
     l.retire?.reason === 'superseded'
       ? `${l.supersededBy ?? 'A newer lesson'} replaces it.`
@@ -133,7 +121,7 @@ function retireDecision(projectId: string, l: LessonView): DecisionBody {
   };
 }
 
-function confusionDecision(projectId: string, c: ConfusionView): DecisionBody {
+function confusionDecision(projectId: string, c: WaitingConfusion): DecisionBody {
   const against = c.other.lessonKey ?? c.other.ref;
   const path = filled('lesson.confusion', { projectId, confusionId: c.id });
   const effects = {
@@ -183,25 +171,26 @@ function confusionDecision(projectId: string, c: ConfusionView): DecisionBody {
   };
 }
 
-/** The lesson decisions the viewer may take, each built on its own so one bad record breaks nothing else. */
+/**
+ * The lesson decisions a viewer who may decide them takes (`suggestions.approve`, read by the caller
+ * from the access it holds), each built on its own so one bad record breaks nothing else. A viewer
+ * who may not decide them is offered none, and nothing is read for them.
+ */
 export async function lessonDecisionsFor(
   projectId: string,
-  userId: string,
+  mayDecide: boolean,
 ): Promise<{ key: string; build: () => DecisionBody }[]> {
-  const read = await readLessons(projectId, userId);
-  const out: { key: string; build: () => DecisionBody }[] = [];
-  if (read.canDecide) {
-    for (const c of read.confusions) {
-      out.push({ key: c.lessonKey, build: () => confusionDecision(projectId, c) });
-    }
-  }
-  for (const l of read.lessons) {
-    if (l.status === 'proposed' && (l.can.approve || l.can.reject)) {
-      out.push({ key: l.key, build: () => proposedDecision(projectId, l) });
-    }
-    if (l.status === 'approved' && l.retire && l.can.retire && l.can.keep) {
-      out.push({ key: l.key, build: () => retireDecision(projectId, l) });
-    }
-  }
-  return out;
+  if (!mayDecide) return [];
+  const waiting = await lessonsWaiting(projectId);
+  return [
+    ...waiting.confusions.map((c) => ({
+      key: c.lessonKey,
+      build: () => confusionDecision(projectId, c),
+    })),
+    ...waiting.lessons.map((l) => ({
+      key: l.key,
+      build: () =>
+        l.status === 'proposed' ? proposedDecision(projectId, l) : retireDecision(projectId, l),
+    })),
+  ];
 }

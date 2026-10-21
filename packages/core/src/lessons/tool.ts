@@ -1,7 +1,9 @@
 /**
- * `forge_lesson_confusion`: the assistant stops guessing about a lesson and asks (REQ-50 BC-5). The
- * confusion is raised as the person this turn answers, with the assistant's agency, and holds the
- * lesson until a holder of `suggestions.approve` decides it.
+ * `forge_lesson_confusion`: the assistant stops guessing about a lesson and asks (REQ-50 BC-5). It
+ * withdraws the lesson from every prompt, so like every chat write it is held as a confirm card
+ * (`assistant/agreement/write-rule.ts`, REQ-30 BC-4); once the person this turn answers records it,
+ * it is raised as them, with the assistant's agency, and holds the lesson until a holder of
+ * `suggestions.approve` decides it.
  */
 
 import { raiseConfusionRequestSchema } from '@forge/contracts/lessons';
@@ -22,7 +24,7 @@ const DESCRIPTION = [
   'two lessons conflict (kind conflict, other.lesson), a lesson contradicts a requirement or design (kind contradicts, other.ref such as REQ-12),',
   'or you cannot tell how it applies here (kind unclear).',
   'Give each side in one sentence and the resolution you recommend (keep, edit with the new sentence, or retire).',
-  'The lesson is held until a person decides; go on without it and tell the person you raised it.',
+  'The person sees it as a card and records it; from then the lesson is held until a person decides. Go on without the lesson and tell the person you raised it.',
 ].join(' ');
 
 export const lessonConfusionTool: ContextScopedMcpToolFactory = (ctx) => ({

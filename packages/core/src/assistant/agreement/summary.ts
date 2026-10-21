@@ -62,6 +62,8 @@ export function kindOfToolCall(name: string, argsJson: string): ChatProposalKind
       return 'preferences';
     case 'forge_template_save':
       return 'report_save';
+    case 'forge_lesson_confusion':
+      return 'lesson_confusion';
     case 'forge': {
       const verb = argvOf(parsed(argsJson))[0];
       if (verb === 'comment') return 'comment';
@@ -262,6 +264,25 @@ export function imagesLine(
   return null;
 }
 
+/** A confusion raised about a lesson: the lesson it holds, both sides and the resolution offered. */
+function confusionSummary(lesson: string | null, args: Args): ChatProposalSummary {
+  const sides = (args.sides ?? {}) as Args;
+  const other = (args.other ?? {}) as Args;
+  const against = typeof other.lesson === 'number' ? `L-${other.lesson}` : str(other.ref);
+  const offered = (args.recommended ?? {}) as Args;
+  const sentence = str(offered.sentence);
+  return {
+    title: `Hold ${lesson ?? 'a lesson'} for a decision (${str(args.kind) ?? 'unknown kind'})`,
+    lines: [
+      `The lesson says: ${valueText(sides.lesson ?? null)}`,
+      `Against it${against ? ` (${against})` : ''}: ${valueText(sides.other ?? null)}`,
+      `Recommended: ${str(offered.resolution) ?? 'none'}${sentence ? `, reading: ${sentence}` : ''}`,
+      ...restLines(args, ['lesson', 'kind', 'sides', 'other', 'recommended']),
+    ],
+    relates: [lesson, against].filter((r): r is string => !!r),
+  };
+}
+
 /** What an Assistant write tool call would record. */
 export function summaryOfToolCall(
   kind: ChatProposalKind,
@@ -297,6 +318,8 @@ export function summaryOfToolCall(
         lines: restLines(args, ['templateId']),
         relates: [],
       };
+    case 'lesson_confusion':
+      return confusionSummary(typeof args.lesson === 'number' ? `L-${args.lesson}` : null, args);
     default:
       if (name !== 'forge')
         throw new Error(`chat agreement: ${name} is not ${withArticle(kind)} tool`);
@@ -422,6 +445,10 @@ export function summaryOfRest(request: HeldRestRequest): ChatProposalSummary {
       return projectChangeSummary(path, body);
     case 'report_save':
       return { title: 'Save a report', lines: restLines(body, []), relates: [] };
+    case 'lesson_confusion': {
+      const n = /\/lessons\/(?:L-)?(\d+)\/confusions$/i.exec(path.split('?')[0] ?? path)?.[1];
+      return confusionSummary(n ? `L-${n}` : null, body);
+    }
     case 'preferences':
       return { title: 'Your reply preferences', lines: restLines(body, []), relates: [] };
   }
@@ -445,6 +472,8 @@ export function recordRefOf(kind: ChatProposalKind, answered: Args): string | nu
     }
     case 'requirement_link':
       return nested('requirement') ?? str(answered.key);
+    case 'lesson_confusion':
+      return str(answered.lesson) ?? nested('lesson');
     default:
       return str(answered.key) ?? str(answered.id);
   }
