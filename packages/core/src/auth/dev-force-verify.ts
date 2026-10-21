@@ -28,7 +28,7 @@ devForceVerifyRoutes.post(
       const result = forceVerifySchema.safeParse(json);
       if (!result.success) {
         throw new HTTPException(400, {
-          message: 'invalid email',
+          message: 'The field email is not an email address.',
           cause: { code: 'BAD_REQUEST' },
         });
       }
@@ -36,7 +36,7 @@ devForceVerifyRoutes.post(
     } catch (err) {
       if (err instanceof HTTPException) throw err;
       throw new HTTPException(400, {
-        message: 'invalid body',
+        message: 'The body is not JSON.',
         cause: { code: 'BAD_REQUEST' },
       });
     }

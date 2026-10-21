@@ -134,8 +134,9 @@ describe('POST /api/auth/local', () => {
     const res = await post({ email: 'a@b.co', password: 'wrong' });
 
     expect(res.status).toBe(401);
-    const body = (await res.json()) as { code: string };
+    const body = (await res.json()) as { code: string; message: string };
     expect(body.code).toBe('INVALID_CREDENTIALS');
+    expect(body.message).toBe('That email and password do not match an account here.');
     expect(res.headers.get('set-cookie')).toBeNull();
   });
 

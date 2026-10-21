@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { RELEASE_CHANNEL_KEYS, releaseChannelFields } from '../release-channel-schema.js';
 
-const sentryTargetSchema = z.object({
+const sentryTargetSchema = z.strictObject({
   label: z.string().min(1).max(120),
   organizationSlug: z.string().min(1).max(200).optional(),
   projectSlug: z.string().min(1).max(200).optional(),
@@ -9,7 +9,7 @@ const sentryTargetSchema = z.object({
   notes: z.string().max(2000).optional(),
 });
 
-export const sentryConfigBase = z.object({
+export const sentryConfigBase = z.strictObject({
   host: z.string().min(1).max(255),
   targets: z.array(sentryTargetSchema).max(50).optional(),
   organizationSlug: z.string().min(1).max(200).optional(),
@@ -17,7 +17,7 @@ export const sentryConfigBase = z.object({
   ...releaseChannelFields,
 });
 
-export const sentrySecretsSchema = z.object({
+export const sentrySecretsSchema = z.strictObject({
   authToken: z.string().min(8).max(2000),
 });
 

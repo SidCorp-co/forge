@@ -86,8 +86,18 @@ export function describeCoolifyForbidden(err: CoolifyApiError): string {
   return `${said} If this is Coolify, it knows the API token but refused ${route}: the token is missing ${missing}. Widen this token's abilities in Coolify (Keys & Tokens → edit the token); the credential itself is valid, so replacing it will not change this.`;
 }
 
+/**
+ * The sentence for a 401, said of the server at the saved address: a server that is not Coolify
+ * refuses a token too, so neither reading is put as fact (ISS-1421 r18).
+ */
+export function describeCoolifyUnauthorized(err: CoolifyApiError): string {
+  const said = /[.!?]$/.test(err.message) ? err.message : `${err.message}.`;
+  return `${said} If this is Coolify, it refused the stored API token, so save a new token from Keys & Tokens in Coolify. If it is not, check the address saved on this connection.`;
+}
+
 /** Every refusal reading a Coolify answer words it here, so none says "Coolify answered" (ISS-1421 r17). */
 export function describeCoolifyAnswer(err: CoolifyApiError): string {
+  if (err.status === 401) return describeCoolifyUnauthorized(err);
   if (err.status === 403) return describeCoolifyForbidden(err);
   const said = /[.!?]$/.test(err.message) ? err.message : `${err.message}.`;
   return err.addressSuspect ? `${said} Check the address saved on this connection.` : said;
@@ -96,9 +106,14 @@ export function describeCoolifyAnswer(err: CoolifyApiError): string {
 /** A 404 here does not say whether the route or the application is missing, so the refusal says that and quotes the body. */
 export function describeCoolifyRollbackImagesRefusal(err: CoolifyApiError): string {
   if (err.status !== 404) return describeCoolifyAnswer(err);
-  const body = err.body.replace(/\s+/g, ' ').trim().slice(0, 200);
+  const body = err.body.replace(/\s+/g, ' ').trim();
   const said = /[.!?]$/.test(err.message) ? err.message : `${err.message}.`;
-  return `${said} Forge has no rollback image list to read and no tag to roll back to. A 404 here reads the same whether the server lacks the route or does not know the application (the targets read says whether it lists it), so check the address saved on this connection first.${body ? ` The body it sent: ${body}` : ''}`;
+  const sent = /^<(?:!doctype|html|\?xml|head|body)\b/i.test(body)
+    ? ' It sent a web page, not an answer from an API.'
+    : body
+      ? ` The body it sent: ${body.slice(0, 200)}`
+      : '';
+  return `${said} Forge has no rollback image list to read and no tag to roll back to. A 404 here reads the same whether the server lacks the route or does not know the application (the targets read says whether it lists it), so check the address saved on this connection first.${sent}`;
 }
 
 export interface CoolifyClientOptions {
@@ -132,6 +147,10 @@ export class CoolifyClient {
     this.previousApiToken = opts.previousApiToken;
     this.timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT;
     this.fetchImpl = opts.fetchImpl ?? fetch;
+  }
+
+  get address(): string {
+    return hostOf(this.baseUrl);
   }
 
   private async request<T>(method: 'GET' | 'POST', path: string, body?: unknown): Promise<T> {
@@ -227,15 +246,7 @@ export class CoolifyClient {
     // The status carried is the one the host sent: a 200 whose body is no list says the address
     // may not be Coolify's, and a list without the uuid says the binding names the wrong resource.
     const { status, data } = await this.send<unknown>('GET', '/api/v1/resources');
-    if (!Array.isArray(data)) {
-      throw new CoolifyApiError(
-        status,
-        '',
-        `The server at ${hostOf(this.baseUrl)} answered ${route} with something other than a list of resources, so it may not be Coolify.`,
-        route,
-        true,
-      );
-    }
+    if (!Array.isArray(data)) throw this.notCoolify(status, route, 'a list of resources');
     const match = (data as CoolifyResourceResponse[]).find((r) => r.uuid === resourceUuid);
     if (!match) {
       throw new CoolifyApiError(
@@ -283,9 +294,23 @@ export class CoolifyClient {
   }
 
   async listRollbackImages(resourceUuid: string): Promise<CoolifyRollbackImagesResponse> {
-    return this.request<CoolifyRollbackImagesResponse>(
-      'GET',
-      `/api/v1/applications/${encodeURIComponent(resourceUuid)}/rollback-images`,
+    const path = `/api/v1/applications/${encodeURIComponent(resourceUuid)}/rollback-images`;
+    const { status, data } = await this.send<unknown>('GET', path);
+    const images = (data as { images?: unknown } | null)?.images;
+    // Coolify's answer carries `images` or `current`; an object with neither is some other server's.
+    if (!Array.isArray(images) && !(data !== null && typeof data === 'object' && 'current' in data))
+      throw this.notCoolify(status, `GET ${path}`, 'a rollback image list');
+    return data as CoolifyRollbackImagesResponse;
+  }
+
+  /** A 2xx whose body is not the shape Coolify sends: the address may not be Coolify's. */
+  private notCoolify(status: number, route: string, what: string): CoolifyApiError {
+    return new CoolifyApiError(
+      status,
+      '',
+      `The server at ${hostOf(this.baseUrl)} answered ${route} with something other than ${what}, so it may not be Coolify.`,
+      route,
+      true,
     );
   }
 
@@ -301,8 +326,10 @@ export class CoolifyClient {
   }
 
   async listApplications(): Promise<CoolifyApplicationResponse[]> {
-    const list = await this.request<CoolifyApplicationResponse[]>('GET', '/api/v1/applications');
-    return Array.isArray(list) ? list : [];
+    const route = 'GET /api/v1/applications';
+    const { status, data } = await this.send<unknown>('GET', '/api/v1/applications');
+    if (!Array.isArray(data)) throw this.notCoolify(status, route, 'a list of applications');
+    return data as CoolifyApplicationResponse[];
   }
 }
 

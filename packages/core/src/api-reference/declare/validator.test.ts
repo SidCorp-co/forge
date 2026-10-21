@@ -285,3 +285,46 @@ describe('a REST refusal says what the caller sent', () => {
     expect(await said('/q')).toBe('The field n is required.');
   });
 });
+
+// ISS-1421 r18 — judge-75: `?limit=` read as 0 and was answered "takes at least 1", or taken as 0.
+describe('a number query parameter sent empty', () => {
+  const app = new Hono();
+  app.get(
+    '/q',
+    zValidator('query', z.object({ limit: z.coerce.number().int().min(0).default(20) })),
+    (c) => c.json({ got: (c.req as unknown as Valid).valid('query') }),
+  );
+  app.get(
+    '/own',
+    declaresInput(
+      'query',
+      z.object({ limit: z.coerce.number().optional(), q: z.string().optional() }),
+    ),
+    (c) => c.json({ ok: true }),
+  );
+  app.onError((err, c) =>
+    err instanceof HTTPException ? c.json({ message: err.message }, err.status) : c.json({}, 500),
+  );
+
+  it('is refused by name, never read as 0', async () => {
+    const res = await app.request('/q?limit=');
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { message: string }).message).toBe(
+      'The field limit is empty. Send a number, or leave the field out.',
+    );
+  });
+
+  it('is refused the same way on a route that parses its own query', async () => {
+    const res = await app.request('/own?limit=&q=');
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { message: string }).message).toBe(
+      'The field limit is empty. Send a number, or leave the field out.',
+    );
+  });
+
+  it('leaves an empty text parameter, a number sent and a number left out alone', async () => {
+    expect((await app.request('/own?q=')).status).toBe(200);
+    expect(await (await app.request('/q?limit=0')).json()).toEqual({ got: { limit: 0 } });
+    expect(await (await app.request('/q')).json()).toEqual({ got: { limit: 20 } });
+  });
+});

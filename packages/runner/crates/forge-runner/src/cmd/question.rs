@@ -857,16 +857,27 @@ mod tests {
         serde_json::from_str(body).expect("the body is json")
     }
 
+    /// The ids the pinned bodies carry: uuids, as core compares each with a uuid column and refuses
+    /// any other by name (ISS-1421 r18).
+    const PINNED_PROJECT: &str = "0b4e2c1a-3d5f-4a6b-8c7d-1e2f3a4b5c21";
+    const PINNED_ISSUE: &str = "0b4e2c1a-3d5f-4a6b-8c7d-1e2f3a4b5c11";
+
     #[tokio::test]
     async fn a_free_text_ask_puts_exactly_the_pinned_body_on_the_wire() {
         let (base, request) = one_shot("200 OK", r#"{"questionId":"q-9"}"#).await;
         let client = CoreClient::new(base, "tok");
         let mut a = args();
         a.needs = Some("the column name".into());
-        a.issue = Some("iss-uuid".into());
-        send_ask(&client, &a, "p-1", "q-local", "run-7")
-            .await
-            .unwrap();
+        a.issue = Some(PINNED_ISSUE.into());
+        send_ask(
+            &client,
+            &a,
+            PINNED_PROJECT,
+            "0b4e2c1a-3d5f-4a6b-8c7d-1e2f3a4b5c01",
+            "run-7",
+        )
+        .await
+        .unwrap();
         assert_eq!(body_of(&request.await.unwrap()), wire_line(0));
     }
 
@@ -878,9 +889,15 @@ mod tests {
         a.options = vec!["keep=Keep it".into(), "rename=Rename it".into()];
         a.recommend = Some("keep".into());
         a.sensitive = true;
-        send_ask(&client, &a, "p-1", "q-local-2", "run-8")
-            .await
-            .unwrap();
+        send_ask(
+            &client,
+            &a,
+            PINNED_PROJECT,
+            "0b4e2c1a-3d5f-4a6b-8c7d-1e2f3a4b5c02",
+            "run-8",
+        )
+        .await
+        .unwrap();
         assert_eq!(body_of(&request.await.unwrap()), wire_line(1));
     }
 

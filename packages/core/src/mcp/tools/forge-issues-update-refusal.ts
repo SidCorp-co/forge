@@ -30,6 +30,7 @@ export function unwrittenRefusal(
   err: unknown,
   sentStatus: boolean,
   inputSchema?: Record<string, unknown>,
+  args?: unknown,
 ): unknown {
   if (err instanceof TransitionError) {
     return new TransitionError(
@@ -40,7 +41,7 @@ export function unwrittenRefusal(
   }
   const mapped = toMcpIssueError(err);
   if (!(mapped instanceof Error)) return mapped;
-  const message = zodRefusalMessage(mapped, inputSchema) ?? mapped.message;
+  const message = zodRefusalMessage(mapped, inputSchema, args) ?? mapped.message;
   return new Error(
     leadWith(message, sentStatus ? `${UNWRITTEN}, the status move included` : UNWRITTEN),
   );
@@ -64,7 +65,7 @@ export function unwrittenIfUpdate<T>(
     return step();
   } catch (err) {
     if ((args as { action?: unknown } | null)?.action !== 'update') throw err;
-    throw unwrittenRefusal(err, sentStatusIn(args), inputSchema);
+    throw unwrittenRefusal(err, sentStatusIn(args), inputSchema, args);
   }
 }
 

@@ -113,3 +113,33 @@ describe('schemaRefused', () => {
     expect(schemaRefused(r.error).message).toBe('No fields to update.');
   });
 });
+
+// ISS-1421 r18, criterion 173 — a JSON body number sent "abc" read "takes a number, not a string".
+describe('a number field sent no number', () => {
+  const body = z.object({ inputTokens: z.number(), apiKey: z.number().optional() });
+  const said = (input: unknown) => {
+    const r = body.safeParse(input);
+    if (r.success) throw new Error('expected a refusal');
+    return schemaRefused(r.error, body, input).message;
+  };
+
+  it('quotes the value sent', () => {
+    expect(said({ inputTokens: 'abc' })).toBe('The field inputTokens takes a number, not "abc".');
+  });
+
+  it('quotes at most forty characters of it', () => {
+    expect(said({ inputTokens: 'x'.repeat(60) })).toBe(
+      `The field inputTokens takes a number, not "${'x'.repeat(40)}…".`,
+    );
+  });
+
+  it("never repeats a secret field's value", () => {
+    expect(said({ inputTokens: 1, apiKey: 'sk-live-123' })).toBe(
+      'The field apiKey takes a number, not a string.',
+    );
+  });
+
+  it('says a boolean as itself', () => {
+    expect(said({ inputTokens: true })).toBe('The field inputTokens takes a number, not true.');
+  });
+});

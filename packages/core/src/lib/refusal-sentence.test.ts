@@ -86,3 +86,21 @@ describe('refusalMessage', () => {
     expect(refusalMessage('verify email', undefined)).toBe('Verify email.');
   });
 });
+
+// ISS-1421 r18 — "Invalid params." and "Invalid query." stood where the details named the field.
+describe('a refusal that only labels what it refused', () => {
+  const flattened = { formErrors: [], fieldErrors: { id: ['Invalid UUID'] } };
+
+  it('says the field its schema details name instead', () => {
+    expect(refusalMessage('invalid params', flattened)).toBe('The field id is not a valid UUID.');
+    expect(refusalMessage('invalid query', flattened)).toBe('The field id is not a valid UUID.');
+  });
+
+  it('keeps its own words where the details are no schema parse', () => {
+    expect(refusalMessage('invalid', { field: 'email' })).toBe('Invalid.');
+  });
+
+  it('keeps a sentence a door wrote whatever its details say', () => {
+    expect(refusalMessage('That label is taken.', flattened)).toBe('That label is taken.');
+  });
+});

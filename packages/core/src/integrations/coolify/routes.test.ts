@@ -221,7 +221,7 @@ describe('GET rollback-images, when Coolify refuses the read', () => {
     expect(res.status).toBe(424);
     const body = (await res.json()) as { code: string; message: string };
     expect(body.code).toBe('COOLIFY_UNREACHABLE');
-    expect(body.message).toContain('Could not reach Coolify');
+    expect(body.message).toContain('Forge could not reach the server at');
     expect(body.message).toMatch(/\.$/);
     expect(body.message).toContain('GET /api/v1/applications/app-uuid/rollback-images');
     expect(body.message).not.toContain('<uuid>');
@@ -241,7 +241,7 @@ describe('GET rollback-images, when Coolify refuses the read', () => {
     expect(res.status).toBe(424);
     const body = (await res.json()) as { code: string; message: string };
     expect(body.code).toBe('COOLIFY_UNREACHABLE');
-    expect(body.message).toContain('Coolify timed out');
+    expect(body.message).toContain('Forge got no answer to');
     expect(body.message).toContain('GET /api/v1/applications/app-uuid/rollback-images');
     expect(body.message).not.toContain('<uuid>');
   });
@@ -328,7 +328,7 @@ describe('the application list reads, when Coolify cannot be reached', () => {
     expect(res.status).toBe(424);
     const body = (await res.json()) as { code: string; message: string };
     expect(body.code).toBe('COOLIFY_UNREACHABLE');
-    expect(body.message).toContain('Could not reach Coolify for GET /api/v1/applications');
+    expect(body.message).toContain('for GET /api/v1/applications, because');
   });
 
   it('answers the bound targets 424 naming the read, never a bare 500', async () => {

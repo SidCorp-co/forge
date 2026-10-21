@@ -106,3 +106,20 @@ describe("the drawer's Test connection line", () => {
     }
   });
 });
+
+// ISS-1421 r18 — judge-75 at 390: a 53-character name cut mid-word with Close pushed off screen.
+describe("the drawer header's connection name", () => {
+  it("may shrink to the drawer's width, ellipsised, with the whole name on hover", () => {
+    const long = "j75 Coolify production eu-west primary box number one again";
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ConnectionEditDrawer connection={{ ...connection, displayName: long }} onClose={() => {}} />
+      </QueryClientProvider>,
+    );
+    const name = screen.getByTestId("connection-drawer-name");
+    expect(name).toHaveTextContent(long);
+    expect(name).toHaveAttribute("title", long);
+    for (const cls of ["min-w-0", "max-w-full", "truncate"]) expect(name.className).toContain(cls);
+  });
+});
+

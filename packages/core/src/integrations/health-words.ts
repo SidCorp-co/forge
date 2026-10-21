@@ -28,6 +28,11 @@ export function healthAnswer(provider: string, result: HealthCheckResult): Healt
     needs_reauth: `${label} refused the stored credential, so it needs signing in again.`,
     needs_scope: `${label} took the credential but it lacks a permission Forge needs.`,
   };
+  // A lead naming the provider would claim the server at the person's own address is it (r18).
+  if (diagnostics.saidOfAddress === true) {
+    lead.needs_reauth = '';
+    lead.needs_scope = '';
+  }
   let message: string;
   if (result.status === 'ok') message = asSentence(said) || `${label} answered the check.`;
   else if (isUnreachedReason(diagnostics.unreached))

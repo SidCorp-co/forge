@@ -2,6 +2,7 @@ import { DrizzleQueryError } from 'drizzle-orm/errors';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 
 const infoSpy = vi.fn();
 const warnSpy = vi.fn();
@@ -75,6 +76,18 @@ function makeApp(handler: typeof errorHandler = errorHandler) {
         details: { formErrors: [], fieldErrors: { id: ['Invalid UUID'] } },
       },
     });
+  });
+  // ISS-1421 r18 — a door that kept only z.flattenError lost the value sent; the funnel reads it back.
+  app.on(['GET', 'POST'], '/flattened-number', async (c) => {
+    const shape = z.object({ limit: z.coerce.number().int(), n: z.number().optional() });
+    const sent = c.req.method === 'GET' ? c.req.query() : await c.req.json();
+    const r = shape.safeParse(sent);
+    if (!r.success)
+      throw new HTTPException(400, {
+        message: 'invalid query',
+        cause: { code: 'BAD_REQUEST', details: z.flattenError(r.error) },
+      });
+    return c.text('ok');
   });
   app.get('/http-ex-www-auth', () => {
     throw new HTTPException(401, {
@@ -174,6 +187,24 @@ describe('error middleware', () => {
     expect(body).toEqual({ code: 'NOT_FOUND', message: 'Thing not found.' });
     expect(warnSpy).toHaveBeenCalled();
     expect(errorSpy).not.toHaveBeenCalled();
+  });
+
+  it('quotes the value a query number was sent, where its door kept only the flattened error', async () => {
+    const res = await makeApp().request('/flattened-number?limit=abc');
+    expect(((await res.json()) as { message: string }).message).toBe(
+      'The field limit takes a number, not "abc".',
+    );
+  });
+
+  it('quotes a body number sent a word, and never escapes the quote marks it carried', async () => {
+    const res = await makeApp().request('/flattened-number', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ limit: 1, n: '"abc"' }),
+    });
+    expect(((await res.json()) as { message: string }).message).toBe(
+      'The field n takes a number, not ""abc"".',
+    );
   });
 
   it('HTTPException cause.code overrides default code and passes details', async () => {

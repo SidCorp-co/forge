@@ -3,7 +3,7 @@
 import { z } from 'zod';
 import { RELEASE_CHANNEL_KEYS, releaseChannelFields } from '../release-channel-schema.js';
 
-export const epodsystemConfigBase = z.object({
+export const epodsystemConfigBase = z.strictObject({
   storeSlug: z.string().min(1).max(200).optional(),
   storeName: z.string().min(1).max(200).optional(),
   themeId: z.string().min(1).max(200).optional(),
@@ -12,7 +12,7 @@ export const epodsystemConfigBase = z.object({
   ...releaseChannelFields,
 });
 
-export const epodsystemSecretsSchema = z.object({
+export const epodsystemSecretsSchema = z.strictObject({
   apiKey: z.string().min(8).max(2000),
 });
 

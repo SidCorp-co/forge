@@ -37,6 +37,7 @@ function fieldsAt(schema: JsonNode, path: readonly PropertyKey[]): string[] {
 export function zodRefusalMessage(
   err: unknown,
   inputSchema?: Record<string, unknown>,
+  args?: unknown,
 ): string | null {
   const issues = (err as { name?: unknown; issues?: unknown } | null)?.issues;
   if ((err as { name?: unknown } | null)?.name !== 'ZodError' || !Array.isArray(issues))
@@ -44,6 +45,8 @@ export function zodRefusalMessage(
   const { sentences, accepted } = schemaRefusalWords(issues, {
     quote: true,
     valuesAre: 'listed below',
+    // The arguments as sent, so a number field sent a word quotes it (ISS-1421 r18).
+    ...(args !== undefined ? { quoteFrom: args } : {}),
     ...(inputSchema ? { fieldsAt: (path) => fieldsAt(inputSchema as JsonNode, path) } : {}),
   });
   const lines = accepted.map(

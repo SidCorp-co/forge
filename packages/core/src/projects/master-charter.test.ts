@@ -88,6 +88,22 @@ describe('parseMasterCharterWrite — negative and boundary (criteria 10-13, 36-
     }
   });
 
+  // ISS-1421 r18 — `Rules` and `gaol` were refused without the field each was meant to be.
+  it('points a slip of case or of a letter at the field it meant', () => {
+    const slip = parseMasterCharterWrite({ Rules: [], gaol: 'g' });
+    expect(slip.ok).toBe(false);
+    if (!slip.ok) {
+      expect(slip.refusal.message).toContain(
+        'This call takes `rules`, which may be what `Rules` meant.',
+      );
+      expect(slip.refusal.message).toContain(
+        'This call takes `goal`, which may be what `gaol` meant.',
+      );
+    }
+    const none = parseMasterCharterWrite({ goal: 'g', rules: [], colour: 1 });
+    if (!none.ok) expect(none.refusal.message).not.toContain('may be what');
+  });
+
   it('refuses a goal that is not a string', () => {
     const parsed = parseMasterCharterWrite({ goal: 42, rules: [] });
     expect(parsed).toEqual({

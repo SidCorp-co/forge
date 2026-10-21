@@ -3194,6 +3194,11 @@
 
 ### Fixed
 
+- **A misspelt integration setting is refused, never dropped.** A Coolify target sent `healthURL` was saved without its health check; every integration now refuses a field it does not take and names the one you meant. (ISS-1421)
+- **A wrong value is quoted back.** A number sent as a word, in a query, a body or an agent tool, is refused showing it, never a secret; an empty number is refused, not read as 0. (ISS-1421)
+- **An address that is not Coolify is not called Coolify.** A list that is not a list, a refused token and an unreachable host are each said of the server at the saved address, with what to do. (ISS-1421)
+- **A long connection name no longer pushes Close off a phone's screen.** The name shortens with "…" and shows whole on hover. (ISS-1421)
+- **A chat provider nobody has is refused, and a wrong password reads as a sentence.** A box's question with a malformed id is refused by name, never a server error. (ISS-1421)
 - **A misspelt field points to the one you meant**, a slip of letter case included, in the API as in the agent tools; a malformed id is refused by name, never a server error. (ISS-1421)
 - **Test connection shows its answer alone**, without "Test failed: error" before it, and says what the address answered instead of claiming Coolify did. (ISS-1421)
 - **A failed read stays failed while live updates arrive.** A live update made it look current again, offering the session it last read; it now says the read failed, with Retry, until a read succeeds. (ISS-1228)

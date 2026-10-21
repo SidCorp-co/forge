@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const releaseVerifyProbeSchema = z.object({
+export const releaseVerifyProbeSchema = z.strictObject({
   url: z.string().url().max(500),
   commitPath: z.string().min(1).max(200).optional(),
 });
@@ -15,7 +15,7 @@ export const releaseChannelFields = {
    */
   releaseRunnerLabel: z.string().min(1).max(60).nullish(),
   verify: z
-    .object({
+    .strictObject({
       probes: z.array(releaseVerifyProbeSchema).min(1).max(10),
       /**
        * Declared once as a deadline on the finish's polling loop, which no longer exists: the agent

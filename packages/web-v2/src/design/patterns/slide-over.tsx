@@ -100,12 +100,14 @@ export function SlideOver({
       >
         {!hideHeader && (
           <header className="flex flex-none items-center justify-between gap-3 border-b border-line px-5 py-4">
-            <div className="fg-h3">{title}</div>
+            <div className="fg-h3 min-w-0 flex-1" data-testid="slide-over-title">
+              {title}
+            </div>
             <button
               type="button"
               onClick={onClose}
               aria-label="Close"
-              className="rounded-md p-1 text-subtle transition-colors hover:bg-hover hover:text-fg focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+              className="shrink-0 rounded-md p-1 text-subtle transition-colors hover:bg-hover hover:text-fg focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
             >
               <Icon name="x" size={18} />
             </button>

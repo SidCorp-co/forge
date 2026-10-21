@@ -10,6 +10,8 @@
  * line is the silent substitution this whole record exists to stop.
  */
 
+import { fieldsNear } from '../lib/zod-sentences.js';
+
 export const MASTER_CHARTER_GOAL_MAX = 4000;
 export const MASTER_CHARTER_RULES_MAX = 50;
 export const MASTER_CHARTER_RULE_MAX = 2000;
@@ -36,6 +38,8 @@ export type ParsedCharterWrite =
   | { ok: true; value: MasterCharterWrite }
   | { ok: false; refusal: CharterRefusal };
 
+const CHARTER_FIELDS = ['goal', 'rules'];
+
 const SHAPE =
   'a master charter write is `{ "goal": "<one sentence or more>", "rules": ["<rule>", ...] }`';
 
@@ -56,13 +60,20 @@ export function parseMasterCharterWrite(raw: unknown): ParsedCharterWrite {
     return refuse('body', `${SHAPE}, and this body is not an object at all.`);
   }
 
-  const extra = Object.keys(raw).filter((k) => k !== 'goal' && k !== 'rules');
+  const extra = Object.keys(raw).filter((k) => !CHARTER_FIELDS.includes(k));
   if (extra.length > 0) {
+    // A slip of case or a letter ("Rules", "gaol") is pointed at the field it was (ISS-1421 r18).
+    const meant = extra.flatMap((k) =>
+      fieldsNear(k, CHARTER_FIELDS).map(
+        (f) => ` This call takes \`${f}\`, which may be what \`${k}\` meant.`,
+      ),
+    );
     return refuse(
       extra[0] ?? 'body',
-      extra.length === 1
+      (extra.length === 1
         ? `${SHAPE}. This body also carries \`${extra[0]}\`, which a charter has no field for. Remove it rather than have it stored under a name nothing reads.`
-        : `${SHAPE}. This body also carries ${listed(extra.map((k) => `\`${k}\``))}, which a charter has no fields for. Remove them rather than have them stored under names nothing reads.`,
+        : `${SHAPE}. This body also carries ${listed(extra.map((k) => `\`${k}\``))}, which a charter has no fields for. Remove them rather than have them stored under names nothing reads.`) +
+        meant.join(''),
     );
   }
 
