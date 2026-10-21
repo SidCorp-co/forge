@@ -83,8 +83,9 @@ describe("replayOnFirstOpen", () => {
 
     replayOnFirstOpen(qc, Date.now() + 1);
     gates[1]?.resolve("v2");
-    await tick();
 
+    // The re-read follows the read in flight once it settles, which one fixed tick does not wait for under load.
+    for (const deadline = Date.now() + 2_000; calls < 3 && Date.now() < deadline; ) await tick(10);
     expect(calls).toBe(3);
   });
 
