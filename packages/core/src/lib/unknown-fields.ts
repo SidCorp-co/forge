@@ -147,17 +147,31 @@ function resolved(schema: ZodType): ZodType {
   }
 }
 
-function fieldSchema(schema: ZodType, body: Record<string, unknown>, key: string): ZodType | null {
+function fieldSchemas(schema: ZodType, body: Record<string, unknown>, key: string): ZodType[] {
   const def = defOf(resolved(schema));
-  if (def.type === 'object') return (def.shape?.[key] as ZodType | undefined) ?? null;
+  if (def.type === 'object') {
+    const field = def.shape?.[key] as ZodType | undefined;
+    return field ? [field] : [];
+  }
   let parts: ZodType[] = [];
   if (def.type === 'intersection' && def.left && def.right) parts = [def.left, def.right];
   else if (def.type === 'union' && def.options) {
     const by = def.discriminator;
     parts = by ? def.options.filter((o) => optionTakes(o, by, body[by])) : def.options;
   }
-  const found = parts.map((p) => fieldSchema(p, body, key)).filter((s): s is ZodType => !!s);
-  return found.length === 1 ? (found[0] as ZodType) : null;
+  return parts.flatMap((p) => fieldSchemas(p, body, key));
+}
+
+/** The strays every reading of one field agrees on: a key any branch takes is not refused. */
+function agreed(readings: StrayAt[][]): StrayAt[] {
+  const [first, ...rest] = readings;
+  const at = (s: StrayAt) => s.path.map(String).join('.');
+  return (first ?? []).flatMap((s) => {
+    const keys = s.keys.filter((k) =>
+      rest.every((r) => r.some((o) => at(o) === at(s) && o.keys.includes(k))),
+    );
+    return keys.length > 0 ? [{ path: s.path, keys }] : [];
+  });
 }
 
 /** The strays inside a value its schema reads, at `path`. */
@@ -184,7 +198,16 @@ export function nestedStrays(schema: ZodType, body: unknown, at: PropertyKey[] =
   if (body === null || typeof body !== 'object' || Array.isArray(body)) return [];
   const record = body as Record<string, unknown>;
   return Object.keys(record).flatMap((key) => {
-    const child = fieldSchema(schema, record, key);
-    return child ? straysIn(child, record[key], [...at, key]) : [];
+    const readings = fieldSchemas(schema, record, key);
+    return agreed(readings.map((child) => straysIn(child, record[key], [...at, key])));
   });
+}
+
+/**
+ * Whether a body schema is a union of several options without a discriminator. Zod returns the option
+ * that parsed and drops every issue raised before it, so a stray refused ahead of it is lost.
+ */
+export function dropsEarlierIssues(schema: ZodType): boolean {
+  const def = defOf(resolved(schema));
+  return def.type === 'union' && !def.discriminator && (def.options?.length ?? 0) > 1;
 }

@@ -401,7 +401,9 @@ function DangerZone({
           // ISS-1421 r20 — removing wipes the keys, and core refuses to turn a keyless connection
           // back on (CONNECTION_HAS_NO_KEY), so the drawer says what turns it on instead.
           <span className="fg-body-sm text-muted">
-            This connection holds no key. Saving a new key above turns it back on.
+            {providerModule(connection.provider)?.secretField === null
+              ? `This connection holds no key. ${providerModule(connection.provider)?.connectionNote ?? ""}`.trim()
+              : "This connection holds no key. Saving a new key above turns it back on."}
           </span>
         )}
         <Button variant="ghost" size="sm" onClick={() => setConfirming((v) => !v)}>

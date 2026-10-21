@@ -1,20 +1,15 @@
 import type { MiddlewareHandler } from 'hono';
 import { z } from 'zod';
 import { queryRefused } from '../../lib/query-strict.js';
-import {
-  ownHandlers,
-  refuseBodyNotTaken,
-  type ValidatorDeclaration,
-  validatorDeclarations,
-} from './validator.js';
+import { ownHandlers, type ValidatorDeclaration, validatorDeclarations } from './declarations.js';
 
-/**
- * Query keys a gate in front of the routes reads, which no route declares, each with why. None
- * today: no middleware on `/api` reads a query. A key added here is one every GET route takes.
- */
+/** Query keys a gate ahead of the routes reads, each with why; one added here every GET route takes. */
 export const QUERY_GATE_KEYS: Readonly<Record<string, string>> = {};
 
 const READS = new Set(['GET', 'HEAD']);
+
+/** The paths the query gate is mounted over, which the reference states it on and no others. */
+export const queryGateCovers = (path: string): boolean => path.startsWith('/api/');
 
 export const QUERY_NOT_TAKEN_WHEN = 'the request carries a query key, and this call takes no query';
 
@@ -41,14 +36,4 @@ export function refuseQueryNotTaken(): MiddlewareHandler {
       c.req.query(),
     );
   };
-}
-
-/** Both input gates as the app mounts them: a body a write does not take, a key an `/api` read does not. */
-export function refuseInputNotTaken(): MiddlewareHandler {
-  const body = refuseBodyNotTaken();
-  const query = refuseQueryNotTaken();
-  return (c, next) =>
-    body(c, async () => {
-      await (c.req.path.startsWith('/api/') ? query(c, next) : next());
-    });
 }

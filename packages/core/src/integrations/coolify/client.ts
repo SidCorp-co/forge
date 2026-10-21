@@ -205,12 +205,7 @@ export class CoolifyClient {
         const res = await this.fetchImpl(url, init);
         clearTimeout(timer);
         if (res.status === 401 && this.previousApiToken && token === this.apiToken) {
-          lastErr = new CoolifyApiError(
-            401,
-            await safeText(res),
-            'unauthorized (will retry with previous token)',
-            route,
-          );
+          lastErr = new CoolifyApiError(401, await safeText(res), this.answered(401, route), route);
           continue;
         }
         if (!res.ok) {
@@ -227,6 +222,7 @@ export class CoolifyClient {
         return { status: res.status, data: (await res.json()) as T };
       } catch (err) {
         clearTimeout(timer);
+        if (token !== this.apiToken && lastErr) throw lastErr;
         if (err instanceof CoolifyApiError && err.status !== 401) throw err;
         lastErr = err as Error;
       }

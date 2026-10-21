@@ -177,11 +177,20 @@ describe("the drawer's Danger zone over a connection that was removed", () => {
   const mine = { access: { reach: "owner", canManage: true, ownerName: null } } as never;
 
   it("offers no Enable on a connection holding no key, and says a new key turns it on", () => {
-    mount({ ...(mine as object), active: false, hasSecrets: false });
+    mount({ ...(mine as object), provider: "postman", active: false, hasSecrets: false });
     expect(screen.queryByRole("button", { name: "Enable" })).toBeNull();
     expect(
       screen.getByText("This connection holds no key. Saving a new key above turns it back on."),
     ).toBeInTheDocument();
+  });
+
+  // Consult finding at 068fc82: GitHub's key comes from the App install, so there is no Save key
+  // above for the drawer to point at.
+  it("points a keyless GitHub connection at the App install, never at a Save key it does not have", () => {
+    mount({ ...(mine as object), provider: "github", active: false, hasSecrets: false });
+    expect(screen.queryByRole("button", { name: "Enable" })).toBeNull();
+    expect(screen.queryByText(/Saving a new key above/)).toBeNull();
+    expect(screen.getByText(/^This connection holds no key\. The App installation holds/)).toBeInTheDocument();
   });
 
   it("offers Enable on a disabled connection that still holds its key", () => {

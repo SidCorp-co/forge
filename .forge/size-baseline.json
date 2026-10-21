@@ -46,7 +46,7 @@
       "maxFunctionLines": 0
     },
     "packages/core/src/index.ts": {
-      "fileLines": 506,
+      "fileLines": 505,
       "maxFunctionLines": 0
     },
     "packages/core/src/integrations/routes.test.ts": {

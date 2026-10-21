@@ -67,13 +67,15 @@ async function mintForHealthcheck(
       typeof secrets.previousServiceAccountJson === 'string' &&
       isPreviousCredentialValid(secrets);
     if (!recoverable) throw err;
-    const { token } = await googleAccessToken({
+    // The new key's refusal is the answer wherever the previous key does not sign in either.
+    const previous = await googleAccessToken({
       connectionId,
       serviceAccountJson: secrets.previousServiceAccountJson as string,
       scope: SHEETS_READONLY_SCOPE,
       forceMint: true,
-    });
-    return { token, usedPrevious: true };
+    }).catch(() => null);
+    if (!previous) throw err;
+    return { token: previous.token, usedPrevious: true };
   }
 }
 

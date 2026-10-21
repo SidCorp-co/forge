@@ -95,6 +95,22 @@ describe('Sentry, which keeps the previous key for its own calls', () => {
     expect((await sentryAdapter.healthcheck(ctx(secrets, SENTRY))).status).toBe('ok');
   });
 
+  // Consult finding at 068fc82: a previous-key probe that failed outright turned the verdict into an
+  // error, so the new key's refusal was never said.
+  it.each([
+    ['cannot connect', () => Promise.reject(new TypeError('fetch failed'))],
+    ['answers what is not JSON', () => Promise.resolve(new Response('<html>', { status: 200 }))],
+  ])("keeps the new key refused where the previous key's probe %s", async (_what, previous) => {
+    globalThis.fetch = vi.fn(async (_url: unknown, init?: RequestInit) =>
+      new Headers(init?.headers).get('authorization')?.includes('new-wrong')
+        ? new Response('{}', { status: 401 })
+        : previous(),
+    ) as unknown as typeof fetch;
+    const res = await sentryAdapter.healthcheck(ctx(secrets, SENTRY));
+    expect(res.status).toBe('needs_reauth');
+    expect(res.message).not.toMatch(/previous key/);
+  });
+
   it('answers the refusal alone where neither key works', async () => {
     answeringOnly('nobody', []);
     const res = await sentryAdapter.healthcheck(ctx(secrets, SENTRY));
@@ -122,6 +138,17 @@ describe('Coolify, which keeps the previous token for its own calls', () => {
       'conn-1',
       expect.objectContaining({ lastHealthStatus: 'needs_reauth' }),
     );
+  });
+
+  it('keeps the new token refused where the previous token cannot connect', async () => {
+    globalThis.fetch = vi.fn(async (_url: unknown, init?: RequestInit) =>
+      new Headers(init?.headers).get('authorization') === 'Bearer cf-new'
+        ? new Response('{}', { status: 401 })
+        : Promise.reject(new TypeError('fetch failed')),
+    ) as unknown as typeof fetch;
+    const res = await coolifyAdapter.healthcheck(ctx(secrets, COOLIFY));
+    expect(res.status).toBe('needs_reauth');
+    expect(res.message).not.toMatch(/previous key|could not be reached|fetch failed/);
   });
 
   it('answers Connected where the new token is accepted', async () => {
@@ -181,6 +208,26 @@ describe('Google, which signs in with the previous key where it refuses the new 
       /^Google refused the new key\. Forge is still using the previous key until /,
     );
     expect(getSpreadsheetMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps the new key refused where the previous key cannot sign in either', async () => {
+    googleAccessTokenMock.mockImplementation(async (a: { serviceAccountJson: string }) => {
+      if (a.serviceAccountJson.includes('new@'))
+        throw new GoogleAuthError(400, 'rejected', 'invalid_grant');
+      throw new TypeError('fetch failed');
+    });
+    const res = await googleAdapter.healthcheck(
+      ctx(
+        {
+          serviceAccountJson: key('new@x.iam'),
+          previousServiceAccountJson: key('old@x.iam'),
+          previousTokenExpiresAt: UNTIL,
+        },
+        { defaultSpreadsheetId: 's-1' },
+      ),
+    );
+    expect(res.status).toBe('needs_reauth');
+    expect(res.message).not.toMatch(/previous key|fetch failed/);
   });
 });
 

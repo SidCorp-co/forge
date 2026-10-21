@@ -1,16 +1,16 @@
 import { zValidator as honoZValidator } from '@hono/zod-validator';
 import type { Context, MiddlewareHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { matchedRoutes } from 'hono/route';
-import { findTargetHandler } from 'hono/utils/handler';
 import { type ZodType, z } from 'zod';
 import { queryRefused, strayKeys } from '../../lib/query-strict.js';
 import { isBareRefusal, isLabelOnly } from '../../lib/refusal-sentence.js';
 import {
+  dropsEarlierIssues,
   fieldsNamedAt,
   fieldsPolicy,
   nestedStrays,
   refusesItself,
+  type StrayAt,
   unknownFields,
 } from '../../lib/unknown-fields.js';
 import {
@@ -19,16 +19,10 @@ import {
   schemaRefused,
   wordedFlatten,
 } from '../../lib/zod-sentences.js';
+import { ownHandlers, type ValidatorDeclaration, validatorDeclarations } from './declarations.js';
+import { queryGateCovers, refuseQueryNotTaken } from './input-not-taken.js';
 
-/** What a route's input validator was built from, which the mounted middleware no longer shows. */
-export type ValidatorDeclaration = {
-  readonly target: 'param' | 'query' | 'json' | 'form' | 'header' | 'cookie';
-  readonly schema: ZodType;
-  readonly hook: ((...args: never[]) => unknown) | null;
-  readonly enforced?: boolean;
-};
-
-export const validatorDeclarations = new WeakMap<object, ValidatorDeclaration>();
+export { ownHandlers, type ValidatorDeclaration, validatorDeclarations } from './declarations.js';
 
 type Parsed = { success: boolean; error?: z.core.$ZodError; data?: unknown };
 type Hook = (result: Parsed, c: Context) => unknown;
@@ -86,17 +80,20 @@ function ownSentenceDetails(
     : { formErrors: [message], fieldErrors: {} };
 }
 
+const escaped = (k: string) => k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 /**
- * Whether a hook's own sentence speaks of the fields the parse found the route does not take: it
- * names one of them, or none is a plain field name a sentence could carry. A door that shortens a
- * long list ("`k0` and 9 more") or declines to echo a key that reads as a sentence keeps its words.
+ * Whether a hook's own sentence names a field the parse found the route does not take, quoted or as
+ * "field <name>": a word that merely matches ("required") is not a name. A door that declines to echo
+ * a key reading as a sentence keeps its words where every stray is one, and it says "field".
  */
 function speaksOfStrays(message: string, error: z.core.$ZodError): boolean {
   const keys = error.issues.flatMap((i) => (i.code === 'unrecognized_keys' ? i.keys : []));
-  const plain = keys.filter((k) => /^[A-Za-z_]\w{0,39}$/.test(k));
-  return (
-    plain.length === 0 || plain.some((k) => new RegExp(`(?:^|\\W)${k}(?:$|\\W)`).test(message))
-  );
+  const naming = (k: string) =>
+    new RegExp(`\`${escaped(k)}\`|"${escaped(k)}"|\\bfields? ${escaped(k)}(?:$|[\\s,.;:])`);
+  if (keys.some((k) => naming(k).test(message))) return true;
+  const unsafe = (k: string) => k.length > 200 || /[^\w.$-]/.test(k);
+  return keys.length > 0 && keys.every(unsafe) && /\bfields?\b/i.test(message);
 }
 
 /** Whether every sentence flattened details hold is one the message says already. */
@@ -206,17 +203,27 @@ function sentenced(
  */
 export function refusingUnknownFields(schema: ZodType): ZodType {
   if (fieldsPolicy(schema) === 'open') return schema;
-  return z
-    .unknown()
-    .superRefine((body, ctx) => {
-      const keys = unknownFields(schema, body);
-      if (keys.length > 0 && !refusesItself(schema, body)) {
-        ctx.addIssue({ code: 'unrecognized_keys', keys, input: body as never });
-      }
-      for (const { path, keys: inner } of nestedStrays(schema, body))
-        ctx.addIssue({ code: 'unrecognized_keys', keys: inner, path, input: body as never });
-    })
-    .pipe(schema as z.ZodType<unknown>);
+  const straysOf = (body: unknown): StrayAt[] => {
+    const keys = refusesItself(schema, body) ? [] : unknownFields(schema, body);
+    return [...(keys.length > 0 ? [{ path: [], keys }] : []), ...nestedStrays(schema, body)];
+  };
+  const refuse = (body: unknown, ctx: z.RefinementCtx, found: StrayAt[]) => {
+    for (const { path, keys } of found)
+      ctx.addIssue({ code: 'unrecognized_keys', keys, path, input: body as never });
+  };
+  if (!dropsEarlierIssues(schema))
+    return z
+      .unknown()
+      .superRefine((body, ctx) => refuse(body, ctx, straysOf(body)))
+      .pipe(schema as z.ZodType<unknown>);
+  // The union's own issues are carried beside the strays, so the refusal still names everything wrong.
+  return z.unknown().transform(async (body, ctx) => {
+    const found = straysOf(body);
+    const parsed = await schema.safeParseAsync(body);
+    refuse(body, ctx, found);
+    if (!parsed.success) for (const issue of parsed.error.issues) ctx.addIssue(issue as never);
+    return found.length > 0 || !parsed.success ? z.NEVER : parsed.data;
+  });
 }
 
 type QueryDef = {
@@ -382,16 +389,6 @@ const WRITES = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 /** What the API reference states for a write route that declares no body (ISS-1421 r16). */
 export const BODY_NOT_TAKEN_WHEN = 'the request carries a body, and this call takes none';
 
-/** The handlers of the route that answers this request, its gates mounted for every path aside. */
-export function ownHandlers(c: Context): object[] | null {
-  const matched = matchedRoutes(c);
-  const route = matched.find((r) => r.method !== 'ALL');
-  if (!route) return null;
-  return matched
-    .filter((r) => r.method === route.method && r.path === route.path)
-    .map((r) => findTargetHandler(r.handler as never) as object);
-}
-
 function takesABody(handlers: readonly object[]): boolean {
   return handlers.some((h) => {
     const target = validatorDeclarations.get(h)?.target;
@@ -460,4 +457,14 @@ export function refuseBodyNotTaken(): MiddlewareHandler {
       cause: { code: 'BAD_REQUEST', details: { takesNoBody: true } },
     });
   };
+}
+
+/** Both input gates as the app mounts them: a body a write does not take, a key an `/api` read does not. */
+export function refuseInputNotTaken(): MiddlewareHandler {
+  const body = refuseBodyNotTaken();
+  const query = refuseQueryNotTaken();
+  return (c, next) =>
+    body(c, async () => {
+      await (queryGateCovers(c.req.path) ? query(c, next) : next());
+    });
 }

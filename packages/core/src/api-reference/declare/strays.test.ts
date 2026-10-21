@@ -1,0 +1,211 @@
+import type { zValidator as library } from '@hono/zod-validator';
+import { Hono } from 'hono';
+import { HTTPException } from 'hono/http-exception';
+import { describe, expect, it } from 'vitest';
+import { z } from 'zod';
+import { refuseQueryNotTaken } from './input-not-taken.js';
+import { declaresInput, refuseInputNotTaken, zValidator } from './validator.js';
+
+const post = (body: unknown): RequestInit => ({
+  method: 'POST',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify(body),
+});
+
+/** A Hono app answering refusals as core's error handler does: message, code and details. */
+function refusing(build: (app: Hono) => void) {
+  const app = new Hono();
+  build(app);
+  app.onError((err, c) => {
+    if (!(err instanceof HTTPException)) return c.json({}, 500);
+    const cause = (err.cause ?? {}) as { code?: string; details?: unknown };
+    return c.json({ message: err.message, code: cause.code, details: cause.details }, err.status);
+  });
+  return app;
+}
+
+type Refusal = {
+  message: string;
+  code?: string;
+  details?: { formErrors: string[]; fieldErrors: Record<string, string[]> };
+};
+
+describe('a route hook that words its own refusal (ISS-1421 r20)', () => {
+  const body = z.object({ host: z.string().min(1), path: z.string().min(1) }).strict();
+  const ownHook: Parameters<typeof library>[2] = (r) => {
+    if (!r.success)
+      throw new HTTPException(400, {
+        message: 'Host and path are required.',
+        cause: { code: 'GIT_ASK', details: z.flattenError(r.error as z.core.$ZodError) },
+      });
+  };
+  const app = refusing((a) => a.post('/git', zValidator('json', body, ownHook), (c) => c.json({})));
+
+  it('is overruled by a body field the route does not take, which is named, keeping its code', async () => {
+    const res = await app.request('/git', post({ host: 'github.com', path: 'a/b', colour: 'red' }));
+    const refused = (await res.json()) as Refusal;
+    expect(res.status).toBe(400);
+    expect(refused.code).toBe('GIT_ASK');
+    expect(refused.message).toBe('The field colour is not one this call takes.');
+    expect(refused.details?.formErrors).toEqual(['The field colour is not one this call takes.']);
+  });
+
+  // Consult findings at 068fc82: a stray that is no plain word, a long one, and one whose name is a
+  // word the hook's sentence happens to use were each left behind "Host and path are required.".
+  it.each([
+    ['colour-code', 'colour-code'],
+    ['a name past forty characters', 'x'.repeat(50)],
+    ['a name the sentence uses as a word', 'required'],
+  ])('is overruled by a stray named %s', async (_what, key) => {
+    const res = await app.request('/git', post({ host: 'github.com', path: 'a/b', [key]: 1 }));
+    const refused = (await res.json()) as Refusal;
+    expect(refused.message).toBe(`The field ${key} is not one this call takes.`);
+  });
+
+  it('keeps its own sentence for any other refusal, with that sentence as its details', async () => {
+    const res = await app.request('/git', post({ host: 'github.com', path: 7 }));
+    const refused = (await res.json()) as Refusal;
+    expect(refused.message).toBe('Host and path are required.');
+    expect(refused.details).toEqual({
+      formErrors: [],
+      fieldErrors: { path: ['Host and path are required.'] },
+    });
+  });
+
+  it('keeps its own sentence where it already names the stray field', async () => {
+    const named = refusing((a) =>
+      a.post(
+        '/m',
+        zValidator('json', body, (r) => {
+          if (!r.success)
+            throw new HTTPException(400, {
+              message: 'Leave out `colour`, because a mark takes only host and path.',
+              cause: { code: 'BAD_REQUEST', details: z.flattenError(r.error as z.core.$ZodError) },
+            });
+        }),
+        (c) => c.json({}),
+      ),
+    );
+    const res = await named.request('/m', post({ host: 'h', path: 'p', colour: 'red' }));
+    const refused = (await res.json()) as Refusal;
+    expect(refused.message).toBe('Leave out `colour`, because a mark takes only host and path.');
+    expect(refused.details?.formErrors).toEqual([refused.message]);
+  });
+});
+
+describe('a field inside a body object that the object does not take (ISS-1421 r20)', () => {
+  const body = z.object({
+    story: z.string(),
+    provenance: z.object({ commit: z.string().optional() }).optional(),
+    items: z.array(z.object({ id: z.string() })).optional(),
+  });
+  const app = refusing((a) => a.post('/p', zValidator('json', body), (c) => c.json({ ok: true })));
+
+  it('is refused naming its whole path, and the handler never runs', async () => {
+    const res = await app.request('/p', post({ story: 's', provenance: { colour: 'red' } }));
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as Refusal).message).toBe(
+      'The field provenance.colour is not one this call takes.',
+    );
+  });
+
+  it('is refused inside an array entry', async () => {
+    const res = await app.request(
+      '/p',
+      post({ story: 's', items: [{ id: 'a' }, { id: 'b', hue: 1 }] }),
+    );
+    expect(((await res.json()) as Refusal).message).toBe(
+      'The field items.1.hue is not one this call takes.',
+    );
+  });
+
+  it('lets a body whose objects hold only fields they take through', async () => {
+    const res = await app.request('/p', post({ story: 's', provenance: { commit: 'abc' } }));
+    expect(res.status).toBe(200);
+  });
+
+  // Consult finding at 068fc82: two union branches both declaring `metadata` left it unread.
+  describe('under a union whose branches both declare it', () => {
+    const shared = z.union([
+      z.object({ kind: z.string(), metadata: z.object({ name: z.string() }) }),
+      z.object({ size: z.number(), metadata: z.object({ name: z.string() }) }),
+    ]);
+    const widening = z.union([
+      z.object({ kind: z.string(), metadata: z.object({ name: z.string() }) }),
+      z.object({ size: z.number(), metadata: z.object({ name: z.string(), colour: z.string() }) }),
+    ]);
+    const on = (schema: z.ZodType) =>
+      refusing((a) => a.post('/u', zValidator('json', schema), (c) => c.json({ ok: true })));
+
+    it('is refused where no branch takes it', async () => {
+      const res = await on(shared).request(
+        '/u',
+        post({ kind: 'k', metadata: { name: 'n', colour: 'red' } }),
+      );
+      expect(((await res.json()) as Refusal).message).toBe(
+        'The field metadata.colour is not one this call takes.',
+      );
+    });
+
+    it('is let through where a branch takes it', async () => {
+      const res = await on(widening).request(
+        '/u',
+        post({ size: 1, metadata: { name: 'n', colour: 'red' } }),
+      );
+      expect(res.status).toBe(200);
+    });
+  });
+
+  it('is refused by a route that parses its own body too', async () => {
+    const own = refusing((a) =>
+      a.post('/o', declaresInput('json', body), (c) => c.json({ ok: true })),
+    );
+    const res = await own.request('/o', post({ story: 's', provenance: { colour: 'red' } }));
+    expect(((await res.json()) as Refusal).message).toBe(
+      'The field provenance.colour is not one this call takes.',
+    );
+  });
+});
+
+describe('a query key on a GET route that declares no query (ISS-1421 r20)', () => {
+  const app = refusing((a) => {
+    a.use('*', refuseQueryNotTaken());
+    a.get('/none', (c) => c.json({ listed: 'everything' }));
+    a.get('/some', zValidator('query', z.object({ orgId: z.string().optional() })), (c) =>
+      c.json({ ok: true }),
+    );
+  });
+
+  it('is refused naming the key, and nothing is answered', async () => {
+    const res = await app.request('/none?orgId=x');
+    const refused = (await res.json()) as Refusal & { listed?: string };
+    expect(res.status).toBe(400);
+    expect(refused.code).toBe('UNKNOWN_QUERY_PARAMETER');
+    expect(refused.message).toBe(
+      'The field orgId is not one this call takes. It takes no query parameter.',
+    );
+    expect(refused.listed).toBeUndefined();
+  });
+
+  it('leaves a GET with no query, and a route that declares its query, to the route', async () => {
+    expect((await app.request('/none')).status).toBe(200);
+    expect((await app.request('/some?orgId=x')).status).toBe(200);
+  });
+
+  // Consult finding at 068fc82: the reference stated the 400 on every path, the app only under /api.
+  it('is refused under /api alone, where the reference states it, as the app mounts it', async () => {
+    const { inputGateCodes } = await import('../document/input-gates.js');
+    const mounted = refusing((a) => {
+      a.use('*', refuseInputNotTaken());
+      for (const at of ['/example', '/api/example']) a.get(at, (c) => c.json({ ok: true }));
+    });
+    const stated = (path: string) =>
+      inputGateCodes({ method: 'GET', path, validators: [], bodyAsSent: null } as never).some(
+        (g) => g.code === 'UNKNOWN_QUERY_PARAMETER',
+      );
+    expect((await mounted.request('/api/example?x=1')).status).toBe(400);
+    expect(stated('/api/example')).toBe(true);
+    expect((await mounted.request('/example?x=1')).status).toBe(200);
+    expect(stated('/example')).toBe(false);
+  });
+});

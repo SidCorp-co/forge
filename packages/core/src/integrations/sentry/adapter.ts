@@ -80,7 +80,7 @@ const sentryAdapterMethods: IntegrationAdapterMethods<SentryConfig, SentrySecret
         result.kind === 'unauthorized' &&
         ctx.secrets.previousAuthToken &&
         isPreviousCredentialValid(ctx.secrets) &&
-        (await attempt(ctx.secrets.previousAuthToken)).kind === 'ok'
+        (await attempt(ctx.secrets.previousAuthToken).catch(() => null))?.kind === 'ok'
       ) {
         const refused = newKeyRefused('Sentry', ctx.secrets);
         await updateConnection(ctx.connectionId, {

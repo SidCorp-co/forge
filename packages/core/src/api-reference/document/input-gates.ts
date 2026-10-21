@@ -1,6 +1,6 @@
 import { UNKNOWN_QUERY_PARAMETER } from '../../lib/query-strict.js';
 import { fieldsPolicy } from '../../lib/unknown-fields.js';
-import { QUERY_NOT_TAKEN_WHEN, takesNoQuery } from '../declare/input-not-taken.js';
+import { QUERY_NOT_TAKEN_WHEN, queryGateCovers, takesNoQuery } from '../declare/input-not-taken.js';
 import { BODY_NOT_TAKEN_WHEN } from '../declare/validator.js';
 import type { RouteEntry } from './registry.js';
 
@@ -22,7 +22,7 @@ export function inputGateCodes(
   const codes: { status: number; code: string; when: string }[] = [];
   if (takesNoBody(entry))
     codes.push({ status: 400, code: 'BAD_REQUEST', when: BODY_NOT_TAKEN_WHEN });
-  if (takesNoQuery(entry.method, entry.validators))
+  if (queryGateCovers(entry.path) && takesNoQuery(entry.method, entry.validators))
     codes.push({ status: 400, code: UNKNOWN_QUERY_PARAMETER, when: QUERY_NOT_TAKEN_WHEN });
   for (const declaration of entry.validators) {
     if (declaration.target === 'query' && fieldsPolicy(declaration.schema) !== 'open')
