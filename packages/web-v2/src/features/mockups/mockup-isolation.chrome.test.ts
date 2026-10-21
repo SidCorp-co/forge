@@ -81,16 +81,26 @@ async function chrome(): Promise<{ proc: ChildProcess; page: string; profile: st
   const bin = process.env.WITNESS_CHROME ?? "google-chrome";
   const profile = mkdtempSync(join(tmpdir(), "mockup-isolation-"));
   const proc = spawn(bin, ["--headless=new", "--no-first-run", "--no-default-browser-check", "--disable-gpu", "--remote-debugging-port=0", "--remote-allow-origins=*", `--user-data-dir=${profile}`, "about:blank"], {
-    stdio: "ignore",
+    stdio: ["ignore", "ignore", "pipe"],
   });
+  // what Chrome said on stderr, so a start that never answers is named by Chrome's own words
+  let said = "";
+  proc.stderr?.on("data", (d) => (said = (said + String(d)).slice(-2000)));
   const start: { failed?: Error } = {};
   proc.on("error", (e) => (start.failed = new Error(`${bin} could not start (${e.message}): this test needs Chrome; set WITNESS_CHROME to its binary`)));
   const portFile = join(profile, "DevToolsActivePort");
-  for (let i = 0; i < 150 && !existsSync(portFile); i++) {
+  const refuse = (why: string) => {
+    proc.kill();
+    rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    return new Error(`${bin} ${why}. Chrome said: ${said.trim() || "nothing"}`);
+  };
+  // 30s: a cold Chrome beside the web suite's workers on a CI runner has taken over 15s to start
+  for (let i = 0; i < 300 && !existsSync(portFile); i++) {
     if (start.failed) throw start.failed;
+    if (proc.exitCode !== null || proc.signalCode !== null) throw refuse(`exited (${proc.exitCode ?? proc.signalCode}) before it wrote DevToolsActivePort`);
     await pause(100);
   }
-  if (!existsSync(portFile)) throw new Error(`${bin} wrote no DevToolsActivePort in 15s`);
+  if (!existsSync(portFile)) throw refuse("wrote no DevToolsActivePort in 30s");
   const port = readFileSync(portFile, "utf8").split("\n")[0];
   for (let i = 0; i < 50; i++) {
     const targets = (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json()) as { type: string; webSocketDebuggerUrl: string }[];
@@ -159,5 +169,5 @@ describe("an HTML mockup in Chrome", () => {
     });
     // nothing it tried — a call, through the parent or not, nor an image — reached the server
     expect(apiCalls).toEqual([]);
-  }, 30_000);
+  }, 60_000);
 });
