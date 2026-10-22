@@ -31,7 +31,7 @@ import { FIGURES_GROUNDED } from '../messaging/figures-rule.js';
 import { datesIn, GROUNDING_RULE } from '../messaging/grounding-rule.js';
 import { PROGRESS_FIGURES_MATCH } from '../messaging/progress-rule.js';
 import { withRepairs } from '../messaging/repairs.js';
-import { cutClauses, repairIssueLinks } from '../messaging/reply-marks.js';
+import { cutHeldSentences, repairIssueLinks } from '../messaging/reply-marks.js';
 import { screenReplyAtDoor } from '../messaging/reply-screen.js';
 import { STATUS_CLAIMS_GROUNDED } from '../messaging/status-claims-rule.js';
 import { UI_ACTS_GROUNDED } from '../messaging/ui-claims-rule.js';
@@ -227,7 +227,7 @@ export async function checkedPart(
     if (claims.length === 0 || claims.some((r, i) => r.quote === null || kinds[i] === null)) {
       return null;
     }
-    const cut = cutClauses(
+    const cut = cutHeldSentences(
       text,
       claims.map((r) => r.quote as string),
     );
