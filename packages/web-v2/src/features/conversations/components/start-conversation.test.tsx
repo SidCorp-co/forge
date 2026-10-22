@@ -152,7 +152,7 @@ describe("an agent offered to a new room that lost its role on its project", () 
     candidates = {
       people: [],
       handles: [
-        { userId: "u-ledger", handle: "ledger", project: { id: "p9", name: "Ledger", slug: "ledger" }, losesReaders: [], reachable: false },
+        { userId: "u-ledger", handle: "ledger", project: { id: "p9", name: "Ledger", slug: "ledger" }, losesReaders: [], reachable: false, blocked: "lost-role" },
       ],
       beyondReach: { named: [], unnamed: 0 },
     };
@@ -163,6 +163,26 @@ describe("an agent offered to a new room that lost its role on its project", () 
   });
 });
 
+
+// ISS-1229 r37, judge-100: an agent whose address another agent holds was a second, unmarked @billing.
+describe("an agent offered to a new room whose address another agent answers to", () => {
+  it("is marked with why and cannot be ticked", () => {
+    projects = [{ id: "p1", name: "Billing", slug: "billing", role: "member" }];
+    candidates = {
+      people: [],
+      handles: [
+        { userId: null, handle: "billing", project: { id: "p9", name: "Ledger", slug: "ledger" }, losesReaders: [], reachable: false, blocked: "taken" },
+      ],
+      beyondReach: { named: [], unnamed: 0 },
+    };
+    pickTheProject();
+    expect(
+      screen.getByText("This project's agent would answer to @billing, which another agent of this organization already answers to."),
+    ).toBeTruthy();
+    const tick = screen.getByRole("checkbox", { name: /@billing/ });
+    expect(tick.hasAttribute("disabled") || tick.getAttribute("aria-disabled") === "true").toBe(true);
+  });
+});
 
 // ISS-1229 r36, judge-97: the Project picker offered Ledger, whose own agent had lost its role there, with
 // nothing marked; the agent was picked and confirmed and only Open the room was refused 409.

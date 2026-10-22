@@ -114,8 +114,8 @@ export function unansweringAgentLines(
     });
 }
 
-export const WHY_ABOVE_THE_BOX = "Why is said above the message box.";
-export const WHY_IN_ABOUT = "Why is said in this room's About line, at the top.";
+export const WHY_ABOVE_THE_BOX = "The reason is above the message box.";
+export const WHY_IN_ABOUT = "The reason is in this room's About line, at the top.";
 
 /** The single home of the reasons: the box for a reader who may post there, else About (r36, judge-97). */
 export function whereWhyIsSaid(
@@ -153,10 +153,32 @@ export function unopenableReason(opener: Pick<RoomOpener, "handle" | "blocked">,
   return opener.blocked === "lost-role" ? `@${opener.handle} can't answer. ${cannotAnswerReason(projectName)}` : null;
 }
 
+/**
+ * Why an agent offered to a room cannot be added, or null where it can: a lost role in the words its row
+ * in Who is in this room uses, an address another agent holds as the project picker says it (r37).
+ */
+export function candidateHeldReason(candidate: Pick<HandleCandidate, "handle" | "blocked" | "reachable" | "project">): string | null {
+  if (candidate.blocked === "taken") return unopenableReason(candidate, candidate.project.name);
+  return candidate.reachable ? null : cannotAnswerReason(candidate.project.name);
+}
+
 /** The agent panel's heading before its room loads: never New conversation to a reader who may not start one. */
 export function draftHeading(roomId: string | undefined, canStart: boolean): string {
   if (roomId) return "Conversation";
   return canStart ? "New conversation" : "Conversations";
+}
+
+/**
+ * What the agent panel's door says where no project is open: open one, or, to a reader with none to open,
+ * that there is none yet (ISS-1229 r37, judge-100).
+ */
+export function agentPanelWithoutProject(mayStart: boolean, anyProject: boolean): { title: string; description: string } {
+  if (!anyProject) {
+    return { title: "Conversations", description: "There is no project here yet, and a conversation is about a project." };
+  }
+  return mayStart
+    ? { title: "Ask agent", description: "Open a project to ask the agent." }
+    : { title: "Conversations", description: "Open a project to read its conversations." };
 }
 
 /** What the top bar names the agent panel: Ask agent only where the reader may start a room (r36). */
@@ -195,10 +217,8 @@ export function emptyRoomState(
     };
   }
   if (readOnly) return { title: "Nothing has been said here yet", message: readOnly };
-  const refusal = composerRefusal(room, reader);
-  if (refusal) {
-    return { title: "Nothing can be sent here", message: [refusal.reason, refusal.wayOut].filter(Boolean).join(" ") };
-  }
+  // The reason and the way out are said once, at the box (r37, judge-100).
+  if (composerRefusal(room, reader)) return { title: "Nothing can be sent here", message: WHY_ABOVE_THE_BOX };
   return null;
 }
 
@@ -407,17 +427,30 @@ export function removalHeld(
 }
 
 /**
+ * Whether taking one agent out would leave a room that can be spoken in: about one project, with an agent
+ * that can answer there (ISS-1229 r37, judge-100).
+ */
+function speakableAfterOneOut(room: Partial<Pick<ConversationMembership, "participants">>): boolean {
+  const agents = agentsOf(room);
+  return agents.some((out) => {
+    const left = agents.filter((p) => p.id !== out.id);
+    return new Set(left.map((p) => p.projectId)).size === 1 && left.some((p) => p.reachable !== false);
+  });
+}
+
+/**
  * Why a room takes no messages from Forge, where it takes none, and the way out for this reader: taking
  * an agent out, said to one who may; who can, to any other who could then post; none to a reader who
- * could not post either way (ISS-1229 r35, judge-95).
+ * could not post either way (ISS-1229 r35, judge-95), nor where taking one out would still leave a room
+ * nobody can speak in (r37).
  */
 export function composerRefusal(
-  room: Partial<Pick<ConversationMembership, "scopeProjects" | "canChangeMembership">>,
+  room: Partial<Pick<ConversationMembership, "scopeProjects" | "canChangeMembership" | "participants">>,
   reader: { canPost: boolean } = { canPost: true },
 ): { reason: string; wayOut: string | null } | null {
   if (!room.scopeProjects || room.scopeProjects.length <= 1) return null;
   const reason = `This room is about ${list(room.scopeProjects)}, and a message is answered under exactly one project.`;
-  if (!reader.canPost) return { reason, wayOut: null };
+  if (!reader.canPost || !speakableAfterOneOut(room)) return { reason, wayOut: null };
   return {
     reason,
     wayOut:

@@ -139,6 +139,27 @@ describe("Select", () => {
     expect(document.activeElement).toBe(combobox());
   });
 
+  // ISS-1229 r37, judge-100: a disabled option's reason was the faintest text on screen, faded with its row,
+  // when it is the answer to "why can't I pick this".
+  it("fades a disabled option's label and never the reason under it", () => {
+    render(
+      <Select
+        aria-label="Project"
+        options={[{ value: "l", label: "Ledger", detail: "Its agent can't answer here.", disabled: true }]}
+        value=""
+        onChange={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole("combobox", { name: "Project" }));
+    const option = screen.getByRole("option", { name: /Ledger/ });
+    const detail = option.querySelector("[data-option-detail]") as HTMLElement;
+    for (let el: HTMLElement | null = detail; el && el !== option.parentElement; el = el.parentElement) {
+      expect(el.className).not.toMatch(/opacity/);
+    }
+    expect(detail).toHaveClass("text-muted");
+    expect(option.querySelector("[data-option-label]")).toHaveClass("text-subtle");
+  });
+
   it("holds the page still while open", () => {
     render(<InTable />);
     fireEvent.click(combobox());

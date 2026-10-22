@@ -308,6 +308,22 @@ describe("a withdrawn reply read back after a reload", () => {
     expect(screen.getByText("the stored draft")).toBeInTheDocument();
   });
 
+  // r37, judge-100: the withdrawn text showed its markdown as raw asterisks.
+  it("shows the withdrawn text rendered, never its raw markup", () => {
+    render(
+      <ConversationThread
+        messages={[
+          said({ id: "a1", role: "assistant", authorLabel: null, content: "The answer", withdrawnDraft: "**ISS-999** is not on this project's tracker." }),
+        ]}
+        windows={[]}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Technical details/ }));
+    const draft = screen.getByTestId("withdrawn-draft");
+    expect(draft.textContent).toBe("ISS-999 is not on this project's tracker.");
+    expect(draft.querySelector("strong")?.textContent).toBe("ISS-999");
+  });
+
   it("says nothing of a withdrawal for a reply the check let through", () => {
     render(<ConversationThread messages={[said({ id: "a2", role: "assistant", authorLabel: null, content: "Fine", withdrawnDraft: null })]} windows={[]} />);
     expect(screen.queryByTestId("thread-reply-withdrawn")).toBeNull();

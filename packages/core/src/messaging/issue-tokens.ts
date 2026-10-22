@@ -42,6 +42,32 @@ export function extractIssueClaims(reply: string, prefixes: readonly string[] = 
   return { urlIds, malformedUrlIds, issSeqs, claimsCreation: CREATION_CLAIM_RE.test(reply) };
 }
 
+/** After a key: the words that say this project does not hold it — "is not on this project's tracker". */
+const ABSENT_AFTER =
+  /^[*_`"”’)\]]*\s+(?:(?:is not|isn't|is no longer|was not|wasn't|does not|doesn't)\s+(?:exist\b|(?:on|in|part of|held (?:by|on|in))\s+(?:[\w’'-]+\s+){0,5}?(?:tracker|project|backlog)\b)|(?:was not|wasn't|could not be|couldn't be|cannot be|can't be)\s+found\b)/i;
+
+/** Before a key: the words that say there is no such issue — "there is no", "I couldn't find". */
+const ABSENT_BEFORE =
+  /\b(?:there is no|there's no|there isn't an?|no issue(?: called| named| keyed| with the key)?|could not find|couldn't find|cannot find|can't find|did not find|didn't find|found no)\s+(?:(?:an? )?issue\s+|key\s+)?[*_`"“‘([]*$/i;
+
+/**
+ * The issues a message says this project does not hold, each in a sentence of its own words: a reply
+ * telling the person that a key they named is absent states a fact, not a citation (ISS-1229 r37,
+ * judge-100). Whether the project truly lacks it is the rule's to read off the tracker.
+ */
+export function absentIssueSeqs(text: string, prefixes: readonly string[] = []): Set<number> {
+  const absent = new Set<number>();
+  for (const sentence of text.split(/(?<=[.!?])\s+|\n+/)) {
+    for (const m of sentence.matchAll(issueTokenRe(prefixes))) {
+      const at = m.index ?? 0;
+      const before = sentence.slice(0, at);
+      const after = sentence.slice(at + m[0].length);
+      if (ABSENT_AFTER.test(after) || ABSENT_BEFORE.test(before)) absent.add(Number(m[2]));
+    }
+  }
+  return absent;
+}
+
 export function turnCreatedIssue(
   toolCalls: readonly { name: string; arguments: string }[],
 ): boolean {

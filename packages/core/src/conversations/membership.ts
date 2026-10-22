@@ -16,12 +16,7 @@ import {
 import { effectiveProjectRole, projectRoleAtLeast } from '../lib/authz.js';
 import { personName } from '../lib/person-name.js';
 import type { Executor, TxOnly } from './db-executor.js';
-import {
-  agentHoldingHandle,
-  existingProjectHandle,
-  handleNameForProject,
-  unmintedOpening,
-} from './handles.js';
+import { existingProjectHandle, handleNameForProject, unmintedOpening } from './handles.js';
 import { conversationTransport } from './ports.js';
 import { roomRefusal } from './room-refusal.js';
 import { appendMessagesIn } from './store.js';
@@ -56,6 +51,11 @@ export interface HandleCandidate {
   project: NamedProject;
   /** False for a project's agent that no longer holds a role on it: offered marked, never added. */
   reachable: boolean;
+  /**
+   * Why it cannot be added, read as `roomOpeners` reads a project: its agent lost its role there, or the
+   * address it would take is another agent's (ISS-1229 r37, judge-100). Null where it can be.
+   */
+  blocked: 'lost-role' | 'taken' | null;
 }
 
 /** The projects behind a derived scope, named, in the scope's own order. */
@@ -327,12 +327,20 @@ export async function addableHandles(
     const mine = agents.filter((a) => a.projectId === project.id && a.handle);
     if (mine.length === 0) {
       if (scope.includes(project.id)) continue;
-      const handle = handleNameForProject(project.slug, project.id);
-      // The project's own agent, if it lost its role there, still holds this address (ISS-1229 r35).
-      const lost = await agentHoldingHandle(tx, orgId, handle);
-      const roleless = lost && !lost.holdsARole ? lost.userId : null;
-      if (roleless && already.has(roleless)) continue;
-      out.push({ userId: roleless, handle, project, losesReaderIds, reachable: !roleless });
+      // The address the project's agent would be minted under may already be answered: by its own agent
+      // that lost its role there (r35), or by another agent, whose row would otherwise show the same
+      // handle unmarked (r37). The reading `roomOpeners` and the mint's refusal share.
+      const opening = await unmintedOpening(tx, { ...project, orgId });
+      if (opening.kind === 'lost-role' && already.has(opening.userId)) continue;
+      const blocked = opening.kind === 'mint' ? null : opening.kind;
+      out.push({
+        userId: opening.kind === 'lost-role' ? opening.userId : null,
+        handle: opening.handle,
+        project,
+        losesReaderIds,
+        reachable: blocked === null,
+        blocked,
+      });
       continue;
     }
     for (const agent of mine) {
@@ -343,6 +351,7 @@ export async function addableHandles(
         project,
         losesReaderIds,
         reachable: true,
+        blocked: null,
       });
     }
   }

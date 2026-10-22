@@ -10,7 +10,7 @@ import { scrubLogText } from '@forge/observability';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import type { MessageRule, RuleBreak } from './contract.js';
 import type { MessageFacts } from './facts.js';
-import { issueTokenRe } from './issue-tokens.js';
+import { absentIssueSeqs, issueTokenRe } from './issue-tokens.js';
 import { OPTION_LINE_RE } from './option-line.js';
 import { extractStatusAssertions } from './status-assertions.js';
 
@@ -199,10 +199,13 @@ export const ONLY_VERIFIED_CITATIONS: MessageRule = {
     if (f.issueLookupFailed) return none;
     const returned = refsTheTrackerReturned(f);
     const asserted = new Set(extractStatusAssertions(text, f.prefixes).map((a) => a.seq));
+    const absent = absentIssueSeqs(text, f.prefixes);
     const breaks: RuleBreak[] = [];
     for (const m of text.matchAll(issueTokenRe(f.prefixes))) {
       const seq = Number(m[2]);
       if (f.knownIssueSeqs.has(seq)) continue;
+      // Saying the project holds no such issue is true where the tracker's rows hold none (r37).
+      if (absent.has(seq)) continue;
       if (returned.has((m[0] as string).toUpperCase()) && !asserted.has(seq)) continue;
       const ref = formatIssueRef(f.prefix, seq);
       breaks.push({
