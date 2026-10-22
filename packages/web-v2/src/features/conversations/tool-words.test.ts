@@ -216,9 +216,10 @@ describe("a refusal's reason", () => {
     stderr: "No guide named issue-claiming. `forge guide` lists the guides this plugin stands behind.\n",
   });
   const listedGuides = guide(["guide"], { exitCode: 0, stdout: "contract\n  this plugin's own\n", stderr: "" });
+  const readFlow = guide(["guide", "issue-flow"], { exitCode: 0, stdout: "# Skill: issue-flow\n", stderr: "" });
 
   it("says the assistant tried another way where it did later in the same reply", () => {
-    expect(toolWords(noGuide, false, [listedGuides])).toEqual({
+    expect(toolWords(noGuide, false, [listedGuides, readFlow])).toEqual({
       said: "Couldn't read the “issue-claiming” guide",
       refusal: `No guide named issue-claiming. ${TOOK_ANOTHER_WAY}`,
     });
@@ -264,6 +265,10 @@ describe("a refusal's reason", () => {
     expect(toolWords(search("ab", 1), false, [search("ab", 0)]).refusal).toBe(`The search was too short. ${TOOK_ANOTHER_WAY}`);
     const listing = cli(["issue", "--status", "ab"], { exitCode: 0, stdout: "0 issue(s)", stderr: "" });
     expect(toolWords(search("ab", 1), false, [listing]).refusal).toBe(`The search was too short. ${PUT_IT_RIGHT}`);
+    const help = guide(["guide", "contract", "--help"], { exitCode: 0, stdout: "Usage: forge guide", stderr: "" });
+    const tooLarge = guide(["guide", "contract"], { exitCode: 1, stdout: "", stderr: "The guide is too large to print here.\n" });
+    expect(toolWords(tooLarge, false, [help]).refusal).toBe(`The guide is too large to print here. ${PUT_IT_RIGHT}`);
+    expect(toolWords(noGuide, false, [help]).refusal).toBe(`No guide named issue-claiming. ${PUT_IT_RIGHT}`);
     const comment = (argv: string[], exitCode: number) =>
       cli(["comment", "ISS-1", ...argv], { exitCode, stdout: exitCode ? "" : "posted", stderr: exitCode ? "The comment is empty." : "" });
     expect(toolWords(comment(["-"], 1), false, [comment([], 0)]).refusal).toBe(`The comment is empty. ${PUT_IT_RIGHT}`);

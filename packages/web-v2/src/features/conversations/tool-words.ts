@@ -22,11 +22,14 @@ interface Act {
   done: string;
   refused: string;
   running: string;
+  /** The verb and what it acted on, apart, so a later call can be told the same act or another. */
+  kind: string;
+  on: string;
 }
 
 const act = (done: string, base: string, running: string, target = ""): Act => {
   const on = target ? ` ${target}` : "";
-  return { done: `${done}${on}`, refused: `Couldn't ${base}${on}`, running: `${running}${on}…` };
+  return { done: `${done}${on}`, refused: `Couldn't ${base}${on}`, running: `${running}${on}…`, kind: base, on: target };
 };
 
 const quoted = (text: string) => `“${text}”`;
@@ -64,7 +67,7 @@ const commentWrites = (argv: readonly string[]) => positionals(argv, 1).some((a)
 /** What the `forge` CLI did, read off its arguments. */
 function forgeAct(argv: readonly string[]): Act {
   const [verb, sub] = argv;
-  if (argv.includes("-h") || argv.includes("--help")) return act("Read", "read", "Reading", "the tracker's help");
+  if (argv.includes("-h") || argv.includes("--help")) return { ...act("Read", "read", "Reading", "the tracker's help"), kind: "help" };
   const keys = positionals(argv, 1).filter((a) => ISSUE_KEY.test(a));
   const key = keys[0];
   switch (verb) {
@@ -259,18 +262,22 @@ const PERSON_KINDS: readonly { says: RegExp; wrong?: string; remedy: string }[] 
 export const PUT_IT_RIGHT = "Ask the assistant to put it right and try again.";
 export const TOOK_ANOTHER_WAY = "The assistant tried another way below, and its answer says how it went.";
 
-/** The act a call stands for, and what it acted on, so a later call can be told the same or another. */
-function callOf(tool: ToolCallData): { act: string; target: string } {
+/**
+ * A call as the card says it, its verb and what it acted on read off the same `Act` the card's line is,
+ * so two calls are one act only where the card would say the same verb (r38). A call that names nothing,
+ * no key, slug, title or search, has no target another call could share.
+ */
+function callOf(tool: ToolCallData): { act: string; target: string | null } {
   const input = tool.input ?? {};
+  const said = actOf(tool);
   if (tool.name === "forge" && Array.isArray(input.argv)) {
     const argv = input.argv.filter((a): a is string => typeof a === "string");
     const sub = argv[0] === "knowledge" ? 2 : 1;
-    const named = [...positionals(argv, sub), ...TARGET_FLAGS.map((f) => (flag(argv, f) ? `${f} ${flag(argv, f)}` : ""))];
-    const act = `forge ${argv.slice(0, sub).join(" ")}${argv[0] === "comment" && commentWrites(argv) ? " -" : ""}`;
-    return { act, target: named.filter((x) => x && x !== "-").join(" ") };
+    const names = positionals(argv, sub).some((a) => a !== "-") || TARGET_FLAGS.some((f) => flag(argv, f));
+    return { act: `forge ${argv[0] ?? ""} ${said?.kind ?? ""}`, target: names && said ? said.on : null };
   }
-  const target = [input.slug, input.id, input.issueId, input.query].find((v) => typeof v === "string") ?? "";
-  return { act: `${tool.name} ${typeof input.action === "string" ? input.action : ""}`, target: String(target) };
+  const names = [input.slug, input.id, input.issueId, input.query].some((v) => typeof v === "string");
+  return { act: `${tool.name} ${said?.kind ?? String(input.action ?? "")}`, target: names ? (said?.on ?? JSON.stringify(input)) : null };
 }
 
 /** The flags that say what a call acted on: a filing's title, a search's words, a listing's status. */
@@ -291,7 +298,7 @@ export function tookAnotherWay(tool: ToolCallData, later: readonly ToolCallData[
   return later.some((t) => {
     if (t.isError === true || t.result === undefined) return false;
     const done = callOf(t);
-    return done.act === refused.act && (anyTarget || (refused.target !== "" && done.target === refused.target));
+    return done.act === refused.act && (anyTarget || (refused.target !== null && done.target === refused.target));
   });
 }
 

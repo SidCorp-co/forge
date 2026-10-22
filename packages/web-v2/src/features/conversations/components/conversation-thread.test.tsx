@@ -241,7 +241,14 @@ describe("a refused call the assistant put right in the same reply", () => {
   it("says the assistant tried another way where a later call of the same act went through", () => {
     render(
       <ConversationThread
-        messages={[turn([noGuide, call("g2", ["guide"], { exitCode: 0, stdout: "contract\n", stderr: "" }), { type: "text", text: "Here." }])]}
+        messages={[
+          turn([
+            noGuide,
+            call("g2", ["guide"], { exitCode: 0, stdout: "contract\n", stderr: "" }),
+            call("g3", ["guide", "issue-flow"], { exitCode: 0, stdout: "# Skill: issue-flow\n", stderr: "" }),
+            { type: "text", text: "Here." },
+          ]),
+        ]}
         windows={[]}
       />,
     );

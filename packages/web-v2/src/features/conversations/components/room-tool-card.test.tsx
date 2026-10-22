@@ -76,7 +76,8 @@ describe("a room's tool card", () => {
       isError: true,
     };
     const listed: ToolCallData = { id: "g2", name: "forge", input: { argv: ["guide"] }, result: { exitCode: 0, stdout: "contract\n", stderr: "" } };
-    const { unmount } = render(<RoomToolCard tool={noGuide} later={[listed]} />);
+    const flow: ToolCallData = { ...listed, id: "g3", input: { argv: ["guide", "issue-flow"] } };
+    const { unmount } = render(<RoomToolCard tool={noGuide} later={[listed, flow]} />);
     expect(screen.getByTestId("room-tool-refusal")).toHaveTextContent(
       "No guide named issue-claiming. The assistant tried another way below, and its answer says how it went.",
     );
