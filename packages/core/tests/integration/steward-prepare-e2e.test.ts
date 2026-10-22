@@ -357,7 +357,9 @@ describe('where no agreed requirement fits, the answer acts (REQ-48 BC-5)', () =
     expect(logged).toHaveLength(1);
   });
 
-  it('a link answer on a draft opened since is refused stale, and the question stays open', async () => {
+  // REQ-41 BC-26 (ruled 2026-10-22): the move out of draft voids the decision in the same write, so
+  // it no longer waits on anyone; an answer sent from a card drawn before the move is still refused stale
+  it('a link answer on a draft opened since is refused stale, its question voided by the move', async () => {
     const req = await agreedRequirement(911);
     const issue = await draftIssue(106);
     await diagnose(issue, [decide(issue.key, 'link', [{ requirement: req, bc: 'BC-1' }])]);
@@ -373,7 +375,12 @@ describe('where no agreed requirement fits, the answer acts (REQ-48 BC-5)', () =
     const stale = await answer(id, { optionId: stewardLinkOptionId(req, 'BC-1') });
     expect([stale.status, stale.json.code]).toEqual([409, 'STEWARD_DECISION_STALE']);
     expect((await issueRow(issue.id))?.status).toBe('open');
-    expect((await openQuestion(issue.id)).id).toBe(id);
+    const [q] = await rows<{ status: string; void_reason: string | null }>(sql`
+      SELECT status, void_reason FROM agent_questions WHERE id = ${id}`);
+    expect(q?.status).toBe('void');
+    expect(q?.void_reason).toBe(
+      'the issue moved from Draft to Open without this being answered, so the draft it asked about is gone and no answer to it can act: Opened by hand before the answer.',
+    );
   });
 
   it('the run a link answer starts waits for the next day once the day is spent, before any turn', async () => {
