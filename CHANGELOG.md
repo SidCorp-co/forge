@@ -3284,7 +3284,7 @@
 - **A room's tool cards say what the assistant did**, such as "Filed ISS-12 — title", and a refused call says why in one line; the raw call sits under Technical details. (ISS-1229)
 - **The conversation list fills its drawer on a phone**, leaving no blank white beside it. (ISS-1229)
 - **A room no agent can answer says so in its box and under your message**, naming each agent and why. Sending there no longer fails with a server error; opening a room on such a project is refused. (ISS-1229)
-- **Conversations offer a viewer nothing they cannot do.** Start a conversation lists only projects you can start one in, a two-project room never tells a viewer to take an agent out, and refusals name the role held. (ISS-1229)
+- **Conversations offer a viewer nothing they cannot do.** New rooms are offered only where you can start one, a two-project room never tells a viewer to take an agent out, and refusals name the role held. (ISS-1229)
 - **A room's search card says where it searched**, knowledge, memory or both, counting each apart, and a held filing says what it lacks and how to put it right. (ISS-1229)
 - **Add an agent marks an agent that lost its role on its project** with why it cannot answer, and does not offer it. (ISS-1229)
 - **Reloading Conversations keeps the open room open**, an archived one included. (ISS-1229)

@@ -16,10 +16,12 @@ const archived = {
   archivedAt: "2026-10-02T02:00:00Z",
 };
 
+const desk = { id: "p1", name: "Desk", slug: "desk", orgId: "o1", role: "member" };
+const reader = { role: "member" };
 vi.mock("@/features/projects/hooks", () => ({
-  useProjects: () => ({ data: [{ id: "p1", name: "Desk", slug: "desk", orgId: "o1" }], isLoading: false }),
+  useProjects: () => ({ data: [{ ...desk, role: reader.role }], isLoading: false }),
   useOrgScopedProjects: () => ({
-    projects: [{ id: "p1", name: "Desk", slug: "desk", orgId: "o1" }],
+    projects: [{ ...desk, role: reader.role }],
     projectIds: new Set(["p1"]),
   }),
 }));
@@ -45,13 +47,22 @@ vi.mock("./conversation-sidebar", () => ({
   ConversationSidebar: ({
     rows,
     onOpen,
+    onNew,
     onToggleArchived,
   }: {
     rows: Array<{ id: string; title: string }>;
     onOpen: (row: unknown) => void;
+    onNew?: () => void;
     onToggleArchived: () => void;
   }) => (
     <ul>
+      {onNew && (
+        <li>
+          <button type="button" onClick={onNew}>
+            New conversation
+          </button>
+        </li>
+      )}
       <li>
         <button type="button" onClick={onToggleArchived}>
           Switch list
@@ -74,6 +85,7 @@ vi.mock("./start-conversation", () => ({ StartConversation: () => <div data-test
 const { ConversationsScreen } = await import("./conversations-screen");
 
 beforeEach(() => {
+  reader.role = "member";
   window.matchMedia = ((query: string) => ({
     matches: query === "(min-width: 768px)",
     media: query,
@@ -136,5 +148,21 @@ describe("the open room, across a reload", () => {
     cleanup();
     render(<ConversationsScreen />);
     expect(screen.getByTestId("open-room").textContent).toBe("r1");
+  });
+});
+
+// ISS-1229 r35, judge-95: the list offered a viewer a room they could not start.
+describe("the offer of a new room", () => {
+  it("is made to a member of a project here", () => {
+    at("/conversations");
+    render(<ConversationsScreen />);
+    expect(screen.getByRole("button", { name: "New conversation" })).toBeTruthy();
+  });
+
+  it("is not made to a reader holding only the viewer role here", () => {
+    reader.role = "viewer";
+    at("/conversations");
+    render(<ConversationsScreen />);
+    expect(screen.queryByRole("button", { name: "New conversation" })).toBeNull();
   });
 });

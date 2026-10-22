@@ -18,7 +18,7 @@ import { Button, Checkbox, ErrorState, Icon, Select, Spinner } from "@/design";
 import { useOrgScopedProjects } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
 import { useOpenConversation, useProjectCandidates } from "../hooks";
-import { cannotAnswerReason, roomOpeningClaims } from "../membership";
+import { cannotAnswerReason, roomOpeningClaims, startsRooms } from "../membership";
 import type { ConversationProject, HandleCandidate } from "../types";
 
 /** One agent chosen for a room that does not exist yet. */
@@ -26,9 +26,6 @@ type PickedHandle = { userId: string | null; projectId: string };
 
 const sameHandle = (a: PickedHandle, b: PickedHandle) =>
   a.projectId === b.projectId && a.userId === b.userId;
-
-/** A room is opened by somebody holding the member role or above on its project (ISS-1229 r35). */
-const startsRooms = (role: string | null | undefined) => role === "member" || role === "admin";
 
 export function StartConversation({ onStarted }: { onStarted: (id: string, projectId: string) => void }) {
   const { projects: visible } = useOrgScopedProjects();

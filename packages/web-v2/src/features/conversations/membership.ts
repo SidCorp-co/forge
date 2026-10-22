@@ -129,6 +129,18 @@ export function noAgentAnswers(
 /** What a room's message box says where no agent can answer: a person may still post (r35, judge-95). */
 export const NO_AGENT_WILL_ANSWER = "No agent here will answer what you send.";
 
+/** A room is opened by somebody holding the member role or above on its project (ISS-1229 r35). */
+export const startsRooms = (role: string | null | undefined) => role === "member" || role === "admin";
+
+/** Renaming, archiving and deleting a room take that role on every project it is about, as core asks. */
+export const changesRoom = (
+  room: { scope: readonly string[]; projectId: string },
+  roleOf: (projectId: string) => string | null | undefined,
+) => (room.scope.length > 0 ? room.scope : [room.projectId]).every((id) => startsRooms(roleOf(id)));
+
+export const VIEWER_LIST_EMPTY =
+  "Conversations on your projects show up here to read. You hold the viewer role, so you cannot start one.";
+
 /** An empty room's title and line where an invitation would be untrue, else null (ISS-1229 r34). */
 export function emptyRoomState(
   room:

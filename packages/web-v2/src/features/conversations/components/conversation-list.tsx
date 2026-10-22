@@ -26,6 +26,7 @@ import {
   useDeleteConversation,
   useRenameConversation,
 } from "../hooks";
+import { changesRoom, VIEWER_LIST_EMPTY } from "../membership";
 import { conversationTitle } from "../types";
 import { ConversationRow, projectsOfRow } from "./conversation-row";
 
@@ -47,7 +48,8 @@ export function ConversationList({
   /** The room the panel currently has open, so its row reads as the open one. */
   activeConversationId?: string | undefined;
   onOpen: (row: ListedConversation) => void;
-  onNew: () => void;
+  /** Absent where the reader may not start a room on this project: the list offers none (r35). */
+  onNew?: (() => void) | undefined;
   /** Rendered inside the draft's body rather than as the panel's whole view. */
   inline?: boolean;
   onGone: (conversationId: string) => void;
@@ -66,6 +68,8 @@ export function ConversationList({
     id === projectId
       ? { name: projectName, slug: projectSlug }
       : projectsQ.data?.find((p) => p.id === id);
+
+  const roleOf = (id: string) => projectsQ.data?.find((p) => p.id === id)?.role;
 
   const doArchive = (row: ListedConversation, archived: boolean) => {
     archive.mutate({ id: row.id, archived }, { onSuccess: () => onGone(row.id) });
@@ -88,10 +92,12 @@ export function ConversationList({
           <span className="fg-overline flex-1 px-1 text-subtle">
             {showArchived ? "Archived conversations" : "Your conversations"}
           </span>
-        ) : (
+        ) : onNew ? (
           <Button variant="primary" size="sm" icon="plus" className="flex-1" onClick={onNew}>
             New conversation
           </Button>
+        ) : (
+          <span className="flex-1" />
         )}
         <Button
           variant={showArchived ? "secondary" : "ghost"}
@@ -127,9 +133,13 @@ export function ConversationList({
             message={
               showArchived
                 ? "Archive a conversation and it waits for you here."
-                : "Ask the agent something and it'll show up here."
+                : onNew
+                  ? "Ask the agent something and it'll show up here."
+                  : VIEWER_LIST_EMPTY
             }
-            {...(showArchived ? {} : { action: { label: "New conversation", onClick: onNew, icon: "plus" } })}
+            {...(showArchived || !onNew
+              ? {}
+              : { action: { label: "New conversation", onClick: onNew, icon: "plus" } })}
           />
         )}
 
@@ -146,9 +156,13 @@ export function ConversationList({
                       projects={projectsOfRow(row, nameOf)}
                       open={row.id === activeConversationId}
                       onOpen={() => onOpen(row)}
-                      onRename={(title) => rename.mutate({ id: row.id, title })}
-                      onArchive={(archived) => doArchive(row, archived)}
-                      onDelete={() => setConfirming(row)}
+                      {...(changesRoom(row, roleOf)
+                        ? {
+                            onRename: (title: string) => rename.mutate({ id: row.id, title }),
+                            onArchive: (archived: boolean) => doArchive(row, archived),
+                            onDelete: () => setConfirming(row),
+                          }
+                        : {})}
                     />
                   ))}
                 </div>

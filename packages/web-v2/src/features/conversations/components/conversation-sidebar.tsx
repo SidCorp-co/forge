@@ -8,6 +8,7 @@ import { Button, EmptyState, ErrorState, IconButton, SessionRowSkeleton, Tooltip
 import { formatApiError } from "@/lib/api/error";
 import { groupByRecency } from "../grouping";
 import type { ListedConversation } from "../hooks";
+import { VIEWER_LIST_EMPTY } from "../membership";
 import { ConversationRow, projectsOfRow } from "./conversation-row";
 
 const SKELETON_ROWS = ["s1", "s2", "s3", "s4", "s5", "s6"];
@@ -24,7 +25,8 @@ interface ConversationSidebarProps {
   activeConversationId?: string;
   collapsed: boolean;
   onToggleCollapse: () => void;
-  onNew: () => void;
+  /** Absent where the reader may start no room: the list offers none (ISS-1229 r35, judge-95). */
+  onNew?: (() => void) | undefined;
   onOpen: (row: ListedConversation) => void;
   /** Which of the two sets `rows` holds — the live rooms, or the archived ones. */
   showArchived: boolean;
@@ -44,6 +46,8 @@ interface ConversationSidebarProps {
   onArchive?: (archived: boolean, row: ListedConversation) => void;
   /** Ask to delete a row — the caller owns the confirmation. */
   onDelete?: (row: ListedConversation) => void;
+  /** Whether the reader may rename, archive or delete this row; absent = every row. */
+  mayChange?: (row: ListedConversation) => boolean;
   /** Shown under the rows: the organization's rooms whose projects are gone (ISS-1229 r23). */
   below?: React.ReactNode;
 }
@@ -67,6 +71,7 @@ export function ConversationSidebar({
   onRename,
   onArchive,
   onDelete,
+  mayChange = () => true,
 }: ConversationSidebarProps) {
   return (
     <div
@@ -78,7 +83,9 @@ export function ConversationSidebar({
       }`}
     >
       <div className={`flex flex-none items-center gap-1.5 border-b border-line p-2 ${collapsed ? "flex-col" : ""}`}>
-        {collapsed ? (
+        {!onNew ? (
+          <span className="flex-1" />
+        ) : collapsed ? (
           <Tooltip label="New conversation">
             <IconButton icon="plus" aria-label="New conversation" variant="secondary" onClick={onNew} />
           </Tooltip>
@@ -136,9 +143,11 @@ export function ConversationSidebar({
               message={
                 showArchived
                   ? "Archive a conversation and it waits for you here."
-                  : "Start a conversation with the agent on any project — it'll show up here."
+                  : onNew
+                    ? "Start a conversation with the agent on any project — it'll show up here."
+                    : VIEWER_LIST_EMPTY
               }
-              {...(showArchived
+              {...(showArchived || !onNew
                 ? {}
                 : { action: { label: "New conversation", onClick: onNew, icon: "plus" } })}
             />
@@ -157,9 +166,9 @@ export function ConversationSidebar({
                         projects={projectsOfRow(row, (id) => nameById.get(id))}
                         open={row.id === activeConversationId}
                         onOpen={() => onOpen(row)}
-                        {...(onRename ? { onRename: (title) => onRename(title, row) } : {})}
-                        {...(onArchive ? { onArchive: (a) => onArchive(a, row) } : {})}
-                        {...(onDelete ? { onDelete: () => onDelete(row) } : {})}
+                        {...(onRename && mayChange(row) ? { onRename: (title) => onRename(title, row) } : {})}
+                        {...(onArchive && mayChange(row) ? { onArchive: (a) => onArchive(a, row) } : {})}
+                        {...(onDelete && mayChange(row) ? { onDelete: () => onDelete(row) } : {})}
                       />
                     ))}
                   </div>

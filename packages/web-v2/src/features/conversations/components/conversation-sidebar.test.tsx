@@ -5,6 +5,8 @@
 
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { ListedConversation } from "../hooks";
+import { changesRoom, VIEWER_LIST_EMPTY } from "../membership";
 import { ConversationSidebar } from "./conversation-sidebar";
 
 afterEach(cleanup);
@@ -35,5 +37,74 @@ describe("the room list", () => {
   it("keeps its own column beside the room on a wide screen", () => {
     render(<ConversationSidebar {...props} />);
     expect(screen.getByTestId("conversation-sidebar").className).toContain("w-[280px]");
+  });
+});
+
+// ISS-1229 r35, judge-95: a reader holding only the viewer role was offered "New conversation" twice
+// and told to start one on any project, beside a chooser saying they cannot.
+describe("the room list, for a reader who may start no room", () => {
+  const { onNew: _offered, ...noOffer } = props;
+
+  it("offers no new conversation and says why its list is only to read", () => {
+    render(<ConversationSidebar {...noOffer} />);
+    expect(screen.queryByRole("button", { name: /new conversation/i })).toBeNull();
+    expect(screen.getByText(VIEWER_LIST_EMPTY)).toBeTruthy();
+    expect(screen.queryByText(/start a conversation/i)).toBeNull();
+  });
+
+  it("offers none collapsed either", () => {
+    render(<ConversationSidebar {...noOffer} collapsed />);
+    expect(screen.queryByRole("button", { name: /new conversation/i })).toBeNull();
+  });
+
+  it("still offers one to a reader who may", () => {
+    render(<ConversationSidebar {...props} />);
+    expect(screen.getAllByRole("button", { name: /new conversation/i })).toHaveLength(2);
+  });
+});
+
+// ISS-1229 r35: a viewer of one project of a two-project room was shown its rename, archive and delete
+// controls, each of which core refuses them.
+describe("a row's changes", () => {
+  const pair: ListedConversation = {
+    id: "c2",
+    adapter: "web",
+    externalId: "x",
+    shape: "group",
+    mode: null,
+    title: "Desk and Ops handover",
+    updatedAt: new Date().toISOString(),
+    archivedAt: null,
+    scope: ["desk", "ops"],
+    projectId: "desk",
+  };
+  const role: Record<string, string> = { desk: "member", ops: "viewer" };
+  const changers = { onRename: vi.fn(), onArchive: vi.fn(), onDelete: vi.fn() };
+  const controls = () => screen.queryAllByRole("button", { name: /^(Rename|Archive|Delete) Desk and Ops/ });
+
+  it("are not offered to a reader holding only the viewer role on one of its projects", () => {
+    render(
+      <ConversationSidebar
+        {...props}
+        {...changers}
+        rows={[pair]}
+        mayChange={(row) => changesRoom(row, (id) => role[id])}
+      />,
+    );
+    expect(screen.getByText("Desk and Ops handover")).toBeTruthy();
+    expect(controls()).toHaveLength(0);
+  });
+
+  it("are offered to a member of both", () => {
+    role.ops = "member";
+    render(
+      <ConversationSidebar
+        {...props}
+        {...changers}
+        rows={[pair]}
+        mayChange={(row) => changesRoom(row, (id) => role[id])}
+      />,
+    );
+    expect(controls()).toHaveLength(3);
   });
 });

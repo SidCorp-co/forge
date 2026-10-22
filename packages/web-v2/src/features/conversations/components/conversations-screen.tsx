@@ -22,6 +22,7 @@ import {
   useRenameConversation,
 } from "../hooks";
 import { STEPS_ASIDE } from "../composing";
+import { changesRoom, startsRooms } from "../membership";
 import { conversationTitle, type RoomWithoutAProject } from "../types";
 import { ConversationChat } from "./conversation-chat";
 import { ConversationSidebar } from "./conversation-sidebar";
@@ -103,6 +104,8 @@ export function ConversationsScreen() {
   }, [projectsQ.data]);
 
   const now = Date.now();
+  // A reader who only views every project here is offered no room to start (ISS-1229 r35, judge-95).
+  const startsNone = orgProjects.length > 0 && !orgProjects.some((p) => startsRooms(p.role));
 
   const openRow = useCallback((row: ListedConversation) => {
     setOrphan(null);
@@ -158,7 +161,7 @@ export function ConversationsScreen() {
       collapsed={inDrawer ? false : collapsed}
       onToggleCollapse={inDrawer ? () => setMobileHistoryOpen(false) : () => setCollapsed((c) => !c)}
       {...(inDrawer ? { onClose: () => setMobileHistoryOpen(false) } : {})}
-      onNew={startNew}
+      {...(startsNone ? {} : { onNew: startNew })}
       onOpen={openRow}
       showArchived={showArchived}
       onToggleArchived={() => setShowArchived((v) => !v)}
@@ -167,6 +170,7 @@ export function ConversationsScreen() {
         archive.mutate({ id: row.id, archived }, { onSuccess: () => dropIfOpen(row.id) });
       }}
       onDelete={(row) => setConfirming(row)}
+      mayChange={(row) => changesRoom(row, (id) => projectsQ.data?.find((p) => p.id === id)?.role)}
       below={
         showArchived ? null : (
           <RoomsWithoutAProject
