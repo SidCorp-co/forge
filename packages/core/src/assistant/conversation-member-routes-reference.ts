@@ -80,7 +80,7 @@ export const openersSchema = z.object({
 });
 
 export const roomOpenersRead = describeOperation({
-  summary: 'The projects the caller may open a room on, and whether each one\'s agent can answer',
+  summary: "The projects the caller may open a room on, and whether each one's agent can answer",
   description:
     'Every project on which the caller holds the member role or above, not archived, with the handle of the agent a room there starts with. `reachable: false` marks an agent that lost its role on its project, which opening a room there refuses with PROJECT_AGENT_LOST_ROLE.',
   responses: {

@@ -285,7 +285,7 @@ function gapsReason(text: string): string | null {
  * The refusal's reason, one line: what its gaps say, where it lists them; else what it says was wrong and
  * what would put it right, whichever order it says them in, after any opening that only says it held
  * the call ("Hold — …", r35). Never its first sentence alone: the remedy is often the second (r36,
- * judge-97). `tool` is the stored name, which only the technical details show.
+ * judge-97).
  */
 export function refusalReason(result: unknown, tool?: string): string {
   let text = "";

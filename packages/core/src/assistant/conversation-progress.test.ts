@@ -37,7 +37,10 @@ describe('the draft a turn withdrew', () => {
 
     const corrected = watched();
     corrected.progress.onTurnEvent({ type: 'chunk', text: 'Two issues are open' });
-    corrected.progress.onSettled({ text: 'Two issues are open, both bugs.', screenReplaced: false });
+    corrected.progress.onSettled({
+      text: 'Two issues are open, both bugs.',
+      screenReplaced: false,
+    });
     expect(corrected.progress.withdrawnDraft()).toBeNull();
     await Promise.all([asStreamed.progress.close(), corrected.progress.close()]);
   });

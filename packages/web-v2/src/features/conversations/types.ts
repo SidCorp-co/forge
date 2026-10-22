@@ -161,7 +161,6 @@ export interface BeyondReach {
   unnamed: number;
 }
 
-/** A project the reader may open a room on, the agent it starts with and whether it answers (r36). */
 export interface RoomOpener {
   projectId: string;
   handle: string;

@@ -91,7 +91,6 @@ export const conversationsApi = {
       `/conversations/candidates?${new URLSearchParams({ projectId })}`,
     ),
 
-  /** `GET /api/conversations/openers` — the projects a room may be opened on, and whether each agent answers. */
   openers: () => apiClient<{ openers: RoomOpener[] }>("/conversations/openers"),
 
   /** `POST /api/conversations/:id/people` — add a colleague. */

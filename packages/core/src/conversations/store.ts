@@ -395,7 +395,10 @@ export async function countMessages(
 
 /** The withdrawn draft a delivery proof carries, or null. */
 function withdrawnDraftOf(proof: unknown): string | null {
-  const draft = proof && typeof proof === 'object' ? (proof as { withdrawnDraft?: unknown }).withdrawnDraft : null;
+  const draft =
+    proof && typeof proof === 'object'
+      ? (proof as { withdrawnDraft?: unknown }).withdrawnDraft
+      : null;
   return typeof draft === 'string' && draft.trim() !== '' ? draft : null;
 }
 

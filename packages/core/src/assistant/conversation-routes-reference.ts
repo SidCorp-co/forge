@@ -75,7 +75,9 @@ export const messageSchema = z.object({
   withdrawnDraft: z
     .string()
     .nullable()
-    .describe('The draft the reply check withdrew before this reply went out, where it withdrew one'),
+    .describe(
+      'The draft the reply check withdrew before this reply went out, where it withdrew one',
+    ),
   silenceReason: z.string().nullable(),
   createdAt: z.date(),
 });

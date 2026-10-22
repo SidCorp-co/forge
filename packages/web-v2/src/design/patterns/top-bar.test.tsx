@@ -1,8 +1,6 @@
 // @vitest-environment jsdom
 //
-// ISS-1229 r36, judge-97: a reader holding only the viewer role on the project the agent panel opens on
-// was offered "Ask agent", and the panel then told them they could only read. The action is named for
-// what the panel offers that reader.
+// ISS-1229 r36, judge-97: a viewer-only reader was offered "Ask agent" by a panel that let them only read.
 
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";

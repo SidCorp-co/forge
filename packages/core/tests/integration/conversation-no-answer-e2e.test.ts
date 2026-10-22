@@ -267,7 +267,10 @@ describe('a write by a viewer of the room', () => {
     'You hold the viewer role on Ledger; a viewer can read this room but not change it or post in it.';
 
   async function groupRoom(): Promise<string> {
-    const opened = await as(ownerId, '/api/conversations', 'POST', { projectId, people: [viewerId] });
+    const opened = await as(ownerId, '/api/conversations', 'POST', {
+      projectId,
+      people: [viewerId],
+    });
     expect(opened.status, await opened.clone().text()).toBe(201);
     return ((await opened.json()) as { id: string }).id;
   }
@@ -316,7 +319,10 @@ describe('a write by a viewer of the room', () => {
  */
 describe('a reply the reply check withdrew', () => {
   it('is read back with the room, its draft beside the reply that replaced it, for anyone who opens it later', async () => {
-    const opened = await as(ownerId, '/api/conversations', 'POST', { projectId, people: [viewerId] });
+    const opened = await as(ownerId, '/api/conversations', 'POST', {
+      projectId,
+      people: [viewerId],
+    });
     expect(opened.status, await opened.clone().text()).toBe(201);
     const { id } = (await opened.json()) as { id: string };
     const { recordDeliveredReply } = await import('../../src/conversations/transcript.js');

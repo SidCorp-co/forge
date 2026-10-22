@@ -173,6 +173,10 @@ describe("a project whose own agent lost its role there", () => {
     expect(ledger.textContent).toContain(
       "@ledger can't answer. This agent no longer holds a role on Ledger, so it cannot answer here.",
     );
+    // r36 after-shot at 390: break-all split the reason mid-word ("on L / edger").
+    const detail = ledger.querySelector("[data-option-detail]") as HTMLElement;
+    expect(detail.className).not.toMatch(/break-all/);
+    expect(detail.className).toMatch(/overflow-wrap:anywhere/);
     fireEvent.click(ledger);
     expect(screen.queryByText("The room starts with this project's own agent, and is about this project.")).toBeNull();
     expect(screen.queryByRole("button", { name: "Start the room" })).toBeNull();
