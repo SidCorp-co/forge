@@ -70,11 +70,9 @@ export async function updateEnvironments(
       path: `live.${key}`,
       message: retiredLiveKeyMessage(key),
     }));
-    throw new EnvironmentsError(
-      'ENVIRONMENTS_INVALID',
-      conflicts.map((c) => c.message).join(' '),
-      { conflicts },
-    );
+    throw new EnvironmentsError('ENVIRONMENTS_INVALID', conflicts.map((c) => c.message).join(' '), {
+      conflicts,
+    });
   }
   return db.transaction(async (tx) => {
     const [row] = await tx

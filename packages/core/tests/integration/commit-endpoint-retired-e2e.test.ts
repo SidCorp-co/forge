@@ -130,8 +130,12 @@ describe('migration 0358 strips what nothing reads', () => {
       live: { url: 'https://a.test', commitUrl: null, commitPath: null },
       limits: 'kept',
     });
-    const b = await project('empty-strings', { live: { url: null, commitUrl: '', commitPath: '' } });
-    const c = await project('path-alone', { live: { apiUrl: 'https://api.c.test', commitPath: 'x' } });
+    const b = await project('empty-strings', {
+      live: { url: null, commitUrl: '', commitPath: '' },
+    });
+    const c = await project('path-alone', {
+      live: { apiUrl: 'https://api.c.test', commitPath: 'x' },
+    });
     expect(await runMigration()).toBeNull();
     expect(await stored(a)).toEqual({ live: { url: 'https://a.test' }, limits: 'kept' });
     expect(await stored(b)).toEqual({ live: { url: null } });
@@ -159,8 +163,12 @@ describe('migration 0358 strips what nothing reads', () => {
 });
 
 describe('migration 0358 refuses a row whose release reads the stored url, writing nothing', () => {
-  async function refused(seed: (id: string) => Promise<void>): Promise<{ error: string | null; id: string; other: string }> {
-    const other = await project('aa-strippable', { live: { url: 'https://o.test', commitUrl: null } });
+  async function refused(
+    seed: (id: string) => Promise<void>,
+  ): Promise<{ error: string | null; id: string; other: string }> {
+    const other = await project('aa-strippable', {
+      live: { url: 'https://o.test', commitUrl: null },
+    });
     const id = await project('zz-load-bearing', {
       live: { url: 'https://z.test', commitUrl: probeUrl, commitPath: 'sourceCommit' },
     });
@@ -170,16 +178,25 @@ describe('migration 0358 refuses a row whose release reads the stored url, writi
 
   it.each([
     ['no live binding at all', async (_id: string) => {}],
-    ['a live binding that declares no verify', async (id: string) => {
-      await bind(id, { config: verifying(probeUrl, 'sourceCommit') });
-      await bind(id, { config: { releaseRunnerLabel: 'box' } });
-    }],
-    ['live bindings declaring only another url', async (id: string) => {
-      await bind(id, { config: verifying('https://elsewhere.test/version', 'sourceCommit') });
-    }],
-    ['a binding declaring the url under another commitPath', async (id: string) => {
-      await bind(id, { config: verifying(probeUrl, 'commit') });
-    }],
+    [
+      'a live binding that declares no verify',
+      async (id: string) => {
+        await bind(id, { config: verifying(probeUrl, 'sourceCommit') });
+        await bind(id, { config: { releaseRunnerLabel: 'box' } });
+      },
+    ],
+    [
+      'live bindings declaring only another url',
+      async (id: string) => {
+        await bind(id, { config: verifying('https://elsewhere.test/version', 'sourceCommit') });
+      },
+    ],
+    [
+      'a binding declaring the url under another commitPath',
+      async (id: string) => {
+        await bind(id, { config: verifying(probeUrl, 'commit') });
+      },
+    ],
   ])('%s', async (_case, seed) => {
     const { error, id, other } = await refused(seed);
     expect(error).toContain('0358');

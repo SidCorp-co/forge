@@ -161,11 +161,7 @@ describe('loadReleaseReadiness', () => {
     const out = await loadReleaseReadiness(PROJECT_ID);
 
     expect(out?.hasReleaseGate).toBe(true);
-    expect(out?.gaps.sort()).toEqual([
-      'release-procedure',
-      'rollback',
-      'verify-probes',
-    ]);
+    expect(out?.gaps.sort()).toEqual(['release-procedure', 'rollback', 'verify-probes']);
   });
 
   it('drops each release gap as its half is declared', async () => {
@@ -394,12 +390,15 @@ describe('loadReleaseReadiness — the live address, and the preview that is not
   it.each([
     ['records nothing about its live side', undefined],
     ['records its live url', LIVE_DECLARED],
-  ])('reports no gap for a releasing project whose binding declares its probe and which %s', async (_l, environments) => {
-    project({ ...RELEASING, environments });
-    liveBinding(DECLARED);
+  ])(
+    'reports no gap for a releasing project whose binding declares its probe and which %s',
+    async (_l, environments) => {
+      project({ ...RELEASING, environments });
+      liveBinding(DECLARED);
 
-    expect((await loadReleaseReadiness(PROJECT_ID))?.gaps).toEqual([]);
-  });
+      expect((await loadReleaseReadiness(PROJECT_ID))?.gaps).toEqual([]);
+    },
+  );
 
   it('reports the SAME gaps for a null preview as for a filled one', async () => {
     project({ ...RELEASING, environments: { ...LIVE_DECLARED, preview: null } });

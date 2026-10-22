@@ -132,7 +132,7 @@ describe('resolveReleaseChannels', () => {
  * once lent a binding that declared none a probe; that fallback is retired, so a binding declaring
  * nothing is `none`, and the project row is not read at all.
  */
-describe('resolveReleaseChannels — the probe is the binding\'s own', () => {
+describe("resolveReleaseChannels — the probe is the binding's own", () => {
   it.each([
     ['no verify key at all', {}],
     ['a JSON-null verify', { verify: null }],
@@ -163,7 +163,7 @@ describe('resolveReleaseChannels — the probe is the binding\'s own', () => {
     expect(channel?.verifySource).toBe('declared-unusable');
   });
 
-  it('reads a usable binding declaration as the binding\'s', async () => {
+  it("reads a usable binding declaration as the binding's", async () => {
     listBindings.mockResolvedValue([
       binding({
         bindingConfig: { verify: { probes: [{ url: 'https://own.x/health', commitPath: 'c' }] } },
@@ -177,7 +177,10 @@ describe('resolveReleaseChannels — the probe is the binding\'s own', () => {
 
   it('answers each binding by its own declaration', async () => {
     listBindings.mockResolvedValue([
-      binding({ provider: 'coolify', bindingConfig: { verify: { probes: [{ url: 'https://a.x/v' }] } } }),
+      binding({
+        provider: 'coolify',
+        bindingConfig: { verify: { probes: [{ url: 'https://a.x/v' }] } },
+      }),
       binding({ provider: 'epodsystem' }),
     ]);
 

@@ -119,7 +119,9 @@ export function retiredLiveKeyMessage(key: (typeof RETIRED_LIVE_KEYS)[number]): 
 }
 
 /** Each retired key a patch names under `live`, a null included: sending it at all is refused. */
-export function retiredLiveKeysIn(patch: Record<string, unknown>): (typeof RETIRED_LIVE_KEYS)[number][] {
+export function retiredLiveKeysIn(
+  patch: Record<string, unknown>,
+): (typeof RETIRED_LIVE_KEYS)[number][] {
   const live = patch.live;
   if (typeof live !== 'object' || live === null) return [];
   return RETIRED_LIVE_KEYS.filter((key) => key in live);

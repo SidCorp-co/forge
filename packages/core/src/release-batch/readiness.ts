@@ -167,8 +167,7 @@ interface GapInput {
 function declarationGaps(input: GapInput): ReleaseGapKey[] {
   const { decl, channels, row, held } = input;
   const gaps: ReleaseGapKey[] = [];
-  // A gap is an ABSENCE somebody can act on, never a read nobody managed to
-  // make (ISS-1127).
+  // A gap is an ABSENCE somebody can act on, never a read nobody managed to make (ISS-1127).
   if (row !== undefined && held !== undefined) {
     const declarations = {
       repoPath: row?.repoPath ?? null,
