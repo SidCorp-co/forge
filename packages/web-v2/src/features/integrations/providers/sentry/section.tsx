@@ -34,7 +34,10 @@ import {
 import type { AgentAccess } from "../../types";
 import { ConnectionOwnerField } from "../../components/connection-owner-field";
 import { sentry } from "./index";
-import { IntegrationEnabledControl } from "../../components/integration-enabled-control";
+import {
+  bindsRemovedConnection,
+  IntegrationEnabledControl,
+} from "../../components/integration-enabled-control";
 import { bindingBadge } from "../../derive";
 
 /** Editable Sentry target row — strings only so inputs stay controlled. */
@@ -266,7 +269,9 @@ export function SentrySection({ projectId }: { projectId: string }) {
         <Field
           label="Auth token"
           hint={
-            existing
+            existing && !existing.hasSecrets
+              ? "No token is stored: the shared connection was removed. Enter one to store it."
+              : existing
               ? "A token is stored. Leave blank to keep it; enter a new one to rotate."
               : "Sentry user auth token (sntryu-…). Stored encrypted; never shown again."
           }
@@ -275,7 +280,7 @@ export function SentrySection({ projectId }: { projectId: string }) {
           <Input
             type="password"
             autoComplete="off"
-            placeholder={existing ? "•••••••• (unchanged)" : "sntryu_…"}
+            placeholder={existing?.hasSecrets ? "•••••••• (unchanged)" : "sntryu_…"}
             value={form.authToken}
             onChange={(e) => set("authToken", e.target.value)}
             disabled={orgLocked}
@@ -442,7 +447,7 @@ export function SentrySection({ projectId }: { projectId: string }) {
             >
               {existing ? "Save" : "Create integration"}
             </Button>
-            {existing && (
+            {existing && !bindsRemovedConnection(existing) && (
               <Button
                 variant="secondary"
                 onClick={handleTest}

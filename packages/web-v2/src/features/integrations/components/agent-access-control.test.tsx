@@ -28,19 +28,48 @@ function show(
   {
     bindingActive = active,
     connectionActive = true,
+    hasSecrets = true,
     readFrom,
-  }: { bindingActive?: boolean; connectionActive?: boolean; readFrom?: "drawer" | "panel" } = {},
+  }: {
+    bindingActive?: boolean;
+    connectionActive?: boolean;
+    hasSecrets?: boolean;
+    readFrom?: "drawer" | "panel";
+  } = {},
 ) {
   render(
     <AgentAccessControl
       projectId="p1"
-      binding={{ id: "b1", active, bindingActive, connectionActive, agentAccess, agentPathKind }}
+      binding={{ id: "b1", active, bindingActive, connectionActive, hasSecrets, agentAccess, agentPathKind }}
       canEdit
       {...(readFrom ? { readFrom } : {})}
     />,
   );
   return document.body.textContent ?? "";
 }
+
+// ISS-1421 r22: a removed connection has no Enable credential, so the line never names one.
+describe("the agents line over a removed connection (criterion 228)", () => {
+  it("says the removed connection comes back on, never Enable credential", () => {
+    const said = show(false, "none", "core-mediated", {
+      bindingActive: true,
+      connectionActive: false,
+      hasSecrets: false,
+    });
+    expect(said).toContain("once its shared connection, which was removed, is turned back on.");
+    expect(said).not.toContain("Enable credential");
+  });
+
+  it("names Enabled as well where this project switched it off too", () => {
+    const said = show(false, "none", "core-mediated", {
+      bindingActive: false,
+      connectionActive: false,
+      hasSecrets: false,
+    });
+    expect(said).toContain("which was removed, is turned back on and Enabled in this drawer is switched back on.");
+    expect(said).not.toContain("Enable credential");
+  });
+});
 
 describe("the agents switch on a binding that is turned off", () => {
   it.each([
@@ -123,6 +152,7 @@ describe("the agents switch on a binding that is turned off", () => {
           active: false,
           bindingActive: false,
           connectionActive: true,
+          hasSecrets: true,
           agentAccess: "all",
           agentPathKind: "direct-mcp",
         }}

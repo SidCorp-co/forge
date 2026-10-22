@@ -340,8 +340,9 @@ fn take_handed_masters(masters: &master::Masters) {
             );
         }
         master_handed::Taken::Refused(why) => tracing::warn!(
-            "[master] a handed-over masters registry was found and not taken: {why}. This image serves its master panes from its first sweep"
-        ),
+            "[master] a handed-over masters registry was found and not taken: {closed} This image serves its master panes from its first sweep",
+            closed = crate::transport::status::ended(&why.to_string()),
+),
     }
 }
 
@@ -369,9 +370,10 @@ fn handover_did_not_happen(
         )),
     }
     tracing::error!(
-        "[{what}] the handover for {cause} did not happen — {why}. Admission is open again and this process goes on serving the build it started with; the next attempt is {}",
-        next.by
-    );
+        "[{what}] the handover for {cause} did not happen — {closed} Admission is open again and this process goes on serving the build it started with; the next attempt is {}",
+        next.by,
+            closed = crate::transport::status::ended(&why.to_string()),
+);
     drain.handover_failed(&why, next);
 }
 

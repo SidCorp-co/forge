@@ -26,7 +26,10 @@ import {
 import type { AgentAccess } from "../../types";
 import { ConnectionOwnerField } from "../../components/connection-owner-field";
 import { google } from "./index";
-import { IntegrationEnabledControl } from "../../components/integration-enabled-control";
+import {
+  bindsRemovedConnection,
+  IntegrationEnabledControl,
+} from "../../components/integration-enabled-control";
 import { bindingBadge } from "../../derive";
 
 /** What Google's own check found, under the badge that names the state as the row does: the five
@@ -240,9 +243,11 @@ function GoogleBindingPanel({
               Rotate key
             </Button>
           ))}
+        {!bindsRemovedConnection(binding) && (
         <Button variant="secondary" onClick={handleTest} loading={test.isPending}>
           Test
         </Button>
+        )}
         <Button variant="danger" icon="trash" loading={remove.isPending} onClick={handleDelete}>
           Disconnect
         </Button>

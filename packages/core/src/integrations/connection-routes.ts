@@ -40,6 +40,7 @@ import {
   testConnection,
 } from './connection-routes-reference.js';
 import { healthAnswer } from './health-words.js';
+import { isRemovedConnection } from './held-key.js';
 import { ownerNamesOf } from './owner-names.js';
 import { raceWithTimeout } from './probe.js';
 import {
@@ -63,10 +64,12 @@ import {
   alreadyExists,
   assertAdmin,
   assertNoActiveBindingClash,
+  assertNotRemoved,
   assertProjectMember,
   assertVaultConfigured,
   badRequest,
   buildCreatedBindingResponse,
+  connectionChangedWhileCleared,
   connectionNotManageable,
   connectionNotReachable,
   defaultConnectionDisplayName,
@@ -77,6 +80,7 @@ import {
   summarizeConnection,
   summarizeConnectionWithUsage,
   TEST_PROBE_TIMEOUT_MS,
+  turnsBackOn,
 } from './route-helpers.js';
 import {
   buildContextFromBinding,
@@ -84,7 +88,6 @@ import {
   createBinding,
   createConnection,
   type IntegrationConnectionRow,
-  isRemovedConnection,
   listBindingsByConnectionIds,
   listBindingsForConnection,
   softDeleteConnection,
@@ -214,6 +217,8 @@ integrationConnectionsRoutes.post(
     const userId = c.get('userId');
     // user-owned: owner-only; org-owned: org admin (not-found for outsiders).
     const connection = await loadManageableConnection(id, userId);
+    // A binding to a removed connection resolves nothing (ISS-1421 r22).
+    assertNotRemoved(connection, 'shared');
     const body = c.req.valid('json');
     // Admin on the target project (mirrors the create path's authorization).
     const role = await assertProjectMember(body.projectId, userId);
@@ -321,7 +326,9 @@ integrationConnectionsRoutes.get('/:id/bindings', ...listConnectionBindings, asy
 integrationConnectionsRoutes.post('/:id/test', ...testConnection, async (c) => {
   const id = c.req.param('id');
   const userId = c.get('userId');
-  await loadManageableConnection(id, userId);
+  const connection = await loadManageableConnection(id, userId);
+  // A removed connection holds nothing a check could pass, so none is recorded (ISS-1421 r22).
+  assertNotRemoved(connection, 'tested');
 
   // listBindingsForConnection is newest-first; walk from the back for the
   // oldest active binding (health-sweep / resolver ordering).
@@ -431,11 +438,9 @@ integrationConnectionsRoutes.patch(
   },
 );
 
-/** What turns a connection that holds no key back on: a new key, or what its provider declares. */
+/** Turning on a connection that holds no key: removing it wiped its keys. */
 function noKeyRefusal(provider: string): string {
-  const turnsOn =
-    getIntegration(provider)?.noKeyTurnsBackOn ?? 'Save a new key to turn it back on.';
-  return `This connection holds no key, as removing it wiped its keys. ${turnsOn}`;
+  return `This connection holds no key, as removing it wiped its keys. ${turnsBackOn(provider)}`;
 }
 
 integrationConnectionsRoutes.delete('/:id', ...removeConnection, async (c) => {
@@ -444,8 +449,12 @@ integrationConnectionsRoutes.delete('/:id', ...removeConnection, async (c) => {
   const existing = await loadManageableConnection(id, userId);
   // The first delete switches the row off and wipes every key on it (ISS-1421 r20), so its bindings
   // stop resolving; a delete of a connection already removed clears it from the list (ISS-1421 r21).
-  if (isRemovedConnection(existing)) await clearRemovedConnection(id);
-  else await softDeleteConnection(id);
+  if (!isRemovedConnection(existing)) await softDeleteConnection(id);
+  else if (!(await clearRemovedConnection(existing))) {
+    // Cleared by another request, it answers as gone; still standing, it changed under this one.
+    await loadManageableConnection(id, userId);
+    throw connectionChangedWhileCleared();
+  }
   notifyConnectionChanged(existing.provider, id);
   return c.json(answer(okSchema, { ok: true }));
 });

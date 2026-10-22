@@ -111,11 +111,13 @@ const store = vi.hoisted(() => ({
   })),
   listActiveBindingsForProjectProvider: vi.fn(async () => [] as unknown[]),
   listBindingsForConnection: vi.fn(async (): Promise<unknown[]> => []),
+  listBindingsForProject: vi.fn(async (): Promise<unknown[]> => []),
   removedConnectionBoundTo: vi.fn(async (): Promise<unknown> => null),
   updateBinding: vi.fn(async () => ({})),
   updateConnection: vi.fn(async (id: string) => ({ id })),
 }));
 vi.mock('../store.js', () => store);
+vi.mock('../binding-installation.js', () => ({ recordInstallation: vi.fn(async () => true) }));
 
 /**
  * The reach rule is `../reach.ts`'s, tested against real rows in

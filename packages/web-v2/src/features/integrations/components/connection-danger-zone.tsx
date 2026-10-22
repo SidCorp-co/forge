@@ -11,9 +11,10 @@ export function isRemovedConnection(connection: ConnectionSummary): boolean {
   return !connection.active && !connection.hasSecrets;
 }
 
-function listed(names: string[]): string {
+/** Names as a sentence says them: "or" where any one of them does, "and" where it is each of them. */
+function listed(names: string[], joined: "or" | "and"): string {
   if (names.length <= 1) return names[0] ?? "";
-  return `${names.slice(0, -1).join(", ")} or ${names[names.length - 1]}`;
+  return `${names.slice(0, -1).join(", ")} ${joined} ${names[names.length - 1]}`;
 }
 
 /**
@@ -28,7 +29,7 @@ export function turnsBackOn(connection: ConnectionSummary, boundProjects: string
   if (boundProjects === null)
     return "This connection holds no key. What turns it back on is said once its projects are read.";
   if (boundProjects.length > 0)
-    return `This connection holds no key. Installing the GitHub App again from the Integrations tab of ${listed(boundProjects)} turns it back on.`;
+    return `This connection holds no key. Installing the GitHub App again from the Integrations tab of ${listed(boundProjects, "or")} turns it back on.`;
   return "This connection holds no key and no project is bound to it, so nothing can turn it back on. Clear it from the list.";
 }
 
@@ -89,7 +90,7 @@ export function DangerZone({
         <div className="flex flex-col gap-2 border-y border-line py-2.5">
           <p className="fg-body-sm text-fg">
             {removed
-              ? `Clearing this connection deletes it for good${boundProjects?.length ? `, with its binding to ${listed(boundProjects)}` : ""}.`
+              ? `Clearing this connection deletes it for good${boundProjects?.length ? `, with its ${boundProjects.length > 1 ? "bindings" : "binding"} to ${listed(boundProjects, "and")}` : ""}.`
               : `${
                   affectedProjects.length > 0
                     ? `Removing this connection stops credential resolution for ${affectedProjects.length} project${affectedProjects.length === 1 ? "" : "s"}: ${affectedProjects.join(", ")}. Their integrations stop working on the next dispatch.`

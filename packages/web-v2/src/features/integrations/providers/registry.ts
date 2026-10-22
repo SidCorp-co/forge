@@ -46,6 +46,8 @@ export interface ProviderModule {
   /** The connection-tier config form, or null where this provider has nothing to edit there. */
   connectionSection: (() => Promise<{ default: ConnectionSection }>) | null;
   connectionNote: string | null;
+  /** What a project's binding over this provider's removed connection says, where no key turns it on. */
+  removedLine?: string;
 }
 
 /** Every provider this build knows, in the order a list renders them. */

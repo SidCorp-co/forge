@@ -136,12 +136,13 @@ pub async fn pull_pending(client: &CoreClient) -> std::result::Result<Pending, P
         .bearer_auth(client.device_token())
         .send()
         .await
+        // The sentence every call that cannot reach core says, what to check included (ISS-1421 r22).
         .map_err(|e| {
             PullRefusal::unanswered(
                 &url,
                 &format!(
-                    "never got an answer, as {}",
-                    super::status::why_not_reached(&e)
+                    "was not answered: {}",
+                    super::status::not_reached_sentence(&e, None)
                 ),
             )
         })?;
@@ -915,6 +916,14 @@ mod tests {
         let err = pull_pending(&client).await.unwrap_err().to_string();
         assert!(
             err.contains("GET http://127.0.0.1:1/api/devices/me/provisions"),
+            "{err}"
+        );
+        // Criterion 214: where it was sought, why, and what to check.
+        assert!(
+            err.ends_with(
+                "Forge could not be reached at http://127.0.0.1:1, as the connection was refused. \
+                 Check that core is running there and that this box's core address is right."
+            ),
             "{err}"
         );
     }

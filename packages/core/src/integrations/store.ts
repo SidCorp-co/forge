@@ -371,22 +371,27 @@ export async function softDeleteConnection(id: string): Promise<void> {
     .where(eq(integrationConnections.id, id));
 }
 
-/** A removed connection is one switched off with no key left on it: what a delete leaves. */
-export function isRemovedConnection(row: { active: boolean; secretsEnc: unknown }): boolean {
-  return !row.active && row.secretsEnc === null;
-}
-
-/** Clears a removed connection from the list: the row goes, and its bindings with it (cascade). */
-export async function clearRemovedConnection(id: string): Promise<void> {
-  await db
+/**
+ * Clears a removed connection from the list: the row goes, and its bindings with it (cascade). The
+ * caller has read it removed (`held-key.ts`), and it goes only while it still holds the secrets read
+ * then: a key saved since keeps it. Says whether it went (ISS-1421 r22).
+ */
+export async function clearRemovedConnection(read: {
+  id: string;
+  secretsEnc: Buffer | null;
+}): Promise<boolean> {
+  const secrets = integrationConnections.secretsEnc;
+  const gone = await db
     .delete(integrationConnections)
     .where(
       and(
-        eq(integrationConnections.id, id),
+        eq(integrationConnections.id, read.id),
         eq(integrationConnections.active, false),
-        isNull(integrationConnections.secretsEnc),
+        read.secretsEnc === null ? isNull(secrets) : eq(secrets, read.secretsEnc),
       ),
-    );
+    )
+    .returning({ id: integrationConnections.id });
+  return gone.length > 0;
 }
 
 /**

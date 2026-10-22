@@ -143,9 +143,10 @@ pub(crate) fn gate_reading(dir: &std::path::Path, now: i64) -> Vec<String> {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => 0,
         Err(e) => {
             return vec![format!(
-                "gate       UNREADABLE — {}: {e}. How many dispatches went through undecided cannot be said",
-                path.display()
-            )]
+                "gate       UNREADABLE — {}: {closed} How many dispatches went through undecided cannot be said",
+                path.display(),
+            closed = forge_runner_core::transport::status::ended(&e.to_string()),
+)]
         }
     };
     let report = forge_runner_core::daemon::degraded::report(dir, now);
@@ -194,8 +195,9 @@ fn unanswered_runs(path: &std::path::Path, cfg: &Config) -> Vec<String> {
     match read {
         Ok(runs) => unanswered_lines(&runs, cfg),
         Err(e) => vec![format!(
-            "runs       UNREADABLE — {}: {e}. Which runs no master answers for cannot be said",
-            path.display()
+            "runs       UNREADABLE — {}: {closed} Which runs no master answers for cannot be said",
+            path.display(),
+            closed = forge_runner_core::transport::status::ended(&e.to_string()),
         )],
     }
 }
@@ -214,9 +216,10 @@ fn stranded_runs(path: &std::path::Path, cfg: &Config) -> Vec<String> {
     match Ledger::open_read_only(path).and_then(|led| led.stranded_by_decision()) {
         Ok(runs) => stranded_lines(&runs, cfg),
         Err(e) => vec![format!(
-            "stranded   UNREADABLE — {}: {e}. Which runs a terminal release stranded cannot be said",
-            path.display()
-        )],
+            "stranded   UNREADABLE — {}: {closed} Which runs a terminal release stranded cannot be said",
+            path.display(),
+            closed = forge_runner_core::transport::status::ended(&e.to_string()),
+)],
     }
 }
 
@@ -334,10 +337,11 @@ pub fn pool_lines(
         Ok(conditions) => conditions,
         Err(e) => {
             return vec![format!(
-            "pool       UNREADABLE — {e}. The heartbeat carries no pool report while it stands, \
+            "pool       UNREADABLE — {closed} The heartbeat carries no pool report while it stands, \
                  so core keeps the last one it stored, and no failed read is recorded; \
-                 remove the file to start a fresh record"
-        )]
+                 remove the file to start a fresh record",
+            closed = forge_runner_core::transport::status::ended(&e.to_string()),
+)]
         }
     };
     if conditions.is_empty() {

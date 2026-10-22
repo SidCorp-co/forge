@@ -6,6 +6,7 @@ import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { type AgentAccess, agentAccessTier, noAgentPathMessage } from './agent-access.js';
 import { healthAnswer } from './health-words.js';
+import { holdsKey, isRemovedConnection } from './held-key.js';
 import { raceWithTimeout } from './probe.js';
 import { getAdapter, getIntegration } from './registry.js';
 import {
@@ -52,6 +53,32 @@ export const connectionNotReachable = (connectionId: string) =>
       'admin of that organization) can bind it to a project you administer, so ask them.',
     cause: { code: 'CONNECTION_NOT_REACHABLE' },
   });
+
+export function turnsBackOn(provider: string): string {
+  return getIntegration(provider)?.noKeyTurnsBackOn ?? 'Save a new key to turn it back on.';
+}
+
+/** A binding to a removed connection cannot resolve, and a check of it can only fail (ISS-1421 r22). */
+export const connectionRemoved = (provider: string, act: 'shared' | 'tested') =>
+  new HTTPException(409, {
+    message: `This connection was removed and holds no key, so it cannot be ${act}. ${turnsBackOn(provider)}`,
+    cause: { code: 'CONNECTION_REMOVED' },
+  });
+
+/** A key saved between Clear's read and its delete keeps the connection, and Clear says so. */
+export const connectionChangedWhileCleared = () =>
+  new HTTPException(409, {
+    message:
+      'This connection changed while it was being cleared: a key was saved on it or it was turned back on, so it was kept. Open it again to see what it holds.',
+    cause: { code: 'CONNECTION_CHANGED' },
+  });
+
+export function assertNotRemoved(
+  connection: Parameters<typeof isRemovedConnection>[0],
+  act: 'shared' | 'tested',
+): void {
+  if (isRemovedConnection(connection)) throw connectionRemoved(connection.provider, act);
+}
 
 /** A connection as a sentence names it: by the name its owner gave it, never by its id. */
 function connectionCalled(connection: { displayName: string | null; provider: string }): string {
@@ -186,7 +213,7 @@ export function summarizeBinding(pair: BindingWithConnection) {
     lastHealthStatus: connection.lastHealthStatus,
     lastHealthAt: connection.lastHealthAt,
     breakerOpenedAt: connection.breakerOpenedAt,
-    hasSecrets: connection.secretsEnc !== null,
+    hasSecrets: holdsKey(connection),
     integrationSecretSet: binding.integrationSecret !== null,
     agentAccess: binding.agentAccess as AgentAccess,
     agentPathKind: getIntegration(binding.provider)?.capabilities.agentPath.kind ?? 'none',
@@ -208,7 +235,7 @@ export function summarizeConnection(connection: IntegrationConnectionRow) {
     lastHealthStatus: connection.lastHealthStatus,
     lastHealthAt: connection.lastHealthAt,
     breakerOpenedAt: connection.breakerOpenedAt,
-    hasSecrets: connection.secretsEnc !== null,
+    hasSecrets: holdsKey(connection),
     createdAt: connection.createdAt,
     updatedAt: connection.updatedAt,
   };

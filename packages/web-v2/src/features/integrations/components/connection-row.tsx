@@ -27,9 +27,12 @@ function UsageLine({
 }) {
   const bindings = connection.usage.bindings;
   if (bindings.length === 0) {
+    // A removed connection cannot be shared (ISS-1421 r22), so the row does not suggest it.
     return (
       <span id={emptyId} className="fg-body-sm text-subtle">
-        Not used by any project — share it from a project&apos;s settings → Integrations.
+        {isRemovedConnection(connection)
+          ? "Not used by any project."
+          : "Not used by any project — share it from a project's settings → Integrations."}
       </span>
     );
   }
@@ -98,9 +101,10 @@ function RemoveButton({ connection }: { connection: ConnectionDirectoryItem }) {
       </Button>
     );
   }
+  // Wraps inside the row: unwrapped, Cancel ran past a 390 screen (ISS-1421 r22).
   return (
-    <span className="flex items-center gap-2">
-      <span className="fg-body-sm text-muted">
+    <span className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
+      <span className="fg-body-sm min-w-0 text-muted">
         {removed
           ? count > 0
             ? `Delete it for good, with its ${count} project binding${count > 1 ? "s" : ""}?`
@@ -222,7 +226,7 @@ export function ConnectionRow({
         <DirectoryStatusPill status={deriveConnectionStatus(connection)} />
       </span>
 
-      <span className="flex shrink-0 items-center gap-1">
+      <span className="flex min-w-0 max-w-full shrink-0 flex-wrap items-center gap-1">
         {canManage ? (
           <>
             {connection.active ? (

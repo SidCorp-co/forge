@@ -42,7 +42,10 @@ import {
 import type { AgentAccess } from "../../types";
 import { ConnectionOwnerField } from "../../components/connection-owner-field";
 import { rocketchat } from "./index";
-import { IntegrationEnabledControl } from "../../components/integration-enabled-control";
+import {
+  bindsRemovedConnection,
+  IntegrationEnabledControl,
+} from "../../components/integration-enabled-control";
 import { bindingBadge } from "../../derive";
 
 export function RocketchatSection({ projectId }: { projectId: string }) {
@@ -378,9 +381,11 @@ function RocketchatBindingPanel({
               Rotate credential
             </Button>
           ))}
+        {!bindsRemovedConnection(binding) && (
         <Button variant="secondary" onClick={handleTest} loading={test.isPending}>
           Test
         </Button>
+        )}
         <Button
           variant="danger"
           icon="trash"

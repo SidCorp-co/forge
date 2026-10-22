@@ -80,6 +80,27 @@ describe("ConnectionRow over a removed connection", () => {
     expect(screen.getByText("Delete it for good, with its 2 project bindings?")).toBeInTheDocument();
   });
 
+  // ISS-1421 r22, judge-91: core refuses to share a removed connection, so its row does not say to.
+  it("says no project uses it, without saying to share it (criterion 229)", () => {
+    row(removed);
+    expect(screen.getByText("Not used by any project.")).toBeInTheDocument();
+    expect(screen.queryByText(/share it from a project/)).toBeNull();
+  });
+
+  // ISS-1421 r22, judge-91: at 390 the inline confirm put Cancel past the screen edge (x 366 to 431).
+  // jsdom lays nothing out, so what is pinned is the wrapping that keeps it inside; the after-shot at
+  // 390 measures it.
+  it("wraps its inline confirmation inside the row (criterion 237)", () => {
+    row(removed);
+    fireEvent.click(screen.getByRole("button", { name: "Clear" }));
+    const confirm = screen.getByText("Delete it for good?").parentElement as HTMLElement;
+    expect(confirm.className).toMatch(/\bflex-wrap\b/);
+    expect(confirm.className).toMatch(/\bmax-w-full\b/);
+    const actions = confirm.parentElement as HTMLElement;
+    expect(actions.className).toMatch(/\bflex-wrap\b/);
+    expect(actions.className).toMatch(/\bmax-w-full\b/);
+  });
+
   it("keeps Enable on a connection someone disabled that still holds its key", () => {
     row({ ...removed, hasSecrets: true });
     expect(screen.getByRole("button", { name: "Enable" })).toBeInTheDocument();

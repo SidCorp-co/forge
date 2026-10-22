@@ -37,7 +37,10 @@ import {
 import type { AgentAccess } from "../../types";
 import { ConnectionOwnerField } from "../../components/connection-owner-field";
 import { epodsystem } from "./index";
-import { IntegrationEnabledControl } from "../../components/integration-enabled-control";
+import {
+  bindsRemovedConnection,
+  IntegrationEnabledControl,
+} from "../../components/integration-enabled-control";
 import { bindingBadge, bindingConnected } from "../../derive";
 
 // Scopes a website build needs to publish themes + toggle commerce/cache.
@@ -287,6 +290,7 @@ function EpodsystemBindingRow({
             </Button>
           )
         )}
+        {!bindsRemovedConnection(binding) && (
         <Button
           variant="secondary"
           onClick={handleTest}
@@ -294,6 +298,7 @@ function EpodsystemBindingRow({
         >
           Test
         </Button>
+        )}
         <Button
           variant="danger"
           icon="trash"

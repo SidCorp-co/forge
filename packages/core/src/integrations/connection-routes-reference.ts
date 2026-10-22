@@ -91,6 +91,8 @@ export const bindConnection = onConnection(
       409: fail({
         ORG_MISMATCH: 'an org connection can only bind to projects of its own org',
         ALREADY_EXISTS: 'the project already has an active service binding of this provider',
+        CONNECTION_REMOVED:
+          'the connection was removed and holds no key, so no binding could resolve',
       }),
     },
   }),
@@ -118,6 +120,7 @@ export const testConnection = onConnection(
         CONNECTION_NOT_REACHABLE: unreachable,
         NO_BINDING: 'the connection has no active binding to probe through',
       }),
+      409: fail('CONNECTION_REMOVED', 'the connection was removed and holds no key to test'),
     },
   }),
 );
@@ -151,6 +154,10 @@ export const removeConnection = onConnection(
       200: json(okSchema),
       403: fail('CONNECTION_NOT_MANAGEABLE', unmanageable),
       404: fail('CONNECTION_NOT_REACHABLE', unreachable),
+      409: fail(
+        'CONNECTION_CHANGED',
+        'a key was saved on the removed connection, or it was turned back on, while it was being cleared, so it was kept',
+      ),
     },
   }),
 );

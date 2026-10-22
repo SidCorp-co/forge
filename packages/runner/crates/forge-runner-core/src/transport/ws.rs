@@ -179,8 +179,7 @@ pub async fn connect(
                 tracing::warn!("[ws] disconnected");
             }
             Err(e) => {
-                let msg = e.to_string();
-                if msg.contains("401") {
+                if refused_with(&e) == Some(401) {
                     // Don't exit the process here — that left systemd to
                     // fast-restart every RestartSec with the same dead token
                     // (ISS-467). Stay up, log loudly, and fall through to the
@@ -193,7 +192,7 @@ pub async fn connect(
                          the daemon auto-restarts to apply new credentials once you do"
                     );
                 } else {
-                    tracing::warn!("[ws] connect error: {msg}");
+                    tracing::warn!("[ws] {}", connect_failure(&cfg.url, &e));
                 }
             }
         }
@@ -210,6 +209,29 @@ pub async fn connect(
             _ = cancel.changed() => { if *cancel.borrow() { break; } }
         }
         retry_delay = (retry_delay * 2).min(30);
+    }
+}
+
+/// The status core's address answered the upgrade with, where it answered one.
+fn refused_with(e: &tokio_tungstenite::tungstenite::Error) -> Option<u16> {
+    match e {
+        tokio_tungstenite::tungstenite::Error::Http(resp) => Some(resp.status().as_u16()),
+        _ => None,
+    }
+}
+
+/// Why the live connection did not open, in the sentence every call that cannot reach core says:
+/// where Forge was sought, why in words and what to check. Its own error was tungstenite's, "IO
+/// error: Connection refused (os error 111)", which named no address (ISS-1421 r22).
+fn connect_failure(url: &str, e: &tokio_tungstenite::tungstenite::Error) -> String {
+    let at = super::status::core_origin(url);
+    match refused_with(e) {
+        Some(code) => format!(
+            "Forge at {at} answered {} where its live connection opens. Check that this box's \
+             core address is right and that core is running there.",
+            super::status::named(code)
+        ),
+        None => super::status::not_reached_at(&at, super::status::reached_nothing_because(e, true)),
     }
 }
 
@@ -325,5 +347,68 @@ mod tests {
             "subscribe, then both snapshots — a value published while the socket is up must reach it: {frames:?}"
         );
         assert_eq!(frames[2], "second");
+    }
+
+    async fn failure_at(url: &str) -> String {
+        let request = url.into_client_request().unwrap();
+        let err = connect_async(request).await.unwrap_err();
+        connect_failure(url, &err)
+    }
+
+    /// Criterion 214: a refused live connection says where Forge was sought, why and what to
+    /// check, never the system's "Connection refused (os error 111)".
+    #[tokio::test]
+    async fn a_refused_live_connection_names_the_core_address_and_why() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        drop(listener);
+        let said = failure_at(&format!("ws://127.0.0.1:{port}/ws")).await;
+        assert_eq!(
+            said,
+            format!(
+                "Forge could not be reached at http://127.0.0.1:{port}, as the connection was \
+                 refused. Check that core is running there and that this box's core address is \
+                 right."
+            )
+        );
+        assert!(!said.contains("os error"), "{said}");
+    }
+
+    /// Criterion 214: a host that does not resolve is said as such, not as the resolver's words.
+    #[tokio::test]
+    async fn an_unresolvable_live_connection_says_the_name_does_not_resolve() {
+        let said = failure_at("ws://forge-core.invalid/ws").await;
+        assert!(
+            said.starts_with("Forge could not be reached at http://forge-core.invalid, as its host name does not resolve."),
+            "{said}"
+        );
+        assert!(!said.contains("lookup address information"), "{said}");
+    }
+
+    /// Criterion 214: an address that answers the upgrade with a status says the status and what
+    /// to check, as a gateway in front of a stopped core does.
+    #[tokio::test]
+    async fn an_upgrade_answered_with_a_status_names_it() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            let mut buf = [0u8; 1024];
+            let _ = stream.read(&mut buf).await;
+            let _ = stream
+                .write_all(b"HTTP/1.1 502 Bad Gateway\r\ncontent-length: 0\r\n\r\n")
+                .await;
+        });
+        let said = failure_at(&format!("ws://127.0.0.1:{port}/ws")).await;
+        server.await.unwrap();
+        assert_eq!(
+            said,
+            format!(
+                "Forge at http://127.0.0.1:{port} answered 502 Bad Gateway where its live \
+                 connection opens. Check that this box's core address is right and that core is \
+                 running there."
+            )
+        );
     }
 }

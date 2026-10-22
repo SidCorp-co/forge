@@ -235,7 +235,8 @@ here) and it is not logged in, so core cannot be asked either. Nothing was recor
         .map_err(|e| {
             anyhow::anyhow!(
                 "this box holds no master row for `{slug}`, and core could not be asked which \
-projects it serves: {e}. Nothing was recorded."
+projects it serves: {closed} Nothing was recorded.",
+                closed = forge_runner_core::transport::status::ended(&e.to_string()),
             )
         })?;
     match served.iter().find(|r| r.slug == slug) {
@@ -401,7 +402,10 @@ Let those runs finish, or `forge-runner master stand-down {} --force` to end it 
             );
         }
         Holding::Unknown(why) if !a.force => {
-            println!("{pane} is STILL RUNNING and was not ended: {why}.");
+            println!(
+                "{pane} is STILL RUNNING and was not ended: {closed}",
+                closed = forge_runner_core::transport::status::ended(&why.to_string()),
+            );
             println!(
                 "That is not the same as holding nothing, and this box will not end a pane whose \
 work it cannot account for. The stand-down IS recorded, so no replacement will be placed once \
@@ -411,7 +415,10 @@ this pane goes. `forge-runner master stand-down {} --force` ends it anyway.",
         }
         Holding::Unknown(why) => {
             terminal::kill(&pane).await?;
-            println!("Ended {pane} under --force, without establishing what it held: {why}.");
+            println!(
+                "Ended {pane} under --force, without establishing what it held: {closed}",
+                closed = forge_runner_core::transport::status::ended(&why.to_string()),
+            );
         }
     }
     Ok(())
@@ -714,8 +721,9 @@ async fn read_admission(ctx: &Ctx) -> Admission {
 fn admission_line(admission: &Admission, slug: &str) -> String {
     match admission {
         Admission::Unreadable(why) => format!(
-            "unknown — {why}. Whether this box would place a master for {slug} also depends on this answer"
-        ),
+            "unknown — {closed} Whether this box would place a master for {slug} also depends on this answer",
+            closed = forge_runner_core::transport::status::ended(&why.to_string()),
+),
         Admission::Read(rows) => match rows.iter().find(|r| r.slug == slug) {
             None => format!(
                 "core serves no runner for {slug} to this box, so this box places no master for it whatever its standing says"
@@ -1218,6 +1226,23 @@ mod tests {
         assert!(
             blind.starts_with("unknown") && blind.contains("connection refused"),
             "an answer this box could not get is printed as unknown with what stopped it — omitting the line would read as nothing standing in the way: {blind}"
+        );
+        // Criterion 223 (ISS-1421 r22): the not-reached sentence ends with its own full stop, and
+        // the line printed "right.. Whether" once per project.
+        let unreached = admission_line(
+            &Admission::Unreadable(format!(
+                "core could not be asked: me/runners request: {}",
+                forge_runner_core::transport::status::not_reached_at(
+                    "http://127.0.0.1:9",
+                    "the connection was refused"
+                )
+            )),
+            "judgeproj",
+        );
+        assert!(
+            unreached.contains("address is right. Whether this box would place a master")
+                && !unreached.contains(".."),
+            "{unreached}"
         );
         let unbound = admission_line(&Admission::Read(vec![]), "judgeproj");
         assert!(

@@ -1149,10 +1149,11 @@ fn bind_declared(
             }
             Err(why) => {
                 tracing::info!(
-                    "[control] subagent {child} {} under master session {session_id} and is not run {}'s: {why}. The run stays unbound for the subagent dispatched for it",
+                    "[control] subagent {child} {} under master session {session_id} and is not run {}'s: {closed} The run stays unbound for the subagent dispatched for it",
                     if resumed { "was resumed" } else { "started" },
-                    run.run_id
-                );
+                    run.run_id,
+            closed = crate::transport::status::ended(&why.to_string()),
+);
                 turned_away = Some((run.run_id, why));
             }
         }
@@ -1234,9 +1235,10 @@ fn bind_resumed(ctl: &Arc<Control>, child: &str, lead: Option<&str>, session_id:
         crate::daemon::dispatch_gate::claims_the_run(agent_type.as_deref(), roles.as_ref(), None)
     {
         tracing::info!(
-            "[control] master session {session_id} resumed subagent {child}, which is not run {}'s: {why}. The run stays unbound",
-            run.run_id
-        );
+            "[control] master session {session_id} resumed subagent {child}, which is not run {}'s: {closed} The run stays unbound",
+            run.run_id,
+            closed = crate::transport::status::ended(&why.to_string()),
+);
         return;
     }
     match led.bind_resumed(&run.run_id, child) {

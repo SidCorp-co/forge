@@ -4115,6 +4115,8 @@ done
     /// emptied it failed every `git` spawned by name beside it.
     #[test]
     fn a_fake_tmux_leaves_the_process_environment_as_it_found_it() {
+        // `pane_path`'s tests replace PATH under this lock; read without it, theirs is read.
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         #[expect(
             clippy::disallowed_methods,
             reason = "the test reads the fake tmux's variables to see them put back"

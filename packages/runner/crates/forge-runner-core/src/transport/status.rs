@@ -252,10 +252,47 @@ pub fn not_reached_sentence(e: &reqwest::Error, deadline: Option<std::time::Dura
     } else {
         why_not_reached(e)
     };
+    not_reached_at(&at, &why)
+}
+
+/// The one sentence for a call that reached nothing, whatever carried it: an HTTP call, or the
+/// daemon's live connection, whose own error said only "Connection refused (os error 111)" with no
+/// address (ISS-1421 r22).
+pub fn not_reached_at(at: &str, why: &str) -> String {
     format!(
         "Forge could not be reached at {at}, as {why}. Check that core is running there and that \
          this box's core address is right."
     )
+}
+
+/// The core address a url was derived from, as this box's configuration names it: the live
+/// connection's `ws(s)://` is the core address `http(s)://` with its scheme swapped, and the person
+/// reading the line compares it with the address they configured.
+pub fn core_origin(url: &str) -> String {
+    match reqwest::Url::parse(url) {
+        Ok(parsed) => {
+            let said = origin(&parsed);
+            if let Some(rest) = said.strip_prefix("wss://") {
+                format!("https://{rest}")
+            } else if let Some(rest) = said.strip_prefix("ws://") {
+                format!("http://{rest}")
+            } else {
+                said
+            }
+        }
+        Err(_) => url.to_string(),
+    }
+}
+
+/// A reason closed with one full stop, for a line that goes on after it. The not-reached sentence
+/// already ends with one, and a line appending its own printed "right.. Whether" (ISS-1421 r22).
+pub fn ended(reason: &str) -> String {
+    let reason = reason.trim_end();
+    if reason.ends_with(['.', '?', '!']) {
+        reason.to_string()
+    } else {
+        format!("{reason}.")
+    }
 }
 
 /// Why an answer that arrived could not be read, with the cause the transport gave.
@@ -294,7 +331,10 @@ pub(crate) fn why_not_reached(e: &reqwest::Error) -> String {
 /// as os error 10061, "No connection could be made…", where Linux says
 /// "Connection refused". A name lookup or a certificate carries no kind of its
 /// own, so those are read off the deepest cause's words.
-fn reached_nothing_because(e: &(dyn std::error::Error + 'static), connect: bool) -> &'static str {
+pub(crate) fn reached_nothing_because(
+    e: &(dyn std::error::Error + 'static),
+    connect: bool,
+) -> &'static str {
     use std::io::ErrorKind;
     let mut at = Some(e);
     while let Some(err) = at {
@@ -348,6 +388,31 @@ fn span(d: std::time::Duration) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Criterion 223: a reason that already ends a sentence is not given a second full stop.
+    #[test]
+    fn a_reason_is_closed_with_one_full_stop() {
+        let sentence = not_reached_at("http://127.0.0.1:9", "the connection was refused");
+        assert_eq!(ended(&sentence), sentence);
+        assert!(!format!("{} Whether", ended(&sentence)).contains(".."));
+        assert_eq!(ended("core could not be asked"), "core could not be asked.");
+        assert_eq!(ended("was it asked? "), "was it asked?");
+    }
+
+    /// Criterion 214: the live connection names the core address the box configured, not the
+    /// socket's scheme.
+    #[test]
+    fn the_live_connection_names_the_core_address() {
+        assert_eq!(
+            core_origin("wss://forge.example/ws"),
+            "https://forge.example"
+        );
+        assert_eq!(core_origin("ws://127.0.0.1:9/ws"), "http://127.0.0.1:9");
+        assert_eq!(
+            core_origin("http://127.0.0.1:9/api/x"),
+            "http://127.0.0.1:9"
+        );
+    }
 
     #[test]
     fn a_registered_status_carries_its_registered_phrase() {
@@ -791,6 +856,7 @@ mod tests {
                 "status::named(",
                 "status::refused(",
                 "status::not_reached_words(",
+                "status::not_reached_sentence(",
                 "status::why_not_reached(",
             ]
             .iter()

@@ -57,10 +57,11 @@ export const startGithubConnect = onProject(
         ORG_ADMIN_REQUIRED: 'the project belongs to an org and the caller is not its admin',
       }),
       404: fail('NOT_FOUND', 'no such project, or the caller cannot see it'),
-      409: fail(
-        'ORG_MISMATCH',
-        "`orgId` is not the project's own org, so the App would be owned by another",
-      ),
+      409: fail({
+        ORG_MISMATCH: "`orgId` is not the project's own org, so the App would be owned by another",
+        REMOVED_CONNECTION_OTHER_OWNER:
+          "the project's GitHub binding names a removed connection the new App would not belong to",
+      }),
       503: vaultMissing,
     },
   }),
@@ -78,10 +79,12 @@ export const listGithubRepositories = onProject(
         NOT_FOUND: 'no such project, or the caller cannot see it',
         CONNECTION_NOT_REACHABLE: 'the connection does not exist, or the caller cannot reach it',
       }),
-      409: fail(
-        'GITHUB_APP_UNFINISHED',
-        'the connection holds no App: creating it on GitHub was never finished',
-      ),
+      409: fail({
+        GITHUB_APP_UNFINISHED:
+          'the connection is on and holds no App: creating it on GitHub was never finished',
+        CONNECTION_REMOVED:
+          'the connection was removed, so it holds no App until one is installed again',
+      }),
     },
   }),
 );

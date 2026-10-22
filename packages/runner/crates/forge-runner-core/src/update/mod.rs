@@ -374,9 +374,10 @@ pub async fn install_within(
         if let Err(why) = preflight(&tmp, claim, bound).await {
             let _ = std::fs::remove_file(&tmp);
             return Err(Error::Other(format!(
-                "refused the downloaded build before installing it: {why}. {} is untouched and is still the build every caller runs; the next update check downloads the release again and refuses it again until it is one this box can run",
-                exe.display()
-            )));
+                "refused the downloaded build before installing it: {closed} {} is untouched and is still the build every caller runs; the next update check downloads the release again and refuses it again until it is one this box can run",
+                exe.display(),
+            closed = crate::transport::status::ended(&why.to_string()),
+)));
         }
         if let Some(served) = keep {
             if let Err(e) = served.keep(exe) {
