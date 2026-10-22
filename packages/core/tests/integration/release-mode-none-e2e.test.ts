@@ -91,18 +91,25 @@ async function ok(r: Promise<{ status: number; body: Record<string, unknown> }>)
 }
 
 /** An issue with three criteria, its merge marked on `release/stg` naming `commit` (or none). */
-async function landedIssue(seq: number, commit: string | null): Promise<string> {
+async function landedIssue(
+  seq: number,
+  commit: string | null,
+  statements: readonly string[] = [
+    'One command builds the local test databases',
+    'Two worktrees never share a database',
+    'An unsafe host is refused before any change',
+  ],
+): Promise<string> {
   const id = randomUUID();
   await db.execute(sql`
     INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id, release_notes)
     VALUES (${id}, ${projectId}, ${seq}, ${`issue ${seq}`}, 'in_progress', ${ownerId},
             ${JSON.stringify(NOTE)}::jsonb)
   `);
-  await replaceCriteria(id, [
-    { n: 1, statement: 'One command builds the local test databases' },
-    { n: 2, statement: 'Two worktrees never share a database' },
-    { n: 3, statement: 'An unsafe host is refused before any change' },
-  ]);
+  await replaceCriteria(
+    id,
+    statements.map((statement, i) => ({ n: i + 1, statement })),
+  );
   await ok(
     api(token, 'POST', `/api/issues/${id}/merge`, {
       target: BRANCH,
@@ -310,7 +317,11 @@ describe('a project with a production environment records as it did', () => {
 });
 
 describe("the steward's output check reads the same landed build", () => {
-  async function stewardReopens(issueId: string, issueKey: string) {
+  async function stewardReopens(
+    issueId: string,
+    issueKey: string,
+    reason = 'Criterion 1 has no counting verdict on a running build and no release proof.',
+  ) {
     const { callStewardDoor } = await import('../../src/steward/doors.js');
     const [run] = (await db.execute(sql`
       INSERT INTO steward_runs (project_id, subject_kind, subject_id, subject_key, trigger, events,
@@ -334,7 +345,7 @@ describe("the steward's output check reads the same landed build", () => {
       JSON.stringify({
         issue: issueKey,
         to: 'reopen',
-        reason: 'Criterion 1 has no counting verdict on a running build and no release proof.',
+        reason,
       }),
       ctx,
     );
@@ -469,5 +480,82 @@ describe("a requirement's coverage counts a verdict on its issue's landing", () 
 
     expect(read.verdict).toBe('not_judged');
     expect(read.why).toContain("ISS-5's merge records no commit");
+  });
+});
+
+describe("the steward's second reason, the design's proof plan, reads the landed build too", () => {
+  // adminhub-api ISS-1, reopened at 11:30 on 2026-10-22 with all 17 criteria passing at the
+  // release/stg head it landed on: "every criterion has a verdict only at 5da145a1a260, none counting
+  // on the running build, whose source cannot be read; and no evidence the release will run the
+  // design's proof plan".
+  const HEAD = '5da145a1a2600000000000000000000000000000';
+  const BEFORE = '5da145a1a2610000000000000000000000000000';
+  const REASON =
+    "Criteria 1-17 have verdicts only at commit 5da145a1a260 and none counting on the running build, whose source cannot be read; nothing shows the release will run the design's proof plan.";
+  const STATEMENTS = Array.from({ length: 17 }, (_, i) => `Criterion ${i + 1} holds on the box`);
+
+  /** The design's line for every live criterion, each naming its proof. */
+  async function proofPlan(issueId: string) {
+    await db.execute(sql`
+      INSERT INTO issue_designs (issue_id, project_id, revision, modules, contracts, recorded_by, recorded_agency)
+      VALUES (${issueId}, ${projectId}, 1, ARRAY[${randomUUID()}]::uuid[], '{}'::text[], ${ownerId}, 'agent')
+    `);
+    await db.execute(sql`
+      INSERT INTO issue_design_criteria (criterion_id, issue_id, criterion_class, pattern, proof)
+      SELECT id, issue_id, 'observable', NULL, 'the probe replays it on the box'
+        FROM issue_criteria WHERE issue_id = ${issueId} AND retired_at IS NULL
+    `);
+  }
+
+  async function stewardOn(issueId: string) {
+    const { callStewardDoor } = await import('../../src/steward/doors.js');
+    const [run] = (await db.execute(sql`
+      INSERT INTO steward_runs (project_id, subject_kind, subject_id, subject_key, trigger, events,
+                                acts_to_run, state, not_before, started_at)
+      VALUES (${projectId}, 'issue', ${issueId}, 'ISS-1', 'release.asked', '[]'::jsonb,
+              ARRAY['output_check']::text[], 'running', now(), now())
+      RETURNING id`)) as unknown as Array<{ id: string }>;
+    return callStewardDoor(
+      'steward_move_issue',
+      JSON.stringify({ issue: 'ISS-1', to: 'reopen', reason: REASON }),
+      {
+        projectId,
+        runId: run?.id ?? '',
+        act: 'output_check',
+        subject: { kind: 'issue', id: issueId, key: 'ISS-1' },
+        standing: null,
+        token,
+        refused: [],
+        broken: [],
+        acts: [],
+      },
+    );
+  }
+
+  it('does not reopen ISS-1 with 17 passes at its landed head, by either reason', async () => {
+    const issue = await landedIssue(1, HEAD, STATEMENTS);
+    await proofPlan(issue);
+    for (let n = 1; n <= 17; n += 1) await verdict(issue, n, 'pass', HEAD);
+
+    const answer = await stewardOn(issue);
+
+    expect(answer.ok).toBe(false);
+    expect(answer.text).toContain('STEWARD_REOPEN_COUNTED');
+    expect(answer.text).toContain(
+      "The design's proof plan is met the same way: each of the 17 criteria",
+    );
+    expect(await statusOf(issue)).toBe('awaiting_release');
+  });
+
+  it('still reopens it where one planned criterion passes only before the landed head', async () => {
+    const issue = await landedIssue(1, HEAD, STATEMENTS);
+    await proofPlan(issue);
+    for (let n = 1; n <= 16; n += 1) await verdict(issue, n, 'pass', HEAD);
+    await verdict(issue, 17, 'pass', BEFORE);
+
+    const answer = await stewardOn(issue);
+
+    expect(answer.ok, answer.text).toBe(true);
+    expect(await statusOf(issue)).toBe('reopen');
   });
 });

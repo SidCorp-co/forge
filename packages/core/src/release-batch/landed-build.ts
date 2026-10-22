@@ -237,10 +237,24 @@ export async function landedStandings(
   });
 }
 
+/** The live criteria the issue's design plans a proof for, by number. */
+async function proofPlanned(issueId: string): Promise<number[]> {
+  const rows = (await db.execute(sql`
+    SELECT c.n FROM issue_design_criteria d
+      JOIN issue_criteria c ON c.id = d.criterion_id AND c.retired_at IS NULL
+     WHERE d.issue_id = ${issueId}::uuid
+     ORDER BY c.n
+  `)) as unknown as Array<{ n: number }>;
+  return rows.map((r) => Number(r.n));
+}
+
 /**
- * Why the steward's output check may not send this issue back, or null where it may: under release
- * mode `none`, an issue at the gate whose landing is recorded and whose every live criterion stands on
- * a pass at that landed commit is missing nothing, since the landing is its running build.
+ * Why the steward's output check may not send this issue back, or null where it may. Under release
+ * mode `none` both of its reasons read the landed build: a verdict counts on the running build where
+ * it was judged at the landed commit, and since no release run replays a probe there, the design's
+ * proof plan is met where each criterion it plans to prove has that pass. So an issue at the gate
+ * whose landing is recorded and whose every live criterion, every planned one among them, passes at
+ * that commit is missing nothing.
  */
 export async function landedReopenRefusal(issueId: string): Promise<string | null> {
   const [row] = await db
@@ -256,8 +270,14 @@ export async function landedReopenRefusal(issueId: string): Promise<string | nul
   const [standing] = await landedStandings([issueId], () => sha);
   if (!standing?.owes || standing.criteria.length === 0) return null;
   if (standing.criteria.some((c) => !c.counts)) return null;
-  const numbers = standing.criteria.map((c) => c.criterion).join(', ');
-  return `${build.basis}, and every live criterion (${numbers}) stands on a pass judged at that commit. This project declares no production environment, so that landing is the running build and no evidence is missing: wake the master to record the landing (POST /api/projects/${row.projectId}/release-records) instead of sending it back.`;
+  const counted = new Set(standing.criteria.map((c) => c.criterion));
+  const planned = await proofPlanned(issueId);
+  if (planned.some((n) => !counted.has(n))) return null;
+  const plan =
+    planned.length > 0
+      ? ` The design's proof plan is met the same way: each of the ${planned.length} criteria it plans to prove passes at that commit, and with no production environment no release run replays a probe.`
+      : '';
+  return `${build.basis}, and every live criterion (${[...counted].join(', ')}) stands on a pass judged at that commit. This project declares no production environment, so that landing is the running build and its verdicts are read there.${plan} No evidence is missing: wake the master to record the landing (POST /api/projects/${row.projectId}/release-records) instead of sending it back.`;
 }
 
 /** One issue's landed build, or why it has none. */
