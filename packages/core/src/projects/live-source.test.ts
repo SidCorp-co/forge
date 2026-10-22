@@ -143,6 +143,19 @@ describe('resolveLiveSource', () => {
     expect(s.kind === 'refused' && s.reason).toMatch(/could not be decrypted/);
   });
 
+  it('lets a fault that is not an unreadable key surface as itself', async () => {
+    vi.resetModules();
+    vi.stubEnv('INTEGRATION_MASTER_KEY', 'bm90LWEta2V5');
+    const fresh = await import('./live-source.js');
+    const { GitHubClientError: FreshError } = await import('../integrations/github/client.js');
+    const unbound = async (): Promise<GitHubRepoClient> => {
+      throw new FreshError('no_binding', 'this project has no active GitHub binding');
+    };
+    await expect(fresh.resolveLiveSource('p', deps({ githubClient: unbound }))).rejects.toThrow(
+      /INTEGRATION_MASTER_KEY: base64 must decode to 32 bytes/,
+    );
+  });
+
   it('refuses where this Forge has no vault to read the key with', async () => {
     vi.stubEnv('INTEGRATION_MASTER_KEY', '');
     const s = await resolveLiveSource('p', deps({}));

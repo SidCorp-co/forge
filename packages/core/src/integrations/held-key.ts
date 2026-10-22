@@ -7,7 +7,7 @@ import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { integrationBindings, organizations, projects } from '../db/schema.js';
 import { getIntegration } from './registry.js';
-import { decryptJson } from './vault.js';
+import { decryptSecretIfReadable } from './vault.js';
 
 export function keyIn(provider: string, secrets: Record<string, unknown> | null): boolean {
   if (secrets === null) return false;
@@ -20,11 +20,8 @@ export function keyIn(provider: string, secrets: Record<string, unknown> | null)
 /** A record the vault cannot open is not read as holding none. */
 export function holdsKey(row: { provider: string; secretsEnc: Buffer | null }): boolean {
   if (row.secretsEnc === null) return false;
-  try {
-    return keyIn(row.provider, decryptJson<Record<string, unknown>>(row.secretsEnc));
-  } catch {
-    return true;
-  }
+  const opened = decryptSecretIfReadable(row.secretsEnc);
+  return opened === null || keyIn(row.provider, JSON.parse(opened) as Record<string, unknown>);
 }
 
 export function isRemovedConnection(row: {

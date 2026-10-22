@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { HTTPException } from 'hono/http-exception';
-import { decryptSecret } from '../integrations/vault.js';
+import { decryptSecretIfReadable } from '../integrations/vault.js';
 import { logger } from '../logger.js';
 import { KEY_ACCESS, namingTheHost, readHostRefusal, WHY_KEY_ACCESS } from './bounded-fetch.js';
 import { isHostUnresolved, type PinnedSshHost, pinSafeSshHost } from './ssh-host-guard.js';
@@ -166,11 +166,9 @@ export async function testStoredSshKey(
   privateKeyEnc: Buffer,
   context: Record<string, unknown>,
 ): Promise<SshConnTest> {
-  let privateKey: string;
-  try {
-    privateKey = decryptSecret(privateKeyEnc);
-  } catch (err) {
-    logger.warn({ err, ...context }, 'ssh-keys: the stored key could not be decrypted for a test');
+  const privateKey = decryptSecretIfReadable(privateKeyEnc);
+  if (privateKey === null) {
+    logger.warn(context, 'ssh-keys: the stored key could not be decrypted for a test');
     return STORED_KEY_UNREADABLE;
   }
   return testSshConnection(repoUrl, privateKey);

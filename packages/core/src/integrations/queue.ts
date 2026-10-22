@@ -11,6 +11,8 @@ import {
   probeHealth,
   runCoolifyHealthGate,
 } from './coolify/health-gate.js';
+import { CREDENTIAL_UNREADABLE, CredentialUnreadable } from './credential-unreadable.js';
+import { recordDelivery, updateDelivery } from './deliveries.js';
 import { dispatchThrough } from './registry.js';
 import { buildContextFromBinding, findBindingById, findConnectionById } from './store.js';
 import { NonRetryableDispatchError } from './types.js';
@@ -106,7 +108,7 @@ function healthGateDeps(data: CoolifyHealthGateJob) {
  * Retry button on a failed Sentry delivery would have handed that delivery to Coolify's client and
  * called it a deploy.
  */
-async function runOutboundDispatch(data: OutboundDispatchJob): Promise<void> {
+export async function runOutboundDispatch(data: OutboundDispatchJob): Promise<void> {
   const binding = await findBindingById(data.bindingId);
   if (!binding?.active) {
     logger.warn(
@@ -123,7 +125,14 @@ async function runOutboundDispatch(data: OutboundDispatchJob): Promise<void> {
     );
     return;
   }
-  const ctx = buildContextFromBinding({ binding, connection });
+  let ctx: ReturnType<typeof buildContextFromBinding>;
+  try {
+    ctx = buildContextFromBinding({ binding, connection });
+  } catch (err) {
+    if (!(err instanceof CredentialUnreadable)) throw err;
+    await recordUnreadableDispatch(data, err);
+    return;
+  }
   try {
     await dispatchThrough(binding.provider, ctx, {
       eventName: data.eventName,
@@ -141,6 +150,29 @@ async function runOutboundDispatch(data: OutboundDispatchJob): Promise<void> {
     }
     throw err;
   }
+}
+
+/**
+ * A dispatch whose stored credential cannot be decrypted ends here, failed and not retried: no retry
+ * opens it, so the delivery log says so once and the job is done.
+ */
+async function recordUnreadableDispatch(
+  data: OutboundDispatchJob,
+  err: CredentialUnreadable,
+): Promise<void> {
+  // Without the requestId column: a dispatch re-sent once the credential is entered again keeps it.
+  const deliveryId = await recordDelivery({
+    bindingId: data.bindingId,
+    direction: 'outbound',
+    eventName: data.eventName,
+    payload: { runId: data.runId, issueId: data.issueId, requestId: data.requestId ?? null },
+    status: 'failed',
+  });
+  await updateDelivery(deliveryId, { errorMessage: err.message, completedAt: new Date() });
+  logger.warn(
+    { bindingId: data.bindingId, eventName: data.eventName, reason: CREDENTIAL_UNREADABLE },
+    'integrations dispatch worker: the stored credential cannot be decrypted, not retrying',
+  );
 }
 
 export interface EnqueueOptions {

@@ -192,6 +192,19 @@ describe('testStoredSshKey', () => {
     expect(test).toMatchObject({ ok: false, code: 'key_unreadable' });
   });
 
+  it('lets a fault that is not an unreadable key surface as itself', async () => {
+    vi.resetModules();
+    vi.stubEnv('INTEGRATION_MASTER_KEY', 'bm90LWEta2V5');
+    try {
+      const fresh = await import('./ssh-keys.js');
+      await expect(
+        fresh.testStoredSshKey('git@gitlab.com:sid/desk.git', encryptSecret('key'), {}),
+      ).rejects.toThrow(/INTEGRATION_MASTER_KEY: base64 must decode to 32 bytes/);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it('tests a key the vault opens against the host, as before', async () => {
     lookup.mockRejectedValue(Object.assign(new Error('nope'), { code: 'ENOTFOUND' }));
     const test = await testStoredSshKey(

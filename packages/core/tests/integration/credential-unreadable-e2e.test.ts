@@ -362,6 +362,38 @@ describe('a reader that is not an HTTP door', () => {
     expectNothingSecret((thrown as Error).message, sealed);
   });
 
+  it('ends an outbound dispatch at once, failed in its delivery log and not retried', async () => {
+    const { connectionId, bindingId, sealed } = await plant('coolify', { role: 'deploy' });
+    const { runOutboundDispatch } = await import('../../src/integrations/queue.js');
+    // pg-boss retries a job whose handler throws; one that resolves is done.
+    await expect(
+      runOutboundDispatch({
+        jobKind: 'coolify.dispatch',
+        bindingId,
+        runId: null,
+        issueId: null,
+        eventName: 'deploy',
+        requestId: 'made-up-request-1',
+      }),
+    ).resolves.toBeUndefined();
+    const rows = (await harness.db.execute(sql`
+      SELECT status, direction, error_message, request_id, completed_at FROM integration_deliveries
+      WHERE binding_id = ${bindingId}::uuid
+    `)) as unknown as Array<{
+      status: string;
+      direction: string;
+      error_message: string;
+      request_id: string | null;
+      completed_at: Date | null;
+    }>;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ status: 'failed', direction: 'outbound', request_id: null });
+    expect(rows[0]?.completed_at).not.toBeNull();
+    expectNamed(rows[0]?.error_message, 'Coolify', [connectionId, bindingId]);
+    expect(rows[0]?.error_message).toContain('Enter the credential again');
+    expectNothingSecret(rows[0]?.error_message ?? '', sealed);
+  });
+
   it('carries the named message into the deployed-commit reading', async () => {
     const { connectionId, bindingId } = await plant('coolify', { role: 'deploy' });
     const { readForgeDeployments } = await import('../../src/release-batch/deployed-reading.js');

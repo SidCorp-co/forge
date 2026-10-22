@@ -16,7 +16,7 @@ import {
   githubRepoClient,
 } from '../integrations/github/client.js';
 import { type LiveDivergence, readLiveDivergence } from '../integrations/github/live-divergence.js';
-import { decryptSecret, isVaultConfigured } from '../integrations/vault.js';
+import { decryptSecretIfReadable, isVaultConfigured } from '../integrations/vault.js';
 import { type Refused, type RepositoryRoute, saying } from './repository-reader.js';
 
 /** Where a project's branches are read from, or why they cannot be. */
@@ -114,10 +114,8 @@ export async function resolveLiveSource(
         "this Forge has no secret vault configured (INTEGRATION_MASTER_KEY), so the project's deploy key cannot be read",
     });
   }
-  let privateKey: string;
-  try {
-    privateKey = decryptSecret(row.privateKeyEnc);
-  } catch {
+  const privateKey = decryptSecretIfReadable(row.privateKeyEnc);
+  if (privateKey === null) {
     return keyRefused({
       cause:
         'the deploy key attached to this project could not be decrypted (the vault master key may have rotated)',

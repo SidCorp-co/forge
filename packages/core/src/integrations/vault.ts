@@ -90,6 +90,16 @@ export function decryptSecret(enc: Buffer): string {
   return out.toString('utf8');
 }
 
+/** The value opened, or `null` where this key cannot open it; any other fault is thrown as itself. */
+export function decryptSecretIfReadable(enc: Buffer): string | null {
+  try {
+    return decryptSecret(enc);
+  } catch (err) {
+    if (err instanceof SecretUnreadableError) return null;
+    throw err;
+  }
+}
+
 /** Encrypts an arbitrary JSON-serializable object. */
 export function encryptJson(obj: unknown): Buffer {
   return encryptSecret(JSON.stringify(obj));

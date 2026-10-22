@@ -1,5 +1,5 @@
 import { createCipheriv, randomBytes } from 'node:crypto';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 
 process.env.INTEGRATION_MASTER_KEY ??= 'AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=';
 
@@ -60,5 +60,28 @@ describe('decryptSecret on a value this key cannot open', () => {
 
   it('still opens a value this key sealed', () => {
     expect(vault.decryptSecret(vault.encryptSecret(PLAIN))).toBe(PLAIN);
+  });
+});
+
+describe('decryptSecretIfReadable', () => {
+  it('answers null for a value this key cannot open', () => {
+    expect(vault.decryptSecretIfReadable(sealedUnderAnotherKey(PLAIN))).toBeNull();
+  });
+
+  it('opens a value this key sealed', () => {
+    expect(vault.decryptSecretIfReadable(vault.encryptSecret(PLAIN))).toBe(PLAIN);
+  });
+
+  it('throws a fault that is not an unreadable value as itself', async () => {
+    vi.resetModules();
+    vi.stubEnv('INTEGRATION_MASTER_KEY', 'bm90LWEta2V5');
+    try {
+      const fresh = await import('./vault.js');
+      expect(() => fresh.decryptSecretIfReadable(sealedUnderAnotherKey(PLAIN))).toThrow(
+        /INTEGRATION_MASTER_KEY: base64 must decode to 32 bytes/,
+      );
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });
