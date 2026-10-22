@@ -262,6 +262,10 @@ describe("a refusal's reason", () => {
       cli(["issue", "--search", words], { exitCode, stdout: exitCode ? "" : "0 issue(s)", stderr: exitCode ? "The search was too short." : "" });
     expect(toolWords(search("ab", 1), false, [search("invoices", 0)]).refusal).toBe(`The search was too short. ${PUT_IT_RIGHT}`);
     expect(toolWords(search("ab", 1), false, [search("ab", 0)]).refusal).toBe(`The search was too short. ${TOOK_ANOTHER_WAY}`);
+    const comment = (argv: string[], exitCode: number) =>
+      cli(["comment", "ISS-1", ...argv], { exitCode, stdout: exitCode ? "" : "posted", stderr: exitCode ? "The comment is empty." : "" });
+    expect(toolWords(comment(["-"], 1), false, [comment([], 0)]).refusal).toBe(`The comment is empty. ${PUT_IT_RIGHT}`);
+    expect(toolWords(comment(["-"], 1), false, [comment(["-"], 0)]).refusal).toBe(`The comment is empty. ${TOOK_ANOTHER_WAY}`);
     const bare = cli(["next"], { exitCode: 1, stdout: "", stderr: "The queue could not be read." });
     expect(toolWords(bare, false, [cli(["next"], { exitCode: 0, stdout: "ISS-1", stderr: "" })]).refusal).toBe(
       `The queue could not be read. ${PUT_IT_RIGHT}`,

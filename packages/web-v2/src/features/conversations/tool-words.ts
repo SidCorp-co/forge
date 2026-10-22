@@ -58,6 +58,9 @@ function statusLabel(status: string): string {
   return (ISSUE_STATUS_LABELS as Record<string, string>)[status] ?? status;
 }
 
+/** Whether a `forge comment` writes one: it names something beside the issue, such as `-` for its body. */
+const commentWrites = (argv: readonly string[]) => positionals(argv, 1).some((a) => !ISSUE_KEY.test(a));
+
 /** What the `forge` CLI did, read off its arguments. */
 function forgeAct(argv: readonly string[]): Act {
   const [verb, sub] = argv;
@@ -78,9 +81,8 @@ function forgeAct(argv: readonly string[]): Act {
       return act("Filed", "file", "Filing", title ? quoted(title) : "an issue");
     }
     case "comment": {
-      const writes = positionals(argv, 1).some((a) => !ISSUE_KEY.test(a));
       const on = key ?? "an issue";
-      return writes ? act("Commented on", "comment on", "Commenting on", on) : act("Read", "read", "Reading", `the comments on ${on}`);
+      return commentWrites(argv) ? act("Commented on", "comment on", "Commenting on", on) : act("Read", "read", "Reading", `the comments on ${on}`);
     }
     case "attach":
       return act("Attached", "attach", "Attaching", `a file to ${key ?? "an issue"}`);
@@ -264,7 +266,8 @@ function callOf(tool: ToolCallData): { act: string; target: string } {
     const argv = input.argv.filter((a): a is string => typeof a === "string");
     const sub = argv[0] === "knowledge" ? 2 : 1;
     const named = [...positionals(argv, sub), ...TARGET_FLAGS.map((f) => flag(argv, f) ?? "")];
-    return { act: `forge ${argv.slice(0, sub).join(" ")}`, target: named.filter((x) => x && x !== "-").join(" ") };
+    const act = `forge ${argv.slice(0, sub).join(" ")}${argv[0] === "comment" && commentWrites(argv) ? " -" : ""}`;
+    return { act, target: named.filter((x) => x && x !== "-").join(" ") };
   }
   const target = [input.slug, input.id, input.issueId, input.query].find((v) => typeof v === "string") ?? "";
   return { act: `${tool.name} ${typeof input.action === "string" ? input.action : ""}`, target: String(target) };
