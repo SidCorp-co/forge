@@ -395,7 +395,6 @@ function CreateApp({
   const [org, setOrg] = useState("");
 
   const start = async () => {
-    // A refusal is the banner's to show from connect.error, never a rejection thrown past it.
     const res = await connect.mutateAsync({ org: org.trim() || undefined }).catch(() => null);
     if (res) submitManifest(res);
   };
