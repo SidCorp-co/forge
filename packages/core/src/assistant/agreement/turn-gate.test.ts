@@ -37,6 +37,7 @@ vi.mock('../../lib/authz.js', () => ({
 }));
 
 vi.mock('./store.js', () => ({
+  failedProposalsOf: async () => [],
   recordProposal: async (p: { kind: string; call: { name: string; arguments: string } }) => {
     const row = { ...p, id: `p-${held.length + 1}`, createdAt: new Date() };
     held.push(row);

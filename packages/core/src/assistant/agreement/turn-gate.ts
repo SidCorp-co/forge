@@ -16,6 +16,7 @@ import { type ChatToolset, thrownMessage, toolError } from '../tools/mcp-adapter
 import { withinPersistLimits } from '../tools/turn-images.js';
 import { filingTitle, titleKey } from '../turn-writes.js';
 import type { TurnImage } from '../vision.js';
+import { refusedTwice, targetOf } from './refused-twice.js';
 import { requireRoleFor } from './roles.js';
 import { type ChatProposalRow, recordProposal, restateProposal } from './store.js';
 import { imagesLine, summaryOfToolCall } from './summary.js';
@@ -99,6 +100,8 @@ function attachedOnPress(turn: GatedTurn, kind: ChatProposalKind): string[] {
 export function agreementGate(inner: ChatToolset, turn: GatedTurn): AgreementGate {
   // keyed before the insert is awaited, so two calls of one round hold one proposal between them
   const heldNow = new Map<string, Promise<ChatProposalRow>>();
+  // one answer per act and target a turn, so a model retrying a refused offer files the defect once
+  const twiceNow = new Map<string, Promise<CallToolResult | null>>();
   const hold = async (
     name: string,
     argsJson: string,
@@ -108,6 +111,21 @@ export function agreementGate(inner: ChatToolset, turn: GatedTurn): AgreementGat
     if (refused) return refused;
     const unfit = await vetHeld(name, argsJson, turn.projectId);
     if (unfit) return unfit;
+    const target = targetOf(kind, argsJson);
+    const twiceKey = `${kind}\u0000${target}`;
+    const twice =
+      twiceNow.get(twiceKey) ??
+      refusedTwice({
+        projectId: turn.projectId,
+        conversationId: turn.conversationId,
+        personId: turn.personId,
+        kind,
+        kindWords: KIND_WORDS[kind],
+        target,
+      });
+    twiceNow.set(twiceKey, twice);
+    const again = await twice;
+    if (again) return again;
     const images = imagesOf(turn);
     const shown = summaryOfToolCall(kind, name, argsJson);
     const attaching = imagesLine(kind, name, argsJson, attachedOnPress(turn, kind));
