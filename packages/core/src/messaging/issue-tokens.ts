@@ -44,7 +44,7 @@ export function extractIssueClaims(reply: string, prefixes: readonly string[] = 
 
 /** After a key: the words that say this project does not hold it — "is not on this project's tracker". */
 const ABSENT_AFTER =
-  /^[*_`"”’)\]]*\s+(?:(?:is not|isn't|is no longer|was not|wasn't|does not|doesn't)\s+(?:exist\b|(?:on|in|part of|held (?:by|on|in))\s+(?:[\w’'-]+\s+){0,5}?(?:tracker|project)\b)|(?:was not|wasn't|could not be|couldn't be|cannot be|can't be)\s+found\b)/i;
+  /^[*_`"”’)\]]*\s+(?:(?:is not|isn't|is no longer|does not|doesn't)\s+(?:exist\b|(?:on|in|part of|held (?:by|on|in))\s+(?:[\w’'-]+\s+){0,5}?(?:tracker|project)\b)|(?:was not|wasn't|could not be|couldn't be|cannot be|can't be)\s+found\b)/i;
 
 /** Whether the clause naming a key is conditional: an "if" in it, or opening the clause after a comma. */
 const conditional = (sentence: string, at: number) => {
@@ -57,8 +57,9 @@ const conditional = (sentence: string, at: number) => {
   );
 };
 const CONDITIONAL = /\b(?:if|unless|whether|suppose|supposing|in case)\b/i;
-const NARROWER =
-  /^[^.;]*\b(?:sprint|milestone|board|column|release|filter|search|page|list|view)\b/i;
+/** A scope narrower than the project, or a time other than now: either leaves absence unasserted. */
+const NOT_NOW_OR_NARROWER =
+  /\b(?:(?:in|on|from|of)\s+(?:[\w’'-]+\s+){0,3}?(?:sprint|milestone|board|column|release|filter|search|page|list|view)|yesterday|earlier|previously|last|ago|until|anymore|any longer|used to|at the time)\b/i;
 
 /** Before a key: the words that say there is no such issue — "there is no", "I couldn't find". */
 const ABSENT_BEFORE =
@@ -83,10 +84,9 @@ export function keyMentions(text: string, prefixes: readonly string[] = []): Key
     for (const m of sentence.matchAll(issueTokenRe(prefixes))) {
       const at = m.index ?? 0;
       const asserted = !/\?\s*$/.test(sentence) && !conditional(sentence, at);
-      const narrower = NARROWER.test(sentence.slice(at + m[0].length));
       const absent =
         asserted &&
-        !narrower &&
+        !NOT_NOW_OR_NARROWER.test(sentence) &&
         (ABSENT_AFTER.test(sentence.slice(at + m[0].length)) ||
           ABSENT_BEFORE.test(sentence.slice(0, at)));
       out.push({ seq: Number(m[2]), token: m[0], absent });

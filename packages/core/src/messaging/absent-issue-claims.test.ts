@@ -67,6 +67,19 @@ describe('a reply saying a key is not on the project', () => {
     },
   );
 
+  // The second whole-set read of round 37: a scope named before the key, and a past time, assert no
+  // present absence from the project.
+  it.each([
+    ["In the current sprint, I couldn't find ISS-1.", true],
+    ["In the current sprint, I couldn't find ISS-999.", false],
+    ['ISS-1 was not on this project yesterday.', true],
+    ['ISS-999 was not on this project yesterday.', false],
+    ['ISS-999 is no longer on this project as of last week.', false],
+  ])('reads %s as no present absence from the project', (text, passes) => {
+    expect(keyMentions(text, ['ISS']).every((m) => !m.absent)).toBe(true);
+    expect(room(text).ok).toBe(passes);
+  });
+
   it('reads a question or a condition about a held key as no claim that it is absent', () => {
     expect(room('What if ISS-1 is not on this project?').ok).toBe(true);
     expect(room('If ISS-1 is not on this project, I can file it.').ok).toBe(true);
