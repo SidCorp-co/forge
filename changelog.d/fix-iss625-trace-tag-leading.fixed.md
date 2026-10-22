@@ -1,1 +1,0 @@
-**A BC tag that does not open a criterion is refused by name.** `(REQ-n BC-m)` traces only at the start of the line; elsewhere it is refused `CRITERIA_TRACE_NOT_LEADING`, and the ready check names the leading form.
