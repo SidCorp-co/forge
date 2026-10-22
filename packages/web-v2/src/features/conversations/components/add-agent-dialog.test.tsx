@@ -98,13 +98,38 @@ describe("adding the agent of a project that was deleted", () => {
     render(<AddAgentDialog conversationId="c1" room={{ shape: "group", scopeProjects: [] }} open onClose={() => {}} />);
     const lines = screen.getAllByTestId("agent-beyond-reach").map((p) => p.textContent);
     expect(lines).toEqual([
-      "Ops's agent is added by a member of Ops; you hold the viewer role there.",
-      "Another project in this organization has its own agent, added by a member of that project; you hold no role on it.",
+      "Ask a member of Ops to add Ops's agent; you hold the viewer role there.",
+      "Another project in this organization has its own agent; you hold no role on it, so a member of that project adds it.",
     ]);
     const empty = screen.getByTestId("agent-candidates-empty").textContent ?? "";
     expect(empty).toMatch(/^Every agent you can add is already in this room\./);
-    expect(empty).toContain("Ask a member of the project to add its agent, or start a new project.");
+    expect(empty).toContain("Or start a new project, which comes with its own agent.");
     expect(screen.getByRole("link", { name: "start a new project" }).getAttribute("href")).toBe("/projects?new=1");
+  });
+
+  // r34, judge-93: after naming two projects the panel said "Ask a member of the project", leaving which to guess.
+  it("says in each sentence whose members add an agent, one sentence per project it names", () => {
+    handles = [];
+    beyondReach = {
+      named: [
+        { id: "p-ops", name: "Ops", slug: "ops" },
+        { id: "p-ledger", name: "Ledger", slug: "ledger" },
+      ],
+      unnamed: 2,
+    };
+    render(<AddAgentDialog conversationId="c1" room={{ shape: "group", scopeProjects: [] }} open onClose={() => {}} />);
+    expect(screen.getAllByTestId("agent-beyond-reach").map((p) => p.textContent)).toEqual([
+      "Ask a member of Ops to add Ops's agent; you hold the viewer role there.",
+      "Ask a member of Ledger to add Ledger's agent; you hold the viewer role there.",
+      "2 other projects in this organization have their own agents; you hold no role on them, so a member of each of those projects adds its agent.",
+    ]);
+    const empty = screen.getByTestId("agent-candidates-empty").textContent ?? "";
+    const sentences = empty.split(/(?<=\.)\s*/).filter((s) => /member/.test(s));
+    expect(sentences.length).toBe(3);
+    for (const sentence of sentences) {
+      expect(sentence).toMatch(/a member of (Ops|Ledger|each of those projects)\b/);
+    }
+    expect(empty).not.toMatch(/a member of the project/);
   });
 
   it("counts several projects it cannot name, and says it under a list that still offers agents", () => {
@@ -113,7 +138,7 @@ describe("adding the agent of a project that was deleted", () => {
     render(<AddAgentDialog conversationId="c1" room={{ shape: "group", scopeProjects: [] }} open onClose={() => {}} />);
     expect(screen.getByRole("button", { name: /@desk/ })).toBeTruthy();
     expect(screen.getByTestId("agent-beyond-reach").textContent).toBe(
-      "3 other projects in this organization have their own agents, each added by a member of its project; you hold no role on them.",
+      "3 other projects in this organization have their own agents; you hold no role on them, so a member of each of those projects adds its agent.",
     );
   });
 });

@@ -4,13 +4,13 @@
 // Reused by the run thread (session-screen) and the /agent Chat surface.
 // Prompt turns are editable + regen/fork anchors; agent turns render ordered
 // thinking / text / tool / todos blocks with a streaming caret on the live tail.
-import { useEffect, useRef, useState } from "react";
+import { type ComponentType, useEffect, useRef, useState } from "react";
 import { Button, Icon, StreamingText, Textarea } from "@/design";
 import { AttachmentList } from "@/features/issues/components/attachment-list";
 import { disclosureKeys, useThreadDisclosures } from "../disclosure";
 import { foldTurn } from "../fold";
 import { AGENT_COLUMN, USER_BUBBLE } from "../layout";
-import type { AgentTodo, ConversationItem, RenderBlock } from "../types";
+import type { AgentTodo, ConversationItem, RenderBlock, ToolCallData } from "../types";
 import { ThinkingLine } from "./thinking-line";
 import { ToolCard } from "./tool-card";
 
@@ -22,8 +22,12 @@ export interface ConversationActions {
     | undefined;
 }
 
+/** What draws one tool call: a run's technical card by default, a room's words where a room passes its own. */
+export type ToolCardComponent = ComponentType<{ tool: ToolCallData; live?: boolean; blockKey?: string }>;
+
 interface ConversationProps extends ConversationActions {
   items: ConversationItem[];
+  toolCard?: ToolCardComponent;
   /** Session is live — drives the caret on the last agent turn. */
   streaming?: boolean;
   /** Turn actions are disabled while a turn is in flight. */
@@ -162,7 +166,7 @@ function FoldRow({ label, onOpen }: { label: string; onOpen: () => void }) {
   );
 }
 
-function AgentTurn({ item, streamingTail, folded, busy, readOnly, onRegenerate, onFork }: { item: ConversationItem; streamingTail?: boolean; folded?: boolean; busy?: boolean; readOnly?: boolean } & Pick<ConversationActions, "onRegenerate" | "onFork">) {
+function AgentTurn({ item, streamingTail, folded, busy, readOnly, onRegenerate, onFork, toolCard: Card = ToolCard }: { item: ConversationItem; streamingTail?: boolean; folded?: boolean; busy?: boolean; readOnly?: boolean; toolCard?: ToolCardComponent | undefined } & Pick<ConversationActions, "onRegenerate" | "onFork">) {
   const tailIdx = item.blocks.length - 1;
   const caretIdx = item.blocks[tailIdx]?.type === "text" ? tailIdx : -1;
 
@@ -213,7 +217,7 @@ function AgentTurn({ item, streamingTail, folded, busy, readOnly, onRegenerate, 
       );
     }
     return (
-      <ToolCard
+      <Card
         key={block.tool.id ?? i}
         tool={block.tool}
         live={streamingTail}
@@ -240,7 +244,7 @@ function AgentTurn({ item, streamingTail, folded, busy, readOnly, onRegenerate, 
   );
 }
 
-export function Conversation({ items, streaming, busy, readOnly, newestAgentId, onRegenerate, onFork, onEditTurn }: ConversationProps) {
+export function Conversation({ items, streaming, busy, readOnly, newestAgentId, onRegenerate, onFork, onEditTurn, toolCard }: ConversationProps) {
   let lastAgentIdx = -1;
   items.forEach((it, i) => {
     if (it.kind === "agent") lastAgentIdx = i;
@@ -262,6 +266,7 @@ export function Conversation({ items, streaming, busy, readOnly, newestAgentId, 
             readOnly={readOnly}
             onRegenerate={onRegenerate}
             onFork={onFork}
+            toolCard={toolCard}
           />
         ),
       )}

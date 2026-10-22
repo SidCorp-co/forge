@@ -4,7 +4,7 @@
 // in the same words.
 
 import { afterAll, describe, expect, it, vi } from "vitest";
-import { memberName, removalClaim, removalQuestion } from "./membership";
+import { emptyRoomState, memberName, removalClaim, removalQuestion } from "./membership";
 import type { ConversationParticipant } from "./types";
 
 // When each was added reads in the reader's own time zone (ISS-1229 r25); this reader is at UTC+7.
@@ -78,5 +78,38 @@ describe("two people who read the same name", () => {
     expect(memberName(a, "me", "start", room)).toBe("Mai Tran");
     expect(memberName(b, "me", "start", room)).toBe("Another member");
     expect(memberName(me, "me", "start", room)).toBe("You");
+  });
+});
+
+// r34, judge-93: an empty room invites a conversation only where somebody could have one.
+describe("emptyRoomState", () => {
+  const desk = { id: "p1", name: "Desk", slug: "desk" };
+  const agent = (reachable: boolean | null) => ({
+    id: "h1",
+    kind: "handle" as const,
+    userId: "u1",
+    projectId: "p1",
+    label: null,
+    displayName: "desk",
+    reachable,
+  });
+
+  it("keeps the invitation for a poster in a room whose agent can answer, or whose reach is unknown", () => {
+    expect(emptyRoomState({ participants: [agent(true)], scopeProjects: [desk] }, { canPost: true })).toBeNull();
+    expect(emptyRoomState({ participants: [agent(null)], scopeProjects: [desk] }, { canPost: true })).toBeNull();
+    expect(emptyRoomState(undefined, { canPost: true })).toBeNull();
+  });
+
+  it("names the agent that cannot answer and the project it lost its role on", () => {
+    expect(emptyRoomState({ participants: [agent(false)], scopeProjects: [desk] }, { canPost: true })).toEqual({
+      title: "No agent here can answer",
+      message: "@desk can't answer: it no longer holds a role on Desk, and answers again once it does.",
+    });
+  });
+
+  it("tells a viewer of a draft that they can read the project's conversations, not start one", () => {
+    expect(emptyRoomState(undefined, { canPost: false, projectName: "Desk" })?.message).toBe(
+      "You can read Desk's conversations, not start one: you hold the viewer role on Desk.",
+    );
   });
 });

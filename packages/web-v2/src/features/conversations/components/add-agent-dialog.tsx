@@ -155,7 +155,7 @@ function CandidateList({
     );
   }
   const handles = (query.data?.handles ?? []).filter((h) => !goneProjects.has(h.project.id));
-  // Agents of projects the reader holds no member role on: who adds them, beside a new project (r33).
+  // Agents of projects the reader holds no member role on: whose members add each, beside a new project (r33, r34).
   const beyond = beyondReachLines(query.data?.beyondReach);
   if (handles.length === 0) {
     // Emptied by a project deleted under the panel, that is why (ISS-1229 r30, judge-86). Otherwise every
@@ -182,11 +182,11 @@ function CandidateList({
           </p>
         ))}
         <p>
-          {beyond.length > 0 && "Ask a member of the project to add its agent, or "}
+          {beyond.length > 0 && "Or "}
           <Link href="/projects?new=1" className="text-link underline-offset-2 hover:underline">
             {beyond.length > 0 ? "start a new project" : "Start a new project"}
           </Link>
-          {beyond.length > 0 && "."}
+          {beyond.length > 0 && ", which comes with its own agent."}
         </p>
       </div>
     );

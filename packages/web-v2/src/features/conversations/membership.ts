@@ -74,29 +74,21 @@ export function scopeDerivation(
 }
 
 /**
- * Where the agents the reader cannot add come from: a member of each such project adds its agent. A
+ * Who adds each agent the reader cannot: a member of its project, named in the same sentence (r34). A
  * project the reader can see is named; one they hold no role on is only counted (ISS-1229 r33, judge-92).
  */
 export function beyondReachLines(beyond: BeyondReach | undefined): string[] {
-  const lines: string[] = [];
-  const named = beyond?.named ?? [];
-  if (named.length === 1) {
-    lines.push(
-      `${named[0]?.name}'s agent is added by a member of ${named[0]?.name}; you hold the viewer role there.`,
-    );
-  } else if (named.length > 1) {
-    lines.push(
-      `The agents of ${list(named)} are each added by a member of their project; you hold the viewer role on them.`,
-    );
-  }
+  const lines = (beyond?.named ?? []).map(
+    (p) => `Ask a member of ${p.name} to add ${p.name}'s agent; you hold the viewer role there.`,
+  );
   const unnamed = beyond?.unnamed ?? 0;
   if (unnamed === 1) {
     lines.push(
-      "Another project in this organization has its own agent, added by a member of that project; you hold no role on it.",
+      "Another project in this organization has its own agent; you hold no role on it, so a member of that project adds it.",
     );
   } else if (unnamed > 1) {
     lines.push(
-      `${unnamed} other projects in this organization have their own agents, each added by a member of its project; you hold no role on them.`,
+      `${unnamed} other projects in this organization have their own agents; you hold no role on them, so a member of each of those projects adds its agent.`,
     );
   }
   return lines;
@@ -120,6 +112,35 @@ export function unansweringAgentLines(
       const project = (room.scopeProjects ?? []).find((s) => s.id === p.projectId)?.name ?? "its project";
       return `${memberName(p)} can't answer: it no longer holds a role on ${project}. This room stays about ${project} while ${memberName(p)} is in it.`;
     });
+}
+
+/** An empty room's title and line where an invitation would be untrue, else null (ISS-1229 r34). */
+export function emptyRoomState(
+  room: Partial<Pick<ConversationMembership, "participants" | "scopeProjects">> | undefined,
+  reader: { canPost: boolean; projectName?: string | undefined },
+): { title: string; message: string } | null {
+  const where = reader.projectName ?? "this project";
+  if (!room) {
+    return reader.canPost
+      ? null
+      : {
+          title: "Conversations you can read",
+          message: `You can read ${reader.projectName ? `${reader.projectName}'s` : "this project's"} conversations, not start one: you hold the viewer role on ${where}.`,
+        };
+  }
+  const readOnly = reader.canPost ? null : `You can read this room, not post in it: you hold the viewer role on ${where}.`;
+  const agents = agentsOf(room);
+  if (agents.length > 0 && agents.every((p) => p.reachable === false)) {
+    const why = agents.map((p) => {
+      const project = (room.scopeProjects ?? []).find((s) => s.id === p.projectId)?.name ?? "its project";
+      return `${memberName(p)} can't answer: it no longer holds a role on ${project}, and answers again once it does.`;
+    });
+    return { title: "No agent here can answer", message: [...why, ...(readOnly ? [readOnly] : [])].join(" ") };
+  }
+  if (readOnly) return { title: "Nothing has been said here yet", message: readOnly };
+  const refusal = composerRefusal(room);
+  if (refusal) return { title: "Nothing can be sent here", message: `${refusal.reason} ${refusal.wayOut}` };
+  return null;
 }
 
 /** The live agents in a room. */
