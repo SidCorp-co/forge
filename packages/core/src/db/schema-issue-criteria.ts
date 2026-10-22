@@ -1,6 +1,7 @@
 // ISS-55 — an issue's acceptance criteria and the verdicts on them are rows, not comment prose.
 // `issue_criteria` holds one row per criterion (its number is what a verdict names); a reworded or
-// removed criterion is retired, never deleted, so the verdicts on it stay readable.
+// removed criterion is retired, never deleted, so the verdicts on it stay readable, and one that only
+// moved keeps its row at its new number (ISS-567, `issues/criteria/match.ts`).
 // `criterion_verdicts` is insert-only: the latest row per criterion is what the
 // `awaiting_release` gate reads (`issues/criteria/store.ts:listCriteria`). `criterion_probes` is
 // insert-only too: each kept probe of a criterion, the newest being the one a verdict that sends none
@@ -40,7 +41,7 @@ export const issueCriteria = pgTable(
     issueId: uuid('issue_id')
       .notNull()
       .references(() => issues.id, { onDelete: 'cascade' }),
-    /** The number a verdict names (`criterion: 3`), stable for the life of the row. */
+    /** The number a verdict names (`criterion: 3`); a renumber moves it, the row and its verdicts stay. */
     n: integer('n').notNull(),
     statement: text('statement').notNull(),
     position: integer('position').notNull(),

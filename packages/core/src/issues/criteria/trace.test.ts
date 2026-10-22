@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { traceTagOf } from './criteria-text.js';
-import { droppedTraceIds } from './store.js';
+import { droppedTraceIds } from './match.js';
 
 // Why REQ-25 BC-1 and BC-2 read "no issue traces here" while ISS-39 closed proving them: on
 // 2026-10-06 its criteria were rewritten through the text path, which retired the three traced rows
@@ -48,6 +48,14 @@ describe('a criteria write that would drop a trace', () => {
     const rewrite = [
       ...iss39Before.map(({ n, statement }) => ({ n, statement })),
       { n: 4, statement: 'More.' },
+    ];
+    expect(droppedTraceIds(iss39Before, rewrite)).toEqual([]);
+  });
+
+  it('keeps the trace of a criterion that only moved to another number (ISS-567)', () => {
+    const rewrite = [
+      { n: 1, statement: 'A new first criterion.' },
+      ...iss39Before.map(({ n, statement }) => ({ n: n + 1, statement })),
     ];
     expect(droppedTraceIds(iss39Before, rewrite)).toEqual([]);
   });

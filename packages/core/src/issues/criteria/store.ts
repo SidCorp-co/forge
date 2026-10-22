@@ -1,10 +1,13 @@
 /**
  * ISS-55 — reads and writes of `issue_criteria` and `criterion_verdicts`.
  *
- * Criteria are written whole (a plan's PUT, or a write of `acceptance_criteria` text): a criterion
- * whose number and statement are unchanged keeps its row, a reworded one is retired and re-added so
- * the verdicts on the old wording stop counting, and a removed one is retired. Verdicts are only
- * ever inserted; the latest per live criterion is the one the gate and the UI read.
+ * Criteria are written whole (a plan's PUT, or a write of `acceptance_criteria` text). Each criterion
+ * written is matched to a live row by its wording before its number (`match.ts:matchCriteria`,
+ * ISS-567): an unchanged wording keeps its row, its trace and its verdicts even where its number
+ * moved, a reworded one is retired and re-added so the verdicts on the old wording stop counting,
+ * and a removed one is retired. A repeated wording that would have to move is refused
+ * CRITERIA_RENUMBER_AMBIGUOUS rather than guessed. Verdicts are only ever inserted; the latest per
+ * live criterion is the one the gate and the UI read.
  */
 
 import type { CriteriaRefusalCode } from '@forge/contracts/issues';
@@ -22,13 +25,13 @@ import { refuser } from '../../lib/refusal.js';
 import { verdictByBuilderSql } from '../built-by.js';
 import { liveTracedCodesOf, traceWordingsOf } from '../ports.js';
 import {
-  normalizeStatement,
   type ParsedCriterion,
   parseCriteriaText,
   renderCriteriaText,
   TRACE_TAG_SHAPE,
   traceTagOf,
 } from './criteria-text.js';
+import { ambiguousDetail, droppedTraceIds, matchCriteria, sameCriteria } from './match.js';
 
 export const refuseCriteria = refuser<CriteriaRefusalCode>('CRITERIA_REFUSED');
 
@@ -96,45 +99,51 @@ export async function liveRows(tx: Tx, issueId: string): Promise<LiveRow[]> {
     .where(and(eq(issueCriteria.issueId, issueId), isNull(issueCriteria.retiredAt)));
 }
 
-/** Whether a desired set says the same thing as the live rows: same numbers, same statements. */
-function unchanged(live: readonly LiveRow[], desired: readonly CriterionInput[]): boolean {
-  if (live.length !== desired.length) return false;
-  const byN = new Map(live.map((row) => [row.n, normalizeStatement(row.statement)]));
-  return desired.every((c) => byN.get(c.n) === normalizeStatement(c.statement));
-}
+/** The field a criteria write came through, which its refusals name. */
+type CriteriaPath = '/criteria' | '/acceptanceCriteria';
 
 /**
  * Make the issue's live criteria exactly `desired`, in its order. Refused CRITERIA_LOCKED where the
- * set would change at a status whose verdicts were earned on it.
+ * set would change at a status whose verdicts were earned on it, and CRITERIA_RENUMBER_AMBIGUOUS
+ * where a repeated wording would have to move. A kept row whose number moves is first parked on a
+ * number above every live and desired one, so a swap never holds two live rows on one number
+ * (`issue_criteria_live_n_uq`).
  */
 async function applyCriteria(
   tx: Tx,
   issue: { id: string; status: string },
   desired: readonly CriterionInput[],
+  path: CriteriaPath,
 ): Promise<void> {
   const live = await liveRows(tx, issue.id);
-  const same = unchanged(live, desired);
+  const same = sameCriteria(live, desired);
   if (!same && LOCKED_STATUSES.has(issue.status)) {
     throw refuseCriteria(
       'CRITERIA_LOCKED',
       `this issue is at \`${issue.status}\`, where its criteria are the ones its verdicts were earned on; reopen it to change them`,
     );
   }
-  await refuseDroppedTraces(tx, issue.id, live, desired);
-  const keep = new Map<number, string>();
-  for (const row of live) {
-    const wanted = desired.find((c) => c.n === row.n);
-    if (wanted && normalizeStatement(wanted.statement) === normalizeStatement(row.statement)) {
-      keep.set(row.n, row.id);
-      continue;
-    }
+  const match = matchCriteria(live, desired);
+  if (match.ambiguous.length > 0) {
+    throw refuseCriteria('CRITERIA_RENUMBER_AMBIGUOUS', ambiguousDetail(match.ambiguous), path);
+  }
+  await refuseDroppedTraces(tx, issue.id, live, desired, path);
+  for (const row of match.retired) {
     await tx
       .update(issueCriteria)
       .set({ retiredAt: sql`now()` })
       .where(eq(issueCriteria.id, row.id));
   }
+  const parked = Math.max(0, ...live.map((r) => r.n), ...desired.map((c) => c.n)) + 1;
+  for (const [i, row] of match.kept) {
+    if (row.n === desired[i]?.n) continue;
+    await tx
+      .update(issueCriteria)
+      .set({ n: parked + i })
+      .where(eq(issueCriteria.id, row.id));
+  }
   for (const [position, c] of desired.entries()) {
-    const kept = keep.get(c.n);
+    const kept = match.kept.get(position);
     const requirement =
       c.requirementCriterionId === undefined
         ? {}
@@ -142,8 +151,8 @@ async function applyCriteria(
     if (kept) {
       await tx
         .update(issueCriteria)
-        .set({ position, ...requirement })
-        .where(eq(issueCriteria.id, kept));
+        .set({ n: c.n, position, ...requirement })
+        .where(eq(issueCriteria.id, kept.id));
       continue;
     }
     await tx.insert(issueCriteria).values({
@@ -156,39 +165,12 @@ async function applyCriteria(
   }
 }
 
-/**
- * The BCs the live rows trace that the desired set would leave untraced, by code: a write that
- * rewords or removes a traced criterion and does not restate the trace drops that BC's proof
- * silently (HOP ISS-39, whose 2026-10-06 rewrite left REQ-25 BC-1, BC-2 and BC-7 with no issue).
- * Where every desired criterion states its trace (`requirementCriterionId` given, `null` meaning
- * none) the writer said so and nothing is refused; a wording the requirement retired, or one of
- * another requirement, counts as no proof to lose.
- */
-export function droppedTraceIds(
-  live: readonly Pick<LiveRow, 'n' | 'statement' | 'requirementCriterionId'>[],
-  desired: readonly CriterionInput[],
-): string[] {
-  if (desired.every((c) => c.requirementCriterionId !== undefined)) return [];
-  const before = new Set(
-    live.flatMap((r) => (r.requirementCriterionId ? [r.requirementCriterionId] : [])),
-  );
-  const after = new Set<string>();
-  for (const c of desired) {
-    if (c.requirementCriterionId) after.add(c.requirementCriterionId);
-    if (c.requirementCriterionId !== undefined) continue;
-    const kept = live.find(
-      (r) => r.n === c.n && normalizeStatement(r.statement) === normalizeStatement(c.statement),
-    );
-    if (kept?.requirementCriterionId) after.add(kept.requirementCriterionId);
-  }
-  return [...before].filter((id) => !after.has(id));
-}
-
 async function refuseDroppedTraces(
   tx: Tx,
   issueId: string,
   live: readonly LiveRow[],
   desired: readonly CriterionInput[],
+  path: CriteriaPath,
 ): Promise<void> {
   const dropped = droppedTraceIds(live, desired);
   if (dropped.length === 0) return;
@@ -197,7 +179,7 @@ async function refuseDroppedTraces(
   throw refuseCriteria(
     'CRITERIA_TRACE_DROPPED',
     `this write leaves ${codes.join(', ')} traced by no criterion of this issue, so the proof it held would vanish silently. Restate each trace — open the criterion that proves it with ${TRACE_TAG_SHAPE}, or send \`requirementCriterionId\` on PUT /criteria — or, to drop it on purpose, PUT the criteria with \`requirementCriterionId\` stated (null for none) on every one`,
-    '/acceptanceCriteria',
+    path,
   );
 }
 
@@ -224,8 +206,9 @@ async function tracedInputs(
   if (tags.every((t) => t.tag.kind === 'none')) return [...parsed];
   const { requirement: req, wordings } = await traceWordingsOf(tx, issueId);
   const rows = await liveRows(tx, issueId);
+  const { kept: keptRows } = matchCriteria(rows, parsed);
   const revision = req?.revision ?? null;
-  return tags.map(({ c, tag }) => {
+  return tags.map(({ c, tag }, i) => {
     if (tag.kind !== 'tag') return c;
     const where = `criterion ${c.n} traces REQ-${tag.requirementSeq} ${tag.code}`;
     if (!req) {
@@ -250,9 +233,7 @@ async function tracedInputs(
         '/acceptanceCriteria',
       );
     }
-    const kept = rows.find(
-      (r) => r.n === c.n && normalizeStatement(r.statement) === normalizeStatement(c.statement),
-    );
+    const kept = keptRows.get(i);
     const keptCode = wordings.find((w) => w.id === kept?.requirementCriterionId)?.code;
     // an unchanged criterion already traced to a wording of this code keeps the wording it has
     if (keptCode === tag.code) return c;
@@ -316,7 +297,7 @@ export async function putCriteria(
   if (fault) throw refuseCriteria('CRITERIA_INPUT_INVALID', fault, '/criteria');
   const issue = await lockIssue(tx, issueId);
   if (!issue) return false;
-  await applyCriteria(tx, issue, desired);
+  await applyCriteria(tx, issue, desired, '/criteria');
   const text = renderCriteriaText(
     desired.map(({ n, statement }) => ({ n, statement: statement.trim() })),
   );
@@ -352,7 +333,12 @@ export async function syncCriteriaFromText(
       '/acceptanceCriteria',
     );
   }
-  await applyCriteria(tx, issue, await tracedInputs(tx, issue.id, parsed.criteria));
+  await applyCriteria(
+    tx,
+    issue,
+    await tracedInputs(tx, issue.id, parsed.criteria),
+    '/acceptanceCriteria',
+  );
 }
 
 const LIST_SQL = (issueIds: readonly string[]) => sql`
