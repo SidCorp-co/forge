@@ -7,10 +7,18 @@
 // release reads a probe from. `config` is the merged connection+binding view and `bindingConfig`
 // this project's own, which is how the section says WHICH tier the probe in force came from.
 
-import { useEffect, useRef, useState } from "react";
-import { Button, CardTitle, IconButton, Input } from "@/design";
+import { useEffect, useId, useRef, useState } from "react";
+import {
+  Button,
+  CardTitle,
+  ConfirmDialog,
+  Field,
+  IconButton,
+  Input,
+  useUnsavedChanges,
+} from "@/design";
 import { formatApiError } from "@/lib/api/error";
-import { useUpdateProviderIntegration } from "../hooks";
+import { useIntegrationsList, useUpdateProviderIntegration } from "../hooks";
 import type { IntegrationSummary } from "../types";
 import { labelDecidesFor } from "./release-runner-field";
 
@@ -21,6 +29,8 @@ export const VERIFY_PROBE_HEADING = "Verify probe";
 
 /** The section's id, and the `?field=` a link that lands on it carries. */
 export const VERIFY_PROBE_SECTION = "verify-probe";
+
+export const REMOVE_ALL_PROBES = "Remove all probes";
 
 /** `verify.probes` caps at ten in core's `releaseChannelFields`. */
 const MAX_PROBES = 10;
@@ -63,28 +73,32 @@ export function probeIsUsable(raw: unknown): boolean {
   return probes.length > 0 && probes.every((p) => isAbsoluteHttp(p.url));
 }
 
-/** What a save would send for these rows, or the sentence that refuses it, each row by its number. */
+/** Why one row cannot be saved, said with the number the row has when the sentence is drawn. */
+export type RowFault = "no-url" | "not-http";
+
+export function rowFaultSentence(fault: RowFault, n: number): string {
+  return fault === "no-url"
+    ? `Probe ${n} has a commit field and no URL. Type its URL, or clear the row.`
+    : `Probe ${n}'s URL is not an http or https address, such as https://api.example.com/version.`;
+}
+
+const NOTHING_TYPED = "Type the address the live deployment answers its commit on, or remove the probe.";
+
+/** What a save would send for these rows, or what refuses it: each row's fault by its position, or
+ *  that nothing was typed at all. */
 export function probeWrite(
   rows: readonly ProbeRow[],
   stableReads: unknown,
-): { ok: true; verify: Record<string, unknown> } | { ok: false; problems: string[] } {
-  const typed = rows
-    .map((row, i) => ({ n: i + 1, url: row.url.trim(), commitPath: row.commitPath.trim() }))
-    .filter((row) => row.url !== "" || row.commitPath !== "");
-  if (typed.length === 0) {
-    return {
-      ok: false,
-      problems: ["Type the address the live deployment answers its commit on, or remove the probe."],
-    };
-  }
-  const problems = typed.flatMap((row) =>
-    row.url === ""
-      ? [`Probe ${row.n} has a commit field and no URL. Type its URL, or clear the row.`]
-      : isAbsoluteHttp(row.url)
-        ? []
-        : [`Probe ${row.n}'s URL is not an http or https address, such as https://api.example.com/version.`],
+):
+  | { ok: true; verify: Record<string, unknown> }
+  | { ok: false; faults: (RowFault | null)[]; nothingTyped: boolean } {
+  const trimmed = rows.map((row) => ({ url: row.url.trim(), commitPath: row.commitPath.trim() }));
+  const typed = trimmed.filter((row) => row.url !== "" || row.commitPath !== "");
+  if (typed.length === 0) return { ok: false, faults: rows.map(() => null), nothingTyped: true };
+  const faults = trimmed.map((row): RowFault | null =>
+    row.url === "" ? (row.commitPath === "" ? null : "no-url") : isAbsoluteHttp(row.url) ? null : "not-http",
   );
-  if (problems.length > 0) return { ok: false, problems };
+  if (faults.some((f) => f !== null)) return { ok: false, faults, nothingTyped: false };
   return {
     ok: true,
     verify: {
@@ -94,11 +108,15 @@ export function probeWrite(
   };
 }
 
-/** The URL input's accessible name, which is also how a link that lands here finds it. */
-const probeUrlLabel = (i: number) => `Probe ${i + 1} URL`;
-
-function seedRows(probes: ProbeRow[]): ProbeRow[] {
-  return probes.length > 0 ? probes.map((p) => ({ ...p })) : [{ url: "", commitPath: "" }];
+/** What a release records once this binding declares no probe, read off the project's other live
+ *  deploy bindings; `null` until they are read. */
+export function afterRemovalSentence(otherDeclares: boolean | null): string {
+  if (otherDeclares === null) {
+    return "A release then reads no commit from this binding, and closes unverified unless another live binding declares a probe.";
+  }
+  return otherDeclares
+    ? "A release then reads only the probes the project's other live bindings declare."
+    : "No other live binding declares a probe, so a release then closes unverified.";
 }
 
 function storedKey(raw: unknown, key: string): unknown {
@@ -138,27 +156,47 @@ function Reading({ declared, inherited, unusable }: { declared: ProbeRow[]; inhe
   );
 }
 
+function useOtherLiveProbe(projectId: string, bindingId: string): boolean | null {
+  const list = useIntegrationsList(projectId);
+  if (!list.data) return null;
+  return list.data.items.some(
+    (b) =>
+      b.id !== bindingId &&
+      b.role === "deploy" &&
+      b.stages.includes("live") &&
+      b.active !== false &&
+      probeIsUsable(b.config?.[VERIFY_KEY]),
+  );
+}
+
 /**
  * The binding tier, in the project's own Integrations drawer, drawn only for a live deploy binding
  * because only a release reads it. A save sends `config.verify` whole — the probes and a stored
- * `stableReads` — and Remove sends `null`, which the binding PATCH's `withdrawNulls` removes.
+ * `stableReads` — and Remove all probes sends `null`, which the binding PATCH's `withdrawNulls`
+ * removes, once a person has confirmed it.
  */
 export function BindingVerifyProbeField({
   projectId,
   binding,
   canEdit,
   focus = false,
+  onDirtyChange,
 }: {
   projectId: string;
   binding: Pick<IntegrationSummary, "id" | "role" | "stages" | "config" | "bindingConfig">;
   canEdit: boolean;
   /** Arrived from a link that names this section: scroll to it and put the cursor in its URL. */
   focus?: boolean;
+  /** Told whenever the rows start or stop differing from what is stored. */
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const update = useUpdateProviderIntegration(projectId);
   const [failure, setFailure] = useState<string | null>(null);
   const sectionRef = useRef<HTMLElement>(null);
+  // One write per press: `isPending` reaches the buttons a render later than a second click can.
+  const inFlight = useRef(false);
   const decides = labelDecidesFor(binding);
+  const otherDeclares = useOtherLiveProbe(projectId, binding.id);
 
   // After the drawer around it has taken focus for itself, which it does once it opens.
   useEffect(() => {
@@ -166,7 +204,7 @@ export function BindingVerifyProbeField({
     const timer = window.setTimeout(() => {
       sectionRef.current?.scrollIntoView?.({ block: "start" });
       sectionRef.current
-        ?.querySelector<HTMLInputElement>(`input[aria-label="${probeUrlLabel(0)}"]`)
+        ?.querySelector<HTMLInputElement>("input[data-probe-url]")
         ?.focus({ preventScroll: true });
     }, 0);
     return () => window.clearTimeout(timer);
@@ -180,11 +218,19 @@ export function BindingVerifyProbeField({
   const ownDeclared = own !== undefined && own !== null;
   const present = effective !== undefined && effective !== null;
 
-  const write = (verify: Record<string, unknown> | null) => {
+  const write = (verify: Record<string, unknown> | null, then?: () => void) => {
+    if (inFlight.current) return;
+    inFlight.current = true;
     setFailure(null);
     update.mutate(
       { id: binding.id, body: { config: { [VERIFY_KEY]: verify } } },
-      { onError: (err) => setFailure(formatApiError(err)) },
+      {
+        onSuccess: () => then?.(),
+        onError: (err) => setFailure(formatApiError(err)),
+        onSettled: () => {
+          inFlight.current = false;
+        },
+      },
     );
   };
 
@@ -203,10 +249,13 @@ export function BindingVerifyProbeField({
           seed={declared}
           stableReads={storedKey(effective, "stableReads")}
           dropsTimeout={storedKey(effective, "timeoutSeconds") !== undefined}
-          canRemove={ownDeclared}
+          removable={ownDeclared ? declaredProbes(own).length : null}
+          ownStableReads={storedKey(own, "stableReads")}
+          otherDeclares={otherDeclares}
           busy={update.isPending}
-          onSave={write}
-          onRemove={() => write(null)}
+          onSave={(verify) => write(verify)}
+          onRemoveAll={(then) => write(null, then)}
+          onDirtyChange={onDirtyChange}
         />
       ) : (
         <p className="fg-body-sm text-subtle">Only a project admin can change this.</p>
@@ -220,35 +269,137 @@ export function BindingVerifyProbeField({
   );
 }
 
+interface EditRow extends ProbeRow {
+  /** Who the row is, so its error and its focus follow it when a row above it goes. */
+  id: number;
+  fault: RowFault | null;
+}
+
+/** The rows as a save would read them, so an edit that changes nothing a save sends is not one. */
+function comparable(rows: readonly ProbeRow[]): string {
+  return JSON.stringify(
+    rows
+      .map((r) => [r.url.trim(), r.commitPath.trim()])
+      .filter(([url, commitPath]) => url !== "" || commitPath !== ""),
+  );
+}
+
+function RemoveAllConfirm({
+  count,
+  stableReads,
+  otherDeclares,
+  busy,
+  open,
+  onConfirm,
+  onClose,
+}: {
+  count: number;
+  stableReads: unknown;
+  otherDeclares: boolean | null;
+  busy: boolean;
+  open: boolean;
+  onConfirm: () => void;
+  onClose: () => void;
+}) {
+  // A stored block naming no probe a release can read is still a declaration to remove.
+  const what =
+    count === 0
+      ? "the verify block stored on this binding, which names no probe a release can read"
+      : count === 1
+        ? "the 1 probe this binding declares"
+        : `all ${count} probes this binding declares`;
+  return (
+    <ConfirmDialog
+      open={open}
+      title={count === 1 ? "Remove the probe?" : count === 0 ? "Remove the verify block?" : `Remove all ${count} probes?`}
+      message={
+        <>
+          {`This removes ${what}. ${afterRemovalSentence(otherDeclares)}`}
+          {typeof stableReads === "number" &&
+            ` The stored stableReads (${stableReads}) is removed with them: it only applies while a probe is declared.`}
+        </>
+      }
+      confirmLabel={REMOVE_ALL_PROBES}
+      cancelLabel="Keep them"
+      tone="danger"
+      loading={busy}
+      onConfirm={onConfirm}
+      onClose={onClose}
+    />
+  );
+}
+
 function Editor({
   seed,
   stableReads,
   dropsTimeout,
-  canRemove,
+  removable,
+  ownStableReads,
+  otherDeclares,
   busy,
   onSave,
-  onRemove,
+  onRemoveAll,
+  onDirtyChange,
 }: {
   seed: ProbeRow[];
   stableReads: unknown;
   dropsTimeout: boolean;
-  canRemove: boolean;
+  /** How many probes this binding declares of its own, which is what removing them takes; `null`
+   *  where it declares none, so there is nothing here to remove. */
+  removable: number | null;
+  ownStableReads: unknown;
+  otherDeclares: boolean | null;
   busy: boolean;
   onSave: (verify: Record<string, unknown>) => void;
-  onRemove: () => void;
+  onRemoveAll: (then: () => void) => void;
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
-  const [rows, setRows] = useState<ProbeRow[]>(() => seedRows(seed));
-  const [problems, setProblems] = useState<string[]>([]);
-  const setRow = (i: number, patch: Partial<ProbeRow>) =>
-    setRows((cur) => cur.map((row, j) => (j === i ? { ...row, ...patch } : row)));
+  const nextId = useRef(0);
+  const fresh = (row: ProbeRow): EditRow => ({ ...row, id: nextId.current++, fault: null });
+  const [rows, setRows] = useState<EditRow[]>(() =>
+    (seed.length > 0 ? seed : [{ url: "", commitPath: "" }]).map(fresh),
+  );
+  const [nothingTyped, setNothingTyped] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [focusRow, setFocusRow] = useState<number | null>(null);
+  const idBase = useId();
+  const urlId = (row: EditRow) => `${idBase}-probe-${row.id}-url`;
+
+  const dirty = comparable(rows) !== comparable(seed);
+  useUnsavedChanges(dirty);
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+  }, [dirty, onDirtyChange]);
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
+
+  useEffect(() => {
+    if (focusRow === null) return;
+    document.getElementById(`${idBase}-probe-${focusRow}-url`)?.focus();
+    setFocusRow(null);
+  }, [focusRow, idBase]);
+
+  const setRow = (id: number, patch: Partial<ProbeRow>) => {
+    setNothingTyped(false);
+    setRows((cur) => cur.map((row) => (row.id === id ? { ...row, ...patch, fault: null } : row)));
+  };
+
+  const removeRow = (id: number) => {
+    const at = rows.findIndex((row) => row.id === id);
+    const left = rows.filter((row) => row.id !== id);
+    setRows(left);
+    // Onto the row that took its place, or the one above where it was last.
+    const landing = left[Math.min(at, left.length - 1)];
+    if (landing) setFocusRow(landing.id);
+  };
 
   const save = () => {
     const answer = probeWrite(rows, stableReads);
     if (!answer.ok) {
-      setProblems(answer.problems);
+      setNothingTyped(answer.nothingTyped);
+      setRows((cur) => cur.map((row, i) => ({ ...row, fault: answer.faults[i] ?? null })));
       return;
     }
-    setProblems([]);
+    setNothingTyped(false);
     onSave(answer.verify);
   };
 
@@ -256,37 +407,40 @@ function Editor({
     <div className="flex flex-col gap-3">
       <ul className="flex flex-col gap-3">
         {rows.map((row, i) => (
-          // A row IS its position; a half-typed url is not.
-          // biome-ignore lint/suspicious/noArrayIndexKey: position is the identity
-          <li key={i} className="flex flex-col gap-2 sm:flex-row sm:items-start">
+          <li key={row.id} className="flex flex-col gap-2 sm:flex-row sm:items-start">
             <div className="min-w-0 flex-1">
-              <Input
-                value={row.url}
-                onChange={(e) => setRow(i, { url: e.target.value })}
-                placeholder="https://api.example.com/version"
-                inputMode="url"
-                maxLength={500}
-                disabled={busy}
-                aria-label={probeUrlLabel(i)}
-              />
-            </div>
-            <div className="flex items-start gap-2 sm:w-48">
-              <div className="min-w-0 flex-1">
+              <Field
+                label={`Probe ${i + 1} URL`}
+                htmlFor={urlId(row)}
+                error={row.fault ? rowFaultSentence(row.fault, i + 1) : undefined}
+              >
                 <Input
-                  value={row.commitPath}
-                  onChange={(e) => setRow(i, { commitPath: e.target.value })}
-                  placeholder="sourceCommit"
-                  maxLength={200}
+                  value={row.url}
+                  onChange={(e) => setRow(row.id, { url: e.target.value })}
+                  inputMode="url"
+                  maxLength={500}
                   disabled={busy}
-                  aria-label={`Probe ${i + 1} commit field`}
+                  data-probe-url=""
                 />
+              </Field>
+            </div>
+            <div className="flex items-end gap-2 sm:w-52">
+              <div className="min-w-0 flex-1">
+                <Field label={`Probe ${i + 1} commit field`}>
+                  <Input
+                    value={row.commitPath}
+                    onChange={(e) => setRow(row.id, { commitPath: e.target.value })}
+                    maxLength={200}
+                    disabled={busy}
+                  />
+                </Field>
               </div>
               {rows.length > 1 && (
                 <IconButton
                   icon="trash"
                   aria-label={`Remove probe ${i + 1}`}
                   disabled={busy}
-                  onClick={() => setRows((cur) => cur.filter((_, j) => j !== i))}
+                  onClick={() => removeRow(row.id)}
                 />
               )}
             </div>
@@ -294,9 +448,10 @@ function Editor({
         ))}
       </ul>
       <p className="fg-caption text-subtle">
-        The URL answers with the commit the live deployment is serving. The commit field is where that
+        The URL answers with the commit the live deployment is serving, such as{" "}
+        <span className="font-mono">https://api.example.com/version</span>. The commit field is where that
         commit sits in its JSON answer, as a dot path such as <span className="font-mono">data.commit</span>.
-        Left blank, the whole answer is the commit.
+        Left blank, the whole answer is read as the commit.
       </p>
       {dropsTimeout && (
         <p className="fg-caption text-subtle">
@@ -304,15 +459,13 @@ function Editor({
           reads any more. Saving here leaves it out.
         </p>
       )}
-      {problems.length > 0 && (
-        <div role="alert" className="fg-body-sm flex flex-col gap-1" style={FIELD_ERROR}>
-          {problems.map((p) => (
-            <p key={p}>{p}</p>
-          ))}
-        </div>
+      {nothingTyped && (
+        <p role="alert" className="fg-body-sm" style={FIELD_ERROR}>
+          {NOTHING_TYPED}
+        </p>
       )}
       <div className="flex flex-wrap items-center gap-2">
-        <Button variant="secondary" size="sm" disabled={busy} onClick={save}>
+        <Button variant="secondary" size="sm" loading={busy} disabled={busy} onClick={save}>
           Save probe
         </Button>
         {rows.length < MAX_PROBES && (
@@ -321,17 +474,30 @@ function Editor({
             size="sm"
             icon="plus"
             disabled={busy}
-            onClick={() => setRows((cur) => [...cur, { url: "", commitPath: "" }])}
+            onClick={() => {
+              const row = fresh({ url: "", commitPath: "" });
+              setRows((cur) => [...cur, row]);
+              setFocusRow(row.id);
+            }}
           >
             Add another probe
           </Button>
         )}
-        {canRemove && (
-          <Button variant="ghost" size="sm" disabled={busy} onClick={onRemove}>
-            Remove probe
+        {removable !== null && (
+          <Button variant="ghost" size="sm" disabled={busy} onClick={() => setConfirming(true)}>
+            {REMOVE_ALL_PROBES}
           </Button>
         )}
       </div>
+      <RemoveAllConfirm
+        open={confirming}
+        count={removable ?? 0}
+        stableReads={ownStableReads}
+        otherDeclares={otherDeclares}
+        busy={busy}
+        onConfirm={() => onRemoveAll(() => setConfirming(false))}
+        onClose={() => setConfirming(false)}
+      />
     </div>
   );
 }

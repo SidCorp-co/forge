@@ -130,6 +130,8 @@ export interface RefusedKey {
   path: string;
   why: 'retired' | 'unknown';
   message: string;
+  /** The retired field a `retired` key names, `live.commitUrl` however it was spelled. */
+  field?: string;
 }
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
@@ -138,9 +140,17 @@ const isObject = (value: unknown): value is Record<string, unknown> =>
 const RETIRED_WHY =
   'a release no longer reads the commit it serves off the project\'s environments, only off the live deploy binding. Declare the probe as `verify.probes` on that binding — `{"probes":[{"url":"https://<host>/version","commitPath":"sourceCommit"}]}` — and send `live` with `url` and `apiUrl` only.';
 
-function refusal(path: string, why: RefusedKey['why']): RefusedKey {
-  return why === 'retired'
-    ? { path, why, message: `\`environments.${path}\` was retired: ${RETIRED_WHY}` }
+/** How a retired field is named in a refusal: as the field, and as sent where the two differ. */
+function retiredName(path: string, field: string): string {
+  const named = `\`environments.${field}\``;
+  return path === field || path === `environments.${field}`
+    ? named
+    : `${named} (sent as \`${path}\`)`;
+}
+
+function refusal(path: string, why: RefusedKey['why'], field?: string): RefusedKey {
+  return why === 'retired' && field
+    ? { path, why, field, message: `${retiredName(path, field)} was retired: ${RETIRED_WHY}` }
     : {
         path,
         why,
@@ -148,9 +158,24 @@ function refusal(path: string, why: RefusedKey['why']): RefusedKey {
       };
 }
 
+const spelled = (segment: string) => segment.toLowerCase().replace(/[_-]/g, '');
+
+/**
+ * The retired live field a sent key's path names in any spelling: dotted inside one key
+ * (`live.commitUrl`), prefixed with the document's own name (`environments.live.commitUrl`), or
+ * cased or separated otherwise (`commit_url`, `commitURL`). Null where it names none.
+ */
+function retiredFieldOf(path: string): string | null {
+  const segments = path.split('.').filter((s) => s !== '');
+  if (segments.length > 0 && spelled(segments[0] as string) === 'environments') segments.shift();
+  if (segments.length !== 2 || spelled(segments[0] as string) !== 'live') return null;
+  const key = RETIRED_LIVE_KEYS.find((k) => spelled(k) === spelled(segments[1] as string));
+  return key ? `live.${key}` : null;
+}
+
 /**
  * Each key a patch sends that the document does not have, in the order sent. A retired live key is
- * refused whatever it is sent as, a null included. A null sent for any other key the STORED
+ * refused in any spelling `retiredFieldOf` reads and whatever it is sent as, a null included. A null sent for any other key the STORED
  * document holds deletes a stray written before this check, which is the one way such a key leaves;
  * a stray nobody sends is carried as stored.
  */
@@ -165,8 +190,9 @@ export function refusedKeysIn(
     if (!isObject(sent)) continue;
     for (const [key, value] of Object.entries(sent)) {
       const path = level === '' ? key : `${level}.${key}`;
-      if (level === 'live' && (RETIRED_LIVE_KEYS as readonly string[]).includes(key)) {
-        refused.push(refusal(path, 'retired'));
+      const retired = (allowed as readonly string[]).includes(key) ? null : retiredFieldOf(path);
+      if (retired) {
+        refused.push(refusal(path, 'retired', retired));
       } else if (!(allowed as readonly string[]).includes(key)) {
         if (value === null && isObject(held) && Object.hasOwn(held, key)) continue;
         refused.push(refusal(path, 'unknown'));
@@ -184,9 +210,12 @@ function listed(names: string[]): string {
 
 /** One refusal for every key a patch sent that the document does not take, each named once. */
 export function refusedKeysMessage(refused: readonly RefusedKey[]): string {
-  const retired = refused
-    .filter((r) => r.why === 'retired')
-    .map((r) => `\`environments.${r.path}\``);
+  const named = new Map<string, string>();
+  for (const r of refused) {
+    if (r.why === 'retired' && r.field && !named.has(r.field))
+      named.set(r.field, retiredName(r.path, r.field));
+  }
+  const retired = [...named.values()];
   const unknown = refused.filter((r) => r.why === 'unknown').map((r) => `\`${r.path}\``);
   const said: string[] = [];
   if (retired.length > 0) {

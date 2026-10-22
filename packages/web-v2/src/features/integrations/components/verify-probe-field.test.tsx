@@ -3,23 +3,29 @@
 // ISS-1339 r2 — the live deploy binding's verify probe, which a person declares, sees, changes and
 // removes here since round 1 took it off Shape & release. What is asserted is the reading and the
 // body each act sends: the binding PATCH takes `config.verify` whole, and `null` removes it.
+// ISS-1339 r3 — what judge-99 found on it: the all-probes removal, the labels, the double press,
+// the error that outlived its row and the focus that fell to the page.
 
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactElement } from "react";
+import { LeaveGuardProvider, useLeaveGuardAttempt } from "@/design";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BindingSummary } from "../types";
 
 expect.extend(matchers);
 
 const updateBinding = vi.fn();
+/** The project's bindings as the list read answers them; `undefined` is a read not back yet. */
+let listed: BindingSummary[] | undefined;
 
 vi.mock("../hooks", async (importActual) => {
 	const actual = await importActual<typeof import("../hooks")>();
 	return {
 		...actual,
 		useUpdateProviderIntegration: () => ({ mutate: updateBinding, isPending: false }),
+		useIntegrationsList: () => ({ data: listed ? { items: listed } : undefined }),
 	};
 });
 
@@ -27,7 +33,11 @@ const { BindingVerifyProbeField, probeIsUsable } = await import("./verify-probe-
 
 function draw(node: ReactElement) {
 	const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-	return render(<QueryClientProvider client={client}>{node}</QueryClientProvider>);
+	return render(
+		<QueryClientProvider client={client}>
+			<LeaveGuardProvider>{node}</LeaveGuardProvider>
+		</QueryClientProvider>,
+	);
 }
 
 const PROJECT_ID = "55555555-5555-4555-8555-555555555555";
@@ -68,7 +78,10 @@ function declaring(verify: Record<string, unknown>, over: Partial<BindingSummary
 
 const sent = () => updateBinding.mock.calls.map((c) => c[0]);
 
-beforeEach(() => updateBinding.mockReset());
+beforeEach(() => {
+	updateBinding.mockReset();
+	listed = undefined;
+});
 afterEach(cleanup);
 
 describe("what the section says is declared", () => {
@@ -89,7 +102,7 @@ describe("what the section says is declared", () => {
 		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={binding()} canEdit />);
 		expect(screen.getByText(/None declared — a release reads nothing on this binding/)).toBeInTheDocument();
 		expect(screen.getByText(/the release closes unverified/)).toBeInTheDocument();
-		expect(screen.queryByRole("button", { name: "Remove probe" })).toBeNull();
+		expect(screen.queryByRole("button", { name: "Remove all probes" })).toBeNull();
 	});
 
 	it("says a stored block names no probe a release can read", () => {
@@ -107,7 +120,7 @@ describe("what the section says is declared", () => {
 		);
 		expect(screen.getByText(/Inherited from the shared connection/)).toBeInTheDocument();
 		// Removing it here removes nothing: the binding declares none of its own.
-		expect(screen.queryByRole("button", { name: "Remove probe" })).toBeNull();
+		expect(screen.queryByRole("button", { name: "Remove all probes" })).toBeNull();
 	});
 
 	it.each([
@@ -194,10 +207,124 @@ describe("the write each act sends", () => {
 		]);
 	});
 
-	it("removes the probe by sending null", () => {
+	it("removes every probe by sending null, once the person has confirmed it", () => {
 		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={declaring({ probes: [PROBE] })} canEdit />);
-		fireEvent.click(screen.getByRole("button", { name: "Remove probe" }));
+		fireEvent.click(screen.getByRole("button", { name: "Remove all probes" }));
+		expect(sent()).toEqual([]);
+		fireEvent.click(within(screen.getAllByRole("dialog").at(-1) as HTMLElement).getByRole("button", { name: "Remove all probes" }));
 		expect(sent()).toEqual([{ id: BINDING_ID, body: { config: { verify: null } } }]);
+	});
+
+	it("keeps a stored stableReads when one of two rows is removed and the rest saved", () => {
+		draw(
+			<BindingVerifyProbeField
+				projectId={PROJECT_ID}
+				binding={declaring({ probes: [PROBE, { url: "https://www.example.com/build-info" }], stableReads: 3 })}
+				canEdit
+			/>,
+		);
+		fireEvent.click(screen.getByRole("button", { name: "Remove probe 1" }));
+		fireEvent.click(screen.getByRole("button", { name: "Save probe" }));
+		expect(sent()).toEqual([
+			{
+				id: BINDING_ID,
+				body: { config: { verify: { probes: [{ url: "https://www.example.com/build-info" }], stableReads: 3 } } },
+			},
+		]);
+	});
+
+	it("sends one write for two presses of Save before the first answers", () => {
+		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={binding()} canEdit />);
+		fireEvent.change(screen.getByLabelText("Probe 1 URL"), { target: { value: "https://api.example.com/sha" } });
+		const save = screen.getByRole("button", { name: "Save probe" });
+		fireEvent.click(save);
+		fireEvent.click(save);
+		expect(updateBinding).toHaveBeenCalledTimes(1);
+	});
+
+	it("takes a second save once the first has answered", () => {
+		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={binding()} canEdit />);
+		fireEvent.change(screen.getByLabelText("Probe 1 URL"), { target: { value: "https://api.example.com/sha" } });
+		fireEvent.click(screen.getByRole("button", { name: "Save probe" }));
+		act(() => updateBinding.mock.calls[0]?.[1]?.onSettled?.());
+		fireEvent.click(screen.getByRole("button", { name: "Save probe" }));
+		expect(updateBinding).toHaveBeenCalledTimes(2);
+	});
+});
+
+describe("removing every probe asks once, and says what goes", () => {
+	const TWO = { probes: [PROBE, { url: "https://www.example.com/build-info" }] };
+	const dialog = () => screen.getAllByRole("dialog").at(-1) as HTMLElement;
+
+	it("names how many probes go and that a release then closes unverified", () => {
+		listed = [declaring(TWO)];
+		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={declaring(TWO)} canEdit />);
+		fireEvent.click(screen.getByRole("button", { name: "Remove all probes" }));
+		expect(dialog()).toHaveTextContent("Remove all 2 probes?");
+		expect(dialog()).toHaveTextContent("This removes all 2 probes this binding declares.");
+		expect(dialog()).toHaveTextContent("No other live binding declares a probe, so a release then closes unverified.");
+		expect(sent()).toEqual([]);
+	});
+
+	it("says a release reads the other live binding's probes where one declares them", () => {
+		const other = declaring({ probes: [PROBE] }, { id: "b2222222-2222-4222-8222-222222222222", provider: "epodsystem" });
+		listed = [declaring(TWO), other];
+		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={declaring(TWO)} canEdit />);
+		fireEvent.click(screen.getByRole("button", { name: "Remove all probes" }));
+		expect(dialog()).toHaveTextContent("A release then reads only the probes the project's other live bindings declare.");
+	});
+
+	it("names a stored stableReads as removed with them", () => {
+		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={declaring({ ...TWO, stableReads: 3 })} canEdit />);
+		fireEvent.click(screen.getByRole("button", { name: "Remove all probes" }));
+		expect(dialog()).toHaveTextContent("The stored stableReads (3) is removed with them");
+	});
+
+	it("sends nothing on Keep them, and leaves an unsaved edit as it was", () => {
+		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={declaring(TWO)} canEdit />);
+		fireEvent.change(screen.getByLabelText("Probe 1 URL"), { target: { value: "https://api.example.com/edited" } });
+		fireEvent.click(screen.getByRole("button", { name: "Remove all probes" }));
+		fireEvent.click(within(dialog()).getByRole("button", { name: "Keep them" }));
+		expect(screen.queryAllByRole("dialog")).toHaveLength(0);
+		expect(sent()).toEqual([]);
+		expect(screen.getByLabelText("Probe 1 URL")).toHaveValue("https://api.example.com/edited");
+		expect(screen.getByLabelText("Probe 2 URL")).toHaveValue("https://www.example.com/build-info");
+	});
+
+	it("sends one write for two presses of the confirmation", () => {
+		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={declaring(TWO)} canEdit />);
+		fireEvent.click(screen.getByRole("button", { name: "Remove all probes" }));
+		const confirm = within(dialog()).getByRole("button", { name: "Remove all probes" });
+		fireEvent.click(confirm);
+		fireEvent.click(confirm);
+		expect(sent()).toEqual([{ id: BINDING_ID, body: { config: { verify: null } } }]);
+	});
+});
+
+describe("the rows say what each input is", () => {
+	it("labels each input on screen, and the labels stay once both are filled", () => {
+		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={declaring({ probes: [PROBE] })} canEdit />);
+		fireEvent.click(screen.getByRole("button", { name: "Add another probe" }));
+		fireEvent.change(screen.getByLabelText("Probe 2 URL"), { target: { value: "https://www.example.com/build-info" } });
+		fireEvent.change(screen.getByLabelText("Probe 2 commit field"), { target: { value: "commit" } });
+		for (const words of ["Probe 1 URL", "Probe 1 commit field", "Probe 2 URL", "Probe 2 commit field"]) {
+			const label = screen.getByText(words, { selector: "label" });
+			expect(label).toBeVisible();
+			expect(document.getElementById(label.getAttribute("for") ?? "")).toBe(screen.getByLabelText(words));
+		}
+	});
+
+	it("shows no placeholder in either input", () => {
+		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={binding()} canEdit />);
+		expect(screen.getByLabelText("Probe 1 URL")).not.toHaveAttribute("placeholder");
+		expect(screen.getByLabelText("Probe 1 commit field")).not.toHaveAttribute("placeholder");
+	});
+
+	it("gives the example address and what a blank commit field reads in its help text", () => {
+		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={binding()} canEdit />);
+		const help = screen.getByText(/The URL answers with the commit the live deployment is serving/);
+		expect(help).toHaveTextContent("such as https://api.example.com/version");
+		expect(help).toHaveTextContent("Left blank, the whole answer is read as the commit.");
 	});
 });
 
@@ -223,7 +350,115 @@ describe("a probe typed wrong is refused on the section, before any write", () =
 		fireEvent.click(screen.getByRole("button", { name: "Save probe" }));
 		expect(screen.getByRole("alert")).toHaveTextContent("Probe 2's URL is not an http or https address");
 		expect(screen.getByRole("alert")).not.toHaveTextContent("Probe 1");
+		expect(screen.getByLabelText("Probe 2 URL")).toHaveAttribute("aria-invalid", "true");
+		expect(screen.getByLabelText("Probe 1 URL")).not.toHaveAttribute("aria-invalid");
 		expect(updateBinding).not.toHaveBeenCalled();
+	});
+
+	it("draws a row's error under that row, and removing the row removes it", () => {
+		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={declaring({ probes: [PROBE] })} canEdit />);
+		fireEvent.click(screen.getByRole("button", { name: "Add another probe" }));
+		fireEvent.change(screen.getByLabelText("Probe 2 URL"), { target: { value: "not a url" } });
+		fireEvent.click(screen.getByRole("button", { name: "Save probe" }));
+		const error = screen.getByRole("alert");
+		expect(screen.getByLabelText("Probe 2 URL").getAttribute("aria-describedby")).toBe(error.id);
+		fireEvent.click(screen.getByRole("button", { name: "Remove probe 2" }));
+		expect(screen.queryByRole("alert")).toBeNull();
+		expect(screen.queryByText(/is not an http or https address/)).toBeNull();
+	});
+
+	it("keeps a row's error with that row, under its new number, when a row above it goes", () => {
+		draw(
+			<BindingVerifyProbeField
+				projectId={PROJECT_ID}
+				binding={declaring({ probes: [PROBE, { url: "https://www.example.com/build-info" }] })}
+				canEdit
+			/>,
+		);
+		fireEvent.click(screen.getByRole("button", { name: "Add another probe" }));
+		fireEvent.change(screen.getByLabelText("Probe 3 URL"), { target: { value: "not a url" } });
+		fireEvent.click(screen.getByRole("button", { name: "Save probe" }));
+		fireEvent.click(screen.getByRole("button", { name: "Remove probe 1" }));
+		expect(screen.getByRole("alert")).toHaveTextContent("Probe 2's URL is not an http or https address");
+		expect(screen.getByLabelText("Probe 2 URL")).toHaveValue("not a url");
+	});
+
+	it("drops a row's error once the row is typed in again", () => {
+		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={binding()} canEdit />);
+		fireEvent.change(screen.getByLabelText("Probe 1 URL"), { target: { value: "not a url" } });
+		fireEvent.click(screen.getByRole("button", { name: "Save probe" }));
+		expect(screen.getByRole("alert")).toBeInTheDocument();
+		fireEvent.change(screen.getByLabelText("Probe 1 URL"), { target: { value: "https://api.example.com/sha" } });
+		expect(screen.queryByRole("alert")).toBeNull();
+	});
+});
+
+// What the Settings tabs do to move: ask the leave guard, which asks the person where a page holds
+// an unsaved edit.
+function SettingsTab({ onMove }: { onMove: () => void }) {
+	const leave = useLeaveGuardAttempt();
+	return (
+		<button type="button" onClick={() => leave(onMove)}>
+			Shape &amp; release
+		</button>
+	);
+}
+
+describe("an unsaved edit is one the page knows about", () => {
+	it("asks before another Settings tab is opened over it", () => {
+		const moved = vi.fn();
+		draw(
+			<>
+				<SettingsTab onMove={moved} />
+				<BindingVerifyProbeField projectId={PROJECT_ID} binding={binding()} canEdit />
+			</>,
+		);
+		fireEvent.change(screen.getByLabelText("Probe 1 URL"), { target: { value: "https://api.example.com/sha" } });
+		fireEvent.click(screen.getByRole("button", { name: "Shape & release" }));
+		expect(moved).not.toHaveBeenCalled();
+		expect(screen.getByText("Leave without saving?")).toBeInTheDocument();
+	});
+
+	it("moves without asking where nothing differs from what is stored", () => {
+		const moved = vi.fn();
+		draw(
+			<>
+				<SettingsTab onMove={moved} />
+				<BindingVerifyProbeField projectId={PROJECT_ID} binding={declaring({ probes: [PROBE] })} canEdit />
+			</>,
+		);
+		fireEvent.change(screen.getByLabelText("Probe 1 URL"), { target: { value: ` ${PROBE.url} ` } });
+		fireEvent.click(screen.getByRole("button", { name: "Shape & release" }));
+		expect(moved).toHaveBeenCalledOnce();
+	});
+
+	it("tells the drawer when it holds one, and when it no longer does", () => {
+		const dirty = vi.fn();
+		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={binding()} canEdit onDirtyChange={dirty} />);
+		fireEvent.change(screen.getByLabelText("Probe 1 URL"), { target: { value: "https://api.example.com/sha" } });
+		expect(dirty).toHaveBeenLastCalledWith(true);
+		fireEvent.change(screen.getByLabelText("Probe 1 URL"), { target: { value: "" } });
+		expect(dirty).toHaveBeenLastCalledWith(false);
+	});
+});
+
+describe("focus after a row is removed", () => {
+	const THREE = {
+		probes: [PROBE, { url: "https://b.example.com/v" }, { url: "https://c.example.com/v" }],
+	};
+
+	it("lands in the URL of the row that took the removed one's place", async () => {
+		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={declaring(THREE)} canEdit />);
+		fireEvent.click(screen.getByRole("button", { name: "Remove probe 2" }));
+		await waitFor(() => expect(screen.getByLabelText("Probe 2 URL")).toHaveFocus());
+		expect(screen.getByLabelText("Probe 2 URL")).toHaveValue("https://c.example.com/v");
+	});
+
+	it("lands in the last row's URL where the removed row was last", async () => {
+		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={declaring(THREE)} canEdit />);
+		fireEvent.click(screen.getByRole("button", { name: "Remove probe 3" }));
+		await waitFor(() => expect(screen.getByLabelText("Probe 2 URL")).toHaveFocus());
+		expect(screen.getByLabelText("Probe 2 URL")).toHaveValue("https://b.example.com/v");
 	});
 });
 

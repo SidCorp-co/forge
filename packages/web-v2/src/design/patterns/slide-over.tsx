@@ -1,6 +1,6 @@
 "use client";
 
-import { type CSSProperties, useEffect, useRef, type ReactNode } from "react";
+import { type CSSProperties, createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Icon } from "@/design/icons/icon";
 
@@ -25,6 +25,28 @@ export interface SlideOverProps {
   hideHeader?: boolean;
 }
 
+interface Layer {
+  parent: Layer | null;
+}
+
+const SlideOverLayer = createContext<Layer | null>(null);
+
+/** The open slide-overs, topmost last: only that one answers Escape and holds Tab, so a
+ *  confirmation opened over a drawer closes alone (ISS-1339 r3). */
+const openStack: Layer[] = [];
+
+function isWithin(layer: Layer, ancestor: Layer): boolean {
+  for (let p = layer.parent; p; p = p.parent) if (p === ancestor) return true;
+  return false;
+}
+
+/** Opened last is on top, but a nested one is above its parent, whose effect runs after its own. */
+function stack(layer: Layer): void {
+  const below = openStack.findIndex((open) => isWithin(open, layer));
+  if (below === -1) openStack.push(layer);
+  else openStack.splice(below, 0, layer);
+}
+
 const FOCUSABLE =
   'a[href],button:not([disabled]),textarea,input,select,[tabindex]:not([tabindex="-1"])';
 
@@ -45,14 +67,18 @@ export function SlideOver({
   const restoreRef = useRef<HTMLElement | null>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+  const parent = useContext(SlideOverLayer);
+  const [layer] = useState<Layer>(() => ({ parent }));
 
   useEffect(() => {
     if (!open) return;
+    stack(layer);
     restoreRef.current = document.activeElement as HTMLElement;
     const panel = panelRef.current;
     panel?.querySelector<HTMLElement>(FOCUSABLE)?.focus();
 
     const onKey = (e: KeyboardEvent) => {
+      if (openStack[openStack.length - 1] !== layer) return;
       if (e.key === "Escape") {
         if (e.defaultPrevented) return;
         onCloseRef.current();
@@ -77,11 +103,13 @@ export function SlideOver({
     document.addEventListener("keydown", onKey);
     return () => {
       document.removeEventListener("keydown", onKey);
+      openStack.splice(openStack.indexOf(layer), 1);
       restoreRef.current?.focus?.();
     };
-  }, [open]);
+  }, [open, layer]);
 
   if (!open) return null;
+  const layered = <SlideOverLayer.Provider value={layer}>{children}</SlideOverLayer.Provider>;
   // On `body`: inside a sticky ancestor it paints under that ancestor's sticky siblings (ISS-1327).
   if (typeof document === "undefined") return null;
   return createPortal(
@@ -114,9 +142,9 @@ export function SlideOver({
           </header>
         )}
         {fitBody ? (
-          <div className="flex min-h-0 flex-1 flex-col">{children}</div>
+          <div className="flex min-h-0 flex-1 flex-col">{layered}</div>
         ) : (
-          <div className="flex-1 overflow-y-auto px-5 py-4">{children}</div>
+          <div className="flex-1 overflow-y-auto px-5 py-4">{layered}</div>
         )}
       </aside>
     </div>,

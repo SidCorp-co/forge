@@ -194,6 +194,7 @@ export function ProjectIntegrationsPanel({
   canEdit = true,
   openProvider = null,
   onOpenProvider,
+  onDrawerClose,
 }: {
   projectId: string;
   canEdit?: boolean;
@@ -201,6 +202,8 @@ export function ProjectIntegrationsPanel({
    *  the section to land on; cleared once opened. */
   openProvider?: { provider: string; stage?: DeployStage; focus?: string } | null;
   onOpenProvider?: () => void;
+  /** Told once the drawer has closed, so a caller that opened it from the address can say so there. */
+  onDrawerClose?: () => void;
 }) {
   const status = useIntegrationsStatus(projectId);
   const [selectedCard, setSelectedCard] = useState<StatusCard | null>(null);
@@ -283,6 +286,7 @@ export function ProjectIntegrationsPanel({
         onClose={() => {
           setSelectedCard(null);
           setFocus(null);
+          onDrawerClose?.();
         }}
         canEdit={canEdit}
         focus={focus}

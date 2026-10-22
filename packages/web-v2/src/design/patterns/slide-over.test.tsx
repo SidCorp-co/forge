@@ -79,3 +79,44 @@ describe("SlideOver's header with a title wider than the drawer", () => {
   });
 });
 
+
+describe("SlideOver stacked over another", () => {
+  // ISS-1339 r3: a confirmation is itself a slide-over, and one Escape closed it and the drawer
+  // under it together, taking an unsaved edit the confirmation was asking about.
+  it("answers Escape on the topmost only", () => {
+    const outer = vi.fn();
+    const inner = vi.fn();
+    render(
+      <SlideOver open onClose={outer} title="Drawer">
+        <SlideOver open onClose={inner} title="Confirm">
+          <button type="button">keep</button>
+        </SlideOver>
+      </SlideOver>,
+    );
+    fireEvent.keyDown(screen.getByRole("button", { name: "keep" }), { key: "Escape" });
+    expect(inner).toHaveBeenCalledOnce();
+    expect(outer).not.toHaveBeenCalled();
+  });
+
+  it("answers Escape on the one beneath once the one above has closed", () => {
+    const outer = vi.fn();
+    const { rerender } = render(
+      <SlideOver open onClose={outer} title="Drawer">
+        <button type="button">under</button>
+        <SlideOver open onClose={() => {}} title="Confirm">
+          <p>above</p>
+        </SlideOver>
+      </SlideOver>,
+    );
+    rerender(
+      <SlideOver open onClose={outer} title="Drawer">
+        <button type="button">under</button>
+        <SlideOver open={false} onClose={() => {}} title="Confirm">
+          <p>above</p>
+        </SlideOver>
+      </SlideOver>,
+    );
+    fireEvent.keyDown(screen.getByRole("button", { name: "under" }), { key: "Escape" });
+    expect(outer).toHaveBeenCalledOnce();
+  });
+});

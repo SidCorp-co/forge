@@ -354,7 +354,7 @@ describe('the environments document', () => {
   // literally named `live.commitUrl`, because only the merged document was parsed and it passes
   // keys it does not name. What a write SENDS is now held to the document's keys.
   it.each([
-    ['a dotted top-level name', { 'live.commitUrl': 'https://x.example/v' }, ['live.commitUrl']],
+    ['a dotted top-level name', { 'live.region': 'eu' }, ['live.region']],
     ['a top-level key', { futureKnob: 1, limits: 'written beside it' }, ['futureKnob']],
     ['a key under live', { live: { url: 'https://y.example', region: 'eu' } }, ['live.region']],
     [
@@ -398,6 +398,37 @@ describe('the environments document', () => {
     expect(count('Nothing was written.')).toBe(1);
     expect(await storedText()).toBe(before);
   });
+
+  // ISS-1339 r3, judge-99: the dotted `live.commitUrl` was refused as an unknown key, without the
+  // sentence saying where a probe is declared now.
+  it.each([
+    ['as one dotted key', { 'live.commitUrl': 'https://x.example/v' }, 'live.commitUrl'],
+    [
+      'prefixed with the document',
+      { 'environments.live.commitPath': 'sha' },
+      'environments.live.commitPath',
+    ],
+    ['snake-cased under live', { live: { commit_url: 'https://x.example/v' } }, 'live.commit_url'],
+    ['upper-cased under live, as null', { live: { commitURL: null } }, 'live.commitURL'],
+  ])(
+    'refuses a retired live field sent %s with the retirement sentence',
+    async (_, patch, path) => {
+      const before = await storedText();
+      const res = await call('PATCH', `/api/projects/${projectId}/environments`, {
+        base: await readEnv(),
+        patch,
+      });
+      expect(res.status).toBe(400);
+      expect(res.json.code).toBe('ENVIRONMENTS_INVALID');
+      const message = String(res.json.message);
+      expect(message).toMatch(/`environments\.live\.commit(Url|Path)`.* was retired/);
+      expect(message).toContain('`verify.probes` on that binding');
+      expect(message).not.toContain('is not a key');
+      const conflicts = (res.json.details as { conflicts: { path: string }[] }).conflicts;
+      expect(conflicts.map((c) => c.path)).toEqual([path]);
+      expect(await storedText()).toBe(before);
+    },
+  );
 
   it('deletes a stray the stored document holds when a patch sends it as null', async () => {
     const res = await call('PATCH', `/api/projects/${projectId}/environments`, {
