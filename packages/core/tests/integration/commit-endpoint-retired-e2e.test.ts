@@ -209,6 +209,14 @@ describe('migration 0358 refuses a row whose release reads the stored url, writi
       live: { url: 'https://z.test', commitUrl: probeUrl, commitPath: 'sourceCommit' },
     });
   });
+
+  it('refuses a stored url with no path that a binding declares with an empty path, which reads another key', async () => {
+    const id = await project('zz-whole-body', { live: { commitUrl: probeUrl } });
+    await bind(id, { config: { verify: { probes: [{ url: probeUrl, commitPath: '' }] } } });
+    const error = await runMigration();
+    expect(error).toContain('zz-whole-body');
+    expect(await stored(id)).toEqual({ live: { commitUrl: probeUrl } });
+  });
 });
 
 describe('a release reads the probe its live binding declares, and nothing else', () => {
@@ -218,6 +226,7 @@ describe('a release reads the probe its live binding declares, and nothing else'
 
     const probed = await channelMod.resolveReleaseChannels(id);
     expect(probed.map((c) => c.verifySource)).toEqual(['binding']);
+    expect(probed[0]?.verify?.probes).toEqual([{ url: probeUrl, commitPath: 'sourceCommit' }]);
     const verification = channelMod.closeVerification(probed);
     expect(verification.kind).toBe('probed');
 

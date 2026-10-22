@@ -48,7 +48,7 @@ BEGIN
                          ELSE '[]'::jsonb END) AS probe
             WHERE l.project_id = h.id
               AND probe->>'url' = h.url
-              AND NULLIF(probe->>'commitPath', '') IS NOT DISTINCT FROM h.path)
+              AND probe->>'commitPath' IS NOT DISTINCT FROM h.path)
    ORDER BY h.slug, h.id
    LIMIT 1;
   IF FOUND THEN
