@@ -121,6 +121,45 @@ export async function batchIn(
   return row;
 }
 
+/** One batch on the way from a superseded batch to the one that stands. */
+export interface Replacement {
+  id: string;
+  status: BatchRow['status'];
+  submittedAt: Date | null;
+}
+
+/**
+ * The batches that replaced this one, in order, to the one that stands: each re-analysis supersedes
+ * the open batch and the next batch posted in the thread replaces it (`settleEarlierBatches`), so a
+ * second re-analysis makes a chain. Empty when no batch has replaced it yet.
+ */
+export async function replacementsOf(
+  tx: Executor,
+  batch: Pick<BatchRow, 'id' | 'supersededBy'>,
+): Promise<Replacement[]> {
+  const chain: Replacement[] = [];
+  const seen = new Set([batch.id]);
+  let next = batch.supersededBy;
+  while (next) {
+    if (seen.has(next))
+      throw new Error(`questionnaires: batch ${batch.id}'s replacements loop back to ${next}`);
+    seen.add(next);
+    const [row] = await tx
+      .select({
+        id: questionnaireBatches.id,
+        status: questionnaireBatches.status,
+        submittedAt: questionnaireBatches.submittedAt,
+        supersededBy: questionnaireBatches.supersededBy,
+      })
+      .from(questionnaireBatches)
+      .where(eq(questionnaireBatches.id, next));
+    if (!row) throw new Error(`questionnaires: batch ${batch.id}'s replacement ${next} vanished`);
+    chain.push({ id: row.id, status: row.status, submittedAt: row.submittedAt });
+    next = row.supersededBy;
+  }
+  return chain;
+}
+
 export async function itemsOf(tx: Executor, batchIds: readonly string[]): Promise<ItemRow[]> {
   if (batchIds.length === 0) return [];
   return tx

@@ -18,6 +18,7 @@ import {
   batchView,
   type Executor,
   itemsOf,
+  replacementsOf,
   type StoredItem,
 } from './read.js';
 import { answerRefusals, batchReopensRoom, submitStateRefusal, submitterRefusal } from './rules.js';
@@ -191,7 +192,8 @@ export async function submitAnswers(input: SubmitInput): Promise<QuestionnaireOu
   const refused = await inTx(async (tx) => {
     const batch = await batchIn(tx, input.projectId, input.batchId, true);
     conversationId = batch.conversationId;
-    const state = submitStateRefusal(batch, skip);
+    const replacements = batch.status === 'superseded' ? await replacementsOf(tx, batch) : [];
+    const state = submitStateRefusal(batch, skip, replacements);
     if (state) return [state];
     if (skip && answers.length > 0) {
       return [

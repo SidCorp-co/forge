@@ -1,0 +1,1 @@
+**An answer to a replaced questionnaire points at the batch that stands.** `QUESTIONNAIRE_SUPERSEDED` follows the replacements to the current batch and names it to answer only while it takes answers; an already answered one is said so (ISS-603).

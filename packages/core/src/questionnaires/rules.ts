@@ -144,17 +144,45 @@ interface BatchState {
   supersededBy: string | null;
 }
 
+/** A batch on the way from a superseded batch to the one that stands (`read.ts:replacementsOf`). */
+interface Replacement {
+  id: string;
+  status: QuestionnaireStatus;
+  submittedAt: Date | null;
+}
+
+const at = (when: Date | null) => (when ? ` at ${when.toISOString()}` : '');
+
+// what the person can do about a superseded batch, read from the batch that stands at the end of
+// its replacements: answer it while it takes answers (open, or skipped for now), and never be sent
+// to one already answered, which would refuse them QUESTIONNAIRE_ALREADY_ANSWERED (ISS-603)
+function supersededDetail(batch: BatchState, replacements: readonly Replacement[]): string {
+  const head = `batch ${batch.id} was superseded${at(batch.supersededAt)} (${batch.supersededReason ?? 'superseded'})`;
+  const end = replacements.at(-1);
+  if (!end) return `${head}; no batch has replaced it yet; the next one comes after the analysis.`;
+  const chain = replacements
+    .map((r, i) => `batch ${r.id} replaced ${i === 0 ? 'it' : 'that'}`)
+    .join(', ');
+  if (end.status === 'open' || end.status === 'skipped')
+    return `${head}; ${chain}. Answer batch ${end.id} instead.`;
+  if (end.status === 'submitted')
+    return `${head}; ${chain}, and batch ${end.id} was already answered${at(end.submittedAt)}, so this thread holds no batch to answer. What stayed open comes back in the next round.`;
+  return `${head}; ${chain}, and batch ${end.id} was superseded too; no batch has replaced it yet; the next one comes after the analysis.`;
+}
+
 // a batch is answered once: re-sending is QUESTIONNAIRE_ALREADY_ANSWERED, and an answer to a
-// batch a re-analysis replaced is QUESTIONNAIRE_SUPERSEDED naming the batch that replaced it
-export function submitStateRefusal(batch: BatchState, skip: boolean): QuestionnaireRefusal | null {
+// batch a re-analysis replaced is QUESTIONNAIRE_SUPERSEDED naming the batch that replaced it;
+// `replacements` are the batches that replaced it, in order (empty unless it is superseded)
+export function submitStateRefusal(
+  batch: BatchState,
+  skip: boolean,
+  replacements: readonly Replacement[],
+): QuestionnaireRefusal | null {
   if (batch.status === 'superseded') {
-    const by = batch.supersededBy
-      ? `batch ${batch.supersededBy} replaced it`
-      : 'no batch has replaced it yet; the next one comes after the analysis';
     return {
       code: 'QUESTIONNAIRE_SUPERSEDED',
       path: '',
-      detail: `batch ${batch.id} was superseded${batch.supersededAt ? ` at ${batch.supersededAt.toISOString()}` : ''} (${batch.supersededReason ?? 'superseded'}); ${by}. Answer that one.`,
+      detail: supersededDetail(batch, replacements),
     };
   }
   if (batch.status === 'submitted') {
