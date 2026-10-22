@@ -334,11 +334,12 @@ export const needsYouDecisionSchema = z
 		// the button declares what its route needs: an act whose route refuses a press with no reason
 		// asks for one, or a one-click press could never succeed (REQ-41 BC-2, dev.281 re-pin)
 		d.answers.forEach((a, i) => {
-			if (DECISION_ACTS[a.act].reason && !a.needsReason) {
+			const given = typeof a.body?.reason === "string" && a.body.reason.trim() !== "";
+			if (DECISION_ACTS[a.act].reason && !a.needsReason && !given) {
 				ctx.addIssue({
 					code: "custom",
 					path: ["answers", i, "needsReason"],
-					message: `a ${a.act} answer takes a reason: its route refuses a press without one`,
+					message: `a ${a.act} answer takes a reason: its route refuses a press without one, so it asks for one or carries it in its body`,
 				});
 			}
 		});

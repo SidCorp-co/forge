@@ -1,0 +1,1 @@
+**A Vietnamese requirement can be agreed with its goal labelled in Vietnamese.** The ready checklist reads the Vietnamese goal labels beside the English ones, and a gap names the label in the requirement's own language.

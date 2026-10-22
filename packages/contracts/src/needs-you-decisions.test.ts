@@ -237,10 +237,20 @@ describe("a button declares the reason its route needs", () => {
 			expect.objectContaining({
 				path: ["answers", 0, "needsReason"],
 				message:
-					"a requirement.repin answer takes a reason: its route refuses a press without one",
+					"a requirement.repin answer takes a reason: its route refuses a press without one, so it asks for one or carries it in its body",
 			}),
 		]);
 		expect(needsYouDecisionSchema.safeParse(req18(true)).success).toBe(true);
+	});
+
+	it("takes a one-click answer that carries its reason in its body, as a lesson retire does", () => {
+		const carried = req18(false);
+		const [repin] = carried.answers;
+		if (!repin) throw new Error("the fixture has its answer");
+		repin.body = { revision: 1, reason: "Follow the approved designs." };
+		expect(needsYouDecisionSchema.safeParse(carried).success).toBe(true);
+		repin.body = { revision: 1, reason: "  " };
+		expect(needsYouDecisionSchema.safeParse(carried).success).toBe(false);
 	});
 
 	it("names the agree and the re-pin among the acts that take a reason", () => {

@@ -202,9 +202,13 @@ describe("a dependent shared by several bases does not turn its siblings' re-pin
 
     // both decisions read at the same time, as the Approvals page shows them
     const read = await decisions();
-    const of = (flow: string) => read.find((d) => d.id === `repin:${ids.get(flow)}`);
-    const first = (of('requirement-to-delivery')?.answers as Doc[])[0] as Doc;
-    const second = (of('feedback-lifecycle')?.answers as Doc[])[0] as Doc;
+    const of = (flow: string) => {
+      const decision = read.find((d) => d.id === `repin:${ids.get(flow)}`);
+      if (!decision) throw new Error(`no re-pin decision for ${flow}: ${JSON.stringify(read)}`);
+      return (decision.answers as Doc[])[0] as Doc;
+    };
+    const first = of('requirement-to-delivery');
+    const second = of('feedback-lifecycle');
     expect((second.body as Doc).designs).toHaveLength(2);
 
     const one = await say('owner', 'POST', first.path as string, first.body as Doc);
@@ -231,7 +235,8 @@ describe("a dependent shared by several bases does not turn its siblings' re-pin
     const decision = (await decisions()).find(
       (d) => d.id === `repin:${ids.get('issue-lifecycle')}`,
     );
-    const approve = (decision?.answers as Doc[])[0] as Doc;
+    if (!decision) throw new Error('no re-pin decision for issue-lifecycle');
+    const approve = (decision.answers as Doc[])[0] as Doc;
     // someone changes a step of the dependent and it is approved, after the decision was read
     await approveNext('issue-board', (d) => {
       d.steps[0].node.label = 'Board source (renamed)';
