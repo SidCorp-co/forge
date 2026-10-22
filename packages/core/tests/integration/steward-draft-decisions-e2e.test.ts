@@ -169,6 +169,35 @@ describe('a stuck draft requirement is the steward’s to ask (the stale-draft s
     const detail = ok(await as('GET', `/requirements/${req.key}`)) as Doc;
     expect(detail.status).toBe('agreed');
   });
+
+  it('refuses a withdraw whose draft revision was started after the question, leaving that draft', async () => {
+    const req = await agreedRequirement('Coordinator call tags', { scopeIn: ['Tags per call'] }, [
+      { body: 'Each call keeps its tags.' },
+    ]);
+    const edit = (body: string) =>
+      as('POST', `/requirements/${req.key}/revisions`, {
+        baseRevision: 1,
+        reason: 'an edit started',
+        criteria: [{ code: 'BC-1', body: 'Each call keeps its tags.' }, { body }],
+      });
+    ok(await edit('Tags are searchable.'));
+    world.standings = [stuck(req, 'standing.act.proposeR')];
+    await diagnose(req, { recommended: 'withdraw', why: 'nobody came back to the edit' });
+    const q = await questionOn(req);
+    // r2 goes another way and a new edit, r3, starts after the question was asked
+    await db.execute(sql`
+      UPDATE requirement_revisions SET state = 'withdrawn', withdrawn_reason = 'gone another way',
+             withdrawn_at = now(), withdrawn_by = ${world.ownerId}
+       WHERE requirement_id = ${req.id} AND revision = 2`);
+    ok(await edit('Tags are colour coded.'));
+    const refused = await answer(q?.id ?? '', { optionId: IDS.withdraw, note: 'Abandoned edit.' });
+    expect(refused.json.code, JSON.stringify(refused.json)).toBe('STEWARD_DECISION_STALE');
+    expect(JSON.stringify(refused.json)).toContain('r3 was started after this question was asked');
+    expect((await questionOn(req))?.status).toBe('open');
+    const [r3] = await rows<{ state: string }>(sql`
+      SELECT state FROM requirement_revisions WHERE requirement_id = ${req.id} AND revision = 3`);
+    expect(r3?.state).toBe('draft');
+  });
 });
 
 describe('a draft issue that repeats a live issue is asked merge', () => {

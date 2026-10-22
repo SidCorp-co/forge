@@ -21,8 +21,10 @@ import {
   answer,
   decisionOf,
   diagnose,
+  draftRequirement,
   fbId,
   issueAt,
+  lastMove,
   optionIds,
   questionOn,
   type Subject,
@@ -186,30 +188,67 @@ describe('one door asks a steward decision', () => {
   });
 });
 
-describe('the one-off retires the stale-draft questions still open', () => {
+/** A question the retired stale-draft sweep asked on `on`, open, or answered with `chosen`. */
+async function staleDraftQuestion(
+  on: { issueId?: string; requirementId?: string },
+  answered?: { chosen: string; resume?: Doc },
+): Promise<string> {
+  const step = {
+    round: 1,
+    answerShape: 'choice',
+    prompt: 'A draft nobody touched for 7 days. Drop it, or keep it?',
+    askedAt: new Date().toISOString(),
+    options: ['stale_draft.drop', 'stale_draft.keep'].map((id) => ({
+      id,
+      label: id,
+      authority: 'writer',
+      bindsTo: 'this_call',
+      executedBy: 'core',
+      fingerprint: 'stale-draft:old',
+    })),
+    recommendedOptionId: 'stale_draft.drop',
+    ...(answered
+      ? {
+          chosenOptionId: answered.chosen,
+          answeredBy: world.ownerId,
+          answeredAt: new Date().toISOString(),
+          note: 'Nobody needs it.',
+          ...(answered.resume ? { resume: answered.resume } : {}),
+        }
+      : {}),
+  };
+  const [made] = await rows<{ id: string }>(sql`
+    INSERT INTO agent_questions (id, project_id, issue_id, requirement_id, status, blocker_kind, steps)
+    VALUES (gen_random_uuid(), ${world.projectId}, ${on.issueId ?? null}, ${on.requirementId ?? null},
+            ${answered ? 'answered' : 'open'}, 'human', ${JSON.stringify([step])}::jsonb)
+    RETURNING id`);
+  return made?.id ?? '';
+}
+
+describe('the one-off retires the stale-draft questions', () => {
   it('voids each open merge-or-drop question once, naming why, and a second boot does nothing', async () => {
     const issue = await issueAt(741, 'An old draft', 'draft');
-    const [made] = await rows<{ id: string }>(sql`
-      INSERT INTO agent_questions (id, project_id, issue_id, status, blocker_kind, steps)
-      VALUES (gen_random_uuid(), ${world.projectId}, ${issue.id}, 'open', 'human',
-              ${JSON.stringify([
-                {
-                  round: 1,
-                  shape: 'choice',
-                  prompt: 'A draft nobody touched for 7 days. Drop it, or keep it?',
-                  askedAt: new Date().toISOString(),
-                  options: ['stale_draft.drop', 'stale_draft.keep'].map((id) => ({
-                    id,
-                    label: id,
-                    authority: 'writer',
-                    bindsTo: 'this_call',
-                    executedBy: 'core',
-                    fingerprint: `stale-draft:${issue.key}`,
-                  })),
-                  recommendedOptionId: 'stale_draft.drop',
-                },
-              ])}::jsonb)
-      RETURNING id`);
+    const open = await staleDraftQuestion({ issueId: issue.id });
+    // answered drop the retired consumer never carried out: on an issue, on a requirement
+    const unactedIssue = await issueAt(742, 'An answered draft', 'draft');
+    const issueDrop = await staleDraftQuestion(
+      { issueId: unactedIssue.id },
+      { chosen: 'stale_draft.drop' },
+    );
+    const unactedReq = await draftRequirement('Print the call list');
+    const reqDrop = await staleDraftQuestion(
+      { requirementId: unactedReq.id },
+      { chosen: 'stale_draft.drop' },
+    );
+    // one the consumer refused by rule, which records its outcome: left as it is
+    const refusedIssue = await issueAt(743, 'A refused draft', 'draft');
+    await staleDraftQuestion(
+      { issueId: refusedIssue.id },
+      {
+        chosen: 'stale_draft.drop',
+        resume: { kind: 'refused', code: 'X', detail: 'refused', at: new Date().toISOString() },
+      },
+    );
     world.standings = [stuck(issue, 'issues.standing.act.takeOnOrDrop')];
     const { retireStaleDraftQuestionsOnce } = await import(
       '../../src/steward/retire-stale-drafts.js'
@@ -218,10 +257,24 @@ describe('the one-off retires the stale-draft questions still open', () => {
     expect(report?.refusals).toEqual([]);
     expect(report?.voided).toBe(1);
     expect(report?.rediagnosed).toBe(1);
+    expect(report?.carried).toEqual([
+      { questionId: issueDrop, outcome: 'carried' },
+      { questionId: reqDrop, outcome: 'carried' },
+    ]);
     const [voided] = await rows<{ status: string; void_reason: string }>(sql`
-      SELECT status, void_reason FROM agent_questions WHERE id = ${made?.id ?? ''}`);
+      SELECT status, void_reason FROM agent_questions WHERE id = ${open}`);
     expect(voided?.status).toBe('void');
     expect(voided?.void_reason).toContain("The steward asks a stuck draft's decision");
+    const statusOf = async (table: 'issues' | 'requirements', id: string) =>
+      (
+        await rows<{ status: string }>(sql`SELECT status FROM ${sql.raw(table)} WHERE id = ${id}`)
+      )[0]?.status;
+    expect(await statusOf('issues', unactedIssue.id)).toBe('dropped');
+    expect((await lastMove('issue', unactedIssue.id))?.reason).toBe(
+      `Dropped on the answer to Forge's merge-or-drop question ${issueDrop}: Nobody needs it.`,
+    );
+    expect(await statusOf('requirements', unactedReq.id)).toBe('dropped');
+    expect(await statusOf('issues', refusedIssue.id)).toBe('draft');
     await settleOutbox();
     expect(await retireStaleDraftQuestionsOnce()).toBeNull();
   });

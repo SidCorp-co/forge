@@ -47,7 +47,7 @@ export async function carryRequirementDecision<R>(
     d.decision === 'merge' && into
       ? ({ act: 'merge', into, reason } as const)
       : d.decision === 'withdraw'
-        ? ({ act: 'withdraw', reason } as const)
+        ? ({ act: 'withdraw', reason, askedAt: d.askedAt } as const)
         : ({ act: 'drop', reason } as const);
   const actor = { userId: d.by, agency: await agencyOf(d.by) };
   return db.transaction(async (tx) => {

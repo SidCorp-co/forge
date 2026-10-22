@@ -23,7 +23,8 @@ import { lockRequirements } from './write-tx.js';
 /** What the steward's decision on a draft requirement does. */
 export type StewardRequirementAct =
   | { act: 'drop'; reason: string }
-  | { act: 'withdraw'; reason: string }
+  /** `askedAt`: when the question was asked; a draft revision started after it is not the one asked about. */
+  | { act: 'withdraw'; reason: string; askedAt: Date }
   | { act: 'merge'; into: string; reason: string };
 
 const ENDED = ['dropped', 'deferred'];
@@ -183,7 +184,11 @@ export async function stewardRequirementActIn(
   const key = requirementKey(row.reqSeq);
   if (decision.act === 'withdraw') {
     const [open] = await tx
-      .select({ revision: requirementRevisions.revision, authorId: requirementRevisions.authorId })
+      .select({
+        revision: requirementRevisions.revision,
+        authorId: requirementRevisions.authorId,
+        createdAt: requirementRevisions.createdAt,
+      })
       .from(requirementRevisions)
       .where(
         and(
@@ -195,6 +200,12 @@ export async function stewardRequirementActIn(
       return refused(
         'STEWARD_DECISION_STALE',
         `${key} holds no draft revision now, so there is nothing to withdraw; void the question`,
+      );
+    }
+    if (open.createdAt > decision.askedAt) {
+      return refused(
+        'STEWARD_DECISION_STALE',
+        `${key}'s draft revision r${open.revision} was started after this question was asked, so it is not the draft the question is about; void the question and let the steward ask again`,
       );
     }
     if (open.authorId !== actor.userId) {

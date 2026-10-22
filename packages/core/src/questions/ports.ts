@@ -32,6 +32,8 @@ export interface StewardDecisionAnswer {
   note: string | null;
   /** The fingerprint its options carry: the run that asked and the basis it read. */
   fingerprint: string | null;
+  /** When the question was asked: what it decides is the item as it stood then. */
+  askedAt: Date;
 }
 
 interface QuestionPorts {

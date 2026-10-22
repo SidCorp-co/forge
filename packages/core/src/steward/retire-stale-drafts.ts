@@ -2,7 +2,8 @@
 // drop or keep on a draft untouched for a week, on a path beside the steward's, and its answer is
 // carried out by nothing now. Each such question still open is voided, naming why, and its item is
 // diagnosed again where it still reads stuck, so the steward asks with its own options; an answered
-// keep is left as it was, which the steward still reads before asking. Gated by its
+// keep is left as it was, which the steward still reads before asking; an answered drop or merge the
+// retired consumer never carried out is carried out now (`retire-stale-answers.ts`). Gated by its
 // `backfill_markers` row; a question it could not void is reported and leaves the marker unset.
 
 import { sql } from 'drizzle-orm';
@@ -13,18 +14,22 @@ import { emitEvent } from '../outbox/index.js';
 import { voidQuestionAs } from '../questions/index.js';
 import { stewardAccountOf } from './account.js';
 import { openStandings } from './ports.js';
+import {
+  type CarriedAnswer,
+  carryUnactedStaleAnswers,
+  STALE_DRAFT_ASKED_MARK,
+} from './retire-stale-answers.js';
 
 export const STALE_DRAFT_RETIRE_KEY = 'stale-draft-questions-retired';
 
 const VOID_REASON =
   "Forge no longer asks merge, drop or keep on a draft untouched for a week. The steward asks a stuck draft's decision with its own options, and answering this one would carry out nothing (REQ-48 BC-5).";
 
-/** The option every stale-draft question offered, as its jsonb mark. */
-const ASKED_MARK = JSON.stringify([{ id: 'stale_draft.drop' }]);
-
 export interface RetireReport {
   voided: number;
   rediagnosed: number;
+  /** Answered drops and merges the retired consumer had not carried out, and what each came to. */
+  carried: CarriedAnswer[];
   refusals: { questionId: string; reason: string }[];
 }
 
@@ -37,13 +42,18 @@ interface OpenRow {
 
 export async function retireStaleDraftQuestionsOnce(): Promise<RetireReport | null> {
   if (await db.transaction((tx) => backfillMarkedIn(tx, STALE_DRAFT_RETIRE_KEY))) return null;
-  const report: RetireReport = { voided: 0, rediagnosed: 0, refusals: [] };
+  const report: RetireReport = {
+    voided: 0,
+    rediagnosed: 0,
+    carried: await carryUnactedStaleAnswers(),
+    refusals: [],
+  };
   const open = rowsOf<OpenRow>(
     await db.execute(sql`
       SELECT q.id, q.project_id, q.issue_id, q.requirement_id
         FROM agent_questions q
        WHERE q.status = 'open'
-         AND q.steps -> 0 -> 'options' @> ${ASKED_MARK}::jsonb
+         AND q.steps -> 0 -> 'options' @> ${STALE_DRAFT_ASKED_MARK}::jsonb
        ORDER BY q.project_id, q.created_at`),
   );
   const standingsOf = new Map<string, Awaited<ReturnType<typeof openStandings>>>();

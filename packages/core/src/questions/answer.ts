@@ -243,6 +243,7 @@ async function stewardDecisionAnswered(args: AnswerInput): Promise<StewardDecisi
     by: args.by,
     note: args.note?.trim() || null,
     fingerprint: step.options[0]?.fingerprint ?? null,
+    askedAt: new Date(step.askedAt),
   };
 }
 
