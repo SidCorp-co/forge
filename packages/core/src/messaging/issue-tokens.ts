@@ -44,7 +44,11 @@ export function extractIssueClaims(reply: string, prefixes: readonly string[] = 
 
 /** After a key: the words that say this project does not hold it — "is not on this project's tracker". */
 const ABSENT_AFTER =
-  /^[*_`"”’)\]]*\s+(?:(?:is not|isn't|is no longer|was not|wasn't|does not|doesn't)\s+(?:exist\b|(?:on|in|part of|held (?:by|on|in))\s+(?:[\w’'-]+\s+){0,5}?(?:tracker|project|backlog)\b)|(?:was not|wasn't|could not be|couldn't be|cannot be|can't be)\s+found\b)/i;
+  /^[*_`"”’)\]]*\s+(?:(?:is not|isn't|is no longer|was not|wasn't|does not|doesn't)\s+(?:exist\b|(?:on|in|part of|held (?:by|on|in))\s+(?:[\w’'-]+\s+){0,5}?(?:tracker|project)\b)|(?:was not|wasn't|could not be|couldn't be|cannot be|can't be)\s+found\b)/i;
+
+const CONDITIONAL = /\b(?:if|unless|whether|suppose|supposing|in case)\b/i;
+const NARROWER =
+  /^[^.;]*\b(?:sprint|milestone|board|column|release|filter|search|page|list|view)\b/i;
 
 /** Before a key: the words that say there is no such issue — "there is no", "I couldn't find". */
 const ABSENT_BEFORE =
@@ -68,9 +72,13 @@ export function keyMentions(text: string, prefixes: readonly string[] = []): Key
   for (const sentence of text.split(/(?<=[.!?])\s+|\n+/)) {
     for (const m of sentence.matchAll(issueTokenRe(prefixes))) {
       const at = m.index ?? 0;
+      const asserted = !/\?\s*$/.test(sentence) && !CONDITIONAL.test(sentence.slice(0, at));
+      const narrower = NARROWER.test(sentence.slice(at + m[0].length));
       const absent =
-        ABSENT_AFTER.test(sentence.slice(at + m[0].length)) ||
-        ABSENT_BEFORE.test(sentence.slice(0, at));
+        asserted &&
+        !narrower &&
+        (ABSENT_AFTER.test(sentence.slice(at + m[0].length)) ||
+          ABSENT_BEFORE.test(sentence.slice(0, at)));
       out.push({ seq: Number(m[2]), token: m[0], absent });
     }
   }

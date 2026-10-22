@@ -54,6 +54,23 @@ describe('a reply saying a key is not on the project', () => {
     expect(ISSUE_REFERENCES_EXIST.check(both, facts).map((b) => b.quote)).toEqual(['ISS-999']);
   });
 
+  // The whole-set read of round 37 (F1): a narrower scope, a question and a condition assert no absence.
+  it.each([
+    'ISS-999 is not on the current sprint backlog.',
+    "ISS-999 isn't in this project's release list.",
+  ])(
+    'still refuses a missing key said absent from something narrower than the project: %s',
+    (text) => {
+      expect(room(text).ok).toBe(false);
+      expect(ISSUE_REFERENCES_EXIST.check(text, facts)).toHaveLength(1);
+    },
+  );
+
+  it('reads a question or a condition about a held key as no claim that it is absent', () => {
+    expect(room('What if ISS-1 is not on this project?').ok).toBe(true);
+    expect(room('If ISS-1 is not on this project, I can file it.').ok).toBe(true);
+  });
+
   it('refuses saying the project does not hold an issue it holds', () => {
     const verdict = room('ISS-1 is not on this project.');
     expect(verdict.ok).toBe(false);

@@ -349,6 +349,7 @@ export function refusalReason(result: unknown, tool?: string): string {
   const fix = said(remedy, tool, false);
   const lead = said(leadClause(wrong), tool, false);
   const room = REASON_CHARS - fix.length - 1;
+  if (room < 40) return shortened(`${lead} ${fix}`);
   return `${lead.length <= room ? lead : `${lead.slice(0, room - 1).trimEnd()}…`} ${fix}`;
 }
 

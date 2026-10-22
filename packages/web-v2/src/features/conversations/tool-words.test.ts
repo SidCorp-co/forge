@@ -235,6 +235,13 @@ describe("a refusal's reason", () => {
     expect(line.length).toBeLessThanOrEqual(120);
   });
 
+  // The whole-set read of round 37 (F2): a remedy longer than the line pushed the line past its limit.
+  it("keeps the line to its limit and its reason first where the remedy alone would fill it", () => {
+    const line = refusalReason(`The request was refused. Add ${"a".repeat(140)}.`, "forge");
+    expect(line.length).toBeLessThanOrEqual(121);
+    expect(line.startsWith("The request was refused.")).toBe(true);
+  });
+
   it("says the wrong before the remedy, and the agent's remedy as one the person can ask for", () => {
     expect(refusalReason("Run `forge claim` first. The issue is leased by another run.", "forge")).toBe(
       "The issue is leased by another run. Ask the assistant to put it right and try again.",
