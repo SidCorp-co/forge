@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.284] - 2026-10-22
+
+Trace tag refusals name the leading form; requirement and runner fixes recorded
+
+### Fixed
+
+- **A BC tag that does not open a criterion is refused by name.** `(REQ-n BC-m)` traces only at the start of the line; elsewhere it is refused `CRITERIA_TRACE_NOT_LEADING`, and the ready check names the leading form.
+
 ## [0.4.0-dev.283] - 2026-10-22
 
 Needs you approvals work first time; requirement checklists and runner setup fixes
