@@ -56,7 +56,7 @@ const conditional = (sentence: string, at: number) => {
     /^[,—–]\s*(?:only\s+)?(?:if|unless|in case|provided|assuming)\b/i.test(sentence.slice(to))
   );
 };
-const CONDITIONAL = /\b(?:if|unless|whether|suppose|supposing|in case)\b/i;
+const CONDITIONAL = /\b(?:if|unless|whether|suppose|supposing|in case|assuming|provided)\b/i;
 /** A scope narrower than the project, or a time other than now: either leaves absence unasserted. */
 const NOT_NOW_OR_NARROWER =
   /\b(?:(?:in|on|from|of)\s+(?:[\w’'-]+\s+){0,3}?(?:sprint|milestone|board|column|release|filter|search|page|list|view)|yesterday|earlier|previously|last|ago|until|anymore|any longer|used to|at the time)\b/i;

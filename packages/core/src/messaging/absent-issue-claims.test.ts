@@ -50,7 +50,8 @@ describe('a reply saying a key is not on the project', () => {
       [998, false],
     ]);
     expect(room('ISS-999 is not on this project. ISS-998 is ready.').ok).toBe(false);
-    const both = 'ISS-999 is not on this project, but ISS-999 shipped yesterday.';
+    const both = 'ISS-999 is not on this project, but ISS-999 is ready.';
+    expect(keyMentions(both, ['ISS']).map((m) => m.absent)).toEqual([true, false]);
     expect(room(both).ok).toBe(false);
     expect(ISSUE_REFERENCES_EXIST.check(both, facts).map((b) => b.quote)).toEqual(['ISS-999']);
   });
@@ -86,6 +87,13 @@ describe('a reply saying a key is not on the project', () => {
     expect(room('ISS-1 is not on this project if the import failed.').ok).toBe(true);
     expect(room('ISS-1 is not on this project, if the import failed.').ok).toBe(true);
     expect(room('ISS-1 is not on this project, unless it was moved.').ok).toBe(true);
+    for (const lead of ['Assuming', 'Provided that']) {
+      expect(
+        keyMentions(`${lead} ISS-1 is not on this project, I can file it.`, ['ISS'])[0]?.absent,
+      ).toBe(false);
+      expect(room(`${lead} ISS-1 is not on this project, I can file it.`).ok).toBe(true);
+      expect(room(`${lead} ISS-999 is not on this project, I can file it.`).ok).toBe(false);
+    }
     expect(room('ISS-999 is not on this project if the import failed.').ok).toBe(false);
   });
 
