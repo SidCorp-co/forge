@@ -111,7 +111,10 @@ async function loadManageableConnection(
   id: string,
   userId: string,
 ): Promise<IntegrationConnectionRow> {
-  const reached = await loadVisibleConnection(id, userId);
+  return manageable(await loadVisibleConnection(id, userId));
+}
+
+async function manageable(reached: ReachedConnection): Promise<IntegrationConnectionRow> {
   if (!reached.canManage) {
     const names = await ownerNamesOf([reached.connection]);
     throw connectionNotManageable(reached.connection, names.get(reached.connection.id) ?? null);
@@ -448,7 +451,7 @@ async function noKeyRefusal(connection: Parameters<typeof turnsBackOn>[0]): Prom
 async function loadDeletableConnection(id: string, userId: string) {
   const reached = await findReachableConnection(userId, id);
   if (!reached) throw connectionGoneOrNotReachable(id);
-  return loadManageableConnection(id, userId);
+  return manageable(reached);
 }
 
 integrationConnectionsRoutes.delete('/:id', ...removeConnection, async (c) => {

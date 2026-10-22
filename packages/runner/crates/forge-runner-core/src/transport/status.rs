@@ -320,8 +320,10 @@ pub(crate) fn unread_body(e: &reqwest::Error) -> String {
 fn cut_short(e: &(dyn std::error::Error + 'static)) -> bool {
     use std::io::ErrorKind;
     let mut at = Some(e);
+    let mut io_seen = false;
     while let Some(err) = at {
         if let Some(io) = err.downcast_ref::<std::io::Error>() {
+            io_seen = true;
             if matches!(
                 io.kind(),
                 ErrorKind::UnexpectedEof
@@ -333,6 +335,11 @@ fn cut_short(e: &(dyn std::error::Error + 'static)) -> bool {
             }
         }
         at = err.source();
+    }
+    // An io error of another kind is a body that arrived and could not be read; only a chain with
+    // no io error at all is read by its words.
+    if io_seen {
+        return false;
     }
     let cause = innermost(e).unwrap_or_default().to_lowercase();
     cause.contains("end of file") || cause.contains("incomplete")
@@ -422,6 +429,38 @@ fn span(d: std::time::Duration) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// An error whose source is `inner`, as reqwest wraps hyper and hyper wraps the socket.
+    #[derive(Debug)]
+    struct Wrapped(Box<dyn std::error::Error + Send + Sync + 'static>);
+    impl std::fmt::Display for Wrapped {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str("error decoding response body")
+        }
+    }
+    impl std::error::Error for Wrapped {
+        fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+            Some(self.0.as_ref())
+        }
+    }
+
+    /// Criterion 245: a cut is read off the io error's kind, whatever its words.
+    #[test]
+    fn a_cut_is_read_by_its_kind_and_not_by_its_words() {
+        use std::io::{Error, ErrorKind};
+        let eof = Wrapped(Box::new(Error::new(ErrorKind::UnexpectedEof, "some words")));
+        assert!(cut_short(&eof));
+        let reset = Wrapped(Box::new(Error::new(ErrorKind::ConnectionReset, "x")));
+        assert!(cut_short(&reset));
+        let bad = Wrapped(Box::new(Error::new(
+            ErrorKind::InvalidData,
+            "incomplete data",
+        )));
+        assert!(
+            !cut_short(&bad),
+            "an io error of another kind is not a cut, whatever it says"
+        );
+    }
 
     /// Criterion 223: a reason that already ends a sentence is not given a second full stop.
     #[test]

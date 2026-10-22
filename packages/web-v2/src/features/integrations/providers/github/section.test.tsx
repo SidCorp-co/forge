@@ -63,9 +63,28 @@ let project = {
 };
 /** A refused start re-reads the reader's projects, whose role decides what is offered. */
 const projectsRefetch = vi.fn(async () => undefined);
-vi.mock("@/features/projects/hooks", () => ({
-  useProjects: () => ({ data: [project], refetch: projectsRefetch }),
-}));
+/** What a re-read hands the screen: bumping it re-renders every reader of the projects. */
+const projectsRead = { version: 0, listeners: new Set<() => void>() };
+function projectsAnswer(next: typeof project) {
+  project = next;
+  projectsRead.version += 1;
+  for (const l of projectsRead.listeners) l();
+}
+vi.mock("@/features/projects/hooks", async () => {
+  const React = await import("react");
+  return {
+    useProjects: () => {
+      React.useSyncExternalStore(
+        (l) => {
+          projectsRead.listeners.add(l);
+          return () => projectsRead.listeners.delete(l);
+        },
+        () => projectsRead.version,
+      );
+      return { data: [project], refetch: projectsRefetch };
+    },
+  };
+});
 
 vi.mock("../../hooks", () => ({
   useIntegrationsList: () => ({ data: { items } }),
@@ -568,11 +587,21 @@ describe("a project bound to a removed GitHub connection (criterion 224)", () =>
   it("re-reads the reader's projects when an install is refused, so what it offers follows their role", async () => {
     connectStart.mockRejectedValueOnce(new Error("Only an owner or admin of SidCorp can create one."));
     projectsRefetch.mockClear();
+    // The role was lost in another tab: the re-read answers it, and nothing remounts the panel.
+    projectsRefetch.mockImplementationOnce(async () => projectsAnswer({ ...project, orgRole: "member" }));
     mount();
+    expect(screen.getByText(/Creating it needs org admin there/)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Install the GitHub App again" }));
 
-    await waitFor(() => expect(projectsRefetch).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: "Install the GitHub App again" })).toBeNull(),
+    );
+    expect(projectsRefetch).toHaveBeenCalledTimes(1);
+    expect(screen.queryByLabelText("GitHub organization")).toBeNull();
+    expect(
+      screen.getByText(/Only an owner or admin of SidCorp can install it, from this project's Integrations tab\./),
+    ).toBeInTheDocument();
   });
 
   it("keeps Disconnect as the way to leave the connection, asked once before it is sent", () => {

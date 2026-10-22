@@ -365,6 +365,22 @@ describe('a write that races another (criteria 227, 238)', () => {
     expect(await bindingCount(connection.id)).toBe(1);
   });
 
+  // r24 whole-set review F1: a Clear that loses to another answers as gone, however the race falls.
+  it('answers the Clear that loses a race with the sentence a delete of a gone connection gets', async () => {
+    const project = await createTestProject(harness.db, ownerId);
+    const connection = await removedSentryBoundTo(project.id);
+    const both = await Promise.all([
+      call('DELETE', `/api/integration-connections/${connection.id}`),
+      call('DELETE', `/api/integration-connections/${connection.id}`),
+    ]);
+    expect(both.map((r) => r.status).sort()).toEqual([200, 404]);
+    const lost = both.find((r) => r.status === 404);
+    expect(lost?.body.message).toBe(
+      `Connection ${connection.id} is already gone, or is not one you can reach. Only its owner ` +
+        "(for an organization's connection, an owner or admin of that organization) can delete it.",
+    );
+  });
+
   it('fills a binding with one of two installations racing for it, the rest of its config kept', async () => {
     const project = await createTestProject(harness.db, ownerId);
     const connection = await rotatedSentry({ type: 'user', id: ownerId });
