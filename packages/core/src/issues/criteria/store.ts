@@ -12,7 +12,11 @@
 
 import type { CriteriaRefusalCode } from '@forge/contracts/issues';
 import type { ActorAgency } from '@forge/contracts/permissions';
-import type { VerdictCorroboration, VerdictDraftReading } from '@forge/contracts/verdict-identity';
+import type {
+  StorefrontDraftPart,
+  VerdictCorroboration,
+  VerdictDraftReading,
+} from '@forge/contracts/verdict-identity';
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import type { Tx } from '../../db/client.js';
 import { issues } from '../../db/schema.js';
@@ -56,8 +60,8 @@ export interface LatestVerdict {
   readonly designRevision: number | null;
   readonly contractRef: string | null;
   readonly contractVersion: string | null;
-  readonly storefrontWorkflowId: string | null;
-  readonly storefrontDraftVersion: string | null;
+  /** Every workflow draft a storefront_draft verdict was judged on, in the order written. */
+  readonly storefrontDrafts: readonly StorefrontDraftPart[] | null;
   readonly storefrontEnvironment: string | null;
   readonly corroboration: VerdictDraftReading | null;
   readonly corroborationNote: string | null;
@@ -345,7 +349,7 @@ const LIST_SQL = (issueIds: readonly string[]) => sql`
   SELECT c.issue_id, c.id, c.n, c.statement, c.position, c.requirement_criterion_id,
          v.id AS v_id, v.verdict, v.reason, v.identity_kind, v.commit_sha, v.runtime_ref,
          v.design_workflow_id, w.flow AS design_flow, v.design_revision, v.contract_ref,
-         v.contract_version, v.storefront_workflow_id, v.storefront_draft_version,
+         v.contract_version, v.storefront_drafts,
          v.storefront_environment, v.corroboration, v.corroboration_note, v.evidence, v.probe_id, v.author_agency, v.backfilled, v.created_at AS v_created_at
     FROM issue_criteria c
     LEFT JOIN LATERAL (
@@ -379,8 +383,7 @@ type ListRow = {
   design_revision: number | null;
   contract_ref: string | null;
   contract_version: string | null;
-  storefront_workflow_id: string | null;
-  storefront_draft_version: string | null;
+  storefront_drafts: StorefrontDraftPart[] | null;
   storefront_environment: string | null;
   corroboration: VerdictCorroboration | null;
   corroboration_note: string | null;
@@ -405,8 +408,7 @@ function latestOf(row: ListRow): LatestVerdict | null {
     designRevision: row.design_revision,
     contractRef: row.contract_ref,
     contractVersion: row.contract_version,
-    storefrontWorkflowId: row.storefront_workflow_id,
-    storefrontDraftVersion: row.storefront_draft_version,
+    storefrontDrafts: row.storefront_drafts,
     storefrontEnvironment: row.storefront_environment,
     corroboration: row.corroboration,
     corroborationNote: row.corroboration_note,
@@ -461,7 +463,7 @@ export async function listRetiredCriteria(
     SELECT c.issue_id, c.id, c.n, c.statement, c.position, c.requirement_criterion_id, c.retired_at,
            v.id AS v_id, v.verdict, v.reason, v.identity_kind, v.commit_sha, v.runtime_ref,
            v.design_workflow_id, w.flow AS design_flow, v.design_revision, v.contract_ref,
-           v.contract_version, v.storefront_workflow_id, v.storefront_draft_version,
+           v.contract_version, v.storefront_drafts,
            v.storefront_environment, v.corroboration, v.corroboration_note, v.evidence, v.probe_id,
            v.author_agency, v.backfilled, v.created_at AS v_created_at
       FROM issue_criteria c
@@ -514,7 +516,7 @@ export async function liveVerdictsOf(
   const rows = (await executor.execute(sql`
     SELECT c.n, v.id AS v_id, v.verdict, v.reason, v.identity_kind, v.commit_sha, v.runtime_ref,
            v.design_workflow_id, w.flow AS design_flow, v.design_revision, v.contract_ref,
-           v.contract_version, v.storefront_workflow_id, v.storefront_draft_version,
+           v.contract_version, v.storefront_drafts,
            v.storefront_environment, v.corroboration, v.corroboration_note, v.evidence, v.probe_id,
            v.author_agency, v.backfilled, v.created_at AS v_created_at,
            ${byBuilder} AS by_builder,

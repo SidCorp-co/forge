@@ -183,9 +183,11 @@ async function projectAt(n: Scale): Promise<string> {
       }[];
       await db.execute(sql`
         INSERT INTO criterion_verdicts (criterion_id, issue_id, verdict, author_agency, identity_kind,
-                                        storefront_workflow_id, storefront_draft_version, reason)
+                                        storefront_drafts, storefront_environment, corroboration,
+                                        corroboration_note, reason)
         VALUES (${ic?.id}, ${issue.id}, ${i % 3 === 0 ? 'fail' : 'pass'}, 'agent', 'storefront_draft',
-                ${`af-${i}`}, 'v1', 'judged on the draft')`);
+                ${JSON.stringify([{ workflowId: `af-${i}`, draftVersion: 'v1' }])}::jsonb, 'preview',
+                'uncorroborated', 'planted unread', 'judged on the draft')`);
     }
     await db.execute(sql`
       INSERT INTO pipeline_runs (project_id, issue_id, kind, status, started_at, finished_at, metadata)

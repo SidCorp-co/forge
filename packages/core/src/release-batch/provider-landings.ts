@@ -115,19 +115,21 @@ function verdictWorkflows(issue: RosterIssue): WorkflowLanding[] {
   for (const c of issue.criteria) {
     const v = c.latest;
     if (v?.identityKind !== 'storefront_draft') continue;
-    if (!v.storefrontWorkflowId || !v.storefrontDraftVersion) continue;
-    const held = byWorkflow.get(v.storefrontWorkflowId);
-    if (held && Date.parse(held.landedAt ?? '') >= Date.parse(v.createdAt)) continue;
-    const graph = v.storefrontDraftVersion.trim();
-    byWorkflow.set(v.storefrontWorkflowId, {
-      issue: issue.key,
-      ref: `workflow ${v.storefrontWorkflowId} @${graph}`,
-      landedAt: v.createdAt,
-      removed: false,
-      workflowId: v.storefrontWorkflowId,
-      graph,
-      from: 'verdict',
-    });
+    // every workflow draft the verdict was judged on is a landing of its own (ISS-613)
+    for (const part of v.storefrontDrafts ?? []) {
+      const held = byWorkflow.get(part.workflowId);
+      if (held && Date.parse(held.landedAt ?? '') >= Date.parse(v.createdAt)) continue;
+      const graph = part.draftVersion.trim();
+      byWorkflow.set(part.workflowId, {
+        issue: issue.key,
+        ref: `workflow ${part.workflowId} @${graph}`,
+        landedAt: v.createdAt,
+        removed: false,
+        workflowId: part.workflowId,
+        graph,
+        from: 'verdict',
+      });
+    }
   }
   return [...byWorkflow.values()];
 }

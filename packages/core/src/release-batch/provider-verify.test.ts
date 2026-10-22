@@ -130,8 +130,9 @@ function verdict(
       designRevision: null,
       contractRef: null,
       contractVersion: null,
-      storefrontWorkflowId: draft?.workflowId ?? null,
-      storefrontDraftVersion: draft?.draftVersion ?? null,
+      storefrontDrafts: draft
+        ? [{ workflowId: draft.workflowId, draftVersion: draft.draftVersion }]
+        : null,
       storefrontEnvironment: draft ? 'preview' : null,
       corroboration: draft ? 'corroborated' : null,
       corroborationNote: null,
@@ -452,6 +453,39 @@ describe('landingsOf', () => {
         landedAt: JUDGED,
         from: 'verdict',
       }),
+    ]);
+  });
+
+  it('lands every workflow draft one verdict was judged on (ISS-613)', async () => {
+    const { landingsOf } = await import('./provider-landings.js');
+    const both = verdict('storefront_draft', { workflowId: '253', draftVersion: sha('3') });
+    const latest = both.latest as NonNullable<typeof both.latest>;
+    const found = landingsOf([
+      {
+        id: 'issue-21',
+        inherited: [],
+        key: 'ISS-21',
+        criteria: [
+          {
+            ...both,
+            latest: {
+              ...latest,
+              storefrontDrafts: [
+                { workflowId: '253', draftVersion: sha('3') },
+                { workflowId: '190', draftVersion: sha('4') },
+              ],
+            },
+          },
+        ],
+        mergedAt: null,
+        landing: null,
+        artifacts: null,
+        builds: false,
+      },
+    ]);
+    expect(found.workflows.map((w) => [w.workflowId, w.graph])).toEqual([
+      ['253', sha('3')],
+      ['190', sha('4')],
     ]);
   });
 });

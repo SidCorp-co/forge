@@ -426,8 +426,10 @@ describe('what a verdict identity counts for on coverage', () => {
     for (const identity of [
       {
         kind: 'storefront_draft',
-        workflowId: 'wf1',
-        draftVersion: 'v9',
+        drafts: [
+          { workflowId: 'wf1', draftVersion: 'v9' },
+          { workflowId: 'wf2', draftVersion: 'v3' },
+        ],
         environment: 'preview',
       } as const,
       { kind: 'commit_unresolved', sha: 'abc1234' } as const,
@@ -436,6 +438,10 @@ describe('what a verdict identity counts for on coverage', () => {
       const c = one(identity);
       expect(c).toMatchObject({ verdict: 'not_judged', counts: null });
       expect(c?.issues[0]?.notCounted).not.toBeNull();
+      // a storefront verdict names every workflow draft it was judged on (ISS-613)
+      if (identity?.kind === 'storefront_draft') {
+        expect(c?.issues[0]?.notCounted).toContain('storefront draft wf1, wf2 in preview');
+      }
     }
   });
 });

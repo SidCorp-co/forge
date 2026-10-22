@@ -1,6 +1,7 @@
 // The per-issue facts the standing read joins in: criteria tallies, requirement, module and feedback.
 
 import { modulePaths } from '@forge/contracts/modules';
+import type { StorefrontDraftPart } from '@forge/contracts/verdict-identity';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { idList, rowsOf } from '../db/raw-sql.js';
@@ -13,14 +14,14 @@ interface CriteriaRaw {
   /** The traced wording is not the one live at its requirement's current revision. */
   bc_stale: boolean | null;
   identity_kind: string | null;
-  storefront_workflow_id: string | null;
-  storefront_draft_version: string | null;
+  storefront_drafts: StorefrontDraftPart[] | null;
   stands: boolean;
 }
 
 // a passing verdict on a storefront draft passes only while the source still holds that
 // draft: one the source moved past, or cannot be read back, is not counted passing, so the list
-// never says every criterion passed of an issue the release hold keeps (FB-56)
+// never says every criterion passed of an issue the release hold keeps (FB-56); every workflow
+// draft the verdict names is read, so a move of any one of them takes it off passing (ISS-613)
 export async function criteriaOf(
   projectId: string,
   ids: readonly string[],
@@ -29,7 +30,7 @@ export async function criteriaOf(
   const rows = rowsOf<Omit<CriteriaRaw, 'stands'>>(
     await db.execute(sql`
       SELECT c.issue_id, v.verdict, rc.code AS bc_code, v.identity_kind,
-             v.storefront_workflow_id, v.storefront_draft_version,
+             v.storefront_drafts,
              NOT (rc.since_revision <= r.current_revision
                   AND (rc.retired_revision IS NULL OR rc.retired_revision > r.current_revision))
                AS bc_stale
@@ -37,7 +38,7 @@ export async function criteriaOf(
         LEFT JOIN requirement_criteria rc ON rc.id = c.requirement_criterion_id
         LEFT JOIN requirements r ON r.id = rc.requirement_id
         LEFT JOIN LATERAL (
-          SELECT cv.verdict, cv.identity_kind, cv.storefront_workflow_id, cv.storefront_draft_version
+          SELECT cv.verdict, cv.identity_kind, cv.storefront_drafts
             FROM criterion_verdicts cv
            WHERE cv.criterion_id = c.id
            ORDER BY cv.created_at DESC, cv.id DESC
@@ -47,8 +48,8 @@ export async function criteriaOf(
        ORDER BY c.issue_id, c.position, c.n`),
   );
   const drafts = rows.flatMap((r) =>
-    r.identity_kind === 'storefront_draft' && r.storefront_workflow_id
-      ? [r.storefront_workflow_id]
+    r.identity_kind === 'storefront_draft'
+      ? (r.storefront_drafts ?? []).map((p) => p.workflowId)
       : [],
   );
   const current = await readCurrentDrafts(projectId, drafts);
@@ -56,11 +57,7 @@ export async function criteriaOf(
     ...r,
     stands:
       r.identity_kind !== 'storefront_draft' ||
-      (!!r.storefront_workflow_id &&
-        current({
-          workflowId: r.storefront_workflow_id,
-          draftVersion: r.storefront_draft_version ?? '',
-        }).corroboration === 'corroborated'),
+      current(r.storefront_drafts ?? []).corroboration === 'corroborated',
   }));
 }
 

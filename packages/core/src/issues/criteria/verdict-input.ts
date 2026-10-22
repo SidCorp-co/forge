@@ -11,7 +11,8 @@
  *   a contract is `<project>/<contract>@<version>`  VERDICT_CONTRACT_SHAPE
  *   its reason and evidence carry no secret      VERDICT_SECRET
  *
- * A storefront draft names a workflow id, a draft version and an environment key (VERDICT_STOREFRONT_DRAFT_SHAPE).
+ * A storefront draft names every workflow draft its criterion rests on, each workflow once, and an
+ * environment key (VERDICT_STOREFRONT_DRAFT_SHAPE, at the part that is wrong).
  * `commit_unresolved` is not an identity a writer can name: it exists only on backfilled rows.
  */
 
@@ -19,10 +20,12 @@ import type { CriterionProbe } from '@forge/contracts/criterion-probes';
 import type { CriterionJudge } from '@forge/contracts/issue-design';
 import type { VerdictRefusalCode } from '@forge/contracts/issues';
 import {
+  STOREFRONT_DRAFT_PARTS_MAX,
   STOREFRONT_DRAFT_SHAPE,
   STOREFRONT_DRAFT_VERSION,
   STOREFRONT_ENVIRONMENT,
   STOREFRONT_WORKFLOW_ID,
+  type StorefrontDraftPart,
 } from '@forge/contracts/verdict-identity';
 import { containsSecret } from '@forge/observability';
 import { verdictValues } from '../../db/schema-issue-criteria.js';
@@ -40,10 +43,20 @@ export type VerdictIdentity =
   | { readonly kind: 'contract'; readonly ref: string; readonly version: string }
   | {
       readonly kind: 'storefront_draft';
-      readonly workflowId: string;
-      readonly draftVersion: string;
+      /** Every workflow draft the criterion rests on; or, for one, `workflowId` and `draftVersion`. */
+      readonly workflows?: readonly StorefrontDraftPartInput[] | undefined;
+      readonly workflowId?: string | undefined;
+      readonly draftVersion?: string | undefined;
       readonly environment: string;
     };
+
+/** One part of a storefront draft as sent: either field may be missing, and is refused by name. */
+export interface StorefrontDraftPartInput {
+  readonly workflowId?: string | undefined;
+  readonly draftVersion?: string | undefined;
+}
+
+type StorefrontDraftIdentity = Extract<VerdictIdentity, { kind: 'storefront_draft' }>;
 
 export interface VerdictDraft {
   readonly criterion: number;
@@ -74,27 +87,113 @@ function refuse(code: VerdictRefusal['code'], criterion: number, detail: string)
   return { code, criterion, detail };
 }
 
+const blankOr = (s: string | undefined) => s === undefined || !s.trim();
+
+/**
+ * The workflow drafts a storefront identity names, as sent: the `workflows` list, or the one
+ * workflow of the one-workflow form, which stays accepted because writers in the field send it
+ * (ISS-613 decision). Read only after `storefrontDraftFault` passed it.
+ */
+export function storefrontPartsOf(identity: StorefrontDraftIdentity): StorefrontDraftPart[] {
+  const sent = identity.workflows ?? [
+    { workflowId: identity.workflowId, draftVersion: identity.draftVersion },
+  ];
+  return sent.map((p) => ({
+    workflowId: (p.workflowId ?? '').trim(),
+    draftVersion: (p.draftVersion ?? '').trim(),
+  }));
+}
+
+/** What is wrong with one part of a storefront identity, and where, or null where nothing is. */
+function partFault(
+  part: StorefrontDraftPartInput,
+  at: string,
+): { path: string; why: string } | null {
+  if (blankOr(part.workflowId)) {
+    return { path: `${at}/workflowId`, why: 'has no workflowId' };
+  }
+  if (!STOREFRONT_WORKFLOW_ID.test((part.workflowId ?? '').trim())) {
+    return {
+      path: `${at}/workflowId`,
+      why: `names workflowId \`${part.workflowId}\`, which is not a provider workflow id (letters, digits, \`-\` and \`_\`, at most 100)`,
+    };
+  }
+  if (blankOr(part.draftVersion)) {
+    return {
+      path: `${at}/draftVersion`,
+      why: `names workflow \`${part.workflowId}\` with no draftVersion`,
+    };
+  }
+  if (!STOREFRONT_DRAFT_VERSION.test((part.draftVersion ?? '').trim())) {
+    return {
+      path: `${at}/draftVersion`,
+      why: `names draftVersion \`${part.draftVersion}\`, which is not a draft version id (letters, digits, \`.\`, \`:\`, \`-\` and \`_\`, at most 128)`,
+    };
+  }
+  return null;
+}
+
+/** The first thing wrong with a storefront identity's workflow drafts, and where. */
+function draftsFault(identity: StorefrontDraftIdentity): { path: string; why: string } | null {
+  const single = identity.workflowId !== undefined || identity.draftVersion !== undefined;
+  const list = identity.workflows;
+  if (list !== undefined && single) {
+    return {
+      path: '/identity/workflows',
+      why: 'names both `workflows` and the one-workflow `workflowId`/`draftVersion`; send one form',
+    };
+  }
+  if (list === undefined) {
+    if (!single) return { path: '/identity/workflows', why: 'names no workflow' };
+    return partFault(identity, '/identity');
+  }
+  if (list.length === 0) {
+    return { path: '/identity/workflows', why: 'names no workflow: `workflows` is empty' };
+  }
+  if (list.length > STOREFRONT_DRAFT_PARTS_MAX) {
+    return {
+      path: '/identity/workflows',
+      why: `names ${list.length} workflows, more than the ${STOREFRONT_DRAFT_PARTS_MAX} one verdict holds`,
+    };
+  }
+  const first = new Map<string, number>();
+  for (const [i, part] of list.entries()) {
+    const wrong = partFault(part, `/identity/workflows/${i}`);
+    if (wrong) return wrong;
+    const id = (part.workflowId ?? '').trim();
+    const seen = first.get(id);
+    if (seen !== undefined) {
+      return {
+        path: `/identity/workflows/${i}/workflowId`,
+        why: `names workflow \`${id}\` more than once (parts ${seen} and ${i}); a workflow is judged at one draft`,
+      };
+    }
+    first.set(id, i);
+  }
+  return null;
+}
+
 function storefrontDraftFault(
   criterion: number,
-  identity: Extract<VerdictIdentity, { kind: 'storefront_draft' }>,
+  identity: StorefrontDraftIdentity,
 ): VerdictRefusal | null {
-  const wrong = [
-    STOREFRONT_WORKFLOW_ID.test(identity.workflowId.trim())
+  const wrong =
+    draftsFault(identity) ??
+    (STOREFRONT_ENVIRONMENT.test(identity.environment.trim())
       ? null
-      : `workflowId \`${identity.workflowId}\` is not a provider workflow id (letters, digits, \`-\` and \`_\`, at most 100)`,
-    STOREFRONT_DRAFT_VERSION.test(identity.draftVersion.trim())
-      ? null
-      : `draftVersion \`${identity.draftVersion}\` is not a draft version id (letters, digits, \`.\`, \`:\`, \`-\` and \`_\`, at most 128)`,
-    STOREFRONT_ENVIRONMENT.test(identity.environment.trim())
-      ? null
-      : `environment \`${identity.environment}\` is not an environment key of the project document (a lowercase slug)`,
-  ].filter((w): w is string => w !== null);
-  if (wrong.length === 0) return null;
-  return refuse(
-    'VERDICT_STOREFRONT_DRAFT_SHAPE',
-    criterion,
-    `criterion ${criterion} names a storefront draft whose ${wrong.join('; and whose ')}. A storefront draft is ${STOREFRONT_DRAFT_SHAPE}.`,
-  );
+      : {
+          path: '/identity/environment',
+          why: `names environment \`${identity.environment}\`, which is not an environment key of the project document (a lowercase slug)`,
+        });
+  if (!wrong) return null;
+  return {
+    ...refuse(
+      'VERDICT_STOREFRONT_DRAFT_SHAPE',
+      criterion,
+      `criterion ${criterion}'s storefront draft ${wrong.why}. A storefront draft is ${STOREFRONT_DRAFT_SHAPE}.`,
+    ),
+    path: wrong.path,
+  };
 }
 
 function identityFault(criterion: number, identity: VerdictIdentity): VerdictRefusal | null {

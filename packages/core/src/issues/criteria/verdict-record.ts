@@ -33,6 +33,7 @@ import {
 } from './storefront-draft.js';
 import { keepFailAsCorrection } from './verdict-correction.js';
 import {
+  storefrontPartsOf,
   type VerdictDraft,
   type VerdictIdentity,
   type VerdictRefusal,
@@ -55,8 +56,6 @@ const IDENTITY_FIELDS: ReadonlyArray<readonly [keyof VerdictColumns, string]> = 
   ['designRevision', 'design-revision'],
   ['contractRef', 'contract'],
   ['contractVersion', 'contract-version'],
-  ['storefrontWorkflowId', 'storefront-workflow'],
-  ['storefrontDraftVersion', 'draft-version'],
   ['storefrontEnvironment', 'environment'],
   ['corroboration', 'corroboration'],
 ];
@@ -75,6 +74,13 @@ function verdictRecordFields(args: {
   for (const [column, key] of IDENTITY_FIELDS) {
     const value = identity[column];
     if (value !== undefined && value !== null) fields.push({ key, value: String(value) });
+  }
+  // one field per workflow draft judged, in the order written (ISS-613)
+  for (const part of identity.storefrontDrafts ?? []) {
+    fields.push({
+      key: 'storefront-draft',
+      value: `${part.workflowId}@draft:${part.draftVersion}`,
+    });
   }
   const reason = draft.reason?.trim();
   if (reason) fields.push({ key: 'why', value: reason });
@@ -161,16 +167,15 @@ async function storefrontColumns(
   const environment = identity.environment.trim();
   const unknown = environmentFault(criterion, document, environment);
   if (unknown) throw verdictRefused(unknown);
-  const workflowId = identity.workflowId.trim();
-  const reading = (await readDraft(document, [workflowId])).get(workflowId) ?? {
-    kind: 'unreadable',
-    detail: `the draft reader answered no reading of workflow \`${workflowId}\``,
-  };
-  const found = corroborationOf(identity, reading);
+  const parts = storefrontPartsOf(identity);
+  const readings = await readDraft(
+    document,
+    parts.map((p) => p.workflowId),
+  );
+  const found = corroborationOf(parts, readings);
   return {
     identityKind: 'storefront_draft',
-    storefrontWorkflowId: workflowId,
-    storefrontDraftVersion: identity.draftVersion.trim(),
+    storefrontDrafts: parts,
     storefrontEnvironment: environment,
     corroboration: found.corroboration,
     corroborationNote: found.note,

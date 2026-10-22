@@ -140,7 +140,7 @@ export function planIssueBackfill(
         identity = { ...NONE, identityKind: 'commit', commitSha: id.sha.trim().toLowerCase() };
       } else if (id?.kind === 'storefront_draft') {
         refuse(
-          `storefront draft \`${id.workflowId}@draft:${id.draftVersion}\` is corroborated by reading its source when it is written, and a backfill holds no such reading; record it through \`POST /api/issues/:id/verdicts\``,
+          `storefront draft \`${id.workflowId ?? ''}@draft:${id.draftVersion ?? ''}\` is corroborated by reading its source when it is written, and a backfill holds no such reading; record it through \`POST /api/issues/:id/verdicts\``,
         );
         continue;
       } else if (id?.kind === 'runtime') {
