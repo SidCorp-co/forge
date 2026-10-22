@@ -91,6 +91,19 @@ describe('a requirement whose issues all closed by landing records', () => {
     expect(said).toContain('All 3 live issues shipped.');
   });
 
+  // catalog-fe REQ-1 ISS-1: marked at 28a99efe, every pass at d94db013, reopened after them, closed
+  // by a record at d94db013; ISS-3, re-judged after its reopen, was the only issue that counted
+  it('counts passes at the recorded head after a reopen, where the mark names an earlier commit', async () => {
+    const req = await agreedRequirement(BCS.slice(0, 1));
+    const issue = await landedIssue(1, F4);
+    await traced(req, issue, 1);
+    await passedAll(issue, LATER);
+    await reopenedNow(issue);
+    expect((await record([issue], LATER)).status).toBe(201);
+
+    expect(await bcOf(req)).toMatchObject({ verdict: 'passing' });
+  });
+
   it('reads passing before any record where every criterion passes at a later head holding the landing', async () => {
     const req = await agreedRequirement(BCS.slice(0, 1));
     const issue = await landedIssue(1, F4);
