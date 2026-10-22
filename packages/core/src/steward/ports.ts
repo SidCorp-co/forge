@@ -17,11 +17,17 @@ interface StewardPorts {
     ask: string;
   }): Promise<{ boxes: number; delivered: number }>;
   /**
-   * Why an issue may not be sent back from the release gate, or null where it may: on a project with
-   * no production environment, every live criterion counting on its landing (the release module's
-   * `landed-build.ts:landedReopenRefusal`).
+   * Why an issue may not be sent back from the release gate, by code and detail, or null where it
+   * may: a live release batch claims it, every live criterion counts on its landing, or its project
+   * owes no verdict at the gate and none fails (the release module's `reopen-guard.ts`).
    */
-  landedReopenRefusal(issueId: string): Promise<string | null>;
+  reopenRefusal(issueId: string): Promise<{ code: string; detail: string } | null>;
+  /**
+   * The project's release as facts the steward's acts may not restate otherwise: whether production
+   * exists, what its delivery policy owes at the gate, and whether a live release batch claims the
+   * issue (the release module's `reopen-guard.ts:stewardReleaseFacts`).
+   */
+  releaseFacts(projectId: string, issueId: string | null): Promise<string>;
 }
 
 const ports = portSlot<StewardPorts>('steward', 'provideStewardPorts');

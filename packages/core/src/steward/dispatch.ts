@@ -15,7 +15,7 @@ import {
 import { logger } from '../lib/logger.js';
 import { stewardAccountOf } from './account.js';
 import { enqueueStewardJob, revokeJobCredential, stewardJobLive } from './job.js';
-import { budgetNote } from './note.js';
+import { budgetNote, judgeOwedNote } from './note.js';
 import { admitRun, nextUtcDay, slotsFor, stewardStanceOf } from './policy.js';
 import { openStandings } from './ports.js';
 import {
@@ -101,6 +101,14 @@ export async function runOne(run: RunRow, now: Date): Promise<RunOutcome> {
     // the sweep's share of today is spent: the run waits for tomorrow's, in its place in the queue,
     // unless a handoff arrived while it was claimed
     await deferSweepRun(run.id, nextUtcDay(now));
+    return 'ended';
+  }
+  if (refused === 'budget_spent' && acts.includes('release_followthrough')) {
+    // the judge a shipped issue is owed is never dropped for the day's budget: it waits for the
+    // next day's, queued, and the issue says so (dev.287 skipped three and left nothing)
+    const until = nextUtcDay(now);
+    await deferSweepRun(run.id, until);
+    await judgeOwedNote(run, until, (await stewardStanceOf(run.projectId)).budget.runnerJobs);
     return 'ended';
   }
   if (refused) {

@@ -209,9 +209,6 @@ const REJECT: DoorSpec<z.infer<typeof rejectParams>> = {
   },
 };
 
-/** The refusal a reopen meets where every live criterion counts on the issue's landing. */
-export const STEWARD_REOPEN_COUNTED = 'STEWARD_REOPEN_COUNTED';
-
 const moveParams = z.strictObject({
   issue: issueKey,
   to: z
@@ -234,12 +231,14 @@ const MOVE: DoorSpec<z.infer<typeof moveParams>> = {
       path: `/api/issues/${issueId}/transition`,
       body: { toStatus: args.to, reason: args.reason },
     };
-    // With no production environment the landing is the running build: a pass counting on it is
-    // the evidence a reopen would say is missing, so the move is refused here, by name.
-    const counted = args.to === 'reopen' ? await stewardPorts().landedReopenRefusal(issueId) : null;
-    if (counted) {
-      const json = { code: STEWARD_REOPEN_COUNTED, detail: counted };
-      return { request, answer: { status: 409, ok: false, json, text: JSON.stringify(json) } };
+    // A fact that makes a reopen false is kernel input: it is refused here, by name, before the
+    // move is sent, whatever the output check concluded (`release-batch/reopen-guard.ts`).
+    const refused = args.to === 'reopen' ? await stewardPorts().reopenRefusal(issueId) : null;
+    if (refused) {
+      return {
+        request,
+        answer: { status: 409, ok: false, json: refused, text: JSON.stringify(refused) },
+      };
     }
     const sent = await send(request, ctx);
     return {

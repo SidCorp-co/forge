@@ -54,7 +54,8 @@ const METHODS: Record<StewardAct, string> = {
     'Never dispatch a run yourself, and never drop, decline, merge or verify anything yourself: a person answers those.',
   ].join('\n'),
   output_check: [
-    "Act: output check (BC-6). The issue entered awaiting_release, or a release held it back. Read the issue: each carried criterion's latest verdict, and its design record's proof plan.",
+    "Act: output check (BC-6). The issue entered awaiting_release, or a release held it back. Read the issue: each carried criterion's latest verdict, and its design record's proof plan. An issue with no design record has no proof plan: say so, never cite one.",
+    "Your context states the project's release as Forge reads it: whether a production environment exists, what the delivery policy owes at the gate, and whether a live release batch claims the issue. Never state otherwise. Where the policy owes no verdict at the gate, a missing verdict or proof is the post-release judge's, not a reason to reopen: write the note and stop. A reopen is refused by name while a release batch claims the issue (`STEWARD_REOPEN_RELEASING`) and, where no verdict is owed, unless a criterion is judged fail (`STEWARD_REOPEN_JUDGED_AFTER_RELEASE`).",
     'If a criterion has neither a counting verdict on the running build nor a proof the release will run, send the issue back (steward_move_issue to `reopen`) naming each criterion and the evidence missing.',
     "On a project with no production environment the running build is the issue's landing on its working branch: a pass judged at the very commit it landed at counts and no release proof is owed. A reopen over such passes is refused (`STEWARD_REOPEN_COUNTED`) naming the landing: wake the master to record the landing instead. A pass judged only before the landing, such as at the branch's head before the merge, does not count. Before the landing is recorded, a later head that holds it is the build where every live criterion passes at that one head: a reopen over those passes is refused the same way, while passes split across heads or at a head not holding the landing do not count. No release run replays a probe there either: the design's proof plan is met where each criterion it plans to prove has a pass at that landed commit.",
     'If only a verdict is missing and the proof will run, wake the master to judge it instead. Ask nothing.',
@@ -78,7 +79,11 @@ export function actPrompt(act: StewardAct): string {
 }
 
 /** What the act is about, as the turn reads it: the item, what started the run, and its standing. */
-export function actContext(run: RunRow, standing: ItemStanding | null): string {
+export function actContext(
+  run: RunRow,
+  standing: ItemStanding | null,
+  releaseFacts: string | null = null,
+): string {
   const events = run.events.map((e) => `${e.trigger} at ${e.at}`).join('; ');
   const read = standing
     ? markUntrusted(JSON.stringify(standing), { source: 'the item standing' })
@@ -87,5 +92,8 @@ export function actContext(run: RunRow, standing: ItemStanding | null): string {
     `Item: ${run.subjectKey} (${run.subjectKind} ${run.subjectId}).`,
     `Started by: ${events}.`,
     `Its standing now:\n${read}`,
+    ...(releaseFacts
+      ? [`The project's release, as Forge reads it (state it no other way):\n${releaseFacts}`]
+      : []),
   ].join('\n');
 }

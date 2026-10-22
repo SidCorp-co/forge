@@ -14,6 +14,7 @@ import { logger } from '../lib/logger.js';
 import { mintStewardCredential, STEWARD_TURN_TTL_MS } from './credential.js';
 import { callStewardDoor, type DoorContext, doorJsonSchema, doorsOf } from './doors.js';
 import { stewardLessonsBlock } from './lessons-block.js';
+import { stewardPorts } from './ports.js';
 import { actContext, actPrompt } from './prompts.js';
 import type { RunRow } from './runs-store.js';
 
@@ -111,12 +112,16 @@ export async function runGatewayAct(args: {
     });
     const model = act === 'note' ? fastModelName() : opened.model;
     const lessons = await stewardLessonsBlock(run);
+    const facts =
+      run.subjectKind === 'issue'
+        ? await stewardPorts().releaseFacts(run.projectId, run.subjectId)
+        : null;
     const gen = runTurnEvents({
       provider: opened.provider,
       model,
       messages: [
         { role: 'system', content: lessons ? `${actPrompt(act)}\n\n${lessons}` : actPrompt(act) },
-        { role: 'user', content: actContext(run, args.standing) },
+        { role: 'user', content: actContext(run, args.standing, facts) },
       ],
       tools: stewardToolset(ctx, args.stewardId),
       temperature: 0,

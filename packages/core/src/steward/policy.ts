@@ -4,7 +4,8 @@
 // runs, which the sweep's standing backlog can never spend: the sweep spends only the rest, and a
 // sweep run its share cannot pay for waits for the next day, oldest first (dev.271: the first sweep's
 // backlog spent the whole day and every later handoff was skipped). A handoff run the whole day
-// cannot pay for is skipped `budget_spent`.
+// cannot pay for is skipped `budget_spent`, except a release follow-through: the judge a shipped
+// issue is owed waits for the next day's budget and says so on the issue (`dispatch.ts`).
 
 import {
   STEWARD_ACT_RUNTIME,

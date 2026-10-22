@@ -60,6 +60,11 @@ export { type CarriedVerdict, carriedVerdictsOf } from './release-facts.js';
 export { listReleases, readRelease } from './release-read.js';
 export { type AutomaticReleaseSweepResult, sweepAutomaticReleases } from './release-sweep.js';
 export type { ViewerFacts } from './release-view.js';
+export {
+  type ReopenRefusal,
+  stewardReleaseFacts,
+  stewardReopenRefusal,
+} from './reopen-guard.js';
 export { type ShippedReleaseRun, shippedReleaseRuns } from './shipped-earlier.js';
 export { type RangeChange, type RangeReading, readRange } from './shipped-range.js';
 export { releaseToolView } from './tool-view.js';
