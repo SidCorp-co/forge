@@ -9,10 +9,13 @@ import { healthAnswer } from './health-words.js';
 import {
   holdsKey,
   isRemovedConnection,
+  keyIn,
   listBoundProjectOrgs,
+  type RemovedReader,
   turnsBackOnFrom,
 } from './held-key.js';
 import { raceWithTimeout } from './probe.js';
+import { findReachableConnection } from './reach.js';
 import { getAdapter, getIntegration } from './registry.js';
 import {
   type BindingWithConnection,
@@ -71,12 +74,31 @@ export const connectionGoneOrNotReachable = (connectionId: string) =>
 /** {@link turnsBackOnFrom}, reading the connection's bindings only where they decide the sentence. */
 export async function turnsBackOn(
   connection: { id: string; provider: string; ownerType: 'user' | 'org'; ownerId: string },
+  reader: RemovedReader,
   askedFrom?: string,
 ): Promise<string> {
   const bound = getIntegration(connection.provider)?.noKeyTurnsBackOn
     ? await listBoundProjectOrgs(connection.id)
     : [];
-  return turnsBackOnFrom(connection, bound, askedFrom);
+  return turnsBackOnFrom(connection, bound, reader, askedFrom);
+}
+
+/** A person asking about a connection from a project, holding `role` there. */
+export type Asker = { userId: string; role: 'admin' | 'member' | 'viewer'; projectId: string };
+
+/** What an asker may do about a removed connection. */
+export async function removedReaderOf(
+  connection: { id: string; ownerType: 'user' | 'org' },
+  asker: Pick<Asker, 'userId' | 'role'>,
+): Promise<RemovedReader> {
+  const manages = (await findReachableConnection(asker.userId, connection.id))?.canManage === true;
+  const projectAdmin = asker.role === 'admin';
+  return {
+    manages,
+    // A binding PATCH saves a key on a person's connection for any admin of the project (ISS-1115).
+    savesKey: manages || (projectAdmin && connection.ownerType === 'user'),
+    installsHere: manages && projectAdmin,
+  };
 }
 
 type RemovedAct = 'shared' | 'tested' | 'turned on for this project';
@@ -96,7 +118,7 @@ export const connectionChangedWhileCleared = () =>
     cause: { code: 'CONNECTION_CHANGED' },
   });
 
-/** `askedFrom` is the project whose own page the refusal answers, where it is one. */
+/** Asked from a project, the refusal answers that project's own page and the asker's role there. */
 export async function assertNotRemoved(
   connection: Parameters<typeof isRemovedConnection>[0] & {
     id: string;
@@ -104,23 +126,35 @@ export async function assertNotRemoved(
     ownerId: string;
   },
   act: RemovedAct,
-  askedFrom?: string,
+  asked: RemovedReader | Asker,
 ): Promise<void> {
-  if (isRemovedConnection(connection)) {
-    throw connectionRemoved(act, await turnsBackOn(connection, askedFrom));
-  }
+  if (!isRemovedConnection(connection)) return;
+  if (!('userId' in asked)) throw connectionRemoved(act, await turnsBackOn(connection, asked));
+  const reader = await removedReaderOf(connection, asked);
+  throw connectionRemoved(act, await turnsBackOn(connection, reader, asked.projectId));
 }
 
-/** Switching on a binding over a removed connection answered 200 and changed nothing (ISS-1421 r24). */
+/**
+ * Switching on a binding over a removed connection answered 200 and changed nothing (ISS-1421 r24),
+ * and an empty `secrets` slipped past as if it saved a key (r25): only a key this patch saves passes.
+ */
 export async function refuseSwitchOnOverRemoved(
-  patch: { active?: boolean | undefined; secrets?: unknown },
+  patch: { active?: boolean | undefined },
+  saved: Record<string, unknown> | undefined,
   connection: Parameters<typeof assertNotRemoved>[0],
-  projectId: string,
+  asker: Asker,
 ): Promise<void> {
-  if (patch.active === true && patch.secrets === undefined) {
-    await assertNotRemoved(connection, 'turned on for this project', projectId);
-  }
+  if (patch.active !== true) return;
+  if (saved !== undefined && keyIn(connection.provider, saved)) return;
+  await assertNotRemoved(connection, 'turned on for this project', asker);
 }
+
+/** `stages` say where a deploy binding sends code; the DB check holds any other role at none. */
+export const stagesOnNonDeployBinding = (role: string) =>
+  new HTTPException(400, {
+    message: `stages say where a deploy binding sends code; this binding's role is \`${role}\`, which sends none. Change the role, or leave stages off this patch.`,
+    cause: { code: 'STAGES_ON_NON_DEPLOY_BINDING', details: { role } },
+  });
 
 /** A connection as a sentence names it: by the name its owner gave it, never by its id. */
 function connectionCalled(connection: { displayName: string | null; provider: string }): string {

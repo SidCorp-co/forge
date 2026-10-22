@@ -53,6 +53,7 @@ import {
   notFound,
   notifyConnectionChanged,
   refuseSwitchOnOverRemoved,
+  stagesOnNonDeployBinding,
   summarizeBinding,
 } from './route-helpers.js';
 import {
@@ -214,8 +215,6 @@ integrationsRoutes.patch(
     const { binding, connection } = existing;
 
     const patch = c.req.valid('json');
-    await refuseSwitchOnOverRemoved(patch, connection, projectId);
-
     // Re-validate the loose config against the existing provider so a PATCH can
     // never strip the wrong provider's fields, then split it into tiers:
     // coolify resourceUuid/branch are BINDING-scoped (the deploy target follows
@@ -246,7 +245,7 @@ integrationsRoutes.patch(
     // DELETE throws that same switch for a project admin alone (ISS-1115).
     if (
       connection.ownerType === 'org' &&
-      (mergedConfig !== undefined || patch.secrets !== undefined)
+      (mergedConfig !== undefined || Object.keys(patch.secrets ?? {}).length > 0)
     ) {
       const access = await effectiveProjectRole(userId, projectId);
       if (!orgRoleAtLeast(access?.orgRole ?? null, 'admin')) throw forbidden();
@@ -256,15 +255,9 @@ integrationsRoutes.patch(
       await authorizeAgentAccessWrite(userId, projectId, binding.provider);
     }
 
-    // `stages` describes where a DEPLOY binding sends code. A service binding
-    // sends none, and the DB check holds it at zero stages, so a patch carrying
-    // them is refused here rather than as a constraint violation.
-    if (patch.stages !== undefined && binding.role !== 'deploy') {
-      throw new HTTPException(400, {
-        message: `stages say where a deploy binding sends code; this binding's role is \`${binding.role}\`, which sends none. Change the role, or leave stages off this patch.`,
-        cause: { code: 'STAGES_ON_NON_DEPLOY_BINDING', details: { role: binding.role } },
-      });
-    }
+    // Refused here rather than as the DB check's constraint violation.
+    if (patch.stages !== undefined && binding.role !== 'deploy')
+      throw stagesOnNonDeployBinding(binding.role);
 
     let mergedSecrets: Record<string, unknown> | undefined;
     if (patch.secrets) {
@@ -277,6 +270,7 @@ integrationsRoutes.patch(
         vaultGuardTiming: 'on-secret-input',
       });
     }
+    await refuseSwitchOnOverRemoved(patch, mergedSecrets, connection, { userId, role, projectId });
 
     // Connection-tier config and secrets go to the connection; binding-tier config and `active` to the binding.
     if (mergedConfig !== undefined || mergedSecrets !== undefined) {
@@ -334,11 +328,11 @@ integrationsRoutes.delete('/:projectId/integrations/:id', ...removeIntegration, 
 integrationsRoutes.post('/:projectId/integrations/:id/test', ...testIntegration, async (c) => {
   const { projectId, id } = c.req.param();
   const userId = c.get('userId');
-  await assertProjectMember(projectId, userId);
+  const role = await assertProjectMember(projectId, userId);
 
   const existing = await findBindingWithConnectionById(id);
   if (!existing || existing.binding.projectId !== projectId) throw notFound();
-  await assertNotRemoved(existing.connection, 'tested', projectId);
+  await assertNotRemoved(existing.connection, 'tested', { userId, role, projectId });
 
   const adapter = getAdapter(existing.binding.provider);
   if (!adapter) {

@@ -114,7 +114,7 @@ describe('resolveLiveSource', () => {
       deps({ row: { repoUrl: 'git@github.com:SidCorp-co/forge.git', privateKeyEnc: null } }),
     );
     expect(s.kind === 'refused' && s.reason).toMatch(
-      /repository on github\.com, since .* Git access\. Read access is all Forge needs; devices that push with it need write access\. Or bind the repository on its Integrations page\.$/,
+      /repository on github\.com, since .* Git access\. Read access is all Forge needs; devices that push with it need write access\. Or bind the repository on its Integrations tab\.$/,
     );
   });
 

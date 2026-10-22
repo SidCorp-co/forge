@@ -218,6 +218,27 @@ describe('refusedKeysMessage — one refusal, each key named once', () => {
     );
   });
 
+  // ISS-1421 r25, judge-102 (e): a retired field nested under the document's own name was "unknown".
+  it.each([
+    ['the document nested in itself', { environments: { live: { commitUrl: 'x' } } }],
+    ['a dotted prefix holding an object', { 'environments.live': { commitUrl: 'x' } }],
+    ['an unknown wrapper', { Environments: { live: { commit_url: 'x' } } }],
+    ['an object for its value', { environments: { live: { commitUrl: { value: 'x' } } } }],
+  ])('gives a retired field sent as %s the retirement sentence alone', (_name, patch) => {
+    const said = refusedKeysMessage(refusedKeysIn(patch, {}));
+    expect(said).toMatch(/^`environments\.live\.commitUrl`( \(sent as `[^`]+`\))? was retired/);
+    expect(said).not.toContain('is not a key');
+    expect(count(said, 'Nothing was written.')).toBe(1);
+  });
+
+  it('still names the wrapper unknown where it holds more than a retired field', () => {
+    const said = refusedKeysMessage(
+      refusedKeysIn({ environments: { live: { commitUrl: 'x', url: 'https://a.example' } } }, {}),
+    );
+    expect(said).toContain('was retired');
+    expect(said).toContain('`environments` is not a key of the environments document');
+  });
+
   it('says a retired key and an unknown one in one message', () => {
     const said = refusedKeysMessage(refusedKeysIn({ live: { commitUrl: 'x' }, futureKnob: 1 }, {}));
     expect(said).toContain('`environments.live.commitUrl` was retired');

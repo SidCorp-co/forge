@@ -106,7 +106,7 @@ export function fakeGitHubClient(real: typeof GitHubClient): typeof GitHubClient
       if (repo.down === 'no_binding') {
         throw new real.GitHubClientError(
           'no_binding',
-          'this project has no active GitHub binding — bind a repository on its Integrations page',
+          'this project has no active GitHub binding — bind a repository on its Integrations tab',
         );
       }
       return {

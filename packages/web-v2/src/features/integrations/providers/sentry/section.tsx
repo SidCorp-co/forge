@@ -1,5 +1,7 @@
 "use client";
 
+import { removedKeyHint } from "../../components/integration-enabled-control";
+
 import {
   Badge,
   Banner,
@@ -270,7 +272,7 @@ export function SentrySection({ projectId }: { projectId: string }) {
           label="Auth token"
           hint={
             existing && !existing.hasSecrets
-              ? "No token is stored: the shared connection was removed. Enter one to store it."
+              ? removedKeyHint("token", orgLocked)
               : existing
               ? "A token is stored. Leave blank to keep it; enter a new one to rotate."
               : "Sentry user auth token (sntryu-…). Stored encrypted; never shown again."

@@ -173,6 +173,12 @@ function retiredFieldOf(path: string): string | null {
   return key ? `live.${key}` : null;
 }
 
+/** The dotted path of every value under `value`, stopping at a retired field whatever it holds. */
+function leavesOf(path: string, value: unknown): string[] {
+  if (!isObject(value) || Object.keys(value).length === 0 || retiredFieldOf(path)) return [path];
+  return Object.entries(value).flatMap(([key, inner]) => leavesOf(`${path}.${key}`, inner));
+}
+
 /**
  * Each key a patch sends that the document does not have, in the order sent. A retired live key is
  * refused in any spelling `retiredFieldOf` reads and whatever it is sent as, a null included. A null sent for any other key the STORED
@@ -190,13 +196,21 @@ export function refusedKeysIn(
     if (!isObject(sent)) continue;
     for (const [key, value] of Object.entries(sent)) {
       const path = level === '' ? key : `${level}.${key}`;
-      const retired = (allowed as readonly string[]).includes(key) ? null : retiredFieldOf(path);
+      if ((allowed as readonly string[]).includes(key)) continue;
+      const retired = retiredFieldOf(path);
       if (retired) {
         refused.push(refusal(path, 'retired', retired));
-      } else if (!(allowed as readonly string[]).includes(key)) {
-        if (value === null && isObject(held) && Object.hasOwn(held, key)) continue;
-        refused.push(refusal(path, 'unknown'));
+        continue;
       }
+      if (value === null && isObject(held) && Object.hasOwn(held, key)) continue;
+      // A retired field nested under a key the document lacks is still that field (ISS-1421 r25).
+      const leaves = leavesOf(path, value);
+      const nested = leaves.flatMap((leaf) => {
+        const field = retiredFieldOf(leaf);
+        return field ? [refusal(leaf, 'retired', field)] : [];
+      });
+      refused.push(...nested);
+      if (nested.length < leaves.length) refused.push(refusal(path, 'unknown'));
     }
   }
   return refused;

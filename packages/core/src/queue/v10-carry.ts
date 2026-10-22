@@ -13,6 +13,9 @@ const CARRY_APPLICATION = 'forge-pgboss-carry';
 /** pg-boss's own sessions name themselves this unless told otherwise, in 10 as in 12. */
 const PGBOSS_APPLICATION = 'pgboss';
 const LIVE_STATES = ['created', 'retry', 'active'] as const;
+/** A backend outlives its client's close by a moment, so a session already leaving is waited out. */
+const LEAVING_GRACE_MS = 5_000;
+const LEAVING_POLL_MS = 100;
 
 export class BossSchemaRefusal extends Error {
   override name = 'BossSchemaRefusal';
@@ -68,6 +71,28 @@ async function exists(client: Client, relation: string): Promise<boolean> {
   return rows[0]?.found === true;
 }
 
+/** pg-boss sessions on this database, read afresh: a transaction otherwise keeps its first reading. */
+async function bossSessions(client: Client): Promise<number[]> {
+  await client.query('SELECT pg_stat_clear_snapshot()');
+  const { rows } = await client.query<{ pid: number }>(
+    `SELECT pid FROM pg_stat_activity
+      WHERE datname = current_database() AND application_name = $1 AND pid <> pg_backend_pid()`,
+    [PGBOSS_APPLICATION],
+  );
+  return rows.map((r) => r.pid);
+}
+
+/** The sessions still connected once any that were leaving have had {@link LEAVING_GRACE_MS} to go. */
+async function sessionsStaying(client: Client): Promise<number[]> {
+  const until = Date.now() + LEAVING_GRACE_MS;
+  let held = await bossSessions(client);
+  while (held.length > 0 && Date.now() < until) {
+    await new Promise((resolve) => setTimeout(resolve, LEAVING_POLL_MS));
+    held = await bossSessions(client);
+  }
+  return held;
+}
+
 async function count(client: Client, sql: string, values: unknown[] = []): Promise<number> {
   const { rows } = await client.query<{ n: number }>(sql, values);
   return Number(rows[0]?.n ?? 0);
@@ -98,14 +123,10 @@ export async function setAsideV10Schema(
     await client.query(
       `LOCK TABLE ${schema}.job, ${schema}.queue, ${schema}.schedule, ${schema}.version IN ACCESS EXCLUSIVE MODE`,
     );
-    const held = await client.query<{ pid: number }>(
-      `SELECT pid FROM pg_stat_activity
-        WHERE datname = current_database() AND application_name = $1 AND pid <> pg_backend_pid()`,
-      [PGBOSS_APPLICATION],
-    );
-    if (held.rows.length > 0) {
+    const held = await sessionsStaying(client);
+    if (held.length > 0) {
       throw new BossSchemaRefusal(
-        `pg-boss schema "${schema}" is still pg-boss 10's and ${held.rows.length} pg-boss session(s) are connected to this database (pid ${held.rows.map((r) => r.pid).join(', ')}). The schema is set aside only once no pg-boss 10 process runs: stop it, and this boot is retried.`,
+        `pg-boss schema "${schema}" is still pg-boss 10's and ${held.length} pg-boss session(s) are connected to this database (pid ${held.join(', ')}). The schema is set aside only once no pg-boss 10 process runs: stop it, and this boot is retried.`,
       );
     }
     const subscriptions = await count(

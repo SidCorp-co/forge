@@ -9,16 +9,21 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { IntegrationSummary } from "../types";
 
+/** Whether the reader's key save on the connection is one core refuses: an org's, to a non-admin. */
+let keyLocked = false;
 vi.mock("../hooks", () => ({
   useUpdateProviderIntegration: () => ({ mutate: vi.fn(), isPending: false }),
   useUpdateConnection: () => ({ mutate: vi.fn(), isPending: false }),
-  useOrgConnectionLocked: () => false,
+  useOrgConnectionLocked: () => keyLocked,
 }));
 
-const { IntegrationEnabledControl } = await import("./integration-enabled-control");
+const { IntegrationEnabledControl, removedKeyHint } = await import("./integration-enabled-control");
 
 expect.extend(matchers);
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  keyLocked = false;
+});
 
 const PROJECT = "da368b0a-8e21-4763-9d90-8f7b9d0c7115";
 
@@ -59,6 +64,19 @@ describe("the binding controls over a removed connection (criterion 228)", () =>
         "The shared connection was removed, so it holds no key. Saving a new key on it on the Integrations page turns it back on.",
       ),
     ).toBeInTheDocument();
+  });
+
+  // r25, judge-101 (5): every person-facing line offers only an act its reader would not be refused.
+  it("tell a reader who may not save a key on the organization's connection who may, not to save one", () => {
+    keyLocked = true;
+    render(<IntegrationEnabledControl projectId={PROJECT} binding={binding({})} />);
+
+    expect(
+      screen.getByText(
+        "The shared connection was removed, so it holds no key. Only an owner or admin of the organization that owns it can save a new key on it, which turns it back on.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/^Saving a new key/)).toBeNull();
   });
 
   // r24: core refuses switching a binding on over a removed connection, so the switch is not offered.
@@ -112,5 +130,16 @@ describe("the binding controls over a removed connection (criterion 228)", () =>
 
     expect(screen.getByRole("button", { name: /enable credential/i })).toBeInTheDocument();
     expect(screen.queryByText(/was removed/)).toBeNull();
+  });
+});
+
+// ISS-1421 r25: the key field above the switch asked a reader who may not save a key to enter one.
+describe("the key field's hint over a removed connection", () => {
+  it("asks for a key only of a reader who may save one", () => {
+    expect(removedKeyHint("token", false)).toBe(
+      "No token is stored: the shared connection was removed. Enter one to store it.",
+    );
+    expect(removedKeyHint("token", true)).toBe("No token is stored: the shared connection was removed.");
+    expect(removedKeyHint("key", true)).not.toContain("Enter one");
   });
 });

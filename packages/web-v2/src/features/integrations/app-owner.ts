@@ -1,3 +1,5 @@
+import { ApiError } from "@/lib/api/client";
+
 // The twin of core's held-key.ts:takesTheApp, which an install whose App is someone else's is refused by.
 export function takesTheApp(
   connection: { ownerType: "user" | "org"; ownerId: string },
@@ -14,4 +16,17 @@ export function mayCreateTheApp(project: {
   orgRole: "owner" | "admin" | "member" | null;
 }): boolean {
   return project.orgIsPersonal || project.orgRole === "owner" || project.orgRole === "admin";
+}
+
+// AppOwner already says who may act, so its banner said it twice (ISS-1421 r25).
+export function refusalSaidByThePanel(
+  error: unknown,
+  project: { orgIsPersonal: boolean; orgRole: "owner" | "admin" | "member" | null } | undefined,
+): boolean {
+  return (
+    error instanceof ApiError &&
+    error.code === "ORG_ADMIN_REQUIRED" &&
+    project !== undefined &&
+    !mayCreateTheApp(project)
+  );
 }

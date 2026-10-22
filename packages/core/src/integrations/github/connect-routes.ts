@@ -20,7 +20,12 @@ import { effectiveProjectRole, loadOrgRole, orgRoleAtLeast } from '../../lib/aut
 import { logger } from '../../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../../middleware/auth.js';
 import { recordInstallation } from '../binding-installation.js';
-import { isRemovedConnection, listBoundProjectOrgs, turnsBackOnFrom } from '../held-key.js';
+import {
+  clearIt,
+  isRemovedConnection,
+  listBoundProjectOrgs,
+  turnsBackOnFrom,
+} from '../held-key.js';
 import { findReachableConnection } from '../reach.js';
 import {
   assertAdmin,
@@ -29,6 +34,7 @@ import {
   badRequest,
   connectionNotReachable,
   notFound,
+  removedReaderOf,
 } from '../route-helpers.js';
 import {
   type BindingWithConnection,
@@ -184,6 +190,7 @@ githubConnectRoutes.post(
     await assertRemovedConnectionTakesTheApp(
       projectId,
       orgId ? { ownerType: 'org', ownerId: orgId } : { ownerType: 'user', ownerId: userId },
+      userId,
     );
 
     const api = apiBaseUrl();
@@ -218,6 +225,7 @@ githubConnectRoutes.post(
 async function assertRemovedConnectionTakesTheApp(
   projectId: string,
   owner: { ownerType: 'user' | 'org'; ownerId: string },
+  userId: string,
 ): Promise<void> {
   const removed = (await listBindingsForProject(projectId)).find(
     (p) =>
@@ -228,11 +236,13 @@ async function assertRemovedConnectionTakesTheApp(
   if (!removed) return;
   const { ownerType, ownerId } = removed.connection;
   if (ownerType === owner.ownerType && ownerId === owner.ownerId) return;
+  // A Clear offered to a reader who may not clear it is an act they would be refused (ISS-1421 r25).
+  const reader = await removedReaderOf(removed.connection, { userId, role: 'admin' });
   throw new HTTPException(409, {
     message:
       "This project's GitHub binding names a removed connection that an App created here would not " +
-      "belong to, so the new App could not take its place. The connection's owner can clear it from " +
-      'the list on the Integrations page, and then the App can be created here.',
+      `belong to, so the new App could not take its place. ${clearIt(removed.connection, reader)} ` +
+      'Then the App can be created here.',
     cause: {
       code: 'REMOVED_CONNECTION_OTHER_OWNER',
       details: { connectionId: removed.connection.id },
@@ -257,10 +267,15 @@ const githubAppUnfinished = (connectionId: string) =>
  * A removed GitHub connection's repositories asked for: it holds no App until one is installed again
  * from a bound project whose App would belong to its owner (ISS-1421 r23).
  */
-async function githubConnectionRemoved(connection: IntegrationConnectionRow, projectId: string) {
+async function githubConnectionRemoved(
+  connection: IntegrationConnectionRow,
+  projectId: string,
+  userId: string,
+) {
   const bound = await listBoundProjectOrgs(connection.id);
+  const reader = await removedReaderOf(connection, { userId, role: 'admin' });
   return new HTTPException(409, {
-    message: `This GitHub connection was removed, so it holds no App. ${turnsBackOnFrom(connection, bound, projectId)}`,
+    message: `This GitHub connection was removed, so it holds no App. ${turnsBackOnFrom(connection, bound, reader, projectId)}`,
     cause: { code: 'CONNECTION_REMOVED', details: { connectionId: connection.id } },
   });
 }
@@ -300,7 +315,8 @@ githubConnectRoutes.get(
 
     const connection = await githubConnectionForPicker({ userId, connectionId });
     // Removed is not unfinished: the App was there, and a remove took it (ISS-1421 r22).
-    if (isRemovedConnection(connection)) throw await githubConnectionRemoved(connection, projectId);
+    if (isRemovedConnection(connection))
+      throw await githubConnectionRemoved(connection, projectId, userId);
 
     const { appId, privateKey } = decryptConnectionSecrets<{
       appId?: string;

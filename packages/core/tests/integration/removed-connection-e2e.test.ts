@@ -381,8 +381,8 @@ describe("a project's removed GitHub connection (criteria 224, 225)", () => {
 
 const OTHER_OWNER =
   "This project's GitHub binding names a removed connection that an App created here would not " +
-  "belong to, so the new App could not take its place. The connection's owner can clear it from " +
-  'the list on the Integrations page, and then the App can be created here.';
+  'belong to, so the new App could not take its place. Clear it from the list on the Integrations ' +
+  'page. Then the App can be created here.';
 
 // Whole-set review F1 and F2: what a request read can change before it writes.
 describe('a write that races another (criteria 227, 238)', () => {

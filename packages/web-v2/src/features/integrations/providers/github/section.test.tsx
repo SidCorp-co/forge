@@ -26,6 +26,8 @@ const connectStart = vi.fn(async (_params: { org?: string; orgId?: string }) => 
 }));
 const update = vi.fn();
 const remove = vi.fn();
+/** The refusal the last start answered with, which the panel's banner reads. */
+let connectError: unknown = null;
 
 let items: IntegrationSummary[] = [];
 let connections: ConnectionDirectoryItem[] = [];
@@ -106,8 +108,8 @@ vi.mock("../../hooks", () => ({
   useGitHubConnect: () => ({
     mutateAsync: connectStart,
     isPending: false,
-    isError: false,
-    error: null,
+    isError: connectError !== null,
+    error: connectError,
   }),
   useUpdateConnection: () => ({ mutate: vi.fn(), isPending: false }),
   useOrgConnectionLocked: () => false,
@@ -642,6 +644,52 @@ describe("a project bound to a removed GitHub connection (criterion 224)", () =>
     expect(
       screen.getByText(/Only an owner or admin of SidCorp can install it, from this project's Integrations tab\./),
     ).toBeInTheDocument();
+  });
+
+  // r25, judge-101 (6): after a refused install the panel said twice who may act, once as creating.
+  it("says once who may install it after Forge refuses the install, in the panel's own verb", () => {
+    project = { ...project, orgRole: "member" };
+    connectError = new ApiError(
+      403,
+      "This project belongs to the organization SidCorp, so a GitHub App created here belongs to it. Only an owner or admin of SidCorp can create one, and you are a member there. Ask one of them to create it from this project's Integrations tab.",
+      "ORG_ADMIN_REQUIRED",
+    );
+    try {
+      mount();
+
+      expect(screen.getAllByText(/Only an owner or admin of SidCorp can/)).toHaveLength(1);
+      expect(
+        screen.getByText(/Only an owner or admin of SidCorp can install it, from this project's Integrations tab\./),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/create one|create it/)).toBeNull();
+    } finally {
+      connectError = null;
+    }
+  });
+
+  // Whole-set review F3: AppOwner is not drawn where the App would be someone else's.
+  it("keeps the refusal's banner where the panel draws no line saying who may act", () => {
+    project = { ...project, orgRole: "member", orgIsPersonal: false };
+    connections = [connection({ active: false, hasSecrets: false, ownerType: "user", ownerId: "someone-else" })];
+    connectError = new ApiError(403, "Only an owner or admin of SidCorp can create one.", "ORG_ADMIN_REQUIRED");
+    try {
+      mount();
+
+      expect(screen.getByText("Only an owner or admin of SidCorp can create one.")).toBeInTheDocument();
+    } finally {
+      connectError = null;
+    }
+  });
+
+  it("still shows a refusal the panel does not say itself", () => {
+    connectError = new ApiError(409, "GitHub could not be reached.", "GITHUB_UNREACHABLE");
+    try {
+      mount();
+
+      expect(screen.getByText("GitHub could not be reached.")).toBeInTheDocument();
+    } finally {
+      connectError = null;
+    }
   });
 
   it("keeps Disconnect as the way to leave the connection, asked once before it is sent", () => {

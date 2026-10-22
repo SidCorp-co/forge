@@ -382,7 +382,7 @@ export interface IntegrationDeclaration<
     readonly notFromHere: string;
     /** Some bound project would take it. */
     readonly fromBound: string;
-    /** Bound only to projects whose App would belong to someone else. */
+    /** Bound only to projects whose App would belong to someone else; who may Clear it follows. */
     readonly noneTakesIt: string;
   };
   /** Absent exactly where nothing is integrated. */

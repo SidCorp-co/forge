@@ -28,7 +28,7 @@ const AGENT_TIMEOUT_MS = 12_000;
  * Why an agent cannot act on this project's repository. Each one sends an operator somewhere
  * different, which is why they are not one message:
  *
- * - `no_binding` — nobody has bound a repository. Integrations page.
+ * - `no_binding` — nobody has bound a repository. The project's Integrations tab.
  * - `binding_disabled` — a binding exists and is switched off, at one tier or the other.
  * - `not_granted` — it works, and no agent here may use it. The switch beside the integration.
  *
@@ -196,7 +196,7 @@ export async function resolveGrantedGitHubBinding(
   if (pairs.length === 0) {
     throw new GitHubAgentRefusal(
       'no_binding',
-      'this project has no GitHub binding — bind a repository on its Integrations page. Nothing was sent to GitHub.',
+      'this project has no GitHub binding — bind a repository on its Integrations tab. Nothing was sent to GitHub.',
     );
   }
   const usable = pairs.filter((r) => r.binding.active && r.connection.active);
