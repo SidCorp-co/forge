@@ -2,7 +2,8 @@
  * What a workflow design's own record answers to the workflow approval checklist
  * (`@forge/contracts/checklist-registry:WORKFLOW_APPROVAL_CHECKLIST`, Requirement lifecycle r15
  * design_check): the newest revision, read against the last approved one. The kernel calls it under
- * the workflow lock, through the move's transaction, on every approve, the pin-only one included.
+ * the workflow lock, through the move's transaction, on every approve; a pin-only one carries its
+ * step answers from the revision it re-pins.
  *
  * Every sentence here is read by a person: the kernel refuses to judge with one that shows a record
  * field's key (`@forge/contracts/checklists:fieldKeyShownIn`).
@@ -13,6 +14,7 @@ import { requirementKey } from '@forge/contracts/requirements';
 import { sql } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
 import { revisionChangesOf } from './design-changes.js';
+import { pinOnlyChange } from './design-repin.js';
 import { readStoredWorkflow, type WorkflowWrite } from './schema.js';
 import { designsOf, readWorkflow } from './store.js';
 
@@ -125,6 +127,25 @@ function untracedGap(f: DesignFacts): RecordAnswer {
   };
 }
 
+/**
+ * The answer every question about the steps takes where the newest revision changes only which
+ * revision it follows: the approved revision it is carried from answered them, and a re-pin moves no
+ * step, owner, trace or failure path (REQ-41 BC-23). Null for any other revision, which is asked all.
+ */
+function carriedFrom(f: DesignFacts): RecordAnswer | null {
+  const approved = f.approved ? readStoredWorkflow(f.approved.raw) : null;
+  const proposed = f.proposed?.document ?? null;
+  if (!f.approved || !approved || !proposed || f.proposed?.revision === f.approved.revision) {
+    return null;
+  }
+  const change = pinOnlyChange(approved, proposed, null);
+  if (!change) return null;
+  const pins = change.pins.map((p) => `${p.workflow} r${p.from} → r${p.to}`).join(', ');
+  return {
+    value: `Unchanged from revision ${f.approved.revision}, which was approved: this revision changes only which revision it follows (${pins}).`,
+  };
+}
+
 /** The record answers of the workflow approval checklist, from what the design holds. */
 export function approvalAnswersOf(f: DesignFacts): RecordAnswers {
   const doc = f.proposed?.document ?? null;
@@ -132,6 +153,16 @@ export function approvalAnswersOf(f: DesignFacts): RecordAnswers {
     gap: 'Its newest revision is not a design this build reads.',
     fix: 'Write the design again in a shape the schema reads, and propose it.',
   };
+  const carried = carriedFrom(f);
+  if (carried && doc) {
+    return {
+      shape: { value: STRUCTURE_TEMPLATES.has(doc.template.id) ? 'structure' : 'flow' },
+      criteria: carried,
+      roles: carried,
+      exceptions: carried,
+      changes: changesOf(f),
+    };
+  }
   return {
     shape: doc
       ? { value: STRUCTURE_TEMPLATES.has(doc.template.id) ? 'structure' : 'flow' }
