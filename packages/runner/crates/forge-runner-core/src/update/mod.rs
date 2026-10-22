@@ -630,24 +630,49 @@ mod tests {
         );
     }
 
-    /// An address every connect is refused at, and the socket that keeps it so.
+    /// An address every connect is refused at, and the connection that keeps it so.
     ///
-    /// Bound and never listening: a dropped listener's port is free for a
-    /// sibling test's listener to take, which accepted and closed, and read as
-    /// a cut connection rather than a refused one under a parallel run.
-    fn refused_address() -> (String, tokio::net::TcpSocket) {
-        let held = tokio::net::TcpSocket::new_v4().unwrap();
-        held.bind("127.0.0.1:0".parse().unwrap()).unwrap();
-        let addr = held.local_addr().unwrap();
-        (format!("http://{addr}"), held)
+    /// The port is the local end of a live loopback connection held for the
+    /// test's life. No listener is on it, so a connect there is refused at
+    /// once on Linux, macOS and Windows. And because the port is in use, no
+    /// sibling test's listener can be given it. Two shapes failed before this
+    /// one. A dropped listener's port was taken by a sibling under a parallel
+    /// run, which read as a cut connection. A socket bound and never listening
+    /// is silently dropped on macOS, so its connect timed out instead of being
+    /// refused.
+    async fn refused_address() -> (String, (tokio::net::TcpStream, tokio::net::TcpStream)) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let to = listener.local_addr().unwrap();
+        let (client, accepted) =
+            tokio::join!(tokio::net::TcpStream::connect(to), listener.accept());
+        let client = client.unwrap();
+        let (accepted, _) = accepted.unwrap();
+        let addr = client.local_addr().unwrap();
+        (format!("http://{addr}"), (client, accepted))
     }
 
     /// ISS-1306: the race that made the two refusal tests read "cut" under load.
     #[tokio::test]
     async fn the_refused_address_cannot_be_taken_by_another_listener() {
-        let (at, _held) = refused_address();
+        let (at, _held) = refused_address().await;
         let addr = at.trim_start_matches("http://");
         assert!(tokio::net::TcpListener::bind(addr).await.is_err(), "{addr}");
+    }
+
+    /// ISS-1306: on macOS a bound, never-listening port dropped the connect, and
+    /// the refusal tests read "no answer came within 10s".
+    #[tokio::test]
+    async fn a_connect_to_the_refused_address_is_refused_rather_than_timing_out() {
+        let (at, _held) = refused_address().await;
+        let addr = at.trim_start_matches("http://");
+        let tried = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            tokio::net::TcpStream::connect(addr),
+        )
+        .await
+        .expect("the connect timed out instead of being refused");
+        let err = tried.expect_err("a connect to the refused address was accepted");
+        assert_eq!(err.kind(), std::io::ErrorKind::ConnectionRefused, "{err}");
     }
 
     /// Serves one answer, `sent` whole, then closes the connection.
@@ -669,7 +694,7 @@ mod tests {
     /// update check said "fetch manifest: error sending request for url (…)" where core was down.
     #[tokio::test]
     async fn a_manifest_core_cannot_serve_says_forge_could_not_be_reached() {
-        let (core, _held) = refused_address();
+        let (core, _held) = refused_address().await;
         let url = manifest_url(None, Some(&core)).unwrap();
         let said = fetch_manifest(&url, Some(&core))
             .await
@@ -687,7 +712,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_configured_manifest_that_cannot_be_reached_is_named_by_its_address() {
-        let (at, _held) = refused_address();
+        let (at, _held) = refused_address().await;
         let url = format!("{at}/latest.json");
         let said = fetch_manifest(&url, Some("https://core.example"))
             .await
