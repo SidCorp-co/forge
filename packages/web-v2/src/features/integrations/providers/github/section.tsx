@@ -581,7 +581,8 @@ function RemovedApp({
           </Field>
         )}
 
-        {connect.isError && !refusalSaidByThePanel(connect.error, project) && (
+        {/* AppOwner says who may only where it is drawn, which is where the App would be the owner's. */}
+        {connect.isError && !(takes !== false && refusalSaidByThePanel(connect.error, project)) && (
           <Banner tone="danger">{formatApiError(connect.error)}</Banner>
         )}
         {remove.isError && <Banner tone="danger">{formatApiError(remove.error)}</Banner>}

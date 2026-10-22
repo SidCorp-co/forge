@@ -281,11 +281,24 @@ describe('core refusing to boot pg-boss 12 over a pg-boss schema it cannot carry
     await seedV10(schema);
     const leaving = new pg.Client({ connectionString: harness.url, application_name: 'pgboss' });
     await leaving.connect();
-    const left = new Promise<void>((resolve) => {
-      setTimeout(() => void leaving.end().then(resolve, resolve), 300);
-    });
-    const carry = await bootBoss(v12(schema), harness.url, bossSchemas(schema));
-    await left;
+    const booting = bootBoss(v12(schema), harness.url, bossSchemas(schema));
+    let settled = false;
+    void booting.then(
+      () => (settled = true),
+      () => (settled = true),
+    );
+    // It leaves once the set-aside has read it connected, never on a clock (whole-set review F4).
+    let seen = false;
+    while (!seen && !settled) {
+      const reading = await rows<{ query: string }>(
+        `SELECT query FROM pg_stat_activity WHERE application_name = 'forge-pgboss-carry'`,
+      );
+      seen = reading.some((r) => r.query.includes('application_name = $1'));
+      if (!seen) await new Promise((r) => setTimeout(r, 10));
+    }
+    await leaving.end();
+    expect(seen).toBe(true);
+    const carry = await booting;
     expect(carry?.carried).toEqual({ created: 2, retry: 1, active: 1 });
   }, 60_000);
 });

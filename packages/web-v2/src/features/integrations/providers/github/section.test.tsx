@@ -667,6 +667,20 @@ describe("a project bound to a removed GitHub connection (criterion 224)", () =>
     }
   });
 
+  // Whole-set review F3: AppOwner is not drawn where the App would be someone else's.
+  it("keeps the refusal's banner where the panel draws no line saying who may act", () => {
+    project = { ...project, orgRole: "member", orgIsPersonal: false };
+    connections = [connection({ active: false, hasSecrets: false, ownerType: "user", ownerId: "someone-else" })];
+    connectError = new ApiError(403, "Only an owner or admin of SidCorp can create one.", "ORG_ADMIN_REQUIRED");
+    try {
+      mount();
+
+      expect(screen.getByText("Only an owner or admin of SidCorp can create one.")).toBeInTheDocument();
+    } finally {
+      connectError = null;
+    }
+  });
+
   it("still shows a refusal the panel does not say itself", () => {
     connectError = new ApiError(409, "GitHub could not be reached.", "GITHUB_UNREACHABLE");
     try {

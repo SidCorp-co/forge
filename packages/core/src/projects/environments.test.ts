@@ -223,6 +223,7 @@ describe('refusedKeysMessage — one refusal, each key named once', () => {
     ['the document nested in itself', { environments: { live: { commitUrl: 'x' } } }],
     ['a dotted prefix holding an object', { 'environments.live': { commitUrl: 'x' } }],
     ['an unknown wrapper', { Environments: { live: { commit_url: 'x' } } }],
+    ['an object for its value', { environments: { live: { commitUrl: { value: 'x' } } } }],
   ])('gives a retired field sent as %s the retirement sentence alone', (_name, patch) => {
     const said = refusedKeysMessage(refusedKeysIn(patch, {}));
     expect(said).toMatch(/^`environments\.live\.commitUrl`( \(sent as `[^`]+`\))? was retired/);

@@ -173,9 +173,9 @@ function retiredFieldOf(path: string): string | null {
   return key ? `live.${key}` : null;
 }
 
-/** The dotted path of every value under `value`, which is `path` itself where it holds no keys. */
+/** The dotted path of every value under `value`, stopping at a retired field whatever it holds. */
 function leavesOf(path: string, value: unknown): string[] {
-  if (!isObject(value) || Object.keys(value).length === 0) return [path];
+  if (!isObject(value) || Object.keys(value).length === 0 || retiredFieldOf(path)) return [path];
   return Object.entries(value).flatMap(([key, inner]) => leavesOf(`${path}.${key}`, inner));
 }
 
