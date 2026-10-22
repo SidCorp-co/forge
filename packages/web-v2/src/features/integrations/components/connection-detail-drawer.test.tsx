@@ -19,6 +19,8 @@ const NOW = "2026-10-14T00:00:00.000Z";
 
 let provider = "coolify";
 let served: string[] = [];
+/** The providers whose binding here is a deploy binding; the others are service bindings. */
+let deployTo: string[] = ["coolify"];
 
 function binding(stage: "preview" | "live") {
   return {
@@ -26,8 +28,8 @@ function binding(stage: "preview" | "live") {
     connectionId: CONNECTION,
     projectId: PROJECT,
     provider,
-    role: provider === "coolify" ? "deploy" : "service",
-    stages: provider === "coolify" ? [stage] : [],
+    role: deployTo.includes(provider) ? "deploy" : "service",
+    stages: deployTo.includes(provider) ? [stage] : [],
     config: { baseUrl: "https://stub.example.com", host: "https://sentry.example.com" },
     bindingConfig: {},
     label: "",
@@ -86,6 +88,7 @@ let queries: QueryClient;
 
 beforeEach(() => {
   served = [];
+  deployTo = ["coolify"];
   queries = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 });
 afterEach(cleanup);
@@ -115,6 +118,45 @@ describe("a provider's drawer shows the agents switch once", () => {
       expect(screen.getAllByText(GRANT_LABEL)).toHaveLength(1);
     },
   );
+});
+
+// ISS-1339 r2, judge-98: round 1 took the probe off Shape & release, and the place its gap link
+// sent a person had no field for it. Every provider a release reads a probe from that has a drawer
+// here is drawn with its live binding's probe; a binding that serves only Preview has none to set.
+describe("a live deploy binding's drawer offers its verify probe", () => {
+  function drawDrawer(name: string, stage: "preview" | "live") {
+    provider = name;
+    deployTo = [name];
+    render(
+      <QueryClientProvider client={queries}>
+        <ConnectionDetailDrawer
+          projectId={PROJECT}
+          card={{ key: `${name}:${stage}`, status: "connected", meta: { capabilities: { canDeploy: true } } } as never}
+          onClose={() => {}}
+        />
+      </QueryClientProvider>,
+    );
+  }
+
+  it.each(["coolify", "epodsystem"])("%s, at Live", async (name) => {
+    drawDrawer(name, "live");
+    await waitFor(() => {
+      expect(queries.isFetching()).toBe(0);
+      expect(screen.getByText("Verify probe")).toBeInTheDocument();
+    });
+    expect(screen.getByLabelText("Probe 1 URL")).toBeInTheDocument();
+    expect(screen.getByLabelText("Probe 1 commit field")).toBeInTheDocument();
+  });
+
+  it("not on a binding that serves only Preview", async () => {
+    drawDrawer("coolify", "preview");
+    await waitFor(() => {
+      expect(served).toContain(`/projects/${PROJECT}/integrations`);
+      expect(queries.isFetching()).toBe(0);
+      expect(document.querySelector(".skeleton")).toBeNull();
+    });
+    expect(screen.queryByText("Verify probe")).toBeNull();
+  });
 });
 
 // ISS-1421 r23, judge-94 on 224: an org member's list named a project they cannot open by its id.

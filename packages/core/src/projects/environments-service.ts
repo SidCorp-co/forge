@@ -13,8 +13,8 @@ import {
   credentialFaults,
   type EnvironmentsConfig,
   environmentsPatchSchema,
-  retiredLiveKeyMessage,
-  retiredLiveKeysIn,
+  refusedKeysIn,
+  refusedKeysMessage,
 } from './environments.js';
 
 export type EnvironmentsErrorCode =
@@ -64,16 +64,6 @@ export async function updateEnvironments(
   input: UpdateEnvironmentsInput,
 ): Promise<{ environments: EnvironmentsConfig }> {
   const { projectId, patch, base } = input;
-  const retired = retiredLiveKeysIn(patch);
-  if (retired.length > 0) {
-    const conflicts = retired.map((key) => ({
-      path: `live.${key}`,
-      message: retiredLiveKeyMessage(key),
-    }));
-    throw new EnvironmentsError('ENVIRONMENTS_INVALID', conflicts.map((c) => c.message).join(' '), {
-      conflicts,
-    });
-  }
   return db.transaction(async (tx) => {
     const [row] = await tx
       .select({ environments: projects.environments })
@@ -86,6 +76,16 @@ export async function updateEnvironments(
       typeof row.environments === 'object' && row.environments !== null
         ? (row.environments as Record<string, unknown>)
         : {};
+
+    // What the patch SENDS is held to the document's keys before its base is compared, so a key
+    // that could never be written is refused for what it is rather than as a stale read. It is read
+    // against the stored row because a null deleting a stray stored there is the one key let by.
+    const refused = refusedKeysIn(patch, stored);
+    if (refused.length > 0) {
+      throw new EnvironmentsError('ENVIRONMENTS_INVALID', refusedKeysMessage(refused), {
+        conflicts: refused.map(({ path, message }) => ({ path, message })),
+      });
+    }
 
     const conflicts = comparePatchBase(stored, base, patch);
     if (conflicts.length > 0) {

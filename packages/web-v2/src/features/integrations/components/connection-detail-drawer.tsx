@@ -22,6 +22,7 @@ import { AgentAccessControl } from "./agent-access-control";
 import { DeliveryLogViewer } from "./delivery-log-viewer";
 import { BindingReleaseRunnerField } from "./release-runner-field";
 import { STAGE_OPTIONS, StatusPill, scopeLabel } from "./status-pill";
+import { BindingVerifyProbeField, VERIFY_PROBE_SECTION } from "./verify-probe-field";
 
 /** Adaptive connection detail (ISS-402). Opened from a directory provider card;
  *  renders the provider's existing config+actions section (Test / Rotate /
@@ -216,11 +217,13 @@ function ConfigPane({
   projectId,
   stageFromCardKey,
   canEdit,
+  focus,
 }: {
   provider: string;
   projectId: string;
   stageFromCardKey: DeployStage | null;
   canEdit: boolean;
+  focus: string | null;
 }) {
   const binding = useBindingForCard(projectId, provider, stageFromCardKey);
   return (
@@ -236,6 +239,18 @@ function ConfigPane({
       {/* ISS-1275 — the binding tier of the release runner label, beside the other
           binding-scoped control on this pane. It renders itself away for a binding
           that carries no live stage. */}
+      {/* ISS-1339 r2 — what a release reads to learn the commit production serves, on every live
+          deploy binding whatever its provider; it renders itself away elsewhere. */}
+      {binding && (
+        <div className="mt-4">
+          <BindingVerifyProbeField
+            projectId={projectId}
+            binding={binding}
+            canEdit={canEdit}
+            focus={focus === VERIFY_PROBE_SECTION}
+          />
+        </div>
+      )}
       {binding && (
         <section className="mt-4">
           <BindingReleaseRunnerField
@@ -264,11 +279,14 @@ export function ConnectionDetailDrawer({
   statusReadError = null,
   statusReadFailedAt = 0,
   onRetryStatus,
+  focus = null,
 }: {
   projectId: string;
   card: StatusCard | null;
   onClose: () => void;
   canEdit?: boolean;
+  /** The section a link opened the drawer for, scrolled to and focused once it is drawn. */
+  focus?: string | null;
   /** Why the Integrations tab's last status read failed, said here so the open drawer stays open. */
   statusReadError?: string | null;
   /** When that read failed: a second failure with the same words is still a new one to show. */
@@ -339,6 +357,7 @@ export function ConnectionDetailDrawer({
                 projectId={projectId}
                 stageFromCardKey={stageFromCardKey}
                 canEdit={canEdit}
+                focus={focus}
               />
             ) : (
               <DeliveryLogPane
@@ -354,6 +373,7 @@ export function ConnectionDetailDrawer({
             projectId={projectId}
             stageFromCardKey={stageFromCardKey}
             canEdit={canEdit}
+            focus={focus}
           />
         )}
       </div>

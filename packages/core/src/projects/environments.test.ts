@@ -11,7 +11,8 @@ import {
   credentialFaults,
   environmentsPatchSchema,
   normalizeEnvironments,
-  retiredLiveKeysIn,
+  refusedKeysIn,
+  refusedKeysMessage,
 } from './environments.js';
 
 const EMPTY = {
@@ -89,22 +90,102 @@ describe('normalizeEnvironments — the live side', () => {
   });
 });
 
-describe('retiredLiveKeysIn — a patch naming the retired commit endpoint', () => {
+describe('refusedKeysIn — a patch naming a key the document does not take', () => {
+  const paths = (patch: Record<string, unknown>, stored: Record<string, unknown> = {}) =>
+    refusedKeysIn(patch, stored).map((r) => `${r.why} ${r.path}`);
+
   it.each([
-    [{ live: { commitUrl: 'https://api.x/health' } }, ['commitUrl']],
-    [{ live: { commitUrl: null } }, ['commitUrl']],
-    [{ live: { commitPath: null, url: 'https://app.x' } }, ['commitPath']],
-    [{ live: { commitUrl: null, commitPath: 'commit' } }, ['commitUrl', 'commitPath']],
-  ])('names the retired keys in %j', (patch, keys) => {
-    expect(retiredLiveKeysIn(patch)).toEqual(keys);
+    [{ live: { commitUrl: 'https://api.x/health' } }, ['retired live.commitUrl']],
+    [{ live: { commitUrl: null } }, ['retired live.commitUrl']],
+    [{ live: { commitPath: null, url: 'https://app.x' } }, ['retired live.commitPath']],
+    [
+      { live: { commitUrl: null, commitPath: 'commit' } },
+      ['retired live.commitUrl', 'retired live.commitPath'],
+    ],
+  ])('names the retired keys in %j, a null included', (patch, keys) => {
+    expect(paths(patch)).toEqual(keys);
   });
 
-  it.each([[{ live: { url: 'https://app.x' } }], [{ live: null }], [{ limits: 'x' }], [{}]])(
-    'names none in %j',
-    (patch) => {
-      expect(retiredLiveKeysIn(patch)).toEqual([]);
-    },
-  );
+  it.each([
+    [{ 'live.commitUrl': 'https://x.example/v' }, ['unknown live.commitUrl']],
+    [{ futureKnob: 1, limits: 'x' }, ['unknown futureKnob']],
+    [{ live: { url: 'https://app.x', region: 'eu' } }, ['unknown live.region']],
+    [
+      { preview: { url: 'https://p.x', commitUrl: 'https://p.x/v' } },
+      ['unknown preview.commitUrl'],
+    ],
+    [{ futureKnob: null }, ['unknown futureKnob']],
+  ])('names a key the document does not have in %j', (patch, keys) => {
+    expect(paths(patch)).toEqual(keys);
+  });
+
+  it.each([
+    [{ live: { url: 'https://app.x', apiUrl: null } }],
+    [{ preview: { url: null, apiUrl: 'https://p.x', urls: [] } }],
+    [{ preview: null, live: null }],
+    [
+      {
+        testCredentials: [
+          { label: 'a', username: 'u', password: 'p', note: 'rows keep what they carry' },
+        ],
+      },
+    ],
+    [{ limits: 'x' }],
+    [{}],
+  ])('names none in %j', (patch) => {
+    expect(paths(patch)).toEqual([]);
+  });
+
+  it('lets a null delete a stray the stored document holds, and only that', () => {
+    const stored = { futureKnob: 1, preview: { url: 'https://p.x', commitUrl: 'https://p.x/v' } };
+    expect(paths({ futureKnob: null, preview: { commitUrl: null } }, stored)).toEqual([]);
+    expect(paths({ futureKnob: 2 }, stored)).toEqual(['unknown futureKnob']);
+    expect(paths({ preview: { commitUrl: 'https://p.x/v2' } }, stored)).toEqual([
+      'unknown preview.commitUrl',
+    ]);
+    expect(paths({ otherKnob: null }, stored)).toEqual(['unknown otherKnob']);
+  });
+
+  it('refuses a retired live key sent as null even where it is stored', () => {
+    expect(
+      paths({ live: { commitUrl: null } }, { live: { commitUrl: 'https://api.x/v' } }),
+    ).toEqual(['retired live.commitUrl']);
+  });
+});
+
+describe('refusedKeysMessage — one refusal, each key named once', () => {
+  const count = (text: string, part: string) => text.split(part).length - 1;
+
+  it('names both retired keys once, and says nothing was written once', () => {
+    const said = refusedKeysMessage(
+      refusedKeysIn({ live: { commitUrl: 'a', commitPath: 'b' } }, {}),
+    );
+    expect(count(said, 'environments.live.commitUrl')).toBe(1);
+    expect(count(said, 'environments.live.commitPath')).toBe(1);
+    expect(count(said, 'Nothing was written.')).toBe(1);
+    expect(count(said, 'verify.probes')).toBe(1);
+    expect(said).toContain('were retired');
+  });
+
+  it('names an unknown key by its path beside the valid shape', () => {
+    const said = refusedKeysMessage(
+      refusedKeysIn({ 'live.commitUrl': 'x', live: { region: 'eu' } }, {}),
+    );
+    expect(said).toContain(
+      '`live.commitUrl` and `live.region` are not keys of the environments document',
+    );
+    expect(said).toContain(
+      '{ preview: { url, apiUrl, urls[] } | null, live: { url, apiUrl }, testCredentials[], limits }',
+    );
+    expect(count(said, 'Nothing was written.')).toBe(1);
+  });
+
+  it('says a retired key and an unknown one in one message', () => {
+    const said = refusedKeysMessage(refusedKeysIn({ live: { commitUrl: 'x' }, futureKnob: 1 }, {}));
+    expect(said).toContain('`environments.live.commitUrl` was retired');
+    expect(said).toContain('`futureKnob` is not a key of the environments document');
+    expect(count(said, 'Nothing was written.')).toBe(1);
+  });
 });
 
 describe('normalizeEnvironments — a READING, not the stored value', () => {

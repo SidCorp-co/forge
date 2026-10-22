@@ -14,6 +14,7 @@ import { useReleaseReadiness } from "../hooks";
 import { releaseAnswer } from "../shape-form";
 import type { ReleaseReadiness } from "../types";
 import { inlineCode } from "./inline-code";
+import { VERIFY_PROBE_SECTION } from "@/features/integrations/components/verify-probe-field";
 import { LIVE_DEPLOY_TARGET } from "./integrations-tab";
 
 /** Each gap as the reader of this page says it: what is missing and what that costs, never the key it is stored under. */
@@ -68,17 +69,23 @@ type Blocker = ReleaseReadiness["blockers"][number];
 /** Where the link beside a blocker goes: the setting that answers it, the issues at the statuses its
  *  sentence counts, the particular issues it names, or nowhere, where its sentence names no issue. */
 type BlockerLink =
-  | { kind: "setting"; tab: string; add?: string; label: string }
+  | { kind: "setting"; tab: string; add?: string; field?: string; label: string }
   | { kind: "statuses"; statuses: KernelIssueStatus[]; label: string }
   | { kind: "issues"; displayIds: string[] }
   | null;
 
-const setting = (tab: string, label: string, add?: string) => (): BlockerLink => ({
+const setting = (tab: string, label: string, add?: string, field?: string) => (): BlockerLink => ({
   kind: "setting",
   tab,
   label,
   ...(add ? { add } : {}),
+  ...(field ? { field } : {}),
 });
+
+/** A settings page's address, with the section an `add` or `field` link lands on. */
+function settingsHref(slug: string, tab: string, add?: string, field?: string): string {
+  return `/projects/${slug}/settings?tab=${tab}${add ? `&add=${add}` : ""}${field ? `&field=${field}` : ""}`;
+}
 
 /** How many of something the sentence counts, where its details carry them as a list or a number;
  *  null where they carry neither, and the sentence then speaks of them in the plural. */
@@ -110,7 +117,7 @@ function probesLink(b: Blocker): BlockerLink {
     bindings === 0
       ? `Correct ${urls === 0 ? "the probe's url" : probes}`
       : `Check ${steps}${urls > 0 ? ` and correct ${probes}` : ""}`;
-  return setting("integrations", label)();
+  return setting("integrations", label, undefined, VERIFY_PROBE_SECTION)();
 }
 
 const NO_LINK = (): BlockerLink => null;
@@ -195,7 +202,7 @@ function BlockerLinkView({ link, slug }: { link: BlockerLink; slug?: string }) {
   switch (link.kind) {
     case "setting":
       return (
-        <Link href={`/projects/${slug}/settings?tab=${link.tab}${link.add ? `&add=${link.add}` : ""}`} className={cls}>
+        <Link href={settingsHref(slug, link.tab, link.add, link.field)} className={cls}>
           {link.label}
         </Link>
       );
@@ -238,8 +245,8 @@ export function ReleaseAnswer({
   after?: ReactNode;
 }) {
   const q = useReleaseReadiness(projectId);
-  const tab = (t: string, add?: string) =>
-    slug ? `/projects/${slug}/settings?tab=${t}${add ? `&add=${add}` : ""}` : undefined;
+  const tab = (t: string, add?: string, field?: string) =>
+    slug ? settingsHref(slug, t, add, field) : undefined;
   const knowledgeHref = slug ? `/projects/${slug}/library?tab=knowledge&sub=rules` : undefined;
 
   if (q.isLoading) {
@@ -314,6 +321,13 @@ export function ReleaseAnswer({
                     className="text-accent-text hover:underline"
                   >
                     {ADD_LIVE_TARGET.label}
+                  </Link>
+                ) : g === "verify-probes" && tab("integrations") ? (
+                  <Link
+                    href={tab("integrations", undefined, VERIFY_PROBE_SECTION) as string}
+                    className="text-accent-text hover:underline"
+                  >
+                    Declare a probe on the live binding
                   </Link>
                 ) : tab("integrations") ? (
                   <Link href={tab("integrations") as string} className="text-accent-text hover:underline">

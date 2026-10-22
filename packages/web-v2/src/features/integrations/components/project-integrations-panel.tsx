@@ -197,13 +197,14 @@ export function ProjectIntegrationsPanel({
 }: {
   projectId: string;
   canEdit?: boolean;
-  /** A provider to open the drawer on, asked for from outside the list, and the stage to open it
-   *  at; cleared once opened. */
-  openProvider?: { provider: string; stage?: DeployStage } | null;
+  /** A provider to open the drawer on, asked for from outside the list, the stage to open it at and
+   *  the section to land on; cleared once opened. */
+  openProvider?: { provider: string; stage?: DeployStage; focus?: string } | null;
   onOpenProvider?: () => void;
 }) {
   const status = useIntegrationsStatus(projectId);
   const [selectedCard, setSelectedCard] = useState<StatusCard | null>(null);
+  const [focus, setFocus] = useState<string | null>(null);
   const cards = status.data?.cards ?? [];
   // A failed refresh keeps what the last read showed: the open drawer and both writes stay in view,
   // and the failure is said beside them rather than in place of them (ISS-1421 r13).
@@ -216,6 +217,7 @@ export function ProjectIntegrationsPanel({
     // The drawer reads the stage it opens at off the card's key suffix (`coolify:live`).
     const { stage } = openProvider;
     setSelectedCard(stage ? { ...card, key: `${openProvider.provider}:${stage}` } : card);
+    setFocus(openProvider.focus ?? null);
     onOpenProvider?.();
   }, [openProvider, cards, onOpenProvider]);
 
@@ -278,8 +280,12 @@ export function ProjectIntegrationsPanel({
       <ConnectionDetailDrawer
         projectId={projectId}
         card={liveCard(selectedCard, cards)}
-        onClose={() => setSelectedCard(null)}
+        onClose={() => {
+          setSelectedCard(null);
+          setFocus(null);
+        }}
         canEdit={canEdit}
+        focus={focus}
         statusReadError={readError}
         statusReadFailedAt={status.errorUpdatedAt}
         onRetryStatus={() => status.refetch()}

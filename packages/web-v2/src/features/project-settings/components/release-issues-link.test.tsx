@@ -163,7 +163,7 @@ const EVERY_CODE: Record<ReleaseBlockerCode, Planted> = {
 		links: [{ text: "Reconcile the release runner labels", href: "/projects/desk/settings?tab=integrations" }],
 	},
 	RELEASE_PROBES_UNREADABLE: {
-		links: [{ text: "Correct the probe's url", href: "/projects/desk/settings?tab=integrations" }],
+		links: [{ text: "Correct the probe's url", href: "/projects/desk/settings?tab=integrations&field=verify-probe" }],
 	},
 	RELEASE_POOL_EMPTY: { links: [{ text: "Assign a runner", href: "/projects/desk/settings?tab=runners" }] },
 	NO_RUNNER_ONLINE: { links: [{ text: "See the runners", href: "/projects/desk/settings?tab=runners" }] },
@@ -337,13 +337,35 @@ describe("a link beside a counted release sentence agrees with that count", () =
 			).map((l) => l.href);
 		expect(hrefs("NO_RUNNER_ONLINE", { runners: [{ deviceName: "box-a" }] })).toEqual([`${SETTINGS}?tab=runners`]);
 		expect(hrefs("RELEASE_PROBES_UNREADABLE", { urls: [], bindings: ["a", "b"] })).toEqual([
-			`${SETTINGS}?tab=integrations`,
+			`${SETTINGS}?tab=integrations&field=verify-probe`,
 		]);
 	});
 });
 
 // The coordinator saw an empty band and a second hairline between the last reason and the stranded
 // notice under it (ISS-1229 r7): the notice joins the list it follows, one divider between them.
+// ISS-1339 r2, judge-98: the probe gap's link opened Integrations at its top, where no field
+// declared a probe. It lands on the Verify probe section; the other binding gaps keep the tab.
+describe("the link beside a binding gap", () => {
+	it("opens the Verify probe section for the probe gap, and the tab for the others", () => {
+		readiness.mockReturnValue({
+			isLoading: false,
+			isError: false,
+			data: { ...blockedBy({ code: "NO_RELEASE_GATE", evaluated: true, message: "x", reader: "x" }), blockers: [], hasVerify: false, gaps: ["verify-probes", "rollback"] },
+		});
+		const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+		const { container } = render(
+			<QueryClientProvider client={client}>
+				<ReleaseAnswer projectId="p-1" slug="desk" />
+			</QueryClientProvider>,
+		);
+		expect(linksOf(container)).toEqual([
+			{ text: "Declare a probe on the live binding", href: `${SETTINGS}?tab=integrations&field=verify-probe` },
+			{ text: "Set it on the live binding", href: `${SETTINGS}?tab=integrations` },
+		]);
+	});
+});
+
 describe("a notice after the release answer", () => {
 	function drawAnswer(data: ReleaseReadiness) {
 		readiness.mockReturnValue({ isLoading: false, isError: false, data });
