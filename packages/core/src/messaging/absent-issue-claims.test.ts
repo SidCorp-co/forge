@@ -83,6 +83,14 @@ describe('a reply saying a key is not on the project', () => {
 
   it('reads a question or a condition about a held key as no claim that it is absent', () => {
     expect(room('What if ISS-1 is not on this project?').ok).toBe(true);
+    for (const asked of ['**ISS-1 is not on this project?**', '"ISS-1 is not on this project?"']) {
+      expect(keyMentions(asked, ['ISS'])[0]?.absent).toBe(false);
+      expect(room(asked).ok).toBe(true);
+      expect(room(asked.replace('ISS-1', 'ISS-999')).ok).toBe(false);
+      expect(ISSUE_REFERENCES_EXIST.check(asked.replace('ISS-1', 'ISS-999'), facts)).toHaveLength(
+        1,
+      );
+    }
     expect(room('If ISS-1 is not on this project, I can file it.').ok).toBe(true);
     expect(room('ISS-1 is not on this project if the import failed.').ok).toBe(true);
     expect(room('ISS-1 is not on this project, if the import failed.').ok).toBe(true);

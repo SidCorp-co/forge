@@ -83,7 +83,7 @@ export function keyMentions(text: string, prefixes: readonly string[] = []): Key
   for (const sentence of text.split(/(?<=[.!?])\s+|\n+/)) {
     for (const m of sentence.matchAll(issueTokenRe(prefixes))) {
       const at = m.index ?? 0;
-      const asserted = !/\?\s*$/.test(sentence) && !conditional(sentence, at);
+      const asserted = !/\?[\s*_`"”’)\]]*$/.test(sentence) && !conditional(sentence, at);
       const absent =
         asserted &&
         !NOT_NOW_OR_NARROWER.test(sentence) &&
