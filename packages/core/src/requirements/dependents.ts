@@ -37,6 +37,10 @@ export interface RequirementDependents {
    * weighed on (`release-batch/landed-build.ts:landedBuildHolds`); null on a project with one.
    */
   landedBuildHolds(projectId: string, issueIds: readonly string[]): Promise<LiveBuildHolds | null>;
+  /** The landing record that closed each issue standing closed (`release-batch/landing-records.ts`). */
+  landedRecordsOf(
+    issueIds: readonly string[],
+  ): Promise<ReadonlyMap<string, { branch: string; commit: string; at: string }>>;
 }
 
 const slot = portSlot<RequirementDependents>('requirements', 'provideRequirementDependents');

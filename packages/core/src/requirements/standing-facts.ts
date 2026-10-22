@@ -166,9 +166,11 @@ export async function issueCriteriaOf(
   const files = await filesOf(
     rows.flatMap((r) => ((r.evidence ?? []).length > 0 ? [r.issue_id] : [])),
   );
-  const verdictOf = (r: CriterionVerdictRow): StandingVerdict => {
+  const voidedOf = (r: CriterionVerdictRow): boolean => {
     const at = reopened.get(r.issue_id);
-    const voided = at && r.verdict_at && new Date(r.verdict_at).getTime() <= at.getTime();
+    return !!at && !!r.verdict_at && new Date(r.verdict_at).getTime() <= at.getTime();
+  };
+  const verdictOf = (r: CriterionVerdictRow, voided = voidedOf(r)): StandingVerdict => {
     return {
       verdict: voided ? null : r.verdict,
       verdictAt: voided || !r.verdict_at ? null : new Date(r.verdict_at),
@@ -191,7 +193,9 @@ export async function issueCriteriaOf(
       n: r.n,
       requirementCriterionId: r.requirement_criterion_id,
       ...verdictOf(r),
-      earlier: older.map(verdictOf).filter((v) => v.verdict !== null),
+      earlier: older.map((v) => verdictOf(v)).filter((v) => v.verdict !== null),
+      // kept beside the void for coverage to weigh on a landing (`standing-coverage.ts:standsAtLanding`)
+      ...(voidedOf(r) && r.verdict !== null ? { beforeReopen: verdictOf(r, false) } : {}),
     };
   });
 }
@@ -209,12 +213,14 @@ export async function liveBuildOf(
     .filter((r) => r.verdict !== null && r.verdict !== 'skipped');
   const commits = judged.flatMap((r) => (r.identity?.kind === 'commit' ? [r.identity.sha] : []));
   const runtimes = judged.flatMap((r) => (r.identity?.kind === 'runtime' ? [r.identity.ref] : []));
-  if (commits.length === 0 && runtimes.length === 0) return null;
+  const voidedAtCommit = rows.some((r) => r.beforeReopen?.identity?.kind === 'commit');
+  if (commits.length === 0 && runtimes.length === 0 && !voidedAtCommit) return null;
   // With no production environment each verdict is weighed on its own issue's landing instead.
   const landed = await requirementDependents().landedBuildHolds(projectId, [
     ...new Set(rows.map((r) => r.issueId)),
   ]);
   if (landed) return landed;
+  if (commits.length === 0 && runtimes.length === 0) return null;
   return requirementDependents().liveBuildHolds(projectId, { commits, runtimes });
 }
 

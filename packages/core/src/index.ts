@@ -146,7 +146,7 @@ import {
 } from './projects/index.js';
 import { startBoss, stopBoss } from './queue/boss.js';
 import {
-  landedBuildHolds,
+  landingReads,
   liveBuildHolds,
   provideReleaseBatchPorts,
   registerDeployWorker,
@@ -347,7 +347,7 @@ provideRequirementDependents({
   proposeDuplicate: proposeRequirementDuplicate,
   releaseLeg: releaseLegFor,
   liveBuildHolds,
-  landedBuildHolds,
+  ...landingReads,
 });
 provideKeptPreviewWriter({ write: writeKeptPreview });
 provideRoomSettleWriter(roomSettleWriter);

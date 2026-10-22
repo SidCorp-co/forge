@@ -11,7 +11,8 @@
  * (`issues/mark-trail.ts`). None of them is no landed build, named, never a guess. A judgement counts
  * on it only where it was judged at that very commit. One at an earlier commit judged another build,
  * even a branch head before the merge whose tree is the same; one at a later head judged a newer
- * build, and counts only on a record made at that head.
+ * build, and counts only on a record made at that head. Before that record, the steward and coverage
+ * read such a head as the build where every live criterion passes there (`aheadBuildsOf`).
  */
 
 import { type JudgedBuild, verdictEarns } from '@forge/contracts/verdict-identity';
@@ -25,7 +26,7 @@ import {
   type StandingCriterion,
   standingCriteriaOf,
 } from '../issues/index.js';
-import type { AncestryPair } from '../runners/index.js';
+import { type AncestryPair, pairKey } from '../runners/index.js';
 import { RELEASE_RECORD_SOURCE } from './claim-conflicts.js';
 import { resolveReleaseDeclaration } from './gate.js';
 import { ancestryOf, type JudgedBuildDeps } from './judged-build.js';
@@ -36,7 +37,7 @@ const WHOLE = /^[0-9a-f]{40}$/;
 export const LANDED_VERIFICATION = 'landed';
 
 export type LandedBuild =
-  | { sha: string; from: 'record' | 'merge' | 'mark'; basis: string }
+  | { sha: string; from: 'record' | 'merge' | 'mark' | 'ahead'; basis: string }
   | { sha: null; why: string };
 
 /**
@@ -237,6 +238,51 @@ export async function landedStandings(
   });
 }
 
+/**
+ * Before a record, the build each issue will be recorded at, as the steward and coverage read it.
+ * Where every live criterion of an issue not yet recorded stands on a counting pass at one commit,
+ * and that commit contains the landing its merge names (read through the same ancestry reader the
+ * record uses), that commit is the build: the record a master makes there will count every one of
+ * them. A pass split across commits, or at a commit not containing the landing, leaves the landing
+ * as it was. A recorded landing is never moved.
+ */
+export async function aheadBuildsOf(
+  projectId: string,
+  builds: ReadonlyMap<string, LandedBuild>,
+): Promise<Map<string, LandedBuild>> {
+  const out = new Map(builds);
+  const open = [...builds].filter(([, b]) => b.sha !== null && b.from !== 'record');
+  if (open.length === 0) return out;
+  const standing = await standingCriteriaOf(open.map(([id]) => id));
+  const ahead = new Map<string, { landing: string; sha: string }>();
+  for (const [issueId, build] of open) {
+    const s = standing.get(issueId);
+    if (!s?.owes || s.criteria.length === 0 || build.sha === null) continue;
+    const at = s.criteria.map(({ verdict }) => {
+      if (!verdict || verdict.unverified || !verdictEarns(verdict.verdict)) return null;
+      const judged = judgedCommit(verdict);
+      return 'sha' in judged ? judged.sha : null;
+    });
+    const one = at[0];
+    if (!one || one === build.sha || at.some((sha) => sha !== one)) continue;
+    ahead.set(issueId, { landing: build.sha, sha: one });
+  }
+  if (ahead.size === 0) return out;
+  const held = await readHolding(
+    projectId,
+    [...ahead.values()].map((a) => holdingPair(a.landing, a.sha)),
+  );
+  for (const [issueId, { landing, sha }] of ahead) {
+    if (held.get(pairKey(holdingPair(landing, sha))) !== true) continue;
+    out.set(issueId, {
+      sha,
+      from: 'ahead',
+      basis: `every live criterion passes at \`${short(sha)}\`, which contains the landing its merge names (\`${short(landing)}\`), so a landing recorded at \`${short(sha)}\` counts them`,
+    });
+  }
+  return out;
+}
+
 /** The live criteria the issue's design plans a proof for, by number. */
 async function proofPlanned(issueId: string): Promise<number[]> {
   const rows = (await db.execute(sql`
@@ -264,7 +310,8 @@ export async function landedReopenRefusal(issueId: string): Promise<string | nul
     .limit(1);
   if (row?.status !== 'awaiting_release') return null;
   if (!(await landsAsDelivery(row.projectId))) return null;
-  const build = (await landedBuildsOf([issueId])).get(issueId.toLowerCase());
+  const landed = await landedBuildsOf([issueId]);
+  const build = (await aheadBuildsOf(row.projectId, landed)).get(issueId.toLowerCase());
   if (!build?.sha) return null;
   const sha = build.sha;
   const [standing] = await landedStandings([issueId], () => sha);
@@ -304,7 +351,8 @@ export async function landedBuildHolds(
   landed: Map<string, LandedHolds>;
 } | null> {
   if (!(await landsAsDelivery(projectId))) return null;
-  const builds = await landedBuildsOf([...new Set(issueIds.map((id) => id.toLowerCase()))]);
+  const ids = [...new Set(issueIds.map((id) => id.toLowerCase()))];
+  const builds = await aheadBuildsOf(projectId, await landedBuildsOf(ids));
   const landed = new Map<string, LandedHolds>();
   for (const [issueId, build] of builds) {
     landed.set(issueId, { sha: build.sha, why: build.sha === null ? build.why : null });

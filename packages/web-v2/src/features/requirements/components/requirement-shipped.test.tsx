@@ -3,7 +3,7 @@
 
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { IssueShippedLink, RequirementShipped } from "./requirement-facts";
+import { IssueLandedIn, IssueShippedLink, RequirementShipped } from "./requirement-facts";
 
 vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble());
 
@@ -28,5 +28,13 @@ describe("the releases that shipped a requirement", () => {
   it("links an issue to the release that shipped it", () => {
     render(<IssueShippedLink shippedIn={R72} slug="forge" />);
     expect(screen.getByRole("link", { name: "Shipped in 0.4.0-dev.72" }).getAttribute("href")).toBe("/projects/forge/releases/0.4.0-dev.72");
+  });
+
+  it("names an issue's landing by branch and commit, with no version and no release link", () => {
+    render(<IssueLandedIn landedIn={{ branch: "release/stg", commit: "7a5c0cd8d0fe2f0a9934934d75ce68f5148894f4" }} />);
+    const landed = screen.getByTestId("rail-issue-landed");
+    expect(landed.textContent).toBe("release/stg@7a5c0cd");
+    expect(landed.getAttribute("title")).toBe("Landed on release/stg at 7a5c0cd — no environment");
+    expect(screen.queryByRole("link")).toBeNull();
   });
 });
