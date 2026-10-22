@@ -13,6 +13,7 @@ import type {
   RequirementCoverage,
 } from '@forge/contracts/requirements';
 import {
+  landedIdentityWhy,
   type StorefrontDraftPart,
   storefrontDraftsPhrase,
   verdictExercised,
@@ -110,6 +111,23 @@ interface CoverageInput {
 
 const short = (sha: string) => sha.slice(0, 12);
 
+/** What the identity names, as the record door spells it (`issues/criteria-verdicts.ts`). */
+function identityValue(identity: CoverageIdentity): string {
+  switch (identity.kind) {
+    case 'commit':
+    case 'commit_unresolved':
+      return identity.sha;
+    case 'runtime':
+      return identity.ref;
+    case 'design':
+      return `${identity.workflow} rev ${identity.revision}`;
+    case 'contract':
+      return `${identity.ref}@${identity.version}`;
+    case 'storefront_draft':
+      return `${storefrontDraftsPhrase(identity.drafts)} on ${identity.environment}`;
+  }
+}
+
 /** The identity in the words a reader sees beside the verdict. */
 function identityWords(identity: CoverageIdentity | null): string | null {
   if (!identity) return null;
@@ -174,16 +192,16 @@ function resolve(
   const none = (why: string): Resolved => ({ commit: null, inLiveBuild: null, notCounted: why });
   if (!identity) return none('it names nothing it was judged against');
   const landed = live?.landed;
+  if (landed) {
+    if (identity.kind === 'commit') {
+      return atLanding(identity.sha, landed.get(issueId.toLowerCase()) ?? null);
+    }
+    return none(landedIdentityWhy(identity.kind, identityValue(identity)) as string);
+  }
   switch (identity.kind) {
     case 'commit':
-      if (landed) return atLanding(identity.sha, landed.get(issueId.toLowerCase()) ?? null);
       return atCommit(identity.sha, `commit ${short(identity.sha)}`);
     case 'runtime': {
-      if (landed) {
-        return none(
-          `judged on runtime ${short(identity.ref)}, and with no production environment only a verdict at the issue's landed commit counts`,
-        );
-      }
       const ref = identity.ref.toLowerCase();
       const served = live?.runtimes.get(ref);
       if (served)
