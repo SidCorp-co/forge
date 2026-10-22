@@ -148,7 +148,7 @@ describe('which refusal a caller meets', () => {
       name: 'GitHubAgentRefusal',
       reason: 'no_binding',
     });
-    await expect(resolveGrantedGitHubBinding(PROJECT)).rejects.toThrow(/Integrations page/);
+    await expect(resolveGrantedGitHubBinding(PROJECT)).rejects.toThrow(/Integrations tab/);
   });
 
   it('a github binding is found past another provider s, so a coolify row is not mistaken for none', async () => {

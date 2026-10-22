@@ -104,7 +104,7 @@ export async function mintGitCredentialForDevice(args: {
   if (!row) {
     throw new GitCredentialError(
       404,
-      `no active GitHub App binding for ${full} on any project this device runs — bind the repository on the project's Integrations page, and assign this device a runner there`,
+      `no active GitHub App binding for ${full} on any project this device runs — bind the repository on the project's Integrations tab, and assign this device a runner there`,
     );
   }
 

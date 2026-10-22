@@ -40,7 +40,7 @@ import {
   testConnection,
 } from './connection-routes-reference.js';
 import { healthAnswer } from './health-words.js';
-import { isRemovedConnection } from './held-key.js';
+import { isRemovedConnection, MANAGES_IT } from './held-key.js';
 import { ownerNamesOf } from './owner-names.js';
 import { raceWithTimeout } from './probe.js';
 import {
@@ -222,7 +222,7 @@ integrationConnectionsRoutes.post(
     // user-owned: owner-only; org-owned: org admin (not-found for outsiders).
     const connection = await loadManageableConnection(id, userId);
     // A binding to a removed connection resolves nothing (ISS-1421 r22).
-    await assertNotRemoved(connection, 'shared');
+    await assertNotRemoved(connection, 'shared', MANAGES_IT);
     const body = c.req.valid('json');
     // Admin on the target project (mirrors the create path's authorization).
     const role = await assertProjectMember(body.projectId, userId);
@@ -332,7 +332,7 @@ integrationConnectionsRoutes.post('/:id/test', ...testConnection, async (c) => {
   const userId = c.get('userId');
   const connection = await loadManageableConnection(id, userId);
   // A removed connection holds nothing a check could pass, so none is recorded (ISS-1421 r22).
-  await assertNotRemoved(connection, 'tested');
+  await assertNotRemoved(connection, 'tested', MANAGES_IT);
 
   // listBindingsForConnection is newest-first; walk from the back for the
   // oldest active binding (health-sweep / resolver ordering).
@@ -444,7 +444,7 @@ integrationConnectionsRoutes.patch(
 
 /** Turning on a connection that holds no key: removing it wiped its keys. */
 async function noKeyRefusal(connection: Parameters<typeof turnsBackOn>[0]): Promise<string> {
-  return `This connection holds no key, as removing it wiped its keys. ${await turnsBackOn(connection)}`;
+  return `This connection holds no key, as removing it wiped its keys. ${await turnsBackOn(connection, MANAGES_IT)}`;
 }
 
 /** The connection a delete names, where a connection no longer there answers as gone. */

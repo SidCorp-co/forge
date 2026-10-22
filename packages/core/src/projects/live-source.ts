@@ -68,7 +68,7 @@ function noCredential(repoUrl: string | null): Refused {
     };
   }
   const host = hostOf(repoUrl);
-  const github = host === 'github.com' ? '. Or bind the repository on its Integrations page' : '';
+  const github = host === 'github.com' ? '. Or bind the repository on its Integrations tab' : '';
   return {
     cause: `Forge cannot read this project's repository on ${host}, since it holds no GitHub binding and no deploy key`,
     clears: `attach a deploy key with ${KEY_ACCESS} to ${repoUrl.trim()} under ${GIT_ACCESS}. ${READ_ACCESS_IS}${github}`,

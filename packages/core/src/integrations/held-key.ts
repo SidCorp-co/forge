@@ -62,6 +62,30 @@ export function takesTheApp(
     : project.orgIsPersonal;
 }
 
+/** What the asker may do, so a way back offers no act they would be refused (ISS-1421 r25). */
+export interface RemovedReader {
+  manages: boolean;
+  savesKey: boolean;
+  installsHere: boolean;
+}
+
+/** The connection's own routes admit its managers alone. */
+export const MANAGES_IT: RemovedReader = { manages: true, savesKey: true, installsHere: false };
+
+function managersOf(connection: { ownerType: 'user' | 'org' }): string {
+  return connection.ownerType === 'org'
+    ? 'Only an owner or admin of the organization that owns it'
+    : 'Only its owner';
+}
+
+function byWhoMay(may: boolean, connection: { ownerType: 'user' | 'org' }, act: string): string {
+  return may ? act : `${managersOf(connection)} can ${act.charAt(0).toLowerCase()}${act.slice(1)}`;
+}
+
+export function clearIt(connection: { ownerType: 'user' | 'org' }, reader: RemovedReader): string {
+  return byWhoMay(reader.manages, connection, 'Clear it from the list on the Integrations page.');
+}
+
 /**
  * The way back of a removed connection whose key comes by an install: from a bound project whose App
  * would belong to the connection's owner, which is this one only where it is (ISS-1421 r23).
@@ -69,16 +93,21 @@ export function takesTheApp(
 export function turnsBackOnFrom(
   connection: { provider: string; ownerType: 'user' | 'org'; ownerId: string },
   bound: readonly BoundProject[],
+  reader: RemovedReader,
   askedFrom?: string,
 ): string {
   const install = getIntegration(connection.provider)?.noKeyTurnsBackOn;
-  if (!install) return 'Save a new key to turn it back on.';
+  if (!install) return byWhoMay(reader.savesKey, connection, 'Save a new key to turn it back on.');
+  const clear = clearIt(connection, reader);
   const here = bound.find((p) => p.projectId === askedFrom);
-  if (here && takesTheApp(connection, here)) return install.fromHere;
+  if (here && takesTheApp(connection, here)) {
+    return byWhoMay(reader.installsHere, connection, install.fromHere);
+  }
   // "None of them" already covers this one, and saying both told the reader twice (ISS-1421 r24).
   if (bound.some((p) => takesTheApp(connection, p))) {
-    return here ? `${install.notFromHere} ${install.fromBound}` : install.fromBound;
+    const fromBound = byWhoMay(reader.manages, connection, install.fromBound);
+    return here ? `${install.notFromHere} ${fromBound}` : fromBound;
   }
-  if (bound.length > 0) return install.noneTakesIt;
-  return 'No project is bound to it, so nothing can turn it back on. Clear it from the list on the Integrations page.';
+  if (bound.length > 0) return `${install.noneTakesIt} ${clear}`;
+  return `No project is bound to it, so nothing can turn it back on. ${clear}`;
 }

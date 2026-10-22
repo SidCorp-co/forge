@@ -157,7 +157,7 @@ export function buildRepoClient(args: {
   if (!owner || !repo) {
     throw new GitHubClientError(
       'no_repository',
-      `the GitHub binding on this project names no owner/repo — pick the repository on its Integrations page`,
+      `the GitHub binding on this project names no owner/repo — pick the repository on its Integrations tab`,
     );
   }
   const fullName = `${owner}/${repo}`;
@@ -307,7 +307,7 @@ export async function githubRepoClient(projectId: string): Promise<GitHubRepoCli
   if (!binding) {
     throw new GitHubClientError(
       'no_binding',
-      `this project has no active GitHub binding — bind a repository on its Integrations page`,
+      `this project has no active GitHub binding — bind a repository on its Integrations tab`,
     );
   }
   const connection = await findConnectionById(binding.connectionId);
