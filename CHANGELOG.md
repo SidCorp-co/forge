@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.274] - 2026-10-22
+
+The issue rail shows each design's own decision; over-cap design waits refused by name
+
+### Fixed
+
+- **An issue's rail reads the decision on each design it drew.** A revision returned under an issue now reads Returned rather than the workflow's later Approved, and a park naming more than 20 designs is refused naming the cap.
+
 ## [0.4.0-dev.273] - 2026-10-22
 
 Issues proposing several designs now keep and show every design
