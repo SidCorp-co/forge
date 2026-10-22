@@ -17,6 +17,7 @@ import {
   agentAccessTier,
   noAgentPathMessage,
 } from './agent-access.js';
+import { checkBindingHealth } from './binding-health.js';
 import {
   cannotDeployMessage,
   checkRoleStagesPairing,
@@ -40,7 +41,7 @@ import {
   testConnection,
 } from './connection-routes-reference.js';
 import { healthAnswer } from './health-words.js';
-import { isRemovedConnection, MANAGES_IT } from './held-key.js';
+import { holdsKey, isRemovedConnection, keyIn, MANAGES_IT } from './held-key.js';
 import { ownerNamesOf } from './owner-names.js';
 import { raceWithTimeout } from './probe.js';
 import {
@@ -84,7 +85,6 @@ import {
   turnsBackOn,
 } from './route-helpers.js';
 import {
-  buildContextFromBinding,
   clearRemovedConnection,
   createBinding,
   createConnection,
@@ -95,7 +95,6 @@ import {
   updateConnection,
 } from './store.js';
 import type { IntegrationProvider } from './types.js';
-import { decryptJson } from './vault.js';
 
 /**
  * The connection and how the caller reaches it, or the refusal that names why not. Reach decides
@@ -355,10 +354,7 @@ integrationConnectionsRoutes.post('/:id/test', ...testConnection, async (c) => {
   // Time-boxed like the health sweep — a blackholed provider must not pin the
   // HTTP request open indefinitely. A timeout is reported as a truthful error
   // result, not a 5xx (the adapter keeps running and persists its own outcome).
-  const result = await raceWithTimeout(
-    adapter.healthcheck(buildContextFromBinding(pair)),
-    TEST_PROBE_TIMEOUT_MS,
-  );
+  const result = await raceWithTimeout(checkBindingHealth(adapter, pair), TEST_PROBE_TIMEOUT_MS);
   const provider = pair.binding.provider;
   if (result === null) {
     return c.json(
@@ -400,7 +396,7 @@ integrationConnectionsRoutes.patch(
       const merged = await applySecretsPatch({
         provider: existing.provider,
         rawSecrets: patch.secrets,
-        secretsEnc: existing.secretsEnc,
+        connection: existing,
         // Historical order on this path: vault guard fires before the parse.
         vaultGuardTiming: 'before-parse',
       });
@@ -410,13 +406,11 @@ integrationConnectionsRoutes.patch(
     // A deleted connection holds no key, and turning it on again takes a new one (ISS-1421 r20):
     // the key itself, not another secret saved beside it.
     const primary = getIntegration(existing.provider)?.schemas.primaryCredentialField;
-    const held =
-      connPatch.secrets !== undefined
-        ? connPatch.secrets
-        : existing.secretsEnc
-          ? decryptJson<Record<string, unknown>>(existing.secretsEnc)
-          : null;
-    const keyed = !primary || (typeof held?.[primary] === 'string' && held[primary] !== '');
+    const keyed =
+      !primary ||
+      (connPatch.secrets !== undefined
+        ? keyIn(existing.provider, connPatch.secrets)
+        : holdsKey(existing));
     if (patch.active === true && !keyed) {
       throw new HTTPException(409, {
         message: await noKeyRefusal(existing),

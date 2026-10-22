@@ -4,9 +4,11 @@ import { fieldsNamedAt } from '../lib/unknown-fields.js';
 import { fieldsNear, schemaRefusalWords } from '../lib/zod-sentences.js';
 import { AGENT_ACCESS_VALUES } from './agent-access.js';
 import { bindingShapeFields, checkBindingShape, stagesSchema } from './binding-shape.js';
+import { CredentialUnreadable, SEND_WHOLE } from './credential-unreadable.js';
 import { getIntegration, providerNames } from './registry.js';
 import { mergeRotatedSecrets } from './rotation.js';
 import { assertVaultConfigured, badRequest } from './route-helpers.js';
+import type { IntegrationConnectionRow } from './store.js';
 import type { IntegrationDeclaration } from './types.js';
 
 /** The sentence a caller gets for a provider this deployment does not declare. */
@@ -233,10 +235,31 @@ export function connectionConfigSchemaForProvider(provider: string): z.ZodTypeAn
   return decl.schemas.connectionPatchConfig;
 }
 
+/**
+ * The secrets a patch merges over, or `null` where none are stored. A stored credential this
+ * server's key cannot open has nothing to merge with: a patch carrying the whole credential
+ * replaces it (`'replaced'`), and one carrying part of it is refused, since the rest is lost.
+ */
+async function storedSecretsOrWhole(
+  decl: IntegrationDeclaration,
+  connection: IntegrationConnectionRow,
+  incoming: Record<string, unknown>,
+): Promise<Record<string, unknown> | null | 'replaced'> {
+  if (!connection.secretsEnc) return null;
+  const { decryptConnectionSecrets } = await import('./store.js');
+  try {
+    return decryptConnectionSecrets(connection);
+  } catch (err) {
+    if (!(err instanceof CredentialUnreadable)) throw err;
+    if (decl.schemas.secrets.safeParse(incoming).success) return 'replaced';
+    throw new CredentialUnreadable(err.credential, SEND_WHOLE);
+  }
+}
+
 export async function applySecretsPatch(opts: {
   provider: string;
   rawSecrets: Record<string, unknown>;
-  secretsEnc: Buffer | null;
+  connection: IntegrationConnectionRow;
   vaultGuardTiming: 'before-parse' | 'on-secret-input';
 }): Promise<Record<string, unknown> | undefined> {
   const decl = getIntegration(opts.provider);
@@ -263,9 +286,8 @@ export async function applySecretsPatch(opts: {
   const hasSecretInput = typeof incoming[primaryField] === 'string' || secondaryFields.length > 0;
   if (!hasSecretInput) return undefined;
   if (opts.vaultGuardTiming === 'on-secret-input') assertVaultConfigured();
-  const currentSecrets = opts.secretsEnc
-    ? (await import('./vault.js')).decryptJson<Record<string, unknown>>(opts.secretsEnc)
-    : null;
+  const currentSecrets = await storedSecretsOrWhole(decl, opts.connection, incoming);
+  if (currentSecrets === 'replaced') return incoming;
   const merged = mergeRotatedSecrets(decl, currentSecrets, incoming);
   if (merged) {
     for (const field of secondaryFields) merged[field] = incoming[field];

@@ -10,6 +10,7 @@ import {
   integrationOwnerTypes,
 } from '../db/schema.js';
 import { AGENT_ACCESS_VALUES } from './agent-access.js';
+import { UNREADABLE_WHEN } from './credential-unreadable.js';
 import { badRequest } from './route-helpers.js';
 import { INTEGRATION_PROVIDERS } from './types.js';
 
@@ -261,10 +262,11 @@ export const updateIntegration = onBinding(
         'the caller is not a project admin, or is not an org admin where the credential is org-owned or a direct agent grant is asked',
       ),
       404: noSuchBinding,
-      409: fail(
-        'CONNECTION_REMOVED',
-        'the binding was switched on over a removed connection, which holds no key to resolve',
-      ),
+      409: fail({
+        CONNECTION_REMOVED:
+          'the binding was switched on over a removed connection, which holds no key to resolve',
+        CREDENTIAL_UNREADABLE: `${UNREADABLE_WHEN}, and only part of a new one was sent`,
+      }),
       503: vaultMissing,
     },
   }),
@@ -300,7 +302,10 @@ export const listRocketchatRooms = onProject(
       200: json(roomsSchema),
       403: noRoleOnProject,
       404: noSuchBinding,
-      409: fail('MISSING_CREDENTIALS', 'the stored connection has no server url or credentials'),
+      409: fail({
+        MISSING_CREDENTIALS: 'the stored connection has no server url or credentials',
+        CREDENTIAL_UNREADABLE: UNREADABLE_WHEN,
+      }),
     },
   }),
 );

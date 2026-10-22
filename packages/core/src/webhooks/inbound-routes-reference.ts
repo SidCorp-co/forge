@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { describeOperation, fail, json } from '../api-reference/declare/describe.js';
 import { bindingRoles } from '../db/schema.js';
+import { UNREADABLE_WHEN } from '../integrations/credential-unreadable.js';
 
 /** The slug names a project. One that names none is a 404, so any string is a legal request. */
 export const webhookSlugParamSchema = z.object({ slug: z.string() });
@@ -43,6 +44,7 @@ export const receiveWebhook = describeOperation({
       INVALID_SIGNATURE: 'no secret held for the delivery verifies its signature',
     }),
     404: fail('NOT_FOUND', 'no project has this slug'),
+    409: fail('CREDENTIAL_UNREADABLE', UNREADABLE_WHEN),
     500: fail('HANDLER_FAILED', 'the provider adapter threw while handling the delivery'),
   },
 });

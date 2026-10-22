@@ -21,6 +21,7 @@ import { effectiveProjectRole, orgRoleAtLeast } from '../lib/authz.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { AGENT_ACCESS_CLOSED, type AgentAccess } from './agent-access.js';
+import { checkBindingHealth } from './binding-health.js';
 import { registerCoolifyDeployRoutes } from './coolify/routes.js';
 import { findDeliveryById } from './deliveries.js';
 import { healthAnswer } from './health-words.js';
@@ -264,7 +265,7 @@ integrationsRoutes.patch(
       mergedSecrets = await applySecretsPatch({
         provider: binding.provider,
         rawSecrets: patch.secrets,
-        secretsEnc: connection.secretsEnc,
+        connection,
         // Historical order on this path: the vault guard is skipped for a
         // config-only PATCH (no credential fields).
         vaultGuardTiming: 'on-secret-input',
@@ -341,7 +342,7 @@ integrationsRoutes.post('/:projectId/integrations/:id/test', ...testIntegration,
       cause: { code: 'NO_ADAPTER' },
     });
   }
-  const result = await adapter.healthcheck(buildContextFromBinding(existing));
+  const result = await checkBindingHealth(adapter, existing);
   return c.json(answer(healthResultSchema, healthAnswer(existing.binding.provider, result)));
 });
 
