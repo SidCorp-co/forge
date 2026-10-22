@@ -9,7 +9,7 @@
 
 import { useRef, useState } from "react";
 import { Icon } from "@/design";
-import { composerRefusal, scopeDerivation, unansweringAgentLines } from "../membership";
+import { composerRefusal, scopeDerivation, unansweringAgentLines, whereWhyIsSaid } from "../membership";
 import type { ConversationMembership } from "../types";
 
 export function ScopeNotice({
@@ -68,7 +68,7 @@ export function ScopeNotice({
       {shown && (
         <div className="forge-fade mt-1.5 pl-[21px]">
           <p className="fg-caption text-subtle">{scopeDerivation({ scopeProjects })}</p>
-          {unansweringAgentLines(room).map((line) => (
+          {unansweringAgentLines(room, whereWhyIsSaid(room, canPost) === "box").map((line) => (
             <p key={line} className="fg-caption mt-1 text-muted" data-testid="scope-notice-unanswering">
               {line}
             </p>

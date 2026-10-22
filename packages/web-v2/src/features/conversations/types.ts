@@ -72,6 +72,8 @@ export interface ConversationMessage {
    * The ordered canonical blocks of this turn, where it has them.
    */
   blocks?: CanonicalBlock[] | null;
+  /** The draft the reply check withdrew before this reply, kept so a reload still says so (ISS-1229 r36). */
+  withdrawnDraft?: string | null;
   /** Set INSTEAD of text: this turn ran and chose to say nothing. */
   silenceReason: string | null;
   createdAt: string;
@@ -157,6 +159,13 @@ export interface HandleCandidate {
 export interface BeyondReach {
   named: ConversationProject[];
   unnamed: number;
+}
+
+export interface RoomOpener {
+  projectId: string;
+  handle: string;
+  reachable: boolean;
+  blocked: "lost-role" | "taken" | "nameless" | null;
 }
 
 export interface ConversationCandidates {

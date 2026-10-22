@@ -16,7 +16,12 @@ import {
 import { effectiveProjectRole, projectRoleAtLeast } from '../lib/authz.js';
 import { personName } from '../lib/person-name.js';
 import type { Executor, TxOnly } from './db-executor.js';
-import { agentHoldingHandle, existingProjectHandle, handleNameForProject } from './handles.js';
+import {
+  agentHoldingHandle,
+  existingProjectHandle,
+  handleNameForProject,
+  unmintedOpening,
+} from './handles.js';
 import { conversationTransport } from './ports.js';
 import { roomRefusal } from './room-refusal.js';
 import { appendMessagesIn } from './store.js';
@@ -342,6 +347,74 @@ export async function addableHandles(
     }
   }
   return out.sort((a, b) => a.handle.localeCompare(b.handle));
+}
+
+/**
+ * A project a room could be opened on, the agent it would start with, and whether opening it would
+ * succeed: `blocked` names why not, the agent having lost its role there or its address being another
+ * agent's, as `resolveProjectHandle` would refuse it.
+ */
+export interface RoomOpener {
+  projectId: string;
+  handle: string;
+  reachable: boolean;
+  blocked: 'lost-role' | 'taken' | 'nameless' | null;
+}
+
+/**
+ * Every project this caller may open a room on (the member role or above, not archived), each with the
+ * handle of its own agent and whether that agent still holds its role there, so a room that could only
+ * be refused is marked before it is picked (ISS-1229 r36, judge-97). An agent not minted yet answers.
+ */
+export async function roomOpeners(
+  actorUserId: string,
+  tx: Executor = defaultDb,
+): Promise<RoomOpener[]> {
+  const [byOrg, byProject] = await Promise.all([
+    tx
+      .select({ id: projects.id, slug: projects.slug, orgId: projects.orgId })
+      .from(projects)
+      .innerJoin(
+        organizationMembers,
+        and(
+          eq(organizationMembers.orgId, projects.orgId),
+          eq(organizationMembers.userId, actorUserId),
+        ),
+      )
+      .where(isNull(projects.archivedAt)),
+    tx
+      .select({ id: projects.id, slug: projects.slug, orgId: projects.orgId })
+      .from(projects)
+      .innerJoin(
+        projectMembers,
+        and(eq(projectMembers.projectId, projects.id), eq(projectMembers.userId, actorUserId)),
+      )
+      .where(isNull(projects.archivedAt)),
+  ]);
+  const seen = new Set<string>();
+  const out: RoomOpener[] = [];
+  for (const project of [...byOrg, ...byProject]) {
+    if (seen.has(project.id)) continue;
+    seen.add(project.id);
+    const access = await effectiveProjectRole(actorUserId, project.id);
+    if (!projectRoleAtLeast(access?.role ?? null, 'member')) continue;
+    const existing = await existingProjectHandle(tx, project.id);
+    if (existing) {
+      // An agent carrying no handle is refused HANDLE_HAS_NO_NAME by `namedHandle` on opening.
+      const nameless = !existing.handle;
+      out.push({
+        projectId: project.id,
+        handle: existing.handle ?? handleNameForProject(project.slug, project.id),
+        reachable: !nameless,
+        blocked: nameless ? 'nameless' : null,
+      });
+      continue;
+    }
+    const opening = await unmintedOpening(tx, project);
+    const blocked = opening.kind === 'mint' ? null : opening.kind;
+    out.push({ projectId: project.id, handle: opening.handle, reachable: !blocked, blocked });
+  }
+  return out;
 }
 
 /**

@@ -21,6 +21,7 @@ import {
 import { ConversationDock } from "@/features/conversations/components/conversation-dock";
 import { ConversationPanel } from "@/features/conversations/components/conversation-panel";
 import { useConversationDock } from "@/features/conversations/use-conversation-dock";
+import { agentPanelName, startsRooms } from "@/features/conversations/membership";
 import { useLocationSearch } from "@/lib/utils/use-location-search";
 import { ForgeUnreached } from "@/features/auth/forge-unreached";
 import { useSignInRedirect } from "@/features/auth/use-sign-in-redirect";
@@ -197,6 +198,11 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
     () => (railSlug ? projects?.find((p) => p.slug === railSlug) ?? null : null),
     [projects, railSlug],
   );
+  // A reader who may start no room where the panel opens is offered it as Conversations, never Ask (r36).
+  const mayStartHere = railProject ? startsRooms(railProject.role) : scopedProjects.some((p) => startsRooms(p.role));
+  const openAProject = mayStartHere
+    ? { title: "Ask agent", description: "Open a project to ask the agent.", tone: "info" as const }
+    : { title: "Conversations", description: "Open a project to read its conversations.", tone: "info" as const };
 
   // ⌘K / Ctrl-K toggles the command palette.
   useEffect(() => {
@@ -296,7 +302,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
     // the proj- route check so they never fall through to navigate() (ISS-681).
     if (key === "chat") {
       if (railProject) setChatOpen((v) => !v);
-      else toast({ title: "Ask agent", description: "Open a project to ask the agent.", tone: "info" });
+      else toast(openAProject);
       return;
     }
     if (key === "switcher") {
@@ -461,11 +467,8 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
                 : toast({ title: "New issue", description: "Open a project to create an issue.", tone: "info" })
             }
             askAgentActive={chatOpen}
-            onAskAgent={() =>
-              railProject
-                ? setChatOpen((v) => !v)
-                : toast({ title: "Ask agent", description: "Open a project to ask the agent.", tone: "info" })
-            }
+            askAgentLabel={agentPanelName(mayStartHere)}
+            onAskAgent={() => (railProject ? setChatOpen((v) => !v) : toast(openAProject))}
             scrolled={scrolled}
           />
           {/* Bell dropdown + invitations + realtime delivery/open-count bridges

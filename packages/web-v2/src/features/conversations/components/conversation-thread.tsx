@@ -351,15 +351,18 @@ export function ConversationThread({
     <DisclosureScope {...(atBottom !== undefined ? { atBottom } : {})}>
     <div className="flex flex-col gap-5">
       {entries.map((entry) => {
-        if (entry.kind === "said")
+        if (entry.kind === "said") {
+          // The live frame's draft, else the one stored with the reply, which a reload or a later reader gets.
+          const draft = withdrawn[entry.message.id] ?? entry.message.withdrawnDraft;
           return (
             <Said
               key={entry.key}
               message={entry.message}
-              {...(withdrawn[entry.message.id] ? { withdrawn: withdrawn[entry.message.id] } : {})}
+              {...(draft ? { withdrawn: draft } : {})}
               {...(newestAgentId ? { newestAgentId } : {})}
             />
           );
+        }
         if (entry.kind === "outbox")
           return <Unsent key={entry.key} item={entry.item} onRetry={onRetry} />;
         if (entry.kind === "pending") {

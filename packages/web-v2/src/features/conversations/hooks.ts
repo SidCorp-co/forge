@@ -125,6 +125,15 @@ export function useProjectCandidates(projectId: string | undefined, enabled: boo
   });
 }
 
+/** The projects the reader may open a room on, each with whether its own agent can answer (r36). */
+export function useRoomOpeners(enabled = true) {
+  return useQuery({
+    queryKey: ["conversations", "openers"],
+    queryFn: () => conversationsApi.openers(),
+    enabled,
+  });
+}
+
 /**
  * Put what a membership change answered with straight into the room's cache.
  */

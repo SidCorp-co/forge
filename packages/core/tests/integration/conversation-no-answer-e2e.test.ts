@@ -231,3 +231,226 @@ describe('a viewer of the project', () => {
     refusedFor((await res.json()) as Refusal);
   });
 });
+
+/**
+ * ISS-1229 r36, judge-97: Start a conversation offered Ledger, whose own agent had lost its role there,
+ * unmarked; it was picked and confirmed, and only opening the room was refused. Whose agent can answer
+ * is now read before anything is picked.
+ */
+describe('the projects a room may be opened on', () => {
+  type Opener = { projectId: string; handle: string; reachable: boolean };
+  const openers = async (userId: string): Promise<Opener[]> => {
+    const res = await as(userId, '/api/conversations/openers');
+    expect(res.status, await res.clone().text()).toBe(200);
+    return ((await res.json()) as { openers: Opener[] }).openers;
+  };
+
+  it('answers each project the caller may open a room on with its agent, which answers until it loses its role', async () => {
+    expect(await openers(ownerId)).toEqual([
+      { projectId, handle: 'ledger', reachable: true, blocked: null },
+    ]);
+    await roomNobodyAnswers();
+    expect(await openers(ownerId)).toEqual([
+      { projectId, handle: 'ledger', reachable: false, blocked: 'lost-role' },
+    ]);
+  });
+
+  // The review of r36: another agent of the organization answering to the address this project's agent
+  // would take is refused HANDLE_TAKEN on opening, so the read marks it too, and says which.
+  it("marks a project whose agent's address another agent already answers to, as opening it refuses", async () => {
+    const [org] = await harness.db.execute<{ org_id: string }>(
+      sql`SELECT org_id FROM projects WHERE id = ${projectId}`,
+    );
+    const desk = (
+      await createTestProject(harness.db, ownerId, {
+        slug: 'desk',
+        name: 'Desk',
+        orgId: String(org?.org_id),
+      })
+    ).id;
+    const [squatter] = await harness.db.execute<{ id: string }>(
+      sql`INSERT INTO users (email, kind) VALUES ('squatter@agents.invalid', 'agent') RETURNING id`,
+    );
+    await harness.db.execute(
+      sql`INSERT INTO organization_members (org_id, user_id, role, handle) VALUES (${org?.org_id}, ${squatter?.id}, 'member', 'ledger')`,
+    );
+    await harness.db.execute(
+      sql`INSERT INTO project_members (project_id, user_id, role) VALUES (${desk}, ${squatter?.id}, 'member')`,
+    );
+    expect((await openers(ownerId)).find((o) => o.projectId === projectId)).toEqual({
+      projectId,
+      handle: 'ledger',
+      reachable: false,
+      blocked: 'taken',
+    });
+    const res = await as(ownerId, '/api/conversations', 'POST', { projectId });
+    expect([res.status, ((await res.json()) as Refusal).code]).toEqual([409, 'HANDLE_TAKEN']);
+  });
+
+  it('marks a project whose agent carries no address, as opening refuses it', async () => {
+    const opened = await as(ownerId, '/api/conversations', 'POST', { projectId });
+    expect(opened.status, await opened.clone().text()).toBe(201);
+    await harness.db.execute(
+      sql`UPDATE organization_members SET handle = NULL WHERE handle = 'ledger'`,
+    );
+    expect(await openers(ownerId)).toEqual([
+      { projectId, handle: 'ledger', reachable: false, blocked: 'nameless' },
+    ]);
+    const res = await as(ownerId, '/api/conversations', 'POST', { projectId });
+    expect(((await res.json()) as Refusal).code).toBe('HANDLE_HAS_NO_NAME');
+  });
+
+  it('leaves out a project the caller only views, and one archived', async () => {
+    expect(await openers(viewerId)).toEqual([]);
+    await harness.db.execute(sql`UPDATE projects SET archived_at = now() WHERE id = ${projectId}`);
+    expect(await openers(ownerId)).toEqual([]);
+  });
+});
+
+/**
+ * ISS-1229 r36, judge-97: a viewer's rename in a room they can open was refused saying the room is
+ * "reached only by someone who holds" a member role, which the viewer had just reached.
+ */
+describe('a write by a viewer of the room', () => {
+  const VIEWER_WRITE =
+    'You hold the viewer role on Ledger; a viewer cannot change a room or post in it.';
+  const ROLELESS =
+    'This room is about a project on which you hold no role; a room is reached only by someone who holds one on every project in it.';
+
+  async function groupRoom(): Promise<string> {
+    const opened = await as(ownerId, '/api/conversations', 'POST', {
+      projectId,
+      people: [viewerId],
+    });
+    expect(opened.status, await opened.clone().text()).toBe(201);
+    return ((await opened.json()) as { id: string }).id;
+  }
+
+  it('reads the room, and renaming, archiving, deleting or posting there is refused naming the viewer role', async () => {
+    const id = await groupRoom();
+    expect((await as(viewerId, `/api/conversations/${id}`)).status).toBe(200);
+    const writes: Array<[string, string, unknown]> = [
+      [`/api/conversations/${id}`, 'PATCH', { title: 'Renamed by a viewer' }],
+      [`/api/conversations/${id}`, 'PATCH', { archived: true }],
+      [`/api/conversations/${id}`, 'DELETE', undefined],
+      [`/api/conversations/${id}/messages`, 'POST', { content: 'May I?' }],
+    ];
+    for (const [path, method, body] of writes) {
+      const res = await as(viewerId, path, method, body);
+      const refusal = (await res.json()) as Refusal;
+      expect([method, res.status, refusal.code, refusal.message]).toEqual([
+        method,
+        403,
+        'CONVERSATION_OUT_OF_SCOPE',
+        VIEWER_WRITE,
+      ]);
+    }
+    const [row] = await harness.db.execute<{ title: string | null; archived_at: Date | null }>(
+      sql`SELECT title, archived_at FROM conversations WHERE id = ${id}`,
+    );
+    expect(row).toMatchObject({ title: null, archived_at: null });
+  });
+
+  // The review of r36: a viewer of the room's first project who holds no role on its second does not
+  // read the room either, so they are told about the second, never that they can read it.
+  it('tells a viewer of one project of a two-project room who holds no role on the other about that one', async () => {
+    const [org] = await harness.db.execute<{ org_id: string }>(
+      sql`SELECT org_id FROM projects WHERE id = ${projectId}`,
+    );
+    const desk = (
+      await createTestProject(harness.db, ownerId, {
+        slug: 'desk',
+        name: 'Desk',
+        orgId: String(org?.org_id),
+      })
+    ).id;
+    const opened = await as(ownerId, '/api/conversations', 'POST', {
+      projectId,
+      handles: [{ projectId: desk }],
+    });
+    expect(opened.status, await opened.clone().text()).toBe(201);
+    const { id } = (await opened.json()) as { id: string };
+    for (const [method, body] of [
+      ['PATCH', { title: 'Renamed by a viewer' }],
+      ['GET', undefined],
+    ] as const) {
+      const res = await as(viewerId, `/api/conversations/${id}`, method, body);
+      const refusal = (await res.json()) as Refusal;
+      expect([method, res.status, refusal.code, refusal.message]).toEqual([
+        method,
+        403,
+        'CONVERSATION_OUT_OF_SCOPE',
+        ROLELESS,
+      ]);
+      expect(refusal.message).not.toMatch(/Desk|Ledger/);
+    }
+  });
+
+  it('tells somebody holding no role there that they do not reach the room at all', async () => {
+    const id = await groupRoom();
+    const stranger = await verifiedUser();
+    const res = await as(stranger, `/api/conversations/${id}`, 'PATCH', { title: 'x' });
+    const refusal = (await res.json()) as Refusal;
+    expect([res.status, refusal.code, refusal.message]).toEqual([
+      403,
+      'CONVERSATION_OUT_OF_SCOPE',
+      ROLELESS,
+    ]);
+  });
+
+  // The review of r36: a viewer outside a one-to-one room cannot read it either, so a refused write
+  // promises them nothing about reading it.
+  it('promises a viewer outside a one-to-one room nothing about reading it', async () => {
+    const opened = await as(ownerId, '/api/conversations', 'POST', { projectId });
+    const { id } = (await opened.json()) as { id: string };
+    const read = await as(viewerId, `/api/conversations/${id}`);
+    expect([read.status, ((await read.json()) as Refusal).code]).toEqual([403, 'NOT_IN_THE_ROOM']);
+    const write = await as(viewerId, `/api/conversations/${id}`, 'PATCH', { title: 'x' });
+    const refusal = (await write.json()) as Refusal;
+    expect([write.status, refusal.message]).toEqual([403, VIEWER_WRITE]);
+    expect(refusal.message).not.toMatch(/read/);
+  });
+});
+
+/**
+ * ISS-1229 r36, judge-97: a reply the reply check withdrew was said only by a socket frame, so a reload,
+ * or a person opening the room later, never learned of it. The draft is stored with the reply.
+ */
+describe('a reply the reply check withdrew', () => {
+  it('is read back with the room, its draft beside the reply that replaced it, for anyone who opens it later', async () => {
+    const opened = await as(ownerId, '/api/conversations', 'POST', {
+      projectId,
+      people: [viewerId],
+    });
+    expect(opened.status, await opened.clone().text()).toBe(201);
+    const { id } = (await opened.json()) as { id: string };
+    const { recordDeliveredReply } = await import('../../src/conversations/transcript.js');
+    await recordDeliveredReply({
+      conversationId: id,
+      projectId,
+      text: 'I could not verify that claim.',
+      receipt: { messageId: null },
+      deliveryKey: 'k-withdrawn',
+      withdrawnDraft: 'ISS-4242 was closed yesterday and shipped in v9.2.',
+    });
+    await recordDeliveredReply({
+      conversationId: id,
+      projectId,
+      text: 'Two issues are open.',
+      receipt: { messageId: null },
+      deliveryKey: 'k-plain',
+    });
+
+    for (const reader of [ownerId, viewerId]) {
+      const res = await as(reader, `/api/conversations/${id}`);
+      expect(res.status, await res.clone().text()).toBe(200);
+      const { messages } = (await res.json()) as {
+        messages: Array<{ content: string; withdrawnDraft: string | null }>;
+      };
+      expect(messages.map((m) => [m.content, m.withdrawnDraft])).toEqual([
+        ['I could not verify that claim.', 'ISS-4242 was closed yesterday and shipped in v9.2.'],
+        ['Two issues are open.', null],
+      ]);
+    }
+  });
+});

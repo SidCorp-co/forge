@@ -56,7 +56,7 @@ describe("a room's tool card", () => {
         tool={{ id: "d", name: "forge", input: { argv: ["deploy"] }, result: { exitCode: 2, stdout: "", stderr: "`forge deploy` is not open from chat." }, isError: true }}
       />,
     );
-    expect(screen.getByTestId("room-tool-refusal")).toHaveTextContent("`deploy` is not open from chat.");
+    expect(screen.getByTestId("room-tool-refusal")).toHaveTextContent("The tracker's `deploy` command is not open from chat.");
     expect(screen.getByTestId("room-tool-card").textContent).not.toMatch(/\bforge\b/);
     fireEvent.click(screen.getByRole("button", { name: "Technical details" }));
     expect(screen.getByTestId("room-tool-technical")).toHaveTextContent("`forge deploy` is not open from chat.");

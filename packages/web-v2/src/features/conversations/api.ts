@@ -8,6 +8,7 @@ import type {
   ConversationMode,
   ConversationRow,
   ListedRoom,
+  RoomOpener,
   RoomWithoutAProject,
 } from "./types";
 
@@ -89,6 +90,8 @@ export const conversationsApi = {
     apiClient<ConversationCandidates>(
       `/conversations/candidates?${new URLSearchParams({ projectId })}`,
     ),
+
+  openers: () => apiClient<{ openers: RoomOpener[] }>("/conversations/openers"),
 
   /** `POST /api/conversations/:id/people` — add a colleague. */
   addPerson: (id: string, userId: string) =>

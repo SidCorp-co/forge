@@ -1,6 +1,6 @@
 import { and, eq, inArray, isNotNull, isNull, type SQL } from 'drizzle-orm';
 import { db as defaultDb } from '../db/client.js';
-import { organizationMembers, type ProjectMemberRole } from '../db/schema.js';
+import { organizationMembers, type ProjectMemberRole, projects } from '../db/schema.js';
 import { conversationParticipants, conversations } from '../db/schema-conversations.js';
 import {
   effectiveProjectRole,
@@ -90,18 +90,41 @@ async function assertConversationRole(
       { conversationId },
     );
   }
-  for (const projectId of scope) {
-    const access = await effectiveProjectRole(userId, projectId);
-    if (!projectRoleAtLeast(access?.role ?? null, min)) {
-      throw roomRefusal(
-        403,
-        'CONVERSATION_OUT_OF_SCOPE',
-        `This room is about a project on which you hold no ${min} role; a room is reached only by someone who holds one on every project in it`,
-        { conversationId, projectId },
-      );
-    }
+  const roles = await Promise.all(
+    scope.map(async (projectId) => ({
+      projectId,
+      role: (await effectiveProjectRole(userId, projectId))?.role ?? null,
+    })),
+  );
+  // A project the caller holds no role on comes first, so a viewer is told about their role only where
+  // that is all that stands in the way (ISS-1229 r36, judge-97).
+  const refused =
+    roles.find((r) => r.role === null) ?? roles.find((r) => !projectRoleAtLeast(r.role, min));
+  if (!refused) return scope;
+  throw roomRefusal(
+    403,
+    'CONVERSATION_OUT_OF_SCOPE',
+    await outOfScope(refused.role, refused.projectId, tx),
+    { conversationId, projectId: refused.projectId },
+  );
+}
+
+/**
+ * Why a caller is refused a room for its role on one of the room's projects, saying only what is true:
+ * a viewer is told the role they hold and what it does not allow, never that this room is theirs to
+ * read (a one-to-one room is read only by its people), and a project the caller holds no role on is
+ * not named to them.
+ */
+async function outOfScope(role: string | null, projectId: string, tx: Executor): Promise<string> {
+  if (role !== 'viewer') {
+    return 'This room is about a project on which you hold no role; a room is reached only by someone who holds one on every project in it';
   }
-  return scope;
+  const [project] = await tx
+    .select({ name: projects.name })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1);
+  return `You hold the viewer role on ${project?.name ?? 'one of its projects'}; a viewer cannot change a room or post in it`;
 }
 
 interface RoomAboutNoProject {

@@ -193,7 +193,7 @@ export function Select({
               {o.icon && <Icon name={o.icon} size={16} style={isActive ? { color: "var(--accent)" } : { color: "var(--fg-subtle)" }} />}
               <span className="flex min-w-0 flex-1 flex-col">
                 <span className="truncate" data-option-label>{o.label}</span>
-                {o.detail && <span className="fg-caption break-all text-muted" data-option-detail>{o.detail}</span>}
+                {o.detail && <span className="fg-caption text-muted [overflow-wrap:anywhere]" data-option-detail>{o.detail}</span>}
               </span>
               {isSel && <Icon name="check" size={15} strokeWidth={2.5} style={{ color: "var(--accent)" }} />}
             </div>

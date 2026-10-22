@@ -17,8 +17,8 @@ import { useAuth } from "@/providers/auth-provider";
 import { Button, Checkbox, ErrorState, Icon, Select, Spinner } from "@/design";
 import { useOrgScopedProjects } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
-import { useOpenConversation, useProjectCandidates } from "../hooks";
-import { cannotAnswerReason, roomOpeningClaims, startsRooms } from "../membership";
+import { useOpenConversation, useProjectCandidates, useRoomOpeners } from "../hooks";
+import { cannotAnswerReason, roomOpeningClaims, startsRooms, unopenableReason } from "../membership";
 import type { ConversationProject, HandleCandidate } from "../types";
 
 /** One agent chosen for a room that does not exist yet. */
@@ -28,9 +28,16 @@ const sameHandle = (a: PickedHandle, b: PickedHandle) =>
   a.projectId === b.projectId && a.userId === b.userId;
 
 export function StartConversation({ onStarted }: { onStarted: (id: string, projectId: string) => void }) {
-  const { projects: visible, isLoading } = useOrgScopedProjects();
-  // A project the reader only views is not offered: core refuses the room it would open (judge-95).
-  const projects = visible.filter((p) => startsRooms(p.role));
+  const { projects: visible, isLoading: projectsLoading } = useOrgScopedProjects();
+  // Whose agent can answer is read before anything is offered: a project whose agent lost its role is
+  // marked as Add an agent marks it, and cannot be picked (ISS-1229 r36, judge-97).
+  const openersQ = useRoomOpeners(visible.some((p) => startsRooms(p.role)));
+  const isLoading = projectsLoading || openersQ.isLoading;
+  const opener = (id: string) => openersQ.data?.openers.find((o) => o.projectId === id);
+  // A project the reader only views is not offered: core refuses the room it would open (judge-95). Nor
+  // is one core has not said a room can open on, the read having failed or not named it.
+  const projects = visible.filter((p) => startsRooms(p.role) && (!openersQ.data || opener(p.id)));
+  const openersFailed = openersQ.isError && !openersQ.data;
   const onlyViews = projects.length === 0 && visible.length > 0;
   // Where nothing can be started, nothing here says start (the coordinator on PR #1151).
   const nothingToStart = onlyViews || (!isLoading && visible.length === 0);
@@ -45,6 +52,11 @@ export function StartConversation({ onStarted }: { onStarted: (id: string, proje
     list.some((x) => same(x, value)) ? list.filter((x) => !same(x, value)) : [...list, value];
 
   const base = projects.find((p) => p.id === projectId);
+  // Read again on every render: a project picked while its agent answered is not opened once it no longer
+  // does, and says why where the room would have started (r36 review).
+  const pickedAgent = base ? opener(base.id) : undefined;
+  const pickedWhy = base && pickedAgent ? unopenableReason(pickedAgent, base.name) : null;
+  const opens = Boolean(base) && !pickedWhy;
   const chosen: ConversationProject[] = handles.flatMap((h) => {
     const found = (candidates.data?.handles ?? []).find((c: HandleCandidate) =>
       sameHandle({ userId: c.userId, projectId: c.project.id }, h),
@@ -59,7 +71,7 @@ export function StartConversation({ onStarted }: { onStarted: (id: string, proje
   const claims = roomOpeningClaims({ projects: scopeProjects, agentCount: 1 + chosen.length });
 
   const start = () => {
-    if (!projectId) return;
+    if (!opens) return;
     open.mutate(
       { projectId, people, handles },
       { onSuccess: (row) => onStarted(row.id, projectId) },
@@ -93,14 +105,28 @@ export function StartConversation({ onStarted }: { onStarted: (id: string, proje
           </p>
         </div>
 
-        {!nothingToStart && (
+        {!nothingToStart && openersFailed && (
+          <div data-testid="start-openers-error">
+            <ErrorState
+              title="Couldn't read which projects a room can start on"
+              message={formatApiError(openersQ.error)}
+              onRetry={() => openersQ.refetch()}
+            />
+          </div>
+        )}
+
+        {!nothingToStart && !openersFailed && (
         <div>
           <label htmlFor="conversations-new-project" className="fg-body-sm mb-1.5 block text-muted">
             Project
           </label>
           <Select
             id="conversations-new-project"
-            options={projects.map((p) => ({ value: p.id, label: p.name }))}
+            options={projects.map((p) => {
+              const agent = opener(p.id);
+              const why = agent ? unopenableReason(agent, p.name) : null;
+              return why ? { value: p.id, label: p.name, detail: why, disabled: true } : { value: p.id, label: p.name };
+            })}
             value={projectId}
             onChange={(v) => {
               setProjectId(v);
@@ -110,7 +136,12 @@ export function StartConversation({ onStarted }: { onStarted: (id: string, proje
             }}
             placeholder="Select a project…"
           />
-          {projectId && (
+          {pickedWhy && (
+            <p className="fg-caption mt-1 text-muted" data-testid="start-unopenable">
+              {pickedWhy}
+            </p>
+          )}
+          {opens && (
             <p className="fg-caption mt-1 text-subtle">
               The room starts with this project&apos;s own agent, and is about this project.
             </p>
@@ -118,7 +149,7 @@ export function StartConversation({ onStarted }: { onStarted: (id: string, proje
         </div>
         )}
 
-        {projectId && !confirming && (
+        {opens && !confirming && (
           <Extras
             query={candidates}
             people={people}
@@ -128,7 +159,7 @@ export function StartConversation({ onStarted }: { onStarted: (id: string, proje
           />
         )}
 
-        {confirming && (
+        {opens && confirming && (
           <ul className="flex flex-col gap-2" data-testid="start-confirmation">
             {claims.map((claim) => (
               <li key={claim.key} data-claim={claim.key} className="fg-body-sm text-fg">
@@ -144,13 +175,13 @@ export function StartConversation({ onStarted }: { onStarted: (id: string, proje
           </p>
         )}
 
-        {projectId && !confirming && (
+        {opens && !confirming && (
           <Button variant="primary" onClick={() => setConfirming(true)}>
             Start the room
           </Button>
         )}
 
-        {confirming && (
+        {opens && confirming && (
           <div className="flex items-center justify-end gap-2.5">
             <Button variant="ghost" onClick={() => setConfirming(false)} disabled={open.isPending}>
               Back

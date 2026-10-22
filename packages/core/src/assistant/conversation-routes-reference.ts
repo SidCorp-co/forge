@@ -72,6 +72,12 @@ export const messageSchema = z.object({
   blocks: z.array(contentBlockSchema).nullable(),
   images: z.array(z.object({ name: z.string(), mime: z.string(), ref: z.string() })),
   deliveryProof: z.unknown(),
+  withdrawnDraft: z
+    .string()
+    .nullable()
+    .describe(
+      'The draft the reply check withdrew before this reply went out, where it withdrew one',
+    ),
   silenceReason: z.string().nullable(),
   createdAt: z.date(),
 });

@@ -4,7 +4,7 @@
 // in the same words.
 
 import { afterAll, describe, expect, it, vi } from "vitest";
-import { composerRefusal, emptyRoomState, memberName, removalClaim, removalQuestion } from "./membership";
+import { composerRefusal, emptyRoomState, memberName, removalClaim, removalQuestion, unopenableReason } from "./membership";
 import type { ConversationParticipant } from "./types";
 
 // When each was added reads in the reader's own time zone (ISS-1229 r25); this reader is at UTC+7.
@@ -100,10 +100,19 @@ describe("emptyRoomState", () => {
     expect(emptyRoomState(undefined, { canPost: true })).toBeNull();
   });
 
-  it("names the agent that cannot answer and the project it lost its role on", () => {
+  // r36, judge-97: at 390 the same can't-answer sentence stood three times; the empty room points to the
+  // one place that says why instead of saying it again.
+  it("says no agent can answer and points to where why is said: the box for a poster, About for a reader", () => {
     expect(emptyRoomState({ participants: [agent(false)], scopeProjects: [desk] }, { canPost: true })).toEqual({
       title: "No agent here can answer",
-      message: "@desk can't answer: it no longer holds a role on Desk, and answers again once it does.",
+      message: "Why is said above the message box.",
+    });
+    expect(
+      emptyRoomState({ participants: [agent(false)], scopeProjects: [desk] }, { canPost: false, projectName: "Desk" }),
+    ).toEqual({
+      title: "No agent here can answer",
+      message:
+        "You can read this room, not post in it: you hold the viewer role on Desk. Why is said in this room's About line, at the top.",
     });
   });
 
@@ -136,5 +145,21 @@ describe("composerRefusal's way out", () => {
       reason: "This room is about Desk and Ops, and a message is answered under exactly one project.",
       wayOut: null,
     });
+  });
+});
+
+// ISS-1229 r36: why Start a conversation cannot pick a project, one sentence per refusal opening would meet.
+describe("unopenableReason", () => {
+  it("says why for each refusal and nothing for a project that opens", () => {
+    expect(unopenableReason({ handle: "ledger", blocked: "lost-role" }, "Ledger")).toBe(
+      "@ledger can't answer. This agent no longer holds a role on Ledger, so it cannot answer here.",
+    );
+    expect(unopenableReason({ handle: "ledger", blocked: "taken" }, "Ledger")).toBe(
+      "This project's agent would answer to @ledger, which another agent of this organization already answers to.",
+    );
+    expect(unopenableReason({ handle: "ledger", blocked: "nameless" }, "Ledger")).toBe(
+      "This project's agent has no address in this organization, so no room can start with it.",
+    );
+    expect(unopenableReason({ handle: "ledger", blocked: null }, "Ledger")).toBeNull();
   });
 });
