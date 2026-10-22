@@ -18,6 +18,7 @@ import {
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useProjects } from "@/features/projects/hooks";
+import { takesTheApp } from "../../app-owner";
 import { useMemo, useState } from "react";
 import {
   useBindExistingConnection,
@@ -459,15 +460,21 @@ function CreateApp({
 function RemovedApp({
   projectId,
   binding,
+  connection,
   connectionLabel,
 }: {
   projectId: string;
   binding: IntegrationSummary;
+  /** Absent where the reader's list does not hold it, and then whose the App would be is not said. */
+  connection: { ownerType: "user" | "org"; ownerId: string } | undefined;
   connectionLabel: string;
 }) {
   const connect = useGitHubConnect(projectId);
   const remove = useDeleteProviderIntegration(projectId);
   const [org, setOrg] = useState("");
+  const project = useProjects().data?.find((p) => p.id === projectId);
+  // Core refuses an install whose App would belong to someone else (ISS-1421 r23), so none is offered.
+  const takes = connection && project ? takesTheApp(connection, project) : null;
 
   const start = async () => {
     const res = await connect.mutateAsync({ org: org.trim() || undefined });
@@ -482,28 +489,35 @@ function RemovedApp({
       <div className="flex flex-col gap-4">
         <p className="fg-body-sm text-muted">
           <span className="font-semibold">{connectionLabel}</span> was removed, so this project&apos;s
-          GitHub has no App. Installing the GitHub App again creates it on GitHub and turns that
-          connection back on.
+          GitHub has no App.
+          {takes === true &&
+            " Installing the GitHub App again creates it on GitHub and turns that connection back on."}
+          {takes === false &&
+            " An App installed from this project would belong to someone other than that connection's owner, so it cannot turn it back on. Disconnect it from this project to create a new App here."}
         </p>
 
-        <AppOwner projectId={projectId} />
+        {takes !== false && <AppOwner projectId={projectId} />}
 
-        <Field label="GitHub organization" hint="Leave blank to create the App on your personal account.">
-          <Input
-            value={org}
-            onChange={(e) => setOrg(e.target.value)}
-            placeholder="SidCorp-co"
-            aria-label="GitHub organization"
-          />
-        </Field>
+        {takes !== false && (
+          <Field label="GitHub organization" hint="Leave blank to create the App on your personal account.">
+            <Input
+              value={org}
+              onChange={(e) => setOrg(e.target.value)}
+              placeholder="SidCorp-co"
+              aria-label="GitHub organization"
+            />
+          </Field>
+        )}
 
         {connect.isError && <Banner tone="danger">{formatApiError(connect.error)}</Banner>}
         {remove.isError && <Banner tone="danger">{formatApiError(remove.error)}</Banner>}
 
         <div className="flex flex-wrap items-center gap-3">
-          <Button onClick={start} disabled={connect.isPending}>
-            {connect.isPending ? "Preparing…" : "Install the GitHub App again"}
-          </Button>
+          {takes !== false && (
+            <Button onClick={start} disabled={connect.isPending}>
+              {connect.isPending ? "Preparing…" : "Install the GitHub App again"}
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="sm"
@@ -557,14 +571,21 @@ export function GitHubSection({ projectId }: { projectId: string }) {
   // so the early return below fired for the life of the row and the picker was
   // unreachable (ISS-1115).
   const repository = binding ? repositoryOf(binding.config) : null;
-  const connectionLabel =
-    (binding
-      ? (connections.data?.items ?? []).find((c) => c.id === binding.connectionId)?.displayName
-      : null) ?? "the existing GitHub App";
+  const boundConnection = binding
+    ? (connections.data?.items ?? []).find((c) => c.id === binding.connectionId)
+    : undefined;
+  const connectionLabel = boundConnection?.displayName ?? "the existing GitHub App";
 
   // A removed connection holds no App: no picker, no Enable credential, one way back (ISS-1421 r22).
   if (binding && bindsRemovedConnection(binding)) {
-    return <RemovedApp projectId={projectId} binding={binding} connectionLabel={connectionLabel} />;
+    return (
+      <RemovedApp
+        projectId={projectId}
+        binding={binding}
+        connection={boundConnection}
+        connectionLabel={connectionLabel}
+      />
+    );
   }
 
   if (binding && repository && !changing) {

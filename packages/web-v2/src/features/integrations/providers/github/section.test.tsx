@@ -494,6 +494,7 @@ describe("a project bound to a removed GitHub connection (criterion 224)", () =>
 
   beforeEach(() => {
     items = [REMOVED];
+    project = { ...project, orgIsPersonal: false, orgName: "SidCorp" };
     connections = [connection({ active: false, hasSecrets: false })];
     repos = { isLoading: false, isError: false, error: null };
   });
@@ -534,5 +535,28 @@ describe("a project bound to a removed GitHub connection (criterion 224)", () =>
     fireEvent.click(screen.getByRole("button", { name: /disconnect from this project/i }));
 
     expect(remove).toHaveBeenCalledWith(BINDING);
+  });
+
+  // Whole-set review F1 (r23): core refuses an install whose App would belong to someone else
+  // (REMOVED_CONNECTION_OTHER_OWNER), so the panel neither promises it nor offers it.
+  it("offers no install where the App would belong to someone other than the connection's owner", () => {
+    connections = [connection({ active: false, hasSecrets: false, ownerType: "user", ownerId: "a-person" })];
+    mount();
+
+    expect(screen.queryByRole("button", { name: "Install the GitHub App again" })).toBeNull();
+    expect(screen.queryByText(/turns that connection back on/)).toBeNull();
+    expect(
+      screen.getByText(/would belong to someone other than that connection's owner, so it cannot turn it back on/),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /disconnect from this project/i })).toBeInTheDocument();
+  });
+
+  it("promises nothing about the way back where the connection is not in the reader's list", () => {
+    connections = [];
+    mount();
+
+    expect(screen.getByText(/was removed, so this project's GitHub has no App/)).toBeInTheDocument();
+    expect(screen.queryByText(/turns that connection back on/)).toBeNull();
+    expect(screen.queryByText(/cannot turn it back on/)).toBeNull();
   });
 });

@@ -20,7 +20,7 @@ import { effectiveProjectRole, loadOrgRole, orgRoleAtLeast } from '../../lib/aut
 import { logger } from '../../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../../middleware/auth.js';
 import { recordInstallation } from '../binding-installation.js';
-import { isRemovedConnection, turnsBackOnFrom } from '../held-key.js';
+import { isRemovedConnection, listBoundProjectOrgs, turnsBackOnFrom } from '../held-key.js';
 import { findReachableConnection } from '../reach.js';
 import {
   assertAdmin,
@@ -253,14 +253,14 @@ const githubAppUnfinished = (connectionId: string) =>
   });
 
 /**
- * A removed GitHub connection's repositories asked for: it holds no App until one is installed again,
- * from a project bound to it, which is this one only where it is (ISS-1421 r23).
+ * A removed GitHub connection's repositories asked for: it holds no App until one is installed again
+ * from a bound project whose App would belong to its owner (ISS-1421 r23).
  */
-async function githubConnectionRemoved(connectionId: string, projectId: string) {
-  const bound = (await listBindingsForConnection(connectionId)).map((p) => p.binding.projectId);
+async function githubConnectionRemoved(connection: IntegrationConnectionRow, projectId: string) {
+  const bound = await listBoundProjectOrgs(connection.id);
   return new HTTPException(409, {
-    message: `This GitHub connection was removed, so it holds no App. ${turnsBackOnFrom('github', bound, projectId)}`,
-    cause: { code: 'CONNECTION_REMOVED', details: { connectionId } },
+    message: `This GitHub connection was removed, so it holds no App. ${turnsBackOnFrom(connection, bound, projectId)}`,
+    cause: { code: 'CONNECTION_REMOVED', details: { connectionId: connection.id } },
   });
 }
 
@@ -299,8 +299,7 @@ githubConnectRoutes.get(
 
     const connection = await githubConnectionForPicker({ userId, connectionId });
     // Removed is not unfinished: the App was there, and a remove took it (ISS-1421 r22).
-    if (isRemovedConnection(connection))
-      throw await githubConnectionRemoved(connectionId, projectId);
+    if (isRemovedConnection(connection)) throw await githubConnectionRemoved(connection, projectId);
 
     const { appId, privateKey } = decryptConnectionSecrets<{
       appId?: string;

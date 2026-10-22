@@ -33,8 +33,8 @@ vi.mock("../hooks", async (importOriginal) => ({
 vi.mock("@/features/projects/hooks", () => ({
   useProjectsIncludingArchived: () => ({
     data: [
-      { id: "p-store", name: "Storefront", slug: "storefront", archivedAt: null },
-      { id: "p-shop", name: "Shop", slug: "shop", archivedAt: null },
+      { id: "p-store", name: "Storefront", slug: "storefront", archivedAt: null, orgId: "org-mine", orgIsPersonal: true },
+      { id: "p-shop", name: "Shop", slug: "shop", archivedAt: null, orgId: "org-acme", orgIsPersonal: false },
     ],
     isSuccess: true,
   }),
@@ -218,6 +218,38 @@ describe("the drawer's Danger zone over a connection that was removed", () => {
     expect(screen.queryByText(/The App installation holds this credential/)).toBeNull();
     expect(screen.queryByText("binding disabled")).toBeNull();
     expect(screen.queryByText("Configuration")).toBeNull();
+  });
+
+  // Whole-set review F1 (r23): an install from a project whose App would belong to someone else is
+  // refused by core, so that project is never named as the way back.
+  it("names only the bound projects whose App would belong to the removed connection's owner", () => {
+    bindingsData = {
+      items: [
+        { id: "b1", projectId: "p-store", active: false, bindingActive: true, role: "service", stages: [] },
+        { id: "b2", projectId: "p-shop", active: false, bindingActive: true, role: "service", stages: [] },
+      ],
+    };
+    mount({ ...(mine as object), provider: "github", active: false, hasSecrets: false });
+    expect(
+      screen.getByText(
+        "This connection holds no key. Installing the GitHub App again from the Integrations tab of Storefront turns it back on.",
+      ),
+    ).toBeInTheDocument();
+    cleanup();
+    mount({ ...(mine as object), ownerType: "org", ownerId: "org-acme", provider: "github", active: false, hasSecrets: false });
+    expect(screen.getByText(/from the Integrations tab of Shop turns it back on\./)).toBeInTheDocument();
+  });
+
+  it("says nothing turns it on where every bound project's App would belong to someone else", () => {
+    bindingsData = {
+      items: [{ id: "b2", projectId: "p-shop", active: false, bindingActive: true, role: "service", stages: [] }],
+    };
+    mount({ ...(mine as object), provider: "github", active: false, hasSecrets: false });
+    expect(
+      screen.getByText(
+        "This connection holds no key. No project it is bound to would give a new App to its owner, so nothing can turn it back on. Clear it from the list.",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("says nothing turns a removed GitHub connection on where no project is bound to it", () => {

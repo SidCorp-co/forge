@@ -19,17 +19,24 @@ function listed(names: string[], joined: "or" | "and"): string {
 
 /**
  * What turns a removed connection back on, said only where it is true (ISS-1421 r21): a key saved
- * above for a provider that takes one; for GitHub, a fresh App install from a project still bound to
- * it, which core turns into this connection again; otherwise nothing, and the line says so.
+ * above for a provider that takes one; for GitHub, a fresh App install from a bound project whose App
+ * would belong to the connection's owner (`returnsFrom`, ISS-1421 r23), which core turns into this
+ * connection again; otherwise nothing, and the line says so.
  */
-export function turnsBackOn(connection: ConnectionSummary, boundProjects: string[] | null): string {
+export function turnsBackOn(
+  connection: ConnectionSummary,
+  boundProjects: string[] | null,
+  returnsFrom: string[] | null,
+): string {
   if (providerModule(connection.provider)?.secretField !== null)
     return "This connection holds no key. Saving a new key above turns it back on.";
   // Unread is not none: which projects are bound decides what turns it on, so nothing is claimed yet.
-  if (boundProjects === null)
+  if (boundProjects === null || returnsFrom === null)
     return "This connection holds no key. What turns it back on is said once its projects are read.";
+  if (returnsFrom.length > 0)
+    return `This connection holds no key. Installing the GitHub App again from the Integrations tab of ${listed(returnsFrom, "or")} turns it back on.`;
   if (boundProjects.length > 0)
-    return `This connection holds no key. Installing the GitHub App again from the Integrations tab of ${listed(boundProjects, "or")} turns it back on.`;
+    return "This connection holds no key. No project it is bound to would give a new App to its owner, so nothing can turn it back on. Clear it from the list.";
   return "This connection holds no key and no project is bound to it, so nothing can turn it back on. Clear it from the list.";
 }
 
@@ -38,12 +45,14 @@ export function DangerZone({
   connection,
   affectedProjects,
   boundProjects,
+  returnsFrom,
   onRemoved,
 }: {
   connection: ConnectionSummary;
   affectedProjects: string[];
   /** Every project bound to this connection, by name, its binding on or off; null until they are read. */
   boundProjects: string[] | null;
+  returnsFrom: string[] | null;
   onRemoved: () => void;
 }) {
   const update = useUpdateConnection();
@@ -75,7 +84,7 @@ export function DangerZone({
           </Button>
         ) : (
           // Core refuses to turn a keyless connection back on (CONNECTION_HAS_NO_KEY).
-          <span className="fg-body-sm text-muted">{turnsBackOn(connection, boundProjects)}</span>
+          <span className="fg-body-sm text-muted">{turnsBackOn(connection, boundProjects, returnsFrom)}</span>
         )}
         <Button
           variant="ghost"

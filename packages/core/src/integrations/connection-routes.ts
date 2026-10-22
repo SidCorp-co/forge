@@ -439,7 +439,7 @@ integrationConnectionsRoutes.patch(
 );
 
 /** Turning on a connection that holds no key: removing it wiped its keys. */
-async function noKeyRefusal(connection: { id: string; provider: string }): Promise<string> {
+async function noKeyRefusal(connection: Parameters<typeof turnsBackOn>[0]): Promise<string> {
   return `This connection holds no key, as removing it wiped its keys. ${await turnsBackOn(connection)}`;
 }
 

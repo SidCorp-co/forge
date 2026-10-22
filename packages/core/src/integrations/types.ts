@@ -372,10 +372,19 @@ export interface IntegrationDeclaration<
   readonly presentation: IntegrationPresentation | null;
   /**
    * What turns a removed connection, which holds no key, back on where no key is typed into it: an
-   * install from a project bound to it, said to a reader on another page and to one on that project's
-   * own. Absent for a provider whose key a person saves by hand (ISS-1421 r21, r23).
+   * install from a bound project whose App would belong to its owner. Absent for a provider whose key
+   * a person saves by hand (ISS-1421 r21, r23).
    */
-  readonly noKeyTurnsBackOn?: { readonly fromBound: string; readonly fromHere: string };
+  readonly noKeyTurnsBackOn?: {
+    /** Asked from a project that would take the App. */
+    readonly fromHere: string;
+    /** Asked from a project whose App would belong to someone else; said before the way elsewhere. */
+    readonly notFromHere: string;
+    /** Some bound project would take it. */
+    readonly fromBound: string;
+    /** Bound only to projects whose App would belong to someone else. */
+    readonly noneTakesIt: string;
+  };
   /** Absent exactly where nothing is integrated. */
   readonly adapter?: IntegrationAdapterMethods<TConfig, TSecrets>;
 }

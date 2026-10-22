@@ -35,6 +35,7 @@ import {
   useTestConnection,
   useUpdateConnection,
 } from "../hooks";
+import { takesTheApp } from "../app-owner";
 import { connectionTitle } from "../connection-identity";
 import { deriveConnectionStatus } from "../derive";
 import { ConnectionReleaseRunnerField } from "./release-runner-field";
@@ -418,6 +419,14 @@ export function ConnectionEditDrawer({
     if (!bindingsRead) return null;
     return projectNames([...new Set(bindings.map((b) => b.projectId))], projects, projectsRead);
   }, [bindings, projects, bindingsRead, projectsRead]);
+  const returnsFrom = useMemo(() => {
+    if (!bindingsRead || !projectsRead || !connection) return null;
+    const byId = new Map(projects.map((p) => [p.id, p] as const));
+    return [...new Set(bindings.map((b) => b.projectId))].flatMap((id) => {
+      const project = byId.get(id);
+      return project && takesTheApp(connection, project) ? [project.name] : [];
+    });
+  }, [bindings, projects, bindingsRead, projectsRead, connection]);
 
   if (!connection) return null;
 
@@ -462,6 +471,7 @@ export function ConnectionEditDrawer({
               connection={connection}
               affectedProjects={affectedProjects}
               boundProjects={boundProjects}
+              returnsFrom={returnsFrom}
               onRemoved={onClose}
             />
           </>

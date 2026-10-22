@@ -6,7 +6,12 @@ import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { type AgentAccess, agentAccessTier, noAgentPathMessage } from './agent-access.js';
 import { healthAnswer } from './health-words.js';
-import { holdsKey, isRemovedConnection, turnsBackOnFrom } from './held-key.js';
+import {
+  holdsKey,
+  isRemovedConnection,
+  listBoundProjectOrgs,
+  turnsBackOnFrom,
+} from './held-key.js';
 import { raceWithTimeout } from './probe.js';
 import { getAdapter, getIntegration } from './registry.js';
 import {
@@ -17,7 +22,6 @@ import {
   findBindingWithConnectionById,
   type IntegrationBindingRow,
   type IntegrationConnectionRow,
-  listBindingsForConnection,
 } from './store.js';
 import type { HealthCheckResult, IntegrationProvider } from './types.js';
 import { isVaultConfigured } from './vault.js';
@@ -57,13 +61,13 @@ export const connectionNotReachable = (connectionId: string) =>
 
 /** {@link turnsBackOnFrom}, reading the connection's bindings only where they decide the sentence. */
 export async function turnsBackOn(
-  connection: { id: string; provider: string },
+  connection: { id: string; provider: string; ownerType: 'user' | 'org'; ownerId: string },
   askedFrom?: string,
 ): Promise<string> {
   const bound = getIntegration(connection.provider)?.noKeyTurnsBackOn
-    ? (await listBindingsForConnection(connection.id)).map((p) => p.binding.projectId)
+    ? await listBoundProjectOrgs(connection.id)
     : [];
-  return turnsBackOnFrom(connection.provider, bound, askedFrom);
+  return turnsBackOnFrom(connection, bound, askedFrom);
 }
 
 /** A binding to a removed connection cannot resolve, and a check of it can only fail (ISS-1421 r22). */
@@ -83,7 +87,11 @@ export const connectionChangedWhileCleared = () =>
 
 /** `askedFrom` is the project whose own page the refusal answers, where it is one. */
 export async function assertNotRemoved(
-  connection: Parameters<typeof isRemovedConnection>[0] & { id: string },
+  connection: Parameters<typeof isRemovedConnection>[0] & {
+    id: string;
+    ownerType: 'user' | 'org';
+    ownerId: string;
+  },
   act: 'shared' | 'tested',
   askedFrom?: string,
 ): Promise<void> {

@@ -244,7 +244,8 @@ describe('a removed connection (criterion 216)', () => {
       config: {},
       secrets: { appId: '1', privateKey: 'scratch-old-pem', webhookSecret: 'scratch-old-hook' },
     });
-    const project = await createTestProject(harness.db, ownerId);
+    const personal = await seedOrg(harness.db, ownerId, { isPersonal: true });
+    const project = await createTestProject(harness.db, ownerId, { orgId: personal.id });
     await store.createBinding({
       connectionId: connection.id,
       projectId: project.id,
@@ -257,7 +258,7 @@ describe('a removed connection (criterion 216)', () => {
     });
     expect(on.status).toBe(409);
     expect(on.body.message).toBe(
-      'This connection holds no key, as removing it wiped its keys. Install the GitHub App again from the Integrations tab of a project it is bound to, and it turns back on.',
+      'This connection holds no key, as removing it wiped its keys. Install the GitHub App again from a bound project whose App would belong to its owner, and it turns back on.',
     );
   });
 

@@ -405,10 +405,14 @@ export const githubIntegration = declareIntegration<GitHubConfig, GitHubSecrets>
   },
   presentation: null,
   noKeyTurnsBackOn: {
-    fromBound:
-      'Install the GitHub App again from the Integrations tab of a project it is bound to, and it turns back on.',
     fromHere:
       "Install the GitHub App again from this project's Integrations tab, and it turns back on.",
+    notFromHere:
+      "An App installed from this project would belong to someone other than this connection's owner, so it cannot turn it back on.",
+    fromBound:
+      'Install the GitHub App again from a bound project whose App would belong to its owner, and it turns back on.',
+    noneTakesIt:
+      'No project it is bound to would give a new App to its owner, so nothing can turn it back on. Clear it from the list under Connections.',
   },
   adapter: githubAdapterMethods,
 });
