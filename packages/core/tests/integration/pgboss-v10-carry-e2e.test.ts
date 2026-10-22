@@ -274,4 +274,18 @@ describe('core refusing to boot pg-boss 12 over a pg-boss schema it cannot carry
     const carry = await bootBoss(v12(schema), harness.url, bossSchemas(schema));
     expect(carry?.carried).toEqual({ created: 2, retry: 1, active: 1 });
   }, 60_000);
+
+  // PR #1156's CI: a boot right after pg-boss 10 stopped was refused on a backend still on its way out.
+  it('boots over a pg-boss session that leaves while the set-aside reads who is connected', async () => {
+    const schema = freshSchema();
+    await seedV10(schema);
+    const leaving = new pg.Client({ connectionString: harness.url, application_name: 'pgboss' });
+    await leaving.connect();
+    const left = new Promise<void>((resolve) => {
+      setTimeout(() => void leaving.end().then(resolve, resolve), 300);
+    });
+    const carry = await bootBoss(v12(schema), harness.url, bossSchemas(schema));
+    await left;
+    expect(carry?.carried).toEqual({ created: 2, retry: 1, active: 1 });
+  }, 60_000);
 });
