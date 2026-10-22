@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.278] - 2026-10-22
+
+A replaced questionnaire points at the batch that stands
+
+### Fixed
+
+- **Renumbering criteria keeps their verdicts.** A criterion whose wording is unchanged but whose number moved keeps its row, its requirement trace and the verdicts it earned; a repeated wording that would have to move is refused `CRITERIA_RENUMBER_AMBIGUOUS` (ISS-567).
+- **An answer to a replaced questionnaire points at the batch that stands.** `QUESTIONNAIRE_SUPERSEDED` follows the replacements to the current batch and names it to answer only while it takes answers; an already answered one is said so (ISS-603).
+
 ## [0.4.0-dev.277] - 2026-10-22
 
 Dropping an issue with open questions voids them in the same act

@@ -1,1 +1,0 @@
-**Renumbering criteria keeps their verdicts.** A criterion whose wording is unchanged but whose number moved keeps its row, its requirement trace and the verdicts it earned; a repeated wording that would have to move is refused `CRITERIA_RENUMBER_AMBIGUOUS` (ISS-567).
