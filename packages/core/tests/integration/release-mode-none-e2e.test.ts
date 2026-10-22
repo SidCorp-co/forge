@@ -146,7 +146,9 @@ describe('a landing is recorded as the release of a project with no production e
     expect(refusals[0]?.detail).toContain(
       `it was judged at \`${D9.slice(0, 12)}\`, not at \`${F4.slice(0, 12)}\``,
     );
-    expect(refusals[0]?.detail).toContain(`it needs a \`pass\` judged at \`${F4.slice(0, 12)}\``);
+    expect(refusals[0]?.detail).toContain(
+      `it needs a \`pass\` whose identity is commit \`${F4.slice(0, 12)}\``,
+    );
     expect(await statusOf(issue)).toBe('awaiting_release');
   });
 

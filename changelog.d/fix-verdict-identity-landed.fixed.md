@@ -1,0 +1,1 @@
+**A landing refuses a verdict that names no commit.** On a project with no production environment, the landing record now refuses a runtime or other non-commit verdict by name, as requirement coverage already did, even where verdicts are not owed.

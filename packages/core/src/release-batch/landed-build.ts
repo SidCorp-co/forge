@@ -15,7 +15,11 @@
  * read such a head as the build where every live criterion passes there (`aheadBuildsOf`).
  */
 
-import { type JudgedBuild, verdictEarns } from '@forge/contracts/verdict-identity';
+import {
+  type JudgedBuild,
+  landedIdentityWhy,
+  verdictEarns,
+} from '@forge/contracts/verdict-identity';
 import { eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues } from '../db/schema.js';
@@ -172,11 +176,8 @@ export type LandedCriterion =
 function judgedCommit(verdict: CriterionVerdict): { sha: string } | { why: string } {
   const at = verdict.at;
   if (!at) return { why: 'it names nothing it was judged against' };
-  if (at.kind !== 'source') {
-    return {
-      why: `it was judged against ${at.kind} \`${at.value}\`, not a commit, and with no production environment only a verdict at the landed commit counts`,
-    };
-  }
+  const misshapen = landedIdentityWhy(at.kind === 'source' ? 'commit' : at.kind, at.value);
+  if (misshapen) return { why: `it was ${misshapen}` };
   const sha = at.value.trim().toLowerCase();
   return WHOLE.test(sha)
     ? { sha }
@@ -199,7 +200,7 @@ export function weighOnLanded(
   const no = (why: string): LandedCriterion => ({
     criterion,
     counts: false,
-    why: `${why}; it needs a \`pass\` judged at \`${short(build)}\``,
+    why: `${why}; it needs a \`pass\` whose identity is commit \`${short(build)}\``,
   });
   if (!verdict) return no('no verdict was recorded for it');
   if (verdict.unverified) return no(verdict.unverified);
@@ -208,6 +209,25 @@ export function weighOnLanded(
   if ('why' in judged) return no(judged.why);
   if (judged.sha !== build.toLowerCase()) return no(otherBuildWhy(judged.sha, build));
   return { criterion, counts: true, at: judged.sha };
+}
+
+// Where the project's document owes no verdict, a criterion with none is not weighed, and QA may
+// judge it after the landing; a verdict that is there is kernel input all the same, and one whose
+// identity names no commit is refused by name rather than closed over (`landedIdentityWhy`).
+function misshapenOf(build: string, criteria: readonly StandingCriterion[]): LandedCriterion[] {
+  return criteria.flatMap(({ criterion, verdict }) => {
+    if (!verdict?.at || verdict.at.kind === 'source') return [];
+    const why = landedIdentityWhy(verdict.at.kind, verdict.at.value);
+    return why
+      ? [
+          {
+            criterion,
+            counts: false as const,
+            why: `it was ${why}; it needs a verdict whose identity is commit \`${short(build)}\``,
+          },
+        ]
+      : [];
+  });
 }
 
 /** Each issue's live criteria weighed on the build `buildOf` names for it. */
@@ -232,7 +252,9 @@ export async function landedStandings(
       {
         issueId,
         owes: s.owes,
-        criteria: s.owes ? s.criteria.map((c) => weighOnLanded(build, c)) : [],
+        criteria: s.owes
+          ? s.criteria.map((c) => weighOnLanded(build, c))
+          : misshapenOf(build, s.criteria),
       },
     ];
   });
