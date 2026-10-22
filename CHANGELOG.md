@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.282] - 2026-10-22
+
+Record ids such as task-<hex> are no longer refused as API keys
+
+### Fixed
+
+- **Record ids such as `task-<hex>` are no longer read as API keys.** `sk-` is a key only where it starts a token; a `VERDICT_SECRET` refusal now names the offset, length and masked prefix of what it read (ISS-614).
+
 ## [0.4.0-dev.281] - 2026-10-22
 
 Ask Agent acts on your word, reads current state and answers in whole sentences
