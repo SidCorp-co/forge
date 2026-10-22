@@ -13,6 +13,7 @@ import {
   provideAgreementReplay,
   provideChatTools,
   provideHeldWriteVets,
+  provideNeedsYouDecisionRead,
   refuseChatToolWrite,
   registerRoomBridges,
   registerRoomChat,
@@ -25,7 +26,7 @@ import { logUnprovenPatPeppers } from './credentials/pat.js';
 import { provideCredentialsPorts } from './credentials/ports.js';
 import { closeDb, db } from './db/client.js';
 import { MEMORY_EMBEDDING_DIM } from './db/schema.js';
-import { forgeNeedsYouTool } from './development/index.js';
+import { forgeNeedsYouTool, needsYouViewerOf, readNeedsYouDecisions } from './development/index.js';
 import {
   contractHolding,
   contractProviderGate,
@@ -71,7 +72,7 @@ import {
   resolvePipelineContext,
 } from './jobs/index.js';
 import { provideKnowledgePorts } from './knowledge/index.js';
-import { provideProjectOrg, provideVisibleProjects } from './lib/authz.js';
+import { loadProjectAccess, provideProjectOrg, provideVisibleProjects } from './lib/authz.js';
 import { provideContractVersionReads } from './lib/contract-versions.js';
 import { provideDataPolicy } from './lib/data-egress.js';
 import { env } from './lib/env.js';
@@ -305,6 +306,12 @@ provideChatTools([
   ...CHAT_REPORT_TOOLS,
 ]);
 provideHeldWriteVets(CHAT_RECORD_VETS);
+// the decisions the chat makes on the person's word (REQ-41 BC-25) are the ones their Needs you reads
+provideNeedsYouDecisionRead(async (projectId, userId) => {
+  const access = await loadProjectAccess(projectId, userId);
+  return (await readNeedsYouDecisions(projectId, needsYouViewerOf(access, userId, 'human'), access))
+    .decisions;
+});
 provideDataPolicy(
   async (projectId) => (await readProjectDocument(projectId))?.document.sensitiveData,
 );

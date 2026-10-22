@@ -17,6 +17,8 @@ export interface WebTurnArgs {
     deliveryKey: string;
     mode: ConversationMode;
     question: string;
+    /** The person's latest message in this window: the word a decision made for them stands on (REQ-41 BC-25). */
+    latest: string;
     /** The pictures this window's messages carry, for a turn answered on a box. */
     images: readonly ConversationImage[];
     /**

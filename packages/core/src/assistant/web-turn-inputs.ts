@@ -24,6 +24,7 @@ import {
   buildRequirementDraftToolset,
 } from './tools/ba-first-tools.js';
 import { buildBaToolset } from './tools/ba-tools.js';
+import { buildDecideToolset } from './tools/decide-tool.js';
 import { mergeToolsets } from './tools/mcp-adapter.js';
 import { buildOfferActToolset } from './tools/offer-act-tool.js';
 import { buildOfferPreviewToolset } from './tools/offer-preview-tool.js';
@@ -169,6 +170,11 @@ async function prepareWebTurn(
         language: await askerLineLanguage(args),
       }),
       buildOfferPreviewToolset({ projectId: args.project.id, userId: authority.userId }),
+      buildDecideToolset({
+        projectId: args.project.id,
+        userId: authority.userId,
+        latestMessage: () => args.window.latest,
+      }),
     ),
   };
 }

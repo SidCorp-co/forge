@@ -9,9 +9,12 @@ import {
   decideRestWrite,
   decideToolCall,
   NOT_A_BUSINESS_WRITE,
+  ON_THE_PERSONS_WORD,
   REFUSED_FROM_CHAT,
   refusedWriteText,
 } from './write-rule.js';
+
+const OWNERS_WORD = '{"word":"mở giúp tôi đi","decisions":[]}'; // i18n-allow: the owner's word on dev, 2026-10-22
 
 const rest = (method: string, route: string, heldAs: string | null = null) =>
   decideRestWrite({ method, route, heldAs: heldAs as never });
@@ -100,6 +103,24 @@ describe('a tool call meets the same rule, read from the grant it declares', () 
       'write no list names',
     );
     expect(familyOf(decideToolCall('hand_built_tool', '{}', null))).toBe('write no list names');
+  });
+});
+
+describe("a decision made on the person's word passes to its own executor, and nothing else does (REQ-41 BC-25)", () => {
+  it('passes act_on_decisions, whose executor checks the word, whatever grant it names', () => {
+    expect(decideToolCall('act_on_decisions', OWNERS_WORD, null)).toEqual({
+      // i18n-allow: the owner's word on dev, 2026-10-22
+      verdict: 'pass',
+      why: ON_THE_PERSONS_WORD.act_on_decisions,
+    });
+  });
+
+  it('names that one tool only, and never a requirement or feedback write, which stays held', () => {
+    expect(Object.keys(ON_THE_PERSONS_WORD)).toEqual(['act_on_decisions']);
+    expect(
+      decideToolCall('project_feedback', '{"kind":"bug","title":"x"}', 'projects:write'),
+    ).toEqual({ verdict: 'hold', kind: 'feedback' });
+    expect(familyOf(decideToolCall('act_on_decision', '{}', null))).toBe('write no list names');
   });
 });
 

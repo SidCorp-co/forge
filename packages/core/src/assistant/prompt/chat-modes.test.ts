@@ -87,3 +87,41 @@ describe('the BA door records what is not its requirement, and names the other m
     expect(ba).toContain('Ann (project member)');
   });
 });
+
+// REQ-41 BC-25, BC-27, BC-29, BC-30: dev, 2026-10-22 (conversation a760cd5f). Told "open them for me"
+// twice, the assistant answered "I cannot press approval for you"; it added ISS-616, 617, 569 and 607
+// to a cluster of eight; it answered the owner's "29" with "No"; and it opened requests with "Correct".
+describe("Assistant mode acts on the person's word, on exactly what was agreed", () => {
+  it('makes decisions with act_on_decisions on the word in their current message, never one more', () => {
+    expect(web).toContain("When the person's CURRENT message tells you to make decisions");
+    expect(web).toContain(
+      'make them with act_on_decisions, quoting their instruction exactly as word',
+    );
+    expect(web).toContain('Pass exactly the decisions the conversation agreed, never one more');
+    expect(web).toContain('never say you cannot press a decision for them');
+    expect(web).toContain('leave the decision cards under your reply for them to press');
+  });
+
+  it('names an item already moved on as done, with who and when, and claims nothing the tool did not return', () => {
+    expect(web).toContain(
+      'an item it reports already_done you name done, with who moved it and when',
+    );
+    expect(web).toMatch(
+      /A DECISION IS DONE ONLY WHEN `act_on_decisions` SAYS SO, OR THE ITEM READS SO/,
+    );
+    expect(web).toContain(
+      'Never recommend a decision on an item a read shows has already moved on',
+    );
+  });
+
+  it('says what each count counts, never a bare "No" to their number', () => {
+    expect(web).toContain('SAY WHAT EACH COUNT COUNTS');
+    expect(web).toContain('never\n  answer their number with a bare "No"');
+  });
+
+  it('opens with the answer, never with "Correct" or "Yes"', () => {
+    expect(web).toContain(
+      'Open with the answer itself. Never open with "Correct", "Exactly", "Yes"',
+    );
+  });
+});

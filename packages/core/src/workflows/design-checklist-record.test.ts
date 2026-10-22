@@ -116,7 +116,11 @@ describe('a pin-only revision is judged by what it changes (REQ-41 BC-23)', () =
 
   it('carries the step questions from the approved revision, naming it and the pin that moved', () => {
     const e = judge(
-      facts(based(18), { linkedBy: ['REQ-18'], traced: [], approved: { revision: 4, raw: based(17) } }),
+      facts(based(18), {
+        linkedBy: ['REQ-18'],
+        traced: [],
+        approved: { revision: 4, raw: based(17) },
+      }),
     );
     expect(checklistRefusals(e)).toEqual([]);
     expect(e.answers.find((a) => a.question === 'criteria')?.value).toBe(
@@ -125,11 +129,22 @@ describe('a pin-only revision is judged by what it changes (REQ-41 BC-23)', () =
   });
 
   it('still asks every question of a revision that moves a pin and changes a step', () => {
-    const changed = { ...based(18), steps: [...based(18).steps, { id: 'b', title: 'Check', does: 'd', after: [] }] };
+    const changed = {
+      ...based(18),
+      steps: [...based(18).steps, { id: 'b', title: 'Check', does: 'd', after: [] }],
+    };
     const e = judge(
-      facts(changed, { linkedBy: ['REQ-18'], traced: [], approved: { revision: 4, raw: based(17) } }),
+      facts(changed, {
+        linkedBy: ['REQ-18'],
+        traced: [],
+        approved: { revision: 4, raw: based(17) },
+      }),
     );
-    expect(checklistRefusals(e).map((r) => r.question)).toEqual(['criteria', 'roles', 'exceptions']);
+    expect(checklistRefusals(e).map((r) => r.question)).toEqual([
+      'criteria',
+      'roles',
+      'exceptions',
+    ]);
   });
 
   it('asks every question of a first revision, which carries nothing', () => {

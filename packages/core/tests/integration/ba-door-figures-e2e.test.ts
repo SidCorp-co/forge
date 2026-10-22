@@ -107,6 +107,7 @@ async function baTurn(key: string, message: string) {
       deliveryKey: `window:${randomUUID()}`,
       mode: 'assistant',
       question: message,
+      latest: message,
       images: [],
       conversationContext: async () => null,
       reserve: async () => true,

@@ -366,6 +366,7 @@ describe('a web turn records whether its reply awaits an answer', () => {
         deliveryKey: `window:${randomUUID()}`,
         mode: 'assistant',
         question: 'Draft REQ-8 for the export screen',
+        latest: 'Draft REQ-8 for the export screen',
         images: [],
         conversationContext: async () => null,
         reserve: async () => true,

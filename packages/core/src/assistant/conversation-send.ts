@@ -210,6 +210,7 @@ export async function routeWebWindow(
             deliveryKey,
             mode,
             question: messages.map((m) => m.content).join('\n'),
+            latest: messages.filter((m) => m.role === 'user').at(-1)?.content ?? '',
             images: messages.flatMap((m) => m.images ?? []),
             conversationContext: () => agentConversationContext(window),
             reserve,

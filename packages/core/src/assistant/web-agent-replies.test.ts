@@ -39,6 +39,7 @@ function agentTurn(question: string) {
       deliveryKey: 'k',
       mode: 'agent',
       question,
+      latest: question,
       images: [],
       conversationContext: async () => null,
       reserve: async () => true,

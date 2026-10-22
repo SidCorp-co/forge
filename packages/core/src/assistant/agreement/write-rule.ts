@@ -21,6 +21,7 @@
 
 import { withArticle } from '@forge/contracts/articles';
 import { CHAT_ACT_TOOL } from '@forge/contracts/chat-acts';
+import { CHAT_DECIDE_TOOL } from '@forge/contracts/chat-decide';
 import type { ChatProposalKind } from '@forge/contracts/chat-proposals';
 import { IDEA_CHANGE_TOOL, IDEA_OFFER_TOOL } from '@forge/contracts/idea-offer';
 import { UI_ACTION_NAMES, UI_ACTIONS } from '@forge/contracts/ui-actions';
@@ -152,6 +153,18 @@ export const REFUSED_AT_THE_ROUTE: Readonly<Record<string, string>> = {
 export const DELEGATES_TO_REST: Readonly<Record<string, string>> = {
   forge:
     'the forge CLI writes only through core REST under the turn token, where this rule decides each request',
+};
+
+/**
+ * The business writes a chat makes on the person's own word, not on a card (REQ-41 BC-25, ruled
+ * 2026-10-22): the Needs-you decisions they tell it to make in their current message. The tool's own
+ * executor refuses the call by name unless the words it quotes are in that message, acts as the
+ * person with their own access, and answers only a question's own answer route, so nothing here
+ * reaches a requirement or feedback write, which stays held for its card (REQ-30).
+ */
+export const ON_THE_PERSONS_WORD: Readonly<Record<string, string>> = {
+  [CHAT_DECIDE_TOOL]:
+    'a Needs-you decision the person told it to make in their current message, which its executor refuses unless their quoted word is there; it answers a question as them, and writes no requirement or feedback',
 };
 
 interface RefusedFamily {
@@ -288,6 +301,8 @@ export function decideToolCall(
   if (typeof grant === 'string' && grant.endsWith(':read')) return READ;
   const delegated = DELEGATES_TO_REST[name];
   if (delegated) return { verdict: 'pass', why: delegated };
+  const worded = ON_THE_PERSONS_WORD[name];
+  if (worded) return { verdict: 'pass', why: worded };
   const listed = NOT_A_BUSINESS_WRITE.find((e) => e.tools.includes(name));
   if (listed) return { verdict: 'pass', why: listed.why };
   const family = REFUSED_FROM_CHAT.find((f) => f.tools.includes(name));

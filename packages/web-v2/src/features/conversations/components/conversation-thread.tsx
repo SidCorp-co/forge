@@ -254,6 +254,7 @@ function Unsent({ item, onRetry }: { item: OutboxMessage; onRetry?: (id: string)
 export function ConversationThread({
   projectId,
   projectSlug,
+  conversationId,
   messages,
   windows,
   outbox = [],
@@ -268,6 +269,8 @@ export function ConversationThread({
   projectId?: string | undefined;
   /** The project's slug, for the links a report block's refs open; plain text until it is known. */
   projectSlug?: string | undefined;
+  /** The room, so a decision card pressed under a reply is answered in it (REQ-41 BC-24). */
+  conversationId?: string | undefined;
   messages: ConversationMessage[];
   windows: ConversationWindow[];
   /** What this browser has accepted and the server has not confirmed (ISS-1031). */
@@ -312,7 +315,7 @@ export function ConversationThread({
                 share={projectId ? { projectId, projectSlug } : undefined}
               />
               {afterEntry?.(entry.message.id)}
-              <TurnDecisions blocks={entry.message.blocks} slug={projectSlug} />
+              <TurnDecisions blocks={entry.message.blocks} slug={projectSlug} conversationId={conversationId} />
               <TurnReproduce blocks={entry.message.blocks} slug={projectSlug} />
             </div>
           );
@@ -346,7 +349,7 @@ export function ConversationThread({
             />
             {afterEntry?.(entry.progress.entry.id ?? "live")}
             {entry.progress.verdict && entry.progress.verdict !== "withheld" && (
-              <TurnDecisions blocks={entry.progress.entry.blocks} slug={projectSlug} />
+              <TurnDecisions blocks={entry.progress.entry.blocks} slug={projectSlug} conversationId={conversationId} />
             )}
             </div>
           );

@@ -189,6 +189,7 @@ async function turn(args: {
       deliveryKey: `window:${randomUUID()}`,
       mode: 'assistant',
       question: args.message,
+      latest: args.message,
       images: [],
       conversationContext: async () => null,
       reserve: async () => true,

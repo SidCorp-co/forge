@@ -1,4 +1,5 @@
 import { conversationTypeOfFile } from "@forge/contracts/attachments";
+import type { DecisionOutcomeRequest } from "@forge/contracts/chat-decide";
 import type { ChatProposalView } from "@forge/contracts/chat-proposals";
 import type { UiSnapshot } from "@forge/contracts/ui-actions";
 import { apiClient, apiClientList, apiPutBytes } from "@/lib/api/client";
@@ -190,6 +191,13 @@ export const conversationsApi = {
     apiClient<{ proposal: ChatProposalView }>(`/conversations/${id}/proposals/${proposalId}/agree`, {
       method: "POST",
       body: JSON.stringify({}),
+    }),
+
+  /** `POST /api/conversations/:id/decision-outcomes` — a card pressed under a reply; core answers with the item read back. */
+  decisionOutcome: (id: string, outcome: DecisionOutcomeRequest) =>
+    apiClient<{ content: string }>(`/conversations/${id}/decision-outcomes`, {
+      method: "POST",
+      body: JSON.stringify(outcome),
     }),
 
   /** `POST /api/conversations/:id/proposals/:pid/decline` — write nothing, and say so. */

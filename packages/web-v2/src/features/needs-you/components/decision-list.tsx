@@ -24,7 +24,21 @@ import { needsYouApi, pressBody } from "../api";
 import { NEEDS_YOU_ROOT } from "../hooks";
 import { decisionHref } from "../routes";
 
-function OwedDecision({ d, slug }: { d: NeedsYouDecision; slug: string | undefined }) {
+/** What a press came to, for a surface that answers it: the chat posts the item read back (REQ-41 BC-24). */
+export interface DecisionSettled {
+  decision: NeedsYouDecision;
+  ok: boolean;
+}
+
+function OwedDecision({
+  d,
+  slug,
+  onSettled,
+}: {
+  d: NeedsYouDecision;
+  slug: string | undefined;
+  onSettled: ((s: DecisionSettled) => void) | undefined;
+}) {
   const t = useCopy();
   const qc = useQueryClient();
   const [typing, setTyping] = useState<DecisionAnswer | null>(null);
@@ -35,7 +49,9 @@ function OwedDecision({ d, slug }: { d: NeedsYouDecision; slug: string | undefin
     onSuccess: () => {
       setTyping(null);
       void qc.invalidateQueries({ queryKey: NEEDS_YOU_ROOT });
+      onSettled?.({ decision: d, ok: true });
     },
+    onError: () => onSettled?.({ decision: d, ok: false }),
   });
   const href = slug ? decisionHref(slug, d.opens) : null;
   const recommended = d.recommended ? d.answers.find((a) => a.id === d.recommended?.answerId) : undefined;
@@ -149,12 +165,15 @@ export function DecisionList({
   only,
   cap,
   moreHref,
+  onSettled,
 }: {
   read: Pick<NeedsYouDecisions, "decisions" | "total" | "notDecisions">;
   slug?: string | undefined;
   only?: NeedsYouDecisionGroup;
   cap?: number;
   moreHref?: string;
+  /** Told when a press settles, either way. */
+  onSettled?: ((s: DecisionSettled) => void) | undefined;
 }) {
   const t = useCopy();
   // the rest are counted from the read's total, which holds every decision however many it carries
@@ -174,7 +193,7 @@ export function DecisionList({
           </h3>
           <ul className="flex flex-col divide-y divide-line-subtle">
             {rows.map((d) => (
-              <OwedDecision key={d.id} d={d} slug={slug} />
+              <OwedDecision key={d.id} d={d} slug={slug} onSettled={onSettled} />
             ))}
           </ul>
         </div>

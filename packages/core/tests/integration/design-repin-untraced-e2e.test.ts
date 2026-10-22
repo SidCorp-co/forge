@@ -105,7 +105,12 @@ beforeAll(async () => {
   say = requester(app, {
     owner: await signUserToken(ownerId),
     master: (
-      await mintPat({ permissions: ['*'], userId: agentId, name: 'master', projectIds: [projectId] })
+      await mintPat({
+        permissions: ['*'],
+        userId: agentId,
+        name: 'master',
+        projectIds: [projectId],
+      })
     ).plaintext,
   });
 }, 120_000);
@@ -126,10 +131,15 @@ describe('a pin-only re-pin of a design whose linking requirement traces nothing
       d.steps[0].node.label = 'Hospital HIS (revised)';
     });
     ok(
-      await say('owner', 'POST', at(`/workflows/${ids.get('requirement-to-delivery')}/design/decision`), {
-        revision: 2,
-        decision: 'approve',
-      }),
+      await say(
+        'owner',
+        'POST',
+        at(`/workflows/${ids.get('requirement-to-delivery')}/design/decision`),
+        {
+          revision: 2,
+          decision: 'approve',
+        },
+      ),
     );
 
     const [decision] = await decisionsOf();

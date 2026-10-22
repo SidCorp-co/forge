@@ -21,6 +21,7 @@ export { runTranscriptIndexSweepOnce } from './conversation-index-drain.js';
 export { composeLayers } from './prompt/layer.js';
 export { METHOD_LAYERS } from './prompt/layers.js';
 export { type PreCall, runTurnEvents, type ToolCallRecord } from './run-turn-core.js';
+export { provideNeedsYouDecisionRead } from './tools/decide-tool.js';
 export { type ChatToolset, toolError } from './tools/mcp-adapter.js';
 export { provideChatTools } from './tools/registry.js';
 export type { WidgetDraftParams } from './tools/widget-draft-tool.js';
