@@ -1,3 +1,4 @@
+import { GOAL_LABEL_WORDS } from '@forge/contracts/requirement-goal';
 import { guideRef } from './guide-ref.js';
 import type { CoreGuide } from './types.js';
 
@@ -7,7 +8,7 @@ export const REQUIREMENT_LIFECYCLE_GUIDE: CoreGuide = {
   title: 'Requirements: revisions, agreement, baselines and delivery',
   summary:
     'How a requirement (REQ-n) is written in immutable revisions with stable business criteria (BC-n), proposed, accepted and agreed by a holder of requirements.approve under a baseline pinning its designs, re-pinned, deferred, read as delivered, accepted or dropped; and why an issue planned against it reads changed-since-plan.',
-  version: 4,
+  version: 5,
   body: `## Requirements: revisions, agreement, baselines and delivery
 
 A requirement (REQ-n) is the business intent a set of issues delivers. Its text never changes in place:
@@ -78,7 +79,9 @@ it lives in numbered revisions, and each revision carries business criteria unde
    read from the head: the problem, who it is for, the value and how it is measured, the business
    criteria, no blocking open question, and a linked workflow design; its kind, out of scope and roadmap
    lane take a recommended answer when unstated. The goal answers the problem, value, measure and lane on
-   lines starting \`Problem:\`, \`Value:\`, \`Measured by:\` and \`Roadmap:\`. Each blocking gap is
+   lines starting \`Problem:\`, \`Value:\`, \`Measured by:\` and \`Roadmap:\`; a revision written in
+   Vietnamese (\`writtenLang: vi\`) may label them in its own language, ${(['problem', 'value', 'measured', 'roadmap'] as const).map((l) => `\`${GOAL_LABEL_WORDS.vi[l]}:\``).join(', ')},
+   and the English labels are read in either. Each blocking gap is
    refused \`CHECKLIST_INCOMPLETE\` on \`/answers/<question>\`, naming it. \`GET …/requirements/:req/checklist\`
    reads the ready and the acceptance checklists before you move: each one's form, how the head stands
    against it now (\`now\`: answers given or assumed with their source, gaps in plain words; null for
