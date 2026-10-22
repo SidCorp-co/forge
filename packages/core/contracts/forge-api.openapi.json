@@ -14731,7 +14731,6 @@
                             "properties": {
                               "draftVersion": {
                                 "maxLength": 200,
-                                "minLength": 1,
                                 "type": "string"
                               },
                               "environment": {
@@ -14745,14 +14744,28 @@
                               },
                               "workflowId": {
                                 "maxLength": 200,
-                                "minLength": 1,
                                 "type": "string"
+                              },
+                              "workflows": {
+                                "items": {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "draftVersion": {
+                                      "maxLength": 200,
+                                      "type": "string"
+                                    },
+                                    "workflowId": {
+                                      "maxLength": 200,
+                                      "type": "string"
+                                    }
+                                  },
+                                  "type": "object"
+                                },
+                                "type": "array"
                               }
                             },
                             "required": [
                               "kind",
-                              "workflowId",
-                              "draftVersion",
                               "environment"
                             ],
                             "type": "object"
