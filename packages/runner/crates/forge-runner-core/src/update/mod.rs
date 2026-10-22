@@ -105,19 +105,77 @@ pub fn manifest_url(configured: Option<&str>, core_url: Option<&str>) -> Option<
     core_url.map(|c| format!("{}/api/install/latest.json", c.trim_end_matches('/')))
 }
 
-pub async fn fetch_manifest(url: &str) -> Result<Manifest> {
+/// How long a manifest read waits for its answer.
+const MANIFEST_DEADLINE: Duration = Duration::from_secs(10);
+
+/// Read the release manifest at `url`. `core_url` is the box's core address, which decides how a
+/// failure is said: a manifest derived from it fails the way every call to core does, one set in
+/// config is named by its own address.
+pub async fn fetch_manifest(url: &str, core_url: Option<&str>) -> Result<Manifest> {
+    let unread = |e: reqwest::Error| {
+        // A body's error carries no url, and the sentence names where the answer came from.
+        let e = match (e.url(), reqwest::Url::parse(url)) {
+            (None, Ok(at)) => e.with_url(at),
+            _ => e,
+        };
+        Error::Other(manifest_unread(url, core_url, &e))
+    };
     let resp = reqwest::Client::new()
         .get(url)
-        .timeout(Duration::from_secs(10))
+        .timeout(MANIFEST_DEADLINE)
         .send()
         .await
-        .map_err(|e| Error::Other(format!("fetch manifest: {e}")))?;
+        .map_err(unread)?;
     if !resp.status().is_success() {
         return Err(Error::Other(format!("manifest {}", resp.status())));
     }
-    resp.json::<Manifest>()
-        .await
-        .map_err(|e| Error::Other(format!("parse manifest: {e}")))
+    resp.json::<Manifest>().await.map_err(unread)
+}
+
+/// Why the manifest at `url` was not read, from the transport's error. Its words said "error
+/// sending request for url" where core could not be reached (ISS-1421 r24, criterion 214).
+fn manifest_unread(url: &str, core_url: Option<&str>, e: &reqwest::Error) -> String {
+    use crate::transport::status;
+    if from_core(url, core_url) {
+        return format!(
+            "update manifest: {}",
+            status::not_reached_sentence(e, Some(MANIFEST_DEADLINE))
+        );
+    }
+    let why = if e.is_decode() || e.is_body() {
+        status::unread_body(e)
+    } else if e.is_timeout() {
+        format!("no answer came within {}s", MANIFEST_DEADLINE.as_secs())
+    } else {
+        status::why_not_reached(e)
+    };
+    configured_unread(url, &why)
+}
+
+/// What a manifest read that outlasted `deadline` says, for a caller that bounds it itself.
+pub fn manifest_not_answered(url: &str, core_url: Option<&str>, deadline: Duration) -> String {
+    let why = format!("no answer came within {}s", deadline.as_secs());
+    if from_core(url, core_url) {
+        let at = crate::transport::status::core_origin(url);
+        return format!(
+            "update manifest: {}",
+            crate::transport::status::not_reached_at(&at, &why)
+        );
+    }
+    configured_unread(url, &why)
+}
+
+fn configured_unread(url: &str, why: &str) -> String {
+    format!(
+        "The update manifest at {} could not be read, as {why}. Check the update.manifest_url \
+         this box is configured with.",
+        crate::transport::status::core_origin(url)
+    )
+}
+
+/// Whether `url` is the manifest this box's core address serves rather than one set in config.
+fn from_core(url: &str, core_url: Option<&str>) -> bool {
+    core_url.is_some() && manifest_url(None, core_url).as_deref() == Some(url)
 }
 
 /// `latest` is a higher X.Y.Z than `current` (pre-release suffix ignored).
@@ -569,6 +627,114 @@ mod tests {
         assert!(
             body.contains("crate::exe::own()"),
             "apply must resolve the path it installs over"
+        );
+    }
+
+    /// An address nothing listens on: bound, then let go.
+    async fn refused_address() -> String {
+        let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = l.local_addr().unwrap();
+        drop(l);
+        format!("http://{addr}")
+    }
+
+    /// Serves one answer, `sent` whole, then closes the connection.
+    async fn answer_once(sent: &'static str) -> String {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let (mut sock, _) = listener.accept().await.unwrap();
+            let mut buf = vec![0u8; 8192];
+            let _ = sock.read(&mut buf).await;
+            let _ = sock.write_all(sent.as_bytes()).await;
+            let _ = sock.shutdown().await;
+        });
+        format!("http://{addr}")
+    }
+
+    /// Criterion 214, ISS-1421 r24: `forge-runner update`, doctor's update line and the daemon's
+    /// update check said "fetch manifest: error sending request for url (…)" where core was down.
+    #[tokio::test]
+    async fn a_manifest_core_cannot_serve_says_forge_could_not_be_reached() {
+        let core = refused_address().await;
+        let url = manifest_url(None, Some(&core)).unwrap();
+        let said = fetch_manifest(&url, Some(&core))
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(
+            said.contains(&format!(
+                "update manifest: Forge could not be reached at {core}, as the connection was refused. \
+                 Check that core is running there and that this box's core address is right."
+            )),
+            "{said}"
+        );
+        assert!(!said.contains("error sending request"), "{said}");
+    }
+
+    #[tokio::test]
+    async fn a_configured_manifest_that_cannot_be_reached_is_named_by_its_address() {
+        let at = refused_address().await;
+        let url = format!("{at}/latest.json");
+        let said = fetch_manifest(&url, Some("https://core.example"))
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(
+            said.contains(&format!(
+                "The update manifest at {at} could not be read, as the connection was refused. \
+                 Check the update.manifest_url this box is configured with."
+            )),
+            "{said}"
+        );
+        assert!(!said.contains("Forge could not be reached"), "{said}");
+    }
+
+    /// Criterion 245's words, for the manifest: a chunked answer cut between chunks.
+    #[tokio::test]
+    async fn a_manifest_cut_between_chunks_did_not_arrive_whole() {
+        let core = answer_once(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nTransfer-Encoding: chunked\r\n\r\n9\r\n{\"version\r\n",
+        )
+        .await;
+        let url = manifest_url(None, Some(&core)).unwrap();
+        let said = fetch_manifest(&url, Some(&core))
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(
+            said.ends_with(&format!(
+                "update manifest: Forge at {core} answered, but the body did not arrive whole."
+            )),
+            "{said}"
+        );
+    }
+
+    /// A manifest that arrived whole and is not JSON is not called cut: only a cut is a cut.
+    #[tokio::test]
+    async fn a_whole_manifest_that_is_not_json_did_not_decode() {
+        let core = answer_once(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 9\r\nConnection: close\r\n\r\n{\"version",
+        )
+        .await;
+        let url = manifest_url(None, Some(&core)).unwrap();
+        let said = fetch_manifest(&url, Some(&core))
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(said.contains("the body did not decode: "), "{said}");
+        assert!(!said.contains("did not arrive whole"), "{said}");
+    }
+
+    #[test]
+    fn a_manifest_doctor_stopped_waiting_for_names_its_budget() {
+        let core = "http://127.0.0.1:9";
+        let url = manifest_url(None, Some(core)).unwrap();
+        assert_eq!(
+            manifest_not_answered(&url, Some(core), Duration::from_secs(3)),
+            "update manifest: Forge could not be reached at http://127.0.0.1:9, as no answer came \
+             within 3s. Check that core is running there and that this box's core address is right."
         );
     }
 

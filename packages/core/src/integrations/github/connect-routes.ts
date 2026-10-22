@@ -212,7 +212,8 @@ githubConnectRoutes.post(
  * The removed GitHub connection this project's binding names, when the App about to be created would
  * not belong to its owner: the callback could not turn that connection back on, and its binding holds
  * the project's one GitHub slot, so the App would be left on GitHub with nowhere to go. Refused here,
- * before anything is created (ISS-1421 r22).
+ * before anything is created (ISS-1421 r22). Disconnecting leaves the binding holding that slot, so
+ * the refusal names the owner's Clear, which deletes it, and never Disconnect (ISS-1421 r24).
  */
 async function assertRemovedConnectionTakesTheApp(
   projectId: string,
@@ -230,8 +231,8 @@ async function assertRemovedConnectionTakesTheApp(
   throw new HTTPException(409, {
     message:
       "This project's GitHub binding names a removed connection that an App created here would not " +
-      'belong to, so the new App could not take its place. Disconnect it from this project, then ' +
-      'create the App.',
+      "belong to, so the new App could not take its place. The connection's owner can clear it from " +
+      'the list on the Integrations page, and then the App can be created here.',
     cause: {
       code: 'REMOVED_CONNECTION_OTHER_OWNER',
       details: { connectionId: removed.connection.id },

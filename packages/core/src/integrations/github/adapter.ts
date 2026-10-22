@@ -412,7 +412,7 @@ export const githubIntegration = declareIntegration<GitHubConfig, GitHubSecrets>
     fromBound:
       'Install the GitHub App again from a bound project whose App would belong to its owner, and it turns back on.',
     noneTakesIt:
-      'No project it is bound to would give a new App to its owner, so nothing can turn it back on. Clear it from the list under Connections.',
+      'No project it is bound to would give a new App to its owner, so nothing can turn it back on. Clear it from the list on the Integrations page.',
   },
   adapter: githubAdapterMethods,
 });

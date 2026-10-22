@@ -733,6 +733,7 @@ pub async fn run(
         crate::update::manifest_url(cfg.update.manifest_url.as_deref(), Some(&core_url))
     {
         let auto = cfg.update.auto;
+        let core = core_url.clone();
         let inflight = inflight.clone();
         let drain = drain.clone();
         let runner = runner.clone();
@@ -744,8 +745,9 @@ pub async fn run(
         tokio::spawn(async move {
             tokio::time::sleep(std::time::Duration::from_secs(30)).await;
             update_checks(UPDATE_CHECK_INTERVAL, cancel_rx, move |checked_at| {
-                let (url, inflight, drain, runner, bound, assignments, served, masters) = (
+                let (url, core, inflight, drain, runner, bound, assignments, served, masters) = (
                     url.clone(),
+                    core.clone(),
                     inflight.clone(),
                     drain.clone(),
                     runner.clone(),
@@ -755,7 +757,7 @@ pub async fn run(
                     masters.clone(),
                 );
                 async move {
-                match crate::update::fetch_manifest(&url).await {
+                match crate::update::fetch_manifest(&url, Some(core.as_str())).await {
                     Ok(m)
                         if crate::update::is_newer(&m.version, crate::update::CURRENT_VERSION) =>
                     {

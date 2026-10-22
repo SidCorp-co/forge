@@ -21,7 +21,7 @@ export function bindsRemovedConnection(
 export function removedCredentialLine(provider: string): string {
   const module = providerModule(provider);
   if (module?.secretField !== null) {
-    return "The shared connection was removed, so it holds no key. Saving a new key on it under Connections turns it back on.";
+    return "The shared connection was removed, so it holds no key. Saving a new key on it on the Integrations page turns it back on.";
   }
   return module.removedLine ?? "The shared connection was removed, so no project can use it.";
 }
@@ -63,7 +63,7 @@ export function IntegrationEnabledControl({
           onChange={(active) =>
             update.mutate({ id: binding.id, body: { active } })
           }
-          disabled={orgLocked}
+          disabled={orgLocked || (credentialRemoved && !optedIn)}
         />
       </span>
       {credentialRemoved && (

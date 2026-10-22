@@ -207,7 +207,7 @@ export function IntegrationsScreen() {
     <PageContainer className="flex flex-col gap-5">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <PageTitle className="fg-h2">Connections</PageTitle>
+          <PageTitle className="fg-h2">Integrations</PageTitle>
           <p className="fg-body-sm text-muted">
             Credentials in {scopeName}, shared across projects. Configure a project&apos;s
             integrations in its settings → Integrations.

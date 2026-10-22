@@ -26,7 +26,7 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
         update::VERSION_LINE,
         update::BUILD_TARGET
     );
-    let manifest = update::fetch_manifest(&url).await?;
+    let manifest = update::fetch_manifest(&url, core.as_deref()).await?;
 
     if !update::is_newer(&manifest.version, update::CURRENT_VERSION) {
         println!("✔ up to date (latest {})", manifest.version);

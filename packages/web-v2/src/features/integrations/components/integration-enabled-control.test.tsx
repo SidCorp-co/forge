@@ -56,9 +56,20 @@ describe("the binding controls over a removed connection (criterion 228)", () =>
     expect(screen.queryByRole("button", { name: /enable credential/i })).toBeNull();
     expect(
       screen.getByText(
-        "The shared connection was removed, so it holds no key. Saving a new key on it under Connections turns it back on.",
+        "The shared connection was removed, so it holds no key. Saving a new key on it on the Integrations page turns it back on.",
       ),
     ).toBeInTheDocument();
+  });
+
+  // r24: core refuses switching a binding on over a removed connection, so the switch is not offered.
+  it("offer no way to switch a disconnected binding on, and keep switching it off", () => {
+    render(
+      <IntegrationEnabledControl projectId={PROJECT} binding={binding({ bindingActive: false })} />,
+    );
+    expect(screen.getByRole("switch", { name: "Enabled for this project" })).toBeDisabled();
+    cleanup();
+    render(<IntegrationEnabledControl projectId={PROJECT} binding={binding({})} />);
+    expect(screen.getByRole("switch", { name: "Enabled for this project" })).toBeEnabled();
   });
 
   it("offer no Enable credential for GitHub, and say the install turns it back on", () => {

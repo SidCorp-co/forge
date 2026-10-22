@@ -261,6 +261,10 @@ export const updateIntegration = onBinding(
         'the caller is not a project admin, or is not an org admin where the credential is org-owned or a direct agent grant is asked',
       ),
       404: noSuchBinding,
+      409: fail(
+        'CONNECTION_REMOVED',
+        'the binding was switched on over a removed connection, which holds no key to resolve',
+      ),
       503: vaultMissing,
     },
   }),

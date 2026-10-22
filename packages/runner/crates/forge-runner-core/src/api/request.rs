@@ -401,6 +401,66 @@ mod tests {
         );
     }
 
+    /// Serves one answer whose head and first bytes are `sent`, then closes the connection.
+    async fn cut_after(sent: &'static str) -> std::net::SocketAddr {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let (mut sock, _) = listener.accept().await.unwrap();
+            let mut buf = vec![0u8; 8192];
+            let _ = sock.read(&mut buf).await;
+            let _ = sock.write_all(sent.as_bytes()).await;
+            let _ = sock.shutdown().await;
+        });
+        addr
+    }
+
+    const CHUNKED: &str =
+        "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nTransfer-Encoding: chunked\r\n\r\n";
+
+    /// Criterion 245, ISS-1421 r24: a chunked answer cut between two chunks said "the body did not
+    /// decode: unexpected EOF during chunk size line", as if core had sent something malformed.
+    #[tokio::test]
+    async fn a_chunked_answer_cut_between_chunks_did_not_arrive_whole() {
+        for method in ["get", "post"] {
+            let sent: &'static str =
+                Box::leak(format!("{CHUNKED}9\r\n{{\"items\":\r\n").into_boxed_str());
+            let addr = cut_after(sent).await;
+            let c = CoreClient::new(format!("http://{addr}"), "tok".to_string());
+            let mut r = req("issues");
+            r.method = method.into();
+            if method == "post" {
+                r.body = Some("{}".into());
+            }
+            let out = run(&c, &r).await;
+            assert_ne!(out.outcome.exit_code, 0, "{}", out.stderr);
+            assert_eq!(out.stdout, b"");
+            let failure: Value = serde_json::from_str(&out.stderr).unwrap();
+            let said = failure["message"].as_str().unwrap();
+            assert_eq!(
+                said,
+                format!(
+                    "{} /api/issues: Forge at http://{addr} answered, but the body did not arrive whole.",
+                    method.to_uppercase()
+                )
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn a_chunked_answer_cut_inside_a_chunk_did_not_arrive_whole() {
+        let sent: &'static str = Box::leak(format!("{CHUNKED}40\r\n{{\"items\":").into_boxed_str());
+        let addr = cut_after(sent).await;
+        let c = CoreClient::new(format!("http://{addr}"), "tok".to_string());
+        let out = run(&c, &req("issues")).await;
+        assert_ne!(out.outcome.exit_code, 0, "{}", out.stderr);
+        let failure: Value = serde_json::from_str(&out.stderr).unwrap();
+        assert_eq!(
+            failure["message"].as_str().unwrap(),
+            format!("GET /api/issues: Forge at http://{addr} answered, but the body did not arrive whole.")
+        );
+    }
+
     #[tokio::test]
     async fn the_token_and_the_project_slug_are_both_on_the_wire() {
         let (url, rx) = serve_once("200 OK", "{}").await;

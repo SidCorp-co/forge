@@ -32,6 +32,8 @@ beforeAll(async () => {
   process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
   process.env.PAT_PEPPER ??= 'test-pat-pepper-at-least-32-chars-long-aaaa';
   process.env.APP_BASE_URL ??= 'http://localhost:3000';
+  // The connect start names the callback origin, and app.request reaches core at http://localhost.
+  process.env.PUBLIC_API_BASE_URL = 'http://localhost';
   process.env.CORS_ORIGINS ??= 'http://localhost:3000';
   process.env.INTEGRATION_MASTER_KEY ??= Buffer.alloc(32, 7).toString('base64');
   process.env.NODE_ENV = 'test';
@@ -151,6 +153,43 @@ describe('a removed connection is neither shared nor tested (criteria 229 to 233
     expect([...after]).toEqual([...before]);
   });
 
+  // r24, judge-96: switching the binding on answered 200 and changed nothing a project could use.
+  it.each([
+    ['still on', true],
+    ['disconnected', false],
+  ])('refuses to switch on a binding %s over it, and writes nothing', async (_name, bindingOn) => {
+    const project = await createTestProject(harness.db, ownerId);
+    const connection = await removedSentryBoundTo(project.id);
+    const [bound] = await store.listBindingsForConnection(connection.id);
+    const bindingId = bound?.binding.id as string;
+    if (!bindingOn) await store.updateBinding(bindingId, { active: false });
+    const before = await store.findBindingWithConnectionById(bindingId);
+    const turned = await call('PATCH', `/api/projects/${project.id}/integrations/${bindingId}`, {
+      active: true,
+    });
+    expect(turned.status, JSON.stringify(turned.body)).toBe(409);
+    expect(turned.body.code).toBe('CONNECTION_REMOVED');
+    expect(turned.body.message).toBe(
+      'This connection was removed and holds no key, so it cannot be turned on for this project. Save a new key to turn it back on.',
+    );
+    const after = await store.findBindingWithConnectionById(bindingId);
+    expect(after?.binding.active).toBe(bindingOn);
+    expect(after?.binding.updatedAt).toEqual(before?.binding.updatedAt);
+  });
+
+  it('still lets the binding be switched off, and a key saved with the switch turn it on', async () => {
+    const project = await createTestProject(harness.db, ownerId);
+    const connection = await removedSentryBoundTo(project.id);
+    const [bound] = await store.listBindingsForConnection(connection.id);
+    const url = `/api/projects/${project.id}/integrations/${bound?.binding.id}`;
+    expect((await call('PATCH', url, { active: false })).status).toBe(200);
+    const keyed = await call('PATCH', url, {
+      active: true,
+      secrets: { authToken: 'scratch-saved-with-the-switch' },
+    });
+    expect(keyed.status, JSON.stringify(keyed.body)).toBe(200);
+  });
+
   // Consult F2: a secret saved beside the key leaves a secrets record but no key.
   it('reads a removed Rocket.Chat connection holding only its bot user as removed', async () => {
     const project = await createTestProject(harness.db, ownerId);
@@ -264,7 +303,7 @@ describe("a project's removed GitHub connection (criteria 224, 225)", () => {
       sql`DELETE FROM integration_bindings WHERE connection_id = ${connection.id}`,
     );
     const nothing =
-      'No project is bound to it, so nothing can turn it back on. Clear it from the list under Connections.';
+      'No project is bound to it, so nothing can turn it back on. Clear it from the list on the Integrations page.';
     const listed = await call(
       'GET',
       `/api/projects/${other.id}/integrations/github/repositories?connectionId=${connection.id}`,
@@ -298,7 +337,7 @@ describe("a project's removed GitHub connection (criteria 224, 225)", () => {
       `/api/projects/${project.id}/integrations/github/repositories?connectionId=${connection.id}`,
     );
     expect(listed.body.message).toBe(
-      "This GitHub connection was removed, so it holds no App. An App installed from this project would belong to someone other than this connection's owner, so it cannot turn it back on. No project it is bound to would give a new App to its owner, so nothing can turn it back on. Clear it from the list under Connections.",
+      'This GitHub connection was removed, so it holds no App. No project it is bound to would give a new App to its owner, so nothing can turn it back on. Clear it from the list on the Integrations page.',
     );
     const [binding] = await store.listBindingsForConnection(connection.id);
     const tested = await call(
@@ -309,9 +348,41 @@ describe("a project's removed GitHub connection (criteria 224, 225)", () => {
     const started = await call('POST', `/api/projects/${project.id}/integrations/github/connect`);
     expect(started.status, JSON.stringify(started.body)).toBe(409);
     expect(started.body.code).toBe('REMOVED_CONNECTION_OTHER_OWNER');
-    expect(String(started.body.message)).toContain('Disconnect it from this project');
+    expect(started.body.message).toBe(OTHER_OWNER);
+
+    // r24, judge-96: the refusal said to disconnect, and a disconnected project was refused the same
+    // way, since the switched-off row still holds its one GitHub binding.
+    const disconnected = await call(
+      'DELETE',
+      `/api/projects/${project.id}/integrations/${binding?.binding.id}`,
+    );
+    expect(disconnected.status, JSON.stringify(disconnected.body)).toBe(200);
+    const again = await call('POST', `/api/projects/${project.id}/integrations/github/connect`);
+    expect(again.body.code).toBe('REMOVED_CONNECTION_OTHER_OWNER');
+    expect(again.body.message).toBe(OTHER_OWNER);
+    expect(String(again.body.message)).not.toContain('Disconnect');
+
+    // The act it names frees the project: the owner's Clear deletes the binding with the connection.
+    const cleared = await call('DELETE', `/api/integration-connections/${connection.id}`);
+    expect(cleared.status, JSON.stringify(cleared.body)).toBe(200);
+    const freed = await call('POST', `/api/projects/${project.id}/integrations/github/connect`);
+    expect(freed.status, JSON.stringify(freed.body)).toBe(200);
+
+    // r24, judge-96: deleting it again said only that it was not one the caller could reach.
+    const gone = await call('DELETE', `/api/integration-connections/${connection.id}`);
+    expect(gone.status).toBe(404);
+    expect(gone.body.code).toBe('CONNECTION_NOT_REACHABLE');
+    expect(gone.body.message).toBe(
+      `Connection ${connection.id} is already gone, or is not one you can reach. Only its owner ` +
+        "(for an organization's connection, an owner or admin of that organization) can delete it.",
+    );
   });
 });
+
+const OTHER_OWNER =
+  "This project's GitHub binding names a removed connection that an App created here would not " +
+  "belong to, so the new App could not take its place. The connection's owner can clear it from " +
+  'the list on the Integrations page, and then the App can be created here.';
 
 // Whole-set review F1 and F2: what a request read can change before it writes.
 describe('a write that races another (criteria 227, 238)', () => {
@@ -329,6 +400,22 @@ describe('a write that races another (criteria 227, 238)', () => {
     expect(await store.clearRemovedConnection(read as NonNullable<typeof read>)).toBe(false);
     expect(await rowOf(connection.id)).toMatchObject({ wiped: false });
     expect(await bindingCount(connection.id)).toBe(1);
+  });
+
+  // r24 whole-set review F1: a Clear that loses to another answers as gone, however the race falls.
+  it('answers the Clear that loses a race with the sentence a delete of a gone connection gets', async () => {
+    const project = await createTestProject(harness.db, ownerId);
+    const connection = await removedSentryBoundTo(project.id);
+    const both = await Promise.all([
+      call('DELETE', `/api/integration-connections/${connection.id}`),
+      call('DELETE', `/api/integration-connections/${connection.id}`),
+    ]);
+    expect(both.map((r) => r.status).sort()).toEqual([200, 404]);
+    const lost = both.find((r) => r.status === 404);
+    expect(lost?.body.message).toBe(
+      `Connection ${connection.id} is already gone, or is not one you can reach. Only its owner ` +
+        "(for an organization's connection, an owner or admin of that organization) can delete it.",
+    );
   });
 
   it('fills a binding with one of two installations racing for it, the rest of its config kept', async () => {

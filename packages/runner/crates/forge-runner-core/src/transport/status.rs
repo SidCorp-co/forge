@@ -296,11 +296,10 @@ pub fn ended(reason: &str) -> String {
 }
 
 /// Why an answer that arrived could not be read, with the cause the transport gave.
-fn unread_body(e: &reqwest::Error) -> String {
+pub(crate) fn unread_body(e: &reqwest::Error) -> String {
     // A body the connection cut short reaches reqwest as a decode error too, and "did not decode"
     // said it was malformed when it was missing (ISS-1421 r23).
-    let cause = innermost(e).unwrap_or_default().to_lowercase();
-    if cause.contains("end of file") || cause.contains("incomplete") {
+    if cut_short(e) {
         return "the body did not arrive whole".to_string();
     }
     let what = if e.is_decode() {
@@ -312,6 +311,38 @@ fn unread_body(e: &reqwest::Error) -> String {
         Some(cause) => format!("{what}: {cause}"),
         None => what.to_string(),
     }
+}
+
+/// Whether the connection ended before the body did. hyper reports every such end of an HTTP/1
+/// body as an `UnexpectedEof` io error, whose words differ by where the cut fell: "end of file
+/// before message length reached", and "unexpected EOF during chunk size line" for a chunked
+/// answer cut between chunks, which the words alone missed (ISS-1421 r24, criterion 245).
+fn cut_short(e: &(dyn std::error::Error + 'static)) -> bool {
+    use std::io::ErrorKind;
+    let mut at = Some(e);
+    let mut io_seen = false;
+    while let Some(err) = at {
+        if let Some(io) = err.downcast_ref::<std::io::Error>() {
+            io_seen = true;
+            if matches!(
+                io.kind(),
+                ErrorKind::UnexpectedEof
+                    | ErrorKind::ConnectionReset
+                    | ErrorKind::ConnectionAborted
+                    | ErrorKind::BrokenPipe
+            ) {
+                return true;
+            }
+        }
+        at = err.source();
+    }
+    // An io error of another kind is a body that arrived and could not be read; only a chain with
+    // no io error at all is read by its words.
+    if io_seen {
+        return false;
+    }
+    let cause = innermost(e).unwrap_or_default().to_lowercase();
+    cause.contains("end of file") || cause.contains("incomplete")
 }
 
 /// The scheme, host and port of a url: where Forge was sought, without the
@@ -398,6 +429,38 @@ fn span(d: std::time::Duration) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// An error whose source is `inner`, as reqwest wraps hyper and hyper wraps the socket.
+    #[derive(Debug)]
+    struct Wrapped(Box<dyn std::error::Error + Send + Sync + 'static>);
+    impl std::fmt::Display for Wrapped {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str("error decoding response body")
+        }
+    }
+    impl std::error::Error for Wrapped {
+        fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+            Some(self.0.as_ref())
+        }
+    }
+
+    /// Criterion 245: a cut is read off the io error's kind, whatever its words.
+    #[test]
+    fn a_cut_is_read_by_its_kind_and_not_by_its_words() {
+        use std::io::{Error, ErrorKind};
+        let eof = Wrapped(Box::new(Error::new(ErrorKind::UnexpectedEof, "some words")));
+        assert!(cut_short(&eof));
+        let reset = Wrapped(Box::new(Error::new(ErrorKind::ConnectionReset, "x")));
+        assert!(cut_short(&reset));
+        let bad = Wrapped(Box::new(Error::new(
+            ErrorKind::InvalidData,
+            "incomplete data",
+        )));
+        assert!(
+            !cut_short(&bad),
+            "an io error of another kind is not a cut, whatever it says"
+        );
+    }
 
     /// Criterion 223: a reason that already ends a sentence is not given a second full stop.
     #[test]
