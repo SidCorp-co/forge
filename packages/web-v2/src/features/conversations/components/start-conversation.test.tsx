@@ -227,6 +227,26 @@ describe("a project whose own agent lost its role there", () => {
     expect(refetchOpeners).toHaveBeenCalled();
   });
 
+  // The review of r36: a project picked while its agent answered stayed openable after the read changed.
+  it("withdraws a picked project's room, saying why, once its agent stops answering", () => {
+    projects = [{ id: "p1", name: "Billing", slug: "billing", role: "member" }];
+    openers = [{ projectId: "p1", handle: "billing", reachable: true, blocked: null }];
+    const { rerender } = render(<StartConversation onStarted={vi.fn()} />);
+    fireEvent.click(screen.getByRole("combobox"));
+    fireEvent.click(screen.getByRole("option", { name: "Billing" }));
+    fireEvent.click(screen.getByRole("button", { name: "Start the room" }));
+    expect(screen.getByRole("button", { name: "Open the room" })).toBeTruthy();
+
+    openers = [{ projectId: "p1", handle: "billing", reachable: false, blocked: "lost-role" }];
+    rerender(<StartConversation onStarted={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: "Open the room" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Start the room" })).toBeNull();
+    expect(screen.queryByTestId("start-confirmation")).toBeNull();
+    expect(screen.getByTestId("start-unopenable").textContent).toBe(
+      "@billing can't answer. This agent no longer holds a role on Billing, so it cannot answer here.",
+    );
+  });
+
   it("offers no project while whose agent can answer is still being read", () => {
     openersLoading = true;
     render(<StartConversation onStarted={vi.fn()} />);

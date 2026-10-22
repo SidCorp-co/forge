@@ -52,6 +52,11 @@ export function StartConversation({ onStarted }: { onStarted: (id: string, proje
     list.some((x) => same(x, value)) ? list.filter((x) => !same(x, value)) : [...list, value];
 
   const base = projects.find((p) => p.id === projectId);
+  // Read again on every render: a project picked while its agent answered is not opened once it no longer
+  // does, and says why where the room would have started (r36 review).
+  const pickedAgent = base ? opener(base.id) : undefined;
+  const pickedWhy = base && pickedAgent ? unopenableReason(pickedAgent, base.name) : null;
+  const opens = Boolean(base) && !pickedWhy;
   const chosen: ConversationProject[] = handles.flatMap((h) => {
     const found = (candidates.data?.handles ?? []).find((c: HandleCandidate) =>
       sameHandle({ userId: c.userId, projectId: c.project.id }, h),
@@ -66,7 +71,7 @@ export function StartConversation({ onStarted }: { onStarted: (id: string, proje
   const claims = roomOpeningClaims({ projects: scopeProjects, agentCount: 1 + chosen.length });
 
   const start = () => {
-    if (!projectId) return;
+    if (!opens) return;
     open.mutate(
       { projectId, people, handles },
       { onSuccess: (row) => onStarted(row.id, projectId) },
@@ -131,7 +136,12 @@ export function StartConversation({ onStarted }: { onStarted: (id: string, proje
             }}
             placeholder="Select a project…"
           />
-          {projectId && (
+          {pickedWhy && (
+            <p className="fg-caption mt-1 text-muted" data-testid="start-unopenable">
+              {pickedWhy}
+            </p>
+          )}
+          {opens && (
             <p className="fg-caption mt-1 text-subtle">
               The room starts with this project&apos;s own agent, and is about this project.
             </p>
@@ -139,7 +149,7 @@ export function StartConversation({ onStarted }: { onStarted: (id: string, proje
         </div>
         )}
 
-        {projectId && !confirming && (
+        {opens && !confirming && (
           <Extras
             query={candidates}
             people={people}
@@ -149,7 +159,7 @@ export function StartConversation({ onStarted }: { onStarted: (id: string, proje
           />
         )}
 
-        {confirming && (
+        {opens && confirming && (
           <ul className="flex flex-col gap-2" data-testid="start-confirmation">
             {claims.map((claim) => (
               <li key={claim.key} data-claim={claim.key} className="fg-body-sm text-fg">
@@ -165,13 +175,13 @@ export function StartConversation({ onStarted }: { onStarted: (id: string, proje
           </p>
         )}
 
-        {projectId && !confirming && (
+        {opens && !confirming && (
           <Button variant="primary" onClick={() => setConfirming(true)}>
             Start the room
           </Button>
         )}
 
-        {confirming && (
+        {opens && confirming && (
           <div className="flex items-center justify-end gap-2.5">
             <Button variant="ghost" onClick={() => setConfirming(false)} disabled={open.isPending}>
               Back
