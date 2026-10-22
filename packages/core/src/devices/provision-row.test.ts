@@ -134,9 +134,7 @@ describe('buildProvisionRow', () => {
   it('serves the provision without the ssh key it could not decrypt, and says the key was dropped', async () => {
     const built = await buildProvisionRow(row({ sshPrivateKeyEnc: Buffer.from('rubbish') }), ctx, {
       issueCredential: async () => 'forge_pat_dev_ok',
-      decrypt: () => {
-        throw new Error('decryptSecret: ciphertext too short');
-      },
+      decrypt: () => null,
     });
     expect(built.provision).toMatchObject({
       sshPrivateKey: null,
@@ -147,6 +145,18 @@ describe('buildProvisionRow', () => {
     expect(built.reports).toHaveLength(1);
     expect(built.reports[0]).toMatchObject({ kind: 'degraded', terminal: false });
     expect(built.reports[0]?.reason).toContain('could not be decrypted');
+  });
+
+  it('lets a fault that is not an unreadable key surface as itself', async () => {
+    const malformed = new Error('INTEGRATION_MASTER_KEY: base64 must decode to 32 bytes (got 6)');
+    await expect(
+      buildProvisionRow(row({ sshPrivateKeyEnc: Buffer.from('rubbish') }), ctx, {
+        issueCredential: async () => 'forge_pat_dev_ok',
+        decrypt: () => {
+          throw malformed;
+        },
+      }),
+    ).rejects.toBe(malformed);
   });
 
   it('mints nothing when the device has no live credential to act as', async () => {

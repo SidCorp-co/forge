@@ -315,8 +315,9 @@ describe('the github health probe and the inbound door', () => {
   it('is the probe the health sweep and the integrations route both run', () => {
     const dir = join(import.meta.dirname, '..');
     for (const file of ['health-sweep.ts', 'routes.ts']) {
-      expect(readFileSync(join(dir, file), 'utf8')).toContain('adapter.healthcheck(');
+      expect(readFileSync(join(dir, file), 'utf8')).toContain('checkBindingHealth(adapter, ');
     }
+    expect(readFileSync(join(dir, 'binding-health.ts'), 'utf8')).toContain('adapter.healthcheck(');
   });
   it('reports the webhook fault and the permission fault together, not one per probe', async () => {
     const { administration: _gone, ...without } = fullGrant();

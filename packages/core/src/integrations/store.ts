@@ -9,8 +9,9 @@ import {
   type ObservedEndpoint,
 } from '../db/schema.js';
 import { AGENT_ACCESS_CLOSED, type AgentAccess } from './agent-access.js';
+import { CredentialUnreadable } from './credential-unreadable.js';
 import type { AdapterContext, IntegrationProvider } from './types.js';
-import { decryptJson, encryptJson } from './vault.js';
+import { decryptJson, encryptJson, SecretUnreadableError } from './vault.js';
 
 // Reads + CRUD over the integration tables. Since the ISS-399 cutover these are
 // the live read path for resolvers / MCP tools / inbound router; the legacy
@@ -207,11 +208,26 @@ export async function listActiveDeployBindingsForStage(
     .orderBy(asc(integrationBindings.createdAt));
 }
 
-/** Decrypt a connection's secrets blob, or `{}` when it has none. */
+/**
+ * Decrypt a connection's secrets blob, or `{}` when it has none. One this server's key cannot open
+ * is refused as {@link CredentialUnreadable}, naming the connection and the binding it was read
+ * through.
+ */
 export function decryptConnectionSecrets<
   TSecrets extends Record<string, unknown> = Record<string, unknown>,
->(connection: IntegrationConnectionRow): TSecrets {
-  return connection.secretsEnc ? decryptJson<TSecrets>(connection.secretsEnc) : ({} as TSecrets);
+>(connection: IntegrationConnectionRow, bindingId?: string): TSecrets {
+  if (!connection.secretsEnc) return {} as TSecrets;
+  try {
+    return decryptJson<TSecrets>(connection.secretsEnc);
+  } catch (err) {
+    if (!(err instanceof SecretUnreadableError)) throw err;
+    throw new CredentialUnreadable({
+      connectionId: connection.id,
+      provider: connection.provider,
+      displayName: connection.displayName,
+      ...(bindingId ? { bindingId } : {}),
+    });
+  }
 }
 
 /**
@@ -246,7 +262,7 @@ export function buildContextFromBinding<
     role: pair.binding.role as BindingRole,
     stages: (pair.binding.stages ?? []) as DeployStage[],
     config: effectiveConfig<TConfig>(pair),
-    secrets: decryptConnectionSecrets<TSecrets>(pair.connection),
+    secrets: decryptConnectionSecrets<TSecrets>(pair.connection, pair.binding.id),
     integrationSecret: pair.binding.integrationSecret,
   };
 }

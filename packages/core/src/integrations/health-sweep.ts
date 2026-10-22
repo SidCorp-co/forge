@@ -3,9 +3,10 @@ import { db } from '../db/client.js';
 import { integrationBindings, integrationConnections } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { boss } from '../queue/boss.js';
+import { checkBindingHealth } from './binding-health.js';
 import { raceWithTimeout } from './probe.js';
 import { getAdapter } from './registry.js';
-import { type BindingWithConnection, buildContextFromBinding } from './store.js';
+import type { BindingWithConnection } from './store.js';
 
 export const HEALTH_SWEEP_QUEUE = 'integrations-health-sweep';
 
@@ -64,10 +65,7 @@ export async function runIntegrationsHealthSweep(): Promise<{
     const adapter = getAdapter(pair.binding.provider);
     if (!adapter) continue;
     try {
-      const result = await raceWithTimeout(
-        adapter.healthcheck(buildContextFromBinding(pair)),
-        PROBE_TIMEOUT_MS,
-      );
+      const result = await raceWithTimeout(checkBindingHealth(adapter, pair), PROBE_TIMEOUT_MS);
       if (result === null) {
         failed++;
         logger.warn(

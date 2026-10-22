@@ -3,6 +3,7 @@ import type { MiddlewareHandler } from 'hono';
 import { z } from 'zod';
 import { describeOperation, fail, json } from '../api-reference/declare/describe.js';
 import { bindingRoles, deployStages } from '../db/schema.js';
+import { UNREADABLE_WHEN } from './credential-unreadable.js';
 import {
   bindingListSchema,
   boundConnectionSchema,
@@ -137,10 +138,11 @@ export const changeConnection = onConnection(
         CONNECTION_NOT_REACHABLE: unreachable,
         NOT_FOUND: 'the connection was removed while the change was made',
       }),
-      409: fail(
-        'CONNECTION_HAS_NO_KEY',
-        'the connection was deleted and holds no key, so it is turned on only with a new key',
-      ),
+      409: fail({
+        CONNECTION_HAS_NO_KEY:
+          'the connection was deleted and holds no key, so it is turned on only with a new key',
+        CREDENTIAL_UNREADABLE: `${UNREADABLE_WHEN}, and only part of a new one was sent`,
+      }),
       503: vaultMissing,
     },
   }),

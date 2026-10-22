@@ -5,6 +5,10 @@ import { answer } from '../api-reference/declare/describe.js';
 import { declaresInput, takesBodyAsSent } from '../api-reference/declare/validator.js';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
+import {
+  CREDENTIAL_UNREADABLE,
+  CredentialUnreadable,
+} from '../integrations/credential-unreadable.js';
 import { recordTurnedAwayInboundCall } from '../integrations/inbound-door.js';
 import { getAdapter, listIntegrations } from '../integrations/registry.js';
 import {
@@ -165,7 +169,16 @@ webhookInboundRoutes.post(
       } catch {
         throw badRequest('The body is not JSON.');
       }
-      const ctx = buildContextFromBinding(pair);
+      let ctx: ReturnType<typeof buildContextFromBinding>;
+      try {
+        ctx = buildContextFromBinding(pair);
+      } catch (err) {
+        // Refused by name (409) once its turn-away is on the binding's delivery log.
+        if (err instanceof CredentialUnreadable) {
+          await noteTurnedAway([pair], CREDENTIAL_UNREADABLE, { slug, provider: map.provider });
+        }
+        throw err;
+      }
       try {
         const result = await adapter.handleInbound(ctx, {
           headers: collectHeaders(c.req.raw.headers),

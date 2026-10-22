@@ -3195,6 +3195,7 @@
 
 ### Fixed
 
+- **An integration credential Forge cannot decrypt is named, not a server error.** Verify, Test connection and its webhooks say which connection it is and that entering it again fixes it, and entering it again now works. (ISS-1259)
 - **A removed connection stays off until a key is actually saved.** Sending the switch with an empty key no longer turns it on, and its refusals offer Clear, a new key or an install only to someone allowed to. (ISS-1421)
 - **Disconnect, Delete and Clear send once on a double-click**, and a refused GitHub App install says once who may install it. (ISS-1421)
 - **The verify probe drawer keeps your place.** Focus stays in it after Save probe and Remove all probes, the removal question says in words what goes, and a refused removal is said once, not in a toast too. (ISS-1421)

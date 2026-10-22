@@ -9,6 +9,13 @@ function asSentence(text: string): string {
   return /[.!?]$/.test(opened) ? opened : `${opened}.`;
 }
 
+export function providerLabel(provider: string): string {
+  return (
+    getIntegration(provider)?.presentation?.label ??
+    provider.charAt(0).toUpperCase() + provider.slice(1)
+  );
+}
+
 /**
  * A check's answer as a person reads it: sentences Forge owns saying what the check found, and the
  * text the adapter or provider gave kept under `diagnostics.checkSaid` (ISS-1421 r14). Nothing is
@@ -16,9 +23,7 @@ function asSentence(text: string): string {
  * and one that failed some other way before an answer came says that, never "It said".
  */
 export function healthAnswer(provider: string, result: HealthCheckResult): HealthCheckResult {
-  const label =
-    getIntegration(provider)?.presentation?.label ??
-    provider.charAt(0).toUpperCase() + provider.slice(1);
+  const label = providerLabel(provider);
   const said = result.message?.trim() ?? '';
   const diagnostics = result.diagnostics ?? {};
   const lead: Record<HealthCheckResult['status'], string> = {

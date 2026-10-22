@@ -6,7 +6,7 @@
  */
 
 import { redactQueryParams } from '@forge/observability';
-import { decryptSecret } from '../integrations/vault.js';
+import { decryptSecretIfReadable } from '../integrations/vault.js';
 import { pgConstraintName, pgErrorCode } from '../lib/db-errors.js';
 
 const REASON_MAX = 200;
@@ -71,7 +71,7 @@ export interface ProvisionRowDeps {
     projectId: string;
     holderUserId: string;
   }): Promise<string>;
-  decrypt?(enc: Buffer): string;
+  decrypt?(enc: Buffer): string | null;
 }
 
 export interface ProvisionRowContext {
@@ -155,18 +155,15 @@ export async function buildProvisionRow(
 
   let sshPrivateKey: string | null = null;
   if (row.sshPrivateKeyEnc) {
-    const decrypt = deps.decrypt ?? decryptSecret;
-    try {
-      sshPrivateKey = decrypt(row.sshPrivateKeyEnc);
-    } catch (err) {
+    sshPrivateKey = (deps.decrypt ?? decryptSecretIfReadable)(row.sshPrivateKeyEnc);
+    if (sshPrivateKey === null) {
       // Still served without the key — a project may clone over HTTPS or be set
       // up by hand. The drop is reported rather than swallowed, because an
       // undecryptable key and no key at all read alike otherwise (ISS-1184).
-      sshPrivateKey = null;
       reports.push(
         against(
           'degraded',
-          `the stored workspace ssh key could not be decrypted, so the provision is served without it: ${messageOf(err)}`,
+          "the stored workspace ssh key could not be decrypted with this server's key, so the provision is served without it",
           false,
         ),
       );

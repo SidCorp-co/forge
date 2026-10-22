@@ -5,6 +5,7 @@ import { effectiveProjectRole, orgRoleAtLeast, projectWriteRefusal } from '../li
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { type AgentAccess, agentAccessTier, noAgentPathMessage } from './agent-access.js';
+import { checkBindingHealth } from './binding-health.js';
 import { healthAnswer } from './health-words.js';
 import {
   holdsKey,
@@ -19,7 +20,6 @@ import { findReachableConnection } from './reach.js';
 import { getAdapter, getIntegration } from './registry.js';
 import {
   type BindingWithConnection,
-  buildContextFromBinding,
   effectiveConfig,
   findActiveServiceBindingAtLabel,
   findBindingWithConnectionById,
@@ -405,7 +405,7 @@ async function runInitialHealthcheck(
   if (!adapter) return null;
   try {
     const result = await raceWithTimeout(
-      adapter.healthcheck(buildContextFromBinding(pair)),
+      checkBindingHealth(adapter, pair),
       INITIAL_PROBE_TIMEOUT_MS,
     );
     return result && healthAnswer(pair.binding.provider, result);

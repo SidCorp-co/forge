@@ -56,19 +56,48 @@ export function encryptSecret(plain: string): Buffer {
   return Buffer.concat([iv, tag, enc]);
 }
 
-/** Decrypts a buffer in the <iv:12><tag:16><ciphertext> format. */
+/**
+ * A stored value the key this process holds cannot open: written under another key, or damaged.
+ * Said without the value, the key or anything decrypted, so it is safe to log and to show (ISS-1259).
+ */
+export class SecretUnreadableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'SecretUnreadableError';
+  }
+}
+
+/**
+ * Decrypts a buffer in the <iv:12><tag:16><ciphertext> format. Whatever node-crypto throws while
+ * opening it is a value this key cannot open, decided by where it threw and not by its wording.
+ */
 export function decryptSecret(enc: Buffer): string {
   if (!Buffer.isBuffer(enc) || enc.length < IV_LEN + TAG_LEN + 1) {
-    throw new Error('decryptSecret: ciphertext too short');
+    throw new SecretUnreadableError('the stored value is too short to be a sealed one');
   }
   const key = getKey();
   const iv = enc.subarray(0, IV_LEN);
   const tag = enc.subarray(IV_LEN, IV_LEN + TAG_LEN);
   const data = enc.subarray(IV_LEN + TAG_LEN);
-  const decipher = createDecipheriv(ALGO, key, iv);
-  decipher.setAuthTag(tag);
-  const out = Buffer.concat([decipher.update(data), decipher.final()]);
+  let out: Buffer;
+  try {
+    const decipher = createDecipheriv(ALGO, key, iv);
+    decipher.setAuthTag(tag);
+    out = Buffer.concat([decipher.update(data), decipher.final()]);
+  } catch {
+    throw new SecretUnreadableError("the stored value is not one this server's key opens");
+  }
   return out.toString('utf8');
+}
+
+/** The value opened, or `null` where this key cannot open it; any other fault is thrown as itself. */
+export function decryptSecretIfReadable(enc: Buffer): string | null {
+  try {
+    return decryptSecret(enc);
+  } catch (err) {
+    if (err instanceof SecretUnreadableError) return null;
+    throw err;
+  }
 }
 
 /** Encrypts an arbitrary JSON-serializable object. */
