@@ -41,3 +41,11 @@ export function replaceLocationSearch(url: string): void {
   window.history.replaceState(window.history.state, '', url);
   window.dispatchEvent(new Event(EVENT));
 }
+
+/** Adds a history entry and tells every reader itself. A link to another tab of the screen it is on
+ *  is pushed by Next's router with the method it captured, which no reader here hears, so the URL
+ *  moved and the screen did not (ISS-1339 r2). */
+export function pushLocationSearch(url: string): void {
+  window.history.pushState(null, '', url);
+  window.dispatchEvent(new Event(EVENT));
+}

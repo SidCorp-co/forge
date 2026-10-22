@@ -160,10 +160,16 @@ export function BindingVerifyProbeField({
   const sectionRef = useRef<HTMLElement>(null);
   const decides = labelDecidesFor(binding);
 
+  // After the drawer around it has taken focus for itself, which it does once it opens.
   useEffect(() => {
     if (!focus || !decides) return;
-    sectionRef.current?.scrollIntoView?.({ block: "start", behavior: "smooth" });
-    sectionRef.current?.querySelector<HTMLInputElement>(`input[aria-label="${probeUrlLabel(0)}"]`)?.focus({ preventScroll: true });
+    const timer = window.setTimeout(() => {
+      sectionRef.current?.scrollIntoView?.({ block: "start" });
+      sectionRef.current
+        ?.querySelector<HTMLInputElement>(`input[aria-label="${probeUrlLabel(0)}"]`)
+        ?.focus({ preventScroll: true });
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [focus, decides]);
 
   if (!decides) return null;

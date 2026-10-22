@@ -6,7 +6,7 @@
 
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BindingSummary } from "../types";
@@ -228,13 +228,16 @@ describe("a probe typed wrong is refused on the section, before any write", () =
 });
 
 describe("a link that names the section lands on it", () => {
-	it("puts the cursor in the first probe's url", () => {
+	it("puts the cursor in the first probe's url, after whatever took focus as it was drawn", async () => {
 		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={binding()} canEdit focus />);
-		expect(screen.getByLabelText("Probe 1 URL")).toHaveFocus();
+		// What the drawer around it does once it opens: focus its first control.
+		screen.getByRole("button", { name: "Save probe" }).focus();
+		await waitFor(() => expect(screen.getByLabelText("Probe 1 URL")).toHaveFocus());
 	});
 
-	it("leaves the cursor where it was without one", () => {
+	it("leaves the cursor where it was without one", async () => {
 		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={binding()} canEdit />);
+		await new Promise((r) => setTimeout(r, 10));
 		expect(screen.getByLabelText("Probe 1 URL")).not.toHaveFocus();
 	});
 });

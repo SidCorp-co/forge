@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import {
   Banner,
   Button,
@@ -42,26 +42,34 @@ const SECTIONS = new Map(
 
 // A provider with no section is not a provider whose section is empty — it is one this screen has
 // nothing to configure for, and saying so beats rendering a blank pane under its name.
+// `after` is drawn once the section is: a control below a lazy section that it moves down as it
+// arrives is a control a link has already scrolled to and lost (ISS-1339 r2).
 function ProviderSection({
   provider,
   projectId,
   stage,
+  after,
 }: {
   provider: string;
   projectId: string;
   stage: DeployStage | null;
+  after?: ReactNode;
 }) {
   const Section = SECTIONS.get(provider);
   if (!Section) {
     return (
-      <p className="fg-body-sm border-b border-line pb-2 text-muted">
-        {providerLabel(provider)} has nothing to configure here.
-      </p>
+      <>
+        <p className="fg-body-sm border-b border-line pb-2 text-muted">
+          {providerLabel(provider)} has nothing to configure here.
+        </p>
+        {after}
+      </>
     );
   }
   return (
     <Suspense fallback={<Skeleton className="h-40 w-full" />}>
       <Section projectId={projectId} {...(stage ? { stage } : {})} />
+      {after}
     </Suspense>
   );
 }
@@ -228,7 +236,25 @@ function ConfigPane({
   const binding = useBindingForCard(projectId, provider, stageFromCardKey);
   return (
     <>
-      <ProviderSection provider={provider} projectId={projectId} stage={stageFromCardKey} />
+      <ProviderSection
+        provider={provider}
+        projectId={projectId}
+        stage={stageFromCardKey}
+        after={
+          // ISS-1339 r2 — what a release reads to learn the commit production serves, on every live
+          // deploy binding whatever its provider; it renders itself away elsewhere.
+          binding && (
+            <div className="mt-4">
+              <BindingVerifyProbeField
+                projectId={projectId}
+                binding={binding}
+                canEdit={canEdit}
+                focus={focus === VERIFY_PROBE_SECTION}
+              />
+            </div>
+          )
+        }
+      />
       {/* A provider's section carries its own agents switch, with its own refusal words, so the
           pane adds one only where there is no section (ISS-1421 r8, criterion 128). */}
       {binding && !SECTIONS.has(provider) && (
@@ -239,18 +265,6 @@ function ConfigPane({
       {/* ISS-1275 — the binding tier of the release runner label, beside the other
           binding-scoped control on this pane. It renders itself away for a binding
           that carries no live stage. */}
-      {/* ISS-1339 r2 — what a release reads to learn the commit production serves, on every live
-          deploy binding whatever its provider; it renders itself away elsewhere. */}
-      {binding && (
-        <div className="mt-4">
-          <BindingVerifyProbeField
-            projectId={projectId}
-            binding={binding}
-            canEdit={canEdit}
-            focus={focus === VERIFY_PROBE_SECTION}
-          />
-        </div>
-      )}
       {binding && (
         <section className="mt-4">
           <BindingReleaseRunnerField

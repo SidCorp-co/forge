@@ -6,7 +6,7 @@
 
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ReleaseBlockerCode } from "@forge/contracts";
 import type { ReleaseReadiness } from "../types";
@@ -363,6 +363,33 @@ describe("the link beside a binding gap", () => {
 			{ text: "Declare a probe on the live binding", href: `${SETTINGS}?tab=integrations&field=verify-probe` },
 			{ text: "Set it on the live binding", href: `${SETTINGS}?tab=integrations` },
 		]);
+	});
+
+	// Walked at a local core and web: the link moved the URL and Shape & release stayed on screen,
+	// because the tab reader never heard the push Next's router made. The click now makes it.
+	it("moves the settings screen to that tab when followed from it", () => {
+		window.history.replaceState(null, "", `${SETTINGS}?tab=shape`);
+		readiness.mockReturnValue({
+			isLoading: false,
+			isError: false,
+			data: { ...blockedBy({ code: "NO_RELEASE_GATE", evaluated: true, message: "x", reader: "x" }), blockers: [], hasVerify: false, gaps: ["verify-probes"] },
+		});
+		const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+		render(
+			<QueryClientProvider client={client}>
+				<ReleaseAnswer projectId="p-1" slug="desk" />
+			</QueryClientProvider>,
+		);
+		const heard = vi.fn();
+		window.addEventListener("forge:locationchange", heard);
+		try {
+			fireEvent.click(screen.getByRole("link", { name: "Declare a probe on the live binding" }));
+			expect(window.location.search).toBe("?tab=integrations&field=verify-probe");
+			expect(heard).toHaveBeenCalled();
+		} finally {
+			window.removeEventListener("forge:locationchange", heard);
+			window.history.replaceState(null, "", "/");
+		}
 	});
 });
 

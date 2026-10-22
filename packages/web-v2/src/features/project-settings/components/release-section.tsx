@@ -7,9 +7,10 @@
 import type { ReleaseBlockerCode } from "@forge/contracts";
 import { ISSUE_STATUS_LABELS, type KernelIssueStatus } from "@forge/contracts/issue-vocabulary";
 import Link from "next/link";
-import type { ReactNode } from "react";
+import type { MouseEvent, ReactNode } from "react";
 import { ErrorState, Skeleton } from "@/design";
 import { formatApiError } from "@/lib/api/error";
+import { pushLocationSearch } from "@/lib/utils/use-location-search";
 import { useReleaseReadiness } from "../hooks";
 import { releaseAnswer } from "../shape-form";
 import type { ReleaseReadiness } from "../types";
@@ -81,6 +82,25 @@ const setting = (tab: string, label: string, add?: string, field?: string) => ()
   ...(add ? { add } : {}),
   ...(field ? { field } : {}),
 });
+
+/** A link to another tab of the settings screen this section is drawn on. Next's router pushes it
+ *  with a history method the tab reader never hears, so the URL moved and the tab did not; the push
+ *  is made here instead, where the reader is told (ISS-1339 r2). Any other click is the browser's. */
+function SettingsLink({ href, className, children }: { href: string; className: string; children: ReactNode }) {
+  const onClick = (e: MouseEvent<HTMLAnchorElement>) => {
+    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    const target = new URL(href, window.location.href);
+    if (target.pathname !== window.location.pathname) return;
+    e.preventDefault();
+    pushLocationSearch(`${target.pathname}${target.search}`);
+    window.scrollTo({ top: 0 });
+  };
+  return (
+    <Link href={href} className={className} onClick={onClick}>
+      {children}
+    </Link>
+  );
+}
 
 /** A settings page's address, with the section an `add` or `field` link lands on. */
 function settingsHref(slug: string, tab: string, add?: string, field?: string): string {
@@ -202,9 +222,9 @@ function BlockerLinkView({ link, slug }: { link: BlockerLink; slug?: string }) {
   switch (link.kind) {
     case "setting":
       return (
-        <Link href={settingsHref(slug, link.tab, link.add, link.field)} className={cls}>
+        <SettingsLink href={settingsHref(slug, link.tab, link.add, link.field)} className={cls}>
           {link.label}
-        </Link>
+        </SettingsLink>
       );
     case "statuses":
       return (
@@ -316,23 +336,23 @@ export function ReleaseAnswer({
                     Write them in Knowledge rules
                   </Link>
                 ) : g === "release-target" && tab(ADD_LIVE_TARGET.tab) ? (
-                  <Link
+                  <SettingsLink
                     href={tab(ADD_LIVE_TARGET.tab, ADD_LIVE_TARGET.add) as string}
                     className="text-accent-text hover:underline"
                   >
                     {ADD_LIVE_TARGET.label}
-                  </Link>
+                  </SettingsLink>
                 ) : g === "verify-probes" && tab("integrations") ? (
-                  <Link
+                  <SettingsLink
                     href={tab("integrations", undefined, VERIFY_PROBE_SECTION) as string}
                     className="text-accent-text hover:underline"
                   >
                     Declare a probe on the live binding
-                  </Link>
+                  </SettingsLink>
                 ) : tab("integrations") ? (
-                  <Link href={tab("integrations") as string} className="text-accent-text hover:underline">
+                  <SettingsLink href={tab("integrations") as string} className="text-accent-text hover:underline">
                     Set it on the live binding
-                  </Link>
+                  </SettingsLink>
                 ) : null}
               </li>
             ))}
