@@ -630,41 +630,70 @@ mod tests {
         );
     }
 
-    /// An address every connect is refused at, and the connection that keeps it so.
+    /// An address every connect is refused at, which no other test is handed.
     ///
-    /// The port is the local end of a live loopback connection held for the
-    /// test's life. No listener is on it, so a connect there is refused at
-    /// once on Linux, macOS and Windows. And because the port is in use, no
-    /// sibling test's listener can be given it. Two shapes failed before this
-    /// one. A dropped listener's port was taken by a sibling under a parallel
-    /// run, which read as a cut connection. A socket bound and never listening
-    /// is silently dropped on macOS, so its connect timed out instead of being
-    /// refused.
-    async fn refused_address() -> (String, (tokio::net::TcpStream, tokio::net::TcpStream)) {
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let to = listener.local_addr().unwrap();
-        let (client, accepted) =
-            tokio::join!(tokio::net::TcpStream::connect(to), listener.accept());
-        let client = client.unwrap();
-        let (accepted, _) = accepted.unwrap();
-        let addr = client.local_addr().unwrap();
-        (format!("http://{addr}"), (client, accepted))
+    /// Port 1 sits below every platform's ephemeral range, so a sibling's
+    /// `bind` to port 0 is never given it, and no test here binds a fixed
+    /// loopback port. Nothing listens there, so a connect is refused at once.
+    /// The crate's other refusal tests use the same address on all three
+    /// platforms. A port taken from a dropped listener was handed to a
+    /// sibling under a parallel run and read as a cut connection; a held
+    /// port that never listens was dropped silently on macOS and timed out.
+    const REFUSED: &str = "http://127.0.0.1:1";
+
+    /// ISS-1306: no test in the runner crates binds a loopback port other than
+    /// 0, so none can be handed the refused address's port.
+    #[test]
+    fn no_test_binds_a_fixed_loopback_port() {
+        let crates = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("the crates directory");
+        let loopback = ["127.0.0.1", ":"].concat();
+        let mut fixed = Vec::new();
+        let mut dirs = vec![crates.to_path_buf()];
+        while let Some(dir) = dirs.pop() {
+            for entry in std::fs::read_dir(&dir).unwrap().flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    if path.file_name().is_some_and(|n| n != "target") {
+                        dirs.push(path);
+                    }
+                    continue;
+                }
+                if path.extension().is_none_or(|e| e != "rs") {
+                    continue;
+                }
+                let text = std::fs::read_to_string(&path).unwrap();
+                for (i, line) in text.lines().enumerate() {
+                    let Some(at) = line.find(&loopback) else {
+                        continue;
+                    };
+                    let port: String = line[at + loopback.len()..]
+                        .chars()
+                        .take_while(char::is_ascii_digit)
+                        .collect();
+                    if line.contains("bind(") && port != "0" {
+                        fixed.push(format!("{}:{}", path.display(), i + 1));
+                    }
+                }
+            }
+        }
+        assert!(
+            fixed.is_empty(),
+            "a test binds a fixed loopback port: {fixed:?}"
+        );
+        let port: u16 = REFUSED.rsplit(':').next().unwrap().parse().unwrap();
+        assert!(
+            port < 1024,
+            "the refused port must sit below every ephemeral range"
+        );
     }
 
-    /// ISS-1306: the race that made the two refusal tests read "cut" under load.
-    #[tokio::test]
-    async fn the_refused_address_cannot_be_taken_by_another_listener() {
-        let (at, _held) = refused_address().await;
-        let addr = at.trim_start_matches("http://");
-        assert!(tokio::net::TcpListener::bind(addr).await.is_err(), "{addr}");
-    }
-
-    /// ISS-1306: on macOS a bound, never-listening port dropped the connect, and
-    /// the refusal tests read "no answer came within 10s".
+    /// ISS-1306: a bound port that never listened was dropped on macOS, and the
+    /// refusal tests read "no answer came within 10s".
     #[tokio::test]
     async fn a_connect_to_the_refused_address_is_refused_rather_than_timing_out() {
-        let (at, _held) = refused_address().await;
-        let addr = at.trim_start_matches("http://");
+        let addr = REFUSED.trim_start_matches("http://");
         let tried = tokio::time::timeout(
             std::time::Duration::from_secs(5),
             tokio::net::TcpStream::connect(addr),
@@ -694,9 +723,9 @@ mod tests {
     /// update check said "fetch manifest: error sending request for url (…)" where core was down.
     #[tokio::test]
     async fn a_manifest_core_cannot_serve_says_forge_could_not_be_reached() {
-        let (core, _held) = refused_address().await;
-        let url = manifest_url(None, Some(&core)).unwrap();
-        let said = fetch_manifest(&url, Some(&core))
+        let core = REFUSED;
+        let url = manifest_url(None, Some(core)).unwrap();
+        let said = fetch_manifest(&url, Some(core))
             .await
             .unwrap_err()
             .to_string();
@@ -712,7 +741,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_configured_manifest_that_cannot_be_reached_is_named_by_its_address() {
-        let (at, _held) = refused_address().await;
+        let at = REFUSED;
         let url = format!("{at}/latest.json");
         let said = fetch_manifest(&url, Some("https://core.example"))
             .await
