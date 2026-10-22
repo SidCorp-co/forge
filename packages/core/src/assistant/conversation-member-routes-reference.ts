@@ -72,10 +72,10 @@ export const openersSchema = z.object({
       handle: z.string().describe('The agent a room on this project starts with'),
       reachable: z.boolean().describe('false where opening a room there would be refused'),
       blocked: z
-        .enum(['lost-role', 'taken'])
+        .enum(['lost-role', 'taken', 'nameless'])
         .nullable()
         .describe(
-          "Why it would be refused: the project's agent lost its role there (PROJECT_AGENT_LOST_ROLE), or its address is another agent's (HANDLE_TAKEN)",
+          "Why it would be refused: the project's agent lost its role there (PROJECT_AGENT_LOST_ROLE), its address is another agent's (HANDLE_TAKEN), or it carries no address (HANDLE_HAS_NO_NAME)",
         ),
     }),
   ),

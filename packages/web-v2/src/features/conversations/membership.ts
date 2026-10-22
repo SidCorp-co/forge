@@ -146,6 +146,7 @@ export const startsRooms = (role: string | null | undefined) => role === "member
 
 /** Why a project cannot be picked to start a room, where its own agent cannot be reached there (r36). */
 export function unopenableReason(opener: Pick<RoomOpener, "handle" | "blocked">, projectName: string): string | null {
+  if (opener.blocked === "nameless") return "This project's agent has no address in this organization, so no room can start with it.";
   if (opener.blocked === "taken") {
     return `This project's agent would answer to @${opener.handle}, which another agent of this organization already answers to.`;
   }

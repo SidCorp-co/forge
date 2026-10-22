@@ -4,7 +4,7 @@
 // in the same words.
 
 import { afterAll, describe, expect, it, vi } from "vitest";
-import { composerRefusal, emptyRoomState, memberName, removalClaim, removalQuestion } from "./membership";
+import { composerRefusal, emptyRoomState, memberName, removalClaim, removalQuestion, unopenableReason } from "./membership";
 import type { ConversationParticipant } from "./types";
 
 // When each was added reads in the reader's own time zone (ISS-1229 r25); this reader is at UTC+7.
@@ -145,5 +145,21 @@ describe("composerRefusal's way out", () => {
       reason: "This room is about Desk and Ops, and a message is answered under exactly one project.",
       wayOut: null,
     });
+  });
+});
+
+// ISS-1229 r36: why Start a conversation cannot pick a project, one sentence per refusal opening would meet.
+describe("unopenableReason", () => {
+  it("says why for each refusal and nothing for a project that opens", () => {
+    expect(unopenableReason({ handle: "ledger", blocked: "lost-role" }, "Ledger")).toBe(
+      "@ledger can't answer. This agent no longer holds a role on Ledger, so it cannot answer here.",
+    );
+    expect(unopenableReason({ handle: "ledger", blocked: "taken" }, "Ledger")).toBe(
+      "This project's agent would answer to @ledger, which another agent of this organization already answers to.",
+    );
+    expect(unopenableReason({ handle: "ledger", blocked: "nameless" }, "Ledger")).toBe(
+      "This project's agent has no address in this organization, so no room can start with it.",
+    );
+    expect(unopenableReason({ handle: "ledger", blocked: null }, "Ledger")).toBeNull();
   });
 });

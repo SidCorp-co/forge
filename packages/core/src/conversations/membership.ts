@@ -358,7 +358,7 @@ export interface RoomOpener {
   projectId: string;
   handle: string;
   reachable: boolean;
-  blocked: 'lost-role' | 'taken' | null;
+  blocked: 'lost-role' | 'taken' | 'nameless' | null;
 }
 
 /**
@@ -400,11 +400,13 @@ export async function roomOpeners(
     if (!projectRoleAtLeast(access?.role ?? null, 'member')) continue;
     const existing = await existingProjectHandle(tx, project.id);
     if (existing) {
+      // An agent carrying no handle is refused HANDLE_HAS_NO_NAME by `namedHandle` on opening.
+      const nameless = !existing.handle;
       out.push({
         projectId: project.id,
         handle: existing.handle ?? handleNameForProject(project.slug, project.id),
-        reachable: true,
-        blocked: null,
+        reachable: !nameless,
+        blocked: nameless ? 'nameless' : null,
       });
       continue;
     }

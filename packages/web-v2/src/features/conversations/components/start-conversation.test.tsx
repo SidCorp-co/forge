@@ -22,7 +22,7 @@ let projects: Array<{ id: string; name: string; slug: string; role: string | nul
 vi.mock("@/features/projects/hooks", () => ({
   useOrgScopedProjects: () => ({ projects, isLoading: loading }),
 }));
-type Opener = { projectId: string; handle: string; reachable: boolean; blocked: "lost-role" | "taken" | null };
+type Opener = { projectId: string; handle: string; reachable: boolean; blocked: "lost-role" | "taken" | "nameless" | null };
 let openers: Opener[] | null = null;
 let openersLoading = false;
 let openersFailed = false;

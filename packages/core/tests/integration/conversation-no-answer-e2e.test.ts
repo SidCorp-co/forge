@@ -287,6 +287,19 @@ describe('the projects a room may be opened on', () => {
     expect([res.status, ((await res.json()) as Refusal).code]).toEqual([409, 'HANDLE_TAKEN']);
   });
 
+  it('marks a project whose agent carries no address, as opening refuses it', async () => {
+    const opened = await as(ownerId, '/api/conversations', 'POST', { projectId });
+    expect(opened.status, await opened.clone().text()).toBe(201);
+    await harness.db.execute(
+      sql`UPDATE organization_members SET handle = NULL WHERE handle = 'ledger'`,
+    );
+    expect(await openers(ownerId)).toEqual([
+      { projectId, handle: 'ledger', reachable: false, blocked: 'nameless' },
+    ]);
+    const res = await as(ownerId, '/api/conversations', 'POST', { projectId });
+    expect(((await res.json()) as Refusal).code).toBe('HANDLE_HAS_NO_NAME');
+  });
+
   it('leaves out a project the caller only views, and one archived', async () => {
     expect(await openers(viewerId)).toEqual([]);
     await harness.db.execute(sql`UPDATE projects SET archived_at = now() WHERE id = ${projectId}`);
