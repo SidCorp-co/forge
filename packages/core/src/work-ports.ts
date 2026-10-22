@@ -112,6 +112,7 @@ import {
   recordAnswerResume,
   settleOpenQuestions,
   voidCancelledRunQuestions,
+  voidStewardDraftQuestions,
   withdrawParkQuestions,
 } from './questions/index.js';
 import { approvalRequired, approvalsOfRuns, judgedBuildOf } from './release-batch/index.js';
@@ -202,6 +203,7 @@ export function provideWorkPorts(): void {
     keepCorrection: recordCorrection,
     settleOpenQuestions,
     withdrawParkQuestions,
+    voidStewardDraftQuestions,
     openParkWaitsOn,
     holdsOpenHumanQuestion,
     personOwesAnAnswer,

@@ -167,7 +167,7 @@ function merged(spans: Span[]): Span[] {
   for (const s of [...spans].sort((a, b) => a.start - b.start)) {
     const last = out.at(-1);
     if (last && s.start <= last.stop) {
-      if (s.stop > last.stop) last.raise = s.raise;
+      if (s.stop > last.stop) last.raise = s.raise === true;
       last.stop = Math.max(last.stop, s.stop);
     } else out.push({ ...s });
   }

@@ -389,3 +389,102 @@ describe('the one-off voids the questions the steward spelled, and diagnoses the
     expect(await runStewardReaskOnce()).toBeNull();
   });
 });
+
+// Dev, 2026-10-22 (conversation a760cd5f): ISS-569 stood at awaiting_release and ISS-607 at open, each
+// still holding the steward's open "Open it, keep it as a draft, or drop it?" decision, because they
+// left draft by a move that was not the answer. Needs you went on listing both, and the chat went on
+// recommending "Open it" for them (REQ-41 BC-26). Leaving draft by any route voids that decision in
+// the move's own write, naming the move.
+describe('a draft that leaves draft by another route takes its steward decision with it (REQ-41 BC-26)', () => {
+  const transition = (issueId: string, body: Record<string, unknown>) =>
+    say('owner', 'POST', `/api/issues/${issueId}/transition`, body);
+  const decisionOn = async (key: string) =>
+    ((ok(await say('owner', 'GET', at('/needs-you/decisions'))).decisions as Doc[]) ?? []).find(
+      (d) => d.key === key || (d.opens as Doc | null)?.key === key,
+    );
+
+  it('voids the open decision when the draft is opened by the transition route, and Needs you drops it', async () => {
+    const issue = await readyDraft(190);
+    const q = await asked(issue);
+    expect(
+      await decisionOn(issue.key),
+      'the decision is listed while the issue is a draft',
+    ).toBeDefined();
+    const moved = await transition(issue.id, { toStatus: 'open' });
+    expect(moved.status, JSON.stringify(moved.json)).toBe(200);
+    const [row] = await rows<{
+      status: string;
+      void_reason: string | null;
+      ended_by: string | null;
+    }>(sql`
+      SELECT status, void_reason, ended_by FROM agent_questions WHERE id = ${q.id}`);
+    expect(row?.status).toBe('void');
+    expect(row?.void_reason).toBe(
+      'the issue moved from Draft to Open without this being answered, so the draft it asked about is gone and no answer to it can act',
+    );
+    expect(row?.ended_by).toBe(ownerId);
+    expect(
+      await decisionOn(issue.key),
+      'Needs you no longer lists a decision whose item moved on',
+    ).toBeUndefined();
+  });
+
+  it('lets a draft be dropped by the transition route with its reason, the decision voided naming it', async () => {
+    const issue = await readyDraft(191);
+    const q = await asked(issue);
+    const moved = await transition(issue.id, {
+      toStatus: 'dropped',
+      reason: 'Covered by ISS-618.',
+    });
+    expect(moved.status, JSON.stringify(moved.json)).toBe(200);
+    const [row] = await rows<{ status: string; void_reason: string | null }>(sql`
+      SELECT status, void_reason FROM agent_questions WHERE id = ${q.id}`);
+    expect(row?.status).toBe('void');
+    expect(row?.void_reason).toContain('moved from Draft to Dropped');
+    expect(row?.void_reason).toContain(': Covered by ISS-618.');
+  });
+
+  it('leaves a question that is not the steward decision open, and a drop still meets it', async () => {
+    const issue = await readyDraft(192);
+    await asked(issue);
+    const theirs = ok(
+      await say('owner', 'POST', '/api/questions', {
+        issueId: issue.id,
+        prompt: 'Which customer saw this first?',
+        options: [
+          {
+            id: 'acme',
+            label: 'Acme',
+            authority: 'writer',
+            bindsTo: 'this_call',
+            executedBy: 'human',
+            fingerprint: 'customer:acme',
+          },
+          {
+            id: 'other',
+            label: 'Another one',
+            authority: 'writer',
+            bindsTo: 'this_call',
+            executedBy: 'human',
+            fingerprint: 'customer:other',
+          },
+        ],
+        recommendedOptionId: 'acme',
+        blockerKind: 'human',
+      }),
+      201,
+    );
+    const refused = await transition(issue.id, { toStatus: 'dropped', reason: 'Not work.' });
+    expect([refused.status, refused.json.code]).toEqual([422, 'OPEN_QUESTIONS']);
+    const open = (await questionsOn(issue.id)).filter((x) => x.status === 'open').map((x) => x.id);
+    expect(open, 'the refused move voided nothing: its transaction rolled back').toHaveLength(2);
+    expect(open).toContain(theirs.id);
+  });
+
+  it('answers, never voids, the decision whose own answer opens the draft', async () => {
+    const issue = await readyDraft(193);
+    const q = await asked(issue);
+    ok(await answer(q.id, { optionId: IDS.open }));
+    expect((await questionsOn(issue.id)).find((x) => x.id === q.id)?.status).toBe('answered');
+  });
+});
