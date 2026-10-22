@@ -49,6 +49,11 @@ export interface ConversationRow {
   archivedAt: string | null;
 }
 
+/** A room as a list carries it: every project it is about, read from its agents (ISS-1229 r33). */
+export interface ListedRoom extends ConversationRow {
+  scope: string[];
+}
+
 export interface ConversationImage {
   name: string;
   mime: string;
@@ -148,9 +153,15 @@ export interface HandleCandidate {
   losesReaders: string[];
 }
 
+export interface BeyondReach {
+  named: ConversationProject[];
+  unnamed: number;
+}
+
 export interface ConversationCandidates {
   people: PersonCandidate[];
   handles: HandleCandidate[];
+  beyondReach: BeyondReach;
 }
 
 export interface ConversationDetail extends ConversationRow, ConversationMembership {

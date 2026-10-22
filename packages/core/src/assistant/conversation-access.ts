@@ -5,6 +5,7 @@
 // routers ask the same ones rather than each keeping a copy (ISS-1011).
 
 import { eq } from 'drizzle-orm';
+import { HTTPException } from 'hono/http-exception';
 import type { Executor } from '../conversations/db-executor.js';
 import { listParticipants } from '../conversations/participants.js';
 import { roomGone, roomRefusal } from '../conversations/room-refusal.js';
@@ -52,6 +53,16 @@ export async function assertMembershipActor(
   );
 }
 
+/** What a reader of a room is asked, in one place; its scope where they pass. */
+async function readersScope(
+  row: ConversationRow,
+  userId: string | null | undefined,
+): Promise<string[]> {
+  const scope = await assertConversationReadable(row.id, userId);
+  await assertInTheRoom(row, userId);
+  return scope;
+}
+
 /** The room, if this caller may look at it. */
 export async function readableConversation(
   id: string,
@@ -59,9 +70,24 @@ export async function readableConversation(
 ): Promise<ConversationRow> {
   const row = await getConversation(id);
   if (!row) throw roomGone(id);
-  await assertConversationReadable(row.id, userId);
-  await assertInTheRoom(row, userId);
+  await readersScope(row, userId);
   return row;
+}
+
+/**
+ * The room's scope where this caller may open it, else null: the room list asks the read door's own
+ * question, so a room the reader can open is a room the list shows (ISS-1229 r33, judge-92).
+ */
+export async function scopeIfReadable(
+  row: ConversationRow,
+  userId: string | null | undefined,
+): Promise<string[] | null> {
+  try {
+    return await readersScope(row, userId);
+  } catch (err) {
+    if (err instanceof HTTPException && err.status === 403) return null;
+    throw err;
+  }
 }
 
 /** Renaming and deleting are writes, and a write takes more than a look. A room about no project is

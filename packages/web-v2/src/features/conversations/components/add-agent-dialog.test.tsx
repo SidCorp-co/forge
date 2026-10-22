@@ -20,6 +20,8 @@ const candidate = (handle: string, projectId: string, name: string) => ({
 });
 const refetch = vi.fn();
 let handles = [candidate("retired", "p-gone", "Retired"), candidate("desk", "p1", "Desk")];
+const noneBeyond = { named: [] as Array<{ id: string; name: string; slug: string }>, unnamed: 0 };
+let beyondReach = noneBeyond;
 const gone = new ApiError(
   404,
   "The project this agent would bring into this room no longer exists, so there is no agent of it to add.",
@@ -41,7 +43,7 @@ vi.mock("../hooks", () => ({
     isLoading: false,
     isError: false,
     refetch,
-    data: { people: [], handles },
+    data: { people: [], handles, beyondReach },
   }),
   useAddHandle: () => add,
 }));
@@ -49,6 +51,7 @@ vi.mock("../hooks", () => ({
 afterEach(() => {
   cleanup();
   handles = [candidate("retired", "p-gone", "Retired"), candidate("desk", "p1", "Desk")];
+  beyondReach = noneBeyond;
 });
 
 describe("adding the agent of a project that was deleted", () => {
@@ -86,5 +89,31 @@ describe("adding the agent of a project that was deleted", () => {
     expect(empty.textContent).toMatch(/Each project has its own agent/);
     expect(empty.textContent).not.toMatch(/role/);
     expect(screen.getByRole("link", { name: "Start a new project" }).getAttribute("href")).toBe("/projects?new=1");
+  });
+
+  // r33, judge-92: a member with no role on an existing project was pointed only at starting a new one.
+  it("says who adds an agent the reader cannot, beside starting a new project", () => {
+    handles = [];
+    beyondReach = { named: [{ id: "p-ops", name: "Ops", slug: "ops" }], unnamed: 1 };
+    render(<AddAgentDialog conversationId="c1" room={{ shape: "group", scopeProjects: [] }} open onClose={() => {}} />);
+    const lines = screen.getAllByTestId("agent-beyond-reach").map((p) => p.textContent);
+    expect(lines).toEqual([
+      "Ops's agent is added by a member of Ops; you hold the viewer role there.",
+      "Another project in this organization has its own agent, added by a member of that project; you hold no role on it.",
+    ]);
+    const empty = screen.getByTestId("agent-candidates-empty").textContent ?? "";
+    expect(empty).toMatch(/^Every agent you can add is already in this room\./);
+    expect(empty).toContain("Ask a member of the project to add its agent, or start a new project.");
+    expect(screen.getByRole("link", { name: "start a new project" }).getAttribute("href")).toBe("/projects?new=1");
+  });
+
+  it("counts several projects it cannot name, and says it under a list that still offers agents", () => {
+    handles = [candidate("desk", "p1", "Desk")];
+    beyondReach = { named: [], unnamed: 3 };
+    render(<AddAgentDialog conversationId="c1" room={{ shape: "group", scopeProjects: [] }} open onClose={() => {}} />);
+    expect(screen.getByRole("button", { name: /@desk/ })).toBeTruthy();
+    expect(screen.getByTestId("agent-beyond-reach").textContent).toBe(
+      "3 other projects in this organization have their own agents, each added by a member of its project; you hold no role on them.",
+    );
   });
 });

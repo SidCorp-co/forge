@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNotNull, isNull } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, isNull, type SQL } from 'drizzle-orm';
 import { db as defaultDb } from '../db/client.js';
 import { organizationMembers, type ProjectMemberRole } from '../db/schema.js';
 import { conversationParticipants, conversations } from '../db/schema-conversations.js';
@@ -13,6 +13,19 @@ import type { Executor } from './db-executor.js';
 import { roomRefusal } from './room-refusal.js';
 
 /**
+ * A live agent row of a room, which is what a room is about: the project each live agent was added
+ * for, whether or not it still holds a role there. The one answer every reader of a room's projects
+ * takes — the read door, the room list and its label (ISS-1229 r33, judge-92).
+ */
+export function liveAgentRow(): SQL {
+  return and(
+    eq(conversationParticipants.kind, 'handle'),
+    isNull(conversationParticipants.removedAt),
+    isNotNull(conversationParticipants.projectId),
+  ) as SQL;
+}
+
+/**
  * The project ids this conversation is about, sorted so two reads of one
  * unchanged room compare equal.
  */
@@ -23,14 +36,7 @@ export async function derivedScope(
   const rows = await tx
     .selectDistinct({ projectId: conversationParticipants.projectId })
     .from(conversationParticipants)
-    .where(
-      and(
-        eq(conversationParticipants.conversationId, conversationId),
-        eq(conversationParticipants.kind, 'handle'),
-        isNull(conversationParticipants.removedAt),
-        isNotNull(conversationParticipants.projectId),
-      ),
-    );
+    .where(and(eq(conversationParticipants.conversationId, conversationId), liveAgentRow()));
   return rows.flatMap((r) => (r.projectId ? [r.projectId] : [])).sort();
 }
 

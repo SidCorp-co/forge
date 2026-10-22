@@ -342,6 +342,40 @@ export async function addableHandles(
   return out.sort((a, b) => a.handle.localeCompare(b.handle));
 }
 
+/**
+ * The projects of the room's organization whose agent this caller cannot add, for holding less than a
+ * member role on them: named where the caller holds the viewer role, which already shows them the
+ * project, and only counted where they hold none (ISS-1229 r33, judge-92). Every project has its own
+ * agent, minted on its first add, so none is left out for having no agent row yet.
+ */
+export interface BeyondReach {
+  named: NamedProject[];
+  unnamed: number;
+}
+
+export async function agentsBeyondReach(
+  actorUserId: string,
+  scope: readonly string[],
+  tx: Executor = defaultDb,
+): Promise<BeyondReach> {
+  const orgIds = await orgsOfProjects(scope, tx);
+  const out: BeyondReach = { named: [], unnamed: 0 };
+  if (orgIds.length === 0) return out;
+  const others = await tx
+    .select({ id: projects.id, name: projects.name, slug: projects.slug })
+    .from(projects)
+    .where(inArray(projects.orgId, orgIds));
+  for (const project of others) {
+    if (scope.includes(project.id)) continue;
+    const role = (await effectiveProjectRole(actorUserId, project.id))?.role ?? null;
+    if (projectRoleAtLeast(role, 'member')) continue;
+    if (role === null) out.unnamed += 1;
+    else out.named.push(project);
+  }
+  out.named.sort((a, b) => a.name.localeCompare(b.name));
+  return out;
+}
+
 /** The live people of a room, by user id. */
 async function livePersonIds(conversationId: string, tx: Executor): Promise<string[]> {
   const rows = await tx

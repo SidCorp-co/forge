@@ -162,6 +162,11 @@ export async function personCount(
   return Math.max(registered?.n ?? 0, spoken?.n ?? 0);
 }
 
+/**
+ * The agent a turn under this project answers as: a live agent added for that project that still holds
+ * a role on it, the rows `answersHere` reads, never an agent the room holds for another project that
+ * happens to hold a role here too (ISS-1229 r33).
+ */
 export async function handleForProject(
   conversationId: string,
   projectId: string,
@@ -170,13 +175,19 @@ export async function handleForProject(
   const [row] = await tx
     .select({ userId: conversationParticipants.userId })
     .from(conversationParticipants)
-    .innerJoin(projectMembers, eq(projectMembers.userId, conversationParticipants.userId))
+    .innerJoin(
+      projectMembers,
+      and(
+        eq(projectMembers.userId, conversationParticipants.userId),
+        eq(projectMembers.projectId, conversationParticipants.projectId),
+      ),
+    )
     .where(
       and(
         eq(conversationParticipants.conversationId, conversationId),
         eq(conversationParticipants.kind, 'handle'),
         isNull(conversationParticipants.removedAt),
-        eq(projectMembers.projectId, projectId),
+        eq(conversationParticipants.projectId, projectId),
       ),
     )
     .orderBy(conversationParticipants.addedAt)

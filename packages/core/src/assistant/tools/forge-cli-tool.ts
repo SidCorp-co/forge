@@ -21,6 +21,7 @@ const input = z
 const DESCRIPTION = [
   'Run the `forge` CLI as the person you are talking to, scoped to this project.',
   'This is the tracker: filing, reading, searching, comments, status, guides.',
+  'Read freely; file, comment or attach only when a person asked for that write.',
   readFormsLine(),
   'Send one as it stands, `-` being where `body` is substituted; do NOT guess a flag.',
   '`-h` is for a verb whose form this description does not carry.',

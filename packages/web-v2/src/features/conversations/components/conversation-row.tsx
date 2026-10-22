@@ -27,6 +27,26 @@ interface ProjectInfo {
   slug: string;
 }
 
+/** A listed room's projects by name, in its scope's order as About reads them, whichever list found it
+ *  (ISS-1229 r33, judge-92). */
+export function projectsOfRow(
+  row: Pick<ListedConversation, "scope" | "projectId">,
+  nameOf: (projectId: string) => ProjectInfo | undefined,
+): ProjectInfo[] {
+  const ids = row.scope.length > 0 ? row.scope : [row.projectId];
+  return ids.flatMap((id) => {
+    const named = nameOf(id);
+    return named ? [named] : [];
+  });
+}
+
+const namesOf = (projects: readonly ProjectInfo[]): string => {
+  const names = projects.map((p) => p.name);
+  if (names.length === 0) return "Unknown project";
+  if (names.length === 1) return names[0] as string;
+  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+};
+
 export interface ConversationRowActions {
   /** Commit a new title. Absent = the row shows no rename control. */
   onRename?: (title: string) => void;
@@ -38,7 +58,7 @@ export interface ConversationRowActions {
 
 export function ConversationRow({
   row,
-  project,
+  projects,
   open,
   onOpen,
   onRename,
@@ -46,13 +66,16 @@ export function ConversationRow({
   onDelete,
 }: {
   row: ListedConversation;
-  project: ProjectInfo | undefined;
+  /** Every project the room is about, as `projectsOfRow` reads them. */
+  projects: readonly ProjectInfo[];
   /** Already the open conversation — the row's single "open" signal. */
   open?: boolean;
   onOpen: () => void;
 } & ConversationRowActions) {
+  const project = projects[0];
   const glyph = projectGlyph(project?.slug ?? row.projectId);
   const initials = projectInitials(project?.name ?? "?");
+  const about = namesOf(projects);
   const archived = row.archivedAt !== null;
 
   const [editing, setEditing] = useState<string | null>(null);
@@ -96,15 +119,13 @@ export function ConversationRow({
         type="button"
         onClick={onOpen}
         aria-current={open ? "true" : undefined}
-        aria-label={`Open ${conversationTitle(row)} in ${project?.name ?? "an unknown project"}`}
+        aria-label={`Open ${conversationTitle(row)} in ${projects.length > 0 ? about : "an unknown project"}`}
         className="flex min-w-0 flex-1 items-center gap-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--link)]"
       >
         <ProjectMark tint={glyph.tint} ink={glyph.ink} initials={initials} size={22} />
         <div className="min-w-0 flex-1">
           <span className="fg-body-sm block truncate text-fg">{conversationTitle(row)}</span>
-          <span className="fg-caption block truncate text-subtle">
-            {project?.name ?? "Unknown project"}
-          </span>
+          <span className="fg-caption block truncate text-subtle">{about}</span>
         </div>
       </button>
 
