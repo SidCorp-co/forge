@@ -1,1 +1,0 @@
-**Every verdict fence in a comment is recorded.** Several verdict fences are all recorded; a fence naming no kind, or any unreadable fence, refuses the whole comment naming it (`fence 2 of 3`), never dropped silently (ISS-608).

@@ -1,1 +1,0 @@
-**A storefront-draft verdict names every workflow draft it was judged on.** `identity.workflows` lists each; a move of any one reads superseded and leaves proven. Old one-workflow verdicts read as one-element lists (ISS-613).

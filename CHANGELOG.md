@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.280] - 2026-10-22
+
+Storefront verdicts record every workflow draft they were judged on
+
+### Fixed
+
+- **Every verdict fence in a comment is recorded.** Several verdict fences are all recorded; a fence naming no kind, or any unreadable fence, refuses the whole comment naming it (`fence 2 of 3`), never dropped silently (ISS-608).
+- **A storefront-draft verdict names every workflow draft it was judged on.** `identity.workflows` lists each; a move of any one reads superseded and leaves proven. Old one-workflow verdicts read as one-element lists (ISS-613).
+
 ## [0.4.0-dev.279] - 2026-10-22
 
 Fix rounds keep a judge's fail on other criteria standing
