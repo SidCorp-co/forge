@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.277] - 2026-10-22
+
+Dropping an issue with open questions voids them in the same act
+
+### Fixed
+
+- **Dropping or closing an issue with open questions is one act.** The dialog and the chat drop card list the questions, any can be answered there, and the move withdraws the rest with your reason.
+
 ## [0.4.0-dev.276] - 2026-10-22
 
 The steward answers handoffs within minutes, asks once, and lists its acts with Undo
