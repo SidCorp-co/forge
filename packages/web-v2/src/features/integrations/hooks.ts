@@ -3,7 +3,15 @@
 import type { ConnectionDirectoryItem } from "@forge/contracts";
 import { useProjects } from "@/features/projects/hooks";
 import { useToast } from "@/providers/toast-provider";
-import { type QueryClient, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  type MutateOptions,
+  type QueryClient,
+  type UseMutationResult,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
+import { useRef } from "react";
 import { integrationConnectionsApi, integrationsApi } from "./api";
 import type {
   BindingListResponse,
@@ -177,7 +185,11 @@ export function useCreateProviderIntegration(projectId: string | undefined) {
 }
 
 /** Patch a Coolify/Epodsystem integration (config/secrets/active). */
-export function useUpdateProviderIntegration(projectId: string | undefined) {
+/** `failureSaidHere`: the caller shows a refusal where it was asked, so a toast would say it twice. */
+export function useUpdateProviderIntegration(
+  projectId: string | undefined,
+  { failureSaidHere = false }: { failureSaidHere?: boolean } = {},
+) {
   const qc = useQueryClient();
   const invalidate = useInvalidateIntegrations(projectId);
   const { toast } = useToast();
@@ -189,16 +201,43 @@ export function useUpdateProviderIntegration(projectId: string | undefined) {
       invalidate();
       toast({ title: "Integration saved", tone: "success" });
     },
-    onError: (err) =>
-      toast(failureToast(err, "The integration was not saved")),
+    onError: (err) => {
+      if (!failureSaidHere) toast(failureToast(err, "The integration was not saved"));
+    },
   });
+}
+
+/**
+ * One write per intent: a call made while the last is still in flight is dropped. A double-click on a
+ * confirming Disconnect sent DELETE twice, the second answering that the first had already removed it
+ * (ISS-1421 r25); `isPending` reaches the button a render too late to stop the second click.
+ */
+export function useOneWritePerIntent<TData, TError, TVariables, TContext>(
+  mutation: UseMutationResult<TData, TError, TVariables, TContext>,
+): UseMutationResult<TData, TError, TVariables, TContext> {
+  const busy = useRef(false);
+  const mutate = (
+    variables: TVariables,
+    options?: MutateOptions<TData, TError, TVariables, TContext>,
+  ) => {
+    if (busy.current) return;
+    busy.current = true;
+    mutation.mutate(variables, {
+      ...options,
+      onSettled: (...settled) => {
+        busy.current = false;
+        options?.onSettled?.(...settled);
+      },
+    });
+  };
+  return { ...mutation, mutate } as UseMutationResult<TData, TError, TVariables, TContext>;
 }
 
 /** Delete a Coolify/Epodsystem integration (provider-neutral toast copy). */
 export function useDeleteProviderIntegration(projectId: string | undefined) {
   const invalidate = useInvalidateIntegrations(projectId);
   const { toast } = useToast();
-  return useMutation({
+  const mutation = useMutation({
     mutationFn: (id: string) => integrationsApi.remove(projectId as string, id),
     onSuccess: () => {
       invalidate();
@@ -207,6 +246,7 @@ export function useDeleteProviderIntegration(projectId: string | undefined) {
     onError: (err) =>
       toast(failureToast(err, "The integration was not removed")),
   });
+  return useOneWritePerIntent(mutation);
 }
 
 
@@ -362,7 +402,7 @@ export function useTestConnection() {
 export function useRemoveConnection() {
   const invalidate = useInvalidateConnections();
   const { toast } = useToast();
-  return useMutation({
+  const mutation = useMutation({
     mutationFn: (id: string) => integrationConnectionsApi.remove(id),
     onSuccess: () => {
       invalidate();
@@ -371,6 +411,7 @@ export function useRemoveConnection() {
     onError: (err) =>
       toast(failureToast(err, "The connection was not removed")),
   });
+  return useOneWritePerIntent(mutation);
 }
 
 

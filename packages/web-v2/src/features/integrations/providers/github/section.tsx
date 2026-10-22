@@ -18,7 +18,7 @@ import {
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useProjects } from "@/features/projects/hooks";
-import { mayCreateTheApp, takesTheApp } from "../../app-owner";
+import { mayCreateTheApp, refusalSaidByThePanel, takesTheApp } from "../../app-owner";
 import { useMemo, useState } from "react";
 import {
   useBindExistingConnection,
@@ -472,7 +472,9 @@ function CreateApp({
           </Field>
         )}
 
-        {connect.isError && <Banner tone="danger">{formatApiError(connect.error)}</Banner>}
+        {connect.isError && !refusalSaidByThePanel(connect.error, project) && (
+          <Banner tone="danger">{formatApiError(connect.error)}</Banner>
+        )}
 
         <div className="flex flex-wrap items-center gap-3">
           {offered && (
@@ -579,7 +581,9 @@ function RemovedApp({
           </Field>
         )}
 
-        {connect.isError && <Banner tone="danger">{formatApiError(connect.error)}</Banner>}
+        {connect.isError && !refusalSaidByThePanel(connect.error, project) && (
+          <Banner tone="danger">{formatApiError(connect.error)}</Banner>
+        )}
         {remove.isError && <Banner tone="danger">{formatApiError(remove.error)}</Banner>}
 
         <div className="flex flex-wrap items-center gap-3">

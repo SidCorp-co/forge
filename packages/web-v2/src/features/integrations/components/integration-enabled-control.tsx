@@ -17,13 +17,24 @@ export function bindsRemovedConnection(
   return !binding.connectionActive && !binding.hasSecrets;
 }
 
-/** What turns a removed shared connection back on, said where the project's binding names it. */
-export function removedCredentialLine(provider: string): string {
+/**
+ * What turns a removed shared connection back on, said where the project's binding names it. A reader
+ * whose key save core would refuse is told who may save one rather than to save it (ISS-1421 r25).
+ */
+export function removedCredentialLine(provider: string, keyLocked: boolean): string {
   const module = providerModule(provider);
   if (module?.secretField !== null) {
-    return "The shared connection was removed, so it holds no key. Saving a new key on it on the Integrations page turns it back on.";
+    return keyLocked
+      ? "The shared connection was removed, so it holds no key. Only an owner or admin of the organization that owns it can save a new key on it, which turns it back on."
+      : "The shared connection was removed, so it holds no key. Saving a new key on it on the Integrations page turns it back on.";
   }
   return module.removedLine ?? "The shared connection was removed, so no project can use it.";
+}
+
+/** The key field's hint over a removed connection, asking for a key only of a reader who may save one. */
+export function removedKeyHint(noun: "key" | "token", keyLocked: boolean): string {
+  const said = `No ${noun} is stored: the shared connection was removed.`;
+  return keyLocked ? said : `${said} Enter one to store it.`;
 }
 
 export function IntegrationEnabledControl({
@@ -67,7 +78,7 @@ export function IntegrationEnabledControl({
         />
       </span>
       {credentialRemoved && (
-        <span className="fg-body-sm text-amber">{removedCredentialLine(binding.provider)}</span>
+        <span className="fg-body-sm text-amber">{removedCredentialLine(binding.provider, orgLocked)}</span>
       )}
       {credentialDisabled && !credentialRemoved && (
         <div className="flex flex-wrap items-center gap-2">

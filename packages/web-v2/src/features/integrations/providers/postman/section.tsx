@@ -1,5 +1,7 @@
 "use client";
 
+import { removedKeyHint } from "../../components/integration-enabled-control";
+
 import {
   Badge,
   Banner,
@@ -187,7 +189,7 @@ export function PostmanSection({ projectId }: { projectId: string }) {
           label="API key"
           hint={
             existing && !existing.hasSecrets
-              ? "No key is stored: the shared connection was removed. Enter one to store it."
+              ? removedKeyHint("key", orgLocked)
               : existing
               ? "A key is stored. Leave blank to keep it; enter a new one to rotate."
               : "Postman API key (PMAK-…). Stored encrypted; never shown again."
