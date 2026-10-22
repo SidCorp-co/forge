@@ -90,7 +90,7 @@ export interface KeyMention {
  */
 export function keyMentions(text: string, prefixes: readonly string[] = []): KeyMention[] {
   const out: KeyMention[] = [];
-  for (const sentence of text.split(/(?<=[.!?])\s+|\n\s*\n/)) {
+  for (const sentence of text.split(/(?<=[.!?][*_`"”’)\]]*)\s+|\n\s*\n/)) {
     for (const m of sentence.matchAll(issueTokenRe(prefixes))) {
       const at = m.index ?? 0;
       const absent = assertsAbsence(sentence, at, sentence.slice(at + m[0].length));
