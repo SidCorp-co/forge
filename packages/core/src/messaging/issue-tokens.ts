@@ -46,6 +46,13 @@ export function extractIssueClaims(reply: string, prefixes: readonly string[] = 
 const ABSENT_AFTER =
   /^[*_`"”’)\]]*\s+(?:(?:is not|isn't|is no longer|was not|wasn't|does not|doesn't)\s+(?:exist\b|(?:on|in|part of|held (?:by|on|in))\s+(?:[\w’'-]+\s+){0,5}?(?:tracker|project)\b)|(?:was not|wasn't|could not be|couldn't be|cannot be|can't be)\s+found\b)/i;
 
+/** The clause of a sentence a position falls in, between its commas, semicolons, colons and dashes. */
+const clauseAt = (sentence: string, at: number) => {
+  const cuts = [...sentence.matchAll(/[,;:—–]\s/g)].map((m) => m.index ?? 0);
+  const from = Math.max(0, ...cuts.filter((c) => c < at));
+  const to = Math.min(sentence.length, ...cuts.filter((c) => c >= at));
+  return sentence.slice(from, to);
+};
 const CONDITIONAL = /\b(?:if|unless|whether|suppose|supposing|in case)\b/i;
 const NARROWER =
   /^[^.;]*\b(?:sprint|milestone|board|column|release|filter|search|page|list|view)\b/i;
@@ -72,7 +79,7 @@ export function keyMentions(text: string, prefixes: readonly string[] = []): Key
   for (const sentence of text.split(/(?<=[.!?])\s+|\n+/)) {
     for (const m of sentence.matchAll(issueTokenRe(prefixes))) {
       const at = m.index ?? 0;
-      const asserted = !/\?\s*$/.test(sentence) && !CONDITIONAL.test(sentence.slice(0, at));
+      const asserted = !/\?\s*$/.test(sentence) && !CONDITIONAL.test(clauseAt(sentence, at));
       const narrower = NARROWER.test(sentence.slice(at + m[0].length));
       const absent =
         asserted &&

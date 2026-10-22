@@ -24,6 +24,7 @@ describe('a reply saying a key is not on the project', () => {
     'There is no ISS-999 on this project.',
     "I couldn't find ISS-999 in this project's issues.",
     'ISS-999 does not exist here; the project holds ISS-1.',
+    'ISS-999 is not on this project; tell me if you meant another issue.',
   ])('passes the room door where the project holds no such issue: %s', (text) => {
     expect(room(text)).toMatchObject({ ok: true });
   });
@@ -69,6 +70,8 @@ describe('a reply saying a key is not on the project', () => {
   it('reads a question or a condition about a held key as no claim that it is absent', () => {
     expect(room('What if ISS-1 is not on this project?').ok).toBe(true);
     expect(room('If ISS-1 is not on this project, I can file it.').ok).toBe(true);
+    expect(room('ISS-1 is not on this project if the import failed.').ok).toBe(true);
+    expect(room('ISS-999 is not on this project if the import failed.').ok).toBe(false);
   });
 
   it('refuses saying the project does not hold an issue it holds', () => {
