@@ -24,13 +24,13 @@ afterEach(cleanup);
 
 const props = { projectId: "p1", projectName: "Ops", projectSlug: "ops", onOpen: vi.fn(), onGone: vi.fn() };
 
-describe("the drawer's room list", () => {
-  it("offers a member a new room", () => {
+describe("the drawer's room list, as its panel asks it", () => {
+  it("offers a new room where it is given one to offer", () => {
     render(<ConversationList {...props} onNew={vi.fn()} />);
     expect(screen.getAllByRole("button", { name: /new conversation/i })).toHaveLength(2);
   });
 
-  it("offers a viewer none, and says the list is only to read", () => {
+  it("offers none where it is given none, and says the list is only to read", () => {
     render(<ConversationList {...props} />);
     expect(screen.queryByRole("button", { name: /new conversation/i })).toBeNull();
     expect(screen.getByText(VIEWER_LIST_EMPTY)).toBeTruthy();
