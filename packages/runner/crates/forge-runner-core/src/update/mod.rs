@@ -630,7 +630,6 @@ mod tests {
         );
     }
 
-    /// An address nothing listens on: bound, then let go.
     /// An address every connect is refused at, and the socket that keeps it so.
     ///
     /// Bound and never listening: a dropped listener's port is free for a
