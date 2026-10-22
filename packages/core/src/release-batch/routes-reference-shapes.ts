@@ -5,7 +5,7 @@ import { releaseAttempts } from '../db/schema-release-ledger.js';
 
 const detailsSchema = z.record(z.string(), z.unknown());
 const verificationSchema = z.enum(['probed', 'unverified']);
-const verifySourceSchema = z.enum(['binding', 'environments-live', 'declared-unusable', 'none']);
+const verifySourceSchema = z.enum(['binding', 'declared-unusable', 'none']);
 const issueStatusSchema = z.enum(issueStatuses);
 
 const blockerSchema = z.object({

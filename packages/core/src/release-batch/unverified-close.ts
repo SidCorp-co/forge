@@ -37,7 +37,7 @@ export function unverifiedCloseNote(
       ? `Nothing read what these live deploy bindings serve, because none declares a verify probe: ${unread.join(', ')}. The bindings that do declare one were read and confirmed.`
       : `This project declares no verify probe, so nothing read the live deployment. ${reported}`,
     '',
-    'Look at the live deployment for this change, and reopen this issue if it is not there. If your live deployment can report the commit it serves, declaring `environments.live.commitUrl` (with `commitPath`), or a `verify` on the live deploy binding, makes the releases after that verified.',
+    'Look at the live deployment for this change, and reopen this issue if it is not there. If your live deployment can report the commit it serves, declaring `verify.probes` on the live deploy binding makes the releases after that verified.',
     '',
     `\`${unverifiedMarker(runId)}\``,
   ].join('\n');

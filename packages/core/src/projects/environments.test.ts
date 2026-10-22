@@ -11,11 +11,12 @@ import {
   credentialFaults,
   environmentsPatchSchema,
   normalizeEnvironments,
+  retiredLiveKeysIn,
 } from './environments.js';
 
 const EMPTY = {
   preview: null,
-  live: { url: null, apiUrl: null, commitUrl: null, commitPath: null },
+  live: { url: null, apiUrl: null },
   testCredentials: [],
   limits: null,
 };
@@ -72,31 +73,38 @@ describe('normalizeEnvironments — the live side', () => {
     expect(normalizeEnvironments(stored).live).toEqual(EMPTY.live);
   });
 
-  it('fills the other three fields for a live holding only a url', () => {
+  it('fills the other field for a live holding only a url', () => {
     expect(normalizeEnvironments({ live: { url: 'https://app.x' } }).live).toEqual({
       url: 'https://app.x',
       apiUrl: null,
-      commitUrl: null,
-      commitPath: null,
     });
   });
 
-  it('answers commitUrl and commitPath separately from url', () => {
+  it('reads no retired commit endpoint, whatever a row still holds', () => {
     expect(
       normalizeEnvironments({
-        live: {
-          url: 'https://app.x',
-          commitUrl: 'https://api.x/health',
-          commitPath: 'data.commit',
-        },
+        live: { url: 'https://app.x', commitUrl: 'https://api.x/health', commitPath: 'commit' },
       }).live,
-    ).toEqual({
-      url: 'https://app.x',
-      apiUrl: null,
-      commitUrl: 'https://api.x/health',
-      commitPath: 'data.commit',
-    });
+    ).toEqual({ url: 'https://app.x', apiUrl: null });
   });
+});
+
+describe('retiredLiveKeysIn — a patch naming the retired commit endpoint', () => {
+  it.each([
+    [{ live: { commitUrl: 'https://api.x/health' } }, ['commitUrl']],
+    [{ live: { commitUrl: null } }, ['commitUrl']],
+    [{ live: { commitPath: null, url: 'https://app.x' } }, ['commitPath']],
+    [{ live: { commitUrl: null, commitPath: 'commit' } }, ['commitUrl', 'commitPath']],
+  ])('names the retired keys in %j', (patch, keys) => {
+    expect(retiredLiveKeysIn(patch)).toEqual(keys);
+  });
+
+  it.each([[{ live: { url: 'https://app.x' } }], [{ live: null }], [{ limits: 'x' }], [{}]])(
+    'names none in %j',
+    (patch) => {
+      expect(retiredLiveKeysIn(patch)).toEqual([]);
+    },
+  );
 });
 
 describe('normalizeEnvironments — a READING, not the stored value', () => {
@@ -115,17 +123,15 @@ describe('normalizeEnvironments — a READING, not the stored value', () => {
   });
 });
 
-describe('environmentsPatchSchema — null is a value for nine fields and for no other', () => {
+describe('environmentsPatchSchema — null is a value for seven fields and for no other', () => {
   const NULLABLE: [string, unknown][] = [
     ['preview', { preview: null }],
     ['live', { live: null }],
     ['limits', { limits: null }],
-    ['live.commitPath', { live: { commitPath: null } }],
     ['preview.url', { preview: { url: null } }],
     ['preview.apiUrl', { preview: { apiUrl: null } }],
     ['live.url', { live: { url: null } }],
     ['live.apiUrl', { live: { apiUrl: null } }],
-    ['live.commitUrl', { live: { commitUrl: null } }],
   ];
 
   it.each(NULLABLE)('accepts a JSON null at %s', (_label, value) => {
@@ -182,7 +188,6 @@ describe('environmentsPatchSchema — the values it refuses, and the field each 
     ['a preview.apiUrl that is not a URL', { preview: { apiUrl: 'nope' } }, 'apiUrl'],
     ['a live.url that is not a URL', { live: { url: 'nope' } }, 'live'],
     ['a live.apiUrl that is not a URL', { live: { apiUrl: 'nope' } }, 'apiUrl'],
-    ['a live.commitUrl that is not a URL', { live: { commitUrl: 'nope' } }, 'commitUrl'],
     [
       'a preview.urls row missing its label',
       { preview: { urls: [{ url: 'https://x.example.com' }] } },
@@ -238,11 +243,6 @@ describe('environmentsPatchSchema — the values it refuses, and the field each 
       'testCredentials',
     ],
     ['a limits longer than 8000 characters', { limits: 'x'.repeat(8001) }, 'limits'],
-    [
-      'a commitPath longer than 200 characters',
-      { live: { commitPath: 'x'.repeat(201) } },
-      'commitPath',
-    ],
   ];
 
   it.each(REFUSED_ENVIRONMENTS)('refuses %s', (_label, environments, names) => {

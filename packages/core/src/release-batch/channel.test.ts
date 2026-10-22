@@ -128,100 +128,67 @@ describe('resolveReleaseChannels', () => {
 });
 
 /**
- * ISS-1069 — a project's own live address becomes the probe a binding that declares none gets.
- *
- * Before this, declaring `verify.probes` needed the one thing Forge did not hold: the project's
- * production hostname. 0 of 32 projects filled it and `sidpeak` could not cut a release at all.
- * The rule that matters here is WHEN the default fires — on absence, never on a declaration
- * `parseVerifyConfig` refused — because filling in for a broken declaration would verify somewhere
- * the operator never named and wear a green verdict doing it.
+ * ISS-1339 — a channel's probe comes from its binding and nowhere else. The project's environments
+ * once lent a binding that declared none a probe; that fallback is retired, so a binding declaring
+ * nothing is `none`, and the project row is not read at all.
  */
-describe('resolveReleaseChannels — the probe a live address earns', () => {
-  const LIVE = {
-    live: { url: 'https://app.x', commitUrl: 'https://api.x/health', commitPath: 'data.commit' },
-  };
-
+describe("resolveReleaseChannels — the probe is the binding's own", () => {
   it.each([
     ['no verify key at all', {}],
     ['a JSON-null verify', { verify: null }],
-  ])('defaults the probe from environments.live for a binding with %s', async (_l, cfg) => {
+  ])('answers none for a binding with %s, and reads no project row', async (_l, cfg) => {
     listBindings.mockResolvedValue([binding({ bindingConfig: cfg })]);
-    selectLimit.mockResolvedValue([{ environments: LIVE }]);
 
     const [channel] = await resolveReleaseChannels(PROJECT_ID);
-    expect(channel?.verify?.probes).toEqual([
-      { url: 'https://api.x/health', commitPath: 'data.commit' },
-    ]);
-    expect(channel?.verifySource).toBe('environments-live');
+    expect(channel?.verify).toBeNull();
+    expect(channel?.verifySource).toBe('none');
+    expect(selectLimit).not.toHaveBeenCalled();
   });
 
   /**
-   * ISS-1286 — a declaration this repo refused still takes no fallback, and now says so under its
-   * own word. Reported as `none` it was the same answer as "nothing was declared", so a reader
-   * could not tell a configuration defect from an absent configuration.
+   * ISS-1286 — a declaration this repo refused says so under its own word. Reported as `none` it
+   * was the same answer as "nothing was declared", so a reader could not tell a configuration
+   * defect from an absent configuration.
    */
   it.each([
     ['an empty verify object', { verify: {} }],
     ['a verify with an empty probe list', { verify: { probes: [] } }],
     ['probes with no url', { verify: { probes: [{ commitPath: 'commit' }] } }],
     ['a probe whose url is empty', { verify: { probes: [{ url: '' }] } }],
-  ])(
-    'takes NO default for a binding declaring %s, and calls it declared-unusable',
-    async (_l, cfg) => {
-      listBindings.mockResolvedValue([binding({ bindingConfig: cfg })]);
-      selectLimit.mockResolvedValue([{ environments: LIVE }]);
+  ])('calls a binding declaring %s declared-unusable', async (_l, cfg) => {
+    listBindings.mockResolvedValue([binding({ bindingConfig: cfg })]);
 
-      const [channel] = await resolveReleaseChannels(PROJECT_ID);
-      expect(channel?.verify).toBeNull();
-      expect(channel?.verifySource).toBe('declared-unusable');
-    },
-  );
+    const [channel] = await resolveReleaseChannels(PROJECT_ID);
+    expect(channel?.verify).toBeNull();
+    expect(channel?.verifySource).toBe('declared-unusable');
+  });
 
-  it('keeps a usable binding declaration whatever environments.live holds', async () => {
+  it("reads a usable binding declaration as the binding's", async () => {
     listBindings.mockResolvedValue([
       binding({
         bindingConfig: { verify: { probes: [{ url: 'https://own.x/health', commitPath: 'c' }] } },
       }),
     ]);
-    selectLimit.mockResolvedValue([{ environments: LIVE }]);
 
     const [channel] = await resolveReleaseChannels(PROJECT_ID);
     expect(channel?.verify?.probes).toEqual([{ url: 'https://own.x/health', commitPath: 'c' }]);
     expect(channel?.verifySource).toBe('binding');
   });
 
-  it('reports `none` where the binding declares nothing and the project holds no live commit endpoint', async () => {
-    listBindings.mockResolvedValue([binding({})]);
-    selectLimit.mockResolvedValue([{ environments: { live: { url: 'https://app.x' } } }]);
-
-    const [channel] = await resolveReleaseChannels(PROJECT_ID);
-    expect(channel?.verify).toBeNull();
-    expect(channel?.verifySource).toBe('none');
-  });
-
-  it('omits commitPath entirely where the project declares none', async () => {
-    listBindings.mockResolvedValue([binding({})]);
-    selectLimit.mockResolvedValue([
-      { environments: { live: { commitUrl: 'https://api.x/health', commitPath: null } } },
-    ]);
-
-    const [channel] = await resolveReleaseChannels(PROJECT_ID);
-    expect(channel?.verify?.probes[0]).toEqual({ url: 'https://api.x/health' });
-  });
-
-  it('reads the project row once for any number of bindings', async () => {
+  it('answers each binding by its own declaration', async () => {
     listBindings.mockResolvedValue([
-      binding({ provider: 'coolify' }),
+      binding({
+        provider: 'coolify',
+        bindingConfig: { verify: { probes: [{ url: 'https://a.x/v' }] } },
+      }),
       binding({ provider: 'epodsystem' }),
     ]);
-    selectLimit.mockResolvedValue([{ environments: LIVE }]);
 
     const channels = await resolveReleaseChannels(PROJECT_ID);
-    expect(channels.map((c) => c.verifySource)).toEqual(['environments-live', 'environments-live']);
-    expect(selectLimit).toHaveBeenCalledTimes(1);
+    expect(channels.map((c) => c.verifySource)).toEqual(['binding', 'none']);
   });
 
-  it('reads no project row at all where the project declares no live binding', async () => {
+  it('answers no channel where the project declares no live binding', async () => {
     listBindings.mockResolvedValue([]);
     expect(await resolveReleaseChannels(PROJECT_ID)).toEqual([]);
     expect(selectLimit).not.toHaveBeenCalled();
@@ -324,11 +291,8 @@ describe('finishVerification (ISS-1321)', () => {
   });
 });
 
-describe('resolveReleaseChannels — a refused verify takes no project default', () => {
-  it('reads a `verify` naming no probe as declared-unusable, with no fallback probe', async () => {
-    selectLimit.mockResolvedValue([
-      { environments: { live: { commitUrl: 'https://api.example.test/version' } } },
-    ]);
+describe('resolveReleaseChannels — a refused verify is a declaration to correct', () => {
+  it('reads a `verify` naming no probe as declared-unusable, with no probe', async () => {
     listBindings.mockResolvedValue([binding({ bindingConfig: { verify: { probes: [] } } })]);
 
     const [channel] = await resolveReleaseChannels(PROJECT_ID);

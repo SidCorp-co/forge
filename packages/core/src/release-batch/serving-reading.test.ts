@@ -9,7 +9,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const resolveReleaseChannelsMock = vi.fn(async (_projectId: string) => [] as unknown[]);
-const selectLimit = vi.fn(async () => [] as unknown[]);
 vi.mock('./channel.js', async (importActual) => {
   const actual = await importActual<typeof import('./channel.js')>();
   return {
@@ -26,9 +25,6 @@ const readForgeDeploymentsMock = vi.fn(
 );
 vi.mock('./deployed-reading.js', () => ({
   readForgeDeployments: (projectId: string) => readForgeDeploymentsMock(projectId),
-}));
-vi.mock('../db/client.js', () => ({
-  db: { select: () => ({ from: () => ({ where: () => ({ limit: () => selectLimit() }) }) }) },
 }));
 
 const { readServingNow, servedClause, servedCommits } = await import('./serving-reading.js');
@@ -66,8 +62,6 @@ beforeEach(() => {
   readForgeDeploymentsMock.mockClear();
   resolveReleaseChannelsMock.mockReset();
   resolveReleaseChannelsMock.mockResolvedValue([]);
-  selectLimit.mockReset();
-  selectLimit.mockResolvedValue([]);
 });
 
 afterEach(() => {
@@ -132,7 +126,6 @@ describe('readServingNow', () => {
 
   it('says undeclared, and what is missing, where nothing declares a probe and nothing Forge deployed can answer', async () => {
     resolveReleaseChannelsMock.mockResolvedValue([]);
-    selectLimit.mockResolvedValue([{ environments: { live: { url: 'https://app.test' } } }]);
     expect(await readServingNow(PROJECT_ID, now)).toEqual({
       kind: 'undeclared',
       missing: 'this project has no active deploy binding',
@@ -192,19 +185,23 @@ describe('readServingNow', () => {
     expect(readForgeDeploymentsMock).not.toHaveBeenCalled();
   });
 
-  // `resolveReleaseChannels` reads no project row when there is no live binding, so this would
-  // otherwise read as a project that declared no way to ask.
-  it('falls back to the live environment probe where the project has no live binding', async () => {
+  // ISS-1339: no live binding means no probe; the project's environments lend none.
+  it('asks what Forge deployed, and fetches no probe, where the project has no live binding', async () => {
     resolveReleaseChannelsMock.mockResolvedValue([]);
-    selectLimit.mockResolvedValue([
-      { environments: { live: { commitUrl: 'https://env.test/health', commitPath: 'commit' } } },
-    ]);
-    vi.stubGlobal('fetch', answering({ 'https://env.test/health': `{"commit":"${SERVED}"}` }));
+    const fetched = vi.fn();
+    vi.stubGlobal('fetch', fetched);
+    readForgeDeploymentsMock.mockResolvedValueOnce({
+      kind: 'answered',
+      served: [{ commit: SERVED, where: 'Coolify target `App` (live)' }],
+      unread: [],
+    });
 
     expect(await readServingNow(PROJECT_ID, now)).toMatchObject({
       kind: 'serving',
-      served: [{ commit: SERVED, where: 'https://env.test/health' }],
+      served: [{ commit: SERVED, where: 'Coolify target `App` (live)' }],
     });
+    expect(readForgeDeploymentsMock).toHaveBeenCalledWith(PROJECT_ID);
+    expect(fetched).not.toHaveBeenCalled();
   });
 
   it('reads an unreachable host as unreadable, naming the host and the moment', async () => {

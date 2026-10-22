@@ -13,6 +13,8 @@ import {
   credentialFaults,
   type EnvironmentsConfig,
   environmentsPatchSchema,
+  retiredLiveKeyMessage,
+  retiredLiveKeysIn,
 } from './environments.js';
 
 export type EnvironmentsErrorCode =
@@ -62,6 +64,16 @@ export async function updateEnvironments(
   input: UpdateEnvironmentsInput,
 ): Promise<{ environments: EnvironmentsConfig }> {
   const { projectId, patch, base } = input;
+  const retired = retiredLiveKeysIn(patch);
+  if (retired.length > 0) {
+    const conflicts = retired.map((key) => ({
+      path: `live.${key}`,
+      message: retiredLiveKeyMessage(key),
+    }));
+    throw new EnvironmentsError('ENVIRONMENTS_INVALID', conflicts.map((c) => c.message).join(' '), {
+      conflicts,
+    });
+  }
   return db.transaction(async (tx) => {
     const [row] = await tx
       .select({ environments: projects.environments })

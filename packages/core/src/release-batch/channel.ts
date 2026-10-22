@@ -1,10 +1,8 @@
-import { eq, sql } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { projects } from '../db/schema.js';
 import { getIntegration } from '../integrations/registry.js';
 import { effectiveConfig, listActiveDeployBindingsForStage } from '../integrations/store.js';
 import { getKnowledgeEntry } from '../knowledge/service.js';
-import { normalizeEnvironments } from '../projects/environments.js';
 import { ReleaseProbesUnreadableError } from './errors.js';
 import {
   type CloseVerification,
@@ -59,44 +57,25 @@ export function classifyRollback(provider: string, raw: unknown): ReleaseRollbac
   return null;
 }
 
-export function liveProbeFrom(environments: unknown): VerifyConfig | null {
-  const live = normalizeEnvironments(environments).live;
-  if (live.commitUrl === null) return null;
-  return parseVerifyConfig({
-    probes: [{ url: live.commitUrl, commitPath: live.commitPath ?? undefined }],
-  });
-}
-
 export async function resolveReleaseChannels(projectId: string): Promise<ReleaseChannel[]> {
   const pairs = await listActiveDeployBindingsForStage(projectId, 'live');
-  if (pairs.length === 0) return [];
-  const [row] = await db
-    .select({ environments: projects.environments })
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .limit(1);
-  const fallback = liveProbeFrom(row?.environments);
   return pairs.map((pair) => {
     const cfg = effectiveConfig(pair);
     const label = cfg.releaseRunnerLabel;
-    const declared = parseVerifyConfig(cfg.verify);
+    const verify = parseVerifyConfig(cfg.verify);
     const absent = cfg.verify === undefined || cfg.verify === null;
-    const verify = declared ?? (absent ? fallback : null);
-    // A declaration this repo refused takes no fallback (ISS-1069) and is not silence (ISS-1286).
-    const unusable = !declared && !absent;
     return {
       bindingId: pair.binding.id,
       provider: pair.binding.provider,
       label: pair.binding.label,
       instructions: pair.binding.instructions ?? null,
       verify,
-      verifySource: declared
+      // A declaration this repo refused is not silence (ISS-1286).
+      verifySource: verify
         ? ('binding' as const)
-        : verify
-          ? ('environments-live' as const)
-          : unusable
-            ? ('declared-unusable' as const)
-            : ('none' as const),
+        : absent
+          ? ('none' as const)
+          : ('declared-unusable' as const),
       rollback: classifyRollback(pair.binding.provider, cfg.rollback),
       releaseRunnerLabel: typeof label === 'string' && label.length > 0 ? label : null,
     };

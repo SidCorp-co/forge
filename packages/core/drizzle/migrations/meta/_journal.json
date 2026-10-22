@@ -2269,6 +2269,13 @@
       "when": 1813708800000,
       "tag": "0355_connections_go_with_their_org",
       "breakpoints": true
+    },
+    {
+      "idx": 358,
+      "version": "7",
+      "when": 1813968000000,
+      "tag": "0358_the_probe_moves_to_the_binding",
+      "breakpoints": true
     }
   ]
 }

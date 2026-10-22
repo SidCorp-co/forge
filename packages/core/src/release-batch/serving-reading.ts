@@ -2,13 +2,10 @@
  *  moment the next deploy lands (ISS-1286). Declared probes answer first; where none is declared,
  *  what Forge itself deployed through the project's bindings does (ISS-1346). */
 
-import { eq } from 'drizzle-orm';
-import { db } from '../db/client.js';
-import { projects } from '../db/schema.js';
 import { longestSpelling } from '../messaging/verdict-identity.js';
-import { declaredProbesOf, liveProbeFrom, resolveReleaseChannels } from './channel.js';
+import { declaredProbesOf, resolveReleaseChannels } from './channel.js';
 import { readForgeDeployments } from './deployed-reading.js';
-import { invalidProbeUrls, readLiveState, type VerifyConfig } from './verify.js';
+import { invalidProbeUrls, readLiveState } from './verify.js';
 
 export interface ServedAt {
   readonly commit: string;
@@ -59,17 +56,6 @@ export function servingClause(serving: Extract<ServingReading, { kind: 'serving'
   return `${servedClause(serving.served)}, read at ${serving.readAt}${unread}`;
 }
 
-/** `resolveReleaseChannels` reads no project row with no live binding, so a commit url declared
- *  there with no binding is not undeclared. */
-async function liveEnvironmentProbe(projectId: string): Promise<VerifyConfig | null> {
-  const [row] = await db
-    .select({ environments: projects.environments })
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .limit(1);
-  return liveProbeFrom(row?.environments);
-}
-
 const REFUSED_DECLARATION =
   'every declared verification probe was refused as a declaration: a `verify` block is there and ' +
   'nothing in it names a url to ask. Correct the declaration on the live deploy binding.';
@@ -113,11 +99,7 @@ export async function readServingNow(
   projectId: string,
   now: () => Date = () => new Date(),
 ): Promise<ServingReading> {
-  const channels = await resolveReleaseChannels(projectId);
-  const declared =
-    channels.length > 0
-      ? declaredProbesOf(channels)
-      : { cfg: await liveEnvironmentProbe(projectId), refused: 0 };
+  const declared = declaredProbesOf(await resolveReleaseChannels(projectId));
 
   if (declared.cfg === null) {
     if (declared.refused === 0) return fromDeployments(projectId, now);

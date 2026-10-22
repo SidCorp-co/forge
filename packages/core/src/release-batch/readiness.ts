@@ -4,7 +4,6 @@ import type { ReleaseCrossing } from '../db/schema.js';
 import { projects } from '../db/schema.js';
 import { selectAllSlugsFromKnowledge } from '../knowledge/service.js';
 import { missingProjectKnowledge } from '../projects/autonomous-contract.js';
-import { normalizeEnvironments } from '../projects/environments.js';
 import { type ReleaseChain, retiredReleaseAxes } from '../projects/release-chain.js';
 import { collectReleaseBlockers, type ReleaseBlocker, releaseBlockerSentence } from './blockers.js';
 import { type CarriedRecord, carriedRecord, readCarried } from './carried.js';
@@ -31,7 +30,6 @@ interface ProjectRow {
   baseBranch: string | null;
   repoUrl: string | null;
   releaseChain: ReleaseChain;
-  environments: unknown;
 }
 
 export interface ReleaseReadiness {
@@ -98,7 +96,6 @@ export async function loadReleaseReadiness(projectId: string): Promise<ReleaseRe
         baseBranch: projects.baseBranch,
         repoUrl: projects.repoUrl,
         releaseChain: projects.releaseChain,
-        environments: projects.environments,
       })
       .from(projects)
       .where(eq(projects.id, projectId))
@@ -170,8 +167,7 @@ interface GapInput {
 function declarationGaps(input: GapInput): ReleaseGapKey[] {
   const { decl, channels, row, held } = input;
   const gaps: ReleaseGapKey[] = [];
-  // A gap is an ABSENCE somebody can act on, never a read nobody managed to
-  // make (ISS-1127).
+  // A gap is an ABSENCE somebody can act on, never a read nobody managed to make (ISS-1127).
   if (row !== undefined && held !== undefined) {
     const declarations = {
       repoPath: row?.repoPath ?? null,
@@ -183,9 +179,6 @@ function declarationGaps(input: GapInput): ReleaseGapKey[] {
   if (decl?.kind === 'undeclared-target') gaps.push('release-target');
   if (decl?.kind !== 'gated') return gaps;
 
-  if (row !== undefined && normalizeEnvironments(row?.environments).live.commitUrl === null) {
-    gaps.push('live-commit-endpoint');
-  }
   if (channels === null) return gaps;
 
   const labels = [...new Set(channels.map((c) => c.releaseRunnerLabel).filter((l) => l !== null))];

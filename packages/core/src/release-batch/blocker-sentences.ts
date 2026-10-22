@@ -433,10 +433,10 @@ function unroutedSentence(missing: string, details: Record<string, unknown>): st
 /** What follows the bindings a refused `verify` names, agreeing with how many there are. */
 export type RefusedDeclaration = (bindings: number) => string;
 
-/** A `verify` Forge refused takes no project default, so removing it is a repair and not silence. */
+/** A `verify` Forge refused stops the release, so removing it is a repair and not silence. */
 const refusedDeclarationSentence: RefusedDeclaration = (n) => {
   const w = (one: string, many: string) => agree(n, one, many);
-  return `a \`verify\` Forge cannot read — ${w('it names no probe', 'none of them names a probe')} with a url — and a declared \`verify\` takes NO project default, so no release can be proved ${w('there', 'at any of them')} and none closes past ${w('it', 'them')}. Correct ${w('it', 'each')} to \`{"probes":[{"url":"https://<host>/api/health","commitPath":"commit"}]}\`, or remove ${w('it', 'them')}: the project's \`environments.live.commitUrl\` then answers, and with neither the release is recorded unverified.`;
+  return `a \`verify\` Forge cannot read — ${w('it names no probe', 'none of them names a probe')} with a url — so no release can be proved ${w('there', 'at any of them')} and none closes past ${w('it', 'them')}. Correct ${w('it', 'each')} to \`{"probes":[{"url":"https://<host>/api/health","commitPath":"commit"}]}\`, or remove ${w('it', 'them')}, and a release with no probe on any live binding is recorded unverified.`;
 };
 
 /** Urls as code, so a sentence that opens on one reads the same wherever it is answered. */

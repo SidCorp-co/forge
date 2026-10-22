@@ -22,7 +22,6 @@ import { useIntegrationsList } from "@/features/integrations/hooks";
 import { providerLabel } from "@/features/integrations/providers/registry";
 import type { DeployStage, IntegrationSummary } from "@/features/integrations/types";
 import {
-  COMMIT_PATH_MAX,
   type CredRow,
   type EnvironmentsDraft,
   LABEL_MAX,
@@ -288,32 +287,6 @@ export function EnvironmentBlocks({
                 placeholder="https://app.example.com"
                 maxLength={URL_MAX}
                 inputMode="url"
-              />
-            </Field>
-            <Field
-              label="Live commit endpoint"
-              hint="The endpoint that reports the running commit — often a different address from the one above, e.g. https://api.example.com/health"
-              error={held.errorAt("liveCommitUrl")}
-            >
-              <Input
-                value={form.liveCommitUrl}
-                onChange={(e) => setField("liveCommitUrl", e.target.value)}
-                disabled={!canEdit}
-                placeholder="https://api.example.com/health"
-                maxLength={URL_MAX}
-                inputMode="url"
-              />
-            </Field>
-            <Field
-              label="Live commit path"
-              hint="Dot path to the commit inside that endpoint's JSON body — e.g. commit, or data.commit. Leave it blank where the whole response body is the commit."
-            >
-              <Input
-                value={form.liveCommitPath}
-                onChange={(e) => setField("liveCommitPath", e.target.value)}
-                disabled={!canEdit}
-                placeholder="commit"
-                maxLength={COMMIT_PATH_MAX}
               />
             </Field>
             <Connections

@@ -296,7 +296,7 @@ function projectRow() {
       releaseModel: 'publish',
       releaseStrategy: null,
       environments: {
-        live: { url: 'https://app.test', commitUrl: 'https://example.test/api/health' },
+        live: { url: 'https://app.test' },
       },
     },
   ]);

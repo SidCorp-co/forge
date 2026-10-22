@@ -89,13 +89,9 @@ function project(over: {
 
 const PROBES = { probes: [{ url: 'https://example.test/api/health', commitPath: 'commit' }] };
 
-// ISS-1069 — a project that has answered every declaration now also records where it is deployed,
-// so the "nothing left to report" fixtures below carry it. Without it they would assert an empty
-// gap set against a project still missing one, which is the shape of a test passing for the wrong
-// reason.
-const LIVE_DECLARED = {
-  live: { url: 'https://app.example.test', commitUrl: 'https://example.test/api/health' },
-};
+// ISS-1069 — a project that has answered every declaration also records where it is deployed, so
+// the "nothing left to report" fixtures below carry it.
+const LIVE_DECLARED = { live: { url: 'https://app.example.test' } };
 
 function liveBinding(config: Record<string, unknown> = {}) {
   listBindings.mockResolvedValue([
@@ -165,12 +161,7 @@ describe('loadReleaseReadiness', () => {
     const out = await loadReleaseReadiness(PROJECT_ID);
 
     expect(out?.hasReleaseGate).toBe(true);
-    expect(out?.gaps.sort()).toEqual([
-      'live-commit-endpoint',
-      'release-procedure',
-      'rollback',
-      'verify-probes',
-    ]);
+    expect(out?.gaps.sort()).toEqual(['release-procedure', 'rollback', 'verify-probes']);
   });
 
   it('drops each release gap as its half is declared', async () => {
@@ -396,28 +387,18 @@ describe('loadReleaseReadiness — the live address, and the preview that is not
     rollback: { mode: 'coolify-image' },
   };
 
-  it('reports the live-endpoint gap for a releasing project that records no live commit endpoint', async () => {
-    project(RELEASING);
-    liveBinding(DECLARED);
+  it.each([
+    ['records nothing about its live side', undefined],
+    ['records its live url', LIVE_DECLARED],
+  ])(
+    'reports no gap for a releasing project whose binding declares its probe and which %s',
+    async (_l, environments) => {
+      project({ ...RELEASING, environments });
+      liveBinding(DECLARED);
 
-    const out = await loadReleaseReadiness(PROJECT_ID);
-
-    expect(out?.gaps).toContain('live-commit-endpoint');
-  });
-
-  it('still reports the gap for a project holding a live url and no commit endpoint', async () => {
-    project({ ...RELEASING, environments: { live: { url: 'https://app.example.test' } } });
-    liveBinding(DECLARED);
-
-    expect((await loadReleaseReadiness(PROJECT_ID))?.gaps).toContain('live-commit-endpoint');
-  });
-
-  it('drops the gap once the commit endpoint is recorded', async () => {
-    project({ ...RELEASING, environments: LIVE_DECLARED });
-    liveBinding(DECLARED);
-
-    expect((await loadReleaseReadiness(PROJECT_ID))?.gaps).not.toContain('live-commit-endpoint');
-  });
+      expect((await loadReleaseReadiness(PROJECT_ID))?.gaps).toEqual([]);
+    },
+  );
 
   it('reports the SAME gaps for a null preview as for a filled one', async () => {
     project({ ...RELEASING, environments: { ...LIVE_DECLARED, preview: null } });
@@ -451,11 +432,14 @@ describe('loadReleaseReadiness — the live address, and the preview that is not
     expect(out?.gaps.filter((g) => /preview|staging/i.test(g))).toEqual([]);
   });
 
-  it('reports where each channel got its probes', async () => {
+  it('reports where each channel got its probes: its own binding, or none', async () => {
+    project({ ...RELEASING, environments: LIVE_DECLARED });
+    liveBinding(DECLARED);
+    expect((await loadReleaseReadiness(PROJECT_ID))?.verifySources).toEqual(['binding']);
+
     project({ ...RELEASING, environments: LIVE_DECLARED });
     liveBinding({ releaseRunnerLabel: 'prod-box', rollback: { mode: 'coolify-image' } });
-
-    expect((await loadReleaseReadiness(PROJECT_ID))?.verifySources).toEqual(['environments-live']);
+    expect((await loadReleaseReadiness(PROJECT_ID))?.verifySources).toEqual(['none']);
   });
 });
 
