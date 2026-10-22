@@ -3222,6 +3222,7 @@
 - **Connections left behind by organizations deleted before this release are deleted.** (ISS-1421)
 - **`forge-runner api` and `forge-runner doctor` say where they looked for Forge**, why it was not reached and what to check. An answer cut off mid-body is a failure, never an empty success. (ISS-1421)
 - **A removed connection's drawer no longer says any project can be bound to it**, and a project you cannot open is named in words, never by its id. (ISS-1421)
+- **A key saved from a project's own drawer onto a removed connection says the connection is still off**, with Enable credential beside it. (ISS-1421)
 - **A removed GitHub connection says what turns it back on from where you ask**: an install from a bound project whose App would be its owner's, or nothing where none would. No install that would be refused is offered. (ISS-1421)
 - **Creating a GitHub App without org admin names the organization**, your role there and who to ask, instead of an id and a Connect button that does not exist. (ISS-1421)
 - **A refusal's details say what its message says, field by field.** Each field is listed with its message's sentence, under the field the call takes: a session started with no prompt names `prompt`, not `message`. (ISS-1421)
