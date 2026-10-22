@@ -265,7 +265,7 @@ function callOf(tool: ToolCallData): { act: string; target: string } {
   if (tool.name === "forge" && Array.isArray(input.argv)) {
     const argv = input.argv.filter((a): a is string => typeof a === "string");
     const sub = argv[0] === "knowledge" ? 2 : 1;
-    const named = [...positionals(argv, sub), ...TARGET_FLAGS.map((f) => flag(argv, f) ?? "")];
+    const named = [...positionals(argv, sub), ...TARGET_FLAGS.map((f) => (flag(argv, f) ? `${f} ${flag(argv, f)}` : ""))];
     const act = `forge ${argv.slice(0, sub).join(" ")}${argv[0] === "comment" && commentWrites(argv) ? " -" : ""}`;
     return { act, target: named.filter((x) => x && x !== "-").join(" ") };
   }
