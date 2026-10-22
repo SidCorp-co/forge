@@ -96,8 +96,8 @@ async function assertConversationRole(
       role: (await effectiveProjectRole(userId, projectId))?.role ?? null,
     })),
   );
-  // A project the caller holds no role on is named first: only where they read every project of the
-  // room is it true to tell a viewer they can read it (ISS-1229 r36, judge-97).
+  // A project the caller holds no role on comes first, so a viewer is told about their role only where
+  // that is all that stands in the way (ISS-1229 r36, judge-97).
   const refused =
     roles.find((r) => r.role === null) ?? roles.find((r) => !projectRoleAtLeast(r.role, min));
   if (!refused) return scope;
@@ -109,18 +109,22 @@ async function assertConversationRole(
   );
 }
 
-/** Why a caller is refused a room for its role on one of the room's projects, saying what is true of them. */
+/**
+ * Why a caller is refused a room for its role on one of the room's projects, saying only what is true:
+ * a viewer is told the role they hold and what it does not allow, never that this room is theirs to
+ * read (a one-to-one room is read only by its people), and a project the caller holds no role on is
+ * not named to them.
+ */
 async function outOfScope(role: string | null, projectId: string, tx: Executor): Promise<string> {
+  if (role !== 'viewer') {
+    return 'This room is about a project on which you hold no role; a room is reached only by someone who holds one on every project in it';
+  }
   const [project] = await tx
     .select({ name: projects.name })
     .from(projects)
     .where(eq(projects.id, projectId))
     .limit(1);
-  const name = project?.name ?? 'one of its projects';
-  if (role === 'viewer') {
-    return `You hold the viewer role on ${name}; a viewer can read this room but not change it or post in it`;
-  }
-  return `This room is about ${name}, on which you hold no role; a room is reached only by someone who holds one on every project in it`;
+  return `You hold the viewer role on ${project?.name ?? 'one of its projects'}; a viewer cannot change a room or post in it`;
 }
 
 interface RoomAboutNoProject {

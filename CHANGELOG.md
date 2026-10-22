@@ -3201,7 +3201,7 @@
 - **A reader who can only read a project is not invited to start a conversation there.** The top bar names the panel Conversations for them and it is headed Conversations, never New conversation. (ISS-1229)
 - **Start a conversation marks a project whose own agent no longer holds a role there**, naming the agent and why it cannot answer, and the project cannot be picked. (ISS-1229)
 - **A reply the reply check withdrew still says so after a reload**, and to anyone who opens the room later, with the withdrawn text under its technical details. (ISS-1229)
-- **A viewer who tries to rename, archive, delete or post in a room is told they hold the viewer role**, and that a viewer reads the room but cannot change it or post in it. (ISS-1229)
+- **A viewer who tries to rename, archive, delete or post in a room is told they hold the viewer role**, and that a viewer cannot change a room or post in it. (ISS-1229)
 - **Why no agent in a room can answer is said once**, above the message box, or in the room's About line for a reader who cannot post; the empty room points to it. (ISS-1229)
 - **A refusal shows the sentence Forge sent.** A read Forge refused said "You do not have access to this resource." or "Not found." over Forge's own words, such as "Not a project member."; it now shows Forge's sentence. (ISS-1228)
 - **An issue's failed session read sits on its own line under the header**, so the title keeps its width and the actions stay on one row on a phone. (ISS-1228)

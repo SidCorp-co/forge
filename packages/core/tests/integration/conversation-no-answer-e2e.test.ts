@@ -313,7 +313,9 @@ describe('the projects a room may be opened on', () => {
  */
 describe('a write by a viewer of the room', () => {
   const VIEWER_WRITE =
-    'You hold the viewer role on Ledger; a viewer can read this room but not change it or post in it.';
+    'You hold the viewer role on Ledger; a viewer cannot change a room or post in it.';
+  const ROLELESS =
+    'This room is about a project on which you hold no role; a room is reached only by someone who holds one on every project in it.';
 
   async function groupRoom(): Promise<string> {
     const opened = await as(ownerId, '/api/conversations', 'POST', {
@@ -368,8 +370,6 @@ describe('a write by a viewer of the room', () => {
     });
     expect(opened.status, await opened.clone().text()).toBe(201);
     const { id } = (await opened.json()) as { id: string };
-    const roleless =
-      'This room is about Desk, on which you hold no role; a room is reached only by someone who holds one on every project in it.';
     for (const [method, body] of [
       ['PATCH', { title: 'Renamed by a viewer' }],
       ['GET', undefined],
@@ -380,8 +380,9 @@ describe('a write by a viewer of the room', () => {
         method,
         403,
         'CONVERSATION_OUT_OF_SCOPE',
-        roleless,
+        ROLELESS,
       ]);
+      expect(refusal.message).not.toMatch(/Desk|Ledger/);
     }
   });
 
@@ -393,8 +394,21 @@ describe('a write by a viewer of the room', () => {
     expect([res.status, refusal.code, refusal.message]).toEqual([
       403,
       'CONVERSATION_OUT_OF_SCOPE',
-      'This room is about Ledger, on which you hold no role; a room is reached only by someone who holds one on every project in it.',
+      ROLELESS,
     ]);
+  });
+
+  // The review of r36: a viewer outside a one-to-one room cannot read it either, so a refused write
+  // promises them nothing about reading it.
+  it('promises a viewer outside a one-to-one room nothing about reading it', async () => {
+    const opened = await as(ownerId, '/api/conversations', 'POST', { projectId });
+    const { id } = (await opened.json()) as { id: string };
+    const read = await as(viewerId, `/api/conversations/${id}`);
+    expect([read.status, ((await read.json()) as Refusal).code]).toEqual([403, 'NOT_IN_THE_ROOM']);
+    const write = await as(viewerId, `/api/conversations/${id}`, 'PATCH', { title: 'x' });
+    const refusal = (await write.json()) as Refusal;
+    expect([write.status, refusal.message]).toEqual([403, VIEWER_WRITE]);
+    expect(refusal.message).not.toMatch(/read/);
   });
 });
 
