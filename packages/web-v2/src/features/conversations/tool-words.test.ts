@@ -251,6 +251,23 @@ describe("a refusal's reason", () => {
     expect(toolWords(refusedGet, false, [knowledge(["get", "billing"], 0)]).refusal).toBe(`The slug is longer than the store keeps. ${TOOK_ANOTHER_WAY}`);
   });
 
+  // The whole-set read of round 38 (F1): filings and searches have no positional target, so their title or
+  // words are what they acted on; a call naming nothing is never matched by another naming nothing.
+  it("tells a filing or search by its title or words, never by its stdin marker", () => {
+    const filing = (title: string, exitCode: number) =>
+      cli(["new", "-", "--title", title], { exitCode, stdout: exitCode ? "" : '{"issueId":"ISS-2"}', stderr: exitCode ? "The body is empty." : "" });
+    expect(toolWords(filing("Footer typo", 1), false, [filing("Header typo", 0)]).refusal).toBe(`The body is empty. ${PUT_IT_RIGHT}`);
+    expect(toolWords(filing("Footer typo", 1), false, [filing("Footer typo", 0)]).refusal).toBe(`The body is empty. ${TOOK_ANOTHER_WAY}`);
+    const search = (words: string, exitCode: number) =>
+      cli(["issue", "--search", words], { exitCode, stdout: exitCode ? "" : "0 issue(s)", stderr: exitCode ? "The search was too short." : "" });
+    expect(toolWords(search("ab", 1), false, [search("invoices", 0)]).refusal).toBe(`The search was too short. ${PUT_IT_RIGHT}`);
+    expect(toolWords(search("ab", 1), false, [search("ab", 0)]).refusal).toBe(`The search was too short. ${TOOK_ANOTHER_WAY}`);
+    const bare = cli(["next"], { exitCode: 1, stdout: "", stderr: "The queue could not be read." });
+    expect(toolWords(bare, false, [cli(["next"], { exitCode: 0, stdout: "ISS-1", stderr: "" })]).refusal).toBe(
+      `The queue could not be read. ${PUT_IT_RIGHT}`,
+    );
+  });
+
   it("chooses the way out by kind, never by how the suggestion is worded", () => {
     for (const suggestion of ["Run `forge guide` to list them.", "`forge guide` lists them.", "The list is on `forge guide`."]) {
       expect(refusalReason(`No guide named x. ${suggestion}`, "forge")).toBe(`No guide named x. ${PUT_IT_RIGHT}`);

@@ -263,11 +263,15 @@ function callOf(tool: ToolCallData): { act: string; target: string } {
   if (tool.name === "forge" && Array.isArray(input.argv)) {
     const argv = input.argv.filter((a): a is string => typeof a === "string");
     const sub = argv[0] === "knowledge" ? 2 : 1;
-    return { act: `forge ${argv.slice(0, sub).join(" ")}`, target: positionals(argv, sub)[0] ?? "" };
+    const named = [...positionals(argv, sub), ...TARGET_FLAGS.map((f) => flag(argv, f) ?? "")];
+    return { act: `forge ${argv.slice(0, sub).join(" ")}`, target: named.filter((x) => x && x !== "-").join(" ") };
   }
   const target = [input.slug, input.id, input.issueId, input.query].find((v) => typeof v === "string") ?? "";
   return { act: `${tool.name} ${typeof input.action === "string" ? input.action : ""}`, target: String(target) };
 }
+
+/** The flags that say what a call acted on: a filing's title, a search's words, a listing's status. */
+const TARGET_FLAGS = ["--title", "--search", "--status", "--query"];
 
 /** A refusal saying what the call named does not exist, so only another target could take it further. */
 const NAMES_NOTHING = /\bno (?:such|\w+ (?:named|called))\b|\bnot found\b|\bdoes not exist\b|\bunknown\b/i;
@@ -284,7 +288,7 @@ export function tookAnotherWay(tool: ToolCallData, later: readonly ToolCallData[
   return later.some((t) => {
     if (t.isError === true || t.result === undefined) return false;
     const done = callOf(t);
-    return done.act === refused.act && (anyTarget || done.target === refused.target);
+    return done.act === refused.act && (anyTarget || (refused.target !== "" && done.target === refused.target));
   });
 }
 
