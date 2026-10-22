@@ -11,13 +11,17 @@ export interface ChromeScreen {
   act?: () => void;
 }
 
-/** Every file's screens; a file registering none, or two screens sharing a name, is refused by name. */
-function gatherScreens(files: Record<string, { SCREENS?: ChromeScreen[] }>): ChromeScreen[] {
+/**
+ * Every file's screens; a file registering none, or two screens sharing a name, is refused by name.
+ * Each file's `SCREENS` export arrives untyped and is checked here: tsgo resolves `import.meta.glob`'s
+ * overloads differently from run to run, so a type argument at the call fails some runs and not others.
+ */
+function gatherScreens(files: Record<string, unknown>): ChromeScreen[] {
   const where = new Map<string, string>();
   const out: ChromeScreen[] = [];
-  for (const [file, mod] of Object.entries(files)) {
-    if (!mod.SCREENS?.length) throw new Error(`${file} registers no screen: a vi-chrome-*.tsx exports SCREENS, the screens it adds to the vi walking test.`);
-    for (const screen of mod.SCREENS) {
+  for (const [file, screens] of Object.entries(files)) {
+    if (!Array.isArray(screens) || screens.length === 0) throw new Error(`${file} registers no screen: a vi-chrome-*.tsx exports SCREENS, the screens it adds to the vi walking test.`);
+    for (const screen of screens as ChromeScreen[]) {
       const before = where.get(screen.name);
       if (before) throw new Error(`The vi screen "${screen.name}" is registered by both ${before} and ${file}: a screen's name names one test.`);
       where.set(screen.name, file);
@@ -28,5 +32,5 @@ function gatherScreens(files: Record<string, { SCREENS?: ChromeScreen[] }>): Chr
 }
 
 export const CHROME_SCREENS: ChromeScreen[] = gatherScreens(
-  import.meta.glob<{ SCREENS?: ChromeScreen[] }>(["./vi-chrome-*.tsx", "!./vi-chrome-screens.tsx"], { eager: true }),
+  import.meta.glob(["./vi-chrome-*.tsx", "!./vi-chrome-screens.tsx"], { eager: true, import: "SCREENS" }),
 );
