@@ -1780,7 +1780,6 @@ async fn sweep(
         let placed = started.load(std::sync::atomic::Ordering::Relaxed)
             && matches!(pane, PaneState::ColdStarted | PaneState::Resumed);
         if placed {
-            masters.note_asked(&runner.project_id);
             if let Some(led) = ledger.as_ref() {
                 note_placement(led, &runner.project_id, &pane_name, &resolved);
             }
@@ -4026,6 +4025,9 @@ surface it reads",
             let carried = carry.lifted.is_some();
             let order = std::sync::atomic::Ordering::Relaxed;
             carry.stood_down_told.store(carried, order);
+            // The brief is this placement's nudge, so it is what asks the
+            // master; one that never landed asked nothing (ISS-1306).
+            masters.note_asked(project_id);
         }
         // A pane that exited before its brief reached it is reported by the
         // sweep that reads it gone, with why, as a failed nudge is: a warning
@@ -8522,6 +8524,33 @@ mod give_back_tests {
             sweep[read..stop].contains("admissible::admissible("),
             "the admissible read must reach read_work whole, so an unreadable set is never read as an empty one"
         );
+    }
+
+    /// Criterion 6: the clock restarts only on an ask that reached the pane —
+    /// a brief that landed, or a nudge `nudge_master` says was typed.
+    #[test]
+    fn only_an_ask_that_reached_the_pane_restarts_the_unasked_clock() {
+        let production = THIS_SOURCE.split("#[cfg(test)]").next().unwrap();
+        assert_eq!(
+            production.matches("masters.note_asked(").count(),
+            2,
+            "one ask per route: the delivered brief and the typed nudge"
+        );
+        let brief = production
+            .split("terminal::brief_new_pane(&name, &brief).await {")
+            .nth(1)
+            .and_then(|r| r.split("Err(e)").next())
+            .expect("the brief's delivery is no longer matched");
+        assert!(
+            brief.contains("Ok(()) =>") && brief.contains("masters.note_asked(project_id)"),
+            "a placement asks its master only where the brief landed"
+        );
+        let typed = production
+            .split("&& nudge_master(")
+            .nth(1)
+            .and_then(|r| r.split("\n        }").next())
+            .expect("the typed nudge no longer gates the ask");
+        assert!(typed.contains("masters.note_asked(&runner.project_id)"));
     }
 
     #[test]
