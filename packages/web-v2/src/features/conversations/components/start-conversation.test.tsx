@@ -22,12 +22,21 @@ let projects: Array<{ id: string; name: string; slug: string; role: string | nul
 vi.mock("@/features/projects/hooks", () => ({
   useOrgScopedProjects: () => ({ projects, isLoading: loading }),
 }));
-let openers: Array<{ projectId: string; handle: string; reachable: boolean }> = [];
+type Opener = { projectId: string; handle: string; reachable: boolean; blocked: "lost-role" | "taken" | null };
+let openers: Opener[] | null = null;
 let openersLoading = false;
+let openersFailed = false;
+const refetchOpeners = vi.fn();
 vi.mock("../hooks", () => ({
   useProjectCandidates: () => ({ data: candidates, isLoading: false, isError: false }),
   useOpenConversation: () => ({ mutate: vi.fn(), isPending: false, isError: false }),
-  useRoomOpeners: () => ({ data: { openers }, isLoading: openersLoading }),
+  useRoomOpeners: () => ({
+    data: openersFailed || openers === null ? undefined : { openers },
+    isLoading: openersLoading,
+    isError: openersFailed,
+    error: new Error("Forge could not be reached."),
+    refetch: refetchOpeners,
+  }),
 }));
 
 const { StartConversation } = await import("./start-conversation");
@@ -35,8 +44,9 @@ const { StartConversation } = await import("./start-conversation");
 afterEach(() => {
   cleanup();
   loading = false;
-  openers = [];
+  openers = null;
   openersLoading = false;
+  openersFailed = false;
 });
 // jsdom lays nothing out, and the project picker scrolls its chosen option into view.
 Element.prototype.scrollIntoView = () => {};
@@ -163,8 +173,8 @@ describe("a project whose own agent lost its role there", () => {
       { id: "p9", name: "Ledger", slug: "ledger", role: "admin" },
     ];
     openers = [
-      { projectId: "p1", handle: "billing", reachable: true },
-      { projectId: "p9", handle: "ledger", reachable: false },
+      { projectId: "p1", handle: "billing", reachable: true, blocked: null },
+      { projectId: "p9", handle: "ledger", reachable: false, blocked: "lost-role" },
     ];
     render(<StartConversation onStarted={vi.fn()} />);
     fireEvent.click(screen.getByRole("combobox"));
@@ -182,6 +192,39 @@ describe("a project whose own agent lost its role there", () => {
     expect(screen.queryByRole("button", { name: "Start the room" })).toBeNull();
     const billing = screen.getByRole("option", { name: "Billing" });
     expect(billing.getAttribute("aria-disabled")).toBeNull();
+  });
+
+  // The review of r36: an agent of the organization already answering to the address is refused
+  // HANDLE_TAKEN on opening, and a failed read must not leave every project offered unmarked.
+  it("marks a project whose agent's address another agent answers to, and cannot pick it", () => {
+    projects = [{ id: "p1", name: "Billing", slug: "billing", role: "member" }];
+    openers = [{ projectId: "p1", handle: "billing", reachable: false, blocked: "taken" }];
+    render(<StartConversation onStarted={vi.fn()} />);
+    fireEvent.click(screen.getByRole("combobox"));
+    const billing = screen.getByRole("option", { name: /Billing/ });
+    expect(billing.getAttribute("aria-disabled")).toBe("true");
+    expect(billing.textContent).toContain(
+      "This project's agent would answer to @billing, which another agent of this organization already answers to.",
+    );
+  });
+
+  it("offers no project core did not name, and says so with a retry where the read failed", () => {
+    projects = [
+      { id: "p1", name: "Billing", slug: "billing", role: "member" },
+      { id: "p2", name: "Desk", slug: "desk", role: "member" },
+    ];
+    openers = [{ projectId: "p1", handle: "billing", reachable: true, blocked: null }];
+    render(<StartConversation onStarted={vi.fn()} />);
+    fireEvent.click(screen.getByRole("combobox"));
+    expect(screen.queryAllByRole("option").map((o) => o.textContent)).toEqual(["Billing"]);
+    cleanup();
+
+    openersFailed = true;
+    render(<StartConversation onStarted={vi.fn()} />);
+    expect(screen.queryByRole("combobox")).toBeNull();
+    expect(screen.getByText("Couldn't read which projects a room can start on")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /Retry|Try again/ }));
+    expect(refetchOpeners).toHaveBeenCalled();
   });
 
   it("offers no project while whose agent can answer is still being read", () => {

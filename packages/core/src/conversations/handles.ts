@@ -82,6 +82,36 @@ export async function agentHoldingHandle(
   return { userId: row.userId, holdsARole: Boolean(role) };
 }
 
+/**
+ * What opening a room on a project with no agent of its own yet would do, read without writing: mint
+ * one under the derived handle, or be refused because an agent of the organization already answers
+ * to it, either the project's own that lost its role there or another (ISS-1229 r36). The one
+ * reading `resolveProjectHandle` refuses on and `roomOpeners` marks a project by.
+ */
+export type UnmintedOpening =
+  | { kind: 'mint'; handle: string }
+  | { kind: 'lost-role' | 'taken'; handle: string; userId: string };
+
+export async function unmintedOpening(
+  tx: Executor,
+  project: { id: string; slug: string; orgId: string },
+): Promise<UnmintedOpening> {
+  const handle = handleNameForProject(project.slug, project.id);
+  const holder = await agentHoldingHandle(tx, project.orgId, handle);
+  if (!holder) return { kind: 'mint', handle };
+  return { kind: holder.holdsARole ? 'taken' : 'lost-role', handle, userId: holder.userId };
+}
+
+/** Why a room cannot be opened on this project, as the refusal and the picker both say it. */
+export function unopenableSentence(
+  opening: { kind: 'lost-role' | 'taken'; handle: string },
+  projectName: string,
+): string {
+  return opening.kind === 'taken'
+    ? `This project's agent would answer to @${opening.handle}, which another agent of the organization already answers to, so it has no address of its own`
+    : `@${opening.handle}, the agent of ${projectName}, no longer holds a role on ${projectName}, so it cannot answer there; give it a role on ${projectName} again first`;
+}
+
 /** The project's agent as it already is, or the refusal for one that carries no handle. */
 export function namedHandle(
   projectId: string,
@@ -129,21 +159,19 @@ export async function resolveProjectHandle(
     });
   }
 
-  const handle = handleNameForProject(project.slug, project.id);
   // A second agent would collide on the address the first still holds, a server error after the
   // caller's write (judge-95); the reason is said instead.
-  const holder = await agentHoldingHandle(tx, project.orgId, handle);
-  if (holder) {
+  const opening = await unmintedOpening(tx, project);
+  if (opening.kind !== 'mint') {
     throw new HTTPException(409, {
-      message: holder.holdsARole
-        ? `This project's agent would answer to @${handle}, which another agent of the organization already answers to, so it has no address of its own`
-        : `@${handle}, the agent of ${project.name}, no longer holds a role on ${project.name}, so it cannot answer there; give it a role on ${project.name} again first`,
+      message: unopenableSentence(opening, project.name),
       cause: {
-        code: holder.holdsARole ? 'HANDLE_TAKEN' : 'PROJECT_AGENT_LOST_ROLE',
-        details: { projectId, handleUserId: holder.userId },
+        code: opening.kind === 'taken' ? 'HANDLE_TAKEN' : 'PROJECT_AGENT_LOST_ROLE',
+        details: { projectId, handleUserId: opening.userId },
       },
     });
   }
+  const { handle } = opening;
   const [created] = await tx
     .insert(users)
     .values(agentAccountRow(handle, mintAs))

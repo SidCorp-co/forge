@@ -90,38 +90,34 @@ async function assertConversationRole(
       { conversationId },
     );
   }
-  for (const projectId of scope) {
-    const access = await effectiveProjectRole(userId, projectId);
-    if (!projectRoleAtLeast(access?.role ?? null, min)) {
-      throw roomRefusal(
-        403,
-        'CONVERSATION_OUT_OF_SCOPE',
-        await outOfScope(access?.role ?? null, min, projectId, tx),
-        { conversationId, projectId },
-      );
-    }
-  }
-  return scope;
+  const roles = await Promise.all(
+    scope.map(async (projectId) => ({
+      projectId,
+      role: (await effectiveProjectRole(userId, projectId))?.role ?? null,
+    })),
+  );
+  // A project the caller holds no role on is named first: only where they read every project of the
+  // room is it true to tell a viewer they can read it (ISS-1229 r36, judge-97).
+  const refused =
+    roles.find((r) => r.role === null) ?? roles.find((r) => !projectRoleAtLeast(r.role, min));
+  if (!refused) return scope;
+  throw roomRefusal(
+    403,
+    'CONVERSATION_OUT_OF_SCOPE',
+    await outOfScope(refused.role, refused.projectId, tx),
+    { conversationId, projectId: refused.projectId },
+  );
 }
 
-/**
- * Why a caller is refused a room for its role on one of the room's projects, saying what is true of
- * them: a viewer reads the room and does not change or post in it (ISS-1229 r36, judge-97), and somebody
- * holding no role there does not reach it at all.
- */
-async function outOfScope(
-  role: string | null,
-  min: ProjectMemberRole,
-  projectId: string,
-  tx: Executor,
-): Promise<string> {
+/** Why a caller is refused a room for its role on one of the room's projects, saying what is true of them. */
+async function outOfScope(role: string | null, projectId: string, tx: Executor): Promise<string> {
   const [project] = await tx
     .select({ name: projects.name })
     .from(projects)
     .where(eq(projects.id, projectId))
     .limit(1);
   const name = project?.name ?? 'one of its projects';
-  if (role === 'viewer' && min !== 'viewer') {
+  if (role === 'viewer') {
     return `You hold the viewer role on ${name}; a viewer can read this room but not change it or post in it`;
   }
   return `This room is about ${name}, on which you hold no role; a room is reached only by someone who holds one on every project in it`;

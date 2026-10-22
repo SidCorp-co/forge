@@ -18,7 +18,7 @@ import { Button, Checkbox, ErrorState, Icon, Select, Spinner } from "@/design";
 import { useOrgScopedProjects } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
 import { useOpenConversation, useProjectCandidates, useRoomOpeners } from "../hooks";
-import { cannotAnswerReason, roomOpeningClaims, startsRooms } from "../membership";
+import { cannotAnswerReason, roomOpeningClaims, startsRooms, unopenableReason } from "../membership";
 import type { ConversationProject, HandleCandidate } from "../types";
 
 /** One agent chosen for a room that does not exist yet. */
@@ -34,8 +34,10 @@ export function StartConversation({ onStarted }: { onStarted: (id: string, proje
   const openersQ = useRoomOpeners(visible.some((p) => startsRooms(p.role)));
   const isLoading = projectsLoading || openersQ.isLoading;
   const opener = (id: string) => openersQ.data?.openers.find((o) => o.projectId === id);
-  // A project the reader only views is not offered: core refuses the room it would open (judge-95).
-  const projects = visible.filter((p) => startsRooms(p.role));
+  // A project the reader only views is not offered: core refuses the room it would open (judge-95). Nor
+  // is one core has not said a room can open on, the read having failed or not named it.
+  const projects = visible.filter((p) => startsRooms(p.role) && (!openersQ.data || opener(p.id)));
+  const openersFailed = openersQ.isError && !openersQ.data;
   const onlyViews = projects.length === 0 && visible.length > 0;
   // Where nothing can be started, nothing here says start (the coordinator on PR #1151).
   const nothingToStart = onlyViews || (!isLoading && visible.length === 0);
@@ -98,7 +100,17 @@ export function StartConversation({ onStarted }: { onStarted: (id: string, proje
           </p>
         </div>
 
-        {!nothingToStart && (
+        {!nothingToStart && openersFailed && (
+          <div data-testid="start-openers-error">
+            <ErrorState
+              title="Couldn't read which projects a room can start on"
+              message={formatApiError(openersQ.error)}
+              onRetry={() => openersQ.refetch()}
+            />
+          </div>
+        )}
+
+        {!nothingToStart && !openersFailed && (
         <div>
           <label htmlFor="conversations-new-project" className="fg-body-sm mb-1.5 block text-muted">
             Project
@@ -107,9 +119,8 @@ export function StartConversation({ onStarted }: { onStarted: (id: string, proje
             id="conversations-new-project"
             options={projects.map((p) => {
               const agent = opener(p.id);
-              return agent && !agent.reachable
-                ? { value: p.id, label: p.name, detail: `@${agent.handle} can't answer. ${cannotAnswerReason(p.name)}`, disabled: true }
-                : { value: p.id, label: p.name };
+              const why = agent ? unopenableReason(agent, p.name) : null;
+              return why ? { value: p.id, label: p.name, detail: why, disabled: true } : { value: p.id, label: p.name };
             })}
             value={projectId}
             onChange={(v) => {

@@ -246,9 +246,45 @@ describe('the projects a room may be opened on', () => {
   };
 
   it('answers each project the caller may open a room on with its agent, which answers until it loses its role', async () => {
-    expect(await openers(ownerId)).toEqual([{ projectId, handle: 'ledger', reachable: true }]);
+    expect(await openers(ownerId)).toEqual([
+      { projectId, handle: 'ledger', reachable: true, blocked: null },
+    ]);
     await roomNobodyAnswers();
-    expect(await openers(ownerId)).toEqual([{ projectId, handle: 'ledger', reachable: false }]);
+    expect(await openers(ownerId)).toEqual([
+      { projectId, handle: 'ledger', reachable: false, blocked: 'lost-role' },
+    ]);
+  });
+
+  // The review of r36: another agent of the organization answering to the address this project's agent
+  // would take is refused HANDLE_TAKEN on opening, so the read marks it too, and says which.
+  it("marks a project whose agent's address another agent already answers to, as opening it refuses", async () => {
+    const [org] = await harness.db.execute<{ org_id: string }>(
+      sql`SELECT org_id FROM projects WHERE id = ${projectId}`,
+    );
+    const desk = (
+      await createTestProject(harness.db, ownerId, {
+        slug: 'desk',
+        name: 'Desk',
+        orgId: String(org?.org_id),
+      })
+    ).id;
+    const [squatter] = await harness.db.execute<{ id: string }>(
+      sql`INSERT INTO users (email, kind) VALUES ('squatter@agents.invalid', 'agent') RETURNING id`,
+    );
+    await harness.db.execute(
+      sql`INSERT INTO organization_members (org_id, user_id, role, handle) VALUES (${org?.org_id}, ${squatter?.id}, 'member', 'ledger')`,
+    );
+    await harness.db.execute(
+      sql`INSERT INTO project_members (project_id, user_id, role) VALUES (${desk}, ${squatter?.id}, 'member')`,
+    );
+    expect((await openers(ownerId)).find((o) => o.projectId === projectId)).toEqual({
+      projectId,
+      handle: 'ledger',
+      reachable: false,
+      blocked: 'taken',
+    });
+    const res = await as(ownerId, '/api/conversations', 'POST', { projectId });
+    expect([res.status, ((await res.json()) as Refusal).code]).toEqual([409, 'HANDLE_TAKEN']);
   });
 
   it('leaves out a project the caller only views, and one archived', async () => {
@@ -298,6 +334,42 @@ describe('a write by a viewer of the room', () => {
       sql`SELECT title, archived_at FROM conversations WHERE id = ${id}`,
     );
     expect(row).toMatchObject({ title: null, archived_at: null });
+  });
+
+  // The review of r36: a viewer of the room's first project who holds no role on its second does not
+  // read the room either, so they are told about the second, never that they can read it.
+  it('tells a viewer of one project of a two-project room who holds no role on the other about that one', async () => {
+    const [org] = await harness.db.execute<{ org_id: string }>(
+      sql`SELECT org_id FROM projects WHERE id = ${projectId}`,
+    );
+    const desk = (
+      await createTestProject(harness.db, ownerId, {
+        slug: 'desk',
+        name: 'Desk',
+        orgId: String(org?.org_id),
+      })
+    ).id;
+    const opened = await as(ownerId, '/api/conversations', 'POST', {
+      projectId,
+      handles: [{ projectId: desk }],
+    });
+    expect(opened.status, await opened.clone().text()).toBe(201);
+    const { id } = (await opened.json()) as { id: string };
+    const roleless =
+      'This room is about Desk, on which you hold no role; a room is reached only by someone who holds one on every project in it.';
+    for (const [method, body] of [
+      ['PATCH', { title: 'Renamed by a viewer' }],
+      ['GET', undefined],
+    ] as const) {
+      const res = await as(viewerId, `/api/conversations/${id}`, method, body);
+      const refusal = (await res.json()) as Refusal;
+      expect([method, res.status, refusal.code, refusal.message]).toEqual([
+        method,
+        403,
+        'CONVERSATION_OUT_OF_SCOPE',
+        roleless,
+      ]);
+    }
   });
 
   it('tells somebody holding no role there that they do not reach the room at all', async () => {

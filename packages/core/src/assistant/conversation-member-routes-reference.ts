@@ -70,10 +70,12 @@ export const openersSchema = z.object({
     z.object({
       projectId: z.string(),
       handle: z.string().describe('The agent a room on this project starts with'),
-      reachable: z
-        .boolean()
+      reachable: z.boolean().describe('false where opening a room there would be refused'),
+      blocked: z
+        .enum(['lost-role', 'taken'])
+        .nullable()
         .describe(
-          'false where that agent no longer holds a role on the project, so a room there is refused',
+          "Why it would be refused: the project's agent lost its role there (PROJECT_AGENT_LOST_ROLE), or its address is another agent's (HANDLE_TAKEN)",
         ),
     }),
   ),
@@ -82,7 +84,7 @@ export const openersSchema = z.object({
 export const roomOpenersRead = describeOperation({
   summary: "The projects the caller may open a room on, and whether each one's agent can answer",
   description:
-    'Every project on which the caller holds the member role or above, not archived, with the handle of the agent a room there starts with. `reachable: false` marks an agent that lost its role on its project, which opening a room there refuses with PROJECT_AGENT_LOST_ROLE.',
+    'Every project on which the caller holds the member role or above, not archived, with the handle of the agent a room there starts with. `reachable: false` marks a project opening a room on would refuse, `blocked` saying which refusal.',
   responses: {
     200: json(openersSchema, 'One entry per project the caller may open a room on'),
   },

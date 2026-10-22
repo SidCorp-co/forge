@@ -16,7 +16,12 @@ import {
 import { effectiveProjectRole, projectRoleAtLeast } from '../lib/authz.js';
 import { personName } from '../lib/person-name.js';
 import type { Executor, TxOnly } from './db-executor.js';
-import { agentHoldingHandle, existingProjectHandle, handleNameForProject } from './handles.js';
+import {
+  agentHoldingHandle,
+  existingProjectHandle,
+  handleNameForProject,
+  unmintedOpening,
+} from './handles.js';
 import { conversationTransport } from './ports.js';
 import { roomRefusal } from './room-refusal.js';
 import { appendMessagesIn } from './store.js';
@@ -344,11 +349,16 @@ export async function addableHandles(
   return out.sort((a, b) => a.handle.localeCompare(b.handle));
 }
 
-/** A project a room could be opened on, the agent it would start with, and whether that agent answers. */
+/**
+ * A project a room could be opened on, the agent it would start with, and whether opening it would
+ * succeed: `blocked` names why not, the agent having lost its role there or its address being another
+ * agent's, as `resolveProjectHandle` would refuse it.
+ */
 export interface RoomOpener {
   projectId: string;
   handle: string;
   reachable: boolean;
+  blocked: 'lost-role' | 'taken' | null;
 }
 
 /**
@@ -388,14 +398,19 @@ export async function roomOpeners(
     seen.add(project.id);
     const access = await effectiveProjectRole(actorUserId, project.id);
     if (!projectRoleAtLeast(access?.role ?? null, 'member')) continue;
-    const derived = handleNameForProject(project.slug, project.id);
-    const opening = await existingProjectHandle(tx, project.id);
-    if (opening) {
-      out.push({ projectId: project.id, handle: opening.handle ?? derived, reachable: true });
+    const existing = await existingProjectHandle(tx, project.id);
+    if (existing) {
+      out.push({
+        projectId: project.id,
+        handle: existing.handle ?? handleNameForProject(project.slug, project.id),
+        reachable: true,
+        blocked: null,
+      });
       continue;
     }
-    const holder = await agentHoldingHandle(tx, project.orgId, derived);
-    out.push({ projectId: project.id, handle: derived, reachable: !holder || holder.holdsARole });
+    const opening = await unmintedOpening(tx, project);
+    const blocked = opening.kind === 'mint' ? null : opening.kind;
+    out.push({ projectId: project.id, handle: opening.handle, reachable: !blocked, blocked });
   }
   return out;
 }

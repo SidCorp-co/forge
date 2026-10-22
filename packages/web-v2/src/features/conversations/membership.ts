@@ -20,6 +20,7 @@ import type {
   ConversationParticipant,
   ConversationProject,
   HandleCandidate,
+  RoomOpener,
 } from "./types";
 
 /**
@@ -142,6 +143,14 @@ export const NO_AGENT_WILL_ANSWER = "No agent here will answer what you send.";
 
 /** A room is opened by somebody holding the member role or above on its project (ISS-1229 r35). */
 export const startsRooms = (role: string | null | undefined) => role === "member" || role === "admin";
+
+/** Why a project cannot be picked to start a room, where its own agent cannot be reached there (r36). */
+export function unopenableReason(opener: Pick<RoomOpener, "handle" | "blocked">, projectName: string): string | null {
+  if (opener.blocked === "taken") {
+    return `This project's agent would answer to @${opener.handle}, which another agent of this organization already answers to.`;
+  }
+  return opener.blocked === "lost-role" ? `@${opener.handle} can't answer. ${cannotAnswerReason(projectName)}` : null;
+}
 
 /** The agent panel's heading before its room loads: never New conversation to a reader who may not start one. */
 export function draftHeading(roomId: string | undefined, canStart: boolean): string {

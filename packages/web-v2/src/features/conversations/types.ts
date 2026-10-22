@@ -165,6 +165,7 @@ export interface RoomOpener {
   projectId: string;
   handle: string;
   reachable: boolean;
+  blocked: "lost-role" | "taken" | null;
 }
 
 export interface ConversationCandidates {
