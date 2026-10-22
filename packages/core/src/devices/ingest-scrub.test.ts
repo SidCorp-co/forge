@@ -4,7 +4,7 @@ const PAT = 'forge_pat_dev_0123456789abcdef0123456789abcdef';
 const TOKEN_URL = `https://x-access-token:ghs_${'a'.repeat(36)}@github.com/a/b.git`;
 
 const transition = vi.fn(async () => []);
-const setDetail = vi.fn(async () => [{ id: 'r-1', projectId: 'p-1' }]);
+const setDetail = vi.fn(async () => [{ id: 'r-1', projectId: 'p-1', provisionStatus: 'failed' }]);
 const emit = vi.fn(async () => undefined);
 
 vi.mock('../db/client.js', () => ({
@@ -45,6 +45,17 @@ describe('what a box reports is stored scrubbed', () => {
       clean(t);
       expect(t).toContain('clone failed');
     }
+  });
+
+  it('refuses to answer a report the move could not make, rather than answer success over no change', async () => {
+    setDetail.mockResolvedValueOnce([
+      { id: 'r-1', projectId: 'p-1', provisionStatus: null },
+    ] as never);
+    emit.mockClear();
+    await expect(
+      reportProvisionStatus({ deviceId: 'd-1', runnerId: 'r-1', status: 'ready', detail: null }),
+    ).rejects.toThrow('runner r-1 stands at setup status `null`, which has no edge into `ready`');
+    expect(emit).not.toHaveBeenCalled();
   });
 
   it("scrubs a held worktree's reason, a resume choice's why and a checkpoint's reasons", () => {

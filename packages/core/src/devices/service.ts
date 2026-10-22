@@ -133,6 +133,13 @@ export async function reportProvisionStatus(input: {
       returning: ['id'],
     });
     const [row] = await setRunnerProvisionDetail(tx, mine, detail, input.status === 'ready');
+    // A report is answered only once the row stands where it says: one the move could not reach
+    // (a status with no edge into it) rolls back rather than answering success over no change.
+    if (row && row.provisionStatus !== input.status) {
+      throw new Error(
+        `provision-status: runner ${row.id} stands at setup status \`${row.provisionStatus}\`, which has no edge into \`${input.status}\`; nothing was written`,
+      );
+    }
     if (row) {
       await emitEvent(tx, 'runner.provisionStatus', {
         projectId: row.projectId,

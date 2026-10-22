@@ -74,17 +74,30 @@ async fn pull(client: &CoreClient) -> Option<Vec<Provision>> {
 /// Queue `runner_id`'s provision and run that one alone, waiting for a checkout another process
 /// holds. Every other queued project on the device is the daemon's sweep's, never this caller's: a
 /// `bind` that took them cloned other projects inside the CLI, racing the sweep for the same folder.
-/// Whether core returned this runner's provision to run.
-pub async fn reprovision(client: &CoreClient, cfg: &Config, runner_id: &str) -> bool {
-    report(client, runner_id, "queued", None).await;
+/// What became of it: run, queued but not handed back, or refused, in which case nothing was queued.
+pub async fn reprovision(client: &CoreClient, cfg: &Config, runner_id: &str) -> Reprovisioned {
+    if let Err(e) = provision::report_status(client, runner_id, "queued", None).await {
+        return Reprovisioned::Refused(e.to_string());
+    }
     let Some(own) = pull(client)
         .await
         .and_then(|all| all.into_iter().find(|p| p.runner_id == runner_id))
     else {
-        return false;
+        return Reprovisioned::NotReturned;
     };
     process_one(client, cfg, &own, Contended::WaitForIt).await;
-    true
+    Reprovisioned::Ran
+}
+
+/// What `reprovision` did: a caller says "queued" only for the two answers core accepted.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Reprovisioned {
+    /// Core queued it and returned it, and it was run here.
+    Ran,
+    /// Core accepted the queue but returned no provision for it to run now.
+    NotReturned,
+    /// Core refused the queue, so nothing is queued: its refusal, as it said it.
+    Refused(String),
 }
 
 /// Best-effort status report (logs on failure).
@@ -734,6 +747,14 @@ mod tests {
 
     /// A fake core whose provision pull answers `queued` (a JSON array), recording every request.
     async fn fake_core(queued: serde_json::Value) -> (CoreClient, Seen) {
+        fake_core_refusing(queued, None).await
+    }
+
+    /// As `fake_core`, with the provision-status report answered by `refusal` (status, body) when given.
+    async fn fake_core_refusing(
+        queued: serde_json::Value,
+        refusal: Option<(u16, &'static str)>,
+    ) -> (CoreClient, Seen) {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
         let seen: Seen = Arc::default();
@@ -769,13 +790,17 @@ mod tests {
                     }
                 };
                 log.lock().unwrap().push((method.clone(), path.clone()));
-                let reply = if method == "GET" && path == "/api/devices/me/provisions" {
-                    queued.clone()
-                } else {
-                    "{}".to_string()
+                let (code, reply) = match refusal {
+                    Some((code, body)) if path.ends_with("/provision-status") => {
+                        (code, body.to_string())
+                    }
+                    _ if method == "GET" && path == "/api/devices/me/provisions" => {
+                        (200, queued.clone())
+                    }
+                    _ => (200, "{}".to_string()),
                 };
                 let head = format!(
-                    "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
+                    "HTTP/1.1 {code} X\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
                     reply.len()
                 );
                 let _ = sock.write_all(head.as_bytes()).await;
@@ -840,8 +865,9 @@ mod tests {
         let (client, seen) =
             fake_core(serde_json::json!([queued("r-a", "a"), queued("r-b", "b")])).await;
         let cfg = Config::default();
-        reprovision(&client, &cfg, "r-a").await;
+        let got = reprovision(&client, &cfg, "r-a").await;
         let seen = seen.lock().unwrap().clone();
+        assert_eq!(got, Reprovisioned::Ran, "{seen:?}");
         assert!(
             seen.iter()
                 .any(|(m, p)| m == "POST" && p.contains("/runners/r-a/")),
@@ -850,6 +876,33 @@ mod tests {
         assert!(
             !seen.iter().any(|(_, p)| p.contains("/runners/r-b/")),
             "another project's queued provision was taken by bind: {seen:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_queue_core_refuses_is_said_refused_and_nothing_is_pulled_or_run() {
+        let (client, seen) = fake_core_refusing(
+            serde_json::json!([queued("r-a", "a")]),
+            Some((
+                500,
+                r#"{"code":"INTERNAL","message":"runner r-a stands at setup status NULL"}"#,
+            )),
+        )
+        .await;
+        let got = reprovision(&client, &Config::default(), "r-a").await;
+        let seen = seen.lock().unwrap().clone();
+        let Reprovisioned::Refused(why) = got else {
+            panic!("a refused queue was said to be queued: {got:?}, {seen:?}");
+        };
+        assert!(
+            why.contains("500"),
+            "the refusal is said as core said it: {why}"
+        );
+        assert!(
+            !seen
+                .iter()
+                .any(|(m, p)| m == "GET" && p == "/api/devices/me/provisions"),
+            "a refused queue still pulled provisions: {seen:?}"
         );
     }
 }

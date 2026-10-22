@@ -244,9 +244,9 @@ export function releaseWorld(ids: () => { projectId: string; ownerId: string }) 
     const device = await createTestDevice(ownerId);
     const id = randomUUID();
     await db.execute(sql`
-      INSERT INTO runners (id, project_id, type, device_id, name, status, last_seen_at, labels)
+      INSERT INTO runners (id, project_id, type, device_id, name, status, last_seen_at, labels, provision_status)
       VALUES (${id}, ${projectId}, 'claude-code', ${device}, 'release-runner', 'online', now(),
-              ${JSON.stringify([RELEASE_LABEL])}::jsonb)
+              ${JSON.stringify([RELEASE_LABEL])}::jsonb, 'ready')
     `);
     return id;
   }

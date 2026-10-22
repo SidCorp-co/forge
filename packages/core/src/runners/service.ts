@@ -43,10 +43,16 @@ const PROJECT_DEVICE_TYPE_UQ = 'runners_project_device_type_uq';
 const isBindingCollision = (err: unknown) =>
   isUniqueViolation(err) && uniqueViolationConstraint(err) === PROJECT_DEVICE_TYPE_UQ;
 
+/** A row is born at its setup machine's initial state, as a device bind's is: its box is given it. */
 async function insertRunnerRow(input: NewRunner) {
   const [row] = await db
     .insert(runners)
-    .values({ ...input, status: 'offline' })
+    .values({
+      ...input,
+      status: 'offline',
+      provisionStatus: 'queued',
+      provisionRequestedAt: new Date(),
+    })
     .returning();
   if (!row) throw new Error('runners: insert returned no row');
   return row;

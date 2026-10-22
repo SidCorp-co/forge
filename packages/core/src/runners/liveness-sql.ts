@@ -39,9 +39,9 @@ export function runnerUnlimited(alias: string): SQL {
     AND (${col(alias, 'quarantined_until')} IS NULL OR ${col(alias, 'quarantined_until')} <= now())`;
 }
 
-/** Its workspace has finished provisioning, or never declared a status. */
+/** Its workspace has finished provisioning: every row is born `queued` (migration 0515). */
 export function runnerWorkspaceReady(alias: string): SQL {
-  return sql`(${col(alias, 'provision_status')} IS NULL OR ${col(alias, 'provision_status')} = 'ready')`;
+  return sql`${col(alias, 'provision_status')} = 'ready'`;
 }
 
 /**

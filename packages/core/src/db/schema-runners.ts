@@ -67,12 +67,14 @@ export const runners = pgTable(
     limitPrintedResetAt: timestamp('limit_printed_reset_at', { withTimezone: true }),
     quarantinedUntil: timestamp('quarantined_until', { withTimezone: true }),
     quarantineReason: text('quarantine_reason'),
-    // Per (device × project) workspace provisioning state. NULL = never
-    // reported. The runner advances this via the device
+    // Per (device × project) workspace provisioning state, born `queued` (the machine's initial
+    // state; migration 0515). The runner advances this via the device
     // provision-status report; web renders it as a live stepper. `queued` is
     // the offline hand-off — a device that's offline picks the job up on next
     // connect (pull model), so bind never blocks on device presence.
-    provisionStatus: text('provision_status', { enum: runnerProvisionStatuses }),
+    provisionStatus: text('provision_status', { enum: runnerProvisionStatuses })
+      .notNull()
+      .default('queued'),
     // Human-readable last detail (clone error, "folder missing", skill count…).
     provisionDetail: text('provision_detail'),
     // When the current provision request was enqueued (queue ordering + re-run).

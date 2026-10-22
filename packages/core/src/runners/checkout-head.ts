@@ -3,7 +3,7 @@
 // core decides). Asked over the box's socket and answered on the device route; never stored here.
 
 import { parseRepository } from '@forge/contracts/git-repository';
-import { and, asc, eq, isNotNull, isNull, or } from 'drizzle-orm';
+import { and, asc, eq, isNotNull, isNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { devices, runners } from '../db/schema.js';
 import { boxAsks } from './box-ask.js';
@@ -128,7 +128,7 @@ export async function boundCheckouts(projectId: string): Promise<BoundCheckout[]
       and(
         eq(runners.projectId, projectId),
         isNotNull(runners.repoPath),
-        or(isNull(runners.provisionStatus), eq(runners.provisionStatus, 'ready')),
+        eq(runners.provisionStatus, 'ready'),
         isNull(devices.disabledAt),
       ),
     )

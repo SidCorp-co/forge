@@ -188,6 +188,11 @@ runnerRoutes.post('/', zValidator('json', createBody), async (c) => {
     data: { runnerId: row.id, projectId: input.projectId, type: row.type },
     runnerRoom: false,
   });
+  await emitEvent(db, 'runner.provisionRequested', {
+    projectId: input.projectId,
+    deviceId: input.deviceId,
+    runnerId: row.id,
+  });
 
   return c.json({ runner: publicRunner(rowToRunner(row)) }, 201);
 });
