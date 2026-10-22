@@ -73,19 +73,16 @@ export interface LiveBuildHolds {
   unanswered: ReadonlyMap<string, string>;
   /**
    * On a project with no production environment (`release-batch/landed-build.ts:landedBuildHolds`),
-   * per issue id the landed build its verdicts count on, or why it has none, and per verdict commit
-   * (lower case) whether it holds that build, or why nobody could say. Present, it replaces the live
-   * build for every commit and runtime verdict.
+   * per issue id the landed build its verdicts count on, or why it has none. Present, it replaces the
+   * live build for every commit and runtime verdict.
    */
   landed?: ReadonlyMap<string, LandedHolds>;
 }
 
-/** One issue's landed build, and what each verdict commit on it holds of it. */
+/** One issue's landed build, or why it has none. */
 export interface LandedHolds {
   sha: string | null;
   why: string | null;
-  holds: ReadonlyMap<string, boolean>;
-  unanswered: ReadonlyMap<string, string>;
 }
 
 /** What coverage reads: the requirement's wordings, its issues, their traced criteria and verdicts. */
@@ -182,7 +179,7 @@ function resolve(
     case 'runtime': {
       if (landed) {
         return none(
-          `judged on runtime ${short(identity.ref)}, and with no production environment only a commit holding the issue's landing counts`,
+          `judged on runtime ${short(identity.ref)}, and with no production environment only a verdict at the issue's landed commit counts`,
         );
       }
       const ref = identity.ref.toLowerCase();
@@ -223,33 +220,26 @@ function resolve(
 }
 
 // With no production environment the build a verdict counts on is its issue's landing
-// (`release-batch/landed-build.ts`): a commit counts where it is that landing or holds it, and one
-// before it, such as the branch's head before the merge, never does.
+// (`release-batch/landed-build.ts`), and only a verdict at that very commit counts: one at an earlier
+// commit, such as the branch's head before the merge, judged another build, and one at a later head
+// counts only once a landing is recorded there.
 function atLanding(commit: string, landed: LandedHolds | null): Resolved {
   const judged = `judged at commit ${short(commit)}`;
-  if (!landed)
+  if (!landed) {
     return {
       commit,
       inLiveBuild: null,
       notCounted: `${judged}, and its issue's landing was not read`,
     };
-  if (landed.sha === null)
-    return { commit, inLiveBuild: null, notCounted: `${judged}, and ${landed.why}` };
-  const key = commit.toLowerCase();
-  const held = landed.holds.get(key);
-  if (held === true) return { commit, inLiveBuild: true, notCounted: null };
-  if (held === false) {
-    return {
-      commit,
-      inLiveBuild: false,
-      notCounted: `${judged}, which does not hold its issue's landing ${short(landed.sha)}: judge it again there or at a commit holding it`,
-    };
   }
-  const why = landed.unanswered.get(key) ?? 'nothing answered it';
+  if (landed.sha === null) {
+    return { commit, inLiveBuild: null, notCounted: `${judged}, and ${landed.why}` };
+  }
+  if (commit.toLowerCase() === landed.sha) return { commit, inLiveBuild: true, notCounted: null };
   return {
     commit,
-    inLiveBuild: null,
-    notCounted: `${judged}, and whether it holds its issue's landing ${short(landed.sha)} could not be checked: ${why}`,
+    inLiveBuild: false,
+    notCounted: `${judged}, not at its issue's landing ${short(landed.sha)}: judge it again at ${short(landed.sha)}`,
   };
 }
 
@@ -380,7 +370,7 @@ function whyOf(
     const also = rest.length > 0 ? `; not counted either: ${named(rest)}` : '';
     const at = off.map((l) => `${l.displayId} criterion ${l.criterion}: ${l.identity}`).join('; ');
     if (landed) {
-      return `judged only at commits that do not hold their issue's landing (${at}): judge it again at the landing${also}`;
+      return `judged only at commits other than their issue's landing (${at}): judge it again at the landing${also}`;
     }
     return `judged only at builds the live one does not hold (${at}): judge it again on the live build${also}`;
   }

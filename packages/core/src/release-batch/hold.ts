@@ -207,12 +207,12 @@ export function queuedBehindHold(carried: number): ReleaseHold {
 export const NO_RELEASE_GATE_HOLD: ReleaseHold = {
   code: 'NO_RELEASE_GATE',
   reason:
-    'This project declares no release (its project document has no production environment), so ' +
-    'there is no release for the automatic sweep to carry this issue into, and nothing will move ' +
-    'it from `awaiting_release`, where it closes only through a release. Declare a production ' +
-    'environment with a deploy binding, then cut a release.',
+    'This project declares no production environment, so no automatic release carries this issue: ' +
+    'its landing on the working branch is its delivery, and it closes when a person records that ' +
+    'landing (`POST /api/projects/:id/release-records`) at the commit it landed at, with every live ' +
+    'criterion passing at that commit.',
   owes: 'human',
-  waitingFor: 'a person to declare a production environment',
+  waitingFor: 'a person to record the landing',
 };
 
 export const NO_ACTOR_HOLD: ReleaseHold = {
