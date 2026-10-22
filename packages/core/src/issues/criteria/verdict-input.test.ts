@@ -36,7 +36,9 @@ describe('a verdict reason and the secret detector', () => {
 
   it('refuses a key glued to the word before it, showing where the read began', () => {
     const fault = verdictDraftFault(draft(`token tasksk-${KEY_BODY}`));
-    expect(fault?.detail).toContain('a provider key at offset 10, 67 characters: `sk-***` after `token task`');
+    expect(fault?.detail).toContain(
+      'a provider key at offset 10, 67 characters: `sk-***` after `token task`',
+    );
   });
 
   it('names a value the scrubber keeps a label before, without the value', () => {
