@@ -166,7 +166,7 @@ window.__witness = {
         await settle();
         await new Promise((r) => setTimeout(r, 1500));
         if (!peek()?.querySelector("[data-testid=approval-peek-mockup] iframe[sandbox=allow-scripts]")) wrong.push("the peek does not run the mockup in the isolated frame");
-        return [...wrong, ...peekReads("proposal", "mockup", "consequences", "foot")];
+        return [...wrong, ...peekReads("proposal", "mockup", "foot")];
       },
     },
     {
@@ -196,7 +196,7 @@ window.__witness = {
         if (row?.querySelector("[data-testid=approval-decline]")) wrong.push("a question with no declining answer draws a ✕");
         row?.querySelector<HTMLElement>("[data-testid=approval-other-answers]")?.click();
         await settle();
-        const answers = [...(peek()?.querySelectorAll("[data-testid=approval-peek-answer]") ?? [])].map((b) => b.textContent);
+        const answers = [...(peek()?.querySelectorAll("[data-testid=approval-peek-answer-label]") ?? [])].map((b) => b.textContent);
         if (answers.join("|") !== "Keep the old order|Use the new order") wrong.push(`its peek offers "${answers.join("|")}"`);
         return [...wrong, ...peekReads("proposal", "foot")];
       },
@@ -236,7 +236,7 @@ window.__witness = {
         await settle();
         const wrong = open("requirement-to-delivery");
         await settle();
-        peek()?.querySelector<HTMLElement>("[data-testid=approval-peek-approve]")?.click();
+        peek()?.querySelector<HTMLElement>("[data-testid=approval-peek-answer][data-answer=approve]")?.click();
         await settle();
         const undo = document.querySelector("[data-testid=approval-undo]")?.textContent ?? "";
         if (!undo.includes("requirement-to-delivery approved")) wrong.push(`the Undo bar reads "${undo}"`);

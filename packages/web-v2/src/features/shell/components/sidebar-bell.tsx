@@ -12,6 +12,7 @@ export function SidebarBell({ count, onToggle, ref }: { count: number; onToggle:
         type="button"
         onClick={onToggle}
         aria-label={count > 0 ? t("shell.bell.labelOpen", { n: count }) : t("shell.bell.label")}
+        title={count > 0 ? t("shell.bell.labelOpen", { n: count }) : t("shell.bell.label")}
         className="relative inline-flex size-8 flex-none items-center justify-center rounded-md text-muted transition-colors hover:bg-hover hover:text-fg max-md:size-11"
       >
         <Icon name="bell" size={17} />

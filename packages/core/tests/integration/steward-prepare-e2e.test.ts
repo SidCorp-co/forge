@@ -267,7 +267,7 @@ describe('where no agreed requirement fits, the answer acts (REQ-48 BC-5)', () =
       [IDS.drop, 'Drop it: it is not work'],
     ]);
     expect(step.recommendedOptionId).toBe(link);
-    expect(step.prompt).toContain('No agreed requirement fits it well.');
+    expect(step.prompt).toBe(`Link it to ${req} BC-1, start a requirement from it, or drop it?`);
     expect(JSON.stringify(step)).not.toMatch(/write the (details|plan)/i);
     const read = ok(await say('owner', 'GET', at('/needs-you/decisions')));
     const row = (read.decisions as Doc[]).find((d) => d.key === issue.key);

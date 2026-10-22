@@ -1,6 +1,7 @@
 // The steward's doors (REQ-48 BC-1, BC-12): an item's runs, its acts, and the undo of one act, which a
 // holder of project.write asks for and the steward account executes.
 
+import { STEWARD_MERGE_SHARES_MAX } from '@forge/contracts/steward';
 import { Hono } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { z } from 'zod';
@@ -65,15 +66,17 @@ const decisionBody = zValidator(
         z.strictObject({
           id: z.string().trim().min(1).max(100),
           label: z.string().trim().min(1).max(200),
+          shares: z.string().trim().min(1).max(STEWARD_MERGE_SHARES_MAX).optional(),
         }),
       )
       .min(2)
       .max(8),
     recommendedOptionId: z.string().trim().min(1).max(100),
+    why: z.string().trim().min(1).max(600),
     basis: z.string().trim().min(1).max(400),
   }),
   invalid(
-    'invalid body: { about: "ISS-n" | "REQ-n" | "FB-n", prompt, options: [{ id, label }, ...], recommendedOptionId, basis }',
+    'invalid body: { about: "ISS-n" | "REQ-n" | "FB-n", prompt, options: [{ id, label, shares? }, ...], recommendedOptionId, why, basis }',
   ),
 );
 

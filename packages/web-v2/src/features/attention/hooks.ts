@@ -37,11 +37,16 @@ export function useAttention() {
   // (REQ-48 BC-11); every other bucket counts its rows
   const { needsYou, ...rest } = buckets;
   const total = needsYou.reduce((n, p) => n + p.total, 0) + Object.values(rest).reduce((n, b) => n + b.length, 0);
-  const view: AttentionView = { ...buckets, total };
+  const waitingOnYou = base?.waitingOnYou ?? 0;
+  const view: AttentionView = { ...buckets, waitingOnYou, total };
 
   return {
     view,
     total: view.total,
+    /** Core's decisions-across-projects figure: what the Attention tab and the Overview badge carry (REQ-48 r3 BC-17). */
+    waitingOnYou,
+    /** Whether core has answered, so a badge never reads 0 for "not read yet". */
+    known: base !== undefined,
     // The badge/screen can render from the attention list alone; devices hydrate
     // the offline bucket a beat later.
     isLoading: attentionQ.isLoading,

@@ -38590,6 +38590,11 @@
                           "maxLength": 200,
                           "minLength": 1,
                           "type": "string"
+                        },
+                        "shares": {
+                          "maxLength": 160,
+                          "minLength": 1,
+                          "type": "string"
                         }
                       },
                       "required": [
@@ -38611,6 +38616,11 @@
                     "maxLength": 100,
                     "minLength": 1,
                     "type": "string"
+                  },
+                  "why": {
+                    "maxLength": 600,
+                    "minLength": 1,
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -38618,6 +38628,7 @@
                   "prompt",
                   "options",
                   "recommendedOptionId",
+                  "why",
                   "basis"
                 ],
                 "type": "object"

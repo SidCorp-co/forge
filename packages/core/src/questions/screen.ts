@@ -6,9 +6,11 @@ import { screenAtDoor } from '../messaging/screen.js';
 export function agentAuthoredSegments(step: QuestionStep): string[] {
   if (!isChoiceStep(step)) return [step.prompt, step.needed];
   const segments = [step.prompt];
+  if (step.why?.trim()) segments.push(step.why);
   for (const o of step.options) {
     segments.push(o.label);
     if (o.fingerprint?.trim()) segments.push(o.fingerprint);
+    if (o.shares?.trim()) segments.push(o.shares);
   }
   return segments;
 }

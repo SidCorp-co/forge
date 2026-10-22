@@ -648,6 +648,103 @@ export function stewardDecisionLabel(
 	}
 }
 
+/** What one decision asks, as the clause the question joins: "open it", "merge it into ISS-607". */
+function stewardDecisionClause(
+	optionId: string,
+	item: Pick<StewardDecisionItem, "kind" | "draft">,
+): string | null {
+	const link = stewardLinkOf(optionId);
+	if (link) return `link it to ${link.requirement} ${link.bc}`;
+	const merge = stewardMergeOf(optionId);
+	if (merge) return `merge it into ${merge.into}`;
+	switch (stewardDecisionOf(optionId)) {
+		case "open":
+			return "open it";
+		case "drop":
+			return item.kind === "feedback" ? "decline it" : "drop it";
+		case "requirement":
+			return "start a requirement from it";
+		case "withdraw":
+			return "withdraw its draft revision";
+		case "verify":
+			return "verify the fix on its reporter's behalf";
+		case "reopen":
+			return "reopen it";
+		case "keep":
+			if (item.kind === "issue")
+				return item.draft
+					? "keep it as a draft"
+					: "keep it waiting for a master";
+			if (item.kind === "requirement")
+				return item.draft ? "keep it as a draft" : "keep its draft revision";
+			return "keep it waiting";
+		default:
+			return null;
+	}
+}
+
+/**
+ * The question a steward decision asks, as one plain sentence built from its options alone (REQ-48
+ * r3 BC-14): "Open it, merge it into ISS-607, keep it as a draft, or drop it?". Neither the item's
+ * title, which its page already heads, nor the recommendation, which is the decision's own field, is
+ * in it, so the question asked and the question drawn from a stored round read the same.
+ */
+export function stewardDecisionQuestion(
+	optionIds: readonly string[],
+	item: Pick<StewardDecisionItem, "kind" | "draft">,
+): string {
+	const clauses = optionIds.flatMap((id) => {
+		const c = stewardDecisionClause(id, item);
+		return c ? [c] : [];
+	});
+	const said =
+		clauses.length <= 1
+			? (clauses[0] ?? "decide it")
+			: clauses.length === 2
+				? `${clauses[0]} or ${clauses[1]}`
+				: `${clauses.slice(0, -1).join(", ")}, or ${clauses.at(-1)}`;
+	return `${said.charAt(0).toUpperCase()}${said.slice(1)}?`;
+}
+
+/** How many subject words a draft and the item it merges into share at least (REQ-48 r3 BC-16). */
+export const STEWARD_MERGE_SHARED_TERMS_MIN = 2;
+
+/** The longest line a merge option carries naming what the two items are both about. */
+export const STEWARD_MERGE_SHARES_MAX = 160;
+
+const FUNCTION_WORDS: ReadonlySet<string> = new Set(
+	"the and for are but not you all any can had her was one our out has his how its may new now old see two way who did get let put say she too use that with have this will your from they know want been good much some time very when come here just like long make many more only over such take than them well were what into also back after first even give most then these thing think those where which while about could would there their other should because before being cannot does doing every never nothing still through under until without again each same yet onto upon whose whom why it's isn't doesn't".split(
+		" ",
+	),
+);
+
+/** One word as its subject term: lower-cased, a plural or a tense taken off, so "traces" and "trace" meet. */
+function termOf(word: string): string {
+	const w = word.toLowerCase();
+	if (w.length > 4 && w.endsWith("ies")) return `${w.slice(0, -3)}y`;
+	if (w.length > 5 && w.endsWith("ing")) return w.slice(0, -3);
+	if (w.length > 4 && w.endsWith("ed")) return w.slice(0, -2);
+	if (w.length > 3 && w.endsWith("s") && !w.endsWith("ss"))
+		return w.slice(0, -1);
+	return w;
+}
+
+/** The subject terms of a title: its words of three letters or more, function words left out. */
+export function stewardSubjectTerms(text: string): string[] {
+	const words = text.match(/[A-Za-z][A-Za-z0-9'-]*|\d+/g) ?? [];
+	const terms = words
+		.map((w) => w.replace(/'s$/i, ""))
+		.filter((w) => w.length >= 3 && !FUNCTION_WORDS.has(w.toLowerCase()))
+		.map(termOf);
+	return [...new Set(terms)];
+}
+
+/** The subject terms two titles share, in the first title's order. */
+export function stewardSharedTerms(a: string, b: string): string[] {
+	const theirs = new Set(stewardSubjectTerms(b));
+	return stewardSubjectTerms(a).filter((t) => theirs.has(t));
+}
+
 /** A link option's button: the requirement and BC, and the BC's own words. */
 export const stewardLinkLabel = (
 	requirement: string,
@@ -667,7 +764,7 @@ export const stewardMergeLabel = (into: string, title: string) =>
  */
 export function stewardDecisionEffect(
 	decision: StewardDecision,
-	item: StewardDecisionItem & { option: string },
+	item: StewardDecisionItem & { option: string; shares?: string | null },
 ): string {
 	const { key } = item;
 	const stays =
@@ -694,9 +791,13 @@ export function stewardDecisionEffect(
 			return `Starts a requirement from ${key}'s feedback as you; ${key} stays a draft until that requirement is agreed.`;
 		case "merge": {
 			const into = stewardMergeOf(item.option)?.into ?? "the item it repeats";
-			return item.kind === "requirement"
-				? `Proposes what ${key} adds as a revision of ${into}, then drops ${key}, as you.`
-				: `Copies ${key}'s text to ${into} as a comment, then drops ${key}, as you.`;
+			const does =
+				item.kind === "requirement"
+					? `Proposes what ${key} adds as a revision of ${into}, then drops ${key}, as you.`
+					: `Copies ${key}'s text to ${into} as a comment, then drops ${key}, as you.`;
+			return item.shares
+				? `${does} Both are about ${item.shares}`.slice(0, 300)
+				: does;
 		}
 		case "withdraw":
 			return `Withdraws ${key}'s draft revision as you, with your reason; what was agreed stays.`;
@@ -807,6 +908,8 @@ export const STEWARD_REFUSAL_CODES = [
 	"STEWARD_DECISION_OPTIONS_UNKNOWN",
 	"STEWARD_MERGE_TARGET_ENDED",
 	"STEWARD_MERGE_HAS_DEPENDENTS",
+	"STEWARD_MERGE_NOT_SAME_SUBJECT",
+	"STEWARD_MERGE_SHARES_MISSING",
 ] as const;
 export type StewardRefusalCode = (typeof STEWARD_REFUSAL_CODES)[number];
 

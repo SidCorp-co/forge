@@ -28,5 +28,5 @@ function gatherScreens(files: Record<string, { SCREENS?: ChromeScreen[] }>): Chr
 }
 
 export const CHROME_SCREENS: ChromeScreen[] = gatherScreens(
-  import.meta.glob(["./vi-chrome-*.tsx", "!./vi-chrome-screens.tsx"], { eager: true }) as Record<string, { SCREENS?: ChromeScreen[] }>,
+  import.meta.glob<{ SCREENS?: ChromeScreen[] }>(["./vi-chrome-*.tsx", "!./vi-chrome-screens.tsx"], { eager: true }),
 );

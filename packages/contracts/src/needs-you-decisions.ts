@@ -243,6 +243,47 @@ export const decisionRecommendationSchema = z.strictObject({
 	by: z.enum(["asker", "assistant", "rule", "steward"]),
 });
 
+/** The record a decision or a left-out row opens, as `ui.open` takes it. */
+export const decisionOpensSchema = z.strictObject({
+	kind: z.enum([
+		"issue",
+		"requirement",
+		"feedback",
+		"workflow",
+		"release",
+		"lesson",
+	]),
+	key: z.string().min(1).max(200),
+});
+export type DecisionOpens = z.infer<typeof decisionOpensSchema>;
+
+const BC_CODE = /^BC-\d+$/;
+
+/**
+ * What a decision about an issue or a requirement rests on (REQ-48 r3 BC-15), read by core from the
+ * records themselves, never from the asker's words: the requirement and the revision the issue was
+ * planned against, whether the issue holds a plan, and how many live criteria it has with the BC codes
+ * they trace. Each opens its own page; a requirement's decision has no plan of its own (`plan: null`)
+ * and counts the requirement's own criteria.
+ */
+export const decisionEvidenceSchema = z.strictObject({
+	requirement: z
+		.strictObject({
+			key: z.string().regex(/^REQ-\d+$/),
+			title: z.string().max(500),
+			/** The revision the issue was planned against, else the requirement's current one. */
+			revision: z.int().min(1).nullable(),
+		})
+		.nullable(),
+	plan: z.boolean().nullable(),
+	criteria: z.strictObject({
+		count: z.int().min(0),
+		/** The BC codes the live criteria trace, each once, in code order. */
+		codes: z.array(z.string().regex(BC_CODE)).max(40),
+	}),
+});
+export type DecisionEvidence = z.infer<typeof decisionEvidenceSchema>;
+
 /** One decision only a person can make (BC-1), with what BC-2 asks of it. */
 export const needsYouDecisionSchema = z
 	.strictObject({
@@ -258,19 +299,7 @@ export const needsYouDecisionSchema = z
 		 * The record that opens to decide it, as `ui.open` takes it (it may be the row's own key, or the
 		 * issue a requirement waits on); null where no record holds it, a question a run asked on nothing.
 		 */
-		opens: z
-			.strictObject({
-				kind: z.enum([
-					"issue",
-					"requirement",
-					"feedback",
-					"workflow",
-					"release",
-					"lesson",
-				]),
-				key: z.string().min(1).max(200),
-			})
-			.nullable(),
+		opens: decisionOpensSchema.nullable(),
 		/** What is asked, in the asker's words, or Forge's for an approval. */
 		question: z.string().min(1).max(LIMITS.question),
 		recommended: decisionRecommendationSchema.nullable(),
@@ -305,6 +334,8 @@ export const needsYouDecisionSchema = z
 				consequence: z.enum(MOCKUP_ACCEPT_CONSEQUENCES),
 			})
 			.optional(),
+		/** What it rests on (`decisionEvidenceSchema`); absent on a decision about no issue or requirement. */
+		evidence: decisionEvidenceSchema.optional(),
 	})
 	.superRefine((d, ctx) => {
 		if ((d.recommended === null) === (d.noRecommendation === null)) {
@@ -363,6 +394,17 @@ export const needsYouDecisionSchema = z
 	});
 export type NeedsYouDecision = z.infer<typeof needsYouDecisionSchema>;
 
+/** One row Needs you lists that is not a decision, named in plain words with its next step. */
+export const notDecisionItemSchema = z.strictObject({
+	key: z.string().min(1).max(200),
+	/** Its title, or its key where it has none. */
+	title: z.string().min(1).max(500),
+	/** The step it waits on, as its standing says it ("check its criteria"); null where none is said. */
+	next: z.string().min(1).max(300).nullable(),
+	opens: decisionOpensSchema.nullable(),
+});
+export type NotDecisionItem = z.infer<typeof notDecisionItemSchema>;
+
 /** `GET /api/projects/:id/needs-you/decisions` and the assistant's needs-me tool: one read, two doors. */
 export const needsYouDecisionsSchema = z.strictObject({
 	generatedAt: z.iso.datetime(),
@@ -375,7 +417,8 @@ export const needsYouDecisionsSchema = z.strictObject({
 		z.strictObject({
 			reason: z.enum(NEEDS_YOU_NOT_DECISION_REASONS),
 			count: z.int().min(1),
-			keys: z.array(z.string()).max(20),
+			/** The first rows of it by name (REQ-48 r3 BC-17): what it is, the step it waits on, the page it opens. */
+			items: z.array(notDecisionItemSchema).max(20),
 		}),
 	),
 });

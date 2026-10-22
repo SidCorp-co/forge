@@ -5,7 +5,7 @@
 //
 //   pnpm --filter web-v2 witness witness/peek-panel.witness.tsx --out <dir>
 
-import type { QueryKey } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, type QueryKey } from "@tanstack/react-query";
 import { Component, type ReactNode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { TopBarSlotProvider } from "@/design";
@@ -25,6 +25,7 @@ import { InRouter } from "./router";
 
 // a read no fixture seeded stays in flight, as in the vi walking test
 window.fetch = () => new Promise<Response>(() => {});
+const barClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
 const P = "p1";
 const AT = "2026-10-15T08:00:00.000Z";
@@ -119,7 +120,10 @@ function Shell() {
         <div className="flex h-dvh overflow-hidden bg-app" data-shell>
           <div className="hidden h-full flex-none border-r border-line bg-surface md:block" style={{ width: 88 }} />
           <div className="flex min-w-0 flex-1 flex-col" data-witness="page" data-witness-page={p.name}>
-            <ShellTopBar chatOpen={false} onToggleChat={() => {}} />
+            {/* the bar reads the served version (bf024e1d0): a client of its own, its read held in flight like every unseeded one */}
+            <QueryClientProvider client={barClient}>
+              <ShellTopBar chatOpen={false} onToggleChat={() => {}} />
+            </QueryClientProvider>
             <main className="min-h-0 flex-1 overflow-y-auto" data-witness="main">
               <Caught key={p.name}>{p.draw()}</Caught>
             </main>

@@ -223,7 +223,7 @@ export function buildBottomActiveKey(pathname: string, moreOpen: boolean, chatOp
 /** The rail's workspace tier: Overview carries the attention count, then the Ecosystem group. */
 export function workspaceNavItems(attentionCount: number, ecosystems: WorkspaceRead | undefined): NavEntry[] {
   return [
-    ...WORKSPACE_ITEMS.map((it) => (it.key === "overview" ? { ...it, badge: attentionCount } : it)),
+    ...WORKSPACE_ITEMS.map((it) => (it.key === "overview" ? { ...it, badge: attentionCount, badgeHint: en("shell.waitingAcross", { n: attentionCount }) } : it)),
     ecosystemGroup(ecosystems),
   ];
 }
@@ -232,7 +232,7 @@ export function bottomTabItems(attentionCount: number): BottomTabItem[] {
   return [
     { key: "home", label: en("nav.home"), icon: "grid" },
     { key: "chat", label: en("nav.chat"), icon: "chat" },
-    { key: "attention", label: en("nav.attention"), icon: "inbox", badge: attentionCount },
+    { key: "attention", label: en("nav.attention"), icon: "inbox", badge: attentionCount, badgeHint: en("shell.waitingAcross", { n: attentionCount }) },
     { key: "more", label: en("nav.more"), icon: "menu" },
   ];
 }

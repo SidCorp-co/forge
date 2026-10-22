@@ -17,10 +17,12 @@ import {
 } from '@forge/contracts/needs-you';
 import {
   byDecisionOrder,
+  type DecisionOpens,
   isDecisionActOn,
   type NeedsYouDecision,
   type NeedsYouDecisions,
   type NeedsYouNotDecisionReason,
+  type NotDecisionItem,
   needsYouDecisionsSchema,
 } from '@forge/contracts/needs-you-decisions';
 import type { NeedsYouTopic } from '@forge/contracts/needs-you-proposal';
@@ -42,13 +44,14 @@ import {
   feedbackDecision,
   questionDecision,
 } from './needs-you-decision-builders.js';
+import { type EvidenceGroup, withEvidence } from './needs-you-evidence.js';
 import { foldedDecisions } from './needs-you-fold.js';
 import { repinDecision as designRepinDecision } from './needs-you-repin.js';
 import { type DesignRepinGroup, releaseApprovalsOfRuns } from './ports.js';
 
 /** How many decisions one answer carries; `total` counts them all. */
 const DECISIONS_MAX = 200;
-const NOT_DECISION_KEYS_MAX = 20;
+const NOT_DECISION_ITEMS_MAX = 20;
 
 /** The said act keys whose row is the viewer's own work to finish, never a choice. */
 const OWN_WORK: ReadonlySet<string> = new Set([
@@ -300,6 +303,27 @@ function draftsByRequirement(
   return out;
 }
 
+const OPENS_KIND: Partial<Record<AttentionRow['entity'], DecisionOpens['kind']>> = {
+  issue: 'issue',
+  requirement: 'requirement',
+  feedback: 'feedback',
+  workflow: 'workflow',
+  release: 'release',
+  lesson: 'lesson',
+};
+
+/** A row that is not a decision, named in plain words with the step it waits on (REQ-48 r3 BC-17). */
+function leftItem(row: AttentionRow): NotDecisionItem {
+  const kind = OPENS_KIND[row.entity];
+  const next = row.standing.waitingOn.act.trim();
+  return {
+    key: row.key,
+    title: (row.title || row.key).slice(0, 500),
+    next: next ? next.slice(0, 300) : null,
+    opens: kind ? { kind, key: row.key } : null,
+  };
+}
+
 /** One row the viewer owes, built into the decision it is. */
 export interface OwedDecision {
   area: NeedsYouAreaKey;
@@ -316,7 +340,7 @@ type Attention = Awaited<ReturnType<typeof readAttention>>;
 export async function decisionsOf(
   projectId: string,
   attention: Attention,
-): Promise<{ owed: OwedDecision[]; left: Map<NeedsYouNotDecisionReason, string[]> }> {
+): Promise<{ owed: OwedDecision[]; left: Map<NeedsYouNotDecisionReason, NotDecisionItem[]> }> {
   const owedRows = owedOf(attention.rows);
   const runIds = attention.releases.releases.flatMap((r) =>
     r.state === 'awaiting_approval' && r.runId ? [r.runId] : [],
@@ -366,7 +390,7 @@ export async function decisionsOf(
   };
   const owed: OwedDecision[] = [];
   const asked = new Set<string>();
-  const left = new Map<NeedsYouNotDecisionReason, string[]>();
+  const left = new Map<NeedsYouNotDecisionReason, NotDecisionItem[]>();
   const asks = NEEDS_YOU_AREAS.filter((a) => NEEDS_YOU_AREA_SPACE[a] === 'asks').flatMap((area) =>
     owedRows[area].map((row) => ({ area, row })),
   );
@@ -379,7 +403,7 @@ export async function decisionsOf(
     const c = classify(row, area, facts);
     if ('folded' in c) continue;
     if ('reason' in c) {
-      left.set(c.reason, [...(left.get(c.reason) ?? []), row.key]);
+      left.set(c.reason, [...(left.get(c.reason) ?? []), leftItem(row)]);
       continue;
     }
     // a requirement held up by an issue's question and the issue itself are one decision
@@ -401,11 +425,26 @@ async function allDecisionsOf(
     decisionsOf(projectId, attention),
     foldedDecisions(projectId, viewer, access, attention),
   ]);
-  if (folded.unreadable.length > 0) left.set('unreadable', folded.unreadable);
+  if (folded.unreadable.length > 0) {
+    // a record no decision could be made of is opened on its own page, named by its key alone
+    left.set(
+      'unreadable',
+      folded.unreadable.map((key) => ({
+        key,
+        title: key,
+        next: 'open it on its own page',
+        opens: null,
+      })),
+    );
+  }
   const decisions = uniqueIds([...owed.map((o) => o.decision), ...folded.decisions]).sort(
     byDecisionOrder,
   );
-  return { decisions, left };
+  const ids: EvidenceGroup['ids'] = {
+    issue: new Map(attention.issues.issues.map((i) => [i.key, i.id])),
+    requirement: new Map(attention.requirements.map((r) => [r.key, r.id])),
+  };
+  return { decisions, left, ids };
 }
 
 /** The viewer's whole Needs you from an attention read already made: what the status report counts. */
@@ -429,9 +468,35 @@ function uniqueIds(decisions: NeedsYouDecision[]): NeedsYouDecision[] {
 }
 
 /**
+ * One project's Needs you read without the evidence each decision rests on, and the ids its evidence
+ * is read by: the cross-project read reads every project's evidence in one call after it.
+ */
+export async function readNeedsYouDecisionsBare(
+  projectId: string,
+  viewer: NeedsYouViewer,
+  access: ProjectAccess,
+  now: Date = new Date(),
+): Promise<{ read: NeedsYouDecisions; ids: EvidenceGroup['ids'] }> {
+  const attention = await readAttention(projectId, viewer, now);
+  const { decisions, left, ids } = await allDecisionsOf(projectId, viewer, access, attention);
+  const read = needsYouDecisionsSchema.parse({
+    generatedAt: now.toISOString(),
+    decisions: decisions.slice(0, DECISIONS_MAX),
+    total: decisions.length,
+    notDecisions: [...left].map(([reason, items]) => ({
+      reason,
+      count: items.length,
+      items: items.slice(0, NOT_DECISION_ITEMS_MAX),
+    })),
+  });
+  return { read, ids };
+}
+
+/**
  * The one Needs you read (REQ-48 BC-11): the viewer's decisions from their owed rows, and every
- * agent's proposal, mockup and preview waiting on them folded in. The page, the Dashboard, /attention,
- * the nav and the chat all count `total` from here, so no two surfaces count their own.
+ * agent's proposal, mockup and preview waiting on them folded in, each with the evidence it rests on
+ * (r3 BC-15). The page, the Dashboard, /attention, the nav and the chat all count `total` from here,
+ * so no two surfaces count their own.
  */
 export async function readNeedsYouDecisions(
   projectId: string,
@@ -439,16 +504,7 @@ export async function readNeedsYouDecisions(
   access: ProjectAccess,
   now: Date = new Date(),
 ): Promise<NeedsYouDecisions> {
-  const attention = await readAttention(projectId, viewer, now);
-  const { decisions, left } = await allDecisionsOf(projectId, viewer, access, attention);
-  return needsYouDecisionsSchema.parse({
-    generatedAt: now.toISOString(),
-    decisions: decisions.slice(0, DECISIONS_MAX),
-    total: decisions.length,
-    notDecisions: [...left].map(([reason, keys]) => ({
-      reason,
-      count: keys.length,
-      keys: keys.slice(0, NOT_DECISION_KEYS_MAX),
-    })),
-  });
+  const { read, ids } = await readNeedsYouDecisionsBare(projectId, viewer, access, now);
+  const [decisions = []] = await withEvidence([{ decisions: read.decisions, ids }]);
+  return needsYouDecisionsSchema.parse({ ...read, decisions });
 }

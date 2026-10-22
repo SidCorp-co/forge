@@ -53,6 +53,12 @@ export const declineOf = (d: NeedsYouDecision): DecisionAnswer | null => d.answe
 /** The answers a row's ✓ does not press and its ✕ does not either: what its peek offers besides. */
 export const otherAnswersOf = (d: NeedsYouDecision): DecisionAnswer[] => d.answers.filter((a) => a !== approveOf(d) && a !== declineOf(d));
 
+/**
+ * The answers in the order the peek draws them and its digits press them (REQ-48 r3 BC-14): the
+ * recommended one first, then the rest in core's order, each once.
+ */
+export const drawnAnswers = (d: NeedsYouDecision): DecisionAnswer[] => [...d.answers.filter((a) => a.recommended), ...d.answers.filter((a) => !a.recommended)];
+
 /** What a bulk approve sends for a row: its ✓, where that takes no words a shared approve cannot carry. */
 export function bulkApproveOf(d: NeedsYouDecision): DecisionAnswer | null {
   const a = approveOf(d);

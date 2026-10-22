@@ -152,7 +152,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const sidebar = useSidebarContext();
   const { items: recents } = useRecents();
   const pinnedViews = usePinnedViews();
-  const { total: attentionCount } = useAttention();
+  const { waitingOnYou: attentionCount } = useAttention();
   const { data: openCount } = useOpenCount();
 
   const { stopped: signInStopped } = useLoginRedirect(!isLoading && !user, !!user);

@@ -5,7 +5,7 @@
 
 import { type DecisionAnswer, type NeedsYouDecision, type NeedsYouDecisions, needsYouDecisionSchema, needsYouDecisionsSchema } from "@forge/contracts/needs-you-decisions";
 import type { DecisionProposal } from "@forge/contracts/needs-you-proposal";
-import { STEWARD_DECISION_OPTION_IDS, STEWARD_DECISIONS_WITH_REASON, stewardDecisionEffect, stewardDecisionLabel } from "@forge/contracts/steward";
+import { STEWARD_DECISION_OPTION_IDS, STEWARD_DECISIONS_WITH_REASON, stewardDecisionEffect, stewardDecisionLabel, stewardDecisionQuestion } from "@forge/contracts/steward";
 
 export const APPROVALS_PROJECT = "6f0ee160-8432-4b84-98cf-956b6cd65a29";
 const P = APPROVALS_PROJECT;
@@ -336,8 +336,8 @@ export const STEWARD_DECISION: NeedsYouDecision = needsYouDecisionSchema.parse({
   key: "ISS-7",
   title: "Export keeps the old column order",
   opens: { kind: "issue", key: "ISS-7" },
-  question: `ISS-7 "Export keeps the old column order": it has been a draft for 16 days and no one has taken it on. Open it, keep it as a draft, or drop it? Recommended: ${stewardDecisionLabel("open", ISS_7)}, because its plan and criteria pass the issue-ready check.`,
-  recommended: { answerId: STEWARD_DECISION_OPTION_IDS.open, why: `The steward recommends "${stewardDecisionLabel("open", ISS_7)}" because its plan and criteria pass the issue-ready check.`, by: "steward" },
+  question: stewardDecisionQuestion([STEWARD_DECISION_OPTION_IDS.open, STEWARD_DECISION_OPTION_IDS.keep, STEWARD_DECISION_OPTION_IDS.drop], ISS_7),
+  recommended: { answerId: STEWARD_DECISION_OPTION_IDS.open, why: "Its plan and criteria pass the issue-ready check.", by: "steward" },
   noRecommendation: null,
   answers: [stewardAnswer("open", true), stewardAnswer("keep", false), stewardAnswer("drop", false)],
   touchedAt: ago(3),
@@ -345,6 +345,56 @@ export const STEWARD_DECISION: NeedsYouDecision = needsYouDecisionSchema.parse({
   dueAt: null,
   topic: "question",
   proposal: null,
+});
+
+/**
+ * The steward's question on ISS-625 as core builds it after REQ-48 r3 (BC-13..16): one sentence from its
+ * options, the reason once, four answers, one a merge into an issue about the same thing whose label
+ * runs long and whose effect names what the two share, and the evidence it rests on.
+ */
+const ISS_625 = { kind: "issue" as const, key: "ISS-625", draft: true };
+const Q625 = "/api/questions/q625/answer";
+const MERGE_625 = "steward.merge:ISS-630";
+const answer625 = (id: string, label: string, decision: Parameters<typeof stewardDecisionEffect>[0], recommended: boolean): DecisionAnswer => ({
+  id,
+  label,
+  act: "question.answer",
+  path: Q625,
+  body: { round: 1, optionId: id },
+  needsReason: STEWARD_DECISIONS_WITH_REASON.includes(decision),
+  declines: false,
+  effect: stewardDecisionEffect(decision, { ...ISS_625, option: id, shares: decision === "merge" ? "how a criterion traces a BC with a trailing tag." : null }),
+  recommended,
+});
+export const STEWARD_625_REASON = "ISS-625 now links agreed REQ-48 revision 2 and has a plan and three traced BC-5 criteria, so it is ready for a person to open.";
+const ANSWERS_625 = [STEWARD_DECISION_OPTION_IDS.open, MERGE_625, STEWARD_DECISION_OPTION_IDS.keep, STEWARD_DECISION_OPTION_IDS.drop];
+export const STEWARD_625: NeedsYouDecision = needsYouDecisionSchema.parse({
+  id: "issue:ISS-625:question.answer",
+  group: "answer",
+  area: "issues",
+  entity: "issue",
+  key: "ISS-625",
+  title: "Issue criterion BC trace syntax is undocumented; a trailing tag silently traces nothing",
+  opens: { kind: "issue", key: "ISS-625" },
+  question: stewardDecisionQuestion(ANSWERS_625, ISS_625),
+  recommended: { answerId: STEWARD_DECISION_OPTION_IDS.open, why: STEWARD_625_REASON, by: "steward" },
+  noRecommendation: null,
+  answers: [
+    answer625(STEWARD_DECISION_OPTION_IDS.open, stewardDecisionLabel("open", ISS_625), "open", true),
+    answer625(MERGE_625, "Merge it into ISS-630: A criterion's trailing BC tag traces nothing and no guide says how a trace is written", "merge", false),
+    answer625(STEWARD_DECISION_OPTION_IDS.keep, stewardDecisionLabel("keep", ISS_625), "keep", false),
+    answer625(STEWARD_DECISION_OPTION_IDS.drop, stewardDecisionLabel("drop", ISS_625), "drop", false),
+  ],
+  touchedAt: ago(1),
+  stuck: false,
+  dueAt: null,
+  topic: "question",
+  proposal: null,
+  evidence: {
+    requirement: { key: "REQ-48", title: "An agent stands at every Product and Delivery handoff", revision: 2 },
+    plan: true,
+    criteria: { count: 3, codes: ["BC-5"] },
+  },
 });
 
 /** A release approval as core's `releaseDecision` builds it: both answers take words, and only Return declines. */
@@ -378,5 +428,15 @@ export const APPROVALS_READ: NeedsYouDecisions = needsYouDecisionsSchema.parse({
   generatedAt: "2026-10-21T09:00:00.000Z",
   total: ALL.length,
   decisions: ALL,
-  notDecisions: [{ reason: "unreadable", count: 1, keys: ["FB-140"] }],
+  notDecisions: [
+    { reason: "unreadable", count: 1, items: [{ key: "FB-140", title: "FB-140", next: "open it on its own page", opens: null }] },
+    {
+      reason: "work",
+      count: 2,
+      items: [
+        { key: "issue-lifecycle", title: "Issue lifecycle", next: "update the design to the contract", opens: { kind: "workflow", key: "issue-lifecycle" } },
+        { key: "personal-data-flow", title: "Personal data flow", next: "check its criteria", opens: { kind: "workflow", key: "personal-data-flow" } },
+      ],
+    },
+  ],
 });
