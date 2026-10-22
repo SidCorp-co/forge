@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { ISSUE_REFERENCES_EXIST } from './claim-rules.js';
 import { NO_FACTS } from './facts.js';
 import { keyMentions } from './issue-tokens.js';
+import { plainQuotes } from './plain-quotes.js';
 import { screenAtDoor } from './screen.js';
 
 // ISS-1229 r37, judge-100: asked to comment on ISS-999, which the project does not hold, the room's
@@ -149,5 +150,76 @@ describe('a reply saying a key is not on the project', () => {
     expect(ISSUE_REFERENCES_EXIST.check('There is no ISS-1 on this project.', facts)).toHaveLength(
       1,
     );
+  });
+});
+
+// ISS-1229 r38, judge-103: the assistant's true reply "ISS-999 isn’t on this project’s tracker" was
+// withdrawn again, because the absence patterns read only the straight apostrophe, which the assistant
+// does not write. Every shape is tried in every apostrophe and quote a writer can type.
+const APOSTROPHES = ["'", '\u2019', '\u2018', '\u02BC', '\uFF07', '\u2032', '\u00B4'];
+const spelled = (text: string) => APOSTROPHES.map((a) => text.replaceAll("'", a));
+
+describe('a reply saying a key is absent, whichever apostrophe it is written with', () => {
+  it('keeps the reply judge-103 saw withdrawn, as the assistant wrote it', () => {
+    const said =
+      'ISS-999 isn\u2019t on this project\u2019s tracker, so I couldn\u2019t add the comment. The only issue here is ISS-1 (\u201cInvoice footer shows last year\u201d).';
+    expect(keyMentions(said, ['ISS']).map((m) => [m.seq, m.absent])).toEqual([
+      [999, true],
+      [1, false],
+    ]);
+    expect(room(said)).toMatchObject({ ok: true });
+  });
+
+  it.each([
+    "ISS-$ isn't on this project's tracker.",
+    "ISS-$ doesn't exist in this project.",
+    "ISS-$ wasn't found.",
+    "ISS-$ couldn't be found.",
+    "ISS-$ can't be found on this project's tracker.",
+    "There's no ISS-$ on this project.",
+    "There isn't an ISS-$ on this project's tracker.",
+    "I couldn't find ISS-$ in this project's issues.",
+    "I can't find ISS-$ here.",
+    "I didn't find ISS-$ on this project.",
+    "'ISS-$' isn't on this project.",
+    '"ISS-$" isn\'t on this project.',
+  ])('reads %s as the same absence in every spelling', (shape) => {
+    for (const text of [
+      ...spelled(shape),
+      shape.replaceAll('"', '\u201c').replace('\u201c ', '\u201d '),
+    ]) {
+      expect(keyMentions(text.replaceAll('$', '999'), ['ISS'])[0]?.absent).toBe(true);
+      expect(room(text.replaceAll('$', '999')).ok).toBe(true);
+      expect(ISSUE_REFERENCES_EXIST.check(text.replaceAll('$', '999'), facts)).toEqual([]);
+      expect(room(text.replaceAll('$', '1')).ok).toBe(false);
+    }
+  });
+
+  it('still reads a question, a narrower scope or a past time as no absence in every spelling', () => {
+    for (const shape of [
+      "ISS-999 isn't on this project?",
+      "ISS-999 isn't in this project's release list.",
+      "ISS-999 wasn't on this project's tracker yesterday.",
+      "If the import failed, ISS-999 isn't on this project.",
+    ]) {
+      for (const text of spelled(shape)) {
+        expect(keyMentions(text, ['ISS'])[0]?.absent).toBe(false);
+        expect(room(text).ok).toBe(false);
+      }
+    }
+  });
+
+  it('makes every mark plain one unit for one, so an index into the plain text is one into the written', () => {
+    const written =
+      '\u2018ISS-9\u2019 isn\u02BCt \u201con\u201d this project\uFF07s tracker\u2032\u00B4\u201A\u201B\u201E\u201F\u2033\uFF02';
+    const plain = plainQuotes(written);
+    expect(plain).toBe(`'ISS-9' isn't "on" this project's tracker''''""""`);
+    expect(plain).toHaveLength(written.length);
+  });
+
+  it('quotes a refused key as it was written', () => {
+    const said = 'ISS-999 isn\u2019t done yet.';
+    expect(keyMentions(said, ['ISS'])[0]?.token).toBe('ISS-999');
+    expect(ISSUE_REFERENCES_EXIST.check(said, facts).map((b) => b.quote)).toEqual(['ISS-999']);
   });
 });

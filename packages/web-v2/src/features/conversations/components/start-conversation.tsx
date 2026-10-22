@@ -94,7 +94,7 @@ export function StartConversation({ onStarted }: { onStarted: (id: string, proje
       <div className="flex w-full max-w-sm flex-col gap-4">
         <div className="text-center">
           <p className="fg-h3">
-            {onlyViews ? "Conversations you can read" : nothingToStart ? "No project here yet" : "Start a conversation"}
+            {onlyViews ? "Conversations you can read" : nothingToStart ? "No project you can see" : "Start a conversation"}
           </p>
           <p className="fg-body-sm mt-1 text-muted">
             {onlyViews

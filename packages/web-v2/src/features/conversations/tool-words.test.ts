@@ -5,7 +5,7 @@
 import { describe, expect, it } from "vitest";
 import { decodeToolOutput } from "@/features/session/result-summary";
 import type { ToolCallData } from "@/features/session/types";
-import { refusalReason, toolWords } from "./tool-words";
+import { PUT_IT_RIGHT, refusalReason, TOOK_ANOTHER_WAY, toolWords } from "./tool-words";
 
 const cli = (argv: string[], out: { exitCode: number; stdout: string; stderr: string }, body = ""): ToolCallData => ({
   id: "t1",
@@ -53,7 +53,7 @@ describe("what a room's assistant did, in words", () => {
     };
     expect(toolWords(cli(["new", "-", "--title", "J93 judge test: invoice footer typo", "--category", "bug"], refused, "## Summary"))).toEqual({
       said: "Couldn't file “J93 judge test: invoice footer typo”",
-      refusal: "It has no What happened section, so add it and send it again.",
+      refusal: "No What happened section. Ask the assistant to put it right and try again.",
     });
   });
 
@@ -77,7 +77,7 @@ describe("what a room's assistant did, in words", () => {
     };
     const words = toolWords(cli(["new", "-", "--title", "J95 judge test: invoice footer typo", "--category", "bug"], refused));
     expect(words.refusal).toBe(
-      "It has no What happened, Why it happens, Outcome or Out of scope section, so add them and send it again.",
+      "No What happened, Why it happens, Outcome or Out of scope section. Ask the assistant to put it right and try again.",
     );
     expect(words.refusal).not.toMatch(/Hold|flow cannot carry|among/);
   });
@@ -90,7 +90,7 @@ describe("what a room's assistant did, in words", () => {
         "Hold — this files an issue the flow cannot carry.\n\n- read: no heading naming what happened, among `Summary`\n  wants: a heading saying what happened, required of a bug\n  clear: add `## What happened` and re-send the same command\n- read: the title `Fix`\n  wants: a sentence saying the behaviour after the change, not one word\n  clear: forge new with a title that says the behaviour",
     };
     expect(toolWords(cli(["new", "-", "--title", "Fix"], refused)).refusal).toBe(
-      "It has no What happened section, so add it; the title Fix needs a sentence saying the behaviour after the change, not on…",
+      "No What happened section. Ask the assistant to put it right and try again.",
     );
   });
 
@@ -102,7 +102,7 @@ describe("what a room's assistant did, in words", () => {
         "Hold — name one of the routes below, then re-send.\n\nThis body names billing, carries no rule or invariant and no out-of-scope, and reads as a fix: filed as a feature the flow costs a confirmation.\n\n  --with ISS-nn   file it and relate it",
     };
     expect(toolWords(cli(["new", "-", "--title", "Typo"], route)).refusal).toBe(
-      "This body names billing, carries no rule or invariant and no out-of-scope, and reads as a fix: filed as a feature the fl…",
+      "This body names billing, carries no rule or invariant and no out-of-sc… Ask the assistant to put it right and try again.",
     );
   });
 
@@ -166,7 +166,7 @@ describe("what a room's assistant did, in words", () => {
     expect(toolWords(odd)).toEqual({ said: "Used a tool" });
     expect(toolWords({ ...odd, isError: true, result: { message: "Frobnication is off. Ask an admin." } })).toEqual({
       said: "Couldn't use a tool",
-      refusal: "Frobnication is off. Ask an admin.",
+      refusal: "Frobnication is off. Ask the assistant to put it right and try again.",
     });
   });
 
@@ -193,16 +193,80 @@ describe("a refused card's reason", () => {
       "The tracker did not answer in time. Ask the assistant to check whether it went through before trying again.",
     );
     const other: ToolCallData = { id: "o", name: "forge_guide", input: {}, result: { message: "forge_guide refused: no slug." }, isError: true };
-    expect(toolWords(other).refusal).toBe("The tool refused: no slug.");
+    expect(toolWords(other).refusal).toBe("The tool refused: no slug. Ask the assistant to put it right and try again.");
   });
 });
 
 describe("a refusal's reason", () => {
-  it("says what was wrong and what would put it right, never the first sentence alone", () => {
-    expect(refusalReason({ stderr: `${"a".repeat(200)}.` })).toBe(`${"a".repeat(120)}…`);
-    expect(refusalReason({ exitCode: 1, stdout: "", stderr: "" })).toBe("It gave no reason.");
-    expect(refusalReason("The room is archived. Unarchive it and send it again.", "forge")).toBe(
-      "The room is archived. Unarchive it and send it again.",
+  it("says what was wrong, and the person's way out by the refusal's kind", () => {
+    expect(refusalReason({ stderr: `${"a".repeat(200)}.` })).toBe(`${"a".repeat(70)}… ${PUT_IT_RIGHT}`);
+    expect(refusalReason({ exitCode: 1, stdout: "", stderr: "" })).toBe(`It gave no reason. ${PUT_IT_RIGHT}`);
+    expect(refusalReason("`forge issue --set` refused.\n`forge issue -h` lists the fields.", "forge")).toBe(
+      `Its reason is under Technical details. ${PUT_IT_RIGHT}`,
+    );
+  });
+
+  // ISS-1229 r38, judge-103: a refused read of a guide that does not exist showed "No guide named
+  // issue-claiming." alone, because its suggestion opened on a command no remedy wording matched. The
+  // assistant listed the guides next, in the same reply.
+  const guide = (argv: string[], out: { exitCode: number; stdout: string; stderr: string }) => cli(argv, out);
+  const noGuide = guide(["guide", "issue-claiming"], {
+    exitCode: 1,
+    stdout: "",
+    stderr: "No guide named issue-claiming. `forge guide` lists the guides this plugin stands behind.\n",
+  });
+  const listedGuides = guide(["guide"], { exitCode: 0, stdout: "contract\n  this plugin's own\n", stderr: "" });
+
+  it("says the assistant tried another way where it did later in the same reply", () => {
+    expect(toolWords(noGuide, false, [listedGuides])).toEqual({
+      said: "Couldn't read the “issue-claiming” guide",
+      refusal: `No guide named issue-claiming. ${TOOK_ANOTHER_WAY}`,
+    });
+  });
+
+  it("asks the person to have the assistant put it right where it did not", () => {
+    expect(toolWords(noGuide).refusal).toBe(`No guide named issue-claiming. ${PUT_IT_RIGHT}`);
+    const refusedAgain = { ...listedGuides, isError: true, result: { exitCode: 1, stdout: "", stderr: "stopped" } };
+    expect(toolWords(noGuide, false, [refusedAgain]).refusal).toBe(`No guide named issue-claiming. ${PUT_IT_RIGHT}`);
+    const otherAct = cli(["issue", "ISS-1"], { exitCode: 0, stdout: "{}", stderr: "" });
+    expect(toolWords(noGuide, false, [otherAct]).refusal).toBe(`No guide named issue-claiming. ${PUT_IT_RIGHT}`);
+    const stillRunning: ToolCallData = { id: "r", name: "forge", input: { argv: ["guide"] } };
+    expect(toolWords(noGuide, false, [stillRunning]).refusal).toBe(`No guide named issue-claiming. ${PUT_IT_RIGHT}`);
+  });
+
+  // Consult F1 on the round-38 plan: a later success on another target is not the refused work done,
+  // unless the refused call named something that does not exist.
+  it("counts a later call as putting it right only on the same target, or where the refused one named nothing", () => {
+    const tooLarge = guide(["guide", "contract"], { exitCode: 1, stdout: "", stderr: "The guide is too large to print here.\n" });
+    const other = guide(["guide", "dispatch"], { exitCode: 0, stdout: "# dispatch\n", stderr: "" });
+    const same = guide(["guide", "contract"], { exitCode: 0, stdout: "# contract\n", stderr: "" });
+    expect(toolWords(tooLarge, false, [other]).refusal).toBe(`The guide is too large to print here. ${PUT_IT_RIGHT}`);
+    expect(toolWords(tooLarge, false, [other, same]).refusal).toBe(`The guide is too large to print here. ${TOOK_ANOTHER_WAY}`);
+    expect(toolWords(noGuide, false, [guide(["guide", "issue-flow"], { exitCode: 0, stdout: "# flow\n", stderr: "" })]).refusal).toBe(
+      `No guide named issue-claiming. ${TOOK_ANOTHER_WAY}`,
+    );
+    const knowledge = (argv: string[], exitCode: number, stderr = "") => cli(["knowledge", ...argv], { exitCode, stdout: exitCode ? "" : "{}", stderr });
+    const refusedGet = knowledge(["get", "billing"], 1, "The slug is longer than the store keeps.");
+    expect(toolWords(refusedGet, false, [knowledge(["search", "billing"], 0)]).refusal).toMatch(/Ask the assistant/);
+    expect(toolWords(refusedGet, false, [knowledge(["get", "billing"], 0)]).refusal).toBe(`The slug is longer than the store keeps. ${TOOK_ANOTHER_WAY}`);
+  });
+
+  it("chooses the way out by kind, never by how the suggestion is worded", () => {
+    for (const suggestion of ["Run `forge guide` to list them.", "`forge guide` lists them.", "The list is on `forge guide`."]) {
+      expect(refusalReason(`No guide named x. ${suggestion}`, "forge")).toBe(`No guide named x. ${PUT_IT_RIGHT}`);
+      expect(refusalReason(`No guide named x. ${suggestion}`, "forge", true)).toBe(`No guide named x. ${TOOK_ANOTHER_WAY}`);
+    }
+  });
+
+  it("keeps the person's own way out for a key they named, whatever came later", () => {
+    const missing = cli(["issue", "ISS-999"], {
+      exitCode: 1,
+      stdout: "",
+      stderr: "ISS-999 is not on this project's tracker; 1 issue(s) were counted, which is the whole backlog.\nThe keys it does hold are on `forge issue`, one per line.\n",
+    });
+    const listed = cli(["issue"], { exitCode: 0, stdout: "ISS-1 low draft Footer\n\n1 issue(s) over 1 page(s)\n", stderr: "" });
+    expect(toolWords(missing, false, [listed]).refusal).toBe(
+      "ISS-999 is not on this project's tracker. Check the key, or ask the assistant to list this project's issues.",
     );
   });
 
@@ -227,7 +291,7 @@ describe("a refusal's reason", () => {
 
   it("puts no literal backtick on the card, whatever the refusal quotes", () => {
     const quoted = "The body has no `## Outcome` heading. Add the `## Outcome` section and send it again.";
-    expect(refusalReason(quoted, "forge")).toBe("The body has no ## Outcome heading. Add the ## Outcome section and send it again.");
+    expect(refusalReason(quoted, "forge")).toBe(`The body has no ## Outcome heading. ${PUT_IT_RIGHT}`);
     const mcp = "NOT_FOUND: id `ISS-9` is a display key, and this project holds no issue at that number. Nothing was read or written. `forge_issues action=list` prints the keys it does hold under issueId.";
     const line = refusalReason(mcp, "forge_issues");
     expect(line).not.toMatch(/`|action=|issueId|NOT_FOUND/);

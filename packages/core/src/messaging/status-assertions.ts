@@ -9,6 +9,7 @@
  */
 
 import { issueTokenRe } from './issue-tokens.js';
+import { plainQuotes } from './plain-quotes.js';
 
 /** What the tracker is asked about. Only what the tracker actually holds. */
 export type StatusClaim = 'merged' | 'closed';
@@ -198,17 +199,19 @@ export function extractStatusAssertions(
   const seen = new Set<string>();
   for (const { text: clause, asked } of clausesOf(text)) {
     if (asked) continue;
-    if (ABSTAIN.some((re) => re.test(clause))) continue;
-    const hits = referencesIn(clause, prefixes);
+    // Read with every apostrophe made plain, so "isn’t" denies as "isn't" does; quoted as written.
+    const plain = plainQuotes(clause);
+    if (ABSTAIN.some((re) => re.test(plain))) continue;
+    const hits = referencesIn(plain, prefixes);
     if (hits.length === 0) continue;
     for (const [wordRe, claim] of STATUS_WORDS) {
-      for (const m of clause.matchAll(wordRe)) {
+      for (const m of plain.matchAll(wordRe)) {
         const at = m.index ?? 0;
-        if (inCompound(clause, at, (m[0] as string).length)) continue;
-        if (!isPredicate(clause.slice(at + (m[0] as string).length))) continue;
+        if (inCompound(plain, at, (m[0] as string).length)) continue;
+        if (!isPredicate(plain.slice(at + (m[0] as string).length))) continue;
         const hit = bind(hits, at);
         if (hit === null) continue;
-        const gap = wordsBetween(clause, hit.at, at);
+        const gap = wordsBetween(plain, hit.at, at);
         const window = hit.at < at ? MAX_WORDS_BEFORE + 1 : MAX_WORDS_FORWARD + 1;
         if (gap > window) continue;
         const seq = hit.seq;

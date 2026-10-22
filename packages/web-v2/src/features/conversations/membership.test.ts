@@ -156,8 +156,28 @@ describe("composerRefusal's way out", () => {
     expect(composerRefusal({ scopeProjects: two, participants: mute, canChangeMembership: true })?.wayOut).toBeNull();
     const oneAnswers = [agentOn("p1", true), agentOn("p2", false)];
     expect(composerRefusal({ scopeProjects: two, participants: oneAnswers, canChangeMembership: true })?.wayOut).toBe(
-      "Take one of its agents out, and the room can be spoken in again.",
+      "Take @p2 out, and the room can be spoken in again.",
     );
+  });
+  // r38, judge-103: in a room whose one agent lost its role, "take one of its agents out" let a person take
+  // the agent that answers out, which leaves a room nobody answers; the one choice that works is named.
+  it("names the agent to take out where only one choice works", () => {
+    const oneAnswers = [agentOn("p1", false), agentOn("p2", true)];
+    expect(composerRefusal({ scopeProjects: two, participants: oneAnswers, canChangeMembership: true })?.wayOut).toBe(
+      "Take @p1 out, and the room can be spoken in again.",
+    );
+    expect(composerRefusal({ scopeProjects: two, participants: oneAnswers, canChangeMembership: false })?.wayOut).toBe(
+      "Somebody who can change who is in this room can take @p1 out, and it can be spoken in again.",
+    );
+    expect(composerRefusal({ scopeProjects: two, participants: answering, canChangeMembership: true })?.wayOut).not.toMatch(/@/);
+  });
+  it("points an empty room's reader to the bottom of the room where the bar has taken the box's place", () => {
+    const room = { scopeProjects: two, participants: [agentOn("p1", false), agentOn("p2", true)], canChangeMembership: true };
+    expect(emptyRoomState(room, { canPost: true })).toEqual({
+      title: "Nothing can be sent here",
+      message: "The reason is at the bottom of this room, where the message box would be.",
+    });
+    expect(JSON.stringify(emptyRoomState(room, { canPost: true }))).not.toMatch(/above the message box/);
   });
   it("offers no way out where one agent out still leaves the room about two projects", () => {
     const three = [...two, { id: "p3", name: "Books", slug: "books" }];

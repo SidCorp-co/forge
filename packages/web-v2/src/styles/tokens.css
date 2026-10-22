@@ -33,6 +33,8 @@
   --ink-700: #3A404B;
   --ink-600: #5A616E;
   --ink-500: #767D8A;
+  /* Secondary text: 4.5:1 or more on every surface below, down to --paper-200 (ISS-1229 r38). */
+  --ink-550: #636A77;
   --ink-400: #9AA0AB;
 
   /* ===== FLAME — primary brand / action ===== */
@@ -77,7 +79,7 @@
 
   --fg-default:    var(--ink-900);
   --fg-muted:      var(--ink-600);
-  --fg-subtle:     var(--ink-500);
+  --fg-subtle:     var(--ink-550);
   --fg-disabled:   var(--ink-400);
   --fg-on-accent:  #FFFFFF;
 
@@ -168,7 +170,7 @@
    regardless of specificity — the reason `@layer base` exists in globals.css.
    ISS-1033 shipped the stale row wearing exactly those two utilities and they
    were swallowed: measured on beta at d0389485c, a row that had not moved in 2d
-   computed to rgb(118,125,138) at weight 500, pixel-identical to a row that
+   computed to the --fg-subtle grey at weight 500, pixel-identical to a row that
    moved 2h ago. This rule sits after `.fg-caption`, same specificity, so source
    order decides and the mark survives. */
 .fg-caption-stale { font-weight: 600; color: var(--amber-600); }

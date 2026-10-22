@@ -116,6 +116,8 @@ export function unansweringAgentLines(
 
 export const WHY_ABOVE_THE_BOX = "The reason is above the message box.";
 export const WHY_IN_ABOUT = "The reason is in this room's About line, at the top.";
+/** Where the bar saying why nothing can be sent has taken the message box's place (r38, judge-103). */
+export const WHY_AT_THE_BOTTOM = "The reason is at the bottom of this room, where the message box would be.";
 
 /** The single home of the reasons: the box for a reader who may post there, else About (r36, judge-97). */
 export function whereWhyIsSaid(
@@ -211,7 +213,7 @@ export function emptyRoomState(
     };
   }
   if (readOnly) return { title: "Nothing has been said here yet", message: readOnly };
-  if (composerRefusal(room, reader)) return { title: "Nothing can be sent here", message: WHY_ABOVE_THE_BOX };
+  if (composerRefusal(room, reader)) return { title: "Nothing can be sent here", message: WHY_AT_THE_BOTTOM };
   return null;
 }
 
@@ -419,10 +421,10 @@ export function removalHeld(
   return null;
 }
 
-/** Whether one agent out leaves a room about one project with an agent that can answer (r37). */
-function speakableAfterOneOut(room: Partial<Pick<ConversationMembership, "participants">>): boolean {
+/** The agents whose taking out leaves a room about one project with an agent that can answer (r37). */
+function agentsToTakeOut(room: Partial<Pick<ConversationMembership, "participants">>) {
   const agents = agentsOf(room);
-  return agents.some((out) => {
+  return agents.filter((out) => {
     const left = agents.filter((p) => p.id !== out.id);
     return new Set(left.map((p) => p.projectId)).size === 1 && left.some((p) => p.reachable !== false);
   });
@@ -439,13 +441,15 @@ export function composerRefusal(
 ): { reason: string; wayOut: string | null } | null {
   if (!room.scopeProjects || room.scopeProjects.length <= 1) return null;
   const reason = `This room is about ${list(room.scopeProjects)}, and a message is answered under exactly one project.`;
-  if (!reader.canPost || !speakableAfterOneOut(room)) return { reason, wayOut: null };
+  const outs = agentsToTakeOut(room);
+  if (!reader.canPost || outs.length === 0) return { reason, wayOut: null };
+  const which = outs.length === 1 ? memberName(outs[0] as ConversationParticipant) : "one of its agents";
   return {
     reason,
     wayOut:
       room.canChangeMembership === true
-        ? "Take one of its agents out, and the room can be spoken in again."
-        : "Somebody who can change who is in this room can take one of its agents out, and it can be spoken in again.",
+        ? `Take ${which} out, and the room can be spoken in again.`
+        : `Somebody who can change who is in this room can take ${which} out, and it can be spoken in again.`,
   };
 }
 
