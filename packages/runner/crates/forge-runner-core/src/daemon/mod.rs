@@ -32,6 +32,7 @@ pub mod job_asked;
 pub mod job_exit;
 pub mod job_unheard;
 pub mod master;
+pub mod master_ask;
 pub mod master_build;
 pub mod master_exit;
 pub mod master_handed;
