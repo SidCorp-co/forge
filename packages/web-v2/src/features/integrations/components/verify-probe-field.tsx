@@ -196,8 +196,12 @@ export function BindingVerifyProbeField({
   /** Told whenever the rows start or stop differing from what is stored. */
   onDirtyChange?: (dirty: boolean) => void;
 }) {
-  const update = useUpdateProviderIntegration(projectId);
+  // Both refusals are said in the field or in the question that asked (judge-102, ISS-1421 r25).
+  const update = useUpdateProviderIntegration(projectId, { failureSaidHere: true });
   const [failure, setFailure] = useState<string | null>(null);
+  // Save probe is disabled while it sends and the rows are drawn afresh when it lands, so focus fell
+  // to the page; it returns to the control the next act starts from.
+  const [refocus, setRefocus] = useState<{ to: "save" | "url"; from: string } | null>(null);
   const [removeFailure, setRemoveFailure] = useState<string | null>(null);
   const sectionRef = useRef<HTMLElement>(null);
   // One write per press: `isPending` reaches the buttons a render later than a second click can.
@@ -217,10 +221,31 @@ export function BindingVerifyProbeField({
     return () => window.clearTimeout(timer);
   }, [focus, decides]);
 
+  const effective = binding.config?.[VERIFY_KEY];
+  const drawn = JSON.stringify(effective ?? null);
+  // The write lands before the stored value is read back and redrawn, so focus is placed again once
+  // it is, and the wait ends there or at the person's next act, whichever is first.
+  useEffect(() => {
+    if (!refocus) return;
+    sectionRef.current
+      ?.querySelector<HTMLElement>(refocus.to === "save" ? "button[data-probe-save]" : "input[data-probe-url]")
+      ?.focus();
+    if (drawn !== refocus.from) {
+      setRefocus(null);
+      return;
+    }
+    const done = () => setRefocus(null);
+    document.addEventListener("pointerdown", done, { once: true });
+    document.addEventListener("keydown", done, { once: true });
+    return () => {
+      document.removeEventListener("pointerdown", done);
+      document.removeEventListener("keydown", done);
+    };
+  }, [refocus, drawn]);
+
   if (!decides) return null;
 
   const own = binding.bindingConfig?.[VERIFY_KEY];
-  const effective = binding.config?.[VERIFY_KEY];
   const declared = declaredProbes(effective);
   const ownDeclared = own !== undefined && own !== null;
   const present = effective !== undefined && effective !== null;
@@ -234,7 +259,10 @@ export function BindingVerifyProbeField({
     update.mutate(
       { id: binding.id, body: { config: { [VERIFY_KEY]: verify } } },
       {
-        onSuccess: () => then?.(),
+        onSuccess: () => {
+          then?.();
+          setRefocus({ to: verify === null ? "url" : "save", from: drawn });
+        },
         onError: (err) => (verify === null ? setRemoveFailure : setFailure)(formatApiError(err)),
         onSettled: () => {
           inFlight.current = false;
@@ -329,7 +357,7 @@ function RemoveAllConfirm({
         <>
           {`This removes ${what}. ${afterRemovalSentence(otherDeclares)}`}
           {typeof stableReads === "number" &&
-            ` The stored stableReads (${stableReads}) is removed with them: it only applies while a probe is declared.`}
+            ` The rule that a release believes a probe only after ${stableReads} matching readings in a row goes with them, as it applies only while a probe is declared.`}
         </>
       }
       confirmLabel={REMOVE_ALL_PROBES}
@@ -483,7 +511,7 @@ function Editor({
         </p>
       )}
       <div className="flex flex-wrap items-center gap-2">
-        <Button variant="secondary" size="sm" loading={busy} disabled={busy} onClick={save}>
+        <Button variant="secondary" size="sm" loading={busy} disabled={busy} onClick={save} data-probe-save="">
           Save probe
         </Button>
         {rows.length < MAX_PROBES && (

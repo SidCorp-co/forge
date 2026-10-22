@@ -17,6 +17,8 @@ import type { BindingSummary } from "../types";
 expect.extend(matchers);
 
 const updateBinding = vi.fn();
+/** What the field asked of the update hook beyond the project. */
+let updateOptions: unknown;
 /** The project's bindings as the list read answers them; `undefined` is a read not back yet. */
 let listed: BindingSummary[] | undefined;
 
@@ -24,7 +26,10 @@ vi.mock("../hooks", async (importActual) => {
 	const actual = await importActual<typeof import("../hooks")>();
 	return {
 		...actual,
-		useUpdateProviderIntegration: () => ({ mutate: updateBinding, isPending: false }),
+		useUpdateProviderIntegration: (_projectId: string, options?: unknown) => {
+			updateOptions = options;
+			return { mutate: updateBinding, isPending: false };
+		},
 		useIntegrationsList: () => ({ data: listed ? { items: listed } : undefined }),
 	};
 });
@@ -283,10 +288,20 @@ describe("removing every probe asks once, and says what goes", () => {
 		expect(dialog()).not.toHaveTextContent("closes unverified");
 	});
 
-	it("names a stored stableReads as removed with them", () => {
+	// ISS-1421 r25, judge-102 (c): the question named the stored key rather than what it does.
+	it("says what a stored stableReads does, in words, as removed with them", () => {
 		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={declaring({ ...TWO, stableReads: 3 })} canEdit />);
 		fireEvent.click(screen.getByRole("button", { name: "Remove all probes" }));
-		expect(dialog()).toHaveTextContent("The stored stableReads (3) is removed with them");
+		expect(dialog()).toHaveTextContent(
+			"The rule that a release believes a probe only after 3 matching readings in a row goes with them, as it applies only while a probe is declared.",
+		);
+		expect(dialog()).not.toHaveTextContent("stableReads");
+	});
+
+	// ISS-1421 r25, judge-102 (d): a toast repeated the refusal the question shows, over its title at 390.
+	it("asks the update for no toast, since the field and the question show a refusal themselves", () => {
+		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={declaring(TWO)} canEdit />);
+		expect(updateOptions).toEqual({ failureSaidHere: true });
 	});
 
 	it("sends nothing on Keep them, and leaves an unsaved edit as it was", () => {
@@ -483,6 +498,44 @@ describe("focus after a row is removed", () => {
 		fireEvent.click(screen.getByRole("button", { name: "Remove probe 3" }));
 		await waitFor(() => expect(screen.getByLabelText("Probe 2 URL")).toHaveFocus());
 		expect(screen.getByLabelText("Probe 2 URL")).toHaveValue("https://b.example.com/v");
+	});
+});
+
+// ISS-1421 r25, judge-102 (b): after Save probe and after Remove all probes focus fell to the page.
+describe("focus after a save or a removal lands", () => {
+	const TWO = { probes: [PROBE, { url: "https://www.example.com/build-info" }] };
+	const dialog = () => screen.getAllByRole("dialog").at(-1) as HTMLElement;
+	it("returns to Save probe once a save lands, the rows drawn afresh from what was stored", async () => {
+		const { rerender } = draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={declaring(TWO)} canEdit />);
+		fireEvent.change(screen.getByLabelText("Probe 1 URL"), { target: { value: "https://api.example.com/v3" } });
+		fireEvent.click(screen.getByRole("button", { name: "Save probe" }));
+		(document.activeElement as HTMLElement | null)?.blur();
+		const stored = declaring({ probes: [{ ...PROBE, url: "https://api.example.com/v3" }, TWO.probes[1]] });
+		act(() => updateBinding.mock.calls[0]?.[1]?.onSuccess?.());
+		rerender(
+			<QueryClientProvider client={new QueryClient()}>
+				<LeaveGuardProvider>
+					<BindingVerifyProbeField projectId={PROJECT_ID} binding={stored} canEdit />
+				</LeaveGuardProvider>
+			</QueryClientProvider>,
+		);
+		await waitFor(() => expect(screen.getByRole("button", { name: "Save probe" })).toHaveFocus());
+	});
+
+	it("lands in the first probe's URL once every probe is removed", async () => {
+		const { rerender } = draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={declaring(TWO)} canEdit />);
+		fireEvent.click(screen.getByRole("button", { name: "Remove all probes" }));
+		fireEvent.click(within(dialog()).getByRole("button", { name: "Remove all probes" }));
+		act(() => updateBinding.mock.calls[0]?.[1]?.onSuccess?.());
+		rerender(
+			<QueryClientProvider client={new QueryClient()}>
+				<LeaveGuardProvider>
+					<BindingVerifyProbeField projectId={PROJECT_ID} binding={binding()} canEdit />
+				</LeaveGuardProvider>
+			</QueryClientProvider>,
+		);
+		await waitFor(() => expect(screen.getByLabelText("Probe 1 URL")).toHaveFocus());
+		expect(document.body).not.toHaveFocus();
 	});
 });
 
