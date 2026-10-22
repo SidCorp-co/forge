@@ -64,8 +64,11 @@ describe('on confusion the agent stops, and the lesson is held until a person de
       opens: { kind: 'lesson', key: `L-${n}` },
       recommended: { answerId: 'edit', by: 'asker' },
     });
-    expect(asked?.question).toContain('The ward sister signs.');
-    expect(asked?.question).toContain(`(L-${other}): The consultant signs.`);
+    // the question names the choice; both sides are said once, in the why (REQ-48 r3 BC-14)
+    expect(asked?.question).toBe(`Keep, edit or retire L-${n}?`);
+    const why = ((asked as Doc).recommended as Doc).why as string;
+    expect(why).toContain(`L-${n} says "The ward sister signs"`);
+    expect(why).toContain(`L-${other} says "The consultant signs"`);
     expect(((asked as Doc).answers as Doc[]).map((a) => [a.id, a.recommended])).toEqual([
       ['keep', false],
       ['edit', true],
