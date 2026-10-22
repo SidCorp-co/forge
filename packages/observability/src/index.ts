@@ -86,9 +86,35 @@ const GOOGLE_ACCESS_TOKEN_PATTERN = /ya29\.[A-Za-z0-9_\-.]+/g;
 const JWT_PATTERN =
 	/eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]*(?:\.[A-Za-z0-9_-]*)?/g;
 
-/** Webhook signing secrets, GitHub tokens and model-provider keys, each by its own prefix. */
-const PREFIXED_TOKEN_PATTERN =
-	/whsec_[A-Za-z0-9+/=_-]{8,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|sk-(?:ant|proj)-[A-Za-z0-9_-]{16,}|sk-[A-Za-z0-9]{20,}[A-Za-z0-9_-]*/g;
+/**
+ * A model-provider key's body after `sk-`: a named family (Anthropic, an OpenAI project, service
+ * account or admin key) or a plain run of letters and digits, each at least `min` long.
+ */
+const skKeyBody = (named: number, plain: number) =>
+	`sk-(?:(?:ant|proj|svcacct|admin)-[A-Za-z0-9_-]{${named},}|[A-Za-z0-9]{${plain},}[A-Za-z0-9_-]*)`;
+
+/**
+ * Webhook signing secrets, GitHub tokens and model-provider keys, each by its own prefix.
+ *
+ * ISS-614: `sk-` is a key where it starts a token, not where it ends a word: `task-<hex>`,
+ * `desk-…` and `risk-…` are record ids. Glued to the letters or digits before it, `sk-` is read
+ * as a key only at 48 characters or more, the shortest real OpenAI key body, which no 24-hex
+ * record id, 32-hex uuid or 40-hex sha reaches.
+ */
+const PREFIXED_TOKEN_PATTERN = new RegExp(
+	[
+		"whsec_[A-Za-z0-9+/=_-]{8,}",
+		"gh[pousr]_[A-Za-z0-9]{20,}",
+		"github_pat_[A-Za-z0-9_]{20,}",
+		`(?<![A-Za-z0-9])${skKeyBody(16, 20)}`,
+		skKeyBody(48, 48),
+	].join("|"),
+	"g",
+);
+
+/** The public scheme a provider key opens with, which a refusal may name without the key. */
+const PROVIDER_KEY_LEAD =
+	/^(?:whsec_|gh[pousr]_|github_pat_|sk-(?:(?:ant|proj|svcacct|admin)-)?)/;
 
 /**
  * `Bearer <token>`: the scheme stays, the credential goes. A token is told from a word by its shape:
@@ -106,7 +132,7 @@ const URL_PASSWORD_PATTERN = /\b([a-z][a-z0-9+.-]*:\/\/[^\s:/@]*:)[^\s@/]+@/gi;
 /** Shapes that say a secret is there though no value follows to redact: a password label, a
  *  private-key header without its closing dashes, a connection URL with an empty password. */
 const SECRET_LABEL_PATTERN =
-	/password\s*[:=]|-----BEGIN [A-Z ]*PRIVATE KEY|postgres(?:ql)?:\/\/\S*:\S*@/i;
+	/password\s*[:=]|-----BEGIN [A-Z ]*PRIVATE KEY|postgres(?:ql)?:\/\/\S*:\S*@/gi;
 
 const ENV_SECRET_ASSIGNMENT_PATTERN =
 	/^(\s*(?:export\s+)?(?:[A-Z0-9]+_)*(?:PASSWORD|SECRET|TOKEN|KEY|PASS|PEPPER|DSN|CREDENTIALS)(?:_[A-Z0-9]+)*)\s*=\s*\S.*$/;
@@ -272,10 +298,131 @@ export function scrubSecretsDeep<T>(value: T, knownSecrets: readonly string[] = 
 	return walk(value) as T;
 }
 
+/** What a span was read as, for a refusal to name. */
+export type SecretShape =
+	| "private key"
+	| "access token"
+	| "provider key"
+	| "bearer token"
+	| "connection password"
+	| "credential field"
+	| "secret assignment"
+	| "secret label";
+
+/** A run of `text` the detector reads as secret, by UTF-16 offset as JavaScript indexes a string. */
+export interface SecretSpan {
+	/** The offset of its first character. */
+	readonly start: number;
+	/** The offset one past its last character. */
+	readonly end: number;
+	readonly shape: SecretShape;
+	/** The public scheme it opens with (`sk-proj-`, `ghp_`, `eyJ`), never any of its secret part; `""` where its shape has none. */
+	readonly lead: string;
+}
+
+interface SpanRule {
+	readonly shape: SecretShape;
+	readonly pattern: RegExp;
+	/** Characters at the match's head the scrubber keeps (a label, a scheme): outside the span. */
+	readonly kept?: (m: RegExpExecArray) => number;
+	/** Characters at its tail the scrubber keeps. */
+	readonly keptTail?: number;
+	readonly lead?: RegExp;
+}
+
+const PEM_LEAD = /^-----BEGIN (?:[A-Z]{1,12} ){0,3}PRIVATE KEY-----/;
+const group1 = (m: RegExpExecArray) => m[1]?.length ?? 0;
+
+/** Read over the whole text, as the scrubber reads them before it splits it into lines. */
+const TEXT_RULES: readonly SpanRule[] = [
+	{ shape: "private key", pattern: PEM_PRIVATE_KEY_PATTERN, lead: PEM_LEAD },
+	{ shape: "private key", pattern: PEM_PRIVATE_KEY_HEAD_PATTERN, lead: PEM_LEAD },
+];
+
+/** Read line by line, each the pattern `scrubLogText` replaces by, keeping what it keeps. */
+const LINE_RULES: readonly SpanRule[] = [
+	{ shape: "access token", pattern: URL_TOKEN_PATTERN, kept: group1 },
+	{ shape: "access token", pattern: PAT_STRING_PATTERN, lead: /^forge_pat_[a-z]+_/ },
+	{ shape: "access token", pattern: SHARE_TOKEN_STRING_PATTERN, lead: /^forge_share_/ },
+	{ shape: "access token", pattern: MCP_OAUTH_SECRET_PATTERN, lead: /^forge_mcp_[a-z]+_/ },
+	{ shape: "access token", pattern: WIDGET_TOKEN_PATTERN, lead: /^fw_[a-z]+_/ },
+	{ shape: "access token", pattern: GOOGLE_ACCESS_TOKEN_PATTERN, lead: /^ya29\./ },
+	{ shape: "access token", pattern: JWT_PATTERN, lead: /^eyJ/ },
+	{ shape: "provider key", pattern: PREFIXED_TOKEN_PATTERN, lead: PROVIDER_KEY_LEAD },
+	{ shape: "bearer token", pattern: BEARER_PATTERN, kept: group1 },
+	{ shape: "connection password", pattern: URL_PASSWORD_PATTERN, kept: group1, keptTail: 1 },
+	{
+		shape: "credential field",
+		pattern: HEADER_RE,
+		kept: (m) => (m[1]?.length ?? 0) + (m[2]?.length ?? 0),
+	},
+	...BODY_RES.map((pattern): SpanRule => ({ shape: "credential field", pattern, kept: group1 })),
+	{
+		shape: "secret assignment",
+		pattern: new RegExp(ENV_SECRET_ASSIGNMENT_PATTERN.source, "g"),
+		kept: (m) => {
+			const head = group1(m);
+			return head + (/^\s*=\s*/.exec(m[0].slice(head))?.[0].length ?? 0);
+		},
+	},
+];
+
+const LABEL_RULE: SpanRule = {
+	shape: "secret label",
+	pattern: SECRET_LABEL_PATTERN,
+	lead: /^(?:password\s*[:=]|-----BEGIN [A-Z ]*PRIVATE KEY|postgres(?:ql)?:\/\/)/i,
+};
+
+function spansOf(text: string, offset: number, rules: readonly SpanRule[]): SecretSpan[] {
+	const out: SecretSpan[] = [];
+	for (const rule of rules) {
+		for (const m of text.matchAll(rule.pattern)) {
+			const start = m.index + (rule.kept?.(m) ?? 0);
+			const end = m.index + m[0].length - (rule.keptTail ?? 0);
+			const value = text.slice(start, end);
+			// what the scrubber already redacted is not a secret it would redact again
+			if (value === "" || value === FILTERED) continue;
+			out.push({
+				start: offset + start,
+				end: offset + end,
+				shape: rule.shape,
+				lead: rule.lead?.exec(value)?.[0] ?? "",
+			});
+		}
+	}
+	return out;
+}
+
+/**
+ * Every run of `text` the detector reads as secret, in order, a span inside another left out. The
+ * patterns are those `scrubLogText` redacts by, so it names a span wherever the scrubber would change
+ * the text. A label whose value was cut off (`password:` with nothing after it) is a span of its own
+ * where no value span covers it.
+ */
+export function secretSpans(text: string): SecretSpan[] {
+	const values = spansOf(text, 0, TEXT_RULES);
+	let offset = 0;
+	for (const line of text.split("\n")) {
+		values.push(...spansOf(line, offset, LINE_RULES));
+		offset += line.length + 1;
+	}
+	const labels = spansOf(text, 0, [LABEL_RULE]).filter(
+		(l) => !values.some((v) => v.start < l.end && l.start < v.end),
+	);
+	const ordered = [...values, ...labels].sort((a, b) => a.start - b.start || b.end - a.end);
+	const out: SecretSpan[] = [];
+	for (const span of ordered) {
+		const last = out[out.length - 1];
+		if (last && span.end <= last.end) continue;
+		out.push(span);
+	}
+	return out;
+}
+
 /** Whether `text` carries anything the scrubber would redact, or a label that says a secret is
  *  there with its value cut off. The one detector a content check refuses by. */
 export function containsSecret(text: string): boolean {
-	return scrubLogText(text) !== text || SECRET_LABEL_PATTERN.test(text);
+	return secretSpans(text).length > 0;
 }
 
 // a log record is the caller's own object, so it is copied rather than mutated; a class

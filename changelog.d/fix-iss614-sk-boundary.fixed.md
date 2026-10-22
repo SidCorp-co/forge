@@ -1,0 +1,1 @@
+**Record ids such as `task-<hex>` are no longer read as API keys.** `sk-` is a key only where it starts a token; a `VERDICT_SECRET` refusal now names the offset, length and masked prefix of what it read (ISS-614).

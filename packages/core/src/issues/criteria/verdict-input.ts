@@ -9,7 +9,7 @@
  *   a runtime is a whole object id               VERDICT_RUNTIME_NOT_FULL
  *   a design is `<flow or id> rev <n>`           VERDICT_DESIGN_SHAPE
  *   a contract is `<project>/<contract>@<version>`  VERDICT_CONTRACT_SHAPE
- *   its reason and evidence carry no secret      VERDICT_SECRET
+ *   its reason and evidence carry no secret      VERDICT_SECRET (naming the span read as one)
  *
  * A storefront draft names every workflow draft its criterion rests on, each workflow once, and an
  * environment key (VERDICT_STOREFRONT_DRAFT_SHAPE, at the part that is wrong).
@@ -27,7 +27,7 @@ import {
   STOREFRONT_WORKFLOW_ID,
   type StorefrontDraftPart,
 } from '@forge/contracts/verdict-identity';
-import { containsSecret } from '@forge/observability';
+import { type SecretSpan, secretSpans } from '@forge/observability';
 import { verdictValues } from '../../db/schema-issue-criteria.js';
 import {
   type CriterionBlock,
@@ -237,9 +237,27 @@ function identityFault(criterion: number, identity: VerdictIdentity): VerdictRef
   }
 }
 
+/** Characters of context shown before a refused span: enough to show where the read began. */
+const SPAN_CONTEXT = 12;
+
+/**
+ * Where in `text` the detector read a secret, named so the writer can find it and the secret is not
+ * sent back: the offset and length are exact, the context before it is text the detector did not
+ * read as secret, and of the span itself only its public scheme (`sk-proj-`, `ghp_`) is shown.
+ */
+function spanNamed(text: string, span: SecretSpan): string {
+  const lineStart = text.lastIndexOf('\n', span.start - 1) + 1;
+  const before = text.slice(Math.max(lineStart, span.start - SPAN_CONTEXT), span.start);
+  const masked = `${span.lead}***`;
+  const article = /^[aeiou]/.test(span.shape) ? 'an' : 'a';
+  const at = `${article} ${span.shape} at offset ${span.start}, ${span.end - span.start} characters`;
+  return before.trim() === '' ? `${at}: \`${masked}\`` : `${at}: \`${masked}\` after \`${before}\``;
+}
+
 /**
  * A verdict's words are stored and shown as written, so a secret in them is refused by the one
- * detector every screen asks (`@forge/observability:containsSecret`), as a comment's is.
+ * detector every screen asks (`@forge/observability:secretSpans`, which `containsSecret` reads),
+ * naming the span it read so a misread id can be told from a key (ISS-614).
  */
 function secretFault(draft: VerdictDraft): VerdictRefusal | null {
   const fields: [string, string, string | null][] = [
@@ -250,10 +268,15 @@ function secretFault(draft: VerdictDraft): VerdictRefusal | null {
       e,
     ]),
   ];
-  const hit = fields.find(([, , text]) => text !== null && containsSecret(text));
-  if (!hit) return null;
-  const detail = `criterion ${draft.criterion}'s ${hit[1]} carries a token, key or connection string. Name the credential entry instead.`;
-  return { ...refuse('VERDICT_SECRET', draft.criterion, detail), path: hit[0] };
+  for (const [path, name, text] of fields) {
+    if (text === null) continue;
+    const [first, ...more] = secretSpans(text);
+    if (!first) continue;
+    const others = more.length === 0 ? '' : ` (and ${more.length} more)`;
+    const detail = `criterion ${draft.criterion}'s ${name} carries ${spanNamed(text, first)}${others}. Name the credential entry instead.`;
+    return { ...refuse('VERDICT_SECRET', draft.criterion, detail), path };
+  }
+  return null;
 }
 
 /** Why this verdict cannot be written, or null where it can. */
