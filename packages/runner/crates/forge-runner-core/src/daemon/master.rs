@@ -30,6 +30,7 @@ use crate::daemon::dispatch::resolve_repo;
 use crate::daemon::held_report;
 use crate::daemon::job_exit;
 use crate::daemon::job_unheard;
+use crate::daemon::master_ask;
 use crate::daemon::master_build::{self, Judged};
 use crate::daemon::master_exit::{self, Holding, Verdict};
 use crate::daemon::master_handed;
@@ -190,6 +191,9 @@ struct Registry {
     /// identically by number. `None` once a sweep finds none, so a fleet that
     /// goes deaf a second time is news again.
     deaf_said: Option<String>,
+    /// How long each project's admissible work has stood unasked, and the last
+    /// error its admissible read failed on (ISS-1306).
+    ask: master_ask::AskClocks,
     /// Per project, a session whose capability this box minted for a pane it
     /// then failed to place AND failed to withdraw.
     ///
@@ -753,6 +757,12 @@ fn work_digest(admissible: &[AdmissibleIssue]) -> u64 {
 /// (ISS-1248). The window binds it even when the work changed: every turn it is
 /// sent is refused until capacity returns, and the set a held master is asked
 /// over can swing every sweep while its own cut-short runs come and go.
+///
+/// A master whose turn ran and ended over unchanged work is asked again at
+/// [`master_ask::ASK_FLOOR`] and not sooner: without the floor,
+/// one eligible issue its master passed over once was not asked about for
+/// hours (ISS-1306). A master still working, or stopped on a question, is not
+/// typed into by it.
 fn nudge_due(
     prev: Option<Nudge>,
     digest: u64,
@@ -761,10 +771,13 @@ fn nudge_due(
     held: bool,
 ) -> bool {
     let window_passed = |last: Nudge| now.saturating_duration_since(last.at) >= NUDGE_REFRESH;
+    let floor_passed =
+        |last: Nudge| now.saturating_duration_since(last.at) >= master_ask::ASK_FLOOR;
     match prev {
         None => true,
         Some(last) if held => window_passed(last),
         Some(last) if last.digest != digest => true,
+        Some(last) if since == SinceNudge::Ran => floor_passed(last),
         Some(last) => window_passed(last) && retry_owed(since),
     }
 }
@@ -1025,6 +1038,47 @@ impl Masters {
         let news = digest.is_some() && reg.deaf_said != digest;
         reg.deaf_said = digest;
         news
+    }
+
+    /// This project's master was just asked: a nudge reached its pane, or a
+    /// placement's brief did.
+    fn note_asked(&self, project_id: &str) {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        reg.ask.asked(project_id, Instant::now());
+    }
+
+    /// One sweep's read of whether this project's work stands unasked, and how
+    /// long, where that is worth a line now.
+    fn note_unasked(&self, project_id: &str, work: bool, working: bool) -> Option<Duration> {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        reg.ask.note(project_id, work, working, Instant::now())
+    }
+
+    /// The admissible set this sweep read, or `None` where the read failed.
+    ///
+    /// A failed read is not an empty set: read as one, it cleared the project's
+    /// work, let an idle master be retired over work it still had, and said
+    /// nothing (ISS-1306). The failure is said once per distinct error.
+    fn read_work(
+        &self,
+        project_id: &str,
+        slug: &str,
+        read: crate::error::Result<Vec<AdmissibleIssue>>,
+    ) -> Option<Vec<AdmissibleIssue>> {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        match read {
+            Ok(items) => {
+                reg.ask.read_ok(project_id);
+                Some(items)
+            }
+            Err(e) => {
+                let error = e.to_string();
+                if reg.ask.read_failed(project_id, &error) {
+                    tracing::warn!("{}", master_ask::unread_line(slug, &error));
+                }
+                None
+            }
+        }
     }
 
     fn claim_nudge(
@@ -1296,11 +1350,22 @@ impl Wake {
         match self {
             Wake::Core {
                 project_id: Some(p),
-            } => format!("core, project {p}"),
+            } => format!("core event for project {p}"),
             Wake::Core { project_id: None } => "core".into(),
             Wake::Reconnect => "websocket reconnected — catch-up read".into(),
         }
     }
+}
+
+/// The journal line for a wake. The project a core wake names is the one whose
+/// event triggered it; the sweep it starts visits every project this box
+/// serves, so a count of these lines by project measures core's events, not
+/// which projects were swept (ISS-1306).
+fn wake_line(w: &Wake) -> String {
+    format!(
+        "[master] wake ({}) — sweeping every project this box serves",
+        w.describe()
+    )
 }
 
 /// A sender for [`Wake`], sized so a burst coalesces instead of queueing.
@@ -1375,7 +1440,7 @@ pub async fn run(
                 if since < WAKE_FLOOR {
                     tokio::time::sleep(WAKE_FLOOR - since).await;
                 }
-                tracing::info!("[master] wake ({}) — sweeping now", w.describe());
+                tracing::info!("{}", wake_line(&w));
                 delay = sweep(&client, &cfg, &shared.borrowed(), &adopted, &mut ledger, tokens.as_ref(), &mut account_limit_said)
                     .await;
                 last_sweep = Instant::now();
@@ -1561,9 +1626,30 @@ async fn sweep(
         let pane_name = terminal::session_name(terminal::MASTER_PREFIX, &runner.slug);
         let lifted_episode = standing.as_ref().and_then(lifted_from);
 
-        let admissible = admissible::admissible(client, Some(&runner.project_id))
-            .await
-            .unwrap_or_default();
+        let Some(admissible) = masters.read_work(
+            &runner.project_id,
+            &runner.slug,
+            admissible::admissible(client, Some(&runner.project_id)).await,
+        ) else {
+            continue;
+        };
+        let working = masters
+            .get(&runner.project_id)
+            .and_then(|(session_id, _)| activity.get(&session_id))
+            .is_some_and(|a| {
+                matches!(
+                    a.doing(),
+                    agent_activity::Doing::Working | agent_activity::Doing::AwaitingChildren
+                )
+            });
+        if let Some(waited) =
+            masters.note_unasked(&runner.project_id, !admissible.is_empty(), working)
+        {
+            tracing::warn!(
+                "{}",
+                master_ask::unasked_line(&runner.slug, &pane_name, admissible.len(), waited)
+            );
+        }
         let placement = placement_for(&admissible);
         if placement == Placement::AdoptOnly {
             if retire_if_idle(
@@ -1850,8 +1936,10 @@ async fn sweep(
             reported.as_ref(),
             held.is_some(),
         );
-        if types_nudge(pane, claimed) {
-            nudge_master(masters, &runner.project_id, &resolved.slug, held.as_ref()).await;
+        if types_nudge(pane, claimed)
+            && nudge_master(masters, &runner.project_id, &resolved.slug, held.as_ref()).await
+        {
+            masters.note_asked(&runner.project_id);
         }
     }
 
@@ -3937,6 +4025,9 @@ surface it reads",
             let carried = carry.lifted.is_some();
             let order = std::sync::atomic::Ordering::Relaxed;
             carry.stood_down_told.store(carried, order);
+            // The brief is this placement's nudge, so it is what asks the
+            // master; one that never landed asked nothing (ISS-1306).
+            masters.note_asked(project_id);
         }
         // A pane that exited before its brief reached it is reported by the
         // sweep that reads it gone, with why, as a failed nudge is: a warning
@@ -4431,15 +4522,16 @@ fn nudge() -> String {
 /// the pane is parked behind, when that is why it is being asked; the nudge is
 /// the same line either way, and it submits straight through Claude Code's
 /// armed wait-for-reset (captured 2026-09-24: `Usage limit reached again after
-/// you continued`), so no key is sent ahead of it.
+/// you continued`), so no key is sent ahead of it. Answers whether the line
+/// reached the pane, which is what restarts the project's unasked clock.
 async fn nudge_master(
     masters: &Arc<Masters>,
     project_id: &str,
     slug: &str,
     held: Option<&master_limit::Refusal>,
-) {
+) -> bool {
     let Some((_, name)) = masters.get(project_id) else {
-        return;
+        return false;
     };
     match held {
         Some(refusal) => tracing::warn!("{}", limit_reask_line(slug, &name, refusal)),
@@ -4456,7 +4548,9 @@ async fn nudge_master(
         } else {
             tracing::warn!("[master] {slug}: could not nudge {name}: {e}");
         }
+        return false;
     }
+    true
 }
 
 async fn supervise(
@@ -8223,6 +8317,267 @@ mod give_back_tests {
                 "a master that {since:?} has answered this work already"
             );
         }
+    }
+
+    fn at_the_floor() -> Instant {
+        Instant::now()
+            .checked_sub(master_ask::ASK_FLOOR)
+            .expect("clock older than the ask floor")
+    }
+
+    /// ISS-1306: three projects each held one eligible issue and were asked
+    /// once, then not for 5h34m, because their masters' turns had RUN.
+    #[test]
+    fn unchanged_work_is_asked_again_at_the_floor_where_the_master_ran() {
+        assert!(nudge_due(
+            sent(7, at_the_floor(), Some(4)),
+            7,
+            Instant::now(),
+            SinceNudge::Ran,
+            false
+        ));
+    }
+
+    #[test]
+    fn unchanged_work_is_not_asked_again_inside_the_floor() {
+        let now = Instant::now();
+        let just_inside = now
+            .checked_sub(master_ask::ASK_FLOOR - Duration::from_secs(1))
+            .expect("clock older than the ask floor");
+        assert!(!nudge_due(
+            sent(7, just_inside, Some(4)),
+            7,
+            now,
+            SinceNudge::Ran,
+            false
+        ));
+    }
+
+    #[test]
+    fn the_floor_never_types_into_a_master_that_is_working() {
+        assert!(
+            !nudge_due(
+                sent(7, at_the_floor(), Some(4)),
+                7,
+                Instant::now(),
+                SinceNudge::Working,
+                false
+            ),
+            "a mid-turn master, or one whose runs still report, is not typed into"
+        );
+    }
+
+    #[test]
+    fn the_floor_never_types_into_a_master_on_a_permission_question() {
+        assert!(!nudge_due(
+            sent(7, at_the_floor(), Some(4)),
+            7,
+            Instant::now(),
+            SinceNudge::AwaitingPermission,
+            false
+        ));
+    }
+
+    /// ISS-1306: the 2026-09-27 chart counted this line per project and read
+    /// the trigger as the target; 566 of 580 wakes on 2026-10-22 named a
+    /// draining project with no master at all.
+    #[test]
+    fn the_wake_line_says_the_sweep_covers_every_served_project() {
+        let line = wake_line(&Wake::Core {
+            project_id: Some("cda0adf0".into()),
+        });
+        assert!(
+            line.contains("sweeping every project this box serves"),
+            "{line}"
+        );
+    }
+
+    #[test]
+    fn the_wake_line_names_the_waking_project_only_as_the_trigger() {
+        let line = wake_line(&Wake::Core {
+            project_id: Some("cda0adf0".into()),
+        });
+        assert!(line.contains("core event for project cda0adf0"), "{line}");
+        assert!(!line.contains("(core, project"), "{line}");
+    }
+
+    fn ran_turns(n: usize) -> agent_activity::Activity {
+        let mut frames = Vec::new();
+        for _ in 0..n {
+            frames.push((agent_activity::Event::PromptSubmitted, None));
+            frames.push((agent_activity::Event::Stopped, None));
+        }
+        reported(&frames)
+    }
+
+    fn backdate_last_nudge(masters: &Masters, project_id: &str, by: Duration) {
+        let mut reg = masters.0.lock().unwrap();
+        let m = reg.live.get_mut(project_id).expect("remembered");
+        let last = m.last_nudge.as_mut().expect("nudged");
+        last.at = Instant::now()
+            .checked_sub(by)
+            .expect("clock older than that");
+    }
+
+    /// ISS-1306 rule 3, preserved rather than fixed: the decision reads the
+    /// last nudge, the work and the master's evidence, never a count of what a
+    /// project was asked before.
+    #[test]
+    fn a_project_asked_fifty_times_and_one_asked_once_get_the_same_answer() {
+        let masters = Masters::new();
+        masters.remember_for_test("busy", "s-busy", "forge-master-busy");
+        masters.remember_for_test("quiet", "s-quiet", "forge-master-quiet");
+        let one_turn = ran_turns(1);
+        for digest in 100..150 {
+            assert!(masters.claim_nudge("busy", digest, Some(&one_turn), false));
+        }
+        assert!(masters.claim_nudge("busy", 7, Some(&one_turn), false));
+        assert!(masters.claim_nudge("quiet", 7, Some(&one_turn), false));
+
+        let two_turns = ran_turns(2);
+        assert_eq!(
+            masters.claim_nudge("busy", 7, Some(&two_turns), false),
+            masters.claim_nudge("quiet", 7, Some(&two_turns), false),
+        );
+        assert!(!masters.claim_nudge("quiet", 7, Some(&two_turns), false));
+
+        backdate_last_nudge(&masters, "busy", master_ask::ASK_FLOOR);
+        backdate_last_nudge(&masters, "quiet", master_ask::ASK_FLOOR);
+        assert!(masters.claim_nudge("busy", 7, Some(&two_turns), false));
+        assert!(masters.claim_nudge("quiet", 7, Some(&two_turns), false));
+    }
+
+    #[test]
+    fn a_failed_admissible_read_is_unknown_work_and_leaves_the_clock_alone() {
+        let masters = Masters::new();
+        masters.remember_for_test("p", "s-p", "forge-master-p");
+        let started = Instant::now()
+            .checked_sub(Duration::from_secs(600))
+            .expect("clock older than ten minutes");
+        masters
+            .0
+            .lock()
+            .unwrap()
+            .ask
+            .note("p", true, false, started);
+        let failed = || Err(crate::error::Error::Other("admissible 503".into()));
+
+        assert!(masters.read_work("p", "p", failed()).is_none());
+        let reg = masters.0.lock().unwrap();
+        assert_eq!(
+            reg.ask.since("p"),
+            Some(started),
+            "a failed read neither clears nor restarts the unasked clock"
+        );
+        drop(reg);
+        assert!(
+            !masters
+                .0
+                .lock()
+                .unwrap()
+                .ask
+                .read_failed("p", "admissible 503"),
+            "the failure was latched when it was said"
+        );
+        assert_eq!(
+            masters
+                .read_work("p", "p", Ok(vec![admiss("i-1")]))
+                .map(|v| v.len()),
+            Some(1)
+        );
+        assert!(
+            masters
+                .0
+                .lock()
+                .unwrap()
+                .ask
+                .read_failed("p", "admissible 503"),
+            "a good read clears the latch, so the next failure is said"
+        );
+    }
+
+    #[test]
+    fn a_failed_admissible_read_stops_the_project_before_retire_and_the_clock() {
+        let production = THIS_SOURCE.split("#[cfg(test)]").next().unwrap();
+        let sweep = production
+            .split("\nasync fn sweep(")
+            .nth(1)
+            .and_then(|r| r.split("\nasync fn ").next())
+            .expect("sweep is gone");
+        let read = sweep
+            .find("masters.read_work(")
+            .expect("the sweep no longer reads work through read_work");
+        let stop = read
+            + sweep[read..]
+                .find("else {\n            continue;\n        };")
+                .expect("a failed read must end the project's iteration");
+        for later in ["note_unasked(", "retire_if_idle(", "claim_nudge("] {
+            let at = sweep
+                .find(later)
+                .unwrap_or_else(|| panic!("the sweep no longer calls {later}"));
+            assert!(
+                stop < at,
+                "{later} must come after a failed read has stopped the project"
+            );
+        }
+        assert!(
+            sweep[read..stop].contains("admissible::admissible("),
+            "the admissible read must reach read_work whole, so an unreadable set is never read as an empty one"
+        );
+    }
+
+    /// Criterion 6: the clock restarts only on an ask that reached the pane —
+    /// a brief that landed, or a nudge `nudge_master` says was typed.
+    #[test]
+    fn only_an_ask_that_reached_the_pane_restarts_the_unasked_clock() {
+        let production = THIS_SOURCE.split("#[cfg(test)]").next().unwrap();
+        assert_eq!(
+            production.matches("masters.note_asked(").count(),
+            2,
+            "one ask per route: the delivered brief and the typed nudge"
+        );
+        let brief = production
+            .split("terminal::brief_new_pane(&name, &brief).await {")
+            .nth(1)
+            .and_then(|r| r.split("Err(e)").next())
+            .expect("the brief's delivery is no longer matched");
+        assert!(
+            brief.contains("Ok(()) =>") && brief.contains("masters.note_asked(project_id)"),
+            "a placement asks its master only where the brief landed"
+        );
+        let typed = production
+            .split("&& nudge_master(")
+            .nth(1)
+            .and_then(|r| r.split("\n        }").next())
+            .expect("the typed nudge no longer gates the ask");
+        assert!(typed.contains("masters.note_asked(&runner.project_id)"));
+    }
+
+    #[test]
+    fn a_wake_never_narrows_the_sweep() {
+        let production = THIS_SOURCE.split("#[cfg(test)]").next().unwrap();
+        let run = production
+            .split("\npub async fn run(")
+            .nth(1)
+            .and_then(|r| r.split("\npub fn accepts_new_work").next())
+            .expect("run is gone");
+        let calls: Vec<&str> = run.split("sweep(").skip(1).collect();
+        assert_eq!(calls.len(), 2, "one sweep per select arm, poll and wake");
+        for call in calls {
+            let args = call.split(".await").next().unwrap_or_default();
+            for arg in args.split(',').map(str::trim) {
+                assert!(
+                    !matches!(arg, "w" | "&w" | "wake" | "&wake"),
+                    "a sweep is given no wake: {args}"
+                );
+            }
+        }
+        let sig = production
+            .split("\nasync fn sweep(")
+            .nth(1)
+            .and_then(|r| r.split(") -> Duration").next())
+            .expect("sweep is gone");
+        assert!(!sig.contains("Wake"), "sweep takes no wake: {sig}");
     }
 
     #[test]

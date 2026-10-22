@@ -630,12 +630,32 @@ mod tests {
         );
     }
 
-    /// An address nothing listens on: bound, then let go.
-    async fn refused_address() -> String {
-        let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = l.local_addr().unwrap();
-        drop(l);
-        format!("http://{addr}")
+    /// An address every connect is refused at, which no other test is handed.
+    ///
+    /// Port 1 sits below every platform's ephemeral range, so a sibling's
+    /// `bind` to port 0 is never given it. The address asks the test
+    /// environment for one thing, that nothing listens on port 1, and the
+    /// connect test below checks exactly that.
+    ///
+    /// The crate's other refusal tests use the same address on all three
+    /// platforms. A port taken from a dropped listener was handed to a
+    /// sibling under a parallel run and read as a cut connection; a held
+    /// port that never listens was dropped silently on macOS and timed out.
+    const REFUSED: &str = "http://127.0.0.1:1";
+
+    /// ISS-1306: a bound port that never listened was dropped on macOS, and the
+    /// refusal tests read "no answer came within 10s".
+    #[tokio::test]
+    async fn a_connect_to_the_refused_address_is_refused_rather_than_timing_out() {
+        let addr = REFUSED.trim_start_matches("http://");
+        let tried = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            tokio::net::TcpStream::connect(addr),
+        )
+        .await
+        .expect("the connect timed out instead of being refused");
+        let err = tried.expect_err("a connect to the refused address was accepted");
+        assert_eq!(err.kind(), std::io::ErrorKind::ConnectionRefused, "{err}");
     }
 
     /// Serves one answer, `sent` whole, then closes the connection.
@@ -657,9 +677,9 @@ mod tests {
     /// update check said "fetch manifest: error sending request for url (…)" where core was down.
     #[tokio::test]
     async fn a_manifest_core_cannot_serve_says_forge_could_not_be_reached() {
-        let core = refused_address().await;
-        let url = manifest_url(None, Some(&core)).unwrap();
-        let said = fetch_manifest(&url, Some(&core))
+        let core = REFUSED;
+        let url = manifest_url(None, Some(core)).unwrap();
+        let said = fetch_manifest(&url, Some(core))
             .await
             .unwrap_err()
             .to_string();
@@ -675,7 +695,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_configured_manifest_that_cannot_be_reached_is_named_by_its_address() {
-        let at = refused_address().await;
+        let at = REFUSED;
         let url = format!("{at}/latest.json");
         let said = fetch_manifest(&url, Some("https://core.example"))
             .await
