@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.279] - 2026-10-22
+
+Fix rounds keep a judge's fail on other criteria standing
+
+### Fixed
+
+- **A fix round no longer hides a judge's fail.** The merge check lets a criterion's fail that the base already carries stand, owing no probe, and names it a standing fail instead of refusing `MERGE_PROBE_MISSING` (ISS-606).
+
 ## [0.4.0-dev.278] - 2026-10-22
 
 A replaced questionnaire points at the batch that stands
