@@ -15,8 +15,11 @@ let candidates: ConversationCandidates = {
 };
 
 vi.mock("@/providers/auth-provider", () => ({ useAuth: () => ({ user: { id: "me" } }) }));
+let projects: Array<{ id: string; name: string; slug: string; role: string | null }> = [
+  { id: "p1", name: "Billing", slug: "billing", role: "member" },
+];
 vi.mock("@/features/projects/hooks", () => ({
-  useOrgScopedProjects: () => ({ projects: [{ id: "p1", name: "Billing", slug: "billing" }] }),
+  useOrgScopedProjects: () => ({ projects }),
 }));
 vi.mock("../hooks", () => ({
   useProjectCandidates: () => ({ data: candidates, isLoading: false, isError: false }),
@@ -71,3 +74,37 @@ describe("the people a room starts with", () => {
     expect(labels[0]).toBe("You");
   });
 });
+
+// ISS-1229 r35, judge-95: a viewer of Ops was offered Ops, then three steps later refused "Not a
+// project member." A conversation is started only on a project the reader holds the member role on.
+describe("the projects a room can be started in", () => {
+  const offered = () => screen.queryAllByRole("option").map((o) => o.textContent);
+
+  it("offers only projects the reader holds the member role or above on", () => {
+    projects = [
+      { id: "p1", name: "Billing", slug: "billing", role: "member" },
+      { id: "p2", name: "Ops", slug: "ops", role: "viewer" },
+      { id: "p3", name: "Desk", slug: "desk", role: "admin" },
+      { id: "p4", name: "Vault", slug: "vault", role: null },
+    ];
+    render(<StartConversation onStarted={vi.fn()} />);
+    fireEvent.click(screen.getByRole("combobox"));
+    expect(offered()).toEqual(["Billing", "Desk"]);
+  });
+
+  it("says a reader who only views projects can read their conversations and not start one, offering no picker", () => {
+    projects = [
+      { id: "p2", name: "Ops", slug: "ops", role: "viewer" },
+      { id: "p5", name: "Archive", slug: "archive", role: "viewer" },
+    ];
+    render(<StartConversation onStarted={vi.fn()} />);
+    expect(screen.queryByRole("combobox")).toBeNull();
+    expect(screen.queryByText("Start the room")).toBeNull();
+    expect(
+      screen.getByText(
+        "You hold the viewer role on every project here, so you can read their conversations and not start one.",
+      ),
+    ).toBeTruthy();
+  });
+});
+

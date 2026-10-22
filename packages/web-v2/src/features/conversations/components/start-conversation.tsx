@@ -27,8 +27,14 @@ type PickedHandle = { userId: string | null; projectId: string };
 const sameHandle = (a: PickedHandle, b: PickedHandle) =>
   a.projectId === b.projectId && a.userId === b.userId;
 
+/** A room is opened by somebody holding the member role or above on its project (ISS-1229 r35). */
+const startsRooms = (role: string | null | undefined) => role === "member" || role === "admin";
+
 export function StartConversation({ onStarted }: { onStarted: (id: string, projectId: string) => void }) {
-  const { projects } = useOrgScopedProjects();
+  const { projects: visible } = useOrgScopedProjects();
+  // A project the reader only views is not offered: core refuses the room it would open (judge-95).
+  const projects = visible.filter((p) => startsRooms(p.role));
+  const onlyViews = projects.length === 0 && visible.length > 0;
   const [projectId, setProjectId] = useState("");
   const [people, setPeople] = useState<string[]>([]);
   const [handles, setHandles] = useState<PickedHandle[]>([]);
@@ -67,10 +73,13 @@ export function StartConversation({ onStarted }: { onStarted: (id: string, proje
         <div className="text-center">
           <p className="fg-h3">Start a conversation</p>
           <p className="fg-body-sm mt-1 text-muted">
-            Pick a project, and choose who else is in the room.
+            {onlyViews
+              ? "You hold the viewer role on every project here, so you can read their conversations and not start one."
+              : "Pick a project, and choose who else is in the room."}
           </p>
         </div>
 
+        {!onlyViews && (
         <div>
           <label htmlFor="conversations-new-project" className="fg-body-sm mb-1.5 block text-muted">
             Project
@@ -93,6 +102,7 @@ export function StartConversation({ onStarted }: { onStarted: (id: string, proje
             </p>
           )}
         </div>
+        )}
 
         {projectId && !confirming && (
           <Extras

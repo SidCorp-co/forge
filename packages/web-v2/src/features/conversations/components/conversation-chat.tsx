@@ -44,7 +44,7 @@ import {
   useWithdrawnDrafts,
 } from "../hooks";
 import { useComposingMark, useMessageBoxFocus } from "../composing";
-import { composerRefusal, emptyRoomState } from "../membership";
+import { composerRefusal, emptyRoomState, NOTHING_CAN_BE_SENT, noAgentAnswers } from "../membership";
 import { isRoomGone, type KeptCopy, ROOM_DELETED_TITLE, roomDeletedLine, unsentLine } from "../room-gone";
 import { type ConversationMode, type OutboxMessage, conversationTitle } from "../types";
 import { ConversationModeControl, modePlaceholder } from "./mode-control";
@@ -84,9 +84,15 @@ export function ConversationChat({
 
   const projectsQ = useProjects();
   const project = projectsQ.data?.find((p) => p.id === projectId);
-  const canWrite = project?.role !== "viewer";
 
   const roomQ = useConversation(resolvedId);
+  // A reader posts only where they hold more than the viewer role on every project the room is about,
+  // so a viewer of either project of a two-project room is told they can read it (ISS-1229 r35).
+  const roomProjects = roomQ.data?.scopeProjects?.length ? roomQ.data.scopeProjects : project ? [project] : [];
+  const viewedOnly =
+    roomProjects.find((p) => projectsQ.data?.find((mine) => mine.id === p.id)?.role === "viewer") ??
+    (project?.role === "viewer" ? project : undefined);
+  const canWrite = !viewedOnly;
   const accepted = useAcceptedMessages(resolvedId);
   const progress = useConversationProgress(resolvedId);
   const withdrawn = useWithdrawnDrafts(resolvedId);
@@ -235,9 +241,11 @@ export function ConversationChat({
     roomQ.data?.agentMode ??
     draftOfferQ.data ?? { available: false, reason: "checking whether a box is free" };
 
-  const refusal = roomQ.data ? composerRefusal(roomQ.data) : null;
-  // A room no agent can answer, or one the reader cannot post in, says so rather than inviting (r34).
-  const empty = emptyRoomState(roomQ.data, { canPost: canWrite, projectName: project?.name });
+  const refusal = roomQ.data ? composerRefusal(roomQ.data, { canPost: canWrite }) : null;
+  // A room no agent can answer, or one the reader cannot post in, says so rather than inviting (r34),
+  // and offers no message box nobody would answer, whether or not it holds messages (r35, judge-95).
+  const empty = emptyRoomState(roomQ.data, { canPost: canWrite, projectName: viewedOnly?.name ?? project?.name });
+  const unanswered = roomQ.data ? noAgentAnswers(roomQ.data) : null;
 
   const { scrollRef, bottomRef, onScroll, atBottom, newOutput, toBottom } = useStickToBottom({
     conversationKey: resolvedId,
@@ -403,7 +411,7 @@ export function ConversationChat({
     <div className="flex h-full min-h-0 flex-col">
       {header}
 
-      {roomQ.data && <ScopeNotice room={roomQ.data} folded={composing} />}
+      {roomQ.data && <ScopeNotice room={roomQ.data} folded={composing} canPost={canWrite} />}
 
       <div ref={scrollRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-3xl px-4 py-8 sm:px-8 xl:max-w-4xl">
@@ -443,12 +451,24 @@ export function ConversationChat({
         </div>
       </div>
 
-      {refusal ? (
+      {!canWrite ? (
+        <ReadOnlyComposerNote sticky={false} />
+      ) : refusal ? (
         <div className="flex-none border-t border-line bg-surface px-4 py-3" data-testid="composer-refused">
           <p className="fg-body-sm text-fg">{refusal.reason}</p>
-          <p className="fg-caption mt-0.5 text-muted">{refusal.wayOut}</p>
+          {refusal.wayOut && <p className="fg-caption mt-0.5 text-muted">{refusal.wayOut}</p>}
         </div>
-      ) : canWrite ? (
+      ) : unanswered ? (
+        <div className="flex-none border-t border-line bg-surface px-4 py-3" data-testid="composer-no-answer">
+          <p className="fg-body-sm text-fg">{NOTHING_CAN_BE_SENT}</p>
+          {messages.length > 0 &&
+            unanswered.map((line) => (
+              <p key={line} className="fg-caption mt-0.5 text-muted">
+                {line}
+              </p>
+            ))}
+        </div>
+      ) : (
         <div className="flex-none" ref={box.ref}>
         <ChatComposer
           onSend={handleSend}
@@ -472,8 +492,6 @@ export function ConversationChat({
           }
         />
         </div>
-      ) : (
-        <ReadOnlyComposerNote sticky={false} />
       )}
 
       {roomQ.data?.participants && resolvedId && (

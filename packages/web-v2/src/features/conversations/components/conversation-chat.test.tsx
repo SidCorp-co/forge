@@ -62,8 +62,10 @@ vi.mock("next/link", () => ({
 }));
 
 let projectRole = "admin";
+/** The reader's other projects, beside Desk, with the role they hold on each (r35). */
+let otherProjects: Array<{ id: string; name: string; role: string }> = [];
 vi.mock("@/features/projects/hooks", () => ({
-  useProjects: () => ({ data: [{ id: "p1", name: "Desk", role: projectRole }] }),
+  useProjects: () => ({ data: [{ id: "p1", name: "Desk", role: projectRole }, ...otherProjects] }),
 }));
 
 vi.mock("./conversation-members", () => ({ ConversationMembers: () => null }));
@@ -100,6 +102,7 @@ beforeEach(() => {
   sendPending = false;
   roomError = null;
   projectRole = "admin";
+  otherProjects = [];
   toast.mockClear();
 });
 
@@ -657,3 +660,103 @@ describe("an empty room", () => {
     expect(emptyPane().queryByText("Start a conversation")).not.toBeInTheDocument();
   });
 });
+
+// r35, judge-95: a room whose only agent lost its role still offered its message box; the owner's first
+// message was taken in, answered 500, and the explanation left the screen once the room held a message.
+// A viewer of one of a two-project room's projects was told to take an agent out, which they cannot.
+describe("a room nothing can be sent to", () => {
+  const desk = { id: "p1", name: "Desk", slug: "desk" };
+  const ops = { id: "p2", name: "Ops", slug: "ops" };
+  const agent = (over: Partial<ConversationDetail["participants"][number]> = {}) => ({
+    id: "h-desk",
+    kind: "handle" as const,
+    userId: "u-desk",
+    projectId: "p1",
+    label: null,
+    displayName: "desk",
+    reachable: true,
+    ...over,
+  });
+  const said = {
+    id: "m1",
+    seq: 0,
+    role: "user" as const,
+    authorUserId: "u1",
+    authorLabel: "Mai",
+    content: "Which issues are open?",
+    silenceReason: null,
+    createdAt: "2026-10-22T02:30:00Z",
+  };
+  const footer = () => screen.getByTestId("composer-no-answer");
+
+  it("offers no message box where no agent can answer, and says so in its place", () => {
+    room = detail({ participants: [agent({ reachable: false })], scopeProjects: [desk], scope: ["p1"] });
+    open();
+    expect(screen.queryByLabelText("Message")).not.toBeInTheDocument();
+    expect(within(footer()).getByText("No agent here can answer, so nothing can be sent here.")).toBeInTheDocument();
+  });
+
+  it("names each agent and why in the box's place once the room holds messages", () => {
+    room = detail({
+      participants: [agent({ reachable: false })],
+      scopeProjects: [desk],
+      scope: ["p1"],
+      messages: [said],
+    });
+    open();
+    expect(screen.queryByLabelText("Message")).not.toBeInTheDocument();
+    expect(within(footer()).getByText("No agent here can answer, so nothing can be sent here.")).toBeInTheDocument();
+    expect(within(footer()).getByText(/@desk can't answer: it no longer holds a role on Desk, and answers again once it does\./)).toBeInTheDocument();
+  });
+
+  it("keeps the message box where one agent can still answer", () => {
+    room = detail({ participants: [agent()], scopeProjects: [desk], scope: ["p1"], messages: [said] });
+    open();
+    expect(screen.getByLabelText("Message")).toBeInTheDocument();
+    expect(screen.queryByTestId("composer-no-answer")).not.toBeInTheDocument();
+  });
+
+  it("never tells a viewer of one of a room's projects to take an agent out", () => {
+    projectRole = "member";
+    otherProjects = [{ id: "p2", name: "Ops", role: "viewer" }];
+    room = detail({
+      shape: "group",
+      participants: [agent(), agent({ id: "h-ops", userId: "u-ops", projectId: "p2", displayName: "ops" })],
+      scopeProjects: [desk, ops],
+      scope: ["p1", "p2"],
+      canChangeMembership: false,
+    });
+    open();
+    expect(screen.queryByText(/[Tt]ake one of its agents out/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Message")).not.toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("conversation-empty")).getByText(
+        "You can read this room, not post in it: you hold the viewer role on Ops.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("offers taking an agent out only to a reader who may, and tells any other poster who can", () => {
+    otherProjects = [{ id: "p2", name: "Ops", role: "member" }];
+    const twoProjects = () =>
+      detail({
+        shape: "group",
+        participants: [agent(), agent({ id: "h-ops", userId: "u-ops", projectId: "p2", displayName: "ops" })],
+        scopeProjects: [desk, ops],
+        scope: ["p1", "p2"],
+      });
+    room = twoProjects();
+    open();
+    expect(within(screen.getByTestId("composer-refused")).getByText("Take one of its agents out, and the room can be spoken in again.")).toBeInTheDocument();
+    cleanup();
+    room = { ...twoProjects(), canChangeMembership: false };
+    open();
+    expect(screen.queryByText(/^Take one of its agents out/)).not.toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("composer-refused")).getByText(
+        "Somebody who can change who is in this room can take one of its agents out, and it can be spoken in again.",
+      ),
+    ).toBeInTheDocument();
+  });
+});
+

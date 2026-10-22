@@ -29,7 +29,7 @@ vi.mock("../hooks", () => ({
 const removeMutate = vi.fn();
 vi.mock("@/providers/auth-provider", () => ({ useAuth: () => ({ user: { id: "me" } }) }));
 vi.mock("@/features/projects/hooks", () => ({
-  useOrgScopedProjects: () => ({ projects: [{ id: "p1", name: "Billing", slug: "billing" }] }),
+  useOrgScopedProjects: () => ({ projects: [{ id: "p1", name: "Billing", slug: "billing", role: "member" }] }),
 }));
 
 afterEach(cleanup);
