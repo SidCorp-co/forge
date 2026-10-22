@@ -15,6 +15,7 @@ const state = {
   search: "?tab=integrations&add=live-deploy-target",
   connections: [] as Array<Record<string, unknown>>,
   bindings: [] as Array<Record<string, unknown>>,
+  fetchingBindings: false,
 };
 
 const CARDS = [
@@ -50,7 +51,12 @@ vi.mock("@/features/integrations/hooks", () => ({
   useConnections: () => ({ data: { items: state.connections }, isLoading: false }),
   useBindExistingConnection: () => ({ mutate: vi.fn(), isPending: false, isError: false }),
   useIsOrgAdmin: () => false,
-  useIntegrationsList: () => ({ data: { items: state.bindings }, isLoading: false, isError: false }),
+  useIntegrationsList: () => ({
+    data: { items: state.bindings },
+    isLoading: false,
+    isError: false,
+    isFetching: state.fetchingBindings,
+  }),
   useIntegrationsStatus: () => ({
     data: { cards: CARDS },
     isLoading: false,
@@ -73,6 +79,7 @@ afterEach(() => {
   state.search = "?tab=integrations&add=live-deploy-target";
   state.connections = [];
   state.bindings = [];
+  state.fetchingBindings = false;
 });
 
 function coolify(id: string): Record<string, unknown> {
@@ -151,6 +158,18 @@ describe("the page the verify-probe link opens", () => {
     } finally {
       CARDS.pop();
     }
+  });
+
+  it("still lands when a cached empty list is refreshed into the binding the link is about", () => {
+    state.search = "?tab=integrations&field=verify-probe";
+    state.fetchingBindings = true;
+    const { rerender } = render(<IntegrationsTab projectId="p-1" canEdit />);
+    expect(screen.queryByTestId("drawer")).toBeNull();
+
+    state.bindings = [live("coolify")];
+    state.fetchingBindings = false;
+    rerender(<IntegrationsTab projectId="p-1" canEdit />);
+    expect(screen.getByTestId("drawer")).toHaveTextContent("coolify:live at verify-probe");
   });
 
   it("passes over a binding that serves only Preview", () => {

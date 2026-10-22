@@ -325,12 +325,18 @@ export function IntegrationsTab({
   const landingOnProbe = params.get("field") === VERIFY_PROBE_SECTION;
   const bindings = useIntegrationsList(landingOnProbe ? projectId : undefined);
   const landed = useRef(false);
+  // A read that finds no binding while a refresh is still out does not spend the landing: the
+  // refresh may bring the binding the link was about.
   useEffect(() => {
     if (!landingOnProbe || landed.current || !bindings.data) return;
-    landed.current = true;
     const target = probeLandingFor(bindings.data.items);
-    if (target) setConnecting({ provider: target.provider, stage: "live", focus: VERIFY_PROBE_SECTION });
-  }, [landingOnProbe, bindings.data]);
+    if (!target) {
+      if (!bindings.isFetching) landed.current = true;
+      return;
+    }
+    landed.current = true;
+    setConnecting({ provider: target.provider, stage: "live", focus: VERIFY_PROBE_SECTION });
+  }, [landingOnProbe, bindings.data, bindings.isFetching]);
   const share = (
     <ShareExistingCard
       projectId={projectId}
