@@ -220,7 +220,11 @@ export const openRoom = describeOperation({
   responses: {
     201: json(conversationSchema, 'The new room, as its membership settled it'),
     400: fail({ ...MEMBER_REFUSED }),
-    403: fail({ FORBIDDEN: 'the caller is not a member of the project', ...HANDLE_FORBIDDEN }),
+    403: fail({
+      FORBIDDEN:
+        'the caller holds less than the member role on the project; the refusal names the role it holds',
+      ...HANDLE_FORBIDDEN,
+    }),
     404: fail({
       NOT_FOUND: 'there is no such project',
       PROJECT_GONE: 'a project an agent was named for no longer exists, or never did',
@@ -269,6 +273,8 @@ export const sendToRoom = describeOperation({
       CONVERSATION_MODE_SETTLED:
         'the message names a mode and the room already answers in one, or another message settled it first',
       CONVERSATION_AGENT_NO_DEVICE: 'no paired device is free to take an Agent turn',
+      CONVERSATION_NO_AGENT_ANSWERS:
+        'no agent of the project the message is answered under holds a role on it, so nothing was taken in',
       CONVERSATION_ATTACHMENT_FOREIGN: 'an attachment id is not on this room',
       CONVERSATION_SHAPE_CONFLICT: "the room's shape changed between the check and the send",
       CONVERSATION_PROJECT_CONFLICT: "the room's project changed between the check and the send",

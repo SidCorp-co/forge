@@ -51,7 +51,10 @@ export const candidatesBeforeRoom = describeOperation({
   summary: 'Who the caller could open a room with in this project, before any room exists',
   responses: {
     200: json(candidatesSchema, 'The colleagues and agents that could join'),
-    403: fail('FORBIDDEN', 'the caller is not a member of the project'),
+    403: fail(
+      'FORBIDDEN',
+      'the caller holds less than the member role on the project; the refusal names the role it holds',
+    ),
     404: fail('NOT_FOUND', 'there is no such project'),
   },
 });
