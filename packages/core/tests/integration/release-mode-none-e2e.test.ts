@@ -89,6 +89,27 @@ describe('a landing is recorded as the release of a project with no production e
     expect(note?.body).not.toMatch(/deployed to|serving/);
   });
 
+  it("closes on the box's claim, as adminhub-api re-marked ISS-5: no observed merge, paths read at the sha", async () => {
+    const issue = await landedIssue(5, null, undefined, {
+      commit: F4,
+      note: 'Merged into release/stg as f4e5fb6.',
+      changedPaths: { commit: F4, changes: [{ path: 'src/db/setup.ts', change: 'changed' }] },
+    });
+    await judgedAll(issue, F4);
+    const marked = await ok(api(token, 'GET', `/api/issues/${issue}`));
+    expect(marked).toMatchObject({
+      mergedTarget: BRANCH,
+      mergedCommitSha: null,
+      mergedPaths: { commit: F4 },
+    });
+
+    const res = await record([issue], F4);
+
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    expect(res.body).toMatchObject({ verification: 'landed', commit: F4, closed: [issue] });
+    expect(await statusOf(issue)).toBe('closed');
+  });
+
   it('counts a pass at a later head only on a record made at that head', async () => {
     const issue = await landedIssue(5, F4);
     await judgedAll(issue, LATER);

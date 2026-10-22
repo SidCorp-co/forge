@@ -47,7 +47,10 @@ export async function ok(r: Promise<{ status: number; body: Record<string, unkno
   return res.body;
 }
 
-/** An issue with three criteria, its merge marked on `release/stg` naming `commit` (or none). */
+/**
+ * An issue with three criteria, its merge marked on `release/stg` naming `commit` (or none); `mark`
+ * replaces the mark's body past `target`, as `forge-runner api` sends it with the paths it read.
+ */
 export async function landedIssue(
   seq: number,
   commit: string | null,
@@ -56,6 +59,7 @@ export async function landedIssue(
     'Two worktrees never share a database',
     'An unsafe host is refused before any change',
   ],
+  mark?: Record<string, unknown>,
 ): Promise<string> {
   const id = randomUUID();
   await db.execute(sql`
@@ -70,7 +74,7 @@ export async function landedIssue(
   await ok(
     api(world.token, 'POST', `/api/issues/${id}/merge`, {
       target: BRANCH,
-      ...(commit ? { commit } : {}),
+      ...(mark ?? (commit ? { commit } : {})),
     }),
   );
   await seedIssueStatus(id, 'awaiting_release');
