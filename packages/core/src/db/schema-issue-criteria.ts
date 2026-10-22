@@ -10,6 +10,7 @@
 import { PROBE_KINDS, PROBE_LIMITS } from '@forge/contracts/criterion-probes';
 import { CRITERION_JUDGES } from '@forge/contracts/issue-design';
 import {
+  type StorefrontDraftPart,
   VERDICT_CORROBORATIONS,
   VERDICT_IDENTITY_KINDS,
   VERDICT_VALUES,
@@ -124,8 +125,8 @@ export const criterionVerdicts = pgTable(
     designRevision: integer('design_revision'),
     contractRef: text('contract_ref'),
     contractVersion: text('contract_version'),
-    storefrontWorkflowId: text('storefront_workflow_id'),
-    storefrontDraftVersion: text('storefront_draft_version'),
+    /** Every workflow draft a storefront_draft verdict was judged on, in the order written (0514). */
+    storefrontDrafts: jsonb('storefront_drafts').$type<StorefrontDraftPart[]>(),
     storefrontEnvironment: text('storefront_environment'),
     corroboration: text('corroboration', { enum: VERDICT_CORROBORATIONS }),
     corroborationNote: text('corroboration_note'),
@@ -171,8 +172,8 @@ export const criterionVerdicts = pgTable(
     ),
     storefrontChk: check(
       'criterion_verdicts_storefront_chk',
-      sql`(${t.identityKind} = 'storefront_draft' AND ${t.storefrontWorkflowId} ~ '^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$' AND ${t.storefrontDraftVersion} ~ '^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$' AND ${t.storefrontEnvironment} ~ '^[a-z][a-z0-9-]{0,62}$' AND ${t.corroboration} IN ('corroborated', 'uncorroborated') AND (${t.corroboration} = 'corroborated' OR coalesce(${t.corroborationNote}, '') ~ '[^[:space:]]'))
-        OR (${t.identityKind} IS DISTINCT FROM 'storefront_draft' AND ${t.storefrontWorkflowId} IS NULL AND ${t.storefrontDraftVersion} IS NULL AND ${t.storefrontEnvironment} IS NULL AND ${t.corroboration} IS NULL AND ${t.corroborationNote} IS NULL)`,
+      sql`(${t.identityKind} = 'storefront_draft' AND forge_storefront_drafts_well_formed(${t.storefrontDrafts}) AND coalesce(${t.storefrontEnvironment}, '') ~ '^[a-z][a-z0-9-]{0,62}$' AND coalesce(${t.corroboration}, '') IN ('corroborated', 'uncorroborated') AND (${t.corroboration} = 'corroborated' OR coalesce(${t.corroborationNote}, '') ~ '[^[:space:]]'))
+        OR (${t.identityKind} IS DISTINCT FROM 'storefront_draft' AND ${t.storefrontDrafts} IS NULL AND ${t.storefrontEnvironment} IS NULL AND ${t.corroboration} IS NULL AND ${t.corroborationNote} IS NULL)`,
     ),
     latestIdx: index('criterion_verdicts_latest_idx').on(t.criterionId, t.createdAt),
     issueIdx: index('criterion_verdicts_issue_idx').on(t.issueId),

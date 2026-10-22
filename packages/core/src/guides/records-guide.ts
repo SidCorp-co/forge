@@ -113,11 +113,14 @@ block names what that criterion was judged against before the next \`criterion\`
   storefront draft (an Autoflow workflow), judged on a non-production environment the project
   document declares. The id and version are the ones
   \`GET /api/projects/:id/integrations/storefront/target\` reports in
-  \`workflows[]\`; \`POST /api/issues/:id/verdicts\` takes the same as the \`identity\` \`{ kind: storefront_draft, workflowId,
-  draftVersion, environment }\`. Forge reads the draft back from the project's storefront source
-  each time the verdict is read or weighed, never trusting what it read when the verdict was
-  written: corroborated while the source holds that draft version, superseded once the draft has
-  moved, uncorroborated with the reason when the source cannot be read. Only a corroborated draft
+  \`workflows[]\`. A comment block names one workflow; \`POST /api/issues/:id/verdicts\` takes
+  every workflow the criterion rests on as the \`identity\` \`{ kind: storefront_draft, workflows:
+  [{ workflowId, draftVersion }, ...], environment }\`, each workflow once (\`{ kind:
+  storefront_draft, workflowId, draftVersion, environment }\` for one). Forge reads every draft
+  back from the project's storefront source each time the verdict is read or weighed, never
+  trusting what it read when the verdict was written: corroborated while the source holds each
+  draft version named, superseded once any one of them has moved, uncorroborated with the reason
+  when one cannot be read. Only a corroborated draft
   on a project whose \`source.type\` is \`storefront\` counts toward the release hold, which earns
   neither a superseded nor an uncorroborated one.
 

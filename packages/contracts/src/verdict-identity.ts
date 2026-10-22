@@ -23,23 +23,53 @@ export const STOREFRONT_WORKFLOW_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$/u;
 export const STOREFRONT_DRAFT_VERSION = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
 export const STOREFRONT_ENVIRONMENT = /^[a-z][a-z0-9-]{0,62}$/u;
 
+/** The most workflow drafts one storefront_draft verdict names. */
+export const STOREFRONT_DRAFT_PARTS_MAX = 50;
+
 export const STOREFRONT_DRAFT_SHAPE =
-	'{ kind: "storefront_draft", workflowId: <the provider\'s workflow id>, draftVersion: <the draft version id the storefront target route reports>, environment: <a non-production environment the project document declares, e.g. preview> }';
+	'{ kind: "storefront_draft", workflows: [{ workflowId: <the provider\'s workflow id>, draftVersion: <the draft version id the storefront target route reports> }, ...one per workflow the criterion rests on, each workflow once, at most 50], environment: <a non-production environment the project document declares, e.g. preview> }, or for one workflow { kind: "storefront_draft", workflowId, draftVersion, environment }';
 
 export const STOREFRONT_DRAFT_REFUSAL_CODES = [
 	"VERDICT_STOREFRONT_DRAFT_SHAPE",
 	"VERDICT_ENVIRONMENT_UNKNOWN",
 ] as const;
+
+/** One workflow draft a storefront_draft verdict was judged on. */
+export interface StorefrontDraftPart {
+	readonly workflowId: string;
+	readonly draftVersion: string;
+}
+
+// every field is optional here and a free string, so the verdict door refuses a wrong one by name
+// (`verdict-input.ts:storefrontDraftFault`, VERDICT_STOREFRONT_DRAFT_SHAPE) rather than a schema's
+// generic 400: an empty list, a repeated workflow, a part with no version, both forms or neither
+const storefrontDraftPartSchema = z.strictObject({
+	workflowId: z.string().max(200).optional(),
+	draftVersion: z.string().max(200).optional(),
+});
+
 export const storefrontDraftIdentitySchema = z.strictObject({
 	kind: z.literal(STOREFRONT_DRAFT_KIND),
-	workflowId: z.string().trim().min(1).max(200),
-	draftVersion: z.string().trim().min(1).max(200),
+	workflows: z.array(storefrontDraftPartSchema).optional(),
+	workflowId: z.string().max(200).optional(),
+	draftVersion: z.string().max(200).optional(),
 	environment: z.string().trim().min(1).max(100),
 });
 
+/** How a verdict names its storefront drafts: `<workflow>@<version>` each, in the order written. */
+export const storefrontDraftsPhrase = (
+	parts: readonly StorefrontDraftPart[] | null,
+	versionChars = 12,
+): string =>
+	parts && parts.length > 0
+		? parts
+				.map((p) => `${p.workflowId}@${p.draftVersion.slice(0, versionChars)}`)
+				.join(", ")
+		: "—";
+
 export interface StorefrontDraftVerdictView {
-	storefrontWorkflowId: string | null;
-	storefrontDraftVersion: string | null;
+	/** Every workflow draft the verdict was judged on, in the order written; null on another kind. */
+	storefrontDrafts: readonly StorefrontDraftPart[] | null;
 	storefrontEnvironment: string | null;
 	corroboration: VerdictDraftReading | null;
 	corroborationNote: string | null;
@@ -126,7 +156,7 @@ export function identityPhraseOf(v: VerdictReading): string {
 		case "contract":
 			return `contract ${v.contractRef}@${v.contractVersion}`;
 		case "storefront_draft":
-			return `storefront draft ${v.storefrontWorkflowId}@${v.storefrontDraftVersion?.slice(0, 12)} on ${v.storefrontEnvironment}${v.corroboration === "corroborated" ? "" : ` (${v.corroboration ?? "uncorroborated"}: ${v.corroborationNote})`}`;
+			return `storefront draft ${storefrontDraftsPhrase(v.storefrontDrafts)} on ${v.storefrontEnvironment}${v.corroboration === "corroborated" ? "" : ` (${v.corroboration ?? "uncorroborated"}: ${v.corroborationNote})`}`;
 		default:
 			return "no identity";
 	}

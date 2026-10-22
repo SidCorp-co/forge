@@ -72,10 +72,10 @@ function identityOfRow(row: LatestVerdict): VerdictIdentity | null {
         ? { kind: 'contract', value: `${row.contractRef}@${row.contractVersion}` }
         : null;
     case 'storefront_draft':
-      return row.storefrontWorkflowId && row.storefrontDraftVersion
+      return row.storefrontDrafts && row.storefrontDrafts.length > 0
         ? {
             kind: 'storefront_draft',
-            value: `${row.storefrontWorkflowId}@draft:${row.storefrontDraftVersion} on \`${row.storefrontEnvironment}\``,
+            value: `${row.storefrontDrafts.map((p) => `${p.workflowId}@draft:${p.draftVersion}`).join(', ')} on \`${row.storefrontEnvironment}\``,
             corroboration: row.corroboration,
             corroborationNote:
               row.corroboration === 'corroborated'

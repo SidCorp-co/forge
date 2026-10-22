@@ -12,7 +12,11 @@ import type {
   CoverageIssue,
   RequirementCoverage,
 } from '@forge/contracts/requirements';
-import { verdictExercised } from '@forge/contracts/verdict-identity';
+import {
+  type StorefrontDraftPart,
+  storefrontDraftsPhrase,
+  verdictExercised,
+} from '@forge/contracts/verdict-identity';
 import { judgesVerdict, unverifiedWhy } from '@forge/contracts/verified-rule';
 import { liveAt } from './rules.js';
 
@@ -27,7 +31,7 @@ export type CoverageIdentity =
   | { kind: 'runtime'; ref: string }
   | { kind: 'design'; workflow: string; revision: number; pinned: number | null }
   | { kind: 'contract'; ref: string; version: string; pinned: string | null }
-  | { kind: 'storefront_draft'; workflowId: string; draftVersion: string; environment: string };
+  | { kind: 'storefront_draft'; drafts: readonly StorefrontDraftPart[]; environment: string };
 
 /** One verdict on an issue criterion, as coverage reads it. */
 export interface StandingVerdict {
@@ -107,7 +111,7 @@ function identityWords(identity: CoverageIdentity | null): string | null {
     case 'contract':
       return `contract ${identity.ref}@${identity.version}`;
     case 'storefront_draft':
-      return `storefront draft ${identity.workflowId}@${short(identity.draftVersion)} on ${identity.environment}`;
+      return `storefront draft ${storefrontDraftsPhrase(identity.drafts)} on ${identity.environment}`;
   }
 }
 
@@ -183,7 +187,7 @@ function resolve(identity: CoverageIdentity | null, live: LiveBuildHolds | null)
       );
     case 'storefront_draft':
       return none(
-        `judged on storefront draft ${identity.workflowId} in ${identity.environment}, a non-production environment, not on the live build`,
+        `judged on storefront draft ${identity.drafts.map((p) => p.workflowId).join(', ')} in ${identity.environment}, a non-production environment, not on the live build`,
       );
     case 'commit_unresolved':
       return none(

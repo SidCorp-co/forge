@@ -5,6 +5,7 @@
  */
 
 import type { CoverageFile } from '@forge/contracts/requirements';
+import type { StorefrontDraftPart } from '@forge/contracts/verdict-identity';
 import { inArray, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { issueAttachments } from '../db/schema.js';
@@ -32,8 +33,7 @@ type CriterionVerdictRow = {
   contract_ref: string | null;
   contract_version: string | null;
   contract_pinned: string | null;
-  storefront_workflow_id: string | null;
-  storefront_draft_version: string | null;
+  storefront_drafts: StorefrontDraftPart[] | null;
   storefront_environment: string | null;
   by_builder: boolean | null;
   authored: boolean | null;
@@ -69,8 +69,7 @@ function identityOf(r: CriterionVerdictRow): CoverageIdentity | null {
     case 'storefront_draft':
       return {
         kind: 'storefront_draft',
-        workflowId: r.storefront_workflow_id ?? '',
-        draftVersion: r.storefront_draft_version ?? '',
+        drafts: r.storefront_drafts ?? [],
         environment: r.storefront_environment ?? '',
       };
     default:
@@ -115,8 +114,8 @@ export async function issueCriteriaOf(
            v.identity_kind,
            v.commit_sha, v.runtime_ref, w.flow AS design_flow, v.design_workflow_id,
            v.design_revision, dp.design_revision AS design_pinned, v.contract_ref,
-           v.contract_version, cp.contract_version AS contract_pinned, v.storefront_workflow_id,
-           v.storefront_draft_version, v.storefront_environment,
+           v.contract_version, cp.contract_version AS contract_pinned, v.storefront_drafts,
+           v.storefront_environment,
            (${verdictByBuilderSql({
              issueId: sql`c.issue_id`,
              authorUser: sql`v.author_user_id`,
@@ -130,7 +129,7 @@ export async function issueCriteriaOf(
         SELECT cv.id, cv.verdict, cv.created_at AS verdict_at, cv.reason, cv.evidence, cv.identity_kind,
                cv.commit_sha,
                cv.runtime_ref, cv.design_workflow_id, cv.design_revision, cv.contract_ref,
-               cv.contract_version, cv.storefront_workflow_id, cv.storefront_draft_version,
+               cv.contract_version, cv.storefront_drafts,
                cv.storefront_environment, cv.author_user_id, cv.author_device_id
           FROM criterion_verdicts cv
          WHERE cv.criterion_id = c.id

@@ -1,4 +1,4 @@
-import type { identityPhraseOf } from "@forge/contracts/verdict-identity";
+import { type identityPhraseOf, storefrontDraftsPhrase } from "@forge/contracts/verdict-identity";
 import { type Copy, type ProductCopyKey, productCopy } from "@/lib/i18n/product-copy";
 
 /**
@@ -30,8 +30,7 @@ export function identityPhrase(v: VerdictReading, t: Copy = productCopy()): stri
               note: v.corroborationNote ?? "—",
             });
       return t("agents.identity.storefront", {
-        id: v.storefrontWorkflowId ?? "—",
-        version: v.storefrontDraftVersion?.slice(0, 12) ?? "—",
+        drafts: storefrontDraftsPhrase(v.storefrontDrafts),
         env: v.storefrontEnvironment ?? "—",
         note,
       });

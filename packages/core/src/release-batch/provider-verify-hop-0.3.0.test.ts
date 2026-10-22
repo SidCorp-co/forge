@@ -305,8 +305,8 @@ function criterion(n: number, v: FixtureIssue['verdicts'][number] | null): Crite
       designRevision: null,
       contractRef: null,
       contractVersion: null,
-      storefrontWorkflowId: v?.workflowId ?? null,
-      storefrontDraftVersion: v?.draft ?? null,
+      storefrontDrafts:
+        v?.workflowId && v.draft ? [{ workflowId: v.workflowId, draftVersion: v.draft }] : null,
       storefrontEnvironment: v?.workflowId ? 'preview' : null,
       corroboration: v?.workflowId ? 'corroborated' : null,
       corroborationNote: null,
