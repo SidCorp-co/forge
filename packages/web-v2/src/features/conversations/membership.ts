@@ -153,10 +153,7 @@ export function unopenableReason(opener: Pick<RoomOpener, "handle" | "blocked">,
   return opener.blocked === "lost-role" ? `@${opener.handle} can't answer. ${cannotAnswerReason(projectName)}` : null;
 }
 
-/**
- * Why an agent offered to a room cannot be added, or null where it can: a lost role in the words its row
- * in Who is in this room uses, an address another agent holds as the project picker says it (r37).
- */
+/** What holds an offered agent back, in the words its room row or the project picker uses (r37). */
 export function candidateHeldReason(candidate: Pick<HandleCandidate, "handle" | "blocked" | "reachable" | "project">): string | null {
   if (candidate.blocked === "taken") return unopenableReason(candidate, candidate.project.name);
   return candidate.reachable ? null : cannotAnswerReason(candidate.project.name);
@@ -168,10 +165,7 @@ export function draftHeading(roomId: string | undefined, canStart: boolean): str
   return canStart ? "New conversation" : "Conversations";
 }
 
-/**
- * What the agent panel's door says where no project is open: open one, or, to a reader who can see none,
- * that there is none they can see (ISS-1229 r37, judge-100).
- */
+/** The agent panel's door with no project open: never "open a project" to a reader who can see none (r37). */
 export function agentPanelWithoutProject(mayStart: boolean, anyProject: boolean): { title: string; description: string } {
   if (!anyProject) {
     return { title: "Conversations", description: "This organization holds no project you can see, and a conversation is about a project." };
@@ -217,7 +211,6 @@ export function emptyRoomState(
     };
   }
   if (readOnly) return { title: "Nothing has been said here yet", message: readOnly };
-  // The reason and the way out are said once, at the box (r37, judge-100).
   if (composerRefusal(room, reader)) return { title: "Nothing can be sent here", message: WHY_ABOVE_THE_BOX };
   return null;
 }
@@ -426,10 +419,7 @@ export function removalHeld(
   return null;
 }
 
-/**
- * Whether taking one agent out would leave a room that can be spoken in: about one project, with an agent
- * that can answer there (ISS-1229 r37, judge-100).
- */
+/** Whether one agent out leaves a room about one project with an agent that can answer (r37). */
 function speakableAfterOneOut(room: Partial<Pick<ConversationMembership, "participants">>): boolean {
   const agents = agentsOf(room);
   return agents.some((out) => {
@@ -441,8 +431,7 @@ function speakableAfterOneOut(room: Partial<Pick<ConversationMembership, "partic
 /**
  * Why a room takes no messages from Forge, where it takes none, and the way out for this reader: taking
  * an agent out, said to one who may; who can, to any other who could then post; none to a reader who
- * could not post either way (ISS-1229 r35, judge-95), nor where taking one out would still leave a room
- * nobody can speak in (r37).
+ * could not post either way (ISS-1229 r35, judge-95), nor where it would not make the room speakable (r37).
  */
 export function composerRefusal(
   room: Partial<Pick<ConversationMembership, "scopeProjects" | "canChangeMembership" | "participants">>,

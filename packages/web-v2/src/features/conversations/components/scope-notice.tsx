@@ -73,7 +73,6 @@ export function ScopeNotice({
               {line}
             </p>
           ))}
-          {/* The way out is the message box's to say, once (ISS-1229 r37, judge-100). */}
           {refusal && (
             <p className="fg-caption mt-1 text-muted" data-testid="scope-notice-refusal">
               {refusal.reason}

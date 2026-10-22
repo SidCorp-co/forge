@@ -10,7 +10,7 @@ import { scrubLogText } from '@forge/observability';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import type { MessageRule, RuleBreak } from './contract.js';
 import type { MessageFacts } from './facts.js';
-import { issueTokenRe, keyMentions } from './issue-tokens.js';
+import { keyMentions } from './issue-tokens.js';
 import { OPTION_LINE_RE } from './option-line.js';
 import { extractStatusAssertions } from './status-assertions.js';
 
@@ -206,7 +206,6 @@ export const ONLY_VERIFIED_CITATIONS: MessageRule = {
     const breaks: RuleBreak[] = [];
     for (const { seq, token, absent } of keyMentions(text, f.prefixes)) {
       const ref = formatIssueRef(f.prefix, seq);
-      // Saying the project holds no such issue is true exactly where its rows hold none (r37).
       if (absent) {
         if (f.knownIssueSeqs.has(seq)) breaks.push({ quote: token, why: heldSaidAbsent(ref) });
         continue;

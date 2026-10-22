@@ -59,10 +59,9 @@ export interface KeyMention {
 }
 
 /**
- * Every key a message names, each naming read in its own sentence: one saying the project does not hold
- * the key ("ISS-9 is not on this project's tracker", "there is no ISS-9") states a fact the tracker's
- * rows can check, and is not a citation (ISS-1229 r37, judge-100). Another naming of the same key is
- * read on its own.
+ * Every key a message names, each read in its own sentence: one saying the project does not hold it
+ * ("ISS-9 is not on this project's tracker", "there is no ISS-9") states a fact the tracker's rows
+ * check, not a citation (ISS-1229 r37, judge-100).
  */
 export function keyMentions(text: string, prefixes: readonly string[] = []): KeyMention[] {
   const out: KeyMention[] = [];

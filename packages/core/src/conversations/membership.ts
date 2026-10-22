@@ -51,10 +51,7 @@ export interface HandleCandidate {
   project: NamedProject;
   /** False for a project's agent that no longer holds a role on it: offered marked, never added. */
   reachable: boolean;
-  /**
-   * Why it cannot be added, read as `roomOpeners` reads a project: its agent lost its role there, or the
-   * address it would take is another agent's (ISS-1229 r37, judge-100). Null where it can be.
-   */
+  /** The `RoomOpener.blocked` reading of its project, so a taken address is marked too (ISS-1229 r37). */
   blocked: 'lost-role' | 'taken' | null;
 }
 
