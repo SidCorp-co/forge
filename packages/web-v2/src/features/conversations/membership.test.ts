@@ -4,7 +4,7 @@
 // in the same words.
 
 import { afterAll, describe, expect, it, vi } from "vitest";
-import { composerRefusal, emptyRoomState, memberName, removalClaim, removalQuestion, unopenableReason } from "./membership";
+import { agentPanelWithoutProject, composerRefusal, emptyRoomState, memberName, removalClaim, removalQuestion, unopenableReason } from "./membership";
 import type { ConversationParticipant } from "./types";
 
 // When each was added reads in the reader's own time zone (ISS-1229 r25); this reader is at UTC+7.
@@ -105,14 +105,14 @@ describe("emptyRoomState", () => {
   it("says no agent can answer and points to where why is said: the box for a poster, About for a reader", () => {
     expect(emptyRoomState({ participants: [agent(false)], scopeProjects: [desk] }, { canPost: true })).toEqual({
       title: "No agent here can answer",
-      message: "Why is said above the message box.",
+      message: "The reason is above the message box.",
     });
     expect(
       emptyRoomState({ participants: [agent(false)], scopeProjects: [desk] }, { canPost: false, projectName: "Desk" }),
     ).toEqual({
       title: "No agent here can answer",
       message:
-        "You can read this room, not post in it: you hold the viewer role on Desk. Why is said in this room's About line, at the top.",
+        "You can read this room, not post in it: you hold the viewer role on Desk. The reason is in this room's About line, at the top.",
     });
   });
 
@@ -129,18 +129,43 @@ describe("composerRefusal's way out", () => {
     { id: "p1", name: "Desk", slug: "desk" },
     { id: "p2", name: "Ops", slug: "ops" },
   ];
+  const agentOn = (projectId: string, reachable: boolean): ConversationParticipant => ({
+    id: `h-${projectId}`,
+    kind: "handle",
+    userId: `u-${projectId}`,
+    projectId,
+    label: null,
+    displayName: projectId,
+    reachable,
+    addedAt: "2026-10-01T09:00:00Z",
+  });
+  const answering = [agentOn("p1", true), agentOn("p2", true)];
   it("offers taking an agent out to a reader who may change who is in the room", () => {
-    expect(composerRefusal({ scopeProjects: two, canChangeMembership: true })?.wayOut).toBe(
+    expect(composerRefusal({ scopeProjects: two, participants: answering, canChangeMembership: true })?.wayOut).toBe(
       "Take one of its agents out, and the room can be spoken in again.",
     );
   });
   it("tells a poster who may not who can", () => {
-    expect(composerRefusal({ scopeProjects: two, canChangeMembership: false })?.wayOut).toBe(
+    expect(composerRefusal({ scopeProjects: two, participants: answering, canChangeMembership: false })?.wayOut).toBe(
       "Somebody who can change who is in this room can take one of its agents out, and it can be spoken in again.",
     );
   });
+  // r37, judge-100: two agents neither of which can answer were offered as a way out that leaves the room mute.
+  it("offers no way out where taking one agent out would still leave no agent that can answer", () => {
+    const mute = [agentOn("p1", false), agentOn("p2", false)];
+    expect(composerRefusal({ scopeProjects: two, participants: mute, canChangeMembership: true })?.wayOut).toBeNull();
+    const oneAnswers = [agentOn("p1", true), agentOn("p2", false)];
+    expect(composerRefusal({ scopeProjects: two, participants: oneAnswers, canChangeMembership: true })?.wayOut).toBe(
+      "Take one of its agents out, and the room can be spoken in again.",
+    );
+  });
+  it("offers no way out where one agent out still leaves the room about two projects", () => {
+    const three = [...two, { id: "p3", name: "Books", slug: "books" }];
+    const agents = [agentOn("p1", true), agentOn("p2", true), agentOn("p3", true)];
+    expect(composerRefusal({ scopeProjects: three, participants: agents, canChangeMembership: true })?.wayOut).toBeNull();
+  });
   it("gives a viewer no way out, only the reason", () => {
-    const refusal = composerRefusal({ scopeProjects: two, canChangeMembership: true }, { canPost: false });
+    const refusal = composerRefusal({ scopeProjects: two, participants: answering, canChangeMembership: true }, { canPost: false });
     expect(refusal).toEqual({
       reason: "This room is about Desk and Ops, and a message is answered under exactly one project.",
       wayOut: null,
@@ -161,5 +186,21 @@ describe("unopenableReason", () => {
       "This project's agent has no address in this organization, so no room can start with it.",
     );
     expect(unopenableReason({ handle: "ledger", blocked: null }, "Ledger")).toBeNull();
+  });
+});
+
+// ISS-1229 r37, judge-100: a reader with no project pressed Conversations and was told to open a project.
+describe("the agent panel's door with no project open", () => {
+  it("tells a reader who can see no project that there is none they can see, never to open one", () => {
+    const said = agentPanelWithoutProject(false, false);
+    expect(said).toEqual({
+      title: "Conversations",
+      description: "This organization holds no project you can see, and a conversation is about a project.",
+    });
+    expect(said.description).not.toMatch(/open a project/i);
+  });
+  it("asks a reader with a project to open one, in the door's own name", () => {
+    expect(agentPanelWithoutProject(true, true).title).toBe("Ask agent");
+    expect(agentPanelWithoutProject(false, true).description).toBe("Open a project to read its conversations.");
   });
 });

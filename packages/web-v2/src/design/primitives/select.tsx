@@ -186,13 +186,14 @@ export function Select({
               onClick={() => commit(i)}
               className={cn(
                 "flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-13-5",
-                o.disabled && "cursor-not-allowed opacity-50",
+                o.disabled && "cursor-not-allowed",
                 isActive && !o.disabled ? "bg-accent-tint text-accent-text" : "text-fg",
               )}
             >
-              {o.icon && <Icon name={o.icon} size={16} style={isActive ? { color: "var(--accent)" } : { color: "var(--fg-subtle)" }} />}
+              {o.icon && <Icon name={o.icon} size={16} className={o.disabled ? "opacity-50" : undefined} style={isActive ? { color: "var(--accent)" } : { color: "var(--fg-subtle)" }} />}
               <span className="flex min-w-0 flex-1 flex-col">
-                <span className="truncate" data-option-label>{o.label}</span>
+                {/* A disabled option fades its label only: its detail is why it cannot be picked, and is read (ISS-1229 r37). */}
+                <span className={cn("truncate", o.disabled && "text-subtle")} data-option-label>{o.label}</span>
                 {o.detail && <span className="fg-caption text-muted [overflow-wrap:anywhere]" data-option-detail>{o.detail}</span>}
               </span>
               {isSel && <Icon name="check" size={15} strokeWidth={2.5} style={{ color: "var(--accent)" }} />}

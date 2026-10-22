@@ -238,6 +238,33 @@ const isRemedy = (sentence: string) =>
   /\b(?:is|are) (?:on|in|listed (?:by|on|under)) `/.test(sentence) ||
   /\b(?:instead|first)[.!?]$/i.test(sentence);
 
+/**
+ * A sentence written for the agent rather than the person reading the room: it names a command, a flag
+ * or terminal output, none of which a person in a room can type or see (ISS-1229 r37, judge-100).
+ */
+const forTheAgent = (sentence: string, tool?: string) =>
+  /`(?:forge[\s_]|-)[^`]*`|\b\w+=\w|(?:^|\s)--?[a-z]|\bone per line\b|\b(?:stdout|stderr|exit code|argv)\b/i.test(sentence) ||
+  (tool !== undefined && new RegExp(`\\b${tool.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(sentence));
+
+/** What the person reading the room can do about a refusal whose own remedy is the agent's. */
+const PERSON_REMEDIES: readonly { says: RegExp; wrong?: string; remedy: string }[] = [
+  {
+    says: /\bis not (?:on|in) this project|\bholds no issue\b|\bdoes not exist\b|\bno such issue\b/i,
+    remedy: "Check the key, or ask the assistant to list this project's issues.",
+  },
+  {
+    says: /\bis not open from chat\b/i,
+    wrong: "The assistant can't do that from a room.",
+    remedy: "Here it can read, file and comment on issues.",
+  },
+  {
+    says: /\bstopped after (\d+)s with no answer\b/i,
+    wrong: "The tracker did not answer in time.",
+    remedy: "Ask the assistant to check whether it went through before trying again.",
+  },
+];
+const ANY_REMEDY = "Ask the assistant to put it right and try again.";
+
 /** A sentence cut to the clause it leads with, where the clauses after it only add detail. */
 const leadClause = (sentence: string) => {
   const cut = sentence.split("; ")[0] as string;
@@ -277,15 +304,17 @@ function gapsReason(text: string): string | null {
       : []),
     ...gaps.filter((g) => !g.adds).map((g) => `${g.read} needs ${g.wants}`),
   ];
-  const said = clauses.join("; ").replace(/`/g, "");
+  const said = clauses.join("; ");
   return `${said.charAt(0).toUpperCase()}${said.slice(1)}${clauses.length === 1 && sections.length ? " and send it again" : ""}.`;
 }
 
 /**
- * The refusal's reason, one line: what its gaps say, where it lists them; else what it says was wrong and
- * what would put it right, whichever order it says them in, after any opening that only says it held
- * the call ("Hold — …", r35). Never its first sentence alone: the remedy is often the second (r36,
- * judge-97).
+ * The refusal's reason, one line, written for the person reading the room: what its gaps say, where it
+ * lists them; else what it says was wrong and what would put it right, whichever order it says them in,
+ * after any opening that only says it held the call ("Hold — …", r35), and never its first sentence
+ * alone (r36). A remedy written for the agent, naming a command or a flag, is never the card's: the
+ * card says what the person can do instead, and the agent's remedy stays under the technical details
+ * (r37, judge-100). No literal backtick reaches the line.
  */
 export function refusalReason(result: unknown, tool?: string): string {
   let text = "";
@@ -294,29 +323,50 @@ export function refusalReason(result: unknown, tool?: string): string {
     const r = result as { stderr?: unknown; message?: unknown; stdout?: unknown };
     text = [r.stderr, r.message, r.stdout].find((v): v is string => typeof v === "string" && v.trim() !== "") ?? "";
   }
-  const said = (line: string) => shortened(tool ? unnamed(line, tool) : line);
   const read = gapsReason(text);
-  if (read) return said(read);
+  if (read) return said(read, tool);
   const paragraphs = text.trim().split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
   if (paragraphs.length === 0) return "It gave no reason.";
   const held = /^Hold\b/.test(paragraphs[0] as string) && paragraphs.length > 1;
-  const sentences = paragraphs.slice(held ? 1 : 0).flatMap(sentencesOf);
-  const wrong = sentences.find((x) => !isRemedy(x)) ?? (sentences[0] as string);
-  const remedy = sentences.find((x) => x !== wrong && isRemedy(x));
-  if (!remedy) return said(wrong);
-  const whole = `${wrong} ${remedy}`;
-  const fits = (tool ? unnamed(whole, tool) : whole).length <= REASON_CHARS;
-  return said(fits ? whole : `${leadClause(wrong)} ${remedy}`);
+  // A machine code leading the refusal ("NOT_FOUND: …") is the technical view's, not the card's.
+  const sentences = paragraphs
+    .slice(held ? 1 : 0)
+    .flatMap(sentencesOf)
+    .map((x) => x.replace(/^[A-Z][A-Z_]{2,}:\s*/, ""));
+  const wrongs = sentences.filter((x) => !isRemedy(x));
+  const remedies = sentences.filter(isRemedy);
+  const known = PERSON_REMEDIES.find((p) => p.says.test(text));
+  const first = wrongs[0] ?? (sentences[0] as string);
+  // A refusal about the agent's own tool is said whole in the person's words, its listing of verbs too.
+  const reworded = forTheAgent(first, tool) ? known?.wrong : undefined;
+  const wrong = reworded ?? first;
+  const ownRemedy = reworded ? undefined : remedies.find((x) => !forTheAgent(x, tool));
+  const remedy = ownRemedy ?? (remedies.length > 0 || known ? (known?.remedy ?? ANY_REMEDY) : undefined);
+  if (!remedy) return said(wrong, tool);
+  const whole = said(`${wrong} ${remedy}`, tool, false);
+  if (whole.length <= REASON_CHARS) return whole;
+  // Where the two do not fit, the wrong gives way: the remedy is the half a reader acts on.
+  const fix = said(remedy, tool, false);
+  const lead = said(leadClause(wrong), tool, false);
+  const room = REASON_CHARS - fix.length - 1;
+  if (room < 40) return shortened(`${lead} ${fix}`);
+  return `${lead.length <= room ? lead : `${lead.slice(0, room - 1).trimEnd()}…`} ${fix}`;
+}
+
+/** A line as the card shows it: the tool's stored name and every backtick out, and cut to fit. */
+function said(line: string, tool: string | undefined, cut = true): string {
+  const plain = (tool ? unnamed(line, tool) : line).replace(/`/g, "");
+  return cut ? shortened(plain) : plain;
 }
 
 /** The reason with the tool's stored name taken out, which only the technical details show. */
 function unnamed(reason: string, name: string): string {
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const word = new RegExp(`\\b${escaped}\\b`, "g");
-  const said = name === "forge"
-    ? reason.replace(/`forge ([^`]+)`/g, "the tracker's `$1` command").replace(word, "the tracker")
+  const out = name === "forge"
+    ? reason.replace(/`forge ([^`]+)`/g, "the tracker's $1 command").replace(word, "the tracker")
     : reason.replace(word, "the tool");
-  return said.charAt(0).toUpperCase() + said.slice(1);
+  return out.charAt(0).toUpperCase() + out.slice(1);
 }
 
 /** What the call did, in the tense it is in, and why it was refused where it was. */

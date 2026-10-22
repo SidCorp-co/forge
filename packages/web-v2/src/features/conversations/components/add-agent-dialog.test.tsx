@@ -12,12 +12,19 @@ vi.mock("next/link", () => ({
   default: ({ href, children }: { href: string; children: React.ReactNode }) => <a href={href}>{children}</a>,
 }));
 
-const candidate = (handle: string, projectId: string, name: string, reachable = true) => ({
-  userId: `u-${handle}`,
+const candidate = (
+  handle: string,
+  projectId: string,
+  name: string,
+  reachable = true,
+  blocked: "lost-role" | "taken" | null = reachable ? null : "lost-role",
+) => ({
+  userId: blocked === "taken" ? null : `u-${handle}`,
   handle,
   project: { id: projectId, name, slug: handle },
   losesReaders: [],
   reachable,
+  blocked,
 });
 const refetch = vi.fn();
 let handles = [candidate("retired", "p-gone", "Retired"), candidate("desk", "p1", "Desk")];
@@ -159,3 +166,21 @@ describe("an agent that lost its role on its project", () => {
   });
 });
 
+// ISS-1229 r37, judge-100: where the address a project's agent would take is another agent's, the panel
+// listed two @desk rows, the second unmarked and pickable, refused 409 only at Add.
+describe("an agent whose address another agent already answers to", () => {
+  it("is marked with why, cannot be picked, and is told apart from the agent holding the address", () => {
+    handles = [candidate("desk", "p1", "Desk"), candidate("desk", "p-ledger", "Ledger", false, "taken")];
+    render(<AddAgentDialog conversationId="c1" room={{ shape: "group", scopeProjects: [] }} open onClose={() => {}} />);
+    const [holder, taken] = screen.getAllByRole("button", { name: /@desk/ }) as HTMLButtonElement[];
+    expect(holder?.disabled).toBe(false);
+    expect(holder?.textContent).toContain("Desk");
+    expect(taken?.disabled).toBe(true);
+    expect(taken?.textContent).toContain("Ledger");
+    expect(taken?.textContent).toContain(
+      "This project's agent would answer to @desk, which another agent of this organization already answers to.",
+    );
+    fireEvent.click(taken as HTMLButtonElement);
+    expect(screen.queryByRole("button", { name: "Add @desk" })).toBeNull();
+  });
+});

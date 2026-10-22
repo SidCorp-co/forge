@@ -33,10 +33,12 @@ const handleCandidateSchema = z.object({
   handle: z.string(),
   project: namedProjectSchema,
   losesReaders: z.array(z.string()),
-  reachable: z
-    .boolean()
+  reachable: z.boolean().describe('false for an agent that cannot be added, `blocked` saying why'),
+  blocked: z
+    .enum(['lost-role', 'taken'])
+    .nullable()
     .describe(
-      'false for a project agent that no longer holds a role on its project, and cannot be added',
+      "Why it cannot be added: the project's agent lost its role there (PROJECT_AGENT_LOST_ROLE), or the address it would take is another agent's (HANDLE_TAKEN)",
     ),
 });
 
