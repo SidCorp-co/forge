@@ -208,10 +208,20 @@ export function refusalReason(result: unknown): string {
   return sentence.length > REASON_CHARS ? `${sentence.slice(0, REASON_CHARS).trimEnd()}…` : sentence;
 }
 
+/** The reason with the tool's stored name taken out, which only the technical details show. */
+function unnamed(reason: string, name: string): string {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const word = new RegExp(`\\b${escaped}\\b`, "g");
+  const said = name === "forge"
+    ? reason.replace(/`forge /g, "`").replace(word, "the tracker")
+    : reason.replace(word, "the tool");
+  return said.charAt(0).toUpperCase() + said.slice(1);
+}
+
 /** What the call did, in the tense it is in, and why it was refused where it was. */
 export function toolWords(tool: ToolCallData, live = false): ToolWords {
   const a = actOf(tool) ?? { done: "Used a tool", refused: "Couldn't use a tool", running: "Using a tool…" };
-  if (tool.isError === true) return { said: a.refused, refusal: refusalReason(tool.result) };
+  if (tool.isError === true) return { said: a.refused, refusal: unnamed(refusalReason(tool.result), tool.name) };
   if (tool.result === undefined && live) return { said: a.running };
   if (tool.name === "forge" && tool.input?.argv && (tool.input.argv as unknown[])[0] === "new") {
     const key = filedKey(tool);

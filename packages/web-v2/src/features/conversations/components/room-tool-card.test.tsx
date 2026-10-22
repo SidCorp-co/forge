@@ -49,4 +49,16 @@ describe("a room's tool card", () => {
     fireEvent.click(screen.getByRole("button", { name: "Technical details" }));
     expect(screen.getByTestId("room-tool-technical")).toHaveTextContent("mcp__acme__frobnicate");
   });
+
+  it("explains a refusal naming the CLI without its stored name, the original kept under Technical details", () => {
+    render(
+      <RoomToolCard
+        tool={{ id: "d", name: "forge", input: { argv: ["deploy"] }, result: { exitCode: 2, stdout: "", stderr: "`forge deploy` is not open from chat." }, isError: true }}
+      />,
+    );
+    expect(screen.getByTestId("room-tool-refusal")).toHaveTextContent("`deploy` is not open from chat.");
+    expect(screen.getByTestId("room-tool-card").textContent).not.toMatch(/\bforge\b/);
+    fireEvent.click(screen.getByRole("button", { name: "Technical details" }));
+    expect(screen.getByTestId("room-tool-technical")).toHaveTextContent("`forge deploy` is not open from chat.");
+  });
 });

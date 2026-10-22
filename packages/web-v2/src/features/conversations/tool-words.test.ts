@@ -100,6 +100,23 @@ describe("what a room's assistant did, in words", () => {
   });
 });
 
+describe("a refused card's reason", () => {
+  it("names no stored tool, which only the technical details show", () => {
+    const closed: ToolCallData = {
+      id: "c",
+      name: "forge",
+      input: { argv: ["deploy"] },
+      result: { exitCode: 2, stdout: "", stderr: "`forge deploy` is not open from chat. What is: issue, new." },
+      isError: true,
+    };
+    expect(toolWords(closed).refusal).toBe("`deploy` is not open from chat.");
+    const stopped = { ...closed, result: { exitCode: 1, stdout: "", stderr: "forge was stopped after 30s with no answer." } };
+    expect(toolWords(stopped).refusal).toBe("The tracker was stopped after 30s with no answer.");
+    const other: ToolCallData = { id: "o", name: "forge_guide", input: {}, result: { message: "forge_guide refused: no slug." }, isError: true };
+    expect(toolWords(other).refusal).toBe("The tool refused: no slug.");
+  });
+});
+
 describe("a refusal's reason", () => {
   it("is its first sentence, shortened past 120 characters, or says there was none", () => {
     expect(refusalReason("`forge deploy` is not open from chat. What is: issue, new.")).toBe("`forge deploy` is not open from chat.");
