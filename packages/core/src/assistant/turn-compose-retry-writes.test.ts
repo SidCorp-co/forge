@@ -34,6 +34,7 @@ vi.mock('../conversations/index.js', async () => {
   };
 });
 vi.mock('./agreement/store.js', () => ({
+  failedProposalsOf: async () => [],
   pendingFor: async () => [],
   recordProposal: async (p: { call: { name: string; arguments: string }; kind: string }) => {
     const row = { ...p, id: `proposal-${held.length + 1}`, createdAt: new Date() };

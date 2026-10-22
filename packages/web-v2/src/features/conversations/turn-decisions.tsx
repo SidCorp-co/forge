@@ -64,6 +64,24 @@ export function outcomeOf({ decision, ok }: DecisionSettled): DecisionOutcomeReq
   return { decision: decision.id, opens: item, ok };
 }
 
+/** The list, its presses answered in `conversationId`'s room. */
+function AnsweredList({ read, slug, conversationId }: { read: NeedsYouDecisions; slug: string | undefined; conversationId: string }) {
+  const t = useCopy();
+  const follow = useMutation({
+    mutationFn: (settled: DecisionSettled) => conversationsApi.decisionOutcome(conversationId, outcomeOf(settled)),
+  });
+  return (
+    <>
+      <DecisionList read={read} slug={slug} onSettled={(s) => follow.mutate(s)} />
+      {follow.isError && (
+        <p className="fg-caption text-danger" role="alert" data-testid="decision-follow-up-failed">
+          {t("conversations.decisions.followUpFailed", { error: formatApiError(follow.error) })}
+        </p>
+      )}
+    </>
+  );
+}
+
 /** The list under the turn that read it; nothing where the turn read none. */
 export function TurnDecisions({
   blocks,
@@ -74,20 +92,11 @@ export function TurnDecisions({
   slug?: string | undefined;
   conversationId?: string | undefined;
 }) {
-  const t = useCopy();
-  const follow = useMutation({
-    mutationFn: (settled: DecisionSettled) => conversationsApi.decisionOutcome(conversationId ?? "", outcomeOf(settled)),
-  });
   const read = decisionsIn(blocks);
   if (!read) return null;
   return (
     <div className="mt-2">
-      <DecisionList read={read} slug={slug} onSettled={conversationId ? (s) => follow.mutate(s) : undefined} />
-      {follow.isError && (
-        <p className="fg-caption text-danger" role="alert" data-testid="decision-follow-up-failed">
-          {t("conversations.decisions.followUpFailed", { error: formatApiError(follow.error) })}
-        </p>
-      )}
+      {conversationId ? <AnsweredList read={read} slug={slug} conversationId={conversationId} /> : <DecisionList read={read} slug={slug} />}
     </div>
   );
 }

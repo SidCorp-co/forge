@@ -1,5 +1,8 @@
 // REQ-41 BC-2 in chat: a turn that read `forge_needs_you` draws the decisions under its reply from
 // the tool's own result, never from the model's words, and nothing from any other tool or a refused call.
+//
+// @direct-test-of packages/web-v2/src/features/conversations/api.ts
+// @direct-test-of packages/web-v2/src/features/needs-you/index.ts
 
 import { needsYouDecisionsSchema } from "@forge/contracts/needs-you-decisions";
 import { screen } from "@testing-library/react";
