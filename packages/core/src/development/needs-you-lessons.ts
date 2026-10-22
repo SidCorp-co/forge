@@ -53,7 +53,7 @@ function proposedDecision(projectId: string, l: WaitingLesson): DecisionBody {
     key: l.key,
     title: cutAtWord(l.sentence, 500),
     opens: opens(l.key),
-    question: clip(`Approve lesson ${l.key}: ${l.sentence}`, 2000),
+    question: `Approve lesson ${l.key}, or reject it?`,
     recommended: null,
     noRecommendation:
       'The steward grouped these corrections; check the sentence says what they meant.',
@@ -94,7 +94,7 @@ function retireDecision(projectId: string, l: WaitingLesson): DecisionBody {
     key: l.key,
     title: cutAtWord(l.sentence, 500),
     opens: opens(l.key),
-    question: clip(`Retire lesson ${l.key}? ${why}`, 2000),
+    question: `Retire lesson ${l.key}, or keep it?`,
     // the approvals grammar: ✓ retires as the rule proposes, with the rule's own reason; Keep is its peek's
     recommended: { answerId: 'approve', why, by: 'rule' },
     noRecommendation: null,
@@ -122,6 +122,19 @@ function retireDecision(projectId: string, l: WaitingLesson): DecisionBody {
   };
 }
 
+/** A side as a quote inside a sentence: its own closing stop dropped. */
+const unstopped = (side: string) => side.trim().replace(/[.!?]+$/u, '');
+
+const CHOICE_WORD = { keep: 'keep', edit: 'edit', retire: 'retire' } as const;
+
+/** The choices offered, as one plain question opening: "Keep, edit or retire". */
+function choice(offered: readonly (keyof typeof CHOICE_WORD)[]): string {
+  const words = offered.map((r) => CHOICE_WORD[r]);
+  const said =
+    words.length > 1 ? `${words.slice(0, -1).join(', ')} or ${words.at(-1)}` : (words[0] ?? '');
+  return said.charAt(0).toUpperCase() + said.slice(1);
+}
+
 function confusionDecision(projectId: string, c: WaitingConfusion): DecisionBody {
   const against = c.other.lessonKey ?? c.other.ref;
   const path = filled('lesson.confusion', { projectId, confusionId: c.id });
@@ -142,14 +155,12 @@ function confusionDecision(projectId: string, c: WaitingConfusion): DecisionBody
     key: c.lessonKey,
     title: LESSON_CONFUSION_LABELS[c.kind],
     opens: opens(c.lessonKey),
-    question: clip(
-      `${c.lessonKey} is held: ${LESSON_CONFUSION_LABELS[c.kind].toLowerCase()}. The lesson says: ${c.sides.lesson} Against it${against ? ` (${against})` : ''}: ${c.sides.other}`,
-      2000,
-    ),
+    // the question names the choice once; what the two sides say is the why's (REQ-48 r3 BC-14)
+    question: `${choice(offered)} ${c.lessonKey}?`,
     recommended: {
       answerId: c.recommended.resolution,
       why: clip(
-        `Recommended by ${c.raisedAgency === 'agent' ? 'the agent that raised it' : 'whoever raised it'}.`,
+        `${c.lessonKey} says "${unstopped(c.sides.lesson)}", and ${against ?? 'what it is held against'} says "${unstopped(c.sides.other)}". Recommended by ${c.raisedAgency === 'agent' ? 'the agent that raised it' : 'whoever raised it'}.`,
         600,
       ),
       by: c.raisedAgency === 'agent' ? 'steward' : 'asker',

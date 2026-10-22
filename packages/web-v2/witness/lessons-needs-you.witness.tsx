@@ -25,9 +25,12 @@ const CONFUSION: NeedsYouDecision = {
   key: "L-4",
   title: "Conflicts with a lesson",
   opens: { kind: "lesson", key: "L-4" },
-  question:
-    "L-4 is held: conflicts with a lesson. The lesson says: Large type asks for 16 pt in every patient letter. Against it (L-2): The house style sets every letter in 11 pt, and the print template cannot hold two sizes.",
-  recommended: { answerId: "edit", why: "Recommended by the agent that raised it.", by: "steward" },
+  question: "Keep, edit or retire L-4?",
+  recommended: {
+    answerId: "edit",
+    why: 'L-4 says "Large type asks for 16 pt in every patient letter", and L-2 says "The house style sets every letter in 11 pt, and the print template cannot hold two sizes". Recommended by the agent that raised it.',
+    by: "steward",
+  },
   noRecommendation: null,
   answers: [
     { id: "keep", label: "Keep", act: "lesson.confusion", path: decide, body: { resolution: "keep" }, needsReason: false, declines: false, effect: "L-4 is applied again as it reads.", recommended: false },
@@ -55,7 +58,7 @@ const PROPOSED: NeedsYouDecision = {
   key: "L-5",
   title: "Name the ward and the bed in every handover a nurse reads.",
   opens: { kind: "lesson", key: "L-5" },
-  question: "Approve lesson L-5: Name the ward and the bed in every handover a nurse reads.",
+  question: "Approve lesson L-5, or reject it?",
   recommended: null,
   noRecommendation: "The steward grouped these corrections; check the sentence says what they meant.",
   answers: [
@@ -86,7 +89,7 @@ const RETIRE: NeedsYouDecision = {
   key: "L-3",
   title: "Greet the patient by first name in the portal.",
   opens: { kind: "lesson", key: "L-3" },
-  question: "Retire lesson L-3? No agent applied it in 30 days.",
+  question: "Retire lesson L-3, or keep it?",
   recommended: { answerId: "approve", why: "No agent applied it in 30 days.", by: "rule" },
   noRecommendation: null,
   answers: [

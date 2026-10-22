@@ -407,7 +407,7 @@ const RELEASE: NeedsYouDecision = {
   key: "0.4.0-dev.270",
   title: "Approvals decline round",
   opens: { kind: "release", key: "0.4.0-dev.270" },
-  question: "Approve release 0.4.0-dev.270 for production, or return it to the master?",
+  question: "Approve this release for production, or return it to the master?",
   recommended: { answerId: "approve", why: "None of the 4 criteria it carries is failing.", by: "rule" },
   noRecommendation: null,
   answers: [

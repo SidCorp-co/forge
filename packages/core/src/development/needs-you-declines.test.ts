@@ -51,7 +51,11 @@ describe('the answer that says no', () => {
     ).toEqual(['feedback.reopen:reopen']);
     expect(
       declining(
-        designDecision(row('workflow', 'flow'), 'designs', P, { workflowId: 'wf', revision: 3 }),
+        designDecision(row('workflow', 'flow'), 'designs', P, {
+          workflowId: 'wf',
+          revision: 3,
+          title: 'Order flow',
+        }),
       ),
     ).toEqual(['design.decide:return']);
   });

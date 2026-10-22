@@ -364,7 +364,7 @@
     "designs.act.repinBatch": "duyệt {n} bản chỉ đổi ghim → r{r}",
     "designs.act.revise": "sửa nó",
     "designs.act.reviseR": "sửa bản sửa {r}",
-    "designs.act.settleMarkers": "giải quyết {n} đánh dấu sức khỏe",
+    "designs.act.settleMarkers": "quyết định {n} chỗ mã và thiết kế khác nhau",
     "designs.base.missing": "{flow}, không phải quy trình nào của dự án này",
     "designs.base.stale": "{flow} r{r}, nay đã được duyệt ở r{approved}",
     "designs.base.unapproved": "{flow} r{r}, chưa được duyệt",

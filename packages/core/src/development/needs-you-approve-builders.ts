@@ -132,7 +132,7 @@ export function releaseDecision(
       key: row.key,
       title: clip(row.title, 500),
       opens: { kind: 'release', key: row.key },
-      question: `Approve release ${row.key} for production, or return it to the master?`,
+      question: 'Approve this release for production, or return it to the master?',
       recommended: {
         answerId: clean ? 'approve' : 'return',
         why: clean
@@ -239,7 +239,7 @@ export function cutDecision(
       key: row.key,
       title: clip(row.title, 500),
       opens: { kind: 'release', key: row.key },
-      question: `Cut release ${release.version} with the ${issues.length} ${issues.length === 1 ? 'issue' : 'issues'} waiting for it?`,
+      question: `Cut this release with the ${issues.length} ${issues.length === 1 ? 'issue' : 'issues'} waiting for it?`,
       recommended: clean ? { answerId: 'cut', why, by: 'rule' } : null,
       noRecommendation: clean ? null : why,
       answers: [
@@ -265,9 +265,10 @@ export function designDecision(
   row: AttentionRow,
   area: NeedsYouAreaKey,
   projectId: string,
-  design: { workflowId: string; revision: number },
+  design: { workflowId: string; revision: number; title: string },
 ): Built {
   const n = design.revision;
+  const named = `"${clip(design.title, 200)}"`;
   const path = filled('design.decide', { projectId, workflowId: design.workflowId });
   return {
     questionId: null,
@@ -278,7 +279,7 @@ export function designDecision(
       key: row.key,
       title: clip(row.title, 500),
       opens: { kind: 'workflow', key: row.key },
-      question: `Approve revision ${n} of the ${row.key} design, or return it to its writer?`,
+      question: `Approve revision ${n} of ${named}, or return it to its writer?`,
       recommended: {
         answerId: 'approve',
         why: `Its writer proposed revision ${n} for approval; return it with a reason if it does not draw the journey you mean.`,
@@ -292,7 +293,7 @@ export function designDecision(
           act: 'design.decide',
           path,
           body: { revision: n, decision: 'approve' },
-          effect: `Revision ${n} becomes the approved design of ${row.key}.`,
+          effect: `Revision ${n} becomes the approved design of ${named}.`,
           recommended: true,
         }),
         answer({

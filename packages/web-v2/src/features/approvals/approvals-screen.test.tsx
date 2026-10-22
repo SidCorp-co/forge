@@ -56,7 +56,7 @@ describe("the Approvals page", () => {
     renderWithQuery(<ApprovalsScreen projectId={P} slug="hop" />);
     await screen.findByTestId("approvals-screen");
     expect(screen.getAllByTestId("approval-row")).toHaveLength(READ.total);
-    expect(screen.getByTestId("approvals-count")).toHaveTextContent(`${READ.total} waiting on you`);
+    expect(screen.getByTestId("approvals-count")).toHaveTextContent(`Decisions waiting on you: ${READ.total}`);
     const groups = [...document.querySelectorAll("[data-testid^=approval-group-]")].map((g) => g.getAttribute("data-testid"));
     expect(groups).toEqual(["approval-group-feedback", "approval-group-breakdown", "approval-group-design_update", "approval-group-mockup", "approval-group-requirement", "approval-group-release", "approval-group-question"]);
 
@@ -83,7 +83,7 @@ describe("the Approvals page", () => {
     fireEvent.click(screen.getByTestId("approval-chip-recommends"));
     expect(screen.getAllByTestId("approval-row").map((r) => within(r).getByTestId("approval-tags").textContent)).toEqual([expect.stringContaining("Agent recommends"), expect.stringContaining("Agent recommends")]);
     // the count is the read's, whatever the chips narrow
-    expect(screen.getByTestId("approvals-count")).toHaveTextContent(`${READ.total} waiting on you`);
+    expect(screen.getByTestId("approvals-count")).toHaveTextContent(`Decisions waiting on you: ${READ.total}`);
   });
 
   it("states what approving a selection makes before it acts, and approves only those an ✓ can", async () => {
@@ -203,8 +203,12 @@ describe("what each row's ✓ and ✕ send", () => {
     renderWithQuery(<ApprovalsScreen projectId={P} slug="hop" across={128} />);
     await screen.findByTestId("approvals-screen");
     const count = screen.getByTestId("approvals-count");
-    expect(count).toHaveTextContent(`${READ.total} waiting on you`);
+    expect(count).toHaveTextContent(`Decisions waiting on you: ${READ.total}`);
     expect(within(count).getByTestId("approvals-count-across")).toHaveTextContent("128 across your projects");
+    // the left-out line counts no figure under the header's words: one phrase, one count
+    const left = screen.getByTestId("approvals-left-out");
+    expect(left).not.toHaveTextContent("waiting on you");
+    expect(left).toHaveTextContent("Also yours, not counted above:");
   });
 
   it("presses the answer a digit names, as the peek shows it on that answer", async () => {
