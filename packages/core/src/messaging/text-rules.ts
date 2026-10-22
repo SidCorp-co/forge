@@ -10,7 +10,7 @@ import { scrubLogText } from '@forge/observability';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import type { MessageRule, RuleBreak } from './contract.js';
 import type { MessageFacts } from './facts.js';
-import { absentIssueSeqs, issueTokenRe } from './issue-tokens.js';
+import { issueTokenRe, keyMentions } from './issue-tokens.js';
 import { OPTION_LINE_RE } from './option-line.js';
 import { extractStatusAssertions } from './status-assertions.js';
 
@@ -187,6 +187,10 @@ function refsTheTrackerReturned(facts: MessageFacts): Set<string> {
   return returned;
 }
 
+/** Why a reply saying the project does not hold an issue it holds is refused. */
+export const heldSaidAbsent = (ref: string) =>
+  `reply says ${ref} is not on this project, and this project holds it — ${REPHRASE}`;
+
 /**
  * An issue cited to a reader that this turn did not actually verify.
  */
@@ -199,17 +203,18 @@ export const ONLY_VERIFIED_CITATIONS: MessageRule = {
     if (f.issueLookupFailed) return none;
     const returned = refsTheTrackerReturned(f);
     const asserted = new Set(extractStatusAssertions(text, f.prefixes).map((a) => a.seq));
-    const absent = absentIssueSeqs(text, f.prefixes);
     const breaks: RuleBreak[] = [];
-    for (const m of text.matchAll(issueTokenRe(f.prefixes))) {
-      const seq = Number(m[2]);
-      if (f.knownIssueSeqs.has(seq)) continue;
-      // Saying the project holds no such issue is true where the tracker's rows hold none (r37).
-      if (absent.has(seq)) continue;
-      if (returned.has((m[0] as string).toUpperCase()) && !asserted.has(seq)) continue;
+    for (const { seq, token, absent } of keyMentions(text, f.prefixes)) {
       const ref = formatIssueRef(f.prefix, seq);
+      // Saying the project holds no such issue is true exactly where its rows hold none (r37).
+      if (absent) {
+        if (f.knownIssueSeqs.has(seq)) breaks.push({ quote: token, why: heldSaidAbsent(ref) });
+        continue;
+      }
+      if (f.knownIssueSeqs.has(seq)) continue;
+      if (returned.has(token.toUpperCase()) && !asserted.has(seq)) continue;
       breaks.push({
-        quote: m[0],
+        quote: token,
         why: asserted.has(seq)
           ? `reply states what "${ref}" is, and this turn only saw that id inside another issue's text — say what you read it in, or look it up, rather than reporting its status — ${REPHRASE}`
           : `reply cites "${ref}" which was not verified this turn — ${REPHRASE}`,

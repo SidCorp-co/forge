@@ -169,12 +169,12 @@ export function draftHeading(roomId: string | undefined, canStart: boolean): str
 }
 
 /**
- * What the agent panel's door says where no project is open: open one, or, to a reader with none to open,
- * that there is none yet (ISS-1229 r37, judge-100).
+ * What the agent panel's door says where no project is open: open one, or, to a reader who can see none,
+ * that there is none they can see (ISS-1229 r37, judge-100).
  */
 export function agentPanelWithoutProject(mayStart: boolean, anyProject: boolean): { title: string; description: string } {
   if (!anyProject) {
-    return { title: "Conversations", description: "There is no project here yet, and a conversation is about a project." };
+    return { title: "Conversations", description: "This organization holds no project you can see, and a conversation is about a project." };
   }
   return mayStart
     ? { title: "Ask agent", description: "Open a project to ask the agent." }

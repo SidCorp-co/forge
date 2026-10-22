@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ISSUE_REFERENCES_EXIST } from './claim-rules.js';
 import { NO_FACTS } from './facts.js';
-import { absentIssueSeqs } from './issue-tokens.js';
+import { keyMentions } from './issue-tokens.js';
 import { screenAtDoor } from './screen.js';
 
 // ISS-1229 r37, judge-100: asked to comment on ISS-999, which the project does not hold, the room's
@@ -42,10 +42,26 @@ describe('a reply saying a key is not on the project', () => {
     expect(JSON.stringify(verdict)).toContain('ISS-999');
   });
 
-  it('reads absence per sentence, so a key absent in one is still cited in another', () => {
-    expect([
-      ...absentIssueSeqs('ISS-999 is not on this project. ISS-998 is ready.', ['ISS']),
-    ]).toEqual([999]);
+  it('reads each naming on its own, so a key said absent once and cited again is still refused', () => {
+    const mentions = keyMentions('ISS-999 is not on this project. ISS-998 is ready.', ['ISS']);
+    expect(mentions.map((m) => [m.seq, m.absent])).toEqual([
+      [999, true],
+      [998, false],
+    ]);
     expect(room('ISS-999 is not on this project. ISS-998 is ready.').ok).toBe(false);
+    const both = 'ISS-999 is not on this project, but ISS-999 shipped yesterday.';
+    expect(room(both).ok).toBe(false);
+    expect(ISSUE_REFERENCES_EXIST.check(both, facts).map((b) => b.quote)).toEqual(['ISS-999']);
+  });
+
+  it('refuses saying the project does not hold an issue it holds', () => {
+    const verdict = room('ISS-1 is not on this project.');
+    expect(verdict.ok).toBe(false);
+    expect(JSON.stringify(verdict)).toContain(
+      'reply says ISS-1 is not on this project, and this project holds it',
+    );
+    expect(ISSUE_REFERENCES_EXIST.check('There is no ISS-1 on this project.', facts)).toHaveLength(
+      1,
+    );
   });
 });

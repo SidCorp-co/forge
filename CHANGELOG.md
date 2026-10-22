@@ -3203,7 +3203,7 @@
 - **An agent that cannot be added to a room because another agent already answers to its address is marked with why**, and cannot be picked. (ISS-1229)
 - **A room's assistant may say that an issue you named is not on the project.** The reply check no longer withdraws that true answer. (ISS-1229)
 - **A room spanning two projects says how to make it speakable once, by the message box**, and only where taking one agent out would do it. (ISS-1229)
-- **Why an option cannot be picked is no longer the faintest text in a picker**, a withdrawn reply's text shows formatted rather than as raw markup, and a reader with no project is told there is none yet. (ISS-1229)
+- **Why an option cannot be picked is no longer the faintest text in a picker**, a withdrawn reply's text shows formatted rather than as raw markup, and a reader who can see no project is told so. (ISS-1229)
 - **A refused tool call in a room says what went wrong and what would put it right**, whichever order the refusal gave them in, never its first sentence alone. (ISS-1229)
 - **A reader who can only read a project is not invited to start a conversation there.** The top bar names the panel Conversations for them and it is headed Conversations, never New conversation. (ISS-1229)
 - **Start a conversation marks a project whose own agent no longer holds a role there**, naming the agent and why it cannot answer, and the project cannot be picked. (ISS-1229)

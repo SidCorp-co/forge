@@ -50,22 +50,32 @@ const ABSENT_AFTER =
 const ABSENT_BEFORE =
   /\b(?:there is no|there's no|there isn't an?|no issue(?: called| named| keyed| with the key)?|could not find|couldn't find|cannot find|can't find|did not find|didn't find|found no)\s+(?:(?:an? )?issue\s+|key\s+)?[*_`"“‘([]*$/i;
 
+/** Where a key is named, and whether that naming says the project does not hold it. */
+export interface KeyMention {
+  seq: number;
+  /** The key as written. */
+  token: string;
+  absent: boolean;
+}
+
 /**
- * The issues a message says this project does not hold, each in a sentence of its own words: a reply
- * telling the person that a key they named is absent states a fact, not a citation (ISS-1229 r37,
- * judge-100). Whether the project truly lacks it is the rule's to read off the tracker.
+ * Every key a message names, each naming read in its own sentence: one saying the project does not hold
+ * the key ("ISS-9 is not on this project's tracker", "there is no ISS-9") states a fact the tracker's
+ * rows can check, and is not a citation (ISS-1229 r37, judge-100). Another naming of the same key is
+ * read on its own.
  */
-export function absentIssueSeqs(text: string, prefixes: readonly string[] = []): Set<number> {
-  const absent = new Set<number>();
+export function keyMentions(text: string, prefixes: readonly string[] = []): KeyMention[] {
+  const out: KeyMention[] = [];
   for (const sentence of text.split(/(?<=[.!?])\s+|\n+/)) {
     for (const m of sentence.matchAll(issueTokenRe(prefixes))) {
       const at = m.index ?? 0;
-      const before = sentence.slice(0, at);
-      const after = sentence.slice(at + m[0].length);
-      if (ABSENT_AFTER.test(after) || ABSENT_BEFORE.test(before)) absent.add(Number(m[2]));
+      const absent =
+        ABSENT_AFTER.test(sentence.slice(at + m[0].length)) ||
+        ABSENT_BEFORE.test(sentence.slice(0, at));
+      out.push({ seq: Number(m[2]), token: m[0], absent });
     }
   }
-  return absent;
+  return out;
 }
 
 export function turnCreatedIssue(

@@ -191,11 +191,11 @@ describe("unopenableReason", () => {
 
 // ISS-1229 r37, judge-100: a reader with no project pressed Conversations and was told to open a project.
 describe("the agent panel's door with no project open", () => {
-  it("tells a reader with no project that there is none yet, never to open one", () => {
+  it("tells a reader who can see no project that there is none they can see, never to open one", () => {
     const said = agentPanelWithoutProject(false, false);
     expect(said).toEqual({
       title: "Conversations",
-      description: "There is no project here yet, and a conversation is about a project.",
+      description: "This organization holds no project you can see, and a conversation is about a project.",
     });
     expect(said.description).not.toMatch(/open a project/i);
   });

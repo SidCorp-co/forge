@@ -11,8 +11,9 @@
 import { statusForCaller } from '../issues/status-sets.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import type { MessageRule, RuleBreak } from './contract.js';
-import { absentIssueSeqs, extractIssueClaims, turnCreatedIssue } from './issue-tokens.js';
+import { extractIssueClaims, keyMentions, turnCreatedIssue } from './issue-tokens.js';
 import { extractStatusAssertions } from './status-assertions.js';
+import { heldSaidAbsent } from './text-rules.js';
 
 /** Every issue this message names has to be an issue this project holds. */
 export const ISSUE_REFERENCES_EXIST: MessageRule = {
@@ -32,9 +33,16 @@ export const ISSUE_REFERENCES_EXIST: MessageRule = {
         breaks.push({ quote: id, why: `issue link id "${id}" does not exist in this project` });
       }
     }
-    const absent = absentIssueSeqs(text, f.prefixes);
+    const mentions = keyMentions(text, f.prefixes);
+    for (const m of mentions) {
+      if (m.absent && f.knownIssueSeqs.has(m.seq)) {
+        breaks.push({ quote: m.token, why: heldSaidAbsent(formatIssueRef(f.prefix, m.seq)) });
+      }
+    }
     for (const seq of claims.issSeqs) {
-      if (!f.knownIssueSeqs.has(seq) && !absent.has(seq)) {
+      // A key named only to say the project does not hold it is true where its rows hold none (r37).
+      const onlyAbsent = mentions.every((m) => m.seq !== seq || m.absent);
+      if (!f.knownIssueSeqs.has(seq) && !onlyAbsent) {
         breaks.push({
           quote: formatIssueRef(f.prefix, seq),
           why: `${formatIssueRef(f.prefix, seq)} does not exist in this project`,
