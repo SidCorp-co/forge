@@ -16,10 +16,12 @@ import {
 
 type AppVars = { Variables: import('../../src/middleware/request-id.js').RequestIdVars };
 type Store = typeof import('../../src/integrations/store.js');
+type Installation = typeof import('../../src/integrations/binding-installation.js');
 
 let harness: TestDatabase;
 let app: import('hono').Hono<AppVars>;
 let store: Store;
+let recordInstallation: Installation['recordInstallation'];
 let token: string;
 let ownerId: string;
 
@@ -37,6 +39,7 @@ beforeAll(async () => {
     app: import('hono').Hono<AppVars>;
   });
   store = await import('../../src/integrations/store.js');
+  ({ recordInstallation } = await import('../../src/integrations/binding-installation.js'));
   const { registerAllIntegrations } = await import('../../src/integrations/register-all.js');
   registerAllIntegrations();
   const owner = await createTestUser(harness.db, { email: 'removed-connection@test.forge.local' });
@@ -223,5 +226,52 @@ describe("a project's removed GitHub connection (criteria 224, 225)", () => {
     expect(started.status, JSON.stringify(started.body)).toBe(409);
     expect(started.body.code).toBe('REMOVED_CONNECTION_OTHER_OWNER');
     expect(String(started.body.message)).toContain('Disconnect it from this project');
+  });
+});
+
+// Whole-set review F1 and F2: what a request read can change before it writes.
+describe('a write that races another (criteria 227, 238)', () => {
+  it('keeps a removed connection a key was saved on between Clear reading it and deleting it', async () => {
+    const project = await createTestProject(harness.db, ownerId);
+    const connection = await removedSentryBoundTo(project.id);
+    const read = await store.findConnectionById(connection.id);
+    expect(read).toMatchObject({ active: false, secretsEnc: null });
+    const saved = await call('PATCH', `/api/integration-connections/${connection.id}`, {
+      secrets: { authToken: 'scratch-saved-meanwhile' },
+    });
+    expect(saved.status, JSON.stringify(saved.body)).toBe(200);
+    expect(await rowOf(connection.id)).toMatchObject({ active: false, wiped: false });
+
+    expect(await store.clearRemovedConnection(read as NonNullable<typeof read>)).toBe(false);
+    expect(await rowOf(connection.id)).toMatchObject({ wiped: false });
+    expect(await bindingCount(connection.id)).toBe(1);
+  });
+
+  it('fills a binding with one of two installations racing for it, the rest of its config kept', async () => {
+    const project = await createTestProject(harness.db, ownerId);
+    const connection = await rotatedSentry({ type: 'user', id: ownerId });
+    const binding = await store.createBinding({
+      connectionId: connection.id,
+      projectId: project.id,
+      provider: 'sentry',
+      role: 'service',
+      config: { repo: 'acme/app' },
+    });
+    const filled = await Promise.all([
+      recordInstallation(binding.id, 111, true),
+      recordInstallation(binding.id, 222, true),
+    ]);
+    expect(filled.filter(Boolean)).toHaveLength(1);
+    const winner = filled[0] ? 111 : 222;
+    const configOf = async () =>
+      (await store.findBindingWithConnectionById(binding.id))?.binding.config;
+    expect(await configOf()).toEqual({ repo: 'acme/app', installationId: winner });
+
+    expect(await recordInstallation(binding.id, 333, true)).toBe(false);
+    await store.updateBinding(binding.id, {
+      config: { repo: 'acme/moved', installationId: winner },
+    });
+    expect(await recordInstallation(binding.id, 444, false)).toBe(true);
+    expect(await configOf()).toEqual({ repo: 'acme/moved', installationId: 444 });
   });
 });

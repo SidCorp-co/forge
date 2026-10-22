@@ -117,6 +117,7 @@ const store = vi.hoisted(() => ({
   updateConnection: vi.fn(async (id: string) => ({ id })),
 }));
 vi.mock('../store.js', () => store);
+vi.mock('../binding-installation.js', () => ({ recordInstallation: vi.fn(async () => true) }));
 
 /**
  * The reach rule is `../reach.ts`'s, tested against real rows in

@@ -65,6 +65,14 @@ export const connectionRemoved = (provider: string, act: 'shared' | 'tested') =>
     cause: { code: 'CONNECTION_REMOVED' },
   });
 
+/** A key saved between Clear's read and its delete keeps the connection, and Clear says so. */
+export const connectionChangedWhileCleared = () =>
+  new HTTPException(409, {
+    message:
+      'This connection changed while it was being cleared: a key was saved on it or it was turned back on, so it was kept. Open it again to see what it holds.',
+    cause: { code: 'CONNECTION_CHANGED' },
+  });
+
 export function assertNotRemoved(
   connection: Parameters<typeof isRemovedConnection>[0],
   act: 'shared' | 'tested',

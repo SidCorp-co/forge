@@ -19,6 +19,7 @@ import { organizations, projects } from '../../db/schema.js';
 import { loadOrgRole, orgRoleAtLeast } from '../../lib/authz.js';
 import { logger } from '../../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../../middleware/auth.js';
+import { recordInstallation } from '../binding-installation.js';
 import { isRemovedConnection } from '../held-key.js';
 import { findReachableConnection } from '../reach.js';
 import {
@@ -424,17 +425,13 @@ githubCallbackRoutes.get(
     const projectId = state?.projectId ?? pair.binding.projectId;
     assertAdmin(await assertProjectMember(projectId, userId));
 
-    await updateBinding(pair.binding.id, {
-      config: { ...(pair.binding.config as Record<string, unknown>), installationId },
-    });
+    await recordInstallation(pair.binding.id, installationId, false);
     // One installation belongs to its connection (the master's ruling, ISS-1421 r22): every other
     // project bound to it that holds none, as a reattach leaves them, takes it. One already held is
     // never replaced, since an App installed on two GitHub accounts has two.
     for (const other of await listBindingsForConnection(pair.binding.connectionId)) {
-      const config = other.binding.config as Record<string, unknown>;
       if (other.binding.id === pair.binding.id || other.binding.provider !== 'github') continue;
-      if (config.installationId !== undefined) continue;
-      await updateBinding(other.binding.id, { config: { ...config, installationId } });
+      await recordInstallation(other.binding.id, installationId, true);
     }
 
     return c.redirect(`${webBaseUrl()}/projects/${projectId}/settings/integrations`);

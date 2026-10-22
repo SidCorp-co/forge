@@ -69,6 +69,7 @@ import {
   assertVaultConfigured,
   badRequest,
   buildCreatedBindingResponse,
+  connectionChangedWhileCleared,
   connectionNotManageable,
   connectionNotReachable,
   defaultConnectionDisplayName,
@@ -448,8 +449,12 @@ integrationConnectionsRoutes.delete('/:id', ...removeConnection, async (c) => {
   const existing = await loadManageableConnection(id, userId);
   // The first delete switches the row off and wipes every key on it (ISS-1421 r20), so its bindings
   // stop resolving; a delete of a connection already removed clears it from the list (ISS-1421 r21).
-  if (isRemovedConnection(existing)) await clearRemovedConnection(id);
-  else await softDeleteConnection(id);
+  if (!isRemovedConnection(existing)) await softDeleteConnection(id);
+  else if (!(await clearRemovedConnection(existing))) {
+    // Cleared by another request, it answers as gone; still standing, it changed under this one.
+    await loadManageableConnection(id, userId);
+    throw connectionChangedWhileCleared();
+  }
   notifyConnectionChanged(existing.provider, id);
   return c.json(answer(okSchema, { ok: true }));
 });

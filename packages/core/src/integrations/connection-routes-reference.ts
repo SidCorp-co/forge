@@ -154,6 +154,10 @@ export const removeConnection = onConnection(
       200: json(okSchema),
       403: fail('CONNECTION_NOT_MANAGEABLE', unmanageable),
       404: fail('CONNECTION_NOT_REACHABLE', unreachable),
+      409: fail(
+        'CONNECTION_CHANGED',
+        'a key was saved on the removed connection, or it was turned back on, while it was being cleared, so it was kept',
+      ),
     },
   }),
 );
