@@ -31,3 +31,16 @@ export function isRemovedConnection(row: {
 }): boolean {
   return !row.active && !holdsKey(row);
 }
+
+/** An install comes only from a bound project, so one bound nowhere has no way back (ISS-1421 r23). */
+export function turnsBackOnFrom(
+  provider: string,
+  boundProjectIds: readonly string[],
+  askedFrom?: string,
+): string {
+  const install = getIntegration(provider)?.noKeyTurnsBackOn;
+  if (!install) return 'Save a new key to turn it back on.';
+  if (askedFrom !== undefined && boundProjectIds.includes(askedFrom)) return install.fromHere;
+  if (boundProjectIds.length > 0) return install.fromBound;
+  return 'No project is bound to it, so nothing can turn it back on. Clear it from the list under Connections.';
+}

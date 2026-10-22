@@ -338,7 +338,7 @@ integrationsRoutes.post('/:projectId/integrations/:id/test', ...testIntegration,
 
   const existing = await findBindingWithConnectionById(id);
   if (!existing || existing.binding.projectId !== projectId) throw notFound();
-  assertNotRemoved(existing.connection, 'tested');
+  await assertNotRemoved(existing.connection, 'tested', projectId);
 
   const adapter = getAdapter(existing.binding.provider);
   if (!adapter) {

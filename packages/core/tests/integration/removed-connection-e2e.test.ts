@@ -218,6 +218,69 @@ describe("a project's removed GitHub connection (criteria 224, 225)", () => {
     );
   });
 
+  // judge-94 on 225 and 230: "from this project's tab" and "from a bound project's tab" were said where
+  // the asking project is not bound, and where no project is (ISS-1421 r23).
+  it('names the way back as it stands from where it is asked', async () => {
+    const bound = await createTestProject(harness.db, ownerId);
+    const other = await createTestProject(harness.db, ownerId);
+    const connection = await removedGithubOf({ type: 'user', id: ownerId }, bound.id);
+    const fromOther = await call(
+      'GET',
+      `/api/projects/${other.id}/integrations/github/repositories?connectionId=${connection.id}`,
+    );
+    expect(fromOther.body.code).toBe('CONNECTION_REMOVED');
+    expect(fromOther.body.message).toBe(
+      'This GitHub connection was removed, so it holds no App. Install the GitHub App again from the Integrations tab of a project it is bound to, and it turns back on.',
+    );
+    const [binding] = await store.listBindingsForConnection(connection.id);
+    const tested = await call(
+      'POST',
+      `/api/projects/${bound.id}/integrations/${binding?.binding.id}/test`,
+    );
+    expect(tested.body.message).toBe(
+      "This connection was removed and holds no key, so it cannot be tested. Install the GitHub App again from this project's Integrations tab, and it turns back on.",
+    );
+    const shared = await call('POST', `/api/integration-connections/${connection.id}/bindings`, {
+      projectId: other.id,
+      role: 'service',
+    });
+    expect(shared.body.message).toBe(
+      'This connection was removed and holds no key, so it cannot be shared. Install the GitHub App again from the Integrations tab of a project it is bound to, and it turns back on.',
+    );
+  });
+
+  it('says nothing turns back on a removed GitHub connection no project is bound to', async () => {
+    const bound = await createTestProject(harness.db, ownerId);
+    const other = await createTestProject(harness.db, ownerId);
+    const connection = await removedGithubOf({ type: 'user', id: ownerId }, bound.id);
+    await harness.db.execute(
+      sql`DELETE FROM integration_bindings WHERE connection_id = ${connection.id}`,
+    );
+    const nothing =
+      'No project is bound to it, so nothing can turn it back on. Clear it from the list under Connections.';
+    const listed = await call(
+      'GET',
+      `/api/projects/${other.id}/integrations/github/repositories?connectionId=${connection.id}`,
+    );
+    expect(listed.body.message).toBe(
+      `This GitHub connection was removed, so it holds no App. ${nothing}`,
+    );
+    const shared = await call('POST', `/api/integration-connections/${connection.id}/bindings`, {
+      projectId: other.id,
+      role: 'service',
+    });
+    expect(shared.body.message).toBe(
+      `This connection was removed and holds no key, so it cannot be shared. ${nothing}`,
+    );
+    const enabled = await call('PATCH', `/api/integration-connections/${connection.id}`, {
+      active: true,
+    });
+    expect(enabled.status, JSON.stringify(enabled.body)).toBe(409);
+    expect(enabled.body.message).toBe(
+      `This connection holds no key, as removing it wiped its keys. ${nothing}`,
+    );
+  });
+
   it('refuses to start an App the removed connection could not take, before GitHub is asked', async () => {
     const org = await seedOrg(harness.db, ownerId);
     const project = await createTestProject(harness.db, ownerId, { orgId: org.id });

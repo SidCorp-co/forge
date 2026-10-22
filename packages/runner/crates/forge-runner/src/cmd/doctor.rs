@@ -6,7 +6,7 @@ use forge_runner_core::config::Config;
 use forge_runner_core::daemon::terminal;
 use forge_runner_core::error::Error;
 use forge_runner_core::transport::pool::{self, PoolEntry, ReadFailure};
-use forge_runner_core::transport::{heartbeat, mcp_servers, runners, CoreClient};
+use forge_runner_core::transport::{heartbeat, mcp_servers, runners, status, CoreClient};
 use forge_runner_core::update;
 
 use super::Ctx;
@@ -350,14 +350,15 @@ async fn online_checks(ctx: &Ctx, cfg: &Config) -> bool {
             println!("✖ heartbeat    401 — bad token/core_url, run `forge-runner login`");
             failed = true;
         }
+        // The error says where, why and what to check; a second "check core_url" said it twice.
         Ok(Err(e)) => {
-            println!("✖ heartbeat    core unreachable — check core_url ({core_url}): {e}");
+            println!("✖ heartbeat    {e}");
             failed = true;
         }
         Err(_) => {
             println!(
-                "✖ heartbeat    timeout after {}s — check core_url ({core_url})",
-                ONLINE_TIMEOUT.as_secs()
+                "✖ heartbeat    heartbeat request: {}",
+                unanswered(&core_url)
             );
             failed = true;
         }
@@ -419,7 +420,7 @@ async fn online_checks(ctx: &Ctx, cfg: &Config) -> bool {
                 )
                 .await
                 .ok();
-                let (ok, line) = pool_row(&r.slug, read);
+                let (ok, line) = pool_row(&r.slug, read, &core_url);
                 println!("{} pool         {line}", if ok { "✔" } else { "✖" });
                 failed |= !ok;
             }
@@ -433,7 +434,10 @@ async fn online_checks(ctx: &Ctx, cfg: &Config) -> bool {
             failed = true;
         }
         Err(_) => {
-            println!("✖ runners      timeout after {}s", ONLINE_TIMEOUT.as_secs());
+            println!(
+                "✖ runners      me/runners request: {}",
+                unanswered(&core_url)
+            );
             failed = true;
         }
     }
@@ -461,9 +465,19 @@ fn spawn_mcp_rows(
 /// One project's pool, read live now. A failed read is ✖ and names what the
 /// endpoint answered — never an empty pool (ISS-1234). `None` is no answer
 /// inside the budget.
+/// A read doctor gave up on after [`ONLINE_TIMEOUT`], said as every call that cannot reach core says
+/// it: where, why and what to check, never "timeout after 5s" (ISS-1421 r23, judge-94 on 214).
+fn unanswered(core_url: &str) -> String {
+    status::not_reached_at(
+        &status::core_origin(core_url),
+        &format!("no answer came within {}s", ONLINE_TIMEOUT.as_secs()),
+    )
+}
+
 fn pool_row(
     slug: &str,
     read: Option<std::result::Result<Vec<PoolEntry>, ReadFailure>>,
+    core_url: &str,
 ) -> (bool, String) {
     match read {
         Some(Ok(items)) => (true, format!("{slug}: read, {} row(s) listed", items.len())),
@@ -473,10 +487,7 @@ fn pool_row(
         ),
         None => (
             false,
-            format!(
-                "{slug}: cannot read the pool — no answer within {}s",
-                ONLINE_TIMEOUT.as_secs()
-            ),
+            format!("{slug}: cannot read the pool — {}", unanswered(core_url)),
         ),
     }
 }
@@ -543,8 +554,8 @@ async fn mcp_servers_line(
                 return Some((
                     Mark::Fail,
                     format!(
-                        "{slug}: timeout after {}s reading the declared MCP servers",
-                        ONLINE_TIMEOUT.as_secs()
+                        "{slug}: could not read the declared MCP servers: {}",
+                        unanswered(client.base())
                     ),
                 ));
             }
@@ -876,6 +887,7 @@ mod tests {
                 status: Some(520),
                 reason: "pool 520 (gateway: the origin returned an unknown error)".into(),
             })),
+            "http://127.0.0.1:9",
         );
         assert!(!ok);
         assert_eq!(
@@ -892,6 +904,7 @@ mod tests {
                 status: None,
                 reason: "pool request: connection refused".into(),
             })),
+            "http://127.0.0.1:9",
         );
         assert!(!ok);
         assert!(line.ends_with("pool request: connection refused"), "{line}");
@@ -899,14 +912,20 @@ mod tests {
 
     #[test]
     fn a_pool_that_answered_nothing_in_time_is_a_cross_too() {
-        let (ok, line) = pool_row("sid-desk", None);
+        let (ok, line) = pool_row("sid-desk", None, "http://10.255.255.1:8080/");
         assert!(!ok);
-        assert!(line.contains("no answer within 5s"), "{line}");
+        // Criterion 214, judge-94: "no answer within 5s" named no address and nothing to check.
+        assert_eq!(
+            line,
+            "sid-desk: cannot read the pool — Forge could not be reached at \
+             http://10.255.255.1:8080, as no answer came within 5s. Check that core is running \
+             there and that this box's core address is right."
+        );
     }
 
     #[test]
     fn an_empty_pool_that_was_read_is_a_tick() {
-        let (ok, line) = pool_row("sid-desk", Some(Ok(Vec::new())));
+        let (ok, line) = pool_row("sid-desk", Some(Ok(Vec::new())), "http://127.0.0.1:9");
         assert!(ok);
         assert_eq!(line, "sid-desk: read, 0 row(s) listed");
     }
@@ -1046,6 +1065,29 @@ mod tests {
             rows.len(),
             "at most {peak} of {} MCP requests were in flight at once — the rows were fetched in series",
             rows.len()
+        );
+    }
+
+    /// Criterion 214, judge-94: a core that never answered read "timeout after 5s".
+    #[tokio::test]
+    async fn an_mcp_read_core_never_answered_says_where_and_what_to_check() {
+        let silent = slow_core(1, ONLINE_TIMEOUT + std::time::Duration::from_secs(2)).await;
+        let (mark, line) = mcp_servers_line(
+            &CoreClient::new(silent.clone(), String::from("tok")),
+            "p-1",
+            "slug-1",
+        )
+        .await
+        .expect("a read that timed out still owes a row");
+        assert_eq!(mark, Mark::Fail);
+        assert_eq!(
+            line,
+            format!(
+                "slug-1: could not read the declared MCP servers: Forge could not be reached at \
+                 {}, as no answer came within 5s. Check that core is running there and that this \
+                 box's core address is right.",
+                status::core_origin(&silent)
+            )
         );
     }
 

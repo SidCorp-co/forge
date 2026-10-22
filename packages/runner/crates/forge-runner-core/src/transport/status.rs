@@ -297,7 +297,11 @@ pub fn ended(reason: &str) -> String {
 
 /// Why an answer that arrived could not be read, with the cause the transport gave.
 fn unread_body(e: &reqwest::Error) -> String {
-    let what = if e.is_decode() {
+    // A body the connection cut short reaches reqwest as a decode error too, and "did not decode"
+    // said it was malformed when it was missing (ISS-1421 r23).
+    let cause = innermost(e).unwrap_or_default().to_lowercase();
+    let cut_short = cause.contains("end of file") || cause.contains("incomplete");
+    let what = if e.is_decode() && !cut_short {
         "the body did not decode"
     } else {
         "the body did not arrive whole"

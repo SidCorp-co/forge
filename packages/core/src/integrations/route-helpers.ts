@@ -6,7 +6,7 @@ import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { type AgentAccess, agentAccessTier, noAgentPathMessage } from './agent-access.js';
 import { healthAnswer } from './health-words.js';
-import { holdsKey, isRemovedConnection } from './held-key.js';
+import { holdsKey, isRemovedConnection, turnsBackOnFrom } from './held-key.js';
 import { raceWithTimeout } from './probe.js';
 import { getAdapter, getIntegration } from './registry.js';
 import {
@@ -17,6 +17,7 @@ import {
   findBindingWithConnectionById,
   type IntegrationBindingRow,
   type IntegrationConnectionRow,
+  listBindingsForConnection,
 } from './store.js';
 import type { HealthCheckResult, IntegrationProvider } from './types.js';
 import { isVaultConfigured } from './vault.js';
@@ -54,14 +55,21 @@ export const connectionNotReachable = (connectionId: string) =>
     cause: { code: 'CONNECTION_NOT_REACHABLE' },
   });
 
-export function turnsBackOn(provider: string): string {
-  return getIntegration(provider)?.noKeyTurnsBackOn ?? 'Save a new key to turn it back on.';
+/** {@link turnsBackOnFrom}, reading the connection's bindings only where they decide the sentence. */
+export async function turnsBackOn(
+  connection: { id: string; provider: string },
+  askedFrom?: string,
+): Promise<string> {
+  const bound = getIntegration(connection.provider)?.noKeyTurnsBackOn
+    ? (await listBindingsForConnection(connection.id)).map((p) => p.binding.projectId)
+    : [];
+  return turnsBackOnFrom(connection.provider, bound, askedFrom);
 }
 
 /** A binding to a removed connection cannot resolve, and a check of it can only fail (ISS-1421 r22). */
-export const connectionRemoved = (provider: string, act: 'shared' | 'tested') =>
+const connectionRemoved = (act: 'shared' | 'tested', turnsBack: string) =>
   new HTTPException(409, {
-    message: `This connection was removed and holds no key, so it cannot be ${act}. ${turnsBackOn(provider)}`,
+    message: `This connection was removed and holds no key, so it cannot be ${act}. ${turnsBack}`,
     cause: { code: 'CONNECTION_REMOVED' },
   });
 
@@ -73,11 +81,15 @@ export const connectionChangedWhileCleared = () =>
     cause: { code: 'CONNECTION_CHANGED' },
   });
 
-export function assertNotRemoved(
-  connection: Parameters<typeof isRemovedConnection>[0],
+/** `askedFrom` is the project whose own page the refusal answers, where it is one. */
+export async function assertNotRemoved(
+  connection: Parameters<typeof isRemovedConnection>[0] & { id: string },
   act: 'shared' | 'tested',
-): void {
-  if (isRemovedConnection(connection)) throw connectionRemoved(connection.provider, act);
+  askedFrom?: string,
+): Promise<void> {
+  if (isRemovedConnection(connection)) {
+    throw connectionRemoved(act, await turnsBackOn(connection, askedFrom));
+  }
 }
 
 /** A connection as a sentence names it: by the name its owner gave it, never by its id. */

@@ -234,6 +234,7 @@ describe('a removed connection (criterion 216)', () => {
     expect(await rowOf(connection.id)).toMatchObject({ active: false, wiped: true });
   });
 
+  // Bound to a project, since one bound nowhere has no way back (ISS-1421 r23; removed-connection-e2e).
   it('says for GitHub that installing the App again turns it back on, not a key', async () => {
     const connection = await store.createConnection({
       ownerType: 'user',
@@ -242,6 +243,13 @@ describe('a removed connection (criterion 216)', () => {
       displayName: 'GitHub App old',
       config: {},
       secrets: { appId: '1', privateKey: 'scratch-old-pem', webhookSecret: 'scratch-old-hook' },
+    });
+    const project = await createTestProject(harness.db, ownerId);
+    await store.createBinding({
+      connectionId: connection.id,
+      projectId: project.id,
+      provider: 'github',
+      role: 'service',
     });
     await call('DELETE', `/api/integration-connections/${connection.id}`);
     const on = await call('PATCH', `/api/integration-connections/${connection.id}`, {

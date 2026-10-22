@@ -371,10 +371,11 @@ export interface IntegrationDeclaration<
   readonly usage: IntegrationUsage | null;
   readonly presentation: IntegrationPresentation | null;
   /**
-   * What turns a removed connection, which holds no key, back on where no key is typed into it:
-   * a sentence of its own. Absent for a provider whose key a person saves by hand (ISS-1421 r21).
+   * What turns a removed connection, which holds no key, back on where no key is typed into it: an
+   * install from a project bound to it, said to a reader on another page and to one on that project's
+   * own. Absent for a provider whose key a person saves by hand (ISS-1421 r21, r23).
    */
-  readonly noKeyTurnsBackOn?: string;
+  readonly noKeyTurnsBackOn?: { readonly fromBound: string; readonly fromHere: string };
   /** Absent exactly where nothing is integrated. */
   readonly adapter?: IntegrationAdapterMethods<TConfig, TSecrets>;
 }

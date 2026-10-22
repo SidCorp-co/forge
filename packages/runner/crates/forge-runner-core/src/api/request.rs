@@ -4,6 +4,7 @@
 use serde_json::Value;
 
 use super::exit::{classify, transport_failure, Outcome};
+use crate::transport::status::not_reached_words;
 use crate::transport::CoreClient;
 
 /// One `forge-runner api` invocation, already parsed.
@@ -119,17 +120,25 @@ pub async fn run(client: &CoreClient, req: &Request) -> Response {
             .body(body.clone());
     }
 
+    // Where Forge was sought, why it was not reached and what to check, never reqwest's own
+    // "error sending request for url (…)" (ISS-1421 r23, judge-94 on 214).
+    let what = format!(
+        "{} {}",
+        req.method.to_uppercase(),
+        normalize_path(&req.path)
+    );
+    let unreached = |e: &reqwest::Error, status: Option<u16>| {
+        let (outcome, msg) = transport_failure(&req.method, not_reached_words(&what, e, None));
+        Response {
+            stdout: Vec::new(),
+            stdout_is_text: true,
+            stderr: failure_json(&outcome, status, &msg),
+            outcome,
+        }
+    };
     let resp = match rb.send().await {
         Ok(r) => r,
-        Err(e) => {
-            let (outcome, msg) = transport_failure(&req.method, format!("{url}: {e}"));
-            return Response {
-                stdout: Vec::new(),
-                stdout_is_text: true,
-                stderr: failure_json(&outcome, None, &msg),
-                outcome,
-            };
-        }
+        Err(e) => return unreached(&e, None),
     };
 
     let status = resp.status().as_u16();
@@ -145,7 +154,11 @@ pub async fn run(client: &CoreClient, req: &Request) -> Response {
         .get(reqwest::header::CONTENT_TYPE)
         .and_then(|v| v.to_str().ok())
         .map(str::to_string);
-    let bytes = resp.bytes().await.map(|b| b.to_vec()).unwrap_or_default();
+    // An answer cut off mid-body is said, never printed as an empty success.
+    let bytes = match resp.bytes().await {
+        Ok(b) => b.to_vec(),
+        Err(e) => return unreached(&e, Some(status)),
+    };
     let stdout_is_text = reads_as_text(content_type.as_deref(), &bytes);
     let text = String::from_utf8_lossy(&bytes).into_owned();
     let outcome = classify(status, body_code(&text).as_deref());
@@ -317,6 +330,51 @@ mod tests {
         assert_eq!(r.outcome.exit_code, 9);
         assert!(r.outcome.retryable);
         assert_eq!(r.stdout, b"");
+    }
+
+    /// Criterion 214, judge-94: `api` passed reqwest's "error sending request for url (…)" through.
+    #[tokio::test]
+    async fn an_unreachable_core_is_said_by_where_why_and_what_to_check() {
+        let (_held, addr) = crate::transport::lifecycle::testing::refused_addr().await;
+        let c = CoreClient::new(format!("http://{addr}"), "tok".to_string());
+        let r = run(&c, &req("version")).await;
+        let failure: Value = serde_json::from_str(&r.stderr).unwrap();
+        assert_eq!(
+            failure["message"],
+            format!(
+                "GET /api/version: Forge could not be reached at http://{addr}, as the connection \
+                 was refused. Check that core is running there and that this box's core address is \
+                 right."
+            )
+        );
+        assert!(!r.stderr.contains("error sending request"), "{}", r.stderr);
+    }
+
+    /// An answer whose body is cut off was printed as an empty success with exit 0.
+    #[tokio::test]
+    async fn an_answer_cut_off_mid_body_is_a_failure_that_says_so() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let (mut sock, _) = listener.accept().await.unwrap();
+            let mut buf = vec![0u8; 8192];
+            let _ = sock.read(&mut buf).await;
+            let head = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 100\r\nConnection: close\r\n\r\n{\"items\":";
+            let _ = sock.write_all(head.as_bytes()).await;
+            let _ = sock.shutdown().await;
+        });
+        let c = CoreClient::new(format!("http://{addr}"), "tok".to_string());
+        let r = run(&c, &req("issues")).await;
+        assert_ne!(r.outcome.exit_code, 0, "{}", r.stderr);
+        assert_eq!(r.stdout, b"");
+        let failure: Value = serde_json::from_str(&r.stderr).unwrap();
+        assert_eq!(failure["status"], 200);
+        let said = failure["message"].as_str().unwrap();
+        assert!(
+            said.starts_with("GET /api/issues: Forge")
+                && said.contains("answered, but the body did not arrive whole"),
+            "{said}"
+        );
     }
 
     #[tokio::test]
