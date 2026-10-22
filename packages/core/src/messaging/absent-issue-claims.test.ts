@@ -86,6 +86,8 @@ describe('a reply saying a key is not on the project', () => {
   it.each([
     'If the import failed,\nISS-$ is not on this project.',
     'There is no ISS-$ comment on this project.',
+    'ISS-$ is not on this project\nif the import failed.',
+    'ISS-$ is not on this project; only if the import failed.',
   ])('reads %s as no claim that the key is absent', (shape) => {
     expect(keyMentions(shape.replace('$', '1'), ['ISS'])[0]?.absent).toBe(false);
     expect(room(shape.replace('$', '1')).ok).toBe(true);

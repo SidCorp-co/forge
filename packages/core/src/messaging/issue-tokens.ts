@@ -55,6 +55,8 @@ const OPENS_ON_ABSENCE =
 const ABSENT_TAIL =
   /^[*_`"”’)\]]*(?:\s+(?:(?:on|in)\s+(?:[\w’'-]+\s+){0,5}?(?:tracker|project)(?:['’]s\s+(?:tracker|issues))?|here)\b)?[*_`"”’)\]]*\s*(?:[.!,;:—–]|$)/i;
 
+const CLAUSE_CUT = /[,;:—–]\s+|\n\s*/g;
+const ASKS_BACK = /^\s*(?:(?:and|so|but)\s+)?(?:please\s+)?(?:tell me|let me know)\b/i;
 const CONDITIONAL = /\b(?:if|unless|whether|suppose|supposing|in case|assuming|provided)\b/i;
 /** A scope narrower than the project, or a time other than now: either leaves absence unasserted. */
 const NOT_NOW_OR_NARROWER =
@@ -62,14 +64,11 @@ const NOT_NOW_OR_NARROWER =
 
 /** A plain, present, unconditional absence: its clause opens on the key or "there is no", in no question. */
 function assertsAbsence(sentence: string, at: number, after: string): boolean {
-  const cuts = [...sentence.matchAll(/[,;:—–]\s|\n/g)].map((c) => c.index ?? 0);
-  const from = Math.max(0, ...cuts.filter((c) => c < at).map((c) => c + 2));
-  const to = Math.min(sentence.length, ...cuts.filter((c) => c >= at));
-  const opening = sentence.slice(from, at);
+  const cuts = [...sentence.matchAll(CLAUSE_CUT)].map((c) => (c.index ?? 0) + c[0].length);
+  const opening = sentence.slice(Math.max(0, ...cuts.filter((c) => c <= at)), at);
+  const conditions = sentence.split(CLAUSE_CUT).filter((clause) => !ASKS_BACK.test(clause));
   if (/\?[\s*_`"”’)\]]*$/.test(sentence) || NOT_NOW_OR_NARROWER.test(sentence)) return false;
-  if (CONDITIONAL.test(sentence.slice(0, to))) return false;
-  if (/^[,—–]\s*(?:only\s+)?(?:if|unless|in case|provided|assuming)\b/i.test(sentence.slice(to)))
-    return false;
+  if (conditions.some((clause) => CONDITIONAL.test(clause))) return false;
   return (
     (OPENS_ON_KEY.test(opening) && ABSENT_AFTER.test(after)) ||
     (OPENS_ON_ABSENCE.test(opening) && ABSENT_TAIL.test(after))
