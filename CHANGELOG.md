@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.285] - 2026-10-22
+
+Projects without production close finished work and deliver their requirements
+
+### Fixed
+
+- **A requirement on a project with no production environment can reach delivered.** Coverage counts passes at each issue's recorded landing, issues show where they landed, and the steward no longer reopens an issue passing whole at a later head.
+
 ## [0.4.0-dev.284] - 2026-10-22
 
 Trace tag refusals name the leading form; requirement and runner fixes recorded

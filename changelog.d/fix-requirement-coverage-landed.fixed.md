@@ -1,1 +1,0 @@
-**A requirement on a project with no production environment can reach delivered.** Coverage counts passes at each issue's recorded landing, issues show where they landed, and the steward no longer reopens an issue passing whole at a later head.
