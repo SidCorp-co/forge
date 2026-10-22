@@ -167,9 +167,11 @@ export function identityPhraseOf(v: VerdictReading): string {
  * (`GET /api/issues/:id/judged-build`). `live`: the commit production serves now, which carries the
  * issue's work. `shipped`: the commit the release that shipped the work was verified live at, where
  * the live build could not be read or could not be shown to carry it. `merged`: the commit the
- * issue merged as, where no release shipped it. `sha` is null where Forge names no build.
+ * issue merged as, where no release shipped it. `landed`: on a project that declares no production
+ * environment, the build its landing on the working branch is (core `release-batch/landed-build.ts`).
+ * `sha` is null where Forge names no build.
  */
-export const JUDGED_BUILD_SOURCES = ["live", "shipped", "merged"] as const;
+export const JUDGED_BUILD_SOURCES = ["live", "shipped", "merged", "landed"] as const;
 export type JudgedBuildSource = (typeof JUDGED_BUILD_SOURCES)[number];
 
 export interface JudgedBuild {

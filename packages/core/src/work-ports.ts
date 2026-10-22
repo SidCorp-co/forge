@@ -115,7 +115,12 @@ import {
   voidStewardDraftQuestions,
   withdrawParkQuestions,
 } from './questions/index.js';
-import { approvalRequired, approvalsOfRuns, judgedBuildOf } from './release-batch/index.js';
+import {
+  approvalRequired,
+  approvalsOfRuns,
+  judgedBuildOf,
+  landedRecordOf,
+} from './release-batch/index.js';
 import {
   changedTracedOf,
   contractAboutRefusal,
@@ -245,6 +250,7 @@ export function provideWorkPorts(): void {
     liveTracedCodesOf,
     shippedReleaseOf: async (projectId, issueId) =>
       (await shippedReleasesOf(projectId, [issueId])).get(issueId) ?? null,
+    landedRecordOf,
     plannedRevisionFor,
     approvalRequired,
     policyGapsOf,

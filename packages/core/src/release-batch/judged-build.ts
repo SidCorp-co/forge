@@ -16,6 +16,7 @@ import { db } from '../db/client.js';
 import { shipsWithdrawnOf } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
 import { ANCESTRY_PAIRS_MAX, type AncestryPair, pairKey } from '../runners/index.js';
+import { landedJudgedBuild } from './landed-build.js';
 import { type Reading, servedProductionCommit } from './provider-live.js';
 import {
   type AncestrySource,
@@ -41,6 +42,9 @@ export interface JudgedBuildDeps {
   /** Whether the issue was moved out of `closed` since it last closed, so no release it was closed
    *  into holds its current work (`issues/release-evidence.ts:shipsWithdrawnOf`). */
   withdrawn(issueId: string): Promise<boolean>;
+  /** On a project with no production environment, the issue's landed build (`landed-build.ts`); null
+   *  on one with production. Absent, the project is read as having one. */
+  landed?(issue: { id: string; projectId: string }): Promise<JudgedBuild | null>;
 }
 
 const LIVE_DEPS: JudgedBuildDeps = {
@@ -48,6 +52,7 @@ const LIVE_DEPS: JudgedBuildDeps = {
   releases: shippedReleaseRuns,
   ancestry: (projectId) => ancestrySourceFor(projectId),
   withdrawn: async (issueId) => (await shipsWithdrawnOf(db, [issueId])).has(issueId),
+  landed: landedJudgedBuild,
 };
 
 // Ancestry between two commits never changes, so an answer is kept for the process, bounded.
@@ -119,6 +124,9 @@ export async function judgedBuildOf(
   issue: JudgedBuildIssue,
   deps: JudgedBuildDeps = LIVE_DEPS,
 ): Promise<JudgedBuild> {
+  // No production probe can exist there: the landing is the build (`landed-build.ts`).
+  const landed = await deps.landed?.(issue);
+  if (landed) return landed;
   const withdrawn = await deps.withdrawn(issue.id);
   // A release that closed an issue its reopen took back shipped rejected work: none carries it now.
   const releases = (await deps.releases(issue.projectId)).map((r) =>
@@ -259,7 +267,7 @@ async function liveCommitFor(
 async function askAncestry(
   projectId: string,
   pairs: readonly AncestryPair[],
-  deps: JudgedBuildDeps,
+  deps: Pick<JudgedBuildDeps, 'ancestry'>,
 ): Promise<Map<string, string>> {
   const why = new Map<string, string>();
   const all = (reason: string, from = 0) => {
@@ -296,4 +304,35 @@ async function askAncestry(
     all(`the ancestry reader failed: ${message}`, at);
   }
   return why;
+}
+
+/**
+ * Per pair (`pairKey`), whether `commit` is `release` or an ancestor of it, or why nobody could say:
+ * the same reader and cache as `liveBuildHolds`, for a reader with builds of its own to weigh
+ * (`landed-build.ts`). Two spellings of one commit answer yes without a read.
+ */
+export async function ancestryOf(
+  projectId: string,
+  pairs: readonly AncestryPair[],
+  deps: Pick<JudgedBuildDeps, 'ancestry'> = LIVE_DEPS,
+): Promise<Map<string, boolean | { unread: string }>> {
+  const out = new Map<string, boolean | { unread: string }>();
+  const open: AncestryPair[] = [];
+  for (const raw of pairs) {
+    const pair = { commit: raw.commit.toLowerCase(), release: raw.release.toLowerCase() };
+    const held = pair.commit === pair.release ? true : ANSWERED.get(pairKey(pair));
+    if (held !== undefined) out.set(pairKey(raw), held);
+    else if (!open.some((p) => pairKey(p) === pairKey(pair))) open.push(pair);
+  }
+  const why = open.length > 0 ? await askAncestry(projectId, open, deps) : new Map();
+  for (const raw of pairs) {
+    if (out.has(pairKey(raw))) continue;
+    const pair = { commit: raw.commit.toLowerCase(), release: raw.release.toLowerCase() };
+    const answer = ANSWERED.get(pairKey(pair));
+    out.set(
+      pairKey(raw),
+      answer ?? { unread: why.get(pairKey(pair)) ?? 'the ancestry reader gave no answer' },
+    );
+  }
+  return out;
 }

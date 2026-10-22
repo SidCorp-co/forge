@@ -21,6 +21,7 @@ import {
 } from './channel.js';
 import { draftVersionOf } from './draft-version.js';
 import { readFinishRecord } from './finish-record.js';
+import { landingRecordsOf } from './landing-records.js';
 import { readLandingReadings } from './landing-surfaces.js';
 import { draftNaming, readReleaseNaming } from './naming.js';
 import { RECORDED_VERIFICATIONS } from './plan.js';
@@ -243,7 +244,8 @@ export async function listReleases(
   const counts = Object.fromEntries(
     RELEASE_ATTENTION_GROUPS.map((a) => [a, releases.filter((r) => r.attentionGroup === a).length]),
   ) as ReleaseListResponse['counts'];
-  return { releases, counts, approvalRequired: required, production };
+  const landings = await landingRecordsOf(projectId);
+  return { releases, counts, approvalRequired: required, production, landings };
 }
 
 const REWORKED: IssueLandingReading = {

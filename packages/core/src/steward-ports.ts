@@ -5,6 +5,7 @@
 
 import { provideLessonsPorts } from './lessons/index.js';
 import { getMockupAs } from './mockups/index.js';
+import { landedReopenRefusal } from './release-batch/index.js';
 import { heldStewardOf, provideStewardPorts } from './steward/index.js';
 import { provideSuggestionsPorts } from './suggestions/index.js';
 import { wakeMastersForSteward } from './ws/index.js';
@@ -12,7 +13,7 @@ import { wakeMastersForSteward } from './ws/index.js';
 export function provideStewardDomainPorts(
   doorFetch: (request: Request) => Promise<Response>,
 ): void {
-  provideStewardPorts({ doorFetch, wakeMasters: wakeMastersForSteward });
+  provideStewardPorts({ doorFetch, wakeMasters: wakeMastersForSteward, landedReopenRefusal });
   provideSuggestionsPorts({ stewardOf: heldStewardOf });
   provideLessonsPorts({
     mockupOf: async (projectId, mockupId, viewer) =>

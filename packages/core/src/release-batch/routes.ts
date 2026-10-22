@@ -16,6 +16,7 @@ import { carriedSchema, declareCarried } from './carried.js';
 import { createReleaseBatch } from './create.js';
 import { abortReleaseBatch } from './finish.js';
 import { acceptReleaseBatchFinish } from './finish-job.js';
+import { resolveReleaseDeclaration } from './gate.js';
 import { announceMethod } from './method.js';
 import {
   findReleaseBatchRun,
@@ -25,6 +26,7 @@ import {
 } from './queries.js';
 import { loadReleaseReadiness } from './readiness.js';
 import { readReleaseRecord, recordPerformedRelease } from './recorded.js';
+import { recordLanding } from './recorded-landing.js';
 import { rangeBaseOf, rangeReads, recordRange } from './shipped-range.js';
 import { readReleaseRunState } from './state.js';
 import { releaseVersionRoutes } from './version-routes.js';
@@ -329,7 +331,8 @@ releaseBatchRoutes.post(
   },
 );
 
-// ISS-1129 — the release that already happened, and the read of what was written.
+// ISS-1129 — the release that already happened, and the read of what was written. Under release
+// mode `none` it is the landing on the working branch, recorded as that (`recorded-landing.ts`).
 //
 // Registered on this router rather than on one of its own, so the `use('*')`
 // at the top covers them and `check-pat-surface` — which reads routes off the
@@ -345,7 +348,13 @@ releaseBatchRoutes.post(
     const access = await loadProjectAccess(projectId, userId);
     requireHeld(access, 'project.admin');
 
-    const result = await recordPerformedRelease({ projectId, userId, ...c.req.valid('json') });
+    // With no production environment the landing is the delivery, and the record says so.
+    const declared = await resolveReleaseDeclaration(projectId);
+    const sent = { projectId, userId, ...c.req.valid('json') };
+    const result =
+      declared?.kind === 'no-release'
+        ? await recordLanding(sent, declared.defaultBranch)
+        : await recordPerformedRelease(sent);
     return c.json(result, 201);
   },
 );
