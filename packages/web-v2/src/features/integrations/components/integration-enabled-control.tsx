@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import { Button, Toggle } from "@/design";
 import {
   useOrgConnectionLocked,
@@ -41,6 +42,14 @@ export function IntegrationEnabledControl({
   // A removed connection holds no key, and core refuses to turn it on (ISS-1421 r22): no Enable
   // credential, only what does turn it back on.
   const credentialRemoved = bindsRemovedConnection(binding);
+  // A key saved here onto a removed connection leaves it off, and that save said nothing (ISS-1421 r23).
+  const wasRemoved = useRef(credentialRemoved);
+  const [keySavedOff, setKeySavedOff] = useState(false);
+  useEffect(() => {
+    if (wasRemoved.current && !credentialRemoved && credentialDisabled) setKeySavedOff(true);
+    if (!credentialDisabled) setKeySavedOff(false);
+    wasRemoved.current = credentialRemoved;
+  }, [credentialRemoved, credentialDisabled]);
 
   // A row of its own, the notice below the switch at the drawer's full width: beside the switch it
   // was squeezed to about a word a line at 390 (ISS-1421 r12).
@@ -63,7 +72,9 @@ export function IntegrationEnabledControl({
       {credentialDisabled && !credentialRemoved && (
         <div className="flex flex-wrap items-center gap-2">
           <span className="fg-body-sm min-w-0 flex-1 basis-48 text-amber">
-            Shared credential is disabled — no project can use it.
+            {keySavedOff
+              ? "The key is saved, but the shared connection is still off, so no project can use it yet."
+              : "Shared credential is disabled — no project can use it."}
           </span>
           <Button
             variant="secondary"

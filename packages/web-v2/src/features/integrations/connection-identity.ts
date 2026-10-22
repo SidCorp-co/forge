@@ -129,3 +129,9 @@ export function matchesQuery(
   ];
   return haystack.some((value) => value.toLowerCase().includes(needle));
 }
+
+/** A bound project the reader cannot open is said in words, never by its id (ISS-1421 r23). */
+export function projectCalled(name: string | undefined, projectsRead: boolean): string {
+  if (name !== undefined) return name;
+  return projectsRead ? "A project you cannot open" : "Another project";
+}

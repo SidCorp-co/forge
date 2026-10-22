@@ -36,7 +36,7 @@ import {
   useUpdateConnection,
 } from "../hooks";
 import { takesTheApp } from "../app-owner";
-import { connectionTitle } from "../connection-identity";
+import { connectionTitle, projectCalled } from "../connection-identity";
 import { deriveConnectionStatus } from "../derive";
 import { ConnectionReleaseRunnerField } from "./release-runner-field";
 import { DangerZone, isRemovedConnection } from "./connection-danger-zone";
@@ -276,15 +276,6 @@ function ConfigSection({
   );
 }
 
-/**
- * A project the reader's own list holds is named; one it does not is a project they cannot open, never
- * its id (ISS-1421 r23, judge-94). Before that list is read, an unnamed one is only another project.
- */
-function projectCalled(project: ProjectListItem | undefined, projectsRead: boolean): string {
-  if (project) return project.name;
-  return projectsRead ? "A project you cannot open" : "Another project";
-}
-
 /** {@link projectCalled} for a sentence, one entry a project so a count read off it stays true. */
 function projectNames(ids: string[], projects: ProjectListItem[], projectsRead: boolean): string[] {
   const byId = new Map(projects.map((p) => [p.id, p] as const));
@@ -343,7 +334,7 @@ function ProjectsSection({
             const archived = Boolean(project?.archivedAt);
             const row = (
               <>
-                <span className="truncate text-fg">{projectCalled(project, projectsRead)}</span>
+                <span className="truncate text-fg">{projectCalled(project?.name, projectsRead)}</span>
                 <span className="fg-body-sm text-muted">
                   {scopeLabel(b.role, b.stages)}
                 </span>

@@ -13,6 +13,7 @@ import {
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useProjectsIncludingArchived } from "@/features/projects/hooks";
+import { projectCalled } from "../connection-identity";
 import { useConnectionBindings, useConnections, useIntegrationsList } from "../hooks";
 import { cardProvider, getCapabilities } from "../derive";
 import { PROVIDER_MODULES, providerLabel } from "../providers/registry";
@@ -98,8 +99,6 @@ function BindingsSection({
   const isOrgOwned =
     connectionsQ.data?.items.find((c) => c.id === connectionId)?.ownerType === "org";
 
-  // Project-id -> display name for friendly rendering (falls back to the raw
-  // id so a missing/archived project still reads correctly).
   const projectNames = useMemo(() => {
     const map = new Map<string, string>();
     for (const p of projectsQ.data ?? []) map.set(p.id, p.name);
@@ -111,7 +110,7 @@ function BindingsSection({
       <div className="flex items-center gap-2">
         <CardTitle>Projects using this connection</CardTitle>
         {isOrgOwned && (
-          <span className="fg-body-sm rounded-pill bg-sunken px-2 py-0.5 text-subtle">
+          <span className="fg-body-sm whitespace-nowrap rounded-pill bg-sunken px-2 py-0.5 text-subtle">
             org-shared
           </span>
         )}
@@ -130,6 +129,7 @@ function BindingsSection({
         <BindingsList
           items={bindingsQ.data?.items ?? []}
           projectNames={projectNames}
+          projectsRead={projectsQ.isSuccess}
           currentProjectId={currentProjectId}
           currentStage={currentStage}
         />
@@ -138,14 +138,16 @@ function BindingsSection({
   );
 }
 
-function BindingsList({
+export function BindingsList({
   items,
   projectNames,
+  projectsRead,
   currentProjectId,
   currentStage,
 }: {
   items: BindingSummary[];
   projectNames: Map<string, string>;
+  projectsRead: boolean;
   currentProjectId: string;
   currentStage: DeployStage | null;
 }) {
@@ -162,7 +164,7 @@ function BindingsList({
         const isCurrent =
           b.projectId === currentProjectId &&
           (currentStage === null || b.stages.includes(currentStage));
-        const name = projectNames.get(b.projectId) ?? b.projectId;
+        const name = projectCalled(projectNames.get(b.projectId), projectsRead);
         return (
           <li
             key={b.id}

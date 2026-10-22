@@ -395,8 +395,9 @@ function CreateApp({
   const [org, setOrg] = useState("");
 
   const start = async () => {
-    const res = await connect.mutateAsync({ org: org.trim() || undefined });
-    submitManifest(res);
+    // A refusal is the banner's to show from connect.error, never a rejection thrown past it.
+    const res = await connect.mutateAsync({ org: org.trim() || undefined }).catch(() => null);
+    if (res) submitManifest(res);
   };
 
   return (
@@ -477,8 +478,9 @@ function RemovedApp({
   const takes = connection && project ? takesTheApp(connection, project) : null;
 
   const start = async () => {
-    const res = await connect.mutateAsync({ org: org.trim() || undefined });
-    submitManifest(res);
+    // A refusal is the banner's to show from connect.error, never a rejection thrown past it.
+    const res = await connect.mutateAsync({ org: org.trim() || undefined }).catch(() => null);
+    if (res) submitManifest(res);
   };
 
   return (

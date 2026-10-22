@@ -529,6 +529,23 @@ describe("a project bound to a removed GitHub connection (criterion 224)", () =>
     submit.mockRestore();
   });
 
+  // r23 preview: a refused install (ORG_ADMIN_REQUIRED) threw past the banner as an unhandled rejection.
+  it("leaves a refused install to the banner, throwing nothing past it", async () => {
+    const submit = vi.spyOn(HTMLFormElement.prototype, "submit").mockImplementation(() => undefined);
+    connectStart.mockRejectedValueOnce(new Error("Only an owner or admin of QA can create one."));
+    const unhandled = vi.fn();
+    process.on("unhandledRejection", unhandled);
+    mount();
+
+    fireEvent.click(screen.getByRole("button", { name: "Install the GitHub App again" }));
+    await new Promise((r) => setTimeout(r, 20));
+
+    expect(unhandled).not.toHaveBeenCalled();
+    expect(submit).not.toHaveBeenCalled();
+    process.off("unhandledRejection", unhandled);
+    submit.mockRestore();
+  });
+
   it("keeps Disconnect as the way to leave the connection", () => {
     mount();
 
