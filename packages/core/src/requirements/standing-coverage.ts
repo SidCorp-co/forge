@@ -56,6 +56,8 @@ export interface StandingIssueCriterion extends StandingVerdict {
   requirementCriterionId: string;
   /** Its earlier verdicts since the issue's latest reopen, newest first; absent reads as none. */
   earlier?: readonly StandingVerdict[];
+  /** Its newest verdict where the issue's latest reopen voided it; absent where none was voided. */
+  beforeReopen?: StandingVerdict;
 }
 
 /**
@@ -222,7 +224,8 @@ function resolve(
 // With no production environment the build a verdict counts on is its issue's landing
 // (`release-batch/landed-build.ts`), and only a verdict at that very commit counts: one at an earlier
 // commit, such as the branch's head before the merge, judged another build, and one at a later head
-// counts only once a landing is recorded there.
+// counts once a landing is recorded there, or before any record where every live criterion of the
+// issue passes at that one head and it holds the landing (`release-batch/landed-build.ts:aheadBuildsOf`).
 function atLanding(commit: string, landed: LandedHolds | null): Resolved {
   const judged = `judged at commit ${short(commit)}`;
   if (!landed) {
@@ -269,7 +272,7 @@ export function coverageOf(
       const wording = byId.get(traced.requirementCriterionId);
       const issue = issues.get(traced.issueId);
       if (!wording || wording.code !== bc.code || !issue) return [];
-      const ic = judgesOf(traced, input.judge);
+      const ic = judgesOf(standsAtLanding(traced, input.liveBuild?.landed), input.judge);
       const judged = verdictExercised(ic.verdict);
       const r =
         ic.verdict === null ? null : resolve(ic.identity, input.liveBuild ?? null, traced.issueId);
@@ -307,6 +310,23 @@ export function coverageOf(
       uncoveredReason: uncovered,
     };
   });
+}
+
+// With no production environment a commit names the build exactly, so a reopen voids nothing a
+// commit check does not: the issue's own door reads a criterion's newest verdict however old
+// (`issues/criteria-verdicts.ts:standingOn`), and the record that closed the issue counted it. A
+// newest verdict older than the reopen stands here only where it was judged at the issue's landed
+// commit, so coverage and the record read one issue's verdicts by one rule; anywhere else it stays
+// voided.
+function standsAtLanding(
+  traced: StandingIssueCriterion,
+  landed: ReadonlyMap<string, LandedHolds> | undefined,
+): StandingIssueCriterion {
+  const kept = traced.beforeReopen;
+  if (!landed || !kept || kept.identity?.kind !== 'commit') return traced;
+  const sha = landed.get(traced.issueId.toLowerCase())?.sha;
+  if (!sha || kept.identity.sha.toLowerCase() !== sha) return traced;
+  return { ...traced, ...kept };
 }
 
 // The verdict an issue criterion stands on. Under independent QA a newer verdict that is not the

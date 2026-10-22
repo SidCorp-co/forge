@@ -153,6 +153,7 @@ export function requirementDetail(d: RequirementDetail, progress: Progress) {
       title: i.title,
       status: i.status,
       shippedIn: i.shippedIn,
+      landedIn: i.landedIn,
     })),
     releases: d.releases,
     feedback: d.feedback.map((f) => ({ key: f.key, title: f.title, phase: f.phase, open: f.open })),

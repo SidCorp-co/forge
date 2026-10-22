@@ -100,6 +100,7 @@ export const forgeRequirementTool: ContextScopedMcpToolFactory = (ctx) => ({
         title: i.title,
         status: i.status,
         shippedIn: i.shippedIn,
+        landedIn: i.landedIn,
       })),
       releases: r.releases,
       deferral: r.deferral,

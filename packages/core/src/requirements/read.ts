@@ -54,7 +54,7 @@ import { changedTracedOf } from './plan-drift.js';
 import { requestedByOf, requestSignoffRefusal, requestViewOf } from './request-signoff.js';
 import { criterionView, revisionView } from './revision-view.js';
 import { type LinkedDesign, liveAt, signoffRefusal } from './rules.js';
-import { releasesOf, type ShippedRelease, shippedReleasesOf } from './shipped-read.js';
+import { type Delivered, deliveredOf, releasesOf } from './shipped-read.js';
 import { documentGatesIn, standingsOf } from './standing-read.js';
 
 export interface RequirementActor {
@@ -350,7 +350,7 @@ function issueViews(
   changedTraced: Map<string, ChangedTrace[]>,
   prefix: string | null,
   releaseApproval: boolean,
-  shipped: ReadonlyMap<string, ShippedRelease>,
+  delivered: Delivered,
 ) {
   return linked.map((i) => ({
     issueId: i.id,
@@ -365,7 +365,8 @@ function issueViews(
       currentRevision: row.currentRevision,
       changedTraced: changedTraced.get(i.id) ?? [],
     }),
-    shippedIn: shipped.get(i.id) ?? null,
+    shippedIn: delivered.shipped.get(i.id) ?? null,
+    landedIn: delivered.landed.get(i.id) ?? null,
   }));
 }
 
@@ -419,7 +420,7 @@ export async function detailOf(
       ),
     ),
   ]);
-  const [people, standings, changedTraced, shipped] = await Promise.all([
+  const [people, standings, changedTraced, delivered] = await Promise.all([
     peopleOf([
       ...revisions.flatMap((r) => [r.authorId, r.decidedBy]),
       ...baselines.map((b) => b.agreedBy),
@@ -437,10 +438,7 @@ export async function detailOf(
       db,
       linked.map((i) => i.id),
     ),
-    shippedReleasesOf(
-      row.projectId,
-      linked.map((i) => i.id),
-    ),
+    deliveredOf(row.projectId, linked),
   ]);
   const standing = standings.get(row.id) as RequirementStanding;
   const name = (id: string | null) => (id === null ? null : (people.get(id)?.name ?? null));
@@ -459,8 +457,8 @@ export async function detailOf(
     contracts,
     traces,
     baselines: baselineViews(baselines, pins, name),
-    issues: issueViews(row, linked, changedTraced, prefix, gates.releaseApproval, shipped),
-    releases: releasesOf(shipped),
+    issues: issueViews(row, linked, changedTraced, prefix, gates.releaseApproval, delivered),
+    releases: releasesOf(delivered.shipped),
     canSignOff: viewerFacts?.canSignOff ?? false,
     canPromote: (viewerFacts?.canSignOff && viewerFacts.canAdmit) ?? false,
     standing,

@@ -132,6 +132,17 @@ export function IssueShippedLink({ shippedIn, slug }: { shippedIn: Shipped; slug
   );
 }
 
+/** Where one of its issues landed, with no production environment: the branch and commit, no version. */
+export function IssueLandedIn({ landedIn }: { landedIn: { branch: string; commit: string } }) {
+  const t = useCopy();
+  const said = t("issues.landedIn", { branch: landedIn.branch, sha: landedIn.commit.slice(0, 7) });
+  return (
+    <span title={said} className="flex-none font-mono text-12 text-muted" data-testid="rail-issue-landed">
+      {landedIn.branch}@{landedIn.commit.slice(0, 7)}
+    </span>
+  );
+}
+
 /** Where its design binds a contract element: the step, the element, what broke it, and the issues building it. */
 function RequirementBindings({ d, slug }: { d: RequirementDetail; slug: string }) {
   const t = useCopy();
@@ -247,7 +258,11 @@ export function RequirementProperties({
                   <span role="img" aria-label={t("requirements.facts.changedSincePlan")} title={t("requirements.facts.changedSincePlan")} className="size-1.5 flex-none rounded-pill" style={{ background: LEGEND.you.dot }} />
                 ) : null}
                 <StatusBadge family="issue" value={i.status} tone={i.tone} />
-                {i.shippedIn ? <IssueShippedLink shippedIn={i.shippedIn} slug={slug} /> : null}
+                {i.shippedIn ? (
+                  <IssueShippedLink shippedIn={i.shippedIn} slug={slug} />
+                ) : i.landedIn ? (
+                  <IssueLandedIn landedIn={i.landedIn} />
+                ) : null}
                 <PromotableDraft projectId={projectId} d={d} issue={i} />
               </li>
             ))}

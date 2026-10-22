@@ -12,11 +12,13 @@ import { sql } from 'drizzle-orm';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { db } from '../../src/db/client.js';
 import {
+  ASIDE,
   D9,
   F4,
   judgedAll,
   LATER,
   landedIssue,
+  record,
   seedLandedWorld,
   statusOf,
   verdict,
@@ -98,11 +100,40 @@ describe("the steward's output check reads the same landed build", () => {
     expect(await statusOf(issue)).toBe('reopen');
   });
 
-  it('still sends it back when its passes stand at a later head nothing has recorded', async () => {
-    const issue = await landedIssue(5, F4);
+  // catalog-fe ISS-1, 2026-10-22: marked at its landing, every criterion re-judged at a later head
+  // holding it, reopened before the record at that head that then went through
+  it('refuses to send it back when every criterion passes at a later head holding the landing, which it then records at', async () => {
+    const issue = await landedIssue(1, F4);
     await judgedAll(issue, LATER);
 
-    const { answer } = await stewardReopens(issue, 'ISS-5');
+    const { answer } = await stewardReopens(issue, 'ISS-1');
+
+    expect(answer.ok).toBe(false);
+    expect(answer.text).toContain('STEWARD_REOPEN_COUNTED');
+    expect(answer.text).toContain(`every live criterion passes at \`${LATER.slice(0, 12)}\``);
+    expect(await statusOf(issue)).toBe('awaiting_release');
+    const recorded = await record([issue], LATER);
+    expect(recorded.status, JSON.stringify(recorded.body)).toBe(201);
+    expect(await statusOf(issue)).toBe('closed');
+  });
+
+  it('still sends it back when its passes split between the landing and a later head', async () => {
+    const issue = await landedIssue(1, F4);
+    await verdict(issue, 1, 'pass', F4);
+    await verdict(issue, 2, 'pass', LATER);
+    await verdict(issue, 3, 'pass', LATER);
+
+    const { answer } = await stewardReopens(issue, 'ISS-1');
+
+    expect(answer.ok, answer.text).toBe(true);
+    expect(await statusOf(issue)).toBe('reopen');
+  });
+
+  it('still sends it back when every pass sits at a commit not holding the landing', async () => {
+    const issue = await landedIssue(1, F4);
+    await judgedAll(issue, ASIDE);
+
+    const { answer } = await stewardReopens(issue, 'ISS-1');
 
     expect(answer.ok, answer.text).toBe(true);
     expect(await statusOf(issue)).toBe('reopen');

@@ -30,7 +30,12 @@ export { registerReleaseBatchFinish, resumeStrandedFinishes } from './finish-job
 export { abortBlockedIssues } from './hold.js';
 export { judgedBuildOf, liveBuildHolds } from './judged-build.js';
 export { landedBuildHolds, landedReopenRefusal } from './landed-build.js';
-export { landedRecordOf } from './landing-records.js';
+export {
+  type IssueLanding,
+  landedRecordOf,
+  landedRecordsOf,
+  landingReads,
+} from './landing-records.js';
 export {
   isMigratorBookkeeping,
   rangeChangesOf,
