@@ -71,6 +71,8 @@ describe('a reply saying a key is not on the project', () => {
     expect(room('What if ISS-1 is not on this project?').ok).toBe(true);
     expect(room('If ISS-1 is not on this project, I can file it.').ok).toBe(true);
     expect(room('ISS-1 is not on this project if the import failed.').ok).toBe(true);
+    expect(room('ISS-1 is not on this project, if the import failed.').ok).toBe(true);
+    expect(room('ISS-1 is not on this project, unless it was moved.').ok).toBe(true);
     expect(room('ISS-999 is not on this project if the import failed.').ok).toBe(false);
   });
 
