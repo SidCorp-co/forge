@@ -194,6 +194,25 @@ describe('a draft requirement whose linked designs are not all approved', () => 
     expect(s.waitingOn).toMatchObject({ kind: 'you', act: 'agree r3' });
   });
 
+  // REQ-48 BC-11: an agree pins a current head, so a draft with none reads as its owner's own work,
+  // not a decision Needs you lists while the decisions read classes it as work
+  it("with no current revision it is its owner's to write, never a decision to agree", () => {
+    const none = {
+      ...draftHead([]),
+      viewer: { ...signer, userId: 'u1' },
+      revisions: [],
+      currentRevision: null,
+    };
+    const s = deriveStanding(none);
+    expect(s.waitingOn).toMatchObject({ act: 'write a revision' });
+    expect(s.attentionGroup).not.toBe('needs_you');
+    const agent = deriveStanding({
+      ...none,
+      owner: { id: 'a1', name: 'Bot', kind: 'agent' as const },
+    });
+    expect(agent.waitingOn).toMatchObject({ kind: 'agent', act: 'write a revision' });
+  });
+
   it('waits on the design approver, not on you, while a linked design is only proposed', () => {
     const s = deriveStanding(
       draftHead([{ flow: 'checkout', title: 'Checkout', designStatus: 'proposed' }]),

@@ -7,5 +7,6 @@ export { stewardJobCredential } from './job.js';
 export { runLessonsPass } from './lessons-pass.js';
 export { provideStewardPorts, provideStewardStandings } from './ports.js';
 export { runStewardReaskOnce } from './reask-once.js';
+export { retireStaleDraftQuestionsOnce } from './retire-stale-drafts.js';
 export { stewardRoutes } from './routes.js';
 export { openStewardAsks, sweepStandings } from './sweep.js';

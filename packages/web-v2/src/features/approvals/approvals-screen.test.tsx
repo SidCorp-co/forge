@@ -10,7 +10,7 @@
 
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { APPROVALS_PROJECT as P, APPROVALS_READ as READ } from "@/test/approvals-read";
+import { APPROVALS_PROJECT as P, APPROVALS_READ as READ, STEWARD_DECISION } from "@/test/approvals-read";
 import { fakeCore, renderWithQuery } from "@/test/render";
 import { ApprovalsScreen } from "./components/approvals-screen";
 import { bulkSummary } from "./derive";
@@ -157,6 +157,22 @@ describe("what each row's ✓ and ✕ send", () => {
     fireEvent.click(within(peek).getByRole("button", { name: "Use the new order" }));
     await act(async () => vi.advanceTimersByTimeAsync(UNDO_MS));
     await waitFor(() => expect(posts(calls)).toEqual([expect.objectContaining({ path: "/questions/q41/answer", body: { round: 1, optionId: "new" } })]));
+  });
+
+  // each answer's effect was only the button's tooltip, which a phone and a keyboard never open
+  it("says under each of the steward's answers what it does to the item, the recommended one marked (BC-11)", async () => {
+    fakeCore(({ path, method }) => (method === "GET" && path === DECISIONS ? { body: { ...READ, total: 1, decisions: [STEWARD_DECISION] } } : undefined));
+    renderWithQuery(<ApprovalsScreen projectId={P} slug="hop" />);
+    await screen.findByTestId("approvals-screen");
+    fireEvent.click(within(rowOf("ISS-7")).getByTestId("approval-open"));
+    const peek = await screen.findByTestId("approval-peek");
+    const effects = within(peek).getAllByTestId("approval-peek-effect");
+    expect(effects.map((e) => e.dataset.answer)).toEqual(STEWARD_DECISION.answers.map((a) => a.id));
+    STEWARD_DECISION.answers.forEach((a, i) => {
+      expect(a.effect, `the fixture's ${a.id} carries no effect`).toMatch(/ISS-7/);
+      expect(effects[i]).toHaveTextContent(`${a.label}${a.recommended ? "Recommended" : ""}${a.effect ?? ""}`);
+    });
+    expect(within(peek).getByText(/^The steward recommends/)).toBeInTheDocument();
   });
 
   it("declines a release with the reason typed, and never sends its approve from the ✕", async () => {

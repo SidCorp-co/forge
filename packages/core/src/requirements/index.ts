@@ -44,8 +44,6 @@ export { roomSettleWriter } from './room-settle.js';
 export { revisionFields } from './route-kit.js';
 export { linkIssueRefusal } from './rules.js';
 export { proposeRevision, writeRevision } from './service.js';
-export { actOnStaleDraftAnswer, registerStaleDraftAct } from './stale-draft-act.js';
-export { sweepStaleDrafts } from './stale-drafts.js';
 export {
   criterionVerdictOf,
   deliveredAmong,
@@ -53,4 +51,5 @@ export {
   standingsOf,
 } from './standing-read.js';
 export { type StepChange, stepChangeOf } from './step-notice.js';
+export { type StewardRequirementAct, stewardRequirementActIn } from './steward-decision.js';
 export { lockRequirements } from './write-tx.js';

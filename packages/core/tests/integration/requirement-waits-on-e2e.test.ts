@@ -5,7 +5,14 @@ import { db } from '../../src/db/client.js';
 import { peopleOf } from '../../src/lib/people.js';
 import { api, type Body, userToken } from '../helpers/api.js';
 import { addProjectMember, createTestUser } from '../helpers/factories.js';
-import { ago, issue, requirement, type World, world } from '../helpers/forecast-world.js';
+import {
+  ago,
+  issue,
+  requirement,
+  servingMaster,
+  type World,
+  world,
+} from '../helpers/forecast-world.js';
 import { seedProductionDeployTrigger } from '../helpers/release-world.js';
 
 // ISS-461 round 3 (REQ-35 BC-5): a requirement's standing names whom it actually waits on, read
@@ -31,18 +38,6 @@ async function agreed(w: World, title: string): Promise<{ id: string; key: strin
        WHERE id = ${r.id}`);
   });
   return r;
-}
-
-/** A live master session serving the project, so a wait on the master is not stuck by nobody serving. */
-async function servingMaster(w: World): Promise<void> {
-  const runId = randomUUID();
-  await db.execute(sql`
-    INSERT INTO pipeline_runs (id, project_id, kind, status) VALUES (${runId}, ${w.projectId}, 'interactive', 'running')
-  `);
-  await db.execute(sql`
-    INSERT INTO agent_sessions (id, project_id, user_id, pipeline_run_id, kind, status, device_id, last_heartbeat_at)
-    VALUES (${randomUUID()}, ${w.projectId}, ${w.userId}, ${runId}, 'master', 'running', ${w.deviceId}, now())
-  `);
 }
 
 /** An issue a run is moving right now: a running pipeline run on it. */

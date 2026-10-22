@@ -79,10 +79,12 @@ async function seedRequirement(
       `);
     }
     // one business criterion from its first revision on: what the ready checklist asks it to state
-    await tx.execute(sql`
-      INSERT INTO requirement_criteria (requirement_id, code, body, since_revision)
-      VALUES (${id}, 'BC-1', 'it holds', 1)
-    `);
+    if (revisions.length > 0) {
+      await tx.execute(sql`
+        INSERT INTO requirement_criteria (requirement_id, code, body, since_revision)
+        VALUES (${id}, 'BC-1', 'it holds', 1)
+      `);
+    }
     if (current !== null) {
       await tx.execute(
         sql`UPDATE requirements SET current_revision = ${current}, status = 'agreed' WHERE id = ${id}`,
@@ -169,6 +171,20 @@ beforeAll(async () => {
   await makeAgreeReady(projectId, 1, ownerId);
   // the owner's own draft: their work to finish, not a decision
   await seedRequirement(2, ownerId, [{ n: 1, state: 'draft', author: ownerId }]);
+  // the owner's drafts with no current revision: one never written, one whose only draft was
+  // withdrawn. An agree pins a current head, so neither has anything to agree (REQ-48 BC-11)
+  await seedRequirement(3, ownerId, []);
+  const withdrawn = await seedRequirement(4, ownerId, [{ n: 1, state: 'draft', author: ownerId }]);
+  const { db } = await import('../../src/db/client.js');
+  const { withKernelMarker } = await import('../../src/db/kernel-marker.js');
+  await withKernelMarker(db, (tx) =>
+    tx.execute(sql`
+      UPDATE requirement_revisions SET state = 'withdrawn', withdrawn_reason = 'dropped for the test',
+        withdrawn_at = now(), withdrawn_by = ${ownerId}
+      WHERE revision = 1 AND requirement_id = (SELECT id FROM requirements
+        WHERE project_id = ${projectId} AND req_seq = ${Number(withdrawn.slice(4))})
+    `),
+  );
 }, 120_000);
 
 afterAll(closeWorld);
@@ -191,6 +207,12 @@ describe('GET /api/projects/:id/needs-you/decisions (REQ-41 BC-1)', () => {
     );
     expect(asks.map((i) => i.key)).not.toContain('REQ-2');
     expect(asks.map((i) => i.key)).not.toContain('ISS-4');
+    // a draft with no current revision is its owner's to write, never "agree it": both reads say so
+    // (REQ-48 BC-11; it read "agree it" here while the decisions read classed it as work)
+    for (const key of ['REQ-3', 'REQ-4']) {
+      expect(asks.map((i) => i.key)).not.toContain(key);
+      expect(byKey(r.decisions, key)).toBeUndefined();
+    }
     const counted = r.total + r.notDecisions.reduce((n, x) => n + x.count, 0);
     expect(counted).toBe(asks.length);
   });

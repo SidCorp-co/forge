@@ -46,7 +46,6 @@ import {
   masterServingOf,
 } from './ports.js';
 import { classifyLease } from './session-claim.js';
-import { type StaleDraftQuestionRaw, staleDraftOf, staleDraftQuestionSql } from './stale-drafts.js';
 import { deriveIssueStanding, type IssueStandingInput, type StandingEdge } from './standing.js';
 import { issueBlockerOf } from './standing-blocker.js';
 import {
@@ -102,7 +101,6 @@ interface IssueRowRaw {
   moving: boolean;
   run_live: boolean;
   owes_answer: boolean;
-  stale_draft: StaleDraftQuestionRaw | null;
   holds_dependents: boolean;
   park_entry: { reason: string | null; agency: string; actorType: string } | null;
   answered_park: { hold: AnswerHold | null; resume: AnswerResume | null } | null;
@@ -144,7 +142,6 @@ async function issueRows(projectId: string, where: SQL, limit: number): Promise<
                         WHERE kt.entity = 'issue' AND kt.entity_id = i.id AND kt.to_status = i.status),
                       i.created_at) AS status_since,
              ${holdsOpenHumanQuestion(sql`i.id`)} AS owes_answer,
-             CASE WHEN i.status = 'draft' THEN ${staleDraftQuestionSql(sql`i`)} END AS stale_draft,
              ${blockerUnsettledSql(sql`i`)} AS holds_dependents,
              ${designUnapprovedSql(sql`i.id`)} AS design_unapproved,
              CASE WHEN i.status = 'on_hold' THEN (
@@ -280,7 +277,6 @@ function standingInputOf(r: IssueRowRaw, f: Facts): IssueStandingInput {
     inFlight: r.moving,
     runLive: r.run_live,
     owesAnswer: r.owes_answer,
-    staleDraft: staleDraftOf(r.stale_draft),
     answered: r.answered_park
       ? { hold: r.answered_park.hold ?? null, resume: r.answered_park.resume ?? null }
       : null,

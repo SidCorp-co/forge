@@ -258,8 +258,8 @@ describe("a trigger folds into the item's one live run (BC-1)", () => {
   });
 });
 
-describe('a spent budget skips the run and says so (cost guard)', () => {
-  it('skips the run budget_spent before any turn, and the item reads why', async () => {
+describe('a spent day paces the sweep and says so (cost guard, REQ-48 BC-1)', () => {
+  it("waits a stuck item's run for the next day before any turn, and the Dashboard's read says why", async () => {
     const issue = await createTestIssue(projectId, ownerId, 40, {
       status: 'open',
       createdAt: new Date(),
@@ -279,10 +279,17 @@ describe('a spent budget skips the run and says so (cost guard)', () => {
     await steward.dispatchStewardRuns(at);
 
     const runs = await runsOf(issue.id);
-    expect(runs.at(-1)).toMatchObject({ state: 'skipped', skip_reason: 'budget_spent' });
+    const { nextUtcDay } = await import('../../src/steward/policy.js');
+    expect(runs.at(-1)).toMatchObject({ state: 'queued', skip_reason: null, started_at: null });
+    expect(new Date(runs.at(-1)?.not_before ?? 0).getTime()).toBeGreaterThanOrEqual(
+      nextUtcDay(new Date()).getTime() - 1_000,
+    );
     expect(script.sent).toEqual([]);
-    const read = ok(await as('GET', `/steward-runs?subject=${issue.key}`));
-    expect((read.runs as Doc[])[0]).toMatchObject({ state: 'skipped', skipReason: 'budget_spent' });
+    const budget = ok(await as('GET', '/steward-budget'));
+    expect(budget).toMatchObject({ quiet: 'handoffs', paced: 1 });
+    await rows(sql`
+      UPDATE steward_runs SET state = 'skipped', skip_reason = 'subject_ended', ended_at = now()
+       WHERE subject_id = ${issue.id} AND state = 'queued' RETURNING id`);
     await rows(sql`DELETE FROM steward_runs WHERE id = ${spent[0]?.id}`);
     standings = [];
   });

@@ -58,6 +58,46 @@ export async function world(): Promise<World> {
   };
 }
 
+/**
+ * A live master session serving the project. A wait on the master with nobody serving reads stuck
+ * (`nobody_serves`), and a stuck item never forecasts a landing (REQ-48 BC-8), so a world that
+ * forecasts work a master takes seats one.
+ */
+export async function servingMaster(w: World): Promise<void> {
+  const runId = randomUUID();
+  await db.execute(sql`
+    INSERT INTO pipeline_runs (id, project_id, kind, status) VALUES (${runId}, ${w.projectId}, 'interactive', 'running')
+  `);
+  await db.execute(sql`
+    INSERT INTO agent_sessions (id, project_id, user_id, pipeline_run_id, kind, status, device_id, last_heartbeat_at)
+    VALUES (${randomUUID()}, ${w.projectId}, ${w.userId}, ${runId}, 'master', 'running', ${w.deviceId}, now())
+  `);
+}
+
+/**
+ * A run session a box opened over `issueKeys`, holding a lease on each as the take door writes it:
+ * an issue at in_progress that nothing holds reads stuck (no holder), and never forecasts.
+ */
+export async function workingRun(w: World, issueKeys: readonly string[]): Promise<void> {
+  const runId = randomUUID();
+  const sessionId = randomUUID();
+  const metadata = JSON.stringify({ type: 'run_session', runGroup: issueKeys });
+  await db.execute(sql`
+    INSERT INTO pipeline_runs (id, project_id, kind, status, started_at, metadata)
+    VALUES (${runId}, ${w.projectId}, 'system', 'running', now(), ${metadata}::jsonb)
+  `);
+  await db.execute(sql`
+    INSERT INTO agent_sessions (id, project_id, device_id, pipeline_run_id, kind, status, started_at, created_at, last_heartbeat_at)
+    VALUES (${sessionId}, ${w.projectId}, ${w.deviceId}, ${runId}, 'run_session', 'running', now(), now(), now())
+  `);
+  for (const key of issueKeys) {
+    await db.execute(sql`
+      INSERT INTO issue_leases (project_id, issue_key, device_id, session_id, run_id)
+      VALUES (${w.projectId}, ${key}, ${w.deviceId}, ${sessionId}, ${runId})
+    `);
+  }
+}
+
 export function issue(w: World, over: TestIssueInput): Promise<{ id: string; key: string }> {
   w.seq += 1;
   return createTestIssue(w.projectId, w.userId, w.seq, over);
@@ -117,6 +157,16 @@ export async function shipRelease(
 export function requirement(w: World, title: string): Promise<{ id: string; key: string }> {
   w.reqSeq += 1;
   return createTestRequirement(w.projectId, w.reqSeq, title);
+}
+
+/** A draft requirement the world's user owns: one with no owner reads stuck (`no_owner`), and never forecasts. */
+export async function ownedRequirement(
+  w: World,
+  title: string,
+): Promise<{ id: string; key: string }> {
+  const made = await requirement(w, title);
+  await db.execute(sql`UPDATE requirements SET owner_id = ${w.userId} WHERE id = ${made.id}`);
+  return made;
 }
 
 /** A feedback item, untriaged, or triaged onto `carriers` as an issue route. */

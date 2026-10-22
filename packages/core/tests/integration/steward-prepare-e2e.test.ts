@@ -93,7 +93,7 @@ const decide = (
 ) => ({
   name: 'steward_decide',
   args: {
-    issue: key,
+    about: key,
     recommended,
     ...(candidates ? { candidates } : {}),
     why: 'the carried feedback asks for exactly this',
@@ -191,7 +191,7 @@ describe('the steward prepares a draft before it asks anything (REQ-48 BC-5)', (
       `POST /api/projects/${projectId}/requirements/${req}/issues`,
       `PATCH /api/issues/${issue.id}`,
       `PUT /api/issues/${issue.id}/criteria`,
-      'POST /api/questions',
+      `POST /api/projects/${projectId}/steward-runs/${lastRunId}/decisions`,
     ]);
     // each write is undone through its own door
     expect(acts.slice(0, 3).map((a) => (a.undo as Doc | null)?.door)).toEqual([
@@ -271,12 +271,19 @@ describe('where no agreed requirement fits, the answer acts (REQ-48 BC-5)', () =
     expect(JSON.stringify(step)).not.toMatch(/write the (details|plan)/i);
     const read = ok(await say('owner', 'GET', at('/needs-you/decisions')));
     const row = (read.decisions as Doc[]).find((d) => d.key === issue.key);
-    expect(
-      ((row?.answers ?? []) as Doc[]).map((a) => [a.id, a.needsReason, Boolean(a.effect)]),
-    ).toEqual([
-      [link, false, true],
-      [IDS.requirement, false, true],
-      [IDS.drop, true, true],
+    // each button says what it does to this issue, never that it sends the answer to a run
+    expect(((row?.answers ?? []) as Doc[]).map((a) => [a.id, a.needsReason, a.effect])).toEqual([
+      [
+        link,
+        false,
+        `Links ${issue.key} to ${req} BC-1 as you; the steward then writes its plan and criteria, and asks whether to open it.`,
+      ],
+      [
+        IDS.requirement,
+        false,
+        `Starts a requirement from ${issue.key}'s feedback as you; ${issue.key} stays a draft until that requirement is agreed.`,
+      ],
+      [IDS.drop, true, `Drops ${issue.key} as you, with your reason.`],
     ]);
 
     const done = await answer(id, { optionId: link });
@@ -286,7 +293,7 @@ describe('where no agreed requirement fits, the answer acts (REQ-48 BC-5)', () =
     expect(linked?.requirement_id).not.toBeNull();
     const askRun = lastRunId;
     expect((await actsOn(askRun)).map((a) => a.door)).toEqual([
-      'POST /api/questions',
+      `POST /api/projects/${projectId}/steward-runs/${askRun}/decisions`,
       `POST /api/projects/${projectId}/requirements/${req}/issues`,
     ]);
 
@@ -304,7 +311,7 @@ describe('where no agreed requirement fits, the answer acts (REQ-48 BC-5)', () =
     expect((await actsOn(rerun?.id ?? '')).map((a) => a.door)).toEqual([
       `PATCH /api/issues/${issue.id}`,
       `PUT /api/issues/${issue.id}/criteria`,
-      'POST /api/questions',
+      `POST /api/projects/${projectId}/steward-runs/${rerun?.id}/decisions`,
     ]);
     const asked = await openQuestion(issue.id);
     expect(asked.step.recommendedOptionId).toBe(IDS.open);
@@ -369,7 +376,7 @@ describe('where no agreed requirement fits, the answer acts (REQ-48 BC-5)', () =
     expect((await openQuestion(issue.id)).id).toBe(id);
   });
 
-  it('the run a link answer starts is skipped budget_spent once the day is spent, before any turn', async () => {
+  it('the run a link answer starts waits for the next day once the day is spent, before any turn', async () => {
     const req = await agreedRequirement(912);
     const issue = await draftIssue(107);
     await diagnose(issue, [decide(issue.key, 'link', [{ requirement: req, bc: 'BC-1' }])]);
@@ -387,7 +394,7 @@ describe('where no agreed requirement fits, the answer acts (REQ-48 BC-5)', () =
     resetScript();
     await dispatch(at);
     const [rerun] = await runsOf(issue.id);
-    expect(rerun).toMatchObject({ state: 'skipped', skip_reason: 'budget_spent' });
+    expect(rerun).toMatchObject({ state: 'queued', skip_reason: null, turns: 0 });
     expect(script.sent).toEqual([]);
     expect((await issueRow(issue.id))?.planned_revision).toBeNull();
   });

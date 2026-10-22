@@ -12,14 +12,10 @@ import {
 } from '@forge/contracts/needs-you-decisions';
 import { type QuestionSuggestion, suggestionFor } from '@forge/contracts/question-suggestion';
 import {
-  DRAFT_STALE_DAYS,
-  isStaleDraftQuestion,
-  STALE_DRAFT_OPTION_IDS,
-} from '@forge/contracts/stale-drafts';
-import {
   isStewardDecisionQuestion,
-  STEWARD_DECISION_EFFECTS,
   STEWARD_DECISIONS_WITH_REASON,
+  type StewardDecisionSubject,
+  stewardDecisionEffect,
   stewardDecisionOf,
 } from '@forge/contracts/steward';
 import { type ChoiceStep, isChoiceStep, type QuestionStep } from '../db/schema-questions.js';
@@ -67,70 +63,10 @@ export function answer(
   };
 }
 
-/** What pressing a merge-or-drop answer makes core do (`requirements/stale-draft-act.ts`). */
-function staleDraftEffect(option: ChoiceStep['options'][number]): string {
-  if (option.id === STALE_DRAFT_OPTION_IDS.merge) {
-    const into = option.target?.key ?? 'the item it names';
-    return `Moves this draft into ${into} (a proposed revision of a requirement, a comment on an issue) and drops the draft.`;
-  }
-  if (option.id === STALE_DRAFT_OPTION_IDS.drop)
-    return 'Drops the draft, naming this question as why.';
-  return `Keeps it as a draft and changes nothing; Forge asks again after ${DRAFT_STALE_DAYS} days.`;
-}
-
-/** Forge's own reason for the answer it recommends, as the sweep wrote it into the prompt. */
-function staleDraftWhy(step: ChoiceStep, label: string): string {
-  const tail = step.prompt.slice(step.prompt.lastIndexOf('Recommended: '));
-  const at = tail.indexOf(', because ');
-  const reason = at < 0 ? '' : tail.slice(at + ', because '.length).trim();
-  const lead = `Forge recommends "${clip(label, 200)}"`;
-  return clip(reason ? `${lead} because ${reason}` : `${lead}.`, 600);
-}
-
-/** A merge-or-drop round Forge asked about a stale draft (REQ-41 BC-12), grouped as one. */
-function staleDraftDecision(
-  base: Omit<DecisionBody, 'group' | 'recommended' | 'noRecommendation' | 'answers'>,
-  q: OpenPersonQuestion,
-  step: ChoiceStep,
-  path: string,
-): Built {
-  const recommended = step.options.find((o) => o.id === step.recommendedOptionId);
-  if (!recommended) {
-    throw new Error(
-      `needs-you: merge-or-drop question ${q.id} recommends ${step.recommendedOptionId}, which it does not offer`,
-    );
-  }
-  const shown = [recommended, ...step.options.filter((o) => o.id !== recommended.id)];
-  return {
-    questionId: q.id,
-    decision: {
-      ...base,
-      group: 'merge_or_drop',
-      recommended: {
-        answerId: recommended.id,
-        why: staleDraftWhy(step, recommended.label),
-        by: 'rule',
-      },
-      noRecommendation: null,
-      answers: shown.map((o) =>
-        answer({
-          id: o.id,
-          label: clip(o.label, 120),
-          act: 'question.answer',
-          path,
-          body: { round: step.round, optionId: o.id },
-          effect: staleDraftEffect(o),
-          recommended: o.id === recommended.id,
-        }),
-      ),
-    },
-  };
-}
-
 /**
- * A stuck issue's decision the steward asked (REQ-48 BC-5): Forge's own options, each button saying
- * what answering it does, keep and drop taking the answerer's reason, recommended by the steward
- * with the one line it wrote into the prompt.
+ * A stuck item's decision the steward asked (REQ-48 BC-5): Forge's own options, each button saying
+ * what answering it does to the item it names, keep, drop, withdraw and reopen taking the answerer's
+ * reason, recommended by the steward with the one line it wrote into the prompt.
  */
 function stewardDecision(
   base: Omit<DecisionBody, 'recommended' | 'noRecommendation' | 'answers'>,
@@ -138,6 +74,12 @@ function stewardDecision(
   step: ChoiceStep,
   path: string,
 ): Built {
+  const kind: StewardDecisionSubject = q.issueId
+    ? 'issue'
+    : q.requirementId
+      ? 'requirement'
+      : 'feedback';
+  const itemKey = base.opens?.key ?? base.key;
   const recommended = step.options.find((o) => o.id === step.recommendedOptionId);
   if (!recommended) {
     throw new Error(
@@ -145,6 +87,14 @@ function stewardDecision(
     );
   }
   const shown = [recommended, ...step.options.filter((o) => o.id !== recommended.id)];
+  // an issue draft is offered open, link or requirement, a draft requirement merge or drop; a live
+  // issue no master serves is kept or dropped, an agreed requirement's draft revision withdrawn
+  const draft = shown.some((o) => {
+    const d = stewardDecisionOf(o.id);
+    return kind === 'issue'
+      ? d === 'open' || d === 'link' || d === 'requirement'
+      : kind === 'requirement' && (d === 'merge' || d === 'drop');
+  });
   const tail = step.prompt.slice(step.prompt.lastIndexOf('Recommended: '));
   const at = tail.indexOf(', because ');
   const because = at < 0 ? '' : tail.slice(at + ', because '.length).trim();
@@ -161,13 +111,16 @@ function stewardDecision(
       noRecommendation: null,
       answers: shown.map((o) => {
         const decision = stewardDecisionOf(o.id);
+        const effect = decision
+          ? stewardDecisionEffect(decision, { kind, key: itemKey, draft, option: o.id })
+          : null;
         return answer({
           id: o.id,
           label: clip(o.label, 120),
           act: 'question.answer',
           path,
           body: { round: step.round, optionId: o.id },
-          effect: decision ? STEWARD_DECISION_EFFECTS[decision] : null,
+          effect,
           needsReason: decision !== null && STEWARD_DECISIONS_WITH_REASON.includes(decision),
           recommended: o.id === recommended.id,
         });
@@ -269,9 +222,6 @@ export function questionDecision(
     question: clip(step.prompt.trim() || row.title || 'A run asked a question', QUESTION_MAX),
     touchedAt: q.at,
   };
-  if (isChoiceStep(step) && isStaleDraftQuestion(step.options)) {
-    return staleDraftDecision(base, q, step, path);
-  }
   if (isChoiceStep(step) && isStewardDecisionQuestion(step.options)) {
     return stewardDecision(base, q, step, path);
   }

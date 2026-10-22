@@ -40,6 +40,15 @@ export const UNMINTABLE_JOB_TYPES = {
 	smoke: "the staged lane that minted it was removed",
 } as const;
 
+/**
+ * Job types the pool never retries: the record that minted one owns what follows its failure. A
+ * steward job's run ends failed with it, and the item's standing queues the next run (REQ-48 BC-1),
+ * so a pool retry would only hold the project's one steward slot for a run that has already ended.
+ */
+export const POOL_UNRETRIED_JOB_TYPES = {
+	steward: "its steward run ends failed with it, and the item's standing queues the next run",
+} as const;
+
 /** Payload key carrying the hold bookkeeping on the successor row. */
 export const HOLD_PAYLOAD_KEY = "__hold";
 

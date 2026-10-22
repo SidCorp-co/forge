@@ -1,0 +1,1 @@
+**The steward keeps a daily share for handoffs and shows its acts.** The sweep's backlog is paced across days, the Dashboard says when the steward is quiet, a kept item is not re-asked, and item Activity offers Undo.

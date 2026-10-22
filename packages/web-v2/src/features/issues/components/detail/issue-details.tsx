@@ -10,6 +10,7 @@ import { Disclosure, Markdown, ViewHeading } from "@/design";
 import { AttachmentList } from "@/features/attachments";
 import { IssueQuestions } from "@/features/questions";
 import { MockupList } from "@/features/mockups";
+import { StewardActs } from "@/features/standing";
 import type { MockupTarget } from "@/features/mockups";
 import { useCopy } from "@/lib/i18n/interface-language";
 import type { useActivity, useAttachments, useComments } from "../../detail-hooks";
@@ -103,6 +104,7 @@ export function IssueDetails({
             past={
               <>
                 <IssuePatternList issueId={issue.id} projectId={projectId} show="decided" />
+                <StewardActs projectId={projectId} subjectKey={issue.displayId} canWrite={canWrite} />
                 <IssueQuestions issueId={issue.id} show="past" />
                 <IssueDecisionsTab projectId={projectId} issueKey={issue.displayId} />
                 <IssueRetiredCriteria issueId={issue.id} />

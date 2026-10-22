@@ -241,6 +241,11 @@ function laidOut(): string[] {
 
 async function settle(page: number, size: "large" | "half") {
   await at.show(page);
+  // the phone's slide-over closes as a page opens under it (REQ-11 BC-8), so a person opens it again there
+  if (!docked()) {
+    await pause(100);
+    at.dock?.show();
+  }
   at.dock?.setSize(size);
   // the screens draw their seeded reads on the next frames; a run page's tab and a board's columns settle last
   await pause(400);

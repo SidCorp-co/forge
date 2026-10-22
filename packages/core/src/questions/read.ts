@@ -10,6 +10,7 @@ import type { ActorAgency } from '@forge/contracts/permissions';
 import type {
   AnswerCredential,
   QuestionAboutRequest,
+  QuestionAsker,
   QuestionRoundFacts,
 } from '@forge/contracts/questions';
 import { and, count, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
@@ -33,9 +34,11 @@ import { resolveIssueKeyInProject } from '../issues/index.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import type { EgressSurface } from '../lib/data-egress.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
+import { peopleOf } from '../lib/people.js';
 import { notFound } from '../middleware/route-errors.js';
 import { type PermissionFacts, requireHeld } from '../permissions/index.js';
 import { answerQuestion, type GivenAnswer, mayAnswerFreeText, type StillWaits } from './answer.js';
+import { refuseStewardOptions } from './steward-options.js';
 import { type AskAnswer, type AskInput, askQuestion, mayChoose, refuseQuestion } from './write.js';
 
 export type VisibleOption = QuestionOption & { locked: boolean };
@@ -102,6 +105,17 @@ async function withAwaitedMerge<T extends { awaitsMergeIssueId: string | null }>
   });
 }
 
+/** Each row with its asker named (`asker`), null where the system asked or the row predates 0512. */
+async function withAsker<T extends { askedBy: string | null }>(
+  rows: T[],
+): Promise<Array<T & { asker: QuestionAsker | null }>> {
+  const people = await peopleOf(rows.map((r) => r.askedBy));
+  return rows.map((r) => {
+    const p = r.askedBy ? people.get(r.askedBy) : undefined;
+    return { ...r, asker: r.askedBy && p ? { id: r.askedBy, ...p } : null };
+  });
+}
+
 /**
  * Ask a question against one issue, as somebody, or `null` when that somebody
  * cannot reach the issue. The ask writes the question and nothing else: the issue
@@ -122,6 +136,7 @@ type AskAsInput = {
 };
 
 export async function askAs(args: AskAsInput) {
+  refuseStewardOptions(args.answer);
   const issue = await readAskedIssue(args.issueId);
   if (!issue?.projectId) return null;
   const access = await accessOn(issue.projectId, args.userId);
@@ -131,6 +146,7 @@ export async function askAs(args: AskAsInput) {
     id: randomUUID(),
     projectId: issue.projectId,
     issueId: args.issueId,
+    askedBy: args.userId,
     prompt: args.prompt,
     blockerKind: args.blockerKind,
     answer: args.answer,
@@ -242,6 +258,7 @@ export async function projectQuestionsFor(
         awaitsWorkflowId: agentQuestions.awaitsWorkflowId,
         awaitsRevision: agentQuestions.awaitsRevision,
         awaitsMergeIssueId: agentQuestions.awaitsMergeIssueId,
+        askedBy: agentQuestions.askedBy,
         createdAt: agentQuestions.createdAt,
         updatedAt: agentQuestions.updatedAt,
         rounds: sql<number>`jsonb_array_length(${agentQuestions.steps})::int`,
@@ -260,12 +277,14 @@ export async function projectQuestionsFor(
   const pageRows = hasMore ? rows.slice(0, page.limit) : rows;
   const last = pageRows[pageRows.length - 1];
   return {
-    questions: await withAwaitedMerge(
-      pageRows.map(({ cursor: _cursor, ...row }) => ({
-        ...row,
-        rounds: Number(row.rounds),
-        ...shapeOf(row.currentStep ?? undefined, access),
-      })),
+    questions: await withAsker(
+      await withAwaitedMerge(
+        pageRows.map(({ cursor: _cursor, ...row }) => ({
+          ...row,
+          rounds: Number(row.rounds),
+          ...shapeOf(row.currentStep ?? undefined, access),
+        })),
+      ),
     ),
     total,
     hasMore,
@@ -304,7 +323,7 @@ export async function readQuestionFor(questionId: string, userId: string) {
   if (!row?.projectId) return null;
   const access = await accessOn(row.projectId, userId);
   if (!access) return null;
-  const [seen] = await withAwaitedMerge([seenBy(row, access)]);
+  const [seen] = await withAsker(await withAwaitedMerge([seenBy(row, access)]));
   return seen ?? null;
 }
 
@@ -322,7 +341,7 @@ export async function readQuestionsForIssue(issueId: string, userId: string) {
     .from(agentQuestions)
     .where(and(eq(agentQuestions.issueId, issueId), eq(agentQuestions.projectId, issue.projectId)))
     .orderBy(desc(agentQuestions.createdAt), desc(agentQuestions.id));
-  return withAwaitedMerge(rows.map((row) => seenBy(row, access)));
+  return withAsker(await withAwaitedMerge(rows.map((row) => seenBy(row, access))));
 }
 
 export async function answerAs(args: {

@@ -59,8 +59,11 @@ export type AskInput = {
   requirementId?: string;
   /** A BA clarification's feedback item: at most one open question per item. */
   feedbackId?: string;
-  /** What the asker names it as about, resolved and stored as `about`; never read from the prompt. */
-  about?: QuestionAboutRequest;
+  /**
+   * What the asker names it as about, resolved and stored as `about`; never read from the prompt. A
+   * feedback item is named only in-process, by the steward's decision about it (REQ-48 BC-5).
+   */
+  about?: QuestionAboutRequest | { feedbackId: string };
   agentSessionId?: string;
   prompt: string;
   blockerKind: QuestionBlockerKind;
@@ -81,6 +84,8 @@ export type AskInput = {
    * recommends (REQ-41 BC-2), as a choice round owes its recommended option.
    */
   askedByRun?: true;
+  /** The account asking through its own door, recorded as the question's asker (REQ-48 BC-12). */
+  askedBy?: string;
 };
 
 export const refuseQuestion = refuser<QuestionRefusalCode>('QUESTION_REFUSED');
@@ -240,8 +245,9 @@ export async function insertAskedQuestion(executor: QuestionExecutor, input: Ask
 export async function resolveAbout(
   executor: QuestionExecutor,
   input: { projectId: string; issueId?: string | undefined },
-  about: QuestionAboutRequest,
+  about: QuestionAboutRequest | { feedbackId: string },
 ): Promise<QuestionAbout> {
+  if ('feedbackId' in about) return { kind: 'feedback', feedbackId: about.feedbackId };
   if ('contract' in about) {
     const refusal = await contractAboutRefusal(input.projectId, about.contract);
     if (refusal) throw refuseQuestion('QUESTION_ABOUT_UNKNOWN', refusal, '/about/contract');
@@ -400,6 +406,7 @@ async function insertQuestion(executor: QuestionExecutor, input: AskInput, about
       requirementId: input.requirementId,
       feedbackId: input.feedbackId,
       agentSessionId: input.agentSessionId,
+      askedBy: input.askedBy,
       blockerKind: input.blockerKind,
       steps: [step(1, input.prompt, input.answer, input.sensitive)],
       assumed: scrubSecretsDeep(input.assumed),

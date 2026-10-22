@@ -27,7 +27,6 @@ export const NEEDS_YOU_DECISION_GROUPS = [
 	"approve",
 	"accept",
 	"verify",
-	"merge_or_drop",
 ] as const;
 export type NeedsYouDecisionGroup = (typeof NEEDS_YOU_DECISION_GROUPS)[number];
 
@@ -39,7 +38,6 @@ export const NEEDS_YOU_DECISION_GROUP_LABELS: Record<
 	approve: "Approve or return",
 	accept: "Accept what was delivered",
 	verify: "Say whether it is fixed",
-	merge_or_drop: "Merge or drop a draft",
 };
 
 /**
@@ -408,10 +406,9 @@ export const DECISION_ACT_KEYS: ReadonlySet<string> = new Set([
 	"issues.standing.act.answerOther",
 	"issues.standing.act.decide",
 	"issues.standing.act.supply",
-	"standing.act.mergeOrDrop",
+	"standing.act.answerSteward",
 	"standing.act.acceptR",
 	"standing.act.agreeR",
-	"standing.act.agreeIt",
 	"standing.act.check",
 	"standing.act.approveOrReturn",
 	"designs.act.approveOrReturn",

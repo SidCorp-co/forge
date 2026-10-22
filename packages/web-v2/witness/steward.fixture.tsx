@@ -1,8 +1,9 @@
-// The reads every REQ-48 lane A surface draws stuck and noted, for the two steward witnesses: the
-// stuck readings core says, the steward's note, the one standing read, the project status the
-// Dashboard and the report lead with, the requirement and feedback reads made stuck, the issues the
-// table and the board read, and core stubbed for every read no seed answers. `mountSurfaces` mounts
-// each surface in turn, light then dark, and checks what it draws.
+// The reads every REQ-48 lane A surface draws stuck and noted, for the steward witnesses: the stuck
+// readings core says, the steward's note, the one standing read, the project status the Dashboard and
+// the report lead with, the requirement and feedback reads made stuck, the issues the table and the
+// board read, each item page's own reads, and core stubbed for the rest. `mountSurfaces` mounts each
+// surface in turn, light then dark, and checks what it draws and that it is settled: a request
+// nothing here answers, a busy region, a skeleton or a loading line fails the stage by name.
 
 import type { ProjectStatus } from "@forge/contracts/project-status";
 import type { ItemStanding, StandingSubjectKind, StewardNote } from "@forge/contracts/steward";
@@ -61,6 +62,17 @@ const STANDINGS: Record<string, ItemStanding[]> = {
     standing("issue", "ISS-1", "Issue one", ISSUE_STUCK, null),
     standing("issue", "ISS-4", "Issue four", ISSUE_STUCK, null),
   ],
+};
+
+// ---- the steward's day the Dashboard reads: the sweep's share spent, its backlog paced ----
+
+const STEWARD_DAY = {
+  day: "2026-10-21T00:00:00.000Z",
+  resumesAt: "2026-10-22T00:00:00.000Z",
+  handoff: { gatewayTurns: { spent: 6, of: 80 }, runnerJobs: { spent: 1, of: 4 } },
+  sweep: { gatewayTurns: { spent: 120, of: 120 }, runnerJobs: { spent: 0, of: 6 } },
+  paced: 27,
+  quiet: "sweep",
 };
 
 // ---- the project status the Dashboard and the report read ----
@@ -170,16 +182,68 @@ const ISSUE_ROWS = [
 ];
 const listOf = (items: unknown[]) => ({ items, total: items.length, returned: items.length, limit: 200, offset: 0, hasMore: false });
 
+// ---- the item pages' own reads: a requirement's, a feedback item's and an issue's, each settled ----
+
+const comment = (id: string, body: string, at: string) => ({
+  id,
+  body,
+  format: "markdown",
+  nodes: null,
+  authorId: "u1",
+  author: { displayName: "Lan", isAgent: false },
+  intent: null,
+  attachments: [],
+  replies: [],
+  createdAt: at,
+});
+const criterion = (n: number, statement: string) => ({ id: `k${n}`, n, statement, position: n, requirementCriterionId: null, latest: null });
+/** The two criteria an issue of these pages carries, none judged yet. */
+export const ISSUE_CRITERIA = [criterion(1, "A saved report exports its columns in the order it names"), criterion(2, "A report saved before the change keeps its old order")];
+
+/** Each read a page of a single item makes that no seed answers, by its path, answered as core answers it. */
+const ITEM_READS: [RegExp, (m: RegExpExecArray) => unknown][] = [
+  [/^\/projects\/[^/]+\/workflows$/, () => ({ workflows: [], returned: 0 })],
+  [/^\/projects\/[^/]+\/requirement-areas$/, () => ({ areas: [] })],
+  [/^\/projects\/[^/]+\/interface$/, () => ({ declared: false, document: null })],
+  [/^\/projects\/[^/]+\/mockups$/, () => ({ mockups: [], returned: 0, open: 0 })],
+  [/^\/projects\/[^/]+\/policy$/, () => ({ declared: false, revision: null, document: null })],
+  [/^\/projects\/[^/]+\/release-batches\/roster$/, () => ({ gateStatus: "open", channels: [], releaseRunnerLabel: null, baseBranch: "main", nextCutAt: null, issues: [] })],
+  [/^\/projects\/[^/]+\/requirements\/([^/]+)\/checklist$/, (m) => ({ requirementId: "r1", key: m[1], revision: 2, checklists: [] })],
+  [/^\/projects\/[^/]+\/requirements\/([^/]+)\/decisions$/, () => ({ decisions: [], answers: [], by: "people", folded: 0 })],
+  [/^\/projects\/[^/]+\/feedback\/([^/]+)\/checklist$/, (m) => ({ feedbackId: "f2", key: m[1], checklists: [] })],
+  [/^\/projects\/[^/]+\/feedback\/[^/]+\/recordings$/, () => ({ recordings: [] })],
+  [/^\/projects\/[^/]+\/steward-notes\/issue\/[^/]+$/, () => ({ note: null })],
+  [/^\/projects\/[^/]+\/(issues|requirements|feedback)\/[^/]+\/comments$/, () => ({ comments: [], returned: 0 })],
+  [/^\/projects\/[^/]+\/forecast\/issues\/([^/]+)$/, (m) => ({ issueId: "i1", key: m[1], forecast: { label: "forecast", asOf: NOW, kind: "not_enough_history", n: 2, floor: 5 } })],
+  [/^\/issues\/[^/]+\/preview$/, () => ({ preview: null })],
+  [/^\/issues\/[^/]+\/park$/, () => ({ park: null })],
+  [/^\/issues\/[^/]+\/patterns$/, () => ({ catalog: { declared: true, detail: null }, patterns: [], dispatchable: true, refusal: null, returned: null, decidable: [] })],
+  [/^\/issues\/[^/]+\/dependencies$/, () => ({ incoming: [], outgoing: [] })],
+  [/^\/issues\/[^/]+\/attachments$/, () => []],
+  [/^\/issues\/[^/]+\/criteria$/, () => ({ criteria: ISSUE_CRITERIA, retired: [] })],
+  [/^\/issues\/([^/]+)\/cost-summary$/, (m) => ({ issueId: m[1], projectId: FP, estimatedCost: 0.84, inputTokens: 1200, outputTokens: 3400, cacheReadTokens: 0, cacheCreationTokens: 0, requests: 6, sampleCount: 6 })],
+  [/^\/issues\/[^/]+\/comments$/, () => ({ items: [comment("c1", "The export spec is still open; this waits on it.", AT)], total: 1, nextCursor: null })],
+  [
+    /^\/issues\/[^/]+\/activity$/,
+    () => ({ items: [{ id: "h1", action: "issue.created", payload: {}, actorType: "user", actor: { displayName: "Lan", isAgent: false }, createdAt: AT }], nextBefore: null }),
+  ],
+];
+
 // ---- core, stubbed: every read a surface makes that no seed answers ----
 
+/** Every request core was sent that nothing here answers: a shot over one is a page still waiting on it. */
+const unanswered = new Set<string>();
+
 const json = (body: unknown) => new Response(JSON.stringify(body), { headers: { "content-type": "application/json" } });
-window.fetch = async (input: RequestInfo | URL) => {
-  const path = new URL(String(input), "http://forge.test").pathname.replace(/^\/api/, "");
+window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+  const url = new URL(String(input), "http://forge.test");
+  const path = url.pathname.replace(/^\/api/, "");
   const standings = /^\/projects\/([^/]+)\/standings$/.exec(path);
   if (standings) return json({ standings: STANDINGS[standings[1] ?? ""] ?? [] });
   const noted = /^\/projects\/[^/]+\/steward-notes\/(requirement|feedback)\/([^/]+)$/.exec(path);
   if (noted) return json({ note: note(noted[1] as "requirement" | "feedback", decodeURIComponent(noted[2] ?? "")) });
   if (path === `/projects/${PH}/needs-you/decisions`) return json(APPROVALS_READ);
+  if (path === `/projects/${PH}/steward-budget`) return json(STEWARD_DAY);
   if (path.startsWith(`/projects/${PH}/status`)) return json(WITNESS_STATUS);
   if (path === "/projects") return json([{ id: PH, slug: "hop", name: "Hop", orgId: null, orgRole: null }]);
   if (path === "/me/devices") return json([]);
@@ -189,6 +253,13 @@ window.fetch = async (input: RequestInfo | URL) => {
     const part = { projectSlug: "hop", projectName: "Hop", total: APPROVALS_READ.total, decisions: APPROVALS_READ.decisions.slice(0, 3) };
     return json({ needsYou: [part], mentions: [], failedJobs: [], channelGates: [], statusReports: [] });
   }
+  if ((init?.method ?? "GET") === "GET") {
+    for (const [pattern, answer] of ITEM_READS) {
+      const m = pattern.exec(path);
+      if (m) return json(answer(m));
+    }
+  }
+  unanswered.add(`${init?.method ?? "GET"} ${path}${url.search}`);
   return new Promise<Response>(() => {});
 };
 // the fixtures' own pages set the query string with replaceState, which a file:// page refuses for a path
@@ -212,13 +283,34 @@ export interface Surface {
   render: () => ReactNode;
   /** What the surface must draw, each a sentence when it does not. */
   check: () => string[];
+  /** What to open before it is checked and shot: a fold, a tab's row. */
+  open?: () => void;
 }
 
 const text = () => document.querySelector("[data-witness=page]")?.textContent ?? "";
+
+/**
+ * What a shot taken now would show still loading, one sentence each: a request nothing answers, a
+ * region still busy, a skeleton row, a line still saying it loads. Every surface is held to it, so a
+ * shot of a page mid-read fails by name instead of passing as drawn.
+ */
+export function unsettled(): string[] {
+  const wrong = [...unanswered].map((r) => `core was sent ${r} and nothing answers it: the page still waits on it`);
+  const page = document.querySelector("[data-witness=page]");
+  if (!page) return wrong;
+  const busy = page.querySelectorAll("[aria-busy=true]").length;
+  if (busy) wrong.push(`${busy} region(s) still read busy (aria-busy)`);
+  const skeletons = page.querySelectorAll(".skeleton").length;
+  if (skeletons) wrong.push(`${skeletons} skeleton row(s) are still drawn`);
+  const loading = /[^.·\n]{0,30}\bloading\b[^.·\n]{0,30}/i.exec(page.textContent ?? "");
+  if (loading) wrong.push(`the page still says "${loading[0].trim()}"`);
+  return wrong;
+}
 export const has = (what: string, needle: string): string[] => (text().includes(needle) ? [] : [`${what}: "${needle}" is not drawn`]);
+export const lacks = (what: string, needle: string): string[] => (text().includes(needle) ? [`${what}: "${needle}" is drawn`] : []);
 
 export function mountSurfaces(SURFACES: Surface[]) {
-  const at: { show: (i: number) => void } = { show: () => {} };
+  const at: { show: (i: number) => void; shown: number | null } = { show: () => {}, shown: null };
 
   /** A surface that throws is named by the stage that drew it. */
   class Caught extends Component<{ children: ReactNode }, { error: string | null }> {
@@ -264,13 +356,21 @@ export function mountSurfaces(SURFACES: Surface[]) {
         name: `${s.name}-${t}`,
         run: async () => {
           theme(t);
+          // a new surface is mounted afresh, so what it waits on is what it asked since; its dark
+          // stage is the same mount, still waiting on whatever its light one did
+          if (at.shown !== i) unanswered.clear();
+          at.shown = i;
           at.show(i);
           await pause(700);
+          if (s.open) {
+            s.open();
+            await pause(500);
+          }
           if (!document.querySelector(`[data-witness-page=${s.name}]`)) return [`the ${s.name} surface is not the one drawn`];
           const threw = document.querySelector<HTMLElement>("[data-witness=threw]");
           if (threw) return [`the ${s.name} surface threw: ${threw.innerText.slice(0, 300)}`];
           const wide = document.documentElement.scrollWidth > window.innerWidth ? [`${s.name} scrolls sideways: ${document.documentElement.scrollWidth} px in ${window.innerWidth}`] : [];
-          return [...wide, ...s.check()];
+          return [...wide, ...s.check(), ...unsettled()];
         },
       })),
     ),

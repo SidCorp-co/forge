@@ -385,6 +385,11 @@ export function QuestionView({
           </p>
         )}
 
+        {question.asker && (
+          <p className="fg-caption text-subtle" data-testid="question-asker">
+            {t("agents.question.askedBy", { name: question.asker.name })}
+          </p>
+        )}
         {current && (
           <div className="space-y-2">
             <p className="fg-caption text-subtle">{t("agents.question.round", { n: current.round })}</p>

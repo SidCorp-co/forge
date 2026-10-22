@@ -3,7 +3,7 @@
 // is about. The composition root provides them at boot.
 
 import type { PersonVia } from '@forge/contracts/ecosystem';
-import type { StewardDecision } from '@forge/contracts/steward';
+import type { StewardDecision, StewardDecisionSubject } from '@forge/contracts/steward';
 import type { Context } from 'hono';
 import type { Tx } from '../db/client.js';
 import type { ConversationAdapter } from '../db/schema-conversations.js';
@@ -22,7 +22,8 @@ interface ConversationTurnMeta {
 export interface StewardDecisionAnswer {
   questionId: string;
   projectId: string;
-  issueId: string;
+  /** The item it decides: the issue or requirement it stands on, or the feedback item it is about. */
+  subject: { kind: StewardDecisionSubject; id: string };
   decision: StewardDecision;
   /** The option chosen: a link's names the requirement and BC (`stewardLinkOf`). */
   optionId: string;
@@ -31,6 +32,8 @@ export interface StewardDecisionAnswer {
   note: string | null;
   /** The fingerprint its options carry: the run that asked and the basis it read. */
   fingerprint: string | null;
+  /** When the question was asked: what it decides is the item as it stood then. */
+  askedAt: Date;
 }
 
 interface QuestionPorts {

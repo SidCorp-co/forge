@@ -33,11 +33,7 @@ import {
   registerReleaseBatchClaimSubscriber,
 } from './release-batch/index.js';
 import { registerReleaseHighlightsRefresh } from './release-page/index.js';
-import {
-  registerReasonAnswers,
-  registerRequirementDelivery,
-  registerStaleDraftAct,
-} from './requirements/index.js';
+import { registerReasonAnswers, registerRequirementDelivery } from './requirements/index.js';
 import { registerSteward } from './steward/index.js';
 import { registerMasterWakeSubscribers, registerWsBroadcastSubscribers } from './ws/index.js';
 
@@ -71,7 +67,6 @@ export function registerOutboxConsumers(): void {
   registerRequirementDelivery();
   registerRequirementNotifications();
   registerFirstRequirementsCase();
-  registerStaleDraftAct();
   registerReasonAnswers();
   registerQuestionSuggest();
   registerFeedbackNotifications();

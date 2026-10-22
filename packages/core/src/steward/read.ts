@@ -2,9 +2,14 @@
 // answers an item's runs, newest first, each with the acts it took through which doors.
 
 import type { StewardRunView } from '@forge/contracts/steward';
-import type { StewardRunsResponse } from '@forge/contracts/steward-runtime';
+import type {
+  StewardActsResponse,
+  StewardBudgetView,
+  StewardRunsResponse,
+} from '@forge/contracts/steward-runtime';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
-import { actsOfRuns } from './acts-store.js';
+import { actsOfRuns, actsOfSubject } from './acts-store.js';
+import { budgetDayOf } from './policy.js';
 import { type RunRow, runsOfSubject } from './runs-store.js';
 
 export function runViewOf(run: RunRow, acts: StewardRunView['acts']): StewardRunView {
@@ -38,4 +43,24 @@ export async function readStewardRuns(args: {
   const runs = await runsOfSubject(args.projectId, args.subjectKey);
   const acts = await actsOfRuns(runs.map((r) => r.id));
   return { runs: runs.map((r) => runViewOf(r, acts.get(r.id) ?? [])) };
+}
+
+/** Every act the steward took on the item, as `userId` may read it: a project reader reads every one. */
+export async function readStewardActs(args: {
+  projectId: string;
+  userId: string;
+  subjectKey: string;
+}): Promise<StewardActsResponse> {
+  await requireCan(actorFor(args.userId), 'project.read', projectResource(args.projectId));
+  return { acts: await actsOfSubject(args.projectId, args.subjectKey) };
+}
+
+/** The steward's day on the project, as `userId` may read it: a project reader reads it. */
+export async function readStewardBudget(args: {
+  projectId: string;
+  userId: string;
+  now?: Date;
+}): Promise<StewardBudgetView> {
+  await requireCan(actorFor(args.userId), 'project.read', projectResource(args.projectId));
+  return budgetDayOf(args.projectId, args.now ?? new Date());
 }

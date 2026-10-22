@@ -10,7 +10,10 @@ import type {
   ScopeForecast,
 } from '@forge/contracts/forecast';
 import { say } from '@forge/contracts/said';
+import type { WaitingOn } from '@forge/contracts/standing';
+import type { StuckReading } from '@forge/contracts/steward';
 import { draftReleaseIssueIds } from '../release-batch/index.js';
+import { requirementStandingsOf } from '../requirements/index.js';
 import { deliveryOf, type ReleaseFacts, releaseLegOf, type Shipped } from './delivery.js';
 import {
   type IssueRow,
@@ -21,7 +24,7 @@ import {
   readAnchor,
   requirementBySeq,
 } from './facts.js';
-import { scopeForecast, scopeLandings, seedOf, waitOn } from './model.js';
+import { scopeForecast, scopeLandings, seedOf, type Wait, waitOn } from './model.js';
 import { withMoves } from './moves.js';
 import { issueProgressOf } from './progress.js';
 import { type Facts, forecastOf, pausedOf, simulate, stamp } from './read.js';
@@ -65,12 +68,28 @@ function latestLanding(asOf: string, times: readonly (string | null)[]): Forecas
   return { ...stamp(asOf), kind: 'landed', landedAt: known[known.length - 1] ?? null };
 }
 
+/**
+ * The wait a stuck standing names, which the forecast reads in place of a landing date: a stuck item
+ * never forecasts one (REQ-48 BC-8, REQ-45 read Stuck while the Dashboard put it landing today).
+ * Null where the item does not read stuck.
+ */
+export function stuckWaitOf(s: { stuck: StuckReading | null; waitingOn: WaitingOn }): Wait | null {
+  if (!s.stuck) return null;
+  return waitOn(
+    { who: s.waitingOn.says.who, act: s.waitingOn.says.act, reason: s.stuck.says.reason },
+    s.waitingOn.ref,
+    s.stuck.since,
+  );
+}
+
 export function scopeOf(
   r: Reads,
   rows: readonly IssueRow[],
   scope: ScopeForecast['scope'],
   key: string,
   title: string | null,
+  /** The item's stuck wait, where its standing reads stuck: what is open waits on it, undated. */
+  stuck: Wait | null = null,
 ): ScopeForecast {
   const { f } = r;
   const members = rows.filter((m) => m.status !== 'dropped');
@@ -86,7 +105,9 @@ export function scopeOf(
       ? null
       : open.length === 0
         ? latestLanding(f.run.asOf, landed)
-        : scopeForecast(f.run, openKeys, f.now);
+        : stuck
+          ? pausedOf(f.run.asOf, stuck)
+          : scopeForecast(f.run, openKeys, f.now);
   const unshipped = members.filter((m) => m.status !== 'closed');
   const lastLanding = latestLanding(
     f.run.asOf,
@@ -121,8 +142,22 @@ export function scopeOf(
   };
 }
 
-const requirementScope = (r: Reads, req: RequirementRow, rows: readonly IssueRow[]) =>
-  scopeOf(r, rows, 'requirement', `REQ-${req.req_seq}`, req.title);
+const requirementScope = (
+  r: Reads,
+  req: RequirementRow,
+  rows: readonly IssueRow[],
+  stuck: ReadonlyMap<string, Wait>,
+) => scopeOf(r, rows, 'requirement', `REQ-${req.req_seq}`, req.title, stuck.get(req.id) ?? null);
+
+/** Each requirement that reads stuck, by id, with the wait its standing names. */
+async function stuckRequirements(projectId: string): Promise<Map<string, Wait>> {
+  const out = new Map<string, Wait>();
+  for (const r of await requirementStandingsOf(projectId)) {
+    const wait = stuckWaitOf({ stuck: r.standing.times.stuck, waitingOn: r.standing.waitingOn });
+    if (wait) out.set(r.id, wait);
+  }
+  return out;
+}
 
 export async function readRequirementForecast(
   projectId: string,
@@ -133,9 +168,11 @@ export async function readRequirementForecast(
   const req = await requirementBySeq(projectId, reqSeq);
   if (!req) return null;
   const rows = (await issueRowsOfRequirements(projectId, [req.id])).get(req.id) ?? [];
-  const [scope] = await withMoves(projectId, [
-    requirementScope(await readsFor(projectId, now, rows, viewer), req, rows),
+  const [reads, stuck] = await Promise.all([
+    readsFor(projectId, now, rows, viewer),
+    stuckRequirements(projectId),
   ]);
+  const [scope] = await withMoves(projectId, [requirementScope(reads, req, rows, stuck)]);
   return scope ?? null;
 }
 
@@ -150,10 +187,13 @@ async function allRequirementScopes(
     projectId,
     reqs.map((q) => q.id),
   );
-  const reads = await readsFor(projectId, now, [...[...byReq.values()].flat(), ...extra], viewer);
+  const [reads, stuck] = await Promise.all([
+    readsFor(projectId, now, [...[...byReq.values()].flat(), ...extra], viewer),
+    stuckRequirements(projectId),
+  ]);
   return {
     reads,
-    scopes: reqs.map((q) => requirementScope(reads, q, byReq.get(q.id) ?? [])),
+    scopes: reqs.map((q) => requirementScope(reads, q, byReq.get(q.id) ?? [], stuck)),
   };
 }
 

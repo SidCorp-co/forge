@@ -59,6 +59,8 @@ export interface OpenPersonQuestion {
   issueId: string | null;
   requirementId: string | null;
   feedbackId: string | null;
+  /** The feedback item a steward decision is about (`about`), by key: it stands on no item itself. */
+  aboutFeedback: string | null;
   /** The round being asked, as written; null only on a row with no steps, which the read refuses. */
   current: QuestionStep;
   /** The assistant's record for a round, or null; the round it was drafted for decides whether it stands. */
@@ -76,6 +78,9 @@ function openPersonRowsOf(projectIds: readonly string[]) {
       issueId: agentQuestions.issueId,
       requirementId: agentQuestions.requirementId,
       feedbackId: agentQuestions.feedbackId,
+      aboutFeedback: sql<string | null>`(SELECT 'FB-' || f.fb_seq FROM feedback f
+        WHERE ${agentQuestions.about} ->> 'kind' = 'feedback'
+          AND f.id = (${agentQuestions.about} ->> 'feedbackId')::uuid)`,
       createdAt: agentQuestions.createdAt,
       suggestion: agentQuestions.suggestion,
       current: sql<QuestionStep | null>`${agentQuestions.steps} -> -1`,
@@ -117,6 +122,7 @@ export async function readOpenPersonQuestions(projectId: string): Promise<OpenPe
       issueId: r.issueId,
       requirementId: r.requirementId,
       feedbackId: r.feedbackId,
+      aboutFeedback: r.aboutFeedback,
       current: r.current,
       suggestion: r.suggestion,
       at: r.current.askedAt ?? r.createdAt.toISOString(),

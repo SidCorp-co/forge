@@ -36,6 +36,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 import { agentSessions } from './schema-agent-sessions.js';
+import { users } from './schema-auth.js';
 import { feedback } from './schema-feedback.js';
 import { issues } from './schema-issues.js';
 import { questionnaireBatches } from './schema-onboarding.js';
@@ -61,8 +62,6 @@ export type QuestionOption = {
   bindsTo: (typeof optionBindings)[number];
   executedBy: (typeof optionExecutors)[number];
   fingerprint?: string;
-  /** The record the option acts on, where it names one: a merge-or-drop question's merge target (REQ-41 BC-12). */
-  target?: { kind: 'requirement' | 'issue'; id: string; key: string };
 };
 
 export const answerShapes = ['choice', 'free_text'] as const;
@@ -157,6 +156,11 @@ export const agentQuestions = pgTable(
     agentSessionId: uuid('agent_session_id').references(() => agentSessions.id, {
       onDelete: 'set null',
     }),
+    /**
+     * The account that asked through a door of its own (`POST /api/questions`): a person, an agent
+     * token, the steward. Null where the system asked (a sweep, a park) or the ask predates 0512.
+     */
+    askedBy: uuid('asked_by').references(() => users.id, { onDelete: 'set null' }),
     /** The questionnaire batch this item was asked in (ISS-63); null on every other question. */
     batchId: uuid('batch_id').references(() => questionnaireBatches.id, { onDelete: 'cascade' }),
     /** The item as posted: group, control, options, inferred default, evidence, the designs it shapes. */
@@ -183,7 +187,7 @@ export const agentQuestions = pgTable(
     awaitsMergeIssueId: uuid('awaits_merge_issue_id').references((): AnyPgColumn => issues.id, {
       onDelete: 'set null',
     }),
-    /** What the asker named the question as about (a requirement or a contract); it moves no visibility. */
+    /** What the asker named the question as about (a requirement, a contract, or the feedback item a steward decision is about); it moves no visibility. */
     about: jsonb('about').$type<QuestionAbout>(),
     /** The assistant's suggested answer for the current round, or why it drafted none (REQ-41 BC-2, migration 0482). */
     suggestion: jsonb('suggestion').$type<QuestionSuggestion>(),
@@ -232,6 +236,7 @@ export const agentQuestions = pgTable(
       sql`${t.about} is null or (
         (${t.about} ->> 'kind' = 'requirement' and jsonb_typeof(${t.about} -> 'requirementId') = 'string')
         or (${t.about} ->> 'kind' = 'contract' and jsonb_typeof(${t.about} -> 'contract') = 'string')
+        or (${t.about} ->> 'kind' = 'feedback' and jsonb_typeof(${t.about} -> 'feedbackId') = 'string')
       )`,
     ),
     check(

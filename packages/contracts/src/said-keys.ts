@@ -368,10 +368,6 @@ export const SAID = {
 	"issues.rule.runAsked": {
 		en: "a run asked a question only a person can answer",
 	},
-	"issues.rule.staleDraftAsked": {
-		en: "Forge asked whether to merge, drop or keep this {days}-day-old draft",
-		vars: { days: "count" },
-	},
 	"issues.rule.withheld": {
 		en: "{code}: {detail} No master is handed it until then.",
 		vars: { code: "code", detail: "text" },
@@ -572,7 +568,6 @@ export const SAID = {
 		en: "accept the revision of {req}",
 		vars: { req: "key" },
 	},
-	"standing.act.agreeIt": { en: "agree it" },
 	"standing.act.agreeR": { en: "agree r{r}", vars: { r: "count" } },
 	"standing.act.answerReturn": { en: "answer the return" },
 	"standing.act.approve": { en: "approve" },
@@ -742,18 +737,12 @@ export const SAID = {
 	"standing.act.reviewSuggestedRevision": {
 		en: "review the suggested revision",
 	},
-	"standing.act.mergeOrDrop": {
-		en: "answer whether to merge, drop or keep this draft",
-	},
-	"standing.act.draftAnswerByHand": {
-		en: "carry out the answer to the merge-or-drop question by hand",
-	},
-	"standing.rule.draftAnswerRefused": {
-		en: "Forge could not carry out the answer by rule ({code}): {detail}",
-		vars: { code: "code", detail: "text" },
+	"standing.act.answerSteward": {
+		en: "answer the steward's question",
 	},
 	"standing.act.verdictsNotReread": { en: "verdicts not re-read" },
 	"standing.act.verifyFix": { en: "verify the fix" },
+	"standing.act.writeRevision": { en: "write a revision" },
 	"standing.act.verifyFixIn": {
 		en: "verify the fix shipped in {v}",
 		vars: { v: "version" },
@@ -1393,6 +1382,12 @@ export const SAID = {
 	"requirements.rule.proposed": {
 		en: "a proposed revision waits on a sign-off",
 	},
+	"requirements.rule.stewardAsked": {
+		en: "the steward asked what to do with this stuck draft",
+	},
+	"requirements.rule.noRevision": {
+		en: "no current revision: only a current revision is agreed",
+	},
 	"requirements.rule.unagreed": {
 		en: "a current revision not yet agreed waits on a sign-off",
 	},
@@ -1451,10 +1446,6 @@ export const SAID = {
 	},
 	"requirements.rule.revisionSuggested": {
 		en: "a traced design step changed; a suggested revision waits on a person",
-	},
-	"requirements.rule.staleDraft": {
-		en: "a draft untouched for {days} days: merge, drop or keep it",
-		vars: { days: "count" },
 	},
 	"forecast.who.whoeverReaches": {
 		en: "Whoever can reach {device}",

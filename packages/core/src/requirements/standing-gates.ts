@@ -55,7 +55,7 @@ export function nextStepOf(
   }
 }
 
-/** An approval no project switch gates (a triage, a merge-or-drop answer, a suggested revision's
+/** An approval no project switch gates (a triage, a steward decision's answer, a suggested revision's
  *  accept): every holder of requirements.approve may do it, so each of them is asked. A draft
  *  issue's promote is asked of a signer who holds issues.admit whatever the switch, in `standing.ts`
  *  (`promote-drafts.ts`, question 3b8292dc). */
@@ -97,7 +97,7 @@ export function actWait(
   /** When the act falls due, and whom a switched-on step names where the viewer may not take it. */
   more: { dueAt?: string | null; holder?: Said } = {},
 ) {
-  const { viewer, owner } = input;
+  const { viewer } = input;
   const due = more.dueAt ?? null;
   if (personGateOn(input.approvals, gate)) {
     const holder = GATE_HOLDER[gate];
@@ -108,6 +108,15 @@ export function actWait(
           waitingOn: wait('person', more.holder ?? holder.who, act, rule, due),
         };
   }
+  return ownerWait(input, act, rule, due);
+}
+
+/**
+ * The requirement's owner's own act, which no project switch gates: an agent owner's is its
+ * master's, the viewer's own reads as theirs, anyone else's names the owner.
+ */
+export function ownerWait(input: StandingInput, act: Said, rule: Said, due: string | null = null) {
+  const { viewer, owner } = input;
   if (owner?.kind === 'agent') {
     return { group: 'waiting' as const, waitingOn: wait('agent', MASTER, act, rule, due) };
   }

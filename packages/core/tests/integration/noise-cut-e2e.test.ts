@@ -1,10 +1,10 @@
 /**
- * REQ-41 BC-10, BC-11, BC-12 (docs/proposals/chat-first.md, "Noise cut at the source"). A design
+ * REQ-41 BC-10, BC-11 (docs/proposals/chat-first.md, "Noise cut at the source"). A design
  * approval no traced step of a requirement's criteria failed to survive makes a re-pin due and moves
  * no pin: its mover re-pins it through the requirement's own re-pin act (nothing re-pins by itself,
  * the owner's ruling of 2026-10-14); one that removed a traced step waits on the assistant, never on
- * a person. An issue that spent its run sessions parks for its master. A draft nobody touched for a
- * week gets one merge-or-drop question with a recommended answer; a younger draft gets none.
+ * a person. An issue that spent its run sessions parks for its master. A stuck draft's question is
+ * the steward's (REQ-48 BC-5): `steward-draft-decisions-e2e.test.ts`.
  */
 
 // @direct-test-of packages/core/src/lib/standing-times.ts
@@ -260,99 +260,5 @@ describe('BC-11: a run parked after repeated failures waits on the master, never
       kind: 'master',
       who: 'Master',
     });
-  });
-});
-
-describe('BC-12: a draft untouched for 7 days gets one merge-or-drop question from the assistant', () => {
-  const DAY = 86_400_000;
-  let old = '';
-  let young = '';
-  let oldIssue = { id: '', key: '' };
-
-  const backdate = async (key: string, days: number) => {
-    const when = new Date(Date.now() - days * DAY).toISOString();
-    const seq = Number(key.slice(4));
-    await db.execute(sql`
-      UPDATE requirement_revisions SET created_at = ${when}
-       WHERE requirement_id = (SELECT id FROM requirements WHERE project_id = ${projectId} AND req_seq = ${seq})`);
-    await db.execute(sql`
-      UPDATE requirements SET updated_at = ${when} WHERE project_id = ${projectId} AND req_seq = ${seq}`);
-  };
-
-  const questionsOn = (on: { requirement?: string; issueId?: string }) =>
-    rows<{ status: string; steps: Doc[] }>(
-      on.issueId
-        ? sql`SELECT status, steps FROM agent_questions WHERE issue_id = ${on.issueId}`
-        : sql`SELECT q.status, q.steps FROM agent_questions q JOIN requirements r ON r.id = q.requirement_id
-               WHERE r.project_id = ${projectId} AND r.req_seq = ${Number(on.requirement?.slice(4))}`,
-    );
-
-  beforeAll(async () => {
-    const draft = async (title: string) =>
-      ok(
-        await as('POST', '/requirements', {
-          title,
-          reason: 'someone asked once',
-          criteria: [{ body: 'The list exports to a spreadsheet.' }],
-        }),
-        201,
-      ).key as string;
-    old = await draft('Export the call list');
-    young = await draft('Print the call list');
-    await backdate(old, 8);
-    await backdate(young, 6);
-    oldIssue = await createTestIssue(projectId, ownerId, 902, {
-      status: 'draft',
-      createdAt: new Date(Date.now() - 9 * DAY),
-    });
-    await db.execute(
-      sql`UPDATE issues SET updated_at = ${new Date(Date.now() - 9 * DAY).toISOString()} WHERE id = ${oldIssue.id}`,
-    );
-  });
-
-  it('asks one question with its options and a recommended one on an 8-day-old draft, and none on a 6-day-old one', async () => {
-    const { sweepStaleDrafts } = await import('../../src/requirements/stale-drafts.js');
-    const first = await sweepStaleDrafts();
-    expect(first.refused).toBe(0);
-
-    const [q, ...more] = await questionsOn({ requirement: old });
-    expect(more).toEqual([]);
-    expect(q?.status).toBe('open');
-    const step = q?.steps[0] as Doc;
-    // merge is offered only with a live item to merge into, which this draft has none of
-    expect((step.options as Doc[]).map((o) => o.id)).toEqual([
-      'stale_draft.drop',
-      'stale_draft.keep',
-    ]);
-    expect(step.recommendedOptionId).toBe('stale_draft.drop');
-    expect(String(step.prompt)).toContain(`${old} "Export the call list" is a draft requirement`);
-    expect(String(step.prompt)).toContain(
-      'Recommended: Drop it, because nobody touched it for 8 days',
-    );
-    expect(await questionsOn({ requirement: young })).toEqual([]);
-    expect(await questionsOn({ issueId: oldIssue.id })).toHaveLength(1);
-
-    const s = await standingOf(old);
-    expect(s.waitingOn).toMatchObject({
-      kind: 'you',
-      act: 'answer whether to merge, drop or keep this draft',
-    });
-  });
-
-  it('asks once: a second pass and a pass after a keep write nothing more', async () => {
-    const { sweepStaleDrafts } = await import('../../src/requirements/stale-drafts.js');
-    expect(await sweepStaleDrafts()).toEqual({ asked: 0, refused: 0 });
-    const [asked] = await rows<{ id: string }>(
-      sql`SELECT id FROM agent_questions WHERE issue_id = ${oldIssue.id}`,
-    );
-    ok(
-      await say('owner', 'POST', `/api/questions/${asked?.id}/answer`, {
-        round: 1,
-        optionId: 'stale_draft.keep',
-      }),
-    );
-    expect(await sweepStaleDrafts()).toEqual({ asked: 0, refused: 0 });
-    const after = await questionsOn({ issueId: oldIssue.id });
-    expect(after.map((q) => q.status)).toEqual(['answered']);
   });
 });

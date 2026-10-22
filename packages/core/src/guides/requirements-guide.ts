@@ -64,9 +64,10 @@ it lives in numbered revisions, and each revision carries business criteria unde
    ask's \`about\`), and \`unclear\` counts the open ones; an answer reaches it as a decision.
    **edit** rewrites a draft in place, whole: send the criteria list you read back, codes included,
    and a code the draft itself gave keeps that code, as a live code of its base does. Anything past
-   draft is \`REQUIREMENT_REVISION_NOT_DRAFT\`. A draft nobody touched for 7 days that a person answers
-   "drop" on Forge's merge-or-drop question is **withdrawn** (terminal, with the question as its reason);
-   it no longer counts as the open revision, and editing or proposing it is \`REQUIREMENT_REVISION_WITHDRAWN\`.
+   draft is \`REQUIREMENT_REVISION_NOT_DRAFT\`. A stuck draft revision of an agreed requirement that a
+   person answers "withdraw" on the steward's question is **withdrawn** (terminal, with the question and
+   their reason); it no longer counts as the open revision, and editing or proposing it is
+   \`REQUIREMENT_REVISION_WITHDRAWN\`. A stuck draft requirement is asked merge, drop or keep.
 3. **propose** puts the draft in front of whoever approves it. Proposing also checks the base is still the head. Every revision
    read back carries \`criteriaChanges\`: the BC codes it added, reworded and removed against the revision
    it was written against, computed from the criteria, never typed (null for a first revision).

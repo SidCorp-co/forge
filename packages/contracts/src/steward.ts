@@ -424,14 +424,21 @@ export const STEWARD_FAILURE_KINDS = ["refused", "error"] as const;
 export type StewardFailureKind = (typeof STEWARD_FAILURE_KINDS)[number];
 
 /**
- * What the steward asks a person to decide about a stuck issue (REQ-48 BC-5): a set fixed by code,
+ * What the steward asks a person to decide about a stuck item (REQ-48 BC-5): a set fixed by code,
  * never options the model spells, so every such question reads alike and is answered in bulk. The
- * model picks only the recommended one and says why in one line. A draft is prepared by the steward
- * before anything is asked (its requirement linked, its plan saved, its criteria traced): a draft
- * that then passes the issue-ready check is asked `open`, `keep` or `drop`, recommending open; one no
- * agreed requirement fits is asked `link` (one of at most 3 candidates, each a requirement and a BC),
- * `requirement` (start one from its feedback) or `drop`. Answering carries the act out as the
- * answerer (`core/src/steward/decision-act.ts`). Nobody is ever asked to write a plan or criteria.
+ * model picks only the recommended one and says why in one line. Each kind of item has its own set:
+ * - an issue (`stewardDecisionsFor`): a draft is prepared by the steward before anything is asked
+ *   (its requirement linked, its plan saved, its criteria traced); one that then passes the
+ *   issue-ready check is asked `open`, `keep` or `drop`, recommending open; one no agreed requirement
+ *   fits is asked `link` (one of at most 3 candidates, each a requirement and a BC), `requirement`
+ *   (start one from its feedback) or `drop`; either may be asked `merge` into a live issue it repeats.
+ * - a requirement (`stewardRequirementDecisionsFor`): a draft its author does not finish is asked
+ *   `merge` into a live requirement it repeats, `drop` or `keep`; a draft revision of a requirement
+ *   already agreed is asked `withdraw` or `keep`, since what was agreed stays.
+ * - a feedback item (`stewardFeedbackDecisionsFor`): one nobody triages is asked `keep` or `drop`
+ *   (decline it); a fix its reporter does not verify is asked `verify`, `reopen` or `keep`.
+ * Answering carries the act out as the answerer (`core/src/steward/decision-act.ts`). Nobody is ever
+ * asked to write a plan or criteria.
  */
 export const STEWARD_DECISIONS = [
 	"open",
@@ -439,16 +446,31 @@ export const STEWARD_DECISIONS = [
 	"drop",
 	"link",
 	"requirement",
+	"merge",
+	"withdraw",
+	"verify",
+	"reopen",
 ] as const;
 export type StewardDecision = (typeof STEWARD_DECISIONS)[number];
 
-/** Each decision's option id but a link's, which names its candidate (`stewardLinkOptionId`). */
+/** The kinds of item a steward decision is asked about, each by its own fixed set. */
+export const STEWARD_DECISION_SUBJECTS = [
+	"issue",
+	"requirement",
+	"feedback",
+] as const;
+export type StewardDecisionSubject = (typeof STEWARD_DECISION_SUBJECTS)[number];
+
+/** Each decision's option id but a link's and a merge's, which name their target. */
 export const STEWARD_DECISION_OPTION_IDS = {
 	open: "steward.open",
 	keep: "steward.keep",
 	drop: "steward.drop",
 	requirement: "steward.requirement",
-} as const satisfies Record<Exclude<StewardDecision, "link">, string>;
+	withdraw: "steward.withdraw",
+	verify: "steward.verify",
+	reopen: "steward.reopen",
+} as const satisfies Record<Exclude<StewardDecision, "link" | "merge">, string>;
 
 /** At most this many requirements a `link` question offers. */
 export const STEWARD_LINK_CANDIDATES_MAX = 3;
@@ -467,10 +489,29 @@ export function stewardLinkOf(
 	return hit?.[1] && hit[2] ? { requirement: hit[1], bc: hit[2] } : null;
 }
 
-/** The decisions that take the answerer's reason: a keep says until when or why, a drop why it is not work. */
+/** A merge option's id: the live item of the same kind the draft is folded into. */
+export const stewardMergeOptionId = (into: string) =>
+	`steward.merge:${into.toUpperCase()}`;
+
+const MERGE_ID = /^steward\.merge:([A-Z][A-Z0-9]*-\d+)$/;
+
+/** The item a merge option folds the draft into, by key, or null for any other option. */
+export function stewardMergeOf(
+	optionId: string | null | undefined,
+): { into: string } | null {
+	const hit = MERGE_ID.exec(optionId ?? "");
+	return hit?.[1] ? { into: hit[1] } : null;
+}
+
+/**
+ * The decisions that take the answerer's reason: a keep says until when or why, a drop why it is
+ * not work, a withdraw why the draft revision goes, a reopen why the fix does not answer it.
+ */
 export const STEWARD_DECISIONS_WITH_REASON: readonly StewardDecision[] = [
 	"keep",
 	"drop",
+	"withdraw",
+	"reopen",
 ];
 
 /** Work admitted and not yet taken: what a master would take next. */
@@ -478,10 +519,11 @@ const UNSTARTED_LIVE: readonly string[] = ["open", "reopen", "on_hold"];
 
 /**
  * The decisions an issue owes a person, by what it is, why it reads stuck and, for a draft, whether it
- * passes the issue-ready check: a ready draft is opened, kept or dropped; one not ready (no agreed
- * requirement fits) is linked, given a new requirement, or dropped; unstarted work no master serves
- * is kept waiting or dropped. Any other reading names an act somebody already owes (a release
- * approval, an open question, a blocker), which the steward wakes or notes and never asks about: null.
+ * passes the issue-ready check: a ready draft is opened, kept, dropped or merged into the live issue
+ * it repeats; one not ready (no agreed requirement fits) is linked, given a new requirement, dropped
+ * or merged; unstarted work no master serves is kept waiting or dropped. Any other reading names an
+ * act somebody already owes (a release approval, an open question, a blocker), which the steward
+ * wakes or notes and never asks about: null.
  */
 export function stewardDecisionsFor(
 	status: string,
@@ -489,9 +531,62 @@ export function stewardDecisionsFor(
 	ready: boolean,
 ): readonly StewardDecision[] | null {
 	if (status === "draft")
-		return ready ? ["open", "keep", "drop"] : ["link", "requirement", "drop"];
+		return ready
+			? ["open", "keep", "drop", "merge"]
+			: ["link", "requirement", "drop", "merge"];
 	if (stuck === "nobody_serves" && UNSTARTED_LIVE.includes(status))
 		return ["keep", "drop"];
+	return null;
+}
+
+/**
+ * The decisions a requirement owes a person while a draft of it waits on its author (Requirement
+ * lifecycle `draft`): a draft requirement is merged into the live one it repeats, dropped or kept; a
+ * draft revision of one past draft is withdrawn or kept, since merging it elsewhere would drop what
+ * was agreed. A revision proposed, or a head waiting to be agreed, is an approver's act: null.
+ */
+export function stewardRequirementDecisionsFor(r: {
+	status: string;
+	/** A revision is open as a draft. */
+	draftRevision: boolean;
+	/** A revision is proposed to its approver. */
+	proposedRevision: boolean;
+	/** The current revision, null where none was accepted yet. */
+	head: number | null;
+}): readonly StewardDecision[] | null {
+	if (r.proposedRevision) return null;
+	if (r.status === "draft" && (r.draftRevision || r.head === null))
+		return ["merge", "drop", "keep"];
+	if (r.draftRevision && !["dropped", "deferred"].includes(r.status))
+		return ["withdraw", "keep"];
+	return null;
+}
+
+/** The feedback acts a triager owes: triage it, route it, triage it again. */
+const FEEDBACK_TRIAGE_ACTS: readonly string[] = [
+	"standing.act.triageIt",
+	"feedback.act.route",
+	"standing.act.triageAgain",
+];
+
+/** The feedback acts its reporter owes on a shipped fix. */
+const FEEDBACK_VERIFY_ACTS: readonly string[] = [
+	"standing.act.verifyFix",
+	"standing.act.verifyFixIn",
+];
+
+/**
+ * The decisions a stuck feedback item owes a person, by the act its standing waits on: an item
+ * nobody triages is kept waiting or declined; a fix its reporter does not verify is verified on
+ * their behalf, reopened or kept. Any other act (a carrier's, a reporter's answer, an approver's)
+ * is somebody's already: null.
+ */
+export function stewardFeedbackDecisionsFor(
+	actKey: string,
+): readonly StewardDecision[] | null {
+	if (FEEDBACK_TRIAGE_ACTS.includes(actKey)) return ["keep", "drop"];
+	if (FEEDBACK_VERIFY_ACTS.includes(actKey))
+		return ["verify", "reopen", "keep"];
 	return null;
 }
 
@@ -500,6 +595,7 @@ export function stewardDecisionOf(
 	optionId: string | null | undefined,
 ): StewardDecision | null {
 	if (stewardLinkOf(optionId)) return "link";
+	if (stewardMergeOf(optionId)) return "merge";
 	const hit = (
 		Object.entries(STEWARD_DECISION_OPTION_IDS) as [StewardDecision, string][]
 	).find(([, id]) => id === optionId);
@@ -516,15 +612,40 @@ export function isStewardDecisionQuestion(
 	);
 }
 
-/** Each decision's button, as a person reads it; a draft's keep and a live issue's differ. */
+/** The item a decision is about, as its button and its effect line name it. */
+export interface StewardDecisionItem {
+	kind: StewardDecisionSubject;
+	key: string;
+	/** An issue at draft, or a requirement at draft (not a draft revision of an agreed one). */
+	draft: boolean;
+}
+
+/** Each decision's button, as a person reads it; a draft's keep and a live item's differ. */
 export function stewardDecisionLabel(
-	decision: Exclude<StewardDecision, "link">,
-	draft: boolean,
+	decision: Exclude<StewardDecision, "link" | "merge">,
+	item: Pick<StewardDecisionItem, "kind" | "draft">,
 ): string {
-	if (decision === "open") return "Open it: admit it for work";
-	if (decision === "drop") return "Drop it: it is not work";
-	if (decision === "requirement") return "Start a requirement from it";
-	return draft ? "Keep it as a draft" : "Keep it waiting";
+	switch (decision) {
+		case "open":
+			return "Open it: admit it for work";
+		case "drop":
+			return item.kind === "feedback"
+				? "Decline it: it is not work"
+				: "Drop it: it is not work";
+		case "requirement":
+			return "Start a requirement from it";
+		case "withdraw":
+			return "Withdraw the draft revision";
+		case "verify":
+			return "Verify it: the fix answers it";
+		case "reopen":
+			return "Reopen it: the fix does not answer it";
+		case "keep":
+			if (item.kind === "feedback") return "Keep it waiting";
+			if (item.kind === "requirement")
+				return item.draft ? "Keep it as a draft" : "Keep the draft revision";
+			return item.draft ? "Keep it as a draft" : "Keep it waiting";
+	}
 }
 
 /** A link option's button: the requirement and BC, and the BC's own words. */
@@ -534,15 +655,57 @@ export const stewardLinkLabel = (
 	text: string,
 ) => `Link it to ${requirement} ${bc}: ${text}`.slice(0, 200);
 
-/** What answering each decision does, said on its button before it is pressed. */
-export const STEWARD_DECISION_EFFECTS = {
-	open: "Opens the issue as you. The steward prepared its requirement, plan and criteria; its driver writes the rest.",
-	keep: "Keeps it as it is, with your reason. The steward does not ask again while its standing holds.",
-	drop: "Drops the issue as you, with your reason.",
-	link: "Links the draft to that requirement as you. The steward then writes its plan and criteria, and asks whether to open it.",
-	requirement:
-		"Starts a new requirement from it as you; the intake assistant drafts it, and the draft waits for it to be agreed.",
-} as const satisfies Record<StewardDecision, string>;
+/** A merge option's button: the item it folds into, and that item's title. */
+export const stewardMergeLabel = (into: string, title: string) =>
+	`Merge it into ${into}: ${title}`.slice(0, 200);
+
+/**
+ * What answering a steward decision does to the item, said on its button in Approvals (REQ-48
+ * BC-11), naming the item: never "sends this answer to the run that asked". `option` is the
+ * answer's option id, which names the requirement and BC a link answer links to, or the item a
+ * merge folds into.
+ */
+export function stewardDecisionEffect(
+	decision: StewardDecision,
+	item: StewardDecisionItem & { option: string },
+): string {
+	const { key } = item;
+	const stays =
+		"until its standing moves, with your reason; the steward does not ask again until then.";
+	switch (decision) {
+		case "open":
+			return `Opens ${key} as you; its driver plans it from the requirement, plan and criteria the steward prepared.`;
+		case "keep":
+			if (item.kind === "issue")
+				return item.draft
+					? `Keeps ${key} as a draft ${stays}`
+					: `Keeps ${key} waiting for a master ${stays}`;
+			return `Keeps ${key} as it is ${stays}`;
+		case "drop":
+			return item.kind === "feedback"
+				? `Declines ${key} as you; its reporter reads your reason.`
+				: `Drops ${key} as you, with your reason.`;
+		case "link": {
+			const to = stewardLinkOf(item.option);
+			const target = to ? `${to.requirement} ${to.bc}` : "that requirement";
+			return `Links ${key} to ${target} as you; the steward then writes its plan and criteria, and asks whether to open it.`;
+		}
+		case "requirement":
+			return `Starts a requirement from ${key}'s feedback as you; ${key} stays a draft until that requirement is agreed.`;
+		case "merge": {
+			const into = stewardMergeOf(item.option)?.into ?? "the item it repeats";
+			return item.kind === "requirement"
+				? `Proposes what ${key} adds as a revision of ${into}, then drops ${key}, as you.`
+				: `Copies ${key}'s text to ${into} as a comment, then drops ${key}, as you.`;
+		}
+		case "withdraw":
+			return `Withdraws ${key}'s draft revision as you, with your reason; what was agreed stays.`;
+		case "verify":
+			return `Verifies ${key} as you, on its reporter's behalf; the item closes.`;
+		case "reopen":
+			return `Reopens ${key} as you, with your reason; it goes back to triage.`;
+	}
+}
 
 /** Why a run was skipped rather than run: said on the item, never silent. */
 export const STEWARD_SKIP_REASONS = [
@@ -614,6 +777,8 @@ export interface StewardActRecord {
 	/** The record it wrote (a question id, a suggestion id, a comment id, ISS-n). */
 	wrote: StewardCite | null;
 	undo: { door: string; body: Record<string, unknown> | null } | null;
+	/** How a person overrides it on the item's page, where `undo` is null; null where a door undoes it. */
+	override: string | null;
 	undoneAt: string | null;
 	undoneBy: string | null;
 	at: string;
@@ -637,6 +802,11 @@ export const STEWARD_REFUSAL_CODES = [
 	"STEWARD_BUDGET_SPENT",
 	"STEWARD_DECISION_REASON_REQUIRED",
 	"STEWARD_DECISION_STALE",
+	"STEWARD_DECISION_SUBJECT_UNKNOWN",
+	"STEWARD_DECISION_FORBIDDEN",
+	"STEWARD_DECISION_OPTIONS_UNKNOWN",
+	"STEWARD_MERGE_TARGET_ENDED",
+	"STEWARD_MERGE_HAS_DEPENDENTS",
 ] as const;
 export type StewardRefusalCode = (typeof STEWARD_REFUSAL_CODES)[number];
 
@@ -651,6 +821,9 @@ export const STEWARD_REFUSAL_STATUSES = {
 	STEWARD_ACT_SUPERSEDED: 409,
 	STEWARD_BUDGET_SPENT: 409,
 	STEWARD_DECISION_STALE: 409,
+	STEWARD_DECISION_SUBJECT_UNKNOWN: 404,
+	STEWARD_MERGE_TARGET_ENDED: 409,
+	STEWARD_MERGE_HAS_DEPENDENTS: 409,
 } as const satisfies RefusalStatuses<StewardRefusalCode>;
 
 /** At most this many decisions per person in Needs you at a time (BC-11); the rest are counted, never dropped. */

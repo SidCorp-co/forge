@@ -50,6 +50,7 @@ import { StewardNoteLines, useStewardNote } from "@/features/standing";
 import { Messages } from "./feedback-messages";
 import { FeedbackProgress } from "./feedback-progress";
 import { FeedbackRoom } from "./feedback-room";
+import { FeedbackStewardActs } from "./feedback-steward-acts";
 import { SimilarFeedback } from "./feedback-similar";
 
 const FEEDBACK_TABS = ["overview", "mockups", "activity"] as const;
@@ -213,6 +214,7 @@ export function FeedbackPage({
               {tab === "activity" ? (
                 <section className="grid grid-cols-1 gap-8" aria-label={t("feedback.tab.activity")} data-testid="view-activity">
                   <FeedbackHistory f={f} />
+                  <FeedbackStewardActs projectId={projectId} fbKey={f.key} />
                   {triageOwed ? null : checklists}
                 </section>
               ) : null}

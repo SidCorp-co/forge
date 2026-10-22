@@ -2,8 +2,8 @@
 // from file:// beside an index.html, so Chrome needs no server and no network. `run.mjs` loads it;
 // it is a module of its own so a test can build an entry the way a run does.
 
-import { rmSync, statSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { dirname, extname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const WEB = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -39,9 +39,33 @@ export function keepEntry(entry) {
   };
 }
 
+const PICTURES = { ".png": "image/png", ".svg": "image/svg+xml", ".jpg": "image/jpeg", ".webp": "image/webp", ".ico": "image/x-icon" };
+
+/** The app names a picture of `public/` by the path core serves it at (`src/lib/asset.ts:assetPath`),
+ *  and a file:// page resolves that path against the disk's root: every mascot and mark drew broken,
+ *  its alt text in its place. In the witness each picture rides in app.js as a data URI, as the fonts
+ *  do; any other path (a route) is the app's own. */
+export function publicPictures() {
+  const asset = resolve(WEB, "src/lib/asset.ts");
+  return {
+    name: "witness-public-pictures",
+    enforce: "pre",
+    load(id) {
+      if (id !== asset) return null;
+      const dir = resolve(WEB, "public");
+      const pictures = Object.fromEntries(
+        readdirSync(dir)
+          .filter((f) => PICTURES[extname(f)])
+          .map((f) => [`/${f}`, `data:${PICTURES[extname(f)]};base64,${readFileSync(resolve(dir, f)).toString("base64")}`]),
+      );
+      return `const PICTURES = ${JSON.stringify(pictures)};\nexport function assetPath(path) {\n  return PICTURES[path] ?? path;\n}\n`;
+    },
+  };
+}
+
 export async function buildPage(entry, out) {
   const { vite, shared, plugins: app } = await viteFor("production");
-  const plugins = [...app, keepEntry(entry)];
+  const plugins = [...app, keepEntry(entry), publicPictures()];
   // the entry and the app's stylesheet are bundled as one page: the stylesheets components import
   // themselves (the workflow canvas, the board) land in the same app.css, so a canvas is drawn as the
   // app draws it; nothing an earlier run left in `<out>` is read as this one's

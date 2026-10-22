@@ -1,12 +1,14 @@
-// A steward decision is carried out by its answer (REQ-48 BC-5), as the person who answered it:
-// `open` moves the prepared draft to open through the kernel; `drop` drops the issue with the
+// A steward decision is carried out by its answer (REQ-48 BC-5), as the person who answered it. On an
+// issue: `open` moves the prepared draft to open through the kernel; `drop` drops it with the
 // answerer's reason; `keep` records the keep, which the decide door reads so the same question is not
 // asked again while the issue's standing holds; `link` links the draft to the requirement the answer
 // names and has the steward diagnose it again, which prepares it and asks whether to open it;
-// `requirement` starts a draft requirement from the draft's feedback. The answer is written in the
-// act's own transaction, so an act refused, a move the kernel refuses included, refuses the answer
-// by its own name and the question stays open, and nothing is written twice. Each act is logged on the item as a steward act, undone through its own door or refused
-// naming a person's override.
+// `requirement` starts a draft requirement from the draft's feedback; `merge` copies the draft's text
+// to the live issue it repeats and drops the draft. A requirement's and a feedback item's are
+// `decision-subjects.ts`. The answer is written in the act's own transaction, so an act refused, a
+// move the kernel refuses included, refuses the answer by its own name and the question stays open,
+// and nothing is written twice. Each act is logged on the item as a steward act, undone through its
+// own door or refused naming a person's override.
 
 import type { IssueStatus } from '@forge/contracts/issue-machine';
 import {
@@ -23,8 +25,10 @@ import { refuser } from '../lib/refusal.js';
 import { notFound } from '../middleware/route-errors.js';
 import type { StewardDecisionAnswer } from '../questions/index.js';
 import { recordAct } from './acts-store.js';
+import { fingerprintOf } from './decision-ask.js';
 import { linkDraftIn, proposeItsPlacement, startRequirementIn } from './decision-draft.js';
-import { fingerprintOf } from './door-decide.js';
+import { mergePlanOf } from './decision-merge.js';
+import { carryFeedbackDecision, carryRequirementDecision } from './decision-subjects.js';
 import { openStandings } from './ports.js';
 
 const refuse = refuser<StewardRefusalCode>('STEWARD_DECISION_STALE');
@@ -33,32 +37,31 @@ const refuse = refuser<StewardRefusalCode>('STEWARD_DECISION_STALE');
 const REASON_FOR: Partial<Record<StewardDecision, string>> = {
   keep: 'until when it stays as it is, or why',
   drop: 'why it is not work',
+  withdraw: 'why the draft revision goes',
+  reopen: 'why the fix does not answer it',
+};
+
+/** The decisions each kind of item takes; any other is no decision of it. */
+const TAKES: Record<StewardDecisionAnswer['subject']['kind'], readonly StewardDecision[]> = {
+  issue: ['open', 'keep', 'drop', 'link', 'requirement', 'merge'],
+  requirement: ['merge', 'drop', 'keep', 'withdraw'],
+  feedback: ['keep', 'drop', 'verify', 'reopen'],
 };
 
 /** The decisions that act on a draft alone. */
-const DRAFT_ONLY: readonly StewardDecision[] = ['open', 'link', 'requirement'];
+const DRAFT_ONLY: readonly StewardDecision[] = ['open', 'link', 'requirement', 'merge'];
 
-type Logged = { door: string; did: string; undo?: { door: string; body: null } | null };
+export type Logged = { door: string; did: string; undo?: { door: string; body: null } | null };
 
-/** Carry `d` out as its answerer, recording the answer with `answerIn` inside the act's transaction. */
-export async function carryStewardDecision<R>(
-  d: StewardDecisionAnswer,
-  answerIn: (tx: Tx) => Promise<R>,
-): Promise<R> {
-  const [issue] = await db
-    .select({
-      id: issues.id,
-      projectId: issues.projectId,
-      status: issues.status,
-      reopenCount: issues.reopenCount,
-      title: issues.title,
-      requirementId: issues.requirementId,
-    })
-    .from(issues)
-    .where(eq(issues.id, d.issueId))
-    .limit(1);
-  if (!issue) throw notFound(`no issue ${d.issueId}`);
-  const key = (await issueDisplayIds([issue.id])).get(issue.id) ?? issue.id;
+/** What every kind's carrying needs: the item's key, the said source, and the act log in `tx`. */
+export interface Carry {
+  key: string;
+  said: string;
+  logged: (tx: Tx, act: Logged) => Promise<string>;
+}
+
+/** Refuse a keep, drop, withdraw or reopen answered with no reason, naming what it is for. */
+function requireReason(d: StewardDecisionAnswer, key: string): void {
   const reasonFor = REASON_FOR[d.decision];
   if (reasonFor && STEWARD_DECISIONS_WITH_REASON.includes(d.decision) && !d.note) {
     throw refuse(
@@ -67,6 +70,67 @@ export async function carryStewardDecision<R>(
       '/note',
     );
   }
+}
+
+/** Carry `d` out as its answerer, recording the answer with `answerIn` inside the act's transaction. */
+export async function carryStewardDecision<R>(
+  d: StewardDecisionAnswer,
+  answerIn: (tx: Tx) => Promise<R>,
+): Promise<R> {
+  if (!TAKES[d.subject.kind].includes(d.decision)) {
+    throw refuse(
+      'STEWARD_DECISION_OPTIONS_UNKNOWN',
+      `${d.decision} is no decision a ${d.subject.kind} takes; void the question (POST /api/questions/${d.questionId}/void)`,
+      '/optionId',
+    );
+  }
+  const asked = fingerprintOf(d.fingerprint ?? undefined);
+  if (!asked) throw new Error(`steward: decision question ${d.questionId} names no run that asked`);
+  const carry = (key: string): Carry => ({
+    key,
+    said: `the answer to the steward's question ${d.questionId}`,
+    logged: (tx, act) =>
+      recordAct(
+        {
+          runId: asked.runId,
+          projectId: d.projectId,
+          act: 'stuck_diagnosis',
+          door: act.door,
+          did: act.did,
+          wrote: { kind: 'question', ref: d.questionId },
+          undo: act.undo ?? null,
+        },
+        tx,
+      ),
+  });
+  if (d.subject.kind === 'requirement') {
+    return carryRequirementDecision(d, answerIn, (key) => {
+      requireReason(d, key);
+      return carry(key);
+    });
+  }
+  if (d.subject.kind === 'feedback') {
+    return carryFeedbackDecision(d, answerIn, (key) => {
+      requireReason(d, key);
+      return carry(key);
+    });
+  }
+  const [issue] = await db
+    .select({
+      id: issues.id,
+      projectId: issues.projectId,
+      status: issues.status,
+      reopenCount: issues.reopenCount,
+      title: issues.title,
+      description: issues.description,
+      requirementId: issues.requirementId,
+    })
+    .from(issues)
+    .where(eq(issues.id, d.subject.id))
+    .limit(1);
+  if (!issue) throw notFound(`no issue ${d.subject.id}`);
+  const key = (await issueDisplayIds([issue.id])).get(issue.id) ?? issue.id;
+  requireReason(d, key);
   if (DRAFT_ONLY.includes(d.decision) && issue.status !== 'draft') {
     throw refuse(
       'STEWARD_DECISION_STALE',
@@ -74,22 +138,7 @@ export async function carryStewardDecision<R>(
       '/optionId',
     );
   }
-  const asked = fingerprintOf(d.fingerprint ?? undefined);
-  if (!asked) throw new Error(`steward: decision question ${d.questionId} names no run that asked`);
-  const said = `the answer to the steward's question ${d.questionId}`;
-  const logged = (tx: Tx, act: Logged) =>
-    recordAct(
-      {
-        runId: asked.runId,
-        projectId: d.projectId,
-        act: 'stuck_diagnosis',
-        door: act.door,
-        did: act.did,
-        wrote: { kind: 'question', ref: d.questionId },
-        undo: act.undo ?? null,
-      },
-      tx,
-    );
+  const { said, logged } = carry(key);
 
   if (d.decision === 'keep') {
     return db.transaction(async (tx) => {
@@ -152,8 +201,14 @@ export async function carryStewardDecision<R>(
     return started.answered;
   }
 
+  const merge = d.decision === 'merge' ? await mergePlanOf(d, issue, key, said) : null;
   const to = d.decision === 'open' ? 'open' : 'dropped';
-  const reason = d.decision === 'open' ? `Opened on ${said}.` : `Dropped on ${said}: ${d.note}`;
+  const reason =
+    d.decision === 'open'
+      ? `Opened on ${said}.`
+      : merge
+        ? `Merged into ${merge.targetKey} on ${said}: its text is a comment there.`
+        : `Dropped on ${said}: ${d.note}`;
   let answered: R | undefined;
   await transitionIssueStatus(
     { ...issue, status: issue.status as IssueStatus },
@@ -164,8 +219,11 @@ export async function carryStewardDecision<R>(
       transitionReason: reason,
       beforeStatusWrite: async (tx) => {
         answered = await answerIn(tx);
+        if (merge) await merge.write(tx);
         await logged(tx, {
-          door: `POST /api/issues/${issue.id}/transition`,
+          door: merge
+            ? `POST /api/issues/${merge.targetId}/comments`
+            : `POST /api/issues/${issue.id}/transition`,
           did: reason.replace(/^\w+/, (w) => `${w} ${key}`),
         });
       },

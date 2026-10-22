@@ -1,5 +1,14 @@
 {
   "en": {
+    "steward.acts.loadFailed": "Could not load the steward's acts.",
+    "steward.acts.override": "Override: {how}",
+    "steward.acts.title": "Steward's acts",
+    "steward.acts.undo": "Undo",
+    "steward.acts.undone": "Undone",
+    "steward.acts.who": "Steward",
+    "steward.budget.spent": "The steward's budget for today is spent until {at}.",
+    "steward.budget.sweepPaced": "{n} stuck items wait for tomorrow; new feedback and requirements still run.",
+    "steward.budget.sweepSpent": "Stuck items wait for tomorrow; new feedback and requirements still run.",
     "steward.note.label": "Steward note",
     "steward.note.stale": "Out of date"
   },
@@ -9,7 +18,6 @@
     "standing.act.acceptRevisionN": "nghiệm thu bản sửa {r} của {req}",
     "standing.act.acceptRevisionNum": "chấp nhận bản sửa {r}",
     "standing.act.acceptRevisionOf": "nghiệm thu bản sửa của {req}",
-    "standing.act.agreeIt": "thống nhất",
     "standing.act.agreeR": "thống nhất r{r}",
     "standing.act.andMore": "{act}{more}",
     "standing.act.answerReturn": "trả lời lý do bị trả",

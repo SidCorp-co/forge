@@ -329,39 +329,53 @@ async function personalAct(
   const refusals = await inTx(async (tx) => {
     await lockFeedback(tx, projectId);
     const row = await rowIn(tx, projectId, first.id, true);
-    const phase = await phaseOfRow(projectId, row);
-    const refused = act === 'verified' ? verifyRefusal(phase) : reopenRefusal(phase, input.note);
-    if (refused) return [refused];
-    const moved = await transition(tx, FEEDBACK_MACHINE, {
-      to: act,
-      expect: row.status,
-      set: { resolvedSeenAt: null, updatedAt: new Date() },
-      where: eq(feedback.id, row.id),
-      reason: input.note?.trim() || null,
-      actor: feedbackKernelActor(actor),
-      source: 'feedback',
-      returning: ['id'],
-    });
-    movedRow(moved);
-    const onBehalf = actor.userId === row.reportedBy ? null : 'on behalf of the reporter';
-    await decide(tx, row, actor, {
-      decision: act,
-      reason:
-        [input.note?.trim(), act === 'verified' ? onBehalf : null].filter(Boolean).join(' · ') ||
-        null,
-    });
-    await emitEvent(tx, 'feedback.verifySettled', {
-      projectId,
-      feedbackId: row.id,
-      key: feedbackKey(row.fbSeq),
-      decision: act,
-    });
-    // a triager's verify or reopen tells the reporters; their own tells nobody
-    await tellStepToReporters(tx, row, act, actor.userId);
-    return null;
+    const refused = await personalActIn(tx, row, actor, act, input.note);
+    return refused ? [refused] : null;
   });
   if (refusals) return { ok: false, refusals };
   return answer(projectId, first.id, actor);
+}
+
+/**
+ * The verify or reopen of a locked row in `tx`, refused by its phase rule: the reporter's own, or a
+ * holder's on their behalf (`personalActRefusal` is the caller's).
+ */
+export async function personalActIn(
+  tx: Tx,
+  row: Row,
+  actor: FeedbackActor,
+  act: 'verified' | 'reopened',
+  note: string | undefined,
+): Promise<Refusal | null> {
+  const phase = await phaseOfRow(row.projectId, row);
+  const refused = act === 'verified' ? verifyRefusal(phase) : reopenRefusal(phase, note);
+  if (refused) return refused;
+  const moved = await transition(tx, FEEDBACK_MACHINE, {
+    to: act,
+    expect: row.status,
+    set: { resolvedSeenAt: null, updatedAt: new Date() },
+    where: eq(feedback.id, row.id),
+    reason: note?.trim() || null,
+    actor: feedbackKernelActor(actor),
+    source: 'feedback',
+    returning: ['id'],
+  });
+  movedRow(moved);
+  const onBehalf = actor.userId === row.reportedBy ? null : 'on behalf of the reporter';
+  await decide(tx, row, actor, {
+    decision: act,
+    reason:
+      [note?.trim(), act === 'verified' ? onBehalf : null].filter(Boolean).join(' · ') || null,
+  });
+  await emitEvent(tx, 'feedback.verifySettled', {
+    projectId: row.projectId,
+    feedbackId: row.id,
+    key: feedbackKey(row.fbSeq),
+    decision: act,
+  });
+  // a triager's verify or reopen tells the reporters; their own tells nobody
+  await tellStepToReporters(tx, row, act, actor.userId);
+  return null;
 }
 
 /**

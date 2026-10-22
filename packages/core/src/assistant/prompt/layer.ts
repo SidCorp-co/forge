@@ -4,7 +4,6 @@ const LAYER_IDS = [
   'base',
   'tools',
   'linking',
-  'merge-or-drop',
   'door-web',
   'door-web-agent',
   'door-rocketchat',

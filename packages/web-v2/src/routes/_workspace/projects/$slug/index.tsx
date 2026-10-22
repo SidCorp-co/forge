@@ -28,6 +28,7 @@ import { useReleases } from "@/features/releases";
 import { useRequirements } from "@/features/requirements/hooks";
 import { useNeedsYouDecisions } from "@/features/needs-you";
 import { ProjectHome } from "@/features/project-home/components/project-home";
+import { useStewardBudget } from "@/features/standing";
 import { ShippedRecently } from "@/features/project-status/components/shipped-recently";
 import { useProjectStatus } from "@/features/project-status/hooks";
 import { OnboardingHint } from "@/features/onboarding";
@@ -70,8 +71,10 @@ function ProjectOverviewPage() {
   const projectDocumentQ = useProjectDocument(projectId);
   const modulesQ = useModuleRollup(projectId);
   useOnboardingState(projectId);
-  // the health panel draws only once the project is known; its read leaves now, by the slug, with the rest
+  // the health panel and the steward's budget line draw only once the project is known; their reads
+  // leave now, by the slug, with the rest
   useProjectHealth(projectId, useHealthWindow().days);
+  useStewardBudget(projectId);
   const clock = useEtaClock();
 
   if (projectsQ.isLoading || (row && !project)) {

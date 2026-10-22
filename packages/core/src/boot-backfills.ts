@@ -4,7 +4,7 @@ import {
   runRescueCapRehomeOnce,
 } from './issues/index.js';
 import { logger } from './lib/logger.js';
-import { runStewardReaskOnce } from './steward/index.js';
+import { retireStaleDraftQuestionsOnce, runStewardReaskOnce } from './steward/index.js';
 
 /**
  * The one-time data backfills, each gated by its `backfill_markers` row. They read domain code, so
@@ -49,6 +49,22 @@ export async function runOnceBackfills(): Promise<void> {
     logger.info(
       { voided: reask.voided, reasked: reask.reasked, refused: reask.refusals.length },
       "boot: the steward's free-form questions voided and their items diagnosed again",
+    );
+  }
+  const retired = await retireStaleDraftQuestionsOnce();
+  if (retired) {
+    for (const r of retired.refusals)
+      logger.error(
+        { questionId: r.questionId, refusal: r.reason },
+        'boot: a stale-draft question was not voided; the marker stays unset',
+      );
+    logger.info(
+      {
+        voided: retired.voided,
+        rediagnosed: retired.rediagnosed,
+        refused: retired.refusals.length,
+      },
+      'boot: the stale-draft questions voided and their stuck items diagnosed again',
     );
   }
 }

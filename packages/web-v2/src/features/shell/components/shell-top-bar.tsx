@@ -8,6 +8,7 @@ import { useCopy } from "@/lib/i18n/interface-language";
 // the page's title and primary actions are portalled in by the page itself (PageTitle, TopBarActions), so the bar has no per-route knowledge
 // Feedback to Forge is on every page (REQ-47 BC-9), so it stands in the bar beside the page's own acts
 // Ask Agent is desktop-only: below md the bottom tabs carry it, and a second entry there would be the same control twice
+// below 768px of page column (a page beside the open panel) it is its icon alone, so the page's acts never cover the back control
 // open, it reads as pressed rather than turning primary: the page's one primary action keeps that colour (prototype-gap-audit)
 export function ShellTopBar({ chatOpen, onToggleChat }: { chatOpen: boolean; onToggleChat: () => void }) {
   const { titleRef, actionsRef } = useTopBarSlotTargets();
@@ -24,10 +25,11 @@ export function ShellTopBar({ chatOpen, onToggleChat }: { chatOpen: boolean; onT
         size="sm"
         icon="chat"
         aria-pressed={chatOpen}
+        aria-label={dockTitle(t)}
         onClick={onToggleChat}
         className="hidden window-md:inline-flex aria-pressed:bg-active aria-pressed:text-fg"
       >
-        {dockTitle(t)}
+        <span className="max-column-md:sr-only">{dockTitle(t)}</span>
       </Button>
     </header>
   );

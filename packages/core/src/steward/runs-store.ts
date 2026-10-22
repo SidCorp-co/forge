@@ -4,6 +4,7 @@
 // one arriving while it runs waits in `follow_up`, and the run's end queues those acts as the next run,
 // so no act is dropped.
 
+import { LIVE_JOB_STATUSES } from '@forge/contracts/job-machine';
 import {
   STEWARD_ACT_RUNTIME,
   STEWARD_ACTS,
@@ -15,8 +16,9 @@ import {
   type StewardSkipReason,
   type StewardTrigger,
 } from '@forge/contracts/steward';
-import { and, eq, gte, inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
+import { rowsOf } from '../db/raw-sql.js';
 import { type StewardRunEvent, stewardRuns } from '../db/schema-steward-runs.js';
 import { sqlTimestamp } from '../db/sql-timestamp.js';
 import { lockXact } from '../lib/advisory-lock.js';
@@ -88,12 +90,19 @@ export async function foldTrigger(tx: Tx, t: TriggerIn): Promise<Folded> {
     return { runId: row.id, into: 'new' };
   }
   if (live.state === 'queued') {
+    // a handoff folded into a sweep's run makes it a handoff run, due on the handoff's own clock: a
+    // run the sweep paced to tomorrow never holds a person's handoff back with it
+    const handoff = isSweepTrigger(live.trigger) && !isSweepTrigger(t.trigger);
+    const due = new Date(t.at.getTime() + STEWARD_DEBOUNCE_MS);
     await tx
       .update(stewardRuns)
       .set({
         actsToRun: orderedActs([...live.actsToRun, act]),
         events: withEvent(live.events, event),
         basis: t.basis ?? live.basis,
+        ...(handoff
+          ? { trigger: t.trigger, notBefore: due < live.notBefore ? due : live.notBefore }
+          : {}),
       })
       .where(eq(stewardRuns.id, live.id));
     return { runId: live.id, into: 'queued' };
@@ -110,29 +119,51 @@ export async function foldTrigger(tx: Tx, t: TriggerIn): Promise<Folded> {
 
 const RUNNER_ACTS = STEWARD_ACTS.filter((a) => STEWARD_ACT_RUNTIME[a] === 'runner_job');
 
+/** Triggers a standing read raises (the sweep's backlog), which wait behind every handoff event's run. */
+export const STANDING_TRIGGERS: readonly StewardTrigger[] = ['standing.stuck', 'standing.changed'];
+
+/** A run the sweep raised, which spends the sweep's share of the day; any other run is a handoff's. */
+export const isSweepTrigger = (trigger: string): boolean =>
+  STANDING_TRIGGERS.includes(trigger as StewardTrigger);
+
 /**
- * Claim the queued runs whose start has come, oldest first, as `running`. A run owing a runner act is
- * left queued while its project already has a steward job live: one runner job per project.
+ * The live steward job a runner act waits behind: queued, dispatched or held, for a run still live.
+ * A job left over from a run that has ended holds nothing back.
+ */
+export const liveStewardJobOf = (projectRef: ReturnType<typeof sql>) => sql`
+  EXISTS (
+    SELECT 1 FROM jobs j
+     WHERE j.project_id = ${projectRef} AND j.type = 'steward'
+       AND j.status IN (${sql.raw(LIVE_JOB_STATUSES.map((st) => `'${st}'`).join(', '))})
+       AND EXISTS (
+         SELECT 1 FROM steward_runs s
+          WHERE s.id::text = j.payload ->> 'stewardRunId' AND s.state IN ('queued', 'running')))`;
+
+/**
+ * Claim at most `limit` queued runs whose start has come as `running`: a handoff event's run first,
+ * then the standing's backlog, each oldest first, so a sweep's hundred runs never starve a filed
+ * item. A run owing a runner act is left queued while its project has a steward job live. The pick
+ * is materialized: an `IN (… LIMIT … SKIP LOCKED)` subquery the planner rescans claims past its
+ * limit. A claim is not a start: `started_at` is stamped by `markStarted` when the run is taken up.
  */
 export async function claimDueRuns(now: Date, limit: number): Promise<RunRow[]> {
+  if (limit <= 0) return [];
   const runnerActs = sql.raw(`ARRAY[${RUNNER_ACTS.map((a) => `'${a}'`).join(', ')}]::text[]`);
+  const standing = sql.raw(`ARRAY[${STANDING_TRIGGERS.map((t) => `'${t}'`).join(', ')}]::text[]`);
   const rows = (await db.execute(sql`
-    UPDATE steward_runs SET state = 'running', started_at = ${sqlTimestamp(now)}
-     WHERE id IN (
-       SELECT r.id FROM steward_runs r
-        WHERE r.state = 'queued' AND r.not_before <= ${sqlTimestamp(now)}
-          AND NOT (r.acts_to_run && ${runnerActs} AND EXISTS (
-            SELECT 1 FROM jobs j
-             WHERE j.project_id = r.project_id AND j.type = 'steward'
-               AND j.status IN ('queued', 'dispatched', 'held')))
-        ORDER BY r.not_before
-        LIMIT ${limit}
-        FOR UPDATE SKIP LOCKED)
-       AND state = 'queued'
-    RETURNING id
+    WITH picked AS MATERIALIZED (
+      SELECT r.id FROM steward_runs r
+       WHERE r.state = 'queued' AND r.not_before <= ${sqlTimestamp(now)}
+         AND NOT (r.acts_to_run && ${runnerActs} AND ${liveStewardJobOf(sql`r.project_id`)})
+       ORDER BY (r.trigger = ANY(${standing})), r.not_before, r.queued_at
+       LIMIT ${limit}
+       FOR UPDATE SKIP LOCKED)
+    UPDATE steward_runs s SET state = 'running', started_at = NULL
+      FROM picked WHERE s.id = picked.id AND s.state = 'queued'
+    RETURNING s.id
   `)) as unknown as { id: string }[];
   if (rows.length === 0) return [];
-  return db
+  const claimed = await db
     .select()
     .from(stewardRuns)
     .where(
@@ -141,6 +172,22 @@ export async function claimDueRuns(now: Date, limit: number): Promise<RunRow[]> 
         rows.map((r) => r.id),
       ),
     );
+  // in the claim's own order, so a caller with fewer slots than runs takes the handoffs first
+  const rank = (r: RunRow) => (STANDING_TRIGGERS.includes(r.trigger as StewardTrigger) ? 1 : 0);
+  return claimed.sort(
+    (a, b) =>
+      rank(a) - rank(b) ||
+      a.notBefore.getTime() - b.notBefore.getTime() ||
+      a.queuedAt.getTime() - b.queuedAt.getTime(),
+  );
+}
+
+/** Stamp the claimed run started, at the moment it is taken up. */
+export async function markStarted(runId: string, at = new Date(), tx?: Tx): Promise<void> {
+  await (tx ?? db)
+    .update(stewardRuns)
+    .set({ startedAt: at })
+    .where(and(eq(stewardRuns.id, runId), eq(stewardRuns.state, 'running')));
 }
 
 export type RunEnd =
@@ -187,6 +234,64 @@ export async function endRun(runId: string, end: RunEnd, now = new Date()): Prom
   });
 }
 
+/**
+ * The gateway turns the sweep's runs not yet started will spend, and how many of them wait for a
+ * later day: the sweep raises no more than its share has room for (`sweep.ts:sweepRoom`).
+ */
+export async function sweepQueued(
+  projectId: string,
+  now: Date,
+): Promise<{ gatewayTurns: number; paced: number }> {
+  // paced: deferred to a later UTC day for want of budget, not merely debounced a few minutes
+  const tomorrow = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1),
+  );
+  const gateway = sql.raw(`ARRAY[${GATEWAY_ACTS.map((a) => `'${a}'`).join(', ')}]::text[]`);
+  const standing = sql.raw(`ARRAY[${STANDING_TRIGGERS.map((t) => `'${t}'`).join(', ')}]::text[]`);
+  const [row] = rowsOf<{ turns: number; paced: number }>(
+    await db.execute(sql`
+      SELECT coalesce(sum(cardinality(ARRAY(SELECT unnest(r.acts_to_run) INTERSECT SELECT unnest(${gateway})))), 0)::int AS turns,
+             count(*) FILTER (WHERE r.not_before >= ${sqlTimestamp(tomorrow)})::int AS paced
+        FROM steward_runs r
+       WHERE r.project_id = ${projectId} AND r.trigger = ANY(${standing})
+         AND (r.state = 'queued' OR (r.state = 'running' AND r.started_at IS NULL))`),
+  );
+  return { gatewayTurns: row?.turns ?? 0, paced: row?.paced ?? 0 };
+}
+
+/**
+ * Put a sweep run its share of the day cannot pay for back in the queue, due `until` (the next UTC
+ * day), with what arrived while it was claimed merged in. A handoff that arrived then makes it a
+ * handoff run, due on the handoff's own clock, so it never waits for the sweep's tomorrow.
+ */
+export async function deferSweepRun(runId: string, until: Date): Promise<void> {
+  await db.transaction(async (tx) => {
+    const [claimed] = await tx.select().from(stewardRuns).where(eq(stewardRuns.id, runId)).limit(1);
+    if (!claimed) return;
+    await lockXact(tx, 'stewardRun', `${claimed.subjectKind}:${claimed.subjectId}`);
+    const [run] = await tx.select().from(stewardRuns).where(eq(stewardRuns.id, runId)).limit(1);
+    if (run?.state !== 'running') return;
+    const handoff = run.followUpEvents.find((e) => !isSweepTrigger(e.trigger));
+    await tx
+      .update(stewardRuns)
+      .set({
+        state: 'queued',
+        startedAt: null,
+        actsToRun: orderedActs([...run.actsToRun, ...run.followUp]),
+        events: run.followUpEvents.reduce(withEvent, run.events),
+        followUp: [],
+        followUpEvents: [],
+        ...(handoff
+          ? {
+              trigger: handoff.trigger,
+              notBefore: new Date(Date.parse(handoff.at) + STEWARD_DEBOUNCE_MS),
+            }
+          : { notBefore: until }),
+      })
+      .where(eq(stewardRuns.id, runId));
+  });
+}
+
 /** Put a claimed run back in the queue, due after `delayMs`: its project's runner job is still live. */
 export async function requeueRun(runId: string, delayMs: number): Promise<void> {
   await db
@@ -225,18 +330,35 @@ export async function runOfJob(jobId: string): Promise<RunRow | null> {
   return row ?? null;
 }
 
-/** What the project's steward spent since `dayStart`: gateway turns, and runner jobs started. */
+const GATEWAY_ACTS = STEWARD_ACTS.filter((a) => STEWARD_ACT_RUNTIME[a] === 'gateway_turn');
+
+/**
+ * What the project's steward spent since `dayStart`, gateway turns and runner jobs started, plus
+ * what each other run already taken up still owes: its gateway acts not yet turned, and its job not
+ * yet started. Runs taken up at once so never spend past the budget between them.
+ */
 export async function spentSince(
   projectId: string,
   dayStart: Date,
+  opts: { exceptRunId?: string; tx?: Tx; sweepOnly?: boolean } = {},
 ): Promise<{ gatewayTurns: number; runnerJobs: number }> {
-  const [row] = await db
-    .select({
-      turns: sql<number>`coalesce(sum(${stewardRuns.turns}), 0)::int`,
-      jobs: sql<number>`count(${stewardRuns.jobId})::int`,
-    })
-    .from(stewardRuns)
-    .where(and(eq(stewardRuns.projectId, projectId), gte(stewardRuns.startedAt, dayStart)));
+  const standing = sql.raw(`ARRAY[${STANDING_TRIGGERS.map((t) => `'${t}'`).join(', ')}]::text[]`);
+  const only = opts.sweepOnly ? sql`AND r.trigger = ANY(${standing})` : sql``;
+  const gateway = sql.raw(`ARRAY[${GATEWAY_ACTS.map((a) => `'${a}'`).join(', ')}]::text[]`);
+  const runner = sql.raw(`ARRAY[${RUNNER_ACTS.map((a) => `'${a}'`).join(', ')}]::text[]`);
+  const except = opts.exceptRunId ?? '00000000-0000-0000-0000-000000000000';
+  const [row] = rowsOf<{ turns: number; jobs: number }>(
+    await (opts.tx ?? db).execute(sql`
+      SELECT coalesce(sum(r.turns), 0)::int
+             + coalesce(sum(CASE WHEN r.state = 'running' AND r.id <> ${except}::uuid
+                 THEN greatest(cardinality(ARRAY(SELECT unnest(r.acts_to_run) INTERSECT SELECT unnest(${gateway}))) - r.turns, 0)
+                 ELSE 0 END), 0)::int AS turns,
+             count(r.job_id)::int
+             + count(*) FILTER (WHERE r.state = 'running' AND r.id <> ${except}::uuid
+                 AND r.job_id IS NULL AND r.acts_to_run && ${runner})::int AS jobs
+        FROM steward_runs r
+       WHERE r.project_id = ${projectId} AND r.started_at >= ${sqlTimestamp(dayStart)} ${only}`),
+  );
   return { gatewayTurns: row?.turns ?? 0, runnerJobs: row?.jobs ?? 0 };
 }
 
@@ -293,7 +415,7 @@ export async function runsToSettle(
       LEFT JOIN jobs j ON j.id = r.job_id
      WHERE r.state = 'running'
        AND ((r.job_id IS NOT NULL AND j.status IN ('done', 'failed', 'cancelled'))
-         OR (r.job_id IS NULL AND r.started_at < ${sqlTimestamp(new Date(now.getTime() - ORPHANED_AFTER_MS))}))
+         OR (r.job_id IS NULL AND COALESCE(r.started_at, r.not_before) < ${sqlTimestamp(new Date(now.getTime() - ORPHANED_AFTER_MS))}))
      LIMIT 100
   `)) as unknown as { id: string; job_status: string | null }[];
   if (rows.length === 0) return [];

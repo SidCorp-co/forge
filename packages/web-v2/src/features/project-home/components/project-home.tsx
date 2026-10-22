@@ -2,13 +2,15 @@
 // phone, what is running and what is at risk. Flat tables on hairlines, no cards. The conversation
 // is not drawn here: it opens from the top bar's Ask Agent, so the dashboard reads as state.
 // Needs you is the one decisions read the chat answers from (`useNeedsYouDecisions`, `DecisionList`),
-// at most `NEEDS_YOU_PERSON_CAP` at a time with the rest counted (REQ-48 BC-11).
+// at most `NEEDS_YOU_PERSON_CAP` at a time with the rest counted (REQ-48 BC-11). Under its title, one
+// line says when the steward is quiet for its budget, so a person sees why (REQ-48 BC-1).
 
 import { NEEDS_YOU_PERSON_CAP } from "@forge/contracts/steward";
 import { DecisionList } from "@/features/needs-you";
 import { useNeedsYouDecisions } from "@/features/needs-you";
 import { approvalsHref } from "@/lib/routes/approvals";
 import { useProjectStatus } from "@/features/project-status";
+import { StewardBudgetLine } from "@/features/standing";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { atRiskRows, runningRows } from "../derive";
@@ -23,6 +25,7 @@ export function ProjectHome({ projectId, slug }: { projectId: string; slug: stri
     <div className="flex flex-col gap-6 lg:flex-row" data-testid="project-home">
       <section aria-label={t("home.needsYou")} data-testid="home-needs-you" className="min-w-0 lg:flex-1">
         <HomeSectionTitle count={decisionsQ.data?.total}>{t("home.needsYou")}</HomeSectionTitle>
+        <StewardBudgetLine projectId={projectId} />
         {decisionsQ.data ? (
           <DecisionList read={decisionsQ.data} slug={slug} cap={NEEDS_YOU_PERSON_CAP} moreHref={approvalsHref(slug)} />
         ) : decisionsQ.isError ? (

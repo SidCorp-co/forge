@@ -162,7 +162,7 @@ describe('a key of another kind is refused at an issue tool by name, before any 
       {
         tool: {
           name: 'steward_decide',
-          args: { issue: fbKey, recommended: 'open', why: 'the carrier is ready to be taken on' },
+          args: { about: fbKey, recommended: 'open', why: 'the carrier is ready to be taken on' },
         },
       },
       { tool: { name: 'steward_read_item', args: {} } },
@@ -182,9 +182,9 @@ describe('a key of another kind is refused at an issue tool by name, before any 
     expect(results[1]).toContain(
       'REQ-1 is a requirement, not an issue: read it with steward_read_requirement',
     );
-    expect(results[2]).toContain(
-      `${fbKey} is a feedback item, not an issue: read it with steward_read_feedback`,
-    );
+    // a feedback item's decision is asked about the item itself, and this one owes none
+    expect(results[2]).toContain(`${fbKey} is triaged`);
+    expect(results[2]).toContain('Ask nothing');
     // the item read answers the run's own feedback item, its carrier on the route
     expect(results[3]).toContain(fbKey);
     expect(results[3]).toContain(issue.key);

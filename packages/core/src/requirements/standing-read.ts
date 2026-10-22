@@ -39,7 +39,6 @@ import { feedbackCountsOf, feedbackLinksOf } from './feedback-links.js';
 import { followReadsOf } from './follow-reads.js';
 import { changedTracedOf } from './plan-drift.js';
 import { staleContractPinsOf, stalePinsOf } from './rules.js';
-import { mergeOrDropOf } from './stale-drafts.js';
 import { deriveStanding } from './standing.js';
 import {
   issueCriteriaOf,
@@ -51,6 +50,7 @@ import {
   unapprovedDesignsOf,
 } from './standing-facts.js';
 import { awaitsReleaseOnly, type OwnStanding } from './standing-work.js';
+import { stewardAskedOf } from './steward-asked.js';
 
 interface StandingRow {
   id: string;
@@ -160,8 +160,7 @@ async function uncoveredOf(ids: readonly string[]): Promise<Map<string, Map<stri
 /**
  * The facts a requirement's turn reads beside its rows, per requirement: why an accepted breakdown
  * left a BC uncovered, the traced nodes a stale design pin's approval removed or renamed (REQ-41
- * BC-10, `follow-reads.ts`), and whether its newest merge-or-drop question stands open or was answered
- * with an act core refused (REQ-41 BC-12).
+ * BC-10, `follow-reads.ts`), and whether a steward decision on it stands open (REQ-48 BC-5).
  */
 // every requirement read has a status-since row (filed time where no transition); a missing one is a
 // broken read, refused by name rather than read as its last edit (the AGE every edit reset, dev.227)
@@ -176,15 +175,14 @@ async function besideFactsOf(ids: readonly string[]) {
   const [uncovered, follows, asked, statusSince] = await Promise.all([
     uncoveredOf(ids),
     followReadsOf(db, ids),
-    mergeOrDropOf(ids),
+    stewardAskedOf(ids),
     statusSinceOf(ids),
   ]);
   return (id: string) => ({
     statusSince: sinceOf(statusSince, id),
     uncovered: uncovered.get(id) ?? new Map<string, string>(),
     tracedChanges: (follows.get(id) ?? []).flatMap((f) => f.changes),
-    mergeOrDropAsked: asked.get(id)?.open === true,
-    mergeOrDropRefused: asked.get(id)?.refused ?? null,
+    stewardAsked: asked.has(id),
   });
 }
 

@@ -4,7 +4,12 @@
 // stuck by time alone is seen within 5 minutes, and a lost wake is re-emitted. A requirement or
 // feedback item whose basis moved off its note is emitted `standing.changed`, and so is an issue that
 // holds a note: an issue is noted once its diagnosis writes one, never on every sweep for being open.
-// An ask of the master stands until its item's basis moves.
+// A requirement or feedback item stuck through a carrier issue that is itself stuck is not diagnosed:
+// the carrier is, and the item is noted, its note citing the carrier it waits on.
+// An ask of the master stands until its item's basis moves. The sweep spends only its share of the
+// day's budget (`policy.ts:sharesOf`): it raises no more runs than that share has room for, oldest
+// stuck first, and the rest wait for a later sweep, so a full backlog is paced across days and the
+// handoff share stays whole.
 
 import type { ItemStanding } from '@forge/contracts/steward';
 import { and, eq, isNotNull, isNull } from 'drizzle-orm';
@@ -13,39 +18,61 @@ import { projects } from '../db/schema.js';
 import { stewardActs, stewardRuns } from '../db/schema-steward-runs.js';
 import { logger } from '../lib/logger.js';
 import { emitEvent } from '../outbox/index.js';
-import { stewardStanceOf } from './policy.js';
+import { sharesOf, stewardStanceOf, utcDayStart } from './policy.js';
 import { openStandings } from './ports.js';
-import { ranOnBasis } from './runs-store.js';
+import { ranOnBasis, spentSince, sweepQueued } from './runs-store.js';
 
 export interface SweepTally {
   projects: number;
   stuck: number;
   changed: number;
   settledAsks: number;
+  /** Items the sweep would have raised and left for a later sweep, its share of the day spent. */
+  paced: number;
 }
 
-/** The issues another item was rolled up from: their stuck reading is diagnosed through that item. */
-function carriedIssues(rows: readonly ItemStanding[]): Set<string> {
-  const out = new Set<string>();
-  for (const r of rows) {
-    if (r.subject.kind === 'issue') continue;
-    if (r.carriedBy) out.add(r.carriedBy);
-    if (r.stuck?.via) out.add(r.stuck.via);
-  }
-  return out;
+/** How many gateway turns the sweep may still commit today: its share, less what it spent and queued. */
+async function sweepRoom(projectId: string, now: Date): Promise<number> {
+  const { sweep } = sharesOf((await stewardStanceOf(projectId)).budget);
+  const spent = await spentSince(projectId, utcDayStart(now), { sweepOnly: true });
+  const queued = await sweepQueued(projectId, now);
+  return sweep.gatewayTurns - spent.gatewayTurns - queued.gatewayTurns;
+}
+
+/** Stuck items first, longest stuck first, then the rest as read: the order the sweep's room is spent in. */
+function byAge(rows: readonly ItemStanding[]): ItemStanding[] {
+  const since = (r: ItemStanding) =>
+    r.stuck ? Date.parse(r.stuck.since) : Number.POSITIVE_INFINITY;
+  return [...rows].sort((a, b) => since(a) - since(b));
+}
+
+/**
+ * The issue whose stuck reading a requirement or feedback item reads stuck through, where that issue
+ * is itself stuck: the issue is diagnosed, and the item only takes a note citing it, so one cause
+ * is never diagnosed twice (REQ-45 and its carrier ISS-498 on dev.270).
+ */
+function stuckCarrierOf(row: ItemStanding, stuckIssues: ReadonlySet<string>): string | null {
+  if (row.subject.kind === 'issue') return null;
+  const carrier = row.stuck?.via ?? row.carriedBy;
+  return carrier && stuckIssues.has(carrier) ? carrier : null;
 }
 
 async function sweepRow(
   projectId: string,
   row: ItemStanding,
-  carried: Set<string>,
+  stuckIssues: ReadonlySet<string>,
   tally: SweepTally,
+  room: { turns: number },
 ) {
   const subject = { kind: row.subject.kind, id: row.subject.id, key: row.subject.key };
   const stuck = row.stuck;
-  if (stuck) {
-    if (row.subject.kind === 'issue' && carried.has(row.subject.key)) return;
+  if (stuck && !stuckCarrierOf(row, stuckIssues)) {
     if (await ranOnBasis(subject, 'stuck_diagnosis', row.basis)) return;
+    if (room.turns <= 0) {
+      tally.paced += 1;
+      return;
+    }
+    room.turns -= 1;
     await db.transaction((tx) =>
       emitEvent(tx, 'standing.stuck', {
         projectId,
@@ -62,6 +89,11 @@ async function sweepRow(
   if (row.subject.kind === 'issue' && !row.note) return;
   // a note this basis already had a run for is not asked again: a refused write says so on that run
   if (await ranOnBasis(subject, 'note', row.basis)) return;
+  if (room.turns <= 0) {
+    tally.paced += 1;
+    return;
+  }
+  room.turns -= 1;
   await db.transaction((tx) =>
     emitEvent(tx, 'standing.changed', { projectId, subject, basis: row.basis }),
   );
@@ -102,13 +134,16 @@ export async function sweepProjectStandings(
   tally: SweepTally,
 ): Promise<void> {
   const rows = await openStandings(projectId);
-  const carried = carriedIssues(rows);
-  for (const row of rows) await sweepRow(projectId, row, carried, tally);
+  const stuckIssues = new Set(
+    rows.filter((r) => r.subject.kind === 'issue' && r.stuck).map((r) => r.subject.key),
+  );
+  const room = { turns: await sweepRoom(projectId, now) };
+  for (const row of byAge(rows)) await sweepRow(projectId, row, stuckIssues, tally, room);
   tally.settledAsks += await settleAsks(projectId, rows, now);
 }
 
 export async function sweepStandings(now = new Date()): Promise<SweepTally> {
-  const tally: SweepTally = { projects: 0, stuck: 0, changed: 0, settledAsks: 0 };
+  const tally: SweepTally = { projects: 0, stuck: 0, changed: 0, settledAsks: 0, paced: 0 };
   const live = await db
     .select({ id: projects.id })
     .from(projects)
