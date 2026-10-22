@@ -9,6 +9,22 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.283] - 2026-10-22
+
+Needs you approvals work first time; requirement checklists and runner setup fixes
+
+### Changed
+
+- **Refusals and guides now name the route that traces a business criterion to design steps.** The design approval and agree checklists point at PUT …/requirements/:req/criteria/:code/steps.
+
+### Fixed
+
+- **An issue on a project with no production environment can close.** `POST /api/projects/:id/release-records` records its landing on the working branch at a commit every criterion passed on, and closes it; the steward and requirement coverage count that same commit.
+- **A Vietnamese requirement can be agreed with its goal labelled in Vietnamese.** The ready checklist reads the Vietnamese goal labels beside the English ones, and a gap names the label in the requirement's own language.
+- **A runner added through POST /api/runners is now queued for setup, and its box sets it up.** Re-binding queues it again, and `forge-runner bind` no longer says queued when core refused the queue.
+- **A refusal for linking an issue another requirement holds now names the route that unlinks it.** It and the requirements guide point at DELETE …/requirements/:req/issues/:issue.
+- **Re-pin and agree buttons ask for the reason their route needs, and approving one re-pin no longer makes its siblings stale.** A design moved only by re-pins is read again; a real content change is still refused.
+
 ## [0.4.0-dev.282] - 2026-10-22
 
 Record ids such as task-<hex> are no longer refused as API keys
