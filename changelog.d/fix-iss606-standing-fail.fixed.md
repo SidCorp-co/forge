@@ -1,1 +1,0 @@
-**A fix round no longer hides a judge's fail.** The merge check lets a criterion's fail that the base already carries stand, owing no probe, and names it a standing fail instead of refusing `MERGE_PROBE_MISSING` (ISS-606).
