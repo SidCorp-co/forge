@@ -91,6 +91,8 @@ export function repinDecision(
           act: 'requirement.repin',
           path: filled('requirement.repin', { projectId, key: row.key }),
           body: { revision: head },
+          // a re-pin writes a baseline, and a baseline records why (REQ-4 BC-4)
+          needsReason: true,
           effect: `${row.key} follows the approved designs and contracts; delivery reads them next.`,
           recommended: true,
         }),
