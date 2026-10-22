@@ -82,6 +82,17 @@ describe('a reply saying a key is not on the project', () => {
   });
 
   // The sixth whole-set read: a clause that does not open on the key or on "there is no" is not read.
+  // The seventh: a condition on the line before, and something else named absent after the key.
+  it.each([
+    'If the import failed,\nISS-$ is not on this project.',
+    'There is no ISS-$ comment on this project.',
+  ])('reads %s as no claim that the key is absent', (shape) => {
+    expect(keyMentions(shape.replace('$', '1'), ['ISS'])[0]?.absent).toBe(false);
+    expect(room(shape.replace('$', '1')).ok).toBe(true);
+    expect(room(shape.replace('$', '999')).ok).toBe(false);
+    expect(ISSUE_REFERENCES_EXIST.check(shape.replace('$', '999'), facts)).toHaveLength(1);
+  });
+
   it('reads a negated absence as no claim that the key is absent', () => {
     const negated = (key: string) => `It is not true that there is no ${key} on this project.`;
     expect(keyMentions(negated('ISS-1'), ['ISS'])[0]?.absent).toBe(false);

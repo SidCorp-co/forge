@@ -51,6 +51,10 @@ const OPENS_ON_KEY = /^\s*(?:(?:and|but|so)\s+)?[*_`"“‘([]*$/i;
 const OPENS_ON_ABSENCE =
   /^\s*(?:(?:and|but|so)\s+)?(?:there is no|there's no|there isn't an?|no issue(?: called| named| keyed| with the key)?|(?:i\s+)?(?:could not|couldn't|cannot|can't|did not|didn't) find|(?:i\s+)?found no)\s+(?:(?:an? )?issue\s+|key\s+)?[*_`"“‘([]*$/i;
 
+/** What may follow a key after "there is no": the clause's end, or the project it is absent from. */
+const ABSENT_TAIL =
+  /^[*_`"”’)\]]*(?:\s+(?:(?:on|in)\s+(?:[\w’'-]+\s+){0,5}?(?:tracker|project)(?:['’]s\s+(?:tracker|issues))?|here)\b)?[*_`"”’)\]]*\s*(?:[.!,;:—–]|$)/i;
+
 const CONDITIONAL = /\b(?:if|unless|whether|suppose|supposing|in case|assuming|provided)\b/i;
 /** A scope narrower than the project, or a time other than now: either leaves absence unasserted. */
 const NOT_NOW_OR_NARROWER =
@@ -58,7 +62,7 @@ const NOT_NOW_OR_NARROWER =
 
 /** A plain, present, unconditional absence: its clause opens on the key or "there is no", in no question. */
 function assertsAbsence(sentence: string, at: number, after: string): boolean {
-  const cuts = [...sentence.matchAll(/[,;:—–]\s/g)].map((c) => c.index ?? 0);
+  const cuts = [...sentence.matchAll(/[,;:—–]\s|\n/g)].map((c) => c.index ?? 0);
   const from = Math.max(0, ...cuts.filter((c) => c < at).map((c) => c + 2));
   const to = Math.min(sentence.length, ...cuts.filter((c) => c >= at));
   const opening = sentence.slice(from, at);
@@ -66,7 +70,10 @@ function assertsAbsence(sentence: string, at: number, after: string): boolean {
   if (CONDITIONAL.test(sentence.slice(0, to))) return false;
   if (/^[,—–]\s*(?:only\s+)?(?:if|unless|in case|provided|assuming)\b/i.test(sentence.slice(to)))
     return false;
-  return (OPENS_ON_KEY.test(opening) && ABSENT_AFTER.test(after)) || OPENS_ON_ABSENCE.test(opening);
+  return (
+    (OPENS_ON_KEY.test(opening) && ABSENT_AFTER.test(after)) ||
+    (OPENS_ON_ABSENCE.test(opening) && ABSENT_TAIL.test(after))
+  );
 }
 
 /** Where a key is named, and whether that naming says the project does not hold it. */
@@ -84,7 +91,7 @@ export interface KeyMention {
  */
 export function keyMentions(text: string, prefixes: readonly string[] = []): KeyMention[] {
   const out: KeyMention[] = [];
-  for (const sentence of text.split(/(?<=[.!?])\s+|\n+/)) {
+  for (const sentence of text.split(/(?<=[.!?])\s+|\n\s*\n/)) {
     for (const m of sentence.matchAll(issueTokenRe(prefixes))) {
       const at = m.index ?? 0;
       const absent = assertsAbsence(sentence, at, sentence.slice(at + m[0].length));
