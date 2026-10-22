@@ -9,7 +9,6 @@ function asSentence(text: string): string {
   return /[.!?]$/.test(opened) ? opened : `${opened}.`;
 }
 
-/** The name a person reads a provider by: its card's label, or its id capitalised where it has none. */
 export function providerLabel(provider: string): string {
   return (
     getIntegration(provider)?.presentation?.label ??

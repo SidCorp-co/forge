@@ -32,7 +32,6 @@ let signUserToken: typeof import('../../src/auth/jwt.js').signUserToken;
 const WEBHOOK_SECRET = 'the-binding-signing-secret-at-least-32-chars';
 const PLANTED_TOKEN = 'made-up-token-never-to-be-shown-0001';
 
-/** A secrets record sealed under a key this process does not hold. */
 function sealedUnderAnotherKey(plain: string): Buffer {
   const iv = randomBytes(12);
   const cipher = createCipheriv('aes-256-gcm', randomBytes(32), iv);

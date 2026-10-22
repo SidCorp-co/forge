@@ -13,7 +13,6 @@ export interface UnreadableCredential {
 
 export const CREDENTIAL_UNREADABLE = 'CREDENTIAL_UNREADABLE';
 
-/** When a door answers `CREDENTIAL_UNREADABLE`, as its reference says it. */
 export const UNREADABLE_WHEN = "the stored credential cannot be decrypted with this server's key";
 
 const REENTER =
@@ -34,11 +33,8 @@ function credentialWords(credential: UnreadableCredential, clears: string): stri
 }
 
 /**
- * A stored integration credential this server's key cannot open, refused by name (ISS-1259).
- *
- * An `HTTPException` so every HTTP door that reads one answers `409 CREDENTIAL_UNREADABLE` rather
- * than `500 INTERNAL_ERROR`, as `BacklogIndexRefused` does; a reader that is not an HTTP door
- * carries the same named message into whatever it records.
+ * An `HTTPException`, so every HTTP door that reads one answers `409 CREDENTIAL_UNREADABLE` and not
+ * `500 INTERNAL_ERROR`; any other reader carries the same named message into what it records.
  */
 export class CredentialUnreadable extends HTTPException {
   readonly credential: UnreadableCredential;
@@ -57,10 +53,7 @@ export class CredentialUnreadable extends HTTPException {
   }
 }
 
-/**
- * A check of a credential that could not be opened: a failed check, answered as the ssh-key Test
- * answers `key_unreadable`, because the check ran and this is what it found.
- */
+/** A failed check, as the ssh-key Test answers `key_unreadable`: the check ran and found this. */
 export function unreadableHealth(err: CredentialUnreadable): HealthCheckResult {
   const { connectionId, provider, bindingId } = err.credential;
   return {
