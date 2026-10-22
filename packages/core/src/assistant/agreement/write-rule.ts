@@ -2,7 +2,8 @@
 // step hold): the Assistant's turn token and its own tools, and an Agent session's turn token over
 // REST and /mcp. Holding is the default, not an opt-in: a write is HELD as a proposal the person
 // sees as a confirm card where a hold names it, PASSED only where the list below names it as not a
-// business write, and otherwise REFUSED by name. So a write route or tool added later, which nobody
+// business write or as made on the person's own word (`ON_THE_PERSONS_WORD`, whose executor checks
+// that word), and otherwise REFUSED by name. So a write route or tool added later, which nobody
 // remembered to name, is refused for a chat rather than let through.
 //
 // Three doors read this file and nothing else decides: the REST admission every PAT request passes
