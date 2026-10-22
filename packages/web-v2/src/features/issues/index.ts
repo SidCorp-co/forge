@@ -4,6 +4,7 @@ export { BatchReleaseDialog, type BatchReleaseIssue } from "./components/batch-r
 export { IssueDetailScreen } from "./components/issue-detail-screen";
 export { IssueQuickActions } from "./components/issue-quick-actions";
 export { IssueRefBadge } from "./components/issue-ref-badge";
+export { endsTheIssue, MootQuestions, useMootQuestions } from "./components/moot-questions";
 export { IssuesScreen } from "./components/issues-screen";
 export { runStatusChip, statusToChip, statusToTone, workStepOf } from "./derive";
 export { useIssue } from "./detail-hooks";

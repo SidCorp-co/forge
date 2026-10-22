@@ -1,7 +1,8 @@
 
 // The acts the assistant offers in a thread (`offer_act`): a button the person presses, which runs as
 // them through the issue page's own routes. A card whose issue has moved since the offer offers
-// nothing, so a pressed or overtaken offer cannot be pressed twice.
+// nothing, so a pressed or overtaken offer cannot be pressed twice. A drop card shows the issue's
+// open questions, answerable there, and the press voids the rest with the offer's reason (ISS-560).
 
 import { CHAT_ACT_TOOL, type ChatActOffer, readChatActOffer } from "@forge/contracts/chat-acts";
 import type { IdeaOffer } from "@forge/contracts/idea-offer";
@@ -9,9 +10,10 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
 import { Button, Icon } from "@/design";
 import type { CanonicalBlock } from "@/features/session";
-import { issuesApi, releaseBatchApi } from "@/features/issues";
+import { endsTheIssue, issuesApi, MootQuestions, releaseBatchApi, useIssue, useMootQuestions } from "@/features/issues";
+import { questionKeys } from "@/features/questions";
 import { IdeaOfferNotice, ideaOffersOf } from "./components/idea-offers";
-import { useIssue } from "@/features/issues";
+import { ApiError } from "@/lib/api/client";
 import { formatApiError } from "@/lib/api/error";
 import { useCopy, useLabel } from "@/lib/i18n/interface-language";
 import type { ConversationMessage, ConversationProgressEntry } from "./types";
@@ -29,8 +31,11 @@ export function actOffersOf(blocks: readonly CanonicalBlock[] | null | undefined
   return out;
 }
 
-/** What pressing the button calls: the route the issue page uses for the same act. */
-export function pressAct(offer: ChatActOffer): Promise<unknown> {
+/**
+ * What pressing the button calls: the route the issue page uses for the same act. `voids` is set
+ * when the card listed open questions the move ends: they are voided with the offer's reason.
+ */
+export function pressAct(offer: ChatActOffer, opts?: { voids?: boolean }): Promise<unknown> {
   switch (offer.effect) {
     case "admit":
       return issuesApi.transition(offer.issueId, "open");
@@ -38,7 +43,11 @@ export function pressAct(offer: ChatActOffer): Promise<unknown> {
       return issuesApi.runPipelineStep(offer.issueId);
     case "transition":
       if (!offer.to) throw new Error(`a ${offer.act} offer on ${offer.key} names no status to move to`);
-      return issuesApi.transition(offer.issueId, offer.to, offer.reason ? { reason: offer.reason } : undefined);
+      return issuesApi.transition(
+        offer.issueId,
+        offer.to,
+        offer.reason ? { reason: offer.reason, ...(opts?.voids ? { voidQuestions: offer.reason } : {}) } : undefined,
+      );
     case "release":
       return releaseBatchApi.create(offer.projectId, [offer.issueId]);
   }
@@ -80,21 +89,31 @@ export function useActOffers(args: {
   return { offersFor };
 }
 
+/** A drop refused because a question was asked after the card read the issue's questions. */
+const questionsOpened = (err: unknown): boolean => err instanceof ApiError && err.code === "OPEN_QUESTIONS";
+
 function ActOfferNotice({ offer }: { offer: ChatActOffer }) {
   const t = useCopy();
   const L = useLabel();
   const qc = useQueryClient();
   const live = useIssue(offer.issueId, offer.projectId);
+  const ends = offer.effect === "transition" && endsTheIssue(offer.to);
+  const moot = useMootQuestions(ends ? offer.issueId : null);
   const press = useMutation({
-    mutationFn: () => pressAct(offer),
+    mutationFn: () => pressAct(offer, { voids: moot.open.length > 0 }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ["issues"] });
       void qc.invalidateQueries({ queryKey: ["issue", offer.issueId] });
       void qc.invalidateQueries({ queryKey: ["release-roster"] });
+      void qc.invalidateQueries({ queryKey: questionKeys.issue(offer.issueId) });
+    },
+    onError: (err) => {
+      if (questionsOpened(err)) void qc.invalidateQueries({ queryKey: questionKeys.issue(offer.issueId) });
     },
   });
   const status = live.data?.status;
   const moved = !press.isSuccess && status !== undefined && status !== offer.from;
+  const open = !press.isSuccess && !moved;
   const what =
     offer.effect === "transition" && offer.to
       ? t("conversations.act.what.transition", {
@@ -117,6 +136,7 @@ function ActOfferNotice({ offer }: { offer: ChatActOffer }) {
         {what} {t("conversations.act.yours")}
       </p>
       {offer.reason && <p className="fg-caption text-subtle">“{offer.reason}”</p>}
+      {ends && open && <MootQuestions issueId={offer.issueId} />}
       {press.isSuccess ? (
         <p className="fg-caption flex items-center gap-1 text-fg" role="status">
           <Icon name="check" size={12} />
@@ -132,7 +152,7 @@ function ActOfferNotice({ offer }: { offer: ChatActOffer }) {
             size="sm"
             variant={offer.act === "drop" ? "danger" : "primary"}
             loading={press.isPending}
-            disabled={live.isLoading}
+            disabled={live.isLoading || moot.loading}
             onClick={() => press.mutate()}
           >
             {t("conversations.act.confirm")}
@@ -141,7 +161,7 @@ function ActOfferNotice({ offer }: { offer: ChatActOffer }) {
       )}
       {press.isError && (
         <p className="fg-caption text-danger" role="alert">
-          {formatApiError(press.error)}
+          {questionsOpened(press.error) ? t("conversations.act.questionOpened") : formatApiError(press.error)}
         </p>
       )}
     </div>

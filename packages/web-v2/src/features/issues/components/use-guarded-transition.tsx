@@ -3,7 +3,9 @@
 // returned `dialog`; nothing calls `useTransitionIssue().mutate` directly.
 
 import { REASON_REQUIRED_STATUSES } from "@forge/contracts/issue-machine";
+import { useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useState } from "react";
+import { type AgentQuestion, questionKeys } from "@/features/questions";
 import type { Refusal } from "@/lib/api/refusals";
 import { useCopy, useLabel } from "@/lib/i18n/interface-language";
 import { useToast } from "@/providers/toast-provider";
@@ -11,6 +13,7 @@ import { useTransitionIssue } from "../hooks";
 import type { IssueStatus, WaitingCause } from "../types";
 import { ChecklistDialog, type ChecklistPrompt, checklistPromptOf, givenAnswers } from "./checklist-dialog";
 import { answersForMove, checklistDraft, forgetChecklistDrafts, keepChecklistDraft } from "./checklist-drafts";
+import { endsTheIssue, openQuestionsOf } from "./moot-questions";
 import {
   type DialogMode,
   type ReasonStatus,
@@ -53,15 +56,11 @@ interface GuardedTransition {
 interface ReasonPrompt {
   id: string;
   status: DialogMode;
-  /** Where the move goes: the reason status itself, or the close/drop the questions held up. */
+  /** Where the move goes: the reason status itself, or the close the questions held up. */
   target: IssueStatus;
   successMessage: string;
   onSuccess?: () => void;
-  openQuestions?: number;
   targets?: IssueStatus[];
-  /** The reason (and kind) already given for a reason-required move the questions then held up,
-   *  re-sent with the withdrawal so the second attempt is not refused for the reason it lacks. */
-  carried?: { reason: string; waitingKind?: WaitingCause };
 }
 
 /** A move its checklist refused, held open so the person answers and moves it again. */
@@ -73,26 +72,29 @@ type ChecklistHold = ChecklistPrompt & {
   onSuccess?: () => void;
 };
 
-/** What a confirmed reason sends: where the move goes, its body, and the reason to carry if questions then hold it. */
-function reasonMove(prompt: ReasonPrompt, reason: string, waitingKind?: WaitingCause, picked?: IssueStatus) {
+/**
+ * What a confirmed reason sends. A close or drop made while the dialog lists open questions voids
+ * them with the reason the person typed, in the same move (ISS-560): `open` is that list.
+ */
+function reasonMove(
+  prompt: ReasonPrompt,
+  reason: string,
+  open: readonly AgentQuestion[],
+  waitingKind?: WaitingCause,
+  picked?: IssueStatus,
+) {
   const { id, status } = prompt;
   const target = status === "move_anyway" ? (picked ?? prompt.target) : prompt.target;
   const kind = waitingKind ? { waitingKind } : {};
-  const carried = prompt.carried
-    ? { reason: prompt.carried.reason, ...(prompt.carried.waitingKind ? { waitingKind: prompt.carried.waitingKind } : {}) }
-    : {};
-  const body =
-    status === "void_questions"
-      ? { id, toStatus: target, voidQuestions: reason, ...carried }
-      : status === "not_needed"
-        ? { id, toStatus: target, reason, voidQuestions: reason }
-        : { id, toStatus: target, reason, ...kind };
-  const given = status === "void_questions" ? prompt.carried : { reason, ...kind };
-  return { target, body, given };
+  const voids = endsTheIssue(target) && open.length > 0 ? { voidQuestions: reason } : {};
+  if (status === "void_questions") return { target, body: { id, toStatus: target, voidQuestions: reason } };
+  if (status === "not_needed") return { target, body: { id, toStatus: target, reason, voidQuestions: reason } };
+  return { target, body: { id, toStatus: target, reason, ...kind, ...voids } };
 }
 
 export function useGuardedTransition(): GuardedTransition {
   const transition = useTransitionIssue();
+  const qc = useQueryClient();
   const { toast } = useToast();
   const t = useCopy();
   const L = useLabel();
@@ -140,6 +142,12 @@ export function useGuardedTransition(): GuardedTransition {
     );
   };
 
+  /** The open questions the dialog lists for `id`: the read `MootQuestions` draws. */
+  const listedOpen = (id: string) =>
+    openQuestionsOf(qc.getQueryData<{ questions: AgentQuestion[] }>(questionKeys.issue(id))?.questions);
+  /** A question asked after the list was read: read it again, so the dialog shows what the move met. */
+  const relist = (id: string) => () => void qc.invalidateQueries({ queryKey: questionKeys.issue(id) });
+
   const succeed = (title: string, extra?: () => void) => () => {
     toast({ title, tone: "success" });
     extra?.();
@@ -166,15 +174,10 @@ export function useGuardedTransition(): GuardedTransition {
           forgetChecklistDrafts(id);
           opts?.onSuccess?.();
         }),
-        onOpenQuestions: (ids) =>
-          setPrompt({
-            id,
-            status: "void_questions",
-            target: toStatus,
-            successMessage,
-            onSuccess: opts?.onSuccess,
-            openQuestions: ids.length,
-          }),
+        onOpenQuestions: () => {
+          relist(id)();
+          setPrompt({ id, status: "void_questions", target: toStatus, successMessage, onSuccess: opts?.onSuccess });
+        },
         onChecklist: askChecklist(id, from, toStatus, successMessage, opts?.onSuccess),
       },
     );
@@ -196,23 +199,15 @@ export function useGuardedTransition(): GuardedTransition {
   const onConfirm = (reason: string, waitingKind?: WaitingCause, picked?: IssueStatus) => {
     if (!prompt) return;
     const { id, successMessage, onSuccess } = prompt;
-    const { target, body, given } = reasonMove(prompt, reason, waitingKind, picked);
+    const { body } = reasonMove(prompt, reason, listedOpen(id), waitingKind, picked);
     transition.mutate(body, {
       onSuccess: succeed(successMessage, () => {
         forgetChecklistDrafts(id);
         setPrompt(null);
         onSuccess?.();
       }),
-      onOpenQuestions: (ids) =>
-        setPrompt({
-          id,
-          status: "void_questions",
-          target,
-          successMessage,
-          onSuccess,
-          openQuestions: ids.length,
-          ...(given ? { carried: given } : {}),
-        }),
+      // the same dialog stays open with the reason typed, now listing the question the move met
+      onOpenQuestions: relist(id),
     });
   };
 
@@ -232,9 +227,11 @@ export function useGuardedTransition(): GuardedTransition {
       />
       <TransitionReasonDialog
         status={prompt?.status ?? null}
-        openQuestions={prompt?.openQuestions}
+        issueId={prompt?.id}
+        moveTo={prompt?.target}
         targets={prompt?.targets}
         loading={transition.isPending}
+        failure={transition.error}
         onConfirm={onConfirm}
         onClose={() => setPrompt(null)}
       />

@@ -27,6 +27,7 @@ import { PropertiesRail } from "@/features/issues/components/properties-rail";
 import { StagedFileList } from "@/features/attachments/components/staged-files";
 import { TransitionReasonDialog } from "@/features/issues/components/transition-reason-dialog";
 import type { CommentNode, IssueDetail, IssueRow } from "@/features/issues/types";
+import type { AgentQuestion } from "@/features/questions";
 import { type ProductCopyKey, productCopy } from "@/lib/i18n/product-copy";
 import { Seeded } from "./vi-chrome-requirements";
 
@@ -270,11 +271,43 @@ const board = (mode: "attention" | "module" | "waves") => () => wrap([[["issues"
 const peek = { open: "ISS-1", position: { at: 1, of: 6 }, set: noop, move: noop };
 const clock = { lang: "vi" as const, now: Date.parse("2026-10-07T12:00:00Z"), timeZone: "UTC" };
 
+/** An open question a close or drop on `i1` would end, listed in its dialog (ISS-560). */
+const MOOT_QUESTION: AgentQuestion = {
+  id: "q1",
+  projectId: P,
+  issueId: "i1",
+  status: "open",
+  blockerKind: "human",
+  steps: [{ round: 1, prompt: "Cau hoi", askedAt: AT, answerShape: "free_text", needed: "Cach dong" }],
+  round: 1,
+  prompt: "Cau hoi",
+  askedAt: AT,
+  maxRounds: 3,
+  voidReason: null,
+  endedReason: null,
+  parkDeadlineAt: null,
+  createdAt: AT,
+  updatedAt: AT,
+  answerShape: "free_text",
+  options: [],
+  recommendedOptionId: "",
+  needed: "Cach dong",
+  locked: false,
+};
+
 function Dialogs() {
   return (
     <>
       {(["reopen", "needs_info", "on_hold", "dropped", "void_questions", "not_needed"] as const).map((s) => (
-        <TransitionReasonDialog key={s} status={s} openQuestions={2} loading={false} onConfirm={noop} onClose={noop} />
+        <TransitionReasonDialog
+          key={s}
+          status={s}
+          issueId="i1"
+          moveTo={s === "void_questions" ? "closed" : s === "not_needed" ? "open" : s}
+          loading={false}
+          onConfirm={noop}
+          onClose={noop}
+        />
       ))}
       <TransitionReasonDialog status="move_anyway" targets={["open", "needs_info"]} loading={false} onConfirm={noop} onClose={noop} />
       <BatchReleaseDialog projectId={P} selectedIssues={[{ id: "i4", displayId: "ISS-4", title: "Muc bon" }]} open onClose={noop} onSuccess={noop} />
@@ -356,7 +389,7 @@ export const SCREENS = [
         </>,
       ),
   },
-  { name: "Issue dialogs", render: () => wrap(detailQueries(), <Dialogs />) },
+  { name: "Issue dialogs", render: () => wrap([...detailQueries(), [["questions", "i1"], { questions: [MOOT_QUESTION] }]], <Dialogs />) },
   { name: "Mark merged dialog", render: () => wrap([], <MergeMarkerControl issueId="i1" mergedAt={null} suggestedTarget="ISS-1" landingShape="outside_git" />), act: click("button") },
   {
     name: "Module picker",

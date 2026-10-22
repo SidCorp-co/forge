@@ -11,10 +11,11 @@ import { SlideOver } from "@/design/patterns/slide-over";
 import { useCopy, useLabel } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
 import type { IssueStatus, WaitingCause } from "../types";
+import { endsTheIssue, MootQuestions, useMootQuestions } from "./moot-questions";
 
 export type ReasonStatus = (typeof REASON_REQUIRED_STATUSES)[number];
 /**
- * ISS-1257 — a close or drop the server refused because questions on the issue are still open.
+ * ISS-1257 — a close the server refused because questions on the issue are still open.
  * ISS-1310 — the two ways out of a park that leave its question unanswered, each asking why.
  */
 export type DialogMode = ReasonStatus | "void_questions" | "move_anyway" | "not_needed";
@@ -37,11 +38,15 @@ const kindLabel = (t: Copy, k: WaitingCause): string => `${t(`issues.waitingKind
 
 interface TransitionReasonDialogProps {
   status: DialogMode | null;
-  /** How many open questions a `void_questions` confirm withdraws. */
-  openQuestions?: number;
+  /** The issue moved; with `moveTo`, whose open questions a close or drop shows (ISS-560). */
+  issueId?: string;
+  /** Where the move goes: the reason status itself, or the close a `void_questions` prompt held up. */
+  moveTo?: IssueStatus;
   /** Every target a `move_anyway` may pick, the transitions map unchanged. */
   targets?: IssueStatus[];
   loading: boolean;
+  /** The last refused move's error: a refusal that keeps the dialog open frees its confirm again. */
+  failure?: unknown;
   onConfirm: (reason: string, waitingKind?: WaitingCause, target?: IssueStatus) => void;
   onClose: () => void;
 }
@@ -54,9 +59,11 @@ export function TransitionReasonDialog(props: TransitionReasonDialogProps) {
 
 function ReasonForm({
   status,
-  openQuestions,
+  issueId,
+  moveTo,
   targets,
   loading,
+  failure,
   onConfirm,
   onClose,
 }: TransitionReasonDialogProps & { status: DialogMode }) {
@@ -68,27 +75,32 @@ function ReasonForm({
   const t = useCopy();
   const L = useLabel();
 
-  // a move that settled (loading went false) frees the confirm again
+  // a move that settled (loading went false) frees the confirm again, and so does a refusal that
+  // settled before a render saw it pending
   const [wasLoading, setWasLoading] = useState(loading);
   if (wasLoading !== loading) {
     setWasLoading(loading);
     if (!loading) setSent(false);
+  }
+  const [seenFailure, setSeenFailure] = useState(failure);
+  if (seenFailure !== failure) {
+    setSeenFailure(failure);
+    if (failure) setSent(false);
   }
 
   const copy = copyOf(t, status);
   const trimmed = reason.trim();
   const picking = status === "move_anyway";
   const asksKind = status === "needs_info" || (picking && target === "needs_info");
-  const ready = trimmed.length > 0 && (!picking || target !== null);
+  const lands = picking ? target : moveTo;
+  const shows = endsTheIssue(lands) && issueId ? issueId : null;
+  const moot = useMootQuestions(shows);
+  const ready = trimmed.length > 0 && (!picking || target !== null) && !moot.loading;
 
   return (
     <SlideOver open onClose={onClose} title={copy.title} width={480}>
       <div className="flex h-full flex-col gap-4">
-        {status === "void_questions" && openQuestions !== undefined && (
-          <p className="fg-body-sm text-fg">
-            {openQuestions === 1 ? t("issues.reason.openOne") : t("issues.reason.openMany", { n: openQuestions })}
-          </p>
-        )}
+        {shows && <MootQuestions issueId={shows} />}
         {picking && (
           <Field label={t("issues.reason.moveTo")} required>
             <RadioGroup
