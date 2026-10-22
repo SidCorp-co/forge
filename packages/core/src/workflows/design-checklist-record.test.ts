@@ -103,3 +103,52 @@ describe('the workflow approval checklist, read from the design', () => {
     );
   });
 });
+
+// Dev, 2026-10-22: the Needs-you decision "Move 4 designs built on requirement-to-delivery to follow
+// r18" answered approve and was refused CHECKLIST_INCOMPLETE, "REQ-18 links it, and none of their
+// business criteria is traced to a step" (REQ-41 BC-23). A pin-only revision changes no step, so the
+// questions about its steps are answered by the revision it carries them from, said so by name.
+describe('a pin-only revision is judged by what it changes (REQ-41 BC-23)', () => {
+  const based = (revision: number) => ({
+    ...doc('state-machine', [{ id: 'a', title: 'Draft', node: { type: 'STATE' } }]),
+    basedOn: [{ workflow: 'requirement-to-delivery', revision }],
+  });
+
+  it('carries the step questions from the approved revision, naming it and the pin that moved', () => {
+    const e = judge(
+      facts(based(18), {
+        linkedBy: ['REQ-18'],
+        traced: [],
+        approved: { revision: 4, raw: based(17) },
+      }),
+    );
+    expect(checklistRefusals(e)).toEqual([]);
+    expect(e.answers.find((a) => a.question === 'criteria')?.value).toBe(
+      'Unchanged from revision 4, which was approved: this revision changes only which revision it follows (requirement-to-delivery r17 → r18).',
+    );
+  });
+
+  it('still asks every question of a revision that moves a pin and changes a step', () => {
+    const changed = {
+      ...based(18),
+      steps: [...based(18).steps, { id: 'b', title: 'Check', does: 'd', after: [] }],
+    };
+    const e = judge(
+      facts(changed, {
+        linkedBy: ['REQ-18'],
+        traced: [],
+        approved: { revision: 4, raw: based(17) },
+      }),
+    );
+    expect(checklistRefusals(e).map((r) => r.question)).toEqual([
+      'criteria',
+      'roles',
+      'exceptions',
+    ]);
+  });
+
+  it('asks every question of a first revision, which carries nothing', () => {
+    const e = judge(facts(based(18), { linkedBy: ['REQ-18'], traced: [] }));
+    expect(checklistRefusals(e).map((r) => r.question)).toContain('criteria');
+  });
+});

@@ -271,6 +271,7 @@ describe('the assistant reads an attached spec and drafts its criteria line for 
         deliveryKey: `window:${randomUUID()}`,
         mode: 'assistant',
         question: ask,
+        latest: ask,
         images: [],
         conversationContext: async () => null,
         reserve: async () => true,

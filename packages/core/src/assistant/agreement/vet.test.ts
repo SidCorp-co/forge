@@ -11,6 +11,7 @@ vi.mock('../../permissions/index.js', async (original) => ({
   requireCan: async () => undefined,
 }));
 vi.mock('./store.js', () => ({
+  failedProposalsOf: async () => [],
   recordProposal: async (p: { kind: string }) => {
     const row = { ...p, id: `p-${held.length + 1}`, createdAt: new Date() };
     held.push(row);

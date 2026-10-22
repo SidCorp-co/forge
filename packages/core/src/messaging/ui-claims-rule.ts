@@ -8,7 +8,7 @@
  * said it had opened and filtered the list anyway. A sentence that claims an act of one kind (open a
  * page, set a filter, highlight a section) is held to a call of that kind in this turn that was not
  * refused; one that was refused, or never made, grounds nothing, and the clause is cut like any
- * other claim the turn cannot back (`reply-marks.ts:cutClauses`).
+ * other claim the turn cannot back (`reply-marks.ts:cutHeldSentences`).
  *
  * Read as an act, not as a topic: a completed or standing form ("opened", "is open", "filtered",
  * "highlighted") in a sentence naming a page or a list. A negation, a refusal reported as one

@@ -13,6 +13,7 @@ import { CREATION_CLAIMS_GROUNDED } from './creation-claims-rule.js';
 import { FIGURES_NAME_SOURCE } from './figure-sources.js';
 import { FIGURES_GROUNDED } from './figures-rule.js';
 import { PROGRESS_FIGURES_MATCH } from './progress-rule.js';
+import { OPENS_WITH_ITS_ANSWER } from './reply-opening-rule.js';
 import { STATUS_CLAIMS_GROUNDED } from './status-claims-rule.js';
 import {
   COMMENT_HAS_TEXT,
@@ -61,6 +62,7 @@ const SHIPPED: readonly CellSpec[] = [
     ISSUE_LINK_SHAPE,
     CREATION_CLAIMS_GROUNDED,
     UI_ACTS_GROUNDED,
+    OPENS_WITH_ITS_ANSWER,
     NO_EMPTY_PROMISE,
     PROGRESS_FIGURES_MATCH,
     STATUS_CLAIMS_GROUNDED,

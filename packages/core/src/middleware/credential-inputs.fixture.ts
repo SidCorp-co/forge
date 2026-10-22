@@ -197,6 +197,7 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:json:skillsRanWith field:json:snapshot field:json:source field:json:spec
     field:json:standing field:json:step field:json:steps field:json:stillWaits
     field:json:subject field:json:target field:json:targetPhase field:json:targets field:json:to
+    field:json:opens
     field:json:touched field:json:turnError field:json:type field:json:uiSnapshot
     field:json:usage field:json:value field:json:verdict field:json:via field:json:voidQuestions
     field:json:workState field:json:workflow field:json:worktree field:json:query

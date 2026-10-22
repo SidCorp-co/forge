@@ -147,6 +147,7 @@ export async function gatherFacts(input: GatherInput): Promise<MessageFacts> {
     readCounts: input.readCounts ?? new Set(),
     memoryDates: input.memoryDates ?? new Set(),
     asked: input.question === undefined ? new Set() : askedValues(input.question),
+    question: input.question ?? null,
     figures: await figureFactsFor(input, needs, tx),
     heldBlocks: input.heldBlocks ?? null,
     agreedRecords:

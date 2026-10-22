@@ -53,6 +53,24 @@ export async function recordProposal(p: NewProposal): Promise<ChatProposalRow> {
   return row;
 }
 
+/** The proposals of `kind` in a conversation whose press failed, oldest first (REQ-41 BC-28). */
+export function failedProposalsOf(
+  conversationId: string,
+  kind: ChatProposalKind,
+): Promise<ChatProposalRow[]> {
+  return db
+    .select()
+    .from(chatProposals)
+    .where(
+      and(
+        eq(chatProposals.conversationId, conversationId),
+        eq(chatProposals.kind, kind),
+        eq(chatProposals.status, 'failed'),
+      ),
+    )
+    .orderBy(asc(chatProposals.createdAt));
+}
+
 /** Replace what a proposal holds, while the turn that made it is still writing its reply. */
 export async function restateProposal(
   id: string,

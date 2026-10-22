@@ -49,6 +49,7 @@ import {
   ecosystemOfScope,
   scopeIsFixed,
 } from './conversation-scope.js';
+import { decisionOutcomeRoutes } from './decision-outcome-routes.js';
 import { pinnedBy, roomTail } from './read.js';
 import { openWebConversation } from './service.js';
 import { threadMarks } from './thread-marks.js';
@@ -113,6 +114,7 @@ conversationRoutes.route('/', conversationAttachmentRoutes);
 conversationRoutes.route('/', conversationPinRoutes);
 conversationRoutes.route('/', conversationMessageRoutes);
 conversationRoutes.route('/', conversationProposalRoutes);
+conversationRoutes.route('/', decisionOutcomeRoutes);
 
 conversationRoutes.get('/', zValidator('query', listQuerySchema), async (c) => {
   const { projectId, page, pageSize, archived } = c.req.valid('query');

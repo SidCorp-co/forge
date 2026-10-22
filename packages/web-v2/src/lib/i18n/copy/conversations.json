@@ -50,6 +50,7 @@
     "conversations.claim.widen": "Becomes a shared room: anyone with a role on {projects} reads it.",
     "conversations.composer.reason": "About {projects}; a message needs exactly one project.",
     "conversations.composer.wayOut": "Take an agent out to speak here again.",
+    "conversations.decisions.followUpFailed": "The chat could not say what this changed: {error}",
     "conversations.list.removeChip": "Remove {label}",
     "conversations.list.showGrouped": "Show in Attention",
     "conversations.list.tableNoWaiting": "The Table shows no waits.",

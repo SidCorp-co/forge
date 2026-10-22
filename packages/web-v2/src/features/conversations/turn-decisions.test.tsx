@@ -1,5 +1,8 @@
 // REQ-41 BC-2 in chat: a turn that read `forge_needs_you` draws the decisions under its reply from
 // the tool's own result, never from the model's words, and nothing from any other tool or a refused call.
+//
+// @direct-test-of packages/web-v2/src/features/conversations/api.ts
+// @direct-test-of packages/web-v2/src/features/needs-you/index.ts
 
 import { needsYouDecisionsSchema } from "@forge/contracts/needs-you-decisions";
 import { screen } from "@testing-library/react";
@@ -58,5 +61,61 @@ describe("the chat draws the decisions its turn read (REQ-41 BC-2)", () => {
     expect(screen.getByTestId("needs-you-decision-recommended")).toHaveTextContent("Recommended: At the next release.");
     expect(screen.getAllByTestId("needs-you-decision-answer").map((b) => b.textContent)).toEqual(["At the next release", "Now"]);
     expect(screen.queryByRole("link")).toBeNull();
+  });
+});
+
+// REQ-41 BC-24 and BC-25 (dev, 2026-10-21 and 22, conversation a760cd5f): a card pressed under the
+// reply showed "✓ Sent" and the chat stood still; and a decision the turn already made on the
+// person's word must not be drawn again as a button that can only be refused.
+const steward = (seq: number) => ({
+  ...READ.decisions[0],
+  id: `issue:ISS-${seq}:question.answer`,
+  key: `ISS-${seq}`,
+  entity: "issue",
+  opens: { kind: "issue", key: `ISS-${seq}` },
+});
+const CLUSTER = needsYouDecisionsSchema.parse({ ...READ, total: 4, decisions: [603, 609, 612, 613].map(steward) });
+const decided = {
+  results: [
+    { outcome: "already_done", decision: "ISS-603", state: { key: "ISS-603", status: "open", movedBy: "Darrel", movedAt: "2026-10-22T07:48:04.924Z" } },
+    { outcome: "done", decision: "ISS-609", id: "issue:ISS-609:question.answer", answer: "Open it", state: { key: "ISS-609", status: "open", movedBy: "Darrel", movedAt: "2026-10-22T07:52:00.000Z" } },
+    { outcome: "refused", decision: "ISS-612", code: "DECISION_REFUSED", detail: "QUESTION_ROUND_STALE", state: null },
+  ],
+  note: "Report each item exactly as read back here.",
+};
+
+describe("a decision made on the word is not drawn again, and a press is answered in the room (REQ-41 BC-24, BC-25)", () => {
+  it("drops the decisions act_on_decisions made or found made, and keeps one it refused", () => {
+    const left = decisionsIn([block("forge_needs_you", CLUSTER), block("act_on_decisions", decided)] as never);
+    expect(left?.decisions.map((d) => d.key)).toEqual(["ISS-612", "ISS-613"]);
+    expect(left?.total).toBe(2);
+  });
+
+  it("keeps every decision where the act was refused whole, or is not its result", () => {
+    const refusedWhole = { ...block("act_on_decisions", { error: "CHAT_DECIDE_NO_WORD: ..." }), toolCall: { ...block("x", {}).toolCall, name: "act_on_decisions", output: JSON.stringify({ error: "CHAT_DECIDE_NO_WORD" }), isError: true } };
+    expect(decisionsIn([block("forge_needs_you", CLUSTER), refusedWhole] as never)?.total).toBe(4);
+    expect(decisionsIn([block("forge_needs_you", CLUSTER), block("act_on_decisions", { results: "x" })] as never)?.total).toBe(4);
+  });
+
+  it("asks core to answer a pressed card in the room, naming the decision and its item, and says so when it cannot", async () => {
+    const calls: { url: string; body: unknown }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string, init: RequestInit) => {
+        calls.push({ url, body: typeof init.body === "string" ? JSON.parse(init.body) : null });
+        if (url.endsWith("/answer")) return Promise.resolve(new Response(JSON.stringify({}), { headers: { "content-type": "application/json" } }));
+        return Promise.resolve(new Response(JSON.stringify({ title: "conversation not found" }), { status: 404, headers: { "content-type": "application/problem+json" } }));
+      }),
+    );
+    const { default: userEvent } = await import("@testing-library/user-event");
+    renderWithQuery(
+      <TurnDecisions blocks={[block("forge_needs_you", { ...CLUSTER, decisions: [steward(613)], total: 1 })] as never} slug="forge" conversationId="c0ffee00-0000-4000-8000-000000000001" />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "At the next release" }));
+    expect(await screen.findByTestId("decision-follow-up-failed")).toHaveTextContent("The chat could not say what this changed");
+    const follow = calls.find((c) => c.url.includes("/decision-outcomes"));
+    expect(follow?.url).toContain("/conversations/c0ffee00-0000-4000-8000-000000000001/decision-outcomes");
+    expect(follow?.body).toEqual({ decision: "issue:ISS-613:question.answer", opens: { kind: "issue", key: "ISS-613" }, ok: true });
+    vi.unstubAllGlobals();
   });
 });

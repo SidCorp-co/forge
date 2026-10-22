@@ -27,7 +27,7 @@ import { expireBlocksEdgesOnDrop, type UnblockedDependent } from './drop-cascade
 import { postDropUnblockNotices } from './drop-unblock.js';
 import { type AwaitedDesignRef, mintParkQuestion, needsNotApplicable } from './park-question.js';
 import { repointPark, repointsPark } from './park-repoint.js';
-import { settleOpenQuestions, withdrawParkQuestions } from './ports.js';
+import { settleOpenQuestions, voidStewardDraftQuestions, withdrawParkQuestions } from './ports.js';
 import { moveOf, recordMove } from './record-events/kernel-records.js';
 import { refuseOffRecoveryEdge } from './recovery-move.js';
 import { edgeFault, reasonFault } from './transition-faults.js';
@@ -335,6 +335,17 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
         await postLeaveComment({ issue, fromStatus, toStatus, actor, options }, tx);
         await postRecoveryNotice({ issue, fromStatus, toStatus, actor, recovering, options }, tx);
         await mintParkQuestion({ issue, toStatus, actor, options }, tx);
+        // leaving draft ends the steward's take-on-or-drop decision on it, before a terminal move
+        // meets its open questions: the drop is an answer to that one (REQ-41 BC-26)
+        if (fromStatus === 'draft') {
+          await voidStewardDraftQuestions(tx, {
+            issueId: issue.id,
+            toStatus,
+            reason: options.transitionReason?.trim() || options.reason?.trim() || null,
+            by,
+            actor: kernelActorFor(actor),
+          });
+        }
         const asked = await settleOpenQuestions(tx, {
           ...options,
           issueId: issue.id,
