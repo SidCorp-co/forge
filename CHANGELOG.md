@@ -3202,7 +3202,7 @@
 - **A refused tool call in a room says what went wrong and what would put it right**, whichever order the refusal gave them in, never its first sentence alone. (ISS-1229)
 - **A reader who can only read a project is not invited to start a conversation there.** The top bar names the panel Conversations for them and it is headed Conversations, never New conversation. (ISS-1229)
 - **Start a conversation marks a project whose own agent no longer holds a role there**, naming the agent and why it cannot answer, and the project cannot be picked. (ISS-1229)
-- **A master holding work it passed over is asked again within half an hour.** It used to wait until the work changed, which left three projects unasked for hours. A master still working or on a question is left alone. (ISS-1306)
+- **A master holding work it passed over is asked again within half an hour.** It used to wait until the work changed, which left three projects unasked for hours. One still working or on a question is left alone. (ISS-1306)
 - **The runner's journal names a project whose waiting work its master has not been asked about** after 35 minutes, and every 30 minutes after. Work that cannot be read is said to be unreadable, not taken as none. (ISS-1306)
 - **The runner's wake line says every project is swept.** It named one project, which read as if only that one was; that project is the event that woke the box. (ISS-1306)
 - **A reply the reply check withdrew still says so after a reload**, and to anyone who opens the room later, with the withdrawn text under its technical details. (ISS-1229)
