@@ -118,18 +118,28 @@ export function fieldShape(field: string, code: string, shape: string): Hook {
 export function nestedFieldShape(field: string, code: string, shape: string): Hook {
   return ((r: Failed) => {
     if (r.success || !r.error) return;
-    const issues = r.error.issues;
-    if (!issues.some((i) => i.path[0] === field)) return;
-    const rows: Refusal[] = issues.map((i) =>
-      i.path[0] === field
-        ? { code, path: jsonPointer(i.path), detail: `${i.message}. \`${field}\` is ${shape}` }
-        : { code: 'BAD_REQUEST', path: jsonPointer(i.path), detail: i.message },
-    );
-    const faults = issues.map((i) => `at ${jsonPointer(i.path)}, ${i.message}`).join('; ');
-    const count = issues.length === 1 ? 'one fault' : `${issues.length} faults`;
-    const detail = `The body has ${count}: ${faults}. \`${field}\` is ${shape}`;
-    throw new RefusalError(rows, 'BAD_REQUEST', detail);
+    refuseNestedField(r.error.issues, field, code, shape);
   }) as Hook;
+}
+
+/** `nestedFieldShape`'s answer to issues a route's own hook has already read: it throws where one
+ *  of them is at `field`, and returns where none is. */
+export function refuseNestedField(
+  issues: readonly z.core.$ZodIssue[],
+  field: string,
+  code: string,
+  shape: string,
+): void {
+  if (!issues.some((i) => i.path[0] === field)) return;
+  const rows: Refusal[] = issues.map((i) =>
+    i.path[0] === field
+      ? { code, path: jsonPointer(i.path), detail: `${i.message}. \`${field}\` is ${shape}` }
+      : { code: 'BAD_REQUEST', path: jsonPointer(i.path), detail: i.message },
+  );
+  const faults = issues.map((i) => `at ${jsonPointer(i.path)}, ${i.message}`).join('; ');
+  const count = issues.length === 1 ? 'one fault' : `${issues.length} faults`;
+  const detail = `The body has ${count}: ${faults}. \`${field}\` is ${shape}`;
+  throw new RefusalError(rows, 'BAD_REQUEST', detail);
 }
 
 // the API contract reads a route's inputs off its middleware, not off a second description

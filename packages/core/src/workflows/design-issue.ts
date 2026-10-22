@@ -27,6 +27,7 @@ import {
 } from '../issues/index.js';
 import { logger } from '../lib/logger.js';
 import type { DesignDecision } from './design.js';
+import { revisionStateOf } from './design-standing.js';
 import type { WorkflowWriter } from './service.js';
 import { buildOfIssue, readWorkflow, redrawDesign } from './store.js';
 
@@ -193,13 +194,17 @@ export async function handBack(input: {
 
 /**
  * What `GET /issues/:id` shows of a proposing issue: every workflow a revision was drawn under it,
- * each with the latest revision drawn under it and that revision's decision, newest proposal first.
- * An issue drawing several designs shows each of them (FB-140), not only the last one proposed.
+ * each with the latest revision drawn under it, that revision's decision and its own `state`, newest
+ * proposal first. An issue drawing several designs shows each of them (FB-140), not only the last one
+ * proposed; `designStatus` is the flow's head, which a later revision drawn elsewhere may have moved,
+ * so a reader of what was decided here reads `state` (a returned revision never reads approved).
  */
 export async function proposesWorkflowsOf(issueId: string) {
   const rows = (await db.execute(sql`
     SELECT w.id, w.flow, w.design_status, w.approved_revision,
            w.document->>'title' AS title,
+           (SELECT max(l.revision) FROM project_workflow_designs l
+             WHERE l.workflow_id = w.id) AS latest_revision,
            d.revision, d.decision, d.reason, d.decided_at
     FROM (
       SELECT DISTINCT ON (workflow_id) workflow_id, revision, decision, reason, decided_at, proposed_at
@@ -210,15 +215,28 @@ export async function proposesWorkflowsOf(issueId: string) {
     JOIN project_workflows w ON w.id = d.workflow_id
     ORDER BY d.proposed_at DESC, w.flow
   `)) as unknown as Array<Record<string, unknown>>;
-  return rows.map((row) => ({
-    workflowId: String(row.id),
-    flow: String(row.flow),
-    title: (row.title as string | null) ?? String(row.flow),
-    designStatus: (row.design_status as DesignStatus | null) ?? null,
-    approvedRevision: row.approved_revision == null ? null : Number(row.approved_revision),
-    revision: Number(row.revision),
-    decision: (row.decision as DesignDecision | null) ?? null,
-    reason: (row.reason as string | null) ?? null,
-    decidedAt: row.decided_at == null ? null : new Date(row.decided_at as string).toISOString(),
-  }));
+  return rows.map((row) => {
+    const status = (row.design_status as DesignStatus | null) ?? null;
+    const approvedRevision = row.approved_revision == null ? null : Number(row.approved_revision);
+    const revision = Number(row.revision);
+    const decision = (row.decision as DesignDecision | null) ?? null;
+    // the head's facts as `design-service.ts:designView` reads them for the workflow's own page
+    const head = {
+      status,
+      proposedRevision: status === 'proposed' ? Number(row.latest_revision) : null,
+      approvedRevision,
+    };
+    return {
+      workflowId: String(row.id),
+      flow: String(row.flow),
+      title: (row.title as string | null) ?? String(row.flow),
+      designStatus: status,
+      approvedRevision,
+      revision,
+      decision,
+      state: revisionStateOf({ revision, decision }, head),
+      reason: (row.reason as string | null) ?? null,
+      decidedAt: row.decided_at == null ? null : new Date(row.decided_at as string).toISOString(),
+    };
+  });
 }

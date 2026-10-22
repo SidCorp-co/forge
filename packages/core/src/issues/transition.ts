@@ -18,6 +18,7 @@ import { zValidator } from '../middleware/zod-validator.js';
 import { emitEvent } from '../outbox/index.js';
 import { requireHeld } from '../permissions/index.js';
 import { type StatusTransitionResult, transitionIssueStatus } from './apply-transition.js';
+import { awaitsDesignSchema, refuseAwaitsDesignShape } from './awaits-design-input.js';
 import { issueChecklistRoutes } from './checklist-routes.js';
 import { liveBlockedDependentsOf } from './dependency-read.js';
 import type { UnblockedDependent } from './drop-cascade.js';
@@ -27,29 +28,6 @@ import { transitionIssueRow } from './read-service.js';
 import { recordEventRoutes } from './record-events/routes.js';
 import { withRecoveryHint } from './recovery-move.js';
 import { refuseLegacyStatusFields } from './status-input.js';
-
-const awaitedDesignSchema = z
-  .object({ workflowId: z.uuid(), revision: z.number().int().min(1) })
-  .strict();
-
-/** One design revision a park waits on, or several — the park returns once every one is decided. */
-const awaitsDesignSchema = z
-  .union([awaitedDesignSchema, z.array(awaitedDesignSchema).min(1).max(20)])
-  .superRefine((value, ctx) => {
-    if (!Array.isArray(value)) return;
-    const seen = new Set<string>();
-    value.forEach((d, i) => {
-      const key = `${d.workflowId}:${d.revision}`;
-      if (seen.has(key)) {
-        ctx.addIssue({
-          code: 'custom',
-          path: [i],
-          message: `workflow ${d.workflowId} revision ${d.revision} is named twice; name each revision the park waits on once`,
-        });
-      }
-      seen.add(key);
-    });
-  });
 
 const transitionBodySchema = z
   .object({
@@ -211,6 +189,7 @@ transitionRoutes.post(
   zValidator('json', transitionBodySchema, (result) => {
     if (!result.success) {
       refuseLegacyStatusFields(result.data, 'json', ['toStatus']);
+      refuseAwaitsDesignShape(result.error);
     }
   }),
   // a chat's status move (draft to open dispatches) waits for the person's press (REQ-30 BC-4)

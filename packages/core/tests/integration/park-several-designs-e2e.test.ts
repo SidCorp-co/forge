@@ -5,6 +5,7 @@
  * drawn under it; and each approval joins the mark rather than replacing it or being dropped.
  */
 
+import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
@@ -217,6 +218,43 @@ describe('an issue waiting on, drawing or approved for several designs (criterio
     expect(await questionsOn(issue.id)).toEqual([]);
   });
 
+  // K36 on dev.273: 21 designs answered `400 at /awaitsDesign: Invalid input`, the union hiding the cap
+  it('refuses a list of more than 20 designs, or none, naming the cap at /awaitsDesign, writing nothing', async () => {
+    const issue = await plantIssue(gitProject, 'open');
+    const many = Array.from({ length: 21 }, (_, i) => ({
+      workflowId: randomUUID(),
+      revision: i + 1,
+    }));
+    const cases: Array<[Doc[], string]> = [
+      [many, 'names 21 designs; a park waits on at most 20'],
+      [[], 'names no design; a park waits on at least one'],
+    ];
+    for (const [awaitsDesign, said] of cases) {
+      const res = await transition(issue.id, { awaitsDesign });
+      expect(res.status, JSON.stringify(res.json)).toBe(400);
+      const rows = (res.json.error?.refusals ?? []) as Doc[];
+      expect(rows).toEqual([
+        expect.objectContaining({ code: 'BAD_REQUEST', path: '/awaitsDesign' }),
+      ]);
+      expect(rows[0]?.detail).toContain(said);
+      expect(rows[0]?.detail).toContain('a list of 1 to 20');
+      expect(res.json.detail).not.toBe('Invalid input');
+    }
+    // a list whose own item is the wrong type, which aborts the list's branch of the union
+    const wrongType = await transition(issue.id, {
+      awaitsDesign: [{ workflowId: randomUUID(), revision: 'one' }],
+    });
+    expect(wrongType.status, JSON.stringify(wrongType.json)).toBe(400);
+    expect(wrongType.json.error?.refusals).toEqual([
+      expect.objectContaining({
+        path: '/awaitsDesign/0/revision',
+        detail: expect.stringContaining('expected number'),
+      }),
+    ]);
+    expect(await statusOf(issue.id)).toBe('open');
+    expect(await questionsOn(issue.id)).toEqual([]);
+  });
+
   it('answers every design drawn under the issue, each at the latest revision drawn there', async () => {
     const issue = await plantIssue(gitProject, 'in_progress');
     const a = await proposedDesign(gitProject, 'several-drawn-a-flow', issue.id);
@@ -234,6 +272,37 @@ describe('an issue waiting on, drawing or approved for several designs (criterio
     );
     const none = await plantIssue(gitProject, 'open');
     expect(ok(await say('owner', 'GET', `/api/issues/${none.id}`)).proposesWorkflows).toEqual([]);
+  });
+
+  // K36 on dev.273: ISS-498's rail read "r21 · Approved" although r21 was returned under it and a
+  // later revision drawn elsewhere was approved; each entry carries its own revision's state
+  it("answers the state of the revision drawn under the issue, not the flow's head status", async () => {
+    const issue = await plantIssue(gitProject, 'in_progress');
+    const elsewhere = await plantIssue(gitProject, 'in_progress');
+    const a = await proposedDesign(gitProject, 'several-state-a-flow', issue.id);
+    const b = await proposedDesign(gitProject, 'several-state-b-flow', issue.id);
+    const c = await proposedDesign(gitProject, 'several-state-c-flow', issue.id);
+    ok(await decide(gitProject, a, 1, 'return', 'the SLA is 48h'));
+    ok(await writeChanged(gitProject, a, elsewhere.key));
+    ok(await decide(gitProject, a, 2, 'approve'));
+    ok(await decide(gitProject, b, 1, 'approve'));
+    const entries = ok(await say('owner', 'GET', `/api/issues/${issue.id}`))
+      .proposesWorkflows as Doc[];
+    const of = (id: string) => entries.find((e) => e.workflowId === id);
+    expect(of(a)).toEqual(
+      expect.objectContaining({
+        revision: 1,
+        decision: 'return',
+        designStatus: 'approved',
+        state: 'returned',
+      }),
+    );
+    expect(of(b)).toEqual(
+      expect.objectContaining({ revision: 1, decision: 'approve', state: 'current' }),
+    );
+    expect(of(c)).toEqual(
+      expect.objectContaining({ revision: 1, decision: null, state: 'proposed' }),
+    );
   });
 
   it('keeps each approved design on a git mark, the later revision of a design in place of its earlier', async () => {
