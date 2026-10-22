@@ -2,6 +2,7 @@
 // card shows the question, it can be answered there, and pressing drops the issue and voids what is
 // still open with the person's reason in one act. Core's refusal, which names its own field, never
 // reaches the person (the owner was shown it on ISS-549, chat a760cd5f).
+// @direct-test-of packages/web-v2/src/features/issues/index.ts
 
 import { refusalTitle, refusalType } from "@forge/contracts/refusal";
 import { screen, waitFor } from "@testing-library/react";

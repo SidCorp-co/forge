@@ -2,6 +2,8 @@
 // the questions the move would end, a question still worth answering is answered there, and the
 // move voids the rest with the reason the person typed — never a refusal naming core's field.
 // Driven through the real `useGuardedTransition` against a stand-in core answering what core does.
+// @direct-test-of packages/web-v2/src/features/issues/components/moot-questions.tsx
+// @direct-test-of packages/web-v2/src/features/issues/components/transition-reason-dialog.tsx
 
 import { refusalTitle, refusalType } from "@forge/contracts/refusal";
 import { screen, waitFor } from "@testing-library/react";
