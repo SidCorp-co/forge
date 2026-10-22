@@ -47,7 +47,7 @@ const row = {
 } as unknown as IssueStandingRow;
 
 const rail = (standing: IssueStandingRow["standing"], issue: Partial<IssueDetail> = {}) =>
-  renderWithQuery(<RailTraceRows issue={{ buildsWorkflow: null, proposesWorkflow: null, shippedIn: null, ...issue }} slug="forge" standing={standing} />);
+  renderWithQuery(<RailTraceRows issue={{ buildsWorkflow: null, proposesWorkflows: [], shippedIn: null, ...issue }} slug="forge" standing={standing} />);
 
 describe("the issue rail's requirement traces (REQ-11 BC-3)", () => {
   it("lists only current traces as traced, and names the earlier-wording ones stale", () => {
@@ -85,10 +85,29 @@ describe("the rail's workflow, release and lease rows (REQ-11 BC-3)", () => {
 
   it("names a proposed revision when it builds none", () => {
     rail(row.standing, {
-      proposesWorkflow: { workflowId: "w1", flow: "issue-delivery", title: "Issue to release", designStatus: "proposed", revision: 21 },
+      proposesWorkflows: [{ workflowId: "w1", flow: "issue-delivery", title: "Issue to release", designStatus: "proposed", revision: 21 }],
     });
     expect(screen.getByText("Proposes")).toBeInTheDocument();
     expect(screen.getByTestId("rail-workflow")).toHaveTextContent("r21");
+  });
+
+  it("names every design the issue proposes, not only the last one (FB-140)", () => {
+    rail(row.standing, {
+      proposesWorkflows: [
+        { workflowId: "w2", flow: "intake", title: "Intake", designStatus: "proposed", revision: 3 },
+        { workflowId: "w1", flow: "issue-delivery", title: "Issue to release", designStatus: "approved", revision: 21 },
+      ],
+    });
+    const rows = screen.getAllByTestId("rail-workflow");
+    expect(rows.map((r) => r.textContent)).toEqual([expect.stringContaining("Intake"), expect.stringContaining("Issue to release")]);
+    expect(rows[0]).toHaveTextContent("r3");
+    expect(rows[1]).toHaveTextContent("r21");
+    expect(screen.getByRole("link", { name: "Intake" })).toHaveAttribute("href", "/projects/forge/workflows/intake");
+  });
+
+  it("draws no workflow row where the issue builds and proposes nothing", () => {
+    rail(row.standing, { proposesWorkflows: [] });
+    expect(screen.queryByTestId("rail-workflow")).toBeNull();
   });
 });
 

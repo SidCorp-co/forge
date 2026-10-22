@@ -264,17 +264,19 @@ describe('a spent day paces the sweep and says so (cost guard, REQ-48 BC-1)', ()
       status: 'open',
       createdAt: new Date(),
     });
+    // the spend is stamped at the dispatch instant, so the two share a UTC day near midnight too
+    const at = new Date(Date.now() + STEWARD_DEBOUNCE_MS + 30_000);
     const spent = await rows<{ id: string }>(sql`
       INSERT INTO steward_runs (project_id, subject_kind, subject_id, subject_key, trigger, events, acts_to_run,
                                 state, turns, not_before, started_at, ended_at)
       VALUES (${projectId}, 'issue', ${issue.id}, ${issue.key}, 'standing.stuck', '[]'::jsonb, ARRAY['stuck_diagnosis'],
-              'done', 200, now(), now(), now())
+              'done', 200, now(), ${at.toISOString()}::timestamptz, now())
       RETURNING id`);
     standings = [stuckIssue(issue, 'spent-1')];
     await emit('standing.stuck', standings[0]?.subject as StandingSubject, 'spent-1');
     await settleOutbox();
     resetScript();
-    await steward.dispatchStewardRuns(new Date(Date.now() + STEWARD_DEBOUNCE_MS + 30_000));
+    await steward.dispatchStewardRuns(at);
 
     const runs = await runsOf(issue.id);
     const { nextUtcDay } = await import('../../src/steward/policy.js');

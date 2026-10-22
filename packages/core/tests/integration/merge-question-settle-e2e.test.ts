@@ -158,8 +158,8 @@ describe('the stamp writing the mark a park waits on answers its question', () =
     await db.transaction((tx) =>
       recordDesignLanding(tx, {
         issueId: issue.id,
-        landing: 'workflow design `intake` revision 2, approved',
-        artifacts: [{ surface: 'design', ref: 'intake@rev2', change: 'changed' }],
+        landingOf: () => 'workflow design `intake` revision 2, approved',
+        artifact: { surface: 'design', ref: 'intake@rev2', change: 'changed' },
         actor: { type: 'user', id: ownerId, agency: 'human' },
       }),
     );
@@ -181,8 +181,8 @@ describe('the stamp writing the mark a park waits on answers its question', () =
       db.transaction(async (tx) => {
         await recordDesignLanding(tx, {
           issueId: issue.id,
-          landing: null,
-          artifacts: [{ surface: 'design', ref: 'intake@rev3', change: 'changed' }],
+          landingOf: null,
+          artifact: { surface: 'design', ref: 'intake@rev3', change: 'changed' },
           actor: { type: 'user', id: ownerId, agency: 'human' },
         });
         throw new Error('the caller refused after the stamp');

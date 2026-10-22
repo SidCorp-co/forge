@@ -125,8 +125,21 @@ interface IssuePorts {
       reason: string | null;
       by: string;
       actor: KernelActor;
+      /** The park stays and waits on this instead: a re-point (`park-repoint.ts`), not a move. */
+      repointedTo?: string | undefined;
     },
   ) => Promise<string[]>;
+  /** Each open question the park the issue stands at asked, with the fact that settles it. */
+  openParkWaitsOn: (
+    executor: Tx,
+    issueId: string,
+  ) => Promise<
+    Array<{
+      questionId: string;
+      awaitsDesign: { workflowId: string; revision: number } | null;
+      awaitsMerge: { issueId: string } | null;
+    }>
+  >;
   holdsOpenHumanQuestion: (issueId: SQLWrapper) => SQL;
   personOwesAnAnswer: (executor: Tx, issueId: string) => Promise<boolean>;
   askParkQuestion: (
@@ -251,7 +264,7 @@ interface IssuePorts {
     contractSlug: string,
     minVersion: string,
   ) => Promise<string | null>;
-  proposesWorkflowOf: (issueId: string) => Promise<object | null>;
+  proposesWorkflowsOf: (issueId: string) => Promise<object[]>;
   requirementOfIssue: (issueId: string) => Promise<object | null>;
   /** The issue's requirement and its criterion wordings, which a `(REQ-n BC-m)` trace resolves against. */
   traceWordingsOf: (
@@ -368,6 +381,7 @@ export const projectCreatorOf = port('projectCreatorOf');
 export const settleOpenQuestions = port('settleOpenQuestions');
 export const masterServingOf = port('masterServingOf');
 export const withdrawParkQuestions = port('withdrawParkQuestions');
+export const openParkWaitsOn = port('openParkWaitsOn');
 export const holdsOpenHumanQuestion = port('holdsOpenHumanQuestion');
 export const personOwesAnAnswer = port('personOwesAnAnswer');
 export const askParkQuestion = port('askParkQuestion');
@@ -405,7 +419,7 @@ export const assertDesignApprovedForIssue = port('assertDesignApprovedForIssue')
 export const designHoldsOf = port('designHoldsOf');
 export const buildsWorkflowOf = port('buildsWorkflowOf');
 export const settlingContractVersion = port('settlingContractVersion');
-export const proposesWorkflowOf = port('proposesWorkflowOf');
+export const proposesWorkflowsOf = port('proposesWorkflowsOf');
 export const requirementOfIssue = port('requirementOfIssue');
 export const traceWordingsOf = port('traceWordingsOf');
 export const liveTracedCodesOf = port('liveTracedCodesOf');

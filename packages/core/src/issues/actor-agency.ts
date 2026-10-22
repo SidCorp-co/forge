@@ -1,4 +1,5 @@
 import type { ActorAgency } from '@forge/contracts/permissions';
+import type { KernelActor } from '../lifecycle/index.js';
 import type { McpPrincipal } from '../middleware/require-pat.js';
 
 /** The agency an audit row records: a device's is `agent`, a user's is its door's, and none is refused. */
@@ -27,4 +28,19 @@ export type TransitionActor =
 /** Who was at the keyboard for an agent-tool call: a paired box is an agent, a token its own agency. */
 export function principalAgency(principal: McpPrincipal): ActorAgency {
   return principal.deviceId ? 'agent' : actorAgency({ type: 'user', agency: principal.agency });
+}
+
+/**
+ * ISS-1107 — the transition actor as `kernel_transitions` stores one. The two
+ * vocabularies differ: `TransitionActor` has `device`, which
+ * `kernelTransitionActorTypes` has not, and a device IS a runner box, so it
+ * records under that type carrying its own id. `agency` goes through
+ * `actorAgency` rather than a spread — `null` is an agent-driven user there and
+ * `undefined` is a human.
+ */
+export function kernelActorFor(actor: TransitionActor): KernelActor {
+  if (actor.type === 'user') {
+    return { type: 'user', id: actor.id, agency: actorAgency(actor) };
+  }
+  return { type: 'runner', id: actor.id };
 }

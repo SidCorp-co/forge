@@ -7,7 +7,7 @@ export {
 } from './build-gate.js';
 export { workflowFlowsByIds, workflowFlowsOf } from './cited-workflows.js';
 export { DESIGN_DECISIONS } from './design.js';
-export { proposesWorkflowOf } from './design-issue.js';
+export { proposesWorkflowsOf } from './design-issue.js';
 export { approvedDesignRevisions, buildIssuesAmong, workflowDesign } from './design-lookup.js';
 export { repinGroupsAs } from './design-repin-service.js';
 export { decideDesignAs, proposeDesign, readDesignAs } from './design-service.js';

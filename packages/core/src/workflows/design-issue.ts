@@ -191,21 +191,26 @@ export async function handBack(input: {
   return { issueId: String(row.id), action: 'commented', status };
 }
 
-/** What `GET /issues/:id` shows of a proposing issue: its workflow and its latest proposed revision, with that revision's decision. */
-export async function proposesWorkflowOf(issueId: string) {
+/**
+ * What `GET /issues/:id` shows of a proposing issue: every workflow a revision was drawn under it,
+ * each with the latest revision drawn under it and that revision's decision, newest proposal first.
+ * An issue drawing several designs shows each of them (FB-140), not only the last one proposed.
+ */
+export async function proposesWorkflowsOf(issueId: string) {
   const rows = (await db.execute(sql`
     SELECT w.id, w.flow, w.design_status, w.approved_revision,
            w.document->>'title' AS title,
            d.revision, d.decision, d.reason, d.decided_at
-    FROM project_workflow_designs d
+    FROM (
+      SELECT DISTINCT ON (workflow_id) workflow_id, revision, decision, reason, decided_at, proposed_at
+        FROM project_workflow_designs
+       WHERE design_issue_id = ${issueId}
+       ORDER BY workflow_id, revision DESC
+    ) d
     JOIN project_workflows w ON w.id = d.workflow_id
-    WHERE d.design_issue_id = ${issueId}
-    ORDER BY d.proposed_at DESC, d.revision DESC
-    LIMIT 1
+    ORDER BY d.proposed_at DESC, w.flow
   `)) as unknown as Array<Record<string, unknown>>;
-  const row = rows[0];
-  if (!row) return null;
-  return {
+  return rows.map((row) => ({
     workflowId: String(row.id),
     flow: String(row.flow),
     title: (row.title as string | null) ?? String(row.flow),
@@ -215,5 +220,5 @@ export async function proposesWorkflowOf(issueId: string) {
     decision: (row.decision as DesignDecision | null) ?? null,
     reason: (row.reason as string | null) ?? null,
     decidedAt: row.decided_at == null ? null : new Date(row.decided_at as string).toISOString(),
-  };
+  }));
 }

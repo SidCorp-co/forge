@@ -14463,24 +14463,56 @@
                     "type": "object"
                   },
                   "awaitsDesign": {
-                    "additionalProperties": false,
-                    "properties": {
-                      "revision": {
-                        "maximum": 9007199254740991,
-                        "minimum": 1,
-                        "type": "integer"
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "revision": {
+                            "maximum": 9007199254740991,
+                            "minimum": 1,
+                            "type": "integer"
+                          },
+                          "workflowId": {
+                            "format": "uuid",
+                            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "workflowId",
+                          "revision"
+                        ],
+                        "type": "object"
                       },
-                      "workflowId": {
-                        "format": "uuid",
-                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-                        "type": "string"
+                      {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "revision": {
+                              "maximum": 9007199254740991,
+                              "minimum": 1,
+                              "type": "integer"
+                            },
+                            "workflowId": {
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "workflowId",
+                            "revision"
+                          ],
+                          "type": "object"
+                        },
+                        "maxItems": 20,
+                        "minItems": 1,
+                        "type": "array"
                       }
-                    },
-                    "required": [
-                      "workflowId",
-                      "revision"
                     ],
-                    "type": "object"
+                    "x-forge-refinements": [
+                      "a refinement with no fixed message, whose rule this contract cannot state"
+                    ]
                   },
                   "awaitsMerge": {
                     "additionalProperties": false,

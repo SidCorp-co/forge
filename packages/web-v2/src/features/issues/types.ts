@@ -296,8 +296,9 @@ export interface IssueDetail extends IssueRow {
   shippedIn?: { version: string; at: string } | null;
   /** The workflow this issue builds (`workflows/build-gate.ts:buildsWorkflowOf`); null where none. */
   buildsWorkflow?: { workflowId: string; flow: string; title: string; designStatus: DesignStatus | null; dispatchable: boolean } | null;
-  /** The workflow this issue proposes a revision of; null where none. */
-  proposesWorkflow?: { workflowId: string; flow: string; title: string; designStatus: DesignStatus | null; revision: number } | null;
+  /** Every workflow a revision was drawn under this issue, each at the latest revision drawn here
+   *  (`workflows/design-issue.ts:proposesWorkflowsOf`); empty where none. */
+  proposesWorkflows?: Array<{ workflowId: string; flow: string; title: string; designStatus: DesignStatus | null; revision: number }>;
 }
 
 export * from "./pipeline-health";

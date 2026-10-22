@@ -53,7 +53,7 @@ let ownerId = '';
 let stewardId = '';
 let lastRunId = '';
 let diagnose: (issue: { id: string; key: string }, calls: Call[]) => Promise<string[]>;
-let dispatch: () => Promise<unknown>;
+let dispatch: (at?: Date) => Promise<unknown>;
 const at = (path: string) => `/api/projects/${projectId}${path}`;
 
 /** An agreed requirement `REQ-<seq>` at revision 1 with BC-1 "it holds", delivered by a holder issue. */
@@ -150,7 +150,7 @@ beforeAll(async () => {
   const { stewardRuns } = await import('../../src/db/schema-steward-runs.js');
   const { runGatewayAct } = await import('../../src/steward/turn.js');
   const { dispatchStewardRuns } = await import('../../src/steward/dispatch.js');
-  dispatch = () => dispatchStewardRuns(new Date(Date.now() + STEWARD_DEBOUNCE_MS + 30_000));
+  dispatch = (at = new Date(Date.now() + STEWARD_DEBOUNCE_MS + 30_000)) => dispatchStewardRuns(at);
   diagnose = async (issue, calls) => {
     const [made] = await rows<{ id: string }>(sql`
       INSERT INTO steward_runs (project_id, subject_kind, subject_id, subject_key, trigger, events, acts_to_run,
@@ -383,14 +383,16 @@ describe('where no agreed requirement fits, the answer acts (REQ-48 BC-5)', () =
     const { id } = await openQuestion(issue.id);
     ok(await answer(id, { optionId: stewardLinkOptionId(req, 'BC-1') }));
     await settleOutbox();
+    // the spend is stamped at the dispatch instant, so the two share a UTC day near midnight too
+    const at = new Date(Date.now() + STEWARD_DEBOUNCE_MS + 30_000);
     await rows(sql`
       INSERT INTO steward_runs (project_id, subject_kind, subject_id, subject_key, trigger, events, acts_to_run,
                                 state, turns, not_before, started_at, ended_at)
       VALUES (${projectId}, 'issue', ${issue.id}, ${issue.key}, 'standing.stuck', '[]'::jsonb,
-              ARRAY['stuck_diagnosis'], 'done', 200, now(), now(), now())
+              ARRAY['stuck_diagnosis'], 'done', 200, now(), ${at.toISOString()}::timestamptz, now())
       RETURNING id`);
     resetScript();
-    await dispatch();
+    await dispatch(at);
     const [rerun] = await runsOf(issue.id);
     expect(rerun).toMatchObject({ state: 'queued', skip_reason: null, turns: 0 });
     expect(script.sent).toEqual([]);
