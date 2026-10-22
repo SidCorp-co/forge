@@ -95,17 +95,61 @@ const FENCE_EXAMPLE = [
 ].join('\n');
 
 /**
+ * Which fence a refusal means, where a body holds more than one; one alone needs no name.
+ */
+export function fenceNamed(index: number, of: number): string {
+  return of > 1 ? `fence ${index} of ${of}: ` : '';
+}
+
+/**
  * A body that opened a record fence and carries no record, told to whoever wrote it.
  */
-export function recordFenceRefusal(fault: ForgeRecordFault | null): MessageRefusal | null {
+export function recordFenceRefusal(
+  fault: ForgeRecordFault | null,
+  fence = '',
+): MessageRefusal | null {
   if (!fault) return null;
   return {
     rule: 'record-fence-shape',
-    why: `${fault.why} — so this comment would be stored carrying no record at all, which is the one outcome that is not allowed: a body meant to carry a record either carries one or is told it does not. The shapes that are read are below, and the store each kind belongs in: guide \`${RECORD_GUIDE_SLUG}\``,
+    why: `${fence}${fault.why} — so this comment would be stored carrying no record at all, which is the one outcome that is not allowed: a body meant to carry a record either carries one or is told it does not. The shapes that are read are below, and the store each kind belongs in: guide \`${RECORD_GUIDE_SLUG}\``,
     quote: fault.quote,
     shape: FENCE_SHAPE,
     example: FENCE_EXAMPLE,
   };
+}
+
+/**
+ * A fence read whole that names no kind: neither shape, so no store reads it (ISS-608, FB-187).
+ */
+export function untaggedFenceRefusal(record: ForgeRecord, fence = ''): MessageRefusal | null {
+  if (record.kind !== null) return null;
+  return recordFenceRefusal(
+    {
+      quote: '```forge-record',
+      why: 'the `forge-record` fence names no kind, on the opening fence or on a tag line after the close',
+    },
+    fence,
+  );
+}
+
+/**
+ * Several fences in one comment are read only where every one is a verdict: the criterion rows take
+ * them all, and any other kind is one event per comment. Each fence of another kind is named.
+ */
+export function severalRecordsRefusals(
+  records: readonly { index: number; record: ForgeRecord }[],
+  of: number,
+): MessageRefusal[] {
+  if (of < 2) return [];
+  return records
+    .filter(({ record }) => record.kind !== 'verdict')
+    .map(({ index, record }) => ({
+      rule: 'record-fence-several',
+      why: `fence ${index} of ${of} is a \`${record.kind}\` record beside other fences in one comment — several \`forge-record\` fences are read only where every one is a verdict, so write it in a comment of its own or to \`${destinationFor(record.kind) ?? RECORD_EVENTS_ROUTE}\``,
+      quote: '```forge-record',
+      shape: 'a comment carries one record of any kind, or any number of `verdict` fences',
+      example: FENCE_EXAMPLE,
+    }));
 }
 
 const SHAPE = `every field of a \`forge-record\` block is at most ${FORGE_RECORD_FIELD_BUDGET} characters`;

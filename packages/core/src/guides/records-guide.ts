@@ -75,9 +75,14 @@ verdict: skipped
 
 A body that opens a \`forge-record\` fence and matches neither is refused at the write door under
 \`record-fence-shape\`, naming what it read and showing a shape that is valid. An info string that
-is not that tag, a fence that is never closed, and a fence whose own tag is contradicted by a tag
-line after it are the three that are refused. None of them is stored silently: a comment meant to
-carry a record either carries one or is told it does not.
+is not that tag, a fence that is never closed, a fence whose own tag is contradicted by a tag line
+after it, and a fence that names no kind at all are the four that are refused. None of them is
+stored silently: a comment meant to carry a record either carries one or is told it does not.
+
+Every fence of a comment is read. Several \`verdict\` fences in one comment are all recorded; one
+of any other kind beside other fences is refused under \`record-fence-several\`. Where one fence
+is refused, the whole comment is, naming that fence (\`fence 2 of 3\`), and nothing of it is
+recorded.
 
 A fence written inside an enclosing fence is that fence's content and opens nothing, so a comment
 quoting either shape as an example stays ordinary prose.

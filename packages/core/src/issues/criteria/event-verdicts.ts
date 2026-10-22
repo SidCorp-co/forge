@@ -1,7 +1,7 @@
 // cm:hack — the verdict dual path (ISS-55, ISS-56): a comment carrying a `forge-record: verdict`
 // fence is a verdict act, so each block is written into `criterion_verdicts` in the comment's
-// transaction and core records each row (`store.ts:recordVerdict`); a block the table cannot hold
-// refuses the whole comment by name. Ends when forge-plugin posts `POST /api/issues/:id/verdicts`
+// transaction and core records each row (`store.ts:recordVerdict`), from every verdict fence the
+// comment holds (ISS-608); a block the table cannot hold refuses the whole comment by name. Ends when forge-plugin posts `POST /api/issues/:id/verdicts`
 // (plugin-followups.md).
 
 import { eq } from 'drizzle-orm';
@@ -82,48 +82,61 @@ function unparsedBlocks(record: ForgeRecord): MessageRefusal[] {
   return out;
 }
 
-/** Write every criterion verdict a `verdict` record names, or refuse naming each block refused. */
+/** Each refusal of one fence, named as that fence where the comment holds several. */
+function named(refusals: readonly MessageRefusal[], fence: string): MessageRefusal[] {
+  return fence === '' ? [...refusals] : refusals.map((r) => ({ ...r, why: `${fence}${r.why}` }));
+}
+
+/**
+ * Write every criterion verdict the `verdict` records name — every fence of a comment, ISS-608 —
+ * or refuse the whole act naming each block refused and the fence it sits in, so nothing of it is
+ * written: a comment recorded with half its verdicts reads as whole. Answers how many each record
+ * wrote, in the order given.
+ */
 export async function recordEventVerdicts(
   tx: Tx,
-  event: { issueId: string; record: ForgeRecord; actor: Actor; commentId: string | null },
-): Promise<number> {
-  const unparsed = unparsedBlocks(event.record);
-  if (unparsed.length > 0) {
-    throw new MessageRefusedError(
-      event.commentId ? 'comment-write' : 'record-event-write',
-      unparsed,
-    );
+  event: {
+    issueId: string;
+    records: readonly { record: ForgeRecord; fence: string }[];
+    actor: Actor;
+    commentId: string | null;
+  },
+): Promise<number[]> {
+  const door = event.commentId ? 'comment-write' : 'record-event-write';
+  const unparsed = event.records.flatMap(({ record, fence }) =>
+    named(unparsedBlocks(record), fence),
+  );
+  if (unparsed.length > 0) throw new MessageRefusedError(door, unparsed);
+  if (event.records.every(({ record }) => criterionBlocksIn(record).length === 0)) {
+    return event.records.map(() => 0);
   }
-  const blocks = criterionBlocksIn(event.record);
-  if (blocks.length === 0) return 0;
   const [issue] = await tx
     .select({ id: issues.id, projectId: issues.projectId })
     .from(issues)
     .where(eq(issues.id, event.issueId))
     .limit(1);
-  if (!issue) return 0;
+  if (!issue) return event.records.map(() => 0);
   const refusals: MessageRefusal[] = [];
-  let written = 0;
-  for (const block of blocks) {
-    const draft = draftFromBlock({ ...block, verdict: block.verdict as string });
-    try {
-      await recordVerdict(tx, {
-        issue,
-        draft,
-        author: authorOfActor(event.actor),
-        commentId: event.commentId,
-      });
-      written += 1;
-    } catch (err) {
-      if (!isRefusal(err)) throw err;
-      refusals.push(asMessageRefusal(err, draft.criterion));
+  const written: number[] = [];
+  for (const { record, fence } of event.records) {
+    let count = 0;
+    for (const block of criterionBlocksIn(record)) {
+      const draft = draftFromBlock({ ...block, verdict: block.verdict as string });
+      try {
+        await recordVerdict(tx, {
+          issue,
+          draft,
+          author: authorOfActor(event.actor),
+          commentId: event.commentId,
+        });
+        count += 1;
+      } catch (err) {
+        if (!isRefusal(err)) throw err;
+        refusals.push(...named([asMessageRefusal(err, draft.criterion)], fence));
+      }
     }
+    written.push(count);
   }
-  if (refusals.length > 0) {
-    throw new MessageRefusedError(
-      event.commentId ? 'comment-write' : 'record-event-write',
-      refusals,
-    );
-  }
+  if (refusals.length > 0) throw new MessageRefusedError(door, refusals);
   return written;
 }

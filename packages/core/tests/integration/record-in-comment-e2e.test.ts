@@ -3,7 +3,8 @@
  * database. A caller that declared `record-route` is refused a fence in a comment and pointed at the
  * store its kind goes to; a caller that declared nothing has its record read and written as the
  * record it is (`issues/record-events/mirror.ts`), or refused by the rule it breaks — never stored
- * as a comment that silently carries no record.
+ * as a comment that silently carries no record. Every fence of a comment is read (ISS-608): several
+ * verdict fences are all recorded, and a fence that cannot be read refuses the whole comment by name.
  */
 
 import { sql } from 'drizzle-orm';
@@ -193,6 +194,130 @@ describe('a fence that carries no record at all', () => {
     expect(why).toContain('records-and-comments');
     expect(why).toContain('either carries one or is told it does not');
     expect(why).toContain('for example: ```forge-record: verdict · contract 1');
+  });
+});
+
+/** One verdict fence in the CLI's shape, the tag on a line after the close. */
+const verdictFence = (n: number, judged = JUDGED): string[] => [
+  `${FENCE}forge-record`,
+  `criterion: ${n}`,
+  'verdict: pass',
+  `commit: ${judged}`,
+  FENCE,
+  '',
+  '`forge-record: verdict · contract 1`',
+  '',
+];
+
+async function verdictsByCriterion(): Promise<number[]> {
+  const held = await rows<{ n: number }>(sql`
+    SELECT c.n FROM criterion_verdicts v JOIN issue_criteria c ON c.id = v.criterion_id
+     WHERE v.issue_id = ${issueId} ORDER BY c.n
+  `);
+  return held.map((r) => Number(r.n));
+}
+
+describe('a comment carrying several record fences (ISS-608)', () => {
+  it('records every verdict fence, not only the first', async () => {
+    const body = ['Three criteria judged.', '', ...[1, 2, 3].flatMap((n) => verdictFence(n))].join(
+      '\n',
+    );
+    const res = await post(body);
+
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    expect(warnings(res).filter((w) => w.startsWith('VERDICT_RECORD_EMPTY'))).toEqual([]);
+    expect(await verdictsByCriterion()).toEqual([1, 2, 3]);
+  });
+
+  it('records both shapes side by side in one comment', async () => {
+    const onTheFence = [
+      `${FENCE}forge-record: verdict · contract 1`,
+      'criterion: 2',
+      'verdict: pass',
+      `commit: ${JUDGED}`,
+      FENCE,
+    ];
+    const res = await post([...verdictFence(1), ...onTheFence].join('\n'));
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    expect(await verdictsByCriterion()).toEqual([1, 2]);
+  });
+
+  it('refuses the whole comment naming the fence that is malformed, and records none of it', async () => {
+    const bad = [`${FENCE}forge-record verdict`, 'criterion: 2', 'verdict: pass', FENCE];
+    const res = await post([...verdictFence(1), ...bad, '', ...verdictFence(3)].join('\n'));
+
+    expect(res.status).toBe(422);
+    expect(ruleOf(res)).toBe('record-fence-shape');
+    expect(String(res.body.detail)).toContain('fence 2 of 3');
+    expect(await stored()).toEqual({ comments: 0, verdicts: 0 });
+  });
+
+  it('refuses the whole comment naming the fence whose verdict core refuses', async () => {
+    const res = await post([...verdictFence(1), ...verdictFence(9)].join('\n'));
+
+    expect(res.status).toBe(422);
+    expect(String(res.body.detail)).toContain('fence 2 of 2');
+    expect(await stored()).toEqual({ comments: 0, verdicts: 0 });
+  });
+
+  it('refuses a later fence that is never closed, naming it', async () => {
+    const open = [`${FENCE}forge-record`, 'criterion: 2', 'verdict: pass'];
+    const res = await post([...verdictFence(1), ...open].join('\n'));
+    expect(res.status).toBe(422);
+    expect(ruleOf(res)).toBe('record-fence-shape');
+    expect(String(res.body.detail)).toContain('fence 2 of 2');
+    expect(await stored()).toEqual({ comments: 0, verdicts: 0 });
+  });
+
+  it('refuses a verdict fence beside a record of another kind, naming the other one', async () => {
+    const baseline = [
+      `${FENCE}forge-record`,
+      'gate: pnpm test',
+      FENCE,
+      '',
+      '`forge-record: baseline · contract 1`',
+    ];
+    const res = await post([...verdictFence(1), ...baseline].join('\n'));
+
+    expect(res.status).toBe(422);
+    expect(ruleOf(res)).toBe('record-fence-several');
+    expect(String(res.body.detail)).toContain('fence 2 of 2 is a `baseline` record');
+    expect(await stored()).toEqual({ comments: 0, verdicts: 0 });
+  });
+
+  it('reads a fence quoted inside another fence as content, not as a second record', async () => {
+    const quoted = ['````', ...verdictFence(2), '````'];
+    const res = await post([...verdictFence(1), ...quoted].join('\n'));
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    expect(await verdictsByCriterion()).toEqual([1]);
+  });
+});
+
+describe('a fence that names no kind (ISS-608)', () => {
+  const kindless = [
+    'Criterion 3 passed.',
+    '',
+    `${FENCE}forge-record`,
+    'criterion: 3',
+    'verdict: pass',
+    `commit: ${JUDGED}`,
+    FENCE,
+  ].join('\n');
+
+  it('is refused by name rather than stored as a verdict nobody reads', async () => {
+    const res = await post(kindless);
+
+    expect(res.status).toBe(422);
+    expect(ruleOf(res)).toBe('record-fence-shape');
+    expect(String(res.body.detail)).toContain('names no kind');
+    expect(await stored()).toEqual({ comments: 0, verdicts: 0 });
+  });
+
+  it('is refused at the edit door the same way', async () => {
+    const written = await post(PLAIN);
+    const res = await edit(String(written.body.id), kindless);
+    expect(res.status).toBe(422);
+    expect(ruleOf(res)).toBe('record-fence-shape');
   });
 });
 

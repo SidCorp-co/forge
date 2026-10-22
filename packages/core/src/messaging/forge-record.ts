@@ -51,14 +51,6 @@ export interface ForgeRecordFault {
   readonly why: string;
 }
 
-/**
- * What a body says about a record: one arm or the other, never both and never neither.
- */
-interface ForgeRecordRead {
-  readonly record: ForgeRecord | null;
-  readonly fault: ForgeRecordFault | null;
-}
-
 const UNREADABLE_INFO =
   'the fence opens a `forge-record` block and carries something after the tag that is not a tag';
 const NEVER_CLOSED = 'the `forge-record` fence is opened and never closed';
@@ -104,12 +96,12 @@ function closes(line: string, fence: string): boolean {
 }
 
 /**
- * The first fence that opens a record block at top level. A fence inside another
+ * The next fence at or after `from` that opens a record block at top level. A fence inside another
  * fence is that fence's content, so an example quoted in prose opens nothing.
  */
-function openerIn(lines: readonly string[]): Opener | null {
+function openerFrom(lines: readonly string[], from: number): Opener | null {
   let open: string | null = null;
-  for (let at = 0; at < lines.length; at += 1) {
+  for (let at = from; at < lines.length; at += 1) {
     const line = lines[at] ?? '';
     if (open) {
       if (closes(line, open)) open = null;
@@ -126,25 +118,26 @@ function openerIn(lines: readonly string[]): Opener | null {
 }
 
 /**
- * Where the block ends, and the tag line that ends it.
+ * Where the block ends, the tag line that ends it, and the line a scan for the next block resumes at.
  */
 function endOf(
   lines: readonly string[],
   starts: readonly number[],
   closed: number,
-): { to: number; tag: { kind: string; contract: number } | null } {
+): { to: number; next: number; tag: { kind: string; contract: number } | null } {
   const endOfLine = (at: number) => (starts[at] ?? 0) + (lines[at] ?? '').length;
   for (let at = closed + 1; at < lines.length; at += 1) {
     const line = lines[at] ?? '';
     if (line.trim() === '') continue;
     const found = TAG.exec(line.trim());
-    if (!found) return { to: endOfLine(closed), tag: null };
+    if (!found) return { to: endOfLine(closed), next: closed + 1, tag: null };
     return {
       to: endOfLine(at),
+      next: at + 1,
       tag: { kind: found[1] as string, contract: Number(found[2]) },
     };
   }
-  return { to: endOfLine(closed), tag: null };
+  return { to: endOfLine(closed), next: closed + 1, tag: null };
 }
 
 /** The key/value pairs the block holds, in the order written. */
@@ -163,41 +156,70 @@ function entriesFrom(lines: readonly string[], from: number, to: number): [strin
   return entries;
 }
 
+/** The line closing the fence `opener` opened, or null where nothing closes it. */
+function closingLine(lines: readonly string[], opener: Opener): number | null {
+  for (let at = opener.at + 1; at < lines.length; at += 1) {
+    if (closes(lines[at] ?? '', opener.fence)) return at;
+  }
+  return null;
+}
+
 /**
- * The fenced block a body carries, or why it carries none although it opened one.
+ * What one opener yields, a block or why it carries none, and the line the scan resumes at: null
+ * where the fence is never closed, since everything below it is its content.
  */
-function blockIn(body: string): { block: Block | null; fault: ForgeRecordFault | null } {
-  const raw = body.split('\n');
-  const lines = raw.map(typed);
-  const opener = openerIn(lines);
-  if (!opener) return { block: null, fault: null };
-  const starts = offsets(raw);
+function blockAt(
+  lines: readonly string[],
+  starts: readonly number[],
+  opener: Opener,
+): { block: Block | null; fault: ForgeRecordFault | null; next: number | null } {
   const quote = lines[opener.at] as string;
+  const closed = closingLine(lines, opener);
+  if (closed === null) return { block: null, fault: { quote, why: NEVER_CLOSED }, next: null };
   const rest = opener.info.trim();
   const onFence = rest === '' ? null : TAG_ON_FENCE.exec(rest);
-  if (rest !== '' && !onFence) return { block: null, fault: { quote, why: UNREADABLE_INFO } };
-  const fromFence = onFence ? { kind: onFence[1] as string, contract: Number(onFence[2]) } : null;
-  for (let at = opener.at + 1; at < lines.length; at += 1) {
-    if (!closes(lines[at] ?? '', opener.fence)) continue;
-    const end = endOf(lines, starts, at);
-    if (
-      fromFence &&
-      end.tag &&
-      (end.tag.kind !== fromFence.kind || end.tag.contract !== fromFence.contract)
-    ) {
-      return { block: null, fault: { quote, why: TAGS_DISAGREE } };
-    }
-    return {
-      block: {
-        entries: entriesFrom(lines, opener.at + 1, at),
-        tag: fromFence ?? end.tag,
-        at: starts[opener.at] ?? 0,
-        to: end.to,
-      },
-      fault: null,
-    };
+  if (rest !== '' && !onFence) {
+    return { block: null, fault: { quote, why: UNREADABLE_INFO }, next: closed + 1 };
   }
-  return { block: null, fault: { quote, why: NEVER_CLOSED } };
+  const fromFence = onFence ? { kind: onFence[1] as string, contract: Number(onFence[2]) } : null;
+  const end = endOf(lines, starts, closed);
+  if (
+    fromFence &&
+    end.tag &&
+    (end.tag.kind !== fromFence.kind || end.tag.contract !== fromFence.contract)
+  ) {
+    return { block: null, fault: { quote, why: TAGS_DISAGREE }, next: end.next };
+  }
+  return {
+    block: {
+      entries: entriesFrom(lines, opener.at + 1, closed),
+      tag: fromFence ?? end.tag,
+      at: starts[opener.at] ?? 0,
+      to: end.to,
+    },
+    fault: null,
+    next: end.next,
+  };
+}
+
+/**
+ * Every record fence a body opens at top level, in the order written, each a block or why it
+ * carries none. A fence never closed ends the scan: what follows it is its content.
+ */
+function blocksIn(body: string): { block: Block | null; fault: ForgeRecordFault | null }[] {
+  const raw = body.split('\n');
+  const lines = raw.map(typed);
+  const starts = offsets(raw);
+  const out: { block: Block | null; fault: ForgeRecordFault | null }[] = [];
+  let from: number | null = 0;
+  while (from !== null) {
+    const opener = openerFrom(lines, from);
+    if (!opener) break;
+    const { block, fault, next } = blockAt(lines, starts, opener);
+    out.push({ block, fault });
+    from = next;
+  }
+  return out;
 }
 
 /** How far past the budget a value runs, counted in code points as the caps are. */
@@ -223,10 +245,32 @@ function recordFrom(block: Block): ForgeRecord {
   };
 }
 
-/** Both arms at once; a body that opened no fence has neither, which is most comments. */
-export function readForgeRecord(body: string | null | undefined): ForgeRecordRead {
-  const { block, fault } = blockIn(String(body ?? ''));
-  return { record: block ? recordFrom(block) : null, fault };
+/**
+ * One record fence of a body, read: `index` counts the body's top-level fences from 1, so a
+ * refusal can name which one it means.
+ */
+export interface ForgeRecordRead {
+  readonly index: number;
+  readonly record: ForgeRecord | null;
+  readonly fault: ForgeRecordFault | null;
+}
+
+/** Every record fence a body opens, read; a body that opened none answers `[]`, which is most. */
+export function readForgeRecords(body: string | null | undefined): ForgeRecordRead[] {
+  return blocksIn(String(body ?? '')).map(({ block, fault }, at) => ({
+    index: at + 1,
+    record: block ? recordFrom(block) : null,
+    fault,
+  }));
+}
+
+/**
+ * The first fence's reading, for the read paths that draw one record per comment (the thread, the
+ * park view, the one-time backfill). The write door reads every fence (`readForgeRecords`).
+ */
+export function readForgeRecord(body: string | null | undefined): Omit<ForgeRecordRead, 'index'> {
+  const [first] = readForgeRecords(body);
+  return { record: first?.record ?? null, fault: first?.fault ?? null };
 }
 
 export function parseForgeRecord(body: string | null | undefined): ForgeRecord | null {

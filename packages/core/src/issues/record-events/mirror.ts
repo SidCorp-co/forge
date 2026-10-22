@@ -8,7 +8,8 @@ import { isKernelOnlyRecordKind, isRecordEventKind } from '@forge/contracts/reco
 import { and, eq } from 'drizzle-orm';
 import type { Tx } from '../../db/client.js';
 import { activityLog } from '../../db/schema-activity.js';
-import { parseForgeRecord } from '../../messaging/forge-record.js';
+import { readForgeRecords } from '../../messaging/forge-record.js';
+import { fenceNamed } from '../../messaging/record-screen.js';
 import type { Actor } from '../activity.js';
 import { recordEventVerdicts } from '../criteria/event-verdicts.js';
 import { mintRecordQuestion } from './question-record.js';
@@ -23,31 +24,41 @@ interface MirroredComment {
 
 /**
  * Write the event a comment's record stands for, or return the warning owed where it is stored as
- * prose only: no kind, a kind outside the set, a kind core writes, or a verdict fence naming none.
+ * prose only: a kind outside the set, a kind core writes, or a verdict fence naming none (a fence
+ * naming no kind is refused at the door, `messaging/record-screen.ts:untaggedFenceRefusal`).
+ * A comment holding several fences reaches here only where every one is a verdict
+ * (`comments/screen.ts:screenRecordFence`), and each one is recorded (ISS-608).
  */
 export async function mirrorCommentRecord(
   comment: MirroredComment,
   actor: Actor,
   tx: Tx,
 ): Promise<string[]> {
-  const record = parseForgeRecord(comment.body);
-  if (!record) return [];
+  const reads = readForgeRecords(comment.body).flatMap(({ index, record }) =>
+    record ? [{ index, record }] : [],
+  );
+  const of = reads.length;
+  const [first] = reads;
+  if (!first) return [];
+  const { record } = first;
+  if (of > 1 || record.kind === 'verdict') {
+    const written = await recordEventVerdicts(tx, {
+      issueId: comment.issueId,
+      records: reads.map(({ index, record: r }) => ({ record: r, fence: fenceNamed(index, of) })),
+      actor,
+      commentId: comment.id,
+    });
+    return reads
+      .filter((_, at) => written[at] === 0)
+      .map(
+        ({ index }) =>
+          `VERDICT_RECORD_EMPTY: ${fenceNamed(index, of)}this comment's \`forge-record: verdict\` names no criterion with a verdict, so no verdict was recorded from it and no gate will read one — write \`criterion: <n>\` and \`verdict: pass | short | fail | skipped\` in each block, or record it with \`POST /api/issues/:id/verdicts\``,
+      );
+  }
   if (!isRecordEventKind(record.kind)) {
     const named = record.kind ? `kind \`${record.kind}\`` : 'no kind';
     return [
       `RECORD_NOT_TYPED: this comment's \`forge-record\` carries ${named}, so no record event was written for it and no gate will read it — name a record kind on the fence (\`forge-record: <kind> · contract <n>\`), or write it to \`POST /api/issues/:id/events\``,
-    ];
-  }
-  if (record.kind === 'verdict') {
-    const written = await recordEventVerdicts(tx, {
-      issueId: comment.issueId,
-      record,
-      actor,
-      commentId: comment.id,
-    });
-    if (written > 0) return [];
-    return [
-      "VERDICT_RECORD_EMPTY: this comment's `forge-record: verdict` names no criterion with a verdict, so no verdict was recorded and no gate will read one — write `criterion: <n>` and `verdict: pass | short | fail | skipped` in each block, or record it with `POST /api/issues/:id/verdicts`",
     ];
   }
   if (isKernelOnlyRecordKind(record.kind)) {
