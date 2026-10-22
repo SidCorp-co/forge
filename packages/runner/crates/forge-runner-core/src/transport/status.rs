@@ -300,8 +300,10 @@ fn unread_body(e: &reqwest::Error) -> String {
     // A body the connection cut short reaches reqwest as a decode error too, and "did not decode"
     // said it was malformed when it was missing (ISS-1421 r23).
     let cause = innermost(e).unwrap_or_default().to_lowercase();
-    let cut_short = cause.contains("end of file") || cause.contains("incomplete");
-    let what = if e.is_decode() && !cut_short {
+    if cause.contains("end of file") || cause.contains("incomplete") {
+        return "the body did not arrive whole".to_string();
+    }
+    let what = if e.is_decode() {
         "the body did not decode"
     } else {
         "the body did not arrive whole"
@@ -355,6 +357,10 @@ pub(crate) fn reached_nothing_because(
         at = err.source();
     }
     let cause = innermost(e).unwrap_or_default().to_lowercase();
+    // hyper's own words for a peer that closed before answering, which carries no io kind.
+    if cause.contains("connection closed before message completed") {
+        return "the connection was cut";
+    }
     if cause.contains("dns")
         || cause.contains("lookup")
         || cause.contains("name or service not known")

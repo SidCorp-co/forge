@@ -155,9 +155,10 @@ pub async fn run(client: &CoreClient, req: &Request) -> Response {
         .and_then(|v| v.to_str().ok())
         .map(str::to_string);
     // An answer cut off mid-body is said, never printed as an empty success.
+    let answered_at = resp.url().clone();
     let bytes = match resp.bytes().await {
         Ok(b) => b.to_vec(),
-        Err(e) => return unreached(&e, Some(status)),
+        Err(e) => return unreached(&e.with_url(answered_at), Some(status)),
     };
     let stdout_is_text = reads_as_text(content_type.as_deref(), &bytes);
     let text = String::from_utf8_lossy(&bytes).into_owned();
@@ -350,6 +351,30 @@ mod tests {
         assert!(!r.stderr.contains("error sending request"), "{}", r.stderr);
     }
 
+    /// A peer that accepts and closes before answering was said only as "the request failed".
+    #[tokio::test]
+    async fn a_core_that_closes_before_answering_is_said_as_a_cut_connection() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let (mut sock, _) = listener.accept().await.unwrap();
+            let mut buf = vec![0u8; 8192];
+            let _ = sock.read(&mut buf).await;
+            drop(sock);
+        });
+        let c = CoreClient::new(format!("http://{addr}"), "tok".to_string());
+        let r = run(&c, &req("version")).await;
+        let failure: Value = serde_json::from_str(&r.stderr).unwrap();
+        assert!(
+            failure["message"]
+                .as_str()
+                .unwrap()
+                .contains(&format!("at http://{addr}, as the connection was cut.")),
+            "{}",
+            r.stderr
+        );
+    }
+
     /// An answer whose body is cut off was printed as an empty success with exit 0.
     #[tokio::test]
     async fn an_answer_cut_off_mid_body_is_a_failure_that_says_so() {
@@ -370,10 +395,9 @@ mod tests {
         let failure: Value = serde_json::from_str(&r.stderr).unwrap();
         assert_eq!(failure["status"], 200);
         let said = failure["message"].as_str().unwrap();
-        assert!(
-            said.starts_with("GET /api/issues: Forge")
-                && said.contains("answered, but the body did not arrive whole"),
-            "{said}"
+        assert_eq!(
+            said,
+            format!("GET /api/issues: Forge at http://{addr} answered, but the body did not arrive whole.")
         );
     }
 
