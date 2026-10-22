@@ -1,6 +1,10 @@
 // C4-5: a reason, note or why field's cap is one of the named bounds in `@forge/contracts/comments`
 // (REASON_TEXT_MAX and the shorter ones beside it, each priced there), never a number written at
 // the field: 55 caps once read as seven literals, ten of them restating REASON_TEXT_MAX's value.
+// The scan reads src by path, not by import, so it declares the trees it walks (dev.287: a steward
+// `why` capped at a literal 600 reached dev unselected and went red only in the whole suite).
+// @direct-test-of packages/core/src/
+// @direct-test-of packages/contracts/src/
 
 import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';

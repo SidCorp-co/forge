@@ -1,6 +1,7 @@
 // The steward's doors (REQ-48 BC-1, BC-12): an item's runs, its acts, and the undo of one act, which a
 // holder of project.write asks for and the steward account executes.
 
+import { REASON_SENTENCE_MAX } from '@forge/contracts/comments';
 import { STEWARD_MERGE_SHARES_MAX } from '@forge/contracts/steward';
 import { Hono } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
@@ -72,7 +73,7 @@ const decisionBody = zValidator(
       .min(2)
       .max(8),
     recommendedOptionId: z.string().trim().min(1).max(100),
-    why: z.string().trim().min(1).max(600),
+    why: z.string().trim().min(1).max(REASON_SENTENCE_MAX),
     basis: z.string().trim().min(1).max(400),
   }),
   invalid(
