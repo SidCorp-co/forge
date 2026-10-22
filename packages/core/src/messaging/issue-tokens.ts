@@ -46,13 +46,12 @@ export function extractIssueClaims(reply: string, prefixes: readonly string[] = 
 const ABSENT_AFTER =
   /^[*_`"”’)\]]*\s+(?:(?:is not|isn't|is no longer|does not|doesn't)\s+(?:exist\b|(?:on|in|part of|held (?:by|on|in))\s+(?:[\w’'-]+\s+){0,5}?(?:tracker|project)\b)|(?:was not|wasn't|could not be|couldn't be|cannot be|can't be)\s+found\b)/i;
 
-/** Whether the clause naming a key is conditional: an "if" in it, or opening the clause after a comma. */
+/** Whether a key's clause is conditional: an "if" before its end, or opening the clause after a comma. */
 const conditional = (sentence: string, at: number) => {
   const cuts = [...sentence.matchAll(/[,;:—–]\s/g)].map((m) => m.index ?? 0);
-  const from = Math.max(0, ...cuts.filter((c) => c < at));
   const to = Math.min(sentence.length, ...cuts.filter((c) => c >= at));
   return (
-    CONDITIONAL.test(sentence.slice(from, to)) ||
+    CONDITIONAL.test(sentence.slice(0, to)) ||
     /^[,—–]\s*(?:only\s+)?(?:if|unless|in case|provided|assuming)\b/i.test(sentence.slice(to))
   );
 };

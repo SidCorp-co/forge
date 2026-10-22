@@ -95,6 +95,14 @@ describe('a reply saying a key is not on the project', () => {
     expect(room('ISS-1 is not on this project if the import failed.').ok).toBe(true);
     expect(room('ISS-1 is not on this project, if the import failed.').ok).toBe(true);
     expect(room('ISS-1 is not on this project, unless it was moved.').ok).toBe(true);
+    for (const lead of ['If the import failed,', 'Assuming the import failed,']) {
+      expect(keyMentions(`${lead} ISS-1 is not on this project.`, ['ISS'])[0]?.absent).toBe(false);
+      expect(room(`${lead} ISS-1 is not on this project.`).ok).toBe(true);
+      expect(room(`${lead} ISS-999 is not on this project.`).ok).toBe(false);
+      expect(
+        ISSUE_REFERENCES_EXIST.check(`${lead} ISS-999 is not on this project.`, facts),
+      ).toHaveLength(1);
+    }
     for (const lead of ['Assuming', 'Provided that']) {
       expect(
         keyMentions(`${lead} ISS-1 is not on this project, I can file it.`, ['ISS'])[0]?.absent,
