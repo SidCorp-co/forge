@@ -17,6 +17,11 @@ export interface ConversationProgress {
    * The blocks to STORE beside a delivered reply, given the text that went out.
    */
   blocksForRecord: (deliveredText: string) => ContentBlock[] | null;
+  /**
+   * The draft the reply screen withdrew in this turn, stored beside the reply that replaced it so the
+   * room still says so after a reload (ISS-1229 r36, judge-97); null where nothing was withdrawn.
+   */
+  withdrawnDraft: () => string | null;
   /** The one id the frames, the delivered message and the stored row all share. */
   entryId: string;
   /**
@@ -53,6 +58,7 @@ export function startConversationProgress(args: {
   let lastFlush = 0;
   let rev = 0;
   let closed = false;
+  let withdrawn: string | null = null;
   let tail: Promise<unknown> = Promise.resolve();
 
   /** The entry as it stands right now, detached from the accumulator that keeps folding into it. */
@@ -115,6 +121,8 @@ export function startConversationProgress(args: {
 
     blocksForRecord: (deliveredText) => blocksFor(deliveredText),
 
+    withdrawnDraft: () => withdrawn,
+
     onTurnEvent: (event) => {
       acc.apply(event);
       const boundary = event.type === 'tool_call' || event.type === 'tool_result';
@@ -132,6 +140,7 @@ export function startConversationProgress(args: {
         content: settled,
         blocks: blocksFor(settled) ?? [{ type: 'text', text: settled }],
       };
+      if (screenReplaced) withdrawn = draft;
       send({ entry: corrected, ...(screenReplaced ? { replaced: { draft } } : {}) });
     },
   };

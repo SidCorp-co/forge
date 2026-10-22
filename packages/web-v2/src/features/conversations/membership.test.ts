@@ -100,10 +100,19 @@ describe("emptyRoomState", () => {
     expect(emptyRoomState(undefined, { canPost: true })).toBeNull();
   });
 
-  it("names the agent that cannot answer and the project it lost its role on", () => {
+  // r36, judge-97: at 390 the same can't-answer sentence stood three times; the empty room points to the
+  // one place that says why instead of saying it again.
+  it("says no agent can answer and points to where why is said: the box for a poster, About for a reader", () => {
     expect(emptyRoomState({ participants: [agent(false)], scopeProjects: [desk] }, { canPost: true })).toEqual({
       title: "No agent here can answer",
-      message: "@desk can't answer: it no longer holds a role on Desk, and answers again once it does.",
+      message: "Why is said above the message box.",
+    });
+    expect(
+      emptyRoomState({ participants: [agent(false)], scopeProjects: [desk] }, { canPost: false, projectName: "Desk" }),
+    ).toEqual({
+      title: "No agent here can answer",
+      message:
+        "You can read this room, not post in it: you hold the viewer role on Desk. Why is said in this room's About line, at the top.",
     });
   });
 

@@ -44,7 +44,7 @@ import {
   useWithdrawnDrafts,
 } from "../hooks";
 import { useComposingMark, useMessageBoxFocus } from "../composing";
-import { composerRefusal, emptyRoomState, NO_AGENT_WILL_ANSWER, noAgentAnswers } from "../membership";
+import { composerRefusal, draftHeading, emptyRoomState, NO_AGENT_WILL_ANSWER, noAgentAnswers } from "../membership";
 import { isRoomGone, type KeptCopy, ROOM_DELETED_TITLE, roomDeletedLine, unsentLine } from "../room-gone";
 import { type ConversationMode, type OutboxMessage, conversationTitle } from "../types";
 import { ConversationModeControl, modePlaceholder } from "./mode-control";
@@ -341,7 +341,7 @@ export function ConversationChat({
       <div className="flex items-center gap-3">
         <div className="min-w-0 flex-1">
           <PageTitle className="fg-h2 truncate">
-            {roomQ.data ? conversationTitle(roomQ.data, messages[0]?.content) : "New conversation"}
+            {roomQ.data ? conversationTitle(roomQ.data, messages[0]?.content) : draftHeading(resolvedId, canWrite)}
           </PageTitle>
         </div>
         {onOpenHistory && (

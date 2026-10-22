@@ -34,6 +34,8 @@ export interface DeliveredReply {
    * Which decision this delivery WAS, where it was not an ordinary answer.
    */
   decision?: string | undefined;
+  /** The draft the reply screen withdrew before this reply went out (ISS-1229 r36). */
+  withdrawnDraft?: string | undefined;
 }
 
 /**
@@ -49,13 +51,12 @@ export async function recordDeliveredReply(reply: DeliveredReply): Promise<void>
       ...(reply.blocks && reply.blocks.length > 0 ? { blocks: reply.blocks } : {}),
       authorUserId: await handleForProject(reply.conversationId, reply.projectId),
       externalId: reply.receipt.messageId,
-      deliveryProof: reply.deliveryKey
-        ? {
-            ...reply.receipt,
-            deliveryKey: reply.deliveryKey,
-            ...(reply.decision ? { decision: reply.decision } : {}),
-          }
-        : reply.receipt,
+      deliveryProof: {
+        ...reply.receipt,
+        ...(reply.deliveryKey ? { deliveryKey: reply.deliveryKey } : {}),
+        ...(reply.deliveryKey && reply.decision ? { decision: reply.decision } : {}),
+        ...(reply.withdrawnDraft ? { withdrawnDraft: reply.withdrawnDraft } : {}),
+      },
     });
   } catch (err) {
     logger.warn(

@@ -71,6 +71,8 @@ export interface StoredConversationMessage {
   blocks: ContentBlock[] | null;
   images: ConversationImage[];
   deliveryProof: unknown;
+  /** The draft the reply screen withdrew before this reply, read off its delivery proof (ISS-1229 r36). */
+  withdrawnDraft: string | null;
   silenceReason: string | null;
   createdAt: Date;
 }
@@ -391,6 +393,12 @@ export async function countMessages(
  * must authorize each row before it knows what a page contains.
  */
 
+/** The withdrawn draft a delivery proof carries, or null. */
+function withdrawnDraftOf(proof: unknown): string | null {
+  const draft = proof && typeof proof === 'object' ? (proof as { withdrawnDraft?: unknown }).withdrawnDraft : null;
+  return typeof draft === 'string' && draft.trim() !== '' ? draft : null;
+}
+
 function toStored(row: typeof conversationMessages.$inferSelect): StoredConversationMessage {
   return {
     id: row.id,
@@ -405,6 +413,7 @@ function toStored(row: typeof conversationMessages.$inferSelect): StoredConversa
     blocks: asBlocks(row.blocks),
     images: asImages(row.images),
     deliveryProof: row.deliveryProof ?? null,
+    withdrawnDraft: withdrawnDraftOf(row.deliveryProof),
     silenceReason: row.silenceReason,
     createdAt: row.createdAt,
   };

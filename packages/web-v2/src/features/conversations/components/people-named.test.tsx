@@ -23,6 +23,7 @@ vi.mock("../hooks", () => ({
   useAddPerson: () => ({ mutate: vi.fn(), reset: vi.fn(), isPending: false, isError: false }),
   useProjectCandidates: () => ({ isLoading: false, isError: false, data: { people, handles: [] } }),
   useOpenConversation: () => ({ mutate: vi.fn(), isPending: false, isError: false }),
+  useRoomOpeners: () => ({ data: { openers: [] }, isLoading: false }),
   useRemoveParticipant: () => ({ mutate: removeMutate, isPending: false, isError: false }),
   useAddHandle: () => ({ mutate: vi.fn(), reset: vi.fn(), isPending: false, isError: false }),
 }));

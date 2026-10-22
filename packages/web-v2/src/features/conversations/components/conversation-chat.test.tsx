@@ -582,11 +582,17 @@ describe("an empty room", () => {
     expect(emptyPane().getByText("Start a conversation")).toBeInTheDocument();
   });
 
-  it("says no agent here can answer, naming it and why, where its only agent lost its role", () => {
+  // r36, judge-97: at 390 the same sentence stood in the About line, the empty room and above the box.
+  const whySaid = () => screen.queryAllByText(/@desk can't answer: it no longer holds a role on Desk/);
+
+  it("says no agent here can answer, and why once, above the message box, where its only agent lost its role", () => {
     room = detail({ participants: [agent({ reachable: false })], scopeProjects: [desk], scope: ["p1"] });
     open();
     expect(emptyPane().getByText("No agent here can answer")).toBeInTheDocument();
-    expect(emptyPane().getByText(/@desk can't answer: it no longer holds a role on Desk/)).toBeInTheDocument();
+    expect(emptyPane().getByText("Why is said above the message box.")).toBeInTheDocument();
+    expect(whySaid()).toHaveLength(1);
+    expect(within(screen.getByTestId("composer-no-answer")).getByText(/@desk can't answer/)).toBeInTheDocument();
+    expect(within(screen.getByTestId("scope-notice")).getByText("This room stays about Desk while @desk is in it.")).toBeInTheDocument();
     expect(emptyPane().queryByText("Start a conversation")).not.toBeInTheDocument();
     expect(emptyPane().queryByText(/Ask the agent anything/)).not.toBeInTheDocument();
   });
@@ -604,7 +610,12 @@ describe("an empty room", () => {
     });
     open();
     expect(emptyPane().getByText("No agent here can answer")).toBeInTheDocument();
-    expect(emptyPane().getByText(/@desk can't answer: it no longer holds a role on Desk, and answers again once it does\..*@ops can't answer: it no longer holds a role on Ops, and answers again once it does\./)).toBeInTheDocument();
+    // Two projects refuse the box itself, so About is where why is said, once for each agent.
+    expect(emptyPane().getByText("Why is said in this room's About line, at the top.")).toBeInTheDocument();
+    const about = within(screen.getByTestId("scope-notice"));
+    expect(about.getByText(/^@desk can't answer: it no longer holds a role on Desk\./)).toBeInTheDocument();
+    expect(about.getByText(/^@ops can't answer: it no longer holds a role on Ops\./)).toBeInTheDocument();
+    expect(screen.queryAllByText(/can't answer: it no longer holds a role/)).toHaveLength(2);
   });
 
   it("keeps the invitation where one agent of two can still answer", () => {
@@ -627,12 +638,18 @@ describe("an empty room", () => {
     expect(emptyPane().queryByText(/Ask the agent anything/)).not.toBeInTheDocument();
   });
 
-  it("tells a viewer both, where no agent can answer either", () => {
+  it("tells a viewer both, and why no agent can answer once, in the About line, where no agent can answer either", () => {
     projectRole = "viewer";
     room = detail({ participants: [agent({ reachable: false })], scopeProjects: [desk], scope: ["p1"] });
     open();
     expect(emptyPane().getByText("No agent here can answer")).toBeInTheDocument();
-    expect(emptyPane().getByText(/@desk can't answer: it no longer holds a role on Desk, and answers again once it does\. You can read this room, not post in it/)).toBeInTheDocument();
+    expect(
+      emptyPane().getByText(
+        "You can read this room, not post in it: you hold the viewer role on Desk. Why is said in this room's About line, at the top.",
+      ),
+    ).toBeInTheDocument();
+    expect(whySaid()).toHaveLength(1);
+    expect(within(screen.getByTestId("scope-notice")).getByText(/@desk can't answer: it no longer holds a role on Desk/)).toBeInTheDocument();
   });
 
   it("does not invite a conversation in a room whose message box is refused for spanning two projects", () => {
@@ -765,3 +782,29 @@ describe("a room no agent can answer, and a room its reader cannot post in", () 
   });
 });
 
+
+// ISS-1229 r36, judge-97: a viewer-only reader pressed Ask agent and the panel was headed New
+// conversation over a line saying they could only read.
+describe("the agent panel's heading before a room is open", () => {
+  function draft() {
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ConversationChat projectId="p1" />
+      </QueryClientProvider>,
+    );
+  }
+
+  it("is Conversations for a reader who only views the project, never New conversation", () => {
+    projectRole = "viewer";
+    room = undefined;
+    draft();
+    expect(screen.getByRole("heading", { name: "Conversations" })).toBeInTheDocument();
+    expect(screen.queryByText("New conversation")).not.toBeInTheDocument();
+  });
+
+  it("is New conversation for a reader who may start one", () => {
+    room = undefined;
+    draft();
+    expect(screen.getByRole("heading", { name: "New conversation" })).toBeInTheDocument();
+  });
+});

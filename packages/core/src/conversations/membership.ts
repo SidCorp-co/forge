@@ -344,6 +344,62 @@ export async function addableHandles(
   return out.sort((a, b) => a.handle.localeCompare(b.handle));
 }
 
+/** A project a room could be opened on, the agent it would start with, and whether that agent answers. */
+export interface RoomOpener {
+  projectId: string;
+  handle: string;
+  reachable: boolean;
+}
+
+/**
+ * Every project this caller may open a room on (the member role or above, not archived), each with the
+ * handle of its own agent and whether that agent still holds its role there, so a room that could only
+ * be refused is marked before it is picked (ISS-1229 r36, judge-97). An agent not minted yet answers.
+ */
+export async function roomOpeners(
+  actorUserId: string,
+  tx: Executor = defaultDb,
+): Promise<RoomOpener[]> {
+  const [byOrg, byProject] = await Promise.all([
+    tx
+      .select({ id: projects.id, slug: projects.slug, orgId: projects.orgId })
+      .from(projects)
+      .innerJoin(
+        organizationMembers,
+        and(
+          eq(organizationMembers.orgId, projects.orgId),
+          eq(organizationMembers.userId, actorUserId),
+        ),
+      )
+      .where(isNull(projects.archivedAt)),
+    tx
+      .select({ id: projects.id, slug: projects.slug, orgId: projects.orgId })
+      .from(projects)
+      .innerJoin(
+        projectMembers,
+        and(eq(projectMembers.projectId, projects.id), eq(projectMembers.userId, actorUserId)),
+      )
+      .where(isNull(projects.archivedAt)),
+  ]);
+  const seen = new Set<string>();
+  const out: RoomOpener[] = [];
+  for (const project of [...byOrg, ...byProject]) {
+    if (seen.has(project.id)) continue;
+    seen.add(project.id);
+    const access = await effectiveProjectRole(actorUserId, project.id);
+    if (!projectRoleAtLeast(access?.role ?? null, 'member')) continue;
+    const derived = handleNameForProject(project.slug, project.id);
+    const opening = await existingProjectHandle(tx, project.id);
+    if (opening) {
+      out.push({ projectId: project.id, handle: opening.handle ?? derived, reachable: true });
+      continue;
+    }
+    const holder = await agentHoldingHandle(tx, project.orgId, derived);
+    out.push({ projectId: project.id, handle: derived, reachable: !holder || holder.holdsARole });
+  }
+  return out;
+}
+
 /**
  * The projects of the room's organization whose agent this caller cannot add, for holding less than a
  * member role on them: named where the caller holds the viewer role, which already shows them the

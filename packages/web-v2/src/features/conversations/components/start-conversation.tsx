@@ -17,7 +17,7 @@ import { useAuth } from "@/providers/auth-provider";
 import { Button, Checkbox, ErrorState, Icon, Select, Spinner } from "@/design";
 import { useOrgScopedProjects } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
-import { useOpenConversation, useProjectCandidates } from "../hooks";
+import { useOpenConversation, useProjectCandidates, useRoomOpeners } from "../hooks";
 import { cannotAnswerReason, roomOpeningClaims, startsRooms } from "../membership";
 import type { ConversationProject, HandleCandidate } from "../types";
 
@@ -28,7 +28,12 @@ const sameHandle = (a: PickedHandle, b: PickedHandle) =>
   a.projectId === b.projectId && a.userId === b.userId;
 
 export function StartConversation({ onStarted }: { onStarted: (id: string, projectId: string) => void }) {
-  const { projects: visible, isLoading } = useOrgScopedProjects();
+  const { projects: visible, isLoading: projectsLoading } = useOrgScopedProjects();
+  // Whose agent can answer is read before anything is offered: a project whose agent lost its role is
+  // marked as Add an agent marks it, and cannot be picked (ISS-1229 r36, judge-97).
+  const openersQ = useRoomOpeners(visible.some((p) => startsRooms(p.role)));
+  const isLoading = projectsLoading || openersQ.isLoading;
+  const opener = (id: string) => openersQ.data?.openers.find((o) => o.projectId === id);
   // A project the reader only views is not offered: core refuses the room it would open (judge-95).
   const projects = visible.filter((p) => startsRooms(p.role));
   const onlyViews = projects.length === 0 && visible.length > 0;
@@ -100,7 +105,12 @@ export function StartConversation({ onStarted }: { onStarted: (id: string, proje
           </label>
           <Select
             id="conversations-new-project"
-            options={projects.map((p) => ({ value: p.id, label: p.name }))}
+            options={projects.map((p) => {
+              const agent = opener(p.id);
+              return agent && !agent.reachable
+                ? { value: p.id, label: p.name, detail: `@${agent.handle} can't answer. ${cannotAnswerReason(p.name)}`, disabled: true }
+                : { value: p.id, label: p.name };
+            })}
             value={projectId}
             onChange={(v) => {
               setProjectId(v);

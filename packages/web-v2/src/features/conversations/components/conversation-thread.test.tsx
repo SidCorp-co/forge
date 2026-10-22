@@ -287,3 +287,29 @@ describe("a reply the reply check withdrew", () => {
     expect(screen.getByText("the withdrawn draft")).toBeInTheDocument();
   });
 });
+
+// ISS-1229 r36, judge-97: after a reload the line was gone, because the draft lived only in the socket's
+// cache; it is now stored with the reply that replaced it.
+describe("a withdrawn reply read back after a reload", () => {
+  it("still says once, plainly, that a reply was withdrawn, its text under technical details", () => {
+    render(
+      <ConversationThread
+        messages={[
+          said({ id: "a1", role: "assistant", authorLabel: null, content: "The answer", withdrawnDraft: "the stored draft" }),
+        ]}
+        windows={[]}
+      />,
+    );
+    expect(screen.getByTestId("thread-reply-withdrawn")).toHaveTextContent(
+      "A reply was withdrawn by the reply check and answered again below.",
+    );
+    expect(screen.queryByText("the stored draft")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Technical details/ }));
+    expect(screen.getByText("the stored draft")).toBeInTheDocument();
+  });
+
+  it("says nothing of a withdrawal for a reply the check let through", () => {
+    render(<ConversationThread messages={[said({ id: "a2", role: "assistant", authorLabel: null, content: "Fine", withdrawnDraft: null })]} windows={[]} />);
+    expect(screen.queryByTestId("thread-reply-withdrawn")).toBeNull();
+  });
+});

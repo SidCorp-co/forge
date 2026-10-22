@@ -32,6 +32,8 @@ export interface TopBarProps {
   onAskAgent?: () => void;
   /** Highlights the Ask-agent action as active while the chat dock is open. */
   askAgentActive?: boolean;
+  /** What the agent action is called: "Ask agent", or what the panel offers a reader who may only read. */
+  askAgentLabel?: string;
   /** Opens the mobile nav drawer. Renders a hamburger button below `md`. */
   onMenu?: () => void;
   /** Global display density. Renders a Comfortable/Compact toggle when set. */
@@ -52,6 +54,7 @@ export function TopBar({
   onNewIssue,
   onAskAgent,
   askAgentActive = false,
+  askAgentLabel = "Ask agent",
   onMenu,
   density,
   onDensityChange,
@@ -130,11 +133,11 @@ export function TopBar({
             size="sm"
             icon="agent"
             onClick={onAskAgent}
-            aria-label="Ask agent"
+            aria-label={askAgentLabel}
             className="hidden md:inline-flex"
           >
             {/* Below md, Chat lives on the bottom nav (ISS-681) — this action is desktop-only there. */}
-            <span className="hidden sm:inline">Ask agent</span>
+            <span className="hidden sm:inline">{askAgentLabel}</span>
           </Button>
         )}
         {/* Icon-only below sm so the header doesn't wrap at 375px (ISS-308 C2). */}

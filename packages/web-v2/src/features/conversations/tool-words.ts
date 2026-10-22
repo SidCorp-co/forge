@@ -218,9 +218,30 @@ function filedKey(tool: ToolCallData): string | null {
 
 const shortened = (line: string) => (line.length > REASON_CHARS ? `${line.slice(0, REASON_CHARS).trimEnd()}…` : line);
 
-const firstSentence = (paragraph: string) => {
-  const line = paragraph.trim().split("\n")[0]?.trim() ?? "";
-  return /^(.+?[.!?])(?:\s|$)/.exec(line)?.[1] ?? line;
+/** A paragraph's sentences, wherever its lines break. */
+const sentencesOf = (paragraph: string) =>
+  paragraph
+    .replace(/\s*\n\s*/g, " ")
+    .split(/(?<=[.!?])\s+/)
+    .map((x) => x.trim())
+    .filter(Boolean);
+
+/**
+ * A sentence that says what would put the refusal right: one that tells the caller what to do, where the
+ * values it takes are, or what is open instead (ISS-1229 r36, judge-97).
+ */
+const REMEDY_LEAD =
+  /^(?:add|answer|ask|attach|call|change|check|choose|claim|close|drop|file|fix|give|include|keep|list|log|mark|move|name|open|pass|pick|provide|put|quote|read|remove|rename|reopen|re-?run|re-?send|retry|run|say|search|see|send|set|shorten|sign|split|start|supply|take|try|unarchive|use|wait|write)\b/i;
+const isRemedy = (sentence: string) =>
+  REMEDY_LEAD.test(sentence) ||
+  /^what (?:is|it takes|they are)\b/i.test(sentence) ||
+  /\b(?:is|are) (?:on|in|listed (?:by|on|under)) `/.test(sentence) ||
+  /\b(?:instead|first)[.!?]$/i.test(sentence);
+
+/** A sentence cut to the clause it leads with, where the clauses after it only add detail. */
+const leadClause = (sentence: string) => {
+  const cut = sentence.split("; ")[0] as string;
+  return cut === sentence ? sentence : `${cut.replace(/[,;:]$/, "")}.`;
 };
 
 const listed = (items: readonly string[], last: string) =>
@@ -261,22 +282,31 @@ function gapsReason(text: string): string | null {
 }
 
 /**
- * The refusal's reason, one line: what its gaps say, where it lists them; else the first sentence after an
- * opening that only says it held the call ("Hold — …", r35); else its first sentence.
+ * The refusal's reason, one line: what its gaps say, where it lists them; else what it says was wrong and
+ * what would put it right, whichever order it says them in, after any opening that only says it held
+ * the call ("Hold — …", r35). Never its first sentence alone: the remedy is often the second (r36,
+ * judge-97). `tool` is the stored name, which only the technical details show.
  */
-export function refusalReason(result: unknown): string {
+export function refusalReason(result: unknown, tool?: string): string {
   let text = "";
   if (typeof result === "string") text = result;
   else if (result != null && typeof result === "object") {
     const r = result as { stderr?: unknown; message?: unknown; stdout?: unknown };
     text = [r.stderr, r.message, r.stdout].find((v): v is string => typeof v === "string" && v.trim() !== "") ?? "";
   }
+  const said = (line: string) => shortened(tool ? unnamed(line, tool) : line);
   const read = gapsReason(text);
-  if (read) return shortened(read);
+  if (read) return said(read);
   const paragraphs = text.trim().split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
   if (paragraphs.length === 0) return "It gave no reason.";
   const held = /^Hold\b/.test(paragraphs[0] as string) && paragraphs.length > 1;
-  return shortened(firstSentence(paragraphs[held ? 1 : 0] as string));
+  const sentences = paragraphs.slice(held ? 1 : 0).flatMap(sentencesOf);
+  const wrong = sentences.find((x) => !isRemedy(x)) ?? (sentences[0] as string);
+  const remedy = sentences.find((x) => x !== wrong && isRemedy(x));
+  if (!remedy) return said(wrong);
+  const whole = `${wrong} ${remedy}`;
+  const fits = (tool ? unnamed(whole, tool) : whole).length <= REASON_CHARS;
+  return said(fits ? whole : `${leadClause(wrong)} ${remedy}`);
 }
 
 /** The reason with the tool's stored name taken out, which only the technical details show. */
@@ -284,7 +314,7 @@ function unnamed(reason: string, name: string): string {
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const word = new RegExp(`\\b${escaped}\\b`, "g");
   const said = name === "forge"
-    ? reason.replace(/`forge /g, "`").replace(word, "the tracker")
+    ? reason.replace(/`forge ([^`]+)`/g, "the tracker's `$1` command").replace(word, "the tracker")
     : reason.replace(word, "the tool");
   return said.charAt(0).toUpperCase() + said.slice(1);
 }
@@ -292,7 +322,7 @@ function unnamed(reason: string, name: string): string {
 /** What the call did, in the tense it is in, and why it was refused where it was. */
 export function toolWords(tool: ToolCallData, live = false): ToolWords {
   const a = actOf(tool) ?? { done: "Used a tool", refused: "Couldn't use a tool", running: "Using a tool…" };
-  if (tool.isError === true) return { said: a.refused, refusal: unnamed(refusalReason(tool.result), tool.name) };
+  if (tool.isError === true) return { said: a.refused, refusal: refusalReason(tool.result, tool.name) };
   if (tool.result === undefined && live) return { said: a.running };
   if (tool.name === "forge" && tool.input?.argv && (tool.input.argv as unknown[])[0] === "new") {
     const key = filedKey(tool);

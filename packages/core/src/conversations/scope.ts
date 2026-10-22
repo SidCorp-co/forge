@@ -1,6 +1,6 @@
 import { and, eq, inArray, isNotNull, isNull, type SQL } from 'drizzle-orm';
 import { db as defaultDb } from '../db/client.js';
-import { organizationMembers, type ProjectMemberRole } from '../db/schema.js';
+import { organizationMembers, type ProjectMemberRole, projects } from '../db/schema.js';
 import { conversationParticipants, conversations } from '../db/schema-conversations.js';
 import {
   effectiveProjectRole,
@@ -96,12 +96,35 @@ async function assertConversationRole(
       throw roomRefusal(
         403,
         'CONVERSATION_OUT_OF_SCOPE',
-        `This room is about a project on which you hold no ${min} role; a room is reached only by someone who holds one on every project in it`,
+        await outOfScope(access?.role ?? null, min, projectId, tx),
         { conversationId, projectId },
       );
     }
   }
   return scope;
+}
+
+/**
+ * Why a caller is refused a room for its role on one of the room's projects, saying what is true of
+ * them: a viewer reads the room and does not change or post in it (ISS-1229 r36, judge-97), and somebody
+ * holding no role there does not reach it at all.
+ */
+async function outOfScope(
+  role: string | null,
+  min: ProjectMemberRole,
+  projectId: string,
+  tx: Executor,
+): Promise<string> {
+  const [project] = await tx
+    .select({ name: projects.name })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1);
+  const name = project?.name ?? 'one of its projects';
+  if (role === 'viewer' && min !== 'viewer') {
+    return `You hold the viewer role on ${name}; a viewer can read this room but not change it or post in it`;
+  }
+  return `This room is about ${name}, on which you hold no role; a room is reached only by someone who holds one on every project in it`;
 }
 
 interface RoomAboutNoProject {

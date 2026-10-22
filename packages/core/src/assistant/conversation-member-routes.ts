@@ -24,6 +24,7 @@ import {
   assertPersonReachesScope,
   personLabel,
   projectsNamed,
+  roomOpeners,
   settleShape,
 } from '../conversations/membership.js';
 import {
@@ -50,7 +51,9 @@ import {
   candidatesForRoom,
   candidatesSchema,
   membershipSchema,
+  openersSchema,
   removeFromRoom,
+  roomOpenersRead,
 } from './conversation-member-routes-reference.js';
 import { nameLostReaders, namePeople, withDisplayNames } from './conversation-people.js';
 
@@ -121,6 +124,13 @@ conversationMemberRoutes.get(
       }),
     );
   },
+);
+
+/**
+ * Which projects this caller may open a room on, and whether each one's own agent can answer there.
+ */
+conversationMemberRoutes.get('/openers', roomOpenersRead, async (c) =>
+  c.json(answer(openersSchema, { openers: await roomOpeners(c.get('userId')) })),
 );
 
 /**

@@ -104,11 +104,26 @@ describe("an agent's row", () => {
 
 // r33, judge-92: About kept naming the project of an agent that cannot answer, with nothing saying so.
 describe("the About panel of a room holding an agent that cannot answer", () => {
-  it("says the agent cannot answer and that the room stays about its project while it is in", () => {
+  const full =
+    "@billing-agent-with-a-long-handle can't answer: it no longer holds a role on Billing. This room stays about Billing while @billing-agent-with-a-long-handle is in it.";
+
+  it("says the agent cannot answer and that the room stays about its project, to a reader who cannot post", () => {
+    render(<ScopeNotice room={{ ...room, participants: [{ ...agent, reachable: false }] }} canPost={false} />);
+    expect(screen.getByTestId("scope-notice-unanswering").textContent).toBe(full);
+  });
+
+  // ISS-1229 r36, judge-97: the line above the message box already says why, so About does not repeat it.
+  it("says only that the room stays about its project where the message box already says why", () => {
     render(<ScopeNotice room={{ ...room, participants: [{ ...agent, reachable: false }] }} />);
     expect(screen.getByTestId("scope-notice-unanswering").textContent).toBe(
-      "@billing-agent-with-a-long-handle can't answer: it no longer holds a role on Billing. This room stays about Billing while @billing-agent-with-a-long-handle is in it.",
+      "This room stays about Billing while @billing-agent-with-a-long-handle is in it.",
     );
+  });
+
+  it("says why where another agent still answers, since nothing above the box does", () => {
+    const answering = { ...agent, id: "h-2", userId: "u-2", displayName: "billing-2", reachable: true };
+    render(<ScopeNotice room={{ ...room, participants: [{ ...agent, reachable: false }, answering] }} />);
+    expect(screen.getByTestId("scope-notice-unanswering").textContent).toBe(full);
   });
 
   it("says nothing of the kind while every agent can answer", () => {

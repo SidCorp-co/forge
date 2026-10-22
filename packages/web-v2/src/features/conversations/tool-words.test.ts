@@ -166,7 +166,7 @@ describe("what a room's assistant did, in words", () => {
     expect(toolWords(odd)).toEqual({ said: "Used a tool" });
     expect(toolWords({ ...odd, isError: true, result: { message: "Frobnication is off. Ask an admin." } })).toEqual({
       said: "Couldn't use a tool",
-      refusal: "Frobnication is off.",
+      refusal: "Frobnication is off. Ask an admin.",
     });
   });
 
@@ -185,7 +185,7 @@ describe("a refused card's reason", () => {
       result: { exitCode: 2, stdout: "", stderr: "`forge deploy` is not open from chat. What is: issue, new." },
       isError: true,
     };
-    expect(toolWords(closed).refusal).toBe("`deploy` is not open from chat.");
+    expect(toolWords(closed).refusal).toBe("The tracker's `deploy` command is not open from chat. What is: issue, new.");
     const stopped = { ...closed, result: { exitCode: 1, stdout: "", stderr: "forge was stopped after 30s with no answer." } };
     expect(toolWords(stopped).refusal).toBe("The tracker was stopped after 30s with no answer.");
     const other: ToolCallData = { id: "o", name: "forge_guide", input: {}, result: { message: "forge_guide refused: no slug." }, isError: true };
@@ -194,9 +194,41 @@ describe("a refused card's reason", () => {
 });
 
 describe("a refusal's reason", () => {
-  it("is its first sentence, shortened past 120 characters, or says there was none", () => {
-    expect(refusalReason("`forge deploy` is not open from chat. What is: issue, new.")).toBe("`forge deploy` is not open from chat.");
+  it("says what was wrong and what would put it right, never the first sentence alone", () => {
+    expect(refusalReason("`forge deploy` is not open from chat. What is: issue, new.")).toBe(
+      "`forge deploy` is not open from chat. What is: issue, new.",
+    );
     expect(refusalReason({ stderr: `${"a".repeat(200)}.` })).toBe(`${"a".repeat(120)}…`);
     expect(refusalReason({ exitCode: 1, stdout: "", stderr: "" })).toBe("It gave no reason.");
+  });
+
+  // ISS-1229 r36, judge-97: the refused comment's card kept "ISS-999 is not on this project's tracker; 1
+  // issue(s) were counted, which is the whole backlog." and dropped the line saying where the keys are.
+  it("keeps the remedy a refusal gives on its next line, cutting the wrong to its lead clause to fit", () => {
+    const stored = {
+      exitCode: 1,
+      stdout: "",
+      stderr:
+        "ISS-999 is not on this project's tracker; 1 issue(s) were counted, which is the whole backlog.\nThe keys it does hold are on `forge issue`, one per line.\n",
+    };
+    const words = toolWords(cli(["comment", "ISS-999", "-"], stored));
+    expect(words.said).toBe("Couldn't comment on ISS-999");
+    expect(words.refusal).toBe(
+      "ISS-999 is not on this project's tracker. The keys it does hold are on the tracker's `issue` command, one per line.",
+    );
+    expect(words.refusal).not.toMatch(/were counted|backlog/);
+    expect((words.refusal as string).length).toBeLessThanOrEqual(120);
+  });
+
+  it("says the wrong before the remedy whatever order the refusal gives them in", () => {
+    expect(refusalReason("Run `forge claim` first. The issue is leased by another run.", "forge")).toBe(
+      "The issue is leased by another run. Run the tracker's `claim` command first.",
+    );
+  });
+
+  it("keeps a refusal whole that already says both in one sentence", () => {
+    expect(refusalReason("`forge knowledge write` is not open from chat; list/get/search are.", "forge")).toBe(
+      "The tracker's `knowledge write` command is not open from chat; list/get/search are.",
+    );
   });
 });

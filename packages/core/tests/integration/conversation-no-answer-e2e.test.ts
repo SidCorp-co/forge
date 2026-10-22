@@ -231,3 +231,121 @@ describe('a viewer of the project', () => {
     refusedFor((await res.json()) as Refusal);
   });
 });
+
+/**
+ * ISS-1229 r36, judge-97: Start a conversation offered Ledger, whose own agent had lost its role there,
+ * unmarked; it was picked and confirmed, and only opening the room was refused. Whose agent can answer
+ * is now read before anything is picked.
+ */
+describe('the projects a room may be opened on', () => {
+  type Opener = { projectId: string; handle: string; reachable: boolean };
+  const openers = async (userId: string): Promise<Opener[]> => {
+    const res = await as(userId, '/api/conversations/openers');
+    expect(res.status, await res.clone().text()).toBe(200);
+    return ((await res.json()) as { openers: Opener[] }).openers;
+  };
+
+  it('answers each project the caller may open a room on with its agent, which answers until it loses its role', async () => {
+    expect(await openers(ownerId)).toEqual([{ projectId, handle: 'ledger', reachable: true }]);
+    await roomNobodyAnswers();
+    expect(await openers(ownerId)).toEqual([{ projectId, handle: 'ledger', reachable: false }]);
+  });
+
+  it('leaves out a project the caller only views, and one archived', async () => {
+    expect(await openers(viewerId)).toEqual([]);
+    await harness.db.execute(sql`UPDATE projects SET archived_at = now() WHERE id = ${projectId}`);
+    expect(await openers(ownerId)).toEqual([]);
+  });
+});
+
+/**
+ * ISS-1229 r36, judge-97: a viewer's rename in a room they can open was refused saying the room is
+ * "reached only by someone who holds" a member role, which the viewer had just reached.
+ */
+describe('a write by a viewer of the room', () => {
+  const VIEWER_WRITE =
+    'You hold the viewer role on Ledger; a viewer can read this room but not change it or post in it.';
+
+  async function groupRoom(): Promise<string> {
+    const opened = await as(ownerId, '/api/conversations', 'POST', { projectId, people: [viewerId] });
+    expect(opened.status, await opened.clone().text()).toBe(201);
+    return ((await opened.json()) as { id: string }).id;
+  }
+
+  it('reads the room, and renaming, archiving, deleting or posting there is refused naming the viewer role', async () => {
+    const id = await groupRoom();
+    expect((await as(viewerId, `/api/conversations/${id}`)).status).toBe(200);
+    const writes: Array<[string, string, unknown]> = [
+      [`/api/conversations/${id}`, 'PATCH', { title: 'Renamed by a viewer' }],
+      [`/api/conversations/${id}`, 'PATCH', { archived: true }],
+      [`/api/conversations/${id}`, 'DELETE', undefined],
+      [`/api/conversations/${id}/messages`, 'POST', { content: 'May I?' }],
+    ];
+    for (const [path, method, body] of writes) {
+      const res = await as(viewerId, path, method, body);
+      const refusal = (await res.json()) as Refusal;
+      expect([method, res.status, refusal.code, refusal.message]).toEqual([
+        method,
+        403,
+        'CONVERSATION_OUT_OF_SCOPE',
+        VIEWER_WRITE,
+      ]);
+    }
+    const [row] = await harness.db.execute<{ title: string | null; archived_at: Date | null }>(
+      sql`SELECT title, archived_at FROM conversations WHERE id = ${id}`,
+    );
+    expect(row).toMatchObject({ title: null, archived_at: null });
+  });
+
+  it('tells somebody holding no role there that they do not reach the room at all', async () => {
+    const id = await groupRoom();
+    const stranger = await verifiedUser();
+    const res = await as(stranger, `/api/conversations/${id}`, 'PATCH', { title: 'x' });
+    const refusal = (await res.json()) as Refusal;
+    expect([res.status, refusal.code, refusal.message]).toEqual([
+      403,
+      'CONVERSATION_OUT_OF_SCOPE',
+      'This room is about Ledger, on which you hold no role; a room is reached only by someone who holds one on every project in it.',
+    ]);
+  });
+});
+
+/**
+ * ISS-1229 r36, judge-97: a reply the reply check withdrew was said only by a socket frame, so a reload,
+ * or a person opening the room later, never learned of it. The draft is stored with the reply.
+ */
+describe('a reply the reply check withdrew', () => {
+  it('is read back with the room, its draft beside the reply that replaced it, for anyone who opens it later', async () => {
+    const opened = await as(ownerId, '/api/conversations', 'POST', { projectId, people: [viewerId] });
+    expect(opened.status, await opened.clone().text()).toBe(201);
+    const { id } = (await opened.json()) as { id: string };
+    const { recordDeliveredReply } = await import('../../src/conversations/transcript.js');
+    await recordDeliveredReply({
+      conversationId: id,
+      projectId,
+      text: 'I could not verify that claim.',
+      receipt: { messageId: null },
+      deliveryKey: 'k-withdrawn',
+      withdrawnDraft: 'ISS-4242 was closed yesterday and shipped in v9.2.',
+    });
+    await recordDeliveredReply({
+      conversationId: id,
+      projectId,
+      text: 'Two issues are open.',
+      receipt: { messageId: null },
+      deliveryKey: 'k-plain',
+    });
+
+    for (const reader of [ownerId, viewerId]) {
+      const res = await as(reader, `/api/conversations/${id}`);
+      expect(res.status, await res.clone().text()).toBe(200);
+      const { messages } = (await res.json()) as {
+        messages: Array<{ content: string; withdrawnDraft: string | null }>;
+      };
+      expect(messages.map((m) => [m.content, m.withdrawnDraft])).toEqual([
+        ['I could not verify that claim.', 'ISS-4242 was closed yesterday and shipped in v9.2.'],
+        ['Two issues are open.', null],
+      ]);
+    }
+  });
+});

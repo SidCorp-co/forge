@@ -22,9 +22,12 @@ let projects: Array<{ id: string; name: string; slug: string; role: string | nul
 vi.mock("@/features/projects/hooks", () => ({
   useOrgScopedProjects: () => ({ projects, isLoading: loading }),
 }));
+let openers: Array<{ projectId: string; handle: string; reachable: boolean }> = [];
+let openersLoading = false;
 vi.mock("../hooks", () => ({
   useProjectCandidates: () => ({ data: candidates, isLoading: false, isError: false }),
   useOpenConversation: () => ({ mutate: vi.fn(), isPending: false, isError: false }),
+  useRoomOpeners: () => ({ data: { openers }, isLoading: openersLoading }),
 }));
 
 const { StartConversation } = await import("./start-conversation");
@@ -32,6 +35,8 @@ const { StartConversation } = await import("./start-conversation");
 afterEach(() => {
   cleanup();
   loading = false;
+  openers = [];
+  openersLoading = false;
 });
 // jsdom lays nothing out, and the project picker scrolls its chosen option into view.
 Element.prototype.scrollIntoView = () => {};
@@ -148,3 +153,37 @@ describe("an agent offered to a new room that lost its role on its project", () 
   });
 });
 
+
+// ISS-1229 r36, judge-97: the Project picker offered Ledger, whose own agent had lost its role there, with
+// nothing marked; the agent was picked and confirmed and only Open the room was refused 409.
+describe("a project whose own agent lost its role there", () => {
+  it("is offered marked with its agent and the reason its row gives, and cannot be picked", () => {
+    projects = [
+      { id: "p1", name: "Billing", slug: "billing", role: "member" },
+      { id: "p9", name: "Ledger", slug: "ledger", role: "admin" },
+    ];
+    openers = [
+      { projectId: "p1", handle: "billing", reachable: true },
+      { projectId: "p9", handle: "ledger", reachable: false },
+    ];
+    render(<StartConversation onStarted={vi.fn()} />);
+    fireEvent.click(screen.getByRole("combobox"));
+    const ledger = screen.getByRole("option", { name: /Ledger/ });
+    expect(ledger.getAttribute("aria-disabled")).toBe("true");
+    expect(ledger.textContent).toContain(
+      "@ledger can't answer. This agent no longer holds a role on Ledger, so it cannot answer here.",
+    );
+    fireEvent.click(ledger);
+    expect(screen.queryByText("The room starts with this project's own agent, and is about this project.")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Start the room" })).toBeNull();
+    const billing = screen.getByRole("option", { name: "Billing" });
+    expect(billing.getAttribute("aria-disabled")).toBeNull();
+  });
+
+  it("offers no project while whose agent can answer is still being read", () => {
+    openersLoading = true;
+    render(<StartConversation onStarted={vi.fn()} />);
+    expect(screen.getByTestId("start-loading")).toBeTruthy();
+    expect(screen.queryByRole("combobox")).toBeNull();
+  });
+});

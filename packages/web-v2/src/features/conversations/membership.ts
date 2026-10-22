@@ -101,17 +101,36 @@ export function cannotAnswerReason(projectName: string | undefined): string {
 
 /**
  * The About panel's word on each agent that cannot answer: the room is still about that agent's project,
- * which is why About names it, until the agent is taken out (ISS-1229 r33, judge-92).
+ * which is why About names it, until the agent is taken out (ISS-1229 r33, judge-92). Where the line above
+ * the message box already says why (`whyShownAtBox`), About does not say it again (r36, judge-97).
  */
 export function unansweringAgentLines(
   room: Partial<Pick<ConversationMembership, "participants" | "scopeProjects">>,
+  whyShownAtBox = false,
 ): string[] {
   return agentsOf(room)
     .filter((p) => p.reachable === false)
     .map((p) => {
       const project = (room.scopeProjects ?? []).find((s) => s.id === p.projectId)?.name ?? "its project";
-      return `${memberName(p)} can't answer: it no longer holds a role on ${project}. This room stays about ${project} while ${memberName(p)} is in it.`;
+      const stays = `This room stays about ${project} while ${memberName(p)} is in it.`;
+      return whyShownAtBox ? stays : `${memberName(p)} can't answer: it no longer holds a role on ${project}. ${stays}`;
     });
+}
+
+/**
+ * Where a room no agent can answer says why: above the message box for a reader who may post, else in
+ * its About panel, and nowhere else on the room's own screen (ISS-1229 r36, judge-97 at 390).
+ */
+export const WHY_ABOVE_THE_BOX = "Why is said above the message box.";
+export const WHY_IN_ABOUT = "Why is said in this room's About line, at the top.";
+
+/** The one place a room no agent can answer says why; null while an agent still can. */
+export function whereWhyIsSaid(
+  room: Partial<Pick<ConversationMembership, "participants" | "scopeProjects" | "canChangeMembership">>,
+  canPost: boolean,
+): "box" | "about" | null {
+  if (!noAgentAnswers(room)) return null;
+  return canPost && !composerRefusal(room, { canPost }) ? "box" : "about";
 }
 
 /** Why each agent cannot answer, where none in the room can; null while one still can (r35). */
@@ -131,6 +150,18 @@ export const NO_AGENT_WILL_ANSWER = "No agent here will answer what you send.";
 
 /** A room is opened by somebody holding the member role or above on its project (ISS-1229 r35). */
 export const startsRooms = (role: string | null | undefined) => role === "member" || role === "admin";
+
+/**
+ * The agent panel's heading before a room has loaded: a room being read is not new, and a reader who can
+ * start no room here is never told New conversation (ISS-1229 r36, judge-97).
+ */
+export function draftHeading(roomId: string | undefined, canStart: boolean): string {
+  if (roomId) return "Conversation";
+  return canStart ? "New conversation" : "Conversations";
+}
+
+/** What the top bar names the agent panel: Ask agent only where the reader may start a room (r36). */
+export const agentPanelName = (mayStart: boolean) => (mayStart ? "Ask agent" : "Conversations");
 
 /** Renaming, archiving and deleting a room take that role on every project it is about, as core asks. */
 export const changesRoom = (
@@ -157,9 +188,12 @@ export function emptyRoomState(
         };
   }
   const readOnly = reader.canPost ? null : `You can read this room, not post in it: you hold the viewer role on ${where}.`;
-  const why = noAgentAnswers(room);
-  if (why) {
-    return { title: "No agent here can answer", message: [...why, ...(readOnly ? [readOnly] : [])].join(" ") };
+  const whySaid = whereWhyIsSaid(room, reader.canPost);
+  if (whySaid) {
+    return {
+      title: "No agent here can answer",
+      message: whySaid === "box" ? WHY_ABOVE_THE_BOX : [readOnly, WHY_IN_ABOUT].filter(Boolean).join(" "),
+    };
   }
   if (readOnly) return { title: "Nothing has been said here yet", message: readOnly };
   const refusal = composerRefusal(room, reader);

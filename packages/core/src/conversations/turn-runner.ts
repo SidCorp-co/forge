@@ -141,7 +141,12 @@ export interface ConversationTurnRequest {
    * The identity and the blocks the delivered reply's row is written with.
    */
   replyEntry?:
-    | ((deliveredText: string) => { id: string; blocks: readonly ContentBlock[] | null })
+    | ((deliveredText: string) => {
+        id: string;
+        blocks: readonly ContentBlock[] | null;
+        /** The draft the reply screen withdrew before this reply, kept beside it (ISS-1229 r36). */
+        withdrawnDraft?: string | null;
+      })
     | undefined;
   /** The answering handle's own name — the code-authored fallbacks speak as it. */
   handleName: string;
@@ -448,6 +453,7 @@ export async function runConversationTurn(req: ConversationTurnRequest): Promise
       receipt,
       deliveryKey: req.deliveryKey,
       ...(entry ? { messageId: entry.id, blocks: entry.blocks } : {}),
+      ...(entry?.withdrawnDraft ? { withdrawnDraft: entry.withdrawnDraft } : {}),
     });
   } catch (err) {
     logger.error(
