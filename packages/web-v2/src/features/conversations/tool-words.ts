@@ -22,7 +22,6 @@ interface Act {
   done: string;
   refused: string;
   running: string;
-  /** The verb and what it acted on, apart, so a later call can be told the same act or another. */
   kind: string;
   on: string;
 }
@@ -262,11 +261,7 @@ const PERSON_KINDS: readonly { says: RegExp; wrong?: string; remedy: string }[] 
 export const PUT_IT_RIGHT = "Ask the assistant to put it right and try again.";
 export const TOOK_ANOTHER_WAY = "The assistant tried another way below, and its answer says how it went.";
 
-/**
- * A call as the card says it, its verb and what it acted on read off the same `Act` the card's line is,
- * so two calls are one act only where the card would say the same verb (r38). A call that names nothing,
- * no key, slug, title or search, has no target another call could share.
- */
+/** A call's verb and target as the card's own `Act` says them; no target where it names nothing (r38). */
 function callOf(tool: ToolCallData): { act: string; target: string | null } {
   const input = tool.input ?? {};
   const said = actOf(tool);
