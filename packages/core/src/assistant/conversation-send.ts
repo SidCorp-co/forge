@@ -411,7 +411,7 @@ async function closeUnanswerable(
   await closeWindow({
     windowId: window.id,
     decision: 'unreachable',
-    detail: { reason: NO_AGENT_HOLDS_A_ROLE },
+    detail: { reason: NO_AGENT_HOLDS_A_ROLE, cause: 'agent-lost-role' },
     claim,
   });
   await publishToConversationReaders(window.conversationId, {

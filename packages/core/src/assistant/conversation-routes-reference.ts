@@ -181,6 +181,14 @@ export const MEMBER_REFUSED = {
   PERSON_NOT_FOUND: 'no account has the id given for the person',
 } as const;
 
+/** Why a project's agent could not be minted: its address is held (409). */
+export const AGENT_UNMINTABLE = {
+  PROJECT_AGENT_LOST_ROLE:
+    "the project's agent no longer holds a role on it, and a second agent would take its address",
+  HANDLE_TAKEN:
+    "another agent of the organization already answers to the address the project's agent would take",
+} as const;
+
 export const HANDLE_FORBIDDEN = {
   HANDLE_PROJECT_FORBIDDEN:
     'adding the agent would make the room about a project the caller holds less than member on',
@@ -222,13 +230,14 @@ export const openRoom = describeOperation({
     400: fail({ ...MEMBER_REFUSED }),
     403: fail({
       FORBIDDEN:
-        'the caller holds less than the member role on the project; the refusal names the role it holds',
+        'the caller holds less than the member role on the project; a viewer is told the viewer role it holds',
       ...HANDLE_FORBIDDEN,
     }),
     404: fail({
       NOT_FOUND: 'there is no such project',
       PROJECT_GONE: 'a project an agent was named for no longer exists, or never did',
     }),
+    409: fail({ ...AGENT_UNMINTABLE }),
     500: fail('HANDLE_HAS_NO_NAME', 'the project has an agent that carries no handle'),
   },
 });
@@ -273,8 +282,6 @@ export const sendToRoom = describeOperation({
       CONVERSATION_MODE_SETTLED:
         'the message names a mode and the room already answers in one, or another message settled it first',
       CONVERSATION_AGENT_NO_DEVICE: 'no paired device is free to take an Agent turn',
-      CONVERSATION_NO_AGENT_ANSWERS:
-        'no agent of the project the message is answered under holds a role on it, so nothing was taken in',
       CONVERSATION_ATTACHMENT_FOREIGN: 'an attachment id is not on this room',
       CONVERSATION_SHAPE_CONFLICT: "the room's shape changed between the check and the send",
       CONVERSATION_PROJECT_CONFLICT: "the room's project changed between the check and the send",

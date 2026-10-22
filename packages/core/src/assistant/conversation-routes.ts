@@ -48,11 +48,11 @@ import {
 import { listWindowsForConversation } from '../conversations/windows.js';
 import { db } from '../db/client.js';
 import { conversationModes } from '../db/schema-conversations.js';
-import { assertProjectRole, loadProjectAccess, projectWriteRefusal } from '../lib/authz.js';
+import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { fromPage, listResponse } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import {
-  assertSomeAgentAnswers,
+  assertMayStartRoom,
   mayChangeMembership,
   readableConversation,
   scopeIfReadable,
@@ -255,8 +255,7 @@ conversationRoutes.post(
     const input = c.req.valid('json');
     const userId = c.get('userId');
 
-    const access = await loadProjectAccess(input.projectId, userId);
-    assertProjectRole(access, 'member', projectWriteRefusal(access.role));
+    await assertMayStartRoom(input.projectId, userId);
 
     const handles = input.handles ?? [];
     const people = input.people ?? [];
@@ -416,7 +415,6 @@ conversationRoutes.post(
     }
     const scope = await derivedScope(id);
     const projectId = soleProject(conversation, scope);
-    await assertSomeAgentAnswers(id, projectId);
 
     const already = await readMessages(id, 1);
     const settled = conversation.mode !== null || already.length > 0;

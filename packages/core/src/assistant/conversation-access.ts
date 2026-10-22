@@ -8,33 +8,31 @@ import { eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import type { Executor } from '../conversations/db-executor.js';
 import { projectsNamed } from '../conversations/membership.js';
-import { listParticipants, roomHandles } from '../conversations/participants.js';
+import { listParticipants } from '../conversations/participants.js';
 import { roomGone, roomRefusal } from '../conversations/room-refusal.js';
 import { assertConversationReadable, assertConversationWritable } from '../conversations/scope.js';
 import { type ConversationRow, getConversation } from '../conversations/store.js';
 import { db as defaultDb } from '../db/client.js';
 import { conversations } from '../db/schema-conversations.js';
+import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 
 /**
- * A message is taken in only where an agent of the project it is answered under can answer it: an
- * agent that lost its role there answers nothing (ISS-1229 r35).
+ * A room is started by somebody holding the member role or above on its project. A viewer is one of
+ * the project's members, and is told the role they hold rather than that they are not one (ISS-1229
+ * r35, judge-95).
  */
-export async function assertSomeAgentAnswers(roomId: string, projectId: string): Promise<void> {
-  const agents = (await listParticipants(roomId)).filter(
-    (p) => p.kind === 'handle' && p.projectId === projectId && p.userId,
-  );
-  if (agents.length === 0 || agents.some((p) => p.reachable === true)) return;
-  const [names, [project]] = await Promise.all([roomHandles(roomId), projectsNamed([projectId])]);
-  const handleOf = new Map(names.map((h) => [h.userId, h.handle]));
-  const where = project?.name ?? 'its project';
-  const handles = agents.map((p) => handleOf.get(p.userId as string) ?? p.label ?? 'agent');
-  const why = handles.map((handle) => `@${handle} no longer holds a role on ${where}`).join('; ');
-  throw roomRefusal(
-    409,
-    'CONVERSATION_NO_AGENT_ANSWERS',
-    `No agent in this room can answer, so this message was not taken in: ${why}, and ${agents.length === 1 ? 'answers' : 'each answers'} again once it does.`,
-    { conversationId: roomId, projectId, agentUserIds: agents.map((p) => p.userId) },
-  );
+export async function assertMayStartRoom(projectId: string, userId: string): Promise<void> {
+  const access = await loadProjectAccess(projectId, userId);
+  if (access.role === 'viewer') {
+    const [project] = await projectsNamed([projectId]);
+    throw roomRefusal(
+      403,
+      'FORBIDDEN',
+      `You hold the viewer role on ${project?.name ?? 'this project'}; a viewer cannot start a room.`,
+      { projectId },
+    );
+  }
+  assertProjectRole(access, 'member', 'not a project member');
 }
 
 /**

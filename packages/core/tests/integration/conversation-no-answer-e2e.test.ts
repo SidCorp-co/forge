@@ -2,11 +2,11 @@
  * ISS-1229 r35 — judge-95 sent the first message in a room whose only agent had lost its role on the
  * project: core stored the message, then answered 500, and nothing ever answered it. Routing the window
  * minted a second agent for the project, outside any transaction, and the mint collided on the handle
- * the first one still holds. A room no agent can answer now refuses the message by name before taking
- * it in, and a window already open for such a project is closed as unreachable, minting nothing.
+ * the first one still holds. The message is now kept and answered 201, its window closed unreachable
+ * for that cause; a mint that would collide is refused by name wherever it is reached.
  *
  * The same judge, a viewer of the project, was invited to open a room there and refused "Not a project
- * member." — which the viewer is. Both doors now name the member role they need and the role held.
+ * member." — which the viewer is. Both doors now say the viewer role and that a viewer cannot start one.
  */
 
 import { sql } from 'drizzle-orm';
@@ -103,72 +103,45 @@ async function count(query: ReturnType<typeof sql>): Promise<number> {
   return Number((await harness.db.execute<{ n: number }>(query))[0]?.n);
 }
 
+const agents = () => count(sql`SELECT count(*)::int AS n FROM users WHERE kind = 'agent'`);
+
+const LOST_ROLE =
+  '@ledger, the agent of Ledger, no longer holds a role on Ledger, so it cannot answer there; give it a role on Ledger again first.';
+
 describe('a room no agent can answer', () => {
-  it('refuses a message by name, naming the agent and the project it lost its role on, and takes nothing in', async () => {
-    const { id, agentId } = await roomNobodyAnswers();
-    const agentsBefore = await count(
-      sql`SELECT count(*)::int AS n FROM users WHERE kind = 'agent'`,
-    );
+  it('keeps a message sent there, answers 201, and closes its window unreachable for that cause', async () => {
+    const { id } = await roomNobodyAnswers();
+    const before = await agents();
 
     const res = await as(ownerId, `/api/conversations/${id}/messages`, 'POST', {
       content: 'Hello, which issues are open in this project?',
     });
-    const refusal = (await res.json()) as Refusal;
-    expect(res.status).toBe(409);
-    expect(refusal.code).toBe('CONVERSATION_NO_AGENT_ANSWERS');
-    expect(refusal.message).toBe(
-      'No agent in this room can answer, so this message was not taken in: @ledger no longer holds a role on Ledger, and answers again once it does.',
-    );
-    expect(refusal.details).toEqual({ conversationId: id, projectId, agentUserIds: [agentId] });
+    expect(res.status, await res.clone().text()).toBe(201);
+    expect((await res.json()) as { decision: string }).toMatchObject({ decision: 'unreachable' });
 
     expect(
       await count(
         sql`SELECT count(*)::int AS n FROM conversation_messages WHERE conversation_id = ${id}`,
       ),
-    ).toBe(0);
-    expect(
-      await count(
-        sql`SELECT count(*)::int AS n FROM conversation_windows WHERE conversation_id = ${id}`,
-      ),
-    ).toBe(0);
-    expect(await count(sql`SELECT count(*)::int AS n FROM users WHERE kind = 'agent'`)).toBe(
-      agentsBefore,
-    );
-  });
-
-  it('closes a window already taken in for it as unreachable, saying why, and mints no second agent', async () => {
-    const { id } = await roomNobodyAnswers();
-    const agentsBefore = await count(
-      sql`SELECT count(*)::int AS n FROM users WHERE kind = 'agent'`,
-    );
-    const room = (
-      await harness.db.execute<{ external_id: string; shape: 'direct' | 'group' }>(
-        sql`SELECT external_id, shape FROM conversations WHERE id = ${id}`,
-      )
-    )[0];
-    const { sendWebConversationMessage } = await import('../../src/assistant/conversation-send.js');
-
-    // The door's read and the route's are two reads: a role lost between them still reaches routing.
-    const sent = await sendWebConversationMessage({
-      room: { id, externalId: String(room?.external_id), shape: room?.shape ?? 'direct' },
-      projectId,
-      userId: ownerId,
-      content: 'Sent as the role went',
-      mode: 'assistant',
-      namedMode: false,
-    });
-
-    expect(sent.decision).toBe('unreachable');
-    const windows = await harness.db.execute<{ decision: string; detail: { reason?: string } }>(
+    ).toBe(1);
+    const windows = await harness.db.execute<{
+      decision: string;
+      detail: { reason?: string; cause?: string };
+    }>(
       sql`SELECT decision, decision_detail AS detail FROM conversation_windows WHERE conversation_id = ${id}`,
     );
-    expect(windows.map((w) => w.decision)).toEqual(['unreachable']);
+    expect(windows.map((w) => [w.decision, w.detail.cause])).toEqual([
+      ['unreachable', 'agent-lost-role'],
+    ]);
     expect(windows[0]?.detail.reason).toBe(
       'no agent of this project holds a role on it, so nothing here can answer',
     );
-    expect(await count(sql`SELECT count(*)::int AS n FROM users WHERE kind = 'agent'`)).toBe(
-      agentsBefore,
-    );
+    expect(await agents()).toBe(before);
+
+    const again = await as(ownerId, `/api/conversations/${id}/messages`, 'POST', {
+      content: 'Anyone?',
+    });
+    expect(again.status, await again.clone().text()).toBe(201);
   });
 
   it('still takes in a message where the agent holds its role', async () => {
@@ -181,15 +154,71 @@ describe('a room no agent can answer', () => {
   });
 });
 
+describe('a project whose agent lost its role', () => {
+  it('refuses opening a room on it by name, opening nothing and minting no second agent', async () => {
+    await roomNobodyAnswers();
+    const before = await agents();
+    const rooms = await count(sql`SELECT count(*)::int AS n FROM conversations`);
+
+    const res = await as(ownerId, '/api/conversations', 'POST', { projectId });
+    const refusal = (await res.json()) as Refusal;
+    expect([res.status, refusal.code, refusal.message]).toEqual([
+      409,
+      'PROJECT_AGENT_LOST_ROLE',
+      LOST_ROLE,
+    ]);
+    expect(await count(sql`SELECT count(*)::int AS n FROM conversations`)).toBe(rooms);
+    expect(await agents()).toBe(before);
+  });
+
+  it('refuses adding its agent to another room by the project alone, by name', async () => {
+    const { agentId } = await roomNobodyAnswers();
+    const desk = (
+      await createTestProject(harness.db, ownerId, {
+        slug: 'desk',
+        name: 'Desk',
+        orgId: String(
+          (
+            await harness.db.execute<{ org_id: string }>(
+              sql`SELECT org_id FROM projects WHERE id = ${projectId}`,
+            )
+          )[0]?.org_id,
+        ),
+      })
+    ).id;
+    const opened = await as(ownerId, '/api/conversations', 'POST', { projectId: desk });
+    expect(opened.status, await opened.clone().text()).toBe(201);
+    const { id } = (await opened.json()) as { id: string };
+
+    const offered = await as(ownerId, `/api/conversations/${id}/candidates`);
+    expect(offered.status, await offered.clone().text()).toBe(200);
+    const { handles } = (await offered.json()) as {
+      handles: Array<{ userId: string | null; handle: string; reachable: boolean }>;
+    };
+    expect(handles.find((h) => h.handle === 'ledger')).toMatchObject({
+      userId: agentId,
+      reachable: false,
+    });
+
+    const res = await as(ownerId, `/api/conversations/${id}/handles`, 'POST', { projectId });
+    const refusal = (await res.json()) as Refusal;
+    expect([res.status, refusal.code, refusal.message]).toEqual([
+      409,
+      'PROJECT_AGENT_LOST_ROLE',
+      LOST_ROLE,
+    ]);
+  });
+});
+
 describe('a viewer of the project', () => {
   const refusedFor = (refusal: Refusal) => {
     expect(refusal.code).toBe('FORBIDDEN');
-    expect(refusal.message).toMatch(/member role/);
-    expect(refusal.message).toMatch(/the role held is viewer/);
-    expect(refusal.message).not.toMatch(/not a project member/i);
+    expect(refusal.message).toBe(
+      'You hold the viewer role on Ledger; a viewer cannot start a room.',
+    );
   };
 
-  it('is refused opening a room there, naming the member role it needs and the viewer role it holds', async () => {
+  it('is refused opening a room there, told the viewer role it holds and that a viewer cannot start one', async () => {
     const res = await as(viewerId, '/api/conversations', 'POST', { projectId });
     expect(res.status).toBe(403);
     refusedFor((await res.json()) as Refusal);

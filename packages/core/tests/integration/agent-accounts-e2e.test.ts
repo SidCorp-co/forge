@@ -110,7 +110,7 @@ describe('the handle is a column, and the database is what keeps it unique', () 
     expect(await accounts.listAgentAccounts(orgA)).toHaveLength(1);
   });
 
-  it('aborts a room’s own handle mint on the collision instead of committing a nameless agent', async () => {
+  it('refuses a room’s own handle mint on the collision by name, committing no agent', async () => {
     const slug = `gamma-${randomUUID().slice(0, 8)}`;
     const project = await createTestProject(harness.db, ownerId, { slug, orgId: orgA });
     await accounts.createAgentAccount({ orgId: orgA, projectIds: [projectA], handle: slug });
@@ -123,8 +123,8 @@ describe('the handle is a column, and the database is what keeps it unique', () 
       .then(() => null)
       .catch((e: unknown) => e);
 
-    expect(refusal).not.toBeNull();
-    expect(JSON.stringify(refusal)).toContain('organization_members_org_handle_uniq');
+    // Refused before any write, by name (ISS-1229 r35), rather than by the constraint aborting it.
+    expect(refusal).toMatchObject({ status: 409, cause: { code: 'HANDLE_TAKEN' } });
     const after = await harness.db.execute<{ n: number }>(
       sql`SELECT count(*)::int AS n FROM users`,
     );

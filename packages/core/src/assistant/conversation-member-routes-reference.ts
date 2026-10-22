@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { describeOperation, fail, json } from '../api-reference/declare/describe.js';
 import { conversationShapes } from '../db/schema-conversations.js';
 import {
+  AGENT_UNMINTABLE,
   HANDLE_FORBIDDEN,
   MEMBER_REFUSED,
   namedProjectSchema,
@@ -32,6 +33,11 @@ const handleCandidateSchema = z.object({
   handle: z.string(),
   project: namedProjectSchema,
   losesReaders: z.array(z.string()),
+  reachable: z
+    .boolean()
+    .describe(
+      'false for a project agent that no longer holds a role on its project, and cannot be added',
+    ),
 });
 
 export const candidatesSchema = z.object({
@@ -53,7 +59,7 @@ export const candidatesBeforeRoom = describeOperation({
     200: json(candidatesSchema, 'The colleagues and agents that could join'),
     403: fail(
       'FORBIDDEN',
-      'the caller holds less than the member role on the project; the refusal names the role it holds',
+      'the caller holds less than the member role on the project; a viewer is told the viewer role it holds',
     ),
     404: fail('NOT_FOUND', 'there is no such project'),
   },
@@ -102,6 +108,7 @@ export const addHandleToRoom = describeOperation({
       CONVERSATION_GONE: 'the room no longer exists, or never did',
       PROJECT_GONE: 'the project the agent was named for no longer exists, or never did',
     }),
+    409: fail({ ...AGENT_UNMINTABLE }),
     500: fail('HANDLE_HAS_NO_NAME', 'the project has an agent that carries no handle'),
   },
 });
