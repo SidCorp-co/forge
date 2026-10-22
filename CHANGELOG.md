@@ -3208,7 +3208,7 @@
 - **The reply check reads every apostrophe the same.** A true "ISS-999 isn’t on this project" is no longer withdrawn for its curly apostrophe, and "ISS-7 isn’t closed" reads as the denial it is. (ISS-1229)
 - **A refused call the assistant made wrongly says what you can do**: ask it to put it right, or, where it tried another way further down the same reply, that it did, with nothing asked of you. (ISS-1229)
 - **A room that one particular agent's leaving would make speakable names that agent**, and an empty room whose message box is replaced points to the reason at the bottom. (ISS-1229)
-- **A reader who holds no role on any of an organization's projects is told how many it holds**, on the Overview, rather than that it has none yet; Start a conversation says they can see no project. (ISS-1229)
+- **A reader who holds no role on any of an organization's projects is told how many it holds**, on the Overview, rather than that it has none yet; Start a conversation and New issue say they can see no project. (ISS-1229)
 - **Secondary text is darker**, readable at 4.5:1 or more on every background the app uses. (ISS-1229)
 - **A refused tool call's card in a room says what you can do about it**, such as checking the key or asking the assistant to list the issues, never a command only the assistant can run. (ISS-1229)
 - **An agent that cannot be added to a room because another agent already answers to its address is marked with why**, and cannot be picked. (ISS-1229)

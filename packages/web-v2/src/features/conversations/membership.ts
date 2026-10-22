@@ -177,6 +177,13 @@ export function agentPanelWithoutProject(mayStart: boolean, anyProject: boolean)
     : { title: "Conversations", description: "Open a project to read its conversations." };
 }
 
+/** The top bar's New issue with no project open, said as agentPanelWithoutProject says its door (r38). */
+export function issueDoorWithoutProject(anyProject: boolean): { title: string; description: string } {
+  return anyProject
+    ? { title: "New issue", description: "Open a project to create an issue." }
+    : { title: "New issue", description: "This organization holds no project you can see, and an issue belongs to a project." };
+}
+
 /** What the top bar names the agent panel: Ask agent only where the reader may start a room (r36). */
 export const agentPanelName = (mayStart: boolean) => (mayStart ? "Ask agent" : "Conversations");
 

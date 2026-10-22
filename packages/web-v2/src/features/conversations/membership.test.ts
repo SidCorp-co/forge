@@ -4,7 +4,7 @@
 // in the same words.
 
 import { afterAll, describe, expect, it, vi } from "vitest";
-import { agentPanelWithoutProject, composerRefusal, emptyRoomState, memberName, removalClaim, removalQuestion, unopenableReason } from "./membership";
+import { agentPanelWithoutProject, composerRefusal, issueDoorWithoutProject, emptyRoomState, memberName, removalClaim, removalQuestion, unopenableReason } from "./membership";
 import type { ConversationParticipant } from "./types";
 
 // When each was added reads in the reader's own time zone (ISS-1229 r25); this reader is at UTC+7.
@@ -222,5 +222,16 @@ describe("the agent panel's door with no project open", () => {
   it("asks a reader with a project to open one, in the door's own name", () => {
     expect(agentPanelWithoutProject(true, true).title).toBe("Ask agent");
     expect(agentPanelWithoutProject(false, true).description).toBe("Open a project to read its conversations.");
+  });
+});
+
+// ISS-1229 r38: the top bar's New issue told a reader who can see no project to open one.
+describe("the New issue door with no project open", () => {
+  it("never tells a reader who can see no project to open one", () => {
+    expect(issueDoorWithoutProject(false).description).toBe(
+      "This organization holds no project you can see, and an issue belongs to a project.",
+    );
+    expect(issueDoorWithoutProject(false).description).not.toMatch(/open a project/i);
+    expect(issueDoorWithoutProject(true).description).toBe("Open a project to create an issue.");
   });
 });
