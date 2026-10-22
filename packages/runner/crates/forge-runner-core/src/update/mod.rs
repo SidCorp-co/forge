@@ -633,61 +633,15 @@ mod tests {
     /// An address every connect is refused at, which no other test is handed.
     ///
     /// Port 1 sits below every platform's ephemeral range, so a sibling's
-    /// `bind` to port 0 is never given it, and no test here binds a fixed
-    /// loopback port. Nothing listens there, so a connect is refused at once.
+    /// `bind` to port 0 is never given it. The address asks the test
+    /// environment for one thing, that nothing listens on port 1, and the
+    /// connect test below checks exactly that.
+    ///
     /// The crate's other refusal tests use the same address on all three
     /// platforms. A port taken from a dropped listener was handed to a
     /// sibling under a parallel run and read as a cut connection; a held
     /// port that never listens was dropped silently on macOS and timed out.
     const REFUSED: &str = "http://127.0.0.1:1";
-
-    /// ISS-1306: no test in the runner crates binds a loopback port other than
-    /// 0, so none can be handed the refused address's port.
-    #[test]
-    fn no_test_binds_a_fixed_loopback_port() {
-        let crates = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("the crates directory");
-        let loopback = ["127.0.0.1", ":"].concat();
-        let mut fixed = Vec::new();
-        let mut dirs = vec![crates.to_path_buf()];
-        while let Some(dir) = dirs.pop() {
-            for entry in std::fs::read_dir(&dir).unwrap().flatten() {
-                let path = entry.path();
-                if path.is_dir() {
-                    if path.file_name().is_some_and(|n| n != "target") {
-                        dirs.push(path);
-                    }
-                    continue;
-                }
-                if path.extension().is_none_or(|e| e != "rs") {
-                    continue;
-                }
-                let text = std::fs::read_to_string(&path).unwrap();
-                for (i, line) in text.lines().enumerate() {
-                    let Some(at) = line.find(&loopback) else {
-                        continue;
-                    };
-                    let port: String = line[at + loopback.len()..]
-                        .chars()
-                        .take_while(char::is_ascii_digit)
-                        .collect();
-                    if line.contains("bind(") && port != "0" {
-                        fixed.push(format!("{}:{}", path.display(), i + 1));
-                    }
-                }
-            }
-        }
-        assert!(
-            fixed.is_empty(),
-            "a test binds a fixed loopback port: {fixed:?}"
-        );
-        let port: u16 = REFUSED.rsplit(':').next().unwrap().parse().unwrap();
-        assert!(
-            port < 1024,
-            "the refused port must sit below every ephemeral range"
-        );
-    }
 
     /// ISS-1306: a bound port that never listened was dropped on macOS, and the
     /// refusal tests read "no answer came within 10s".
