@@ -3195,6 +3195,11 @@
 
 ### Fixed
 
+- **A removed connection stays off until a key is actually saved.** Sending the switch with an empty key no longer turns it on, and its refusals offer Clear, a new key or an install only to someone allowed to. (ISS-1421)
+- **Disconnect, Delete and Clear send once on a double-click**, and a refused GitHub App install says once who may install it. (ISS-1421)
+- **The verify probe drawer keeps your place.** Focus stays in it after Save probe and Remove all probes, the removal question says in words what goes, and a refused removal is said once, not in a toast too. (ISS-1421)
+- **A retired live commit field nested in an object is named as retired**, not as an unknown key. (ISS-1421)
+- **Core starts right after an old job queue stops**, waiting a moment for its last connection to close rather than refusing. (ISS-1421)
 - **A live deploy binding's verify probe is set on Integrations.** Its drawer shows, declares, changes and removes the probe a release reads, and the probe gap's link opens it there. (ISS-1339)
 - **Removing every verify probe asks first.** It says how many go and what a release then records; labels stay visible, a double click saves once, and an unsaved probe is not closed away silently. (ISS-1339)
 - **A retired live commit field is named as retired however it is spelled.** A dotted or differently cased key now gets the sentence saying where a probe is declared. (ISS-1339)
