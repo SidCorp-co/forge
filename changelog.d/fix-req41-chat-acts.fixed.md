@@ -1,1 +1,0 @@
-**Ask Agent answers whole and follows up.** A held claim cuts its whole sentence, a pressed decision card gets a read-back reply, leaving draft voids the steward's question, and a card that failed twice is not offered again.

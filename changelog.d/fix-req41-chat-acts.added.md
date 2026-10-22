@@ -1,1 +1,0 @@
-**Ask Agent makes the decisions you tell it to.** Say "open them for me" and it answers the agreed Needs-you decisions as you, reports each item read back, and names any already done with who and when.

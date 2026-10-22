@@ -9,6 +9,22 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.281] - 2026-10-22
+
+Ask Agent acts on your word, reads current state and answers in whole sentences
+
+### Added
+
+- **Ask Agent makes the decisions you tell it to.** Say "open them for me" and it answers the agreed Needs-you decisions as you, reports each item read back, and names any already done with who and when.
+
+### Changed
+
+- **A design revision that only re-pins is approved in one click.** Its step answers carry from the approved revision it follows; a revision that changes a step is still asked every question.
+
+### Fixed
+
+- **Ask Agent answers whole and follows up.** A held claim cuts its whole sentence, a pressed decision card gets a read-back reply, leaving draft voids the steward's question, and a card that failed twice is not offered again.
+
 ## [0.4.0-dev.280] - 2026-10-22
 
 Storefront verdicts record every workflow draft they were judged on
