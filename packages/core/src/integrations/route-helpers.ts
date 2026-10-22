@@ -59,6 +59,19 @@ export const connectionNotReachable = (connectionId: string) =>
     cause: { code: 'CONNECTION_NOT_REACHABLE' },
   });
 
+/**
+ * {@link connectionNotReachable}, for a delete: the usual reason a delete finds nothing is that the
+ * connection was cleared, so that is said first, and the sentence still does not say which it was
+ * (ISS-1421 r24).
+ */
+export const connectionGoneOrNotReachable = (connectionId: string) =>
+  new HTTPException(404, {
+    message:
+      `Connection ${connectionId} is already gone, or is not one you can reach. Only its owner ` +
+      "(for an organization's connection, an owner or admin of that organization) can delete it.",
+    cause: { code: 'CONNECTION_NOT_REACHABLE' },
+  });
+
 /** {@link turnsBackOnFrom}, reading the connection's bindings only where they decide the sentence. */
 export async function turnsBackOn(
   connection: { id: string; provider: string; ownerType: 'user' | 'org'; ownerId: string },

@@ -150,22 +150,20 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
     failed |= token_failed;
 
     // Best-effort update check (3s budget — never blocks doctor).
-    if let Some(url) = update::manifest_url(
-        cfg.update.manifest_url.as_deref(),
-        ctx.resolve_core_url(&cfg).as_deref(),
-    ) {
-        match tokio::time::timeout(
-            std::time::Duration::from_secs(3),
-            update::fetch_manifest(&url),
-        )
-        .await
-        {
+    let core = ctx.resolve_core_url(&cfg);
+    if let Some(url) = update::manifest_url(cfg.update.manifest_url.as_deref(), core.as_deref()) {
+        let budget = std::time::Duration::from_secs(3);
+        match tokio::time::timeout(budget, update::fetch_manifest(&url, core.as_deref())).await {
             Ok(Ok(m)) if update::is_newer(&m.version, update::CURRENT_VERSION) => println!(
                 "⬆ update       {} available (run `forge-runner update`)",
                 m.version
             ),
             Ok(Ok(_)) => println!("✔ update       on the latest version"),
-            _ => println!("• update       could not check (manifest missing/unreachable)"),
+            Ok(Err(e)) => println!("• update       could not check: {e}"),
+            Err(_) => println!(
+                "• update       could not check: {}",
+                update::manifest_not_answered(&url, core.as_deref(), budget)
+            ),
         }
     }
 

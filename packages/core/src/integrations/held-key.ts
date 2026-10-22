@@ -78,5 +78,5 @@ export function turnsBackOnFrom(
   const lead = here ? `${install.notFromHere} ` : '';
   if (bound.some((p) => takesTheApp(connection, p))) return `${lead}${install.fromBound}`;
   if (bound.length > 0) return `${lead}${install.noneTakesIt}`;
-  return 'No project is bound to it, so nothing can turn it back on. Clear it from the list under Connections.';
+  return 'No project is bound to it, so nothing can turn it back on. Clear it from the list on the Integrations page.';
 }

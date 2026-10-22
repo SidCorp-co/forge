@@ -361,6 +361,16 @@ function UseExistingApp({
 }
 
 /**
+ * A refused start re-reads the reader's projects, whose role decides what the panel offers: a role
+ * lost in another tab otherwise left the button and the org admin's sentence up until a reload, inviting
+ * the same refusal again (ISS-1421 r24). The refusal itself is the banner's, from the mutation's error.
+ */
+function refusedFor(projectsQ: { refetch: () => Promise<unknown> }): null {
+  void projectsQ.refetch();
+  return null;
+}
+
+/**
  * Who the App will belong to, stated rather than asked. This App is bound to
  * one project and used by its runners, so its owner follows that project's
  * org; a picker offering "Personal (only me)" would be a choice the server
@@ -399,12 +409,15 @@ function CreateApp({
 }) {
   const connect = useGitHubConnect(projectId);
   const [org, setOrg] = useState("");
-  const project = useProjects().data?.find((p) => p.id === projectId);
+  const projectsQ = useProjects();
+  const project = projectsQ.data?.find((p) => p.id === projectId);
   // Owner ruling (ISS-1421 r23): no button this reader is known to be refused; AppOwner says who can.
   const offered = !project || mayCreateTheApp(project);
 
   const start = async () => {
-    const res = await connect.mutateAsync({ org: org.trim() || undefined }).catch(() => null);
+    const res = await connect
+      .mutateAsync({ org: org.trim() || undefined })
+      .catch(() => refusedFor(projectsQ));
     if (res) submitManifest(res);
   };
 
@@ -486,16 +499,24 @@ function RemovedApp({
   const connect = useGitHubConnect(projectId);
   const remove = useDeleteProviderIntegration(projectId);
   const [org, setOrg] = useState("");
-  const project = useProjects().data?.find((p) => p.id === projectId);
+  const [confirming, setConfirming] = useState(false);
+  const projectsQ = useProjects();
+  const project = projectsQ.data?.find((p) => p.id === projectId);
   // Core refuses an install whose App would belong to someone else (ISS-1421 r23), so none is offered.
   const takes = connection && project ? takesTheApp(connection, project) : null;
   const offered = takes !== false && (!project || mayCreateTheApp(project));
   // A switched-off binding is not turned on by an install elsewhere (`reattach`), only by one from here.
   const left = !binding.bindingActive;
+  const staysOff =
+    takes === false
+      ? "so it stays off if the connection is turned back on"
+      : "so it stays off if the connection is turned back on from anywhere but here";
 
   const start = async () => {
     // A refusal is the banner's to show from connect.error, never a rejection thrown past it.
-    const res = await connect.mutateAsync({ org: org.trim() || undefined }).catch(() => null);
+    const res = await connect
+      .mutateAsync({ org: org.trim() || undefined })
+      .catch(() => refusedFor(projectsQ));
     if (res) submitManifest(res);
   };
 
@@ -514,10 +535,7 @@ function RemovedApp({
               : " Installing the GitHub App again would turn that connection back on.")}
           {takes === false &&
             " An App installed from this project would belong to someone other than that connection's owner, so it cannot turn it back on. The connection's owner can clear it from the list on the Integrations page, and then a new App can be created here."}
-          {left &&
-            (takes === false
-              ? " This project is disconnected from it, so it stays off if the connection is turned back on."
-              : " This project is disconnected from it, so it stays off if the connection is turned back on from anywhere but here.")}
+          {left && ` This project is disconnected from it, ${staysOff}.`}
         </p>
 
         {takes !== false && <AppOwner projectId={projectId} act="install" />}
@@ -543,16 +561,31 @@ function RemovedApp({
             </Button>
           )}
           {!left && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => remove.mutate(binding.id)}
-              disabled={remove.isPending}
-            >
-              Disconnect from this project
+            <Button variant="ghost" size="sm" onClick={() => setConfirming((v) => !v)}>
+              Disconnect from this project…
             </Button>
           )}
         </div>
+        {!left && confirming && (
+          <div className="flex flex-col gap-2 border-y border-line py-2.5">
+            <p className="fg-body-sm text-fg">
+              Disconnecting switches this project off from {connectionLabel}, {staysOff}.
+            </p>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="danger"
+                size="sm"
+                loading={remove.isPending}
+                onClick={() => remove.mutate(binding.id, { onSuccess: () => setConfirming(false) })}
+              >
+                Disconnect
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => setConfirming(false)}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     </SettingsSection>
   );

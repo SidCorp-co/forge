@@ -296,11 +296,10 @@ pub fn ended(reason: &str) -> String {
 }
 
 /// Why an answer that arrived could not be read, with the cause the transport gave.
-fn unread_body(e: &reqwest::Error) -> String {
+pub(crate) fn unread_body(e: &reqwest::Error) -> String {
     // A body the connection cut short reaches reqwest as a decode error too, and "did not decode"
     // said it was malformed when it was missing (ISS-1421 r23).
-    let cause = innermost(e).unwrap_or_default().to_lowercase();
-    if cause.contains("end of file") || cause.contains("incomplete") {
+    if cut_short(e) {
         return "the body did not arrive whole".to_string();
     }
     let what = if e.is_decode() {
@@ -312,6 +311,31 @@ fn unread_body(e: &reqwest::Error) -> String {
         Some(cause) => format!("{what}: {cause}"),
         None => what.to_string(),
     }
+}
+
+/// Whether the connection ended before the body did. hyper reports every such end of an HTTP/1
+/// body as an `UnexpectedEof` io error, whose words differ by where the cut fell: "end of file
+/// before message length reached", and "unexpected EOF during chunk size line" for a chunked
+/// answer cut between chunks, which the words alone missed (ISS-1421 r24, criterion 245).
+fn cut_short(e: &(dyn std::error::Error + 'static)) -> bool {
+    use std::io::ErrorKind;
+    let mut at = Some(e);
+    while let Some(err) = at {
+        if let Some(io) = err.downcast_ref::<std::io::Error>() {
+            if matches!(
+                io.kind(),
+                ErrorKind::UnexpectedEof
+                    | ErrorKind::ConnectionReset
+                    | ErrorKind::ConnectionAborted
+                    | ErrorKind::BrokenPipe
+            ) {
+                return true;
+            }
+        }
+        at = err.source();
+    }
+    let cause = innermost(e).unwrap_or_default().to_lowercase();
+    cause.contains("end of file") || cause.contains("incomplete")
 }
 
 /// The scheme, host and port of a url: where Forge was sought, without the

@@ -70,6 +70,7 @@ import {
   badRequest,
   buildCreatedBindingResponse,
   connectionChangedWhileCleared,
+  connectionGoneOrNotReachable,
   connectionNotManageable,
   connectionNotReachable,
   defaultConnectionDisplayName,
@@ -443,16 +444,23 @@ async function noKeyRefusal(connection: Parameters<typeof turnsBackOn>[0]): Prom
   return `This connection holds no key, as removing it wiped its keys. ${await turnsBackOn(connection)}`;
 }
 
+/** The connection a delete names, where a connection no longer there answers as gone. */
+async function loadDeletableConnection(id: string, userId: string) {
+  const reached = await findReachableConnection(userId, id);
+  if (!reached) throw connectionGoneOrNotReachable(id);
+  return loadManageableConnection(id, userId);
+}
+
 integrationConnectionsRoutes.delete('/:id', ...removeConnection, async (c) => {
   const id = c.req.param('id');
   const userId = c.get('userId');
-  const existing = await loadManageableConnection(id, userId);
+  const existing = await loadDeletableConnection(id, userId);
   // The first delete switches the row off and wipes every key on it (ISS-1421 r20), so its bindings
   // stop resolving; a delete of a connection already removed clears it from the list (ISS-1421 r21).
   if (!isRemovedConnection(existing)) await softDeleteConnection(id);
   else if (!(await clearRemovedConnection(existing))) {
     // Cleared by another request, it answers as gone; still standing, it changed under this one.
-    await loadManageableConnection(id, userId);
+    await loadDeletableConnection(id, userId);
     throw connectionChangedWhileCleared();
   }
   notifyConnectionChanged(existing.provider, id);

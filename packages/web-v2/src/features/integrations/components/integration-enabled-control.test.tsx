@@ -56,7 +56,7 @@ describe("the binding controls over a removed connection (criterion 228)", () =>
     expect(screen.queryByRole("button", { name: /enable credential/i })).toBeNull();
     expect(
       screen.getByText(
-        "The shared connection was removed, so it holds no key. Saving a new key on it under Connections turns it back on.",
+        "The shared connection was removed, so it holds no key. Saving a new key on it on the Integrations page turns it back on.",
       ),
     ).toBeInTheDocument();
   });

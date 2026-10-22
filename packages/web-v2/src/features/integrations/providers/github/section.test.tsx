@@ -61,8 +61,10 @@ let project = {
   orgIsPersonal: false,
   orgRole: "owner" as "owner" | "admin" | "member" | null,
 };
+/** A refused start re-reads the reader's projects, whose role decides what is offered. */
+const projectsRefetch = vi.fn(async () => undefined);
 vi.mock("@/features/projects/hooks", () => ({
-  useProjects: () => ({ data: [project] }),
+  useProjects: () => ({ data: [project], refetch: projectsRefetch }),
 }));
 
 vi.mock("../../hooks", () => ({
@@ -562,12 +564,56 @@ describe("a project bound to a removed GitHub connection (criterion 224)", () =>
     submit.mockRestore();
   });
 
-  it("keeps Disconnect as the way to leave the connection", () => {
+  // r24, judge-96: a refused install left the panel reading as for an org admin until a reload.
+  it("re-reads the reader's projects when an install is refused, so what it offers follows their role", async () => {
+    connectStart.mockRejectedValueOnce(new Error("Only an owner or admin of SidCorp can create one."));
+    projectsRefetch.mockClear();
+    mount();
+
+    fireEvent.click(screen.getByRole("button", { name: "Install the GitHub App again" }));
+
+    await waitFor(() => expect(projectsRefetch).toHaveBeenCalledTimes(1));
+  });
+
+  it("keeps Disconnect as the way to leave the connection, asked once before it is sent", () => {
+    mount();
+
+    fireEvent.click(screen.getByRole("button", { name: /disconnect from this project/i }));
+    expect(remove).not.toHaveBeenCalled();
+    expect(
+      screen.getByText(
+        "Disconnecting switches this project off from SidCorp-co App, so it stays off if the connection is turned back on from anywhere but here.",
+      ),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Disconnect" }));
+
+    expect(remove).toHaveBeenCalledTimes(1);
+    expect(remove.mock.calls[0][0]).toBe(BINDING);
+  });
+
+  // r24, judge-96: Disconnect took effect on one click, though nothing in the panel undoes it.
+  it("sends nothing when the Disconnect question is cancelled", () => {
+    mount();
+
+    fireEvent.click(screen.getByRole("button", { name: /disconnect from this project/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+
+    expect(remove).not.toHaveBeenCalled();
+    expect(screen.queryByText(/^Disconnecting switches this project off/)).toBeNull();
+  });
+
+  it("asks without the exception where this project's install cannot turn the connection on", () => {
+    connections = [connection({ active: false, hasSecrets: false, ownerType: "user", ownerId: "a-person" })];
     mount();
 
     fireEvent.click(screen.getByRole("button", { name: /disconnect from this project/i }));
 
-    expect(remove).toHaveBeenCalledWith(BINDING);
+    expect(
+      screen.getByText(
+        "Disconnecting switches this project off from SidCorp-co App, so it stays off if the connection is turned back on.",
+      ),
+    ).toBeInTheDocument();
   });
 
   // Whole-set review F1 (r23): core refuses an install whose App would belong to someone else
