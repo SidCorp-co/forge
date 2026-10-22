@@ -46,23 +46,28 @@ export function extractIssueClaims(reply: string, prefixes: readonly string[] = 
 const ABSENT_AFTER =
   /^[*_`"”’)\]]*\s+(?:(?:is not|isn't|is no longer|does not|doesn't)\s+(?:exist\b|(?:on|in|part of|held (?:by|on|in))\s+(?:[\w’'-]+\s+){0,5}?(?:tracker|project)\b)|(?:was not|wasn't|could not be|couldn't be|cannot be|can't be)\s+found\b)/i;
 
-/** Whether a key's clause is conditional: an "if" before its end, or opening the clause after a comma. */
-const conditional = (sentence: string, at: number) => {
-  const cuts = [...sentence.matchAll(/[,;:—–]\s/g)].map((m) => m.index ?? 0);
-  const to = Math.min(sentence.length, ...cuts.filter((c) => c >= at));
-  return (
-    CONDITIONAL.test(sentence.slice(0, to)) ||
-    /^[,—–]\s*(?:only\s+)?(?:if|unless|in case|provided|assuming)\b/i.test(sentence.slice(to))
-  );
-};
+/** A clause's opening up to its key: the key itself, or "there is no" / "I couldn't find" before it. */
+const OPENS_ON_KEY = /^\s*(?:(?:and|but|so)\s+)?[*_`"“‘([]*$/i;
+const OPENS_ON_ABSENCE =
+  /^\s*(?:(?:and|but|so)\s+)?(?:there is no|there's no|there isn't an?|no issue(?: called| named| keyed| with the key)?|(?:i\s+)?(?:could not|couldn't|cannot|can't|did not|didn't) find|(?:i\s+)?found no)\s+(?:(?:an? )?issue\s+|key\s+)?[*_`"“‘([]*$/i;
+
 const CONDITIONAL = /\b(?:if|unless|whether|suppose|supposing|in case|assuming|provided)\b/i;
 /** A scope narrower than the project, or a time other than now: either leaves absence unasserted. */
 const NOT_NOW_OR_NARROWER =
   /\b(?:(?:in|on|from|of)\s+(?:[\w’'-]+\s+){0,3}?(?:sprint|milestone|board|column|release|filter|search|page|list|view)|yesterday|earlier|previously|last|ago|until|anymore|any longer|used to|at the time)\b/i;
 
-/** Before a key: the words that say there is no such issue — "there is no", "I couldn't find". */
-const ABSENT_BEFORE =
-  /\b(?:there is no|there's no|there isn't an?|no issue(?: called| named| keyed| with the key)?|could not find|couldn't find|cannot find|can't find|did not find|didn't find|found no)\s+(?:(?:an? )?issue\s+|key\s+)?[*_`"“‘([]*$/i;
+/** A plain, present, unconditional absence: its clause opens on the key or "there is no", in no question. */
+function assertsAbsence(sentence: string, at: number, after: string): boolean {
+  const cuts = [...sentence.matchAll(/[,;:—–]\s/g)].map((c) => c.index ?? 0);
+  const from = Math.max(0, ...cuts.filter((c) => c < at).map((c) => c + 2));
+  const to = Math.min(sentence.length, ...cuts.filter((c) => c >= at));
+  const opening = sentence.slice(from, at);
+  if (/\?[\s*_`"”’)\]]*$/.test(sentence) || NOT_NOW_OR_NARROWER.test(sentence)) return false;
+  if (CONDITIONAL.test(sentence.slice(0, to))) return false;
+  if (/^[,—–]\s*(?:only\s+)?(?:if|unless|in case|provided|assuming)\b/i.test(sentence.slice(to)))
+    return false;
+  return (OPENS_ON_KEY.test(opening) && ABSENT_AFTER.test(after)) || OPENS_ON_ABSENCE.test(opening);
+}
 
 /** Where a key is named, and whether that naming says the project does not hold it. */
 export interface KeyMention {
@@ -82,12 +87,7 @@ export function keyMentions(text: string, prefixes: readonly string[] = []): Key
   for (const sentence of text.split(/(?<=[.!?])\s+|\n+/)) {
     for (const m of sentence.matchAll(issueTokenRe(prefixes))) {
       const at = m.index ?? 0;
-      const asserted = !/\?[\s*_`"”’)\]]*$/.test(sentence) && !conditional(sentence, at);
-      const absent =
-        asserted &&
-        !NOT_NOW_OR_NARROWER.test(sentence) &&
-        (ABSENT_AFTER.test(sentence.slice(at + m[0].length)) ||
-          ABSENT_BEFORE.test(sentence.slice(0, at)));
+      const absent = assertsAbsence(sentence, at, sentence.slice(at + m[0].length));
       out.push({ seq: Number(m[2]), token: m[0], absent });
     }
   }

@@ -81,6 +81,15 @@ describe('a reply saying a key is not on the project', () => {
     expect(room(text).ok).toBe(passes);
   });
 
+  // The sixth whole-set read: a clause that does not open on the key or on "there is no" is not read.
+  it('reads a negated absence as no claim that the key is absent', () => {
+    const negated = (key: string) => `It is not true that there is no ${key} on this project.`;
+    expect(keyMentions(negated('ISS-1'), ['ISS'])[0]?.absent).toBe(false);
+    expect(room(negated('ISS-1')).ok).toBe(true);
+    expect(room(negated('ISS-999')).ok).toBe(false);
+    expect(ISSUE_REFERENCES_EXIST.check(negated('ISS-999'), facts)).toHaveLength(1);
+  });
+
   it('reads a question or a condition about a held key as no claim that it is absent', () => {
     expect(room('What if ISS-1 is not on this project?').ok).toBe(true);
     for (const asked of ['**ISS-1 is not on this project?**', '"ISS-1 is not on this project?"']) {
