@@ -27,6 +27,7 @@ import {
   type ReplayTarget,
   type ReplayVerdict,
   recordReplayVerdicts,
+  reopenAsItsRelease,
   replayTargetsOf,
   type TransitionActor,
   transitionIssueStatus,
@@ -300,7 +301,13 @@ async function sendBack(record: ProbeReplayRecord, args: ReplayArgs): Promise<st
     const claimed = row.claim === args.runId;
     if (row.status !== 'closed' && !(claimed && row.status === 'awaiting_release')) continue;
     try {
-      await transitionIssueStatus(row, 'reopen', args.actor, {
+      // a claimed member is sent back as its own release, the one move a live claim allows
+      const move = claimed
+        ? (opts: Parameters<typeof transitionIssueStatus>[3]) =>
+            reopenAsItsRelease(row, args.runId, args.actor, opts)
+        : (opts: Parameters<typeof transitionIssueStatus>[3]) =>
+            transitionIssueStatus(row, 'reopen', args.actor, opts);
+      await move({
         transitionReason: reopenReason(issueId, record, args),
         beforeStatusWrite: async (tx) => {
           await args.fence?.(tx);

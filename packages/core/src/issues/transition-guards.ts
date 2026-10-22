@@ -36,6 +36,8 @@
  *   needs_info         a question (the reason) and its kind                      TRANSITION_REASON_REQUIRED,
  *                                                                                WAITING_KIND_REQUIRED
  *   on_hold, reopen    a reason                                                  TRANSITION_REASON_REQUIRED
+ *   reopen, from       no running release batch claims it, but the claiming      ISSUE_REOPEN_RELEASING
+ *   awaiting_release   release's own probe replay (`release-claim-guard.ts`)
  *   dropped            a reason                                                  VOID_REASON_REQUIRED
  */
 
@@ -66,6 +68,7 @@ import { type MoveEntryFacts, moveEntryRefusal, readMoveEntryFacts } from './pat
 import type { CatalogReading } from './pattern-rules.js';
 import { catalogOf, patternReleaseRefusal } from './patterns.js';
 import { readProjectDocument } from './ports.js';
+import { releaseClaimRefusal } from './release-claim-guard.js';
 import { isBlankPlan } from './transition-evidence.js';
 import { edgeFault, quote } from './transition-faults.js';
 import { issueHolder } from './work-state.js';
@@ -429,6 +432,8 @@ function entryGuardsOf(to: IssueStatus): readonly string[] {
 type IssueGuardContext = Omit<GuardContext, 'from' | 'to' | 'executor'> & {
   /** The run a recovery move hands the issue back from: its own hold is the one ending. */
   recoveringRunId?: string | null | undefined;
+  /** The release whose own probe replay sends a member back (`apply-transition.ts:reopenAsItsRelease`). */
+  releaseReplayRunId?: string | null | undefined;
 };
 
 /** Each guard the issue machine names, bound to the move being made. */
@@ -469,6 +474,8 @@ export function issueGuards(base: IssueGuardContext): Record<IssueGuard, Guard<'
     },
     released: async (input) => refusalOf(await releaseGuard(ctxOf(input))),
     design_delivered: async (input) => refusalOf(await designDeliveredGuard(ctxOf(input))),
+    not_releasing: (input) =>
+      releaseClaimRefusal(input.tx, input.row.id, base.releaseReplayRunId ?? null),
     // A park returning to the status it left is the park's own edge, not an entry: the status was
     // earned when it was first entered. A park with no recorded left status going anywhere is an
     // entry like any other, and owes that entry's guards.

@@ -16,7 +16,7 @@ import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
 import { replaceCriteria } from '../../src/issues/criteria/service.js';
-import { userToken } from '../helpers/api.js';
+import { api, userToken } from '../helpers/api.js';
 import { closeWorld, startQueue, testEnv } from '../helpers/ecosystem-world.js';
 import {
   addProjectMember,
@@ -75,12 +75,12 @@ async function atTheGate(seq: number): Promise<string> {
   return issue.id;
 }
 
-/** A release batch, still running, that claims `issueIds`. */
-async function batchClaims(issueIds: readonly string[]): Promise<string> {
+/** A release batch, still running unless `status` says it ended, that claims `issueIds`. */
+async function batchClaims(issueIds: readonly string[], status = 'running'): Promise<string> {
   const runId = randomUUID();
   await db.execute(sql`
     INSERT INTO pipeline_runs (id, project_id, kind, status, started_at, metadata)
-    VALUES (${runId}, ${projectId}, 'system', 'running', now(),
+    VALUES (${runId}, ${projectId}, 'system', ${status}, now(),
             ${JSON.stringify({ source: 'release-batch', issueIds })}::jsonb)`);
   for (const id of issueIds) {
     await db.execute(sql`UPDATE issues SET release_batch_run_id = ${runId} WHERE id = ${id}`);
@@ -229,5 +229,137 @@ describe('the judge a release owes, where the day cannot pay for it', () => {
     expect(comments.map((c) => c.body).join('\n')).toContain(
       'The judge this release owes ISS-635 has not run yet',
     );
+  });
+});
+
+describe('the runner jobs kept for release follow-throughs (4 of the default 10)', () => {
+  /** A claimed run of `act` on a fresh subject, as dispatch hands it to the cost guard. */
+  async function claimed(kind: string, key: string, trigger: string, act: string) {
+    const [made] = await rows<{ id: string }>(sql`
+      INSERT INTO steward_runs (project_id, subject_kind, subject_id, subject_key, trigger, events,
+                                acts_to_run, state, not_before)
+      VALUES (${projectId}, ${kind}, ${randomUUID()}, ${key}, ${trigger}, '[]'::jsonb,
+              ARRAY[${act}]::text[], 'running', now())
+      RETURNING id`);
+    return { id: made?.id ?? '', projectId, trigger };
+  }
+
+  // 2026-10-22's shape: feedback triages take the runner jobs up from the small hours, and the
+  // release that ships at 18:44 finds none left for its three judges
+  it('lets three follow-throughs run after ten handoff triages asked for the whole day', async () => {
+    const { admitRun } = await import('../../src/steward/policy.js');
+    const now = new Date();
+    const triaged: (string | null)[] = [];
+    for (let n = 0; n < 10; n += 1) {
+      const run = await claimed('feedback', `FB-${180 + n}`, 'feedback.filed', 'triage_draft');
+      triaged.push(await admitRun(run, ['triage_draft'], now));
+    }
+    const judged: (string | null)[] = [];
+    for (const key of ['ISS-632', 'ISS-634', 'ISS-635']) {
+      const run = await claimed('issue', key, 'release.shipped', 'release_followthrough');
+      judged.push(await admitRun(run, ['release_followthrough'], now));
+    }
+
+    expect(judged).toEqual([null, null, null]);
+    expect(triaged.filter((r) => r === null)).toHaveLength(6);
+    expect(triaged.slice(6)).toEqual([
+      'budget_spent',
+      'budget_spent',
+      'budget_spent',
+      'budget_spent',
+    ]);
+  });
+
+  it('keeps ceil(40%) of a lowered cap: 2 of 3', async () => {
+    await db.execute(sql`
+      UPDATE project_config_documents
+         SET document = jsonb_set(document, '{steward}', '{"budget": {"runnerJobs": 3}}'::jsonb)
+       WHERE project_id = ${projectId}`);
+    const { admitRun } = await import('../../src/steward/policy.js');
+    const now = new Date();
+    const first = await claimed('feedback', 'FB-1', 'feedback.filed', 'triage_draft');
+    const second = await claimed('feedback', 'FB-2', 'feedback.filed', 'triage_draft');
+
+    expect(await admitRun(first, ['triage_draft'], now)).toBeNull();
+    expect(await admitRun(second, ['triage_draft'], now)).toBe('budget_spent');
+  });
+});
+
+describe('the kernel refuses any reopen of a running release batch member (ISSUE_REOPEN_RELEASING)', () => {
+  const row = async (issueId: string) => {
+    const [r] = await rows<{
+      id: string;
+      project_id: string;
+      status: string;
+      reopen_count: number;
+    }>(sql`SELECT id, project_id, status, reopen_count FROM issues WHERE id = ${issueId}`);
+    return {
+      id: r?.id ?? '',
+      projectId: r?.project_id ?? '',
+      status: r?.status as 'awaiting_release',
+      reopenCount: Number(r?.reopen_count ?? 0),
+    };
+  };
+  const named = (run: string) =>
+    `release 0.4.0-dev.287 (batch ${run}) is still running and claims this issue`;
+  const versioned = (run: string) =>
+    db.execute(sql`UPDATE pipeline_runs SET release_version = '0.4.0-dev.287' WHERE id = ${run}`);
+
+  it("refuses a person's reopen through the transition door, naming the batch and its version", async () => {
+    const issue = await atTheGate(635);
+    const run = await batchClaims([issue]);
+    await versioned(run);
+
+    const res = await api(token, 'POST', `/api/issues/${issue}/transition`, {
+      toStatus: 'reopen',
+      reason: 'The panel repeats itself on a phone.',
+    });
+
+    expect(res.status, JSON.stringify(res.body)).toBe(409);
+    expect(JSON.stringify(res.body)).toContain('ISSUE_REOPEN_RELEASING');
+    expect(JSON.stringify(res.body)).toContain(named(run));
+    expect(await statusOf(issue)).toBe('awaiting_release');
+  });
+
+  it("refuses a box's reopen, and one that hands the release's run id in its own options", async () => {
+    const issue = await atTheGate(634);
+    const run = await batchClaims([issue]);
+    await versioned(run);
+    const { transitionIssueStatus } = await import('../../src/issues/index.js');
+    const box = { type: 'device' as const, id: randomUUID(), ownerId };
+    const smuggled = { transitionReason: 'Sent back by a box.', releaseReplayRunId: run };
+
+    await expect(transitionIssueStatus(await row(issue), 'reopen', box, smuggled)).rejects.toThrow(
+      /ISSUE_REOPEN_RELEASING/,
+    );
+    expect(await statusOf(issue)).toBe('awaiting_release');
+  });
+
+  it("lets the claiming release's own replay send it back, and no other release's", async () => {
+    const issue = await atTheGate(632);
+    const run = await batchClaims([issue]);
+    const { reopenAsItsRelease } = await import('../../src/issues/index.js');
+    const actor = { type: 'user' as const, id: ownerId, agency: 'agent' as const };
+    const reason = { transitionReason: 'The kept probe failed on the served build.' };
+
+    await expect(reopenAsItsRelease(await row(issue), randomUUID(), actor, reason)).rejects.toThrow(
+      /ISSUE_REOPEN_RELEASING/,
+    );
+    await reopenAsItsRelease(await row(issue), run, actor, reason);
+
+    expect(await statusOf(issue)).toBe('reopen');
+  });
+
+  it('allows a reopen again once the batch has finished', async () => {
+    const issue = await atTheGate(635);
+    await batchClaims([issue], 'completed');
+
+    const res = await api(token, 'POST', `/api/issues/${issue}/transition`, {
+      toStatus: 'reopen',
+      reason: 'The panel repeats itself on a phone.',
+    });
+
+    expect(res.status, JSON.stringify(res.body)).toBeLessThan(300);
+    expect(await statusOf(issue)).toBe('reopen');
   });
 });

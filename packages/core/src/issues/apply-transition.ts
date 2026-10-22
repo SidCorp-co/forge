@@ -170,6 +170,34 @@ export async function transitionIssueStatus(
   actor: TransitionActor,
   options: ApplyStatusTransitionOptions = {},
 ): Promise<StatusTransitionResult> {
+  // the release-run field is never a caller's to pass, whatever object it hands in
+  const { releaseReplayRunId: _never, ...given } = options as InternalOptions;
+  return moveIssue(issue, toStatus, actor, given);
+}
+
+/**
+ * The claiming release's own probe replay sending back a member its failing probe names: the one
+ * move to `reopen` a running batch's member may make (`release-claim-guard.ts`), since that release
+ * is the one releasing it (`release-batch/probe-replay.ts:sendBack`). No door reaches it.
+ */
+export async function reopenAsItsRelease(
+  issue: TransitionIssueRow,
+  releaseRunId: string,
+  actor: TransitionActor,
+  options: ApplyStatusTransitionOptions = {},
+): Promise<StatusTransitionResult> {
+  return moveIssue(issue, 'reopen', actor, { ...options, releaseReplayRunId: releaseRunId });
+}
+
+/** What only `reopenAsItsRelease` adds to a move's options. */
+type InternalOptions = ApplyStatusTransitionOptions & { releaseReplayRunId?: string };
+
+async function moveIssue(
+  issue: TransitionIssueRow,
+  toStatus: IssueStatus,
+  actor: TransitionActor,
+  options: InternalOptions,
+): Promise<StatusTransitionResult> {
   const fromStatus = issue.status;
   const [archived] = await archivedAmong(db, [issue.id]);
   if (archived) throw transitionRefused('ISSUE_ARCHIVED', archived.message, { from: fromStatus });
@@ -312,6 +340,7 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
         transitionReason: options.transitionReason,
         waitingKind: options.waitingKind,
         recoveringRunId: options.recoveringRunId,
+        releaseReplayRunId: (options as InternalOptions).releaseReplayRunId ?? null,
       }),
       beforeWrite: async (tx) => {
         const archiveRefusal = await archiveRefusalForTransition(tx, issue.id, toStatus);

@@ -68,6 +68,7 @@ export const ISSUE_TRANSITION_REFUSAL_CODES = [
 	"OPEN_QUESTIONS",
 	"CHECKLIST_INCOMPLETE",
 	"CHECKLIST_ANSWER_INVALID",
+	"ISSUE_REOPEN_RELEASING",
 ] as const;
 export type IssueTransitionRefusalCode = (typeof ISSUE_TRANSITION_REFUSAL_CODES)[number];
 export const ISSUE_TRANSITION_REFUSAL_STATUSES = {
@@ -75,6 +76,7 @@ export const ISSUE_TRANSITION_REFUSAL_STATUSES = {
 	NOT_THE_HOLDER: 403,
 	STALE_TRANSITION: 409,
 	CHECKLIST_ANSWER_INVALID: 400,
+	ISSUE_REOPEN_RELEASING: 409,
 } as const satisfies RefusalStatuses<IssueTransitionRefusalCode>;
 
 type IssueStatusLegacyRefusal = Refusal & {
@@ -179,6 +181,7 @@ export const ISSUE_GUARDS = [
 	"unheld",
 	"run_holder",
 	"design_delivered",
+	"not_releasing",
 ] as const;
 export type IssueGuard = (typeof ISSUE_GUARDS)[number];
 
@@ -224,7 +227,7 @@ const recovery = (to: IssueStatus, guards: readonly IssueGuard[]): IssueEdge => 
 
 export const ISSUE_MACHINE = defineMachine({
 	entity: "issue",
-	shapes: ["853ac6ba", "23991d04", "5a3cd8b3", "07fda5db", "89cf83a7", "9ee504ee"],
+	shapes: ["853ac6ba", "23991d04", "5a3cd8b3", "07fda5db", "89cf83a7", "9ee504ee", "d0460eb0"],
 	design: { flow: "issue-lifecycle", revision: 12 },
 	states: ISSUE_STATUSES,
 	initial: ISSUE_INITIAL_STATUSES,
@@ -248,7 +251,7 @@ export const ISSUE_MACHINE = defineMachine({
 		...sideExits("approved"),
 
 		{ from: "awaiting_release", to: "closed", act: "release.recorded", permission: MOVE, guards: ["released", "merged"] },
-		{ from: "awaiting_release", to: "reopen", act: "release.failed", permission: MOVE, guards: [] },
+		{ from: "awaiting_release", to: "reopen", act: "release.failed", permission: MOVE, guards: ["not_releasing"] },
 		...sideExits("awaiting_release"),
 
 		...parkReturns("needs_info", "answered"),

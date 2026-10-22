@@ -3,9 +3,13 @@
 // project document's `steward` key. A share of each day (`HANDOFF_SHARE`) is kept for handoff-event
 // runs, which the sweep's standing backlog can never spend: the sweep spends only the rest, and a
 // sweep run its share cannot pay for waits for the next day, oldest first (dev.271: the first sweep's
-// backlog spent the whole day and every later handoff was skipped). A handoff run the whole day
-// cannot pay for is skipped `budget_spent`, except a release follow-through: the judge a shipped
-// issue is owed waits for the next day's budget and says so on the issue (`dispatch.ts`).
+// backlog spent the whole day and every later handoff was skipped). A share of each day's runner
+// jobs (`FOLLOWTHROUGH_SHARE`, 4 of the default 10, ceil(40%) of a lowered cap) is kept for release
+// follow-throughs, the judge a shipped issue is owed: no other run may spend it (dev.287: four
+// triages and two follow-throughs spent the day by 02:38, and that release's three judges were
+// skipped). A handoff run the whole day, or the part of it not kept for follow-throughs, cannot pay
+// for is skipped `budget_spent`, except a release follow-through: it waits for the next day's budget
+// and says so on the issue (`dispatch.ts`).
 
 import {
   STEWARD_ACT_RUNTIME,
@@ -79,6 +83,18 @@ export function sharesOf(budget: StewardBudget): { handoff: StewardBudget; sweep
   };
 }
 
+/** The part of each day's runner jobs only a release follow-through may spend. */
+export const FOLLOWTHROUGH_SHARE = 0.4;
+
+/** The runner jobs kept for release follow-throughs: 4 of the default 10, ceil(40%) of a lowered cap. */
+export function followthroughReserveOf(budget: StewardBudget): number {
+  return Math.ceil(budget.runnerJobs * FOLLOWTHROUGH_SHARE);
+}
+
+/** Whether a run of `acts` is a release follow-through, which may spend the jobs kept for it. */
+export const followsThrough = (acts: readonly StewardAct[]): boolean =>
+  acts.includes('release_followthrough');
+
 /** The UTC midnight after `now`: when a paced sweep run is due again. */
 export function nextUtcDay(now: Date): Date {
   return new Date(utcDayStart(now).getTime() + 86_400_000);
@@ -99,9 +115,25 @@ export async function refusalOf(
   const day = utcDayStart(now);
   const cost = costOf(acts);
   const whole = fits(stance.budget, await spentSince(projectId, day, opts), cost);
-  if (!opts.trigger || !isSweepTrigger(opts.trigger)) return whole ? null : 'budget_spent';
+  const kept = await outsideReserve(projectId, day, acts, cost, stance.budget, opts);
+  if (!opts.trigger || !isSweepTrigger(opts.trigger)) return whole && kept ? null : 'budget_spent';
   const swept = await spentSince(projectId, day, { ...opts, sweepOnly: true });
-  return whole && fits(sharesOf(stance.budget).sweep, swept, cost) ? null : 'next_day';
+  return whole && kept && fits(sharesOf(stance.budget).sweep, swept, cost) ? null : 'next_day';
+}
+
+/** Whether a run that is not a follow-through fits what is left once the follow-throughs' jobs are kept. */
+async function outsideReserve(
+  projectId: string,
+  day: Date,
+  acts: readonly StewardAct[],
+  cost: StewardBudget,
+  budget: StewardBudget,
+  opts: { exceptRunId?: string; tx?: Tx },
+): Promise<boolean> {
+  if (cost.runnerJobs === 0 || followsThrough(acts)) return true;
+  const others = await spentSince(projectId, day, { ...opts, followthrough: 'except' });
+  const open = { ...budget, runnerJobs: budget.runnerJobs - followthroughReserveOf(budget) };
+  return fits(open, others, cost);
 }
 
 /**

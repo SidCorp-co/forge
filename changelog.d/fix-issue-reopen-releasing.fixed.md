@@ -1,0 +1,1 @@
+**An issue a running release batch claims can no longer be reopened.** Any reopen is refused `ISSUE_REOPEN_RELEASING`, naming the batch and its version, except the release's own failing probe; once the release finishes, a reopen works as before.
