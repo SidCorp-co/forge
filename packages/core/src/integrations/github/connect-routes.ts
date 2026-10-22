@@ -16,7 +16,7 @@ import { HTTPException } from 'hono/http-exception';
 import { answer } from '../../api-reference/declare/describe.js';
 import { db } from '../../db/client.js';
 import { organizations, projects } from '../../db/schema.js';
-import { loadOrgRole, orgRoleAtLeast } from '../../lib/authz.js';
+import { effectiveProjectRole, loadOrgRole, orgRoleAtLeast } from '../../lib/authz.js';
 import { logger } from '../../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../../middleware/auth.js';
 import { recordInstallation } from '../binding-installation.js';
@@ -399,6 +399,9 @@ async function reattach(
   return { id: updated?.id ?? removed.connection.id };
 }
 
+const administers = async (userId: string, projectId: string) =>
+  (await effectiveProjectRole(userId, projectId))?.role === 'admin';
+
 githubCallbackRoutes.get(
   '/integrations/github/installed',
   githubInstalled,
@@ -428,9 +431,13 @@ githubCallbackRoutes.get(
     await recordInstallation(pair.binding.id, installationId, false);
     // One installation belongs to its connection (the master's ruling, ISS-1421 r22): every other
     // project bound to it that holds none, as a reattach leaves them, takes it. One already held is
-    // never replaced, since an App installed on two GitHub accounts has two.
+    // never replaced, since an App installed on two GitHub accounts has two. The authority boundary
+    // wins (ruling, r22 repair): a caller who reaches the App only by a binding writes only onto
+    // the projects it administers.
+    const holdsApp = (await findReachableConnection(userId, pair.binding.connectionId))?.canManage;
     for (const other of await listBindingsForConnection(pair.binding.connectionId)) {
       if (other.binding.id === pair.binding.id || other.binding.provider !== 'github') continue;
+      if (!holdsApp && !(await administers(userId, other.binding.projectId))) continue;
       await recordInstallation(other.binding.id, installationId, true);
     }
 

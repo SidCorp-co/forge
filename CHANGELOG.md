@@ -3217,7 +3217,7 @@
 - **The attachments' "could not refresh" line under Description says it is about the attachments.** (ISS-1228)
 - **Getting access to a project back clears every "Not a project member" on its issue page at once**, instead of leaving the cost, the relations and the attachments to their own Retry. (ISS-1228)
 - **`forge-runner`'s background connection says where it looked for Forge too.** The daemon's log names the core address, why it was not reached and what to check, and no line ends a reason with two full stops. (ISS-1421)
-- **A project whose GitHub connection was removed offers Install the GitHub App again**, which turns it back on, instead of a dead end. Every project bound to that App gets its installation. (ISS-1421)
+- **A project whose GitHub connection was removed offers Install the GitHub App again**, which turns it back on, instead of a dead end. Every project bound to that App gets its installation, where the installer may change that project. (ISS-1421)
 - **A removed connection is not offered for sharing, testing or Enable credential**, and both are refused by name if sent. Clearing one names every project it is bound to, and the row's confirmation fits a phone. (ISS-1421)
 - **Connections left behind by organizations deleted before this release are deleted.** (ISS-1421)
 - **A refusal's details say what its message says, field by field.** Each field is listed with its message's sentence, under the field the call takes: a session started with no prompt names `prompt`, not `message`. (ISS-1421)

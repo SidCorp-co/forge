@@ -279,6 +279,32 @@ describe('finishing a GitHub installation for an App the caller reaches by a bin
     expect(await installationOn(foreignProjectId)).toBeUndefined();
   });
 
+  // ISS-1421 r22 repair, criteria 226 and 239 (master's ruling): a caller who reaches the App only
+  // by a binding records the installation on the bound projects it administers and no other; a
+  // caller holding the App records it on every bound project.
+  it('records it on each project the binding-only caller administers, and on no other', async () => {
+    const second = (await createTestProject(harness.db, orgOwner.id, { orgId })).id;
+    await createTestProjectMember(harness.db, {
+      userId: boundAdmin.id,
+      projectId: second,
+      role: 'admin',
+    });
+    await appBoundTo([projectId, second, foreignProjectId]);
+
+    expect((await installedAs(boundAdmin.id)).status).toBe(302);
+    expect(await installationOn(projectId)).toBe(INSTALLATION);
+    expect(await installationOn(second)).toBe(INSTALLATION);
+    expect(await installationOn(foreignProjectId)).toBeUndefined();
+  });
+
+  it('records it on every bound project, administered or not, for a caller holding the App', async () => {
+    await appBoundTo([projectId, foreignProjectId], { type: 'org', id: orgId });
+
+    expect((await installedAs(orgOwner.id)).status).toBe(302);
+    expect(await installationOn(projectId)).toBe(INSTALLATION);
+    expect(await installationOn(foreignProjectId)).toBe(INSTALLATION);
+  });
+
   it('still completes for an App bound to the one project the caller administers', async () => {
     await appBoundTo([projectId]);
 
