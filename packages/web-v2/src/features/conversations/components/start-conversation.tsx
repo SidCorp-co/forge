@@ -66,6 +66,17 @@ export function StartConversation({ onStarted }: { onStarted: (id: string, proje
     );
   };
 
+  // Until the reader's roles are read, nothing is offered: a viewer would be invited first.
+  if (isLoading) {
+    return (
+      <div className="grid h-full min-h-0 place-items-center px-4 py-8">
+        <p role="status" data-testid="start-loading" className="fg-body-sm flex items-center gap-2 text-muted">
+          <Spinner size={14} /> Reading your projects…
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="grid h-full min-h-0 place-items-center overflow-y-auto px-4 py-8">
       <div className="flex w-full max-w-sm flex-col gap-4">

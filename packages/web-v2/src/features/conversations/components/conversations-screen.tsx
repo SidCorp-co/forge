@@ -105,7 +105,7 @@ export function ConversationsScreen() {
 
   const now = Date.now();
   // A reader who only views every project here is offered no room to start (ISS-1229 r35, judge-95).
-  const startsNone = !orgLoading && !orgProjects.some((p) => startsRooms(p.role));
+  const startsNone = orgLoading || !orgProjects.some((p) => startsRooms(p.role));
 
   const openRow = useCallback((row: ListedConversation) => {
     setOrphan(null);

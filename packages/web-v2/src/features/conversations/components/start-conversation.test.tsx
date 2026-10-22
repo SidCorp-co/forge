@@ -15,11 +15,12 @@ let candidates: ConversationCandidates = {
 };
 
 vi.mock("@/providers/auth-provider", () => ({ useAuth: () => ({ user: { id: "me" } }) }));
+let loading = false;
 let projects: Array<{ id: string; name: string; slug: string; role: string | null }> = [
   { id: "p1", name: "Billing", slug: "billing", role: "member" },
 ];
 vi.mock("@/features/projects/hooks", () => ({
-  useOrgScopedProjects: () => ({ projects }),
+  useOrgScopedProjects: () => ({ projects, isLoading: loading }),
 }));
 vi.mock("../hooks", () => ({
   useProjectCandidates: () => ({ data: candidates, isLoading: false, isError: false }),
@@ -28,7 +29,10 @@ vi.mock("../hooks", () => ({
 
 const { StartConversation } = await import("./start-conversation");
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  loading = false;
+});
 // jsdom lays nothing out, and the project picker scrolls its chosen option into view.
 Element.prototype.scrollIntoView = () => {};
 
@@ -105,6 +109,15 @@ describe("the projects a room can be started in", () => {
     expect(
       screen.getByText("You hold the viewer role on every project here, so their conversations are yours to read from the list."),
     ).toBeTruthy();
+    expect(container.textContent).not.toMatch(/start/i);
+  });
+
+  it("offers nothing, and says nothing of starting, while the reader's projects are read", () => {
+    projects = [{ id: "p2", name: "Ops", slug: "ops", role: "viewer" }];
+    loading = true;
+    const { container } = render(<StartConversation onStarted={vi.fn()} />);
+    expect(screen.getByTestId("start-loading")).toBeTruthy();
+    expect(screen.queryByRole("combobox")).toBeNull();
     expect(container.textContent).not.toMatch(/start/i);
   });
 

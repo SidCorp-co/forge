@@ -17,13 +17,13 @@ const archived = {
 };
 
 const desk = { id: "p1", name: "Desk", slug: "desk", orgId: "o1", role: "member" };
-const reader = { role: "member" };
+const reader = { role: "member", loading: false };
 vi.mock("@/features/projects/hooks", () => ({
   useProjects: () => ({ data: [{ ...desk, role: reader.role }], isLoading: false }),
   useOrgScopedProjects: () =>
     reader.role === "none"
-      ? { projects: [], projectIds: new Set(), isLoading: false }
-      : { projects: [{ ...desk, role: reader.role }], projectIds: new Set(["p1"]), isLoading: false },
+      ? { projects: [], projectIds: new Set(), isLoading: reader.loading }
+      : { projects: [{ ...desk, role: reader.role }], projectIds: new Set(["p1"]), isLoading: reader.loading },
 }));
 vi.mock("@/features/orgs/active-org", () => ({ useActiveOrg: () => ({ activeOrgId: "o1" }) }));
 vi.mock("@/lib/ws/use-room", () => ({ useRoom: () => {} }));
@@ -86,6 +86,7 @@ const { ConversationsScreen } = await import("./conversations-screen");
 
 beforeEach(() => {
   reader.role = "member";
+  reader.loading = false;
   window.matchMedia = ((query: string) => ({
     matches: query === "(min-width: 768px)",
     media: query,
@@ -157,6 +158,13 @@ describe("the offer of a new room", () => {
     at("/conversations");
     render(<ConversationsScreen />);
     expect(screen.getByRole("button", { name: "New conversation" })).toBeTruthy();
+  });
+
+  it("is not made while the reader's projects are still being read", () => {
+    reader.loading = true;
+    at("/conversations");
+    render(<ConversationsScreen />);
+    expect(screen.queryByRole("button", { name: "New conversation" })).toBeNull();
   });
 
   it("is not made to a reader who can see no project here", () => {
