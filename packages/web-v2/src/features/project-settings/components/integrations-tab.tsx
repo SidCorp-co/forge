@@ -5,7 +5,7 @@
 // the Agent MCP servers preview, and the ISS-408/F3 "Share an existing
 // connection" Card. The workspace `/integrations` page is the owner-scoped
 // connection directory; everything project-scoped lives here.
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Banner,
   Button,
@@ -24,9 +24,11 @@ import { cardProvider, isProviderCard } from "@/features/integrations/derive";
 import {
   useBindExistingConnection,
   useConnections,
+  useIntegrationsList,
   useIntegrationsStatus,
   useIsOrgAdmin,
 } from "@/features/integrations/hooks";
+import { probeIsUsable, VERIFY_KEY, VERIFY_PROBE_SECTION } from "@/features/integrations/components/verify-probe-field";
 import { providerLabel, providerModule } from "@/features/integrations/providers/registry";
 import { formatApiError } from "@/lib/api/error";
 import { useLocationSearch } from "@/lib/utils/use-location-search";
@@ -35,6 +37,7 @@ import type {
   AgentAccess,
   BindingRole,
   DeployStage,
+  IntegrationSummary,
 } from "@/features/integrations/types";
 
 // What the binding is FOR — DECLARED by the person, never derived from the
@@ -285,6 +288,22 @@ function ShareExistingCard({
   );
 }
 
+/**
+ * The live deploy binding a "declare a probe" link is about: the first one a release cannot read a
+ * probe from, else the first one there is. Only a provider with a drawer here is a candidate, since
+ * the landing opens that drawer; null where no live deploy binding has one.
+ */
+export function probeLandingFor(bindings: readonly IntegrationSummary[]): IntegrationSummary | null {
+  const live = bindings.filter(
+    (b) =>
+      b.role === "deploy" &&
+      b.stages.includes("live") &&
+      b.active !== false &&
+      providerModule(b.provider)?.drillable === true,
+  );
+  return live.find((b) => !probeIsUsable(b.config?.[VERIFY_KEY])) ?? live[0] ?? null;
+}
+
 export function IntegrationsTab({
   projectId,
   canEdit,
@@ -293,11 +312,31 @@ export function IntegrationsTab({
   canEdit: boolean;
 }) {
   // Arriving to add one puts this section first, so the link lands on what it names.
-  const addingLiveTarget = new URLSearchParams(useLocationSearch()).get("add") === LIVE_DEPLOY_TARGET;
-  const [connecting, setConnecting] = useState<{ provider: string; stage?: DeployStage } | null>(
-    null,
-  );
+  const params = new URLSearchParams(useLocationSearch());
+  const addingLiveTarget = params.get("add") === LIVE_DEPLOY_TARGET;
+  const [connecting, setConnecting] = useState<{
+    provider: string;
+    stage?: DeployStage;
+    focus?: string;
+  } | null>(null);
   const clearConnecting = useCallback(() => setConnecting(null), []);
+  // Arriving to declare a probe opens the drawer of the binding the gap is about, once, on its
+  // Verify probe section (ISS-1339 r2): the tab's top has no field for it.
+  const landingOnProbe = params.get("field") === VERIFY_PROBE_SECTION;
+  const bindings = useIntegrationsList(landingOnProbe ? projectId : undefined);
+  const landed = useRef(false);
+  // A read that finds no binding while a refresh is still out does not spend the landing: the
+  // refresh may bring the binding the link was about.
+  useEffect(() => {
+    if (!landingOnProbe || landed.current || !bindings.data) return;
+    const target = probeLandingFor(bindings.data.items);
+    if (!target) {
+      if (!bindings.isFetching) landed.current = true;
+      return;
+    }
+    landed.current = true;
+    setConnecting({ provider: target.provider, stage: "live", focus: VERIFY_PROBE_SECTION });
+  }, [landingOnProbe, bindings.data, bindings.isFetching]);
   const share = (
     <ShareExistingCard
       projectId={projectId}

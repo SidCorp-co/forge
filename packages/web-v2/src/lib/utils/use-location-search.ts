@@ -41,3 +41,9 @@ export function replaceLocationSearch(url: string): void {
   window.history.replaceState(window.history.state, '', url);
   window.dispatchEvent(new Event(EVENT));
 }
+
+/** The push a Next link to this screen makes is one no reader here hears (ISS-1339 r2). */
+export function pushLocationSearch(url: string): void {
+  window.history.pushState(null, '', url);
+  window.dispatchEvent(new Event(EVENT));
+}

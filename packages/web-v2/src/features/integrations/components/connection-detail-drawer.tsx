@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import {
   Banner,
   Button,
@@ -22,6 +22,7 @@ import { AgentAccessControl } from "./agent-access-control";
 import { DeliveryLogViewer } from "./delivery-log-viewer";
 import { BindingReleaseRunnerField } from "./release-runner-field";
 import { STAGE_OPTIONS, StatusPill, scopeLabel } from "./status-pill";
+import { BindingVerifyProbeField, VERIFY_PROBE_SECTION } from "./verify-probe-field";
 
 /** Adaptive connection detail (ISS-402). Opened from a directory provider card;
  *  renders the provider's existing config+actions section (Test / Rotate /
@@ -41,26 +42,34 @@ const SECTIONS = new Map(
 
 // A provider with no section is not a provider whose section is empty — it is one this screen has
 // nothing to configure for, and saying so beats rendering a blank pane under its name.
+// `after` is drawn once the section is: a control below a lazy section that it moves down as it
+// arrives is a control a link has already scrolled to and lost (ISS-1339 r2).
 function ProviderSection({
   provider,
   projectId,
   stage,
+  after,
 }: {
   provider: string;
   projectId: string;
   stage: DeployStage | null;
+  after?: ReactNode;
 }) {
   const Section = SECTIONS.get(provider);
   if (!Section) {
     return (
-      <p className="fg-body-sm border-b border-line pb-2 text-muted">
-        {providerLabel(provider)} has nothing to configure here.
-      </p>
+      <>
+        <p className="fg-body-sm border-b border-line pb-2 text-muted">
+          {providerLabel(provider)} has nothing to configure here.
+        </p>
+        {after}
+      </>
     );
   }
   return (
     <Suspense fallback={<Skeleton className="h-40 w-full" />}>
       <Section projectId={projectId} {...(stage ? { stage } : {})} />
+      {after}
     </Suspense>
   );
 }
@@ -216,16 +225,36 @@ function ConfigPane({
   projectId,
   stageFromCardKey,
   canEdit,
+  focus,
 }: {
   provider: string;
   projectId: string;
   stageFromCardKey: DeployStage | null;
   canEdit: boolean;
+  focus: string | null;
 }) {
   const binding = useBindingForCard(projectId, provider, stageFromCardKey);
   return (
     <>
-      <ProviderSection provider={provider} projectId={projectId} stage={stageFromCardKey} />
+      <ProviderSection
+        provider={provider}
+        projectId={projectId}
+        stage={stageFromCardKey}
+        after={
+          // ISS-1339 r2 — what a release reads to learn the commit production serves, on every live
+          // deploy binding whatever its provider; it renders itself away elsewhere.
+          binding && (
+            <div className="mt-4">
+              <BindingVerifyProbeField
+                projectId={projectId}
+                binding={binding}
+                canEdit={canEdit}
+                focus={focus === VERIFY_PROBE_SECTION}
+              />
+            </div>
+          )
+        }
+      />
       {/* A provider's section carries its own agents switch, with its own refusal words, so the
           pane adds one only where there is no section (ISS-1421 r8, criterion 128). */}
       {binding && !SECTIONS.has(provider) && (
@@ -264,11 +293,14 @@ export function ConnectionDetailDrawer({
   statusReadError = null,
   statusReadFailedAt = 0,
   onRetryStatus,
+  focus = null,
 }: {
   projectId: string;
   card: StatusCard | null;
   onClose: () => void;
   canEdit?: boolean;
+  /** The section a link opened the drawer for, scrolled to and focused once it is drawn. */
+  focus?: string | null;
   /** Why the Integrations tab's last status read failed, said here so the open drawer stays open. */
   statusReadError?: string | null;
   /** When that read failed: a second failure with the same words is still a new one to show. */
@@ -339,6 +371,7 @@ export function ConnectionDetailDrawer({
                 projectId={projectId}
                 stageFromCardKey={stageFromCardKey}
                 canEdit={canEdit}
+                focus={focus}
               />
             ) : (
               <DeliveryLogPane
@@ -354,6 +387,7 @@ export function ConnectionDetailDrawer({
             projectId={projectId}
             stageFromCardKey={stageFromCardKey}
             canEdit={canEdit}
+            focus={focus}
           />
         )}
       </div>

@@ -342,6 +342,97 @@ describe('the environments document', () => {
     expect(res.json.code).toBe('ENVIRONMENTS_WRITE_SHAPE');
   });
 
+  /** The stored column as Postgres prints it, so "unchanged" means the bytes and not a reading. */
+  async function storedText(): Promise<string> {
+    const rows = await harness.db.execute<{ text: string }>(
+      sql`SELECT environments::text AS text FROM projects WHERE id = ${projectId}`,
+    );
+    return rows[0]?.text ?? '';
+  }
+
+  // ISS-1339 r2, judge-98: `{"patch":{"live.commitUrl":"…"}}` answered 200 and stored a top-level key
+  // literally named `live.commitUrl`, because only the merged document was parsed and it passes
+  // keys it does not name. What a write SENDS is now held to the document's keys.
+  it.each([
+    ['a dotted top-level name', { 'live.commitUrl': 'https://x.example/v' }, ['live.commitUrl']],
+    ['a top-level key', { futureKnob: 1, limits: 'written beside it' }, ['futureKnob']],
+    ['a key under live', { live: { url: 'https://y.example', region: 'eu' } }, ['live.region']],
+    [
+      'a key under preview',
+      { preview: { commitUrl: 'https://p.example/v' } },
+      ['preview.commitUrl'],
+    ],
+    ['a null for a key nothing stores', { futureKnob: null }, ['futureKnob']],
+  ])('refuses %s by name, with the valid shape, and writes nothing', async (_, patch, keys) => {
+    const before = await storedText();
+    const res = await call('PATCH', `/api/projects/${projectId}/environments`, {
+      base: await readEnv(),
+      patch,
+    });
+    expect(res.status).toBe(400);
+    expect(res.json.code).toBe('ENVIRONMENTS_INVALID');
+    const message = String(res.json.message);
+    for (const key of keys) expect(message).toContain(`\`${key}\``);
+    expect(message).toContain(
+      '{ preview: { url, apiUrl, urls[] } | null, live: { url, apiUrl }, testCredentials[], limits }',
+    );
+    const conflicts = (res.json.details as { conflicts: { path: string }[] }).conflicts;
+    expect(conflicts.map((c) => c.path)).toEqual(keys);
+    expect(await storedText()).toBe(before);
+  });
+
+  it('refuses both retired live keys in one message that names each once', async () => {
+    const before = await storedText();
+    const res = await call('PATCH', `/api/projects/${projectId}/environments`, {
+      base: await readEnv(),
+      patch: {
+        live: { commitUrl: 'https://api.x/version', commitPath: 'sourceCommit' },
+        limits: 'x',
+      },
+    });
+    expect(res.status).toBe(400);
+    const message = String(res.json.message);
+    const count = (part: string) => message.split(part).length - 1;
+    expect(count('environments.live.commitUrl')).toBe(1);
+    expect(count('environments.live.commitPath')).toBe(1);
+    expect(count('Nothing was written.')).toBe(1);
+    expect(await storedText()).toBe(before);
+  });
+
+  it('deletes a stray the stored document holds when a patch sends it as null', async () => {
+    const res = await call('PATCH', `/api/projects/${projectId}/environments`, {
+      base: await readEnv(),
+      patch: { preview: { shownNowhere: null }, limits: 'written with it' },
+    });
+    expect(res.status).toBe(200);
+    const after = await mods.readEnvironments(projectId);
+    expect(after.preview).toEqual({ url: 'https://preview.example' });
+    expect(after.limits).toBe('written with it');
+  });
+
+  it('refuses a stray the stored document holds when a patch sends it a value', async () => {
+    const before = await storedText();
+    const res = await call('PATCH', `/api/projects/${projectId}/environments`, {
+      base: await readEnv(),
+      patch: { preview: { shownNowhere: 'rewritten' } },
+    });
+    expect(res.status).toBe(400);
+    expect(String(res.json.message)).toContain('`preview.shownNowhere`');
+    expect(await storedText()).toBe(before);
+  });
+
+  it('carries a stray the stored document holds through a write that does not name it', async () => {
+    const res = await call('PATCH', `/api/projects/${projectId}/environments`, {
+      base: await readEnv(),
+      patch: { preview: { apiUrl: 'https://api.preview.example' } },
+    });
+    expect(res.status).toBe(200);
+    expect((await mods.readEnvironments(projectId)).preview).toEqual({
+      ...SEED_ENVIRONMENTS.preview,
+      apiUrl: 'https://api.preview.example',
+    });
+  });
+
   it('refuses a scoped limits write whose stored value moved under it', async () => {
     await mods.writeEnvironmentsLimits({ projectId, base: null, value: 'no outbound email' });
     await expect(

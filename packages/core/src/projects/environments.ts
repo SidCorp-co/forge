@@ -114,19 +114,99 @@ export const liveEnvironmentSchema = z
 /** The live keys a release once read a commit from, before probes moved to the deploy binding. */
 export const RETIRED_LIVE_KEYS = ['commitUrl', 'commitPath'] as const;
 
-export function retiredLiveKeyMessage(key: (typeof RETIRED_LIVE_KEYS)[number]): string {
-  return `\`environments.live.${key}\` was retired: a release no longer reads the commit it serves off the project's environments, only off the live deploy binding. Declare the probe as \`verify.probes\` on that binding — \`{"probes":[{"url":"https://<host>/version","commitPath":"sourceCommit"}]}\` — and send \`live\` with \`url\` and \`apiUrl\` only. Nothing was written.`;
+/** The keys the environments document has, at each level a patch may name one. Rows under
+ *  `preview.urls` and `testCredentials` are replaced whole and keep what they carry. */
+const DOCUMENT_KEYS = {
+  '': ['preview', 'live', 'testCredentials', 'limits'],
+  preview: ['url', 'apiUrl', 'urls'],
+  live: ['url', 'apiUrl'],
+} as const;
+
+export const ENVIRONMENTS_SHAPE =
+  '`{ preview: { url, apiUrl, urls[] } | null, live: { url, apiUrl }, testCredentials[], limits }`';
+
+/** A key a patch sends that the document does not take: retired, or never one of its keys. */
+export interface RefusedKey {
+  path: string;
+  why: 'retired' | 'unknown';
+  message: string;
 }
 
-/** Each retired key a patch names under `live`, a null included: sending it at all is refused. */
-export function retiredLiveKeysIn(
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const RETIRED_WHY =
+  'a release no longer reads the commit it serves off the project\'s environments, only off the live deploy binding. Declare the probe as `verify.probes` on that binding — `{"probes":[{"url":"https://<host>/version","commitPath":"sourceCommit"}]}` — and send `live` with `url` and `apiUrl` only.';
+
+function refusal(path: string, why: RefusedKey['why']): RefusedKey {
+  return why === 'retired'
+    ? { path, why, message: `\`environments.${path}\` was retired: ${RETIRED_WHY}` }
+    : {
+        path,
+        why,
+        message: `\`${path}\` is not a key of the environments document, which is ${ENVIRONMENTS_SHAPE}.`,
+      };
+}
+
+/**
+ * Each key a patch sends that the document does not have, in the order sent. A retired live key is
+ * refused whatever it is sent as, a null included. A null sent for any other key the STORED
+ * document holds deletes a stray written before this check, which is the one way such a key leaves;
+ * a stray nobody sends is carried as stored.
+ */
+export function refusedKeysIn(
   patch: Record<string, unknown>,
-): (typeof RETIRED_LIVE_KEYS)[number][] {
-  const live = patch.live;
-  if (typeof live !== 'object' || live === null) return [];
-  return RETIRED_LIVE_KEYS.filter((key) => key in live);
+  stored: Record<string, unknown>,
+): RefusedKey[] {
+  const refused: RefusedKey[] = [];
+  for (const [level, allowed] of Object.entries(DOCUMENT_KEYS)) {
+    const sent = level === '' ? patch : patch[level];
+    const held = level === '' ? stored : stored[level];
+    if (!isObject(sent)) continue;
+    for (const [key, value] of Object.entries(sent)) {
+      const path = level === '' ? key : `${level}.${key}`;
+      if (level === 'live' && (RETIRED_LIVE_KEYS as readonly string[]).includes(key)) {
+        refused.push(refusal(path, 'retired'));
+      } else if (!(allowed as readonly string[]).includes(key)) {
+        if (value === null && isObject(held) && Object.hasOwn(held, key)) continue;
+        refused.push(refusal(path, 'unknown'));
+      }
+    }
+  }
+  return refused;
 }
 
+function listed(names: string[]): string {
+  return names.length <= 1
+    ? (names[0] ?? '')
+    : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+}
+
+/** One refusal for every key a patch sent that the document does not take, each named once. */
+export function refusedKeysMessage(refused: readonly RefusedKey[]): string {
+  const retired = refused
+    .filter((r) => r.why === 'retired')
+    .map((r) => `\`environments.${r.path}\``);
+  const unknown = refused.filter((r) => r.why === 'unknown').map((r) => `\`${r.path}\``);
+  const said: string[] = [];
+  if (retired.length > 0) {
+    said.push(
+      `${listed(retired)} ${retired.length === 1 ? 'was' : 'were'} retired: ${RETIRED_WHY}`,
+    );
+  }
+  if (unknown.length > 0) {
+    said.push(
+      `${listed(unknown)} ${unknown.length === 1 ? 'is not a key' : 'are not keys'} of the environments document, which is ${ENVIRONMENTS_SHAPE}: a key it does not have is refused rather than stored where nothing reads it.`,
+    );
+  }
+  return [...said, 'Nothing was written.'].join(' ');
+}
+
+/**
+ * The MERGED document a write would store. It passes a key it does not name because the stored
+ * side may carry one written before `refusedKeysIn` held what a patch sends, and that key is
+ * carried rather than refused on a write that never named it.
+ */
 export const environmentsPatchSchema = z
   .object({
     preview: previewEnvironmentSchema.nullable().optional(),

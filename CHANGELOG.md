@@ -3195,6 +3195,8 @@
 
 ### Fixed
 
+- **A live deploy binding's verify probe is set on Integrations.** Its drawer shows, declares, changes and removes the probe a release reads, and the probe gap's link opens it there. (ISS-1339)
+- **An environments write naming a key the document does not have is refused by name.** It used to be stored where nothing reads it; both retired live keys sent together are now named once. (ISS-1339)
 - **A refusal shows the sentence Forge sent.** A read Forge refused said "You do not have access to this resource." or "Not found." over Forge's own words, such as "Not a project member."; it now shows Forge's sentence. (ISS-1228)
 - **An issue's failed session read sits on its own line under the header**, so the title keeps its width and the actions stay on one row on a phone. (ISS-1228)
 - **Answering a question keeps an in-progress issue in progress** while it is taken up again, instead of moving it back to Open, and no warning says nothing is working on it. (ISS-1228)

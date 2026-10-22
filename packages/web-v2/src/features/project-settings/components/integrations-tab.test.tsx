@@ -14,6 +14,8 @@ expect.extend(matchers);
 const state = {
   search: "?tab=integrations&add=live-deploy-target",
   connections: [] as Array<Record<string, unknown>>,
+  bindings: [] as Array<Record<string, unknown>>,
+  fetchingBindings: false,
 };
 
 const CARDS = [
@@ -49,6 +51,12 @@ vi.mock("@/features/integrations/hooks", () => ({
   useConnections: () => ({ data: { items: state.connections }, isLoading: false }),
   useBindExistingConnection: () => ({ mutate: vi.fn(), isPending: false, isError: false }),
   useIsOrgAdmin: () => false,
+  useIntegrationsList: () => ({
+    data: { items: state.bindings },
+    isLoading: false,
+    isError: false,
+    isFetching: state.fetchingBindings,
+  }),
   useIntegrationsStatus: () => ({
     data: { cards: CARDS },
     isLoading: false,
@@ -60,8 +68,8 @@ vi.mock("@/features/integrations/components/mcp-servers-panel", () => ({
   McpServersPanel: () => null,
 }));
 vi.mock("@/features/integrations/components/connection-detail-drawer", () => ({
-  ConnectionDetailDrawer: ({ card }: { card: { key: string } | null }) =>
-    card ? <div data-testid="drawer">{card.key}</div> : null,
+  ConnectionDetailDrawer: ({ card, focus }: { card: { key: string } | null; focus?: string | null }) =>
+    card ? <div data-testid="drawer">{`${card.key}${focus ? ` at ${focus}` : ""}`}</div> : null,
 }));
 
 const { IntegrationsTab } = await import("./integrations-tab");
@@ -70,6 +78,8 @@ afterEach(() => {
   cleanup();
   state.search = "?tab=integrations&add=live-deploy-target";
   state.connections = [];
+  state.bindings = [];
+  state.fetchingBindings = false;
 });
 
 function coolify(id: string): Record<string, unknown> {
@@ -118,6 +128,62 @@ describe("the page the no-live-target link opens", () => {
     render(<IntegrationsTab projectId="p-1" canEdit />);
     expect(screen.queryByRole("checkbox", { name: /Live/ })).toBeNull();
     expect(screen.queryByText(/^Ops Coolify · /)).toBeNull();
+  });
+});
+
+// ISS-1339 r2 — the readiness gap "a live binding declares no verify probe" links here with
+// `?field=verify-probe`. The landing opens the drawer of the binding the gap is about, at Live, on
+// its Verify probe section — not the tab's top, which left a person to find the binding themselves.
+describe("the page the verify-probe link opens", () => {
+  function live(provider: string, verify?: unknown): Record<string, unknown> {
+    const config = verify === undefined ? {} : { verify };
+    return { id: `b-${provider}`, provider, role: "deploy", stages: ["live"], active: true, config, bindingConfig: config };
+  }
+  const PROBE = { probes: [{ url: "https://api.example.com/version", commitPath: "sourceCommit" }] };
+
+  it("opens the live binding that declares no probe, on its Verify probe section", () => {
+    state.search = "?tab=integrations&field=verify-probe";
+    state.bindings = [live("coolify")];
+    render(<IntegrationsTab projectId="p-1" canEdit />);
+    expect(screen.getByTestId("drawer")).toHaveTextContent("coolify:live at verify-probe");
+  });
+
+  it("passes over a live binding whose probe a release reads, to the one whose probe it cannot", () => {
+    state.search = "?tab=integrations&field=verify-probe";
+    CARDS.push({ key: "epodsystem", label: "Epodsystem", status: "connected", detail: "", lastSyncAt: null, configured: true });
+    try {
+      state.bindings = [live("coolify", PROBE), live("epodsystem", { probes: [{ url: "health" }] })];
+      render(<IntegrationsTab projectId="p-1" canEdit />);
+      expect(screen.getByTestId("drawer")).toHaveTextContent("epodsystem:live at verify-probe");
+    } finally {
+      CARDS.pop();
+    }
+  });
+
+  it("still lands when a cached empty list is refreshed into the binding the link is about", () => {
+    state.search = "?tab=integrations&field=verify-probe";
+    state.fetchingBindings = true;
+    const { rerender } = render(<IntegrationsTab projectId="p-1" canEdit />);
+    expect(screen.queryByTestId("drawer")).toBeNull();
+
+    state.bindings = [live("coolify")];
+    state.fetchingBindings = false;
+    rerender(<IntegrationsTab projectId="p-1" canEdit />);
+    expect(screen.getByTestId("drawer")).toHaveTextContent("coolify:live at verify-probe");
+  });
+
+  it("passes over a binding that serves only Preview", () => {
+    state.search = "?tab=integrations&field=verify-probe";
+    state.bindings = [{ ...live("coolify"), stages: ["preview"] }];
+    render(<IntegrationsTab projectId="p-1" canEdit />);
+    expect(screen.queryByTestId("drawer")).toBeNull();
+  });
+
+  it("without the link, opens nothing", () => {
+    state.search = "?tab=integrations";
+    state.bindings = [live("coolify")];
+    render(<IntegrationsTab projectId="p-1" canEdit />);
+    expect(screen.queryByTestId("drawer")).toBeNull();
   });
 });
 

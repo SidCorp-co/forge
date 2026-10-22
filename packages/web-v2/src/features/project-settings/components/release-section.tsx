@@ -7,13 +7,15 @@
 import type { ReleaseBlockerCode } from "@forge/contracts";
 import { ISSUE_STATUS_LABELS, type KernelIssueStatus } from "@forge/contracts/issue-vocabulary";
 import Link from "next/link";
-import type { ReactNode } from "react";
+import type { MouseEvent, ReactNode } from "react";
 import { ErrorState, Skeleton } from "@/design";
 import { formatApiError } from "@/lib/api/error";
+import { pushLocationSearch } from "@/lib/utils/use-location-search";
 import { useReleaseReadiness } from "../hooks";
 import { releaseAnswer } from "../shape-form";
 import type { ReleaseReadiness } from "../types";
 import { inlineCode } from "./inline-code";
+import { VERIFY_PROBE_SECTION } from "@/features/integrations/components/verify-probe-field";
 import { LIVE_DEPLOY_TARGET } from "./integrations-tab";
 
 /** Each gap as the reader of this page says it: what is missing and what that costs, never the key it is stored under. */
@@ -68,17 +70,42 @@ type Blocker = ReleaseReadiness["blockers"][number];
 /** Where the link beside a blocker goes: the setting that answers it, the issues at the statuses its
  *  sentence counts, the particular issues it names, or nowhere, where its sentence names no issue. */
 type BlockerLink =
-  | { kind: "setting"; tab: string; add?: string; label: string }
+  | { kind: "setting"; tab: string; add?: string; field?: string; label: string }
   | { kind: "statuses"; statuses: KernelIssueStatus[]; label: string }
   | { kind: "issues"; displayIds: string[] }
   | null;
 
-const setting = (tab: string, label: string, add?: string) => (): BlockerLink => ({
+const setting = (tab: string, label: string, add?: string, field?: string) => (): BlockerLink => ({
   kind: "setting",
   tab,
   label,
   ...(add ? { add } : {}),
+  ...(field ? { field } : {}),
 });
+
+/** A link to another tab of the settings screen this section is drawn on. Next's router pushes it
+ *  with a history method the tab reader never hears, so the URL moved and the tab did not; the push
+ *  is made here instead, where the reader is told (ISS-1339 r2). Any other click is the browser's. */
+function SettingsLink({ href, className, children }: { href: string; className: string; children: ReactNode }) {
+  const onClick = (e: MouseEvent<HTMLAnchorElement>) => {
+    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    const target = new URL(href, window.location.href);
+    if (target.pathname !== window.location.pathname) return;
+    e.preventDefault();
+    pushLocationSearch(`${target.pathname}${target.search}`);
+    window.scrollTo({ top: 0 });
+  };
+  return (
+    <Link href={href} className={className} onClick={onClick}>
+      {children}
+    </Link>
+  );
+}
+
+/** A settings page's address, with the section an `add` or `field` link lands on. */
+function settingsHref(slug: string, tab: string, add?: string, field?: string): string {
+  return `/projects/${slug}/settings?tab=${tab}${add ? `&add=${add}` : ""}${field ? `&field=${field}` : ""}`;
+}
 
 /** How many of something the sentence counts, where its details carry them as a list or a number;
  *  null where they carry neither, and the sentence then speaks of them in the plural. */
@@ -110,7 +137,7 @@ function probesLink(b: Blocker): BlockerLink {
     bindings === 0
       ? `Correct ${urls === 0 ? "the probe's url" : probes}`
       : `Check ${steps}${urls > 0 ? ` and correct ${probes}` : ""}`;
-  return setting("integrations", label)();
+  return setting("integrations", label, undefined, VERIFY_PROBE_SECTION)();
 }
 
 const NO_LINK = (): BlockerLink => null;
@@ -195,9 +222,9 @@ function BlockerLinkView({ link, slug }: { link: BlockerLink; slug?: string }) {
   switch (link.kind) {
     case "setting":
       return (
-        <Link href={`/projects/${slug}/settings?tab=${link.tab}${link.add ? `&add=${link.add}` : ""}`} className={cls}>
+        <SettingsLink href={settingsHref(slug, link.tab, link.add, link.field)} className={cls}>
           {link.label}
-        </Link>
+        </SettingsLink>
       );
     case "statuses":
       return (
@@ -238,8 +265,8 @@ export function ReleaseAnswer({
   after?: ReactNode;
 }) {
   const q = useReleaseReadiness(projectId);
-  const tab = (t: string, add?: string) =>
-    slug ? `/projects/${slug}/settings?tab=${t}${add ? `&add=${add}` : ""}` : undefined;
+  const tab = (t: string, add?: string, field?: string) =>
+    slug ? settingsHref(slug, t, add, field) : undefined;
   const knowledgeHref = slug ? `/projects/${slug}/library?tab=knowledge&sub=rules` : undefined;
 
   if (q.isLoading) {
@@ -309,16 +336,23 @@ export function ReleaseAnswer({
                     Write them in Knowledge rules
                   </Link>
                 ) : g === "release-target" && tab(ADD_LIVE_TARGET.tab) ? (
-                  <Link
+                  <SettingsLink
                     href={tab(ADD_LIVE_TARGET.tab, ADD_LIVE_TARGET.add) as string}
                     className="text-accent-text hover:underline"
                   >
                     {ADD_LIVE_TARGET.label}
-                  </Link>
+                  </SettingsLink>
+                ) : g === "verify-probes" && tab("integrations") ? (
+                  <SettingsLink
+                    href={tab("integrations", undefined, VERIFY_PROBE_SECTION) as string}
+                    className="text-accent-text hover:underline"
+                  >
+                    Declare a probe on the live binding
+                  </SettingsLink>
                 ) : tab("integrations") ? (
-                  <Link href={tab("integrations") as string} className="text-accent-text hover:underline">
+                  <SettingsLink href={tab("integrations") as string} className="text-accent-text hover:underline">
                     Set it on the live binding
-                  </Link>
+                  </SettingsLink>
                 ) : null}
               </li>
             ))}
