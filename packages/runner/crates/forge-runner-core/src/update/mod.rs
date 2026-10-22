@@ -631,11 +631,24 @@ mod tests {
     }
 
     /// An address nothing listens on: bound, then let go.
-    async fn refused_address() -> String {
-        let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = l.local_addr().unwrap();
-        drop(l);
-        format!("http://{addr}")
+    /// An address every connect is refused at, and the socket that keeps it so.
+    ///
+    /// Bound and never listening: a dropped listener's port is free for a
+    /// sibling test's listener to take, which accepted and closed, and read as
+    /// a cut connection rather than a refused one under a parallel run.
+    fn refused_address() -> (String, tokio::net::TcpSocket) {
+        let held = tokio::net::TcpSocket::new_v4().unwrap();
+        held.bind("127.0.0.1:0".parse().unwrap()).unwrap();
+        let addr = held.local_addr().unwrap();
+        (format!("http://{addr}"), held)
+    }
+
+    /// ISS-1306: the race that made the two refusal tests read "cut" under load.
+    #[tokio::test]
+    async fn the_refused_address_cannot_be_taken_by_another_listener() {
+        let (at, _held) = refused_address();
+        let addr = at.trim_start_matches("http://");
+        assert!(tokio::net::TcpListener::bind(addr).await.is_err(), "{addr}");
     }
 
     /// Serves one answer, `sent` whole, then closes the connection.
@@ -657,7 +670,7 @@ mod tests {
     /// update check said "fetch manifest: error sending request for url (…)" where core was down.
     #[tokio::test]
     async fn a_manifest_core_cannot_serve_says_forge_could_not_be_reached() {
-        let core = refused_address().await;
+        let (core, _held) = refused_address();
         let url = manifest_url(None, Some(&core)).unwrap();
         let said = fetch_manifest(&url, Some(&core))
             .await
@@ -675,7 +688,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_configured_manifest_that_cannot_be_reached_is_named_by_its_address() {
-        let at = refused_address().await;
+        let (at, _held) = refused_address();
         let url = format!("{at}/latest.json");
         let said = fetch_manifest(&url, Some("https://core.example"))
             .await
