@@ -100,6 +100,14 @@ describe("what a project is told when it cannot bind the App it can see", () => 
     );
   });
 
+  // r24: a reader who cannot create an App was offered "create a separate App below".
+  it("offers a separate App only to a reader who may create one", () => {
+    const owned = app({ access: { reach: "org", canManage: false, ownerName: "Beta" } });
+
+    expect(unbindableReason([owned], PROJECT)).toMatch(/ask them, or create a separate App below\.$/);
+    expect(unbindableReason([owned], PROJECT, false)).toMatch(/can bind it to this project — ask them\.$/);
+  });
+
   it("names the other organization and who can use the App, for an App reached through a project of another org", () => {
     const elsewhere = app({
       ownerId: "org-a",

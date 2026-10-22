@@ -3231,6 +3231,7 @@
 - **Connections left behind by organizations deleted before this release are deleted.** (ISS-1421)
 - **`forge-runner api` and `forge-runner doctor` say where they looked for Forge**, why it was not reached and what to check. An answer cut off mid-body is a failure, never an empty success. (ISS-1421)
 - **A GitHub install refused because the connection is someone else's names its owner's Clear**, never Disconnect, which only brought the same refusal back. Deleting a connection already cleared says it is already gone. (ISS-1421)
+- **Switching a binding on over a removed connection is refused by name**, where it answered as done and changed nothing. Disconnecting a live GitHub App asks once too, naming the repository this project stops reaching. (ISS-1421)
 - **The Integrations page is called Integrations everywhere**, as in the menu. On a project's GitHub panel, Disconnect asks once first, and a refused install updates what the panel offers you without a reload. (ISS-1421)
 - **`forge-runner update` and doctor's update line say where they looked for Forge** when core cannot be reached, and an answer cut off between two chunks says it did not arrive whole, never that it did not decode. (ISS-1421)
 - **A removed connection's drawer no longer says any project can be bound to it**, and a project you cannot open is named in words, never by its id. (ISS-1421)

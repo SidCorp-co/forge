@@ -52,6 +52,7 @@ import {
   forbidden,
   notFound,
   notifyConnectionChanged,
+  refuseSwitchOnOverRemoved,
   summarizeBinding,
 } from './route-helpers.js';
 import {
@@ -213,6 +214,7 @@ integrationsRoutes.patch(
     const { binding, connection } = existing;
 
     const patch = c.req.valid('json');
+    await refuseSwitchOnOverRemoved(patch, connection, projectId);
 
     // Re-validate the loose config against the existing provider so a PATCH can
     // never strip the wrong provider's fields, then split it into tiers:
@@ -276,9 +278,7 @@ integrationsRoutes.patch(
       });
     }
 
-    // Connection-tier config + secrets live on the connection; binding-tier
-    // config (deploy target) + `active` live on the binding (disabling
-    // resolution for this project without touching the credential).
+    // Connection-tier config and secrets go to the connection; binding-tier config and `active` to the binding.
     if (mergedConfig !== undefined || mergedSecrets !== undefined) {
       const connPatch: Parameters<typeof updateConnection>[1] = {};
       if (mergedConfig !== undefined) connPatch.config = mergedConfig;

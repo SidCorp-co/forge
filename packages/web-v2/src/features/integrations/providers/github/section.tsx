@@ -88,6 +88,9 @@ function BindingControls({
   binding: IntegrationSummary;
 }) {
   const remove = useDeleteProviderIntegration(projectId);
+  // Disconnect took effect on one click (ISS-1421 r24); it asks once, saying what stops here.
+  const [confirming, setConfirming] = useState(false);
+  const repository = repositoryOf(binding.config);
 
   return (
     <>
@@ -95,15 +98,34 @@ function BindingControls({
 
       <AgentAccessControl projectId={projectId} binding={binding} canEdit />
 
-      <div>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => remove.mutate(binding.id)}
-          disabled={remove.isPending}
-        >
-          Disconnect from this project
-        </Button>
+      <div className="flex flex-col gap-2">
+        <div>
+          <Button variant="ghost" size="sm" onClick={() => setConfirming((v) => !v)}>
+            Disconnect from this project…
+          </Button>
+        </div>
+        {confirming && (
+          <div className="flex flex-col gap-2 border-y border-line py-2.5">
+            <p className="fg-body-sm text-fg">
+              Disconnecting stops this project&apos;s agents and runners reaching{" "}
+              {repository ? `${repository.owner}/${repository.repo}` : "GitHub"} through this App.
+              The App itself stays, and other projects bound to it keep it.
+            </p>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="danger"
+                size="sm"
+                loading={remove.isPending}
+                onClick={() => remove.mutate(binding.id, { onSuccess: () => setConfirming(false) })}
+              >
+                Disconnect
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => setConfirming(false)}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
         {remove.isError && <Banner tone="danger">{formatApiError(remove.error)}</Banner>}
       </div>
     </>
@@ -427,10 +449,13 @@ function CreateApp({
         <CardTitle>Create a GitHub App</CardTitle>
       </div>
       <div className="flex flex-col gap-4">
-        <p className="fg-body-sm text-muted">
-          Forge creates one GitHub App for your organization, not one per project. You approve it on
-          GitHub and choose which repositories it may see — no token is typed here.
-        </p>
+        {/* A reader who cannot create it is told who can, not how the act goes (ISS-1421 r24). */}
+        {offered && (
+          <p className="fg-body-sm text-muted">
+            Forge creates one GitHub App for your organization, not one per project. You approve it
+            on GitHub and choose which repositories it may see — no token is typed here.
+          </p>
+        )}
 
         {unbindable && <Banner tone="attention">{unbindable}</Banner>}
 
@@ -507,10 +532,13 @@ function RemovedApp({
   const offered = takes !== false && (!project || mayCreateTheApp(project));
   // A switched-off binding is not turned on by an install elsewhere (`reattach`), only by one from here.
   const left = !binding.bindingActive;
+  // The exception is an install from here, which only a reader offered it can make (ISS-1421 r24).
   const staysOff =
     takes === false
       ? "so it stays off if the connection is turned back on"
-      : "so it stays off if the connection is turned back on from anywhere but here";
+      : offered
+        ? "so it stays off if the connection is turned back on from anywhere but here"
+        : "so it stays off if the connection is turned back on from another project";
 
   const start = async () => {
     // A refusal is the banner's to show from connect.error, never a rejection thrown past it.
@@ -620,8 +648,9 @@ export function GitHubSection({ projectId }: { projectId: string }) {
     [connections.data, target],
   );
   const unbindable = useMemo(
-    () => unbindableReason(connections.data?.items ?? [], target),
-    [connections.data, target],
+    () =>
+      unbindableReason(connections.data?.items ?? [], target, !project || mayCreateTheApp(project)),
+    [connections.data, target, project],
   );
 
   // A row existing and a repository being recorded are two facts, and this used

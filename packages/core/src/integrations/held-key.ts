@@ -75,8 +75,10 @@ export function turnsBackOnFrom(
   if (!install) return 'Save a new key to turn it back on.';
   const here = bound.find((p) => p.projectId === askedFrom);
   if (here && takesTheApp(connection, here)) return install.fromHere;
-  const lead = here ? `${install.notFromHere} ` : '';
-  if (bound.some((p) => takesTheApp(connection, p))) return `${lead}${install.fromBound}`;
-  if (bound.length > 0) return `${lead}${install.noneTakesIt}`;
+  // "None of them" already covers this one, and saying both told the reader twice (ISS-1421 r24).
+  if (bound.some((p) => takesTheApp(connection, p))) {
+    return here ? `${install.notFromHere} ${install.fromBound}` : install.fromBound;
+  }
+  if (bound.length > 0) return install.noneTakesIt;
   return 'No project is bound to it, so nothing can turn it back on. Clear it from the list on the Integrations page.';
 }

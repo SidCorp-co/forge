@@ -62,7 +62,7 @@ let project = {
   orgRole: "owner" as "owner" | "admin" | "member" | null,
 };
 /** A refused start re-reads the reader's projects, whose role decides what is offered. */
-const projectsRefetch = vi.fn(async () => undefined);
+const projectsRefetch = vi.fn(async (): Promise<unknown> => undefined);
 /** What a re-read hands the screen: bumping it re-renders every reader of the projects. */
 const projectsRead = { version: 0, listeners: new Set<() => void>() };
 function projectsAnswer(next: typeof project) {
@@ -321,8 +321,9 @@ describe("the controls that belong to the binding row itself", () => {
     mount();
 
     fireEvent.click(screen.getByRole("button", { name: /disconnect from this project/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Disconnect" }));
 
-    expect(remove).toHaveBeenCalledWith(BINDING);
+    expect(remove.mock.calls[0][0]).toBe(BINDING);
   });
 
   it("keeps Disconnect on the picker when the repository list fails to load", () => {
@@ -331,8 +332,30 @@ describe("the controls that belong to the binding row itself", () => {
     mount();
 
     fireEvent.click(screen.getByRole("button", { name: /disconnect from this project/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Disconnect" }));
 
-    expect(remove).toHaveBeenCalledWith(BINDING);
+    expect(remove.mock.calls[0][0]).toBe(BINDING);
+  });
+
+  // r24: Disconnect on a live binding took effect on one click.
+  it("asks once before a live binding is disconnected, saying what stops for this project", () => {
+    items = [GITHUB_CONFIGURED];
+    mount();
+
+    fireEvent.click(screen.getByRole("button", { name: /disconnect from this project/i }));
+    expect(remove).not.toHaveBeenCalled();
+    expect(
+      screen.getByText(
+        "Disconnecting stops this project's agents and runners reaching SidCorp-co/forge through this App. The App itself stays, and other projects bound to it keep it.",
+      ),
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(remove).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: /disconnect from this project/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Disconnect" }));
+    expect(remove).toHaveBeenCalledTimes(1);
+    expect(remove.mock.calls[0][0]).toBe(BINDING);
   });
 
   it("keeps the enable toggle on the picker, so a switched-off row has a way back either way", () => {
@@ -461,6 +484,23 @@ describe("the screen that creates a new App", () => {
     items = [];
     connections = [];
     project = { ...project, orgIsPersonal: false, orgName: "SidCorp", orgRole: "owner" };
+  });
+
+  // r24 ruling: a reader who cannot act is told who can, not how the act goes.
+  it("tells a plain member who can create the App, and never how creating it goes", () => {
+    project = { ...project, orgRole: "member" };
+    mount();
+
+    expect(screen.queryByText(/You approve it on GitHub/)).toBeNull();
+    expect(
+      screen.getByText(/Only an owner or admin of SidCorp can create it, from this project's Integrations tab\./),
+    ).toBeInTheDocument();
+  });
+
+  it("still tells an org admin how creating it goes", () => {
+    mount();
+
+    expect(screen.getByText(/You approve it on GitHub/)).toBeInTheDocument();
   });
 
   it("names the org the App will belong to rather than asking who should own it", () => {
@@ -681,6 +721,18 @@ describe("a project bound to a removed GitHub connection (criterion 224)", () =>
     expect(screen.queryByRole("button", { name: "Install the GitHub App again" })).toBeNull();
     expect(screen.getByText(/cannot turn it back on/)).toBeInTheDocument();
     expect(screen.queryByText(/Only an owner or admin of/)).toBeNull();
+  });
+
+  // r24: the exception named an install from here, which this reader cannot make.
+  it("tells a plain member of a disconnected project only what holds for them", () => {
+    project = { ...project, orgRole: "member" };
+    items = [{ ...REMOVED, bindingActive: false }];
+    mount();
+
+    expect(
+      screen.getByText(/This project is disconnected from it, so it stays off if the connection is turned back on from another project\./),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/anywhere but here/)).toBeNull();
   });
 
   it("still offers an org admin the install", () => {

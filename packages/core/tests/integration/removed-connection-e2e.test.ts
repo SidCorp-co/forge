@@ -153,6 +153,43 @@ describe('a removed connection is neither shared nor tested (criteria 229 to 233
     expect([...after]).toEqual([...before]);
   });
 
+  // r24, judge-96: switching the binding on answered 200 and changed nothing a project could use.
+  it.each([
+    ['still on', true],
+    ['disconnected', false],
+  ])('refuses to switch on a binding %s over it, and writes nothing', async (_name, bindingOn) => {
+    const project = await createTestProject(harness.db, ownerId);
+    const connection = await removedSentryBoundTo(project.id);
+    const [bound] = await store.listBindingsForConnection(connection.id);
+    const bindingId = bound?.binding.id as string;
+    if (!bindingOn) await store.updateBinding(bindingId, { active: false });
+    const before = await store.findBindingWithConnectionById(bindingId);
+    const turned = await call('PATCH', `/api/projects/${project.id}/integrations/${bindingId}`, {
+      active: true,
+    });
+    expect(turned.status, JSON.stringify(turned.body)).toBe(409);
+    expect(turned.body.code).toBe('CONNECTION_REMOVED');
+    expect(turned.body.message).toBe(
+      'This connection was removed and holds no key, so it cannot be turned on for this project. Save a new key to turn it back on.',
+    );
+    const after = await store.findBindingWithConnectionById(bindingId);
+    expect(after?.binding.active).toBe(bindingOn);
+    expect(after?.binding.updatedAt).toEqual(before?.binding.updatedAt);
+  });
+
+  it('still lets the binding be switched off, and a key saved with the switch turn it on', async () => {
+    const project = await createTestProject(harness.db, ownerId);
+    const connection = await removedSentryBoundTo(project.id);
+    const [bound] = await store.listBindingsForConnection(connection.id);
+    const url = `/api/projects/${project.id}/integrations/${bound?.binding.id}`;
+    expect((await call('PATCH', url, { active: false })).status).toBe(200);
+    const keyed = await call('PATCH', url, {
+      active: true,
+      secrets: { authToken: 'scratch-saved-with-the-switch' },
+    });
+    expect(keyed.status, JSON.stringify(keyed.body)).toBe(200);
+  });
+
   // Consult F2: a secret saved beside the key leaves a secrets record but no key.
   it('reads a removed Rocket.Chat connection holding only its bot user as removed', async () => {
     const project = await createTestProject(harness.db, ownerId);
@@ -300,7 +337,7 @@ describe("a project's removed GitHub connection (criteria 224, 225)", () => {
       `/api/projects/${project.id}/integrations/github/repositories?connectionId=${connection.id}`,
     );
     expect(listed.body.message).toBe(
-      "This GitHub connection was removed, so it holds no App. An App installed from this project would belong to someone other than this connection's owner, so it cannot turn it back on. No project it is bound to would give a new App to its owner, so nothing can turn it back on. Clear it from the list on the Integrations page.",
+      'This GitHub connection was removed, so it holds no App. No project it is bound to would give a new App to its owner, so nothing can turn it back on. Clear it from the list on the Integrations page.',
     );
     const [binding] = await store.listBindingsForConnection(connection.id);
     const tested = await call(

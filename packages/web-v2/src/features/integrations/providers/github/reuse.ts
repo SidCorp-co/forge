@@ -24,10 +24,14 @@ export function bindableApps(
   );
 }
 
-/** Why a reachable App is not offered, naming its owner and who can bind it; null where there is nothing to say. */
+/**
+ * Why a reachable App is not offered, naming its owner and who can bind it; null where there is nothing
+ * to say. A separate App is offered only to a reader who may create one (ISS-1421 r24).
+ */
 export function unbindableReason(
   connections: ConnectionDirectoryItem[],
   project: ReuseTarget | null,
+  mayCreate = true,
 ): string | null {
   const reachable = connections.filter((c) => c.provider === "github" && c.active);
   if (reachable.length === 0 || reachable.some((c) => canBindHere(c, project))) return null;
@@ -37,11 +41,11 @@ export function unbindableReason(
   if (first.ownerType === "org") {
     if (project && first.ownerId !== project.orgId) {
       const who = owner ? `the organization ${owner}` : "another organization";
-      return `${name} is owned by ${who}, and only a project in it can use it — this project is not. An owner or admin of ${owner ?? "that organization"} can use it from there. Create a separate App below to use one here.`;
+      return `${name} is owned by ${who}, and only a project in it can use it — this project is not. An owner or admin of ${owner ?? "that organization"} can use it from there.${mayCreate ? " Create a separate App below to use one here." : ""}`;
     }
     const org = project && first.ownerId === project.orgId ? project.orgName : (owner ?? "its organization");
-    return `${name} is owned by ${org}, and only an owner or admin of ${org} can bind it to this project — ask them, or create a separate App below.`;
+    return `${name} is owned by ${org}, and only an owner or admin of ${org} can bind it to this project — ask them${mayCreate ? ", or create a separate App below" : ""}.`;
   }
   const person = personName(owner);
-  return `${name} is owned by ${person}, and only ${owner ? "they" : "its owner"} can bind it to this project — ask ${owner ? person : "its owner"}, or create a separate App below.`;
+  return `${name} is owned by ${person}, and only ${owner ? "they" : "its owner"} can bind it to this project — ask ${owner ? person : "its owner"}${mayCreate ? ", or create a separate App below" : ""}.`;
 }

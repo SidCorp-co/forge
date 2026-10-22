@@ -63,7 +63,7 @@ export function IntegrationEnabledControl({
           onChange={(active) =>
             update.mutate({ id: binding.id, body: { active } })
           }
-          disabled={orgLocked}
+          disabled={orgLocked || (credentialRemoved && !optedIn)}
         />
       </span>
       {credentialRemoved && (

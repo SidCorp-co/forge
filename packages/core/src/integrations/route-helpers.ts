@@ -59,11 +59,7 @@ export const connectionNotReachable = (connectionId: string) =>
     cause: { code: 'CONNECTION_NOT_REACHABLE' },
   });
 
-/**
- * {@link connectionNotReachable}, for a delete: the usual reason a delete finds nothing is that the
- * connection was cleared, so that is said first, and the sentence still does not say which it was
- * (ISS-1421 r24).
- */
+/** {@link connectionNotReachable} for a delete, naming the usual reason first: a Clear (ISS-1421 r24). */
 export const connectionGoneOrNotReachable = (connectionId: string) =>
   new HTTPException(404, {
     message:
@@ -83,8 +79,10 @@ export async function turnsBackOn(
   return turnsBackOnFrom(connection, bound, askedFrom);
 }
 
+type RemovedAct = 'shared' | 'tested' | 'turned on for this project';
+
 /** A binding to a removed connection cannot resolve, and a check of it can only fail (ISS-1421 r22). */
-const connectionRemoved = (act: 'shared' | 'tested', turnsBack: string) =>
+const connectionRemoved = (act: RemovedAct, turnsBack: string) =>
   new HTTPException(409, {
     message: `This connection was removed and holds no key, so it cannot be ${act}. ${turnsBack}`,
     cause: { code: 'CONNECTION_REMOVED' },
@@ -105,11 +103,22 @@ export async function assertNotRemoved(
     ownerType: 'user' | 'org';
     ownerId: string;
   },
-  act: 'shared' | 'tested',
+  act: RemovedAct,
   askedFrom?: string,
 ): Promise<void> {
   if (isRemovedConnection(connection)) {
     throw connectionRemoved(act, await turnsBackOn(connection, askedFrom));
+  }
+}
+
+/** Switching on a binding over a removed connection answered 200 and changed nothing (ISS-1421 r24). */
+export async function refuseSwitchOnOverRemoved(
+  patch: { active?: boolean | undefined; secrets?: unknown },
+  connection: Parameters<typeof assertNotRemoved>[0],
+  projectId: string,
+): Promise<void> {
+  if (patch.active === true && patch.secrets === undefined) {
+    await assertNotRemoved(connection, 'turned on for this project', projectId);
   }
 }
 

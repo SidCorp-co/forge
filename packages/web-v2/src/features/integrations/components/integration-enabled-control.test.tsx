@@ -61,6 +61,17 @@ describe("the binding controls over a removed connection (criterion 228)", () =>
     ).toBeInTheDocument();
   });
 
+  // r24: core refuses switching a binding on over a removed connection, so the switch is not offered.
+  it("offer no way to switch a disconnected binding on, and keep switching it off", () => {
+    render(
+      <IntegrationEnabledControl projectId={PROJECT} binding={binding({ bindingActive: false })} />,
+    );
+    expect(screen.getByRole("switch", { name: "Enabled for this project" })).toBeDisabled();
+    cleanup();
+    render(<IntegrationEnabledControl projectId={PROJECT} binding={binding({})} />);
+    expect(screen.getByRole("switch", { name: "Enabled for this project" })).toBeEnabled();
+  });
+
   it("offer no Enable credential for GitHub, and say the install turns it back on", () => {
     render(
       <IntegrationEnabledControl projectId={PROJECT} binding={binding({ provider: "github" })} />,
