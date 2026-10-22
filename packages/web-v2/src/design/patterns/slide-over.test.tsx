@@ -98,6 +98,41 @@ describe("SlideOver stacked over another", () => {
     expect(outer).not.toHaveBeenCalled();
   });
 
+  it("leaves focus in the one above when both open together", () => {
+    render(
+      <SlideOver open onClose={() => {}} title="Drawer">
+        <button type="button">under</button>
+        <SlideOver open onClose={() => {}} title="Confirm">
+          <button type="button">keep</button>
+        </SlideOver>
+      </SlideOver>,
+    );
+    const above = screen.getAllByRole("dialog").find((d) => d.textContent?.includes("keep")) as HTMLElement;
+    expect(above.contains(document.activeElement)).toBe(true);
+  });
+
+  it("brings Tab from outside the topmost back into it", () => {
+    // jsdom lays nothing out, so every element reads as hidden to the trap unless told otherwise.
+    const laidOut = vi.spyOn(HTMLElement.prototype, "offsetParent", "get").mockReturnValue(document.body);
+    try {
+      render(
+        <SlideOver open onClose={() => {}} title="Drawer">
+          <button type="button">under</button>
+          <SlideOver open onClose={() => {}} title="Confirm">
+            <button type="button">keep</button>
+          </SlideOver>
+        </SlideOver>,
+      );
+      const under = screen.getByRole("button", { name: "under" });
+      under.focus();
+      fireEvent.keyDown(under, { key: "Tab", shiftKey: true });
+      const above = screen.getAllByRole("dialog").find((d) => d.textContent?.includes("keep")) as HTMLElement;
+      expect(above.contains(document.activeElement)).toBe(true);
+    } finally {
+      laidOut.mockRestore();
+    }
+  });
+
   it("answers Escape on the one beneath once the one above has closed", () => {
     const outer = vi.fn();
     const { rerender } = render(

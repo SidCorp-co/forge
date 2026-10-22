@@ -40,7 +40,7 @@ function isWithin(layer: Layer, ancestor: Layer): boolean {
   return false;
 }
 
-/** Opened last is on top, but a nested one is above its parent, whose effect runs after its own. */
+/** Opened last is on top, but a nested one is above its parent, whose later effect leaves it focus. */
 function stack(layer: Layer): void {
   const below = openStack.findIndex((open) => isWithin(open, layer));
   if (below === -1) openStack.push(layer);
@@ -75,7 +75,7 @@ export function SlideOver({
     stack(layer);
     restoreRef.current = document.activeElement as HTMLElement;
     const panel = panelRef.current;
-    panel?.querySelector<HTMLElement>(FOCUSABLE)?.focus();
+    if (openStack[openStack.length - 1] === layer) panel?.querySelector<HTMLElement>(FOCUSABLE)?.focus();
 
     const onKey = (e: KeyboardEvent) => {
       if (openStack[openStack.length - 1] !== layer) return;
@@ -91,7 +91,10 @@ export function SlideOver({
         if (nodes.length === 0) return;
         const first = nodes[0];
         const last = nodes[nodes.length - 1];
-        if (e.shiftKey && document.activeElement === first) {
+        if (!panel.contains(document.activeElement)) {
+          e.preventDefault();
+          (e.shiftKey ? last : first).focus();
+        } else if (e.shiftKey && document.activeElement === first) {
           e.preventDefault();
           last.focus();
         } else if (!e.shiftKey && document.activeElement === last) {
