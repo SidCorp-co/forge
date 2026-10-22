@@ -18,7 +18,7 @@ import {
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useProjects } from "@/features/projects/hooks";
-import { takesTheApp } from "../../app-owner";
+import { mayCreateTheApp, takesTheApp } from "../../app-owner";
 import { useMemo, useState } from "react";
 import {
   useBindExistingConnection,
@@ -368,15 +368,21 @@ function UseExistingApp({
  * reachable by one person (ISS-1115). A project whose only org is a personal
  * one has no second principal, so it stays the operator's.
  */
-function AppOwner({ projectId }: { projectId: string }) {
+function AppOwner({ projectId, act }: { projectId: string; act: "create" | "install" }) {
   const projectsQ = useProjects();
   const project = projectsQ.data?.find((p) => p.id === projectId);
   if (!project) return null;
+  if (project.orgIsPersonal)
+    return (
+      <p className="fg-body-sm text-muted">
+        The App will belong to you, and this project is the only one that uses it.
+      </p>
+    );
   return (
     <p className="fg-body-sm text-muted">
-      {project.orgIsPersonal
-        ? "The App will belong to you, and this project is the only one that uses it."
-        : `The App will belong to ${project.orgName}, so every admin of this project can use and change it. Creating it needs org admin there.`}
+      {mayCreateTheApp(project)
+        ? `The App will belong to ${project.orgName}, so every admin of this project can use and change it. Creating it needs org admin there.`
+        : `The App will belong to ${project.orgName}. Only an owner or admin of ${project.orgName} can ${act} it, from this project's Integrations tab.`}
     </p>
   );
 }
@@ -393,6 +399,9 @@ function CreateApp({
 }) {
   const connect = useGitHubConnect(projectId);
   const [org, setOrg] = useState("");
+  const project = useProjects().data?.find((p) => p.id === projectId);
+  // Owner ruling (ISS-1421 r23): no button this reader is known to be refused; AppOwner says who can.
+  const offered = !project || mayCreateTheApp(project);
 
   const start = async () => {
     const res = await connect.mutateAsync({ org: org.trim() || undefined }).catch(() => null);
@@ -412,23 +421,27 @@ function CreateApp({
 
         {unbindable && <Banner tone="attention">{unbindable}</Banner>}
 
-        <AppOwner projectId={projectId} />
+        <AppOwner projectId={projectId} act="create" />
 
-        <Field label="GitHub organization" hint="Leave blank to create the App on your personal account.">
-          <Input
-            value={org}
-            onChange={(e) => setOrg(e.target.value)}
-            placeholder="SidCorp-co"
-            aria-label="GitHub organization"
-          />
-        </Field>
+        {offered && (
+          <Field label="GitHub organization" hint="Leave blank to create the App on your personal account.">
+            <Input
+              value={org}
+              onChange={(e) => setOrg(e.target.value)}
+              placeholder="SidCorp-co"
+              aria-label="GitHub organization"
+            />
+          </Field>
+        )}
 
         {connect.isError && <Banner tone="danger">{formatApiError(connect.error)}</Banner>}
 
         <div className="flex flex-wrap items-center gap-3">
-          <Button onClick={start} disabled={connect.isPending}>
-            {connect.isPending ? "Preparing…" : "Create GitHub App"}
-          </Button>
+          {offered && (
+            <Button onClick={start} disabled={connect.isPending}>
+              {connect.isPending ? "Preparing…" : "Create GitHub App"}
+            </Button>
+          )}
           {onBack && (
             <Button variant="ghost" size="sm" onClick={onBack}>
               Use an existing App
@@ -454,8 +467,9 @@ function CreateApp({
 /**
  * A project whose GitHub binding names a removed connection (ISS-1421 r22). The removed connection
  * holds no App, so there is no repository to list and no credential to enable; the one way back is
- * the install, which core's callback turns into that same connection. Disconnect stays the way to
- * leave it, which is also the answer when the App would belong to someone else.
+ * the install, which core's callback turns into that same connection. Disconnect keeps this project
+ * off when another turns it back on; the row it leaves still holds the project's one GitHub binding,
+ * so only a Clear of the connection frees it for a new App.
  */
 function RemovedApp({
   projectId,
@@ -475,6 +489,9 @@ function RemovedApp({
   const project = useProjects().data?.find((p) => p.id === projectId);
   // Core refuses an install whose App would belong to someone else (ISS-1421 r23), so none is offered.
   const takes = connection && project ? takesTheApp(connection, project) : null;
+  const offered = takes !== false && (!project || mayCreateTheApp(project));
+  // A switched-off binding is not turned on by an install elsewhere (`reattach`), only by one from here.
+  const left = !binding.bindingActive;
 
   const start = async () => {
     // A refusal is the banner's to show from connect.error, never a rejection thrown past it.
@@ -492,14 +509,20 @@ function RemovedApp({
           <span className="font-semibold">{connectionLabel}</span> was removed, so this project&apos;s
           GitHub has no App.
           {takes === true &&
-            " Installing the GitHub App again creates it on GitHub and turns that connection back on."}
+            (offered
+              ? " Installing the GitHub App again creates it on GitHub and turns that connection back on."
+              : " Installing the GitHub App again would turn that connection back on.")}
           {takes === false &&
-            " An App installed from this project would belong to someone other than that connection's owner, so it cannot turn it back on. Disconnect it from this project to create a new App here."}
+            " An App installed from this project would belong to someone other than that connection's owner, so it cannot turn it back on. The connection's owner can clear it from the list on the Integrations page, and then a new App can be created here."}
+          {left &&
+            (takes === false
+              ? " This project is disconnected from it, so it stays off if the connection is turned back on."
+              : " This project is disconnected from it, so it stays off if the connection is turned back on from anywhere but here.")}
         </p>
 
-        {takes !== false && <AppOwner projectId={projectId} />}
+        {takes !== false && <AppOwner projectId={projectId} act="install" />}
 
-        {takes !== false && (
+        {offered && (
           <Field label="GitHub organization" hint="Leave blank to create the App on your personal account.">
             <Input
               value={org}
@@ -514,19 +537,21 @@ function RemovedApp({
         {remove.isError && <Banner tone="danger">{formatApiError(remove.error)}</Banner>}
 
         <div className="flex flex-wrap items-center gap-3">
-          {takes !== false && (
+          {offered && (
             <Button onClick={start} disabled={connect.isPending}>
               {connect.isPending ? "Preparing…" : "Install the GitHub App again"}
             </Button>
           )}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => remove.mutate(binding.id)}
-            disabled={remove.isPending}
-          >
-            Disconnect from this project
-          </Button>
+          {!left && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => remove.mutate(binding.id)}
+              disabled={remove.isPending}
+            >
+              Disconnect from this project
+            </Button>
+          )}
         </div>
       </div>
     </SettingsSection>

@@ -3225,6 +3225,8 @@
 - **A key saved from a project's own drawer onto a removed connection says the connection is still off**, with Enable credential beside it. (ISS-1421)
 - **A removed GitHub connection says what turns it back on from where you ask**: an install from a bound project whose App would be its owner's, or nothing where none would. No install that would be refused is offered. (ISS-1421)
 - **Creating a GitHub App without org admin names the organization**, your role there and who to ask, instead of an id and a Connect button that does not exist. (ISS-1421)
+- **A project's GitHub panel offers no Install or Create to someone who is not an owner or admin of the App's organization**, and names who can in its place. (ISS-1421)
+- **Disconnecting a project from a removed GitHub connection now shows**: the panel says the project stays off when the connection comes back, and names its owner's Clear as the way to a new App. (ISS-1421)
 - **A refusal's details say what its message says, field by field.** Each field is listed with its message's sentence, under the field the call takes: a session started with no prompt names `prompt`, not `message`. (ISS-1421)
 - **`forge-runner` says where it looked for Forge when it cannot reach it.** Every command and background call names the core address, why it was not reached and what to check, never the system's "Connection refused (os error 111)". (ISS-1421)
 - **A removed connection can be cleared or turned back on.** Its drawer offers Clear from list; a GitHub connection comes back when the App is installed again from a project bound to it. (ISS-1421)

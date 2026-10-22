@@ -7,3 +7,11 @@ export function takesTheApp(
     ? !project.orgIsPersonal && project.orgId === connection.ownerId
     : project.orgIsPersonal;
 }
+
+// The twin of core's ORG_ADMIN_REQUIRED: an App belonging to a shared org is created by its owners and admins.
+export function mayCreateTheApp(project: {
+  orgIsPersonal: boolean;
+  orgRole: "owner" | "admin" | "member" | null;
+}): boolean {
+  return project.orgIsPersonal || project.orgRole === "owner" || project.orgRole === "admin";
+}

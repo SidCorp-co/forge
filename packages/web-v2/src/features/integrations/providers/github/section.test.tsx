@@ -59,7 +59,7 @@ let project = {
   orgId: "63b1b3a0-1f0e-4a77-9f2d-2c5e6a7b8c90",
   orgName: "SidCorp",
   orgIsPersonal: false,
-  orgRole: "owner",
+  orgRole: "owner" as "owner" | "admin" | "member" | null,
 };
 vi.mock("@/features/projects/hooks", () => ({
   useProjects: () => ({ data: [project] }),
@@ -439,7 +439,7 @@ describe("the screen that creates a new App", () => {
   beforeEach(() => {
     items = [];
     connections = [];
-    project = { ...project, orgIsPersonal: false, orgName: "SidCorp" };
+    project = { ...project, orgIsPersonal: false, orgName: "SidCorp", orgRole: "owner" };
   });
 
   it("names the org the App will belong to rather than asking who should own it", () => {
@@ -478,6 +478,22 @@ describe("the screen that creates a new App", () => {
     expect(screen.getByText(/will belong to you/i)).toBeInTheDocument();
     expect(screen.queryByLabelText("Credential owner")).toBeNull();
   });
+
+  // Owner ruling (ISS-1421 r23, criterion 254): core refuses a non-admin with ORG_ADMIN_REQUIRED.
+  it.each([
+    ["a plain member", "member" as const],
+    ["a reader outside the org", null],
+  ])("offers %s no Create button and names who can create the App instead", (_who, orgRole) => {
+    project = { ...project, orgRole };
+    mount();
+
+    expect(screen.queryByRole("button", { name: /create github app/i })).toBeNull();
+    expect(screen.queryByLabelText("GitHub organization")).toBeNull();
+    expect(
+      screen.getByText(/Only an owner or admin of SidCorp can create it, from this project's Integrations tab\./),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Creating it needs org admin there/)).toBeNull();
+  });
 });
 
 // ISS-1421 r22, judge-91: the drawer sent an admin here to install the App again, and the panel
@@ -494,7 +510,7 @@ describe("a project bound to a removed GitHub connection (criterion 224)", () =>
 
   beforeEach(() => {
     items = [REMOVED];
-    project = { ...project, orgIsPersonal: false, orgName: "SidCorp" };
+    project = { ...project, orgIsPersonal: false, orgName: "SidCorp", orgRole: "owner" };
     connections = [connection({ active: false, hasSecrets: false })];
     repos = { isLoading: false, isError: false, error: null };
   });
@@ -566,6 +582,74 @@ describe("a project bound to a removed GitHub connection (criterion 224)", () =>
       screen.getByText(/would belong to someone other than that connection's owner, so it cannot turn it back on/),
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /disconnect from this project/i })).toBeInTheDocument();
+  });
+
+  it("offers a plain member of the org no Install button and names who can install it instead", () => {
+    project = { ...project, orgRole: "member" };
+    mount();
+
+    expect(screen.queryByRole("button", { name: "Install the GitHub App again" })).toBeNull();
+    expect(screen.queryByLabelText("GitHub organization")).toBeNull();
+    expect(
+      screen.getByText(/Only an owner or admin of SidCorp can install it, from this project's Integrations tab\./),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Creating it needs org admin there/)).toBeNull();
+    expect(screen.queryByText(/creates it on GitHub/)).toBeNull();
+    expect(screen.getByRole("button", { name: /disconnect from this project/i })).toBeInTheDocument();
+  });
+
+  it("tells a plain member whose App would belong to someone else only that, promising no admin a way back", () => {
+    project = { ...project, orgRole: "member" };
+    connections = [connection({ active: false, hasSecrets: false, ownerType: "user", ownerId: "a-person" })];
+    mount();
+
+    expect(screen.queryByRole("button", { name: "Install the GitHub App again" })).toBeNull();
+    expect(screen.getByText(/cannot turn it back on/)).toBeInTheDocument();
+    expect(screen.queryByText(/Only an owner or admin of/)).toBeNull();
+  });
+
+  it("still offers an org admin the install", () => {
+    project = { ...project, orgRole: "admin" };
+    mount();
+
+    expect(screen.getByRole("button", { name: "Install the GitHub App again" })).toBeInTheDocument();
+    expect(screen.queryByText(/Only an owner or admin of/)).toBeNull();
+  });
+
+  // r23 preview: Disconnect switched the binding off and the panel showed the same screen and the
+  // same button, though a project switched off stays off when the connection is turned back on elsewhere.
+  it("says a disconnected project stays off, and offers no second Disconnect (criterion 259)", () => {
+    items = [{ ...REMOVED, bindingActive: false }];
+    mount();
+
+    expect(
+      screen.getByText(/This project is disconnected from it, so it stays off if the connection is turned back on from anywhere but here\./),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /disconnect from this project/i })).toBeNull();
+    expect(screen.getByRole("button", { name: "Install the GitHub App again" })).toBeInTheDocument();
+  });
+
+  // The row a Disconnect leaves keeps the project's one GitHub service binding taken, so no new App is
+  // offered while it stands; Clear deletes it (criterion 221).
+  it("names Clear by the connection's owner as the way to a new App where this project's install cannot turn it on (criterion 260)", () => {
+    connections = [connection({ active: false, hasSecrets: false, ownerType: "user", ownerId: "a-person" })];
+    mount();
+
+    expect(
+      screen.getByText(/The connection's owner can clear it from the list on the Integrations page, and then a new App can be created here\./),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Disconnect it from this project to create a new App here/)).toBeNull();
+  });
+
+  it("names no install from here as an exception where this project's install cannot turn it on", () => {
+    items = [{ ...REMOVED, bindingActive: false }];
+    connections = [connection({ active: false, hasSecrets: false, ownerType: "user", ownerId: "a-person" })];
+    mount();
+
+    expect(
+      screen.getByText(/This project is disconnected from it, so it stays off if the connection is turned back on\./),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/anywhere but here/)).toBeNull();
   });
 
   it("promises nothing about the way back where the connection is not in the reader's list", () => {

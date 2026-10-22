@@ -110,7 +110,7 @@ function BindingsSection({
       <div className="flex items-center gap-2">
         <CardTitle>Projects using this connection</CardTitle>
         {isOrgOwned && (
-          <span className="fg-body-sm whitespace-nowrap rounded-pill bg-sunken px-2 py-0.5 text-subtle">
+          <span className="fg-body-sm shrink-0 whitespace-nowrap rounded-pill bg-sunken px-2 py-0.5 text-subtle">
             org-shared
           </span>
         )}
