@@ -14,8 +14,9 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createRoot } from "react-dom/client";
-import { NavRail } from "@/design";
+import { NavRail, TopBarSlotProvider } from "@/design";
 import { ApprovalsScreen } from "@/features/approvals";
+import { ShellTopBar } from "@/features/shell/components/shell-top-bar";
 import { projectMenu, workspaceNavItems } from "@/features/shell/nav-model";
 import { APPROVALS_PROJECT as P, APPROVALS_READ as READ } from "@/test/approvals-read";
 import "./entry";
@@ -52,6 +53,7 @@ const phone = window.innerWidth < PHONE;
 createRoot(document.getElementById("root") as HTMLElement).render(
   <InRouter at="/projects/hop/approvals" pattern="/projects/$slug/approvals">
     <QueryClientProvider client={client}>
+      <TopBarSlotProvider>
       <div style={{ display: "flex", minHeight: "100vh" }} className="bg-app">
         {phone ? null : (
           <div style={{ height: "100vh", flex: "none", position: "sticky", top: 0 }} data-testid="witness-rail">
@@ -66,10 +68,15 @@ createRoot(document.getElementById("root") as HTMLElement).render(
             />
           </div>
         )}
-        <main style={{ flex: 1, minWidth: 0 }}>
-          <ApprovalsScreen projectId={P} slug="hop" />
-        </main>
+        {/* the page names itself into the shell's bar, gutter and all, as the product draws it */}
+        <div className="flex min-w-0 flex-1 flex-col">
+          <ShellTopBar chatOpen={false} onToggleChat={noop} />
+          <main style={{ flex: 1, minWidth: 0 }}>
+            <ApprovalsScreen projectId={P} slug="hop" />
+          </main>
+        </div>
       </div>
+      </TopBarSlotProvider>
     </QueryClientProvider>
   </InRouter>,
 );
