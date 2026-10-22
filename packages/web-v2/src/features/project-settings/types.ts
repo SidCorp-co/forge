@@ -72,18 +72,11 @@ export interface PreviewEnvironmentConfig {
 	[key: string]: unknown;
 }
 
-/**
- * The live side — the address a release ships to.
- *
- * `commitUrl` is a SEPARATE address from `url`: it is the endpoint that reports the running
- * commit, and `commitPath` is the dot path to it inside that endpoint's JSON body. Neither is
- * derivable from `url`, which is why all three are stored (ISS-1069).
- */
+/** The live side — the address a release ships to. What proves a release landed is
+ *  `verify.probes` on the live deploy binding, not this document. */
 export interface LiveEnvironmentConfig {
 	url?: string | null;
 	apiUrl?: string | null;
-	commitUrl?: string | null;
-	commitPath?: string | null;
 	[key: string]: unknown;
 }
 
@@ -263,7 +256,6 @@ export interface ReleaseReadiness {
 		| "rollback"
 		| "rollback-prose"
 		| "verify-probes"
-		| "live-commit-endpoint"
 	)[];
 }
 

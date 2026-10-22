@@ -113,7 +113,7 @@ vi.mock("@/providers/toast-provider", () => ({ useToast: () => ({ toast }) }));
 
 /** A stored preview carrying one key this form never renders. */
 const START: Doc = {
-	live: { url: "https://live.example", commitUrl: null, commitPath: null },
+	live: { url: "https://live.example" },
 	preview: {
 		url: "https://preview.example",
 		apiUrl: "https://api.preview.example",
@@ -273,6 +273,18 @@ describe("a limits edit", () => {
 		expect(Object.keys((sent[0] as { patch: Doc }).patch)).toEqual(["limits"]);
 		expect(stored.preview).toEqual(START.preview);
 		expect(stored.live).toEqual(START.live);
+	});
+});
+
+describe("the live side", () => {
+	it("asks for the live url alone, and a live url edit sends no commit endpoint", async () => {
+		await mount();
+		const live = document.getElementById("environment-live") as HTMLElement;
+		expect(within(live).queryByLabelText(/commit/i)).toBeNull();
+		fireEvent.change(screen.getByLabelText(/^live url/i), { target: { value: "https://new.example" } });
+		save();
+		await waitFor(() => expect(sent).toHaveLength(1));
+		expect((sent[0] as { patch: Doc }).patch).toEqual({ live: { url: "https://new.example" } });
 	});
 });
 

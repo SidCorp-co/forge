@@ -144,7 +144,7 @@ describe('a verify step Forge cannot read, as a person reads it at one and at tw
     expect(one).toContain('The live deploy binding `coolify-a` declares a verify step');
     expect(one).toContain('it names no probe with a url');
     expect(one).toContain('proved there and none closes past it. Give its probe a full url');
-    expect(one).toContain('or remove the verify step:');
+    expect(one).toContain('or remove the verify step, and a release with no probe');
   });
 
   it('speaks of two bindings in the plural throughout', () => {
@@ -156,7 +156,7 @@ describe('a verify step Forge cannot read, as a person reads it at one and at tw
     expect(two).toContain(
       'proved at any of them and none closes past them. Give each probe a full url',
     );
-    expect(two).toContain('or remove those verify steps:');
+    expect(two).toContain('or remove those verify steps, and a release with no probe');
     expect(two).not.toMatch(/\b(?:it|its)\b/);
   });
 });

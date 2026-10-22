@@ -105,7 +105,7 @@ async function seed(over: { bindingConfig?: Record<string, unknown> } = {}): Pro
        SET base_branch = 'main', release_chain = '[{"branch": "main"}, {"branch": "production", "from": "merge-branch"}]'::jsonb,
            repo_path = '/srv/app',
            environments = ${JSON.stringify({
-             live: { url: 'https://app.example.test', commitUrl: probeUrl },
+             live: { url: 'https://app.example.test' },
            })}::jsonb
      WHERE id = ${project.id}
   `);

@@ -88,7 +88,7 @@ const PROBES = { probes: [{ url: 'https://example.test/api/health', commitPath: 
 // gap set against a project still missing one, which is the shape of a test passing for the wrong
 // reason.
 const LIVE_DECLARED = {
-  live: { url: 'https://app.example.test', commitUrl: 'https://example.test/api/health' },
+  live: { url: 'https://app.example.test' },
 };
 
 function liveBinding(config: Record<string, unknown> = {}) {
@@ -215,7 +215,6 @@ describe('loadReleaseReadiness — a gap is never inferred from a read that fail
     const out = await loadReleaseReadiness(PROJECT_ID);
 
     expect(out?.gaps).not.toContain('build-commands');
-    expect(out?.gaps).not.toContain('live-commit-endpoint');
   });
 });
 

@@ -71,7 +71,7 @@ function unlabelled() {
       baseBranch: 'main',
       releaseChain: [{ branch: 'main' }],
       environments: {
-        live: { url: 'https://app.example.test', commitUrl: 'https://example.test/api/health' },
+        live: { url: 'https://app.example.test' },
       },
     },
   ]);

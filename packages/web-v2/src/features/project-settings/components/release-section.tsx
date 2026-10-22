@@ -32,8 +32,6 @@ export const GAP_TEXT: Record<ReleaseReadiness["gaps"][number], string> = {
     "A live Coolify binding declares its rollback as free text, which Forge no longer executes — convert it to the Coolify rollback action, or a failed release aborts and comments.",
   "verify-probes":
     "A live binding declares no verify probe — a release still runs, but nothing reads that deployment. Where no live binding declares one the release closes unverified; where another does, each issue it closes names this one as not read.",
-  "live-commit-endpoint":
-    "This project records no live commit endpoint — nothing holds the address a release ships to, so every live binding has to declare its own probe.",
 };
 
 const ROLLBACK_TEXT: Record<NonNullable<ReleaseReadiness["rollbackMode"]>, string> = {
@@ -310,10 +308,6 @@ export function ReleaseAnswer({
                   <Link href={knowledgeHref} className="text-accent-text hover:underline">
                     Write them in Knowledge rules
                   </Link>
-                ) : g === "live-commit-endpoint" ? (
-                  <a href="#environment-live" className="text-accent-text hover:underline">
-                    Record the live commit endpoint
-                  </a>
                 ) : g === "release-target" && tab(ADD_LIVE_TARGET.tab) ? (
                   <Link
                     href={tab(ADD_LIVE_TARGET.tab, ADD_LIVE_TARGET.add) as string}

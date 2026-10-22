@@ -344,8 +344,6 @@ const FIELD_LABELS: Record<string, string> = {
   'assistantWeekly.judgeProviderId': 'Judge provider',
   'assistantWeekly.judgeModel': 'Judge model',
   'live.url': 'URL',
-  'live.commitUrl': 'Commit URL',
-  'live.commitPath': 'Commit path',
   'preview.url': 'URL',
   'preview.apiUrl': 'API URL',
   'preview.urls': 'Testing URLs',

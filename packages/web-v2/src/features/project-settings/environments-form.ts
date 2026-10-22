@@ -13,15 +13,12 @@ export const URL_MAX = 500;
 export const USERNAME_MAX = 200;
 export const PASSWORD_MAX = 500;
 export const LIMITS_MAX = 8000;
-export const COMMIT_PATH_MAX = 200;
 
 export type UrlRow = TestingUrl & Record<string, unknown>;
 export type CredRow = TestCredential & Record<string, unknown>;
 
 export interface EnvironmentsDraft {
   liveUrl: string;
-  liveCommitUrl: string;
-  liveCommitPath: string;
   previewUrl: string;
   previewApiUrl: string;
   previewUrls: UrlRow[];
@@ -64,8 +61,6 @@ export function parseEnvironments(raw: unknown): EnvironmentsDraft {
   const preview = (env.preview ?? {}) as Record<string, unknown>;
   return {
     liveUrl: text(live.url),
-    liveCommitUrl: text(live.commitUrl),
-    liveCommitPath: text(live.commitPath),
     previewUrl: text(preview.url),
     previewApiUrl: text(preview.apiUrl),
     previewUrls: urlRows(preview.urls),
@@ -79,8 +74,6 @@ export function parseEnvironments(raw: unknown): EnvironmentsDraft {
  *  there is no edit of the person's standing there. */
 const FIELD_AT: Record<string, keyof EnvironmentsDraft> = {
   "live.url": "liveUrl",
-  "live.commitUrl": "liveCommitUrl",
-  "live.commitPath": "liveCommitPath",
   "preview.url": "previewUrl",
   "preview.apiUrl": "previewApiUrl",
   "preview.urls": "previewUrls",
@@ -131,8 +124,6 @@ export function environmentsDocument(form: EnvironmentsDraft) {
   return {
     live: {
       url: trimmedOrNull(form.liveUrl),
-      commitUrl: trimmedOrNull(form.liveCommitUrl),
-      commitPath: trimmedOrNull(form.liveCommitPath),
     },
     preview: {
       url: trimmedOrNull(form.previewUrl),
@@ -208,8 +199,6 @@ const credentialRows = z.array(credentialRow).superRefine((rows, ctx) => {
 
 export const environmentsSchema = z.object({
   liveUrl: optionalUrl,
-  liveCommitUrl: optionalUrl,
-  liveCommitPath: z.string(),
   previewUrl: optionalUrl,
   previewApiUrl: optionalUrl,
   previewUrls: z.array(urlRow),

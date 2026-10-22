@@ -88,7 +88,7 @@ function unmergedForReader(details: Details): string | null {
 
 const unreadableDeclarationForReader: RefusedDeclaration = (n) => {
   const w = (one: string, many: string) => agree(n, one, many);
-  return `a verify step Forge cannot read: ${w('it names no probe', 'none of them names a probe')} with a url, and a declared verify step takes no project default, so no release can be proved ${w('there', 'at any of them')} and none closes past ${w('it', 'them')}. Give ${w('its probe', 'each probe')} a full url, scheme included, or remove ${w('the verify step', 'those verify steps')}: the live commit endpoint recorded for this project then answers, and with neither the release is recorded unverified.`;
+  return `a verify step Forge cannot read: ${w('it names no probe', 'none of them names a probe')} with a url, so no release can be proved ${w('there', 'at any of them')} and none closes past ${w('it', 'them')}. Give ${w('its probe', 'each probe')} a full url, scheme included, or remove ${w('the verify step', 'those verify steps')}, and a release with no probe on any live binding is recorded unverified.`;
 };
 
 function unreadableForReader(details: Details): string | null {

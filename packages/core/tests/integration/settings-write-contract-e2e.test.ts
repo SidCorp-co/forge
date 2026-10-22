@@ -62,7 +62,7 @@ const SEED = {
 };
 
 const SEED_ENVIRONMENTS = {
-  live: { url: 'https://live.example', commitPath: 'commit' },
+  live: { url: 'https://live.example', apiUrl: 'https://api.live.example' },
   preview: { url: 'https://preview.example', shownNowhere: 'a key the form does not render' },
   testCredentials: [{ label: 'qa', username: 'qa@example.com', password: 'secret' }],
 };

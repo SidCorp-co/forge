@@ -155,14 +155,14 @@ describe('a live deploy binding whose verify Forge cannot read', () => {
     const one = sentence(['coolify-a']);
     expect(one).toContain('— it names no probe with a url —');
     expect(one).toContain('proved there and none closes past it. Correct it to');
-    expect(one).toContain(', or remove it: the project');
+    expect(one).toContain(', or remove it, and a release with no probe');
   });
 
   it('says what they name and what to correct in the plural, at two', () => {
     const two = sentence(['coolify-a', 'coolify-b']);
     expect(two).toContain('— none of them names a probe with a url —');
     expect(two).toContain('proved at any of them and none closes past them. Correct each to');
-    expect(two).toContain(', or remove them: the project');
+    expect(two).toContain(', or remove them, and a release with no probe');
     expect(two).not.toMatch(/\bit\b/);
   });
 });

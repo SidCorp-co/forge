@@ -283,12 +283,6 @@ describe('a recorded release whose not-verified note cannot be written', () => {
 describe('a verify Forge cannot parse is still refused, by name', () => {
   beforeEach(async () => {
     await fx.declareProduction({ verify: { probes: [] } });
-    // A project default that must NOT stand in for the refused declaration.
-    await harness.db.execute(sql`
-      UPDATE projects SET environments = ${JSON.stringify({
-        live: { url: 'https://app.example.test', commitUrl: 'https://app.example.test/version' },
-      })}::jsonb WHERE id = ${projectId}
-    `);
   });
 
   it('refuses the create door, naming the binding, and claims nothing', async () => {

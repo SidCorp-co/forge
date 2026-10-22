@@ -79,7 +79,7 @@ export class ReleaseReadingUnreadableError extends Error {
 /**
  * A declared probe no request could be made to: a url that is not a url, or a live binding's
  * `verify` Forge refused as a declaration. Either is a defect in what was declared, never an
- * absence, so it takes no project default and no release closes past it (ISS-1286, ISS-1321).
+ * absence, so no release closes past it (ISS-1286, ISS-1321).
  */
 export class ReleaseProbesUnreadableError extends Error {
   constructor(

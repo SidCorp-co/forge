@@ -52,7 +52,7 @@ export type ReleaseRollback =
 /** Where a channel's probes came from. `declared-unusable` is a `verify` block
  *  `parseVerifyConfig` refused, which `none` would make indistinguishable from
  *  declaring nothing — and the two need different repairs (ISS-1286). */
-export type VerifySource = 'binding' | 'environments-live' | 'declared-unusable' | 'none';
+export type VerifySource = 'binding' | 'declared-unusable' | 'none';
 
 /** ONE live deploy binding. A project's release works the whole set of these. */
 export interface ReleaseChannel {

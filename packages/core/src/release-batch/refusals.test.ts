@@ -80,14 +80,14 @@ describe('unreadableProbes', () => {
     expect(err.message).toContain('`coolify b-1`');
   });
 
-  it('says a binding declaring an unreadable verify takes no project default', () => {
-    expect(body(unreadableProbes(refused))).toMatch(/takes NO project default/);
+  it('says a binding declaring an unreadable verify stops the release there', () => {
+    expect(body(unreadableProbes(refused))).toMatch(/no release can be proved there/);
   });
 
   it('names the shape a readable verify takes, and what removing it leaves', () => {
     const text = body(unreadableProbes(refused));
     expect(text).toContain('"probes"');
-    expect(text).toContain('environments.live.commitUrl');
+    expect(text).not.toMatch(/commitUrl|commit endpoint/);
     expect(text).toContain('recorded unverified');
   });
 
