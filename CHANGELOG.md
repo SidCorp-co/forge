@@ -9,6 +9,19 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.276] - 2026-10-22
+
+The steward answers handoffs within minutes, asks once, and lists its acts with Undo
+
+### Fixed
+
+- **A page beside the Ask Agent panel keeps its back control in view.** In a narrow page column the top bar's Ask Agent is its icon alone, so a requirement's acts no longer cover "← Requirements".
+- **The steward keeps a daily share for handoffs and shows its acts.** The sweep's backlog is paced across days, the Dashboard says when the steward is quiet, a kept item is not re-asked, and item Activity offers Undo.
+
+### Removed
+
+- **The steward asks every stuck item's decision, feedback included.** It asks merge, drop or keep on stuck drafts, replacing the separate seven-day stale-draft question, and a draft requirement with nothing agreed reads "write a revision", not "agree it".
+
 ## [0.4.0-dev.274] - 2026-10-22
 
 The issue rail shows each design's own decision; over-cap design waits refused by name
