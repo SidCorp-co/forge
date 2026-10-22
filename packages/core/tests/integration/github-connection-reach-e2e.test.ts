@@ -244,8 +244,14 @@ describe('who the App a Connect creates will belong to', () => {
 
     expect(res.status).toBe(403);
     expect(body.code).toBe('ORG_ADMIN_REQUIRED');
-    expect(body.message).toContain(orgId);
-    expect(body.message).toMatch(/org admin/i);
+    // By its name and what to press, the id kept as data (ISS-1421 r23).
+    expect(body.message).toBe(
+      `This project belongs to the organization Test Org ${orgId.slice(0, 8)}, so a GitHub App ` +
+        `created here belongs to it. Only an owner or admin of Test Org ${orgId.slice(0, 8)} can ` +
+        "create one, and you are a member there. Ask one of them to create it from this project's " +
+        'Integrations tab.',
+    );
+    expect(body.details).toEqual({ orgId });
   });
 
   it("leaves a solo operator's App theirs, because a personal org owns nothing shared", async () => {

@@ -9,7 +9,7 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PROVIDER_MODULES } from "../providers/registry";
 import { GRANT_LABEL } from "./agent-access-control";
-import { ConnectionDetailDrawer } from "./connection-detail-drawer";
+import { BindingsList, ConnectionDetailDrawer } from "./connection-detail-drawer";
 
 expect.extend(matchers);
 
@@ -115,4 +115,23 @@ describe("a provider's drawer shows the agents switch once", () => {
       expect(screen.getAllByText(GRANT_LABEL)).toHaveLength(1);
     },
   );
+});
+
+// ISS-1421 r23, judge-94 on 224: an org member's list named a project they cannot open by its id.
+describe("a project's list of the projects a connection is bound to", () => {
+  it("names a project the reader cannot open in words, never by its id", () => {
+    const other = { ...binding("live"), id: "b-other", projectId: "9f1c2d3e-0000-4000-8000-000000000001" };
+    render(
+      <BindingsList
+        items={[binding("live"), other] as never}
+        projectNames={new Map([[PROJECT, "Stub"]])}
+        projectsRead
+        currentProjectId={PROJECT}
+        currentStage={null}
+      />,
+    );
+    expect(screen.getByText("Stub")).toBeInTheDocument();
+    expect(screen.getByText("A project you cannot open")).toBeInTheDocument();
+    expect(screen.queryByText(/9f1c2d3e/)).toBeNull();
+  });
 });

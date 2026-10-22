@@ -20,7 +20,7 @@ import { effectiveProjectRole, loadOrgRole, orgRoleAtLeast } from '../../lib/aut
 import { logger } from '../../logger.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../../middleware/auth.js';
 import { recordInstallation } from '../binding-installation.js';
-import { isRemovedConnection } from '../held-key.js';
+import { isRemovedConnection, listBoundProjectOrgs, turnsBackOnFrom } from '../held-key.js';
 import { findReachableConnection } from '../reach.js';
 import {
   assertAdmin,
@@ -116,6 +116,7 @@ function assertApiOriginReachable(c: Context, api: string): void {
  */
 async function ownerOrgForProjectApp(args: {
   projectOrgId: string | null;
+  orgName: string;
   asked: string | null;
   userId: string;
 }): Promise<string | undefined> {
@@ -132,13 +133,15 @@ async function ownerOrgForProjectApp(args: {
   if (!orgRoleAtLeast(orgRole, 'admin')) {
     // Its own code, not a bare FORBIDDEN: the web prints one generic sentence
     // for that and drops the server's, which carries the way round.
+    // Named by its name and asked of a person by what they press (ISS-1421 r23): the id, "you are
+    // member", a Connect no control is called and a binding this panel does not offer were not.
     throw new HTTPException(403, {
       message:
-        `this project belongs to org ${args.projectOrgId}, so a GitHub App created here is ` +
-        'owned by that org and reachable by every admin of the project. Creating one requires ' +
-        `org admin there; you are ${orgRole ?? 'not a member of that org'}. Ask an org admin to ` +
-        'run Connect, or bind an existing GitHub App to this project instead.',
-      cause: { code: 'ORG_ADMIN_REQUIRED' },
+        `This project belongs to the organization ${args.orgName}, so a GitHub App created here ` +
+        `belongs to it. Only an owner or admin of ${args.orgName} can create one, and you are ` +
+        `${orgRole === null ? 'not a member of it' : `a ${orgRole} there`}. Ask one of them to ` +
+        "create it from this project's Integrations tab.",
+      cause: { code: 'ORG_ADMIN_REQUIRED', details: { orgId: args.projectOrgId } },
     });
   }
   return args.projectOrgId;
@@ -159,6 +162,7 @@ githubConnectRoutes.post(
         slug: projects.slug,
         name: projects.name,
         orgId: projects.orgId,
+        orgName: organizations.name,
         orgIsPersonal: organizations.isPersonal,
       })
       .from(projects)
@@ -173,6 +177,7 @@ githubConnectRoutes.post(
       // directory scopes such an org to `ownerType:'user'` — an App owned by it
       // would be invisible to its only admin. So: no shared owner.
       projectOrgId: project.orgIsPersonal ? null : project.orgId,
+      orgName: project.orgName,
       asked: asked ?? null,
       userId,
     });
@@ -247,14 +252,17 @@ const githubAppUnfinished = (connectionId: string) =>
     cause: { code: 'GITHUB_APP_UNFINISHED', details: { connectionId } },
   });
 
-/** A removed GitHub connection's repositories asked for: it holds no App until one is installed again. */
-const githubConnectionRemoved = (connectionId: string) =>
-  new HTTPException(409, {
-    message:
-      'This GitHub connection was removed, so it holds no App. Install the GitHub App again from ' +
-      "this project's Integrations tab, and it turns back on.",
-    cause: { code: 'CONNECTION_REMOVED', details: { connectionId } },
+/**
+ * A removed GitHub connection's repositories asked for: it holds no App until one is installed again
+ * from a bound project whose App would belong to its owner (ISS-1421 r23).
+ */
+async function githubConnectionRemoved(connection: IntegrationConnectionRow, projectId: string) {
+  const bound = await listBoundProjectOrgs(connection.id);
+  return new HTTPException(409, {
+    message: `This GitHub connection was removed, so it holds no App. ${turnsBackOnFrom(connection, bound, projectId)}`,
+    cause: { code: 'CONNECTION_REMOVED', details: { connectionId: connection.id } },
   });
+}
 
 /**
  * The App whose repositories this project's picker may list: one the caller reaches by the rule
@@ -291,7 +299,7 @@ githubConnectRoutes.get(
 
     const connection = await githubConnectionForPicker({ userId, connectionId });
     // Removed is not unfinished: the App was there, and a remove took it (ISS-1421 r22).
-    if (isRemovedConnection(connection)) throw githubConnectionRemoved(connectionId);
+    if (isRemovedConnection(connection)) throw await githubConnectionRemoved(connection, projectId);
 
     const { appId, privateKey } = decryptConnectionSecrets<{
       appId?: string;

@@ -33,9 +33,10 @@ vi.mock("../hooks", async (importOriginal) => ({
 vi.mock("@/features/projects/hooks", () => ({
   useProjectsIncludingArchived: () => ({
     data: [
-      { id: "p-store", name: "Storefront", slug: "storefront", archivedAt: null },
-      { id: "p-shop", name: "Shop", slug: "shop", archivedAt: null },
+      { id: "p-store", name: "Storefront", slug: "storefront", archivedAt: null, orgId: "org-mine", orgIsPersonal: true },
+      { id: "p-shop", name: "Shop", slug: "shop", archivedAt: null, orgId: "org-acme", orgIsPersonal: false },
     ],
+    isSuccess: true,
   }),
 }));
 vi.mock("@/providers/toast-provider", () => ({ useToast: () => ({ toast: vi.fn() }) }));
@@ -219,6 +220,38 @@ describe("the drawer's Danger zone over a connection that was removed", () => {
     expect(screen.queryByText("Configuration")).toBeNull();
   });
 
+  // Whole-set review F1 (r23): an install from a project whose App would belong to someone else is
+  // refused by core, so that project is never named as the way back.
+  it("names only the bound projects whose App would belong to the removed connection's owner", () => {
+    bindingsData = {
+      items: [
+        { id: "b1", projectId: "p-store", active: false, bindingActive: true, role: "service", stages: [] },
+        { id: "b2", projectId: "p-shop", active: false, bindingActive: true, role: "service", stages: [] },
+      ],
+    };
+    mount({ ...(mine as object), provider: "github", active: false, hasSecrets: false });
+    expect(
+      screen.getByText(
+        "This connection holds no key. Installing the GitHub App again from the Integrations tab of Storefront turns it back on.",
+      ),
+    ).toBeInTheDocument();
+    cleanup();
+    mount({ ...(mine as object), ownerType: "org", ownerId: "org-acme", provider: "github", active: false, hasSecrets: false });
+    expect(screen.getByText(/from the Integrations tab of Shop turns it back on\./)).toBeInTheDocument();
+  });
+
+  it("says nothing turns it on where every bound project's App would belong to someone else", () => {
+    bindingsData = {
+      items: [{ id: "b2", projectId: "p-shop", active: false, bindingActive: true, role: "service", stages: [] }],
+    };
+    mount({ ...(mine as object), provider: "github", active: false, hasSecrets: false });
+    expect(
+      screen.getByText(
+        "This connection holds no key. No project it is bound to would give a new App to its owner, so nothing can turn it back on. Clear it from the list.",
+      ),
+    ).toBeInTheDocument();
+  });
+
   it("says nothing turns a removed GitHub connection on where no project is bound to it", () => {
     mount({ ...(mine as object), provider: "github", active: false, hasSecrets: false });
     expect(
@@ -292,6 +325,37 @@ describe("the drawer's Danger zone over a connection that was removed", () => {
     expect(screen.queryByRole("button", { name: "Test connection" })).toBeNull();
     expect(screen.queryByText(/Share it from a project/)).toBeNull();
     expect(screen.getByText("No project uses this connection.")).toBeInTheDocument();
+  });
+
+  // ISS-1421 r23, judge-94: an org's removed connection still said any project could be bound to it,
+  // which core refuses (230), above "nothing can turn it back on".
+  it("says no org project can be bound to an org's removed connection", () => {
+    mount({ ...(mine as object), ownerType: "org", provider: "postman", active: false, hasSecrets: false });
+    expect(screen.queryByText(/any project in the org can be bound/)).toBeNull();
+  });
+
+  it("keeps the org-shared line on an org's connection that holds its key, or was only disabled", () => {
+    mount({ ...(mine as object), ownerType: "org", provider: "postman", active: true, hasSecrets: true });
+    expect(screen.getByText(/any project in the org can be bound/)).toBeInTheDocument();
+    cleanup();
+    mount({ ...(mine as object), ownerType: "org", provider: "postman", active: false, hasSecrets: true });
+    expect(screen.getByText(/any project in the org can be bound/)).toBeInTheDocument();
+  });
+
+  // judge-94 on 224: a member's list named a project they cannot open by its id.
+  it("names a bound project the reader cannot open in words, never by its id", () => {
+    bindingsData = {
+      items: [
+        { id: "b1", projectId: "p-store", active: true, bindingActive: true, role: "service", stages: [] },
+        { id: "b2", projectId: "9f1c2d3e-0000-4000-8000-000000000001", active: true, bindingActive: true, role: "service", stages: [] },
+      ],
+    };
+    mount({ ...(mine as object), provider: "postman" });
+    expect(screen.getByText("Storefront")).toBeInTheDocument();
+    expect(screen.getByText("A project you cannot open")).toBeInTheDocument();
+    expect(screen.queryByText(/9f1c2d3e/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Remove…" }));
+    expect(screen.getByText(/for 2 projects: Storefront, a project you cannot open\./)).toBeInTheDocument();
   });
 
   it("keeps Test connection and the share hint on a connection that holds its key", () => {

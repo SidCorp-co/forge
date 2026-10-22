@@ -35,7 +35,8 @@ import {
   useTestConnection,
   useUpdateConnection,
 } from "../hooks";
-import { connectionTitle } from "../connection-identity";
+import { takesTheApp } from "../app-owner";
+import { connectionTitle, projectCalled } from "../connection-identity";
 import { deriveConnectionStatus } from "../derive";
 import { ConnectionReleaseRunnerField } from "./release-runner-field";
 import { DangerZone, isRemovedConnection } from "./connection-danger-zone";
@@ -115,7 +116,7 @@ function HeaderTitle({
         </>
       )}
       <DirectoryStatusPill status={deriveConnectionStatus(connection)} />
-      {connection.ownerType === "org" && (
+      {connection.ownerType === "org" && !isRemovedConnection(connection) && (
         <span className="fg-body-sm shrink-0 rounded-pill bg-sunken px-2 py-0.5 text-subtle">
           org-shared
         </span>
@@ -275,11 +276,21 @@ function ConfigSection({
   );
 }
 
+/** {@link projectCalled} for a sentence, one entry a project so a count read off it stays true. */
+function projectNames(ids: string[], projects: ProjectListItem[], projectsRead: boolean): string[] {
+  const byId = new Map(projects.map((p) => [p.id, p] as const));
+  return ids.map((id) => {
+    const project = byId.get(id);
+    return project ? project.name : projectCalled(undefined, projectsRead).toLowerCase();
+  });
+}
+
 /** "Projects using it" — each row drills into that project's settings →
  *  Integrations tab (AC3); archived projects render non-clickable + badge. */
 function ProjectsSection({
   connection,
   projects,
+  projectsRead,
   bindings,
   bindingsError,
   bindingsLoading,
@@ -288,6 +299,7 @@ function ProjectsSection({
 }: {
   connection: ConnectionSummary;
   projects: ProjectListItem[];
+  projectsRead: boolean;
   bindings: BindingSummary[];
   bindingsError: string | null;
   bindingsLoading: boolean;
@@ -322,7 +334,7 @@ function ProjectsSection({
             const archived = Boolean(project?.archivedAt);
             const row = (
               <>
-                <span className="truncate text-fg">{project?.name ?? b.projectId}</span>
+                <span className="truncate text-fg">{projectCalled(project?.name, projectsRead)}</span>
                 <span className="fg-body-sm text-muted">
                   {scopeLabel(b.role, b.stages)}
                 </span>
@@ -362,7 +374,8 @@ function ProjectsSection({
           })}
         </ul>
       )}
-      {connection.ownerType === "org" && (
+      {/* A removed connection is refused a binding by name (ISS-1421 r23, judge-94 on 229). */}
+      {connection.ownerType === "org" && !isRemovedConnection(connection) && (
         <p className="fg-body-sm text-muted">
           Org-shared — any project in the org can be bound to this connection.
         </p>
@@ -387,17 +400,24 @@ export function ConnectionEditDrawer({
   // Distinct PROJECT IDS with a still-resolving binding — dedupe by id (two
   // projects may share a display name) and skip already-disabled bindings,
   // which stopped resolving before any removal.
+  const projectsRead = projectsQ.isSuccess;
   const affectedProjects = useMemo(() => {
-    const byId = new Map(projects.map((p) => [p.id, p.name] as const));
     const ids = [...new Set(bindings.filter((b) => b.active).map((b) => b.projectId))];
-    return ids.map((id) => byId.get(id) ?? id);
-  }, [bindings, projects]);
+    return projectNames(ids, projects, projectsRead);
+  }, [bindings, projects, projectsRead]);
   const bindingsRead = bindingsQ.isSuccess;
   const boundProjects = useMemo(() => {
     if (!bindingsRead) return null;
-    const byId = new Map(projects.map((p) => [p.id, p.name] as const));
-    return [...new Set(bindings.map((b) => b.projectId))].map((id) => byId.get(id) ?? id);
-  }, [bindings, projects, bindingsRead]);
+    return projectNames([...new Set(bindings.map((b) => b.projectId))], projects, projectsRead);
+  }, [bindings, projects, bindingsRead, projectsRead]);
+  const returnsFrom = useMemo(() => {
+    if (!bindingsRead || !projectsRead || !connection) return null;
+    const byId = new Map(projects.map((p) => [p.id, p] as const));
+    return [...new Set(bindings.map((b) => b.projectId))].flatMap((id) => {
+      const project = byId.get(id);
+      return project && takesTheApp(connection, project) ? [project.name] : [];
+    });
+  }, [bindings, projects, bindingsRead, projectsRead, connection]);
 
   if (!connection) return null;
 
@@ -428,6 +448,7 @@ export function ConnectionEditDrawer({
         <ProjectsSection
           connection={connection}
           projects={projects}
+          projectsRead={projectsRead}
           bindings={bindings}
           bindingsLoading={bindingsQ.isLoading}
           bindingsError={bindingsQ.isError ? formatApiError(bindingsQ.error) : null}
@@ -441,6 +462,7 @@ export function ConnectionEditDrawer({
               connection={connection}
               affectedProjects={affectedProjects}
               boundProjects={boundProjects}
+              returnsFrom={returnsFrom}
               onRemoved={onClose}
             />
           </>

@@ -129,3 +129,8 @@ export function matchesQuery(
   ];
   return haystack.some((value) => value.toLowerCase().includes(needle));
 }
+
+export function projectCalled(name: string | undefined, projectsRead: boolean): string {
+  if (name !== undefined) return name;
+  return projectsRead ? "A project you cannot open" : "Another project";
+}

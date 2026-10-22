@@ -70,6 +70,30 @@ describe("the binding controls over a removed connection (criterion 228)", () =>
     expect(screen.getByText(/Installing the GitHub App again here turns it back on/)).toBeInTheDocument();
   });
 
+  // r23 ruling: a key saved from the project's own drawer leaves the connection off, and the save
+  // said nothing; the line beside Enable credential now says the connection is still off.
+  it("say a key saved here left the connection off, with Enable credential beside it", () => {
+    const { rerender } = render(
+      <IntegrationEnabledControl projectId={PROJECT} binding={binding({})} />,
+    );
+    rerender(<IntegrationEnabledControl projectId={PROJECT} binding={binding({ hasSecrets: true })} />);
+
+    const line = screen.getByText(
+      "The key is saved, but the shared connection is still off, so no project can use it yet.",
+    );
+    const enable = screen.getByRole("button", { name: /enable credential/i });
+    expect(line.parentElement).toBe(enable.parentElement);
+    expect(screen.queryByText(/Shared credential is disabled/)).toBeNull();
+
+    rerender(
+      <IntegrationEnabledControl
+        projectId={PROJECT}
+        binding={binding({ hasSecrets: true, connectionActive: true, active: true })}
+      />,
+    );
+    expect(screen.queryByText(/still off/)).toBeNull();
+  });
+
   it("keep Enable credential where the connection is only switched off and still holds its key", () => {
     render(
       <IntegrationEnabledControl projectId={PROJECT} binding={binding({ hasSecrets: true })} />,

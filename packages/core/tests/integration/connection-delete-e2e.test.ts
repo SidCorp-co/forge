@@ -234,6 +234,7 @@ describe('a removed connection (criterion 216)', () => {
     expect(await rowOf(connection.id)).toMatchObject({ active: false, wiped: true });
   });
 
+  // Bound to a project, since one bound nowhere has no way back (ISS-1421 r23; removed-connection-e2e).
   it('says for GitHub that installing the App again turns it back on, not a key', async () => {
     const connection = await store.createConnection({
       ownerType: 'user',
@@ -243,13 +244,21 @@ describe('a removed connection (criterion 216)', () => {
       config: {},
       secrets: { appId: '1', privateKey: 'scratch-old-pem', webhookSecret: 'scratch-old-hook' },
     });
+    const personal = await seedOrg(harness.db, ownerId, { isPersonal: true });
+    const project = await createTestProject(harness.db, ownerId, { orgId: personal.id });
+    await store.createBinding({
+      connectionId: connection.id,
+      projectId: project.id,
+      provider: 'github',
+      role: 'service',
+    });
     await call('DELETE', `/api/integration-connections/${connection.id}`);
     const on = await call('PATCH', `/api/integration-connections/${connection.id}`, {
       active: true,
     });
     expect(on.status).toBe(409);
     expect(on.body.message).toBe(
-      'This connection holds no key, as removing it wiped its keys. Install the GitHub App again from the Integrations tab of a project it is bound to, and it turns back on.',
+      'This connection holds no key, as removing it wiped its keys. Install the GitHub App again from a bound project whose App would belong to its owner, and it turns back on.',
     );
   });
 
