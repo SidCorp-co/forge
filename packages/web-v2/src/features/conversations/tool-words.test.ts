@@ -1,6 +1,6 @@
 // ISS-1229 r34, judge-93: a room's tool cards read "Object · 3 fields", and a filing the tracker refused
 // once then accepted left a bare "forge — Failed". The shapes below are the ones judge-93 read back off
-// a room on beta 61b8876.
+// a room on beta 61b8876, and judge-95's off beta 2b0f8aa (r35).
 
 import { describe, expect, it } from "vitest";
 import { decodeToolOutput } from "@/features/session/result-summary";
@@ -49,12 +49,61 @@ describe("what a room's assistant did, in words", () => {
       exitCode: 1,
       stdout: "",
       stderr:
-        "Hold — this files an issue the flow cannot carry. Each line below is what was read, what the shape wants and the one command that clears it.\n\n- read: no heading named What happened",
+        "Hold — this files an issue the flow cannot carry. Each line below is what was read, what the shape wants and the one command that clears it.\n\n- read: no heading naming what happened, among `Summary`, `Where`\n  wants: a heading saying what happened\n  clear: add `## What happened` and re-send the same command",
     };
     expect(toolWords(cli(["new", "-", "--title", "J93 judge test: invoice footer typo", "--category", "bug"], refused, "## Summary"))).toEqual({
       said: "Couldn't file “J93 judge test: invoice footer typo”",
-      refusal: "Hold — this files an issue the flow cannot carry.",
+      refusal: "It has no What happened section, so add it and send it again.",
     });
+  });
+
+  // ISS-1229 r35, judge-95: the card read the refusal's opening, "Hold — this files an issue the flow
+  // cannot carry.", and the reason, four missing headings, was only under Technical details.
+  it("says what a held filing lacks and what puts it right, never the refusal's opening", () => {
+    const among = ", among `Summary`, `Where`, `Expected behavior`, `Actual behavior`, `Acceptance criteria`";
+    const gaps = [
+      ["what happened", "What happened"],
+      ["why it happens", "Why it happens"],
+      ["the outcome", "Outcome"],
+      ["the out-of-scope", "Out of scope"],
+    ].map(
+      ([read, heading]) =>
+        `- read: no heading naming ${read}${among}\n  wants: a heading\n  clear: add \`## ${heading}\` and re-send the same command`,
+    );
+    const refused = {
+      exitCode: 1,
+      stdout: "",
+      stderr: `Hold — this files an issue the flow cannot carry. Each line below is what was read, what the shape wants and the one command that clears it.\n\n${gaps.join("\n")}`,
+    };
+    const words = toolWords(cli(["new", "-", "--title", "J95 judge test: invoice footer typo", "--category", "bug"], refused));
+    expect(words.refusal).toBe(
+      "It has no What happened, Why it happens, Outcome or Out of scope section, so add them and send it again.",
+    );
+    expect(words.refusal).not.toMatch(/Hold|flow cannot carry|among/);
+  });
+
+  it("says what puts each gap right where a gap is not a missing section", () => {
+    const refused = {
+      exitCode: 1,
+      stdout: "",
+      stderr:
+        "Hold — this files an issue the flow cannot carry.\n\n- read: no heading naming what happened, among `Summary`\n  wants: a heading saying what happened, required of a bug\n  clear: add `## What happened` and re-send the same command\n- read: the title `Fix`\n  wants: a sentence saying the behaviour after the change, not one word\n  clear: forge new with a title that says the behaviour",
+    };
+    expect(toolWords(cli(["new", "-", "--title", "Fix"], refused)).refusal).toBe(
+      "It has no What happened section, so add it; the title Fix needs a sentence saying the behaviour after the change, not on…",
+    );
+  });
+
+  it("says why a hold that lists no reads was held, from the paragraph after its instruction", () => {
+    const route = {
+      exitCode: 1,
+      stdout: "",
+      stderr:
+        "Hold — name one of the routes below, then re-send.\n\nThis body names billing, carries no rule or invariant and no out-of-scope, and reads as a fix: filed as a feature the flow costs a confirmation.\n\n  --with ISS-nn   file it and relate it",
+    };
+    expect(toolWords(cli(["new", "-", "--title", "Typo"], route)).refusal).toBe(
+      "This body names billing, carries no rule or invariant and no out-of-scope, and reads as a fix: filed as a feature the fl…",
+    );
   });
 
   it("tells a comment written from one only read", () => {
@@ -78,6 +127,33 @@ describe("what a room's assistant did, in words", () => {
       result: { hits: [{ id: "a" }, { id: "b" }], model: "gm/gemini-embedding-001", took_ms: 5 },
     };
     expect(toolWords(memory).said).toBe("Searched project memory for “Thursday release” — 2 found");
+  });
+
+  // ISS-1229 r35, judge-95: a search of knowledge and memory found one memory hit and its card read
+  // "Searched project knowledge … — 1 found" above a reply saying knowledge held nothing.
+  it("says which stores a knowledge search covered, and counts what each one found", () => {
+    const search = (scope: string | undefined, result: unknown): ToolCallData => ({
+      id: "k",
+      name: "forge_knowledge",
+      input: { topK: 10, query: "invoices", ...(scope ? { scope } : {}), action: "search", strategy: "hybrid" },
+      result,
+    });
+    const hit = [{ id: "c7ae770e", source: "issue" }];
+    expect(toolWords(search("all", { knowledge: [], memory: hit })).said).toBe(
+      "Searched project knowledge and memory for “invoices” — none in knowledge, 1 in memory",
+    );
+    expect(toolWords(search("all", { knowledge: hit, memory: [] })).said).toBe(
+      "Searched project knowledge and memory for “invoices” — 1 in knowledge, none in memory",
+    );
+    expect(toolWords(search("all", { knowledge: [], memory: [] })).said).toBe(
+      "Searched project knowledge and memory for “invoices” — none found",
+    );
+    expect(toolWords(search("memory", { knowledge: [], memory: [...hit, ...hit] })).said).toBe(
+      "Searched project memory for “invoices” — 2 found",
+    );
+    expect(toolWords(search(undefined, { knowledge: hit, memory: hit })).said).toBe(
+      "Searched project knowledge for “invoices” — 1 found",
+    );
   });
 
   it("says a call still running in the present, without a result", () => {

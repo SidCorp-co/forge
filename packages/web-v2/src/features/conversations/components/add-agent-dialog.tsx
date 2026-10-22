@@ -17,7 +17,7 @@ import { Banner, Button, ErrorState, Icon, Spinner } from "@/design";
 import { ApiError } from "@/lib/api/client";
 import { formatApiError } from "@/lib/api/error";
 import { useAddHandle, useConversationCandidates } from "../hooks";
-import { agentAdditionClaims, beyondReachLines } from "../membership";
+import { agentAdditionClaims, beyondReachLines, cannotAnswerReason } from "../membership";
 import type { ConversationMembership, HandleCandidate } from "../types";
 import { SlideOver } from "@/design";
 
@@ -196,14 +196,21 @@ function CandidateList({
       <ul className="flex flex-col gap-1">
         {handles.map((handle) => (
           <li key={`${handle.userId ?? "unminted"}:${handle.project.id}`}>
+            {/* An agent that lost its role on its project is shown with why, and is not offered (r35). */}
             <button
               type="button"
+              disabled={!handle.reachable}
               onClick={() => onPick(handle)}
-              className="flex w-full items-center gap-2 rounded-md border border-line px-3 py-2 text-left hover:bg-hover focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
+              className="flex w-full flex-col gap-0.5 rounded-md border border-line px-3 py-2 text-left hover:bg-hover disabled:cursor-not-allowed disabled:hover:bg-transparent focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
             >
-              <Icon name="agent" size={15} className="flex-none text-[color:var(--accent-text)]" />
-              <span className="fg-body-sm font-mono">@{handle.handle}</span>
-              <span className="fg-caption ml-auto text-muted">{handle.project.name}</span>
+              <span className="flex w-full items-center gap-2">
+                <Icon name="agent" size={15} className="flex-none text-[color:var(--accent-text)]" />
+                <span className={`fg-body-sm font-mono ${handle.reachable ? "" : "text-muted"}`}>@{handle.handle}</span>
+                <span className="fg-caption ml-auto text-muted">{handle.project.name}</span>
+              </span>
+              {!handle.reachable && (
+                <span className="fg-caption text-muted">{cannotAnswerReason(handle.project.name)}</span>
+              )}
             </button>
           </li>
         ))}

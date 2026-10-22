@@ -53,6 +53,49 @@ export async function existingProjectHandle(
 }
 
 /**
+ * The agent of this organization already answering to `handle`, and whether it still holds a role on
+ * any project: one that holds none is a project's own agent that lost its role there (ISS-1229 r35).
+ */
+export async function agentHoldingHandle(
+  tx: Executor,
+  orgId: string,
+  handle: string,
+): Promise<{ userId: string; holdsARole: boolean } | undefined> {
+  const [row] = await tx
+    .select({ userId: users.id })
+    .from(organizationMembers)
+    .innerJoin(users, eq(users.id, organizationMembers.userId))
+    .where(
+      and(
+        eq(organizationMembers.orgId, orgId),
+        eq(organizationMembers.handle, handle),
+        eq(users.kind, 'agent'),
+      ),
+    )
+    .limit(1);
+  if (!row) return undefined;
+  const [role] = await tx
+    .select({ projectId: projectMembers.projectId })
+    .from(projectMembers)
+    .where(eq(projectMembers.userId, row.userId))
+    .limit(1);
+  return { userId: row.userId, holdsARole: Boolean(role) };
+}
+
+/** The project's agent as it already is, or the refusal for one that carries no handle. */
+export function namedHandle(
+  projectId: string,
+  existing: { userId: string; handle: string | null },
+): ProjectHandle {
+  if (existing.handle) return { userId: existing.userId, handle: existing.handle, minted: false };
+  throw new HTTPException(500, {
+    message:
+      "This project's agent carries no handle on its organization membership, so it has no address to be reached at",
+    cause: { code: 'HANDLE_HAS_NO_NAME', details: { projectId, handleUserId: existing.userId } },
+  });
+}
+
+/**
  * The project's handle, reused where it has one and minted where it does not.
  *
  * Must run inside a transaction: the advisory lock it takes is transaction
@@ -72,19 +115,10 @@ export async function resolveProjectHandle(
   );
 
   const existing = await existingProjectHandle(tx, projectId);
-  if (existing?.handle) {
-    return { userId: existing.userId, handle: existing.handle, minted: false };
-  }
-  if (existing) {
-    throw new HTTPException(500, {
-      message:
-        "This project's agent carries no handle on its organization membership, so it has no address to be reached at",
-      cause: { code: 'HANDLE_HAS_NO_NAME', details: { projectId, handleUserId: existing.userId } },
-    });
-  }
+  if (existing) return namedHandle(projectId, existing);
 
   const [project] = await tx
-    .select({ id: projects.id, slug: projects.slug, orgId: projects.orgId })
+    .select({ id: projects.id, slug: projects.slug, name: projects.name, orgId: projects.orgId })
     .from(projects)
     .where(eq(projects.id, projectId))
     .limit(1);
@@ -96,6 +130,20 @@ export async function resolveProjectHandle(
   }
 
   const handle = handleNameForProject(project.slug, project.id);
+  // A second agent would collide on the address the first still holds, a server error after the
+  // caller's write (judge-95); the reason is said instead.
+  const holder = await agentHoldingHandle(tx, project.orgId, handle);
+  if (holder) {
+    throw new HTTPException(409, {
+      message: holder.holdsARole
+        ? `This project's agent would answer to @${handle}, which another agent of the organization already answers to, so it has no address of its own`
+        : `@${handle}, the agent of ${project.name}, no longer holds a role on ${project.name}, so it cannot answer there; give it a role on ${project.name} again first`,
+      cause: {
+        code: holder.holdsARole ? 'HANDLE_TAKEN' : 'PROJECT_AGENT_LOST_ROLE',
+        details: { projectId, handleUserId: holder.userId },
+      },
+    });
+  }
   const [created] = await tx
     .insert(users)
     .values(agentAccountRow(handle, mintAs))

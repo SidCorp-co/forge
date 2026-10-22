@@ -29,7 +29,7 @@ vi.mock("../hooks", () => ({
 const removeMutate = vi.fn();
 vi.mock("@/providers/auth-provider", () => ({ useAuth: () => ({ user: { id: "me" } }) }));
 vi.mock("@/features/projects/hooks", () => ({
-  useOrgScopedProjects: () => ({ projects: [{ id: "p1", name: "Billing", slug: "billing" }] }),
+  useOrgScopedProjects: () => ({ projects: [{ id: "p1", name: "Billing", slug: "billing", role: "member" }] }),
 }));
 
 afterEach(cleanup);
@@ -121,6 +121,7 @@ describe("a person with no display name, inside a sentence", () => {
       candidate: {
         userId: "a1", handle: "ops", project: { id: "p2", name: "Ops", slug: "ops" },
         losesReaders: ["Another member", "Lan Pham", "Another member"],
+        reachable: true,
       },
       room,
     });

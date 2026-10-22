@@ -13,12 +13,10 @@
 // room.
 
 import { useCallback, useRef, useState } from "react";
-import {
-  IconButton,
-  PageTitle,
-} from "@/design";
+import { Button, IconButton, PageTitle } from "@/design";
 import { useProjects } from "@/features/projects/hooks";
 import type { ListedConversation } from "../hooks";
+import { startsRooms } from "../membership";
 import { ConversationChat } from "./conversation-chat";
 import { ConversationList } from "./conversation-list";
 
@@ -39,6 +37,8 @@ export function ConversationPanel({
 
   const projectsQ = useProjects();
   const project = projectsQ.data?.find((p) => p.id === projectId);
+  // A viewer of this project is offered no room to start on it (ISS-1229 r35, judge-95).
+  const offersNew = !project || startsRooms(project.role);
 
   const show = useCallback((id: string | undefined) => {
     openIdRef.current = id;
@@ -75,7 +75,7 @@ export function ConversationPanel({
       projectSlug={project?.slug ?? projectId}
       activeConversationId={openId}
       onOpen={openRow}
-      onNew={startNew}
+      {...(offersNew ? { onNew: startNew } : {})}
       onGone={onGone}
       inline={inline}
     />
@@ -86,13 +86,9 @@ export function ConversationPanel({
       <div className="flex h-full min-h-0 flex-col">
         <header className="flex flex-none items-center gap-3 border-b border-line bg-app/95 px-4 py-3">
           <PageTitle className="fg-h2 min-w-0 flex-1 truncate">Conversations</PageTitle>
-          <button
-            type="button"
-            className="fg-body-sm text-link hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--link)]"
-            onClick={() => setView("chat")}
-          >
+          <Button variant="ghost" size="sm" onClick={() => setView("chat")}>
             Back to chat
-          </button>
+          </Button>
           {onClose && (
             <IconButton icon="x" size="sm" aria-label="Close conversation" onClick={onClose} />
           )}
@@ -109,7 +105,7 @@ export function ConversationPanel({
       conversationId={openId}
       onConversationActive={settledIn(mount)}
       onOpenHistory={() => setView("history")}
-      onNew={startNew}
+      {...(offersNew ? { onNew: startNew } : {})}
       onRoomGone={(id) => {
         // A room deleted while open hands the reader back to the list of rooms (ISS-1229 r28).
         if (openIdRef.current !== id) return;

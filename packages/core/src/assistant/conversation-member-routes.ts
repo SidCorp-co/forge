@@ -36,9 +36,9 @@ import {
 import { derivedScope } from '../conversations/scope.js';
 import { getConversation } from '../conversations/store.js';
 import { type ConversationShape, conversationParticipants } from '../db/schema-conversations.js';
-import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import {
+  assertMayStartRoom,
   mayChangeMembership,
   readableConversation,
   withMembershipLock,
@@ -105,8 +105,7 @@ conversationMemberRoutes.get(
   async (c) => {
     const { projectId } = c.req.valid('query');
     const userId = c.get('userId');
-    const access = await loadProjectAccess(projectId, userId);
-    assertProjectRole(access, 'member', 'not a project member');
+    await assertMayStartRoom(projectId, userId);
     const scope = [projectId];
     const [people, handles, beyondReach] = await Promise.all([
       addablePeople(null, scope),

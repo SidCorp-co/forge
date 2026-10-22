@@ -52,6 +52,7 @@ import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { fromPage, listResponse } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import {
+  assertMayStartRoom,
   mayChangeMembership,
   readableConversation,
   scopeIfReadable,
@@ -254,8 +255,7 @@ conversationRoutes.post(
     const input = c.req.valid('json');
     const userId = c.get('userId');
 
-    const access = await loadProjectAccess(input.projectId, userId);
-    assertProjectRole(access, 'member', 'not a project member');
+    await assertMayStartRoom(input.projectId, userId);
 
     const handles = input.handles ?? [];
     const people = input.people ?? [];

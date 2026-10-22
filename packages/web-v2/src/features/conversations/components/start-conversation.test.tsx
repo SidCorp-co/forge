@@ -15,8 +15,12 @@ let candidates: ConversationCandidates = {
 };
 
 vi.mock("@/providers/auth-provider", () => ({ useAuth: () => ({ user: { id: "me" } }) }));
+let loading = false;
+let projects: Array<{ id: string; name: string; slug: string; role: string | null }> = [
+  { id: "p1", name: "Billing", slug: "billing", role: "member" },
+];
 vi.mock("@/features/projects/hooks", () => ({
-  useOrgScopedProjects: () => ({ projects: [{ id: "p1", name: "Billing", slug: "billing" }] }),
+  useOrgScopedProjects: () => ({ projects, isLoading: loading }),
 }));
 vi.mock("../hooks", () => ({
   useProjectCandidates: () => ({ data: candidates, isLoading: false, isError: false }),
@@ -25,7 +29,10 @@ vi.mock("../hooks", () => ({
 
 const { StartConversation } = await import("./start-conversation");
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  loading = false;
+});
 // jsdom lays nothing out, and the project picker scrolls its chosen option into view.
 Element.prototype.scrollIntoView = () => {};
 
@@ -71,3 +78,73 @@ describe("the people a room starts with", () => {
     expect(labels[0]).toBe("You");
   });
 });
+
+// ISS-1229 r35, judge-95: a viewer of Ops was offered Ops, then three steps later refused "Not a
+// project member." A conversation is started only on a project the reader holds the member role on.
+describe("the projects a room can be started in", () => {
+  const offered = () => screen.queryAllByRole("option").map((o) => o.textContent);
+
+  it("offers only projects the reader holds the member role or above on", () => {
+    projects = [
+      { id: "p1", name: "Billing", slug: "billing", role: "member" },
+      { id: "p2", name: "Ops", slug: "ops", role: "viewer" },
+      { id: "p3", name: "Desk", slug: "desk", role: "admin" },
+      { id: "p4", name: "Vault", slug: "vault", role: null },
+    ];
+    render(<StartConversation onStarted={vi.fn()} />);
+    fireEvent.click(screen.getByRole("combobox"));
+    expect(offered()).toEqual(["Billing", "Desk"]);
+  });
+
+  // The coordinator on PR #1151: the heading "Start a conversation" over that line was itself the
+  // invitation nobody could act on.
+  it("says to a reader who only views projects what they can do, and nothing of starting one", () => {
+    projects = [
+      { id: "p2", name: "Ops", slug: "ops", role: "viewer" },
+      { id: "p5", name: "Archive", slug: "archive", role: "viewer" },
+    ];
+    const { container } = render(<StartConversation onStarted={vi.fn()} />);
+    expect(screen.queryByRole("combobox")).toBeNull();
+    expect(screen.getByText("Conversations you can read")).toBeTruthy();
+    expect(
+      screen.getByText("You hold the viewer role on every project here, so their conversations are yours to read from the list."),
+    ).toBeTruthy();
+    expect(container.textContent).not.toMatch(/start/i);
+  });
+
+  it("offers nothing, and says nothing of starting, while the reader's projects are read", () => {
+    projects = [{ id: "p2", name: "Ops", slug: "ops", role: "viewer" }];
+    loading = true;
+    const { container } = render(<StartConversation onStarted={vi.fn()} />);
+    expect(screen.getByTestId("start-loading")).toBeTruthy();
+    expect(screen.queryByRole("combobox")).toBeNull();
+    expect(container.textContent).not.toMatch(/start/i);
+  });
+
+  it("tells a reader who can see no project that there is none, offering no picker", () => {
+    projects = [];
+    const { container } = render(<StartConversation onStarted={vi.fn()} />);
+    expect(screen.queryByRole("combobox")).toBeNull();
+    expect(screen.getByText("No project here yet")).toBeTruthy();
+    expect(container.textContent).not.toMatch(/start|pick a project/i);
+  });
+});
+
+// ISS-1229 r35, judge-95: an agent whose project role was taken away was offered to a new room unmarked.
+describe("an agent offered to a new room that lost its role on its project", () => {
+  it("says why it cannot answer and cannot be ticked", () => {
+    projects = [{ id: "p1", name: "Billing", slug: "billing", role: "member" }];
+    candidates = {
+      people: [],
+      handles: [
+        { userId: "u-ledger", handle: "ledger", project: { id: "p9", name: "Ledger", slug: "ledger" }, losesReaders: [], reachable: false },
+      ],
+      beyondReach: { named: [], unnamed: 0 },
+    };
+    pickTheProject();
+    expect(screen.getByText("This agent no longer holds a role on Ledger, so it cannot answer here.")).toBeTruthy();
+    const tick = screen.getByRole("checkbox", { name: /@ledger/ });
+    expect(tick.hasAttribute("disabled") || tick.getAttribute("aria-disabled") === "true").toBe(true);
+  });
+});
+

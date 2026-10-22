@@ -16,7 +16,11 @@
 import { randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import { collectInboundMessage } from '../conversations/collect-inbound.js';
-import { type ProjectHandle, resolveProjectHandle } from '../conversations/handles.js';
+import {
+  existingProjectHandle,
+  namedHandle,
+  type ProjectHandle,
+} from '../conversations/handles.js';
 import { type ConversationVenue, codeAuthored } from '../conversations/ports.js';
 import { routeWindow, type WindowTurnInputs } from '../conversations/route-window.js';
 import { nameSpeakers, roomSpeakerNames, speakerOf } from '../conversations/speaker-names.js';
@@ -31,6 +35,7 @@ import {
   type ConversationWindowRow,
   claimDueWindows,
   claimOf,
+  closeWindow,
   releaseWindow,
   type WindowClaim,
 } from '../conversations/windows.js';
@@ -273,16 +278,21 @@ export async function sendWebConversationMessage(args: {
   };
 }
 
+/** Why a window whose project has no agent holding a role on it is closed unanswered (ISS-1229 r35). */
+const NO_AGENT_HOLDS_A_ROLE =
+  'no agent of this project holds a role on it, so nothing here can answer';
+
 /**
  * Everything routing one web window needs, read once: the project it is about
- * and the handle that answers in it.
+ * and the handle that answers in it, or `null` for a handle where none of the
+ * project's agents holds a role on it any more.
  */
 async function webWindowSubject(
   window: ConversationWindowRow,
   claim: WindowClaim,
 ): Promise<{
   project: { id: string; slug: string; name: string; repoPath: string | null };
-  handle: ProjectHandle;
+  handle: ProjectHandle | null;
 } | null> {
   const [project] = await db
     .select({
@@ -298,7 +308,11 @@ async function webWindowSubject(
     await releaseWindow(window.id, claim);
     return null;
   }
-  return { project, handle: await resolveProjectHandle(db, project.id) };
+  // Never minted here: an agent that lost its role still holds the project's handle, so a mint
+  // collided on it and answered 500 after the message was stored (judge-95). The mint is the room's
+  // opening, inside its transaction.
+  const existing = await existingProjectHandle(db, project.id);
+  return { project, handle: existing ? namedHandle(project.id, existing) : null };
 }
 
 /**
@@ -325,6 +339,8 @@ export async function routeWebWindow(
 ): Promise<string | null> {
   const subject = await webWindowSubject(window, claim);
   if (!subject) return null;
+  if (!subject.handle) return closeUnanswerable(window, claim);
+  const handle = subject.handle;
 
   const progress = startConversationProgress({
     conversationId: window.conversationId,
@@ -337,7 +353,7 @@ export async function routeWebWindow(
   try {
     outcome = await routeWindow({
       window,
-      manySpeakersPrincipalUserId: subject.handle.userId,
+      manySpeakersPrincipalUserId: handle.userId,
       handoffFor: async (windowId) =>
         (await import('../agent-sessions/conversation-agent.js')).conversationAgentTurnForWindow(
           windowId,
@@ -345,7 +361,7 @@ export async function routeWebWindow(
       inputs: ({ venue, conversationId, windowId, deliveryKey, mode, messages, reserve }) =>
         webConversationTurn({
           project: subject.project,
-          handleName: subject.handle.handle,
+          handleName: handle.handle,
           askedBy: askerOf(messages, speakers),
           window: {
             venue,
@@ -385,6 +401,33 @@ export async function routeWebWindow(
     'web conversations: window routed',
   );
   return outcome.decision;
+}
+
+/** Close a window no agent can answer, and tell the room's readers it was settled. */
+async function closeUnanswerable(
+  window: ConversationWindowRow,
+  claim: WindowClaim,
+): Promise<string> {
+  await closeWindow({
+    windowId: window.id,
+    decision: 'unreachable',
+    detail: { reason: NO_AGENT_HOLDS_A_ROLE, cause: 'agent-lost-role' },
+    claim,
+  });
+  await publishToConversationReaders(window.conversationId, {
+    event: WEB_CONVERSATION_SETTLED_EVENT,
+    data: { conversationId: window.conversationId, windowId: window.id, decision: 'unreachable' },
+  }).catch((err: unknown) =>
+    logger.warn(
+      { err, windowId: window.id },
+      'web conversations: the settled event was not published',
+    ),
+  );
+  logger.warn(
+    { windowId: window.id, projectId: window.projectId },
+    `web conversations: window closed unanswered, ${NO_AGENT_HOLDS_A_ROLE}`,
+  );
+  return 'unreachable';
 }
 
 /**

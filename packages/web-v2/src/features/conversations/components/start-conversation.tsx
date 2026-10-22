@@ -18,7 +18,7 @@ import { Button, Checkbox, ErrorState, Icon, Select, Spinner } from "@/design";
 import { useOrgScopedProjects } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
 import { useOpenConversation, useProjectCandidates } from "../hooks";
-import { roomOpeningClaims } from "../membership";
+import { cannotAnswerReason, roomOpeningClaims, startsRooms } from "../membership";
 import type { ConversationProject, HandleCandidate } from "../types";
 
 /** One agent chosen for a room that does not exist yet. */
@@ -28,7 +28,12 @@ const sameHandle = (a: PickedHandle, b: PickedHandle) =>
   a.projectId === b.projectId && a.userId === b.userId;
 
 export function StartConversation({ onStarted }: { onStarted: (id: string, projectId: string) => void }) {
-  const { projects } = useOrgScopedProjects();
+  const { projects: visible, isLoading } = useOrgScopedProjects();
+  // A project the reader only views is not offered: core refuses the room it would open (judge-95).
+  const projects = visible.filter((p) => startsRooms(p.role));
+  const onlyViews = projects.length === 0 && visible.length > 0;
+  // Where nothing can be started, nothing here says start (the coordinator on PR #1151).
+  const nothingToStart = onlyViews || (!isLoading && visible.length === 0);
   const [projectId, setProjectId] = useState("");
   const [people, setPeople] = useState<string[]>([]);
   const [handles, setHandles] = useState<PickedHandle[]>([]);
@@ -61,16 +66,34 @@ export function StartConversation({ onStarted }: { onStarted: (id: string, proje
     );
   };
 
+  // Until the reader's roles are read, nothing is offered: a viewer would be invited first.
+  if (isLoading) {
+    return (
+      <div className="grid h-full min-h-0 place-items-center px-4 py-8">
+        <p role="status" data-testid="start-loading" className="fg-body-sm flex items-center gap-2 text-muted">
+          <Spinner size={14} /> Reading your projects…
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="grid h-full min-h-0 place-items-center overflow-y-auto px-4 py-8">
       <div className="flex w-full max-w-sm flex-col gap-4">
         <div className="text-center">
-          <p className="fg-h3">Start a conversation</p>
+          <p className="fg-h3">
+            {onlyViews ? "Conversations you can read" : nothingToStart ? "No project here yet" : "Start a conversation"}
+          </p>
           <p className="fg-body-sm mt-1 text-muted">
-            Pick a project, and choose who else is in the room.
+            {onlyViews
+              ? "You hold the viewer role on every project here, so their conversations are yours to read from the list."
+              : nothingToStart
+                ? "A conversation is about a project, and this organization holds none you can see."
+                : "Pick a project, and choose who else is in the room."}
           </p>
         </div>
 
+        {!nothingToStart && (
         <div>
           <label htmlFor="conversations-new-project" className="fg-body-sm mb-1.5 block text-muted">
             Project
@@ -93,6 +116,7 @@ export function StartConversation({ onStarted }: { onStarted: (id: string, proje
             </p>
           )}
         </div>
+        )}
 
         {projectId && !confirming && (
           <Extras
@@ -194,18 +218,23 @@ function Extras({
           <p className="fg-overline text-subtle">Agents — what the room can see</p>
           <div className="mt-1 flex flex-col gap-1">
             {data.handles.map((h) => (
-              <Checkbox
-                key={`${h.userId ?? "unminted"}:${h.project.id}`}
-                checked={handles.some((x) => sameHandle(x, { userId: h.userId, projectId: h.project.id }))}
-                onChange={() => onToggleHandle({ userId: h.userId, projectId: h.project.id })}
-                label={
-                  <span className="flex items-center gap-1.5">
-                    <Icon name="agent" size={13} className="text-[color:var(--accent-text)]" />
-                    <span className="font-mono">@{h.handle}</span>
-                    <span className="fg-caption text-muted">{h.project.name}</span>
-                  </span>
-                }
-              />
+              <div key={`${h.userId ?? "unminted"}:${h.project.id}`}>
+                <Checkbox
+                  checked={handles.some((x) => sameHandle(x, { userId: h.userId, projectId: h.project.id }))}
+                  disabled={!h.reachable}
+                  onChange={() => onToggleHandle({ userId: h.userId, projectId: h.project.id })}
+                  label={
+                    <span className="flex items-center gap-1.5">
+                      <Icon name="agent" size={13} className="text-[color:var(--accent-text)]" />
+                      <span className="font-mono">@{h.handle}</span>
+                      <span className="fg-caption text-muted">{h.project.name}</span>
+                    </span>
+                  }
+                />
+                {!h.reachable && (
+                  <p className="fg-caption ml-[28px] text-muted">{cannotAnswerReason(h.project.name)}</p>
+                )}
+              </div>
             ))}
           </div>
         </div>

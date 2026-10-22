@@ -114,9 +114,37 @@ export function unansweringAgentLines(
     });
 }
 
+/** Why each agent cannot answer, where none in the room can; null while one still can (r35). */
+export function noAgentAnswers(
+  room: Partial<Pick<ConversationMembership, "participants" | "scopeProjects">>,
+): string[] | null {
+  const agents = agentsOf(room);
+  if (agents.length === 0 || agents.some((p) => p.reachable !== false)) return null;
+  return agents.map((p) => {
+    const project = (room.scopeProjects ?? []).find((s) => s.id === p.projectId)?.name ?? "its project";
+    return `${memberName(p)} can't answer: it no longer holds a role on ${project}, and answers again once it does.`;
+  });
+}
+
+/** What a room's message box says where no agent can answer: a person may still post (r35, judge-95). */
+export const NO_AGENT_WILL_ANSWER = "No agent here will answer what you send.";
+
+/** A room is opened by somebody holding the member role or above on its project (ISS-1229 r35). */
+export const startsRooms = (role: string | null | undefined) => role === "member" || role === "admin";
+
+/** Renaming, archiving and deleting a room take that role on every project it is about, as core asks. */
+export const changesRoom = (
+  room: { scope: readonly string[]; projectId: string },
+  roleOf: (projectId: string) => string | null | undefined,
+) => (room.scope.length > 0 ? room.scope : [room.projectId]).every((id) => startsRooms(roleOf(id)));
+
+export const READ_ONLY_LIST_EMPTY = "Conversations on your projects show up here to read.";
+
 /** An empty room's title and line where an invitation would be untrue, else null (ISS-1229 r34). */
 export function emptyRoomState(
-  room: Partial<Pick<ConversationMembership, "participants" | "scopeProjects">> | undefined,
+  room:
+    | Partial<Pick<ConversationMembership, "participants" | "scopeProjects" | "canChangeMembership">>
+    | undefined,
   reader: { canPost: boolean; projectName?: string | undefined },
 ): { title: string; message: string } | null {
   const where = reader.projectName ?? "this project";
@@ -125,21 +153,19 @@ export function emptyRoomState(
       ? null
       : {
           title: "Conversations you can read",
-          message: `You can read ${reader.projectName ? `${reader.projectName}'s` : "this project's"} conversations, not start one: you hold the viewer role on ${where}.`,
+          message: `You hold the viewer role on ${where}, so its conversations are yours to read from the list.`,
         };
   }
   const readOnly = reader.canPost ? null : `You can read this room, not post in it: you hold the viewer role on ${where}.`;
-  const agents = agentsOf(room);
-  if (agents.length > 0 && agents.every((p) => p.reachable === false)) {
-    const why = agents.map((p) => {
-      const project = (room.scopeProjects ?? []).find((s) => s.id === p.projectId)?.name ?? "its project";
-      return `${memberName(p)} can't answer: it no longer holds a role on ${project}, and answers again once it does.`;
-    });
+  const why = noAgentAnswers(room);
+  if (why) {
     return { title: "No agent here can answer", message: [...why, ...(readOnly ? [readOnly] : [])].join(" ") };
   }
   if (readOnly) return { title: "Nothing has been said here yet", message: readOnly };
-  const refusal = composerRefusal(room);
-  if (refusal) return { title: "Nothing can be sent here", message: `${refusal.reason} ${refusal.wayOut}` };
+  const refusal = composerRefusal(room, reader);
+  if (refusal) {
+    return { title: "Nothing can be sent here", message: [refusal.reason, refusal.wayOut].filter(Boolean).join(" ") };
+  }
   return null;
 }
 
@@ -348,15 +374,23 @@ export function removalHeld(
 }
 
 /**
- * Why a room takes no messages from Forge, where it takes none.
+ * Why a room takes no messages from Forge, where it takes none, and the way out for this reader: taking
+ * an agent out, said to one who may; who can, to any other who could then post; none to a reader who
+ * could not post either way (ISS-1229 r35, judge-95).
  */
 export function composerRefusal(
-  room: Partial<Pick<ConversationMembership, "scopeProjects">>,
-): { reason: string; wayOut: string } | null {
+  room: Partial<Pick<ConversationMembership, "scopeProjects" | "canChangeMembership">>,
+  reader: { canPost: boolean } = { canPost: true },
+): { reason: string; wayOut: string | null } | null {
   if (!room.scopeProjects || room.scopeProjects.length <= 1) return null;
+  const reason = `This room is about ${list(room.scopeProjects)}, and a message is answered under exactly one project.`;
+  if (!reader.canPost) return { reason, wayOut: null };
   return {
-    reason: `This room is about ${list(room.scopeProjects)}, and a message is answered under exactly one project.`,
-    wayOut: "Take one of its agents out, and the room can be spoken in again.",
+    reason,
+    wayOut:
+      room.canChangeMembership === true
+        ? "Take one of its agents out, and the room can be spoken in again."
+        : "Somebody who can change who is in this room can take one of its agents out, and it can be spoken in again.",
   };
 }
 

@@ -4,7 +4,7 @@
 // in the same words.
 
 import { afterAll, describe, expect, it, vi } from "vitest";
-import { emptyRoomState, memberName, removalClaim, removalQuestion } from "./membership";
+import { composerRefusal, emptyRoomState, memberName, removalClaim, removalQuestion } from "./membership";
 import type { ConversationParticipant } from "./types";
 
 // When each was added reads in the reader's own time zone (ISS-1229 r25); this reader is at UTC+7.
@@ -107,9 +107,34 @@ describe("emptyRoomState", () => {
     });
   });
 
-  it("tells a viewer of a draft that they can read the project's conversations, not start one", () => {
-    expect(emptyRoomState(undefined, { canPost: false, projectName: "Desk" })?.message).toBe(
-      "You can read Desk's conversations, not start one: you hold the viewer role on Desk.",
+  it("tells a viewer of a draft what they can read, and nothing of starting one", () => {
+    const said = emptyRoomState(undefined, { canPost: false, projectName: "Desk" });
+    expect(said?.message).toBe("You hold the viewer role on Desk, so its conversations are yours to read from the list.");
+    expect(`${said?.title} ${said?.message}`).not.toMatch(/start/i);
+  });
+});
+
+// ISS-1229 r35, judge-95: a viewer of a two-project room was told to take an agent out, which they cannot.
+describe("composerRefusal's way out", () => {
+  const two = [
+    { id: "p1", name: "Desk", slug: "desk" },
+    { id: "p2", name: "Ops", slug: "ops" },
+  ];
+  it("offers taking an agent out to a reader who may change who is in the room", () => {
+    expect(composerRefusal({ scopeProjects: two, canChangeMembership: true })?.wayOut).toBe(
+      "Take one of its agents out, and the room can be spoken in again.",
     );
+  });
+  it("tells a poster who may not who can", () => {
+    expect(composerRefusal({ scopeProjects: two, canChangeMembership: false })?.wayOut).toBe(
+      "Somebody who can change who is in this room can take one of its agents out, and it can be spoken in again.",
+    );
+  });
+  it("gives a viewer no way out, only the reason", () => {
+    const refusal = composerRefusal({ scopeProjects: two, canChangeMembership: true }, { canPost: false });
+    expect(refusal).toEqual({
+      reason: "This room is about Desk and Ops, and a message is answered under exactly one project.",
+      wayOut: null,
+    });
   });
 });

@@ -15,8 +15,11 @@ import type { ConversationMembership } from "../types";
 export function ScopeNotice({
   room,
   folded = false,
+  canPost = true,
 }: {
-  room: Partial<Pick<ConversationMembership, "scopeProjects" | "participants">>;
+  room: Partial<Pick<ConversationMembership, "scopeProjects" | "participants" | "canChangeMembership">>;
+  /** Whether the reader may post here: one who may not is offered no way out (ISS-1229 r35). */
+  canPost?: boolean;
   /** Shown folded to its one line, whatever the reader left it at: the room's message box has focus
    *  on a phone, and the thread needs the height (ISS-1229 r32, judge-90). */
   folded?: boolean;
@@ -26,7 +29,7 @@ export function ScopeNotice({
   // A press on the folded line takes focus from the box, which unfolds it before the click lands; the
   // click then means "open", not "toggle what just unfolded".
   const foldedAtPress = useRef(false);
-  const refusal = composerRefusal(room);
+  const refusal = composerRefusal(room, { canPost });
   const scopeProjects = room.scopeProjects ?? [];
   if (scopeProjects.length === 0) return null;
 
@@ -72,7 +75,7 @@ export function ScopeNotice({
           ))}
           {refusal && (
             <p className="fg-caption mt-1 text-muted" data-testid="scope-notice-refusal">
-              {refusal.reason} {refusal.wayOut}
+              {[refusal.reason, refusal.wayOut].filter(Boolean).join(" ")}
             </p>
           )}
         </div>

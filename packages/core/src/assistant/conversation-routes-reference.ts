@@ -181,6 +181,14 @@ export const MEMBER_REFUSED = {
   PERSON_NOT_FOUND: 'no account has the id given for the person',
 } as const;
 
+/** Why a project's agent could not be minted: its address is held (409). */
+export const AGENT_UNMINTABLE = {
+  PROJECT_AGENT_LOST_ROLE:
+    "the project's agent no longer holds a role on it, and a second agent would take its address",
+  HANDLE_TAKEN:
+    "another agent of the organization already answers to the address the project's agent would take",
+} as const;
+
 export const HANDLE_FORBIDDEN = {
   HANDLE_PROJECT_FORBIDDEN:
     'adding the agent would make the room about a project the caller holds less than member on',
@@ -220,11 +228,16 @@ export const openRoom = describeOperation({
   responses: {
     201: json(conversationSchema, 'The new room, as its membership settled it'),
     400: fail({ ...MEMBER_REFUSED }),
-    403: fail({ FORBIDDEN: 'the caller is not a member of the project', ...HANDLE_FORBIDDEN }),
+    403: fail({
+      FORBIDDEN:
+        'the caller holds less than the member role on the project; a viewer is told the viewer role it holds',
+      ...HANDLE_FORBIDDEN,
+    }),
     404: fail({
       NOT_FOUND: 'there is no such project',
       PROJECT_GONE: 'a project an agent was named for no longer exists, or never did',
     }),
+    409: fail({ ...AGENT_UNMINTABLE }),
     500: fail('HANDLE_HAS_NO_NAME', 'the project has an agent that carries no handle'),
   },
 });

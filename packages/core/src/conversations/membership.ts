@@ -16,7 +16,7 @@ import {
 import { effectiveProjectRole, projectRoleAtLeast } from '../lib/authz.js';
 import { personName } from '../lib/person-name.js';
 import type { Executor, TxOnly } from './db-executor.js';
-import { existingProjectHandle, handleNameForProject } from './handles.js';
+import { agentHoldingHandle, existingProjectHandle, handleNameForProject } from './handles.js';
 import { conversationTransport } from './ports.js';
 import { roomRefusal } from './room-refusal.js';
 import { appendMessagesIn } from './store.js';
@@ -49,6 +49,8 @@ export interface HandleCandidate {
   /** The address it answers to — the name it already has, or the one it will be given. */
   handle: string;
   project: NamedProject;
+  /** False for a project's agent that no longer holds a role on it: offered marked, never added. */
+  reachable: boolean;
 }
 
 /** The projects behind a derived scope, named, in the scope's own order. */
@@ -285,7 +287,7 @@ export async function addableHandles(
 
   const livePeople = conversationId ? await livePersonIds(conversationId, tx) : [];
   const candidateProjects = await tx
-    .select({ id: projects.id, name: projects.name, slug: projects.slug })
+    .select({ id: projects.id, name: projects.name, slug: projects.slug, orgId: projects.orgId })
     .from(projects)
     .where(inArray(projects.orgId, orgIds));
 
@@ -309,7 +311,7 @@ export async function addableHandles(
     );
 
   const out: HandleCandidate[] = [];
-  for (const project of candidateProjects) {
+  for (const { orgId, ...project } of candidateProjects) {
     const access = await effectiveProjectRole(actorUserId, project.id);
     if (!projectRoleAtLeast(access?.role ?? null, 'member')) continue;
 
@@ -319,14 +321,13 @@ export async function addableHandles(
 
     const mine = agents.filter((a) => a.projectId === project.id && a.handle);
     if (mine.length === 0) {
-      if (!scope.includes(project.id)) {
-        out.push({
-          userId: null,
-          handle: handleNameForProject(project.slug, project.id),
-          project,
-          losesReaderIds,
-        });
-      }
+      if (scope.includes(project.id)) continue;
+      const handle = handleNameForProject(project.slug, project.id);
+      // The project's own agent, if it lost its role there, still holds this address (ISS-1229 r35).
+      const lost = await agentHoldingHandle(tx, orgId, handle);
+      const roleless = lost && !lost.holdsARole ? lost.userId : null;
+      if (roleless && already.has(roleless)) continue;
+      out.push({ userId: roleless, handle, project, losesReaderIds, reachable: !roleless });
       continue;
     }
     for (const agent of mine) {
@@ -336,6 +337,7 @@ export async function addableHandles(
         handle: agent.handle as string,
         project,
         losesReaderIds,
+        reachable: true,
       });
     }
   }
