@@ -9,9 +9,9 @@
  * The landed build is, first found: the commit the landing record that closed the issue names; the
  * merge commit Forge observed (`merged_commit_sha`); the commit the current merge mark claims
  * (`issues/mark-trail.ts`). None of them is no landed build, named, never a guess. A judgement counts
- * on a build where it was judged at that commit or at one holding it, read by the project's ancestry
- * reader (`shipped-earlier.ts:ancestrySourceFor`). One at an earlier commit, such as the branch's
- * head before the merge, never counts, whatever the branch holds now.
+ * on it only where it was judged at that very commit. One at an earlier commit judged another build,
+ * even a branch head before the merge whose tree is the same; one at a later head judged a newer
+ * build, and counts only on a record made at that head.
  */
 
 import { type JudgedBuild, verdictEarns } from '@forge/contracts/verdict-identity';
@@ -25,7 +25,7 @@ import {
   type StandingCriterion,
   standingCriteriaOf,
 } from '../issues/index.js';
-import { type AncestryPair, pairKey } from '../runners/index.js';
+import type { AncestryPair } from '../runners/index.js';
 import { RELEASE_RECORD_SOURCE } from './claim-conflicts.js';
 import { resolveReleaseDeclaration } from './gate.js';
 import { ancestryOf, type JudgedBuildDeps } from './judged-build.js';
@@ -144,16 +144,16 @@ export async function landedJudgedBuild(issue: {
     sha: build.sha,
     source: 'landed',
     version: null,
-    basis: `${build.basis}; this project declares no production environment, so its landing is the build a verdict counts on, judged there or at a commit holding it`,
+    basis: `${build.basis}; this project declares no production environment, so its landing is the build a verdict counts on, judged at that commit`,
   };
 }
 
-/** The pair whose answer says a judgement at `judged` holds `build`. */
-export function holdingPair(build: string, judged: string): AncestryPair {
-  return { commit: build.toLowerCase(), release: judged.toLowerCase() };
+/** The pair whose answer says `build` is `commit` or an ancestor of it. */
+export function holdingPair(build: string, commit: string): AncestryPair {
+  return { commit: build.toLowerCase(), release: commit.toLowerCase() };
 }
 
-/** Whether each judgement holds its build, through the project's ancestry reader. */
+/** Whether each pair's build is in its commit, through the project's ancestry reader. */
 export async function readHolding(
   projectId: string,
   pairs: readonly AncestryPair[],
@@ -173,7 +173,7 @@ function judgedCommit(verdict: CriterionVerdict): { sha: string } | { why: strin
   if (!at) return { why: 'it names nothing it was judged against' };
   if (at.kind !== 'source') {
     return {
-      why: `it was judged against ${at.kind} \`${at.value}\`, not a commit, and with no production environment only a commit holding the landing counts`,
+      why: `it was judged against ${at.kind} \`${at.value}\`, not a commit, and with no production environment only a verdict at the landed commit counts`,
     };
   }
   const sha = at.value.trim().toLowerCase();
@@ -182,45 +182,31 @@ function judgedCommit(verdict: CriterionVerdict): { sha: string } | { why: strin
     : { why: `it was judged at \`${at.value}\`, which is not a whole commit` };
 }
 
-/** The pair each verdict on `criteria` is weighed by, where it names a whole commit. */
-export function criteriaPairs(
-  build: string,
-  criteria: readonly StandingCriterion[],
-): AncestryPair[] {
-  return criteria.flatMap(({ verdict }) => {
-    const judged = verdict ? judgedCommit(verdict) : null;
-    return judged && 'sha' in judged ? [holdingPair(build, judged.sha)] : [];
-  });
+/** Why a verdict at `judged` does not count on `build`, naming both commits. */
+export function otherBuildWhy(judged: string, build: string): string {
+  return `it was judged at \`${short(judged)}\`, not at \`${short(build)}\`: a verdict at an earlier commit judged another build, and one at a later head counts only on a record made at that head`;
 }
 
 /**
  * One criterion's standing on `build`: a pass or short the verified rule counts, judged at `build`
- * or at a commit holding it. Every other answer says what it lacks and the shape that would count.
+ * itself. Every other answer says what it lacks, where its verdict sits and the commit it needed.
  */
 export function weighOnLanded(
   build: string,
   { criterion, verdict }: StandingCriterion,
-  holding: ReadonlyMap<string, Holding>,
 ): LandedCriterion {
-  const owed = `a \`pass\` judged at \`${short(build)}\` or a commit holding it`;
   const no = (why: string): LandedCriterion => ({
     criterion,
     counts: false,
-    why: `${why}; it needs ${owed}`,
+    why: `${why}; it needs a \`pass\` judged at \`${short(build)}\``,
   });
   if (!verdict) return no('no verdict was recorded for it');
   if (verdict.unverified) return no(verdict.unverified);
   if (!verdictEarns(verdict.verdict)) return no(`its verdict is \`${verdict.verdict}\``);
   const judged = judgedCommit(verdict);
   if ('why' in judged) return no(judged.why);
-  const held = holding.get(pairKey(holdingPair(build, judged.sha)));
-  if (held === true) return { criterion, counts: true, at: judged.sha };
-  if (held === false) {
-    return no(`it was judged at \`${short(judged.sha)}\`, which does not hold \`${short(build)}\``);
-  }
-  return no(
-    `whether \`${short(judged.sha)}\`, where it was judged, holds \`${short(build)}\` could not be read: ${held?.unread ?? 'it was not asked'}`,
-  );
+  if (judged.sha !== build.toLowerCase()) return no(otherBuildWhy(judged.sha, build));
+  return { criterion, counts: true, at: judged.sha };
 }
 
 /** Each issue's live criteria weighed on the build `buildOf` names for it. */
@@ -233,14 +219,10 @@ export interface LandedStanding {
 
 /** Every live criterion of `issueIds` weighed on the build `buildOf` names for its issue. */
 export async function landedStandings(
-  projectId: string,
   issueIds: readonly string[],
   buildOf: (issueId: string) => string,
-  deps?: Pick<JudgedBuildDeps, 'ancestry'>,
 ): Promise<LandedStanding[]> {
   const standing = await standingCriteriaOf(issueIds);
-  const pairs = [...standing].flatMap(([id, s]) => criteriaPairs(buildOf(id), s.criteria));
-  const holding = pairs.length > 0 ? await readHolding(projectId, pairs, deps) : new Map();
   return issueIds.flatMap((issueId) => {
     const s = standing.get(issueId);
     if (!s) return [];
@@ -249,7 +231,7 @@ export async function landedStandings(
       {
         issueId,
         owes: s.owes,
-        criteria: s.owes ? s.criteria.map((c) => weighOnLanded(build, c, holding)) : [],
+        criteria: s.owes ? s.criteria.map((c) => weighOnLanded(build, c)) : [],
       },
     ];
   });
@@ -258,12 +240,9 @@ export async function landedStandings(
 /**
  * Why the steward's output check may not send this issue back, or null where it may: under release
  * mode `none`, an issue at the gate whose landing is recorded and whose every live criterion stands on
- * a counting pass at that landing is missing nothing, since the landing is its running build.
+ * a pass at that landed commit is missing nothing, since the landing is its running build.
  */
-export async function landedReopenRefusal(
-  issueId: string,
-  deps?: Pick<JudgedBuildDeps, 'ancestry'>,
-): Promise<string | null> {
+export async function landedReopenRefusal(issueId: string): Promise<string | null> {
   const [row] = await db
     .select({ projectId: issues.projectId, status: issues.status })
     .from(issues)
@@ -274,35 +253,29 @@ export async function landedReopenRefusal(
   const build = (await landedBuildsOf([issueId])).get(issueId.toLowerCase());
   if (!build?.sha) return null;
   const sha = build.sha;
-  const [standing] = await landedStandings(row.projectId, [issueId], () => sha, deps);
+  const [standing] = await landedStandings([issueId], () => sha);
   if (!standing?.owes || standing.criteria.length === 0) return null;
-  const counted = standing.criteria.flatMap((c) => (c.counts ? [c] : []));
-  if (counted.length < standing.criteria.length) return null;
-  const at = counted.map((c) => `criterion ${c.criterion} at \`${short(c.at)}\``).join(', ');
-  return `${build.basis}, and every live criterion stands on a pass judged there or at a commit holding it (${at}). This project declares no production environment, so that landing is the running build and no evidence is missing: wake the master to record the landing (POST /api/projects/${row.projectId}/release-records) instead of sending it back.`;
+  if (standing.criteria.some((c) => !c.counts)) return null;
+  const numbers = standing.criteria.map((c) => c.criterion).join(', ');
+  return `${build.basis}, and every live criterion (${numbers}) stands on a pass judged at that commit. This project declares no production environment, so that landing is the running build and no evidence is missing: wake the master to record the landing (POST /api/projects/${row.projectId}/release-records) instead of sending it back.`;
 }
 
-/** Per issue, the landed build its verdicts count on, and what each verdict commit holds of it. */
+/** One issue's landed build, or why it has none. */
 export interface LandedHolds {
   sha: string | null;
   /** Why the issue has no landed build; null where it has one. */
   why: string | null;
-  /** Per verdict commit, lower case, whether it holds `sha`. */
-  holds: Map<string, boolean>;
-  /** Per verdict commit nobody could weigh, why. */
-  unanswered: Map<string, string>;
 }
 
 /**
  * A requirement's coverage reading on a project with no production environment
- * (`requirements/standing-coverage.ts`): each verdict commit weighed on its own issue's landed build
- * rather than on a production probe that cannot exist. Null on a project with production, whose
- * coverage reads the live build (`judged-build.ts:liveBuildHolds`).
+ * (`requirements/standing-coverage.ts`): each issue's landed build, which a verdict counts on only
+ * where it was judged at that commit, rather than a production probe that cannot exist. Null on a
+ * project with production, whose coverage reads the live build (`judged-build.ts:liveBuildHolds`).
  */
 export async function landedBuildHolds(
   projectId: string,
-  judged: ReadonlyArray<{ issueId: string; commit: string }>,
-  deps?: Pick<JudgedBuildDeps, 'ancestry'>,
+  issueIds: readonly string[],
 ): Promise<{
   sha: null;
   holds: Map<string, boolean>;
@@ -311,32 +284,10 @@ export async function landedBuildHolds(
   landed: Map<string, LandedHolds>;
 } | null> {
   if (!(await landsAsDelivery(projectId))) return null;
-  const asked = judged.map((j) => ({
-    issueId: j.issueId.toLowerCase(),
-    commit: j.commit.trim().toLowerCase(),
-  }));
-  const builds = await landedBuildsOf([...new Set(asked.map((j) => j.issueId))]);
-  const pairs = asked.flatMap((j) => {
-    const sha = builds.get(j.issueId)?.sha;
-    return sha ? [holdingPair(sha, j.commit)] : [];
-  });
-  const holding =
-    pairs.length > 0 ? await readHolding(projectId, pairs, deps) : new Map<string, Holding>();
+  const builds = await landedBuildsOf([...new Set(issueIds.map((id) => id.toLowerCase()))]);
   const landed = new Map<string, LandedHolds>();
   for (const [issueId, build] of builds) {
-    landed.set(issueId, {
-      sha: build.sha,
-      why: build.sha === null ? build.why : null,
-      holds: new Map(),
-      unanswered: new Map(),
-    });
-  }
-  for (const j of asked) {
-    const entry = landed.get(j.issueId);
-    if (!entry?.sha) continue;
-    const held = holding.get(pairKey(holdingPair(entry.sha, j.commit)));
-    if (typeof held === 'boolean') entry.holds.set(j.commit, held);
-    else entry.unanswered.set(j.commit, held?.unread ?? 'the ancestry reader gave no answer');
+    landed.set(issueId, { sha: build.sha, why: build.sha === null ? build.why : null });
   }
   return { sha: null, holds: new Map(), runtimes: new Map(), unanswered: new Map(), landed };
 }

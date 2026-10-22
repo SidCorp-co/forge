@@ -4,11 +4,12 @@
 // commit, says nothing was deployed, and closes what it claimed as a finished release does.
 //
 // It is held to evidence the record can show, read before anything is claimed: every issue's landing
-// (`landed-build.ts`) is in the commit, and every live criterion stands on a counting pass judged at
-// that commit or at one holding it. Ancestry is read by the project's ancestry reader — the source
-// host, or the box holding a bound checkout where the repository is local to it — and a pair nobody
-// could read refuses the record by name. Whether the commit is on the branch is read only where a
-// source host is bound; the box answers commit pairs, never a branch, and the record says which.
+// (`landed-build.ts`) is in the commit, and every live criterion stands on a pass judged at that very
+// commit — the landed head the record names, never an ancestor of it and never a later head. Whether
+// the landing is in the commit is read by the project's ancestry reader — the source host, or the box
+// holding a bound checkout where the repository is local to it — and a pair nobody could read refuses
+// the record by name. Whether the commit is on the branch is read only where a source host is bound;
+// the box answers commit pairs, never a branch, and the record says which.
 
 import { issueDisplayIds, releaseRunClaims } from '../issues/index.js';
 import { type Refusal, RefusalError } from '../lib/refusal.js';
@@ -137,7 +138,7 @@ export async function recordLanding(
   const landings = [...landed.values()].flatMap((b) => (b.sha ? [holdingPair(b.sha, commit)] : []));
   const holding = await readHolding(projectId, landings, deps);
   const refusals = landingRefusals(issueIds, shown, landed, holding, commit);
-  const standings = await landedStandings(projectId, issueIds, () => commit, deps);
+  const standings = await landedStandings(issueIds, () => commit);
   for (const s of standings) {
     const key = shown.get(s.issueId) ?? s.issueId;
     for (const c of s.criteria) {
@@ -160,7 +161,7 @@ export async function recordLanding(
     ...standings.map((s) => {
       const key = shown.get(s.issueId) ?? s.issueId;
       return s.owes
-        ? `${key}: every live criterion (${s.criteria.length}) stands on a pass judged at \`${short(commit)}\` or a commit holding it`
+        ? `${key}: every live criterion (${s.criteria.length}) stands on a pass judged at \`${short(commit)}\``
         : `${key}: the project's document says its issues owe no verdict`;
     }),
   ];

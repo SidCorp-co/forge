@@ -211,16 +211,9 @@ export async function liveBuildOf(
   const runtimes = judged.flatMap((r) => (r.identity?.kind === 'runtime' ? [r.identity.ref] : []));
   if (commits.length === 0 && runtimes.length === 0) return null;
   // With no production environment each verdict is weighed on its own issue's landing instead.
-  const landed = await requirementDependents().landedBuildHolds(
-    projectId,
-    rows.flatMap((r) =>
-      [r, ...(r.earlier ?? [])].flatMap((v) =>
-        v.verdict !== null && v.identity?.kind === 'commit'
-          ? [{ issueId: r.issueId, commit: v.identity.sha }]
-          : [],
-      ),
-    ),
-  );
+  const landed = await requirementDependents().landedBuildHolds(projectId, [
+    ...new Set(rows.map((r) => r.issueId)),
+  ]);
   if (landed) return landed;
   return requirementDependents().liveBuildHolds(projectId, { commits, runtimes });
 }

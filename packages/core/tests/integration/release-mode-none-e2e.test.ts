@@ -33,7 +33,7 @@ import { seedProduction, seedProjectDocument } from '../helpers/release-world.js
 const C1 = 'c168d8bca2482c61b1ecfb39722bd75bd5bd2e90';
 const D9 = 'd9fd508d7fe071acfc596010fb2717563768cee6';
 const F4 = 'f4e5fb66700ba7b35c8c607c8f7309fc5980861a';
-/** A later head of `release/stg`, holding the merge. */
+/** A later head of `release/stg`, holding the merge: it judges a newer build. */
 const LATER = 'aaaa0000000000000000000000000000000000a1';
 /** A commit on no line `release/stg` holds. */
 const ASIDE = 'bbbb0000000000000000000000000000000000b2';
@@ -186,13 +186,22 @@ describe('a landing is recorded as the release of a project with no production e
     expect(note?.body).not.toMatch(/deployed to|serving/);
   });
 
-  it('counts a pass judged at a later head that holds the landing', async () => {
+  it('counts a pass at a later head only on a record made at that head', async () => {
     const issue = await landedIssue(5, F4);
     await judgedAll(issue, LATER);
 
-    const res = await record([issue], F4);
+    const atMerge = await record([issue], F4);
 
-    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    expect(atMerge.status).toBe(422);
+    expect(refusalsOf(atMerge.body)[0]?.detail).toContain(
+      `it was judged at \`${LATER.slice(0, 12)}\`, not at \`${F4.slice(0, 12)}\``,
+    );
+    expect(await statusOf(issue)).toBe('awaiting_release');
+
+    const atLater = await record([issue], LATER);
+
+    expect(atLater.status, JSON.stringify(atLater.body)).toBe(201);
+    expect(atLater.body).toMatchObject({ commit: LATER, branch: BRANCH });
     expect(await statusOf(issue)).toBe('closed');
   });
 
@@ -210,7 +219,9 @@ describe('a landing is recorded as the release of a project with no production e
       'RELEASE_LANDING_UNJUDGED',
     ]);
     expect(refusals[0]?.detail).toContain('ISS-5 criterion 1');
-    expect(refusals[0]?.detail).toContain(`does not hold \`${F4.slice(0, 12)}\``);
+    expect(refusals[0]?.detail).toContain(
+      `it was judged at \`${D9.slice(0, 12)}\`, not at \`${F4.slice(0, 12)}\``,
+    );
     expect(refusals[0]?.detail).toContain(`it needs a \`pass\` judged at \`${F4.slice(0, 12)}\``);
     expect(await statusOf(issue)).toBe('awaiting_release');
   });
@@ -352,6 +363,16 @@ describe("the steward's output check reads the same landed build", () => {
     expect(await statusOf(issue)).toBe('reopen');
   });
 
+  it('still sends it back when its passes stand at a later head nothing has recorded', async () => {
+    const issue = await landedIssue(5, F4);
+    await judgedAll(issue, LATER);
+
+    const { answer } = await stewardReopens(issue, 'ISS-5');
+
+    expect(answer.ok, answer.text).toBe(true);
+    expect(await statusOf(issue)).toBe('reopen');
+  });
+
   it('still sends it back when a verdict at the landed head fails', async () => {
     const issue = await landedIssue(5, F4);
     await verdict(issue, 1, 'pass', F4);
@@ -432,9 +453,9 @@ describe("a requirement's coverage counts a verdict on its issue's landing", () 
     const read = await bc1(req);
 
     expect(read.verdict).toBe('not_live');
-    expect(read.why).toContain("do not hold their issue's landing");
+    expect(read.why).toContain("judged only at commits other than their issue's landing");
     expect(read.issues[0]?.notCounted).toContain(
-      `does not hold its issue's landing ${F4.slice(0, 12)}`,
+      `judged at commit ${D9.slice(0, 12)}, not at its issue's landing ${F4.slice(0, 12)}`,
     );
   });
 
