@@ -119,9 +119,9 @@ export function retentionWorld(): RetentionFixture {
       const id = randomUUID();
       const device = await createTestDevice(ids.ownerId);
       await db.execute(sql`
-        INSERT INTO runners (id, project_id, type, device_id, name, status)
+        INSERT INTO runners (id, project_id, type, device_id, name, status, provision_status)
         VALUES (${id}, ${ids.projectId}, 'claude-code', ${device},
-                ${`r-${id.slice(0, 8)}`}, 'online')
+                ${`r-${id.slice(0, 8)}`}, 'online', 'ready')
       `);
       return id;
     },

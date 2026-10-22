@@ -149,6 +149,11 @@ export interface RepinActResult {
 	act: string;
 	base: { workflowId: string; flow: string; approvedRevision: number };
 	approved: { workflowId: string; flow: string; revision: number; pins: PinMove[] }[];
+	/**
+	 * Designs the act was named that a sibling act already moved, by re-pins alone, onto every base's
+	 * approved revision: nothing left to write, read now rather than refused stale (REQ-41 BC-23).
+	 */
+	alreadyFollowing: { workflowId: string; flow: string; revision: number }[];
 }
 
 export const DESIGN_WAITING_KINDS = [

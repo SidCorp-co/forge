@@ -11,6 +11,7 @@
 
 import type { RecordAnswer, RecordAnswers } from '@forge/contracts/checklists';
 import { requirementKey } from '@forge/contracts/requirements';
+import { criterionStepsCall } from '@forge/contracts/workflow-health';
 import { sql } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
 import { revisionChangesOf } from './design-changes.js';
@@ -123,7 +124,9 @@ function untracedGap(f: DesignFacts): RecordAnswer {
   }
   return {
     gap: `${f.linkedBy.join(', ')} ${f.linkedBy.length === 1 ? 'links' : 'link'} it, and none of their business criteria is traced to a step.`,
-    fix: 'Trace the business criteria its steps serve, on the requirements linking it.',
+    fix: `Trace the business criteria its steps serve, on the requirements linking it: ${f.linkedBy
+      .map((req) => criterionStepsCall(req, f.flow))
+      .join('; ')}.`,
   };
 }
 

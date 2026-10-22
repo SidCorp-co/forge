@@ -16,15 +16,22 @@ import { userNames } from '../lib/people.js';
 import { RefusalError } from '../lib/refusal.js';
 import { notFound } from '../middleware/route-errors.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
-import { type DesignRefusal, designFingerprint } from './design.js';
+import { type DesignRefusal, designFingerprint, fingerprintShape } from './design.js';
 import { standingBaseRefusal } from './design-bases.js';
 import { recordDecision } from './design-record.js';
-import { planRepins, type RepinDesign, type RepinStep } from './design-repin.js';
+import {
+  canonicalDiff,
+  pinOnlyChange,
+  planRepins,
+  type RepinDesign,
+  type RepinStep,
+} from './design-repin.js';
 import { approverRefusalFor } from './design-service.js';
 import { reaskSupersededDesignQuestions } from './ports.js';
 import { readStoredWorkflow } from './schema.js';
 import { assertWriter, templatesOf, type WorkflowWriter } from './service.js';
 import {
+  designsOf,
   headDesignsOf,
   insertDesign,
   lockWorkflows,
@@ -216,54 +223,89 @@ export type RepinOutcome =
   | { ok: true; result: RepinActResult }
   | { ok: false; refusals: DesignRefusal[] };
 
-/** The named designs' refusals before anything is written: each named once, read at its revision, and in the plan. */
-function namedRefusals(
+/**
+ * Whether `d` moved since revision `read` by re-pins alone: it stands approved with no change waiting,
+ * and its approved document differs from the one read only in the revisions its bases are pinned at.
+ * A design shared by several bases is re-pinned onto all of them by the first act that takes it, so
+ * the decisions read beside that one name it at a revision it has since left by its pins only.
+ */
+async function movedByPinsOnly(tx: Tx, d: RepinDesign, read: number): Promise<boolean> {
+  if (d.revision < read || d.approvedRevision !== d.revision || d.pending || !d.approved)
+    return false;
+  const was = (await designsOf(tx, d.id)).find((x) => x.revision === read);
+  const wasDoc = was ? readStoredWorkflow(was.document) : null;
+  if (!wasDoc) return false;
+  const same =
+    canonicalDiff(fingerprintShape(wasDoc, d.template), fingerprintShape(d.approved, d.template))
+      .length === 0;
+  return same || pinOnlyChange(wasDoc, d.approved, d.template) !== null;
+}
+
+interface Named {
+  refusals: DesignRefusal[];
+  /** Named designs that moved by re-pins alone and already follow every base at its approved revision. */
+  alreadyFollowing: { workflowId: string; flow: string; revision: number }[];
+}
+
+/**
+ * The named designs' refusals before anything is written: each named once, in the plan, and read at
+ * its revision, or moved since by re-pins alone (re-read now: taken if the plan still moves it, named
+ * as already following if it does not). Any other move since the read is refused by name.
+ */
+async function namedRefusals(
+  tx: Tx,
   named: readonly { workflowId: string; revision: number }[],
   loaded: Loaded,
   plan: ReturnType<typeof planRepins>,
   baseFlow: string,
-): DesignRefusal[] {
+): Promise<Named> {
   const ready = new Set(plan.ready.map((s) => s.design.id));
   const refused = new Map(plan.refused.map((r) => [r.design.id, r.refusal]));
   const seen = new Set<string>();
-  return named.flatMap((n, i): DesignRefusal[] => {
+  const out: Named = { refusals: [], alreadyFollowing: [] };
+  for (const [i, n] of named.entries()) {
     const path = `/designs/${i}`;
     const d = loaded.designs.find((x) => x.id === n.workflowId);
     if (!d || seen.has(n.workflowId)) {
-      return [
-        {
-          code: 'WORKFLOW_REPIN_NOT_DEPENDENT',
-          path,
-          detail: d
-            ? `"${d.flow}" is named twice; name each design once.`
-            : `this project holds no workflow ${n.workflowId}.`,
-        },
-      ];
-    }
-    seen.add(n.workflowId);
-    if (d.revision !== n.revision) {
-      return [
-        {
-          code: 'WORKFLOW_DESIGN_REVISION_STALE',
-          path: `${path}/revision`,
-          flow: d.flow,
-          revision: n.revision,
-          detail: `"${d.flow}" was read at revision ${n.revision} and stands at revision ${d.revision} now; read the plan again, then act on what it shows.`,
-        },
-      ];
-    }
-    const refusal = refused.get(d.id);
-    if (refusal) return [{ ...refusal, path, flow: d.flow }];
-    if (ready.has(d.id)) return [];
-    return [
-      {
+      out.refusals.push({
         code: 'WORKFLOW_REPIN_NOT_DEPENDENT',
         path,
+        detail: d
+          ? `"${d.flow}" is named twice; name each design once.`
+          : `this project holds no workflow ${n.workflowId}.`,
+      });
+      continue;
+    }
+    seen.add(n.workflowId);
+    const moved = d.revision !== n.revision;
+    if (moved && !(await movedByPinsOnly(tx, d, n.revision))) {
+      out.refusals.push({
+        code: 'WORKFLOW_DESIGN_REVISION_STALE',
+        path: `${path}/revision`,
         flow: d.flow,
-        detail: `"${d.flow}" has no pin to move onto "${baseFlow}"'s approved revision: its approved revision pins the revision approved now, or it rests on nothing this act re-pins.`,
-      },
-    ];
-  });
+        revision: n.revision,
+        detail: `"${d.flow}" was read at revision ${n.revision} and stands at revision ${d.revision} now, changed beyond the revisions it follows; read the plan again, then act on what it shows.`,
+      });
+      continue;
+    }
+    const refusal = refused.get(d.id);
+    if (refusal) {
+      out.refusals.push({ ...refusal, path, flow: d.flow });
+      continue;
+    }
+    if (ready.has(d.id)) continue;
+    if (moved) {
+      out.alreadyFollowing.push({ workflowId: d.id, flow: d.flow, revision: d.revision });
+      continue;
+    }
+    out.refusals.push({
+      code: 'WORKFLOW_REPIN_NOT_DEPENDENT',
+      path,
+      flow: d.flow,
+      detail: `"${d.flow}" has no pin to move onto "${baseFlow}"'s approved revision: its approved revision pins the revision approved now, or it rests on nothing this act re-pins.`,
+    });
+  }
+  return out;
 }
 
 async function takeStep(
@@ -373,7 +415,13 @@ export async function repinAs(input: {
       }
       const include = new Set(input.designs.map((d) => d.workflowId));
       const plan = planRepins(base.flow, loaded.designs, include);
-      const refusals = namedRefusals(input.designs, loaded, plan, base.flow);
+      const { refusals, alreadyFollowing } = await namedRefusals(
+        tx,
+        input.designs,
+        loaded,
+        plan,
+        base.flow,
+      );
       if (refusals.length > 0) throw actRefused(refusals);
       const actWords = say('designs.act.repinBatch', {
         n: plan.ready.length,
@@ -409,6 +457,7 @@ export async function repinAs(input: {
         act,
         base: { workflowId: base.id, flow: base.flow, approvedRevision: base.approvedRevision },
         approved,
+        alreadyFollowing,
       };
     });
     return { ok: true, result };

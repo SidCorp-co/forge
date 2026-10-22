@@ -178,9 +178,9 @@ export async function bindTestRunner(
 ): Promise<string> {
   const id = randomUUID();
   await db.execute(sql`
-    INSERT INTO runners (id, project_id, device_id, name, type, status, repo_path)
+    INSERT INTO runners (id, project_id, device_id, name, type, status, repo_path, provision_status)
     VALUES (${id}, ${projectId}, ${deviceId}, ${`runner-${id.slice(0, 8)}`}, 'claude-code',
-            ${opts.status ?? 'online'}, '/srv/checkout')
+            ${opts.status ?? 'online'}, '/srv/checkout', 'ready')
   `);
   return id;
 }

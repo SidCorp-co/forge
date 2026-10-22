@@ -199,6 +199,67 @@ describe("the acts behind the buttons are the page's own routes", () => {
 	});
 });
 
+// dev.281, 2026-10-22: REQ-18's re-pin decision offered a one-click button its route refused
+// REQUIREMENT_SIGNOFF_REASON_REQUIRED, so the press could never succeed (REQ-41 BC-2)
+describe("a button declares the reason its route needs", () => {
+	const req18 = (needsReason: boolean): NeedsYouDecision => ({
+		...iss451,
+		group: "approve",
+		key: "REQ-18",
+		opens: { kind: "requirement", key: "REQ-18" },
+		question:
+			"Follow the approved designs and contracts in REQ-18 at revision 1?",
+		recommended: {
+			answerId: "repin",
+			why: "A new baseline pins the approved versions; the wording and criteria stay as they are.",
+			by: "rule",
+		},
+		answers: [
+			{
+				id: "repin",
+				label: "Update to the approved versions",
+				act: "requirement.repin",
+				path: "/api/projects/p/requirements/REQ-18/repin",
+				body: { revision: 1 },
+				needsReason,
+				declines: false,
+				effect: null,
+				recommended: true,
+			},
+		],
+		id: "requirement:REQ-18",
+	});
+
+	it("refuses the re-pin dev offered with no reason, naming the answer", () => {
+		const r = needsYouDecisionSchema.safeParse(req18(false));
+		expect(r.success).toBe(false);
+		expect(r.error?.issues).toEqual([
+			expect.objectContaining({
+				path: ["answers", 0, "needsReason"],
+				message:
+					"a requirement.repin answer takes a reason: its route refuses a press without one, so it asks for one or carries it in its body",
+			}),
+		]);
+		expect(needsYouDecisionSchema.safeParse(req18(true)).success).toBe(true);
+	});
+
+	it("takes a one-click answer that carries its reason in its body, as a lesson retire does", () => {
+		const carried = req18(false);
+		const [repin] = carried.answers;
+		if (!repin) throw new Error("the fixture has its answer");
+		repin.body = { revision: 1, reason: "Follow the approved designs." };
+		expect(needsYouDecisionSchema.safeParse(carried).success).toBe(true);
+		repin.body = { revision: 1, reason: "  " };
+		expect(needsYouDecisionSchema.safeParse(carried).success).toBe(false);
+	});
+
+	it("names the agree and the re-pin among the acts that take a reason", () => {
+		expect(DECISION_ACTS["requirement.agree"].reason).toBe(true);
+		expect(DECISION_ACTS["requirement.repin"].reason).toBe(true);
+		expect(DECISION_ACTS["requirement.accept"].reason).toBe(false);
+	});
+});
+
 describe("the read", () => {
 	it("lists groups in order, oldest first inside one", () => {
 		const approve = {

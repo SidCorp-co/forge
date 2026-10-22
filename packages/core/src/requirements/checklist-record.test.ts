@@ -28,7 +28,17 @@ const ready: ReadyFacts = {
   criteria: ['BC-1', 'BC-2'],
   openBlocking: [],
   designs: [{ flow: 'referral-intake', approvedRevision: 3 }],
+  writtenLang: 'en',
 };
+
+// adminhub-api REQ-2 r1 on dev, 2026-10-22, written in Vietnamese: its agree was refused CHECKLIST_INCOMPLETE
+// "Its goal does not state the value it gives, after "Value:"" though it does, under its own labels
+const ADMINHUB_REQ2_GOAL = [
+  'Người và agent làm AdminHub API có DB MySQL local giống schema release/stg, dựng hoặc reset bằng một lệnh, mỗi lượt chạy có DB riêng, không bao giờ chạm môi trường thật.', // i18n-allow: the requirement as written on dev
+  'Vấn đề: hiện DB test chỉ được dựng tay một lần, chưa chạy trigger seeder, chưa có dữ liệu mẫu, và các worktree chạy song song có thể ghi đè lên nhau.', // i18n-allow: the requirement as written on dev
+  'Giá trị: test và phát triển chạy được ngay trên máy, kết quả lặp lại được, không phụ thuộc staging.', // i18n-allow: the requirement as written on dev
+  'Đo bằng: bộ test chạy xanh trên DB mới dựng; DB mới sẵn sàng trong vài phút; không lượt chạy nào hỏng vì lượt khác.', // i18n-allow: the requirement as written on dev
+].join('\n');
 
 const judge = (facts: ReadyFacts) =>
   evaluateChecklist(REQUIREMENT_READY_CHECKLIST, { given: {}, record: readyAnswersOf(facts) });
@@ -67,6 +77,15 @@ describe('the ready checklist, read from the head revision', () => {
     expect(refusals.find((r) => r.question === 'value')?.detail).toContain('after "Value:"');
   });
 
+  it('names the routes that link a design and trace a criterion to its steps, when it links none', () => {
+    const [gap] = checklistRefusals(judge({ ...ready, designs: [] }));
+    expect(gap?.question).toBe('workflows');
+    expect(gap?.detail).toContain(
+      'POST /api/projects/:id/requirements/REQ-7/workflows { "workflowId": <design uuid> }',
+    );
+    expect(gap?.detail).toContain('PUT /api/projects/:id/requirements/:req/criteria/:code/steps');
+  });
+
   it('takes the recommended answer for kind, out of scope and roadmap, recorded as assumed', () => {
     const e = judge({
       ...ready,
@@ -76,6 +95,31 @@ describe('the ready checklist, read from the head revision', () => {
     expect(e.complete).toBe(true);
     const assumed = e.answers.filter((a) => a.provenance === 'assumed').map((a) => a.question);
     expect(assumed).toEqual(['kind', 'outOfScope', 'roadmap']);
+  });
+
+  it("reads a Vietnamese requirement's goal under its own labels (adminhub-api REQ-2)", () => {
+    const e = judge({
+      ...ready,
+      writtenLang: 'vi',
+      spec: { ...ready.spec, goal: ADMINHUB_REQ2_GOAL },
+    });
+    expect(checklistRefusals(e)).toEqual([]);
+    const value = e.answers.find((a) => a.question === 'value');
+    expect(value?.value).toMatch(/^test và phát triển chạy được ngay trên máy/); // i18n-allow: the requirement as written on dev
+    expect(e.answers.find((a) => a.question === 'measured')?.value).toMatch(/^bộ test chạy xanh/); // i18n-allow: the requirement as written on dev
+  });
+
+  it('reads the English labels in a Vietnamese requirement too, as its r2 wrote them', () => {
+    const r2 = ADMINHUB_REQ2_GOAL.replace(/^Vấn đề:/m, 'Problem:').replace(/^Giá trị:/m, 'Value:'); // i18n-allow: the labels it swapped
+    expect(Object.keys(goalAnswers(r2, 'vi')).sort()).toEqual(['measured', 'problem', 'value']);
+  });
+
+  it("names the requirement's own label in a gap, and reads no Vietnamese label in an English one", () => {
+    const vi = judge({ ...ready, writtenLang: 'vi', spec: { ...ready.spec, goal: 'Vấn đề: a.' } }); // i18n-allow: a Vietnamese label
+    expect(checklistRefusals(vi).find((r) => r.question === 'value')?.detail).toContain(
+      'after "Giá trị:" or "Value:"', // i18n-allow: the Vietnamese label named
+    );
+    expect(goalAnswers('Problem: a.\nGiá trị: b.', 'en')).toEqual({ problem: 'a.' }); // i18n-allow: a Vietnamese label an English requirement does not read
   });
 
   it('reads a goal that labels nothing as its problem alone', () => {

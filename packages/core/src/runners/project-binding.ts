@@ -136,6 +136,17 @@ export async function bindDeviceRunner(input: {
       source: 'runner-bind',
       returning: ['id'],
     });
+    // The bind asks its box to set the checkout up only once the row stands queued: a status the
+    // move could not leave rolls the bind back rather than answering success over no change.
+    const [setup] = await tx
+      .select({ provisionStatus: runners.provisionStatus })
+      .from(runners)
+      .where(eq(runners.id, row.id));
+    if (setup?.provisionStatus !== 'queued') {
+      throw new Error(
+        `runner-bind: runner ${row.id} reads setup status ${setup ? `\`${setup.provisionStatus}\`` : 'nothing'}, which has no edge into \`queued\`; nothing was bound`,
+      );
+    }
     const live = await transition(tx, RUNNER_MACHINE, {
       to: status,
       from: status === 'online' ? 'offline' : 'online',

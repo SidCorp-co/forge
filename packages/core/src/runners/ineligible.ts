@@ -36,7 +36,7 @@ interface RunnerLivenessRow {
   /** The reset the account printed: its claim, said beside the next try only where one was printed. */
   limitPrintedResetAt: Date | null;
   quarantinedUntil: Date | null;
-  provisionStatus: string | null;
+  provisionStatus: string;
   deviceDisabledAt: Date | null;
   deviceAgentVersion: string | null;
 }
@@ -85,7 +85,7 @@ function reasonFor(
   if (row.quarantinedUntil !== null && row.quarantinedUntil > now) {
     return { reason: 'quarantined', detail: row.quarantinedUntil.toISOString() };
   }
-  if (row.provisionStatus !== null && row.provisionStatus !== 'ready') {
+  if (row.provisionStatus !== 'ready') {
     return { reason: 'provisioning', detail: row.provisionStatus };
   }
   if (!atLeastVersion(row.deviceAgentVersion, CLAIM_MIN_RUNNER)) {
@@ -124,7 +124,7 @@ interface RunnerLivenessSqlRow extends Record<string, unknown> {
   rate_limited_until: string | null;
   limit_printed_reset_at: string | null;
   quarantined_until: string | null;
-  provision_status: string | null;
+  provision_status: string;
   device_disabled_at: string | null;
   device_agent_version: string | null;
 }

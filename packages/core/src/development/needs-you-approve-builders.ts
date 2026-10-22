@@ -92,6 +92,8 @@ export function agreeDecision(
           act: 'requirement.agree',
           path: filled('requirement.agree', params),
           body: { revision: head },
+          // an agree writes a baseline, and a baseline records why (REQ-4 BC-4)
+          needsReason: true,
           effect: `${row.key} is agreed at revision ${head} and goes to delivery.`,
           recommended: true,
         }),

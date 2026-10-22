@@ -77,9 +77,9 @@ async function seed(
 async function seedRunner(w: World): Promise<void> {
   const device = await createTestDevice(w.userId, { status: 'online' });
   await db.execute(sql`
-    INSERT INTO runners (id, project_id, type, device_id, name, status, last_seen_at, labels)
+    INSERT INTO runners (id, project_id, type, device_id, name, status, last_seen_at, labels, provision_status)
     VALUES (${randomUUID()}, ${w.projectId}, 'claude-code', ${device}, 'box', 'online', now(),
-            ${JSON.stringify([LABEL])}::jsonb)
+            ${JSON.stringify([LABEL])}::jsonb, 'ready')
   `);
 }
 
@@ -271,9 +271,9 @@ describe('release-readiness and the create door answer the same question', () =>
     const w = await seed();
     const device = await createTestDevice(w.userId, { status: 'online' });
     await db.execute(sql`
-      INSERT INTO runners (id, project_id, type, device_id, name, status, last_seen_at, labels)
+      INSERT INTO runners (id, project_id, type, device_id, name, status, last_seen_at, labels, provision_status)
       VALUES (${randomUUID()}, ${w.projectId}, 'claude-code', ${device}, 'unlabelled',
-              'online', now(), '[]'::jsonb)
+              'online', now(), '[]'::jsonb, 'ready')
     `);
     const issue = await seedIssue(w);
 
@@ -289,9 +289,9 @@ describe('release-readiness and the create door answer the same question', () =>
     const w = await seed();
     const device = await createTestDevice(w.userId, { status: 'online' });
     await db.execute(sql`
-      INSERT INTO runners (id, project_id, type, device_id, name, status, last_seen_at, labels)
+      INSERT INTO runners (id, project_id, type, device_id, name, status, last_seen_at, labels, provision_status)
       VALUES (${randomUUID()}, ${w.projectId}, 'claude-code', ${device}, 'unlabelled',
-              'online', now(), '[]'::jsonb)
+              'online', now(), '[]'::jsonb, 'ready')
     `);
     await seedIssue(w);
 
@@ -315,9 +315,9 @@ describe('release-readiness and the create door answer the same question', () =>
     const w = await seed();
     const device = await createTestDevice(w.userId, { status: 'online' });
     await db.execute(sql`
-      INSERT INTO runners (id, project_id, type, device_id, name, status, last_seen_at, labels)
+      INSERT INTO runners (id, project_id, type, device_id, name, status, last_seen_at, labels, provision_status)
       VALUES (${randomUUID()}, ${w.projectId}, 'claude-code', ${device}, 'unlabelled',
-              'online', now(), '[]'::jsonb)
+              'online', now(), '[]'::jsonb, 'ready')
     `);
     await seedIssue(w);
     const before = (await readiness(w)).body.blockers.map((b) => b.code);
@@ -344,9 +344,9 @@ describe('a reason names the state it was read from and the act that clears it',
       name: 'dev1',
     });
     await db.execute(sql`
-      INSERT INTO runners (id, project_id, type, device_id, name, status, last_seen_at, labels)
+      INSERT INTO runners (id, project_id, type, device_id, name, status, last_seen_at, labels, provision_status)
       VALUES (${randomUUID()}, ${w.projectId}, 'claude-code', ${device}, 'dev1', 'draining',
-              now(), ${JSON.stringify([LABEL])}::jsonb)
+              now(), ${JSON.stringify([LABEL])}::jsonb, 'ready')
     `);
     await seedIssue(w);
 
@@ -367,9 +367,9 @@ describe('a reason names the state it was read from and the act that clears it',
       name: 'workshop-box',
     });
     await db.execute(sql`
-      INSERT INTO runners (id, project_id, type, device_id, name, status, last_seen_at, labels)
+      INSERT INTO runners (id, project_id, type, device_id, name, status, last_seen_at, labels, provision_status)
       VALUES (${randomUUID()}, ${w.projectId}, 'claude-code', ${device}, 'binding-42',
-              'draining', now(), ${JSON.stringify([LABEL])}::jsonb)
+              'draining', now(), ${JSON.stringify([LABEL])}::jsonb, 'ready')
     `);
     await seedIssue(w);
 

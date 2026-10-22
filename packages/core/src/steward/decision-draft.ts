@@ -40,12 +40,13 @@ export async function linkDraftIn(
   const refusal = linkIssueRefusal(row.status as Parameters<typeof linkIssueRefusal>[0]);
   if (refusal) throw new RefusalError([refusal], refusal.code);
   if (a.issue.requirementId && a.issue.requirementId !== requirementId) {
+    const holder = requirementKey((await rowIn(tx, a.projectId, a.issue.requirementId)).reqSeq);
     throw new RefusalError(
       [
         {
           code: 'REQUIREMENT_ISSUE_LINKED_ELSEWHERE',
           path: '/optionId',
-          detail: `${a.key} already delivers another requirement; unlink it there first, or answer drop.`,
+          detail: `${a.key} already delivers ${holder}; unlink it there first (DELETE /api/projects/:id/requirements/${holder}/issues/${a.key}), or answer drop.`,
         },
       ],
       'REQUIREMENT_ISSUE_LINKED_ELSEWHERE',

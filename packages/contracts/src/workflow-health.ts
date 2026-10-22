@@ -112,6 +112,12 @@ export const putCriterionStepsRequestSchema = z.strictObject({
 export type PutCriterionStepsRequest = z.infer<
 	typeof putCriterionStepsRequestSchema
 >;
+/** The one route that traces a requirement's business criterion to a linked design's steps. */
+export const CRITERION_STEPS_ROUTE = "PUT /api/projects/:id/requirements/:req/criteria/:code/steps";
+/** That route as a call to make: `req` traces criterion BC-n onto the design `flow`. */
+export function criterionStepsCall(req: string, flow: string): string {
+	return `PUT /api/projects/:id/requirements/${req}/criteria/BC-n/steps { "workflow": "${flow}", "steps": [<step id>] }`;
+}
 export const PUT_CRITERION_STEPS_SHAPE =
 	"{ workflow, steps?: string[], edges?: { from, to, label? }[] } — the whole trace of this criterion onto that linked design; empty lists clear it";
 

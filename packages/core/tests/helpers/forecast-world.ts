@@ -42,8 +42,8 @@ export async function world(): Promise<World> {
   const device = await createTestDevice(user.id);
   const runnerId = randomUUID();
   await db.execute(sql`
-    INSERT INTO runners (id, project_id, type, device_id, name, status, last_seen_at, repo_path)
-    VALUES (${runnerId}, ${project.id}, 'claude-code', ${device}, 'box', 'online', now(), '/srv/checkout')
+    INSERT INTO runners (id, project_id, type, device_id, name, status, last_seen_at, repo_path, provision_status)
+    VALUES (${runnerId}, ${project.id}, 'claude-code', ${device}, 'box', 'online', now(), '/srv/checkout', 'ready')
   `);
   return {
     projectId: project.id,

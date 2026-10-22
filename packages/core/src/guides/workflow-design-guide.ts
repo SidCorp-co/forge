@@ -3,6 +3,7 @@
 //
 // Altitude (NT1): the order of the work and what refuses it. `GET /api/schemas/workflow-v2.json` carries its schema.
 
+import { CRITERION_STEPS_ROUTE } from '@forge/contracts/workflow-health';
 import type { CoreGuide } from './types.js';
 
 export const WORKFLOW_DESIGN_GUIDE: CoreGuide = {
@@ -11,7 +12,7 @@ export const WORKFLOW_DESIGN_GUIDE: CoreGuide = {
   title: 'Design a workflow first, build it once it is approved',
   summary:
     'A flow that does not exist yet is drawn as a workflow-v2 design, proposed, and approved under its approval checklist before any issue that builds it is dispatched.',
-  version: 5,
+  version: 6,
   body: `## Design a workflow first, build it once it is approved
 
 A new flow — a storefront journey, a pipeline, a state machine — is drawn before it is built, and its
@@ -161,7 +162,8 @@ or node id. A repository project cites \`{ kind: "repo", file, symbol }\`. The o
 
 ### Who approves, and what an approval is judged by
 Every approval, a pin-only one included, is judged by the workflow approval checklist, read from the
-newest revision: the business criteria its steps serve (traced on the requirements linking it; none is
+newest revision: the business criteria its steps serve (traced on the requirements linking it, one
+criterion at a time, by \`${CRITERION_STEPS_ROUTE} { workflow, steps?, edges? }\` (the whole trace of that criterion on that design; empty lists clear it); none is
 asked of a design no requirement links), who owns each step, its refusals, returns and failures drawn
 as conditions, tests or failure edges (asked only of a flow, never of a structure such as a system
 context), and its change from the last approved revision, computed. A gap is refused

@@ -10,8 +10,11 @@
  */
 
 import type { RecordAnswer, RecordAnswers } from '@forge/contracts/checklists';
+import { GOAL_LABELS, type GoalLabel, goalLabelWords } from '@forge/contracts/requirement-goal';
 import type { RequirementSpec } from '@forge/contracts/requirements';
 import { EARNING_VERDICTS } from '@forge/contracts/verdict-identity';
+import { CRITERION_STEPS_ROUTE } from '@forge/contracts/workflow-health';
+import { type WrittenLang, writtenLangOfText } from '@forge/contracts/written-lang';
 import { and, eq, sql } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
 import {
@@ -30,35 +33,46 @@ const ANSWER_MAX = 300;
 const clipped = (text: string) =>
   text.length <= ANSWER_MAX ? text : `${text.slice(0, ANSWER_MAX - 1).trimEnd()}…`;
 
-const GOAL_LABELS = {
-  problem: /^problem\s*:\s*/i,
-  value: /^value\s*:\s*/i,
-  measured: /^measured by\s*:\s*/i,
-  roadmap: /^roadmap\s*:\s*/i,
-} as const;
-type GoalLabel = keyof typeof GOAL_LABELS;
+const escaped = (word: string) => word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** The patterns a line of a goal written in `lang` opens with, per label: its own language's and English. */
+function labelPatterns(lang: WrittenLang | null): [GoalLabel, RegExp][] {
+  return GOAL_LABELS.map((label) => [
+    label,
+    new RegExp(`^(?:${goalLabelWords(lang, label).map(escaped).join('|')})\\s*:\\s*`, 'iu'),
+  ]);
+}
 
 /**
- * The goal's labelled lines (`Problem:`, `Value:`, `Measured by:`, `Roadmap:`). A goal that labels
- * none of them states its problem as a whole, so its text answers the problem and nothing else.
+ * The goal's labelled lines (`Problem:`, `Value:`, `Measured by:`, `Roadmap:`), read under the labels
+ * of the language the requirement is written in and the English ones. A goal that labels none of
+ * them states its problem as a whole, so its text answers the problem and nothing else.
  */
-export function goalAnswers(goal: string | null | undefined): Partial<Record<GoalLabel, string>> {
-  const text = goal?.trim() ?? '';
+export function goalAnswers(
+  goal: string | null | undefined,
+  lang: WrittenLang | null = null,
+): Partial<Record<GoalLabel, string>> {
+  const text = goal?.normalize('NFC').trim() ?? '';
   if (text === '') return {};
+  const patterns = labelPatterns(lang ?? writtenLangOfText(text));
   const found: Partial<Record<GoalLabel, string>> = {};
+  let labelled = false;
   for (const line of text.split('\n').map((l) => l.trim())) {
-    for (const [label, pattern] of Object.entries(GOAL_LABELS) as [GoalLabel, RegExp][]) {
-      if (found[label] === undefined && pattern.test(line)) {
-        const said = line.replace(pattern, '').trim();
-        if (said !== '') found[label] = said;
-      }
+    for (const [label, pattern] of patterns) {
+      if (!pattern.test(line)) continue;
+      labelled = true;
+      const said = line.replace(pattern, '').trim();
+      if (found[label] === undefined && said !== '') found[label] = said;
     }
   }
-  const labelled = text
-    .split('\n')
-    .some((l) => Object.values(GOAL_LABELS).some((p) => p.test(l.trim())));
   return labelled ? found : { problem: text };
 }
+
+/** How a gap names a label: the requirement's own word first, then the English one. */
+const labelled = (lang: WrittenLang | null, label: GoalLabel) =>
+  goalLabelWords(lang, label)
+    .map((w) => `"${w}:"`)
+    .join(' or ');
 
 /** What the head revision of a requirement holds, as the ready checklist reads it. */
 export interface ReadyFacts {
@@ -71,6 +85,8 @@ export interface ReadyFacts {
   /** Blocking open questions still open, by their words and who answers them. */
   openBlocking: { question: string; whoAnswers: string }[];
   designs: { flow: string; approvedRevision: number | null }[];
+  /** The language the head revision was written in; null where it was written before that was stored. */
+  writtenLang: WrittenLang | null;
 }
 
 const goalGap = (what: string): RecordAnswer => ({
@@ -100,13 +116,17 @@ export function readyAnswersOf(f: ReadyFacts): RecordAnswers {
       ].map((q) => [q, none]),
     );
   }
-  const goal = goalAnswers(f.spec.goal);
+  const lang = f.writtenLang ?? writtenLangOfText(f.spec.goal);
+  const goal = goalAnswers(f.spec.goal, lang);
   const personas = (f.spec.personas ?? []).map((p) => p.trim()).filter(Boolean);
   const scopeOut = (f.spec.scopeOut ?? []).map((p) => p.trim()).filter(Boolean);
   const answer = (said: string | undefined, gap: RecordAnswer): RecordAnswer =>
     said ? { value: clipped(said) } : gap;
   return {
-    problem: answer(goal.problem, goalGap('the problem it solves, after "Problem:"')),
+    problem: answer(
+      goal.problem,
+      goalGap(`the problem it solves, after ${labelled(lang, 'problem')}`),
+    ),
     kind: f.kind
       ? { value: f.kind }
       : {
@@ -116,8 +136,11 @@ export function readyAnswersOf(f: ReadyFacts): RecordAnswers {
     who: personas.length
       ? { value: clipped(personas.join(', ')) }
       : { gap: 'It names nobody it is for.', fix: 'Name at least one persona it is for.' },
-    value: answer(goal.value, goalGap('the value it gives, after "Value:"')),
-    measured: answer(goal.measured, goalGap('how success is measured, after "Measured by:"')),
+    value: answer(goal.value, goalGap(`the value it gives, after ${labelled(lang, 'value')}`)),
+    measured: answer(
+      goal.measured,
+      goalGap(`how success is measured, after ${labelled(lang, 'measured')}`),
+    ),
     criteria: f.criteria.length
       ? {
           value: `${f.criteria.length} ${f.criteria.length === 1 ? 'criterion' : 'criteria'}: ${f.criteria.join(', ')}`,
@@ -138,7 +161,7 @@ export function readyAnswersOf(f: ReadyFacts): RecordAnswers {
       f.designs.length === 0
         ? {
             gap: 'It links no workflow design.',
-            fix: 'Link each workflow design it changes or serves.',
+            fix: `Link each workflow design it changes or serves (POST /api/projects/:id/requirements/${f.key}/workflows { "workflowId": <design uuid> }), then trace each criterion to the steps it rests on (${CRITERION_STEPS_ROUTE}).`,
           }
         : {
             // an unapproved one is refused by the agree's own design guard (REQUIREMENT_DESIGN_UNAPPROVED)
@@ -158,7 +181,7 @@ export function readyAnswersOf(f: ReadyFacts): RecordAnswers {
           gap: 'It states nothing out of scope.',
           fix: 'List what it leaves out, or leave it assumed.',
         },
-    roadmap: answer(goal.roadmap, goalGap('its roadmap lane, after "Roadmap:"')),
+    roadmap: answer(goal.roadmap, goalGap(`its roadmap lane, after ${labelled(lang, 'roadmap')}`)),
   };
 }
 
@@ -181,7 +204,16 @@ export async function readyFactsIn(tx: Tx, requirementId: string): Promise<Ready
     throw new Error(`requirement checklist: requirement ${requirementId} has no row to read`);
   const key = `REQ-${row.reqSeq}`;
   if (row.head === null) {
-    return { key, head: null, spec: {}, kind: null, criteria: [], openBlocking: [], designs: [] };
+    return {
+      key,
+      head: null,
+      spec: {},
+      kind: null,
+      criteria: [],
+      openBlocking: [],
+      designs: [],
+      writtenLang: null,
+    };
   }
   return readyFactsAt(tx, requirementId, key, row.head);
 }
@@ -194,7 +226,11 @@ export async function readyFactsAt(
   revision: number,
 ): Promise<ReadyFacts> {
   const [rev] = await tx
-    .select({ spec: requirementRevisions.spec, kind: requirementRevisions.kind })
+    .select({
+      spec: requirementRevisions.spec,
+      kind: requirementRevisions.kind,
+      writtenLang: requirementRevisions.writtenLang,
+    })
     .from(requirementRevisions)
     .where(
       and(
@@ -221,6 +257,7 @@ export async function readyFactsAt(
       .filter((q) => open.has(q.questionId as string))
       .map((q) => ({ question: q.question, whoAnswers: q.whoAnswers })),
     designs: designs.map((d) => ({ flow: d.flow, approvedRevision: d.approvedRevision })),
+    writtenLang: rev.writtenLang ?? null,
   };
 }
 

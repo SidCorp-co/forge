@@ -68,11 +68,18 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
     );
     // A checkout bound by path is provisioned like any other: without this its orientation kept
     // whatever instance last wrote it, and a re-bind never put this instance's back.
-    if given && !provision::reprovision(&client, &Config::load()?, &assignment.runner_id).await {
-        eprintln!(
-            "note: core returned no queued provision for {} after it was queued, so this checkout's orientation, skills and .mcp.json were not refreshed now — the daemon's provision sweep takes it once core queues it",
-            args.slug
-        );
+    if given {
+        match provision::reprovision(&client, &Config::load()?, &assignment.runner_id).await {
+            provision::Reprovisioned::Ran => {}
+            provision::Reprovisioned::NotReturned => eprintln!(
+                "note: core queued the provision for {} but returned none to run now, so this checkout's orientation, skills and .mcp.json were not refreshed now — the daemon's provision sweep takes it",
+                args.slug
+            ),
+            provision::Reprovisioned::Refused(why) => anyhow::bail!(
+                "bound, but core refused to queue the provision for {}, so nothing is queued and this checkout's orientation, skills and .mcp.json were not refreshed: {why}",
+                args.slug
+            ),
+        }
     }
     if let Some(host) = helper_host {
         git_cred::set_repo_credential_helper(&bound, &host).map_err(|e| {
@@ -384,12 +391,17 @@ pub async fn provision_checkout(
         })?;
 
     println!("provisioning {} → {}", assignment.slug, target.display());
-    if !provision::reprovision(client, &cfg, &assignment.runner_id).await {
-        eprintln!(
-            "note: core returned no queued provision for {} after it was queued, so this call cloned nothing — what is at {} is what the daemon's provision sweep left",
+    match provision::reprovision(client, &cfg, &assignment.runner_id).await {
+        provision::Reprovisioned::Ran => {}
+        provision::Reprovisioned::NotReturned => eprintln!(
+            "note: core queued the provision for {} but returned none to run now, so this call cloned nothing — what is at {} is what the daemon's provision sweep left",
             assignment.slug,
             target.display()
-        );
+        ),
+        provision::Reprovisioned::Refused(why) => anyhow::bail!(
+            "core refused to queue the provision for {}, so nothing is queued and this call cloned nothing: {why}",
+            assignment.slug
+        ),
     }
 
     if !target.join(".git").exists() && !target.exists() {

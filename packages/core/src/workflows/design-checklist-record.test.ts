@@ -65,6 +65,15 @@ describe('the workflow approval checklist, read from the design', () => {
     expect(refusals[0]?.detail).toContain('REQ-3 links it, and none of their business criteria');
   });
 
+  it('names the route that traces a criterion to a step, with this design and the requirement linking it', () => {
+    const bare = doc('state-machine', [{ id: 'a', title: 'Draft', node: { type: 'STATE' } }]);
+    const [gap] = checklistRefusals(judge(facts(bare, { traced: [] })));
+    expect(gap?.question).toBe('criteria');
+    expect(gap?.detail).toContain(
+      'PUT /api/projects/:id/requirements/REQ-3/criteria/BC-n/steps { "workflow": "intake", "steps": [<step id>] }',
+    );
+  });
+
   it('names a linking requirement with traces but no accepted revision, never calling it untraced', () => {
     const e = judge(
       facts(drawn, {

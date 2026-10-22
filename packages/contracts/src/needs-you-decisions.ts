@@ -78,7 +78,8 @@ export const DECISION_ACTS = {
 	},
 	"requirement.agree": {
 		path: "/api/projects/:projectId/requirements/:key/agree",
-		reason: false,
+		// a sign-off that writes a baseline records why (REQ-4 BC-4, ADR 0007)
+		reason: true,
 	},
 	"requirement.accept": {
 		path: "/api/projects/:projectId/requirements/:key/accept",
@@ -90,7 +91,8 @@ export const DECISION_ACTS = {
 	},
 	"requirement.repin": {
 		path: "/api/projects/:projectId/requirements/:key/repin",
-		reason: false,
+		// a sign-off that writes a baseline records why (REQ-4 BC-4, ADR 0007)
+		reason: true,
 	},
 	"requirement.defer": {
 		path: "/api/projects/:projectId/requirements/:key/defer",
@@ -329,6 +331,18 @@ export const needsYouDecisionSchema = z
 				message: "at most one answer declines a decision",
 			});
 		}
+		// the button declares what its route needs: an act whose route refuses a press with no reason
+		// asks for one, or a one-click press could never succeed (REQ-41 BC-2, dev.281 re-pin)
+		d.answers.forEach((a, i) => {
+			const given = typeof a.body?.reason === "string" && a.body.reason.trim() !== "";
+			if (DECISION_ACTS[a.act].reason && !a.needsReason && !given) {
+				ctx.addIssue({
+					code: "custom",
+					path: ["answers", i, "needsReason"],
+					message: `a ${a.act} answer takes a reason: its route refuses a press without one, so it asks for one or carries it in its body`,
+				});
+			}
+		});
 		for (const a of declining.filter((x) => !x.needsReason)) {
 			ctx.addIssue({
 				code: "custom",

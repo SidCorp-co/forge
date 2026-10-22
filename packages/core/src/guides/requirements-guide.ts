@@ -1,3 +1,5 @@
+import { GOAL_LABEL_WORDS } from '@forge/contracts/requirement-goal';
+import { CRITERION_STEPS_ROUTE } from '@forge/contracts/workflow-health';
 import { guideRef } from './guide-ref.js';
 import type { CoreGuide } from './types.js';
 
@@ -7,7 +9,7 @@ export const REQUIREMENT_LIFECYCLE_GUIDE: CoreGuide = {
   title: 'Requirements: revisions, agreement, baselines and delivery',
   summary:
     'How a requirement (REQ-n) is written in immutable revisions with stable business criteria (BC-n), proposed, accepted and agreed by a holder of requirements.approve under a baseline pinning its designs, re-pinned, deferred, read as delivered, accepted or dropped; and why an issue planned against it reads changed-since-plan.',
-  version: 4,
+  version: 6,
   body: `## Requirements: revisions, agreement, baselines and delivery
 
 A requirement (REQ-n) is the business intent a set of issues delivers. Its text never changes in place:
@@ -78,7 +80,9 @@ it lives in numbered revisions, and each revision carries business criteria unde
    read from the head: the problem, who it is for, the value and how it is measured, the business
    criteria, no blocking open question, and a linked workflow design; its kind, out of scope and roadmap
    lane take a recommended answer when unstated. The goal answers the problem, value, measure and lane on
-   lines starting \`Problem:\`, \`Value:\`, \`Measured by:\` and \`Roadmap:\`. Each blocking gap is
+   lines starting \`Problem:\`, \`Value:\`, \`Measured by:\` and \`Roadmap:\`; a revision written in
+   Vietnamese (\`writtenLang: vi\`) may label them in its own language, ${(['problem', 'value', 'measured', 'roadmap'] as const).map((l) => `\`${GOAL_LABEL_WORDS.vi[l]}:\``).join(', ')},
+   and the English labels are read in either. Each blocking gap is
    refused \`CHECKLIST_INCOMPLETE\` on \`/answers/<question>\`, naming it. \`GET …/requirements/:req/checklist\`
    reads the ready and the acceptance checklists before you move: each one's form, how the head stands
    against it now (\`now\`: answers given or assumed with their source, gaps in plain words; null for
@@ -101,7 +105,9 @@ it lives in numbered revisions, and each revision carries business criteria unde
 
 ### Issues against a requirement
 - **link_issue** once the requirement is agreed or accepted (\`REQUIREMENT_NOT_AGREED\` before that). An
-  issue serves one requirement: linking one held elsewhere is \`REQUIREMENT_ISSUE_LINKED_ELSEWHERE\`.
+  issue serves one requirement: linking one held elsewhere is \`REQUIREMENT_ISSUE_LINKED_ELSEWHERE\`, naming
+  the requirement that holds it. **unlink_issue** \`DELETE /api/projects/:id/requirements/:req/issues/:issue\`
+  frees it there first.
 - An issue's plan records the revision and the baseline it was written against. A plan written while
   the requirement has no current revision is refused \`REQUIREMENT_REVISION_NOT_CURRENT\`.
 - \`GET /api/issues/:id\` then shows \`requirement.changedSincePlan\`: true when the head is now another
@@ -128,7 +134,11 @@ it lives in numbered revisions, and each revision carries business criteria unde
   \`REQUIREMENT_NO_DRAFT_ISSUES\`, \`REQUIREMENT_ISSUE_NOT_LINKED\` or \`REQUIREMENT_ISSUE_NOT_DRAFT\` at
   the named issue's place in \`issues\`, \`REQUIREMENT_DEFERRED\`, and \`REQUIREMENT_NOT_AGREED\` for a
   draft or dropped requirement.
-- **link_workflow** names a design the next agree or repin pins.
+- **link_workflow** \`POST …/requirements/:req/workflows { workflowId }\` names a design the next agree or repin pins.
+- **trace** \`${CRITERION_STEPS_ROUTE} { workflow, steps?, edges? }\` (the whole trace of that criterion on that design; empty lists clear it) ties one business criterion
+  to the steps and edges of a design the requirement links. It is the only way to trace: a revision
+  write and the link take no steps. The workflow approval checklist reads these traces, and refuses a
+  linked design none of whose criteria is traced.
 - **link_contract** \`{ contract: "<project>/<contract>" }\` names a contract this project publishes or
   consumes (\`REQUIREMENT_CONTRACT_UNKNOWN\` otherwise). The next agree or repin pins its current
   (newest approved) version; while none is approved nothing is pinned for it, and the standing waits
