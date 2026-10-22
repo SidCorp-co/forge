@@ -300,6 +300,21 @@ describe("removing every probe asks once, and says what goes", () => {
 		expect(screen.getByLabelText("Probe 2 URL")).toHaveValue("https://www.example.com/build-info");
 	});
 
+	it("says a refused removal inside the confirmation, which stays open to try again", () => {
+		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={declaring(TWO)} canEdit />);
+		fireEvent.click(screen.getByRole("button", { name: "Remove all probes" }));
+		fireEvent.click(within(dialog()).getByRole("button", { name: "Remove all probes" }));
+		act(() => {
+			const callbacks = updateBinding.mock.calls[0]?.[1];
+			callbacks?.onError?.(new Error("the binding is locked"));
+			callbacks?.onSettled?.();
+		});
+		expect(within(dialog()).getByTestId("panel-failure")).toHaveTextContent("The probes were not removed.");
+		expect(within(dialog()).getByTestId("panel-failure")).toHaveTextContent("the binding is locked");
+		fireEvent.click(within(dialog()).getByRole("button", { name: "Remove all probes" }));
+		expect(updateBinding).toHaveBeenCalledTimes(2);
+	});
+
 	it("sends one write for two presses of the confirmation", () => {
 		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={declaring(TWO)} canEdit />);
 		fireEvent.click(screen.getByRole("button", { name: "Remove all probes" }));

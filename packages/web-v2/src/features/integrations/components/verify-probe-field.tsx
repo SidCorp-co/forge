@@ -198,6 +198,7 @@ export function BindingVerifyProbeField({
 }) {
   const update = useUpdateProviderIntegration(projectId);
   const [failure, setFailure] = useState<string | null>(null);
+  const [removeFailure, setRemoveFailure] = useState<string | null>(null);
   const sectionRef = useRef<HTMLElement>(null);
   // One write per press: `isPending` reaches the buttons a render later than a second click can.
   const inFlight = useRef(false);
@@ -224,15 +225,17 @@ export function BindingVerifyProbeField({
   const ownDeclared = own !== undefined && own !== null;
   const present = effective !== undefined && effective !== null;
 
+  // A removal is refused inside the confirmation that asked for it, which stays open over the section.
   const write = (verify: Record<string, unknown> | null, then?: () => void) => {
     if (inFlight.current) return;
     inFlight.current = true;
     setFailure(null);
+    setRemoveFailure(null);
     update.mutate(
       { id: binding.id, body: { config: { [VERIFY_KEY]: verify } } },
       {
         onSuccess: () => then?.(),
-        onError: (err) => setFailure(formatApiError(err)),
+        onError: (err) => (verify === null ? setRemoveFailure : setFailure)(formatApiError(err)),
         onSettled: () => {
           inFlight.current = false;
         },
@@ -261,6 +264,8 @@ export function BindingVerifyProbeField({
           busy={update.isPending}
           onSave={(verify) => write(verify)}
           onRemoveAll={(then) => write(null, then)}
+          removeFailure={removeFailure}
+          onRemoveDismissed={() => setRemoveFailure(null)}
           onDirtyChange={onDirtyChange}
         />
       ) : (
@@ -296,6 +301,7 @@ function RemoveAllConfirm({
   otherDeclares,
   busy,
   open,
+  failure,
   onConfirm,
   onClose,
 }: {
@@ -304,6 +310,7 @@ function RemoveAllConfirm({
   otherDeclares: OtherProbes;
   busy: boolean;
   open: boolean;
+  failure: string | null;
   onConfirm: () => void;
   onClose: () => void;
 }) {
@@ -329,6 +336,7 @@ function RemoveAllConfirm({
       cancelLabel="Keep them"
       tone="danger"
       loading={busy}
+      failure={failure ? { title: "The probes were not removed.", description: failure } : null}
       onConfirm={onConfirm}
       onClose={onClose}
     />
@@ -345,6 +353,8 @@ function Editor({
   busy,
   onSave,
   onRemoveAll,
+  removeFailure,
+  onRemoveDismissed,
   onDirtyChange,
 }: {
   seed: ProbeRow[];
@@ -358,6 +368,8 @@ function Editor({
   busy: boolean;
   onSave: (verify: Record<string, unknown>) => void;
   onRemoveAll: (then: () => void) => void;
+  removeFailure: string | null;
+  onRemoveDismissed: () => void;
   onDirtyChange?: (dirty: boolean) => void;
 }) {
   const nextId = useRef(0);
@@ -501,8 +513,12 @@ function Editor({
         stableReads={ownStableReads}
         otherDeclares={otherDeclares}
         busy={busy}
+        failure={removeFailure}
         onConfirm={() => onRemoveAll(() => setConfirming(false))}
-        onClose={() => setConfirming(false)}
+        onClose={() => {
+          setConfirming(false);
+          onRemoveDismissed();
+        }}
       />
     </div>
   );
