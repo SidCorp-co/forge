@@ -53,25 +53,45 @@ describe("what a room's assistant did, in words", () => {
     };
     expect(toolWords(cli(["new", "-", "--title", "J93 judge test: invoice footer typo", "--category", "bug"], refused, "## Summary"))).toEqual({
       said: "Couldn't file “J93 judge test: invoice footer typo”",
-      refusal: "No heading naming what happened.",
+      refusal: "It has no What happened section; add it and send it again.",
     });
   });
 
   // ISS-1229 r35, judge-95: the card read the refusal's opening, "Hold — this files an issue the flow
   // cannot carry.", and the reason, four missing headings, was only under Technical details.
-  it("says why a filing was held, from what the refusal read, never its opening", () => {
+  it("says what a held filing lacks and what puts it right, never the refusal's opening", () => {
     const among = ", among `Summary`, `Where`, `Expected behavior`, `Actual behavior`, `Acceptance criteria`";
-    const reads = ["what happened", "why it happens", "the outcome", "the out-of-scope"].map(
-      (r) => `- read: no heading naming ${r}${among}\n  wants: a heading\n  clear: add it and re-send the same command`,
+    const gaps = [
+      ["what happened", "What happened"],
+      ["why it happens", "Why it happens"],
+      ["the outcome", "Outcome"],
+      ["the out-of-scope", "Out of scope"],
+    ].map(
+      ([read, heading]) =>
+        `- read: no heading naming ${read}${among}\n  wants: a heading\n  clear: add \`## ${heading}\` and re-send the same command`,
     );
     const refused = {
       exitCode: 1,
       stdout: "",
-      stderr: `Hold — this files an issue the flow cannot carry. Each line below is what was read, what the shape wants and the one command that clears it.\n\n${reads.join("\n")}`,
+      stderr: `Hold — this files an issue the flow cannot carry. Each line below is what was read, what the shape wants and the one command that clears it.\n\n${gaps.join("\n")}`,
     };
     const words = toolWords(cli(["new", "-", "--title", "J95 judge test: invoice footer typo", "--category", "bug"], refused));
-    expect(words.refusal).toBe("No heading naming what happened, why it happens, the outcome or the out-of-scope.");
+    expect(words.refusal).toBe(
+      "It has no What happened, Why it happens, Outcome or Out of scope section; add them and send it again.",
+    );
     expect(words.refusal).not.toMatch(/Hold|flow cannot carry|among/);
+  });
+
+  it("says what each gap read where a gap is not a missing section", () => {
+    const refused = {
+      exitCode: 1,
+      stdout: "",
+      stderr:
+        "Hold — this files an issue the flow cannot carry.\n\n- read: no heading naming what happened, among `Summary`\n  wants: a heading\n  clear: add `## What happened` and re-send the same command\n- read: the title `Fix`\n  wants: a sentence\n  clear: forge new with a title that says the behaviour",
+    };
+    expect(toolWords(cli(["new", "-", "--title", "Fix"], refused)).refusal).toBe(
+      "No heading naming what happened; the title Fix.",
+    );
   });
 
   it("says why a hold that lists no reads was held, from the paragraph after its instruction", () => {

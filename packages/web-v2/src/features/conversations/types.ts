@@ -151,6 +151,7 @@ export interface HandleCandidate {
   project: ConversationProject;
   /** Who in the room today would lose it if this agent joined — already named. */
   losesReaders: string[];
+  reachable: boolean;
 }
 
 export interface BeyondReach {

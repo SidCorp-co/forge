@@ -126,8 +126,8 @@ export function noAgentAnswers(
   });
 }
 
-/** What stands in a room's message box where no agent can answer (r35, judge-95). */
-export const NOTHING_CAN_BE_SENT = "No agent here can answer, so nothing can be sent here.";
+/** What a room's message box says where no agent can answer: a person may still post (r35, judge-95). */
+export const NO_AGENT_WILL_ANSWER = "No agent here will answer what you send.";
 
 /** An empty room's title and line where an invitation would be untrue, else null (ISS-1229 r34). */
 export function emptyRoomState(

@@ -108,3 +108,21 @@ describe("the projects a room can be started in", () => {
   });
 });
 
+// ISS-1229 r35, judge-95: an agent whose project role was taken away was offered to a new room unmarked.
+describe("an agent offered to a new room that lost its role on its project", () => {
+  it("says why it cannot answer and cannot be ticked", () => {
+    projects = [{ id: "p1", name: "Billing", slug: "billing", role: "member" }];
+    candidates = {
+      people: [],
+      handles: [
+        { userId: "u-ledger", handle: "ledger", project: { id: "p9", name: "Ledger", slug: "ledger" }, losesReaders: [], reachable: false },
+      ],
+      beyondReach: { named: [], unnamed: 0 },
+    };
+    pickTheProject();
+    expect(screen.getByText("This agent no longer holds a role on Ledger, so it cannot answer here.")).toBeTruthy();
+    const tick = screen.getByRole("checkbox", { name: /@ledger/ });
+    expect(tick.hasAttribute("disabled") || tick.getAttribute("aria-disabled") === "true").toBe(true);
+  });
+});
+

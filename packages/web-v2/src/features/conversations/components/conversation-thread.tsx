@@ -71,24 +71,54 @@ function AssistantTurn({
 }
 
 /**
- * A draft the reply screen refused, named and struck through, above the turn that replaced it.
+ * A draft the reply screen refused: one line above the turn that replaced it, and the draft itself only
+ * under its technical details, which a person opens or not (ISS-1229 r35, judge-95).
  */
 function WithdrawnDraft({ draft }: { draft: string }) {
+  const [open, setOpen] = useState(false);
   return (
-    <div
-      className="rounded-md border border-line bg-surface px-3 py-2"
-      data-testid="thread-reply-withdrawn"
-    >
+    <div className="border-l border-line py-1 pl-3" data-testid="thread-reply-withdrawn">
       <p className="fg-body-sm flex items-start gap-2 text-muted">
         <Icon name="alert" size={13} className="mt-0.5 flex-none" />
-        <span>
-          That draft did not pass the reply check, so it was withdrawn and answered again below.
-        </span>
+        <span>A reply was withdrawn by the reply check and answered again below.</span>
       </p>
-      <p className="fg-caption mt-1 whitespace-pre-wrap text-subtle line-through">{draft}</p>
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+        className="fg-caption mt-1 flex w-fit items-center gap-1 rounded pl-[21px] text-subtle hover:text-default"
+      >
+        <Icon name={open ? "chevronDown" : "chevronRight"} size={12} className="flex-none" />
+        Technical details
+      </button>
+      {open && (
+        <p className="fg-caption mt-1 ml-[21px] whitespace-pre-wrap border-l border-line-subtle pl-2 text-subtle">
+          {draft}
+        </p>
+      )}
     </div>
   );
 }
+
+/** Why a message was never answered where no agent of the room could answer it (r35, judge-95). */
+const LOST_ROLE = "agent-lost-role";
+const NO_ROLE_WHEN_SENT =
+  "No agent here held a role on this room's project when this was sent, so it was never answered.";
+
+function NoAnswer({ lines }: { lines: readonly string[] }) {
+  return (
+    <div data-testid="thread-no-answer" className="border-l border-line py-1 pl-3">
+      {lines.map((line) => (
+        <p key={line} className="fg-body-sm text-muted">
+          {line}
+        </p>
+      ))}
+    </div>
+  );
+}
+
+const causeOf = (detail: unknown) =>
+  detail && typeof detail === "object" ? (detail as { cause?: unknown }).cause : undefined;
 
 /** The clock a reader needs beside a turn: when, in their own locale. */
 function spokenAt(iso: string): { label: string; title: string } {
@@ -292,6 +322,7 @@ export function ConversationThread({
   withdrawn = {},
   atBottom,
   onRetry,
+  unanswered,
 }: {
   messages: ConversationMessage[];
   windows: ConversationWindow[];
@@ -308,6 +339,7 @@ export function ConversationThread({
    */
   atBottom?: boolean;
   onRetry?: (id: string) => void;
+  unanswered?: readonly string[] | null;
 }) {
   const entries = threadEntries(messages, windows, outbox, agentTurns, progress);
   const newestAgentId = entries.reduce<string | undefined>((id, entry) => {
@@ -331,6 +363,7 @@ export function ConversationThread({
         if (entry.kind === "outbox")
           return <Unsent key={entry.key} item={entry.item} onRetry={onRetry} />;
         if (entry.kind === "pending") {
+          if (unanswered) return <NoAnswer key={entry.key} lines={unanswered} />;
           return (
             <p key={entry.key} className="fg-caption text-subtle" data-testid="thread-pending">
               Nobody has answered this yet.
@@ -349,6 +382,8 @@ export function ConversationThread({
               {...(newestAgentId ? { newestAgentId } : {})}
             />
           );
+        if (entry.decision === "unreachable" && causeOf(entry.detail) === LOST_ROLE)
+          return <NoAnswer key={entry.key} lines={unanswered ?? [NO_ROLE_WHEN_SENT]} />;
         return (
           <div
             key={entry.key}

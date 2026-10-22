@@ -1,7 +1,7 @@
 "use client";
 
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ConfirmDialog,
   IconButton,
@@ -41,6 +41,30 @@ interface Selection {
   conversationId: string | null;
 }
 
+/**
+ * The room the address names, and whether it was opened from the archived list: a reload returns to the
+ * room that was open (ISS-1229 r35, judge-95).
+ */
+function addressedRoom(): { room: string | null; archived: boolean } {
+  if (typeof window === "undefined") return { room: null, archived: false };
+  const search = new URLSearchParams(window.location.search);
+  return { room: search.get("room"), archived: search.get("archived") === "1" };
+}
+
+/** Name the open room in the address, replacing this entry, so Back is not one step per room opened. */
+function addressRoom(room: string | null, archived: boolean) {
+  if (typeof window === "undefined") return;
+  const search = new URLSearchParams(window.location.search);
+  if (room) search.set("room", room);
+  else search.delete("room");
+  if (room && archived) search.set("archived", "1");
+  else search.delete("archived");
+  const qs = search.toString();
+  const next = `${window.location.pathname}${qs ? `?${qs}` : ""}`;
+  // `null` state: Next skips syncing its search params for a state carrying its own mark.
+  if (next !== `${window.location.pathname}${window.location.search}`) window.history.replaceState(null, "", next);
+}
+
 /** Zero-render WS room subscription, so a reply anywhere shows up live. */
 function RoomSub({ projectId }: { projectId: string }) {
   useRoom(projectRoom(projectId));
@@ -51,7 +75,8 @@ export function ConversationsScreen() {
   const projectsQ = useProjects();
   const { projects: orgProjects, projectIds: orgProjectIds } = useOrgScopedProjects();
   const projectIdList = useMemo(() => [...orgProjectIds].sort(), [orgProjectIds]);
-  const [showArchived, setShowArchived] = useState(false);
+  const addressed = useRef(addressedRoom());
+  const [showArchived, setShowArchived] = useState(addressed.current.archived);
   const { activeOrgId } = useActiveOrg();
   const conversations = useConversationsAcrossProjects(projectIdList, showArchived);
 
@@ -100,6 +125,22 @@ export function ConversationsScreen() {
     selectionKeyRef.current += 1;
     setSelection({ key: selectionKeyRef.current, projectId, conversationId });
   }, []);
+
+  // The room the address named opens once the list holds it; one the list never holds is let go.
+  useEffect(() => {
+    const room = addressed.current.room;
+    // Until the projects are read there is no list to find it in, only an empty one.
+    if (!room || projectsQ.isLoading || projectIdList.length === 0 || conversations.isLoading) return;
+    addressed.current = { room: null, archived: false };
+    const row = conversations.rows.find((r) => r.id === room);
+    if (row) openRow(row);
+  }, [projectsQ.isLoading, projectIdList.length, conversations.isLoading, conversations.rows, openRow]);
+
+  const openRoomId = selection?.conversationId ?? null;
+  useEffect(() => {
+    if (addressed.current.room) return;
+    addressRoom(openRoomId, showArchived);
+  }, [openRoomId, showArchived]);
 
   const sidebar = (inDrawer: boolean) => (
     <ConversationSidebar

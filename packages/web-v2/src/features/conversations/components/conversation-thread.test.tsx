@@ -222,3 +222,68 @@ describe("a tool call in a room's turn", () => {
     expect(thread.textContent).not.toMatch(/\bforge\b/);
   });
 });
+
+// ISS-1229 r35, judge-95: in a room whose only agent lost its role, the sent message sat over "Nobody has
+// answered this yet." as if an answer were coming, and the reason the agent cannot answer was gone.
+describe("a message no agent could answer", () => {
+  const lines = ["@ledger can't answer: it no longer holds a role on Ledger, and answers again once it does."];
+  const lostRole = { reason: "no agent of this project holds a role on it", cause: "agent-lost-role" };
+
+  it("names each agent that cannot answer and why under it", () => {
+    render(
+      <ConversationThread
+        messages={[said()]}
+        windows={[window({ decision: "unreachable", decisionDetail: lostRole })]}
+        unanswered={lines}
+      />,
+    );
+    expect(screen.getByTestId("thread-no-answer")).toHaveTextContent(lines[0] as string);
+    expect(screen.queryByText(/could not be reached/)).toBeNull();
+  });
+
+  it("never says nobody has answered it yet while no agent can answer", () => {
+    render(
+      <ConversationThread
+        messages={[said()]}
+        windows={[window({ closedAt: null, decision: null })]}
+        unanswered={lines}
+      />,
+    );
+    expect(screen.queryByText("Nobody has answered this yet.")).toBeNull();
+    expect(screen.getByTestId("thread-no-answer")).toHaveTextContent(lines[0] as string);
+  });
+
+  it("says why plainly once an agent can answer again", () => {
+    render(
+      <ConversationThread
+        messages={[said()]}
+        windows={[window({ decision: "unreachable", decisionDetail: lostRole })]}
+      />,
+    );
+    expect(screen.getByTestId("thread-no-answer")).toHaveTextContent(
+      "No agent here held a role on this room's project when this was sent, so it was never answered.",
+    );
+  });
+});
+
+// ISS-1229 r35, judge-95: a withdrawn draft was shown to the person, struck through, under the line
+// saying it was withdrawn.
+describe("a reply the reply check withdrew", () => {
+  it("is said once, plainly, its text only under technical details", () => {
+    render(
+      <ConversationThread
+        messages={[said({ id: "a1", role: "assistant", authorLabel: null, content: "The answer" })]}
+        windows={[]}
+        withdrawn={{ a1: "the withdrawn draft" }}
+      />,
+    );
+    expect(screen.getByTestId("thread-reply-withdrawn")).toHaveTextContent(
+      "A reply was withdrawn by the reply check and answered again below.",
+    );
+    expect(screen.queryByText("the withdrawn draft")).toBeNull();
+    const toggle = screen.getByRole("button", { name: /Technical details/ });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(toggle);
+    expect(screen.getByText("the withdrawn draft")).toBeInTheDocument();
+  });
+});

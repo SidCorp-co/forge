@@ -225,25 +225,32 @@ const firstSentence = (paragraph: string) => {
 
 const MISSING_HEADING = "no heading naming ";
 
+const listed = (items: readonly string[], last: string) =>
+  items.length === 1 ? (items[0] as string) : `${items.slice(0, -1).join(", ")} ${last} ${items.at(-1)}`;
+
 /**
- * What a refusal that lists what it read says was wrong: each read, without the headings it was read
- * among, the missing headings told as one list (ISS-1229 r35, judge-95).
+ * What a refusal that lists its gaps (the CLI's `- read:` and `clear:` lines) says was wrong and what
+ * puts it right: where every gap is a missing section, the sections it lacks and that adding them is
+ * the fix; else what each gap read, without the headings it was read among (ISS-1229 r35, judge-95).
  */
-function readsReason(text: string): string | null {
+function gapsReason(text: string): string | null {
   const reads = [...text.matchAll(/^\s*- read: (.+)$/gm)].map((m) => (m[1] as string).replace(/, among .*$/, "").trim());
   if (reads.length === 0) return null;
+  const sections = [...text.matchAll(/^\s*clear: add `## ([^`]+)`/gm)].map((m) => m[1] as string);
+  if (sections.length === reads.length) {
+    const them = sections.length === 1 ? "it" : "them";
+    return `It has no ${listed(sections, "or")} section; add ${them} and send it again.`;
+  }
   const missing = reads.filter((r) => r.startsWith(MISSING_HEADING)).map((r) => r.slice(MISSING_HEADING.length));
   const rest = reads.filter((r) => !r.startsWith(MISSING_HEADING));
-  const listed =
-    missing.length === 0
-      ? []
-      : [`${MISSING_HEADING}${missing.length === 1 ? missing[0] : `${missing.slice(0, -1).join(", ")} or ${missing.at(-1)}`}`];
-  const said = [...listed, ...rest].join("; ").replace(/`/g, "");
+  const said = [...(missing.length ? [`${MISSING_HEADING}${listed(missing, "or")}`] : []), ...rest]
+    .join("; ")
+    .replace(/`/g, "");
   return `${said.charAt(0).toUpperCase()}${said.slice(1)}${/[.!?]$/.test(said) ? "" : "."}`;
 }
 
 /**
- * The refusal's reason, one line: what it read, where it lists that; else the first sentence after an
+ * The refusal's reason, one line: what its gaps say, where it lists them; else the first sentence after an
  * opening that only says it held the call ("Hold — …", r35); else its first sentence.
  */
 export function refusalReason(result: unknown): string {
@@ -253,7 +260,7 @@ export function refusalReason(result: unknown): string {
     const r = result as { stderr?: unknown; message?: unknown; stdout?: unknown };
     text = [r.stderr, r.message, r.stdout].find((v): v is string => typeof v === "string" && v.trim() !== "") ?? "";
   }
-  const read = readsReason(text);
+  const read = gapsReason(text);
   if (read) return shortened(read);
   const paragraphs = text.trim().split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
   if (paragraphs.length === 0) return "It gave no reason.";

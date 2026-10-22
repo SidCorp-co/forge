@@ -661,10 +661,11 @@ describe("an empty room", () => {
   });
 });
 
-// r35, judge-95: a room whose only agent lost its role still offered its message box; the owner's first
-// message was taken in, answered 500, and the explanation left the screen once the room held a message.
-// A viewer of one of a two-project room's projects was told to take an agent out, which they cannot.
-describe("a room nothing can be sent to", () => {
+// r35, judge-95: in a room whose only agent lost its role the owner's first message answered 500, and the
+// explanation left the screen once the room held a message. A person who may post still may; the box and
+// the thread say who cannot answer. A viewer of one of a two-project room's projects was told to take an
+// agent out, which they cannot.
+describe("a room no agent can answer, and a room its reader cannot post in", () => {
   const desk = { id: "p1", name: "Desk", slug: "desk" };
   const ops = { id: "p2", name: "Ops", slug: "ops" };
   const agent = (over: Partial<ConversationDetail["participants"][number]> = {}) => ({
@@ -689,27 +690,29 @@ describe("a room nothing can be sent to", () => {
   };
   const footer = () => screen.getByTestId("composer-no-answer");
 
-  it("offers no message box where no agent can answer, and says so in its place", () => {
+  it("keeps the message box where no agent can answer, saying above it that none will and why", () => {
     room = detail({ participants: [agent({ reachable: false })], scopeProjects: [desk], scope: ["p1"] });
     open();
-    expect(screen.queryByLabelText("Message")).not.toBeInTheDocument();
-    expect(within(footer()).getByText("No agent here can answer, so nothing can be sent here.")).toBeInTheDocument();
+    expect(screen.getByLabelText("Message")).toBeInTheDocument();
+    expect(within(footer()).getByText("No agent here will answer what you send.")).toBeInTheDocument();
+    expect(within(footer()).getByText(/@desk can't answer: it no longer holds a role on Desk, and answers again once it does\./)).toBeInTheDocument();
   });
 
-  it("names each agent and why in the box's place once the room holds messages", () => {
+  it("says under a message nobody answered which agent cannot answer and why, never that nobody has yet", () => {
     room = detail({
       participants: [agent({ reachable: false })],
       scopeProjects: [desk],
       scope: ["p1"],
       messages: [said],
+      windows: [{ id: "w1", firstSeq: 0, lastSeq: 0, closedAt: null, decision: null, decisionDetail: null }],
     });
     open();
-    expect(screen.queryByLabelText("Message")).not.toBeInTheDocument();
-    expect(within(footer()).getByText("No agent here can answer, so nothing can be sent here.")).toBeInTheDocument();
-    expect(within(footer()).getByText(/@desk can't answer: it no longer holds a role on Desk, and answers again once it does\./)).toBeInTheDocument();
+    expect(screen.queryByText("Nobody has answered this yet.")).not.toBeInTheDocument();
+    expect(within(screen.getByTestId("thread-no-answer")).getByText(/@desk can't answer/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Message")).toBeInTheDocument();
   });
 
-  it("keeps the message box where one agent can still answer", () => {
+  it("keeps the message box without that line where one agent can still answer", () => {
     room = detail({ participants: [agent()], scopeProjects: [desk], scope: ["p1"], messages: [said] });
     open();
     expect(screen.getByLabelText("Message")).toBeInTheDocument();

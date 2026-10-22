@@ -44,7 +44,7 @@ import {
   useWithdrawnDrafts,
 } from "../hooks";
 import { useComposingMark, useMessageBoxFocus } from "../composing";
-import { composerRefusal, emptyRoomState, NOTHING_CAN_BE_SENT, noAgentAnswers } from "../membership";
+import { composerRefusal, emptyRoomState, NO_AGENT_WILL_ANSWER, noAgentAnswers } from "../membership";
 import { isRoomGone, type KeptCopy, ROOM_DELETED_TITLE, roomDeletedLine, unsentLine } from "../room-gone";
 import { type ConversationMode, type OutboxMessage, conversationTitle } from "../types";
 import { ConversationModeControl, modePlaceholder } from "./mode-control";
@@ -242,8 +242,8 @@ export function ConversationChat({
     draftOfferQ.data ?? { available: false, reason: "checking whether a box is free" };
 
   const refusal = roomQ.data ? composerRefusal(roomQ.data, { canPost: canWrite }) : null;
-  // A room no agent can answer, or one the reader cannot post in, says so rather than inviting (r34),
-  // and offers no message box nobody would answer, whether or not it holds messages (r35, judge-95).
+  // A room no agent can answer, or one the reader cannot post in, says so rather than inviting (r34); a
+  // person who may post still may, and the box and the thread say who cannot answer and why (r35).
   const empty = emptyRoomState(roomQ.data, { canPost: canWrite, projectName: viewedOnly?.name ?? project?.name });
   const unanswered = roomQ.data ? noAgentAnswers(roomQ.data) : null;
 
@@ -439,6 +439,7 @@ export function ConversationChat({
               withdrawn={withdrawn}
               agentTurns={agentTurns}
               onRetry={retry}
+              unanswered={unanswered}
             />
           )}
           {stage && (
@@ -458,25 +459,25 @@ export function ConversationChat({
           <p className="fg-body-sm text-fg">{refusal.reason}</p>
           {refusal.wayOut && <p className="fg-caption mt-0.5 text-muted">{refusal.wayOut}</p>}
         </div>
-      ) : unanswered ? (
-        <div className="flex-none border-t border-line bg-surface px-4 py-3" data-testid="composer-no-answer">
-          <p className="fg-body-sm text-fg">{NOTHING_CAN_BE_SENT}</p>
-          {messages.length > 0 &&
-            unanswered.map((line) => (
+      ) : (
+        <div className="flex-none" ref={box.ref}>
+        {unanswered && (
+          <div className="border-t border-line bg-surface px-4 py-2" data-testid="composer-no-answer">
+            <p className="fg-body-sm text-fg">{NO_AGENT_WILL_ANSWER}</p>
+            {unanswered.map((line) => (
               <p key={line} className="fg-caption mt-0.5 text-muted">
                 {line}
               </p>
             ))}
-        </div>
-      ) : (
-        <div className="flex-none" ref={box.ref}>
+          </div>
+        )}
         <ChatComposer
           onSend={handleSend}
           busy={busy}
           queueWhileBusy
           sticky={false}
           attachments={CONVERSATION_ATTACHMENTS}
-          placeholder={modePlaceholder(settledMode ?? pick)}
+          placeholder={unanswered ? "Message the room — no agent here will answer" : modePlaceholder(settledMode ?? pick)}
           onDraftChange={onDraftChange}
           {...(progress && resolvedId
             ? { onStop: () => stop.mutate(resolvedId), stopping: stop.isPending }

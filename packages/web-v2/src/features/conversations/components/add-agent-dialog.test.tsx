@@ -12,11 +12,12 @@ vi.mock("next/link", () => ({
   default: ({ href, children }: { href: string; children: React.ReactNode }) => <a href={href}>{children}</a>,
 }));
 
-const candidate = (handle: string, projectId: string, name: string) => ({
+const candidate = (handle: string, projectId: string, name: string, reachable = true) => ({
   userId: `u-${handle}`,
   handle,
   project: { id: projectId, name, slug: handle },
   losesReaders: [],
+  reachable,
 });
 const refetch = vi.fn();
 let handles = [candidate("retired", "p-gone", "Retired"), candidate("desk", "p1", "Desk")];
@@ -142,3 +143,19 @@ describe("adding the agent of a project that was deleted", () => {
     );
   });
 });
+
+// ISS-1229 r35, judge-95: the owner was offered @j95-ledger and @j95-ops, two agents that had lost their
+// project roles, with nothing saying either could not answer once added.
+describe("an agent that lost its role on its project", () => {
+  it("is offered with the reason it cannot answer, in its room row's words, and cannot be picked", () => {
+    handles = [candidate("ledger", "p-ledger", "Ledger", false), candidate("desk", "p1", "Desk")];
+    render(<AddAgentDialog conversationId="c1" room={{ shape: "group", scopeProjects: [] }} open onClose={() => {}} />);
+    const row = screen.getByRole("button", { name: /@ledger/ });
+    expect((row as HTMLButtonElement).disabled).toBe(true);
+    expect(row.textContent).toContain("This agent no longer holds a role on Ledger, so it cannot answer here.");
+    fireEvent.click(row);
+    expect(screen.queryByRole("button", { name: "Add @ledger" })).toBeNull();
+    expect((screen.getByRole("button", { name: /@desk/ }) as HTMLButtonElement).disabled).toBe(false);
+  });
+});
+

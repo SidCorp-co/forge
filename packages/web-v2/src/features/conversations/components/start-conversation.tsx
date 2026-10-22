@@ -18,7 +18,7 @@ import { Button, Checkbox, ErrorState, Icon, Select, Spinner } from "@/design";
 import { useOrgScopedProjects } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
 import { useOpenConversation, useProjectCandidates } from "../hooks";
-import { roomOpeningClaims } from "../membership";
+import { cannotAnswerReason, roomOpeningClaims } from "../membership";
 import type { ConversationProject, HandleCandidate } from "../types";
 
 /** One agent chosen for a room that does not exist yet. */
@@ -204,18 +204,23 @@ function Extras({
           <p className="fg-overline text-subtle">Agents — what the room can see</p>
           <div className="mt-1 flex flex-col gap-1">
             {data.handles.map((h) => (
-              <Checkbox
-                key={`${h.userId ?? "unminted"}:${h.project.id}`}
-                checked={handles.some((x) => sameHandle(x, { userId: h.userId, projectId: h.project.id }))}
-                onChange={() => onToggleHandle({ userId: h.userId, projectId: h.project.id })}
-                label={
-                  <span className="flex items-center gap-1.5">
-                    <Icon name="agent" size={13} className="text-[color:var(--accent-text)]" />
-                    <span className="font-mono">@{h.handle}</span>
-                    <span className="fg-caption text-muted">{h.project.name}</span>
-                  </span>
-                }
-              />
+              <div key={`${h.userId ?? "unminted"}:${h.project.id}`}>
+                <Checkbox
+                  checked={handles.some((x) => sameHandle(x, { userId: h.userId, projectId: h.project.id }))}
+                  disabled={!h.reachable}
+                  onChange={() => onToggleHandle({ userId: h.userId, projectId: h.project.id })}
+                  label={
+                    <span className="flex items-center gap-1.5">
+                      <Icon name="agent" size={13} className="text-[color:var(--accent-text)]" />
+                      <span className="font-mono">@{h.handle}</span>
+                      <span className="fg-caption text-muted">{h.project.name}</span>
+                    </span>
+                  }
+                />
+                {!h.reachable && (
+                  <p className="fg-caption ml-[28px] text-muted">{cannotAnswerReason(h.project.name)}</p>
+                )}
+              </div>
             ))}
           </div>
         </div>
