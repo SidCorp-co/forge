@@ -89,10 +89,10 @@ describe('a reply saying a key is not on the project', () => {
     'ISS-$ is not on this project\nif the import failed.',
     'ISS-$ is not on this project; only if the import failed.',
   ])('reads %s as no claim that the key is absent', (shape) => {
-    expect(keyMentions(shape.replace('$', '1'), ['ISS'])[0]?.absent).toBe(false);
-    expect(room(shape.replace('$', '1')).ok).toBe(true);
-    expect(room(shape.replace('$', '999')).ok).toBe(false);
-    expect(ISSUE_REFERENCES_EXIST.check(shape.replace('$', '999'), facts)).toHaveLength(1);
+    expect(keyMentions(shape.replaceAll('$', '1'), ['ISS'])[0]?.absent).toBe(false);
+    expect(room(shape.replaceAll('$', '1')).ok).toBe(true);
+    expect(room(shape.replaceAll('$', '999')).ok).toBe(false);
+    expect(ISSUE_REFERENCES_EXIST.check(shape.replaceAll('$', '999'), facts)).toHaveLength(1);
   });
 
   it('reads a negated absence as no claim that the key is absent', () => {
@@ -113,10 +113,10 @@ describe('a reply saying a key is not on the project', () => {
     ]) {
       expect(keyMentions(asked, ['ISS'])[0]?.absent).toBe(false);
       expect(room(asked).ok).toBe(true);
-      expect(room(asked.replace('ISS-1', 'ISS-999')).ok).toBe(false);
-      expect(ISSUE_REFERENCES_EXIST.check(asked.replace('ISS-1', 'ISS-999'), facts)).toHaveLength(
-        1,
-      );
+      expect(room(asked.replaceAll('ISS-1', 'ISS-999')).ok).toBe(false);
+      expect(
+        ISSUE_REFERENCES_EXIST.check(asked.replaceAll('ISS-1', 'ISS-999'), facts),
+      ).toHaveLength(1);
     }
     expect(room('If ISS-1 is not on this project, I can file it.').ok).toBe(true);
     expect(room('ISS-1 is not on this project if the import failed.').ok).toBe(true);
