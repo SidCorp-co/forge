@@ -6,6 +6,7 @@
 // @direct-test-of packages/core/src/assistant/tools/decide-tool.ts
 // @direct-test-of packages/core/src/assistant/item-state.ts
 // @direct-test-of packages/core/src/assistant/decision-outcome-routes.ts
+// @direct-test-of packages/core/src/assistant/decision-outcome.ts
 
 import { STEWARD_DECISION_OPTION_IDS as IDS } from '@forge/contracts/steward';
 import { eq, sql } from 'drizzle-orm';

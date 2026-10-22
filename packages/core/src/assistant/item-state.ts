@@ -55,6 +55,9 @@ export function itemKindOf(key: string): ItemKind | null {
   return /^[A-Z][A-Z0-9]*-\d+$/i.test(key) ? 'issue' : null;
 }
 
+/** An item read back, or null where its key names nothing in the project. */
+export type ChatItemStateRead = ChatItemState | null;
+
 /** The item's status now, and its last recorded move's mover and time; null where the key names nothing. */
 export async function itemStateOf(
   projectId: string,
