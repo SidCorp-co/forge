@@ -322,6 +322,26 @@ describe('entering the credential again', () => {
     )) as unknown as Array<{ secrets_enc: Buffer }>;
     expect(row && Buffer.from(row.secrets_enc).equals(sealed)).toBe(true);
   });
+
+  it('names the binding when part of a credential arrives through the binding PATCH', async () => {
+    const { connectionId, bindingId, sealed } = await plant('rocketchat', {
+      config: { serverUrl: 'http://127.0.0.1:9' },
+    });
+    const res = await app.request(`/api/projects/${projectId}/integrations/${bindingId}`, {
+      method: 'PATCH',
+      headers: await headers(),
+      body: JSON.stringify({ secrets: { userId: 'made-up-bot-user' } }),
+    });
+    expect(res.status).toBe(409);
+    const refusal = (await res.json()) as Refusal;
+    expect(refusal.code).toBe('CREDENTIAL_UNREADABLE');
+    expectNamed(refusal.message, 'Rocket.Chat', [connectionId, bindingId]);
+    expect(refusal.details).toMatchObject({ connectionId, bindingId, provider: 'rocketchat' });
+    const [row] = (await harness.db.execute(
+      sql`SELECT secrets_enc FROM integration_connections WHERE id = ${connectionId}`,
+    )) as unknown as Array<{ secrets_enc: Buffer }>;
+    expect(row && Buffer.from(row.secrets_enc).equals(sealed)).toBe(true);
+  });
 });
 
 describe('a reader that is not an HTTP door', () => {

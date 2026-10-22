@@ -266,6 +266,7 @@ integrationsRoutes.patch(
         provider: binding.provider,
         rawSecrets: patch.secrets,
         connection,
+        bindingId: binding.id,
         // Historical order on this path: the vault guard is skipped for a
         // config-only PATCH (no credential fields).
         vaultGuardTiming: 'on-secret-input',

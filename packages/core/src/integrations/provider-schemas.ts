@@ -244,11 +244,12 @@ async function storedSecretsOrWhole(
   decl: IntegrationDeclaration,
   connection: IntegrationConnectionRow,
   incoming: Record<string, unknown>,
+  bindingId: string | undefined,
 ): Promise<Record<string, unknown> | null | 'replaced'> {
   if (!connection.secretsEnc) return null;
   const { decryptConnectionSecrets } = await import('./store.js');
   try {
-    return decryptConnectionSecrets(connection);
+    return decryptConnectionSecrets(connection, bindingId);
   } catch (err) {
     if (!(err instanceof CredentialUnreadable)) throw err;
     if (decl.schemas.secrets.safeParse(incoming).success) return 'replaced';
@@ -260,6 +261,8 @@ export async function applySecretsPatch(opts: {
   provider: string;
   rawSecrets: Record<string, unknown>;
   connection: IntegrationConnectionRow;
+  /** The binding the patch arrived through, named in a refusal; absent at the connection's own door. */
+  bindingId?: string;
   vaultGuardTiming: 'before-parse' | 'on-secret-input';
 }): Promise<Record<string, unknown> | undefined> {
   const decl = getIntegration(opts.provider);
@@ -286,7 +289,12 @@ export async function applySecretsPatch(opts: {
   const hasSecretInput = typeof incoming[primaryField] === 'string' || secondaryFields.length > 0;
   if (!hasSecretInput) return undefined;
   if (opts.vaultGuardTiming === 'on-secret-input') assertVaultConfigured();
-  const currentSecrets = await storedSecretsOrWhole(decl, opts.connection, incoming);
+  const currentSecrets = await storedSecretsOrWhole(
+    decl,
+    opts.connection,
+    incoming,
+    opts.bindingId,
+  );
   if (currentSecrets === 'replaced') return incoming;
   const merged = mergeRotatedSecrets(decl, currentSecrets, incoming);
   if (merged) {
