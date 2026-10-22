@@ -340,10 +340,14 @@ const GATEWAY_ACTS = STEWARD_ACTS.filter((a) => STEWARD_ACT_RUNTIME[a] === 'gate
 export async function spentSince(
   projectId: string,
   dayStart: Date,
-  opts: { exceptRunId?: string; tx?: Tx; sweepOnly?: boolean } = {},
+  opts: { exceptRunId?: string; tx?: Tx; sweepOnly?: boolean; followthrough?: 'except' } = {},
 ): Promise<{ gatewayTurns: number; runnerJobs: number }> {
   const standing = sql.raw(`ARRAY[${STANDING_TRIGGERS.map((t) => `'${t}'`).join(', ')}]::text[]`);
   const only = opts.sweepOnly ? sql`AND r.trigger = ANY(${standing})` : sql``;
+  const others =
+    opts.followthrough === 'except'
+      ? sql`AND NOT (r.acts_to_run && ARRAY['release_followthrough']::text[])`
+      : sql``;
   const gateway = sql.raw(`ARRAY[${GATEWAY_ACTS.map((a) => `'${a}'`).join(', ')}]::text[]`);
   const runner = sql.raw(`ARRAY[${RUNNER_ACTS.map((a) => `'${a}'`).join(', ')}]::text[]`);
   const except = opts.exceptRunId ?? '00000000-0000-0000-0000-000000000000';
@@ -357,7 +361,7 @@ export async function spentSince(
              + count(*) FILTER (WHERE r.state = 'running' AND r.id <> ${except}::uuid
                  AND r.job_id IS NULL AND r.acts_to_run && ${runner})::int AS jobs
         FROM steward_runs r
-       WHERE r.project_id = ${projectId} AND r.started_at >= ${sqlTimestamp(dayStart)} ${only}`),
+       WHERE r.project_id = ${projectId} AND r.started_at >= ${sqlTimestamp(dayStart)} ${only} ${others}`),
   );
   return { gatewayTurns: row?.turns ?? 0, runnerJobs: row?.jobs ?? 0 };
 }

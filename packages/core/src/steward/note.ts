@@ -101,3 +101,55 @@ export async function budgetNote(run: RunRow, standing: ItemStanding | null): Pr
     await credential.revoke();
   }
 }
+
+/**
+ * What a shipped issue is told when the judge its release owes cannot run today: a closed issue has no
+ * open standing to hold a note, so the steward says it on the issue itself, naming the cap, what spent
+ * it and when the judge runs. dev.287's three judges were skipped and left nothing anywhere.
+ */
+export function judgeOwedBody(
+  run: RunRow,
+  until: Date,
+  runnerJobs: number,
+): { intent: 'note'; body: string } {
+  return {
+    intent: 'note',
+    body: [
+      `The judge this release owes ${run.subjectKey} has not run yet: the steward's daily budget for this project is spent (${runnerJobs} runner jobs a UTC day, every one used), so the release follow-through waits for the next day's budget.`,
+      `It runs after ${until.toISOString()}. Until then this issue's criteria stand unjudged on the shipped build.`,
+    ].join('\n\n'),
+  };
+}
+
+/** Say on the issue that its post-release judge waits for the next day's budget. */
+export async function judgeOwedNote(run: RunRow, until: Date, runnerJobs: number): Promise<void> {
+  const credential = await mintStewardCredential({
+    projectId: run.projectId,
+    stewardId: await stewardAccountOf(run.projectId),
+    acts: ['note'],
+    ttlMs: STEWARD_TURN_TTL_MS,
+  });
+  try {
+    const answer = await callDoor(
+      {
+        method: 'POST',
+        path: `/api/issues/${run.subjectId}/comments`,
+        body: judgeOwedBody(run, until, runnerJobs),
+      },
+      bearer(credential.token),
+    );
+    if (!answer.ok) {
+      logger.warn(
+        {
+          runId: run.id,
+          subject: run.subjectKey,
+          status: answer.status,
+          body: answer.text.slice(0, 300),
+        },
+        'steward: the judge-owed comment was refused; the run waits queued for the next day',
+      );
+    }
+  } finally {
+    await credential.revoke();
+  }
+}

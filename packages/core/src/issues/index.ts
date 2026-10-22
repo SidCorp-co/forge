@@ -13,6 +13,7 @@ export { type Admission, admitBorn } from './admission.js';
 export { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
 export {
   applyStatusTransition,
+  reopenAsItsRelease,
   transitionIssueStatus,
 } from './apply-transition.js';
 export { issueArchiveSide } from './archive.js';
