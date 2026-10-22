@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.287] - 2026-10-22
+
+Requirements read delivered without production, landings check every verdict, Approvals decisions read whole
+
+### Fixed
+
+- **An Approvals decision reads whole on every screen.** Every answer is pressable above the phone's tab bar, said once with its effect; the peek shows its requirement, plan and criteria; merges only join same-subject items; counts name their scope.
+- **A landing refuses a verdict that names no commit.** On a project with no production environment, the landing record now refuses a runtime or other non-commit verdict by name, as requirement coverage already did, even where verdicts are not owed.
+
 ## [0.4.0-dev.285] - 2026-10-22
 
 Projects without production close finished work and deliver their requirements

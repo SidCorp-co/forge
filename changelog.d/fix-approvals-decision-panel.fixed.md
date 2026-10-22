@@ -1,1 +1,0 @@
-**An Approvals decision reads whole on every screen.** Every answer is pressable above the phone's tab bar, said once with its effect; the peek shows its requirement, plan and criteria; merges only join same-subject items; counts name their scope.
