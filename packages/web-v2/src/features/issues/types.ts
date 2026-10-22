@@ -1,4 +1,4 @@
-import type { DesignStatus } from "@forge/contracts/design-status";
+import type { DesignRevisionState, DesignStatus } from "@forge/contracts/design-status";
 import type { IssueMove } from "@forge/contracts/issue-machine";
 
 import type { BodyNode } from "@forge/contracts/body-components";
@@ -297,8 +297,17 @@ export interface IssueDetail extends IssueRow {
   /** The workflow this issue builds (`workflows/build-gate.ts:buildsWorkflowOf`); null where none. */
   buildsWorkflow?: { workflowId: string; flow: string; title: string; designStatus: DesignStatus | null; dispatchable: boolean } | null;
   /** Every workflow a revision was drawn under this issue, each at the latest revision drawn here
-   *  (`workflows/design-issue.ts:proposesWorkflowsOf`); empty where none. */
-  proposesWorkflows?: Array<{ workflowId: string; flow: string; title: string; designStatus: DesignStatus | null; revision: number }>;
+   *  (`workflows/design-issue.ts:proposesWorkflowsOf`); empty where none. `state` is that revision's
+   *  own, from its decision; `designStatus` is the flow's head, which a later revision may have moved. */
+  proposesWorkflows?: Array<{
+    workflowId: string;
+    flow: string;
+    title: string;
+    designStatus: DesignStatus | null;
+    revision: number;
+    decision: "approve" | "return" | null;
+    state: DesignRevisionState;
+  }>;
 }
 
 export * from "./pipeline-health";

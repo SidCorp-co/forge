@@ -85,7 +85,7 @@ describe("the rail's workflow, release and lease rows (REQ-11 BC-3)", () => {
 
   it("names a proposed revision when it builds none", () => {
     rail(row.standing, {
-      proposesWorkflows: [{ workflowId: "w1", flow: "issue-delivery", title: "Issue to release", designStatus: "proposed", revision: 21 }],
+      proposesWorkflows: [{ workflowId: "w1", flow: "issue-delivery", title: "Issue to release", designStatus: "proposed", revision: 21, decision: null, state: "proposed" }],
     });
     expect(screen.getByText("Proposes")).toBeInTheDocument();
     expect(screen.getByTestId("rail-workflow")).toHaveTextContent("r21");
@@ -94,8 +94,8 @@ describe("the rail's workflow, release and lease rows (REQ-11 BC-3)", () => {
   it("names every design the issue proposes, not only the last one (FB-140)", () => {
     rail(row.standing, {
       proposesWorkflows: [
-        { workflowId: "w2", flow: "intake", title: "Intake", designStatus: "proposed", revision: 3 },
-        { workflowId: "w1", flow: "issue-delivery", title: "Issue to release", designStatus: "approved", revision: 21 },
+        { workflowId: "w2", flow: "intake", title: "Intake", designStatus: "proposed", revision: 3, decision: null, state: "proposed" },
+        { workflowId: "w1", flow: "issue-delivery", title: "Issue to release", designStatus: "approved", revision: 21, decision: "approve", state: "current" },
       ],
     });
     const rows = screen.getAllByTestId("rail-workflow");
@@ -103,6 +103,32 @@ describe("the rail's workflow, release and lease rows (REQ-11 BC-3)", () => {
     expect(rows[0]).toHaveTextContent("r3");
     expect(rows[1]).toHaveTextContent("r21");
     expect(screen.getByRole("link", { name: "Intake" })).toHaveAttribute("href", "/projects/forge/workflows/intake");
+  });
+
+  // K36 on dev.273: ISS-498's rail read "r21 · Approved" although r21 was returned, because the row
+  // drew the flow's head status; each row reads the state of the revision drawn under this issue
+  it("reads each proposed revision's own state, never the flow's head status (ISS-569)", () => {
+    rail(row.standing, {
+      proposesWorkflows: [
+        { workflowId: "w1", flow: "issue-delivery", title: "Issue to release", designStatus: "approved", revision: 21, decision: "return", state: "returned" },
+        { workflowId: "w2", flow: "intake", title: "Intake", designStatus: "proposed", revision: 3, decision: null, state: "superseded" },
+        { workflowId: "w3", flow: "release", title: "Release", designStatus: "approved", revision: 7, decision: "approve", state: "current" },
+        { workflowId: "w4", flow: "feedback", title: "Feedback", designStatus: "proposed", revision: 2, decision: null, state: "proposed" },
+      ],
+    });
+    const rows = screen.getAllByTestId("rail-workflow");
+    expect(rows[0]).toHaveTextContent("r21 · Returned");
+    expect(rows[0]).not.toHaveTextContent("Approved");
+    expect(rows[1]).toHaveTextContent("r3 · Superseded");
+    expect(rows[2]).toHaveTextContent("r7 · Approved");
+    expect(rows[3]).toHaveTextContent("r2 · Awaiting approval");
+  });
+
+  it("reads the built workflow's head status, which is what dispatch reads", () => {
+    rail(row.standing, {
+      buildsWorkflow: { workflowId: "w1", flow: "issue-delivery", title: "Issue to release", designStatus: "returned", dispatchable: false },
+    });
+    expect(screen.getByTestId("rail-workflow")).toHaveTextContent("Returned");
   });
 
   it("draws no workflow row where the issue builds and proposes nothing", () => {

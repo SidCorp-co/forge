@@ -4,7 +4,6 @@
 // release that shipped it and the lease a run holds. Each is one short row, read from the issue and
 // its standing; a row with nothing to say is left out.
 
-import type { DesignStatus } from "@forge/contracts/design-status";
 import type { IssueStanding } from "@forge/contracts/issue-standing";
 import { Link } from "@/lib/navigation/router";
 import { MonoTag, statusReading, ToneBadge } from "@/design";
@@ -26,10 +25,10 @@ export function Row({ label, children }: { label: string; children: React.ReactN
 
 type TraceIssue = Pick<IssueDetail, "buildsWorkflow" | "proposesWorkflows" | "shippedIn">;
 
-/** One workflow's link, and the revision drawn here where it proposes one. */
-function WorkflowLink({ w, slug, revision }: { w: { flow: string; title: string; designStatus: DesignStatus | null }; slug: string; revision: number | null }) {
-  const t = useCopy();
-  const language = useInterfaceLanguage();
+/** One workflow's link and its standing in words: the flow's head status for the workflow it builds,
+ *  and for one it proposes, the revision drawn here and that revision's own state, so a revision
+ *  returned here never reads Approved because a later one drawn elsewhere was (ISS-569). */
+function WorkflowLink({ w, slug, revision, reading }: { w: { flow: string; title: string }; slug: string; revision: number | null; reading: string }) {
   return (
     <span className="grid justify-items-end gap-0.5" data-testid="rail-workflow">
       <Link href={workflowHref(slug, w.flow)} className="fg-body-sm text-link hover:underline">
@@ -37,7 +36,7 @@ function WorkflowLink({ w, slug, revision }: { w: { flow: string; title: string;
       </Link>
       <span className="text-12 text-muted">
         {revision !== null ? `r${revision} · ` : ""}
-        {w.designStatus ? statusReading("design", w.designStatus, language).label : t("issues.rail.notDrawn")}
+        {reading}
       </span>
     </span>
   );
@@ -46,10 +45,13 @@ function WorkflowLink({ w, slug, revision }: { w: { flow: string; title: string;
 /** The workflow the issue builds, else every one it proposes a revision of (FB-140), each on its own line. */
 function WorkflowTrace({ issue, slug }: { issue: TraceIssue; slug: string }) {
   const t = useCopy();
-  if (issue.buildsWorkflow) {
+  const language = useInterfaceLanguage();
+  const builds = issue.buildsWorkflow;
+  if (builds) {
+    const reading = builds.designStatus ? statusReading("design", builds.designStatus, language).label : t("issues.rail.notDrawn");
     return (
       <Row label={t("issues.rail.builds")}>
-        <WorkflowLink w={issue.buildsWorkflow} slug={slug} revision={null} />
+        <WorkflowLink w={builds} slug={slug} revision={null} reading={reading} />
       </Row>
     );
   }
@@ -59,7 +61,7 @@ function WorkflowTrace({ issue, slug }: { issue: TraceIssue; slug: string }) {
     <Row label={t("issues.rail.proposes")}>
       <span className="grid justify-items-end gap-2">
         {proposes.map((w) => (
-          <WorkflowLink key={w.workflowId} w={w} slug={slug} revision={w.revision} />
+          <WorkflowLink key={w.workflowId} w={w} slug={slug} revision={w.revision} reading={statusReading("designRevision", w.state, language).label} />
         ))}
       </span>
     </Row>

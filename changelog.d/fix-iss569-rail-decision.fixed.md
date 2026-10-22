@@ -1,0 +1,1 @@
+**An issue's rail reads the decision on each design it drew.** A revision returned under an issue now reads Returned rather than the workflow's later Approved, and a park naming more than 20 designs is refused naming the cap.

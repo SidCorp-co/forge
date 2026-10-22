@@ -45,7 +45,7 @@ names the workflow it builds is not dispatched while that design is not approved
    landing: the approval posts a notice naming the revision as evidence, and the issue is marked when its
    build lands. Draw a design that is the deliverable under an issue of its own. A return reopens
    the design's issue with the reason posted on it, and \`GET /api/issues/:id\` shows it under
-   \`proposesWorkflows\` (every design drawn under it, each at the latest revision drawn there), so the issue is admissible work again; a design issue standing at a park keeps
+   \`proposesWorkflows\` (every design drawn under it, each at the latest revision drawn there with that revision's own \`state\`), so the issue is admissible work again; a design issue standing at a park keeps
    its park and only gets the reason posted. **To park an issue until the approver decides**, park it at
    \`needs_info\` with \`awaitsDesign: { workflowId, revision }\` naming the revision now waiting: the
    decision, approve or return, is written as the answer to the question that park asks, and the issue
