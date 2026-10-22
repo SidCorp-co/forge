@@ -21,7 +21,7 @@ import {
 import { ConversationDock } from "@/features/conversations/components/conversation-dock";
 import { ConversationPanel } from "@/features/conversations/components/conversation-panel";
 import { useConversationDock } from "@/features/conversations/use-conversation-dock";
-import { agentPanelName, agentPanelWithoutProject, startsRooms } from "@/features/conversations/membership";
+import { agentPanelName, agentPanelWithoutProject, issueDoorWithoutProject, startsRooms } from "@/features/conversations/membership";
 import { useLocationSearch } from "@/lib/utils/use-location-search";
 import { ForgeUnreached } from "@/features/auth/forge-unreached";
 import { useSignInRedirect } from "@/features/auth/use-sign-in-redirect";
@@ -463,7 +463,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
             onNewIssue={() =>
               slug
                 ? router.push(`/projects/${slug}/issues?new=1`)
-                : toast({ title: "New issue", description: "Open a project to create an issue.", tone: "info" })
+                : toast({ ...issueDoorWithoutProject(anyProject), tone: "info" })
             }
             askAgentActive={chatOpen}
             askAgentLabel={agentPanelName(mayStartHere)}

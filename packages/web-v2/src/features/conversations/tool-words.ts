@@ -22,11 +22,13 @@ interface Act {
   done: string;
   refused: string;
   running: string;
+  kind: string;
+  on: string;
 }
 
 const act = (done: string, base: string, running: string, target = ""): Act => {
   const on = target ? ` ${target}` : "";
-  return { done: `${done}${on}`, refused: `Couldn't ${base}${on}`, running: `${running}${on}…` };
+  return { done: `${done}${on}`, refused: `Couldn't ${base}${on}`, running: `${running}${on}…`, kind: base, on: target };
 };
 
 const quoted = (text: string) => `“${text}”`;
@@ -58,10 +60,13 @@ function statusLabel(status: string): string {
   return (ISSUE_STATUS_LABELS as Record<string, string>)[status] ?? status;
 }
 
+/** Whether a `forge comment` writes one: it names something beside the issue, such as `-` for its body. */
+const commentWrites = (argv: readonly string[]) => positionals(argv, 1).some((a) => !ISSUE_KEY.test(a));
+
 /** What the `forge` CLI did, read off its arguments. */
 function forgeAct(argv: readonly string[]): Act {
   const [verb, sub] = argv;
-  if (argv.includes("-h") || argv.includes("--help")) return act("Read", "read", "Reading", "the tracker's help");
+  if (argv.includes("-h") || argv.includes("--help")) return { ...act("Read", "read", "Reading", "the tracker's help"), kind: "help" };
   const keys = positionals(argv, 1).filter((a) => ISSUE_KEY.test(a));
   const key = keys[0];
   switch (verb) {
@@ -78,9 +83,8 @@ function forgeAct(argv: readonly string[]): Act {
       return act("Filed", "file", "Filing", title ? quoted(title) : "an issue");
     }
     case "comment": {
-      const writes = positionals(argv, 1).some((a) => !ISSUE_KEY.test(a));
       const on = key ?? "an issue";
-      return writes ? act("Commented on", "comment on", "Commenting on", on) : act("Read", "read", "Reading", `the comments on ${on}`);
+      return commentWrites(argv) ? act("Commented on", "comment on", "Commenting on", on) : act("Read", "read", "Reading", `the comments on ${on}`);
     }
     case "attach":
       return act("Attached", "attach", "Attaching", `a file to ${key ?? "an issue"}`);
@@ -227,27 +231,18 @@ const sentencesOf = (paragraph: string) =>
     .filter(Boolean);
 
 /**
- * A sentence that says what would put the refusal right: one that tells the caller what to do, where the
- * values it takes are, or what is open instead (ISS-1229 r36, judge-97).
- */
-const REMEDY_LEAD =
-  /^(?:add|answer|ask|attach|call|change|check|choose|claim|close|drop|file|fix|give|include|keep|list|log|mark|move|name|open|pass|pick|provide|put|quote|read|remove|rename|reopen|re-?run|re-?send|retry|run|say|search|see|send|set|shorten|sign|split|start|supply|take|try|unarchive|use|wait|write)\b/i;
-const isRemedy = (sentence: string) =>
-  REMEDY_LEAD.test(sentence) ||
-  /^what (?:is|it takes|they are)\b/i.test(sentence) ||
-  /\b(?:is|are) (?:on|in|listed (?:by|on|under)) `/.test(sentence) ||
-  /\b(?:instead|first)[.!?]$/i.test(sentence);
-
-/**
  * A sentence written for the agent rather than the person reading the room: it names a command, a flag
  * or terminal output, none of which a person in a room can type or see (ISS-1229 r37, judge-100).
  */
-const forTheAgent = (sentence: string, tool?: string) =>
-  /`(?:forge[\s_]|-)[^`]*`|\b\w+=\w|(?:^|\s)--?[a-z]|\bone per line\b|\b(?:stdout|stderr|exit code|argv)\b/i.test(sentence) ||
-  (tool !== undefined && new RegExp(`\\b${tool.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(sentence));
+const FOR_THE_AGENT =
+  /`(?:forge[\s_]|-)[^`]*`|\b\w+=\w|(?:^|\s)--?[a-z]|\bone per line\b|\b(?:stdout|stderr|exit code|argv)\b/i;
 
-/** What the person reading the room can do about a refusal whose own remedy is the agent's. */
-const PERSON_REMEDIES: readonly { says: RegExp; wrong?: string; remedy: string }[] = [
+/**
+ * The refusals whose way out is the person's, known by what they say went wrong: a key the person
+ * named, an act a room does not open, and a tracker that did not answer. Every other refusal is the
+ * assistant's own call gone wrong, whatever its suggestion says (ISS-1229 r38, judge-103).
+ */
+const PERSON_KINDS: readonly { says: RegExp; wrong?: string; remedy: string }[] = [
   {
     says: /\bis not (?:on|in) this project|\bholds no issue\b|\bdoes not exist\b|\bno such issue\b/i,
     remedy: "Check the key, or ask the assistant to list this project's issues.",
@@ -263,7 +258,52 @@ const PERSON_REMEDIES: readonly { says: RegExp; wrong?: string; remedy: string }
     remedy: "Ask the assistant to check whether it went through before trying again.",
   },
 ];
-const ANY_REMEDY = "Ask the assistant to put it right and try again.";
+export const PUT_IT_RIGHT = "Ask the assistant to put it right and try again.";
+export const TOOK_ANOTHER_WAY = "The assistant tried another way below, and its answer says how it went.";
+
+/** A call's verb and target as the card's own `Act` says them; no target where it names nothing (r38). */
+function callOf(tool: ToolCallData): { act: string; target: string | null } {
+  const input = tool.input ?? {};
+  const said = actOf(tool);
+  if (tool.name === "forge" && Array.isArray(input.argv)) {
+    const argv = input.argv.filter((a): a is string => typeof a === "string");
+    const sub = argv[0] === "knowledge" ? 2 : 1;
+    const names = positionals(argv, sub).some((a) => a !== "-") || TARGET_FLAGS.some((f) => flag(argv, f));
+    return { act: `forge ${argv[0] ?? ""} ${said?.kind ?? ""}`, target: names && said ? said.on : null };
+  }
+  const names = [input.slug, input.id, input.issueId, input.query].some((v) => typeof v === "string");
+  return { act: `${tool.name} ${said?.kind ?? String(input.action ?? "")}`, target: names ? (said?.on ?? JSON.stringify(input)) : null };
+}
+
+/** The flags that say what a call acted on: a filing's title, a search's words, a listing's status. */
+const TARGET_FLAGS = ["--title", "--search", "--status", "--query"];
+
+/** A refusal saying what the call named does not exist, so only another target could take it further. */
+const NAMES_NOTHING = /\bno (?:such|\w+ (?:named|called))\b|\bnot found\b|\bdoes not exist\b|\bunknown\b/i;
+
+/**
+ * Whether the assistant tried another way later in the same reply: a later call of the same act went
+ * through on the same target, or on another where the refused one named nothing that exists (a guide
+ * that is not there, r38). Whether that other target held what was sought is the reply's to say, so the
+ * card claims only the attempt.
+ */
+export function tookAnotherWay(tool: ToolCallData, later: readonly ToolCallData[]): boolean {
+  const refused = callOf(tool);
+  const anyTarget = NAMES_NOTHING.test(refusalText(tool.result));
+  return later.some((t) => {
+    if (t.isError === true || t.result === undefined) return false;
+    const done = callOf(t);
+    return done.act === refused.act && (anyTarget || (refused.target !== null && done.target === refused.target));
+  });
+}
+
+/** The refusal's own words, off whichever stream carried them. */
+function refusalText(result: unknown): string {
+  if (typeof result === "string") return result;
+  if (result == null || typeof result !== "object") return "";
+  const r = result as { stderr?: unknown; message?: unknown; stdout?: unknown };
+  return [r.stderr, r.message, r.stdout].find((v): v is string => typeof v === "string" && v.trim() !== "") ?? "";
+}
 
 /** A sentence cut to the clause it leads with, where the clauses after it only add detail. */
 const leadClause = (sentence: string) => {
@@ -290,59 +330,46 @@ function gapsOf(text: string): Gap[] {
 }
 
 /**
- * What a refusal that lists its gaps (the CLI's `- read:`, `wants:` and `clear:` lines) says was wrong
- * and what puts it right: the missing sections as one list to add, and each other gap with what it
- * wants instead (ISS-1229 r35, judge-95).
+ * What a refusal that lists its gaps (the CLI's `- read:`, `wants:` and `clear:` lines) says was wrong:
+ * the missing sections as one list, and each other gap with what it wants instead (ISS-1229 r35,
+ * judge-95). Putting them right is the assistant's, as for any call of its own (r38).
  */
 function gapsReason(text: string): string | null {
   const gaps = gapsOf(text);
   if (gaps.length === 0) return null;
   const sections = gaps.flatMap((g) => (g.adds ? [g.adds] : []));
   const clauses = [
-    ...(sections.length
-      ? [`it has no ${listed(sections, "or")} section, so add ${sections.length === 1 ? "it" : "them"}`]
-      : []),
+    ...(sections.length ? [`no ${listed(sections, "or")} section`] : []),
     ...gaps.filter((g) => !g.adds).map((g) => `${g.read} needs ${g.wants}`),
   ];
   const said = clauses.join("; ");
-  return `${said.charAt(0).toUpperCase()}${said.slice(1)}${clauses.length === 1 && sections.length ? " and send it again" : ""}.`;
+  return `${said.charAt(0).toUpperCase()}${said.slice(1)}.`;
 }
 
 /**
- * The refusal's reason, one line, written for the person reading the room: what its gaps say, where it
- * lists them; else what it says was wrong and what would put it right, whichever order it says them in,
- * after any opening that only says it held the call ("Hold — …", r35), and never its first sentence
- * alone (r36). A remedy written for the agent, naming a command or a flag, is never the card's: the
- * card says what the person can do instead, and the agent's remedy stays under the technical details
- * (r37, judge-100). No literal backtick reaches the line.
+ * The refusal's reason, one line, written for the person reading the room: what went wrong, read off
+ * its gaps where it lists them, else its first sentence not written for the agent, after any opening
+ * that only says it held the call ("Hold — …", r35). The way out is chosen by the refusal's kind, never
+ * by its suggestion's wording: the person's own where the refusal is one of `PERSON_KINDS`; else, the
+ * call being the assistant's, that it tried another way later in the same reply, claiming no more than its
+ * answer does, else that they can ask it to put it right (r38). No command, flag or backtick reaches it.
  */
-export function refusalReason(result: unknown, tool?: string): string {
-  let text = "";
-  if (typeof result === "string") text = result;
-  else if (result != null && typeof result === "object") {
-    const r = result as { stderr?: unknown; message?: unknown; stdout?: unknown };
-    text = [r.stderr, r.message, r.stdout].find((v): v is string => typeof v === "string" && v.trim() !== "") ?? "";
-  }
-  const read = gapsReason(text);
-  if (read) return said(read, tool);
+export function refusalReason(result: unknown, tool?: string, recovered = false): string {
+  const text = refusalText(result);
+  const known = PERSON_KINDS.find((p) => p.says.test(text));
+  const remedy = known?.remedy ?? (recovered ? TOOK_ANOTHER_WAY : PUT_IT_RIGHT);
   const paragraphs = text.trim().split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
-  if (paragraphs.length === 0) return "It gave no reason.";
-  const held = /^Hold\b/.test(paragraphs[0] as string) && paragraphs.length > 1;
+  const held = paragraphs.length > 1 && /^Hold\b/.test(paragraphs[0] as string);
   // A machine code leading the refusal ("NOT_FOUND: …") is the technical view's, not the card's.
   const sentences = paragraphs
     .slice(held ? 1 : 0)
     .flatMap(sentencesOf)
     .map((x) => x.replace(/^[A-Z][A-Z_]{2,}:\s*/, ""));
-  const wrongs = sentences.filter((x) => !isRemedy(x));
-  const remedies = sentences.filter(isRemedy);
-  const known = PERSON_REMEDIES.find((p) => p.says.test(text));
-  const first = wrongs[0] ?? (sentences[0] as string);
-  // A refusal about the agent's own tool is said whole in the person's words, its listing of verbs too.
-  const reworded = forTheAgent(first, tool) ? known?.wrong : undefined;
-  const wrong = reworded ?? first;
-  const ownRemedy = reworded ? undefined : remedies.find((x) => !forTheAgent(x, tool));
-  const remedy = ownRemedy ?? (remedies.length > 0 || known ? (known?.remedy ?? ANY_REMEDY) : undefined);
-  if (!remedy) return said(wrong, tool);
+  const wrong =
+    known?.wrong ??
+    gapsReason(text) ??
+    sentences.find((x) => !FOR_THE_AGENT.test(x)) ??
+    (sentences.length === 0 ? "It gave no reason." : "Its reason is under Technical details.");
   const whole = said(`${wrong} ${remedy}`, tool, false);
   if (whole.length <= REASON_CHARS) return whole;
   // Where the two do not fit, the wrong gives way: the remedy is the half a reader acts on.
@@ -369,10 +396,12 @@ function unnamed(reason: string, name: string): string {
   return out.charAt(0).toUpperCase() + out.slice(1);
 }
 
-/** What the call did, in the tense it is in, and why it was refused where it was. */
-export function toolWords(tool: ToolCallData, live = false): ToolWords {
+/** What the call did, in the tense it is in, and why it was refused where it was; `later` is the rest of its reply. */
+export function toolWords(tool: ToolCallData, live = false, later: readonly ToolCallData[] = []): ToolWords {
   const a = actOf(tool) ?? { done: "Used a tool", refused: "Couldn't use a tool", running: "Using a tool…" };
-  if (tool.isError === true) return { said: a.refused, refusal: refusalReason(tool.result, tool.name) };
+  if (tool.isError === true) {
+    return { said: a.refused, refusal: refusalReason(tool.result, tool.name, tookAnotherWay(tool, later)) };
+  }
   if (tool.result === undefined && live) return { said: a.running };
   if (tool.name === "forge" && tool.input?.argv && (tool.input.argv as unknown[])[0] === "new") {
     const key = filedKey(tool);

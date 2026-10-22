@@ -15,7 +15,7 @@ export const DOCUMENT_TOKENS = {
   "--bg-app": "#FBFAF8",
   "--fg-default": "#181B22",
   "--fg-muted": "#5A616E",
-  "--fg-subtle": "#767D8A",
+  "--fg-subtle": "#636A77",
   "--border-default": "#E4E0D8",
   "--link": "#2D5BD6",
 } as const;
