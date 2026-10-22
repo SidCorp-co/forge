@@ -11,15 +11,18 @@
 //             (the merge check holds no credential), a service's request, or any request with no
 //             origin given cannot run here, and is reported with result `none` and why
 //
-// The probes a merge owes are its change's (ISS-472 round 5). A criterion STANDS, owing none, where its
-// latest verdict is a pass or short on a commit the base already carries: the change did not rework
-// it, and a probe kept only now would re-judge it. Every other criterion is the change's: no verdict
-// yet, a fail, or a verdict at a commit the base does not carry (the change's own head, or one a
-// rebase left behind). A claimed criterion's kept probe runs; a claimed observable one keeping none is
-// MERGE_PROBE_MISSING, and a probe that answered something else MERGE_PROBE_RED. A code property, a
-// criterion no design classes keeping none, and a skipped one (only the live build can show it) owe
-// none. The report names the standing criteria (`standing`), and core holds each to its live latest
-// verdict (`merge-check-rules.ts:probeRefusals`); which commits the base carries is this script's word.
+// The probes a merge owes are its change's (ISS-472 round 5, ISS-606). A criterion STANDS, owing none,
+// where its latest verdict is a pass, short or fail on a commit the base already carries: the change
+// did not claim it, and a probe kept only now would re-judge it. A fail that stands is a STANDING FAIL:
+// a judge's finding the change leaves alone, named so in the report and never rewritten (on ISS-63 a
+// fix round could land only by writing such a fail skipped). Every other criterion is the change's,
+// which is what claiming means: no verdict yet, or a verdict at a commit the base does not carry (the
+// change's own head, where its builder judged it, or one a rebase left behind) or on no commit. A
+// claimed criterion's kept probe runs; a claimed observable one keeping none is MERGE_PROBE_MISSING,
+// and a probe that answered something else MERGE_PROBE_RED. A code property, a criterion no design
+// classes keeping none, and a skipped one (only the live build can show it) owe none. The report
+// names the standing criteria (`standing`), and core holds each to its live latest verdict
+// (`merge-check-rules.ts:probeRefusals`); which commits the base carries is this script's word.
 
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
@@ -38,8 +41,12 @@ export const PROBE_TIMEOUT_MS = 10 * 60 * 1000;
 const SHAPE =
   'the saved answer of `GET /api/issues/:id/criteria` (`{ criteria: [{ n, class, probe, latest }] }`), or `none` for a run that names no issue';
 
-/** The verdicts a criterion stands on at a merge check (contracts `verdict-identity.ts:EARNING_VERDICTS`: `short` is met, though never proven). */
-const STANDING_VERDICTS = ['pass', 'short'];
+/**
+ * The verdicts a criterion stands on at a merge check: the earning ones (contracts
+ * `verdict-identity.ts:EARNING_VERDICTS`: `short` is met, though never proven), and a fail, which
+ * stands as a standing fail (ISS-606). `skipped` is no reading at all, so it never stands.
+ */
+const STANDING_VERDICTS = ['pass', 'short', 'fail'];
 
 /**
  * The criteria a `--probes` file holds, or the refusal naming what is wrong with it. Each criterion
@@ -134,7 +141,7 @@ const at = (sha) => (sha ? sha.slice(0, 12) : 'no commit');
 
 /**
  * Why a criterion is the change's rather than standing, or null where it stands: its latest verdict
- * is a pass or short on a commit `carried(sha)` says the base carries.
+ * is a pass, short or fail on a commit `carried(sha)` says the base carries.
  */
 export function claimedBecause(latest, carried) {
   if (!latest) return 'it has no verdict yet';
@@ -150,8 +157,9 @@ export function claimedBecause(latest, carried) {
 /**
  * What the issue's criteria owe the merge: each kept probe of a criterion the change claims, each
  * claimed observable criterion that keeps none, and the criteria that stand on a verdict the base
- * carries. `carried(sha)` says whether the base contains a commit; without it nothing stands, and
- * every criterion is owed as before round 5.
+ * carries, each with the `outcome` it stands on (a `fail` is a standing fail). `carried(sha)` says
+ * whether the base contains a commit; without it nothing stands, and every criterion is owed as
+ * before round 5.
  */
 export function probesOwed(criteria, { carried = () => false } = {}) {
   const runs = [];
@@ -164,6 +172,7 @@ export function probesOwed(criteria, { carried = () => false } = {}) {
       standing.push({
         criterion: c.n,
         verdict: c.latest.id,
+        outcome: c.latest.verdict,
         reading: `${c.latest.verdict} at ${at(c.latest.commitSha)}`,
       });
       continue;
@@ -174,6 +183,25 @@ export function probesOwed(criteria, { carried = () => false } = {}) {
       missing.push({ criterion: c.n, why: `it is observable, ${claimed}, and it keeps no probe` });
   }
   return { runs, missing, standing };
+}
+
+/** The criteria standing on a fail the base carries: the judge's findings this change left alone. */
+export function standingFails(standing) {
+  return standing.filter((s) => s.outcome === 'fail').map((s) => s.criterion);
+}
+
+/**
+ * What the run prints of the standing criteria: those standing met on one line, the standing fails
+ * on their own, so a fail the change did not claim is never read as one it carries met.
+ */
+export function standingLines(standing, base) {
+  const named = (list) => list.map((s) => `criterion ${s.criterion} (${s.reading})`).join(', ');
+  const met = standing.filter((s) => s.outcome !== 'fail');
+  const failing = standing.filter((s) => s.outcome === 'fail');
+  return [
+    ...(met.length ? [`owes no probe, standing on a verdict ${base} carries: ${named(met)}`] : []),
+    ...(failing.length ? [`standing fail, not this change: ${named(failing)}`] : []),
+  ];
 }
 
 /** The command line a probe's check records: what it ran, never a credential (a probe holds none). */

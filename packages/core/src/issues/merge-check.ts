@@ -55,7 +55,8 @@ export async function recordMergeCheck(args: {
   const { issue, report } = args;
   const fault = checkRefusal(report);
   if (fault) throw refuse(fault.code, fault.detail, fault.path);
-  const probes = probeRefusals(report, await readCriteriaWithDrafts(issue));
+  const criteria = await readCriteriaWithDrafts(issue);
+  const probes = probeRefusals(report, criteria);
   if (probes.length) throw new RefusalError(probes, 'MERGE_CHECK_REFUSED');
   if (report.lane === 'fast') {
     const lane = await fastLaneMergeRefusal({
@@ -90,7 +91,7 @@ export async function recordMergeCheck(args: {
       kind: 'verification',
       // the catalog pages the change carried, whatever is approved now: a pattern approved after
       // this check, or a mark made before it, is asked against them at awaiting_release
-      fields: [...recordFields(report), ...catalogPageFields(report.touched)],
+      fields: [...recordFields(report, criteria), ...catalogPageFields(report.touched)],
     });
   });
 }

@@ -31,8 +31,8 @@ the same way. It never follows the import graph further and never falls back to 
 the whole suites. Before you land on `dev`, `GITHUB_BASE_REF=dev pnpm merge-check --probes <file>`
 runs the same on the change rebased onto the latest `dev`, with those integration tests, the kept
 probes of the criteria the change claims (`<file>` holds `GET /api/issues/:id/criteria`; a criterion
-whose latest pass or short sits on a commit the base already contains stands and owes none, as does a
-skipped one) and `pnpm verify` — the conformance entrypoint — and refuses a branch behind its base
+whose latest pass, short or fail sits on a commit the base already contains stands and owes none — a
+fail standing so is named a standing fail and stays a fail — as does a skipped one) and `pnpm verify` — the conformance entrypoint — and refuses a branch behind its base
 (`MERGE_BEHIND_BASE`) and a claimed criterion's probe missing or red (`MERGE_PROBE_MISSING`,
 `MERGE_PROBE_RED`); record the
 report it writes with `POST /api/issues/:id/merge-check`. The whole suite runs nightly and on each

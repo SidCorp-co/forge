@@ -4,8 +4,9 @@
  * run, or an observable criterion keeping none, is refused MERGE_PROBE_MISSING; one that ran red is
  * refused MERGE_PROBE_RED; a code property owes none. A passing record names the probes it ran and no
  * longer says probes are "not yet at merge". Since round 5 only the change's criteria owe a probe: a
- * criterion the report names standing on its latest pass at a commit the base carries, or one whose
- * latest verdict is skipped, owes none, and a standing reading the issue does not hold is refused.
+ * criterion the report names standing on its latest pass, short or fail at a commit the base carries
+ * (a fail is a standing fail, ISS-606), or one whose latest verdict is skipped, owes none, and a
+ * standing reading the issue does not hold is refused.
  *
  * It reaches its subject over HTTP, so it names what it guards:
  * @direct-test-of packages/core/src/issues/merge-check.ts
@@ -305,5 +306,35 @@ describe("a merge check owes the change's probes only", () => {
     expect(twice.status).toBe(400);
     expect(JSON.stringify(twice.body)).toContain('criterion 1 is named standing twice');
     expect(await verifications(issue)).toEqual([]);
+  });
+
+  // ISS-606 (FB-184): ISS-63's c2 round was refused on c5, a judge's fail at a commit the base
+  // carried, until its builder wrote c5 skipped. That fail now stands, owes no probe, and stays a fail.
+  it('records a fix round beside a judge fail the base carries, naming it a standing fail', async () => {
+    const issue = await designedIssue();
+    const one = await keep(issue, 1);
+    const judged = ok(
+      await call('author', 'POST', `/api/issues/${issue}/verdicts`, {
+        criterion: 3,
+        verdict: 'fail',
+        reason: 'the judge saw the list without it',
+        identity: { kind: 'commit', sha: JUDGED },
+        evidence: ['https://forge-dev.sidcorp.co/issues/k10'],
+      }),
+      201,
+    );
+    const fail = judged.criterion.latest.id as string;
+    const body = reportRunning([{ criterion: 1, probe: one }]);
+    const unnamed = await record(issue, body);
+    expect(refusalCodes(unnamed)).toEqual(['MERGE_PROBE_MISSING']);
+    expect(detailOf(unnamed)).toContain('criterion 3 is observable and keeps no probe');
+    ok(await record(issue, { ...body, standing: [{ criterion: 3, verdict: fail }] }), 201);
+    const [kept] = await verifications(issue);
+    expect(((kept?.fields ?? []) as Doc[]).find((f) => f.key === 'probes')?.value).toBe(
+      '1 kept probe(s) ran and held, for criteria 1; standing fail, not this change: criteria 3',
+    );
+    const read = ok(await call('author', 'GET', `/api/issues/${issue}/criteria`));
+    const three = (read.criteria as Doc[]).find((c) => c.n === 3);
+    expect([three?.latest?.id, three?.latest?.verdict]).toEqual([fail, 'fail']);
   });
 });

@@ -102,10 +102,13 @@ export interface MergeCriterion {
   } | null;
 }
 
+/** Whether a criterion may stand on `verdict`: an earning one, or a fail, which stands as a standing fail (ISS-606). */
+const stands = (verdict: string) => verdictEarns(verdict) || verdict === 'fail';
+
 /**
  * Why core does not hold the report's reading that criterion `n` stands on `verdict`, or null where
- * it does: the criterion is live, the verdict is its latest, a pass or short, on a commit, and not on
- * the head checked (which a base the change is merged onto cannot already carry).
+ * it does: the criterion is live, the verdict is its latest, a pass, short or fail, on a commit, and
+ * not on the head checked (which a base the change is merged onto cannot already carry).
  */
 function standingFault(
   n: number,
@@ -119,7 +122,7 @@ function standingFault(
   if (!latest) return `${lead}, and it has no verdict`;
   if (latest.id !== verdict)
     return `${lead} on verdict ${verdict}, and its latest verdict is ${latest.id}`;
-  if (!verdictEarns(latest.verdict)) return `${lead}, and its latest verdict is ${latest.verdict}`;
+  if (!stands(latest.verdict)) return `${lead}, and its latest verdict is ${latest.verdict}`;
   if (latest.identityKind !== 'commit' || !latest.commitSha)
     return `${lead}, and its latest verdict names no commit a base could carry`;
   if (head.toLowerCase().startsWith(latest.commitSha.toLowerCase()))
@@ -130,8 +133,11 @@ function standingFault(
 /**
  * Why the report's probes cannot let a merge through, each by name, or none (REQ-36 BC-1, BC-9,
  * BC-15). The probes a merge owes are its change's (ISS-472 round 5). A criterion the report names
- * `standing` owes none where core holds that reading (`standingFault`): its latest verdict is a pass
- * or short on a commit the base carries, judged before this change. A criterion whose latest verdict
+ * `standing` owes none where core holds that reading (`standingFault`): its latest verdict is a pass,
+ * short or fail on a commit the base carries, judged before this change. A fail standing so is a
+ * judge's finding the change did not claim (ISS-606): it stays a fail, owing no probe, and the record
+ * names it a standing fail (`probesRan`); a fail the change claims sits at its head, and owes its
+ * probe. A criterion whose latest verdict
  * is `skipped` owes none: only the live build can show it. Every other criterion not classed a code
  * property is the change's, and its kept probe must have run in this report and passed: one the
  * report did not run, ran with result `none`, or ran in an older version is MERGE_PROBE_MISSING, as
@@ -201,20 +207,31 @@ export function probeRefusals(
   return out;
 }
 
-/** What the record says of the probes the check ran, for which criteria, and which stood. */
-export function probesRan(report: MergeCheckReport): string {
+/**
+ * What the record says of the probes the check ran, for which criteria, and which stood: those
+ * standing met, and apart from them each standing fail, read off the criterion's live latest verdict
+ * (`criteria`), so a fail the change did not claim is never recorded as one it carries met.
+ */
+export function probesRan(
+  report: MergeCheckReport,
+  criteria: readonly MergeCriterion[] = [],
+): string {
   const ran = report.checks.filter((c) => c.kind === 'probes' && c.result !== 'none');
-  const criteria = [...new Set((report.probes ?? []).map((b) => b.criterion))].sort(
-    (a, b) => a - b,
-  );
+  const ranFor = [...new Set((report.probes ?? []).map((b) => b.criterion))].sort((a, b) => a - b);
   const lead = ran.length
-    ? `${ran.length} kept probe(s) ran and held, for criteria ${criteria.join(', ')}`
+    ? `${ran.length} kept probe(s) ran and held, for criteria ${ranFor.join(', ')}`
     : 'no kept probe to run';
+  const failed = (n: number) => criteria.find((c) => c.n === n)?.latest?.verdict === 'fail';
   const stood = (report.standing ?? []).map((s) => s.criterion).sort((a, b) => a - b);
-  const tail = stood.length
-    ? `; criteria ${stood.join(', ')} stand on verdicts their base carries`
+  const met = stood.filter((n) => !failed(n));
+  const failing = stood.filter(failed);
+  const metTail = met.length
+    ? `; criteria ${met.join(', ')} stand on verdicts their base carries`
     : '';
-  return `${lead}${tail}`.slice(0, FIELD_MAX);
+  const failTail = failing.length
+    ? `; standing fail, not this change: criteria ${failing.join(', ')}`
+    : '';
+  return `${lead}${metTail}${failTail}`.slice(0, FIELD_MAX);
 }
 
 /** At most this many characters in one record field. */
@@ -247,7 +264,10 @@ function namedChecks(checks: readonly CheckRun[]): string {
  * ran. Each check's duration is its own row (`check-runs.ts`), never repeated here: one check is
  * one record (ISS-474).
  */
-export function recordFields(report: MergeCheckReport): { key: string; value: string }[] {
+export function recordFields(
+  report: MergeCheckReport,
+  criteria: readonly MergeCriterion[] = [],
+): { key: string; value: string }[] {
   return [
     {
       key: 'lead',
@@ -262,7 +282,7 @@ export function recordFields(report: MergeCheckReport): { key: string; value: st
     { key: 'head', value: report.head },
     { key: 'touched', value: `${report.touched.length} file(s)` },
     { key: 'checks', value: namedChecks(report.checks) },
-    { key: 'probes', value: probesRan(report) },
+    { key: 'probes', value: probesRan(report, criteria) },
     { key: 'not-checked', value: NOT_YET_CHECKED },
   ];
 }

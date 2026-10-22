@@ -258,7 +258,7 @@ describe("owes the change's probes only (ISS-472 round 5, comment 826f551d)", ()
 
   it('refuses a standing reading core does not hold, naming the criterion and why', () => {
     const criteria = [
-      { ...observable(1, null), latest: latest(1, 'fail') },
+      { ...observable(1, null), latest: latest(1, 'skipped') },
       { ...observable(2, null), latest: latest(2, 'pass', HEAD) },
       { ...observable(3, null), latest: latest(3, 'pass', null) },
       { ...observable(4, null), latest: latest(4, 'short') },
@@ -279,7 +279,7 @@ describe("owes the change's probes only (ISS-472 round 5, comment 826f551d)", ()
     expect(out.map((x) => x.code)).toEqual(['MERGE_PROBE_MISSING']);
     const detail = out[0]?.detail ?? '';
     expect(detail).toContain(
-      'criterion 1: the report reads it standing, and its latest verdict is fail',
+      'criterion 1: the report reads it standing, and its latest verdict is skipped',
     );
     expect(detail).toContain(
       `criterion 2: the report reads it standing, and its latest verdict is at the head checked, ${HEAD.slice(0, 12)}`,
@@ -317,6 +317,61 @@ describe("owes the change's probes only (ISS-472 round 5, comment 826f551d)", ()
       run('rebased-on-base', { result: 'fail' }),
     ]);
     expect(checkRefusal({ ...behind, standing: standingAll })?.code).toBe('MERGE_BEHIND_BASE');
+  });
+});
+
+// ISS-606 (FB-184): on ISS-63 a fix round for c2 was refused MERGE_PROBE_MISSING on c5, a judge's
+// fail at 86ba777 that the base carried and the round left alone, so its builder wrote c5 skipped. A
+// fail the base carries stands as a standing fail: it owes no probe, and the record names it so.
+describe('a standing fail: a fail the base carries, which the change did not claim (ISS-606)', () => {
+  const JUDGED = 'c'.repeat(40);
+  const verdictId = (n: number) => `${String(n).padStart(8, '0')}-0000-4000-8000-00000000c606`;
+  const latest = (n: number, verdict: string, commitSha: string = JUDGED) => ({
+    id: verdictId(n),
+    verdict,
+    identityKind: 'commit',
+    commitSha,
+  });
+  /** ISS-63's c2 round: c2 judged by its builder at the head, c5 the judge's fail the base carries. */
+  const iss63Round = () => [
+    { ...observable(2, PROBE_A), latest: latest(2, 'pass', HEAD) },
+    { ...observable(5, null), latest: latest(5, 'fail') },
+  ];
+  const standing5 = [{ criterion: 5, verdict: verdictId(5) }];
+
+  it('holds the reading that a fail the base carries stands, and owes it no probe', () => {
+    const r = { ...withProbes([{ criterion: 2, probe: PROBE_A }]), standing: standing5 };
+    expect(probeRefusals(r, iss63Round())).toEqual([]);
+  });
+
+  it('names it a standing fail in the record, apart from the criteria standing met', () => {
+    const criteria = [{ ...observable(1, null), latest: latest(1, 'pass') }, ...iss63Round()];
+    const r = {
+      ...withProbes([{ criterion: 2, probe: PROBE_A }]),
+      standing: [{ criterion: 1, verdict: verdictId(1) }, ...standing5],
+    };
+    expect(recordFields(r, criteria).find((f) => f.key === 'probes')?.value).toBe(
+      '1 kept probe(s) ran and held, for criteria 2; criteria 1 stand on verdicts their base carries; standing fail, not this change: criteria 5',
+    );
+  });
+
+  it('still refuses the fail the change claims: one judged at the head owes its probe', () => {
+    const claimed = [{ ...observable(5, null), latest: latest(5, 'fail', HEAD) }];
+    const read = probeRefusals({ ...withProbes([]), standing: standing5 }, claimed);
+    expect(read.map((x) => x.code)).toEqual(['MERGE_PROBE_MISSING']);
+    expect(read[0]?.detail).toContain(
+      `criterion 5: the report reads it standing, and its latest verdict is at the head checked, ${HEAD.slice(0, 12)}`,
+    );
+    const unnamed = probeRefusals(withProbes([]), claimed);
+    expect(unnamed[0]?.detail).toContain('criterion 5 is observable and keeps no probe');
+  });
+
+  it("keeps a claimed criterion's red probe red beside a standing fail", () => {
+    const r = {
+      ...withProbes([{ criterion: 2, probe: PROBE_A, over: { result: 'fail' } }]),
+      standing: standing5,
+    };
+    expect(probeRefusals(r, iss63Round()).map((x) => x.code)).toEqual(['MERGE_PROBE_RED']);
   });
 });
 

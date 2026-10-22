@@ -125,7 +125,8 @@ export function redChecks(checks) {
  * The body `POST /api/issues/:id/merge-check` takes, as this run made it. `probes` binds each probe
  * check to the kept probe it ran, which core holds to the probes the issue keeps. `standing` names
  * each criterion this run read as standing on a verdict its base carries, and the verdict it read
- * (`lib/merge-probes.mjs:probesOwed`); core holds each to the criterion's live latest verdict. It is
+ * (`lib/merge-probes.mjs:probesOwed`), a standing fail among them; core holds each to the
+ * criterion's live latest verdict and reads its outcome from there, so `outcome` is not sent. It is
  * sent only where one stands, so a report with none is the shape a core older than it still takes.
  */
 export function reportOf({

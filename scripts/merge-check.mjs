@@ -13,7 +13,8 @@
 //                                        kept probes of the criteria the change claims, from the
 //                                        issue's criteria read <file> (`GET /api/issues/:id/criteria`,
 //                                        saved after the builder's verdicts); a criterion standing on
-//                                        a pass or short at a commit the base carries owes none
+//                                        a pass, short or fail at a commit the base carries owes
+//                                        none, and a fail standing there is named a standing fail
 //   pnpm merge-check --probes none       a run that names no issue (CI's): it runs no probe, and core
 //                                        refuses MERGE_PROBE_MISSING where the issue keeps one
 //   pnpm merge-check --probe-origin <url>  the origin serving a build of the change: a command probe
@@ -54,7 +55,13 @@ import {
   verifyCommand,
   verifyEnv,
 } from './lib/merge-check.mjs';
-import { originOf, probeRefusalLines, readProbesFlag, runProbes } from './lib/merge-probes.mjs';
+import {
+  originOf,
+  probeRefusalLines,
+  readProbesFlag,
+  runProbes,
+  standingLines,
+} from './lib/merge-probes.mjs';
 
 const die = dieAs('merge-check');
 
@@ -250,11 +257,8 @@ console.log('\nmerge-check: what ran');
 for (const line of describeChecks(checks)) console.log(line);
 for (const n of [...notRunOnLane(lane), ...NOT_RUN_HERE])
   console.log(`  not run here: ${n.name} — ${n.why} (${n.owner})`);
-if (probeRun.standing.length) {
-  console.log(
-    `  owes no probe, standing on a verdict ${branch} at ${baseSha.slice(0, 12)} carries: ${probeRun.standing.map((s) => `criterion ${s.criterion} (${s.reading})`).join(', ')}`,
-  );
-}
+for (const line of standingLines(probeRun.standing, `${branch} at ${baseSha.slice(0, 12)}`))
+  console.log(`  ${line}`);
 if (direct.untested.length) {
   console.log(
     `  no direct test reaches: ${direct.untested.join(', ')}\n  (a test guarding one by path declares it with \`@direct-test-of <path>\`)`,

@@ -18,6 +18,8 @@ import {
   runCommandProbe,
   runProbes,
   runRequestProbe,
+  standingFails,
+  standingLines,
 } from './merge-probes.mjs';
 
 const ROOT = mkdtempSync(join(tmpdir(), 'merge-probes-'));
@@ -112,7 +114,7 @@ describe("the probes a merge owes are its change's (round 5)", () => {
     const owed = probesOwed(
       [
         { n: 1, class: 'observable', probe: null, latest: null },
-        { n: 2, class: 'observable', probe: null, latest: verdict('fail') },
+        { n: 2, class: 'observable', probe: null, latest: verdict('fail', REBASED_AWAY) },
         { n: 3, class: 'observable', probe: null, latest: verdict('pass', REBASED_AWAY) },
         { n: 4, class: 'observable', probe: null, latest: verdict('pass', null, 'runtime') },
       ],
@@ -123,7 +125,9 @@ describe("the probes a merge owes are its change's (round 5)", () => {
     expect(owed.missing[0].why).toBe(
       'it is observable, it has no verdict yet, and it keeps no probe',
     );
-    expect(owed.missing[1].why).toContain('its latest verdict is fail');
+    expect(owed.missing[1].why).toContain(
+      `fail at ${REBASED_AWAY.slice(0, 12)}, a commit the base does not carry`,
+    );
     expect(owed.missing[2].why).toContain(
       `pass at ${REBASED_AWAY.slice(0, 12)}, a commit the base does not carry`,
     );
@@ -157,15 +161,91 @@ describe("the probes a merge owes are its change's (round 5)", () => {
       [
         ...iss439Round6(),
         { n: 24, class: 'observable', probe: node('process.exit(3)'), latest: null },
-        { n: 25, class: 'observable', probe: null, latest: verdict('fail') },
+        { n: 25, class: 'observable', probe: null, latest: verdict('fail', REBASED_AWAY) },
       ],
       { root: ROOT, origin: null, carried },
     );
     expect(out.standing).toHaveLength(23);
     expect(probeRefusalLines(out)).toEqual([
       'MERGE_PROBE_MISSING — criterion 25: it is observable, its latest verdict is fail at ' +
-        `${JUDGED.slice(0, 12)}, and it keeps no probe`,
+        `${REBASED_AWAY.slice(0, 12)}, a commit the base does not carry, and it keeps no probe`,
       'MERGE_PROBE_RED — criterion 24: it exited 3, expected 0',
+    ]);
+  });
+});
+
+// ISS-606 (FB-184): on ISS-63 the c2 fix round was refused MERGE_PROBE_MISSING on c5, a judge's fail
+// at 86ba777 the base carried and the round did not touch, so the builder wrote c5 skipped and the
+// judge's fail survived only in a reason. A fail the base carries stands like a pass: the change did
+// not claim it, it owes no probe, and the report names it a standing fail without touching it.
+describe('a standing fail: a fail the base carries, which the change did not claim (ISS-606)', () => {
+  const iss63Round = (c2Probe = null) => [
+    { n: 2, class: 'observable', probe: c2Probe, latest: verdict('pass', REBASED_AWAY) },
+    { n: 5, class: 'observable', probe: null, latest: verdict('fail') },
+  ];
+
+  it('owes no probe for it, and names it standing as a fail', () => {
+    const owed = probesOwed(iss63Round(), { carried });
+    expect(owed.missing.map((m) => m.criterion)).toEqual([2]);
+    expect(owed.standing).toEqual([
+      {
+        criterion: 5,
+        verdict: expect.stringMatching(/^v-/),
+        outcome: 'fail',
+        reading: `fail at ${JUDGED.slice(0, 12)}`,
+      },
+    ]);
+  });
+
+  it('lets the round through on its claimed criterion alone, the fail still standing', async () => {
+    const out = await runProbes(iss63Round(node('1')), { root: ROOT, origin: null, carried });
+    expect(probeRefusalLines(out)).toEqual([]);
+    expect(out.bindings.map((b) => b.criterion)).toEqual([2]);
+    expect(standingFails(out.standing)).toEqual([5]);
+  });
+
+  it('still owes the probe of a fail the change claims, judged at a commit the base does not carry', () => {
+    const owed = probesOwed(
+      [{ n: 2, class: 'observable', probe: null, latest: verdict('fail', REBASED_AWAY) }],
+      { carried },
+    );
+    expect(owed.standing).toEqual([]);
+    expect(owed.missing[0].why).toContain(
+      `fail at ${REBASED_AWAY.slice(0, 12)}, a commit the base does not carry`,
+    );
+  });
+
+  it('keeps a claimed criterion red where its probe is red, beside a standing fail', async () => {
+    const out = await runProbes(iss63Round(node('process.exit(4)')), {
+      root: ROOT,
+      origin: null,
+      carried,
+    });
+    expect(probeRefusalLines(out)).toEqual([
+      'MERGE_PROBE_RED — criterion 2: it exited 4, expected 0',
+    ]);
+    expect(standingFails(out.standing)).toEqual([5]);
+  });
+
+  it('names a fail on no commit as claimed: a runtime fail is nothing a base carries', () => {
+    const owed = probesOwed(
+      [{ n: 5, class: 'observable', probe: null, latest: verdict('fail', null, 'runtime') }],
+      { carried },
+    );
+    expect(owed.missing[0].why).toContain('fail on a runtime identity, not a commit');
+  });
+
+  it('says the standing fails apart from the criteria standing met', () => {
+    const owed = probesOwed(
+      [
+        { n: 1, class: 'observable', probe: null, latest: verdict('pass') },
+        { n: 5, class: 'observable', probe: null, latest: verdict('fail') },
+      ],
+      { carried },
+    );
+    expect(standingLines(owed.standing, 'dev at abc')).toEqual([
+      'owes no probe, standing on a verdict dev at abc carries: criterion 1 (pass at cccccccccccc)',
+      'standing fail, not this change: criterion 5 (fail at cccccccccccc)',
     ]);
   });
 });

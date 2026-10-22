@@ -57,9 +57,10 @@ const probeBindingSchema = z.strictObject({
 export type MergeProbeBinding = z.infer<typeof probeBindingSchema>;
 
 /**
- * A criterion the check read as standing (ISS-472 round 5): its latest verdict, a pass or short on a
- * commit the base carries, so the change did not claim it and owes it no probe. Core holds `verdict`
- * to the criterion's live latest; which commits the base carries is the box's word.
+ * A criterion the check read as standing (ISS-472 round 5): its latest verdict, a pass, short or fail
+ * on a commit the base carries, so the change did not claim it and owes it no probe. A fail standing
+ * so is a standing fail (ISS-606): it stays the judge's fail, and the record names it apart. Core
+ * holds `verdict` to the criterion's live latest; which commits the base carries is the box's word.
  */
 const standingSchema = z.strictObject({
 	criterion: z.number().int().min(1),
@@ -150,7 +151,7 @@ export const mergeCheckReportSchema = z
 	});
 export type MergeCheckReport = z.infer<typeof mergeCheckReportSchema>;
 
-export const MERGE_CHECK_SHAPE = `{ base: { branch, sha }, head, mode: pre-merge | landed, touched: [{ path, change }], checks: [${CHECK_RUN_SHAPE}], probes?: [{ criterion, probe: <kept probe id>, check: <id of the probes check that ran it> }], standing?: [{ criterion, verdict: <its latest verdict's id, a pass or short at a commit the base carries> }], lane?: fast | full, patchId?: <40 hex, required on the fast lane> }`;
+export const MERGE_CHECK_SHAPE = `{ base: { branch, sha }, head, mode: pre-merge | landed, touched: [{ path, change }], checks: [${CHECK_RUN_SHAPE}], probes?: [{ criterion, probe: <kept probe id>, check: <id of the probes check that ran it> }], standing?: [{ criterion, verdict: <its latest verdict's id, a pass, short or fail at a commit the base carries> }], lane?: fast | full, patchId?: <40 hex, required on the fast lane> }`;
 
 /** A kept probe of a criterion the change claims that the report did not run, a claimed observable criterion keeping none, or a standing reading core does not hold. */
 export const MERGE_PROBE_MISSING = "MERGE_PROBE_MISSING" as const;

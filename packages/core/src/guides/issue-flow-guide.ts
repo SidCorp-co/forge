@@ -170,13 +170,16 @@ condition holds, so carry on. A wait on a mark is never also \`about\` a require
   \`{ base: { branch, sha }, head, mode, touched, checks, probes, standing }\`. The check runs the
   kept probe of each criterion the change claims (here \`pnpm merge-check --probes <file>\`, the file
   holding \`GET /api/issues/:id/criteria\` read after your verdicts), and \`probes\` names the check
-  that ran each one. A criterion whose latest verdict is a pass or short at a commit the base already
-  carries stands and owes none, and \`standing\` names it with that verdict; a skipped one owes none.
+  that ran each one. A criterion whose latest verdict is a pass, short or fail at a commit the base
+  already carries stands and owes none, and \`standing\` names it with that verdict; a fail standing
+  so is a standing fail, named apart and left a fail. A skipped one owes none. A criterion the change
+  claims is one with no verdict yet or a latest verdict at a commit the base does not carry, so a
+  fix round claims a fail by judging it at its head.
   A report missing a check every merge needs is refused \`MERGE_CHECK_INCOMPLETE\`, one filing a
   check under another kind \`MERGE_CHECK_KIND_MISMATCH\`, one behind its base \`MERGE_BEHIND_BASE\`,
   one with a red check \`MERGE_CHECK_RED\`, one that did not run a claimed criterion's kept probe,
   whose claimed observable criterion keeps none, or that reads a criterion standing on a verdict
-  that is not its latest pass or short, \`MERGE_PROBE_MISSING\`, one whose probe ran red
+  that is not its latest pass, short or fail, \`MERGE_PROBE_MISSING\`, one whose probe ran red
   \`MERGE_PROBE_RED\`, and an approved
   new pattern whose catalog page the touched files lack \`PATTERN_ENTRY_MISSING\`. Land the commit
   you checked: a rebase after it is a new check.
