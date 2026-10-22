@@ -1,1 +1,0 @@
-**Re-pin and agree buttons ask for the reason their route needs, and approving one re-pin no longer makes its siblings stale.** A design moved only by re-pins is read again; a real content change is still refused.
