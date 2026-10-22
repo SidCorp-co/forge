@@ -108,15 +108,22 @@ export function probeWrite(
   };
 }
 
-/** What a release records once this binding declares no probe, read off the project's other live
- *  deploy bindings; `null` until they are read. */
-export function afterRemovalSentence(otherDeclares: boolean | null): string {
-  if (otherDeclares === null) {
-    return "A release then reads no commit from this binding, and closes unverified unless another live binding declares a probe.";
+/** What the project's other live deploy bindings declare: a probe a release reads, a block it
+ *  refuses, or nothing; `null` until they are read. */
+export type OtherProbes = "usable" | "unusable" | "none" | null;
+
+/** What a release records once this binding declares no probe. */
+export function afterRemovalSentence(others: OtherProbes): string {
+  switch (others) {
+    case null:
+      return "A release then reads no commit from this binding, and closes unverified unless another live binding declares a probe.";
+    case "unusable":
+      return "Another live binding declares a probe a release cannot read, so a release is refused until that probe is corrected.";
+    case "usable":
+      return "A release then reads only the probes the project's other live bindings declare.";
+    case "none":
+      return "No other live binding declares a probe, so a release then closes unverified.";
   }
-  return otherDeclares
-    ? "A release then reads only the probes the project's other live bindings declare."
-    : "No other live binding declares a probe, so a release then closes unverified.";
 }
 
 function storedKey(raw: unknown, key: string): unknown {
@@ -156,17 +163,16 @@ function Reading({ declared, inherited, unusable }: { declared: ProbeRow[]; inhe
   );
 }
 
-function useOtherLiveProbe(projectId: string, bindingId: string): boolean | null {
+// A block a release refuses blocks it whatever the others declare (`unreadableProbeBlockers`).
+function useOtherLiveProbe(projectId: string, bindingId: string): OtherProbes {
   const list = useIntegrationsList(projectId);
   if (!list.data) return null;
-  return list.data.items.some(
-    (b) =>
-      b.id !== bindingId &&
-      b.role === "deploy" &&
-      b.stages.includes("live") &&
-      b.active !== false &&
-      probeIsUsable(b.config?.[VERIFY_KEY]),
-  );
+  const declared = list.data.items
+    .filter((b) => b.id !== bindingId && b.role === "deploy" && b.stages.includes("live") && b.active !== false)
+    .map((b) => b.config?.[VERIFY_KEY])
+    .filter((v) => v !== undefined && v !== null);
+  if (declared.some((v) => !probeIsUsable(v))) return "unusable";
+  return declared.length > 0 ? "usable" : "none";
 }
 
 /**
@@ -295,7 +301,7 @@ function RemoveAllConfirm({
 }: {
   count: number;
   stableReads: unknown;
-  otherDeclares: boolean | null;
+  otherDeclares: OtherProbes;
   busy: boolean;
   open: boolean;
   onConfirm: () => void;
@@ -348,7 +354,7 @@ function Editor({
    *  where it declares none, so there is nothing here to remove. */
   removable: number | null;
   ownStableReads: unknown;
-  otherDeclares: boolean | null;
+  otherDeclares: OtherProbes;
   busy: boolean;
   onSave: (verify: Record<string, unknown>) => void;
   onRemoveAll: (then: () => void) => void;

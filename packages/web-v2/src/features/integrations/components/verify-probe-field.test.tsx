@@ -274,6 +274,15 @@ describe("removing every probe asks once, and says what goes", () => {
 		expect(dialog()).toHaveTextContent("A release then reads only the probes the project's other live bindings declare.");
 	});
 
+	it("says a release is refused where another live binding declares a probe it cannot read", () => {
+		const other = declaring({ probes: [] }, { id: "b3333333-3333-4333-8333-333333333333", provider: "epodsystem" });
+		listed = [declaring(TWO), declaring({ probes: [PROBE] }, { id: "b2222222-2222-4222-8222-222222222222" }), other];
+		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={declaring(TWO)} canEdit />);
+		fireEvent.click(screen.getByRole("button", { name: "Remove all probes" }));
+		expect(dialog()).toHaveTextContent("Another live binding declares a probe a release cannot read, so a release is refused until that probe is corrected.");
+		expect(dialog()).not.toHaveTextContent("closes unverified");
+	});
+
 	it("names a stored stableReads as removed with them", () => {
 		draw(<BindingVerifyProbeField projectId={PROJECT_ID} binding={declaring({ ...TWO, stableReads: 3 })} canEdit />);
 		fireEvent.click(screen.getByRole("button", { name: "Remove all probes" }));
