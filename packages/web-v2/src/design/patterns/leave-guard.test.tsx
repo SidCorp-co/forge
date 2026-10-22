@@ -45,6 +45,9 @@ function Page() {
         another page
       </a>
       <a href="#section">same page</a>
+      <button type="button" onClick={() => window.history.replaceState(window.history.state, "", "/settings?tab=b")}>
+        replace the query
+      </button>
       <button type="button" onClick={() => attempt(() => went.push("code"))}>
         go from code
       </button>
@@ -156,6 +159,23 @@ describe("a link inside the app", () => {
 
     window.history.back();
     await waitFor(() => expect(window.location.pathname).toBe("/settings"));
+    window.history.back();
+    await waitFor(() => expect(window.location.pathname).toBe("/before"));
+  });
+
+  // ISS-1339 r3: a drawer closed over an unsaved edit dropped `field` from the address, and the
+  // guard's Back off its own entry landed on the page's, which still carried it.
+  it("keeps an address the page replaced while dirty once the edits are put away", async () => {
+    mount();
+    edit();
+    fireEvent.click(screen.getByRole("button", { name: "replace the query" }));
+    expect(window.history.state?.__leaveGuard).toBeDefined();
+    edit();
+    // The guard's Back has landed on the page's own entry, and what follows it has run.
+    await waitFor(() => expect(window.history.state?.__leaveGuard).toBeUndefined());
+    await act(() => new Promise((r) => setTimeout(r, 10)));
+    expect(window.location.search).toBe("?tab=b");
+    expect(window.location.pathname).toBe("/settings");
     window.history.back();
     await waitFor(() => expect(window.location.pathname).toBe("/before"));
   });

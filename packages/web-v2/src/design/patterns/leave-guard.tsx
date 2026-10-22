@@ -151,7 +151,12 @@ export function LeaveGuardProvider({ children }: { children: ReactNode }) {
     return () => {
       sentinel.current = null;
       if (armed.onIt && window.history.state?.[SENTINEL] === armed.token) {
+        // An address the page replaced while dirty was written on the guard's entry, not its own.
+        const kept = window.location.href;
         swallow.current += 1;
+        afterBack.current = () => {
+          if (window.location.href !== kept) window.history.replaceState(window.history.state, "", kept);
+        };
         window.history.back();
       }
     };
