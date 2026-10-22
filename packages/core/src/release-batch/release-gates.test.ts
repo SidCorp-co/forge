@@ -15,9 +15,7 @@ describe('a project with no production environment, said by its gate', () => {
 
   it('names what is missing, in the words the banner and the rail use', () => {
     expect(gate?.title).toBe('No production');
-    expect(gate?.sentence).toBe(
-      'Nothing deploys here: landing on the working branch is the delivery, and recording the landing closes what landed.',
-    );
+    expect(gate?.sentence).toBe("Landing on the working branch is this project's delivery.");
     expect(gate?.owner.act).toBe('record the landing');
   });
 

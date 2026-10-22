@@ -785,7 +785,7 @@ export const SAID = {
 		},
 	},
 	"standing.gate.noGate": {
-		en: "Nothing deploys here: landing on the working branch is the delivery, and recording the landing closes what landed.",
+		en: "Landing on the working branch is this project's delivery.",
 	},
 	"standing.gate.noRunner": { en: "None paired" },
 	"standing.gate.noRunnerOnline": {
