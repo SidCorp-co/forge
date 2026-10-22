@@ -14,7 +14,6 @@
 // @direct-test-of packages/core/src/steward/policy.ts
 
 import type { Said } from '@forge/contracts/said';
-import { STALE_DRAFT_OPTION_IDS } from '@forge/contracts/stale-drafts';
 import type { ItemStanding } from '@forge/contracts/steward';
 import { eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -93,6 +92,12 @@ const draft = (seq: number) =>
     createdAt: new Date(Date.now() - 16 * 86_400_000),
   });
 
+/**
+ * The option ids of the merge-or-drop question Forge asked on a week-old draft before the steward
+ * took that job over: its answered rows stay, and a keep on one is still read before asking.
+ */
+const STALE_DRAFT_OPTION_IDS = { drop: 'stale_draft.drop', keep: 'stale_draft.keep' } as const;
+
 /** The stale-draft merge-or-drop question on `issueId`, answered keep by the owner now. */
 async function keptThroughStaleDraft(issueId: string) {
   const made = ok(
@@ -164,7 +169,7 @@ beforeAll(async () => {
       {
         tool: {
           name: 'steward_decide',
-          args: { issue: issue.key, recommended, why: 'nothing has moved on it since' },
+          args: { about: issue.key, recommended, why: 'nothing has moved on it since' },
         },
       },
       { text: 'Done.' },
@@ -323,7 +328,7 @@ describe("the steward's questions and acts show on their item, the Steward named
     const acts = ok(
       await say('owner', 'GET', `/api/projects/${projectId}/steward-acts?subject=${issue.key}`),
     ).acts as { door: string; undo: unknown; override: string | null }[];
-    const asked = acts.find((a) => a.door === 'POST /api/questions');
+    const asked = acts.find((a) => a.door.endsWith('/decisions'));
     expect(asked?.undo).toMatchObject({
       door: expect.stringMatching(/^POST \/api\/questions\/.+\/void$/),
     });
@@ -350,7 +355,7 @@ describe("the steward's questions and acts show on their item, the Steward named
     const acts = ok(
       await say('owner', 'GET', `/api/projects/${projectId}/steward-acts?subject=${issue.key}`),
     ).acts as { door: string; undo: unknown }[];
-    expect(acts.filter((a) => a.door === 'POST /api/questions')).toHaveLength(1);
+    expect(acts.filter((a) => a.door.endsWith('/decisions'))).toHaveLength(1);
   });
 });
 

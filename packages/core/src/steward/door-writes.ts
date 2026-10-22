@@ -38,14 +38,17 @@ const optionsParam = z
   .min(2)
   .max(4);
 
-/** What a question may be about: a requirement. A stuck issue's question is `steward_decide`'s. */
+/**
+ * What a content question may be about: a requirement. A stuck item's question, an issue's, a
+ * requirement's or a feedback item's, is a decision with Forge's own options: `steward_decide`'s.
+ */
 const askAbout = key
   .superRefine((value, ctx) => {
     if (/^REQ-\d+$/i.test(value)) return;
     ctx.addIssue({
       code: 'custom',
       message: /^FB-\d+$/i.test(value)
-        ? `${value} is a feedback item, which takes no question here: ask about the requirement it is about, or decide its carrier issue with steward_decide (read its route with steward_read_feedback or steward_read_item).`
+        ? `${value} is a feedback item: its question is a decision with Forge's own options, asked with steward_decide about ${value.toUpperCase()} (keep or decline it while nobody triages it; verify, reopen or keep a shipped fix).`
         : `${value} is no requirement: a question about an issue is a decision with Forge's own options, asked with steward_decide.`,
     });
   })

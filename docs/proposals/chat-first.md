@@ -48,11 +48,11 @@ one that does neither. `opens` is null for a question a run asked on no record.
 | Proposed revision, agreement or acceptance where the project setting asks | approve, accept | Forge's sentence naming the revision and its change summary | the checklist's own verdict, by rule | `revision.accept` / `revision.return`, `requirement.agree`, `requirement.accept` |
 | Release approval waiting on the viewer | approve | the release and what it carries | by rule: approve when every carried criterion passes | `release.decide` |
 | Feedback answer to confirm, or a fix to verify | verify | the answer or what shipped | by rule from the latest verdict | `feedback.verify` / `feedback.reopen` |
-| A draft Forge asked to merge, drop or keep (BC-12; a question carrying `isStaleDraftQuestion` options) | merge_or_drop | the sweep's question | by rule, its reason from the prompt | `question.answer` per option, each saying what core then does |
+| A stuck item the steward asked about (BC-12, carried by REQ-48 BC-5; a question carrying `isStewardDecisionQuestion` options) | answer | the steward's question | by the steward, its reason from the prompt | `question.answer` per option, each saying what it does to the item |
 
 **Not decisions**, counted by reason so the reply names what it left out (`notDecisions`):
 `own_work` (propose or revise your own draft), `work` (criteria to check, health markers to settle),
-`awaiting_proposal` (a draft the assistant has not proposed on yet).
+`awaiting_proposal` (a draft the steward has not asked about yet).
 
 **A free-text question gets a recommended answer.** `FreeTextStep` gains `recommended?: string`. A
 question a run asks a person through the box's door (`POST /api/devices/me/questions`, which
@@ -137,7 +137,7 @@ Today an Assistant-mode reply that no rewrite fixes is replaced whole by
 |---|---|---|---|
 | 10 | A requirement follows an approved design when somebody re-pins it | Nothing re-pins by itself (the owner's ruling of 2026-10-14). On a workflow design reaching `approved`, an agreed requirement pinning an older revision of it reads as pinned behind (`requirements.rule.pinBehind`), and its mover re-pins it through `requirements/repin.ts:repinRequirement` (`POST …/requirements/<REQ>/repin`), held by the project's `revisions` person gate: a holder of `requirements.approve` where it is on, any project writer, an agent included, where it is off. A re-pin changes no criterion (`standing.effect.follow`). Where the new revision removed or renamed a step a criterion traces (`requirements/follow-reads.ts:followReadsOf`), the requirement waits on the assistant (`agent`), which drafts a `revision_diff` suggestion; once one is proposed, a signer reviews it. | Whether any step a current criterion traces was removed or renamed between the pinned and the approved revision |
 | 11 | A run parked after repeated failures waits on the master | `pipeline/autonomous-rescue-cap.ts` parks at `on_hold` as an agent park (no question, no blocker). `issues/standing.ts`'s agent-park turn already reads that as waiting on the master ("resume once"). The master re-dispatches with a changed brief, drops it, or asks a person a question carrying a recommended answer. | The cap that exists: 3 run sessions ended since the issue last moved on |
-| 12 | A draft untouched for 7 days gets a merge-or-drop proposal | A sweep finds drafts (requirement draft revisions, draft requirements, draft issues) whose newest touch is 7 days old and that have no open proposal. The assistant asks one question on the record: merge into a named item, drop, or keep, with a recommended option and its reason, read by rule from requirements (a near-duplicate, an accepted or dropped requirement), feedback (open items asking for it) and issues (a same-titled live one). Merge is offered only where a live item to merge into was found, and the option names it (`target`). The answer acts by itself (`requirements/stale-draft-act.ts`): drop drops the draft naming the question (a stale draft revision of a requirement past draft is withdrawn, and the requirement reads as it did before it); merge moves it into the target (a proposed revision of a requirement, a comment on an issue) and drops it naming the target; keep changes nothing and buys another 7 days. A merge a rule cannot do safely (target ended, links the merge would strand, a revision already open on the target, merging a draft revision of an agreed requirement) is refused by name on the answered round, and the draft waits on the master. Before the question the draft is `awaiting_proposal`, which is not a decision. | `touched_at` older than 7 days (`DRAFT_STALE_DAYS`), and no open question of that origin |
+| 12 | A stuck draft gets a merge, drop or keep question | Carried by the steward since REQ-48 round 2b (`docs/proposals/steward-agent.md`, BC-5): the 7-day sweep that asked beside it is gone. A draft that reads stuck (a draft requirement or draft revision its author does not finish, a draft issue) is asked once by the steward with Forge's own options: a draft requirement merge into the live requirement it repeats, drop or keep; a draft revision of an agreed one withdraw or keep; a draft issue merge into the live issue it repeats besides its own set. The answer acts as the answerer in its transaction (`steward/decision-act.ts`): merge writes the draft's new content as a proposed revision of the target, or its text as a comment on the target issue, and drops the draft naming it; withdraw keeps what was agreed; keep holds until the standing moves. A rule the act breaks (target ended, links the merge would strand, a revision already open on the target) refuses the answer by name and the question stays open. Before the question the draft is `awaiting_proposal`, which is not a decision. | The item's stuck reading (`lib/standing-times.ts`), never a fixed age |
 
 A park's question ends in the move that takes its issue out of `needs_info`, by any door:
 `issues/apply-transition.ts` calls `questions/issue-coupling.ts:withdrawParkQuestions`, which
@@ -301,7 +301,7 @@ These are text-only revisions, approved by the orchestrator.
   - `agreed` is re-pinned on a design approval by its mover through the re-pin act, held by the
     `revisions` person gate; nothing re-pins by itself, and a traced step that changed goes to the
     assistant instead.
-  - `draft` gets the 7-day merge-or-drop question.
+  - a stuck `draft` gets the steward's merge, drop or keep question (REQ-48 BC-5).
   - `picture` takes a kept preview for a screen.
 - **Issue lifecycle r14 → r15.** The rescue cap is an agent park waiting on the master. A run's
   person question carries a recommended answer.
@@ -327,7 +327,7 @@ These are text-only revisions, approved by the orchestrator.
 | 9 view only, acts by click | registry view-only; buttons are page routes | ui-actions, needs-me |
 | 10 follow approved designs by a re-pin | the re-pin act, held by the `revisions` gate | noise-cut |
 | 11 crash-park waits on the master | rescue cap as an agent park | noise-cut |
-| 12 7-day merge-or-drop proposal | stale-draft sweep, question with options; the answer acts by itself | noise-cut, drafts-act |
+| 12 stuck draft: merge, drop or keep | the steward's decision, its answer acting as the answerer | steward-draft-decisions |
 | 13 home on chat | home page | home |
 | 14 build an idea as a live preview | `idea` subject, sketch run | previews-core, idea |
 | 15 edits within seconds | preview door, hot reload | previews-core |

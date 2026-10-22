@@ -1,7 +1,8 @@
 // The peek beside the Approvals list (REQ-48 BC-11): what the agent proposes, what approving changes,
 // why, the records that move and what the reporter said, then a footer that stays in view with the
 // acts that decide it and their keys. A decision a person asked (a question, a sign-off) reads by its
-// question and offers its own answers. Nothing here builds an act: every button presses one core gave.
+// question and offers its own answers, each with what it does to the item. Nothing here builds an
+// act: every button presses one core gave.
 
 import type { DecisionAnswer, NeedsYouDecision } from "@forge/contracts/needs-you-decisions";
 import { useEffect, useRef, useState } from "react";
@@ -27,17 +28,49 @@ function Proposal({ d }: { d: NeedsYouDecision }) {
   );
 }
 
+/**
+ * What each answer does to the item, in core's words (REQ-48 BC-11), drawn under its answer rather than
+ * held in the button's tooltip, which no phone and no keyboard reader ever opens. The recommended
+ * answer is marked as the buttons mark it.
+ */
+function AnswerEffects({ d }: { d: NeedsYouDecision }) {
+  const t = useCopy();
+  const said = d.answers.filter((a) => a.effect);
+  if (said.length === 0) return null;
+  return (
+    <section data-testid="approval-peek-effects">
+      <Heading>{t("approvals.peek.answers")}</Heading>
+      <ul className="divide-y divide-line-subtle border-y border-line-subtle text-13">
+        {said.map((a) => (
+          <li key={a.id} className="flex flex-col gap-0.5 py-2" data-testid="approval-peek-effect" data-answer={a.id}>
+            <span className="flex flex-wrap items-baseline gap-2">
+              <span className="font-semibold text-fg">{a.label}</span>
+              {a.recommended ? <span className="text-12 font-medium text-ok-11">{t("approvals.peek.recommended")}</span> : null}
+            </span>
+            <span className="text-muted">{a.effect}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 /** What approving changes, why, and the records that move: the proposal's own lines, in its order. */
 function Reasons({ d }: { d: NeedsYouDecision }) {
   const t = useCopy();
   const p = d.proposal;
   if (!p) {
-    return d.recommended ? (
-      <section>
-        <Heading>{t("approvals.peek.recommended")}</Heading>
-        <p className="text-13 text-fg">{d.recommended.why}</p>
-      </section>
-    ) : null;
+    return (
+      <>
+        {d.recommended ? (
+          <section>
+            <Heading>{t("approvals.peek.recommended")}</Heading>
+            <p className="text-13 text-fg">{d.recommended.why}</p>
+          </section>
+        ) : null}
+        <AnswerEffects d={d} />
+      </>
+    );
   }
   return (
     <>

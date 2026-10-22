@@ -217,13 +217,27 @@ async function stewardDecisionAnswered(args: AnswerInput): Promise<StewardDecisi
     .where(eq(agentQuestions.id, args.questionId))
     .limit(1);
   const step = row?.steps.at(-1);
-  if (!row?.issueId || !step || !isChoiceStep(step) || !isStewardDecisionQuestion(step.options)) {
+  if (!row || !step || !isChoiceStep(step) || !isStewardDecisionQuestion(step.options)) {
     return null;
+  }
+  const subject = row.issueId
+    ? ({ kind: 'issue', id: row.issueId } as const)
+    : row.requirementId
+      ? ({ kind: 'requirement', id: row.requirementId } as const)
+      : row.about?.kind === 'feedback'
+        ? ({ kind: 'feedback', id: row.about.feedbackId } as const)
+        : null;
+  // a decision whose item is gone (its row deleted, the column set null) decides nothing: refused
+  if (!subject) {
+    throw refuseQuestion(
+      'QUESTION_ANSWER_WRONG_SHAPE',
+      `question ${row.id} is a steward decision whose item no longer exists; void it (POST /api/questions/${row.id}/void)`,
+    );
   }
   return {
     questionId: row.id,
     projectId: row.projectId,
-    issueId: row.issueId,
+    subject,
     decision,
     optionId: args.answer.optionId,
     by: args.by,

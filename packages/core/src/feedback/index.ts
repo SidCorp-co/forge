@@ -43,4 +43,9 @@ export { shippedNotice } from './reporter-notices.js';
 export { requirementFeedbackAs } from './requirement-feedback.js';
 export { sweepDeclinedFeedback } from './retention.js';
 export { createFeedback, lockFeedback } from './service.js';
+export {
+  feedbackCarriedBy,
+  type StewardFeedbackAct,
+  stewardSettleFeedbackIn,
+} from './steward-settle.js';
 export { triageIn } from './triage.js';

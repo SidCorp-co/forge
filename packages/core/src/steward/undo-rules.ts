@@ -61,8 +61,8 @@ const OVERRIDES: readonly { door: RegExp; override: string; person: string }[] =
   {
     door: /^KEEP /,
     override:
-      'nothing to undo: a keep moved nothing, and the steward asks again once the standing moves; to decide now, move the issue yourself',
-    person: 'Nothing to undo: a keep moved nothing. Move the issue yourself to decide now.',
+      'nothing to undo: a keep moved nothing, and the steward asks again once the standing moves; to decide now, act on the item yourself through its own door',
+    person: 'Nothing to undo: a keep moved nothing. Act on the item yourself to decide now.',
   },
   {
     door: /^WAKE /,

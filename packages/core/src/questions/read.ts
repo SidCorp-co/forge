@@ -38,6 +38,7 @@ import { peopleOf } from '../lib/people.js';
 import { notFound } from '../middleware/route-errors.js';
 import { type PermissionFacts, requireHeld } from '../permissions/index.js';
 import { answerQuestion, type GivenAnswer, mayAnswerFreeText, type StillWaits } from './answer.js';
+import { refuseStewardOptions } from './steward-options.js';
 import { type AskAnswer, type AskInput, askQuestion, mayChoose, refuseQuestion } from './write.js';
 
 export type VisibleOption = QuestionOption & { locked: boolean };
@@ -135,6 +136,7 @@ type AskAsInput = {
 };
 
 export async function askAs(args: AskAsInput) {
+  refuseStewardOptions(args.answer);
   const issue = await readAskedIssue(args.issueId);
   if (!issue?.projectId) return null;
   const access = await accessOn(issue.projectId, args.userId);

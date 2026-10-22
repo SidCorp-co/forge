@@ -57,13 +57,14 @@ const OWN_WORK: ReadonlySet<string> = new Set([
   'standing.act.finishDraft',
   'standing.act.reviseThenProposeOrDrop',
   'issues.standing.act.reviseDesign',
+  'standing.act.writeRevision',
 ]);
 
-/** A draft nobody has proposed merging or dropping yet (BC-12): not a decision until Forge asks it. */
+/** A draft nobody has asked to merge, drop or keep yet (BC-12): not a decision until the steward asks it. */
 const AWAITING_PROPOSAL: ReadonlySet<string> = new Set(['issues.standing.act.takeOnOrDrop']);
 
-/** A draft Forge asked to merge, drop or keep (BC-12): its question is the decision. */
-const MERGE_OR_DROP = 'standing.act.mergeOrDrop';
+/** A requirement the steward asked a decision on (REQ-48 BC-5): its question is the decision. */
+const STEWARD_ASKED = 'standing.act.answerSteward';
 
 /** A design revision proposed to its approver (`workflows/design-standing.ts:proposedWait`). */
 const DESIGN_PROPOSED = 'designs.act.approveOrReturn';
@@ -173,15 +174,21 @@ function classify(row: AttentionRow, area: NeedsYouAreaKey, f: Facts): Classifie
   if (row.entity !== 'question' && !isDecisionActOn(row.entity, row.standing.waitingOn.says.act)) {
     return { reason: 'work' };
   }
-  if (act.key === MERGE_OR_DROP && (row.entity === 'issue' || row.entity === 'requirement')) {
-    const q = questionOf(row, f, row.entity === 'issue' ? row.key : null);
-    if (!q) return { reason: 'awaiting_proposal' };
-    return questionDecision(row, area, q, { kind: row.entity, key: row.key });
+  if (act.key === STEWARD_ASKED && row.entity === 'requirement') {
+    const q = questionOf(row, f, null);
+    if (!q) return { reason: 'work' };
+    return questionDecision(row, area, q, { kind: 'requirement', key: row.key });
   }
   if (row.entity === 'question' || (row.entity === 'issue' && ANSWER_ACTS.has(act.key))) {
     const q = questionOf(row, f, row.entity === 'issue' ? row.key : null);
     if (!q) return { reason: 'work' };
-    const opens = row.entity === 'issue' ? { kind: 'issue' as const, key: row.key } : null;
+    // a steward decision about a feedback item stands on no item, and opens the item it names
+    const opens =
+      row.entity === 'issue'
+        ? { kind: 'issue' as const, key: row.key }
+        : q.aboutFeedback
+          ? { kind: 'feedback' as const, key: q.aboutFeedback }
+          : null;
     return questionDecision(row, area, q, opens);
   }
   if (act.key === 'standing.act.onIssue' && act.inner && act.ref) {
@@ -195,8 +202,9 @@ function classify(row: AttentionRow, area: NeedsYouAreaKey, f: Facts): Classifie
     if (act.key === 'standing.act.acceptR' && req?.proposed) {
       return revisionDecision(row, area, f.projectId, req.proposed);
     }
-    if ((act.key === 'standing.act.agreeR' || act.key === 'standing.act.agreeIt') && req?.head) {
-      return agreeDecision(row, area, f.projectId, req.head);
+    // an agree pins the current revision, never a newer withdrawn one (`rules.ts:agreeRefusals`)
+    if (act.key === 'standing.act.agreeR' && req?.current) {
+      return agreeDecision(row, area, f.projectId, req.current);
     }
     if (act.key === 'standing.acts' && req?.head) {
       return repinDecision(row, area, f.projectId, req.head);
@@ -247,8 +255,7 @@ function classify(row: AttentionRow, area: NeedsYouAreaKey, f: Facts): Classifie
 
 /** The page group a decision its builder did not place is read under, by what it decides. */
 function topicOf(d: DecisionBody): NeedsYouTopic {
-  if (d.group === 'answer' || d.group === 'merge_or_drop' || d.entity === 'question')
-    return 'question';
+  if (d.group === 'answer' || d.entity === 'question') return 'question';
   if (d.entity === 'feedback') return 'feedback';
   if (d.entity === 'release') return 'release';
   if (d.entity === 'workflow') return 'design';

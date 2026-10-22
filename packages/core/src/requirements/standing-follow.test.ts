@@ -4,8 +4,8 @@ import { deriveStanding, type StandingInput } from './standing.js';
 import type { TracedChange } from './standing-follow.js';
 
 // REQ-41 BC-10 and BC-12, as the requirement's own turn reads them: a design approval a traced step
-// did not survive waits on the assistant, and a stale draft with its merge-or-drop question open
-// waits on a signer answering it.
+// did not survive waits on the assistant, and a stuck draft with the steward's question open waits
+// on a signer answering it (REQ-48 BC-5).
 
 const at = (iso: string) => new Date(iso);
 
@@ -88,14 +88,14 @@ describe('a design approved past the pin', () => {
   });
 });
 
-describe('a stale draft the assistant asked about', () => {
+describe('a stuck draft the steward asked about (REQ-48 BC-5)', () => {
   const draft = { status: 'draft' as const, currentRevision: null, stalePins: [] };
 
-  it('waits on a signer answering merge, drop or keep, not on its author proposing it', () => {
-    const s = turn(base({ ...draft, revisions: [revision('draft', 1)], mergeOrDropAsked: true }));
+  it("waits on a signer answering the steward's question, not on its author proposing it", () => {
+    const s = turn(base({ ...draft, revisions: [revision('draft', 1)], stewardAsked: true }));
     expect(s.attentionGroup).toBe('needs_you');
-    expect(s.waitingOn.act).toBe('answer whether to merge, drop or keep this draft');
-    expect(s.waitingOn.rule).toBe('a draft untouched for 7 days: merge, drop or keep it');
+    expect(s.waitingOn.act).toBe("answer the steward's question");
+    expect(s.waitingOn.rule).toBe('the steward asked what to do with this stuck draft');
   });
 
   it('is its author’s draft to propose while nothing was asked', () => {

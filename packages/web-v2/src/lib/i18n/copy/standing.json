@@ -18,7 +18,6 @@
     "standing.act.acceptRevisionN": "nghiệm thu bản sửa {r} của {req}",
     "standing.act.acceptRevisionNum": "chấp nhận bản sửa {r}",
     "standing.act.acceptRevisionOf": "nghiệm thu bản sửa của {req}",
-    "standing.act.agreeIt": "thống nhất",
     "standing.act.agreeR": "thống nhất r{r}",
     "standing.act.andMore": "{act}{more}",
     "standing.act.answerReturn": "trả lời lý do bị trả",

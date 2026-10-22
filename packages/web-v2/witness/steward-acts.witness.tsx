@@ -1,16 +1,23 @@
 // The steward's acts and questions in each item's Activity, witnessed as drawn (REQ-48 BC-12): on a
 // requirement, a feedback item and an issue, every act the steward took says what it did, with Undo
 // for a project writer where a door undoes it, how to override it where none does, or Undone; and a
-// question the steward asked says "Asked by Steward". At 390 px nothing scrolls sideways.
+// question the steward asked says "Asked by Steward". The issue is the draft the steward asked about,
+// its question answered "keep", so its standing still asks a person to take it on or drop it and no
+// question is open. Every read is answered, so each shot is of a settled page; at 390 px nothing
+// scrolls sideways.
 //
 //   pnpm --filter web-v2 witness witness/steward-acts.witness.tsx --out <dir>
 
-import type { StewardActRecord } from "@forge/contracts/steward";
+import { issueMovesFrom } from "@forge/contracts/issue-machine";
+import type { QueryKey } from "@tanstack/react-query";
+import { STEWARD_DECISION_OPTION_IDS, type StewardActRecord, stewardDecisionLabel } from "@forge/contracts/steward";
 import { FeedbackItemScreen } from "@/features/feedback";
+import { IssueDetailScreen } from "@/features/issues/components/issue-detail-screen";
 import { RequirementScreen } from "@/features/requirements/components/requirement-screen";
-import { SCREENS as ISSUE_SCREENS } from "@/test/vi-chrome-issues";
+import { say, waitingOn } from "@/test/said";
+import { detailQueries } from "@/test/vi-chrome-issues";
 import { Seeded } from "@/test/vi-chrome-requirements";
-import { FP, fbSeeds, has, mountSurfaces, REQ_PROJECT, reqSeeds, type Surface } from "./steward.fixture";
+import { FP, fbSeeds, has, ISSUE_CRITERIA, lacks, mountSurfaces, REQ_PROJECT, reqSeeds, type Surface } from "./steward.fixture";
 
 const AT = "2026-10-21T08:00:00.000Z";
 
@@ -40,6 +47,9 @@ const ACTS: StewardActRecord[] = [
   act("a3", "Commented on the item with the stuck cause.", { door: "POST /api/issues/i1/comments", undo: { door: "DELETE /api/comments/c1", body: null }, undoneAt: "2026-10-21T09:00:00.000Z", undoneBy: "u1" }),
 ];
 
+const ISS_1 = { kind: "issue" as const, draft: true };
+const KEEP = { id: STEWARD_DECISION_OPTION_IDS.keep, label: stewardDecisionLabel("keep", ISS_1) };
+const DROP = { id: STEWARD_DECISION_OPTION_IDS.drop, label: stewardDecisionLabel("drop", ISS_1) };
 const QUESTION = {
   id: "q1",
   projectId: "p1",
@@ -52,12 +62,9 @@ const QUESTION = {
       prompt: "ISS-1 has been a draft for 16 days. Keep it as a draft, or drop it?",
       askedAt: AT,
       answerShape: "choice",
-      options: [
-        { id: "keep", label: "Keep it as a draft", authority: "writer", bindsTo: "this_call", executedBy: "core" },
-        { id: "drop", label: "Drop it", authority: "writer", bindsTo: "this_call", executedBy: "core" },
-      ],
-      recommendedOptionId: "keep",
-      chosenOptionId: "keep",
+      options: [KEEP, DROP].map((o) => ({ ...o, authority: "writer", bindsTo: "this_call", executedBy: "core" })),
+      recommendedOptionId: KEEP.id,
+      chosenOptionId: KEEP.id,
       answeredAt: "2026-10-21T08:40:00.000Z",
       answeredBy: "u1",
     },
@@ -73,7 +80,7 @@ const QUESTION = {
   updatedAt: AT,
   answerShape: "choice",
   options: [],
-  recommendedOptionId: "keep",
+  recommendedOptionId: KEEP.id,
   needed: "",
   locked: false,
   asker: { id: "s1", name: "Steward", kind: "agent" },
@@ -112,11 +119,51 @@ const actsDrawn = (): string[] => [
   ...(document.querySelectorAll("[data-testid=steward-act-undo]").length === 1 ? [] : ["exactly one act offers Undo"]),
 ];
 
-const issueScreen = () => {
-  const s = ISSUE_SCREENS.find((x) => x.name === "Issue detail");
-  if (!s) throw new Error('no issue fixture screen is named "Issue detail"');
-  return s.render;
-};
+/**
+ * The issue page's reads with ISS-1 the draft the steward asked about: the question answered "keep",
+ * so the draft still waits on a person to take it on or drop it (core's `issues/standing.ts`
+ * `personTurn` for a draft), with nothing parked, blocked, merged, running or waiting for a release,
+ * and none of its criteria judged.
+ */
+const draftIssueQueries = (): [QueryKey, unknown][] =>
+  detailQueries().map(([k, v]): [QueryKey, unknown] => {
+    if (k[0] === "issue" && k[1] === "i1" && (k.length === 2 || k[2] === FP)) {
+      const { mergeMark: _m, pipelineHealth: _p, ...issue } = v as Record<string, unknown>;
+      return [k, { ...issue, status: "draft", agentStatus: null, agentSessions: [], workState: null, waitingOnPersonSince: null, mergedAt: null, landingShape: null, liveReach: null, shippedIn: null, releaseNotes: null }];
+    }
+    if (k[0] === "issue" && k[2] === "criteria") return [k, { criteria: ISSUE_CRITERIA, retired: [] }];
+    if (k[0] === "release-roster") return [k, { ...(v as object), issues: [] }];
+    if (k[0] === "issues" && k[1] === "standing") {
+      const d = v as { standing: Record<string, unknown> };
+      return [
+        k,
+        {
+          ...d,
+          status: "draft",
+          blocker: null,
+          steps: [],
+          stepOutcomes: [],
+          standing: {
+            ...d.standing,
+            state: "draft",
+            step: null,
+            stepStartedAt: null,
+            moves: issueMovesFrom("draft", null, false),
+            tone: "you",
+            attentionGroup: "needs_you",
+            waitingOn: waitingOn("you", { who: say("standing.who.you"), act: say("issues.standing.act.takeOnOrDrop"), rule: say("issues.rule.draft") }),
+            criteria: { total: ISSUE_CRITERIA.length, met: 0, failing: 0, skipped: 0 },
+            blocks: [],
+            lease: null,
+            inFlight: false,
+            branch: null,
+            headSha: null,
+          },
+        },
+      ];
+    }
+    return [k, v];
+  });
 
 const SURFACES: Surface[] = [
   {
@@ -144,9 +191,18 @@ const SURFACES: Surface[] = [
   {
     name: "issue-activity",
     path: "/projects/hop/issues/ISS-1",
-    render: issueScreen(),
+    render: () => (
+      <Seeded data={draftIssueQueries()}>
+        <IssueDetailScreen projectId={FP} slug="hop" id="i1" />
+      </Seeded>
+    ),
     open: () => document.querySelector<HTMLElement>("[data-testid=details-activity] > button:not([data-panel-open])")?.click(),
-    check: () => [...actsDrawn(), ...has("the question", "Asked by Steward")],
+    check: () => [
+      ...actsDrawn(),
+      ...has("the question", "Asked by Steward"),
+      ...has("the draft's standing", "take on or drop"),
+      ...lacks("a question owed where none is open", "No questions"),
+    ],
   },
 ];
 

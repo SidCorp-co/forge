@@ -72,7 +72,7 @@ async function readyDraft(seq: number) {
 
 const decide = (key: string, recommended: string) => ({
   name: 'steward_decide',
-  args: { issue: key, recommended, why: 'it carries open feedback and nothing else covers it' },
+  args: { about: key, recommended, why: 'it carries open feedback and nothing else covers it' },
 });
 
 const questionsOn = (issueId: string) =>
@@ -164,24 +164,28 @@ describe("a stuck issue's question carries Forge's own options (REQ-48 BC-5)", (
     );
     const acts = await actsOn(lastRunId);
     expect(acts).toHaveLength(1);
-    expect(acts[0]?.door).toBe('POST /api/questions');
+    expect(acts[0]?.door).toBe(
+      `POST /api/projects/${projectId}/steward-runs/${lastRunId}/decisions`,
+    );
   });
 
   it('never asks an unprepared draft open: it names the gaps and the door that prepares it', async () => {
     const issue = await draftIssue(91);
     const { out, results } = await diagnose(issue, [decide(issue.key, 'open')]);
     expect(out).toMatchObject({ acts: [], refused: [] });
-    expect(results[0]).toContain('offers link, requirement, drop; recommend one of them, not open');
+    expect(results[0]).toContain(
+      'offers link, requirement, drop, merge; recommend one of them, not open',
+    );
     expect(results[0]).toContain('steward_prepare_draft');
     expect(await questionsOn(issue.id)).toHaveLength(0);
   });
 
-  it('refuses options the model spells, and a recommendation the issue does not offer', async () => {
+  it('refuses options the model spells, and a merge that names no live issue', async () => {
     const issue = await draftIssue(81);
     const { out, results } = await diagnose(issue, [
       {
         name: 'steward_decide',
-        args: { issue: issue.key, recommended: 'merge', why: 'it reads like another one' },
+        args: { about: issue.key, recommended: 'merge', why: 'it reads like another one' },
       },
       {
         name: 'steward_ask',
@@ -197,7 +201,8 @@ describe("a stuck issue's question carries Forge's own options (REQ-48 BC-5)", (
       },
     ]);
     expect(out).toMatchObject({ acts: [], refused: [] });
-    expect(results[0]).toContain('steward_decide');
+    // merge is offered a draft only into a live issue the turn names
+    expect(results[0]).toContain('recommending merge names the live item it repeats in `into`');
     // a free-form ask is no door of a diagnosis: its menu holds the decision alone
     expect(results[1]).toContain('steward_ask is not a door of stuck_diagnosis');
     expect(await questionsOn(issue.id)).toHaveLength(0);
@@ -220,7 +225,9 @@ describe("a stuck issue's question carries Forge's own options (REQ-48 BC-5)", (
     const { out, results } = await diagnose(issue, [ask(issue.key), ask('FB-3')], 'intake_check');
     expect(out).toMatchObject({ acts: [], refused: [] });
     expect(results[0]).toContain('a question about an issue is a decision');
-    expect(results[1]).toContain('FB-3 is a feedback item, which takes no question here');
+    // a feedback item's question is its decision, which steward_decide asks with Forge's options
+    expect(results[1]).toContain('FB-3 is a feedback item: its question is a decision');
+    expect(results[1]).toContain('steward_decide about FB-3');
   });
 
   it("asks nothing where the wait is somebody's act already, or the same question is open", async () => {
@@ -260,7 +267,7 @@ describe('answering a steward decision carries it out as the answerer (REQ-48 BC
     expect((await questionsOn(issue.id))[0]?.status).toBe('answered');
     const acts = await actsOn(lastRunId);
     expect(acts.map((a) => a.door)).toEqual([
-      'POST /api/questions',
+      `POST /api/projects/${projectId}/steward-runs/${lastRunId}/decisions`,
       `POST /api/issues/${issue.id}/transition`,
     ]);
     expect(acts[1]?.did).toContain(`Opened ${issue.key} on the answer`);
@@ -301,7 +308,10 @@ describe('answering a steward decision carries it out as the answerer (REQ-48 BC
     expect(done.status, JSON.stringify(done.json)).toBe(200);
     expect(await statusOf(issue.id)).toBe('draft');
     const acts = await actsOn(askRun);
-    expect(acts.map((a) => a.door)).toEqual(['POST /api/questions', `KEEP ${issue.key}`]);
+    expect(acts.map((a) => a.door)).toEqual([
+      `POST /api/projects/${projectId}/steward-runs/${askRun}/decisions`,
+      `KEEP ${issue.key}`,
+    ]);
     expect(acts[1]?.did).toContain('Until REQ-50 is agreed.');
     const again = await diagnose(issue, [decide(issue.key, 'open')]);
     expect(again.results[0]).toContain('was kept on the standing it reads now');

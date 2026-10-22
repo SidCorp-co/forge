@@ -126,6 +126,7 @@ export {
   releasedIssueOf,
   statusChangesSince,
 } from './memory-reads.js';
+export { draftMergeHolds } from './merge-holds.js';
 export { mergedCommitShaSchema } from './merge-marker.js';
 export { mergeMarkKindOf, recordIssueMerge } from './merge-record.js';
 export {
@@ -192,7 +193,6 @@ export {
   leaseIsWorkInProgress,
   leaseShowsHolderGone,
 } from './session-claim.js';
-export { draftMergeHolds, type StaleDraftIssue, staleDraftIssues } from './stale-drafts.js';
 export { issueWaitsOf, listIssueStanding } from './standing-read.js';
 export {
   heldReleaseWait,

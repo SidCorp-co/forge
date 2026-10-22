@@ -4,6 +4,7 @@ import type { QueryKey } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { fireEvent } from "@testing-library/react";
 import { ISSUES_PAGE_SIZE } from "@/features/issues/api";
+import { issueKeys } from "@/features/issues/queries";
 import { ActivityFeed } from "@/features/issues/components/activity-feed";
 import { AwaitingReleaseBanner } from "@/features/issues/components/awaiting-release-banner";
 import { BatchReleaseDialog } from "@/features/issues/components/batch-release-dialog";
@@ -245,18 +246,19 @@ const ACTIVITY = [
   { id: "a5", action: "issue.priorityChanged", payload: { from: "low", to: "high" }, actorType: "user", actor: null, createdAt: AT },
 ];
 
-const detailQueries = (): [QueryKey, unknown][] => [
+/** The reads the issue page is seeded with, the issue `ISS-1` parked for information, each under the key its hook reads (`issueKeys`), so none is left to a core the page cannot reach. */
+export const detailQueries = (): [QueryKey, unknown][] => [
   ...listQueries(),
   [["issue", "i1", P], ISSUE],
   [["issue", "i1"], ISSUE],
   [["issues", "standing", P, "one", "ISS-1"], DETAIL],
-  [["comments", "i1"], { items: COMMENTS, totalCount: 3 }],
-  [["activities", "i1"], { items: ACTIVITY }],
-  [["issue", "i1", "attachments"], []],
+  [issueKeys.comments("i1", P), { items: COMMENTS, totalCount: 3 }],
+  [issueKeys.activities("i1", P), { items: ACTIVITY, nextBefore: null }],
+  [issueKeys.attachments("i1", P), []],
   [["issue", "i1", "checks"], { issueId: "i1", totalMs: 0, kinds: [], checks: [] }],
-  [["issue", "i1", "cost"], { estimatedCost: 1.25, inputTokens: 1200, outputTokens: 3400, cacheReadTokens: 0, cacheCreationTokens: 0 }],
-  [["issue", "i1", "dependencies"], { incoming: [], outgoing: [] }],
-  [["issue", "i1", "criteria"], { criteria: [{ id: "k1", n: 1, statement: "Tieu chi", position: 1, requirementCriterionId: null, latest: { verdict: "short", reason: "gan du", identityKind: null, authorAgency: "agent", createdAt: AT } }, { id: "k2", n: 2, statement: "Tieu chi hai", position: 2, requirementCriterionId: null, latest: null }] }],
+  [issueKeys.cost("i1", P), { estimatedCost: 1.25, inputTokens: 1200, outputTokens: 3400, cacheReadTokens: 0, cacheCreationTokens: 0 }],
+  [issueKeys.deps("i1", P), { incoming: [], outgoing: [] }],
+  [issueKeys.criteria("i1", P), { retired: [], criteria: [{ id: "k1", n: 1, statement: "Tieu chi", position: 1, requirementCriterionId: null, latest: { verdict: "short", reason: "gan du", identityKind: null, authorAgency: "agent", createdAt: AT } }, { id: "k2", n: 2, statement: "Tieu chi hai", position: 2, requirementCriterionId: null, latest: null }] }],
   [["mockups", P, "issue", "ISS-1"], { mockups: [], returned: 0 }],
   [["release-roster", P], { gateStatus: "open", baseBranch: "main", nextCutAt: null, issues: [{ id: "i1", mergedAt: AT, claimedByRunId: null }] }],
 ];

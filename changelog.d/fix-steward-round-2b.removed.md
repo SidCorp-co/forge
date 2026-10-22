@@ -1,0 +1,1 @@
+**The steward asks every stuck item's decision, feedback included.** It asks merge, drop or keep on stuck drafts, replacing the separate seven-day stale-draft question, and a draft requirement with nothing agreed reads "write a revision", not "agree it".

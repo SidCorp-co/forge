@@ -93,7 +93,7 @@ const decide = (
 ) => ({
   name: 'steward_decide',
   args: {
-    issue: key,
+    about: key,
     recommended,
     ...(candidates ? { candidates } : {}),
     why: 'the carried feedback asks for exactly this',
@@ -191,7 +191,7 @@ describe('the steward prepares a draft before it asks anything (REQ-48 BC-5)', (
       `POST /api/projects/${projectId}/requirements/${req}/issues`,
       `PATCH /api/issues/${issue.id}`,
       `PUT /api/issues/${issue.id}/criteria`,
-      'POST /api/questions',
+      `POST /api/projects/${projectId}/steward-runs/${lastRunId}/decisions`,
     ]);
     // each write is undone through its own door
     expect(acts.slice(0, 3).map((a) => (a.undo as Doc | null)?.door)).toEqual([
@@ -293,7 +293,7 @@ describe('where no agreed requirement fits, the answer acts (REQ-48 BC-5)', () =
     expect(linked?.requirement_id).not.toBeNull();
     const askRun = lastRunId;
     expect((await actsOn(askRun)).map((a) => a.door)).toEqual([
-      'POST /api/questions',
+      `POST /api/projects/${projectId}/steward-runs/${askRun}/decisions`,
       `POST /api/projects/${projectId}/requirements/${req}/issues`,
     ]);
 
@@ -311,7 +311,7 @@ describe('where no agreed requirement fits, the answer acts (REQ-48 BC-5)', () =
     expect((await actsOn(rerun?.id ?? '')).map((a) => a.door)).toEqual([
       `PATCH /api/issues/${issue.id}`,
       `PUT /api/issues/${issue.id}/criteria`,
-      'POST /api/questions',
+      `POST /api/projects/${projectId}/steward-runs/${rerun?.id}/decisions`,
     ]);
     const asked = await openQuestion(issue.id);
     expect(asked.step.recommendedOptionId).toBe(IDS.open);

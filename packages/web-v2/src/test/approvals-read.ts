@@ -3,8 +3,9 @@
 // a requirement sign-off, a release approval and a run's question. Every decision is parsed by the contract's own schema,
 // so a fixture that drifts from what core sends fails here, not on the page.
 
-import { type DecisionAnswer, type NeedsYouDecision, type NeedsYouDecisions, needsYouDecisionsSchema } from "@forge/contracts/needs-you-decisions";
+import { type DecisionAnswer, type NeedsYouDecision, type NeedsYouDecisions, needsYouDecisionSchema, needsYouDecisionsSchema } from "@forge/contracts/needs-you-decisions";
 import type { DecisionProposal } from "@forge/contracts/needs-you-proposal";
+import { STEWARD_DECISION_OPTION_IDS, STEWARD_DECISIONS_WITH_REASON, stewardDecisionEffect, stewardDecisionLabel } from "@forge/contracts/steward";
 
 export const APPROVALS_PROJECT = "6f0ee160-8432-4b84-98cf-956b6cd65a29";
 const P = APPROVALS_PROJECT;
@@ -307,6 +308,44 @@ const QUESTION: NeedsYouDecision = {
   topic: "question",
   proposal: null,
 };
+
+/** One answer of the steward's question on ISS-7, as core's `stewardDecision` builds it: Forge's own label and effect. */
+const ISS_7 = { kind: "issue" as const, key: "ISS-7", draft: true };
+const stewardAnswer = (decision: keyof typeof STEWARD_DECISION_OPTION_IDS, recommended: boolean): DecisionAnswer => ({
+  id: STEWARD_DECISION_OPTION_IDS[decision],
+  label: stewardDecisionLabel(decision, ISS_7),
+  act: "question.answer",
+  path: "/api/questions/q7/answer",
+  body: { round: 1, optionId: STEWARD_DECISION_OPTION_IDS[decision] },
+  needsReason: STEWARD_DECISIONS_WITH_REASON.includes(decision),
+  declines: false,
+  effect: stewardDecisionEffect(decision, { ...ISS_7, option: STEWARD_DECISION_OPTION_IDS[decision] }),
+  recommended,
+});
+
+/**
+ * The steward's question on a stuck draft (REQ-48 BC-5, BC-11): open, keep or drop, recommended by the
+ * steward with its one line, each answer saying what it does to ISS-7. Not in `APPROVALS_READ`, whose
+ * counts the pages' tests read; the steward's own witness and tests add it.
+ */
+export const STEWARD_DECISION: NeedsYouDecision = needsYouDecisionSchema.parse({
+  id: "question:q7",
+  group: "answer",
+  area: "issues",
+  entity: "issue",
+  key: "ISS-7",
+  title: "Export keeps the old column order",
+  opens: { kind: "issue", key: "ISS-7" },
+  question: `ISS-7 "Export keeps the old column order": it has been a draft for 16 days and no one has taken it on. Open it, keep it as a draft, or drop it? Recommended: ${stewardDecisionLabel("open", ISS_7)}, because its plan and criteria pass the issue-ready check.`,
+  recommended: { answerId: STEWARD_DECISION_OPTION_IDS.open, why: `The steward recommends "${stewardDecisionLabel("open", ISS_7)}" because its plan and criteria pass the issue-ready check.`, by: "steward" },
+  noRecommendation: null,
+  answers: [stewardAnswer("open", true), stewardAnswer("keep", false), stewardAnswer("drop", false)],
+  touchedAt: ago(3),
+  stuck: true,
+  dueAt: null,
+  topic: "question",
+  proposal: null,
+});
 
 /** A release approval as core's `releaseDecision` builds it: both answers take words, and only Return declines. */
 const RELEASE_PATH = `/api/projects/${P}/release-batches/run-7/approvals/ap-7/decision`;

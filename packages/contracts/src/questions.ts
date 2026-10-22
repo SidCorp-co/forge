@@ -38,6 +38,7 @@ export const QUESTION_REFUSAL_CODES = [
 	"QUESTION_TOKEN_NOT_OWN",
 	"QUESTION_OWED_BY_PERSON",
 	"QUESTION_BLOCKED_ON_AGENT",
+	"QUESTION_OPTIONS_STEWARDS",
 ] as const;
 export type QuestionRefusalCode = (typeof QUESTION_REFUSAL_CODES)[number];
 export const QUESTION_REFUSAL_STATUSES = {
@@ -124,11 +125,13 @@ export type AnswerResume = AnswerOutcome & { at: string };
  * It is not `requirementId`: that column is the BA clarification link and moves the question to the
  * requirement's operational surface, while `about` keeps the question where it was asked (its issue,
  * or no issue at all) and only lists it on the requirement it names, whose page records its answer
- * as a decision. A contract is `<project>/<contract>`.
+ * as a decision. A contract is `<project>/<contract>`. A feedback item is named only by the steward's
+ * decision about it (REQ-48 BC-5): `feedbackId` is a reporter's clarification, which this is not.
  */
 export type QuestionAbout =
 	| { kind: "requirement"; requirementId: string }
-	| { kind: "contract"; contract: string };
+	| { kind: "contract"; contract: string }
+	| { kind: "feedback"; feedbackId: string };
 
 /**
  * `about` on an ask body. `{ requirement }` names a requirement by key (REQ-n) or uuid; on a question

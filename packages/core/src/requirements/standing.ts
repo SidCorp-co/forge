@@ -23,7 +23,6 @@ import {
   type RequirementWaitingOn,
 } from '@forge/contracts/requirements';
 import { type Said, say } from '@forge/contracts/said';
-import { DRAFT_STALE_DAYS } from '@forge/contracts/stale-drafts';
 import { type WaitingSays, waitingOn } from '@forge/contracts/standing';
 import type { MasterServing } from '@forge/contracts/steward';
 import type { RequirementStatus } from '../db/schema-requirements.js';
@@ -41,7 +40,7 @@ import {
   updateToApprovedAct,
   updateToApprovedEffect,
 } from './standing-follow.js';
-import { actWait, nextStepOf, signerWait } from './standing-gates.js';
+import { actWait, nextStepOf, ownerWait, signerWait } from './standing-gates.js';
 import { proofTurn } from './standing-proof.js';
 import { breakdownTaskOf, checkTaskOf, replanTasksOf, tasksOf } from './standing-tasks.js';
 import { type ParkedWait, type WorkTurn, workTurn } from './standing-work.js';
@@ -116,10 +115,8 @@ export interface StandingInput {
    * (`follow-reads.ts:followReadsOf`); absent or empty where none did, and a signer re-pins it.
    */
   tracedChanges?: readonly TracedChange[];
-  /** An open merge-or-drop question on this draft or its draft revision (`stale-drafts.ts`, REQ-41 BC-12). */
-  mergeOrDropAsked?: boolean;
-  /** Its newest merge-or-drop question was answered with an act core refused to carry out (`stale-draft-act.ts`). */
-  mergeOrDropRefused?: { code: string; detail: string } | null;
+  /** An open steward decision on this stuck draft or its draft revision (REQ-48 BC-5, `steward/door-decide.ts`). */
+  stewardAsked?: boolean;
   /** Linked designs holding no approved revision, which an agree refuses (REQUIREMENT_DESIGN_UNAPPROVED). */
   unapprovedDesigns: readonly { flow: string; title: string; designStatus: string | null }[];
   feedback: { open: number; untriaged: readonly string[] };
@@ -203,8 +200,8 @@ function feedbackTurn(input: StandingInput): Turn | null {
 
 // Whose turn it is, first rule wins: 1. dropped or deferred → nobody (ISS-85), accepted →
 // done unless feedback waits on triage; 2. a proposed revision → a signer; 3. a draft revision →
-// its author, unless 2b. the assistant asked whether to merge, drop or keep a stale draft → a signer
-// answers it (REQ-41 BC-12); 4. a draft requirement → a signer agrees it; 4b. untriaged feedback → a
+// its author, unless 2b. the steward asked a decision on the stuck draft → a signer answers it
+// (REQ-48 BC-5); 4. a draft requirement → a signer agrees it; 4b. untriaged feedback → a
 // signer triages it (ISS-79); 5. a design approved past the pin → a signer re-pins it (REQ-41 BC-10,
 // ISS-86; nothing re-pins by itself), unless the approval removed
 // or renamed a step a live criterion traces → the assistant revises those criteria, and once a
@@ -253,33 +250,31 @@ function turnOf(
     );
   }
   const draft = input.revisions.find((r) => r.state === 'draft');
-  if (input.mergeOrDropAsked && (draft || status === 'draft')) {
+  if (input.stewardAsked && (draft || status === 'draft')) {
     return signerWait(
       viewer,
-      say('standing.act.mergeOrDrop'),
-      say('requirements.rule.staleDraft', { days: DRAFT_STALE_DAYS }),
+      say('standing.act.answerSteward'),
+      say('requirements.rule.stewardAsked'),
     );
-  }
-  if (input.mergeOrDropRefused && (draft || status === 'draft')) {
-    return {
-      group: 'waiting',
-      waitingOn: wait(
-        'agent',
-        MASTER,
-        say('standing.act.draftAnswerByHand'),
-        say('standing.rule.draftAnswerRefused', input.mergeOrDropRefused),
-      ),
-    };
   }
   if (draft) return draftTurn(draft, viewer);
   if (status === 'draft') {
     const head = input.currentRevision;
+    // an agree pins a current head (`rules.ts:agreeRefusals`), so with none there is nothing to
+    // agree: its owner writes a revision, own work and never a decision (REQ-48 BC-11)
+    if (head === null) {
+      return ownerWait(
+        input,
+        say('standing.act.writeRevision'),
+        say('requirements.rule.noRevision'),
+      );
+    }
     const designs = designTurn(input.unapprovedDesigns, head);
     if (designs) return designs;
     return actWait(
       input,
       'agree',
-      head === null ? say('standing.act.agreeIt') : say('standing.act.agreeR', { r: head }),
+      say('standing.act.agreeR', { r: head }),
       say('requirements.rule.unagreed'),
     );
   }

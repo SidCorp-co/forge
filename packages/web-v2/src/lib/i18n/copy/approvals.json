@@ -55,6 +55,7 @@
     "approvals.peek.why": "Why",
     "approvals.peek.said": "What the reporter said",
     "approvals.peek.recommended": "Recommended",
+    "approvals.peek.answers": "What each answer does",
     "approvals.act.approve": "Approve",
     "approvals.act.decline": "Decline…",
     "approvals.act.declineGo": "Decline",

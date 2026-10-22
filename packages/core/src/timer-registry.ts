@@ -32,7 +32,7 @@ import { sweepPreviews } from './previews/index.js';
 import { sweepQuestionSuggestions } from './questions/index.js';
 import { recoverUnstartedReleaseBatches, resumeStrandedFinishes } from './release-batch/index.js';
 import { sweepExpiredExecutions, sweepExpiredReportRuns } from './reports/index.js';
-import { sweepDeliveredRequirements, sweepStaleDrafts } from './requirements/index.js';
+import { sweepDeliveredRequirements } from './requirements/index.js';
 import { reapGhostRunners, runRunnerStaleSweep } from './runners/index.js';
 import type { Timer } from './schedules/index.js';
 import { dispatchStewardRuns, runLessonsPass, sweepStandings } from './steward/index.js';
@@ -94,9 +94,9 @@ const logged =
   };
 
 /**
- * REQ-41 BC-12: a draft untouched for a week is asked about once, and a person's merge-or-drop answer
- * is carried out. Nothing here moves a requirement or a pin by itself (REQ-41 BC-10, owner ruling
- * 2026-10-14): a design approved past a pin waits on a signer to re-pin it.
+ * The question-suggest sweep drafts a recommended answer for an open question. Nothing here moves a
+ * requirement or a pin by itself (REQ-41 BC-10, owner ruling 2026-10-14): a design approved past a
+ * pin waits on a signer to re-pin it, and a stuck draft is the steward's to ask about (REQ-48 BC-5).
  */
 function requirementTimers(): Timer[] {
   return [
@@ -110,19 +110,6 @@ function requirementTimers(): Timer[] {
         (r) => {
           const { suggested, failed } = r as { suggested: number; failed: number };
           return suggested > 0 || failed > 0;
-        },
-      ),
-    },
-    {
-      kind: 'cluster',
-      name: 'stale-draft-sweep',
-      cron: '41 * * * *',
-      run: logged(
-        'stale-draft-sweep: asked',
-        () => sweepStaleDrafts(),
-        (r) => {
-          const { asked, refused } = r as { asked: number; refused: number };
-          return asked > 0 || refused > 0;
         },
       ),
     },
