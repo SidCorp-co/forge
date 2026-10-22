@@ -325,15 +325,12 @@ export function IntegrationsTab({
   const landingOnProbe = params.get("field") === VERIFY_PROBE_SECTION;
   const bindings = useIntegrationsList(landingOnProbe ? projectId : undefined);
   const landed = useRef(false);
+  const closed = useRef(false);
   // A read that finds no binding while a refresh is still out does not spend the landing: the
-  // refresh may bring the binding the link was about. The landing re-arms once the param has gone,
-  // so the link followed again on this mount lands again.
+  // refresh may bring the binding the link was about. A new arrival on the link is a new mount: it
+  // comes from another tab of the screen.
   useEffect(() => {
-    if (!landingOnProbe) {
-      landed.current = false;
-      return;
-    }
-    if (landed.current || !bindings.data) return;
+    if (!landingOnProbe || landed.current || !bindings.data) return;
     const target = probeLandingFor(bindings.data.items);
     if (!target) {
       if (!bindings.isFetching) landed.current = true;
@@ -342,13 +339,18 @@ export function IntegrationsTab({
     landed.current = true;
     setConnecting({ provider: target.provider, stage: "live", focus: VERIFY_PROBE_SECTION });
   }, [landingOnProbe, bindings.data, bindings.isFetching]);
-  // The drawer the link opened has closed: a reload is not a second arrival on the link.
+  // The drawer the link opened has closed: a reload is not a second arrival on the link. The param
+  // can come back after it, when the leave guard steps Back off its own entry onto the page's.
   const dropProbeLanding = useCallback(() => {
+    closed.current = landed.current;
     const url = new URL(window.location.href);
     if (url.searchParams.get("field") !== VERIFY_PROBE_SECTION) return;
     url.searchParams.delete("field");
     replaceLocationSearch(`${url.pathname}${url.search}${url.hash}`);
   }, []);
+  useEffect(() => {
+    if (landingOnProbe && closed.current) dropProbeLanding();
+  }, [landingOnProbe, dropProbeLanding]);
   const share = (
     <ShareExistingCard
       projectId={projectId}

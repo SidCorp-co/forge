@@ -245,15 +245,29 @@ describe("the page the verify-probe link opens", () => {
     expect(replaced).toEqual([]);
   });
 
-  it("lands again when the link is followed again on the same page", () => {
+  // Closing over an unsaved edit: the drawer's Discard, then the leave guard steps Back off its own
+  // history entry onto the page's, which still carries the link's query.
+  it("drops field again when the leave guard's Back brings it back, and opens nothing", () => {
     arrive();
     state.bindings = [live("coolify")];
     const { rerender } = render(<IntegrationsTab projectId="p-1" canEdit />);
     fireEvent.click(screen.getByRole("button", { name: "Close drawer" }));
     rerender(<IntegrationsTab projectId="p-1" canEdit />);
-    expect(screen.queryByTestId("drawer")).toBeNull();
     arrive();
     rerender(<IntegrationsTab projectId="p-1" canEdit />);
+    expect(screen.queryByTestId("drawer")).toBeNull();
+    expect(replaced).toEqual(["/stub/settings?tab=integrations#top", "/stub/settings?tab=integrations#top"]);
+    expect(window.location.search).toBe("?tab=integrations");
+  });
+
+  it("lands again when the link is followed from another tab, which mounts the tab anew", () => {
+    arrive();
+    state.bindings = [live("coolify")];
+    render(<IntegrationsTab projectId="p-1" canEdit />);
+    fireEvent.click(screen.getByRole("button", { name: "Close drawer" }));
+    cleanup();
+    arrive();
+    render(<IntegrationsTab projectId="p-1" canEdit />);
     expect(screen.getByTestId("drawer")).toHaveTextContent("coolify:live at verify-probe");
   });
 });
