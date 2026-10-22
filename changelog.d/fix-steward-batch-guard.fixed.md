@@ -1,1 +1,0 @@
-**The steward no longer reopens an issue mid-release, or over verdicts its policy owes after release.** Its output check is told whether production exists, and a post-release judge the day's budget cannot pay for waits, saying so on the issue.

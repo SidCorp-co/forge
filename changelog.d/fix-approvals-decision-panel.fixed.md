@@ -1,1 +1,0 @@
-**An Approvals question no longer quotes its answer.** Feedback, lesson, release and design questions are one sentence; left-out designs read by title with a plain next step; Approvals lights the Attention tab.

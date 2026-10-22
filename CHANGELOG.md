@@ -9,6 +9,20 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.288] - 2026-10-22
+
+Approvals decisions read cleanly on every screen; steward reopen and batch guards
+
+### Changed
+
+- **Release follow-through judges keep 4 of the steward's 10 daily runner jobs.** No other steward run may spend them, so feedback triages early in the day no longer leave a release's judges unrun; a lowered cap keeps ceil(40%).
+
+### Fixed
+
+- **An Approvals question no longer quotes its answer.** Feedback, lesson, release and design questions are one sentence; left-out designs read by title with a plain next step; Approvals lights the Attention tab.
+- **An issue a running release batch claims can no longer be reopened.** Any reopen is refused `ISSUE_REOPEN_RELEASING`, naming the batch and its version, except the release's own failing probe; once the release finishes, a reopen works as before.
+- **The steward no longer reopens an issue mid-release, or over verdicts its policy owes after release.** Its output check is told whether production exists, and a post-release judge the day's budget cannot pay for waits, saying so on the issue.
+
 ## [0.4.0-dev.287] - 2026-10-22
 
 Requirements read delivered without production, landings check every verdict, Approvals decisions read whole

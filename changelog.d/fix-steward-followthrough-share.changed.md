@@ -1,1 +1,0 @@
-**Release follow-through judges keep 4 of the steward's 10 daily runner jobs.** No other steward run may spend them, so feedback triages early in the day no longer leave a release's judges unrun; a lowered cap keeps ceil(40%).
