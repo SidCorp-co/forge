@@ -9,6 +9,13 @@ import { fakeCore, renderWithQuery } from "@/test/render";
 import { ApprovalsScreen } from "./components/approvals-screen";
 import { UNDO_MS } from "./use-decide";
 
+/** The peek's button for one answer, by the id core gave it. */
+const answerIn = (peek: HTMLElement, id: string) => {
+  const b = peek.querySelector<HTMLElement>(`[data-testid=approval-peek-answer][data-answer="${id}"]`);
+  if (!b) throw new Error(`the peek draws no answer ${id}`);
+  return b;
+};
+
 vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble({ useRouter: () => ({ push: vi.fn() }) }));
 
 const PAGE = "<!doctype html><button>Approve all</button>";
@@ -60,8 +67,10 @@ describe("a mockup decision on Approvals (BC-7)", () => {
     expect((await within(shown).findByTestId("mockup-html")).getAttribute("sandbox")).toBe("allow-scripts");
     expect(within(shown).getByTestId("approval-mockup-standing")).toHaveTextContent("Revision 2, answering MK-3 · 1 open comments");
     expect(within(shown).getByTestId("approval-peek-mockup-full").getAttribute("href")).toBe("/projects/hop/requirements/REQ-49?mockup=MK-4&full=1");
-    expect(within(peek).getByTestId("approval-peek-consequences")).toHaveTextContent("MK-4 is accepted for REQ-49");
-    fireEvent.click(within(peek).getByTestId("approval-peek-approve"));
+    // what accepting does is said once, on the answer that does it
+    expect(answerIn(peek, "approve")).toHaveTextContent("MK-4 is accepted for REQ-49");
+    expect(within(peek).queryByTestId("approval-peek-consequences")).toBeNull();
+    fireEvent.click(answerIn(peek, "approve"));
     await act(async () => vi.advanceTimersByTimeAsync(UNDO_MS));
     await waitFor(() => expect(posts(calls)).toEqual([expect.objectContaining({ path: `/projects/${P}/mockups/MK-4/accept` })]));
     expect(window.location.pathname).toBe("/projects/hop/approvals");
@@ -74,7 +83,7 @@ describe("a mockup decision on Approvals (BC-7)", () => {
     await screen.findByTestId("approvals-screen");
     fireEvent.click(within(mockupRow()).getByTestId("approval-open"));
     const peek = await screen.findByTestId("approval-peek");
-    fireEvent.click(within(peek).getByTestId("approval-peek-decline"));
+    fireEvent.click(answerIn(peek, "decline"));
     fireEvent.change(within(peek).getByTestId("approval-words"), { target: { value: "The bulk bar hides the first row." } });
     fireEvent.click(within(peek).getByTestId("approval-words-send"));
     await act(async () => vi.advanceTimersByTimeAsync(UNDO_MS));

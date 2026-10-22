@@ -284,6 +284,7 @@
         "corrections",
         "devices",
         "feedback",
+        "issueCriteria",
         "issueLabels",
         "issueLeases",
         "issueWorkState",
@@ -294,6 +295,7 @@
         "previews",
         "projects",
         "releaseApprovals",
+        "requirementCriteria",
         "requirementRevisions",
         "requirements",
         "suggestions"

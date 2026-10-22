@@ -1,56 +1,95 @@
-// The peek beside the Approvals list (REQ-48 BC-11): what the agent proposes, what approving changes,
-// why, the records that move and what the reporter said, then a footer that stays in view with the
-// acts that decide it and their keys. A decision a person asked (a question, a sign-off) reads by its
-// question and offers its own answers, each with what it does to the item. Nothing here builds an
-// act: every button presses one core gave.
+// The peek beside the Approvals list (REQ-48 BC-11, r3 BC-13..15): what is asked or proposed, said
+// once in one plain line; why, once; what it rests on, each fact opening its own page; then, held in
+// the panel's foot above the phone's tab bar, the one answer list, each answer a button saying what it
+// does. Flat: no tinted box, hierarchy from type and whitespace. Nothing here builds an act: every
+// button presses one core gave.
 
-import type { DecisionAnswer, NeedsYouDecision } from "@forge/contracts/needs-you-decisions";
-import { useEffect, useRef, useState } from "react";
-import { Button, type FullPage, Kbd, PeekExcerpt, PeekHead, PeekPanel, type PeekState, Table, TBody, TD, TH, THead, TR, Textarea } from "@/design";
+import type { DecisionAnswer, DecisionEvidence, NeedsYouDecision } from "@forge/contracts/needs-you-decisions";
+import { type FullPage, PeekExcerpt, PeekHead, PeekPanel, type PeekState, Table, TBody, TD, TH, THead, TR } from "@/design";
 import { Link } from "@/lib/navigation/router";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
-import { approveOf, declineOf, otherAnswersOf } from "../derive";
+import { issueHref } from "@/lib/routes/issues";
+import { requirementHref } from "@/lib/routes/requirements";
 import { PeekMockup } from "./approval-mockup";
 import { DecisionTags } from "./approval-row";
+import { DecisionAnswers } from "./decision-answers";
 
 function Heading({ children }: { children: React.ReactNode }) {
   return <h3 className="mb-2 text-11-5 font-semibold uppercase tracking-wide text-subtle">{children}</h3>;
 }
 
-function Proposal({ d }: { d: NeedsYouDecision }) {
+/** What is asked, or what the agent proposes: one plain line under a small label, no box. */
+function Asked({ d }: { d: NeedsYouDecision }) {
   const t = useCopy();
   const p = d.proposal;
   return (
-    <div className="border-l-2 border-l-ai-9 bg-info-2 px-4 py-3" data-testid="approval-peek-proposal">
-      <p className="text-12 font-semibold text-info-11">{t(p ? "approvals.peek.proposes" : "approvals.peek.asks")}</p>
-      <p className="mt-0.5 text-14 font-semibold text-fg">{p ? (p.what ? `${p.verb}: ${p.what}` : p.verb) : d.question}</p>
+    <section data-testid="approval-peek-proposal">
+      <Heading>{t(p ? "approvals.peek.proposes" : "approvals.peek.asks")}</Heading>
+      <p className="text-15 font-semibold leading-snug text-fg">{p ? (p.what ? `${p.verb}: ${p.what}` : p.verb) : d.question}</p>
+    </section>
+  );
+}
+
+/** A fact's row: its name, and the value that opens its page. */
+function Fact({ name, children }: { name: string; children: React.ReactNode }) {
+  return (
+    <div className="flex gap-4 py-2">
+      <dt className="w-24 flex-none text-muted">{name}</dt>
+      <dd className="min-w-0 text-fg">{children}</dd>
     </div>
   );
 }
 
-/**
- * What each answer does to the item, in core's words (REQ-48 BC-11), drawn under its answer rather than
- * held in the button's tooltip, which no phone and no keyboard reader ever opens. The recommended
- * answer is marked as the buttons mark it.
- */
-function AnswerEffects({ d }: { d: NeedsYouDecision }) {
+const linkClass = "font-medium text-link hover:underline";
+
+/** The requirement fact: its key and revision as a link, its title under it. */
+function RequirementFact({ e, slug }: { e: DecisionEvidence; slug: string }) {
   const t = useCopy();
-  const said = d.answers.filter((a) => a.effect);
-  if (said.length === 0) return null;
+  const r = e.requirement;
   return (
-    <section data-testid="approval-peek-effects">
-      <Heading>{t("approvals.peek.answers")}</Heading>
-      <ul className="divide-y divide-line-subtle border-y border-line-subtle text-13">
-        {said.map((a) => (
-          <li key={a.id} className="flex flex-col gap-0.5 py-2" data-testid="approval-peek-effect" data-answer={a.id}>
-            <span className="flex flex-wrap items-baseline gap-2">
-              <span className="font-semibold text-fg">{a.label}</span>
-              {a.recommended ? <span className="text-12 font-medium text-ok-11">{t("approvals.peek.recommended")}</span> : null}
-            </span>
-            <span className="text-muted">{a.effect}</span>
-          </li>
-        ))}
-      </ul>
+    <Fact name={t("approvals.evidence.requirement")}>
+      {r ? (
+        <>
+          <Link href={requirementHref(slug, r.key)} className={linkClass}>
+            {r.revision ? t("approvals.evidence.revision", { key: r.key, n: r.revision }) : r.key}
+          </Link>
+          <span className="block text-12 text-muted">{r.title}</span>
+        </>
+      ) : (
+        <span className="text-muted">{t("approvals.evidence.none")}</span>
+      )}
+    </Fact>
+  );
+}
+
+/** What the decision rests on (REQ-48 r3 BC-15): the requirement and revision, the plan, the criteria, each a link. */
+function Evidence({ d, e, slug }: { d: NeedsYouDecision; e: DecisionEvidence; slug: string }) {
+  const t = useCopy();
+  const issue = d.opens?.kind === "issue" ? issueHref(slug, d.opens.key) : null;
+  const criteriaHref = issue ? `${issue}#criteria` : e.requirement ? requirementHref(slug, e.requirement.key) : null;
+  const criteria = e.criteria.codes.length > 0 ? t("approvals.evidence.criteriaTraced", { n: e.criteria.count, codes: e.criteria.codes.join(", ") }) : t("approvals.evidence.criteriaCount", { n: e.criteria.count });
+  return (
+    <section data-testid="approval-peek-evidence">
+      <Heading>{t("approvals.peek.evidence")}</Heading>
+      <dl className="divide-y divide-line-subtle border-y border-line-subtle text-13">
+        <RequirementFact e={e} slug={slug} />
+        {e.plan !== null && issue ? (
+          <Fact name={t("approvals.evidence.plan")}>
+            <Link href={`${issue}?view=developer`} className={linkClass}>
+              {t(e.plan ? "approvals.evidence.planWritten" : "approvals.evidence.planNone")}
+            </Link>
+          </Fact>
+        ) : null}
+        <Fact name={t("approvals.evidence.criteria")}>
+          {criteriaHref ? (
+            <Link href={criteriaHref} className={linkClass}>
+              {criteria}
+            </Link>
+          ) : (
+            criteria
+          )}
+        </Fact>
+      </dl>
     </section>
   );
 }
@@ -60,25 +99,24 @@ function Reasons({ d }: { d: NeedsYouDecision }) {
   const t = useCopy();
   const p = d.proposal;
   if (!p) {
-    return (
-      <>
-        {d.recommended ? (
-          <section>
-            <Heading>{t("approvals.peek.recommended")}</Heading>
-            <p className="text-13 text-fg">{d.recommended.why}</p>
-          </section>
-        ) : null}
-        <AnswerEffects d={d} />
-      </>
-    );
+    const why = d.recommended?.why ?? d.noRecommendation;
+    return why ? (
+      <section data-testid="approval-peek-why">
+        <Heading>{t("approvals.peek.why")}</Heading>
+        <p className="text-13 text-fg">{why}</p>
+      </section>
+    ) : null;
   }
+  // a consequence an answer already says on its button is said there alone (REQ-48 r3 BC-14)
+  const onButtons = new Set(d.answers.map((a) => a.effect));
+  const consequences = p.consequences.filter((c) => !onButtons.has(c));
   return (
     <>
-      {p.consequences.length > 0 ? (
+      {consequences.length > 0 ? (
         <section data-testid="approval-peek-consequences">
           <Heading>{t("approvals.peek.ifApprove")}</Heading>
           <ul className="flex flex-col gap-1.5 text-13 text-fg">
-            {p.consequences.map((c) => (
+            {consequences.map((c) => (
               <li key={c} className="flex gap-2">
                 <span className="text-subtle">→</span>
                 <span>{c}</span>
@@ -137,145 +175,48 @@ function Reasons({ d }: { d: NeedsYouDecision }) {
   );
 }
 
-/** The words an act needs before it is sent, and the send; empty words are refused in place. */
-function Words({ answer, onSend, onCancel }: { answer: DecisionAnswer; onSend: (words: string) => void; onCancel: () => void }) {
-  const t = useCopy();
-  const [words, setWords] = useState("");
-  const [refused, setRefused] = useState(false);
-  const fieldRef = useRef<HTMLTextAreaElement>(null);
-  // the words are asked for because a press asked for them: the caret goes where they are typed
-  useEffect(() => fieldRef.current?.focus(), []);
-  const decline = answer.declines;
-  return (
-    <form
-      className="flex flex-col gap-2"
-      onSubmit={(e) => {
-        e.preventDefault();
-        if (words.trim()) onSend(words.trim());
-        else setRefused(true);
-      }}
-    >
-      <Textarea
-        ref={fieldRef}
-        rows={3}
-        aria-label={t("approvals.typedLabel", { label: answer.label })}
-        placeholder={decline ? t("approvals.declineWhy") : answer.label}
-        value={words}
-        onChange={(e) => setWords(e.target.value)}
-        data-testid="approval-words"
-      />
-      {refused ? (
-        <p role="alert" className="text-12 text-danger-11">
-          {t(decline ? "approvals.declineNeeded" : "approvals.wordsNeeded")}
-        </p>
-      ) : null}
-      <div className="flex gap-2">
-        <Button size="sm" variant="primary" type="submit" data-testid="approval-words-send">
-          {decline ? t("approvals.act.declineGo") : answer.label}
-        </Button>
-        <Button size="sm" variant="ghost" type="button" onClick={onCancel}>
-          {t("approvals.act.cancel")}
-        </Button>
-      </div>
-    </form>
-  );
-}
-
-interface FootProps {
-  d: NeedsYouDecision;
-  full: FullPage;
-  typing: DecisionAnswer | null;
-  onType: (a: DecisionAnswer | null) => void;
-  onPress: (a: DecisionAnswer, words: string | null) => void;
-}
-
-/** The acts that decide it, held in view at the foot of the peek, with the keys that press them. */
-function Foot({ d, full, typing, onType, onPress }: FootProps) {
-  const t = useCopy();
-  const approve = approveOf(d);
-  const decline = declineOf(d);
-  const press = (a: DecisionAnswer) => (a.needsReason ? onType(a) : onPress(a, null));
-  return (
-    <div className="sticky bottom-0 z-10 mt-auto flex flex-col gap-2 border-t border-line-subtle bg-surface px-4 py-3" data-testid="approval-peek-foot">
-      {typing ? (
-        <Words key={typing.id} answer={typing} onSend={(w) => onPress(typing, w)} onCancel={() => onType(null)} />
-      ) : d.proposal ? (
-        <div className="flex flex-wrap items-center gap-2">
-          {approve ? (
-            <Button variant="primary" onClick={() => onPress(approve, null)} data-testid="approval-peek-approve">
-              {t("approvals.act.approve")}
-            </Button>
-          ) : null}
-          {decline ? (
-            <Button onClick={() => onType(decline)} data-testid="approval-peek-decline">
-              {t("approvals.act.decline")}
-            </Button>
-          ) : null}
-          {otherAnswersOf(d).map((a) => (
-            <Button key={a.id} title={a.effect ?? undefined} onClick={() => press(a)} data-testid="approval-peek-answer">
-              {a.label}
-            </Button>
-          ))}
-          <Link href={full.href} className="px-2 text-13 font-semibold text-fg hover:underline" title={t("approvals.act.editTitle")} data-testid="approval-peek-edit">
-            {t("approvals.act.edit")}
-          </Link>
-        </div>
-      ) : (
-        <div className="flex flex-wrap items-center gap-2">
-          {d.answers.map((a) => (
-            <Button key={a.id} variant={a.recommended ? "primary" : "secondary"} title={a.effect ?? undefined} onClick={() => press(a)} data-testid="approval-peek-answer">
-              {a.label}
-            </Button>
-          ))}
-        </div>
-      )}
-      <p className="flex flex-wrap gap-x-3 text-12 text-subtle max-lg:hidden">
-        <span>
-          <Kbd>x</Kbd> {t("approvals.keys.select")}
-        </span>
-        {approve ? (
-          <span>
-            <Kbd>a</Kbd> {t("approvals.keys.approve")}
-          </span>
-        ) : null}
-        {decline ? (
-          <span>
-            <Kbd>d</Kbd> {t("approvals.keys.decline")}
-          </span>
-        ) : null}
-      </p>
-    </div>
-  );
-}
 
 interface PeekProps {
   d: NeedsYouDecision;
   peek: PeekState;
   full: FullPage;
+  slug: string;
   noun: string;
   typing: DecisionAnswer | null;
   onType: (a: DecisionAnswer | null) => void;
   onPress: (a: DecisionAnswer, words: string | null) => void;
 }
 
-export function DecisionPeek({ d, peek, full, noun, typing, onType, onPress }: PeekProps) {
+export function DecisionPeek({ d, peek, full, slug, noun, typing, onType, onPress }: PeekProps) {
   const t = useCopy();
   const time = useTimeFormat();
+  const edit = d.proposal ? (
+    <Link href={full.href} className="self-start text-13 font-semibold text-fg hover:underline" title={t("approvals.act.editTitle")} data-testid="approval-peek-edit">
+      {t("approvals.act.edit")}
+    </Link>
+  ) : undefined;
   return (
-    <PeekPanel peek={peek} listLabel={t("approvals.title")} noun={noun} full={full} testId="approval-peek">
+    <PeekPanel
+      peek={peek}
+      listLabel={t("approvals.title")}
+      noun={noun}
+      full={full}
+      testId="approval-peek"
+      foot={<DecisionAnswers d={d} typing={typing} onType={onType} onPress={onPress} editHref={edit} />}
+    >
       <PeekHead
         noun={noun}
         itemKey={d.key}
         badge={d.touchedAt ? <span className="text-12 text-subtle">· {t("approvals.waiting", { age: time.age(d.touchedAt) })}</span> : undefined}
         title={d.title || d.key}
       />
-      <div className="flex flex-col gap-5 px-4 pb-5">
-        <Proposal d={d} />
+      <div className="flex flex-col gap-5 px-4.5 pb-5">
+        <Asked d={d} />
         <PeekMockup d={d} itemHref={full.href} />
         <DecisionTags d={d} />
         <Reasons d={d} />
+        {d.evidence ? <Evidence d={d} e={d.evidence} slug={slug} /> : null}
       </div>
-      <Foot d={d} full={full} typing={typing} onType={onType} onPress={onPress} />
     </PeekPanel>
   );
 }

@@ -62,8 +62,8 @@ const READ: NeedsYouDecisions = needsYouDecisionsSchema.parse({
     },
   ],
   notDecisions: [
-    { reason: "awaiting_proposal", count: 37, keys: ["ISS-4"] },
-    { reason: "own_work", count: 2, keys: ["REQ-2", "REQ-3"] },
+    { reason: "awaiting_proposal", count: 37, items: [{ key: "ISS-4", title: "ISS-4", next: null, opens: null }] },
+    { reason: "own_work", count: 2, items: [{ key: "REQ-2", title: "REQ-2", next: null, opens: null }, { key: "REQ-3", title: "REQ-3", next: null, opens: null }] },
   ],
 });
 

@@ -9,6 +9,8 @@ export interface BottomTabItem {
   icon: IconName;
   /** Optional count pill (e.g. Attention). Falsy / 0 hides it. */
   badge?: number;
+  /** What the count counts, said to a screen reader and on hover, so it never reads as another surface's number. */
+  badgeHint?: string;
   /** Custom leading element replacing the icon — e.g. a ProjectMark glyph for the project switcher. */
   leading?: React.ReactNode;
 }
@@ -22,7 +24,8 @@ interface BottomTabBarProps {
 /**
  * Mobile bottom navigation (≤5 destinations). Render only `<md` (the desktop
  * rail handles ≥md). Fixed to the bottom edge with a safe-area inset so it
- * clears the home indicator; each target is ≥44px tall for touch. Active state
+ * clears the home indicator; it is 56px tall with its hairline, the height the page column and a
+ * peek sheet leave free above it, and each target is ≥44px tall for touch. Active state
  * is icon-tint + accent label + a top indicator bar — not color alone.
  */
 export function BottomTabBar({ items, activeKey, onSelect }: BottomTabBarProps) {
@@ -43,9 +46,10 @@ export function BottomTabBar({ items, activeKey, onSelect }: BottomTabBarProps) 
             type="button"
             onClick={() => onSelect(it.key)}
             aria-current={active ? "page" : undefined}
-            aria-label={count > 0 ? t("shell.tabs.needAttention", { label, n: count }) : label}
+            aria-label={count > 0 ? (it.badgeHint ? `${label}, ${it.badgeHint}` : t("shell.tabs.needAttention", { label, n: count })) : label}
+            title={count > 0 ? it.badgeHint : undefined}
             className={cn(
-              "relative flex min-h-[52px] flex-1 flex-col items-center justify-center gap-0.5 px-1 py-1.5 text-11 font-semibold transition-colors focus-visible:outline-none focus-visible:shadow-focus",
+              "relative flex min-h-[55px] flex-1 flex-col items-center justify-center gap-0.5 px-1 py-1.5 text-11 font-semibold transition-colors focus-visible:outline-none focus-visible:shadow-focus",
               active ? "text-accent-text" : "text-muted hover:text-fg",
             )}
           >

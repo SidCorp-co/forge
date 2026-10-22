@@ -63,7 +63,7 @@ const DECISIONS = needsYouDecisionsSchema.parse({
       proposal: null,
     },
   ],
-  notDecisions: [{ reason: "own_work", count: 2, keys: ["REQ-2", "REQ-3"] }],
+  notDecisions: [{ reason: "own_work", count: 2, items: [{ key: "REQ-2", title: "REQ-2", next: null, opens: null }, { key: "REQ-3", title: "REQ-3", next: null, opens: null }] }],
 });
 
 const raised = (id: string, over: Partial<RaisedQuestionView> = {}): RaisedQuestionView => ({

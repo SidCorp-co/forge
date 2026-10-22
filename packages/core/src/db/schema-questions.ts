@@ -62,6 +62,8 @@ export type QuestionOption = {
   bindsTo: (typeof optionBindings)[number];
   executedBy: (typeof optionExecutors)[number];
   fingerprint?: string;
+  /** A steward merge's: what the draft and the item it merges into are both about (REQ-48 r3 BC-16). */
+  shares?: string;
 };
 
 export const answerShapes = ['choice', 'free_text'] as const;
@@ -87,6 +89,8 @@ export type ChoiceStep = StepCommon & {
   answerShape: 'choice';
   options: QuestionOption[];
   recommendedOptionId: string;
+  /** Why the asker recommends it, one line beside the question rather than inside it (REQ-48 r3 BC-14, migration 0516). */
+  why?: string;
   chosenOptionId?: string;
 };
 

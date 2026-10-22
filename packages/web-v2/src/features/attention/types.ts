@@ -26,6 +26,8 @@ export interface AttentionResponse {
   channelGates: AttentionItem[];
   /** Status reports sent to the caller that they have not opened, each linking to the kept report. */
   statusReports: AttentionItem[];
+  /** The decisions waiting on you across your projects: the sum of their Needs you `total`s, core's own (REQ-48 r3 BC-17). */
+  waitingOnYou: number;
   total: number;
 }
 

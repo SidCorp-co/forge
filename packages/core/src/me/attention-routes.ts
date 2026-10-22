@@ -40,6 +40,12 @@ interface AttentionResponse {
   channelGates: AttentionItem[];
   /** Status reports sent to this person that they have not opened. */
   statusReports: AttentionItem[];
+  /**
+   * The decisions waiting on you across your projects: the sum of each project's Needs you `total`,
+   * the number its Approvals page heads and its menu badge carries, so the phone's Attention tab and
+   * the rail's Overview read the same figure the pages add up to (REQ-48 r3 BC-17).
+   */
+  waitingOnYou: number;
   total: number;
 }
 
@@ -118,14 +124,16 @@ meAttentionRoutes.get('/attention', async (c) => {
   const channelGates = channelGateRows.map(gateItem);
   const statusReports = statusReportRows.map(statusReportItem);
 
+  const waitingOnYou = needsYou.reduce((n, p) => n + p.total, 0);
   const response: AttentionResponse = {
     needsYou,
+    waitingOnYou,
     mentions,
     failedJobs,
     channelGates,
     statusReports,
     total:
-      needsYou.reduce((n, p) => n + p.total, 0) +
+      waitingOnYou +
       mentions.length +
       failedJobs.length +
       channelGates.length +

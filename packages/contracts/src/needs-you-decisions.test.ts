@@ -145,7 +145,11 @@ describe("a decision shows its question, a recommended answer and a button (BC-2
 		);
 		const twice = needsYouDecisionSchema.safeParse({
 			...iss451,
-			answers: [answer({ id: "a", recommended: true }), no({ id: "b" }), no({ id: "c" })],
+			answers: [
+				answer({ id: "a", recommended: true }),
+				no({ id: "b" }),
+				no({ id: "c" }),
+			],
 		});
 		expect(JSON.stringify(twice.error?.issues)).toContain(
 			"at most one answer declines a decision",
@@ -284,15 +288,33 @@ describe("the read", () => {
 			decisions: [iss451],
 			total: 1,
 			notDecisions: [
-				{ reason: "awaiting_proposal", count: 11, keys: ["REQ-29"] },
+				{
+					reason: "awaiting_proposal",
+					count: 11,
+					items: [
+						{
+							key: "REQ-29",
+							title: "Checkout reaches the clinic",
+							next: "propose merging or dropping it",
+							opens: { kind: "requirement", key: "REQ-29" },
+						},
+					],
+				},
 			],
 		});
 		expect(r.success).toBe(true);
+		const keysOnly = needsYouDecisionsSchema.safeParse({
+			generatedAt: "2026-10-09T12:00:00.000Z",
+			decisions: [],
+			total: 0,
+			notDecisions: [{ reason: "work", count: 1, keys: ["issue-lifecycle"] }],
+		});
+		expect(keysOnly.success).toBe(false);
 		const bad = needsYouDecisionsSchema.safeParse({
 			generatedAt: "2026-10-09T12:00:00.000Z",
 			decisions: [],
 			total: 0,
-			notDecisions: [{ reason: "applies_itself", count: 13, keys: [] }],
+			notDecisions: [{ reason: "applies_itself", count: 13, items: [] }],
 		});
 		expect(bad.success).toBe(false);
 	});

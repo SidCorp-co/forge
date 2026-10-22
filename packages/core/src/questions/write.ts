@@ -48,7 +48,7 @@ import { screenRound } from './screen.js';
 type QuestionExecutor = IssueDependencyExecutor;
 
 export type AskAnswer =
-  | { shape: 'choice'; options: QuestionOption[]; recommendedOptionId: string }
+  | { shape: 'choice'; options: QuestionOption[]; recommendedOptionId: string; why?: string }
   | { shape: 'free_text'; needed: string; recommended?: string };
 
 export type AskInput = {
@@ -169,6 +169,7 @@ function buildStep(
         answerShape: 'choice',
         options: answer.options,
         recommendedOptionId: answer.recommendedOptionId,
+        ...(answer.why?.trim() ? { why: answer.why.trim() } : {}),
       }
     : {
         ...common,

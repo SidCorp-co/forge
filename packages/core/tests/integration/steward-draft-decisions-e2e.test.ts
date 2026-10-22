@@ -62,7 +62,12 @@ describe('a stuck draft requirement is the steward’s to ask (the stale-draft s
   it('asks merge, drop or keep, and the requirement waits on a signer answering it', async () => {
     const req = await draftRequirement('Fax the call list');
     world.standings = [stuck(req, 'standing.act.proposeR')];
-    await diagnose(req, { recommended: 'drop', into: target.key, why: 'nothing asks for a fax' });
+    await diagnose(req, {
+      recommended: 'drop',
+      into: target.key,
+      shares: 'exporting the call list.',
+      why: 'nothing asks for a fax',
+    });
     const q = await questionOn(req);
     expect(optionIds(q)).toEqual([stewardMergeOptionId(target.key), IDS.drop, IDS.keep]);
     expect(((q?.last.options as Doc[]) ?? [])[0]?.label).toBe(
@@ -74,7 +79,7 @@ describe('a stuck draft requirement is the steward’s to ask (the stale-draft s
     const d = await decisionOf(req.key);
     expect(((d?.answers as Doc[] | undefined) ?? []).map((a) => a.effect)).toEqual([
       `Drops ${req.key} as you, with your reason.`,
-      `Proposes what ${req.key} adds as a revision of ${target.key}, then drops ${req.key}, as you.`,
+      `Proposes what ${req.key} adds as a revision of ${target.key}, then drops ${req.key}, as you. Both are about exporting the call list.`,
       `Keeps ${req.key} as it is until its standing moves, with your reason; the steward does not ask again until then.`,
     ]);
     ok(await answer(q?.id ?? '', { optionId: IDS.drop, note: 'Nobody faxes any more.' }));
@@ -96,6 +101,7 @@ describe('a stuck draft requirement is the steward’s to ask (the stale-draft s
     await diagnose(req, {
       recommended: 'merge',
       into: target.key,
+      shares: 'exporting the call list.',
       why: 'it asks what REQ already does',
     });
     const q = await questionOn(req);
@@ -124,7 +130,12 @@ describe('a stuck draft requirement is the steward’s to ask (the stale-draft s
       { body: 'The export is an XLSX file.' },
     ]);
     world.standings = [stuck(req, 'standing.act.proposeR')];
-    await diagnose(req, { recommended: 'merge', into: target.key, why: 'it repeats the export' });
+    await diagnose(req, {
+      recommended: 'merge',
+      into: target.key,
+      shares: 'exporting the call list.',
+      why: 'it repeats the export',
+    });
     const q = await questionOn(req);
     const refused = await answer(q?.id ?? '', { optionId: stewardMergeOptionId(target.key) });
     expect(refused.json.code, JSON.stringify(refused.json)).toBe('REQUIREMENT_REVISION_OPEN');
@@ -153,7 +164,12 @@ describe('a stuck draft requirement is the steward’s to ask (the stale-draft s
     );
     world.standings = [stuck(req, 'standing.act.proposeR')];
     expect(
-      await diagnose(req, { recommended: 'merge', into: target.key, why: 'it repeats the export' }),
+      await diagnose(req, {
+        recommended: 'merge',
+        into: target.key,
+        shares: 'exporting the call list.',
+        why: 'it repeats the export',
+      }),
     ).toContain('offers withdraw, keep');
     await diagnose(req, { recommended: 'withdraw', why: 'nobody came back to the edit' });
     const q = await questionOn(req);
@@ -208,6 +224,7 @@ describe('a draft issue that repeats a live issue is asked merge', () => {
     await diagnose(draft, {
       recommended: 'merge',
       into: twin.key,
+      shares: 'the same ask, in the same words.',
       why: 'it asks what the twin asks',
     });
     const q = await questionOn(draft);
@@ -232,6 +249,7 @@ describe('a draft issue that repeats a live issue is asked merge', () => {
     const said = await diagnose(draft, {
       recommended: 'merge',
       into: twin.key,
+      shares: 'the same ask, in the same words.',
       why: 'it asks the very same thing',
     });
     const q = await questionOn(draft);
@@ -249,6 +267,21 @@ describe('a draft issue that repeats a live issue is asked merge', () => {
     expect((await questionOn(draft))?.status).toBe('open');
   });
 
+  it('offers no merge into an issue about something else, however close its requirement (REQ-48 r3 BC-16)', async () => {
+    const draft = await issueAt(717, 'Criterion trace syntax is undocumented', 'draft');
+    const other = await issueAt(718, 'Steward re-asks a master for release approvals', 'open');
+    world.standings = [stuck(draft, 'issues.standing.act.takeOnOrDrop')];
+    const said = await diagnose(draft, {
+      recommended: 'merge',
+      into: other.key,
+      shares: 'the steward.',
+      why: 'both sit under the same requirement',
+    });
+    expect(said).toContain(`is not about what ${draft.key}`);
+    expect(said).toContain('offer no merge');
+    expect(await questionOn(draft)).toBeUndefined();
+  });
+
   it('refuses a merge whose draft carries feedback, which the merge would strand', async () => {
     const draft = await issueAt(715, 'Show the saved board', 'draft');
     const twin = await issueAt(716, 'Show the saved board', 'open');
@@ -257,6 +290,7 @@ describe('a draft issue that repeats a live issue is asked merge', () => {
     await diagnose(draft, {
       recommended: 'merge',
       into: twin.key,
+      shares: 'the same ask, in the same words.',
       why: 'it asks the very same thing',
     });
     const q = await questionOn(draft);

@@ -5,6 +5,8 @@
 //
 // @direct-test-of packages/web-v2/src/features/approvals/components/approval-row.tsx
 // @direct-test-of packages/web-v2/src/features/approvals/components/approval-peek.tsx
+// @direct-test-of packages/web-v2/src/features/approvals/components/decision-answers.tsx
+// @direct-test-of packages/web-v2/src/features/approvals/use-decision-keys.ts
 // @direct-test-of packages/web-v2/src/features/approvals/components/bulk-bar.tsx
 // @direct-test-of packages/web-v2/src/test/approvals-read.ts
 
@@ -15,6 +17,13 @@ import { fakeCore, renderWithQuery } from "@/test/render";
 import { ApprovalsScreen } from "./components/approvals-screen";
 import { bulkSummary } from "./derive";
 import { UNDO_MS } from "./use-decide";
+
+/** The peek's button for one answer, by the id core gave it. */
+const answerIn = (peek: HTMLElement, id: string) => {
+  const b = peek.querySelector<HTMLElement>(`[data-testid=approval-peek-answer][data-answer="${id}"]`);
+  if (!b) throw new Error(`the peek draws no answer ${id}`);
+  return b;
+};
 
 vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble({ useRouter: () => ({ push: vi.fn() }) }));
 
@@ -133,7 +142,7 @@ describe("the Approvals page", () => {
     const peek = await screen.findByTestId("approval-peek");
     expect(within(peek).getByTestId("approval-peek-proposal")).toHaveTextContent("Follow r17: 2 designs built on it move to its approved revision");
     expect(within(peek).getByTestId("approval-peek-table")).toHaveTextContent("design-runner");
-    fireEvent.click(within(peek).getByTestId("approval-peek-approve"));
+    fireEvent.click(answerIn(peek, "approve"));
     await waitFor(() => expect(within(screen.getByTestId("approval-peek")).getByTestId("approval-peek-proposal")).toHaveTextContent("Accept mockup: Approvals page"));
     await act(async () => vi.advanceTimersByTimeAsync(UNDO_MS));
     await waitFor(() => expect(posts(calls)).toEqual([expect.objectContaining({ path: `/projects/${P}/workflows/wf-system-context/design/repins`, body: { revision: 17, designs: [{ workflowId: "wf-design-steward", revision: 10 }, { workflowId: "wf-design-runner", revision: 11 }] } })]));
@@ -153,26 +162,63 @@ describe("what each row's ✓ and ✕ send", () => {
     expect(within(row).getByTestId("approval-approve")).toHaveAccessibleName("Send “Keep the old order” for ISS-41");
     fireEvent.click(within(row).getByTestId("approval-other-answers"));
     const peek = await screen.findByTestId("approval-peek");
-    expect(within(peek).getAllByTestId("approval-peek-answer").map((b) => b.textContent)).toEqual(["Keep the old order", "Use the new order"]);
-    fireEvent.click(within(peek).getByRole("button", { name: "Use the new order" }));
+    expect(within(peek).getAllByTestId("approval-peek-answer-label").map((b) => b.textContent)).toEqual(["Keep the old order", "Use the new order"]);
+    fireEvent.click(answerIn(peek, "new"));
     await act(async () => vi.advanceTimersByTimeAsync(UNDO_MS));
     await waitFor(() => expect(posts(calls)).toEqual([expect.objectContaining({ path: "/questions/q41/answer", body: { round: 1, optionId: "new" } })]));
   });
 
-  // each answer's effect was only the button's tooltip, which a phone and a keyboard never open
-  it("says under each of the steward's answers what it does to the item, the recommended one marked (BC-11)", async () => {
+  // each answer's effect was only the button's tooltip, which a phone and a keyboard never open; then
+  // it was said twice, once in a list and once beside the button (REQ-48 r3 BC-14): now once, on it
+  it("says on each of the steward's answers, once, what it does to the item, the recommended one first and marked", async () => {
     fakeCore(({ path, method }) => (method === "GET" && path === DECISIONS ? { body: { ...READ, total: 1, decisions: [STEWARD_DECISION] } } : undefined));
     renderWithQuery(<ApprovalsScreen projectId={P} slug="hop" />);
     await screen.findByTestId("approvals-screen");
     fireEvent.click(within(rowOf("ISS-7")).getByTestId("approval-open"));
     const peek = await screen.findByTestId("approval-peek");
-    const effects = within(peek).getAllByTestId("approval-peek-effect");
-    expect(effects.map((e) => e.dataset.answer)).toEqual(STEWARD_DECISION.answers.map((a) => a.id));
+    const buttons = within(peek).getAllByTestId("approval-peek-answer");
+    expect(buttons.map((e) => e.dataset.answer)).toEqual(STEWARD_DECISION.answers.map((a) => a.id));
     STEWARD_DECISION.answers.forEach((a, i) => {
       expect(a.effect, `the fixture's ${a.id} carries no effect`).toMatch(/ISS-7/);
-      expect(effects[i]).toHaveTextContent(`${a.label}${a.recommended ? "Recommended" : ""}${a.effect ?? ""}`);
+      expect(buttons[i]).toHaveTextContent(`${a.label}${a.recommended ? "Recommended" : ""}${i + 1}${a.effect ?? ""}`);
+      expect(peek.textContent?.split(a.effect ?? "").length).toBe(2);
     });
-    expect(within(peek).getByText(/^The steward recommends/)).toBeInTheDocument();
+    expect(within(peek).getByTestId("approval-peek-why")).toHaveTextContent("Its plan and criteria pass the issue-ready check.");
+    expect(within(peek).getByTestId("approval-peek-proposal")).toHaveTextContent("Open it, keep it as a draft, or drop it?");
+  });
+
+  it("names what it left out by title and next step, each opening its page, never by slug (REQ-48 r3 BC-17)", async () => {
+    core();
+    renderWithQuery(<ApprovalsScreen projectId={P} slug="hop" />);
+    await screen.findByTestId("approvals-screen");
+    const items = within(screen.getByTestId("approvals-left-out")).getAllByTestId("approvals-left-out-item");
+    const flow = items.find((i) => i.textContent?.startsWith("Issue lifecycle"));
+    expect(flow).toHaveTextContent("Issue lifecycle· next: update the design to the contract");
+    expect(within(flow as HTMLElement).getByRole("link").getAttribute("href")).toBe("/projects/hop/workflows/issue-lifecycle");
+    expect(screen.getByTestId("approvals-left-out")).not.toHaveTextContent("(issue-lifecycle");
+  });
+
+  it("names the across-projects figure the Attention tab carries beside its own count, never as its own (REQ-48 r3 BC-17)", async () => {
+    core();
+    renderWithQuery(<ApprovalsScreen projectId={P} slug="hop" across={128} />);
+    await screen.findByTestId("approvals-screen");
+    const count = screen.getByTestId("approvals-count");
+    expect(count).toHaveTextContent(`${READ.total} waiting on you`);
+    expect(within(count).getByTestId("approvals-count-across")).toHaveTextContent("128 across your projects");
+  });
+
+  it("presses the answer a digit names, as the peek shows it on that answer", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const calls = core();
+    renderWithQuery(<ApprovalsScreen projectId={P} slug="hop" />);
+    await screen.findByTestId("approvals-screen");
+    fireEvent.click(within(rowOf("ISS-41")).getByTestId("approval-open"));
+    const peek = await screen.findByTestId("approval-peek");
+    expect(answerIn(peek, "new").querySelector("kbd")).toHaveTextContent("2");
+    expect(within(peek).getByTestId("approval-peek-keys")).not.toHaveTextContent(/approve/);
+    fireEvent.keyDown(window, { key: "2" });
+    await act(async () => vi.advanceTimersByTimeAsync(UNDO_MS));
+    await waitFor(() => expect(posts(calls)).toEqual([expect.objectContaining({ path: "/questions/q41/answer", body: { round: 1, optionId: "new" } })]));
   });
 
   it("declines a release with the reason typed, and never sends its approve from the ✕", async () => {
@@ -229,7 +275,7 @@ describe("what each row's ✓ and ✕ send", () => {
     expect(within(rowOf("LS-3")).queryByTestId("approval-decline")).toBeNull();
     fireEvent.click(within(rowOf("LS-3")).getByTestId("approval-open"));
     const peek = await screen.findByTestId("approval-peek");
-    fireEvent.click(within(peek).getByRole("button", { name: "Keep" }));
+    fireEvent.click(answerIn(peek, "keep"));
     await act(async () => vi.advanceTimersByTimeAsync(UNDO_MS));
     await waitFor(() => expect(posts(calls)).toEqual([expect.objectContaining({ path: `/projects/${P}/lessons/LS-3/keep` })]));
   });

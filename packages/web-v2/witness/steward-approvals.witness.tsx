@@ -1,7 +1,7 @@
 // The steward's question in Approvals, witnessed as drawn (REQ-48 BC-11): its row names the answer
-// its ✓ sends and how many more its peek holds, and the peek says under each of Forge's fixed answers
-// (open, keep, drop) what it does to the item, the steward's recommended one marked, with the
-// steward's one line on why. At 390 px the peek is its full-screen sheet and nothing scrolls sideways.
+// its ✓ sends and how many more its peek holds, and the peek says on each of Forge's fixed answers
+// (open, keep, drop), once, what it does to the item, the steward's recommended one first and marked,
+// with the steward's one line on why (REQ-48 r3 BC-14). At 390 px the peek is its full-screen sheet and nothing scrolls sideways.
 // The decision is `src/test/approvals-read.ts` `STEWARD_DECISION`, built from the contract's own
 // labels and effects.
 //
@@ -60,7 +60,7 @@ const SURFACES: Surface[] = [
     check: () => {
       const peek = document.querySelector<HTMLElement>("[data-testid=approval-peek]");
       if (!peek) return ["the steward question's peek is not open"];
-      const lines = [...peek.querySelectorAll<HTMLElement>("[data-testid=approval-peek-effect]")];
+      const lines = [...peek.querySelectorAll<HTMLElement>("[data-testid=approval-peek-answer]")];
       const wrong: string[] = [];
       for (const a of STEWARD_DECISION.answers) {
         const line = lines.find((l) => l.dataset.answer === a.id);
@@ -72,7 +72,7 @@ const SURFACES: Surface[] = [
         if (line.getBoundingClientRect().height === 0) wrong.push(`"${a.label}"'s effect line is drawn with no height`);
         if (line.textContent?.includes("Recommended") !== a.recommended) wrong.push(`"${a.label}" is ${a.recommended ? "not " : ""}marked recommended`);
       }
-      return [...wrong, ...has("the steward's why", "The steward recommends")];
+      return [...wrong, ...has("the steward's why", STEWARD_DECISION.recommended?.why ?? "")];
     },
   },
 ];

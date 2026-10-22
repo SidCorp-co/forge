@@ -4,7 +4,9 @@
 // moving never stack history entries and back from the full page reopens the same peek. The full page
 // is a link (a modified click opens it in a new tab), the title is the same link, and its code loads
 // as the peek opens, so the click finds it ready. From 1024px it sits beside the list and the list
-// stays live; below that it is a full-screen sheet named after the list.
+// stays live; below that it is a full-screen sheet named after the list, ending above the phone's tab
+// bar. Its body scrolls between the header and the foot: the acts a peek decides with (`foot`) and,
+// on a keyboard, the keys that move it stay in view however long the body runs (REQ-48 r3 BC-13).
 
 import type { ReactNode } from "react";
 import { createContext, use, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -95,6 +97,8 @@ interface PeekPanelProps {
   noun: string;
   full: FullPage;
   children: ReactNode;
+  /** The acts that decide the item, held in view below the body; it scrolls on its own when it runs tall. */
+  foot?: ReactNode;
   testId?: string;
 }
 
@@ -108,19 +112,19 @@ function FullPageLink({ full, className, children, testId }: { full: FullPage; c
   );
 }
 
-export function PeekPanel({ peek, listLabel, noun, full, children, testId }: PeekPanelProps) {
+export function PeekPanel({ peek, listLabel, noun, full, children, foot, testId }: PeekPanelProps) {
   const pos = peek.position;
   const t = useCopy();
   const preload = usePreload();
   useEffect(() => preload(full.href), [preload, full.href]);
   return (
     <aside
-      className="fixed inset-0 z-30 flex flex-col overflow-y-auto border-line-subtle bg-surface lg:sticky lg:inset-auto lg:top-0 lg:z-auto lg:h-[calc(100dvh-48px)] lg:border-l"
+      className="fixed inset-x-0 top-0 bottom-0 z-30 flex flex-col overflow-hidden border-line-subtle bg-surface max-md:bottom-[calc(56px+env(safe-area-inset-bottom))] lg:sticky lg:inset-auto lg:top-0 lg:z-auto lg:h-[calc(100dvh-48px)] lg:border-l"
       aria-label={t("common.peekSummary", { noun, key: peek.open ?? "" })}
       data-testid={testId ?? "peek-panel"}
       data-peek-root="1"
     >
-      <div className="sticky top-0 z-[3] flex items-center gap-1.5 border-b border-line-subtle bg-surface px-3 py-2">
+      <div className="z-[3] flex flex-none items-center gap-1.5 border-b border-line-subtle bg-surface px-3 py-2">
         <Button type="button" size="sm" className="lg:hidden" onClick={() => peek.set(null)} data-testid="peek-back">
           ← {listLabel}
         </Button>
@@ -139,9 +143,16 @@ export function PeekPanel({ peek, listLabel, noun, full, children, testId }: Pee
         <IconButton icon="x" size="sm" aria-label={t("common.peekClose")} onClick={() => peek.set(null)} />
       </div>
       <FullPageContext value={full}>
-        <div className="flex flex-1 shrink-0 flex-col">{children}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto" data-testid="peek-body">
+          <div className="flex min-h-full flex-col">{children}</div>
+        </div>
+        {foot ? (
+          <div className="max-h-[60%] flex-none overflow-y-auto border-t border-line-subtle bg-surface" data-testid="peek-foot">
+            {foot}
+          </div>
+        ) : null}
       </FullPageContext>
-      <div className="mt-auto border-t border-line-subtle px-[18px] pb-4 pt-2.5 text-12 text-subtle max-lg:hidden">
+      <div className="flex-none border-t border-line-subtle px-[18px] pb-3 pt-2 text-12 text-subtle max-lg:hidden" data-testid="peek-keys">
         <Kbd>j</Kbd> <Kbd>k</Kbd> {t("common.peekMove")} · <Kbd>{t("common.key.enter")}</Kbd> {t("common.peekFullPage")} · <Kbd>{t("common.key.escape")}</Kbd> {t("common.peekCloseWord")}
       </div>
     </aside>

@@ -17,6 +17,8 @@ import {
   type StewardDecisionSubject,
   stewardDecisionEffect,
   stewardDecisionOf,
+  stewardDecisionQuestion,
+  stewardMergeOf,
 } from '@forge/contracts/steward';
 import { type ChoiceStep, isChoiceStep, type QuestionStep } from '../db/schema-questions.js';
 import type { OpenPersonQuestion } from '../questions/index.js';
@@ -64,9 +66,15 @@ export function answer(
 }
 
 /**
- * A stuck item's decision the steward asked (REQ-48 BC-5): Forge's own options, each button saying
- * what answering it does to the item it names, keep, drop, withdraw and reopen taking the answerer's
- * reason, recommended by the steward with the one line it wrote into the prompt.
+ * A stuck item's decision the steward asked (REQ-48 BC-5), drawn from the round's structured fields
+ * alone (REQ-48 r3 BC-14): the question is the one sentence its options make
+ * (`stewardDecisionQuestion`), never the stored prompt, so a round asked before the prompt was one
+ * sentence reads the same as one asked after; the reason is the round's own `why` (migration 0516
+ * carried it out of the older prompts once), said once. Each button says what answering it does to
+ * the item it names; keep, drop, withdraw and reopen take the answerer's reason. A merge is offered
+ * only where the round names what the two items share (BC-16): one asked before that rule, naming
+ * nothing, is left off the buttons, and where it was the recommended one the decision says why it
+ * recommends none.
  */
 function stewardDecision(
   base: Omit<DecisionBody, 'recommended' | 'noRecommendation' | 'answers'>,
@@ -80,39 +88,52 @@ function stewardDecision(
       ? 'requirement'
       : 'feedback';
   const itemKey = base.opens?.key ?? base.key;
-  const recommended = step.options.find((o) => o.id === step.recommendedOptionId);
-  if (!recommended) {
+  const offered = step.options.filter((o) => !stewardMergeOf(o.id) || o.shares?.trim());
+  const recommended = offered.find((o) => o.id === step.recommendedOptionId);
+  if (!recommended && !step.options.some((o) => o.id === step.recommendedOptionId)) {
     throw new Error(
       `needs-you: steward decision ${q.id} recommends ${step.recommendedOptionId}, which it does not offer`,
     );
   }
-  const shown = [recommended, ...step.options.filter((o) => o.id !== recommended.id)];
+  const shown = recommended
+    ? [recommended, ...offered.filter((o) => o.id !== recommended.id)]
+    : offered;
   // an issue draft is offered open, link or requirement, a draft requirement merge or drop; a live
   // issue no master serves is kept or dropped, an agreed requirement's draft revision withdrawn
-  const draft = shown.some((o) => {
+  const draft = step.options.some((o) => {
     const d = stewardDecisionOf(o.id);
     return kind === 'issue'
       ? d === 'open' || d === 'link' || d === 'requirement'
       : kind === 'requirement' && (d === 'merge' || d === 'drop');
   });
-  const tail = step.prompt.slice(step.prompt.lastIndexOf('Recommended: '));
-  const at = tail.indexOf(', because ');
-  const because = at < 0 ? '' : tail.slice(at + ', because '.length).trim();
-  const lead = `The steward recommends "${clip(recommended.label, 200)}"`;
+  const item = { kind, draft };
   return {
     questionId: q.id,
     decision: {
       ...base,
-      recommended: {
-        answerId: recommended.id,
-        why: clip(because ? `${lead} because ${because}` : `${lead}.`, 600),
-        by: 'steward',
-      },
-      noRecommendation: null,
+      question: stewardDecisionQuestion(
+        shown.map((o) => o.id),
+        item,
+      ),
+      recommended: recommended
+        ? {
+            answerId: recommended.id,
+            why: clip(step.why?.trim() || 'The steward recorded no reason with it.', 600),
+            by: 'steward',
+          }
+        : null,
+      noRecommendation: recommended
+        ? null
+        : `The steward recommended merging into ${stewardMergeOf(step.recommendedOptionId)?.into ?? 'another item'} without naming what the two share, so that merge is not offered.`,
       answers: shown.map((o) => {
         const decision = stewardDecisionOf(o.id);
         const effect = decision
-          ? stewardDecisionEffect(decision, { kind, key: itemKey, draft, option: o.id })
+          ? stewardDecisionEffect(decision, {
+              ...item,
+              key: itemKey,
+              option: o.id,
+              shares: o.shares ?? null,
+            })
           : null;
         return answer({
           id: o.id,
@@ -122,7 +143,7 @@ function stewardDecision(
           body: { round: step.round, optionId: o.id },
           effect,
           needsReason: decision !== null && STEWARD_DECISIONS_WITH_REASON.includes(decision),
-          recommended: o.id === recommended.id,
+          recommended: o.id === recommended?.id,
         });
       }),
     },

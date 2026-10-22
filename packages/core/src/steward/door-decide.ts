@@ -15,9 +15,12 @@ import {
   STEWARD_DECISION_OPTION_IDS,
   STEWARD_DECISIONS,
   STEWARD_LINK_CANDIDATES_MAX,
+  STEWARD_MERGE_SHARED_TERMS_MIN,
+  STEWARD_MERGE_SHARES_MAX,
   type StewardDecision,
   type StewardDecisionSubject,
   stewardDecisionLabel,
+  stewardDecisionQuestion,
   stewardDecisionsFor,
   stewardFeedbackDecisionsFor,
   stewardLinkLabel,
@@ -25,6 +28,7 @@ import {
   stewardMergeLabel,
   stewardMergeOptionId,
   stewardRequirementDecisionsFor,
+  stewardSharedTerms,
 } from '@forge/contracts/steward';
 import { sql } from 'drizzle-orm';
 import { z } from 'zod';
@@ -128,7 +132,16 @@ const decideParams = z.strictObject({
   into: itemKey
     .optional()
     .describe(
-      'for merge: the live item of the same kind it repeats, an issue for an issue and a requirement for a requirement',
+      'for merge: the live item of the same kind it repeats, an issue for an issue and a requirement for a requirement, about the same thing: their titles share subject words',
+    ),
+  shares: z
+    .string()
+    .trim()
+    .min(3)
+    .max(STEWARD_MERGE_SHARES_MAX)
+    .optional()
+    .describe(
+      'with `into`: what the two are both about, as a phrase a person reads after "Both are about" (e.g. "the BC trace syntax of issue criteria.")',
     ),
   why: z
     .string()
@@ -143,6 +156,8 @@ interface Option {
   id: string;
   label: string;
   decision: StewardDecision;
+  /** A merge's: what the two are both about. */
+  shares?: string;
 }
 
 /** What one kind of item offers, read through its own door: the set, the item, and how it is asked. */
@@ -154,7 +169,6 @@ interface Offer {
   offered: readonly StewardDecision[];
   /** An issue or a requirement at draft. */
   draft: boolean;
-  line: string;
   /** Said after the set where the recommended decision is not in it. */
   hint?: string;
   /** Said to the turn where the recommended decision is in the set but not what the item reads. */
@@ -192,11 +206,36 @@ async function linkOption(
 
 const LIVE_REQUIREMENT_ENDED = ['dropped', 'deferred'];
 
-/** A merge target checked: a live item of the draft's own kind, not the draft itself. */
+/**
+ * A merge into a live item about the same thing (REQ-48 r3 BC-16): the two titles share subject
+ * words, and the turn says what they share, which the answer shows. Else no merge is offered.
+ */
+function sameSubject(
+  about: string,
+  offer: Offer,
+  target: string,
+  title: string,
+  shares: string | undefined,
+): Option | string {
+  const shared = stewardSharedTerms(offer.title, title);
+  if (shared.length < STEWARD_MERGE_SHARED_TERMS_MIN) {
+    return `${target} "${title}" is not about what ${about} "${offer.title}" is about (they share ${shared.length === 0 ? 'no subject word' : `only "${shared.join('", "')}"`}): offer no merge, ask without \`into\``;
+  }
+  if (!shares) return `merging into ${target} names what the two are both about in \`shares\``;
+  return {
+    id: stewardMergeOptionId(target),
+    label: stewardMergeLabel(target, title),
+    decision: 'merge',
+    shares,
+  };
+}
+
+/** A merge target checked: a live item of the draft's own kind, not the draft itself, about the same thing. */
 async function mergeOption(
   into: string,
   offer: Offer,
   about: string,
+  shares: string | undefined,
   ctx: DoorContext,
 ): Promise<Option | string> {
   const target = into.toUpperCase();
@@ -211,11 +250,7 @@ async function mergeOption(
     if (!read.answer.ok || LIVE_REQUIREMENT_ENDED.includes(req.status ?? 'dropped')) {
       return `${target} is ${req.status ?? 'not a requirement of this project'}: a merge goes into a live requirement`;
     }
-    return {
-      id: stewardMergeOptionId(target),
-      label: stewardMergeLabel(target, req.title ?? ''),
-      decision: 'merge',
-    };
+    return sameSubject(about, offer, target, req.title ?? '', shares);
   }
   if (/^(REQ|FB)-\d+$/.test(target)) return `${about} merges only into an issue, not ${target}`;
   const read = await send(
@@ -229,11 +264,7 @@ async function mergeOption(
   ) {
     return `${target} is ${issue.status ?? 'not an issue of this project'}: a merge goes into a live issue`;
   }
-  return {
-    id: stewardMergeOptionId(target),
-    label: stewardMergeLabel(target, issue.title ?? ''),
-    decision: 'merge',
-  };
+  return sameSubject(about, offer, target, issue.title ?? '', shares);
 }
 
 interface ChecklistRead {
@@ -248,13 +279,6 @@ async function readyOf(issueId: string, ctx: DoorContext) {
   );
   return { complete: ready?.now?.complete === true, gaps: ready?.now?.gaps ?? [] };
 }
-
-const ISSUE_LINE = {
-  ready: 'Open it, keep it as a draft, or drop it?',
-  unready:
-    'No agreed requirement fits it well. Link it to one of these, start a requirement from it, or drop it?',
-  live: 'Keep it waiting for a master, or drop it?',
-};
 
 type Read = Awaited<ReturnType<typeof send>>;
 
@@ -283,7 +307,6 @@ async function issueOffer(args: DecideArgs, ctx: DoorContext): Promise<Offer | R
     state: issue.status,
     offered: offered ?? [],
     draft,
-    line: !draft ? ISSUE_LINE.live : ready.complete ? ISSUE_LINE.ready : ISSUE_LINE.unready,
     ...(hint ? { hint } : {}),
     ...(misfit ? { misfit } : {}),
   };
@@ -316,9 +339,6 @@ async function requirementOffer(args: DecideArgs, ctx: DoorContext): Promise<Off
     state: req.status,
     offered: offered ?? [],
     draft,
-    line: draft
-      ? 'Merge it into the requirement it repeats, drop it, or keep it as a draft?'
-      : 'Withdraw its draft revision, or keep it?',
   };
 }
 
@@ -341,9 +361,6 @@ async function feedbackOffer(args: DecideArgs, ctx: DoorContext): Promise<Offer 
     state: item.status ?? 'open',
     offered: offered ?? [],
     draft: false,
-    line: offered?.includes('verify')
-      ? 'Verify the fix on its reporter’s behalf, reopen it, or keep it waiting?'
-      : 'Keep it waiting for triage, or decline it?',
   };
 }
 
@@ -374,7 +391,7 @@ async function optionsOf(
     }
   }
   if (offer.offered.includes('merge') && args.into) {
-    const option = await mergeOption(args.into, offer, args.about.toUpperCase(), ctx);
+    const option = await mergeOption(args.into, offer, args.about.toUpperCase(), args.shares, ctx);
     if (typeof option === 'string') return `${option}.`;
     options.push(option);
   }
@@ -395,7 +412,7 @@ async function optionsOf(
 export const DECIDE: DoorSpec<DecideArgs> = {
   name: 'steward_decide',
   describe:
-    "Ask whoever decides a stuck item (an issue, REQ-n or FB-n) the one question its reading owes, with Forge's own options. An issue draft is prepared first (steward_prepare_draft): once it passes the issue-ready check it is asked open, keep or drop, recommending open; where no agreed requirement fits, it is asked link (your candidates, best first), requirement or drop; a draft repeating a live issue may be asked merge (`into`). Unstarted work no master serves is kept waiting or dropped. A draft requirement its author does not finish is asked merge (`into` the live requirement it repeats), drop or keep; a draft revision of an agreed one withdraw or keep. A feedback item nobody triages is asked keep or drop (decline); a fix nobody verifies verify, reopen or keep. You pick the recommended one and say why in one line; nobody is ever asked to write a plan or criteria.",
+    "Ask whoever decides a stuck item (an issue, REQ-n or FB-n) the one question its reading owes, with Forge's own options. An issue draft is prepared first (steward_prepare_draft): once it passes the issue-ready check it is asked open, keep or drop, recommending open; where no agreed requirement fits, it is asked link (your candidates, best first), requirement or drop; a draft repeating a live issue about the same thing may be asked merge (`into`, with `shares`: what both are about; their titles must share subject words, else no merge is offered). Unstarted work no master serves is kept waiting or dropped. A draft requirement its author does not finish is asked merge (`into` the live requirement it repeats), drop or keep; a draft revision of an agreed one withdraw or keep. A feedback item nobody triages is asked keep or drop (decline); a fix nobody verifies verify, reopen or keep. You pick the recommended one and say why in one line; nobody is ever asked to write a plan or criteria.",
   params: decideParams,
   write: true,
   async call(args, ctx: DoorContext) {
@@ -441,17 +458,24 @@ export const DECIDE: DoorSpec<DecideArgs> = {
         `${about} was kept on the standing it reads now (question ${kept.id}, answered ${kept.chosen_label ?? kept.chosen}): ask nothing until it moves.`,
       );
     }
-    const why = standing?.stuck?.reason ?? 'it reads stuck';
-    const prompt = `${about} "${offer.title}": ${why} ${offer.line} Recommended: ${recommended.label}, because ${args.why}`;
+    const prompt = stewardDecisionQuestion(
+      options.map((o) => o.id),
+      { kind: offer.subject.kind, draft: offer.draft },
+    );
     const sent = await send(
       {
         method: 'POST',
         path: `/api/projects/${ctx.projectId}/steward-runs/${ctx.runId}/decisions`,
         body: {
           about,
-          prompt: prompt.slice(0, 2000),
-          options: options.map((o) => ({ id: o.id, label: o.label })),
+          prompt,
+          options: options.map((o) => ({
+            id: o.id,
+            label: o.label,
+            ...(o.shares ? { shares: o.shares } : {}),
+          })),
           recommendedOptionId: recommended.id,
+          why: args.why,
           basis,
         },
       },

@@ -158,10 +158,9 @@ describe("a stuck issue's question carries Forge's own options (REQ-48 BC-5)", (
       'Drop it: it is not work',
     ]);
     expect(step.recommendedOptionId).toBe(IDS.open);
-    expect(step.prompt).toContain('Open it, keep it as a draft, or drop it?');
-    expect(step.prompt).toContain(
-      'Recommended: Open it: admit it for work, because it carries open feedback and nothing else covers it',
-    );
+    // the question is one plain sentence; the why is its own field (REQ-48 r3 BC-14)
+    expect(step.prompt).toBe('Open it, keep it as a draft, or drop it?');
+    expect(step.why).toBe('it carries open feedback and nothing else covers it');
     const acts = await actsOn(lastRunId);
     expect(acts).toHaveLength(1);
     expect(acts[0]?.door).toBe(
@@ -329,7 +328,16 @@ describe('answering a steward decision carries it out as the answerer (REQ-48 BC
     const decision = (read.decisions as Doc[]).find((d) => d.key === issue.key);
     if (!decision) throw new Error(`${issue.key} is not in Needs you`);
     expect(decision.recommended).toMatchObject({ answerId: IDS.open, by: 'steward' });
-    expect((decision.recommended as Doc).why).toContain('because it carries open feedback');
+    // the reason once, the question one sentence from the options, the evidence read from the records
+    expect((decision.recommended as Doc).why).toBe(
+      'it carries open feedback and nothing else covers it',
+    );
+    expect(decision.question).toBe('Open it, keep it as a draft, or drop it?');
+    expect(decision.evidence).toMatchObject({
+      requirement: { key: expect.stringMatching(/^REQ-\d+$/), revision: 1 },
+      criteria: { count: 1, codes: ['BC-1'] },
+    });
+    expect(typeof (decision.evidence as Doc).plan).toBe('boolean');
     const answers = decision.answers as Doc[];
     expect(answers.map((a) => [a.id, a.needsReason])).toEqual([
       [IDS.open, false],

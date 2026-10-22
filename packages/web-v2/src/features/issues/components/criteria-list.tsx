@@ -198,7 +198,7 @@ export function CriteriaList({
   ];
   const shown = lines.filter((l) => filter === "all" || FILTER_OF[l.standing] === filter);
   return (
-    <section aria-label={t("issues.tab.criteria")} data-testid="view-criteria" data-highlight="criteria">
+    <section id="criteria" aria-label={t("issues.tab.criteria")} data-testid="view-criteria" data-highlight="criteria">
       <ViewHeading right={headingAct}>{t("issues.tab.criteria")}</ViewHeading>
       {lines.length === 0 ? (
         <p className="text-13 text-subtle">{t("issues.criteria.empty")}</p>

@@ -63,8 +63,8 @@ describe('a stuck feedback item gets its question (REQ-48 BC-5, the BC-5 judge o
       'Keep it waiting',
       'Decline it: it is not work',
     ]);
-    expect(String(q?.last.prompt)).toContain(`${key} "feedback 41"`);
-    expect(String(q?.last.prompt)).toContain('Keep it waiting for triage, or decline it?');
+    // one plain sentence from its options: the item's title heads its page, never the question (REQ-48 r3 BC-14)
+    expect(String(q?.last.prompt)).toBe('Keep it waiting or decline it?');
 
     // Needs you shows it as the steward's decision, opening the item, each button naming its effect
     const d = await decisionOf(key);
@@ -178,6 +178,7 @@ describe('one door asks a steward decision', () => {
         { id: IDS.keep, label: 'Keep it' },
       ],
       recommendedOptionId: IDS.drop,
+      why: 'nothing asks for it yet',
       basis: 'b',
     };
     const path = `/api/projects/${world.projectId}/steward-runs/${world.lastRunId}/decisions`;
@@ -185,6 +186,44 @@ describe('one door asks a steward decision', () => {
     expect([owner.status, owner.json.code]).toEqual([403, 'STEWARD_DECISION_FORBIDDEN']);
     const unknown = await world.say('steward', 'POST', path, { ...body, about: 'FB-999' });
     expect([unknown.status, unknown.json.code]).toEqual([404, 'STEWARD_DECISION_SUBJECT_UNKNOWN']);
+  });
+
+  it('refuses a merge that names nothing shared, and one into an item about something else (REQ-48 r3 BC-16)', async () => {
+    const issue = await issueAt(723, 'Criterion trace syntax is undocumented', 'draft');
+    const other = await issueAt(724, 'Steward re-asks a master for release approvals', 'open');
+    const twin = await issueAt(725, 'Criterion trace syntax undocumented for tags', 'open');
+    await diagnose(issue, { recommended: 'drop', why: 'nothing asks for it yet' });
+    const path = `/api/projects/${world.projectId}/steward-runs/${world.lastRunId}/decisions`;
+    const merging = (into: string, shares?: string) => ({
+      about: issue.key,
+      prompt: 'Drop it or merge it?',
+      options: [
+        { id: IDS.drop, label: 'Drop it' },
+        {
+          id: `steward.merge:${into}`,
+          label: `Merge it into ${into}`,
+          ...(shares ? { shares } : {}),
+        },
+      ],
+      recommendedOptionId: IDS.drop,
+      why: 'nothing asks for it yet',
+      basis: 'b',
+    });
+    const bare = await world.say('steward', 'POST', path, merging(twin.key));
+    expect([bare.status, bare.json.code]).toEqual([422, 'STEWARD_MERGE_SHARES_MISSING']);
+    const unrelated = await world.say('steward', 'POST', path, merging(other.key, 'the steward.'));
+    expect([unrelated.status, unrelated.json.code]).toEqual([
+      422,
+      'STEWARD_MERGE_NOT_SAME_SUBJECT',
+    ]);
+    expect(JSON.stringify(unrelated.json)).toContain('share no subject word');
+    const same = await world.say(
+      'steward',
+      'POST',
+      path,
+      merging(twin.key, 'the criterion trace syntax.'),
+    );
+    expect(same.status, JSON.stringify(same.json)).toBe(201);
   });
 });
 

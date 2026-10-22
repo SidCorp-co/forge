@@ -220,7 +220,14 @@ describe('a decision is titled by its record’s title, and one long title never
     expect(read.notDecisions).toContainEqual({
       reason: 'unreadable',
       count: 1,
-      keys: [w.issues[0]?.key],
+      items: [
+        {
+          key: w.issues[0]?.key,
+          title: w.issues[0]?.key,
+          next: 'open it on its own page',
+          opens: null,
+        },
+      ],
     });
     expect(read.decisions.map((d: Doc) => d.id)).not.toContain(`suggestion:${made.suggestion.id}`);
     expect(byId(read, 'suggestion:')).toHaveLength(1);

@@ -10,8 +10,8 @@ import { Checkbox, EmptyState, FilterChip, ListLayout, ListSearch, ListToolbar, 
 import { decisionHref, useNeedsYouDecisions } from "@/features/needs-you";
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
-import { useRouter } from "@/lib/navigation/router";
-import { approveOf, bulkApproveOf, CHIPS, declineOf, drawnOrder, groupsOf, narrowed, oldestOf, recommends } from "../derive";
+import { Link, useRouter } from "@/lib/navigation/router";
+import { approveOf, bulkApproveOf, CHIPS, declineOf, drawnAnswers, drawnOrder, groupsOf, narrowed, oldestOf, recommends } from "../derive";
 import { approvalsHref } from "@/lib/routes/approvals";
 import { type Decided, useDecide } from "../use-decide";
 import { useDecisionKeys } from "../use-decision-keys";
@@ -28,13 +28,25 @@ const decidedOf = (d: NeedsYouDecision, answer: DecisionAnswer, reason: string |
   how: answer.declines ? "declined" : "approved",
 });
 
-function Sub({ read }: { read: NeedsYouDecisions }) {
+/**
+ * The page's count, and beside it the same read's figure across your projects, the number the phone's
+ * Attention tab and the Overview badge carry, so neither reads as this page's (REQ-48 r3 BC-17).
+ */
+function Sub({ read, across }: { read: NeedsYouDecisions; across: number | null }) {
   const t = useCopy();
   const time = useTimeFormat();
   const oldest = oldestOf(read.decisions);
   return (
     <span className="text-13 text-muted" data-testid="approvals-count" data-total={read.total}>
       {read.total === 0 ? t("approvals.subNone") : t("approvals.sub", { n: read.total, age: oldest ? time.age(oldest) : "—" })}
+      {across !== null && across > read.total ? (
+        <>
+          {" · "}
+          <Link href="/attention" className="hover:underline" data-testid="approvals-count-across">
+            {t("approvals.subAcross", { n: across })}
+          </Link>
+        </>
+      ) : null}
     </span>
   );
 }
@@ -117,8 +129,12 @@ function Decisions({ read, slug }: { read: NeedsYouDecisions; slug: string }) {
     if (a) askWords(d, a);
   };
   useDecisionKeys(peek.open, {
-    approve: () => (open ? approveRow(open) : undefined),
-    decline: () => (open ? declineRow(open) : undefined),
+    answer: (n) => {
+      const a = open ? drawnAnswers(open)[n - 1] : undefined;
+      if (!open || !a) return;
+      if (a.needsReason) askWords(open, a);
+      else press(open, a, null);
+    },
     select: () => (open ? select(open.id, !picked.has(open.id)) : undefined),
   });
 
@@ -138,6 +154,7 @@ function Decisions({ read, slug }: { read: NeedsYouDecisions; slug: string }) {
       d={open}
       peek={peek}
       full={fullOf(open)}
+      slug={slug}
       noun={t(open.opens ? `approvals.noun.${open.opens.kind}` : "approvals.noun")}
       typing={typing?.id === open.id ? typing.answer : null}
       onType={(a) => setTyping(a ? { id: open.id, answer: a } : null)}
@@ -196,29 +213,59 @@ function Decisions({ read, slug }: { read: NeedsYouDecisions; slug: string }) {
           })
         )}
         {all.length > 0 && rows.length === 0 ? <p className="px-5 py-6 text-13 text-muted">{t("approvals.noMatch")}</p> : null}
-        <LeftOut read={read} />
+        <LeftOut read={read} slug={slug} />
       </div>
       <DecidedBar decide={decide} />
     </ListLayout>
   );
 }
 
-/** What the read carries beyond these rows: the decisions past its page, and the rows that are not decisions. */
-function LeftOut({ read }: { read: NeedsYouDecisions }) {
+/**
+ * What the read carries beyond these rows (REQ-48 r3 BC-17): the decisions past its page, and the rows
+ * waiting on you that are not decisions, each named by its title with the step it waits on and opening
+ * its own page. Neither is in the page's count, and the line says so.
+ */
+function LeftOut({ read, slug }: { read: NeedsYouDecisions; slug: string }) {
   const t = useCopy();
-  const leftOut = read.notDecisions.map((n) => `${t(`needsYou.decisions.reason.${n.reason}`, { n: n.count })}${n.keys.length ? ` (${n.keys.join(", ")})` : ""}`);
+  const more = read.total > read.decisions.length;
+  if (!more && read.notDecisions.length === 0) return null;
   return (
-    <div className="flex flex-col gap-1 px-5 py-4 text-12 text-subtle">
-      {read.total > read.decisions.length ? <p data-testid="approvals-more">{t("approvals.more", { shown: read.decisions.length, total: read.total })}</p> : null}
-      {leftOut.length > 0 ? <p data-testid="approvals-left-out">{t("needsYou.decisions.leftOut", { list: leftOut.join(", ") })}</p> : null}
+    <div className="flex flex-col gap-3 px-5 py-4 text-13" data-testid="approvals-left-out">
+      {more ? <p className="text-subtle" data-testid="approvals-more">{t("approvals.more", { shown: read.decisions.length, total: read.total })}</p> : null}
+      {read.notDecisions.map((n) => (
+        <section key={n.reason} aria-label={t(`needsYou.decisions.reason.${n.reason}`, { n: n.count })}>
+          <h2 className="text-12 font-semibold text-muted">
+            {t("approvals.leftOut.heading", { what: t(`needsYou.decisions.reason.${n.reason}`, { n: n.count }) })}
+          </h2>
+          <ul className="mt-1 divide-y divide-line-subtle">
+            {n.items.map((item) => {
+              const href = decisionHref(slug, item.opens);
+              return (
+                <li key={item.key} className="flex flex-wrap items-baseline gap-x-2 py-1.5" data-testid="approvals-left-out-item">
+                  {href ? (
+                    <Link href={href} className="font-medium text-fg hover:underline">
+                      {item.title}
+                    </Link>
+                  ) : (
+                    <span className="font-medium text-fg">{item.title}</span>
+                  )}
+                  {item.next ? <span className="text-muted">{t("approvals.leftOut.next", { next: item.next })}</span> : null}
+                </li>
+              );
+            })}
+            {n.count > n.items.length ? <li className="py-1.5 text-subtle">{t("approvals.leftOut.more", { n: n.count - n.items.length })}</li> : null}
+          </ul>
+        </section>
+      ))}
     </div>
   );
 }
 
-export function ApprovalsScreen({ projectId, slug }: { projectId: string; slug: string }) {
+/** `across`: the decisions waiting on you in all your projects (core's `/me/attention` `waitingOnYou`), null until read. */
+export function ApprovalsScreen({ projectId, slug, across = null }: { projectId: string; slug: string; across?: number | null }) {
   const t = useCopy();
   const q = useNeedsYouDecisions(projectId);
-  const title = <PageTitle after={q.data ? <Sub read={q.data} /> : undefined}>{t("approvals.title")}</PageTitle>;
+  const title = <PageTitle after={q.data ? <Sub read={q.data} across={across} /> : undefined}>{t("approvals.title")}</PageTitle>;
   return (
     <QueryBoundary query={q} loadingLabel={t("approvals.loading")} title={title} height="60vh" retry="always">
       {(read) => (

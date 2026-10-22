@@ -290,7 +290,8 @@
     "nav.proj-approvals": "Approvals",
     "nav.proj-questions": "Questions",
     "nav.proj-lessons": "Lessons",
-    "shell.approvalsCount": "{n} waiting on your decision"
+    "shell.approvalsCount": "{n} waiting on your decision",
+    "shell.waitingAcross": "{n} decisions waiting on you across your projects"
   },
   "vi": {
     "nav.attention": "Cần chú ý",
