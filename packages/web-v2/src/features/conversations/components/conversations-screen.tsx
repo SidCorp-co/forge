@@ -75,7 +75,7 @@ function RoomSub({ projectId }: { projectId: string }) {
 
 export function ConversationsScreen() {
   const projectsQ = useProjects();
-  const { projects: orgProjects, projectIds: orgProjectIds } = useOrgScopedProjects();
+  const { projects: orgProjects, projectIds: orgProjectIds, isLoading: orgLoading } = useOrgScopedProjects();
   const projectIdList = useMemo(() => [...orgProjectIds].sort(), [orgProjectIds]);
   const addressed = useRef(addressedRoom());
   const [showArchived, setShowArchived] = useState(addressed.current.archived);
@@ -105,7 +105,7 @@ export function ConversationsScreen() {
 
   const now = Date.now();
   // A reader who only views every project here is offered no room to start (ISS-1229 r35, judge-95).
-  const startsNone = orgProjects.length > 0 && !orgProjects.some((p) => startsRooms(p.role));
+  const startsNone = !orgLoading && !orgProjects.some((p) => startsRooms(p.role));
 
   const openRow = useCallback((row: ListedConversation) => {
     setOrphan(null);

@@ -107,10 +107,10 @@ describe("emptyRoomState", () => {
     });
   });
 
-  it("tells a viewer of a draft that they can read the project's conversations, not start one", () => {
-    expect(emptyRoomState(undefined, { canPost: false, projectName: "Desk" })?.message).toBe(
-      "You can read Desk's conversations, not start one: you hold the viewer role on Desk.",
-    );
+  it("tells a viewer of a draft what they can read, and nothing of starting one", () => {
+    const said = emptyRoomState(undefined, { canPost: false, projectName: "Desk" });
+    expect(said?.message).toBe("You hold the viewer role on Desk, so its conversations are yours to read from the list.");
+    expect(`${said?.title} ${said?.message}`).not.toMatch(/start/i);
   });
 });
 

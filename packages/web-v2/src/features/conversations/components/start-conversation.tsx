@@ -28,10 +28,12 @@ const sameHandle = (a: PickedHandle, b: PickedHandle) =>
   a.projectId === b.projectId && a.userId === b.userId;
 
 export function StartConversation({ onStarted }: { onStarted: (id: string, projectId: string) => void }) {
-  const { projects: visible } = useOrgScopedProjects();
+  const { projects: visible, isLoading } = useOrgScopedProjects();
   // A project the reader only views is not offered: core refuses the room it would open (judge-95).
   const projects = visible.filter((p) => startsRooms(p.role));
   const onlyViews = projects.length === 0 && visible.length > 0;
+  // Where nothing can be started, nothing here says start (the coordinator on PR #1151).
+  const nothingToStart = onlyViews || (!isLoading && visible.length === 0);
   const [projectId, setProjectId] = useState("");
   const [people, setPeople] = useState<string[]>([]);
   const [handles, setHandles] = useState<PickedHandle[]>([]);
@@ -68,15 +70,19 @@ export function StartConversation({ onStarted }: { onStarted: (id: string, proje
     <div className="grid h-full min-h-0 place-items-center overflow-y-auto px-4 py-8">
       <div className="flex w-full max-w-sm flex-col gap-4">
         <div className="text-center">
-          <p className="fg-h3">Start a conversation</p>
+          <p className="fg-h3">
+            {onlyViews ? "Conversations you can read" : nothingToStart ? "No project here yet" : "Start a conversation"}
+          </p>
           <p className="fg-body-sm mt-1 text-muted">
             {onlyViews
-              ? "You hold the viewer role on every project here, so you can read their conversations and not start one."
-              : "Pick a project, and choose who else is in the room."}
+              ? "You hold the viewer role on every project here, so their conversations are yours to read from the list."
+              : nothingToStart
+                ? "A conversation is about a project, and this organization holds none you can see."
+                : "Pick a project, and choose who else is in the room."}
           </p>
         </div>
 
-        {!onlyViews && (
+        {!nothingToStart && (
         <div>
           <label htmlFor="conversations-new-project" className="fg-body-sm mb-1.5 block text-muted">
             Project

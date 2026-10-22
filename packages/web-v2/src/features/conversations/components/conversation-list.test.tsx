@@ -18,7 +18,7 @@ vi.mock("../hooks", () => ({
 }));
 
 const { ConversationList } = await import("./conversation-list");
-const { VIEWER_LIST_EMPTY } = await import("../membership");
+const { READ_ONLY_LIST_EMPTY } = await import("../membership");
 
 afterEach(cleanup);
 
@@ -33,7 +33,7 @@ describe("the drawer's room list, as its panel asks it", () => {
   it("offers none where it is given none, and says the list is only to read", () => {
     render(<ConversationList {...props} />);
     expect(screen.queryByRole("button", { name: /new conversation/i })).toBeNull();
-    expect(screen.getByText(VIEWER_LIST_EMPTY)).toBeTruthy();
+    expect(screen.getByText(READ_ONLY_LIST_EMPTY)).toBeTruthy();
     expect(screen.queryByText(/ask the agent something/i)).toBeNull();
   });
 });

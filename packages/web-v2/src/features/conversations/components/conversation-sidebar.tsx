@@ -8,7 +8,7 @@ import { Button, EmptyState, ErrorState, IconButton, SessionRowSkeleton, Tooltip
 import { formatApiError } from "@/lib/api/error";
 import { groupByRecency } from "../grouping";
 import type { ListedConversation } from "../hooks";
-import { VIEWER_LIST_EMPTY } from "../membership";
+import { READ_ONLY_LIST_EMPTY } from "../membership";
 import { ConversationRow, projectsOfRow } from "./conversation-row";
 
 const SKELETON_ROWS = ["s1", "s2", "s3", "s4", "s5", "s6"];
@@ -145,7 +145,7 @@ export function ConversationSidebar({
                   ? "Archive a conversation and it waits for you here."
                   : onNew
                     ? "Start a conversation with the agent on any project — it'll show up here."
-                    : VIEWER_LIST_EMPTY
+                    : READ_ONLY_LIST_EMPTY
               }
               {...(showArchived || !onNew
                 ? {}

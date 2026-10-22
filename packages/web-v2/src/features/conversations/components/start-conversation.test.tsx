@@ -92,19 +92,28 @@ describe("the projects a room can be started in", () => {
     expect(offered()).toEqual(["Billing", "Desk"]);
   });
 
-  it("says a reader who only views projects can read their conversations and not start one, offering no picker", () => {
+  // The coordinator on PR #1151: the heading "Start a conversation" over that line was itself the
+  // invitation nobody could act on.
+  it("says to a reader who only views projects what they can do, and nothing of starting one", () => {
     projects = [
       { id: "p2", name: "Ops", slug: "ops", role: "viewer" },
       { id: "p5", name: "Archive", slug: "archive", role: "viewer" },
     ];
-    render(<StartConversation onStarted={vi.fn()} />);
+    const { container } = render(<StartConversation onStarted={vi.fn()} />);
     expect(screen.queryByRole("combobox")).toBeNull();
-    expect(screen.queryByText("Start the room")).toBeNull();
+    expect(screen.getByText("Conversations you can read")).toBeTruthy();
     expect(
-      screen.getByText(
-        "You hold the viewer role on every project here, so you can read their conversations and not start one.",
-      ),
+      screen.getByText("You hold the viewer role on every project here, so their conversations are yours to read from the list."),
     ).toBeTruthy();
+    expect(container.textContent).not.toMatch(/start/i);
+  });
+
+  it("tells a reader who can see no project that there is none, offering no picker", () => {
+    projects = [];
+    const { container } = render(<StartConversation onStarted={vi.fn()} />);
+    expect(screen.queryByRole("combobox")).toBeNull();
+    expect(screen.getByText("No project here yet")).toBeTruthy();
+    expect(container.textContent).not.toMatch(/start|pick a project/i);
   });
 });
 

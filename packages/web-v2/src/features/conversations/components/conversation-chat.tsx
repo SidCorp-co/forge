@@ -507,16 +507,3 @@ export function ConversationChat({
     </div>
   );
 }
-
-/** The "no room open yet" state, with a way into one. */
-export function NoConversationOpen({ onNew }: { onNew: () => void }) {
-  return (
-    <div className="grid h-full min-h-0 place-items-center px-4">
-      <EmptyState
-        title="No conversation open"
-        message="Pick one from the list, or start a new one."
-        action={{ label: "New conversation", onClick: onNew, icon: "plus" }}
-      />
-    </div>
-  );
-}

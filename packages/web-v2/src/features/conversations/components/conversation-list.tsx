@@ -26,7 +26,7 @@ import {
   useDeleteConversation,
   useRenameConversation,
 } from "../hooks";
-import { changesRoom, VIEWER_LIST_EMPTY } from "../membership";
+import { changesRoom, READ_ONLY_LIST_EMPTY } from "../membership";
 import { conversationTitle } from "../types";
 import { ConversationRow, projectsOfRow } from "./conversation-row";
 
@@ -135,7 +135,7 @@ export function ConversationList({
                 ? "Archive a conversation and it waits for you here."
                 : onNew
                   ? "Ask the agent something and it'll show up here."
-                  : VIEWER_LIST_EMPTY
+                  : READ_ONLY_LIST_EMPTY
             }
             {...(showArchived || !onNew
               ? {}

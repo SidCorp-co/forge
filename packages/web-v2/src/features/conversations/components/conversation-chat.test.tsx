@@ -648,7 +648,7 @@ describe("an empty room", () => {
     expect(emptyPane().getByText("Nothing can be sent here")).toBeInTheDocument();
   });
 
-  it("tells a viewer opening a new conversation that they can read this project's conversations, not start one", () => {
+  it("tells a viewer opening a new conversation what they can read, and nothing of starting one", () => {
     projectRole = "viewer";
     room = undefined;
     render(
@@ -656,8 +656,10 @@ describe("an empty room", () => {
         <ConversationChat projectId="p1" />
       </QueryClientProvider>,
     );
-    expect(emptyPane().getByText("You can read Desk's conversations, not start one: you hold the viewer role on Desk.")).toBeInTheDocument();
-    expect(emptyPane().queryByText("Start a conversation")).not.toBeInTheDocument();
+    expect(
+      emptyPane().getByText("You hold the viewer role on Desk, so its conversations are yours to read from the list."),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("conversation-empty").textContent).not.toMatch(/start/i);
   });
 });
 

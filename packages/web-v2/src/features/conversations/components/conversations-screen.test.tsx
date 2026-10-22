@@ -20,10 +20,10 @@ const desk = { id: "p1", name: "Desk", slug: "desk", orgId: "o1", role: "member"
 const reader = { role: "member" };
 vi.mock("@/features/projects/hooks", () => ({
   useProjects: () => ({ data: [{ ...desk, role: reader.role }], isLoading: false }),
-  useOrgScopedProjects: () => ({
-    projects: [{ ...desk, role: reader.role }],
-    projectIds: new Set(["p1"]),
-  }),
+  useOrgScopedProjects: () =>
+    reader.role === "none"
+      ? { projects: [], projectIds: new Set(), isLoading: false }
+      : { projects: [{ ...desk, role: reader.role }], projectIds: new Set(["p1"]), isLoading: false },
 }));
 vi.mock("@/features/orgs/active-org", () => ({ useActiveOrg: () => ({ activeOrgId: "o1" }) }));
 vi.mock("@/lib/ws/use-room", () => ({ useRoom: () => {} }));
@@ -157,6 +157,13 @@ describe("the offer of a new room", () => {
     at("/conversations");
     render(<ConversationsScreen />);
     expect(screen.getByRole("button", { name: "New conversation" })).toBeTruthy();
+  });
+
+  it("is not made to a reader who can see no project here", () => {
+    reader.role = "none";
+    at("/conversations");
+    render(<ConversationsScreen />);
+    expect(screen.queryByRole("button", { name: "New conversation" })).toBeNull();
   });
 
   it("is not made to a reader holding only the viewer role here", () => {

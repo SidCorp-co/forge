@@ -138,8 +138,7 @@ export const changesRoom = (
   roleOf: (projectId: string) => string | null | undefined,
 ) => (room.scope.length > 0 ? room.scope : [room.projectId]).every((id) => startsRooms(roleOf(id)));
 
-export const VIEWER_LIST_EMPTY =
-  "Conversations on your projects show up here to read. You hold the viewer role, so you cannot start one.";
+export const READ_ONLY_LIST_EMPTY = "Conversations on your projects show up here to read.";
 
 /** An empty room's title and line where an invitation would be untrue, else null (ISS-1229 r34). */
 export function emptyRoomState(
@@ -154,7 +153,7 @@ export function emptyRoomState(
       ? null
       : {
           title: "Conversations you can read",
-          message: `You can read ${reader.projectName ? `${reader.projectName}'s` : "this project's"} conversations, not start one: you hold the viewer role on ${where}.`,
+          message: `You hold the viewer role on ${where}, so its conversations are yours to read from the list.`,
         };
   }
   const readOnly = reader.canPost ? null : `You can read this room, not post in it: you hold the viewer role on ${where}.`;

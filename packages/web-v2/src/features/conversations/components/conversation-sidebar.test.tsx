@@ -6,7 +6,7 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ListedConversation } from "../hooks";
-import { changesRoom, VIEWER_LIST_EMPTY } from "../membership";
+import { changesRoom, READ_ONLY_LIST_EMPTY } from "../membership";
 import { ConversationSidebar } from "./conversation-sidebar";
 
 afterEach(cleanup);
@@ -48,8 +48,8 @@ describe("the room list, for a reader who may start no room", () => {
   it("offers no new conversation and says why its list is only to read", () => {
     render(<ConversationSidebar {...noOffer} />);
     expect(screen.queryByRole("button", { name: /new conversation/i })).toBeNull();
-    expect(screen.getByText(VIEWER_LIST_EMPTY)).toBeTruthy();
-    expect(screen.queryByText(/start a conversation/i)).toBeNull();
+    expect(screen.getByText(READ_ONLY_LIST_EMPTY)).toBeTruthy();
+    expect(screen.getByTestId("conversation-sidebar").textContent).not.toMatch(/start/i);
   });
 
   it("offers none collapsed either", () => {
