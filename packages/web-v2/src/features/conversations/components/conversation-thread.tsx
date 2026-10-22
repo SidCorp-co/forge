@@ -16,7 +16,7 @@
 import { personName, readerName } from "@forge/contracts/person-name";
 import { useAuth } from "@/providers/auth-provider";
 import { useState } from "react";
-import { Icon } from "@/design";
+import { Icon, Markdown } from "@/design";
 import { Conversation } from "@/features/session/components/conversation";
 import { RoomToolCard } from "./room-tool-card";
 import { DisclosureScope } from "@/features/session/disclosure";
@@ -91,10 +91,11 @@ function WithdrawnDraft({ draft }: { draft: string }) {
         <Icon name={open ? "chevronDown" : "chevronRight"} size={12} className="flex-none" />
         Technical details
       </button>
+      {/* Rendered as the reply would have been, never as its raw markup (ISS-1229 r37, judge-100). */}
       {open && (
-        <p className="fg-caption mt-1 ml-[21px] whitespace-pre-wrap border-l border-line-subtle pl-2 text-subtle">
-          {draft}
-        </p>
+        <div className="fg-caption mt-1 ml-[21px] border-l border-line-subtle pl-2 text-muted" data-testid="withdrawn-draft">
+          <Markdown>{draft}</Markdown>
+        </div>
       )}
     </div>
   );

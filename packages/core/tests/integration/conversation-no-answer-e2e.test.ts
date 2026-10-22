@@ -198,6 +198,7 @@ describe('a project whose agent lost its role', () => {
     expect(handles.find((h) => h.handle === 'ledger')).toMatchObject({
       userId: agentId,
       reachable: false,
+      blocked: 'lost-role',
     });
 
     const res = await as(ownerId, `/api/conversations/${id}/handles`, 'POST', { projectId });
@@ -285,6 +286,35 @@ describe('the projects a room may be opened on', () => {
     });
     const res = await as(ownerId, '/api/conversations', 'POST', { projectId });
     expect([res.status, ((await res.json()) as Refusal).code]).toEqual([409, 'HANDLE_TAKEN']);
+
+    // ISS-1229 r37, judge-100: Add an agent and Start a conversation listed Ledger's agent as a second,
+    // unmarked @ledger beside the agent that holds the address, refused only at the last step.
+    type Offered = {
+      userId: string | null;
+      handle: string;
+      project: { id: string };
+      reachable: boolean;
+      blocked: string | null;
+    };
+    const ledgerRows = async (path: string): Promise<Offered[]> => {
+      const read = await as(ownerId, path);
+      expect(read.status, await read.clone().text()).toBe(200);
+      return ((await read.json()) as { handles: Offered[] }).handles.filter(
+        (h) => h.handle === 'ledger',
+      );
+    };
+    const marked = { userId: null, handle: 'ledger', reachable: false, blocked: 'taken' };
+    expect(await ledgerRows(`/api/conversations/candidates?projectId=${desk}`)).toEqual([
+      expect.objectContaining({ ...marked, project: expect.objectContaining({ id: projectId }) }),
+    ]);
+    const opened = await as(ownerId, '/api/conversations', 'POST', { projectId: desk });
+    expect(opened.status, await opened.clone().text()).toBe(201);
+    const { id } = (await opened.json()) as { id: string };
+    expect(await ledgerRows(`/api/conversations/${id}/candidates`)).toEqual([
+      expect.objectContaining({ ...marked, project: expect.objectContaining({ id: projectId }) }),
+    ]);
+    const add = await as(ownerId, `/api/conversations/${id}/handles`, 'POST', { projectId });
+    expect([add.status, ((await add.json()) as Refusal).code]).toEqual([409, 'HANDLE_TAKEN']);
   });
 
   it('marks a project whose agent carries no address, as opening refuses it', async () => {

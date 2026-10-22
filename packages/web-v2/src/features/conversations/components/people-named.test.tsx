@@ -123,6 +123,7 @@ describe("a person with no display name, inside a sentence", () => {
         userId: "a1", handle: "ops", project: { id: "p2", name: "Ops", slug: "ops" },
         losesReaders: ["Another member", "Lan Pham", "Another member"],
         reachable: true,
+        blocked: null,
       },
       room,
     });

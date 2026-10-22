@@ -75,7 +75,7 @@ export function ScopeNotice({
           ))}
           {refusal && (
             <p className="fg-caption mt-1 text-muted" data-testid="scope-notice-refusal">
-              {[refusal.reason, refusal.wayOut].filter(Boolean).join(" ")}
+              {refusal.reason}
             </p>
           )}
         </div>

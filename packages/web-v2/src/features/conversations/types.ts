@@ -154,6 +154,8 @@ export interface HandleCandidate {
   /** Who in the room today would lose it if this agent joined — already named. */
   losesReaders: string[];
   reachable: boolean;
+  /** Why it cannot be added, as the openers read says it of a project (ISS-1229 r37). */
+  blocked: "lost-role" | "taken" | null;
 }
 
 export interface BeyondReach {

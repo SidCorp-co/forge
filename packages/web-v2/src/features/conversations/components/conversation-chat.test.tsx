@@ -589,7 +589,7 @@ describe("an empty room", () => {
     room = detail({ participants: [agent({ reachable: false })], scopeProjects: [desk], scope: ["p1"] });
     open();
     expect(emptyPane().getByText("No agent here can answer")).toBeInTheDocument();
-    expect(emptyPane().getByText("Why is said above the message box.")).toBeInTheDocument();
+    expect(emptyPane().getByText("The reason is above the message box.")).toBeInTheDocument();
     expect(whySaid()).toHaveLength(1);
     expect(within(screen.getByTestId("composer-no-answer")).getByText(/@desk can't answer/)).toBeInTheDocument();
     expect(within(screen.getByTestId("scope-notice")).getByText("This room stays about Desk while @desk is in it.")).toBeInTheDocument();
@@ -611,7 +611,7 @@ describe("an empty room", () => {
     open();
     expect(emptyPane().getByText("No agent here can answer")).toBeInTheDocument();
     // Two projects refuse the box itself, so About is where why is said, once for each agent.
-    expect(emptyPane().getByText("Why is said in this room's About line, at the top.")).toBeInTheDocument();
+    expect(emptyPane().getByText("The reason is in this room's About line, at the top.")).toBeInTheDocument();
     const about = within(screen.getByTestId("scope-notice"));
     expect(about.getByText(/^@desk can't answer: it no longer holds a role on Desk\./)).toBeInTheDocument();
     expect(about.getByText(/^@ops can't answer: it no longer holds a role on Ops\./)).toBeInTheDocument();
@@ -645,7 +645,7 @@ describe("an empty room", () => {
     expect(emptyPane().getByText("No agent here can answer")).toBeInTheDocument();
     expect(
       emptyPane().getByText(
-        "You can read this room, not post in it: you hold the viewer role on Desk. Why is said in this room's About line, at the top.",
+        "You can read this room, not post in it: you hold the viewer role on Desk. The reason is in this room's About line, at the top.",
       ),
     ).toBeInTheDocument();
     expect(whySaid()).toHaveLength(1);
@@ -663,6 +663,24 @@ describe("an empty room", () => {
     open();
     expect(emptyPane().queryByText("Start a conversation")).not.toBeInTheDocument();
     expect(emptyPane().getByText("Nothing can be sent here")).toBeInTheDocument();
+    // r37, judge-100: the take-out sentence stood in the empty pane, About and the box; it is the box's.
+    expect(screen.getAllByText(/take one of its agents out/i)).toHaveLength(1);
+    expect(within(screen.getByTestId("composer-refused")).getByText(/^Take one of its agents out/)).toBeInTheDocument();
+  });
+
+  it("offers no way out in a two-project room where taking one agent out would leave none that can answer", () => {
+    const ops = { id: "p2", name: "Ops", slug: "ops" };
+    room = detail({
+      shape: "group",
+      participants: [
+        agent({ reachable: false }),
+        agent({ id: "h-ops", userId: "u-ops", projectId: "p2", displayName: "ops", reachable: false }),
+      ],
+      scopeProjects: [desk, ops],
+      scope: ["p1", "p2"],
+    });
+    open();
+    expect(screen.queryByText(/take one of its agents out/i)).not.toBeInTheDocument();
   });
 
   it("tells a viewer opening a new conversation what they can read, and nothing of starting one", () => {
