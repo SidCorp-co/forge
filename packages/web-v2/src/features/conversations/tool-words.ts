@@ -95,16 +95,25 @@ function forgeAct(argv: readonly string[]): Act {
     case "project":
       return act("Read", "read", "Reading", "the project");
     case "knowledge":
-      return knowledgeAct(sub, flag(argv, "--query") ?? positionals(argv, 2)[0]);
+      return knowledgeAct(sub, flag(argv, "--query") ?? positionals(argv, 2)[0], flag(argv, "--scope"));
     default:
       return act("Used", "use", "Using", "the tracker");
   }
 }
 
-function knowledgeAct(action: unknown, subject: unknown): Act {
+/** Which stores a knowledge search reads: knowledge alone unless its scope names memory or both. */
+type SearchScope = "knowledge" | "memory" | "all";
+const searchScope = (scope: unknown): SearchScope => (scope === "memory" || scope === "all" ? scope : "knowledge");
+const SCOPE_WORDS: Record<SearchScope, string> = {
+  knowledge: "project knowledge",
+  memory: "project memory",
+  all: "project knowledge and memory",
+};
+
+function knowledgeAct(action: unknown, subject: unknown, scope?: unknown): Act {
   const what = typeof subject === "string" && subject.trim() ? subject.trim() : undefined;
   if (action === "search") {
-    return act("Searched", "search", "Searching", `project knowledge${what ? ` for ${quoted(what)}` : ""}`);
+    return act("Searched", "search", "Searching", `${SCOPE_WORDS[searchScope(scope)]}${what ? ` for ${quoted(what)}` : ""}`);
   }
   if (action === "get") return act("Read", "read", "Reading", what ? `${quoted(what)} from project knowledge` : "project knowledge");
   return act("Listed", "list", "Listing", "project knowledge");
@@ -121,7 +130,7 @@ function actOf(tool: ToolCallData): Act | null {
       return forgeAct(argv);
     }
     case "forge_knowledge":
-      return knowledgeAct(input.action, input.query ?? input.slug);
+      return knowledgeAct(input.action, input.query ?? input.slug, input.scope);
     case "forge_memory_search": {
       const q = str(input.query);
       return act("Searched", "search", "Searching", `project memory${q ? ` for ${quoted(q)}` : ""}`);
@@ -166,8 +175,19 @@ function actOf(tool: ToolCallData): Act | null {
   }
 }
 
-/** How many came back, where the result says it plainly. */
-function foundCount(tool: ToolCallData): number | null {
+/** What a count reads as after the act: "none found", "2 found", or each store's own count. */
+type Found = number | { knowledge: number; memory: number };
+
+const counted = (n: number, where?: string) => `${n === 0 ? "none" : n}${where ? ` in ${where}` : " found"}`;
+
+function foundWords(found: Found): string {
+  if (typeof found === "number") return counted(found);
+  if (found.knowledge + found.memory === 0) return "none found";
+  return `${counted(found.knowledge, "knowledge")}, ${counted(found.memory, "memory")}`;
+}
+
+/** How many came back, where the result says it plainly; a search of both stores counts each apart (r35). */
+function foundCount(tool: ToolCallData): Found | null {
   const result = tool.result;
   if (result == null || typeof result !== "object") return null;
   const r = result as Record<string, unknown>;
@@ -180,9 +200,11 @@ function foundCount(tool: ToolCallData): number | null {
   }
   if (tool.name === "forge_memory_search" && Array.isArray(r.hits)) return r.hits.length;
   if (tool.name === "forge_knowledge" && tool.input?.action === "search") {
+    if (!Array.isArray(r.knowledge) && !Array.isArray(r.memory)) return null;
     const k = Array.isArray(r.knowledge) ? r.knowledge.length : 0;
     const m = Array.isArray(r.memory) ? r.memory.length : 0;
-    return Array.isArray(r.knowledge) || Array.isArray(r.memory) ? k + m : null;
+    const scope = searchScope(tool.input.scope);
+    return scope === "all" ? { knowledge: k, memory: m } : scope === "memory" ? m : k;
   }
   return null;
 }
@@ -194,7 +216,36 @@ function filedKey(tool: ToolCallData): string | null {
   return /"issueId"\s*:\s*"([^"]+)"/.exec(out)?.[1] ?? null;
 }
 
-/** The refusal's reason: the first sentence of what the tool said, one line. */
+const shortened = (line: string) => (line.length > REASON_CHARS ? `${line.slice(0, REASON_CHARS).trimEnd()}…` : line);
+
+const firstSentence = (paragraph: string) => {
+  const line = paragraph.trim().split("\n")[0]?.trim() ?? "";
+  return /^(.+?[.!?])(?:\s|$)/.exec(line)?.[1] ?? line;
+};
+
+const MISSING_HEADING = "no heading naming ";
+
+/**
+ * What a refusal that lists what it read says was wrong: each read, without the headings it was read
+ * among, the missing headings told as one list (ISS-1229 r35, judge-95).
+ */
+function readsReason(text: string): string | null {
+  const reads = [...text.matchAll(/^\s*- read: (.+)$/gm)].map((m) => (m[1] as string).replace(/, among .*$/, "").trim());
+  if (reads.length === 0) return null;
+  const missing = reads.filter((r) => r.startsWith(MISSING_HEADING)).map((r) => r.slice(MISSING_HEADING.length));
+  const rest = reads.filter((r) => !r.startsWith(MISSING_HEADING));
+  const listed =
+    missing.length === 0
+      ? []
+      : [`${MISSING_HEADING}${missing.length === 1 ? missing[0] : `${missing.slice(0, -1).join(", ")} or ${missing.at(-1)}`}`];
+  const said = [...listed, ...rest].join("; ").replace(/`/g, "");
+  return `${said.charAt(0).toUpperCase()}${said.slice(1)}${/[.!?]$/.test(said) ? "" : "."}`;
+}
+
+/**
+ * The refusal's reason, one line: what it read, where it lists that; else the first sentence after an
+ * opening that only says it held the call ("Hold — …", r35); else its first sentence.
+ */
 export function refusalReason(result: unknown): string {
   let text = "";
   if (typeof result === "string") text = result;
@@ -202,10 +253,12 @@ export function refusalReason(result: unknown): string {
     const r = result as { stderr?: unknown; message?: unknown; stdout?: unknown };
     text = [r.stderr, r.message, r.stdout].find((v): v is string => typeof v === "string" && v.trim() !== "") ?? "";
   }
-  const line = text.trim().split("\n")[0]?.trim() ?? "";
-  if (!line) return "It gave no reason.";
-  const sentence = /^(.+?[.!?])(?:\s|$)/.exec(line)?.[1] ?? line;
-  return sentence.length > REASON_CHARS ? `${sentence.slice(0, REASON_CHARS).trimEnd()}…` : sentence;
+  const read = readsReason(text);
+  if (read) return shortened(read);
+  const paragraphs = text.trim().split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
+  if (paragraphs.length === 0) return "It gave no reason.";
+  const held = /^Hold\b/.test(paragraphs[0] as string) && paragraphs.length > 1;
+  return shortened(firstSentence(paragraphs[held ? 1 : 0] as string));
 }
 
 /** The reason with the tool's stored name taken out, which only the technical details show. */
@@ -228,6 +281,6 @@ export function toolWords(tool: ToolCallData, live = false): ToolWords {
     const title = flag((tool.input.argv as unknown[]).filter((x): x is string => typeof x === "string"), "--title");
     if (key) return { said: title ? `Filed ${key} — ${title}` : `Filed ${key}` };
   }
-  const n = foundCount(tool);
-  return { said: n === null ? a.done : `${a.done} — ${n === 0 ? "none found" : `${n} found`}` };
+  const found = foundCount(tool);
+  return { said: found === null ? a.done : `${a.done} — ${foundWords(found)}` };
 }
