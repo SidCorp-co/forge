@@ -2,7 +2,9 @@
 -- from `verify` on the live deploy binding and nowhere else, so `environments.live.commitUrl` and
 -- `environments.live.commitPath` go from every row:
 --
--- 1. An empty value (JSON null, '' or a path with no url) carries nothing and is removed everywhere.
+-- 1. An empty value (JSON null, '', a value that is not a string, or a path with no url) carries
+--    nothing the release read, and is removed everywhere. Values are read as the runtime read them:
+--    only a string is a url or a path.
 -- 2. A stored url is removed where its project has an active live deploy binding on an active
 --    connection, every such binding declares its own `verify`, and one of them declares a probe with
 --    the same url and commitPath: those releases read the binding already, so no verdict moves.
@@ -21,10 +23,12 @@ BEGIN
   WITH held AS (
     SELECT p.id, p.slug,
            p.environments->'live'->>'commitUrl' AS url,
-           NULLIF(p.environments->'live'->>'commitPath', '') AS path
+           CASE WHEN jsonb_typeof(p.environments->'live'->'commitPath') = 'string'
+                THEN NULLIF(p.environments->'live'->>'commitPath', '') END AS path
       FROM projects p
      WHERE jsonb_typeof(p.environments->'live') = 'object'
-       AND COALESCE(p.environments->'live'->>'commitUrl', '') <> ''
+       AND jsonb_typeof(p.environments->'live'->'commitUrl') = 'string'
+       AND p.environments->'live'->>'commitUrl' <> ''
   ),
   live_bindings AS (
     SELECT b.project_id,
@@ -47,8 +51,10 @@ BEGIN
                     CASE WHEN jsonb_typeof(l.verify->'probes') = 'array' THEN l.verify->'probes'
                          ELSE '[]'::jsonb END) AS probe
             WHERE l.project_id = h.id
+              AND jsonb_typeof(probe->'url') = 'string'
               AND probe->>'url' = h.url
-              AND probe->>'commitPath' IS NOT DISTINCT FROM h.path)
+              AND CASE WHEN jsonb_typeof(probe->'commitPath') = 'string' THEN probe->>'commitPath' END
+                  IS NOT DISTINCT FROM h.path)
    ORDER BY h.slug, h.id
    LIMIT 1;
   IF FOUND THEN

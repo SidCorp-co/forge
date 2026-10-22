@@ -136,10 +136,12 @@ describe('migration 0358 strips what nothing reads', () => {
     const c = await project('path-alone', {
       live: { apiUrl: 'https://api.c.test', commitPath: 'x' },
     });
+    const d = await project('not-a-string', { live: { commitUrl: 7 } });
     expect(await runMigration()).toBeNull();
     expect(await stored(a)).toEqual({ live: { url: 'https://a.test' }, limits: 'kept' });
     expect(await stored(b)).toEqual({ live: { url: null } });
     expect(await stored(c)).toEqual({ live: { apiUrl: 'https://api.c.test' } });
+    expect(await stored(d)).toEqual({ live: {} });
   });
 
   it('removes a stored url every live binding of its project already declares', async () => {
@@ -216,6 +218,15 @@ describe('migration 0358 refuses a row whose release reads the stored url, writi
     const error = await runMigration();
     expect(error).toContain('zz-whole-body');
     expect(await stored(id)).toEqual({ live: { commitUrl: probeUrl } });
+  });
+
+  it('refuses a stored path a binding declares only as a number, which the release does not read', async () => {
+    const id = await project('zz-numeric-path', {
+      live: { commitUrl: probeUrl, commitPath: '123' },
+    });
+    await bind(id, { config: { verify: { probes: [{ url: probeUrl, commitPath: 123 }] } } });
+    expect(await runMigration()).toContain('zz-numeric-path');
+    expect(await stored(id)).toEqual({ live: { commitUrl: probeUrl, commitPath: '123' } });
   });
 });
 
