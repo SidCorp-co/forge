@@ -32,6 +32,7 @@ use crate::daemon::job_exit;
 use crate::daemon::job_unheard;
 use crate::daemon::master_ask;
 use crate::daemon::master_build::{self, Judged};
+use crate::daemon::master_children;
 use crate::daemon::master_exit::{self, Holding, Verdict};
 use crate::daemon::master_handed;
 use crate::daemon::master_limit;
@@ -690,9 +691,10 @@ fn since_nudge(seen: Option<&agent_activity::Activity>, sent_at: Option<u64>) ->
         return SinceNudge::NoTurn;
     }
     match now.doing() {
-        // A master's children are its dispatched runs, and the next nudge's own
-        // prompt clears any whose end was lost, so for a master a lead that
-        // ended over them is still work in flight.
+        // A master's children are its dispatched runs, so a lead that ended
+        // over one that still counts is work in flight. One whose end was lost
+        // is taken out before this is asked (`counted_activity`), and the next
+        // nudge's own prompt clears it from the hooks' record.
         agent_activity::Doing::Working | agent_activity::Doing::AwaitingChildren => {
             SinceNudge::Working
         }
@@ -705,6 +707,56 @@ fn since_nudge(seen: Option<&agent_activity::Activity>, sent_at: Option<u64>) ->
             }
         }
     }
+}
+
+/// What a master's own hooks report, less every dispatched run that has
+/// stopped counting as its work in flight (`master_children`, ISS-1306 round
+/// 2). Only a master reading `AwaitingChildren` is read further, and the
+/// reading is taken on a copy: what the hooks keep is untouched, and the next
+/// prompt the master is given clears the children there.
+fn counted_activity(
+    masters: &Masters,
+    project_id: &str,
+    slug: &str,
+    pane: &str,
+    seen: Option<agent_activity::Activity>,
+    ledger: Option<&Ledger>,
+    proc_root: &std::path::Path,
+) -> Option<agent_activity::Activity> {
+    let mut seen = seen?;
+    if seen.doing() != agent_activity::Doing::AwaitingChildren {
+        masters.absent_for(project_id, &[]);
+        masters.lost_news(project_id, &[]);
+        return Some(seen);
+    }
+    let children = master_children::read_children(&seen, ledger, proc_root);
+    let read: Vec<(String, Option<bool>)> = children
+        .iter()
+        .map(|c| (c.agent_id.clone(), c.absent()))
+        .collect();
+    let absent = masters.absent_for(project_id, &read);
+    let now = agent_activity::now_ms();
+    let lost: Vec<_> = children
+        .iter()
+        .filter_map(|child| {
+            match master_children::counted(child, absent.get(&child.agent_id).copied(), now) {
+                master_children::Counted::Lost { silent, absent } => Some((child, silent, absent)),
+                master_children::Counted::Counts => None,
+            }
+        })
+        .collect();
+    let ids: Vec<String> = lost.iter().map(|(c, ..)| c.agent_id.clone()).collect();
+    let news = masters.lost_news(project_id, &ids);
+    for (child, silent, absent) in lost {
+        if news.contains(&child.agent_id) {
+            tracing::warn!(
+                "{}",
+                master_children::lost_line(slug, pane, child, silent, absent)
+            );
+        }
+        seen.children.remove(&child.agent_id);
+    }
+    Some(seen)
 }
 
 fn retry_owed(since: SinceNudge) -> bool {
@@ -1052,6 +1104,23 @@ impl Masters {
     fn note_unasked(&self, project_id: &str, work: bool, working: bool) -> Option<Duration> {
         let mut reg = self.0.lock().expect("masters poisoned");
         reg.ask.note(project_id, work, working, Instant::now())
+    }
+
+    /// How long each of this master's children has been read absent, off one
+    /// sweep's reading of them (`master_children`).
+    fn absent_for(
+        &self,
+        project_id: &str,
+        read: &[(String, Option<bool>)],
+    ) -> HashMap<String, Duration> {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        reg.ask.absent_for(project_id, read, Instant::now())
+    }
+
+    /// Which of the children that stopped counting have not been said to.
+    fn lost_news(&self, project_id: &str, lost: &[String]) -> Vec<String> {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        reg.ask.lost_news(project_id, lost)
     }
 
     /// The admissible set this sweep read, or `None` where the read failed.
@@ -1633,21 +1702,43 @@ async fn sweep(
         ) else {
             continue;
         };
-        let working = masters
-            .get(&runner.project_id)
-            .and_then(|(session_id, _)| activity.get(&session_id))
-            .is_some_and(|a| {
-                matches!(
-                    a.doing(),
-                    agent_activity::Doing::Working | agent_activity::Doing::AwaitingChildren
-                )
-            });
+        let proc_root = std::path::Path::new(crate::workspace::worktree_processes::PROC);
+        let placed_master = masters.get(&runner.project_id);
+        let counted = counted_activity(
+            masters,
+            &runner.project_id,
+            &runner.slug,
+            &pane_name,
+            placed_master
+                .as_ref()
+                .and_then(|(session_id, _)| activity.get(session_id)),
+            ledger.as_ref(),
+            proc_root,
+        );
+        let working = counted.as_ref().is_some_and(|a| {
+            matches!(
+                a.doing(),
+                agent_activity::Doing::Working | agent_activity::Doing::AwaitingChildren
+            )
+        });
         if let Some(waited) =
             masters.note_unasked(&runner.project_id, !admissible.is_empty(), working)
         {
+            let seen = master_ask::Seen::of(
+                placed_master.is_some(),
+                counted.as_ref(),
+                agent_activity::now_ms(),
+            );
             tracing::warn!(
                 "{}",
-                master_ask::unasked_line(&runner.slug, &pane_name, admissible.len(), waited)
+                master_ask::unasked_line(
+                    &runner.slug,
+                    &pane_name,
+                    admissible.len(),
+                    waited,
+                    seen,
+                    &terminal::attach_command(&pane_name),
+                )
             );
         }
         let placement = placement_for(&admissible);
@@ -1909,9 +2000,17 @@ async fn sweep(
             }
         }
 
-        let reported = masters
-            .get(&runner.project_id)
-            .and_then(|(session_id, _)| activity.get(&session_id));
+        let reported = counted_activity(
+            masters,
+            &runner.project_id,
+            &resolved.slug,
+            &pane_name,
+            masters
+                .get(&runner.project_id)
+                .and_then(|(session_id, _)| activity.get(&session_id)),
+            ledger.as_ref(),
+            proc_root,
+        );
         let held = held_by_limit(
             last_said.as_ref(),
             stored_conversation.as_deref(),
@@ -3949,14 +4048,15 @@ async fn ensure_master(
         .await;
     }
     tracing::info!(
-        "[master] {}: resident session {name} {} in {} — `tmux attach -t {name}` to watch it",
+        "[master] {}: resident session {name} {} in {} — `{}` to watch it",
         resolved.slug,
         match (started, resume.as_deref()) {
             (false, _) => "was already up, and this pass started nothing".to_string(),
             (true, Some(id)) => format!("resumed from conversation {id}"),
             (true, None) => "cold-started".to_string(),
         },
-        resolved.repo_path.display()
+        resolved.repo_path.display(),
+        terminal::attach_command(&name)
     );
     remember_placed(masters, project_id, &session, &_placing);
     masters.clear_unplaced(project_id, &resolved.slug);
@@ -8644,6 +8744,208 @@ mod give_back_tests {
             SinceNudge::Working,
             "a master's children are its runs in flight; ISS-1232 changed the job and run readings, not the nudge"
         );
+    }
+
+    // ---- a dispatched run whose end never arrived (ISS-1306 round 2) --------
+
+    /// A master whose turn ended over child `a1`, whose transcript is written
+    /// under `root`, with that child's transcript last written `silent` ago.
+    fn over_a_child(root: &std::path::Path, silent: Duration) -> agent_activity::Activity {
+        let lead = root.join("t").join("conv.jsonl");
+        let sub = crate::daemon::transcript_age::child_transcript(&lead, "a1").unwrap();
+        std::fs::create_dir_all(sub.parent().unwrap()).unwrap();
+        std::fs::write(&lead, "{}\n").unwrap();
+        std::fs::write(&sub, "{}\n").unwrap();
+        std::fs::OpenOptions::new()
+            .write(true)
+            .open(&sub)
+            .unwrap()
+            .set_modified(std::time::SystemTime::now() - silent)
+            .unwrap();
+        let acts = agent_activity::Activities::new();
+        for (event, subject) in [
+            (agent_activity::Event::PromptSubmitted, None),
+            (agent_activity::Event::SubagentStarted, Some("a1")),
+            (agent_activity::Event::Stopped, None),
+        ] {
+            acts.record(
+                "s1",
+                agent_activity::Report {
+                    event,
+                    at: agent_activity::now_ms(),
+                    subject,
+                    conversation: Some("conv"),
+                    transcript: Some(lead.to_str().unwrap()),
+                },
+            );
+        }
+        acts.get("s1").unwrap()
+    }
+
+    /// Seed the absence clock as though every sweep for `for_` had read `a1`
+    /// absent.
+    fn absent_since(masters: &Masters, for_: Duration) {
+        let then = Instant::now()
+            .checked_sub(for_)
+            .expect("clock older than the window");
+        masters
+            .0
+            .lock()
+            .unwrap()
+            .ask
+            .absent_for("p", &[("a1".to_string(), Some(true))], then);
+    }
+
+    /// Criterion 16: a master whose only child has been absent and silent past
+    /// the floor reads as idle, so the floor asks it and the clock runs.
+    #[test]
+    fn a_master_whose_child_is_lost_reads_as_having_run() {
+        let scratch = crate::test_scratch::Scratch::new("iss1306-lost-child");
+        let led = Ledger::open(&scratch.path().join("ledger.sqlite")).unwrap();
+        let seen = over_a_child(
+            scratch.path(),
+            master_ask::ASK_FLOOR + Duration::from_secs(60),
+        );
+        assert_eq!(since_nudge(Some(&seen), Some(0)), SinceNudge::Working);
+        let masters = Masters::new();
+        absent_since(&masters, master_ask::ASK_FLOOR);
+        let proc_root = scratch.path().join("proc");
+        std::fs::create_dir_all(&proc_root).unwrap();
+        let said = crate::log_capture::logged_while(|| {
+            let counted = counted_activity(
+                &masters,
+                "p",
+                "proj",
+                "forge-master-proj",
+                Some(seen.clone()),
+                Some(&led),
+                &proc_root,
+            )
+            .unwrap();
+            assert_eq!(counted.doing(), agent_activity::Doing::Idle);
+            assert_eq!(since_nudge(Some(&counted), Some(0)), SinceNudge::Ran);
+            assert_eq!(seen.children.len(), 1, "what the hooks keep is untouched");
+            counted_activity(
+                &masters,
+                "p",
+                "proj",
+                "forge-master-proj",
+                Some(seen.clone()),
+                Some(&led),
+                &proc_root,
+            );
+        });
+        assert_eq!(
+            said.matches("no longer counting subagent a1").count(),
+            1,
+            "said once while it stays lost (criterion 19): {said}"
+        );
+        assert!(said.contains("WARN"), "{said}");
+    }
+
+    /// Criterion 17 and consult 08737d F1: silence alone, with the absence
+    /// younger than the floor, keeps the child counting.
+    #[test]
+    fn a_silent_child_whose_absence_is_new_still_counts() {
+        let scratch = crate::test_scratch::Scratch::new("iss1306-new-absence");
+        let led = Ledger::open(&scratch.path().join("ledger.sqlite")).unwrap();
+        let seen = over_a_child(scratch.path(), master_ask::ASK_FLOOR * 2);
+        let masters = Masters::new();
+        let proc_root = scratch.path().join("proc");
+        std::fs::create_dir_all(&proc_root).unwrap();
+        let counted = counted_activity(
+            &masters,
+            "p",
+            "proj",
+            "forge-master-proj",
+            Some(seen),
+            Some(&led),
+            &proc_root,
+        )
+        .unwrap();
+        assert_eq!(counted.doing(), agent_activity::Doing::AwaitingChildren);
+        assert_eq!(since_nudge(Some(&counted), Some(0)), SinceNudge::Working);
+    }
+
+    /// Criterion 17: a process in the run's worktree keeps the child counting
+    /// however long its transcript has been silent.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_child_with_a_process_in_its_worktree_still_counts() {
+        let scratch = crate::test_scratch::Scratch::new("iss1306-resident-child");
+        let mut led = Ledger::open(&scratch.path().join("ledger.sqlite")).unwrap();
+        let tree = scratch.path().join("w").join("iss-1");
+        std::fs::create_dir_all(&tree).unwrap();
+        led.create_run_group(crate::runner::ledger::NewRun {
+            run_id: "run-1".into(),
+            project_id: "p".into(),
+            master_session_id: "s1".into(),
+            worktree_path: tree.clone(),
+            boot_id: "boot-a".into(),
+            issue_keys: vec!["ISS-1".into()],
+        })
+        .unwrap();
+        assert!(led.bind_agent("run-1", "a1").unwrap());
+        let proc_root = scratch.path().join("proc");
+        let pid = proc_root.join("4242");
+        std::fs::create_dir_all(&pid).unwrap();
+        std::os::unix::fs::symlink(&tree, pid.join("cwd")).unwrap();
+        std::fs::write(pid.join("cmdline"), "cargo\0test").unwrap();
+        let seen = over_a_child(scratch.path(), master_ask::ASK_FLOOR * 3);
+        let masters = Masters::new();
+        absent_since(&masters, master_ask::ASK_FLOOR * 2);
+        let counted = counted_activity(
+            &masters,
+            "p",
+            "proj",
+            "forge-master-proj",
+            Some(seen),
+            Some(&led),
+            &proc_root,
+        )
+        .unwrap();
+        assert_eq!(counted.doing(), agent_activity::Doing::AwaitingChildren);
+    }
+
+    /// Criterion 18: a box that cannot read its process table keeps the child.
+    #[test]
+    fn a_child_this_box_cannot_read_still_counts() {
+        let scratch = crate::test_scratch::Scratch::new("iss1306-unread-child");
+        let seen = over_a_child(scratch.path(), master_ask::ASK_FLOOR * 3);
+        let masters = Masters::new();
+        absent_since(&masters, master_ask::ASK_FLOOR * 2);
+        let counted = counted_activity(
+            &masters,
+            "p",
+            "proj",
+            "forge-master-proj",
+            Some(seen),
+            None,
+            &scratch.path().join("proc"),
+        )
+        .unwrap();
+        assert_eq!(counted.doing(), agent_activity::Doing::AwaitingChildren);
+    }
+
+    /// The sweep reads the master through `counted_activity` at both places it
+    /// decides from the master's report: the unasked clock and the nudge.
+    #[test]
+    fn the_sweep_reads_the_master_as_counted_for_the_clock_and_the_nudge() {
+        let production = THIS_SOURCE.split("#[cfg(test)]").next().unwrap();
+        let sweep = production
+            .split("\nasync fn sweep(")
+            .nth(1)
+            .and_then(|r| r.split("\nasync fn ").next())
+            .expect("sweep is gone");
+        assert_eq!(sweep.matches("counted_activity(").count(), 2, "{sweep}");
+        assert!(
+            !sweep.contains("activity.get(&session_id));"),
+            "a raw hooks read decides nothing in the sweep"
+        );
+        let first = sweep.find("counted_activity(").unwrap();
+        assert!(first < sweep.find("note_unasked(").unwrap());
+        let second = sweep.rfind("counted_activity(").unwrap();
+        assert!(second < sweep.find("claim_nudge(").unwrap());
     }
 
     #[test]
