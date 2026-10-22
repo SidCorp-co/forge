@@ -190,3 +190,35 @@ describe("a turn somebody stopped", () => {
     expect(screen.getByTestId("thread-silence")).toHaveTextContent("nothing to add");
   });
 });
+
+// ISS-1229 r34, judge-93: a room's tool cards read "forge" over "Object · 3 fields", which tells a person
+// nothing. A room's turn says what its assistant did; the run thread keeps its technical cards.
+describe("a tool call in a room's turn", () => {
+  const turn = said({
+    id: "m2",
+    role: "assistant",
+    authorUserId: null,
+    authorLabel: null,
+    content: "Filed ISS-1.",
+    blocks: [
+      {
+        type: "tool",
+        toolCall: {
+          id: "t1",
+          name: "forge",
+          input: { argv: ["issue", "--search", "invoice footer"], body: "" },
+          output: JSON.stringify({ exitCode: 0, stdout: "0 issue(s) over 1 page(s)", stderr: "" }),
+        },
+      },
+      { type: "text", text: "Filed ISS-1." },
+    ],
+  });
+
+  it("says what was done, never the result's shape or the tool's stored name", () => {
+    render(<ConversationThread messages={[turn]} windows={[]} />);
+    const thread = screen.getByTestId("agent-turn");
+    expect(thread).toHaveTextContent("Searched issues for “invoice footer” — none found");
+    expect(thread).not.toHaveTextContent(/Object · \d+ fields?/);
+    expect(thread.textContent).not.toMatch(/\bforge\b/);
+  });
+});

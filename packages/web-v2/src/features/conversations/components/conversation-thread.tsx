@@ -18,6 +18,7 @@ import { useAuth } from "@/providers/auth-provider";
 import { useState } from "react";
 import { Icon } from "@/design";
 import { Conversation } from "@/features/session/components/conversation";
+import { RoomToolCard } from "./room-tool-card";
 import { DisclosureScope } from "@/features/session/disclosure";
 import { USER_BUBBLE } from "@/features/session/layout";
 import { type MessageEntry, parseMessages } from "@/features/session/types";
@@ -61,6 +62,7 @@ function AssistantTurn({
   return (
     <Conversation
       items={items}
+      toolCard={RoomToolCard}
       readOnly
       streaming={streaming}
       {...(newestAgentId ? { newestAgentId } : {})}
