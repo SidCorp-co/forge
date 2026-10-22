@@ -53,7 +53,7 @@ describe("what a room's assistant did, in words", () => {
     };
     expect(toolWords(cli(["new", "-", "--title", "J93 judge test: invoice footer typo", "--category", "bug"], refused, "## Summary"))).toEqual({
       said: "Couldn't file “J93 judge test: invoice footer typo”",
-      refusal: "It has no What happened section; add it and send it again.",
+      refusal: "It has no What happened section, so add it and send it again.",
     });
   });
 
@@ -77,20 +77,20 @@ describe("what a room's assistant did, in words", () => {
     };
     const words = toolWords(cli(["new", "-", "--title", "J95 judge test: invoice footer typo", "--category", "bug"], refused));
     expect(words.refusal).toBe(
-      "It has no What happened, Why it happens, Outcome or Out of scope section; add them and send it again.",
+      "It has no What happened, Why it happens, Outcome or Out of scope section, so add them and send it again.",
     );
     expect(words.refusal).not.toMatch(/Hold|flow cannot carry|among/);
   });
 
-  it("says what each gap read where a gap is not a missing section", () => {
+  it("says what puts each gap right where a gap is not a missing section", () => {
     const refused = {
       exitCode: 1,
       stdout: "",
       stderr:
-        "Hold — this files an issue the flow cannot carry.\n\n- read: no heading naming what happened, among `Summary`\n  wants: a heading\n  clear: add `## What happened` and re-send the same command\n- read: the title `Fix`\n  wants: a sentence\n  clear: forge new with a title that says the behaviour",
+        "Hold — this files an issue the flow cannot carry.\n\n- read: no heading naming what happened, among `Summary`\n  wants: a heading saying what happened, required of a bug\n  clear: add `## What happened` and re-send the same command\n- read: the title `Fix`\n  wants: a sentence saying the behaviour after the change, not one word\n  clear: forge new with a title that says the behaviour",
     };
     expect(toolWords(cli(["new", "-", "--title", "Fix"], refused)).refusal).toBe(
-      "No heading naming what happened; the title Fix.",
+      "It has no What happened section, so add it; the title Fix needs a sentence saying the behaviour after the change, not on…",
     );
   });
 

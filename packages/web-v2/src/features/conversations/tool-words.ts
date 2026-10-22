@@ -223,30 +223,41 @@ const firstSentence = (paragraph: string) => {
   return /^(.+?[.!?])(?:\s|$)/.exec(line)?.[1] ?? line;
 };
 
-const MISSING_HEADING = "no heading naming ";
-
 const listed = (items: readonly string[], last: string) =>
   items.length === 1 ? (items[0] as string) : `${items.slice(0, -1).join(", ")} ${last} ${items.at(-1)}`;
 
+/** One gap of a refusal that lists them: what it read, what it wants, and the section a clear adds. */
+interface Gap {
+  read: string;
+  wants: string;
+  adds: string | null;
+}
+
+function gapsOf(text: string): Gap[] {
+  return [...text.matchAll(/^\s*- read: (.+)\n\s*wants: (.+)\n\s*clear: (.+)$/gm)].map((m) => ({
+    read: (m[1] as string).replace(/, among .*$/, "").trim(),
+    wants: (m[2] as string).replace(/, required of an? \w+$/, "").trim(),
+    adds: /^add `## ([^`]+)`/.exec(m[3] as string)?.[1] ?? null,
+  }));
+}
+
 /**
- * What a refusal that lists its gaps (the CLI's `- read:` and `clear:` lines) says was wrong and what
- * puts it right: where every gap is a missing section, the sections it lacks and that adding them is
- * the fix; else what each gap read, without the headings it was read among (ISS-1229 r35, judge-95).
+ * What a refusal that lists its gaps (the CLI's `- read:`, `wants:` and `clear:` lines) says was wrong
+ * and what puts it right: the missing sections as one list to add, and each other gap with what it
+ * wants instead (ISS-1229 r35, judge-95).
  */
 function gapsReason(text: string): string | null {
-  const reads = [...text.matchAll(/^\s*- read: (.+)$/gm)].map((m) => (m[1] as string).replace(/, among .*$/, "").trim());
-  if (reads.length === 0) return null;
-  const sections = [...text.matchAll(/^\s*clear: add `## ([^`]+)`/gm)].map((m) => m[1] as string);
-  if (sections.length === reads.length) {
-    const them = sections.length === 1 ? "it" : "them";
-    return `It has no ${listed(sections, "or")} section; add ${them} and send it again.`;
-  }
-  const missing = reads.filter((r) => r.startsWith(MISSING_HEADING)).map((r) => r.slice(MISSING_HEADING.length));
-  const rest = reads.filter((r) => !r.startsWith(MISSING_HEADING));
-  const said = [...(missing.length ? [`${MISSING_HEADING}${listed(missing, "or")}`] : []), ...rest]
-    .join("; ")
-    .replace(/`/g, "");
-  return `${said.charAt(0).toUpperCase()}${said.slice(1)}${/[.!?]$/.test(said) ? "" : "."}`;
+  const gaps = gapsOf(text);
+  if (gaps.length === 0) return null;
+  const sections = gaps.flatMap((g) => (g.adds ? [g.adds] : []));
+  const clauses = [
+    ...(sections.length
+      ? [`it has no ${listed(sections, "or")} section, so add ${sections.length === 1 ? "it" : "them"}`]
+      : []),
+    ...gaps.filter((g) => !g.adds).map((g) => `${g.read} needs ${g.wants}`),
+  ];
+  const said = clauses.join("; ").replace(/`/g, "");
+  return `${said.charAt(0).toUpperCase()}${said.slice(1)}${clauses.length === 1 && sections.length ? " and send it again" : ""}.`;
 }
 
 /**

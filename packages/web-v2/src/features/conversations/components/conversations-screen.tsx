@@ -39,11 +39,12 @@ interface Selection {
   projectId: string;
   /** `null` = a fresh draft in `projectId`, which opens its room on the first send. */
   conversationId: string | null;
+  archived: boolean;
 }
 
 /**
- * The room the address names, and whether it was opened from the archived list: a reload returns to the
- * room that was open (ISS-1229 r35, judge-95).
+ * The room the address names, and whether it is archived, so its list is the one shown: a reload
+ * returns to the room that was open (ISS-1229 r35, judge-95).
  */
 function addressedRoom(): { room: string | null; archived: boolean } {
   if (typeof window === "undefined") return { room: null, archived: false };
@@ -106,7 +107,12 @@ export function ConversationsScreen() {
   const openRow = useCallback((row: ListedConversation) => {
     setOrphan(null);
     selectionKeyRef.current += 1;
-    setSelection({ key: selectionKeyRef.current, projectId: row.projectId, conversationId: row.id });
+    setSelection({
+      key: selectionKeyRef.current,
+      projectId: row.projectId,
+      conversationId: row.id,
+      archived: row.archivedAt !== null,
+    });
     setMobileHistoryOpen(false);
   }, []);
 
@@ -123,7 +129,7 @@ export function ConversationsScreen() {
   const openStarted = useCallback((conversationId: string, projectId: string) => {
     setOrphan(null);
     selectionKeyRef.current += 1;
-    setSelection({ key: selectionKeyRef.current, projectId, conversationId });
+    setSelection({ key: selectionKeyRef.current, projectId, conversationId, archived: false });
   }, []);
 
   // The room the address named opens once the list holds it; one the list never holds is let go.
@@ -137,10 +143,11 @@ export function ConversationsScreen() {
   }, [projectsQ.isLoading, projectIdList.length, conversations.isLoading, conversations.rows, openRow]);
 
   const openRoomId = selection?.conversationId ?? null;
+  const openArchived = selection?.archived === true;
   useEffect(() => {
     if (addressed.current.room) return;
-    addressRoom(openRoomId, showArchived);
-  }, [openRoomId, showArchived]);
+    addressRoom(openRoomId, openArchived);
+  }, [openRoomId, openArchived]);
 
   const sidebar = (inDrawer: boolean) => (
     <ConversationSidebar

@@ -18,8 +18,8 @@ import { eq } from 'drizzle-orm';
 import { collectInboundMessage } from '../conversations/collect-inbound.js';
 import {
   existingProjectHandle,
+  namedHandle,
   type ProjectHandle,
-  resolveProjectHandle,
 } from '../conversations/handles.js';
 import { type ConversationVenue, codeAuthored } from '../conversations/ports.js';
 import { routeWindow, type WindowTurnInputs } from '../conversations/route-window.js';
@@ -311,8 +311,8 @@ async function webWindowSubject(
   // Never minted here: an agent that lost its role still holds the project's handle, so a mint
   // collided on it and answered 500 after the message was stored (judge-95). The mint is the room's
   // opening, inside its transaction.
-  if (!(await existingProjectHandle(db, project.id))) return { project, handle: null };
-  return { project, handle: await resolveProjectHandle(db, project.id) };
+  const existing = await existingProjectHandle(db, project.id);
+  return { project, handle: existing ? namedHandle(project.id, existing) : null };
 }
 
 /**

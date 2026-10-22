@@ -7,8 +7,14 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const live = { id: "r1", projectId: "p1", title: "Desk triage", updatedAt: "2026-10-22T02:00:00Z" };
-const archived = { id: "r9", projectId: "p1", title: "Old close", updatedAt: "2026-10-01T02:00:00Z" };
+const live = { id: "r1", projectId: "p1", title: "Desk triage", updatedAt: "2026-10-22T02:00:00Z", archivedAt: null };
+const archived = {
+  id: "r9",
+  projectId: "p1",
+  title: "Old close",
+  updatedAt: "2026-10-01T02:00:00Z",
+  archivedAt: "2026-10-02T02:00:00Z",
+};
 
 vi.mock("@/features/projects/hooks", () => ({
   useProjects: () => ({ data: [{ id: "p1", name: "Desk", slug: "desk", orgId: "o1" }], isLoading: false }),
@@ -39,11 +45,18 @@ vi.mock("./conversation-sidebar", () => ({
   ConversationSidebar: ({
     rows,
     onOpen,
+    onToggleArchived,
   }: {
     rows: Array<{ id: string; title: string }>;
     onOpen: (row: unknown) => void;
+    onToggleArchived: () => void;
   }) => (
     <ul>
+      <li>
+        <button type="button" onClick={onToggleArchived}>
+          Switch list
+        </button>
+      </li>
       {rows.map((row) => (
         <li key={row.id}>
           <button type="button" onClick={() => onOpen(row)}>
@@ -99,5 +112,29 @@ describe("the open room, across a reload", () => {
     render(<ConversationsScreen />);
     expect(screen.getByTestId("chooser")).toBeTruthy();
     expect(window.location.search).toBe("");
+  });
+
+  it("keeps an open room's own list in the address when the other list is shown", () => {
+    const pressFirst = (name: string) =>
+      act(() => {
+        fireEvent.click(screen.getAllByRole("button", { name })[0] as HTMLElement);
+      });
+    at("/conversations?room=r9&archived=1");
+    render(<ConversationsScreen />);
+    pressFirst("Switch list");
+    expect(window.location.search).toBe("?room=r9&archived=1");
+    cleanup();
+    render(<ConversationsScreen />);
+    expect(screen.getByTestId("open-room").textContent).toBe("r9");
+
+    cleanup();
+    at("/conversations");
+    render(<ConversationsScreen />);
+    pressFirst("Desk triage");
+    pressFirst("Switch list");
+    expect(window.location.search).toBe("?room=r1");
+    cleanup();
+    render(<ConversationsScreen />);
+    expect(screen.getByTestId("open-room").textContent).toBe("r1");
   });
 });

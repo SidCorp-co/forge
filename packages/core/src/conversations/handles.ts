@@ -82,6 +82,19 @@ export async function agentHoldingHandle(
   return { userId: row.userId, holdsARole: Boolean(role) };
 }
 
+/** The project's agent as it already is, or the refusal for one that carries no handle. */
+export function namedHandle(
+  projectId: string,
+  existing: { userId: string; handle: string | null },
+): ProjectHandle {
+  if (existing.handle) return { userId: existing.userId, handle: existing.handle, minted: false };
+  throw new HTTPException(500, {
+    message:
+      "This project's agent carries no handle on its organization membership, so it has no address to be reached at",
+    cause: { code: 'HANDLE_HAS_NO_NAME', details: { projectId, handleUserId: existing.userId } },
+  });
+}
+
 /**
  * The project's handle, reused where it has one and minted where it does not.
  *
@@ -102,16 +115,7 @@ export async function resolveProjectHandle(
   );
 
   const existing = await existingProjectHandle(tx, projectId);
-  if (existing?.handle) {
-    return { userId: existing.userId, handle: existing.handle, minted: false };
-  }
-  if (existing) {
-    throw new HTTPException(500, {
-      message:
-        "This project's agent carries no handle on its organization membership, so it has no address to be reached at",
-      cause: { code: 'HANDLE_HAS_NO_NAME', details: { projectId, handleUserId: existing.userId } },
-    });
-  }
+  if (existing) return namedHandle(projectId, existing);
 
   const [project] = await tx
     .select({ id: projects.id, slug: projects.slug, name: projects.name, orgId: projects.orgId })
