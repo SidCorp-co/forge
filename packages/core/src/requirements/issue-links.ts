@@ -88,7 +88,7 @@ export async function linkIssue(input: {
         {
           code: 'REQUIREMENT_ISSUE_LINKED_ELSEWHERE',
           path: '/issue',
-          detail: `${input.issue} already delivers ${requirementKey(elsewhere.reqSeq)}; an issue serves one requirement, so unlink it there first.`,
+          detail: `${input.issue} already delivers ${requirementKey(elsewhere.reqSeq)}; an issue serves one requirement, so unlink it there first: DELETE /api/projects/:id/requirements/${requirementKey(elsewhere.reqSeq)}/issues/${input.issue}.`,
         },
       ];
     }

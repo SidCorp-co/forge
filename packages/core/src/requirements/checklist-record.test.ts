@@ -77,6 +77,15 @@ describe('the ready checklist, read from the head revision', () => {
     expect(refusals.find((r) => r.question === 'value')?.detail).toContain('after "Value:"');
   });
 
+  it('names the routes that link a design and trace a criterion to its steps, when it links none', () => {
+    const [gap] = checklistRefusals(judge({ ...ready, designs: [] }));
+    expect(gap?.question).toBe('workflows');
+    expect(gap?.detail).toContain(
+      'POST /api/projects/:id/requirements/REQ-7/workflows { "workflowId": <design uuid> }',
+    );
+    expect(gap?.detail).toContain('PUT /api/projects/:id/requirements/:req/criteria/:code/steps');
+  });
+
   it('takes the recommended answer for kind, out of scope and roadmap, recorded as assumed', () => {
     const e = judge({
       ...ready,

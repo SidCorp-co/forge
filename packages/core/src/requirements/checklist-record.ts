@@ -13,6 +13,7 @@ import type { RecordAnswer, RecordAnswers } from '@forge/contracts/checklists';
 import { GOAL_LABELS, type GoalLabel, goalLabelWords } from '@forge/contracts/requirement-goal';
 import type { RequirementSpec } from '@forge/contracts/requirements';
 import { EARNING_VERDICTS } from '@forge/contracts/verdict-identity';
+import { CRITERION_STEPS_ROUTE } from '@forge/contracts/workflow-health';
 import { type WrittenLang, writtenLangOfText } from '@forge/contracts/written-lang';
 import { and, eq, sql } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
@@ -160,7 +161,7 @@ export function readyAnswersOf(f: ReadyFacts): RecordAnswers {
       f.designs.length === 0
         ? {
             gap: 'It links no workflow design.',
-            fix: 'Link each workflow design it changes or serves.',
+            fix: `Link each workflow design it changes or serves (POST /api/projects/:id/requirements/${f.key}/workflows { "workflowId": <design uuid> }), then trace each criterion to the steps it rests on (${CRITERION_STEPS_ROUTE}).`,
           }
         : {
             // an unapproved one is refused by the agree's own design guard (REQUIREMENT_DESIGN_UNAPPROVED)
