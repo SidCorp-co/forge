@@ -44,7 +44,7 @@ import {
   feedbackDecision,
   questionDecision,
 } from './needs-you-decision-builders.js';
-import { withEvidence } from './needs-you-evidence.js';
+import { type EvidenceGroup, withEvidence } from './needs-you-evidence.js';
 import { foldedDecisions } from './needs-you-fold.js';
 import { repinDecision as designRepinDecision } from './needs-you-repin.js';
 import { type DesignRepinGroup, releaseApprovalsOfRuns } from './ports.js';
@@ -437,14 +437,14 @@ async function allDecisionsOf(
       })),
     );
   }
-  const decisions = await withEvidence(
-    uniqueIds([...owed.map((o) => o.decision), ...folded.decisions]).sort(byDecisionOrder),
-    {
-      issue: new Map(attention.issues.issues.map((i) => [i.key, i.id])),
-      requirement: new Map(attention.requirements.map((r) => [r.key, r.id])),
-    },
+  const decisions = uniqueIds([...owed.map((o) => o.decision), ...folded.decisions]).sort(
+    byDecisionOrder,
   );
-  return { decisions, left };
+  const ids: EvidenceGroup['ids'] = {
+    issue: new Map(attention.issues.issues.map((i) => [i.key, i.id])),
+    requirement: new Map(attention.requirements.map((r) => [r.key, r.id])),
+  };
+  return { decisions, left, ids };
 }
 
 /** The viewer's whole Needs you from an attention read already made: what the status report counts. */
@@ -468,19 +468,18 @@ function uniqueIds(decisions: NeedsYouDecision[]): NeedsYouDecision[] {
 }
 
 /**
- * The one Needs you read (REQ-48 BC-11): the viewer's decisions from their owed rows, and every
- * agent's proposal, mockup and preview waiting on them folded in. The page, the Dashboard, /attention,
- * the nav and the chat all count `total` from here, so no two surfaces count their own.
+ * One project's Needs you read without the evidence each decision rests on, and the ids its evidence
+ * is read by: the cross-project read reads every project's evidence in one call after it.
  */
-export async function readNeedsYouDecisions(
+export async function readNeedsYouDecisionsBare(
   projectId: string,
   viewer: NeedsYouViewer,
   access: ProjectAccess,
   now: Date = new Date(),
-): Promise<NeedsYouDecisions> {
+): Promise<{ read: NeedsYouDecisions; ids: EvidenceGroup['ids'] }> {
   const attention = await readAttention(projectId, viewer, now);
-  const { decisions, left } = await allDecisionsOf(projectId, viewer, access, attention);
-  return needsYouDecisionsSchema.parse({
+  const { decisions, left, ids } = await allDecisionsOf(projectId, viewer, access, attention);
+  const read = needsYouDecisionsSchema.parse({
     generatedAt: now.toISOString(),
     decisions: decisions.slice(0, DECISIONS_MAX),
     total: decisions.length,
@@ -490,4 +489,22 @@ export async function readNeedsYouDecisions(
       items: items.slice(0, NOT_DECISION_ITEMS_MAX),
     })),
   });
+  return { read, ids };
+}
+
+/**
+ * The one Needs you read (REQ-48 BC-11): the viewer's decisions from their owed rows, and every
+ * agent's proposal, mockup and preview waiting on them folded in, each with the evidence it rests on
+ * (r3 BC-15). The page, the Dashboard, /attention, the nav and the chat all count `total` from here,
+ * so no two surfaces count their own.
+ */
+export async function readNeedsYouDecisions(
+  projectId: string,
+  viewer: NeedsYouViewer,
+  access: ProjectAccess,
+  now: Date = new Date(),
+): Promise<NeedsYouDecisions> {
+  const { read, ids } = await readNeedsYouDecisionsBare(projectId, viewer, access, now);
+  const [decisions = []] = await withEvidence([{ decisions: read.decisions, ids }]);
+  return needsYouDecisionsSchema.parse({ ...read, decisions });
 }

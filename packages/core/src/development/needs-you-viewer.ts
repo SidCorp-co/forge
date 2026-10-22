@@ -10,7 +10,8 @@ import { effectiveProjectRole, loadVisibleProjectIds, type ProjectAccess } from 
 import { createLimiter } from '../lib/bounded-concurrency.js';
 import { holds } from '../permissions/index.js';
 import type { NeedsYouViewer } from './needs-you.js';
-import { readNeedsYouDecisions } from './needs-you-decisions.js';
+import { readNeedsYouDecisionsBare } from './needs-you-decisions.js';
+import { type EvidenceGroup, withEvidence } from './needs-you-evidence.js';
 import { primeNeedsYouAcross } from './needs-you-fold.js';
 
 /** The viewer each list's route builds for this caller, so the counts read as the lists do. */
@@ -54,26 +55,35 @@ export async function readNeedsYouAcross(
   const limiter = createLimiter(NEEDS_YOU_ACROSS_CONCURRENCY);
   const perProject = await Promise.all(
     names.map((p) =>
-      limiter.run(async (): Promise<NeedsYouProjectDecisions[]> => {
-        const access = await effectiveProjectRole(userId, p.id);
-        if (!access || !holds(access, 'project.read')) return [];
-        const read = await readNeedsYouDecisions(
-          p.id,
-          needsYouViewerOf(access, userId, agency),
-          access,
-          now,
-        );
-        if (read.total === 0) return [];
-        return [
-          {
-            projectSlug: p.slug,
-            projectName: p.name,
-            total: read.total,
-            decisions: read.decisions.slice(0, NEEDS_YOU_PERSON_CAP),
-          },
-        ];
-      }),
+      limiter.run(
+        async (): Promise<(NeedsYouProjectDecisions & { ids: EvidenceGroup['ids'] })[]> => {
+          const access = await effectiveProjectRole(userId, p.id);
+          if (!access || !holds(access, 'project.read')) return [];
+          const { read, ids } = await readNeedsYouDecisionsBare(
+            p.id,
+            needsYouViewerOf(access, userId, agency),
+            access,
+            now,
+          );
+          if (read.total === 0) return [];
+          return [
+            {
+              projectSlug: p.slug,
+              projectName: p.name,
+              total: read.total,
+              decisions: read.decisions.slice(0, NEEDS_YOU_PERSON_CAP),
+              ids,
+            },
+          ];
+        },
+      ),
     ),
   );
-  return perProject.flat();
+  // what every project's decisions rest on, in one read for all of them (REQ-48 r3 BC-15)
+  const sections = perProject.flat();
+  const evidenced = await withEvidence(sections);
+  return sections.map(({ ids: _ids, ...s }, i) => ({
+    ...s,
+    decisions: evidenced[i] ?? s.decisions,
+  }));
 }

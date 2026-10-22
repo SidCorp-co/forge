@@ -92,39 +92,51 @@ async function requirementFacts(ids: readonly string[]): Promise<Map<string, Dec
   );
 }
 
+/** One project's decisions, and the ids its own read knows its issues and requirements by. */
+export interface EvidenceGroup {
+  decisions: readonly NeedsYouDecision[];
+  ids: { issue: ReadonlyMap<string, string>; requirement: ReadonlyMap<string, string> };
+}
+
+const idOf = (d: NeedsYouDecision, ids: EvidenceGroup['ids']) =>
+  d.opens?.kind === 'issue'
+    ? ids.issue.get(d.opens.key)
+    : d.opens?.kind === 'requirement'
+      ? ids.requirement.get(d.opens.key)
+      : undefined;
+
 /**
- * Each decision with the evidence of the issue or requirement it opens, where the read knows its id;
- * a decision about anything else is returned as it is.
+ * Each group's decisions with the evidence of the issue or requirement each opens, where its read
+ * knows the id; a decision about anything else is returned as it is. However many groups, it sends
+ * at most two statements: the cross-project read hands every project's decisions in one call, so the
+ * evidence costs it nothing a project (`tests/integration/read-memo-e2e.test.ts` bounds that).
  */
 export async function withEvidence(
-  decisions: readonly NeedsYouDecision[],
-  ids: { issue: ReadonlyMap<string, string>; requirement: ReadonlyMap<string, string> },
-): Promise<NeedsYouDecision[]> {
-  const idOf = (d: NeedsYouDecision) =>
-    d.opens?.kind === 'issue'
-      ? ids.issue.get(d.opens.key)
-      : d.opens?.kind === 'requirement'
-        ? ids.requirement.get(d.opens.key)
-        : undefined;
+  groups: readonly EvidenceGroup[],
+): Promise<NeedsYouDecision[][]> {
   const wanted = (kind: 'issue' | 'requirement') => [
     ...new Set(
-      decisions.flatMap((d) => {
-        const id = d.opens?.kind === kind ? idOf(d) : undefined;
-        return id ? [id] : [];
-      }),
+      groups.flatMap((g) =>
+        g.decisions.flatMap((d) => {
+          const id = d.opens?.kind === kind ? idOf(d, g.ids) : undefined;
+          return id ? [id] : [];
+        }),
+      ),
     ),
   ];
   const [issues, requirements] = await Promise.all([
     issueFacts(wanted('issue')),
     requirementFacts(wanted('requirement')),
   ]);
-  return decisions.map((d) => {
-    const id = idOf(d);
-    const evidence = id
-      ? d.opens?.kind === 'issue'
-        ? issues.get(id)
-        : requirements.get(id)
-      : undefined;
-    return evidence ? { ...d, evidence } : d;
-  });
+  return groups.map((g) =>
+    g.decisions.map((d) => {
+      const id = idOf(d, g.ids);
+      const evidence = id
+        ? d.opens?.kind === 'issue'
+          ? issues.get(id)
+          : requirements.get(id)
+        : undefined;
+      return evidence ? { ...d, evidence } : d;
+    }),
+  );
 }
