@@ -18,10 +18,10 @@ export function firstLine(markdown: string): string {
     .trim();
 }
 
-export function IssueChanges({ issue, slug, developer }: { issue: Pick<IssueDetail, "status" | "releaseNotes" | "shippedIn">; slug: string; developer: boolean }) {
+export function IssueChanges({ issue, slug, developer }: { issue: Pick<IssueDetail, "status" | "releaseNotes" | "shippedIn" | "landedIn">; slug: string; developer: boolean }) {
   const t = useCopy();
   const note = issue.releaseNotes;
-  if (issue.status === "dropped" || (!note && !issue.shippedIn)) return null;
+  if (issue.status === "dropped" || (!note && !issue.shippedIn && !issue.landedIn)) return null;
   const none = !note || note.section === "Skip" || note.userFacing.trim() === "";
   return (
     <section aria-label={t("issues.changes.title")} data-testid="issue-changes" className="grid gap-2 border-b border-line-subtle py-4">
@@ -34,6 +34,10 @@ export function IssueChanges({ issue, slug, developer }: { issue: Pick<IssueDeta
           <Link href={releaseHref(slug, issue.shippedIn.version)} className="flex-none font-mono text-12 text-link hover:underline" data-testid="rail-shipped-in">
             {issue.shippedIn.version}
           </Link>
+        ) : issue.landedIn ? (
+          <span className="flex-none font-mono text-12 text-muted" data-testid="changes-landed-in">
+            {t("issues.landedIn", { branch: issue.landedIn.branch, sha: issue.landedIn.commit.slice(0, 7) })}
+          </span>
         ) : null}
       </div>
       {developer && !none && note ? <Markdown>{note.userFacing}</Markdown> : null}

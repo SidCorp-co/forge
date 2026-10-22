@@ -39,7 +39,7 @@ import { verifyServingNow } from './verify.js';
 /** The one ledger key a recorded release writes under. */
 const RECORD_ATTEMPT_KEY = 'release-record';
 
-interface RecordPerformedReleaseArgs {
+export interface RecordPerformedReleaseArgs {
   projectId: string;
   issueIds: string[];
   /** The whole sha the caller says production is serving. */
@@ -52,27 +52,32 @@ interface RecordPerformedReleaseArgs {
 }
 
 /** One issue as the record found it, so the claim stays checkable afterwards. */
-interface RecordedIssue {
+export interface RecordedIssue {
   id: string;
   mergedAt: string | null;
   mergedCommitSha: string | null;
 }
 
-interface RecordPerformedReleaseResult {
+export interface RecordPerformedReleaseResult {
   runId: string;
   /** What the caller claimed, normalized by nothing. */
   commit: string;
-  /** What the probes, or the deployment record, agreed production is serving. */
+  /** What the probes, or the deployment record, agreed production is serving; a landing's commit. */
   identity: string;
   readings: string[];
-  verification: ReleaseVerification;
+  verification: RecordedVerification;
+  /** The working branch a landing record names; absent on a release production serves. */
+  branch?: string;
   closed: string[];
   failed: Array<{ id: string; reason: string }>;
   issues: RecordedIssue[];
 }
 
 /** Every issue this record may close, read once and refused by name. */
-async function admissibleIssues(projectId: string, issueIds: string[]): Promise<RecordedIssue[]> {
+export async function admissibleIssues(
+  projectId: string,
+  issueIds: string[],
+): Promise<RecordedIssue[]> {
   const rows = await db
     .select({ id: issues.id, mergedAt: issues.mergedAt, mergedCommitSha: issues.mergedCommitSha })
     .from(issues)
@@ -105,7 +110,7 @@ function issueNote(args: {
 }
 
 /** Each recorded issue told how it shipped, then closed; one that will not close is named. */
-async function closeRecorded(
+export async function closeRecorded(
   roster: Array<{ id: string }>,
   ctx: {
     projectId: string;
@@ -255,17 +260,25 @@ export async function recordPerformedRelease(
 }
 
 /** The ledger row: the intent, the account, and what the probes or the deployment record said. */
-async function writeLedger(
+export async function writeLedger(
   runId: string,
   args: {
     commit: string;
     outcome: { identity: string; readings: string[]; health: 'up' | null };
     account: string;
     providerRef: string | null;
-    how: ReleaseVerification;
+    how: ReleaseVerification | 'landed';
+    /** The working branch a landing landed on. */
+    branch?: string;
   },
 ): Promise<void> {
   const { outcome } = args;
+  const reasons: Record<ReleaseVerification | 'landed', string> = {
+    provider: `what the storefront provider publishes (${outcome.identity}) carries every landing of the issues this record names`,
+    probed: `what production serves reads ${outcome.identity}, which is the commit this record claims`,
+    deployment: `what production serves reads ${outcome.identity}, which is the commit this record claims`,
+    landed: `landed on ${args.branch} at ${outcome.identity}; no environment is declared, so nothing was deployed and no deploy was checked`,
+  };
   await db.insert(releaseAttempts).values({
     runId,
     stage: 'verify',
@@ -277,10 +290,7 @@ async function writeLedger(
     identity: outcome.identity,
     readings: outcome.readings,
     verdict: 'ok',
-    verdictReason:
-      args.how === 'provider'
-        ? `what the storefront provider publishes (${outcome.identity}) carries every landing of the issues this record names`
-        : `what production serves reads ${outcome.identity}, which is the commit this record claims`,
+    verdictReason: reasons[args.how],
     settledAt: new Date(),
   });
 }
@@ -291,6 +301,8 @@ interface ReleaseRecordView {
   recordedAt: string | null;
   commit: string | null;
   identity: string | null;
+  /** The working branch a landing record landed on; null on a release production serves. */
+  branch: string | null;
   providerRef: string | null;
   account: string | null;
   readings: string[];
@@ -346,6 +358,7 @@ export async function readReleaseRecord(
     recordedAt: run.startedAt ? run.startedAt.toISOString() : null,
     commit: typeof meta.commit === 'string' ? meta.commit : null,
     identity: attempt?.identity ?? (typeof meta.identity === 'string' ? meta.identity : null),
+    branch: typeof meta.branch === 'string' ? meta.branch : null,
     providerRef: attempt?.providerRef ?? null,
     account: attempt?.account ?? null,
     readings: attempt?.readings ?? [],

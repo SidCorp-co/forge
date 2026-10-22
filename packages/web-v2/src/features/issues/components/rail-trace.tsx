@@ -23,7 +23,7 @@ export function Row({ label, children }: { label: string; children: React.ReactN
   );
 }
 
-type TraceIssue = Pick<IssueDetail, "buildsWorkflow" | "proposesWorkflows" | "shippedIn">;
+type TraceIssue = Pick<IssueDetail, "buildsWorkflow" | "proposesWorkflows" | "shippedIn" | "landedIn">;
 
 /** One workflow's link and its standing in words: the flow's head status for the workflow it builds,
  *  and for one it proposes, the revision drawn here and that revision's own state, so a revision
@@ -123,6 +123,13 @@ export function RailTraceRows({
               {issue.shippedIn.version}
             </Link>
             <span className="text-12 text-muted">{time.date(issue.shippedIn.at)}</span>
+          </span>
+        </Row>
+      ) : issue.landedIn ? (
+        <Row label={t("issues.rail.release")}>
+          <span className="inline-flex items-baseline gap-2" data-testid="rail-landed">
+            <span className="text-12">{t("issues.landedIn", { branch: issue.landedIn.branch, sha: issue.landedIn.commit.slice(0, 7) })}</span>
+            <span className="text-12 text-muted">{time.date(issue.landedIn.at)}</span>
           </span>
         </Row>
       ) : null}

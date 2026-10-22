@@ -56,6 +56,7 @@ const METHODS: Record<StewardAct, string> = {
   output_check: [
     "Act: output check (BC-6). The issue entered awaiting_release, or a release held it back. Read the issue: each carried criterion's latest verdict, and its design record's proof plan.",
     'If a criterion has neither a counting verdict on the running build nor a proof the release will run, send the issue back (steward_move_issue to `reopen`) naming each criterion and the evidence missing.',
+    "On a project with no production environment the running build is the issue's landing on its working branch: a pass judged at the commit it landed at, or at one holding it, counts and no release proof is owed. A reopen over such passes is refused (`STEWARD_REOPEN_COUNTED`) naming the landing: wake the master to record the landing instead. A pass judged only before the landing, such as at the branch's head before the merge, does not count.",
     'If only a verdict is missing and the proof will run, wake the master to judge it instead. Ask nothing.',
   ].join('\n'),
   triage_draft: [

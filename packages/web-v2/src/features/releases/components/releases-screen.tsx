@@ -25,6 +25,7 @@ import type { ReleaseSummary } from "../types";
 import { useEtaClock } from "@/lib/i18n/eta-clock";
 import { useComingNext } from "@/features/forecast";
 import { ComingNext } from "./coming-next";
+import { ReleaseLandings } from "./release-landings";
 import { ReleasePeek } from "./release-peek";
 import { releaseTitle } from "./release-bits";
 import { ReleaseTrain } from "./release-train";
@@ -90,7 +91,7 @@ export function ReleasesScreen({ projectId, slug }: { projectId: string; slug: s
 
   return (
     <QueryBoundary query={q} loadingLabel={t("releases.loadingList")} title={<PageTitle>{t("releases.title")}</PageTitle>} height="60vh" retry="always">
-      {({ production }) => (
+      {({ production, landings }) => (
         <ListPage
           testId="releases-screen"
           title={t("releases.title")}
@@ -108,10 +109,13 @@ export function ReleasesScreen({ projectId, slug }: { projectId: string; slug: s
           peek={peek.open ? <ReleasePeek key={peek.open} projectId={projectId} version={peek.open} peek={peek} full={list.fullOf(peek.open)} /> : null}
         >
           <ComingNext next={comingQ.data} draft={all.find((r) => r.state === "draft")} slug={slug} clock={clock} />
+          <ReleaseLandings landings={landings ?? []} />
           {all.length === 0 ? (
-            <div className="px-5 py-10">
-              <EmptyState message={t("releases.emptyTitle")} />
-            </div>
+            (landings ?? []).length > 0 ? null : (
+              <div className="px-5 py-10">
+                <EmptyState message={t("releases.emptyTitle")} />
+              </div>
+            )
           ) : (
             <>
               <ReleaseTrain releases={all} slug={slug} selected={peek.open ?? undefined} />

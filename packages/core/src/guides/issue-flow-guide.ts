@@ -286,7 +286,11 @@ naming its own rule before the green counts.
    judged on the release that carries the work.
 
 **Never move an issue that ships code to \`closed\`.** Only a release that claimed it closes it
-(\`CLOSE_ONLY_BY_RELEASE\`), so the run's last rung is \`awaiting_release\`. An issue whose only
+(\`CLOSE_ONLY_BY_RELEASE\`), so the run's last rung is \`awaiting_release\`. On a project that
+declares no production environment that release is the recorded landing
+(\`POST /api/projects/:id/release-records\`), which an admin records once each live criterion has a
+pass judged at the commit the work landed at, or at one holding it, never at the branch's head
+before the merge. An issue whose only
 deliverable is a design closes once its design revisions are approved (\`DESIGN_NOT_DELIVERED\`
 until then).
 

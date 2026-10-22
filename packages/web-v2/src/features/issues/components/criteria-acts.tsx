@@ -45,6 +45,7 @@ function namedBuildHint(t: Copy, build: JudgedBuild): string {
   if (build.source === "live") return t("issues.verdictAct.commitLive", named);
   if (build.source === "shipped") return t("issues.verdictAct.commitShipped", named);
   if (build.source === "merged") return t("issues.verdictAct.commitMerged", named);
+  if (build.source === "landed") return t("issues.verdictAct.commitLanded", named);
   return t("issues.verdictAct.commitNone");
 }
 
