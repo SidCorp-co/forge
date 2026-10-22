@@ -123,3 +123,48 @@ describe('a reply the check holds shows the part it could check (REQ-41 BC-3)', 
     expect(kept).toHaveLength(0);
   });
 });
+
+// Dev, 2026-10-21 (conversation a760cd5f, "when will it be handled?"): the owner got "the reply check
+// held it" with no reason and no answer, because the refused sentence broke a rule the cut did not
+// name a claim for, so nothing of the checked answer was shown (REQ-41 BC-3).
+describe('a sentence held by a rule naming no read is cut, and the rest still answers (REQ-41 BC-3)', () => {
+  it('cuts a promised follow-up no later turn makes, and sends the checked sentence', async () => {
+    const { message } = await screen(`${CHECKED} I'll check again and get back to you.`);
+    expect(message?.text).toBe(
+      `${CHECKED}\n\nThe reply check left out a promised follow-up that nothing this answer read backs. What is shown above was checked.`,
+    );
+    expect(message?.held).toMatchObject({
+      verdict: 'partial',
+      held: [{ claim: 'promise', count: 1 }],
+    });
+  });
+
+  it('cuts a figure whose read it does not name, keeping the sentence that names its read', async () => {
+    const { checkedPart } = await import('./screened-reply.js');
+    const refused = {
+      rule: 'figures-name-source',
+      why: 'the reply states the figure 50 and names no read it came from',
+      quote: '50',
+      shape: 's',
+      example: 'e',
+    };
+    const part = await checkedPart(
+      `${CHECKED} Separately, 50 have not started yet.`,
+      [refused],
+      async () =>
+        ({
+          ok: true,
+        }) as never,
+    );
+    expect(part).toEqual({ shown: CHECKED, held: [{ claim: 'figure', count: 1 }] });
+  });
+});
+
+describe('a false opening no rewrite drops is taken off, and the answer goes out whole (REQ-41 BC-30)', () => {
+  it('sends the checked answer without "Correct", and with no notice of anything left out', async () => {
+    const { message } = await screen(`Correct. ${CHECKED}`);
+    expect(message?.text).toBe(CHECKED);
+    expect(message?.held).toBeUndefined();
+    expect(message?.proof, 'what goes out passed the same screen').not.toBeNull();
+  });
+});

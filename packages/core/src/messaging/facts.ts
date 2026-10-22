@@ -86,6 +86,8 @@ export interface MessageFacts {
    * theirs, said back, and no rule reads it as the reply's own claim.
    */
   readonly asked: ReadonlySet<number>;
+  /** What the person said, as they typed it; null where the screen was given none. */
+  readonly question: string | null;
   /** Null only where the screen was given no question (a synthesis turn); any door's turn is judged. */
   readonly figures: FigureFacts | null;
   /**
@@ -114,6 +116,7 @@ export const NO_FACTS: MessageFacts = {
   memoryDates: new Set(),
   issueLookupFailed: false,
   asked: new Set(),
+  question: null,
   figures: null,
   heldBlocks: null,
   agreedRecords: [],

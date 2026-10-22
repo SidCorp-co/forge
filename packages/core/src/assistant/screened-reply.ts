@@ -27,13 +27,16 @@ import {
 import { CREATION_CLAIMS_GROUNDED } from '../messaging/creation-claims-rule.js';
 import { doorPolicy } from '../messaging/doors.js';
 import type { ToolResultEntry } from '../messaging/facts.js';
+import { FIGURES_NAME_SOURCE } from '../messaging/figure-sources.js';
 import { FIGURES_GROUNDED } from '../messaging/figures-rule.js';
 import { datesIn, GROUNDING_RULE } from '../messaging/grounding-rule.js';
 import { PROGRESS_FIGURES_MATCH } from '../messaging/progress-rule.js';
 import { withRepairs } from '../messaging/repairs.js';
 import { cutHeldSentences, repairIssueLinks } from '../messaging/reply-marks.js';
+import { OPENS_WITH_ITS_ANSWER, withoutFalseOpening } from '../messaging/reply-opening-rule.js';
 import { screenReplyAtDoor } from '../messaging/reply-screen.js';
 import { STATUS_CLAIMS_GROUNDED } from '../messaging/status-claims-rule.js';
+import { NO_EMPTY_PROMISE } from '../messaging/text-rules.js';
 import { UI_ACTS_GROUNDED } from '../messaging/ui-claims-rule.js';
 import type { ExternalChatTurnResult } from './external-chat.js';
 import type { TurnBlockStage } from './turn-stage.js';
@@ -186,7 +189,14 @@ export function withRewriteKept(
 
 /** What one refused claim was about, or null where the refusal is about no claim. */
 function heldClaimOf(r: MessageRefusal): HeldClaim | null {
-  if (r.rule === FIGURES_GROUNDED.id || r.rule === PROGRESS_FIGURES_MATCH.id) return 'figure';
+  if (
+    r.rule === FIGURES_GROUNDED.id ||
+    r.rule === PROGRESS_FIGURES_MATCH.id ||
+    r.rule === FIGURES_NAME_SOURCE.id
+  ) {
+    return 'figure';
+  }
+  if (r.rule === NO_EMPTY_PROMISE.id) return 'promise';
   if (r.rule === CREATION_CLAIMS_GROUNDED.id) return 'record';
   if (r.rule === STATUS_CLAIMS_GROUNDED.id) return 'status';
   if (r.rule === UI_ACTS_GROUNDED.id) return 'page';
@@ -208,10 +218,11 @@ export function uncheckedRulesOf(refused: readonly MessageRefusal[]): UncheckedR
 const CUT_ROUNDS = 3;
 
 /**
- * The first answer with each clause the screen refused cut whole, screened again until what is left
- * passes, or null where a refusal names no claim that can be found and named. A refusal of its
- * language cuts nothing: the answer is true, only in the other language. Empty `shown` means no
- * clause was left that the check passed.
+ * The first answer with each sentence the screen refused cut whole (`reply-marks.ts`), and a false
+ * opening word taken off, screened again until what is left passes, or null where a refusal names no
+ * claim that can be found and named. A refusal of its language cuts nothing: the answer is true, only
+ * in the other language. Empty `shown` means no sentence was left that the check passed; empty
+ * `held` means nothing but the opening word went.
  */
 export async function checkedPart(
   original: string,
@@ -219,28 +230,35 @@ export async function checkedPart(
   screen: (text: string) => Promise<MessageVerdict>,
 ): Promise<{ shown: string; held: HeldClaimCount[] } | null> {
   const counts = new Map<HeldClaim, number>();
+  const tally = () => [...counts].map(([claim, count]) => ({ claim, count }));
   let text = original;
   let left = refused;
   for (let round = 0; round < CUT_ROUNDS; round += 1) {
-    const claims = left.filter((r) => r.rule !== 'reply-language');
-    const kinds = claims.map(heldClaimOf);
-    if (claims.length === 0 || claims.some((r, i) => r.quote === null || kinds[i] === null)) {
-      return null;
-    }
-    const cut = cutHeldSentences(
-      text,
-      claims.map((r) => r.quote as string),
+    // a false opening word claims nothing to leave out: it is taken off, and the answer stays
+    const openings = left.filter((r) => r.rule === OPENS_WITH_ITS_ANSWER.id && r.quote !== null);
+    for (const o of openings) text = withoutFalseOpening(text, o.quote as string);
+    const claims = left.filter(
+      (r) => r.rule !== 'reply-language' && r.rule !== OPENS_WITH_ITS_ANSWER.id,
     );
+    const kinds = claims.map(heldClaimOf);
+    if (claims.length === 0 && openings.length === 0) return null;
+    if (claims.some((r, i) => r.quote === null || kinds[i] === null)) return null;
+    const cut =
+      claims.length === 0
+        ? text
+        : cutHeldSentences(
+            text,
+            claims.map((r) => r.quote as string),
+          );
     if (cut === null) return null;
     for (const kind of kinds as HeldClaim[]) counts.set(kind, (counts.get(kind) ?? 0) + 1);
-    const held = [...counts].map(([claim, count]) => ({ claim, count }));
-    if (!cut.trim()) return { shown: '', held };
+    if (!cut.trim()) return { shown: '', held: tally() };
     const verdict = await screen(cut);
-    if (verdict.ok) return { shown: cut, held };
+    if (verdict.ok) return { shown: cut, held: tally() };
     text = cut;
     left = refusalsOf(verdict);
   }
-  return { shown: '', held: [...counts].map(([claim, count]) => ({ claim, count })) };
+  return { shown: '', held: tally() };
 }
 
 export interface ScreenedTurnArgs {
@@ -423,6 +441,10 @@ async function partialReply(
   if (uncheckedRulesOf(refused).length > 0) return null;
   const part = await checkedPart(original, refused, screen);
   if (!part) return null;
+  if (part.held.length === 0) {
+    // only a false opening was taken off: what is left is the whole answer, checked
+    return part.shown ? screened(part.shown, args.door, await screen(part.shown)) : null;
+  }
   const blocks = args.stage?.of(0).length ?? 0;
   if (!part.shown && blocks === 0) return null;
   const held: HeldPart = heldPartSchema.parse({

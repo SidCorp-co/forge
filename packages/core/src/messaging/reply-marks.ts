@@ -56,6 +56,8 @@ const CLOSERS = /[*_`)\]"”’]/;
 interface Span {
   start: number;
   stop: number;
+  /** The remainder begins a sentence and its first letter is raised. */
+  raise?: boolean;
 }
 
 /** The line holding `at`, its newline included. */
@@ -110,7 +112,45 @@ function sentenceAt(text: string, at: number, end: number, line: Span): Span {
   }
   while (start < at && /[ \t]/.test(text.charAt(start))) start += 1;
   while (stop < line.stop && /[ \t]/.test(text.charAt(stop))) stop += 1;
-  return { start, stop };
+  return partOf(text, { start, stop }, at, end);
+}
+
+/** A joint between two statements of one sentence: ", and", ", but", ", while", ", whereas", ", yet" or ";". */
+const JOINT_RE = /(?:,\s+(?:and|but|while|whereas|yet)|;)\s+/giu;
+const MIN_PART_WORDS = 3;
+const wordsIn = (text: string): number => (text.match(/\S+/g) ?? []).length;
+
+/**
+ * The one statement of `sentence` holding the claim, where the sentence joins statements that each
+ * stand alone (a few words either side of the joint), else the whole sentence: one unbacked key does
+ * not take the backed statement it is joined to (QA of dev.219, ISS-495).
+ */
+function partOf(text: string, sentence: Span, at: number, end: number): Span {
+  const whole = text.slice(sentence.start, sentence.stop).trimEnd();
+  const closing = /[.!?…]$/.exec(whole)?.[0] ?? '';
+  const bodyEnd = sentence.start + whole.length - closing.length;
+  const joints = [...text.slice(sentence.start, bodyEnd).matchAll(JOINT_RE)].map((m) => ({
+    from: sentence.start + (m.index ?? 0),
+    to: sentence.start + (m.index ?? 0) + m[0].length,
+  }));
+  const before = joints.filter((j) => j.to <= at).at(-1);
+  const after = joints.find((j) => j.from >= end);
+  const from = before ? before.to : sentence.start;
+  const to = after ? after.from : bodyEnd;
+  const rest = wordsIn(text.slice(sentence.start, from)) + wordsIn(text.slice(to, bodyEnd));
+  if (
+    joints.length === 0 ||
+    wordsIn(text.slice(from, to)) < MIN_PART_WORDS ||
+    rest < MIN_PART_WORDS
+  ) {
+    return sentence;
+  }
+  if (after) {
+    return before
+      ? { start: before.from, stop: after.from }
+      : { start: sentence.start, stop: after.to, raise: true };
+  }
+  return { start: (before as { from: number }).from, stop: bodyEnd };
 }
 
 /** Whether what a line keeps is no statement: no word, or a bold or code span left open. */
@@ -126,8 +166,10 @@ function merged(spans: Span[]): Span[] {
   const out: Span[] = [];
   for (const s of [...spans].sort((a, b) => a.start - b.start)) {
     const last = out.at(-1);
-    if (last && s.start <= last.stop) last.stop = Math.max(last.stop, s.stop);
-    else out.push({ ...s });
+    if (last && s.start <= last.stop) {
+      if (s.stop > last.stop) last.raise = s.raise;
+      last.stop = Math.max(last.stop, s.stop);
+    } else out.push({ ...s });
   }
   return out;
 }
@@ -138,6 +180,14 @@ const without = (text: string, spans: readonly Span[]): string => {
   for (const s of spans) {
     out += text.slice(from, s.start);
     from = s.stop;
+    if (s.raise) {
+      const letter = /\p{L}/u.exec(text.slice(from));
+      if (letter) {
+        const i = from + letter.index;
+        out += text.slice(from, i) + text.charAt(i).toUpperCase();
+        from = i + 1;
+      }
+    }
   }
   return out + text.slice(from);
 };
@@ -169,7 +219,9 @@ export function cutHeldSentences(text: string, quotes: readonly string[]): strin
     if (at < 0) return null;
     const line = lineAt(text, at);
     const own = text.slice(line.start, line.stop);
-    spans.push(ITEM_LINE.test(own) ? itemAt(text, line) : sentenceAt(text, at, at + quote.length, line));
+    spans.push(
+      ITEM_LINE.test(own) ? itemAt(text, line) : sentenceAt(text, at, at + quote.length, line),
+    );
   }
   let cuts = merged(spans);
   const lines = new Map<number, Span>();

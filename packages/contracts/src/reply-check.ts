@@ -13,6 +13,7 @@ export const HELD_CLAIMS = [
 	"status",
 	"record",
 	"page",
+	"promise",
 ] as const;
 export type HeldClaimKind = (typeof HELD_CLAIMS)[number];
 
@@ -36,6 +37,7 @@ const HELD_WORDS: Record<HeldClaimKind, [one: string, many: string]> = {
 		"a claim to have moved the page that no accepted page action backs",
 		"claims to have moved the page that no accepted page action backs",
 	],
+	promise: ["a promised follow-up", "promised follow-ups"],
 };
 
 /** One kind of claim left out, and how many clauses made it. */

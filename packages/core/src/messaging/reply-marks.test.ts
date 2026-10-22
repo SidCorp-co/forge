@@ -20,7 +20,7 @@ describe('a marked claim is read past', () => {
 
 describe('a held claim is cut by its whole sentence, never marked (REQ-41 BC-3)', () => {
   it('cuts the whole sentence holding the quote and keeps every other sentence as written', () => {
-    const text = 'REQ-34 waits on you. It is 87% done; ISS-5 is open. That is all.';
+    const text = 'REQ-34 waits on you. It is 87% done, so REQ-35 is next. That is all.';
     expect(cutHeldSentences(text, ['87% done'])).toBe('REQ-34 waits on you. That is all.');
   });
 
@@ -45,9 +45,22 @@ describe('a held claim is cut by its whole sentence, never marked (REQ-41 BC-3)'
     expect(cutHeldSentences('It is 87% done.', ['87% done'])).toBe('');
   });
 
-  it('cuts the whole sentence even where it joins two statements, so no part is left without its verb', () => {
-    const text = 'REQ-31 is in delivery, and ISS-9998 does not exist on the tracker. REQ-34 waits on you.';
-    expect(cutHeldSentences(text, ['ISS-9998'])).toBe('REQ-34 waits on you.');
+  it('cuts only the statement holding the claim where a sentence joins two that stand alone', () => {
+    const text =
+      'REQ-31 is in delivery, and ISS-9998 does not exist on the tracker. REQ-34 waits on you.';
+    expect(cutHeldSentences(text, ['ISS-9998'])).toBe(
+      'REQ-31 is in delivery. REQ-34 waits on you.',
+    );
+    expect(cutHeldSentences('It is 87% done; ISS-5 is open.', ['87% done'])).toBe('ISS-5 is open.');
+    expect(
+      cutHeldSentences('ISS-9998 does not exist on the tracker, but REQ-31 is in delivery.', [
+        'ISS-9998',
+      ]),
+    ).toBe('REQ-31 is in delivery.');
+  });
+
+  it('cuts the whole sentence where a side of its joint is too short to stand as a statement', () => {
+    expect(cutHeldSentences('ISS-1, and ISS-9998 are open.', ['ISS-9998'])).toBe('');
   });
 
   it('cuts a labelled list item whole, so a label is never left behind its claim', () => {
