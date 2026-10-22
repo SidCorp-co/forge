@@ -91,7 +91,7 @@ function listed(): string[] {
   const wrong = sideways();
   if (rows().length !== READ.total) wrong.push(`${rows().length} rows are drawn, not ${READ.total}`);
   const count = document.querySelector("[data-testid=approvals-count]")?.textContent ?? "";
-  if (!count.includes(`${READ.total} waiting on you`)) wrong.push(`the page's count reads "${count}"`);
+  if (!count.includes(`Decisions waiting on you: ${READ.total}`)) wrong.push(`the page's count reads "${count}"`);
   if (!phone) {
     const rail = document.querySelector("[data-testid=witness-rail]")?.textContent ?? "";
     if (!rail.includes(String(READ.total))) wrong.push(`the menu's Approvals row does not read ${READ.total}`);

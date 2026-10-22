@@ -2,8 +2,8 @@
 // its id, or an edge by its from and to steps, with its label where several edges share both ends.
 
 import { z } from "zod";
-import { REASON_TEXT_MAX } from "./reason-text.js";
 import { PERMISSION_REFUSAL_CODES } from "./permissions.js";
+import { REASON_TEXT_MAX } from "./reason-text.js";
 import type { Said } from "./said.js";
 import type { WaitingOn } from "./standing.js";
 
@@ -113,7 +113,8 @@ export type PutCriterionStepsRequest = z.infer<
 	typeof putCriterionStepsRequestSchema
 >;
 /** The one route that traces a requirement's business criterion to a linked design's steps. */
-export const CRITERION_STEPS_ROUTE = "PUT /api/projects/:id/requirements/:req/criteria/:code/steps";
+export const CRITERION_STEPS_ROUTE =
+	"PUT /api/projects/:id/requirements/:req/criteria/:code/steps";
 /** That route as a call to make: `req` traces criterion BC-n onto the design `flow`. */
 export function criterionStepsCall(req: string, flow: string): string {
 	return `PUT /api/projects/:id/requirements/${req}/criteria/BC-n/steps { "workflow": "${flow}", "steps": [<step id>] }`;
@@ -444,6 +445,8 @@ export interface WorkflowProposal {
 export interface WorkflowHealth {
 	workflowId: string;
 	flow: string;
+	/** The design's own title, from the revision shown; null where its document names none. */
+	title: string | null;
 	/** The revision the markers are placed on: the proposed one where one is proposed, else the approved one, else the latest. */
 	revision: number;
 	approvedRevision: number | null;

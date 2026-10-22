@@ -58,6 +58,20 @@ const ISSUES = [
   { title: 'Version number shows in the footer', status: 'closed', priority: 'low', req: 2 },
 ] as const;
 
+/**
+ * Two drafts the steward asks about (REQ-48 r3 BC-16), so a judge sees on Approvals what a merge
+ * offer is: one repeats ISS-1 and is offered the merge, saying what both are about; the other sits
+ * beside ISS-3 with nothing in common, its merge into it is refused by name, and it is asked without.
+ */
+const STEWARD_DRAFTS = {
+  repeats: {
+    title: 'Preview opens the issue page in a side frame',
+    into: 1,
+    shares: 'opening the issue page preview in a frame.',
+  },
+  beside: { title: 'Export the call list as a spreadsheet', into: 3 },
+} as const;
+
 const FEEDBACK = [
   { title: 'The board scrolls sideways on a phone', carry: [0] },
   { title: 'I could not find where to report a problem', carry: [] },
@@ -120,10 +134,102 @@ export async function seedDemoWorld(): Promise<DemoWorld> {
       sql`UPDATE feedback SET title = ${fb.title} WHERE project_id = ${project.id} AND fb_seq = ${i + 1}`,
     );
   }
+  await seedStewardMerges(project.id, owner.id, issues, now);
   return {
     project: { id: project.id, slug: 'demo' },
     member: { id: owner.id, email: owner.email },
   };
+}
+
+/** One steward run on a draft, the run its question's answer is logged against. */
+async function stewardRunOn(
+  projectId: string,
+  draft: { id: string; key: string },
+): Promise<string> {
+  const [run] = await rows<{ id: string }>(sql`
+    INSERT INTO steward_runs (project_id, subject_kind, subject_id, subject_key, trigger, events,
+                              acts_to_run, state, not_before, started_at, ended_at)
+    VALUES (${projectId}, 'issue', ${draft.id}, ${draft.key}, 'standing.stuck', '[]'::jsonb,
+            ARRAY['stuck_diagnosis']::text[], 'done', now(), now(), now())
+    RETURNING id`);
+  if (!run) throw new Error(`the demo seed wrote no steward run on ${draft.key}`);
+  return run.id;
+}
+
+/** The steward's questions on two drafts, asked through its own door so the merge rule is the live one. */
+async function seedStewardMerges(
+  projectId: string,
+  ownerId: string,
+  issues: readonly { id: string; key: string }[],
+  now: number,
+): Promise<void> {
+  const { askStewardDecision } = await import('../../src/steward/decision-ask.js');
+  const { stewardAccountOf } = await import('../../src/steward/account.js');
+  const stewardId = await stewardAccountOf(projectId);
+  const drafts: { id: string; key: string }[] = [];
+  for (const [i, d] of [STEWARD_DRAFTS.repeats, STEWARD_DRAFTS.beside].entries()) {
+    const made = await createTestIssue(projectId, ownerId, issues.length + i + 1, {
+      status: 'draft',
+      priority: 'medium',
+      createdAt: new Date(now - (i + 1) * HOUR),
+      mergedAt: null,
+    });
+    await db.execute(sql`UPDATE issues SET title = ${d.title} WHERE id = ${made.id}`);
+    drafts.push(made);
+  }
+  const [repeats, beside] = drafts;
+  const into = (n: number) => issues[n - 1]?.key ?? '';
+  if (!repeats || !beside) throw new Error('the demo seed made no steward drafts');
+  const ask = async (
+    draft: { id: string; key: string },
+    merge: { into: string; shares: string } | null,
+    why: string,
+  ) =>
+    askStewardDecision({
+      projectId,
+      userId: stewardId,
+      runId: await stewardRunOn(projectId, draft),
+      about: draft.key,
+      prompt: merge
+        ? `Merge it into ${merge.into}, open it, keep it as a draft, or drop it?`
+        : 'Open it, keep it as a draft, or drop it?',
+      options: [
+        ...(merge
+          ? [
+              {
+                id: `steward.merge:${merge.into}`,
+                label: `Merge it into ${merge.into}`,
+                shares: merge.shares,
+              },
+            ]
+          : []),
+        { id: 'steward.open', label: 'Open it: admit it for work' },
+        { id: 'steward.keep', label: 'Keep it as a draft' },
+        { id: 'steward.drop', label: 'Drop it: it is not work' },
+      ],
+      recommendedOptionId: merge ? `steward.merge:${merge.into}` : 'steward.keep',
+      why,
+      basis: `demo seed: ${draft.key}`,
+    });
+  await ask(
+    repeats,
+    { into: into(STEWARD_DRAFTS.repeats.into), shares: STEWARD_DRAFTS.repeats.shares },
+    `${repeats.key} asks for what ${into(STEWARD_DRAFTS.repeats.into)} already delivers.`,
+  );
+  const refused = await ask(
+    beside,
+    { into: into(STEWARD_DRAFTS.beside.into), shares: 'the demo project.' },
+    'It sits beside an issue about something else.',
+  ).then(
+    () => null,
+    (err: unknown) => String((err as { message?: string }).message ?? err),
+  );
+  if (!refused?.includes('STEWARD_MERGE_NOT_SAME_SUBJECT')) {
+    throw new Error(
+      `the demo seed's merge of ${beside.key} into ${into(STEWARD_DRAFTS.beside.into)}, two items about different things, was not refused as STEWARD_MERGE_NOT_SAME_SUBJECT: ${refused ?? 'it was asked'}`,
+    );
+  }
+  await ask(beside, null, 'Nobody has said whether the call list export is wanted yet.');
 }
 
 const isMain = import.meta.url === `file://${process.argv[1]}`;

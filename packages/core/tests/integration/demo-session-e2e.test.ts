@@ -76,6 +76,40 @@ describe('GET /api/auth/demo in a demo core', () => {
     expect(JSON.stringify(issues.body)).toContain('Preview opens the issue page in a frame');
   });
 
+  it('seeds a steward merge offer only between drafts about the same thing, saying what both share (REQ-48 r3 BC-16)', async () => {
+    const world = await seedDemoWorld();
+    const res = await api(null, 'GET', '/api/auth/demo');
+    const cookie = `forge_auth=${cookieOf(res.headers, 'forge_auth')}`;
+    const read = await api(
+      null,
+      'GET',
+      `/api/projects/${world.project.id}/needs-you/decisions`,
+      undefined,
+      { cookie },
+    );
+    expect(read.status).toBe(200);
+    type Answer = { id: string; effect: string | null };
+    type Decision = { key: string; question: string; answers: Answer[] };
+    const decisions = read.body.decisions as Decision[];
+    const repeats = decisions.find((d) => d.key === 'ISS-6');
+    const beside = decisions.find((d) => d.key === 'ISS-7');
+    expect(repeats?.answers.map((a) => a.id)).toEqual([
+      'steward.merge:ISS-1',
+      'steward.open',
+      'steward.keep',
+      'steward.drop',
+    ]);
+    expect(repeats?.answers[0]?.effect).toContain(
+      'Both are about opening the issue page preview in a frame.',
+    );
+    expect(beside?.answers.map((a) => a.id).sort()).toEqual([
+      'steward.drop',
+      'steward.keep',
+      'steward.open',
+    ]);
+    expect(JSON.stringify(beside)).not.toContain('ISS-3');
+  });
+
   it('refuses to seed a database that already holds a user, so it can never write over a real one', async () => {
     await seedDemoWorld();
     await expect(seedDemoWorld()).rejects.toThrow(/refuses a database that already holds \d+ user/);

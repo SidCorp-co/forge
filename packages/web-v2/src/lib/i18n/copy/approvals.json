@@ -1,7 +1,7 @@
 {
   "en": {
     "approvals.title": "Approvals",
-    "approvals.sub": "{n} waiting on you · oldest {age}",
+    "approvals.sub": "Decisions waiting on you: {n} · oldest {age}",
     "approvals.subNone": "Nothing waiting",
     "approvals.subAcross": "{n} across your projects",
     "approvals.loading": "Loading approvals",
@@ -109,7 +109,7 @@
     "approvals.failed": "{key} was not decided: {error}",
     "approvals.dismiss": "Dismiss",
     "approvals.more": "{shown} of {total} shown",
-    "approvals.leftOut.heading": "Also waiting on you, not decisions: {what}",
+    "approvals.leftOut.heading": "Also yours, not counted above: {what}",
     "approvals.leftOut.next": "· next: {next}",
     "approvals.leftOut.more": "and {n} more"
   }

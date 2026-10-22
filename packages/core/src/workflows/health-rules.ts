@@ -364,6 +364,7 @@ export function deriveHealth(f: HealthFacts): WorkflowHealth {
   return {
     workflowId: f.workflowId,
     flow: f.flow,
+    title: shown?.title?.trim() || null,
     revision,
     approvedRevision: f.approvedRevision,
     proposedRevision: f.proposed?.revision ?? null,

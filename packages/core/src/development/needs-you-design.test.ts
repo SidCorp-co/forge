@@ -79,7 +79,7 @@ describe('the design row on Needs you', () => {
 
   it('falls back to the markers a person owes, and is no row with none', () => {
     expect(designRowOf(health({ needsYou: 2 }))?.standing.waitingOn.act).toBe(
-      'settle 2 health markers',
+      'decide 2 places where the code and the design differ',
     );
     expect(designRowOf(health({}))).toBeNull();
   });

@@ -8,7 +8,7 @@ import { describe, expect, it, vi } from "vitest";
 import { isNavGroup } from "@/design";
 import { type SwitcherProject, ProjectSwitcher, switcherRows } from "./components/project-switcher";
 import { buildWorkspaceCommands } from "./commands";
-import { PROJECT_ITEMS, buildActiveKey, projectMenu, workspaceNavItems } from "./nav-model";
+import { PROJECT_ITEMS, buildActiveKey, buildBottomActiveKey, projectMenu, workspaceNavItems } from "./nav-model";
 
 const project = (over: Partial<SwitcherProject>): SwitcherProject => ({
   id: "p1",
@@ -131,5 +131,21 @@ describe("the project switcher", () => {
     const beta = (await screen.findByText("Beta")).closest("button");
     fireEvent.click(beta as HTMLButtonElement);
     expect(onSelect).toHaveBeenCalledWith("beta");
+  });
+});
+
+describe("the phone tab bar's lit tab", () => {
+  it("lights Attention on a project's Approvals, the decisions its badge counts, and on Attention itself", () => {
+    expect(buildBottomActiveKey("/projects/forge/approvals", false, false)).toBe("attention");
+    expect(buildBottomActiveKey("/projects/forge/approvals/", false, false)).toBe("attention");
+    expect(buildBottomActiveKey("/attention", false, false)).toBe("attention");
+  });
+
+  it("lights Home on every other page, and More or Ask Agent while its sheet is open", () => {
+    expect(buildBottomActiveKey("/projects/forge", false, false)).toBe("home");
+    expect(buildBottomActiveKey("/projects/forge/approvals-log", false, false)).toBe("home");
+    expect(buildBottomActiveKey("/projects/forge/issues", false, false)).toBe("home");
+    expect(buildBottomActiveKey("/projects/forge/approvals", true, false)).toBe("more");
+    expect(buildBottomActiveKey("/projects/forge/approvals", false, true)).toBe("chat");
   });
 });

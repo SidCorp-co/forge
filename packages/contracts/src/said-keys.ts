@@ -1684,8 +1684,8 @@ export const SAID = {
 	},
 	"designs.who.aPerson": { en: "A person" },
 	"designs.act.settleMarkers": {
-		en: "settle {n} health {markers}",
-		vars: { n: "count", markers: "agreement" },
+		en: "decide {n} {places} where the code and the design differ",
+		vars: { n: "count", places: "agreement" },
 	},
 	"designs.rule.needsYou": {
 		en: "a marker source waits on a person, or a node awaits decision",

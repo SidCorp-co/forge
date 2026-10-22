@@ -11,6 +11,7 @@ import {
   type NeedsYouDecision,
 } from '@forge/contracts/needs-you-decisions';
 import { type QuestionSuggestion, suggestionFor } from '@forge/contracts/question-suggestion';
+import { say, sayEn } from '@forge/contracts/said';
 import {
   isStewardDecisionQuestion,
   STEWARD_DECISIONS_WITH_REASON,
@@ -238,7 +239,8 @@ export function questionDecision(
     area,
     entity: row.entity,
     key: row.key,
-    title: clip(row.title, 500),
+    // a question asked on nothing is titled by its prompt, which the question already says (REQ-48 r3 BC-14)
+    title: row.entity === 'question' ? sayEn(say('needsYou.title.question')) : clip(row.title, 500),
     opens,
     question: clip(step.prompt.trim() || row.title || 'A run asked a question', QUESTION_MAX),
     touchedAt: q.at,
@@ -329,6 +331,20 @@ export function questionDecision(
   };
 }
 
+const WHY_MAX = 600;
+
+/** Why settling is recommended, carrying the answer given where there is one, clipped to the why's room. */
+function feedbackWhy(settles: 'answer' | 'fix', answered: string | null): string {
+  if (settles === 'fix') {
+    return 'The work that carries it shipped; reopen it with a reason if the problem is still there.';
+  }
+  const rule = 'Nobody has reopened it; reopen it with a reason if the answer misses the point.';
+  const given = answered?.trim();
+  if (!given) return `It was answered. ${rule}`;
+  const room = WHY_MAX - rule.length - 'The answer given: "". '.length;
+  return `The answer given: "${clip(given.replace(/\s+/g, ' '), room)}". ${rule}`;
+}
+
 export function feedbackDecision(
   row: AttentionRow,
   area: NeedsYouAreaKey,
@@ -347,20 +363,14 @@ export function feedbackDecision(
       key: row.key,
       title: clip(row.title, 500),
       opens: { kind: 'feedback', key: row.key },
-      question: clip(
+      // one sentence, the question alone: the answer it asks about is the why's, said there once (REQ-48 r3 BC-14)
+      question:
         settles === 'fix'
           ? `Is ${row.key} fixed in what shipped?`
-          : answered
-            ? `Does this answer settle ${row.key}? "${answered}"`
-            : `Does the answer given on ${row.key} settle it?`,
-        QUESTION_MAX,
-      ),
+          : `Does the answer given on ${row.key} settle it?`,
       recommended: {
         answerId: 'verify',
-        why:
-          settles === 'fix'
-            ? 'The work that carries it shipped; reopen it with a reason if the problem is still there.'
-            : 'It was answered and nobody has reopened it; reopen it with a reason if the answer misses the point.',
+        why: feedbackWhy(settles, answered),
         by: 'rule',
       },
       noRecommendation: null,

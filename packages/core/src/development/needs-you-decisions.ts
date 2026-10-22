@@ -133,7 +133,7 @@ interface Facts {
   approvalOf: ReadonlyMap<string, string>;
   feedbackAnswerOf: ReadonlyMap<string, string | null>;
   /** Each design whose proposed revision waits on a person, by flow. */
-  designOf: ReadonlyMap<string, { workflowId: string; revision: number }>;
+  designOf: ReadonlyMap<string, { workflowId: string; revision: number; title: string }>;
   projectId: string;
 }
 
@@ -384,7 +384,18 @@ export async function decisionsOf(
     feedbackAnswerOf: new Map(attention.feedback.map((f) => [f.key, f.route?.answer ?? null])),
     designOf: new Map(
       [...attention.health.values()].flatMap((h) =>
-        h.proposal ? [[h.flow, { workflowId: h.workflowId, revision: h.proposal.revision }]] : [],
+        h.proposal
+          ? [
+              [
+                h.flow,
+                {
+                  workflowId: h.workflowId,
+                  revision: h.proposal.revision,
+                  title: h.proposal.title.trim() || h.flow,
+                },
+              ],
+            ]
+          : [],
       ),
     ),
   };

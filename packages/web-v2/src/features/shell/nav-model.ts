@@ -212,11 +212,14 @@ export function buildActiveKey(pathname: string, slug: string | null): string {
   return ws?.key ?? "overview";
 }
 
-// More and Chat are lit by state because each opens a sheet over the page and is no route of its own; the other tabs follow the route
+// More and Chat are lit by state because each opens a sheet over the page and is no route of its own; the other tabs follow the route.
+// A project's Approvals is the decisions the Attention tab's badge counts, so it lights Attention (REQ-48 r3 BC-13).
+const ATTENTION_ROUTE = /^\/(?:attention|projects\/[^/]+\/approvals)(?:\/|$)/;
+
 export function buildBottomActiveKey(pathname: string, moreOpen: boolean, chatOpen: boolean): string {
   if (moreOpen) return "more";
   if (chatOpen) return "chat";
-  if (pathname.startsWith("/attention")) return "attention";
+  if (ATTENTION_ROUTE.test(pathname)) return "attention";
   return "home";
 }
 

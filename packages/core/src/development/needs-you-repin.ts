@@ -10,7 +10,7 @@ import type { NeedsYouAreaKey } from '@forge/contracts/needs-you';
 import { type DecisionProposal, fitProposal } from '@forge/contracts/needs-you-proposal';
 import { cutAtWord } from '@forge/contracts/title-text';
 import type { AttentionRow } from './needs-you.js';
-import { type Built, filled } from './needs-you-decision-builders.js';
+import { type Built, clip, filled } from './needs-you-decision-builders.js';
 import type { DesignRepinGroup } from './ports.js';
 
 const CHECKED = 'Each new revision differs only in which revision it follows';
@@ -70,7 +70,7 @@ export function repinDecision(
       key: group.flow,
       title: cutAtWord(group.title, 500),
       opens: { kind: 'workflow', key: group.flow },
-      question: `Move ${designs(n)} built on ${group.flow} to follow r${group.revision}?`,
+      question: `Move ${designs(n)} built on "${clip(group.title, 200)}" to follow r${group.revision}?`,
       recommended: { answerId: 'approve', why: CHECKED, by: 'rule' },
       noRecommendation: null,
       answers: [

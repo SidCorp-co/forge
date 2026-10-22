@@ -73,7 +73,7 @@ export function designRowOf(h: WorkflowHealth): DesignRow | null {
   return {
     entity: 'workflow',
     key: h.flow,
-    ...writtenTitle(h.flow, null),
+    ...writtenTitle(h.title ?? h.flow, null),
     standing: {
       attentionGroup: 'needs_you',
       waitingOn: waitingOn(
@@ -82,7 +82,7 @@ export function designRowOf(h: WorkflowHealth): DesignRow | null {
           who: say('designs.who.aPerson'),
           act: say('designs.act.settleMarkers', {
             n: h.needsYou,
-            markers: h.needsYou === 1 ? 'marker' : 'markers',
+            places: h.needsYou === 1 ? 'place' : 'places',
           }),
           rule: say('designs.rule.needsYou'),
         },
