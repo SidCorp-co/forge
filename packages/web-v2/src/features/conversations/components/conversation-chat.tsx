@@ -44,7 +44,7 @@ import {
   useWithdrawnDrafts,
 } from "../hooks";
 import { useComposingMark, useMessageBoxFocus } from "../composing";
-import { composerRefusal } from "../membership";
+import { composerRefusal, emptyRoomState } from "../membership";
 import { isRoomGone, type KeptCopy, ROOM_DELETED_TITLE, roomDeletedLine, unsentLine } from "../room-gone";
 import { type ConversationMode, type OutboxMessage, conversationTitle } from "../types";
 import { ConversationModeControl, modePlaceholder } from "./mode-control";
@@ -83,7 +83,8 @@ export function ConversationChat({
   const resolvedId = conversationId ?? activeId;
 
   const projectsQ = useProjects();
-  const canWrite = projectsQ.data?.find((p) => p.id === projectId)?.role !== "viewer";
+  const project = projectsQ.data?.find((p) => p.id === projectId);
+  const canWrite = project?.role !== "viewer";
 
   const roomQ = useConversation(resolvedId);
   const accepted = useAcceptedMessages(resolvedId);
@@ -235,6 +236,8 @@ export function ConversationChat({
     draftOfferQ.data ?? { available: false, reason: "checking whether a box is free" };
 
   const refusal = roomQ.data ? composerRefusal(roomQ.data) : null;
+  // A room no agent can answer, or one the reader cannot post in, says so rather than inviting (r34).
+  const empty = emptyRoomState(roomQ.data, { canPost: canWrite, projectName: project?.name });
 
   const { scrollRef, bottomRef, onScroll, atBottom, newOutput, toBottom } = useStickToBottom({
     conversationKey: resolvedId,
@@ -406,10 +409,13 @@ export function ConversationChat({
         <div className="mx-auto w-full max-w-3xl px-4 py-8 sm:px-8 xl:max-w-4xl">
           {messages.length === 0 && outbox.length === 0 ? (
             <div className="flex min-h-[40dvh] flex-col">
-              <div className="grid flex-1 place-items-center">
+              <div className="grid flex-1 place-items-center" data-testid="conversation-empty">
                 <EmptyState
-                  title="Start a conversation"
-                  message="Ask the agent anything about this project — its issues, its progress and what it knows."
+                  title={empty?.title ?? "Start a conversation"}
+                  message={
+                    empty?.message ??
+                    "Ask the agent anything about this project — its issues, its progress and what it knows."
+                  }
                   mascot
                 />
               </div>

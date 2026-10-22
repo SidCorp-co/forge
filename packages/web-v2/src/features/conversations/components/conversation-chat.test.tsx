@@ -5,7 +5,7 @@
 // in, and the header no longer tells an Agent room it cannot see a repository.
 
 import * as matchers from "@testing-library/jest-dom/matchers";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/lib/api/client";
@@ -61,8 +61,9 @@ vi.mock("next/link", () => ({
   ),
 }));
 
+let projectRole = "admin";
 vi.mock("@/features/projects/hooks", () => ({
-  useProjects: () => ({ data: [{ id: "p1", role: "admin" }] }),
+  useProjects: () => ({ data: [{ id: "p1", name: "Desk", role: projectRole }] }),
 }));
 
 vi.mock("./conversation-members", () => ({ ConversationMembers: () => null }));
@@ -98,6 +99,7 @@ beforeEach(() => {
   progress = null;
   sendPending = false;
   roomError = null;
+  projectRole = "admin";
   toast.mockClear();
 });
 
@@ -552,5 +554,106 @@ describe("a room's message box with focus", () => {
     } finally {
       window.matchMedia = matchMedia;
     }
+  });
+});
+
+// r34, judge-93: a room whose only agent cannot answer still invited "Ask the agent anything", beside
+// "Read-only access" for a viewer. An empty room says what is true and invites only what can be done.
+describe("an empty room", () => {
+  const desk = { id: "p1", name: "Desk", slug: "desk" };
+  const emptyPane = () => within(screen.getByTestId("conversation-empty"));
+  const agent = (over: Partial<ConversationDetail["participants"][number]> = {}) => ({
+    id: "h-desk",
+    kind: "handle" as const,
+    userId: "u-desk",
+    projectId: "p1",
+    label: null,
+    displayName: "desk",
+    reachable: true,
+    ...over,
+  });
+
+  it("invites a conversation where an agent can answer and the reader can post", () => {
+    room = detail({ participants: [agent()], scopeProjects: [desk], scope: ["p1"] });
+    open();
+    expect(emptyPane().getByText("Start a conversation")).toBeInTheDocument();
+  });
+
+  it("says no agent here can answer, naming it and why, where its only agent lost its role", () => {
+    room = detail({ participants: [agent({ reachable: false })], scopeProjects: [desk], scope: ["p1"] });
+    open();
+    expect(emptyPane().getByText("No agent here can answer")).toBeInTheDocument();
+    expect(emptyPane().getByText(/@desk can't answer: it no longer holds a role on Desk/)).toBeInTheDocument();
+    expect(emptyPane().queryByText("Start a conversation")).not.toBeInTheDocument();
+    expect(emptyPane().queryByText(/Ask the agent anything/)).not.toBeInTheDocument();
+  });
+
+  it("names every agent that cannot answer when none of several can", () => {
+    const ops = { id: "p2", name: "Ops", slug: "ops" };
+    room = detail({
+      shape: "group",
+      participants: [
+        agent({ reachable: false }),
+        agent({ id: "h-ops", userId: "u-ops", projectId: "p2", displayName: "ops", reachable: false }),
+      ],
+      scopeProjects: [desk, ops],
+      scope: ["p1", "p2"],
+    });
+    open();
+    expect(emptyPane().getByText("No agent here can answer")).toBeInTheDocument();
+    expect(emptyPane().getByText(/@desk can't answer: it no longer holds a role on Desk, and answers again once it does\..*@ops can't answer: it no longer holds a role on Ops, and answers again once it does\./)).toBeInTheDocument();
+  });
+
+  it("keeps the invitation where one agent of two can still answer", () => {
+    room = detail({
+      participants: [agent(), agent({ id: "h-2", userId: "u-2", displayName: "desk-2", reachable: false })],
+      scopeProjects: [desk],
+      scope: ["p1"],
+    });
+    open();
+    expect(emptyPane().getByText("Start a conversation")).toBeInTheDocument();
+  });
+
+  it("tells a viewer they can read the room and not post, inviting nothing", () => {
+    projectRole = "viewer";
+    room = detail({ participants: [agent()], scopeProjects: [desk], scope: ["p1"] });
+    open();
+    expect(emptyPane().getByText("Nothing has been said here yet")).toBeInTheDocument();
+    expect(emptyPane().getByText("You can read this room, not post in it: you hold the viewer role on Desk.")).toBeInTheDocument();
+    expect(emptyPane().queryByText("Start a conversation")).not.toBeInTheDocument();
+    expect(emptyPane().queryByText(/Ask the agent anything/)).not.toBeInTheDocument();
+  });
+
+  it("tells a viewer both, where no agent can answer either", () => {
+    projectRole = "viewer";
+    room = detail({ participants: [agent({ reachable: false })], scopeProjects: [desk], scope: ["p1"] });
+    open();
+    expect(emptyPane().getByText("No agent here can answer")).toBeInTheDocument();
+    expect(emptyPane().getByText(/@desk can't answer: it no longer holds a role on Desk, and answers again once it does\. You can read this room, not post in it/)).toBeInTheDocument();
+  });
+
+  it("does not invite a conversation in a room whose message box is refused for spanning two projects", () => {
+    const ops = { id: "p2", name: "Ops", slug: "ops" };
+    room = detail({
+      shape: "group",
+      participants: [agent(), agent({ id: "h-ops", userId: "u-ops", projectId: "p2", displayName: "ops" })],
+      scopeProjects: [desk, ops],
+      scope: ["p1", "p2"],
+    });
+    open();
+    expect(emptyPane().queryByText("Start a conversation")).not.toBeInTheDocument();
+    expect(emptyPane().getByText("Nothing can be sent here")).toBeInTheDocument();
+  });
+
+  it("tells a viewer opening a new conversation that they can read this project's conversations, not start one", () => {
+    projectRole = "viewer";
+    room = undefined;
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ConversationChat projectId="p1" />
+      </QueryClientProvider>,
+    );
+    expect(emptyPane().getByText("You can read Desk's conversations, not start one: you hold the viewer role on Desk.")).toBeInTheDocument();
+    expect(emptyPane().queryByText("Start a conversation")).not.toBeInTheDocument();
   });
 });
