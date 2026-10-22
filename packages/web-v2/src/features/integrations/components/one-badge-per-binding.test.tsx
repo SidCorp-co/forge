@@ -7,6 +7,7 @@
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { LeaveGuardProvider } from "@/design";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DIRECTORY_STATUS_META, deriveDirectoryStatus } from "../derive";
 import { ConnectionDetailDrawer } from "./connection-detail-drawer";
@@ -101,7 +102,9 @@ function card() {
 async function drawer(): Promise<void> {
   render(
     <QueryClientProvider client={queries}>
-      <ConnectionDetailDrawer projectId={PROJECT} card={card() as never} onClose={() => {}} />
+      <LeaveGuardProvider>
+        <ConnectionDetailDrawer projectId={PROJECT} card={card() as never} onClose={() => {}} />
+      </LeaveGuardProvider>
     </QueryClientProvider>,
   );
   await waitFor(() => {

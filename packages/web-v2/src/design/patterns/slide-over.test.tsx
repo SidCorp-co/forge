@@ -79,3 +79,79 @@ describe("SlideOver's header with a title wider than the drawer", () => {
   });
 });
 
+
+describe("SlideOver stacked over another", () => {
+  // ISS-1339 r3: a confirmation is itself a slide-over, and one Escape closed it and the drawer
+  // under it together, taking an unsaved edit the confirmation was asking about.
+  it("answers Escape on the topmost only", () => {
+    const outer = vi.fn();
+    const inner = vi.fn();
+    render(
+      <SlideOver open onClose={outer} title="Drawer">
+        <SlideOver open onClose={inner} title="Confirm">
+          <button type="button">keep</button>
+        </SlideOver>
+      </SlideOver>,
+    );
+    fireEvent.keyDown(screen.getByRole("button", { name: "keep" }), { key: "Escape" });
+    expect(inner).toHaveBeenCalledOnce();
+    expect(outer).not.toHaveBeenCalled();
+  });
+
+  it("leaves focus in the one above when both open together", () => {
+    render(
+      <SlideOver open onClose={() => {}} title="Drawer">
+        <button type="button">under</button>
+        <SlideOver open onClose={() => {}} title="Confirm">
+          <button type="button">keep</button>
+        </SlideOver>
+      </SlideOver>,
+    );
+    const above = screen.getAllByRole("dialog").find((d) => d.textContent?.includes("keep")) as HTMLElement;
+    expect(above.contains(document.activeElement)).toBe(true);
+  });
+
+  it("brings Tab from outside the topmost back into it", () => {
+    // jsdom lays nothing out, so every element reads as hidden to the trap unless told otherwise.
+    const laidOut = vi.spyOn(HTMLElement.prototype, "offsetParent", "get").mockReturnValue(document.body);
+    try {
+      render(
+        <SlideOver open onClose={() => {}} title="Drawer">
+          <button type="button">under</button>
+          <SlideOver open onClose={() => {}} title="Confirm">
+            <button type="button">keep</button>
+          </SlideOver>
+        </SlideOver>,
+      );
+      const under = screen.getByRole("button", { name: "under" });
+      under.focus();
+      fireEvent.keyDown(under, { key: "Tab", shiftKey: true });
+      const above = screen.getAllByRole("dialog").find((d) => d.textContent?.includes("keep")) as HTMLElement;
+      expect(above.contains(document.activeElement)).toBe(true);
+    } finally {
+      laidOut.mockRestore();
+    }
+  });
+
+  it("answers Escape on the one beneath once the one above has closed", () => {
+    const outer = vi.fn();
+    const { rerender } = render(
+      <SlideOver open onClose={outer} title="Drawer">
+        <button type="button">under</button>
+        <SlideOver open onClose={() => {}} title="Confirm">
+          <p>above</p>
+        </SlideOver>
+      </SlideOver>,
+    );
+    rerender(
+      <SlideOver open onClose={outer} title="Drawer">
+        <button type="button">under</button>
+        <SlideOver open={false} onClose={() => {}} title="Confirm">
+          <p>above</p>
+        </SlideOver>
+      </SlideOver>,
+    );
+    fireEvent.keyDown(screen.getByRole("button", { name: "under" }), { key: "Escape" });
+    expect(outer).toHaveBeenCalledOnce();
+  });
+});

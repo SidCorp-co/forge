@@ -5,7 +5,9 @@
 
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import type { ReactNode } from "react";
+import { LeaveGuardProvider } from "@/design";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PROVIDER_MODULES } from "../providers/registry";
 import { GRANT_LABEL } from "./agent-access-control";
@@ -86,6 +88,15 @@ vi.mock("@/providers/toast-provider", () => ({ useToast: () => ({ toast: vi.fn()
 
 let queries: QueryClient;
 
+/** What the workspace layout mounts above every page, and a section holding unsaved edits needs. */
+function Page({ children }: { children: ReactNode }) {
+  return (
+    <QueryClientProvider client={queries}>
+      <LeaveGuardProvider>{children}</LeaveGuardProvider>
+    </QueryClientProvider>
+  );
+}
+
 beforeEach(() => {
   served = [];
   deployTo = ["coolify"];
@@ -99,13 +110,13 @@ describe("a provider's drawer shows the agents switch once", () => {
     async (name) => {
       provider = name;
       render(
-        <QueryClientProvider client={queries}>
+        <Page>
           <ConnectionDetailDrawer
             projectId={PROJECT}
             card={{ key: name, status: "connected", meta: {} } as never}
             onClose={() => {}}
           />
-        </QueryClientProvider>,
+        </Page>,
       );
       // The section is lazy: count only once its Suspense fallback is gone and every read answered,
       // or a switch the pane draws first is counted before the section's own arrives.
@@ -128,13 +139,13 @@ describe("a live deploy binding's drawer offers its verify probe", () => {
     provider = name;
     deployTo = [name];
     render(
-      <QueryClientProvider client={queries}>
+      <Page>
         <ConnectionDetailDrawer
           projectId={PROJECT}
           card={{ key: `${name}:${stage}`, status: "connected", meta: { capabilities: { canDeploy: true } } } as never}
           onClose={() => {}}
         />
-      </QueryClientProvider>,
+      </Page>,
     );
   }
 
@@ -156,6 +167,95 @@ describe("a live deploy binding's drawer offers its verify probe", () => {
       expect(document.querySelector(".skeleton")).toBeNull();
     });
     expect(screen.queryByText("Verify probe")).toBeNull();
+  });
+});
+
+// ISS-1339 r3, judge-99: closing the drawer dropped an unsaved probe edit without a word, and the
+// Delivery log tab unmounted it the same way.
+describe("an unsaved probe edit is not dropped without a word", () => {
+  const CLOSE = "Discard the unsaved probe?";
+
+  async function drawDirty(onClose: () => void) {
+    provider = "coolify";
+    deployTo = ["coolify"];
+    render(
+      <Page>
+        <ConnectionDetailDrawer
+          projectId={PROJECT}
+          card={
+            {
+              key: "coolify:live",
+              status: "connected",
+              meta: { capabilities: { canDeploy: true, hasDeliveryLog: true } },
+            } as never
+          }
+          onClose={onClose}
+        />
+      </Page>,
+    );
+    await waitFor(() => {
+      expect(queries.isFetching()).toBe(0);
+      expect(screen.getByLabelText("Probe 1 URL")).toBeInTheDocument();
+    });
+    fireEvent.change(screen.getByLabelText("Probe 1 URL"), { target: { value: "https://api.example.com/version" } });
+  }
+
+  const drawerClose = () => screen.getAllByRole("button", { name: "Close" })[0] as HTMLElement;
+
+  it("asks before the close button closes it, and Keep editing keeps the edit", async () => {
+    const onClose = vi.fn();
+    await drawDirty(onClose);
+    fireEvent.click(drawerClose());
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByText(CLOSE)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Keep editing" }));
+    expect(screen.queryByText(CLOSE)).toBeNull();
+    expect(screen.getByLabelText("Probe 1 URL")).toHaveValue("https://api.example.com/version");
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("closes on Discard", async () => {
+    const onClose = vi.fn();
+    await drawDirty(onClose);
+    fireEvent.click(drawerClose());
+    fireEvent.click(screen.getByRole("button", { name: "Discard" }));
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it("asks on Escape, and an Escape in the question closes only the question", async () => {
+    const onClose = vi.fn();
+    await drawDirty(onClose);
+    fireEvent.keyDown(screen.getByLabelText("Probe 1 URL"), { key: "Escape" });
+    expect(screen.getByText(CLOSE)).toBeInTheDocument();
+    fireEvent.keyDown(screen.getByRole("button", { name: "Keep editing" }), { key: "Escape" });
+    expect(screen.queryByText(CLOSE)).toBeNull();
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("Probe 1 URL")).toHaveValue("https://api.example.com/version");
+  });
+
+  it("asks on a click on the backdrop", async () => {
+    const onClose = vi.fn();
+    await drawDirty(onClose);
+    const backdrop = screen.getAllByRole("dialog")[0]?.parentElement as HTMLElement;
+    fireEvent.click(backdrop);
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByText(CLOSE)).toBeInTheDocument();
+  });
+
+  it("closes without asking once nothing is unsaved", async () => {
+    const onClose = vi.fn();
+    await drawDirty(onClose);
+    fireEvent.change(screen.getByLabelText("Probe 1 URL"), { target: { value: "" } });
+    fireEvent.click(drawerClose());
+    expect(onClose).toHaveBeenCalledOnce();
+    expect(screen.queryByText(CLOSE)).toBeNull();
+  });
+
+  it("keeps the edit through the Delivery log tab and back", async () => {
+    await drawDirty(() => {});
+    fireEvent.click(screen.getByRole("tab", { name: "Delivery log" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Configuration" }));
+    expect(screen.getByLabelText("Probe 1 URL")).toHaveValue("https://api.example.com/version");
   });
 });
 

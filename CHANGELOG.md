@@ -3196,6 +3196,8 @@
 ### Fixed
 
 - **A live deploy binding's verify probe is set on Integrations.** Its drawer shows, declares, changes and removes the probe a release reads, and the probe gap's link opens it there. (ISS-1339)
+- **Removing every verify probe asks first.** It says how many go and what a release then records; labels stay visible, a double click saves once, and an unsaved probe is not closed away silently. (ISS-1339)
+- **A retired live commit field is named as retired however it is spelled.** A dotted or differently cased key now gets the sentence saying where a probe is declared. (ISS-1339)
 - **An environments write naming a key the document does not have is refused by name.** It used to be stored where nothing reads it; both retired live keys sent together are now named once. (ISS-1339)
 - **A refused tool call in a room says what went wrong and what would put it right**, whichever order the refusal gave them in, never its first sentence alone. (ISS-1229)
 - **A reader who can only read a project is not invited to start a conversation there.** The top bar names the panel Conversations for them and it is headed Conversations, never New conversation. (ISS-1229)

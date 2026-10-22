@@ -106,8 +106,23 @@ describe('refusedKeysIn — a patch naming a key the document does not take', ()
     expect(paths(patch)).toEqual(keys);
   });
 
+  // ISS-1339 r3, judge-99: the dotted `live.commitUrl` was refused as an unknown key, without the
+  // sentence that says where a probe is declared now.
   it.each([
-    [{ 'live.commitUrl': 'https://x.example/v' }, ['unknown live.commitUrl']],
+    [{ 'live.commitUrl': 'https://x.example/v' }, ['retired live.commitUrl']],
+    [{ 'environments.live.commitPath': 'sha' }, ['retired environments.live.commitPath']],
+    [{ live: { commit_url: 'https://x.example/v' } }, ['retired live.commit_url']],
+    [{ live: { commitURL: null } }, ['retired live.commitURL']],
+    [{ 'Live.Commit-Path': 'sha' }, ['retired Live.Commit-Path']],
+  ])('names a retired live field in another spelling in %j', (patch, keys) => {
+    expect(paths(patch)).toEqual(keys);
+  });
+
+  it.each([
+    [{ 'live.region': 'eu' }, ['unknown live.region']],
+    [{ 'live.commitUrlish': 'x' }, ['unknown live.commitUrlish']],
+    [{ 'preview.commitUrl': 'x' }, ['unknown preview.commitUrl']],
+    [{ 'environments.live.commitUrl.x': 'y' }, ['unknown environments.live.commitUrl.x']],
     [{ futureKnob: 1, limits: 'x' }, ['unknown futureKnob']],
     [{ live: { url: 'https://app.x', region: 'eu' } }, ['unknown live.region']],
     [
@@ -169,15 +184,38 @@ describe('refusedKeysMessage — one refusal, each key named once', () => {
 
   it('names an unknown key by its path beside the valid shape', () => {
     const said = refusedKeysMessage(
-      refusedKeysIn({ 'live.commitUrl': 'x', live: { region: 'eu' } }, {}),
+      refusedKeysIn({ 'live.region': 'x', live: { healthUrl: 'eu' } }, {}),
     );
     expect(said).toContain(
-      '`live.commitUrl` and `live.region` are not keys of the environments document',
+      '`live.region` and `live.healthUrl` are not keys of the environments document',
     );
     expect(said).toContain(
       '{ preview: { url, apiUrl, urls[] } | null, live: { url, apiUrl }, testCredentials[], limits }',
     );
     expect(count(said, 'Nothing was written.')).toBe(1);
+  });
+
+  it('gives a dotted retired key the retirement sentence, naming the field once with its spelling', () => {
+    const said = refusedKeysMessage(
+      refusedKeysIn({ 'live.commitUrl': 'x', live: { commit_url: 'y', commitPath: 'z' } }, {}),
+    );
+    expect(said).toContain(
+      '`environments.live.commitUrl` and `environments.live.commitPath` were retired',
+    );
+    expect(count(said, 'environments.live.commitUrl')).toBe(1);
+    expect(count(said, 'commit_url')).toBe(0);
+    expect(count(said, 'verify.probes')).toBe(1);
+    expect(said).not.toContain('is not a key');
+    expect(count(said, 'Nothing was written.')).toBe(1);
+  });
+
+  it('says how a retired field was spelled where it differs from the field', () => {
+    expect(refusedKeysMessage(refusedKeysIn({ live: { commit_url: 'x' } }, {}))).toContain(
+      '`environments.live.commitUrl` (sent as `live.commit_url`) was retired',
+    );
+    expect(refusedKeysMessage(refusedKeysIn({ 'environments.live.commitUrl': 'x' }, {}))).toContain(
+      '`environments.live.commitUrl` was retired',
+    );
   });
 
   it('says a retired key and an unknown one in one message', () => {

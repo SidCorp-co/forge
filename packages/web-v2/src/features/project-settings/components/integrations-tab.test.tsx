@@ -46,7 +46,16 @@ const CARDS = [
   },
 ];
 
-vi.mock("@/lib/utils/use-location-search", () => ({ useLocationSearch: () => state.search }));
+/** What a write to the address replaced it with, as the page's own history would hold it. */
+const replaced: string[] = [];
+vi.mock("@/lib/utils/use-location-search", () => ({
+  useLocationSearch: () => state.search,
+  replaceLocationSearch: (url: string) => {
+    replaced.push(url);
+    state.search = new URL(url, "http://localhost").search;
+    window.history.replaceState(null, "", url);
+  },
+}));
 vi.mock("@/features/integrations/hooks", () => ({
   useConnections: () => ({ data: { items: state.connections }, isLoading: false }),
   useBindExistingConnection: () => ({ mutate: vi.fn(), isPending: false, isError: false }),
@@ -68,14 +77,27 @@ vi.mock("@/features/integrations/components/mcp-servers-panel", () => ({
   McpServersPanel: () => null,
 }));
 vi.mock("@/features/integrations/components/connection-detail-drawer", () => ({
-  ConnectionDetailDrawer: ({ card, focus }: { card: { key: string } | null; focus?: string | null }) =>
-    card ? <div data-testid="drawer">{`${card.key}${focus ? ` at ${focus}` : ""}`}</div> : null,
+  ConnectionDetailDrawer: ({
+    card,
+    focus,
+    onClose,
+  }: { card: { key: string } | null; focus?: string | null; onClose: () => void }) =>
+    card ? (
+      <div data-testid="drawer">
+        {`${card.key}${focus ? ` at ${focus}` : ""}`}
+        <button type="button" onClick={onClose}>
+          Close drawer
+        </button>
+      </div>
+    ) : null,
 }));
 
 const { IntegrationsTab } = await import("./integrations-tab");
 
 afterEach(() => {
   cleanup();
+  replaced.length = 0;
+  window.history.replaceState(null, "", "/");
   state.search = "?tab=integrations&add=live-deploy-target";
   state.connections = [];
   state.bindings = [];
@@ -184,6 +206,69 @@ describe("the page the verify-probe link opens", () => {
     state.bindings = [live("coolify")];
     render(<IntegrationsTab projectId="p-1" canEdit />);
     expect(screen.queryByTestId("drawer")).toBeNull();
+  });
+
+  // ISS-1339 r3, judge-99: the query stayed after the drawer it opened was closed, so a reload
+  // opened the drawer again.
+  function arrive() {
+    state.search = "?tab=integrations&field=verify-probe";
+    window.history.replaceState(null, "", "/stub/settings?tab=integrations&field=verify-probe#top");
+  }
+
+  it("drops field from the address when the drawer it opened closes, keeping the rest", () => {
+    arrive();
+    state.bindings = [live("coolify")];
+    const { rerender } = render(<IntegrationsTab projectId="p-1" canEdit />);
+    fireEvent.click(screen.getByRole("button", { name: "Close drawer" }));
+    expect(replaced).toEqual(["/stub/settings?tab=integrations#top"]);
+    expect(window.location.search).toBe("?tab=integrations");
+    rerender(<IntegrationsTab projectId="p-1" canEdit />);
+    expect(screen.queryByTestId("drawer")).toBeNull();
+  });
+
+  it("opens no drawer on a reload of the address the close left", () => {
+    arrive();
+    state.bindings = [live("coolify")];
+    render(<IntegrationsTab projectId="p-1" canEdit />);
+    fireEvent.click(screen.getByRole("button", { name: "Close drawer" }));
+    cleanup();
+    render(<IntegrationsTab projectId="p-1" canEdit />);
+    expect(screen.queryByTestId("drawer")).toBeNull();
+  });
+
+  it("leaves an address that carries no probe landing as it was", () => {
+    state.search = "?tab=integrations";
+    window.history.replaceState(null, "", "/stub/settings?tab=integrations");
+    render(<IntegrationsTab projectId="p-1" canEdit />);
+    fireEvent.click(screen.getByText("Coolify"));
+    fireEvent.click(screen.getByRole("button", { name: "Close drawer" }));
+    expect(replaced).toEqual([]);
+  });
+
+  // Closing over an unsaved edit: the drawer's Discard, then the leave guard steps Back off its own
+  // history entry onto the page's, which still carries the link's query.
+  it("drops field again when the leave guard's Back brings it back, and opens nothing", () => {
+    arrive();
+    state.bindings = [live("coolify")];
+    const { rerender } = render(<IntegrationsTab projectId="p-1" canEdit />);
+    fireEvent.click(screen.getByRole("button", { name: "Close drawer" }));
+    rerender(<IntegrationsTab projectId="p-1" canEdit />);
+    arrive();
+    rerender(<IntegrationsTab projectId="p-1" canEdit />);
+    expect(screen.queryByTestId("drawer")).toBeNull();
+    expect(replaced).toEqual(["/stub/settings?tab=integrations#top", "/stub/settings?tab=integrations#top"]);
+    expect(window.location.search).toBe("?tab=integrations");
+  });
+
+  it("lands again when the link is followed from another tab, which mounts the tab anew", () => {
+    arrive();
+    state.bindings = [live("coolify")];
+    render(<IntegrationsTab projectId="p-1" canEdit />);
+    fireEvent.click(screen.getByRole("button", { name: "Close drawer" }));
+    cleanup();
+    arrive();
+    render(<IntegrationsTab projectId="p-1" canEdit />);
+    expect(screen.getByTestId("drawer")).toHaveTextContent("coolify:live at verify-probe");
   });
 });
 

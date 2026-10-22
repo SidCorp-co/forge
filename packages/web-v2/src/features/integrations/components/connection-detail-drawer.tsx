@@ -5,6 +5,7 @@ import {
   Banner,
   Button,
   CardTitle,
+  ConfirmDialog,
   ErrorState,
   SegmentedControl,
   Skeleton,
@@ -226,12 +227,14 @@ function ConfigPane({
   stageFromCardKey,
   canEdit,
   focus,
+  onProbeDirty,
 }: {
   provider: string;
   projectId: string;
   stageFromCardKey: DeployStage | null;
   canEdit: boolean;
   focus: string | null;
+  onProbeDirty: (dirty: boolean) => void;
 }) {
   const binding = useBindingForCard(projectId, provider, stageFromCardKey);
   return (
@@ -250,6 +253,7 @@ function ConfigPane({
                 binding={binding}
                 canEdit={canEdit}
                 focus={focus === VERIFY_PROBE_SECTION}
+                onDirtyChange={onProbeDirty}
               />
             </div>
           )
@@ -310,6 +314,10 @@ export function ConnectionDetailDrawer({
   const provider = card ? cardProvider(card.key) : null;
   const caps = getCapabilities(card);
   const [tab, setTab] = useState<"config" | "deliveries">("config");
+  // An unsaved probe edit is asked about before the drawer closes over it (ISS-1339 r3).
+  const [probeDirty, setProbeDirty] = useState(false);
+  const [askingDiscard, setAskingDiscard] = useState(false);
+  const requestClose = () => (probeDirty ? setAskingDiscard(true) : onClose());
   // A refresh that fails after a press at the drawer's foot is shown where it is read (ISS-1421 r14),
   // every time it fails: keyed on when it failed, since a second failure reads the same (r15).
   const noticeRef = useRef<HTMLDivElement>(null);
@@ -336,7 +344,7 @@ export function ConnectionDetailDrawer({
   );
 
   return (
-    <SlideOver open={Boolean(card)} onClose={onClose} title={title} width={560}>
+    <SlideOver open={Boolean(card)} onClose={requestClose} title={title} width={560}>
       <div className="flex flex-col gap-4 px-5 py-4">
         {statusReadError ? (
           // In the drawer's flow, above the first field: it pushes the form down and never covers a control.
@@ -365,15 +373,18 @@ export function ConnectionDetailDrawer({
               value={tab}
               onChange={(v) => setTab(v as "config" | "deliveries")}
             />
-            {tab === "config" ? (
+            {/* Hidden rather than unmounted, so the log tab does not take an unsaved edit with it. */}
+            <div className={tab === "config" ? "flex flex-col gap-4" : "hidden"}>
               <ConfigPane
                 provider={provider}
                 projectId={projectId}
                 stageFromCardKey={stageFromCardKey}
                 canEdit={canEdit}
                 focus={focus}
+                onProbeDirty={setProbeDirty}
               />
-            ) : (
+            </div>
+            {tab === "deliveries" && (
               <DeliveryLogPane
                 provider={provider}
                 projectId={projectId}
@@ -388,9 +399,24 @@ export function ConnectionDetailDrawer({
             stageFromCardKey={stageFromCardKey}
             canEdit={canEdit}
             focus={focus}
+            onProbeDirty={setProbeDirty}
           />
         )}
       </div>
+      <ConfirmDialog
+        open={askingDiscard}
+        title="Discard the unsaved probe?"
+        message="The Verify probe has changes you have not saved. Closing the drawer discards them."
+        confirmLabel="Discard"
+        cancelLabel="Keep editing"
+        tone="danger"
+        onConfirm={() => {
+          setAskingDiscard(false);
+          setProbeDirty(false);
+          onClose();
+        }}
+        onClose={() => setAskingDiscard(false)}
+      />
     </SlideOver>
   );
 }
