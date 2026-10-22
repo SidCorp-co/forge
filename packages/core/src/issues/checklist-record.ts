@@ -9,6 +9,7 @@ import type { RecordAnswer, RecordAnswers } from '@forge/contracts/checklists';
 import { requirementKey } from '@forge/contracts/requirements';
 import { sql } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
+import { strayTraceTagsOf } from './criteria/criteria-text.js';
 
 type Reader = Pick<Tx, 'execute'>;
 
@@ -77,16 +78,21 @@ export function requirementAnswer(p: Planned): RecordAnswer {
 
 const criteriaCount = (n: number) => `${n} ${n === 1 ? 'criterion' : 'criteria'}`;
 
-/** One live criterion of the issue: its number, the BC it traces, and whether that BC stands at the planned revision. */
+/**
+ * One live criterion of the issue: its number, the BC it traces, whether that BC stands at the
+ * planned revision, and whether its words name a BC tag after the start of the line, which traces
+ * nothing (ISS-625).
+ */
 export interface CriterionTrace {
   n: number;
   code: string | null;
   traced: boolean | null;
+  strayTag?: boolean;
 }
 
 async function criteriaAnswer(exec: Reader, issueId: string, p: Planned): Promise<RecordAnswer> {
   const rows = (await exec.execute(sql`
-    SELECT c.n, rc.code,
+    SELECT c.n, rc.code, c.statement,
            (rc.id IS NOT NULL
             AND rc.requirement_id = i.requirement_id
             AND rc.since_revision <= i.planned_revision
@@ -96,8 +102,14 @@ async function criteriaAnswer(exec: Reader, issueId: string, p: Planned): Promis
       LEFT JOIN requirement_criteria rc ON rc.id = c.requirement_criterion_id
      WHERE c.issue_id = ${issueId} AND c.retired_at IS NULL
      ORDER BY c.position
-  `)) as unknown as CriterionTrace[];
-  return criteriaAnswerOf(rows, p);
+  `)) as unknown as Array<CriterionTrace & { statement: string }>;
+  return criteriaAnswerOf(
+    rows.map(({ statement, ...row }) => ({
+      ...row,
+      strayTag: strayTraceTagsOf(statement).length > 0,
+    })),
+    p,
+  );
 }
 
 export function criteriaAnswerOf(rows: readonly CriterionTrace[], p: Planned): RecordAnswer {
@@ -113,12 +125,18 @@ export function criteriaAnswerOf(rows: readonly CriterionTrace[], p: Planned): R
       fix: 'Answer the requirement question first; then trace each criterion to a business criterion (BC) of that revision.',
     };
   }
-  const untraced = rows.filter((r) => r.traced !== true).map((r) => r.n);
+  const untraced = rows.filter((r) => r.traced !== true);
   if (untraced.length > 0) {
     const one = untraced.length === 1;
+    const stray = untraced.filter((r) => r.strayTag === true).map((r) => r.n);
+    const strayOne = stray.length === 1;
+    const strayGap =
+      stray.length === 0
+        ? ''
+        : ` ${strayOne ? 'Criterion' : 'Criteria'} ${stray.join(', ')} ${strayOne ? 'names its' : 'name their'} BC after the start of ${strayOne ? 'its line' : 'their lines'}, which traces nothing.`;
     return {
-      gap: `${one ? 'Criterion' : 'Criteria'} ${untraced.join(', ')} ${one ? 'is' : 'are'} not traced to a business criterion (BC) that stands at ${p.key} revision ${p.plannedRevision}.`,
-      fix: `Trace ${one ? 'it' : 'each one'} to a BC of ${p.key} revision ${p.plannedRevision} on the issue's criteria.`,
+      gap: `${one ? 'Criterion' : 'Criteria'} ${untraced.map((r) => r.n).join(', ')} ${one ? 'is' : 'are'} not traced to a business criterion (BC) that stands at ${p.key} revision ${p.plannedRevision}.${strayGap}`,
+      fix: `Start ${one ? 'its line' : 'each line'} with the BC it proves, as "(${p.key} BC-<m>) <statement>"; a BC tag anywhere else in the line traces nothing.`,
     };
   }
   const codes = [...new Set(rows.map((r) => r.code))].join(', ');

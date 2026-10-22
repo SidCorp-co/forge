@@ -29,9 +29,9 @@ import { refuser } from '../../lib/refusal.js';
 import { verdictByBuilderSql } from '../built-by.js';
 import { liveTracedCodesOf, traceWordingsOf } from '../ports.js';
 import {
-  type ParsedCriterion,
   parseCriteriaText,
   renderCriteriaText,
+  strayTraceTagsOf,
   TRACE_TAG_SHAPE,
   traceTagOf,
 } from './criteria-text.js';
@@ -188,45 +188,66 @@ async function refuseDroppedTraces(
 }
 
 /**
- * The text path's criteria with the trace each states: a lead `(REQ-n BC-m)` resolved to the wording
+ * The criteria with the trace each one's words state, for every criterion sent without
+ * `requirementCriterionId` (the text path sends none): a lead `(REQ-n BC-m)` resolved to the wording
  * of that code live at the revision the issue was planned against (its requirement's current one
- * where it records none). A tag naming another requirement, a code with no live wording, or a tag of
- * another shape is refused by name; an untagged criterion states nothing and keeps what it had.
+ * where it records none). A tag naming another requirement, a code with no live wording, or a lead
+ * tag of another shape is refused by name, and so is a tag after the start of the line (ISS-625),
+ * which would trace nothing in silence. A criterion kept word for word is not judged again, so a row
+ * written before these rules never blocks an unrelated write; the issue-ready checklist names it
+ * instead. An untagged criterion states nothing and keeps what it had; one sent with
+ * `requirementCriterionId` is traced by that field, and its words are text.
  */
 async function tracedInputs(
   tx: Tx,
   issueId: string,
-  parsed: readonly ParsedCriterion[],
+  desired: readonly CriterionInput[],
+  path: CriteriaPath,
 ): Promise<CriterionInput[]> {
-  const tags = parsed.map((c) => ({ c, tag: traceTagOf(c.statement) }));
-  const malformed = tags.find((t) => t.tag.kind === 'malformed');
-  if (malformed && malformed.tag.kind === 'malformed') {
-    throw refuseCriteria(
-      'CRITERIA_TRACE_INVALID',
-      `criterion ${malformed.c.n} opens with ${JSON.stringify(malformed.tag.tag)}, which is not a trace: write ${TRACE_TAG_SHAPE}, one criterion per BC`,
-      '/acceptanceCriteria',
-    );
-  }
-  if (tags.every((t) => t.tag.kind === 'none')) return [...parsed];
-  const { requirement: req, wordings } = await traceWordingsOf(tx, issueId);
   const rows = await liveRows(tx, issueId);
-  const { kept: keptRows } = matchCriteria(rows, parsed);
+  const { kept: keptRows } = matchCriteria(rows, desired);
+  const tags = desired.map((c, i) => ({
+    c,
+    i,
+    tag:
+      c.requirementCriterionId === undefined ? traceTagOf(c.statement) : { kind: 'none' as const },
+  }));
+  for (const { c, i, tag } of tags) {
+    if (c.requirementCriterionId !== undefined || keptRows.has(i)) continue;
+    if (tag.kind === 'malformed') {
+      throw refuseCriteria(
+        'CRITERIA_TRACE_INVALID',
+        `criterion ${c.n} opens with ${JSON.stringify(tag.tag)}, which is not a trace: write ${TRACE_TAG_SHAPE}, one criterion per BC`,
+        path,
+      );
+    }
+    const stray = strayTraceTagsOf(c.statement);
+    if (stray.length > 0) {
+      throw refuseCriteria(
+        'CRITERIA_TRACE_NOT_LEADING',
+        `criterion ${c.n} carries ${stray.join(', ')} after the start of its line, where a tag traces nothing: open the line with the one BC it proves, ${TRACE_TAG_SHAPE}, or name it in prose without the parentheses`,
+        path,
+      );
+    }
+  }
+  if (tags.every((t) => t.tag.kind !== 'tag')) return [...desired];
+  const { requirement: req, wordings } = await traceWordingsOf(tx, issueId);
   const revision = req?.revision ?? null;
-  return tags.map(({ c, tag }, i) => {
+  return tags.map(({ c, i, tag }) => {
     if (tag.kind !== 'tag') return c;
     const where = `criterion ${c.n} traces REQ-${tag.requirementSeq} ${tag.code}`;
     if (!req) {
       throw refuseCriteria(
         'CRITERIA_TRACE_UNRESOLVED',
         `${where}, and this issue serves no requirement: link it to REQ-${tag.requirementSeq} first, or drop the tag`,
-        '/acceptanceCriteria',
+        path,
       );
     }
     if (req.seq !== tag.requirementSeq) {
       throw refuseCriteria(
         'CRITERIA_TRACE_UNRESOLVED',
         `${where}, and this issue serves REQ-${req.seq}: a criterion proves a BC of its own issue's requirement`,
-        '/acceptanceCriteria',
+        path,
       );
     }
     const live = liveWordingAt(wordings, tag.code, revision);
@@ -234,7 +255,7 @@ async function tracedInputs(
       throw refuseCriteria(
         'CRITERIA_TRACE_UNRESOLVED',
         `${where}, and REQ-${req.seq} has no wording of ${tag.code} live at revision ${revision ?? 'none'}, the one this issue was planned against`,
-        '/acceptanceCriteria',
+        path,
       );
     }
     const kept = keptRows.get(i);
@@ -301,7 +322,12 @@ export async function putCriteria(
   if (fault) throw refuseCriteria('CRITERIA_INPUT_INVALID', fault, '/criteria');
   const issue = await lockIssue(tx, issueId);
   if (!issue) return false;
-  await applyCriteria(tx, issue, desired, '/criteria');
+  await applyCriteria(
+    tx,
+    issue,
+    await tracedInputs(tx, issue.id, desired, '/criteria'),
+    '/criteria',
+  );
   const text = renderCriteriaText(
     desired.map(({ n, statement }) => ({ n, statement: statement.trim() })),
   );
@@ -340,7 +366,7 @@ export async function syncCriteriaFromText(
   await applyCriteria(
     tx,
     issue,
-    await tracedInputs(tx, issue.id, parsed.criteria),
+    await tracedInputs(tx, issue.id, parsed.criteria, '/acceptanceCriteria'),
     '/acceptanceCriteria',
   );
 }

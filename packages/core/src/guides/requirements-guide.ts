@@ -9,12 +9,13 @@ export const REQUIREMENT_LIFECYCLE_GUIDE: CoreGuide = {
   title: 'Requirements: revisions, agreement, baselines and delivery',
   summary:
     'How a requirement (REQ-n) is written in immutable revisions with stable business criteria (BC-n), proposed, accepted and agreed by a holder of requirements.approve under a baseline pinning its designs, re-pinned, deferred, read as delivered, accepted or dropped; and why an issue planned against it reads changed-since-plan.',
-  version: 6,
+  version: 7,
   body: `## Requirements: revisions, agreement, baselines and delivery
 
 A requirement (REQ-n) is the business intent a set of issues delivers. Its text never changes in place:
 it lives in numbered revisions, and each revision carries business criteria under stable codes
-(BC-1, BC-2, …) that issues trace their own criteria to. The door is
+(BC-1, BC-2, …) that issues trace their own criteria to: an issue criterion traces one where its
+line opens with the tag, \`(REQ-n BC-m) <statement>\`, and nowhere else. The door is
 \`/api/projects/:id/requirements\`: each act below is a route under \`…/requirements/:req\`
 (\`revisions\`, \`revisions/:n/propose|accept|return\`, \`agree\`, \`repin\`, \`defer\`, \`undefer\`,
 \`accept\`, \`drop\`, \`issues\`, \`promote\`, \`workflows\`, \`contracts\`).

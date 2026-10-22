@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { traceTagOf } from './criteria-text.js';
+import { strayTraceTagsOf, traceTagOf } from './criteria-text.js';
 import { droppedTraceIds } from './match.js';
 
 // Why REQ-25 BC-1 and BC-2 read "no issue traces here" while ISS-39 closed proving them: on
@@ -91,5 +91,37 @@ describe("a plan's trace tag", () => {
       kind: 'malformed',
       tag: '(REQ-22 BC-6, BC-8)',
     });
+  });
+
+  it('calls a lead tag in lowercase or with inner spaces malformed, never a guess (ISS-625)', () => {
+    expect(traceTagOf('(req-48 bc-5) Something holds.')).toEqual({
+      kind: 'malformed',
+      tag: '(req-48 bc-5)',
+    });
+    expect(traceTagOf('( REQ-48 BC-5 ) Something holds.').kind).toBe('malformed');
+  });
+});
+
+// ISS-625 (FB-230): a tag after the start of the line traced nothing and was stored in silence.
+describe('a BC tag after the start of the line', () => {
+  it.each([
+    ['trailing', 'Something holds (REQ-48 BC-5)', ['(REQ-48 BC-5)']],
+    ['mid-line', 'Something (REQ-48 BC-5) holds', ['(REQ-48 BC-5)']],
+    ['lowercase', 'Something holds (req-48 bc-5)', ['(req-48 bc-5)']],
+    ['second of two', '(REQ-48 BC-5) Something holds (REQ-48 BC-6)', ['(REQ-48 BC-6)']],
+    ['two codes', 'Holds (REQ-22 BC-6, BC-8)', ['(REQ-22 BC-6, BC-8)']],
+  ])('is found when %s', (_, statement, found) => {
+    expect(strayTraceTagsOf(statement)).toEqual(found);
+  });
+
+  it.each([
+    ['a lead tag', '(REQ-48 BC-5) Something holds'],
+    ['an indented lead tag', '  (REQ-48 BC-5) Something holds'],
+    ['a malformed lead tag, refused on its own', '(REQ-22 BC-6, BC-8) Holds'],
+    ['a requirement in prose', 'Holds as REQ-6 says'],
+    ['a BC in prose', 'Holds per REQ-48 BC-5, read in prose'],
+    ['a requirement with no BC', 'Holds (REQ-6) too'],
+  ])('is not found in %s', (_, statement) => {
+    expect(strayTraceTagsOf(statement)).toEqual([]);
   });
 });

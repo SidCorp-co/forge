@@ -155,7 +155,7 @@ describe('an incomplete issue-ready checklist', () => {
     `);
     const res = await moveThrough('web', id, { toStatus: 'open' });
     expect(refusalsOf(res.body).map((r) => r.detail)).toEqual([
-      "What are its criteria, each traced to a BC of that revision? Criterion 2 is not traced to a business criterion (BC) that stands at REQ-1 revision 1. Trace it to a BC of REQ-1 revision 1 on the issue's criteria.",
+      'What are its criteria, each traced to a BC of that revision? Criterion 2 is not traced to a business criterion (BC) that stands at REQ-1 revision 1. Start its line with the BC it proves, as "(REQ-1 BC-<m>) <statement>"; a BC tag anywhere else in the line traces nothing.',
     ]);
   });
 

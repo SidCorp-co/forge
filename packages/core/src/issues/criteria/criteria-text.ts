@@ -69,8 +69,9 @@ export function renderCriteriaText(criteria: readonly ParsedCriterion[]): string
 /**
  * The business criterion a criterion's own words say it proves: a lead `(REQ-<n> BC-<m>)`, the trace
  * a plan writes into the text path, which carries no `requirementCriterionId`. `none` where the
- * statement opens with no tag; `malformed` where it opens with `(REQ-` in any other shape — two
- * codes in one tag among them, since one criterion proves one BC (`issue_criteria.requirement_criterion_id`).
+ * statement opens with no tag; `malformed` where it opens with `(REQ-` in any other shape, in any
+ * case — two codes in one tag among them, since one criterion proves one BC
+ * (`issue_criteria.requirement_criterion_id`), and a lowercase one, which is never guessed.
  */
 export type TraceTag =
   | { kind: 'none' }
@@ -78,13 +79,25 @@ export type TraceTag =
   | { kind: 'malformed'; tag: string };
 
 const TRACE_TAG = /^\s*\(REQ-(\d+) (BC-\d+)\)/u;
-const TAG_OPEN = /^\s*\(REQ-[^)]*\)?/u;
+const TAG_OPEN = /^\s*\(\s*REQ-[^)]*\)?/iu;
+/** A `(REQ-n BC-m)` tag anywhere in a statement, in any case: what a writer types to trace a BC. */
+const ANY_TAG = /\(\s*REQ-\d+[^()]*?\bBC-\d+[^()]*\)/giu;
 
 export function traceTagOf(statement: string): TraceTag {
   const m = TRACE_TAG.exec(statement);
   if (m) return { kind: 'tag', requirementSeq: Number(m[1]), code: m[2] as string };
   const open = TAG_OPEN.exec(statement);
   return open ? { kind: 'malformed', tag: open[0].trim() } : { kind: 'none' };
+}
+
+/**
+ * Every `(REQ-n BC-m)` tag a statement holds after its start (ISS-625): where it stands it traces
+ * nothing, since only a lead tag is read as the trace (`traceTagOf`). A mention in prose without the
+ * parentheses, or one naming no BC (`(REQ-6)`), is not a tag.
+ */
+export function strayTraceTagsOf(statement: string): string[] {
+  const lead = statement.length - statement.trimStart().length;
+  return [...statement.matchAll(ANY_TAG)].filter((m) => m.index !== lead).map((m) => m[0]);
 }
 
 export const TRACE_TAG_SHAPE =

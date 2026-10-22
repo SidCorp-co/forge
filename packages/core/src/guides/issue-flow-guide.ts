@@ -18,7 +18,7 @@ export const ISSUE_FLOW_GUIDE: CoreGuide = {
   title: 'Taking one issue from open to awaiting_release',
   summary:
     'The method a run follows for one issue, every tracker act a REST call: read it whole, take it, write the plan and criteria, build in its own tree, prove each criterion, land, mark the merge and move it to `awaiting_release` — never to `closed`.',
-  version: 4,
+  version: 5,
   body: `## Taking one issue from open to awaiting_release
 
 One run, one issue (or a batch that shares one branch), from its title to landed code that a release
@@ -84,6 +84,14 @@ Record where the work is at each push: \`PATCH /api/issues/:id\` \`{ workState: 
 are numbered lines (\`1. …\`), one outcome a reader can check without opening the diff. A repeated
 number or a number with no statement is refused \`CRITERIA_TEXT_UNPARSEABLE\`; text with no numbered
 line writes no criteria at all, so read the field back.
+
+A criterion traces a BC of the issue's requirement only where its line begins with the tag:
+\`1. (REQ-n BC-m) <statement>\`, one BC per criterion, uppercase, at the revision the plan was
+written against. The same tag anywhere else in the line traces nothing, so it is refused
+\`CRITERIA_TRACE_NOT_LEADING\`; a lead tag of another shape (two codes, lowercase) is
+\`CRITERIA_TRACE_INVALID\`. A REQ or BC named in prose, without the parentheses, is text. On
+\`PUT /api/issues/:id/criteria\` a criterion sent with \`requirementCriterionId\` is traced by that
+field and its words are text; one sent without it is read like a line of the field.
 
 The plan names the files it will change and the goal it serves. A file it does not name is a
 \`correction\` record (\`POST /api/issues/:id/events\`) written before the file is. A criterion found

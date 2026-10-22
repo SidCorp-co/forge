@@ -36,10 +36,12 @@ const trace = (
   n: number,
   traced: boolean | null,
   code: string | null = 'BC-1',
+  strayTag = false,
 ): CriterionTrace => ({
   n,
   code,
   traced,
+  strayTag,
 });
 
 const CRITERIA_STATES: [CriterionTrace[], Planned][] = [
@@ -48,6 +50,8 @@ const CRITERIA_STATES: [CriterionTrace[], Planned][] = [
   [[trace(1, true), trace(2, true)], planned({ plannedRevision: null })],
   [[trace(1, false)], planned({})],
   [[trace(1, true), trace(2, null, null), trace(3, false)], planned({})],
+  [[trace(1, true), trace(2, null, null, true)], planned({})],
+  [[trace(1, null, null, true), trace(2, null, null, true)], planned({})],
   [[trace(1, true)], planned({})],
   [[trace(1, true, 'BC-1'), trace(2, true, 'BC-2')], planned({})],
 ];
@@ -62,11 +66,11 @@ const sentencesOf = (a: RecordAnswer) => ('gap' in a ? [a.gap, a.fix] : []);
 
 describe("the issue-ready record reader's words", () => {
   // six requirement gaps (not linked; draft, dropped, deferred; planned before the link; no plan) and
-  // five criteria gaps (none; no plan, for one criterion and for two; one untraced; several untraced)
-  // are each read below
+  // seven criteria gaps (none; no plan, for one criterion and for two; one untraced; several
+  // untraced; one and several whose BC tag is not leading) are each read below
   it('reach every gap it can name', () => {
     const gaps = new Set(EVERY_ANSWER.flatMap((a) => ('gap' in a ? [a.gap] : [])));
-    expect(gaps.size).toBe(11);
+    expect(gaps.size).toBe(13);
   });
 
   it('never show a record field key or code formatting', () => {
@@ -86,6 +90,14 @@ describe("the issue-ready record reader's words", () => {
         for (const gap of evaluation.gaps) expect(gap.path).toBe(`/answers/${gap.question}`);
       }
     }
+  });
+
+  it('name a criterion whose BC tag is not leading, and state the leading form (ISS-625)', () => {
+    const answer = criteriaAnswerOf([trace(1, true), trace(2, null, null, true)], planned({}));
+    expect(answer).toEqual({
+      gap: 'Criterion 2 is not traced to a business criterion (BC) that stands at REQ-7 revision 3. Criterion 2 names its BC after the start of its line, which traces nothing.',
+      fix: 'Start its line with the BC it proves, as "(REQ-7 BC-<m>) <statement>"; a BC tag anywhere else in the line traces nothing.',
+    });
   });
 
   it('count one criterion as "1 criterion"', () => {
