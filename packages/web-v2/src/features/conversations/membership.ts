@@ -74,10 +74,8 @@ export function scopeDerivation(
 }
 
 /**
- * Where the agents the reader cannot add come from: a member of each such project adds its agent. A
+ * Who adds each agent the reader cannot: a member of its project, named in the same sentence (r34). A
  * project the reader can see is named; one they hold no role on is only counted (ISS-1229 r33, judge-92).
- * Each sentence says whose members within itself, one sentence per named project: a closing "a member
- * of the project" after two names left the reader to guess which (r34, judge-93).
  */
 export function beyondReachLines(beyond: BeyondReach | undefined): string[] {
   const lines = (beyond?.named ?? []).map(
@@ -116,11 +114,7 @@ export function unansweringAgentLines(
     });
 }
 
-/**
- * What a room with nothing said in it shows instead of an invitation, or null where the invitation is
- * true: an agent here can answer and the reader can post. Never an invitation nobody can act on
- * (ISS-1229 r34, judge-93).
- */
+/** An empty room's title and line where an invitation would be untrue, else null (ISS-1229 r34). */
 export function emptyRoomState(
   room: Partial<Pick<ConversationMembership, "participants" | "scopeProjects">> | undefined,
   reader: { canPost: boolean; projectName?: string | undefined },
