@@ -1,1 +1,0 @@
-**An issue with several designs keeps and shows each of them.** A park can wait on several designs and be re-pointed to another; the issue lists every design drawn under it, and each approval joins its merged mark.

@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.273] - 2026-10-22
+
+Issues proposing several designs now keep and show every design
+
+### Fixed
+
+- **An issue with several designs keeps and shows each of them.** A park can wait on several designs and be re-pointed to another; the issue lists every design drawn under it, and each approval joins its merged mark.
+
 ## [0.4.0-dev.272] - 2026-10-21
 
 Suggestion refusals tell you to send no base revision when there is none
