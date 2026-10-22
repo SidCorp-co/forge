@@ -12,6 +12,7 @@
  *
  * @direct-test-of packages/core/src/release-page/sections.ts
  * @direct-test-of packages/contracts/src/release-page.ts
+ * @direct-test-of packages/core/src/issues/criteria/store.ts
  */
 
 import { sql } from 'drizzle-orm';
@@ -354,7 +355,7 @@ describe('the header, the Proof panel and the list count one set of rows by one 
     await replaceCriteria(b, [
       { n: 1, statement: 'criterion 1', requirementCriterionId: req.bc['BC-3'] as string },
       { n: 2, statement: 'criterion 2', requirementCriterionId: req.bc['BC-4'] as string },
-      { n: 3, statement: '(REQ-1 BC-2) the reminder names the patient' },
+      { n: 3, statement: 'the reminder names the patient' },
     ]);
     await seedIssueStatus(b, 'awaiting_release');
     await seedIssueStatus(c, 'in_progress');

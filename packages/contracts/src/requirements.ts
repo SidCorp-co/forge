@@ -975,6 +975,8 @@ export interface RequirementIssueLink {
 	changedSincePlan: boolean;
 	/** The release that shipped it, by version; null while no shipped release carries it. */
 	shippedIn: { version: string; at: string } | null;
+	/** With no production environment, the landing that closed it: branch and commit, no version. */
+	landedIn: { branch: string; commit: string; at: string } | null;
 }
 
 export interface RequirementDetail extends RequirementSummary {

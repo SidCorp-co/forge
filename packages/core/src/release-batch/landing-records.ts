@@ -10,7 +10,7 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issueDisplayIds } from '../issues/index.js';
 import { RELEASE_RECORD_SOURCE } from './claim-conflicts.js';
-import { LANDED_VERIFICATION } from './landed-build.js';
+import { LANDED_VERIFICATION, landedBuildHolds } from './landed-build.js';
 
 interface LandingRow {
   id: string;
@@ -50,19 +50,46 @@ export async function landingRecordsOf(projectId: string, limit = 50): Promise<R
   return rows.flatMap((r) => landingOf(r, shown) ?? []);
 }
 
-/** The landing that closed this issue, while it stands closed; null where none did. */
-export async function landedRecordOf(
-  issueId: string,
-): Promise<{ branch: string; commit: string; at: string } | null> {
-  const [row] = (await db.execute(sql`
-    SELECT r.id::text AS id, r.metadata ->> 'branch' AS branch, r.metadata ->> 'commit' AS commit,
-           r.started_at AS at, r.metadata -> 'issueIds' AS issue_ids
-      FROM pipeline_runs r
-      JOIN issues i ON i.project_id = r.project_id AND i.id = ${issueId}::uuid AND i.status = 'closed'
-     WHERE ${LANDINGS} AND r.metadata -> 'issueIds' ? (i.id::text)
-     ORDER BY r.started_at DESC
-     LIMIT 1
-  `)) as unknown as LandingRow[];
-  const landing = row ? landingOf(row, new Map()) : null;
-  return landing ? { branch: landing.branch, commit: landing.commit, at: landing.at } : null;
+/** Where an issue landed: the branch, the commit and when the landing was recorded. */
+export interface IssueLanding {
+  branch: string;
+  commit: string;
+  at: string;
 }
+
+/** The landing that closed each of `issueIds`, for those standing closed; absent where none did. */
+export async function landedRecordsOf(
+  issueIds: readonly string[],
+): Promise<Map<string, IssueLanding>> {
+  const out = new Map<string, IssueLanding>();
+  if (issueIds.length === 0) return out;
+  const rows = (await db.execute(sql`
+    SELECT DISTINCT ON (i.id) i.id::text AS issue_id, r.id::text AS id,
+           r.metadata ->> 'branch' AS branch, r.metadata ->> 'commit' AS commit,
+           r.started_at AS at, r.metadata -> 'issueIds' AS issue_ids
+      FROM issues i
+      JOIN pipeline_runs r ON r.project_id = i.project_id AND ${LANDINGS}
+                          AND r.metadata -> 'issueIds' ? (i.id::text)
+     WHERE i.id IN (${sql.join(
+       issueIds.map((id) => sql`${id}::uuid`),
+       sql`, `,
+     )})
+       AND i.status = 'closed'
+     ORDER BY i.id, r.started_at DESC
+  `)) as unknown as Array<LandingRow & { issue_id: string }>;
+  for (const row of rows) {
+    const landing = landingOf(row, new Map());
+    if (landing) {
+      out.set(row.issue_id, { branch: landing.branch, commit: landing.commit, at: landing.at });
+    }
+  }
+  return out;
+}
+
+/** The landing that closed this issue, while it stands closed; null where none did. */
+export async function landedRecordOf(issueId: string): Promise<IssueLanding | null> {
+  return (await landedRecordsOf([issueId])).get(issueId.toLowerCase()) ?? null;
+}
+
+/** What a requirement reads of its issues' landings (`requirements/dependents.ts`), handed in at boot. */
+export const landingReads = { landedBuildHolds, landedRecordsOf };

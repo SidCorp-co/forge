@@ -171,6 +171,18 @@ export function identityPhraseOf(v: VerdictReading): string {
  * environment, the build its landing on the working branch is (core `release-batch/landed-build.ts`).
  * `sha` is null where Forge names no build.
  */
+/**
+ * Under release mode `none`, why a verdict of identity `kind` naming `value` earns no criterion, or
+ * null where it is a commit. Only a commit identity at the very commit a landing records earns one
+ * there (kernel input, coordinator ruling 2026-10-22): a runtime ref, even one spelling the whole
+ * landed sha, a design, a contract or a storefront draft names no landed commit. The record door,
+ * the steward and a requirement's coverage all read this one sentence.
+ */
+export function landedIdentityWhy(kind: string, value: string): string | null {
+	if (kind === "commit") return null;
+	return `judged against ${kind} \`${value}\`, not a commit: with no production environment only a verdict whose identity is the commit its landing records counts`;
+}
+
 export const JUDGED_BUILD_SOURCES = ["live", "shipped", "merged", "landed"] as const;
 export type JudgedBuildSource = (typeof JUDGED_BUILD_SOURCES)[number];
 
