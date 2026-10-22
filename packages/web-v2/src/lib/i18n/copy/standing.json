@@ -42,7 +42,6 @@
     "standing.act.cutThenApprove": "cắt {v}, rồi duyệt",
     "standing.act.cutWaiting": "cắt các issue đang chờ",
     "standing.act.declareProbe": "khai báo một đầu dò nguồn trên production",
-    "standing.act.declareProduction": "khai báo môi trường production",
     "standing.act.declareTarget": "khai báo nơi release được đưa lên",
     "standing.act.deploying": "đang triển khai",
     "standing.act.finishDraft": "hoàn tất bản nháp",

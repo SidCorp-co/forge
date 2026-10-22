@@ -407,6 +407,47 @@ export async function unearnedCriteriaReports(
   return out;
 }
 
+/** One live criterion and the verdict it stands on by the verified rule; null where none was recorded. */
+export interface StandingCriterion {
+  readonly criterion: number;
+  readonly verdict: CriterionVerdict | null;
+}
+
+/**
+ * Each issue's live criteria and the verdict each stands on (`standingOn`), for a reader that weighs
+ * them against a build of its own (`release-batch/landed-build.ts`). `owes` is false where the
+ * project's document says `delivery.verdictsRequired: false`: its issues owe no verdict.
+ */
+export async function standingCriteriaOf(
+  issueIds: readonly string[],
+): Promise<Map<string, { owes: boolean; criteria: StandingCriterion[] }>> {
+  const out = new Map<string, { owes: boolean; criteria: StandingCriterion[] }>();
+  if (issueIds.length === 0) return out;
+  const rows = await db
+    .select({ id: issues.id, projectId: issues.projectId })
+    .from(issues)
+    .where(inArray(issues.id, [...issueIds]));
+  const projects = new Map<
+    string,
+    { owes: boolean; judge: Awaited<ReturnType<typeof readJudge>> }
+  >();
+  for (const { projectId } of rows) {
+    if (projects.has(projectId)) continue;
+    const owes = verdictsRequiredOf((await readProjectDocument(projectId))?.document.delivery);
+    projects.set(projectId, { owes, judge: await readJudge(projectId) });
+  }
+  for (const row of rows) {
+    const project = projects.get(row.projectId);
+    const stands = await standingOn(row.id, await listCriteria(db, row.id), project?.judge ?? null);
+    const latest = latestByNumber(stands.criteria, stands.unverified);
+    out.set(row.id, {
+      owes: project?.owes ?? true,
+      criteria: stands.criteria.map((c) => ({ criterion: c.n, verdict: latest.get(c.n) ?? null })),
+    });
+  }
+  return out;
+}
+
 /** What `release-batch/runtime-weighing.ts` weighs for these issues — the project's unclaimed
  *  `awaiting_release` rows where none are named: each one's landing commit, oldest merge first,
  *  and every commit a verdict their criteria stand on was judged at (ISS-1368). */

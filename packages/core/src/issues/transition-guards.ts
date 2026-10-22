@@ -27,7 +27,8 @@
  *                      (`pattern-entry.ts`, read before the lock). No verdict is asked: verdicts are
  *                      judged on the release that carries the work (REQ-45 BC-2)
  *   closed             from awaiting_release, by a release that claimed it        CLOSE_ONLY_BY_RELEASE
- *                      (a release batch or a recorded release), merge recorded   CLOSE_REQUIRES_SHIPPED
+ *                      (a release batch, a recorded release, or with no          CLOSE_REQUIRES_SHIPPED
+ *                      production environment a recorded landing), merge recorded
  *                      from any other live status, or from awaiting_release      DESIGN_NOT_DELIVERED
  *                      without a release, only a design-only issue whose design
  *                      revisions are all approved (REQ-45 BC-4)
@@ -331,7 +332,7 @@ async function releaseGuard(ctx: GuardContext): Promise<GuardFault | null> {
     return null;
   return {
     code: 'CLOSE_ONLY_BY_RELEASE',
-    detail: `an issue that ships code closes through a release, and no release has claimed this one${design.designOnly ? `; it is design-only, and ${designShortfall(design)}` : ''}. Finish a release batch carrying it (\`POST /api/projects/${ctx.issue.projectId}/release-batches\`), or record the release that already happened (\`POST /api/projects/${ctx.issue.projectId}/release-records\`); either closes every issue it carries.`,
+    detail: `an issue that ships code closes through a release, and no release has claimed this one${design.designOnly ? `; it is design-only, and ${designShortfall(design)}` : ''}. Finish a release batch carrying it (\`POST /api/projects/${ctx.issue.projectId}/release-batches\`), or record the release that already happened (\`POST /api/projects/${ctx.issue.projectId}/release-records\`), which on a project with no production environment records its landing; either closes every issue it carries.`,
     details: { from: ctx.from, to: ctx.to, designOnly: design.designOnly },
   };
 }

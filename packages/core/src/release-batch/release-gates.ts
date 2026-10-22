@@ -241,7 +241,7 @@ const act =
  * gate's own (F72).
  */
 const OWED: Record<ReleaseReasonCode, Owed> = {
-  NO_RELEASE_GATE: { by: 'admin', act: act('standing.act.declareProduction') },
+  NO_RELEASE_GATE: { by: 'admin', act: act('standing.act.recordLanding') },
   RELEASE_TARGET_UNDECLARED: { by: 'admin', act: act('standing.act.declareTarget') },
   CLAIM_CONFLICT: { by: 'admin', act: act('standing.act.cutWaiting') },
   RELEASE_ROSTER_EMPTY: { by: 'master', act: act('standing.act.bringIssueToGate') },

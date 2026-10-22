@@ -118,7 +118,7 @@ const count = (n: number) => say("standing.gate.subject.count", { n, issues: n =
 const owes = (key: string, list: string) => say("standing.gate.owes", { key, word: list.includes(",") ? "criteria" : "criterion", list });
 const g = (code: string, kind: GateSaid["kind"], title: Said, sentence: Said, who: Said, act: Said): GateSaid => ({ code, kind, title, sentence, who, act });
 export const GATE_SENTENCES: GateSaid[] = [
-  g("NO_RELEASE_GATE", "blocker", say("standing.gate.title.noGate"), say("standing.gate.noGate"), ADMIN, say("standing.act.declareProduction")),
+  g("NO_RELEASE_GATE", "blocker", say("standing.gate.title.noGate"), say("standing.gate.noGate"), ADMIN, say("standing.act.recordLanding")),
   g("RELEASE_TARGET_UNDECLARED", "blocker", say("standing.gate.title.nowhere"), say("standing.gate.nowhere"), ADMIN, say("standing.act.declareTarget")),
   g("CLAIM_CONFLICT", "blocker", say("standing.gate.title.claimed"), say("standing.gate.claimed", { subject: keys("ISS-1, ISS-2"), verb: "are", obj: "them" }), ADMIN, say("standing.act.cutWaiting")),
   g("CLAIM_CONFLICT", "blocker", say("standing.gate.title.claimed"), say("standing.gate.claimed", { subject: keys("ISS-1"), verb: "is", obj: "it" }), ADMIN, say("standing.act.cutWaiting")),

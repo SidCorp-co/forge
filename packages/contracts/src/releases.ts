@@ -324,13 +324,16 @@ export interface ReleaseSummary
  * commit production's deployment record names, `provider` by what a storefront provider reports it
  * serves against what each issue landed — workflows, routes, pages, the theme and store settings, or
  * a design approval's record (core `release-batch/provider-verify.ts`).
- * `unverified` is a close from before the deployment check, kept as it was recorded.
+ * `unverified` is a close from before the deployment check, kept as it was recorded. `landed` is a
+ * project that declares no production environment: its landing on the working branch is the
+ * delivery, nothing was deployed, and no deploy is checked (core `release-batch/recorded-landing.ts`).
  */
 export const RELEASE_VERIFICATIONS = [
 	"probed",
 	"deployment",
 	"provider",
 	"unverified",
+	"landed",
 ] as const;
 export type RecordedReleaseVerification =
 	(typeof RELEASE_VERIFICATIONS)[number];
@@ -377,7 +380,10 @@ export function releaseVerifiedLevel(
 	if (criteria.total > 0) {
 		return criteria.proven === criteria.total ? "criteria" : "some_criteria";
 	}
-	return check !== null && check !== "unverified" ? "deploy_only" : "none";
+	// A landing deployed nothing, so no deploy check stands in for the criteria.
+	return check !== null && check !== "unverified" && check !== "landed"
+		? "deploy_only"
+		: "none";
 }
 
 export type ReleaseProduction =
@@ -389,11 +395,27 @@ export type ReleaseProduction =
 	  }
 	| { ok: false; reason: string };
 
+/**
+ * A landing recorded as the release of a project that declares no production environment: no
+ * version and no deploy, only the branch and commit its issues landed at (core
+ * `release-batch/recorded-landing.ts`).
+ */
+export interface ReleaseLanding {
+	runId: string;
+	branch: string;
+	commit: string;
+	at: string;
+	/** The issues it closed, by key. */
+	issues: string[];
+}
+
 export interface ReleaseListResponse {
 	releases: ReleaseSummary[];
 	counts: Record<ReleaseAttentionGroup, number>;
 	approvalRequired: boolean;
 	production: ReleaseProduction;
+	/** Landings recorded as releases, newest first; empty on a project with production. */
+	landings: ReleaseLanding[];
 }
 
 export interface ReleaseIssueView {
@@ -733,6 +755,18 @@ export const RELEASE_REFUSAL_CODES = [
 	"CONTRACT_PROVIDER_NOT_LIVE",
 	"RELEASE_VERDICT_NOT_YOURS",
 	"RELEASE_NOT_VERIFIED",
+	/** Under release mode `none`, the record's commit is not a whole sha a landing can name. */
+	"RELEASE_LANDING_COMMIT_SHAPE",
+	/** Under release mode `none`, an issue whose merge records no commit, so nothing says what landed. */
+	"RELEASE_LANDING_UNRECORDED",
+	/** Under release mode `none`, an issue whose recorded merge is not in the record's commit. */
+	"RELEASE_LANDING_NOT_IN_COMMIT",
+	/** Under release mode `none`, an issue criterion with no counting pass at the record's commit. */
+	"RELEASE_LANDING_UNJUDGED",
+	/** Under release mode `none`, an ancestry nobody could read, so the record cannot be shown. */
+	"RELEASE_LANDING_UNREAD",
+	/** Under release mode `none`, a project whose source names no branch for work to land on. */
+	"RELEASE_LANDING_NO_BRANCH",
 	"RELEASE_BATCH_ABORTED",
 	"RELEASE_FINISH_IN_FLIGHT",
 	"RELEASE_FINISHED_FOR_OTHER_COMMIT",

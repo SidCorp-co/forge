@@ -298,6 +298,10 @@ interface IssuePorts {
     projectId: string,
     issueId: string,
   ) => Promise<{ version: string; at: string } | null>;
+  /** On a project with no production environment, the landing that closed the issue; null where none did. */
+  landedRecordOf: (
+    issueId: string,
+  ) => Promise<{ branch: string; commit: string; at: string } | null>;
   plannedRevisionFor: (
     tx: Tx,
     issueId: string,
@@ -436,6 +440,7 @@ export const requirementOfIssue = port('requirementOfIssue');
 export const traceWordingsOf = port('traceWordingsOf');
 export const liveTracedCodesOf = port('liveTracedCodesOf');
 export const shippedReleaseOf = port('shippedReleaseOf');
+export const landedRecordOf = port('landedRecordOf');
 export const plannedRevisionFor = port('plannedRevisionFor');
 export const approvalRequired = port('approvalRequired');
 export const policyGapsOf = port('policyGapsOf');

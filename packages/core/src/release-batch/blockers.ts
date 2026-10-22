@@ -303,6 +303,24 @@ export async function collectReleaseBlockers(
     };
   }
   if (read) {
+    // With no production environment a record is the landing's own (`recorded-landing.ts`): there is
+    // no gate to refuse, and its roster owes what every record's does.
+    if (read.kind === 'no-release' && door === 'record') {
+      const { issueIds } = options;
+      const found = await resolveRoster(projectId, RELEASE_GATE_STATUS, issueIds, blockers);
+      if (issueIds && issueIds.length > 0) {
+        await claimBlockers(projectId, RELEASE_GATE_STATUS, issueIds, blockers);
+      }
+      await rosterBlockers(door, found?.ids ?? [], blockers);
+      return {
+        projectId,
+        projectExists: true,
+        declaration: read,
+        channels: [],
+        blockers,
+        warnings,
+      };
+    }
     if (read.kind === 'no-release') blockers.push(blocker('NO_RELEASE_GATE'));
     if (read.kind === 'undeclared-target') {
       blockers.push(blocker('RELEASE_TARGET_UNDECLARED', { reason: read.reason }));

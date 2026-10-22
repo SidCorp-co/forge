@@ -294,6 +294,9 @@ export interface IssueDetail extends IssueRow {
   workState?: IssueWorkState | null;
   /** The release that shipped it (FB-102); null while none has, absent from an older core. */
   shippedIn?: { version: string; at: string } | null;
+  /** On a project with no production environment, the landing that closed it: no version, nothing
+   *  deployed; null where none did, absent from an older core. */
+  landedIn?: { branch: string; commit: string; at: string } | null;
   /** The workflow this issue builds (`workflows/build-gate.ts:buildsWorkflowOf`); null where none. */
   buildsWorkflow?: { workflowId: string; flow: string; title: string; designStatus: DesignStatus | null; dispatchable: boolean } | null;
   /** Every workflow a revision was drawn under this issue, each at the latest revision drawn here

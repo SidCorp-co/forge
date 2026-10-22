@@ -621,8 +621,8 @@ export const SAID = {
 		en: "say what carries {v} outside Forge, or nothing",
 		vars: { v: "version" },
 	},
-	"standing.act.declareProduction": { en: "declare a production environment" },
 	"standing.act.declareTarget": { en: "declare where releases land" },
+	"standing.act.recordLanding": { en: "record the landing" },
 	"standing.act.deploying": { en: "deploying" },
 	"standing.act.finishDraft": { en: "finish draft" },
 	"standing.act.fixFailing": {
@@ -785,7 +785,7 @@ export const SAID = {
 		},
 	},
 	"standing.gate.noGate": {
-		en: "A release has nowhere to go until one is declared.",
+		en: "Landing on the working branch is this project's delivery.",
 	},
 	"standing.gate.noRunner": { en: "None paired" },
 	"standing.gate.noRunnerOnline": {

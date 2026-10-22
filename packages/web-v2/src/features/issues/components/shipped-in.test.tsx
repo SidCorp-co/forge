@@ -53,6 +53,14 @@ describe("the release that shipped an issue", () => {
   });
 });
 
+describe("the landing that closed an issue on a project with no production environment", () => {
+  it("names the branch and commit it landed at, with no environment, and never a release link", () => {
+    changes(issue({ shippedIn: null, landedIn: { branch: "release/stg", commit: "f4e5fb66700ba7b35c8c607c8f7309fc5980861a", at: "2026-10-22T11:00:00.000Z" } }));
+    expect(screen.getByTestId("changes-landed-in").textContent).toBe("Landed on release/stg at f4e5fb6 — no environment");
+    expect(screen.queryByTestId("rail-shipped-in")).toBeNull();
+  });
+});
+
 describe("the Runs tab", () => {
   it("counts the issue's runs, not the steps they recorded", () => {
     expect(runsTabCount([RUN], [])).toBe(1);

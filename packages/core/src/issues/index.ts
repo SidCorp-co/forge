@@ -58,7 +58,10 @@ export {
 } from './criteria/probe-replay.js';
 export { type CriterionWithVerdict, listCriteriaOf, putCriteria } from './criteria/store.js';
 export {
+  type CriterionVerdict,
   type IssueCriteriaReport,
+  type StandingCriterion,
+  standingCriteriaOf,
   unearnedCriteriaReports,
   verdictWeighingInputs,
 } from './criteria-verdicts.js';

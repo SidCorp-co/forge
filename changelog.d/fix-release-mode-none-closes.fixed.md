@@ -1,0 +1,1 @@
+**An issue on a project with no production environment can close.** `POST /api/projects/:id/release-records` records its landing on the working branch at a commit every criterion passed on, and closes it; the steward and requirement coverage count that same commit.

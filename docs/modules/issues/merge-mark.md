@@ -219,7 +219,10 @@ workflow `issue-lifecycle` rev 8). The run that holds the issue moves it `in_pro
 verdict: verdicts are judged on the release that carries the work, and a failing one reopens the
 issue (REQ-45 BC-1, BC-2). When the run ends without moving it, the kernel hands the issue back to the
 status the run took it from. `awaiting_release` → `closed` is written by a release that claimed the
-issue (`CLOSE_ONLY_BY_RELEASE`), and needs the merge too (`CLOSE_REQUIRES_SHIPPED`).
+issue (`CLOSE_ONLY_BY_RELEASE`), and needs the merge too (`CLOSE_REQUIRES_SHIPPED`). On a project with
+no production environment that release is the recorded landing
+(`packages/core/src/release-batch/recorded-landing.ts:recordLanding`), which also asks that the
+mark's commit be in the commit recorded.
 
 A design-only issue — its mark names design artifacts and nothing else, no commit and no read paths
 (`packages/core/src/issues/design-delivery.ts:designOnlyMarkSql`) — ships nothing a release carries.

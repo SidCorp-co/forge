@@ -32,6 +32,11 @@ export interface RequirementDependents {
     projectId: string,
     asked: { commits: readonly string[]; runtimes: readonly string[] },
   ): Promise<LiveBuildHolds | null>;
+  /**
+   * On a project with no production environment, each issue's landed build, which its verdicts are
+   * weighed on (`release-batch/landed-build.ts:landedBuildHolds`); null on a project with one.
+   */
+  landedBuildHolds(projectId: string, issueIds: readonly string[]): Promise<LiveBuildHolds | null>;
 }
 
 const slot = portSlot<RequirementDependents>('requirements', 'provideRequirementDependents');

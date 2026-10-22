@@ -28,6 +28,7 @@ import { pipelineHealthUnderived, safeHydratePipelineHealthForIssues } from './p
 import {
   buildsWorkflowOf,
   fireOfCaller,
+  landedRecordOf,
   proposesWorkflowsOf,
   requirementOfIssue,
   shippedReleaseOf,
@@ -58,6 +59,7 @@ export async function issueDetailOf(issue: IssueRow) {
     requirement: await requirementOfIssue(issue.id),
     relations: await loadIssueRelations(issue.id, issue.projectId),
     shippedIn: await shippedReleaseOf(issue.projectId, issue.id),
+    landedIn: await landedRecordOf(issue.id),
     carriage: await carriageOfIssue(issue),
     labels: await listIssueLabels(issue.id),
     comments: [],
