@@ -299,49 +299,56 @@ export async function latestContractPinsOf(ids: readonly string[]) {
 export async function acceptanceDecisionsOf(
   ids: readonly string[],
 ): Promise<Map<string, RequirementAcceptanceDecision>> {
-  if (ids.length === 0) return new Map();
-  const rows = (await db.execute(sql`
-    SELECT DISTINCT ON (r.id) r.id, kt.reason, kt.created_at AS at, kt.checklist_answers AS answers
-      FROM requirements r
-      JOIN kernel_transitions kt ON kt.entity = 'requirement' AND kt.entity_id = r.id
-                                AND kt.to_status = 'accepted'
-     WHERE r.status = 'accepted'
-       AND r.id IN (${sql.join(
-         ids.map((id) => sql`${id}::uuid`),
-         sql`, `,
-       )})
-     ORDER BY r.id, kt.created_at DESC`)) as unknown as Array<{
-    id: string;
-    reason: string | null;
-    at: Date | string;
-    answers: ChecklistAnswer[] | null;
-  }>;
-  const out = new Map<string, RequirementAcceptanceDecision>();
-  for (const r of rows) {
-    const waived = waivedOf({ answers: r.answers ?? [] });
-    if (waived.length === 0) continue;
-    out.set(r.id, { reason: r.reason ?? '', decidedAt: new Date(r.at).toISOString(), waived });
-  }
-  return out;
+  return (await statusFactsOf(ids)).decisions;
 }
 
 /**
- * When each requirement's status last moved, from its kernel transitions, else when it was filed: the
- * start of its time in the state it stands in (REQ-29 BC-5's age). A placement, a short name or any
- * other edit moves no status, so it never restarts that time.
+ * Read off each requirement's latest kernel transition in one statement: when its status last moved,
+ * else when it was filed (the start of its time in the state it stands in, REQ-29 BC-5's age; a
+ * placement, a short name or any other edit moves no status, so it never restarts that time), and,
+ * for one standing accepted, whether that move into accepted was a decision (`acceptanceDecisionsOf`).
  */
-export async function statusSinceOf(ids: readonly string[]): Promise<Map<string, Date>> {
-  if (ids.length === 0) return new Map();
+export async function statusFactsOf(ids: readonly string[]): Promise<{
+  since: Map<string, Date>;
+  decisions: Map<string, RequirementAcceptanceDecision>;
+}> {
+  if (ids.length === 0) return { since: new Map(), decisions: new Map() };
   const rows = (await db.execute(sql`
-    SELECT r.id, COALESCE(max(kt.created_at), r.created_at) AS at
+    SELECT r.id, r.status, COALESCE(last.created_at, r.created_at) AS at,
+           last.to_status, last.reason, last.checklist_answers AS answers
       FROM requirements r
-      LEFT JOIN kernel_transitions kt ON kt.entity = 'requirement' AND kt.entity_id = r.id
+      LEFT JOIN LATERAL (
+        SELECT kt.created_at, kt.to_status, kt.reason, kt.checklist_answers
+          FROM kernel_transitions kt
+         WHERE kt.entity = 'requirement' AND kt.entity_id = r.id
+         ORDER BY kt.created_at DESC
+         LIMIT 1
+      ) last ON true
      WHERE r.id IN (${sql.join(
        ids.map((id) => sql`${id}::uuid`),
        sql`, `,
-     )})
-     GROUP BY r.id, r.created_at`)) as unknown as Array<{ id: string; at: Date | string }>;
-  return new Map([...rows].map((r) => [r.id, new Date(r.at)]));
+     )})`)) as unknown as Array<{
+    id: string;
+    status: string;
+    at: Date | string;
+    to_status: string | null;
+    reason: string | null;
+    answers: ChecklistAnswer[] | null;
+  }>;
+  const since = new Map<string, Date>();
+  const decisions = new Map<string, RequirementAcceptanceDecision>();
+  for (const r of rows) {
+    since.set(r.id, new Date(r.at));
+    if (r.status !== 'accepted' || r.to_status !== 'accepted') continue;
+    const waived = waivedOf({ answers: r.answers ?? [] });
+    if (waived.length === 0) continue;
+    decisions.set(r.id, {
+      reason: r.reason ?? '',
+      decidedAt: new Date(r.at).toISOString(),
+      waived,
+    });
+  }
+  return { since, decisions };
 }
 
 /** When each linked issue last closed (closed ones only) and first moved past draft and open. */

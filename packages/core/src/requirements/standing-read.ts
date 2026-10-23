@@ -47,7 +47,7 @@ import {
   latestContractPinsOf,
   latestPinsOf,
   liveBuildOf,
-  statusSinceOf,
+  statusFactsOf,
   unapprovedDesignsOf,
 } from './standing-facts.js';
 import { awaitsReleaseOnly, type OwnStanding } from './standing-work.js';
@@ -168,17 +168,16 @@ async function uncoveredOf(ids: readonly string[]): Promise<Map<string, Map<stri
 const sinceOf = (since: ReadonlyMap<string, Date>, id: string): Date => {
   const at = since.get(id);
   if (!at)
-    throw new Error(`requirement ${id} has no status-since time: statusSinceOf read no row for it`);
+    throw new Error(`requirement ${id} has no status-since time: statusFactsOf read no row for it`);
   return at;
 };
 
 async function besideFactsOf(ids: readonly string[]) {
-  const [uncovered, follows, asked, statusSince, decisions] = await Promise.all([
+  const [uncovered, follows, asked, { since: statusSince, decisions }] = await Promise.all([
     uncoveredOf(ids),
     followReadsOf(db, ids),
     stewardAskedOf(ids),
-    statusSinceOf(ids),
-    acceptanceDecisionsOf(ids),
+    statusFactsOf(ids),
   ]);
   return (id: string) => ({
     statusSince: sinceOf(statusSince, id),

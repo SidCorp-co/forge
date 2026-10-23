@@ -30,6 +30,7 @@ const descriptor = defineReportQuery({
     { name: 'refused', type: 'number', unit: 'moves', label: 'Refused' },
     { name: 'exception', type: 'number', unit: 'moves', label: 'By exception' },
     { name: 'noChecklist', type: 'number', unit: 'moves', label: 'No checklist' },
+    { name: 'waived', type: 'number', unit: 'moves', label: 'Waived by decision' },
   ],
   permission: 'project.read',
   egress: 'product',
@@ -45,6 +46,7 @@ export function gatedMovesFrame(counts: readonly GateCount[]): ReportFrame {
     refused: c.refused,
     exception: c.exception,
     noChecklist: c.noChecklist,
+    waived: c.waived,
   }));
   return checkedFrame(descriptor.id, { fields: [...descriptor.output], rows });
 }
