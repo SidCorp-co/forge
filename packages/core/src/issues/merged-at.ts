@@ -3,6 +3,7 @@ import { type IssueStatus, issues } from '../db/schema.js';
 import { projectConfigDocuments } from '../db/schema-project-config.js';
 import { repoPullRequestIssues, repoPullRequests } from '../db/schema-repo-projection.js';
 import { designOnlyMarkSql } from './design-delivery.js';
+import { landedSql } from './host-landing.js';
 import {
   type LandingShape,
   landingRoute,
@@ -52,6 +53,19 @@ export async function mergeNotRecorded(
   | null
 > {
   const code = args.to === 'closed' ? 'CLOSE_REQUIRES_SHIPPED' : 'MERGE_NOT_RECORDED';
+  if (await stampWithoutHostMerge(executor, args.issueId)) {
+    if (args.to === 'awaiting_release' && (await changeRequestWaits(executor, args.issueId))) {
+      return null;
+    }
+    return {
+      code,
+      detail:
+        `\`${args.to}\` needs a landing, and on this project only the host's merge of a change request lands: this issue's \`merged_at\` is a local mark the host never merged. ` +
+        'Push the branch and open a change request that links this issue: `awaiting_release` waits on it until the release merges it, and that merge records the landing. ' +
+        'Use `dropped` for work that turned out not to be work.',
+      details: { to: args.to, requires: 'changeRequest', held: 'local', useInstead: 'dropped' },
+    };
+  }
   const evidence = await readLandingEvidence(executor, args.issueId);
   if (evidence && !landingShortfall(evidence.columns, evidence.shape)) {
     return args.to === 'awaiting_release' ? await designStampOnly(executor, args.issueId) : null;
@@ -116,6 +130,24 @@ async function changeRequestWaits(
     )
     .limit(1);
   return row !== undefined;
+}
+
+/**
+ * A merge stamp the host never made, on a project that releases through change requests: there
+ * only the host's merge lands (`host-landing.ts:landedSql`, REQ-71), so the stamp does not stand.
+ */
+async function stampWithoutHostMerge(
+  executor: MergeRecordExecutor,
+  issueId: string,
+): Promise<boolean> {
+  const [row] = await executor
+    .select({
+      off: sql<boolean>`(${issues.mergedAt} IS NOT NULL AND NOT ${landedSql(sql`${issues}`)})`,
+    })
+    .from(issues)
+    .where(eq(issues.id, issueId))
+    .limit(1);
+  return row?.off === true;
 }
 
 /** Why `unmark` is refused on a `closed` issue, or `null` where it may proceed. `clearIssueMerge`

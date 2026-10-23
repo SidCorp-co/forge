@@ -2,6 +2,7 @@ import { owedCloseResolutionKey, strandedResolutionKey } from '@forge/contracts/
 import { and, asc, eq, inArray, isNotNull, notInArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issueStatuses, issues, projects } from '../db/schema.js';
+import { landedSql } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../lib/logger.js';
 import { emitNotification, projectAdminUserIdsFor } from './ports.js';
@@ -172,6 +173,7 @@ export async function detectStrandedIssues(
         issuePrefix: projects.issuePrefix,
         issSeq: issues.issSeq,
         mergedAt: issues.mergedAt,
+        landed: sql<boolean>`${landedSql(sql`"issues"`)}`,
         updatedAt: issues.updatedAt,
         cursorTs: sql<string>`"issues"."updated_at"::text`,
         projectName: projects.name,
@@ -207,8 +209,9 @@ export async function detectStrandedIssues(
       found: 'a waiting park with nothing coming for it',
       resolutionKey: strandedResolutionKey,
       notice: (row, ref) => {
-        const age = ageSince(now, (row.mergedAt ?? row.updatedAt).getTime());
-        const lead = row.mergedAt
+        const landedAt = row.landed ? row.mergedAt : null;
+        const age = ageSince(now, (landedAt ?? row.updatedAt).getTime());
+        const lead = landedAt
           ? `Its code merged ${age} ago but the issue is still parked`
           : `It has been parked ${age}`;
         return {
@@ -250,6 +253,8 @@ export async function detectOwedCloses(
       .where(
         and(
           isNotNull(issues.mergedAt),
+          // a change-request project's local stamp is no landing, so nothing shipped to close
+          landedSql(sql`"issues"`),
           sql`"issues"."merged_at" < ${window.until}::timestamptz`,
           notInArray(issues.status, terminal),
           ...(window.after

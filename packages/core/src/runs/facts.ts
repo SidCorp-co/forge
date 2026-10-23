@@ -48,7 +48,8 @@ function issueStatusesOf(b: BaseRun, t: Tables, keys: string[], display: Display
     const key = display(canonical);
     const opened = str(opening[canonical]);
     if (opened) openingStatuses[key] = opened;
-    const merged = date(row.merged_at);
+    // a change-request project's local stamp is no landing (`issues/host-landing.ts:landedSql`)
+    const merged = row.landed === true ? date(row.merged_at) : null;
     if (merged && merged.getTime() >= start && merged.getTime() <= end.getTime()) {
       landedAt[key] = merged;
     }

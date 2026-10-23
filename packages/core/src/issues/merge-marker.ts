@@ -9,6 +9,7 @@ import { emitEvents } from '../outbox/index.js';
 import type { Actor } from './activity.js';
 import { resolveCarriage } from './carriage.js';
 import { type CommitLanding, readCommitLanding } from './commit-landing.js';
+import { type HostMerge, hostMergeOfMark } from './host-mark.js';
 import {
   landingMarkRefusal,
   markArtifacts,
@@ -131,10 +132,12 @@ type Stamp = {
 };
 
 /** The refusals a mark meets before its transaction: the landing shape, the target, contract
- *  drift, and an agent's work evidence, which a commit the repository attributes may stand in for. */
+ *  drift, and an agent's work evidence, which a commit the repository attributes or a host's merge
+ *  may stand in for. */
 async function preflightMark(
   args: MergeMarkArgs,
   prior: IssueRow,
+  hostMerge: HostMerge | null,
 ): Promise<{ shape: LandingShape; fromRepository: RepositoryLanding | null }> {
   const issueId = args.issue.id;
   const shape = await readLandingShape(args.issue.projectId, db);
@@ -150,6 +153,7 @@ async function preflightMark(
   }
   const drift = await contractDrift(prior, args.contracts ?? []);
   if (drift) throw refuse(drift.code, drift.detail, '/contracts');
+  if (hostMerge) return { shape, fromRepository: null };
   const design = shape === 'git' && args.commit ? designOnlyStamp(prior) : null;
   if (design && args.commit) {
     return { shape, fromRepository: await overDesign(args, args.commit, design) };
@@ -189,11 +193,12 @@ async function overDesign(
 async function stampMark(
   tx: Tx,
   args: MergeMarkArgs,
-  shape: LandingShape,
-  fromRepository: RepositoryLanding | null,
+  preflight: { shape: LandingShape; fromRepository: RepositoryLanding | null },
+  hostMerge: HostMerge | null,
 ): Promise<Stamp> {
+  const { shape, fromRepository } = preflight;
   const issueId = args.issue.id;
-  const observed = await observedMergeForIssue(tx, issueId);
+  const observed = (await observedMergeForIssue(tx, issueId)) ?? hostMerge;
   const landing = args.landing ?? null;
   const refused = landingMarkRefusal({ shape, landing, observed: observed !== null });
   if (refused) throw refuse(refused.code, refused.detail, '/landing');
@@ -482,7 +487,8 @@ export async function applyMergeMarker(input: MergeMarkArgs): Promise<{
   const prior = await findIssueById(input.issue.id);
   if (!prior) throw notFound('issue not found');
   const args = await withCarriers(input, prior);
-  const preflight = args.op === 'mark' ? await preflightMark(args, prior) : null;
+  const hostMerge = args.op === 'mark' ? await hostMergeOfMark(args, prior) : null;
+  const preflight = args.op === 'mark' ? await preflightMark(args, prior, hostMerge) : null;
   if (preflight) await refuseUncheckedMerge(args, prior, preflight.shape);
 
   // The stamp, its audit comment and their events commit together or not at all.
@@ -492,7 +498,7 @@ export async function applyMergeMarker(input: MergeMarkArgs): Promise<{
       claimedCommit: null,
       readFrom: null,
     };
-    if (preflight) stamp = await stampMark(tx, args, preflight.shape, preflight.fromRepository);
+    if (preflight) stamp = await stampMark(tx, args, preflight, hostMerge);
     else await clearMark(tx, args.issue.id);
     return { stamp, ...(await writeMarkTrail(tx, args, prior, stamp)) };
   });

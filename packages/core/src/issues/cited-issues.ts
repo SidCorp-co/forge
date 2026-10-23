@@ -1,6 +1,7 @@
-import { and, eq, inArray, or } from 'drizzle-orm';
+import { and, eq, inArray, or, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { issues } from '../db/schema.js';
+import { landedSql } from './host-landing.js';
 
 /** The project's issues among these ids and sequences, for a screen checking what a message cites. */
 export async function citedIssues(
@@ -18,7 +19,7 @@ export async function citedIssues(
       id: issues.id,
       issSeq: issues.issSeq,
       status: issues.status,
-      mergedAt: issues.mergedAt,
+      landed: sql<boolean>`${landedSql(sql`${issues}`)}`,
     })
     .from(issues)
     .where(and(eq(issues.projectId, projectId), or(...conds)));

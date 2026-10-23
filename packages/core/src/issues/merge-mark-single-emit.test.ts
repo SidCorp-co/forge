@@ -43,6 +43,7 @@ vi.mock('./pattern-entry.js', () => ({ markEntryRefusal: async () => null }));
 vi.mock('./ports.js', () => ({
   answerMergeQuestions: async () => [],
   contractDrift: async () => null,
+  readProjectDocument: async () => null,
   postIssueNotice: async (args: { body: string }) => ({
     id: 'c1',
     body: args.body,

@@ -13,6 +13,7 @@ import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { terminalAgentSessionStatuses } from '../db/schema.js';
 import { masterLastBeatSql } from '../devices/index.js';
+import { landedSql } from '../issues/index.js';
 import { heartbeatBeatSql, heartbeatReapedSql, JOB_LAST_PROGRESS_SQL } from '../jobs/index.js';
 import { canonicalIssueKey } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
@@ -226,7 +227,7 @@ function runRows(projectId: string, ids: string[]) {
 function issueRowsOf(projectId: string, seqs: number[]) {
   return when(seqs.length > 0, () =>
     q(sql`
-      SELECT i.id, i.iss_seq, i.title, i.status, i.merged_at, w.step, w.step_started_at, w.lease,
+      SELECT i.id, i.iss_seq, i.title, i.status, i.merged_at, ${landedSql(sql`i`)} AS landed, w.step, w.step_started_at, w.lease,
              i.session_context -> 'strand' AS strand,
              (SELECT max(kt.created_at) FROM kernel_transitions kt
                WHERE kt.entity = 'issue' AND kt.entity_id = i.id AND kt.to_status = i.status)

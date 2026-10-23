@@ -17,6 +17,7 @@ import {
   designHoldPhrase,
   designHoldsOf,
 } from './design-delivery.js';
+import { landedSql } from './host-landing.js';
 import { restingRefusal } from './issue-resting.js';
 import { refuseScopeHeldForKeys } from './issue-scope.js';
 import {
@@ -107,7 +108,7 @@ export async function blockingEdgesIn(
     SELECT d.id AS edge_id, d.from_issue_id AS from_id, d.to_issue_id AS to_id,
            b.iss_seq AS from_seq, t.iss_seq AS to_seq, b.title AS from_title, t.title AS to_title,
            b.status AS from_status, t.status AS to_status,
-           b.merged_at IS NOT NULL AS from_merged, t.merged_at IS NOT NULL AS to_merged,
+           ${landedSql(sql`b`)} AS from_merged, ${landedSql(sql`t`)} AS to_merged,
            bw.step AS from_step, tw.step AS to_step,
            ${blockerUnsettledSql(sql`b`)} AS holds
     ${liveBlockingEdges(

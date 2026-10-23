@@ -13,7 +13,8 @@ export interface CitedIssueRow {
   readonly id: string;
   readonly issSeq: number;
   readonly status: string;
-  readonly mergedAt: Date | null;
+  /** Its merge reads as landed (`issues/host-landing.ts:landedSql`). */
+  readonly landed: boolean;
 }
 
 /** A workflow a design identity resolved to, and every revision of it that exists. */
