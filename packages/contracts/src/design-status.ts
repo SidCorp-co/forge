@@ -47,7 +47,7 @@ export const DESIGN_STATUS_HINTS: Record<DesignStatus, string> = {
 	approved: "approved: work that builds it may start",
 	returned: "returned: sent back to the master to revise",
 	withdrawn:
-		"withdrawn: taken back before any revision was approved; it is no longer listed and nothing builds it",
+		"withdrawn: taken back before approval; no longer listed, nothing builds it",
 };
 
 // the design keeps one head status (docs/patterns/core-module.md, "Revisions: one vocabulary"), so a revision's own state is
