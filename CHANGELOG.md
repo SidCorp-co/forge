@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.299] - 2026-10-23
+
+Feedback waits on the project's master and merges duplicates on one issue
+
+### Fixed
+
+- **Routed feedback waits on the master, not a person.** An item on a draft or parked issue names the master. A planned item can move to its replacing requirement, or merge into another item on its issue.
+- **A steward ask about a feedback item or a requirement is answered on that item.** The master's nudge names each item's own decision door, and a decision there settles the ask; every ask named the issue door, which answered 404.
+
 ## [0.4.0-dev.298] - 2026-10-23
 
 Checks on merge-request projects follow the merge request's latest commit

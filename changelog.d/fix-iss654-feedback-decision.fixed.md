@@ -1,1 +1,0 @@
-**A steward ask about a feedback item or a requirement is answered on that item.** The master's nudge names each item's own decision door, and a decision there settles the ask; every ask named the issue door, which answered 404.
