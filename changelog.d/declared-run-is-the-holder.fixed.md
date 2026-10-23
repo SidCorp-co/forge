@@ -1,0 +1,1 @@
+**A run a master declared now moves its own issue to `awaiting_release`.** The box it was declared from is its holder; another box is refused naming the run, and an ended run session no longer counts.

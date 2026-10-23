@@ -3,6 +3,8 @@
 
 import { sql } from 'drizzle-orm';
 import { check, index, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { personalAccessTokens } from './schema-credentials.js';
+import { devices } from './schema-devices.js';
 import { issues } from './schema-issues.js';
 
 /** A run's steps inside `in_progress` (and `release` inside `awaiting_release`), in order. */
@@ -38,6 +40,12 @@ export const issueWorkState = pgTable(
     /** forge-plugin `flow/lease.mjs`'s lease, moved off `session_context`: JSON null is a null lease, SQL NULL none. */
     lease: jsonb('lease'),
     leaseHolder: text('lease_holder').generatedAlwaysAs(sql`nullif(lease ->> 'holder', '')`),
+    /** The box and token of the write that named the lease's holder (`issues/run-holder.ts`); core's,
+     *  never composed into `sessionContext`. NULL where the write came from no box. */
+    leaseDeviceId: uuid('lease_device_id').references(() => devices.id, { onDelete: 'set null' }),
+    leaseTokenId: uuid('lease_token_id').references(() => personalAccessTokens.id, {
+      onDelete: 'set null',
+    }),
     branch: text('branch'),
     headSha: text('head_sha'),
     /** The status a park (`needs_info`, `on_hold`) left, and returns to; NULL off a park. */

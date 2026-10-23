@@ -17,8 +17,9 @@ import {
   type WorkStepEntry,
   workSteps,
 } from '../db/schema-issue-work-state.js';
+import type { CallerBox } from './caller-box.js';
 import { issueWorkInFlightSql } from './issue-lease.js';
-import { classifyLease } from './session-claim.js';
+import { declaredRunOf } from './run-holder.js';
 
 export { type WorkStep, workSteps };
 
@@ -190,21 +191,30 @@ export function splitSessionContext(value: unknown): SplitSessionContext {
   };
 }
 
-/** The work-state half of a split `sessionContext` write, in the write's own transaction. */
+/**
+ * The work-state half of a split `sessionContext` write, in the write's own transaction. `origin` is
+ * the box the lease is held from (`run-holder.ts:leaseOriginFor`), stored beside the blob and never
+ * in it; a write that leaves no lease leaves no box.
+ */
 export async function writeSplitSessionContext(
   executor: Executor,
   issueId: string,
   split: SplitSessionContext,
+  origin: CallerBox | null = null,
 ): Promise<void> {
   const lease = split.lease.present
     ? sql`${JSON.stringify(split.lease.value)}::jsonb`
     : sql`NULL::jsonb`;
+  const from = split.lease.present && split.lease.value !== null ? origin : null;
   await executor.execute(sql`
-    INSERT INTO issue_work_state (issue_id, lease, branch, head_sha, updated_at)
-    VALUES (${issueId}, ${lease}, ${split.branch}, ${split.headSha}, now())
+    INSERT INTO issue_work_state
+      (issue_id, lease, lease_device_id, lease_token_id, branch, head_sha, updated_at)
+    VALUES (${issueId}, ${lease}, ${from?.deviceId ?? null}, ${from?.tokenId ?? null},
+            ${split.branch}, ${split.headSha}, now())
     ON CONFLICT (issue_id) DO UPDATE
-      SET lease = EXCLUDED.lease, branch = EXCLUDED.branch, head_sha = EXCLUDED.head_sha,
-          updated_at = now()
+      SET lease = EXCLUDED.lease, lease_device_id = EXCLUDED.lease_device_id,
+          lease_token_id = EXCLUDED.lease_token_id, branch = EXCLUDED.branch,
+          head_sha = EXCLUDED.head_sha, updated_at = now()
   `);
 }
 
@@ -249,9 +259,8 @@ export async function issueHolder(
   now: Date = new Date(),
   exceptRunId: string | null = null,
 ): Promise<string | null> {
-  const held = await readWorkState(executor, issue.id);
-  const lease = classifyLease({ lease: held?.lease ?? null, now, fanout: 1 });
-  if (lease.verdict === 'live' || lease.verdict === 'shared') return `lease ${lease.holder}`;
+  const declared = await declaredRunOf(executor, issue.id, now);
+  if (declared) return `lease ${declared.holder}`;
   const rows = (await executor.execute(sql`
     SELECT ${issueWorkInFlightSql({
       issueId: sql`i.id`,

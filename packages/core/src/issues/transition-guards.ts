@@ -47,7 +47,7 @@ import { ISSUE_MACHINE, type IssueGuard, PARK_STATUSES } from '@forge/contracts/
 import type { ActorAgency, ProjectPermission } from '@forge/contracts/permissions';
 import { personGateAct, personGatePermission } from '@forge/contracts/person-gates';
 import { sql } from 'drizzle-orm';
-import { db, type Tx } from '../db/client.js';
+import type { Tx } from '../db/client.js';
 import type { IssueStatus, WaitingKind } from '../db/schema.js';
 import type { Refusal } from '../lib/refusal.js';
 import { isRefusal } from '../lib/refusal.js';
@@ -61,6 +61,7 @@ import {
   projectResource,
 } from '../permissions/index.js';
 import { refuseHeldTake } from './blocked-by.js';
+import { callerBoxOf } from './caller-box.js';
 import { designHeldSql, designHoldsOf, designOnlyMarkSql } from './design-delivery.js';
 import { designCheckOf } from './design-record.js';
 import { mergeNotRecorded } from './merged-at.js';
@@ -69,6 +70,7 @@ import type { CatalogReading } from './pattern-rules.js';
 import { catalogOf, patternReleaseRefusal } from './patterns.js';
 import { readProjectDocument } from './ports.js';
 import { releaseClaimRefusal } from './release-claim-guard.js';
+import { callerHolds, holderSentence, runHoldersOf } from './run-holder.js';
 import { isBlankPlan } from './transition-evidence.js';
 import { edgeFault, quote } from './transition-faults.js';
 import { issueHolder } from './work-state.js';
@@ -128,19 +130,6 @@ type HoldOverride = (typeof HOLD_OVERRIDES)[number];
 /** Only the move into `awaiting_release` asks who holds the issue. */
 const ASKS_FOR_HOLDER: readonly IssueStatus[] = ['awaiting_release'];
 
-async function callerDeviceOf(
-  actorUserId: string,
-  deviceId: string | null,
-): Promise<string | null> {
-  if (deviceId) return deviceId;
-  const tokenId = actorFor(actorUserId).tokenId;
-  if (!tokenId) return null;
-  const rows = (await db.execute(
-    sql`SELECT device_id FROM personal_access_tokens WHERE id = ${tokenId}`,
-  )) as unknown as Array<{ device_id: string | null }>;
-  return rows[0]?.device_id ?? null;
-}
-
 async function holdOverrideOf(
   actorUserId: string,
   projectId: string,
@@ -164,7 +153,7 @@ export async function readIssueMoveFacts(args: {
   const asksForHolder = ASKS_FOR_HOLDER.includes(args.to);
   return {
     callerDeviceId: asksForHolder
-      ? await callerDeviceOf(args.actorUserId, args.actorDeviceId ?? null)
+      ? (await callerBoxOf(args.actorUserId, args.actorDeviceId ?? null)).deviceId
       : null,
     holdOverride: asksForHolder ? await holdOverrideOf(args.actorUserId, issue.projectId) : null,
     planApprovalRequired: document?.plan?.approval.required === true,
@@ -228,37 +217,35 @@ async function holderGuard(ctx: GuardContext): Promise<GuardFault | null> {
 }
 
 /**
- * awaiting_release is the holding run's own move (issue-lifecycle `awaiting_release`): the box
- * whose run session leases the issue makes it, or someone holding `releases.approve` or
- * `project.admin` does on purpose. Anyone else is refused, the holder named.
+ * awaiting_release is the holding run's own move (issue-lifecycle `awaiting_release`): the box of a
+ * run holding the issue makes it — a run session's or a declared run's (`run-holder.ts`) — or someone
+ * holding `releases.approve` or `project.admin` does on purpose. Anyone else is refused, every holder
+ * named.
  */
 async function runHolderGuard(ctx: GuardContext): Promise<GuardFault | null> {
   if (ctx.facts.holdOverride) return null;
-  const rows = (await ctx.executor.execute(sql`
-    SELECT l.device_id, l.session_id, l.run_id
-      FROM issue_leases l
-      JOIN issues i ON i.project_id = l.project_id AND l.issue_key = 'ISS-' || i.iss_seq
-     WHERE i.id = ${ctx.issue.id}
-  `)) as unknown as Array<{ device_id: string; session_id: string; run_id: string }>;
-  const lease = rows[0];
+  const holders = await runHoldersOf(ctx.executor, ctx.issue);
   const caller = ctx.facts.callerDeviceId;
-  if (lease && caller !== null && lease.device_id === caller) return null;
-  const held = lease
-    ? `run session ${lease.session_id} on device ${lease.device_id} holds it`
-    : 'no run session holds it';
+  if (callerHolds(holders, caller)) return null;
+  const held =
+    holders.length > 0
+      ? `${holders.map(holderSentence).join(' and ')} holds it`
+      : 'no run holds it';
   const asking =
     caller === null
       ? 'the caller is not a paired box or its token'
       : `the caller is device ${caller}`;
+  const session = holders.find((h) => h.kind === 'run-session');
   return {
     code: 'NOT_THE_HOLDER',
     detail: `\`awaiting_release\` is the move of the run holding the issue, and ${held} while ${asking}. Make the move from the holding run, or as someone holding ${HOLD_OVERRIDES.map(quote).join(' or ')} on the project.`,
     details: {
       from: ctx.from,
       to: ctx.to,
-      holder: lease
-        ? { deviceId: lease.device_id, sessionId: lease.session_id, runId: lease.run_id }
+      holder: session
+        ? { deviceId: session.deviceId, sessionId: session.sessionId, runId: session.runId }
         : null,
+      holders,
       callerDeviceId: caller,
       permissions: HOLD_OVERRIDES,
     },

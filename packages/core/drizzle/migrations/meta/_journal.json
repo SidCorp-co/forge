@@ -3354,6 +3354,13 @@
       "when": 1828137600000,
       "tag": "0523_a_requirement_moves_only_by_an_act",
       "breakpoints": true
+    },
+    {
+      "idx": 524,
+      "version": "7",
+      "when": 1828224000000,
+      "tag": "0524_a_declared_run_holds_from_its_box",
+      "breakpoints": true
     }
   ]
 }

@@ -9,6 +9,7 @@ import { notFound } from '../middleware/route-errors.js';
 import { emitEvent } from '../outbox/index.js';
 import { type Actor, recordActivityTx } from './activity.js';
 import { refuseHeldTake } from './blocked-by.js';
+import { callerBoxOf } from './caller-box.js';
 import { syncCriteriaFromText } from './criteria/store.js';
 import { assertDesignPasses } from './design-record.js';
 import { refuseScopeHeldForBuild } from './issue-scope.js';
@@ -21,6 +22,7 @@ import {
 } from './patterns.js';
 import { plannedRevisionFor } from './ports.js';
 import { ISSUE_READ_COLUMNS, type IssueRow, issueScopeOf } from './read-service.js';
+import { leaseOriginFor } from './run-holder.js';
 import { leaseWriteTakes } from './session-claim.js';
 import type { SessionContextExpect } from './session-context.js';
 import {
@@ -91,6 +93,15 @@ async function writeIssueFields(input: IssueUpdateInput): Promise<IssueRow> {
       ? await catalogOf(scope.projectId)
       : undefined;
 
+  // the box a lease write comes from is stamped on the lease it takes (`run-holder.ts`)
+  const writer =
+    updates.sessionContext === undefined
+      ? null
+      : await callerBoxOf(
+          actor.type === 'user' ? actor.id : null,
+          actor.type === 'device' ? actor.id : null,
+        );
+
   return db.transaction(async (tx) => {
     const current = await lockComposedSessionContext(tx, issueId);
     if (!current) throw notFound('issue not found');
@@ -110,15 +121,24 @@ async function writeIssueFields(input: IssueUpdateInput): Promise<IssueRow> {
     }
     if (updates.sessionContext !== undefined) {
       if (!expect) refuseUnreadSessionContextDrop(current.sessionContext, updates.sessionContext);
-      const split = splitSessionContext(updates.sessionContext);
-      if (
-        split.lease.present &&
-        leaseWriteTakes(leaseIn(current.sessionContext), split.lease.value, new Date())
-      ) {
+      const read = splitSessionContext(updates.sessionContext);
+      const prior = leaseIn(current.sessionContext);
+      if (read.lease.present && leaseWriteTakes(prior, read.lease.value, new Date())) {
         await refuseHeldTake(tx, issueId, 'a write that takes the lease');
       }
-      columns.sessionContext = split.rest;
-      await writeSplitSessionContext(tx, issueId, split);
+      const held = await readWorkState(tx, issueId);
+      const origin = writer
+        ? leaseOriginFor(
+            {
+              lease: prior,
+              origin: held && { deviceId: held.leaseDeviceId, tokenId: held.leaseTokenId },
+            },
+            read.lease.value,
+            writer,
+          )
+        : null;
+      columns.sessionContext = read.rest;
+      await writeSplitSessionContext(tx, issueId, read, origin);
     }
     if (workState) {
       // a new pattern awaiting its reviewer, a return the issue has not answered, or a design that
