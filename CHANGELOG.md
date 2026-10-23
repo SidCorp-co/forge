@@ -9,6 +9,18 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.297] - 2026-10-23
+
+Questions and Lessons pages removed; questions show in Approvals
+
+### Changed
+
+- **The steward settles lessons itself.** It checks each proposed lesson and each confusion against their corrections, requirements and designs, then approves, edits, rejects or retires it with a reason. No person is asked.
+
+### Removed
+
+- **Questions and Lessons leave the project menu.** A question is read in Approvals and on its item, and a feedback item lists every question about it. Lessons are internal to Forge. Old links redirect and say so.
+
 ## [0.4.0-dev.296] - 2026-10-23
 
 Checks passed on an open merge request now count toward release
