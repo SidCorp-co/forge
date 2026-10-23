@@ -166,7 +166,10 @@ describe('the release this build is, is the one a person owes a look at', () => 
       version: string;
       owed: boolean;
       releasedAt: string | null;
-      highlights: { state: string; highlights: Array<{ title: string; media: { url: string } }> };
+      highlights: {
+        state: string;
+        highlights: Array<{ title: string; media: { url: string; poster: { url: string } } }>;
+      };
       changes: Array<{ kind: string; line: string }>;
     };
     expect(release).toMatchObject({ version: '0.1.0', owed: true });
@@ -182,6 +185,13 @@ describe('the release this build is, is the one a person owes a look at', () => 
     const clip = await fetchBytes(url);
     expect(clip.status).toBe(200);
     expect(Buffer.from(clip.bytes).equals(CLIP_BYTES)).toBe(true);
+    // the still the clip opens on is handed out the same way, a link of its own (BC-3)
+    const stillUrl = release.highlights.highlights[0]?.media.poster.url ?? '';
+    expect(stillUrl).toMatch(/^\/api\/uploads\/download\//);
+    expect(stillUrl).not.toBe(url);
+    const still = await fetchBytes(stillUrl);
+    expect(still.status).toBe(200);
+    expect(Buffer.from(still.bytes).toString()).toBe('png-bytes');
   });
 
   it('shows a person who is no member of the project nothing of the release page but its highlights and lines', async () => {
@@ -190,8 +200,10 @@ describe('the release this build is, is the one a person owes a look at', () => 
     expect(Object.keys(f.body.release as object).sort()).toEqual([
       'changes',
       'highlights',
+      'name',
       'owed',
       'releasedAt',
+      'summary',
       'version',
     ]);
     expect(JSON.stringify(f.body)).not.toMatch(/knownIssues|requirements|actionRequired|technical/);

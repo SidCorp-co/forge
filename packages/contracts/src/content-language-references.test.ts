@@ -33,6 +33,18 @@ describe("a release note that carries an engineer's reference", () => {
 		expect(releaseNoteReferences("Uses the API over HTTP")).toEqual([]);
 	});
 
+	it("names a requirement criterion code, a file path and an API route (REQ-40 BC-15)", () => {
+		expect(
+			releaseNoteReferences("Meets BC-29: packages/web-v2/src/app.tsx and /api/issues/:id/verdicts, see verdict-record.ts"),
+		).toEqual([
+			"criterion BC-29",
+			"path packages/web-v2/src/app.tsx",
+			"path /api/issues/:id/verdicts",
+			"path verdict-record.ts",
+		]);
+		expect(releaseNoteReferences("Version 0.4.0-dev.288 works and/or reads in Node, on forge-dev.sidcorp.co/workflows")).toEqual([]);
+	});
+
 	it('names a "Technical note" label in any case', () => {
 		expect(releaseNoteReferences("Boards load. technical note: index added")).toEqual([
 			'label "technical note"',

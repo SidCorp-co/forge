@@ -49,6 +49,7 @@ export const OUTBOX_EVENT_TYPES = [
 	"feedback.verifyAsked",
 	"feedback.verifySettled",
 	"feedback.reporterTold",
+	"release.cut",
 	"release.shipped",
 	"release.approvalDecided",
 	"verdict.recorded",
@@ -496,6 +497,12 @@ export interface OutboxEventPayloads extends StewardEventPayloads, LessonEventPa
 		feedbackId: string;
 		key: string;
 		decision: "verified" | "reopened";
+	};
+	/** A release was cut as `version` on its run: its name and summary are owed where nobody gave them (REQ-40 BC-14). */
+	"release.cut": {
+		projectId: string;
+		runId: string;
+		version: string;
 	};
 	/** A release run's ship was stamped: the version is live, carrying `issueIds`; whoever reported feedback they close is told. */
 	"release.shipped": {

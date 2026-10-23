@@ -15,6 +15,7 @@ import {
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../lib/logger.js';
 import { isRefusal } from '../lib/refusal.js';
+import { emitEvent } from '../outbox/index.js';
 import type { OneShotRunSpec } from '../pipeline/index.js';
 import { closeRunIfOneShot, insertAndEnqueueJob, insertOneShotRun } from '../pipeline/index.js';
 import { requestApproval } from './approvals.js';
@@ -157,6 +158,8 @@ async function openClaimedRun(args: {
       given: args.naming,
       by: args.userId,
     });
+    // every cut is named (REQ-40 BC-14): one nobody named is drafted off this event, never left bare
+    await emitEvent(tx, 'release.cut', { projectId, runId: row.id, version: cut });
     return { run: row, version: cut };
   });
   const claimed = await claimRoster(projectId, issueIds, run.id);

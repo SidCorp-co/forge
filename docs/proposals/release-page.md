@@ -98,18 +98,41 @@ verdict since its issue's last reopen (`release-facts.ts:criteriaAt`) and claims
   unchanged digest is not redrafted, and a read never shows a stored highlight the build no longer
   proves. Stored per release (one table, migration 0478), never hand-edited.
 
+## Name and summary (BC-14)
+
+- A release is named once it is drafted: by whoever cuts or names it (`PUT …/releases/:version/naming`),
+  else by the assistant through the gateway (`release-page/naming-draft.ts:draftReleaseNaming`), from
+  its changes' lines for users and the requirements it carries, nothing else. Every cut emits
+  `release.cut` in its own transaction, so the unattended cut as an issue enters the release gate
+  owes its name as any cut does; a run's move and a page read that finds it unnamed ask too
+  (`release-page/naming-refresh.ts:nameReleaseIfOwed`). A name a person wrote is never replaced.
+- A draft is judged before it is written (`release-naming.ts:judgeNaming`): at most six words, two
+  or three sentences, no engineer's reference, no figure the release does not state. One refused
+  twice, or a release carrying nothing users see, is kept with why (`release_naming_drafts`,
+  migration 0521) and said on the page; the master is still owed the name. It is never a silent null.
+
 ## Clips (BC-3, BC-4)
 
 - QA records one clip per observable criterion it judges, webm, at most `RELEASE_CLIP_MAX_SECONDS`
   and `RELEASE_CLIP_MAX_BYTES`; the served method (`guides/issue-flow.md`, verdict section) asks
-  for it. On this repository the recorder is the screen witness: `pnpm --filter web-v2 witness
-  <entry> --out <dir> --clip` writes `<case>.webm`, the page's screencast from ready through each
-  stage, encoded by Chrome's MediaRecorder (`packages/web-v2/witness/run.mjs`). A longer run is
-  played faster to fit, one over the byte ceiling fails by name, and the ceiling is never raised.
-- It is uploaded as an issue attachment and cited by name in the verdict's `evidence`, the same
-  path a screenshot takes today. The Judge form accepts video as well as images.
+  for it. Against the running build the recorder is `pnpm --filter web-v2 clip <url> --out <dir>`
+  (`packages/web-v2/witness/clip.mjs`): Playwright's own `page.screencast`, started once the page
+  has loaded and signed in outside the recording, writing `<name>.webm` and its last frame as
+  `<name>.png`. Over a stubbed core the
+  screen witness records one (`pnpm --filter web-v2 witness <entry> --out <dir> --clip`). One over
+  either ceiling fails by name, and the ceiling is never raised.
+- It is uploaded as an issue attachment and cited by name in the verdict's `evidence`, with its
+  still beside it. A `pass`, `short` or `fail` on an observable criterion that cites no clip is
+  refused `VERDICT_CLIP_REQUIRED` unless it says why in `withoutClip` (`without-clip:` in a record);
+  `reason` says what was found and never stands in for it
+  (`issues/criteria/verdict-record.ts:clipFault`).
 - A highlight picks, from the clips and pictures cited by pass verdicts on criteria it claims, the
-  clip first, then a picture. Where none exists it says why (`mediaGap`) rather than borrowing one.
+  clip first, then a picture; a clip opens on the picture its verdict cites beside it
+  (`release-page/claims.ts:mediaOf`), else its own first frame, and plays inline, muted, with its
+  controls. Where none exists the page says it has no clip (`mediaGap`) rather than borrowing one;
+  What's new shows only what there is to see. A highlight names its requirement by title, never by
+  key. `witness/release-media.witness.tsx` plays a real judge's clip on both surfaces at 390 and
+  1440 px in both themes.
 
 ## What's new (BC-10)
 

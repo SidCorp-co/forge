@@ -20,7 +20,7 @@ import {
   releaseToolView,
   type ViewerFacts,
 } from '../release-batch/index.js';
-import { readReleasePage, refreshInBackground } from '../release-page/index.js';
+import { nameInBackground, readReleasePage, refreshInBackground } from '../release-page/index.js';
 import { need, parseArgs } from './args.js';
 import { actorOf, forecastViewerOf, readAccess, readerOf } from './context.js';
 import { type Progress, scopeProgress } from './progress.js';
@@ -152,6 +152,7 @@ async function page(ctx: McpContext, i: Input) {
       mayShare: holds(access, 'shares.write'),
     },
     onOwed: refreshInBackground,
+    onNamingOwed: nameInBackground,
   });
 }
 

@@ -11,7 +11,12 @@ import { WHATS_NEW_SEEN_KEY, type WhatsNewSeenValue } from '@forge/contracts/pro
 import { type ReleasePage, whatsNewReleaseOwed } from '@forge/contracts/release-page';
 import type { WhatsNewFeed, WhatsNewRelease, WhatsNewSummary } from '@forge/contracts/whats-new';
 import { readProductState } from '../preferences/index.js';
-import { readReleasePage, refreshInBackground, ticketedHighlights } from '../release-page/index.js';
+import {
+  nameInBackground,
+  readReleasePage,
+  refreshInBackground,
+  ticketedHighlights,
+} from '../release-page/index.js';
 import { requireServing, type ServingRelease } from './serving.js';
 
 async function seenOf(userId: string): Promise<WhatsNewSeenValue['release'] | null> {
@@ -57,12 +62,15 @@ export async function readWhatsNew(args: { userId: string }): Promise<WhatsNewFe
       view: 'user',
       viewer: null,
       onOwed: refreshInBackground,
+      onNamingOwed: nameInBackground,
     }),
   ]);
   return {
     environment: serving.environment,
     release: {
       version: release.version,
+      name: page.header.name,
+      summary: page.header.summary,
       releasedAt: page.header.releasedAt,
       owed: owedOf(seen, serving.environment, release),
       highlights: await ticketedHighlights(page.highlights, release.projectId, args.userId),

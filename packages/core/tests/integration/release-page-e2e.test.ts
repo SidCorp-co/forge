@@ -308,6 +308,12 @@ describe('the highlights the assistant drafts from the requirements it advances'
           name: 'reminder.webm',
           kind: 'clip',
           url: `/api/attachments/${w.clipId}/download`,
+          // the still its verdict cites beside it, named after it: the clip opens on it (BC-3)
+          poster: expect.objectContaining({
+            name: 'reminder.png',
+            mime: 'image/png',
+            url: expect.stringMatching(/^\/api\/attachments\/[0-9a-f-]{36}\/download$/),
+          }),
         }),
       }),
     ]);

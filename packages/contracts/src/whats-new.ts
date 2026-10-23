@@ -46,6 +46,9 @@ export interface WhatsNewSummary {
 /** The release this instance serves, as What's new opens it. */
 export interface WhatsNewRelease {
 	version: string;
+	/** The release's name and its two or three sentences (REQ-40 BC-14); null until it is named. */
+	name: string | null;
+	summary: string | null;
 	releasedAt: string | null;
 	owed: boolean;
 	/** Each clip or picture is a short-lived link minted for this reader. */

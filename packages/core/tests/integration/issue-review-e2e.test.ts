@@ -151,6 +151,7 @@ async function builtIssue(projectId: string): Promise<{ id: string; builder: str
     verdict: 'pass',
     reason: 'ran it',
     identity: { kind: 'commit', sha: HEAD },
+    withoutClip: 'judged by its probe: nothing on screen to record',
     probe: { kind: 'command', command: { argv: ['node', 'probe.mjs'] }, expect: { exitCode: 0 } },
   });
   expect(proved.status).toBe(201);

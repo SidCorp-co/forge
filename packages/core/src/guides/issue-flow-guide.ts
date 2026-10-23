@@ -220,7 +220,7 @@ this run lands, leaves the criteria standing as that run's brief, and writes no 
 count for it; the brief says when the owner has ruled otherwise for this run.
 
 Judge each criterion at the head you will land and write its verdict as you judge it:
-\`POST /api/issues/:id/verdicts\` \`{ criterion, verdict, reason, identity: { kind: 'commit', sha }, evidence }\`,
+\`POST /api/issues/:id/verdicts\` \`{ criterion, verdict, reason, identity: { kind: 'commit', sha }, evidence, withoutClip? }\`,
 the sha whole (40 hex). A \`pass\`, \`fail\` or \`short\` cites what it was taken from: an attachment's
 name (\`POST /api/issues/:id/attachments\`, multipart, field \`file\`, uploaded first — on a runner
 box \`forge-runner api issues/<id>/attachments -F file=@<path>\`), a URL, or a path inside the
@@ -248,10 +248,14 @@ no design classes owes none, and its verdict's record says so.
 
 A judge records a short screen clip of each observable criterion it judges, the run that shows it
 met or not: WebM or MP4, at most ${RELEASE_CLIP_MAX_SECONDS} seconds and ${RELEASE_CLIP_MAX_BYTES / (1024 * 1024)} MiB.
-Upload it as an attachment and cite its name in that verdict's \`evidence\`. A release page shows a
-highlight's clip from there, from a pass on the build it describes. The project's knowledge names
-the recorder its box has. A \`pass\` on an observable criterion judged without a clip says why in its
-\`reason\`; one with neither is refused \`VERDICT_CLIP_REQUIRED\`.
+\`pnpm --filter web-v2 clip <url> --out <dir>\` records one against the running build (Playwright's
+own recorder, no encoder to install) and writes its opening still beside it. Upload both as
+attachments (\`POST /api/issues/:id/attachments\`, field \`file\`; \`forge-runner api
+issues/<id>/attachments -F file=@<dir>/<name>.webm\`) and cite both names in that verdict's
+\`evidence\`: a release page shows a highlight's clip from there, from a pass on the build it
+describes, opening on the still. A \`pass\`, \`short\` or \`fail\` on an observable criterion judged
+without a clip says why in \`withoutClip\` (a \`without-clip\` line in a record), never in
+\`reason\`, which says what was found; one with neither is refused \`VERDICT_CLIP_REQUIRED\`.
 
 A test is evidence only where it can fail: plant the failure it guards against and watch it go red
 naming its own rule before the green counts.

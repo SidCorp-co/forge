@@ -107,6 +107,7 @@ issueCriteriaRoutes.post(
         evidence: body.evidence ?? [],
         judge: body.judge,
         probe: body.probe,
+        withoutClip: body.withoutClip ?? null,
       },
       author: {
         userId: c.get('userId'),

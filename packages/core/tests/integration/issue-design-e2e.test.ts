@@ -241,7 +241,7 @@ describe('the design record (criteria 2 and 3)', () => {
         verdict: 'pass',
         reason: 'shown',
         identity: { kind: 'commit', sha: 'b'.repeat(40) },
-        ...(judge ? { judge } : { probe }),
+        ...(judge ? { judge } : { probe, withoutClip: 'an API route: nothing on screen' }),
       });
     expect(refused(await verdict(2))).toEqual(['VERDICT_JUDGED_BY_REVIEW']);
     expect(refused(await verdict(1, 'review'))).toEqual(['VERDICT_JUDGED_BY_QA']);

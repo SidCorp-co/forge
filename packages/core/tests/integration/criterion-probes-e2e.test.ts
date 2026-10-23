@@ -118,10 +118,12 @@ const commandProbe = {
   expect: { exitCode: 0, stdoutIncludes: ['healthy'] },
 };
 
+// these criteria are API routes, judged by request: each verdict says why it keeps no screen clip
 const verdict = (issue: string, body: Doc) =>
   call('author', 'POST', `/api/issues/${issue}/verdicts`, {
     reason: 'ran it',
     identity: { kind: 'commit', sha: SHA },
+    withoutClip: 'an API route: nothing on screen to record',
     ...body,
   });
 
@@ -228,17 +230,98 @@ describe('a verdict keeps its probe, readable from the criterion (criterion 1)',
   });
 });
 
-describe('a pass on an observable criterion cites a clip or says why not (REQ-40 BC-4)', () => {
-  it('is refused VERDICT_CLIP_REQUIRED at the REST door with neither, naming both spellings of the why', async () => {
+describe('a judgement of an observable criterion cites a clip or says why not (REQ-40 BC-4)', () => {
+  it('refuses a pass, a short and a fail with neither, even one with a reason: a reason never stands in', async () => {
     const issue = await issueWith(true);
-    const res = await verdict(issue, { criterion: 1, verdict: 'pass', reason: '' });
-    expect([res.status, refused(res)]).toEqual([422, ['VERDICT_CLIP_REQUIRED']]);
-    expect(pathsOf(res)).toEqual(['/evidence']);
-    expect(res.body.error.refusals[0].detail).toContain('(a `why` line, or `reason`)');
+    for (const word of ['pass', 'short', 'fail']) {
+      const res = await verdict(issue, {
+        criterion: 1,
+        verdict: word,
+        reason: 'opened the page and it showed the list',
+        withoutClip: undefined,
+        probe: requestProbe,
+      });
+      expect([res.status, refused(res)]).toEqual([422, ['VERDICT_CLIP_REQUIRED']]);
+      expect(pathsOf(res)).toEqual(['/evidence']);
+      expect(res.body.error.refusals[0].detail).toContain(
+        `a \`${word}\` on it cites a screen clip`,
+      );
+      expect(res.body.error.refusals[0].detail).toContain('`withoutClip`');
+    }
     expect(await stored(issue)).toEqual({ probes: 0, verdicts: 0 });
   });
 
-  it('is refused at the comment fence with no why line, and a why line passes it to the probe rule', async () => {
+  it('takes a judgement citing a clip stored through the attachment door, and its still beside it', async () => {
+    const issue = await issueWith(true);
+    const { app } = await import('../../src/index.js');
+    const upload = async (name: string, type: string, bytes: Uint8Array<ArrayBuffer>) => {
+      const fd = new FormData();
+      fd.append('file', new File([bytes], name, { type }));
+      const res = await app.fetch(
+        new Request(`http://forge.test/api/issues/${issue}/attachments`, {
+          method: 'POST',
+          headers: { authorization: `Bearer ${tokens.author}` },
+          body: fd,
+        }),
+      );
+      expect(res.status, await res.clone().text()).toBe(201);
+    };
+    const clip = new Uint8Array(2048);
+    clip.set([0x1a, 0x45, 0xdf, 0xa3]);
+    await upload('list-390.webm', 'video/webm', clip);
+    await upload(
+      'list-390.png',
+      'image/png',
+      new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    );
+    // a still alone is no clip
+    const still = await verdict(issue, {
+      criterion: 1,
+      verdict: 'pass',
+      withoutClip: undefined,
+      evidence: ['list-390.png'],
+      probe: requestProbe,
+    });
+    expect(refused(still)).toEqual(['VERDICT_CLIP_REQUIRED']);
+    ok(
+      await verdict(issue, {
+        criterion: 1,
+        verdict: 'pass',
+        withoutClip: undefined,
+        evidence: ['list-390.webm', 'list-390.png'],
+        probe: requestProbe,
+      }),
+      201,
+    );
+  });
+
+  it('takes a skip, which judged nothing, and a code property, which no screen shows, with no clip', async () => {
+    const issue = await issueWith(true);
+    ok(await verdict(issue, { criterion: 1, verdict: 'skipped', withoutClip: undefined }), 201);
+    ok(
+      await verdict(issue, {
+        criterion: 2,
+        verdict: 'pass',
+        judge: 'review',
+        withoutClip: undefined,
+      }),
+      201,
+    );
+    expect(await stored(issue)).toEqual({ probes: 0, verdicts: 2 });
+  });
+
+  it('keeps the why of a judgement without a clip on its record, as `without-clip`', async () => {
+    const issue = await issueWith(true);
+    ok(await verdict(issue, { criterion: 1, verdict: 'pass', probe: requestProbe }), 201);
+    const body = ok(await call('viewer', 'GET', `/api/issues/${issue}/events`));
+    const list: Doc[] = Array.isArray(body) ? body : (body.events ?? body.items ?? []);
+    const fields = (list.find((e) => e.kind === 'verdict')?.fields ?? []) as Doc[];
+    expect(fields.find((f) => f.key === 'without-clip')?.value).toBe(
+      'an API route: nothing on screen to record',
+    );
+  });
+
+  it('is refused at the comment fence with only a why line, and a without-clip line passes it to the probe rule', async () => {
     const issue = await issueWith(true);
     const block = (extra: string[]) =>
       call('author', 'POST', `/api/issues/${issue}/comments`, {
@@ -253,10 +336,13 @@ describe('a pass on an observable criterion cites a clip or says why not (REQ-40
           '```',
         ].join('\n'),
       });
-    const bare = await block([]);
+    const bare = await block(['why: ran it from the log']);
     expect(bare.status).toBe(422);
     expect(String(bare.body.detail)).toContain('VERDICT_CLIP_REQUIRED');
-    const said = await block(['why: ran it from the log; no clip was kept']);
+    const said = await block([
+      'why: ran it from the log',
+      'without-clip: an API route, nothing on screen',
+    ]);
     expect(String(said.body.detail)).toContain('VERDICT_PROBE_REQUIRED');
     expect(await stored(issue)).toEqual({ probes: 0, verdicts: 0 });
   });
@@ -288,6 +374,7 @@ describe('a pass on an observable criterion with no kept probe (criterion 2)', (
         `commit: ${SHA}`,
         'evidence: judge-log.txt',
         'why: ran it',
+        'without-clip: an API route, nothing on screen',
         '```',
       ].join('\n'),
     });

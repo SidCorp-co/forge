@@ -142,8 +142,10 @@ export async function settleDraft(
 /** A highlight as kept: its media without the link a reader is handed, which is minted when it is shown. */
 function stored(h: ReleaseHighlight): ReleaseHighlight {
   if (!h.media) return h;
-  const { url: _url, ...media } = h.media;
-  return { ...h, media };
+  const { url: _url, poster, ...media } = h.media;
+  if (!poster) return { ...h, media: poster === null ? { ...media, poster } : media };
+  const { url: _still, ...still } = poster;
+  return { ...h, media: { ...media, poster: still } };
 }
 
 function storedHighlights(row: ReleaseHighlightsRow): ReleaseHighlight[] | null {

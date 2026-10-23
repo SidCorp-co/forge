@@ -26,7 +26,7 @@ interface WhatsNewPanelProps {
   loading?: boolean;
 }
 
-/** What's new: the release this instance serves, its highlights first, then its lines. */
+/** What's new: the release this instance serves, by its name and summary, its highlights with their clips, then its lines. */
 export function WhatsNewSheet({ open, onClose, feed, failure, loading = false }: WhatsNewPanelProps) {
   const t = useCopy();
   const locale = useCopyLocale();
@@ -49,11 +49,23 @@ export function WhatsNewSheet({ open, onClose, feed, failure, loading = false }:
         )}
         {feed && release && (
           <>
-            <p className="pb-1.5 pt-3 text-13 text-muted" data-testid="whats-new-release">
-              <span className="font-semibold text-fg">{t("whatsNew.release", { version: release.version })}</span>
-              {released ? <> · {released}</> : null}
-            </p>
-            <ReleaseHighlightList highlights={release.highlights} authed={false} />
+            <div className="grid gap-2 pb-4 pt-3" data-testid="whats-new-lead">
+              <p className="text-13 text-muted" data-testid="whats-new-release">
+                {release.name ? t("whatsNew.release", { version: release.version }) : <span className="font-semibold text-fg">{t("whatsNew.release", { version: release.version })}</span>}
+                {released ? <> · {released}</> : null}
+              </p>
+              {release.name ? (
+                <h3 className="text-20 font-semibold leading-snug text-fg" data-testid="whats-new-name">
+                  {release.name}
+                </h3>
+              ) : null}
+              {release.summary ? (
+                <p className="text-14 leading-relaxed text-fg" data-testid="whats-new-summary">
+                  {release.summary}
+                </p>
+              ) : null}
+            </div>
+            <ReleaseHighlightList highlights={release.highlights} authed={false} gaps={false} />
             {release.changes.length > 0 && (
               <ul className="mt-2" data-testid="whats-new-changes">
                 {release.changes.map((c) => (

@@ -1014,7 +1014,7 @@
     "release-page": {
       "kind": "domain",
       "context": "release",
-      "owns": ["releaseHighlights"],
+      "owns": ["releaseHighlights", "releaseNamingDrafts"],
       "serves": ["issue-delivery#act-release", "issue-delivery#out-release"]
     },
     "report-queries": {

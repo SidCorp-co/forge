@@ -47,7 +47,12 @@ export {
   readSurfaceMap,
   type SurfaceMap,
 } from './landing-surfaces.js';
-export { nameReleaseAs, unnamedReleases } from './naming.js';
+export {
+  draftNaming,
+  nameReleaseAs,
+  nameUnnamedRelease,
+  unnamedReleases,
+} from './naming.js';
 export {
   provideReleaseBatchPorts,
   servedCarries,

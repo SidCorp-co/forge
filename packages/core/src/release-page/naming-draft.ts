@@ -1,0 +1,192 @@
+// The assistant's draft of a release's name and summary (REQ-40 BC-14): one call through the gateway
+// (`completeOnce`, so the deployment's provider and the project's data policy apply as they do to a
+// chat turn), shown each change's line for users and the requirements the release completes or
+// advances, and nothing else. The answer is judged by `judgeNaming`; a refused answer gets one retry
+// carrying the refusal, then the draft is `refused` with what it was refused for. The pattern is
+// `draft.ts:draftHighlights`.
+
+import { contentLanguageBlock } from '@forge/contracts/content-language';
+import type { Refusal } from '@forge/contracts/refusal';
+import { judgeNaming, type ReleaseNamingFacts } from '@forge/contracts/release-naming';
+import {
+  RELEASE_NAME_WORDS_MAX,
+  RELEASE_SUMMARY_SENTENCES,
+  type ReleaseNaming,
+  ReleaseNamingSchema,
+} from '@forge/contracts/release-notes';
+import type { ReleaseDetail } from '@forge/contracts/releases';
+import {
+  type ChatMessage,
+  type ChatStreamUsage,
+  type CompletionAnswer,
+  completeOnce,
+} from '../integrations/llm/index.js';
+import { logger } from '../lib/logger.js';
+import { readContentLanguage } from '../project-config/index.js';
+import { recordSpend } from './draft.js';
+import type { RequirementText } from './facts.js';
+
+/** A hung provider cannot hold a naming draft longer than this per call. */
+const CALL_TIMEOUT_MS = 60_000;
+
+export type NamingOutcome =
+  | { kind: 'drafted'; naming: ReleaseNaming; model: string }
+  | { kind: 'refused'; refusals: Refusal[]; model: string | null }
+  | { kind: 'missed'; refusal: Refusal; model: string | null };
+
+/** What the namer reads of a release: each change users see, in its own line, and the requirements it carries. */
+export function namingFacts(
+  detail: ReleaseDetail,
+  requirements: readonly RequirementText[],
+): ReleaseNamingFacts {
+  return {
+    version: detail.version,
+    changes: detail.notes.sections
+      .filter((s) => s.section !== 'Skip')
+      .flatMap((s) => s.entries.map((e) => ({ title: e.heading, line: e.userFacing }))),
+    requirements: requirements.map((r) => ({
+      key: r.key,
+      title: r.title,
+      text: r.tldr ?? '',
+      completes: r.completes,
+    })),
+  };
+}
+
+function systemPrompt(
+  facts: ReleaseNamingFacts,
+  language: Parameters<typeof contentLanguageBlock>[0],
+): string {
+  const { min, max } = RELEASE_SUMMARY_SENTENCES;
+  return [
+    `You name release ${facts.version} for the people who use the product, and say in a few sentences what it brings them.`,
+    'Your only input is below: each change in this release as its users read it, and the requirements it completes or advances. State nothing it does not hold.',
+    '',
+    'Rules:',
+    '- Answer with one JSON object and nothing else: {"name": "...", "summary": "..."}.',
+    `- "name" is at most ${RELEASE_NAME_WORDS_MAX} words naming what the release is about, never a list of its changes.`,
+    `- "summary" is ${min} to ${max} whole sentences, each ending with a full stop, saying what a person can now do.`,
+    '- Plain words only: no issue or requirement keys, no criterion codes, no commit ids, no file paths or routes, no error codes.',
+    '- Every number you write appears in the input, as written there.',
+    '',
+    contentLanguageBlock(language, 'artifact'),
+  ].join('\n');
+}
+
+function factsInput(facts: ReleaseNamingFacts): string {
+  const changes = facts.changes.map((c) => `- ${c.title ? `${c.title}: ` : ''}${c.line}`);
+  const requirements = facts.requirements.map(
+    (r) =>
+      `- ${r.title}${r.completes ? ' (completed by this release)' : ' (advanced by this release)'}${r.text ? `: ${r.text}` : ''}`,
+  );
+  return [
+    '## Changes users see',
+    ...(changes.length > 0 ? changes : ['(none)']),
+    '',
+    '## Requirements',
+    ...(requirements.length > 0 ? requirements : ['(none)']),
+  ].join('\n');
+}
+
+const SHAPE =
+  'the answer is not one JSON object {"name": "...", "summary": "..."}; answer with that object and nothing else';
+
+function parseAnswer(text: string): unknown {
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+  if (start < 0 || end <= start) return null;
+  try {
+    return JSON.parse(text.slice(start, end + 1));
+  } catch {
+    return null;
+  }
+}
+
+/** The drafted naming, or every reason it may not be written. */
+export function judgedNaming(
+  text: string,
+  facts: ReleaseNamingFacts,
+): { ok: true; naming: ReleaseNaming } | { ok: false; refusals: Refusal[] } {
+  const raw = parseAnswer(text);
+  if (raw === null || typeof raw !== 'object') {
+    return { ok: false, refusals: [{ code: 'RELEASE_NAMING_SHAPE', path: '', detail: SHAPE }] };
+  }
+  const refusals = judgeNaming(raw, facts);
+  if (refusals.length > 0) return { ok: false, refusals };
+  return { ok: true, naming: ReleaseNamingSchema.parse(raw) };
+}
+
+function missOf(answer: Extract<CompletionAnswer, { ok: false }>): Refusal {
+  if (answer.miss === 'unconfigured') {
+    return {
+      code: 'RELEASE_NAMING_MODEL_UNCONFIGURED',
+      path: '',
+      detail: 'no chat model is configured on this instance, so no name was drafted',
+    };
+  }
+  if (answer.miss === 'withheld') {
+    return {
+      code: 'RELEASE_NAMING_WITHHELD',
+      path: '',
+      detail:
+        "the project's data policy forbids sending its release notes to a model, so no name was drafted",
+    };
+  }
+  return {
+    code: 'RELEASE_NAMING_MODEL_FAILED',
+    path: '',
+    detail: 'the model call failed; the name is drafted again on the next try',
+  };
+}
+
+const said = (refusals: readonly Refusal[]) =>
+  refusals.map((r) => `${r.code}${r.path ? ` at ${r.path}` : ''}: ${r.detail}`).join('; ');
+
+/** Drafts and judges a release's name and summary, with one retry that carries the refusal. */
+export async function draftReleaseNaming(
+  projectId: string,
+  facts: ReleaseNamingFacts,
+): Promise<NamingOutcome> {
+  const scope = {
+    surface: 'requirement' as const,
+    projectId,
+    what: `the name of release ${facts.version}`,
+  };
+  const language = await readContentLanguage(projectId);
+  const messages: ChatMessage[] = [
+    { role: 'system', content: systemPrompt(facts, language) },
+    { role: 'user', content: factsInput(facts) },
+  ];
+  const spent: { model: string; usage: ChatStreamUsage }[] = [];
+  let model: string | null = null;
+  try {
+    for (const attempt of [1, 2]) {
+      const answer = await completeOnce(scope, messages, {
+        temperature: 0,
+        signal: AbortSignal.timeout(CALL_TIMEOUT_MS),
+      });
+      if (answer.model) model = answer.model;
+      if (!answer.ok) {
+        logger.warn(
+          { projectId, version: facts.version, miss: answer.miss, detail: answer.detail },
+          'release-page: the naming call did not answer',
+        );
+        return { kind: 'missed', refusal: missOf(answer), model };
+      }
+      spent.push({ model: answer.model, usage: answer.usage });
+      const verdict = judgedNaming(answer.text, facts);
+      if (verdict.ok) return { kind: 'drafted', naming: verdict.naming, model: answer.model };
+      if (attempt === 2) return { kind: 'refused', refusals: verdict.refusals, model };
+      messages.push(
+        { role: 'assistant', content: answer.text },
+        {
+          role: 'user',
+          content: `That name was refused: ${said(verdict.refusals)}\nWrite it again by the same rules, from the same input, as one JSON object.`,
+        },
+      );
+    }
+    throw new Error('release-page: the naming loop ended without an outcome');
+  } finally {
+    await recordSpend(projectId, spent, 'naming');
+  }
+}

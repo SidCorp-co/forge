@@ -55,7 +55,7 @@ describe("a shared release page", () => {
     const real = fakeCore((c) => (c.path === "/shares/open" ? { body: opened() } : undefined));
     renderWithQuery(<SharedAnswer token={TOKEN} signedIn={false} release={(r) => <SharedReleaseView snapshot={r} />} />);
     const clip = await screen.findByTestId("release-media-clip");
-    expect(clip).toHaveAttribute("src", "/api/uploads/download/ticket-xyz");
+    expect(clip).toHaveAttribute("src", "/api/uploads/download/ticket-xyz#t=0.1");
     expect(real.map((c) => c.path)).toEqual(["/shares/open"]);
   });
 
