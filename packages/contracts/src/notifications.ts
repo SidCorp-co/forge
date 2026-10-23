@@ -18,6 +18,7 @@ export const NOTIFICATION_TYPES = [
 	"feedback_shipped",
 	"feedback_message",
 	"status_report",
+	"steward_ask",
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
 
@@ -42,6 +43,7 @@ export const NOTIFICATION_TYPE_LABELS: Record<NotificationType, string> = {
 	feedback_shipped: "Shipped",
 	feedback_message: "Feedback update",
 	status_report: "Status report",
+	steward_ask: "Steward asks",
 };
 
 /** What a delivery names, read from the record's references by core, never from its text. */
@@ -203,6 +205,13 @@ const NOTIFICATION_CONTRACT: Record<
 		severity: "info",
 		channels: ["bell", "toast"],
 		kind: "signal",
+		tier: "ticket",
+	},
+	/** The steward asks the holders of an act the project's master may not take, such as a release approval (ISS-607). */
+	steward_ask: {
+		severity: "warning",
+		channels: ["bell", "toast"],
+		kind: "task",
 		tier: "ticket",
 	},
 };

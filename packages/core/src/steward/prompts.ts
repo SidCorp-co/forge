@@ -47,10 +47,10 @@ const METHODS: Record<StewardAct, string> = {
     '- a draft requirement, or a draft revision, its author does not finish: read the requirements near it (steward_list_requirements) and the feedback that asks for it. Ask with steward_decide about the REQ key: merge `into` the live requirement it repeats, drop it where nothing asks for it or what it delivers has ended, or keep it where open feedback still asks for it; a draft revision of an agreed requirement is withdrawn or kept.',
     '- a feedback item nobody triages, or a shipped fix its reporter does not verify: read it (steward_read_feedback). Ask with steward_decide about the FB key: keep it waiting or decline it (drop); verify the fix, reopen it, or keep it.',
     'steward_decide holds the options; you pick the recommended one and say why in one line. Never ask anyone to write a plan or criteria: preparing the draft is your own act.',
-    'Ask nothing where the wait is an act somebody already owes (a release approval, an open question, a design decision, a blocker): wake or note it instead.',
+    'Ask nothing where the wait is an act somebody already owes (a release approval, an open question, a design decision, a blocker): wake or note it instead. steward_wake_master asks whoever can take the act: a release approval the master may not give goes to the release holders.',
     '- overdue on a master act: wake the master naming the act. Overdue on a judge: wake the master to judge.',
     "- no_owner: name the requirement's author as its owner (steward_set_requirement_owner), then say so on it; where the author is no longer a member the door refuses by name, and the note says who must own it.",
-    '- work already on the live build: ask a release holder to decide; you hold no release approval.',
+    '- work already on the live build, or a release approval overdue: steward_wake_master, which asks the release holders where the master may not approve; you hold no release approval.',
     'Never dispatch a run yourself, and never drop, decline, merge or verify anything yourself: a person answers those.',
   ].join('\n'),
   output_check: [

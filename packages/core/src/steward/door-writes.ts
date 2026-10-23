@@ -1,5 +1,6 @@
 // The steward's write doors (REQ-48 BC-2..BC-7): ask, comment, reject a breakdown, move an issue,
-// wake the master and write the note, each one existing door and each logged with how it is undone.
+// ask whoever owes an act (`door-wake.ts`) and write the note, each one existing door and each logged
+// with how it is undone.
 
 import {
   type ItemStanding,
@@ -10,7 +11,7 @@ import {
 } from '@forge/contracts/steward';
 import { z } from 'zod';
 import type { StewardUndo } from '../db/schema-steward-runs.js';
-import { type DoorAnswer, type DoorRequest, doorName, refusalCodeOfAnswer } from './door-call.js';
+import { type DoorRequest, doorName, refusalCodeOfAnswer } from './door-call.js';
 import { DECIDE } from './door-decide.js';
 import {
   cite,
@@ -25,6 +26,7 @@ import {
 } from './door-kit.js';
 import { OWNER } from './door-owner.js';
 import { PREPARE } from './door-prepare.js';
+import { WAKE } from './door-wake.js';
 import { noteWriteOf } from './note.js';
 import { openStandings, stewardPorts } from './ports.js';
 
@@ -248,35 +250,6 @@ const MOVE: DoorSpec<z.infer<typeof moveParams>> = {
         did: `Moved ${args.issue} to ${args.to}: ${args.reason}`,
         wrote: cite('issue', args.issue),
         undo: null,
-      },
-    };
-  },
-};
-
-const wakeParams = z.strictObject({ about: key, ask: z.string().trim().min(10).max(500) });
-const WAKE: DoorSpec<z.infer<typeof wakeParams>> = {
-  name: 'steward_wake_master',
-  describe:
-    "Wake the project's master and ask it to act on an item: it stands among what the master is owed until the item's standing moves.",
-  params: wakeParams,
-  write: true,
-  async call(args, ctx) {
-    const request: DoorRequest = { method: 'POST', path: `/ws/master.wake/steward` };
-    const woke = await stewardPorts().wakeMasters({
-      projectId: ctx.projectId,
-      subjectKey: args.about,
-      ask: args.ask,
-    });
-    const answer: DoorAnswer = { status: 200, ok: true, json: woke, text: JSON.stringify(woke) };
-    return {
-      request,
-      answer,
-      act: {
-        door: 'WAKE master.wake steward',
-        did: `Asked the master about ${args.about}: ${args.ask}`,
-        wrote: null,
-        undo: null,
-        masterAsk: `${args.about}: ${args.ask}`,
       },
     };
   },

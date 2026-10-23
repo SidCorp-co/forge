@@ -43,6 +43,8 @@ export const notificationTypes = [
   'feedback_shipped',
   'feedback_message',
   'status_report',
+  // ISS-607: the steward asks the holders of an act the project's master may not take
+  'steward_ask',
 ] as const;
 export type NotificationType = (typeof notificationTypes)[number];
 

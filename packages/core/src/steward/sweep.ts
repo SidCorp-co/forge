@@ -6,18 +6,18 @@
 // holds a note: an issue is noted once its diagnosis writes one, never on every sweep for being open.
 // A requirement or feedback item stuck through a carrier issue that is itself stuck is not diagnosed:
 // the carrier is, and the item is noted, its note citing the carrier it waits on.
-// An ask of the master stands until its item's basis moves. The sweep spends only its share of the
+// An ask of the master stands until its item's basis moves, or a reasoned decision on the item answers it. The sweep spends only its share of the
 // day's budget (`policy.ts:sharesOf`): it raises no more runs than that share has room for, oldest
 // stuck first, and the rest wait for a later sweep, so a full backlog is paced across days and the
 // handoff share stays whole.
 
 import type { ItemStanding } from '@forge/contracts/steward';
-import { and, eq, isNotNull, isNull } from 'drizzle-orm';
+import { isNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
-import { stewardActs, stewardRuns } from '../db/schema-steward-runs.js';
 import { logger } from '../lib/logger.js';
 import { emitEvent } from '../outbox/index.js';
+import { answersOf, openMasterAsks, settleAsks } from './asks.js';
 import { sharesOf, stewardStanceOf, utcDayStart } from './policy.js';
 import { openStandings } from './ports.js';
 import { ranOnBasis, spentSince, sweepQueued } from './runs-store.js';
@@ -100,32 +100,22 @@ async function sweepRow(
   tally.changed += 1;
 }
 
-/** Settle each open ask of the master whose item's standing moved off the basis its run read. */
-async function settleAsks(
+/**
+ * Settle each open ask of the master whose item's standing moved off the basis its run read, or that
+ * a reasoned decision on the item answered since it was made (ISS-607): an answered ask leaves what
+ * the master is owed, and is not made again until the standing moves.
+ */
+async function settleProjectAsks(
   projectId: string,
   rows: readonly ItemStanding[],
   now: Date,
 ): Promise<number> {
-  const open = await db
-    .select({ id: stewardActs.id, subjectId: stewardRuns.subjectId, basis: stewardRuns.basis })
-    .from(stewardActs)
-    .innerJoin(stewardRuns, eq(stewardRuns.id, stewardActs.runId))
-    .where(
-      and(
-        eq(stewardActs.projectId, projectId),
-        isNotNull(stewardActs.masterAsk),
-        isNull(stewardActs.askSettledAt),
-        isNull(stewardActs.undoneAt),
-      ),
-    );
+  const open = await openMasterAsks(projectId);
   const basisOf = new Map(rows.map((r) => [r.subject.id, r.basis]));
-  let settled = 0;
-  for (const ask of open) {
-    if (basisOf.get(ask.subjectId) === ask.basis) continue;
-    await db.update(stewardActs).set({ askSettledAt: now }).where(eq(stewardActs.id, ask.id));
-    settled += 1;
-  }
-  return settled;
+  const moved = open.filter((ask) => basisOf.get(ask.subjectId) !== ask.basis);
+  const standing = open.filter((ask) => !moved.includes(ask));
+  const answered = await answersOf(projectId, standing, now);
+  return settleAsks([...moved.map((a) => a.id), ...answered.keys()], now);
 }
 
 export async function sweepProjectStandings(
@@ -139,7 +129,7 @@ export async function sweepProjectStandings(
   );
   const room = { turns: await sweepRoom(projectId, now) };
   for (const row of byAge(rows)) await sweepRow(projectId, row, stuckIssues, tally, room);
-  tally.settledAsks += await settleAsks(projectId, rows, now);
+  tally.settledAsks += await settleProjectAsks(projectId, rows, now);
 }
 
 export async function sweepStandings(now = new Date()): Promise<SweepTally> {
@@ -167,17 +157,5 @@ export async function sweepStandings(now = new Date()): Promise<SweepTally> {
 export async function openStewardAsks(
   projectId: string,
 ): Promise<{ actId: string; ask: string }[]> {
-  const rows = await db
-    .select({ id: stewardActs.id, ask: stewardActs.masterAsk })
-    .from(stewardActs)
-    .where(
-      and(
-        eq(stewardActs.projectId, projectId),
-        isNotNull(stewardActs.masterAsk),
-        isNull(stewardActs.askSettledAt),
-        isNull(stewardActs.undoneAt),
-      ),
-    )
-    .orderBy(stewardActs.at);
-  return rows.map((r) => ({ actId: r.id, ask: r.ask ?? '' }));
+  return (await openMasterAsks(projectId)).map((r) => ({ actId: r.id, ask: r.masterAsk ?? '' }));
 }

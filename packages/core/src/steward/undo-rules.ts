@@ -70,6 +70,12 @@ const OVERRIDES: readonly { door: RegExp; override: string; person: string }[] =
     person: 'Nothing to undo: a wake only asks the master to look.',
   },
   {
+    door: /^NOTIFY /,
+    override:
+      'nothing to undo: the release holders were told, and a notice once sent is not withdrawn; decide the release on its own page',
+    person: 'The release holders were told. Decide the release on its page.',
+  },
+  {
     door: /^POST \/api\/projects\/[^/]+\/feedback\/[^/]+\/(tell-shipped|verify-ask|clarification)$/,
     override:
       'the reporter was told: answer them on the item instead; a notice once sent is not withdrawn',

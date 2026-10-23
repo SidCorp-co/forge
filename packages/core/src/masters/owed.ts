@@ -87,7 +87,7 @@ function outcomeOf(outcome: AnswerResume | null): string {
 /** REQ-48 BC-5: the durable half of a steward wake, so a wake the box missed is read on its next sweep. */
 function stewardAsksLine(asks: Owed['stewardAsks']): string {
   if (asks.length === 0) return '';
-  return ` The project's steward asks you to act on ${asks.length} item${plural(asks.length, '', 's')} (${asks.map((a) => a.ask).join('; ')}): read each item's standing (\`forge-runner api projects/<projectId>/standings\`) and take the act it waits on, or record why it waits; the ask stands until the item's standing moves.`;
+  return ` The project's steward asks you to act on ${asks.length} item${plural(asks.length, '', 's')} (${asks.map((a) => a.ask).join('; ')}): read each item's standing (\`forge-runner api projects/<projectId>/standings\`) and take the act it waits on, or record why it waits as a decision on the issue (\`forge-runner api issues/<id>/events -X POST\` with \`kind: decision\` and the fields \`decision\` and \`why\`); the ask stands until the item's standing moves or such a decision answers it.`;
 }
 
 function answersLine(answers: Owed['answers']): string {

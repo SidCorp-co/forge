@@ -1,6 +1,6 @@
 // What the steward needs from the modules above it and from the process entry, handed in at boot
 // (ADR 0008): core's own app, which every act's door is called through as the steward account; the
-// master wake, which is the ws door's; the release gate's rule for what counts on a landing; and the one standing read (REQ-48 BC-8), which lane A's
+// master wake, which is the ws door's, and the accounts a master acts as; the release gate's rule for what counts on a landing; and the one standing read (REQ-48 BC-8), which lane A's
 // `standing/` module serves. Read only inside a call, so an unprovided port fails the call that
 // needed it and names the provide it lacked.
 
@@ -28,6 +28,12 @@ interface StewardPorts {
    * issue (the release module's `reopen-guard.ts:stewardReleaseFacts`).
    */
   releaseFacts(projectId: string, issueId: string | null): Promise<string>;
+  /**
+   * The accounts the project's master acts as: the holder of each live credential of a box serving
+   * the project (the devices module's `deviceHolderUserId`), whose permissions decide what an ask of
+   * the master can be answered with (ISS-607).
+   */
+  masterAccounts(projectId: string): Promise<string[]>;
 }
 
 const ports = portSlot<StewardPorts>('steward', 'provideStewardPorts');

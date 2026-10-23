@@ -1,0 +1,1 @@
+**The steward asks the release holders for a release approval the master cannot give.** A reasoned decision recorded on the issue answers an ask until its standing moves, and nobody is asked twice on one standing.

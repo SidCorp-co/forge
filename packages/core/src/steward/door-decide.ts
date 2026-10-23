@@ -431,7 +431,7 @@ export const DECIDE: DoorSpec<DecideArgs> = {
     if (offer.offered.length === 0) {
       const wait = standing?.waitingOn;
       return correct(
-        `${about} is ${offer.state}${code ? ` and reads ${code}` : ''}: ${wait ? `it waits on ${wait.who} to ${wait.act}, an act already owed` : 'it owes no decision'}. Ask nothing: wake the master (steward_wake_master) or write the note.`,
+        `${about} is ${offer.state}${code ? ` and reads ${code}` : ''}: ${wait ? `it waits on ${wait.who} to ${wait.act}, an act already owed` : 'it owes no decision'}. Ask nothing here: ask whoever owes it (steward_wake_master picks the master or the release holders) or write the note.`,
       );
     }
     if (!offer.offered.includes(args.recommended)) {

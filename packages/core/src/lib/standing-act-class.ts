@@ -64,5 +64,10 @@ function innerAct(act: Said): Said {
 }
 
 export function actClassOf(w: Pick<WaitingOn, 'kind' | 'says'>): StandingActClass {
-  return BY_KEY[innerAct(w.says.act).key] ?? BY_KIND[w.kind];
+  return BY_KEY[innerActKey(w)] ?? BY_KIND[w.kind];
+}
+
+/** The key of the act a wait names, read through a requirement's wait on one of its issues. */
+export function innerActKey(w: Pick<WaitingOn, 'says'>): string {
+  return innerAct(w.says.act).key;
 }
