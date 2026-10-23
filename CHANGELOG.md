@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.303] - 2026-10-23
+
+Rewording a traced criterion keeps its requirement link or is refused
+
+### Fixed
+
+- **Rewording a traced criterion in the text field no longer drops its trace silently.** The write is refused, naming each line and its BC, and says how to keep it.
+
 ## [0.4.0-dev.302] - 2026-10-23
 
 On merge-request projects, work counts as landed only once merged on the host
