@@ -61,6 +61,7 @@ const view = (over: Partial<FeedbackView> = {}): FeedbackView =>
     reporters: [],
     messages: [],
     clarification: null,
+    questions: [],
     openSuggestions: 0,
     verified: null,
     recordCheck: null,

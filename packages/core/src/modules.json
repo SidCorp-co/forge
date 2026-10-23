@@ -281,7 +281,6 @@
       "reads": [
         "agentSessions",
         "contractVersions",
-        "corrections",
         "devices",
         "feedback",
         "issueCriteria",
@@ -1290,9 +1289,6 @@
     "approvals": {
       "serves": ["REQ-8", "REQ-11", "REQ-41"]
     },
-    "lessons": {
-      "serves": ["REQ-50"]
-    },
     "attachments": {
       "serves": ["via:issues", "via:feedback"]
     },
@@ -1435,9 +1431,6 @@
     },
     "projects": {
       "serves": ["project-onboarding#created"]
-    },
-    "question-desk": {
-      "serves": ["REQ-41", "agent-run-standing#waiting_person"]
     },
     "questions": {
       "serves": ["REQ-2", "agent-run-standing#waiting_person"]

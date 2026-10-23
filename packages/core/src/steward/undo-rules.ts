@@ -49,8 +49,8 @@ const OVERRIDES: readonly { door: RegExp; override: string; person: string }[] =
   {
     door: /^POST \/api\/projects\/[^/]+\/lessons\/[^/]+\/confusions$/,
     override:
-      "decide the confusion on the Lessons page (keep, edit or retire the lesson): deciding it is a person's act, and keeping the lesson takes it off hold",
-    person: 'Decide the confusion on the Lessons page.',
+      "nothing to undo: the steward's lessons pass settles the confusion (keep, edit or retire the lesson) on its next pass, and keeping the lesson takes it off hold",
+    person: 'Nothing to undo: the steward settles the lesson on its next pass.',
   },
   {
     door: /^POST \/api\/projects\/[^/]+\/requirements$/,

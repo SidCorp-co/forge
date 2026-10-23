@@ -1,5 +1,5 @@
 // The lesson machine (REQ-50, docs/proposals/lessons.md). No state design is drawn for lessons.
-// Only an approved lesson reaches an agent; a confusion holds it until a person decides.
+// Only an approved lesson reaches an agent; a confusion holds it until the steward settles it.
 
 import { LESSON_STATUSES } from "./lessons.js";
 import { defineMachine } from "./state-machine.js";

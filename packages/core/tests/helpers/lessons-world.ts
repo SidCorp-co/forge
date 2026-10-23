@@ -1,6 +1,7 @@
 // The world the lessons e2e files share (REQ-50): the app on a throwaway Postgres, a project with an
 // owner, a member and a viewer, two requirement areas and its steward account; corrections kept
-// directly; the steward's lessons pass with the test's own grouping; and the reads the cases assert.
+// directly; the steward's lessons pass with the test's own model answers; and the store reads the
+// cases assert, since no route reads a lesson for a screen (BC-9).
 
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
@@ -8,7 +9,6 @@ import { afterAll, beforeAll, expect } from 'vitest';
 import {
   closeWorld,
   type Doc,
-  ok,
   type Reply,
   requester,
   startQueue,
@@ -57,48 +57,141 @@ export async function correction(
   return id;
 }
 
-/** The steward's pass with the test's own grouping: link and propose exactly what is asked. */
+/** A review or settlement the test answers: a fixed one, or one read from what was asked. */
+type Answer<I, O> = O | null | ((input: I) => O | null);
+const answerOf = <I, O>(a: Answer<I, O> | undefined, input: I): O | null =>
+  typeof a === 'function' ? (a as (input: I) => O | null)(input) : (a ?? null);
+
+/**
+ * The steward's pass with the test's own model answers: reject, link and propose exactly what is
+ * asked, and review each proposal and settle each confusion as `review` and `settle` say. Left out,
+ * neither gives an answer, so what waits stays waiting. `seen` is handed what the grouping was asked.
+ */
 export async function pass(answer: {
   links?: { correction: string; lesson: number }[];
   proposals?: Doc[];
+  rejections?: { correction: string; reason: string }[];
+  seen?: (input: { corrections: Doc[]; lessons: Doc[] }) => void;
+  review?: Answer<Doc, Doc>;
+  settle?: Answer<Doc, Doc>;
+  now?: Date;
+  /** The project the pass runs over: the world's own unless a case opened one of its own. */
+  project?: string;
 }) {
   const { runLessonsPass } = await import('../../src/steward/lessons-pass.js');
   const tally = await runLessonsPass({
-    projectIds: [w.projectId],
-    group: async () => ({
-      links: answer.links ?? [],
-      proposals: (answer.proposals ?? []) as never,
-    }),
+    projectIds: [answer.project ?? w.projectId],
+    ...(answer.now ? { now: answer.now } : {}),
+    group: async (_p, input) => {
+      answer.seen?.(input as never);
+      return {
+        rejections: answer.rejections ?? [],
+        links: answer.links ?? [],
+        proposals: (answer.proposals ?? []) as never,
+      };
+    },
+    review: async (_p, input) => answerOf(answer.review, input as never) as never,
+    settle: async (_p, input) => answerOf(answer.settle, input as never) as never,
   });
   expect(tally.failed, 'a lessons pass failed on the project').toBe(0);
   return tally;
 }
 
-export const lesson = async (n: number) =>
-  ok(await say('owner', 'GET', at(`/lessons/${n}`))).lesson as Doc;
+/** The steward's answers, as the model would give them. */
+export const approve = (reason = 'It says what the corrections meant.') => ({
+  verdict: 'approve',
+  sentence: null,
+  scope: null,
+  areaId: null,
+  itemKind: null,
+  reason,
+});
+export const settled = (
+  resolution: 'keep' | 'edit' | 'retire',
+  reason: string,
+  sentence?: string,
+) => ({
+  resolution,
+  sentence: sentence ?? null,
+  reason,
+});
+
+/** One lesson as the store holds it, with its corrections, applications and confusions. */
+export async function lesson(
+  n: number,
+  project = w.projectId,
+): Promise<Doc & { corrections: Doc[]; applications: Doc[]; confusions: Doc[] }> {
+  const [row] = await rows<Doc>(sql`
+    SELECT l.id, l.number, l.sentence, l.status, l.scope_kind, l.scope_item_kind, l.proposed_by,
+           l.decided_reason, l.applied_count, l.check_issue_id, s.number AS superseded_by
+    FROM lessons l LEFT JOIN lessons s ON s.id = l.superseded_by_id
+    WHERE l.project_id = ${project} AND l.number = ${n}`);
+  if (!row) throw new Error(`lessons-world: no L-${n}`);
+  const [corrections, applications, confusions] = await Promise.all([
+    rows<Doc>(
+      sql`SELECT id, said_at FROM corrections WHERE lesson_id = ${row.id} ORDER BY said_at`,
+    ),
+    rows<Doc>(
+      sql`SELECT id, output_kind, output_ref, wrong_at, wrong_reason FROM lesson_applications WHERE lesson_id = ${row.id} ORDER BY at`,
+    ),
+    rows<Doc>(
+      sql`SELECT id, kind, decided_at, decided_by, resolution, reason, application_id FROM lesson_confusions WHERE lesson_id = ${row.id} ORDER BY raised_at`,
+    ),
+  ]);
+  return { ...row, corrections, applications, confusions };
+}
+
+/** The reasons the kernel kept for a lesson's moves, oldest first. */
+export const moves = async (id: string) =>
+  rows<{ to_status: string; reason: string | null; actor_id: string | null }>(sql`
+    SELECT to_status, reason, actor_id FROM kernel_transitions
+    WHERE entity = 'lesson' AND entity_id = ${id} ORDER BY created_at`);
+
+/** The number of the lesson whose sentence this is. */
+export async function numberOf(sentence: string): Promise<number> {
+  const [row] = await rows<{ number: number }>(
+    sql`SELECT number FROM lessons WHERE project_id = ${w.projectId} AND sentence = ${sentence}`,
+  );
+  if (!row) throw new Error(`lessons-world: no lesson reads "${sentence}"`);
+  return row.number;
+}
 
 export const proposal = (
   sentence: string,
   corrections: string[],
   scope: Doc = { scope: 'project', areaId: null, itemKind: null },
-) => ({ sentence, corrections, ...scope });
+  supersedes: number | null = null,
+) => ({ sentence, corrections, ...scope, supersedes });
 
-/** An approved lesson, proposed by the steward from two corrections. */
+/** An approved lesson: proposed by the steward from two corrections, approved by its review. */
 export async function approved(sentence: string, scope?: Doc): Promise<number> {
   const a = await correction(`${sentence} (1)`);
   const b = await correction(`${sentence} (2)`);
-  await pass({ proposals: [proposal(sentence, [a, b], scope)] });
-  const list = ok(await say('owner', 'GET', at('/lessons'))).lessons as Doc[];
-  const n = list.find((l) => l.sentence === sentence)?.number as number;
-  ok(await say('owner', 'POST', at(`/lessons/${n}/approve`), {}));
-  return n;
+  await pass({
+    proposals: [proposal(sentence, [a, b], scope)],
+    review: (input) => ((input.lesson as Doc).sentence === sentence ? approve() : null),
+  });
+  return numberOf(sentence);
 }
 
-/** A lesson a member proposed by hand from one correction: never approved, so never applied. */
-export async function proposed(sentence: string): Promise<Doc> {
-  const one = await correction(`${sentence} (said once)`);
-  const body = { sentence, scope: { kind: 'project' }, corrections: [one] };
-  return ok(await say('member', 'POST', at('/lessons'), body), 201).lesson as Doc;
+/** A lesson the steward proposed from one correction and has not reviewed: never applied. */
+export async function proposed(sentence: string, project = w.projectId): Promise<number> {
+  const one = await correction(`${sentence} (said once)`, { project });
+  const { proposeLesson } = await import('../../src/lessons/index.js');
+  const { stewardAccountOf } = await import('../../src/steward/account.js');
+  const made = await proposeLesson({
+    projectId: project,
+    actor: { userId: await stewardAccountOf(project), agency: 'agent' },
+    body: { sentence, scope: { kind: 'project' }, corrections: [one] },
+  });
+  return Number(made.key.slice(2));
+}
+
+/** A project of the case's own, owned by the world's owner: nothing another case left waits in it. */
+export async function ownProject(): Promise<{ id: string; stewardId: string }> {
+  const id = (await createTestProject(w.ownerId)).id;
+  const { stewardAccountOf } = await import('../../src/steward/account.js');
+  return { id, stewardId: await stewardAccountOf(id) };
 }
 
 /** The lessons block a prompt for this audience carries, empty where none reaches it. */

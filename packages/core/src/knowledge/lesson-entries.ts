@@ -2,13 +2,15 @@
  * A lesson's text as project knowledge (REQ-50 BC-3, docs/proposals/lessons.md section 2). The
  * entry `lesson-<n>` of kind `lesson` is written only here, in the lessons module's own transaction:
  * `always` while the lesson is approved and `none` while it is held or retired, so the injection
- * a prompt reads can never run ahead of the lesson's decision. The general knowledge doors refuse a
- * write to it by name (`lessonOwnedRefusal`). The entry is written with no vector; the embedding
- * backfill fills it, as it does any degraded write.
+ * a prompt reads can never run ahead of the lesson's decision. The month's figures (BC-8) are the
+ * entry `lessons-month-<YYYY-MM>` of the same kind, `on_demand` for this month and the last, so an
+ * agent fetches them like any project guide. The general knowledge doors refuse a write to either by
+ * name (`lessonOwnedRefusal`). An entry is written with no vector; the embedding backfill fills it, as
+ * it does any degraded write.
  */
 
 import type { KnowledgeRefusalCode } from '@forge/contracts/knowledge';
-import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, like, ne, notInArray, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { knowledgeEntries } from '../db/schema.js';
 import { type RefusalError, refuser } from '../lib/refusal.js';
@@ -16,6 +18,9 @@ import { type RefusalError, refuser } from '../lib/refusal.js';
 const refuse = refuser<KnowledgeRefusalCode>('KNOWLEDGE_REFUSED');
 
 export const lessonEntrySlug = (number: number) => `lesson-${number}`;
+
+const MONTH_PREFIX = 'lessons-month-';
+export const lessonsMonthSlug = (month: string) => `${MONTH_PREFIX}${month}`;
 
 /** What a lesson entry's metadata holds: enough for a prompt to scope it without the lessons table. */
 export interface LessonEntryMeta {
@@ -78,6 +83,76 @@ export async function putLessonEntry(
     });
 }
 
+/**
+ * Write one month's figures as the entry `lessons-month-<month>`, `on_demand`, and turn every older
+ * month's entry to `none`, keeping `current` (this month and the last). A body that has not changed is
+ * not rewritten, so a pass that finds the same figures leaves the entry and its vector as they were.
+ */
+export async function putLessonsMonthEntry(input: {
+  projectId: string;
+  month: string;
+  body: string;
+  current: readonly string[];
+}): Promise<void> {
+  const slug = lessonsMonthSlug(input.month);
+  const written = await db
+    .insert(knowledgeEntries)
+    .values({
+      projectId: input.projectId,
+      slug,
+      title: `Lessons in ${input.month}`,
+      body: input.body,
+      kind: 'lesson',
+      injection: 'on_demand',
+      confidence: 'verified',
+      authoredBy: 'agent',
+      embedding: null,
+      metadata: { month: input.month },
+    })
+    .onConflictDoUpdate({
+      target: [knowledgeEntries.projectId, knowledgeEntries.slug],
+      set: {
+        body: input.body,
+        injection: 'on_demand',
+        embedding: null,
+        archivedAt: null,
+        updatedAt: new Date(),
+      },
+      setWhere: sql`${knowledgeEntries.kind} = 'lesson' AND (${knowledgeEntries.body} IS DISTINCT FROM ${input.body} OR ${knowledgeEntries.injection} <> 'on_demand' OR ${knowledgeEntries.archivedAt} IS NOT NULL)`,
+    })
+    .returning({ id: knowledgeEntries.id });
+  if (written.length === 0) await requireMonthEntry(input.projectId, slug);
+  await db
+    .update(knowledgeEntries)
+    .set({ injection: 'none', updatedAt: new Date() })
+    .where(
+      and(
+        eq(knowledgeEntries.projectId, input.projectId),
+        eq(knowledgeEntries.kind, 'lesson'),
+        like(knowledgeEntries.slug, `${MONTH_PREFIX}%`),
+        notInArray(knowledgeEntries.slug, input.current.map(lessonsMonthSlug)),
+        ne(knowledgeEntries.injection, 'none'),
+      ),
+    );
+}
+
+/**
+ * An upsert that wrote nothing either found the same figures, or met an entry of another kind under the
+ * month's slug, written through the knowledge door before the lessons module claimed it. The second is
+ * refused by name, never skipped: the month would otherwise go unrecorded with nothing said.
+ */
+async function requireMonthEntry(projectId: string, slug: string): Promise<void> {
+  const [row] = await db
+    .select({ kind: knowledgeEntries.kind })
+    .from(knowledgeEntries)
+    .where(and(eq(knowledgeEntries.projectId, projectId), eq(knowledgeEntries.slug, slug)));
+  if (row && row.kind !== 'lesson') {
+    throw new Error(
+      `lessons: the month's figures cannot be recorded as \`${slug}\` in project ${projectId}: a \`${row.kind}\` entry already holds that slug; rename or delete it through the knowledge door`,
+    );
+  }
+}
+
 /** Hold or retire a lesson's entry, in the transaction that holds or retires the lesson. */
 export async function setLessonEntryInjection(
   tx: Tx,
@@ -123,8 +198,9 @@ export async function selectLessonEntries(projectId: string): Promise<LessonEntr
 }
 
 /**
- * The general knowledge doors' refusal for a lesson's entry: a write naming kind `lesson`, or any
- * write or delete of a slug a lesson holds. A lesson changes only by its own decisions.
+ * The general knowledge doors' refusal for an entry the lessons module owns: a write naming kind
+ * `lesson`, or any write or delete of a slug a lesson or a month's figures hold. A lesson changes only
+ * by its own decisions, and a month's figures only by the steward's lessons pass.
  */
 export async function lessonOwnedRefusal(
   projectId: string,
@@ -134,7 +210,7 @@ export async function lessonOwnedRefusal(
   if (named) {
     return refuse(
       'KNOWLEDGE_LESSON_OWNED',
-      `\`${named.slug}\` names kind \`lesson\`: a lesson's entry is written only when a person approves or edits the lesson (POST /api/projects/:id/lessons/:n/approve), never through the knowledge door.`,
+      `\`${named.slug}\` names kind \`lesson\`: a lesson's entry is written only when the steward approves or edits the lesson, and a month's figures only by the steward's lessons pass, never through the knowledge door.`,
       '/kind',
     );
   }
@@ -155,9 +231,16 @@ export async function lessonOwnedRefusal(
     .limit(1);
   const slug = owned[0]?.slug;
   if (!slug) return null;
+  if (slug.startsWith(MONTH_PREFIX)) {
+    return refuse(
+      'KNOWLEDGE_LESSON_OWNED',
+      `\`${slug}\` is a month's lesson figures: the steward's lessons pass records them from the corrections, lessons and confusions themselves, never through the knowledge door.`,
+      '/slug',
+    );
+  }
   return refuse(
     'KNOWLEDGE_LESSON_OWNED',
-    `\`${slug}\` is a lesson's entry: it changes only through the lesson's own decisions on the Lessons page (approve, edit, hold, retire), never through the knowledge door.`,
+    `\`${slug}\` is a lesson's entry: it changes only through the lesson's own decisions, which the steward takes (approve, edit, hold, retire), never through the knowledge door.`,
     '/slug',
   );
 }

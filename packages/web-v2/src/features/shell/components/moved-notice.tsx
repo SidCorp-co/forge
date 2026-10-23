@@ -3,7 +3,7 @@ import { Button, useUrlParams } from "@/design";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { movedPageOf } from "../moved";
 
-/** One line on the page an old Decisions, Roadmap or Memory link landed on, saying where its record is now. */
+/** One line on the page an old link to a removed project page landed on, saying where its record is now. */
 export function MovedNotice() {
   const t = useCopy();
   const [params, setParams] = useUrlParams();

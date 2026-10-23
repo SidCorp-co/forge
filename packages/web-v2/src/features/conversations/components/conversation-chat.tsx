@@ -39,7 +39,6 @@ import { type ConversationMode, liveRenderBlocks, type OutboxMessage } from "../
 import { ComposerFooter, RoomEmpty, RoomHeader, RoomLoading, RoomUnreadable, useComposerPlaceholder } from "./conversation-room-parts";
 import { ConversationMembers } from "./conversation-members";
 import { ConversationThread } from "./conversation-thread";
-import { EntryAfter } from "./entry-after";
 import { ScopeNotice } from "./scope-notice";
 import { seesDetail, useUiActions, useUiSnapshot } from "../ui-actions/use-ui-actions";
 import { useActOffers } from "../act-offers";
@@ -163,9 +162,12 @@ export function ConversationChat({
   const acts = useActOffers({ messages, progress });
   const { cardsFor } = ui;
   const { offersFor } = acts;
-  const lessonsOf = projectId && resolvedId ? { projectId, conversationId: resolvedId } : null;
+  // what follows one message: the UI actions the turn took, then the acts it offers (ISS-47)
   const afterEntry = (entryId: string) => (
-    <EntryAfter entryId={entryId} lessonsOf={lessonsOf} cards={cardsFor(entryId)} offers={offersFor(entryId)} />
+    <>
+      {cardsFor(entryId)}
+      {offersFor(entryId)}
+    </>
   );
 
   const settledMode: ConversationMode | null = settled ? (roomQ.data?.mode ?? "assistant") : null;

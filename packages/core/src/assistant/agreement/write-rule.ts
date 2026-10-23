@@ -130,6 +130,11 @@ export const NOT_A_BUSINESS_WRITE: readonly NotABusinessWrite[] = [
     rest: [],
     tools: ['escalate'],
   },
+  {
+    why: "an agent's report of a lesson it cannot apply, which the steward settles: lessons are internal to Forge, and no person agrees to one (REQ-50 BC-5, BC-9)",
+    rest: ['POST /api/projects/:id/lessons/:n/confusions'],
+    tools: ['forge_lesson_confusion'],
+  },
 ];
 
 /**

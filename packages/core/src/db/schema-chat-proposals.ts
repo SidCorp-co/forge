@@ -26,6 +26,12 @@ const bytea = customType<{ data: Buffer; driverData: Buffer }>({
 
 const inList = (values: readonly string[]) => sql.raw(values.map((v) => `'${v}'`).join(', '));
 
+// Kinds a stored card may hold only once settled: no chat writes one now, since an agent's lesson
+// confusion goes straight to the steward (REQ-50 BC-9), but a card recorded, failed or declined
+// before 0522 is history no other kind represents, so the CHECK keeps it rather than a delete.
+export const SETTLED_ONLY_KINDS = ['lesson_confusion'] as const;
+const STORED_KINDS = [...CHAT_PROPOSAL_KINDS, ...SETTLED_ONLY_KINDS] as const;
+
 /**
  * A chat's write held until the person it answers agrees (REQ-30 BC-4), owned by the `assistant`
  * domain. `call` is exactly what was held: an Assistant tool call `{ name, arguments }`, or an Agent
@@ -50,7 +56,7 @@ export const chatProposals = pgTable(
     handleUserId: uuid('handle_user_id').references(() => users.id, { onDelete: 'set null' }),
     /** The Agent session whose REST request was held; null for an Assistant turn's call. */
     sessionId: uuid('session_id').references(() => agentSessions.id, { onDelete: 'set null' }),
-    kind: text('kind', { enum: CHAT_PROPOSAL_KINDS }).notNull(),
+    kind: text('kind', { enum: STORED_KINDS }).notNull(),
     form: text('form', { enum: CHAT_PROPOSAL_FORMS }).notNull(),
     call: jsonb('call').notNull(),
     body: bytea('body'),
@@ -67,7 +73,10 @@ export const chatProposals = pgTable(
   (t) => ({
     conversationIdx: index('chat_proposals_conversation_idx').on(t.conversationId, t.createdAt),
     proposedToIdx: index('chat_proposals_proposed_to_idx').on(t.proposedTo),
-    kindChk: check('chat_proposals_kind_chk', sql`${t.kind} IN (${inList(CHAT_PROPOSAL_KINDS)})`),
+    kindChk: check(
+      'chat_proposals_kind_chk',
+      sql`${t.kind} IN (${inList(CHAT_PROPOSAL_KINDS)}) OR (${t.kind} IN (${inList(SETTLED_ONLY_KINDS)}) AND ${t.status} <> 'pending')`,
+    ),
     formChk: check('chat_proposals_form_chk', sql`${t.form} IN (${inList(CHAT_PROPOSAL_FORMS)})`),
     statusChk: check(
       'chat_proposals_status_chk',

@@ -1,13 +1,17 @@
-// The steward's lessons pass (REQ-50 BC-2, BC-6, BC-7; docs/proposals/lessons.md): every
-// `LESSONS_PASS_MS`, in each project whose steward is on, it asks the fast model to link each new
-// correction to the lesson it repeats and to group the rest, and proposes each group of
-// `LESSON_PROPOSE_MIN` or more as a lesson authored by the steward account. It then proposes
-// retirements and files each owed check as a draft issue. A proposal is a proposal: nothing reaches a
-// prompt until a person approves it.
+// The steward's lessons pass (REQ-50 r2 BC-2, BC-5..BC-8; docs/proposals/lessons.md): every
+// `LESSONS_PASS_MS`, in each project whose steward is on, it asks the fast model to reject each new
+// correction that is not one, with a reason, to link each to the lesson it repeats and to group the rest, and proposes each group of
+// `LESSON_PROPOSE_MIN` or more as a lesson authored by the steward account. It then settles what waits
+// (`lessons-review.ts`): each proposal approved, edited or rejected, and each reported confusion kept,
+// edited or retired, each with a reason. It retires each lesson superseded or unused for
+// `LESSON_UNUSED_DAYS` days with a reason, and files each owed check as a draft issue. Lessons are
+// internal to Forge (BC-9): no person is asked to decide any of it.
 
+import { REASON_SENTENCE_MAX } from '@forge/contracts/comments';
 import {
   LESSON_ITEM_KINDS,
   LESSON_PROPOSE_MIN,
+  LESSON_UNUSED_DAYS,
   type LessonScope,
   lessonKey,
 } from '@forge/contracts/lessons';
@@ -24,19 +28,34 @@ import {
   type OwedCheck,
   projectsWithLessonWork,
   proposeLesson,
-  proposeRetirements,
+  type RetirementDue,
   recordCheckIssue,
+  recordLessonsMonths,
+  rejectCorrections,
+  retireLesson,
+  retirementsDue,
 } from '../lessons/index.js';
 import { logger } from '../lib/logger.js';
 import { isRefusal } from '../lib/refusal.js';
 import { markUntrusted } from '../lib/untrusted-text.js';
 import { stewardAccountOf } from './account.js';
+import {
+  modelReviewer,
+  modelSettler,
+  type Reviewer,
+  type Settler,
+  type SettleTally,
+  settleLessons,
+} from './lessons-review.js';
 import { stewardStanceOf } from './policy.js';
 
 const GROUP_MAX_TOKENS = 1500;
 const CHECK_TITLE_CHARS = 120;
 
 const grouping = z.object({
+  rejections: z.array(
+    z.object({ correction: z.string(), reason: z.string().min(1).max(REASON_SENTENCE_MAX) }),
+  ),
   links: z.array(z.object({ correction: z.string(), lesson: z.number().int() })),
   proposals: z.array(
     z.object({
@@ -45,6 +64,7 @@ const grouping = z.object({
       areaId: z.string().nullable(),
       itemKind: z.enum(LESSON_ITEM_KINDS).nullable(),
       corrections: z.array(z.string()),
+      supersedes: z.number().int().nullable(),
     }),
   ),
 });
@@ -62,8 +82,9 @@ export function groupingPrompt(input: {
 }): string {
   return [
     "You are the project's steward. People corrected the project's agents; each correction below says what was wrong.",
-    '1. Link a correction to an existing lesson only when it repeats that lesson (`links`).',
-    `2. Group the other corrections that make the same point, ${LESSON_PROPOSE_MIN} or more each, and propose one lesson per group (\`proposals\`): one imperative sentence an agent can apply, and a scope: \`project\`, \`area\` (with the corrections' areaId) or \`item_kind\` (requirement, workflow, mockup, suggestion, issue or chat) — the narrowest that fits.`,
+    '1. Reject a correction that is not one (`rejections`), with one sentence saying why: it names nothing the agent did wrong, it is a test or probe, or it is a question, thanks or noise. A rejected correction never feeds a lesson. Reject only what plainly is not a correction.',
+    '2. Link a correction to an existing lesson only when it repeats that lesson (`links`).',
+    `3. Group the other corrections that make the same point, ${LESSON_PROPOSE_MIN} or more each, and propose one lesson per group (\`proposals\`): one imperative sentence an agent can apply, and a scope: \`project\`, \`area\` (with the corrections' areaId) or \`item_kind\` (requirement, workflow, mockup, suggestion, issue or chat) — the narrowest that fits. Where a group replaces an approved lesson, name that lesson's number in \`supersedes\`.`,
     'Leave a correction alone when nothing else makes its point; it waits for a second one.',
     `Lessons:\n${input.lessons.map((l) => `- ${lessonKey(l.number)} (${l.status}, ${l.scope}): ${l.sentence}`).join('\n') || '(none)'}`,
     `Corrections:\n${markUntrusted(
@@ -114,7 +135,12 @@ async function proposeGroups(
       await proposeLesson({
         projectId,
         actor: { userId: stewardId, agency: 'agent' },
-        body: { sentence: p.sentence, scope, corrections },
+        body: {
+          sentence: p.sentence,
+          scope,
+          corrections,
+          ...(p.supersedes ? { supersedes: p.supersedes } : {}),
+        },
       });
       for (const c of corrections) ids.delete(c);
       proposed += 1;
@@ -161,51 +187,112 @@ async function fileChecks(projectId: string, stewardId: string): Promise<number>
   return filed;
 }
 
-export interface LessonsPassTally {
+const retireWhy = (due: RetirementDue) =>
+  due.reason === 'superseded'
+    ? `Superseded by ${due.supersededBy ? lessonKey(due.supersededBy) : 'a newer lesson'}.`
+    : `No agent applied it in ${LESSON_UNUSED_DAYS} days.`;
+
+/** Retire each lesson now due (BC-7), as the steward, with its reason; none is deleted. */
+async function retireDue(projectId: string, stewardId: string, now: Date): Promise<number> {
+  let retired = 0;
+  for (const due of await retirementsDue(projectId, now)) {
+    try {
+      await retireLesson({
+        projectId,
+        ref: lessonKey(due.number),
+        actor: { userId: stewardId, agency: 'agent' },
+        reason: retireWhy(due),
+      });
+      retired += 1;
+    } catch (err) {
+      if (!isRefusal(err)) throw err;
+      logger.warn(
+        { projectId, lesson: lessonKey(due.number), err: err.message },
+        'steward: a due retirement was refused; it waits for the next pass',
+      );
+    }
+  }
+  return retired;
+}
+
+export interface LessonsPassTally extends SettleTally {
   projects: number;
+  /** Corrections the steward rejected as not corrections; `rejected` counts proposals it rejected. */
+  correctionsRejected: number;
   linked: number;
   proposed: number;
-  retirements: number;
+  retired: number;
   checks: number;
   failed: number;
 }
 
-async function passProject(projectId: string, now: Date, group: Grouper, tally: LessonsPassTally) {
+interface Judges {
+  group: Grouper;
+  review: Reviewer;
+  settle: Settler;
+}
+
+async function passProject(projectId: string, now: Date, judges: Judges, tally: LessonsPassTally) {
+  const { group } = judges;
   const stewardId = await stewardAccountOf(projectId);
   const input = await gatherInput(projectId);
   if (input.corrections.length > 0) {
     const answer = await group(projectId, input);
     if (answer) {
       const ids = new Set(input.corrections.map((c) => c.id));
+      const rejected = await rejectCorrections(
+        projectId,
+        stewardId,
+        answer.rejections.filter((r) => ids.has(r.correction)),
+      );
+      tally.correctionsRejected += rejected.length;
+      for (const id of rejected) ids.delete(id);
       const links = answer.links.filter((l) => ids.has(l.correction));
       tally.linked += await linkRepeats(projectId, links);
       for (const l of links) ids.delete(l.correction);
       tally.proposed += await proposeGroups(projectId, stewardId, ids, answer);
     }
   }
-  tally.retirements += await proposeRetirements(projectId, now);
+  await settleLessons(projectId, stewardId, judges, tally);
+  tally.retired += await retireDue(projectId, stewardId, now);
   tally.checks += await fileChecks(projectId, stewardId);
+  await recordLessonsMonths(projectId, now);
 }
 
 /** One pass over every project with lesson work whose steward is on. */
 export async function runLessonsPass(
-  opts: { now?: Date; group?: Grouper; projectIds?: readonly string[] } = {},
+  opts: {
+    now?: Date;
+    group?: Grouper;
+    review?: Reviewer;
+    settle?: Settler;
+    projectIds?: readonly string[];
+  } = {},
 ): Promise<LessonsPassTally> {
   const now = opts.now ?? new Date();
-  const group = opts.group ?? modelGrouper;
+  const judges: Judges = {
+    group: opts.group ?? modelGrouper,
+    review: opts.review ?? modelReviewer,
+    settle: opts.settle ?? modelSettler,
+  };
   const tally: LessonsPassTally = {
     projects: 0,
+    correctionsRejected: 0,
     linked: 0,
     proposed: 0,
-    retirements: 0,
+    approved: 0,
+    rejected: 0,
+    settled: 0,
+    waiting: 0,
+    retired: 0,
     checks: 0,
     failed: 0,
   };
-  for (const projectId of opts.projectIds ?? (await projectsWithLessonWork())) {
+  for (const projectId of opts.projectIds ?? (await projectsWithLessonWork(now))) {
     if (!(await stewardStanceOf(projectId)).enabled) continue;
     tally.projects += 1;
     try {
-      await passProject(projectId, now, group, tally);
+      await passProject(projectId, now, judges, tally);
     } catch (err) {
       // one project's failure is named and counted; the other projects still get their pass
       tally.failed += 1;

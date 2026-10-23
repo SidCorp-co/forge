@@ -1,4 +1,4 @@
-import { REASON_NOTE_MAX } from '@forge/contracts/comments';
+import { REASON_LINE_MAX, REASON_NOTE_MAX } from '@forge/contracts/comments';
 import { CHANNEL_ACTIONS, type ChannelAction } from '@forge/contracts/ecosystem';
 import { z } from 'zod';
 import { REGISTER_STATUSES } from './channel-register.js';
@@ -8,7 +8,7 @@ import { DOCUMENT_TYPES } from './schema.js';
 
 const number = z.string().regex(NUMBER_PATTERN);
 const ref = z.string().refine((v) => UUID_PATTERN.test(v) || NUMBER_PATTERN.test(v));
-const reason = z.string().trim().min(1).max(500);
+const reason = z.string().trim().min(1).max(REASON_LINE_MAX);
 const content = {
   type: z.enum(DOCUMENT_TYPES),
   subject: z.string(),

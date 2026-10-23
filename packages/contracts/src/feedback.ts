@@ -766,6 +766,18 @@ export interface FeedbackVerifiedView {
 	says: { reason: Said | null };
 }
 
+/** One question about a feedback item: a clarification asked of its reporter, or the steward's question about it. */
+export interface FeedbackQuestionView {
+	id: string;
+	kind: "clarification" | "steward";
+	status: string;
+	/** What it asked and what came back; null where the item's words are withheld from the viewer. */
+	prompt: string | null;
+	answer: string | null;
+	askedAt: string;
+	answeredAt: string | null;
+}
+
 export interface FeedbackView extends FeedbackSummary {
 	/** Set once the item is verified. */
 	verified: FeedbackVerifiedView | null;
@@ -795,6 +807,8 @@ export interface FeedbackView extends FeedbackSummary {
 		prompt: string | null;
 		answer: string | null;
 	} | null;
+	/** Every question about the item, open and answered, newest first: read here, never on a page of its own (REQ-33 BC-8). */
+	questions: FeedbackQuestionView[];
 	/** Proposed triage suggestions waiting on a person. */
 	openSuggestions: number;
 	/** What the viewer may do now; a refusal still names why when they try anyway. */

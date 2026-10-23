@@ -13,9 +13,9 @@ import { describe, expect, it } from 'vitest';
 const PACKAGES = resolve(import.meta.dirname, '../../..');
 const ROOTS = ['core/src', 'contracts/src'].map((r) => join(PACKAGES, r));
 
-/** A reason/note/why string field and its chain of calls, up to the next field. */
+/** A reason/note/why string field or schema constant and its chain of calls, up to the next field. */
 const FIELD =
-  /\b(?:reason|note|why)\w*\s*:\s*z\s*\.string\(\)((?:\.\w+\((?:[^()]|\([^()]*\))*\))*)/g;
+  /\b(?:reason|note|why)\w*\s*[:=]\s*z\s*\.string\(\)((?:\.\w+\((?:[^()]|\([^()]*\))*\))*)/g;
 const LITERAL_MAX = /\.max\(\s*[0-9]/;
 
 function sources(dir: string): string[] {
@@ -44,6 +44,9 @@ describe('a reason, note or why cap', () => {
       literalReasonCaps('const s = { note: z.string().min(1).max(REASON_LINE_MAX) };'),
     ).toEqual([]);
     expect(literalReasonCaps('z.array(z.object({ why: z.string().min(1) })).max(10)')).toEqual([]);
+    expect(literalReasonCaps('const reason = z.string().trim().min(1).max(500);')).toEqual([
+      '1: reason = z.string',
+    ]);
   });
 
   it('is a named bound everywhere in core and contracts', () => {

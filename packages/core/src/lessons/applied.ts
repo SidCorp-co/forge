@@ -1,7 +1,8 @@
 /**
  * Applied lessons (REQ-50 BC-4): each output names the lessons that shaped it, and each is kept as
- * one application a person can mark wrongly applied. A run or a master records them through the
- * door; the assistant's reply and the steward's run are read for their `Lessons applied:` line.
+ * one application an agent can mark wrongly applied (`confusions.ts`). A run or a master records
+ * them through the door; the assistant's reply and the steward's run are read for their
+ * `Lessons applied:` line.
  * Only an approved lesson can be applied: a door naming any other is refused by name, and a line in
  * a model's text naming one is logged and left out.
  */

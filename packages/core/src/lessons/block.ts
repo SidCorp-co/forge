@@ -2,7 +2,7 @@
  * The "Lessons" block every agent's prompt carries (REQ-50 BC-3, BC-4, BC-5): the approved lessons
  * in its scope, read from project knowledge (`knowledge/lesson-entries.ts`), so a held, rejected or
  * proposed lesson is never in it. It tells the agent how to list what it applied and to stop and
- * raise a confusion rather than guess.
+ * report a confusion to the steward rather than guess.
  */
 
 import { type LessonItemKind, lessonKey } from '@forge/contracts/lessons';
@@ -60,11 +60,11 @@ export function lessonsBlockText(
   if (reach.length === 0) return null;
   const heading = '#'.repeat(depth);
   return [
-    `${heading} Lessons (approved by a person from their corrections)`,
-    'Each lesson was learned from corrections a person made and approved for this project. Apply every lesson that fits what you are producing now.',
+    `${heading} Lessons (learned from corrections, approved by the steward)`,
+    "Each lesson was learned from corrections made to this project's work and approved by its steward. Apply every lesson that fits what you are producing now.",
     reach.map((e) => `- ${lessonKey(e.meta.number)} [${scopeLabel(e)}]: ${e.sentence}`).join('\n'),
     'When a lesson shaped your output, end the output with one line naming them: `Lessons applied: L-3, L-7`.',
-    `If two lessons conflict, a lesson contradicts a requirement or design, or you cannot tell how one applies: stop guessing, do not apply it, and raise it as a confusion with both sides and the resolution you recommend (${audience.raise}). Then go on without that lesson; it is held until a person decides.`,
+    `If two lessons conflict, a lesson contradicts a requirement or design, you cannot tell how one applies, or you find one wrongly applied to an output: stop guessing, do not apply it, and report it to the steward as a confusion with both sides and the resolution you recommend (${audience.raise}). Then go on without that lesson; it is held until the steward settles it, and no person is asked.`,
   ].join('\n\n');
 }
 
@@ -77,6 +77,6 @@ export async function lessonsBlockFor(
   return lessonsBlockText(await selectLessonEntries(projectId), audience, depth);
 }
 
-/** How a run, a master or any agent holding a project credential raises a confusion. */
+/** How a run, a master or any agent holding a project credential reports a confusion. */
 export const RAISE_BY_DOOR =
-  '`POST /api/projects/<projectId>/lessons/<n>/confusions` with `{ kind: conflict | contradicts | unclear, other?: { lesson?, ref? }, sides: { lesson, other }, recommended: { resolution: keep | edit | retire, sentence? } }`; record what you applied with `POST /api/projects/<projectId>/lessons/applied`';
+  '`POST /api/projects/<projectId>/lessons/<n>/confusions` with `{ kind: conflict | contradicts | unclear | wrongly_applied, other?: { lesson?, ref? }, sides: { lesson, other }, recommended: { resolution: keep | edit | retire, sentence? } }`, a wrongly_applied naming its output in other.ref; record what you applied with `POST /api/projects/<projectId>/lessons/applied`';

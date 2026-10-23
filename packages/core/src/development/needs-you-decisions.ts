@@ -311,7 +311,6 @@ const OPENS_KIND: Partial<Record<AttentionRow['entity'], DecisionOpens['kind']>>
   feedback: 'feedback',
   workflow: 'workflow',
   release: 'release',
-  lesson: 'lesson',
 };
 
 /** A row that is not a decision, named in plain words with the step it waits on (REQ-48 r3 BC-17). */

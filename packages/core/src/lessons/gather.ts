@@ -1,22 +1,35 @@
 /**
- * What the steward's lessons pass reads and writes here (REQ-50 BC-2, BC-6, BC-7): the corrections
+ * What the steward's lessons pass reads and writes here (REQ-50 BC-2, BC-5..BC-7): the corrections
  * no lesson holds yet beside the lessons that could hold them, a correction linked to the lesson it
- * repeats, the retirements now due, and the lessons owed a check. The pass itself, and the model it
- * asks, are the steward's (`steward/lessons-pass.ts`).
+ * repeats, the proposals and open confusions it settles, the retirements now due, and the lessons
+ * owed a check. The pass itself, and the model it asks, are the steward's (`steward/lessons-pass.ts`).
  */
 
 import {
   LESSON_CHECK_AFTER,
   LESSON_UNUSED_DAYS,
+  type LessonConfusionKind,
+  type LessonResolution,
   type LessonRetireReason,
+  type LessonScope,
+  lessonKey,
 } from '@forge/contracts/lessons';
-import { and, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import { db } from '../db/client.js';
-import { corrections, lessons } from '../db/schema-lessons.js';
+import { corrections, lessonConfusions, lessons } from '../db/schema-lessons.js';
 import { sqlTimestamp } from '../db/sql-timestamp.js';
 
 const DAY_MS = 86_400_000;
 const GATHER_CORRECTIONS = 40;
+/**
+ * Proposals, and confusions, the steward settles in one pass; the rest wait for the next. Each read
+ * takes the items least recently tried first, and an attempt that settles nothing marks its item
+ * tried (`deferLesson` for a proposal, `deferConfusion` for a confusion), so it goes to the back: of W
+ * waiting, every one is reached within ⌈W / SETTLE_PER_PASS⌉ passes, however many keep failing and
+ * however many of them sit on one lesson.
+ */
+const SETTLE_PER_PASS = 10;
 
 export interface GatherCorrection {
   id: string;
@@ -34,7 +47,7 @@ export interface GatherLesson {
   scope: string;
 }
 
-/** The corrections no lesson holds and nobody dismissed, oldest first, beside the live lessons. */
+/** The corrections no lesson holds and the steward has not rejected, oldest first, beside the live lessons. */
 export async function gatherInput(
   projectId: string,
 ): Promise<{ corrections: GatherCorrection[]; lessons: GatherLesson[] }> {
@@ -53,7 +66,7 @@ export async function gatherInput(
         and(
           eq(corrections.projectId, projectId),
           isNull(corrections.lessonId),
-          isNull(corrections.dismissedAt),
+          isNull(corrections.rejectedAt),
         ),
       )
       .orderBy(corrections.saidAt)
@@ -86,7 +99,7 @@ export async function gatherInput(
   };
 }
 
-/** Link each correction to the live lesson it repeats; one already linked or dismissed is left. */
+/** Link each correction to the live lesson it repeats; one already linked or rejected is left. */
 export async function linkRepeats(
   projectId: string,
   links: ReadonlyArray<{ correction: string; lesson: number }>,
@@ -112,7 +125,7 @@ export async function linkRepeats(
           eq(corrections.projectId, projectId),
           eq(corrections.id, link.correction),
           isNull(corrections.lessonId),
-          isNull(corrections.dismissedAt),
+          isNull(corrections.rejectedAt),
         ),
       )
       .returning({ id: corrections.id });
@@ -122,31 +135,220 @@ export async function linkRepeats(
 }
 
 /**
- * Propose retiring each approved lesson that is superseded, or neither applied, approved nor kept in
- * the last `LESSON_UNUSED_DAYS` days (BC-7). A proposal is a mark a person answers; nothing retires.
+ * The steward's finding that a correction is not one (BC-2): when, by whom and why, each in its own
+ * statement; one already linked or rejected is left. A rejected correction is never linked, grouped
+ * or counted as a correction again.
  */
-export async function proposeRetirements(projectId: string, now: Date): Promise<number> {
+export async function rejectCorrections(
+  projectId: string,
+  stewardId: string,
+  rejections: ReadonlyArray<{ correction: string; reason: string }>,
+): Promise<string[]> {
+  const rejected: string[] = [];
+  for (const r of rejections) {
+    const moved = await db
+      .update(corrections)
+      .set({ rejectedAt: new Date(), rejectedBy: stewardId, rejectedReason: r.reason })
+      .where(
+        and(
+          eq(corrections.projectId, projectId),
+          eq(corrections.id, r.correction),
+          isNull(corrections.lessonId),
+          isNull(corrections.rejectedAt),
+        ),
+      )
+      .returning({ id: corrections.id });
+    rejected.push(...moved.map((m) => m.id));
+  }
+  return rejected;
+}
+
+export interface RetirementDue {
+  number: number;
+  reason: LessonRetireReason;
+  /** The lesson that replaced it, for a superseded one. */
+  supersededBy: number | null;
+}
+
+const replacing = alias(lessons, 'replacing');
+
+/**
+ * Each approved lesson the steward now retires (BC-7): superseded by another, or neither applied,
+ * nor approved in the last `LESSON_UNUSED_DAYS` days. A held lesson waits for its confusion.
+ */
+export async function retirementsDue(projectId: string, now: Date): Promise<RetirementDue[]> {
   const cutoff = new Date(now.getTime() - LESSON_UNUSED_DAYS * DAY_MS);
-  const lastUse = sql`GREATEST(${lessons.approvedAt}, ${lessons.lastAppliedAt}, ${lessons.keptAt})`;
+  const lastUse = sql`GREATEST(${lessons.approvedAt}, ${lessons.lastAppliedAt})`;
   const due = await db
-    .select({ id: lessons.id, superseded: lessons.supersededById })
+    .select({ number: lessons.number, supersededBy: replacing.number })
     .from(lessons)
+    .leftJoin(replacing, eq(replacing.id, lessons.supersededById))
     .where(
       and(
         eq(lessons.projectId, projectId),
         eq(lessons.status, 'approved'),
-        isNull(lessons.retireReason),
         or(isNotNull(lessons.supersededById), sql`${lastUse} < ${sqlTimestamp(cutoff)}`),
       ),
+    )
+    .orderBy(asc(lessons.number));
+  return due.map((d) => ({
+    number: d.number,
+    reason: d.supersededBy ? 'superseded' : 'unused',
+    supersededBy: d.supersededBy,
+  }));
+}
+
+const scopeOf = (
+  row: Pick<typeof lessons.$inferSelect, 'scopeKind' | 'scopeAreaId' | 'scopeItemKind'>,
+): LessonScope =>
+  row.scopeKind === 'area' && row.scopeAreaId
+    ? { kind: 'area', areaId: row.scopeAreaId }
+    : row.scopeKind === 'item_kind' && row.scopeItemKind
+      ? { kind: 'item_kind', itemKind: row.scopeItemKind }
+      : { kind: 'project' };
+
+export interface ProposedLesson {
+  number: number;
+  sentence: string;
+  scope: LessonScope;
+  supersedes: number | null;
+  /** Each correction it was grouped from: the item it corrected and the reason as said. */
+  corrections: { itemKey: string; reason: string }[];
+}
+
+/** The proposals waiting for the steward to settle, least recently tried first, with their corrections. */
+export async function proposedLessons(projectId: string): Promise<ProposedLesson[]> {
+  const superseded = alias(lessons, 'superseded');
+  const rows = await db
+    .select({
+      id: lessons.id,
+      number: lessons.number,
+      sentence: lessons.sentence,
+      scopeKind: lessons.scopeKind,
+      scopeAreaId: lessons.scopeAreaId,
+      scopeItemKind: lessons.scopeItemKind,
+      supersedes: superseded.number,
+    })
+    .from(lessons)
+    .leftJoin(superseded, eq(superseded.id, lessons.supersedesId))
+    .where(and(eq(lessons.projectId, projectId), eq(lessons.status, 'proposed')))
+    .orderBy(asc(lessons.updatedAt), asc(lessons.number))
+    .limit(SETTLE_PER_PASS);
+  const said = rows.length
+    ? await db
+        .select({
+          lessonId: corrections.lessonId,
+          itemKey: corrections.itemKey,
+          reason: corrections.reason,
+        })
+        .from(corrections)
+        .where(
+          and(
+            inArray(
+              corrections.lessonId,
+              rows.map((r) => r.id),
+            ),
+            isNull(corrections.rejectedAt),
+          ),
+        )
+        .orderBy(asc(corrections.saidAt))
+    : [];
+  return rows.map((r) => ({
+    number: r.number,
+    sentence: r.sentence,
+    scope: scopeOf(r),
+    supersedes: r.supersedes,
+    corrections: said
+      .filter((c) => c.lessonId === r.id)
+      .map((c) => ({ itemKey: c.itemKey, reason: c.reason })),
+  }));
+}
+
+export interface OpenConfusion {
+  id: string;
+  kind: LessonConfusionKind;
+  lesson: { number: number; sentence: string; scope: LessonScope };
+  /** What it is held against: another lesson (its key and sentence), or a requirement, design or output ref. */
+  other: { lesson: string | null; sentence: string | null; ref: string | null };
+  sides: { lesson: string; other: string };
+  recommended: { resolution: LessonResolution; sentence: string | null };
+}
+
+/**
+ * The confusions open on held lessons, least recently tried first (`tried_at`, else when it was
+ * raised): one that failed goes behind the rest, on its own lesson as across lessons.
+ */
+export async function openConfusions(projectId: string): Promise<OpenConfusion[]> {
+  const against = alias(lessons, 'against');
+  const rows = await db
+    .select({
+      id: lessonConfusions.id,
+      kind: lessonConfusions.kind,
+      number: lessons.number,
+      sentence: lessons.sentence,
+      scopeKind: lessons.scopeKind,
+      scopeAreaId: lessons.scopeAreaId,
+      scopeItemKind: lessons.scopeItemKind,
+      againstNumber: against.number,
+      againstSentence: against.sentence,
+      otherRef: lessonConfusions.otherRef,
+      sideLesson: lessonConfusions.sideLesson,
+      sideOther: lessonConfusions.sideOther,
+      recommended: lessonConfusions.recommended,
+      recommendedSentence: lessonConfusions.recommendedSentence,
+    })
+    .from(lessonConfusions)
+    .innerJoin(lessons, eq(lessons.id, lessonConfusions.lessonId))
+    .leftJoin(against, eq(against.id, lessonConfusions.otherLessonId))
+    .where(and(eq(lessonConfusions.projectId, projectId), isNull(lessonConfusions.decidedAt)))
+    .orderBy(
+      asc(sql`COALESCE(${lessonConfusions.triedAt}, ${lessonConfusions.raisedAt})`),
+      asc(lessonConfusions.raisedAt),
+    )
+    .limit(SETTLE_PER_PASS);
+  return rows.map((r) => ({
+    id: r.id,
+    kind: r.kind,
+    lesson: { number: r.number, sentence: r.sentence, scope: scopeOf(r) },
+    other: {
+      lesson: r.againstNumber ? lessonKey(r.againstNumber) : null,
+      sentence: r.againstSentence,
+      ref: r.otherRef,
+    },
+    sides: { lesson: r.sideLesson, other: r.sideOther },
+    recommended: {
+      resolution: r.recommended as LessonResolution,
+      sentence: r.recommendedSentence,
+    },
+  }));
+}
+
+/**
+ * An attempt to settle a proposal left it waiting: its `updated_at` moves to now, so the next pass
+ * reaches the proposals behind it first. Its status and text are untouched.
+ */
+export async function deferLesson(projectId: string, number: number): Promise<void> {
+  await db
+    .update(lessons)
+    .set({ updatedAt: new Date() })
+    .where(and(eq(lessons.projectId, projectId), eq(lessons.number, number)));
+}
+
+/**
+ * An attempt to settle a confusion left it open: its `tried_at` moves to now, so the next pass reaches
+ * the confusions behind it first, those on the same lesson included.
+ */
+export async function deferConfusion(projectId: string, id: string): Promise<void> {
+  await db
+    .update(lessonConfusions)
+    .set({ triedAt: new Date() })
+    .where(
+      and(
+        eq(lessonConfusions.projectId, projectId),
+        eq(lessonConfusions.id, id),
+        isNull(lessonConfusions.decidedAt),
+      ),
     );
-  for (const row of due) {
-    const reason: LessonRetireReason = row.superseded ? 'superseded' : 'unused';
-    await db
-      .update(lessons)
-      .set({ retireReason: reason, retireProposedAt: now, updatedAt: now })
-      .where(and(eq(lessons.id, row.id), isNull(lessons.retireReason)));
-  }
-  return due.length;
 }
 
 export interface OwedCheck {
@@ -172,7 +374,10 @@ export async function checksOwed(projectId: string): Promise<OwedCheck[]> {
       saidAt: corrections.saidAt,
     })
     .from(lessons)
-    .innerJoin(corrections, eq(corrections.lessonId, lessons.id))
+    .innerJoin(
+      corrections,
+      and(eq(corrections.lessonId, lessons.id), isNull(corrections.rejectedAt)),
+    )
     .where(
       and(
         eq(lessons.projectId, projectId),
@@ -206,11 +411,20 @@ export async function recordCheckIssue(lessonId: string, issueId: string): Promi
     .where(and(eq(lessons.id, lessonId), isNull(lessons.checkIssueId)));
 }
 
-/** The projects a lessons pass has work in: an unheld correction, or an approved lesson to age. */
-export async function projectsWithLessonWork(): Promise<string[]> {
+/**
+ * The projects a lessons pass has work in: an unheld correction not rejected, a proposal to settle, a held lesson
+ * whose confusion waits, an approved lesson to age, or a figure in this month or the last to record
+ * (BC-8): a correction said, a lesson approved or a confusion raised or settled since the last began.
+ */
+export async function projectsWithLessonWork(now: Date): Promise<string[]> {
+  const since = sqlTimestamp(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1)));
   const rows = await db.execute<{ project_id: string }>(sql`
-    SELECT DISTINCT project_id FROM corrections WHERE lesson_id IS NULL AND dismissed_at IS NULL
+    SELECT DISTINCT project_id FROM corrections WHERE (lesson_id IS NULL AND rejected_at IS NULL) OR said_at >= ${since}
     UNION
-    SELECT DISTINCT project_id FROM lessons WHERE status = 'approved'`);
+    SELECT DISTINCT project_id FROM lessons
+     WHERE status IN ('proposed', 'approved', 'held') OR approved_at >= ${since}
+    UNION
+    SELECT DISTINCT project_id FROM lesson_confusions
+     WHERE raised_at >= ${since} OR decided_at >= ${since}`);
   return [...rows].map((r) => r.project_id);
 }

@@ -1,11 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { LessonsPage } from "@/features/lessons";
-import { ProjectRefGate } from "@/features/projects/components/project-gate";
-import { useCopy } from "@/lib/i18n/interface-language";
+import { MovedRedirect } from "@/features/shell/components/moved-redirect";
 
-function ProjectLessonsPage() {
-  const t = useCopy();
-  return <ProjectRefGate label={t("lessons.loading")}>{(p) => <LessonsPage projectId={p.ref} />}</ProjectRefGate>;
+// REQ-33 BC-9: lessons are internal to Forge and no page shows them; an old link lands on the Dashboard, which says so.
+function MovedLessonsPage() {
+  return <MovedRedirect page="lessons" />;
 }
 
-export const Route = createFileRoute("/_workspace/projects/$slug/lessons/")({ component: ProjectLessonsPage });
+export const Route = createFileRoute("/_workspace/projects/$slug/lessons/")({ component: MovedLessonsPage });

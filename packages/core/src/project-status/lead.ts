@@ -64,13 +64,10 @@ export function needsYouOf(
       recommended: d.answers.find((a) => a.recommended)?.label ?? null,
       stuck: d.stuck,
       dueAt: d.dueAt,
-      href: !d.opens
-        ? null
-        : d.opens.kind === 'lesson'
-          ? `/projects/${encodeURIComponent(slug)}/lessons`
-          : d.opens.kind !== 'workflow' && d.opens.kind !== 'release'
-            ? statusItemHref(slug, d.opens.kind, d.opens.key)
-            : null,
+      href:
+        d.opens && d.opens.kind !== 'workflow' && d.opens.kind !== 'release'
+          ? statusItemHref(slug, d.opens.kind, d.opens.key)
+          : null,
     })),
     more,
     total: ordered.length,

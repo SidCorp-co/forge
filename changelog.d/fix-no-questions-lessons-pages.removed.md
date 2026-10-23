@@ -1,0 +1,1 @@
+**Questions and Lessons leave the project menu.** A question is read in Approvals and on its item, and a feedback item lists every question about it. Lessons are internal to Forge. Old links redirect and say so.

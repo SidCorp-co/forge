@@ -82,7 +82,7 @@ const stewardNoteWrite = (): Record<string, unknown> => ({
   },
 });
 
-/** A confusion about lesson L-1: it withdraws the lesson from every prompt (REQ-50 BC-5). */
+/** A confusion about lesson L-1, reported to the steward: it holds the lesson (REQ-50 BC-5). */
 const confusion = () => ({
   kind: 'unclear',
   sides: { lesson: 'Name the screen in every bug.', other: 'This bug has no screen.' },
@@ -200,16 +200,28 @@ describe("every write a turn makes is held to the asker's own role", () => {
     expect(await count('feedback')).toBe(before);
   });
 
-  // a confusion withdraws its lesson from every prompt, so an owner's raise from chat waits on a
-  // card like any write (REQ-50 BC-5, REQ-30 BC-4): over REST in both modes and as the tool
-  it("holds an owner's lesson confusion for their go-ahead, by REST and by the tool", async () => {
+  // a lesson confusion is an agent's report to the steward, internal to Forge (REQ-50 BC-5, BC-9):
+  // no card holds it for a person, so an owner's raise from chat goes straight to the store, over
+  // REST in both modes and as the tool, and holds the lesson
+  it("passes an owner's lesson confusion straight to the store, by REST and by the tool", async () => {
     const { agreementGate } = await import('../../src/assistant/agreement/turn-gate.js');
+    const { withKernelMarker } = await import('../../src/db/kernel-marker.js');
+    const { db } = await import('../../src/db/client.js');
+    await rows(sql`
+      INSERT INTO lessons (project_id, number, sentence, scope_kind, proposed_by, proposed_agency)
+      VALUES (${w.home.id}, 1, 'Name the screen in every bug.', 'project', ${w.asker}, 'agent')
+      ON CONFLICT DO NOTHING`);
+    await withKernelMarker(db, (tx) =>
+      tx.execute(
+        sql`UPDATE lessons SET status = 'approved', approved_at = now() WHERE project_id = ${w.home.id} AND number = 1`,
+      ),
+    );
     const before = await count('lesson_confusions');
     const path = `/api/projects/${w.home.id}/lessons/1/confusions`;
     for (const mode of MODES) {
       const r = await w.say(`asker:${mode}`, 'POST', path, confusion());
-      expect(r.status, `${mode}: ${JSON.stringify(r.json)}`).toBe(409);
-      expect(JSON.stringify(r.json), mode).toContain('CHAT_WRITE_AWAITS_AGREEMENT');
+      expect(r.status, `${mode}: ${JSON.stringify(r.json)}`).toBe(201);
+      expect(r.json).toEqual({ lesson: { key: 'L-1', status: 'held' } });
     }
     const conversationId = randomUUID();
     await rows(sql`
@@ -221,13 +233,18 @@ describe("every write a turn makes is held to the asker's own role", () => {
       personId: w.asker,
       handleUserId: null,
     }).tools;
-    const held = await owner.execute(
+    const raised = await owner.execute(
       'forge_lesson_confusion',
       JSON.stringify({ lesson: 1, ...confusion() }),
     );
-    expect(w.text(held)).toContain('CHAT_WRITE_AWAITS_AGREEMENT');
-    expect(w.text(held)).toContain('kind lesson_confusion');
-    expect(await count('lesson_confusions')).toBe(before);
+    expect(raised.isError, w.text(raised)).not.toBe(true);
+    expect(w.text(raised)).not.toContain('CHAT_WRITE_AWAITS_AGREEMENT');
+    expect(await count('lesson_confusions')).toBe(before + MODES.length + 1);
+    expect(
+      await rows(
+        sql`SELECT count(*)::int AS n FROM chat_proposals WHERE conversation_id = ${conversationId}`,
+      ),
+    ).toEqual([{ n: 0 }]);
   });
 
   it('classifies every tool the Assistant is offered, so a new write cannot join unplanted', () => {

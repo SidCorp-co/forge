@@ -3,7 +3,7 @@ import type { WorkflowTemplate } from "@forge/contracts/workflow-templates";
 import type { ReactNode } from "react";
 import { useRef, useState } from "react";
 import { DetailLayout, DetailLeadEnd, DetailMobileTitle, DetailPane, DetailTabs, FactsRail, StatusBadge, useRecordView, useUrlTab, ViewHeading, Icon, fixedHeight } from "@/design";
-import { Decisions } from "@/features/comments";
+import { WorkflowDecisions } from "./workflow-decisions";
 import { ItemMemory, useItemMemoryCount } from "@/features/memory";
 import type { Copy } from "@/lib/i18n/product-copy";
 import { useCopy, useInterfaceLanguage, useTimeFormat } from "@/lib/i18n/interface-language";
@@ -202,7 +202,7 @@ function TabView({ tab, projectId, slug, d, record, shown, template, diff, revis
   if (tab === "steps") return <StepsPane shown={shown} template={template} diff={diff} revision={revision} />;
   if (tab === "edit") return <DesignEditor key={record.revision} projectId={projectId} slug={slug} d={d} record={record} template={template} />;
   if (tab === "revisions") return <RevisionsPane d={d} />;
-  if (tab === "decisions") return <Decisions projectId={projectId} scope="workflow" targetRef={record.document.id} />;
+  if (tab === "decisions") return <WorkflowDecisions projectId={projectId} workflowId={record.document.id} />;
   if (tab === "memory") return <ItemMemory projectId={projectId} slug={slug} cites={record.document.flow} />;
   return null;
 }

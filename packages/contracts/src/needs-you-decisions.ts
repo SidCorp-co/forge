@@ -147,26 +147,6 @@ export const DECISION_ACTS = {
 		path: "/api/projects/:projectId/workflows/:workflowId/design/repins",
 		reason: false,
 	},
-	"lesson.approve": {
-		path: "/api/projects/:projectId/lessons/:lessonKey/approve",
-		reason: false,
-	},
-	"lesson.reject": {
-		path: "/api/projects/:projectId/lessons/:lessonKey/reject",
-		reason: true,
-	},
-	"lesson.retire": {
-		path: "/api/projects/:projectId/lessons/:lessonKey/retire",
-		reason: true,
-	},
-	"lesson.keep": {
-		path: "/api/projects/:projectId/lessons/:lessonKey/keep",
-		reason: false,
-	},
-	"lesson.confusion": {
-		path: "/api/projects/:projectId/lessons/confusions/:confusionId/decide",
-		reason: false,
-	},
 } as const;
 export type DecisionAct = keyof typeof DECISION_ACTS;
 export const DECISION_ACT_NAMES = Object.keys(DECISION_ACTS) as [
@@ -252,7 +232,6 @@ export const decisionOpensSchema = z.strictObject({
 		"feedback",
 		"workflow",
 		"release",
-		"lesson",
 	]),
 	key: z.string().min(1).max(200),
 });

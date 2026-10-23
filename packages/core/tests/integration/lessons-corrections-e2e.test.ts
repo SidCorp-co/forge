@@ -330,10 +330,13 @@ describe('a correction is kept from a verdict, a mockup and a chat reply, and ne
         by_user_id: ownerId,
       }),
     ]);
-    const marks = ok(await say('owner', 'GET', at(`/lessons/chat/${conversationId}`)));
-    expect(marks.corrections).toEqual([
-      expect.objectContaining({ messageId: reply?.id, dismissed: false }),
-    ]);
+    // kept against the reply that said it, for the steward alone: no screen reads a chat's lesson marks
+    expect(
+      await rows(
+        sql`SELECT source_ref FROM corrections WHERE source = 'chat' AND project_id = ${projectId}`,
+      ),
+    ).toEqual([{ source_ref: reply?.id }]);
+    expect((await say('owner', 'GET', at(`/lessons/chat/${conversationId}`))).status).toBe(404);
 
     // below the threshold nothing is kept
     classify.answer = { correction: true, confidence: 0.5, what: 'Maybe the tone.' };
