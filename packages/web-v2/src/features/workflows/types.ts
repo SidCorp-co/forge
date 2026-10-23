@@ -1,5 +1,5 @@
 import type { ApprovalPermission } from "@forge/contracts/permissions";
-import type { DesignRevisionState } from "@forge/contracts/design-status";
+import type { DesignRevisionState, DesignStatus } from "@forge/contracts/design-status";
 import type { Said } from "@forge/contracts/said";
 import type { DesignListReading } from "@forge/contracts/workflows";
 import type {
@@ -30,7 +30,7 @@ export interface SystemGraphRef {
 }
 
 type WorkflowKind = "flow" | "state";
-export type DesignStatus = "draft" | "proposed" | "approved" | "returned";
+export type { DesignStatus };
 
 /** A node type is whatever the design's template declares (EVENT, STATE, SCREEN …). */
 type NodeType = string;

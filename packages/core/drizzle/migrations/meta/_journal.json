@@ -3319,6 +3319,13 @@
       "when": 1827532800000,
       "tag": "0516_a_steward_question_keeps_its_why_beside_it",
       "breakpoints": true
+    },
+    {
+      "idx": 517,
+      "version": "7",
+      "when": 1827619200000,
+      "tag": "0517_a_design_never_approved_can_be_withdrawn",
+      "breakpoints": true
     }
   ]
 }

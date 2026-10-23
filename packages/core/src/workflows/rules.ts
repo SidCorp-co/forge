@@ -197,10 +197,15 @@ export function workflowIdentityRefusals(
     }));
 }
 
-export function duplicateWorkflowRefusal(flow: string, holding: string): WorkflowRefusal {
+export function duplicateWorkflowRefusal(
+  flow: string,
+  holding: { id: string; withdrawn: boolean },
+): WorkflowRefusal {
   return {
     code: 'WORKFLOW_DUPLICATE',
     path: '/flow',
-    detail: `workflow ${holding} already draws flow "${flow}" for this project; a flow is drawn once and refreshed by PUT, not written again.`,
+    detail: holding.withdrawn
+      ? `workflow ${holding.id} drew flow "${flow}" for this project and was withdrawn; a flow is drawn once, so name this one another flow.`
+      : `workflow ${holding.id} already draws flow "${flow}" for this project; a flow is drawn once and refreshed by PUT, not written again.`,
   };
 }

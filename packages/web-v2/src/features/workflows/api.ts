@@ -42,6 +42,12 @@ export const workflowsApi = {
       method: "POST",
       body: JSON.stringify({ revision, ...(issue ? { issue } : {}) }),
     }),
+  /** A design no revision of which was approved, taken back: it leaves the list and Needs you, and the act is logged. */
+  withdraw: (projectId: string, workflowId: string, reason: string | null) =>
+    apiClient<WorkflowDesign>(`/projects/${projectId}/workflows/${workflowId}/design/withdraw`, {
+      method: "POST",
+      body: JSON.stringify(reason ? { reason } : {}),
+    }),
   decide: (projectId: string, workflowId: string, body: DesignDecisionBody) =>
     apiClient<WorkflowDesign>(`/projects/${projectId}/workflows/${workflowId}/design/decision`, {
       method: "POST",

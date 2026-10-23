@@ -249,7 +249,7 @@ export const forgeRequirementDraftTool: ContextScopedMcpToolFactory = (ctx) => (
     const unfit = await undrawn('forge_requirement_draft', args);
     if (unfit.length) return refusedAnswer(unfit, 'REQUIREMENT_REFUSED');
     const linked = await designsNamed(projectId, designs ?? []);
-    if (!linked.ok) return refusedAnswer([linked.refusal], 'REQUIREMENT_REFUSED');
+    if (!linked.ok) return refusedAnswer(linked.refusals, 'REQUIREMENT_REFUSED');
     const draft = (criteria: typeof write.criteria) =>
       draftLinked({
         projectId,

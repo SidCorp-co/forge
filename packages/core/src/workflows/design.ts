@@ -21,6 +21,10 @@ export interface DesignRefusal {
   proposedRevision?: number;
   /** The design a re-pin act refuses, where the refusal names one of several. */
   flow?: string;
+  /** The approved revision that makes a design history, where a withdraw is refused for it. */
+  approvedRevision?: number;
+  /** The live designs whose `basedOn` names this one, where a withdraw is refused for them. */
+  pinnedBy?: string[];
 }
 
 /**
@@ -166,9 +170,63 @@ export function proposeRefusal(status: DesignStatus | null, flow: string): Desig
       'WORKFLOW_DESIGN_UNCHANGED',
       `workflow ${flow}'s design was returned and has not changed since; revise it by writing it (PUT), which proposes the revision.`,
     ],
+    withdrawn: ['WORKFLOW_DESIGN_WITHDRAWN', withdrawnDetail(flow)],
   };
   const [code, text] = detail[status];
   return { code, path: '/design/status', detail: text };
+}
+
+export const withdrawnDetail = (flow: string) =>
+  `workflow ${flow}'s design was withdrawn, and a withdrawn design is never written or proposed again; draw the change as a new workflow under another flow name. Nothing was written.`;
+
+/**
+ * Why a design may not be withdrawn: only a design no revision of which was ever approved is taken
+ * back, since an approved revision is what built work and later designs were judged against; and a
+ * design another live design builds on (`basedOn`) would leave that one resting on nothing.
+ */
+export function withdrawRefusal(input: {
+  flow: string;
+  status: DesignStatus | null;
+  approvedRevision: number | null;
+  pinnedBy: readonly string[];
+}): DesignRefusal | null {
+  const { flow, status, approvedRevision } = input;
+  if (status === 'withdrawn') {
+    return {
+      code: 'DESIGN_ALREADY_WITHDRAWN',
+      path: '/design/status',
+      detail: `workflow ${flow}'s design is already withdrawn; nothing was changed.`,
+      status,
+    };
+  }
+  if (approvedRevision !== null) {
+    return {
+      code: 'DESIGN_WITHDRAW_APPROVED',
+      path: '/design/status',
+      detail: `workflow ${flow}'s revision ${approvedRevision} was approved, and an approved design is history: work was built and judged against it, so it is never withdrawn. Propose a change to it by writing it (PUT) instead. Nothing was changed.`,
+      status,
+      approvedRevision,
+    };
+  }
+  if (status === null) {
+    return {
+      code: 'WORKFLOW_DESIGN_NOT_PROPOSED',
+      path: '/design/status',
+      detail: `workflow ${flow} is not in a design lifecycle, so there is no design to withdraw.`,
+      status,
+    };
+  }
+  if (input.pinnedBy.length > 0) {
+    const names = input.pinnedBy.map((f) => `"${f}"`).join(', ');
+    return {
+      code: 'DESIGN_WITHDRAW_PINNED',
+      path: '/design/status',
+      detail: `workflow ${flow} is a base of ${names}: ${input.pinnedBy.length === 1 ? 'its basedOn names' : 'their basedOn name'} it, and withdrawing it would leave ${input.pinnedBy.length === 1 ? 'that design' : 'those designs'} resting on nothing. Drop ${flow} from their basedOn, or withdraw them first. Nothing was changed.`,
+      status,
+      pinnedBy: [...input.pinnedBy],
+    };
+  }
+  return null;
 }
 
 // Deciding a design is an approval (ADR 0007): whoever holds workflow-designs.approve decides,
@@ -228,6 +286,9 @@ export function designNotApprovedDetail(args: {
   flow: string;
   status: DesignStatus | null;
 }): string {
+  if (args.status === 'withdrawn') {
+    return `${args.issue} builds workflow "${args.flow}" (${args.workflowId}), whose design was withdrawn and will never be approved; work that builds a flow starts only once its design is approved, so this issue does not start. Drop it, or file the work against a live design.`;
+  }
   return `${args.issue} builds workflow "${args.flow}" (${args.workflowId}), whose design is ${args.status ?? 'not in a design lifecycle'}; work that builds a flow starts only once its design is approved. Propose it (POST …/workflows/${args.workflowId}/design/propose) and wait for its approver.`;
 }
 

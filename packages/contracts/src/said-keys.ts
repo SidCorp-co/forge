@@ -1672,6 +1672,9 @@ export const SAID = {
 	"designs.rule.notUnderApproval": {
 		en: "this workflow is not under design approval",
 	},
+	"designs.rule.withdrawn": {
+		en: "withdrawn before any revision was approved; nothing waits on it",
+	},
 	"modules.act.queued": { en: "{n} queued", vars: { n: "count" } },
 	"modules.act.paused": { en: "{n} paused", vars: { n: "count" } },
 	"modules.act.counts": { en: "{parts}", vars: { parts: "saidDots" } },

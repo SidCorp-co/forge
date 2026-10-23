@@ -3,7 +3,7 @@ import type { WorkflowTemplate } from "@forge/contracts/workflow-templates";
 import { matchesListFilter, waitingFilterOf } from "@forge/contracts/ui-list-filters";
 import { useReportShown } from "@/design/hooks/use-page-shown";
 import { ListFilterBar, useListFilter } from "@/features/chat-dock";
-import { Button, EmptyState, PageTitle, RowItem, rememberListOrigin } from "@/design";
+import { Button, EmptyState, PageTitle, RowItem, SegmentedControl, rememberListOrigin, useUrlChoice } from "@/design";
 import { QueryBoundary } from "@/lib/api/query-boundary";
 import { useAskForDesigns } from "@/features/onboarding";
 import { useOnboardingState } from "@/features/onboarding";
@@ -29,7 +29,7 @@ function size(r: WorkflowRecord, t: Copy): string {
 }
 
 /** A design in the list: its title, what it is drawn in, its size and age, then its state and health. */
-function DesignItem({ r, slug, templates }: { r: WorkflowRecord; slug: string; templates: readonly WorkflowTemplate[] }) {
+function DesignItem({ r, slug, templates, narrow }: { r: WorkflowRecord; slug: string; templates: readonly WorkflowTemplate[]; narrow: boolean }) {
   const t = useCopy();
   const label = useLabel();
   const time = useTimeFormat();
@@ -40,6 +40,7 @@ function DesignItem({ r, slug, templates }: { r: WorkflowRecord; slug: string; t
       href={workflowHref(slug, w.flow)}
       onClick={() => rememberListOrigin(WORKFLOWS_LIST)}
       testId="workflow-row"
+      stack={narrow}
       rowKey={w.flow}
       title={<span title={w.summary}>{w.title}</span>}
       facts={[<span key="t" data-testid="workflow-template">{templateTitle(templateIdOf(r), templates, label)}</span>, size(r, t), <span key="u" title={`${time.dateTime(w.updatedAt)} · ${r.writerName}`}>{time.relative(w.updatedAt)}</span>]}
@@ -128,7 +129,7 @@ function Designs({
             </div>
             <ul>
               {g.rows.map((r) => (
-                <DesignItem key={r.document.id} r={r} slug={slug} templates={templates} />
+                <DesignItem key={r.document.id} r={r} slug={slug} templates={templates} narrow={narrow} />
               ))}
             </ul>
           </div>
@@ -171,11 +172,24 @@ function NoWorkflows({ projectId, slug, templates }: { projectId: string; slug: 
  * shared canvas), every design the project draws on the right, grouped by what it is for. A project with
  * no system context yet gets the onboarding line and the list across the page.
  */
+const NARROW_VIEWS = ["designs", "map"] as const;
+
+/** Below `lg` the split holds one half at a time: the designs list first, the map one tap away. */
+function NarrowViewSwitch({ value, onChange }: { value: (typeof NARROW_VIEWS)[number]; onChange: (next: (typeof NARROW_VIEWS)[number]) => void }) {
+  const t = useCopy();
+  return (
+    <div className="flex h-12 flex-none items-center border-b border-line-subtle bg-surface px-4 lg:hidden" data-testid="workflows-view">
+      <SegmentedControl options={NARROW_VIEWS.map((v) => ({ value: v, label: t(`workflows.view.${v}`) }))} value={value} onChange={onChange} />
+    </div>
+  );
+}
+
 export function WorkflowsScreen({ projectId, slug, projectName, canEdit = false }: { projectId: string; slug: string; projectName: string; canEdit?: boolean }) {
   const t = useCopy();
   const q = useWorkflows(projectId);
   const templatesQ = useWorkflowTemplates(projectId);
   const projectDocument = useProjectDocument(projectId);
+  const [view, setView] = useUrlChoice("view", NARROW_VIEWS, "designs");
   return (
     <QueryBoundary query={q} loadingLabel={t("workflows.loadingList")} height="60vh" retry="always">
       {(data) => {
@@ -190,6 +204,7 @@ export function WorkflowsScreen({ projectId, slug, projectName, canEdit = false 
             projectName={projectName}
             projectDocument={projectDocument.data}
             canEdit={canEdit}
+            narrowView={view}
             className="flex-1"
           />
         );
@@ -198,9 +213,10 @@ export function WorkflowsScreen({ projectId, slug, projectName, canEdit = false 
           return (
             <div className="flex min-h-0 flex-1 flex-col bg-app" data-testid="workflows-screen">
               <PageTitle>{t("workflows.title")}</PageTitle>
+              <NarrowViewSwitch value={view} onChange={setView} />
               <div className="flex min-h-0 flex-1 max-lg:flex-col lg:[contain:size]" data-testid="workflows-split">
                 {overview}
-                <aside className="w-100 flex-none overflow-y-auto border-l border-line-subtle bg-surface max-lg:w-full max-lg:overflow-visible max-lg:border-l-0 max-lg:border-t" data-testid="workflows-list-pane">
+                <aside className={cn("w-100 flex-none overflow-y-auto border-l border-line-subtle bg-surface max-lg:w-full max-lg:overflow-visible max-lg:border-l-0 max-lg:border-t", view === "map" && "max-lg:hidden")} data-testid="workflows-list-pane">
                   <Designs all={all} projectId={projectId} slug={slug} templates={templates} narrow />
                 </aside>
               </div>

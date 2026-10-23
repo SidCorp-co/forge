@@ -15,6 +15,7 @@ import {
   decisionRefusals,
   designApproverRefusal,
   proposeRefusal,
+  withdrawRefusal,
 } from './design.js';
 import {
   baseApprovalRefusal,
@@ -25,7 +26,7 @@ import {
 } from './design-bases.js';
 import { revisionChangesOf } from './design-changes.js';
 import { type DesignIssueOutcome, handBack, redrawWaitingDesign } from './design-issue.js';
-import { recordDecision } from './design-record.js';
+import { recordDecision, recordWithdrawal } from './design-record.js';
 import { pinOnlyChange } from './design-repin.js';
 import { designRequirementsOf } from './design-requirements.js';
 import {
@@ -341,6 +342,42 @@ export async function decideDesignAs(input: {
     ok: true,
     design: { ...(await designView(await rowIn(projectId, id), decider)), designIssue },
   };
+}
+
+/**
+ * Takes back a design no revision of which was approved (`POST …/design/withdraw`): whoever may write
+ * designs may, the kernel logs the move, and the questions parked on its waiting revision are answered.
+ */
+export async function withdrawDesignAs(input: {
+  projectId: string;
+  id: string;
+  writer: WorkflowWriter;
+  reason: string | null;
+}): Promise<DesignOutcome> {
+  const { projectId, id, writer } = input;
+  const reason = input.reason?.trim() || null;
+  await assertWriter(writer, projectId);
+  const refusal = await db.transaction(async (tx): Promise<DesignRefusal | null> => {
+    await lockWorkflows(tx, projectId);
+    const row = await readWorkflow(tx, id);
+    if (!row || row.projectId !== projectId) {
+      throw notFound(`project ${projectId} holds no workflow ${id}`);
+    }
+    const pinnedBy = (await workflowsOf(tx, projectId))
+      .filter((w) => w.id !== id && basesOfStored(w.document).some((b) => b.workflow === row.flow))
+      .map((w) => w.flow);
+    const refused = withdrawRefusal({
+      flow: row.flow,
+      status: row.designStatus,
+      approvedRevision: row.approvedRevision,
+      pinnedBy,
+    });
+    if (refused) return refused;
+    await recordWithdrawal(tx, { row, reason, writer });
+    return null;
+  });
+  if (refusal) return { ok: false, refusals: [refusal] };
+  return { ok: true, design: await designView(await rowIn(projectId, id), writer) };
 }
 
 async function designIssueIn(

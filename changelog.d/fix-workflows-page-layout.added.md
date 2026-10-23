@@ -1,0 +1,1 @@
+**A design never approved can be withdrawn.** Its page offers Withdraw design; it leaves Workflows and Needs you, the act is logged, and a design with an approved revision is refused as DESIGN_WITHDRAW_APPROVED.

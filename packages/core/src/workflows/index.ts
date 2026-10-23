@@ -10,7 +10,7 @@ export { DESIGN_DECISIONS } from './design.js';
 export { proposesWorkflowsOf } from './design-issue.js';
 export { approvedDesignRevisions, buildIssuesAmong, workflowDesign } from './design-lookup.js';
 export { repinGroupsAs } from './design-repin-service.js';
-export { decideDesignAs, proposeDesign, readDesignAs } from './design-service.js';
+export { decideDesignAs, proposeDesign, readDesignAs, withdrawDesignAs } from './design-service.js';
 export { provideWorkflowHealthPorts } from './health-ports.js';
 export { projectHealthAs } from './health-read.js';
 export { workflowJsonSchemas } from './json-schema.js';
@@ -36,4 +36,4 @@ export {
   recordArtifactContext,
 } from './run-context-service.js';
 export { createWorkflow, updateWorkflow, workflowView } from './service.js';
-export { buildsOf, linkBuild } from './store.js';
+export { buildsOf, linkBuild, liveWorkflow } from './store.js';

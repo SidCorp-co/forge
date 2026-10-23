@@ -17,6 +17,7 @@ import {
   designFingerprint,
   designIssueLapsedRefusal,
   designStatusAfterWrite,
+  withdrawnDetail,
 } from './design.js';
 import { baseRefusals, standingBaseRefusal } from './design-bases.js';
 import { designListReadingOf } from './design-standing.js';
@@ -215,6 +216,18 @@ export async function updateWorkflow(input: {
     const row = await readWorkflow(tx, id);
     if (!row || row.projectId !== projectId) {
       throw notFound(`project ${projectId} holds no workflow ${id}`);
+    }
+    if (row.designStatus === 'withdrawn') {
+      return {
+        ok: false,
+        refusals: [
+          {
+            code: 'WORKFLOW_DESIGN_WITHDRAWN',
+            path: '/design/status',
+            detail: withdrawnDetail(row.flow),
+          },
+        ],
+      };
     }
     if (row.revision !== baseRevision) {
       return { ok: false, refusals: [staleBase(baseRevision, row.revision)] };

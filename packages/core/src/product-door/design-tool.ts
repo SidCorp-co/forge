@@ -54,6 +54,7 @@ import {
   readBackOf,
   readDesignAs,
   updateWorkflow,
+  withdrawDesignAs,
   workflowSummaryOf,
   workflowView,
 } from '../workflows/index.js';
@@ -101,6 +102,7 @@ Workflow designs:
 - design_create { projectId, body: { baseRevision: null, document } } and design_revise { projectId, workflowId, body: { baseRevision, document, issue? } }: write a workflow document (the revision you read is the base).
 - design_propose { projectId, workflowId, revision, issue? }: propose a revision for approval.
 - design_decide { projectId, workflowId, revision, decision: ${DESIGN_DECISIONS.join(' | ')}, reason? }: a return says why.
+- design_withdraw { projectId, workflowId, reason? }: take back a design no revision of which was approved; it leaves the list and Needs you. An approved design is refused DESIGN_WITHDRAW_APPROVED, one another live design names in basedOn DESIGN_WITHDRAW_PINNED.
 Suggestions (on a requirement, issue, feedback item or workflow):
 - suggestion_list { projectId, requirement? | issue? | feedback? | workflow?, status?: [${SUGGESTION_STATUSES.join(', ')}], view? }: summaries; view full reads each payload, a breakdown's slices among them.
 - suggestion_create { projectId, body: ${CREATE_SUGGESTION_SHAPE} }.
@@ -262,6 +264,19 @@ async function design_decide(ctx: McpContext, i: Input) {
       decider: actorOf(ctx),
       revision,
       decision,
+      reason: i.reason ?? null,
+    }),
+    'WORKFLOW_REFUSED',
+  ).design;
+}
+
+async function design_withdraw(ctx: McpContext, i: Input) {
+  const { workflowId } = need(i, 'design_withdraw', 'workflowId');
+  return settled(
+    await withdrawDesignAs({
+      projectId: i.projectId,
+      id: workflowId,
+      writer: actorOf(ctx),
       reason: i.reason ?? null,
     }),
     'WORKFLOW_REFUSED',
@@ -441,6 +456,7 @@ const ACTIONS = {
   design_revise,
   design_propose,
   design_decide,
+  design_withdraw,
   suggestion_list,
   suggestion_create,
   suggestion_accept,

@@ -46,7 +46,7 @@ export const projectWorkflows = pgTable(
     revisionChk: check('project_workflows_revision_chk', sql`${t.revision} >= 1`),
     designStatusChk: check(
       'project_workflows_design_status_chk',
-      sql`${t.designStatus} IS NULL OR ${t.designStatus} IN ('draft', 'proposed', 'approved', 'returned')`,
+      sql`${t.designStatus} IS NULL OR ${t.designStatus} IN ('draft', 'proposed', 'approved', 'returned', 'withdrawn')`,
     ),
     designApprovedChk: check(
       'project_workflows_design_approved_chk',

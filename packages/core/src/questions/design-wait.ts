@@ -155,10 +155,14 @@ async function openQuestionsAwaiting(tx: Executor, awaited: AwaitedDesign) {
 function decisionAnswer(args: {
   flow: string;
   revision: number;
-  decision: 'approve' | 'return';
+  decision: 'approve' | 'return' | 'withdraw';
   reason: string | null;
 }): string {
   const design = `Design \`${args.flow}\` revision ${args.revision}`;
+  if (args.decision === 'withdraw') {
+    const why = args.reason ? `: ${args.reason}` : '.';
+    return `${design} was withdrawn before anyone decided it, so no decision will come${why}`;
+  }
   if (args.decision === 'return') {
     return `${design} was returned by its approver: ${args.reason ?? ''}`.trim();
   }
@@ -168,8 +172,9 @@ function decisionAnswer(args: {
 }
 
 /**
- * Answer every open question waiting on a revision with the decision just made on it. Called inside
- * the decision's transaction, so the decision and its answers commit together or not at all.
+ * Answer every open question waiting on a revision with the decision just made on it, or with the
+ * design's withdrawal. Called inside that act's transaction, so the act and its answers commit
+ * together or not at all.
  */
 export async function answerDesignQuestions(
   tx: Tx,
@@ -177,7 +182,7 @@ export async function answerDesignQuestions(
     workflowId: string;
     revision: number;
     flow: string;
-    decision: 'approve' | 'return';
+    decision: 'approve' | 'return' | 'withdraw';
     reason: string | null;
     by: string;
     agency: ActorAgency;

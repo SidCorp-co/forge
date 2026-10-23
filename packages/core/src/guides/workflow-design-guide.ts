@@ -154,6 +154,15 @@ its node (label and band included), an edge contract, a return edge added or rem
 until it is approved again. The approved revision stays readable, so the approver sees what changed.
 An observation of the code moves nothing.
 
+### Withdrawing a design never approved
+A design no revision of which was approved — a draft, a proposal, a returned one — is taken back with
+\`POST …/workflows/:workflow/design/withdraw\` and \`{ reason? }\`, by whoever may write designs. It leaves the
+workflows list and Needs you, its own page reads it \`withdrawn\`, a question parked on its waiting revision
+is answered, and its flow name is not drawn again. An approved design is history: refused
+\`DESIGN_WITHDRAW_APPROVED\`. A design another live one names in \`basedOn\` is refused
+\`DESIGN_WITHDRAW_PINNED\`, naming them; a second withdraw is \`DESIGN_ALREADY_WITHDRAWN\`, and a write to a
+withdrawn design \`WORKFLOW_DESIGN_WITHDRAWN\`.
+
 ### An observation cites the project's source
 A storefront project has no repository: an observed node cites the provider's artefact,
 \`{ kind: "storefront", provider, ref: workflow | route | node, id }\` — an Autoflow workflow code, route

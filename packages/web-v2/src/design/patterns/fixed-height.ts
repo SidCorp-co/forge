@@ -4,6 +4,8 @@
 const HEIGHTS = {
   /** A working pane that scrolls inside itself: most of the viewport. */
   pane: { all: "h-[70dvh]", "max-md": "max-md:h-[70dvh]", "max-lg": "max-lg:h-[70dvh]" },
+  /** The view under the top bar and a 48px view switch, standing above the phone's tab bar. */
+  switched: { "max-lg": "max-lg:h-[calc(100dvh-96px)] max-md:h-[calc(100dvh-152px-env(safe-area-inset-bottom))]" },
   /** The page below the top bar. */
   page: { all: "h-[calc(100dvh-48px)]", lg: "lg:h-[calc(100dvh-48px)]" },
   /** A sticky side column: the viewport less its margin, scrolled. */

@@ -234,6 +234,8 @@ interface SystemOverviewRegionProps {
   canEdit?: boolean;
   /** `page` is Workflows' left pane; `compact` sits on the project dashboard and points to Workflows. */
   variant?: "page" | "compact";
+  /** Below `lg` the page shows one of its halves: the designs list keeps this header, the map fills the view. */
+  narrowView?: "designs" | "map";
   className?: string;
 }
 
@@ -241,7 +243,7 @@ interface SystemOverviewRegionProps {
  * What the system is: one line about it, the facts its system-context design states, and that design on
  * the shared canvas in its compact mode, folded by boundary until it reads at 12px.
  */
-export function SystemOverviewRegion({ records, templates, projectId, slug, projectName, projectDocument, canEdit = false, variant = "page", className }: SystemOverviewRegionProps) {
+export function SystemOverviewRegion({ records, templates, projectId, slug, projectName, projectDocument, canEdit = false, variant = "page", narrowView = "designs", className }: SystemOverviewRegionProps) {
   const t = useCopy();
   const o = useMemo(() => systemOverview(records), [records]);
   const graphRef = useMemo(() => (o ? { projectId, workflowId: o.record.document.id, revision: o.record.revision } : null), [o, projectId]);
@@ -261,7 +263,7 @@ export function SystemOverviewRegion({ records, templates, projectId, slug, proj
       aria-labelledby="system-overview-title"
       data-testid="system-overview"
     >
-      <div className={cn("grid gap-2 border-b border-line-subtle bg-surface px-6 pb-3 pt-3.5 max-md:px-4", compact && "px-5")}>
+      <div className={cn("grid gap-2 border-b border-line-subtle bg-surface px-6 pb-3 pt-3.5 max-md:px-4", compact && "px-5", !compact && narrowView === "map" && "max-lg:hidden")}>
         <div className="flex flex-wrap items-start gap-x-4 gap-y-1.5">
           {compact ? (
             // The dashboard's own header already names the project.
@@ -292,7 +294,7 @@ export function SystemOverviewRegion({ records, templates, projectId, slug, proj
         {graph.isPending ? null : <Description o={o} graph={graph.data ?? null} projectId={projectId} projectDocument={projectDocument} canEdit={canEdit} />}
         <Facts o={o} graph={graph.data ?? null} slug={slug} projectDocument={projectDocument} />
       </div>
-      <div className={cn("flex min-h-0 flex-1", compact ? ["h-155 flex-none", fixedHeight("pane", "max-md")] : ["min-h-105 max-lg:flex-none", fixedHeight("pane", "max-lg")])} data-testid="overview-diagram">
+      <div className={cn("flex min-h-0 flex-1", compact ? ["h-155 flex-none", fixedHeight("pane", "max-md")] : ["min-h-105 max-lg:flex-none", narrowView === "map" ? fixedHeight("switched", "max-lg") : "max-lg:hidden"])} data-testid="overview-diagram">
         <WorkflowCanvas doc={design.document} template={template} graph={graphRef} health={overlay} compact />
       </div>
     </section>

@@ -62,7 +62,7 @@ export function baseRefusals(
       out.push({
         code: 'WORKFLOW_BASE_UNKNOWN',
         path,
-        detail: `basedOn names "${base.workflow}", and this project holds no workflow by that flow (its workflows: ${[...revisions.keys()].join(', ') || 'none'}).`,
+        detail: `basedOn names "${base.workflow}", and this project draws no live workflow by that flow, a withdrawn design being no base (its workflows: ${[...revisions.keys()].join(', ') || 'none'}).`,
       });
       return;
     }

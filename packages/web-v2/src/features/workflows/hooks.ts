@@ -111,6 +111,10 @@ export const useWriteDesign = (projectId: string, workflowId: string) =>
     touches: designTouches(projectId, workflowId),
   });
 
+/** Withdrawing a design never approved: the list, its design and what a re-pin would take all read again. */
+export const useWithdrawDesign = (projectId: string, workflowId: string) =>
+  useWrite((reason: string | null) => workflowsApi.withdraw(projectId, workflowId, reason), { touches: designTouches(projectId, workflowId) });
+
 /** A draft proposed to its approver; the design core answers with is shown at once. */
 export const useProposeDesign = (projectId: string, workflowId: string) =>
   useWrite((a: { revision: number; issue?: string }) => workflowsApi.propose(projectId, workflowId, a.revision, a.issue), {

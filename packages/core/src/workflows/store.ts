@@ -68,24 +68,32 @@ export async function readWorkflow(tx: Tx, id: string): Promise<StoredWorkflow |
   return row ?? null;
 }
 
+/** The workflow drawing `flow` in the project, withdrawn or not: a flow names one workflow for ever. */
 export async function workflowHolding(
   tx: Tx,
   projectId: string,
   flow: string,
-): Promise<string | null> {
+): Promise<{ id: string; withdrawn: boolean } | null> {
   const [row] = await tx
-    .select({ id: projectWorkflows.id })
+    .select({ id: projectWorkflows.id, designStatus: projectWorkflows.designStatus })
     .from(projectWorkflows)
     .where(and(eq(projectWorkflows.projectId, projectId), eq(projectWorkflows.flow, flow)))
     .limit(1);
-  return row?.id ?? null;
+  return row ? { id: row.id, withdrawn: row.designStatus === 'withdrawn' } : null;
 }
 
+/**
+ * A workflow the project still draws: every one but a design withdrawn before it was ever approved,
+ * which no list, Needs you, base or re-pin reads. Its own read by id still answers it, as withdrawn.
+ */
+export const liveWorkflow = sql`${projectWorkflows.designStatus} IS DISTINCT FROM 'withdrawn'`;
+
+/** The project's live workflows ({@link liveWorkflow}): what every project-wide read of its designs reads. */
 export async function workflowsOf(tx: Tx, projectId: string): Promise<StoredWorkflow[]> {
   return tx
     .select(columns)
     .from(projectWorkflows)
-    .where(eq(projectWorkflows.projectId, projectId))
+    .where(and(eq(projectWorkflows.projectId, projectId), liveWorkflow))
     .orderBy(asc(projectWorkflows.kind), asc(projectWorkflows.flow));
 }
 

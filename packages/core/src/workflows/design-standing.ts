@@ -63,7 +63,7 @@ function proposedWait(input: DesignStandingInput, revision: number): DesignWaiti
 
 // Whose turn a design is, first rule wins: proposed → its approver (you when you may decide);
 // returned → the project's master, which `owed-designs.ts` carries it to; draft → the writer drawing
-// it; approved or not under approval → nobody
+// it; approved, withdrawn or not under approval → nobody
 export function designWaitingOn(input: DesignStandingInput): DesignWaitingOn {
   const latest = input.latest?.revision ?? null;
   const author = input.latest?.author;
@@ -98,6 +98,8 @@ export function designWaitingOn(input: DesignStandingInput): DesignWaitingOn {
         NO_ACT,
         say('designs.rule.approved', { r: input.approvedRevision ?? latest ?? 1 }),
       );
+    case 'withdrawn':
+      return wait('none', NOBODY, NO_ACT, say('designs.rule.withdrawn'));
     default:
       return wait('none', NOBODY, NO_ACT, say('designs.rule.notUnderApproval'));
   }
