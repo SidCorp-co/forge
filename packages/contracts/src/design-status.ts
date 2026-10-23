@@ -5,13 +5,14 @@
 import { WORKFLOW_APPROVAL_CHECKLIST } from "./checklist-registry.js";
 import { CHECKLIST_GUARD } from "./checklists.js";
 import type { IssueStatusTone } from "./issue-vocabulary.js";
-import { defineMachine } from "./state-machine.js";
+import { defineMachine, fromEach } from "./state-machine.js";
 
 export const DESIGN_STATUSES = [
 	"draft",
 	"proposed",
 	"approved",
 	"returned",
+	"withdrawn",
 ] as const;
 export type DesignStatus = (typeof DESIGN_STATUSES)[number];
 
@@ -20,6 +21,7 @@ export const DESIGN_STATUS_LABELS: Record<DesignStatus, string> = {
 	proposed: "Awaiting approval",
 	approved: "Approved",
 	returned: "Returned",
+	withdrawn: "Withdrawn",
 };
 
 export const DESIGN_STATUS_TONES: Record<DesignStatus, IssueStatusTone> = {
@@ -27,6 +29,7 @@ export const DESIGN_STATUS_TONES: Record<DesignStatus, IssueStatusTone> = {
 	proposed: "you",
 	approved: "ready",
 	returned: "err",
+	withdrawn: "done",
 };
 
 export const DESIGN_STATUS_GLYPHS: Record<DesignStatus, string> = {
@@ -34,6 +37,7 @@ export const DESIGN_STATUS_GLYPHS: Record<DesignStatus, string> = {
 	proposed: "●",
 	approved: "◆",
 	returned: "↺",
+	withdrawn: "×",
 };
 
 export const DESIGN_STATUS_HINTS: Record<DesignStatus, string> = {
@@ -42,6 +46,8 @@ export const DESIGN_STATUS_HINTS: Record<DesignStatus, string> = {
 		"proposed: nothing that builds it is dispatched until an approver approves it",
 	approved: "approved: work that builds it may start",
 	returned: "returned: sent back to the master to revise",
+	withdrawn:
+		"withdrawn: taken back before any revision was approved; it is no longer listed and nothing builds it",
 };
 
 // the design keeps one head status (docs/patterns/core-module.md, "Revisions: one vocabulary"), so a revision's own state is
@@ -92,11 +98,11 @@ export const DESIGN_REVISION_STATE_HINTS: Record<DesignRevisionState, string> =
 /** The approval lifecycle of a workflow design (`project_workflows.design_status`), moved only by the kernel. */
 export const WORKFLOW_DESIGN_MACHINE = defineMachine({
 	entity: "workflow_design",
-	shapes: ["c3f92a74", "c2d9cd17"],
+	shapes: ["c3f92a74", "c2d9cd17", "1d326c0e"],
 	design: null,
 	states: DESIGN_STATUSES,
 	initial: ["draft"],
-	terminal: [],
+	terminal: ["withdrawn"],
 	reasonRequired: ["returned"],
 	edges: [
 		{ from: "draft", to: "proposed", act: "workflow_design.proposed", permission: "workflow-designs.write", guards: [] },
@@ -104,5 +110,8 @@ export const WORKFLOW_DESIGN_MACHINE = defineMachine({
 		{ from: "returned", to: "proposed", act: "workflow_design.proposed", permission: "workflow-designs.write", guards: [] },
 		{ from: "proposed", to: "approved", act: "workflow_design.approved", permission: "workflow-designs.approve", guards: [CHECKLIST_GUARD], checklist: WORKFLOW_APPROVAL_CHECKLIST.id },
 		{ from: "proposed", to: "returned", act: "workflow_design.returned", permission: "workflow-designs.approve", guards: [] },
+		// a design never approved may be taken back; one with an approved revision is history, refused
+		// before the move by `workflows/design.ts:withdrawRefusal`
+		...fromEach(["draft", "proposed", "returned"] as const, "withdrawn", { act: "workflow_design.withdrawn", permission: "workflow-designs.write", guards: [] }),
 	],
 });

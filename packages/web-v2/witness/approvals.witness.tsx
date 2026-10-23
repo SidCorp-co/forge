@@ -99,6 +99,8 @@ function listed(): string[] {
   if (rows().length !== READ.total) wrong.push(`${rows().length} rows are drawn, not ${READ.total}`);
   const count = document.querySelector("[data-testid=approvals-count]")?.textContent ?? "";
   if (!count.includes(`Decisions waiting on you: ${READ.total}`)) wrong.push(`the page's count reads "${count}"`);
+  const h1 = document.querySelector<HTMLElement>("header h1");
+  if (!h1 || h1.scrollWidth > h1.clientWidth + 0.5) wrong.push(`the page title is cut to ${h1?.clientWidth ?? 0} px of its ${h1?.scrollWidth ?? 0}`);
   if (!phone) {
     const rail = document.querySelector("[data-testid=witness-rail]")?.textContent ?? "";
     if (!rail.includes(String(READ.total))) wrong.push(`the menu's Approvals row does not read ${READ.total}`);

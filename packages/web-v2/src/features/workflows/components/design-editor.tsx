@@ -28,6 +28,7 @@ import {
 import { useProposeDesign, useWriteDesign } from "../hooks";
 import type { DesignDocument, WorkflowDesign, WorkflowRecord } from "../types";
 import { LineEditor, StepEditor } from "./design-step-editor";
+import { WithdrawDesign } from "./design-withdraw";
 import { DesignPill } from "./workflow-parts";
 
 type Named = { id: string; label: string };
@@ -89,7 +90,7 @@ function DesignStanding({ d, record, dirty }: { d: WorkflowDesign; record: Workf
   );
 }
 
-export function DesignEditor({ projectId, d, record, template }: { projectId: string; d: WorkflowDesign; record: WorkflowRecord; template: WorkflowTemplate | null }) {
+export function DesignEditor({ projectId, slug, d, record, template }: { projectId: string; slug: string; d: WorkflowDesign; record: WorkflowRecord; template: WorkflowTemplate | null }) {
   const t = useCopy();
   const start = documentOf(record.document);
   const [doc, setDoc] = useState<DesignDocument>(start);
@@ -212,6 +213,9 @@ export function DesignEditor({ projectId, d, record, template }: { projectId: st
           <Button type="button" size="sm" variant="ghost" disabled={!dirty || save.isPending} onClick={() => setDoc(start)}>
             {t("workflows.edit.discard")}
           </Button>
+          <span className="ml-auto">
+            <WithdrawDesign projectId={projectId} slug={slug} d={d} />
+          </span>
         </div>
         <RefusalLine error={save.error} onField={onField} testid="design-save-refusal" />
         <RefusalLine error={propose.error} testid="design-propose-refusal" />

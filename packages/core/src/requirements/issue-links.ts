@@ -24,7 +24,7 @@ import { notFound } from '../middleware/route-errors.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { planDriftOf } from './plan-drift.js';
 import { type RequirementActor, rowIn, signerRefusal } from './read.js';
-import { linkIssueRefusal, refuseRequirement } from './rules.js';
+import { designWithdrawnRefusal, linkIssueRefusal, refuseRequirement } from './rules.js';
 import { answer, inTx, lockRequirements, type RequirementOutcome } from './write-tx.js';
 
 async function issueIn(projectId: string, ref: string, userId: string) {
@@ -125,11 +125,18 @@ export async function linkWorkflow(input: {
   await requireCan(actorFor(actor.userId), 'project.write', projectResource(projectId));
   const row = await rowIn(db, projectId, input.ref);
   const [wf] = await db
-    .select({ projectId: projectWorkflows.projectId })
+    .select({
+      projectId: projectWorkflows.projectId,
+      flow: projectWorkflows.flow,
+      designStatus: projectWorkflows.designStatus,
+    })
     .from(projectWorkflows)
     .where(eq(projectWorkflows.id, input.workflowId));
   if (!wf || wf.projectId !== projectId) {
     throw notFound(`project ${projectId} holds no workflow ${input.workflowId}`);
+  }
+  if (wf.designStatus === 'withdrawn') {
+    return { ok: false, refusals: [designWithdrawnRefusal(wf.flow, '/workflowId')] };
   }
   await db
     .insert(requirementWorkflows)
@@ -140,25 +147,37 @@ export async function linkWorkflow(input: {
 
 /**
  * The ids of the designs `names` names in the project, by flow name or id, in their order; or the
- * names it holds no design for. Read before a write that links them, so nothing is half written.
+ * names it holds no design for, and those naming a withdrawn design with where each was named. Read
+ * before a write that links them, so nothing is half written.
  */
 export async function designIdsOf(
   projectId: string,
   names: readonly string[],
-): Promise<{ ok: true; ids: string[] } | { ok: false; missing: string[] }> {
+): Promise<
+  | { ok: true; ids: string[] }
+  | { ok: false; missing: string[]; withdrawn: { at: number; flow: string }[] }
+> {
   if (names.length === 0) return { ok: true, ids: [] };
   const held = await db
-    .select({ id: projectWorkflows.id, flow: projectWorkflows.flow })
+    .select({
+      id: projectWorkflows.id,
+      flow: projectWorkflows.flow,
+      designStatus: projectWorkflows.designStatus,
+    })
     .from(projectWorkflows)
     .where(eq(projectWorkflows.projectId, projectId));
   const ids: string[] = [];
   const missing: string[] = [];
-  for (const name of names) {
+  const withdrawn: { at: number; flow: string }[] = [];
+  names.forEach((name, at) => {
     const hit = held.find((w) => w.id === name || w.flow === name);
-    if (hit) ids.push(hit.id);
-    else missing.push(name);
-  }
-  return missing.length > 0 ? { ok: false, missing } : { ok: true, ids: [...new Set(ids)] };
+    if (!hit) missing.push(name);
+    else if (hit.designStatus === 'withdrawn') withdrawn.push({ at, flow: hit.flow });
+    else ids.push(hit.id);
+  });
+  return missing.length > 0 || withdrawn.length > 0
+    ? { ok: false, missing, withdrawn }
+    : { ok: true, ids: [...new Set(ids)] };
 }
 
 export async function unlinkWorkflow(input: {

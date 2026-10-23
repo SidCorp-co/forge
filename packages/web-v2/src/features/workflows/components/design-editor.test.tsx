@@ -42,7 +42,7 @@ const design = (status: DesignStatus) =>
 
 function show(status: DesignStatus, reply: (c: Call) => { status?: number; body: unknown } = () => ({ body: {} })) {
   const calls = fakeCore((c) => (c.method === "GET" ? HANG : reply(c)));
-  renderWithQuery(<DesignEditor projectId="p-1" d={design(status)} record={record} template={TEMPLATE} />);
+  renderWithQuery(<DesignEditor projectId="p-1" slug="hop" d={design(status)} record={record} template={TEMPLATE} />);
   return { calls, editor: screen.getByTestId("design-editor") };
 }
 

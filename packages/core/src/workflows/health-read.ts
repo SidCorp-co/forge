@@ -29,7 +29,7 @@ import { type HealthViewer, openFeedbackOf } from './health-ports.js';
 import { deriveHealth, type HealthFacts, type PlannedTarget } from './health-rules.js';
 import { rootedOfAll } from './rooted.js';
 import { readStoredWorkflow } from './schema.js';
-import { type workflowsOf, workflowsRead } from './store.js';
+import { liveWorkflow, type workflowsOf, workflowsRead } from './store.js';
 import { templateOf } from './template-check.js';
 
 interface WorkflowRow {
@@ -205,9 +205,11 @@ function healthOfRow(
 }
 
 async function workflowRowsOf(projectId: string, ref?: string): Promise<WorkflowRow[]> {
+  // the project-wide read is the list's and Needs you's: a withdrawn design is in neither; one asked
+  // for by id or flow is still answered
   const where =
     ref === undefined
-      ? sql`true`
+      ? liveWorkflow
       : /^[0-9a-f-]{36}$/i.test(ref)
         ? sql`id = ${ref}`
         : sql`flow = ${ref.trim()}`;

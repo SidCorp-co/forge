@@ -22,6 +22,7 @@ const DESIGN_TOOL_WRITES = [
 	"design_revise",
 	"design_propose",
 	"design_decide",
+	"design_withdraw",
 	"suggestion_create",
 	"suggestion_accept",
 	"suggestion_reject",

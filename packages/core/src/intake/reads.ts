@@ -29,6 +29,7 @@ import {
 } from '../db/schema-requirements.js';
 import { projectWorkflows } from '../db/schema-workflows.js';
 import { itemEmbeddingOf, nearestItems } from '../knowledge/index.js';
+import { liveWorkflow } from '../workflows/index.js';
 
 const REQUIREMENTS_MAX = 60;
 const FEEDBACK_MAX = 40;
@@ -306,7 +307,7 @@ async function workflowRecords(item: IntakeItem): Promise<IntakeRecord[]> {
       approvedRevision: projectWorkflows.approvedRevision,
     })
     .from(projectWorkflows)
-    .where(eq(projectWorkflows.projectId, item.projectId))
+    .where(and(eq(projectWorkflows.projectId, item.projectId), liveWorkflow))
     .orderBy(desc(projectWorkflows.updatedAt))
     .limit(WORKFLOWS_MAX);
   return rows.map((w) => {

@@ -17,7 +17,8 @@ interface PageTitleProps extends HTMLAttributes<HTMLHeadingElement> {
 // inside the workspace shell the title renders into the top bar in the bar's own type, so a page's className only shapes it where there is no bar
 export function PageTitle({ className, back, after, children, ...props }: PageTitleProps) {
   const inBar = useInTopBar();
-  const cls = inBar ? "fg-h3 min-w-0 truncate" : rampOr("fg-h1", className);
+  // beside its key or count the title keeps its whole name, up to the whole bar, and what follows it gives way first
+  const cls = inBar ? cn("fg-h3 min-w-0 truncate", after != null && "max-w-full shrink-0") : rampOr("fg-h1", className);
   const heading = (
     <h1 className={cls} title={inBar && typeof children === "string" ? children : undefined} {...props}>
       {children}
@@ -31,7 +32,7 @@ export function PageTitle({ className, back, after, children, ...props }: PageTi
           <>
             {back}
             {heading}
-            {after}
+            {after != null ? <span className="min-w-0 truncate">{after}</span> : null}
           </>
         ) : (
           heading

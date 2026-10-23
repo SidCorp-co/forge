@@ -19,6 +19,7 @@ import {
   linkBuildAs,
   proposeDesign,
   readDesignAs,
+  withdrawDesignAs,
 } from './design-service.js';
 import { readWorkflowHealthAs } from './health-read.js';
 import { listWorkflowsWithHealthAs } from './listed.js';
@@ -260,6 +261,28 @@ workflowRoutes.post(
         revision: body.revision,
         decision: body.decision,
         reason: body.reason ?? null,
+      }),
+    );
+  },
+);
+
+workflowRoutes.post(
+  '/:id/workflows/:workflow/design/withdraw',
+  workflowParam,
+  strictBody(
+    z.strictObject({ reason: z.string().max(REASON_TEXT_MAX).optional() }),
+    `{ reason? } — why a design no revision of which was approved is taken back, at most ${REASON_TEXT_MAX} characters`,
+  ),
+  async (c) => {
+    const { id, workflow } = c.req.valid('param');
+    const { reason } = c.req.valid('json');
+    return answerDesign(
+      c,
+      await withdrawDesignAs({
+        projectId: id,
+        id: workflow,
+        writer: writerOf(c),
+        reason: reason ?? null,
       }),
     );
   },

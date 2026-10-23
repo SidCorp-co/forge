@@ -254,6 +254,7 @@ export const WORKFLOW_REFUSAL_CODES = [
 	"WORKFLOW_TEMPLATE_UNKNOWN",
 	"WORKFLOW_DESIGN_ISSUE_IS_BUILD",
 	"WORKFLOW_DESIGN_ISSUE_REQUIRED",
+	"WORKFLOW_DESIGN_WITHDRAWN",
 	"WORKFLOW_NODE_TYPE_NOT_IN_TEMPLATE",
 	"WORKFLOW_NODE_FIELD_MISSING",
 	"WORKFLOW_BAND_MISMATCH",
@@ -298,6 +299,11 @@ export const DESIGN_REFUSAL_CODES = [
 	"WORKFLOW_BUILD_ALREADY_LINKED",
 	"WORKFLOW_NODE_UNKNOWN",
 	"WORKFLOW_NODE_AMBIGUOUS",
+	// withdrawing a design (`POST …/design/withdraw`), and any write to one already withdrawn
+	"DESIGN_WITHDRAW_APPROVED",
+	"DESIGN_WITHDRAW_PINNED",
+	"DESIGN_ALREADY_WITHDRAWN",
+	"WORKFLOW_DESIGN_WITHDRAWN",
 	// an approve is judged by the workflow approval checklist (`checklist-registry.ts`)
 	...CHECKLIST_REFUSAL_CODES,
 	...PERMISSION_REFUSAL_CODES,
@@ -305,6 +311,8 @@ export const DESIGN_REFUSAL_CODES = [
 export type DesignRefusalCode = (typeof DESIGN_REFUSAL_CODES)[number];
 export const DESIGN_REFUSAL_STATUSES = {
 	WORKFLOW_DESIGN_REVISION_STALE: 409,
+	DESIGN_ALREADY_WITHDRAWN: 409,
+	WORKFLOW_DESIGN_WITHDRAWN: 409,
 } as const satisfies RefusalStatuses<DesignRefusalCode>;
 
 /** A traced design, requirement or pinned contract a job cannot be given; the job is refused by name. */

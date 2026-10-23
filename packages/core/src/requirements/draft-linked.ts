@@ -8,7 +8,7 @@ import { designIdsOf, linkWorkflow } from './issue-links.js';
 import { proposePlacement } from './placement.js';
 import type { RequirementActor } from './read.js';
 import type { RevisionWrite } from './revision-write.js';
-import type { RequirementRefusal } from './rules.js';
+import { designWithdrawnRefusal, type RequirementRefusal } from './rules.js';
 import { createRequirement } from './service.js';
 import type { RequirementOutcome } from './write-tx.js';
 
@@ -21,13 +21,21 @@ export function designUnknown(missing: readonly string[]): RequirementRefusal {
   };
 }
 
-/** The ids of the designs `names` names, or the refusal naming those the project does not hold. */
+/** The ids of the designs `names` names, or the refusals naming those the project does not hold
+ *  and each one withdrawn. */
 export async function designsNamed(
   projectId: string,
   names: readonly string[],
-): Promise<{ ok: true; ids: string[] } | { ok: false; refusal: RequirementRefusal }> {
+): Promise<{ ok: true; ids: string[] } | { ok: false; refusals: RequirementRefusal[] }> {
   const linked = await designIdsOf(projectId, names);
-  return linked.ok ? linked : { ok: false, refusal: designUnknown(linked.missing) };
+  if (linked.ok) return linked;
+  return {
+    ok: false,
+    refusals: [
+      ...(linked.missing.length > 0 ? [designUnknown(linked.missing)] : []),
+      ...linked.withdrawn.map((w) => designWithdrawnRefusal(w.flow, `/designs/${w.at}`)),
+    ],
+  };
 }
 
 /** Write the draft, then link each design; the outcome as it then reads, still marked created. */
@@ -64,7 +72,7 @@ export async function draftRequirement(input: {
 }): Promise<RequirementOutcome> {
   const { projectId, actor, title, write } = input;
   const linked = await designsNamed(projectId, input.designs);
-  if (!linked.ok) return { ok: false, refusals: [linked.refusal] };
+  if (!linked.ok) return linked;
   const outcome = await draftLinked({ projectId, actor, title, write, workflowIds: linked.ids });
   if (outcome.ok) {
     void proposePlacement(projectId, outcome.requirement.id).catch((err: unknown) =>

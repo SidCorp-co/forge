@@ -1,6 +1,6 @@
 
 import { type Edge, MarkerType, type Node, useReactFlow, useViewport } from "@xyflow/react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type RefObject, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button, SegmentedControl, Icon } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { refusalsOf } from "@/lib/api/refusals";
@@ -23,6 +23,8 @@ const MAX_ZOOM = 2.5;
 /** The most a fit enlarges a small diagram. */
 const FIT_MAX = 1.25;
 const PAD = 16;
+/** The floating toolbar above and the zoom bar below: a fit keeps the diagram clear of both. */
+const BAR = 48;
 
 const LEVELS = ["context", "containers"] as const;
 const DETAILS = ["boundaries", "systems"] as const;
@@ -50,6 +52,32 @@ export function C4Canvas(props: WorkflowCanvasProps) {
 
 const levelOf = (param: string | null, compact = false): Level => (!compact && param === "containers" ? "containers" : "context");
 
+/**
+ * The fit: as large as the view holds. Every system drawn keeps the zoom at which the smallest type reads
+ * at 12px, and a view too big for that folds into boundaries; once folded there is nothing left to
+ * fold, so the whole diagram is fitted into the view, every box and line label in sight. Along an
+ * axis it cannot hold, the view centres on the system without running past either end.
+ */
+function useFitTo(viewBox: () => { width: number; height: number } | null, readableFloor: boolean) {
+  const rf = useReactFlow();
+  return useCallback(
+    (d: Diagram) => {
+      const box = viewBox();
+      if (!box) return false;
+      const fit = fitZoom(d, box, FIT_MAX);
+      const k = readableFloor ? Math.max(MIN_READABLE_ZOOM, fit) : fit;
+      const core = d.boxes.find((b) => b.node.id === FOCAL) ?? d.frames.find((f) => f.frame.id === FOCAL);
+      const offset = (size: number, room: number, centre: number) =>
+        size * k <= room ? (room - size * k) / 2 : -Math.min(Math.max(centre * k - room / 2, 0), size * k - room);
+      const x = PAD + offset(d.width, box.width, core ? core.x + core.w / 2 : d.width / 2);
+      const y = PAD + BAR + offset(d.height, box.height, core ? core.y + core.h / 2 : d.height / 2);
+      void rf.setViewport({ x, y, zoom: k });
+      return true;
+    },
+    [rf, viewBox, readableFloor],
+  );
+}
+
 function C4View(props: WorkflowCanvasProps) {
   const { doc, template, diff = null, compact = false, health = null, highlight = null } = props;
   const rf = useReactFlow();
@@ -64,34 +92,17 @@ function C4View(props: WorkflowCanvasProps) {
   const [param, setParam] = useQueryParam("level");
   const level = levelOf(param, compact);
   const pendingFitRef = useRef(true);
+  const sized = useHasSize(wrapRef);
   const viewBox = useCallback(() => {
     const el = wrapRef.current;
-    return el && el.clientWidth > 0 ? { width: el.clientWidth - 2 * PAD, height: el.clientHeight - 2 * PAD } : null;
-  }, []);
-  const { detail, setDetail, setOpen, diagram } = useC4Diagram(graph, level, canFold, viewBox);
+    return sized && el && el.clientWidth > 0 ? { width: el.clientWidth - 2 * PAD, height: el.clientHeight - 2 * (PAD + BAR) } : null;
+  }, [sized]);
+  const { detail, setDetail, setOpen, diagram } = useC4Diagram(graph, level, canFold, viewBox, sized);
   const { zoom } = useViewport();
   const [ready, setReady] = useState(false);
   const centreOnRef = useRef<string | null>(null);
 
-  /**
-   * Fit: as large as the view holds, never below the zoom at which the smallest type reads at 12px.
-   * Along an axis it cannot hold, the view centres on the system without running past either end.
-   */
-  const fitTo = useCallback(
-    (d: Diagram) => {
-      const box = viewBox();
-      if (!box) return false;
-      const k = Math.max(MIN_READABLE_ZOOM, fitZoom(d, box, FIT_MAX));
-      const core = d.boxes.find((b) => b.node.id === FOCAL) ?? d.frames.find((f) => f.frame.id === FOCAL);
-      const offset = (size: number, room: number, centre: number) =>
-        size * k <= room ? (room - size * k) / 2 : -Math.min(Math.max(centre * k - room / 2, 0), size * k - room);
-      const x = PAD + offset(d.width, box.width, core ? core.x + core.w / 2 : d.width / 2);
-      const y = PAD + offset(d.height, box.height, core ? core.y + core.h / 2 : d.height / 2);
-      void rf.setViewport({ x, y, zoom: k });
-      return true;
-    },
-    [rf, viewBox],
-  );
+  const fitTo = useFitTo(viewBox, canFold && detail === "systems");
 
   const boxOfStep = useCallback((d: Diagram, step: string) => d.boxes.find((b) => b.node.steps.includes(step)), []);
 
@@ -313,11 +324,28 @@ function C4Toolbar({
 }
 
 /** The C4 pipeline from graph to laid-out diagram: the detail the fit chooses for a level, the boundaries the reader opened, and ELK's layout of that view. */
+/**
+ * Whether the view has a size yet. A narrow page keeps the map behind its view switch, and a view
+ * measured while hidden would fold and fit against nothing; without an observer it counts as sized.
+ */
+function useHasSize(ref: RefObject<HTMLElement | null>): boolean {
+  const [sized, setSized] = useState(() => typeof ResizeObserver === "undefined");
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => setSized(el.clientWidth > 0));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [ref]);
+  return sized;
+}
+
 function useC4Diagram(
   graph: SystemGraph | null,
   level: Level,
   canFold: boolean,
   viewBox: () => { width: number; height: number } | null,
+  sized: boolean,
 ) {
   /** Null until the fit has chosen it; a graph with nothing to fold shows its systems at once. */
   const [measured, setMeasured] = useState<Detail | null>(null);
@@ -326,7 +354,7 @@ function useC4Diagram(
   const [diagram, setDiagram] = useState<Diagram | null>(null);
 
   useEffect(() => {
-    if (!canFold || measured !== null || !graph) return;
+    if (!canFold || measured !== null || !graph || !sized) return;
     const all = viewOf(graph, level, "systems");
     if (!all) return;
     let live = true;
@@ -337,7 +365,7 @@ function useC4Diagram(
     return () => {
       live = false;
     };
-  }, [measured, graph, level, canFold, viewBox]);
+  }, [measured, graph, level, canFold, viewBox, sized]);
 
   const view = useMemo(() => (detail && graph ? viewOf(graph, level, detail, open) : null), [graph, level, detail, open]);
   useEffect(() => {

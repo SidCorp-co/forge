@@ -200,7 +200,7 @@ function RailEdge({ collapsed, onToggle }: { collapsed: boolean; onToggle: () =>
 /** The open tab's view, beside the canvas's own. */
 function TabView({ tab, projectId, slug, d, record, shown, template, diff, revision }: Pick<DesignPageProps, "tab" | "projectId" | "slug" | "d" | "record" | "template"> & { shown: WorkflowBody; diff: DesignDiff | null; revision: number }) {
   if (tab === "steps") return <StepsPane shown={shown} template={template} diff={diff} revision={revision} />;
-  if (tab === "edit") return <DesignEditor key={record.revision} projectId={projectId} d={d} record={record} template={template} />;
+  if (tab === "edit") return <DesignEditor key={record.revision} projectId={projectId} slug={slug} d={d} record={record} template={template} />;
   if (tab === "revisions") return <RevisionsPane d={d} />;
   if (tab === "decisions") return <Decisions projectId={projectId} scope="workflow" targetRef={record.document.id} />;
   if (tab === "memory") return <ItemMemory projectId={projectId} slug={slug} cites={record.document.flow} />;

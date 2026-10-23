@@ -30,14 +30,15 @@ interface WorkflowPorts {
   ) => Promise<Map<string, RequirementState>>;
   /** The project's own agent account, minted where it has none: the author of a notice Forge itself posts (as the reconciler's are). */
   projectAgentOf: (tx: Tx, projectId: string) => Promise<string>;
-  /** Answer the open questions waiting on a revision with its decision, in the decision's transaction. */
+  /** Answer the open questions waiting on a revision with its decision, or with the design's
+   *  withdrawal, in that act's transaction. */
   answerDesignQuestions: (
     tx: Tx,
     args: {
       workflowId: string;
       revision: number;
       flow: string;
-      decision: 'approve' | 'return';
+      decision: 'approve' | 'return' | 'withdraw';
       reason: string | null;
       by: string;
       agency: ActorAgency;

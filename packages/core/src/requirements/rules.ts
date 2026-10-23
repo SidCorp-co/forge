@@ -23,6 +23,15 @@ export interface RequirementRefusal {
   detail: string;
 }
 
+/** A requirement is drawn only with a live design: one withdrawn before any approval is refused by name. */
+export function designWithdrawnRefusal(flow: string, path: string): RequirementRefusal {
+  return {
+    code: 'WORKFLOW_DESIGN_WITHDRAWN',
+    path,
+    detail: `design "${flow}" was withdrawn before any revision of it was approved, so no requirement is drawn with it; link a live design instead. Nothing was written.`,
+  };
+}
+
 // Accept, return, agree, defer, link and repin are approvals (ADR 0007): whoever holds
 // requirements.approve signs off, an agent or the revision's author included.
 export function signoffRefusal(

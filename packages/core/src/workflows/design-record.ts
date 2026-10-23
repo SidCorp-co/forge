@@ -7,7 +7,7 @@ import { workflowApprovalRecord } from './design-checklist-record.js';
 import { type DesignIssueOutcome, parkedAtDecision, recordApprovedDesign } from './design-issue.js';
 import { answerDesignQuestions } from './ports.js';
 import type { WorkflowWriter } from './service.js';
-import { decideDesign, moveDesign, type StoredWorkflow } from './store.js';
+import { decideDesign, designsOf, moveDesign, type StoredWorkflow } from './store.js';
 
 /**
  * Everything one decision records, inside a transaction holding the project's workflow lock and after
@@ -90,4 +90,33 @@ export async function recordDecision(
     issueId: designIssueId,
   });
   return { parked, approved };
+}
+
+/**
+ * A withdrawal, inside a transaction holding the project's workflow lock and after its refusals were
+ * read: the kernel move, and an answer to every question parked on the revision that was waiting,
+ * since no decision will ever settle it now.
+ */
+export async function recordWithdrawal(
+  tx: Tx,
+  input: {
+    row: Pick<StoredWorkflow, 'id' | 'flow' | 'designStatus'>;
+    reason: string | null;
+    writer: WorkflowWriter;
+  },
+): Promise<void> {
+  const { row, reason, writer } = input;
+  await moveDesign(tx, row.id, row.designStatus, 'withdrawn', { writer, reason });
+  if (row.designStatus !== 'proposed') return;
+  const [waiting] = await designsOf(tx, row.id);
+  if (!waiting || waiting.decision !== null) return;
+  await answerDesignQuestions(tx, {
+    workflowId: row.id,
+    revision: waiting.revision,
+    flow: row.flow,
+    decision: 'withdraw',
+    reason,
+    by: writer.userId,
+    agency: writer.agency,
+  });
 }

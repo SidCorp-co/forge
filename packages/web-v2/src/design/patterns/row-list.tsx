@@ -62,6 +62,8 @@ export interface RowItemProps {
   wrap?: boolean;
   /** With `onClick`, whether what the button opens under the row is open (`aria-expanded`). */
   expanded?: boolean;
+  /** The trailing state sits under the title at every width: a row in a narrow side panel. */
+  stack?: boolean;
 }
 
 function Facts({ facts }: { facts: ReactNode[] }) {
@@ -77,20 +79,24 @@ function Facts({ facts }: { facts: ReactNode[] }) {
   );
 }
 
-export function RowItem({ title, lead, facts, note, trailing, href, onClick, selected, dim, testId, rowKey, children, wrap, expanded }: RowItemProps) {
+export function RowItem({ title, lead, facts, note, trailing, href, onClick, selected, dim, testId, rowKey, children, wrap, expanded, stack }: RowItemProps) {
   const body = (
     <>
       {lead ? <span className="flex flex-none items-center font-mono text-11-5 font-semibold text-link">{lead}</span> : null}
-      <span className={cn("flex min-w-0 flex-1 flex-col", dim && "opacity-65")}>
+      {/* the title keeps room to be read: trailing chips wrap or drop under it, never take its place */}
+      <span className={cn("flex min-w-40 flex-1 flex-col", dim && "opacity-65")}>
         <span className={cn("min-w-0 text-13-5 font-medium text-fg", wrap ? "break-words" : "truncate")}>{title}</span>
         {facts?.length ? <Facts facts={facts} /> : null}
         {note ? <span className="mt-0.5 block text-12 text-muted">{note}</span> : null}
       </span>
-      {trailing ? <span className="flex min-w-0 flex-wrap items-center justify-end gap-2 max-md:basis-full max-md:justify-start">{trailing}</span> : null}
+      {trailing ? (
+        <span className={cn("flex min-w-0 flex-wrap items-center gap-2", stack ? "basis-full justify-start" : "justify-end max-md:basis-full max-md:justify-start")}>{trailing}</span>
+      ) : null}
     </>
   );
   const row = cn(
-    "flex min-h-12 w-full flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-2 text-left no-underline md:flex-nowrap",
+    "flex min-h-12 w-full flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-2 text-left no-underline",
+    !stack && "md:flex-nowrap",
     (href || onClick) && "cursor-pointer hover:bg-hover",
     selected && "bg-sel",
   );
