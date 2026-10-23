@@ -12,6 +12,7 @@ import {
   type HealthMarkerKind,
   type HealthTarget,
   type NodeDecision,
+  type ObservationSource,
   PROVENANCE_MARKER_KINDS,
   type RewriteThresholdView,
   type WorkflowRootedView,
@@ -105,6 +106,8 @@ export interface HealthFacts {
     createdAt: Date;
     writtenBy: string;
     writtenByAgency: 'human' | 'agent';
+    /** `observer`: a run read the code. `migrated`: migration 0376 copied the design's own text. */
+    source: ObservationSource;
     document: ObservationDocument;
   } | null;
   /** Node decisions, newest first. */
@@ -175,6 +178,15 @@ export function hrefs(f: HealthFacts) {
     contract: (provider: string) => `${base}/contracts/${provider}`,
   };
 }
+
+/**
+ * The facts with only a reading of the code as their observation (design-reconciliation `observe`).
+ * A migrated observation is the design's own step text at an old revision, copied by migration 0376
+ * with no edges: diffed as code, every reworded step read Wrong and every edge Upcoming. It is set
+ * aside, and the design reads as not yet observed until an observer reads the code.
+ */
+export const codeReadingOf = (f: HealthFacts): HealthFacts =>
+  f.observation?.source === 'migrated' ? { ...f, observation: null } : f;
 
 /** The approved document, read from the stored revision or the head. */
 export function approvedDocumentOf(f: HealthFacts): WorkflowWrite | null {

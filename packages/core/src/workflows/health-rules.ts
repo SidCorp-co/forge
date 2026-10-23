@@ -16,6 +16,7 @@ import {
 import { type DesignDiff, designDiff, edgeKey } from './design-diff.js';
 import {
   approvedDocumentOf,
+  codeReadingOf,
   decisionTarget,
   type HealthFacts,
   Markers,
@@ -255,7 +256,8 @@ const VERDICT_ACT = {
   delete: say('workflows.act.delete'),
 } as const;
 
-export function deriveHealth(f: HealthFacts): WorkflowHealth {
+export function deriveHealth(facts: HealthFacts): WorkflowHealth {
+  const f = codeReadingOf(facts);
   const approved = approvedDocumentOf(f);
   const shown = f.proposed?.document ?? approved ?? f.head.document;
   const revision = f.proposed?.revision ?? f.approvedRevision ?? f.head.revision;

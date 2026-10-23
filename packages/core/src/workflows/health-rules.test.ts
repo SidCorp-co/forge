@@ -94,13 +94,17 @@ function facts(over: Partial<HealthFacts> = {}): HealthFacts {
   };
 }
 
-const obsOf = (document: ObservationDocument, createdAt = T1): HealthFacts['observation'] => ({
+const obsOf = (
+  document: ObservationDocument,
+  createdAt = T1,
+): NonNullable<HealthFacts['observation']> => ({
   id: 'o1',
   atSha: SHA,
   revision: 2,
   createdAt,
   writtenBy: 'u1',
   writtenByAgency: 'agent',
+  source: 'observer',
   document,
 });
 
@@ -190,6 +194,40 @@ describe('d-provenance', () => {
   it('reads a fully matching observation as matched with no marker', () => {
     const h = deriveHealth(facts({ observation: obsOf(fullMatch) }));
     expect(h.markers).toEqual([]);
+    expect(node(h, 'planned:check')?.provenance).toBe('matched');
+  });
+
+  // migration 0376 copied each design's own step text into an observation, with no edges: the
+  // design's old wording, never a reading of the code (forge-dev 2026-10-23, 83 false markers)
+  it("never reads a migrated copy of the design's own old text as the code", () => {
+    const r1 = design([
+      step('intake', [], { does: 'intake as revision 1 worded it' }),
+      step('check', ['intake'], { does: 'check as revision 1 worded it' }),
+    ]);
+    const selfCopy = observed([
+      { id: 'intake', matches: 'intake', does: 'intake as revision 1 worded it' },
+      { id: 'check', matches: 'check', does: 'check as revision 1 worded it', after: ['intake'] },
+    ]);
+    const h = deriveHealth(
+      facts({
+        revisions: [
+          { revision: 1, document: r1, decidedAt: T0 },
+          { revision: 2, document: plan, decidedAt: T1 },
+        ],
+        observation: { ...obsOf(selfCopy, T0), revision: 1, source: 'migrated' },
+      }),
+    );
+    expect(h.counts).toMatchObject({ wrong: 0, upcoming: 0, not_in_design: 0 });
+    expect(h.markers).toEqual([]);
+    expect(h.needsYou).toBe(0);
+    expect(h.observation).toBeNull();
+    expect(h.nodes.every((n) => n.provenance === 'planned')).toBe(true);
+    expect(h.reconciliation.says.rule).toEqual(say('workflows.reconcile.unobserved'));
+  });
+
+  it("still reads an observer's reading of the code", () => {
+    const h = deriveHealth(facts({ observation: obsOf(fullMatch) }));
+    expect(h.observation?.id).toBe('o1');
     expect(node(h, 'planned:check')?.provenance).toBe('matched');
   });
 });

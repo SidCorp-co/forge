@@ -8,7 +8,11 @@
 
 import { requirementKey } from '@forge/contracts/requirements';
 import { VERDICT_VALUES } from '@forge/contracts/verdict-identity';
-import { designChangePayloadSchema, nodeDecisionSchema } from '@forge/contracts/workflow-health';
+import {
+  designChangePayloadSchema,
+  nodeDecisionSchema,
+  type ObservationSource,
+} from '@forge/contracts/workflow-health';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { canonicalIssueKey } from '../lib/issue-ref.js';
@@ -333,13 +337,15 @@ export async function observationOf(
     created_at: string;
     written_by: string;
     written_by_agency: 'human' | 'agent';
+    source: ObservationSource;
     document: unknown;
   }>(
+    // an observer's reading of the code is preferred over any migrated copy of the design's text
     await db.execute(sql`
       SELECT DISTINCT ON (workflow_id) workflow_id, id, at_sha, revision, created_at, written_by,
-             written_by_agency, document
+             written_by_agency, source, document
         FROM project_workflow_observations WHERE workflow_id IN (${ids(workflowIds)})
-       ORDER BY workflow_id, created_at DESC`),
+       ORDER BY workflow_id, (source = 'observer') DESC, created_at DESC`),
   );
   for (const row of rows) {
     const parsed = observationDocumentSchema.safeParse(row.document);
@@ -355,6 +361,7 @@ export async function observationOf(
       createdAt: new Date(row.created_at),
       writtenBy: row.written_by,
       writtenByAgency: row.written_by_agency,
+      source: row.source,
       document: parsed.data,
     });
   }
