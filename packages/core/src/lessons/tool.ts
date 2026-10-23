@@ -1,9 +1,8 @@
 /**
- * `forge_lesson_confusion`: the assistant stops guessing about a lesson and asks (REQ-50 BC-5). It
- * withdraws the lesson from every prompt, so like every chat write it is held as a confirm card
- * (`assistant/agreement/write-rule.ts`, REQ-30 BC-4); once the person this turn answers records it,
- * it is raised as them, with the assistant's agency, and holds the lesson until a holder of
- * `suggestions.approve` decides it.
+ * `forge_lesson_confusion`: the assistant stops guessing about a lesson and reports it to the steward
+ * (REQ-50 BC-5). Lessons are internal to Forge (BC-9), so no person agrees to it: it goes straight to
+ * the store, raised with the assistant's agency (`assistant/agreement/write-rule.ts` passes it), and
+ * holds the lesson until the steward and core settle it.
  */
 
 import { raiseConfusionRequestSchema } from '@forge/contracts/lessons';
@@ -23,8 +22,9 @@ const DESCRIPTION = [
   'Raise a confusion about one of the project lessons in your prompt, instead of guessing:',
   'two lessons conflict (kind conflict, other.lesson), a lesson contradicts a requirement or design (kind contradicts, other.ref such as REQ-12),',
   'or you cannot tell how it applies here (kind unclear).',
+  'For a lesson wrongly applied to an output, use kind wrongly_applied with other.ref naming that output.',
   'Give each side in one sentence and the resolution you recommend (keep, edit with the new sentence, or retire).',
-  'The person sees it as a card and records it; from then the lesson is held until a person decides. Go on without the lesson and tell the person you raised it.',
+  'It goes to the steward at once, and the lesson is held until the steward settles it. Go on without the lesson; nobody has to answer it.',
 ].join(' ');
 
 export const lessonConfusionTool: ContextScopedMcpToolFactory = (ctx) => ({
@@ -39,15 +39,15 @@ export const lessonConfusionTool: ContextScopedMcpToolFactory = (ctx) => ({
     const projectId = ctx.boundProjectId;
     if (!projectId) {
       throw new Error(
-        'forge_lesson_confusion raises a confusion on a bound project, and this turn names none',
+        'forge_lesson_confusion reports a confusion on a bound project, and this turn names none',
       );
     }
-    const view = await raiseConfusion({
+    const moved = await raiseConfusion({
       projectId,
       ref: String(lesson),
       actor: { userId: ctx.principal.userId, agency: 'agent' },
       body,
     });
-    return { lesson: view.key, status: view.status, held: view.status === 'held' };
+    return { lesson: moved.key, status: moved.status, held: moved.status === 'held' };
   },
 });

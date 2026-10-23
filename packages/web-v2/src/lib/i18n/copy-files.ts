@@ -20,7 +20,6 @@ import forecastCopy from "./copy/forecast.json";
 import intakeCopy from "./copy/intake.json";
 import integrationsCopy from "./copy/integrations.json";
 import issuesCopy from "./copy/issues.json";
-import lessonsCopy from "./copy/lessons.json";
 import memoryCopy from "./copy/memory.json";
 import modulesCopy from "./copy/modules.json";
 import needsYouCopy from "./copy/needs-you.json";
@@ -36,7 +35,6 @@ import projectHomeCopy from "./copy/project-home.json";
 import projectSettingsCopy from "./copy/project-settings.json";
 import projectStatusCopy from "./copy/project-status.json";
 import projectsCopy from "./copy/projects.json";
-import questionDeskCopy from "./copy/question-desk.json";
 import questionsCopy from "./copy/questions.json";
 import releasesCopy from "./copy/releases.json";
 import requirementsCopy from "./copy/requirements.json";
@@ -82,7 +80,6 @@ export const COPY_FILES = {
   "lib/i18n/copy/intake.json": intakeCopy,
   "lib/i18n/copy/integrations.json": integrationsCopy,
   "lib/i18n/copy/issues.json": issuesCopy,
-  "lib/i18n/copy/lessons.json": lessonsCopy,
   "lib/i18n/copy/memory.json": memoryCopy,
   "lib/i18n/copy/modules.json": modulesCopy,
   "lib/i18n/copy/needs-you.json": needsYouCopy,
@@ -98,7 +95,6 @@ export const COPY_FILES = {
   "lib/i18n/copy/project-settings.json": projectSettingsCopy,
   "lib/i18n/copy/project-status.json": projectStatusCopy,
   "lib/i18n/copy/projects.json": projectsCopy,
-  "lib/i18n/copy/question-desk.json": questionDeskCopy,
   "lib/i18n/copy/questions.json": questionsCopy,
   "lib/i18n/copy/releases.json": releasesCopy,
   "lib/i18n/copy/requirements.json": requirementsCopy,

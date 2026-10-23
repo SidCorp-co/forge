@@ -1,8 +1,8 @@
 /**
  * The approvals folded into the one Needs you read (REQ-48 BC-11): every suggestion an agent proposed
- * that the viewer may decide, every mockup they may accept, every preview they may approve and every
- * lesson decision they may take (`needs-you-lessons.ts`), each a
+ * that the viewer may decide, every mockup they may accept and every preview they may approve, each a
  * decision with the act that decides it where it is listed and what it proposes (`needs-you-proposals.ts`).
+ * No lesson is one: lessons are internal to Forge, and the steward settles them (REQ-50 BC-9).
  * There is no second approvals read: the page, the Dashboard, /attention, the nav and the chat count
  * this one. Each is checked against the decision schema on its own, so a record no decision can be
  * made of is named under `unreadable` and logged, never the whole read's failure and never dropped.
@@ -26,7 +26,6 @@ import { cutAtWord } from '@forge/contracts/title-text';
 import { inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { feedback } from '../db/schema-feedback.js';
-import { primeLessonsWaiting } from '../lessons/index.js';
 import type { ProjectAccess } from '../lib/authz.js';
 import { logger } from '../lib/logger.js';
 import { primeWaitingMockups, waitingMockupsAs } from '../mockups/read.js';
@@ -44,7 +43,6 @@ import {
 } from '../suggestions/waiting-read.js';
 import type { NeedsYouViewer, readAttention } from './needs-you.js';
 import { clip, type DecisionBody, filled } from './needs-you-decision-builders.js';
-import { lessonDecisionsFor } from './needs-you-lessons.js';
 import {
   type BrokenDown,
   breakdownProposal,
@@ -364,7 +362,7 @@ function checked(key: string, build: () => DecisionBody, out: Folded, projectId:
 
 /**
  * The rows each project's Needs you read sends once a project (its open questions, and the
- * suggestions, mockups, previews and lessons this fold makes decisions of), read for every project in
+ * suggestions, mockups and previews this fold makes decisions of), read for every project in
  * `projectIds` in one statement each, so the read across projects costs no statement more a project
  * for them (`needs-you-viewer.ts:readNeedsYouAcross`, `db/read-memo.ts:primeReads`).
  */
@@ -373,7 +371,6 @@ export function primeNeedsYouAcross(projectIds: readonly string[]): void {
   primeWaitingSuggestions(projectIds);
   primeWaitingMockups(projectIds);
   primeApprovablePreviews(projectIds);
-  primeLessonsWaiting(projectIds);
 }
 
 export async function foldedDecisions(
@@ -382,11 +379,10 @@ export async function foldedDecisions(
   access: ProjectAccess,
   attention: Attention,
 ): Promise<Folded> {
-  const [suggestions, mockups, previews, lessons] = await Promise.all([
+  const [suggestions, mockups, previews] = await Promise.all([
     waitingSuggestionsFor(projectId, (p) => holds(access, p)),
     waitingMockupsAs(projectId, { userId: viewer.userId, agency: viewer.agency }),
     holds(access, 'previews.approve') ? approvablePreviewsOf(projectId) : [],
-    lessonDecisionsFor(projectId, holds(access, 'suggestions.approve')),
   ]);
   const items = await triagedItemsOf(
     suggestions.filter((s) => s.kind === 'feedback_triage').map((s) => s.target.id),
@@ -403,6 +399,5 @@ export async function foldedDecisions(
   }
   for (const m of mockups) checked(m.key, () => mockupDecision(projectId, m), out, projectId);
   for (const p of previews) checked(p.issueKey, () => previewDecision(p), out, projectId);
-  for (const l of lessons) checked(l.key, l.build, out, projectId);
   return out;
 }

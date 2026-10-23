@@ -10,7 +10,7 @@ import {
 import type { ActorAgency } from '@forge/contracts/permissions';
 import { requirementKey } from '@forge/contracts/requirements';
 import { type Said, say, verbatim } from '@forge/contracts/said';
-import { and, asc, count, desc, eq, inArray } from 'drizzle-orm';
+import { and, asc, count, eq, inArray } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import {
   feedback,
@@ -18,7 +18,7 @@ import {
   feedbackDecisions,
   feedbackMessages,
 } from '../db/schema-feedback.js';
-import { agentQuestions } from '../db/schema-questions.js';
+import type { agentQuestions } from '../db/schema-questions.js';
 import { suggestions } from '../db/schema-suggestions.js';
 import { findIssueById, isUuid } from '../issues/index.js';
 import { effectiveProjectRole } from '../lib/authz.js';
@@ -29,6 +29,7 @@ import { actorFor, holds, projectResource, requireCan } from '../permissions/ind
 import { rowIn as requirementRowIn } from '../requirements/index.js';
 import { feedbackEgress, type ReadDoor, WITHHELD } from './egress.js';
 import { linkedOf, summaryOf, viewerCanOf } from './list-read.js';
+import { questionsOnFeedback, questionViewsOf } from './questions-read.js';
 import { reportersOf } from './reporters.js';
 import { clarificationRefusal, redactedRefusal } from './rules.js';
 import { shipNoticeOf } from './ship-notice.js';
@@ -268,16 +269,7 @@ export async function detailAs(
       .from(feedbackAttachments)
       .where(eq(feedbackAttachments.feedbackId, row.id))
       .orderBy(asc(feedbackAttachments.createdAt)),
-    db
-      .select({
-        id: agentQuestions.id,
-        status: agentQuestions.status,
-        steps: agentQuestions.steps,
-      })
-      .from(agentQuestions)
-      .where(eq(agentQuestions.feedbackId, row.id))
-      .orderBy(desc(agentQuestions.createdAt))
-      .limit(1),
+    questionsOnFeedback(db, row.id),
     duplicateKeysOf(db, row.id),
     db
       .select({ n: count() })
@@ -314,7 +306,8 @@ export async function detailAs(
     ...mergedAttachments.map((m) => m.a.uploadedBy),
   ]);
   const acceptReasons = await acceptReasonsOf(decisions.map((d) => d.fromSuggestionId));
-  const q = questions[0];
+  // the latest clarification to the reporter; the steward's questions about the item are not one
+  const q = questions.find((x) => x.clarification);
   const root = row.duplicateOf ? linked.roots.get(row.duplicateOf) : undefined;
   const shipNotice = await shipNoticeOf(projectId, {
     id: row.id,
@@ -375,6 +368,7 @@ export async function detailAs(
       })),
       messages: messageViewsOf(shownMessages, deciders, withhold),
       clarification: clarificationViewOf(q, withhold),
+      questions: questionViewsOf(questions, withhold),
       openSuggestions: open?.n ?? 0,
       shipNotice,
       can: {

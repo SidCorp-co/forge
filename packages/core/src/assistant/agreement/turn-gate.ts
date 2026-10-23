@@ -66,7 +66,6 @@ const KIND_WORDS: Record<ChatProposalKind, string> = {
   issue_change: 'change to an issue',
   requirement_link: "change to a requirement's links",
   project_change: 'change to the project',
-  lesson_confusion: 'lesson held for a decision',
 };
 
 function heldText(row: ChatProposalRow, tool: string): string {

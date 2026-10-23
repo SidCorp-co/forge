@@ -71,6 +71,7 @@ const item = {
   reporters: [{ id: ANN, name: "Ann", agency: "human", from: null }],
   messages: [],
   clarification: null,
+  questions: [],
   openSuggestions: 0,
   can: NONE,
 } as unknown as FeedbackView;

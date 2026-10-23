@@ -1,18 +1,14 @@
 /**
- * The decisions on a lesson (REQ-50 BC-2, BC-3, BC-7): it is proposed from corrections, and a holder
- * of `suggestions.approve` approves it (optionally edited), edits it, rejects it, retires it, or keeps
- * it against a retirement proposal. Each runs in one transaction under the project's lessons lock; a
- * status moves only through the kernel, and the lesson's knowledge entry moves with it, so what a
- * prompt reads never runs ahead of the decision.
+ * The decisions on a lesson (REQ-50 BC-2, BC-3, BC-7): the steward proposes one from corrections, and
+ * the steward and core settle it, as the steward account holding `suggestions.approve`: approve it
+ * (optionally edited), reject it, or retire it, each with a reason; no person is asked. Each runs in
+ * one transaction under the project's lessons lock; a status moves only through the kernel, which
+ * keeps the reason, and the lesson's knowledge entry moves with it, so what a prompt reads never runs
+ * ahead of the decision.
  */
 
 import { LESSON_MACHINE } from '@forge/contracts/lesson-machine';
-import type {
-  EditLessonRequest,
-  LessonScope,
-  LessonView,
-  ProposeLessonRequest,
-} from '@forge/contracts/lessons';
+import type { LessonScope, LessonStatus, ProposeLessonRequest } from '@forge/contracts/lessons';
 import { lessonKey } from '@forge/contracts/lessons';
 import { and, eq, inArray, max } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
@@ -23,7 +19,7 @@ import { lockXact } from '../lib/advisory-lock.js';
 import { movedRow, transition } from '../lifecycle/index.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
 import { closeOpenConfusions } from './confusion-close.js';
-import { type LessonRow, lessonIn, lessonViewOf } from './read.js';
+import { type LessonRow, lessonIn } from './read.js';
 import { refuse } from './refuse.js';
 
 export interface LessonActor {
@@ -31,7 +27,20 @@ export interface LessonActor {
   agency: 'human' | 'agent';
 }
 
-const kernelActor = (actor: LessonActor) => ({
+/** A lesson as a decision leaves it. */
+export interface LessonMoved {
+  id: string;
+  key: string;
+  status: LessonStatus;
+}
+
+/** What the steward changes when it approves a proposal edited (BC-2). */
+export interface LessonEdit {
+  sentence?: string | undefined;
+  scope?: LessonScope | undefined;
+}
+
+export const kernelActor = (actor: LessonActor) => ({
   type: 'user' as const,
   id: actor.userId,
   agency: actor.agency,
@@ -41,6 +50,11 @@ export const lockLessons = (tx: Tx, projectId: string) => lockXact(tx, 'lessons'
 
 const requireDecider = (actor: LessonActor, projectId: string, act: string) =>
   requireCan(actorFor(actor.userId), 'suggestions.approve', projectResource(projectId), act);
+
+async function movedOf(projectId: string, id: string): Promise<LessonMoved> {
+  const row = await lessonIn(db, projectId, id);
+  return { id: row.id, key: lessonKey(row.number), status: row.status };
+}
 
 /** The scope's columns, its area checked to be this project's. */
 async function scopeColumns(tx: Tx, projectId: string, scope: LessonScope) {
@@ -108,12 +122,12 @@ function refuseUnless(row: LessonRow, allowed: readonly LessonRow['status'][], a
   );
 }
 
-/** A proposal grouping the corrections it learns from (the steward's, or a person's). */
+/** The steward's proposal, grouping the corrections it learns from. */
 export async function proposeLesson(input: {
   projectId: string;
   actor: LessonActor;
   body: ProposeLessonRequest;
-}): Promise<LessonView> {
+}): Promise<LessonMoved> {
   const { projectId, actor, body } = input;
   await requireCan(actorFor(actor.userId), 'project.write', projectResource(projectId));
   const id = await db.transaction(async (tx) => {
@@ -164,78 +178,57 @@ export async function proposeLesson(input: {
       .where(inArray(corrections.id, wanted));
     return row.id;
   });
-  return lessonViewOf(projectId, id, actor.userId);
+  return movedOf(projectId, id);
 }
 
-/** A person edits a proposal's sentence or scope before deciding it. */
-export async function editLesson(input: {
-  projectId: string;
-  ref: string;
-  actor: LessonActor;
-  body: EditLessonRequest;
-}): Promise<LessonView> {
-  await requireDecider(input.actor, input.projectId, 'editing a lesson');
-  const id = await db.transaction(async (tx) => {
-    await lockLessons(tx, input.projectId);
-    const row = await lessonIn(tx, input.projectId, input.ref);
-    refuseUnless(row, ['proposed'], 'an edit');
-    await tx
-      .update(lessons)
-      .set({
-        ...(input.body.sentence ? { sentence: input.body.sentence } : {}),
-        ...(input.body.scope ? await scopeColumns(tx, input.projectId, input.body.scope) : {}),
-        updatedAt: new Date(),
-      })
-      .where(eq(lessons.id, row.id));
-    return row.id;
-  });
-  return lessonViewOf(input.projectId, id, input.actor.userId);
-}
-
-/** Approve a proposal, as edited where the body edits it; from now its text reaches every agent in its scope. */
+/**
+ * Approve a proposal, as edited where `edit` edits it, saying why; from now its text reaches every
+ * agent in its scope. The lesson it supersedes is retired in the same transaction (BC-7).
+ */
 export async function approveLesson(input: {
   projectId: string;
   ref: string;
   actor: LessonActor;
-  body: EditLessonRequest;
-}): Promise<LessonView> {
+  edit?: LessonEdit | undefined;
+  reason: string;
+}): Promise<LessonMoved> {
   await requireDecider(input.actor, input.projectId, 'approving a lesson');
   const id = await db.transaction(async (tx) => {
     await lockLessons(tx, input.projectId);
     const row = await lessonIn(tx, input.projectId, input.ref);
     refuseUnless(row, ['proposed'], 'approving');
     const edits = {
-      ...(input.body.sentence ? { sentence: input.body.sentence } : {}),
-      ...(input.body.scope ? await scopeColumns(tx, input.projectId, input.body.scope) : {}),
+      ...(input.edit?.sentence ? { sentence: input.edit.sentence } : {}),
+      ...(input.edit?.scope ? await scopeColumns(tx, input.projectId, input.edit.scope) : {}),
     };
     const now = new Date();
-    const moved = await transition(tx, LESSON_MACHINE, {
-      to: 'approved',
-      expect: 'proposed',
-      set: { ...edits, approvedAt: now, approvedBy: input.actor.userId, updatedAt: now },
-      where: eq(lessons.id, row.id),
-      actor: kernelActor(input.actor),
-      source: 'lessons',
-      returning: ['id'],
-    });
-    movedRow(moved);
-    const approved = await lessonIn(tx, input.projectId, row.id);
-    await publishLesson(tx, approved);
+    movedRow(
+      await transition(tx, LESSON_MACHINE, {
+        to: 'approved',
+        expect: 'proposed',
+        set: { ...edits, approvedAt: now, approvedBy: input.actor.userId, updatedAt: now },
+        where: eq(lessons.id, row.id),
+        reason: input.reason,
+        actor: kernelActor(input.actor),
+        source: 'lessons',
+        returning: ['id'],
+      }),
+    );
+    await publishLesson(tx, await lessonIn(tx, input.projectId, row.id));
     if (row.supersedesId) {
-      // the lesson it replaces is proposed for retirement at once (BC-7); a person retires it
+      const old = await lessonIn(tx, input.projectId, row.supersedesId);
       await tx
         .update(lessons)
-        .set({
-          supersededById: row.id,
-          retireReason: 'superseded',
-          retireProposedAt: now,
-          updatedAt: now,
-        })
-        .where(eq(lessons.id, row.supersedesId));
+        .set({ supersededById: row.id, updatedAt: now })
+        .where(eq(lessons.id, old.id));
+      if (old.status === 'approved' || old.status === 'held') {
+        await retireLessonIn(tx, old, input.actor, `Superseded by ${lessonKey(row.number)}.`);
+        await closeOpenConfusions(tx, old.id, input.actor.userId, 'retire');
+      }
     }
     return row.id;
   });
-  return lessonViewOf(input.projectId, id, input.actor.userId);
+  return movedOf(input.projectId, id);
 }
 
 /** Reject a proposal, saying why; it never reaches a prompt, and its corrections stay its provenance. */
@@ -244,7 +237,7 @@ export async function rejectLesson(input: {
   ref: string;
   actor: LessonActor;
   reason: string;
-}): Promise<LessonView> {
+}): Promise<LessonMoved> {
   await requireDecider(input.actor, input.projectId, 'rejecting a lesson');
   const id = await db.transaction(async (tx) => {
     await lockLessons(tx, input.projectId);
@@ -264,7 +257,7 @@ export async function rejectLesson(input: {
     );
     return row.id;
   });
-  return lessonViewOf(input.projectId, id, input.actor.userId);
+  return movedOf(input.projectId, id);
 }
 
 /** Retire a lesson, approved or held; its row and its entry are kept, out of every prompt. */
@@ -290,12 +283,13 @@ export async function retireLessonIn(
   await withdrawLessonEntry(tx, row);
 }
 
+/** Retire a lesson with a reason (BC-7); every confusion still open on it is settled with it. */
 export async function retireLesson(input: {
   projectId: string;
   ref: string;
   actor: LessonActor;
   reason: string;
-}): Promise<LessonView> {
+}): Promise<LessonMoved> {
   await requireDecider(input.actor, input.projectId, 'retiring a lesson');
   const id = await db.transaction(async (tx) => {
     await lockLessons(tx, input.projectId);
@@ -304,33 +298,5 @@ export async function retireLesson(input: {
     await closeOpenConfusions(tx, row.id, input.actor.userId, 'retire');
     return row.id;
   });
-  return lessonViewOf(input.projectId, id, input.actor.userId);
-}
-
-/** Keep an approved lesson against its retirement proposal; the unused clock restarts. */
-export async function keepLesson(input: {
-  projectId: string;
-  ref: string;
-  actor: LessonActor;
-}): Promise<LessonView> {
-  await requireDecider(input.actor, input.projectId, 'keeping a lesson');
-  const id = await db.transaction(async (tx) => {
-    await lockLessons(tx, input.projectId);
-    const row = await lessonIn(tx, input.projectId, input.ref);
-    refuseUnless(row, ['approved'], 'keeping');
-    if (!row.retireReason) {
-      throw refuse(
-        'LESSON_NOT_APPLICABLE',
-        `no retirement is proposed for ${lessonKey(row.number)}; keep answers a retirement proposal`,
-        '/lesson',
-      );
-    }
-    const now = new Date();
-    await tx
-      .update(lessons)
-      .set({ retireReason: null, retireProposedAt: null, keptAt: now, updatedAt: now })
-      .where(eq(lessons.id, row.id));
-    return row.id;
-  });
-  return lessonViewOf(input.projectId, id, input.actor.userId);
+  return movedOf(input.projectId, id);
 }

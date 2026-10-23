@@ -91,6 +91,7 @@ const view = (over: Partial<FeedbackView> = {}): FeedbackView =>
       { id: "m2", audience: "reporter", text: "Chao ban", sentBy: "u2", sentByName: "Minh", sentAgency: "human", sentAt: AT, recipients: [{ id: "u1", name: null }] },
     ],
     clarification: null,
+    questions: [],
     openSuggestions: 1,
     can: CAN,
     ...over,

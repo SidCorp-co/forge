@@ -30,8 +30,8 @@ import { actorAgencies } from './schema-vocabulary.js';
 
 const inList = (values: readonly string[]) => sql.raw(values.map((v) => `'${v}'`).join(', '));
 
-// a lesson (L-n, REQ-50) is one sentence learned from corrections: proposed by the steward, approved
-// by a person, held while a confusion about it is open and retired when it no longer serves; its
+// a lesson (L-n, REQ-50) is one sentence learned from corrections: proposed and approved by the
+// steward, held while a confusion about it is open and retired when it no longer serves; its
 // status moves only through the kernel (`lesson-machine.ts`), and while approved its text reaches the
 // agents in its scope as the knowledge entry `lesson-<n>` (docs/proposals/lessons.md, section 2)
 export const lessons = pgTable(
@@ -59,9 +59,10 @@ export const lessons = pgTable(
     decidedReason: text('decided_reason'),
     appliedCount: integer('applied_count').notNull().default(0),
     lastAppliedAt: timestamp('last_applied_at', { withTimezone: true }),
+    // no code writes these three: a lesson due for retirement is retired by the steward (BC-7), and
+    // `kept_at` restarts the unused clock only where a row holds one
     retireReason: text('retire_reason', { enum: LESSON_RETIRE_REASONS }),
     retireProposedAt: timestamp('retire_proposed_at', { withTimezone: true }),
-    /** A person kept it against a retirement proposal; the unused clock restarts here. */
     keptAt: timestamp('kept_at', { withTimezone: true }),
     // the two links to another lesson are foreign keys on the table (below), not column references:
     // a column referencing its own table makes the row type circular wherever it is inferred first
@@ -139,6 +140,7 @@ export const corrections = pgTable(
     lessonId: uuid('lesson_id').references(() => lessons.id, { onDelete: 'set null' }),
     linkedAt: timestamp('linked_at', { withTimezone: true }),
     score: real('score'),
+    // no code writes these two; a correction a row marks dismissed never feeds a lesson
     dismissedAt: timestamp('dismissed_at', { withTimezone: true }),
     dismissedBy: uuid('dismissed_by').references(() => users.id, { onDelete: 'set null' }),
   },

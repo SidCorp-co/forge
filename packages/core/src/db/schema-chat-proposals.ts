@@ -26,6 +26,11 @@ const bytea = customType<{ data: Buffer; driverData: Buffer }>({
 
 const inList = (values: readonly string[]) => sql.raw(values.map((v) => `'${v}'`).join(', '));
 
+// The kinds the database CHECK admits: every kind a chat holds, and `lesson_confusion`, which migration
+// 0510 admitted and no code writes, since an agent's lesson confusion goes straight to the steward
+// (REQ-50 BC-9). Narrowing the CHECK, and settling any card a row still holds, is a migration.
+const STORED_KINDS = [...CHAT_PROPOSAL_KINDS, 'lesson_confusion'] as const;
+
 /**
  * A chat's write held until the person it answers agrees (REQ-30 BC-4), owned by the `assistant`
  * domain. `call` is exactly what was held: an Assistant tool call `{ name, arguments }`, or an Agent
@@ -67,7 +72,7 @@ export const chatProposals = pgTable(
   (t) => ({
     conversationIdx: index('chat_proposals_conversation_idx').on(t.conversationId, t.createdAt),
     proposedToIdx: index('chat_proposals_proposed_to_idx').on(t.proposedTo),
-    kindChk: check('chat_proposals_kind_chk', sql`${t.kind} IN (${inList(CHAT_PROPOSAL_KINDS)})`),
+    kindChk: check('chat_proposals_kind_chk', sql`${t.kind} IN (${inList(STORED_KINDS)})`),
     formChk: check('chat_proposals_form_chk', sql`${t.form} IN (${inList(CHAT_PROPOSAL_FORMS)})`),
     statusChk: check(
       'chat_proposals_status_chk',

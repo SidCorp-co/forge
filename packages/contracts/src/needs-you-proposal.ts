@@ -12,8 +12,6 @@ import { cutAtWord } from "./title-text.js";
  * proposes to handle a report, and a fix to verify. `breakdown`: issues proposed for an agreed
  * requirement. `design_update`: designs built on a changed design, moved to follow it. The rest are
  * a person's question, a requirement's sign-off, a design, a release, a mockup and a preview.
- * `lesson`: a lesson proposed from corrections, one proposed for retirement, and a confusion that
- * holds one until a person decides (REQ-50).
  */
 export const NEEDS_YOU_TOPICS = [
 	"feedback",
@@ -25,7 +23,6 @@ export const NEEDS_YOU_TOPICS = [
 	"release",
 	"preview",
 	"question",
-	"lesson",
 ] as const;
 export type NeedsYouTopic = (typeof NEEDS_YOU_TOPICS)[number];
 

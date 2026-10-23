@@ -62,8 +62,6 @@ const PROJECT_MENU: ProjEntry[] = [
       { key: "proj-workflows", label: en("nav.proj-workflows"), icon: "flow", sub: "/workflows" },
       { key: "proj-releases", label: en("nav.proj-releases"), icon: "rocket", sub: "/releases" },
       { key: "proj-feedback", label: en("nav.proj-feedback"), icon: "chat", sub: "/feedback" },
-      { key: "proj-questions", label: en("nav.proj-questions"), icon: "help", sub: "/questions" },
-      { key: "proj-lessons", label: en("nav.proj-lessons"), icon: "history", sub: "/lessons" },
     ],
   },
   {

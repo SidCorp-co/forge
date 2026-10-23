@@ -134,7 +134,7 @@ export async function lessonOwnedRefusal(
   if (named) {
     return refuse(
       'KNOWLEDGE_LESSON_OWNED',
-      `\`${named.slug}\` names kind \`lesson\`: a lesson's entry is written only when a person approves or edits the lesson (POST /api/projects/:id/lessons/:n/approve), never through the knowledge door.`,
+      `\`${named.slug}\` names kind \`lesson\`: a lesson's entry is written only when the steward approves or edits the lesson, never through the knowledge door.`,
       '/kind',
     );
   }
@@ -157,7 +157,7 @@ export async function lessonOwnedRefusal(
   if (!slug) return null;
   return refuse(
     'KNOWLEDGE_LESSON_OWNED',
-    `\`${slug}\` is a lesson's entry: it changes only through the lesson's own decisions on the Lessons page (approve, edit, hold, retire), never through the knowledge door.`,
+    `\`${slug}\` is a lesson's entry: it changes only through the lesson's own decisions, which the steward takes (approve, edit, hold, retire), never through the knowledge door.`,
     '/slug',
   );
 }

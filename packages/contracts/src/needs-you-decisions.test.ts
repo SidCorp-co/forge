@@ -163,6 +163,25 @@ describe("a decision shows its question, a recommended answer and a button (BC-2
 	});
 });
 
+// REQ-50 r2 BC-9 (owner ruling 2026-10-23): lessons are internal to Forge, and the steward settles
+// every one, so no decision a person is shown is about a lesson
+describe("no decision is about a lesson", () => {
+	it("refuses a lesson as a decision's topic, entity or record, and names no act on one", () => {
+		expect(needsYouDecisionSchema.safeParse(iss451).success).toBe(true);
+		for (const over of [
+			{ topic: "lesson" },
+			{ entity: "lesson" },
+			{ opens: { kind: "lesson", key: "L-3" } },
+		]) {
+			expect(
+				needsYouDecisionSchema.safeParse({ ...iss451, ...over }).success,
+				JSON.stringify(over),
+			).toBe(false);
+		}
+		expect(Object.keys(DECISION_ACTS).filter((a) => a.startsWith("lesson"))).toEqual([]);
+	});
+});
+
 describe("the acts behind the buttons are the page's own routes", () => {
 	it("fills every param, URL-encoded", () => {
 		const p = decisionPath("revision.accept", {
@@ -247,7 +266,7 @@ describe("a button declares the reason its route needs", () => {
 		expect(needsYouDecisionSchema.safeParse(req18(true)).success).toBe(true);
 	});
 
-	it("takes a one-click answer that carries its reason in its body, as a lesson retire does", () => {
+	it("takes a one-click answer that carries its reason in its body, as a re-pin with its reason does", () => {
 		const carried = req18(false);
 		const [repin] = carried.answers;
 		if (!repin) throw new Error("the fixture has its answer");

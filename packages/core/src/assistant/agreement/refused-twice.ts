@@ -35,7 +35,6 @@ const NEW_RECORD: ReadonlySet<ChatProposalKind> = new Set([
   'preferences',
   'report_save',
   'project_change',
-  'lesson_confusion',
 ]);
 
 /**

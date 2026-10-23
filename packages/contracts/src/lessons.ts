@@ -1,6 +1,7 @@
-// One declaration of the lessons vocabulary (REQ-50, docs/proposals/lessons.md): core's table CHECKs,
-// REST and the web import the sources, scopes, statuses, limits, refusal codes, request schemas and
-// views from here.
+// One declaration of the lessons vocabulary (REQ-50, docs/proposals/lessons.md): core's table CHECKs
+// and the agents' REST doors import the sources, scopes, statuses, limits, refusal codes and request
+// schemas from here. Lessons are internal to Forge (REQ-50 BC-9): agents and core read them, and no
+// screen shows one to a person, so nothing here is a view for one.
 
 import { z } from "zod";
 import { PERMISSION_REFUSAL_CODES } from "./permissions.js";
@@ -18,15 +19,6 @@ export const CORRECTION_SOURCES = [
 ] as const;
 export type CorrectionSource = (typeof CORRECTION_SOURCES)[number];
 
-export const CORRECTION_SOURCE_LABELS: Record<CorrectionSource, string> = {
-	mockup_returned: "Mockup returned",
-	mockup_accepted: "Mockup accepted",
-	suggestion_rejected: "Suggestion rejected",
-	design_returned: "Design returned",
-	revision_returned: "Revision returned",
-	verdict_failed: "Verdict failed",
-	chat: "Chat",
-};
 
 /** The item a correction is about. */
 export const CORRECTION_ITEM_KINDS = [
@@ -62,13 +54,6 @@ export const LESSON_STATUSES = [
 ] as const;
 export type LessonStatus = (typeof LESSON_STATUSES)[number];
 
-export const LESSON_STATUS_LABELS: Record<LessonStatus, string> = {
-	proposed: "Proposed",
-	approved: "Approved",
-	held: "Held",
-	rejected: "Rejected",
-	retired: "Retired",
-};
 
 /** What an agent found confusing about a lesson (BC-5). */
 export const LESSON_CONFUSION_KINDS = [
@@ -79,14 +64,8 @@ export const LESSON_CONFUSION_KINDS = [
 ] as const;
 export type LessonConfusionKind = (typeof LESSON_CONFUSION_KINDS)[number];
 
-export const LESSON_CONFUSION_LABELS: Record<LessonConfusionKind, string> = {
-	conflict: "Conflicts with a lesson",
-	contradicts: "Contradicts the design",
-	unclear: "Unclear how it applies",
-	wrongly_applied: "Wrongly applied",
-};
 
-/** How a confusion is decided. */
+/** How the steward settles a confusion. */
 export const LESSON_RESOLUTIONS = ["keep", "edit", "retire"] as const;
 export type LessonResolution = (typeof LESSON_RESOLUTIONS)[number];
 
@@ -99,7 +78,7 @@ export const LESSON_OUTPUT_KINDS = [
 ] as const;
 export type LessonOutputKind = (typeof LESSON_OUTPUT_KINDS)[number];
 
-/** Why the lessons pass proposes retiring one (BC-7). */
+/** Why a lesson was proposed for retirement, on a row written before the steward retired them itself (BC-7). */
 export const LESSON_RETIRE_REASONS = ["superseded", "unused"] as const;
 export type LessonRetireReason = (typeof LESSON_RETIRE_REASONS)[number];
 
@@ -109,7 +88,7 @@ export const CHAT_CORRECTION_THRESHOLD = 0.7;
 export const LESSON_PROPOSE_MIN = 2;
 /** Linked corrections that make a lesson a check (BC-6). */
 export const LESSON_CHECK_AFTER = 3;
-/** Days unused before the pass proposes retiring a lesson (BC-7). */
+/** Days unused before the steward retires a lesson (BC-7). */
 export const LESSON_UNUSED_DAYS = 30;
 /** How often the steward's lessons pass runs. */
 export const LESSONS_PASS_MS = 10 * 60_000;
@@ -146,7 +125,6 @@ export const LESSON_REFUSAL_CODES = [
 	"LESSON_CONFUSION_INVALID",
 	"LESSON_CONFUSION_DECIDED",
 	"LESSON_APPLICATION_MARKED",
-	"CORRECTION_NOT_FOUND",
 	...PERMISSION_REFUSAL_CODES,
 ] as const;
 export type LessonRefusalCode = (typeof LESSON_REFUSAL_CODES)[number];
@@ -154,14 +132,12 @@ export type LessonRefusalCode = (typeof LESSON_REFUSAL_CODES)[number];
 /** Codes that answer other than 422; a `_FORBIDDEN` code answers 403 unlisted. */
 export const LESSON_REFUSAL_STATUSES = {
 	LESSON_NOT_FOUND: 404,
-	CORRECTION_NOT_FOUND: 404,
 	LESSON_DECIDED: 409,
 	LESSON_CONFUSION_DECIDED: 409,
 	LESSON_APPLICATION_MARKED: 409,
 } as const satisfies RefusalStatuses<LessonRefusalCode>;
 
 const sentence = z.string().trim().min(1).max(LESSON_LIMITS.sentenceChars);
-const reason = z.string().trim().min(1).max(LESSON_LIMITS.reasonChars);
 const lessonNumber = z.number().int().min(1);
 
 export const lessonScopeSchema = z.discriminatedUnion("kind", [
@@ -173,10 +149,8 @@ export const lessonScopeSchema = z.discriminatedUnion("kind", [
 	}),
 ]);
 export type LessonScope = z.infer<typeof lessonScopeSchema>;
-const SCOPE_SHAPE =
-	"{ kind: project } | { kind: area, areaId } | { kind: item_kind, itemKind: requirement | workflow | mockup | suggestion | issue | chat }";
 
-/** `POST /api/projects/:id/lessons`: a proposal grouping the corrections it learns from. */
+/** A proposal the steward makes, grouping the corrections it learns from (BC-2). */
 export const proposeLessonRequestSchema = z.strictObject({
 	sentence,
 	scope: lessonScopeSchema,
@@ -184,19 +158,6 @@ export const proposeLessonRequestSchema = z.strictObject({
 	supersedes: lessonNumber.optional(),
 });
 export type ProposeLessonRequest = z.infer<typeof proposeLessonRequestSchema>;
-export const PROPOSE_LESSON_SHAPE = `{ sentence, scope: ${SCOPE_SHAPE}, corrections: [correction uuid], supersedes?: lesson number }`;
-
-/** `PATCH …/lessons/:n` (proposed) and `POST …/lessons/:n/approve`: the edit a person makes. */
-export const editLessonRequestSchema = z.strictObject({
-	sentence: sentence.optional(),
-	scope: lessonScopeSchema.optional(),
-});
-export type EditLessonRequest = z.infer<typeof editLessonRequestSchema>;
-export const EDIT_LESSON_SHAPE = `{ sentence?, scope?: ${SCOPE_SHAPE} }`;
-
-/** `POST …/lessons/:n/reject | retire`, and marking an application wrongly applied. */
-export const lessonReasonRequestSchema = z.strictObject({ reason });
-export const LESSON_REASON_SHAPE = "{ reason }";
 
 /** `POST /api/projects/:id/lessons/applied`: the lessons one output applied. */
 export const recordAppliedRequestSchema = z.strictObject({
@@ -212,7 +173,7 @@ export const RECORD_APPLIED_SHAPE =
 
 const side = z.string().trim().min(1).max(LESSON_LIMITS.sideChars);
 
-/** `POST …/lessons/:n/confusions`: an agent stops guessing and asks (BC-5). */
+/** `POST …/lessons/:n/confusions`: an agent stops guessing and reports it to the steward (BC-5). */
 export const raiseConfusionRequestSchema = z.strictObject({
 	kind: z.enum(LESSON_CONFUSION_KINDS),
 	other: z
@@ -229,149 +190,11 @@ export const raiseConfusionRequestSchema = z.strictObject({
 });
 export type RaiseConfusionRequest = z.infer<typeof raiseConfusionRequestSchema>;
 export const RAISE_CONFUSION_SHAPE =
-	"{ kind: conflict | contradicts | unclear | wrongly_applied, other?: { lesson?, ref? }, sides: { lesson, other }, recommended: { resolution: keep | edit | retire, sentence? } }";
+	"{ kind: conflict | contradicts | unclear | wrongly_applied, other?: { lesson?, ref? }, sides: { lesson, other }, recommended: { resolution: keep | edit | retire, sentence? } } (a wrongly_applied names its output in other.ref)";
 
-/** `POST …/lessons/confusions/:cid/decide`. */
-export const decideConfusionRequestSchema = z.strictObject({
-	resolution: z.enum(LESSON_RESOLUTIONS),
-	sentence: sentence.optional(),
-});
-export type DecideConfusionRequest = z.infer<
-	typeof decideConfusionRequestSchema
->;
-export const DECIDE_CONFUSION_SHAPE =
-	"{ resolution: keep | edit | retire, sentence? (edit needs one) }";
-
-/** `GET …/lessons/month?month=YYYY-MM`. */
-export const lessonsMonthQuerySchema = z.strictObject({
-	month: z
-		.string()
-		.regex(/^\d{4}-(0[1-9]|1[0-2])$/)
-		.optional(),
-});
-
-export interface LessonPerson {
-	id: string;
-	name: string | null;
-}
-
-export interface CorrectionView {
-	id: string;
-	source: CorrectionSource;
-	item: {
-		kind: CorrectionItemKind;
-		id: string;
-		key: string;
-		title: string | null;
-	};
-	reason: string;
-	by: LessonPerson | null;
-	agency: "human" | "agent";
-	at: string;
-	lessonKey: string | null;
-	/** The classifier's confidence, on a chat correction. */
-	score: number | null;
-	dismissed: boolean;
-}
-
-export interface LessonScopeView {
-	kind: LessonScopeKind;
-	areaId: string | null;
-	areaName: string | null;
-	itemKind: LessonItemKind | null;
-}
-
-export interface ConfusionView {
-	id: string;
-	lessonKey: string;
-	kind: LessonConfusionKind;
-	other: { lessonKey: string | null; ref: string | null };
-	sides: { lesson: string; other: string };
-	recommended: { resolution: LessonResolution; sentence: string | null };
-	raisedBy: LessonPerson | null;
-	raisedAgency: "human" | "agent";
-	raisedAt: string;
-	decidedBy: LessonPerson | null;
-	decidedAt: string | null;
-	resolution: LessonResolution | null;
-}
-
-export interface ApplicationView {
-	id: string;
-	lessonKey: string;
-	output: { kind: LessonOutputKind; ref: string };
-	agent: LessonPerson | null;
-	at: string;
-	wrong: { by: LessonPerson | null; at: string; reason: string } | null;
-}
-
-export interface LessonView {
-	id: string;
-	key: string;
-	number: number;
-	sentence: string;
-	scope: LessonScopeView;
-	status: LessonStatus;
-	proposedBy: LessonPerson | null;
-	proposedAt: string;
-	approvedAt: string | null;
-	/** Why it was rejected or retired. */
-	reason: string | null;
-	/** Provenance: each correction it learned from or that repeated it. */
-	corrections: CorrectionView[];
-	repeats: number;
-	appliedCount: number;
-	lastAppliedAt: string | null;
-	retire: { reason: LessonRetireReason; at: string } | null;
-	supersedes: string | null;
-	supersededBy: string | null;
-	checkIssueKey: string | null;
-	confusions: ConfusionView[];
-	applications: ApplicationView[];
-	can: {
-		approve: boolean;
-		reject: boolean;
-		edit: boolean;
-		retire: boolean;
-		keep: boolean;
-	};
-}
-
-export interface LessonsResponse {
-	lessons: LessonView[];
-	/** Corrections no lesson holds yet, newest first. */
-	corrections: CorrectionView[];
-	/** Every open confusion, oldest first: each is a decision a person owes. */
-	confusions: ConfusionView[];
-	canDecide: boolean;
-}
-
-export interface LessonResponse {
-	lesson: LessonView;
-}
-
-export interface LessonsMonthView {
-	month: string;
-	corrections: {
-		total: number;
-		bySource: Record<CorrectionSource, number>;
-	};
-	lessonsApproved: number;
-	repeats: number;
-	confusions: {
-		raised: number;
-		decided: number;
-		open: number;
-		items: Array<{
-			id: string;
-			lessonKey: string;
-			kind: LessonConfusionKind;
-			raisedAt: string;
-			decidedAt: string | null;
-			/** Hours from raise to decision, or to now while open. */
-			hours: number;
-		}>;
-	};
+/** What raising a confusion answers: the lesson it holds, as it now stands. */
+export interface RaiseConfusionResponse {
+	lesson: { key: string; status: LessonStatus };
 }
 
 /** The outbox events the lessons module reads. */
@@ -383,22 +206,4 @@ export interface LessonEventPayloads {
 		assistantMessageId: string;
 		personMessageId: string;
 	};
-}
-
-/** `GET /api/projects/:id/lessons/chat/:conversationId`: the lines a chat draws for lessons. */
-export interface ChatLessonMarks {
-	/** A person's reply kept as a correction, keyed by that reply's message id. */
-	corrections: Array<{
-		id: string;
-		messageId: string;
-		reason: string;
-		dismissed: boolean;
-	}>;
-	/** A lesson an assistant message applied, keyed by that message's id. */
-	applied: Array<{
-		id: string;
-		messageId: string;
-		lessonKey: string;
-		wrong: boolean;
-	}>;
 }

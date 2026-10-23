@@ -2,7 +2,8 @@
 // verified it by itself (the owner's ruling of 2026-10-14), so its facts say what the record reads and
 // that it waits on a triager, its verify bar says a triager answers from the record, and no line says
 // Forge verifies it. Its acts are what core's read answers for a resolved item (core
-// `feedback/read.ts:canOf`): the confirm block, never the triage form beside it.
+// `feedback/read.ts:canOf`): the confirm block, never the triage form beside it. Every question about the
+// item reads on the item itself, open and answered, since there is no Questions page (REQ-33 BC-8).
 //
 //   pnpm --filter web-v2 witness witness/feedback-loop-check.witness.tsx --out <dir>
 
@@ -60,7 +61,11 @@ const item = {
   attachments: [],
   reporters: [{ id: ANN, name: "Ann", agency: "human", from: null }],
   messages: [],
-  clarification: null,
+  clarification: { id: "q1", status: "answered", prompt: "Which filter reset after the reload?", answer: "Status: open" },
+  questions: [
+    { id: "q2", kind: "steward", status: "open", prompt: "FB-41 reads the same reload reset. Merge FB-53 into FB-41, or keep both?", answer: null, askedAt: "2026-10-12T09:00:00.000Z", answeredAt: null },
+    { id: "q1", kind: "clarification", status: "answered", prompt: "Which filter reset after the reload?", answer: "Status: open", askedAt: "2026-10-09T11:00:00.000Z", answeredAt: "2026-10-09T12:00:00.000Z" },
+  ],
   openSuggestions: 0,
   can: CAN,
 } as unknown as FeedbackView;
@@ -93,11 +98,31 @@ function reads(): string[] {
   return wrong;
 }
 
+/** The item's questions, scrolled into view: both drawn whole, the open one first, the answer under the answered one. */
+function questions(theme: "light" | "dark"): string[] {
+  document.documentElement.dataset.theme = theme;
+  document.documentElement.classList.toggle("dark", theme === "dark");
+  const section = q("[data-testid=feedback-questions]");
+  if (!section) return ["the item draws no questions of its own"];
+  section.scrollIntoView({ block: "start" });
+  const wrong: string[] = [];
+  const rows = [...section.querySelectorAll<HTMLElement>("[data-testid=feedback-question]")];
+  if (rows.map((r) => r.dataset.status).join(",") !== "open,answered") wrong.push(`the questions read ${rows.map((r) => r.dataset.status).join(",") || "nothing"}, not open then answered`);
+  if (!rows[1]?.textContent?.includes("Answer: Status: open")) wrong.push("the answered question does not say what came back");
+  for (const r of rows) if (r.scrollWidth > r.clientWidth + 0.5) wrong.push(`a question row runs ${r.scrollWidth - r.clientWidth} px past its width`);
+  if (document.documentElement.scrollWidth > window.innerWidth) wrong.push(`the page scrolls sideways: ${document.documentElement.scrollWidth} px in a ${window.innerWidth} px window`);
+  return wrong;
+}
+
 window.__witness = {
   cases: [
     { name: "phone", width: 390 },
     { name: "desktop", width: 1440 },
   ],
   ready: () => Boolean(q("[data-testid=facts-verify-held]") && q("[data-testid=verify-copy]")),
-  stages: [{ name: "reads", run: reads }],
+  stages: [
+    { name: "reads", run: reads },
+    { name: "questions-light", run: () => questions("light") },
+    { name: "questions-dark", run: () => questions("dark") },
+  ],
 };

@@ -44,6 +44,7 @@ import { FeedbackActions, Proposals } from "./feedback-actions";
 import { FeedbackAnswer } from "./feedback-answer";
 import { FeedbackAttachments } from "./feedback-attachments";
 import { FeedbackEvidence } from "./feedback-evidence";
+import { FeedbackQuestions } from "./feedback-questions";
 import { ClarifyReporter } from "./feedback-clarify";
 import { FeedbackBanner, LinkedFeedback } from "./feedback-facts";
 import { StewardNoteLines, useStewardNote } from "@/features/standing";
@@ -199,6 +200,7 @@ export function FeedbackPage({
                     </section>
                   ) : null}
                   <ClarifyReporter projectId={projectId} f={f} />
+                  <FeedbackQuestions f={f} />
                   <Body projectId={projectId} f={f} />
                   <SimilarFeedback projectId={projectId} slug={slug} fbKey={f.key} />
                   <Reproduction

@@ -2,8 +2,7 @@
  * The BA's product layer over REST: a feedback item says whether work on it is running and when it is
  * done, or why no date is given (`GET …/forecast/feedback/:fb`); a person asks its reporter one
  * clarification where the route takes one (`can.clarify`); a draft not yet filed is compared with the
- * filed items (`POST …/feedback/similar`); and a question a person raised reads owed until somebody
- * else answers it (`GET …/raised-questions`).
+ * filed items (`POST …/feedback/similar`).
  */
 
 import { sql } from 'drizzle-orm';
@@ -29,7 +28,6 @@ import { TRIAGE_ANSWERS } from '../helpers/triage-answers.js';
 type Who = 'owner' | 'member';
 let say: (who: Who, method: string, path: string, body?: unknown) => Promise<Reply>;
 let projectId = '';
-let requirementKey = '';
 
 const at = (path: string) => `/api/projects/${projectId}${path}`;
 const item = (fb: string, act = '') => at(`/feedback/${fb}${act ? `/${act}` : ''}`);
@@ -66,14 +64,6 @@ beforeAll(async () => {
   projectId = (await createTestProject(owner)).id;
   await addProjectMember(projectId, member, 'member');
   say = requester(app, { owner: await signUserToken(owner), member: await signUserToken(member) });
-  requirementKey = ok(
-    await say('owner', 'POST', at('/requirements'), {
-      title: 'The board keeps its cards',
-      reason: 'the rule the feedback states',
-      criteria: [{ body: 'A saved board shows every card it had.' }],
-    }),
-    201,
-  ).key;
 }, 120_000);
 
 afterAll(async () => {
@@ -187,6 +177,48 @@ describe('a clarification is asked where the route takes one', () => {
     expect(again.code).toBe('FEEDBACK_CLARIFICATION_ALREADY_OPEN');
   });
 
+  it('reads every question about the item on the item, open and then answered, and no other item’s', async () => {
+    const fb = await file('The board loses its filter');
+    const other = await file('The board forgets its sort');
+    const asked = ok(
+      await say('member', 'POST', item(fb, 'clarification'), {
+        prompt: 'Which filter was set?',
+        needed: 'The filter and its value',
+      }),
+    );
+    ok(
+      await say('member', 'POST', item(other, 'clarification'), {
+        prompt: 'Which sort was set?',
+        needed: 'The sort',
+      }),
+    );
+    const open = asked.feedback.questions;
+    expect(open).toEqual([
+      expect.objectContaining({
+        id: asked.feedback.clarification.id,
+        kind: 'clarification',
+        status: 'open',
+        prompt: 'Which filter was set?',
+        answer: null,
+        answeredAt: null,
+      }),
+    ]);
+    ok(
+      await say('member', 'POST', `/api/questions/${asked.feedback.clarification.id}/answer`, {
+        round: 1,
+        text: 'Status is open',
+      }),
+    );
+    const read = ok(await say('member', 'GET', item(fb))).feedback.questions;
+    expect(read).toHaveLength(1);
+    expect(read[0]).toMatchObject({
+      status: 'answered',
+      prompt: 'Which filter was set?',
+      answer: 'Status is open',
+    });
+    expect(read[0].answeredAt).toEqual(expect.any(String));
+  });
+
   it('refuses a prompt shorter than the floor, naming the field', async () => {
     const fb = await file('The board jumps');
     const r = await say('member', 'POST', item(fb, 'clarification'), {
@@ -219,89 +251,5 @@ describe('a draft is compared with the filed items before it is sent', () => {
       kind: 'bug',
     });
     expect(extra.status).toBe(400);
-  });
-});
-
-describe('a raised question is owed until somebody else answers it', () => {
-  let questionId = '';
-
-  it('lists the member’s requirement question as owed by project members', async () => {
-    const posted = ok(
-      await say('member', 'POST', at(`/requirements/${requirementKey}/comments`), {
-        intent: 'question',
-        body: 'Does a saved board keep archived cards?',
-      }),
-      201,
-    );
-    questionId = posted.comment.id;
-    const mine = ok(await say('member', 'GET', at('/raised-questions')));
-    expect(mine.by).toBe('me');
-    expect(mine.owed).toBe(1);
-    expect(mine.questions[0]).toMatchObject({
-      id: questionId,
-      target: { scope: 'requirement', key: requirementKey },
-      summary: 'Does a saved board keep archived cards?',
-      state: 'owed',
-      answer: null,
-      owedBy: 'members',
-    });
-  });
-
-  it('is not listed as the owner’s own, and is listed among everyone’s', async () => {
-    expect(ok(await say('owner', 'GET', at('/raised-questions'))).questions).toEqual([]);
-    const all = ok(await say('owner', 'GET', at('/raised-questions?by=people')));
-    expect(all.questions.map((q: Doc) => q.id)).toContain(questionId);
-  });
-
-  it('stays owed after the asker’s own reply, and reads answered after another person’s', async () => {
-    ok(
-      await say('member', 'POST', at(`/requirements/${requirementKey}/comments`), {
-        intent: 'note',
-        body: 'Adding: archived cards matter most.',
-        parentId: questionId,
-      }),
-      201,
-    );
-    expect(ok(await say('member', 'GET', at('/raised-questions'))).owed).toBe(1);
-    ok(
-      await say('owner', 'POST', at(`/requirements/${requirementKey}/comments`), {
-        intent: 'note',
-        body: 'Yes, archived cards are kept.',
-        parentId: questionId,
-      }),
-      201,
-    );
-    const mine = ok(await say('member', 'GET', at('/raised-questions')));
-    expect(mine).toMatchObject({ owed: 0, answered: 1, closed: 0 });
-    expect(mine.questions[0]).toMatchObject({
-      id: questionId,
-      state: 'answered',
-      owedBy: null,
-      answer: { summary: 'Yes, archived cards are kept.' },
-    });
-  });
-
-  it('names the agent as owing a question on a live issue, and reads it closed once the issue ended', async () => {
-    const i = await issue('Keep archived cards');
-    ok(
-      await say('member', 'POST', `/api/issues/${i.id}/comments`, {
-        intent: 'question',
-        body: 'Is this blocked on the export?',
-      }),
-      201,
-    );
-    const owedOn = async () =>
-      (ok(await say('member', 'GET', at('/raised-questions'))).questions as Doc[]).find(
-        (q) => q.target.key === i.key,
-      );
-    expect(await owedOn()).toMatchObject({ state: 'owed', owedBy: 'agent' });
-    await seedIssueStatus(i.id, 'dropped');
-    expect(await owedOn()).toMatchObject({ state: 'closed', owedBy: null });
-  });
-
-  it('refuses a `by` it does not know, naming the values it takes', async () => {
-    const r = await say('member', 'GET', at('/raised-questions?by=agents'));
-    expect(r.status).toBe(400);
-    expect(JSON.stringify(r.json)).toMatch(/me \| people/);
   });
 });

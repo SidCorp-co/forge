@@ -3,7 +3,7 @@ import { and, eq, isNull } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
 import { lessonConfusions } from '../db/schema-lessons.js';
 
-/** Decide every open confusion on a lesson the same way, as when a person retires the lesson itself. */
+/** Settle every open confusion on a lesson the same way, as when the steward retires the lesson itself. */
 export async function closeOpenConfusions(
   tx: Tx,
   lessonId: string,

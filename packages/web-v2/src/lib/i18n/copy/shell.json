@@ -188,7 +188,9 @@
     "shell.mode.unavailable": "Agent is unavailable",
     "shell.moved.decisions": "Decisions moved to the requirement, workflow or issue they decide.",
     "shell.moved.dismiss": "Dismiss",
+    "shell.moved.lessons": "Lessons are internal to Forge, and no page shows them.",
     "shell.moved.memory": "Memory moved to each requirement, workflow and issue's Memory tab.",
+    "shell.moved.questions": "Questions moved to Approvals and to the item each one is about.",
     "shell.moved.roadmap": "Roadmap moved to the Requirements Map",
     "shell.needsHint.act": "act",
     "shell.needsHint.none": "{label}: nothing",
@@ -288,8 +290,6 @@
     "shell.thread.tryAgain": "Try again",
     "shell.thread.withdrawn": "A draft was replaced by the reply check and answered below.",
     "nav.proj-approvals": "Approvals",
-    "nav.proj-questions": "Questions",
-    "nav.proj-lessons": "Lessons",
     "shell.approvalsCount": "{n} waiting on your decision",
     "shell.waitingAcross": "{n} decisions waiting on you across your projects"
   },

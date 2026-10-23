@@ -4,7 +4,7 @@ export { carryStewardDecision } from './decision-act.js';
 export { dispatchStewardRuns } from './dispatch.js';
 export { breakdownsHeldBySteward } from './holds.js';
 export { stewardJobCredential } from './job.js';
-export { runLessonsPass } from './lessons-pass.js';
+export { type LessonsPassTally, runLessonsPass } from './lessons-pass.js';
 export { provideStewardPorts, provideStewardStandings } from './ports.js';
 export { runStewardReaskOnce } from './reask-once.js';
 export { retireStaleDraftQuestionsOnce } from './retire-stale-drafts.js';

@@ -20,7 +20,6 @@ export const CHAT_PROPOSAL_KINDS = [
 	"issue_change",
 	"requirement_link",
 	"project_change",
-	"lesson_confusion",
 ] as const;
 export type ChatProposalKind = (typeof CHAT_PROPOSAL_KINDS)[number];
 

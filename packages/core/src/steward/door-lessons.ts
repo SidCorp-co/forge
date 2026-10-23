@@ -1,7 +1,8 @@
-// The steward stops guessing about a lesson and asks (REQ-50 BC-5): two lessons in its prompt
-// conflict, one contradicts the requirement or design it reads, or it cannot tell how one applies.
-// The confusion holds the lesson until a person decides it, and that decision is the override: a
-// raised confusion has no inverse the steward may run, since deciding it is a person's act.
+// The steward's run stops guessing about a lesson and reports it (REQ-50 BC-4, BC-5): two lessons in
+// its prompt conflict, one contradicts the requirement or design it reads, it cannot tell how one
+// applies, or it finds one wrongly applied to an output. The confusion holds the lesson until the
+// steward's lessons pass settles it (`lessons-review.ts`), and that settlement is the override: a
+// reported confusion has no inverse door, and no person is asked to decide it.
 
 import { raiseConfusionRequestSchema } from '@forge/contracts/lessons';
 import { z } from 'zod';
@@ -15,7 +16,7 @@ const confusionParams = raiseConfusionRequestSchema.extend({
 export const LESSON_CONFUSION: DoorSpec<z.infer<typeof confusionParams>> = {
   name: 'steward_raise_lesson_confusion',
   describe:
-    'Raise a confusion about a lesson in your prompt instead of guessing: kind conflict (other.lesson), contradicts (other.ref, a REQ key or a design) or unclear; each side in one sentence, and the resolution you recommend (keep, edit with the new sentence, or retire). The lesson is held until a person decides.',
+    'Report a confusion about a lesson in your prompt instead of guessing: kind conflict (other.lesson), contradicts (other.ref, a REQ key or a design), unclear, or wrongly_applied (other.ref, the output it was applied to); each side in one sentence, and the resolution you recommend (keep, edit with the new sentence, or retire). The lesson is held until the lessons pass settles it.',
   params: confusionParams,
   write: true,
   async call({ lesson, ...body }, ctx) {
@@ -31,7 +32,7 @@ export const LESSON_CONFUSION: DoorSpec<z.infer<typeof confusionParams>> = {
       ...sent,
       act: {
         door: doorName(sent.request),
-        did: `Raised a ${body.kind} confusion about L-${lesson}, which is held until a person decides`,
+        did: `Reported a ${body.kind} confusion about L-${lesson}, which is held until the lessons pass settles it`,
         wrote: null,
         undo: null,
       },

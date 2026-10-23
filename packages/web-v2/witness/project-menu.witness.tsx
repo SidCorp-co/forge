@@ -1,5 +1,6 @@
 // The project menu witnessed as drawn (REQ-34 BC-23; ISS-457): Requirements, Workflows, Releases and
-// Feedback sit under Product, open, and the build machinery under Delivery, with no Development left.
+// Feedback sit under Product, open, and the build machinery under Delivery, with no Development left;
+// and no Questions or Lessons row anywhere (REQ-33 BC-8, BC-9).
 // At 1440 px the labelled rail and the compact rail are drawn side by side; at 390 px the phone's
 // drawer, the only navigation there. Each probe reads the rows as laid out, never the menu's model.
 //
@@ -16,6 +17,8 @@ import { InRouter } from "./router";
 const PRODUCT = ["Requirements", "Workflows", "Releases", "Feedback"];
 const DELIVERY = ["Overview", "Issues", "Modules", "Agents / Runs", "Contracts", "Automation"];
 const PHONE = 600;
+/** Rows no project menu draws: a question is read in Approvals and on its item, a lesson by no person. */
+const GONE = ["Questions", "Lessons"];
 
 window.localStorage.clear();
 // the drawer's org and ecosystem reads stay in flight: the project tier is drawn from the menu alone
@@ -96,6 +99,7 @@ function rails(): string[] {
       if (outside.length > 0) wrong.push(`${id}: ${row} is drawn outside Product`);
     }
     if ((root.textContent ?? "").includes("Development")) wrong.push(`${id}: the rail still reads Development`);
+    for (const row of GONE) if (texts(root, "button, span").some((t) => t === row) || root.querySelector(`button[title="${row}"]`)) wrong.push(`${id}: the rail still draws ${row}`);
   }
   return wrong;
 }
@@ -108,6 +112,7 @@ function drawer(): string[] {
   const product = all.slice(at("Product") + 1, at("Delivery"));
   for (const row of PRODUCT) if (!product.includes(row)) wrong.push(`the drawer draws ${row} outside Product`);
   if (all.includes("Development")) wrong.push("the drawer still reads Development");
+  for (const row of GONE) if (all.includes(row)) wrong.push(`the drawer still draws ${row}`);
   return wrong;
 }
 
@@ -117,9 +122,14 @@ window.__witness = {
     { name: "desktop", width: 1440 },
   ],
   ready: () => (phone ? document.body.textContent?.includes("Dashboard") === true : document.querySelectorAll("[data-testid^=witness-] nav").length === 2),
-  probe: () => {
-    const wrong = phone ? drawer() : rails();
-    if (document.documentElement.scrollWidth > window.innerWidth) wrong.push(`the page scrolls sideways: ${document.documentElement.scrollWidth} px in ${window.innerWidth}`);
-    return wrong;
-  },
+  stages: (["light", "dark"] as const).map((theme) => ({
+    name: theme,
+    run: () => {
+      document.documentElement.dataset.theme = theme;
+      document.documentElement.classList.toggle("dark", theme === "dark");
+      const wrong = phone ? drawer() : rails();
+      if (document.documentElement.scrollWidth > window.innerWidth) wrong.push(`the page scrolls sideways: ${document.documentElement.scrollWidth} px in ${window.innerWidth}`);
+      return wrong;
+    },
+  })),
 };

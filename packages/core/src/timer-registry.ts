@@ -35,7 +35,12 @@ import { sweepExpiredExecutions, sweepExpiredReportRuns } from './reports/index.
 import { sweepDeliveredRequirements } from './requirements/index.js';
 import { reapGhostRunners, runRunnerStaleSweep } from './runners/index.js';
 import type { Timer } from './schedules/index.js';
-import { dispatchStewardRuns, runLessonsPass, sweepStandings } from './steward/index.js';
+import {
+  dispatchStewardRuns,
+  type LessonsPassTally,
+  runLessonsPass,
+  sweepStandings,
+} from './steward/index.js';
 import { sweepSuggestions } from './suggestions/index.js';
 import { drainWidgetConversationWindows } from './widget/index.js';
 
@@ -140,8 +145,8 @@ function stewardTimers(): Timer[] {
       ),
     },
     {
-      // REQ-50 BC-2, BC-6, BC-7: corrections grouped into proposed lessons, retirements proposed,
-      // checks filed (`steward/lessons-pass.ts`)
+      // REQ-50 BC-2, BC-5..BC-7: corrections grouped into proposed lessons, each proposal and
+      // confusion settled by the steward, due lessons retired, checks filed (`steward/lessons-pass.ts`)
       kind: 'cluster',
       name: 'lessons-pass',
       cron: '*/10 * * * *',
@@ -149,14 +154,9 @@ function stewardTimers(): Timer[] {
         'lessons-pass: ran',
         () => runLessonsPass(),
         (r) => {
-          const { linked, proposed, retirements, checks, failed } = r as {
-            linked: number;
-            proposed: number;
-            retirements: number;
-            checks: number;
-            failed: number;
-          };
-          return linked + proposed + retirements + checks + failed > 0;
+          const t = r as LessonsPassTally;
+          const moved = t.linked + t.proposed + t.approved + t.rejected + t.settled + t.retired;
+          return moved + t.waiting + t.checks + t.failed > 0;
         },
       ),
     },

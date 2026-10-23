@@ -6,17 +6,13 @@ import { needsYouDecisionSchema } from '@forge/contracts/needs-you-decisions';
 import { verbatim } from '@forge/contracts/said';
 import { waitingOn } from '@forge/contracts/standing';
 import type { WorkflowHealth } from '@forge/contracts/workflow-health';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import type { OpenPersonQuestion } from '../questions/index.js';
 import type { AttentionRow } from './needs-you.js';
 import { cutDecision, designDecision, releaseDecision } from './needs-you-approve-builders.js';
 import { type Built, feedbackDecision, questionDecision } from './needs-you-decision-builders.js';
 import { designRowOf } from './needs-you-design.js';
-import { lessonDecisionsFor } from './needs-you-lessons.js';
 import { repinDecision } from './needs-you-repin.js';
-
-const waiting = vi.hoisted(() => ({ lessons: [] as unknown[], confusions: [] as unknown[] }));
-vi.mock('../lessons/index.js', () => ({ lessonsWaiting: async () => waiting }));
 
 const P = '6f0ee160-8432-4b84-98cf-956b6cd65a29';
 const row = (entity: AttentionRow['entity'], key: string, title = key): AttentionRow =>
@@ -149,61 +145,6 @@ describe('a design decision', () => {
     );
     expect(d.question).toContain('"Who may see what"');
     expect(d.question).not.toContain(' access ');
-  });
-});
-
-describe('a lesson decision', () => {
-  const lesson = {
-    id: 'l5',
-    key: 'L-5',
-    sentence: 'Name the ward and the bed in every handover a nurse reads.',
-    proposedAt: '2026-10-21T09:00:00.000Z',
-    supersededBy: null,
-    corrections: [],
-  };
-
-  it('asks to approve or retire it in one sentence, the sentence and reason said elsewhere', async () => {
-    waiting.lessons = [
-      { ...lesson, status: 'proposed', retire: null },
-      {
-        ...lesson,
-        id: 'l3',
-        key: 'L-3',
-        status: 'approved',
-        retire: { reason: 'unused', at: '2026-10-21T09:00:00.000Z' },
-      },
-    ];
-    waiting.confusions = [];
-    const [approve, retire] = (await lessonDecisionsFor(P, true)).map((b) => b.build());
-    expect(approve?.question).toBe('Approve lesson L-5, or reject it?');
-    expect(retire?.question).toBe('Retire lesson L-3, or keep it?');
-    expect(retire?.recommended?.why).toBe('No agent applied it in 30 days.');
-  });
-
-  it('asks a held lesson the choice alone, and says what both sides hold in its why', async () => {
-    waiting.lessons = [];
-    waiting.confusions = [
-      {
-        id: 'cf1',
-        lessonKey: 'L-4',
-        kind: 'conflict',
-        other: { lessonKey: 'L-2', ref: null },
-        sides: {
-          lesson: 'Large type asks for 16 pt in every patient letter.',
-          other: 'The house style sets every letter in 11 pt.',
-        },
-        recommended: { resolution: 'edit', sentence: 'Print patient letters in 16 pt.' },
-        raisedAgency: 'agent',
-        raisedAt: '2026-10-21T09:00:00.000Z',
-      },
-    ];
-    const [held] = (await lessonDecisionsFor(P, true)).map((b) => b.build());
-    const d = served({ decision: held as Built['decision'] });
-    plain(d.question);
-    expect(d.question).toBe('Keep, edit or retire L-4?');
-    expect(d.recommended?.why).toContain('Large type asks for 16 pt');
-    expect(d.recommended?.why).toContain('L-2 says');
-    expect(d.recommended?.why).not.toContain(d.title);
   });
 });
 

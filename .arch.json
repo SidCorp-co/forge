@@ -330,9 +330,6 @@
     "web-feature-projects": [
       "packages/web-v2/src/features/projects/**"
     ],
-    "web-feature-question-desk": [
-      "packages/web-v2/src/features/question-desk/**"
-    ],
     "web-feature-questions": [
       "packages/web-v2/src/features/questions/**"
     ],
@@ -359,9 +356,6 @@
     ],
     "web-feature-shell": [
       "packages/web-v2/src/features/shell/**"
-    ],
-    "web-feature-lessons": [
-      "packages/web-v2/src/features/lessons/**"
     ],
     "web-feature-suggestions": [
       "packages/web-v2/src/features/suggestions/**"
@@ -509,7 +503,6 @@
         "web-feature-attention",
         "web-feature-approvals",
         "web-feature-ecosystem",
-        "web-feature-question-desk",
         "web-feature-needs-you",
         "web-feature-agents",
         "web-feature-sessions",
@@ -518,7 +511,6 @@
         "web-feature-feedback",
         "web-feature-workflows",
         "web-feature-comments",
-        "web-feature-lessons",
         "web-feature-suggestions",
         "web-feature-mockups",
         "web-feature-board",

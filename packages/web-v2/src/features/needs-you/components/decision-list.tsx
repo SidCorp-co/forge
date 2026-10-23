@@ -11,7 +11,6 @@ import {
   NEEDS_YOU_DECISION_GROUP_LABELS,
   NEEDS_YOU_DECISION_GROUPS,
   type NeedsYouDecision,
-  type NeedsYouDecisionGroup,
   type NeedsYouDecisions,
 } from "@forge/contracts/needs-you-decisions";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -154,22 +153,18 @@ function OwedDecision({
 
 /**
  * The decisions, one heading per group in the contract's order, and one line naming what was left out.
- * `only` draws one group of the same read (a page about that act), so the two never disagree; the rows
- * that are not decisions belong to the whole list, so that line is the whole list's alone. `cap`
- * shows the first decisions in core's order (a stuck item's first, then the soonest due) and counts
+ * `cap` shows the first decisions in core's order (a stuck item's first, then the soonest due) and counts
  * the rest as "+n more", linked to `moreHref`, never dropping one (REQ-48 BC-11).
  */
 export function DecisionList({
   read,
   slug,
-  only,
   cap,
   moreHref,
   onSettled,
 }: {
   read: Pick<NeedsYouDecisions, "decisions" | "total" | "notDecisions">;
   slug?: string | undefined;
-  only?: NeedsYouDecisionGroup;
   cap?: number;
   moreHref?: string;
   /** Told when a press settles, either way. */
@@ -179,10 +174,9 @@ export function DecisionList({
   // the rest are counted from the read's total, which holds every decision however many it carries
   const shown = cap === undefined ? read.decisions : capDecisions(read.decisions, cap).shown;
   const more = cap === undefined ? 0 : Math.max(0, read.total - shown.length);
-  const groups = NEEDS_YOU_DECISION_GROUPS.filter((g) => !only || g === only)
-    .map((g) => ({ g, rows: shown.filter((d) => d.group === g) }))
+  const groups = NEEDS_YOU_DECISION_GROUPS.map((g) => ({ g, rows: shown.filter((d) => d.group === g) }))
     .filter((x) => x.rows.length > 0);
-  const leftOut = only ? [] : read.notDecisions.map((n) => t(`needsYou.decisions.reason.${n.reason}`, { n: n.count }));
+  const leftOut = read.notDecisions.map((n) => t(`needsYou.decisions.reason.${n.reason}`, { n: n.count }));
   return (
     <section aria-label={t("needsYou.decisions.aria")} className="flex flex-col gap-3" data-testid="needs-you-decisions">
       {groups.length === 0 && <p className="fg-body-sm text-muted">{t("needsYou.decisions.none")}</p>}
