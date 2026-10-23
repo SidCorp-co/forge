@@ -70,8 +70,14 @@ The lesson's lifecycle lives in `lessons`. Its text reaches agents through proje
 
 **Who proposes (BC-2).** The steward's lessons pass (`steward/lessons-pass.ts`, every
 `LESSONS_PASS_MS`, only where the steward is on) reads the project's corrections that are unlinked
-alongside its proposed and approved lessons. It asks the fast model to do two
+and not rejected, alongside its proposed and approved lessons. It asks the fast model to do three
 things:
+- reject each correction that is not one (it names nothing an agent did wrong, it is a probe, a
+  question or noise), with a one-sentence reason. The steward writes `rejected_at`, `rejected_by`
+  (its account) and `rejected_reason` on the row (`gather.ts:rejectCorrections`). A rejected
+  correction is never linked, grouped or proposed from again (`gatherInput`, `linkRepeats` and
+  `decide.ts:proposeLesson` each leave it out, the last refusing it by name), and the month counts it
+  apart (section 6). The row is kept: a correction that is not one is still a state;
 - link each correction that repeats an existing lesson;
 - group the rest. Two or more similar corrections become a proposed lesson, authored by the steward
   account, with a sentence, a scope, the links to its corrections and, where it replaces one, the
@@ -147,7 +153,8 @@ The issue is a draft, so nothing dispatches it until it is opened.
 ## 6. Monthly figures (BC-8)
 
 `lessons/month.ts:lessonsMonth` computes, for one project and one month:
-- the corrections, by source;
+- the corrections, by source, leaving out those the steward rejected, which it counts apart
+  (`Rejected by the steward as not corrections: N`);
 - the lessons approved;
 - the repeats;
 - the confusions, each with its time to settlement, and the open ones counted from their report.
@@ -182,7 +189,8 @@ no statement. Every table is new, so no existing row can fail a check.
 
 It also widened `chat_proposals.kind` to `lesson_confusion` and added `lessons.retire_reason`,
 `retire_proposed_at`, `kept_at` and `corrections.dismissed_at`, `dismissed_by`, all for a person's
-act that REQ-50 r2 removed. 0522 takes them out:
+act that REQ-50 r2 removed. 0522 takes them out or hands them to the steward, and deletes no row and
+drops no value:
 
 1. **Chat cards.** Each `lesson_confusion` card still pending is settled `declined`, the one settled
    status that claims no agreement, with the reason in `failure`. `decided_by` is the project's
@@ -196,9 +204,13 @@ act that REQ-50 r2 removed. 0522 takes them out:
 2. **The 30-day clock.** It now reads `approved_at` and `last_applied_at` alone. A row whose `kept_at`
    was later than both has it folded into `last_applied_at`, each named in a NOTICE, so no row's
    clock moves. Then `retire_reason`, `retire_proposed_at`, `kept_at` and `lessons_retire_chk` go.
-3. **Dismissed corrections.** `dismissed_at` and `dismissed_by` go, and `corrections_unlinked_idx`
-   is rebuilt `WHERE lesson_id IS NULL`. A correction a person dismissed cannot be represented
-   without them (it would feed a lesson again), so the deploy aborts naming each one.
+3. **Dismissed corrections become rejected ones.** A correction that is not one is still a state, now
+   the steward's to settle. `dismissed_at` and `dismissed_by` are renamed `rejected_at` and
+   `rejected_by` with their values (the foreign key renamed with them), and `rejected_reason` is
+   added. Each row a person dismissed keeps who and when, and its reason says a person dismissed it
+   before the steward took corrections over. `corrections_rejected_chk` then holds a non-blank
+   reason on every rejected row, and `corrections_unlinked_idx` is rebuilt
+   `WHERE lesson_id IS NULL AND rejected_at IS NULL`.
 4. **Confusions** gain `reason` and `tried_at` (section 4).
 
 Each step is idempotent and runs under `lock_timeout`; the file's header carries the rollback.
@@ -214,6 +226,9 @@ Each step is idempotent and runs under `lock_timeout`; the file's header carries
 - **A model settles every lesson.** Each proposal and each confusion costs one fast-model call per
   pass until it is settled, and a wrong settlement reaches every prompt in its scope until an agent
   reports a confusion about it.
+- **A model can reject a real correction.** A rejection is final: nothing re-reads a rejected row,
+  so a correction the steward misread as noise never feeds a lesson. Its reason is kept on the row,
+  and the month counts rejections, so a rising count is visible to an agent reading the figures.
 - **Every prompt grows.** Each approved lesson is one more line in the run preamble, the checkout
   orientation, the assistant's and the steward's prompts. Retiring unused lessons is the only brake.
   The monthly figures add two slugs to the run preamble's on-demand list of a project with lesson

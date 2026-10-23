@@ -63,13 +63,15 @@ const answerOf = <I, O>(a: Answer<I, O> | undefined, input: I): O | null =>
   typeof a === 'function' ? (a as (input: I) => O | null)(input) : (a ?? null);
 
 /**
- * The steward's pass with the test's own model answers: link and propose exactly what is asked, and
- * review each proposal and settle each confusion as `review` and `settle` say. Left out, neither
- * gives an answer, so what waits stays waiting.
+ * The steward's pass with the test's own model answers: reject, link and propose exactly what is
+ * asked, and review each proposal and settle each confusion as `review` and `settle` say. Left out,
+ * neither gives an answer, so what waits stays waiting. `seen` is handed what the grouping was asked.
  */
 export async function pass(answer: {
   links?: { correction: string; lesson: number }[];
   proposals?: Doc[];
+  rejections?: { correction: string; reason: string }[];
+  seen?: (input: { corrections: Doc[]; lessons: Doc[] }) => void;
   review?: Answer<Doc, Doc>;
   settle?: Answer<Doc, Doc>;
   now?: Date;
@@ -80,10 +82,14 @@ export async function pass(answer: {
   const tally = await runLessonsPass({
     projectIds: [answer.project ?? w.projectId],
     ...(answer.now ? { now: answer.now } : {}),
-    group: async () => ({
-      links: answer.links ?? [],
-      proposals: (answer.proposals ?? []) as never,
-    }),
+    group: async (_p, input) => {
+      answer.seen?.(input as never);
+      return {
+        rejections: answer.rejections ?? [],
+        links: answer.links ?? [],
+        proposals: (answer.proposals ?? []) as never,
+      };
+    },
     review: async (_p, input) => answerOf(answer.review, input as never) as never,
     settle: async (_p, input) => answerOf(answer.settle, input as never) as never,
   });

@@ -3,7 +3,8 @@
  * chat card still pending is settled declined for the steward with its reason, and the kind CHECK
  * then refuses a new pending one while a settled card stays; a lesson's `kept_at` later than its other
  * clock columns is folded into `last_applied_at`, so its unused clock does not move; a correction a
- * person dismissed aborts the deploy by its id; a confusion gains the steward's reason and `tried_at`.
+ * person dismissed keeps who and when as the steward's rejection of it, with a reason, and nothing is
+ * deleted; a confusion gains the steward's reason and `tried_at`.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -170,37 +171,54 @@ describe('0522: lesson columns no code writes', () => {
     }
   });
 
-  it('gives a confusion the steward reason and tried_at, and a correction no dismissal', async () => {
+  it('gives a confusion the steward reason and tried_at', async () => {
     await m.migrate();
     expect(await columns('lesson_confusions')).toEqual(
       expect.arrayContaining(['reason', 'tried_at']),
     );
-    const correctionColumns = await columns('corrections');
-    expect(correctionColumns).not.toContain('dismissed_at');
-    expect(correctionColumns).not.toContain('dismissed_by');
-    const [idx] =
-      await m.sql`SELECT indexdef FROM pg_indexes WHERE indexname = 'corrections_unlinked_idx'`;
-    expect(idx?.indexdef).toMatch(/WHERE \(lesson_id IS NULL\)$/);
   });
 
-  it('aborts the deploy naming a correction a person dismissed, and changes nothing', async () => {
-    const pending = await card(projectId, 'lesson_confusion');
-    const id = randomUUID();
-    await m.sql`
-      INSERT INTO corrections (id, project_id, source, source_ref, item_kind, item_id, item_key, reason, agency, dismissed_at, dismissed_by)
-      VALUES (${id}, ${projectId}, 'suggestion_rejected', ${randomUUID()}, 'suggestion', ${randomUUID()}, 'S-1', 'Wrong ward.', 'human', now(), ${userId})`;
-    const refused = await m.migrate().then(
-      () => 'applied',
-      (e: unknown) => {
-        // drizzle carries the database's own message as the cause
-        const err = e as Error & { cause?: { message?: string } };
-        return `${err.message} ${err.cause?.message ?? ''}`;
-      },
+  it("keeps a dismissed correction's who and when as rejected, with a reason, and deletes nothing", async () => {
+    const insert = (id: string, dismissed: boolean) => m.sql`
+      INSERT INTO corrections (id, project_id, source, source_ref, item_kind, item_id, item_key, reason, agency, said_at, dismissed_at, dismissed_by)
+      VALUES (${id}, ${projectId}, 'suggestion_rejected', ${randomUUID()}, 'suggestion', ${randomUUID()}, 'S-1', 'Wrong ward.', 'human',
+              '2026-10-01T00:00:00Z', ${dismissed ? '2026-10-02T09:30:00Z' : null}::timestamptz, ${dismissed ? userId : null})`;
+    const dismissed = randomUUID();
+    const open = randomUUID();
+    await insert(dismissed, true);
+    await insert(open, false);
+    await m.migrate();
+    const read = async (id: string) =>
+      (
+        await m.sql`SELECT rejected_at, rejected_by, rejected_reason FROM corrections WHERE id = ${id}`
+      )[0];
+    const kept = await read(dismissed);
+    expect((kept?.rejected_at as Date | undefined)?.toISOString()).toBe('2026-10-02T09:30:00.000Z');
+    expect(kept?.rejected_by).toBe(userId);
+    expect(kept?.rejected_reason).toContain(
+      'A person dismissed this correction before the steward',
     );
-    expect(refused).toContain(
-      `0522: corrections a person dismissed, which the schema without dismissed_at cannot represent (each would feed a lesson again): ${id} (project ${projectId})`,
+    expect(await read(open)).toMatchObject({
+      rejected_at: null,
+      rejected_by: null,
+      rejected_reason: null,
+    });
+    const correctionColumns = await columns('corrections');
+    expect(correctionColumns).toEqual(
+      expect.arrayContaining(['rejected_at', 'rejected_by', 'rejected_reason']),
     );
-    expect(await cardRow(pending)).toMatchObject({ status: 'pending' });
-    expect(await columns('corrections')).toContain('dismissed_at');
+    expect(correctionColumns).not.toContain('dismissed_at');
+    const [idx] =
+      await m.sql`SELECT indexdef FROM pg_indexes WHERE indexname = 'corrections_unlinked_idx'`;
+    expect(idx?.indexdef).toMatch(/WHERE \(\(lesson_id IS NULL\) AND \(rejected_at IS NULL\)\)$/);
+    const [fk] =
+      await m.sql`SELECT conname FROM pg_constraint WHERE conname = 'corrections_rejected_by_users_id_fk'`;
+    expect(fk).toBeDefined();
+    // the CHECK holds a reason on every rejected row from here on
+    const refused = await m.sql`UPDATE corrections SET rejected_at = now() WHERE id = ${open}`.then(
+      () => null,
+      (e: { constraint_name?: string }) => e.constraint_name,
+    );
+    expect(refused).toBe('corrections_rejected_chk');
   });
 });

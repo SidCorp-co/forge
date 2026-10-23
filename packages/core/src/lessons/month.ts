@@ -1,6 +1,7 @@
 /**
- * The monthly figures (REQ-50 BC-8): in one calendar month (UTC), the corrections by source, the
- * lessons approved, the repeats (a correction linked to a lesson approved before it was said), and the
+ * The monthly figures (REQ-50 BC-8): in one calendar month (UTC), the corrections by source (one the
+ * steward rejected as not a correction left out of them and counted apart), the lessons approved, the
+ * repeats (a correction linked to a lesson approved before it was said), and the
  * confusions with their time to settlement. A confusion still open is counted to now. Recorded for
  * agents to read, never shown on a screen (BC-9): each lessons pass writes this month's and the last
  * month's as the knowledge entry `lessons-month-<YYYY-MM>` (`recordLessonsMonths`), which every run
@@ -13,14 +14,15 @@ import {
   type LessonConfusionKind,
   lessonKey,
 } from '@forge/contracts/lessons';
-import { and, eq, gte, lt, or, sql } from 'drizzle-orm';
+import { and, eq, gte, isNotNull, isNull, lt, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { corrections, lessonConfusions, lessons } from '../db/schema-lessons.js';
 import { putLessonsMonthEntry } from '../knowledge/index.js';
 
 export interface LessonsMonth {
   month: string;
-  corrections: { total: number; bySource: Record<CorrectionSource, number> };
+  /** Said in the month: `total` and `bySource` leave out what the steward rejected, `rejected` counts it. */
+  corrections: { total: number; bySource: Record<CorrectionSource, number>; rejected: number };
   lessonsApproved: number;
   repeats: number;
   confusions: {
@@ -63,17 +65,22 @@ export async function lessonsMonth(input: {
   const { projectId } = input;
   const now = input.now ?? new Date();
   const { month, from, to } = bounds(input.month, now);
-  const said = and(
+  const saidIn = and(
     eq(corrections.projectId, projectId),
     gte(corrections.saidAt, from),
     lt(corrections.saidAt, to),
   );
-  const [bySource, approved, repeats, confusions] = await Promise.all([
+  const said = and(saidIn, isNull(corrections.rejectedAt));
+  const [bySource, rejected, approved, repeats, confusions] = await Promise.all([
     db
       .select({ source: corrections.source, n: sql<number>`count(*)::int` })
       .from(corrections)
       .where(said)
       .groupBy(corrections.source),
+    db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(corrections)
+      .where(and(saidIn, isNotNull(corrections.rejectedAt))),
     db
       .select({ n: sql<number>`count(*)::int` })
       .from(lessons)
@@ -131,7 +138,11 @@ export async function lessonsMonth(input: {
   }));
   return {
     month,
-    corrections: { total: bySource.reduce((sum, r) => sum + r.n, 0), bySource: counts },
+    corrections: {
+      total: bySource.reduce((sum, r) => sum + r.n, 0),
+      bySource: counts,
+      rejected: rejected[0]?.n ?? 0,
+    },
     lessonsApproved: approved[0]?.n ?? 0,
     repeats: repeats[0]?.n ?? 0,
     confusions: {
@@ -161,6 +172,7 @@ export function lessonsMonthText(m: LessonsMonth): string {
   const lines = [
     `Lessons in ${m.month} (UTC). Each line counts this project's lessons, recorded by the steward's lessons pass; no person reads or decides them.`,
     `Corrections received: ${m.corrections.total}${sources.length ? ` (${sources.join(', ')})` : ''}`,
+    `Rejected by the steward as not corrections: ${m.corrections.rejected}`,
     `Lessons approved: ${m.lessonsApproved}`,
     `Repeats (a correction of a lesson approved before it was said): ${m.repeats}`,
     `Confusions: raised ${m.confusions.raised}, settled ${m.confusions.settled}, open ${m.confusions.open}`,

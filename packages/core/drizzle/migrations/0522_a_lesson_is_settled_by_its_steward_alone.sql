@@ -1,7 +1,8 @@
 -- REQ-50 r2 (owner ruling 2026-10-23): lessons are internal to Forge. The steward and core settle every
--- lesson and every confusion, and no person approves, keeps, dismisses or records one. This takes the
--- columns and the chat card that only a person's act wrote out of the schema, and gives a confusion
--- the two columns the steward's settlement needs.
+-- lesson, every confusion and every correction, and no person approves, keeps, dismisses or records
+-- one. This takes the columns and the chat card that only a person's act wrote out of the schema,
+-- turns a person's dismissal of a correction into the steward's rejection of one, and gives a
+-- confusion the two columns the steward's settlement needs. No row is deleted and no value dropped.
 --
 -- 1. Chat cards. A chat no longer holds a lesson confusion for a person to record: the Assistant's
 --    `forge_lesson_confusion` goes straight to the steward. Each card of kind `lesson_confusion` still
@@ -20,19 +21,24 @@
 --    `last_applied_at` alone; a row whose `kept_at` is later than both has it folded into
 --    `last_applied_at` (the one column only that clock reads), named in a NOTICE, so no row's clock
 --    moves.
--- 3. `corrections.dismissed_at` and `dismissed_by` go: no person dismisses a correction. A dismissed
---    correction cannot be represented without them (it would feed a lesson again), so the deploy
---    aborts naming every one rather than letting it back in.
+-- 3. A correction that is not one is still a state, which the steward now settles: `dismissed_at` and
+--    `dismissed_by` are renamed `rejected_at` and `rejected_by` with their values (and the foreign key
+--    with them), and `rejected_reason` is added. Each row a person dismissed keeps who and when, and
+--    its reason says a person dismissed it before the steward took corrections over. The CHECK
+--    `corrections_rejected_chk` then holds a reason on every rejected row, and
+--    `corrections_unlinked_idx` is rebuilt to leave rejected rows out, as it left dismissed ones out.
 -- 4. `lesson_confusions.reason` keeps why the steward kept, edited or retired the lesson, and
 --    `tried_at` when it last tried and left the confusion waiting, so each pass reaches the confusions
 --    least recently tried first, on one lesson as across lessons.
 --
 -- ROLLBACK: add `lessons.retire_reason text`, `retire_proposed_at timestamptz`, `kept_at timestamptz`
--- and `lessons_retire_chk` as 0510 wrote it; add `corrections.dismissed_at timestamptz`,
--- `dismissed_by uuid REFERENCES users(id) ON DELETE SET NULL` and rebuild `corrections_unlinked_idx`
--- with `AND dismissed_at IS NULL`; drop `lesson_confusions.reason` and `tried_at`; restore
--- `chat_proposals_kind_chk` to admit `lesson_confusion` in any status. A folded `kept_at` stays in
--- `last_applied_at`, and a card settled here stays declined.
+-- and `lessons_retire_chk` as 0510 wrote it; drop `corrections_rejected_chk` and
+-- `corrections.rejected_reason`, rename `rejected_at`, `rejected_by` and
+-- `corrections_rejected_by_users_id_fk` back to their `dismissed` names, and rebuild
+-- `corrections_unlinked_idx` with `AND dismissed_at IS NULL`; drop `lesson_confusions.reason` and
+-- `tried_at`; restore `chat_proposals_kind_chk` to admit `lesson_confusion` in any status. A folded
+-- `kept_at` stays in `last_applied_at`, a card settled here stays declined, and a correction the
+-- steward rejected after 0522 reads as dismissed (its reason is lost with the column).
 
 SET LOCAL lock_timeout = '10s';--> statement-breakpoint
 UPDATE "chat_proposals" AS cp
@@ -85,23 +91,28 @@ ALTER TABLE "lessons" DROP COLUMN IF EXISTS "retire_reason";--> statement-breakp
 ALTER TABLE "lessons" DROP COLUMN IF EXISTS "retire_proposed_at";--> statement-breakpoint
 ALTER TABLE "lessons" DROP COLUMN IF EXISTS "kept_at";--> statement-breakpoint
 DO $$
-DECLARE
-  bad text;
 BEGIN
   IF EXISTS (
     SELECT 1 FROM information_schema.columns WHERE table_name = 'corrections' AND column_name = 'dismissed_at'
   ) THEN
-    EXECUTE 'SELECT string_agg("id"::text || '' (project '' || "project_id"::text || '')'', '', '' ORDER BY "id")
-               FROM "corrections" WHERE "dismissed_at" IS NOT NULL'
-      INTO bad;
-    IF bad IS NOT NULL THEN
-      RAISE EXCEPTION '0522: corrections a person dismissed, which the schema without dismissed_at cannot represent (each would feed a lesson again): %', bad;
-    END IF;
+    ALTER TABLE "corrections" RENAME COLUMN "dismissed_at" TO "rejected_at";
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns WHERE table_name = 'corrections' AND column_name = 'dismissed_by'
+  ) THEN
+    ALTER TABLE "corrections" RENAME COLUMN "dismissed_by" TO "rejected_by";
+  END IF;
+  IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'corrections_dismissed_by_users_id_fk') THEN
+    ALTER TABLE "corrections" RENAME CONSTRAINT "corrections_dismissed_by_users_id_fk" TO "corrections_rejected_by_users_id_fk";
   END IF;
 END $$;--> statement-breakpoint
+ALTER TABLE "corrections" ADD COLUMN IF NOT EXISTS "rejected_reason" text;--> statement-breakpoint
+UPDATE "corrections"
+   SET "rejected_reason" = 'A person dismissed this correction before the steward took corrections over (REQ-50 r2, migration 0522). It stays rejected and never feeds a lesson.'
+ WHERE "rejected_at" IS NOT NULL AND "rejected_reason" IS NULL;--> statement-breakpoint
+ALTER TABLE "corrections" DROP CONSTRAINT IF EXISTS "corrections_rejected_chk";--> statement-breakpoint
+ALTER TABLE "corrections" ADD CONSTRAINT "corrections_rejected_chk" CHECK (("corrections"."rejected_at" IS NULL) = ("corrections"."rejected_reason" IS NULL) AND ("corrections"."rejected_reason" IS NULL OR length(btrim("corrections"."rejected_reason")) >= 1));--> statement-breakpoint
 DROP INDEX IF EXISTS "corrections_unlinked_idx";--> statement-breakpoint
-ALTER TABLE "corrections" DROP COLUMN IF EXISTS "dismissed_at";--> statement-breakpoint
-ALTER TABLE "corrections" DROP COLUMN IF EXISTS "dismissed_by";--> statement-breakpoint
-CREATE INDEX IF NOT EXISTS "corrections_unlinked_idx" ON "corrections" USING btree ("project_id") WHERE lesson_id IS NULL;--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "corrections_unlinked_idx" ON "corrections" USING btree ("project_id") WHERE lesson_id IS NULL AND rejected_at IS NULL;--> statement-breakpoint
 ALTER TABLE "lesson_confusions" ADD COLUMN IF NOT EXISTS "reason" text;--> statement-breakpoint
 ALTER TABLE "lesson_confusions" ADD COLUMN IF NOT EXISTS "tried_at" timestamp with time zone;

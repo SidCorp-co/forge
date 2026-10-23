@@ -28,6 +28,7 @@ export {
   proposedLessons,
   type RetirementDue,
   recordCheckIssue,
+  rejectCorrections,
   retirementsDue,
 } from './gather.js';
 export {

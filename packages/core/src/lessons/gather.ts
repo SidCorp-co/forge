@@ -47,7 +47,7 @@ export interface GatherLesson {
   scope: string;
 }
 
-/** The corrections no lesson holds and nobody dismissed, oldest first, beside the live lessons. */
+/** The corrections no lesson holds and the steward has not rejected, oldest first, beside the live lessons. */
 export async function gatherInput(
   projectId: string,
 ): Promise<{ corrections: GatherCorrection[]; lessons: GatherLesson[] }> {
@@ -62,7 +62,13 @@ export async function gatherInput(
         reason: corrections.reason,
       })
       .from(corrections)
-      .where(and(eq(corrections.projectId, projectId), isNull(corrections.lessonId)))
+      .where(
+        and(
+          eq(corrections.projectId, projectId),
+          isNull(corrections.lessonId),
+          isNull(corrections.rejectedAt),
+        ),
+      )
       .orderBy(corrections.saidAt)
       .limit(GATHER_CORRECTIONS),
     db
@@ -93,7 +99,7 @@ export async function gatherInput(
   };
 }
 
-/** Link each correction to the live lesson it repeats; one already linked or dismissed is left. */
+/** Link each correction to the live lesson it repeats; one already linked or rejected is left. */
 export async function linkRepeats(
   projectId: string,
   links: ReadonlyArray<{ correction: string; lesson: number }>,
@@ -119,12 +125,42 @@ export async function linkRepeats(
           eq(corrections.projectId, projectId),
           eq(corrections.id, link.correction),
           isNull(corrections.lessonId),
+          isNull(corrections.rejectedAt),
         ),
       )
       .returning({ id: corrections.id });
     linked += moved.length;
   }
   return linked;
+}
+
+/**
+ * The steward's finding that a correction is not one (BC-2): when, by whom and why, each in its own
+ * statement; one already linked or rejected is left. A rejected correction is never linked, grouped
+ * or counted as a correction again.
+ */
+export async function rejectCorrections(
+  projectId: string,
+  stewardId: string,
+  rejections: ReadonlyArray<{ correction: string; reason: string }>,
+): Promise<string[]> {
+  const rejected: string[] = [];
+  for (const r of rejections) {
+    const moved = await db
+      .update(corrections)
+      .set({ rejectedAt: new Date(), rejectedBy: stewardId, rejectedReason: r.reason })
+      .where(
+        and(
+          eq(corrections.projectId, projectId),
+          eq(corrections.id, r.correction),
+          isNull(corrections.lessonId),
+          isNull(corrections.rejectedAt),
+        ),
+      )
+      .returning({ id: corrections.id });
+    rejected.push(...moved.map((m) => m.id));
+  }
+  return rejected;
 }
 
 export interface RetirementDue {
@@ -207,9 +243,12 @@ export async function proposedLessons(projectId: string): Promise<ProposedLesson
         })
         .from(corrections)
         .where(
-          inArray(
-            corrections.lessonId,
-            rows.map((r) => r.id),
+          and(
+            inArray(
+              corrections.lessonId,
+              rows.map((r) => r.id),
+            ),
+            isNull(corrections.rejectedAt),
           ),
         )
         .orderBy(asc(corrections.saidAt))
@@ -335,7 +374,10 @@ export async function checksOwed(projectId: string): Promise<OwedCheck[]> {
       saidAt: corrections.saidAt,
     })
     .from(lessons)
-    .innerJoin(corrections, eq(corrections.lessonId, lessons.id))
+    .innerJoin(
+      corrections,
+      and(eq(corrections.lessonId, lessons.id), isNull(corrections.rejectedAt)),
+    )
     .where(
       and(
         eq(lessons.projectId, projectId),
@@ -370,14 +412,14 @@ export async function recordCheckIssue(lessonId: string, issueId: string): Promi
 }
 
 /**
- * The projects a lessons pass has work in: an unheld correction, a proposal to settle, a held lesson
+ * The projects a lessons pass has work in: an unheld correction not rejected, a proposal to settle, a held lesson
  * whose confusion waits, an approved lesson to age, or a figure in this month or the last to record
  * (BC-8): a correction said, a lesson approved or a confusion raised or settled since the last began.
  */
 export async function projectsWithLessonWork(now: Date): Promise<string[]> {
   const since = sqlTimestamp(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1)));
   const rows = await db.execute<{ project_id: string }>(sql`
-    SELECT DISTINCT project_id FROM corrections WHERE lesson_id IS NULL OR said_at >= ${since}
+    SELECT DISTINCT project_id FROM corrections WHERE (lesson_id IS NULL AND rejected_at IS NULL) OR said_at >= ${since}
     UNION
     SELECT DISTINCT project_id FROM lessons
      WHERE status IN ('proposed', 'approved', 'held') OR approved_at >= ${since}

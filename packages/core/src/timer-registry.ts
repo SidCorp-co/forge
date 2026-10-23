@@ -155,7 +155,14 @@ function stewardTimers(): Timer[] {
         () => runLessonsPass(),
         (r) => {
           const t = r as LessonsPassTally;
-          const moved = t.linked + t.proposed + t.approved + t.rejected + t.settled + t.retired;
+          const moved =
+            t.correctionsRejected +
+            t.linked +
+            t.proposed +
+            t.approved +
+            t.rejected +
+            t.settled +
+            t.retired;
           return moved + t.waiting + t.checks + t.failed > 0;
         },
       ),

@@ -1,6 +1,6 @@
-// The steward's lessons pass (REQ-50 r2 BC-2, BC-5..BC-7; docs/proposals/lessons.md): every
-// `LESSONS_PASS_MS`, in each project whose steward is on, it asks the fast model to link each new
-// correction to the lesson it repeats and to group the rest, and proposes each group of
+// The steward's lessons pass (REQ-50 r2 BC-2, BC-5..BC-8; docs/proposals/lessons.md): every
+// `LESSONS_PASS_MS`, in each project whose steward is on, it asks the fast model to reject each new
+// correction that is not one, with a reason, to link each to the lesson it repeats and to group the rest, and proposes each group of
 // `LESSON_PROPOSE_MIN` or more as a lesson authored by the steward account. It then settles what waits
 // (`lessons-review.ts`): each proposal approved, edited or rejected, and each reported confusion kept,
 // edited or retired, each with a reason. It retires each lesson superseded or unused for
@@ -30,6 +30,7 @@ import {
   type RetirementDue,
   recordCheckIssue,
   recordLessonsMonths,
+  rejectCorrections,
   retireLesson,
   retirementsDue,
 } from '../lessons/index.js';
@@ -51,6 +52,7 @@ const GROUP_MAX_TOKENS = 1500;
 const CHECK_TITLE_CHARS = 120;
 
 const grouping = z.object({
+  rejections: z.array(z.object({ correction: z.string(), reason: z.string().min(1).max(400) })),
   links: z.array(z.object({ correction: z.string(), lesson: z.number().int() })),
   proposals: z.array(
     z.object({
@@ -77,8 +79,9 @@ export function groupingPrompt(input: {
 }): string {
   return [
     "You are the project's steward. People corrected the project's agents; each correction below says what was wrong.",
-    '1. Link a correction to an existing lesson only when it repeats that lesson (`links`).',
-    `2. Group the other corrections that make the same point, ${LESSON_PROPOSE_MIN} or more each, and propose one lesson per group (\`proposals\`): one imperative sentence an agent can apply, and a scope: \`project\`, \`area\` (with the corrections' areaId) or \`item_kind\` (requirement, workflow, mockup, suggestion, issue or chat) — the narrowest that fits. Where a group replaces an approved lesson, name that lesson's number in \`supersedes\`.`,
+    '1. Reject a correction that is not one (`rejections`), with one sentence saying why: it names nothing the agent did wrong, it is a test or probe, or it is a question, thanks or noise. A rejected correction never feeds a lesson. Reject only what plainly is not a correction.',
+    '2. Link a correction to an existing lesson only when it repeats that lesson (`links`).',
+    `3. Group the other corrections that make the same point, ${LESSON_PROPOSE_MIN} or more each, and propose one lesson per group (\`proposals\`): one imperative sentence an agent can apply, and a scope: \`project\`, \`area\` (with the corrections' areaId) or \`item_kind\` (requirement, workflow, mockup, suggestion, issue or chat) — the narrowest that fits. Where a group replaces an approved lesson, name that lesson's number in \`supersedes\`.`,
     'Leave a correction alone when nothing else makes its point; it waits for a second one.',
     `Lessons:\n${input.lessons.map((l) => `- ${lessonKey(l.number)} (${l.status}, ${l.scope}): ${l.sentence}`).join('\n') || '(none)'}`,
     `Corrections:\n${markUntrusted(
@@ -211,6 +214,8 @@ async function retireDue(projectId: string, stewardId: string, now: Date): Promi
 
 export interface LessonsPassTally extends SettleTally {
   projects: number;
+  /** Corrections the steward rejected as not corrections; `rejected` counts proposals it rejected. */
+  correctionsRejected: number;
   linked: number;
   proposed: number;
   retired: number;
@@ -232,6 +237,13 @@ async function passProject(projectId: string, now: Date, judges: Judges, tally: 
     const answer = await group(projectId, input);
     if (answer) {
       const ids = new Set(input.corrections.map((c) => c.id));
+      const rejected = await rejectCorrections(
+        projectId,
+        stewardId,
+        answer.rejections.filter((r) => ids.has(r.correction)),
+      );
+      tally.correctionsRejected += rejected.length;
+      for (const id of rejected) ids.delete(id);
       const links = answer.links.filter((l) => ids.has(l.correction));
       tally.linked += await linkRepeats(projectId, links);
       for (const l of links) ids.delete(l.correction);
@@ -262,6 +274,7 @@ export async function runLessonsPass(
   };
   const tally: LessonsPassTally = {
     projects: 0,
+    correctionsRejected: 0,
     linked: 0,
     proposed: 0,
     approved: 0,

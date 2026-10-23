@@ -138,15 +138,16 @@ export async function proposeLesson(input: {
       .select({
         id: corrections.id,
         lessonId: corrections.lessonId,
+        rejectedAt: corrections.rejectedAt,
       })
       .from(corrections)
       .where(and(eq(corrections.projectId, projectId), inArray(corrections.id, wanted)));
-    const free = new Set(found.filter((c) => !c.lessonId).map((c) => c.id));
+    const free = new Set(found.filter((c) => !c.lessonId && !c.rejectedAt).map((c) => c.id));
     const bad = wanted.filter((c) => !free.has(c));
     if (bad.length > 0) {
       throw refuse(
         'LESSON_CORRECTIONS_INVALID',
-        `a proposal learns from this project's corrections that no lesson holds yet; ${bad.join(', ')} ${bad.length === 1 ? 'is' : 'are'} not one`,
+        `a proposal learns from this project's corrections that no lesson holds yet and the steward has not rejected; ${bad.join(', ')} ${bad.length === 1 ? 'is' : 'are'} not one`,
         '/corrections',
       );
     }

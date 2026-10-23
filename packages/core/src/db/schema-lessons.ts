@@ -132,12 +132,19 @@ export const corrections = pgTable(
     lessonId: uuid('lesson_id').references(() => lessons.id, { onDelete: 'set null' }),
     linkedAt: timestamp('linked_at', { withTimezone: true }),
     score: real('score'),
+    // the steward's finding that this is not a correction (REQ-50 BC-2): never linked or grouped again;
+    // a row a person dismissed before 0522 keeps who and when, with a reason saying so
+    rejectedAt: timestamp('rejected_at', { withTimezone: true }),
+    rejectedBy: uuid('rejected_by').references(() => users.id, { onDelete: 'set null' }),
+    rejectedReason: text('rejected_reason'),
   },
   (t) => ({
     sourceUq: uniqueIndex('corrections_source_ref_uq').on(t.source, t.sourceRef),
     projectIdx: index('corrections_project_said_idx').on(t.projectId, t.saidAt),
     lessonIdx: index('corrections_lesson_idx').on(t.lessonId),
-    unlinkedIdx: index('corrections_unlinked_idx').on(t.projectId).where(sql`lesson_id IS NULL`),
+    unlinkedIdx: index('corrections_unlinked_idx')
+      .on(t.projectId)
+      .where(sql`lesson_id IS NULL AND rejected_at IS NULL`),
     sourceChk: check('corrections_source_chk', sql`${t.source} IN (${inList(CORRECTION_SOURCES)})`),
     itemKindChk: check(
       'corrections_item_kind_chk',
@@ -150,6 +157,10 @@ export const corrections = pgTable(
       sql`(${t.source} = 'chat') = (${t.score} IS NOT NULL) AND (${t.score} IS NULL OR ${t.score} BETWEEN 0 AND 1)`,
     ),
     linkChk: check('corrections_link_chk', sql`(${t.lessonId} IS NULL) = (${t.linkedAt} IS NULL)`),
+    rejectedChk: check(
+      'corrections_rejected_chk',
+      sql`(${t.rejectedAt} IS NULL) = (${t.rejectedReason} IS NULL) AND (${t.rejectedReason} IS NULL OR length(btrim(${t.rejectedReason})) >= 1)`,
+    ),
   }),
 );
 
