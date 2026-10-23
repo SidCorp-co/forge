@@ -153,7 +153,13 @@ describe('a judge records a clip of each observable criterion it judges (REQ-40 
 
   it('asks for the clip in the verdict section, cited in the verdict evidence', () => {
     expect(verdicts).toMatch(/records a short screen clip of each observable criterion it judges/);
-    expect(verdicts).toMatch(/cite its name in that verdict's `evidence`/);
+    expect(verdicts).toMatch(/cite both names in that verdict's\s+`evidence`/);
+  });
+
+  it('asks why a judgement keeps no clip in withoutClip, never in the reason it gives', () => {
+    expect(verdicts).toMatch(/without a clip says why in `withoutClip`/);
+    expect(verdicts).toMatch(/never in\s+`reason`/);
+    expect(verdicts).toContain('pnpm --filter web-v2 clip');
   });
 
   it('states the ceiling a release page shows, read from the contract', () => {

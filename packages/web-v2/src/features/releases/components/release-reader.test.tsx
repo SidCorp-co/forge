@@ -1,7 +1,11 @@
 // The release page a reader sees (REQ-40), read in under a minute: the summary it was cut with and its
 // changes counted in one line, what an admin must do first, then each change as its short title, whole,
 // with its sentence one click away. No criterion, code or path on the overview; the Technical view keeps
-// them. The clip plays from the bytes the session may fetch; the technical note is never on a share.
+// them. The clip plays from the bytes the session may fetch, inline and muted, opening on its still;
+// the technical note is never on a share. A release nobody named says it is being named, or why not.
+//
+// @direct-test-of packages/web-v2/src/features/releases/components/release-media.tsx
+// @direct-test-of packages/web-v2/src/features/releases/components/release-highlights.tsx
 
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";

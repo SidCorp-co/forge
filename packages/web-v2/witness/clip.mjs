@@ -5,15 +5,17 @@
 // product at a URL, signed in as a person.
 //
 //   pnpm --filter web-v2 clip <url> --out <dir> [--name <name>] [--width 390] [--height <px>]
-//                             [--theme light|dark] [--steps <module.mjs>] [--login]
+//                             [--theme light|dark] [--steps <module.mjs>] [--chapter <title>] [--login]
 //
-// Playwright's own recorder writes the WebM (`recordVideo`), through the encoder Playwright installs
-// beside its browsers, so nothing else is installed. Chrome is `WITNESS_CHROME`, else
+// Playwright's own recorder writes the WebM (`page.screencast`, through the encoder Playwright
+// installs beside its browsers), so nothing else is installed. Recording starts once the page has
+// loaded, so a clip shows the product, never its loading. Chrome is `WITNESS_CHROME`, else
 // `google-chrome`. `--login` signs in at `<origin>/login` first, outside the recording, with
 // `FORGE_CLIP_EMAIL` and `FORGE_CLIP_PASSWORD` from the environment, never from arguments. `--steps`
-// names a module whose default export `async (page, { hold })` acts on the page after it loads;
-// without one the page is held long enough to read. Beside `<name>.webm` the last frame is written
-// as `<name>.png`, the still a release page opens the clip on.
+// names a module whose default export `async (page, { hold })` acts on the page; without one the
+// page is held long enough to read. `--chapter` opens the clip on a title card saying what it shows.
+// Beside `<name>.webm` the last frame is written as `<name>.png`, the still a release page opens the
+// clip on.
 //
 // A clip is kept within the ceiling a release page shows (`RELEASE_CLIP_MAX_SECONDS`,
 // `RELEASE_CLIP_MAX_BYTES`): one over either fails by name and nothing is written. Exit 0 prints the
@@ -25,16 +27,18 @@ import { pathToFileURL } from "node:url";
 import { viteFor } from "./build-page.mjs";
 
 const USAGE =
-  "usage: node witness/clip.mjs <url> --out <dir> [--name <name>] [--width 390] [--height <px>] [--theme light|dark] [--steps <module.mjs>] [--login]";
-const VALUED = new Set(["--out", "--name", "--width", "--height", "--theme", "--steps"]);
+  "usage: node witness/clip.mjs <url> --out <dir> [--name <name>] [--width 390] [--height <px>] [--theme light|dark] [--steps <module.mjs>] [--chapter <title>] [--login]";
+const VALUED = new Set(["--out", "--name", "--width", "--height", "--theme", "--steps", "--chapter"]);
 const FLAGS = new Set(["--login"]);
 const HOLD_MS = 1200;
 
+/** @returns {never} */
 function cannot(why) {
   console.error(`clip: ${why}`);
   process.exit(2);
 }
 
+/** @returns {never} */
 function refused(why) {
   console.error(`clip: refused: ${why}`);
   process.exit(1);
@@ -81,6 +85,7 @@ export function argsOf(argv) {
     height,
     theme,
     steps: named.steps ? resolve(process.cwd(), named.steps) : null,
+    chapter: named.chapter ?? null,
     login: named.login === true,
   };
 }
@@ -134,23 +139,28 @@ async function main() {
   try {
     const storageState = args.login ? await signIn(browser, args.url.origin) : undefined;
     const size = { width: args.width, height: args.height };
-    const started = Date.now();
-    const context = await browser.newContext({ viewport: size, colorScheme: args.theme, storageState, recordVideo: { dir: args.out, size } });
+    const context = await browser.newContext({ viewport: size, colorScheme: args.theme, storageState });
     const page = await context.newPage();
     const hold = (ms = HOLD_MS) => page.waitForTimeout(ms);
     const answer = await page.goto(args.url.href, { waitUntil: "networkidle" });
     if (!answer || answer.status() >= 400) refused(`${args.url.href} answered ${answer?.status() ?? "nothing"}`);
+    const clip = resolve(args.out, `${args.name}.webm`);
+    const still = resolve(args.out, `${args.name}.png`);
+    const recording = resolve(args.out, `.${args.name}.recording.webm`);
+    const started = Date.now();
+    await page.screencast.start({ path: recording, size });
+    if (args.chapter) {
+      await page.screencast.showChapter(args.chapter, { duration: HOLD_MS * 1.5 });
+      await hold(HOLD_MS * 1.5);
+    }
     await hold();
     if (steps) await steps(page, { hold });
     else await hold(2 * HOLD_MS);
-    const still = resolve(args.out, `${args.name}.png`);
     await page.screenshot({ path: still });
-    const video = page.video();
-    await context.close();
+    await page.screencast.stop();
     const seconds = (Date.now() - started) / 1000;
-    const recorded = await video.path();
-    const clip = resolve(args.out, `${args.name}.webm`);
-    const bytes = statSync(recorded).size;
+    await context.close();
+    const bytes = statSync(recording).size;
     const over =
       seconds > ceiling.seconds
         ? `the clip ran ${seconds.toFixed(1)} s, over the ${ceiling.seconds} s a release page shows; shorten its steps and record it again`
@@ -158,11 +168,11 @@ async function main() {
           ? `the clip is ${bytes} bytes, over the ${ceiling.bytes} a release page shows; record it smaller`
           : null;
     if (over) {
-      rmSync(recorded, { force: true });
+      rmSync(recording, { force: true });
       rmSync(still, { force: true });
       refused(over);
     }
-    renameSync(recorded, clip);
+    renameSync(recording, clip);
     console.log(`clip: ${clip} (${seconds.toFixed(1)} s, ${bytes} bytes)`);
     console.log(`clip: ${still} (its opening still)`);
     console.log(`clip: attach both (forge-runner api issues/<id>/attachments -F file=@${clip}, then the .png) and cite ${args.name}.webm and ${args.name}.png in the verdict's evidence`);
