@@ -31,6 +31,7 @@ import { peopleOf } from '../lib/people.js';
 import { holderNames, holds } from '../permissions/index.js';
 import { type BlockingEdge, blockerUnsettledSql, blockingEdgesIn } from './blocked-by.js';
 import { contractWaitUnsettledSql } from './contract-waits.js';
+import { deliveryHeads } from './delivery-head.js';
 import { designHoldPhrase, designOnlyMarkSql } from './design-delivery.js';
 import { issueRunLiveSql, issueWorkMovingSql } from './issue-lease.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
@@ -377,7 +378,13 @@ async function standingRows(
     master,
     now,
   };
-  const inputs = raws.map((r): [IssueRowRaw, IssueStandingInput] => [r, standingInputOf(r, facts)]);
+  // on a change-request project the issue's head is its request's, not a run's worklog capture
+  const heads = await deliveryHeads(projectId, ids);
+  const inputs = raws.map((raw): [IssueRowRaw, IssueStandingInput] => {
+    const head = heads?.get(raw.id.toLowerCase());
+    const r = head ? { ...raw, branch: head.branch, head_sha: head.sha } : raw;
+    return [r, standingInputOf(r, facts)];
+  });
   const groups = new Map<string, IssueAttentionGroup>(
     inputs.map(([r, input]) => [r.id, deriveIssueStanding(input).attentionGroup]),
   );

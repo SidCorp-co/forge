@@ -37,6 +37,8 @@ export type ChangeRequestBuild =
       basis: string;
       /** The request whose head this is (`!12`); null for a merge commit. */
       via: string | null;
+      /** The branch that request merges from; null for a merge commit. */
+      branch: string | null;
     }
   | { sha: null; why: string };
 
@@ -103,13 +105,19 @@ async function judgedAt(ids: readonly string[]): Promise<Map<string, (string | n
   return out;
 }
 
-async function currentHeads(ids: readonly string[]): Promise<Map<string, string>> {
+async function currentHeads(
+  ids: readonly string[],
+): Promise<Map<string, { sha: string; ref: string }>> {
   if (ids.length === 0) return new Map();
   const rows = await db
-    .select({ id: repoPullRequests.id, head: repoPullRequests.headSha })
+    .select({
+      id: repoPullRequests.id,
+      head: repoPullRequests.headSha,
+      ref: repoPullRequests.headRef,
+    })
     .from(repoPullRequests)
     .where(inArray(repoPullRequests.id, [...ids]));
-  return new Map(rows.map((r) => [r.id, r.head.toLowerCase()]));
+  return new Map(rows.map((r) => [r.id, { sha: r.head.toLowerCase(), ref: r.ref }]));
 }
 
 /** The issue's build in a running release that merges it: the head it was cut at, if unchanged. */
@@ -117,7 +125,7 @@ function inRelease(
   key: string,
   runSteps: readonly ReleaseMergeStep[],
   issueId: string,
-  heads: ReadonlyMap<string, string>,
+  heads: ReadonlyMap<string, { sha: string; ref: string }>,
 ): ChangeRequestBuild | null {
   const step = runSteps.filter((s) => s.issueIds.includes(issueId)).at(-1);
   if (!step) return null;
@@ -125,12 +133,13 @@ function inRelease(
   const now = heads.get(step.pullRequestId);
   if (!now)
     return { sha: null, why: `${key}'s release merges ${via}, which Forge no longer holds` };
-  const moved = changeRequestHeadWhy(via, step.headSha, now);
+  const moved = changeRequestHeadWhy(via, step.headSha, now.sha);
   if (moved) return { sha: null, why: `${key}: ${moved}` };
   return {
     sha: step.headSha.toLowerCase(),
     from: 'change-request',
     via,
+    branch: now.ref,
     basis: `${key} ships through ${via} in the running release, cut at its head \`${short(step.headSha)}\`, which is unchanged`,
   };
 }
@@ -164,6 +173,7 @@ function onOpenRequest(
     sha,
     from: 'change-request',
     via,
+    branch: best.headRef,
     basis: `${key} ships through ${via}, whose head is \`${short(sha)}\`: a verdict counts at that head while it stays unchanged${moved}`,
   };
 }
@@ -191,6 +201,7 @@ export async function changeRequestBuildsOf(
         sha: c.merged,
         from: 'merge',
         via: null,
+        branch: null,
         basis: `${c.key} merged on its host as \`${short(c.merged)}\`, so that merge commit is its landing`,
       });
       continue;

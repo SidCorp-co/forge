@@ -174,6 +174,36 @@ export async function landedBuildsOf(
   return out;
 }
 
+/** An issue's head as every reader names it on a change-request project, or why it has none. */
+export interface DeliveryHead {
+  sha: string | null;
+  branch: string | null;
+  basis: string;
+}
+
+/**
+ * The head of each issue on a change-request project, through the same reading its verdicts count
+ * on (`deliveredBuildsOf`): the head of the open request linked to it, else its host merge commit.
+ * A run's worklog capture of its work branch is never the issue's head there. Null on any other
+ * project, where the work state's branch and head are the run's own record.
+ */
+export async function deliveryHeadsOf(
+  projectId: string,
+  issueIds: readonly string[],
+): Promise<Map<string, DeliveryHead> | null> {
+  if ((await deliveryOf(projectId)) !== 'change-request') return null;
+  const out = new Map<string, DeliveryHead>();
+  for (const [id, b] of await changeRequestBuildsOf(projectId, issueIds)) {
+    out.set(
+      id,
+      b.sha === null
+        ? { sha: null, branch: null, basis: b.why }
+        : { sha: b.sha, branch: b.branch, basis: b.basis },
+    );
+  }
+  return out;
+}
+
 /** The build a verdict on an issue defaults to where its project has no production; null elsewhere. */
 export async function landedJudgedBuild(issue: {
   id: string;
