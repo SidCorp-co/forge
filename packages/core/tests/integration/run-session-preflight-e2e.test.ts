@@ -32,6 +32,8 @@ async function issue(seq: number, status: string, ownerId: string): Promise<void
     RETURNING id
   `)) as unknown as Array<{ id: string }>;
   ids[seq] = String(row?.id);
+  if (status === 'closed')
+    await db.execute(sql`UPDATE issues SET merged_at = now() WHERE id = ${ids[seq]}`);
   if (status !== 'open') await seedIssueStatus(ids[seq] as string, status);
 }
 
@@ -47,6 +49,7 @@ beforeAll(async () => {
   await issue(1, 'in_progress', ownerId);
   await issue(2, 'open', ownerId);
   await issue(3, 'open', ownerId);
+  await issue(4, 'closed', ownerId);
   await db.execute(sql`
     INSERT INTO issue_dependencies (project_id, from_issue_id, to_issue_id, kind)
     VALUES (${projectId}, ${ids[1]}, ${ids[2]}, 'blocks')
@@ -104,6 +107,22 @@ describe('run-session preflight', () => {
   it('refuses one blocked member of a group by name', async () => {
     const r = await preflight(['ISS-3', 'ISS-2']);
     expect(codes(r)).toContain('ISSUE_BLOCKED');
+  });
+
+  // FB-273: a run declared over a closed issue was accepted, and core's verdict then closed it
+  // under the subagent working it.
+  it('refuses a closed issue by name at the preflight and at the open', async () => {
+    const r = await preflight(['ISS-4']);
+    expect(r.status).toBe(422);
+    expect(codes(r)).toEqual(['ISSUE_AT_REST']);
+    expect(JSON.stringify(r.json)).toContain('`closed`');
+    const open = await say('POST', '/api/devices/me/run-sessions', {
+      projectId,
+      runId: crypto.randomUUID(),
+      issueKeys: ['ISS-4'],
+      name: 'ISS-4',
+    });
+    expect(codes(open)).toEqual(['ISSUE_AT_REST']);
   });
 
   it('refuses the same issue at the open, so the preflight and the open say one thing', async () => {

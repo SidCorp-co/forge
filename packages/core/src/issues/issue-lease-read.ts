@@ -1,6 +1,6 @@
 // Reading a device's issue lease and resolving the key a lease call names.
 
-import { ISSUE_TERMINAL_STATUSES, PARK_STATUSES } from '@forge/contracts/issue-machine';
+import { ISSUE_RESTING_STATUSES, ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
 import type { IssueTakeRefusalCode } from '@forge/contracts/issues';
 import { type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
@@ -56,7 +56,7 @@ async function readIssueStanding(args: {
     );
   const rows = (await db.execute(sql`
     SELECT (i.status IN (${list(ISSUE_TERMINAL_STATUSES)})) AS over,
-           (i.status IN (${list([...ISSUE_TERMINAL_STATUSES, ...PARK_STATUSES])})) AS resting
+           (i.status IN (${list(ISSUE_RESTING_STATUSES)})) AS resting
       FROM issues i
      WHERE i.project_id = ${args.projectId}
        AND i.iss_seq = ${parsed.issSeq}

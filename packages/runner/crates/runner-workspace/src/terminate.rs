@@ -29,7 +29,6 @@
 use std::path::Path;
 
 use crate::close_loop::{self, CloseState, LeaseKeeper, SessionReader};
-use crate::repo_cred::RepoCred;
 use crate::salvage::{self, Outcome, Salvage};
 use crate::worktree::Residence;
 use runner_core::inflight::Reaped;
@@ -42,6 +41,9 @@ use runner_platform::error::{Error, Result};
 pub trait ProcessGroup: Send + Sync {
     async fn kill(&self, pid: u32) -> Reaped;
 }
+
+#[path = "terminate/live_subagent.rs"]
+mod live_subagent;
 
 /// The box's own process table.
 pub struct SystemProcesses;
@@ -116,7 +118,7 @@ async fn branch_of(worktree: &Path) -> Option<String> {
 }
 
 fn committed(outcome: Outcome) -> bool {
-    matches!(outcome, Outcome::Pushed | Outcome::CommittedNotPushed)
+    outcome == Outcome::Committed
 }
 
 /// What the release did about the commits the checkout held.
@@ -129,51 +131,25 @@ pub enum Commits {
     NamedBy(String),
 }
 
-/// Make sure the commits in this checkout outlive it, and say how.
+/// Make sure the commits in this checkout outlive it, and say how — by a ref in
+/// this repository, and never by a push.
 ///
-/// Publication is attempted first and is still worth having — where there is a
-/// branch to name and a remote that answers, the push happens as it always did.
-/// What it is NOT is the thing that makes the release safe. It used to be, and
-/// two of its inputs can be missing: a detached HEAD has no branch to push, and
-/// a repository with no remote, or one that cannot be reached, can never answer
-/// "is this on a remote?" with a yes. Each of those was refused every sweep
-/// forever, holding the run's leases out of every queue on the box (ISS-1188).
+/// Release safety turns on whether the commits survive the checkout's removal,
+/// and the repository answers that by sha on every input: `git worktree
+/// remove` takes the directory, never the refs (ISS-1188). A push came first
+/// here for as long as the release was read as "is it on a remote" (ISS-1050).
+/// After ISS-1188 it decided nothing, and what it still did was publish: on
+/// 2026-10-23 a reclaim on this box pushed a run's branch to `origin`, a
+/// customer's GitLab, while reading `commits Some(AlreadyNamed)` — the work
+/// was preserved before the push began (FB-273).
 ///
-/// What release safety actually turns on is whether the commits survive the
-/// checkout's removal, and the repository answers that by sha on every input.
-/// `git worktree remove` takes the directory, never the refs.
-async fn keep_before_release(
-    run_id: &str,
-    verb: Verb,
-    worktree: &Path,
-    branch: Option<&str>,
-    cred: &RepoCred,
-) -> Result<Commits> {
-    if let Some(branch) = branch {
-        if !matches!(
-            salvage::publication_of(worktree, cred).await,
-            salvage::Publication::Published
-        ) {
-            let pushed = salvage::publish(worktree, branch, cred).await;
-            match (&pushed.refused, &pushed.publication) {
-                (_, salvage::Publication::Published) => {}
-                (Some(refused), publication) => tracing::info!(
-                    "[terminate] run {run_id}: `{branch}` in {} did not reach a remote: {refused}; \
-                     afterwards {publication} — the release goes on the refs this repository \
-                     keeps instead",
-                    worktree.display()
-                ),
-                // git took the push, so nothing here may say it did not land:
-                // what is not known is what the reading after it found.
-                (None, publication) => tracing::info!(
-                    "[terminate] run {run_id}: git took the push of `{branch}` in {}, and \
-                     afterwards {publication} — the release goes on the refs this repository \
-                     keeps instead",
-                    worktree.display()
-                ),
-            }
-        }
-    }
+/// **Priced amnesty: commits only this box holds die with this box.** That is
+/// the ISS-1050 case, and a release is not where it is answered: a run pushes
+/// its own branch when its work is meant to leave the box, and a project's
+/// `origin` is the customer's repository, which nothing but a run's own ship
+/// step writes to. Ends at the first measured loss of a released run's commits
+/// to a box that went.
+async fn keep_before_release(run_id: &str, verb: Verb, worktree: &Path) -> Result<Commits> {
     match salvage::fate_of(worktree).await {
         salvage::Fate::Named => Ok(Commits::AlreadyNamed),
         salvage::Fate::NeedsARef { commits } => salvage::keep_at(worktree, run_id)
@@ -424,17 +400,24 @@ pub async fn force_terminal(
         }
     }
 
-    // One credential for this release, resolved from what this box provisioned
-    // rather than from what a git child happens to read (ISS-1250). It is read
-    // at the path, so only once git has answered that the path is a checkout
-    // of its own: at an enclosed one it would be the enclosing checkout's
-    // configuration (consult on 9ecec0c09 F1).
-    let cred = RepoCred::of(worktree).await;
+    // A subagent at work in the checkout, which the reading of who lives in it
+    // cannot see (FB-273). Asked before anything is salvaged or committed in
+    // the tree, which would be its work moved under it, and refused as a live
+    // agent so the release is retried while it works and never decided.
+    if held == Held::Ours {
+        let now_ms = runner_core::agent_activity::now_ms();
+        if let Some(why) = live_subagent::working_subagent(&run, ports.hosts, now_ms) {
+            return Err(Error::AgentInTree(format!(
+                "refusing to {verb:?} run {run_id}: {} — {why}",
+                worktree.display()
+            )));
+        }
+    }
 
     // A checkout whose branch this box cannot name is a DETACHED one, not an
     // unreadable one, and it is no longer fatal here. The branch name is what
-    // builds a push refspec and what `salvage_wip` picks a target by; the
-    // question the release turns on is asked by sha and needs neither.
+    // `salvage_wip` picks a target by; the question the release turns on is
+    // asked by sha and needs none.
     let mut commits = None;
     let salvage = if held != Held::Ours {
         None
@@ -452,7 +435,6 @@ pub async fn force_terminal(
                     job_id: run_id,
                     attempt: 0,
                     failure: what.reason,
-                    cred: &cred,
                 })
                 .await,
             ),
@@ -470,13 +452,12 @@ pub async fn force_terminal(
                     .unwrap_or("this checkout is on no branch, so there was no salvage to run")
             )));
         }
-        let kept = keep_before_release(run_id, verb, worktree, branch.as_deref(), &cred).await?;
+        let kept = keep_before_release(run_id, verb, worktree).await?;
         take_the_directory(run_id, verb, what.repo_root, worktree, &kept).await?;
         commits = Some(kept);
         report
     } else {
-        let branch = branch_of(worktree).await;
-        let kept = keep_before_release(run_id, verb, worktree, branch.as_deref(), &cred).await?;
+        let kept = keep_before_release(run_id, verb, worktree).await?;
         take_the_directory(run_id, verb, what.repo_root, worktree, &kept).await?;
         commits = Some(kept);
         None
@@ -664,6 +645,8 @@ pub struct Ports<'a> {
     pub procs: &'a dyn ProcessGroup,
     pub sessions: &'a dyn SessionReader,
     pub leases: &'a dyn LeaseKeeper,
+    /// The process table a subagent's host is read from (`subagent_host`).
+    pub hosts: &'a dyn runner_platform::subagent_host::Hosts,
 }
 
 #[cfg(test)]
@@ -801,10 +784,12 @@ mod holder_tests {
         declare(&mut led, "run-1", "master-1", "ISS-964", &wt);
         led.end_run("run-1", "master", "done").unwrap();
         declare(&mut led, "run-2", "master-2", "ISS-965", &wt);
+        let hosts = runner_platform::subagent_host::ProcHosts::system();
         let ports = Ports {
             procs: &Procs,
             sessions: &World,
             leases: &World,
+            hosts: &hosts,
         };
 
         let refused = force_terminal(&mut led, "run-1", forcing(&root), ports).await;
@@ -825,3 +810,7 @@ mod holder_tests {
         let _ = std::fs::remove_dir_all(&root);
     }
 }
+
+#[cfg(test)]
+#[path = "terminate/reclaim_tests.rs"]
+mod reclaim_tests;

@@ -166,6 +166,7 @@ export const ISSUE_TAKE_REFUSAL_CODES = [
 	"ISSUE_LEASE_KEY_UNKNOWN_PREFIX",
 	"ISSUE_LEASE_KEY_PROJECT_MISMATCH",
 	"ISSUE_SCOPE_HELD",
+	"ISSUE_AT_REST",
 ] as const;
 export type IssueTakeRefusalCode = (typeof ISSUE_TAKE_REFUSAL_CODES)[number];
 export const ISSUE_TAKE_REFUSAL_STATUSES = {

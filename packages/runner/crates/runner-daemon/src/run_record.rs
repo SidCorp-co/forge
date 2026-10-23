@@ -179,16 +179,18 @@ pub async fn open_declared_runs_at(
                     "core refused this declaration and will refuse it again unchanged: {}",
                     named.join("; ")
                 );
-                tracing::error!(
-                    "[run-record] run {}: {said} — {why}. The run is ended here rather than re-sent",
-                    run.run_id
+                end_refused(led, &run.run_id, &format!("{said} — {why}"), &why);
+            }
+            // An issue at rest is refused at declare (FB-273); one reaching the open was moved
+            // to rest after its declaration, or declared while core could not be asked. Core
+            // queues nothing behind it and no sweep lifts it, so the row ends here as the
+            // malformed one does: no core session was minted, and the release that follows
+            // keeps a checkout a live subagent is working in (`terminate::live_subagent`).
+            Err(runner_platform::error::Error::AtRest { said }) => {
+                let why = format!(
+                    "core refuses a run over an issue at rest: {said}. Reopen the issue and declare again"
                 );
-                if let Err(e) = led.end_run(&run.run_id, "run-record", &why) {
-                    tracing::error!(
-                        "[run-record] run {}: the refusal could not be written onto the row: {e} — the next sweep will send it again",
-                        run.run_id
-                    );
-                }
+                end_refused(led, &run.run_id, &why, &why);
             }
             // A hold is not a fault of the payload and not of the moment: it stands until
             // its holder moves. Core has already recorded the declaration as a queued run
@@ -205,6 +207,17 @@ pub async fn open_declared_runs_at(
         }
     }
     opened
+}
+
+/// End a run whose open core refused for good, saying `said` and recording `why` on the row. No
+/// core session was minted, so nothing at core has to be told.
+fn end_refused(led: &Ledger, run_id: &str, said: &str, why: &str) {
+    tracing::error!("[run-record] run {run_id}: {said}. The run is ended here rather than re-sent");
+    if let Err(e) = led.end_run(run_id, "run-record", why) {
+        tracing::error!(
+            "[run-record] run {run_id}: the refusal could not be written onto the row: {e} — the next sweep will send it again"
+        );
+    }
 }
 
 /// A run's open core refused over a hold, written onto the row. Core has already recorded the
@@ -563,6 +576,42 @@ mod session_hold_tests {
             open_declared_runs_at(&opener, &mut led, "boot-1", None, T0 + n * SWEEP_MS).await;
         }
         assert_eq!(opener.0.load(Ordering::SeqCst), 5);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// FB-273: an open core refuses because an issue is at rest ends the row, once. Nothing
+    /// queues behind it at core and no sweep lifts it, so re-sending it is a loop.
+    #[tokio::test]
+    async fn an_open_refused_over_an_issue_at_rest_ends_the_run_and_is_not_resent() {
+        struct Resting(AtomicUsize);
+        impl SessionOpener for Resting {
+            async fn open(
+                &self,
+                _: &str,
+                _: &str,
+                _: &[String],
+                _: &str,
+                _: Option<&runner_proto::gate::Condition>,
+            ) -> runner_platform::error::Result<(String, String)> {
+                self.0.fetch_add(1, Ordering::SeqCst);
+                Err(Error::AtRest {
+                    said: "run-session open 422: ISS-46 is at `closed`".into(),
+                })
+            }
+        }
+        let (mut led, dir) = declared();
+        let opener = Resting(AtomicUsize::new(0));
+        for n in 0..3 {
+            open_declared_runs_at(&opener, &mut led, "boot-1", None, T0 + n * SWEEP_MS).await;
+        }
+        assert_eq!(
+            opener.0.load(Ordering::SeqCst),
+            1,
+            "a run over a closed issue was re-sent"
+        );
+        let run = led.as_ref().unwrap().run("run-1").unwrap().unwrap();
+        assert_eq!(run.ended_by.as_deref(), Some("run-record"));
+        assert!(run.ended_reason.unwrap().contains("Reopen the issue"));
         let _ = std::fs::remove_dir_all(dir);
     }
 }

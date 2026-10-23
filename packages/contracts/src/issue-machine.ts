@@ -123,6 +123,17 @@ const PARKABLE_STATUSES: readonly IssueStatus[] = [
 /** The issue is over, whichever exit it took. */
 export const ISSUE_TERMINAL_STATUSES: readonly IssueStatus[] = ["closed", "dropped"];
 
+/**
+ * An issue AT REST: over, or parked on a person. No run works one, so a run declared over one is
+ * refused at declare (`issues/issue-resting.ts`), and a run holding one is a stale declaration in
+ * core's recovery verdict (`devices/run-verdict.ts:staleEnd`). One list, so the two never disagree
+ * about which statuses those are (FB-273).
+ */
+export const ISSUE_RESTING_STATUSES: readonly IssueStatus[] = [
+	...ISSUE_TERMINAL_STATUSES,
+	...PARK_STATUSES,
+];
+
 /** The status an issue stands at while its release is waiting to be pressed. */
 export const BASE_MERGE_STATE: IssueStatus = "awaiting_release";
 

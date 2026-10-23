@@ -60,6 +60,7 @@ pub(crate) async fn release_held_tree(
             procs: world.killer,
             sessions,
             leases,
+            hosts: &runner_platform::subagent_host::ProcHosts::system(),
         },
         now_secs(),
     )

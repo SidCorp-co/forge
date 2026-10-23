@@ -46,6 +46,15 @@ pub enum Error {
         code: String,
     },
 
+    /// Core refused the run because an issue it names is at rest: over, or parked on a person
+    /// (`ISSUE_AT_REST`). No sweep lifts it, and core queues nothing behind it: only a person
+    /// moving the issue does, after which the master declares again (FB-273).
+    #[error("{said}")]
+    AtRest {
+        /// The refusal as any other would read it, from `transport::status`.
+        said: String,
+    },
+
     /// A checkout refused because a live agent's process is living in it: the
     /// checkout is that agent's work for as long as it lives, so a release
     /// retries it rather than deciding it (ISS-1390). Typed so the release can

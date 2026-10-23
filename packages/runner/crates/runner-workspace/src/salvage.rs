@@ -1,5 +1,11 @@
-//! Commit and push whatever a failed job left uncommitted, so the next attempt
-//! starts from that work instead of from nothing.
+//! Commit whatever a run being released left uncommitted onto its own branch,
+//! so the work outlives the checkout instead of going with it.
+//!
+//! Committed, never pushed. The branch is a ref this repository keeps, and
+//! `git worktree remove` takes the directory and never the refs, so the commit
+//! is preserved the moment it is made. A push from here published a run's
+//! branch to the project's `origin`, a customer's repository, from a release
+//! nobody asked to ship anything (FB-273).
 //!
 //! Runner-side by necessity: core has no working copy, and the agent that would
 //! have committed is the thing that died. Every path here — including refusal —
@@ -26,12 +32,11 @@ use runner_platform::git::git;
 
 const PICK_BUDGET: Duration = Duration::from_secs(10);
 const LOCAL_BUDGET: Duration = Duration::from_secs(15);
-const PUSH_BUDGET: Duration = Duration::from_secs(45);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Outcome {
-    Pushed,
-    CommittedNotPushed,
+    /// The diff is a commit on the checkout's own branch.
+    Committed,
     None,
     Refused,
     Failed,
@@ -163,45 +168,6 @@ pub async fn publication_of(worktree: &Path, cred: &RepoCred) -> Publication {
         Err(e) => Publication::Unknown {
             why: format!("could not read the unpublished count: {e}"),
         },
-    }
-}
-
-/// What a push to publish a branch came to: the publication read afterwards,
-/// and, where git did not take the push, why in its own words.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Pushed {
-    pub publication: Publication,
-    /// `None` where git took the push. Otherwise the refusal, carrying git's
-    /// first line and the credential the push offered — a key that reads and
-    /// cannot write passes the check and fails here, and a line that dropped
-    /// either half is the split this module's credential exists to diagnose.
-    pub refused: Option<String>,
-}
-
-pub async fn publish(worktree: &Path, branch: &str, cred: &RepoCred) -> Pushed {
-    let refspec = format!("HEAD:refs/heads/{branch}");
-    let argv = ["push", "origin", refspec.as_str()];
-    let push = tokio::time::timeout(PUSH_BUDGET, git_over_network(worktree, &argv, cred)).await;
-    let refused = match push {
-        Ok(Some(out)) if out.status.success() => None,
-        Ok(Some(out)) => Some(format!(
-            "`git push origin {refspec}`, offering {}, was refused: {}",
-            cred.source(),
-            stderr_brief(&out)
-        )),
-        Ok(None) => Some(format!(
-            "`git push origin {refspec}`, offering {}, could not be spawned",
-            cred.source()
-        )),
-        Err(_) => Some(format!(
-            "`git push origin {refspec}`, offering {}, did not answer within {}s",
-            cred.source(),
-            PUSH_BUDGET.as_secs()
-        )),
-    };
-    Pushed {
-        publication: publication_of(worktree, cred).await,
-        refused,
     }
 }
 
@@ -496,8 +462,6 @@ pub struct SalvageInput<'a> {
     pub job_id: &'a str,
     pub attempt: u32,
     pub failure: &'a str,
-    /// The credential this project's pushes are made with.
-    pub cred: &'a RepoCred,
 }
 
 /// Choose the checkout to salvage, or explain why there is none.
@@ -543,8 +507,9 @@ async fn pick_target(input: &SalvageInput<'_>) -> std::result::Result<Target, Sa
     }
 }
 
-/// Preserve the working copy of a failed job, best-effort. Finds the agent's own
-/// checkout for this issue, commits what is uncommitted there, and pushes it.
+/// Preserve the working copy of a run being released, best-effort. Finds the
+/// agent's own checkout for this issue and commits what is uncommitted there
+/// onto its branch, which names it from then on.
 pub async fn salvage_wip(input: SalvageInput<'_>) -> Salvage {
     let target = match tokio::time::timeout(PICK_BUDGET, pick_target(&input)).await {
         Ok(Ok(t)) => t,
@@ -555,61 +520,34 @@ pub async fn salvage_wip(input: SalvageInput<'_>) -> Salvage {
         LOCAL_BUDGET,
         stage_and_commit(&target, input.job_id, input.attempt, input.failure),
     );
-    let committed = match local.await {
-        Ok(Committed::Done(c)) => c,
-        Ok(Committed::Stop(s)) => return s,
-        Err(_) => return Salvage::failed("timed out staging the working copy"),
-    };
-    let refspec = format!("HEAD:refs/heads/{}", target.branch);
-    let argv = ["push", "origin", refspec.as_str()];
-    let push = git_over_network(&target.path, &argv, input.cred);
-    match tokio::time::timeout(PUSH_BUDGET, push).await {
-        Ok(Some(out)) if out.status.success() => Salvage {
-            outcome: Outcome::Pushed,
-            ..committed
-        },
-        Ok(Some(out)) => Salvage {
-            outcome: Outcome::CommittedNotPushed,
-            detail: Some(stderr_brief(&out)),
-        },
-        Ok(None) => Salvage {
-            outcome: Outcome::CommittedNotPushed,
-            detail: Some("git push could not be spawned".into()),
-        },
-        Err(_) => Salvage {
-            outcome: Outcome::CommittedNotPushed,
-            detail: Some(format!("push timed out after {}s", PUSH_BUDGET.as_secs())),
-        },
+    match local.await {
+        Ok(said) => said,
+        Err(_) => Salvage::failed("timed out staging the working copy"),
     }
 }
 
-enum Committed {
-    /// A commit exists; the caller decides `pushed` vs `committed_not_pushed`.
-    Done(Salvage),
-    /// Nothing to push, ever — report this verbatim.
-    Stop(Salvage),
-}
-
-async fn stage_and_commit(target: &Target, job_id: &str, attempt: u32, failure: &str) -> Committed {
+/// `Committed` where a commit now names the diff on the checkout's branch, and
+/// otherwise why there is none.
+async fn stage_and_commit(target: &Target, job_id: &str, attempt: u32, failure: &str) -> Salvage {
     let wt = target.path.as_path();
     let branch = target.branch.as_str();
     let head = match git(wt, &["rev-parse", "--abbrev-ref", "HEAD"]).await {
         Some(out) if out.status.success() => stdout_trim(&out),
-        Some(out) => return Committed::Stop(Salvage::failed(stderr_brief(&out))),
-        None => return Committed::Stop(Salvage::failed("git could not be spawned")),
+        Some(out) => return Salvage::failed(stderr_brief(&out)),
+        None => return Salvage::failed("git could not be spawned"),
     };
     if head != branch {
-        return Committed::Stop(Salvage::refused(format!(
+        return Salvage::refused(format!(
             "worktree moved to `{head}` while it was being salvaged, expected `{branch}`"
-        )));
+        ));
     }
 
     if let Some(out) = git(wt, &["add", "-A"]).await {
         if !out.status.success() {
-            return Committed::Stop(Salvage::failed(stderr_brief(&out)));
+            return Salvage::failed(stderr_brief(&out));
         }
     } else {
-        return Committed::Stop(Salvage::failed("git add could not be spawned"));
+        return Salvage::failed("git add could not be spawned");
     }
 
     let (files, _) = match git(wt, &["diff", "--cached", "--numstat"]).await {
@@ -619,7 +557,7 @@ async fn stage_and_commit(target: &Target, job_id: &str, attempt: u32, failure: 
     if files == 0 {
         // Everything dirty was ignored — nothing to preserve, and an empty
         // commit per failed attempt is noise on every branch.
-        return Committed::Stop(Salvage::bare(Outcome::None));
+        return Salvage::bare(Outcome::None);
     }
 
     let message = commit_message(branch, job_id, attempt, failure);
@@ -628,14 +566,11 @@ async fn stage_and_commit(target: &Target, job_id: &str, attempt: u32, failure: 
     let argv_ref: Vec<&str> = argv.iter().map(String::as_str).collect();
     if let Some(out) = git(wt, &argv_ref).await {
         if !out.status.success() {
-            return Committed::Stop(Salvage::failed(stderr_brief(&out)));
+            return Salvage::failed(stderr_brief(&out));
         }
     } else {
-        return Committed::Stop(Salvage::failed("git commit could not be spawned"));
+        return Salvage::failed("git commit could not be spawned");
     }
 
-    Committed::Done(Salvage {
-        outcome: Outcome::CommittedNotPushed,
-        detail: None,
-    })
+    Salvage::bare(Outcome::Committed)
 }
