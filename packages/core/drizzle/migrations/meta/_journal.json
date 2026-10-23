@@ -3326,6 +3326,13 @@
       "when": 1827619200000,
       "tag": "0517_a_design_never_approved_can_be_withdrawn",
       "breakpoints": true
+    },
+    {
+      "idx": 520,
+      "version": "7",
+      "when": 1827878400000,
+      "tag": "0520_a_change_request_delivers_every_issue_it_names",
+      "breakpoints": true
     }
   ]
 }

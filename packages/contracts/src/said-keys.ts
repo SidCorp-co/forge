@@ -6,6 +6,29 @@
 import type { SaidEntry } from "./said.js";
 
 export const SAID = {
+	"standing.act.carryOrUnlink": {
+		en: "name its other issues in this release, or unlink them",
+	},
+	"standing.act.cutAndApprove": {
+		en: "cut a release and approve it; its merges close it",
+	},
+	"standing.act.openChangeRequest": {
+		en: "open a change request{on}",
+		vars: { on: "said?" },
+	},
+	"standing.gate.changeRequestCarries": {
+		en: "A change request here also delivers an issue this release does not carry.",
+	},
+	"standing.gate.changeRequestMissing": {
+		en: "{subject} {verb} no open change request to merge.",
+		vars: { subject: "said", verb: "agreement" },
+	},
+	"standing.gate.throughChangeRequests": {
+		en: "This project releases by merging its change requests once a release is approved.",
+	},
+	"standing.gate.title.changeRequestCarries": { en: "Request carries other work" },
+	"standing.gate.title.changeRequestMissing": { en: "No change request" },
+	"standing.gate.title.throughChangeRequests": { en: "Released by merge" },
 	"standing.text": { en: "{text}", vars: { text: "text" } },
 	"standing.who.named": { en: "{name}", vars: { name: "name" } },
 	"standing.who.namesMore": {

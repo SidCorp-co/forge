@@ -1,5 +1,5 @@
 import { REASON_LINE_MAX } from '@forge/contracts/comments';
-import type { ReleaseApprovalView } from '@forge/contracts/releases';
+import { type ReleaseApprovalView, releaseThroughChangeRequests } from '@forge/contracts/releases';
 import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../db/client.js';
@@ -24,7 +24,8 @@ const ENV_NAME = /^[a-z][a-z0-9-]{0,62}$/;
 
 export const approvalRequestSchema = z.strictObject({
   evidence: z.strictObject({
-    environment: z.string().regex(ENV_NAME),
+    /** The environment the reading was taken on; absent on a release that merges change requests. */
+    environment: z.string().regex(ENV_NAME).optional(),
     commit: z.string().regex(SHA),
     reading: z.string().trim().min(1).max(500),
   }),
@@ -115,12 +116,35 @@ export async function approvalsOfRuns(runIds: readonly string[]): Promise<Releas
     .orderBy(desc(releaseApprovals.requestedAt), desc(releaseApprovals.id));
 }
 
-async function evidenceEnvironment(projectId: string, name: string): Promise<void> {
+/**
+ * The environment the evidence was read on, checked against the project: one before production on a
+ * project that deploys, and none on one that releases by merging change requests (REQ-63), whose
+ * approval rests on each request's head rather than on a deployed reading.
+ */
+async function evidenceEnvironment(
+  projectId: string,
+  name: string | undefined,
+): Promise<string | null> {
   const read = await readReleasePath(projectId);
   if (!read.ok) {
     throw refuseRelease(
       'RELEASE_APPROVAL_PATH_UNREADABLE',
       `the project document cannot be read as a release path (${read.reason}), so the environment the evidence names cannot be checked`,
+    );
+  }
+  if (releaseThroughChangeRequests(read.path.document)) {
+    if (name === undefined) return null;
+    throw refuseRelease(
+      'RELEASE_APPROVAL_EVIDENCE_ENVIRONMENT',
+      `evidence names environment ${JSON.stringify(name)}, and this project releases by merging its change requests: nothing is deployed before the merge, so the approval rests on the requests' heads and names no environment. Send the evidence without \`environment\`.`,
+      '/evidence/environment',
+    );
+  }
+  if (name === undefined) {
+    throw refuseRelease(
+      'RELEASE_APPROVAL_EVIDENCE_ENVIRONMENT',
+      'evidence names no environment, and approval on this project rests on a reading from an environment before production: name the one it was read on.',
+      '/evidence/environment',
     );
   }
   const envs = environmentsOf(read.path.document);
@@ -132,6 +156,7 @@ async function evidenceEnvironment(projectId: string, name: string): Promise<voi
       `evidence names environment ${JSON.stringify(name)}, which ${env ? 'is production itself' : 'the project document does not declare'}; approval rests on a reading from an environment before production (declared: ${before.join(', ') || 'none'})`,
     );
   }
+  return name;
 }
 
 async function runOf(runId: string) {
@@ -166,14 +191,14 @@ export async function requestApproval(input: {
       `release run ${runId} is ${run.releasedAt ? 'shipped' : run.status}; approval is asked for an open run before production`,
     );
   }
-  await evidenceEnvironment(projectId, body.evidence.environment);
+  const environment = await evidenceEnvironment(projectId, body.evidence.environment);
   const [row] = await db
     .insert(releaseApprovals)
     .values({
       projectId,
       runId,
       requestedByUser: userId,
-      evidenceEnvironment: body.evidence.environment,
+      evidenceEnvironment: environment,
       evidenceCommit: body.evidence.commit,
       evidenceReading: body.evidence.reading,
       note: body.note ?? null,

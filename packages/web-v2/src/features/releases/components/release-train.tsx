@@ -1,5 +1,5 @@
 
-import { RELEASE_PROOF_TONES, RELEASE_STATE_TONES } from "@forge/contracts/releases";
+import { changeRequestLabel, RELEASE_PROOF_TONES, RELEASE_STATE_TONES } from "@forge/contracts/releases";
 import { Link } from "@/lib/navigation/router";
 import { LEGEND, MarkStrip, ViewHeading } from "@/design";
 import { useCopy, useLabel, useTimeFormat } from "@/lib/i18n/interface-language";
@@ -28,7 +28,7 @@ function Contents({ groups }: { groups: ReleaseContentGroup[] }) {
             size="sm"
             marks={g.issues.map((i) => ({
               key: i.key,
-              label: `${i.key} ${i.title} · ${label("releaseProof", i.proof)}`,
+              label: `${i.key} ${i.title} · ${label("releaseProof", i.proof)}${i.changeRequest ? ` · ${changeRequestLabel(i.changeRequest)} ${t(`releases.merges.state.${i.changeRequest.state}`)}` : ""}`,
               ...(i.proof === "unrecorded" || i.proof === "open" ? { fill: "var(--paper-300)" } : { tone: RELEASE_PROOF_TONES[i.proof] }),
             }))}
           />

@@ -4,7 +4,7 @@ import {
   ReleaseRangeReadsBodySchema,
   ReleaseRangeReportSchema,
 } from '@forge/contracts/release-page';
-import { RELEASE_HOLD_OWERS } from '@forge/contracts/releases';
+import { RELEASE_HOLD_OWERS, RELEASE_ROSTER_LIMIT } from '@forge/contracts/releases';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { loadProjectAccess } from '../lib/authz.js';
@@ -59,6 +59,12 @@ const createBodySchema = z
     /** The release's name and summary (REQ-40 BC-14); both or neither, each held to `ReleaseNamingSchema`. */
     name: z.string().optional(),
     summary: z.string().optional(),
+    /** The merge order of a release that ships by merging change requests, by number (REQ-63). */
+    changeRequests: z
+      .array(z.number().int().positive())
+      .min(1)
+      .max(RELEASE_ROSTER_LIMIT)
+      .optional(),
   })
   .strict()
   .superRefine((body, ctx) => {
@@ -77,14 +83,20 @@ releaseBatchRoutes.post(
   zValidator('json', createBodySchema),
   async (c) => {
     const { projectId } = c.req.valid('param');
-    const { issueIds, name, summary } = c.req.valid('json');
+    const { issueIds, name, summary, changeRequests } = c.req.valid('json');
     const userId = c.get('userId');
 
     const access = await loadProjectAccess(projectId, userId);
     requireHeld(access, 'project.admin');
 
     const naming = name !== undefined && summary !== undefined ? { name, summary } : null;
-    const result = await createReleaseBatch({ projectId, issueIds, userId, naming });
+    const result = await createReleaseBatch({
+      projectId,
+      issueIds,
+      userId,
+      naming,
+      changeRequests,
+    });
     return c.json(result, 201);
   },
 );

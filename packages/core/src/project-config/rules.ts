@@ -5,6 +5,7 @@ import { MCP_TOOL_NAMES } from '@forge/contracts/mcp-tools';
 import { previewEnvironmentProblem } from '@forge/contracts/preview';
 import type { ConfigRefusalCode } from '@forge/contracts/project-config';
 import { resolveProjectTemplates } from '@forge/contracts/workflow-templates';
+import { checkChangeRequestRelease } from './change-request-rule.js';
 import type { PolicyDocument } from './policy-schema.js';
 import { MAX_PERFORMED_CROSSINGS, releaseLandingOf } from './promotion-path.js';
 import {
@@ -404,6 +405,7 @@ export function checkProjectConfig(
   out.push(...checkContentLanguage(doc));
   out.push(...checkRetiredApprovers(doc));
   out.push(...checkRetiredReadinessGate(doc));
+  out.push(...checkChangeRequestRelease(doc));
   if (ctx.policy) out.push(...checkPolicy(ctx.policy));
   return out;
 }

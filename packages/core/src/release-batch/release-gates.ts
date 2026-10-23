@@ -84,7 +84,11 @@ const owes = (d: Details, none: Said): Said[] => {
 };
 
 const withSubject = (
-  key: 'standing.gate.claimed' | 'standing.gate.noteMissing' | 'standing.gate.unmerged',
+  key:
+    | 'standing.gate.claimed'
+    | 'standing.gate.noteMissing'
+    | 'standing.gate.unmerged'
+    | 'standing.gate.changeRequestMissing',
   d: Details,
   verb: [string, string],
 ): Said => {
@@ -159,6 +163,18 @@ const READINGS: Record<ReleaseReasonCode, Reading> = {
     title: 'standing.gate.title.unmerged',
     plain: (d) => withSubject('standing.gate.unmerged', d, ['has', 'have']),
   },
+  RELEASE_CHANGE_REQUEST_MISSING: {
+    title: 'standing.gate.title.changeRequestMissing',
+    plain: (d) => withSubject('standing.gate.changeRequestMissing', d, ['has', 'have']),
+  },
+  RELEASE_CHANGE_REQUEST_CARRIES_UNRELEASED: {
+    title: 'standing.gate.title.changeRequestCarries',
+    plain: plain('standing.gate.changeRequestCarries'),
+  },
+  RELEASE_THROUGH_CHANGE_REQUESTS: {
+    title: 'standing.gate.title.throughChangeRequests',
+    plain: plain('standing.gate.throughChangeRequests'),
+  },
   RELEASE_PROBES_UNREADABLE: {
     title: 'standing.gate.title.unprovable',
     plain: plain('standing.gate.unprovable'),
@@ -222,7 +238,12 @@ const READINGS: Record<ReleaseReasonCode, Reading> = {
 };
 
 const onThem =
-  (key: 'standing.act.writeReleaseNote' | 'standing.act.markMerge') =>
+  (
+    key:
+      | 'standing.act.writeReleaseNote'
+      | 'standing.act.markMerge'
+      | 'standing.act.openChangeRequest',
+  ) =>
   (d: Details): Said => {
     const s = subjectOf(d);
     return say(key, { on: s.n === 0 ? null : say('standing.gate.on', { subject: s.said }) });
@@ -263,6 +284,12 @@ const OWED: Record<ReleaseReasonCode, Owed> = {
   },
   RELEASE_RECORD_MISSING: { by: 'master', act: onThem('standing.act.writeReleaseNote') },
   RELEASE_WORK_UNMERGED: { by: 'master', act: onThem('standing.act.markMerge') },
+  RELEASE_CHANGE_REQUEST_MISSING: { by: 'master', act: onThem('standing.act.openChangeRequest') },
+  RELEASE_CHANGE_REQUEST_CARRIES_UNRELEASED: {
+    by: 'master',
+    act: act('standing.act.carryOrUnlink'),
+  },
+  RELEASE_THROUGH_CHANGE_REQUESTS: { by: 'admin', act: act('standing.act.cutAndApprove') },
   RELEASE_PROBES_UNREADABLE: { by: 'admin', act: act('standing.act.declareProbe') },
   RELEASE_POOL_EMPTY: { by: 'admin', act: act('standing.act.pairRunner') },
   NO_RUNNER_ONLINE: { by: 'admin', act: act('standing.act.runnerOnline') },

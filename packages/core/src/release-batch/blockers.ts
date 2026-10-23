@@ -29,6 +29,7 @@ import {
   type ReleaseWarning,
   runnerPreferenceUnmetSentence,
 } from './blocker-sentences.js';
+import { changeRequestBlockers } from './change-request-roster.js';
 import {
   projectRunnerDeviceIds,
   type ReleaseChannel,
@@ -321,6 +322,18 @@ export async function collectReleaseBlockers(
         warnings,
       };
     }
+    if (read.kind === 'change-requests') {
+      if (door === 'record') blockers.push(blocker('RELEASE_THROUGH_CHANGE_REQUESTS'));
+      else await changeRequestReleaseBlockers(projectId, options, blockers, warnings);
+      return {
+        projectId,
+        projectExists: true,
+        declaration: read,
+        channels: [],
+        blockers,
+        warnings,
+      };
+    }
     if (read.kind === 'no-release') blockers.push(blocker('NO_RELEASE_GATE'));
     if (read.kind === 'undeclared-target') {
       blockers.push(blocker('RELEASE_TARGET_UNDECLARED', { reason: read.reason }));
@@ -412,6 +425,46 @@ async function gatedBlockers(
     }
   }
   return channels;
+}
+
+/**
+ * What a release that merges change requests owes (REQ-63): the roster's own reasons and every
+ * request it ships, then a release already running and the version. It deploys nothing, so no
+ * channel, runner pool or probe is asked of it.
+ */
+async function changeRequestReleaseBlockers(
+  projectId: string,
+  options: CollectReleaseBlockersOptions,
+  out: ReleaseBlocker[],
+  warnings: ReleaseWarning[],
+): Promise<void> {
+  const { issueIds } = options;
+  const found = await resolveRoster(projectId, RELEASE_GATE_STATUS, issueIds, out);
+  if (issueIds && issueIds.length > 0) {
+    await claimBlockers(projectId, RELEASE_GATE_STATUS, issueIds, out);
+  }
+  const roster = issueIds && issueIds.length > 0 ? (found?.ids ?? []) : (found?.unclaimed ?? []);
+  await rosterBlockers('batch', roster, out);
+  await changeRequestBlockers(projectId, roster, out);
+  const active = await evaluate(
+    'in-flight',
+    async () => await getActiveReleaseBatch(projectId),
+    out,
+  );
+  if (active) {
+    out.push(blocker('BATCH_IN_FLIGHT', { runId: active.runId, version: active.version }));
+  }
+  await versionBlocker(projectId, issueIds && issueIds.length > 0 ? issueIds : found?.ids, out);
+  if (!issueIds && found) {
+    await criteriaHold(
+      projectId,
+      found.unclaimed,
+      out,
+      warnings,
+      options.serving,
+      options.weighing,
+    );
+  }
 }
 
 /**

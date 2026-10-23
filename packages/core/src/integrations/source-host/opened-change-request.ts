@@ -12,9 +12,13 @@
  * and nothing here calls GitHub — the answer the creation call already returned is all it reads.
  */
 
-import { and, eq } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 import { db } from '../../db/client.js';
-import { type ChangeRequestHost, repoPullRequests } from '../../db/schema-repo-projection.js';
+import {
+  type ChangeRequestHost,
+  repoPullRequestIssues,
+  repoPullRequests,
+} from '../../db/schema-repo-projection.js';
 import { applyPullRequestEvent, type PullRequestPayload } from './projection.js';
 import type { OpenedChangeRequest } from './types.js';
 
@@ -33,7 +37,9 @@ type OpenedProjectionOutcome =
 
 interface OpenedProjectionResult {
   outcome: OpenedProjectionOutcome;
-  /** The Forge issue the row is linked to, where the head branch names one. */
+  /** Every Forge issue the row delivers: the keys its branch and its description name (REQ-63 BC-4). */
+  issueIds: string[];
+  /** The first of `issueIds`, for a caller reading one issue; null where none is linked. */
   issueId: string | null;
   /**
    * Why there is no row — or, under `recorded`, what could not be read back after there was one.
@@ -115,6 +121,7 @@ function payloadFor(args: {
   repository: string;
   opened: OpenedChangeRequest;
   identity: RowIdentity;
+  description: string | null;
 }): PullRequestPayload {
   const { opened, identity } = args;
   return {
@@ -122,6 +129,7 @@ function payloadFor(args: {
     pull_request: {
       number: identity.number,
       title: opened.title,
+      body: args.description,
       ...(opened.url === null ? {} : { html_url: opened.url }),
       state: opened.state,
       draft: opened.draft,
@@ -140,13 +148,19 @@ function payloadFor(args: {
 async function storedRow(
   bindingId: string,
   number: number,
-): Promise<{ issueId: string | null } | undefined> {
+): Promise<{ issueIds: string[] } | undefined> {
   const [row] = await db
-    .select({ issueId: repoPullRequests.issueId })
+    .select({ id: repoPullRequests.id })
     .from(repoPullRequests)
     .where(and(eq(repoPullRequests.bindingId, bindingId), eq(repoPullRequests.number, number)))
     .limit(1);
-  return row;
+  if (!row) return undefined;
+  const links = await db
+    .select({ issueId: repoPullRequestIssues.issueId })
+    .from(repoPullRequestIssues)
+    .where(eq(repoPullRequestIssues.pullRequestId, row.id))
+    .orderBy(asc(repoPullRequestIssues.createdAt), asc(repoPullRequestIssues.issueId));
+  return { issueIds: links.map((l) => l.issueId) };
 }
 
 /**
@@ -164,6 +178,8 @@ export async function projectOpenedPullRequest(args: {
   /** The repository's path on its host, as the binding spells it. */
   repository: string;
   opened: OpenedChangeRequest;
+  /** The description the request was opened with: the issue keys it names are linked (REQ-63 BC-4). */
+  description?: string | null;
 }): Promise<OpenedProjectionResult> {
   const identity = identityOf(args.opened);
   if ('missing' in identity) {
@@ -176,7 +192,12 @@ export async function projectOpenedPullRequest(args: {
       bindingId: args.bindingId,
       ...(args.host ? { host: args.host } : {}),
     },
-    payloadFor({ repository: args.repository, opened: args.opened, identity }),
+    payloadFor({
+      repository: args.repository,
+      opened: args.opened,
+      identity,
+      description: args.description ?? null,
+    }),
     'creation',
   );
 
@@ -184,7 +205,7 @@ export async function projectOpenedPullRequest(args: {
   // branch resolved to, and a read that fails says nothing about the write that preceded it — so it
   // is caught rather than thrown. Letting it escape turned a committed row into `not-recorded` and a
   // log line saying the projection row never landed, which is the one thing known to be false.
-  let row: { issueId: string | null } | undefined;
+  let row: { issueIds: string[] } | undefined;
   let unread: string | null = null;
   try {
     row = await storedRow(args.bindingId, identity.number);
@@ -193,11 +214,13 @@ export async function projectOpenedPullRequest(args: {
       `the row for #${identity.number} on ${args.repository} could not be read back (${String(err)}), ` +
       'so the issue it links to is not reported here.';
   }
-  const issueId = row?.issueId ?? null;
+  const issueIds = row?.issueIds ?? [];
+  const issueId = issueIds[0] ?? null;
 
   if (written > 0) {
     return {
       outcome: 'recorded',
+      issueIds,
       issueId,
       reason: unread === null ? null : `${unread} The row itself was written.`,
     };
@@ -212,6 +235,7 @@ export async function projectOpenedPullRequest(args: {
   if (unread !== null) {
     return {
       outcome: 'superseded',
+      issueIds: [],
       issueId: null,
       reason:
         `Forge already holds a record of #${identity.number} on ${args.repository}, which is at least as ` +
@@ -221,6 +245,7 @@ export async function projectOpenedPullRequest(args: {
   if (row) {
     return {
       outcome: 'superseded',
+      issueIds,
       issueId,
       reason:
         `Forge already holds a record of #${args.opened.number} on ${args.repository}, which is at least ` +
@@ -229,6 +254,7 @@ export async function projectOpenedPullRequest(args: {
   }
   return {
     outcome: 'not-recorded',
+    issueIds: [],
     issueId: null,
     reason:
       `the projection writer wrote no row for #${args.opened.number} on ${args.repository} and no row for ` +

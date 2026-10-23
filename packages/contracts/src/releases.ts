@@ -194,6 +194,8 @@ export interface ReleaseContentIssue {
 	title: string;
 	status: string;
 	proof: ReleaseProof;
+	/** The change request that delivers it, where one is linked (REQ-63 BC-5). */
+	changeRequest: ReleaseChangeRequest | null;
 }
 
 export interface ReleaseContentGroup {
@@ -433,6 +435,8 @@ export interface ReleaseIssueView {
 	landing: IssueLandingReading;
 	/** True where some of what its landing changed is named by no surface (core `landing-surfaces.ts:gapOf`). */
 	unclassified: boolean;
+	/** The change request that delivers it, where one is linked (REQ-63 BC-5). */
+	changeRequest: ReleaseChangeRequest | null;
 }
 
 /**
@@ -606,7 +610,8 @@ export interface ReleaseApprovalView {
 	id: string;
 	requestedBy: ReleasePerson;
 	requestedAt: string;
-	evidence: { environment: string; commit: string; reading: string };
+	/** `environment` is null on a change-request release, whose evidence is its change requests' heads (REQ-63). */
+	evidence: { environment: string | null; commit: string; reading: string };
 	note: string | null;
 	decision: "approved" | "returned" | null;
 	decidedBy: ReleasePerson | null;
@@ -728,6 +733,12 @@ export const RELEASE_BLOCKER_CODES = [
 	"RELEASE_CRITERIA_UNEARNED",
 	"RELEASE_RUNTIME_UNROUTED",
 	"RELEASE_CHECK_UNEVALUATED",
+	/** A change-request release whose roster issue has no open change request linked to it (REQ-63). */
+	"RELEASE_CHANGE_REQUEST_MISSING",
+	/** A change-request release whose change request delivers an issue the roster does not hold. */
+	"RELEASE_CHANGE_REQUEST_CARRIES_UNRELEASED",
+	/** A change-request project's landing recorded by hand, which would skip its approval and merges. */
+	"RELEASE_THROUGH_CHANGE_REQUESTS",
 ] as const;
 export type ReleaseBlockerCode = (typeof RELEASE_BLOCKER_CODES)[number];
 
@@ -795,6 +806,8 @@ export const RELEASE_REFUSAL_CODES = [
 	"RELEASE_RANGE_FILE_UNREAD",
 	/** A name or summary written for a version that is neither the drafted release nor one cut. */
 	"RELEASE_VERSION_UNKNOWN",
+	/** A change-request release's declared order that is not exactly its roster's change requests. */
+	"RELEASE_CHANGE_REQUEST_ORDER",
 ] as const;
 export type ReleaseRefusalCode = (typeof RELEASE_REFUSAL_CODES)[number];
 export const RELEASE_REFUSAL_STATUSES = {
@@ -851,6 +864,44 @@ export function releaseApprovalRequired(
 		| undefined,
 ): boolean {
 	return document?.release?.approval.required === true;
+}
+
+/**
+ * `release.changeRequests` of a project document (REQ-63 BC-1): its release is merging the
+ * change requests its roster ships, in the order the cut declares, after an approval and with no
+ * deploy. Read only beside `release.approval.required` and no production environment, which the
+ * project document's rules require of it.
+ */
+export function releaseThroughChangeRequests(
+	document:
+		| { release?: { changeRequests?: boolean | undefined } | undefined }
+		| null
+		| undefined,
+): boolean {
+	return document?.release?.changeRequests === true;
+}
+
+/** Where a change request stands on its host, as the projection last read it. */
+export const CHANGE_REQUEST_STATES = ["open", "closed", "merged"] as const;
+export type ChangeRequestState = (typeof CHANGE_REQUEST_STATES)[number];
+
+/**
+ * The change request that delivers an issue (REQ-63 BC-4, BC-5): a GitHub pull request `#n` or a
+ * GitLab merge request `!n`, linked to every issue its branch or description names.
+ */
+export interface ReleaseChangeRequest {
+	host: "github" | "gitlab";
+	number: number;
+	title: string;
+	url: string | null;
+	state: ChangeRequestState;
+	/** Its place in the release's declared merge order, 1-based; null outside a change-request release. */
+	order: number | null;
+}
+
+/** How a host writes a change request's number: `!12` on GitLab, `#12` on GitHub. */
+export function changeRequestLabel(cr: Pick<ReleaseChangeRequest, "host" | "number">): string {
+	return `${cr.host === "gitlab" ? "!" : "#"}${cr.number}`;
 }
 
 /** How many issues one release batch carries at most. */

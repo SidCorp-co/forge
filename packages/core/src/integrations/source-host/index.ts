@@ -35,6 +35,7 @@ export {
 } from './projection.js';
 export { describeEmptyProjection, projectionPipeReport } from './projection-health.js';
 export {
+  issuesOfPullRequest,
   openPullRequestsForIssue,
   pullRequestNumbered,
   readPullRequestsForIssues,

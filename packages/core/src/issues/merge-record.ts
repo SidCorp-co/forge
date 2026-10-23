@@ -3,7 +3,7 @@ import type { MergeStampVia, OutboxActor } from '@forge/contracts/outbox-events'
 import { and, asc, eq, isNotNull, isNull, ne, sql } from 'drizzle-orm';
 import type { Db, Tx } from '../db/client.js';
 import { issues } from '../db/schema.js';
-import { repoPullRequests } from '../db/schema-repo-projection.js';
+import { repoPullRequestIssues, repoPullRequests } from '../db/schema-repo-projection.js';
 import { sqlTimestamp } from '../db/sql-timestamp.js';
 import { emitEvent } from '../outbox/index.js';
 import { answerMergeQuestions } from './ports.js';
@@ -393,6 +393,47 @@ export async function clearIssueMerge(
   return rows.length > 0;
 }
 
+/**
+ * A reopened issue on a project that releases through change requests no longer stands on the merge
+ * it had: the stamp is cleared in the reopen's transaction, its old values kept on `issue.updated`,
+ * so the next merge of its change request records the host's commit (REQ-63 BC-3).
+ */
+export async function supersedeMergeOnReopen(
+  executor: Tx,
+  args: { issueId: string; actor: OutboxActor },
+): Promise<boolean> {
+  const [prior] = await executor
+    .select({
+      projectId: issues.projectId,
+      mergedPaths: issues.mergedPaths,
+      mergedTarget: issues.mergedTarget,
+      ...stampColumns,
+    })
+    .from(issues)
+    .where(and(eq(issues.id, args.issueId), isNotNull(issues.mergedAt)))
+    .limit(1);
+  if (!prior) return false;
+  const cleared = await clearIssueMerge(executor, args.issueId);
+  if (!cleared) return false;
+  const { projectId, ...before } = prior;
+  await emitEvent(executor, 'issue.updated', {
+    issueId: args.issueId,
+    projectId,
+    actor: args.actor,
+    fields: [...STAMP_FIELDS, 'mergedPaths', 'mergedTarget'],
+    before,
+    after: {
+      mergedAt: null,
+      mergedCommitSha: null,
+      mergedLanding: null,
+      mergedArtifacts: null,
+      mergedPaths: null,
+      mergedTarget: null,
+    },
+  });
+  return true;
+}
+
 // the first target named on a standing mark is the branch the work landed on; a later mark
 // with another target does not move it, as a later stamp does not move merged_at.
 export async function recordMergeTarget(
@@ -412,10 +453,11 @@ export async function observedMergeForIssue(
 ): Promise<{ commitSha: string; mergedAt: Date } | null> {
   const [row] = await executor
     .select({ sha: repoPullRequests.mergeCommitSha, at: repoPullRequests.mergedAt })
-    .from(repoPullRequests)
+    .from(repoPullRequestIssues)
+    .innerJoin(repoPullRequests, eq(repoPullRequests.id, repoPullRequestIssues.pullRequestId))
     .where(
       and(
-        eq(repoPullRequests.issueId, issueId),
+        eq(repoPullRequestIssues.issueId, issueId),
         eq(repoPullRequests.state, 'merged'),
         isNotNull(repoPullRequests.mergeCommitSha),
         isNotNull(repoPullRequests.mergedAt),
