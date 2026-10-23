@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.304] - 2026-10-23
+
+Agents finish the issues they hold without someone stepping in
+
+### Fixed
+
+- **A run a master declared now moves its own issue to `awaiting_release`.** The box it was declared from is its holder; another box is refused naming the run, and an ended run session no longer counts.
+
 ## [0.4.0-dev.303] - 2026-10-23
 
 Rewording a traced criterion keeps its requirement link or is refused
