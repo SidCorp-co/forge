@@ -21,7 +21,7 @@ describe("the What's new panel", () => {
     open(feedOf());
     const lead = screen.getByTestId("whats-new-lead");
     expect(within(lead).getByTestId("whats-new-name")).toHaveTextContent("Readable releases");
-    expect(within(lead).getByTestId("whats-new-summary")).toHaveTextContent("Every release now opens as a page you can read.");
+    expect(within(lead).getByTestId("whats-new-summary")).toHaveTextContent("Every release now opens as a page you can read in a minute.");
     expect(lead.compareDocumentPosition(screen.getByTestId("page-highlights")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 

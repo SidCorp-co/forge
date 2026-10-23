@@ -5,8 +5,8 @@ import type { WhatsNewFeed, WhatsNewRelease, WhatsNewSummary } from "./types";
 export function releaseOf(over: Partial<WhatsNewRelease> = {}): WhatsNewRelease {
   return {
     version: "0.4.0-dev.9",
-    name: "Readable releases",
-    summary: "Every release now opens as a page you can read. Its highlights show what changed, with a short clip.",
+    name: releasePage().header.name,
+    summary: releasePage().header.summary,
     releasedAt: "2026-10-09T10:00:00.000Z",
     owed: true,
     highlights: releasePage().highlights,
