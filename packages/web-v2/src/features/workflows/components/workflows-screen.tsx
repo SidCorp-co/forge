@@ -28,7 +28,7 @@ function size(r: WorkflowRecord, t: Copy): string {
     : t(n === 1 ? "workflows.count.step.one" : "workflows.count.step.many", { n });
 }
 
-/** A design in the list: its title, what it is drawn in, its size and age, then its state and health. */
+/** A design in the list: its whole title, wrapped and never cut (REQ-17 BC-29), what it is drawn in, its size and age, then its state and health. */
 function DesignItem({ r, slug, templates, narrow }: { r: WorkflowRecord; slug: string; templates: readonly WorkflowTemplate[]; narrow: boolean }) {
   const t = useCopy();
   const label = useLabel();
@@ -41,6 +41,7 @@ function DesignItem({ r, slug, templates, narrow }: { r: WorkflowRecord; slug: s
       onClick={() => rememberListOrigin(WORKFLOWS_LIST)}
       testId="workflow-row"
       stack={narrow}
+      wrap
       rowKey={w.flow}
       title={<span title={w.summary}>{w.title}</span>}
       facts={[<span key="t" data-testid="workflow-template">{templateTitle(templateIdOf(r), templates, label)}</span>, size(r, t), <span key="u" title={`${time.dateTime(w.updatedAt)} · ${r.writerName}`}>{time.relative(w.updatedAt)}</span>]}
