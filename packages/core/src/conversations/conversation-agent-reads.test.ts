@@ -61,7 +61,7 @@ beforeAll(() => {
     activeIssuePrefix: async () => 'ISS',
     heldIssuePrefixes: async () => [],
     citedIssues: async () => [
-      { id: 'f4a82b24-bb6b-48b4-913f-8ba57f5af4e2', issSeq: 395, mergedAt: null, status: 'draft' },
+      { id: 'f4a82b24-bb6b-48b4-913f-8ba57f5af4e2', issSeq: 395, landed: false, status: 'draft' },
     ],
     workflowDesign: async () => ({ kind: 'missing', flows: [] }),
     contractHolding: async () => ({ projectSlug: 'p', versions: [], named: false }),

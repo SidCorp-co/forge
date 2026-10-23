@@ -96,6 +96,7 @@ export {
   resolveIssueForHeadRef,
   resolveIssuesForChangeRequest,
 } from './head-ref-link.js';
+export { landedSql } from './host-landing.js';
 export { registerHostMergeStamp } from './host-merge.js';
 export {
   type IssueLeaseRelease,

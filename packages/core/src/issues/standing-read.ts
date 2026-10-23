@@ -33,6 +33,7 @@ import { type BlockingEdge, blockerUnsettledSql, blockingEdgesIn } from './block
 import { contractWaitUnsettledSql } from './contract-waits.js';
 import { deliveryHeads } from './delivery-head.js';
 import { designHoldPhrase, designOnlyMarkSql } from './design-delivery.js';
+import { landedSql } from './host-landing.js';
 import { issueRunLiveSql, issueWorkMovingSql } from './issue-lease.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
 import { loadIssuePark } from './park-view.js';
@@ -77,7 +78,7 @@ interface IssueRowRaw {
   written_lang: WrittenLang | null;
   status: IssueStatus;
   waiting_kind: string | null;
-  merged_at: string | null;
+  landed: boolean;
   release_noted: boolean;
   priority: string;
   category: string | null;
@@ -130,7 +131,8 @@ function scopeSql(scope: IssueStandingScope | 'one', key: number | null): SQL {
 async function issueRows(projectId: string, where: SQL, limit: number): Promise<IssueRowRaw[]> {
   return rowsOf<IssueRowRaw>(
     await db.execute(sql`
-      SELECT i.id, i.iss_seq, i.title, i.written_lang, i.status, i.waiting_kind, i.merged_at,
+      SELECT i.id, i.iss_seq, i.title, i.written_lang, i.status, i.waiting_kind,
+             ${landedSql(sql`i`)} AS landed,
              (i.release_notes IS NOT NULL AND i.release_notes <> 'null'::jsonb) AS release_noted,
              i.priority, i.category, i.complexity,
              i.assignee_id, i.created_by_id, i.requirement_id, i.planned_revision,
@@ -271,7 +273,7 @@ function standingInputOf(r: IssueRowRaw, f: Facts): IssueStandingInput {
     designOnly: r.design_only === true,
     holdsDependents: r.holds_dependents,
     waitingKind: r.waiting_kind,
-    merged: r.merged_at !== null,
+    merged: r.landed,
     step: r.step,
     stepStartedAt: r.step_started_at ? new Date(r.step_started_at) : null,
     lease: leaseOf(r.lease, f.now),

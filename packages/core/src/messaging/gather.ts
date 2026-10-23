@@ -95,7 +95,7 @@ async function issueRowsFor(
     const found = await messageReads().citedIssues(projectId, c, tx);
     const rows = new Map<number, IssueRow>();
     for (const r of found) {
-      rows.set(r.issSeq, { seq: r.issSeq, merged: r.mergedAt !== null, status: r.status });
+      rows.set(r.issSeq, { seq: r.issSeq, merged: r.landed, status: r.status });
     }
     return { rows, ids: new Set(found.map((r) => r.id)), failed: false };
   } catch (err) {

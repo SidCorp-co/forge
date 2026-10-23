@@ -17,7 +17,7 @@ beforeAll(() => {
     citedIssues: async (_project, cited) =>
       cited.seqs
         .filter((n) => n === 493 || n === 495)
-        .map((n) => ({ id: `id-${n}`, issSeq: n, status: 'needs_info', mergedAt: null })),
+        .map((n) => ({ id: `id-${n}`, issSeq: n, status: 'needs_info', landed: false })),
     workflowDesign: async () => ({ kind: 'missing', flows: [] }),
     contractHolding: async () => ({ projectSlug: 'p', versions: [], named: false }),
     readsTechnical: async () => true,

@@ -25,6 +25,7 @@ import {
   holderFanout,
   holdingBlockerSeqsSql,
   type LeaseReading,
+  landedSql,
   landedWait,
   leaseIsReleasable,
   leaseIsWorkInProgress,
@@ -96,7 +97,7 @@ export interface CandidateRow {
   title: string;
   /** Text, not a `Date`: `db.execute` hands raw SQL results back unparsed. */
   updated_at: string;
-  merged_at: string | null;
+  landed: boolean;
   step: WorkStep | null;
   lease: unknown;
   strand: unknown;
@@ -201,7 +202,7 @@ function judge(
 
   const withheld = withheldOf(row);
   const evidence: StrandEvidence = {
-    merged: row.merged_at !== null,
+    merged: row.landed,
     everRan: row.ever_ran,
     poolHasRunner: pooled.has(row.project_id),
     lease,
@@ -268,7 +269,7 @@ function unclassifiedRecord(row: CandidateRow, lease: LeaseReading, now: Date): 
     reason: `the status \`${row.status}\` is not one this build classifies, so no clock and no owner apply to it`,
     lease: lease.verdict,
     evidence: {
-      merged: row.merged_at !== null,
+      merged: row.landed,
       everRan: row.ever_ran,
       poolHasRunner: false,
       leaseFanout: lease.fanout,
@@ -294,7 +295,8 @@ async function readCandidates(now: Date, scope: { projectId?: string }): Promise
     : sql``;
 
   const rows = (await db.execute(sql`
-    SELECT i.id, i.project_id, i.iss_seq, i.status, i.title, i.updated_at, i.merged_at,
+    SELECT i.id, i.project_id, i.iss_seq, i.status, i.title, i.updated_at,
+           ${landedSql(sql`i`)} AS landed,
            p.issue_prefix, p.name AS project_name,
            (SELECT w.lease FROM issue_work_state w WHERE w.issue_id = i.id)  AS lease,
            (SELECT w.step FROM issue_work_state w WHERE w.issue_id = i.id)   AS step,

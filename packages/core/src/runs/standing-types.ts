@@ -61,7 +61,7 @@ export interface RunFacts {
   issues: string[];
   openingStatuses: Record<string, string>;
   endStatuses: Record<string, IssueStatus>;
-  /** Carried issues whose merge mark (`issues.merged_at`) fell inside the run's window. */
+  /** Carried issues whose landing (`issues.merged_at`, where it reads as landed) fell inside the run's window. */
   landedAt: Record<string, Date>;
   workState: { step: WorkStep | null; stepStartedAt: Date | null; lease: unknown } | null;
   session: {
