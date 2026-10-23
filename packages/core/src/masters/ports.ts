@@ -1,8 +1,16 @@
 import type { AnswerResume } from '@forge/contracts/questions';
+import type { StandingSubjectKind } from '@forge/contracts/steward';
 import { portSlot } from '../lib/port-slot.js';
 
 // What a master is owed from the modules above execution, handed in by the process entry at boot
 // (ADR 0008: a domain imports only its own context or one before it). Read only inside a call.
+
+/** An ask of the master the steward made, and the item a decision on answers it. */
+export interface StewardAsk {
+  actId: string;
+  ask: string;
+  subject: { kind: StandingSubjectKind; key: string };
+}
 
 interface MastersPorts {
   /** What the project's ecosystem channel owes a reply to, and the builder runs open for it. */
@@ -34,8 +42,11 @@ interface MastersPorts {
   ): Promise<{ issueKey: string; questionId: string; outcome: AnswerResume | null }[]>;
   /** The language the project writes the prose it stores in Forge in (a BCP-47 tag), `en` where its document declares none. */
   contentLanguageOf(projectId: string): Promise<string>;
-  /** What the project's steward asked its master to act on, standing until the item's standing moves (REQ-48 BC-5). */
-  stewardAsks(projectId: string): Promise<{ actId: string; ask: string }[]>;
+  /**
+   * What the project's steward asked its master to act on, standing until the item's standing moves
+   * (REQ-48 BC-5), each with the item whose decision answers it (ISS-654).
+   */
+  stewardAsks(projectId: string): Promise<StewardAsk[]>;
   /** Agreed requirements whose steward intake question nobody has answered yet, held out of the breakdowns owed (REQ-48 BC-2). */
   breakdownsHeldBySteward(projectId: string): Promise<string[]>;
 }

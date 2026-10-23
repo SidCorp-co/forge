@@ -24,6 +24,8 @@ export interface RosterChangeRequest {
   title: string;
   url: string | null;
   headSha: string;
+  /** The branch it merges from. */
+  headRef: string;
   state: ChangeRequestState;
   issueIds: string[];
 }
@@ -65,6 +67,7 @@ export async function openChangeRequestsOf(
       title: repoPullRequests.title,
       url: repoPullRequests.htmlUrl,
       headSha: repoPullRequests.headSha,
+      headRef: repoPullRequests.headRef,
       state: repoPullRequests.state,
     })
     .from(repoPullRequestIssues)
@@ -85,6 +88,7 @@ export async function openChangeRequestsOf(
       title: r.title,
       url: r.url,
       headSha: r.headSha,
+      headRef: r.headRef,
       state: r.state,
       issueIds: links.get(r.id) ?? [],
     }))

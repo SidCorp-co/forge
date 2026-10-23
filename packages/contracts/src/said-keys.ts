@@ -2714,8 +2714,12 @@ export const SAID = {
 		en: "Forge approved it: only pins ({pins}) differ; fingerprint {fp} matches r{r}.",
 		vars: { r: "count", pins: "text", fp: "code" },
 	},
-	"standing.who.someone": { en: "Someone" },
 	"standing.act.takeOn": { en: "take on {key}", vars: { key: "key" } },
+	"standing.act.moveOn": { en: "move {key} on", vars: { key: "key" } },
+	"feedback.rule.carrierParked": {
+		en: "{key} carries it and is parked; the master moves it on",
+		vars: { key: "key" },
+	},
 	"feedback.rule.carrierWaits": {
 		en: "{key} carries it and waits because {rule}",
 		vars: { key: "key", rule: "said" },

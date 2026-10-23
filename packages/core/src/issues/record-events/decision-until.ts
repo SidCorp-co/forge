@@ -39,6 +39,27 @@ interface Field {
 }
 
 /**
+ * What the writer of a decision is told about how its field `name`, holding `text`, was read: as a
+ * condition, or as a date already passed at `now`, which answers nothing; a date still to come says
+ * nothing. An issue's `decision` record names the field `until`; a feedback item's or a
+ * requirement's decision comment names it `reversedWhen` (`comments/decision-answers.ts`).
+ */
+export function untilReadingWarnings(name: string, text: string, now: Date): string[] {
+  const until = readDecisionUntil(text);
+  if (until.kind === 'condition') {
+    return [
+      `DECISION_UNTIL_CONDITION: ${name} \`${until.text}\` is no ISO 8601 date (2026-11-01) or date-time with a zone (2026-11-01T09:00Z), so it is read as a condition: the decision holds until the item's standing moves, and no date ends it`,
+    ];
+  }
+  if (until.at <= now) {
+    return [
+      `DECISION_UNTIL_PASSED: ${name} ${until.at.toISOString()} has already passed, so this decision answers no ask; send a date still to come, or a condition`,
+    ];
+  }
+  return [];
+}
+
+/**
  * What the writer of a `decision` record is told about its `until`: read as a condition, or a date
  * already passed at `now`, which answers nothing. A date still to come, or no `until`, says nothing.
  */
@@ -46,16 +67,5 @@ export function decisionUntilWarnings(kind: string, fields: readonly Field[], no
   if (kind !== 'decision') return [];
   const field = fields.find((f) => f.key === 'until' && f.value.trim().length > 0);
   if (!field) return [];
-  const until = readDecisionUntil(field.value);
-  if (until.kind === 'condition') {
-    return [
-      `DECISION_UNTIL_CONDITION: until \`${until.text}\` is no ISO 8601 date (2026-11-01) or date-time with a zone (2026-11-01T09:00Z), so it is read as a condition: the decision holds until the item's standing moves, and no date ends it`,
-    ];
-  }
-  if (until.at <= now) {
-    return [
-      `DECISION_UNTIL_PASSED: until ${until.at.toISOString()} has already passed, so this decision answers no ask; send a date still to come, or a condition`,
-    ];
-  }
-  return [];
+  return untilReadingWarnings('until', field.value, now);
 }

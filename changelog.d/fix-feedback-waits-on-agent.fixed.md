@@ -1,0 +1,1 @@
+**Routed feedback waits on the master, not a person.** An item on a draft or parked issue names the master. A planned item can move to its replacing requirement, or merge into another item on its issue.

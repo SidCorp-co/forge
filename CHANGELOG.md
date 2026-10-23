@@ -9,6 +9,26 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.298] - 2026-10-23
+
+Checks on merge-request projects follow the merge request's latest commit
+
+### Fixed
+
+- **An issue's head is its merge request's head where a project releases by merging them.** The issue page, its standing and the steward no longer take a run's captured work branch for it.
+
+## [0.4.0-dev.297] - 2026-10-23
+
+Questions and Lessons pages removed; questions show in Approvals
+
+### Changed
+
+- **The steward settles lessons itself.** It checks each proposed lesson and each confusion against their corrections, requirements and designs, then approves, edits, rejects or retires it with a reason. No person is asked.
+
+### Removed
+
+- **Questions and Lessons leave the project menu.** A question is read in Approvals and on its item, and a feedback item lists every question about it. Lessons are internal to Forge. Old links redirect and say so.
+
 ## [0.4.0-dev.296] - 2026-10-23
 
 Checks passed on an open merge request now count toward release

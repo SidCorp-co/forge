@@ -1,3 +1,4 @@
+export { type ItemDecision, reasonedDecisionsOnItems } from './decision-answers.js';
 export { listDecisionsAs } from './entity-read.js';
 export { recordRequirementDecisionIn } from './entity-service.js';
 export { postIssueComment } from './issue-comment.js';

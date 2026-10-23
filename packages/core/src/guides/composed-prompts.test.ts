@@ -70,7 +70,7 @@ const none = {
   warnedNotes: [],
   unnamedReleases: [] as { version: string }[],
   answers: [],
-  stewardAsks: [] as { actId: string; ask: string }[],
+  stewardAsks: [] as Parameters<typeof owedLine>[0]['stewardAsks'],
   contentLanguage: 'vi',
 };
 

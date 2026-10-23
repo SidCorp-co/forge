@@ -3,8 +3,8 @@
 
 import { z } from "zod";
 import { PERMISSION_REFUSAL_CODES } from "./permissions.js";
-import { COMMENT_INTENTS, type CommentIntent } from "./record-events.js";
 import { REASON_TEXT_MAX } from "./reason-text.js";
+import { COMMENT_INTENTS, type CommentIntent } from "./record-events.js";
 import { NODE_DECISION_SHAPE, nodeDecisionSchema } from "./workflow-health.js";
 import {
 	WRITTEN_LANG_SHAPE,
@@ -179,6 +179,11 @@ export interface EntityCommentListResponse {
 
 export interface EntityCommentResponse {
 	comment: EntityCommentView;
+	/**
+	 * How a decision's `reversedWhen` on a feedback item or a requirement was read, where it was not
+	 * read as a date still to come: `DECISION_UNTIL_CONDITION` or `DECISION_UNTIL_PASSED` (ISS-654).
+	 */
+	warnings?: string[];
 }
 
 export interface DecisionListResponse {

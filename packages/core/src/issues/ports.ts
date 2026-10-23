@@ -239,6 +239,12 @@ interface IssuePorts {
     mergedAt: Date | string | null;
     mergedCommitSha: string | null;
   }) => Promise<JudgedBuild>;
+  /** On a change-request project, each issue's head through the one predicate
+   *  (`release-batch/landed-build.ts:deliveryHeadsOf`); null on any other project. */
+  deliveryHeadsOf: (
+    projectId: string,
+    issueIds: readonly string[],
+  ) => Promise<Map<string, { sha: string | null; branch: string | null; basis: string }> | null>;
 
   getLoopThresholds: () => { queueMs: number; heartbeatMs: number; ackMs: number };
   extractStageStatus: (payload: unknown) => string | null;
@@ -420,6 +426,7 @@ export const declaredIssueSeqs = port('declaredIssueSeqs');
 export const subjectOf = port('subjectOf');
 export const liveReachOfIssue = port('liveReachForIssue');
 export const judgedBuildOf = port('judgedBuildOf');
+export const deliveryHeadsOf = port('deliveryHeadsOf');
 
 export const getLoopThresholds = port('getLoopThresholds');
 export const extractStageStatus = port('extractStageStatus');

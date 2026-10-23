@@ -9,6 +9,7 @@ import type {
   FeedbackPhase,
   FeedbackRefusal,
   FeedbackRefusalCode,
+  FeedbackRoute,
   FeedbackStatus,
   FeedbackTriage,
   FeedbackTriageRoute,
@@ -285,22 +286,44 @@ export const redactActRefusal = (facts: PermissionFacts) =>
 
 const OPEN_FOR_TRIAGE: readonly FeedbackPhase[] = ['new', 'triaged', 'reopened'];
 
+/**
+ * What a planned item's re-route moves from (REQ-66): the route it is on, and for a duplicate the
+ * root it would merge into, with whether an issue carries both.
+ */
+export interface Replan {
+  from: FeedbackRoute | null;
+  root?: { key: string; sharesCarrier: boolean } | null;
+}
+
 // a route is picked while the item is new, reopened, or triaged with a dead carrier; a resolved,
-// verified or declined item is FEEDBACK_STATUS_INVALID, and so is a planned one for every route but
-// decline: feedback-lifecycle draws `declined` from the stored `triaged`, which reads planned while
-// an issue, revision or requirement carries it, so that item can be dropped with a reason and
-// nothing else can be done to it but wait for what carries it (QA of dev.219: FB-110 could not be dropped)
+// verified or declined item is FEEDBACK_STATUS_INVALID. A planned item stays with what carries it,
+// with three ways out: decline (feedback-lifecycle draws `declined` from the stored `triaged`; QA of
+// dev.219: FB-110 could not be dropped), a requirement route moved to the requirement that replaces
+// its own (REQ-66: FB-128 on REQ-46 once REQ-73 took its place), and a merge into another open
+// item one of its issues also carries (REQ-66 BC-3: FB-243 and FB-192 on ISS-609)
 export function triagePhaseRefusal(
   phase: FeedbackPhase,
   route?: FeedbackTriageRoute,
+  replan?: Replan,
 ): FeedbackRefusal | null {
   if (OPEN_FOR_TRIAGE.includes(phase)) return null;
-  if (phase === 'planned' && route === 'decline') return null;
+  if (phase === 'planned') {
+    if (route === 'decline') return null;
+    if (route === 'new_requirement' && replan?.from === 'new_requirement') return null;
+    if (route === 'duplicate' && replan?.root?.sharesCarrier) return null;
+    if (route === 'duplicate' && replan?.root) {
+      return refusal(
+        'FEEDBACK_STATUS_INVALID',
+        '/duplicateOf',
+        `the item reads planned on its own issue, and no issue carrying it carries ${replan.root.key}; it merges only into an item on the same issue. Decline it with a reason instead.`,
+      );
+    }
+  }
   return refusal(
     'FEEDBACK_STATUS_INVALID',
     '/status',
     phase === 'planned'
-      ? `the item reads planned: something carries it, so a route is picked only to drop it; use the decline route with a reason.`
+      ? `the item reads planned: something carries it, so a route is picked only to drop it, to move it to the requirement that replaces its own, or to merge it into an item on the same issue; use the decline route with a reason.`
       : `the item reads ${phase}; a route is picked only while it is new, reopened, or triaged with nothing carrying it.`,
   );
 }
@@ -387,7 +410,13 @@ export function routeShapeRefusal(
   );
 }
 
+/** What a requirement route may name: a draft it starts, or the agreed requirement that covers it (REQ-66). */
+const NEW_REQUIREMENT_CARRIERS: readonly string[] = ['draft', 'agreed', 'accepted'];
+const AGREED: readonly string[] = ['agreed', 'accepted'];
+
 export interface RouteFacts {
+  /** A planned item re-routed off the requirement it was on (`Replan`). */
+  replan?: boolean;
   kind: FeedbackKind;
   /** The requirement the item is about: its target, or the target issue's requirement. */
   targetRequirement: { id: string; key: string; status: string } | null;
@@ -434,15 +463,18 @@ export function routeRuleRefusal(
       );
     }
   }
-  if (
-    route === 'new_requirement' &&
-    f.routedRequirement &&
-    f.routedRequirement.status !== 'draft'
-  ) {
-    return mismatch(
-      '/requirement',
-      `${f.routedRequirement.key} is ${f.routedRequirement.status}; a new-requirement route is carried by a draft. Route an agreed requirement's change as a revision.`,
-    );
+  if (route === 'new_requirement' && f.routedRequirement) {
+    const { key, status } = f.routedRequirement;
+    // a re-route moves the item to the requirement that replaces its own, which is agreed already
+    const carries = f.replan ? AGREED : NEW_REQUIREMENT_CARRIERS;
+    if (!carries.includes(status)) {
+      return mismatch(
+        '/requirement',
+        f.replan
+          ? `${key} is ${status}; a planned item moves only to an agreed or accepted requirement that replaces its own.`
+          : `${key} is ${status}; a requirement route is carried by a draft, an agreed or an accepted requirement.`,
+      );
+    }
   }
   return null;
 }

@@ -10,7 +10,7 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { readAdmissibleIssues, readOwedComments } from '../devices/index.js';
 import { type GuideSlug, guideCall } from '../guides/index.js';
-import { mastersPorts } from './ports.js';
+import { mastersPorts, type StewardAsk } from './ports.js';
 
 /** The edge kind that gates dispatch, the one whose blocker's state changes what a master can take. */
 const GATING_KIND = 'blocks';
@@ -37,7 +37,7 @@ interface Owed {
   /** Park questions answered since the master's last finished pass began, with what each did. */
   answers: { issueKey: string; questionId: string; outcome: AnswerResume | null }[];
   /** What the steward asked the master to act on, each standing until its item's standing moves. */
-  stewardAsks: { actId: string; ask: string }[];
+  stewardAsks: StewardAsk[];
   /** The project's content language tag, which a release note is written in. */
   contentLanguage: string;
 }
@@ -84,10 +84,30 @@ function outcomeOf(outcome: AnswerResume | null): string {
   }
 }
 
+/**
+ * The door that records a decision on an item of each kind, as the nudge names it (ISS-654): an
+ * issue's `decision` record, or the decision comment a feedback item or a requirement takes. The
+ * issue door answers 404 for any other kind, so each ask names the door of its own item.
+ */
+const DECISION_DOOR: Record<StewardAsk['subject']['kind'], (keys: string) => string> = {
+  issue: (keys) =>
+    `on an issue (${keys}), \`forge-runner api issues/<id>/events -X POST\` with \`kind: decision\` and the fields \`decision\` and \`why\`, plus \`until\` only as an ISO 8601 date such as 2026-11-01`,
+  feedback: (keys) =>
+    `on a feedback item (${keys}), \`forge-runner api projects/<projectId>/feedback/<key>/comments -X POST\` with \`intent: decision\` and \`decision: { decision, reason }\`, plus \`reversedWhen\` only as an ISO 8601 date such as 2026-11-01`,
+  requirement: (keys) =>
+    `on a requirement (${keys}), \`forge-runner api projects/<projectId>/requirements/<key>/comments -X POST\` with \`intent: decision\` and \`decision: { decision, reason }\`, plus \`reversedWhen\` only as an ISO 8601 date such as 2026-11-01`,
+};
+
 /** REQ-48 BC-5: the durable half of a steward wake, so a wake the box missed is read on its next sweep. */
 function stewardAsksLine(asks: Owed['stewardAsks']): string {
   if (asks.length === 0) return '';
-  return ` The project's steward asks you to act on ${asks.length} item${plural(asks.length, '', 's')} (${asks.map((a) => a.ask).join('; ')}): read each item's standing (\`forge-runner api projects/<projectId>/standings\`) and take the act it waits on, or record why it waits as a decision on the issue (\`forge-runner api issues/<id>/events -X POST\` with \`kind: decision\` and the fields \`decision\` and \`why\`, plus \`until\` only as an ISO 8601 date such as 2026-11-01: other text there is a condition, held until the standing moves); the ask stands until the item's standing moves or such a decision answers it.`;
+  const kinds = (['issue', 'feedback', 'requirement'] as const).flatMap((kind) => {
+    const keys = [
+      ...new Set(asks.filter((a) => a.subject.kind === kind).map((a) => a.subject.key)),
+    ];
+    return keys.length > 0 ? [DECISION_DOOR[kind](keys.join(', '))] : [];
+  });
+  return ` The project's steward asks you to act on ${asks.length} item${plural(asks.length, '', 's')} (${asks.map((a) => a.ask).join('; ')}): read each item's standing (\`forge-runner api projects/<projectId>/standings\`) and take the act it waits on, or record why it waits as a decision on that item, at its own door: ${kinds.join('; ')} (other text there is a condition, held until the standing moves); the ask stands until the item's standing moves or such a decision answers it.`;
 }
 
 function answersLine(answers: Owed['answers']): string {

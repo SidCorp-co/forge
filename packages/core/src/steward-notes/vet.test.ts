@@ -13,16 +13,16 @@ import { describe, expect, it } from 'vitest';
 import { claimsOfStanding, vetNote } from './vet.js';
 
 const wait = waitingOn(
-  'person',
+  'agent',
   {
-    who: say('standing.who.someone'),
+    who: say('standing.who.projectMaster'),
     act: say('standing.act.takeOn', { key: 'ISS-284' }),
     rule: say('feedback.rule.draftCarrier', { key: 'ISS-284' }),
   },
   { ref: 'ISS-284' },
 );
 const times = {
-  actClass: 'person_decide' as const,
+  actClass: 'master_take' as const,
   since: '2026-10-09T08:00:00.000Z',
   dueAt: '2026-10-13T08:00:00.000Z',
   stuck: {

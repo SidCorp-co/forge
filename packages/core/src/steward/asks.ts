@@ -2,9 +2,12 @@
 // that made it, so to the item and the standing basis that run read. On that same basis it is asked
 // once: while it stands, after a reasoned decision answered it, and after the release holders were
 // told. A decision recorded on the item after the ask, by anyone but the steward, answers it until the
-// standing moves; a moved standing is a new basis, and asks again.
+// standing moves; a moved standing is a new basis, and asks again. The item is an issue, a feedback
+// item or a requirement, and its decision is read where its own door writes one (ISS-654).
 
+import type { StandingSubjectKind } from '@forge/contracts/steward';
 import { and, desc, eq, inArray, isNotNull, isNull, or } from 'drizzle-orm';
+import { type ItemDecision, reasonedDecisionsOnItems } from '../comments/index.js';
 import { db } from '../db/client.js';
 import { stewardActs, stewardRuns } from '../db/schema-steward-runs.js';
 import { type ReasonedDecision, reasonedDecisionsOn } from '../issues/index.js';
@@ -19,8 +22,9 @@ export interface AskRow {
   id: string;
   door: string;
   at: Date;
-  subjectKind: string;
+  subjectKind: StandingSubjectKind;
   subjectId: string;
+  subjectKey: string;
   basis: string | null;
   masterAsk: string | null;
   settledAt: Date | null;
@@ -32,36 +36,57 @@ const askColumns = {
   at: stewardActs.at,
   subjectKind: stewardRuns.subjectKind,
   subjectId: stewardRuns.subjectId,
+  subjectKey: stewardRuns.subjectKey,
   basis: stewardRuns.basis,
   masterAsk: stewardActs.masterAsk,
   settledAt: stewardActs.askSettledAt,
 };
 
+/** A reasoned decision on the item an ask is about, whatever its kind. */
+export type AskAnswer = ItemDecision;
+
 /** A decision that still holds now: one whose `until` date, where it gives one, has not passed. */
-const holds = (d: ReasonedDecision, now: Date) => d.until === null || d.until > now;
+const holds = (d: AskAnswer, now: Date) => d.until === null || d.until > now;
 
 /**
- * The reasoned decision recorded on each ask's issue after that ask, newest first; an ask about a
- * requirement or a feedback item reads none, since a decision record is an issue's.
+ * The reasoned decisions on these items of one kind, newest first, the steward's own left out: an
+ * issue's `decision` records (`issues/<id>/events`), or the decision comments on a feedback item or a
+ * requirement (`projects/:id/<feedback|requirements>/:key/comments`, ISS-654).
  */
+async function decisionsOn(
+  kind: StandingSubjectKind,
+  ids: readonly string[],
+  except: readonly string[],
+): Promise<AskAnswer[]> {
+  if (kind !== 'issue') return reasonedDecisionsOnItems(kind, ids, except);
+  return (await reasonedDecisionsOn(ids, except)).map((d: ReasonedDecision) => ({
+    subjectId: d.issueId,
+    at: d.at,
+    decision: d.decision,
+    why: d.why,
+    until: d.until,
+  }));
+}
+
+/** The reasoned decision recorded on each ask's item after that ask, newest first, by the item's own door. */
 export async function answersOf(
   projectId: string,
   asks: readonly Pick<AskRow, 'id' | 'at' | 'subjectKind' | 'subjectId'>[],
   now: Date,
-): Promise<Map<string, ReasonedDecision>> {
-  const onIssues = asks.filter((a) => a.subjectKind === 'issue');
-  if (onIssues.length === 0) return new Map();
+): Promise<Map<string, AskAnswer>> {
+  const out = new Map<string, AskAnswer>();
+  if (asks.length === 0) return out;
   const steward = await heldStewardOf(projectId);
-  const decisions = await reasonedDecisionsOn(
-    [...new Set(onIssues.map((a) => a.subjectId))],
-    steward ? [steward] : [],
-  );
-  const out = new Map<string, ReasonedDecision>();
-  for (const ask of onIssues) {
-    const answer = decisions.find(
-      (d) => d.issueId === ask.subjectId && d.at > ask.at && holds(d, now),
-    );
-    if (answer) out.set(ask.id, answer);
+  const except = steward ? [steward] : [];
+  for (const kind of new Set(asks.map((a) => a.subjectKind))) {
+    const ofKind = asks.filter((a) => a.subjectKind === kind);
+    const decisions = await decisionsOn(kind, [...new Set(ofKind.map((a) => a.subjectId))], except);
+    for (const ask of ofKind) {
+      const answer = decisions.find(
+        (d) => d.subjectId === ask.subjectId && d.at > ask.at && holds(d, now),
+      );
+      if (answer) out.set(ask.id, answer);
+    }
   }
   return out;
 }

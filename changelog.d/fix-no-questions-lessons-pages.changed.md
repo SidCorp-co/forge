@@ -1,1 +1,0 @@
-**The steward settles lessons itself.** It checks each proposed lesson and each confusion against their corrections, requirements and designs, then approves, edits, rejects or retires it with a reason. No person is asked.

@@ -88,7 +88,9 @@ describe('a planned item can be dropped with a reason', () => {
     const view = await read(fb);
     expect(view.phase).toBe('triaged');
     expect(view.attentionGroup).toBe('stuck');
-    expect(view.times.stuck).toMatchObject({ code: 'draft_carrier' });
+    // the draft is the master's to take on, and no master serves this project (REQ-68 BC-4)
+    expect(view.waitingOn).toMatchObject({ kind: 'agent', who: "The project's master" });
+    expect(view.times.stuck).toMatchObject({ code: 'nobody_serves' });
   });
 
   it('offers Drop to a holder of feedback.approve and to nobody else', async () => {

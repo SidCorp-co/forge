@@ -156,6 +156,7 @@ export {
 export { findIssueById, issueScopeOf } from './read-service.js';
 export { type CollapseResult, collapseNarration } from './record-events/collapse.js';
 export { type ReasonedDecision, reasonedDecisionsOn } from './record-events/decision-read.js';
+export { readDecisionUntil, untilReadingWarnings } from './record-events/decision-until.js';
 export {
   dropCommentMirror,
   mirrorCommentRecord,
