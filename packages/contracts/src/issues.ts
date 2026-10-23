@@ -100,6 +100,8 @@ export const MERGE_REFUSAL_CODES = [
 	"RELEASE_MERGE_UNRELEASED",
 	/** A mark on a change-request project that names no host merge: only the host's merge of a change request lands there (REQ-71). */
 	"MARK_NOT_A_HOST_MERGE",
+	/** The host a change-request project's mark is checked against could not be read, so the mark is not taken unchecked (REQ-71). */
+	"MARK_HOST_UNREACHABLE",
 	...COMMIT_LANDING_REFUSAL_CODES,
 ] as const;
 export type MergeRefusalCode = (typeof MERGE_REFUSAL_CODES)[number];

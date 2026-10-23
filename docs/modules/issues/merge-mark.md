@@ -345,12 +345,16 @@ sentence the shortfall prints says so.
 
 Where the project document declares `release.changeRequests`, only the host's merge of a change
 request lands, and the amnesty below does not reach it (REQ-71). The mark writer
-(`packages/core/src/issues/merge-marker.ts:hostMergeOfMark`) takes a mark only over a host merge:
-the merged request linking the issue (`observedMergeForIssue`), or a `commit` that is the merge
-commit of a request the host reported merged (`packages/core/src/issues/host-landing.ts:hostMergeNamed`); either is stamped
-`observed`. Any other mark is refused `MARK_NOT_A_HOST_MERGE`, writing nothing, and the refusal
-says to open or update a change request that links the issue, which the master merges through
-`POST /api/issues/:id/merge-pull-request` once the release is approved. A design approval's stamp
+(`packages/core/src/issues/host-mark.ts:hostMergeOfMark`) takes a mark only over a host merge:
+the merged request linking the issue (`observedMergeForIssue`), a `commit` that is the merge
+commit of a request the host reported merged (`packages/core/src/issues/host-landing.ts:hostMergeNamed`), or a `commit`
+the host's `target` branch contains, read through the binding's source host (`hostBranchLanding`:
+GitLab's commit refs, GitHub's compare), as catalog-api ISS-3's c988d627 on GitLab `dev` was. Each
+is stamped `observed` at the host's sha. Any other mark is refused `MARK_NOT_A_HOST_MERGE`, naming
+what was checked and writing nothing, and the refusal says to open or update a change request
+that links the issue, which the master merges through `POST /api/issues/:id/merge-pull-request`
+once the release is approved. A host that cannot be read refuses the mark `MARK_HOST_UNREACHABLE`;
+it is never taken unchecked. A design approval's stamp
 is the approval's own write (`recordDesignLanding`) and stands as before.
 
 Every read of "landed" takes one predicate, `packages/core/src/issues/host-landing.ts:landedSql`: on such a project a

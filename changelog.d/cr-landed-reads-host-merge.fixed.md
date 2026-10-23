@@ -1,1 +1,1 @@
-**On a change-request project only the host's merge lands.** A local merge mark is refused by name, and a stamp already written no longer reads as landed in standings, needs-you, the steward's sweeps or the `awaiting_release` guard.
+**On a change-request project only what the host holds lands.** A mark must name a host merge or a commit the host's target branch contains, and a stale local stamp no longer reads as landed in standings or sweeps.

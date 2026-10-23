@@ -10,7 +10,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { db } from '../../src/db/client.js';
 import { applyPullRequestEvent } from '../../src/integrations/source-host/projection.js';
 import { api, userToken } from '../helpers/api.js';
@@ -25,12 +25,39 @@ import {
 } from '../helpers/factories.js';
 import { seedProjectDocument } from '../helpers/release-world.js';
 
+// the repository host as the binding reads it: which branches hold a commit, or a read that fails
+const host = vi.hoisted(() => ({
+  branches: new Set<string>(),
+  fail: null as Error | null,
+  checked: [] as string[],
+}));
+
+vi.mock('../../src/integrations/source-host/index.js', async (original) => ({
+  ...(await original<typeof import('../../src/integrations/source-host/index.js')>()),
+  resolveSourceHost: async () => ({
+    fullName: 'acme/catalog-api',
+    provider: 'gitlab',
+    readCommit: async (ref: string) => ({
+      sha: ref.length === 40 ? ref : C988,
+      message: 'docs(api): Scribe for the admin REST API',
+      committedAt: '2026-10-23T08:00:00Z',
+    }),
+    branchContains: async (branch: string, sha: string) => {
+      if (host.fail) throw host.fail;
+      host.checked.push(`${branch}@${sha}`);
+      return host.branches.has(branch);
+    },
+    readFile: async (path: string) => ({ missing: `${path} is not read here` }),
+  }),
+}));
+
 let reconcileIdleIssues: typeof import('../../src/pipeline/idle-issues.js').reconcileIdleIssues;
 let detectOwedCloses: typeof import('../../src/pipeline/stranded-issues.js').detectOwedCloses;
 
 const BRANCH = 'dev';
 const LOCAL = 'c451bfea41052afffd496326c04e02db12652590';
 const HOST_MERGE = 'a'.repeat(40);
+const C988 = 'c988d627e2b0a3f4c5d6e7f8091a2b3c4d5e6f70';
 const JUDGE_WHAT_LANDED = 'judge what landed';
 
 const world = { projectId: '', ownerId: '', token: '', bindingId: '' };
@@ -254,7 +281,53 @@ async function stampOf(id: string) {
 }
 
 describe('REQ-71: on a change-request project a mark names a host merge or is refused', () => {
-  beforeEach(() => seedWorld({ approval: { required: true }, changeRequests: true }));
+  beforeEach(async () => {
+    host.branches = new Set();
+    host.fail = null;
+    host.checked = [];
+    await seedWorld({ approval: { required: true }, changeRequests: true });
+  });
+
+  it('takes a commit the host’s target branch contains, recorded as that landing', async () => {
+    const id = await unmarked();
+    host.branches = new Set([BRANCH, 'release/production']);
+    const res = await api(world.token, 'POST', `/api/issues/${id}/merge`, {
+      target: BRANCH,
+      commit: 'c988d627',
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect(host.checked).toEqual([`${BRANCH}@${C988}`]);
+    expect((await stampOf(id))?.merged_commit_sha).toBe(C988);
+  });
+
+  it('refuses a commit the host holds on another branch only, naming what it checked', async () => {
+    const id = await unmarked();
+    host.branches = new Set(['feat/iss-12-scribe']);
+    const res = await api(world.token, 'POST', `/api/issues/${id}/merge`, {
+      target: BRANCH,
+      commit: C988,
+    });
+    expect(res.status, JSON.stringify(res.body)).toBeGreaterThanOrEqual(400);
+    const said = JSON.stringify(res.body);
+    expect(said).toContain('MARK_NOT_A_HOST_MERGE');
+    expect(said).toContain('Checked gitlab acme/catalog-api');
+    expect(said).toContain(`does not contain`);
+    expect((await stampOf(id))?.merged_at).toBeNull();
+  });
+
+  it('refuses by name, never accepts, where the host cannot be read', async () => {
+    const id = await unmarked();
+    host.fail = new Error('GitLab answered 503 for /repository/commits/c988d627/refs');
+    const res = await api(world.token, 'POST', `/api/issues/${id}/merge`, {
+      target: BRANCH,
+      commit: C988,
+    });
+    expect(res.status, JSON.stringify(res.body)).toBeGreaterThanOrEqual(400);
+    const said = JSON.stringify(res.body);
+    expect(said).toContain('MARK_HOST_UNREACHABLE');
+    expect(said).toContain('503');
+    expect((await stampOf(id))?.merged_at).toBeNull();
+  });
 
   it('refuses ISS-12’s local mark by name, writing nothing, and says to open a change request', async () => {
     const id = await unmarked();
