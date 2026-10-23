@@ -5,6 +5,8 @@
  * record it is (`issues/record-events/mirror.ts`), or refused by the rule it breaks — never stored
  * as a comment that silently carries no record. Every fence of a comment is read (ISS-608): several
  * verdict fences are all recorded, and a fence that cannot be read refuses the whole comment by name.
+ *
+ * @direct-test-of packages/core/src/issues/record-events/mirror.ts
  */
 
 import { sql } from 'drizzle-orm';
@@ -392,5 +394,31 @@ describe('a body holding nothing but whitespace', () => {
     const res = await post('   \n\t\n');
     expect(res.status).toBe(400);
     expect(String(res.body.detail)).toContain('whitespace only');
+  });
+});
+
+// ISS-607: a decision's `until` ends it only on a date it names; the fence door says how it read one.
+describe("a decision fence's until", () => {
+  const decisionFence = (until: string) =>
+    [
+      `${FENCE}forge-record: decision · contract 1`,
+      'decision: waits',
+      'why: the release waits on production being declared',
+      `until: ${until}`,
+      FENCE,
+    ].join('\n');
+
+  it('is read as a condition where it names no date, and the comment answer says so', async () => {
+    const res = await post(decisionFence('the owner admits or drops ISS-304'));
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    expect(warnings(res).filter((w) => w.startsWith('DECISION_UNTIL_CONDITION'))).toEqual([
+      expect.stringContaining('`the owner admits or drops ISS-304`'),
+    ]);
+  });
+
+  it('warns of nothing for a date still to come', async () => {
+    const res = await post(decisionFence('2999-01-01'));
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+    expect(warnings(res).filter((w) => w.startsWith('DECISION_UNTIL'))).toEqual([]);
   });
 });

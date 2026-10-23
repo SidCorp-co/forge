@@ -89,6 +89,8 @@ describe('owedLine: what a pass is told it owes besides issues', () => {
     const line = owedLine({ ...none, stewardAsks: [ask] });
     expect(line).toContain("The project's steward asks you to act on 1 item");
     expect(line).toContain('ISS-498: no master has taken it since 10-14');
+    // ISS-607: only an ISO 8601 date ends a decision; the line says so, matching decision-until.ts
+    expect(line).toContain('`until` only as an ISO 8601 date such as 2026-11-01');
     expect(masterWork([], { ...none, stewardAsks: [ask] }).owed).toBe(1);
     expect(workDigest([], { ...none, stewardAsks: [ask] })).not.toBe(workDigest([], none));
   });

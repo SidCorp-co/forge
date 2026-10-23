@@ -10,6 +10,8 @@
 // @direct-test-of packages/core/src/steward/asks.ts
 // @direct-test-of packages/core/src/steward/ask-addressee.ts
 // @direct-test-of packages/core/src/issues/record-events/decision-read.ts
+// @direct-test-of packages/core/src/issues/record-events/decision-until.ts
+// @direct-test-of packages/core/src/issues/record-events/routes.ts
 // @direct-test-of packages/core/src/steward-ports.ts
 
 import type { Said } from '@forge/contracts/said';
@@ -277,6 +279,88 @@ describe('a decision recorded on an unchanged wait answers the ask until the sta
     expect((await actsOn(issue.id)).map((a) => a.door)).toEqual([
       'WAKE master.wake steward',
       'WAKE master.wake steward',
+    ]);
+    standings = [];
+  });
+});
+
+// A decision's `until` ends it only on a date it names: an ISO 8601 date, or a date-time with its
+// zone. Any other text is a condition, which no clock ends: it holds until the standing moves, and
+// the write says so. Node reads many sentences as old dates (the first below as 2000-11-30, the
+// second as the year 303), which expired a person's decision the moment it was written.
+describe("a decision's until ends it only on a date it names (c2)", () => {
+  let n = 80;
+
+  /** A fresh issue at a release wait the master is asked about (it holds releases.approve above). */
+  async function askedWait(basis: string) {
+    n += 1;
+    const issue = await createTestIssue(projectId, ownerId, n, {
+      status: 'awaiting_release',
+      createdAt: new Date(),
+    });
+    standings = [releaseWait(issue, basis)];
+    await askRun(issue);
+    expect(await openAbout(issue.key)).toHaveLength(1);
+    return issue;
+  }
+
+  const openAbout = async (key: string) =>
+    (await steward.openStewardAsks(projectId)).filter((a) => a.ask.startsWith(`${key}:`));
+
+  const sweep = async () => {
+    clock += 60_000;
+    return steward.sweepStandings(new Date(clock));
+  };
+
+  const reasoned = (until: string) => [
+    { key: 'decision', value: 'waits' },
+    { key: 'why', value: 'the release waits on production being declared' },
+    { key: 'until', value: until },
+  ];
+
+  it.each(['the orchestrator declares production for 0.1.0', 'the owner admits or drops ISS-304'])(
+    'a prose until (%s) is a condition: it answers the ask, and the write says how it was read',
+    async (until) => {
+      const issue = await askedWait(`prose-${n}`);
+      const wrote = await decide(issue.id, reasoned(until));
+      ok(wrote, 201);
+      expect((await sweep()).settledAsks).toBe(1);
+      expect(await openAbout(issue.key)).toEqual([]);
+      const { warnings } = wrote.json as { warnings?: string[] };
+      expect(warnings).toEqual([expect.stringContaining('DECISION_UNTIL_CONDITION')]);
+      expect(warnings?.[0]).toContain(until);
+    },
+  );
+
+  it('a condition holds on the same standing, and a moved standing asks again', async () => {
+    const issue = await askedWait('prose-held-1');
+    ok(await decide(issue.id, reasoned('the owner admits or drops it')), 201);
+    expect((await sweep()).settledAsks).toBe(1);
+    await askRun(issue, 'event');
+    expect(await openAbout(issue.key)).toEqual([]);
+    expect(JSON.stringify(script.sent.at(-1))).toContain('a decision answered it');
+    standings = [releaseWait(issue, 'prose-held-2')];
+    await askRun(issue);
+    expect(await openAbout(issue.key)).toHaveLength(1);
+  });
+
+  it('an ISO date-time still to come holds, and the write warns of nothing', async () => {
+    const issue = await askedWait('iso-future');
+    const wrote = await decide(issue.id, reasoned('2999-01-01T09:00:00Z'));
+    ok(wrote, 201);
+    expect((wrote.json as { warnings?: string[] }).warnings).toBeUndefined();
+    expect((await sweep()).settledAsks).toBe(1);
+    expect(await openAbout(issue.key)).toEqual([]);
+  });
+
+  it('an ISO date already past answers nothing, and the write says it has passed', async () => {
+    const issue = await askedWait('iso-past');
+    const wrote = await decide(issue.id, reasoned('2020-01-01'));
+    ok(wrote, 201);
+    expect((await sweep()).settledAsks).toBe(0);
+    expect(await openAbout(issue.key)).toHaveLength(1);
+    expect((wrote.json as { warnings?: string[] }).warnings).toEqual([
+      expect.stringContaining('DECISION_UNTIL_PASSED'),
     ]);
     standings = [];
   });

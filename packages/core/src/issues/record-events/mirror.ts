@@ -12,6 +12,7 @@ import { readForgeRecords } from '../../messaging/forge-record.js';
 import { fenceNamed } from '../../messaging/record-screen.js';
 import type { Actor } from '../activity.js';
 import { recordEventVerdicts } from '../criteria/event-verdicts.js';
+import { decisionUntilWarnings } from './decision-until.js';
 import { mintRecordQuestion } from './question-record.js';
 import { commentMirrorKey, writeRecordEvent } from './store.js';
 
@@ -68,19 +69,20 @@ export async function mirrorCommentRecord(
   }
   const asked =
     record.kind === 'question' ? await mintRecordQuestion(comment, record, actor, tx) : [];
+  const fields = record.fields.map((f) => ({ key: f.key, value: f.value }));
   await writeRecordEvent(
     {
       issueId: comment.issueId,
       actor,
       kind: record.kind,
       contract: record.contract ?? 1,
-      fields: record.fields.map((f) => ({ key: f.key, value: f.value })),
+      fields,
       commentId: comment.id,
       at: comment.createdAt,
     },
     tx,
   );
-  return asked;
+  return [...asked, ...decisionUntilWarnings(record.kind, fields, comment.createdAt)];
 }
 
 export async function dropCommentMirror(commentId: string, tx: Tx): Promise<void> {

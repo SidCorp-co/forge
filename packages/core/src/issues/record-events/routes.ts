@@ -19,6 +19,7 @@ import { idParamSchema } from '../../middleware/route-errors.js';
 import { zValidator } from '../../middleware/zod-validator.js';
 import type { Actor } from '../activity.js';
 import { heldIssue } from '../issue-route-ref.js';
+import { decisionUntilWarnings } from './decision-until.js';
 import { listRecordEvents, type RecordEvent } from './store.js';
 import { writeScreenedRecordEvent } from './write.js';
 
@@ -66,7 +67,9 @@ recordEventRoutes.post(
       actor,
       ...draft,
     });
-    return c.json(serializeRecordEvent(event), 201);
+    const written = serializeRecordEvent(event);
+    const warnings = decisionUntilWarnings(event.kind, event.fields, event.createdAt);
+    return c.json(warnings.length > 0 ? { ...written, warnings } : written, 201);
   },
 );
 

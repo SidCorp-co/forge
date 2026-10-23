@@ -6,6 +6,7 @@ import { recordAction } from '@forge/contracts/record-events';
 import { and, desc, inArray, sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { activityLog } from '../../db/schema-activity.js';
+import { readDecisionUntil } from './decision-until.js';
 
 export interface ReasonedDecision {
   issueId: string;
@@ -14,7 +15,10 @@ export interface ReasonedDecision {
   actorId: string;
   decision: string | null;
   why: string;
-  /** The `until` field where it reads as a date: the decision stops holding once it has passed. */
+  /**
+   * The `until` field where it names a date (an ISO 8601 date, or a date-time with its zone): the
+   * decision stops holding once it has passed. Null for no `until` or a condition, which holds.
+   */
   until: Date | null;
 }
 
@@ -30,10 +34,11 @@ const fieldOf = (fields: unknown, key: string): string | null => {
   return value.length > 0 ? value : null;
 };
 
+/** The date an `until` names, or null for none or a condition, which no clock ends (`decision-until.ts`). */
 const dateOf = (text: string | null): Date | null => {
   if (!text) return null;
-  const at = Date.parse(text);
-  return Number.isNaN(at) ? null : new Date(at);
+  const until = readDecisionUntil(text);
+  return until.kind === 'date' ? until.at : null;
 };
 
 /**
