@@ -1,0 +1,1 @@
+**A stuck feedback item is now asked about, never only noted.** A triage the master cannot take goes to the feedback approvers by name; a diagnosis that only noted asks for itself, or says why nobody can.

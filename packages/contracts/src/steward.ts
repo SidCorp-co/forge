@@ -562,8 +562,11 @@ export function stewardRequirementDecisionsFor(r: {
 	return null;
 }
 
-/** The feedback acts a triager owes: triage it, route it, triage it again. */
-const FEEDBACK_TRIAGE_ACTS: readonly string[] = [
+/**
+ * The feedback acts a triager owes: triage it, route it, triage it again. A holder of
+ * `feedback.approve` takes them, which is whom the steward asks (`core/src/steward/ask-addressee.ts`).
+ */
+export const FEEDBACK_TRIAGE_ACTS: readonly string[] = [
 	"standing.act.triageIt",
 	"feedback.act.route",
 	"standing.act.triageAgain",

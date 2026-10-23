@@ -1,9 +1,12 @@
-// Whom the steward's ask about an item goes to (REQ-48 BC-5, ISS-607): whoever can take the act the
-// item waits on. A release approval is taken by a holder of `releases.approve`; where no account the
-// project's master acts as holds it, the master is not asked, and the release holders are. Every
-// other wait asks the master, as before.
+// Whom the steward's ask about an item goes to (REQ-48 BC-5, ISS-607, ISS-654): whoever can take the
+// act the item waits on. A release approval is taken by a holder of `releases.approve`, a feedback
+// item's triage by a holder of `feedback.approve`; where no account the project's master acts as
+// holds that permission, the master is not asked, and the holders are, by name, the steward's own
+// account never among them. Every other wait asks the master, as before.
 
+import type { ProjectPermission } from '@forge/contracts/permissions';
 import type { ItemStanding } from '@forge/contracts/steward';
+import { FEEDBACK_TRIAGE_ACTS } from '@forge/contracts/steward';
 import { innerActKey } from '../lib/standing-act-class.js';
 import {
   actorFor,
@@ -22,46 +25,79 @@ const RELEASE_APPROVAL_ACTS: ReadonlySet<string> = new Set([
 ]);
 
 export const APPROVE_RELEASE = 'releases.approve';
+export const APPROVE_FEEDBACK = 'feedback.approve';
+
+/** An act a wait names that only the holders of one permission take, and what taking it is called. */
+export interface HeldAct {
+  permission: ProjectPermission;
+  /** The act, as a notice's title and a refusal say it. */
+  what: string;
+  /** The door an ask of its holders is logged under. */
+  door: string;
+}
+
+const HELD_ACTS: readonly (HeldAct & { acts: ReadonlySet<string> })[] = [
+  {
+    acts: RELEASE_APPROVAL_ACTS,
+    permission: APPROVE_RELEASE,
+    what: 'release approval',
+    door: 'NOTIFY release holders',
+  },
+  {
+    acts: new Set(FEEDBACK_TRIAGE_ACTS),
+    permission: APPROVE_FEEDBACK,
+    what: 'triage',
+    door: 'NOTIFY feedback holders',
+  },
+];
+
+/** The held act the item waits on, or null where it waits on one the master is asked about. */
+export function heldActOf(standing: Pick<ItemStanding, 'waitingOn'> | null): HeldAct | null {
+  if (!standing) return null;
+  const key = innerActKey(standing.waitingOn);
+  const hit = HELD_ACTS.find((h) => h.acts.has(key));
+  return hit ? { permission: hit.permission, what: hit.what, door: hit.door } : null;
+}
 
 /** Whether the item waits on a release approval. */
 export function waitsOnReleaseApproval(standing: Pick<ItemStanding, 'waitingOn'>): boolean {
-  return RELEASE_APPROVAL_ACTS.has(innerActKey(standing.waitingOn));
+  return heldActOf(standing)?.permission === APPROVE_RELEASE;
 }
 
 export type AskAddressee =
   | { to: 'master' }
-  | { to: 'release_holders'; holders: NamedHolder[] }
-  | { to: 'nobody'; why: string };
+  | { to: 'holders'; act: HeldAct; holders: NamedHolder[] }
+  | { to: 'nobody'; act: HeldAct; why: string };
 
-/** Whether any account the project's master acts as may approve a release on the project. */
-async function masterMayApprove(projectId: string): Promise<boolean> {
+/** Whether any account the project's master acts as holds `permission` on the project. */
+async function masterHolds(projectId: string, permission: ProjectPermission): Promise<boolean> {
   const accounts = await stewardPorts().masterAccounts(projectId);
   for (const id of accounts) {
-    if (await can(actorFor(id), APPROVE_RELEASE, projectResource(projectId))) return true;
+    if (await can(actorFor(id), permission, projectResource(projectId))) return true;
   }
   return false;
 }
 
 /**
- * Whom an ask about an item with this standing goes to. A release approval the master may give is
- * the master's; one it may not is the release holders', the steward's own account never among them;
- * one nobody holds is nobody's, said by name.
+ * Whom an ask about an item with this standing goes to. A held act the master may take is the
+ * master's; one it may not is its holders', the steward's own account never among them; one nobody
+ * holds is nobody's, said by name.
  */
 export async function askAddresseeOf(
   projectId: string,
   standing: Pick<ItemStanding, 'waitingOn'> | null,
   stewardId: string | null,
 ): Promise<AskAddressee> {
-  if (!standing || !waitsOnReleaseApproval(standing)) return { to: 'master' };
-  if (await masterMayApprove(projectId)) return { to: 'master' };
-  const holders = (await namedHolders(APPROVE_RELEASE, projectId)).filter(
-    (h) => h.id !== stewardId,
-  );
+  const act = heldActOf(standing);
+  if (!act) return { to: 'master' };
+  if (await masterHolds(projectId, act.permission)) return { to: 'master' };
+  const holders = (await namedHolders(act.permission, projectId)).filter((h) => h.id !== stewardId);
   if (holders.length === 0) {
     return {
       to: 'nobody',
-      why: `nobody on this project holds ${APPROVE_RELEASE}, the master included, so no one can approve the release; a project admin grants it`,
+      act,
+      why: `nobody on this project holds ${act.permission}, the master included, so no one can take the ${act.what}; a project admin grants it`,
     };
   }
-  return { to: 'release_holders', holders };
+  return { to: 'holders', act, holders };
 }

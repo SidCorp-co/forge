@@ -12,6 +12,7 @@ import type { EgressSurface } from '../lib/data-egress.js';
 import { env } from '../lib/env.js';
 import { logger } from '../lib/logger.js';
 import { mintStewardCredential, STEWARD_TURN_TTL_MS } from './credential.js';
+import { endUnmovedDiagnosis } from './diagnosis-end.js';
 import { callStewardDoor, type DoorContext, doorJsonSchema, doorsOf } from './doors.js';
 import { stewardLessonsBlock } from './lessons-block.js';
 import { stewardPorts } from './ports.js';
@@ -139,6 +140,8 @@ export async function runGatewayAct(args: {
       output: { kind: 'steward_run', ref: run.id },
       agentUserId: args.stewardId,
     });
+    // a stuck item's diagnosis ends in an act, an ask, or why nobody was asked: never a note alone
+    if (result.terminal !== 'error') await endUnmovedDiagnosis(ctx);
     return {
       refused: ctx.refused,
       broken: ctx.broken,

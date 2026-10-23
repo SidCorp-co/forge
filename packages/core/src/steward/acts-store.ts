@@ -35,6 +35,23 @@ export interface ActWrite {
   masterAsk?: string | null;
 }
 
+/**
+ * The doors whose acts neither move an item nor ask anyone, as `LIKE` patterns: its note and a lesson
+ * confusion. Any other act ends a stuck diagnosis (`diagnosis-end.ts`, `runs-store.ts:ranOnBasis`).
+ */
+export const NOT_AN_END_DOORS = [
+  'PUT /api/projects/%/steward-notes/%',
+  'POST /api/projects/%/lessons/%/confusions',
+] as const;
+
+// the same patterns read as `LIKE` reads them: `%` is any run of characters
+const NOT_AN_END: readonly RegExp[] = NOT_AN_END_DOORS.map(
+  (p) => new RegExp(`^${p.replaceAll('%', '.+')}$`),
+);
+
+/** Whether an act through this door ends a stuck diagnosis: it moved the item, asked someone, or said why nobody. */
+export const endsDiagnosis = (door: string): boolean => !NOT_AN_END.some((re) => re.test(door));
+
 export async function recordAct(write: ActWrite, exec: Tx = db): Promise<string> {
   const [row] = await exec
     .insert(stewardActs)

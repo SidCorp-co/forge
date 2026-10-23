@@ -5,8 +5,10 @@
 // note is kept as the item's current note, not stale. A note whose words contradict the standing is
 // refused naming the line and writes nothing, a model that sends claims is refused by the tool before
 // any door, and a standing that moved under the run is read again and the note written once against
-// it. The gateway is a scripted provider.
+// it. A diagnosis whose turn wrote only the note, or nothing, still ends asking whoever owes the act
+// (ISS-654): its one other act is that wake. The gateway is a scripted provider.
 //
+// @direct-test-of packages/core/src/steward/diagnosis-end.ts
 // @direct-test-of packages/core/src/standing-ports.ts
 // @direct-test-of packages/core/src/steward/door-writes.ts
 
@@ -133,6 +135,7 @@ describe("a real stuck item, read through lane A's standing, is acted on and not
     expect(run).toMatchObject({ state: 'done', failure: null });
     expect(acts.map((a) => a.door)).toEqual([
       `PUT /api/projects/${projectId}/steward-notes/requirement/${req.key}`,
+      'WAKE master.wake steward',
     ]);
     expect(notes).toEqual([{ run_id: run.id, lines }]);
     const after = (await openStandings(projectId)).find((s) => s.subject.id === req.id);
@@ -160,7 +163,8 @@ describe("a real stuck item, read through lane A's standing, is acted on and not
     expect(run).toMatchObject({ state: 'failed' });
     expect(run.failure).toContain('STEWARD_NOTE_CONTRADICTS');
     expect(run.failure).toContain('STEWARD_NOTE_CONTRADICTS at /lines/0: line 1 says');
-    expect(acts).toEqual([]);
+    // no note was written; the diagnosis still ends asking whoever owes the act
+    expect(acts).toEqual([{ door: 'WAKE master.wake steward' }]);
     expect(notes).toEqual([]);
   });
 
@@ -176,7 +180,7 @@ describe("a real stuck item, read through lane A's standing, is acted on and not
     ]);
     // the tool refused the shape in the turn; no door was called, so nothing was refused or written
     expect(run).toMatchObject({ state: 'done', failure: null });
-    expect(acts).toEqual([]);
+    expect(acts).toEqual([{ door: 'WAKE master.wake steward' }]);
     expect(notes).toEqual([]);
     const reply = JSON.stringify(script.sent.at(-1));
     expect(reply).toContain('steward_write_note');

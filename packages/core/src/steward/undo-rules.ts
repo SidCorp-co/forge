@@ -72,8 +72,14 @@ const OVERRIDES: readonly { door: RegExp; override: string; person: string }[] =
   {
     door: /^NOTIFY /,
     override:
-      'nothing to undo: the release holders were told, and a notice once sent is not withdrawn; decide the release on its own page',
-    person: 'The release holders were told. Decide the release on its page.',
+      "nothing to undo: the act's holders were told, and a notice once sent is not withdrawn; take the act on the item's own page",
+    person: "The act's holders were told. Take it on the item's page.",
+  },
+  {
+    door: /^SAY /,
+    override:
+      'nothing to undo: the steward only said why it could ask nobody, and moved nothing; act on the item yourself',
+    person: 'Nothing to undo: nobody could be asked. Act on the item yourself.',
   },
   {
     door: /^POST \/api\/projects\/[^/]+\/feedback\/[^/]+\/(tell-shipped|verify-ask|clarification)$/,

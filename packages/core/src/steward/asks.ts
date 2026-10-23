@@ -1,12 +1,12 @@
 // Whether the steward may ask about an item again (REQ-48 BC-5, ISS-607). An ask is tied to the run
 // that made it, so to the item and the standing basis that run read. On that same basis it is asked
-// once: while it stands, after a reasoned decision answered it, and after the release holders were
-// told. A decision recorded on the item after the ask, by anyone but the steward, answers it until the
+// once: while it stands, after a reasoned decision answered it, and after the holders of the act it
+// waits on were told (a release approval's or a feedback triage's, ISS-654). A decision recorded on the item after the ask, by anyone but the steward, answers it until the
 // standing moves; a moved standing is a new basis, and asks again. The item is an issue, a feedback
 // item or a requirement, and its decision is read where its own door writes one (ISS-654).
 
 import type { StandingSubjectKind } from '@forge/contracts/steward';
-import { and, desc, eq, inArray, isNotNull, isNull, or } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNotNull, isNull, like, or } from 'drizzle-orm';
 import { type ItemDecision, reasonedDecisionsOnItems } from '../comments/index.js';
 import { db } from '../db/client.js';
 import { stewardActs, stewardRuns } from '../db/schema-steward-runs.js';
@@ -15,8 +15,9 @@ import { heldStewardOf } from './account.js';
 
 /** The act door a wake of the master is logged under. */
 export const WAKE_DOOR = 'WAKE master.wake steward';
-/** The act door an ask of the release holders is logged under. */
-export const NOTIFY_HOLDERS_DOOR = 'NOTIFY release holders';
+/** Every act door an ask of an act's holders is logged under (`ask-addressee.ts:HeldAct.door`). */
+const NOTIFY_HOLDERS = 'NOTIFY %';
+const toldHolders = (door: string) => door.startsWith('NOTIFY ');
 
 export interface AskRow {
   id: string;
@@ -103,7 +104,7 @@ async function asksOnBasis(projectId: string, subjectId: string, basis: string) 
         eq(stewardRuns.subjectId, subjectId),
         eq(stewardRuns.basis, basis),
         isNull(stewardActs.undoneAt),
-        or(isNotNull(stewardActs.masterAsk), eq(stewardActs.door, NOTIFY_HOLDERS_DOOR)),
+        or(isNotNull(stewardActs.masterAsk), like(stewardActs.door, NOTIFY_HOLDERS)),
       ),
     )
     .orderBy(desc(stewardActs.at), desc(stewardActs.id));
@@ -111,7 +112,7 @@ async function asksOnBasis(projectId: string, subjectId: string, basis: string) 
 
 /**
  * Why an ask about the item on this basis is not made again, said to the turn, or null where it may
- * be: an ask of the master that still stands or that a decision answered, or the release holders
+ * be: an ask of the master that still stands or that a decision answered, or the act's holders
  * already told. An ask settled because the standing moved off its basis and back asks again.
  */
 export async function askedAlready(
@@ -128,8 +129,8 @@ export async function askedAlready(
     if (answer) {
       return `${subject.key} was asked on this standing (${ask.at.toISOString()}) and a decision answered it (${answer.at.toISOString()}: ${answer.decision ?? answer.why}). Ask nothing until its standing moves; write the note.`;
     }
-    if (ask.door === NOTIFY_HOLDERS_DOOR) {
-      return `the release holders were asked about ${subject.key} on this standing (${ask.at.toISOString()}). Ask nothing until its standing moves; write the note.`;
+    if (toldHolders(ask.door)) {
+      return `the holders of the act ${subject.key} waits on were asked about it on this standing (${ask.at.toISOString()}). Ask nothing until its standing moves; write the note.`;
     }
     if (ask.settledAt === null) {
       return `the master's ask about ${subject.key} on this standing (${ask.at.toISOString()}) still stands. Ask nothing more; write the note.`;

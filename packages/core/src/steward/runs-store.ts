@@ -22,6 +22,7 @@ import { rowsOf } from '../db/raw-sql.js';
 import { type StewardRunEvent, stewardRuns } from '../db/schema-steward-runs.js';
 import { sqlTimestamp } from '../db/sql-timestamp.js';
 import { lockXact } from '../lib/advisory-lock.js';
+import { NOT_AN_END_DOORS } from './acts-store.js';
 
 export type RunRow = typeof stewardRuns.$inferSelect;
 
@@ -371,13 +372,23 @@ export async function spentSince(
  * run skipped for its budget or the steward being off never acted, so it does not count. A run a door
  * refused counts for as long as the basis holds, since the same act on the same standing earns the
  * same refusal; one whose turn or job did not finish counts for an hour, after which the sweep tries
- * again.
+ * again. A stuck diagnosis that finished counts only where it ended in an act, an ask, or why nobody
+ * was asked (`diagnosis-end.ts`): one that ended on a note alone is diagnosed again (ISS-654), and
+ * the diagnosis that follows always ends so, which bounds it to once.
  */
 export async function ranOnBasis(
   subject: StandingSubject,
   act: StewardAct,
   basis: string,
 ): Promise<boolean> {
+  const notAnEnd = sql.join(
+    NOT_AN_END_DOORS.map((p) => sql`a.door NOT LIKE ${p}`),
+    sql` AND `,
+  );
+  const ended =
+    act === 'stuck_diagnosis'
+      ? sql`EXISTS (SELECT 1 FROM steward_acts a WHERE a.run_id = ${stewardRuns.id} AND ${notAnEnd})`
+      : sql`true`;
   const [row] = await db
     .select({ id: stewardRuns.id })
     .from(stewardRuns)
@@ -387,7 +398,7 @@ export async function ranOnBasis(
         eq(stewardRuns.subjectId, subject.id),
         eq(stewardRuns.basis, basis),
         sql`${act} = ANY(${stewardRuns.actsToRun})`,
-        sql`(${stewardRuns.state} IN ('queued', 'running', 'done') OR (${stewardRuns.state} = 'failed' AND (${stewardRuns.failureKind} = 'refused' OR ${stewardRuns.endedAt} > now() - interval '1 hour')))`,
+        sql`(${stewardRuns.state} IN ('queued', 'running') OR (${stewardRuns.state} = 'done' AND ${ended}) OR (${stewardRuns.state} = 'failed' AND ((${stewardRuns.failureKind} = 'refused' AND ${ended}) OR ${stewardRuns.endedAt} > now() - interval '1 hour')))`,
       ),
     )
     .limit(1);

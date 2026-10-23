@@ -1,7 +1,7 @@
 // The steward's ask of whoever owes an item's act (REQ-48 BC-5, ISS-607). The door picks the
 // addressee from the item's standing, never the model: the project's master, woken and asked until the
-// item's standing moves; or, for a release approval the master may not give, the release holders,
-// told once in their notices. An item already asked on the standing it reads now, or whose ask a
+// item's standing moves; or, for a release approval or a feedback triage the master may not take, the
+// holders of that act's permission, told once in their notices (ISS-654). An item already asked on the standing it reads now, or whose ask a
 // decision answered, is not asked again: that is said to the turn, and nothing is written.
 
 import type { ItemStanding } from '@forge/contracts/steward';
@@ -9,7 +9,7 @@ import { z } from 'zod';
 import { emitNotification } from '../notifications/index.js';
 import { heldStewardOf } from './account.js';
 import { askAddresseeOf } from './ask-addressee.js';
-import { askedAlready, NOTIFY_HOLDERS_DOOR, WAKE_DOOR } from './asks.js';
+import { askedAlready, WAKE_DOOR } from './asks.js';
 import type { DoorAnswer, DoorRequest } from './door-call.js';
 import { type DoorContext, type DoorSpec, key } from './door-kit.js';
 import { openStandings, stewardPorts } from './ports.js';
@@ -33,7 +33,7 @@ const answered = (json: Record<string, unknown>): DoorAnswer => ({
 export const WAKE: DoorSpec<z.infer<typeof wakeParams>> = {
   name: 'steward_wake_master',
   describe:
-    "Ask whoever owes an item's act to take it: the project's master, woken and asked until the item's standing moves; or, where the item waits on a release approval the master may not give, the release holders. The door picks whom from the standing. An item already asked on its standing now is not asked again.",
+    "Ask whoever owes an item's act to take it: the project's master, woken and asked until the item's standing moves; or, where the item waits on a release approval or a feedback triage the master may not take, the holders of that permission. The door picks whom from the standing. An item already asked on its standing now is not asked again.",
   params: wakeParams,
   write: true,
   async call(args, ctx) {
@@ -48,16 +48,16 @@ export const WAKE: DoorSpec<z.infer<typeof wakeParams>> = {
     const to = await askAddresseeOf(ctx.projectId, standing, steward);
     if (to.to === 'nobody') {
       return {
-        correct: `${about} waits on a release approval, and ${to.why}: ask nothing; write the note saying so.`,
+        correct: `${about} waits on a ${to.act.what}, and ${to.why}: ask nothing; write the note saying so.`,
       };
     }
-    if (to.to === 'release_holders') {
+    if (to.to === 'holders') {
       const names = to.holders.map((h) => h.name).join(', ');
       const notice = await emitNotification({
         recipients: to.holders.map((h) => h.id),
         projectId: ctx.projectId,
         type: 'steward_ask',
-        title: `${about}: release approval asked`,
+        title: `${about}: ${to.act.what} asked`,
         body: args.ask,
         issueId: standing?.subject.kind === 'issue' ? standing.subject.id : null,
         dedupeKey: `steward-ask:${ctx.runId}:${about}`,
@@ -65,10 +65,10 @@ export const WAKE: DoorSpec<z.infer<typeof wakeParams>> = {
       const request: DoorRequest = { method: 'POST', path: '/notify/steward_ask' };
       return {
         request,
-        answer: answered({ askedOf: 'release_holders', holders: names, ...notice }),
+        answer: answered({ askedOf: to.act.permission, holders: names, ...notice }),
         act: {
-          door: NOTIFY_HOLDERS_DOOR,
-          did: `Asked the release holders (${names}) about ${about}: ${args.ask}`,
+          door: to.act.door,
+          did: `Asked the ${to.act.permission} holders (${names}) about ${about}: ${args.ask}`,
           wrote: null,
           undo: null,
         },
