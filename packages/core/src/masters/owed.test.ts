@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { masterWork, owedLine, workDigest } from './owed.js';
+import type { StewardAsk } from './ports.js';
 
 // The owed-work read is core's: the seven kinds of work a master owes are counted and digested in
 // owed.ts, and the box only carries the line core composed. These are those rules.
@@ -16,7 +17,7 @@ const none = {
   warnedNotes: [],
   unnamedReleases: [] as { version: string }[],
   answers: [],
-  stewardAsks: [] as { actId: string; ask: string }[],
+  stewardAsks: [] as StewardAsk[],
   contentLanguage: 'en',
 };
 
@@ -85,7 +86,11 @@ describe('owedLine: what a pass is told it owes besides issues', () => {
 
   // REQ-48 BC-5: a steward wake the box missed is still read on its next sweep, and the work moves
   it("names each of the steward's asks, counts it owed, and moves the digest", () => {
-    const ask = { actId: 'a1', ask: 'ISS-498: no master has taken it since 10-14' };
+    const ask: StewardAsk = {
+      actId: 'a1',
+      ask: 'ISS-498: no master has taken it since 10-14',
+      subject: { kind: 'issue', key: 'ISS-498' },
+    };
     const line = owedLine({ ...none, stewardAsks: [ask] });
     expect(line).toContain("The project's steward asks you to act on 1 item");
     expect(line).toContain('ISS-498: no master has taken it since 10-14');
@@ -93,6 +98,39 @@ describe('owedLine: what a pass is told it owes besides issues', () => {
     expect(line).toContain('`until` only as an ISO 8601 date such as 2026-11-01');
     expect(masterWork([], { ...none, stewardAsks: [ask] }).owed).toBe(1);
     expect(workDigest([], { ...none, stewardAsks: [ask] })).not.toBe(workDigest([], none));
+  });
+
+  // ISS-654: the issue door answers 404 for a feedback item or a requirement, so each ask names the
+  // door of its own item, and an issue's door only where an issue is asked about
+  it('names the decision door of each asked item by its kind, and only those', () => {
+    const fb: StewardAsk = {
+      actId: 'a2',
+      ask: 'FB-36: triage it',
+      subject: { kind: 'feedback', key: 'FB-36' },
+    };
+    const req: StewardAsk = {
+      actId: 'a3',
+      ask: 'REQ-23: obtain the decision',
+      subject: { kind: 'requirement', key: 'REQ-23' },
+    };
+    const line = owedLine({ ...none, stewardAsks: [fb, req] });
+    expect(line).toContain(
+      'on a feedback item (FB-36), `forge-runner api projects/<projectId>/feedback/<key>/comments -X POST` with `intent: decision`',
+    );
+    expect(line).toContain(
+      'on a requirement (REQ-23), `forge-runner api projects/<projectId>/requirements/<key>/comments -X POST`',
+    );
+    expect(line).toContain('`reversedWhen` only as an ISO 8601 date such as 2026-11-01');
+    expect(line).not.toContain('issues/<id>/events');
+    const issue: StewardAsk = {
+      actId: 'a4',
+      ask: 'ISS-9: take it',
+      subject: { kind: 'issue', key: 'ISS-9' },
+    };
+    const mixed = owedLine({ ...none, stewardAsks: [issue, fb] });
+    expect(mixed).toContain('on an issue (ISS-9), `forge-runner api issues/<id>/events -X POST`');
+    expect(mixed).toContain('on a feedback item (FB-36)');
+    expect(mixed).not.toContain('on a requirement');
   });
 
   it('names an owed triage by its key, and its method', () => {

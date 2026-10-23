@@ -11,7 +11,7 @@
 // stuck first, and the rest wait for a later sweep, so a full backlog is paced across days and the
 // handoff share stays whole.
 
-import type { ItemStanding } from '@forge/contracts/steward';
+import type { ItemStanding, StandingSubjectKind } from '@forge/contracts/steward';
 import { isNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
@@ -153,9 +153,21 @@ export async function sweepStandings(now = new Date()): Promise<SweepTally> {
   return tally;
 }
 
-/** The asks of the master still standing on a project, oldest first (`masters/owed.ts` stewardAsks). */
-export async function openStewardAsks(
-  projectId: string,
-): Promise<{ actId: string; ask: string }[]> {
-  return (await openMasterAsks(projectId)).map((r) => ({ actId: r.id, ask: r.masterAsk ?? '' }));
+/** An ask of the master still standing, and the item whose decision answers it. */
+interface StewardAsk {
+  actId: string;
+  ask: string;
+  subject: { kind: StandingSubjectKind; key: string };
+}
+
+/**
+ * The asks of the master still standing on a project, oldest first (`masters/owed.ts` stewardAsks),
+ * each with the item whose decision answers it, so the nudge names that item's own door (ISS-654).
+ */
+export async function openStewardAsks(projectId: string): Promise<StewardAsk[]> {
+  return (await openMasterAsks(projectId)).map((r) => ({
+    actId: r.id,
+    ask: r.masterAsk ?? '',
+    subject: { kind: r.subjectKind, key: r.subjectKey },
+  }));
 }

@@ -14,6 +14,7 @@ import { refused } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { holdChatWrite } from '../middleware/chat-write-hold.js';
 import { invalid, strictBody, zValidator } from '../middleware/zod-validator.js';
+import { decisionCommentWarnings } from './decision-answers.js';
 import { deleteEntityComment } from './entity-delete.js';
 import { type EntityCommentActor, listEntityCommentsAs } from './entity-read.js';
 import {
@@ -60,7 +61,12 @@ function actorOf(c: Context<{ Variables: AuthVars }>): EntityCommentActor {
 
 function answer(c: Context, outcome: EntityCommentOutcome) {
   if (!outcome.ok) return refused(c, outcome.refusals, 'COMMENT_REFUSED');
-  const body: EntityCommentResponse = { comment: outcome.comment };
+  // a decision on a feedback item or a requirement is told how its reversedWhen was read (ISS-654)
+  const warnings = decisionCommentWarnings(outcome.comment);
+  const body: EntityCommentResponse = {
+    comment: outcome.comment,
+    ...(warnings.length > 0 ? { warnings } : {}),
+  };
   return c.json(body, outcome.created ? 201 : 200);
 }
 
