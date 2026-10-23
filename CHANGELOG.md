@@ -9,6 +9,18 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.301] - 2026-10-23
+
+Requirements move only when someone moves them, and can be accepted by decision
+
+### Changed
+
+- **A requirement moves into delivery and to delivered only by an act.** Nothing derives either from results; each move names its missing condition. An approver may accept by decision with a reason, recording the waived items, never read as proven.
+
+### Removed
+
+- **The delivery sweep and the step notices are gone.** Nothing announces a requirement as delivered on its own; the standing asks for the move instead.
+
 ## [0.4.0-dev.300] - 2026-10-23
 
 Change-request releases wait for the owner's accept instead of cancelling themselves
