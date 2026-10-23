@@ -76,6 +76,8 @@ export interface RouteInput {
   actor: FeedbackActor;
   channel: FeedbackChannel;
   fromSuggestionId: string | null;
+  /** A planned item moved off the requirement it was on (`rules.ts:Replan`). */
+  replan?: boolean;
 }
 
 const unknownCarrier = (path: string, detail: string): Refusal => ({
@@ -318,6 +320,7 @@ export async function writeRouteIn(
   const named = await namedCarrierIn(tx, input);
   if ('refusal' in named) return { refusals: [named.refusal] };
   const fit = routeRuleRefusal(route, {
+    replan: input.replan ?? false,
     kind: row.kind,
     targetRequirement: input.target,
     ...named.facts,

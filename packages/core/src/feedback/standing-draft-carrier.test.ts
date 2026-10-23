@@ -1,7 +1,7 @@
 // REQ-48 BC-9 (docs/proposals/steward-agent.md, "Roll-up", issue → feedback). On dev, 2026-10-21,
 // FB-74 was routed to the draft ISS-284 and read four ways: phase Planned, banner "ISS-284: ship",
 // body "You to take on or drop", Dashboard "Waiting on a person". Nothing takes a draft on by
-// itself, so the item stays triaged and reads stuck, waiting on someone to take the draft on; the
+// itself, so the item stays triaged and reads stuck, waiting on the master to take the draft on; the
 // banner, the body (`forecast/feedback-progress.ts:estimateOf`) and the Dashboard all read this one
 // standing.
 
@@ -54,13 +54,18 @@ describe("FB-74's shape: feedback routed to a draft issue", () => {
     expect(s.times.stuck?.reason).toBe(
       'ISS-284 is a draft, and nothing takes a draft on by itself.',
     );
-    expect(s.waitingOn).toMatchObject({ who: 'Someone', act: 'take on ISS-284', ref: 'ISS-284' });
+    expect(s.waitingOn).toMatchObject({
+      who: "The project's master",
+      act: 'take on ISS-284',
+      ref: 'ISS-284',
+    });
     expect(s.waitingOn.act).not.toBe('ship');
   });
 
-  it('is in nobody’s Needs you: the steward takes it on, or asks', () => {
+  // REQ-68 BC-4, BC-6: a person never works an issue, so the master takes the draft on or drops it
+  it('is in nobody’s Needs you: it waits on the master, never a person', () => {
     expect(s.attentionGroup).not.toBe('needs_you');
-    expect(s.waitingOn.kind).toBe('person');
+    expect(s.waitingOn.kind).toBe('agent');
   });
 });
 
