@@ -5,7 +5,6 @@ import {
   LESSON_ITEM_KINDS,
   LESSON_OUTPUT_KINDS,
   LESSON_RESOLUTIONS,
-  LESSON_RETIRE_REASONS,
   LESSON_SCOPE_KINDS,
   LESSON_STATUSES,
 } from '@forge/contracts/lessons';
@@ -58,12 +57,9 @@ export const lessons = pgTable(
     /** Why it was rejected or retired. */
     decidedReason: text('decided_reason'),
     appliedCount: integer('applied_count').notNull().default(0),
+    // the 30-day unused clock reads this and `approved_at` alone (BC-7); 0522 folded a person's old
+    // `kept_at` into it where that was later, so no row's clock moved when the column went
     lastAppliedAt: timestamp('last_applied_at', { withTimezone: true }),
-    // no code writes these three: a lesson due for retirement is retired by the steward (BC-7), and
-    // `kept_at` restarts the unused clock only where a row holds one
-    retireReason: text('retire_reason', { enum: LESSON_RETIRE_REASONS }),
-    retireProposedAt: timestamp('retire_proposed_at', { withTimezone: true }),
-    keptAt: timestamp('kept_at', { withTimezone: true }),
     // the two links to another lesson are foreign keys on the table (below), not column references:
     // a column referencing its own table makes the row type circular wherever it is inferred first
     supersedesId: uuid('supersedes_id'),
@@ -97,10 +93,6 @@ export const lessons = pgTable(
     reasonChk: check(
       'lessons_decided_reason_chk',
       sql`${t.status} NOT IN ('rejected', 'retired') OR ${t.decidedReason} IS NOT NULL`,
-    ),
-    retireChk: check(
-      'lessons_retire_chk',
-      sql`(${t.retireReason} IS NULL) = (${t.retireProposedAt} IS NULL) AND (${t.retireReason} IS NULL OR ${t.retireReason} IN (${inList(LESSON_RETIRE_REASONS)}))`,
     ),
     appliedChk: check('lessons_applied_chk', sql`${t.appliedCount} >= 0`),
     supersedesFk: foreignKey({
@@ -140,17 +132,12 @@ export const corrections = pgTable(
     lessonId: uuid('lesson_id').references(() => lessons.id, { onDelete: 'set null' }),
     linkedAt: timestamp('linked_at', { withTimezone: true }),
     score: real('score'),
-    // no code writes these two; a correction a row marks dismissed never feeds a lesson
-    dismissedAt: timestamp('dismissed_at', { withTimezone: true }),
-    dismissedBy: uuid('dismissed_by').references(() => users.id, { onDelete: 'set null' }),
   },
   (t) => ({
     sourceUq: uniqueIndex('corrections_source_ref_uq').on(t.source, t.sourceRef),
     projectIdx: index('corrections_project_said_idx').on(t.projectId, t.saidAt),
     lessonIdx: index('corrections_lesson_idx').on(t.lessonId),
-    unlinkedIdx: index('corrections_unlinked_idx')
-      .on(t.projectId)
-      .where(sql`lesson_id IS NULL AND dismissed_at IS NULL`),
+    unlinkedIdx: index('corrections_unlinked_idx').on(t.projectId).where(sql`lesson_id IS NULL`),
     sourceChk: check('corrections_source_chk', sql`${t.source} IN (${inList(CORRECTION_SOURCES)})`),
     itemKindChk: check(
       'corrections_item_kind_chk',
@@ -206,7 +193,7 @@ export const lessonApplications = pgTable(
 );
 
 // an agent stopped guessing about a lesson (REQ-50 BC-5): both sides and the resolution it
-// recommends; raising one holds the lesson, and a person's decision ends it
+// recommends; raising one holds the lesson, and the steward's settlement ends it, with its reason
 export const lessonConfusions = pgTable(
   'lesson_confusions',
   {
@@ -233,6 +220,10 @@ export const lessonConfusions = pgTable(
     decidedAt: timestamp('decided_at', { withTimezone: true }),
     decidedBy: uuid('decided_by').references(() => users.id, { onDelete: 'set null' }),
     resolution: text('resolution', { enum: LESSON_RESOLUTIONS }),
+    /** Why the steward kept, edited or retired the lesson; null on a confusion settled before 0522. */
+    reason: text('reason'),
+    /** When the steward last tried it and left it waiting, so a pass reaches the least recently tried first. */
+    triedAt: timestamp('tried_at', { withTimezone: true }),
   },
   (t) => ({
     openIdx: index('lesson_confusions_open_idx')

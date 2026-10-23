@@ -129,7 +129,7 @@ export async function lesson(
       sql`SELECT id, output_kind, output_ref, wrong_at, wrong_reason FROM lesson_applications WHERE lesson_id = ${row.id} ORDER BY at`,
     ),
     rows<Doc>(
-      sql`SELECT id, kind, decided_at, decided_by, resolution, application_id FROM lesson_confusions WHERE lesson_id = ${row.id} ORDER BY raised_at`,
+      sql`SELECT id, kind, decided_at, decided_by, resolution, reason, application_id FROM lesson_confusions WHERE lesson_id = ${row.id} ORDER BY raised_at`,
     ),
   ]);
   return { ...row, corrections, applications, confusions };

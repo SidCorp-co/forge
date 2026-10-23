@@ -200,7 +200,7 @@ export function FeedbackPage({
                     </section>
                   ) : null}
                   <ClarifyReporter projectId={projectId} f={f} />
-                  <FeedbackQuestions f={f} />
+                  <FeedbackQuestions projectId={projectId} f={f} />
                   <Body projectId={projectId} f={f} />
                   <SimilarFeedback projectId={projectId} slug={slug} fbKey={f.key} />
                   <Reproduction

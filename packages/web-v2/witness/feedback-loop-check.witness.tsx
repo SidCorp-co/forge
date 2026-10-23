@@ -3,7 +3,8 @@
 // that it waits on a triager, its verify bar says a triager answers from the record, and no line says
 // Forge verifies it. Its acts are what core's read answers for a resolved item (core
 // `feedback/read.ts:canOf`): the confirm block, never the triage form beside it. Every question about the
-// item reads on the item itself, open and answered, since there is no Questions page (REQ-33 BC-8).
+// item reads on the item itself, open and answered, since there is no Questions page (REQ-33 BC-8),
+// including one a person raised as a comment on it.
 //
 //   pnpm --filter web-v2 witness witness/feedback-loop-check.witness.tsx --out <dir>
 
@@ -70,7 +71,14 @@ const item = {
   can: CAN,
 } as unknown as FeedbackView;
 
-window.fetch = async () => new Promise<Response>(() => {});
+// a question a person raised as a comment on the item, through the old Questions desk, and its answer
+const RAISED = [
+  { id: "c1", body: "Does the filter also reset on a phone?", parentId: null, author: { id: ANN, name: "Ann", agency: "human" }, createdAt: "2026-10-15T09:00:00.000Z" },
+  { id: "c2", body: "Yes, on iOS Safari too.", parentId: "c1", author: { id: "u-lan", name: "Lan", agency: "human" }, createdAt: "2026-10-15T10:00:00.000Z" },
+].map((c) => ({ ...c, target: { scope: "feedback", id: "f53", key: "FB-53", title: item.title }, intent: c.parentId ? "note" : "question", format: "markdown", decision: null, writtenLang: null, withheld: false, edited: false, updatedAt: c.createdAt, datedAhead: null }));
+const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+window.fetch = async (input: RequestInfo | URL) =>
+  new URL(String(input), "http://forge.test").pathname.endsWith("/feedback/FB-53/comments") ? json({ comments: RAISED, returned: RAISED.length }) : new Promise<Response>(() => {});
 
 const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 client.setQueryData(["feedback-item", P, item.key], { feedback: item });
@@ -109,6 +117,9 @@ function questions(theme: "light" | "dark"): string[] {
   const rows = [...section.querySelectorAll<HTMLElement>("[data-testid=feedback-question]")];
   if (rows.map((r) => r.dataset.status).join(",") !== "open,answered") wrong.push(`the questions read ${rows.map((r) => r.dataset.status).join(",") || "nothing"}, not open then answered`);
   if (!rows[1]?.textContent?.includes("Answer: Status: open")) wrong.push("the answered question does not say what came back");
+  const raised = section.querySelector<HTMLElement>("[data-testid=raised-question]");
+  if (!raised) wrong.push("the question raised on the item through the old desk is not drawn");
+  else if (!raised.querySelector("[data-testid=raised-answer]")?.textContent?.includes("Yes, on iOS Safari too.")) wrong.push("the raised question does not show its answer");
   for (const r of rows) if (r.scrollWidth > r.clientWidth + 0.5) wrong.push(`a question row runs ${r.scrollWidth - r.clientWidth} px past its width`);
   if (document.documentElement.scrollWidth > window.innerWidth) wrong.push(`the page scrolls sideways: ${document.documentElement.scrollWidth} px in a ${window.innerWidth} px window`);
   return wrong;

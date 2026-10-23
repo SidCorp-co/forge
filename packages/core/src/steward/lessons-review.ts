@@ -19,6 +19,7 @@ import { callFastModelObject } from '../integrations/llm/index.js';
 import {
   approveLesson,
   decideConfusion,
+  deferConfusion,
   deferLesson,
   type GatherLesson,
   gatherInput,
@@ -175,19 +176,20 @@ export interface SettleTally {
 }
 
 /**
- * One item left waiting, named in the log with why, and its lesson sent to the back of the next
- * pass's reads, so an item that keeps failing never holds its place ahead of the rest.
+ * One item left waiting, named in the log with why, and sent to the back of the next pass's reads
+ * (`defer`: a proposal by its lesson, a confusion by itself), so an item that keeps failing never
+ * holds its place ahead of the rest.
  */
 async function wait(
   tally: SettleTally,
   projectId: string,
-  lesson: number,
   item: string,
   why: string,
+  defer: () => Promise<void>,
 ): Promise<void> {
   tally.waiting += 1;
   logger.warn({ projectId, item, why }, 'steward: a lesson item waits for the next pass');
-  await deferLesson(projectId, lesson);
+  await defer();
 }
 
 /** A refusal leaves the item waiting; anything else is the pass's failure. */
@@ -215,13 +217,14 @@ async function reviewOne(
   const key = lessonKey(lesson.number);
   const scope = await lessonScopeText(projectId, lesson.scope);
   const answer = await input.review(projectId, { lesson, approved: input.approved, scope });
-  const n = lesson.number;
-  if (!answer) return wait(tally, projectId, n, key, 'the review gave no answer');
+  const back = () => deferLesson(projectId, lesson.number);
+  if (!answer) return wait(tally, projectId, key, 'the review gave no answer', back);
   const edit = answer.verdict === 'edit' ? editOf(answer) : undefined;
   if (edit === null) {
-    return wait(tally, projectId, n, key, 'the review asked an edit it did not name');
+    return wait(tally, projectId, key, 'the review asked an edit it did not name', back);
   }
-  const refused = (err: RefusalError) => wait(tally, projectId, n, key, `refused: ${err.message}`);
+  const refused = (err: RefusalError) =>
+    wait(tally, projectId, key, `refused: ${err.message}`, back);
   if (answer.verdict === 'reject') {
     const done = await refusedWaits(
       () => rejectLesson({ projectId, ref: key, actor, reason: answer.reason }),
@@ -247,8 +250,8 @@ async function settleOne(
   const item = `${lessonKey(confusion.lesson.number)} confusion ${confusion.id}`;
   const scope = await lessonScopeText(projectId, confusion.lesson.scope);
   const answer = await settle(projectId, { confusion, scope });
-  const n = confusion.lesson.number;
-  if (!answer) return wait(tally, projectId, n, item, 'the settlement gave no answer');
+  const back = () => deferConfusion(projectId, confusion.id);
+  if (!answer) return wait(tally, projectId, item, 'the settlement gave no answer', back);
   const done = await refusedWaits(
     () =>
       decideConfusion({
@@ -264,7 +267,7 @@ async function settleOne(
     async (err) => {
       // a confusion settled with its lesson, retired on another confusion this pass, waits for nothing
       if (err.refusals.some((r) => r.code === 'LESSON_CONFUSION_DECIDED')) return;
-      await wait(tally, projectId, n, item, `refused: ${err.message}`);
+      await wait(tally, projectId, item, `refused: ${err.message}`, back);
     },
   );
   if (done) tally.settled += 1;

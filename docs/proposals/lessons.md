@@ -1,7 +1,7 @@
 # Lessons: Forge learns from every correction and stops to ask when a lesson confuses
 
 **Removed when:** REQ-50's eight criteria hold a counting verdict. After that, what holds is the code:
-`packages/contracts/src/lessons.ts`, `packages/core/src/lessons/`, and migration 0510.
+`packages/contracts/src/lessons.ts`, `packages/core/src/lessons/`, and migrations 0510 and 0522.
 
 Requirement REQ-50 r2, BC-1..9. The owner said, 2026-10-21: "learn, but when using it you find a
 confusion, report it so it is handled at once ... without learning, the same errors repeat, which is
@@ -70,7 +70,7 @@ The lesson's lifecycle lives in `lessons`. Its text reaches agents through proje
 
 **Who proposes (BC-2).** The steward's lessons pass (`steward/lessons-pass.ts`, every
 `LESSONS_PASS_MS`, only where the steward is on) reads the project's corrections that are unlinked
-and not dismissed, alongside its proposed and approved lessons. It asks the fast model to do two
+alongside its proposed and approved lessons. It asks the fast model to do two
 things:
 - link each correction that repeats an existing lesson;
 - group the rest. Two or more similar corrections become a proposed lesson, authored by the steward
@@ -82,8 +82,9 @@ the fast model to check the lesson against the corrections it came from, the app
 the agreed or accepted requirements and approved designs in its scope (`steward/lessons-scope.ts`).
 The steward account, which holds `suggestions.approve`, then approves it, edits and approves it, or
 rejects it, each with a reason the kernel keeps. Where the model gives no usable answer, or the
-decision is refused, the proposal stays proposed, is named in the log, and is tried on the next pass:
-nothing is approved by default. No person reviews it. This pass is not a gateway turn: a steward run
+decision is refused, the proposal stays proposed, is named in the log, and goes behind the other
+proposals on the next pass (its `updated_at` moves, `gather.ts:deferLesson`): nothing is approved by
+default, and one that keeps failing never holds its place ahead of the rest. No person reviews it. This pass is not a gateway turn: a steward run
 is about one item, and this pass is about the whole project.
 
 ## 3. Applied lessons per output (BC-4)
@@ -110,7 +111,8 @@ applied once.
   `unclear`, or `wrongly_applied`;
 - both sides, each in one sentence;
 - the recommended resolution: `keep`, `edit` with a new sentence, or `retire`;
-- who raised it and when, who settled it and when, and the settlement.
+- who raised it and when, who settled it and when, the settlement and the steward's reason for it
+  (`reason`), and when the steward last tried it and left it open (`tried_at`).
 
 - **Report.** Agents report one with `POST /api/projects/:id/lessons/:n/confusions` (`project.write`).
   A steward run reports one through its door tool `steward_raise_lesson_confusion`. The Assistant
@@ -123,9 +125,13 @@ applied once.
 - **Settle.** The lessons pass settles each open confusion (`steward/lessons-review.ts`): the fast
   model reads both sides, the recommendation and the requirements and designs in the lesson's scope,
   and the steward keeps the lesson, edits it (its own sentence, or the recommended one), or retires it
-  through `lessons/confusions.ts:decideConfusion`, with a reason the kernel keeps on the move. `keep`
-  and `edit` move held → approved once no other confusion is open on it. With no usable answer the
-  lesson stays held and the confusion is tried on the next pass. The time from report to settlement
+  through `lessons/confusions.ts:decideConfusion`, with a reason kept on the confusion and, for a move,
+  by the kernel. `keep` and `edit` move held → approved once no other confusion is open on it; a
+  retirement settles every confusion still open on the lesson with the same reason. With no usable
+  answer the lesson stays held and the confusion's `tried_at` moves to now (`gather.ts:deferConfusion`):
+  each pass reads the open confusions least recently tried first, so a confusion that keeps failing
+  goes behind the rest, on its own lesson as across lessons, and every one is reached within
+  ⌈W / 10⌉ passes of W waiting. The time from report to settlement
   is the BC-8 figure. No Needs you decision, status row or page carries a lesson or a confusion.
 
 ## 5. A repeat becomes a check (BC-6)
@@ -146,20 +152,56 @@ The issue is a draft, so nothing dispatches it until it is opened.
 - the repeats;
 - the confusions, each with its time to settlement, and the open ones counted from their report.
 
-No route serves it and no screen shows it. No agent reads it yet either: BC-8's "records, for agents
-to read" is met only once an agent's door or prompt carries it.
+**For agents to read.** Each lessons pass records this month's figures and the last month's as the
+knowledge entry `lessons-month-<YYYY-MM>` (`lessons/month.ts:recordLessonsMonths`, written by
+`knowledge/lesson-entries.ts:putLessonsMonthEntry`), kind `lesson`, `injection: on_demand`. That is
+an existing agent read path, unchanged: every run preamble lists the project's `on_demand` slugs
+under "Project guides (fetch on demand)" (`prompt/facts/resolve.ts`), and a run fetches one with
+`forge-runner api projects/<projectId>/knowledge/<slug>`, the REST read
+`GET /api/projects/:id/knowledge/:slug` or the MCP `forge_knowledge` tool. A new read door was not
+added, and the always-injected lessons block was not used, because the figures are for an agent that
+asks, not text every prompt should pay for.
 
-## 7. Migration 0510
+- The body changes only when a figure does (an open confusion is listed with when it was raised, not
+  its hours so far), and an unchanged body is not rewritten, so the entry keeps its vector.
+- A month older than the last turns `injection: none`: out of every preamble, still readable by slug.
+- The knowledge doors refuse a write to it by name (`KNOWLEDGE_LESSON_OWNED`). An entry of another
+  kind already holding the slug is refused by name in the pass, never skipped.
+- The pass reaches a project with a figure in this month or the last (a correction said, a lesson
+  approved, a confusion raised or settled) even when nothing else waits there
+  (`gather.ts:projectsWithLessonWork`).
 
-It creates `corrections`, `lessons`, `lesson_applications` and `lesson_confusions`, and guards
+No route serves the figures to a person and no screen shows them.
+
+## 7. Migrations 0510 and 0522
+
+0510 creates `corrections`, `lessons`, `lesson_applications` and `lesson_confusions`, and guards
 `lessons.status` with the kernel (`forge_guard_status_column`). It seeds the event types
 `mockup.transitioned` and `chat.replied`. The knowledge kind has no database CHECK, so `lesson` needs
 no statement. Every table is new, so no existing row can fail a check.
 
 It also widened `chat_proposals.kind` to `lesson_confusion` and added `lessons.retire_reason`,
-`retire_proposed_at`, `kept_at` and `corrections.dismissed_at`. Since REQ-50 r2 no code writes any
-of them: the CHECK still admits the kind (`db/schema-chat-proposals.ts`), and `kept_at` still
-restarts the unused clock where a row holds one. Dropping them is a migration of its own.
+`retire_proposed_at`, `kept_at` and `corrections.dismissed_at`, `dismissed_by`, all for a person's
+act that REQ-50 r2 removed. 0522 takes them out:
+
+1. **Chat cards.** Each `lesson_confusion` card still pending is settled `declined`, the one settled
+   status that claims no agreement, with the reason in `failure`. `decided_by` is the project's
+   steward account where one was minted; otherwise it stays null and the reason says no steward is
+   named. The kind CHECK then reads `kind IN (CHAT_PROPOSAL_KINDS) OR (kind IN (SETTLED_ONLY_KINDS)
+   AND status <> 'pending')` (`db/schema-chat-proposals.ts`). This is not a full drop of the kind:
+   a card already recorded, failed or declined is history no other kind represents, so a full drop
+   would delete rows. Every new card is written pending, so the CHECK refuses any new one of that
+   kind, keeps the history representable, and deletes nothing. No read serves those rows
+   (`assistant/agreement/store.ts` reads only the kinds a chat holds now).
+2. **The 30-day clock.** It now reads `approved_at` and `last_applied_at` alone. A row whose `kept_at`
+   was later than both has it folded into `last_applied_at`, each named in a NOTICE, so no row's
+   clock moves. Then `retire_reason`, `retire_proposed_at`, `kept_at` and `lessons_retire_chk` go.
+3. **Dismissed corrections.** `dismissed_at` and `dismissed_by` go, and `corrections_unlinked_idx`
+   is rebuilt `WHERE lesson_id IS NULL`. A correction a person dismissed cannot be represented
+   without them (it would feed a lesson again), so the deploy aborts naming each one.
+4. **Confusions** gain `reason` and `tried_at` (section 4).
+
+Each step is idempotent and runs under `lock_timeout`; the file's header carries the rollback.
 
 ## Honest costs
 
@@ -174,6 +216,8 @@ restarts the unused clock where a row holds one. Dropping them is a migration of
   reports a confusion about it.
 - **Every prompt grows.** Each approved lesson is one more line in the run preamble, the checkout
   orientation, the assistant's and the steward's prompts. Retiring unused lessons is the only brake.
+  The monthly figures add two slugs to the run preamble's on-demand list of a project with lesson
+  work, never their text.
 - **A held lesson is absent until the steward settles it.** A confusion withdraws the lesson from
   every prompt at once, so the error it fixed can come back while the gateway is down and the
   confusion waits for the next pass.

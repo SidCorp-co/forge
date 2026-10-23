@@ -29,6 +29,7 @@ import {
   proposeLesson,
   type RetirementDue,
   recordCheckIssue,
+  recordLessonsMonths,
   retireLesson,
   retirementsDue,
 } from '../lessons/index.js';
@@ -240,6 +241,7 @@ async function passProject(projectId: string, now: Date, judges: Judges, tally: 
   await settleLessons(projectId, stewardId, judges, tally);
   tally.retired += await retireDue(projectId, stewardId, now);
   tally.checks += await fileChecks(projectId, stewardId);
+  await recordLessonsMonths(projectId, now);
 }
 
 /** One pass over every project with lesson work whose steward is on. */
@@ -270,7 +272,7 @@ export async function runLessonsPass(
     checks: 0,
     failed: 0,
   };
-  for (const projectId of opts.projectIds ?? (await projectsWithLessonWork())) {
+  for (const projectId of opts.projectIds ?? (await projectsWithLessonWork(now))) {
     if (!(await stewardStanceOf(projectId)).enabled) continue;
     tally.projects += 1;
     try {

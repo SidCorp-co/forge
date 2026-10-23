@@ -207,3 +207,34 @@ describe('a design link, an issue change, a project change and a report save wai
     expect(told).not.toMatch(/[{}"]|urn:forge/);
   });
 });
+
+describe('a lesson confusion card from before 0522 (REQ-50 BC-9)', () => {
+  const insertCard = (status: 'pending' | 'declined') =>
+    rows<{ id: string }>(sql`
+      INSERT INTO chat_proposals (project_id, conversation_id, proposed_to, kind, form, call, summary, status, decided_at)
+      VALUES (${projectId}, ${roomId}, ${w.owner}, 'lesson_confusion', 'tool', '{"name":"forge_lesson_confusion","arguments":{}}'::jsonb,
+              '{"title":"L-1 confusion"}'::jsonb, ${status}, ${status === 'pending' ? null : sql`now()`})
+      RETURNING id`);
+
+  it('is kept settled and served by no read; a pending one is refused by the kind CHECK', async () => {
+    const [kept] = await insertCard('declined');
+    const id = String(kept?.id);
+    expect((await proposals()).map((p) => p.id)).not.toContain(id);
+    const pressed = await say(
+      'owner',
+      'POST',
+      `/api/conversations/${roomId}/proposals/${id}/agree`,
+      {},
+    );
+    expect(codeOf(pressed), JSON.stringify(pressed.json)).toBe('CHAT_PROPOSAL_UNKNOWN');
+    expect(await rows(sql`SELECT id FROM chat_proposals WHERE id = ${id}`)).toHaveLength(1);
+    const refused = await insertCard('pending').then(
+      () => null,
+      (e: unknown) => {
+        const err = e as Error & { cause?: { constraint_name?: string } };
+        return err.cause?.constraint_name ?? err.message;
+      },
+    );
+    expect(refused).toBe('chat_proposals_kind_chk');
+  });
+});

@@ -14,6 +14,7 @@ export {
 } from './decide.js';
 export {
   checksOwed,
+  deferConfusion,
   deferLesson,
   type GatherCorrection,
   type GatherLesson,
@@ -29,6 +30,11 @@ export {
   recordCheckIssue,
   retirementsDue,
 } from './gather.js';
-export { type LessonsMonth, lessonsMonth } from './month.js';
+export {
+  type LessonsMonth,
+  lessonsMonth,
+  lessonsMonthText,
+  recordLessonsMonths,
+} from './month.js';
 export { provideLessonsPorts } from './ports.js';
 export { lessonRoutes } from './routes.js';

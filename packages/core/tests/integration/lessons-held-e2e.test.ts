@@ -85,7 +85,11 @@ describe('on confusion the agent stops, and the steward settles it with no perso
     });
     const afterKeep = await lesson(n);
     expect(afterKeep.status).toBe('approved');
-    expect(afterKeep.confusions[0]).toMatchObject({ resolution: 'keep', decided_by: w.stewardId });
+    expect(afterKeep.confusions[0]).toMatchObject({
+      resolution: 'keep',
+      decided_by: w.stewardId,
+      reason: 'The house style yields to large type for patients.',
+    });
     expect((await moves(afterKeep.id as string)).at(-1)).toEqual({
       to_status: 'approved',
       reason: 'The house style yields to large type for patients.',
@@ -96,9 +100,14 @@ describe('on confusion the agent stops, and the steward settles it with no perso
     // edit: the recommended sentence when the steward names none
     ok(await say('member', 'POST', at(`/lessons/${n}/confusions`), conflictOn(other)), 201);
     await pass({ settle: on(n, settled('edit', 'Narrowed to patient letters.')) });
-    expect(await lesson(n)).toMatchObject({
+    const afterEdit = await lesson(n);
+    expect(afterEdit).toMatchObject({
       status: 'approved',
       sentence: 'Print patient letters in large type.',
+    });
+    expect(afterEdit.confusions[1]).toMatchObject({
+      resolution: 'edit',
+      reason: 'Narrowed to patient letters.',
     });
     expect(await block({ produces: ['issue'], area: 'any' })).toContain(
       'Print patient letters in large type.',
@@ -235,6 +244,56 @@ describe('the steward reaches every waiting item in turn, however many keep fail
     expect((await lesson(good, own.id)).status, `settled within ${within} passes`).toBe('approved');
     for (const n of numbers.slice(0, -1)) expect((await lesson(n, own.id)).status).toBe('held');
   });
+  it('settles a good confusion behind more than a pass of failing confusions on the same lesson', async () => {
+    const { withKernelMarker } = await import('../../src/db/kernel-marker.js');
+    const { db } = await import('../../src/db/client.js');
+    const own = await ownProject();
+    await rows(sql`
+      INSERT INTO lessons (project_id, number, sentence, scope_kind, proposed_by, proposed_agency)
+      VALUES (${own.id}, 1, 'One lesson, many readings.', 'project', ${own.stewardId}, 'agent')`);
+    await withKernelMarker(db, (tx) =>
+      tx.execute(
+        sql`UPDATE lessons SET status = 'approved', approved_at = now() WHERE project_id = ${own.id} AND number = 1`,
+      ),
+    );
+    const sides = (other: string) => ({
+      kind: 'unclear',
+      sides: { lesson: 'It reads one way.', other },
+      recommended: { resolution: 'keep' },
+    });
+    for (let i = 0; i < SETTLED_PER_PASS + 1; i += 1) {
+      ok(
+        await say(
+          'owner',
+          'POST',
+          at('/lessons/1/confusions', own.id),
+          sides(`Never answered ${i}.`),
+        ),
+        201,
+      );
+    }
+    ok(
+      await say('owner', 'POST', at('/lessons/1/confusions', own.id), sides('Answered last.')),
+      201,
+    );
+    const within = Math.ceil((SETTLED_PER_PASS + 2) / SETTLED_PER_PASS);
+    const settle = (input: Doc) =>
+      ((input.confusion as Doc).sides as Doc).other === 'Answered last.'
+        ? settled('keep', 'This reading is the lesson.')
+        : null;
+    const answered = async () =>
+      (await lesson(1, own.id)).confusions.find((c) => c.resolution !== null);
+    for (let n = 0; n < within && !(await answered()); n += 1) {
+      await pass({ settle, project: own.id });
+    }
+    expect(await answered(), `settled within ${within} passes`).toMatchObject({
+      resolution: 'keep',
+      reason: 'This reading is the lesson.',
+    });
+    expect((await lesson(1, own.id)).confusions.filter((c) => c.resolution === null)).toHaveLength(
+      SETTLED_PER_PASS + 1,
+    );
+  });
 });
 
 describe('a repeat, or three corrections, becomes a check in code (BC-6)', () => {
@@ -325,6 +384,74 @@ describe('the steward retires an unused or superseded lesson with a reason, neve
 });
 
 describe('the monthly figures core keeps (BC-8)', () => {
+  it('records each month for agents to read: a knowledge entry a run fetches, named in its preamble', async () => {
+    const own = await ownProject();
+    await correction('Name the ward (1).', { project: own.id });
+    await correction('Name the ward (2).', { project: own.id, source: 'verdict_failed' });
+    await pass({ project: own.id });
+    const month = new Date().toISOString().slice(0, 7);
+    const slug = `lessons-month-${month}`;
+    const read = ok(await say('owner', 'GET', at(`/knowledge/${slug}`, own.id)));
+    const entry = (read.entry ?? read) as Doc;
+    expect(entry).toMatchObject({ kind: 'lesson', injection: 'on_demand' });
+    expect(entry.body).toContain(`Lessons in ${month}`);
+    expect(entry.body).toContain(
+      'Corrections received: 2 (suggestion rejected 1, verdict failed 1)',
+    );
+    expect(entry.body).toContain('Lessons approved: 0');
+    const { loadProjectFactInputs, renderStageFactsText } = await import(
+      '../../src/prompt/facts/resolve.js'
+    );
+    const preamble = async () =>
+      renderStageFactsText(await loadProjectFactInputs(own.id), own.id, 'plan');
+    expect(await preamble()).toContain(`- ${slug}`);
+    // two months on, the month is out of every preamble and its entry stays, readable by slug
+    const later = new Date();
+    later.setUTCDate(1);
+    later.setUTCMonth(later.getUTCMonth() + 2);
+    await pass({ project: own.id, now: later });
+    expect(await preamble()).not.toContain(`- ${slug}`);
+    expect(await preamble()).toContain(`- lessons-month-${later.toISOString().slice(0, 7)}`);
+    const kept = ok(await say('owner', 'GET', at(`/knowledge/${slug}`, own.id)));
+    expect((kept.entry ?? kept) as Doc).toMatchObject({ injection: 'none', body: entry.body });
+    expect(
+      codes(
+        await say('owner', 'PUT', at(`/knowledge/${slug}`, own.id), {
+          title: 'x',
+          body: 'rewritten',
+          kind: 'reference',
+          injection: 'on_demand',
+        }),
+      ),
+    ).toEqual(['KNOWLEDGE_LESSON_OWNED']);
+  });
+
+  it('names the slug, never skips the month, where an entry of another kind already holds it', async () => {
+    const own = await ownProject();
+    await correction('Name the ward.', { project: own.id });
+    const slug = `lessons-month-${new Date().toISOString().slice(0, 7)}`;
+    ok(
+      await say('owner', 'PUT', at(`/knowledge/${slug}`, own.id), {
+        title: 'A guide of my own',
+        body: 'Written by hand.',
+        kind: 'reference',
+        injection: 'on_demand',
+      }),
+    );
+    const { projectsWithLessonWork, recordLessonsMonths } = await import(
+      '../../src/lessons/index.js'
+    );
+    expect(await projectsWithLessonWork(new Date())).toContain(own.id);
+    await expect(recordLessonsMonths(own.id, new Date())).rejects.toThrow(
+      `cannot be recorded as \`${slug}\` in project ${own.id}: a \`reference\` entry already holds that slug`,
+    );
+    const read = ok(await say('owner', 'GET', at(`/knowledge/${slug}`, own.id)));
+    expect((read.entry ?? read) as Doc).toMatchObject({
+      kind: 'reference',
+      body: 'Written by hand.',
+    });
+  });
+
   it('counts the month: corrections by source, approvals, repeats and confusions with time to settlement', async () => {
     const other = (await createTestProject(w.ownerId)).id;
     const sep = (d: number, h = 9) => new Date(Date.UTC(2026, 8, d, h));

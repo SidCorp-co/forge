@@ -3333,6 +3333,13 @@
       "when": 1827878400000,
       "tag": "0520_a_change_request_delivers_every_issue_it_names",
       "breakpoints": true
+    },
+    {
+      "idx": 522,
+      "version": "7",
+      "when": 1828051200000,
+      "tag": "0522_a_lesson_is_settled_by_its_steward_alone",
+      "breakpoints": true
     }
   ]
 }

@@ -15,7 +15,9 @@ export {
   type LessonEntry,
   type LessonEntryMeta,
   lessonEntrySlug,
+  lessonsMonthSlug,
   putLessonEntry,
+  putLessonsMonthEntry,
   selectLessonEntries,
   setLessonEntryInjection,
 } from './lesson-entries.js';

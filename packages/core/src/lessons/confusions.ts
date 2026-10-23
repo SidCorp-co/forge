@@ -229,13 +229,21 @@ export async function decideConfusion(input: {
     }
     await tx
       .update(lessonConfusions)
-      .set({ decidedAt: new Date(), decidedBy: actor.userId, resolution: settle.resolution })
+      .set({
+        decidedAt: new Date(),
+        decidedBy: actor.userId,
+        resolution: settle.resolution,
+        reason: settle.reason,
+      })
       .where(eq(lessonConfusions.id, confusion.id));
     if (settle.resolution === 'retire') {
       if (row.status === 'approved' || row.status === 'held') {
         await retireLessonIn(tx, row, actor, settle.reason);
       }
-      await closeOpenConfusions(tx, row.id, actor.userId, 'retire');
+      await closeOpenConfusions(tx, row.id, actor.userId, {
+        resolution: 'retire',
+        reason: settle.reason,
+      });
       return row.id;
     }
     if (sentence) {

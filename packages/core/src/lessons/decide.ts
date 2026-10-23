@@ -138,16 +138,15 @@ export async function proposeLesson(input: {
       .select({
         id: corrections.id,
         lessonId: corrections.lessonId,
-        dismissed: corrections.dismissedAt,
       })
       .from(corrections)
       .where(and(eq(corrections.projectId, projectId), inArray(corrections.id, wanted)));
-    const free = new Set(found.filter((c) => !c.lessonId && !c.dismissed).map((c) => c.id));
+    const free = new Set(found.filter((c) => !c.lessonId).map((c) => c.id));
     const bad = wanted.filter((c) => !free.has(c));
     if (bad.length > 0) {
       throw refuse(
         'LESSON_CORRECTIONS_INVALID',
-        `a proposal learns from this project's corrections that no lesson holds and nobody dismissed; ${bad.join(', ')} ${bad.length === 1 ? 'is' : 'are'} not one`,
+        `a proposal learns from this project's corrections that no lesson holds yet; ${bad.join(', ')} ${bad.length === 1 ? 'is' : 'are'} not one`,
         '/corrections',
       );
     }
@@ -222,8 +221,9 @@ export async function approveLesson(input: {
         .set({ supersededById: row.id, updatedAt: now })
         .where(eq(lessons.id, old.id));
       if (old.status === 'approved' || old.status === 'held') {
-        await retireLessonIn(tx, old, input.actor, `Superseded by ${lessonKey(row.number)}.`);
-        await closeOpenConfusions(tx, old.id, input.actor.userId, 'retire');
+        const reason = `Superseded by ${lessonKey(row.number)}.`;
+        await retireLessonIn(tx, old, input.actor, reason);
+        await closeOpenConfusions(tx, old.id, input.actor.userId, { resolution: 'retire', reason });
       }
     }
     return row.id;
@@ -295,7 +295,10 @@ export async function retireLesson(input: {
     await lockLessons(tx, input.projectId);
     const row = await lessonIn(tx, input.projectId, input.ref);
     await retireLessonIn(tx, row, input.actor, input.reason);
-    await closeOpenConfusions(tx, row.id, input.actor.userId, 'retire');
+    await closeOpenConfusions(tx, row.id, input.actor.userId, {
+      resolution: 'retire',
+      reason: input.reason,
+    });
     return row.id;
   });
   return movedOf(input.projectId, id);

@@ -24,9 +24,10 @@ const DAY_MS = 86_400_000;
 const GATHER_CORRECTIONS = 40;
 /**
  * Proposals, and confusions, the steward settles in one pass; the rest wait for the next. Each read
- * takes the lessons least recently touched first, and an attempt that settles nothing touches its
- * lesson (`deferLesson`), so it goes to the back: of W waiting, every one is reached within
- * ⌈W / SETTLE_PER_PASS⌉ passes, however many keep failing.
+ * takes the items least recently tried first, and an attempt that settles nothing marks its item
+ * tried (`deferLesson` for a proposal, `deferConfusion` for a confusion), so it goes to the back: of W
+ * waiting, every one is reached within ⌈W / SETTLE_PER_PASS⌉ passes, however many keep failing and
+ * however many of them sit on one lesson.
  */
 const SETTLE_PER_PASS = 10;
 
@@ -61,13 +62,7 @@ export async function gatherInput(
         reason: corrections.reason,
       })
       .from(corrections)
-      .where(
-        and(
-          eq(corrections.projectId, projectId),
-          isNull(corrections.lessonId),
-          isNull(corrections.dismissedAt),
-        ),
-      )
+      .where(and(eq(corrections.projectId, projectId), isNull(corrections.lessonId)))
       .orderBy(corrections.saidAt)
       .limit(GATHER_CORRECTIONS),
     db
@@ -124,7 +119,6 @@ export async function linkRepeats(
           eq(corrections.projectId, projectId),
           eq(corrections.id, link.correction),
           isNull(corrections.lessonId),
-          isNull(corrections.dismissedAt),
         ),
       )
       .returning({ id: corrections.id });
@@ -144,11 +138,11 @@ const replacing = alias(lessons, 'replacing');
 
 /**
  * Each approved lesson the steward now retires (BC-7): superseded by another, or neither applied,
- * approved nor kept in the last `LESSON_UNUSED_DAYS` days. A held lesson waits for its confusion.
+ * nor approved in the last `LESSON_UNUSED_DAYS` days. A held lesson waits for its confusion.
  */
 export async function retirementsDue(projectId: string, now: Date): Promise<RetirementDue[]> {
   const cutoff = new Date(now.getTime() - LESSON_UNUSED_DAYS * DAY_MS);
-  const lastUse = sql`GREATEST(${lessons.approvedAt}, ${lessons.lastAppliedAt}, ${lessons.keptAt})`;
+  const lastUse = sql`GREATEST(${lessons.approvedAt}, ${lessons.lastAppliedAt})`;
   const due = await db
     .select({ number: lessons.number, supersededBy: replacing.number })
     .from(lessons)
@@ -241,7 +235,10 @@ export interface OpenConfusion {
   recommended: { resolution: LessonResolution; sentence: string | null };
 }
 
-/** The confusions open on held lessons, least recently tried lesson first, then oldest raised. */
+/**
+ * The confusions open on held lessons, least recently tried first (`tried_at`, else when it was
+ * raised): one that failed goes behind the rest, on its own lesson as across lessons.
+ */
 export async function openConfusions(projectId: string): Promise<OpenConfusion[]> {
   const against = alias(lessons, 'against');
   const rows = await db
@@ -265,7 +262,10 @@ export async function openConfusions(projectId: string): Promise<OpenConfusion[]
     .innerJoin(lessons, eq(lessons.id, lessonConfusions.lessonId))
     .leftJoin(against, eq(against.id, lessonConfusions.otherLessonId))
     .where(and(eq(lessonConfusions.projectId, projectId), isNull(lessonConfusions.decidedAt)))
-    .orderBy(asc(lessons.updatedAt), asc(lessonConfusions.raisedAt))
+    .orderBy(
+      asc(sql`COALESCE(${lessonConfusions.triedAt}, ${lessonConfusions.raisedAt})`),
+      asc(lessonConfusions.raisedAt),
+    )
     .limit(SETTLE_PER_PASS);
   return rows.map((r) => ({
     id: r.id,
@@ -285,14 +285,31 @@ export async function openConfusions(projectId: string): Promise<OpenConfusion[]
 }
 
 /**
- * An attempt to settle the lesson, or a confusion on it, left it waiting: its `updated_at` moves to
- * now, so the next pass reaches the items behind it first. Its status and text are untouched.
+ * An attempt to settle a proposal left it waiting: its `updated_at` moves to now, so the next pass
+ * reaches the proposals behind it first. Its status and text are untouched.
  */
 export async function deferLesson(projectId: string, number: number): Promise<void> {
   await db
     .update(lessons)
     .set({ updatedAt: new Date() })
     .where(and(eq(lessons.projectId, projectId), eq(lessons.number, number)));
+}
+
+/**
+ * An attempt to settle a confusion left it open: its `tried_at` moves to now, so the next pass reaches
+ * the confusions behind it first, those on the same lesson included.
+ */
+export async function deferConfusion(projectId: string, id: string): Promise<void> {
+  await db
+    .update(lessonConfusions)
+    .set({ triedAt: new Date() })
+    .where(
+      and(
+        eq(lessonConfusions.projectId, projectId),
+        eq(lessonConfusions.id, id),
+        isNull(lessonConfusions.decidedAt),
+      ),
+    );
 }
 
 export interface OwedCheck {
@@ -354,12 +371,18 @@ export async function recordCheckIssue(lessonId: string, issueId: string): Promi
 
 /**
  * The projects a lessons pass has work in: an unheld correction, a proposal to settle, a held lesson
- * whose confusion waits, or an approved lesson to age.
+ * whose confusion waits, an approved lesson to age, or a figure in this month or the last to record
+ * (BC-8): a correction said, a lesson approved or a confusion raised or settled since the last began.
  */
-export async function projectsWithLessonWork(): Promise<string[]> {
+export async function projectsWithLessonWork(now: Date): Promise<string[]> {
+  const since = sqlTimestamp(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1)));
   const rows = await db.execute<{ project_id: string }>(sql`
-    SELECT DISTINCT project_id FROM corrections WHERE lesson_id IS NULL AND dismissed_at IS NULL
+    SELECT DISTINCT project_id FROM corrections WHERE lesson_id IS NULL OR said_at >= ${since}
     UNION
-    SELECT DISTINCT project_id FROM lessons WHERE status IN ('proposed', 'approved', 'held')`);
+    SELECT DISTINCT project_id FROM lessons
+     WHERE status IN ('proposed', 'approved', 'held') OR approved_at >= ${since}
+    UNION
+    SELECT DISTINCT project_id FROM lesson_confusions
+     WHERE raised_at >= ${since} OR decided_at >= ${since}`);
   return [...rows].map((r) => r.project_id);
 }
