@@ -9,6 +9,18 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.289] - 2026-10-23
+
+Workflows page reads at every width; unapproved designs can be withdrawn
+
+### Added
+
+- **A design never approved can be withdrawn.** Its page offers Withdraw design; it leaves Workflows and Needs you, the act is logged, and a design with an approved revision is refused as DESIGN_WITHDRAW_APPROVED.
+
+### Fixed
+
+- **Workflows reads at every width.** Design rows keep their titles above health chips, the map opens fitted beside the list, phones open on the designs with the map a tap away, and titles stay whole.
+
 ## [0.4.0-dev.288] - 2026-10-22
 
 Approvals decisions read cleanly on every screen; steward reopen and batch guards
