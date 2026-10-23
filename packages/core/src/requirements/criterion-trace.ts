@@ -5,7 +5,7 @@
  * kernel's ports, since a requirement is a domain the kernel does not import.
  */
 
-import { and, eq, inArray, isNull } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
 import { issues } from '../db/schema.js';
 import { requirementCriteria, requirements } from '../db/schema-requirements.js';
@@ -54,24 +54,33 @@ export async function traceWordingsOf(tx: Tx, issueId: string): Promise<TraceWor
   };
 }
 
-/** Of `ids`, the wordings of the issue's own requirement that are live, as `REQ-n BC-m`. */
-export async function liveTracedCodesOf(
+/**
+ * Of `ids`, each wording of the issue's own requirement whose BC the requirement still holds, by its
+ * `REQ-n BC-m`: a trace at an earlier wording of a live BC is still that BC's proof, while a wording
+ * of a BC the requirement retired, or of another requirement, is none to lose.
+ */
+export async function tracedCodesOf(
   tx: Tx,
   issueId: string,
   ids: readonly string[],
-): Promise<string[]> {
-  if (ids.length === 0) return [];
-  const rows = await tx
-    .select({ code: requirementCriteria.code, reqSeq: requirements.reqSeq })
-    .from(requirementCriteria)
-    .innerJoin(requirements, eq(requirements.id, requirementCriteria.requirementId))
-    .innerJoin(issues, eq(issues.requirementId, requirements.id))
-    .where(
-      and(
-        eq(issues.id, issueId),
-        inArray(requirementCriteria.id, [...ids]),
-        isNull(requirementCriteria.retiredRevision),
-      ),
-    );
-  return rows.map((r) => `REQ-${r.reqSeq} ${r.code}`).sort();
+): Promise<Map<string, string>> {
+  if (ids.length === 0) return new Map();
+  const rows = (await tx.execute(sql`
+    SELECT rc.id, rc.code, r.req_seq
+      FROM requirement_criteria rc
+      JOIN requirements r ON r.id = rc.requirement_id
+      JOIN issues i ON i.requirement_id = r.id
+     WHERE i.id = ${issueId}
+       AND rc.id IN (${sql.join(
+         ids.map((id) => sql`${id}::uuid`),
+         sql`, `,
+       )})
+       AND EXISTS (SELECT 1 FROM requirement_criteria live
+                    WHERE live.requirement_id = rc.requirement_id AND live.code = rc.code
+                      AND live.retired_revision IS NULL)`)) as unknown as Array<{
+    id: string;
+    code: string;
+    req_seq: number;
+  }>;
+  return new Map(rows.map((r) => [r.id, `REQ-${r.req_seq} ${r.code}`]));
 }

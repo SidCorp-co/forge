@@ -126,12 +126,12 @@ import {
 import {
   changedTracedOf,
   contractAboutRefusal,
-  liveTracedCodesOf,
   plannedRevisionFor,
   requirementIdIn,
   requirementOfIssue,
   rowIn as requirementRowIn,
   requirementStatesOf,
+  tracedCodesOf,
   traceWordingsOf,
 } from './requirements/index.js';
 import { runnerEventsRetention } from './runners/index.js';
@@ -251,7 +251,7 @@ export function provideWorkPorts(): void {
     proposesWorkflowsOf,
     requirementOfIssue,
     traceWordingsOf,
-    liveTracedCodesOf,
+    tracedCodesOf,
     shippedReleaseOf: async (projectId, issueId) =>
       (await shippedReleasesOf(projectId, [issueId])).get(issueId) ?? null,
     landedRecordOf,
