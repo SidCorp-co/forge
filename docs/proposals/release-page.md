@@ -116,8 +116,9 @@ verdict since its issue's last reopen (`release-facts.ts:criteriaAt`) and claims
 - QA records one clip per observable criterion it judges, webm, at most `RELEASE_CLIP_MAX_SECONDS`
   and `RELEASE_CLIP_MAX_BYTES`; the served method (`guides/issue-flow.md`, verdict section) asks
   for it. Against the running build the recorder is `pnpm --filter web-v2 clip <url> --out <dir>`
-  (`packages/web-v2/witness/clip.mjs`): Playwright's own `recordVideo`, signed in outside the
-  recording, writing `<name>.webm` and its last frame as `<name>.png`. Over a stubbed core the
+  (`packages/web-v2/witness/clip.mjs`): Playwright's own `page.screencast`, started once the page
+  has loaded and signed in outside the recording, writing `<name>.webm` and its last frame as
+  `<name>.png`. Over a stubbed core the
   screen witness records one (`pnpm --filter web-v2 witness <entry> --out <dir> --clip`). One over
   either ceiling fails by name, and the ceiling is never raised.
 - It is uploaded as an issue attachment and cited by name in the verdict's `evidence`, with its
@@ -129,7 +130,9 @@ verdict since its issue's last reopen (`release-facts.ts:criteriaAt`) and claims
   clip first, then a picture; a clip opens on the picture its verdict cites beside it
   (`release-page/claims.ts:mediaOf`), else its own first frame, and plays inline, muted, with its
   controls. Where none exists the page says it has no clip (`mediaGap`) rather than borrowing one;
-  What's new shows only what there is to see.
+  What's new shows only what there is to see. A highlight names its requirement by title, never by
+  key. `witness/release-media.witness.tsx` plays a real judge's clip on both surfaces at 390 and
+  1440 px in both themes.
 
 ## What's new (BC-10)
 
