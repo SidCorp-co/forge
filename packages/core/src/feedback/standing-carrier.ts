@@ -32,10 +32,15 @@ export interface CarrierStanding {
   stuck: StuckReading | null;
 }
 
-/** An issue's party as a feedback item's: the runs, the master and the judge are all agents to it. */
+/**
+ * An issue's party as a feedback item's: the runs, the master and the judge are all agents to it,
+ * and so is a person the issue waits on. A person never works an issue (REQ-68 BC-4, BC-6): the
+ * master moves the carrier on, and a decision only a person may take reaches them as the master's
+ * question on the item, never as this wait.
+ */
 const KIND_OF: Record<IssueWaitingKind, FeedbackWaitingKind> = {
-  you: 'person',
-  person: 'person',
+  you: 'agent',
+  person: 'agent',
   run: 'agent',
   master: 'agent',
   judge: 'agent',
@@ -43,6 +48,11 @@ const KIND_OF: Record<IssueWaitingKind, FeedbackWaitingKind> = {
   release: 'issue',
   none: 'none',
 };
+
+/** The carrier waits on a person, which the item reads as its master's to move on. */
+const PERSON_KINDS: ReadonlySet<IssueWaitingKind> = new Set(['you', 'person']);
+
+const MASTER = say('standing.who.projectMaster');
 
 /** The carrier's own wait, said as the item's: who it names, its act on the carrier, its rule. */
 export function carrierWait(c: CarrierStanding | null, carriers: readonly string[]): Owed {
@@ -60,6 +70,18 @@ export function carrierWait(c: CarrierStanding | null, carriers: readonly string
     };
   }
   const w = c.waitingOn;
+  if (PERSON_KINDS.has(w.kind)) {
+    return {
+      wait: wait(
+        KIND_OF[w.kind],
+        MASTER,
+        say('standing.act.moveOn', { key: c.key }),
+        say('feedback.rule.carrierParked', { key: c.key }),
+        { ref: c.key, dueAt: w.dueAt },
+      ),
+      yours: false,
+    };
+  }
   return {
     wait: wait(
       KIND_OF[w.kind],
@@ -72,11 +94,11 @@ export function carrierWait(c: CarrierStanding | null, carriers: readonly string
   };
 }
 
-/** A draft carrier: nothing takes a draft on by itself, so the item waits on someone to (draft_carrier). */
+/** A draft carrier: nothing takes a draft on by itself, so the item waits on the master to (draft_carrier). */
 export const draftCarrierWait = (key: string): Owed => ({
   wait: wait(
-    'person',
-    say('standing.who.someone'),
+    'agent',
+    MASTER,
     say('standing.act.takeOn', { key }),
     say('feedback.rule.draftCarrier', { key }),
     { ref: key },

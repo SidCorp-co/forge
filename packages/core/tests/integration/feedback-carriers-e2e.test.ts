@@ -1,7 +1,7 @@
 /**
  * An issue route names one or more carriers (ISS-265): an item delivered by several issues names every
  * one, each carrier lists it, and its phase and waiting-on read all of them. A draft carrier plans
- * nothing yet, so the item reads triaged and stuck until it is taken on (REQ-48 BC-9, draft_carrier).
+ * nothing yet, so the item reads triaged and stuck, the master's to take on (REQ-48 BC-9, REQ-68 BC-4).
  *
  * @direct-test-of packages/core/src/feedback/standing.ts
  * @direct-test-of packages/core/src/feedback/standing-carrier.ts
@@ -143,12 +143,18 @@ describe('an item delivered by several issues names every one of them', () => {
     });
   });
 
-  it('reads stuck while its carriers are drafts, waiting on someone to take the first one on', async () => {
+  it('reads stuck while its carriers are drafts, waiting on the master to take the first one on', async () => {
     const [a] = carriers.map((x) => x.key);
     const row = await listed(fb);
     expect(row.attentionGroup).toBe('stuck');
-    expect(row.times.stuck).toMatchObject({ code: 'draft_carrier', via: a });
-    expect(row.waitingOn).toMatchObject({ kind: 'person', act: `take on ${a}`, ref: a });
+    // no master serves this project, which is what holds the draft (REQ-68 BC-4)
+    expect(row.times.stuck).toMatchObject({ code: 'nobody_serves' });
+    expect(row.waitingOn).toMatchObject({
+      kind: 'agent',
+      who: "The project's master",
+      act: `take on ${a}`,
+      ref: a,
+    });
   });
 
   it('reads planned once its carriers are taken on', async () => {

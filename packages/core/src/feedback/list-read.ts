@@ -132,17 +132,29 @@ const workflowsOf = (rows: readonly { id: string; flow: string; document: unknow
     ]),
   );
 
-export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> {
-  const routeIssues = await routeIssuesOf(rows);
-  const issueIds = ids([...rows.map((r) => r.issueId), ...[...routeIssues.values()].flat()]);
-  const reqIds = ids(rows.flatMap((r) => [r.requirementId, r.routedRequirementId]));
-  const releaseIds = ids(rows.map((r) => r.releaseRunId));
-  const workflowIds = ids(rows.map((r) => r.workflowId));
-  const suggestionIds = ids(rows.map((r) => r.routedSuggestionId));
+/**
+ * The originals `rows` name that are not among them. A duplicate's phase is its original's, so their
+ * own links are read too, or a duplicate of a shipped item reads planned (FB-188 on dev, 2026-10-23).
+ */
+async function rootsOf(rows: Row[]): Promise<Row[]> {
   const known = new Set(rows.map((r) => r.id));
   const rootIds = ids(rows.map((r) => r.duplicateOf)).filter((id) => !known.has(id));
-  const [prefix, issueRows, reqRows, releaseRows, workflowRows, suggestionRows, rootRows] =
-    await Promise.all([
+  return rootIds.length ? db.select().from(feedback).where(inArray(feedback.id, rootIds)) : [];
+}
+
+export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> {
+  const allRows = [...rows, ...(await rootsOf(rows))];
+  const routeIssues = await routeIssuesOf(allRows);
+  const issueIds = ids([...rows.map((r) => r.issueId), ...[...routeIssues.values()].flat()]);
+  const reqIds = ids([
+    ...rows.map((r) => r.requirementId),
+    ...allRows.map((r) => r.routedRequirementId),
+  ]);
+  const releaseIds = ids(rows.map((r) => r.releaseRunId));
+  const workflowIds = ids(rows.map((r) => r.workflowId));
+  const suggestionIds = ids(allRows.map((r) => r.routedSuggestionId));
+  const [prefix, issueRows, reqRows, releaseRows, workflowRows, suggestionRows] = await Promise.all(
+    [
       activeIssuePrefix(projectId),
       issueIds.length
         ? db
@@ -202,9 +214,8 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
             .leftJoin(requirements, eq(requirements.id, requirementRevisions.requirementId))
             .where(inArray(suggestions.id, suggestionIds))
         : [],
-      rootIds.length ? db.select().from(feedback).where(inArray(feedback.id, rootIds)) : [],
-    ]);
-  const allRows = [...rows, ...rootRows];
+    ],
+  );
   const providerIds = ids(rows.map((r) => r.contractProviderProjectId));
   const providerRows = providerIds.length
     ? await db
@@ -216,7 +227,7 @@ export async function linkedOf(projectId: string, rows: Row[]): Promise<Linked> 
     projectId,
     ids([...reqRows.map((r) => r.id), ...suggestionRows.map((s) => s.requirementId)]),
   );
-  const carrying = new Set([...routeIssues.values()].flat());
+  const carrying = new Set(rows.flatMap((r) => routeIssues.get(r.id) ?? []));
   const atGate = issueRows.some((i) => i.status === AT_RELEASE_GATE && carrying.has(i.id));
   const [owed, release, windowDays, origins, standing] = await Promise.all([
     rows.some((r) => r.status === 'new' || r.status === 'reopened')

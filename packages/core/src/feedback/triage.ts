@@ -9,6 +9,7 @@
 
 import {
   FEEDBACK_SEVERITIES,
+  type FeedbackPhase,
   type FeedbackSeverity,
   type FeedbackTriage,
   type FeedbackTriageEffect,
@@ -46,6 +47,7 @@ import { NO_ROUTE, writeRouteIn } from './route-write.js';
 import {
   carriersNamed,
   decideActRefusal,
+  type Replan,
   refusal,
   routeRuleRefusal,
   routeShapeRefusal,
@@ -203,15 +205,33 @@ function severityAnswerOf(answers: unknown): FeedbackSeverity | null {
     : null;
 }
 
+/**
+ * What a re-route of `row` moves from: its route, and for a merge the root it names with whether an
+ * issue carries both (REQ-66 BC-3). A root that is no item of the project is the route write's to refuse.
+ */
+async function replanOf(t: FeedbackTriage, route: FeedbackTriageRoute | undefined, row: Row) {
+  const replan: Replan = { from: row.route };
+  if (route !== 'duplicate' || !t.duplicateOf) return replan;
+  const root = await rowIn(db, row.projectId, t.duplicateOf);
+  const shared = (await db.execute(sql`
+    SELECT 1 FROM feedback_route_issues mine
+      JOIN feedback_route_issues theirs ON theirs.issue_id = mine.issue_id
+     WHERE mine.feedback_id = ${row.id} AND theirs.feedback_id = ${root.id}
+     LIMIT 1
+  `)) as unknown as unknown[];
+  return { ...replan, root: { key: feedbackKey(root.fbSeq), sharesCarrier: shared.length > 0 } };
+}
+
 /** The checks a triage meets before anything is written: the answers' shape, the route and its carriers. */
 async function earlyRefusal(
   t: FeedbackTriage,
   route: FeedbackTriageRoute | undefined,
   row: Row,
   actor: FeedbackActor,
+  phase: FeedbackPhase,
 ): Promise<Refusal | null> {
   return (
-    triagePhaseRefusal(await phaseOfRow(row.projectId, row), route) ??
+    triagePhaseRefusal(phase, route, await replanOf(t, route, row)) ??
     answersShapeRefusal(t.route, t.answers) ??
     criterionTextRefusal(t.answers) ??
     shortFormRouteRefusal(row.kind, t.answers, t.route) ??
@@ -275,7 +295,8 @@ export async function triageIn(
   const kind = t.kind ?? input.row.kind;
   const route: FeedbackTriageRoute | undefined =
     t.route === 'decline' ? 'decline' : triageRouteOf({ kind, route: t.route, answers: t.answers });
-  const early = await earlyRefusal(t, route, { ...input.row, kind }, actor);
+  const phase = await phaseOfRow(projectId, input.row);
+  const early = await earlyRefusal(t, route, { ...input.row, kind }, actor, phase);
   if (early) return { refusals: [early] };
   if (route === 'decline') return declineTriageIn(tx, { ...input.row, kind }, actor, t.note);
   const read = await criterionAndTarget(tx, { ...input.row, kind }, t.answers);
@@ -351,6 +372,7 @@ export async function triageIn(
     actor,
     channel: input.channel,
     fromSuggestionId,
+    replan: phase === 'planned' && route === 'new_requirement',
   });
   if ('refusals' in written) return { refusals: written.refusals };
   const carriers = written.carriers;

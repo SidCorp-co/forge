@@ -187,13 +187,13 @@ describe('when it is done, or why no date is given', () => {
 describe("FB-74's shape: the body reads the item's own standing", () => {
   const draftCarrier = item({
     phase: 'triaged',
-    waitingOn: waitingOn('person', {
-      who: say('standing.who.someone'),
+    waitingOn: waitingOn('agent', {
+      who: say('standing.who.projectMaster'),
       act: say('standing.act.takeOn', { key: 'ISS-284' }),
       rule: say('feedback.rule.draftCarrier', { key: 'ISS-284' }),
     }),
     times: {
-      actClass: 'person_decide',
+      actClass: 'master_take',
       since: asOf,
       dueAt: null,
       stuck: {
@@ -204,7 +204,7 @@ describe("FB-74's shape: the body reads the item's own standing", () => {
         says: { reason: say('standing.stuck.draftCarrier', { key: 'ISS-284' }) },
       },
       carriedBy: null,
-      basis: 'stuck|person',
+      basis: 'stuck|agent',
     },
   });
 
@@ -212,7 +212,7 @@ describe("FB-74's shape: the body reads the item's own standing", () => {
     const e = estimate(draftCarrier, line({ delivery: delivery(paused) }));
     expect(e).toMatchObject({ kind: 'none', reason: 'waits' });
     expect(e.kind === 'none' && e.waits).toEqual({
-      who: say('standing.who.someone'),
+      who: say('standing.who.projectMaster'),
       act: say('standing.act.takeOn', { key: 'ISS-284' }),
       reason: say('standing.stuck.draftCarrier', { key: 'ISS-284' }),
     });
