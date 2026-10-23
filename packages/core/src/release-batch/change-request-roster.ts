@@ -3,7 +3,7 @@
 // reads which requests a roster ships and the order a release keeps; `change-request-merge.ts` merges.
 
 import type { ChangeRequestState, ReleaseChangeRequest } from '@forge/contracts/releases';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
   type ChangeRequestHost,
@@ -187,6 +187,14 @@ export function mergeStepsOf(metadata: unknown): ReleaseMergeStep[] | null {
   const steps = (metadata as { changeRequests?: unknown } | null)?.changeRequests;
   return Array.isArray(steps) ? (steps as ReleaseMergeStep[]) : null;
 }
+
+/**
+ * `mergeStepsOf` in SQL: the run is a change-request release. It runs no job and holds no session
+ * while it waits on the owner's accept and the master's merges, so only its settle or its abort
+ * ends it, never a sweep reading it as orphaned (dev 2026-10-23: two cuts cancelled at four minutes).
+ */
+export const releaseEndsRun = (metadata: SQL): SQL =>
+  sql`(coalesce(jsonb_typeof(${metadata} -> 'changeRequests'), '') = 'array')`;
 
 /** One link between an issue and a change request on this project, as a release page reads it. */
 export interface ChangeRequestLinkRow {

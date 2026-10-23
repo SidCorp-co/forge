@@ -173,7 +173,7 @@ export {
   releaseRunClaims,
   returnTakenClaims,
 } from './release-claim.js';
-export { closedAtOf, reopenedAtOf, shipsWithdrawnOf } from './release-evidence.js';
+export { closedAtOf, reopenedAtOf, shipsWithdrawnOf, stoodAtOf } from './release-evidence.js';
 export { issuesMissingReleaseRecord } from './release-record-required.js';
 export {
   type IssueCreateInput,

@@ -8,10 +8,13 @@ import { type ReleaseNaming, ReleaseNamingSchema } from '@forge/contracts/releas
 import { and, asc, desc, eq, isNotNull, isNull, ne, notInArray } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { pipelineRuns, releaseDraftNamings } from '../db/schema.js';
+import { stoodAtOf } from '../issues/index.js';
 import { loadProjectAccess } from '../lib/authz.js';
+import { logger } from '../lib/logger.js';
 import { requireHeld } from '../permissions/index.js';
 import { writeRunMetadata } from '../pipeline/index.js';
 import { draftedVersion } from './draft-version.js';
+import { RELEASE_GATE_STATUS } from './gate.js';
 import { refuseRelease } from './refuse.js';
 
 export interface StoredNaming extends ReleaseNaming {
@@ -149,9 +152,29 @@ export async function nameReleaseAs(
 }
 
 /**
+ * The draft's name where it was written while an issue of `roster` waited at the gate, else null. A
+ * name describes what waited when it was written: one written before every issue of the cut arrived
+ * named a roster that left the gate uncut (catalog-api 2026-10-23: release records shipped it under
+ * no version, and a cut a week on took its name).
+ */
+async function namingOfRoster(
+  tx: Tx,
+  pending: typeof releaseDraftNamings.$inferSelect,
+  cut: { projectId: string; version: string; runId: string; roster: string[] },
+) {
+  const waited = await stoodAtOf(tx, cut.roster, RELEASE_GATE_STATUS, pending.namedAt);
+  if (waited.size > 0) return pending;
+  logger.info(
+    { projectId: cut.projectId, runId: cut.runId, version: cut.version, name: pending.name },
+    'release naming: the draft was named before any issue this cut carries reached the gate, so the cut does not carry it',
+  );
+  return null;
+}
+
+/**
  * Gives the run the cut just opened as `version` its name, inside the cut's transaction: the one the
- * cut was handed, else the one its draft was given, else the name of the attempt it re-cuts. The
- * draft's row goes either way, consumed or overridden.
+ * cut was handed, else the one its draft was given for this roster, else the name of the attempt it
+ * re-cuts. The draft's row goes either way, consumed, overridden or outlived.
  */
 export async function carryNaming(
   tx: Tx,
@@ -161,9 +184,11 @@ export async function carryNaming(
     runId: string;
     given: ReleaseNaming | null;
     by: string;
+    roster: string[];
   },
 ): Promise<void> {
-  const pending = await pendingNaming(cut.projectId, cut.version, tx);
+  const drafted = await pendingNaming(cut.projectId, cut.version, tx);
+  const pending = drafted && !cut.given ? await namingOfRoster(tx, drafted, cut) : null;
   const earlier =
     cut.given || pending ? null : await runCutAs(cut.projectId, cut.version, tx, cut.runId);
   const stamp = cut.given
@@ -178,7 +203,7 @@ export async function carryNaming(
         ? { naming: (earlier.metadata as { naming: StoredNaming }).naming }
         : null;
   if (stamp) await writeRunMetadata(cut.runId, { merge: stamp, touch: false }, tx);
-  if (pending) await tx.delete(releaseDraftNamings).where(eq(releaseDraftNamings.id, pending.id));
+  if (drafted) await tx.delete(releaseDraftNamings).where(eq(releaseDraftNamings.id, drafted.id));
 }
 
 /**

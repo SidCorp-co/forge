@@ -6,6 +6,7 @@ export {
   parseDecision,
 } from './approvals.js';
 export { admitChangeRequestMerge } from './change-request-merge.js';
+export { releaseEndsRun } from './change-request-roster.js';
 export {
   registerChangeRequestSettle,
   settleChangeRequestRelease,
