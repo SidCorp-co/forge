@@ -1,1 +1,0 @@
-**A release can ship by merging its change requests.** With `release.changeRequests`, accepting a release lets the master merge its merge requests in order; earlier merges are refused, and the release page and Approvals show each request.
