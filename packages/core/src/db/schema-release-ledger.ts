@@ -86,7 +86,8 @@ export const releaseApprovals = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
     requestedAt: timestamp('requested_at', { withTimezone: true }).notNull().defaultNow(),
-    evidenceEnvironment: text('evidence_environment').notNull(),
+    /** Null on a change-request release, whose evidence is its change requests' heads (REQ-63). */
+    evidenceEnvironment: text('evidence_environment'),
     evidenceCommit: text('evidence_commit').notNull(),
     evidenceReading: text('evidence_reading').notNull(),
     note: text('note'),

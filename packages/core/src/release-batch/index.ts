@@ -5,6 +5,11 @@ export {
   decideApprovalOfVersion,
   parseDecision,
 } from './approvals.js';
+export { admitChangeRequestMerge } from './change-request-merge.js';
+export {
+  registerChangeRequestSettle,
+  settleChangeRequestRelease,
+} from './change-request-settle.js';
 export { registerReleaseBatchClaimSubscriber } from './claim-subscriber.js';
 export {
   activeCoolifyIntegrations,

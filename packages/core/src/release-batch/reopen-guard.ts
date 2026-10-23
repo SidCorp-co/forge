@@ -92,9 +92,11 @@ export async function stewardReleaseFacts(
   const where =
     declared?.kind === 'gated'
       ? `This project has a production environment, \`${declared.production.name}\`: its running build is what production serves, and a release batch deploys there and runs the release's checks.`
-      : declared?.kind === 'no-release'
-        ? `This project declares no production environment: its running build is each issue's landing${declared.defaultBranch ? ` on \`${declared.defaultBranch}\`` : ''}.`
-        : `This project's release target is not declared${declared ? `: ${declared.reason}` : ''}.`;
+      : declared?.kind === 'change-requests'
+        ? `This project deploys nothing and releases by merging its change requests${declared.defaultBranch ? ` into \`${declared.defaultBranch}\`` : ''}: a release is cut naming the issues, the owner approves it, and the master merges each request in the declared order; nothing merges before the approval.`
+        : declared?.kind === 'no-release'
+          ? `This project declares no production environment: its running build is each issue's landing${declared.defaultBranch ? ` on \`${declared.defaultBranch}\`` : ''}.`
+          : `This project's release target is not declared${declared ? `: ${declared.reason}` : ''}.`;
   const owes = verdictsRequiredOf(document?.document.delivery)
     ? 'Its delivery policy owes a counting verdict on every criterion before release (delivery.verdictsRequired: true).'
     : 'Its delivery policy owes no verdict at awaiting_release (delivery.verdictsRequired: false): criteria are judged on the build the release ships, by the judge that follows the release, so a missing verdict or proof at the gate is not a reason to send an issue back.';

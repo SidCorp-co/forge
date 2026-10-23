@@ -9,6 +9,22 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.294] - 2026-10-23
+
+Long workflow design titles wrap in full instead of being cut
+
+### Fixed
+
+- **A design's whole title shows in Workflows.** A long title wraps onto a second line instead of being cut to an ellipsis, at phone and desktop width.
+
+## [0.4.0-dev.293] - 2026-10-23
+
+A release on a change-request host is accepted, then its merge requests merge in order
+
+### Added
+
+- **A release can ship by merging its change requests.** With `release.changeRequests`, accepting a release lets the master merge its merge requests in order; earlier merges are refused, and the release page and Approvals show each request.
+
 ## [0.4.0-dev.292] - 2026-10-23
 
 A decision whose until is a sentence holds until the item changes

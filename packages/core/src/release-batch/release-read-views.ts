@@ -27,6 +27,11 @@ import { say } from '@forge/contracts/said';
 import { nobodyWaits } from '@forge/contracts/standing';
 import type { ReleaseAttemptRow } from '../db/schema-release-ledger.js';
 import type { ApprovalView } from './approvals.js';
+import {
+  type ChangeRequestLinkRow,
+  changeRequestViews,
+  type ReleaseMergeStep,
+} from './change-request-roster.js';
 import type { RecordedVerification } from './channel.js';
 import { gapOf, releaseChangesOf, surfacesOf } from './landing-surfaces.js';
 import { criteriaAt, type IssueFact, type ReleaseFacts } from './release-facts.js';
@@ -62,6 +67,8 @@ export interface Part {
   continuedAs: ReleaseContinuation | null;
   /** The name and summary written when it was cut (`naming.ts`); null on a draft and until written. */
   naming: ReleaseNaming | null;
+  /** The change requests it merges, in its order (REQ-63); null on a release that deploys and on a draft. */
+  mergeSteps: ReleaseMergeStep[] | null;
 }
 
 export interface Shared {
@@ -76,6 +83,8 @@ export interface Shared {
   contentLanguage: string;
   /** The production binding's provider as a person reads it, or `null` where none is bound. */
   provider: string | null;
+  /** Every change request linked to an issue these releases carry (REQ-63 BC-5). */
+  changeRequestLinks: readonly ChangeRequestLinkRow[];
 }
 
 const iso = (d: Date | null) => (d ? d.toISOString() : null);
@@ -169,13 +178,25 @@ function headOf(p: Part): string | null {
   );
 }
 
-/** Each issue's criteria as this release counts them: on its build (`criteriaAt`). */
+/** Each issue's criteria as this release counts them: on its build (`criteriaAt`), which on a
+ *  release that merges change requests is the head of the request delivering it. */
 function criteriaOf(p: Part, s: Shared, issue: IssueFact) {
-  return criteriaAt(issue, releaseBuildOf(p.state, headOf(p)), s.facts.judge);
+  const head = p.mergeSteps?.find((step) => step.issueIds.includes(issue.id))?.headSha;
+  return criteriaAt(issue, releaseBuildOf(p.state, head ?? headOf(p)), s.facts.judge);
+}
+
+/** The change request shown beside each issue this release carries. */
+function changeRequestsOf(p: Part, s: Shared) {
+  const ids = new Set(p.issueIds);
+  return changeRequestViews(
+    s.changeRequestLinks.filter((l) => ids.has(l.issueId)),
+    p.mergeSteps,
+  );
 }
 
 function contentsOf(p: Part, s: Shared): ReleaseContentGroup[] {
   const groups = new Map<string | null, ReleaseContentGroup>();
+  const requests = changeRequestsOf(p, s);
   for (const id of p.issueIds) {
     const issue = s.facts.issues.get(id);
     if (!issue) continue;
@@ -191,6 +212,7 @@ function contentsOf(p: Part, s: Shared): ReleaseContentGroup[] {
       title: issue.title,
       status: issue.status,
       proof: proofOf(totalsOf(criteriaOf(p, s, issue))),
+      changeRequest: requests.get(id) ?? null,
     });
     groups.set(at, group);
   }
@@ -353,6 +375,7 @@ function issueViews(
   waiting: ReleaseSummary['waitingOn'],
   landings: ReadonlyMap<string, IssueLandingReading>,
 ): ReleaseIssueView[] {
+  const requests = changeRequestsOf(p, s);
   return p.issueIds.flatMap((id) => {
     const i = s.facts.issues.get(id);
     if (!i) return [];
@@ -374,6 +397,7 @@ function issueViews(
         surfaces: surfacesOf(landing),
         landing,
         unclassified: gapOf(landing) !== null,
+        changeRequest: requests.get(id) ?? null,
       },
     ];
   });

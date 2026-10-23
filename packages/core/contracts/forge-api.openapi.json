@@ -42740,6 +42740,16 @@
               "schema": {
                 "additionalProperties": false,
                 "properties": {
+                  "changeRequests": {
+                    "items": {
+                      "exclusiveMinimum": 0,
+                      "maximum": 9007199254740991,
+                      "type": "integer"
+                    },
+                    "maxItems": 50,
+                    "minItems": 1,
+                    "type": "array"
+                  },
                   "issueIds": {
                     "items": {
                       "format": "uuid",
@@ -43073,7 +43083,6 @@
                       }
                     },
                     "required": [
-                      "environment",
                       "commit",
                       "reading"
                     ],

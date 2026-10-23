@@ -10,12 +10,13 @@
  * change under review, not a unit of work.
  */
 
-import { and, eq, inArray, isNull, lte, or, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, lte, notInArray, or, sql } from 'drizzle-orm';
 import { db, type Tx } from '../../db/client.js';
 import {
   type ChangeRequestHost,
   type ProjectedCheckRun,
   type ProjectedReview,
+  repoPullRequestIssues,
   repoPullRequests,
 } from '../../db/schema-repo-projection.js';
 import { forgeReads } from '../index.js';
@@ -34,6 +35,8 @@ export interface PullRequestPayload {
   pull_request?: {
     number?: number;
     title?: string;
+    /** The request's description: every issue key it names is an issue the request delivers (REQ-63 BC-4). */
+    body?: string | null;
     html_url?: string;
     state?: string;
     draft?: boolean;
@@ -127,7 +130,11 @@ export async function applyPullRequestEvent(
   const baseSha = pr?.base?.sha;
   if (!pr || !number || !headRef || !headSha || !baseRef || !baseSha) return 0;
 
-  const issueId = await forgeReads().issueForHeadRef(ctx.projectId, headRef);
+  const links = await forgeReads().issuesForChangeRequest({
+    projectId: ctx.projectId,
+    headRef,
+    description: pr.body ?? null,
+  });
   const updatedAt = pr.updated_at ? new Date(pr.updated_at) : null;
 
   const sameTarget = sql`${repoPullRequests.headSha} = excluded.head_sha AND ${repoPullRequests.baseRef} = excluded.base_ref`;
@@ -138,7 +145,6 @@ export async function applyPullRequestEvent(
       projectId: ctx.projectId,
       bindingId: ctx.bindingId,
       host: ctx.host ?? 'github',
-      issueId,
       number,
       repoFullName: payload.repository?.full_name ?? '',
       title: pr.title ?? '',
@@ -156,7 +162,6 @@ export async function applyPullRequestEvent(
     .onConflictDoUpdate({
       target: [repoPullRequests.bindingId, repoPullRequests.number],
       set: {
-        issueId: sql`excluded.issue_id`,
         title: sql`excluded.title`,
         htmlUrl: sql`excluded.html_url`,
         state: sql`excluded.state`,
@@ -182,7 +187,39 @@ export async function applyPullRequestEvent(
           : sql`${repoPullRequests.payloadUpdatedAt} IS NULL OR excluded.payload_updated_at IS NULL OR excluded.payload_updated_at >= ${repoPullRequests.payloadUpdatedAt}`,
     })
     .returning({ id: repoPullRequests.id });
+  for (const row of rows) await writeIssueLinks(row.id, links);
   return rows.length;
+}
+
+/**
+ * The issues a change request delivers, rewritten whole from the delivery that just landed: a key
+ * taken out of its description, or a branch renamed, unlinks the issue (REQ-63 BC-4).
+ */
+async function writeIssueLinks(
+  pullRequestId: string,
+  links: ReadonlyArray<{ issueId: string; linkedBy: 'head-ref' | 'description' }>,
+): Promise<void> {
+  await db.transaction(async (tx) => {
+    const keep = links.map((l) => l.issueId);
+    await tx
+      .delete(repoPullRequestIssues)
+      .where(
+        keep.length === 0
+          ? eq(repoPullRequestIssues.pullRequestId, pullRequestId)
+          : and(
+              eq(repoPullRequestIssues.pullRequestId, pullRequestId),
+              notInArray(repoPullRequestIssues.issueId, keep),
+            ),
+      );
+    if (links.length === 0) return;
+    await tx
+      .insert(repoPullRequestIssues)
+      .values(links.map((l) => ({ pullRequestId, issueId: l.issueId, linkedBy: l.linkedBy })))
+      .onConflictDoUpdate({
+        target: [repoPullRequestIssues.pullRequestId, repoPullRequestIssues.issueId],
+        set: { linkedBy: sql`excluded.linked_by` },
+      });
+  });
 }
 
 /** The stored row a `check_run` delivery is about, by the PRs it names or by its head. */

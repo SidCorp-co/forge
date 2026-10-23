@@ -47,10 +47,14 @@ const record = (flow: string, title: string, template: string, steps: number, h 
   health: h,
 });
 
-/** The designs whose rows carried the most chips on dev.288, beside plain ones. */
+/** dev.290's longest design title, which a judge saw cut to "…arou…" at both widths (ISS-646, REQ-17 BC-29). */
+const LONG = "Core components: doors, domains and adapters around the kernel";
+
+/** The designs whose rows carried the most chips on dev.288, beside plain ones and the longest title. */
 const RECORDS = [
   record("system-context", "Forge in context", "system-context", 19, health({ wrong: 14, not_in_design: 15, upcoming: 2 }, 20)),
   record("kernel-view", "Core components: the kernel view", "system-context", 10),
+  record("core-components", LONG, "system-context", 39),
   record("requirement-to-delivery", "Requirement to delivery", "operational-flow", 40, health({ wrong: 30, not_in_design: 18, upcoming: 25 }, 36)),
   record("issue-delivery", "Issue to release", "operational-flow", 38, health({ wrong: 25, upcoming: 60 }, 11)),
   record("steward-handoffs", "Steward at handoffs", "operational-flow", 22),
@@ -161,6 +165,15 @@ function titlesFirst(): string[] {
     const chips = row.querySelector("[data-testid=health-summary]")?.getBoundingClientRect();
     if (t && chips && chips.top < t.top - 0.5) wrong.push(`"${name}"'s chips sit above its title`);
   }
+  // every title reads whole, wrapping where it must: nothing is cut to an ellipsis (REQ-17 BC-29)
+  for (const r of RECORDS) {
+    const name = r.document.title;
+    // the title and every box holding only it: any of them narrower than its text cuts the title
+    const holders = [...document.querySelectorAll<HTMLElement>("[data-testid=workflow-row] span")].filter((x) => x.textContent === name);
+    const cut = holders.find((x) => x.scrollWidth > x.clientWidth + 0.5);
+    if (holders.length === 0) wrong.push(`no row draws the title "${name}"`);
+    else if (cut) wrong.push(`"${name}" is cut: ${Math.round(cut.clientWidth)} px of its ${Math.round(cut.scrollWidth)} show`);
+  }
   return wrong;
 }
 
@@ -218,7 +231,7 @@ window.__witness = {
   stages: phone
     ? [
         { name: "list-light", run: async () => (theme("light"), await settle(), [...phoneList(), ...titlesFirst()]) },
-        { name: "list-dark", run: async () => (theme("dark"), await settle(), phoneList()) },
+        { name: "list-dark", run: async () => (theme("dark"), await settle(), [...phoneList(), ...titlesFirst()]) },
         { name: "map-light", run: async () => (theme("light"), showMap(), await settle(1200), phoneMap()) },
         { name: "map-dark", run: async () => (theme("dark"), await settle(), phoneMap()) },
       ]

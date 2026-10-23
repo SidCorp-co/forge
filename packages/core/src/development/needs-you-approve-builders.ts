@@ -11,7 +11,13 @@ import {
   type ReleaseCriteriaTotals,
 } from '@forge/contracts/releases';
 import type { AttentionRow } from './needs-you.js';
-import { answer, type Built, clip, filled } from './needs-you-decision-builders.js';
+import {
+  answer,
+  type Built,
+  clip,
+  type DecisionBody,
+  filled,
+} from './needs-you-decision-builders.js';
 
 export function revisionDecision(
   row: AttentionRow,
@@ -113,16 +119,67 @@ export function agreeDecision(
   };
 }
 
+/** A release's change requests, each once, in the order it merges them (REQ-63 BC-5). */
+export type ReleaseDecisionRequests = NonNullable<DecisionBody['changeRequests']>;
+
+export function changeRequestsOfContents(
+  contents: readonly ReleaseContentGroup[],
+): ReleaseDecisionRequests {
+  const byLabel = new Map<string, ReleaseDecisionRequests[number]>();
+  for (const issue of contents.flatMap((g) => g.issues)) {
+    const cr = issue.changeRequest;
+    if (!cr) continue;
+    const held = byLabel.get(cr.label) ?? {
+      label: cr.label,
+      url: cr.url,
+      state: cr.state,
+      order: cr.order,
+      issues: [],
+    };
+    held.issues.push(issue.key);
+    byLabel.set(cr.label, held);
+  }
+  return [...byLabel.values()].sort(
+    (a, b) =>
+      (a.order ?? Number.MAX_SAFE_INTEGER) - (b.order ?? Number.MAX_SAFE_INTEGER) ||
+      a.label.localeCompare(b.label, 'en', { numeric: true }),
+  );
+}
+
+/** What a release decision is built from, read off the release's summary. */
+export interface ReleaseFacts {
+  runId: string | null;
+  failing: number;
+  total: number;
+  changeRequests: ReleaseDecisionRequests;
+}
+
+export function releaseFactsOf(r: {
+  runId: string | null;
+  criteria: ReleaseCriteriaTotals;
+  contents: readonly ReleaseContentGroup[];
+}): ReleaseFacts {
+  return {
+    runId: r.runId,
+    failing: r.criteria.failing,
+    total: r.criteria.total,
+    changeRequests: changeRequestsOfContents(r.contents),
+  };
+}
+
 export function releaseDecision(
   row: AttentionRow,
   area: NeedsYouAreaKey,
   projectId: string,
-  release: { runId: string; failing: number; total: number },
+  release: ReleaseFacts & { runId: string },
   approvalId: string,
 ): Built {
   const params = { projectId: projectId, runId: release.runId, approvalId };
   const path = filled('release.decide', params);
   const clean = release.failing === 0;
+  // a release that merges change requests is accepted for its merges, not for a deploy (REQ-63)
+  const merges = release.changeRequests.filter((c) => c.order !== null);
+  const order = merges.map((c) => c.label).join(', ');
   return {
     questionId: null,
     decision: {
@@ -132,7 +189,10 @@ export function releaseDecision(
       key: row.key,
       title: clip(row.title, 500),
       opens: { kind: 'release', key: row.key },
-      question: 'Approve this release for production, or return it to the master?',
+      question:
+        merges.length > 0
+          ? `Accept this release, so the master merges ${order} in that order, or return it to the master?`
+          : 'Approve this release for production, or return it to the master?',
       recommended: {
         answerId: clean ? 'approve' : 'return',
         why: clean
@@ -149,7 +209,10 @@ export function releaseDecision(
           path,
           body: { decision: 'approve' },
           needsReason: true,
-          effect: 'The release may go to production.',
+          effect:
+            merges.length > 0
+              ? `The master merges ${clip(order, 200)} in that order; nothing merges before.`
+              : 'The release may go to production.',
           recommended: clean,
         }),
         answer({
@@ -160,11 +223,15 @@ export function releaseDecision(
           body: { decision: 'return' },
           needsReason: true,
           declines: true,
-          effect: 'The master is told why and does not take it to production.',
+          effect:
+            merges.length > 0
+              ? 'The master is told why and merges nothing.'
+              : 'The master is told why and does not take it to production.',
           recommended: !clean,
         }),
       ],
       touchedAt: row.touchedAt,
+      ...(release.changeRequests.length > 0 ? { changeRequests: release.changeRequests } : {}),
     },
   };
 }

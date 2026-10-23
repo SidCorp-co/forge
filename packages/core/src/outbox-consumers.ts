@@ -29,6 +29,7 @@ import {
 import { registerLiveReadingInvalidation } from './projects/index.js';
 import { registerQuestionSuggest } from './questions/index.js';
 import {
+  registerChangeRequestSettle,
   registerReleaseApprovalWake,
   registerReleaseBatchClaimSubscriber,
 } from './release-batch/index.js';
@@ -54,6 +55,7 @@ export function registerOutboxConsumers(): void {
   registerPausedRunWedgeResolve();
   registerReleaseBatchClaimSubscriber();
   registerReleaseApprovalWake();
+  registerChangeRequestSettle();
   registerReleaseHighlightsRefresh();
   registerMemoryIndexer();
   registerMemoryReconcileTrigger();

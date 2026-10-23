@@ -21,6 +21,10 @@ vi.mock('../issues/index.js', () => ({
   mergedCommitShaSchema: z.string(),
   recordIssueMerge: async () => ({ wrote: true }),
 }));
+vi.mock('../release-batch/index.js', () => ({
+  admitChangeRequestMerge: async () => ({ kind: 'free' }),
+  settleChangeRequestRelease: async () => ({ settled: false }),
+}));
 vi.mock('../lib/authz.js', () => ({ loadProjectAccess: async () => ({}) }));
 vi.mock('../permissions/index.js', () => ({ requireHeld: () => {} }));
 vi.mock('../middleware/auth.js', () => ({

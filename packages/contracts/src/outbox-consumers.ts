@@ -46,7 +46,7 @@ export const OUTBOX_CONSUMERS = {
 	"runner.provisionRequested": ["ws-broadcast"],
 	"runner.provisionStatus": ["ws-broadcast"],
 	"source.pushed": ["ecosystem-builder", "live-reading"],
-	"source.merged": ["issue-merge-stamp"],
+	"source.merged": ["issue-merge-stamp", "release-merge-settle"],
 	"source.reviewed": ["review-note"],
 	"integration.changed": ["ws-broadcast"],
 	"workflow.designDecided": ["master-wake", "first-requirements"],

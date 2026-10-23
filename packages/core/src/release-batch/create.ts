@@ -17,7 +17,9 @@ import { logger } from '../lib/logger.js';
 import { isRefusal } from '../lib/refusal.js';
 import type { OneShotRunSpec } from '../pipeline/index.js';
 import { closeRunIfOneShot, insertAndEnqueueJob, insertOneShotRun } from '../pipeline/index.js';
+import { requestApproval } from './approvals.js';
 import { admitRoster } from './blockers.js';
+import { label, mergeOrderOf, openChangeRequestsOf } from './change-request-roster.js';
 import { closeVerification, type ReleaseVerification, resolveReleasePlan } from './channel.js';
 import { claimRoster } from './claim-conflicts.js';
 import { RELEASE_GATE_STATUS } from './gate.js';
@@ -38,17 +40,21 @@ interface CreateReleaseBatchArgs {
   userId: string;
   /** The release's name and summary, when the cut writes them (REQ-40 BC-14). */
   naming?: ReleaseNaming | null;
+  /** The order a release that merges change requests merges them in, by number (REQ-63). */
+  changeRequests?: number[] | undefined;
 }
 
 export interface CreateReleaseBatchResult {
   runId: string;
-  jobId: string;
+  /** The release job; null on a release that merges change requests, which runs no job. */
+  jobId: string | null;
   issueIds: string[];
   gateStatus: IssueStatus;
   /** The version this release cut. Its identity from the instant its row existed. */
   version: string;
-  /** When this batch must have an owner, or it is cancelled and its roster handed back. */
-  ownerDeadlineAt: string;
+  /** When this batch must have an owner, or it is cancelled and its roster handed back; null where
+   *  it runs no job and waits on its approval instead. */
+  ownerDeadlineAt: string | null;
   /**
    * Whether what was already serving when this batch opened carries a roster issue's merge — so
    * this release shipped before the batch recording it existed, and its finish will be earned by
@@ -57,7 +63,9 @@ export interface CreateReleaseBatchResult {
   openedAfterRelease: boolean;
   /** `deployment` where production declares no source probe: its deployment record must name the commit;
    *  `provider` where the work lives on a storefront whose provider reports what it publishes. */
-  verification: ReleaseVerification;
+  verification: ReleaseVerification | 'merged';
+  /** The change requests the release merges, in its order; absent on a release that deploys. */
+  changeRequests?: { number: number; label: string; headSha: string }[];
 }
 
 /** The batch door's admission, and a call naming no issue while issues wait refused by name. */
@@ -243,6 +251,16 @@ export async function createReleaseBatch(
   const code = await withoutDesignOnly(projectId, args.issueIds);
   const named = await withoutShippedEarlier(projectId, code, userId, deps);
   const { report, issueIds } = await admitBatch(projectId, named);
+  if (report.declaration?.kind === 'change-requests') {
+    return cutChangeRequestRelease({ ...args, issueIds }, report.declaration.defaultBranch);
+  }
+  if (args.changeRequests) {
+    throw refuseRelease(
+      'RELEASE_CHANGE_REQUEST_ORDER',
+      '`changeRequests` orders the merges of a release that ships by merging change requests, and this project does not release that way (`release.changeRequests` is not set): send the cut without it.',
+      '/changeRequests',
+    );
+  }
   const providerLiveGateOff = await askProviderLiveGate(issueIds);
 
   const gateStatus = RELEASE_GATE_STATUS;
@@ -322,5 +340,66 @@ export async function createReleaseBatch(
     ownerDeadlineAt: new Date(Date.now() + RELEASE_UNSTARTED_DEADLINE_MS).toISOString(),
     openedAfterRelease,
     verification: verification.kind,
+  };
+}
+
+/**
+ * A release that ships by merging change requests (REQ-63): the run, its version and the roster
+ * claimed as any cut, the declared merge order kept on the run, and the approval asked at once on
+ * the requests' heads. No job runs: the master merges each request once the owner approves.
+ */
+async function cutChangeRequestRelease(
+  args: CreateReleaseBatchArgs,
+  branch: string | null,
+): Promise<CreateReleaseBatchResult> {
+  const { projectId, issueIds, userId } = args;
+  const steps = mergeOrderOf(await openChangeRequestsOf(projectId, issueIds), args.changeRequests);
+  const last = steps.at(-1);
+  if (!last) throw blockerRefusal('RELEASE_CHANGE_REQUEST_MISSING', { issueIds });
+  const { run, version } = await openClaimedRun({
+    projectId,
+    issueIds,
+    metadata: {
+      source: 'release-batch',
+      gateStatus: RELEASE_GATE_STATUS,
+      issueIds,
+      deployPlanned: false,
+      promotePlanned: false,
+      verification: 'merged',
+      changeRequests: steps,
+    },
+    naming: args.naming ?? null,
+    userId,
+  });
+  const order = steps.map((s) => label(s)).join(', ');
+  await requestApproval({
+    projectId,
+    runId: run.id,
+    userId,
+    body: {
+      evidence: {
+        commit: last.headSha,
+        reading:
+          `Merges ${order} into ${branch ? `\`${branch}\`` : 'the working branch'}, in this order, once approved.`.slice(
+            0,
+            500,
+          ),
+      },
+    },
+  });
+  return {
+    runId: run.id,
+    jobId: null,
+    issueIds,
+    gateStatus: RELEASE_GATE_STATUS,
+    version,
+    ownerDeadlineAt: null,
+    openedAfterRelease: false,
+    verification: 'merged',
+    changeRequests: steps.map((s) => ({
+      number: s.number,
+      label: label(s),
+      headSha: s.headSha,
+    })),
   };
 }

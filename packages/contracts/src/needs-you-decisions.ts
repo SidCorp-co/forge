@@ -20,6 +20,7 @@ import {
 	decisionProposalSchema,
 	NEEDS_YOU_TOPICS,
 } from "./needs-you-proposal.js";
+import { CHANGE_REQUEST_STATES, RELEASE_ROSTER_LIMIT } from "./releases.js";
 
 /** What a decision asks for, in the order the home and the chat list them. */
 export const NEEDS_YOU_DECISION_GROUPS = [
@@ -315,6 +316,22 @@ export const needsYouDecisionSchema = z
 			.optional(),
 		/** What it rests on (`decisionEvidenceSchema`); absent on a decision about no issue or requirement. */
 		evidence: decisionEvidenceSchema.optional(),
+		/**
+		 * The change requests a release decision covers, in the order the release merges them (REQ-63
+		 * BC-5): each one's label, link and state, and the issues it delivers. Absent on every other decision.
+		 */
+		changeRequests: z
+			.array(
+				z.strictObject({
+					label: z.string().regex(/^[!#]\d{1,9}$/),
+					url: z.string().max(2000).nullable(),
+					state: z.enum(CHANGE_REQUEST_STATES),
+					order: z.int().min(1).nullable(),
+					issues: z.array(z.string().min(1).max(40)).max(RELEASE_ROSTER_LIMIT),
+				}),
+			)
+			.max(RELEASE_ROSTER_LIMIT)
+			.optional(),
 	})
 	.superRefine((d, ctx) => {
 		if ((d.recommended === null) === (d.noRecommendation === null)) {

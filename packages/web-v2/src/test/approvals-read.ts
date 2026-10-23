@@ -397,7 +397,8 @@ export const STEWARD_625: NeedsYouDecision = needsYouDecisionSchema.parse({
   },
 });
 
-/** A release approval as core's `releaseDecision` builds it: both answers take words, and only Return declines. */
+/** A release approval as core's `releaseDecision` builds it: both answers take words, and only Return declines.
+ *  It ships by merging change requests (REQ-63), so it says which, in order, each with its link. */
 const RELEASE_PATH = `/api/projects/${P}/release-batches/run-7/approvals/ap-7/decision`;
 const RELEASE: NeedsYouDecision = {
   id: "row:0.4.0-dev.270",
@@ -407,18 +408,22 @@ const RELEASE: NeedsYouDecision = {
   key: "0.4.0-dev.270",
   title: "Approvals decline round",
   opens: { kind: "release", key: "0.4.0-dev.270" },
-  question: "Approve this release for production, or return it to the master?",
+  question: "Accept this release, so the master merges !5008, !5009 in that order, or return it to the master?",
   recommended: { answerId: "approve", why: "None of the 4 criteria it carries is failing.", by: "rule" },
   noRecommendation: null,
   answers: [
-    { id: "approve", label: "Approve 0.4.0-dev.270", act: "release.decide", path: RELEASE_PATH, body: { decision: "approve" }, needsReason: true, declines: false, effect: "The release may go to production.", recommended: true },
-    { id: "return", label: "Return with a reason", act: "release.decide", path: RELEASE_PATH, body: { decision: "return" }, needsReason: true, declines: true, effect: "The master is told why and does not take it to production.", recommended: false },
+    { id: "approve", label: "Approve 0.4.0-dev.270", act: "release.decide", path: RELEASE_PATH, body: { decision: "approve" }, needsReason: true, declines: false, effect: "The master merges !5008, !5009 in that order; nothing merges before.", recommended: true },
+    { id: "return", label: "Return with a reason", act: "release.decide", path: RELEASE_PATH, body: { decision: "return" }, needsReason: true, declines: true, effect: "The master is told why and merges nothing.", recommended: false },
   ],
   touchedAt: ago(8),
   stuck: false,
   dueAt: null,
   topic: "release",
   proposal: null,
+  changeRequests: [
+    { label: "!5008", url: "https://gitlab.com/sidcorp-it/canawan-api/-/merge_requests/5008", state: "open", order: 1, issues: ["ISS-1", "ISS-4", "ISS-5"] },
+    { label: "!5009", url: "https://gitlab.com/sidcorp-it/canawan-api/-/merge_requests/5009", state: "open", order: 2, issues: ["ISS-10", "ISS-11", "ISS-12", "ISS-13"] },
+  ],
 };
 
 const ALL = [SIGN_OFF, ...FEEDBACK, BREAKDOWN, ...DESIGN_UPDATES, MOCKUP, RELEASE, QUESTION];

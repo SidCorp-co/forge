@@ -6,6 +6,7 @@
 
 import type { DecisionAnswer, DecisionEvidence, NeedsYouDecision } from "@forge/contracts/needs-you-decisions";
 import { type FullPage, PeekExcerpt, PeekHead, PeekPanel, type PeekState, Table, TBody, TD, TH, THead, TR } from "@/design";
+import { ChangeRequestList } from "@/features/releases";
 import { Link } from "@/lib/navigation/router";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import { issueHref } from "@/lib/routes/issues";
@@ -216,6 +217,12 @@ export function DecisionPeek({ d, peek, full, slug, noun, typing, onType, onPres
         <DecisionTags d={d} />
         <Reasons d={d} />
         {d.evidence ? <Evidence d={d} e={d.evidence} slug={slug} /> : null}
+        {d.changeRequests && d.changeRequests.length > 0 ? (
+          <section data-testid="approval-peek-merges">
+            <Heading>{t("approvals.peek.merges")}</Heading>
+            <ChangeRequestList items={d.changeRequests} slug={slug} />
+          </section>
+        ) : null}
       </div>
     </PeekPanel>
   );

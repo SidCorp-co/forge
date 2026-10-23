@@ -1,6 +1,10 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
-import { type PullRequestState, repoPullRequests } from '../../db/schema-repo-projection.js';
+import {
+  type PullRequestState,
+  repoPullRequestIssues,
+  repoPullRequests,
+} from '../../db/schema-repo-projection.js';
 import { type CheckRollup, rollupOf } from './projection-shape.js';
 
 interface IssuePullRequest {
@@ -38,14 +42,14 @@ export async function readPullRequestsForIssues(
   if (issueIds.length === 0) return out;
 
   const rows = await db
-    .select()
-    .from(repoPullRequests)
-    .where(inArray(repoPullRequests.issueId, issueIds))
+    .select({ row: repoPullRequests, issueId: repoPullRequestIssues.issueId })
+    .from(repoPullRequestIssues)
+    .innerJoin(repoPullRequests, eq(repoPullRequests.id, repoPullRequestIssues.pullRequestId))
+    .where(inArray(repoPullRequestIssues.issueId, issueIds))
     .orderBy(ORDER);
 
-  for (const row of rows) {
-    if (!row.issueId) continue;
-    const list = out.get(row.issueId) ?? [];
+  for (const { row, issueId } of rows) {
+    const list = out.get(issueId) ?? [];
     list.push({
       number: row.number,
       repo: row.repoFullName,
@@ -74,27 +78,38 @@ export async function readPullRequestsForIssues(
       mergedAt: row.mergedAt ? row.mergedAt.toISOString() : null,
       mergeCommitSha: row.mergeCommitSha,
     });
-    out.set(row.issueId, list);
+    out.set(issueId, list);
   }
   return out;
 }
 
-/** The stored pull request numbered `number` for the issue, or null. */
+/** The stored pull request numbered `number` that delivers the issue, or null. */
 export async function pullRequestNumbered(issueId: string, number: number): Promise<string | null> {
   const [row] = await db
     .select({ id: repoPullRequests.id })
-    .from(repoPullRequests)
-    .where(and(eq(repoPullRequests.issueId, issueId), eq(repoPullRequests.number, number)))
+    .from(repoPullRequestIssues)
+    .innerJoin(repoPullRequests, eq(repoPullRequests.id, repoPullRequestIssues.pullRequestId))
+    .where(and(eq(repoPullRequestIssues.issueId, issueId), eq(repoPullRequests.number, number)))
     .limit(1);
   return row?.id ?? null;
 }
 
-/** Every open pull request this issue has, oldest first. */
+/** Every open pull request that delivers this issue, oldest first. */
 export async function openPullRequestsForIssue(issueId: string): Promise<string[]> {
   const rows = await db
     .select({ id: repoPullRequests.id })
-    .from(repoPullRequests)
-    .where(and(eq(repoPullRequests.issueId, issueId), eq(repoPullRequests.state, 'open')))
+    .from(repoPullRequestIssues)
+    .innerJoin(repoPullRequests, eq(repoPullRequests.id, repoPullRequestIssues.pullRequestId))
+    .where(and(eq(repoPullRequestIssues.issueId, issueId), eq(repoPullRequests.state, 'open')))
     .orderBy(repoPullRequests.number);
   return rows.map((r) => r.id);
+}
+
+/** Every issue the stored change request delivers (REQ-63 BC-4), by its row id. */
+export async function issuesOfPullRequest(pullRequestId: string): Promise<string[]> {
+  const rows = await db
+    .select({ issueId: repoPullRequestIssues.issueId })
+    .from(repoPullRequestIssues)
+    .where(eq(repoPullRequestIssues.pullRequestId, pullRequestId));
+  return rows.map((r) => r.issueId);
 }

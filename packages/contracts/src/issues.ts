@@ -92,6 +92,12 @@ export const MERGE_REFUSAL_CODES = [
 	"MERGE_CHECK_MISSING",
 	"MERGE_REVIEW_MISSING",
 	"PATTERN_ENTRY_MISSING",
+	/** A change request of a change-request release merged before the release is approved (REQ-63 BC-2). */
+	"RELEASE_MERGE_NOT_APPROVED",
+	/** A change request merged before one its release declares ahead of it (REQ-63 BC-2). */
+	"RELEASE_MERGE_OUT_OF_ORDER",
+	/** A change request on a change-request project merged outside any release (REQ-63 BC-2). */
+	"RELEASE_MERGE_UNRELEASED",
 	...COMMIT_LANDING_REFUSAL_CODES,
 ] as const;
 export type MergeRefusalCode = (typeof MERGE_REFUSAL_CODES)[number];

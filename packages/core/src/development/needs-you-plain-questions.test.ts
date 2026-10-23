@@ -80,7 +80,7 @@ describe('a release decision', () => {
         row('release', '0.4.0-dev.270', 'Release 0.4.0-dev.270'),
         'releases',
         P,
-        { runId: 'run-7', failing: 0, total: 4 },
+        { runId: 'run-7', failing: 0, total: 4, changeRequests: [] },
         'ap-7',
       ),
     );

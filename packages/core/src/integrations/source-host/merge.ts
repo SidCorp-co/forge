@@ -4,6 +4,7 @@ import { repoPullRequests } from '../../db/schema-repo-projection.js';
 import { forgeReads, recordDelivery, updateDelivery } from '../index.js';
 import { SourceHostUnavailable } from './errors.js';
 import { markPullRequestMerged } from './projection.js';
+import { issuesOfPullRequest } from './repo-projection.js';
 import { sourceHostForBinding } from './resolve.js';
 import type { SourceHost } from './types.js';
 
@@ -43,6 +44,8 @@ type MergeOutcome =
       mergedAt: Date;
       /** False where the row already carried this evidence — a second reading of one merge. */
       stamped: boolean;
+      /** Every issue this merge stamped: each one the request delivers (REQ-63 BC-4). */
+      stampedIssues: string[];
     }
   | {
       kind: 'already-merged';
@@ -50,6 +53,7 @@ type MergeOutcome =
       commitSha: string;
       mergedAt: Date;
       stamped: boolean;
+      stampedIssues: string[];
     }
   | { kind: 'refused'; deliveryId: string; reason: string; detail: string };
 
@@ -73,7 +77,8 @@ interface StoredRow {
   id: string;
   projectId: string;
   bindingId: string;
-  issueId: string | null;
+  /** Every issue the request delivers (REQ-63 BC-4); its merge stamps each. */
+  issueIds: string[];
   number: number;
   state: string;
 }
@@ -84,14 +89,14 @@ async function storedRow(pullRequestId: string): Promise<StoredRow | null> {
       id: repoPullRequests.id,
       projectId: repoPullRequests.projectId,
       bindingId: repoPullRequests.bindingId,
-      issueId: repoPullRequests.issueId,
       number: repoPullRequests.number,
       state: repoPullRequests.state,
     })
     .from(repoPullRequests)
     .where(eq(repoPullRequests.id, pullRequestId))
     .limit(1);
-  return row ?? null;
+  if (!row) return null;
+  return { ...row, issueIds: await issuesOfPullRequest(row.id) };
 }
 
 /**
@@ -131,15 +136,17 @@ async function writeEvidence(args: {
   commitSha: string;
   mergedAt: Date;
   stampIssue: IssueMergeStamp;
-}): Promise<{ stamped: boolean }> {
+}): Promise<{ stamped: boolean; stampedIssues: string[] }> {
   const { row, host, commitSha, mergedAt, stampIssue } = args;
   try {
     return await db.transaction(async (tx) => {
-      const stamp = row.issueId
-        ? await stampIssue(tx, { issueId: row.issueId, commitSha, mergedAt })
-        : { wrote: false };
+      const stampedIssues: string[] = [];
+      for (const issueId of row.issueIds) {
+        const stamp = await stampIssue(tx, { issueId, commitSha, mergedAt });
+        if (stamp.wrote) stampedIssues.push(issueId);
+      }
       await markPullRequestMerged(tx, row.id, { commitSha, mergedAt });
-      return { stamped: stamp.wrote };
+      return { stamped: stampedIssues.length > 0, stampedIssues };
     });
   } catch (err) {
     throw new Error(
@@ -191,7 +198,7 @@ export async function mergeStoredChangeRequest(
     payload: {
       pullRequestId: row.id,
       number: row.number,
-      issueId: row.issueId,
+      issueIds: row.issueIds,
       requestedBy: req.requestedBy,
       runId: req.runId ?? null,
       expectedHeadSha: req.expectedHeadSha ?? null,
@@ -228,7 +235,7 @@ export async function mergeStoredChangeRequest(
     });
     if (result.kind === 'refused') return refuse(deliveryId, result.reason, result.detail);
 
-    const { stamped } = await writeEvidence({
+    const { stamped, stampedIssues } = await writeEvidence({
       row,
       host,
       commitSha: result.commitSha,
@@ -239,8 +246,8 @@ export async function mergeStoredChangeRequest(
       status: 'ok',
       response:
         result.kind === 'already-merged'
-          ? { alreadyMerged: true, commitSha: result.commitSha, stamped }
-          : { commitSha: result.commitSha, requestedBy: req.requestedBy, stamped },
+          ? { alreadyMerged: true, commitSha: result.commitSha, stamped, stampedIssues }
+          : { commitSha: result.commitSha, requestedBy: req.requestedBy, stamped, stampedIssues },
       completedAt: new Date(),
     });
     return {
@@ -249,6 +256,7 @@ export async function mergeStoredChangeRequest(
       commitSha: result.commitSha,
       mergedAt: result.mergedAt,
       stamped,
+      stampedIssues,
     };
   } catch (err) {
     await updateDelivery(deliveryId, {

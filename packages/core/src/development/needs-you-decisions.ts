@@ -35,7 +35,9 @@ import {
   type CuttableRelease,
   cutDecision,
   designDecision,
+  type ReleaseFacts,
   releaseDecision,
+  releaseFactsOf,
   revisionDecision,
 } from './needs-you-approve-builders.js';
 import {
@@ -127,7 +129,7 @@ interface Facts {
   draftsOf: ReadonlyMap<string, { id: string; key: string }[]>;
   /** Each moved design's re-pin group, by the base's flow. */
   repinOf: ReadonlyMap<string, DesignRepinGroup>;
-  releaseOf: ReadonlyMap<string, { runId: string | null; failing: number; total: number }>;
+  releaseOf: ReadonlyMap<string, ReleaseFacts>;
   /** Each draft release the viewer may cut, by version. */
   cutOf: ReadonlyMap<string, CuttableRelease>;
   approvalOf: ReadonlyMap<string, string>;
@@ -366,12 +368,7 @@ export async function decisionsOf(
     ),
     draftsOf: draftsByRequirement(attention.issues.issues),
     repinOf: new Map(attention.repins.groups.map((g) => [g.flow, g])),
-    releaseOf: new Map(
-      attention.releases.releases.map((r) => [
-        r.version,
-        { runId: r.runId, failing: r.criteria.failing, total: r.criteria.total },
-      ]),
-    ),
+    releaseOf: new Map(attention.releases.releases.map((r) => [r.version, releaseFactsOf(r)])),
     cutOf: new Map(
       attention.releases.releases.flatMap((r) =>
         r.can.cut
