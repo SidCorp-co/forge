@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.296] - 2026-10-23
+
+Checks passed on an open merge request now count toward release
+
+### Fixed
+
+- **A pass at a merge request's head now counts where a project releases by merging them.** The steward stops reopening such issues for a missing landing; a moved head stops the pass counting, named.
+
 ## [0.4.0-dev.295] - 2026-10-23
 
 Every release is named, and its highlights play a short clip from QA
