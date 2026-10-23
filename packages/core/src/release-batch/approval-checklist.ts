@@ -29,6 +29,7 @@ import { db } from '../db/client.js';
 import { issues, pipelineRuns } from '../db/schema.js';
 import { requirements } from '../db/schema-requirements.js';
 import { readProjectDocument } from '../project-config/index.js';
+import { type ChangeRequestBuild, changeRequestBuildsOf } from './change-request-build.js';
 import { mergeStepsOf } from './change-request-roster.js';
 import { criteriaAt, loadReleaseFacts } from './release-facts.js';
 
@@ -87,19 +88,21 @@ export function approvalAnswersOf(f: ApprovalFacts): RecordAnswers {
 
 /**
  * Each issue's build on a release that merges change requests: the head of the request delivering
- * it, which is what the merge ships (REQ-63). Empty for any other release, which ships one commit.
+ * it, cut at, while it is unchanged — or why it no longer counts (`change-request-build.ts`, REQ-63
+ * BC-6). Empty for any other release, which ships one commit.
  */
-async function changeRequestHeadsOf(runId: string): Promise<Map<string, string>> {
+async function changeRequestBuildsFor(
+  projectId: string,
+  runId: string,
+  ids: readonly string[],
+): Promise<Map<string, ChangeRequestBuild>> {
   const [run] = await db
     .select({ metadata: pipelineRuns.metadata })
     .from(pipelineRuns)
     .where(eq(pipelineRuns.id, runId))
     .limit(1);
-  const heads = new Map<string, string>();
-  for (const step of mergeStepsOf(run?.metadata) ?? []) {
-    for (const id of step.issueIds) heads.set(id, step.headSha);
-  }
-  return heads;
+  if (!mergeStepsOf(run?.metadata)) return new Map();
+  return changeRequestBuildsOf(projectId, ids);
 }
 
 /** What the release `runId` carries, read for its approval at `build`, the commit it ships. */
@@ -114,7 +117,7 @@ export async function approvalFactsOf(
     .where(and(eq(issues.projectId, projectId), eq(issues.releaseBatchRunId, runId)));
   const ids = rows.map((r) => r.id);
   const reqIds = [...new Set(rows.flatMap((r) => (r.requirementId ? [r.requirementId] : [])))];
-  const [facts, reqs, doc, headOf] = await Promise.all([
+  const [facts, reqs, doc, crBuilds] = await Promise.all([
     loadReleaseFacts(projectId, ids, [runId]),
     reqIds.length === 0
       ? Promise.resolve([])
@@ -127,7 +130,7 @@ export async function approvalFactsOf(
           .from(requirements)
           .where(inArray(requirements.id, reqIds)),
     readProjectDocument(projectId),
-    changeRequestHeadsOf(runId),
+    changeRequestBuildsFor(projectId, runId, ids),
   ]);
   const reqOf = new Map(
     reqs.map((r) => [r.id, { key: requirementKey(r.seq), revision: r.revision }]),
@@ -140,15 +143,22 @@ export async function approvalFactsOf(
       issue: i.key,
       requirement: i.requirementId ? (reqOf.get(i.requirementId) ?? null) : null,
     })),
-    unproven: ordered.flatMap((i) =>
-      criteriaAt(i, headOf.get(i.id) ?? build, facts.judge)
+    unproven: ordered.flatMap((i) => {
+      const cr = crBuilds.get(i.id);
+      // a request whose head moved since the cut: none of its verdicts counts, and that is the gap
+      if (cr && cr.sha === null) {
+        // a person reads this sentence beside the issue's key: no code formatting, no repeated key
+        const why = cr.why.replace(`${i.key}: `, '').replaceAll('`', '');
+        return i.criteria.map((c) => ({ issue: i.key, n: c.n, standing: why }));
+      }
+      return criteriaAt(i, cr?.sha ?? build, facts.judge)
         .filter((c) => !c.proven)
         .map((c) => ({
           issue: i.key,
           n: c.n,
           standing: c.unverified ?? CRITERION_STANDING_LABELS[c.standing].toLowerCase(),
-        })),
-    ),
+        }));
+    }),
     verdictsRequired: verdictsRequiredOf(doc?.document.delivery),
   };
 }
