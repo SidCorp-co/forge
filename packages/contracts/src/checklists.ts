@@ -430,7 +430,8 @@ export function fieldKeyShownIn(checklist: Checklist, text: string): string | nu
 	return text.includes("`") ? "`" : null;
 }
 
-export const CHECKLIST_PROVENANCES = ["given", "assumed"] as const;
+/** `waived`: a blocking gap a decision moved over (an accept by decision), its gap kept as the value. */
+export const CHECKLIST_PROVENANCES = ["given", "assumed", "waived"] as const;
 export type ChecklistProvenance = (typeof CHECKLIST_PROVENANCES)[number];
 
 export interface ChecklistAnswer {
@@ -439,7 +440,8 @@ export interface ChecklistAnswer {
 	readonly provenance: ChecklistProvenance;
 	/**
 	 * `mover`, `record:<field>`, `derived:<rule>` for an answer a rule gave from the mover's other
-	 * answers (the triage short form's route), or `recommended` for an assumed answer.
+	 * answers (the triage short form's route), `recommended` for an assumed answer, or `decision`
+	 * for a waived one.
 	 */
 	readonly source: string;
 	/** The owner question an assumed answer's reading still waits on. */
@@ -562,6 +564,20 @@ export function evaluateChecklist(
 		gaps,
 		notAsked,
 	};
+}
+
+/**
+ * An evaluation a decision moves over: each blocking gap becomes an answer of provenance `waived`
+ * holding the gap's words, so the move records exactly what was waived and nothing reads as given.
+ */
+export function waivedEvaluation(evaluation: ChecklistEvaluation): ChecklistEvaluation {
+	const waived: ChecklistAnswer[] = evaluation.gaps.map((gap) => ({
+		question: gap.question,
+		value: gap.detail,
+		provenance: "waived",
+		source: "decision",
+	}));
+	return { ...evaluation, complete: true, answers: [...evaluation.answers, ...waived], gaps: [] };
 }
 
 /** One refusal per blocking gap, each on its question's path and in plain words. */

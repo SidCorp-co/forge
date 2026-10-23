@@ -41,6 +41,7 @@ import { changedTracedOf } from './plan-drift.js';
 import { staleContractPinsOf, stalePinsOf } from './rules.js';
 import { deriveStanding } from './standing.js';
 import {
+  acceptanceDecisionsOf,
   issueCriteriaOf,
   issueTimesOf,
   latestContractPinsOf,
@@ -172,14 +173,16 @@ const sinceOf = (since: ReadonlyMap<string, Date>, id: string): Date => {
 };
 
 async function besideFactsOf(ids: readonly string[]) {
-  const [uncovered, follows, asked, statusSince] = await Promise.all([
+  const [uncovered, follows, asked, statusSince, decisions] = await Promise.all([
     uncoveredOf(ids),
     followReadsOf(db, ids),
     stewardAskedOf(ids),
     statusSinceOf(ids),
+    acceptanceDecisionsOf(ids),
   ]);
   return (id: string) => ({
     statusSince: sinceOf(statusSince, id),
+    acceptedByDecision: decisions.get(id) ?? null,
     uncovered: uncovered.get(id) ?? new Map<string, string>(),
     tracedChanges: (follows.get(id) ?? []).flatMap((f) => f.changes),
     stewardAsked: asked.has(id),
@@ -469,27 +472,23 @@ export async function requirementStatesOf(
   return new Map([...standings].map(([id, s]) => [id, s.state]));
 }
 
-/** Which of `ids` read delivered (`standing.ts:deliveryOf`) or were accepted. */
+/**
+ * Which of `ids` stand delivered or accepted, a stored status an act moved them to (REQ-74 BC-8). One
+ * accepted by decision is left out: what its decision waived is never read as delivered.
+ */
 export async function deliveredAmong(
   projectId: string,
   ids: readonly string[],
 ): Promise<Set<string>> {
   if (ids.length === 0) return new Set();
   const rows = await db
-    .select({
-      id: requirements.id,
-      projectId: requirements.projectId,
-      status: requirements.status,
-      currentRevision: requirements.currentRevision,
-      ownerId: requirements.ownerId,
-      updatedAt: requirements.updatedAt,
-    })
+    .select({ id: requirements.id, status: requirements.status })
     .from(requirements)
     .where(and(eq(requirements.projectId, projectId), inArray(requirements.id, [...ids])));
-  const standings = await standingsOf(projectId, rows, null);
+  const decided = await acceptanceDecisionsOf(rows.map((r) => r.id));
   return new Set(
     rows
-      .filter((r) => r.status === 'accepted' || standings.get(r.id)?.state === 'delivered')
+      .filter((r) => r.status === 'delivered' || (r.status === 'accepted' && !decided.has(r.id)))
       .map((r) => r.id),
   );
 }

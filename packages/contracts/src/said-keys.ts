@@ -506,6 +506,18 @@ export const SAID = {
 		en: "Dropped: {rest}",
 		vars: { rest: "text" },
 	},
+	"requirements.history.text.deliveryStarted": {
+		en: "Moved into delivery{rest}",
+		vars: { rest: "text" },
+	},
+	"requirements.history.text.markedDelivered": {
+		en: "Marked delivered{rest}",
+		vars: { rest: "text" },
+	},
+	"requirements.history.text.acceptedByDecision": {
+		en: "Accepted by decision, waiving {items}: {rest}",
+		vars: { items: "text", rest: "text" },
+	},
 	"requirements.history.text.pictureDrawn": {
 		en: "Drew the picture of r{r}, a rough sketch: {rest}",
 		vars: { r: "count", rest: "text" },
@@ -615,6 +627,8 @@ export const SAID = {
 	"standing.act.beDelivered": { en: "be delivered" },
 	"standing.act.beResolved": { en: "be resolved" },
 	"standing.act.breakDown": { en: "break down" },
+	"standing.act.startDelivery": { en: "move it into delivery" },
+	"standing.act.markDelivered": { en: "mark it delivered" },
 	"standing.act.breakDownBy": {
 		en: "break down, {when}",
 		vars: { when: "said" },
@@ -1438,6 +1452,12 @@ export const SAID = {
 		vars: { date: "date", days: "count" },
 	},
 	"requirements.rule.noIssue": { en: "agreed with no linked issue" },
+	"requirements.rule.startDelivery": {
+		en: "every issue closed and every criterion passes; an act moves it",
+	},
+	"requirements.rule.markDelivered": {
+		en: "every criterion passes on the running build; an act marks it",
+	},
 	"requirements.rule.onlyDrafts": {
 		en: "its only live issues are drafts awaiting promotion",
 	},

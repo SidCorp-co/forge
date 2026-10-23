@@ -18,6 +18,7 @@ function detail(unapprovedDesigns: { flow: string; title: string; designStatus: 
     key: "REQ-2",
     status: "draft",
     canSignOff: true,
+    canAccept: true,
     deferral: null,
     revisions: [{ revision: 1, state: "current" }],
     standing: {
@@ -122,7 +123,7 @@ describe("a sign-off opens a confirm step that sends the signer's reason", () =>
   it("accepts a delivered requirement with the typed reason", async () => {
     const delivered = {
       ...detail([]),
-      status: "agreed",
+      status: "delivered",
       standing: { state: "delivered", waitingOn: { kind: "you" }, facts: { stalePins: [], staleContractPins: [], unapprovedDesigns: [] } },
       issues: [],
     } as unknown as RequirementDetail;
@@ -173,12 +174,13 @@ describe("a sign-off opens a confirm step that sends the signer's reason", () =>
     expect(calls).toEqual([]);
   });
 
-  it("updates to the approved design with the typed reason", async () => {
+  // a pin goes stale in delivery too, and the re-pin core takes from each delivering status is offered there
+  it.each(["agreed", "in_delivery", "delivered"])("updates a %s requirement to the approved design with the typed reason", async (status) => {
     const stale = {
       ...detail([]),
-      status: "agreed",
+      status,
       standing: {
-        state: "agreed",
+        state: status,
         waitingOn: waitingOn("you", { who: say("standing.who.you"), act: say("standing.act.updateToDesign", { design: "Checkout", r: 3 }), rule: RULE }),
         facts: { stalePins: [{ flow: "checkout", title: "Checkout", approved: 3, pinned: 2 }], staleContractPins: [], unapprovedDesigns: [] },
       },
@@ -193,6 +195,37 @@ describe("a sign-off opens a confirm step that sends the signer's reason", () =>
     await waitFor(() =>
       expect(calls).toEqual([{ method: "POST", path: "/projects/p1/requirements/REQ-2/repin", body: { revision: 1, reason: "checkout r3 approved" } }]),
     );
+  });
+
+  // REQ-74 BC-8: the delivery moves and the accept by decision are offered to whoever approvals.accept
+  // lets accept (`canAccept`), a writer where the switch is off, and to nobody else
+  const inDelivery = (canSignOff: boolean, canAccept: boolean) =>
+    ({
+      ...detail([]),
+      status: "in_delivery",
+      canSignOff,
+      canAccept,
+      standing: { state: "in_delivery", waitingOn: { kind: "you" }, facts: { stalePins: [], staleContractPins: [], unapprovedDesigns: [] } },
+      issues: [{ issueId: "i1", displayId: "ISS-1", status: "closed" }],
+    }) as unknown as RequirementDetail;
+
+  it("offers a writer who may accept, though not sign off, the mark-delivered move and the decision", async () => {
+    const calls = fakeCore(() => ({ body: inDelivery(false, true) }));
+    const user = userEvent.setup();
+    renderWithQuery(<PrimaryActions projectId="p1" slug="epod" d={inDelivery(false, true)} />);
+    expect(screen.getByRole("button", { name: "Accept by decision" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Mark delivered" }));
+    await user.type(within(step()).getByRole("textbox"), "all criteria pass");
+    await user.click(within(step()).getByRole("button", { name: "Mark delivered" }));
+    await waitFor(() =>
+      expect(calls).toEqual([{ method: "POST", path: "/projects/p1/requirements/REQ-2/mark-delivered", body: { reason: "all criteria pass" } }]),
+    );
+  });
+
+  it("offers a signer the accept switch does not admit neither move nor decision", () => {
+    renderWithQuery(<PrimaryActions projectId="p1" slug="epod" d={inDelivery(true, false)} />);
+    expect(screen.queryByRole("button", { name: "Mark delivered" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Accept by decision" })).toBeNull();
   });
 });
 

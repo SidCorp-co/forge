@@ -6,6 +6,8 @@ import {
   DROP_REQUIREMENT_SHAPE,
   deferRequirementRequestSchema,
   dropRequirementRequestSchema,
+  MARK_DELIVERED_SHAPE,
+  moveRequirementRequestSchema,
   PATCH_REQUIREMENT_SHAPE,
   PROMOTE_REQUIREMENT_DRAFTS_SHAPE,
   patchRequirementRequestSchema,
@@ -16,6 +18,7 @@ import {
   repinRequirementRequestSchema,
   requirementAreasRequestSchema,
   requirementPlacementRequestSchema,
+  START_DELIVERY_SHAPE,
   UNDEFER_REQUIREMENT_SHAPE,
   undeferRequirementRequestSchema,
 } from '@forge/contracts/requirements';
@@ -28,7 +31,7 @@ import { assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { holdChatWrite } from '../middleware/chat-write-hold.js';
 import { strictBody } from '../middleware/zod-validator.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
-import { acceptDelivery, dropRequirement } from './acceptance.js';
+import { acceptDelivery, dropRequirement, moveDelivery } from './acceptance.js';
 import { agreeRequirement } from './agree.js';
 import { requirementChecklistRoutes } from './checklist-routes.js';
 import { requestContract } from './contract-request.js';
@@ -347,7 +350,37 @@ requirementRoutes.post(
         actor: actorOf(c),
         revision: body.revision,
         reason: body.reason,
+        byDecision: body.byDecision,
       }),
+    );
+  },
+);
+
+// the explicit moves of REQ-74 BC-8: nothing else moves a requirement into delivery or to delivered
+requirementRoutes.post(
+  '/:id/requirements/:req/start-delivery',
+  reqParam,
+  strictBody(moveRequirementRequestSchema, START_DELIVERY_SHAPE),
+  async (c) => {
+    const { id, req } = c.req.valid('param');
+    const { reason } = c.req.valid('json');
+    return answer(
+      c,
+      await moveDelivery({ projectId: id, ref: req, actor: actorOf(c), to: 'in_delivery', reason }),
+    );
+  },
+);
+
+requirementRoutes.post(
+  '/:id/requirements/:req/mark-delivered',
+  reqParam,
+  strictBody(moveRequirementRequestSchema, MARK_DELIVERED_SHAPE),
+  async (c) => {
+    const { id, req } = c.req.valid('param');
+    const { reason } = c.req.valid('json');
+    return answer(
+      c,
+      await moveDelivery({ projectId: id, ref: req, actor: actorOf(c), to: 'delivered', reason }),
     );
   },
 );

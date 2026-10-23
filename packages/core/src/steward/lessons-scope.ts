@@ -4,7 +4,7 @@
 // their live criteria, and only approved designs: what a lesson may not contradict.
 
 import type { LessonScope } from '@forge/contracts/lessons';
-import { requirementKey } from '@forge/contracts/requirements';
+import { AGREED_STATUSES, requirementKey } from '@forge/contracts/requirements';
 import { and, desc, eq, inArray, isNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
@@ -30,7 +30,7 @@ async function requirementsIn(projectId: string, scope: LessonScope) {
     .where(
       and(
         eq(requirements.projectId, projectId),
-        inArray(requirements.status, ['agreed', 'accepted']),
+        inArray(requirements.status, [...AGREED_STATUSES]),
         scope.kind === 'area' ? eq(requirements.areaId, scope.areaId) : undefined,
       ),
     )

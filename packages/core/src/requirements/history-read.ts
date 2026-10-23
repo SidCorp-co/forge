@@ -16,6 +16,7 @@ import { suggestions } from '../db/schema-suggestions.js';
 import { activeIssuePrefix } from '../issues/index.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
+import { waivedOf } from './acceptance-waived.js';
 import {
   AN_AGENT,
   entry,
@@ -83,7 +84,7 @@ type DeferralRow = typeof requirementDeferrals.$inferSelect;
 type ActivityRow = typeof activityLog.$inferSelect;
 type MoveRow = Pick<
   typeof kernelTransitions.$inferSelect,
-  'id' | 'toStatus' | 'reason' | 'actorId' | 'createdAt'
+  'id' | 'toStatus' | 'reason' | 'actorId' | 'createdAt' | 'checklistAnswers'
 >;
 interface SuggestionRow {
   id: string;
@@ -179,11 +180,26 @@ function baselineText(b: BaselineRow): Said {
 const noted = (text: Said, note: Said | null): Said =>
   note ? say('requirements.history.text.noted', { text, note }) : text;
 
-// A delivery accept and a drop write no row of their own: the requirement's kernel transition is
-// their record, the signer's reason on it (ISS-281)
-const MOVES_READ = ['accepted', 'dropped'];
+// The delivery moves, an accept and a drop write no row of their own: the requirement's kernel
+// transition is their record, the mover's reason on it (ISS-281, REQ-74 BC-8)
+const MOVES_READ = ['in_delivery', 'delivered', 'accepted', 'dropped'];
+
+const why = (m: MoveRow) => (m.reason ? `: ${m.reason}` : '');
 
 function moveText(m: MoveRow): Said {
+  if (m.toStatus === 'in_delivery') {
+    return say('requirements.history.text.deliveryStarted', { rest: why(m) });
+  }
+  if (m.toStatus === 'delivered') {
+    return say('requirements.history.text.markedDelivered', { rest: why(m) });
+  }
+  const waived = waivedOf({ answers: m.checklistAnswers ?? [] });
+  if (m.toStatus === 'accepted' && waived.length > 0) {
+    return say('requirements.history.text.acceptedByDecision', {
+      items: waived.map((w) => w.label).join(', '),
+      rest: m.reason ?? '',
+    });
+  }
   if (m.toStatus === 'accepted') {
     return m.reason
       ? say('requirements.history.text.deliveryAcceptedWhy', { rest: m.reason })
@@ -332,6 +348,7 @@ async function historyRows(requirementId: string, projectId: string) {
           reason: kernelTransitions.reason,
           actorId: kernelTransitions.actorId,
           createdAt: kernelTransitions.createdAt,
+          checklistAnswers: kernelTransitions.checklistAnswers,
         })
         .from(kernelTransitions)
         .where(

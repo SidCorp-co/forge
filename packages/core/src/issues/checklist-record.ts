@@ -6,14 +6,14 @@
 
 import type { ChecklistId } from '@forge/contracts/checklist-registry';
 import type { RecordAnswer, RecordAnswers } from '@forge/contracts/checklists';
-import { requirementKey } from '@forge/contracts/requirements';
+import { AGREED_STATUSES, requirementKey } from '@forge/contracts/requirements';
 import { sql } from 'drizzle-orm';
 import type { Tx } from '../db/client.js';
 import { strayTraceTagsOf } from './criteria/criteria-text.js';
 
 type Reader = Pick<Tx, 'execute'>;
 
-const DELIVERABLE: readonly string[] = ['agreed', 'accepted'];
+const DELIVERABLE: readonly string[] = AGREED_STATUSES;
 
 export interface Planned {
   key: string | null;

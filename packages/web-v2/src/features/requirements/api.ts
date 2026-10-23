@@ -21,6 +21,7 @@ const put = (body: unknown): RequestInit => ({ method: "PUT", body: JSON.stringi
 function actionPath(projectId: string, req: string, a: RequirementAction): string {
   if (a.kind === "accept-delivery") return `${one(projectId, req)}/accept`;
   if (a.kind === "drop") return `${one(projectId, req)}/drop`;
+  if (a.kind === "start-delivery" || a.kind === "mark-delivered") return `${one(projectId, req)}/${a.kind}`;
   if (a.kind === "agree" || a.kind === "repin" || a.kind === "defer" || a.kind === "undefer") return `${one(projectId, req)}/${a.kind}`;
   return `${one(projectId, req)}/revisions/${a.revision}/${a.kind}`;
 }
@@ -28,7 +29,9 @@ function actionPath(projectId: string, req: string, a: RequirementAction): strin
 const given = (reason: string | undefined) => (reason ? { reason } : {});
 
 function actionBody(a: RequirementAction): unknown {
-  if (a.kind === "agree" || a.kind === "repin" || a.kind === "accept-delivery") return { revision: a.revision, ...given(a.reason) };
+  if (a.kind === "accept-delivery") return { revision: a.revision, ...given(a.reason), ...(a.byDecision ? { byDecision: true } : {}) };
+  if (a.kind === "agree" || a.kind === "repin") return { revision: a.revision, ...given(a.reason) };
+  if (a.kind === "start-delivery" || a.kind === "mark-delivered") return given(a.reason);
   if (a.kind === "accept") return given(a.reason);
   if (a.kind === "drop") return { reason: a.reason };
   if (a.kind === "return") return { reason: a.reason };

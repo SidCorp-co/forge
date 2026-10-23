@@ -11,6 +11,7 @@
 // of the run.
 
 import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
+import { isAgreedStatus } from '@forge/contracts/requirements';
 import {
   STEWARD_DECISION_OPTION_IDS,
   STEWARD_DECISIONS,
@@ -192,7 +193,7 @@ async function linkOption(
     status?: string;
     criteria?: { code: string; body: string }[];
   };
-  if (!read.answer.ok || !['agreed', 'accepted'].includes(req.status ?? '')) {
+  if (!read.answer.ok || !isAgreedStatus(req.status ?? '')) {
     return `${requirement} is ${req.status ?? 'not a requirement of this project'}: a candidate is agreed or accepted`;
   }
   const hit = (req.criteria ?? []).find((x) => x.code.toUpperCase() === bc);

@@ -20,7 +20,8 @@ vi.mock('../lib/rooms.js', () => ({
   },
 }));
 
-const { acceptRefusals, dropRefusals } = await import('./acceptance-rules.js');
+const { acceptRefusals, decisionRefusals, dropRefusals, liveIssueRefusal, provenRefusal } =
+  await import('./acceptance-rules.js');
 const { deliveryAt } = await import('./standing.js');
 const { consumerOf } = await import('../outbox/consumers.js');
 const { registerMasterWakeSubscribers } = await import('../ws/master-wake.js');
@@ -54,8 +55,8 @@ describe('accepting a delivered requirement: the state the accept asks', () => {
 describe('dropping a requirement', () => {
   const droppable = entriesOf(REQUIREMENT_MACHINE, 'dropped');
 
-  it('the machine lets draft, agreed and deferred leave for dropped, and nothing else', () => {
-    expect([...droppable].sort()).toEqual(['agreed', 'deferred', 'draft']);
+  it('the machine lets draft, agreed, in delivery and deferred leave for dropped, and nothing else', () => {
+    expect([...droppable].sort()).toEqual(['agreed', 'deferred', 'draft', 'in_delivery']);
   });
 
   it('drops with a reason and no live linked issue', () => {
@@ -90,7 +91,7 @@ describe('dropping a requirement', () => {
   });
 });
 
-describe('the delivery phase the accept reads', () => {
+describe('the coverage the move to delivered and the accept read (REQ-74 BC-10)', () => {
   const at = new Date('2026-10-05T00:00:00Z');
   const issue = (id: string, status: string) => ({
     id,
@@ -116,8 +117,8 @@ describe('the delivery phase the accept reads', () => {
     },
   ];
 
-  it('reads delivered when every live issue closed and every BC passes, a dropped issue left out', () => {
-    const { delivery } = deliveryAt(
+  it('lets the move to delivered through when every BC passes, a dropped issue left out, and reads no phase', () => {
+    const { delivery, coverage } = deliveryAt(
       {
         status: 'agreed',
         criteria,
@@ -133,7 +134,9 @@ describe('the delivery phase the accept reads', () => {
       },
       1,
     );
-    expect(delivery.phase).toBe('delivered');
+    expect(delivery).not.toHaveProperty('phase');
+    expect(delivery.liveIssues).toBe(1);
+    expect(provenRefusal(coverage)).toBeNull();
   });
 
   // ISS-489 r3: an unread live build counted the pass, so an outage could read a requirement delivered
@@ -154,12 +157,13 @@ describe('the delivery phase the accept reads', () => {
       },
       1,
     );
-    expect(delivery.phase).toBe('in_delivery');
+    expect(delivery).not.toHaveProperty('phase');
     expect(coverage[0]?.verdict).toBe('not_judged');
+    expect(provenRefusal(coverage)?.code).toBe('REQUIREMENT_CRITERIA_UNPROVEN');
   });
 
   // REQ-35 decision 7b261fca: the accept read the builder's own pass as proof, under independent QA
-  it("reads in_delivery where the only pass is the builder's own and the project judges apart", () => {
+  it("refuses delivered where the only pass is the builder's own and the project judges apart", () => {
     const { delivery, coverage } = deliveryAt(
       {
         status: 'agreed',
@@ -176,12 +180,13 @@ describe('the delivery phase the accept reads', () => {
       },
       1,
     );
-    expect(delivery.phase).toBe('in_delivery');
+    expect(delivery).not.toHaveProperty('phase');
     expect(coverage[0]?.verdict).toBe('not_judged');
     expect(coverage[0]?.why).toContain('passed by the run that built it');
+    expect(provenRefusal(coverage)?.detail).toContain('BC-1 (not judged: ');
   });
 
-  it('reads in_delivery when every issue closed but a BC is unproven', () => {
+  it('refuses delivered when every issue closed but a BC is unproven, naming it', () => {
     const { delivery, coverage } = deliveryAt(
       {
         status: 'agreed',
@@ -192,8 +197,36 @@ describe('the delivery phase the accept reads', () => {
       },
       1,
     );
-    expect(delivery.phase).toBe('in_delivery');
+    expect(delivery).not.toHaveProperty('phase');
     expect(coverage[0]?.verdict).toBe('not_judged');
+    expect(provenRefusal(coverage)?.detail).toContain('BC-1');
+  });
+
+  it('refuses delivered with no live criterion at all', () => {
+    expect(provenRefusal([])?.code).toBe('REQUIREMENT_CRITERIA_UNPROVEN');
+  });
+});
+
+describe('the move into delivery and the accept by decision (REQ-74 BC-9)', () => {
+  it('moves into delivery only with a live issue linked', () => {
+    expect(liveIssueRefusal(1)).toBeNull();
+    expect(liveIssueRefusal(0)?.code).toBe('REQUIREMENT_NO_LIVE_ISSUE');
+  });
+
+  it('accepts an agreed, in delivery or delivered requirement at its head', () => {
+    for (const status of ['agreed', 'in_delivery', 'delivered'] as const) {
+      expect(acceptRefusals({ status, named: 2, head: 2 })).toEqual([]);
+    }
+  });
+
+  it('refuses a decision with no reason and one over unfinished issues, naming each', () => {
+    expect(codes(decisionRefusals({ reason: ' ', unfinished: [] }))).toEqual([
+      'REQUIREMENT_DECISION_REASON_REQUIRED',
+    ]);
+    const [r] = decisionRefusals({ reason: 'the owner closed it', unfinished: ['ISS-4', 'ISS-9'] });
+    expect(r?.code).toBe('REQUIREMENT_HAS_UNFINISHED_ISSUES');
+    expect(r?.detail).toContain('ISS-4, ISS-9');
+    expect(decisionRefusals({ reason: 'the owner closed it', unfinished: [] })).toEqual([]);
   });
 });
 

@@ -74,7 +74,6 @@ describe('a short is not verified', () => {
       'no verdict counts yet: ISS-1 criterion 1: judged short: met short of its wording, and only a pass counts as verified',
     );
     expect(delivery).toMatchObject({
-      phase: 'in_delivery',
       criteriaCoverage: { criteria: 1, passing: 0, judged: 0 },
     });
   });
@@ -121,7 +120,7 @@ describe("under independent QA the builder's own pass is not verified", () => {
       verdict: 'passing',
       counts: { displayId: 'ISS-1', verdict: 'pass' },
     });
-    expect(delivery).toMatchObject({ phase: 'delivered', criteriaCoverage: { passing: 1 } });
+    expect(delivery).toMatchObject({ criteriaCoverage: { passing: 1 } });
   });
 
   it("the builder's own fail counts: it is evidence the criterion does not hold", () => {

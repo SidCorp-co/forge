@@ -30,6 +30,7 @@ function detail(statuses: string[], canSignOff = true, canPromote = canSignOff):
     key: "REQ-2",
     status: "agreed",
     canSignOff,
+    canAccept: canSignOff,
     canPromote,
     deferral: null,
     revisions: [{ revision: 1, state: "current" }],

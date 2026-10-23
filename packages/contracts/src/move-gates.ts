@@ -10,6 +10,10 @@ import { CHECKLIST_GUARD } from "./checklists.js";
 import { DESIGN_RECORD_INCOMPLETE, DESIGN_RECORD_MISSING } from "./issue-design.js";
 import { MACHINES, type MachineEntity } from "./machines.js";
 import { PATTERN_ENTRY_MISSING, PATTERN_RETURNED, PATTERN_REVIEW_PENDING } from "./patterns.js";
+import {
+	REQUIREMENT_CRITERIA_PROVEN_GUARD,
+	REQUIREMENT_HAS_LIVE_ISSUE_GUARD,
+} from "./requirement-machine.js";
 import type { MachineEdge } from "./state-machine.js";
 
 /** The edges a gate is asked on: one machine, these statuses, into one status. */
@@ -82,6 +86,22 @@ export const MOVE_CHECKS = defineMoveChecks([
 		guard: "merged",
 		codes: [PATTERN_REVIEW_PENDING, PATTERN_RETURNED, PATTERN_ENTRY_MISSING],
 	},
+	{
+		id: "requirement_live_issue",
+		title: "A live issue",
+		version: 1,
+		gates: { machine: "requirement", from: ["agreed"], to: "in_delivery" },
+		guard: REQUIREMENT_HAS_LIVE_ISSUE_GUARD,
+		codes: ["REQUIREMENT_NO_LIVE_ISSUE"],
+	},
+	{
+		id: "requirement_proven",
+		title: "Criteria proven",
+		version: 1,
+		gates: { machine: "requirement", from: ["in_delivery"], to: "delivered" },
+		guard: REQUIREMENT_CRITERIA_PROVEN_GUARD,
+		codes: ["REQUIREMENT_CRITERIA_UNPROVEN"],
+	},
 ] as const);
 
 /** Every gate: each registered checklist, then each move check. */
@@ -133,9 +153,10 @@ export function refusingGate(
 /**
  * How a gated move stands against its gate. `exception`: the item reached the gate's status without
  * the gate judging it, born there after the gate first judged a move. `no_checklist`: recorded before
- * the kernel recorded that gate. Only `passed` counts as passing (BC-9).
+ * the kernel recorded that gate. `waived`: a decision moved it over the checklist's blocking items,
+ * each recorded. Only `passed` counts as passing (BC-9).
  */
-export const GATED_MOVE_STANDINGS = ["passed", "refused", "exception", "no_checklist"] as const;
+export const GATED_MOVE_STANDINGS = ["passed", "refused", "exception", "no_checklist", "waived"] as const;
 export type GatedMoveStanding = (typeof GATED_MOVE_STANDINGS)[number];
 
 export const countsAsPassed = (standing: GatedMoveStanding): boolean => standing === "passed";
@@ -147,8 +168,15 @@ export const countsAsPassed = (standing: GatedMoveStanding): boolean => standing
  */
 export function passedMoveStanding(
 	gate: Pick<Gate, "id">,
-	move: { readonly checklist: string | null; readonly gates: readonly string[] | null },
+	move: {
+		readonly checklist: string | null;
+		readonly gates: readonly string[] | null;
+		readonly checklistAnswers?: readonly { readonly provenance: string }[] | null;
+	},
 ): GatedMoveStanding | null {
+	if (move.checklist === gate.id && move.checklistAnswers?.some((a) => a.provenance === "waived")) {
+		return "waived";
+	}
 	if (move.checklist === gate.id || move.gates?.includes(gate.id) === true) return "passed";
 	return move.gates === null ? "no_checklist" : null;
 }

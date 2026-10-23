@@ -53,7 +53,7 @@ const PROGRESS = {
       columns: ["requirement", "title", "closed", "previousClosed", "proven", "sentBack"],
     },
     { kind: "table", as: "roadmap", title: "Where each requirement stands on the roadmap", columns: ["key", "title", "lane", "p50At", "p85At", "basis"] },
-    { kind: "table", as: "gated", title: "Gated moves", columns: ["gate", "passed", "refused", "exception", "noChecklist"] },
+    { kind: "table", as: "gated", title: "Gated moves", columns: ["gate", "passed", "refused", "exception", "noChecklist", "waived"] },
   ],
   narrative: slots(
     "Say how this period went against the one before: work closed, verified and filed, and the change in each.",

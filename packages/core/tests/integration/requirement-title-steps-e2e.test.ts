@@ -1,9 +1,8 @@
 // REQ-34 r2 on Requirement lifecycle r15, ISS-456: a title alone creates a requirement and its reason
-// is asked, not required (BC-17); its author is told at every step change, the delivery phases
+// is asked, not required (BC-17); its author is told at every step change, the moves into delivery
 // included (BC-21); and Needs you lists a gated step only for the member who must take it, proven with
 // two members of whom only one holds the act (BC-22).
 
-import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
@@ -183,25 +182,17 @@ describe('the author is told at every step change (BC-21)', () => {
     const back = await on(admin, 'POST', `/requirements/${key}/undefer`, { reason: 'Pulled in' });
     expect(back.status, JSON.stringify(back.body)).toBe(200);
     await deliver('requirement.transitioned', 'notify-requirements', id);
-    // a linked issue leaving open starts its delivery: no stored move, the view reads In delivery
-    const started = await createTestIssue(projectId, adminId, 1, {
+    // a linked issue leaving open moves nothing (REQ-74 BC-8); the move into delivery is an act
+    await createTestIssue(projectId, adminId, 1, {
       status: 'in_progress',
       createdAt: new Date(),
       requirementId: id,
     });
     const { consumerOf } = await import('../../src/outbox/consumers.js');
-    await consumerOf('issue.transitioned', 'notify-requirement-step')?.handle(
-      {
-        entity: 'issue',
-        id: started.id,
-        projectId,
-        issueId: started.id,
-        from: 'open',
-        to: 'in_progress',
-        at: new Date().toISOString(),
-      } as never,
-      { eventId: randomUUID() } as never,
-    );
+    expect(consumerOf('issue.transitioned', 'notify-requirement-step')).toBeUndefined();
+    const moved = await on(admin, 'POST', `/requirements/${key}/start-delivery`, {});
+    expect(moved.status, JSON.stringify(moved.body)).toBe(200);
+    await deliver('requirement.transitioned', 'notify-requirements', id);
     expect(await notices(memberId)).toEqual([
       { title: `${key} is Agreed: Cards show their owner`, body: 'Next: In delivery.' },
       { title: `${key} is Deferred: Cards show their owner`, body: 'Next: Agreed.' },

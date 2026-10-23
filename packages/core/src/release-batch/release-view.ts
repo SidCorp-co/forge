@@ -11,7 +11,7 @@ import type {
   ReleaseState,
   ReleaseWaitingKind,
 } from '@forge/contracts/releases';
-import { type BcVerdict, criteriaCoverageOf } from '@forge/contracts/requirements';
+import { type BcVerdict, criteriaCoverageOf, isAgreedStatus } from '@forge/contracts/requirements';
 import { type Said, say } from '@forge/contracts/said';
 import {
   holdersWho,
@@ -274,7 +274,7 @@ export function completionOf(
     .filter((i) => !inRelease.has(i.id) && i.status !== 'closed')
     .map((i) => i.key);
   const criteria = req.coverage.filter((c) => c.verdict !== 'passing').map((c) => c.code);
-  const agreed = req.status === 'agreed' || req.status === 'accepted';
+  const agreed = isAgreedStatus(req.status);
   return {
     key: req.key,
     title: req.title,

@@ -280,13 +280,13 @@ export const REQUIREMENT_READY_CHECKLIST = defineChecklist({
 export const REQUIREMENT_ACCEPTANCE_CHECKLIST = defineChecklist({
 	id: "requirement_acceptance",
 	title: "Acceptance",
-	gates: { machine: "requirement", from: ["agreed"], to: "accepted" },
+	gates: { machine: "requirement", from: ["agreed", "in_delivery", "delivered"], to: "accepted" },
 	design: {
 		flow: "requirement-lifecycle",
 		revision: 15,
 		step: "acceptance_check",
 	},
-	shapes: ["57f88d2f", "68920344"],
+	shapes: ["57f88d2f", "68920344", "d4d20d3c"],
 	questions: [
 		{
 			id: "shipped",

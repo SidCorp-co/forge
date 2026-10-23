@@ -1,5 +1,6 @@
 import { PICTURE_KINDS, REQUIREMENT_KINDS } from '@forge/contracts/requirement-pictures';
 import {
+  AGREED_STATUSES,
   BASELINE_ACTS,
   type BaselineReadiness,
   REQUIREMENT_STATES,
@@ -40,8 +41,8 @@ export { REVISION_STATES, type RevisionState } from '@forge/contracts/requiremen
 export const CRITERION_FORMS = REQUIREMENT_CRITERION_FORMS;
 export type CriterionForm = (typeof CRITERION_FORMS)[number];
 
-// the stored status holds only what a person decides (workflow requirement-lifecycle);
-// in_delivery and delivered are read-time phases (`requirements/standing.ts:deliveryOf`), never written (Q1)
+// the stored status holds only what a person, the assistant or an agent moved it to (REQ-74 BC-8);
+// in_delivery and delivered are stored by their own acts, never read off the issues or verdicts
 /** A project's list of business areas (REQ-29 BC-1): the rows the Requirements list groups and filters by. */
 export const requirementAreas = pgTable(
   'requirement_areas',
@@ -126,7 +127,7 @@ export const requirements = pgTable(
     }),
     agreedHeadChk: check(
       'requirements_agreed_head_chk',
-      sql`${t.status} NOT IN ('agreed', 'accepted') OR ${t.currentRevision} IS NOT NULL`,
+      sql`${t.status} NOT IN (${inList(AGREED_STATUSES)}) OR ${t.currentRevision} IS NOT NULL`,
     ),
   }),
 );

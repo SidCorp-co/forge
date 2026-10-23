@@ -1,0 +1,1 @@
+**A requirement moves into delivery and to delivered only by an act.** Nothing derives either from results; each move names its missing condition. An approver may accept by decision with a reason, recording the waived items, never read as proven.

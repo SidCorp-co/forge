@@ -11,6 +11,7 @@
 import { ISSUE_ADMIT_PERMISSION } from '@forge/contracts/issue-machine';
 import {
   draftIssuesToPromote,
+  isAgreedStatus,
   type PromoteDraftsAnswer,
   type PromotedDraftIssue,
   type RefusedDraftIssue,
@@ -52,7 +53,7 @@ export function promoteSelection<T extends DraftCandidate>(input: {
 }): { ok: true; drafts: T[] } | { ok: false; refusals: RequirementRefusal[] } {
   const deferred = deferredRefusal(input.status, 'promoting its draft issues');
   if (deferred) return { ok: false, refusals: [deferred] };
-  if (input.status !== 'agreed' && input.status !== 'accepted') {
+  if (!isAgreedStatus(input.status)) {
     return {
       ok: false,
       refusals: [

@@ -3347,6 +3347,13 @@
       "when": 1828051200000,
       "tag": "0522_a_lesson_is_settled_by_its_steward_alone",
       "breakpoints": true
+    },
+    {
+      "idx": 523,
+      "version": "7",
+      "when": 1828137600000,
+      "tag": "0523_a_requirement_moves_only_by_an_act",
+      "breakpoints": true
     }
   ]
 }

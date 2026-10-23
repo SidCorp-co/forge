@@ -78,7 +78,7 @@ export type Bc = {
 export type RequirementRead = {
   standing: {
     coverage: Bc[];
-    delivery: { phase: string | null; criteriaCoverage: Record<string, number> };
+    delivery: { criteriaCoverage: Record<string, number> };
   };
   issues: Array<{
     displayId: string;

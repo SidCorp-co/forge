@@ -4,7 +4,6 @@ import type { WrittenLang } from '@forge/contracts/written-lang';
 
 export type {
   RequirementAreaRef,
-  DeliveryPhase,
   RequirementBaseline,
   RequirementCriterion,
   RequirementDelivery,
@@ -40,7 +39,9 @@ export type RequirementAction =
   | { kind: 'repin'; revision: number; reason?: string }
   | { kind: 'defer'; reason: string; targetPhase?: string }
   | { kind: 'undefer'; reason: string }
-  | { kind: 'accept-delivery'; revision: number; reason?: string }
+  | { kind: 'accept-delivery'; revision: number; reason?: string; byDecision?: boolean }
+  | { kind: 'start-delivery'; reason?: string }
+  | { kind: 'mark-delivered'; reason?: string }
   | { kind: 'drop'; reason: string };
 
 /** A revision write: what a new draft or an edit of the open one sends (`revision-draft.ts:revisionWrite`). */

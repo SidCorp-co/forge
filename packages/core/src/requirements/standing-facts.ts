@@ -4,12 +4,14 @@
  * beside the revision or version each is approved at now.
  */
 
-import type { CoverageFile } from '@forge/contracts/requirements';
+import type { ChecklistAnswer } from '@forge/contracts/checklists';
+import type { CoverageFile, RequirementAcceptanceDecision } from '@forge/contracts/requirements';
 import type { StorefrontDraftPart } from '@forge/contracts/verdict-identity';
 import { inArray, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { issueAttachments } from '../db/schema.js';
 import { reopenedAtOf, verdictByBuilderSql } from '../issues/index.js';
+import { waivedOf } from './acceptance-waived.js';
 import { requirementDependents } from './dependents.js';
 import type { LiveBuildHolds, StandingIssueCriterion, StandingVerdict } from './standing.js';
 import type { CoverageIdentity } from './standing-coverage.js';
@@ -286,6 +288,41 @@ export async function latestContractPinsOf(ids: readonly string[]) {
     contractSlug: r.contract_slug,
     contractVersion: r.contract_version,
   }));
+}
+
+/**
+ * Each of `ids` that stands accepted by decision (REQ-74): its latest move into accepted waived one or
+ * more of the acceptance checklist's blocking items (`checklists.ts:waivedEvaluation`). The one
+ * reading of "accepted by decision": the standing, the duplicate check and the delivered reads all
+ * ask it, so none counts what a decision waived as proven.
+ */
+export async function acceptanceDecisionsOf(
+  ids: readonly string[],
+): Promise<Map<string, RequirementAcceptanceDecision>> {
+  if (ids.length === 0) return new Map();
+  const rows = (await db.execute(sql`
+    SELECT DISTINCT ON (r.id) r.id, kt.reason, kt.created_at AS at, kt.checklist_answers AS answers
+      FROM requirements r
+      JOIN kernel_transitions kt ON kt.entity = 'requirement' AND kt.entity_id = r.id
+                                AND kt.to_status = 'accepted'
+     WHERE r.status = 'accepted'
+       AND r.id IN (${sql.join(
+         ids.map((id) => sql`${id}::uuid`),
+         sql`, `,
+       )})
+     ORDER BY r.id, kt.created_at DESC`)) as unknown as Array<{
+    id: string;
+    reason: string | null;
+    at: Date | string;
+    answers: ChecklistAnswer[] | null;
+  }>;
+  const out = new Map<string, RequirementAcceptanceDecision>();
+  for (const r of rows) {
+    const waived = waivedOf({ answers: r.answers ?? [] });
+    if (waived.length === 0) continue;
+    out.set(r.id, { reason: r.reason ?? '', decidedAt: new Date(r.at).toISOString(), waived });
+  }
+  return out;
 }
 
 /**
