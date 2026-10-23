@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.292] - 2026-10-23
+
+A decision whose until is a sentence holds until the item changes
+
+### Fixed
+
+- **A decision's `until` ends it only on a date it names.** An ISO 8601 date or zoned date-time expires it; other text is a condition held until the standing moves, and the write says so (ISS-607).
+
 ## [0.4.0-dev.291] - 2026-10-23
 
 Runs on resting issues are refused at declare; reclaims keep live work local
