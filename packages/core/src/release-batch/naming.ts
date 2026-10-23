@@ -8,10 +8,13 @@ import { type ReleaseNaming, ReleaseNamingSchema } from '@forge/contracts/releas
 import { and, asc, desc, eq, isNotNull, isNull, ne, notInArray } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { pipelineRuns, releaseDraftNamings } from '../db/schema.js';
+import { arrivedAfterOf } from '../issues/index.js';
 import { loadProjectAccess } from '../lib/authz.js';
+import { logger } from '../lib/logger.js';
 import { requireHeld } from '../permissions/index.js';
 import { writeRunMetadata } from '../pipeline/index.js';
 import { draftedVersion } from './draft-version.js';
+import { RELEASE_GATE_STATUS } from './gate.js';
 import { refuseRelease } from './refuse.js';
 
 export interface StoredNaming extends ReleaseNaming {
@@ -148,37 +151,69 @@ export async function nameReleaseAs(
   return nameRelease(projectId, version, naming, userId);
 }
 
+interface NamedCut {
+  projectId: string;
+  version: string;
+  runId: string;
+  roster: string[];
+}
+
+/**
+ * `naming`, else null where every issue of the cut reached the gate after it was written. A name
+ * describes what waited when it was written, so that one named a roster that left the gate uncut
+ * (catalog-api 2026-10-23: release records shipped it under no version, and a cut a week on took it).
+ */
+async function namingOfRoster(
+  tx: Tx,
+  naming: StoredNaming,
+  cut: NamedCut,
+): Promise<StoredNaming | null> {
+  const at = new Date(naming.at);
+  if (Number.isNaN(at.getTime())) return naming;
+  const arrived = await arrivedAfterOf(tx, cut.roster, RELEASE_GATE_STATUS, at);
+  if (arrived.size < new Set(cut.roster).size) return naming;
+  logger.info(
+    { projectId: cut.projectId, runId: cut.runId, version: cut.version, name: naming.name },
+    'release naming: named before any issue this cut carries reached the gate, so the cut does not carry it',
+  );
+  return null;
+}
+
+/** The name its draft was given for this roster, else that of the attempt it re-cuts, else null. */
+async function inheritedNaming(
+  tx: Tx,
+  drafted: typeof releaseDraftNamings.$inferSelect | null,
+  cut: NamedCut,
+): Promise<StoredNaming | null> {
+  if (drafted) {
+    const { name, summary, namedAt, namedBy } = drafted;
+    const kept = await namingOfRoster(
+      tx,
+      { name, summary, at: namedAt.toISOString(), by: namedBy },
+      cut,
+    );
+    if (kept) return kept;
+  }
+  const earlier = await runCutAs(cut.projectId, cut.version, tx, cut.runId);
+  if (!earlier || readReleaseNaming(earlier.metadata) === null) return null;
+  return namingOfRoster(tx, (earlier.metadata as { naming: StoredNaming }).naming, cut);
+}
+
 /**
  * Gives the run the cut just opened as `version` its name, inside the cut's transaction: the one the
- * cut was handed, else the one its draft was given, else the name of the attempt it re-cuts. The
- * draft's row goes either way, consumed or overridden.
+ * cut was handed, else one written for the roster it carries — its draft's, then the attempt it
+ * re-cuts. The draft's row goes either way, consumed, overridden or outlived.
  */
 export async function carryNaming(
   tx: Tx,
-  cut: {
-    projectId: string;
-    version: string;
-    runId: string;
-    given: ReleaseNaming | null;
-    by: string;
-  },
+  cut: NamedCut & { given: ReleaseNaming | null; by: string },
 ): Promise<void> {
-  const pending = await pendingNaming(cut.projectId, cut.version, tx);
-  const earlier =
-    cut.given || pending ? null : await runCutAs(cut.projectId, cut.version, tx, cut.runId);
-  const stamp = cut.given
-    ? namingStamp(cut.given, cut.by)
-    : pending
-      ? namingStamp(
-          { name: pending.name, summary: pending.summary },
-          pending.namedBy,
-          pending.namedAt,
-        )
-      : earlier && readReleaseNaming(earlier.metadata)
-        ? { naming: (earlier.metadata as { naming: StoredNaming }).naming }
-        : null;
-  if (stamp) await writeRunMetadata(cut.runId, { merge: stamp, touch: false }, tx);
-  if (pending) await tx.delete(releaseDraftNamings).where(eq(releaseDraftNamings.id, pending.id));
+  const drafted = await pendingNaming(cut.projectId, cut.version, tx);
+  const naming = cut.given
+    ? namingStamp(cut.given, cut.by).naming
+    : await inheritedNaming(tx, drafted, cut);
+  if (naming) await writeRunMetadata(cut.runId, { merge: { naming }, touch: false }, tx);
+  if (drafted) await tx.delete(releaseDraftNamings).where(eq(releaseDraftNamings.id, drafted.id));
 }
 
 /**

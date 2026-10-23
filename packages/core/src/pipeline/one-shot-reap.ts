@@ -13,6 +13,7 @@ import {
   broadcastSessionEvent,
   getLoopThresholds,
   parkedOnAHuman,
+  releaseEndsRun,
   SWEEP_SESSION_COLUMNS,
   transitionSessions,
 } from './ports.js';
@@ -52,6 +53,7 @@ export async function reapOrphanedOneShotRuns(
     WHERE r.kind IN ('system', 'interactive')
       AND r.status IN ('running', 'paused')
       AND r.started_at < ${cutoffIso}
+      AND NOT ${releaseEndsRun(sql`r.metadata`)}
       AND NOT EXISTS (
         SELECT 1 FROM jobs j WHERE j.pipeline_run_id = r.id
       )

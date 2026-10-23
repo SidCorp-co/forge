@@ -78,3 +78,33 @@ export async function shipsWithdrawnOf(
   }>;
   return new Set([...rows].filter((r) => r.withdrawn).map((r) => r.issue_id));
 }
+
+/**
+ * Which of these issues reached `status` after the instant `at` without standing there at it: a move
+ * into it after `at` (`kernel_transitions`), and the newest move at or before `at` took the issue
+ * anywhere else, or there was none. An issue with no move into `status` after `at` is absent.
+ */
+export async function arrivedAfterOf(
+  executor: Pick<Tx, 'execute'>,
+  issueIds: readonly string[],
+  status: string,
+  at: Date,
+): Promise<Set<string>> {
+  if (issueIds.length === 0) return new Set();
+  const atIso = at.toISOString();
+  const rows = (await executor.execute(sql`
+    SELECT k.entity_id::text AS issue_id
+      FROM kernel_transitions k
+     WHERE k.entity = 'issue'
+       AND k.to_status = ${status}
+       AND k.created_at > ${atIso}
+       AND k.entity_id IN (${sql.join(
+         issueIds.map((id) => sql`${id}::uuid`),
+         sql`, `,
+       )})
+       AND (SELECT p.to_status FROM kernel_transitions p
+             WHERE p.entity = 'issue' AND p.entity_id = k.entity_id AND p.created_at <= ${atIso}
+             ORDER BY p.created_at DESC LIMIT 1) IS DISTINCT FROM ${status}
+     GROUP BY k.entity_id`)) as unknown as Array<{ issue_id: string }>;
+  return new Set([...rows].map((r) => r.issue_id));
+}

@@ -106,6 +106,9 @@ interface PipelinePorts {
   getLoopThresholds: () => { queueMs: number; heartbeatMs: number; ackMs: number };
   killGraceMs: () => number;
   parkedOnAHuman: (sessionId: SQL) => SQL;
+  /** Whether the run whose metadata is `metadata` is one its release ends — by its settle or its
+   *  abort — and no sweep may close for running no job. */
+  releaseEndsRun: (metadata: SQL) => SQL;
   requestJobKill: (job: KillableJob, reason: string) => Promise<string>;
   gateReasonsForQueuedJobsIn: (
     projectIds: readonly string[],
@@ -181,6 +184,7 @@ export const broadcastSessionEvent = port('broadcastSessionEvent');
 export const getLoopThresholds = port('getLoopThresholds');
 export const killGraceMs = port('killGraceMs');
 export const parkedOnAHuman = port('parkedOnAHuman');
+export const releaseEndsRun = port('releaseEndsRun');
 export const voidCancelledRunQuestions = port('voidCancelledRunQuestions');
 export const requestJobKill = port('requestJobKill');
 export const gateReasonsForQueuedJobsIn = port('gateReasonsForQueuedJobsIn');

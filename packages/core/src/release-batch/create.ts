@@ -157,6 +157,7 @@ async function openClaimedRun(args: {
       runId: row.id,
       given: args.naming,
       by: args.userId,
+      roster: issueIds,
     });
     // every cut is named (REQ-40 BC-14): one nobody named is drafted off this event, never left bare
     await emitEvent(tx, 'release.cut', { projectId, runId: row.id, version: cut });

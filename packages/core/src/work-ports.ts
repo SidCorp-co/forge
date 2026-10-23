@@ -121,6 +121,7 @@ import {
   deliveryHeadsOf,
   judgedBuildOf,
   landedRecordOf,
+  releaseEndsRun,
 } from './release-batch/index.js';
 import {
   changedTracedOf,
@@ -167,6 +168,7 @@ function provideWorkPipelinePorts(): void {
     getLoopThresholds,
     killGraceMs,
     parkedOnAHuman,
+    releaseEndsRun,
     requestJobKill,
     gateReasonsForQueuedJobsIn,
     readRunGate,
