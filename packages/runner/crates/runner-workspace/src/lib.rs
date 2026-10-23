@@ -14,7 +14,7 @@
 //! - `refresh`    — fetch + fast-forward before an agent reads the workspace
 //! - `repo_cred`  — the credential a repository is configured to push with, named
 //!   rather than inherited
-//! - `salvage`    — commit + push a failed job's uncommitted work
+//! - `salvage`    — commit a released run's uncommitted work onto its branch
 //! - `trust`      — pre-accept Claude Code's workspace-trust dialog for a checkout
 pub mod close_loop;
 pub mod composer;

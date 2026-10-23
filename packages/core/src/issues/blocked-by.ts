@@ -17,6 +17,7 @@ import {
   designHoldPhrase,
   designHoldsOf,
 } from './design-delivery.js';
+import { restingRefusal } from './issue-resting.js';
 import { refuseScopeHeldForKeys } from './issue-scope.js';
 import {
   assertPatternReviewsSettledForIssue,
@@ -294,6 +295,8 @@ async function refuseBlockedTakeForSeqs(
       'ISSUE_NOT_FOUND',
     );
   }
+  const resting = restingRefusal(issues, door);
+  if (resting) throw resting;
   const held: BlockedIssue[] = [];
   for (const issue of issues) {
     const blocked = await blockedOf(executor, issue);
@@ -302,7 +305,7 @@ async function refuseBlockedTakeForSeqs(
   if (held.length > 0) throw issueBlocked(held, door);
 }
 
-// the run-session preflight and open: every gate above, then a live run holding a scope the issues'
+// the run-session preflight and open: an issue at rest (issue-resting.ts), every gate above, then a live run holding a scope the issues'
 // designs meet (issue-scope.ts), which the lease take asks again under the project scope lock
 export async function refuseHeldTakeForSeqs(
   projectId: string,

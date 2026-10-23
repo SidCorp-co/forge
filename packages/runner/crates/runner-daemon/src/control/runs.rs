@@ -96,7 +96,7 @@ fn unanswered_inherited(
 /// never reported to the master that dispatched it (HOP ISS-46, 19 refusals in 10
 /// minutes). Core answers with the function the open calls, so the two cannot disagree.
 ///
-/// Only a hold core names is a refusal. A core that cannot be reached, a box with no
+/// Only a hold core names, or an issue at rest, is a refusal. A core that cannot be reached, a box with no
 /// core client, a token core will not take, and a core from before the route all leave the
 /// declaration to be written as it always was, because the open at the next sweep asks the
 /// same question and a master must still be able to declare while core is down. That
@@ -111,6 +111,11 @@ pub(crate) async fn preflight_refusal(
         Ok(()) => None,
         Err(runner_platform::error::Error::Held { said, .. }) => Some(format!(
             "core would not open a run over these issues, so nothing was declared: {said}. A dispatch on them would be accepted by this box and refused at every sweep. Declare it once the hold named above has lifted. Nothing was recorded"
+        )),
+        // FB-273: accepted, a run over a closed issue had its subagent bind and was then
+        // reclaimed under it, because core's verdict closes a run whose issues are over.
+        Err(runner_platform::error::Error::AtRest { said }) => Some(format!(
+            "core would not open a run over these issues, so nothing was declared: {said}"
         )),
         Err(e) => {
             tracing::warn!(
@@ -436,6 +441,26 @@ mod preflight_tests {
         let seen = seen.lock().unwrap();
         assert_eq!(seen[0].0, "/api/devices/me/run-sessions/preflight");
         assert!(seen[0].1.contains("ISS-46") && seen[0].1.contains("proj-1"));
+    }
+
+    /// FB-273: a declaration over a closed issue was written, its subagent bound, and the run
+    /// was reclaimed under it a minute later. Core refuses an issue at rest by name, and that
+    /// refusal is the pane's, not a core this box reads as unable to answer.
+    #[tokio::test]
+    async fn an_issue_at_rest_refuses_the_declaration_by_name() {
+        let (client, _) = crate::test_core::fake_core(|_| {
+            (
+                422,
+                r#"{"error":{"code":"ISSUE_AT_REST","refusals":[{"code":"ISSUE_AT_REST","path":"","detail":"a run session over these issues is refused. ISS-23 is at `closed` (Closed), which is at rest. Reopen it first, then declare again. Nothing was recorded."}]}}"#,
+            )
+        })
+        .await;
+        let why = preflight_refusal(Some(&client), "proj-1", &keys())
+            .await
+            .expect("a declaration over a closed issue was accepted; an issue at rest is refused at declare");
+        assert!(why.contains("ISS-23") && why.contains("`closed`"), "{why}");
+        assert!(why.contains("Reopen it first"), "{why}");
+        assert!(why.contains("Nothing was recorded"), "{why}");
     }
 
     #[tokio::test]

@@ -259,10 +259,54 @@ pub(crate) fn refusal(what: &str, status: u16, text: &str) -> Error {
     if let Some(named) = constraints(status, text) {
         return Error::Malformed { said, named };
     }
+    if status == 422 {
+        // Core's own sentences, whole: the body line is cut at 200 characters, and what a
+        // master needs from this refusal (the issue, its status, the way back) is at the end.
+        let rested = details_of(text, AT_REST_CODE);
+        if !rested.is_empty() {
+            return Error::AtRest {
+                said: rested.join("; "),
+            };
+        }
+    }
     match held_code(status, text) {
         Some(code) => Error::Held { said, code },
         None => Error::Other(said),
     }
+}
+
+/// The refusal core answers for a run over an issue at rest (`issues/issue-resting.ts`), which
+/// `issue-resting.test.ts` pins to core's code. Not a hold: nothing queues behind it.
+pub const AT_REST_CODE: &str = "ISSUE_AT_REST";
+
+/// The detail of each refusal in the envelope that names `code`, in order.
+fn details_of(body: &str, code: &str) -> Vec<String> {
+    let Ok(parsed) = serde_json::from_str::<serde_json::Value>(body) else {
+        return Vec::new();
+    };
+    parsed
+        .pointer("/error/refusals")
+        .and_then(|v| v.as_array())
+        .into_iter()
+        .flatten()
+        .filter(|r| r.get("code").and_then(|v| v.as_str()) == Some(code))
+        .filter_map(|r| r.get("detail").and_then(|v| v.as_str()).map(str::to_string))
+        .collect()
+}
+
+/// The envelope's own code, then each of its refusals', in order.
+fn codes_of(body: &str) -> Vec<String> {
+    let Ok(parsed) = serde_json::from_str::<serde_json::Value>(body) else {
+        return Vec::new();
+    };
+    let top = parsed.pointer("/error/code").and_then(|v| v.as_str());
+    let rows = parsed
+        .pointer("/error/refusals")
+        .and_then(|v| v.as_array())
+        .into_iter()
+        .flatten()
+        .filter_map(|r| r.get("code").and_then(|v| v.as_str()));
+    top.into_iter().chain(rows).map(str::to_string).collect()
 }
 
 /// The take refusals core answers for when something holds the issues a run is declared
@@ -285,18 +329,9 @@ pub(crate) fn held_code(status: u16, body: &str) -> Option<String> {
     if status != 422 && status != 409 {
         return None;
     }
-    let parsed: serde_json::Value = serde_json::from_str(body).ok()?;
-    let top = parsed.pointer("/error/code").and_then(|v| v.as_str());
-    let rows = parsed
-        .pointer("/error/refusals")
-        .and_then(|v| v.as_array())
+    codes_of(body)
         .into_iter()
-        .flatten()
-        .filter_map(|r| r.get("code").and_then(|v| v.as_str()));
-    top.into_iter()
-        .chain(rows)
-        .find(|c| HELD_CODES.contains(c))
-        .map(str::to_string)
+        .find(|c| HELD_CODES.contains(&c.as_str()))
 }
 
 /// A call that got no status at all, named by what went wrong and then by the
@@ -376,6 +411,16 @@ mod held_tests {
             refusal("run-session open", 409, lease),
             Error::Held { code, .. } if code == "ISSUE_LEASE_HELD"
         ));
+    }
+
+    #[test]
+    fn an_issue_at_rest_is_its_own_refusal_and_not_a_hold() {
+        let rest = r#"{"error":{"code":"ISSUE_AT_REST","refusals":[{"code":"ISSUE_AT_REST","path":"","detail":"ISS-23 is at `closed`"}]}}"#;
+        match refusal("run-session preflight", 422, rest) {
+            Error::AtRest { said } => assert!(said.contains("ISS-23"), "{said}"),
+            other => panic!("an issue at rest was read as {other:?}"),
+        }
+        assert!(matches!(refusal("o", 503, rest), Error::Other(_)));
     }
 
     #[test]
