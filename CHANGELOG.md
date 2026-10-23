@@ -9,6 +9,18 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.295] - 2026-10-23
+
+Every release is named, and its highlights play a short clip from QA
+
+### Added
+
+- **Every release has a name, and its highlights play a clip.** Releases cut unattended are named from what they bring, What's new leads with that name and summary, and QA clips play inline, muted, from their opening still.
+
+### Changed
+
+- **A judge keeps a screen clip of each observable criterion it judges.** A pass, short or fail with no clip says why in withoutClip; a reason alone no longer stands in for one.
+
 ## [0.4.0-dev.294] - 2026-10-23
 
 Long workflow design titles wrap in full instead of being cut

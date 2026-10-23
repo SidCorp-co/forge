@@ -1,1 +1,0 @@
-**Every release has a name, and its highlights play a clip.** Releases cut unattended are named from what they bring, What's new leads with that name and summary, and QA clips play inline, muted, from their opening still.
