@@ -54,13 +54,14 @@ export function ReleaseHighlightList({ highlights, slug, authed, gaps = true }: 
               <div className="grid gap-1">
                 <h3 className="text-16 font-semibold leading-snug">{h.title}</h3>
                 <p className="text-14">{h.body}</p>
-                <p className="text-12 text-subtle" title={t("releases.page.highlights.proves", { codes: h.claims.join(", ") })}>
+                {/* named by the requirement's title, in a reader's words: its key is the link's address (BC-15) */}
+                <p className="text-12 text-subtle" title={t("releases.page.highlights.proves", { codes: h.claims.join(", ") })} data-testid="page-highlight-requirement">
                   {slug ? (
-                    <Link className="font-mono text-link hover:underline" href={requirementHref(slug, h.requirement.key)}>
-                      {h.requirement.key}
+                    <Link className="text-link hover:underline" href={requirementHref(slug, h.requirement.key)}>
+                      {h.requirement.title}
                     </Link>
                   ) : (
-                    <span className="font-mono">{h.requirement.key}</span>
+                    h.requirement.title
                   )}
                 </p>
               </div>

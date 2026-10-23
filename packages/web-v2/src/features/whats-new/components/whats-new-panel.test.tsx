@@ -54,6 +54,12 @@ describe("the What's new panel", () => {
     expect(screen.getByTestId("whats-new-panel")).not.toHaveTextContent("BC-1");
   });
 
+  it("names a highlight's requirement by its title, never by its key (BC-15)", () => {
+    open(feedOf());
+    expect(screen.getByTestId("page-highlight-requirement")).toHaveTextContent("Release page");
+    expect(screen.getByTestId("whats-new-panel")).not.toHaveTextContent(/\bREQ-\d+/);
+  });
+
   it("says plainly when no release carries this build", () => {
     open(feedOf(null, "beta"));
     expect(screen.getByTestId("whats-new-none")).toHaveTextContent("Nothing new");
