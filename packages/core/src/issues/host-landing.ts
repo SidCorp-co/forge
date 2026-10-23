@@ -1,4 +1,6 @@
-import { type SQL, sql } from 'drizzle-orm';
+import { and, eq, type SQL, sql } from 'drizzle-orm';
+import { db } from '../db/client.js';
+import { repoPullRequests } from '../db/schema-repo-projection.js';
 import { designOnlyMarkSql } from './design-delivery.js';
 
 /**
@@ -21,6 +23,30 @@ const hostLandedSql = (i: SQL): SQL => sql`(${i}.merged_commit_sha IS NOT NULL O
     JOIN repo_pull_requests hp ON hp.id = hl.pull_request_id
    WHERE hl.issue_id = ${i}.id AND hp.state = 'merged'
      AND hp.merged_at IS NOT NULL AND hp.merged_at >= ${i}.merged_at))`;
+
+/**
+ * The host's merge `commit` names on this project: a change request the host reports merged with
+ * that merge commit, whatever issue it links. Null where no merged request carries it.
+ */
+export async function hostMergeNamed(
+  projectId: string,
+  commit: string | undefined,
+): Promise<{ commitSha: string; mergedAt: Date } | null> {
+  const sha = commit?.trim().toLowerCase();
+  if (!sha || !/^[0-9a-f]{40}$/.test(sha)) return null;
+  const [row] = await db
+    .select({ sha: repoPullRequests.mergeCommitSha, at: repoPullRequests.mergedAt })
+    .from(repoPullRequests)
+    .where(
+      and(
+        eq(repoPullRequests.projectId, projectId),
+        eq(repoPullRequests.state, 'merged'),
+        sql`lower(${repoPullRequests.mergeCommitSha}) = ${sha}`,
+      ),
+    )
+    .limit(1);
+  return row?.sha && row.at ? { commitSha: row.sha, mergedAt: row.at } : null;
+}
 
 /**
  * Whether the issue row `i` reads as landed, the one predicate every "landed" read takes: its

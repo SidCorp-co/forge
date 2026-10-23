@@ -1,1 +1,1 @@
-**A local merge stamp no longer reads as landed on a change-request project.** Standings, needs-you, the steward's sweeps and the `awaiting_release` guard count only the host's merge, so nobody is asked to judge a landing that never happened.
+**On a change-request project only the host's merge lands.** A local merge mark is refused by name, and a stamp already written no longer reads as landed in standings, needs-you, the steward's sweeps or the `awaiting_release` guard.

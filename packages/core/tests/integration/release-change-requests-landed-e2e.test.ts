@@ -93,8 +93,8 @@ async function iss12(status = 'reopen'): Promise<string> {
   return id;
 }
 
-/** A change request linked to ISS-12, merged on the host at `mergedAt`. */
-async function mergedRequest(issueId: string, mergedAt: string): Promise<void> {
+/** A change request merged on the host at `mergedAt`, linked to `issueId` where one is named. */
+async function mergedRequest(issueId: string | null, mergedAt: string): Promise<void> {
   await applyPullRequestEvent(
     { projectId: world.projectId, bindingId: world.bindingId, host: 'gitlab' },
     {
@@ -115,6 +115,7 @@ async function mergedRequest(issueId: string, mergedAt: string): Promise<void> {
       repository: { full_name: 'acme/catalog-api' },
     } as never,
   );
+  if (issueId === null) return;
   await db.execute(sql`
     INSERT INTO repo_pull_request_issues (pull_request_id, issue_id, linked_by)
     SELECT id, ${issueId}, 'description' FROM repo_pull_requests WHERE project_id = ${world.projectId} AND number = 1014
@@ -234,6 +235,84 @@ describe('REQ-71: on a change-request project a local stamp is not a landing', (
   });
 });
 
+/** A fresh ISS-12 at in_progress with no stamp, for a mark to be sent at. */
+async function unmarked(): Promise<string> {
+  const id = randomUUID();
+  await db.execute(sql`
+    INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id)
+    VALUES (${id}, ${world.projectId}, 12, 'Document the admin REST API with Scribe', 'open', ${world.ownerId})
+  `);
+  await seedIssueStatus(id, 'in_progress');
+  return id;
+}
+
+async function stampOf(id: string) {
+  const [row] = await rows<{ merged_at: string | null; merged_commit_sha: string | null }>(sql`
+    SELECT merged_at::text, merged_commit_sha FROM issues WHERE id = ${id}
+  `);
+  return row;
+}
+
+describe('REQ-71: on a change-request project a mark names a host merge or is refused', () => {
+  beforeEach(() => seedWorld({ approval: { required: true }, changeRequests: true }));
+
+  it('refuses ISS-12’s local mark by name, writing nothing, and says to open a change request', async () => {
+    const id = await unmarked();
+    const res = await api(world.token, 'POST', `/api/issues/${id}/merge`, {
+      target: BRANCH,
+      commit: LOCAL,
+    });
+    expect(res.status, JSON.stringify(res.body)).toBeGreaterThanOrEqual(400);
+    const said = JSON.stringify(res.body);
+    expect(said).toContain('MARK_NOT_A_HOST_MERGE');
+    expect(said).toContain('change request that links this issue');
+    expect(said).toContain('merge-pull-request');
+    expect(await stampOf(id)).toEqual({ merged_at: null, merged_commit_sha: null });
+  });
+
+  it('refuses a bare mark naming no commit the same way', async () => {
+    const id = await unmarked();
+    const res = await api(world.token, 'POST', `/api/issues/${id}/merge`, { target: BRANCH });
+    expect(JSON.stringify(res.body)).toContain('MARK_NOT_A_HOST_MERGE');
+    expect((await stampOf(id))?.merged_at).toBeNull();
+  });
+
+  it('takes a mark naming a host merge commit, recorded as that merge', async () => {
+    const id = await unmarked();
+    await mergedRequest(null, new Date().toISOString());
+    const res = await api(world.token, 'POST', `/api/issues/${id}/merge`, {
+      target: BRANCH,
+      commit: HOST_MERGE,
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect((await stampOf(id))?.merged_commit_sha).toBe(HOST_MERGE);
+  });
+
+  it('takes a mark over the host merge of a request linking the issue', async () => {
+    const id = await unmarked();
+    await mergedRequest(id, new Date().toISOString());
+    const res = await api(world.token, 'POST', `/api/issues/${id}/merge`, { target: BRANCH });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect((await stampOf(id))?.merged_commit_sha).toBe(HOST_MERGE);
+  });
+
+  it('keeps a design approval’s stamp, which is the approval’s own write', async () => {
+    const id = await unmarked();
+    const { markApprovedDesign } = await import('../../src/issues/design-landing.js');
+    const outcome = await db.transaction((tx) =>
+      markApprovedDesign(tx, {
+        issueId: id,
+        flow: 'admin-rest',
+        revision: 2,
+        actor: { type: 'user', id: world.ownerId } as never,
+        builds: null,
+      }),
+    );
+    expect(outcome.action).toBe('marked');
+    expect((await stampOf(id))?.merged_at).not.toBeNull();
+  });
+});
+
 describe('on any other project the stamp is the landing, as before', () => {
   beforeEach(() => seedWorld({ approval: { required: true } }));
 
@@ -242,6 +321,16 @@ describe('on any other project the stamp is the landing, as before', () => {
     expect(await standingsOf()).toContain(JUDGE_WHAT_LANDED);
     await reconcileIdleIssues(new Date(), { projectId: world.projectId });
     expect((await strandOf(id))?.evidence.merged).toBe(true);
+  });
+
+  it('takes ISS-12’s local mark, as before', async () => {
+    const id = await unmarked();
+    const res = await api(world.token, 'POST', `/api/issues/${id}/merge`, {
+      target: BRANCH,
+      commit: LOCAL,
+    });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    expect((await stampOf(id))?.merged_at).not.toBeNull();
   });
 
   it('reports an owed close for a stamped issue left at a live status', async () => {

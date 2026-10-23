@@ -1,6 +1,7 @@
 import type { MergeRefusalCode } from '@forge/contracts/issues';
 import type { FileChange, LandingArtifact } from '@forge/contracts/landing-artifacts';
 import type { ActorAgency } from '@forge/contracts/permissions';
+import { releaseThroughChangeRequests } from '@forge/contracts/releases';
 import { z } from 'zod';
 import { db, type Tx } from '../db/client.js';
 import { refuser } from '../lib/refusal.js';
@@ -9,6 +10,7 @@ import { emitEvents } from '../outbox/index.js';
 import type { Actor } from './activity.js';
 import { resolveCarriage } from './carriage.js';
 import { type CommitLanding, readCommitLanding } from './commit-landing.js';
+import { hostMergeNamed } from './host-landing.js';
 import {
   landingMarkRefusal,
   markArtifacts,
@@ -35,7 +37,7 @@ import {
 } from './merge-record.js';
 import { refuseUnmarkOnClosed } from './merged-at.js';
 import { markEntryRefusal } from './pattern-entry.js';
-import { contractDrift, postIssueNotice } from './ports.js';
+import { contractDrift, postIssueNotice, readProjectDocument } from './ports.js';
 import { findIssueById, type IssueRow } from './read-service.js';
 import { unreviewedMergeRefusal } from './review.js';
 import { findMissingWorkEvidence, latestHandoffCommit } from './work-evidence.js';
@@ -120,6 +122,7 @@ type MergeMarkArgs = {
 };
 
 type RepositoryLanding = Extract<CommitLanding, { ok: true }>;
+type HostMerge = { commitSha: string; mergedAt: Date };
 type LandingShape = NonNullable<Awaited<ReturnType<typeof readLandingShape>>>;
 
 /** What a mark left: the row's merge record, the commit only claimed, and where it was read from. */
@@ -130,11 +133,39 @@ type Stamp = {
   readFrom: RepositoryLanding | null;
 };
 
+/**
+ * On a project that releases through change requests a mark lands nothing by itself: only the host's
+ * merge of a change request does (REQ-71). A mark stands there on the host merge Forge holds for a
+ * request linking the issue, or on a `commit` that is a merge commit the host reported; any other
+ * is refused by name, never stamped as a local claim nothing reads as landed. Null elsewhere.
+ * A design approval's stamp is the approval's own write (`design-landing.ts`), not this door's.
+ */
+async function hostMergeOfMark(args: MergeMarkArgs, prior: IssueRow): Promise<HostMerge | null> {
+  if (!releaseThroughChangeRequests((await readProjectDocument(prior.projectId))?.document)) {
+    return null;
+  }
+  const host =
+    (await observedMergeForIssue(db, prior.id)) ??
+    (await hostMergeNamed(prior.projectId, args.commit));
+  if (host) return host;
+  const named = args.commit
+    ? ` \`${args.commit}\` is the merge commit of no change request the host reported merged here.`
+    : '';
+  throw refuse(
+    'MARK_NOT_A_HOST_MERGE',
+    `This project releases through change requests, so a merge mark lands nothing by itself: only the host's merge of a change request does.${named} ` +
+      'Open or update a change request that links this issue (its branch or description naming it); once the release is approved, the master merges it through `POST /api/issues/:id/merge-pull-request`, and that merge records the landing.',
+    args.commit ? '/commit' : undefined,
+  );
+}
+
 /** The refusals a mark meets before its transaction: the landing shape, the target, contract
- *  drift, and an agent's work evidence, which a commit the repository attributes may stand in for. */
+ *  drift, and an agent's work evidence, which a commit the repository attributes or a host's merge
+ *  may stand in for. */
 async function preflightMark(
   args: MergeMarkArgs,
   prior: IssueRow,
+  hostMerge: HostMerge | null,
 ): Promise<{ shape: LandingShape; fromRepository: RepositoryLanding | null }> {
   const issueId = args.issue.id;
   const shape = await readLandingShape(args.issue.projectId, db);
@@ -150,6 +181,7 @@ async function preflightMark(
   }
   const drift = await contractDrift(prior, args.contracts ?? []);
   if (drift) throw refuse(drift.code, drift.detail, '/contracts');
+  if (hostMerge) return { shape, fromRepository: null };
   const design = shape === 'git' && args.commit ? designOnlyStamp(prior) : null;
   if (design && args.commit) {
     return { shape, fromRepository: await overDesign(args, args.commit, design) };
@@ -189,11 +221,12 @@ async function overDesign(
 async function stampMark(
   tx: Tx,
   args: MergeMarkArgs,
-  shape: LandingShape,
-  fromRepository: RepositoryLanding | null,
+  preflight: { shape: LandingShape; fromRepository: RepositoryLanding | null },
+  hostMerge: HostMerge | null,
 ): Promise<Stamp> {
+  const { shape, fromRepository } = preflight;
   const issueId = args.issue.id;
-  const observed = await observedMergeForIssue(tx, issueId);
+  const observed = (await observedMergeForIssue(tx, issueId)) ?? hostMerge;
   const landing = args.landing ?? null;
   const refused = landingMarkRefusal({ shape, landing, observed: observed !== null });
   if (refused) throw refuse(refused.code, refused.detail, '/landing');
@@ -482,7 +515,8 @@ export async function applyMergeMarker(input: MergeMarkArgs): Promise<{
   const prior = await findIssueById(input.issue.id);
   if (!prior) throw notFound('issue not found');
   const args = await withCarriers(input, prior);
-  const preflight = args.op === 'mark' ? await preflightMark(args, prior) : null;
+  const hostMerge = args.op === 'mark' ? await hostMergeOfMark(args, prior) : null;
+  const preflight = args.op === 'mark' ? await preflightMark(args, prior, hostMerge) : null;
   if (preflight) await refuseUncheckedMerge(args, prior, preflight.shape);
 
   // The stamp, its audit comment and their events commit together or not at all.
@@ -492,7 +526,7 @@ export async function applyMergeMarker(input: MergeMarkArgs): Promise<{
       claimedCommit: null,
       readFrom: null,
     };
-    if (preflight) stamp = await stampMark(tx, args, preflight.shape, preflight.fromRepository);
+    if (preflight) stamp = await stampMark(tx, args, preflight, hostMerge);
     else await clearMark(tx, args.issue.id);
     return { stamp, ...(await writeMarkTrail(tx, args, prior, stamp)) };
   });
