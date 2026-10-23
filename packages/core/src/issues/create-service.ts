@@ -26,6 +26,7 @@ import {
   persistDecodedIssueAttachments,
 } from './attachment-service.js';
 import { refuseHeldTake } from './blocked-by.js';
+import { callerBoxOf } from './caller-box.js';
 import { syncCriteriaFromText } from './criteria/store.js';
 import { claimDetectorKey, isValidDetectorKey } from './detector-key.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
@@ -316,7 +317,11 @@ async function writeBirth(tx: Tx, birth: Birth) {
   // ISS-54 — the lease, branch and head a `sessionContext` names belong to the work state
   // (`work-state.ts:splitSessionContext`), until forge-plugin moves to the 10-status model.
   if (split && (split.lease.present || split.branch !== null || split.headSha !== null)) {
-    await writeSplitSessionContext(tx, inserted.id, split);
+    // the box a lease write comes from is stored beside the lease it takes (`run-holder.ts`)
+    const origin = split.lease.present
+      ? await callerBoxOf(writer.createdById, writer.createdByDeviceId)
+      : null;
+    await writeSplitSessionContext(tx, inserted.id, split, origin);
   }
   if (labelIds.length > 0) {
     await tx
