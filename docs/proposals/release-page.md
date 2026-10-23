@@ -109,7 +109,7 @@ verdict since its issue's last reopen (`release-facts.ts:criteriaAt`) and claims
 - A draft is judged before it is written (`release-naming.ts:judgeNaming`): at most six words, two
   or three sentences, no engineer's reference, no figure the release does not state. One refused
   twice, or a release carrying nothing users see, is kept with why (`release_naming_drafts`,
-  migration 0519) and said on the page; the master is still owed the name. It is never a silent null.
+  migration 0521) and said on the page; the master is still owed the name. It is never a silent null.
 
 ## Clips (BC-3, BC-4)
 
