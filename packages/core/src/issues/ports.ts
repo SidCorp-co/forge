@@ -299,8 +299,8 @@ interface IssuePorts {
       retiredRevision: number | null;
     }[];
   }>;
-  /** Of these traced wordings, the live ones of the issue's own requirement, as `REQ-n BC-m`. */
-  liveTracedCodesOf: (tx: Tx, issueId: string, ids: readonly string[]) => Promise<string[]>;
+  /** Of these traced wordings, each of the issue's own requirement whose BC is still held, by `REQ-n BC-m`. */
+  tracedCodesOf: (tx: Tx, issueId: string, ids: readonly string[]) => Promise<Map<string, string>>;
   /** The release that shipped the issue, by version and when; null while none has. */
   shippedReleaseOf: (
     projectId: string,
@@ -447,7 +447,7 @@ export const settlingContractVersion = port('settlingContractVersion');
 export const proposesWorkflowsOf = port('proposesWorkflowsOf');
 export const requirementOfIssue = port('requirementOfIssue');
 export const traceWordingsOf = port('traceWordingsOf');
-export const liveTracedCodesOf = port('liveTracedCodesOf');
+export const tracedCodesOf = port('tracedCodesOf');
 export const shippedReleaseOf = port('shippedReleaseOf');
 export const landedRecordOf = port('landedRecordOf');
 export const plannedRevisionFor = port('plannedRevisionFor');

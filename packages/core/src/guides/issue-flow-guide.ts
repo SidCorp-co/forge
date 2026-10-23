@@ -91,7 +91,11 @@ written against. The same tag anywhere else in the line traces nothing, so it is
 \`CRITERIA_TRACE_NOT_LEADING\`; a lead tag of another shape (two codes, lowercase) is
 \`CRITERIA_TRACE_INVALID\`. A REQ or BC named in prose, without the parentheses, is text. On
 \`PUT /api/issues/:id/criteria\` a criterion sent with \`requirementCriterionId\` is traced by that
-field and its words are text; one sent without it is read like a line of the field.
+field and its words are text; one sent without it is read like a line of the field. Only an
+unchanged wording keeps its row and its trace, so rewording or removing a traced line without
+restating its trace is refused \`CRITERIA_TRACE_DROPPED\`, naming each line and its BC: open the line
+with its tag, or send \`requirementCriterionId\` on it. To drop a trace on purpose, PUT every
+criterion with \`requirementCriterionId\` stated (\`null\` for none).
 
 The plan names the files it will change and the goal it serves. A file it does not name is a
 \`correction\` record (\`POST /api/issues/:id/events\`) written before the file is. A criterion found

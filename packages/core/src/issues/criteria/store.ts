@@ -27,7 +27,7 @@ import {
 } from '../../db/schema-issue-criteria.js';
 import { refuser } from '../../lib/refusal.js';
 import { verdictByBuilderSql } from '../built-by.js';
-import { liveTracedCodesOf, traceWordingsOf } from '../ports.js';
+import { tracedCodesOf, traceWordingsOf } from '../ports.js';
 import {
   parseCriteriaText,
   renderCriteriaText,
@@ -35,7 +35,13 @@ import {
   TRACE_TAG_SHAPE,
   traceTagOf,
 } from './criteria-text.js';
-import { ambiguousDetail, droppedTraceIds, matchCriteria, sameCriteria } from './match.js';
+import {
+  ambiguousDetail,
+  droppedTraceDetail,
+  droppedTraces,
+  matchCriteria,
+  sameCriteria,
+} from './match.js';
 
 export const refuseCriteria = refuser<CriteriaRefusalCode>('CRITERIA_REFUSED');
 
@@ -176,15 +182,10 @@ async function refuseDroppedTraces(
   desired: readonly CriterionInput[],
   path: CriteriaPath,
 ): Promise<void> {
-  const dropped = droppedTraceIds(live, desired);
-  if (dropped.length === 0) return;
-  const codes = await liveTracedCodesOf(tx, issueId, dropped);
-  if (codes.length === 0) return;
-  throw refuseCriteria(
-    'CRITERIA_TRACE_DROPPED',
-    `this write leaves ${codes.join(', ')} traced by no criterion of this issue, so the proof it held would vanish silently. Restate each trace — open the criterion that proves it with ${TRACE_TAG_SHAPE}, or send \`requirementCriterionId\` on PUT /criteria — or, to drop it on purpose, PUT the criteria with \`requirementCriterionId\` stated (null for none) on every one`,
-    path,
-  );
+  const ids = [...live, ...desired].flatMap((c) => c.requirementCriterionId ?? []);
+  const dropped = droppedTraces(live, desired, await tracedCodesOf(tx, issueId, [...new Set(ids)]));
+  if (dropped.length)
+    throw refuseCriteria('CRITERIA_TRACE_DROPPED', droppedTraceDetail(dropped), path);
 }
 
 /**
