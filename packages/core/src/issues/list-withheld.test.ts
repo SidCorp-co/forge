@@ -65,6 +65,8 @@ vi.mock('./ports.js', async (importOriginal) => {
     policyGapsOf: async () => () => null,
     designUnapprovedSql: () => sql`false`,
     designHoldsOf: async () => new Map(),
+    // a project with no change-request release: the work state is the run's own record
+    deliveryHeadsOf: async () => null,
   };
 });
 // the gate predicate and the gate itself answer from `state.waiting`, as the wait table would

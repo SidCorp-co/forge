@@ -19,6 +19,7 @@
  * to the issue until the host merges it, then the host's merge commit (`change-request-build.ts`).
  */
 
+import { releaseThroughChangeRequests } from '@forge/contracts/releases';
 import {
   type JudgedBuild,
   landedIdentityWhy,
@@ -34,6 +35,7 @@ import {
   type StandingCriterion,
   standingCriteriaOf,
 } from '../issues/index.js';
+import { readProjectDocument } from '../project-config/index.js';
 import { type AncestryPair, pairKey } from '../runners/index.js';
 import { changeRequestBuildsOf, otherHeadWhy } from './change-request-build.js';
 import { RELEASE_RECORD_SOURCE } from './claim-conflicts.js';
@@ -191,7 +193,10 @@ export async function deliveryHeadsOf(
   projectId: string,
   issueIds: readonly string[],
 ): Promise<Map<string, DeliveryHead> | null> {
-  if ((await deliveryOf(projectId)) !== 'change-request') return null;
+  // `release.changeRequests` is refused beside a production environment
+  // (`project-config/change-request-rule.ts`), so the document alone says this project delivers
+  // through change requests, read once a request (`deliveryOf` reads the whole release path)
+  if (!releaseThroughChangeRequests((await readProjectDocument(projectId))?.document)) return null;
   const out = new Map<string, DeliveryHead>();
   for (const [id, b] of await changeRequestBuildsOf(projectId, issueIds)) {
     out.set(
