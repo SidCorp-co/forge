@@ -54,6 +54,7 @@ interface MergeRequestHook {
   object_attributes?: {
     iid?: number;
     title?: string;
+    description?: string | null;
     url?: string;
     state?: string;
     action?: string;
@@ -197,6 +198,7 @@ async function onMergeRequest(
     pull_request: {
       number: mr.iid,
       title: mr.title ?? '',
+      body: mr.description ?? null,
       ...(mr.url ? { html_url: mr.url } : {}),
       state: state === 'open' ? 'open' : 'closed',
       draft: mr.draft === true || mr.work_in_progress === true,

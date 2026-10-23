@@ -17,6 +17,8 @@ import { gitlabBindingReports } from './report.js';
 import { type GitLabConfig, type GitLabSecrets, gitlabHostOf } from './types.js';
 
 const REFS_MAX_PAGES = 20;
+/** How GitLab writes a merge request's iid: `!12`. */
+const MR_SIGIL = '!';
 
 interface CommitBody {
   id?: string;
@@ -108,7 +110,7 @@ function gitlabSourceHostOf(client: GitLabClient): SourceHost {
     bindingId: client.bindingId,
     fullName: client.fullName,
     host: client.host,
-    words: { changeRequest: 'merge request', sigil: '!', mergeMethods: GITLAB_MERGE_METHODS },
+    words: { changeRequest: 'merge request', sigil: MR_SIGIL, mergeMethods: GITLAB_MERGE_METHODS },
 
     async readCommit(ref) {
       let read: CommitBody;
@@ -219,6 +221,7 @@ function gitlabSourceHostOf(client: GitLabClient): SourceHost {
 
 export const gitlabSourceHost: SourceHostFactory = {
   label: 'GitLab',
+  sigil: MR_SIGIL,
   hostOf: gitlabHostOf,
   build: ({ bindingId, config, secrets }) =>
     gitlabSourceHostOf(

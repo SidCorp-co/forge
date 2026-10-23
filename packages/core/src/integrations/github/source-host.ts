@@ -26,6 +26,8 @@ import { readCompareCommits, readLiveDivergence } from './live-divergence.js';
 import { MERGE_METHODS, mergeGitHubPullRequest } from './merge.js';
 import { GITHUB_API_BASE, type GitHubConfig, type GitHubSecrets } from './types.js';
 
+/** How GitHub writes a pull request's number: `#12`. */
+const PR_SIGIL = '#';
 const COMPARE_STATES: readonly HostCompare[] = ['ahead', 'behind', 'identical', 'diverged'];
 
 /** What each file of a compare became; `filesOf` has already refused an entry with no name. */
@@ -154,7 +156,7 @@ function githubSourceHostOf(
     bindingId: client.bindingId,
     fullName: client.fullName,
     host,
-    words: { changeRequest: 'pull request', sigil: '#', mergeMethods: MERGE_METHODS },
+    words: { changeRequest: 'pull request', sigil: PR_SIGIL, mergeMethods: MERGE_METHODS },
 
     async readCommit(ref) {
       let read: { sha?: string; commit?: { message?: string; committer?: { date?: string } } };
@@ -213,6 +215,7 @@ function githubSourceHostOf(
 
 export const githubSourceHost: SourceHostFactory = {
   label: 'GitHub',
+  sigil: PR_SIGIL,
   hostOf: githubHostOf,
   listBindings: async (projectId) =>
     (await githubAgentBindings(projectId)).map((r) => ({ provider: 'github', ...r })),

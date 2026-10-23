@@ -62,7 +62,7 @@ import {
   loadIssueRelationsForIssues,
   refuseUnresolvedIssueKey,
   releasedIssueOf,
-  resolveIssueForHeadRef,
+  resolveIssuesForChangeRequest,
   statusChangesSince,
 } from './issues/index.js';
 import {
@@ -332,7 +332,7 @@ provideMessageReads({
 });
 provideForgeReads({
   declaredRepository: async (projectId) => (await readDeclaredSource(projectId)).repository,
-  issueForHeadRef: (projectId, headRef) => resolveIssueForHeadRef({ projectId, headRef }),
+  issuesForChangeRequest: (args) => resolveIssuesForChangeRequest(args),
   projectSlug: async (projectId) => (await projectHead(projectId))?.slug ?? null,
   projectsByIds: listProjectHeads,
   runProjectOf: pipelineRunProjectId,

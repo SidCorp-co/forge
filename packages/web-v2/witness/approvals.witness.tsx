@@ -227,6 +227,21 @@ window.__witness = {
       },
     },
     {
+      name: "peek-release-merges-light",
+      run: async () => {
+        theme("light");
+        closePeek();
+        await settle();
+        const wrong = open("0.4.0-dev.270");
+        await settle();
+        const merges = [...(peek()?.querySelectorAll<HTMLElement>("[data-testid=release-merge]") ?? [])];
+        const read = merges.map((m) => m.textContent ?? "");
+        if (read.join("|") !== "1!5008openISS-1ISS-4ISS-5|2!5009openISS-10ISS-11ISS-12ISS-13") wrong.push(`the peek's merges read ${JSON.stringify(read)}`);
+        for (const m of merges) if (m.getBoundingClientRect().right > window.innerWidth + 0.5) wrong.push("a merge row runs past the window's right edge");
+        return [...wrong, ...peekReads("proposal", "merges", "foot")];
+      },
+    },
+    {
       name: "bulk-light",
       run: async () => {
         closePeek();

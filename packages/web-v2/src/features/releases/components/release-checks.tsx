@@ -83,7 +83,10 @@ function Approval({ a }: { a: ReleaseApprovalView }) {
         </span>
       </span>
       <span className="text-13 text-muted" title={a.evidence.commit}>
-        {t("releases.evidenceFrom", { env: a.evidence.environment, sha: shortSha(a.evidence.commit) })} {a.evidence.reading}
+        {a.evidence.environment === null
+          ? t("releases.evidenceAt", { sha: shortSha(a.evidence.commit) })
+          : t("releases.evidenceFrom", { env: a.evidence.environment, sha: shortSha(a.evidence.commit) })}{" "}
+        {a.evidence.reading}
       </span>
       {a.note ? <span className="text-13">{a.note}</span> : null}
       {a.reason ? <span className="text-13 text-muted">{t("releases.reason")} {a.reason}</span> : null}

@@ -1,5 +1,5 @@
 import type { ReleaseMode } from '@forge/contracts/forecast';
-import { releaseApprovalRequired } from '@forge/contracts/releases';
+import { releaseApprovalRequired, releaseThroughChangeRequests } from '@forge/contracts/releases';
 import {
   defaultBranchOf,
   environmentsOf,
@@ -121,11 +121,17 @@ export async function approvalRequired(projectId: string): Promise<boolean> {
 /**
  * How a landed change reaches people: no production environment (`none`), a release approval
  * required (`approval`), production deploying on land (`automatic`), or a release a person cuts
- * (`manual`). A project with no document declares no production.
+ * (`manual`). A project with no document declares no production. With no production, a project
+ * whose release merges its change requests (`release.changeRequests`, REQ-63 BC-1) releases by
+ * approval: the approval is the go to merge.
  */
 export function releaseModeOf(document: ProjectDocument | undefined): ReleaseMode {
   const production = document ? productionOf(document) : null;
-  if (!production) return 'none';
+  if (!production) {
+    return releaseThroughChangeRequests(document) && releaseApprovalRequired(document)
+      ? 'approval'
+      : 'none';
+  }
   if (releaseApprovalRequired(document)) return 'approval';
   const deployment = production.declaration.deployment;
   return 'trigger' in deployment && deployment.trigger === 'on-land' ? 'automatic' : 'manual';

@@ -28,7 +28,7 @@ function Contents({ groups }: { groups: ReleaseContentGroup[] }) {
             size="sm"
             marks={g.issues.map((i) => ({
               key: i.key,
-              label: `${i.key} ${i.title} · ${label("releaseProof", i.proof)}`,
+              label: `${i.key} ${i.title} · ${label("releaseProof", i.proof)}${i.changeRequest ? ` · ${i.changeRequest.label} ${t(`releases.merges.state.${i.changeRequest.state}`)}` : ""}`,
               ...(i.proof === "unrecorded" || i.proof === "open" ? { fill: "var(--paper-300)" } : { tone: RELEASE_PROOF_TONES[i.proof] }),
             }))}
           />

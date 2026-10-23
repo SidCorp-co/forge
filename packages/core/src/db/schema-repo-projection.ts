@@ -6,6 +6,7 @@ import {
   integer,
   jsonb,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uniqueIndex,
@@ -67,7 +68,6 @@ export const repoPullRequests = pgTable(
     bindingId: uuid('binding_id')
       .notNull()
       .references(() => integrationBindings.id, { onDelete: 'cascade' }),
-    issueId: uuid('issue_id').references(() => issues.id, { onDelete: 'set null' }),
     host: text('host', { enum: changeRequestHosts }).notNull().default('github'),
     /** The number the host shows: a GitHub pull request number, or a GitLab merge request iid. */
     number: integer('number').notNull(),
@@ -97,7 +97,6 @@ export const repoPullRequests = pgTable(
   },
   (t) => ({
     bindingNumberUq: uniqueIndex('repo_pull_requests_binding_number_uq').on(t.bindingId, t.number),
-    issueIdx: index('repo_pull_requests_issue_idx').on(t.issueId),
     projectStateIdx: index('repo_pull_requests_project_state_idx').on(t.projectId, t.state),
     baseIdx: index('repo_pull_requests_base_idx').on(t.bindingId, t.baseRef, t.state),
     stateChk: check('repo_pull_requests_state_chk', PR_STATE_CHK),
@@ -111,5 +110,34 @@ export const repoPullRequestsRelations = relations(repoPullRequests, ({ one }) =
     fields: [repoPullRequests.bindingId],
     references: [integrationBindings.id],
   }),
-  issue: one(issues, { fields: [repoPullRequests.issueId], references: [issues.id] }),
 }));
+
+/** How a change request came to deliver an issue: its branch names it, or its description does. */
+export const changeRequestLinkKinds = ['head-ref', 'description'] as const;
+export type ChangeRequestLinkKind = (typeof changeRequestLinkKinds)[number];
+
+const LINKED_BY_CHK = sql`linked_by IN ('head-ref', 'description')`;
+
+/**
+ * Every issue a change request delivers (REQ-63 BC-4): one row per issue its branch or its
+ * description names, rewritten whole on each delivery, so a key taken out of the description
+ * unlinks it. Merging the request stamps every issue linked here.
+ */
+export const repoPullRequestIssues = pgTable(
+  'repo_pull_request_issues',
+  {
+    pullRequestId: uuid('pull_request_id')
+      .notNull()
+      .references(() => repoPullRequests.id, { onDelete: 'cascade' }),
+    issueId: uuid('issue_id')
+      .notNull()
+      .references(() => issues.id, { onDelete: 'cascade' }),
+    linkedBy: text('linked_by', { enum: changeRequestLinkKinds }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    pk: primaryKey({ name: 'repo_pull_request_issues_pk', columns: [t.pullRequestId, t.issueId] }),
+    issueIdx: index('repo_pull_request_issues_issue_idx').on(t.issueId),
+    linkedByChk: check('repo_pull_request_issues_linked_by_chk', LINKED_BY_CHK),
+  }),
+);

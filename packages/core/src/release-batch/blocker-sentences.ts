@@ -97,6 +97,12 @@ const REMEDY: Record<ReleaseBlockerCode, string> = {
     'This project releases without a person acting, and the sweep that cuts its releases is holding back every issue waiting at the gate: each still owes a judging run on an acceptance criterion. Record a verdict for each criterion named below, or move the issue out of `awaiting_release` if it is not to ship.',
   RELEASE_RUNTIME_UNROUTED:
     'This project releases without a person acting, only an issue whose every acceptance criterion is earned at what it is serving, and nothing here can read what it is serving — so no verdict a run records can earn one, and every issue waiting at the gate is held on that one reason. Give it a way to be read, and the next sweep weighs every waiting issue again.',
+  RELEASE_CHANGE_REQUEST_MISSING:
+    '{named} {have} no open change request delivering {them}, and this project releases by merging its change requests, so nothing would ship {them}. Open a merge request whose branch ends `-iss-N` (`feat/…` or `fix/…`) or whose description names the key, then cut again.',
+  RELEASE_CHANGE_REQUEST_CARRIES_UNRELEASED:
+    'A change request this release merges also delivers an issue it does not carry, so merging it would ship work nobody was asked to accept.',
+  RELEASE_THROUGH_CHANGE_REQUESTS:
+    'This project releases through change requests (`release.changeRequests`): a release is its requests merged in order once the owner approves the cut, so a landing is not recorded by hand. Cut a release naming the issues (`POST /api/projects/:id/release-batches`), have it approved, then merge each request through `POST /api/issues/:id/merge-pull-request`; the last merge closes the release.',
   RELEASE_CHECK_UNEVALUATED:
     'One of the checks that decides whether a release may start could not be run, so this answer cannot say a release would succeed: whatever that check would have found is missing from this list. Every other reason here was reached by a check of its own — act on the ones carrying `evaluated: true`, and retry EVERY entry shaped like this one, each naming the read of its own that has to answer first.',
 };
@@ -130,6 +136,9 @@ const REMEDY_COST: Record<ReleaseReasonCode, readonly RemedyAct[]> = {
   RELEASE_VERSION_UNDECIDED: [],
   RELEASE_CRITERIA_UNEARNED: [],
   RELEASE_RUNTIME_UNROUTED: [],
+  RELEASE_CHANGE_REQUEST_MISSING: [],
+  RELEASE_CHANGE_REQUEST_CARRIES_UNRELEASED: [],
+  RELEASE_THROUGH_CHANGE_REQUESTS: [],
   RELEASE_CHECK_UNEVALUATED: [],
   RELEASE_RUNNER_PREFERENCE_UNMET: [],
   RELEASE_CRITERIA_HELD_BACK: [],
@@ -293,6 +302,12 @@ function sentenceFor(code: ReleaseBlockerCode, details?: Record<string, unknown>
   if (code === 'RELEASE_VERSION_UNDECIDED' && typeof details?.version === 'string') {
     return undecidedSentence(details);
   }
+  if (
+    code === 'RELEASE_CHANGE_REQUEST_CARRIES_UNRELEASED' &&
+    Array.isArray(details?.changeRequests)
+  ) {
+    return carriesUnreleasedSentence(details.changeRequests);
+  }
   if (code === 'RELEASE_TARGET_UNDECLARED' && typeof details?.reason === 'string') {
     return `Nowhere is declared for a release to land: ${details.reason}.`;
   }
@@ -309,6 +324,20 @@ function sentenceFor(code: ReleaseBlockerCode, details?: Record<string, unknown>
   const waiting = details?.waiting;
   if (typeof waiting === 'number') return `${waiting} waiting. ${remedy}`;
   return remedy;
+}
+
+/** Each change request that carries an issue outside the release, and what clears it (REQ-63). */
+function carriesUnreleasedSentence(list: unknown[]): string {
+  const each = (list as { changeRequest: string; displayIds: string[] }[])
+    .map(
+      (c) => `${c.changeRequest} also delivers ${c.displayIds.map((d) => `\`${d}\``).join(', ')}`,
+    )
+    .join('; ');
+  return (
+    `${each}, which this release does not carry, so merging it would ship work nobody was asked ` +
+    'to accept. Bring each such issue to `awaiting_release` and name it in this release, or take ' +
+    "its key out of the request's branch or description, then cut again."
+  );
 }
 
 /** Names the version, the attempt that went silent and the call that ends the silence (ADR 0011). */

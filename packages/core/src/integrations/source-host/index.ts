@@ -35,11 +35,12 @@ export {
 } from './projection.js';
 export { describeEmptyProjection, projectionPipeReport } from './projection-health.js';
 export {
+  issuesOfPullRequest,
   openPullRequestsForIssue,
   pullRequestNumbered,
   readPullRequestsForIssues,
 } from './repo-projection.js';
-export { hostOfRepository, resolveSourceHost } from './resolve.js';
+export { changeRequestLabelOf, hostOfRepository, resolveSourceHost } from './resolve.js';
 export type * from './types.js';
 export type {
   HostRange,

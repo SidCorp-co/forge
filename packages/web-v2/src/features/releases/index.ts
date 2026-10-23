@@ -3,6 +3,7 @@ export { ComingNext } from "./components/coming-next";
 export { DisclosureToggle, GateLine, type GateTone } from "./components/release-bits";
 export { ReleaseHighlightList } from "./components/release-highlights";
 export { ReleaseItemScreen } from "./components/release-item-screen";
+export { ChangeRequestList } from "./components/release-merges";
 export { ReleasesScreen } from "./components/releases-screen";
 export { SharedReleaseView } from "./components/shared-release";
 export { useReleases } from "./hooks";

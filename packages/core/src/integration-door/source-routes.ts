@@ -247,6 +247,7 @@ async function openAndProject(
       host: host.provider,
       repository: host.fullName,
       opened,
+      description: input.body ?? null,
     });
     return { ...opened, projection };
   } catch (err) {

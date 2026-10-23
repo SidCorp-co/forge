@@ -13,6 +13,7 @@ import type { ReleaseRunRow } from '../pipeline/index.js';
 import { approvalRequired, readContentLanguage, readReleasePath } from '../project-config/index.js';
 import { type ApprovalView, approvalsOfRuns, approvalViews } from './approvals.js';
 import { collectReleaseBlockers } from './blockers.js';
+import { mergeStepsOf, readChangeRequestLinks } from './change-request-roster.js';
 import {
   productionProviderOf,
   type RecordedVerification,
@@ -75,6 +76,7 @@ async function draftPart(projectId: string): Promise<DraftPart | null> {
       cuts: [],
       continuedAs: null,
       naming: await draftNaming(projectId, version),
+      mergeSteps: null,
     },
   };
 }
@@ -143,6 +145,7 @@ function runPart(
     cuts: [],
     continuedAs: null,
     naming: readReleaseNaming(run.metadata),
+    mergeSteps: mergeStepsOf(run.metadata),
   };
 }
 
@@ -174,7 +177,7 @@ async function sharedFor(
   required: boolean,
   attemptRunIds: readonly string[] = [],
 ): Promise<Shared> {
-  const [facts, approvers, admins, language, channels] = await Promise.all([
+  const [facts, approvers, admins, language, channels, changeRequestLinks] = await Promise.all([
     loadReleaseFacts(
       projectId,
       parts.flatMap((p) => p.issueIds),
@@ -184,6 +187,10 @@ async function sharedFor(
     holderNames('project.admin', projectId),
     readContentLanguage(projectId),
     resolveReleaseChannels(projectId),
+    readChangeRequestLinks(
+      projectId,
+      parts.flatMap((p) => p.issueIds),
+    ),
   ]);
   return {
     current,
@@ -194,6 +201,7 @@ async function sharedFor(
     facts,
     contentLanguage: language.contentLanguage,
     provider: productionProviderOf(channels),
+    changeRequestLinks,
   };
 }
 

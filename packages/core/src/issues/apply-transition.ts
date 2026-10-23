@@ -6,9 +6,10 @@ import {
   type IssueTransitionRefusalCode,
   PARK_STATUSES,
 } from '@forge/contracts/issue-machine';
+import { releaseThroughChangeRequests } from '@forge/contracts/releases';
 import type { staleTransitionRefusal } from '@forge/contracts/state-machine';
 import { eq, sql } from 'drizzle-orm';
-import { type Db, db } from '../db/client.js';
+import { type Db, db, type Tx } from '../db/client.js';
 import { type IssueStatus, issues, type WaitingKind } from '../db/schema.js';
 import type { WorkStep } from '../db/schema-issue-work-state.js';
 import { lockXact } from '../lib/advisory-lock.js';
@@ -25,9 +26,15 @@ import { issueChecklistRecord } from './checklist-record.js';
 import { designCheckOf } from './design-record.js';
 import { expireBlocksEdgesOnDrop, type UnblockedDependent } from './drop-cascade.js';
 import { postDropUnblockNotices } from './drop-unblock.js';
+import { supersedeMergeOnReopen } from './merge-record.js';
 import { type AwaitedDesignRef, mintParkQuestion, needsNotApplicable } from './park-question.js';
 import { repointPark, repointsPark } from './park-repoint.js';
-import { settleOpenQuestions, voidStewardDraftQuestions, withdrawParkQuestions } from './ports.js';
+import {
+  readProjectDocument,
+  settleOpenQuestions,
+  voidStewardDraftQuestions,
+  withdrawParkQuestions,
+} from './ports.js';
 import { moveOf, recordMove } from './record-events/kernel-records.js';
 import { refuseOffRecoveryEdge } from './recovery-move.js';
 import { edgeFault, reasonFault } from './transition-faults.js';
@@ -302,6 +309,24 @@ async function writeWorkStateOfMove(tx: TransitionTx, input: TransitionWriteInpu
   await setWorkStep(tx, issue.id, step);
 }
 
+/** A reopen on a project that releases through change requests supersedes the merge stamp the
+ *  issue carried, so its change request's next merge is the one recorded (REQ-63 BC-3). */
+async function supersedeOnReopen(
+  tx: Tx,
+  projectId: string,
+  issueId: string,
+  actor: TransitionActor,
+): Promise<void> {
+  if (!releaseThroughChangeRequests((await readProjectDocument(projectId))?.document)) return;
+  await supersedeMergeOnReopen(tx, {
+    issueId,
+    actor:
+      actor.type === 'user'
+        ? { type: 'user', id: actor.id, agency: actorAgency(actor) }
+        : { type: 'device', id: actor.id, agency: 'agent' },
+  });
+}
+
 async function executeTransitionWrite(input: TransitionWriteInput): Promise<TransitionWriteResult> {
   const { issue, fromStatus, toStatus, actor, options, recovering } = input;
   const by = authorOf(actor);
@@ -400,6 +425,7 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
         if (!row) return;
         await recordMove(tx, moveOf(input, row.reopenCount));
         await writeWorkStateOfMove(tx, input);
+        if (toStatus === 'reopen') await supersedeOnReopen(tx, issue.projectId, issue.id, actor);
         if (toStatus === 'dropped') {
           unblockedDependents = await expireBlocksEdgesOnDrop(tx, issue.projectId, issue.id);
           await postDropUnblockNotices(tx, issue, unblockedDependents, actor);

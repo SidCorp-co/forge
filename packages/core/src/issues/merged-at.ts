@@ -1,5 +1,7 @@
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { type IssueStatus, issues } from '../db/schema.js';
+import { projectConfigDocuments } from '../db/schema-project-config.js';
+import { repoPullRequestIssues, repoPullRequests } from '../db/schema-repo-projection.js';
 import { designOnlyMarkSql } from './design-delivery.js';
 import {
   type LandingShape,
@@ -55,6 +57,9 @@ export async function mergeNotRecorded(
     return args.to === 'awaiting_release' ? await designStampOnly(executor, args.issueId) : null;
   }
   if (!evidence || evidence.shape === 'git') {
+    if (args.to === 'awaiting_release' && (await changeRequestWaits(executor, args.issueId))) {
+      return null;
+    }
     return {
       code,
       detail: `\`${args.to}\` needs a recorded merge, and this issue carries no \`merged_at\`. ${closedMeansShipped('git')}`,
@@ -85,6 +90,32 @@ export async function mergeNotRecorded(
       useInstead: 'dropped',
     },
   };
+}
+
+/**
+ * On a project that releases through change requests, an issue waits for its release on an open
+ * change request that delivers it: the merge is the release's own act, after the owner approves it,
+ * so it cannot be recorded before `awaiting_release` (REQ-63 BC-1).
+ */
+async function changeRequestWaits(
+  executor: MergeRecordExecutor,
+  issueId: string,
+): Promise<boolean> {
+  const [row] = await executor
+    .select({ id: repoPullRequests.id })
+    .from(repoPullRequestIssues)
+    .innerJoin(repoPullRequests, eq(repoPullRequests.id, repoPullRequestIssues.pullRequestId))
+    .innerJoin(issues, eq(issues.id, repoPullRequestIssues.issueId))
+    .innerJoin(projectConfigDocuments, eq(projectConfigDocuments.projectId, issues.projectId))
+    .where(
+      and(
+        eq(repoPullRequestIssues.issueId, issueId),
+        eq(repoPullRequests.state, 'open'),
+        sql`(${projectConfigDocuments.document} -> 'release' ->> 'changeRequests') = 'true'`,
+      ),
+    )
+    .limit(1);
+  return row !== undefined;
 }
 
 /** Why `unmark` is refused on a `closed` issue, or `null` where it may proceed. `clearIssueMerge`

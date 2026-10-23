@@ -26,9 +26,10 @@ import { CRITERION_STANDING_LABELS } from '@forge/contracts/issue-vocabulary';
 import { requirementKey } from '@forge/contracts/requirements';
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { issues } from '../db/schema.js';
+import { issues, pipelineRuns } from '../db/schema.js';
 import { requirements } from '../db/schema-requirements.js';
 import { readProjectDocument } from '../project-config/index.js';
+import { mergeStepsOf } from './change-request-roster.js';
 import { criteriaAt, loadReleaseFacts } from './release-facts.js';
 
 export interface ApprovalFacts {
@@ -84,6 +85,23 @@ export function approvalAnswersOf(f: ApprovalFacts): RecordAnswers {
   return { carried, verdicts };
 }
 
+/**
+ * Each issue's build on a release that merges change requests: the head of the request delivering
+ * it, which is what the merge ships (REQ-63). Empty for any other release, which ships one commit.
+ */
+async function changeRequestHeadsOf(runId: string): Promise<Map<string, string>> {
+  const [run] = await db
+    .select({ metadata: pipelineRuns.metadata })
+    .from(pipelineRuns)
+    .where(eq(pipelineRuns.id, runId))
+    .limit(1);
+  const heads = new Map<string, string>();
+  for (const step of mergeStepsOf(run?.metadata) ?? []) {
+    for (const id of step.issueIds) heads.set(id, step.headSha);
+  }
+  return heads;
+}
+
 /** What the release `runId` carries, read for its approval at `build`, the commit it ships. */
 export async function approvalFactsOf(
   projectId: string,
@@ -96,7 +114,7 @@ export async function approvalFactsOf(
     .where(and(eq(issues.projectId, projectId), eq(issues.releaseBatchRunId, runId)));
   const ids = rows.map((r) => r.id);
   const reqIds = [...new Set(rows.flatMap((r) => (r.requirementId ? [r.requirementId] : [])))];
-  const [facts, reqs, doc] = await Promise.all([
+  const [facts, reqs, doc, headOf] = await Promise.all([
     loadReleaseFacts(projectId, ids, [runId]),
     reqIds.length === 0
       ? Promise.resolve([])
@@ -109,6 +127,7 @@ export async function approvalFactsOf(
           .from(requirements)
           .where(inArray(requirements.id, reqIds)),
     readProjectDocument(projectId),
+    changeRequestHeadsOf(runId),
   ]);
   const reqOf = new Map(
     reqs.map((r) => [r.id, { key: requirementKey(r.seq), revision: r.revision }]),
@@ -122,7 +141,7 @@ export async function approvalFactsOf(
       requirement: i.requirementId ? (reqOf.get(i.requirementId) ?? null) : null,
     })),
     unproven: ordered.flatMap((i) =>
-      criteriaAt(i, build, facts.judge)
+      criteriaAt(i, headOf.get(i.id) ?? build, facts.judge)
         .filter((c) => !c.proven)
         .map((c) => ({
           issue: i.key,

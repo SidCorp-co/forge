@@ -84,4 +84,10 @@ export const releaseRuleSchema = z.strictObject({
     })
     .optional(),
   runtimes: releaseRuntimesSchema.optional(),
+  /**
+   * REQ-63 BC-1: the release is merging the change requests its roster ships, in the order the cut
+   * declares, once approved, with no deploy. Held to `approval.required`, no production environment
+   * and a hosted git repository (`change-request-rule.ts:checkChangeRequestRelease`).
+   */
+  changeRequests: z.boolean().optional(),
 });

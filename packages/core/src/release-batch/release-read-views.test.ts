@@ -93,6 +93,7 @@ function part(n: number, gates: ReleaseGateView[], state: Part['state'] = 'draft
     cuts: [],
     continuedAs: null,
     naming: null,
+    mergeSteps: null,
   };
 }
 
@@ -105,6 +106,7 @@ const shared = (n: number, isAdmin = true): Shared => ({
   facts: facts(n),
   contentLanguage: 'en',
   provider: null,
+  changeRequestLinks: [],
 });
 
 describe('splitting an oversize draft', () => {

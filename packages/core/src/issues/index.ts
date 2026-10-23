@@ -91,7 +91,11 @@ export {
   stampRunStarted,
 } from './field-writes.js';
 export { type FlowIssue, type FlowMove, type IssueFlow, readIssueFlow } from './flow-history.js';
-export { resolveIssueForHeadRef } from './head-ref-link.js';
+export {
+  type ChangeRequestIssueLink,
+  resolveIssueForHeadRef,
+  resolveIssuesForChangeRequest,
+} from './head-ref-link.js';
 export { registerHostMergeStamp } from './host-merge.js';
 export {
   type IssueLeaseRelease,

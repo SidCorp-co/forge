@@ -65,7 +65,7 @@ describe('the answer that says no', () => {
       row('release', '0.4.0-dev.270'),
       'releases',
       P,
-      { runId: 'run-7', failing: 0, total: 4 },
+      { runId: 'run-7', failing: 0, total: 4, changeRequests: [] },
       'ap-7',
     );
     expect(declining(b)).toEqual(['release.decide:return']);

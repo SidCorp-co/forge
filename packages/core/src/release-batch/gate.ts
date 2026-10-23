@@ -1,3 +1,4 @@
+import { releaseThroughChangeRequests } from '@forge/contracts/releases';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, projects } from '../db/schema.js';
@@ -19,6 +20,8 @@ export const RELEASE_GATE_STATUS: IssueStatus = 'awaiting_release';
 
 export type ReleaseDeclaration =
   | { kind: 'no-release'; defaultBranch: string | null }
+  /** No deploy: a release is its change requests merged into `defaultBranch` in order (REQ-63). */
+  | { kind: 'change-requests'; path: ReleasePath; defaultBranch: string | null }
   | { kind: 'undeclared-target'; reason: string }
   | {
       kind: 'gated';
@@ -66,7 +69,11 @@ export async function resolveReleaseDeclaration(
   const read = await readReleasePath(projectId);
   if (!read.ok) return { kind: 'undeclared-target', reason: read.reason };
   const { path } = read;
-  if (!path.production) return { kind: 'no-release', defaultBranch: path.defaultBranch };
+  if (!path.production) {
+    return releaseThroughChangeRequests(path.document)
+      ? { kind: 'change-requests', path, defaultBranch: path.defaultBranch }
+      : { kind: 'no-release', defaultBranch: path.defaultBranch };
+  }
   const bound = await productionBinding(projectId, path.production);
   if (!bound.ok) return { kind: 'undeclared-target', reason: bound.reason };
   return {
@@ -81,7 +88,8 @@ export async function resolveReleaseDeclaration(
 
 /**
  * The status issues must be at to join a batch release, or `null` when the project
- * declares no production environment and the driver's `closed` means what it says.
+ * declares no production environment and the driver's `closed` means what it says. A project that
+ * releases through change requests has the gate too: its issues wait there for their merge.
  *
  * THROWS on `undeclared-target`, refused `RELEASE_TARGET_UNDECLARED`; answering
  * `null` there reads to every caller as a project that declared it ships nothing.
@@ -92,5 +100,5 @@ export async function resolveReleaseGate(projectId: string): Promise<IssueStatus
   if (decl.kind === 'undeclared-target') {
     throw blockerRefusal('RELEASE_TARGET_UNDECLARED', { reason: decl.reason });
   }
-  return decl.kind === 'gated' ? RELEASE_GATE_STATUS : null;
+  return decl.kind === 'gated' || decl.kind === 'change-requests' ? RELEASE_GATE_STATUS : null;
 }

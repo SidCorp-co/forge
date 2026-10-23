@@ -17,13 +17,20 @@ import {
   pullRequestNumbered,
   SourceHostUnavailable,
 } from '../integrations/source-host/index.js';
-import { issueScopeOf, mergedCommitShaSchema, recordIssueMerge } from '../issues/index.js';
+import {
+  issueScopeOf,
+  mergedCommitShaSchema,
+  recordIssueMerge,
+  type TransitionActor,
+} from '../issues/index.js';
 import { loadProjectAccess } from '../lib/authz.js';
+import { logger } from '../lib/logger.js';
 import { refuser } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { idParamSchema, notFound } from '../middleware/route-errors.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
+import { admitChangeRequestMerge, settleChangeRequestRelease } from '../release-batch/index.js';
 
 const refuse = refuser<MergeRefusalCode>('MERGE_MARK_REFUSED');
 
@@ -37,6 +44,19 @@ const stampKernelMerge =
       via: 'kernel',
       evidence: { kind: 'observed', commitSha, mergedAt },
     });
+
+/**
+ * The release this merge was a step of, settled where it was the last. The merge has already
+ * happened, so a settle that fails is said in the answer beside it, never as the merge failing.
+ */
+async function settleAfterMerge(runId: string, actor: TransitionActor) {
+  try {
+    return { runId, ...(await settleChangeRequestRelease(runId, actor)) };
+  } catch (err) {
+    logger.error({ err, runId }, 'merge-pull-request: the release could not be settled');
+    return { runId, settled: false, settleError: err instanceof Error ? err.message : String(err) };
+  }
+}
 
 export const issueMergePullRequestRoutes = new Hono<{ Variables: AuthVars }>();
 
@@ -122,6 +142,15 @@ issueMergePullRequestRoutes.post(
       throw refuse(stored.code, stored.refusal, '/pullRequest');
     }
 
+    // on a project that releases through change requests, a merge is a step of an approved
+    // release, in its order, at the head it was approved at (REQ-63 BC-2); refused by name otherwise
+    const admitted = await admitChangeRequestMerge({
+      projectId: issue.projectId,
+      pullRequestId: stored.id,
+    });
+    const expectedHeadSha =
+      body.headSha ?? (admitted.kind === 'release' ? admitted.headSha : undefined);
+
     const actor = restActor(c);
     try {
       const outcome = await mergeStoredChangeRequest(
@@ -129,7 +158,7 @@ issueMergePullRequestRoutes.post(
           pullRequestId: stored.id,
           requestedBy: `${actor.type}:${actor.id}`,
           runId: body.runId ?? null,
-          ...(body.headSha ? { expectedHeadSha: body.headSha } : {}),
+          ...(expectedHeadSha ? { expectedHeadSha } : {}),
           ...(body.method ? { method: body.method } : {}),
         },
         stampKernelMerge(actor),
@@ -138,6 +167,15 @@ issueMergePullRequestRoutes.post(
       if (outcome.kind === 'refused') {
         throw refuse('MERGE_REFUSED', `${outcome.detail} (${outcome.reason})`);
       }
+      // the last request of a release closes it: its roster, its ship and its run
+      const release =
+        admitted.kind === 'release'
+          ? await settleAfterMerge(admitted.runId, {
+              type: 'user',
+              id: userId,
+              agency: actor.agency,
+            })
+          : null;
       return c.json({
         id: issueId,
         merged: true,
@@ -145,6 +183,8 @@ issueMergePullRequestRoutes.post(
         commitSha: outcome.commitSha,
         mergedAt: outcome.mergedAt.toISOString(),
         stamped: outcome.stamped,
+        stampedIssues: outcome.stampedIssues,
+        release,
         deliveryId: outcome.deliveryId,
       });
     } catch (err) {

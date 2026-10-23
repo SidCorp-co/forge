@@ -39,6 +39,8 @@ export interface IssueProjectDocument {
   contentLanguage?: string | undefined;
   /** `mergeCheck: 'required'`: a mark asks for a passing merge check (`merge-check.ts`). */
   validation?: { mergeCheck?: 'required' | undefined } | undefined;
+  /** `changeRequests: true`: a release is its change requests merged in order (REQ-63). */
+  release?: { changeRequests?: boolean | undefined } | undefined;
 }
 
 export type StorefrontDraftReading =

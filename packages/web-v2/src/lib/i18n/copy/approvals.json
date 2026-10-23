@@ -111,6 +111,7 @@
     "approvals.more": "{shown} of {total} shown",
     "approvals.leftOut.heading": "Also yours, not counted above: {what}",
     "approvals.leftOut.next": "· next: {next}",
-    "approvals.leftOut.more": "and {n} more"
+    "approvals.leftOut.more": "and {n} more",
+    "approvals.peek.merges": "Merges, in order"
   }
 }
