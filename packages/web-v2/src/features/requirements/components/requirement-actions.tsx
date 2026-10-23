@@ -1,6 +1,7 @@
 
 // The acts a requirement offers where it stands — review a proposal, propose a draft, agree the
-// head, accept a delivery, defer or drop it — and the BA assistant door (ISS-58) that "Propose change" and the top
+// head, move it into delivery, mark it delivered, accept a delivery (or accept it by decision over
+// the acceptance checklist), defer or drop it — each an explicit act (REQ-74 BC-8) — and the BA assistant door (ISS-58) that "Propose change" and the top
 // bar's Ask Agent open. The peek and the full page's header draw the same one primary act from the
 // same rules; "Propose change" sits with the revisions, Accept / Reject beside the diff. Every sign-off
 // (accept, agree, re-pin, accept a delivery) opens a confirm step taking the signer's reason (ISS-281); while
@@ -15,7 +16,7 @@ import { formatApiError } from "@/lib/api/error";
 import { useCopy, useInterfaceLanguage, useLabel } from "@/lib/i18n/interface-language";
 import { said } from "@/lib/i18n/said";
 import type { Copy } from "@/lib/i18n/product-copy";
-import { draftIssuesToPromote } from "@forge/contracts/requirements";
+import { draftIssuesToPromote, isDeliveringStatus } from "@forge/contracts/requirements";
 import { requirementsApi } from "../api";
 import { useRequirementAction } from "../hooks";
 import { requirementHref } from "@/lib/routes/requirements";
@@ -166,7 +167,7 @@ export function PrimaryActions({
         {t("requirements.act.proposeR", { r: draft.revision })}
       </Button>
     );
-  } else if (d.canSignOff && d.status === "agreed" && head && s.facts.stalePins.length + s.facts.staleContractPins.length > 0) {
+  } else if (d.canSignOff && isDeliveringStatus(d.status) && head && s.facts.stalePins.length + s.facts.staleContractPins.length > 0) {
     const moved = movedPins(s.facts, t);
     primary = (
       <SignOff
@@ -182,7 +183,9 @@ export function PrimaryActions({
     );
   } else if (d.canSignOff && d.status === "draft" && head && !draft) {
     primary = <AgreeAct projectId={projectId} reqKey={d.key} revision={head.revision} held={s.facts.unapprovedDesigns} />;
-  } else if (s.state === "delivered" && d.canSignOff && head) {
+  } else if (deliveryMoveOf(d, head)) {
+    primary = <DeliveryMove projectId={projectId} d={d} kind={deliveryMoveOf(d, head) as DeliveryKind} />;
+  } else if (d.status === "delivered" && d.canAccept && head) {
     primary = (
       <SignOff
         projectId={projectId}
@@ -197,12 +200,13 @@ export function PrimaryActions({
   } else if (d.canPromote && draftIssuesToPromote(d.status, d.issues).length > 0) {
     primary = <PromoteDrafts projectId={projectId} d={d} />;
   }
-  const deferrable = d.canSignOff && (d.status === "draft" || d.status === "agreed");
-  const droppable = d.canSignOff && (d.status === "draft" || d.status === "agreed" || d.status === "deferred");
-  if (!primary && !deferrable && !droppable) return null;
+  const { deferrable, droppable } = sideActsOf(d);
+  const decision = decisionOf(d, head);
+  if (!primary && !deferrable && !droppable && !decision) return null;
   return (
     <div className="flex flex-wrap items-center gap-2">
       {primary}
+      {decision ? <AcceptByDecision projectId={projectId} reqKey={d.key} revision={decision} /> : null}
       {deferrable ? (
         <ReasonAct
           projectId={projectId}
@@ -227,6 +231,69 @@ export function PrimaryActions({
       ) : null}
       <RefusalLine error={act.error} />
     </div>
+  );
+}
+
+const DROPPABLE = new Set(["draft", "agreed", "in_delivery", "deferred"]);
+const DEFERRABLE = new Set(["draft", "agreed"]);
+
+/** The defer and the drop a signer is offered beside the primary act. */
+const sideActsOf = (d: RequirementDetail) => ({
+  deferrable: d.canSignOff && DEFERRABLE.has(d.status),
+  droppable: d.canSignOff && DROPPABLE.has(d.status),
+});
+
+type Head = RequirementDetail["revisions"][number] | undefined;
+
+type DeliveryKind = "start-delivery" | "mark-delivered";
+
+/**
+ * The delivery move an accepter (`canAccept`) is offered (REQ-74 BC-8): an agreed requirement with a
+ * linked issue past draft moves into delivery once no draft is left to promote, one in delivery is
+ * marked delivered. Core refuses each by name where its condition is not met.
+ */
+function deliveryMoveOf(d: RequirementDetail, head: Head): DeliveryKind | null {
+  if (!d.canAccept || !head) return null;
+  if (d.status === "in_delivery") return "mark-delivered";
+  const working = d.issues.some((i) => i.status !== "dropped" && i.status !== "draft");
+  const promotable = d.canPromote && draftIssuesToPromote(d.status, d.issues).length > 0;
+  return d.status === "agreed" && working && !promotable ? "start-delivery" : null;
+}
+
+/** The head an accept by decision names, where the viewer may accept (`canAccept`); core refuses unfinished issues. */
+function decisionOf(d: RequirementDetail, head: Head): number | null {
+  if (!d.canAccept || !head) return null;
+  return isDeliveringStatus(d.status) ? head.revision : null;
+}
+
+/** The explicit move into delivery or to delivered (REQ-74 BC-8); core names each unmet condition. */
+function DeliveryMove({ projectId, d, kind }: { projectId: string; d: RequirementDetail; kind: DeliveryKind }) {
+  const t = useCopy();
+  const words = kind === "start-delivery" ? "startDelivery" : "markDelivered";
+  return (
+    <SignOff
+      projectId={projectId}
+      reqKey={d.key}
+      label={t(`requirements.act.${words}`)}
+      consequence={t(`requirements.act.${words}Consequence`)}
+      reasonLabel={t(`requirements.act.${words}WhyLabel`)}
+      act={(reason) => ({ kind, reason })}
+    />
+  );
+}
+
+/** Accepts over an incomplete acceptance checklist, each unmet item recorded as waived (REQ-74). */
+function AcceptByDecision({ projectId, reqKey, revision }: { projectId: string; reqKey: string; revision: number }) {
+  const t = useCopy();
+  return (
+    <ReasonAct
+      projectId={projectId}
+      reqKey={reqKey}
+      label={t("requirements.act.acceptByDecision")}
+      whyLabel={t("requirements.act.acceptByDecisionWhyLabel")}
+      whyHint={t("requirements.act.acceptByDecisionWhy")}
+      build={(reason) => ({ kind: "accept-delivery", revision, reason, byDecision: true })}
+    />
   );
 }
 

@@ -1,7 +1,11 @@
 import { REQUIREMENT_READY_CHECKLIST } from '@forge/contracts/checklist-registry';
 import { checklistRefusals, evaluateChecklist } from '@forge/contracts/checklists';
 import { REQUIREMENT_MACHINE } from '@forge/contracts/requirement-machine';
-import { type BaselineReadiness, requirementKey } from '@forge/contracts/requirements';
+import {
+  type BaselineReadiness,
+  isAgreedStatus,
+  requirementKey,
+} from '@forge/contracts/requirements';
 import { eq } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import {
@@ -125,7 +129,7 @@ export async function acceptRevision(input: {
       stateRefusal(target.revision, target.state as RevisionState, 'proposed') ??
       staleBaseRefusal(target.baseRevision, current.currentRevision);
     if (refusal) return [refusal];
-    const rebaseline = current.status === 'agreed' || current.status === 'accepted';
+    const rebaseline = isAgreedStatus(current.status);
     const designs = rebaseline ? await linkedDesigns(tx, row.id) : [];
     let readiness: BaselineReadiness | null = null;
     if (rebaseline) {
@@ -167,7 +171,7 @@ export async function acceptRevision(input: {
     if (rebaseline) {
       await transition(tx, REQUIREMENT_MACHINE, {
         to: 'agreed',
-        from: 'accepted',
+        from: ['in_delivery', 'delivered', 'accepted'],
         set: { acceptedAt: null },
         where: eq(requirements.id, row.id),
         reason: acceptReason,

@@ -15,6 +15,7 @@ import type {
   FeedbackTriageRoute,
 } from '@forge/contracts/feedback';
 import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
+import { isAgreedStatus } from '@forge/contracts/requirements';
 import type { SuggestionKind } from '@forge/contracts/suggestions';
 import type { NodeRef } from '@forge/contracts/workflow-health';
 import { type PermissionFacts, permissionRefusal } from '../permissions/index.js';
@@ -439,7 +440,7 @@ export function routeRuleRefusal(
   }
   const mismatch = (path: string, detail: string) =>
     refusal('FEEDBACK_ROUTE_TARGET_MISMATCH', path, detail);
-  const agreed = f.targetRequirement && ['agreed', 'accepted'].includes(f.targetRequirement.status);
+  const agreed = f.targetRequirement && isAgreedStatus(f.targetRequirement.status);
   if (route === 'revision' && !agreed) {
     return mismatch(
       '/route',

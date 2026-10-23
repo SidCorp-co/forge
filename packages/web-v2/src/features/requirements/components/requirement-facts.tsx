@@ -184,6 +184,30 @@ function RequirementBindings({ d, slug }: { d: RequirementDetail; slug: string }
   );
 }
 
+/** An accept by decision (REQ-74): why, and the acceptance items it waived behind a fold. */
+function AcceptedByDecision({ d }: { d: RequirementDetail }) {
+  const t = useCopy();
+  const decided = d.standing.acceptedByDecision;
+  if (!decided) return null;
+  return (
+    <Fact label={t("requirements.facts.acceptedByDecision")}>
+      <div className="grid gap-1" data-testid="facts-accepted-by-decision">
+        <span>{decided.reason}</span>
+        <details className="text-12 text-muted">
+          <summary className="cursor-pointer">{t("requirements.facts.waived", { n: decided.waived.length })}</summary>
+          <ul className="mt-1 grid gap-1">
+            {decided.waived.map((w) => (
+              <li key={w.question}>
+                <span className="font-medium text-text">{w.label}</span>: {w.detail}
+              </li>
+            ))}
+          </ul>
+        </details>
+      </div>
+    </Fact>
+  );
+}
+
 export function RequirementProperties({
   d,
   slug,
@@ -216,6 +240,7 @@ export function RequirementProperties({
           {s.owner ? <ActorChip name={s.owner.name ?? t("requirements.unknown")} kind={s.owner.kind} /> : <span className="text-subtle">{t("requirements.noOwner")}</span>}
         </Fact>
         <Placement projectId={projectId} d={d} />
+        <AcceptedByDecision d={d} />
         <RequirementShipped releases={d.releases} slug={slug} />
         {developer ? (
           <Fact label={t("requirements.facts.current")}>

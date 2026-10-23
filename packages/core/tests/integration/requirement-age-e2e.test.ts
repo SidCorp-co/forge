@@ -65,18 +65,30 @@ describe('how long a requirement has stood in its state, on the list', () => {
     expect(Date.parse(after.touchedAt as string)).toBeGreaterThan(agreedThen.getTime() + 3_600_000);
   });
 
-  it('in delivery, it counts from when its first issue started', async () => {
+  it('stays agreed while its issue is worked, and counts in delivery from the move into it (REQ-74 BC-8)', async () => {
     const r = await agreedAt(w, 'The board exports its cards', agreedThen);
-    const started = ago(24);
     const worked = await issue(w, {
       status: 'in_progress',
       createdAt: ago(48),
       requirementId: r.id,
     });
-    await moved('issue', worked.id, 'open', 'in_progress', started);
-    const s = await standingOf(w, r.key);
-    expect(s.state).toBe('in_delivery');
-    expect(s.stateSince).toBe(started.toISOString());
+    await moved('issue', worked.id, 'open', 'in_progress', ago(24));
+    const before = await standingOf(w, r.key);
+    expect(before.state).toBe('agreed');
+    expect(before.stateSince).toBe(agreedThen.toISOString());
+
+    const start = await api(
+      w.token,
+      'POST',
+      `/api/projects/${w.projectId}/requirements/${r.key}/start-delivery`,
+      { reason: 'its first issue is being built' },
+    );
+    expect(start.status, JSON.stringify(start.body)).toBe(200);
+    const after = await standingOf(w, r.key);
+    expect(after.state).toBe('in_delivery');
+    expect(Date.parse(after.stateSince as string)).toBeGreaterThan(
+      agreedThen.getTime() + 3_600_000,
+    );
   });
 
   it('a requirement no status move has touched counts from when it was filed', async () => {

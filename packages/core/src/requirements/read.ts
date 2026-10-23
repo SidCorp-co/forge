@@ -1,4 +1,4 @@
-import { ISSUE_ADMIT_PERMISSION, type IssueStatus } from '@forge/contracts/issue-machine';
+import type { IssueStatus } from '@forge/contracts/issue-machine';
 import { issueStatusToneOn } from '@forge/contracts/issue-vocabulary';
 import type { ActorAgency, ProjectPermission } from '@forge/contracts/permissions';
 import {
@@ -32,13 +32,7 @@ import { dataPolicyOf, egressReading } from '../lib/data-egress.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { peopleOf } from '../lib/people.js';
 import { notFound } from '../middleware/route-errors.js';
-import {
-  actorFor,
-  permissionFactsOf,
-  permissionRefusal,
-  projectResource,
-  requireCan,
-} from '../permissions/index.js';
+import { actorFor, permissionFactsOf, projectResource, requireCan } from '../permissions/index.js';
 import { linkedContracts } from './baselines.js';
 import { latestBaselineBindingsOf, withBuildingIssues } from './bindings.js';
 import { questionViewsOf } from './clarity.js';
@@ -56,6 +50,7 @@ import { criterionView, revisionView } from './revision-view.js';
 import { type LinkedDesign, liveAt, signoffRefusal } from './rules.js';
 import { type Delivered, deliveredOf, releasesOf } from './shipped-read.js';
 import { documentGatesIn, standingsOf } from './standing-read.js';
+import { standingViewer } from './viewer.js';
 
 export interface RequirementActor {
   userId: string;
@@ -158,19 +153,6 @@ export function summaryOf(
     delivery,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
-  };
-}
-
-/** What the viewer may do here: sign off (requirements.approve), admit a draft issue (issues.admit), and
- *  accept a breakdown where its switch asks a person (suggestions.approve). */
-export async function standingViewer(viewer: RequirementActor | null, projectId: string) {
-  if (!viewer) return null;
-  const facts = await permissionFactsOf(viewer.userId, projectId);
-  return {
-    userId: viewer.userId,
-    canSignOff: signoffRefusal(facts, 'a sign-off') === null,
-    canAdmit: permissionRefusal(facts, ISSUE_ADMIT_PERMISSION) === null,
-    canApproveBreakdown: permissionRefusal(facts, 'suggestions.approve') === null,
   };
 }
 
@@ -460,6 +442,7 @@ export async function detailOf(
     issues: issueViews(row, linked, changedTraced, prefix, gates.releaseApproval, delivered),
     releases: releasesOf(delivered.shipped),
     canSignOff: viewerFacts?.canSignOff ?? false,
+    canAccept: viewerFacts?.canAccept ?? false,
     canPromote: (viewerFacts?.canSignOff && viewerFacts.canAdmit) ?? false,
     standing,
     history,

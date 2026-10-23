@@ -1,6 +1,8 @@
-// The guards of workflow requirement-lifecycle r4's two closing edges, delivered → accepted and
-// → dropped, as pure functions over what `acceptance.ts` read.
+// The guards of the requirement's delivery moves (REQ-74 BC-8..10): into delivery, to delivered, to
+// accepted (by its checklist, or by decision over it), and → dropped, as pure functions over what
+// `acceptance.ts` read.
 
+import { isDeliveringStatus } from '@forge/contracts/requirements';
 import type { RequirementStatus } from '../db/schema-requirements.js';
 import { deferredRefusal, type RequirementRefusal } from './rules.js';
 
@@ -34,12 +36,12 @@ export function acceptRefusals(input: {
       },
     ];
   }
-  if (input.status !== 'agreed') {
+  if (!isDeliveringStatus(input.status)) {
     return [
       {
         code: 'REQUIREMENT_NOT_DELIVERED',
         path: '',
-        detail: `the requirement is ${input.status}; only an agreed requirement whose linked issues all shipped is accepted.`,
+        detail: `the requirement is ${input.status}; only an agreed, in delivery or delivered requirement is accepted.`,
       },
     ];
   }
@@ -133,4 +135,61 @@ export function duplicateTargetRefusal(
     };
   }
   return null;
+}
+
+/**
+ * An accept by decision moves over the acceptance checklist's blocking items, so it says why, and it
+ * never moves over unfinished work: a linked issue neither closed nor dropped is relinked or finished
+ * first, each named.
+ */
+export function decisionRefusals(input: {
+  reason: string | null | undefined;
+  unfinished: readonly string[];
+}): RequirementRefusal[] {
+  const out: RequirementRefusal[] = [];
+  if (!input.reason?.trim()) {
+    out.push({
+      code: 'REQUIREMENT_DECISION_REASON_REQUIRED',
+      path: '/reason',
+      detail:
+        'an accept by decision waives the acceptance checklist, so it says why: send a non-blank reason.',
+    });
+  }
+  if (input.unfinished.length) {
+    out.push({
+      code: 'REQUIREMENT_HAS_UNFINISHED_ISSUES',
+      path: '',
+      detail: `linked issues are not finished: ${input.unfinished.join(', ')}; finish, drop or relink each before it is accepted by decision.`,
+    });
+  }
+  return out;
+}
+
+/** agreed → in_delivery (REQ-74 BC-9): a live issue is linked to deliver it. */
+export function liveIssueRefusal(liveIssues: number): RequirementRefusal | null {
+  if (liveIssues > 0) return null;
+  return {
+    code: 'REQUIREMENT_NO_LIVE_ISSUE',
+    path: '',
+    detail:
+      'no live issue is linked to it, so nothing delivers it; link an issue before it moves into delivery.',
+  };
+}
+
+/** in_delivery → delivered (REQ-74 BC-10): every live criterion has a pass on the running build, each one without named. */
+export function provenRefusal(
+  coverage: readonly { code: string; verdict: string; why: string | null }[],
+): RequirementRefusal | null {
+  const unproven = coverage.filter((c) => c.verdict !== 'passing');
+  if (coverage.length > 0 && unproven.length === 0) return null;
+  return {
+    code: 'REQUIREMENT_CRITERIA_UNPROVEN',
+    path: '',
+    detail:
+      coverage.length === 0
+        ? 'it has no live criterion, so nothing can pass on the running build; agree a revision with criteria first.'
+        : `not every live criterion has a pass on the running build: ${unproven
+            .map((c) => `${c.code} (${c.verdict.replace('_', ' ')}${c.why ? `: ${c.why}` : ''})`)
+            .join('; ')}.`,
+  };
 }

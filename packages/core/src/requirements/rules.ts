@@ -11,6 +11,7 @@ import type {
   RequirementDedupCheck,
   RequirementRefusalCode,
 } from '@forge/contracts/requirements';
+import { isAgreedStatus, isDeliveringStatus } from '@forge/contracts/requirements';
 import type { CriterionForm, RequirementStatus, RevisionState } from '../db/schema-requirements.js';
 import { refuser } from '../lib/refusal.js';
 import { type PermissionFacts, permissionRefusal } from '../permissions/index.js';
@@ -186,7 +187,7 @@ export function baselineDedup(dedup: RequirementDedupCheck): BaselineReadiness |
 
 /** Linking an issue reads an agreed requirement: a draft or dropped one has nothing to deliver. */
 export function linkIssueRefusal(status: RequirementStatus): RequirementRefusal | null {
-  if (status === 'agreed' || status === 'accepted') return null;
+  if (isAgreedStatus(status)) return null;
   if (status === 'deferred') return deferredRefusal(status, 'linking an issue', '/issue');
   return {
     code: 'REQUIREMENT_NOT_AGREED',
@@ -403,7 +404,7 @@ export function repinRefusals(input: {
 }): RequirementRefusal[] {
   const deferred = deferredRefusal(input.status, 're-pinning it', '/revision');
   if (deferred) return [deferred];
-  if (input.status !== 'agreed') {
+  if (!isDeliveringStatus(input.status)) {
     return [
       {
         code: 'REQUIREMENT_NOT_AGREED',

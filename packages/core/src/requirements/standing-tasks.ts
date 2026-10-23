@@ -6,10 +6,11 @@
 import {
   BREAKDOWN_SLA_WORKING_DAYS,
   CHECK_SLA_WORKING_DAYS,
+  isDeliveringStatus,
   type RequirementTask,
 } from '@forge/contracts/requirements';
 import { addWorkingDays } from '../lib/working-days.js';
-import type { Phased, StandingInput, StandingIssue } from './standing.js';
+import type { StandingInput, StandingIssue } from './standing.js';
 
 type SlaTask = Extract<RequirementTask, { kind: 'breakdown' | 'check' }>;
 type ReplanTask = Extract<RequirementTask, { kind: 're-plan' }>;
@@ -39,7 +40,7 @@ const taskOf = (
 // when the revision it is for became current, and the design gives it no SLA
 export function replanTasksOf(input: StandingInput, live: readonly StandingIssue[]): ReplanTask[] {
   const revision = input.currentRevision;
-  if (input.status !== 'agreed' || revision === null) return [];
+  if (!isDeliveringStatus(input.status) || revision === null) return [];
   const head = input.revisions.find((r) => r.revision === revision);
   const openedAt = (head?.decidedAt ?? head?.createdAt ?? input.updatedAt).toISOString();
   return live
@@ -63,7 +64,9 @@ export function breakdownTaskOf(
   input: StandingInput,
   live: readonly StandingIssue[],
 ): SlaTask | null {
-  if (input.status !== 'agreed' || input.currentRevision === null || !input.agreedAt) return null;
+  if (!isDeliveringStatus(input.status) || input.currentRevision === null || !input.agreedAt) {
+    return null;
+  }
   if (live.length > 0 || input.openSuggestionKinds.includes('breakdown')) return null;
   return taskOf(
     'breakdown',
@@ -77,10 +80,10 @@ export function breakdownTaskOf(
 
 // workflow requirement-to-delivery step `check`: a requirement delivered at its current revision holds
 // one acceptance check for that revision, owned by the BA and due 5 working days after the evidence
-// completed (the last live issue closed, or the newest passing traced verdict). `input.phase` is
-// `deliveryOf`'s, so the task is read from the same computation as delivered
-export function checkTaskOf(input: Phased, live: readonly StandingIssue[]): SlaTask | null {
-  if (input.status !== 'agreed' || input.phase !== 'delivered') return null;
+// completed (the last live issue closed, or the newest passing traced verdict). Delivered is the
+// stored status an act moved it to (REQ-74 BC-8), never read off the evidence
+export function checkTaskOf(input: StandingInput, live: readonly StandingIssue[]): SlaTask | null {
+  if (input.status !== 'delivered') return null;
   if (input.currentRevision === null || live.length === 0) return null;
   const ids = new Set(live.map((i) => i.id));
   const times = [
@@ -94,7 +97,7 @@ export function checkTaskOf(input: Phased, live: readonly StandingIssue[]): SlaT
 }
 
 /** Every task the standing opens: the breakdown and the check where they are due, then each re-plan. */
-export function tasksOf(input: Phased, live: readonly StandingIssue[]): RequirementTask[] {
+export function tasksOf(input: StandingInput, live: readonly StandingIssue[]): RequirementTask[] {
   return [
     ...[breakdownTaskOf(input, live), checkTaskOf(input, live)].filter(
       (t): t is SlaTask => t !== null,

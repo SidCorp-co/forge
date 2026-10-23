@@ -1,5 +1,5 @@
 /**
- * A requirement on a project whose landing is its delivery is delivered by its issues' recorded
+ * A requirement on a project whose landing is its delivery is proven by its issues' recorded
  * landings. Planted from catalog-fe REQ-3 on 2026-10-22: ISS-6 and ISS-7 closed by one landing record
  * at one commit and ISS-23 by another, every criterion traced to BC-1..4 and judged pass at its
  * issue's recorded commit, then reopened by the steward before the landing fix shipped and closed by
@@ -51,7 +51,7 @@ async function passedAll(issueId: string, commit: string) {
 }
 
 describe('a requirement whose issues all closed by landing records', () => {
-  it('reads delivered, every BC passing at its issue recorded commit, after a steward reopen', async () => {
+  it('reads every BC passing at its issue recorded commit, after a steward reopen', async () => {
     const req = await agreedRequirement(BCS);
     const six = await landedIssue(6, F4);
     const seven = await landedIssue(7, F4);
@@ -70,7 +70,8 @@ describe('a requirement whose issues all closed by landing records', () => {
 
     const read = await requirementRead(req);
     expect(read.standing.delivery.criteriaCoverage).toEqual({ criteria: 4, passing: 4, judged: 4 });
-    expect(read.standing.delivery.phase).toBe('delivered');
+    // proven, and still only an act moves it to delivered (REQ-74 BC-8)
+    expect(read.standing.delivery).not.toHaveProperty('phase');
     expect(read.standing.coverage.map((c) => c.verdict)).toEqual([
       'passing',
       'passing',

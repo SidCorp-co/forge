@@ -28,7 +28,11 @@ import { seedProductionDeployTrigger } from '../helpers/release-world.js';
 // holds because both read one simulation anchored on the last event, and none happens between.
 
 /** A requirement moved to `status` on a current revision 1, inside the kernel's own transaction. */
-async function seeded(w: World, title: string, status: 'agreed' | 'deferred' | 'dropped') {
+async function seeded(
+  w: World,
+  title: string,
+  status: 'agreed' | 'in_delivery' | 'deferred' | 'dropped',
+) {
   const { id, key } = await ownedRequirement(w, title);
   await db.transaction(async (tx) => {
     await tx.execute(sql`SELECT set_config('forge.kernel_txn', txid_current()::text, true)`);
@@ -75,7 +79,8 @@ async function seedWorld(w: World, onLand: boolean): Promise<Seeds> {
   for (const h of await landHistory(w, 12)) {
     await shipRelease(w, [h.id], new Date(h.mergedAt.getTime() + 30 * MINUTE));
   }
-  const now = await seeded(w, 'The board keeps its cards', 'agreed');
+  // moved into delivery (REQ-74 BC-8): its stored status, not its working issue, puts it in Now
+  const now = await seeded(w, 'The board keeps its cards', 'in_delivery');
   const working = await issue(w, {
     status: 'in_progress',
     createdAt: ago(3),

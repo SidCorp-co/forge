@@ -21,6 +21,7 @@ import { requirements } from '../db/schema-requirements.js';
 import { suggestions } from '../db/schema-suggestions.js';
 import { itemEmbeddingOf, nearestItems } from '../knowledge/index.js';
 import type { RequirementRefusal } from './rules.js';
+import { acceptanceDecisionsOf } from './standing-facts.js';
 
 export interface NearDuplicate {
   key: string;
@@ -155,7 +156,7 @@ async function nearOf(
     })
   ).filter((n) => n.similarity >= REQUIREMENT_NEAR_DUPLICATE_SIMILARITY);
   if (nearest.length === 0) return [];
-  const rows = await db
+  const near = await db
     .select({ id: requirements.id, seq: requirements.reqSeq })
     .from(requirements)
     .where(
@@ -167,6 +168,10 @@ async function nearOf(
         ne(requirements.status, 'dropped'),
       ),
     );
+  // one accepted by decision was closed over its checklist, as a person decided (REQ-74): it
+  // repeats nothing a new requirement must be weighed against
+  const decided = await acceptanceDecisionsOf(near.map((r) => r.id));
+  const rows = near.filter((r) => !decided.has(r.id));
   if (rows.length === 0) return [];
   const dups = await db
     .select({

@@ -20,8 +20,6 @@ export const OUTBOX_CONSUMERS = {
 		"notify-transitions",
 		"memory-reconcile",
 		"issue-move-reactions",
-		"requirement-delivery",
-		"notify-requirement-step",
 		"steward",
 	],
 	"issue.dependency.changed": ["ws-broadcast", "dependency-health"],

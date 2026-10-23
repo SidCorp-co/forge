@@ -329,7 +329,8 @@ describe('a requirement whose every issue shipped and whose criteria are unprove
       [traced(1, 1, 'pass'), traced(1, 3, null), traced(2, 5, null)],
       'independent',
     );
-    expect(s.state).toBe('in_delivery');
+    // the stored status, never a phase read off the shipped issues (REQ-74 BC-8)
+    expect(s.state).toBe('agreed');
     expect(s.attentionGroup).toBe('waiting');
     expect(s.waitingOn).toMatchObject({
       kind: 'agent',
@@ -395,11 +396,37 @@ describe('a requirement whose every issue shipped and whose criteria are unprove
     });
   });
 
-  it('reads delivered, waiting on the BA check, once every BC passes', () => {
+  it('stays agreed once every BC passes, asking for the move into delivery rather than making it', () => {
     const s = shipped(
       [traced(1, 1, 'pass'), traced(1, 3, 'pass'), traced(2, 5, 'pass')],
       'independent',
     );
+    expect(s.state).toBe('agreed');
+    expect(s.waitingOn.act).toBe('move it into delivery');
+  });
+
+  it('in delivery with every BC passing, asks for it to be marked delivered', () => {
+    const s = deriveStanding({
+      ...input([issue(1, 'closed', false), issue(2, 'closed', false)]),
+      status: 'in_delivery',
+      criteria: [bc(1), bc(3), bc(5)],
+      issueCriteria: [traced(1, 1, 'pass'), traced(1, 3, 'pass'), traced(2, 5, 'pass')],
+      judge: 'independent',
+      liveBuild,
+    });
+    expect(s.state).toBe('in_delivery');
+    expect(s.waitingOn.act).toBe('mark it delivered');
+  });
+
+  it('marked delivered, waits on the BA check', () => {
+    const s = deriveStanding({
+      ...input([issue(1, 'closed', false), issue(2, 'closed', false)]),
+      status: 'delivered',
+      criteria: [bc(1), bc(3), bc(5)],
+      issueCriteria: [traced(1, 1, 'pass'), traced(1, 3, 'pass'), traced(2, 5, 'pass')],
+      judge: 'independent',
+      liveBuild,
+    });
     expect(s.state).toBe('delivered');
     expect(s.waitingOn.act).toMatch(/^check BC-1, BC-3, BC-5 against the traceability matrix/);
   });
@@ -418,7 +445,7 @@ describe('how long a requirement has stood in its state', () => {
     expect(s.stateSince).toBe(since.toISOString());
   });
 
-  it('in delivery, it counts from when the first live issue started, not from any issue edit', () => {
+  it('in delivery, it counts from the move into delivery, not from when an issue started', () => {
     const started = (n: number, iso: string): StandingIssue => ({
       ...issue(n, 'in_progress', false),
       updatedAt: edited,
@@ -426,10 +453,11 @@ describe('how long a requirement has stood in its state', () => {
     });
     const s = deriveStanding({
       ...input([started(1, '2026-09-15T00:00:00Z'), started(2, '2026-09-12T00:00:00Z')]),
+      status: 'in_delivery',
       statusSince: since,
     });
     expect(s.state).toBe('in_delivery');
-    expect(s.stateSince).toBe('2026-09-12T00:00:00.000Z');
+    expect(s.stateSince).toBe(since.toISOString());
   });
 
   it('a status move after the work started is where it counts from', () => {

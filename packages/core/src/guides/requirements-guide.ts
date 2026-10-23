@@ -8,7 +8,7 @@ export const REQUIREMENT_LIFECYCLE_GUIDE: CoreGuide = {
   audience: 'agent',
   title: 'Requirements: revisions, agreement, baselines and delivery',
   summary:
-    'How a requirement (REQ-n) is written in immutable revisions with stable business criteria (BC-n), proposed, accepted and agreed by a holder of requirements.approve under a baseline pinning its designs, re-pinned, deferred, read as delivered, accepted or dropped; and why an issue planned against it reads changed-since-plan.',
+    'How a requirement (REQ-n) is written in immutable revisions with stable business criteria (BC-n), proposed, accepted and agreed by a holder of requirements.approve under a baseline pinning its designs, re-pinned, deferred, moved into delivery and to delivered by an act, accepted (by its checklist or by decision) or dropped; and why an issue planned against it reads changed-since-plan.',
   version: 7,
   body: `## Requirements: revisions, agreement, baselines and delivery
 
@@ -18,19 +18,20 @@ it lives in numbered revisions, and each revision carries business criteria unde
 line opens with the tag, \`(REQ-n BC-m) <statement>\`, and nowhere else. The door is
 \`/api/projects/:id/requirements\`: each act below is a route under \`…/requirements/:req\`
 (\`revisions\`, \`revisions/:n/propose|accept|return\`, \`agree\`, \`repin\`, \`defer\`, \`undefer\`,
-\`accept\`, \`drop\`, \`issues\`, \`promote\`, \`workflows\`, \`contracts\`).
+\`start-delivery\`, \`mark-delivered\`, \`accept\`, \`drop\`, \`issues\`, \`promote\`, \`workflows\`, \`contracts\`).
 
 ### Three things move, and they are not one field
 - **The requirement's status**: \`draft\` (being written; nothing is built against it), \`agreed\` (a
-  revision was signed off under a baseline), \`deferred\` (out of the current release),
-  \`accepted\` (delivered and accepted) and \`dropped\` (no longer wanted).
+  revision was signed off under a baseline), \`in_delivery\` and \`delivered\` (each moved there by
+  an act, below), \`deferred\` (out of the current release), \`accepted\` (delivered and accepted)
+  and \`dropped\` (no longer wanted). A status moves only by an explicit act of a person, the
+  assistant or an agent; no read derives one from results.
 - **Each revision's state**: \`draft → proposed → current → superseded\`. \`current\` is the head, the
   revision that was accepted. A requirement holds **one open revision at a time** (a draft or a
   proposed one): writing a second is \`REQUIREMENT_REVISION_OPEN\`.
-- **The delivery phase**, read and never written: an agreed requirement reads \`agreed\` until a
-  linked issue starts, then \`in_delivery\`, and \`delivered\` only when every live linked issue is
-  closed **and** every current BC is covered by a passing verdict. A closed set with one unproven BC
-  still reads \`in_delivery\`; the fix is a verdict, not a status move. A BC's coverage is the newest
+- **The delivery read**, never written: the live issues and each current BC's coverage. An agreed
+  requirement whose issues all closed and whose every BC passes still reads \`agreed\` until someone
+  moves it, and its standing asks for that move. A BC's coverage is the newest
   pass, short or fail on any issue criterion tracing its current wording that its identity lets
   count, and the BC names it. An unjudged one masks nothing. A commit, or the commit a runtime
   served, counts only where the live build is read to hold it. One it does not hold, and one
@@ -154,24 +155,34 @@ deferred requirement waits on nobody and is not broken down; accepting, agreeing
 linking an issue on it are \`REQUIREMENT_DEFERRED\`. **undefer** \`{ reason }\` puts back the status it
 was deferred from, saying why it comes back (\`REQUIREMENT_UNDEFER_REASON_REQUIRED\` without one).
 
-### Accepting the delivery, and dropping
-When the phase reads \`delivered\`, the project's holders of \`requirements.approve\` are notified, and
-**accept** \`{ revision, reason? }\` names the head whose delivery is accepted: the requirement becomes
-\`accepted\` and \`acceptedAt\` is stored. Refused by name: \`REQUIREMENT_REVISION_STALE\` (not the head),
-\`REQUIREMENT_NOT_DELIVERED\` (it is not agreed), \`REQUIREMENT_ALREADY_ACCEPTED\`. The kernel judges it by the acceptance
+### Moving the delivery, accepting it, and dropping
+**start-delivery** \`{ reason? }\` moves \`agreed → in_delivery\`, refused \`REQUIREMENT_NO_LIVE_ISSUE\`
+while no live issue links to it. **mark-delivered** \`{ reason? }\` moves \`in_delivery → delivered\`,
+refused \`REQUIREMENT_CRITERIA_UNPROVEN\` naming each live BC with no pass on the running build;
+\`agreed → delivered\` is no edge (\`TRANSITION_NOT_AN_EDGE\`). Nothing moves either on its own and
+no notice announces one: the standing asks for the move once every issue closed and every BC passes.
+**accept** \`{ revision, reason?, byDecision? }\` names the head whose delivery is accepted, from
+\`agreed\`, \`in_delivery\` or \`delivered\`: the requirement becomes \`accepted\` and \`acceptedAt\` is
+stored. Refused by name: \`REQUIREMENT_REVISION_STALE\` (not the head), \`REQUIREMENT_NOT_DELIVERED\`
+(from any other status), \`REQUIREMENT_ALREADY_ACCEPTED\`. The kernel judges it by the acceptance
 checklist: every live issue shipped, every current BC passing on the running build, and each counted
 verdict citing its evidence; a gap is refused \`CHECKLIST_INCOMPLETE\` on \`/answers/<question>\`,
-naming each issue or BC. A correction after it comes in as feedback; a new revision accepted
-re-agrees it. **drop** \`{ reason }\` ends a draft, agreed or deferred requirement that is not going to
+naming each issue or BC. That stays the default. With \`byDecision: true\` the same signer accepts
+over the gaps: a blank reason is \`REQUIREMENT_DECISION_REASON_REQUIRED\` and a linked issue neither
+closed nor dropped is \`REQUIREMENT_HAS_UNFINISHED_ISSUES\`, naming it. Each waived item is recorded
+as a \`waived\` answer on the move and posted as a decision comment; the requirement reads
+\`acceptedByDecision\`, counts as done, leaves the duplicate check, and no read reports its BCs as
+proven. A correction after it comes in as feedback; a new revision accepted re-agrees it. **drop**
+\`{ reason }\` ends a draft, agreed, in-delivery or deferred requirement that is not going to
 be built (\`REQUIREMENT_NOT_DROPPABLE\` once accepted, \`REQUIREMENT_DROP_REASON_REQUIRED\` without a
 reason), refused while any live issue links to it (\`REQUIREMENT_HAS_LIVE_ISSUES\`, naming each).
 
 ### Who may act
 Anyone on the project creates, revises, edits and proposes revisions, and links designs. Accept,
-return, agree, repin, defer, undefer, accept, drop, promote, linking an issue and \`adoptPlan\` take \`requirements.approve\`,
+return, agree, repin, defer, undefer, start-delivery, mark-delivered, accept, drop, promote, linking an issue and \`adoptPlan\` take \`requirements.approve\`,
 except where the project document's person gates say no person is needed: with \`approvals.agree\`,
 \`approvals.revisions\` or \`approvals.accept\` off (the default), agreeing, accepting a revision or
-re-pinning (both held by \`approvals.revisions\`), or accepting the delivery takes \`project.write\` and its complete checklist decides; on, it takes
+re-pinning (both held by \`approvals.revisions\`), or moving or accepting the delivery takes \`project.write\` and its complete checklist decides; on, it takes
 \`requirements.approve\`. Promote takes \`issues.admit\` beside it. Each is held on the project (project admin, or an org owner or admin), person or agent alike, the revision's author
 included; without it the call is refused \`PERMISSION_FORBIDDEN\` naming the permission. Whoever
 lacks it proposes and stops; the requirement's \`waitingOn\` names whose turn it is. A change an agent

@@ -228,7 +228,7 @@ Upcoming steps are recommended **rewrite**, which here means building the node t
 | `build` | Wrong | behaviour, data | `workflows/run-context-service.ts:tracedDesignsOf` | **rewrite** (due): Load the pinned design and contract revisions, not the latest approved and issue-text refs (REQ-1 BC-7, REQ-4 BC-12); delete the second path. |
 | `check` | Wrong | behaviour, data | `requirements/standing.ts:coverageOf` | **rewrite** (due): Build the acceptance task with its SLA on the coverage read that exists. |
 | `contract-recorded` | Wrong | data | `ecosystem/contract/record.ts:recordVersion` | **keep**: Same as drafted. |
-| `delivered` | Wrong | behaviour | `requirements/standing.ts:deliveryOf` | **rewrite**: Write the requirement.delivered notice the acceptance case opens from. |
+| `delivered` | Built | — | `requirements/acceptance.ts:moveDelivery` | **kept** (owner, 2026-10-23, REQ-74 BC-8): the explicit mark-delivered move writes `requirement.delivered`; no read derives it. |
 | `drafted` | Wrong | data | `requirements/service.ts:writeRevision` | **keep**: The row is the record and nothing consumes the event; revise the design to say so (one revision for the four event nodes). |
 | `fb-case` | Wrong | behaviour, wiring | `feedback/standing.ts:phaseOf` | **rewrite** (due): Threshold reached; build the case the design draws, or the orchestrator revises the design to make the FB-n row the case. |
 | `fb-filed` | Wrong | data | `feedback/service.ts:createFeedback` | **keep**: Same as drafted. |
@@ -238,7 +238,7 @@ Upcoming steps are recommended **rewrite**, which here means building the node t
 | `release-gate` | Wrong | behaviour | `release-batch/blockers.ts:rosterBlockers` | **rewrite**: Small: record gate off on the batch. |
 | `release-requested` | Wrong | data | `release-batch/create.ts:createReleaseBatch` | **keep**: Same as drafted; also drop environment, a batch is production only. |
 | `req-head` | Wrong | data | `requirements/read.ts:detailOf` | **rewrite**: Add the requirement-to-contract link; agreed and pins cannot pin contracts without it (REQ-5). |
-| `rollup` | Wrong | behaviour | `requirements/standing.ts:deliveryOf` | **rewrite**: The phase is one TypeScript computation since ISS-164 (view dropped); short-as-pass is left to the passing predicate (ISS-165). |
+| `rollup` | Built | — | `requirements/standing.ts:deliveryOf` | **kept** (owner, 2026-10-23, REQ-74 BC-8): it counts live issues and coverage only; no phase is computed, the status is stored and moved by an act. |
 | `route` | Wrong | wiring | `feedback/triage.ts:triageIn` | **keep**: Its only divergence is that triage and route are one act; settled by the fb-case decision. |
 | `route-result` | Wrong | data | `packages/contracts/src/feedback.ts:FEEDBACK_ROUTES` | **keep**: Same revision as routed: take the route values from feedback-triage. |
 | `routed` | Wrong | behaviour | `feedback/triage.ts:triageIn` | **keep**: feedback-triage r3 draws decline and answer as the code does; revise this design to reference it. |

@@ -4,12 +4,14 @@
  * beside the revision or version each is approved at now.
  */
 
-import type { CoverageFile } from '@forge/contracts/requirements';
+import type { ChecklistAnswer } from '@forge/contracts/checklists';
+import type { CoverageFile, RequirementAcceptanceDecision } from '@forge/contracts/requirements';
 import type { StorefrontDraftPart } from '@forge/contracts/verdict-identity';
 import { inArray, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { issueAttachments } from '../db/schema.js';
 import { reopenedAtOf, verdictByBuilderSql } from '../issues/index.js';
+import { waivedOf } from './acceptance-waived.js';
 import { requirementDependents } from './dependents.js';
 import type { LiveBuildHolds, StandingIssueCriterion, StandingVerdict } from './standing.js';
 import type { CoverageIdentity } from './standing-coverage.js';
@@ -289,22 +291,64 @@ export async function latestContractPinsOf(ids: readonly string[]) {
 }
 
 /**
- * When each requirement's status last moved, from its kernel transitions, else when it was filed: the
- * start of its time in the state it stands in (REQ-29 BC-5's age). A placement, a short name or any
- * other edit moves no status, so it never restarts that time.
+ * Each of `ids` that stands accepted by decision (REQ-74): its latest move into accepted waived one or
+ * more of the acceptance checklist's blocking items (`checklists.ts:waivedEvaluation`). The one
+ * reading of "accepted by decision": the standing, the duplicate check and the delivered reads all
+ * ask it, so none counts what a decision waived as proven.
  */
-export async function statusSinceOf(ids: readonly string[]): Promise<Map<string, Date>> {
-  if (ids.length === 0) return new Map();
+export async function acceptanceDecisionsOf(
+  ids: readonly string[],
+): Promise<Map<string, RequirementAcceptanceDecision>> {
+  return (await statusFactsOf(ids)).decisions;
+}
+
+/**
+ * Read off each requirement's latest kernel transition in one statement: when its status last moved,
+ * else when it was filed (the start of its time in the state it stands in, REQ-29 BC-5's age; a
+ * placement, a short name or any other edit moves no status, so it never restarts that time), and,
+ * for one standing accepted, whether that move into accepted was a decision (`acceptanceDecisionsOf`).
+ */
+export async function statusFactsOf(ids: readonly string[]): Promise<{
+  since: Map<string, Date>;
+  decisions: Map<string, RequirementAcceptanceDecision>;
+}> {
+  if (ids.length === 0) return { since: new Map(), decisions: new Map() };
   const rows = (await db.execute(sql`
-    SELECT r.id, COALESCE(max(kt.created_at), r.created_at) AS at
+    SELECT r.id, r.status, COALESCE(last.created_at, r.created_at) AS at,
+           last.to_status, last.reason, last.checklist_answers AS answers
       FROM requirements r
-      LEFT JOIN kernel_transitions kt ON kt.entity = 'requirement' AND kt.entity_id = r.id
+      LEFT JOIN LATERAL (
+        SELECT kt.created_at, kt.to_status, kt.reason, kt.checklist_answers
+          FROM kernel_transitions kt
+         WHERE kt.entity = 'requirement' AND kt.entity_id = r.id
+         ORDER BY kt.created_at DESC
+         LIMIT 1
+      ) last ON true
      WHERE r.id IN (${sql.join(
        ids.map((id) => sql`${id}::uuid`),
        sql`, `,
-     )})
-     GROUP BY r.id, r.created_at`)) as unknown as Array<{ id: string; at: Date | string }>;
-  return new Map([...rows].map((r) => [r.id, new Date(r.at)]));
+     )})`)) as unknown as Array<{
+    id: string;
+    status: string;
+    at: Date | string;
+    to_status: string | null;
+    reason: string | null;
+    answers: ChecklistAnswer[] | null;
+  }>;
+  const since = new Map<string, Date>();
+  const decisions = new Map<string, RequirementAcceptanceDecision>();
+  for (const r of rows) {
+    since.set(r.id, new Date(r.at));
+    if (r.status !== 'accepted' || r.to_status !== 'accepted') continue;
+    const waived = waivedOf({ answers: r.answers ?? [] });
+    if (waived.length === 0) continue;
+    decisions.set(r.id, {
+      reason: r.reason ?? '',
+      decidedAt: new Date(r.at).toISOString(),
+      waived,
+    });
+  }
+  return { since, decisions };
 }
 
 /** When each linked issue last closed (closed ones only) and first moved past draft and open. */

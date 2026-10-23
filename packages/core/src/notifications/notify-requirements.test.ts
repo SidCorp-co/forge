@@ -28,8 +28,6 @@ vi.mock('./auto-resolve.js', () => ({
 }));
 vi.mock('../issues/index.js', () => ({ userLabel: async () => 'Bea' }));
 vi.mock('../requirements/index.js', () => ({
-  requirementOfIssue: async (issueId: string) =>
-    issueId === 'i1' ? { requirementId: 'r9' } : null,
   stepChangeOf: async (id: string, tell: (c: unknown) => Promise<void>) => {
     const change = state.changes.get(id);
     if (!change) return null;
@@ -105,12 +103,13 @@ describe('the author notice of a step change', () => {
     ]);
   });
 
-  it("a linked issue's move tells a delivery phase, and an unlinked one reads nothing", async () => {
+  it("tells the move into delivery from the requirement's own move, and a linked issue's move tells nothing (REQ-74 BC-8)", async () => {
+    expect(consumerOf('issue.transitioned', 'notify-requirement-step')).toBeUndefined();
     state.changes.set('r9', change({ from: 'agreed', to: 'in_delivery', next: 'delivered' }));
-    const issueStep = consumerOf('issue.transitioned', 'notify-requirement-step');
-    await issueStep?.handle({ id: 'i2', at: 't' } as never, {} as never);
-    expect(told()).toHaveLength(1);
-    await issueStep?.handle({ id: 'i1', at: 't' } as never, {} as never);
+    await consumerOf('requirement.transitioned', 'notify-requirements')?.handle(
+      { id: 'r9', at: 't' } as never,
+      {} as never,
+    );
     expect(told().at(-1)).toMatchObject({
       title: 'REQ-9 is In delivery: Cards export',
       body: 'Next: Delivered.',

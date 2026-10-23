@@ -4,8 +4,8 @@
  * agree or re-pin pins whichever version is current then (step `pins`).
  */
 
-import { requirementKey } from '@forge/contracts/requirements';
-import { and, eq } from 'drizzle-orm';
+import { DELIVERING_STATUSES, requirementKey } from '@forge/contracts/requirements';
+import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { requirementContracts, requirements } from '../db/schema-requirements.js';
 import { notFound } from '../middleware/route-errors.js';
@@ -118,7 +118,7 @@ export async function staleOnContract(input: {
     .where(
       and(
         eq(requirements.projectId, input.projectId),
-        eq(requirements.status, 'agreed'),
+        inArray(requirements.status, [...DELIVERING_STATUSES]),
         eq(requirementContracts.providerProjectId, input.providerProjectId),
         eq(requirementContracts.contractSlug, input.contractSlug),
       ),

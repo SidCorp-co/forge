@@ -21,7 +21,7 @@ export async function breakdownsHeldBySteward(projectId: string): Promise<string
        AND sr.subject_kind = 'requirement'
        AND a.wrote->>'kind' = 'comment'
        AND q.intent = 'question'
-       AND r.status = 'agreed'
+       AND r.status IN ('agreed', 'in_delivery', 'delivered')
        AND NOT EXISTS (
          SELECT 1 FROM comments reply
           WHERE reply.parent_id = q.id AND reply.author_id <> q.author_id)

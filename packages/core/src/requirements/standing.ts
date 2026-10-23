@@ -13,16 +13,15 @@ import {
   BREAKDOWN_SLA_WORKING_DAYS,
   CHECK_SLA_WORKING_DAYS,
   criteriaCoverageOf,
-  type DeliveryPhase,
   draftIssuesToPromote,
+  type RequirementAcceptanceDecision,
   type RequirementCoverage,
   type RequirementDelivery,
   type RequirementStanding,
-  type RequirementState,
   type RequirementWaitingKind,
   type RequirementWaitingOn,
 } from '@forge/contracts/requirements';
-import { type Said, say } from '@forge/contracts/said';
+import { type Said, type SaidKey, say } from '@forge/contracts/said';
 import { type WaitingSays, waitingOn } from '@forge/contracts/standing';
 import type { MasterServing } from '@forge/contracts/steward';
 import type { RequirementStatus } from '../db/schema-requirements.js';
@@ -142,28 +141,22 @@ export interface StandingInput {
   statusSince: Date;
   /** Whether a live master serves the project (`masters/read.ts:masterServingOf`), so a wait on it can read stuck. */
   master: MasterServing;
+  /** Where its accept waived the acceptance checklist's blocking items, what and why; else null or absent. */
+  acceptedByDecision?: RequirementAcceptanceDecision | null;
   now: Date;
 }
 
-/** An issue as the delivery phase and coverage read it: its wait is the turn's, not the proof's. */
+/** An issue as the delivery counts and coverage read it: its wait is the turn's, not the proof's. */
 export type ProofIssue = Omit<StandingIssue, 'parkedOn'>;
 
-/** What the delivery phase and coverage read, and nothing else. */
+/** What the delivery counts and coverage read, and nothing else. */
 type ProofInput<I extends ProofIssue = ProofIssue> = Pick<
   StandingInput,
   'status' | 'criteria' | 'issueCriteria' | 'uncovered' | 'liveBuild' | 'judge'
 > & { issues: readonly I[] };
 
-/** The input with its delivery phase read (`deliveryOf`). */
-export type Phased = StandingInput & { phase: DeliveryPhase | null };
-
 const SIGNER = say('standing.who.baOrOwner');
 const ADMITTER = say('standing.who.signerAdmitter');
-
-function stateOf(status: RequirementStatus, phase: DeliveryPhase | null): RequirementState {
-  if (status !== 'agreed') return status;
-  return phase === 'in_delivery' || phase === 'delivered' ? phase : 'agreed';
-}
 
 const wait = (
   kind: RequirementWaitingKind,
@@ -215,7 +208,7 @@ function feedbackTurn(input: StandingInput): Turn | null {
 // `lib/standing-times.ts:withTimes` reads the stuck rule over the turn: no owner, nobody serving its
 // wait, only draft issues, an issue stuck by its own standing, or the wait falling overdue.
 function turnOf(
-  input: Phased,
+  input: StandingInput,
   live: readonly StandingIssue[],
   coverage: readonly RequirementCoverage[],
 ): Turn {
@@ -318,6 +311,8 @@ function turnOf(
       ),
     };
   }
+  const move = moveTurn(input, live, coverage);
+  if (move) return move;
   const check = checkTaskOf(input, live);
   if (check) {
     const date = check.dueAt.slice(0, 10);
@@ -396,38 +391,48 @@ function turnOf(
   return workTurn(live, input.release);
 }
 
-// workflow requirement-to-delivery step `rollup`, the one computation of the delivery phase: only an
-// agreed or accepted requirement has one; no live issue → agreed; every live issue closed AND every
-// current BC covered by a passing verdict → delivered, a closed set with an unproven BC → in_delivery;
-// a live issue past draft and open → in_delivery; else agreed
+// workflow requirement-to-delivery step `rollup`: what the live issues and the coverage count. Which
+// step the requirement stands at is its stored status alone (REQ-74 BC-8): nothing here reads one
 function deliveryOf(
-  status: RequirementStatus,
   live: readonly ProofIssue[],
   coverage: readonly RequirementCoverage[],
 ): RequirementDelivery {
-  const started = live.filter((i) => i.status !== 'draft' && i.status !== 'open').length;
-  const closed = live.filter((i) => i.status === 'closed').length;
-  const proven = coverage.every((c) => c.verdict === 'passing');
-  let phase: DeliveryPhase | null = null;
-  if (status === 'agreed' || status === 'accepted') {
-    if (live.length === 0) phase = 'agreed';
-    else if (closed === live.length) phase = proven ? 'delivered' : 'in_delivery';
-    else phase = started > 0 ? 'in_delivery' : 'agreed';
-  }
   return {
-    phase,
     liveIssues: live.length,
-    startedIssues: started,
-    closedIssues: closed,
+    startedIssues: live.filter((i) => i.status !== 'draft' && i.status !== 'open').length,
+    closedIssues: live.filter((i) => i.status === 'closed').length,
     criteriaCoverage: criteriaCoverageOf(coverage),
   };
 }
 
-/** The delivery phase and BC coverage at `revision`: the one computation the standing and the accept read. */
+/**
+ * The explicit move (REQ-74 BC-8) a requirement waits on once its live issues all closed and every
+ * live criterion passes: into delivery, then delivered. Asked of whoever may make it, never made here.
+ */
+const MOVE_ASKED: Partial<Record<RequirementStatus, readonly [SaidKey, SaidKey]>> = {
+  agreed: ['standing.act.startDelivery', 'requirements.rule.startDelivery'],
+  in_delivery: ['standing.act.markDelivered', 'requirements.rule.markDelivered'],
+};
+
+function moveTurn(
+  input: StandingInput,
+  live: readonly StandingIssue[],
+  coverage: readonly RequirementCoverage[],
+): Turn | null {
+  const done =
+    live.length > 0 &&
+    live.every((i) => i.status === 'closed') &&
+    coverage.length > 0 &&
+    coverage.every((c) => c.verdict === 'passing');
+  const move = done ? MOVE_ASKED[input.status] : undefined;
+  return move ? actWait(input, 'accept', say(move[0]), say(move[1])) : null;
+}
+
+/** The live issues, their counts and BC coverage at `revision`: the one computation the standing, the moves and the accept read. */
 export function deliveryAt<I extends ProofIssue>(input: ProofInput<I>, revision: number | null) {
   const live = input.issues.filter((i) => i.status !== 'dropped');
   const coverage = coverageOf(input, revision);
-  return { live, coverage, delivery: deliveryOf(input.status, live, coverage) };
+  return { live, coverage, delivery: deliveryOf(live, coverage) };
 }
 
 /**
@@ -456,7 +461,7 @@ function signerInsteadOfMaster(
 export function deriveStanding(raw: StandingInput): RequirementStanding {
   const shownRevision = raw.currentRevision ?? raw.revisions[0]?.revision ?? null;
   const { live, coverage, delivery } = deliveryAt(raw, shownRevision);
-  const input = { ...raw, phase: delivery.phase };
+  const input = raw;
   const touched = touchedAt(input);
   const turn = turnOf(input, live, coverage);
   let { group, waitingOn } = turn;
@@ -484,7 +489,7 @@ export function deriveStanding(raw: StandingInput): RequirementStanding {
     },
     'waiting',
   );
-  const state = stateOf(input.status, input.phase);
+  const state = input.status;
   return {
     state,
     next: nextStepOf(state, input.agreedAt),
@@ -509,6 +514,7 @@ export function deriveStanding(raw: StandingInput): RequirementStanding {
     coverage,
     owner: input.owner,
     touchedAt: touched.toISOString(),
-    stateSince: stateSinceOf(input, state, live).toISOString(),
+    stateSince: stateSinceOf(input).toISOString(),
+    acceptedByDecision: input.acceptedByDecision ?? null,
   };
 }

@@ -15,6 +15,7 @@ import {
   evaluateChecklist,
   parseAnswers,
   type RecordAnswers,
+  waivedEvaluation,
 } from '@forge/contracts/checklists';
 import { ISSUE_STATUS_LABELS } from '@forge/contracts/issue-vocabulary';
 import type { MachineEntity, MachineOf, StateOf } from '@forge/contracts/machines';
@@ -35,6 +36,13 @@ export interface MoveChecklist<E extends MachineEntity> {
   /** Answers a rule gave from the mover's others, recorded as derived by it (`checklists.ts:DerivedAnswer`). */
   derived?: Readonly<Record<string, DerivedAnswer>>;
   record: (input: { tx: Tx; row: PriorRow<E>; checklist: ChecklistId }) => Promise<RecordAnswers>;
+  /**
+   * A decision moves over the blocking gaps: the move passes, each gap recorded as a `waived` answer
+   * (`checklists.ts:waivedEvaluation`). The door asks who may decide before it sets this.
+   */
+  waive?: boolean;
+  /** Told the evaluation the move is recorded with, once the checklist passed or was waived. */
+  judged?: (evaluation: ChecklistEvaluation) => void;
 }
 
 /** A move a gate refused, with every refusal it answered. */
@@ -102,8 +110,12 @@ export async function judgeChecklist<E extends MachineEntity>(
     record,
     ...(move.checklist.derived ? { derived: move.checklist.derived } : {}),
   });
-  if (!evaluation.complete) return { refusals: checklistRefusals(evaluation) };
-  return { evaluation };
+  if (!evaluation.complete && !move.checklist.waive) {
+    return { refusals: checklistRefusals(evaluation) };
+  }
+  const recorded = evaluation.complete ? evaluation : waivedEvaluation(evaluation);
+  move.checklist.judged?.(recorded);
+  return { evaluation: recorded };
 }
 
 /**

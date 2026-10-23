@@ -32,7 +32,6 @@ import { sweepPreviews } from './previews/index.js';
 import { sweepQuestionSuggestions } from './questions/index.js';
 import { recoverUnstartedReleaseBatches, resumeStrandedFinishes } from './release-batch/index.js';
 import { sweepExpiredExecutions, sweepExpiredReportRuns } from './reports/index.js';
-import { sweepDeliveredRequirements } from './requirements/index.js';
 import { reapGhostRunners, runRunnerStaleSweep } from './runners/index.js';
 import type { Timer } from './schedules/index.js';
 import {
@@ -387,17 +386,6 @@ export function coreTimers(): Timer[] {
       run: logged('integrations-health-sweep: complete', runIntegrationsHealthSweep),
     },
     { kind: 'cluster', name: 'admin-alert-sweep', cron: '*/5 * * * *', run: () => runAlertSweep() },
-    // A delivery a linked issue's close could not read (production unreadable then) is raised here.
-    {
-      kind: 'cluster',
-      name: 'requirement-delivery-sweep',
-      cron: '*/5 * * * *',
-      run: logged(
-        'requirement-delivery-sweep: raised',
-        sweepDeliveredRequirements,
-        (r) => (r as { raised: number }).raised > 0,
-      ),
-    },
     ...requirementTimers(),
     ...stewardTimers(),
 

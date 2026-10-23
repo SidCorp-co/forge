@@ -35,14 +35,39 @@ import type { StandingTimes } from "./steward.js";
 import type { CriterionTraceView } from "./workflow-health.js";
 import type { WrittenLang } from "./written-lang.js";
 
+/**
+ * Every status is stored and moved only by an explicit act of a person, the assistant or an agent
+ * (REQ-74 BC-8): nothing reads `in_delivery` or `delivered` off a requirement's issues or verdicts.
+ */
 export const REQUIREMENT_STATUSES = [
 	"draft",
 	"agreed",
+	"in_delivery",
+	"delivered",
 	"accepted",
 	"dropped",
 	"deferred",
 ] as const;
 export type RequirementStatus = (typeof REQUIREMENT_STATUSES)[number];
+
+/** Agreed at a revision and not yet accepted: what its issues are delivering. */
+export const DELIVERING_STATUSES = [
+	"agreed",
+	"in_delivery",
+	"delivered",
+] as const satisfies readonly RequirementStatus[];
+
+/** Agreed at a revision, accepted or not: the statuses an issue is planned and linked under. */
+export const AGREED_STATUSES = [
+	...DELIVERING_STATUSES,
+	"accepted",
+] as const satisfies readonly RequirementStatus[];
+
+export const isAgreedStatus = (status: string): boolean =>
+	(AGREED_STATUSES as readonly string[]).includes(status);
+
+export const isDeliveringStatus = (status: string): boolean =>
+	(DELIVERING_STATUSES as readonly string[]).includes(status);
 
 export const DEFERRABLE_STATUSES = ["draft", "agreed"] as const;
 
@@ -50,9 +75,7 @@ export const REQUIREMENT_DEFERRAL_ACTS = ["defer", "undefer"] as const;
 
 export const BASELINE_ACTS = ["agree", "repin"] as const;
 
-/** The lifecycle a person reads: the stored status (draft, agreed, accepted, dropped) with agreed
- *  split by the derived delivery phase. `dropped` and `deferred` are off the line. */
-
+/** The lifecycle a person reads, every step a stored status. `dropped` and `deferred` are off the line. */
 export const REQUIREMENT_LIFECYCLE = [
 	"draft",
 	"agreed",
@@ -102,10 +125,9 @@ export const REQUIREMENT_STATE_GLYPHS: Record<RequirementState, string> = {
 
 export const REQUIREMENT_STATE_HINTS: Record<RequirementState, string> = {
 	draft: "draft: being written, not agreed; nothing is built against it",
-	agreed: "agreed: a person agreed a revision; no linked issue has started",
-	in_delivery: "in_delivery: a linked issue has started",
-	delivered:
-		"delivered: every linked issue is closed; an approver accepts the delivery",
+	agreed: "agreed: a person agreed a revision; an act moves it into delivery",
+	in_delivery: "in_delivery: moved into delivery; an act marks it delivered",
+	delivered: "delivered: marked delivered; an approver accepts the delivery",
 	accepted: "accepted: delivered and accepted",
 	deferred:
 		"deferred: out of this release; nothing is built until a person undefers it",
@@ -433,11 +455,6 @@ export interface RequirementCoverage {
 	uncoveredReason: string | null;
 }
 
-/** Where an agreed or accepted requirement is in delivery, read from its live issues and its BC
- *  coverage (workflow requirement-to-delivery step `rollup`); null for any other status. */
-export const DELIVERY_PHASES = ["agreed", "in_delivery", "delivered"] as const;
-export type DeliveryPhase = (typeof DELIVERY_PHASES)[number];
-
 /** A requirement's business criteria counted by their coverage: every live criterion, those passing,
  *  and those judged (passing or failing). */
 export interface CriteriaCoverage {
@@ -460,8 +477,8 @@ export function criteriaCoverageOf(
 	};
 }
 
+/** What its live issues and BC coverage count; which step it stands at is its stored status alone. */
 export interface RequirementDelivery {
-	phase: DeliveryPhase | null;
 	liveIssues: number;
 	startedIssues: number;
 	closedIssues: number;
@@ -490,9 +507,21 @@ export interface RequirementStanding
 	touchedAt: string;
 	/** Since when its wait stands, when it falls due, and whether it is stuck and why (REQ-48 BC-8). */
 	times: StandingTimes;
-	/** When it came to stand in `state`: its last status move, or its delivery phase's start; what the
-	 *  list's age reads, which an edit moving no state (an area, a short name) never restarts. */
+	/** When it came to stand in `state`: its last status move; what the list's age reads, which an
+	 *  edit moving no state (an area, a short name) never restarts. */
 	stateSince: string;
+	/** Where it was accepted by decision over an incomplete acceptance checklist, what was waived; else null. */
+	acceptedByDecision: RequirementAcceptanceDecision | null;
+}
+
+/**
+ * An accept by decision: the acceptance checklist's blocking items a holder of the accept permission
+ * waived, with why. It counts as done; nothing it waived reads as proven.
+ */
+export interface RequirementAcceptanceDecision {
+	reason: string;
+	decidedAt: string;
+	waived: { question: string; label: string; detail: string }[];
 }
 
 export const REQUIREMENT_READINESS_GATES = ["off", "warn", "block"] as const;
@@ -570,9 +599,19 @@ export const UNDEFER_REQUIREMENT_SHAPE =
 export const acceptRequirementRequestSchema = z.strictObject({
 	revision: z.number().int().min(1),
 	reason: z.string().max(REASON_TEXT_MAX).nullable().optional(),
+	byDecision: z.boolean().optional(),
 });
 export const ACCEPT_REQUIREMENT_SHAPE =
-	"{ revision, reason? } — names the head revision whose delivery is accepted";
+	"{ revision, reason?, byDecision? } — names the head revision whose delivery is accepted; byDecision: true accepts over an incomplete acceptance checklist, recording each item it waives, and needs a reason";
+
+/** The explicit moves into delivery and delivered (REQ-74 BC-8): why, kept on the move. */
+export const moveRequirementRequestSchema = z.strictObject({
+	reason: z.string().max(REASON_TEXT_MAX).nullable().optional(),
+});
+export const START_DELIVERY_SHAPE =
+	"{ reason? } — moves an agreed requirement into delivery; it needs a live linked issue";
+export const MARK_DELIVERED_SHAPE =
+	"{ reason? } — moves a requirement in delivery to delivered; every live criterion needs a pass on the running build";
 
 export const dropRequirementRequestSchema = z.strictObject({
 	reason: z.string().max(REASON_TEXT_MAX),
@@ -597,15 +636,14 @@ export const PROMOTE_REQUIREMENT_DRAFTS_SHAPE =
 /**
  * A requirement's linked issues still at `draft`, which a holder of requirements.approve and issues.admit
  * promotes to `open`. The standing's "promote N draft issues" line counts these, the promote act moves these, and
- * the web draws the act from these, so the ask and its act never disagree. Only an agreed or
- * accepted requirement has issues to promote: those are the statuses an issue is linked under.
+ * the web draws the act from these, so the ask and its act never disagree. Only a requirement at one
+ * of `AGREED_STATUSES` has issues to promote: those are the statuses an issue is linked under.
  */
 export function draftIssuesToPromote<T extends { status: string }>(
 	requirementStatus: string,
 	issues: readonly T[],
 ): T[] {
-	if (requirementStatus !== "agreed" && requirementStatus !== "accepted")
-		return [];
+	if (!isAgreedStatus(requirementStatus)) return [];
 	return issues.filter((i) => i.status === "draft");
 }
 
@@ -700,6 +738,13 @@ export const REQUIREMENT_REFUSAL_CODES = [
 	"REQUIREMENT_DROP_REASON_REQUIRED",
 	"REQUIREMENT_SIGNOFF_REASON_REQUIRED",
 	"REQUIREMENT_NOT_DROPPABLE",
+	/** The move into delivery: no live issue is linked to it. */
+	"REQUIREMENT_NO_LIVE_ISSUE",
+	/** The move to delivered: a live criterion has no pass on the running build. */
+	"REQUIREMENT_CRITERIA_UNPROVEN",
+	"REQUIREMENT_DECISION_REASON_REQUIRED",
+	/** An accept by decision: a linked issue is neither closed nor dropped. */
+	"REQUIREMENT_HAS_UNFINISHED_ISSUES",
 	"REQUIREMENT_PINS_CURRENT",
 	"REQUIREMENT_CONTRACT_UNKNOWN",
 	"REQUIREMENT_SIGNOFF_FORBIDDEN",
@@ -996,6 +1041,11 @@ export interface RequirementDetail extends RequirementSummary {
 	releases: { version: string; at: string }[];
 	/** The viewer is a person allowed to accept, return or agree. */
 	canSignOff: boolean;
+	/**
+	 * The viewer may move the delivery and accept it, by its checklist or by decision: what the
+	 * project's `approvals.accept` asks (requirements.approve where on, project.write where off).
+	 */
+	canAccept: boolean;
 	/**
 	 * The viewer may promote its draft issues: a signer who also holds issues.admit. Only they are asked
 	 * to (question 3b8292dc); who may admit an issue is not widened by signing.

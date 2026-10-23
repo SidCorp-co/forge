@@ -41,7 +41,13 @@ function onGateEdges(gates: readonly Gate[]): SQL | undefined {
 /** Each gate a passed row stands against, with its standing; a gate the edge did not ask is left out. */
 function standingsOf(
   gates: readonly Gate[],
-  row: { from: string | null; to: string; checklist: string | null; gates: string[] | null },
+  row: {
+    from: string | null;
+    to: string;
+    checklist: string | null;
+    gates: string[] | null;
+    checklistAnswers?: readonly { provenance: string }[] | null;
+  },
 ): Array<{ gate: Gate; standing: GatedMoveStanding }> {
   return gates.flatMap((gate) => {
     if (gate.gates.to !== row.to || !gate.gates.from.includes(row.from ?? '')) return [];
@@ -87,6 +93,7 @@ export async function gatedMovesOf<E extends MachineEntity>(
         to: r.toStatus,
         checklist: r.checklist,
         gates: r.gates,
+        checklistAnswers: r.checklistAnswers,
       }).map(({ gate, standing }) => ({
         at: r.createdAt.toISOString(),
         from: r.fromStatus,
@@ -130,15 +137,18 @@ export interface GateCount {
   refused: number;
   exception: number;
   noChecklist: number;
+  /** Moved by a decision over the checklist's blocking items; never counted as passed. */
+  waived: number;
 }
 
-const BLANK = { passed: 0, refused: 0, exception: 0, noChecklist: 0 } as const;
+const BLANK = { passed: 0, refused: 0, exception: 0, noChecklist: 0, waived: 0 } as const;
 
 const STANDING_KEY: Record<GatedMoveStanding, keyof typeof BLANK> = {
   passed: 'passed',
   refused: 'refused',
   exception: 'exception',
   no_checklist: 'noChecklist',
+  waived: 'waived',
 };
 
 /** The columns a gated machine's table is scoped and dated by; a table without them is refused. */
@@ -207,6 +217,7 @@ export async function gatedMoveCounts(
         to: kernelTransitions.toStatus,
         checklist: kernelTransitions.checklist,
         gates: kernelTransitions.gates,
+        checklistAnswers: kernelTransitions.checklistAnswers,
       })
       .from(kernelTransitions)
       .innerJoin(scope.table, eq(scope.id, kernelTransitions.entityId))

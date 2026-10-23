@@ -5,8 +5,8 @@
  * requirement.agreed wake was heard, and an overdue one is shown on the next pass.
  */
 
-import { requirementKey } from '@forge/contracts/requirements';
-import { and, eq } from 'drizzle-orm';
+import { DELIVERING_STATUSES, requirementKey } from '@forge/contracts/requirements';
+import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { requirements } from '../db/schema-requirements.js';
 import { standingsOf } from './standing-read.js';
@@ -33,7 +33,12 @@ export async function owedBreakdowns(projectId: string): Promise<OwedBreakdown[]
       updatedAt: requirements.updatedAt,
     })
     .from(requirements)
-    .where(and(eq(requirements.projectId, projectId), eq(requirements.status, 'agreed')))
+    .where(
+      and(
+        eq(requirements.projectId, projectId),
+        inArray(requirements.status, [...DELIVERING_STATUSES]),
+      ),
+    )
     .orderBy(requirements.reqSeq);
   const standings = await standingsOf(projectId, rows, null);
   return rows.flatMap((r) => {

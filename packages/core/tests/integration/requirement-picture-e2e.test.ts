@@ -227,7 +227,11 @@ describe('no picture gates the requirement (criterion 5)', () => {
       VALUES (${filed.criterion_id}, ${filed.issue_id}, 'pass', 'commit', ${'a'.repeat(40)}, 'human', ARRAY['board-reload.png'])`);
     await rows(sql`UPDATE issues SET merged_at = now() WHERE id = ${filed.issue_id}`);
     await seedIssueStatus(filed.issue_id, 'closed');
-    expect((await read(key)).standing.delivery.phase).toBe('delivered');
+    // moved by its acts, never read off the evidence (REQ-74 BC-8)
+    expect((await read(key)).status).toBe('agreed');
+    ok(await as('owner', 'POST', `/requirements/${key}/start-delivery`, {}));
+    ok(await as('owner', 'POST', `/requirements/${key}/mark-delivered`, {}));
+    expect((await read(key)).status).toBe('delivered');
     ok(
       await as('owner', 'POST', `/requirements/${key}/accept`, {
         revision: 1,

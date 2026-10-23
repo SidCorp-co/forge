@@ -2,18 +2,16 @@
  * A delivery whose only pass sits on a commit nobody could check against the live build (ISS-489).
  * Accepting it is refused, naming the criterion as not judged and why, until the live build is read
  * to hold that commit (round 3's judge: no test accepted while a line was unchecked, so dropping the
- * unchecked lines from the accept's proof stayed green). The requirement.delivered notice the close
- * could not raise, production being unreadable then, is raised by the sweep once a read can tell,
- * and only once.
+ * unchecked lines from the accept's proof stayed green). The move to delivered is refused the same
+ * way while production cannot be read, and once it can the move is taken by an act and raises the
+ * requirement.delivered notice once (REQ-74 BC-8, BC-10): nothing raises it off a read.
  *
- * It reaches its subjects over HTTP and through the sweep the timer runs, so it names what it guards:
+ * It reaches its subject over HTTP, so it names what it guards:
  * @direct-test-of packages/core/src/requirements/acceptance.ts
- * @direct-test-of packages/core/src/requirements/delivery-notice.ts
  */
 
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { sweepDeliveredRequirements } from '../../src/requirements/delivery-notice.js';
 import {
   closeWorld,
   ok,
@@ -136,15 +134,22 @@ describe('a delivery whose pass nobody could check against the live build', () =
     expect(refusals[0]?.detail).toContain('the production probe timed out');
   });
 
-  it('raises no delivered notice while production still cannot be read', async () => {
-    expect(await sweepDeliveredRequirements()).toMatchObject({ raised: 0 });
+  it('refuses the move to delivered while production cannot be read, naming the criterion', async () => {
+    ok(await say('POST', `/requirements/${req}/start-delivery`, {}));
+    const refused = await say('POST', `/requirements/${req}/mark-delivered`, {});
+    expect(refused.status).toBe(422);
+    const [refusal] = (refused.json.error?.refusals ?? []) as { code: string; detail: string }[];
+    expect(refusal?.code).toBe('REQUIREMENT_CRITERIA_UNPROVEN');
+    expect(refusal?.detail).toContain('BC-1 (not judged');
     expect(await raisedEvents()).toEqual([]);
   });
 
-  it('raises the notice once a later read reads it delivered, and only once', async () => {
+  it('is marked delivered by its act once the live build reads the commit held, raising the notice once', async () => {
     live(true);
-    expect(await sweepDeliveredRequirements()).toMatchObject({ raised: 1 });
-    expect(await sweepDeliveredRequirements()).toMatchObject({ raised: 0 });
+    expect(await raisedEvents()).toEqual([]);
+    ok(
+      await say('POST', `/requirements/${req}/mark-delivered`, { reason: 'proven on production' }),
+    );
     expect(await raisedEvents()).toEqual([{ revision: '1' }]);
     await settleOutbox();
     const told = await rows<{ n: number }>(sql`

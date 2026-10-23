@@ -141,6 +141,7 @@ export const reqDetail: RequirementDetail = {
   ],
   releases: [{ version: "0.1.0", at: "2026-10-01T00:00:00.000Z" }],
   canSignOff: true,
+  canAccept: true,
   canPromote: true,
   history: [
     h("h1", "person", LAN, "Revision", say("requirements.history.text.proposed", { r: 2 })),

@@ -5,6 +5,7 @@
 // BC of it, through the issue's own doors as the steward account. Each write that lands is its own act
 // with its own undo, and the answer is the issue-ready check as the draft now stands.
 
+import { AGREED_STATUSES } from '@forge/contracts/requirements';
 import { z } from 'zod';
 import { type DoorAnswer, type DoorRequest, doorName } from './door-call.js';
 import { type ActOf, cite, type DoorContext, type DoorSpec, issueKey, send } from './door-kit.js';
@@ -68,7 +69,7 @@ interface CriterionRead {
   requirementCriterionId?: string | null;
 }
 
-const DELIVERABLE = ['agreed', 'accepted'];
+const DELIVERABLE: readonly string[] = AGREED_STATUSES;
 
 const correct = (text: string) => ({ correct: text });
 

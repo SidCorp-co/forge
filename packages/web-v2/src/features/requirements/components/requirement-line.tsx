@@ -63,7 +63,12 @@ export function WaitsText({ r }: { r: RequirementSummary }) {
 export function RowState({ r }: { r: RequirementSummary }) {
   const t = useCopy();
   const stage = requirementStageOf(r.standing);
-  const word = stage && stage !== "draft" ? REQUIREMENT_STAGE_LABELS[stage] : null;
+  // accepted over its checklist: said as a decision, never as proven (REQ-74)
+  const word = r.standing.acceptedByDecision
+    ? t("requirements.line.acceptedByDecision")
+    : stage && stage !== "draft"
+      ? REQUIREMENT_STAGE_LABELS[stage]
+      : null;
   const open = r.latestRevision;
   const newer = r.currentRevision !== null && open && open.revision > r.currentRevision && (open.state === "draft" || open.state === "proposed") ? open : null;
   if (!word && !newer) return null;
