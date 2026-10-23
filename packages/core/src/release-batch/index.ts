@@ -34,7 +34,7 @@ export { nextDraftVersion } from './draft-version.js';
 export { registerReleaseBatchFinish, resumeStrandedFinishes } from './finish-job.js';
 export { abortBlockedIssues } from './hold.js';
 export { judgedBuildOf, liveBuildHolds } from './judged-build.js';
-export { landedBuildHolds, landedReopenRefusal } from './landed-build.js';
+export { deliveryHeadsOf, landedBuildHolds, landedReopenRefusal } from './landed-build.js';
 export {
   type IssueLanding,
   landedRecordOf,

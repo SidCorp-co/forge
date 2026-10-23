@@ -19,6 +19,7 @@
  * to the issue until the host merges it, then the host's merge commit (`change-request-build.ts`).
  */
 
+import { releaseThroughChangeRequests } from '@forge/contracts/releases';
 import {
   type JudgedBuild,
   landedIdentityWhy,
@@ -34,6 +35,7 @@ import {
   type StandingCriterion,
   standingCriteriaOf,
 } from '../issues/index.js';
+import { readProjectDocument } from '../project-config/index.js';
 import { type AncestryPair, pairKey } from '../runners/index.js';
 import { changeRequestBuildsOf, otherHeadWhy } from './change-request-build.js';
 import { RELEASE_RECORD_SOURCE } from './claim-conflicts.js';
@@ -170,6 +172,39 @@ export async function landedBuildsOf(
             : `${key}'s merge records no commit, so nothing says which build it landed as: mark it again naming the commit it landed at (\`DELETE\`, then \`POST /api/issues/${row.id}/merge\` with \`target\` and \`commit\`)`,
       });
     }
+  }
+  return out;
+}
+
+/** An issue's head as every reader names it on a change-request project, or why it has none. */
+export interface DeliveryHead {
+  sha: string | null;
+  branch: string | null;
+  basis: string;
+}
+
+/**
+ * The head of each issue on a change-request project, through the same reading its verdicts count
+ * on (`deliveredBuildsOf`): the head of the open request linked to it, else its host merge commit.
+ * A run's worklog capture of its work branch is never the issue's head there. Null on any other
+ * project, where the work state's branch and head are the run's own record.
+ */
+export async function deliveryHeadsOf(
+  projectId: string,
+  issueIds: readonly string[],
+): Promise<Map<string, DeliveryHead> | null> {
+  // `release.changeRequests` is refused beside a production environment
+  // (`project-config/change-request-rule.ts`), so the document alone says this project delivers
+  // through change requests, read once a request (`deliveryOf` reads the whole release path)
+  if (!releaseThroughChangeRequests((await readProjectDocument(projectId))?.document)) return null;
+  const out = new Map<string, DeliveryHead>();
+  for (const [id, b] of await changeRequestBuildsOf(projectId, issueIds)) {
+    out.set(
+      id,
+      b.sha === null
+        ? { sha: null, branch: null, basis: b.why }
+        : { sha: b.sha, branch: b.branch, basis: b.basis },
+    );
   }
   return out;
 }

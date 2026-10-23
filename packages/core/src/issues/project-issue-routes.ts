@@ -14,6 +14,7 @@ import { carriageOfIssue } from './carriage.js';
 import { contractWaitHoldOf } from './contract-waits.js';
 import { createIssue } from './create-service.js';
 import { hydrateCreatorsForIssues } from './creator.js';
+import { deliveryHeads, withDeliveryHead } from './delivery-head.js';
 import { loadIssueRelations } from './dependency-read.js';
 import { serializeIssue } from './detail-projection.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
@@ -47,8 +48,10 @@ export async function issueDetailOf(issue: IssueRow) {
   );
   const healthMap = await safeHydratePipelineHealthForIssues(issue.projectId, [issue.id]);
   const creatorMap = await hydrateCreatorsForIssues([issue]);
+  const heads = await deliveryHeads(issue.projectId, [issue.id]);
   return {
     ...serialized,
+    workState: withDeliveryHead(issue.id, serialized.workState, heads),
     ...creatorMap.get(issue.id),
     pipelineHealth: healthMap.get(issue.id) ?? pipelineHealthUnderived(issue.status),
     liveReach: await liveReachForIssue(issue),
@@ -151,7 +154,16 @@ issueProjectRoutes.get(
     const total = listed.total;
 
     const listPrefix = await activeIssuePrefix(projectId);
-    const serialized = rows.map((r) => serializeRestListRow(r, listPrefix));
+    const heads = await deliveryHeads(
+      projectId,
+      rows.map((r) => r.id),
+    );
+    const serialized = rows.map((r) =>
+      serializeRestListRow(
+        { ...r, workState: withDeliveryHead(r.id, r.workState, heads) },
+        listPrefix,
+      ),
+    );
     if (serialized.length === 0) {
       return c.json(listResponse(c, serialized, total, q));
     }

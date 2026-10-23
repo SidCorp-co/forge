@@ -25,10 +25,11 @@ import { LIVE_PIPELINE_RUN_STATUSES } from '@forge/contracts/run-machine';
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, pipelineRuns } from '../db/schema.js';
+import { issueWorkState } from '../db/schema-issue-work-state.js';
 import { issueDisplayIds, standingCriteriaOf } from '../issues/index.js';
 import { readProjectDocument } from '../project-config/index.js';
 import { resolveReleaseDeclaration } from './gate.js';
-import { landedReopenRefusal } from './landed-build.js';
+import { deliveryHeadsOf, landedReopenRefusal } from './landed-build.js';
 
 export const STEWARD_REOPEN_RELEASING = 'STEWARD_REOPEN_RELEASING';
 export const STEWARD_REOPEN_COUNTED = 'STEWARD_REOPEN_COUNTED';
@@ -105,7 +106,28 @@ export async function stewardReleaseFacts(
   const member = claim
     ? `This issue is a member of release batch ${claim.run}, still ${claim.status}: nothing sends it back until that release finishes.`
     : null;
-  return [where, owes, member].filter(Boolean).join('\n');
+  const head = issueId ? await headFact(projectId, issueId) : null;
+  return [where, owes, member, head].filter(Boolean).join('\n');
+}
+
+/**
+ * On a change-request project, the issue's head as the one predicate reads it, beside the run's
+ * worklog capture of its work branch where that names another commit, so the capture is never read
+ * as the head a verdict counts on (adminhub-api ISS-10, dev.296).
+ */
+async function headFact(projectId: string, issueId: string): Promise<string | null> {
+  const head = (await deliveryHeadsOf(projectId, [issueId]))?.get(issueId.toLowerCase());
+  if (!head) return null;
+  const [capture] = await db
+    .select({ branch: issueWorkState.branch, sha: issueWorkState.headSha })
+    .from(issueWorkState)
+    .where(eq(issueWorkState.issueId, issueId))
+    .limit(1);
+  const theirs =
+    capture?.sha && capture.sha !== head.sha
+      ? ` Its work state's \`${capture.branch ?? 'branch'}\` at \`${capture.sha.slice(0, 12)}\` is a run's worklog capture, not the head of this issue: never read it as one, nor ask for a verdict there.`
+      : '';
+  return `This issue's head: ${head.basis}.${theirs}`;
 }
 
 async function liveClaimOf(issueId: string): Promise<{ run: string; status: string } | null> {
