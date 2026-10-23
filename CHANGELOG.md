@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.298] - 2026-10-23
+
+Checks on merge-request projects follow the merge request's latest commit
+
+### Fixed
+
+- **An issue's head is its merge request's head where a project releases by merging them.** The issue page, its standing and the steward no longer take a run's captured work branch for it.
+
 ## [0.4.0-dev.297] - 2026-10-23
 
 Questions and Lessons pages removed; questions show in Approvals
