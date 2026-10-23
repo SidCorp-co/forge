@@ -890,18 +890,14 @@ export type ChangeRequestState = (typeof CHANGE_REQUEST_STATES)[number];
  * GitLab merge request `!n`, linked to every issue its branch or description names.
  */
 export interface ReleaseChangeRequest {
-	host: "github" | "gitlab";
+	/** As its host writes it: `!12` for a merge request, `#12` for a pull request. */
+	label: string;
 	number: number;
 	title: string;
 	url: string | null;
 	state: ChangeRequestState;
 	/** Its place in the release's declared merge order, 1-based; null outside a change-request release. */
 	order: number | null;
-}
-
-/** How a host writes a change request's number: `!12` on GitLab, `#12` on GitHub. */
-export function changeRequestLabel(cr: Pick<ReleaseChangeRequest, "host" | "number">): string {
-	return `${cr.host === "gitlab" ? "!" : "#"}${cr.number}`;
 }
 
 /** How many issues one release batch carries at most. */

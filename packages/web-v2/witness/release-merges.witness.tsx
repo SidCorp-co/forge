@@ -10,7 +10,7 @@ import "./entry";
 import { InRouter } from "./router";
 
 const mr = (number: number, order: number, state: "open" | "merged", title: string) => ({
-  host: "gitlab" as const,
+  label: `!${number}`,
   number,
   title,
   url: `https://gitlab.com/sidcorp-it/canawan-api/-/merge_requests/${number}`,

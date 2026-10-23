@@ -2,7 +2,7 @@
 // step, enqueues one release_batch job. Finish and abort end the run (finish.ts, abort.ts).
 
 import type { ReleaseNaming } from '@forge/contracts/release-notes';
-import { changeRequestLabel, RELEASE_ROSTER_LIMIT } from '@forge/contracts/releases';
+import { RELEASE_ROSTER_LIMIT } from '@forge/contracts/releases';
 import { and, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, issues } from '../db/schema.js';
@@ -19,7 +19,7 @@ import type { OneShotRunSpec } from '../pipeline/index.js';
 import { closeRunIfOneShot, insertAndEnqueueJob, insertOneShotRun } from '../pipeline/index.js';
 import { requestApproval } from './approvals.js';
 import { admitRoster } from './blockers.js';
-import { mergeOrderOf, openChangeRequestsOf } from './change-request-roster.js';
+import { label, mergeOrderOf, openChangeRequestsOf } from './change-request-roster.js';
 import { closeVerification, type ReleaseVerification, resolveReleasePlan } from './channel.js';
 import { claimRoster } from './claim-conflicts.js';
 import { RELEASE_GATE_STATUS } from './gate.js';
@@ -371,7 +371,7 @@ async function cutChangeRequestRelease(
     naming: args.naming ?? null,
     userId,
   });
-  const order = steps.map((s) => changeRequestLabel(s)).join(', ');
+  const order = steps.map((s) => label(s)).join(', ');
   await requestApproval({
     projectId,
     runId: run.id,
@@ -398,7 +398,7 @@ async function cutChangeRequestRelease(
     verification: 'merged',
     changeRequests: steps.map((s) => ({
       number: s.number,
-      label: changeRequestLabel(s),
+      label: label(s),
       headSha: s.headSha,
     })),
   };

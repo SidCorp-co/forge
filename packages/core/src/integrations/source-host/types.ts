@@ -191,6 +191,8 @@ export interface SourceHost {
 export interface SourceHostFactory {
   /** The host's name as a person reads it — what the repository card on the Integrations page is labelled. */
   label: string;
+  /** How the host writes a change request's number (`!12`, `#12`), read without a binding. */
+  sigil: string;
   hostOf(config: Record<string, unknown>): string;
   build(args: {
     bindingId: string;

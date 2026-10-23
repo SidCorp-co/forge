@@ -2,14 +2,15 @@
 // requests its roster ships, in the order the cut declares, once the owner approves the cut. This
 // reads which requests a roster ships and the order a release keeps; `change-request-merge.ts` merges.
 
-import {
-  type ChangeRequestState,
-  changeRequestLabel,
-  type ReleaseChangeRequest,
-} from '@forge/contracts/releases';
+import type { ChangeRequestState, ReleaseChangeRequest } from '@forge/contracts/releases';
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { repoPullRequestIssues, repoPullRequests } from '../db/schema-repo-projection.js';
+import {
+  type ChangeRequestHost,
+  repoPullRequestIssues,
+  repoPullRequests,
+} from '../db/schema-repo-projection.js';
+import { changeRequestLabelOf } from '../integrations/source-host/index.js';
 import { issueDisplayIds } from '../issues/index.js';
 import { blocker, evaluate } from './blocker-kit.js';
 import type { ReleaseBlocker } from './blocker-sentences.js';
@@ -18,7 +19,7 @@ import { refuseRelease } from './refuse.js';
 /** An open change request a roster ships, with every issue it delivers. */
 export interface RosterChangeRequest {
   pullRequestId: string;
-  host: 'github' | 'gitlab';
+  host: ChangeRequestHost;
   number: number;
   title: string;
   url: string | null;
@@ -30,13 +31,14 @@ export interface RosterChangeRequest {
 /** One step of a release's declared merge order, as the run's metadata keeps it. */
 export interface ReleaseMergeStep {
   pullRequestId: string;
-  host: 'github' | 'gitlab';
+  host: ChangeRequestHost;
   number: number;
   headSha: string;
   issueIds: string[];
 }
 
-export const label = (cr: { host: 'github' | 'gitlab'; number: number }) => changeRequestLabel(cr);
+export const label = (cr: { host: ChangeRequestHost; number: number }) =>
+  changeRequestLabelOf(cr.host, cr.number);
 
 export async function linksOf(pullRequestIds: string[]): Promise<Map<string, string[]>> {
   if (pullRequestIds.length === 0) return new Map();
@@ -186,7 +188,7 @@ export function mergeStepsOf(metadata: unknown): ReleaseMergeStep[] | null {
 export interface ChangeRequestLinkRow {
   issueId: string;
   pullRequestId: string;
-  host: 'github' | 'gitlab';
+  host: ChangeRequestHost;
   number: number;
   title: string;
   url: string | null;
@@ -244,7 +246,7 @@ export function changeRequestViews(
   const out = new Map<string, ReleaseChangeRequest>();
   for (const [issueId, r] of best) {
     out.set(issueId, {
-      host: r.host,
+      label: label(r),
       number: r.number,
       title: r.title,
       url: r.url,

@@ -40,7 +40,7 @@ export {
   pullRequestNumbered,
   readPullRequestsForIssues,
 } from './repo-projection.js';
-export { hostOfRepository, resolveSourceHost } from './resolve.js';
+export { changeRequestLabelOf, hostOfRepository, resolveSourceHost } from './resolve.js';
 export type * from './types.js';
 export type {
   HostRange,

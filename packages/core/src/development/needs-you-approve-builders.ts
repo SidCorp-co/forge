@@ -6,7 +6,6 @@
 import type { NeedsYouAreaKey } from '@forge/contracts/needs-you';
 import { type DecisionProposal, fitProposal } from '@forge/contracts/needs-you-proposal';
 import {
-  changeRequestLabel,
   RELEASE_PROOF_LABELS,
   type ReleaseContentGroup,
   type ReleaseCriteriaTotals,
@@ -130,16 +129,15 @@ export function changeRequestsOfContents(
   for (const issue of contents.flatMap((g) => g.issues)) {
     const cr = issue.changeRequest;
     if (!cr) continue;
-    const label = changeRequestLabel(cr);
-    const held = byLabel.get(label) ?? {
-      label,
+    const held = byLabel.get(cr.label) ?? {
+      label: cr.label,
       url: cr.url,
       state: cr.state,
       order: cr.order,
       issues: [],
     };
     held.issues.push(issue.key);
-    byLabel.set(label, held);
+    byLabel.set(cr.label, held);
   }
   return [...byLabel.values()].sort(
     (a, b) =>

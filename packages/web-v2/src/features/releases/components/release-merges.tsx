@@ -1,7 +1,7 @@
 // The change requests a release merges (REQ-63 BC-5): each in its place in the declared order, its
 // host link, where it stands, and the issues it delivers. Flat: one hairline-divided list, no boxes.
 
-import { type ChangeRequestState, changeRequestLabel } from "@forge/contracts/releases";
+import type { ChangeRequestState } from "@forge/contracts/releases";
 import { Link } from "@/lib/navigation/router";
 import { useCopy } from "@/lib/i18n/interface-language";
 import { issueHref } from "@/lib/routes/issues";
@@ -30,7 +30,7 @@ export function changeRequestItems(issues: readonly Pick<ReleaseIssueView, "key"
   for (const i of issues) {
     const cr = i.changeRequest;
     if (!cr) continue;
-    const label = changeRequestLabel(cr);
+    const label = cr.label;
     const held = byLabel.get(label) ?? { label, url: cr.url, state: cr.state, order: cr.order, issues: [], title: cr.title };
     held.issues.push(i.key);
     byLabel.set(label, held);

@@ -26,6 +26,20 @@ function factoryOf(provider: string): SourceHostFactory | undefined {
   return getIntegration(provider)?.sourceHost;
 }
 
+/**
+ * A change request as its host writes it: `!12` on a host of merge requests, `#12` on one of pull
+ * requests. A host no provider serves has no way to write it, and is said so rather than guessed.
+ */
+export function changeRequestLabelOf(host: string, number: number): string {
+  const sigil = factoryOf(host)?.sigil;
+  if (!sigil) {
+    throw new Error(
+      `no registered provider serves \`${host}\` as a source host, so its change request ${number} cannot be written as that host writes it`,
+    );
+  }
+  return `${sigil}${number}`;
+}
+
 /** Every provider a project's repository can live on, for a refusal that names them. */
 function hostProviders(): string[] {
   return listIntegrations()

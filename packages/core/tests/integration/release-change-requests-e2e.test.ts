@@ -361,7 +361,7 @@ describe('BC-5: the release page and Approvals show each issue with its change r
     const release = page.body.release as { issues: Array<{ key: string; changeRequest: unknown }> };
     const shown = release.issues.map((i) => [i.key, i.changeRequest]);
     const mr = (number: number, order: number) => ({
-      host: 'gitlab',
+      label: `!${number}`,
       number,
       title: `MR ${number}`,
       url: `https://gitlab.com/acme/canawan-api/-/merge_requests/${number}`,

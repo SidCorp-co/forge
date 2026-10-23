@@ -26,7 +26,7 @@ async function issuesDelivered(executor: Tx, projectId: string, headRef: string)
  * two routes, and they produce one record because both write through `recordIssueMerge` under
  * `merged_commit_sha IS NULL`. It records the merge on every issue the request delivers and moves no
  * status; a change-request release it was the last merge of is closed by the release's own consumer
- * (`release-batch/change-request-merge.ts`). Answers which issues this call stamped.
+ * (`release-batch/change-request-settle.ts`). Answers which issues this call stamped.
  */
 async function stampHostMerge(
   args: {
