@@ -247,6 +247,43 @@ describe('a cut carries the name drafted for the roster it releases, not an olde
     ).toEqual([]);
   });
 
+  async function abort(runId: string): Promise<void> {
+    const res = await api(
+      world.token,
+      'POST',
+      `/api/projects/${world.projectId}/release-batches/${runId}/abort`,
+      { reason: 'cut again' },
+    );
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+  }
+
+  async function nameRun(runId: string, at: Date, name: string): Promise<void> {
+    const summary = 'Sites write through to the catalog. Each service holds its own token.';
+    const naming = { name, summary, at: at.toISOString(), by: null };
+    await db.execute(sql`
+      UPDATE pipeline_runs SET metadata = metadata || ${JSON.stringify({ naming })}::jsonb
+       WHERE id = ${runId}`);
+  }
+
+  it('does not re-cut under the name an earlier attempt carried for another roster', async () => {
+    const { one, two } = await stack(new Date(Date.now() - HOUR_MS));
+    const first = await cut([one, two]);
+    await nameRun(first.runId, new Date(Date.now() - 7 * 24 * HOUR_MS), 'ePOD deploy');
+    await abort(first.runId);
+    const again = await cut([one, two]);
+    expect(again.version).toBe(first.version);
+    expect(await namingOf(again.runId)).not.toBe('ePOD deploy');
+  });
+
+  it('re-cuts under the name its earlier attempt carried for this roster', async () => {
+    const { one, two } = await stack(new Date(Date.now() - 2 * HOUR_MS));
+    const first = await cut([one, two]);
+    await nameRun(first.runId, new Date(Date.now() - HOUR_MS), 'Safe site sync');
+    await abort(first.runId);
+    const again = await cut([one, two]);
+    expect(await namingOf(again.runId)).toBe('Safe site sync');
+  });
+
   it('carries a draft name written while an issue it cuts waited at the gate', async () => {
     const { one, two } = await stack(new Date(Date.now() - 2 * HOUR_MS));
     await draftNamed(new Date(Date.now() - HOUR_MS), 'Safe site sync');
