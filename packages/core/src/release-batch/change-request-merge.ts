@@ -11,6 +11,7 @@ import { repoPullRequests } from '../db/schema-repo-projection.js';
 import { isRefusal, refuser } from '../lib/refusal.js';
 import { readProjectDocument } from '../project-config/index.js';
 import { assertApprovalAllowsAttempt } from './approvals.js';
+import { changeRequestHeadWhy } from './change-request-build.js';
 import { label, linksOf, mergeStepsOf } from './change-request-roster.js';
 
 /** A merge refused by the release it belongs to answers on the merge route, under its codes. */
@@ -82,10 +83,11 @@ export async function admitChangeRequestMerge(args: {
     );
   }
   const step = steps[at] as (typeof steps)[number];
-  if (pr.state !== 'merged' && pr.headSha.toLowerCase() !== step.headSha.toLowerCase()) {
+  const moved = pr.state === 'merged' ? null : changeRequestHeadWhy(me, step.headSha, pr.headSha);
+  if (moved) {
     throw refuseMerge(
       'RELEASE_MERGE_NOT_APPROVED',
-      `${me} moved to ${pr.headSha.slice(0, 12)} since release run ${run.runId} was cut at ${step.headSha.slice(0, 12)}, and the owner approved the head it was cut at, not this one. Abort the release and cut it again on the new head.`,
+      `${moved}: release run ${run.runId} was approved at the head it was cut at. Abort the release and cut it again on the new head.`,
       '/pullRequest',
     );
   }

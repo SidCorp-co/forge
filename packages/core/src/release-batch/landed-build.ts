@@ -13,6 +13,10 @@
  * even a branch head before the merge whose tree is the same; one at a later head judged a newer
  * build, and counts only on a record made at that head. Before that record, the steward and coverage
  * read such a head as the build where every live criterion passes there (`aheadBuildsOf`).
+ *
+ * A project that releases by merging its change requests has no production either, and its build is
+ * read by the same doors through `deliveredBuildsOf`: the unchanged head of the open request linked
+ * to the issue until the host merges it, then the host's merge commit (`change-request-build.ts`).
  */
 
 import {
@@ -31,6 +35,7 @@ import {
   standingCriteriaOf,
 } from '../issues/index.js';
 import { type AncestryPair, pairKey } from '../runners/index.js';
+import { changeRequestBuildsOf, otherHeadWhy } from './change-request-build.js';
 import { RELEASE_RECORD_SOURCE } from './claim-conflicts.js';
 import { resolveReleaseDeclaration } from './gate.js';
 import { ancestryOf, type JudgedBuildDeps } from './judged-build.js';
@@ -41,17 +46,50 @@ const WHOLE = /^[0-9a-f]{40}$/;
 export const LANDED_VERIFICATION = 'landed';
 
 export type LandedBuild =
-  | { sha: string; from: 'record' | 'merge' | 'mark' | 'ahead'; basis: string }
+  | {
+      sha: string;
+      from: 'record' | 'merge' | 'mark' | 'ahead' | 'change-request';
+      basis: string;
+      /** The change request whose head this is (`!12`), which a verdict elsewhere is weighed against. */
+      via?: string | null;
+    }
   | { sha: null; why: string };
 
 /**
- * Whether this project's landing is its delivery: its document declares a branch work lands on and
- * no production environment (release mode `none`). A project with no document, or whose work lands
- * outside git, names no commit a landing is, and is read as before.
+ * How a project with no production environment delivers: by its landing on the branch its document
+ * declares (release mode `none`), or by merging its change requests once a release is approved
+ * (REQ-63, `change-request-build.ts`). Null on a project with production, with no document, or whose
+ * work lands outside git, which names no commit a delivery is and is read as before.
  */
-export async function landsAsDelivery(projectId: string): Promise<boolean> {
+export type Delivery = 'landing' | 'change-request';
+
+export async function deliveryOf(projectId: string): Promise<Delivery | null> {
   const declared = await resolveReleaseDeclaration(projectId);
-  return declared?.kind === 'no-release' && declared.defaultBranch !== null;
+  if (declared?.kind === 'change-requests') return 'change-request';
+  return declared?.kind === 'no-release' && declared.defaultBranch !== null ? 'landing' : null;
+}
+
+/** Whether this project's landing is its delivery (release mode `none`). */
+export async function landsAsDelivery(projectId: string): Promise<boolean> {
+  return (await deliveryOf(projectId)) === 'landing';
+}
+
+/**
+ * The one reading of the build each issue's verdicts count on where the project has no production:
+ * its landing, or a later head holding it (`aheadBuildsOf`; `ahead: false` reads the landing alone),
+ * or, on a change-request project, its request's unchanged head or host merge commit.
+ */
+export async function deliveredBuildsOf(
+  projectId: string,
+  delivery: Delivery,
+  issueIds: readonly string[],
+  opts: { ahead: boolean } = { ahead: true },
+): Promise<Map<string, LandedBuild>> {
+  if (delivery === 'landing') {
+    const landed = await landedBuildsOf(issueIds);
+    return opts.ahead ? aheadBuildsOf(projectId, landed) : landed;
+  }
+  return changeRequestBuildsOf(projectId, issueIds);
 }
 
 /** Whether a judgement at a commit holds a build, or why that could not be read. */
@@ -141,10 +179,21 @@ export async function landedJudgedBuild(issue: {
   id: string;
   projectId: string;
 }): Promise<JudgedBuild | null> {
-  if (!(await landsAsDelivery(issue.projectId))) return null;
-  const build = (await landedBuildsOf([issue.id])).get(issue.id.toLowerCase());
+  const delivery = await deliveryOf(issue.projectId);
+  if (!delivery) return null;
+  const build = (
+    await deliveredBuildsOf(issue.projectId, delivery, [issue.id], { ahead: false })
+  ).get(issue.id.toLowerCase());
   if (!build) return { sha: null, source: null, version: null, basis: 'the issue was not found' };
   if (build.sha === null) return { sha: null, source: null, version: null, basis: build.why };
+  if (delivery === 'change-request') {
+    return {
+      sha: build.sha,
+      source: build.from === 'merge' ? 'merged' : 'change-request',
+      version: null,
+      basis: `${build.basis}; this project releases by merging its change requests, so that is the build a verdict counts on, judged at that commit`,
+    };
+  }
   return {
     sha: build.sha,
     source: 'landed',
@@ -196,6 +245,7 @@ export function otherBuildWhy(judged: string, build: string): string {
 export function weighOnLanded(
   build: string,
   { criterion, verdict }: StandingCriterion,
+  via: string | null = null,
 ): LandedCriterion {
   const no = (why: string): LandedCriterion => ({
     criterion,
@@ -207,7 +257,9 @@ export function weighOnLanded(
   if (!verdictEarns(verdict.verdict)) return no(`its verdict is \`${verdict.verdict}\``);
   const judged = judgedCommit(verdict);
   if ('why' in judged) return no(judged.why);
-  if (judged.sha !== build.toLowerCase()) return no(otherBuildWhy(judged.sha, build));
+  if (judged.sha !== build.toLowerCase()) {
+    return no(via ? otherHeadWhy(judged.sha, build, via) : otherBuildWhy(judged.sha, build));
+  }
   return { criterion, counts: true, at: judged.sha };
 }
 
@@ -242,6 +294,7 @@ export interface LandedStanding {
 export async function landedStandings(
   issueIds: readonly string[],
   buildOf: (issueId: string) => string,
+  viaOf: (issueId: string) => string | null = () => null,
 ): Promise<LandedStanding[]> {
   const standing = await standingCriteriaOf(issueIds);
   return issueIds.flatMap((issueId) => {
@@ -253,7 +306,7 @@ export async function landedStandings(
         issueId,
         owes: s.owes,
         criteria: s.owes
-          ? s.criteria.map((c) => weighOnLanded(build, c))
+          ? s.criteria.map((c) => weighOnLanded(build, c, viaOf(issueId)))
           : misshapenOf(build, s.criteria),
       },
     ];
@@ -331,12 +384,18 @@ export async function landedReopenRefusal(issueId: string): Promise<string | nul
     .where(eq(issues.id, issueId))
     .limit(1);
   if (row?.status !== 'awaiting_release') return null;
-  if (!(await landsAsDelivery(row.projectId))) return null;
-  const landed = await landedBuildsOf([issueId]);
-  const build = (await aheadBuildsOf(row.projectId, landed)).get(issueId.toLowerCase());
+  const delivery = await deliveryOf(row.projectId);
+  if (!delivery) return null;
+  const build = (await deliveredBuildsOf(row.projectId, delivery, [issueId])).get(
+    issueId.toLowerCase(),
+  );
   if (!build?.sha) return null;
   const sha = build.sha;
-  const [standing] = await landedStandings([issueId], () => sha);
+  const [standing] = await landedStandings(
+    [issueId],
+    () => sha,
+    () => build.via ?? null,
+  );
   if (!standing?.owes || standing.criteria.length === 0) return null;
   if (standing.criteria.some((c) => !c.counts)) return null;
   const counted = new Set(standing.criteria.map((c) => c.criterion));
@@ -346,6 +405,9 @@ export async function landedReopenRefusal(issueId: string): Promise<string | nul
     planned.length > 0
       ? ` The design's proof plan is met the same way: each of the ${planned.length} criteria it plans to prove passes at that commit, and with no production environment no release run replays a probe.`
       : '';
+  if (delivery === 'change-request') {
+    return `${build.basis}, and every live criterion (${[...counted].join(', ')}) stands on a pass judged at that commit. This project releases by merging its change requests, with no production environment: until the request merges its unchanged head is the build its verdicts are read on, and no landing record is owed (REQ-63 BC-6).${plan} No evidence is missing: wake the master to cut the release that merges it (POST /api/projects/${row.projectId}/release-batches) instead of sending it back.`;
+  }
   return `${build.basis}, and every live criterion (${[...counted].join(', ')}) stands on a pass judged at that commit. This project declares no production environment, so that landing is the running build and its verdicts are read there.${plan} No evidence is missing: wake the master to record the landing (POST /api/projects/${row.projectId}/release-records) instead of sending it back.`;
 }
 
@@ -358,7 +420,8 @@ export interface LandedHolds {
 
 /**
  * A requirement's coverage reading on a project with no production environment
- * (`requirements/standing-coverage.ts`): each issue's landed build, which a verdict counts on only
+ * (`requirements/standing-coverage.ts`): each issue's landed build (on a change-request project,
+ * its request's unchanged head or host merge commit), which a verdict counts on only
  * where it was judged at that commit, rather than a production probe that cannot exist. Null on a
  * project with production, whose coverage reads the live build (`judged-build.ts:liveBuildHolds`).
  */
@@ -372,9 +435,10 @@ export async function landedBuildHolds(
   unanswered: Map<string, string>;
   landed: Map<string, LandedHolds>;
 } | null> {
-  if (!(await landsAsDelivery(projectId))) return null;
+  const delivery = await deliveryOf(projectId);
+  if (!delivery) return null;
   const ids = [...new Set(issueIds.map((id) => id.toLowerCase()))];
-  const builds = await aheadBuildsOf(projectId, await landedBuildsOf(ids));
+  const builds = await deliveredBuildsOf(projectId, delivery, ids);
   const landed = new Map<string, LandedHolds>();
   for (const [issueId, build] of builds) {
     landed.set(issueId, { sha: build.sha, why: build.sha === null ? build.why : null });

@@ -183,7 +183,7 @@ export function landedIdentityWhy(kind: string, value: string): string | null {
 	return `judged against ${kind} \`${value}\`, not a commit: with no production environment only a verdict whose identity is the commit its landing records counts`;
 }
 
-export const JUDGED_BUILD_SOURCES = ["live", "shipped", "merged", "landed"] as const;
+export const JUDGED_BUILD_SOURCES = ["live", "shipped", "merged", "landed", "change-request"] as const;
 export type JudgedBuildSource = (typeof JUDGED_BUILD_SOURCES)[number];
 
 export interface JudgedBuild {
