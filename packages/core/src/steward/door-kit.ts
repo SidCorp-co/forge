@@ -1,6 +1,7 @@
 // What every steward door is built from (REQ-48 BC-12): the context one act's turn calls doors in, a
 // door's shape, and the call itself, made through core's own app with the steward account's token.
 
+import { REASON_PARAGRAPH_MAX } from '@forge/contracts/comments';
 import type { ItemStanding, StewardAct, StewardCite } from '@forge/contracts/steward';
 import type { StewardDoorTool } from '@forge/contracts/steward-runtime';
 import { z } from 'zod';
@@ -65,7 +66,7 @@ export const issueKey = key.superRefine((value, ctx) => {
     message: `${value} is ${hit.what}, not an issue: read it with ${hit.tool}, or steward_read_item for this run's own item. An issue door takes an issue key like ISS-12; a feedback item's carrier issues are on its route.`,
   });
 });
-export const reason = z.string().trim().min(3).max(2000);
+export const reason = z.string().trim().min(3).max(REASON_PARAGRAPH_MAX);
 
 export const send = async (request: DoorRequest, ctx: DoorContext) => ({
   request,

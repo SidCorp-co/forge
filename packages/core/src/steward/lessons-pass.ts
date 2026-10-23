@@ -7,6 +7,7 @@
 // `LESSON_UNUSED_DAYS` days with a reason, and files each owed check as a draft issue. Lessons are
 // internal to Forge (BC-9): no person is asked to decide any of it.
 
+import { REASON_SENTENCE_MAX } from '@forge/contracts/comments';
 import {
   LESSON_ITEM_KINDS,
   LESSON_PROPOSE_MIN,
@@ -52,7 +53,9 @@ const GROUP_MAX_TOKENS = 1500;
 const CHECK_TITLE_CHARS = 120;
 
 const grouping = z.object({
-  rejections: z.array(z.object({ correction: z.string(), reason: z.string().min(1).max(400) })),
+  rejections: z.array(
+    z.object({ correction: z.string(), reason: z.string().min(1).max(REASON_SENTENCE_MAX) }),
+  ),
   links: z.array(z.object({ correction: z.string(), lesson: z.number().int() })),
   proposals: z.array(
     z.object({

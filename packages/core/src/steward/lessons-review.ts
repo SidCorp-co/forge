@@ -7,6 +7,7 @@
 // Where the model gives no usable answer, or a decision is refused, the item stays waiting, is named
 // in the log, and is tried again on the next pass: nothing is approved by default.
 
+import { REASON_SENTENCE_MAX } from '@forge/contracts/comments';
 import {
   LESSON_ITEM_KINDS,
   LESSON_LIMITS,
@@ -38,7 +39,7 @@ import { lessonScopeText } from './lessons-scope.js';
 
 const JUDGE_MAX_TOKENS = 800;
 const sentence = z.string().min(1).max(LESSON_LIMITS.sentenceChars);
-const reason = z.string().min(1).max(600);
+const reason = z.string().min(1).max(REASON_SENTENCE_MAX);
 
 const reviewSchema = z.object({
   verdict: z.enum(['approve', 'edit', 'reject']),
