@@ -1,1 +1,0 @@
-**A change-request release no longer cancels itself four minutes after its cut.** It stays open until its last merge settles it or an abort names why, and a cut no longer takes a name drafted for an earlier roster.

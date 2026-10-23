@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.300] - 2026-10-23
+
+Change-request releases wait for the owner's accept instead of cancelling themselves
+
+### Fixed
+
+- **A change-request release no longer cancels itself four minutes after its cut.** It stays open until its last merge settles it or an abort names why, and a cut no longer takes a name drafted for an earlier roster.
+
 ## [0.4.0-dev.299] - 2026-10-23
 
 Feedback waits on the project's master and merges duplicates on one issue
