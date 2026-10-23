@@ -80,28 +80,31 @@ export async function shipsWithdrawnOf(
 }
 
 /**
- * Which of these issues stood at `status` at the instant `at`: the newest move of each at or before
- * it (`kernel_transitions`) took it there. An issue with no move by then stood nowhere this reads.
+ * Which of these issues reached `status` after the instant `at` without standing there at it: a move
+ * into it after `at` (`kernel_transitions`), and the newest move at or before `at` took the issue
+ * anywhere else, or there was none. An issue with no move into `status` after `at` is absent.
  */
-export async function stoodAtOf(
+export async function arrivedAfterOf(
   executor: Pick<Tx, 'execute'>,
   issueIds: readonly string[],
   status: string,
   at: Date,
 ): Promise<Set<string>> {
   if (issueIds.length === 0) return new Set();
+  const atIso = at.toISOString();
   const rows = (await executor.execute(sql`
-    SELECT DISTINCT ON (entity_id) entity_id::text AS issue_id, to_status
-      FROM kernel_transitions
-     WHERE entity = 'issue'
-       AND created_at <= ${at.toISOString()}
-       AND entity_id IN (${sql.join(
+    SELECT k.entity_id::text AS issue_id
+      FROM kernel_transitions k
+     WHERE k.entity = 'issue'
+       AND k.to_status = ${status}
+       AND k.created_at > ${atIso}
+       AND k.entity_id IN (${sql.join(
          issueIds.map((id) => sql`${id}::uuid`),
          sql`, `,
        )})
-     ORDER BY entity_id, created_at DESC`)) as unknown as Array<{
-    issue_id: string;
-    to_status: string;
-  }>;
-  return new Set([...rows].filter((r) => r.to_status === status).map((r) => r.issue_id));
+       AND (SELECT p.to_status FROM kernel_transitions p
+             WHERE p.entity = 'issue' AND p.entity_id = k.entity_id AND p.created_at <= ${atIso}
+             ORDER BY p.created_at DESC LIMIT 1) IS DISTINCT FROM ${status}
+     GROUP BY k.entity_id`)) as unknown as Array<{ issue_id: string }>;
+  return new Set([...rows].map((r) => r.issue_id));
 }

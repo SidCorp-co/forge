@@ -8,7 +8,7 @@ import { type ReleaseNaming, ReleaseNamingSchema } from '@forge/contracts/releas
 import { and, asc, desc, eq, isNotNull, isNull, ne, notInArray } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { pipelineRuns, releaseDraftNamings } from '../db/schema.js';
-import { stoodAtOf } from '../issues/index.js';
+import { arrivedAfterOf } from '../issues/index.js';
 import { loadProjectAccess } from '../lib/authz.js';
 import { logger } from '../lib/logger.js';
 import { requireHeld } from '../permissions/index.js';
@@ -152,18 +152,17 @@ export async function nameReleaseAs(
 }
 
 /**
- * The draft's name where it was written while an issue of `roster` waited at the gate, else null. A
- * name describes what waited when it was written: one written before every issue of the cut arrived
- * named a roster that left the gate uncut (catalog-api 2026-10-23: release records shipped it under
- * no version, and a cut a week on took its name).
+ * The draft's name, else null where every issue of `roster` reached the gate after it was written. A
+ * name describes what waited when it was written, so that one named a roster that left the gate uncut
+ * (catalog-api 2026-10-23: release records shipped it under no version, and a cut a week on took it).
  */
 async function namingOfRoster(
   tx: Tx,
   pending: typeof releaseDraftNamings.$inferSelect,
   cut: { projectId: string; version: string; runId: string; roster: string[] },
 ) {
-  const waited = await stoodAtOf(tx, cut.roster, RELEASE_GATE_STATUS, pending.namedAt);
-  if (waited.size > 0) return pending;
+  const arrived = await arrivedAfterOf(tx, cut.roster, RELEASE_GATE_STATUS, pending.namedAt);
+  if (arrived.size < new Set(cut.roster).size) return pending;
   logger.info(
     { projectId: cut.projectId, runId: cut.runId, version: cut.version, name: pending.name },
     'release naming: the draft was named before any issue this cut carries reached the gate, so the cut does not carry it',
