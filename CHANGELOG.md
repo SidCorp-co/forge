@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.302] - 2026-10-23
+
+On merge-request projects, work counts as landed only once merged on the host
+
+### Fixed
+
+- **On a change-request project only what the host holds lands.** A mark must name a host merge or a commit the host's target branch contains, and a stale local stamp no longer reads as landed in standings or sweeps.
+- **A stuck feedback item is now asked about, never only noted.** A triage the master cannot take goes to the feedback approvers by name; a diagnosis that only noted asks for itself, or says why nobody can.
+
 ## [0.4.0-dev.301] - 2026-10-23
 
 Requirements move only when someone moves them, and can be accepted by decision

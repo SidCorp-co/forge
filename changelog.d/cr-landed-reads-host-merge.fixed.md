@@ -1,1 +1,0 @@
-**On a change-request project only what the host holds lands.** A mark must name a host merge or a commit the host's target branch contains, and a stale local stamp no longer reads as landed in standings or sweeps.
