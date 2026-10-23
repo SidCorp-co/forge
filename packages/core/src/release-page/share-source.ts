@@ -20,6 +20,7 @@ import type { ProjectAccess } from '../lib/authz.js';
 import { isRefusal, refuser } from '../lib/refusal.js';
 import { holds } from '../permissions/index.js';
 import { createDownloadTicket } from '../uploads/index.js';
+import { nameInBackground } from './naming-refresh.js';
 import { readReleasePage, userKnownIssues } from './read.js';
 import { refreshInBackground } from './refresh.js';
 
@@ -37,9 +38,16 @@ async function relinked(
       out.push(h);
       continue;
     }
-    const { url: _url, ...media } = h.media;
+    const { url: _url, poster: kept, ...media } = h.media;
     const url = await link(media.attachmentId);
-    out.push({ ...h, media: url ? { ...media, url } : media });
+    let poster = kept;
+    if (kept) {
+      const { url: _still, ...still } = kept;
+      const stillUrl = await link(still.attachmentId);
+      poster = stillUrl ? { ...still, url: stillUrl } : still;
+    }
+    const linked = url ? { ...media, url } : media;
+    out.push({ ...h, media: poster === undefined ? linked : { ...linked, poster } });
   }
   return { ...highlights, highlights: out };
 }
@@ -87,6 +95,7 @@ async function freeze(input: {
         mayShare: false,
       },
       onOwed: refreshInBackground,
+      onNamingOwed: nameInBackground,
     });
   } catch (err) {
     if (isRefusal(err, 'RELEASE_PAGE_NOT_FOUND') || isRefusal(err, 'RELEASE_VERSION_SHAPE')) {

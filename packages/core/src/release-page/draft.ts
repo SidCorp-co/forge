@@ -220,9 +220,11 @@ export async function draftHighlights(
   }
 }
 
-async function recordSpend(
+/** Records what one draft's calls spent, as the project's model usage; a failure to record is logged, never thrown. */
+export async function recordSpend(
   projectId: string,
   spent: readonly { model: string; usage: ChatStreamUsage }[],
+  what: 'highlights' | 'naming' = 'highlights',
 ): Promise<void> {
   const last = spent.at(-1);
   if (!last) return;
@@ -241,7 +243,7 @@ async function recordSpend(
   } catch (err) {
     logger.warn(
       { err, projectId },
-      'release-page: the usage of the highlights calls was not recorded',
+      `release-page: the usage of the ${what} calls was not recorded`,
     );
   }
 }

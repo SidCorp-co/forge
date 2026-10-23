@@ -94,7 +94,8 @@ export async function nameRelease(
   projectId: string,
   version: string,
   naming: ReleaseNaming,
-  by: string,
+  /** Who named it; null for the assistant's draft (`release-page/naming-refresh.ts`). */
+  by: string | null,
 ): Promise<{ version: string; state: 'draft' | 'cut'; runId: string | null } & ReleaseNaming> {
   const drafted = await draftedVersion(projectId);
   if (version === drafted) {
@@ -120,6 +121,20 @@ export async function nameRelease(
   }
   await writeRunMetadata(run.id, { merge: namingStamp(naming, by), touch: true });
   return { version, state: 'cut', runId: run.id, ...naming };
+}
+
+/**
+ * The assistant's name for a release nobody named (REQ-40 BC-14): written only while the release
+ * still has none, so a name a person or the master wrote meanwhile is never replaced by a draft.
+ */
+export async function nameUnnamedRelease(
+  projectId: string,
+  version: string,
+  naming: ReleaseNaming,
+): Promise<'named' | 'already_named'> {
+  if ((await draftNaming(projectId, version)) !== null) return 'already_named';
+  await nameRelease(projectId, version, naming, null);
+  return 'named';
 }
 
 /** `nameRelease` as `userId`, who names a release only where they may cut one (project.admin). */

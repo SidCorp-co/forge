@@ -1,11 +1,16 @@
 // The release page a reader sees (REQ-40), read in under a minute: the summary it was cut with and its
 // changes counted in one line, what an admin must do first, then each change as its short title, whole,
 // with its sentence one click away. No criterion, code or path on the overview; the Technical view keeps
-// them. The clip plays from the bytes the session may fetch; the technical note is never on a share.
+// them. The clip plays from the bytes the session may fetch, inline and muted, opening on its still;
+// the technical note is never on a share. A release nobody named says it is being named, or why not.
+//
+// @direct-test-of packages/web-v2/src/features/releases/components/release-media.tsx
+// @direct-test-of packages/web-v2/src/features/releases/components/release-highlights.tsx
 
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { ReleasePage } from "@forge/contracts/release-page";
 import { releasePage, TECHNICAL } from "@/test/release-page";
 import { renderWithQuery } from "@/test/render";
 import { ReleaseReader } from "./release-reader";
@@ -55,6 +60,24 @@ describe("the lead: the summary it was given and its changes in one line (BC-14)
       for (const word of ["This release brings", "when it is cut", "was written"]) expect(header).not.toHaveTextContent(word);
       unmount();
     }
+  });
+
+  it("says a release nobody named is being named, or why its name was refused, never a silent blank", async () => {
+    const page = releasePage();
+    const unnamed = (naming: ReleasePage["header"]["naming"]) => ({ ...page, header: { ...page.header, name: null, summary: null, naming } });
+    const { unmount } = renderWithQuery(<ReleaseReader page={unnamed({ state: "drafting", since: "2026-10-23T10:00:00.000Z" })} authed={false} />);
+    expect(screen.getByTestId("page-naming-drafting")).toHaveTextContent("Naming this release");
+    unmount();
+    renderWithQuery(
+      <ReleaseReader
+        page={unnamed({ state: "failed", at: "2026-10-23T10:00:00.000Z", refusals: [{ code: "RELEASE_NAMING_JARGON", path: "summary", detail: "summary carries criterion BC-3" }] })}
+        authed={false}
+      />,
+    );
+    expect(screen.getByTestId("page-naming-failed")).toHaveTextContent("could not be named yet");
+    expect(screen.queryByText(/RELEASE_NAMING_JARGON/)).toBeNull();
+    await userEvent.click(screen.getByTestId("page-naming-failed-toggle"));
+    expect(screen.getByText(/RELEASE_NAMING_JARGON/)).toBeInTheDocument();
   });
 
   it("groups Security and Removed apart from the fixes and improvements their kinds fold them into", () => {
@@ -261,7 +284,9 @@ describe("highlights and their clip (BC-2, BC-3)", () => {
     renderWithQuery(<ReleaseReader page={releasePage()} slug="forge" authed />);
     const video = await screen.findByTestId("release-media-clip");
     expect(video.tagName).toBe("VIDEO");
-    expect(video).toHaveAttribute("src", "blob:clip-1");
+    // no still was kept beside this clip, so it opens on its own first frame
+    expect(video).toHaveAttribute("src", "blob:clip-1#t=0.1");
+    expect(video).toHaveAttribute("data-poster", "first-frame");
     expect(video).toHaveAttribute("controls");
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
@@ -278,8 +303,27 @@ describe("highlights and their clip (BC-2, BC-3)", () => {
     if (!h?.media) throw new Error("fixture");
     h.media.url = "/api/uploads/download/ticket-abc";
     renderWithQuery(<ReleaseReader page={page} authed={false} />);
-    expect(screen.getByTestId("release-media-clip")).toHaveAttribute("src", "/api/uploads/download/ticket-abc");
+    expect(screen.getByTestId("release-media-clip")).toHaveAttribute("src", "/api/uploads/download/ticket-abc#t=0.1");
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("plays a clip inline and muted, with its controls, opening on the still QA kept beside it (BC-3)", () => {
+    const page = releasePage();
+    if (page.highlights.state !== "drafted") throw new Error("fixture");
+    const h = page.highlights.highlights[0];
+    if (!h?.media) throw new Error("fixture");
+    h.media.url = "/api/uploads/download/ticket-clip";
+    h.media.poster = { attachmentId: "00000000-0000-4000-8000-000000000009", name: "switch-390.png", mime: "image/png", url: "/api/uploads/download/ticket-still" };
+    renderWithQuery(<ReleaseReader page={page} authed={false} />);
+    const video = screen.getByTestId<HTMLVideoElement>("release-media-clip");
+    expect(video.tagName).toBe("VIDEO");
+    expect(video).toHaveAttribute("src", "/api/uploads/download/ticket-clip");
+    expect(video).toHaveAttribute("poster", "/api/uploads/download/ticket-still");
+    expect(video.muted).toBe(true);
+    expect(video).toHaveAttribute("playsinline");
+    expect(video).toHaveAttribute("controls");
+    // its text alternative is the highlight's own words, never the file's name
+    expect(video).toHaveAttribute("aria-label", h.title);
   });
 
   it("says so when the clip cannot be fetched, never a blank frame", async () => {

@@ -84,6 +84,8 @@ function verdictRecordFields(args: {
   }
   const reason = draft.reason?.trim();
   if (reason) fields.push({ key: 'why', value: reason });
+  const withoutClip = draft.withoutClip?.trim();
+  if (withoutClip) fields.push({ key: 'without-clip', value: withoutClip });
   for (const cited of draft.evidence) fields.push({ key: 'evidence', value: cited });
   return fields;
 }
@@ -97,10 +99,14 @@ const VERDICT_PATHS: Partial<Record<VerdictRefusal['code'], string>> = {
   VERDICT_CRITERION_UNKNOWN: '/criterion',
 };
 
+/** The judgements of an observable criterion that owe a clip: every one but a skip, which judged nothing. */
+const CLIPPED_VERDICTS: ReadonlySet<string> = new Set(['pass', 'short', 'fail']);
+
 /**
- * REQ-40 BC-4: a pass on a criterion the design classes observable cites a screen clip of the run
- * that shows it (a WebM or MP4 attached to the issue, named in `evidence`), so a release page has
- * something to show; a pass judged without one says why in `reason`.
+ * REQ-40 BC-4: a judgement of a criterion the design classes observable cites a screen clip of the
+ * run that shows it (a WebM or MP4 attached to the issue, named in `evidence`), so a release page has
+ * something to show; one judged without a clip says why in `withoutClip`. A verdict's `reason` is
+ * what it found, which every judge writes, so it never stands in for that why.
  */
 async function clipFault(
   tx: Tx,
@@ -109,12 +115,12 @@ async function clipFault(
     criterion: number;
     verdict: string;
     evidence: readonly string[];
-    reason?: string | null;
+    withoutClip?: string | null | undefined;
   },
   criterionClass: CriterionClass | null,
 ): Promise<VerdictRefusal | null> {
-  if (criterionClass !== 'observable' || draft.verdict !== 'pass') return null;
-  if (draft.reason?.trim()) return null;
+  if (criterionClass !== 'observable' || !CLIPPED_VERDICTS.has(draft.verdict)) return null;
+  if (draft.withoutClip?.trim()) return null;
   const cited = draft.evidence.map((e) => e.trim()).filter(Boolean);
   if (cited.length > 0) {
     const clips = await tx
@@ -133,7 +139,7 @@ async function clipFault(
   return {
     code: 'VERDICT_CLIP_REQUIRED',
     criterion: draft.criterion,
-    detail: `criterion ${draft.criterion} is observable on the running build, and a \`pass\` on it cites a screen clip of the run that shows it: attach a WebM or MP4 to the issue and name it in \`evidence\`, or say why it was judged without one (a \`why\` line, or \`reason\`)`,
+    detail: `criterion ${draft.criterion} is observable on the running build, and a \`${draft.verdict}\` on it cites a screen clip of the run that shows it: record one (the project's knowledge names its recorder), attach the WebM or MP4 to the issue (\`POST /api/issues/:id/attachments\`, field \`file\`) and name it in \`evidence\`; or say why it was judged without one in \`withoutClip\` (a \`without-clip\` line in a record). \`reason\` says what was found and never stands in for it`,
   };
 }
 

@@ -96,6 +96,7 @@ async function keep(issue: string, criterion: number): Promise<string> {
       verdict: 'pass',
       reason: 'ran it',
       identity: { kind: 'commit', sha: HEAD },
+      withoutClip: 'judged by its probe: nothing on screen to record',
       probe: {
         kind: 'command',
         command: { argv: ['node', 'scripts/probe.mjs', String(criterion)] },
@@ -239,6 +240,7 @@ describe("a merge check owes the change's probes only", () => {
         verdict: 'pass',
         reason: 'judged on the release',
         identity: { kind: 'commit', sha },
+        withoutClip: 'judged by its probe: nothing on screen to record',
         probe: {
           kind: 'command',
           command: { argv: ['node', 'scripts/probe.mjs', String(criterion)] },
@@ -320,6 +322,7 @@ describe("a merge check owes the change's probes only", () => {
         reason: 'the judge saw the list without it',
         identity: { kind: 'commit', sha: JUDGED },
         evidence: ['https://forge-dev.sidcorp.co/issues/k10'],
+        withoutClip: 'the judge read the list from the page body',
       }),
       201,
     );

@@ -250,6 +250,11 @@ const NOTE_SHA = /\b[0-9a-f]{7,40}\b/gi;
 // a rule or error code of two parts or more: SOD-RULE-MAKER-CHECKER, RELEASE_RECORD_MISSING
 const NOTE_CODE = /\b[A-Z][A-Z0-9]+(?:[_-][A-Z][A-Z0-9]+)+\b/g;
 const NOTE_TECHNICAL_LABEL = /\btechnical note\b/i;
+// a requirement's criterion code: BC-3
+const NOTE_CRITERION = /\bBC-\d+\b/g;
+// a file path or an API route: packages/core/src/x.ts, src/app.tsx, /api/issues/:id
+const NOTE_PATH =
+	/(?:\/api\/[\w:/.-]+|\b[\w.-]+(?:\/[\w.-]+)+\.[a-z]{1,5}\b|\b[a-z][\w-]*\.(?:ts|tsx|mjs|rs|sql)\b)/g;
 
 /** The engineer's references inside `text`, each named as it reads, in order of first appearance and once. */
 export function releaseNoteReferences(text: string): string[] {
@@ -258,12 +263,16 @@ export function releaseNoteReferences(text: string): string[] {
 		(s) => /\d/.test(s) && /[a-f]/i.test(s),
 	);
 	const codes = (text.match(NOTE_CODE) ?? []).filter((c) => !keys.includes(c));
+	const criteria: string[] = text.match(NOTE_CRITERION) ?? [];
+	const paths: string[] = text.match(NOTE_PATH) ?? [];
 	const label = NOTE_TECHNICAL_LABEL.exec(text);
 	return [
 		...new Set([
 			...shas.map((s) => `commit sha ${s}`),
 			...keys.map((k) => `issue key ${k}`),
+			...criteria.map((c) => `criterion ${c}`),
 			...codes.map((c) => `code ${c}`),
+			...paths.map((p) => `path ${p}`),
 			...(label ? [`label "${label[0]}"`] : []),
 		]),
 	];

@@ -32,6 +32,7 @@ import {
 } from './claims.js';
 import { carriedCriteria, carriedRequirements, issueFiles, type RequirementText } from './facts.js';
 import { digestOf, highlightFacts, highlightsRow, shownHighlights } from './highlights.js';
+import { namingDraftStale, namingRow, namingStanding } from './naming-store.js';
 import { actionsOf, buildOf, changesOf, headerOf, technicalOf } from './sections.js';
 
 export const refusePage = refuser<ReleasePageRefusalCode>(RELEASE_PAGE_REFUSAL_CODES[0]);
@@ -89,7 +90,21 @@ function linked(highlights: ReleaseHighlights): ReleaseHighlights {
     ...highlights,
     highlights: highlights.highlights.map((h) =>
       h.media
-        ? { ...h, media: { ...h.media, url: `/api/attachments/${h.media.attachmentId}/download` } }
+        ? {
+            ...h,
+            media: {
+              ...h.media,
+              url: `/api/attachments/${h.media.attachmentId}/download`,
+              ...(h.media.poster
+                ? {
+                    poster: {
+                      ...h.media.poster,
+                      url: `/api/attachments/${h.media.poster.attachmentId}/download`,
+                    },
+                  }
+                : {}),
+            },
+          }
         : h,
     ),
   };
@@ -122,6 +137,8 @@ export async function readReleasePage(args: {
   view: string;
   viewer: PageViewer;
   onOwed?: (run: { projectId: string; runId: string }) => void;
+  /** Handed the release where nobody named it and no draft of its name is in flight or held (BC-14). */
+  onNamingOwed?: (release: { projectId: string; version: string }) => void;
 }): Promise<ReleasePage> {
   const { projectId, version, view, viewer } = args;
   if (!isPageView(view)) {
@@ -136,6 +153,11 @@ export async function readReleasePage(args: {
   const row = detail.runId ? await highlightsRow(detail.runId) : null;
   const shown = shownHighlights(row, page.facts, page.digest, page.build);
   if (shown.owed && detail.runId) args.onOwed?.({ projectId, runId: detail.runId });
+  const named = detail.name !== null && detail.summary !== null;
+  const drafting = named ? null : await namingRow(projectId, detail.version);
+  const naming = namingStanding(named, drafting);
+  if (!named && (drafting === null || namingDraftStale(drafting)))
+    args.onNamingOwed?.({ projectId, version: detail.version });
   const changes = changesOf(detail, view);
   const range = await readRange(projectId, detail.version, page.build, detail.runId);
   const { shipped } = range;
@@ -143,10 +165,13 @@ export async function readReleasePage(args: {
   return {
     view,
     projectId,
-    header: headerOf(detail, {
-      proven: page.claims.filter((c) => c.proven).length,
-      total: page.claims.length,
-    }),
+    header: {
+      ...headerOf(detail, {
+        proven: page.claims.filter((c) => c.proven).length,
+        total: page.claims.length,
+      }),
+      naming,
+    },
     highlights: linked(shown.highlights),
     requirements: requirementsOf(page.requirements, page.claims),
     untraced: untracedOf(page.requirements, page.claims),

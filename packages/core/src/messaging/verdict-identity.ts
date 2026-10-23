@@ -160,6 +160,8 @@ export interface CriterionBlock {
   readonly why: string | null;
   readonly contract: string | null;
   readonly environment: string | null;
+  /** The block's `without-clip` line: why an observable criterion's judgement cites no clip (REQ-40 BC-4). */
+  readonly withoutClip: string | null;
   /** Everything this block cites, in the order written. An empty value cites nothing. */
   readonly cited: readonly string[];
 }
@@ -175,6 +177,7 @@ const SINGLE_FIELDS = {
   why: 'why',
   [CONTRACT_FIELD]: 'contract',
   [ENVIRONMENT_FIELD]: 'environment',
+  'without-clip': 'withoutClip',
 } as const satisfies Record<string, Exclude<keyof CriterionBlock, 'criterion' | 'cited'>>;
 
 /** A `criterion:` value as the whole positive number it must be written as, or null. */
@@ -213,6 +216,7 @@ export function criterionBlocksIn(record: ForgeRecord | null): CriterionBlock[] 
           why: null,
           contract: null,
           environment: null,
+          withoutClip: null,
           cited: [],
         };
       }
@@ -221,7 +225,8 @@ export function criterionBlocksIn(record: ForgeRecord | null): CriterionBlock[] 
     if (!block) continue;
     const single = SINGLE_FIELDS[field.key as keyof typeof SINGLE_FIELDS];
     if (single) {
-      if (block[single] === null && (single !== 'why' || value !== '')) block[single] = value;
+      const prose = single === 'why' || single === 'withoutClip';
+      if (block[single] === null && (!prose || value !== '')) block[single] = value;
     } else if (field.key === EVIDENCE_FIELD && value !== '') block.cited.push(value);
   }
   close();

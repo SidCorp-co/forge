@@ -30,8 +30,12 @@ function HighlightsFailed({ refusals }: { refusals: Extract<ReleaseHighlights, {
   );
 }
 
-/** The one to three highlights a release opens on, or what stands in their place and why; the criterion codes a highlight claims are its title, not its text. */
-export function ReleaseHighlightList({ highlights, slug, authed }: { highlights: ReleaseHighlights; slug?: string | undefined; authed: boolean }) {
+/**
+ * The one to three highlights a release opens on, or what stands in their place and why; the criterion
+ * codes a highlight claims are its title, not its text. `gaps` says a highlight with no clip says so:
+ * the release page does, for the people deciding on it; What's new shows only what there is to see.
+ */
+export function ReleaseHighlightList({ highlights, slug, authed, gaps = true }: { highlights: ReleaseHighlights; slug?: string | undefined; authed: boolean; gaps?: boolean }) {
   const t = useCopy();
   if (highlights.state === "none") return null;
   return (
@@ -50,23 +54,24 @@ export function ReleaseHighlightList({ highlights, slug, authed }: { highlights:
               <div className="grid gap-1">
                 <h3 className="text-16 font-semibold leading-snug">{h.title}</h3>
                 <p className="text-14">{h.body}</p>
-                <p className="text-12 text-subtle" title={t("releases.page.highlights.proves", { codes: h.claims.join(", ") })}>
+                {/* named by the requirement's title, in a reader's words: its key is the link's address (BC-15) */}
+                <p className="text-12 text-subtle" title={t("releases.page.highlights.proves", { codes: h.claims.join(", ") })} data-testid="page-highlight-requirement">
                   {slug ? (
-                    <Link className="font-mono text-link hover:underline" href={requirementHref(slug, h.requirement.key)}>
-                      {h.requirement.key}
+                    <Link className="text-link hover:underline" href={requirementHref(slug, h.requirement.key)}>
+                      {h.requirement.title}
                     </Link>
                   ) : (
-                    <span className="font-mono">{h.requirement.key}</span>
+                    h.requirement.title
                   )}
                 </p>
               </div>
               {h.media ? (
-                <ReleaseMedia media={h.media} label={`${h.title}: ${h.media.name}`} authed={authed} />
-              ) : (
+                <ReleaseMedia media={h.media} label={h.title} authed={authed} />
+              ) : gaps ? (
                 <p className="text-13 text-muted" data-testid="page-highlight-gap">
                   {t("releases.page.highlights.mediaGap")}
                 </p>
-              )}
+              ) : null}
             </li>
           ))}
         </ol>

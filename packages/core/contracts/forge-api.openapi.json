@@ -15050,6 +15050,11 @@
                     "maxLength": 32,
                     "minLength": 1,
                     "type": "string"
+                  },
+                  "withoutClip": {
+                    "maxLength": 4000,
+                    "minLength": 1,
+                    "type": "string"
                   }
                 },
                 "required": [
