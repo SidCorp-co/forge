@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.290] - 2026-10-23
+
+Design health stops flagging a design's own old text as code
+
+### Fixed
+
+- **A design's own old text is no longer read as its code.** Design health ignores copies of design text made by an old migration, so they stop raising false Wrong and Upcoming markers.
+
 ## [0.4.0-dev.289] - 2026-10-23
 
 Workflows page reads at every width; unapproved designs can be withdrawn
