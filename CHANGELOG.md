@@ -9,6 +9,15 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.291] - 2026-10-23
+
+Runs on resting issues are refused at declare; reclaims keep live work local
+
+### Fixed
+
+- **The steward asks the release holders for a release approval the master cannot give.** A reasoned decision recorded on the issue answers an ask until its standing moves, and nobody is asked twice on one standing.
+- **A run over a closed or parked issue is refused at declare.** A reclaim never pushes a run's branch anywhere, and never removes a checkout a working subagent is in.
+
 ## [0.4.0-dev.290] - 2026-10-23
 
 Design health stops flagging a design's own old text as code
