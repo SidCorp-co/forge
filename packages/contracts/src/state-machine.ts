@@ -5,6 +5,7 @@
 import { CHECKLISTS, isChecklistId } from "./checklist-registry.js";
 import { CHECKLIST_GUARD } from "./checklists.js";
 import { fingerprint } from "./fingerprint.js";
+import { PERSON_GATE_STEPS, type PersonGate } from "./person-gates.js";
 import type { Refusal, RefusalStatuses } from "./refusal.js";
 
 /** One move. `act` is the edge's name in its design; `permission` is what `can()` asks of the
@@ -20,6 +21,10 @@ export interface MachineEdge<S extends string = string> {
 	readonly guards: readonly string[];
 	readonly recovery?: true;
 	readonly checklist?: string;
+	/** The project's approvals switch the move follows (`person-gates.ts`, REQ-34 BC-25): the mover
+	 *  needs `personGatePermission(approvals, personGate)`, so `permission` names the one asked
+	 *  where the switch is on, and the step's `off` permission is asked where it is off. */
+	readonly personGate?: PersonGate;
 }
 
 export interface StatusMachine<
@@ -61,7 +66,8 @@ function machineShape(machine: MachineDeclaration<string, string>): string {
 			machine.reasonRequired,
 			machine.edges.map((e) => {
 				const edge = [e.from, e.to, e.act, e.permission, e.guards, e.recovery === true];
-				return e.checklist === undefined ? edge : [...edge, e.checklist];
+				const checked = e.checklist === undefined ? edge : [...edge, e.checklist];
+				return e.personGate === undefined ? checked : [...checked, `gate:${e.personGate}`];
 			}),
 		]),
 	);
@@ -96,6 +102,19 @@ function checklistFaults(machine: MachineDeclaration<string, string>): string[] 
 	return faults;
 }
 
+/** An edge following a person gate names, as its permission, the one that gate asks where it is on. */
+function personGateFaults(machine: MachineDeclaration<string, string>): string[] {
+	return machine.edges.flatMap((e) => {
+		if (e.personGate === undefined) return [];
+		const on = PERSON_GATE_STEPS[e.personGate].on;
+		return e.permission === on
+			? []
+			: [
+					`\`${e.from}\` → \`${e.to}\` follows the ${e.personGate} gate, which asks ${on} where it is on; its permission names ${e.permission ?? "none"}`,
+				];
+	});
+}
+
 /**
  * Declares a machine, refusing at load any edge that names a state the machine does not hold, and
  * a shape that is not the last one its `shapes` records: a changed machine is a new version.
@@ -116,7 +135,7 @@ export function defineMachine<const E extends string, const S extends string>(
 			`machine \`${machine.entity}\` names ${[...new Set(unknown)].join(", ")}, which are not among its states (${machine.states.join(", ")})`,
 		);
 	}
-	const faults = checklistFaults(machine);
+	const faults = [...checklistFaults(machine), ...personGateFaults(machine)];
 	if (faults.length > 0) {
 		throw new Error(`machine \`${machine.entity}\`: ${faults.join("; ")}`);
 	}

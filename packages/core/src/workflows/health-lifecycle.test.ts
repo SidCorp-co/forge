@@ -90,6 +90,7 @@ const obsOf = (document: ObservationDocument, createdAt = T1): HealthFacts['obse
   createdAt,
   writtenBy: 'u1',
   writtenByAgency: 'agent',
+  source: 'observer',
   document,
 });
 
