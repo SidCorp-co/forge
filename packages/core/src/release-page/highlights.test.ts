@@ -72,6 +72,11 @@ describe('a drafted answer judged before it is kept (BC-2, BC-3, BC-13)', () => 
       'RELEASE_HIGHLIGHT_REQUIREMENT_FOREIGN',
     ],
     ['a body over the word cap', { body: 'word '.repeat(41) }, 'RELEASE_HIGHLIGHT_SHAPE'],
+    [
+      "an engineer's reference a reader cannot follow (BC-15)",
+      { body: 'Nurses see the reminder BC-1 asks for in reminders.tsx.' },
+      'RELEASE_HIGHLIGHT_JARGON',
+    ],
   ])('refuses %s by name', (_what, h, code) => {
     const out = judged(answer(h), FACTS);
     expect(out.ok).toBe(false);

@@ -17,9 +17,41 @@ describe("the What's new panel", () => {
     expect(highlights.compareDocumentPosition(screen.getByTestId("whats-new-changes")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it("plays a clip from the link made for the reader, which needs no session", () => {
+  it("names the release and says in a few sentences what it brings, above its highlights (BC-14)", () => {
     open(feedOf());
-    expect(screen.getByTestId("release-media-clip")).toHaveAttribute("src", expect.stringContaining("/api/attachments/"));
+    const lead = screen.getByTestId("whats-new-lead");
+    expect(within(lead).getByTestId("whats-new-name")).toHaveTextContent("Readable releases");
+    expect(within(lead).getByTestId("whats-new-summary")).toHaveTextContent("Every release now opens as a page you can read.");
+    expect(lead.compareDocumentPosition(screen.getByTestId("page-highlights")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("leads on the version alone where the release is not named yet", () => {
+    open(feedOf(releaseOf({ name: null, summary: null })));
+    expect(screen.queryByTestId("whats-new-name")).toBeNull();
+    expect(screen.queryByTestId("whats-new-summary")).toBeNull();
+    expect(screen.getByTestId("whats-new-release")).toHaveTextContent("Release 0.4.0-dev.9");
+  });
+
+  it("plays a highlight's clip inline, muted and with controls, from the link made for the reader (BC-3)", () => {
+    open(feedOf());
+    const clip = screen.getByTestId<HTMLVideoElement>("release-media-clip");
+    expect(clip.tagName).toBe("VIDEO");
+    expect(clip).toHaveAttribute("src", expect.stringContaining("/api/attachments/"));
+    expect(clip.muted).toBe(true);
+    expect(clip).toHaveAttribute("controls");
+    expect(clip).toHaveAttribute("playsinline");
+  });
+
+  it("shows what there is to see: a highlight with no clip says nothing of the gap", () => {
+    const release = releaseOf();
+    if (release.highlights.state !== "drafted") throw new Error("fixture");
+    const [h] = release.highlights.highlights;
+    if (!h) throw new Error("fixture");
+    const bare = { ...h, media: null, mediaGap: "QA kept no clip or picture as evidence of BC-1 on this build" };
+    open(feedOf({ ...release, highlights: { ...release.highlights, highlights: [bare] } }));
+    expect(screen.getByTestId("page-highlight")).toBeInTheDocument();
+    expect(screen.queryByTestId("page-highlight-gap")).toBeNull();
+    expect(screen.getByTestId("whats-new-panel")).not.toHaveTextContent("BC-1");
   });
 
   it("says plainly when no release carries this build", () => {

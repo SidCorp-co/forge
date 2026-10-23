@@ -16,6 +16,7 @@
     "lint:inventory": "node scripts/lint-inventory.mjs",
     "test": "vitest run",
     "witness": "node witness/run.mjs",
+    "clip": "node witness/clip.mjs",
     "typecheck": "tsgo --noEmit -p tsconfig.json",
     "typecheck:test": "tsgo --noEmit -p tsconfig.test.json"
   },
@@ -83,6 +84,7 @@
     "eslint-plugin-sonarjs": "^4.2.2",
     "globals": "^17.13.0",
     "jsdom": "^30.1.1",
+    "playwright-core": "1.59.1",
     "tailwindcss": "^4",
     "typescript": "^5",
     "typescript-eslint": "^8.71.1",

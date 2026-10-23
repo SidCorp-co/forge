@@ -68,6 +68,11 @@ export interface VerdictDraft {
   readonly judge?: CriterionJudge | undefined;
   /** The probe this verdict keeps on its criterion (ISS-469); only the REST door sends one. */
   readonly probe?: CriterionProbe | undefined;
+  /**
+   * Why a judgement of an observable criterion cites no screen clip (REQ-40 BC-4): what the clip could
+   * not show, or why none could be recorded. Absent, an observable verdict cites one in `evidence`.
+   */
+  readonly withoutClip?: string | null | undefined;
 }
 
 export interface VerdictRefusal {
@@ -262,6 +267,7 @@ function spanNamed(text: string, span: SecretSpan): string {
 function secretFault(draft: VerdictDraft): VerdictRefusal | null {
   const fields: [string, string, string | null][] = [
     ['/reason', 'reason', draft.reason],
+    ['/withoutClip', 'withoutClip', draft.withoutClip ?? null],
     ...draft.evidence.map((e, i): [string, string, string] => [
       `/evidence/${i}`,
       `evidence ${i}`,
@@ -347,5 +353,6 @@ export function draftFromBlock(block: CriterionBlock & { verdict: string }): Ver
     reason: block.why,
     identity: identityFromBlock(block),
     evidence: block.cited,
+    withoutClip: block.withoutClip,
   };
 }

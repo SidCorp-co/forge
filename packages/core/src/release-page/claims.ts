@@ -215,10 +215,28 @@ export function untracedOf(
   return rest.length === 0 ? null : criteriaOf(rest);
 }
 
+const stem = (name: string) => name.replace(/\.[^.]+$/u, '').replace(/\.poster$/u, '');
+
+/**
+ * The still a clip opens on: a picture the same verdict cites beside it on the same issue, the one
+ * named after the clip (`<clip>.png` or `<clip>.poster.png`, as the recorder writes it) first.
+ */
+function posterOf(clip: IssueFile, cited: readonly IssueFile[]): ReleaseMediaRef['poster'] {
+  const pictures = cited.filter((f) => releaseMediaKindOf(f.mime) === 'picture' && f.bytes > 0);
+  const still = pictures.find((f) => stem(f.name) === stem(clip.name)) ?? pictures[0];
+  return still
+    ? {
+        attachmentId: still.id,
+        name: still.name,
+        mime: still.mime as NonNullable<ReleaseMediaRef['poster']>['mime'],
+      }
+    : null;
+}
+
 /**
  * The clips and pictures a highlight may show: each file a claimed pass on the build cites by name
  * in its evidence, on that criterion's own issue, of a kind a page shows and within the clip
- * ceiling. Clips first, so a highlight that can show one does.
+ * ceiling, a clip with the still it opens on. Clips first, so a highlight that can show one does.
  */
 export function mediaOf(
   claims: readonly ClaimReading[],
@@ -230,6 +248,10 @@ export function mediaOf(
   const seen = new Set<string>();
   for (const { criterion, claim, onBuild } of claims) {
     if (!claim.claimed || !onBuild || criterion.bc === null) continue;
+    const ofVerdict = onBuild.evidence.flatMap((cited) => {
+      const file = files.find((f) => f.issueId === criterion.issueId && f.name === cited);
+      return file ? [file] : [];
+    });
     for (const cited of onBuild.evidence) {
       const file = files.find((f) => f.issueId === criterion.issueId && f.name === cited);
       const kind = file ? releaseMediaKindOf(file.mime) : null;
@@ -246,6 +268,7 @@ export function mediaOf(
         issueKey: criterion.issueKey,
         criterion: { n: criterion.n, bc: criterion.bc },
         commitSha: build,
+        ...(kind === 'clip' ? { poster: posterOf(file, ofVerdict) } : {}),
       });
     }
   }

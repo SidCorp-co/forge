@@ -30,8 +30,12 @@ function HighlightsFailed({ refusals }: { refusals: Extract<ReleaseHighlights, {
   );
 }
 
-/** The one to three highlights a release opens on, or what stands in their place and why; the criterion codes a highlight claims are its title, not its text. */
-export function ReleaseHighlightList({ highlights, slug, authed }: { highlights: ReleaseHighlights; slug?: string | undefined; authed: boolean }) {
+/**
+ * The one to three highlights a release opens on, or what stands in their place and why; the criterion
+ * codes a highlight claims are its title, not its text. `gaps` says a highlight with no clip says so:
+ * the release page does, for the people deciding on it; What's new shows only what there is to see.
+ */
+export function ReleaseHighlightList({ highlights, slug, authed, gaps = true }: { highlights: ReleaseHighlights; slug?: string | undefined; authed: boolean; gaps?: boolean }) {
   const t = useCopy();
   if (highlights.state === "none") return null;
   return (
@@ -61,12 +65,12 @@ export function ReleaseHighlightList({ highlights, slug, authed }: { highlights:
                 </p>
               </div>
               {h.media ? (
-                <ReleaseMedia media={h.media} label={`${h.title}: ${h.media.name}`} authed={authed} />
-              ) : (
+                <ReleaseMedia media={h.media} label={h.title} authed={authed} />
+              ) : gaps ? (
                 <p className="text-13 text-muted" data-testid="page-highlight-gap">
                   {t("releases.page.highlights.mediaGap")}
                 </p>
-              )}
+              ) : null}
             </li>
           ))}
         </ol>

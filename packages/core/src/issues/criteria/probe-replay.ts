@@ -126,6 +126,8 @@ export async function recordReplayVerdicts(
               reason: v.reason,
               identity: { kind: 'runtime', ref: v.served },
               evidence: [v.evidence],
+              // a replay re-sends the kept probe's request; it watches no screen
+              withoutClip: 'a probe replay judges by request and records no screen',
             },
             author,
           }),

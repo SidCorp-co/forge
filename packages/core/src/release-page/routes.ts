@@ -8,6 +8,7 @@ import { loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { zValidator } from '../middleware/zod-validator.js';
 import { holds, requireHeld } from '../permissions/index.js';
+import { nameInBackground } from './naming-refresh.js';
 import { type PageViewer, readReleasePage } from './read.js';
 import { refreshInBackground } from './refresh.js';
 
@@ -46,6 +47,7 @@ releasePageRoutes.get('/:projectId/releases/:version/page', pageParam, pageQuery
       view,
       viewer,
       onOwed: refreshInBackground,
+      onNamingOwed: nameInBackground,
     }),
   );
 });

@@ -8,7 +8,12 @@ import {
 	CRITERION_STANDINGS,
 	type CriterionStanding,
 } from "./issue-vocabulary.js";
+import { releaseNoteReferences } from "./content-language.js";
 import type { Refusal, RefusalStatuses } from "./refusal.js";
+import {
+	type ReleaseNamingStanding,
+	ReleaseNamingStandingSchema,
+} from "./release-naming.js";
 import {
 	RELEASE_STATES,
 	RELEASE_VERIFICATIONS,
@@ -59,6 +64,18 @@ export function releaseMediaKindOf(mime: string): ReleaseMediaKind | null {
 }
 
 /**
+ * The still a clip opens on before it plays: a picture the same verdict cites beside the clip (a
+ * recorder writes one per clip). Its link is minted when it is shown, as the clip's is.
+ */
+export const ReleaseMediaPosterSchema = z.strictObject({
+	attachmentId: z.uuid(),
+	name: z.string().min(1).max(180),
+	mime: z.enum(RELEASE_PICTURE_MIMES),
+	url: z.string().min(1).optional(),
+});
+export type ReleaseMediaPoster = z.infer<typeof ReleaseMediaPosterSchema>;
+
+/**
  * A file a release page shows: an issue attachment that a verdict's `evidence` cites by name. It
  * names the verdict and the build that verdict judged, so a reader can trace the picture to its proof.
  */
@@ -78,6 +95,8 @@ export const ReleaseMediaRefSchema = z.strictObject({
 	commitSha: z.string().regex(COMMIT, "a full 40-hex commit"),
 	/** Where a reader fetches the file: set when the page is served or a share is opened, never stored. */
 	url: z.string().min(1).optional(),
+	/** A clip's opening still, where its verdict cites one; absent on a picture and on media kept before posters. */
+	poster: ReleaseMediaPosterSchema.nullable().optional(),
 });
 export type ReleaseMediaRef = z.infer<typeof ReleaseMediaRefSchema>;
 
@@ -309,6 +328,15 @@ export function judgeHighlights(
 					path: `${at}.claims`,
 					detail: `${req.key} ${code} has no pass verdict on the build ${facts.version} describes`,
 				});
+		for (const field of ["title", "body"] as const) {
+			const found = releaseNoteReferences(h[field]);
+			if (found.length > 0)
+				out.push({
+					code: "RELEASE_HIGHLIGHT_JARGON",
+					path: `${at}.${field}`,
+					detail: `${field} carries ${found.join(", ")}: a person using the product cannot follow these`,
+				});
+		}
 		const backed = new Set(
 			numeralsIn(`${req.title} ${req.text} ${facts.version}`),
 		);
@@ -356,9 +384,11 @@ export interface ReleasePageApproval {
 
 export interface ReleasePageHeader {
 	version: string;
-	/** The release's name and summary, written when it was cut (REQ-40 BC-14); null until written. */
+	/** The release's name and summary, written once it is drafted (REQ-40 BC-14); null until written. */
 	name: string | null;
 	summary: string | null;
+	/** Whether the name is written, owed to the assistant, or refused and why; absent on a share frozen before it was said. */
+	naming?: ReleaseNamingStanding | undefined;
 	state: ReleaseState;
 	releasedAt: string | null;
 	/** Where it runs: the production environment the release was verified on. */
@@ -627,6 +657,7 @@ export const ReleasePageSnapshotSchema = z.strictObject({
 		version: z.string().min(1),
 		name: z.string().min(1).nullable().default(null),
 		summary: z.string().min(1).nullable().default(null),
+		naming: ReleaseNamingStandingSchema.optional(),
 		state: z.enum(RELEASE_STATES),
 		releasedAt: ISO.nullable(),
 		environment: z

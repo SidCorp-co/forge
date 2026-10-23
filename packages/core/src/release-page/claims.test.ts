@@ -202,6 +202,35 @@ describe('the media a highlight may show', () => {
     });
   });
 
+  it('opens a clip on the still its verdict cites beside it, the one named after the clip first (BC-3)', () => {
+    const stills: IssueFile[] = [
+      {
+        id: 'f-other-shot',
+        issueId: 'issue-1',
+        name: 'overview.png',
+        mime: 'image/png',
+        bytes: 900,
+      },
+      { id: 'f-switch', issueId: 'issue-1', name: 'switch.webm', mime: 'video/webm', bytes: 9000 },
+      { id: 'f-still', issueId: 'issue-1', name: 'switch.png', mime: 'image/png', bytes: 900 },
+    ];
+    const judged = criterion(1, 'BC-1', [
+      verdict('pass', BUILD, '2026-10-09T10:00:00.000Z', {
+        evidence: ['overview.png', 'switch.webm', 'switch.png'],
+      }),
+    ]);
+    const [clip] = mediaOf(readClaims([judged], BUILD, null), stills, BUILD);
+    expect(clip).toMatchObject({
+      kind: 'clip',
+      attachmentId: 'f-switch',
+      poster: { attachmentId: 'f-still', name: 'switch.png', mime: 'image/png' },
+    });
+    const alone = criterion(1, 'BC-1', [
+      verdict('pass', BUILD, '2026-10-09T10:00:00.000Z', { evidence: ['switch.webm'] }),
+    ]);
+    expect(mediaOf(readClaims([alone], BUILD, null), stills, BUILD)[0]?.poster).toBeNull();
+  });
+
   it('shows nothing a pass on another build cites', () => {
     const elsewhere = criterion(1, 'BC-1', [
       verdict('pass', MERGED, '2026-10-09T10:00:00.000Z', { evidence: ['clip.webm'] }),

@@ -134,6 +134,8 @@
     "releases.page.known.skipped": "Skipped",
     "releases.page.known.title": "Known issues",
     "releases.page.loading": "Loading the release page",
+    "releases.page.naming.drafting": "Naming this release from what it brings.",
+    "releases.page.naming.failed": "This release could not be named yet.",
     "releases.page.requirement.advances": "Moves forward",
     "releases.page.requirement.business": "{proven} of its {total} criteria proven",
     "releases.page.requirement.completes": "Completes",

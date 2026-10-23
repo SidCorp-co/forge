@@ -162,6 +162,12 @@ machine-local path. \`skipped\` cites nothing because nobody looked, and is not 
 Attach the file first and cite it by its name: an attachment written only to a run's scratch has
 not been attached.
 
+A block judging a criterion the design classes observable — \`pass\`, \`fail\` or \`short\` —
+cites a screen clip of the run among its \`evidence:\` lines (a WebM or MP4, with its opening still
+beside it), or carries a \`without-clip:\` line saying why none could show it. The \`why:\` line
+says what was found and never stands in for it; a block with neither is refused
+\`VERDICT_CLIP_REQUIRED\` (REQ-40 BC-4).
+
 A fence is read only where it opens at the left margin, and the body is stored exactly as it was
 written, so where you put the block is where it is read. Indent it at all — the four spaces of an
 indented code block, or the one to three markdown would still call a fence — and it is prose, as a

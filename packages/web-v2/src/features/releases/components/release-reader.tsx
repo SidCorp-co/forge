@@ -6,7 +6,7 @@
 // same component draws a page in the app (a member, with links into the project) and a frozen page a
 // share link opens (no links, no technical note), so the two cannot read differently.
 
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import { RELEASE_CHANGE_GROUPS, type ReleaseGlance, releaseGlanceOf } from "@forge/contracts/release-digest";
 import type { ReleasePage } from "@forge/contracts/release-page";
 import { type ContentsItem, ContentsMenu, DetailLeadEnd, RowItem, RowList, Section } from "@/design";
@@ -14,21 +14,49 @@ import { useCopy } from "@/lib/i18n/interface-language";
 import { Link } from "@/lib/navigation/router";
 import { ANCHOR, type Anchor, GROUP_TITLE, type Reach } from "./release-anchors";
 import { BeforeYouRelease, ChangeGroup, GroupTitle, OtherChanges, Requirements, StillOpen } from "./release-groups";
+import { DisclosureToggle } from "./release-bits";
 import { ReleaseHighlightList } from "./release-highlights";
 import { checksByIssue } from "./release-row-detail";
 import { Technical } from "./release-technical";
 
 /**
- * The summary the release was given once drafted (BC-14), whole. A release nobody named shows none:
- * naming it is its master's to do, and nothing here derives one or apologises for it.
+ * The summary the release was given once drafted (BC-14), whole. A release nobody named yet says the
+ * assistant is naming it, or, where its draft was refused, says so with why behind a fold: a page
+ * never opens on a silent blank.
  */
 function ReleaseSummary({ page }: { page: ReleasePage }) {
+  const t = useCopy();
+  const [open, setOpen] = useState(false);
   const summary = page.header.summary;
-  if (!summary) return null;
+  const naming = page.header.naming;
+  if (summary)
+    return (
+      <p className="max-w-prose text-16 leading-relaxed text-fg" data-testid="page-summary">
+        {summary}
+      </p>
+    );
+  if (naming?.state === "drafting")
+    return (
+      <p className="text-14 text-muted" data-testid="page-naming-drafting">
+        {t("releases.page.naming.drafting")}
+      </p>
+    );
+  if (naming?.state !== "failed") return null;
   return (
-    <p className="max-w-prose text-16 leading-relaxed text-fg" data-testid="page-summary">
-      {summary}
-    </p>
+    <div data-testid="page-naming-failed">
+      <DisclosureToggle open={open} onToggle={() => setOpen((o) => !o)} className="text-14" testId="page-naming-failed-toggle">
+        {t("releases.page.naming.failed")}
+      </DisclosureToggle>
+      {open ? (
+        <ul className="mt-1 grid gap-0.5 text-12 text-subtle">
+          {naming.refusals.map((r) => (
+            <li key={`${r.code}:${r.path}`}>
+              <span className="font-mono">{r.code}</span> {r.detail}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
   );
 }
 
