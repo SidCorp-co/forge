@@ -102,9 +102,13 @@ export function sameCriteria(live: readonly MatchRow[], desired: readonly MatchI
   return desired.every((c) => byN.get(c.n) === normalizeStatement(c.statement));
 }
 
-/** A live criterion whose trace a write would drop: its number and the BC it traced. */
+/**
+ * A trace a write would drop: the live criterion that held it and the BC, or `n: null` where the BC
+ * is left on fewer lines and every line that held it is still at a number carrying it, so which one
+ * lost it cannot be told.
+ */
 export interface DroppedTrace {
-  readonly n: number;
+  readonly n: number | null;
   readonly code: string;
 }
 
@@ -115,9 +119,11 @@ export interface DroppedTrace {
  * rewrite left REQ-25 BC-1, BC-2 and BC-7 with no issue; catalog-api ISS-3, whose reworded line lost
  * BC-3 while another line still traced it). Lines are counted per BC by `codeOf` (a wording id to
  * its `REQ-n BC-m`, absent for one that is no proof to lose), so a trace kept at another wording of
- * the same BC, or by a line that only moved, drops nothing. Where every desired criterion states its
- * trace (`requirementCriterionId` given, `null` meaning none) the writer said so and nothing is
- * refused.
+ * the same BC, or by a line that only moved, drops nothing. Of a BC left on fewer lines, the lines
+ * named are the ones that held it and whose number carries it no more, so a line already restating it
+ * is never named and opening each named line with its tag is a write that is taken (ISS-673, K65).
+ * Where every desired criterion states its trace (`requirementCriterionId` given, `null` meaning none)
+ * the writer said so and nothing is refused.
  */
 export function droppedTraces(
   live: readonly (MatchRow & { readonly requirementCriterionId: string | null })[],
@@ -129,14 +135,14 @@ export function droppedTraces(
   if (desired.every((c) => c.requirementCriterionId !== undefined)) return [];
   const { kept } = matchCriteria(live, desired);
   const keptRows = new Set([...kept.values()]);
-  const after = new Map<string, number>();
+  const carriers = new Map<string, Set<number>>();
   for (const [i, c] of desired.entries()) {
     const id =
       c.requirementCriterionId === undefined
         ? kept.get(i)?.requirementCriterionId
         : c.requirementCriterionId;
     const code = id ? codeOf.get(id) : undefined;
-    if (code) after.set(code, (after.get(code) ?? 0) + 1);
+    if (code) carriers.set(code, (carriers.get(code) ?? new Set()).add(c.n));
   }
   const before = new Map<string, (typeof live)[number][]>();
   for (const row of live) {
@@ -145,12 +151,15 @@ export function droppedTraces(
   }
   const dropped: DroppedTrace[] = [];
   for (const [code, lines] of before) {
-    const short = lines.length - (after.get(code) ?? 0);
-    if (short <= 0) continue;
-    const gone = lines.filter((row) => !keptRows.has(row)).sort((a, b) => a.n - b.n);
-    for (const row of gone.slice(0, short)) dropped.push({ n: row.n, code });
+    const carried = carriers.get(code) ?? new Set<number>();
+    if (lines.length <= carried.size) continue;
+    const bare = lines.filter((row) => !keptRows.has(row) && !carried.has(row.n));
+    if (bare.length === 0) dropped.push({ n: null, code });
+    for (const row of bare) dropped.push({ n: row.n, code });
   }
-  return dropped.sort((a, b) => a.n - b.n);
+  return dropped.sort(
+    (a, b) => (a.n ?? Number.MAX_SAFE_INTEGER) - (b.n ?? Number.MAX_SAFE_INTEGER),
+  );
 }
 
 const listed = (ns: readonly number[]) =>
@@ -169,7 +178,16 @@ export function ambiguousDetail(moves: readonly AmbiguousMove[]): string {
 
 /** The refusal detail for a write that drops traced lines (`droppedTraces`), naming each and the way to keep it. */
 export function droppedTraceDetail(dropped: readonly DroppedTrace[]): string {
-  const lines = dropped.map((d) => `criterion ${d.n} (${d.code})`).join(', ');
+  const named = dropped.filter((d): d is DroppedTrace & { n: number } => d.n !== null);
+  const fewer = dropped.filter((d) => d.n === null).map((d) => d.code);
   const tags = [...new Set(dropped.map((d) => `(${d.code})`))].join(' or ');
-  return `this write drops the trace of ${listed(dropped.map((d) => d.n))}: ${lines}. A reworded or removed line is a new criterion here, and only an unchanged wording keeps its row and its trace, so the proof it held would vanish silently. Keep each trace with PUT /api/issues/:id/criteria, sending \`requirementCriterionId\` on that criterion, or open its line with ${tags}; to drop one on purpose, PUT the criteria with \`requirementCriterionId\` stated (null for none) on every one`;
+  const what = [
+    named.length > 0
+      ? `drops the trace of ${listed(named.map((d) => d.n))}: ${named.map((d) => `criterion ${d.n} (${d.code})`).join(', ')}`
+      : '',
+    fewer.length > 0
+      ? `leaves ${fewer.join(', ')} on fewer lines than it had, and every line that held it still carries it at its number, so which one lost it cannot be told`
+      : '',
+  ].filter(Boolean);
+  return `this write ${what.join('; it ')}. A reworded or removed line is a new criterion here, and only an unchanged wording keeps its row and its trace, so the proof it held would vanish silently. Keep each trace with PUT /api/issues/:id/criteria, sending \`requirementCriterionId\` on that criterion, or open its line with ${tags}; to drop one on purpose, PUT the criteria with \`requirementCriterionId\` stated (null for none) on every one`;
 }

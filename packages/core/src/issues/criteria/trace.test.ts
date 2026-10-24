@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { strayTraceTagsOf, traceTagOf } from './criteria-text.js';
-import { droppedTraces } from './match.js';
+import { droppedTraceDetail, droppedTraces } from './match.js';
 
 // Why REQ-25 BC-1 and BC-2 read "no issue traces here" while ISS-39 closed proving them: on
 // 2026-10-06 its criteria were rewritten through the text path, which retired the three traced rows
@@ -121,6 +121,57 @@ describe('a reworded line whose BC another line still traces', () => {
   it('loses nothing where the trace is no proof to lose', () => {
     const live = [{ n: 1, statement: 'Old words.', requirementCriterionId: 'rc-retired' }];
     expect(dropped(live, [{ n: 1, statement: 'New words.' }])).toEqual([]);
+  });
+});
+
+// ISS-673 (K65): three lines on one BC reworded, two restating it; the refusal named a line that
+// already carried the tag, so following it looped. A line is named only where its number no longer
+// carries the BC.
+describe('several lines on one BC reworded, some restating it', () => {
+  const k65 = [1, 2, 3].map((n) => ({ n, statement: `Old ${n}.`, requirementCriterionId: BC7 }));
+
+  it('names the one line that dropped it', () => {
+    const rewrite = [
+      { n: 1, statement: 'New 1.', requirementCriterionId: BC7 },
+      { n: 2, statement: 'New 2.', requirementCriterionId: BC7 },
+      { n: 3, statement: 'New 3.' },
+    ];
+    expect(dropped(k65, rewrite)).toEqual([{ n: 3, code: 'REQ-25 BC-7' }]);
+  });
+
+  it('names a middle line, never the first by default', () => {
+    const rewrite = [
+      { n: 1, statement: 'New 1.', requirementCriterionId: BC7 },
+      { n: 2, statement: 'New 2.' },
+      { n: 3, statement: 'New 3.', requirementCriterionId: BC7 },
+    ];
+    expect(dropped(k65, rewrite)).toEqual([{ n: 2, code: 'REQ-25 BC-7' }]);
+  });
+
+  it('names every line whose number lost it where the BC moved to a new line, so tagging them converges', () => {
+    const rewrite = [
+      { n: 1, statement: 'New 1.' },
+      { n: 2, statement: 'New 2.' },
+      { n: 3, statement: 'New 3.' },
+      { n: 4, statement: 'New 4.', requirementCriterionId: BC7 },
+    ];
+    expect(dropped(k65, rewrite).map((d) => d.n)).toEqual([1, 2, 3]);
+  });
+
+  it('says which BC is short where no line that held it can be named', () => {
+    const live = [
+      { n: 1, statement: 'Old 1.', requirementCriterionId: BC7 },
+      { n: 2, statement: 'Kept.', requirementCriterionId: BC7 },
+    ];
+    // the kept line moves onto number 1 and the reworded one lands on 2, untagged
+    const rewrite = [
+      { n: 1, statement: 'Kept.' },
+      { n: 2, statement: 'New 1.' },
+    ];
+    expect(dropped(live, rewrite)).toEqual([{ n: null, code: 'REQ-25 BC-7' }]);
+    expect(droppedTraceDetail(dropped(live, rewrite))).toMatch(
+      /^this write leaves REQ-25 BC-7 on fewer lines than it had, .* open its line with \(REQ-25 BC-7\)/,
+    );
   });
 });
 

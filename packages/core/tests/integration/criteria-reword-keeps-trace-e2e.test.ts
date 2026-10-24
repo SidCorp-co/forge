@@ -197,3 +197,58 @@ describe('a text write that rewords a traced criterion', () => {
     expect((await traced())[2]).toEqual([3, 'Prices are out of scope here', null]);
   });
 });
+
+// ISS-673 (K65, judged at dev.304): three lines on one BC reworded, the first two opening with their
+// tag and the third not. The refusal named criterion 1, which already carried the tag, so tagging
+// the line it named changed nothing and the writer looped. It names the untagged line, and the write
+// that follows its advice is taken.
+describe('several lines on one BC reworded, only one without its tag (K65)', () => {
+  const K65 = [
+    { n: 1, statement: 'A buyer sees the price', requirementCriterionId: 'BC-3' },
+    { n: 2, statement: 'A buyer sees the tax', requirementCriterionId: 'BC-3' },
+    { n: 3, statement: 'A buyer sees the total', requirementCriterionId: 'BC-3' },
+  ];
+  const reworded = (third: string) =>
+    `1. (REQ-1 BC-3) A buyer sees the price before checkout\n2. (REQ-1 BC-3) A buyer sees the tax before checkout\n3. ${third}`;
+
+  it('names the untagged line and only it', async () => {
+    await planned(K65);
+    const before = await traced();
+
+    const r = await writeText(reworded('A buyer sees the total before checkout'));
+
+    expect(r.status, JSON.stringify(r.body)).toBe(422);
+    const refusal = refusalOf(r.body);
+    expect(refusal?.code).toBe('CRITERIA_TRACE_DROPPED');
+    expect(refusal?.detail).toContain('the trace of criterion 3: criterion 3 (REQ-1 BC-3)');
+    expect(refusal?.detail).not.toMatch(/criterion [12]\b/);
+    expect(await traced()).toEqual(before);
+  });
+
+  it('takes the write that follows the advice, on the first retry', async () => {
+    await planned(K65);
+    const refused = await writeText(reworded('A buyer sees the total before checkout'));
+    expect(refused.status).toBe(422);
+    // follow the advice as written: open each line it names with the tag it names
+    const named = [
+      ...(refusalOf(refused.body)?.detail ?? '').matchAll(/criterion (\d+) \(REQ-1 BC-3\)/g),
+    ].map((m) => Number(m[1]));
+    const retry = reworded('A buyer sees the total before checkout')
+      .split('\n')
+      .map((line, i) =>
+        named.includes(i + 1) && !line.includes('(REQ-1 BC-3)')
+          ? line.replace(/^(\d+\. )/, '$1(REQ-1 BC-3) ')
+          : line,
+      )
+      .join('\n');
+
+    const r = await writeText(retry);
+
+    expect(r.status, JSON.stringify(r.body)).toBe(200);
+    expect((await traced()).map(([n, , code]) => [n, code])).toEqual([
+      [1, 'BC-3'],
+      [2, 'BC-3'],
+      [3, 'BC-3'],
+    ]);
+  });
+});
