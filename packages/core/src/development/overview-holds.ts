@@ -81,7 +81,7 @@ function gateWho(w: RunGateWait): WaitingOn {
     });
   }
   return w.resumesAt
-    ? forge(say('overview.hold.act.resumesAt', { at: w.resumesAt }), rule, w.resumesAt)
+    ? forge(say('overview.hold.act.resumesAt'), rule, w.resumesAt)
     : forge(say('overview.hold.act.resumesWhenClear'), rule);
 }
 
@@ -106,7 +106,7 @@ function liveKindOf(run: RunStanding): OverviewHoldKind | null {
 function stuckWho(run: RunStanding): WaitingOn {
   const s = run.stuck;
   if (s.source === 'stuck' && s.failsAt) {
-    return forge(say('overview.hold.act.failsAt', { at: s.failsAt }), s.says.failsBy, s.failsAt);
+    return forge(say('overview.hold.act.failsAt'), s.says.failsBy, s.failsAt);
   }
   const w = run.waitingOn;
   if (!isGate(w) && w.kind !== 'none') return w;

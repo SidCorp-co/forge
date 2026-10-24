@@ -5,6 +5,7 @@ import { renderWithQuery } from "@/test/render";
 import { say, verbatim, waitingOn } from "@/test/said";
 import { RunStuck } from "./run-stuck";
 
+// @direct-test-of packages/web-v2/src/features/standing/hooks.ts
 // ISS-684 (REQ-74 BC-5): a stuck run's detail names why its issue is stuck and the agent that acts.
 
 const AT = "2026-10-07T08:00:00.000Z";
@@ -15,13 +16,13 @@ const STUCK: ItemStanding = {
   group: "stuck",
   waitingOn: waitingOn("master", { who: say("standing.who.master"), act: say("overview.hold.act.nextPass"), rule: verbatim("r") }),
   note: null,
-  actClass: "agent",
+  actClass: "master_take",
   since: AT,
   dueAt: null,
-  stuck: { code: "no_master", since: AT, reason: "x", via: null, says: { reason: say("standing.stuck.noOwner") } },
+  stuck: { code: "no_owner", since: AT, reason: "x", via: null, says: { reason: say("standing.stuck.noOwner") } },
   carriedBy: null,
   basis: "b",
-} as ItemStanding;
+};
 
 describe("a stuck run's detail", () => {
   const seeded = () => renderWithQuery(<RunStuck projectId="p1" issueKey="ISS-7" />);

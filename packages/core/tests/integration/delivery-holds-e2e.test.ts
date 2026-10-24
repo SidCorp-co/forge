@@ -108,7 +108,7 @@ type Hold = {
   issues: string[];
   release: string | null;
   cause: string;
-  waitingOn: { who: string; act: string; kind: string };
+  waitingOn: { who: string; act: string; kind: string; dueAt: string | null };
   says: { cause: { key: string } };
 };
 
@@ -116,7 +116,7 @@ const holdsOn = (d: Doc, key: string): Hold[] =>
   ((d.holds.issues as Doc[]).find((g) => g.key === key)?.holds ?? []) as Hold[];
 
 describe('the Delivery overview lists each hold with its cause and who acts', () => {
-  it('names Forge and when a job hold that clears itself resumes', async () => {
+  it('names Forge as who resumes a job hold that clears itself, and when', async () => {
     const id = await issueAt(1, 'in_progress');
     const at = new Date(Date.now() + HOUR);
     const runId = await runWithJob(id, {
@@ -129,7 +129,8 @@ describe('the Delivery overview lists each hold with its cause and who acts', ()
     expect(h).toMatchObject({ kind: 'job', runId, issues: ['ISS-1'] });
     expect(h?.cause).toContain('all_devices_exhausted');
     expect(h?.waitingOn.who).toBe('Forge');
-    expect(h?.waitingOn.act).toContain('resumes it at');
+    expect(h?.waitingOn.act).toBe('resumes it when the wait ends');
+    expect(h?.waitingOn.dueAt).toBe(at.toISOString());
     expect(d.holds.count).toBe(1);
   });
 

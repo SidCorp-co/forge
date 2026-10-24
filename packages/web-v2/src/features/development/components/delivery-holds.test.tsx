@@ -55,6 +55,7 @@ describe("the Delivery page's held list", () => {
     expect(screen.getAllByTestId("hold-group").map((g) => g.dataset.key)).toEqual(["0.3.0"]);
     expect(screen.getAllByTestId("delivery-hold").map((h) => h.dataset.kind)).toEqual(["release"]);
     expect(screen.getByText("Release 0.3.0")).toBeTruthy();
+    expect(screen.getAllByTestId("delivery-hold")[0]?.textContent).toContain("ISS-2");
   });
 
   it("says nothing is held when no hold stands", () => {

@@ -8,7 +8,10 @@ import type { OverviewHold, OverviewHoldGroup, OverviewHolds } from "../types";
 
 type By = "issue" | "release";
 
-function HoldEntry({ hold }: { hold: OverviewHold }) {
+// core says a cause as a clause ("it failed: …"); standing alone on its line it opens with a capital
+const sentenceCase = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
+function HoldEntry({ hold, slug, withIssues }: { hold: OverviewHold; slug: string; withIssues: boolean }) {
   const t = useCopy();
   const time = useTimeFormat();
   const language = useInterfaceLanguage();
@@ -20,11 +23,21 @@ function HoldEntry({ hold }: { hold: OverviewHold }) {
     >
       <span className="w-24 shrink-0 text-12 font-semibold text-muted">{t(`overview.hold.kind.${hold.kind}`)}</span>
       <div className="flex min-w-0 flex-col gap-1">
+        {withIssues && hold.issues.length > 0 ? (
+          <span className="flex flex-wrap gap-x-2">
+            {hold.issues.map((k) => (
+              <Link key={k} href={issueHref(slug, k)} className="font-mono text-12 font-semibold text-link no-underline hover:underline">
+                {k}
+              </Link>
+            ))}
+          </span>
+        ) : null}
         <span className="text-13 text-fg" data-testid="hold-cause">
-          {said(hold.says.cause, language)}
+          {sentenceCase(said(hold.says.cause, language))}
         </span>
         <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5">
           <WaitingOn w={hold.waitingOn} />
+          {hold.waitingOn.dueAt ? <span className="text-12 text-muted">{t("overview.hold.due", { at: time.dateTime(hold.waitingOn.dueAt) })}</span> : null}
           {hold.since ? <span className="text-12 text-subtle">{t("overview.hold.since", { age: time.age(hold.since) })}</span> : null}
         </div>
       </div>
@@ -48,7 +61,7 @@ function Group({ group, by, slug }: { group: OverviewHoldGroup; by: By; slug: st
       </div>
       <ul className="divide-y divide-line-subtle">
         {group.holds.map((h) => (
-          <HoldEntry key={`${h.kind}:${h.runId ?? h.issues.join(",")}`} hold={h} />
+          <HoldEntry key={`${h.kind}:${h.runId ?? h.issues.join(",")}`} hold={h} slug={slug} withIssues={by === "release"} />
         ))}
       </ul>
     </li>
