@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-24T21:35:09.803Z",
+  "generatedAt": "2026-10-24T21:54:42.251Z",
   "signals": {
     "ci": {
       "available": false,
@@ -85,9 +85,9 @@
   "moving": {
     "count": 3,
     "window": {
-      "from": "2026-10-24T21:30:00.000Z",
-      "to": "2026-10-24T22:00:00.000Z",
-      "now": "2026-10-24T21:35:09.803Z"
+      "from": "2026-10-24T21:45:00.000Z",
+      "to": "2026-10-24T22:15:00.000Z",
+      "now": "2026-10-24T21:54:42.251Z"
     },
     "lanes": [
       {
@@ -275,7 +275,7 @@
         "holds": [
           {
             "kind": "failed",
-            "runId": "e129be3d-0a38-4fd2-89d5-b37147559b86",
+            "runId": "f7b60c7e-5224-4f45-93d2-c4149c5ff2db",
             "issues": [
               "ISS-3"
             ],
@@ -300,7 +300,7 @@
                 }
               }
             },
-            "since": "2026-10-24T20:35:09.726Z",
+            "since": "2026-10-24T20:54:42.175Z",
             "cause": "Hit the model provider's usage limit",
             "says": {
               "cause": {
@@ -316,7 +316,7 @@
         "holds": [
           {
             "kind": "blocked",
-            "runId": "30df061e-3f2f-4c8e-b64d-537d29c015f9",
+            "runId": "3ac59af2-21dc-4e7f-a343-f8c923d9c0bd",
             "issues": [
               "ISS-7"
             ],
@@ -347,8 +347,8 @@
                 }
               }
             },
-            "since": "2026-10-24T21:15:09.743Z",
-            "cause": "No runner has checked in recently",
+            "since": "2026-10-24T21:34:42.184Z",
+            "cause": "The runners have not checked in recently",
             "says": {
               "cause": {
                 "key": "overview.hold.cause.gate.runnerStale"
@@ -363,7 +363,7 @@
         "holds": [
           {
             "kind": "job",
-            "runId": "05323833-e3d7-4672-be53-8b03c817935f",
+            "runId": "4388f79f-258a-4220-b7b9-15d01125bb10",
             "issues": [
               "ISS-1"
             ],
@@ -375,7 +375,7 @@
               "act": "resume it when the wait ends",
               "rule": "held all_devices_exhausted: the release sweep retries it once jobs.retry_after_at has passed",
               "ref": null,
-              "dueAt": "2026-10-24T22:35:09.698Z",
+              "dueAt": "2026-10-24T22:54:42.159Z",
               "says": {
                 "who": {
                   "key": "overview.hold.who.forge"
@@ -391,7 +391,7 @@
                 }
               }
             },
-            "since": "2026-10-24T21:20:09.698Z",
+            "since": "2026-10-24T21:39:42.158Z",
             "cause": "Every runner was busy; it retries by itself",
             "says": {
               "cause": {
@@ -407,7 +407,7 @@
         "holds": [
           {
             "kind": "job",
-            "runId": "6222f16a-7e95-46ca-91e2-5ec8a4824d50",
+            "runId": "83703e3f-41cc-43b2-b0b2-c881b8dc2dcf",
             "issues": [
               "ISS-2"
             ],
@@ -446,7 +446,7 @@
                 }
               }
             },
-            "since": "2026-10-24T21:20:09.716Z",
+            "since": "2026-10-24T21:39:42.169Z",
             "cause": "Retried too many times; it will not resume itself",
             "says": {
               "cause": {
@@ -491,8 +491,8 @@
                 }
               }
             },
-            "since": "2026-10-24T21:25:09.737Z",
-            "cause": "No runner serving this project is online",
+            "since": "2026-10-24T21:44:42.180Z",
+            "cause": "Every runner serving this project is offline",
             "says": {
               "cause": {
                 "key": "issues.releaseHold.cause.noRunnerOnline"
@@ -538,8 +538,8 @@
                 }
               }
             },
-            "since": "2026-10-24T21:25:09.737Z",
-            "cause": "No runner serving this project is online",
+            "since": "2026-10-24T21:44:42.180Z",
+            "cause": "Every runner serving this project is offline",
             "says": {
               "cause": {
                 "key": "issues.releaseHold.cause.noRunnerOnline"

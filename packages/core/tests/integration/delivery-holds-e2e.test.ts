@@ -181,7 +181,7 @@ describe('the Delivery overview lists each hold with its cause and who acts', ()
     const d = await overview();
     const [h] = holdsOn(d, 'ISS-6');
     expect(h).toMatchObject({ kind: 'release', runId: null, issues: ['ISS-6'] });
-    expect(h?.cause).toBe('No runner serving this project is online');
+    expect(h?.cause).toBe('Every runner serving this project is offline');
     expect(h?.code).toBe('NO_RUNNER_ONLINE');
     expect(h?.waitingOn).toMatchObject({ who: "The runner's owner", act: 'bring a runner online' });
     expect(h?.release).toEqual(expect.any(String));
@@ -195,7 +195,7 @@ describe('the Delivery overview lists each hold with its cause and who acts', ()
     const runId = await runWithJob(id, { status: 'queued' });
     const [h] = holdsOn(await overview(), 'ISS-7');
     expect(h).toMatchObject({ kind: 'blocked', runId });
-    expect(h?.cause).toBe('No runner has checked in recently');
+    expect(h?.cause).toBe('The runners have not checked in recently');
     expect(h?.code).toBe('runner_stale');
     expect(h?.waitingOn).toMatchObject({ who: "The runner's owner", act: 'bring a runner online' });
   });

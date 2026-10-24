@@ -48,7 +48,7 @@ describe("the Delivery page's held list", () => {
     expect(holds[0]?.textContent).toContain("Every runner was busy; it retries by itself");
     expect(holds[0]?.textContent).toContain("Forge");
     expect(holds[0]?.textContent).toContain("resume it once the gate clears");
-    expect(holds[1]?.textContent).toContain("No runner serving this project is online");
+    expect(holds[1]?.textContent).toContain("Every runner serving this project is offline");
   });
 
   it("keeps each cause's code off the line, in its title for the technical reader", () => {

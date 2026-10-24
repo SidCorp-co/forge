@@ -66,10 +66,10 @@ const coded = () =>
 const byIssue = () => [
   ...has("Held"),
   ...has("Hit the model provider's usage limit"),
-  ...has("No runner has checked in recently"),
+  ...has("The runners have not checked in recently"),
   ...has("Every runner was busy; it retries by itself"),
   ...has("Retried too many times; it will not resume itself"),
-  ...has("No runner serving this project is online"),
+  ...has("Every runner serving this project is offline"),
   ...has("The runner's owner"),
   ...has("bring a runner online"),
   ...has("resume it when the wait ends"),
