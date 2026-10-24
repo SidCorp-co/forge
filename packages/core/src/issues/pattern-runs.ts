@@ -37,7 +37,8 @@ async function sessionNamed(
      WHERE s.device_id = ${args.box}
        AND s.project_id = ${args.projectId}
        AND s.status NOT IN (${terminalSessionList})
-       AND (s.id = ${args.run} OR r.id = ${args.run} OR r.metadata->>'boxRunId' = ${args.run})
+       -- compared as text: a \`run\` that is no uuid names no session, never a failed query
+       AND (s.id::text = ${args.run} OR r.id::text = ${args.run} OR r.metadata->>'boxRunId' = ${args.run})
      LIMIT 1
   `)) as unknown as Array<{ id: string }>;
   return rows[0]?.id ?? null;

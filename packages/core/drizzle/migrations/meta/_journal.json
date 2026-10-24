@@ -3382,6 +3382,13 @@
       "when": 1828483200000,
       "tag": "0527_a_design_names_no_module_where_the_project_declares_none",
       "breakpoints": true
+    },
+    {
+      "idx": 528,
+      "version": "7",
+      "when": 1828569600000,
+      "tag": "0528_a_verdict_names_the_run_that_recorded_it",
+      "breakpoints": true
     }
   ]
 }

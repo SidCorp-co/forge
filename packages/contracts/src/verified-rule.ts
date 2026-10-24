@@ -40,6 +40,33 @@ export function unverifiedWhy(
 	return null;
 }
 
+/** The name a verdict is answered with where it is kept and never counts: the building run's own pass or short under an independent judge (ISS-475). */
+export const VERDICT_BY_BUILDER = "VERDICT_BY_BUILDER";
+
+/** Why a verdict just recorded will never count as verified, by name; null where it may. */
+export interface NotCounted {
+	code: typeof VERDICT_BY_BUILDER;
+	detail: string;
+}
+
+/**
+ * What a verdict's write answers about counting (REQ-36 BC-16): under an independent judge, the
+ * building run's pass or short is kept as that run's evidence, with its probe (BC-6), and named here,
+ * since no count of proof will ever read it (`unverifiedWhy`). A fail counts whoever records it.
+ */
+export function notCountedOf(
+	v: JudgedVerdict,
+	judge: PolicyQaMode | null,
+): NotCounted | null {
+	if (judge !== "independent" || !v.byBuilder) return null;
+	if (v.verdict !== "pass" && v.verdict !== "short") return null;
+	return {
+		code: VERDICT_BY_BUILDER,
+		detail:
+			"recorded by the run that built this issue, so it is kept as that run's evidence and never counts: this project counts only its independent judge's verdict, judged on the release that carries the work. A judge on the building run's box names itself in `run`",
+	};
+}
+
 /** Whether a verdict is not the independent judge's: anything but a fail, from the builder or from nobody named. */
 const notTheJudges = (v: JudgedVerdict) =>
 	v.verdict !== null && v.verdict !== "fail" && (v.byBuilder || !v.authored);

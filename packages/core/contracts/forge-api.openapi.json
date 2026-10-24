@@ -15083,6 +15083,11 @@
                       }
                     ]
                   },
+                  "run": {
+                    "maxLength": 200,
+                    "minLength": 1,
+                    "type": "string"
+                  },
                   "verdict": {
                     "maxLength": 32,
                     "minLength": 1,

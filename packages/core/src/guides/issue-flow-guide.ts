@@ -225,12 +225,18 @@ the mark or the decision answers it, so the business question is asked on its ow
   recorded at \`head\` instead.
 
 ### 5. Prove it, one criterion at a time
-Read \`qa\` from the policy. **\`self\`** — this run judges. **\`independent\`** — another run judges, so
-this run lands, leaves the criteria standing as that run's brief, and writes no verdict that would
-count for it; the brief says when the owner has ruled otherwise for this run.
+Read \`qa\` from the policy. **\`self\`** — this run judges. **\`independent\`** — another run judges,
+on the release that carries the work, so this run lands and leaves the criteria standing as that
+run's brief. Its own \`pass\` or \`short\` is still written, with the probe it ran: it is kept as
+this run's evidence, the merge check runs that probe, and it never counts. Its answer says so,
+\`notCounted: { code: 'VERDICT_BY_BUILDER' }\`. A \`fail\` counts whoever writes it. The building
+run is the one that took the issue before its work landed (it holds the lease or recorded the checks);
+each verdict names the run that wrote it, the run holding the issue on the caller's box unless the
+body names another in \`run\` (the box's run id), and an unknown \`run\` is refused
+\`VERDICT_RUN_UNKNOWN\`.
 
 Judge each criterion at the head you will land and write its verdict as you judge it:
-\`POST /api/issues/:id/verdicts\` \`{ criterion, verdict, reason, identity: { kind: 'commit', sha }, evidence, withoutClip? }\`,
+\`POST /api/issues/:id/verdicts\` \`{ criterion, verdict, reason, identity: { kind: 'commit', sha }, evidence, withoutClip?, run? }\`,
 the sha whole (40 hex). A \`pass\`, \`fail\` or \`short\` cites what it was taken from: an attachment's
 name (\`POST /api/issues/:id/attachments\`, multipart, field \`file\`, uploaded first — on a runner
 box \`forge-runner api issues/<id>/attachments -F file=@<path>\`), a URL, or a path inside the

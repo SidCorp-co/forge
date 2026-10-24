@@ -70,5 +70,7 @@ export const verdictPostSchema = z
     probe: criterionProbeSchema.optional(),
     /** Why a judgement of an observable criterion cites no screen clip (REQ-40 BC-4). */
     withoutClip: z.string().trim().min(1).max(REASON_TEXT_MAX).optional(),
+    /** The run recording it, on a box whose runs share one credential: the box's run id, or core's session or run id (ISS-475). */
+    run: z.string().trim().min(1).max(200).optional(),
   })
   .strict();

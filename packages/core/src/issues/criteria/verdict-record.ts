@@ -4,7 +4,8 @@
 import type { CriterionClass, CriterionJudge } from '@forge/contracts/issue-design';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import { RELEASE_CLIP_MIMES } from '@forge/contracts/release-page';
-import { and, eq, inArray, isNull } from 'drizzle-orm';
+import { type NotCounted, notCountedOf } from '@forge/contracts/verified-rule';
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import type { Tx } from '../../db/client.js';
 import {
   criterionVerdicts,
@@ -18,8 +19,10 @@ import { contractLookup } from '../../messaging/verdict-contract.js';
 import { designLookup } from '../../messaging/verdict-design.js';
 import { emitEvent } from '../../outbox/index.js';
 import type { Actor } from '../activity.js';
+import { verdictByBuilderSql } from '../built-by.js';
 import { criterionRoutesOf } from '../design-record.js';
-import { readProjectDocument } from '../ports.js';
+import { runOfCall } from '../pattern-runs.js';
+import { readJudge, readProjectDocument } from '../ports.js';
 import type { RecordEventField } from '../record-events/store.js';
 import { writeKernelRecord } from '../record-events/store.js';
 import { probeNote } from './probe-rules.js';
@@ -97,6 +100,7 @@ const VERDICT_PATHS: Partial<Record<VerdictRefusal['code'], string>> = {
   VERDICT_SKIP_REASON_REQUIRED: '/reason',
   VERDICT_CLIP_REQUIRED: '/evidence',
   VERDICT_CRITERION_UNKNOWN: '/criterion',
+  VERDICT_RUN_UNKNOWN: '/run',
 };
 
 /** The judgements of an observable criterion that owe a clip: every one but a skip, which judged nothing. */
@@ -293,7 +297,73 @@ function probeField(
   return note ? [{ key: 'probe', value: note }] : [];
 }
 
-/** Insert one verdict, refused by name where the draft, its criterion or its design is wrong. */
+/**
+ * The run session recording a verdict (ISS-475): the one a door already resolved, else the `run` the
+ * call names, else the session holding the issue's lease on the author's box (`pattern-runs.ts:runOfCall`,
+ * as a review resolves its reviewer). A `run` naming no live session of the box is refused.
+ */
+async function recordingSession(
+  tx: Tx,
+  args: {
+    issue: { id: string; projectId: string };
+    criterion: number;
+    author: VerdictAuthor;
+    run?: string | undefined;
+    runSession?: string | null | undefined;
+  },
+): Promise<string | null> {
+  if (args.runSession !== undefined) return args.runSession;
+  const resolved = await runOfCall(
+    {
+      projectId: args.issue.projectId,
+      issueId: args.issue.id,
+      box: args.author.deviceId,
+      run: args.run,
+    },
+    tx,
+  );
+  if (resolved.ok) return resolved.value.session;
+  const [first] = resolved.refusals;
+  throw verdictRefused({
+    code: 'VERDICT_RUN_UNKNOWN',
+    criterion: args.criterion,
+    detail: first?.detail ?? `\`run\` ${args.run ?? ''} names no live run of this box`,
+  });
+}
+
+/**
+ * Whether the verdict just written will never count, by name (contracts `verified-rule.ts:notCountedOf`):
+ * read through the same builder rule every count of proof reads (`built-by.ts`).
+ */
+async function notCountedFor(
+  tx: Tx,
+  issue: { id: string; projectId: string },
+  verdict: { id: string; value: string },
+): Promise<NotCounted | null> {
+  if (verdict.value !== 'pass' && verdict.value !== 'short') return null;
+  const judge = await readJudge(issue.projectId);
+  if (judge !== 'independent') return null;
+  const rows = (await tx.execute(sql`
+    SELECT ${verdictByBuilderSql({
+      issueId: sql`v.issue_id`,
+      authorUser: sql`v.author_user_id`,
+      authorDevice: sql`v.author_device_id`,
+      at: sql`v.created_at`,
+      runSession: sql`v.run_session_id`,
+    })} AS by_builder
+      FROM criterion_verdicts v WHERE v.id = ${verdict.id}`)) as unknown as {
+    by_builder: boolean | null;
+  }[];
+  return notCountedOf(
+    { verdict: verdict.value, byBuilder: rows[0]?.by_builder === true, authored: true },
+    judge,
+  );
+}
+
+/**
+ * Insert one verdict, refused by name where the draft, its criterion or its design is wrong. It
+ * answers, by name, where the verdict is kept and will never count (`notCounted`).
+ */
 export async function recordVerdict(
   tx: Tx,
   args: {
@@ -302,8 +372,12 @@ export async function recordVerdict(
     author: VerdictAuthor;
     commentId?: string | null;
     readDraft?: DraftReader;
+    /** The run the call names (the box's run id, or core's session or run id). */
+    run?: string | undefined;
+    /** The recording session a door already resolved; given, `run` is not read. */
+    runSession?: string | null | undefined;
   },
-): Promise<{ id: string }> {
+): Promise<{ id: string; notCounted: NotCounted | null }> {
   const { issue, draft, author } = args;
   const fault = verdictDraftFault(draft);
   if (fault) throw verdictRefused(fault);
@@ -346,6 +420,13 @@ export async function recordVerdict(
   );
   const noClip = await clipFault(tx, issue.id, draft, route?.class ?? null);
   if (noClip) throw verdictRefused(noClip);
+  const runSessionId = await recordingSession(tx, {
+    issue,
+    criterion: draft.criterion,
+    author,
+    run: args.run,
+    runSession: args.runSession,
+  });
   const probeId = await probeOfVerdict(tx, {
     issueId: issue.id,
     projectId: issue.projectId,
@@ -368,9 +449,11 @@ export async function recordVerdict(
       commentId: args.commentId ?? null,
       judge,
       probeId,
+      runSessionId,
     })
     .returning({ id: criterionVerdicts.id });
   if (!row) throw new Error('criterion_verdicts insert returned no row');
+  const notCounted = await notCountedFor(tx, issue, { id: row.id, value: draft.verdict });
   await keepFailAsCorrection(tx, {
     issue,
     verdictId: row.id,
@@ -387,6 +470,8 @@ export async function recordVerdict(
       ...verdictRecordFields({ id: row.id, draft, identity }),
       { key: 'judge', value: judge },
       ...probeField(draft.verdict, route?.class ?? null, probeId),
+      ...(runSessionId ? [{ key: 'run-session', value: runSessionId }] : []),
+      ...(notCounted ? [{ key: 'not-counted', value: notCounted.code }] : []),
     ],
     commentId: args.commentId ?? null,
   });
@@ -399,5 +484,5 @@ export async function recordVerdict(
       commitSha: identity.commitSha,
     });
   }
-  return row;
+  return { id: row.id, notCounted };
 }

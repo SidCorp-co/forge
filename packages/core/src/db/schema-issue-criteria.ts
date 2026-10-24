@@ -29,6 +29,7 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
+import { agentSessions } from './schema-agent-sessions.js';
 import { users } from './schema-auth.js';
 import { comments } from './schema-comments.js';
 import { issues } from './schema-issues.js';
@@ -141,6 +142,11 @@ export const criterionVerdicts = pgTable(
     judge: text('judge', { enum: CRITERION_JUDGES }),
     /** The kept probe this verdict rests on: sent with it, or the criterion's newest (ISS-469). */
     probeId: uuid('probe_id').references(() => criterionProbes.id, { onDelete: 'restrict' }),
+    /** The run session that recorded it: the `run` the call named, else the one holding the issue's
+     * lease on the caller's box; null where neither, and on rows before 0528 (`issues/built-by.ts`). */
+    runSessionId: uuid('run_session_id').references(() => agentSessions.id, {
+      onDelete: 'set null',
+    }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({

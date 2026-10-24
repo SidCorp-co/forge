@@ -5,7 +5,8 @@
  *   GET  /api/issues/:id/criteria   live criteria in order, each with its latest verdict, and the retired ones with all their verdicts
  *   PUT  /api/issues/:id/criteria   the plan step's write: replace the criteria (renders the text)
  *   POST /api/issues/:id/criteria/traces   tie it to business criteria of its requirement (appends; refreshes a trace on an earlier wording)
- *   POST /api/issues/:id/verdicts   one verdict on one criterion, with the probe it keeps
+ *   POST /api/issues/:id/verdicts   one verdict on one criterion, with the probe it keeps, answering
+ *                                   `notCounted` by name where it will never count (ISS-475)
  *   GET  /api/issues/:id/judged-build   the build a verdict on it defaults to (REQ-6 BC-2, BC-4)
  */
 
@@ -114,9 +115,10 @@ issueCriteriaRoutes.post(
         deviceId: c.get('patDeviceId') ?? null,
         agency: restActor(c).agency,
       },
+      run: body.run,
     });
     const criterion = (await readCriteria(issue)).find((row) => row.n === body.criterion);
-    return c.json({ verdictId: written.id, criterion }, 201);
+    return c.json({ verdictId: written.id, criterion, notCounted: written.notCounted }, 201);
   },
 );
 

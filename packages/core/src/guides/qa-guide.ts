@@ -34,7 +34,8 @@ makes it with the pane's credential, so a judge needs no other tool to follow th
 Read these before judging anything, while whoever sent you can still equip you.
 - \`GET /api/projects/:id/policy\` answers \`qa\`. Where it is \`independent\`, a verdict the run that
   built the change wrote is that builder's evidence and counts as no judgement: yours is the one that
-  counts.
+  counts. A verdict answering \`notCounted\` (\`VERDICT_BY_BUILDER\`) was read as the builder's:
+  where the building run is still live on your box, send \`run\` with your box's run id.
 - \`GET /api/projects/:id/issues?status=awaiting_release\` lists the issues whose work landed and waits
   on its release. Their criteria are judged on the build the release ships.
 - \`GET /api/issues/:id/criteria\` lists each live criterion: its statement, its \`class\`

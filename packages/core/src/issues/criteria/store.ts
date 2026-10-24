@@ -539,6 +539,7 @@ export async function liveVerdictsOf(
     authorUser: sql`v.author_user_id`,
     authorDevice: sql`v.author_device_id`,
     at: sql`v.created_at`,
+    runSession: sql`v.run_session_id`,
   });
   const rows = (await executor.execute(sql`
     SELECT c.n, v.id AS v_id, v.verdict, v.reason, v.identity_kind, v.commit_sha, v.runtime_ref,

@@ -274,6 +274,7 @@ export async function recordReview(args: {
           judge: 'review',
         },
         author: { userId: args.author.userId, deviceId: args.box, agency: args.author.agency },
+        runSession: reviewer.session,
       });
     }
     // the review is timed with the issue's checks (REQ-36 BC-14), as kind review, keyed by its record

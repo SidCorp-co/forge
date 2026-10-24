@@ -124,6 +124,7 @@ export async function issueCriteriaOf(
              authorUser: sql`v.author_user_id`,
              authorDevice: sql`v.author_device_id`,
              at: sql`v.verdict_at`,
+             runSession: sql`v.run_session_id`,
            })}) AS by_builder,
            (v.author_user_id IS NOT NULL OR v.author_device_id IS NOT NULL) AS authored
       FROM issue_criteria c
@@ -133,7 +134,7 @@ export async function issueCriteriaOf(
                cv.commit_sha,
                cv.runtime_ref, cv.design_workflow_id, cv.design_revision, cv.contract_ref,
                cv.contract_version, cv.storefront_drafts,
-               cv.storefront_environment, cv.author_user_id, cv.author_device_id
+               cv.storefront_environment, cv.author_user_id, cv.author_device_id, cv.run_session_id
           FROM criterion_verdicts cv
          WHERE cv.criterion_id = c.id
       ) v ON true

@@ -101,6 +101,7 @@ export async function carriedVerdictsOf(
         authorUser: sql`${criterionVerdicts.authorUserId}`,
         authorDevice: sql`${criterionVerdicts.authorDeviceId}`,
         at: sql`${criterionVerdicts.createdAt}`,
+        runSession: sql`${criterionVerdicts.runSessionId}`,
       }),
       authored: sql<boolean>`(${criterionVerdicts.authorUserId} IS NOT NULL OR ${criterionVerdicts.authorDeviceId} IS NOT NULL)`,
     })

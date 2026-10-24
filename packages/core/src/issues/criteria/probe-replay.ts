@@ -130,6 +130,8 @@ export async function recordReplayVerdicts(
               withoutClip: 'a probe replay judges by request and records no screen',
             },
             author,
+            // a replay is no run's: read off its box, as before any verdict named one
+            runSession: null,
           }),
         ),
       );
