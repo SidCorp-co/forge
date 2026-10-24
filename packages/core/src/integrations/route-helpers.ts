@@ -148,13 +148,25 @@ export async function refuseSwitchOnOverRemoved(
 /** A key no check has judged yet: the last check was of a key no longer used (ISS-1421 r21). */
 export const NOT_CHECKED = { lastHealthStatus: null, lastHealthDetail: null, lastHealthAt: null };
 
+/**
+ * What a saved credential does to the last check, at every door that saves one (ISS-1259 r2): a new
+ * key leaves the connection Not checked yet, and a save carrying no key leaves the check standing.
+ */
+export function healthOnKeySaved(
+  provider: string,
+  sent: Record<string, unknown>,
+): Partial<typeof NOT_CHECKED> {
+  return keyIn(provider, sent) ? NOT_CHECKED : {};
+}
+
 /** A key saved from a project reads Not checked yet, and turns a removed connection back on (ISS-1421 r26). */
 export function keySavedHere(
   connection: Parameters<typeof isRemovedConnection>[0],
   sent: Record<string, unknown>,
 ): Partial<typeof NOT_CHECKED & { active: boolean }> {
-  if (!keyIn(connection.provider, sent)) return {};
-  return isRemovedConnection(connection) ? { ...NOT_CHECKED, active: true } : NOT_CHECKED;
+  const health = healthOnKeySaved(connection.provider, sent);
+  if (!keyIn(connection.provider, sent) || !isRemovedConnection(connection)) return health;
+  return { ...health, active: true };
 }
 
 /** The org tier of a binding PATCH, naming who may change what the asker sent (ISS-1421 r26). */

@@ -96,7 +96,7 @@ export async function lookupSpeakerProfile(args: {
     };
   }
   const config = effectiveConfig<RocketChatConfig>(pair);
-  const secrets = decryptConnectionSecrets<RocketChatSecrets>(pair.connection);
+  const secrets = decryptConnectionSecrets<RocketChatSecrets>(pair.connection, pair.binding.id);
   const namespace = namespaceFromServerUrl(config.serverUrl ?? '');
   if (!namespace || !secrets.authToken || !secrets.userId) {
     return {

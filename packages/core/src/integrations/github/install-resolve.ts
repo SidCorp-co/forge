@@ -10,6 +10,12 @@
 
 import { HTTPException } from 'hono/http-exception';
 import { effectiveProjectRole } from '../../lib/authz.js';
+import { logger } from '../../logger.js';
+import {
+  CredentialUnreadable,
+  installOwnerUnreadable,
+  type UnreadableCredential,
+} from '../credential-unreadable.js';
 import {
   type BindingWithConnection,
   decryptConnectionSecrets,
@@ -38,12 +44,20 @@ export async function findBindingOwningInstallation(args: {
 }): Promise<BindingWithConnection | null> {
   const doFetch = args.fetchImpl ?? fetch;
   const connections = await listGithubAppsReachableBy(args.userId);
+  // An App this server cannot read is skipped for matching, so it does not refuse an install another
+  // App owns, and is named either way (ISS-1259 r2).
+  const unreadable: UnreadableCredential[] = [];
 
   for (const connection of connections) {
-    const { appId, privateKey } = decryptConnectionSecrets<{
-      appId?: string;
-      privateKey?: string;
-    }>(connection);
+    let secrets: { appId?: string; privateKey?: string };
+    try {
+      secrets = decryptConnectionSecrets(connection, null);
+    } catch (err) {
+      if (!(err instanceof CredentialUnreadable)) throw err;
+      unreadable.push(err.credential);
+      continue;
+    }
+    const { appId, privateKey } = secrets;
     if (!appId || !privateKey) continue;
 
     let ok = false;
@@ -59,6 +73,12 @@ export async function findBindingOwningInstallation(args: {
       ok = false;
     }
     if (!ok) continue;
+    if (unreadable.length > 0) {
+      logger.warn(
+        { installationId: args.installationId, skipped: unreadable.map((c) => c.connectionId) },
+        'github install: matched past Apps whose stored credential this server cannot decrypt',
+      );
+    }
 
     const pairs = (await listBindingsForConnection(connection.id)).filter(
       (p) => p.binding.provider === 'github',
@@ -71,5 +91,6 @@ export async function findBindingOwningInstallation(args: {
     throw installNotCompletable(connection);
   }
 
+  if (unreadable.length > 0) throw installOwnerUnreadable(args.installationId, unreadable);
   return null;
 }

@@ -8,8 +8,9 @@
 import { createCipheriv, createHmac, randomBytes } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  createTestDevice,
   createTestProject,
   createTestUser,
   registerIntegrationsForTest,
@@ -67,6 +68,8 @@ beforeAll(async () => {
   app.route('/api/projects', integrationsRoutes);
   app.route('/api/integration-connections', integrationConnectionsRoutes);
   app.route('/api/webhooks', webhookInboundRoutes);
+  const { speakerLinkProjectRoutes } = await import('../../src/assistant/identity/routes.js');
+  app.route('/api', speakerLinkProjectRoutes);
   app.onError(errorHandler);
 }, 60_000);
 
@@ -90,8 +93,13 @@ beforeEach(async () => {
 
 /** A connection and one binding of it, whose stored secrets this server's key cannot open. */
 async function plant(
-  provider: 'postman' | 'rocketchat' | 'github' | 'coolify',
-  opts: { config?: Record<string, unknown>; role?: 'service' | 'deploy' } = {},
+  provider: 'postman' | 'rocketchat' | 'github' | 'coolify' | 'google' | 'epodsystem',
+  opts: {
+    config?: Record<string, unknown>;
+    bindingConfig?: Record<string, unknown>;
+    role?: 'service' | 'deploy';
+    agentAccess?: 'none' | 'all';
+  } = {},
 ) {
   const connection = await store.createConnection({
     ownerType: 'user',
@@ -111,6 +119,8 @@ async function plant(
     role: opts.role ?? 'service',
     stages: opts.role === 'deploy' ? ['live'] : [],
     integrationSecret: WEBHOOK_SECRET,
+    ...(opts.bindingConfig ? { config: opts.bindingConfig } : {}),
+    ...(opts.agentAccess ? { agentAccess: opts.agentAccess } : {}),
   });
   return { connectionId: connection.id, bindingId: binding.id, sealed };
 }
@@ -282,7 +292,7 @@ describe('entering the credential again', () => {
     expect(res.status).toBe(200);
     const connection = await store.findConnectionById(connectionId);
     if (!connection) throw new Error('the planted connection is gone');
-    expect(store.decryptConnectionSecrets(connection)).toEqual({
+    expect(store.decryptConnectionSecrets(connection, null)).toEqual({
       apiKey: 'PMAK-made-up-replacement-0001',
     });
   });
@@ -297,7 +307,7 @@ describe('entering the credential again', () => {
     expect(res.status).toBe(200);
     const connection = await store.findConnectionById(connectionId);
     if (!connection) throw new Error('the planted connection is gone');
-    expect(store.decryptConnectionSecrets(connection)).toEqual({
+    expect(store.decryptConnectionSecrets(connection, null)).toEqual({
       apiKey: 'PMAK-made-up-replacement-0002',
     });
   });
@@ -402,5 +412,221 @@ describe('a reader that is not an HTTP door', () => {
     const unread = reading.kind === 'unanswered' ? reading.unread.join('\n') : '';
     expectNamed(unread, 'Coolify', [connectionId, bindingId]);
     expect(unread).not.toMatch(/Unsupported state|unable to authenticate/);
+  });
+});
+
+describe('a key saved over the last check', () => {
+  async function testedThenSaved(door: 'binding' | 'connection', apiKey: string) {
+    const { connectionId, bindingId } = await plant('postman');
+    await app.request(`/api/projects/${projectId}/integrations/${bindingId}/test`, {
+      method: 'POST',
+      headers: await headers(),
+    });
+    expect((await lastHealth(connectionId))?.last_health_status).toBe('error');
+    const path =
+      door === 'binding'
+        ? `/api/projects/${projectId}/integrations/${bindingId}`
+        : `/api/integration-connections/${connectionId}`;
+    const res = await app.request(path, {
+      method: 'PATCH',
+      headers: await headers(),
+      body: JSON.stringify({ secrets: { apiKey } }),
+    });
+    expect(res.status).toBe(200);
+    return lastHealth(connectionId);
+  }
+
+  it('reads Not checked yet once the credential is entered again at the binding PATCH', async () => {
+    expect(await testedThenSaved('binding', 'PMAK-made-up-replacement-0003')).toEqual({
+      last_health_status: null,
+      last_health_detail: null,
+      last_health_at: null,
+    });
+  });
+
+  it('reads Not checked yet once the credential is entered again at the connection PATCH', async () => {
+    expect(await testedThenSaved('connection', 'PMAK-made-up-replacement-0004')).toEqual({
+      last_health_status: null,
+      last_health_detail: null,
+      last_health_at: null,
+    });
+  });
+
+  it('forgets an ordinary failed check when a new key is saved at the binding PATCH', async () => {
+    const connection = await store.createConnection({
+      ownerType: 'user',
+      ownerId: userId,
+      provider: 'postman',
+      displayName: 'Readable postman',
+      secrets: { apiKey: 'PMAK-made-up-old-0005' },
+    });
+    const binding = await store.createBinding({
+      connectionId: connection.id,
+      projectId,
+      provider: 'postman',
+      role: 'service',
+    });
+    await harness.db.execute(sql`
+      UPDATE integration_connections
+      SET last_health_status = 'needs_reauth', last_health_detail = 'refused', last_health_at = now()
+      WHERE id = ${connection.id}
+    `);
+    const res = await app.request(`/api/projects/${projectId}/integrations/${binding.id}`, {
+      method: 'PATCH',
+      headers: await headers(),
+      body: JSON.stringify({ secrets: { apiKey: 'PMAK-made-up-new-0005' } }),
+    });
+    expect(res.status).toBe(200);
+    expect(await lastHealth(connection.id)).toEqual({
+      last_health_status: null,
+      last_health_detail: null,
+      last_health_at: null,
+    });
+  });
+});
+
+describe('a reader that holds the binding names it', () => {
+  async function unreadableRaised(run: () => Promise<unknown>) {
+    const { CredentialUnreadable } = await import(
+      '../../src/integrations/credential-unreadable.js'
+    );
+    const thrown = await run().then(
+      () => undefined,
+      (err: unknown) => err,
+    );
+    expect(thrown).toBeInstanceOf(CredentialUnreadable);
+    return thrown as InstanceType<typeof CredentialUnreadable>;
+  }
+
+  function expectBindingNamed(
+    err: { message: string; credential: { bindingId?: string } },
+    planted: { connectionId: string; bindingId: string; sealed: Buffer },
+  ) {
+    expect(err.credential.bindingId).toBe(planted.bindingId);
+    expect(err.message).toContain(
+      `(connection ${planted.connectionId}, read through binding ${planted.bindingId})`,
+    );
+    expect(err.message).toContain('Enter the credential again');
+    expectNothingSecret(err.message, planted.sealed);
+  }
+
+  it('refuses the speaker-link proposal 409 naming the Rocket.Chat binding', async () => {
+    const planted = await plant('rocketchat', { config: { serverUrl: 'http://127.0.0.1:9' } });
+    const res = await app.request(`/api/projects/${projectId}/speaker-links/proposals`, {
+      method: 'POST',
+      headers: await headers(),
+      body: JSON.stringify({ source: 'rocketchat', externalId: 'made-up-speaker' }),
+    });
+    expect(res.status).toBe(409);
+    const refusal = (await res.json()) as Refusal;
+    expect(refusal.code).toBe('CREDENTIAL_UNREADABLE');
+    expectNamed(refusal.message, 'Rocket.Chat', [planted.connectionId, planted.bindingId]);
+    expect(refusal.details).toMatchObject({ bindingId: planted.bindingId });
+    expectNothingSecret(JSON.stringify(refusal), planted.sealed);
+  });
+
+  it('names the binding to the Rocket.Chat room a reply is delivered to', async () => {
+    const planted = await plant('rocketchat', {
+      config: { serverUrl: 'http://127.0.0.1:9' },
+      bindingConfig: { rids: ['made-up-room'] },
+    });
+    const { rocketChatConversationPorts, rocketChatVenueId } = await import(
+      '../../src/integrations/rocketchat/conversation-port.js'
+    );
+    const venue = {
+      adapter: 'rocketchat' as const,
+      externalId: rocketChatVenueId('127.0.0.1:9', 'made-up-room'),
+      shape: 'channel' as const,
+      projectId,
+    };
+    const err = await unreadableRaised(() =>
+      rocketChatConversationPorts.deliver(venue as never, { text: 'made-up reply' } as never),
+    );
+    expectBindingNamed(err, planted);
+  });
+
+  it("names the binding to the agent's GitHub client", async () => {
+    const planted = await plant('github', {
+      bindingConfig: { owner: 'acme', repo: 'desk', installationId: 1 },
+      agentAccess: 'all',
+    });
+    const { githubAgentClient } = await import('../../src/integrations/github/agent-client.js');
+    expectBindingNamed(await unreadableRaised(() => githubAgentClient(projectId)), planted);
+  });
+
+  it("names the binding to the project's GitHub repository client", async () => {
+    const planted = await plant('github', {
+      bindingConfig: { owner: 'acme', repo: 'desk', installationId: 1 },
+    });
+    const { githubRepoClient } = await import('../../src/integrations/github/client.js');
+    expectBindingNamed(await unreadableRaised(() => githubRepoClient(projectId)), planted);
+  });
+
+  it('names the binding a pull request was stored under', async () => {
+    const planted = await plant('github', {
+      bindingConfig: { owner: 'acme', repo: 'desk', installationId: 1 },
+    });
+    const { githubBindingCredential } = await import(
+      '../../src/integrations/github/binding-credential.js'
+    );
+    expectBindingNamed(
+      await unreadableRaised(() => githubBindingCredential(planted.bindingId)),
+      planted,
+    );
+  });
+
+  it("names the binding to a runner box's git credential", async () => {
+    const planted = await plant('github', {
+      bindingConfig: { owner: 'acme', repo: 'desk', installationId: 1 },
+    });
+    const device = await createTestDevice(harness.db, userId);
+    await harness.db.execute(sql`
+      INSERT INTO runners (id, project_id, type, device_id, status, name)
+      VALUES (gen_random_uuid(), ${projectId}, 'claude-code', ${device.id}, 'online', 'made-up-runner')
+    `);
+    const { mintGitCredentialForDevice } = await import('../../src/git/github-app-credential.js');
+    expectBindingNamed(
+      await unreadableRaised(() =>
+        mintGitCredentialForDevice({ deviceId: device.id, host: 'github.com', path: 'acme/desk.git' }),
+      ),
+      planted,
+    );
+  });
+
+  it('names the binding to the Google Sheets tool', async () => {
+    const planted = await plant('google', { agentAccess: 'all' });
+    const { googleSheetsInfo } = await import('../../src/integrations/google/commands.js');
+    expectBindingNamed(
+      await unreadableRaised(() =>
+        googleSheetsInfo({ projectId, spreadsheetId: 'made-up-spreadsheet' }),
+      ),
+      planted,
+    );
+  });
+
+  it('names the binding to the storefront target tool, rather than reading as a failed live query', async () => {
+    const planted = await plant('epodsystem', { bindingConfig: { storeId: 'made-up-store' } });
+    const { forgeStorefrontTargetTool } = await import(
+      '../../src/mcp/tools/forge-storefront-target.js'
+    );
+    const tool = forgeStorefrontTargetTool({ principal: { kind: 'user', userId } } as never);
+    expectBindingNamed(await unreadableRaised(() => tool.handler({ projectId } as never)), planted);
+  });
+
+  it('names the binding in what the MCP resolver logs as it skips the server', async () => {
+    const planted = await plant('epodsystem', { agentAccess: 'all' });
+    const { logger } = await import('../../src/logger.js');
+    const warn = vi.spyOn(logger, 'warn');
+    try {
+      const { resolveGrantedMcpEntries } = await import('../../src/integrations/mcp-resolver.js');
+      expect(await resolveGrantedMcpEntries(projectId)).toEqual({});
+      const logged = warn.mock.calls
+        .map(([fields]) => (fields as { err?: unknown }).err)
+        .find((err) => err instanceof Error && err.name === 'CredentialUnreadable');
+      expect(logged).toBeDefined();
+      expectBindingNamed(logged as never, planted);
+    } finally {
+      warn.mockRestore();
+    }
   });
 });

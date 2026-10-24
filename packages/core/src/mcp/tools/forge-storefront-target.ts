@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { CredentialUnreadable } from '../../integrations/credential-unreadable.js';
 import { epodsystemEndpoint } from '../../integrations/epodsystem/endpoints.js';
 import { fetchStorefrontThemes } from '../../integrations/epodsystem/themes.js';
 import type { EpodsystemConfig, EpodsystemSecrets } from '../../integrations/epodsystem/types.js';
@@ -32,10 +33,16 @@ async function resolveLiveThemes(
 ): Promise<Awaited<ReturnType<typeof fetchStorefrontThemes>>> {
   if (!config.storeId) return null;
   try {
-    const secrets = decryptConnectionSecrets<EpodsystemSecrets>(pair.connection);
+    const secrets = decryptConnectionSecrets<EpodsystemSecrets>(
+      pair.connection,
+      pair.binding.id,
+    );
     if (!secrets?.apiKey) return null;
     return await fetchStorefrontThemes(secrets.apiKey, config.storeId);
-  } catch {
+  } catch (err) {
+    // A key this server cannot open is not a live query that failed: it names the binding and the
+    // way out, where `themesResolvedLive: false` would only say to stop (ISS-1259 r2).
+    if (err instanceof CredentialUnreadable) throw err;
     return null;
   }
 }

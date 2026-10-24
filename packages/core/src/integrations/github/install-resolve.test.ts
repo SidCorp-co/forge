@@ -15,10 +15,31 @@ vi.mock('../../lib/authz.js', () => ({
   effectiveProjectRole: (...a: unknown[]) => projectRole(...a),
 }));
 
-vi.mock('../store.js', () => ({
-  listBindingsForConnection: (...a: unknown[]) => listBindings(...a),
-  decryptConnectionSecrets: (c: { secrets?: Record<string, string> }) => c.secrets ?? {},
-}));
+// The provider's label is the registry's subject, not this resolver's.
+vi.mock('../health-words.js', () => ({ providerLabel: () => 'GitHub' }));
+
+// A connection planted with `secrets: 'unreadable'` answers as the store answers one whose stored
+// credential this server's key cannot open.
+vi.mock('../store.js', async () => {
+  const { CredentialUnreadable } = await import('../credential-unreadable.js');
+  return {
+    listBindingsForConnection: (...a: unknown[]) => listBindings(...a),
+    decryptConnectionSecrets: (
+      c: { id: string; provider: string; secrets?: Record<string, string> | 'unreadable' | null },
+      bindingId: string | null,
+    ) => {
+      if (c.secrets === 'unreadable') {
+        throw new CredentialUnreadable({
+          connectionId: c.id,
+          provider: c.provider,
+          displayName: null,
+          ...(bindingId ? { bindingId } : {}),
+        });
+      }
+      return c.secrets ?? {};
+    },
+  };
+});
 
 // Which Apps the caller may be completing an install for is its own subject
 // (install-candidates.ts, proved against real Postgres in the e2e); what is
@@ -31,7 +52,7 @@ vi.mock('./app-auth.js', () => ({ buildAppJwt: (appId: string) => `jwt-for-${app
 
 import { findBindingOwningInstallation, installNotCompletable } from './install-resolve.js';
 
-function connection(id: string, secrets: Record<string, string> | null) {
+function connection(id: string, secrets: Record<string, string> | 'unreadable' | null) {
   return { id, provider: 'github', secrets };
 }
 
@@ -164,6 +185,63 @@ describe('an App bound to more than one project', () => {
 
     expect(
       await findBindingOwningInstallation({ userId: 'u1', installationId: 42, fetchImpl: refused }),
+    ).toBeNull();
+  });
+});
+
+describe('an App whose stored credential cannot be decrypted', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    projectRole.mockResolvedValue({ role: 'admin' });
+    listBindings.mockImplementation(async (id: string) => [bindingFor(id)]);
+  });
+  const owns = (appId: string) =>
+    vi.fn(async (_u: string, init: { headers: Record<string, string> }) => ({
+      ok: init.headers.authorization === `Bearer jwt-for-${appId}`,
+    })) as unknown as typeof fetch;
+
+  it('is skipped, so a readable App that owns the installation still records it', async () => {
+    listConnections.mockResolvedValue([
+      connection('a', 'unreadable'),
+      connection('b', { appId: '2', privateKey: 'k2' }),
+    ]);
+
+    const found = await findBindingOwningInstallation({
+      userId: 'u1',
+      installationId: 42,
+      fetchImpl: owns('2'),
+    });
+
+    expect(found?.binding.id).toBe('bind-b');
+  });
+
+  it('refuses by name when no readable App owns it and the unreadable one might', async () => {
+    listConnections.mockResolvedValue([
+      connection('a', 'unreadable'),
+      connection('b', { appId: '2', privateKey: 'k2' }),
+      connection('c', 'unreadable'),
+    ]);
+
+    const refusal = await findBindingOwningInstallation({
+      userId: 'u1',
+      installationId: 42,
+      fetchImpl: owns('9'),
+    }).catch((err: unknown) => err);
+
+    expect(refusal).toMatchObject({ status: 409, cause: { code: 'CREDENTIAL_UNREADABLE' } });
+    const message = (refusal as Error).message;
+    expect(message).toContain('installation 42');
+    expect(message).toMatch(/connection a\b/);
+    expect(message).toMatch(/connection c\b/);
+    expect(message).not.toMatch(/connection b\b/);
+    expect(message).toContain('Enter the credential again');
+  });
+
+  it('answers as before where every App could be asked and none owns it', async () => {
+    listConnections.mockResolvedValue([connection('b', { appId: '2', privateKey: 'k2' })]);
+
+    expect(
+      await findBindingOwningInstallation({ userId: 'u1', installationId: 42, fetchImpl: owns('9') }),
     ).toBeNull();
   });
 });

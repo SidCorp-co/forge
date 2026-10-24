@@ -124,7 +124,7 @@ export async function mintGitCredentialForDevice(args: {
       `the GitHub connection behind ${canonical} is gone or deactivated`,
     );
   }
-  const secrets = decryptConnectionSecrets<GitHubSecrets>(connection);
+  const secrets = decryptConnectionSecrets<GitHubSecrets>(connection, row.bindingId);
   if (!secrets.appId || !secrets.privateKey) {
     throw new GitCredentialError(
       409,

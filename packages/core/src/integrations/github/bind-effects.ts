@@ -11,7 +11,7 @@ import type { GitHubConfig, GitHubSecrets } from './types.js';
  * minted one.
  */
 export function githubInboundSecret(connection: IntegrationConnectionRow): string | null {
-  const secrets = decryptConnectionSecrets<GitHubSecrets>(connection);
+  const secrets = decryptConnectionSecrets<GitHubSecrets>(connection, null);
   return secrets.webhookSecret ?? null;
 }
 

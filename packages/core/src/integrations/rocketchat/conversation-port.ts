@@ -95,6 +95,7 @@ async function connectionForVenue(
 
   const bindings = await db
     .select({
+      id: integrationBindings.id,
       connectionId: integrationBindings.connectionId,
       projectId: integrationBindings.projectId,
       config: integrationBindings.config,
@@ -103,15 +104,13 @@ async function connectionForVenue(
     .where(
       and(eq(integrationBindings.provider, 'rocketchat'), eq(integrationBindings.active, true)),
     );
-  const watching = new Set(
-    bindings
-      .filter(
-        (b) =>
-          b.projectId === projectId &&
-          ((b.config ?? {}) as RocketChatBindingConfig).rids?.includes(rid),
-      )
-      .map((b) => b.connectionId),
-  );
+  // Each watching connection with the binding it watches through, which an unreadable credential names.
+  const watching = new Map<string, string>();
+  for (const b of bindings) {
+    if (b.projectId !== projectId) continue;
+    if (!((b.config ?? {}) as RocketChatBindingConfig).rids?.includes(rid)) continue;
+    if (!watching.has(b.connectionId)) watching.set(b.connectionId, b.id);
+  }
 
   const candidates = onServer
     .filter((r) => watching.has(r.id))
@@ -124,7 +123,7 @@ async function connectionForVenue(
   }
   for (const row of candidates) {
     const config = (row.config ?? {}) as RocketChatConfig;
-    const secrets = decryptConnectionSecrets<RocketChatSecrets>(row);
+    const secrets = decryptConnectionSecrets<RocketChatSecrets>(row, watching.get(row.id) ?? null);
     if (!secrets.authToken || !secrets.userId) continue;
     return {
       connectionId: row.id,

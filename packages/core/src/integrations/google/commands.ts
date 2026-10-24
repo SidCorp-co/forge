@@ -97,7 +97,7 @@ export function resolveSpreadsheetId(
 }
 
 function clientArgsFor(pair: BindingWithConnection): GoogleClientArgs {
-  const secrets = decryptConnectionSecrets<GoogleSecrets>(pair.connection);
+  const secrets = decryptConnectionSecrets<GoogleSecrets>(pair.connection, pair.binding.id);
   const serviceAccountJson = secrets.serviceAccountJson;
   if (typeof serviceAccountJson !== 'string' || serviceAccountJson.length === 0) {
     throw new GoogleCommandError(

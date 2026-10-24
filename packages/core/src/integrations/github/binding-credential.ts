@@ -27,6 +27,6 @@ export async function githubBindingCredential(bindingId: string): Promise<Bindin
   }
   return {
     config: (binding.config ?? {}) as GitHubConfig,
-    secrets: decryptConnectionSecrets<GitHubSecrets>(connection),
+    secrets: decryptConnectionSecrets<GitHubSecrets>(connection, bindingId),
   };
 }

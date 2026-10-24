@@ -45,7 +45,10 @@ export async function resolveGrantedMcpEntries(
       // binding never displaces the one already serving agents. The preview calls it `shadowed`.
       if (serverName in entries) continue;
       try {
-        const secrets = decryptConnectionSecrets<Record<string, unknown>>(pair.connection);
+        const secrets = decryptConnectionSecrets<Record<string, unknown>>(
+          pair.connection,
+          pair.binding.id,
+        );
         if (!secrets) continue;
         const path = decl.capabilities.agentPath;
         if (path.kind !== 'direct-mcp') continue;

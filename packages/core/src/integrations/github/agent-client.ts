@@ -240,7 +240,7 @@ async function githubMessage(res: Response): Promise<string | null> {
 export async function githubAgentClient(projectId: string): Promise<GitHubAgentClient> {
   const pair = await resolveGrantedGitHubBinding(projectId);
   const config = effectiveConfig<GitHubConfig>(pair);
-  const secrets = decryptConnectionSecrets<GitHubSecrets>(pair.connection);
+  const secrets = decryptConnectionSecrets<GitHubSecrets>(pair.connection, pair.binding.id);
   // Raises `GitHubClientError` for no_repository / no_installation / no_credential, and gives the
   // agent face nothing else: its `get` is JSON-only and its binding was resolved another way.
   const validated = buildRepoClient({ bindingId: pair.binding.id, config, secrets });

@@ -71,7 +71,6 @@ export interface ProvisionRowDeps {
     projectId: string;
     holderUserId: string;
   }): Promise<string>;
-  decrypt?(enc: Buffer): string | null;
 }
 
 export interface ProvisionRowContext {
@@ -155,7 +154,7 @@ export async function buildProvisionRow(
 
   let sshPrivateKey: string | null = null;
   if (row.sshPrivateKeyEnc) {
-    sshPrivateKey = (deps.decrypt ?? decryptSecretIfReadable)(row.sshPrivateKeyEnc);
+    sshPrivateKey = decryptSecretIfReadable(row.sshPrivateKeyEnc);
     if (sshPrivateKey === null) {
       // Still served without the key — a project may clone over HTTPS or be set
       // up by hand. The drop is reported rather than swallowed, because an
