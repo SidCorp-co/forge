@@ -84,9 +84,10 @@ pub struct Sandbox {
 }
 
 /// The directories a sandbox empties so nothing this box keeps for its user is in view: the
-/// home, the shared temp and runtime trees, and wherever the XDG variables `var` reads move its
-/// config, data, state or cache. Only existing absolute directories are named, and none beneath
-/// another named one.
+/// home, the shared temp and runtime trees, wherever the XDG variables `var` reads move its
+/// config, data, state or cache, and the runner config dir `FORGE_RUNNER_CONFIG_DIR` names,
+/// whose `credentials.json` sits beside `config.toml`. Only existing absolute directories are
+/// named, and none beneath another named one.
 pub fn private_dirs(
     home: &Path,
     temp_dir: &Path,
@@ -106,6 +107,7 @@ pub fn private_dirs(
         "XDG_CACHE_HOME",
         "XDG_RUNTIME_DIR",
         "TMPDIR",
+        crate::config::CONFIG_DIR_ENV,
     ] {
         if let Some(dir) = var(name).filter(|v| !v.is_empty()) {
             out.push(PathBuf::from(dir));
@@ -380,6 +382,32 @@ mod tests {
         assert!(
             home < dir && home < bridge,
             "the emptied home would cover the socket and the bridge: {args:?}"
+        );
+    }
+
+    #[test]
+    fn a_runner_config_dir_named_outside_the_home_is_emptied_too() {
+        let root = std::env::temp_dir().join(format!(
+            "confine-cfg-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let home = root.join("home");
+        let daemon = root.join("srv/forge-runner");
+        std::fs::create_dir_all(&home).unwrap();
+        std::fs::create_dir_all(&daemon).unwrap();
+        let named = daemon.clone();
+        let dirs = private_dirs(&home, &home, |k| {
+            (k == crate::config::CONFIG_DIR_ENV).then(|| named.clone().into_os_string())
+        });
+        let _ = std::fs::remove_dir_all(&root);
+        assert!(
+            dirs.contains(&daemon),
+            "the runner config dir {} (credentials.json beside config.toml) stays in a sandbox's view: {dirs:?}",
+            daemon.display()
         );
     }
 }

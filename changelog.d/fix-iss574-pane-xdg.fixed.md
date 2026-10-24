@@ -1,0 +1,1 @@
+**A runner pane keeps your own config.** Panes name their daemon through `FORGE_RUNNER_CONFIG_DIR` instead of the daemon's `XDG_CONFIG_HOME`, so vi-natural and every XDG tool there read your normal configuration.

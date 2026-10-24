@@ -111,3 +111,82 @@ fn the_pane_process_resolves_forge_runner_to_the_path_the_daemon_handed_it() {
         "the pane process resolves forge-runner to another box's build, not the one on the PATH the daemon handed it"
     );
 }
+
+/// A daemon serving its own config dir starts a pane on a session server whose environment is the
+/// user's, as the user manager's is. Read from inside the pane: `XDG_CONFIG_HOME` is still the
+/// user's, so vi-natural's `$XDG_CONFIG_HOME/vi-natural/config.json` is the user's gateway config,
+/// and the daemon is named only by the runner variable (ISS-574).
+#[test]
+fn a_pane_reads_the_users_xdg_config_and_names_its_daemon_by_the_runner_variable() {
+    if !tmux_or_skip(
+        "a_pane_reads_the_users_xdg_config_and_names_its_daemon_by_the_runner_variable",
+    ) {
+        return;
+    }
+    let root = Scratch(std::env::temp_dir().join(format!("fpx-{}", uuid::Uuid::new_v4().simple())));
+    let user_xdg = root.0.join("user-config");
+    let daemon_xdg = root.0.join("daemon-xdg");
+    let daemon_dir = daemon_xdg.join("forge-runner");
+    std::fs::create_dir_all(user_xdg.join("vi-natural")).unwrap();
+    std::fs::write(
+        user_xdg.join("vi-natural/config.json"),
+        r#"{"model":"the-users-own-gateway"}"#,
+    )
+    .unwrap();
+    std::fs::create_dir_all(&daemon_dir).unwrap();
+    std::fs::write(
+        daemon_dir.join("config.toml"),
+        "core_url = \"https://daemon\"\n",
+    )
+    .unwrap();
+
+    let env = super::pane_env::pane_env_from(
+        |k| (k == "XDG_CONFIG_HOME").then(|| daemon_xdg.clone().into_os_string()),
+        Some(&daemon_dir),
+    );
+    let out = root.0.join("seen");
+    let q = |p: &Path| super::shell_quote(&p.to_string_lossy());
+    let argv = vec![
+        "sh".to_string(),
+        "-c".to_string(),
+        format!(
+            "{{ printf '%s\\n%s\\n' \"$XDG_CONFIG_HOME\" \"$FORGE_RUNNER_CONFIG_DIR\"; \
+             cat \"${{XDG_CONFIG_HOME:-$HOME/.config}}/vi-natural/config.json\"; }} > {o}.tmp; \
+             mv {o}.tmp {o}; sleep 30",
+            o = q(&out)
+        ),
+    ];
+    let args = super::new_session_args("forge-job-xdg", &root.0, &argv, &env);
+    let started = std::process::Command::new("tmux")
+        .arg("-S")
+        .arg(root.0.join("s"))
+        .args(&args)
+        .env("XDG_CONFIG_HOME", &user_xdg)
+        .output()
+        .unwrap();
+    assert!(
+        started.status.success(),
+        "tmux new-session: {}",
+        String::from_utf8_lossy(&started.stderr)
+    );
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !out.exists() && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    let seen = std::fs::read_to_string(&out).expect("the pane never ran its command");
+    let mut lines = seen.lines();
+    assert_eq!(
+        lines.next().map(PathBuf::from),
+        Some(user_xdg),
+        "the pane's XDG_CONFIG_HOME is the daemon's, not the user's: {seen}"
+    );
+    assert_eq!(
+        lines.next().map(PathBuf::from),
+        Some(daemon_dir),
+        "the pane cannot name its daemon by FORGE_RUNNER_CONFIG_DIR: {seen}"
+    );
+    assert!(
+        seen.contains("the-users-own-gateway"),
+        "a tool in the pane cannot read the user's vi-natural config: {seen}"
+    );
+}

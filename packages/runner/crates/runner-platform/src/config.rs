@@ -292,24 +292,54 @@ pub struct Binding {
     pub project_id: Option<String>,
 }
 
-/// `~/.config/forge-runner`, where every file this box writes about itself
-/// sits. [`Config::path`] names the same directory for reading; this is the
-/// one a writer resolves, so the test build's refusal covers every write.
+/// The variable naming this runner's config directory, the one holding `config.toml` and
+/// `credentials.json`, ahead of the XDG rule. A daemon hands it to every pane it starts, so a
+/// pane's `forge-runner` reaches that daemon while `XDG_CONFIG_HOME` stays the user's and every
+/// other tool there reads its own config (ISS-574). It names a location, never a credential.
+pub const CONFIG_DIR_ENV: &str = "FORGE_RUNNER_CONFIG_DIR";
+
+/// `~/.config/forge-runner`, or the directory [`CONFIG_DIR_ENV`] names, where every file this
+/// box writes about itself sits. [`Config::path`] names the same directory for reading.
 pub fn base_dir() -> Result<PathBuf> {
-    let dir = os_config_dir()?;
-    Ok(dir.join("forge-runner"))
+    base_dir_from(std::env::var_os(CONFIG_DIR_ENV), os_config_dir)
+}
+
+/// The config directory a [`CONFIG_DIR_ENV`] value names: `None` where it is unset or empty
+/// (an empty variable reads as unset, as the XDG ones do), refused by name where it is relative,
+/// since a relative one would name a different directory from every working directory.
+pub fn named_dir(value: Option<std::ffi::OsString>) -> Result<Option<PathBuf>> {
+    let Some(value) = value.filter(|v| !v.is_empty()) else {
+        return Ok(None);
+    };
+    let dir = PathBuf::from(value);
+    if dir.is_absolute() {
+        return Ok(Some(dir));
+    }
+    Err(Error::Config(format!(
+        "{CONFIG_DIR_ENV}={} is a relative path: it must name the runner's config directory \
+         (the one holding config.toml) by an absolute path, or be unset",
+        dir.display()
+    )))
+}
+
+fn base_dir_from(
+    named: Option<std::ffi::OsString>,
+    os_dir: impl FnOnce() -> Result<PathBuf>,
+) -> Result<PathBuf> {
+    match named_dir(named)? {
+        Some(dir) => Ok(dir),
+        None => Ok(os_dir()?.join("forge-runner")),
+    }
 }
 
 fn os_config_dir() -> Result<PathBuf> {
-    // A test build honours a scratch `XDG_CONFIG_HOME` on every platform, so a
-    // test scoping it is isolated where `dirs_next` ignores the variable.
     dirs_next::config_dir().ok_or_else(|| Error::Config("cannot resolve OS config dir".into()))
 }
 
 impl Config {
-    /// `~/.config/forge-runner/config.toml`.
+    /// `config.toml` in [`base_dir`].
     pub fn path() -> Result<PathBuf> {
-        Ok(os_config_dir()?.join("forge-runner").join("config.toml"))
+        Ok(base_dir()?.join("config.toml"))
     }
 
     /// Load config, or a default if the file does not exist yet.
@@ -386,15 +416,50 @@ pub fn config_dir() -> Option<PathBuf> {
 
 /// The directory this box keeps `slug`'s master transcript and last exit in.
 /// The daemon writes the record here, so it resolves through
-/// [`crate::config::base_dir`], the one resolution a test build refuses outside
-/// a scratch (ISS-1344).
+/// [`crate::config::base_dir`].
 pub fn master_dir(slug: &str) -> crate::error::Result<PathBuf> {
     Ok(base_dir()?.join("master").join(slug))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::Config;
+    use super::{base_dir_from, named_dir, Config, CONFIG_DIR_ENV};
+    use std::ffi::OsString;
+    use std::path::PathBuf;
+
+    fn xdg_rule() -> crate::error::Result<PathBuf> {
+        Ok(PathBuf::from("/home/u/.forge-dev-runner/xdg"))
+    }
+
+    #[test]
+    fn the_runner_variable_names_the_config_dir_over_the_xdg_rule() {
+        let named = Some(OsString::from("/srv/daemon/forge-runner"));
+        assert_eq!(
+            base_dir_from(named, xdg_rule).unwrap(),
+            PathBuf::from("/srv/daemon/forge-runner"),
+            "{CONFIG_DIR_ENV} set: forge-runner resolved its config from XDG_CONFIG_HOME instead"
+        );
+    }
+
+    #[test]
+    fn an_unset_or_empty_runner_variable_leaves_the_xdg_rule() {
+        let want = PathBuf::from("/home/u/.forge-dev-runner/xdg/forge-runner");
+        assert_eq!(base_dir_from(None, xdg_rule).unwrap(), want);
+        assert_eq!(
+            base_dir_from(Some(OsString::new()), xdg_rule).unwrap(),
+            want
+        );
+    }
+
+    #[test]
+    fn a_relative_runner_variable_is_refused_by_name() {
+        let err = base_dir_from(Some(OsString::from("cfg/forge-runner")), xdg_rule)
+            .expect_err("a relative config dir was taken")
+            .to_string();
+        assert!(err.contains(CONFIG_DIR_ENV), "{err}");
+        assert!(err.contains("cfg/forge-runner"), "{err}");
+        assert!(named_dir(Some(OsString::from("cfg"))).is_err());
+    }
 
     #[test]
     fn a_config_written_with_the_retired_claude_mode_still_loads_and_does_not_write_it_back() {

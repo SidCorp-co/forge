@@ -22,7 +22,8 @@ pub fn pane_env_read(
     project_id: &str,
     project_slug: &str,
 ) -> (Vec<(String, String)>, Vec<&'static str>) {
-    let mut env = pane_env_from(|k| std::env::var_os(k));
+    let daemon_dir = runner_platform::config::base_dir().ok();
+    let mut env = pane_env_from(|k| std::env::var_os(k), daemon_dir.as_deref());
     let found = pane_path(
         std::env::var_os("PATH"),
         std::env::var_os("HOME").map(std::path::PathBuf::from),
@@ -188,27 +189,35 @@ fn runs_in(dir: &std::path::Path, name: &str) -> bool {
         || (cfg!(windows) && runner_platform::exe::is_runnable(&dir.join(format!("{name}.exe"))))
 }
 
-// a pane's `forge-runner hook|gate|run` finds its daemon through the config dir; the
-// session server's unit inherits none of this process's environment, so a daemon run under its
-// own `XDG_CONFIG_HOME` hands it on or its panes report to the box's default daemon (ISS-10)
-fn pane_env_from(var: impl Fn(&str) -> Option<std::ffi::OsString>) -> Vec<(String, String)> {
+// A pane's `forge-runner hook|gate|run|api` finds its daemon through `daemon_dir`, this
+// daemon's config dir. The session server's unit inherits none of this process's environment, so
+// a daemon serving a config dir of its own names it or its panes reach the box's default daemon
+// (ISS-10). It is named by the runner's own variable, never as `XDG_CONFIG_HOME`: that would move
+// every other tool the agent runs onto this daemon's directory and hide the user's configs
+// (ISS-574). It is a location; the credentials beside it are not handed.
+pub(super) fn pane_env_from(
+    var: impl Fn(&str) -> Option<std::ffi::OsString>,
+    daemon_dir: Option<&std::path::Path>,
+) -> Vec<(String, String)> {
     let mut env = Vec::new();
     if let Some(v) =
         runner_platform::process::mcp_tool_timeout_default(var("MCP_TOOL_TIMEOUT").as_deref())
     {
         env.push(("MCP_TOOL_TIMEOUT".into(), v.into()));
     }
-    if let Some(x) = var("XDG_CONFIG_HOME") {
-        if std::path::Path::new(&x).is_absolute() {
-            env.push(("XDG_CONFIG_HOME".into(), x.to_string_lossy().into_owned()));
-        }
+    if let Some(dir) = daemon_dir {
+        env.push((
+            runner_platform::config::CONFIG_DIR_ENV.into(),
+            dir.to_string_lossy().into_owned(),
+        ));
     }
     env
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{claude_unresolved, pane_path};
+    use super::{claude_unresolved, pane_env_from, pane_path};
+    use runner_platform::config::CONFIG_DIR_ENV;
     use std::path::{Path, PathBuf};
 
     struct Scratch(PathBuf);
@@ -360,5 +369,59 @@ mod tests {
             Some(dir),
             "pane PATH {path}"
         );
+    }
+
+    /// The environment a daemon serving its own config dir runs under: the user's manager put
+    /// `XDG_CONFIG_HOME` there for the daemon's unit, and a fabricated credential stands in
+    /// every variable a careless builder might copy into a pane.
+    fn daemon_var(k: &str) -> Option<std::ffi::OsString> {
+        match k {
+            "XDG_CONFIG_HOME" => Some("/home/u/.forge-dev-runner/xdg".into()),
+            "FORGE_PAT" | "FORGE_RUNNER_TOKEN" | "FORGE_TOKEN" => Some(PLANTED_TOKEN.into()),
+            _ => None,
+        }
+    }
+
+    const PLANTED_TOKEN: &str = "fpat_PLANTEDsecretPLANTEDsecret0123456789";
+    const DAEMON_DIR: &str = "/home/u/.forge-dev-runner/xdg/forge-runner";
+
+    #[test]
+    fn a_pane_keeps_the_users_xdg_config_home_rather_than_the_daemons() {
+        let env = pane_env_from(daemon_var, Some(Path::new(DAEMON_DIR)));
+        let handed: Vec<&(String, String)> =
+            env.iter().filter(|(k, _)| k == "XDG_CONFIG_HOME").collect();
+        assert!(
+            handed.is_empty(),
+            "a pane was handed the daemon's XDG_CONFIG_HOME {handed:?}: every XDG tool in it (vi-natural among them) reads the daemon's directory instead of the user's"
+        );
+    }
+
+    #[test]
+    fn a_pane_names_its_daemon_by_the_runner_variable_and_carries_no_credential() {
+        let env = pane_env_from(daemon_var, Some(Path::new(DAEMON_DIR)));
+        let named: Vec<&str> = env
+            .iter()
+            .filter(|(k, _)| k == CONFIG_DIR_ENV)
+            .map(|(_, v)| v.as_str())
+            .collect();
+        assert_eq!(
+            named,
+            vec![DAEMON_DIR],
+            "a pane's forge-runner cannot find its daemon: {CONFIG_DIR_ENV} not handed in {env:?}"
+        );
+        for (k, v) in &env {
+            assert!(
+                !v.contains(PLANTED_TOKEN) && !k.contains("TOKEN") && !k.contains("PAT"),
+                "the pane env carries a credential in {k}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_daemon_that_resolves_no_config_dir_hands_no_runner_variable() {
+        let env = pane_env_from(daemon_var, None);
+        assert!(env
+            .iter()
+            .all(|(k, _)| k != CONFIG_DIR_ENV && k != "XDG_CONFIG_HOME"));
     }
 }

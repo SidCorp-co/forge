@@ -2,7 +2,8 @@
 //!
 //! Independent one-shot: runs the exact pull path behind the ISS-736
 //! background poller (`sync_bound_projects`), reads the same config dir the
-//! daemon uses (via `XDG_CONFIG_HOME`), and never reads/writes `auto_pull` —
+//! daemon uses (`FORGE_RUNNER_CONFIG_DIR`, else `XDG_CONFIG_HOME`), and never
+//! reads/writes `auto_pull` —
 //! it can run alongside a running `forge-runner start` with no coordination.
 
 use clap::Args as ClapArgs;

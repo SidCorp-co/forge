@@ -127,6 +127,7 @@ const PASSED: &[&str] = &[
     "LOGNAME",
     "SHELL",
     "XDG_CONFIG_HOME",
+    "FORGE_RUNNER_CONFIG_DIR",
     "HTTP_PROXY",
     "HTTPS_PROXY",
     "NO_PROXY",

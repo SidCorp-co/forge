@@ -238,13 +238,19 @@ Give each instance its own identity and config before its first `login`:
 ```bash
 # Per instance (e.g. account ai006):
 export FORGE_RUNNER_MACHINE_ID=$(hostname)-ai006   # unique → distinct device row
-export XDG_CONFIG_HOME=$HOME/.config/forge-runner-ai006  # separate config.toml + credentials.json
+export FORGE_RUNNER_CONFIG_DIR=$HOME/.config/forge-runner-ai006  # separate config.toml + credentials.json
 export FORGE_RUNNER_CRED_STORE=file                # deterministic token store across shell/systemd
 export CLAUDE_CONFIG_DIR=$HOME/.claude-ai006       # the account this instance runs as
 forge-runner login --core-url <url>
 forge-runner bind <slug> --path <dir>
 forge-runner start
 ```
+
+`FORGE_RUNNER_CONFIG_DIR` names the directory holding `config.toml` itself and wins over
+`XDG_CONFIG_HOME`. The daemon hands it to every pane it starts, so a pane's `forge-runner`
+reaches this instance while `XDG_CONFIG_HOME` stays the user's and every other tool there reads
+its own config (ISS-574). An instance started under its own `XDG_CONFIG_HOME` still resolves
+`$XDG_CONFIG_HOME/forge-runner`, and its panes are handed that directory the same way.
 
 `FORGE_RUNNER_MACHINE_ID` must be set **before the first login** — it decides
 which device row the runner claims. For a systemd unit, put these in the unit's
@@ -366,7 +372,7 @@ stdout unchanged.
 
 **Both lines speak about one configuration: the one this command resolves.** A
 box runs more than one daemon whenever somebody starts a second under its own
-`XDG_CONFIG_HOME`, and the `forge-runner-<id>` units are built for it. Where the
+`FORGE_RUNNER_CONFIG_DIR` or `XDG_CONFIG_HOME`, and the `forge-runner-<id>` units are built for it. Where the
 record names no live daemon — there is none, it is gone, its pid is now another
 process, or the file will not parse — `status` says which of those holds, and
 then looks at the `forge-runner start` processes running here. It names one only

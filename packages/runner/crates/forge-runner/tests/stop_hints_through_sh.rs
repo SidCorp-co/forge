@@ -162,6 +162,7 @@ fn the_held_hint_filled_with_prose_posts_it_as_the_comment_body() {
         &[
             ("HOME", home.to_str().unwrap()),
             ("XDG_CONFIG_HOME", xdg.to_str().unwrap()),
+            ("FORGE_RUNNER_CONFIG_DIR", ""),
             ("FORGE_PAT", "pat-for-the-test"),
             ("FORGE_BORROW_FROM", ""),
             ("FORGE_PROJECT_SLUG", ""),

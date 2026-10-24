@@ -169,13 +169,12 @@ pub struct Running {
 const CONFIG_DIR_NAME: &str = "forge-runner";
 
 /// The `forge-runner` configuration directory an environment resolves to, by
-/// the XDG rule `dirs_next::config_dir` follows on Linux — `XDG_CONFIG_HOME`
-/// where it is set and absolute, else `$HOME/.config`.
-///
-/// It lives here rather than beside `config::Config::path`, which it has to
-/// agree with, because that file is held by another run; the agreement is held
-/// instead by `the_environment_rule_lands_where_this_process_own_config_path_does`,
-/// which reads both and would go red on any drift between them.
+/// the rule `config::base_dir` follows: the directory
+/// [`runner_platform::config::CONFIG_DIR_ENV`] names, read by
+/// `config::named_dir` itself, else the XDG rule `dirs_next::config_dir`
+/// follows on Linux — `XDG_CONFIG_HOME` where it is set and absolute, else
+/// `$HOME/.config`. A relative runner variable answers `None`: that process
+/// refused it and resolves no directory at all.
 ///
 /// It exists at all so one process can say which configuration ANOTHER process
 /// on the box is serving, which is only answerable from that process's own
@@ -199,6 +198,11 @@ const CONFIG_DIR_NAME: &str = "forge-runner";
 /// falls back to `HOME` too, which is what the `_ =>` arm does.
 #[cfg(target_os = "linux")]
 fn config_dir_in(var: impl Fn(&str) -> Option<std::ffi::OsString>) -> Option<PathBuf> {
+    match runner_platform::config::named_dir(var(runner_platform::config::CONFIG_DIR_ENV)) {
+        Ok(Some(dir)) => return Some(dir),
+        Ok(None) => {}
+        Err(_) => return None,
+    }
     let base = match var("XDG_CONFIG_HOME") {
         Some(x) if Path::new(&x).is_absolute() => PathBuf::from(x),
         _ => match var("HOME") {
@@ -239,7 +243,7 @@ fn serves(proc_pid: &Path, ours: Option<&Path>) -> Serves {
         Some(dir) if dir == ours => Serves::This,
         Some(dir) => Serves::Other(dir),
         None => Serves::Unknown(
-            "its environment names no absolute XDG_CONFIG_HOME and no non-empty HOME, so it resolves no configuration directory this command can compare".into(),
+            "its environment names no absolute FORGE_RUNNER_CONFIG_DIR, XDG_CONFIG_HOME or non-empty HOME, so it resolves no configuration directory this command can compare".into(),
         ),
     }
 }
@@ -353,4 +357,51 @@ pub fn running_daemons() -> Option<Vec<Running>> {
 #[cfg(not(target_os = "linux"))]
 pub fn running_daemons() -> Option<Vec<Running>> {
     None
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod config_dir_tests {
+    use super::config_dir_in;
+    use std::path::PathBuf;
+
+    fn env<'a>(
+        pairs: &'a [(&'a str, &'a str)],
+    ) -> impl Fn(&str) -> Option<std::ffi::OsString> + 'a {
+        move |k| pairs.iter().find(|(n, _)| *n == k).map(|(_, v)| v.into())
+    }
+
+    #[test]
+    fn a_daemon_named_by_the_runner_variable_is_attributed_to_that_directory() {
+        let pairs = [
+            ("FORGE_RUNNER_CONFIG_DIR", "/srv/dev/forge-runner"),
+            ("XDG_CONFIG_HOME", "/home/u/.config"),
+            ("HOME", "/home/u"),
+        ];
+        assert_eq!(
+            config_dir_in(env(&pairs)),
+            Some(PathBuf::from("/srv/dev/forge-runner"))
+        );
+    }
+
+    #[test]
+    fn without_the_runner_variable_the_xdg_rule_holds() {
+        let pairs = [
+            ("FORGE_RUNNER_CONFIG_DIR", ""),
+            ("XDG_CONFIG_HOME", "/home/u/.forge-dev-runner/xdg"),
+        ];
+        assert_eq!(
+            config_dir_in(env(&pairs)),
+            Some(PathBuf::from("/home/u/.forge-dev-runner/xdg/forge-runner"))
+        );
+        assert_eq!(
+            config_dir_in(env(&[("HOME", "/home/u")])),
+            Some(PathBuf::from("/home/u/.config/forge-runner"))
+        );
+    }
+
+    #[test]
+    fn a_relative_runner_variable_cannot_be_told() {
+        let pairs = [("FORGE_RUNNER_CONFIG_DIR", "rel"), ("HOME", "/home/u")];
+        assert_eq!(config_dir_in(env(&pairs)), None);
+    }
 }
