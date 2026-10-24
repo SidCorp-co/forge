@@ -75,18 +75,38 @@ export function waitsOnReleaseApproval(standing: Pick<ItemStanding, 'waitingOn'>
   return heldActOf(standing)?.permission === APPROVE_RELEASE;
 }
 
+/**
+ * Whom an ask goes to. `unread` names the serving boxes whose account the master's pane acts as
+ * cannot be read (its checkout carries no credential), so the master there is not taken to hold the
+ * act; `unreadLine` says so in the words an act or the item's line carries.
+ */
 export type AskAddressee =
   | { to: 'master' }
-  | { to: 'holders'; act: HeldAct; holders: NamedHolder[] }
-  | { to: 'nobody'; act: HeldAct; why: string };
+  | { to: 'holders'; act: HeldAct; holders: NamedHolder[]; unread: string[] }
+  | { to: 'nobody'; act: HeldAct; why: string; unread: string[] };
 
-/** Whether any account the project's master acts as holds `permission` on the project. */
-async function masterHolds(projectId: string, permission: ProjectPermission): Promise<boolean> {
-  const accounts = await stewardPorts().masterAccounts(projectId);
+/**
+ * Whether an account the project's master acts as holds `permission` on the project, and the serving
+ * boxes whose account is unread. Only an account its pane writes under counts (ISS-590): the person
+ * who paired a box is not one, however much that person may do.
+ */
+async function masterStanding(
+  projectId: string,
+  permission: ProjectPermission,
+): Promise<{ holds: boolean; unread: string[] }> {
+  const { accounts, unread } = await stewardPorts().masterAccounts(projectId);
   for (const id of accounts) {
-    if (await can(actorFor(id), permission, projectResource(projectId))) return true;
+    if (await can(actorFor(id), permission, projectResource(projectId))) {
+      return { holds: true, unread };
+    }
   }
-  return false;
+  return { holds: false, unread };
+}
+
+/** The line saying which serving boxes' master account is unread, or '' where none is. */
+export function unreadLine(unread: readonly string[]): string {
+  if (unread.length === 0) return '';
+  return `the account the master acts as on box ${unread.join(', ')} is unread (its checkout carries no live credential), so it is not taken to hold it`;
 }
 
 /**
@@ -109,16 +129,21 @@ export async function addresseeOfAct(
   act: HeldAct,
   stewardId: string | null,
 ): Promise<AskAddressee> {
-  if (await masterHolds(projectId, act.permission)) return { to: 'master' };
+  const master = await masterStanding(projectId, act.permission);
+  if (master.holds) return { to: 'master' };
+  const { unread } = master;
   const holders = (await namedHolders(act.permission, projectId)).filter((h) => h.id !== stewardId);
   if (holders.length === 0) {
+    const masterToo = unread.length === 0 ? ', the master included' : '';
+    const unreadToo = unread.length === 0 ? '' : `; ${unreadLine(unread)}`;
     return {
       to: 'nobody',
       act,
-      why: `nobody on this project holds ${act.permission}, the master included, so no one can take the ${act.what}; a project admin grants it`,
+      why: `nobody on this project holds ${act.permission}${masterToo}, so no one can take the ${act.what}; a project admin grants it${unreadToo}`,
+      unread,
     };
   }
-  return { to: 'holders', act, holders };
+  return { to: 'holders', act, holders, unread };
 }
 
 /** Who names the project's unnamed releases, as a release's page says it. */

@@ -13,6 +13,10 @@
 // @direct-test-of packages/core/src/issues/record-events/decision-until.ts
 // @direct-test-of packages/core/src/issues/record-events/routes.ts
 // @direct-test-of packages/core/src/steward-ports.ts
+// @direct-test-of packages/core/src/devices/workspace-credential.ts
+//
+// The master's account is the one its pane writes under (ISS-590 round 2): a box a person admin
+// paired, its pane writing as the project's agent, is not asked to approve as that person.
 
 import type { Said } from '@forge/contracts/said';
 import { type ItemStanding, STEWARD_DEBOUNCE_MS } from '@forge/contracts/steward';
@@ -29,13 +33,12 @@ import {
 } from '../helpers/ecosystem-world.js';
 import {
   addProjectMember,
-  bindTestRunner,
-  createTestDevice,
   createTestIssue,
   createTestProject,
   createTestUser,
   rows,
 } from '../helpers/factories.js';
+import { pairTestBox } from '../helpers/paired-box.js';
 import { resetScript, script } from '../helpers/scripted-chat.js';
 
 vi.mock('../../src/integrations/llm/chat.js', async (importOriginal) => ({
@@ -51,6 +54,7 @@ let say: (who: 'owner', method: string, path: string, body?: unknown) => Promise
 let projectId = '';
 let ownerId = '';
 let masterId = '';
+let deviceId = '';
 let standings: ItemStanding[] = [];
 let clock = Date.now();
 
@@ -161,19 +165,10 @@ beforeAll(async () => {
   const { signUserToken } = await import('../../src/credentials/jwt.js');
   ownerId = (await createTestUser({ verified: true })).id;
   projectId = (await createTestProject(ownerId)).id;
-  // the project's master: a box serving it, its credential held by an agent member, who may not approve
+  // the project's master: a box paired as an agent member, who may not approve, its pane writing as it
   masterId = (await createTestUser({ kind: 'agent' })).id;
   await addProjectMember(projectId, masterId, 'member');
-  const deviceId = await createTestDevice(masterId);
-  await bindTestRunner(projectId, deviceId);
-  const { mintPat } = await import('../../src/credentials/pat.js');
-  const { deviceTokenNameFor } = await import('../../src/credentials/pat-format.js');
-  await mintPat({
-    userId: masterId,
-    name: deviceTokenNameFor(deviceId),
-    permissions: ['*'],
-    deviceId,
-  });
+  ({ deviceId } = await pairTestBox(projectId, { pairedBy: masterId, actsAs: masterId }));
   say = requester(app, { owner: await signUserToken(ownerId) });
 }, 120_000);
 
@@ -362,6 +357,47 @@ describe("a decision's until ends it only on a date it names (c2)", () => {
     expect((wrote.json as { warnings?: string[] }).warnings).toEqual([
       expect.stringContaining('DECISION_UNTIL_PASSED'),
     ]);
+    standings = [];
+  });
+});
+
+// ISS-590 round 2: the account the master acts as is the one its pane writes under, the credential
+// its checkout carries, never the person who paired its box. forge-dev's box was paired by a person
+// admin who holds releases.approve, its pane writing as the project's agent, which does not.
+describe('a box a person admin paired, its pane writing as an agent without releases.approve', () => {
+  it('asks the release holders and never the master', async () => {
+    await rows(sql`
+      UPDATE project_members SET grants = ARRAY[]::text[]
+       WHERE project_id = ${projectId} AND user_id = ${masterId} RETURNING user_id`);
+    await rows(sql`DELETE FROM runners WHERE device_id = ${deviceId} RETURNING id`);
+    ({ deviceId } = await pairTestBox(projectId, { pairedBy: ownerId, actsAs: masterId }));
+    const issue = await createTestIssue(projectId, ownerId, 91, {
+      status: 'awaiting_release',
+      createdAt: new Date(),
+    });
+    standings = [releaseWait(issue, 'person-paired-1')];
+    await askRun(issue);
+    expect(await steward.openStewardAsks(projectId)).toEqual([]);
+    expect((await actsOn(issue.id)).map((a) => [a.door, a.master_ask])).toEqual([
+      ['NOTIFY release holders', null],
+    ]);
+    expect((await askedOf(issue.id)).map((r) => r.user_id)).toEqual([ownerId]);
+  });
+
+  it('names the box whose checkout carries no credential, and asks the holders, not the master', async () => {
+    await rows(sql`DELETE FROM runners WHERE device_id = ${deviceId} RETURNING id`);
+    ({ deviceId } = await pairTestBox(projectId, { pairedBy: ownerId, actsAs: null }));
+    const issue = await createTestIssue(projectId, ownerId, 92, {
+      status: 'awaiting_release',
+      createdAt: new Date(),
+    });
+    standings = [releaseWait(issue, 'unread-1')];
+    await askRun(issue);
+    expect(await steward.openStewardAsks(projectId)).toEqual([]);
+    const acts = await actsOn(issue.id);
+    expect(acts.map((a) => a.door)).toEqual(['NOTIFY release holders']);
+    expect(acts[0]?.did).toContain(`the account the master acts as on box ${deviceId} is unread`);
+    expect((await askedOf(issue.id)).map((r) => r.user_id)).toEqual([ownerId]);
     standings = [];
   });
 });

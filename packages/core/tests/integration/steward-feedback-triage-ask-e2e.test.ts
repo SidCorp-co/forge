@@ -13,6 +13,11 @@
 // @direct-test-of packages/core/src/steward/runs-store.ts
 // @direct-test-of packages/core/src/steward/turn.ts
 // @direct-test-of packages/core/src/steward/acts-store.ts
+// @direct-test-of packages/core/src/steward-ports.ts
+// @direct-test-of packages/core/src/devices/workspace-credential.ts
+//
+// The master's account is the one its pane writes under (ISS-590 round 2): on a box a person admin
+// paired, the agent its pane writes as decides, never that person.
 
 import type { Said } from '@forge/contracts/said';
 import { type ItemStanding, STEWARD_DEBOUNCE_MS } from '@forge/contracts/steward';
@@ -21,13 +26,12 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { closeWorld, settleOutbox, startQueue, testEnv } from '../helpers/ecosystem-world.js';
 import {
   addProjectMember,
-  bindTestRunner,
-  createTestDevice,
   createTestFeedback,
   createTestProject,
   createTestUser,
   rows,
 } from '../helpers/factories.js';
+import { pairTestBox } from '../helpers/paired-box.js';
 import { resetScript, type ScriptStep, script } from '../helpers/scripted-chat.js';
 
 vi.mock('../../src/integrations/llm/chat.js', async (importOriginal) => ({
@@ -43,6 +47,7 @@ let steward: Steward;
 let projectId = '';
 let ownerId = '';
 let masterId = '';
+let deviceId = '';
 let standings: ItemStanding[] = [];
 let clock = Date.now();
 
@@ -158,19 +163,10 @@ beforeAll(async () => {
   } as Steward;
   ownerId = (await createTestUser({ verified: true })).id;
   projectId = (await createTestProject(ownerId)).id;
-  // the project's master: a box serving it, its credential held by an agent member, who may not triage
+  // the project's master: a box paired as an agent member, who may not triage, its pane writing as it
   masterId = (await createTestUser({ kind: 'agent' })).id;
   await addProjectMember(projectId, masterId, 'member');
-  const deviceId = await createTestDevice(masterId);
-  await bindTestRunner(projectId, deviceId);
-  const { mintPat } = await import('../../src/credentials/pat.js');
-  const { deviceTokenNameFor } = await import('../../src/credentials/pat-format.js');
-  await mintPat({
-    userId: masterId,
-    name: deviceTokenNameFor(deviceId),
-    permissions: ['*'],
-    deviceId,
-  });
+  ({ deviceId } = await pairTestBox(projectId, { pairedBy: masterId, actsAs: masterId }));
 }, 120_000);
 
 afterAll(async () => {
@@ -266,6 +262,34 @@ describe('a master that holds feedback.approve is the one asked (c3, boundary)',
     ]);
     expect(await toldOf(fb.key)).toEqual([]);
     await setMasterGrants([]);
+  });
+});
+
+// ISS-590 round 2: on a box a person admin paired, the master is the agent its pane writes as. forge-dev's
+// shape: that agent holds feedback.approve, so the master is still asked; without it, the holders are,
+// though the person who paired the box holds it.
+describe('a box a person admin paired, its pane writing as the project agent (ISS-590)', () => {
+  it('wakes the master where the agent it writes as holds feedback.approve', async () => {
+    await rows(sql`DELETE FROM runners WHERE device_id = ${deviceId} RETURNING id`);
+    ({ deviceId } = await pairTestBox(projectId, { pairedBy: ownerId, actsAs: masterId }));
+    await setMasterGrants(['feedback.approve']);
+    const fb = await feedbackItem();
+    standings = [triageAgain(fb, 'person-paired-master')];
+    await sweepAndRun(noteOnly(fb));
+    expect((await actsOn(fb.id)).map((a) => a.door).at(-1)).toBe('WAKE master.wake steward');
+    expect(await toldOf(fb.key)).toEqual([]);
+    await setMasterGrants([]);
+  });
+
+  it('asks the holders by name, never the master, where that agent does not hold it', async () => {
+    const fb = await feedbackItem();
+    standings = [triageAgain(fb, 'person-paired-holders')];
+    await sweepAndRun(noteOnly(fb));
+    expect((await actsOn(fb.id)).map((a) => [a.door, a.master_ask])).toEqual([
+      ['NOTIFY feedback holders', null],
+    ]);
+    expect(await openAbout(fb.key)).toEqual([]);
+    expect((await toldOf(fb.key)).map((t) => t.user_id)).toEqual([ownerId]);
   });
 });
 

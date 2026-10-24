@@ -5,8 +5,12 @@
  * unnamed release never stands in its work pass after pass, and the release's page names the project
  * admins who name it, the steward's own account never among them; where nobody holds it the page says
  * nobody. Driven through the real app on a throwaway Postgres, the master a box serving the project
- * whose credential an agent member holds.
+ * whose checkout's credential an agent member holds. The master's account is the one its pane writes
+ * under, never the person who paired its box (round 2, judge K67): forge-dev's box was paired by a
+ * person admin, its pane writing as the project's agent, and round 1 asked that master to name.
  *
+ * @direct-test-of packages/core/src/steward-ports.ts
+ * @direct-test-of packages/core/src/devices/workspace-credential.ts
  * @direct-test-of packages/core/src/steward/ask-addressee.ts
  * @direct-test-of packages/core/src/masters/owed.ts
  * @direct-test-of packages/core/src/release-page/read.ts
@@ -25,12 +29,11 @@ import { cutWaitingRelease } from '../../src/schedules/index.js';
 import { api, userToken } from '../helpers/api.js';
 import {
   addProjectMember,
-  bindTestRunner,
-  createTestDevice,
   createTestProject,
   createTestUser,
   truncateAll,
 } from '../helpers/factories.js';
+import { pairTestBox } from '../helpers/paired-box.js';
 import { declareProductionDocument, releaseWorld, SKIP_NOTE } from '../helpers/release-world.js';
 
 let projectId: string;
@@ -50,21 +53,12 @@ beforeEach(async () => {
   await fx.seedReleaseRunner();
   const bindingId = await fx.declareProduction({}, 'none');
   await declareProductionDocument({ projectId, ownerId, bindingId, probes: 'none' });
-  // the project's master: a box serving it, its credential held by an agent member
+  // the project's master: a box paired as an agent member, its pane writing as that agent
   masterId = (await createTestUser({ kind: 'agent', email: 'box@test.forge.local' })).id;
   await addProjectMember(projectId, masterId, 'member');
-  deviceId = await createTestDevice(masterId);
-  await bindTestRunner(projectId, deviceId);
-  const { mintPat } = await import('../../src/credentials/pat.js');
-  const { deviceTokenNameFor } = await import('../../src/credentials/pat-format.js');
-  masterToken = (
-    await mintPat({
-      userId: masterId,
-      name: deviceTokenNameFor(deviceId),
-      permissions: ['*'],
-      deviceId,
-    })
-  ).plaintext;
+  const box = await pairTestBox(projectId, { pairedBy: masterId, actsAs: masterId });
+  deviceId = box.deviceId;
+  masterToken = box.paneToken as string;
   // the first request starts the queue the cut enqueues on, with no worker draining it
   expect((await as(ownerToken, 'GET', '/releases')).status).toBe(200);
 });
@@ -185,5 +179,52 @@ describe("the release's page names who names it (c1)", () => {
     await db.execute(sql`DELETE FROM organization_members WHERE org_id = ${orgId}`);
     expect((await header(version)).namer).toEqual({ to: 'nobody' });
     expect((await readMasterWork(deviceId, projectId)).owed).toBe(0);
+  });
+});
+
+describe('a box paired by a person admin, its pane writing as the project agent (round 2)', () => {
+  /** The project served by a box a person paired, as on forge-dev, in place of the agent's box. */
+  async function personPairedBox(actsAs: string | null) {
+    await db.execute(sql`DELETE FROM runners WHERE device_id = ${deviceId}`);
+    return pairTestBox(projectId, { pairedBy: ownerId, actsAs });
+  }
+
+  it('asks the master nothing on any sweep and names the admins, the pane refused naming', async () => {
+    const box = await personPairedBox(masterId);
+    const version = await unnamedCut();
+    const first = await readMasterWork(box.deviceId, projectId);
+    const second = await readMasterWork(box.deviceId, projectId);
+    expect(first.owedLine, 'c2: the nudge names no naming the pane may not write').not.toContain(
+      '/naming',
+    );
+    expect([first.owed, second.owed], 'c2: not owed on either sweep').toEqual([0, 0]);
+    expect((await header(version, ownerToken)).namer, 'c1').toEqual({
+      to: 'admins',
+      names: ['ada'],
+    });
+    const refused = await as(box.paneToken as string, 'PUT', `/releases/${version}/naming`, NAMED);
+    expect(refused.status, JSON.stringify(refused.body)).toBe(403);
+    expect(JSON.stringify(refused.body)).toContain('PERMISSION_FORBIDDEN');
+    const named = await as(ownerToken, 'PUT', `/releases/${version}/naming`, NAMED);
+    expect(named.status, JSON.stringify(named.body)).toBe(200);
+  });
+
+  it('asks the master, and its pane names it, once the agent it writes as holds project.admin', async () => {
+    const box = await personPairedBox(masterId);
+    const version = await unnamedCut();
+    await db.execute(
+      sql`UPDATE project_members SET role = 'admin' WHERE project_id = ${projectId} AND user_id = ${masterId}`,
+    );
+    expect((await header(version, ownerToken)).namer).toEqual({ to: 'master' });
+    expect((await readMasterWork(box.deviceId, projectId)).owed).toBe(1);
+    const named = await as(box.paneToken as string, 'PUT', `/releases/${version}/naming`, NAMED);
+    expect(named.status, JSON.stringify(named.body)).toBe(200);
+  });
+
+  it('never takes the person who paired the box for the master where the checkout carries no credential', async () => {
+    const box = await personPairedBox(null);
+    const version = await unnamedCut();
+    expect((await header(version, ownerToken)).namer).toEqual({ to: 'admins', names: ['ada'] });
+    expect((await readMasterWork(box.deviceId, projectId)).owed).toBe(0);
   });
 });

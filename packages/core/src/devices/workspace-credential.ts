@@ -20,7 +20,7 @@
  * checkout's token reaches its own project alone.
  */
 
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, gt, isNull, or } from 'drizzle-orm';
 import { lockPatName, mintPat, supersedeNamedToken } from '../credentials/pat.js';
 import { deviceTokenNameFor, workspaceTokenNameFor } from '../credentials/pat-format.js';
 import { db } from '../db/client.js';
@@ -44,6 +44,32 @@ export async function deviceHolderUserId(deviceId: string): Promise<string | nul
         eq(personalAccessTokens.deviceId, deviceId),
         eq(personalAccessTokens.name, deviceTokenNameFor(deviceId)),
         isNull(personalAccessTokens.revokedAt),
+      ),
+    )
+    .limit(1);
+  return row?.userId ?? null;
+}
+
+/**
+ * Whom a box's pane acts as on one project: the holder of the live credential that project's checkout
+ * carries, which the pane's `forge-runner api` and `forge` CLI borrow for every write. A box paired as
+ * an agent carries that agent; one paired by a person carries the project's own agent, never the
+ * person (`workspaceHolderFor`), so the device credential's holder is not it. Null where the checkout
+ * carries no live credential: then what the pane writes as is not known here (ISS-590).
+ */
+export async function workspaceHolderUserId(
+  deviceId: string,
+  projectId: string,
+): Promise<string | null> {
+  const [row] = await db
+    .select({ userId: personalAccessTokens.userId })
+    .from(personalAccessTokens)
+    .where(
+      and(
+        eq(personalAccessTokens.deviceId, deviceId),
+        eq(personalAccessTokens.name, workspaceTokenNameFor(deviceId, projectId)),
+        isNull(personalAccessTokens.revokedAt),
+        or(isNull(personalAccessTokens.expiresAt), gt(personalAccessTokens.expiresAt, new Date())),
       ),
     )
     .limit(1);

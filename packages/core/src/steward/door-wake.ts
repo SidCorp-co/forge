@@ -8,7 +8,7 @@ import type { ItemStanding } from '@forge/contracts/steward';
 import { z } from 'zod';
 import { emitNotification } from '../notifications/index.js';
 import { heldStewardOf } from './account.js';
-import { askAddresseeOf } from './ask-addressee.js';
+import { askAddresseeOf, unreadLine } from './ask-addressee.js';
 import { askedAlready, WAKE_DOOR } from './asks.js';
 import type { DoorAnswer, DoorRequest } from './door-call.js';
 import { type DoorContext, type DoorSpec, key } from './door-kit.js';
@@ -68,7 +68,7 @@ export const WAKE: DoorSpec<z.infer<typeof wakeParams>> = {
         answer: answered({ askedOf: to.act.permission, holders: names, ...notice }),
         act: {
           door: to.act.door,
-          did: `Asked the ${to.act.permission} holders (${names}) about ${about}: ${args.ask}`,
+          did: `Asked the ${to.act.permission} holders (${names}) about ${about}: ${args.ask}${to.unread.length > 0 ? ` (${unreadLine(to.unread)})` : ''}`,
           wrote: null,
           undo: null,
         },

@@ -29,11 +29,19 @@ interface StewardPorts {
    */
   releaseFacts(projectId: string, issueId: string | null): Promise<string>;
   /**
-   * The accounts the project's master acts as: the holder of each live credential of a box serving
-   * the project (the devices module's `deviceHolderUserId`), whose permissions decide what an ask of
-   * the master can be answered with (ISS-607).
+   * The accounts the project's master acts as, whose permissions decide what an ask of the master can
+   * be answered with (ISS-607): for each box serving the project, the holder of the credential its
+   * checkout carries, which every write of its pane goes out under (the devices module's
+   * `workspaceHolderUserId`, ISS-590). A serving box whose checkout carries none is `unread`, by id:
+   * what it writes as is not known, so it is never taken to hold anything.
    */
-  masterAccounts(projectId: string): Promise<string[]>;
+  masterAccounts(projectId: string): Promise<MasterAccounts>;
+}
+
+/** The accounts a project's master acts as, and the serving boxes whose account cannot be read. */
+export interface MasterAccounts {
+  accounts: string[];
+  unread: string[];
 }
 
 const ports = portSlot<StewardPorts>('steward', 'provideStewardPorts');
