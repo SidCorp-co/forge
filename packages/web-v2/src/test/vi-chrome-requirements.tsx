@@ -209,6 +209,8 @@ const suggestion = (id: string, kind: SuggestionView["kind"], payload: unknown):
     decidedBy: null,
     decidedAt: null,
     reason: null,
+    rationale: null,
+    supersedes: null,
     createdAt: at,
     payloadPurgedAt: null,
   });

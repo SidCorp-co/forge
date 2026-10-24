@@ -16,7 +16,7 @@ const ctx: OnboardingPromptContext = {
 
 describe('the owner asks for designs, and what they ask reaches the job that draws them', () => {
   it('the start link names what it does: it asks for designs', () => {
-    expect(hintOf(null, 'none')?.actionLabel).toBe('Ask for designs');
+    expect(hintOf(null, 'none', { canRequest: true })?.actionLabel).toBe('Ask for designs');
   });
 
   it('a start carries the request text, and refuses a blank one by name', () => {
