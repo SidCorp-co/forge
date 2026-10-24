@@ -200,7 +200,7 @@ pub(crate) fn lost_line(
         .map(|p| format!("its transcript {}", p.display()))
         .unwrap_or_else(|| "its transcript".to_string());
     format!(
-        "[master] {slug}: no longer counting {what} as work in flight for {pane} — {place} on every sweep for {}m and {transcript} was last written {}m ago, both past the {}m ask floor. Its end never reached this box, so {pane} is read as idle when deciding whether to ask it; the run itself is not ended",
+        "[master] {slug}: no longer counting {what} as work in flight for {pane} — {place} on every sweep for {}m and {transcript} was last written {}m ago, both past the {}m ask floor. Its end never reached this box, so it no longer keeps {pane} reading as busy when deciding whether to ask it, and {pane} reads idle once no other run counts; the run itself is not ended",
         absent.as_secs() / 60,
         silent.as_secs() / 60,
         ASK_FLOOR.as_secs() / 60,
@@ -386,7 +386,8 @@ mod tests {
             "/t/agent-a1.jsonl was last written 47m ago",
             "for 31m",
             "30m ask floor",
-            "forge-master-sid-desk is read as idle",
+            "no longer keeps forge-master-sid-desk reading as busy",
+            "once no other run counts",
         ] {
             assert!(line.contains(part), "{part} missing from: {line}");
         }

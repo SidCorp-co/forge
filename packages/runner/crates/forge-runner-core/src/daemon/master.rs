@@ -8843,6 +8843,34 @@ mod give_back_tests {
         assert!(said.contains("WARN"), "{said}");
     }
 
+    /// Criterion 17, whole-set read F1: one child lost and one still counting
+    /// leaves the master waiting on the one that counts.
+    #[test]
+    fn one_lost_child_beside_one_that_counts_leaves_the_master_waiting() {
+        let scratch = crate::test_scratch::Scratch::new("iss1306-two-children");
+        let led = Ledger::open(&scratch.path().join("ledger.sqlite")).unwrap();
+        let mut seen = over_a_child(scratch.path(), master_ask::ASK_FLOOR * 2);
+        seen.children.insert("a2".to_string());
+        let masters = Masters::new();
+        absent_since(&masters, master_ask::ASK_FLOOR);
+        let proc_root = scratch.path().join("proc");
+        std::fs::create_dir_all(&proc_root).unwrap();
+        let counted = counted_activity(
+            &masters,
+            "p",
+            "proj",
+            "forge-master-proj",
+            Some(seen),
+            Some(&led),
+            &proc_root,
+        )
+        .unwrap();
+        assert!(!counted.children.contains("a1"), "a1 is lost");
+        assert!(counted.children.contains("a2"), "a2's absence is new");
+        assert_eq!(counted.doing(), agent_activity::Doing::AwaitingChildren);
+        assert_eq!(since_nudge(Some(&counted), Some(0)), SinceNudge::Working);
+    }
+
     /// Criterion 17 and consult 08737d F1: silence alone, with the absence
     /// younger than the floor, keeps the child counting.
     #[test]
