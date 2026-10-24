@@ -5,7 +5,7 @@
 // `packages/contracts/src/check-runs.ts`): its own id, its kind, when it started and how long it took.
 
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -111,12 +111,36 @@ const LISTED = [
 
 let fixture = '';
 
+/**
+ * The packages core's collections load from their dist builds, built to their source: the run layer
+ * rebuilds each before a test runs and holds the dist to the source (ISS-587), and the recorder
+ * stands in for the build, so the fixture carries a dist that already matches.
+ */
+function withBuiltPackages(root) {
+  const files = {
+    'packages/contracts/package.json': JSON.stringify({ name: '@forge/contracts' }),
+    'packages/observability/package.json': JSON.stringify({ name: '@forge/observability' }),
+    'packages/observability/src/index.ts': 'export const scrub = 1;\n',
+  };
+  for (const [path, text] of Object.entries(files)) {
+    mkdirSync(dirname(join(root, path)), { recursive: true });
+    writeFileSync(join(root, path), text);
+  }
+  for (const pkg of ['contracts', 'observability']) {
+    mkdirSync(join(root, 'packages', pkg, 'dist'), { recursive: true });
+    for (const f of readdirSync(join(root, 'packages', pkg, 'src')))
+      if (f.endsWith('.ts') && !f.endsWith('.test.ts'))
+        writeFileSync(join(root, 'packages', pkg, 'dist', `${f.slice(0, -3)}.js`), '');
+  }
+}
+
 beforeAll(() => {
   fixture = mkdtempSync(join(tmpdir(), 'direct-test-run-'));
   for (const [path, text] of Object.entries(FIXTURE)) {
     mkdirSync(dirname(join(fixture, path)), { recursive: true });
     writeFileSync(join(fixture, path), text);
   }
+  withBuiltPackages(fixture);
   spawnSync('git', ['init', '-q'], { cwd: fixture });
 });
 
@@ -357,6 +381,7 @@ describe('no count of touched files widens what runs, at hundreds of files (REQ-
       mkdirSync(dirname(join(wide, path)), { recursive: true });
       writeFileSync(join(wide, path), text);
     }
+    withBuiltPackages(wide);
     spawnSync('git', ['init', '-q'], { cwd: wide });
   });
 
@@ -404,16 +429,31 @@ describe('no count of touched files widens what runs, at hundreds of files (REQ-
           change: 'changed',
         }));
         const { checks } = runDirectTests(wide, { touched, integration: false, exec });
-        // Every command started is a vitest run naming files, and nothing else.
-        const shapes = calls.map((c) => {
-          const at = c.argv.indexOf('--config');
-          const named = at === -1 ? [] : c.argv.slice(at + 2);
-          return c.argv.includes('vitest') && named.length > 0
-            ? 'vitest naming files'
-            : c.argv.join(' ');
-        });
+        // Before them, the builds core's tests load (ISS-587), each once, and only where a core
+        // collection runs: the first source is contracts', whose tests load no build.
+        const isBuild = (c) => c.argv[0] === 'pnpm' && c.argv.at(-1) === 'build';
+        expect([n, calls.filter(isBuild).map((c) => c.argv.join(' '))]).toEqual([
+          n,
+          n > 1
+            ? [
+                'pnpm --filter @forge/observability run build',
+                'pnpm --filter @forge/contracts run build',
+              ]
+            : [],
+        ]);
+        // Every other command started is a vitest run naming files, and nothing else.
+        const shapes = calls
+          .filter((c) => !isBuild(c))
+          .map((c) => {
+            const at = c.argv.indexOf('--config');
+            const named = at === -1 ? [] : c.argv.slice(at + 2);
+            return c.argv.includes('vitest') && named.length > 0
+              ? 'vitest naming files'
+              : c.argv.join(' ');
+          });
         expect([n, [...new Set(shapes)]]).toEqual([n, ['vitest naming files']]);
         const ran = calls
+          .filter((c) => !isBuild(c))
           .flatMap((c) => c.argv.slice(c.argv.indexOf('--config') + 2))
           .map((p) => relative(wide, p));
         const want = touched.map((t) => t.path.replace(/\.ts$/, '.test.ts'));

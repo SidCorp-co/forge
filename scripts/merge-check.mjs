@@ -3,7 +3,9 @@
 // BC-15, BC-17; ISS-472). On the change as it would land — HEAD containing the latest base — it runs
 // only: the typecheck, the direct tests of the touched files in every package, the direct core
 // integration tests, the issue's kept probes run against the change (`lib/merge-probes.mjs`), and
-// `pnpm verify`. No import-graph widening, no whole-suite fallback. It writes
+// `pnpm verify`. Before the tests it rebuilds the workspace packages they load from dist, and stops
+// PACKAGE_BUILD_STALE where one cannot match its source (`lib/package-builds.mjs`, ISS-587). No
+// import-graph widening, no whole-suite fallback. It writes
 // the report the tracker records on the issue — each check with its kind and duration, recorded once
 // (ISS-474) — which the merge mark then asks for. On the fast lane (REQ-39 BC-7: a change a person
 // approved in its live preview) it runs the typecheck and the direct tests only, and the report names
@@ -62,6 +64,7 @@ import {
   runProbes,
   standingLines,
 } from './lib/merge-probes.mjs';
+import { describeBuilds } from './lib/package-builds.mjs';
 
 const die = dieAs('merge-check');
 
@@ -199,6 +202,9 @@ console.log(
 
 checks.push(...runTypecheck(ROOT, { baseRef: baseSha, touched: touched.map((t) => t.path) }));
 const direct = runDirectTests(ROOT, { touched, integration: lane === 'full' });
+// A package the tests load from its dist that cannot be rebuilt to its source stops the check here,
+// before any test ran against the old build (ISS-587): exit 2, it could not run.
+if (direct.refusal) die(direct.refusal);
 checks.push(...direct.checks);
 
 // A criterion stands on a verdict at a commit this base carries (ISS-472 round 5): a commit git does
@@ -254,6 +260,7 @@ const path = flagValue('--report') ?? join(tmpdir(), `forge-merge-check-${head.s
 writeFileSync(path, `${JSON.stringify(report, null, 2)}\n`);
 
 console.log('\nmerge-check: what ran');
+for (const line of describeBuilds(direct.built)) console.log(line);
 for (const line of describeChecks(checks)) console.log(line);
 for (const n of [...notRunOnLane(lane), ...NOT_RUN_HERE])
   console.log(`  not run here: ${n.name} — ${n.why} (${n.owner})`);

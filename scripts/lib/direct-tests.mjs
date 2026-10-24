@@ -14,20 +14,31 @@ import { join, posix } from 'node:path';
 import { gitOut, stripComments } from './gate.mjs';
 
 /**
+ * The workspace packages a test run from core's directory loads from their dist builds: core's
+ * vitest configs alias neither to its source, and each exports only its dist (ISS-587).
+ */
+const CORE_LOADS_BUILT = ['@forge/observability', '@forge/contracts'];
+
+/**
  * Where each package's tests live and which vitest config collects them. `cwd` is the package the
  * config belongs to; core's unit config also collects observability's and the scripts' tests.
+ * `builds` are the workspace packages the collection's tests load from their dist builds, which
+ * `package-builds.mjs` rebuilds before any of them runs: web-v2's config aliases the workspace
+ * packages to their sources, and contracts' tests import from core only types.
  */
 export const VITEST_COLLECTIONS = [
   {
     name: '@forge/core',
     cwd: 'packages/core',
     config: 'vitest.config.ts',
+    builds: CORE_LOADS_BUILT,
     test: /^packages\/core\/(src|tests\/helpers)\/.+\.test\.ts$/,
   },
   {
     name: '@forge/core integration',
     cwd: 'packages/core',
     config: 'vitest.integration.config.ts',
+    builds: CORE_LOADS_BUILT,
     test: /^packages\/core\/tests\/integration\/.+\.test\.ts$/,
     integration: true,
   },
@@ -35,24 +46,28 @@ export const VITEST_COLLECTIONS = [
     name: 'web-v2',
     cwd: 'packages/web-v2',
     config: 'vitest.config.ts',
+    builds: [],
     test: /^packages\/web-v2\/src\/.+\.test\.tsx?$/,
   },
   {
     name: '@forge/contracts',
     cwd: 'packages/contracts',
     config: 'vitest.config.ts',
+    builds: [],
     test: /^packages\/contracts\/src\/.+\.test\.ts$/,
   },
   {
     name: '@forge/observability',
     cwd: 'packages/core',
     config: 'vitest.config.ts',
+    builds: CORE_LOADS_BUILT,
     test: /^packages\/observability\/src\/.+\.test\.ts$/,
   },
   {
     name: 'scripts',
     cwd: 'packages/core',
     config: 'vitest.config.ts',
+    builds: CORE_LOADS_BUILT,
     test: /^scripts\/.+\.test\.mjs$/,
   },
 ];

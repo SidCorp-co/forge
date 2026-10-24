@@ -1,0 +1,1 @@
+**Merge check tests the packages as their source stands.** After a rebase, `pnpm merge-check` and `pnpm test:changed` rebuild `@forge/contracts` and `@forge/observability` before core's tests, and stop with `PACKAGE_BUILD_STALE` naming the package and command when a build cannot match its source.

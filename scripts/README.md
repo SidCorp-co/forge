@@ -972,6 +972,19 @@ run the whole collection. `lib/direct-test-run.test.mjs` drives the run layer ov
 repository with its commands recorded, and holds both entrypoints to starting no test runner of
 their own.
 
+**Tests run against the packages as their source stands.** `@forge/contracts` and
+`@forge/observability` export only their dist, and core's vitest configs alias neither, so a core
+test loads whatever was last built: after a rebase onto a base that changed either, an old build, and
+a red (ERR_MODULE_NOT_FOUND, a registry mismatch) the change never caused. Each collection declares
+the packages it loads built (`lib/direct-tests.mjs:VITEST_COLLECTIONS` `builds`; web-v2 aliases them
+to source). Before any selected test runs, `lib/package-builds.mjs` rebuilds each one with its own
+`pnpm --filter <name> run build` and holds its dist to its source — every source module of the package emitted and
+none older than its source. A build that fails or leaves its dist short is refused
+`PACKAGE_BUILD_STALE`, naming the package, its dist, the first file that does not match, the
+collections that load it and the command; no test runs, and both entrypoints exit 2 (ISS-587).
+`lib/package-builds.test.mjs` drives it over a rebased fixture workspace and holds core's collections
+to every workspace dependency of core that exports only dist.
+
 | Command | When | What it runs | Exit |
 |---|---|---|---|
 | `pnpm test:changed [--integration] [--report <path>]` | before a push | `tc-changed`'s typecheck (and `cargo check` when the runner is touched), the direct tests of what changed against the merge-base with the target, committed or not, each timed; writes the checks' report | 0 · 1 a check red · 2 could not run |

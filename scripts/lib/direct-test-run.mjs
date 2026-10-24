@@ -17,6 +17,7 @@ import {
   selectDirect,
 } from './direct-tests.mjs';
 import { gitOut } from './gate.mjs';
+import { buildsOwed, rebuildPackages } from './package-builds.mjs';
 
 /**
  * One check a run made: what it was and of which kind, where, the command, the files it ran, how it
@@ -314,8 +315,11 @@ export function runSelection(root, { unit, integ, crates, integration, known, ex
  * Select and run the direct tests of `touched` (every package) and, when `integration` is set, the
  * core integration tests the same rule selects. Answers the checks made and the touched code no test
  * reaches. "No test file is direct" is said only where nothing was selected; a selection the run did
- * not reach is red by name (`notRun`). `exec` runs one command and `runSelected` runs a selection,
- * `run` and `runSelection` unless a test stands in for them.
+ * not reach is red by name (`notRun`). Before any test runs, each workspace package a selected
+ * collection loads from its dist is rebuilt and held to its source (`package-builds.mjs`); where one
+ * cannot be, the answer is its `refusal` (PACKAGE_BUILD_STALE) and no test has run (ISS-587).
+ * `exec` runs one command and `runSelected` runs a selection, `run` and `runSelection` unless a
+ * test stands in for them.
  */
 export function runDirectTests(
   root,
@@ -329,6 +333,17 @@ export function runDirectTests(
   const integ = collections.filter((c) => c.collection.integration);
   const crates = runnerSelection(live);
   const owed = owedBy({ unit, integ, crates, integration });
+  const running = [...unit, ...(integration ? integ : [])].map((c) => c.collection);
+  const builds = rebuildPackages(root, buildsOwed(running), { exec });
+  if (builds.refusal) {
+    return {
+      checks: [],
+      untested: [],
+      integrationSelected: [],
+      built: builds.built,
+      refusal: builds.refusal,
+    };
+  }
   const checks = runSelected(root, { unit, integ, crates, integration, known, exec });
   if (!owed.some((o) => o.name === 'direct-tests')) {
     checks.push(
@@ -349,6 +364,8 @@ export function runDirectTests(
     checks,
     untested: [...untested, ...crates.flatMap((c) => c.untested)],
     integrationSelected: integ.flatMap((c) => c.files.map((f) => f.test)),
+    built: builds.built,
+    refusal: null,
   };
 }
 

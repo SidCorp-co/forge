@@ -25,6 +25,7 @@ import {
   touchedBetween,
 } from './lib/direct-test-run.mjs';
 import { dieAs, ROOT } from './lib/gate.mjs';
+import { describeBuilds } from './lib/package-builds.mjs';
 
 const die = dieAs('test-changed');
 
@@ -61,6 +62,9 @@ if (touched.length === 0) {
 
 const ran = runTypecheck(ROOT, { baseRef: target.ref, touched: touched.map((t) => t.path) });
 const direct = runDirectTests(ROOT, { touched, integration });
+// A package the tests load from its dist that cannot be rebuilt to its source stops here, before
+// any test ran against the old build (ISS-587).
+if (direct.refusal) die(direct.refusal);
 ran.push(...direct.checks);
 
 const head = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).stdout.trim();
@@ -74,6 +78,7 @@ const path = reportPath ?? join(tmpdir(), `forge-checks-${head.slice(0, 12)}-${D
 writeFileSync(path, `${JSON.stringify({ head, checks }, null, 2)}\n`);
 
 console.log('\ntest-changed: what ran');
+for (const line of describeBuilds(direct.built)) console.log(line);
 for (const line of describeChecks(checks)) console.log(line);
 if (!integration && direct.integrationSelected.length) {
   console.log(
