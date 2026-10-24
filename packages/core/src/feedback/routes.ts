@@ -356,6 +356,7 @@ feedbackRoutes.post(
         actor: actorOf(c),
         prompt: body.prompt,
         needed: body.needed,
+        recommended: body.recommended,
       }),
     );
   },

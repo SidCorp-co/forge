@@ -7,6 +7,7 @@ export {
   type StaleContractPin,
   staleOnContract,
 } from './contract-links.js';
+export type { CriterionClip } from './criterion-clip.js';
 export { tracedCodesOf, traceWordingsOf } from './criterion-trace.js';
 export { deferralOf } from './deferral-read.js';
 export { provideRequirementDependents } from './dependents.js';

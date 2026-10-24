@@ -13,6 +13,7 @@ import {
 	type FeedbackPhase,
 	type FeedbackRoute,
 	type FeedbackSeverity,
+	type FeedbackShipEvidence,
 } from "./feedback.js";
 import type { ProductProgress } from "./product-progress.js";
 import type { RefusalStatuses } from "./refusal.js";
@@ -105,6 +106,8 @@ export const FORGE_FEEDBACK_REFUSAL_CODES = [
 	"FORGE_FEEDBACK_SOURCE_MISMATCH",
 	"FORGE_FEEDBACK_NOT_FOUND",
 	"FORGE_FEEDBACK_PROJECT_DOOR",
+	/** Only an item's own reporter confirms or reopens it through this door (REQ-66 BC-8). */
+	"FORGE_FEEDBACK_NOT_YOURS",
 	"AGENT_REPORT_RETIRED",
 ] as const;
 export type ForgeFeedbackRefusalCode =
@@ -116,6 +119,7 @@ export const FORGE_FEEDBACK_REFUSAL_STATUSES = {
 	FORGE_FEEDBACK_SOURCE_UNREADABLE: 403,
 	FORGE_FEEDBACK_NOT_FOUND: 404,
 	FORGE_FEEDBACK_PROJECT_DOOR: 400,
+	FORGE_FEEDBACK_NOT_YOURS: 403,
 	AGENT_REPORT_RETIRED: 404,
 } as const satisfies RefusalStatuses<ForgeFeedbackRefusalCode>;
 
@@ -132,7 +136,24 @@ export interface ForgeFeedbackItem {
 	createdAt: string;
 	updatedAt: string;
 	progress: ProductProgress;
+	/** Once its work shipped: the violated criterion's verdict and clip its reporter confirms or reopens from. */
+	shipEvidence: FeedbackShipEvidence | null;
 }
+
+/**
+ * `POST /api/forge/feedback/:key/verify|reopen`: the reporter confirms its shipped fix or reopens it,
+ * with what it ran against the shipped build and what it saw (REQ-66 BC-8).
+ */
+export const forgeFeedbackSettleRequestSchema = z.strictObject({
+	evidence: z
+		.string()
+		.trim()
+		.max(FEEDBACK_LIMITS.reason, {
+			error: `the evidence is at most ${FEEDBACK_LIMITS.reason} characters`,
+		})
+		.optional(),
+});
+export const FORGE_FEEDBACK_SETTLE_SHAPE = "{ evidence }";
 
 export interface ForgeFeedbackFiled {
 	/** False where the report was an occurrence of an open item with its signal key. */

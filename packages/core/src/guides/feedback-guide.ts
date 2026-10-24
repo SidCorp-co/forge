@@ -71,8 +71,9 @@ reporter's confirm in the fix's preview does as theirs (below).
   the same at every door: the API, the web, a suggestion's accept and the assistant's diagnosis. Its
   questions are the kind and the requirement (the item's own: correct the kind with \`kind\`, the
   requirement by retargeting or by naming a criterion), and, in \`answers\`, \`criterion\` (the
-  \`REQ-n BC-m\` it violates, or \`none\`), \`severity\` and \`reproduced\` (how, and what shows it, or why
-  it could not be), with the route as the triage's own \`route\`. Each missing answer is refused
+  \`REQ-n BC-m\` it violates, or \`none\`), \`severity\` and \`reproduced\` (how, and what shows it, or what
+  was tried and why it could not be), with the route as the triage's own \`route\`. A \`reproduced\` that names
+  no attempt, a bare yes or no, is \`FEEDBACK_REPRODUCTION_EMPTY\`. Each missing answer is refused
   \`CHECKLIST_INCOMPLETE\` on \`/answers/<question>\`, naming the question; a wrong one
   \`CHECKLIST_ANSWER_INVALID\`; a criterion that does not stand now, or is of another requirement than
   the item's, \`FEEDBACK_CRITERION_INVALID\`. The refused move is recorded, and a passed one keeps every
@@ -130,9 +131,11 @@ that is stored and read back but never sent as a notice and has no preview. A me
 a note \`project.write\`; a message reaching no reporter with a bell is \`FEEDBACK_MESSAGE_NO_RECIPIENT\`.
 
 ### Asking the reporter
-\`clarification\` \`{ prompt, needed }\` asks the reporter one question, before the item is routed
-(\`FEEDBACK_CLARIFICATION_CLOSED\` once it is past \`new\` or \`reopened\`), and at most one is open per item
-(\`FEEDBACK_CLARIFICATION_ALREADY_OPEN\`): wait for its answer. The answer never edits the item. Picking a
+\`clarification\` \`{ prompt, needed, recommended }\` asks the reporter one question with the answer you
+recommend, which they send by one click or write over, before the item is routed
+(\`FEEDBACK_CLARIFICATION_CLOSED\` once it is past \`new\` or \`reopened\`). At most one is open per item and
+per reporter, whichever of their items it is about (\`FEEDBACK_CLARIFICATION_ALREADY_OPEN\`, naming the open
+one): wait for its answer. The answer never edits the item. Picking a
 route, declining included, closes the open question.
 
 ### After it ships
@@ -148,7 +151,15 @@ route, declining included, closes the open question.
   verifies or reopens it through \`verify\` or \`reopen\`: Forge verifies nothing by itself, a record
   that reads it gone included (the owner's ruling of 2026-10-14). A reopen or a re-route clears the
   date.
-- \`verify-ask\` sends a resolved item to its reporter's bell, where it stays until the item is
+- When the release that ships an item's last carrier is stamped, its reporter is asked to confirm by
+  itself: the notice names the release, what its note says changed, the violated criterion's verdict on
+  the running build and its clip, and stands on their bell until they verify or reopen. The item's
+  \`shipEvidence\` is that verdict and clip. A reporter that is an agent has no bell: its own read of the
+  item asks it (\`shipNotice.how\` \`asked\`, the item waiting on that agent), it owes nobody a relay, and it
+  answers through \`POST /api/forge/feedback/:key/verify|reopen\` \`{ evidence }\` or \`forge_feedback\`
+  \`verify\`/\`reopen\`, with what it ran and saw (\`FEEDBACK_EVIDENCE_REQUIRED\` without it on any door,
+  \`FORGE_FEEDBACK_NOT_YOURS\` on an item another account filed).
+- \`verify-ask\` sends a resolved item to its reporter's bell again, where it stays until the item is
   verified or reopened. It takes \`feedback.approve\`, follows \`resolved\` (\`FEEDBACK_NOT_RESOLVED\`),
   and is refused to the reporter themselves (\`FEEDBACK_VERIFY_ASK_SELF\`): they verify instead.
 - \`reopen\` \`{ reason }\` also follows \`resolved\`, says what the fix does not answer

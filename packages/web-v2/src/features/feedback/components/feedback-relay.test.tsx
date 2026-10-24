@@ -49,8 +49,8 @@ const view = (over: Partial<FeedbackView> = {}): FeedbackView =>
     snoozed: null,
     shipNotice: {
       state: "not_told",
-      reason: sentence(say("feedback.notice.agent")),
-      says: { reason: say("feedback.notice.agent") },
+      reason: sentence(say("feedback.notice.silent", { release: "0.4.2" })),
+      says: { reason: say("feedback.notice.silent", { release: "0.4.2" }) },
       shipped: { at: "2026-10-07T09:00:00.000Z", release: "0.4.2" },
       beforeNotices: false,
       noticesBegan: null,

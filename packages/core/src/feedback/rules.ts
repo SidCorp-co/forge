@@ -165,7 +165,7 @@ export function verifyRefusal(phase: FeedbackPhase): FeedbackRefusal | null {
   return refusal(
     'FEEDBACK_NOT_RESOLVED',
     '/status',
-    `the item reads ${phase}; it is verified only once its linked work shipped (resolved), and only by a person.`,
+    `the item reads ${phase}; it is verified only once its linked work shipped (resolved), by its reporter or a person on their behalf.`,
   );
 }
 
@@ -218,6 +218,7 @@ export function reopenRefusal(
 export function clarificationRefusal(
   phase: FeedbackPhase,
   openQuestionId: string | null,
+  openForReporter: { question: string; item: string } | null = null,
 ): FeedbackRefusal | null {
   if (phase !== 'new' && phase !== 'reopened') {
     return refusal(
@@ -231,6 +232,14 @@ export function clarificationRefusal(
       'FEEDBACK_CLARIFICATION_ALREADY_OPEN',
       '',
       `question ${openQuestionId} is still open on this item; at most one is open per item. Wait for its answer.`,
+    );
+  }
+  // REQ-66 BC-4: one question at a time to a reporter, whichever of their items it is about
+  if (openForReporter) {
+    return refusal(
+      'FEEDBACK_CLARIFICATION_ALREADY_OPEN',
+      '',
+      `question ${openForReporter.question} on ${openForReporter.item} is still open to this reporter; at most one is open per reporter. Wait for its answer.`,
     );
   }
   return null;

@@ -1,0 +1,1 @@
+**Feedback asks one question at a time and confirms fixes with evidence.** A clarification carries a recommended answer, a triage records what was tried, and a shipped fix asks its reporter, agents included, to confirm from the verdict and clip.

@@ -445,6 +445,7 @@ function ownStandingIn(r: Row, l: Linked, viewer: StandingViewer, now: Date) {
       releaseHolders: l.releaseHolders,
       relayOwed: phase === 'resolved' && l.untold.untold.has(r.id),
       relayHolders: l.untold.relayHolders,
+      reporterIsAgent: r.reporterAgency === 'agent',
       carrierVersion:
         owed.find((c) => c.release)?.release ??
         (phase === 'resolved' ? route?.carriers.find((c) => c.release)?.release : null) ??

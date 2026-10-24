@@ -46,6 +46,7 @@ import {
   verifyAskRefusal,
   verifyRefusal,
 } from './rules.js';
+import { agentEvidenceRefusal } from './verb-rules.js';
 
 export type FeedbackOutcome =
   | { ok: true; feedback: FeedbackView; created?: boolean; effect?: FeedbackTriageEffect }
@@ -348,7 +349,9 @@ export async function personalActIn(
   note: string | undefined,
 ): Promise<Refusal | null> {
   const phase = await phaseOfRow(row.projectId, row);
-  const refused = act === 'verified' ? verifyRefusal(phase) : reopenRefusal(phase, note);
+  const refused =
+    (act === 'verified' ? verifyRefusal(phase) : reopenRefusal(phase, note)) ??
+    agentEvidenceRefusal(actor.agency, act, note);
   if (refused) return refused;
   const moved = await transition(tx, FEEDBACK_MACHINE, {
     to: act,

@@ -172,6 +172,25 @@ function ShipNoticeFact({ notice, slug }: { notice: FeedbackShipNotice | null | 
   );
 }
 
+/** What the reporter is shown of the shipped fix: the violated criterion's verdict, and its clip (REQ-66 BC-8). */
+function ShipEvidenceFact({ evidence }: { evidence: FeedbackView["shipEvidence"] | undefined }) {
+  const t = useCopy();
+  const language = useInterfaceLanguage();
+  if (!evidence) return null;
+  return (
+    <Fact label={t("feedback.fact.evidence")} testId="facts-ship-evidence">
+      <span className="fg-body-sm" data-testid="ship-evidence">
+        {said(evidence.says.reads, language)}
+        {evidence.clip ? (
+          <a href={evidence.clip.url} target="_blank" rel="noreferrer" className="block text-13 text-link hover:underline" data-testid="ship-evidence-clip">
+            {t("feedback.fact.evidenceClip")}
+          </a>
+        ) : null}
+      </span>
+    </Fact>
+  );
+}
+
 /** Who confirmed the fix and when; else when the record is read, or why it could not verify it. */
 function VerifiedFact({ f }: { f: FeedbackView }) {
   const t = useCopy();
@@ -297,6 +316,7 @@ export function LinkedFeedback({
     <div data-testid="feedback-facts">
       <FactsGroup title={tr("feedback.fact.status")}>
         <ShipNoticeFact notice={f.shipNotice} slug={slug} />
+        <ShipEvidenceFact evidence={f.shipEvidence} />
         <VerifiedFact f={f} />
         {f.snoozed ? (
           <Fact label={tr("feedback.fact.snoozed")} testId="facts-snoozed">
@@ -360,6 +380,11 @@ export function LinkedFeedback({
             <span className="grid gap-0.5" data-testid="feedback-clarification">
               <StatusBadge family="question" value={f.clarification.status} />
               {f.clarification.prompt ? <span className="text-13 text-fg">{f.clarification.prompt}</span> : null}
+              {f.clarification.recommended && !f.clarification.answer ? (
+                <span className="text-13 text-muted" data-testid="feedback-clarification-recommended">
+                  {tr("feedback.fact.recommended", { answer: f.clarification.recommended })}
+                </span>
+              ) : null}
               {f.clarification.answer ? <span className="text-13 text-muted">{f.clarification.answer}</span> : null}
             </span>
           </Fact>

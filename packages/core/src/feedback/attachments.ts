@@ -1,61 +1,92 @@
 /**
  * What a reporter adds beside the item (UC15's reporter data): attachments, flagged when the
- * project's data policy is on (Q8), and the one clarification the BA assistant may ask (Q5).
+ * project's data policy is on (Q8), and the one clarification the BA assistant may ask (Q5), with the
+ * answer it recommends, one at a time to each reporter (REQ-66 BC-4).
  */
 
 import { randomUUID } from 'node:crypto';
 import { FEEDBACK_LIMITS, feedbackKey } from '@forge/contracts/feedback';
 import type { ActorAgency } from '@forge/contracts/permissions';
 import { and, eq, inArray } from 'drizzle-orm';
-import { db } from '../db/client.js';
+import { db, type Tx } from '../db/client.js';
 import { feedback, feedbackAttachments } from '../db/schema-feedback.js';
 import { agentQuestions } from '../db/schema-questions.js';
 import { getStorage } from '../integrations/index.js';
 import { allowedSetForTarget, resolveAttachmentMime, safeName } from '../lib/attachment-mime.js';
 import { dataPolicyOf, egressAs } from '../lib/data-egress.js';
-import { isUniqueViolation } from '../lib/db-errors.js';
 import { logger } from '../lib/logger.js';
 import { actorFor, projectResource, requireCan } from '../permissions/index.js';
-import { askQuestion } from '../questions/index.js';
+import { insertAskedQuestion } from '../questions/index.js';
 import { phaseOfRow } from './list-read.js';
 import { type FeedbackActor, rowIn } from './read.js';
 import { clarificationRefusal, redactedRefusal } from './rules.js';
 import { answer, type FeedbackOutcome, inTx, lockFeedback } from './service.js';
 
-/** The BA assistant asks the reporter one clarification (Q5); the answer becomes a suggestion, never an edit. */
+/** The clarification open to this reporter on any of their items in the project, by question and item. */
+async function openForReporter(
+  tx: Tx,
+  projectId: string,
+  reporter: string,
+): Promise<{ question: string; item: string } | null> {
+  const [open] = await tx
+    .select({ id: agentQuestions.id, seq: feedback.fbSeq })
+    .from(agentQuestions)
+    .innerJoin(feedback, eq(feedback.id, agentQuestions.feedbackId))
+    .where(
+      and(
+        eq(feedback.projectId, projectId),
+        eq(feedback.reportedBy, reporter),
+        eq(agentQuestions.status, 'open'),
+      ),
+    )
+    .limit(1);
+  return open ? { question: open.id, item: feedbackKey(open.seq) } : null;
+}
+
+/**
+ * The BA assistant asks the reporter one clarification (Q5) with the answer it recommends, which the
+ * reporter sends by one click or writes over (REQ-66 BC-4); the answer becomes a suggestion, never an
+ * edit. One is open at a time per item and per reporter, judged under the project's feedback lock.
+ */
 export async function askClarification(input: {
   projectId: string;
   ref: string;
   actor: FeedbackActor;
   prompt: string;
   needed: string;
+  recommended: string;
 }): Promise<FeedbackOutcome> {
   const { projectId, actor } = input;
   await requireCan(actorFor(actor.userId), 'project.write', projectResource(projectId));
-  const row = await rowIn(db, projectId, input.ref);
-  const [open] = await db
-    .select({ id: agentQuestions.id })
-    .from(agentQuestions)
-    .where(and(eq(agentQuestions.feedbackId, row.id), eq(agentQuestions.status, 'open')));
-  const refused =
-    redactedRefusal(row.redactedAt) ??
-    clarificationRefusal(await phaseOfRow(projectId, row), open?.id ?? null);
-  if (refused) return { ok: false, refusals: [refused] };
-  try {
-    await askQuestion({
+  const first = await rowIn(db, projectId, input.ref);
+  const phase = await phaseOfRow(projectId, first);
+  const refusals = await inTx(async (tx) => {
+    await lockFeedback(tx, projectId);
+    const row = await rowIn(tx, projectId, first.id, true);
+    const [open] = await tx
+      .select({ id: agentQuestions.id })
+      .from(agentQuestions)
+      .where(and(eq(agentQuestions.feedbackId, row.id), eq(agentQuestions.status, 'open')));
+    const refused =
+      redactedRefusal(row.redactedAt) ??
+      clarificationRefusal(
+        phase,
+        open?.id ?? null,
+        await openForReporter(tx, projectId, row.reportedBy),
+      );
+    if (refused) return [refused];
+    await insertAskedQuestion(tx, {
       id: randomUUID(),
       projectId,
       feedbackId: row.id,
       prompt: input.prompt,
       blockerKind: 'human',
-      answer: { shape: 'free_text', needed: input.needed },
+      answer: { shape: 'free_text', needed: input.needed, recommended: input.recommended },
     });
-  } catch (err) {
-    if (!isUniqueViolation(err)) throw err;
-    const again = clarificationRefusal('new', 'one asked concurrently');
-    return { ok: false, refusals: again ? [again] : [] };
-  }
-  return answer(projectId, row.id, actor);
+    return null;
+  });
+  if (refusals) return { ok: false, refusals };
+  return answer(projectId, first.id, actor);
 }
 
 /** A reporter's attachment, flagged when the project's data policy is on (Q8). */

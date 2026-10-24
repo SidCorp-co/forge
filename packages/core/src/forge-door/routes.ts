@@ -1,7 +1,9 @@
 import {
   carryAgentReportsRequestSchema,
+  FORGE_FEEDBACK_SETTLE_SHAPE,
   FORGE_FEEDBACK_SHAPE,
   forgeFeedbackRequestSchema,
+  forgeFeedbackSettleRequestSchema,
 } from '@forge/contracts/forge-feedback';
 import { type Context, Hono } from 'hono';
 import { z } from 'zod';
@@ -16,6 +18,7 @@ import {
   fencedProjectOfCredential,
   getForgeFeedback,
   listOwnForgeFeedback,
+  settleForgeFeedback,
   submitForgeFeedback,
 } from './service.js';
 
@@ -66,6 +69,41 @@ forgeFeedbackRoutes.get(
   '/:key',
   zValidator('param', keyParam, invalid('invalid path: /api/forge/feedback/<FB-n>')),
   async (c) => answer(c, await getForgeFeedback(callerOf(c), c.req.valid('param').key, REST_DOOR)),
+);
+
+// the reporter confirms the shipped fix, or reopens it, with what it ran and saw (REQ-66 BC-8)
+forgeFeedbackRoutes.post(
+  '/:key/verify',
+  zValidator('param', keyParam, invalid('invalid path: /api/forge/feedback/<FB-n>/verify')),
+  strictBody(forgeFeedbackSettleRequestSchema, FORGE_FEEDBACK_SETTLE_SHAPE),
+  async (c) =>
+    answer(
+      c,
+      await settleForgeFeedback(
+        callerOf(c),
+        c.req.valid('param').key,
+        'verified',
+        c.req.valid('json').evidence,
+        REST_DOOR,
+      ),
+    ),
+);
+
+forgeFeedbackRoutes.post(
+  '/:key/reopen',
+  zValidator('param', keyParam, invalid('invalid path: /api/forge/feedback/<FB-n>/reopen')),
+  strictBody(forgeFeedbackSettleRequestSchema, FORGE_FEEDBACK_SETTLE_SHAPE),
+  async (c) =>
+    answer(
+      c,
+      await settleForgeFeedback(
+        callerOf(c),
+        c.req.valid('param').key,
+        'reopened',
+        c.req.valid('json').evidence,
+        REST_DOOR,
+      ),
+    ),
 );
 
 /** The carry of the retired agent reports into Forge feedback, an instance admin's act (REQ-47 BC-8). */

@@ -26,10 +26,11 @@ import {
   fencedProjectOfCredential,
   getForgeFeedback,
   listOwnForgeFeedback,
+  settleForgeFeedback,
   submitForgeFeedback,
 } from './service.js';
 
-const ACTIONS = ['submit', 'list', 'get', 'progress'] as const;
+const ACTIONS = ['submit', 'list', 'get', 'progress', 'verify', 'reopen'] as const;
 export const FORGE_FEEDBACK_READ_ACTIONS: readonly string[] = ['list', 'get', 'progress'];
 
 // where it was met is ONE field, `target`, never the REST body's `whereSeen` beside other optional
@@ -42,7 +43,14 @@ const inputSchema = z.strictObject({
     .string()
     .regex(/^FB-\d{1,9}$/, 'a feedback item is named by its key, FB-n')
     .optional()
-    .describe('get, progress: the item, FB-n'),
+    .describe('get, progress, verify, reopen: the item, FB-n'),
+  evidence: z
+    .string()
+    .max(4_000)
+    .optional()
+    .describe(
+      'verify, reopen: what you ran against the shipped build and what you saw; an agent always sends it',
+    ),
   ...request,
   kind: request.kind.optional(),
   title: request.title.optional(),
@@ -67,8 +75,16 @@ const SUBMIT_SHAPE = `{ kind: ${oneOf(request.kind.options)}, title, target: { k
 export function forgeSubmitRequestOf(
   input: Omit<Input, 'action'>,
 ): { ok: true; request: ForgeFeedbackRequest } | { ok: false; refusals: Refusal[] } {
-  const { feedback, target, ...rest } = input;
+  const { feedback, target, evidence, ...rest } = input;
   const refusals: Refusal[] = [];
+  if (evidence !== undefined) {
+    refusals.push({
+      code: 'BAD_REQUEST',
+      path: '/evidence',
+      detail:
+        'evidence confirms or reopens a shipped fix; submit files a new report, so leave it out',
+    });
+  }
   if (feedback !== undefined) {
     refusals.push({
       code: 'BAD_REQUEST',
@@ -103,7 +119,8 @@ const DESCRIPTION = [
   'It is filed into Forge’s own home project as you (your own account, person or agent), whether or not you are a member there; it never writes into the project you work in. A project’s own feedback is project_feedback.',
   `submit ${SUBMIT_SHAPE}: file it. A box credential’s live session names the project, issue and run it came from (its job’s, or its declared run’s); from names them otherwise. A report whose signalKey (absent: its kind and title) an open item already holds is added to that item as an occurrence, never filed twice — the answer says created:false.`,
   'list: the items you reported, each with phase, origin and `progress` (whether work runs, who it waits on, and the forecast or why there is none; repeat `progress.says`, never a date it does not hold).',
-  'get {feedback}: one item you reported (a member of the home project reads any). progress {feedback}: its progress block alone.',
+  'get {feedback}: one item you reported (a member of the home project reads any), with `shipEvidence` once its work shipped: the violated criterion’s verdict on the running build and its clip. progress {feedback}: its progress block alone.',
+  'verify {feedback, evidence} and reopen {feedback, evidence}: once its work shipped (phase resolved) and its progress waits on you, confirm the fix or reopen the item, as its reporter. evidence is what you ran against the shipped build and what you saw; an agent is refused FEEDBACK_EVIDENCE_REQUIRED without it, and FORGE_FEEDBACK_NOT_YOURS on an item another account filed.',
   'FORGE_HOME_NOT_SET: this instance names no home project, and nothing was written. A refusal answers { error: { code, message, refusals: [{ code, path, detail }] } } and writes nothing.',
 ].join(' ');
 
@@ -113,6 +130,8 @@ const GRANT = {
     list: 'forge-feedback:read',
     get: 'forge-feedback:read',
     progress: 'forge-feedback:read',
+    verify: 'forge-feedback:write',
+    reopen: 'forge-feedback:write',
   },
 } as const;
 
@@ -192,6 +211,26 @@ const HANDLERS = {
       ),
     ),
   progress,
+  verify: async (ctx: McpContext, input: Input) =>
+    out(
+      await settleForgeFeedback(
+        await callerOf(ctx),
+        need(input, input.action, 'feedback').feedback,
+        'verified',
+        input.evidence,
+        MCP_DOOR,
+      ),
+    ),
+  reopen: async (ctx: McpContext, input: Input) =>
+    out(
+      await settleForgeFeedback(
+        await callerOf(ctx),
+        need(input, input.action, 'feedback').feedback,
+        'reopened',
+        input.evidence,
+        MCP_DOOR,
+      ),
+    ),
 } as const;
 
 export const forgeFeedbackTool: ContextScopedMcpToolFactory = (ctx) => ({

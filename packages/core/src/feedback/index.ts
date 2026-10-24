@@ -2,7 +2,7 @@ export { askClarification } from './attachments.js';
 export { feedbackTriageRecord } from './checklist-record.js';
 export { fileContractChangeIn } from './contract-change.js';
 export { provideFeedbackDependents } from './dependents.js';
-export type { ReadDoor } from './egress.js';
+export { feedbackEgress, type ReadDoor } from './egress.js';
 export {
   embedFeedback,
   embedFeedbackLater,
@@ -29,10 +29,12 @@ export {
   reportedForge,
   withDuplicateRoots,
 } from './forge-reads.js';
+export { settleOwnForgeFeedback } from './forge-settle.js';
 export { type ForgeCaller, resolveForgeSource } from './forge-source.js';
 export { feedbackStandingsOf, listFeedbackAs, listFeedbackIn } from './list-page-read.js';
 export { linkedOf, phaseIn } from './list-read.js';
 export { sweepResolvedFeedback } from './loop-check.js';
+export { shipEvidenceOf, shipEvidenceOfShipped } from './loop-close.js';
 export { owedTriages } from './owed-triage.js';
 export { detailAs, rowIn } from './read.js';
 export { forgeRecordingTool } from './recording-tool.js';

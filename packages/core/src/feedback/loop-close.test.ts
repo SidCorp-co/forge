@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { goneByRecord } from './loop-close.js';
 
 const resolvedSince = new Date('2026-10-01T00:00:00Z');
-const passing = { ref: 'REQ-3 BC-2', verdict: 'passing' as const, why: null };
+const passing = { ref: 'REQ-3 BC-2', verdict: 'passing' as const, why: null, clip: null };
 
 // Feedback lifecycle r14 loop-check: past the window, the record says what it reads about "is the
 // problem gone?" with its sources, for a person to answer from; it never answers, nor assumes gone.

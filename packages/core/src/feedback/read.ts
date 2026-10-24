@@ -18,7 +18,7 @@ import {
   feedbackDecisions,
   feedbackMessages,
 } from '../db/schema-feedback.js';
-import type { agentQuestions } from '../db/schema-questions.js';
+import { type agentQuestions, isChoiceStep } from '../db/schema-questions.js';
 import { suggestions } from '../db/schema-suggestions.js';
 import { findIssueById, isUuid } from '../issues/index.js';
 import { effectiveProjectRole } from '../lib/authz.js';
@@ -29,6 +29,7 @@ import { actorFor, holds, projectResource, requireCan } from '../permissions/ind
 import { rowIn as requirementRowIn } from '../requirements/index.js';
 import { feedbackEgress, type ReadDoor, WITHHELD } from './egress.js';
 import { linkedOf, summaryOf, viewerCanOf } from './list-read.js';
+import { shipEvidenceOfShipped } from './loop-close.js';
 import { questionsOnFeedback, questionViewsOf } from './questions-read.js';
 import { reportersOf } from './reporters.js';
 import { clarificationRefusal, redactedRefusal } from './rules.js';
@@ -231,6 +232,7 @@ function clarificationViewOf(
     id: q.id,
     status: q.status,
     prompt: withhold ? null : (step?.prompt ?? null),
+    recommended: withhold || !step || isChoiceStep(step) ? null : step.recommended?.trim() || null,
     answer: withhold ? null : step && 'answerText' in step ? (step.answerText ?? null) : null,
   };
 }
@@ -371,6 +373,7 @@ export async function detailAs(
       questions: questionViewsOf(questions, withhold),
       openSuggestions: open?.n ?? 0,
       shipNotice,
+      shipEvidence: withhold ? null : await shipEvidenceOfShipped(projectId, row.id, phase),
       can: {
         ...canOf({
           facts,

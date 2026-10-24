@@ -287,6 +287,7 @@ describe('project_feedback over /mcp', () => {
         feedback: item.key,
         prompt: 'Which browser were you using?',
         needed: 'the browser and its version',
+        recommended: 'Chrome 130',
       }),
     ).feedback as Body;
     expect(asked.clarification).toMatchObject({ status: 'open' });
@@ -297,6 +298,7 @@ describe('project_feedback over /mcp', () => {
       feedback: item.key,
       prompt: 'And which page?',
       needed: 'the page',
+      recommended: 'Chrome 130',
     });
     expect(again.isError).toBe(true);
     expect(again.text).toMatch(/FEEDBACK_CLARIFICATION_ALREADY_OPEN/);

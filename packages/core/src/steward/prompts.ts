@@ -64,14 +64,14 @@ const METHODS: Record<StewardAct, string> = {
   ].join('\n'),
   triage_draft: [
     'Act: triage draft (BC-4). A feedback item was filed. Read it, its evidence and its nearest items (`GET /api/projects/<project>/feedback/<key>/similar`).',
-    'Reproduce it where you can, against the codebase in your checkout and a reproduce preview, and find the cause, citing the file and line.',
+    'Try to reproduce it, against the codebase in your checkout and a reproduce preview, and find the cause, citing the file and line. The triage answers `reproduced` with what you tried and what you saw (the recording, a command and its output, the steps), or why it could not be reproduced; a bare yes or no is refused (`FEEDBACK_REPRODUCTION_EMPTY`).',
     "Propose the triage (`POST /api/projects/<project>/suggestions` kind `feedback_triage`, with `diagnosis` {recording, cause, fix} and the route), or revise the assistant's draft (`POST …/suggestions/<id>/revise`). A duplicate is `duplicateOf` the original.",
-    "Then accept it (`POST …/suggestions/<id>/accept`) where no person gate asks for a person. Where you cannot decide, ask the reporter up to 3 clarifications (`POST …/feedback/<key>/clarification`), each with a recommended answer. Never decline an item: a decline is a person's decision.",
+    "Then accept it (`POST …/suggestions/<id>/accept`) where no person gate asks for a person. Where you cannot decide, ask the reporter one clarification (`POST …/feedback/<key>/clarification` with `recommended`, the answer you recommend) and wait for its answer before asking another: one is open at a time per reporter. Never decline an item: a decline is a person's decision.",
   ].join('\n'),
   release_followthrough: [
     'Act: release follow-through (BC-10). The issue shipped. Read what it carried and the running build (`GET /api/issues/<id>/judged-build`).',
     'Judge each carried criterion on the running build and record a verdict (`POST /api/issues/<id>/verdicts`, identity `runtime`).',
-    'Tell each requirement it delivers what shipped, in BA words (`POST /api/projects/<project>/requirements/<key>/comments`), and each feedback item routed to it (`POST …/feedback/<key>/tell-shipped`, then `…/verify-ask`).',
+    "Tell each requirement it delivers what shipped, in BA words (`POST /api/projects/<project>/requirements/<key>/comments`). Each feedback item routed to it asks its reporter to confirm by itself when the release ships, with the verdicts you record; tell an item's reporter (`POST …/feedback/<key>/tell-shipped`) only where its standing still waits on that relay.",
   ].join('\n'),
 };
 

@@ -1,5 +1,6 @@
 // Asking the reporter one clarification: offered exactly where core's read says the route takes one
-// (`can.clarify`), sending the question and what is needed back; a refusal lands on its field.
+// (`can.clarify`), sending the question, what is needed back and the answer recommended (REQ-66 BC-4);
+// a refusal lands on its field.
 
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -18,6 +19,7 @@ function open() {
   fireEvent.click(screen.getByTestId("feedback-clarify-open"));
   fireEvent.change(screen.getByTestId("feedback-clarify-prompt"), { target: { value: " Which browser? " } });
   fireEvent.change(screen.getByTestId("feedback-clarify-needed"), { target: { value: " Browser and version " } });
+  fireEvent.change(screen.getByTestId("feedback-clarify-recommended"), { target: { value: " Chrome 130 " } });
 }
 
 describe("asking the reporter a clarification", () => {
@@ -28,7 +30,7 @@ describe("asking the reporter a clarification", () => {
     expect(screen.queryByTestId("feedback-clarify-open")).toBeNull();
   });
 
-  it("sends the question and what is needed back, trimmed, to the item's clarification route", async () => {
+  it("sends the question, what is needed back and the recommended answer, trimmed, to the item's clarification route", async () => {
     const calls = fakeCore((c) => (c.method === "POST" ? { status: 201, body: { feedback: {} } } : { body: {} }));
     renderWithQuery(<ClarifyReporter projectId="p1" f={view(true)} />);
     open();
@@ -36,22 +38,27 @@ describe("asking the reporter a clarification", () => {
     await waitFor(() => expect(calls.filter((c) => c.method === "POST")).toHaveLength(1));
     const post = calls.find((c) => c.method === "POST");
     expect(post?.path).toBe("/projects/p1/feedback/FB-4/clarification");
-    expect(post?.body).toEqual({ prompt: "Which browser?", needed: "Browser and version" });
+    expect(post?.body).toEqual({ prompt: "Which browser?", needed: "Browser and version", recommended: "Chrome 130" });
     await waitFor(() => expect(screen.getByTestId("feedback-clarify-open")).toBeInTheDocument());
   });
 
-  it("will not send with either field blank", () => {
+  it("will not send with any field blank, the recommended answer among them", () => {
     fakeCore(() => undefined);
     renderWithQuery(<ClarifyReporter projectId="p1" f={view(true)} />);
     fireEvent.click(screen.getByTestId("feedback-clarify-open"));
     fireEvent.change(screen.getByTestId("feedback-clarify-prompt"), { target: { value: "Which browser?" } });
     expect(screen.getByRole("button", { name: "Send question" })).toBeDisabled();
+    fireEvent.change(screen.getByTestId("feedback-clarify-needed"), { target: { value: "Browser and version" } });
+    expect(screen.getByRole("button", { name: "Send question" })).toBeDisabled();
+    fireEvent.change(screen.getByTestId("feedback-clarify-recommended"), { target: { value: "Chrome 130" } });
+    expect(screen.getByRole("button", { name: "Send question" })).toBeEnabled();
   });
 
   it("will not send a question shorter than core takes (K31: 'Why?' was refused by the schema's own words)", () => {
     fakeCore(() => undefined);
     renderWithQuery(<ClarifyReporter projectId="p1" f={view(true)} />);
     fireEvent.click(screen.getByTestId("feedback-clarify-open"));
+    fireEvent.change(screen.getByTestId("feedback-clarify-recommended"), { target: { value: "Chrome" } });
     fireEvent.change(screen.getByTestId("feedback-clarify-prompt"), { target: { value: " Why? " } });
     fireEvent.change(screen.getByTestId("feedback-clarify-needed"), { target: { value: "Steps" } });
     expect(screen.getByRole("button", { name: "Send question" })).toBeDisabled();

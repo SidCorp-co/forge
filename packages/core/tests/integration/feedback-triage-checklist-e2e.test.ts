@@ -13,6 +13,7 @@
  * @direct-test-of packages/core/src/feedback/checklist-routes.ts
  */
 
+import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { db } from '../../src/db/client.js';
@@ -93,6 +94,39 @@ describe('a triage missing an answer is refused naming the question (criterion 1
     expect(kept).toEqual([{ gate: 'feedback_triage', from_status: 'new', to_status: 'triaged' }]);
   });
 
+  // REQ-66 BC-5 (ISS-695): the triage records the attempt, never a bare yes or no (planted from the
+  // record: three triages of forge-dev answered `reproduced` "yes" and two "no")
+  it('refuses a reproduction that names no attempt, and takes what was tried and seen', async () => {
+    const fb = await fileBug('The filter resets on reload');
+    for (const bare of ['yes', 'no', 'Not reproduced.']) {
+      const refusals = await refused(
+        on('POST', `/feedback/${fb}/triage`, {
+          route: 'issue',
+          answers: { criterion: 'none', severity: 'low', reproduced: bare },
+        }),
+      );
+      expect(refusals.map((r) => [r.code, r.path])).toEqual([
+        ['FEEDBACK_REPRODUCTION_EMPTY', '/answers/reproduced'],
+      ]);
+      expect(refusals[0]?.detail).toContain('what was tried');
+    }
+    expect(await statusOf(fb)).toBe('new');
+    const out = (
+      await ok(
+        on('POST', `/feedback/${fb}/triage`, {
+          route: 'issue',
+          answers: {
+            criterion: 'none',
+            severity: 'low',
+            reproduced:
+              'Could not reproduce: reloaded the board ten times on dev.309, filter kept.',
+          },
+        }),
+      )
+    ).feedback;
+    expect(out.status).toBe('triaged');
+  });
+
   it('names the route as a question when neither the triage nor the short form gives one', async () => {
     const fb = await fileBug('The filter resets again');
     const refusals = await refused(
@@ -148,7 +182,11 @@ describe('a triage missing an answer is refused naming the question (criterion 1
     const refusals = await refused(
       on('POST', `/feedback/${fb}/triage`, {
         route: 'issue',
-        answers: { criterion: 'REQ-77 BC-1', severity: 'low', reproduced: 'x' },
+        answers: {
+          criterion: 'REQ-77 BC-1',
+          severity: 'low',
+          reproduced: 'Seen twice on the test build.',
+        },
       }),
     );
     expect(refusals[0]).toMatchObject({
@@ -173,7 +211,11 @@ describe('a triage missing an answer is refused naming the question (criterion 1
     const [refusal] = await refused(
       on('POST', `/feedback/${fb}/triage`, {
         route: 'issue',
-        answers: { criterion: `${draft} BC-1`, severity: 'low', reproduced: 'x' },
+        answers: {
+          criterion: `${draft} BC-1`,
+          severity: 'low',
+          reproduced: 'Seen twice on the test build.',
+        },
       }),
     );
     expect(refusal).toMatchObject({
@@ -267,7 +309,11 @@ describe('a bug against an existing criterion is triaged with only its three ans
   it('refuses another route for it by name, and a criterion of another requirement', async () => {
     const req = await agreedRequirement();
     const fb = await fileBug('A reload clears my filter, again');
-    const three = { criterion: `${req} BC-1`, severity: 'high', reproduced: 'Reload clears it.' };
+    const three = {
+      criterion: `${req} BC-1`,
+      severity: 'high',
+      reproduced: 'Reload on dev.220 clears it.',
+    };
     const [wrong] = await refused(
       on('POST', `/feedback/${fb}/triage`, {
         route: 'new_requirement',
@@ -397,6 +443,55 @@ describe('loop close reads the record for a person (criterion 4)', () => {
     const verified = (await ok(on('POST', `/feedback/${fb}/verify`, {}))).feedback;
     expect(verified.status).toBe('verified');
     expect(verified.verified).toMatchObject({ how: 'person', by: ownerId });
+  });
+
+  // REQ-66 BC-8 (ISS-695): the release that ships the fix asks the reporter by itself, and what it
+  // shows is the record's evidence, not only the release note's words
+  it('asks the reporter to confirm by itself when the fix ships, with the verdict and its clip', async () => {
+    unplant = plantLiveBuild(LIVE, { [FIXED]: true });
+    const { req, issueId, fbId, fb } = await resolvedAgainstBc1(44);
+    const [clip] = (await db.execute(sql`
+      INSERT INTO issue_attachments (issue_id, uploader_id, name, path, mime, size)
+      VALUES (${issueId}, ${ownerId}, 'bc1.webm', ${`issues/${issueId}/bc1.webm`}, 'video/webm', 10)
+      RETURNING id
+    `)) as unknown as { id: string }[];
+    await ok(
+      api(token, 'POST', `/api/issues/${issueId}/verdicts`, {
+        criterion: 1,
+        verdict: 'pass',
+        reason: 'pass on the running build',
+        identity: { kind: 'commit', sha: FIXED },
+        evidence: ['bc1.webm'],
+      }),
+    );
+    const shown = (await ok(on('GET', `/feedback/${fb}`))).feedback;
+    expect(shown.shipEvidence).toMatchObject({
+      criterion: `${req} BC-1`,
+      verdict: 'passing',
+      clip: { name: 'bc1.webm', url: `/api/attachments/${clip?.id}/download` },
+    });
+
+    const { consumerOf } = await import('../../src/outbox/consumers.js');
+    if (!consumerOf('release.shipped', 'notify-feedback')) {
+      const { registerFeedbackNotifications } = await import(
+        '../../src/notifications/notify-feedback.js'
+      );
+      registerFeedbackNotifications();
+    }
+    await consumerOf('release.shipped', 'notify-feedback')?.handle(
+      { projectId, runId: randomUUID(), version: '0.2.0', issueIds: [issueId] },
+      { eventId: randomUUID() } as never,
+    );
+    const [asked] = (await db.execute(sql`
+      SELECT body, resolution_key FROM notifications
+       WHERE project_id = ${projectId} AND type = 'feedback_shipped'
+    `)) as unknown as { body: string; resolution_key: string | null }[];
+    expect(asked?.resolution_key, 'the notice is the verify ask, cleared by the verify').toBe(
+      `feedback-verify:${fbId}`,
+    );
+    expect(asked?.body).toContain(`${req} BC-1 passes on the running build.`);
+    expect(asked?.body).toContain('Its clip, bc1.webm, is on the item.');
+    expect(asked?.body).toContain('Confirm it is fixed, or reopen it saying what you still see.');
   });
 
   it('leaves it resolved for a person where the criterion is not proven on the running build', async () => {

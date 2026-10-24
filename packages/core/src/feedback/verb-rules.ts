@@ -128,3 +128,17 @@ export function duplicateRefusal(
   }
   return null;
 }
+
+/** An agent confirms or reopens a shipped fix with what it ran and saw, never bare (REQ-66 BC-8). */
+export function agentEvidenceRefusal(
+  agency: 'human' | 'agent',
+  act: 'verified' | 'reopened',
+  evidence: string | undefined,
+): FeedbackRefusal | null {
+  if (agency !== 'agent' || evidence?.trim()) return null;
+  return refusal(
+    'FEEDBACK_EVIDENCE_REQUIRED',
+    act === 'verified' ? '/note' : '/reason',
+    `an agent ${act === 'verified' ? 'confirms' : 'reopens'} a fix with its evidence: what it ran against the shipped build and what it saw.`,
+  );
+}

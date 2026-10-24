@@ -158,6 +158,8 @@ export interface StandingFacts {
   relayOwed?: boolean;
   /** Who holds feedback.approve, by name: those who owe the relay. */
   relayHolders?: readonly string[];
+  /** Its reporter is an agent: a shipped fix waits on that agent to confirm or reopen it with evidence. */
+  reporterIsAgent?: boolean;
   /** The first draft issue carrying it, where one does: it reads triaged and stuck (draft_carrier). */
   draftCarrier?: string | null;
   /** An owed carrier's own standing, a stuck one first: what a planned item rolls up (REQ-48 BC-9). */
@@ -271,13 +273,20 @@ function waitingOf(
         };
       }
       return {
+        // REQ-66 BC-8: an agent reporter is asked as a person is, and confirms or reopens through its own door
         wait: wait(
-          'person',
+          facts.reporterIsAgent ? 'agent' : 'person',
           named(reporter),
           facts.carrierVersion
             ? say('standing.act.verifyFixIn', { v: facts.carrierVersion })
             : say('standing.act.verifyFix'),
-          say(facts.recordCanSay ? 'feedback.rule.verifyByRecord' : 'feedback.rule.verifyByPerson'),
+          say(
+            facts.reporterIsAgent
+              ? 'feedback.rule.agentConfirms'
+              : facts.recordCanSay
+                ? 'feedback.rule.verifyByRecord'
+                : 'feedback.rule.verifyByPerson',
+          ),
           { ref: facts.carrierVersion ?? null, dueAt: facts.recordCheckAt ?? null },
         ),
         // owner, 2026-10-07: nobody is owed this act, so it is on no one's Needs you; any member may take it

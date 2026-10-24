@@ -26,7 +26,7 @@ function actionRequest(projectId: string, key: string, a: FeedbackAction): [stri
   if (a.kind === "snooze") return [`${one(projectId, key)}/snooze`, post({ until: a.until, reason: a.reason })];
   if (a.kind === "verify-ask") return [`${one(projectId, key)}/verify-ask`, post({})];
   if (a.kind === "verify") return [`${one(projectId, key)}/verify`, post(a.note ? { note: a.note } : {})];
-  if (a.kind === "clarify") return [`${one(projectId, key)}/clarification`, post({ prompt: a.prompt, needed: a.needed })];
+  if (a.kind === "clarify") return [`${one(projectId, key)}/clarification`, post({ prompt: a.prompt, needed: a.needed, recommended: a.recommended })];
   return [`${one(projectId, key)}/${a.kind}`, post({ reason: a.reason })];
 }
 

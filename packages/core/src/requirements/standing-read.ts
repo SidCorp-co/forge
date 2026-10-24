@@ -34,6 +34,7 @@ import { peopleOf } from '../lib/people.js';
 import { masterServingOf } from '../masters/index.js';
 import { readEffectivePolicy, readProjectDocument } from '../project-config/index.js';
 import { linkedContractsOf } from './baselines.js';
+import { type CriterionClip, clipOf } from './criterion-clip.js';
 import { requirementDependents } from './dependents.js';
 import { feedbackCountsOf, feedbackLinksOf } from './feedback-links.js';
 import { followReadsOf } from './follow-reads.js';
@@ -506,7 +507,7 @@ export async function criterionVerdictOf(
   projectId: string,
   requirementId: string,
   code: string,
-): Promise<{ verdict: BcVerdict; why: string | null } | null> {
+): Promise<{ verdict: BcVerdict; why: string | null; clip: CriterionClip | null } | null> {
   const rows = await db
     .select({
       id: requirements.id,
@@ -520,5 +521,5 @@ export async function criterionVerdictOf(
     .where(and(eq(requirements.projectId, projectId), eq(requirements.id, requirementId)));
   const standing = (await standingsOf(projectId, rows, null)).get(requirementId);
   const found = standing?.coverage.find((c) => c.code === code);
-  return found ? { verdict: found.verdict, why: found.why } : null;
+  return found ? { verdict: found.verdict, why: found.why, clip: clipOf(found) } : null;
 }
