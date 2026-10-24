@@ -70,8 +70,20 @@ const DENIES_IDENTITY = new RegExp(
   String.raw`^\s*${CONJ}(?:(?:it|this|that|which|this one|that one|they|the (?:only |one |single )?(?:issue|one))\s+(?:is not|isn't|are not|aren't)\s+|(?:none|neither)(?: of them)?\s+(?:is|are)\s+|not\s+)${MARKS}`,
   'i',
 );
+/** "This project has one issue", or "the only issue here is ISS-1" with the key it names. */
 const STATES_WHOLE_SET =
-  /\b(?:(?:this|the) project|it|here)\s+(?:currently\s+|only\s+)*(?:has|holds|contains)\s+(?:only\s+)?(?:one|two|three|four|five|six|seven|eight|nine|ten|\d+)\s+issues?\b|\b(?:the|this project's|the project's) only issues?\b/i;
+  /\b(?:(?:this|the) project|it|here)\s+(?:currently\s+|only\s+)*(?:has|holds|contains)\s+(?:only\s+)?(?:one|two|three|four|five|six|seven|eight|nine|ten|\d+)\s+issues?\b|\b(?:the|this project's|the project's) only issues?\b(?:\s+(?:here|(?:on|in) (?:this|the) project))?(?:\s+(?:is|are)\s+[*_`"'([]*[a-z][a-z0-9]*-\d+)?/gi;
+
+/**
+ * Whether the project's whole set was stated in the denial's own sentence or the one before it, with no
+ * other key named after it: "ISS-8 is the invoice issue. This one is not ISS-7." is about ISS-8, whatever
+ * was said of the set before (consult F1 on the round-39 whole set).
+ */
+function setStatedJustBefore(context: string, prefixes: readonly string[]): boolean {
+  const ends = [...context.matchAll(STATES_WHOLE_SET)].map((m) => (m.index ?? 0) + m[0].length);
+  if (ends.length === 0) return false;
+  return !issueTokenRe(prefixes).test(context.slice(Math.max(...ends)));
+}
 
 /** What may follow a key after "there is no": the clause's end, or the project it is absent from. */
 const ABSENT_TAIL =
@@ -86,9 +98,16 @@ const NOT_NOW_OR_NARROWER =
 
 /**
  * A plain, present, unconditional absence: its clause opens on the key or "there is no", or denies the
- * key's identity after the project's whole set was stated (`before`), in no question.
+ * key's identity just after the project's whole set was stated (`previous` is the sentence before), in
+ * no question.
  */
-function assertsAbsence(sentence: string, at: number, after: string, before: string): boolean {
+function assertsAbsence(
+  sentence: string,
+  at: number,
+  after: string,
+  previous: string,
+  prefixes: readonly string[],
+): boolean {
   const cuts = [...sentence.matchAll(CLAUSE_CUT)].map((c) => (c.index ?? 0) + c[0].length);
   const opening = sentence.slice(Math.max(0, ...cuts.filter((c) => c <= at)), at);
   const conditions = sentence.split(CLAUSE_CUT).filter((clause) => !ASKS_BACK.test(clause));
@@ -98,7 +117,7 @@ function assertsAbsence(sentence: string, at: number, after: string, before: str
     (OPENS_ON_KEY.test(opening) && ABSENT_AFTER.test(after)) ||
     (OPENS_ON_ABSENCE.test(opening) && ABSENT_TAIL.test(after)) ||
     (DENIES_IDENTITY.test(opening) &&
-      STATES_WHOLE_SET.test(`${before} ${sentence.slice(0, at)}`) &&
+      setStatedJustBefore(`${previous} ${sentence.slice(0, at)}`, prefixes) &&
       ABSENT_TAIL.test(after))
   );
 }
@@ -118,14 +137,20 @@ export interface KeyMention {
  */
 export function keyMentions(text: string, prefixes: readonly string[] = []): KeyMention[] {
   const out: KeyMention[] = [];
-  let before = '';
+  let previous = '';
   for (const sentence of plainQuotes(text).split(/(?<=[.!?][*_`"')\]]*)\s+|\n\s*\n/)) {
     for (const m of sentence.matchAll(issueTokenRe(prefixes))) {
       const at = m.index ?? 0;
-      const absent = assertsAbsence(sentence, at, sentence.slice(at + m[0].length), before);
+      const absent = assertsAbsence(
+        sentence,
+        at,
+        sentence.slice(at + m[0].length),
+        previous,
+        prefixes,
+      );
       out.push({ seq: Number(m[2]), token: m[0], absent });
     }
-    before = `${before} ${sentence}`;
+    previous = sentence;
   }
   return out;
 }

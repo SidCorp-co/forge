@@ -39,28 +39,26 @@ export class FakeView {
 /** The most recently mounted stand-in, for a test that drives the toolbar. */
 export let lastView: FakeView | null = null;
 
-/** Every theme spec the editor asked for, for a test that reads what it paints. */
-export const themes: Record<string, Record<string, string>>[] = [];
+/** The extensions the most recently mounted editor was given, for a test that reads what it paints. */
+export let lastExtensions: unknown[] = [];
 
 export function codeMirrorStub() {
   return {
-    EditorView: {
-      theme: (spec: Record<string, Record<string, string>>) => {
-        themes.push(spec);
-        return spec;
-      },
-    },
+    EditorView: { theme: (spec: Record<string, Record<string, string>>) => ({ theme: spec }) },
     default: ({
       value,
       onChange,
       onCreateEditor,
+      extensions,
       "aria-label": label,
     }: {
       value: string;
       onChange: (v: string) => void;
       onCreateEditor: (v: unknown) => void;
+      extensions?: unknown[];
       "aria-label": string;
     }) => {
+      lastExtensions = extensions ?? [];
       const view = new FakeView(value);
       view.onChange = onChange;
       lastView = view;
@@ -75,5 +73,6 @@ export function codeMirrorStub() {
 /** Reset between cases so one test cannot read another's editor. */
 export function resetCodeMirrorStub() {
   lastView = null;
+  lastExtensions = [];
   vi.clearAllMocks();
 }

@@ -281,9 +281,16 @@ describe('a reply denying a key after saying which issues the project holds', ()
         [8, { seq: 8, merged: false, status: 'open' }],
       ]),
     };
-    const text = 'ISS-8 is the invoice issue. This one is not ISS-7.';
-    expect(keyMentions(text, ['ISS']).map((m) => m.absent)).toEqual([false, false]);
-    expect(screenAtDoor('web-chat-reply', [text], both).ok).toBe(true);
+    for (const text of [
+      'ISS-8 is the invoice issue. This one is not ISS-7.',
+      // The whole-set read of round 39 (F1): a set stated earlier does not carry past a sentence about one issue.
+      'This project has two issues. ISS-8 is the invoice issue. This one is not ISS-7.',
+      'This project has two issues. ISS-8 is the invoice issue, and this one is not ISS-7.',
+      'This project has two issues, ISS-8 is the invoice issue, and this one is not ISS-7.',
+    ]) {
+      expect(keyMentions(text, ['ISS']).every((m) => !m.absent)).toBe(true);
+      expect(screenAtDoor('web-chat-reply', [text], both).ok).toBe(true);
+    }
     expect(room('ISS-1 is the invoice issue. This one is not ISS-999.').ok).toBe(false);
   });
 

@@ -18,7 +18,7 @@ import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/lib/api/client";
-import { type FakeView, lastView, themes } from "@/test/codemirror-stub";
+import { type FakeView, lastExtensions, lastView } from "@/test/codemirror-stub";
 import { BodyEditor } from "./body-editor";
 
 expect.extend(matchers);
@@ -197,7 +197,8 @@ describe("the component insert that was removed", () => {
 
 // ISS-1229 r39, judge-107: "Add a comment…" read #888 on white, 3.54:1 — CodeMirror's own placeholder grey.
 describe("the editor's placeholder", () => {
-  it("is set in the secondary grey, which reads at 4.5:1 or more", () => {
-    expect(themes).toContainEqual({ ".cm-placeholder": { color: "var(--fg-subtle)" } });
+  it("is set in the secondary grey, which reads at 4.5:1 or more, on the editor that mounts", () => {
+    mount();
+    expect(lastExtensions).toContainEqual({ theme: { ".cm-placeholder": { color: "var(--fg-subtle)" } } });
   });
 });
