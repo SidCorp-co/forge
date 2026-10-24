@@ -15,6 +15,7 @@
  * @direct-test-of packages/core/src/issues/commit-landing.ts
  * @direct-test-of packages/core/src/issues/landing-evidence.ts
  * @direct-test-of packages/core/src/issues/mark-trail.ts
+ * @direct-test-of packages/core/src/issues/work-evidence.ts
  * @direct-test-of packages/core/src/guides/issue-flow-guide.ts
  */
 
@@ -110,6 +111,16 @@ describe('an asserted mark on a repository core cannot read (ISS-575)', () => {
     expect(refused.detail).toContain('the whole 40-character sha');
     expect(refused.detail).not.toMatch(/a note naming this commit/);
     expect(await mergedAt(id)).toBeNull();
+  });
+
+  it('is refused NO_WORK_EVIDENCE naming the merge route and its `commit`, never an action core has not', async () => {
+    const id = await issue(landingProject);
+    const refused = refusalOf(
+      await box('POST', `/api/issues/${id}/merge`, { landing: 'https://shop.example.test/x' }),
+    );
+    expect(refused.code).toBe('NO_WORK_EVIDENCE');
+    expect(refused.detail).toContain('`POST /api/issues/:id/merge` carrying `commit`');
+    expect(refused.detail).not.toContain('mark_merged');
   });
 
   it('records the whole commit as the claim once the branch is recorded, with its target', async () => {

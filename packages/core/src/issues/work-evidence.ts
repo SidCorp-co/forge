@@ -149,7 +149,7 @@ const NO_WORK_EVIDENCE_DETAIL =
   '`workState.branch` (a `sessionContext` naming `branch` or `worklog.branch` records it ' +
   'there too), write the implementation step ' +
   'handoff with commitSha/filesModified, or, where the work landed on the base branch itself, ' +
-  'mark it merged with `mark_merged` carrying `data.commit`, the commit it landed at, which ' +
+  'mark it merged with `POST /api/issues/:id/merge` carrying `commit`, the whole sha it landed at, which ' +
   "Forge checks against the project's repository, before advancing. A branch equal to the " +
   'project base ' +
   'branch is not evidence, and neither is the last branch of a project whose release chain has ' +
