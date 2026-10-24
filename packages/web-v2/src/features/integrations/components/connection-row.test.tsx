@@ -107,3 +107,25 @@ describe("ConnectionRow over a removed connection", () => {
     expect(screen.getByRole("button", { name: "Remove" })).toBeInTheDocument();
   });
 });
+
+// ISS-1421 r26, judge-105 (6): the second click of a double-click on Delete landed on the Clear
+// question the accepted Delete had opened under the pointer, one click from deleting it for good.
+describe("ConnectionRow after its Delete is accepted (criterion 305)", () => {
+  it("opens no Clear question until Clear is pressed", () => {
+    const live = { ...coolify("Old deploys"), hasSecrets: true };
+    const { rerender } = row(live);
+    fireEvent.click(screen.getByRole("button", { name: "Remove" }));
+    expect(screen.getByRole("button", { name: "Delete" })).toBeInTheDocument();
+    rerender(
+      <ConnectionRow
+        connection={{ ...live, active: false, hasSecrets: false }}
+        ownerLabel="Personal"
+        projectName={(id) => id}
+        onOpen={() => {}}
+      />,
+    );
+    expect(screen.queryByText(/Delete it for good/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Clear" }));
+    expect(screen.getByText("Delete it for good?")).toBeInTheDocument();
+  });
+});

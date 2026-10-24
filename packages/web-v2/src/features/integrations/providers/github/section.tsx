@@ -23,7 +23,6 @@ import { useMemo, useState } from "react";
 import {
   useBindExistingConnection,
   useConnections,
-  useDeleteProviderIntegration,
   useGitHubConnect,
   useGitHubRepositories,
   useIntegrationsList,
@@ -42,6 +41,7 @@ import {
   bindsRemovedConnection,
   IntegrationEnabledControl,
 } from "../../components/integration-enabled-control";
+import { DisconnectFromProject } from "../../components/disconnect-from-project";
 import { scopeLabel } from "../../components/status-pill";
 
 function submitManifest(start: GitHubConnectStart): void {
@@ -87,9 +87,6 @@ function BindingControls({
   projectId: string;
   binding: IntegrationSummary;
 }) {
-  const remove = useDeleteProviderIntegration(projectId);
-  // Disconnect took effect on one click (ISS-1421 r24); it asks once, saying what stops here.
-  const [confirming, setConfirming] = useState(false);
   const repository = repositoryOf(binding.config);
 
   return (
@@ -98,35 +95,15 @@ function BindingControls({
 
       <AgentAccessControl projectId={projectId} binding={binding} canEdit />
 
-      <div className="flex flex-col gap-2">
-        <div>
-          <Button variant="ghost" size="sm" onClick={() => setConfirming((v) => !v)}>
-            Disconnect from this project…
-          </Button>
-        </div>
-        {confirming && (
-          <div className="flex flex-col gap-2 border-y border-line py-2.5">
-            <p className="fg-body-sm text-fg">
-              Disconnecting stops this project&apos;s agents and runners reaching{" "}
-              {repository ? `${repository.owner}/${repository.repo}` : "GitHub"} through this App.
-              The App itself stays, and other projects bound to it keep it.
-            </p>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="danger"
-                size="sm"
-                loading={remove.isPending}
-                onClick={() => remove.mutate(binding.id, { onSuccess: () => setConfirming(false) })}
-              >
-                Disconnect
-              </Button>
-              <Button variant="ghost" size="sm" onClick={() => setConfirming(false)}>
-                Cancel
-              </Button>
-            </div>
-          </div>
-        )}
-        {remove.isError && <Banner tone="danger">{formatApiError(remove.error)}</Banner>}
+      {/* Disconnect took effect on one click (ISS-1421 r24); it asks once, saying what stops here. */}
+      <div className="flex flex-wrap items-center gap-2">
+        <DisconnectFromProject
+          projectId={projectId}
+          binding={binding}
+          says={`Disconnecting stops this project's agents and runners reaching ${
+            repository ? `${repository.owner}/${repository.repo}` : "GitHub"
+          } through this App. The App itself stays, and other projects bound to it keep it.`}
+        />
       </div>
     </>
   );
@@ -524,9 +501,7 @@ function RemovedApp({
   connectionLabel: string;
 }) {
   const connect = useGitHubConnect(projectId);
-  const remove = useDeleteProviderIntegration(projectId);
   const [org, setOrg] = useState("");
-  const [confirming, setConfirming] = useState(false);
   const projectsQ = useProjects();
   const project = projectsQ.data?.find((p) => p.id === projectId);
   // Core refuses an install whose App would belong to someone else (ISS-1421 r23), so none is offered.
@@ -585,40 +560,18 @@ function RemovedApp({
         {connect.isError && !(takes !== false && refusalSaidByThePanel(connect.error, project)) && (
           <Banner tone="danger">{formatApiError(connect.error)}</Banner>
         )}
-        {remove.isError && <Banner tone="danger">{formatApiError(remove.error)}</Banner>}
-
         <div className="flex flex-wrap items-center gap-3">
           {offered && (
             <Button onClick={start} disabled={connect.isPending}>
               {connect.isPending ? "Preparing…" : "Install the GitHub App again"}
             </Button>
           )}
-          {!left && (
-            <Button variant="ghost" size="sm" onClick={() => setConfirming((v) => !v)}>
-              Disconnect from this project…
-            </Button>
-          )}
+          <DisconnectFromProject
+            projectId={projectId}
+            binding={binding}
+            says={`Disconnecting switches this project off from ${connectionLabel}, ${staysOff}.`}
+          />
         </div>
-        {!left && confirming && (
-          <div className="flex flex-col gap-2 border-y border-line py-2.5">
-            <p className="fg-body-sm text-fg">
-              Disconnecting switches this project off from {connectionLabel}, {staysOff}.
-            </p>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="danger"
-                size="sm"
-                loading={remove.isPending}
-                onClick={() => remove.mutate(binding.id, { onSuccess: () => setConfirming(false) })}
-              >
-                Disconnect
-              </Button>
-              <Button variant="ghost" size="sm" onClick={() => setConfirming(false)}>
-                Cancel
-              </Button>
-            </div>
-          </div>
-        )}
       </div>
     </SettingsSection>
   );

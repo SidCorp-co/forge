@@ -101,7 +101,7 @@ export async function removedReaderOf(
   };
 }
 
-type RemovedAct = 'shared' | 'tested' | 'turned on for this project';
+type RemovedAct = 'shared' | 'tested' | 'turned on for this project' | 'asked for its applications';
 
 /** A binding to a removed connection cannot resolve, and a check of it can only fail (ISS-1421 r22). */
 const connectionRemoved = (act: RemovedAct, turnsBack: string) =>
@@ -134,20 +134,36 @@ export async function assertNotRemoved(
   throw connectionRemoved(act, await turnsBackOn(connection, reader, asked.projectId));
 }
 
-/**
- * Switching on a binding over a removed connection answered 200 and changed nothing (ISS-1421 r24),
- * and an empty `secrets` slipped past as if it saved a key (r25): only a key this patch saves passes.
- */
+/** Read off the patch as sent, before the org tier: one saving no usable key is answered alike (ISS-1421 r26). */
 export async function refuseSwitchOnOverRemoved(
-  patch: { active?: boolean | undefined },
-  saved: Record<string, unknown> | undefined,
+  patch: { active?: boolean | undefined; secrets?: Record<string, unknown> | undefined },
   connection: Parameters<typeof assertNotRemoved>[0],
   asker: Asker,
 ): Promise<void> {
   if (patch.active !== true) return;
-  if (saved !== undefined && keyIn(connection.provider, saved)) return;
+  if (patch.secrets !== undefined && keyIn(connection.provider, patch.secrets)) return;
   await assertNotRemoved(connection, 'turned on for this project', asker);
 }
+
+/** A key no check has judged yet: the last check was of a key no longer used (ISS-1421 r21). */
+export const NOT_CHECKED = { lastHealthStatus: null, lastHealthDetail: null, lastHealthAt: null };
+
+/** A key saved from a project reads Not checked yet, and turns a removed connection back on (ISS-1421 r26). */
+export function keySavedHere(
+  connection: Parameters<typeof isRemovedConnection>[0],
+  sent: Record<string, unknown>,
+): Partial<typeof NOT_CHECKED & { active: boolean }> {
+  if (!keyIn(connection.provider, sent)) return {};
+  return isRemovedConnection(connection) ? { ...NOT_CHECKED, active: true } : NOT_CHECKED;
+}
+
+/** The org tier of a binding PATCH, naming who may change what the asker sent (ISS-1421 r26). */
+export const orgConnectionNotYours = () =>
+  new HTTPException(403, {
+    message:
+      "This binding's connection belongs to the organization, so only an owner or admin of that organization can change its key or its shared settings. Ask one of them.",
+    cause: { code: 'FORBIDDEN' },
+  });
 
 /** `stages` say where a deploy binding sends code; the DB check holds any other role at none. */
 export const stagesOnNonDeployBinding = (role: string) =>

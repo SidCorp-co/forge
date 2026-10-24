@@ -76,6 +76,7 @@ import {
   connectionNotReachable,
   defaultConnectionDisplayName,
   forbidden,
+  NOT_CHECKED,
   notFound,
   notifyConnectionChanged,
   summarizeBinding,
@@ -423,11 +424,7 @@ integrationConnectionsRoutes.patch(
     const sentKey = primary
       ? typeof (patch.secrets as Record<string, unknown> | undefined)?.[primary] === 'string'
       : patch.secrets !== undefined;
-    if (sentKey) {
-      connPatch.lastHealthStatus = null;
-      connPatch.lastHealthDetail = null;
-      connPatch.lastHealthAt = null;
-    }
+    if (sentKey) Object.assign(connPatch, NOT_CHECKED);
 
     const updated = await updateConnection(id, connPatch);
     if (!updated) throw notFound('connection');

@@ -248,7 +248,11 @@ export const listCoolifyApplications = onProject(
       200: json(applicationsSchema),
       403: noRoleOnProject,
       404: fail('NOT_FOUND', 'the integration is not a Coolify binding of this project'),
-      409: fail('MISSING_CREDENTIALS', 'the stored connection has no base url or api token'),
+      409: fail({
+        CONNECTION_REMOVED:
+          'the stored connection was removed and holds no key to ask Coolify with',
+        MISSING_CREDENTIALS: 'the stored connection has no base url or api token',
+      }),
       424: coolifyReadFailed,
     },
   }),

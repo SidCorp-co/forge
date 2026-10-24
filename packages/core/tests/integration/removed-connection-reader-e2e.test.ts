@@ -1,7 +1,9 @@
 /**
  * ISS-1421 r25 — judge-101: a switch-on carrying an empty `secrets` turned a binding on over a removed
  * connection (270), and every refusal about a removed connection offered Clear, a new key or an
- * install to a reader who would be refused it. Through the real app against real Postgres.
+ * install to a reader who would be refused it. r26 — judge-105: a member's keyless switch-on met the
+ * org tier's bare 403 first, and a key saved from a project left the connection off. Through the real
+ * app against real Postgres.
  */
 
 import { sql } from 'drizzle-orm';
@@ -222,5 +224,147 @@ describe('a refusal about a removed connection, read by who asks (criteria 281 t
     for (const said of [listed, started, tested]) {
       expect(String(said.body.message)).not.toMatch(/(^|\. )Clear it/);
     }
+  });
+});
+
+const removedLine =
+  'This connection was removed and holds no key, so it cannot be turned on for this project.';
+const orgSavers =
+  'Only an owner or admin of the organization that owns it can save a new key to turn it back on.';
+
+describe('who a keyless switch-on and a key save answer (ISS-1421 r26, criteria 290, 291, 308, 309)', () => {
+  it('answers a keyless switch-on 409 alike for the org member and the owner', async () => {
+    const org = await seedOrg(harness.db, ownerId);
+    const project = await createTestProject(harness.db, ownerId, { orgId: org.id });
+    const { bindingId } = await removedSentry({ type: 'org', id: org.id }, project.id);
+    const url = `/api/projects/${project.id}/integrations/${bindingId}`;
+    const member = await projectAdminOnly(project.id, org.id);
+    for (const secrets of [
+      { authToken: '' },
+      { authToken: null },
+      { webhookSecret: 'scratch-x' },
+    ]) {
+      const theirs = await callAs(member, 'PATCH', url, { active: true, secrets });
+      expect(theirs.status, JSON.stringify(theirs.body)).toBe(409);
+      expect(theirs.body.code).toBe('CONNECTION_REMOVED');
+      expect(theirs.body.message).toBe(`${removedLine} ${orgSavers}`);
+      const owners = await call('PATCH', url, { active: true, secrets });
+      expect(owners.status, JSON.stringify(owners.body)).toBe(409);
+      expect(owners.body.code).toBe('CONNECTION_REMOVED');
+    }
+    const after = await store.findBindingWithConnectionById(bindingId);
+    expect(after?.connection.secretsEnc).toBeNull();
+  });
+
+  it('refuses the org member a usable key by naming who may save it, and changes nothing', async () => {
+    const org = await seedOrg(harness.db, ownerId);
+    const project = await createTestProject(harness.db, ownerId, { orgId: org.id });
+    const { bindingId } = await removedSentry({ type: 'org', id: org.id }, project.id);
+    const url = `/api/projects/${project.id}/integrations/${bindingId}`;
+    const member = await projectAdminOnly(project.id, org.id);
+    const before = await store.findBindingWithConnectionById(bindingId);
+    const saved = await callAs(member, 'PATCH', url, {
+      active: true,
+      secrets: { authToken: 'scratch-fresh-token' },
+    });
+    expect(saved.status, JSON.stringify(saved.body)).toBe(403);
+    expect(saved.body.message).toMatch(
+      /only an owner or admin of that organization can change its key/,
+    );
+    const after = await store.findBindingWithConnectionById(bindingId);
+    expect(after?.connection.secretsEnc).toBeNull();
+    expect(after?.connection.active).toBe(false);
+    expect(after?.binding.updatedAt).toEqual(before?.binding.updatedAt);
+  });
+
+  it('turns a removed connection back on with a key saved from the project, unchecked', async () => {
+    const org = await seedOrg(harness.db, ownerId);
+    const project = await createTestProject(harness.db, ownerId, { orgId: org.id });
+    const { connection, bindingId } = await removedSentry({ type: 'org', id: org.id }, project.id);
+    await harness.db.execute(
+      sql`UPDATE integration_connections SET last_health_status = 'error', last_health_at = now() WHERE id = ${connection.id}`,
+    );
+    const saved = await call('PATCH', `/api/projects/${project.id}/integrations/${bindingId}`, {
+      secrets: { authToken: 'scratch-fresh-token' },
+    });
+    expect(saved.status, JSON.stringify(saved.body)).toBe(200);
+    const after = await store.findBindingWithConnectionById(bindingId);
+    expect(after?.connection.active).toBe(true);
+    expect(after?.connection.lastHealthStatus).toBeNull();
+    expect(after?.binding.active).toBe(true);
+  });
+
+  it("lets a project admin bring another member's removed connection back in one save", async () => {
+    const project = await createTestProject(harness.db, ownerId);
+    const { bindingId } = await removedSentry({ type: 'user', id: ownerId }, project.id);
+    const url = `/api/projects/${project.id}/integrations/${bindingId}`;
+    const adminOnly = await projectAdminOnly(project.id);
+    const told = await callAs(adminOnly, 'PATCH', url, { active: true });
+    expect(told.body.message).toBe(`${removedLine} Save a new key to turn it back on.`);
+    const saved = await callAs(adminOnly, 'PATCH', url, {
+      active: true,
+      secrets: { authToken: 'scratch-fresh-token' },
+    });
+    expect(saved.status, JSON.stringify(saved.body)).toBe(200);
+    const after = await store.findBindingWithConnectionById(bindingId);
+    expect(after?.connection.active).toBe(true);
+    expect(after?.binding.active).toBe(true);
+  });
+
+  it("names a person's key savers to a project member who is not one", async () => {
+    const project = await createTestProject(harness.db, ownerId);
+    const { bindingId } = await removedSentry({ type: 'user', id: ownerId }, project.id);
+    const person = await verifiedUser(`member-${project.id.slice(0, 8)}@test.forge.local`);
+    await createTestProjectMember(harness.db, {
+      userId: person.id,
+      projectId: project.id,
+      role: 'member',
+    });
+    const tested = await callAs(
+      await signUserToken(person.id),
+      'POST',
+      `/api/projects/${project.id}/integrations/${bindingId}/test`,
+    );
+    expect(tested.body.message).toBe(
+      'This connection was removed and holds no key, so it cannot be tested. Only its owner or an admin of a project bound to it can save a new key to turn it back on.',
+    );
+  });
+});
+
+describe('the Coolify application list over a removed connection (ISS-1421 r26, criterion 292)', () => {
+  it('says the connection was removed and who brings it back, rather than that a token is missing', async () => {
+    const org = await seedOrg(harness.db, ownerId);
+    const project = await createTestProject(harness.db, ownerId, { orgId: org.id });
+    const connection = await store.createConnection({
+      ownerType: 'org',
+      ownerId: org.id,
+      provider: 'coolify',
+      displayName: 'coolify gone',
+      config: { baseUrl: 'https://coolify.example' },
+      secrets: { apiToken: 'scratch-coolify-token' },
+    });
+    await store.createBinding({
+      connectionId: connection.id,
+      projectId: project.id,
+      provider: 'coolify',
+      role: 'deploy',
+      stages: ['live'],
+    });
+    expect((await call('DELETE', `/api/integration-connections/${connection.id}`)).status).toBe(
+      200,
+    );
+    const [bound] = await store.listBindingsForConnection(connection.id);
+    const member = await projectAdminOnly(project.id, org.id);
+    const listed = await callAs(
+      member,
+      'POST',
+      `/api/projects/${project.id}/integrations/coolify/applications`,
+      { integrationId: bound?.binding.id },
+    );
+    expect(listed.status, JSON.stringify(listed.body)).toBe(409);
+    expect(listed.body.code).toBe('CONNECTION_REMOVED');
+    expect(listed.body.message).toBe(
+      `This connection was removed and holds no key, so it cannot be asked for its applications. ${orgSavers}`,
+    );
   });
 });

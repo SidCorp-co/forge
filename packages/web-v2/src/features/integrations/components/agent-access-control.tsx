@@ -5,7 +5,12 @@ import { useState } from "react";
 import type { AgentAccess, AgentPathKind } from "@forge/contracts";
 import { Toggle } from "@/design";
 import { formatApiError } from "@/lib/api/error";
-import { useIsOrgAdmin, useUpdateProviderIntegration } from "../hooks";
+import {
+  connectionManagers,
+  useConnectionManager,
+  useIsOrgAdmin,
+  useUpdateProviderIntegration,
+} from "../hooks";
 import type { IntegrationSummary } from "../types";
 
 /** The closed answer, and what a binding gets for not choosing. */
@@ -44,28 +49,41 @@ export type ReadFrom = "drawer" | "panel";
 
 const OFF = "Agents get nothing from it while it is turned off.";
 
+/** Who turns the shared credential on: the reader, by Enable credential, or the people named. */
+export type CredentialOn = { reader: true } | { reader: false; who: string | null };
+
 /** Each control that turns it back on, named as its drawer labels it, and where it is (ISS-1421 r11, r12). */
-function backOn(tier: TurnedOff, from: ReadFrom): string {
+function backOn(tier: TurnedOff, from: ReadFrom, on: CredentialOn): string {
   const where = from === "drawer" ? "in this drawer" : "in its drawer, opened from the list above,";
   // A removed connection has no Enable credential: it comes back as its drawer says (ISS-1421 r22).
   if (tier === "removed") return "once its shared connection, which was removed, is turned back on";
   if (tier === "removed-and-binding")
     return `once its shared connection, which was removed, is turned back on and Enabled ${where} is switched back on`;
+  // Enable credential is drawn only for a reader who may press it (ISS-1421 r26).
+  if (tier === "binding") return `once Enabled ${where} is switched back on`;
+  if (!on.reader) {
+    const credential = on.who
+      ? `once ${on.who} turns its shared credential back on`
+      : "once its shared credential is turned back on";
+    return tier === "both" ? `${credential} and Enabled ${where} is switched back on` : credential;
+  }
   if (tier === "both") {
     const both = from === "drawer" ? "both in this drawer" : "both in its drawer, opened from the list above";
     return `once you press Enable credential and switch Enabled back on, ${both}`;
   }
-  return tier === "binding"
-    ? `once Enabled ${where} is switched back on`
-    : `once Enable credential ${where} turns its shared credential back on`;
+  return `once Enable credential ${where} turns its shared credential back on`;
 }
 
 /** A binding turned off gives agents nothing, granted or not, so nothing under the switch may read
  *  as live (ISS-1421 r10, criterion 134), and the way back names its switch and where it is. */
-export function turnedOffCopy(tier: TurnedOff, from: ReadFrom): { granted: string; withheld: string } {
+export function turnedOffCopy(
+  tier: TurnedOff,
+  from: ReadFrom,
+  on: CredentialOn = { reader: true },
+): { granted: string; withheld: string } {
   return {
-    granted: `${OFF} They may use it ${backOn(tier, from)}.`,
-    withheld: `${OFF} A grant takes effect ${backOn(tier, from)}.`,
+    granted: `${OFF} They may use it ${backOn(tier, from, on)}.`,
+    withheld: `${OFF} A grant takes effect ${backOn(tier, from, on)}.`,
   };
 }
 
@@ -120,6 +138,7 @@ export function AgentAccessChoice({
   failure,
   turnedOff = null,
   readFrom = "drawer",
+  credentialOn = { reader: true },
 }: {
   value: AgentAccess;
   onChange: (next: AgentAccess) => void;
@@ -132,9 +151,11 @@ export function AgentAccessChoice({
   /** A saved binding that is turned off: what the grant would do is not what happens now. */
   turnedOff?: TurnedOff | null;
   readFrom?: ReadFrom;
+  /** Who turns the shared credential on, so the way back offers no button this reader is not shown. */
+  credentialOn?: CredentialOn;
 }) {
   const kind = pathKind === "none" ? undefined : KIND_COPY[pathKind];
-  const copy = kind && turnedOff ? turnedOffCopy(turnedOff, readFrom) : kind;
+  const copy = kind && turnedOff ? turnedOffCopy(turnedOff, readFrom, credentialOn) : kind;
   if (!copy) return null;
 
   const granted = value !== AGENT_ACCESS_CLOSED;
@@ -178,7 +199,14 @@ export function AgentAccessControl({
   projectId: string;
   binding: Pick<
     IntegrationSummary,
-    "id" | "agentAccess" | "agentPathKind" | "active" | "bindingActive" | "connectionActive" | "hasSecrets"
+    | "id"
+    | "connectionId"
+    | "agentAccess"
+    | "agentPathKind"
+    | "active"
+    | "bindingActive"
+    | "connectionActive"
+    | "hasSecrets"
   >;
   /** May the caller edit this project's integrations at all. The GRANT's own tier is applied here. */
   canEdit: boolean;
@@ -187,6 +215,10 @@ export function AgentAccessControl({
 }) {
   const update = useUpdateProviderIntegration(projectId);
   const isOrgAdmin = useIsOrgAdmin(projectId);
+  const manager = useConnectionManager(binding.connectionId);
+  const credentialOn: CredentialOn = manager?.manages
+    ? { reader: true }
+    : { reader: false, who: manager ? connectionManagers(manager.ownerType) : null };
   const [inFlight, setInFlight] = useState<AgentAccess | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
 
@@ -209,6 +241,7 @@ export function AgentAccessControl({
       failure={failure}
       turnedOff={turnedOffTier(binding)}
       readFrom={readFrom}
+      credentialOn={credentialOn}
       onChange={(next) => {
         setFailure(null);
         setInFlight(next);

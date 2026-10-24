@@ -3,6 +3,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { projects } from '../../db/schema.js';
 import { grantHolds, notGrantedMessage } from '../agent-access.js';
+import { offBindingWords } from '../held-key.js';
 import {
   describeInboundDoor,
   healthWithInboundDoor,
@@ -202,15 +203,12 @@ export async function resolveGrantedGitHubBinding(
   const usable = pairs.filter((r) => r.binding.active && r.connection.active);
   const first = usable[0];
   if (!first) {
-    const dead = pairs[0];
-    const which =
-      dead && !dead.connection.active
-        ? 'its GitHub App credential is switched off for every project sharing it'
-        : 'the binding is switched off for this project';
+    const dead = pairs[0] as BindingWithConnection;
+    const why = await offBindingWords(dead, projectId);
     throw new GitHubAgentRefusal(
       'binding_disabled',
-      `this project's GitHub binding exists but ${which} — re-enable it under Settings → Integrations. Nothing was sent to GitHub.`,
-      dead?.binding.id ?? null,
+      `this project's GitHub binding exists, but ${why} Nothing was sent to GitHub.`,
+      dead.binding.id,
     );
   }
   if (!grantHolds(getIntegration('github'), first.binding)) {

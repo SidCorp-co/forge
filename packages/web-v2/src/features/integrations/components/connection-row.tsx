@@ -82,10 +82,15 @@ export function connectionRowLabel(
 
 function RemoveButton({ connection }: { connection: ConnectionDirectoryItem }) {
   const remove = useRemoveConnection();
-  const [armed, setArmed] = useState(false);
   const count = connection.usage.bindings.length;
   // A removed connection holds no key; a second delete clears it from the list (ISS-1421 r21).
   const removed = isRemovedConnection(connection);
+  // The question is armed for the state it was asked about: a Delete accepted under it turned the
+  // row into a removed one with the Clear question already open, one click from deleting it for good
+  // (ISS-1421 r26).
+  const [armedFor, setArmedFor] = useState<boolean | null>(null);
+  const armed = armedFor === removed;
+  const setArmed = (on: boolean) => setArmedFor(on ? removed : null);
 
   if (!armed) {
     return (

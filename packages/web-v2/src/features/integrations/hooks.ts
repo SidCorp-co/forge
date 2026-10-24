@@ -233,7 +233,7 @@ export function useOneWritePerIntent<TData, TError, TVariables, TContext>(
   return { ...mutation, mutate } as UseMutationResult<TData, TError, TVariables, TContext>;
 }
 
-/** Delete a Coolify/Epodsystem integration (provider-neutral toast copy). */
+/** Take a binding off this project: a soft switch-off the toast names as the disconnect it is. */
 export function useDeleteProviderIntegration(projectId: string | undefined) {
   const invalidate = useInvalidateIntegrations(projectId);
   const { toast } = useToast();
@@ -241,10 +241,10 @@ export function useDeleteProviderIntegration(projectId: string | undefined) {
     mutationFn: (id: string) => integrationsApi.remove(projectId as string, id),
     onSuccess: () => {
       invalidate();
-      toast({ title: "Integration removed", tone: "success" });
+      toast({ title: "Disconnected from this project", tone: "success" });
     },
     onError: (err) =>
-      toast(failureToast(err, "The integration was not removed")),
+      toast(failureToast(err, "It was not disconnected from this project")),
   });
   return useOneWritePerIntent(mutation);
 }
@@ -364,6 +364,29 @@ export function useCanManageConnection(
   return connection?.access?.canManage === true;
 }
 
+/** Who turns a connection on: whether this reader may, and whose it is, read off the list; null until
+ *  the list holds it (ISS-1421 r26). */
+export function useConnectionManager(
+  connectionId: string | null | undefined,
+): { manages: boolean; ownerType: "user" | "org" } | null {
+  const connection = useConnections().data?.items.find((c) => c.id === connectionId);
+  if (!connection) return null;
+  return { manages: connection.access?.canManage === true, ownerType: connection.ownerType };
+}
+
+/** Who may turn a connection on, as a sentence's subject. */
+export function connectionManagers(ownerType: "user" | "org"): string {
+  return ownerType === "org"
+    ? "an owner or admin of the organization that owns it"
+    : "its owner";
+}
+
+/** A body that only switches a connection says so, so its toast names that act rather than a save. */
+function switchedTo(body: ConnectionUpdateInput): boolean | null {
+  const keys = Object.keys(body);
+  return keys.length === 1 && typeof body.active === "boolean" ? body.active : null;
+}
+
 function useInvalidateConnections() {
   const qc = useQueryClient();
   return () => {
@@ -380,13 +403,24 @@ export function useUpdateConnection() {
   return useMutation({
     mutationFn: ({ id, body }: { id: string; body: ConnectionUpdateInput }) =>
       integrationConnectionsApi.update(id, body),
-    onSuccess: (answer) => {
+    onSuccess: (answer, { body }) => {
       writeConnectionActive(qc, answer.connection.id, answer.connection.active);
       invalidate();
-      toast({ title: "Connection saved", tone: "success" });
+      const on = switchedTo(body);
+      const title = on === null ? "Connection saved" : on ? "Connection turned on" : "Connection turned off";
+      toast({ title, tone: "success" });
     },
-    onError: (err) =>
-      toast(failureToast(err, "The connection was not saved")),
+    // "The connection was not saved" headed a refused Enable whose key had been saved (ISS-1421 r26).
+    onError: (err, { body }) => {
+      const on = switchedTo(body);
+      const title =
+        on === null
+          ? "The connection was not saved"
+          : on
+            ? "The connection was not turned on"
+            : "The connection was not turned off";
+      toast(failureToast(err, title));
+    },
   });
 }
 

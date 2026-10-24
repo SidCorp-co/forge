@@ -33,11 +33,11 @@ import {
 } from "../../components/integration-enabled-control";
 import { coolify } from "./index";
 import { CoolifyTargetsField } from "./targets-field";
+import { DisconnectFromProject, disconnectSays } from "../../components/disconnect-from-project";
 import { STAGE_OPTIONS } from "../../components/status-pill";
 import {
   useConfirmProdDeploy,
   useCreateProviderIntegration,
-  useDeleteProviderIntegration,
   useIntegrationsList,
   useOrgConnectionLocked,
   useTestIntegration,
@@ -109,7 +109,6 @@ function StagePanel({
   const create = useCreateProviderIntegration(projectId);
   const [ownerOrgId, setOwnerOrgId] = useState<string | undefined>(undefined);
   const update = useUpdateProviderIntegration(projectId);
-  const remove = useDeleteProviderIntegration(projectId);
   const test = useTestIntegration(projectId);
   const confirmProd = useConfirmProdDeploy(projectId);
 
@@ -216,13 +215,6 @@ function StagePanel({
     }
   }
 
-  function handleDelete() {
-    if (!existing) return;
-    if (!window.confirm(`Delete the ${stage} Coolify integration?`))
-      return;
-    remove.mutate(existing.id);
-  }
-
   return (
     <div
       className={`flex flex-col gap-4 border-t pt-4 ${isLive ? "border-red" : "border-subtle"}`}
@@ -295,6 +287,7 @@ function StagePanel({
         targets={targets}
         onChange={setTargets}
         inherited={targetsInherited}
+        canFixCredentials={!orgLocked && !(existing && bindsRemovedConnection(existing))}
       />
 
       {error && <Banner tone="danger">{error}</Banner>}
@@ -340,14 +333,11 @@ function StagePanel({
           </Button>
         )}
         {existing && (
-          <Button
-            variant="danger"
-            icon="trash"
-            loading={remove.isPending}
-            onClick={handleDelete}
-          >
-            Delete
-          </Button>
+          <DisconnectFromProject
+            projectId={projectId}
+            binding={existing}
+            says={disconnectSays(`Coolify (${stage})`, existing)}
+          />
         )}
       </div>
 

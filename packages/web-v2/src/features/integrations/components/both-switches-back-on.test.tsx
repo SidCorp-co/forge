@@ -87,6 +87,30 @@ vi.mock("@/lib/api/client", async () => {
         if (held) await held;
         return { items: [before], bindings: [before] };
       }
+      // The reader manages the org's connection, so the drawer offers Enable credential (ISS-1421 r26).
+      if (bare === "/integration-connections") {
+        return {
+          items: [
+            {
+              id: CONNECTION,
+              ownerType: "org",
+              ownerId: PROJECT_ROW.orgId,
+              provider,
+              displayName: null,
+              config: {},
+              active: stored.connection,
+              lastHealthStatus: null,
+              lastHealthAt: null,
+              breakerOpenedAt: null,
+              hasSecrets: true,
+              createdAt: NOW,
+              updatedAt: NOW,
+              usage: { bindings: [] },
+              access: { reach: "org", canManage: true, ownerName: null },
+            },
+          ],
+        };
+      }
       if (bare === "/projects") return [PROJECT_ROW];
       if (bare === `/projects/${PROJECT}`) return { ...PROJECT_ROW, agentConfig: {} };
       return { items: [], bindings: [], applications: [], rooms: [], targets: [], repositories: [], truncated: false };

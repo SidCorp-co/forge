@@ -27,6 +27,7 @@ import type { AuthVars } from '../../middleware/auth.js';
 import { DeployEnvironmentLockedError } from '../../pipeline/deploy-lock.js';
 import {
   assertAdmin,
+  assertNotRemoved,
   assertProjectMember,
   assertProjectWriter,
   broadcastIntegrationChanged,
@@ -264,7 +265,8 @@ function registerCoolifyPickerRoutes(routes: Hono<{ Variables: AuthVars }>): voi
     declaresInput('json', applicationsBodySchema),
     async (c) => {
       const projectId = c.req.param('projectId');
-      await assertProjectMember(projectId, c.get('userId'));
+      const userId = c.get('userId');
+      const role = await assertProjectMember(projectId, userId);
       const raw = await c.req.json().catch(() => ({}));
       const parsed = applicationsBodySchema.safeParse(raw ?? {});
       if (!parsed.success) throw invalidBody(parsed.error, applicationsBodySchema, raw);
@@ -279,10 +281,16 @@ function registerCoolifyPickerRoutes(routes: Hono<{ Variables: AuthVars }>): voi
         ) {
           throw notFound();
         }
+        // Over a removed connection "missing" named no cause and no way back (ISS-1421 r26).
+        await assertNotRemoved(existing.connection, 'asked for its applications', {
+          userId,
+          role,
+          projectId,
+        });
         const ctx = buildContextFromBinding<CoolifyConfig, CoolifySecrets>(existing);
         if (!ctx.config?.baseUrl || !ctx.secrets?.apiToken) {
           throw new HTTPException(409, {
-            message: 'coolify connection is missing baseUrl or apiToken',
+            message: `This Coolify connection holds no ${ctx.config?.baseUrl ? 'API token' : 'base URL'}, so its applications cannot be listed.`,
             cause: { code: 'MISSING_CREDENTIALS' },
           });
         }

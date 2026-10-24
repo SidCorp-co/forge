@@ -57,8 +57,11 @@ export function DangerZone({
 }) {
   const update = useUpdateConnection();
   const remove = useRemoveConnection();
-  const [confirming, setConfirming] = useState(false);
   const removed = isRemovedConnection(connection);
+  // Asked about one state, the question closes when the connection leaves it (ISS-1421 r26).
+  const [confirmingFor, setConfirmingFor] = useState<boolean | null>(null);
+  const confirming = confirmingFor === removed;
+  const setConfirming = (on: boolean) => setConfirmingFor(on ? removed : null);
 
   return (
     <section className="flex flex-col gap-3">
@@ -90,7 +93,7 @@ export function DangerZone({
           variant="ghost"
           size="sm"
           disabled={removed && boundProjects === null}
-          onClick={() => setConfirming((v) => !v)}
+          onClick={() => setConfirming(!confirming)}
         >
           {removed ? "Clear from list…" : "Remove…"}
         </Button>
