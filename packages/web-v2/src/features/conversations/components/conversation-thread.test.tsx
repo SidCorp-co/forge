@@ -223,6 +223,48 @@ describe("a tool call in a room's turn", () => {
   });
 });
 
+// ISS-1229 r38, judge-103: the assistant read a guide that does not exist, then listed the guides in the
+// same reply; the refused card offered the person nothing and said nothing of the second call.
+describe("a refused call the assistant put right in the same reply", () => {
+  const call = (id: string, argv: string[], out: { exitCode: number; stdout: string; stderr: string }) => ({
+    type: "tool" as const,
+    toolCall: { id, name: "forge", input: { argv, body: "" }, output: JSON.stringify(out), ...(out.exitCode ? { isError: true } : {}) },
+  });
+  const noGuide = call("g1", ["guide", "issue-claiming"], {
+    exitCode: 1,
+    stdout: "",
+    stderr: "No guide named issue-claiming. `forge guide` lists the guides this plugin stands behind.\n",
+  });
+  const turn = (blocks: unknown[]) =>
+    said({ id: "m3", role: "assistant", authorUserId: null, authorLabel: null, content: "Here.", blocks: blocks as never });
+
+  it("says the assistant tried another way where a later call of the same act went through", () => {
+    render(
+      <ConversationThread
+        messages={[
+          turn([
+            noGuide,
+            call("g2", ["guide"], { exitCode: 0, stdout: "contract\n", stderr: "" }),
+            call("g3", ["guide", "issue-flow"], { exitCode: 0, stdout: "# Skill: issue-flow\n", stderr: "" }),
+            { type: "text", text: "Here." },
+          ]),
+        ]}
+        windows={[]}
+      />,
+    );
+    expect(screen.getByTestId("room-tool-refusal")).toHaveTextContent(
+      "No guide named issue-claiming. The assistant tried another way below, and its answer says how it went.",
+    );
+  });
+
+  it("asks the person to have it put right where nothing later went through", () => {
+    render(<ConversationThread messages={[turn([noGuide, { type: "text", text: "Here." }])]} windows={[]} />);
+    expect(screen.getByTestId("room-tool-refusal")).toHaveTextContent(
+      "No guide named issue-claiming. Ask the assistant to put it right and try again.",
+    );
+  });
+});
+
 // ISS-1229 r35, judge-95: in a room whose only agent lost its role, the sent message sat over "Nobody has
 // answered this yet." as if an answer were coming, and the reason the agent cannot answer was gone.
 describe("a message no agent could answer", () => {

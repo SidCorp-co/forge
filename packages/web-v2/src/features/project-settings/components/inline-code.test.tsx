@@ -177,7 +177,7 @@ describe("the measurement can fail", () => {
 
 	it("reads --color-subtle as the foreground token it is", () => {
 		expect(VARS.get("--color-subtle")).toBe("var(--fg-subtle)");
-		expect(painted(SHIPPED).background).toBe(literal("var(--ink-500)"));
+		expect(painted(SHIPPED).background).toBe(literal("var(--ink-550)"));
 		expect(painted(SHIPPED).color).toBeUndefined();
 	});
 
@@ -193,8 +193,8 @@ describe("the measurement can fail", () => {
 	// today, so a tone restyled later does not fail a historical reproduction
 	// (ISS-1127 consult cba47a F2).
 	it("reproduces the two ratios the judging run measured", () => {
-		const span = painted(SHIPPED);
-		const background = span.background ?? "";
+		// The --fg-subtle grey as it stood when the judging run measured, before ISS-1229 r38 darkened it.
+		const background = "#767D8A";
 		const at = (judgedFg: string) => Number(contrast(judgedFg, background).toFixed(2));
 		expect(at("#C6790A")).toBe(1.21);
 		expect(at("#B5332A")).toBe(1.46);

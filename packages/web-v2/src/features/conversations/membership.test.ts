@@ -4,7 +4,7 @@
 // in the same words.
 
 import { afterAll, describe, expect, it, vi } from "vitest";
-import { agentPanelWithoutProject, composerRefusal, emptyRoomState, memberName, removalClaim, removalQuestion, unopenableReason } from "./membership";
+import { agentPanelWithoutProject, composerRefusal, issueDoorWithoutProject, emptyRoomState, memberName, removalClaim, removalQuestion, unopenableReason } from "./membership";
 import type { ConversationParticipant } from "./types";
 
 // When each was added reads in the reader's own time zone (ISS-1229 r25); this reader is at UTC+7.
@@ -156,8 +156,28 @@ describe("composerRefusal's way out", () => {
     expect(composerRefusal({ scopeProjects: two, participants: mute, canChangeMembership: true })?.wayOut).toBeNull();
     const oneAnswers = [agentOn("p1", true), agentOn("p2", false)];
     expect(composerRefusal({ scopeProjects: two, participants: oneAnswers, canChangeMembership: true })?.wayOut).toBe(
-      "Take one of its agents out, and the room can be spoken in again.",
+      "Take @p2 out, and the room can be spoken in again.",
     );
+  });
+  // r38, judge-103: in a room whose one agent lost its role, "take one of its agents out" let a person take
+  // the agent that answers out, which leaves a room nobody answers; the one choice that works is named.
+  it("names the agent to take out where only one choice works", () => {
+    const oneAnswers = [agentOn("p1", false), agentOn("p2", true)];
+    expect(composerRefusal({ scopeProjects: two, participants: oneAnswers, canChangeMembership: true })?.wayOut).toBe(
+      "Take @p1 out, and the room can be spoken in again.",
+    );
+    expect(composerRefusal({ scopeProjects: two, participants: oneAnswers, canChangeMembership: false })?.wayOut).toBe(
+      "Somebody who can change who is in this room can take @p1 out, and it can be spoken in again.",
+    );
+    expect(composerRefusal({ scopeProjects: two, participants: answering, canChangeMembership: true })?.wayOut).not.toMatch(/@/);
+  });
+  it("points an empty room's reader to the bottom of the room where the bar has taken the box's place", () => {
+    const room = { scopeProjects: two, participants: [agentOn("p1", false), agentOn("p2", true)], canChangeMembership: true };
+    expect(emptyRoomState(room, { canPost: true })).toEqual({
+      title: "Nothing can be sent here",
+      message: "The reason is at the bottom of this room, where the message box would be.",
+    });
+    expect(JSON.stringify(emptyRoomState(room, { canPost: true }))).not.toMatch(/above the message box/);
   });
   it("offers no way out where one agent out still leaves the room about two projects", () => {
     const three = [...two, { id: "p3", name: "Books", slug: "books" }];
@@ -202,5 +222,16 @@ describe("the agent panel's door with no project open", () => {
   it("asks a reader with a project to open one, in the door's own name", () => {
     expect(agentPanelWithoutProject(true, true).title).toBe("Ask agent");
     expect(agentPanelWithoutProject(false, true).description).toBe("Open a project to read its conversations.");
+  });
+});
+
+// ISS-1229 r38: the top bar's New issue told a reader who can see no project to open one.
+describe("the New issue door with no project open", () => {
+  it("never tells a reader who can see no project to open one", () => {
+    expect(issueDoorWithoutProject(false).description).toBe(
+      "This organization holds no project you can see, and an issue belongs to a project.",
+    );
+    expect(issueDoorWithoutProject(false).description).not.toMatch(/open a project/i);
+    expect(issueDoorWithoutProject(true).description).toBe("Open a project to create an issue.");
   });
 });

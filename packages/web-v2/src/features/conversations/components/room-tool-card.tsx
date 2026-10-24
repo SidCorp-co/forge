@@ -9,9 +9,20 @@ import { formatResultBody } from "@/features/session/result-summary";
 import type { ToolCallData } from "@/features/session/types";
 import { toolWords } from "../tool-words";
 
-export function RoomToolCard({ tool, live, blockKey }: { tool: ToolCallData; live?: boolean; blockKey?: string }) {
+export function RoomToolCard({
+  tool,
+  live,
+  blockKey,
+  later,
+}: {
+  tool: ToolCallData;
+  live?: boolean;
+  blockKey?: string;
+  /** The calls after this one in the same reply, which say whether the assistant took another way (r38). */
+  later?: readonly ToolCallData[];
+}) {
   const [open, toggle] = useDisclosure(blockKey);
-  const words = toolWords(tool, live === true);
+  const words = toolWords(tool, live === true, later);
   const refused = tool.isError === true;
   const running = !refused && tool.result === undefined && live === true;
   return (
