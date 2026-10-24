@@ -180,7 +180,7 @@ describe('refuseUnknownTransitionKeys', () => {
       'TRANSITION_FIELD_UNKNOWN /note',
       'BAD_REQUEST /waitingKind',
     ]);
-    expect(refused?.refusals[0]?.detail).toContain(TRANSITION_BODY_FIELDS.toSorted().join(', '));
+    expect(refused?.refusals[0]?.detail).toContain([...TRANSITION_BODY_FIELDS].sort().join(', '));
     expect(refused?.refusals[0]?.detail).toContain("a move's reason goes in `reason`");
   });
 

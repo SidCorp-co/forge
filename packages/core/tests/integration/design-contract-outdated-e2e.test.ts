@@ -163,8 +163,8 @@ describe('a step naming a contract against the version its requirement pins', ()
       },
       source: { type: 'contract_version', key: `${slug}/api@2.0.0` },
     });
-    expect(marker.reason).toContain('2.0.0');
-    expect(marker.reason).toContain('1.0.0');
+    expect(marker?.reason).toContain('2.0.0');
+    expect(marker?.reason).toContain('1.0.0');
 
     // the requirement's latest baseline moves onto 2.0.0: nothing newer breaks, nothing is outdated
     ok(
