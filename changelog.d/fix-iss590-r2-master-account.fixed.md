@@ -1,1 +1,0 @@
-**A master is asked only for acts its own account can take.** Release naming, release approval and feedback triage now read the account the master's pane writes as, never the person who paired its box.

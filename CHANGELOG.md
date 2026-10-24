@@ -9,6 +9,20 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.307] - 2026-10-24
+
+Shipped requirements are judged on the running build instead of awaiting a breakdown
+
+### Fixed
+
+- **A suggestion says why, on itself.** A suggestion takes an optional rationale and the earlier suggestion it supersedes, folded on its card; an accepted breakdown no longer carries a re-proposal's answer to a rejection into its issues (ISS-568).
+- **A runner pane keeps your own config.** Panes name their daemon through `FORGE_RUNNER_CONFIG_DIR` instead of the daemon's `XDG_CONFIG_HOME`, so vi-natural and every XDG tool there read your normal configuration.
+- **A judge declared over released issues now has a run.** Core opens its session without taking the closed issues, so Runs shows it held on its master instead of nothing, and the box stops retrying a refused open.
+- **A requirement whose capability already shipped no longer owes a breakdown.** Its criteria are judged on the running build at the requirement itself; it then waits on its accept, or names the criterion and who acts next.
+- **A master is asked only for acts its own account can take.** Release naming, release approval and feedback triage now read the account the master's pane writes as, never the person who paired its box.
+- **Every MCP tool now refuses a wrong argument by name.** A wrong key, type or action answers BAD_REQUEST at its path with the valid shape, never a validator dump, and a credential sent wrongly does not come back.
+- **A wait names a role, not a permission id.** "Waits on" reads Member, Release approver or Feedback triager, never "A holder of onboarding.request", and You where you hold it. The runner's failure tag moves to the Developer view.
+
 ## [0.4.0-dev.306] - 2026-10-24
 
 Release notes list every change a cut ships, folded at the shipping commit

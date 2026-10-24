@@ -1,1 +1,0 @@
-**Every MCP tool now refuses a wrong argument by name.** A wrong key, type or action answers BAD_REQUEST at its path with the valid shape, never a validator dump, and a credential sent wrongly does not come back.
