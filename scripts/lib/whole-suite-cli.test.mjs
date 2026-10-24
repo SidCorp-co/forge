@@ -49,7 +49,8 @@ const VERSION_FILES = [
 // The stub answers from the plan (or from `plan.before`, when given) until the cut sends a POST;
 // after a dispatch it answers from `plan.dispatched`, after a rerun from `plan.rerun`. Each is a
 // list of answers taken one per check-runs read, the last standing. `plan.moveOrigin` lands a commit on the bare origin as the
-// dispatch is sent, as dev does while a whole suite runs.
+// dispatch is sent, as dev does while a whole suite runs: `file` and `content`, or `files`, each path
+// to its new text or to null for a deletion.
 const STUB = `#!${process.execPath}
 const fs = require('node:fs');
 const { spawnSync } = require('node:child_process');
@@ -73,7 +74,15 @@ if (args.includes('POST')) {
   if (move && state.phase === 'dispatched') {
     const git = (...a) => spawnSync('git', a, { cwd: move.cwd, encoding: 'utf8' });
     git('pull', '-q', 'origin', 'dev');
-    fs.writeFileSync(move.cwd + '/' + move.file, move.content);
+    const files = move.files ?? { [move.file]: move.content };
+    for (const [rel, content] of Object.entries(files)) {
+      const at = move.cwd + '/' + rel;
+      if (content === null) fs.rmSync(at);
+      else {
+        fs.mkdirSync(require('node:path').dirname(at), { recursive: true });
+        fs.writeFileSync(at, content);
+      }
+    }
     git('add', '-A');
     git('commit', '-q', '-m', move.subject);
     git('push', '-q', 'origin', 'dev');
@@ -534,21 +543,144 @@ describe('a cut finishes on a branch that moves while its whole suite runs', () 
     expect(git(repo.work, 'rev-parse', `${tip}^2^`)).toBe(head);
     expect(again.stdout).toContain(`git tag dev-v0.4.0-dev.2 ${tip} && git push`);
   });
+});
 
-  it('a landing that touched a fragment the release folds: refused by name, nothing pushed', () => {
+/** The `## [version]` section of the record at `rev` on origin, up to the next released one. */
+function sectionAt(repo, rev, version = '0.4.0-dev.2') {
+  const record = git(repo.top, '--git-dir=origin.git', 'show', `${rev}:CHANGELOG.md`);
+  const at = record.indexOf(`## [${version}]`);
+  if (at === -1) return null;
+  const next = record.indexOf('\n## [', at + 1);
+  return record.slice(at, next === -1 ? undefined : next);
+}
+/** Every path under changelog.d/ the commit `rev` on origin still carries. */
+const fragmentsAt = (repo, rev) =>
+  git(repo.top, '--git-dir=origin.git', 'ls-tree', '-r', '--name-only', rev, '--', 'changelog.d/')
+    .split('\n')
+    .filter(Boolean);
+
+/** A cut whose suite runs while `files` land on dev from another clone (ISS-578). */
+function cutWhileLanding(files) {
+  const repo = repository();
+  const head = git(repo.work, 'rev-parse', 'HEAD');
+  const move = { ...lander(repo), files };
+  const { env } = withStub(repo, { dispatched: runsThenGreen(head), moveOrigin: move });
+  return { repo, head, r: cut(repo, env) };
+}
+
+describe('the commit a cut ships has every fragment it carries folded into its version (ISS-578, REQ-71 BC-5)', () => {
+  it('no move: the release commit folds the fragments it carries and is what ships', () => {
     const repo = repository();
     const head = git(repo.work, 'rev-parse', 'HEAD');
-    const move = {
-      ...lander(repo, 'changelog.d/a.fixed.md'),
-      content: '**A thing works.** Now.\n',
-    };
-    const { env } = withStub(repo, { dispatched: runsThenGreen(head), moveOrigin: move });
+    const { env } = withStub(repo, { dispatched: runsThenGreen(head) });
     const r = cut(repo, env);
+    expect(r.stderr).toBe('');
+    expect(r.status).toBe(0);
+    const tip = originHead(repo);
+    expect(git(repo.work, 'rev-parse', `${tip}^`)).toBe(head);
+    expect(sectionAt(repo, tip)).toContain('### Fixed\n\n- **A thing works.** It did not.');
+    expect(fragmentsAt(repo, tip)).toEqual([]);
+    expect(r.stdout).toContain('1 fragment(s) written into [0.4.0-dev.2]');
+  });
+
+  it('c1: a fragment landed while the suite ran is folded into this version by the merge that ships, not left for the next', () => {
+    const { repo, r } = cutWhileLanding({
+      'changelog.d/b.added.md': '**B is new.** Landed late.\n',
+    });
+    expect(r.stderr).toBe('');
+    expect(r.status).toBe(0);
+    const tip = originHead(repo);
+    expect(git(repo.work, 'log', '-1', '--format=%s', tip)).toBe(
+      'Merge release dev-v0.4.0-dev.2 into dev',
+    );
+    const section = sectionAt(repo, tip);
+    expect(section).toContain('### Added\n\n- **B is new.** Landed late.');
+    expect(section).toContain('### Fixed\n\n- **A thing works.** It did not.');
+    expect(fragmentsAt(repo, tip)).toEqual([]);
+    expect(r.stdout).toContain('2 fragment(s) written into [0.4.0-dev.2]');
+  });
+
+  it('c1 boundary: two fragments landed in two sections are both folded under their own headings', () => {
+    const { repo, r } = cutWhileLanding({
+      'changelog.d/b.added.md': '**B is new.** Landed late.\n',
+      'changelog.d/c.fixed.md': '**C is fixed.** Also late.\n',
+    });
+    expect(r.status).toBe(0);
+    const tip = originHead(repo);
+    const section = sectionAt(repo, tip);
+    expect(section).toContain('### Added\n\n- **B is new.** Landed late.');
+    expect(section).toContain(
+      '### Fixed\n\n- **A thing works.** It did not.\n- **C is fixed.** Also late.',
+    );
+    expect(fragmentsAt(repo, tip)).toEqual([]);
+  });
+
+  it('c3: a fragment edited after the cut folded it ships under the version it was folded into, with its edited text', () => {
+    const { repo, r } = cutWhileLanding({ 'changelog.d/a.fixed.md': '**A thing works.** Now.\n' });
+    expect(r.stderr).toBe('');
+    expect(r.status).toBe(0);
+    const tip = originHead(repo);
+    const section = sectionAt(repo, tip);
+    expect(section).toContain('- **A thing works.** Now.');
+    expect(section).not.toContain('It did not.');
+    expect(fragmentsAt(repo, tip)).toEqual([]);
+  });
+
+  it('c3 boundary: a folded fragment deleted while the suite ran is not listed by the commit that ships', () => {
+    const { repo, r } = cutWhileLanding({
+      'changelog.d/a.fixed.md': null,
+      'changelog.d/b.added.md': '**B is new.** Landed late.\n',
+    });
+    expect(r.status).toBe(0);
+    const tip = originHead(repo);
+    const section = sectionAt(repo, tip);
+    expect(section).toContain('- **B is new.** Landed late.');
+    expect(section).not.toContain('A thing works');
+    expect(fragmentsAt(repo, tip)).toEqual([]);
+  });
+
+  it('c2: fragments landed while the suite ran that cannot be folded: RELEASE_FRAGMENT_UNFOLDED names each, nothing pushed', () => {
+    const { repo, r } = cutWhileLanding({
+      'changelog.d/b.fixed.md': 'no bold lead\n',
+      'changelog.d/c.nosuch.md': '**C.** Wrong section.\n',
+    });
     expect(r.status).toBe(1);
-    expect(r.stderr).toContain('does not merge onto origin/dev');
-    expect(r.stderr).toContain('changelog.d/a.fixed.md');
+    expect(r.stderr).toContain('RELEASE_FRAGMENT_UNFOLDED');
+    expect(r.stderr).toContain('changelog.d/b.fixed.md does not open with a bold lead');
+    expect(r.stderr).toContain('changelog.d/c.nosuch.md names section `nosuch`');
     expect(r.stderr).toContain('Nothing was pushed.');
     expect(git(repo.work, 'log', '-1', '--format=%s', originHead(repo))).toBe('ISS-77: a landing');
+    expect(git(repo.work, 'status', '--porcelain')).toBe('');
+  });
+
+  it('c2: a commit about to ship that still carries a fragment the fold did not take: RELEASE_FRAGMENT_UNFOLDED names it, nothing pushed', () => {
+    const { repo, r } = cutWhileLanding({
+      'changelog.d/iss-9/b.fixed.md': '**B is fixed.** In a folder.\n',
+    });
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('RELEASE_FRAGMENT_UNFOLDED');
+    expect(r.stderr).toContain('changelog.d/iss-9/b.fixed.md');
+    expect(r.stderr).toContain('Nothing was pushed.');
+    expect(git(repo.work, 'log', '-1', '--format=%s', originHead(repo))).toBe('ISS-77: a landing');
+  });
+
+  it('c2 with no move: a fragment the release commit did not fold refuses the cut by name, nothing pushed', () => {
+    const repo = repository();
+    mkdirSync(join(repo.work, 'changelog.d/iss-9'));
+    writeFileSync(
+      join(repo.work, 'changelog.d/iss-9/b.fixed.md'),
+      '**B is fixed.** In a folder.\n',
+    );
+    git(repo.work, 'add', '-A');
+    git(repo.work, 'commit', '-q', '-m', 'ISS-9: a fragment in a folder');
+    git(repo.work, 'push', '-q', 'origin', 'dev');
+    const head = git(repo.work, 'rev-parse', 'HEAD');
+    const { env } = withStub(repo, { dispatched: runsThenGreen(head) });
+    const r = cut(repo, env);
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('RELEASE_FRAGMENT_UNFOLDED');
+    expect(r.stderr).toContain('changelog.d/iss-9/b.fixed.md');
+    expect(originHead(repo)).toBe(head);
   });
 });
 

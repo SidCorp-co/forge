@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 # Cuts the CLOUD release: bumps the version files in lockstep, folds the
 # changelog.d/ fragments into a new CHANGELOG.md version section and deletes
-# them, commits, tags and pushes.
+# them, commits, tags and pushes. The commit that ships folds every fragment it
+# carries: where the branch moved while the suite ran, the merge onto it folds
+# what landed meanwhile into the same version (step 4b), and a commit that would
+# still ship a fragment is refused RELEASE_FRAGMENT_UNFOLDED, naming each (step 4c).
 #
 # Two lines, told apart by the version alone. X.Y.Z and X.Y.Z-rc.N are cut on
 # main and tagged vX.Y.Z here. X.Y.Z-dev.N is a dev release: cut on dev, its
@@ -114,28 +117,37 @@ fi
 SUITE=$(node scripts/whole-suite.mjs gate --commit "$CUT" --branch "$RELEASE_BRANCH" ${ACT[@]+"${ACT[@]}"} 2>&1) || die "$SUITE"
 printf '%s\n' "$SUITE"
 
-# ---- step 2: atomic version bump ------------------------------------------
-# Written to a staging directory and verified to agree BEFORE anything moves, so
-# a failure half-way leaves five files at the old version rather than three at
-# the new one — a split the next reader cannot tell from a deliberate state.
+# ---- steps 2 and 3: the fold -----------------------------------------------
+# fold bumps the version files and writes the [$NEW] section from every fragment the working tree
+# holds, deleting them, so the commit it makes is the one place an entry moves from $FRAGMENTS/ to
+# $RECORD. It runs on the cut commit here, and again in step 4b on the merge onto a branch that moved
+# while the suite ran, which is the commit that ships. FOLDED is how many fragments it folded; a
+# failure sets FOLD_ERROR and changes nothing.
+# The version files are written to a staging directory and verified to agree BEFORE anything moves,
+# so a failure half-way leaves five files at the old version rather than three at the new one — a
+# split the next reader cannot tell from a deliberate state. They move only once the section is
+# written, so a section refused leaves them as they were.
 STAGE=$(mktemp -d); trap 'rm -rf "$STAGE"' EXIT
-for f in "${VERSION_JSON_FILES[@]}"; do
-  mkdir -p "$STAGE/$(dirname "$f")"
-  jq --arg v "$NEW" '.version = $v' "$f" > "$STAGE/$f" || die "jq failed rewriting $f"
-  [ -s "$STAGE/$f" ] || die "staged $f came out empty"
-done
-SEEN=$(for f in "${VERSION_JSON_FILES[@]}"; do jq -r .version "$STAGE/$f"; done | sort -u)
-[ "$(wc -l <<<"$SEEN")" -eq 1 ] && [ "$SEEN" = "$NEW" ] || die "staged files disagree about the version: $(tr '\n' ' ' <<<"$SEEN")"
-for f in "${VERSION_JSON_FILES[@]}"; do mv "$STAGE/$f" "$f"; done
-
-# ---- step 3: write the section ---------------------------------------------
-# Each fragment becomes one bullet under its `###` section and is deleted, so the
-# release commit is the one place an entry moves from $FRAGMENTS/ to $RECORD.
 DATE=$(date -u +%F)
-node scripts/lib/assemble-release.mjs "$RECORD" "$FRAGMENTS" "$NEW" "$DATE" "$HEADLINE" >/dev/null || die "could not write [$NEW] into $RECORD from $FRAGMENTS/"
+FOLDED=0; FOLD_ERROR=''
+fold() {
+  local f seen out
+  for f in "${VERSION_JSON_FILES[@]}"; do
+    mkdir -p "$STAGE/$(dirname "$f")"
+    jq --arg v "$NEW" '.version = $v' "$f" > "$STAGE/$f" || { FOLD_ERROR="jq failed rewriting $f"; return 1; }
+    [ -s "$STAGE/$f" ] || { FOLD_ERROR="staged $f came out empty"; return 1; }
+  done
+  seen=$(for f in "${VERSION_JSON_FILES[@]}"; do jq -r .version "$STAGE/$f"; done | sort -u)
+  { [ "$(wc -l <<<"$seen")" -eq 1 ] && [ "$seen" = "$NEW" ]; } || { FOLD_ERROR="staged files disagree about the version: $(tr '\n' ' ' <<<"$seen")"; return 1; }
+  out=$(node scripts/lib/assemble-release.mjs "$RECORD" "$FRAGMENTS" "$NEW" "$DATE" "$HEADLINE" 2>&1) || { FOLD_ERROR=${out//assemble-release: /}; return 1; }
+  FOLDED=$out
+  for f in "${VERSION_JSON_FILES[@]}"; do mv "$STAGE/$f" "$f"; done
+}
+fold || die "could not write [$NEW] into $RECORD from $FRAGMENTS/:
+$FOLD_ERROR"
 
 # ---- step 4: commit and tag -----------------------------------------------
-git add -- "${VERSION_JSON_FILES[@]}" "$RECORD" "${FRAGMENT_FILES[@]}"
+git add -A -- "${VERSION_JSON_FILES[@]}" "$RECORD" "$FRAGMENTS"
 git commit -q -m "Release $TAG" -m "$HEADLINE"
 RELEASE=$(git rev-parse HEAD)
 if [ "$RELEASE_BRANCH" = main ]; then
@@ -146,8 +158,12 @@ fi
 # ---- step 4b: land on the branch as it now stands --------------------------
 # The branch went on landing while the whole suite ran. The release commit stays on the commit the
 # suite passed, and is merged onto the branch's head — the head first, so the branch's first-parent
-# history stays its landings, which the bisect walks. A conflict is refused by name and nothing is
-# pushed.
+# history stays its landings, which the bisect walks. That merge is the commit that ships, so it is
+# folded itself: it takes the head's tree, whose fragments are the cut's as they stand now (edited or
+# deleted since) plus every one landed meanwhile, bumps the version files there and folds all of them
+# into [$NEW]. The release commit adds nothing else the merge could lose — its version files, $RECORD
+# and $FRAGMENTS/ are each rewritten from the head here. A fragment that cannot be folded refuses the
+# cut by name and nothing is pushed.
 RODE=0
 git fetch -q origin "$RELEASE_BRANCH"
 TIP=$(git rev-parse "origin/$RELEASE_BRANCH")
@@ -155,14 +171,28 @@ if [ "$TIP" != "$CUT" ]; then
   git merge-base --is-ancestor "$CUT" "$TIP" || die "origin/$RELEASE_BRANCH no longer holds $(git rev-parse --short "$CUT"), the commit this cut was taken on. The release commit $(git rev-parse --short "$RELEASE") is local only; nothing was pushed."
   RODE=$(git rev-list --first-parent --count "$CUT..$TIP")
   git checkout -q -B "$RELEASE_BRANCH" "$TIP"
-  if ! git merge -q --no-ff -m "Merge release $TAG into $RELEASE_BRANCH" "$RELEASE" >/dev/null 2>&1; then
-    CONFLICTS=$(git diff --name-only --diff-filter=U | tr '\n' ' ')
+  git merge -q --no-ff --no-commit -s ours "$RELEASE" >/dev/null 2>&1 || die "release commit $(git rev-parse --short "$RELEASE") does not merge onto origin/$RELEASE_BRANCH ($(git rev-parse --short "$TIP")). Nothing was pushed; the release commit is $RELEASE."
+  if ! fold; then
     git merge --abort
-    die "release commit $(git rev-parse --short "$RELEASE") does not merge onto origin/$RELEASE_BRANCH ($(git rev-parse --short "$TIP")): $CONFLICTS
-Nothing was pushed. $RELEASE_BRANCH is at origin/$RELEASE_BRANCH; the release commit is $RELEASE."
+    die "RELEASE_FRAGMENT_UNFOLDED: $RELEASE_BRANCH landed $RODE commit(s) past $(git rev-parse --short "$CUT") while its whole suite ran, and the merge that would ship them cannot fold what they carry into [$NEW]:
+$FOLD_ERROR
+Nothing was pushed. $RELEASE_BRANCH is at origin/$RELEASE_BRANCH; the release commit is $RELEASE. Land the fix to each fragment, then cut again with --at $CUT."
   fi
+  git add -A -- "${VERSION_JSON_FILES[@]}" "$RECORD" "$FRAGMENTS"
+  git commit -q -m "Merge release $TAG into $RELEASE_BRANCH" -m "Folds into [$NEW] the $FOLDED fragment(s) this merge ships, $RODE landing(s) past $(git rev-parse --short "$CUT") included."
 fi
 LANDED=$(git rev-parse HEAD)
+
+# ---- step 4c: the commit that ships carries no fragment it did not fold ----
+# Whatever is still under $FRAGMENTS/ in the commit about to ship would ship now and be written
+# under the next version by the next cut. Refused by name, each path, and nothing is pushed.
+UNFOLDED=$(git ls-tree -r --name-only "$LANDED" -- "$FRAGMENTS/" | grep -vxF "$FRAGMENTS/README.md" || true)
+if [ -n "$UNFOLDED" ]; then
+  git checkout -q -B "$RELEASE_BRANCH" "$TIP"
+  die "RELEASE_FRAGMENT_UNFOLDED: $(git rev-parse --short "$LANDED"), the commit this cut would ship, still carries what [$NEW] does not list:
+$(sed 's/^/  /' <<<"$UNFOLDED")
+A fragment is a file $FRAGMENTS/<name>.<section>.md, no folder. Nothing was pushed. $RELEASE_BRANCH is at origin/$RELEASE_BRANCH; the release commit is $RELEASE."
+fi
 
 # ---- step 5: push ---------------------------------------------------------
 if [ "$PUSH" -eq 1 ]; then
@@ -182,8 +212,9 @@ RIDES=''
 if [ "$RODE" -gt 0 ]; then
   RIDES="
   $RELEASE_BRANCH landed $RODE commit(s) past $(git rev-parse --short "$CUT") while its whole suite ran, so the
-  release commit is merged onto it as $(git rev-parse --short "$LANDED"). A deploy that builds the branch head
-  carries those landings, which this cut's suite did not run; the next cut's suite does."
+  release commit is merged onto it as $(git rev-parse --short "$LANDED"), which folds their fragments into [$NEW]
+  too. A deploy that builds the branch head carries those landings, which this cut's suite did not run;
+  the next cut's suite does."
 fi
 # The tag names the commit forge-dev serves (docs/adr/0002), which is the one pushed: the merge onto
 # the moved head where the branch landed during the wait, and the release commit only where it is
@@ -202,7 +233,7 @@ fi
 cat <<EOF
 
   cut $TAG  ($(git rev-parse --short "$RELEASE"))
-  $BULLETS fragment(s) written into [$NEW] - $DATE and deleted
+  $FOLDED fragment(s) written into [$NEW] - $DATE and deleted
   $(printf '%s' "${#VERSION_JSON_FILES[@]}") version file(s) at $NEW
   $PUSHED$RIDES
 

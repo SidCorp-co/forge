@@ -70,9 +70,15 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     );
     process.exit(2);
   }
+  // A folder under the fragment directory holds no fragment: it is left where it is, and
+  // cut-release.sh refuses the commit that would ship it (RELEASE_FRAGMENT_UNFOLDED).
   let files = [];
   try {
-    files = fragmentFiles(readdirSync(dir)).sort();
+    files = fragmentFiles(
+      readdirSync(dir, { withFileTypes: true })
+        .filter((d) => d.isFile())
+        .map((d) => d.name),
+    ).sort();
   } catch {
     files = [];
   }

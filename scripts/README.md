@@ -787,7 +787,12 @@ The record is two places: `CHANGELOG.md`, which holds released version sections 
 `changelog.d/`, which holds each unreleased entry as a file of its own,
 `changelog.d/<name>.<section>.md` — the name the branch or issue that writes it, the section one of
 `added`, `changed`, `fixed`, `removed`, `security`. `scripts/cut-release.sh` folds the fragments into
-the new version section through `lib/assemble-release.mjs` and deletes them in the release commit.
+the new version section through `lib/assemble-release.mjs` and deletes them in the commit that ships:
+the release commit, or, where the branch moved while the whole suite ran, the merge onto it, which
+folds every fragment the moved head carries — landed meanwhile, edited or deleted since the cut —
+into the same version. A commit about to ship that still carries a path under `changelog.d/` but its
+README, or a fragment the fold refuses, stops the cut `RELEASE_FRAGMENT_UNFOLDED`, naming each, with
+nothing pushed (ISS-578).
 Two fragment forms are folded though nothing reads them any more, since What's new shows the release
 the instance serves (REQ-40) and not this record: an entry may close with one line `tour: <id>`,
 folded as an invisible `<!-- tour: <id> -->`, and a week's digest is `digest-<year>-w<nn>.digest.md`,
