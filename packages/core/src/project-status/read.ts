@@ -6,6 +6,7 @@
  * not already decide: lateness is the forecast's, whom a row waits on is its own read model's.
  */
 
+import { countsAsReport } from '@forge/contracts/feedback';
 import type {
   DeliveryForecast,
   ForecastLate,
@@ -364,7 +365,12 @@ const worst = (...lates: (ForecastLate | null)[]): ForecastLate | null =>
 function lateOf(
   coming: Awaited<ReturnType<typeof readForecastLine>>['coming'],
   feedback: Awaited<ReturnType<typeof readFeedbackForecasts>>,
-  titles: { feedback: ReadonlyMap<string, string>; draft: string | null },
+  titles: {
+    feedback: ReadonlyMap<string, string>;
+    draft: string | null;
+    /** Duplicates, late only as their original is: one report per root. */
+    duplicates: ReadonlySet<string>;
+  },
 ): StatusLate {
   const items: StatusLateItem[] = [];
   for (const s of coming.requirements) {
@@ -372,6 +378,7 @@ function lateOf(
     if (late) items.push({ kind: 'requirement', key: s.key, title: s.title ?? s.key, late });
   }
   for (const f of feedback.items) {
+    if (titles.duplicates.has(f.key)) continue;
     const late = worst(f.triage?.late ?? null, lateOfDelivery(f.delivery));
     if (late)
       items.push({
@@ -487,6 +494,7 @@ export async function readProjectStatus(
     late: lateOf(line.coming, feedback, {
       feedback: new Map(read.feedback.map((f) => [f.key, f.title])),
       draft: draftVersion,
+      duplicates: new Set(read.feedback.filter((f) => !countsAsReport(f)).map((f) => f.key)),
     }),
     shipped: shippedOf(read.releases, line.requirements, read.requirements, since, at),
     requirements: requirementsOf(read.requirements, scopes, at),

@@ -68,9 +68,11 @@ export function phaseOf(f: PhaseFacts): FeedbackPhase {
       return f.routedRequirementStatus === 'dropped' ? 'triaged' : 'planned';
     case 'answer':
       return 'resolved';
+    // a duplicate reads its original's own phase (K61 on dev.299: FB-271 read planned while FB-153,
+    // held on a draft, read triaged); a verified original leaves its duplicate's reporter to verify
     case 'duplicate':
-      if (f.rootPhase === 'resolved' || f.rootPhase === 'verified') return 'resolved';
-      return f.rootPhase === 'declined' ? 'declined' : 'planned';
+      if (f.rootPhase === 'verified') return 'resolved';
+      return f.rootPhase ?? 'planned';
     default:
       return 'triaged';
   }

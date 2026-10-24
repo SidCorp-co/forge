@@ -6,7 +6,7 @@
  * all read it; nothing here derives a fact of its own.
  */
 
-import type { FeedbackSummary } from '@forge/contracts/feedback';
+import { countsAsReport, type FeedbackSummary } from '@forge/contracts/feedback';
 import type { IssueStandingRow } from '@forge/contracts/issue-standing';
 import type { Standing } from '@forge/contracts/standing';
 import type {
@@ -44,10 +44,10 @@ async function requirementItems(projectId: string): Promise<ItemStanding[]> {
   );
 }
 
-async function feedbackItems(projectId: string): Promise<ItemStanding[]> {
-  return (await feedbackStandingsOf(projectId)).map((f: FeedbackSummary) =>
-    itemOf({ kind: 'feedback', id: f.id, key: f.key }, f.title, f),
-  );
+async function feedbackItems(projectId: string, reportsOnly = false): Promise<ItemStanding[]> {
+  return (await feedbackStandingsOf(projectId))
+    .filter((f) => !reportsOnly || countsAsReport(f))
+    .map((f: FeedbackSummary) => itemOf({ kind: 'feedback', id: f.id, key: f.key }, f.title, f));
 }
 
 async function issueItems(projectId: string): Promise<ItemStanding[]> {
@@ -76,7 +76,8 @@ async function withNotes(projectId: string, items: ItemStanding[]): Promise<Item
 export const openStandings: OpenStandingsRead = async (projectId) => {
   const [requirements, feedback, issues] = await Promise.all([
     requirementItems(projectId),
-    feedbackItems(projectId),
+    // a duplicate stands as its original does: one item for the steward and the status, the root
+    feedbackItems(projectId, true),
     issueItems(projectId),
   ]);
   const items = await withNotes(projectId, [...requirements, ...feedback, ...issues].filter(open));

@@ -1,6 +1,7 @@
 // The composition root's half of every port the work context declares: the modules work may not
 // import, handed to it at boot so work stays upstream of execution and of the contexts below it.
 
+import { countsAsReport } from '@forge/contracts/feedback';
 import { fireOfCaller, issueDeleteRefusal } from './agent-reports/index.js';
 import {
   agentSessionEventsRetention,
@@ -337,7 +338,8 @@ export function provideWorkPorts(): void {
           `workflow health: the feedback list refused its own phase read (${read.refusals.map((r) => r.code).join(', ')})`,
         );
       }
-      return read.list.feedback;
+      // one report per root: a duplicate marks a design only through its original
+      return read.list.feedback.filter(countsAsReport);
     },
     latestRunsOf: (viewer, projectId, issueIds) =>
       latestRunsOfIssues(projectId, issueIds, { userId: viewer.userId }),
