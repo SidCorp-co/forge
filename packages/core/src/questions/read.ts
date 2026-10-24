@@ -39,6 +39,7 @@ import { notFound } from '../middleware/route-errors.js';
 import { type PermissionFacts, requireHeld } from '../permissions/index.js';
 import { answerQuestion, type GivenAnswer, mayAnswerFreeText, type StillWaits } from './answer.js';
 import { refuseStewardOptions } from './steward-options.js';
+import { withSubject } from './subject.js';
 import { type AskAnswer, type AskInput, askQuestion, mayChoose, refuseQuestion } from './write.js';
 
 export type VisibleOption = QuestionOption & { locked: boolean };
@@ -259,6 +260,7 @@ export async function projectQuestionsFor(
         awaitsRevision: agentQuestions.awaitsRevision,
         awaitsMergeIssueId: agentQuestions.awaitsMergeIssueId,
         askedBy: agentQuestions.askedBy,
+        about: agentQuestions.about,
         createdAt: agentQuestions.createdAt,
         updatedAt: agentQuestions.updatedAt,
         rounds: sql<number>`jsonb_array_length(${agentQuestions.steps})::int`,
@@ -277,13 +279,15 @@ export async function projectQuestionsFor(
   const pageRows = hasMore ? rows.slice(0, page.limit) : rows;
   const last = pageRows[pageRows.length - 1];
   return {
-    questions: await withAsker(
-      await withAwaitedMerge(
-        pageRows.map(({ cursor: _cursor, ...row }) => ({
-          ...row,
-          rounds: Number(row.rounds),
-          ...shapeOf(row.currentStep ?? undefined, access),
-        })),
+    questions: await withSubject(
+      await withAsker(
+        await withAwaitedMerge(
+          pageRows.map(({ cursor: _cursor, ...row }) => ({
+            ...row,
+            rounds: Number(row.rounds),
+            ...shapeOf(row.currentStep ?? undefined, access),
+          })),
+        ),
       ),
     ),
     total,
@@ -323,7 +327,7 @@ export async function readQuestionFor(questionId: string, userId: string) {
   if (!row?.projectId) return null;
   const access = await accessOn(row.projectId, userId);
   if (!access) return null;
-  const [seen] = await withAsker(await withAwaitedMerge([seenBy(row, access)]));
+  const [seen] = await withSubject(await withAsker(await withAwaitedMerge([seenBy(row, access)])));
   return seen ?? null;
 }
 
@@ -341,7 +345,9 @@ export async function readQuestionsForIssue(issueId: string, userId: string) {
     .from(agentQuestions)
     .where(and(eq(agentQuestions.issueId, issueId), eq(agentQuestions.projectId, issue.projectId)))
     .orderBy(desc(agentQuestions.createdAt), desc(agentQuestions.id));
-  return withAsker(await withAwaitedMerge(rows.map((row) => seenBy(row, access))));
+  return withSubject(
+    await withAsker(await withAwaitedMerge(rows.map((row) => seenBy(row, access)))),
+  );
 }
 
 export async function answerAs(args: {

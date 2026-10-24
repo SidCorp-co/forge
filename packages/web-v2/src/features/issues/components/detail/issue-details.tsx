@@ -105,7 +105,7 @@ export function IssueDetails({
               <>
                 <IssuePatternList issueId={issue.id} projectId={projectId} show="decided" />
                 <StewardActs projectId={projectId} subjectKey={issue.displayId} canWrite={canWrite} />
-                <IssueQuestions issueId={issue.id} show="past" />
+                <IssueQuestions issueId={issue.id} show="past" slug={slug} />
                 <IssueDecisionsTab projectId={projectId} issueKey={issue.displayId} />
                 <IssueRetiredCriteria issueId={issue.id} />
               </>

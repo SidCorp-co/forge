@@ -50,6 +50,8 @@ describe("a run's tracker door teaches the acts that name what they wait on", ()
       'QUESTION_ABOUT_UNKNOWN',
       'QUESTION_ABOUT_NO_REQUIREMENT',
       'QUESTION_ABOUT_ON_MERGE_WAIT',
+      'QUESTION_ABOUT_ON_DESIGN_WAIT',
+      'park once with `needs` and the same `about`',
       '{"requirement":"REQ-n"}',
       'QUESTION_ABOUT_SHAPE',
     ]) {

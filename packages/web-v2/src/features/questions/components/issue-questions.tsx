@@ -131,8 +131,11 @@ export function IssueQuestions({
   threadQuestion = null,
   onAnswerInThread,
   show = "all",
+  slug,
 }: {
   issueId: string;
+  /** The project's slug, where the host knows it: what a question is about opens its page. */
+  slug?: string | undefined;
   parkedForInfo?: boolean;
   threadQuestion?: ParkThreadQuestion | null;
   onAnswerInThread?: (text: string) => Promise<unknown>;
@@ -151,7 +154,7 @@ export function IssueQuestions({
     return (
       <div className="space-y-3" data-testid="past-questions">
         {questions.map((question) => (
-          <QuestionView key={question.id} question={question} onAnswer={answer} pending={answering.has(question.id)} />
+          <QuestionView key={question.id} question={question} onAnswer={answer} pending={answering.has(question.id)} slug={slug} />
         ))}
       </div>
     );
@@ -179,6 +182,7 @@ export function IssueQuestions({
             question={question}
             onAnswer={answer}
             pending={answering.has(question.id)}
+            slug={slug}
           />
         ))
       )}

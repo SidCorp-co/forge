@@ -6,6 +6,7 @@
 
 import type { DecisionAnswer, DecisionEvidence, NeedsYouDecision } from "@forge/contracts/needs-you-decisions";
 import { type FullPage, PeekExcerpt, PeekHead, PeekPanel, type PeekState, Table, TBody, TD, TH, THead, TR } from "@/design";
+import { QuestionSubjectLine } from "@/features/questions";
 import { ChangeRequestList } from "@/features/releases";
 import { Link } from "@/lib/navigation/router";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
@@ -20,13 +21,14 @@ function Heading({ children }: { children: React.ReactNode }) {
 }
 
 /** What is asked, or what the agent proposes: one plain line under a small label, no box. */
-function Asked({ d }: { d: NeedsYouDecision }) {
+function Asked({ d, slug }: { d: NeedsYouDecision; slug: string }) {
   const t = useCopy();
   const p = d.proposal;
   return (
     <section data-testid="approval-peek-proposal">
       <Heading>{t(p ? "approvals.peek.proposes" : "approvals.peek.asks")}</Heading>
       <p className="text-15 font-semibold leading-snug text-fg">{p ? (p.what ? `${p.verb}: ${p.what}` : p.verb) : d.question}</p>
+      {d.subject ? <QuestionSubjectLine subject={d.subject} slug={slug} className="mt-1.5" /> : null}
     </section>
   );
 }
@@ -212,7 +214,7 @@ export function DecisionPeek({ d, peek, full, slug, noun, typing, onType, onPres
         title={d.title || d.key}
       />
       <div className="flex flex-col gap-5 px-4.5 pb-5">
-        <Asked d={d} />
+        <Asked d={d} slug={slug} />
         <PeekMockup d={d} itemHref={full.href} />
         <DecisionTags d={d} />
         <Reasons d={d} />

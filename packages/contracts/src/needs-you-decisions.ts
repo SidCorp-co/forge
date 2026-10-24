@@ -20,6 +20,7 @@ import {
 	decisionProposalSchema,
 	NEEDS_YOU_TOPICS,
 } from "./needs-you-proposal.js";
+import { questionSubjectSchema } from "./questions.js";
 import { CHANGE_REQUEST_STATES, RELEASE_ROSTER_LIMIT } from "./releases.js";
 
 /** What a decision asks for, in the order the home and the chat list them. */
@@ -314,6 +315,8 @@ export const needsYouDecisionSchema = z
 				consequence: z.enum(MOCKUP_ACCEPT_CONSEQUENCES),
 			})
 			.optional(),
+		/** What the question it answers is about (`questionSubjectSchema`); absent where it names nothing. */
+		subject: questionSubjectSchema.optional(),
 		/** What it rests on (`decisionEvidenceSchema`); absent on a decision about no issue or requirement. */
 		evidence: decisionEvidenceSchema.optional(),
 		/**

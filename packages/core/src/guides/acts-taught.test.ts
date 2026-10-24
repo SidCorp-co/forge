@@ -40,6 +40,10 @@ describe('the issue-flow method teaches the acts that name what they wait on', (
       ],
     ],
     [
+      'a park asked in words names what it is about itself (ISS-583)',
+      ['takes the same `about` beside `needs`', 'QUESTION_ABOUT_ON_DESIGN_WAIT'],
+    ],
+    [
       'a park on another landing waits on its merge mark',
       [
         '`awaitsMerge: { issueId }`',

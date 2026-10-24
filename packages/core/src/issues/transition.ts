@@ -2,6 +2,10 @@ import { checklistsOn } from '@forge/contracts/checklist-registry';
 import { moveAnswersInputOf } from '@forge/contracts/checklists';
 import { REASON_PARAGRAPH_MAX } from '@forge/contracts/comments';
 import { ISSUE_MACHINE } from '@forge/contracts/issue-machine';
+import {
+  QUESTION_ABOUT_SHAPE_SENTENCE,
+  questionAboutRequestSchema,
+} from '@forge/contracts/questions';
 import { Hono } from 'hono';
 import { z } from 'zod';
 import { db } from '../db/client.js';
@@ -14,7 +18,7 @@ import { isRefusal } from '../lib/refusal.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
 import { holdChatWrite } from '../middleware/chat-write-hold.js';
 import { idParamSchema, notFound } from '../middleware/route-errors.js';
-import { zValidator } from '../middleware/zod-validator.js';
+import { refuseFieldShape, zValidator } from '../middleware/zod-validator.js';
 import { emitEvent } from '../outbox/index.js';
 import { requireHeld } from '../permissions/index.js';
 import { type StatusTransitionResult, transitionIssueStatus } from './apply-transition.js';
@@ -37,6 +41,8 @@ const transitionBodySchema = z
     needs: z.string().trim().min(1).max(2000).optional(),
     awaitsDesign: awaitsDesignSchema.optional(),
     awaitsMerge: z.object({ issueId: z.uuid() }).strict().optional(),
+    // what the park's question is about, in the shapes and under the refusal POST /api/questions has
+    about: questionAboutRequestSchema.optional(),
     voidQuestions: z.string().max(2000).optional(),
     recovery: z.literal(true).optional(),
     // handed to the kernel as sent: it parses them by the checklist of the edge the move takes,
@@ -190,6 +196,13 @@ transitionRoutes.post(
     if (!result.success) {
       refuseLegacyStatusFields(result.data, 'json', ['toStatus']);
       refuseAwaitsDesignShape(result.error);
+      refuseFieldShape(
+        result.error.issues,
+        result.data,
+        'about',
+        'QUESTION_ABOUT_SHAPE',
+        QUESTION_ABOUT_SHAPE_SENTENCE,
+      );
     }
   }),
   // a chat's status move (draft to open dispatches) waits for the person's press (REQ-30 BC-4)
@@ -203,6 +216,7 @@ transitionRoutes.post(
       needs,
       awaitsDesign,
       awaitsMerge,
+      about,
       voidQuestions,
       recovery,
       answers,
@@ -238,6 +252,7 @@ transitionRoutes.post(
               : [awaitsDesign]
             : undefined,
           awaitsMerge,
+          about,
           voidQuestions,
           answers,
           ...(recovery ? { recovery } : {}),

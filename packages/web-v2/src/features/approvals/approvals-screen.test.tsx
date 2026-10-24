@@ -313,3 +313,33 @@ describe("bulkSummary", () => {
     expect(bulkSummary(open)).toEqual({ yields: [], checkFirst: 0, noApprove: 1 });
   });
 });
+
+// ISS-583 c3: the peek a person answers a parked business question from names the requirement it is
+// about, its key opening the requirement; a question about nothing names nothing.
+describe("what a question decision is about", () => {
+  const asked = READ.decisions.find((d) => d.key === "ISS-41");
+  if (!asked) throw new Error("the read holds no ISS-41 question");
+  const readWith = (decision: typeof asked) => ({ ...READ, total: 1, decisions: [decision] });
+
+  it("names the requirement in the peek, its key opening the requirement's page", async () => {
+    fakeCore(({ path, method }) =>
+      method === "GET" && path === DECISIONS ? { body: readWith({ ...asked, subject: { kind: "requirement", key: "REQ-74", title: "Delivery moves on by itself" } }) } : undefined,
+    );
+    renderWithQuery(<ApprovalsScreen projectId={P} slug="hop" />);
+    await screen.findByTestId("approvals-screen");
+    fireEvent.click(within(rowOf("ISS-41")).getByTestId("approval-other-answers"));
+    const peek = await screen.findByTestId("approval-peek");
+    const line = within(peek).getByTestId("question-subject");
+    expect(line).toHaveTextContent("About REQ-74 · Delivery moves on by itself");
+    expect(within(line).getByRole("link", { name: "REQ-74" })).toHaveAttribute("href", "/projects/hop/requirements/REQ-74");
+  });
+
+  it("names nothing on a question about nothing", async () => {
+    fakeCore(({ path, method }) => (method === "GET" && path === DECISIONS ? { body: readWith(asked) } : undefined));
+    renderWithQuery(<ApprovalsScreen projectId={P} slug="hop" />);
+    await screen.findByTestId("approvals-screen");
+    fireEvent.click(within(rowOf("ISS-41")).getByTestId("approval-other-answers"));
+    const peek = await screen.findByTestId("approval-peek");
+    expect(within(peek).queryByTestId("question-subject")).toBeNull();
+  });
+});

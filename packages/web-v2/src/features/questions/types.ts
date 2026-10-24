@@ -4,6 +4,7 @@ import type {
   AnswerResume,
   QuestionAsker,
   QuestionRoundFacts,
+  QuestionSubject,
 } from "@forge/contracts/questions";
 
 
@@ -90,6 +91,8 @@ export interface AgentQuestion extends QuestionRoundFacts {
   awaitsMerge?: { issueId: string; key: string } | null;
   /** Who asked it through their own door; null where the system asked or the row predates 0512. */
   asker?: QuestionAsker | null;
+  /** What it is about, as core names it (ISS-583); null where it names nothing. */
+  subject?: QuestionSubject | null;
 }
 
 export interface QuestionListResponse {

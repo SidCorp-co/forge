@@ -8,6 +8,7 @@ import {
   AUTONOMOUS_QUESTION_STATUS,
   type IssueTransitionRefusalCode,
 } from '@forge/contracts/issue-machine';
+import type { QuestionAboutRequest } from '@forge/contracts/questions';
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import type { IssueStatus, WaitingKind } from '../db/schema.js';
@@ -28,6 +29,7 @@ interface RepointOptions {
   needs?: string | undefined;
   awaitsDesign?: readonly AwaitedDesignRef[] | undefined;
   awaitsMerge?: { issueId: string } | undefined;
+  about?: QuestionAboutRequest | undefined;
 }
 
 /** The first line of a re-point's notice, which `transition-reason.ts:announcesAMove` reads as no reply. */

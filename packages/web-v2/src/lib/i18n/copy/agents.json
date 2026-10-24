@@ -150,6 +150,7 @@
     "agents.question.resume.sent_to_run": "Sent to the run that asked; it moves the issue on.",
     "agents.question.resume.staged": "This project does not resume on an answer; resume from its status.",
     "agents.question.askedBy": "Asked by {name}",
+    "agents.question.about": "About",
     "agents.question.round": "Round {n}",
     "agents.question.sayWaits": "Say what the issue still waits on, or untick the box.",
     "agents.question.send": "Send answer",

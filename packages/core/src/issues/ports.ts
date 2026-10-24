@@ -11,7 +11,12 @@ import type { MergeCheckReport } from '@forge/contracts/merge-check';
 import type { OutboxActor } from '@forge/contracts/outbox-events';
 import type { Approvals } from '@forge/contracts/person-gates';
 import type { PolicyQaMode, PolicyRefusalCode } from '@forge/contracts/project-config';
-import type { AnswerHold, AnswerResume } from '@forge/contracts/questions';
+import type {
+  AnswerHold,
+  AnswerResume,
+  QuestionAboutRequest,
+  QuestionSubject,
+} from '@forge/contracts/questions';
 import type { MasterServing } from '@forge/contracts/steward';
 import type { JudgedBuild } from '@forge/contracts/verdict-identity';
 import type { SQL, SQLWrapper } from 'drizzle-orm';
@@ -169,6 +174,8 @@ interface IssuePorts {
       linkedUnderIssue?: boolean | undefined;
       /** The issue whose merge mark answers the question. */
       awaitsMerge?: { issueId: string } | undefined;
+      /** What the question is about (ISS-583), in the ask door's shapes. */
+      about?: QuestionAboutRequest | undefined;
     },
   ) => Promise<unknown>;
   /** Answer the open questions waiting on this issue's mark, in the stamp's transaction. */
@@ -187,6 +194,8 @@ interface IssuePorts {
     issueId: string,
   ) => Promise<{ workflowId: string; revision: number; flow: string } | null>;
   openHumanQuestionIdsOn: (executor: Tx, issueId: string) => Promise<string[]>;
+  /** What the open questions a person owes on the issue are about, each named once (ISS-583). */
+  openQuestionSubjectsOn: (issueId: string) => Promise<QuestionSubject[]>;
   /** The question answered most recently on this issue after `after`, with what its answer did (ISS-258). */
   answeredSince: (
     executor: Tx,
@@ -412,6 +421,7 @@ export const askParkQuestion = port('askParkQuestion');
 export const pendingDesignOfPark = port('pendingDesignOfPark');
 export const answerMergeQuestions = port('answerMergeQuestions');
 export const openHumanQuestionIdsOn = port('openHumanQuestionIdsOn');
+export const openQuestionSubjectsOn = port('openQuestionSubjectsOn');
 export const answeredSince = port('answeredSince');
 export const answeredSinceSql = port('answeredSinceSql');
 export const postIssueNotice = port('postIssueNotice');

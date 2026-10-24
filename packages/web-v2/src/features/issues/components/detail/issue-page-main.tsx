@@ -61,6 +61,7 @@ export function IssuePageMain(props: {
       <IssueQuestions
         show="now"
         issueId={issue.id}
+        slug={slug}
         parkedForInfo={issue.status === "needs_info"}
         threadQuestion={props.threadQuestion}
         onAnswerInThread={props.onAnswerInThread}

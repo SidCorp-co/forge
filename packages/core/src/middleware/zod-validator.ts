@@ -96,17 +96,28 @@ function sentAs(value: unknown): string {
 export function fieldShape(field: string, code: string, shape: string): Hook {
   return ((r: Failed & { data?: unknown }) => {
     if (r.success || !r.error) return;
-    const issues = r.error.issues;
-    if (!issues.some((i) => i.path[0] === field)) return;
-    const sent = typeof r.data === 'object' && r.data !== null ? Reflect.get(r.data, field) : null;
-    const rows: Refusal[] = [
-      { code, path: jsonPointer([field]), detail: `\`${field}\` is ${sentAs(sent)}. ${shape}` },
-      ...issues
-        .filter((i) => i.path[0] !== field)
-        .map((i) => ({ code: 'BAD_REQUEST', path: jsonPointer(i.path), detail: i.message })),
-    ];
-    throw new RefusalError(rows, 'BAD_REQUEST');
+    refuseFieldShape(r.error.issues, r.data, field, code, shape);
   }) as Hook;
+}
+
+/** `fieldShape`'s answer to issues a route's own hook has already read: it throws where one of them
+ *  is at `field`, and returns where none is. */
+export function refuseFieldShape(
+  issues: readonly z.core.$ZodIssue[],
+  data: unknown,
+  field: string,
+  code: string,
+  shape: string,
+): void {
+  if (!issues.some((i) => i.path[0] === field)) return;
+  const sent = typeof data === 'object' && data !== null ? Reflect.get(data, field) : null;
+  const rows: Refusal[] = [
+    { code, path: jsonPointer([field]), detail: `\`${field}\` is ${sentAs(sent)}. ${shape}` },
+    ...issues
+      .filter((i) => i.path[0] !== field)
+      .map((i) => ({ code: 'BAD_REQUEST', path: jsonPointer(i.path), detail: i.message })),
+  ];
+  throw new RefusalError(rows, 'BAD_REQUEST');
 }
 
 /**

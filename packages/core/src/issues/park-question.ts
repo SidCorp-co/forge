@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { AUTONOMOUS_QUESTION_STATUS } from '@forge/contracts/issue-machine';
+import type { QuestionAboutRequest } from '@forge/contracts/questions';
 import type { IssueStatus, WaitingKind } from '../db/schema.js';
 import { actorAgency, type TransitionActor } from './actor-agency.js';
 import type { DrizzleTx } from './dependency-executor.js';
@@ -25,6 +26,8 @@ interface MintParkQuestionInput {
     /** Each design revision the park waits on: one question each, so it returns once every one is decided. */
     awaitsDesign?: readonly AwaitedDesignRef[] | undefined;
     awaitsMerge?: { issueId: string } | undefined;
+    /** What the question is about (ISS-583): stored on every question the park mints. */
+    about?: QuestionAboutRequest | undefined;
     transitionReason?: string | undefined;
     reason?: string | undefined;
     waitingKind?: WaitingKind | undefined;
@@ -48,11 +51,14 @@ export async function mintParkQuestion(input: MintParkQuestionInput, tx: Drizzle
   if (!mintsAt(input.toStatus)) return;
   if (actorAgency(input.actor) !== 'agent') return;
   const awaitsMerge = input.options.awaitsMerge;
+  const about = input.options.about;
   const named = input.options.awaitsDesign ?? [];
-  const linked = named.length > 0 || awaitsMerge ? null : await designDrawnHere(input, tx);
+  // a park naming what it is about asks a person a business question, which no design decision answers
+  const linked = named.length > 0 || awaitsMerge || about ? null : await designDrawnHere(input, tx);
   const designs: AwaitedDesignRef[] = linked ? [linked] : [...named];
   if (
     !needs &&
+    !about &&
     designs.length === 0 &&
     !awaitsMerge &&
     (await personOwesAnAnswer(tx, input.issue.id))
@@ -70,6 +76,7 @@ export async function mintParkQuestion(input: MintParkQuestionInput, tx: Drizzle
       // a park on a design revision or a merge mark says what settles it by naming it
       needed: needs || (awaited.awaitsDesign || awaited.awaitsMerge ? undefined : NEED_NOT_STATED),
       ...awaited,
+      ...(about ? { about } : {}),
       ...(linked ? { linkedUnderIssue: true } : {}),
     });
   if (designs.length === 0) {
@@ -91,7 +98,7 @@ async function designDrawnHere(input: MintParkQuestionInput, tx: DrizzleTx) {
   return pendingDesignOfPark(tx, input.issue.projectId, input.issue.id);
 }
 
-/** Why `needs`, `awaitsDesign` or `awaitsMerge` cannot be taken on this move: each shapes the question an agent's park mints. */
+/** Why `needs`, `about`, `awaitsDesign` or `awaitsMerge` cannot be taken on this move: each shapes the question an agent's park mints. */
 export function needsNotApplicable(input: MintParkQuestionInput): string | null {
   if (input.options.awaitsDesign?.length && input.options.awaitsMerge) {
     return '`awaitsDesign` and `awaitsMerge` were both sent, and a park question waits on one fact — a design decision or a merge mark. Park on the one whose arrival settles this, and say the other in `needs`.';
@@ -110,6 +117,14 @@ export function needsNotApplicable(input: MintParkQuestionInput): string | null 
     }
     if (actorAgency(input.actor) !== 'agent') {
       return '`awaitsDesign` was sent on a credential owned by a person, which mints no question for the decision to answer — a person parking their own work owns their own resume. If an agent made this call, it is running on the wrong credential: it wants an agent account or a paired device.';
+    }
+  }
+  if (input.options.about) {
+    if (!mintsAt(input.toStatus)) {
+      return `\`about\` was sent with \`${input.toStatus}\`, which mints no question — only a park at \`${AUTONOMOUS_QUESTION_STATUS}\` asks one, and \`about\` names what it asks about.`;
+    }
+    if (actorAgency(input.actor) !== 'agent') {
+      return '`about` was sent on a credential owned by a person, which mints no question for it to name — a person parking their own work owns their own resume, and asks a business question with POST /api/questions. If an agent made this call, it is running on the wrong credential: it wants an agent account or a paired device.';
     }
   }
   if (!input.options.needs?.trim()) return null;

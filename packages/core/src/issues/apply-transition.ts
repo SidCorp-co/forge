@@ -6,6 +6,7 @@ import {
   type IssueTransitionRefusalCode,
   PARK_STATUSES,
 } from '@forge/contracts/issue-machine';
+import type { QuestionAboutRequest } from '@forge/contracts/questions';
 import { releaseThroughChangeRequests } from '@forge/contracts/releases';
 import type { staleTransitionRefusal } from '@forge/contracts/state-machine';
 import { eq, sql } from 'drizzle-orm';
@@ -110,6 +111,12 @@ interface ApplyStatusTransitionOptions {
    * writing the mark answers the question the park mints, which moves the issue on as an answer does.
    */
   awaitsMerge?: { issueId: string } | undefined;
+  /**
+   * What the park's question is about (ISS-583): the requirement it delivers, another by key, or a
+   * contract, in the shapes `POST /api/questions` takes. Stored on the question it mints, so its
+   * answer lands on that requirement as a decision.
+   */
+  about?: QuestionAboutRequest | undefined;
   /** Why the open questions died with the work; a terminal move with one open is refused without it. */
   voidQuestions?: string | undefined;
   /** Refuse OPEN_QUESTIONS if one is open once the row is locked — the answer resume's guard. */

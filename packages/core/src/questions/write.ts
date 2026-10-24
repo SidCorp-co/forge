@@ -227,15 +227,35 @@ export async function insertAskedQuestion(executor: QuestionExecutor, input: Ask
   checkAnswer(input.answer, input.askedByRun === true && input.blockerKind === 'human');
   await checkIssueBelongsToProject(executor, input.issueId, input.projectId);
   await refuseFinishedWork(executor, input.issueId);
-  if (input.about && input.awaitsMerge) {
+  refuseAboutOnWait(input);
+  const about = input.about ? await resolveAbout(executor, input, input.about) : undefined;
+  return insertQuestion(executor, input, about);
+}
+
+/**
+ * A question that waits on a fact is answered by that fact, never by a person's business answer, so
+ * it is about nothing: refused by name on both doors that write one, the ask and the park.
+ */
+function refuseAboutOnWait(input: {
+  about?: unknown;
+  awaitsMerge?: AwaitedMerge | undefined;
+  awaitsDesign?: AwaitedDesign | undefined;
+}): void {
+  if (!input.about) return;
+  if (input.awaitsMerge) {
     throw refuseQuestion(
       'QUESTION_ABOUT_ON_MERGE_WAIT',
       `this question waits on issue ${input.awaitsMerge.issueId}'s merge mark, which answers it with the mark itself; a business question \`about\` a requirement or a contract is answered by a person, and its answer becomes a decision there. Ask the business question on its own, and park on the mark without \`about\``,
       '/about',
     );
   }
-  const about = input.about ? await resolveAbout(executor, input, input.about) : undefined;
-  return insertQuestion(executor, input, about);
+  if (input.awaitsDesign) {
+    throw refuseQuestion(
+      'QUESTION_ABOUT_ON_DESIGN_WAIT',
+      `this question waits on the decision on design revision ${input.awaitsDesign.revision} of workflow ${input.awaitsDesign.workflowId}, which answers it with the decision itself; a business question \`about\` a requirement or a contract is answered by a person, and its answer becomes a decision there. Ask the business question on its own, and park on the design without \`about\``,
+      '/about',
+    );
+  }
 }
 
 /**
@@ -300,6 +320,8 @@ export async function askParkQuestion(
     /** Core linked `awaitsDesign` itself, as the one revision proposed under this issue: the question says so. */
     linkedUnderIssue?: boolean | undefined;
     awaitsMerge?: AwaitedMerge | undefined;
+    /** What the park's question is about, in the ask door's shapes; resolved and refused as that door does. */
+    about?: QuestionAboutRequest | undefined;
   },
 ) {
   if (input.awaitsDesign && input.awaitsMerge) {
@@ -307,6 +329,7 @@ export async function askParkQuestion(
       'questions: a park question waits on one fact, a design decision or a merge mark, and this one names both',
     );
   }
+  refuseAboutOnWait(input);
   let needed = input.needed?.trim() ?? '';
   let prompt = input.prompt;
   if (input.awaitsDesign) {
@@ -327,16 +350,21 @@ export async function askParkQuestion(
   }
   const answer: AskAnswer = { shape: 'free_text', needed };
   checkAnswer(answer);
-  return insertQuestion(executor, {
-    id: input.id,
-    projectId: input.projectId,
-    issueId: input.issueId,
-    prompt,
-    blockerKind: 'human',
-    answer,
-    ...(input.awaitsDesign ? { awaitsDesign: input.awaitsDesign } : {}),
-    ...(input.awaitsMerge ? { awaitsMerge: input.awaitsMerge } : {}),
-  });
+  const about = input.about ? await resolveAbout(executor, input, input.about) : undefined;
+  return insertQuestion(
+    executor,
+    {
+      id: input.id,
+      projectId: input.projectId,
+      issueId: input.issueId,
+      prompt,
+      blockerKind: 'human',
+      answer,
+      ...(input.awaitsDesign ? { awaitsDesign: input.awaitsDesign } : {}),
+      ...(input.awaitsMerge ? { awaitsMerge: input.awaitsMerge } : {}),
+    },
+    about,
+  );
 }
 
 /**

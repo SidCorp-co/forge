@@ -33,6 +33,8 @@ export const QUESTION_REFUSAL_CODES = [
 	"QUESTION_ABOUT_UNKNOWN",
 	"QUESTION_ABOUT_NO_REQUIREMENT",
 	"QUESTION_ABOUT_ON_MERGE_WAIT",
+	/** A park waiting on a design revision's decision: the approver's decision answers it, never a business answer. */
+	"QUESTION_ABOUT_ON_DESIGN_WAIT",
 	"QUESTION_ABOUT_SHAPE",
 	"QUESTION_RECOMMENDATION_REQUIRED",
 	"QUESTION_TOKEN_NOT_OWN",
@@ -159,3 +161,23 @@ export type QuestionAboutRequest = z.infer<typeof questionAboutRequestSchema>;
  */
 export const QUESTION_ABOUT_SHAPE_SENTENCE =
 	'`about` is an object naming one thing: {"requirement":"REQ-n"} (a requirement key or uuid), {"requirement":null} (the requirement the asking issue delivers), or {"contract":"<project>/<contract>"}; never a bare string';
+
+/**
+ * What a question is about, as every read a person answers it from names it (`subject`): a requirement
+ * by its key and title, a contract by `<project>/<contract>`, a feedback item by its key and title.
+ * Resolved from the stored `about` (`QuestionAbout`), never from the prompt; null where it names none.
+ */
+export const questionSubjectSchema = z.discriminatedUnion("kind", [
+	z.strictObject({
+		kind: z.literal("requirement"),
+		key: z.string().regex(/^REQ-\d+$/),
+		title: z.string().max(500),
+	}),
+	z.strictObject({ kind: z.literal("contract"), key: z.string().min(1).max(200) }),
+	z.strictObject({
+		kind: z.literal("feedback"),
+		key: z.string().regex(/^FB-\d+$/),
+		title: z.string().max(500),
+	}),
+]);
+export type QuestionSubject = z.infer<typeof questionSubjectSchema>;

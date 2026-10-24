@@ -244,6 +244,8 @@ export function questionDecision(
     opens,
     question: clip(step.prompt.trim() || row.title || 'A run asked a question', QUESTION_MAX),
     touchedAt: q.at,
+    // what the question is about, so the person answering never asks which requirement (ISS-583)
+    ...(q.subject ? { subject: q.subject } : {}),
   };
   if (isChoiceStep(step) && isStewardDecisionQuestion(step.options)) {
     return stewardDecision(base, q, step, path);

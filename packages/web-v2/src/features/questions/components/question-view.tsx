@@ -10,6 +10,7 @@ import { useState } from "react";
 import { useCopy, useInterfaceLanguage } from "@/lib/i18n/interface-language";
 import { type ProductCopyKey } from "@/lib/i18n/product-copy";
 import { cn } from "@/lib/utils/cn";
+import { QuestionSubjectLine } from "./question-subject";
 import { holdLine, isAnswerable, outcomeOf, resumeLine, type SuggestedAnswer, suggestedAnswerOf } from "./question-lines";
 
 export { outcomeOf } from "./question-lines";
@@ -305,6 +306,8 @@ interface QuestionViewProps {
   context?: React.ReactNode;
   /** Marks the card a link arrived on, so a reader can see which one was meant. */
   highlighted?: boolean;
+  /** The project's slug, where known: what the question is about then opens its page. */
+  slug?: string | undefined;
 }
 
 /**
@@ -316,6 +319,7 @@ export function QuestionView({
   pending,
   context,
   highlighted,
+  slug,
 }: QuestionViewProps) {
   const t = useCopy();
   const language = useInterfaceLanguage();
@@ -390,6 +394,7 @@ export function QuestionView({
             {t("agents.question.askedBy", { name: question.asker.name })}
           </p>
         )}
+        {question.subject && <QuestionSubjectLine subject={question.subject} slug={slug} />}
         {current && (
           <div className="space-y-2">
             <p className="fg-caption text-subtle">{t("agents.question.round", { n: current.round })}</p>

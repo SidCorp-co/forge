@@ -1,12 +1,20 @@
 // The answer panel on an issue (ISS-257, ISS-258): an answer can say the issue still waits, sent as
 // `stillWaits`; an answered card shows what the issue still waits on and what the answer did to it.
+// A question names what it is about (ISS-583).
+//
+// @direct-test-of packages/web-v2/src/features/questions/components/question-subject.tsx
+// @direct-test-of packages/web-v2/src/features/questions/components/question-view.tsx
+// @direct-test-of packages/web-v2/src/features/questions/components/issue-questions.tsx
+// @direct-test-of packages/web-v2/src/features/questions/index.ts
 
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { fakeCore, renderWithQuery } from "@/test/render";
 import type { AgentQuestion, QuestionStep } from "../types";
 import { IssueQuestions } from "@/features/questions/components/issue-questions";
+
+vi.mock("@/lib/navigation/router", async () => (await import("@/test/navigation")).navigationDouble());
 
 const asked: AgentQuestion = {
   id: "q1",
@@ -212,5 +220,33 @@ describe("the assistant's suggested answer on an issue's question (REQ-41 BC-2)"
     renderWithQuery(<IssueQuestions issueId="i1" />);
     expect(await screen.findByText("Suggested by the assistant")).toBeTruthy();
     expect(screen.queryByText("Recommended")).toBeNull();
+  });
+});
+
+// ISS-583 c3: a parked business question names what it is about where a person answers it, so they
+// never ask which requirement; its key opens the requirement where the page knows the project.
+describe("what a question is about", () => {
+  const about = { ...asked, subject: { kind: "requirement" as const, key: "REQ-74", title: "Delivery moves on by itself" } };
+
+  it("names the requirement on the card, its key opening the requirement's page", async () => {
+    fakeCore(() => ({ body: { questions: [about] } }));
+    renderWithQuery(<IssueQuestions issueId="i1" slug="hop" />);
+    const line = await screen.findByTestId("question-subject");
+    expect(line).toHaveTextContent("About REQ-74 · Delivery moves on by itself");
+    expect(screen.getByRole("link", { name: "REQ-74" })).toHaveAttribute("href", "/projects/hop/requirements/REQ-74");
+  });
+
+  it("names a contract by its reference, as plain text where the project is not known", async () => {
+    fakeCore(() => ({ body: { questions: [{ ...asked, subject: { kind: "contract", key: "forge/forge-api" } }] } }));
+    renderWithQuery(<IssueQuestions issueId="i1" />);
+    expect(await screen.findByTestId("question-subject")).toHaveTextContent("About forge/forge-api");
+    expect(screen.queryByRole("link", { name: "forge/forge-api" })).toBeNull();
+  });
+
+  it("says nothing about a question that names nothing", async () => {
+    fakeCore(() => ({ body: { questions: [{ ...asked, subject: null }] } }));
+    renderWithQuery(<IssueQuestions issueId="i1" slug="hop" />);
+    await screen.findByText("Which flow ships first?");
+    expect(screen.queryByTestId("question-subject")).toBeNull();
   });
 });

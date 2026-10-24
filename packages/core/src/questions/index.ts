@@ -49,6 +49,7 @@ export {
 } from './requirement-read.js';
 export { agentAuthoredSegments } from './screen.js';
 export { type ShownQuestion, shownQuestion } from './shown.js';
+export { openQuestionSubjectsOn, subjectsOf, withSubject } from './subject.js';
 export {
   registerQuestionSuggest,
   type SuggestResult,

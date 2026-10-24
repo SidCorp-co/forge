@@ -149,16 +149,19 @@ the requirement, not to this issue. Ask it first, naming what it is about:
 always one of three objects: \`{ requirement: null }\` for the requirement this issue delivers,
 \`{ requirement: 'REQ-n' }\` for another by its key or id, or \`{ contract: '<project>/<contract>' }\`.
 A bare \`'REQ-n'\` or any other shape is refused \`QUESTION_ABOUT_SHAPE\`. Then park with \`needs\`
-left out, and the park waits on that question. It stays on this issue, is listed on the requirement,
-and its answer is recorded there as a decision. An \`about\` naming nothing is
-\`QUESTION_ABOUT_UNKNOWN\`; \`{ requirement: null }\` on an issue that delivers no requirement is
+left out, and the park waits on that question. A question asked in words needs no second call: the
+park takes the same \`about\` beside \`needs\`, and the question it mints carries it. Either way it
+stays on this issue, is listed on the requirement, names it to the person answering, and its answer
+is recorded there as a decision. An \`about\` naming nothing is \`QUESTION_ABOUT_UNKNOWN\`;
+\`{ requirement: null }\` on an issue that delivers no requirement is
 \`QUESTION_ABOUT_NO_REQUIREMENT\`.
 
 Waiting on another issue's landing is \`awaitsMerge: { issueId }\` on the park, never the condition
 written into \`needs\`: the stamp that writes that issue's merge mark answers the question and moves
 this one back. A mark that already stands is refused \`QUESTION_MERGE_ALREADY_MARKED\` — the
 condition holds, so carry on. A wait on a mark is never also \`about\` a requirement
-(\`QUESTION_ABOUT_ON_MERGE_WAIT\`): the mark answers it, so the business question is asked on its own.
+(\`QUESTION_ABOUT_ON_MERGE_WAIT\`), nor a wait on a design decision (\`QUESTION_ABOUT_ON_DESIGN_WAIT\`):
+the mark or the decision answers it, so the business question is asked on its own.
 
 ### 4. Build
 - One branch, cut from \`baseBranch\`, in a worktree of its own — the brief names it.

@@ -9,6 +9,7 @@ import type {
   ParkResume,
   ParkThreadQuestion,
 } from '@forge/contracts/park';
+import type { QuestionSubject } from '@forge/contracts/questions';
 import { and, desc, eq, gt, isNull, notInArray, notLike, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
@@ -20,7 +21,7 @@ import {
 } from '../db/schema.js';
 import { issueWorkState } from '../db/schema-issue-work-state.js';
 import { type ForgeRecord, parseForgeRecord } from '../messaging/forge-record.js';
-import { answeredSince, openHumanQuestionIdsOn } from './ports.js';
+import { answeredSince, openHumanQuestionIdsOn, openQuestionSubjectsOn } from './ports.js';
 import { type RecordEntry, recordHistory } from './record-events/history.js';
 import { announcesAMove } from './transition-reason.js';
 
@@ -62,6 +63,8 @@ interface ParkInput {
   /** Comments after the boundary that could be a person's reply, oldest first. */
   replies?: readonly ParkComment[];
   openHumanQuestionIds: readonly string[];
+  /** What those open questions are about, each named once. */
+  subjects?: readonly QuestionSubject[];
   /** The question row answered since the park was entered, where one was (ISS-258). */
   answered?: ParkAnsweredView | null;
 }
@@ -141,6 +144,7 @@ function readPark(input: ParkInput): IssuePark | null {
     readings: parked ? readings : [],
     answer: parked && record ? answerAfter(input.replies ?? [], record.postedAt) : null,
     openQuestionIds: [...input.openHumanQuestionIds],
+    subjects: [...(input.subjects ?? [])],
   };
   const threadQuestion = threadQuestionOf(view);
   return {
@@ -236,9 +240,17 @@ export async function loadIssuePark(issueId: string): Promise<IssuePark | null> 
     .limit(1);
   if (!issue) return null;
   const openHumanQuestionIds = await openHumanQuestionIdsOn(db, issueId);
+  const subjects = openHumanQuestionIds.length > 0 ? await openQuestionSubjectsOn(issueId) : [];
   const status = issue.status as IssueStatus;
   if (!AWAITING_INPUT_STATUSES.includes(status)) {
-    return readPark({ status, waitingKind: null, moves: [], comments: [], openHumanQuestionIds });
+    return readPark({
+      status,
+      waitingKind: null,
+      moves: [],
+      comments: [],
+      openHumanQuestionIds,
+      subjects,
+    });
   }
   const moves = await movesOf(issueId);
   const [work] = await db
@@ -284,6 +296,7 @@ export async function loadIssuePark(issueId: string): Promise<IssuePark | null> 
     comments: records.map(asEntry),
     replies,
     openHumanQuestionIds,
+    subjects,
     answered,
   });
 }

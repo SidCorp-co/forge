@@ -1,5 +1,5 @@
 import type { IssueStatus } from "./issue-machine.js";
-import type { AnswerHold, AnswerResume } from "./questions.js";
+import type { AnswerHold, AnswerResume, QuestionSubject } from "./questions.js";
 
 export type ParkOwes = "information" | "decision" | "resource";
 
@@ -37,6 +37,8 @@ export interface IssuePark {
   /** `null` until a person replies after the park record, and always where there is no record. */
   answer: ParkAnswerView | null;
   openQuestionIds: string[];
+  /** What the open questions are about, each named once (`QuestionSubject`); empty where none names one. */
+  subjects: QuestionSubject[];
   /** A question nobody has answered yet: an open question row, or the thread question unanswered. */
   asks: boolean;
   /** The question a `needs_info` park asked only in the thread; null where a question row carries it. */

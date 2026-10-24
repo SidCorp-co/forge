@@ -14539,6 +14539,44 @@
               "schema": {
                 "additionalProperties": false,
                 "properties": {
+                  "about": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "requirement": {
+                            "anyOf": [
+                              {
+                                "maxLength": 200,
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "requirement"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "contract": {
+                            "pattern": "^[a-z][a-z0-9-]{0,62}\\/[a-z][a-z0-9-]{0,62}$",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "contract"
+                        ],
+                        "type": "object"
+                      }
+                    ]
+                  },
                   "answers": {
                     "additionalProperties": false,
                     "description": "The answers to the checklist the move's edge names, each question the mover answers by its id. The kernel parses them by that checklist at every door: a wrong one is refused CHECKLIST_ANSWER_INVALID on its question's path, and the refused move is recorded.",

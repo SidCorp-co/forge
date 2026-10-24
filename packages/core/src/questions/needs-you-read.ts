@@ -4,10 +4,12 @@
 // issue's standing, `holdsOpenHumanQuestion`, and a BA clarification waits on its item).
 
 import type { QuestionSuggestion } from '@forge/contracts/question-suggestion';
+import type { QuestionSubject } from '@forge/contracts/questions';
 import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { memoizedRead, primeReads } from '../db/read-memo.js';
 import { agentQuestions, type QuestionStep } from '../db/schema-questions.js';
+import { subjectsOf } from './subject.js';
 
 export interface DetachedQuestionRow {
   id: string;
@@ -61,6 +63,8 @@ export interface OpenPersonQuestion {
   feedbackId: string | null;
   /** The feedback item a steward decision is about (`about`), by key: it stands on no item itself. */
   aboutFeedback: string | null;
+  /** What it is about, as the person answering reads it (ISS-583); null where it names nothing. */
+  subject: QuestionSubject | null;
   /** The round being asked, as written; null only on a row with no steps, which the read refuses. */
   current: QuestionStep;
   /** The assistant's record for a round, or null; the round it was drafted for decides whether it stands. */
@@ -81,6 +85,7 @@ function openPersonRowsOf(projectIds: readonly string[]) {
       aboutFeedback: sql<string | null>`(SELECT 'FB-' || f.fb_seq FROM feedback f
         WHERE ${agentQuestions.about} ->> 'kind' = 'feedback'
           AND f.id = (${agentQuestions.about} ->> 'feedbackId')::uuid)`,
+      about: agentQuestions.about,
       createdAt: agentQuestions.createdAt,
       suggestion: agentQuestions.suggestion,
       current: sql<QuestionStep | null>`${agentQuestions.steps} -> -1`,
@@ -115,7 +120,8 @@ export function primeOpenQuestionReads(projectIds: readonly string[]): void {
  */
 export async function readOpenPersonQuestions(projectId: string): Promise<OpenPersonQuestion[]> {
   const rows = await memoizedRead(openPersonKey(projectId), () => openPersonRowsOf([projectId]));
-  return rows.map((r) => {
+  const subjects = await subjectsOf(rows.map((r) => r.about));
+  return rows.map((r, i) => {
     if (!r.current) throw new Error(`questions: open question ${r.id} holds no round to answer`);
     return {
       id: r.id,
@@ -123,6 +129,7 @@ export async function readOpenPersonQuestions(projectId: string): Promise<OpenPe
       requirementId: r.requirementId,
       feedbackId: r.feedbackId,
       aboutFeedback: r.aboutFeedback,
+      subject: subjects[i] ?? null,
       current: r.current,
       suggestion: r.suggestion,
       at: r.current.askedAt ?? r.createdAt.toISOString(),
