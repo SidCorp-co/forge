@@ -9,6 +9,22 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.312] - 2026-10-24
+
+Designs re-pin as rings, record without module labels; accepted releases merged by agent
+
+### Added
+
+- **An accepted merge-request release now wakes the master to merge it.** Its page ends at merge where the owner deploys, a moved head is refused by its own code, and project settings carry the switch.
+
+### Fixed
+
+- **Under independent QA, the release judge's verdict counts and the builder's own pass never does.** A judge on the builder's box was read as the builder; each verdict now records its run, and a builder's pass answers `VERDICT_BY_BUILDER`.
+- **The lifecycle guide names `reason` as a move's only reason field.** It no longer says `note` counts; a transition sending `note` is refused `TRANSITION_FIELD_UNKNOWN`, naming the fields the body takes.
+- **A design on a proposed base, or in a ring, moves.** A design pinned to the revision its base has proposed waits on that base's approver, not a re-pin; designs naming each other as bases re-pin together in one act.
+- **A design records on a project with no module labels.** It names no module and holds the whole project, so designed work there runs one at a time; the design read says so, and labelled projects refuse an empty scope.
+- **The Vietnamese release gate names how the master asks for approval.** The line for an approval nobody asked for now carries the route, as the English does.
+
 ## [0.4.0-dev.310] - 2026-10-24
 
 Duplicate feedback counts once under its original and reads its phase

@@ -1,1 +1,0 @@
-**Under independent QA, the release judge's verdict counts and the builder's own pass never does.** A judge on the builder's box was read as the builder; each verdict now records its run, and a builder's pass answers `VERDICT_BY_BUILDER`.
