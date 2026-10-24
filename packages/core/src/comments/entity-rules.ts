@@ -88,28 +88,57 @@ export function contentRefusals(c: CommentContent): CommentRefusal[] {
   return out;
 }
 
+/**
+ * What an edit of a requirement's, workflow's or feedback item's comment may change: its body, its
+ * decision fields, and its intent (ISS-585). The intent it lands on decides which fields it carries:
+ * a decision needs its fields, any other intent carries none.
+ */
 export function editRefusals(
   intent: CommentIntent,
-  edit: { body?: string | undefined; decision?: DecisionFields | undefined },
+  edit: {
+    intent?: CommentIntent | undefined;
+    body?: string | undefined;
+    decision?: DecisionFields | undefined;
+  },
 ): CommentRefusal[] {
-  if (edit.body === undefined && edit.decision === undefined) {
+  if (edit.body === undefined && edit.decision === undefined && edit.intent === undefined) {
     return [
       {
         code: 'COMMENT_BODY_REQUIRED',
         path: '',
-        detail: 'an edit names a new body, new decision fields, or both',
+        detail: 'an edit names a new intent, a new body, new decision fields, or any of them',
+      },
+    ];
+  }
+  if (edit.intent === intent) {
+    return [
+      {
+        code: 'COMMENT_INTENT_UNCHANGED',
+        path: '/intent',
+        detail: `this comment is already a ${intent}; send intent only to change it, to one of the other two`,
       },
     ];
   }
   if (edit.body !== undefined && !edit.body.trim()) {
     return [{ code: 'COMMENT_BODY_REQUIRED', path: '/body', detail: 'a body is not blank' }];
   }
-  if (edit.decision && intent !== 'decision') {
+  const next = edit.intent ?? intent;
+  if (edit.decision && next !== 'decision') {
     return [
       {
         code: 'COMMENT_DECISION_INTENT_MISMATCH',
         path: '/decision',
-        detail: `decision fields belong to intent decision; this comment is a ${intent}, and an edit never changes the intent`,
+        detail: `decision fields belong to intent decision; this comment ${edit.intent ? 'turns into' : 'is'} a ${next}`,
+      },
+    ];
+  }
+  if (next === 'decision' && intent !== 'decision' && !edit.decision) {
+    return [
+      {
+        code: 'COMMENT_DECISION_REQUIRED',
+        path: '/decision',
+        detail:
+          'a comment turned into a decision carries its structured body in the same edit: decision: { decision, reason } at least',
       },
     ];
   }

@@ -19,7 +19,7 @@ import {
   insertContractWaitIn,
   insertIssueRow,
   liveWaitOn,
-  writeRecordEvent,
+  writeCoreRecord,
 } from '../issues/index.js';
 import { dataPolicyOf, egressAt, storedText } from '../lib/data-egress.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
@@ -360,20 +360,16 @@ export async function writeRouteIn(
       .values(issues.map((i) => ({ feedbackId: row.id, issueId: i.id })));
   }
   for (const issue of issues) {
-    await writeRecordEvent(
-      {
-        issueId: issue.id,
-        actor: { type: 'user', id: actor.userId, agency: actor.agency },
-        kind: 'decision',
-        contract: 1,
-        fields: [
-          { key: 'lead', value: `${feedbackKey(row.fbSeq)} routed to this issue` },
-          { key: 'feedback', value: feedbackKey(row.fbSeq) },
-          { key: 'outcome', value: filed ? 'filed' : 'linked' },
-        ],
-      },
-      tx,
-    );
+    await writeCoreRecord(tx, {
+      issueId: issue.id,
+      actor: { type: 'user', id: actor.userId, agency: actor.agency },
+      kind: 'decision',
+      fields: [
+        { key: 'lead', value: `${feedbackKey(row.fbSeq)} routed to this issue` },
+        { key: 'feedback', value: feedbackKey(row.fbSeq) },
+        { key: 'outcome', value: filed ? 'filed' : 'linked' },
+      ],
+    });
   }
   return { carriers: keys };
 }

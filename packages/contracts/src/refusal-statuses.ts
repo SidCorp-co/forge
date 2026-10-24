@@ -36,6 +36,7 @@ import { RELEASE_PAGE_REFUSAL_STATUSES } from "./release-page.js";
 import { RELEASE_REFUSAL_STATUSES } from "./releases.js";
 import { EXECUTION_REFUSAL_STATUSES } from "./report-executions.js";
 import { REPORT_REFUSAL_STATUSES } from "./report-queries.js";
+import { RECORD_EVENT_REFUSAL_STATUSES } from "./record-events.js";
 import { RECORDING_REFUSAL_STATUSES } from "./reproduce.js";
 import { REQUIREMENT_REFUSAL_STATUSES } from "./requirements.js";
 import { SHARE_REFUSAL_STATUSES } from "./shares.js";
@@ -81,6 +82,7 @@ const DECLARED: ReadonlyArray<
 	PIPELINE_REFUSAL_STATUSES,
 	PREVIEW_REFUSAL_STATUSES,
 	RECORDING_REFUSAL_STATUSES,
+	RECORD_EVENT_REFUSAL_STATUSES,
 	ROOM_REFUSAL_STATUSES,
 	PRODUCT_STATE_REFUSAL_STATUSES,
 	PROJECT_CONFIG_REFUSAL_STATUSES,

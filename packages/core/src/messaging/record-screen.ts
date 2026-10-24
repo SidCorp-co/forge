@@ -42,6 +42,7 @@ const KERNEL_ACT_ROUTES: Record<KernelOnlyRecordKind, string> = {
   verdict: 'POST /api/issues/:id/verdicts',
   transition: 'POST /api/issues/:id/transition',
   park: 'POST /api/issues/:id/transition',
+  withdrawal: 'POST /api/issues/:id/events/:eventId/withdraw',
 };
 export const RECORD_DESTINATIONS: ReadonlyMap<string, string> = new Map(
   RECORD_EVENT_KINDS.map((kind) => [

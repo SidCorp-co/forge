@@ -153,7 +153,7 @@ describe('a message the screen refuses', () => {
       contract: 1,
       fields: [
         { key: 'decision', value: 'x'.repeat(401) },
-        { key: 'reason', value: 'one field over its budget' },
+        { key: 'why', value: 'one field over its budget' },
       ],
     });
 

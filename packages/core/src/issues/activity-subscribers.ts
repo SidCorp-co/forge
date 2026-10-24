@@ -101,7 +101,12 @@ export function registerActivitySubscribers(): void {
         issueId: p.issueId,
         actor: p.actor,
         action: 'comment.updated',
-        payload: { commentId: p.commentId, before: snippet(p.before), after: snippet(p.after) },
+        payload: {
+          commentId: p.commentId,
+          before: snippet(p.before),
+          after: snippet(p.after),
+          ...(p.intent ? { intent: p.intent } : {}),
+        },
       }),
   });
 

@@ -5,10 +5,11 @@
 // resolved against the project members, and reply/add boxes.
 
 import { WrittenMark } from "@/lib/i18n/written";
-import { Avatar, Badge, BodyView, Button, Checkbox, EmptyState, Field, Icon, Textarea } from "@/design";
+import { Avatar, Badge, BodyView, Button, Checkbox, EmptyState, Field, Icon, Select, Textarea } from "@/design";
 import { type ComposerIntent, DecisionInThread, IntentPicker } from "@/features/comments";
 import { formatApiError } from "@/lib/api/error";
 import { refusalsOf } from "@/lib/api/refusals";
+import { RefusalLine } from "@/lib/api/refusal-line";
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import { useEffect, useState } from "react";
 import {
@@ -18,10 +19,11 @@ import {
   memberLabel,
 } from "../derive";
 import { useIssueQuestions } from "@/features/questions";
-import { useCreateComment, useRecordDecision } from "../detail-hooks";
+import { useCorrectIntent, useCreateComment, useRecordDecision } from "../detail-hooks";
 import type { CommentNode, ProjectMember } from "../types";
 import { AttachmentList } from "@/features/attachments";
 import { BodyEditor } from "./body-editor";
+import type { IssueViewer } from "./use-issue-project";
 import { StagedFileList, useStagedFiles } from "@/features/attachments";
 
 function AddCommentBox({
@@ -239,20 +241,51 @@ function Composer({ issueId }: { issueId: string }) {
   );
 }
 
+/** What a comment is for, corrected in place by its author or a project admin (ISS-585). */
+function IntentControl({ node, issueId }: { node: CommentNode; issueId: string }) {
+  const t = useCopy();
+  const correct = useCorrectIntent(issueId);
+  const intent = node.intent ?? "note";
+  return (
+    <>
+      <Select
+        quiet
+        aria-label={t("issues.thread.intent")}
+        value={intent}
+        disabled={correct.isPending}
+        onChange={(next) => {
+          if (next !== intent && (next === "question" || next === "note" || next === "decision")) {
+            correct.mutate({ commentId: node.id, intent: next });
+          }
+        }}
+        options={[
+          { value: "question", label: t("common.intent.question") },
+          { value: "note", label: t("common.intent.note") },
+          { value: "decision", label: t("common.decisions.decision") },
+        ]}
+      />
+      <RefusalLine error={correct.error} testid="intent-refusal" />
+    </>
+  );
+}
+
 export function CommentItem({
   node,
   issueId,
   members,
   depth,
   readOnly = false,
+  viewer,
 }: {
   node: CommentNode;
   issueId: string;
   members: ProjectMember[] | undefined;
   depth: number;
   readOnly?: boolean;
+  viewer?: IssueViewer | undefined;
 }) {
   const [replying, setReplying] = useState(false);
+  const mayCorrect = !readOnly && !!viewer && (viewer.canManage || node.authorId === viewer.userId);
   const t = useCopy();
   const time = useTimeFormat();
   const { kind } = deriveCommentKind(node);
@@ -307,7 +340,7 @@ export function CommentItem({
             </div>
           )}
           {!readOnly && (
-            <div className="mt-1">
+            <div className="mt-1 flex flex-wrap items-center gap-3">
               <button
                 type="button"
                 onClick={() => setReplying((r) => !r)}
@@ -315,6 +348,7 @@ export function CommentItem({
               >
                 {replying ? t("common.cancel") : t("issues.thread.reply")}
               </button>
+              {mayCorrect && <IntentControl node={node} issueId={issueId} />}
             </div>
           )}
           {replying && (
@@ -343,6 +377,7 @@ export function CommentItem({
               members={members}
               depth={depth + 1}
               readOnly={readOnly}
+              viewer={viewer}
             />
           ))}
         </div>
@@ -356,12 +391,15 @@ export function CommentThread({
   comments,
   members,
   readOnly = false,
+  viewer,
 }: {
   issueId: string;
   comments: CommentNode[];
   members: ProjectMember[] | undefined;
   /** Viewer role: render the thread without composer/reply affordances. */
   readOnly?: boolean;
+  /** Who reads it: a comment's author, or a project admin, corrects what it is for. */
+  viewer?: IssueViewer | undefined;
 }) {
   const t = useCopy();
   // Newest top-level comment first so the latest activity is reachable without
@@ -388,6 +426,7 @@ export function CommentThread({
               members={members}
               depth={0}
               readOnly={readOnly}
+              viewer={viewer}
             />
           ))}
         </div>

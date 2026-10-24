@@ -233,11 +233,11 @@ describe('a decision recorded on an unchanged wait answers the ask until the sta
     expect(await askedOf(issue.id)).toEqual([]);
   });
 
-  it('keeps the ask where the decision carries no why, a route record', async () => {
+  it('keeps the ask where the decision carries no why', async () => {
     ok(
       await decide(issue.id, [
         { key: 'lead', value: 'FB-9 routed to this issue' },
-        { key: 'outcome', value: 'linked' },
+        { key: 'decision', value: 'linked' },
       ]),
       201,
     );

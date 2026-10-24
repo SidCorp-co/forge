@@ -196,6 +196,8 @@ export const commentEvents = pgTable(
     kind: text('kind', { enum: COMMENT_EVENT_KINDS }).notNull(),
     body: text('body').notNull(),
     decision: jsonb('decision').$type<DecisionFields>(),
+    /** The intent as it stood after this post or edit (ISS-585); null on a row written before it was kept. */
+    intent: text('intent', { enum: COMMENT_INTENTS }),
     actorId: uuid('actor_id')
       .notNull()
       .references(() => users.id, { onDelete: 'restrict' }),
@@ -205,6 +207,10 @@ export const commentEvents = pgTable(
   (t) => ({
     kindChk: check('comment_events_kind_chk', sql`${t.kind} IN (${inList(COMMENT_EVENT_KINDS)})`),
     agencyChk: check('comment_events_agency_chk', sql`${t.actorAgency} IN ('human', 'agent')`),
+    intentChk: check(
+      'comment_events_intent_chk',
+      sql`${t.intent} IS NULL OR ${t.intent} IN (${inList(COMMENT_INTENTS)})`,
+    ),
     commentIdx: index('comment_events_comment_idx').on(t.commentId, t.createdAt),
     projectIdx: index('comment_events_project_idx').on(t.projectId, t.createdAt),
   }),

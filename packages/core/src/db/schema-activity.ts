@@ -59,6 +59,10 @@ export const activityLog = pgTable(
     recordCommentUq: uniqueIndex('activity_log_record_comment_uq')
       .on(t.dedupeKey)
       .where(sql`${t.dedupeKey} LIKE 'record-comment:%'`),
+    /** A record is withdrawn once (ISS-585): a second withdrawal of it cannot be stored. */
+    recordWithdrawalUq: uniqueIndex('activity_log_record_withdrawal_uq')
+      .on(t.dedupeKey)
+      .where(sql`${t.dedupeKey} LIKE 'record-withdrawal:%'`),
   }),
 );
 

@@ -2478,6 +2478,7 @@ export const SAID = {
 	},
 	"requirements.history.kind.Revision": { en: "Revision" },
 	"requirements.history.kind.Decision": { en: "Decision" },
+	"requirements.history.kind.Withdrawn": { en: "Withdrawn" },
 	"requirements.history.kind.Question": { en: "Question" },
 	"requirements.history.kind.Answer": { en: "Answer" },
 	"requirements.history.kind.Suggestion": { en: "Suggestion" },

@@ -26,6 +26,7 @@ export async function locateComment(commentId: string) {
       issueId: issues.id,
       authorId: comments.authorId,
       body: comments.body,
+      intent: comments.intent,
       projectId: issues.projectId,
     })
     .from(comments)

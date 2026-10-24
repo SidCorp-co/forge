@@ -267,6 +267,8 @@ export interface OutboxEventPayloads
 		commentId: string;
 		before: string;
 		after: string;
+		/** An intent correction (ISS-585): what the comment was for, and what it is for now. */
+		intent?: { before: string; after: string };
 	};
 	"comment.deleted": {
 		issueId: string;

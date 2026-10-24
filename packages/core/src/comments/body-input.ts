@@ -35,12 +35,20 @@ export const commentCreateSchema = z
   })
   .strict();
 
-export const commentBodySchema = z
+/**
+ * An issue comment's edit: a new body, a corrected intent (ISS-585), or both. The intent is any
+ * string here and checked by name (`COMMENT_INTENT_UNKNOWN`), as a new comment's is.
+ */
+export const commentEditSchema = z
   .object({
-    body: commentBodyField,
+    body: commentBodyField.optional(),
     format: formatField,
     writtenLang: writtenLangSchema.optional(),
+    intent: intentField,
   })
-  .strict();
+  .strict()
+  .refine((edit) => edit.body !== undefined || edit.intent !== undefined, {
+    message: 'an edit names a new body, a new intent, or both',
+  });
 
 export { bodyRefusalHttp, rethrowBodyInvalid };

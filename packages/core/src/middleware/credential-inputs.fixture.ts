@@ -126,6 +126,7 @@ export const PLAIN_INPUTS: Readonly<Record<string, readonly string[]>> = {
     field:param:agentUserId field:param:aid field:param:approvalId field:param:at
     field:param:attachmentId field:param:bid field:param:bindingId field:param:code
     field:param:commentId field:param:contract field:param:did field:param:doc field:param:draftId field:param:edgeId
+    field:param:eventId
     field:param:executionId field:param:fb field:param:fireId field:param:id field:param:issue
     field:param:issueId field:param:issueKey field:param:itemId field:param:key field:param:link
     field:param:memoryId field:param:mk field:param:module field:param:name field:param:number

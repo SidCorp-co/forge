@@ -193,6 +193,7 @@ export async function postEntityComment(input: {
       kind: 'posted',
       body: row.body,
       decision: row.decision,
+      intent: row.intent,
       actorId: author.userId,
       actorAgency: author.agency,
     });
@@ -230,7 +231,13 @@ export async function editEntityComment(input: {
     if (refusals.length > 0) return { ok: false, refusals };
 
     const level = await dataPolicyOf(projectId);
-    const decision = request.decision ? scrubbedDecision(level, request.decision) : row.decision;
+    const intent = request.intent ?? row.intent;
+    const decision =
+      intent !== 'decision'
+        ? null
+        : request.decision
+          ? scrubbedDecision(level, request.decision)
+          : row.decision;
     const derived = row.decision !== null && row.body === decisionBody(row.decision);
     const raw =
       request.body !== undefined
@@ -252,6 +259,7 @@ export async function editEntityComment(input: {
       .set({
         body: body.prepared.body,
         format: body.prepared.format,
+        intent,
         decision,
         writtenLang:
           request.body !== undefined || request.decision !== undefined
@@ -274,6 +282,7 @@ export async function editEntityComment(input: {
       kind: 'edited',
       body: edited.body,
       decision: edited.decision,
+      intent: edited.intent,
       actorId: actor.userId,
       actorAgency: actor.agency,
     });
@@ -315,7 +324,12 @@ export async function recordRequirementDecisionIn(
       intent: 'decision',
       decision,
     })
-    .returning({ id: comments.id, body: comments.body, decision: comments.decision });
+    .returning({
+      id: comments.id,
+      body: comments.body,
+      decision: comments.decision,
+      intent: comments.intent,
+    });
   if (!row) throw new Error('comments: the recorded decision returned no row');
   await tx.insert(commentEvents).values({
     projectId: input.projectId,
@@ -323,6 +337,7 @@ export async function recordRequirementDecisionIn(
     kind: 'posted',
     body: row.body,
     decision: row.decision,
+    intent: row.intent,
     actorId: input.authorId,
     actorAgency: input.agency,
   });

@@ -33,6 +33,8 @@ export const COMMENT_EVENT_KINDS = ["posted", "edited"] as const;
 export const COMMENT_REFUSAL_CODES = [
 	"COMMENT_REFUSED",
 	"COMMENT_INTENT_UNKNOWN",
+	/** An intent correction naming the intent the comment already has (ISS-585). */
+	"COMMENT_INTENT_UNCHANGED",
 	"COMMENT_SCOPE_INVALID",
 	"COMMENT_DECISION_REQUIRED",
 	"COMMENT_DECISION_INTENT_MISMATCH",
@@ -99,6 +101,8 @@ export type CreateEntityCommentRequest = z.infer<
 export const CREATE_ENTITY_COMMENT_SHAPE = `{ intent: ${COMMENT_INTENTS.join(" | ")}, body? (required unless intent is decision), format?: markdown | html, parentId?, decision?: ${DECISION_FIELDS_SHAPE} (required when intent is decision, refused otherwise), ${WRITTEN_LANG_SHAPE} }`;
 
 export const editEntityCommentRequestSchema = z.strictObject({
+	/** A correction of what the comment is for (ISS-585): the same comment, its replies kept. */
+	intent: z.enum(COMMENT_INTENTS).optional(),
 	body: z.string().max(COMMENT_BODY_MAX).optional(),
 	format: z.enum(["markdown", "html"]).optional(),
 	decision: decisionFieldsSchema.optional(),
@@ -109,7 +113,7 @@ export type EditEntityCommentRequest = z.infer<
 	typeof editEntityCommentRequestSchema
 >;
 
-export const EDIT_ENTITY_COMMENT_SHAPE = `{ body?, format?: markdown | html, decision?: ${DECISION_FIELDS_SHAPE}, ${WRITTEN_LANG_SHAPE} } — body or decision, or both; decision only on a decision`;
+export const EDIT_ENTITY_COMMENT_SHAPE = `{ intent?: ${COMMENT_INTENTS.join(" | ")}, body?, format?: markdown | html, decision?: ${DECISION_FIELDS_SHAPE}, ${WRITTEN_LANG_SHAPE} } — at least one of intent, body or decision; decision only on a decision, and required when intent turns to decision`;
 
 /**
  * Whose decisions a read lists: `people` (the default where a person reads them) keeps those a

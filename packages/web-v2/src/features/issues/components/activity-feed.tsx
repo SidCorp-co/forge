@@ -9,6 +9,14 @@ import { Badge, EmptyState, EnumBadge, Icon, MonoTag, sentenceCase, StatusBadge,
 import { useCopy, useTimeFormat } from "@/lib/i18n/interface-language";
 import type { Copy } from "@/lib/i18n/product-copy";
 import type { ActivityItem } from "../types";
+import {
+  DECISION_ACTION,
+  DecisionLine,
+  type DecisionWithdraw,
+  WITHDRAWAL_ACTION,
+  WithdrawalLine,
+  withdrawnIds,
+} from "./activity-decision";
 
 interface Node {
   icon: IconName;
@@ -84,8 +92,18 @@ function describeUpdate(payload: Record<string, unknown>, t: Copy): React.ReactN
 // (ISS-96, ISS-166); the feed draws the move once, from the first
 const DRAWN_ELSEWHERE = new Set(["record.transition"]);
 
-export function ActivityFeed({ items }: { items: ActivityItem[] }) {
+/** A decision record's line, or its withdrawal's (ISS-585); null for any other row. */
+function recordNode(item: ActivityItem, withdrawn: Set<string>, withdraw: DecisionWithdraw | undefined): Node | null {
+  if (item.action === DECISION_ACTION) {
+    return { icon: "check", text: <DecisionLine item={item} withdrawn={withdrawn.has(item.id)} withdraw={withdraw} /> };
+  }
+  if (item.action === WITHDRAWAL_ACTION) return { icon: "x", text: <WithdrawalLine item={item} /> };
+  return null;
+}
+
+export function ActivityFeed({ items, withdraw }: { items: ActivityItem[]; withdraw?: DecisionWithdraw }) {
   const shown = items.filter((item) => !DRAWN_ELSEWHERE.has(item.action));
+  const withdrawn = withdrawnIds(items);
   const t = useCopy();
   const time = useTimeFormat();
   if (shown.length === 0) {
@@ -94,7 +112,7 @@ export function ActivityFeed({ items }: { items: ActivityItem[] }) {
   return (
     <ol className="space-y-3">
       {shown.map((item) => {
-        const node = describe(item, t);
+        const node = recordNode(item, withdrawn, withdraw) ?? describe(item, t);
         // Prefer the server-resolved actor (member email / agent device name)
         // over the bare actorType. Fall back to the raw type for older payloads;
         // never show just "user"/"device" when a name is available (ISS-519).

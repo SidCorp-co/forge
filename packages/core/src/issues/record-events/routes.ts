@@ -1,12 +1,17 @@
-// `POST /api/issues/:id/events` writes a typed record; `GET` reads an issue's records (ISS-56).
+// `POST /api/issues/:id/events` writes a typed record; `GET` reads an issue's records (ISS-56);
+// `POST /api/issues/:id/events/:eventId/withdraw` withdraws a decision, which then stops being read
+// as standing (ISS-585).
 
 import {
   isRecordEventKind,
   RECORD_DIGEST_KIND,
   RECORD_EVENT_KINDS,
+  RECORD_WITHDRAWN_READS,
   type RecordEventRefusalCode,
+  WITHDRAW_RECORD_SHAPE,
+  withdrawRecordRequestSchema,
 } from '@forge/contracts/record-events';
-import { Hono } from 'hono';
+import { type Context, Hono } from 'hono';
 import { z } from 'zod';
 import { refuser } from '../../lib/refusal.js';
 import {
@@ -16,11 +21,13 @@ import {
   restActor,
 } from '../../middleware/auth.js';
 import { idParamSchema } from '../../middleware/route-errors.js';
-import { zValidator } from '../../middleware/zod-validator.js';
+import { invalid, strictBody, zValidator } from '../../middleware/zod-validator.js';
 import type { Actor } from '../activity.js';
+import { issueDisplayIds } from '../display-ids.js';
 import { heldIssue } from '../issue-route-ref.js';
 import { decisionUntilWarnings } from './decision-until.js';
 import { listRecordEvents, type RecordEvent } from './store.js';
+import { withdrawRecordEvent } from './withdraw.js';
 import { writeScreenedRecordEvent } from './write.js';
 
 /** Shape only: the kind, contract and fields are judged by `assertRecordEventDraft`, by name. */
@@ -36,12 +43,25 @@ const listQuerySchema = z
   .object({
     kind: z.string().max(64).optional(),
     limit: z.coerce.number().int().min(1).max(1000).optional(),
+    withdrawn: z.enum(RECORD_WITHDRAWN_READS).optional(),
   })
   .strict();
 
+const withdrawParamSchema = z.object({ id: z.uuid(), eventId: z.uuid() });
+
 /** The wire shape of one event: what `@forge/contracts` `RecordEventView` declares. */
 function serializeRecordEvent(event: RecordEvent) {
-  return { ...event, createdAt: event.createdAt.toISOString() };
+  const { withdrawn, ...rest } = event;
+  return {
+    ...rest,
+    createdAt: event.createdAt.toISOString(),
+    ...(withdrawn ? { withdrawn: { ...withdrawn, at: withdrawn.at.toISOString() } } : {}),
+  };
+}
+
+function actorOf(c: Context<{ Variables: AuthVars }>): Actor {
+  const deviceId = c.get('patDeviceId') ?? null;
+  return deviceId ? { type: 'device', id: deviceId, agency: 'agent' } : restActor(c);
 }
 
 const refuseEvent = refuser<RecordEventRefusalCode>('EVENT_REFUSED');
@@ -57,14 +77,10 @@ recordEventRoutes.post(
     const { id } = c.req.valid('param');
     const draft = c.req.valid('json');
     const issue = await heldIssue(id, c.get('userId'), 'project.write');
-    const deviceId = c.get('patDeviceId') ?? null;
-    const actor: Actor = deviceId
-      ? { type: 'device', id: deviceId, agency: 'agent' }
-      : restActor(c);
     const event = await writeScreenedRecordEvent({
       projectId: issue.projectId,
       issueId: issue.id,
-      actor,
+      actor: actorOf(c),
       ...draft,
     });
     const written = serializeRecordEvent(event);
@@ -79,7 +95,7 @@ recordEventRoutes.get(
   zValidator('query', listQuerySchema),
   async (c) => {
     const { id } = c.req.valid('param');
-    const { kind, limit } = c.req.valid('query');
+    const { kind, limit, withdrawn } = c.req.valid('query');
     if (kind !== undefined && kind !== RECORD_DIGEST_KIND && !isRecordEventKind(kind)) {
       throw refuseEvent(
         'EVENT_KIND_UNKNOWN',
@@ -91,7 +107,37 @@ recordEventRoutes.get(
     const events = await listRecordEvents(issue.id, {
       ...(kind ? { kinds: [kind as RecordEvent['kind']] } : {}),
       ...(limit ? { limit } : {}),
+      ...(withdrawn ? { withdrawn } : {}),
     });
     return c.json({ items: events.map(serializeRecordEvent) });
+  },
+);
+
+recordEventRoutes.use('/:id/events/:eventId/withdraw', requireAuth(), assertEmailVerified());
+
+recordEventRoutes.post(
+  '/:id/events/:eventId/withdraw',
+  zValidator(
+    'param',
+    withdrawParamSchema,
+    invalid('invalid path: /api/issues/<issue uuid>/events/<record uuid>/withdraw'),
+  ),
+  strictBody(withdrawRecordRequestSchema, WITHDRAW_RECORD_SHAPE),
+  async (c) => {
+    const { id, eventId } = c.req.valid('param');
+    const { reason } = c.req.valid('json');
+    const userId = c.get('userId');
+    const issue = await heldIssue(id, userId, 'project.write', 'withdrawing a decision');
+    const issueKey = (await issueDisplayIds([issue.id])).get(issue.id) ?? issue.id;
+    const withdrawal = await withdrawRecordEvent({
+      projectId: issue.projectId,
+      issueId: issue.id,
+      issueKey,
+      eventId,
+      reason,
+      actor: actorOf(c),
+      userId,
+    });
+    return c.json(serializeRecordEvent(withdrawal), 201);
   },
 );

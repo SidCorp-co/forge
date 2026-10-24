@@ -82,6 +82,32 @@ export function useRecordDecision(id: string) {
   });
 }
 
+/** Correct what a comment is for, in place (ISS-585). The refusal is read where the control sits. */
+export function useCorrectIntent(issueId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { commentId: string; intent: "question" | "note" | "decision" }) =>
+      issueDetailApi.correctIntent(args.commentId, args.intent),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["comments", issueId] });
+      void qc.invalidateQueries({ queryKey: ["activities", issueId] });
+      void qc.invalidateQueries({ queryKey: ["entity-decisions"] });
+    },
+  });
+}
+
+/** Withdraw a decision record (ISS-585): it stays in the history, marked, and stops standing. */
+export function useWithdrawDecision(issueId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { eventId: string; reason: string }) =>
+      issueDetailApi.withdrawDecision(issueId, args.eventId, args.reason),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["activities", issueId] });
+    },
+  });
+}
+
 export function useCreateComment(id: string) {
   const qc = useQueryClient();
   const { toast } = useToast();

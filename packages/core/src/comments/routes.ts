@@ -12,6 +12,7 @@ import {
 import { loadProjectAccess } from '../lib/authz.js';
 import { egressForRequest } from '../lib/data-egress.js';
 import { cursorList, listResponse, paginationSchema } from '../lib/pagination.js';
+import { RefusalError } from '../lib/refusal.js';
 import { projectLens } from '../messaging/record-screen.js';
 import {
   type AuthVars,
@@ -30,11 +31,17 @@ import { badRequest, forbidden, idParamSchema, notFound } from '../middleware/ro
 import { zValidator } from '../middleware/zod-validator.js';
 import { requireHeld } from '../permissions/index.js';
 import { commentAttachmentRoutes } from './attachment-routes.js';
-import { commentBodySchema, commentCreateSchema, rethrowBodyInvalid } from './body-input.js';
+import { commentCreateSchema, commentEditSchema, rethrowBodyInvalid } from './body-input.js';
 import { type CommentCursor, decodeCommentCursor } from './cursor.js';
+import { checkedIntent, correctCommentIntent, unchangedIntentRefusal } from './intent-edit.js';
 import { postIssueComment } from './issue-comment.js';
 import { attachmentsByComment, countIssueComments, listReplies, locateComment } from './read.js';
-import { deleteComment, intentRefusal, updateCommentBody } from './service.js';
+import {
+  type CommentThreadRow,
+  deleteComment,
+  intentRefusal,
+  updateCommentBody,
+} from './service.js';
 import { listIssueCommentPage } from './thread-read.js';
 import { attachAuthors, buildCommentTree } from './tree.js';
 
@@ -182,33 +189,54 @@ commentRoutes.patch(
   requireAuth(),
   assertEmailVerified(),
   zValidator('param', idParamSchema),
-  zValidator('json', commentBodySchema),
+  zValidator('json', commentEditSchema),
   async (c) => {
     const { id } = c.req.valid('param');
-    const { body, format, writtenLang } = c.req.valid('json');
+    const { body, format, writtenLang, intent: sentIntent } = c.req.valid('json');
     const userId = c.get('userId');
+    const intent = sentIntent === undefined ? undefined : checkedIntent(sentIntent);
 
     const comment = await loadComment(id);
     if (comment.authorId !== userId) {
       const access = await loadProjectAccess(comment.projectId, userId);
       requireHeld(access, 'project.admin', "changing another person's comment");
     }
+    const unchanged = intent === undefined ? null : unchangedIntentRefusal(comment.intent, intent);
+    if (unchanged) throw new RefusalError([unchanged], unchanged.code);
 
-    let written: Awaited<ReturnType<typeof updateCommentBody>>;
-    try {
-      written = await updateCommentBody(id, {
-        body,
-        format,
-        writtenLang,
-        declaresRecordRoute: declares(clientCapabilities(c), RECORD_ROUTE_CAPABILITY),
-        announce: { actor: restActor(c), projectId: comment.projectId, before: comment.body ?? '' },
-      });
-    } catch (err) {
-      rethrowBodyInvalid(err);
+    let updated: CommentThreadRow | null = null;
+    let warnings: string[] = [];
+    if (body !== undefined) {
+      let written: Awaited<ReturnType<typeof updateCommentBody>>;
+      try {
+        written = await updateCommentBody(id, {
+          body,
+          format,
+          writtenLang,
+          declaresRecordRoute: declares(clientCapabilities(c), RECORD_ROUTE_CAPABILITY),
+          announce: {
+            actor: restActor(c),
+            projectId: comment.projectId,
+            before: comment.body ?? '',
+          },
+        });
+      } catch (err) {
+        rethrowBodyInvalid(err);
+      }
+      if (!written) throw notFound('comment not found');
+      updated = written.row;
+      warnings = written.warnings;
     }
-    if (!written) throw notFound('comment not found');
-    const updated = written.row;
-    const { warnings } = written;
+    if (intent !== undefined) {
+      const corrected = await correctCommentIntent(id, intent, {
+        actor: restActor(c),
+        projectId: comment.projectId,
+      });
+      if (!corrected) throw notFound('comment not found');
+      if ('code' in corrected) throw new RefusalError([corrected], corrected.code);
+      updated = corrected;
+    }
+    if (!updated) throw notFound('comment not found');
     return c.json(warnings.length > 0 ? { ...updated, warnings } : updated);
   },
 );

@@ -3015,6 +3015,10 @@
                     ],
                     "type": "string"
                   },
+                  "intent": {
+                    "maxLength": 64,
+                    "type": "string"
+                  },
                   "writtenLang": {
                     "enum": [
                       "en",
@@ -3023,10 +3027,10 @@
                     "type": "string"
                   }
                 },
-                "required": [
-                  "body"
-                ],
-                "type": "object"
+                "type": "object",
+                "x-forge-refinements": [
+                  "an edit names a new body, a new intent, or both"
+                ]
               }
             }
           },
@@ -13116,6 +13120,18 @@
               "minimum": 1,
               "type": "integer"
             }
+          },
+          {
+            "in": "query",
+            "name": "withdrawn",
+            "required": false,
+            "schema": {
+              "enum": [
+                "exclude",
+                "include"
+              ],
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -13190,6 +13206,72 @@
                   "kind",
                   "contract",
                   "fields"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "4XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "description": "Undeclared. forge-core holds no response schema for this route, so this contract does not describe what it answers."
+          }
+        },
+        "x-forge-auth": [
+          "requireAuth",
+          "assertEmailVerified"
+        ],
+        "x-forge-validated": [
+          "json",
+          "param"
+        ]
+      }
+    },
+    "/api/issues/{id}/events/{eventId}/withdraw": {
+      "post": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "eventId",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "properties": {
+                  "reason": {
+                    "maxLength": 600,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "reason"
                 ],
                 "type": "object"
               }
@@ -24671,6 +24753,14 @@
                     ],
                     "type": "string"
                   },
+                  "intent": {
+                    "enum": [
+                      "question",
+                      "decision",
+                      "note"
+                    ],
+                    "type": "string"
+                  },
                   "writtenLang": {
                     "enum": [
                       "en",
@@ -33034,6 +33124,14 @@
                     ],
                     "type": "string"
                   },
+                  "intent": {
+                    "enum": [
+                      "question",
+                      "decision",
+                      "note"
+                    ],
+                    "type": "string"
+                  },
                   "writtenLang": {
                     "enum": [
                       "en",
@@ -39633,6 +39731,14 @@
                     "enum": [
                       "markdown",
                       "html"
+                    ],
+                    "type": "string"
+                  },
+                  "intent": {
+                    "enum": [
+                      "question",
+                      "decision",
+                      "note"
                     ],
                     "type": "string"
                   },

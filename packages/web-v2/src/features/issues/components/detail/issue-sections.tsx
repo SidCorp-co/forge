@@ -17,6 +17,8 @@ import type { useActivity, useComments } from "../../detail-hooks";
 import type { useIssueStandingOf, useProjectMembers } from "../../hooks";
 import type { IssueAgentSession } from "../../types";
 import { ActivityFeed } from "../activity-feed";
+import type { DecisionWithdraw } from "../activity-decision";
+import type { IssueViewer } from "../use-issue-project";
 import { CommentThread } from "../comment-thread";
 import { SessionGroupTimeline } from "../session-group-timeline";
 import { StepArtifact } from "../step-artifact";
@@ -109,6 +111,14 @@ export function RunsTab({
   );
 }
 
+/** A decision's writer withdraws it, and a project admin any decision (core refuses anyone else by name). */
+function decisionWithdraw(issueId: string, viewer: IssueViewer): DecisionWithdraw {
+  return {
+    issueId,
+    may: (item) => viewer.canManage || (item.actorType === "user" && item.actorId === viewer.userId),
+  };
+}
+
 export function ActivityTab({
   issueId,
   thread,
@@ -117,6 +127,7 @@ export function ActivityTab({
   activityQ,
   members,
   canWrite,
+  viewer,
   past,
 }: {
   issueId: string;
@@ -126,6 +137,8 @@ export function ActivityTab({
   activityQ: ReturnType<typeof useActivity>;
   members: ReturnType<typeof useProjectMembers>["data"];
   canWrite: boolean;
+  /** Who reads the page: decides which comments' intent and which decisions they may change. */
+  viewer?: IssueViewer;
   /** What is over and done with, drawn above the thread: voided questions, retired criteria. */
   past?: ReactNode;
 }) {
@@ -150,7 +163,7 @@ export function ActivityTab({
           ) : commentsQ.isError ? (
             <TabError query={commentsQ} title={t("issues.activity.commentsFailed")} />
           ) : (
-            <CommentThread issueId={issueId} comments={commentsQ.data?.items ?? []} members={members} readOnly={!canWrite} />
+            <CommentThread issueId={issueId} comments={commentsQ.data?.items ?? []} members={members} readOnly={!canWrite} viewer={viewer} />
           ))}
         {thread === "activity" &&
           (activityQ.isLoading ? (
@@ -158,7 +171,7 @@ export function ActivityTab({
           ) : activityQ.isError ? (
             <TabError query={activityQ} title={t("issues.activity.historyFailed")} />
           ) : (
-            <ActivityFeed items={activityQ.data?.items ?? []} />
+            <ActivityFeed items={activityQ.data?.items ?? []} withdraw={canWrite && viewer ? decisionWithdraw(issueId, viewer) : undefined} />
           ))}
       </div>
     </section>

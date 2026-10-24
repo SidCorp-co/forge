@@ -54,6 +54,20 @@ export const issueDetailApi = {
       keepalive: true,
     }),
 
+  /** `PATCH /api/comments/:id` — the same comment, for another purpose (ISS-585). */
+  correctIntent: (commentId: string, intent: CommentNode["intent"]) =>
+    apiClient<CommentNode>(`/comments/${commentId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ intent }),
+    }),
+
+  /** `POST /api/issues/:id/events/:eventId/withdraw` — a decision kept on record, no longer standing. */
+  withdrawDecision: (id: string, eventId: string, reason: string) =>
+    apiClient<unknown>(`/issues/${id}/events/${eventId}/withdraw`, {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    }),
+
   uploadCommentAttachment: (commentId: string, file: File) => {
     const fd = new FormData();
     fd.append("file", file);

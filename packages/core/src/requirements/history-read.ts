@@ -40,6 +40,7 @@ const RECORD_KIND_LABEL: Record<string, Said> = {
   'record.decision': say('requirements.history.kind.Decision'),
   'record.question': say('requirements.history.kind.Question'),
   'record.answer': say('requirements.history.kind.Answer'),
+  'record.withdrawal': say('requirements.history.kind.Withdrawn'),
 };
 
 const HISTORY_LIMIT = 80;

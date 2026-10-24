@@ -19,6 +19,7 @@ import type { IssueDetail } from "../../types";
 import { IssueRetiredCriteria } from "../criteria-list";
 import { IssueDescription } from "../issue-description";
 import { IssuePatternList } from "../issue-pattern-list";
+import { useIssueViewer } from "../use-issue-project";
 import { IssueDecisionsTab, IssueMemoryTab } from "./issue-record-tabs";
 import { ActivityTab, type ActivityThread, RunsTab, runsTabCount } from "./issue-sections";
 
@@ -55,6 +56,7 @@ export function IssueDetails({
   mockupCount: number | undefined;
 }) {
   const t = useCopy();
+  const viewer = useIssueViewer(projectId);
   const [explicit, setExplicit] = useState<Record<string, boolean>>({});
   const [thread, setThread] = useState<ActivityThread>("comments");
   const [expandedStep, setExpandedStep] = useState<string | null>(null);
@@ -101,6 +103,7 @@ export function IssueDetails({
             activityQ={activityQ}
             members={membersQ.data}
             canWrite={canWrite}
+            viewer={viewer}
             past={
               <>
                 <IssuePatternList issueId={issue.id} projectId={projectId} show="decided" />

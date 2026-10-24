@@ -5,6 +5,7 @@
 // the comment thread stays readable by a person. Not the schema of each store —
 // each store's own tool carries that.
 
+import { DECISION_RECORD_FIELDS } from '@forge/contracts/record-events';
 import { RECORD_DESTINATIONS, RECORD_GUIDE_SLUG } from '../messaging/record-screen.js';
 import type { CoreGuide } from './types.js';
 
@@ -16,7 +17,7 @@ export const RECORDS_GUIDE: CoreGuide = {
   title: 'What a comment is for, and where a record goes',
   summary:
     'A comment carries what a person wrote for a person to read; a structured record goes to the store its kind names, with the comment keeping the pointer back.',
-  version: 2,
+  version: 3,
   body: `## What a comment is for, and where a record goes
 
 A comment is prose a person reads. Everything else a run has to record has a store of its own, and
@@ -34,6 +35,7 @@ the person's share of the thread was 98 and 123 characters against 26,000 and 46
 | A run's own record — a review, a decision, a baseline, a correction, a finding | ${route('review')} → \`activity_log\` | a typed record event of one kind in the closed set; a kind outside it is refused \`EVENT_KIND_UNKNOWN\` |
 | A transcript, a tool result, what the agent said | \`agent_session_turns\` | written by the session; never copied into a comment |
 | A log, a diff, an evidence file | an attachment | the file, uploaded. A comment names it, does not paste it |
+| A decision that should not stand — a probe, a mistake | \`POST /api/issues/:id/events/:eventId/withdraw\` \`{ reason }\` → a \`record.withdrawal\` | the writer, or a \`project.admin\`; the decision stays on record and stops being read as standing. A decision carries ${DECISION_RECORD_FIELDS.map((k) => `\`${k}\``).join(', ')} and nothing else (\`EVENT_FIELD_UNKNOWN\`) |
 | Who moved this issue and when, and why it parked | \`kernel_transitions\`, and \`record.park\` on \`GET /api/issues/:id/events\` | written by core in the move's own transaction, never posted: a posted transition, park or verdict is refused \`EVENT_KIND_KERNEL_ONLY\` |
 | A lesson a *different* issue would reuse | project memory (\`POST /api/memory\`) | one entry, natural key, refined not duplicated |
 | Project prose — a rule, a build command, a guide | \`knowledge_entries\` | one slug, \`injection\` decides reach |

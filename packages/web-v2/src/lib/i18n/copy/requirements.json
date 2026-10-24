@@ -525,6 +525,7 @@
     "requirements.history.kind.Agreed": "Thống nhất",
     "requirements.history.kind.Answer": "Trả lời",
     "requirements.history.kind.Decision": "Quyết định",
+    "requirements.history.kind.Withdrawn": "Đã rút lại",
     "requirements.history.kind.Question": "Câu hỏi",
     "requirements.history.kind.Record": "Ghi nhận",
     "requirements.history.kind.Returned": "Trả lại",

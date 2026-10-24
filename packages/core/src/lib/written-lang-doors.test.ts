@@ -6,7 +6,7 @@ import {
 import { forgeFeedbackRequestSchema } from '@forge/contracts/forge-feedback';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
-import { commentBodySchema, commentCreateSchema } from '../comments/body-input.js';
+import { commentCreateSchema, commentEditSchema } from '../comments/body-input.js';
 import { issueCreateSchema, issuePatchSchema } from '../issues/request-schemas.js';
 import { revisionFields } from '../requirements/route-kit.js';
 
@@ -19,7 +19,7 @@ const DOORS: Array<[string, z.ZodType, Record<string, unknown>]> = [
   ['feedback create', createFeedbackRequestSchema, { kind: 'bug', title: 't', screen: '/x' }],
   ['feedback message', feedbackMessageRequestSchema, { audience: 'internal', text: 't' }],
   ['issue comment', commentCreateSchema, { body: 'b' }],
-  ['issue comment edit', commentBodySchema, { body: 'b' }],
+  ['issue comment edit', commentEditSchema, { body: 'b' }],
   ['entity comment', createEntityCommentRequestSchema, { intent: 'note', body: 'b' }],
   ['requirement revision', z.strictObject(revisionFields), { reason: 'r', criteria: [] }],
   [

@@ -1,12 +1,14 @@
 // The reasoned decisions written on issues (ISS-607): a `decision` record carrying a `why`, the
 // shape a master or a person writes to say why an item waits. A decision core writes for a route or a
-// suggestion carries no `why`, so it is never read as somebody's answer here.
+// suggestion carries no `why`, so it is never read as somebody's answer here, and a withdrawn one
+// is nobody's answer any more (ISS-585).
 
 import { recordAction } from '@forge/contracts/record-events';
 import { and, desc, inArray, sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { activityLog } from '../../db/schema-activity.js';
 import { readDecisionUntil } from './decision-until.js';
+import { notWithdrawnSql } from './withdrawn.js';
 
 export interface ReasonedDecision {
   issueId: string;
@@ -42,8 +44,9 @@ const dateOf = (text: string | null): Date | null => {
 };
 
 /**
- * Every reasoned decision on these issues, newest first, but those whose writer is one of
- * `exceptUserIds` (the steward's own account): the steward never reads its own record as an answer.
+ * Every reasoned decision on these issues that still stands, newest first, but those whose writer is
+ * one of `exceptUserIds` (the steward's own account): the steward never reads its own record as an
+ * answer, and nobody's withdrawn one.
  */
 export async function reasonedDecisionsOn(
   issueIds: readonly string[],
@@ -63,6 +66,7 @@ export async function reasonedDecisionsOn(
       and(
         inArray(activityLog.issueId, [...issueIds]),
         sql`${activityLog.action} = ${recordAction('decision')}`,
+        notWithdrawnSql,
       ),
     )
     .orderBy(desc(activityLog.createdAt), desc(activityLog.id));

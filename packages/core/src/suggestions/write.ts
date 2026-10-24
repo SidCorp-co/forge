@@ -8,7 +8,7 @@ import { eq } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
 import { suggestions } from '../db/schema-suggestions.js';
 import { lockFeedback } from '../feedback/index.js';
-import { writeRecordEvent } from '../issues/index.js';
+import { writeCoreRecord } from '../issues/index.js';
 import { lockXact } from '../lib/advisory-lock.js';
 import { type Refusal, RefusalError } from '../lib/refusal.js';
 import { lockRequirements } from '../requirements/index.js';
@@ -72,21 +72,17 @@ export async function recordDecision(
   reason?: string | null,
 ) {
   if (!row.issueId) return;
-  await writeRecordEvent(
-    {
-      issueId: row.issueId,
-      actor: { type: 'user', id: actor.userId, agency: actor.agency },
-      kind: 'decision',
-      contract: 1,
-      fields: [
-        { key: 'lead', value: `${row.kind} suggestion ${outcome}` },
-        { key: 'suggestion', value: row.id },
-        { key: 'outcome', value: outcome },
-        ...(reason ? [{ key: 'reason', value: reason }] : []),
-      ],
-    },
-    tx,
-  );
+  await writeCoreRecord(tx, {
+    issueId: row.issueId,
+    actor: { type: 'user', id: actor.userId, agency: actor.agency },
+    kind: 'decision',
+    fields: [
+      { key: 'lead', value: `${row.kind} suggestion ${outcome}` },
+      { key: 'suggestion', value: row.id },
+      { key: 'outcome', value: outcome },
+      ...(reason ? [{ key: 'reason', value: reason }] : []),
+    ],
+  });
 }
 
 /** A suggestion's base names a revision the target has moved past: the refusal names both. */

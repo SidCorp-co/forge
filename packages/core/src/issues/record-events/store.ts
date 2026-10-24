@@ -9,6 +9,7 @@ import {
   RECORD_ACTION_PREFIX,
   type RECORD_DIGEST_KIND,
   RECORD_EVENT_KINDS,
+  RECORD_KIND_FIELDS,
   type RecordEventKind,
   type RecordEventRefusalCode,
   recordAction,
@@ -19,6 +20,7 @@ import { activityLog } from '../../db/schema-activity.js';
 import { refuser } from '../../lib/refusal.js';
 import { type ForgeRecord, overBudget, REQUESTED_FIELDS } from '../../messaging/forge-record.js';
 import type { Actor } from '../activity.js';
+import { notWithdrawnSql, type RecordWithdrawn, withdrawalsOn } from './withdrawn.js';
 
 /** The key shape a record field takes, the same one the comment fence reads (`forge-record.ts`). */
 const FIELD_KEY = /^[a-z][a-z0-9-]*$/u;
@@ -52,6 +54,8 @@ export interface RecordEvent {
   readonly actorType: string;
   readonly actorId: string;
   readonly createdAt: Date;
+  /** Who took this record back, when and why: present only on a read that asks for withdrawn ones. */
+  readonly withdrawn?: RecordWithdrawn;
 }
 
 const refuse = refuser<RecordEventRefusalCode>('EVENT_REFUSED');
@@ -62,6 +66,8 @@ const KERNEL_ACTS: Record<KernelOnlyRecordKind, string> = {
   transition: 'a transition when the issue moves (`POST /api/issues/:id/transition`)',
   park: "a park when the issue moves to `needs_info` or `on_hold`, carrying the move's `reason`",
   verdict: 'a verdict when one is recorded on a criterion (`POST /api/issues/:id/verdicts`)',
+  withdrawal:
+    'a withdrawal when a decision is withdrawn (`POST /api/issues/:id/events/:eventId/withdraw`)',
 };
 
 /**
@@ -77,6 +83,24 @@ export function assertRecordEventDraft(draft: RecordEventDraft): void {
       '/kind',
     );
   }
+  assertKindFields(draft);
+}
+
+/**
+ * A kind whose fields are a closed set (`RECORD_KIND_FIELDS`) carries no other key: the first
+ * stranger is refused at its pointer, naming every key the kind takes (ISS-585).
+ */
+function assertKindFields(draft: RecordEventDraft): void {
+  const accepted = RECORD_KIND_FIELDS[draft.kind as RecordEventKind];
+  if (!accepted) return;
+  const at = draft.fields.findIndex((field) => !accepted.includes(field.key));
+  if (at < 0) return;
+  const key = draft.fields[at]?.key;
+  throw refuse(
+    'EVENT_FIELD_UNKNOWN',
+    `fields[${at}].key \`${String(key)}\` is not a field of a \`${draft.kind}\` record — a ${draft.kind} carries ${accepted.map((k) => `\`${k}\``).join(', ')}. Say the rest in one of them, or in a comment`,
+    `/fields/${at}/key`,
+  );
 }
 
 function assertRecordEventShape(draft: RecordEventDraft): void {
@@ -266,12 +290,13 @@ export async function writeKernelRecord(executor: Tx, input: KernelRecordInput):
 }
 
 /** The kinds core writes on its own account although a caller may post one too. */
-type CoreWrittenKind = Extract<RecordEventKind, 'verification' | 'review'>;
+type CoreWrittenKind = Extract<RecordEventKind, 'verification' | 'review' | 'decision'>;
 
 /**
  * A record core writes from a check it decided itself (the merge check's `verification`, a review's
- * `review`), marked as core's so a reader asking `kernelOnly` never takes a caller's post of the same
- * kind for it.
+ * `review`) or for an act it made (a feedback routing's or a suggestion's `decision`, ISS-585),
+ * marked as core's so a reader asking `kernelOnly` never takes a caller's post of the same kind for
+ * it, and so no caller withdraws it: the act is undone where it was made.
  */
 export async function writeCoreRecord(
   executor: Tx,
@@ -284,6 +309,7 @@ export async function writeCoreRecord(
 ): Promise<RecordEvent> {
   const fields = input.fields.map((f) => ({ key: f.key, value: f.value }));
   assertRecordEventShape({ kind: input.kind, contract: 1, fields });
+  const lead = fields.find((f) => f.key === 'lead')?.value ?? null;
   const [row] = await executor
     .insert(activityLog)
     .values({
@@ -292,7 +318,7 @@ export async function writeCoreRecord(
       actorId: input.actor.id,
       actorAgency: input.actor.agency,
       action: recordAction(input.kind),
-      payload: { contract: 1, fields, lead: null, writer: KERNEL_WRITER },
+      payload: { contract: 1, fields, lead, writer: KERNEL_WRITER },
     })
     .returning();
   if (!row) throw new Error('record event insert returned no row');
@@ -303,6 +329,12 @@ interface RecordEventQuery {
   readonly kinds?: readonly (RecordEventKind | typeof RECORD_DIGEST_KIND)[];
   readonly limit?: number;
   readonly kernelOnly?: boolean;
+  /**
+   * A withdrawn record is no longer read as standing, so it is left out unless this is `include`,
+   * which keeps it and says on it who withdrew it, when and why. The withdrawal itself is a record
+   * of its own and is always listed (ISS-585).
+   */
+  readonly withdrawn?: 'exclude' | 'include';
 }
 
 /** One issue's record events, oldest first, of the kinds asked for (every kind where none is). */
@@ -317,13 +349,40 @@ export async function listRecordEvents(
   const written = query.kernelOnly
     ? sql`${activityLog.payload}->>'writer' = ${KERNEL_WRITER}`
     : undefined;
+  const include = query.withdrawn === 'include';
+  const standing = include ? undefined : notWithdrawnSql;
   const base = executor
     .select()
     .from(activityLog)
-    .where(and(eq(activityLog.issueId, issueId), scope, written))
+    .where(and(eq(activityLog.issueId, issueId), scope, written, standing))
     .orderBy(asc(activityLog.createdAt), asc(activityLog.id));
   const rows = query.limit ? await base.limit(query.limit) : await base;
-  return rows.map(eventOfRow);
+  const events = rows.map(eventOfRow);
+  if (!include) return events;
+  const withdrawals = await withdrawalsOn(issueId, executor);
+  return events.map((event) => {
+    const withdrawn = withdrawals.get(event.id);
+    return withdrawn ? { ...event, withdrawn } : event;
+  });
+}
+
+/** One record on this issue by its id, withdrawn or not, or null where the issue holds none. */
+export async function recordEventOn(
+  issueId: string,
+  eventId: string,
+  executor: Tx = db,
+): Promise<RecordEvent | null> {
+  const [row] = await executor
+    .select()
+    .from(activityLog)
+    .where(
+      and(
+        eq(activityLog.issueId, issueId),
+        eq(activityLog.id, eventId),
+        like(activityLog.action, `${RECORD_ACTION_PREFIX}%`),
+      ),
+    );
+  return row ? eventOfRow(row) : null;
 }
 
 /** The events these comments' records were mirrored into, keyed by comment id. */
