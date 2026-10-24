@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.313] - 2026-10-24
+
+Decisions on issues can be withdrawn, and comment types corrected in place
+
+### Fixed
+
+- **A decision record takes only a decision's fields, and is withdrawn, not deleted.** An unknown field is refused naming the accepted ones; a writer or admin withdraws it with a reason; a comment's type is corrected in place.
+
 ## [0.4.0-dev.312] - 2026-10-24
 
 Designs re-pin as rings, record without module labels; accepted releases merged by agent

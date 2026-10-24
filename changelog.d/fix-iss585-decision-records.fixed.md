@@ -1,1 +1,0 @@
-**A decision record takes only a decision's fields, and is withdrawn, not deleted.** An unknown field is refused naming the accepted ones; a writer or admin withdraws it with a reason; a comment's type is corrected in place.
