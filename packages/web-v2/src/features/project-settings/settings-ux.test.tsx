@@ -1,3 +1,4 @@
+// @direct-test-of packages/web-v2/src/features/project-settings/components/delivery-section.tsx
 import { gateView, say } from "@/test/said";
 import { QueryClient, QueryClientProvider, type QueryKey } from "@tanstack/react-query";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
@@ -208,6 +209,31 @@ describe("settings are fields a person changes where they are shown", () => {
       const put = calls.find((c) => c.method === "PUT");
       expect(put?.path).toBe(`/projects/${P}/config`);
       expect(put?.body).toMatchObject({ baseRevision: 6, document: { project: DOC.project, source: { git: { defaultBranch: "main", branches: ["dev", "main"] } } } });
+    });
+  });
+
+  it("releasing by merge requests is a switch, saved as release.changeRequests (REQ-71)", async () => {
+    window.history.replaceState(null, "", "/projects/hop/settings?tab=delivery");
+    const calls = fakeCore((c) =>
+      c.method === "PUT" && c.path === `/projects/${P}/config`
+        ? { body: { declared: true, revision: 7, document: (c.body as { document: unknown }).document, created: false } }
+        : { hang: true },
+    );
+    render(
+      <Seeded data={screenData()}>
+        <ProjectSettingsScreen slug="hop" />
+      </Seeded>,
+    );
+    const toggle = await screen.findByRole("switch", { name: "Release by merging merge requests" });
+    expect(toggle).not.toBeChecked();
+    fireEvent.click(toggle);
+    expect(screen.getByText("Releases merge their merge requests in order; the owner deploys.")).toBeInTheDocument();
+    act(() => {
+      fireEvent.click(within(screen.getByTestId("save-bar")).getByRole("button", { name: "Save changes" }));
+    });
+    await waitFor(() => {
+      const put = calls.find((c) => c.method === "PUT");
+      expect(put?.body).toMatchObject({ baseRevision: 6, document: { release: { changeRequests: true } } });
     });
   });
 });

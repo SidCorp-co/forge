@@ -626,6 +626,7 @@ export const SAID = {
 		vars: { v: "version" },
 	},
 	"standing.act.askApproval": { en: "ask for approval" },
+	"standing.act.mergeInOrder": { en: "merge the requests in order" },
 	"standing.act.beAccepted": { en: "be accepted" },
 	"standing.act.beAgreedDelivered": { en: "be agreed and delivered" },
 	"standing.act.beDelivered": { en: "be delivered" },
@@ -1330,7 +1331,12 @@ export const SAID = {
 		en: "merged issues wait at the release gate; an admin cuts the version",
 	},
 	"releases.rule.noRequest": {
-		en: "the project requires approval before production and no request is open",
+		en: "approval required, none asked: the master asks with {route}",
+		vars: { route: "code" },
+	},
+	"releases.rule.acceptedMerges": {
+		en: "accepted: the agent merges its {n} {requests} in order",
+		vars: { n: "count", requests: "agreement" },
 	},
 	"releases.rule.asked": {
 		en: "{name} asked; a holder of releases.approve approves or returns it",

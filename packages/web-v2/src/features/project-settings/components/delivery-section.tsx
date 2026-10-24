@@ -326,7 +326,10 @@ function pathSentence(draft: DocumentDraft, t: Copy): string {
 	const environments = obj(draft.get(["environments"]));
 	const production = Object.entries(environments).find(([, e]) => obj(e).tier === "production");
 	const promotions = list(draft.get(["promotions"])).map(obj);
-	if (!production) return t("settings.project.delivery.pathNoProduction");
+	if (!production) {
+		const merges = obj(draft.get(["release"])).changeRequests === true;
+		return t(merges ? "settings.project.delivery.pathOwnerDeploys" : "settings.project.delivery.pathNoProduction");
+	}
 	const [name, env] = production;
 	const from = str(obj(env).deploysFrom) || branch;
 	if (promotions.length === 0) return t("settings.project.delivery.pathDirect", { branch: branch || "—", env: name, from: from || "—" });
@@ -384,6 +387,7 @@ function ReleasePathGroup({ draft, off }: { draft: DocumentDraft; off: boolean }
 			/>
 			<ChoiceSetting draft={draft} path={["rollback", "strategy"]} options={optionsOf(t, "settings.project.delivery.rollback", ROLLBACKS)} label={t("settings.project.delivery.rollbackLabel")} disabled={off} />
 			<SwitchSetting draft={draft} path={["release", "approval", "required"]} fallback={false} label={t("settings.project.delivery.releaseApproval")} disabled={off} />
+			<SwitchSetting draft={draft} path={["release", "changeRequests"]} fallback={false} label={t("settings.project.delivery.releaseChangeRequests")} disabled={off} />
 		</SettingsGroup>
 	);
 }

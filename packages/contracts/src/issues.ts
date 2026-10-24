@@ -98,6 +98,8 @@ export const MERGE_REFUSAL_CODES = [
 	"RELEASE_MERGE_OUT_OF_ORDER",
 	/** A change request on a change-request project merged outside any release (REQ-63 BC-2). */
 	"RELEASE_MERGE_UNRELEASED",
+	/** A change request whose head moved since its release was cut and accepted at another (REQ-71 BC-7). */
+	"RELEASE_MERGE_HEAD_MOVED",
 	/** A mark on a change-request project that names no host merge: only the host's merge of a change request lands there (REQ-71). */
 	"MARK_NOT_A_HOST_MERGE",
 	/** The host a change-request project's mark is checked against could not be read, so the mark is not taken unchecked (REQ-71). */

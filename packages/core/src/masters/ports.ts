@@ -3,6 +3,15 @@ import type { ReleaseNamer } from '@forge/contracts/release-naming';
 import type { StandingSubjectKind } from '@forge/contracts/steward';
 import { portSlot } from '../lib/port-slot.js';
 
+/** The next merge an accepted change-request release waits on (`release-batch/merges-owed.ts`). */
+export interface ReleaseMergeOwed {
+  runId: string;
+  version: string | null;
+  next: { label: string; number: number; issueId: string; issueKey: string };
+  merged: number;
+  total: number;
+}
+
 // What a master is owed from the modules above execution, handed in by the process entry at boot
 // (ADR 0008: a domain imports only its own context or one before it). Read only inside a call.
 
@@ -38,6 +47,13 @@ interface MastersPorts {
   releasesUnnamed(projectId: string): Promise<{ version: string }[]>;
   /** Who names them: naming takes project.admin, so the master only where an account it acts as holds it (ISS-590). */
   releaseNamer(projectId: string): Promise<ReleaseNamer>;
+  /**
+   * Accepted change-request releases with a merge still to make, each naming the next request in its
+   * declared order: such a release runs no job, so its merges are the master's (REQ-71 BC-4).
+   */
+  releaseMergesOwed(projectId: string): Promise<ReleaseMergeOwed[]>;
+  /** Running releases the project requires approval for that have asked none (ISS-591). */
+  releaseApprovalsOwed(projectId: string): Promise<{ runId: string; version: string | null }[]>;
   /** Questions on the project's issues answered after `after`, with what each answer did to its park. */
   answersSince(
     projectId: string,

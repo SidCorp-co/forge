@@ -4,13 +4,18 @@ import type {
   ReleaseListResponse,
   ReleaseProduction,
 } from '@forge/contracts/releases';
-import { RELEASE_ATTENTION_GROUPS } from '@forge/contracts/releases';
+import { RELEASE_ATTENTION_GROUPS, releaseThroughChangeRequests } from '@forge/contracts/releases';
 import type { ReleaseAttemptRow } from '../db/schema-release-ledger.js';
 import { feedbackAnsweredBy } from '../feedback/index.js';
 import { notFound } from '../middleware/route-errors.js';
 import { holderNames, namedHolders } from '../permissions/index.js';
 import type { ReleaseRunRow } from '../pipeline/index.js';
-import { approvalRequired, readContentLanguage, readReleasePath } from '../project-config/index.js';
+import {
+  approvalRequired,
+  readContentLanguage,
+  readProjectDocument,
+  readReleasePath,
+} from '../project-config/index.js';
 import { type ApprovalView, approvalsOfRuns, approvalViews } from './approvals.js';
 import { collectReleaseBlockers } from './blockers.js';
 import { mergeStepsOf, readChangeRequestLinks } from './change-request-roster.js';
@@ -177,22 +182,27 @@ async function sharedFor(
   required: boolean,
   attemptRunIds: readonly string[] = [],
 ): Promise<Shared> {
-  const [facts, approvers, admins, language, channels, changeRequestLinks] = await Promise.all([
-    loadReleaseFacts(
-      projectId,
-      parts.flatMap((p) => p.issueIds),
-      [...new Set([...parts.flatMap((p) => (p.runId ? [p.runId] : [])), ...attemptRunIds])],
-    ),
-    namedHolders('releases.approve', projectId),
-    holderNames('project.admin', projectId),
-    readContentLanguage(projectId),
-    resolveReleaseChannels(projectId),
-    readChangeRequestLinks(
-      projectId,
-      parts.flatMap((p) => p.issueIds),
-    ),
-  ]);
+  const [facts, approvers, admins, language, channels, changeRequestLinks, doc] = await Promise.all(
+    [
+      loadReleaseFacts(
+        projectId,
+        parts.flatMap((p) => p.issueIds),
+        [...new Set([...parts.flatMap((p) => (p.runId ? [p.runId] : [])), ...attemptRunIds])],
+      ),
+      namedHolders('releases.approve', projectId),
+      holderNames('project.admin', projectId),
+      readContentLanguage(projectId),
+      resolveReleaseChannels(projectId),
+      readChangeRequestLinks(
+        projectId,
+        parts.flatMap((p) => p.issueIds),
+      ),
+      readProjectDocument(projectId),
+    ],
+  );
   return {
+    projectId,
+    ownerDeploys: releaseThroughChangeRequests(doc?.document),
     current,
     required,
     viewer,

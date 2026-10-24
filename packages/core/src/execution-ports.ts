@@ -12,6 +12,7 @@ import {
   residentMasterSql,
 } from './devices/index.js';
 import {
+  contractProviderGate,
   loadContractContext,
   openRunsOf,
   pathsNamedIn,
@@ -78,6 +79,9 @@ import {
   createReleaseBatch,
   loadReleaseRoster,
   owedReleaseNotes,
+  provideReleaseBatchPorts,
+  releaseApprovalsOwed,
+  releaseMergesOwed,
   unnamedReleases,
   warnedReleaseNotes,
 } from './release-batch/index.js';
@@ -107,9 +111,15 @@ import {
   renderIssueMockups,
   renderPinnedContracts,
 } from './workflows/index.js';
-import { boxIsListening, sendToBoxNow } from './ws/index.js';
+import { boxIsListening, sendToBoxNow, wakeMastersForProject } from './ws/index.js';
 
 export function provideExecutionPorts(): void {
+  provideReleaseBatchPorts({
+    contractProviderGate,
+    // a release at its gate wakes the master the way an issue arriving there does
+    wakeMasters: (projectId) =>
+      wakeMastersForProject({ projectId, issueId: null, status: 'awaiting_release' }),
+  });
   provideJobsPorts({
     buildPipelinePreamble: buildPipelinePreambleStructured,
     skillActivity: { recordSkillActivityEvent },
@@ -213,6 +223,8 @@ export function provideExecutionPorts(): void {
     releaseNotesWarned: warnedReleaseNotes,
     releasesUnnamed: unnamedReleases,
     releaseNamer: releaseNamerOf,
+    releaseMergesOwed,
+    releaseApprovalsOwed,
     answersSince: async (projectId, after) =>
       (await answeredOnIssuesSince(projectId, after)).map((a) => ({
         issueKey: formatIssueRef(a.issuePrefix, a.issSeq),
