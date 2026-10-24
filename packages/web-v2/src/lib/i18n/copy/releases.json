@@ -370,7 +370,7 @@
     "releases.rule.gated": "{n} lý do chặn việc cắt {v}",
     "releases.rule.inProgress": "lượt chạy release đang làm trên production",
     "releases.rule.issueShipped": "issue đã được phát hành",
-    "releases.rule.noRequest": "project yêu cầu duyệt trước khi lên production và chưa có yêu cầu nào mở",
+    "releases.rule.noRequest": "cần duyệt nhưng chưa có yêu cầu: master gửi yêu cầu qua {route}",
     "releases.rule.noneLeft": "{rule}, và không còn ai",
     "releases.rule.queuedBehindRun": "release đang chạy phải xong trước khi cắt được {v}",
     "releases.rule.returned": "một admin đã trả lại; master trả lời trước khi yêu cầu lại",
