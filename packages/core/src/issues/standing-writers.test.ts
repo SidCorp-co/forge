@@ -49,6 +49,7 @@ const input = (
   touchedAt: now,
   releaseApproval: false,
   releaseNoted: true,
+  releaseHold: null,
   viewer,
   writers,
   admins: [],

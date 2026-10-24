@@ -39,6 +39,7 @@ const issueInput = (status: IssueStatus, master: MasterServing): IssueStandingIn
   touchedAt: NOW,
   releaseApproval: false,
   releaseNoted: true,
+  releaseHold: null,
   viewer: null,
   writers: ['Ana'],
   admins: ['Ana'],

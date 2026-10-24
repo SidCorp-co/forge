@@ -7,9 +7,10 @@
  * table's one writer.
  */
 
-import type { ReleaseHoldOwer } from '@forge/contracts/releases';
+import type { ReleaseHoldOwer, ReleaseHoldView } from '@forge/contracts/releases';
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
+import { issues } from '../db/schema.js';
 import { releaseHolds } from '../db/schema-release-ledger.js';
 import { sqlTimestamp } from '../db/sql-timestamp.js';
 import type { IssueCriteriaReport, RuntimeReading } from '../issues/index.js';
@@ -416,6 +417,42 @@ async function standingHolds(
     .from(releaseHolds)
     .where(and(inArray(releaseHolds.issueId, [...issueIds]), isNull(releaseHolds.clearedAt)));
   return new Map(rows.map(({ issueId, ...hold }) => [issueId, hold]));
+}
+
+/**
+ * The hold each of these rows waits under, for a reader (the issue read, its standing): a row that
+ * has left the gate or been claimed reads none even before `clearStaleReleaseHolds` clears its
+ * record, since the wait it describes is over (`VISION: state-never-lies`). A row with none is absent.
+ */
+export async function releaseHoldsOf(
+  issueIds: readonly string[],
+): Promise<Map<string, ReleaseHoldView>> {
+  if (issueIds.length === 0) return new Map();
+  const rows = await db
+    .select({
+      issueId: releaseHolds.issueId,
+      code: releaseHolds.code,
+      reason: releaseHolds.reason,
+      owes: releaseHolds.owes,
+      waitingFor: releaseHolds.waitingFor,
+      heldAt: releaseHolds.heldAt,
+    })
+    .from(releaseHolds)
+    .innerJoin(issues, eq(issues.id, releaseHolds.issueId))
+    .where(
+      and(
+        inArray(releaseHolds.issueId, [...issueIds]),
+        isNull(releaseHolds.clearedAt),
+        eq(issues.status, 'awaiting_release'),
+        isNull(issues.releaseBatchRunId),
+      ),
+    );
+  return new Map(
+    rows.map(({ issueId, heldAt, ...hold }) => [
+      issueId,
+      { ...hold, heldAt: heldAt.toISOString() },
+    ]),
+  );
 }
 
 /** Take the hold off these rows: a release claimed them, or nothing holds them any more. */

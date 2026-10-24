@@ -954,6 +954,7 @@
     "issues.rule.noWriter": "{rule}; không ai trong project có quyền {perm}",
     "issues.rule.parkedBehind": "một lượt chạy đã dừng nó ở on_hold sau {key}, vẫn đang chặn nó: {why}",
     "issues.rule.personPaused": "một người đã tạm dừng nó; một người sẽ cho tiếp tục",
+    "issues.rule.releaseHeld": "{code}: {reason}",
     "issues.rule.releaseRunning": "một lượt chạy Release đang giữ nó",
     "issues.rule.reopen": "bị trả lại kèm lý do; một Master sẽ nhận lại",
     "issues.rule.runAsked": "một lượt chạy đã hỏi một câu chỉ người mới trả lời được",

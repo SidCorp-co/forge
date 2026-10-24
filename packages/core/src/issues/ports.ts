@@ -17,6 +17,7 @@ import type {
   QuestionAboutRequest,
   QuestionSubject,
 } from '@forge/contracts/questions';
+import type { ReleaseHoldView } from '@forge/contracts/releases';
 import type { MasterServing } from '@forge/contracts/steward';
 import type { JudgedBuild } from '@forge/contracts/verdict-identity';
 import type { SQL, SQLWrapper } from 'drizzle-orm';
@@ -315,6 +316,8 @@ interface IssuePorts {
     projectId: string,
     issueId: string,
   ) => Promise<{ version: string; at: string } | null>;
+  /** The hold the automatic release keeps on each row still waiting unclaimed at its gate, by id. */
+  releaseHoldsOf: (issueIds: readonly string[]) => Promise<Map<string, ReleaseHoldView>>;
   /** On a project with no production environment, the landing that closed the issue; null where none did. */
   landedRecordOf: (
     issueId: string,
@@ -459,6 +462,7 @@ export const requirementOfIssue = port('requirementOfIssue');
 export const traceWordingsOf = port('traceWordingsOf');
 export const tracedCodesOf = port('tracedCodesOf');
 export const shippedReleaseOf = port('shippedReleaseOf');
+export const releaseHoldsOf = port('releaseHoldsOf');
 export const landedRecordOf = port('landedRecordOf');
 export const plannedRevisionFor = port('plannedRevisionFor');
 export const approvalRequired = port('approvalRequired');

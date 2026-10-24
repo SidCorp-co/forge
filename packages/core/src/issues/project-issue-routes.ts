@@ -31,6 +31,7 @@ import {
   fireOfCaller,
   landedRecordOf,
   proposesWorkflowsOf,
+  releaseHoldsOf,
   requirementOfIssue,
   shippedReleaseOf,
 } from './ports.js';
@@ -62,6 +63,8 @@ export async function issueDetailOf(issue: IssueRow) {
     requirement: await requirementOfIssue(issue.id),
     relations: await loadIssueRelations(issue.id, issue.projectId),
     shippedIn: await shippedReleaseOf(issue.projectId, issue.id),
+    // why the automatic release is not taking it, while it waits unclaimed at the gate (ISS-577)
+    releaseHold: (await releaseHoldsOf([issue.id])).get(issue.id) ?? null,
     landedIn: await landedRecordOf(issue.id),
     carriage: await carriageOfIssue(issue),
     labels: await listIssueLabels(issue.id),

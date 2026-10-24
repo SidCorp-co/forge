@@ -31,6 +31,7 @@ const input = (status: IssueStatus, withheld: IssueWithheld | null): IssueStandi
   touchedAt: now,
   releaseApproval: false,
   releaseNoted: true,
+  releaseHold: null,
   viewer: null,
   writers: [],
   admins: ['Ada'],

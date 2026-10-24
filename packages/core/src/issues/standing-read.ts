@@ -1,6 +1,7 @@
 /**
  * Gathers the facts `standing.ts` derives from, for a project's issues at once: the work state and
  * lease, whether a box is moving it, open human questions, live `blocks` edges, criteria verdicts,
+ * the automatic release's hold on a row at its gate,
  * the requirement and business criteria it traces to, its primary module, the feedback routed to
  * it and its last activity. One query per fact over the whole page, never one per row.
  */
@@ -17,6 +18,7 @@ import type {
 } from '@forge/contracts/issue-standing';
 import type { WorkStep } from '@forge/contracts/issue-vocabulary';
 import type { AnswerHold, AnswerResume } from '@forge/contracts/questions';
+import type { ReleaseHoldView } from '@forge/contracts/releases';
 import { changedSincePlan } from '@forge/contracts/requirements';
 import type { MasterServing } from '@forge/contracts/steward';
 import { verdictEarns } from '@forge/contracts/verdict-identity';
@@ -46,6 +48,7 @@ import {
   designUnapprovedSql,
   holdsOpenHumanQuestion,
   masterServingOf,
+  releaseHoldsOf,
 } from './ports.js';
 import { classifyLease } from './session-claim.js';
 import { deriveIssueStanding, type IssueStandingInput, type StandingEdge } from './standing.js';
@@ -222,6 +225,7 @@ type Facts = {
   writers: string[];
   admins: string[];
   withheld: Map<string, IssueWithheld>;
+  releaseHolds: Map<string, ReleaseHoldView>;
   master: MasterServing;
   now: Date;
 };
@@ -314,6 +318,7 @@ function standingInputOf(r: IssueRowRaw, f: Facts): IssueStandingInput {
     touchedAt: latest(r.updated_at, r.ws_updated_at, r.last_activity),
     releaseApproval: f.releaseApproval,
     releaseNoted: r.release_noted,
+    releaseHold: f.releaseHolds.get(r.id) ?? null,
     viewer: f.viewer,
     writers: f.writers,
     admins: f.admins,
@@ -344,6 +349,7 @@ async function standingRows(
     writers,
     admins,
     master,
+    releaseHolds,
   ] = await Promise.all([
     activeIssuePrefix(projectId),
     blockingEdgesIn(db, projectId, ids),
@@ -356,6 +362,7 @@ async function standingRows(
     holderNames('project.write', projectId),
     holderNames('project.admin', projectId),
     masterServingOf(projectId),
+    releaseHoldsOf(raws.filter((r) => r.status === 'awaiting_release').map((r) => r.id)),
   ]);
   const [requirements, people, changedTraced] = await Promise.all([
     requirementsOf([...new Set(raws.map((r) => r.requirement_id).filter((x): x is string => !!x))]),
@@ -377,6 +384,7 @@ async function standingRows(
     writers,
     admins,
     withheld,
+    releaseHolds,
     master,
     now,
   };

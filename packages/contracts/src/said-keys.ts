@@ -384,6 +384,10 @@ export const SAID = {
 	},
 	"issues.rule.personPaused": { en: "a person paused it; a person resumes it" },
 	"issues.rule.queued": { en: "a job is queued; no run session holds it yet" },
+	"issues.rule.releaseHeld": {
+		en: "{code}: {reason}",
+		vars: { code: "code", reason: "text" },
+	},
 	"issues.rule.releaseRunning": { en: "a release run holds it" },
 	"issues.rule.reopen": {
 		en: "sent back with a reason; a master takes it again",

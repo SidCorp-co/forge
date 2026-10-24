@@ -1,5 +1,6 @@
 import type { IssueMove, IssueStatus } from "./issue-machine.js";
 import type { IssueStatusTone, WorkStep } from "./issue-vocabulary.js";
+import type { ReleaseHoldView } from "./releases.js";
 import type { Said } from "./said.js";
 import type {
 	Standing,
@@ -201,6 +202,9 @@ export interface IssueStanding
 	touchedAt: string;
 	/** Set while the issue sits at a takeable status the admissible list withholds; it reads stuck. */
 	withheld: IssueWithheld | null;
+	/** Set while it waits unclaimed at `awaiting_release` under the hold the automatic release last
+	 *  recorded (`release_holds`); its waitingOn reads the hold. */
+	releaseHold: ReleaseHoldView | null;
 	/** Since when its wait stands, when it falls due, and whether it is stuck and why (REQ-48 BC-8). */
 	times: StandingTimes;
 }

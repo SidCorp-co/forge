@@ -25,6 +25,7 @@ import type {
 } from '@forge/contracts/issue-standing';
 import { issueStatusToneOn, type WorkStep } from '@forge/contracts/issue-vocabulary';
 import type { ParkAnsweredView } from '@forge/contracts/park';
+import type { ReleaseHoldView } from '@forge/contracts/releases';
 import { type Said, say, verbatim } from '@forge/contracts/said';
 import { holdersWho, nobodyHoldsAct, type WaitingOn } from '@forge/contracts/standing';
 import type { MasterServing } from '@forge/contracts/steward';
@@ -98,6 +99,8 @@ export interface IssueStandingInput {
   releaseApproval: boolean;
   /** It carries a release note; at the gate, one without is refused `RELEASE_RECORD_MISSING`. */
   releaseNoted: boolean;
+  /** The automatic release's standing hold on it (`release-batch/hold.ts:releaseHoldsOf`), else null. */
+  releaseHold: ReleaseHoldView | null;
   /** Null for a reader with no person behind it; nothing then reads as theirs. */
   viewer: { userId: string; canWrite: boolean } | null;
   /** The names of the people holding project.write, whom a person's turn names (FB-104). */
@@ -156,7 +159,8 @@ const held = (lease: IssueLeaseView | null) =>
 
 // whose turn it is, first rule that holds wins: closed or dropped → done; on_hold → paused;
 // needs_info or an open human question → a person answers (the steward's decision on a stuck draft
-// among them); draft → its live blocker first, else a person takes it on or drops it; awaiting_release → the master while a criterion no longer passes or no note is written, else
+// among them); draft → its live blocker first, else a person takes it on or drops it; awaiting_release → the hold the
+// automatic release recorded where one stands (ISS-577), else the master while a criterion no longer passes or no note is written, else
 // a person approves where the project requires it, else queued for the release; a live lease or a job in flight →
 // moving; a live unsettled blocker → stuck on the first, worded as waiting on its judge where its
 // change landed; a landed row nothing holds → queued for its judge
@@ -266,6 +270,21 @@ function personTurn(input: IssueStandingInput): Turn | null {
   return null;
 }
 
+/**
+ * A row the automatic release recorded a hold on waits on what the hold says, never on "the next
+ * release" (ISS-577): a person's hold reads stuck on that person, the release's own queued on it.
+ */
+function releaseHeldTurn(hold: ReleaseHoldView, people: People): Turn {
+  const act = verbatim(hold.waitingFor);
+  const rule = say('issues.rule.releaseHeld', { code: hold.code, reason: hold.reason });
+  if (hold.owes === 'human')
+    return { group: 'stuck', waitingOn: forPerson(people, act, rule).waitingOn };
+  return {
+    group: 'queued',
+    waitingOn: wait('release', say('issues.standing.who.release'), act, rule),
+  };
+}
+
 function runningTurn(input: IssueStandingInput): Turn {
   const leased = held(input.lease) || input.runLive;
   const step = input.step;
@@ -331,7 +350,10 @@ function turnOf(input: IssueStandingInput): Turn {
   const person = personTurn(input);
   if (person) return person;
   const running = held(input.lease) || input.inFlight;
-  if (input.status === 'awaiting_release') return releaseTurn(input, running);
+  if (input.status === 'awaiting_release') {
+    const hold = releaseHoldOf(input);
+    return hold ? releaseHeldTurn(hold, input) : releaseTurn(input, running);
+  }
   if (running) return runningTurn(input);
   const blocker = input.blockedBy.find((b) => b.holds);
   if (blocker) return blockerTurn(blocker);
@@ -362,6 +384,9 @@ function turnOf(input: IssueStandingInput): Turn {
 
 const withheldOf = (input: IssueStandingInput): IssueWithheld | null =>
   TAKEABLE_STATUSES.includes(input.status) ? input.withheld : null;
+
+const releaseHoldOf = (input: IssueStandingInput): ReleaseHoldView | null =>
+  input.status === 'awaiting_release' ? input.releaseHold : null;
 
 export function deriveIssueStanding(
   input: IssueStandingInput,
@@ -408,6 +433,7 @@ export function deriveIssueStanding(
     wave: DONE.includes(input.status) ? null : wave,
     touchedAt: input.touchedAt.toISOString(),
     withheld: withheldOf(input),
+    releaseHold: releaseHoldOf(input),
     times,
   };
 }

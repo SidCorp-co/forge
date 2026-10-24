@@ -45,6 +45,7 @@ const input = (
   touchedAt: now,
   releaseApproval: false,
   releaseNoted: true,
+  releaseHold: null,
   viewer: { userId: 'u1', canWrite: true },
   writers: [],
   admins: [],

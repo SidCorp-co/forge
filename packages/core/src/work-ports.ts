@@ -123,6 +123,7 @@ import {
   judgedBuildOf,
   landedRecordOf,
   releaseEndsRun,
+  releaseHoldsOf,
 } from './release-batch/index.js';
 import {
   changedTracedOf,
@@ -256,6 +257,7 @@ export function provideWorkPorts(): void {
     tracedCodesOf,
     shippedReleaseOf: async (projectId, issueId) =>
       (await shippedReleasesOf(projectId, [issueId])).get(issueId) ?? null,
+    releaseHoldsOf,
     landedRecordOf,
     plannedRevisionFor,
     approvalRequired,
