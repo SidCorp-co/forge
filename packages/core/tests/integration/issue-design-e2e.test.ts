@@ -41,8 +41,10 @@ import {
 const tokens = { admin: '', author: '', viewer: '' };
 const call = callerFor(tokens);
 let adminId = '';
+let authorId = '';
 let forge = '';
 let other = '';
+let bare = '';
 let seq = 0;
 
 /** A project built from `repository`, holding the modules and the label a design names. */
@@ -64,9 +66,15 @@ beforeAll(async () => {
   const author = await createTestUser({ kind: 'agent' });
   const viewer = await createTestUser({ verified: true });
   adminId = admin.id;
+  authorId = author.id;
   forge = await designedProject(admin.id, THIS_REPOSITORY);
   other = await designedProject(admin.id, 'github.com/acme/shop');
-  for (const p of [forge, other]) {
+  // reads the catalog and holds a plain label, but declares no module label (ISS-609)
+  bare = await projectBuiltFrom(admin.id, THIS_REPOSITORY);
+  await db.execute(
+    sql`INSERT INTO labels (project_id, name, color, kind) VALUES (${bare}, 'bug', '#888888', 'label')`,
+  );
+  for (const p of [forge, other, bare]) {
     await addProjectMember(p, admin.id, 'admin');
     await addProjectMember(p, author.id, 'member');
     await addProjectMember(p, viewer.id, 'viewer');
@@ -307,7 +315,7 @@ describe('the design record (criteria 2 and 3)', () => {
     const shape = await call('author', 'PUT', design(issue), {
       ...whole,
       criteria: [{ ...whole.criteria[0], proof: ' ' }, whole.criteria[1]],
-      modules: [],
+      modules: [' '],
     });
     expect(shape.status).toBe(400);
     // each blank part at its own path, in words naming it, never zod's text (ISS-467, judge J1)
@@ -321,10 +329,7 @@ describe('the design record (criteria 2 and 3)', () => {
         '/criteria/0/proof',
         'The proof is blank: name the probe or the review line that will prove this criterion.',
       ],
-      [
-        '/modules',
-        'No module is named: name at least one module of the project the change touches.',
-      ],
+      ['/modules/0', 'A module name is blank: name a module of the project.'],
     ]);
     const viewer = await call('viewer', 'PUT', design(issue), whole);
     expect([viewer.status, viewer.body.error.code]).toEqual([403, 'PERMISSION_FORBIDDEN']);
@@ -340,6 +345,64 @@ describe('the design record (criteria 2 and 3)', () => {
     };
     const recorded = ok(await call('author', 'PUT', design(issue), bare));
     expect([recorded.catalogDeclared, recorded.check.passed]).toEqual([false, true]);
+    ok(await step(issue, 'build'));
+  });
+});
+
+describe('the module scope of a design (ISS-609)', () => {
+  const empty = { ...whole, modules: [] };
+
+  it('records a design naming no module on a project with no module labels, and builds it', async () => {
+    const issue = await issueAt(bare, 'in_progress');
+    const recorded = ok(await call('author', 'PUT', design(issue), empty));
+    expect([recorded.check, recorded.design.modules]).toEqual([{ passed: true }, []]);
+    ok(await step(issue, 'build'));
+    expect(await stepOf(issue)).toBe('build');
+  });
+
+  it('says on the read and the write that an empty scope is accepted and holds the whole project', async () => {
+    const issue = await issueAt(bare, 'in_progress');
+    const before = ok(await call('viewer', 'GET', design(issue)));
+    expect(before.moduleScope).toMatchObject({ declared: false, emptyAccepted: true });
+    expect(before.moduleScope.detail).toContain('No administrator action is required');
+    expect(before.moduleScope.detail).toContain('the whole project');
+    expect(ok(await call('author', 'PUT', design(issue), empty)).moduleScope).toEqual(
+      before.moduleScope,
+    );
+    const labelled = ok(await call('viewer', 'GET', design(await issueAt(forge, 'in_progress'))));
+    expect(labelled.moduleScope).toMatchObject({ declared: true, emptyAccepted: false });
+    expect(labelled.moduleScope.detail).toContain('at least one');
+  });
+
+  it('refuses a named module there, saying to send none', async () => {
+    const issue = await issueAt(bare, 'in_progress');
+    const res = await call('author', 'PUT', design(issue), { ...whole, modules: ['bug'] });
+    expect([res.status, refused(res)]).toEqual([422, ['DESIGN_MODULE_UNKNOWN']]);
+    expect(detailOf(res)).toContain('declares no module labels');
+    expect(detailOf(res)).toContain('modules: []');
+  });
+
+  it('refuses a design naming no module on a project with module labels, by name', async () => {
+    const issue = await issueAt(forge, 'in_progress');
+    const res = await call('author', 'PUT', design(issue), empty);
+    expect([res.status, refused(res)]).toEqual([422, ['DESIGN_MODULE_REQUIRED']]);
+    expect(detailOf(res)).toContain('db, issues');
+    expect(ok(await call('viewer', 'GET', design(issue))).design).toBeNull();
+  });
+
+  it('names the empty scope as a gap once the project declares a module label', async () => {
+    const project = await projectBuiltFrom(adminId, THIS_REPOSITORY);
+    await addProjectMember(project, adminId, 'admin');
+    await addProjectMember(project, authorId, 'member');
+    const issue = await issueAt(project, 'in_progress');
+    ok(await call('author', 'PUT', design(issue), empty));
+    await createTestModule(project, 'issues');
+    const res = await step(issue, 'build');
+    expect([res.status, refused(res)]).toEqual([422, ['DESIGN_RECORD_INCOMPLETE']]);
+    expect(detailOf(res)).toContain('modules: none named');
+    const read = ok(await call('admin', 'GET', design(issue)));
+    expect(read.check.gaps).toEqual([{ part: 'modules' }]);
+    ok(await call('author', 'PUT', design(issue), { ...whole, modules: ['issues'] }));
     ok(await step(issue, 'build'));
   });
 });

@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { recordDesignRequestSchema } from "./issue-design.js";
+import { moduleScopeOf, recordDesignRequestSchema } from "./issue-design.js";
 
 const whole = {
 	criteria: [{ criterion: 1, class: "observable", pattern: "screen", proof: "open the page, see it" }],
@@ -32,10 +32,11 @@ describe("a design with a blank part", () => {
 		]);
 	});
 
-	it("refuses an empty modules list, and a blank module name, each at its path", () => {
-		expect(faultsOf({ ...whole, modules: [] })).toEqual([
-			["modules", "No module is named: name at least one module of the project the change touches."],
-		]);
+	it("takes an empty modules list, which core judges against the project's labels (ISS-609)", () => {
+		expect(faultsOf({ ...whole, modules: [] })).toEqual([]);
+	});
+
+	it("refuses a blank module name at its path", () => {
 		expect(faultsOf({ ...whole, modules: [" "] })).toEqual([
 			["modules/0", "A module name is blank: name a module of the project."],
 		]);
@@ -48,8 +49,23 @@ describe("a design with a blank part", () => {
 	});
 
 	it("never answers zod's own text for any of them", () => {
-		const all = faultsOf({ criteria: [{ ...whole.criteria[0], proof: "" }], modules: [], contracts: [] });
+		const all = faultsOf({ criteria: [{ ...whole.criteria[0], proof: "" }], modules: [""], contracts: [] });
 		expect(all).toHaveLength(2);
 		for (const [, message] of all) expect(message).not.toMatch(/Too small|expected/);
+	});
+});
+
+describe("the module scope a project's labels give a design (ISS-609)", () => {
+	it("accepts an empty scope where the project declares no module label, and says no administrator is needed", () => {
+		const scope = moduleScopeOf(0);
+		expect([scope.declared, scope.emptyAccepted]).toEqual([false, true]);
+		expect(scope.detail).toContain("the whole project");
+		expect(scope.detail).toContain("No administrator action is required");
+	});
+
+	it("asks for at least one module from the first label on", () => {
+		expect(moduleScopeOf(1)).toMatchObject({ declared: true, emptyAccepted: false });
+		expect(moduleScopeOf(1).detail).toContain("1 module label:");
+		expect(moduleScopeOf(3).detail).toContain("3 module labels:");
 	});
 });

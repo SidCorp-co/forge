@@ -9,7 +9,8 @@ const quoted = (values: readonly string[]) => sql.raw(values.map((v) => `'${v}'`
 
 // An issue's design record (REQ-36 BC-1, BC-13; Issue lifecycle r15 `design-check`), written by the
 // issue kernel (`issues/design-record.ts`) and replaced whole by each write, which bumps `revision`.
-// `modules` holds the project's module label ids, `contracts` the `<project>/<contract>` it touches.
+// `modules` holds the project's module label ids, none where the project declares no module label
+// (the design then holds the whole project, ISS-609); `contracts` the `<project>/<contract>` it touches.
 export const issueDesigns = pgTable(
   'issue_designs',
   {
@@ -33,7 +34,7 @@ export const issueDesigns = pgTable(
     revisionChk: check('issue_designs_revision_chk', sql`${t.revision} >= 1`),
     modulesChk: check(
       'issue_designs_modules_chk',
-      sql`cardinality(${t.modules}) BETWEEN 1 AND ${sql.raw(String(DESIGN_LIMITS.modules))}`,
+      sql`cardinality(${t.modules}) <= ${sql.raw(String(DESIGN_LIMITS.modules))}`,
     ),
     contractsChk: check(
       'issue_designs_contracts_chk',
@@ -107,7 +108,9 @@ function moduleClosureSql(modules: SQL): SQL {
 /**
  * The live runs holding an issue whose declared scope meets `issueId`'s (REQ-36 BC-5): one row per
  * held issue, with the modules and contracts the two designs share. Two designs meet on a module
- * both name or that one names above the other, and on a contract both name, in one project. An
+ * both name or that one names above the other, and on a contract both name, in one project. A
+ * design naming no module holds the whole project (ISS-609: its project declared no module label,
+ * so nothing shows two changes there apart), and meets every other design of it: `whole_project`. An
  * issue with no design declares no scope, so it meets nothing, as asker or as holder: its scope is
  * asked when the design gate first requires one, at the move into build. The asker's own key is
  * never a holder of it: that is the lease's refusal. Held is `liveIssueLeasesSql`, so the scope and
@@ -130,7 +133,7 @@ export function scopeHoldersSql(issueId: SQL, filter: ScopeHoldersFilter = {}): 
     : sql``;
   return sql`
     SELECT sc_hi.id AS holder_issue_id, sc_hi.iss_seq AS holder_seq, sc_l.run_id, sc_l.session_id,
-           sc_l.device_id, sc_shared.modules, sc_shared.contracts
+           sc_l.device_id, sc_shared.modules, sc_shared.contracts, sc_shared.whole_project
       FROM issue_designs sc_mine
       JOIN issues sc_mi ON sc_mi.id = sc_mine.issue_id
       JOIN ${liveIssueLeasesSql()} sc_l
@@ -145,10 +148,13 @@ export function scopeHoldersSql(issueId: SQL, filter: ScopeHoldersFilter = {}): 
                ) AS modules,
                ARRAY(
                  SELECT DISTINCT c FROM unnest(sc_mine.contracts) c WHERE c = ANY(sc_theirs.contracts)
-               ) AS contracts
+               ) AS contracts,
+               (cardinality(sc_mine.modules) = 0 OR cardinality(sc_theirs.modules) = 0)
+                 AS whole_project
       ) sc_shared
      WHERE sc_mine.issue_id = ${issueId}
-       AND (cardinality(sc_shared.modules) > 0 OR cardinality(sc_shared.contracts) > 0)
+       AND (sc_shared.whole_project
+            OR cardinality(sc_shared.modules) > 0 OR cardinality(sc_shared.contracts) > 0)
        ${exceptKeys}
        ${exceptRun}
        ${building}`;

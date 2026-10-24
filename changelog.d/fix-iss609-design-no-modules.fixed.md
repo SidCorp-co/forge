@@ -1,0 +1,1 @@
+**A design records on a project with no module labels.** It names no module and holds the whole project, so designed work there runs one at a time; the design read says so, and labelled projects refuse an empty scope.

@@ -3,7 +3,12 @@
 
 import type { RecordDesignRequest } from '@forge/contracts/issue-design';
 import { describe, expect, it } from 'vitest';
-import { type DesignFacts, designCheck, designWriteRefusals } from './design-rules.js';
+import {
+  type DesignFacts,
+  designCheck,
+  designWriteRefusals,
+  resolveModules,
+} from './design-rules.js';
 import type { PatternRowFacts } from './pattern-rules.js';
 
 const catalog = { kind: 'read' as const, slugs: new Set(['api-route', 'core-module']) };
@@ -153,5 +158,52 @@ describe('designCheck', () => {
     const check = designCheck(facts({ criteria: [] }));
     expect(check.passed ? [] : check.missing).toEqual(['criteria: the issue has none']);
     expect(check.passed ? [] : check.gaps).toEqual([{ part: 'criteria' }]);
+  });
+});
+
+describe('the module scope (ISS-609)', () => {
+  const labels = [
+    { id: '00000000-0000-4000-8000-000000000001', name: 'issues' },
+    { id: '00000000-0000-4000-8000-000000000002', name: 'db' },
+  ];
+  const empty = (over: Partial<DesignFacts> = {}) =>
+    facts({ design: { modules: [], lines: facts().design?.lines ?? [] }, ...over });
+
+  it('passes a design naming no module where the project declares no module label', () => {
+    expect(designCheck(empty({ moduleIds: new Set() }))).toEqual({ passed: true });
+  });
+
+  it('names the empty scope a gap once the project declares a module label', () => {
+    const check = designCheck(empty());
+    expect(check.passed ? [] : check.missing).toEqual([
+      'modules: none named, and the project now declares module labels',
+    ]);
+    expect(check.passed ? [] : check.gaps).toEqual([{ part: 'modules' }]);
+  });
+
+  it('takes none where the project declares none, and refuses none where it declares some', () => {
+    expect(resolveModules([], [])).toEqual({ ids: [], refusals: [] });
+    const required = resolveModules([], labels);
+    expect(required.refusals.map((r) => [r.code, r.path])).toEqual([
+      ['DESIGN_MODULE_REQUIRED', '/modules'],
+    ]);
+    expect(required.refusals[0]?.detail).toContain('(db, issues)');
+  });
+
+  it('refuses a name on a project with no module label, saying to send none', () => {
+    const out = resolveModules(['issues'], []);
+    expect(out.refusals.map((r) => [r.code, r.path])).toEqual([
+      ['DESIGN_MODULE_UNKNOWN', '/modules/0'],
+    ]);
+    expect(out.refusals[0]?.detail).toContain('Send `modules: []`');
+  });
+
+  it('resolves names and ids once each, and refuses an unknown name at its path', () => {
+    const out = resolveModules(['issues', labels[0]?.id ?? '', 'nowhere'], labels);
+    expect(out.ids).toEqual([labels[0]?.id]);
+    expect(out.refusals.map((r) => [r.code, r.path])).toEqual([
+      ['DESIGN_MODULE_UNKNOWN', '/modules/2'],
+    ]);
+    expect(out.refusals[0]?.detail).toContain('modules/rollup lists them');
   });
 });

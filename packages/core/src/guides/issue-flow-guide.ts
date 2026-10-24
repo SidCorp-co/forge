@@ -125,6 +125,9 @@ against the diff); \`pattern\` is a catalog slug or a new pattern approved on th
 only where \`catalog.declared\` is false; \`proof\` is the probe or the review line that will prove it;
 \`modules\` are the project's module names the change touches, \`contracts\` the
 \`<project>/<contract>\` it touches (\`[]\` for none). A write is refused by name for each wrong part.
+Where the project declares no module label, \`modules\` is \`[]\` and the design holds the whole
+project, so it meets every other design there; the read's \`moduleScope\` says which applies, and a
+project with module labels refuses \`[]\` with \`DESIGN_MODULE_REQUIRED\`.
 A module is one whose behaviour the change alters. A line in a shared registry does not make its
 owner one: the route registry, \`modules.json\`, the migration journal and a new migration, a
 module's \`index.ts\` face, a schema file for the module's own table, \`changelog.d\`. Every change

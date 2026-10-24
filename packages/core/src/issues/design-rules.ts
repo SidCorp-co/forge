@@ -130,6 +130,49 @@ export function designWriteRefusals(
   return out;
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
+
+/**
+ * The named modules as label ids, or a refusal per fault (ISS-609). A project declaring module
+ * labels takes at least one of them (`DESIGN_MODULE_REQUIRED` for none); a project declaring none
+ * takes none, its design holding the whole project, so a name sent there is refused saying so.
+ */
+export function resolveModules(
+  named: readonly string[],
+  modules: readonly { id: string; name: string }[],
+): { ids: string[]; refusals: IssueDesignRefusal[] } {
+  if (named.length === 0 && modules.length > 0) {
+    const names = modules.map((m) => m.name).sort();
+    return {
+      ids: [],
+      refusals: [
+        refusal(
+          'DESIGN_MODULE_REQUIRED',
+          `no module is named, and this project declares module labels (${names.join(', ')}): name each one the change touches, at least one`,
+          '/modules',
+        ),
+      ],
+    };
+  }
+  const byId = new Map(modules.map((m) => [m.id, m.id]));
+  const byName = new Map(modules.map((m) => [m.name, m.id]));
+  const ids: string[] = [];
+  const refusals: IssueDesignRefusal[] = [];
+  for (const [at, name] of named.entries()) {
+    const id = UUID.test(name) ? byId.get(name.toLowerCase()) : byName.get(name);
+    if (id) {
+      if (!ids.includes(id)) ids.push(id);
+      continue;
+    }
+    const why =
+      modules.length === 0
+        ? `\`${name}\` is not a module: this project declares no module labels, so a design names none. Send \`modules: []\`, which holds the whole project; no administrator action is required`
+        : `\`${name}\` is not a module of this project; name a module label by its name or id (GET /api/projects/:id/modules/rollup lists them)`;
+    refusals.push(refusal('DESIGN_MODULE_UNKNOWN', why, `/modules/${at}`));
+  }
+  return { ids, refusals };
+}
+
 /** The design check as the issue stands: every part named and still holding, or each gap named. */
 export function designCheck(facts: DesignFacts): DesignCheck {
   if (facts.design === null) {
@@ -162,9 +205,11 @@ export function designCheck(facts: DesignFacts): DesignCheck {
     }
   }
   const gone = facts.design.modules.filter((m) => !facts.moduleIds.has(m));
-  if (facts.design.modules.length === 0) missing.push('modules: none named');
+  // an empty scope holds the whole project, which only a project declaring no module label takes
+  const unnamed = facts.design.modules.length === 0 && facts.moduleIds.size > 0;
+  if (unnamed) missing.push('modules: none named, and the project now declares module labels');
   for (const m of gone) missing.push(`module ${m}: no longer a module of the project`);
-  if (facts.design.modules.length === 0 || gone.length > 0) gaps.push({ part: 'modules' });
+  if (unnamed || gone.length > 0) gaps.push({ part: 'modules' });
   if (missing.length === 0) return { passed: true };
   return {
     passed: false,

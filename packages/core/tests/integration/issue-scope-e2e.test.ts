@@ -39,6 +39,8 @@ import {
 import { refusalCodes as codes, projectBuiltFrom, type Res } from '../helpers/pattern-world.js';
 
 let projectId = '';
+/** A project that declares no module label: a design there names none and holds it whole (ISS-609). */
+let bareId = '';
 let deviceId = '';
 let adminId = '';
 let box = '';
@@ -75,17 +77,20 @@ beforeAll(async () => {
     const parent = await moduleLabel(group, null);
     for (const child of children) await moduleLabel(child, parent);
   }
-  await addProjectMember(projectId, admin.id, 'admin');
-  await addProjectMember(projectId, agent.id, 'member');
+  bareId = await projectBuiltFrom(admin.id, null);
   deviceId = await createTestDevice(admin.id);
-  await bindTestRunner(projectId, deviceId);
+  for (const p of [projectId, bareId]) {
+    await addProjectMember(p, admin.id, 'admin');
+    await addProjectMember(p, agent.id, 'member');
+    await bindTestRunner(p, deviceId);
+  }
   box = (
     await mintPat({
       permissions: ['*'],
       userId: admin.id,
       name: 'box-scope',
       deviceId,
-      projectIds: [projectId],
+      projectIds: [projectId, bareId],
     })
   ).plaintext;
   author = await userToken(agent.id);
@@ -114,10 +119,14 @@ type Issue = { id: string; key: string };
 
 /** A fresh set of issues keyed like the wave's, each with its two criteria written, by name. */
 async function wave(...names: number[]): Promise<(n: number) => Issue> {
+  return waveIn(projectId, ...names);
+}
+
+async function waveIn(project: string, ...names: number[]): Promise<(n: number) => Issue> {
   seqBase += 1000;
   const out = new Map<number, Issue>();
   for (const n of names) {
-    const issue = await createTestIssue(projectId, adminId, seqBase + n, {
+    const issue = await createTestIssue(project, adminId, seqBase + n, {
       status: 'open',
       createdAt: new Date(),
     });
@@ -162,13 +171,16 @@ const DESIGNS = {
   469: ['issues'],
 } as const;
 
-const preflight = (keys: string[]) =>
-  call(box, 'POST', '/api/devices/me/run-sessions/preflight', { projectId, issueKeys: keys });
+const preflight = (keys: string[], project = projectId) =>
+  call(box, 'POST', '/api/devices/me/run-sessions/preflight', {
+    projectId: project,
+    issueKeys: keys,
+  });
 
-async function open(keys: string[]): Promise<{ res: Res; runId: string }> {
+async function open(keys: string[], project = projectId): Promise<{ res: Res; runId: string }> {
   const runId = randomUUID();
   const res = await call(box, 'POST', '/api/devices/me/run-sessions', {
-    projectId,
+    projectId: project,
     runId,
     issueKeys: keys,
     name: keys.join(','),
@@ -176,8 +188,11 @@ async function open(keys: string[]): Promise<{ res: Res; runId: string }> {
   return { res, runId };
 }
 
-async function opened(keys: string[]): Promise<{ sessionId: string; runId: string }> {
-  const { res, runId } = await open(keys);
+async function opened(
+  keys: string[],
+  project = projectId,
+): Promise<{ sessionId: string; runId: string }> {
+  const { res, runId } = await open(keys, project);
   expect([res.status, details(res)]).toEqual([200, '']);
   return { sessionId: String(res.body.sessionId), runId };
 }
@@ -315,6 +330,57 @@ describe('a design recorded after admission, at the move into build', () => {
 
     expect((await close(first.sessionId)).status).toBe(200);
     expect((await step(454, 'build')).status).toBe(200);
+    await close(second.sessionId);
+  });
+});
+
+describe('a design naming no module, on a project that declares none (ISS-609)', () => {
+  it('holds the whole project: a second designed issue waits, one with no design does not', async () => {
+    const w = await waveIn(bareId, 1, 2, 3);
+    await design(w(1).id, []);
+    await design(w(2).id, []);
+    const holder = await opened([w(1).key], bareId);
+    const pre = await preflight([w(2).key], bareId);
+    expect([pre.status, codes(pre)]).toEqual([422, ['ISSUE_SCOPE_HELD']]);
+    expect(details(pre)).toContain(`${w(2).key} shares the whole project with ${w(1).key}`);
+    expect(details(pre)).toContain(`held by live run ${holder.runId}`);
+    expect(codes(await preflight([w(3).key], bareId))).toEqual([]);
+    await close(holder.sessionId);
+    expect(codes(await preflight([w(2).key], bareId))).toEqual([]);
+  });
+
+  it('still meets a design naming a module once the project declares one', async () => {
+    const w = await waveIn(bareId, 4, 5);
+    await design(w(4).id, []);
+    const holder = await opened([w(4).key], bareId);
+    const label = (await db.execute(sql`
+      INSERT INTO labels (project_id, name, color, kind, slug)
+      VALUES (${bareId}, 'billing', '#888888', 'module', 'billing') RETURNING id
+    `)) as unknown as Array<{ id: string }>;
+    await design(w(5).id, ['billing']);
+    const pre = await preflight([w(5).key], bareId);
+    expect(codes(pre)).toEqual(['ISSUE_SCOPE_HELD']);
+    expect(details(pre)).toContain('shares the whole project with');
+    await close(holder.sessionId);
+    await db.execute(sql`DELETE FROM labels WHERE id = ${label[0]?.id}`);
+  });
+
+  it('refuses the second move into build while the first builds', async () => {
+    const w = await waveIn(bareId, 6, 7);
+    const first = await opened([w(6).key], bareId);
+    const second = await opened([w(7).key], bareId);
+    for (const n of [6, 7]) {
+      await seedIssueStatus(w(n).id, 'in_progress');
+      await design(w(n).id, []);
+    }
+    const step = (n: number, to: string) =>
+      call(author, 'PATCH', `/api/issues/${w(n).id}`, { workState: { step: to } });
+    expect((await step(6, 'build')).status).toBe(200);
+    const held = await step(7, 'build');
+    expect([held.status, codes(held)]).toEqual([422, ['ISSUE_SCOPE_HELD']]);
+    expect(details(held)).toContain(`shares the whole project with ${w(6).key}`);
+    await close(first.sessionId);
+    expect((await step(7, 'build')).status).toBe(200);
     await close(second.sessionId);
   });
 });

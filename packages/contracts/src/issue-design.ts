@@ -49,6 +49,7 @@ export const ISSUE_DESIGN_REFUSAL_CODES = [
 	"DESIGN_PATTERN_UNCATALOGUED",
 	"DESIGN_PATTERN_UNDECLARED",
 	"DESIGN_MODULE_UNKNOWN",
+	"DESIGN_MODULE_REQUIRED",
 	"DESIGN_CONTRACT_UNKNOWN",
 	"DESIGN_ISSUE_FINISHED",
 	...PERMISSION_REFUSAL_CODES,
@@ -91,17 +92,20 @@ export const recordDesignRequestSchema = z.strictObject({
 		.array(criterionDesignSchema)
 		.min(1, "No criterion is designed: send one line per live criterion.")
 		.max(DESIGN_LIMITS.criteria),
-	/** Module names (or label ids) of the project the change touches; at least one. */
+	/**
+	 * Module names (or label ids) of the project the change touches: at least one where the project
+	 * declares module labels, none where it declares none (`ModuleScope`). Which applies is the
+	 * project's, so the count is refused by core (`DESIGN_MODULE_REQUIRED`, `DESIGN_MODULE_UNKNOWN`).
+	 */
 	modules: z
 		.array(z.string().trim().min(1, "A module name is blank: name a module of the project.").max(200))
-		.min(1, "No module is named: name at least one module of the project the change touches.")
 		.max(DESIGN_LIMITS.modules),
 	/** `<project>/<contract>` the change touches; empty where it touches none. */
 	contracts: z.array(z.string().trim().min(1).max(200)).max(DESIGN_LIMITS.contracts),
 });
 export type RecordDesignRequest = z.infer<typeof recordDesignRequestSchema>;
 export const RECORD_DESIGN_SHAPE =
-	"{ criteria: [{ criterion: the criterion's number, class: 'observable' | 'code_property', pattern: a catalog slug or a new pattern approved on this issue (null only where the project reads no catalog), proof: the probe or the review line that will prove it }], one per live criterion; modules: the module names the change touches, at least one; contracts: the `<project>/<contract>` it touches, [] for none }";
+	"{ criteria: [{ criterion: the criterion's number, class: 'observable' | 'code_property', pattern: a catalog slug or a new pattern approved on this issue (null only where the project reads no catalog), proof: the probe or the review line that will prove it }], one per live criterion; modules: the module names the change touches, at least one where the project declares module labels and [] where it declares none; contracts: the `<project>/<contract>` it touches, [] for none }";
 
 export interface CriterionDesignView {
 	criterion: number;
@@ -125,7 +129,8 @@ export interface IssueDesignView {
 /**
  * One part the design check found missing, as a fact a client words for itself: no record at all,
  * an issue with no criteria, a criterion with no line (or one whose pattern no longer holds), or
- * the modules (none named, or one no longer a module of the project).
+ * the modules (none named on a project that declares module labels, or one no longer a module of
+ * the project).
  */
 export type DesignGap =
 	| { part: "design" }
@@ -138,9 +143,37 @@ export type DesignCheck =
 	| { passed: true }
 	| { passed: false; code: DesignCheckCode; missing: string[]; gaps: DesignGap[]; detail: string };
 
+/**
+ * What a design's `modules` holds on this project (ISS-609). Where the project declares module
+ * labels a design names at least one; where it declares none a design names none, needs no
+ * administrator, and its scope is the whole project: it meets every other design there, so the
+ * scope lock (REQ-36 BC-5) lets one designed issue of that project run at a time.
+ */
+export type ModuleScope =
+	| { declared: true; emptyAccepted: false; detail: string }
+	| { declared: false; emptyAccepted: true; detail: string };
+
+/** The `ModuleScope` of a project holding `moduleCount` module labels, worded once for every door. */
+export function moduleScopeOf(moduleCount: number): ModuleScope {
+	return moduleCount > 0
+		? {
+				declared: true,
+				emptyAccepted: false,
+				detail: `The project declares ${moduleCount} module label${moduleCount === 1 ? "" : "s"}: a design names at least one it touches.`,
+			}
+		: {
+				declared: false,
+				emptyAccepted: true,
+				detail:
+					"The project declares no module labels: a design names none (modules: []) and holds the whole project, so one designed issue runs at a time. No administrator action is required; a project admin's module labels narrow it.",
+			};
+}
+
 export interface IssueDesign {
 	/** Whether the project reads a pattern catalog, so whether each criterion names a pattern. */
 	catalogDeclared: boolean;
+	/** Whether the project declares module labels, so whether a design names a module. */
+	moduleScope: ModuleScope;
 	design: IssueDesignView | null;
 	check: DesignCheck;
 }

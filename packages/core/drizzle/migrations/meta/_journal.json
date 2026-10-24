@@ -3375,6 +3375,13 @@
       "when": 1828396800000,
       "tag": "0526_a_suggestion_says_why_and_what_it_supersedes",
       "breakpoints": true
+    },
+    {
+      "idx": 527,
+      "version": "7",
+      "when": 1828483200000,
+      "tag": "0527_a_design_names_no_module_where_the_project_declares_none",
+      "breakpoints": true
     }
   ]
 }

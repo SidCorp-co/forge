@@ -16,6 +16,7 @@ import {
   type IssueDesignRefusal,
   type IssueDesignView,
   JUDGE_OF_CLASS,
+  moduleScopeOf,
   type RecordDesignRequest,
 } from '@forge/contracts/issue-design';
 import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
@@ -26,15 +27,18 @@ import { issueDesignCriteria, issueDesigns } from '../db/schema-issue-designs.js
 import { labels } from '../db/schema-labels.js';
 import { RefusalError } from '../lib/refusal.js';
 import { liveRows } from './criteria/store.js';
-import { type DesignFacts, designCheck, designWriteRefusals } from './design-rules.js';
+import {
+  type DesignFacts,
+  designCheck,
+  designWriteRefusals,
+  resolveModules,
+} from './design-rules.js';
 import { issueDisplayIds } from './display-ids.js';
 import type { CatalogReading } from './pattern-rules.js';
 import { catalogOf, patternFactsIn } from './patterns.js';
 import { contractAboutRefusal } from './ports.js';
 
 type Reader = Pick<Tx, 'select' | 'execute'>;
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 
 async function moduleLabelsOf(
   executor: Reader,
@@ -147,33 +151,10 @@ export async function issueDesignOf(issue: {
   const facts = await readDesignFacts(db, issue);
   return {
     catalogDeclared: facts.catalog.kind === 'read',
+    moduleScope: moduleScopeOf(facts.moduleIds.size),
     design: viewOf(facts, await moduleLabelsOf(db, issue.projectId)),
     check: designCheck(facts),
   };
-}
-
-/** The named modules as label ids, or a refusal per name that is no module of the project. */
-function resolveModules(
-  named: readonly string[],
-  modules: readonly { id: string; name: string }[],
-): { ids: string[]; refusals: IssueDesignRefusal[] } {
-  const byId = new Map(modules.map((m) => [m.id, m.id]));
-  const byName = new Map(modules.map((m) => [m.name, m.id]));
-  const ids: string[] = [];
-  const refusals: IssueDesignRefusal[] = [];
-  for (const [at, name] of named.entries()) {
-    const id = UUID.test(name) ? byId.get(name.toLowerCase()) : byName.get(name);
-    if (id) {
-      if (!ids.includes(id)) ids.push(id);
-      continue;
-    }
-    refusals.push({
-      code: 'DESIGN_MODULE_UNKNOWN',
-      path: `/modules/${at}`,
-      detail: `\`${name}\` is not a module of this project; name a module label by its name or id (GET /api/projects/:id/modules/rollup lists them)`,
-    });
-  }
-  return { ids, refusals };
 }
 
 async function contractRefusals(

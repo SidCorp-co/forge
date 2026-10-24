@@ -1,8 +1,9 @@
 /**
  * Two issues whose declared scope meets are never worked by two live runs at once (REQ-36 BC-5).
  *
- * The scope is the design record's modules and contracts (`design-record.ts`); held is a lease of a
- * run that has not ended (`issue-lease.ts`). The predicate is `db/schema-issue-designs.ts:
+ * The scope is the design record's modules and contracts (`design-record.ts`), or the whole project
+ * where a design names no module (ISS-609); held is a lease of a run that has not ended
+ * (`issue-lease.ts`). The predicate is `db/schema-issue-designs.ts:
  * scopeHoldersSql`, which the admissible list and the strand sweep also read, so a door that
  * refuses and a list that withholds name one rule. This module turns its rows into the refusal: the
  * issue, what it shares, the holding issue and its run, and that the hold lifts when that run ends.
@@ -36,6 +37,8 @@ export interface ScopeHold {
   run: string;
   modules: string[];
   contracts: string[];
+  /** One of the two designs names no module, so it holds the whole project. */
+  wholeProject: boolean;
 }
 
 interface HoldRow {
@@ -46,6 +49,7 @@ interface HoldRow {
   box_run_id: string | null;
   module_names: string[];
   contracts: string[];
+  whole_project: boolean;
 }
 
 async function holdsWhere(
@@ -59,7 +63,7 @@ async function holdsWhere(
              r.metadata ->> 'boxRunId' AS box_run_id,
              ARRAY(SELECT lb.name FROM labels lb WHERE lb.id = ANY(h.modules) ORDER BY lb.name)
                AS module_names,
-             h.contracts
+             h.contracts, h.whole_project
         FROM issues mi
         JOIN projects p ON p.id = mi.project_id
         CROSS JOIN LATERAL (${scopeHoldersSql(sql`mi.id`, filter)}) h
@@ -74,10 +78,12 @@ async function holdsWhere(
     run: r.box_run_id ?? String(r.run_id),
     modules: [...(r.module_names ?? [])].sort(),
     contracts: [...(r.contracts ?? [])].sort(),
+    wholeProject: r.whole_project === true,
   }));
 }
 
 function shared(h: ScopeHold): string {
+  if (h.wholeProject) return 'the whole project';
   const parts = [
     h.modules.length > 0 ? `module ${h.modules.join(', ')}` : null,
     h.contracts.length > 0 ? `contract ${h.contracts.join(', ')}` : null,
