@@ -9,6 +9,7 @@ import { projects } from '../db/schema.js';
 import { effectiveProjectRole, loadVisibleProjectIds, type ProjectAccess } from '../lib/authz.js';
 import { createLimiter } from '../lib/bounded-concurrency.js';
 import { holds } from '../permissions/index.js';
+import { primeRequirementVerdicts } from '../requirements/verdicts-read.js';
 import type { NeedsYouViewer } from './needs-you.js';
 import { readNeedsYouDecisionsBare } from './needs-you-decisions.js';
 import { type EvidenceGroup, withEvidence } from './needs-you-evidence.js';
@@ -52,6 +53,7 @@ export async function readNeedsYouAcross(
     .where(inArray(projects.id, ids));
   // the rows every project's read sends once, read for all of them at once
   primeNeedsYouAcross(names.map((p) => p.id));
+  primeRequirementVerdicts(names.map((p) => p.id));
   const limiter = createLimiter(NEEDS_YOU_ACROSS_CONCURRENCY);
   const perProject = await Promise.all(
     names.map((p) =>

@@ -162,6 +162,7 @@ describe('the newest verdict across the rows tracing a BC is the one that counts
     expect(one.issues).toHaveLength(3);
     expect(one.verdict).toBe('passing');
     expect(one.counts).toEqual({
+      source: 'issue',
       issueId: newer,
       displayId: 'ISS-2',
       criterion: 1,

@@ -47,12 +47,12 @@ import {
   latestContractPinsOf,
   latestPinsOf,
   liveBuildOf,
-  requirementVerdictsOf,
   statusFactsOf,
   unapprovedDesignsOf,
 } from './standing-facts.js';
 import { awaitsReleaseOnly, type OwnStanding } from './standing-work.js';
 import { stewardAskedOf } from './steward-asked.js';
+import { requirementVerdictsIn } from './verdicts-read.js';
 
 interface StandingRow {
   id: string;
@@ -389,7 +389,7 @@ export async function standingsOf(
       issueTimesOf(linked),
       changedTracedOf(db, linkedIds),
       workFactsOf(projectId, rows, linked, viewer, now),
-      requirementVerdictsOf(ids),
+      requirementVerdictsIn(projectId, ids),
     ],
   );
   const { issueWaits, release } = work;

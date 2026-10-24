@@ -18,6 +18,7 @@ import {
 // the page's own reads queued behind them. A read request now asks each of those once.
 // @direct-test-of packages/core/src/development/needs-you-viewer.ts
 // @direct-test-of packages/core/src/development/needs-you-fold.ts
+// @direct-test-of packages/core/src/requirements/verdicts-read.ts
 // @direct-test-of packages/core/src/db/read-memo.ts
 // @direct-test-of packages/core/src/questions/needs-you-read.ts
 // @direct-test-of packages/core/src/suggestions/waiting-read.ts
@@ -29,8 +30,10 @@ import {
 // @direct-test-of packages/core/src/workflows/design-repin-service.ts
 
 // The rows each project's Needs you read sends once (its two open-question reads, the proposed
-// suggestions and mockups, and the approvable previews) are read for every project in one statement
-// each (`needs-you-fold.ts:primeNeedsYouAcross`), so they cost no statement a project: 57, as measured.
+// suggestions and mockups, the approvable previews, and its requirements' own verdicts) are read for
+// every project in one statement each (`needs-you-fold.ts:primeNeedsYouAcross`,
+// `requirements/verdicts-read.ts:primeRequirementVerdicts`), so they cost no statement a project:
+// 57, as measured.
 const PER_PROJECT_BOUND = 57;
 
 const queriesOf = (headers: Headers): number => {

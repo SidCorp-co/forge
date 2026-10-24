@@ -431,18 +431,11 @@ export type RequirementVerdictRead = StandingRequirementVerdict & {
   authorAgency: 'human' | 'agent';
 };
 
-/** Every verdict recorded at the requirement on `ids`, newest first. */
-export async function requirementVerdictsOf(
-  ids: readonly string[],
-  ex: Pick<Tx, 'select'> = db,
-): Promise<RequirementVerdictRead[]> {
-  if (ids.length === 0) return [];
-  const rows = await ex
-    .select()
-    .from(requirementCriterionVerdicts)
-    .where(inArray(requirementCriterionVerdicts.requirementId, [...ids]))
-    .orderBy(desc(requirementCriterionVerdicts.createdAt));
-  return rows.map((r) => ({
+type RequirementVerdictRow = typeof requirementCriterionVerdicts.$inferSelect;
+
+/** A requirement-level verdict row as coverage reads it. */
+export function verdictReadOf(r: RequirementVerdictRow): RequirementVerdictRead {
+  return {
     id: r.id,
     requirementId: r.requirementId,
     requirementCriterionId: r.requirementCriterionId,
@@ -454,5 +447,19 @@ export async function requirementVerdictsOf(
     authored: r.authorUserId !== null || r.authorDeviceId !== null,
     authorUserId: r.authorUserId,
     authorAgency: r.authorAgency,
-  }));
+  };
+}
+
+/** Every verdict recorded at the requirement on `ids`, newest first. */
+export async function requirementVerdictsOf(
+  ids: readonly string[],
+  ex: Pick<Tx, 'select'> = db,
+): Promise<RequirementVerdictRead[]> {
+  if (ids.length === 0) return [];
+  const rows = await ex
+    .select()
+    .from(requirementCriterionVerdicts)
+    .where(inArray(requirementCriterionVerdicts.requirementId, [...ids]))
+    .orderBy(desc(requirementCriterionVerdicts.createdAt));
+  return rows.map(verdictReadOf);
 }

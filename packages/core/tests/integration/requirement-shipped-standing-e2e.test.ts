@@ -8,6 +8,9 @@
  * such verdict nothing says it shipped, so its breakdown stays owed. Through the app's own routes,
  * against real Postgres, with the live build planted (`tests/helpers/live-build.ts`).
  */
+// @direct-test-of packages/core/src/requirements/standing-facts.ts
+// @direct-test-of packages/core/src/requirements/standing-read.ts
+// @direct-test-of packages/core/src/requirements/verdicts-read.ts
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { DEFAULT_POLICY } from '../../src/project-config/default-policy.js';
