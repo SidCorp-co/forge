@@ -124,10 +124,11 @@ const PARKABLE_STATUSES: readonly IssueStatus[] = [
 export const ISSUE_TERMINAL_STATUSES: readonly IssueStatus[] = ["closed", "dropped"];
 
 /**
- * An issue AT REST: over, or parked on a person. No run works one, so a run declared over one is
- * refused at declare (`issues/issue-resting.ts`), and a run holding one is a stale declaration in
- * core's recovery verdict (`devices/run-verdict.ts:staleEnd`). One list, so the two never disagree
- * about which statuses those are (FB-273).
+ * An issue AT REST: over, or parked on a person. No run takes one, so a run declared to take one is
+ * refused at declare (`issues/issue-resting.ts`; a run over issues all over takes nothing and
+ * opens, ISS-576), and a run holding one is a stale declaration in core's recovery verdict
+ * (`devices/run-verdict.ts:staleEnd`). One list, so the two never disagree about which statuses
+ * those are (FB-273).
  */
 export const ISSUE_RESTING_STATUSES: readonly IssueStatus[] = [
 	...ISSUE_TERMINAL_STATUSES,

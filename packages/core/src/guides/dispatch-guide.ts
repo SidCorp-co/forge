@@ -90,8 +90,9 @@ refuses its run \`ISSUE_SCOPE_HELD\`, naming the run that holds it, until that r
 1. \`forge-runner run declare --project <slug> --issue <key> --worktree <tree>\` writes the box's row
    and answers the run's id. A dispatch with nothing declared is refused by the box. Before it
    writes the row the box asks core (\`POST /api/devices/me/run-sessions/preflight\`) the question
-   the run's open would be asked, so an issue at rest — \`closed\`, \`dropped\`, \`needs_info\` or
-   \`on_hold\` (\`ISSUE_AT_REST\`; reopen it, or return it from its park, first) — an issue a live
+   the run's open would be asked, so an issue at rest — \`needs_info\` or \`on_hold\`, or a \`closed\` or
+   \`dropped\` one beside an issue in work (\`ISSUE_AT_REST\`; return it from its park, or reopen it,
+   first) — an issue a live
    \`blocks\` edge holds, a build without its approved design, a contract wait unsettled and a
    design whose module or contract a live run holds (\`ISSUE_SCOPE_HELD\`) are refused to the pane
    by name, with what it waits on, and nothing is recorded. Declare it again once that run ends. A core the box cannot reach leaves the row

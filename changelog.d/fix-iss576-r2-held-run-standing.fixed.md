@@ -1,0 +1,1 @@
+**A judge declared over released issues now has a run.** Core opens its session without taking the closed issues, so Runs shows it held on its master instead of nothing, and the box stops retrying a refused open.

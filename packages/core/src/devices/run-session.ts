@@ -19,6 +19,7 @@ import {
   RUN_ISSUES_METADATA_KEY,
   RUN_SESSION_KIND,
 } from '@forge/contracts/agent-sessions';
+import { ISSUE_TERMINAL_STATUSES } from '@forge/contracts/issue-machine';
 import { scrubSecretsDeep } from '@forge/observability';
 import { and, eq, inArray, notInArray, sql } from 'drizzle-orm';
 import {
@@ -90,6 +91,30 @@ async function readIssueStatuses(
   return Object.fromEntries(rows.map((r) => [canonicalIssueKey(r.issSeq), r.status]));
 }
 
+/**
+ * A run declared over issues that are every one over (closed or dropped) is no take: a release
+ * judge over the issues its release closed (ISS-576). Nothing can be taken on an issue that is over,
+ * so it opens taking no lease, restarting no step and carrying nothing, and its standing reads it
+ * held over those issues with its master acting next (`runs/standing-live.ts:heldOverIssues`).
+ * Refused, it had no session, so no standing at all, and the box re-sent it every sweep. A group
+ * mixing an over issue with one in work, or holding a parked one, is a take and is refused by the
+ * take's own gates (`ISSUE_AT_REST`, `issues/issue-resting.ts`).
+ */
+function declaredOverClosedWork(
+  keys: readonly string[],
+  statuses: Record<string, string>,
+): boolean {
+  return (
+    keys.length > 0 &&
+    keys.every((k) => {
+      const status = statuses[k];
+      return (
+        status !== undefined && (ISSUE_TERMINAL_STATUSES as readonly string[]).includes(status)
+      );
+    })
+  );
+}
+
 /** Every key this run will be recorded under, in the ONE form the metadata holds. */
 async function canonicaliseIssueKeys(
   projectId: string,
@@ -150,6 +175,8 @@ export async function preflightRunSession(args: {
   issueKeys: string[];
 }): Promise<void> {
   const canonical = await canonicaliseIssueKeys(args.projectId, args.issueKeys);
+  const statuses = await readIssueStatuses(args.projectId, canonical.seqs);
+  if (declaredOverClosedWork(canonical.keys, statuses)) return;
   await refuseHeldTakeForSeqs(args.projectId, canonical.seqs);
 }
 
@@ -228,18 +255,22 @@ export async function openRunSession(args: {
       (tx) => openSessionForBoxRun(tx, { deviceId: args.deviceId, boxRunId }),
     );
   };
-  try {
-    await refuseHeldTakeForSeqs(args.projectId, canonical.seqs);
-  } catch (err) {
-    await queueIfRefused(err);
-    throw err;
-  }
   const openingStatuses = await readIssueStatuses(args.projectId, canonical.seqs);
+  const takes = !declaredOverClosedWork(canonical.keys, openingStatuses);
+  if (takes) {
+    try {
+      await refuseHeldTakeForSeqs(args.projectId, canonical.seqs);
+    } catch (err) {
+      await queueIfRefused(err);
+      throw err;
+    }
+  }
   // what each issue is given as the run opens: read once here, never rewritten (REQ-1 BC-3, REQ-4 BC-12)
   const given = await givenAtDispatch(db, args.projectId, canonical.seqs);
   const metadata = {
     ...identity,
-    [RUN_ISSUES_METADATA_KEY]: canonical.keys,
+    // a run that takes nothing carries nothing, so a box lost under it hands nothing back
+    [RUN_ISSUES_METADATA_KEY]: takes ? canonical.keys : [],
     [RUN_GROUP_METADATA_KEY]: canonical.keys,
     [RUN_ISSUE_STATUSES_METADATA_KEY]: openingStatuses,
     [RUN_GIVEN_METADATA_KEY]: given,
@@ -257,14 +288,16 @@ export async function openRunSession(args: {
       }
       if (queued) {
         await promoteQueuedDeclaration(tx, queued, metadata);
-        await takeIssueLeases(tx, {
-          projectId: args.projectId,
-          deviceId: args.deviceId,
-          sessionId: queued.sessionId,
-          runId: queued.runId,
-          issueKeys: canonical.keys,
-        });
-        await restartStepsForNewRun(tx, args.projectId, canonical.seqs);
+        if (takes) {
+          await takeIssueLeases(tx, {
+            projectId: args.projectId,
+            deviceId: args.deviceId,
+            sessionId: queued.sessionId,
+            runId: queued.runId,
+            issueKeys: canonical.keys,
+          });
+          await restartStepsForNewRun(tx, args.projectId, canonical.seqs);
+        }
         return { opened: { sessionId: queued.sessionId, runId: queued.runId } };
       }
       const run = await insertOneShotRun(tx, spec);
@@ -283,14 +316,16 @@ export async function openRunSession(args: {
       // Inside the transaction on purpose: a key somebody live already holds
       // rolls the run and the session back with it, so a refused open leaves a
       // box with nothing rather than with half a group.
-      await takeIssueLeases(tx, {
-        projectId: args.projectId,
-        deviceId: args.deviceId,
-        sessionId: row.id,
-        runId: run.id,
-        issueKeys: canonical.keys,
-      });
-      await restartStepsForNewRun(tx, args.projectId, canonical.seqs);
+      if (takes) {
+        await takeIssueLeases(tx, {
+          projectId: args.projectId,
+          deviceId: args.deviceId,
+          sessionId: row.id,
+          runId: run.id,
+          issueKeys: canonical.keys,
+        });
+        await restartStepsForNewRun(tx, args.projectId, canonical.seqs);
+      }
       return { opened: { sessionId: row.id, runId: run.id } };
     })
     .catch(async (err: unknown) => {
@@ -314,6 +349,7 @@ export async function openRunSession(args: {
       boxRunId: args.boxRunId ?? null,
       deviceId: args.deviceId,
       issues: canonical.keys,
+      takes,
     },
     'run-session: opened',
   );

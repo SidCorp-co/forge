@@ -1,11 +1,11 @@
 /**
- * A run is never opened over an issue at rest (FB-273).
+ * No run takes an issue at rest (FB-273).
  *
  * The status list is `ISSUE_RESTING_STATUSES`, the one core's recovery verdict reads to call a
- * declaration stale (`issue-lease-read.ts:readIssueStanding`). A box's run declared over a closed
- * issue was accepted, its subagent bound, and the verdict then closed the run under the working
- * subagent because its issue was over. Refused here, at the preflight and the open, it is refused to
- * the master that declared it, by name, before a row exists.
+ * declaration stale (`issue-lease-read.ts:readIssueStanding`). Refused here, at the preflight and
+ * the open, a take is refused to the master that declared it, by name, before a row exists. A run
+ * over issues that are every one over takes nothing and is not asked
+ * (`devices/run-session.ts:declaredOverClosedWork`, ISS-576).
  */
 
 import { ISSUE_RESTING_STATUSES, PARK_STATUSES } from '@forge/contracts/issue-machine';

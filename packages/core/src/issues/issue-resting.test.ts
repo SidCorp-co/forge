@@ -1,8 +1,7 @@
 /**
- * FB-273: a run declared over a closed issue was accepted, its subagent bound, and core's verdict
- * then closed the run under the working subagent because its issue was over. The declare door
- * (the run-session preflight, and the open it asks for) refuses an issue at rest by name, reading
- * the one list the verdict reads.
+ * FB-273: the take a run session makes refuses an issue at rest by name, reading the one list the
+ * verdict reads. A run over issues all over takes nothing and is never asked it (ISS-576,
+ * run-declared-over-closed-e2e).
  */
 
 import { readFileSync } from 'node:fs';

@@ -181,14 +181,15 @@ pub async fn open_declared_runs_at(
                 );
                 end_refused(led, &run.run_id, &format!("{said} — {why}"), &why);
             }
-            // An issue at rest is refused at declare (FB-273); one reaching the open was moved
-            // to rest after its declaration, or declared while core could not be asked. Core
+            // A take on an issue at rest is refused at declare (FB-273); one reaching the open was
+            // moved to rest after its declaration, or declared while core could not be asked. A
+            // run over issues all closed takes nothing and core opens it (ISS-576). Core
             // queues nothing behind it and no sweep lifts it, so the row ends here as the
             // malformed one does: no core session was minted, and the release that follows
             // keeps a checkout a live subagent is working in (`terminate::live_subagent`).
             Err(runner_platform::error::Error::AtRest { said }) => {
                 let why = format!(
-                    "core refuses a run over an issue at rest: {said}. Reopen the issue and declare again"
+                    "core refuses a run over an issue at rest: {said}. Declare again once the issue is back in work"
                 );
                 end_refused(led, &run.run_id, &why, &why);
             }
@@ -611,7 +612,7 @@ mod session_hold_tests {
         );
         let run = led.as_ref().unwrap().run("run-1").unwrap().unwrap();
         assert_eq!(run.ended_by.as_deref(), Some("run-record"));
-        assert!(run.ended_reason.unwrap().contains("Reopen the issue"));
+        assert!(run.ended_reason.unwrap().contains("back in work"));
         let _ = std::fs::remove_dir_all(dir);
     }
 }

@@ -109,20 +109,25 @@ describe('run-session preflight', () => {
     expect(codes(r)).toContain('ISSUE_BLOCKED');
   });
 
-  // FB-273: a run declared over a closed issue was accepted, and core's verdict then closed it
-  // under the subagent working it.
-  it('refuses a closed issue by name at the preflight and at the open', async () => {
-    const r = await preflight(['ISS-4']);
+  // FB-273: a closed issue declared beside one in work is a take on it, refused by name. A run over
+  // closed issues alone is a judge and opens taking nothing (ISS-576, run-declared-over-closed-e2e).
+  it('refuses a closed issue in a group with one in work, at the preflight and at the open', async () => {
+    const r = await preflight(['ISS-3', 'ISS-4']);
     expect(r.status).toBe(422);
     expect(codes(r)).toEqual(['ISSUE_AT_REST']);
     expect(JSON.stringify(r.json)).toContain('`closed`');
     const open = await say('POST', '/api/devices/me/run-sessions', {
       projectId,
       runId: crypto.randomUUID(),
-      issueKeys: ['ISS-4'],
-      name: 'ISS-4',
+      issueKeys: ['ISS-3', 'ISS-4'],
+      name: 'ISS-3',
     });
     expect(codes(open)).toEqual(['ISSUE_AT_REST']);
+  });
+
+  it('answers a closed issue alone, a judge taking nothing', async () => {
+    const r = await preflight(['ISS-4']);
+    expect([r.status, r.json]).toEqual([200, { ok: true }]);
   });
 
   it('refuses the same issue at the open, so the preflight and the open say one thing', async () => {
