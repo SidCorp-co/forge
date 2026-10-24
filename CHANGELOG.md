@@ -9,6 +9,14 @@
 > What has landed but not yet shipped is in `changelog.d/`, one file per change; a release folds
 > those files into its version section here.
 
+## [0.4.0-dev.310] - 2026-10-24
+
+Duplicate feedback counts once under its original and reads its phase
+
+### Fixed
+
+- **A duplicate reads where its original stands, and counts once.** A merged feedback item shows the original's phase and wait, and every count reads it under its original, never beside it.
+
 ## [0.4.0-dev.309] - 2026-10-24
 
 Rewording a requirement-linked criterion now keeps its link or says why
