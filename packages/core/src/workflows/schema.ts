@@ -3,10 +3,9 @@ import {
   EDGE_KIND_ID,
   NODE_TYPE_ID,
   TEMPLATE_ID,
-  TEMPLATE_LIMITS,
   templateRefSchema,
 } from '@forge/contracts/workflow-templates';
-import { WORKFLOW_V2_SCHEMA_ID } from '@forge/contracts/workflows';
+import { WORKFLOW_LIMITS, WORKFLOW_V2_SCHEMA_ID } from '@forge/contracts/workflows';
 import { z } from 'zod';
 import { slug, uuid } from '../project-config/index.js';
 
@@ -29,34 +28,7 @@ export const STOREFRONT_REF_KINDS = ['workflow', 'route', 'node'] as const;
 
 export const COVERAGE_READINGS = ['walked', 'not_walked', 'unmeasured'] as const;
 
-export const WORKFLOW_LIMITS = {
-  title: 120,
-  summary: 400,
-  does: 600,
-  symbol: 200,
-  reason: 400,
-  steps: 40,
-  after: 12,
-  edges: 120,
-  purpose: 400,
-  io: 20,
-  ioName: 120,
-  owner: 120,
-  sla: 60,
-  contract: 400,
-  mapping: 40,
-  ref: 200,
-  label: TEMPLATE_LIMITS.label,
-  conditions: 30,
-  tests: 30,
-  lanes: 16,
-  refs: 8,
-  bases: 8,
-  route: 200,
-  values: 20,
-  code: 40,
-  protocol: 60,
-} as const;
+export { WORKFLOW_LIMITS };
 
 // A step id is a status name as often as a verb, so it takes `_` (`in_progress`) where a flow slug does not
 export const STEP_ID = /^[a-z][a-z0-9_-]{0,62}$/;

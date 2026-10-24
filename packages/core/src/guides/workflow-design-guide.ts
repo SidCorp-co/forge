@@ -4,7 +4,51 @@
 // Altitude (NT1): the order of the work and what refuses it. `GET /api/schemas/workflow-v2.json` carries its schema.
 
 import { CRITERION_STEPS_ROUTE } from '@forge/contracts/workflow-health';
+import { WORKFLOW_LIMITS, WORKFLOW_V2_SCHEMA_ID } from '@forge/contracts/workflows';
 import type { CoreGuide } from './types.js';
+
+/** The act that traces one business criterion onto a design's steps, as both guides that teach it say it. */
+export const TRACE_ACT = `\`${CRITERION_STEPS_ROUTE} { workflow, steps?, edges? }\`, \`:req\` being the requirement's key and \`:code\` the criterion's (\`BC-n\`). \`workflow\` is the design's flow name or its uuid; \`steps\` are the step ids of its newest revision, and \`edges\` each \`{ from, to, label? }\` naming one of its edges. The body is the whole trace of that criterion on that design, and empty lists clear it. A design the requirement does not link is refused \`REQUIREMENT_DESIGN_UNLINKED\` (link it first, \`POST …/requirements/:req/workflows { workflowId }\`), a step or edge its newest revision does not hold \`WORKFLOW_NODE_UNKNOWN\`, and an edge several share both ends with, named without its label, \`WORKFLOW_NODE_AMBIGUOUS\``;
+
+/** What each cap of a workflow-v2 document (and of an observation) bounds; a cap with no line here fails the typecheck. */
+const CAPPED: Record<keyof typeof WORKFLOW_LIMITS, string> = {
+  steps: 'Steps in a design',
+  after: "Entries in a step's `after`",
+  edges: "Lines in a design's `edges`",
+  bases: 'Entries in `basedOn`',
+  lanes: "Lanes, and a ux-flow's personas",
+  title: "Characters in the design's or a step's title",
+  summary: "Characters in the design's summary, or an observation's",
+  does: "Characters in a step's `does`",
+  label: "Characters in a node's, an edge's or a lane's label, and a node's channel",
+  purpose: "Characters in a node's purpose, or a lane's tooltip",
+  owner: "Characters in a node's owner",
+  sla: "Characters in a node's sla",
+  contract:
+    'Characters in one contract text: a condition row, a test, an edge contract, a list entry of dataShown, actions or permissions',
+  io: "Entries in a node's inputs, outputs, payload, permissions, dataShown, actions or binds",
+  ioName: 'Characters in one input, output or payload name, a mapping key, or an event name',
+  conditions: "Rows in a node's `conditions`",
+  tests: "Entries in a node's `tests`",
+  mapping: "Fields in an edge's `mapping`",
+  refs: "Entries in a node's `refs` or `contracts`",
+  ref: 'Characters in a bound contract element, or an observed citation id',
+  route: "Characters in a screen's route",
+  values: "Entries in a node's `values`",
+  code: 'Characters in one value code, or `mapsTo`',
+  protocol: "Characters in an edge's protocol",
+  symbol: 'Characters in an observed citation symbol',
+  reason: "Characters in an observation's reason",
+};
+
+const CAPS_TABLE = [
+  '| What | At most |',
+  '|---|---|',
+  ...Object.entries(CAPPED).map(
+    ([key, what]) =>
+      `| ${what} (\`${key}\`) | ${WORKFLOW_LIMITS[key as keyof typeof WORKFLOW_LIMITS]} |`,
+  ),
+].join('\n');
 
 export const WORKFLOW_DESIGN_GUIDE: CoreGuide = {
   slug: 'workflow-design',
@@ -12,7 +56,7 @@ export const WORKFLOW_DESIGN_GUIDE: CoreGuide = {
   title: 'Design a workflow first, build it once it is approved',
   summary:
     'A flow that does not exist yet is drawn as a workflow-v2 design, proposed, and approved under its approval checklist before any issue that builds it is dispatched.',
-  version: 6,
+  version: 7,
   body: `## Design a workflow first, build it once it is approved
 
 A new flow — a storefront journey, a pipeline, a state machine — is drawn before it is built, and its
@@ -24,7 +68,7 @@ names the workflow it builds is not dispatched while that design is not approved
    \`template: { id, version }\` — \`GET /api/guides/workflow-templates.md\` says which (operational-flow for
    what the business does, service-blueprint, ux-flow for screens, state-machine, integration-sequence,
    decision-model, data-flow, system-context). The template fixes the node types, the bands, the fields each
-   type requires, the edge kinds and the cross-links to the project's other designs. \`POST /api/projects/:id/workflows\` creates one with a workflow-v2 document (\`GET /api/schemas/workflow-v2.json\`), \`PUT …/workflows/:workflow\` with the \`baseRevision\` you read writes the next revision. A PUT takes what GET returned as it stands: \`revision\` is the base, and \`writer\`, \`writerName\`, \`design\` and the document's \`id\`, \`createdAt\` and \`updatedAt\` are the server's, dropped and listed in the answer's \`ignored\`.
+   type requires, the edge kinds and the cross-links to the project's other designs. \`POST /api/projects/:id/workflows\` \`{ baseRevision: null, document }\` creates one: a new design has no revision to base on, and no other key is taken. The document is workflow-v2 (\`GET /api/schemas/workflow-v2.json\`) and carries \`$schema: "${WORKFLOW_V2_SCHEMA_ID}"\`, \`version: 2\`, \`project\` (this project's uuid), \`flow\` (its slug), \`kind\` (\`flow\` or \`state\`), \`title\`, \`summary\`, \`steps\` (at least one, each \`{ id, does, after }\` and its \`node\`), \`template\` and \`writtenBy\`. \`writtenBy: { runId?, sessionId?, sha? }\` names what wrote the revision, and every write carries it, a PUT included: left out, the write is refused \`SCHEMA_VIOLATION\` at \`/writtenBy\`; \`{}\` is accepted. \`PUT …/workflows/:workflow\` with the \`baseRevision\` you read writes the next revision. A PUT takes what GET returned as it stands: \`revision\` is the base, and \`writer\`, \`writerName\`, \`design\` and the document's \`id\`, \`createdAt\` and \`updatedAt\` are the server's, dropped and listed in the answer's \`ignored\`.
    A design holds the plan only: no step status, evidence or commit. Give each step its \`node\` (its type,
    a short business \`label\`, a \`purpose\`, and what its type requires) and each line \`after\` draws the
    contract its kind owes. A new v2 workflow is a **draft**.
@@ -47,8 +91,9 @@ names the workflow it builds is not dispatched while that design is not approved
    build lands. Draw a design that is the deliverable under an issue of its own. A return reopens
    the design's issue with the reason posted on it, and \`GET /api/issues/:id\` shows it under
    \`proposesWorkflows\` (every design drawn under it, each at the latest revision drawn there with that revision's own \`state\`), so the issue is admissible work again; a design issue standing at a park keeps
-   its park and only gets the reason posted. **To park an issue until the approver decides**, park it at
-   \`needs_info\` with \`awaitsDesign: { workflowId, revision }\` naming the revision now waiting: the
+   its park and only gets the reason posted. **To park an issue until the approver decides**, park it with
+   \`POST /api/issues/:id/transition\` \`{ toStatus: 'needs_info', waitingKind: 'needs_decision', reason, awaitsDesign: { workflowId, revision } }\`
+   naming the revision now waiting; \`needs\` may be left out, since the decision is what settles it. The
    decision, approve or return, is written as the answer to the question that park asks, and the issue
    moves back to the status it left as any answer moves it. An issue waiting on several revisions sends them as a list,
    and moves back once every one is decided; one parked on a revision that now waits on another is re-pointed by
@@ -148,6 +193,12 @@ whatever its own status: proposing the design moves the issue on, and only the a
 dependents. Only a workflow's newest revision is ever decided, so where a later write supersedes the
 delivered revision undecided, the hold follows the newest revision and releases when that one is approved.
 
+### What a design may hold
+A document over any of these caps is refused \`SCHEMA_VIOLATION\` at the path that holds too much, so a
+design near one folds a change into what it has (a rule into a step's \`conditions\`) rather than adding.
+
+${CAPS_TABLE}
+
 ### What sends a design back to its approver
 A write that changes the design — its template, a step added, removed, renamed or re-described, its order,
 its node (label and band included), an edge contract, a return edge added or removed, its \`basedOn\` — moves an approved design back to \`proposed\`, and its linked issues stop dispatching
@@ -172,8 +223,7 @@ or node id. A repository project cites \`{ kind: "repo", file, symbol }\`. The o
 ### Who approves, and what an approval is judged by
 Every approval, a pin-only one included, is judged by the workflow approval checklist, read from the
 newest revision: the business criteria its steps serve (traced on the requirements linking it, one
-criterion at a time, by \`${CRITERION_STEPS_ROUTE} { workflow, steps?, edges? }\` (the whole trace of that criterion on that design; empty lists clear it); none is
-asked of a design no requirement links), who owns each step, its refusals, returns and failures drawn
+criterion at a time, by ${TRACE_ACT}; none is asked of a design no requirement links), who owns each step, its refusals, returns and failures drawn
 as conditions, tests or failure edges (asked only of a flow, never of a structure such as a system
 context), and its change from the last approved revision, computed. A gap is refused
 \`CHECKLIST_INCOMPLETE\` on \`/answers/<question>\`, naming it, and the revision stays proposed. Where the project document's \`approvals.designs\` is on, approving takes

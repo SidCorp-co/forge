@@ -29,6 +29,7 @@ import {
   WRITING_AN_ISSUE_GUIDE,
 } from './issue-guides.js';
 import { MOCKUPS_GUIDE } from './mockups-guide.js';
+import { QA_GUIDE } from './qa-guide.js';
 import { RECORDS_GUIDE } from './records-guide.js';
 import { REQUIREMENT_LIFECYCLE_GUIDE } from './requirements-guide.js';
 import { RUNS_AND_MASTERS_GUIDE } from './runs-guide.js';
@@ -320,6 +321,7 @@ section, which is why this migration is what turns the feature on.`,
   RUNS_AND_MASTERS_GUIDE,
   ISSUE_FLOW_GUIDE,
   DISPATCH_GUIDE,
+  QA_GUIDE,
 ] as const;
 
 const GUIDE_BY_SLUG = new Map<string, ForgeGuide>(FORGE_GUIDES.map((g) => [g.slug, g]));

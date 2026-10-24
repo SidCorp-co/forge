@@ -7,9 +7,40 @@ import type { RequirementState } from "./requirements.js";
 import type { Said } from "./said.js";
 import type { WaitingKind, WaitingOn } from "./standing.js";
 import type { WorkflowHealthSummary } from "./workflow-health.js";
+import { TEMPLATE_LIMITS } from "./workflow-template-schema.js";
 
 /** The schema every design is written at: the version-2 workflow document, core's and a client's alike. */
 export const WORKFLOW_V2_SCHEMA_ID = `${SCHEMA_BASE}/workflow-v2.json` as const;
+
+/** The size caps a workflow-v2 document and an observation are refused over; the workflow-design guide lists each. */
+export const WORKFLOW_LIMITS = {
+	title: 120,
+	summary: 400,
+	does: 600,
+	symbol: 200,
+	reason: 400,
+	steps: 40,
+	after: 12,
+	edges: 120,
+	purpose: 400,
+	io: 20,
+	ioName: 120,
+	owner: 120,
+	sla: 60,
+	contract: 400,
+	mapping: 40,
+	ref: 200,
+	label: TEMPLATE_LIMITS.label,
+	conditions: 30,
+	tests: 30,
+	lanes: 16,
+	refs: 8,
+	bases: 8,
+	route: 200,
+	values: 20,
+	code: 40,
+	protocol: 60,
+} as const;
 
 export interface WorkflowSummaryView {
 	workflowId: string;

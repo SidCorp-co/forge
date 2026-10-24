@@ -98,7 +98,7 @@ describe('the routes a guide cites', () => {
 describe('the method guides a pane follows', () => {
   // A dev pane's own core serves these two; the plugin CLI is built against another core's statuses
   // and records, so a step sending the reader to it is one its core may refuse (ISS-275).
-  const METHODS = ['issue-flow', 'dispatch'] as const;
+  const METHODS = ['issue-flow', 'dispatch', 'qa'] as const;
 
   it('finds a plugin command written in a body', () => {
     expect(

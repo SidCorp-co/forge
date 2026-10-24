@@ -23,6 +23,7 @@ const GUIDE_SLUGS = [
   'runs-and-masters',
   'issue-flow',
   'dispatch',
+  'qa',
   'mockups',
 ] as const;
 

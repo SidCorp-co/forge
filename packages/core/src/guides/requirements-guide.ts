@@ -1,7 +1,7 @@
 import { GOAL_LABEL_WORDS } from '@forge/contracts/requirement-goal';
-import { CRITERION_STEPS_ROUTE } from '@forge/contracts/workflow-health';
 import { guideRef } from './guide-ref.js';
 import type { CoreGuide } from './types.js';
+import { TRACE_ACT } from './workflow-design-guide.js';
 
 export const REQUIREMENT_LIFECYCLE_GUIDE: CoreGuide = {
   slug: 'requirement-lifecycle',
@@ -9,7 +9,7 @@ export const REQUIREMENT_LIFECYCLE_GUIDE: CoreGuide = {
   title: 'Requirements: revisions, agreement, baselines and delivery',
   summary:
     'How a requirement (REQ-n) is written in immutable revisions with stable business criteria (BC-n), proposed, accepted and agreed by a holder of requirements.approve under a baseline pinning its designs, re-pinned, deferred, moved into delivery and to delivered by an act, accepted (by its checklist or by decision) or dropped; and why an issue planned against it reads changed-since-plan.',
-  version: 7,
+  version: 8,
   body: `## Requirements: revisions, agreement, baselines and delivery
 
 A requirement (REQ-n) is the business intent a set of issues delivers. Its text never changes in place:
@@ -137,8 +137,8 @@ line opens with the tag, \`(REQ-n BC-m) <statement>\`, and nowhere else. The doo
   the named issue's place in \`issues\`, \`REQUIREMENT_DEFERRED\`, and \`REQUIREMENT_NOT_AGREED\` for a
   draft or dropped requirement.
 - **link_workflow** \`POST …/requirements/:req/workflows { workflowId }\` names a design the next agree or repin pins.
-- **trace** \`${CRITERION_STEPS_ROUTE} { workflow, steps?, edges? }\` (the whole trace of that criterion on that design; empty lists clear it) ties one business criterion
-  to the steps and edges of a design the requirement links. It is the only way to trace: a revision
+- **trace** ties one business criterion to the steps and edges of a design the requirement links:
+  ${TRACE_ACT}. It is the only way to trace: a revision
   write and the link take no steps. The workflow approval checklist reads these traces, and refuses a
   linked design none of whose criteria is traced.
 - **link_contract** \`{ contract: "<project>/<contract>" }\` names a contract this project publishes or
