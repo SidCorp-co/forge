@@ -133,7 +133,7 @@ describe('a park re-pointed at a different design (criterion 1, FB-141)', () => 
     expect(await questionsOn(issue.id)).toEqual(before);
   });
 
-  it('refuses a re-point by a person, with no reason, or changing the kind of park, by name', async () => {
+  it('refuses a re-point by a person or with no reason, by name', async () => {
     const first = await proposedDesign(gitProject, 'repoint-refused-first-flow');
     const second = await proposedDesign(gitProject, 'repoint-refused-second-flow');
     const issue = await plantIssue(gitProject, 'open');
@@ -148,9 +148,6 @@ describe('a park re-pointed at a different design (criterion 1, FB-141)', () => 
       awaitsDesign,
     });
     expect(codesOf(noReason)).toEqual(['TRANSITION_REASON_REQUIRED']);
-    const kind = await repoint(issue.id, { awaitsDesign, waitingKind: 'needs_resource' });
-    expect(codesOf(kind)).toEqual(['WAITING_KIND_NOT_APPLICABLE']);
-    expect(JSON.stringify(kind.json)).toContain('keeps what kind of park it is');
     const decided = await proposedDesign(gitProject, 'repoint-decided-flow');
     ok(await decide(gitProject, decided, 1, 'approve'));
     const notAwaiting = await repoint(issue.id, {

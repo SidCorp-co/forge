@@ -38,6 +38,7 @@ import { designHoldPhrase, designOnlyMarkSql } from './design-delivery.js';
 import { landedSql } from './host-landing.js';
 import { issueRunLiveSql, issueWorkMovingSql } from './issue-lease.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
+import { parkSinceSql } from './park-since.js';
 import { loadIssuePark } from './park-view.js';
 import { patternReviewPendingSql } from './patterns.js';
 import { safeHydratePipelineHealthForIssues } from './pipeline-health.js';
@@ -157,8 +158,7 @@ async function issueRows(projectId: string, where: SQL, limit: number): Promise<
                 ORDER BY kt.created_at DESC LIMIT 1) END AS park_entry,
              CASE WHEN i.status = 'needs_info' THEN ${answeredSinceSql(
                sql`i.id`,
-               sql`(SELECT max(kt.created_at) FROM kernel_transitions kt
-                     WHERE kt.entity = 'issue' AND kt.entity_id = i.id AND kt.to_status = 'needs_info')`,
+               parkSinceSql(sql`i.id`),
              )} END AS answered_park,
              ${designReturnedUnderSql(sql`i.id`)} AS design_returned,
              ${contractWaitUnsettledSql(sql`i.id`)} AS contract_unsettled,

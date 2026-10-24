@@ -65,3 +65,35 @@ export async function recordMove(tx: Tx, move: MoveRecord): Promise<void> {
     fields: parkRecordFields(move),
   });
 }
+
+/**
+ * The park record of a park re-pointed or re-kinded where it stands (`park-repoint.ts`): no status
+ * moves and no `kernel_transitions` row is written, so this record is what says the park waits on
+ * something new, and when (`park-since.ts`). `rekind-from` names the kind it was, on a re-kind.
+ */
+export async function recordRepoint(
+  tx: Tx,
+  repoint: {
+    issueId: string;
+    actor: Actor;
+    waitingKind: WaitingKind | null;
+    rekindFrom: WaitingKind | null;
+    reason: string;
+    leftStatus: IssueStatus | null;
+    needs: string | null;
+  },
+): Promise<void> {
+  await writeKernelRecord(tx, {
+    issueId: repoint.issueId,
+    actor: repoint.actor,
+    kind: 'park',
+    fields: [
+      { key: 'status', value: 'needs_info' },
+      ...field('kind', repoint.waitingKind),
+      ...field('why', repoint.reason),
+      ...field('left-status', repoint.leftStatus),
+      ...field('needs', repoint.needs),
+      ...field('rekind-from', repoint.rekindFrom),
+    ],
+  });
+}

@@ -121,7 +121,8 @@ interface ApplyStatusTransitionOptions {
   voidQuestions?: string | undefined;
   /** Refuse OPEN_QUESTIONS if one is open once the row is locked — the answer resume's guard. */
   requireNoOpenQuestions?: boolean;
-  /** What a `needs_info` park is stopped on. REQUIRED entering `needs_info`. */
+  /** What a `needs_info` park is stopped on. REQUIRED entering `needs_info`; at `needs_info` already,
+   *  another kind re-kinds the park where it stands (`park-repoint.ts`). */
   waitingKind?: WaitingKind | undefined;
   /** The mover's answers to the checklist the move's edge names, as the door received them; the
    *  kernel parses them and refuses a move that names none for answers it was sent. */
@@ -219,9 +220,9 @@ async function moveIssue(
   const leftStatus = (work?.leftStatus ?? null) as IssueStatus | null;
 
   if (fromStatus === toStatus) {
-    // naming what a park waits on, at the park, replaces what it waits on: no status moves
+    // naming what a park waits on, or the kind of wait it is, at the park, replaces it: no status moves
     if (repointsPark(fromStatus, options)) {
-      return repointPark({ issue, actor, options, step: work?.step ?? null });
+      return repointPark({ issue, actor, options, step: work?.step ?? null, leftStatus });
     }
     throw transitionRefused('NO_OP', `issue already in status ${toStatus}`, {
       status: fromStatus,

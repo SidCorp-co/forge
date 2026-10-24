@@ -1,8 +1,11 @@
-// A park re-pointed at what it waits on now (FB-141): an agent at `needs_info` that names the design
-// revisions, or the merge mark, its park waits on replaces what the park waited on. No status moves,
-// so no kernel transition is written: the park keeps the status it left and its step, the questions
-// it asked are withdrawn naming the new wait, and the new wait's questions are asked in the same
-// transaction. Naming exactly what the park already waits on changes nothing, and is `NO_OP`.
+// A park re-pointed at what it waits on now (FB-141), or re-kinded to the kind of wait it is now
+// (ISS-631, FB-264): a call at `needs_info` that names the design revisions or the merge mark its
+// park waits on replaces what the park waited on, and one naming a `waitingKind` other than the
+// park's own changes what kind of wait it is — a decision settled that now waits on a resource. No
+// status moves, so no kernel transition is written: the park keeps the status it left and its step,
+// the questions it asked are withdrawn naming the new wait, the park record says what it waits on now
+// (`park-since.ts` reads its moment), and the new wait's questions are asked in the same
+// transaction. Naming exactly the kind and the wait the park already holds changes nothing: `NO_OP`.
 
 import {
   AUTONOMOUS_QUESTION_STATUS,
@@ -16,11 +19,13 @@ import type { WorkStep } from '../db/schema-issue-work-state.js';
 import { lockXact } from '../lib/advisory-lock.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { RefusalError } from '../lib/refusal.js';
-import { kernelActorFor, type TransitionActor } from './actor-agency.js';
+import { actorAgency, kernelActorFor, type TransitionActor } from './actor-agency.js';
 import type { DrizzleTx } from './dependency-executor.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
 import { type AwaitedDesignRef, mintParkQuestion, needsNotApplicable } from './park-question.js';
 import { openParkWaitsOn, postIssueNotice, withdrawParkQuestions } from './ports.js';
+import { recordRepoint } from './record-events/kernel-records.js';
+import { emitIssueFieldUpdate } from './update-hook.js';
 
 interface RepointOptions {
   transitionReason?: string | undefined;
@@ -35,13 +40,23 @@ interface RepointOptions {
 /** The first line of a re-point's notice, which `transition-reason.ts:announcesAMove` reads as no reply. */
 export const REPOINT_HEADING = `↪ **Re-pointed \`${AUTONOMOUS_QUESTION_STATUS}\`**`;
 
-/** Whether this call at `status` re-points the park rather than moving the issue: it names a wait. */
+/** Whether this call at `status` re-points or re-kinds the park rather than moving the issue: it
+ *  names a wait, or the kind of wait the park is. */
 export function repointsPark(status: IssueStatus, options: RepointOptions): boolean {
   return (
     status === AUTONOMOUS_QUESTION_STATUS &&
-    (Boolean(options.awaitsDesign?.length) || options.awaitsMerge !== undefined)
+    (Boolean(options.awaitsDesign?.length) ||
+      options.awaitsMerge !== undefined ||
+      options.waitingKind !== undefined)
   );
 }
+
+/** What a park of each kind waits on, as a re-kind's notice and its withdrawn questions say it. */
+const KIND_WAITS_ON: Record<WaitingKind, string> = {
+  needs_answer: 'an answer from a person',
+  needs_decision: 'a decision from a person',
+  needs_resource: 'something a person supplies',
+};
 
 function refused(
   code: IssueTransitionRefusalCode,
@@ -97,15 +112,19 @@ async function describe(tx: DrizzleTx, projectId: string, waits: readonly Wait[]
 }
 
 /**
- * Replace what the park waits on with the wait this call names. Refused by name: a person's
- * credential or a wait no question can carry (`park-question.ts:needsNotApplicable`), no reason, a
- * `waitingKind` other than the park's own, an issue no longer at the park, and a wait it already holds.
+ * Replace what the park waits on, and what kind of wait it is, with what this call names. Refused by
+ * name: a wait no question can carry or one a person's credential cannot name
+ * (`park-question.ts:needsNotApplicable`), an issue no longer at the park, the kind and wait it
+ * already holds (`NO_OP`), and no reason. A question the park asked that nobody answered yet is
+ * withdrawn naming the new wait, never left saying a person owes it.
  */
 export async function repointPark(input: {
   issue: { id: string; projectId: string; reopenCount: number };
   actor: TransitionActor;
   options: RepointOptions;
   step: WorkStep | null;
+  /** The status the park left (`issue_work_state.left_status`), which its record restates. */
+  leftStatus: IssueStatus | null;
 }): Promise<{
   id: string;
   status: IssueStatus;
@@ -122,13 +141,6 @@ export async function repointPark(input: {
   const notApplicable = needsNotApplicable({ issue, toStatus: status, actor, options });
   if (notApplicable) throw refused('NEEDS_NOT_APPLICABLE', notApplicable, base);
   const reason = options.transitionReason?.trim() ?? '';
-  if (!reason) {
-    throw refused(
-      'TRANSITION_REASON_REQUIRED',
-      'a re-point of a park carries why it now waits on this, as `reason`: it is the question the new wait asks, and the thread reads it',
-      base,
-    );
-  }
   const wanted: Wait[] = options.awaitsDesign?.length
     ? options.awaitsDesign.map((d) => ({ design: d }))
     : options.awaitsMerge
@@ -150,13 +162,9 @@ export async function repointPark(input: {
         { ...base, expected: status, actual: row?.status ?? null },
       );
     }
-    if (options.waitingKind && options.waitingKind !== row.waiting_kind) {
-      throw refused(
-        'WAITING_KIND_NOT_APPLICABLE',
-        `a re-point replaces what the park waits on and keeps what kind of park it is, which is \`${row.waiting_kind ?? 'none'}\`; \`waitingKind: ${options.waitingKind}\` would change it. Send the re-point without \`waitingKind\`, or leave the park and park again with the kind it should be`,
-        { ...base, waitingKind: options.waitingKind, held: row.waiting_kind },
-      );
-    }
+    const heldKind = row.waiting_kind;
+    const kind = options.waitingKind ?? heldKind;
+    const rekinded = kind !== heldKind;
     const held: Wait[] = (await openParkWaitsOn(tx, issue.id)).map((w) =>
       w.awaitsDesign
         ? { design: w.awaitsDesign }
@@ -167,43 +175,73 @@ export async function repointPark(input: {
     const heldKeys = new Set(held.map(keyOf));
     const wantedKeys = new Set(wanted.map(keyOf));
     const now = await describe(tx, issue.projectId, wanted);
-    if (heldKeys.size === wantedKeys.size && [...wantedKeys].every((k) => heldKeys.has(k))) {
+    if (!rekinded && wanted.length === 0) {
+      throw refused(
+        'NO_OP',
+        `the park is already a \`${heldKind ?? 'none'}\` park and this call names no other wait, so it changes nothing — send another \`waitingKind\` to change what kind of wait it is, or \`awaitsDesign\` or \`awaitsMerge\` to change what it waits on`,
+        { ...base, status, waitingKind: heldKind },
+      );
+    }
+    if (
+      !rekinded &&
+      heldKeys.size === wantedKeys.size &&
+      [...wantedKeys].every((k) => heldKeys.has(k))
+    ) {
       throw refused(
         'NO_OP',
         `the park already waits on exactly ${now}, so re-pointing it there changes nothing — name the wait it should hold instead`,
         { ...base, status },
       );
     }
+    if (!reason) {
+      throw refused(
+        'TRANSITION_REASON_REQUIRED',
+        'a re-point or re-kind of a park carries why it now waits on this, as `reason`: it is the question the new wait asks, and the thread reads it',
+        base,
+      );
+    }
     const before = await describe(tx, issue.projectId, held);
+    const waitsOn =
+      rekinded && kind ? `${KIND_WAITS_ON[kind]}${wanted.length > 0 ? `, ${now}` : ''}` : now;
+    const said = rekinded
+      ? `This park is now a \`${kind}\` park, waiting on ${waitsOn}, in place of \`${heldKind ?? 'none'}\`${held.length > 0 ? ` and ${before}` : ''}. It still returns to the status it left once every one is settled.`
+      : `This park now waits on ${now}, in place of ${before}. It still returns to the status it left once every one is settled.`;
     await postIssueNotice(
-      {
-        issueId: issue.id,
-        authorId: by,
-        body: [
-          REPOINT_HEADING,
-          '',
-          `This park now waits on ${now}, in place of ${before}. It still returns to the status it left once every one is settled.`,
-          '',
-          reason,
-        ].join('\n'),
-      },
+      { issueId: issue.id, authorId: by, body: [REPOINT_HEADING, '', said, '', reason].join('\n') },
       tx,
     );
+    // withdrawn before the record below moves the park's moment, which is what marks them its own
     const withdrawn = await withdrawParkQuestions(tx, {
       issueId: issue.id,
       toStatus: status,
       reason,
       by,
       actor: kernelActorFor(actor),
-      repointedTo: now,
+      repointedTo: waitsOn,
+    });
+    const recorder = { type: actor.type, id: actor.id, agency: actorAgency(actor) };
+    if (rekinded) {
+      await tx.execute(
+        sql`UPDATE issues SET waiting_kind = ${kind}, updated_at = now() WHERE id = ${issue.id}`,
+      );
+      await emitIssueFieldUpdate(tx, {
+        before: { id: issue.id, projectId: issue.projectId, waitingKind: heldKind },
+        after: { id: issue.id, projectId: issue.projectId, waitingKind: kind },
+        written: ['waitingKind'],
+        actor: recorder,
+      });
+    }
+    await recordRepoint(tx, {
+      issueId: issue.id,
+      actor: recorder,
+      waitingKind: kind,
+      rekindFrom: rekinded ? heldKind : null,
+      reason,
+      leftStatus: input.leftStatus,
+      needs: options.needs?.trim() || null,
     });
     await mintParkQuestion(
-      {
-        issue,
-        toStatus: status,
-        actor,
-        options: { ...options, waitingKind: row.waiting_kind ?? undefined },
-      },
+      { issue, toStatus: status, actor, options: { ...options, waitingKind: kind ?? undefined } },
       tx,
     );
     const asked = (await openParkWaitsOn(tx, issue.id)).map((w) => w.questionId);

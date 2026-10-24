@@ -14,7 +14,7 @@ import { isStewardDecisionQuestion } from '@forge/contracts/steward';
 import { and, eq, inArray, type SQL, type SQLWrapper, sql } from 'drizzle-orm';
 import type { IssueStatus } from '../db/schema.js';
 import { agentQuestions, isChoiceStep } from '../db/schema-questions.js';
-import type { IssueDependencyExecutor } from '../issues/index.js';
+import { type IssueDependencyExecutor, parkSinceSql } from '../issues/index.js';
 import { type KernelActor, transition } from '../lifecycle/index.js';
 
 type Executor = IssueDependencyExecutor;
@@ -149,9 +149,9 @@ export async function settleOpenQuestions(
 
 /**
  * The open questions the park the issue stands at asked: a kernel fact, never a reading of their
- * words. One is the open person question written in the park's own transaction, so its
- * `created_at` is the `created_at` of the issue's latest recorded move into `needs_info` (both are
- * that transaction's `now()`); the other is an open question waiting on an awaited fact — a design
+ * words. One is the open person question written in the transaction that began the park's current
+ * wait, so its `created_at` is that moment (`issues/park-since.ts`: the move into `needs_info`, or a
+ * later re-kind; both are that transaction's `now()`); the other is an open question waiting on an awaited fact — a design
  * revision's decision or a merge mark — which only a park writes, whether it entered the park, was
  * re-pointed there, or was asked again of the revision that superseded the one it waited on. A
  * question anybody asked before or during the park is theirs and is none of these.
@@ -163,10 +163,7 @@ function parkQuestionsOf(issueId: string): SQL {
     eq(agentQuestions.blockerKind, 'human'),
     sql`(${agentQuestions.awaitsWorkflowId} IS NOT NULL
       OR ${agentQuestions.awaitsMergeIssueId} IS NOT NULL
-      OR ${agentQuestions.createdAt} = (
-          select max(k.created_at) from kernel_transitions k
-           where k.entity = 'issue' and k.entity_id = ${issueId}
-             and k.to_status = ${AUTONOMOUS_QUESTION_STATUS}))`,
+      OR ${agentQuestions.createdAt} = ${parkSinceSql(sql`${issueId}::uuid`)})`,
   ) as SQL;
 }
 

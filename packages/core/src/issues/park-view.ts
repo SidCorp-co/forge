@@ -21,6 +21,7 @@ import {
 } from '../db/schema.js';
 import { issueWorkState } from '../db/schema-issue-work-state.js';
 import { type ForgeRecord, parseForgeRecord } from '../messaging/forge-record.js';
+import { parkSince } from './park-since.js';
 import { answeredSince, openHumanQuestionIdsOn, openQuestionSubjectsOn } from './ports.js';
 import { type RecordEntry, recordHistory } from './record-events/history.js';
 import { announcesAMove } from './transition-reason.js';
@@ -127,13 +128,16 @@ function readPark(input: ParkInput): IssuePark | null {
     const question = fieldsOf(c, 'question');
     if (question) readings = question.filter((f) => f.key === 'reading').map((f) => f.value);
   }
+  // a park record written after the move into the park is a re-kind or re-point of it: its why is
+  // what the park waits on now (`park-repoint.ts`)
+  const repointed = record && entry && new Date(record.postedAt) > entry.at ? record.why : null;
   const view: Omit<IssuePark, 'asks' | 'threadQuestion'> = {
     answered: parked ? (input.answered ?? null) : null,
     shape: parked ? 'park' : 'question',
     status: input.status,
     owes: parked ? owesOf(input.waitingKind) : 'information',
     since: entry ? entry.at.toISOString() : null,
-    reason: entry?.reason ?? null,
+    reason: repointed ?? entry?.reason ?? null,
     resume: parked
       ? resumeFrom(input.leftStatus ?? null, record?.eventId ?? record?.commentId ?? null)
       : {
@@ -259,7 +263,9 @@ export async function loadIssuePark(issueId: string): Promise<IssuePark | null> 
     .where(eq(issueWorkState.issueId, issueId))
     .limit(1);
   const boundary = boundaryOf(moves);
-  const entered = moves[0]?.to === status ? moves[0].at : boundary;
+  // the current wait began at the move into the park, or at a later re-kind or re-point of it
+  const entered =
+    (await parkSince(db, issueId)) ?? (moves[0]?.to === status ? moves[0].at : boundary);
   const answered = await answeredSince(db, issueId, entered);
   const asEntry = (r: RecordEntry): ParkComment => ({
     id: r.id,

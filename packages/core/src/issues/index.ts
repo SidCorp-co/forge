@@ -138,6 +138,7 @@ export {
 export { draftMergeHolds } from './merge-holds.js';
 export { mergedCommitShaSchema } from './merge-marker.js';
 export { mergeMarkKindOf, recordIssueMerge } from './merge-record.js';
+export { parkSinceSql } from './park-since.js';
 export {
   assertPatternReviewsSettledForIssue,
   patternReviewPendingSql,
