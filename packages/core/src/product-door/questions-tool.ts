@@ -10,6 +10,7 @@ import { postIssueComment } from '../comments/index.js';
 import { readIssueForecast } from '../forecast/index.js';
 import { findIssueById, issueDisplayIds, resolveIssueRouteRef } from '../issues/index.js';
 import { type ContextScopedMcpToolFactory, type McpContext, zodToMcpSchema } from '../lib/tool.js';
+import { need, readingArgument } from '../lib/tool-args.js';
 import {
   ANSWER_SHAPE,
   answerBody,
@@ -19,7 +20,7 @@ import {
   readQuestionsForIssue,
   shownQuestion,
 } from '../questions/index.js';
-import { need, parseArgs } from './args.js';
+import { parseArgs } from './args.js';
 import { actorOf, forecastViewerOf, readAccess, readerOf } from './context.js';
 import { issueProgress } from './progress.js';
 import { agentStatesOf } from './work.js';
@@ -97,7 +98,9 @@ async function questionIn(ctx: McpContext, projectId: string, questionId: string
 }
 
 async function issueOf(ctx: McpContext, projectId: string, ref: string) {
-  const issue = await resolveIssueRouteRef(ref, projectId, ctx.principal.userId);
+  const issue = await readingArgument('/issue', () =>
+    resolveIssueRouteRef(ref, projectId, ctx.principal.userId),
+  );
   if (issue.projectId !== projectId) {
     throw new Error(`NOT_FOUND: issue ${ref} is not an issue of project ${projectId}`);
   }

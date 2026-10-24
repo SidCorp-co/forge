@@ -1,12 +1,12 @@
 import type { McpContext } from '../lib/tool.js';
+import { argumentRefusal } from '../lib/tool-args.js';
 import { findProjectIdBySlug } from './service.js';
 
+const NO_PROJECT =
+  'projectId is required: no X-Forge-Project-Slug header names the project and the token is bound to none';
+
 export async function resolveProjectIdFromSlug(slug: string | null): Promise<string> {
-  if (!slug) {
-    throw new Error(
-      'BAD_REQUEST: project context missing — set X-Forge-Project-Slug header or pass projectId',
-    );
-  }
+  if (!slug) throw argumentRefusal('/projectId', NO_PROJECT);
   const id = await findProjectIdBySlug(slug);
   if (!id) throw new Error(`NOT_FOUND: project not found for slug "${slug}"`);
   return id;
@@ -20,7 +20,5 @@ export async function resolveEffectiveProjectId(
   if (explicitProjectId) return explicitProjectId;
   if (ctx.projectSlug) return resolveProjectIdFromSlug(ctx.projectSlug);
   if (ctx.boundProjectId) return ctx.boundProjectId;
-  throw new Error(
-    'BAD_REQUEST: project context missing — set X-Forge-Project-Slug header or pass projectId',
-  );
+  throw argumentRefusal('/projectId', NO_PROJECT);
 }

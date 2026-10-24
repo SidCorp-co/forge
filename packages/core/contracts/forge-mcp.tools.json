@@ -169,18 +169,19 @@
             "type": "string"
           },
           "feedback": {
-            "maxLength": 64,
+            "description": "a feedback item key (FB-n) or uuid",
+            "pattern": "^(?:(?:FB-)?\\d{1,9}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$",
             "type": "string"
           },
           "issue": {
+            "description": "an issue key (ISS-12) or uuid",
             "maxLength": 200,
             "minLength": 1,
             "type": "string"
           },
           "mockup": {
             "description": "a mockup key (MK-n) or uuid",
-            "maxLength": 64,
-            "minLength": 1,
+            "pattern": "^(?:(?:MK-)?\\d{1,9}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$",
             "type": "string"
           },
           "payload": {},
@@ -193,7 +194,8 @@
             "type": "string"
           },
           "requirement": {
-            "maxLength": 64,
+            "description": "a requirement key (REQ-n) or uuid",
+            "pattern": "^(?:(?:REQ-)?\\d{1,9}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$",
             "type": "string"
           },
           "revision": {
@@ -787,6 +789,7 @@
             ]
           },
           "criteria": {
+            "description": "revise: the whole list, each criterion that stays with its code",
             "items": {
               "additionalProperties": false,
               "properties": {
@@ -1321,6 +1324,7 @@
             "type": "string"
           },
           "title": {
+            "description": "create: the requirement’s title, in the person’s words",
             "maxLength": 500,
             "minLength": 1,
             "type": "string"
@@ -1538,8 +1542,8 @@
             "type": "string"
           },
           "requirement": {
-            "maxLength": 200,
-            "minLength": 1,
+            "description": "a requirement key (REQ-n) or uuid",
+            "pattern": "^(?:(?:REQ-)?\\d{1,9}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$",
             "type": "string"
           },
           "screen": {

@@ -20,6 +20,7 @@ import {
   refusedAnswer,
   zodToMcpSchema,
 } from '../lib/tool.js';
+import { argumentRefusal, need, zodArgumentRefusal } from '../lib/tool-args.js';
 import { issuesOfRequirements, liveRunsByIssue, runsOn } from '../product-progress/index.js';
 import { resolveEffectiveProjectId } from '../projects/index.js';
 import { ANSWER_SHAPE, answerBody, answerWithToken } from '../questions/index.js';
@@ -64,7 +65,9 @@ const inputSchema = z.strictObject({
     .optional()
     .describe('list: keep only requirements in this state'),
   text: z.string().trim().min(3).max(8_000).optional().describe('similar: the wish to compare'),
-  title: titleText(REQUIREMENT_TITLE_MAX).optional(),
+  title: titleText(REQUIREMENT_TITLE_MAX)
+    .optional()
+    .describe('create: the requirement’s title, in the person’s words'),
   designs: z
     .array(z.string().trim().min(1).max(200))
     .max(10)
@@ -90,7 +93,9 @@ const inputSchema = z.strictObject({
   optionId: z.string().optional().describe('answer: the option the person chose'),
   answer: z.string().optional().describe('answer: the person’s words, on a free-text round'),
   ...revisionFields,
-  criteria: revisionFields.criteria.optional(),
+  criteria: revisionFields.criteria
+    .optional()
+    .describe('revise: the whole list, each criterion that stays with its code'),
 });
 
 type Input = z.infer<typeof inputSchema>;
@@ -129,14 +134,6 @@ const actorOf = (ctx: McpContext) => ({
   userId: ctx.principal.userId,
   agency: principalAgency(ctx.principal),
 });
-
-function need<K extends keyof Input>(input: Input, field: K, why: string): NonNullable<Input[K]> {
-  const value = input[field];
-  if (value === undefined || value === null) {
-    throw new Error(`BAD_REQUEST: ${String(field)} is required for ${input.action}: ${why}`);
-  }
-  return value as NonNullable<Input[K]>;
-}
 
 async function list(ctx: McpContext, projectId: string, input: Input) {
   const actor = actorOf(ctx);
@@ -196,18 +193,18 @@ async function readOne(ctx: McpContext, projectId: string, key: string) {
 }
 
 async function get(ctx: McpContext, projectId: string, input: Input) {
-  const key = need(input, 'requirement', 'the requirement key, REQ-n');
+  const { requirement: key } = need(input, input.action, 'requirement');
   return { requirement: await readOne(ctx, projectId, key) };
 }
 
 async function progress(ctx: McpContext, projectId: string, input: Input) {
-  const key = need(input, 'requirement', 'the requirement key, REQ-n');
+  const { requirement: key } = need(input, input.action, 'requirement');
   const one = await readOne(ctx, projectId, key);
   return { key: one.key, title: one.title, state: one.state, progress: one.progress };
 }
 
 async function similar(_ctx: McpContext, projectId: string, input: Input) {
-  const text = need(input, 'text', 'the wish to compare, in words');
+  const { text } = need(input, input.action, 'text');
   return similarRequirements(projectId, text, 'conversation');
 }
 
@@ -225,7 +222,7 @@ async function written(
 }
 
 async function create(ctx: McpContext, projectId: string, input: Input) {
-  const title = need(input, 'title', 'the requirement’s title, in the person’s words');
+  const { title } = need(input, input.action, 'title');
   const { reason, spec, kind, picture, tldr, changeSummary, writtenLang } = input;
   const write = {
     reason,
@@ -251,12 +248,7 @@ async function create(ctx: McpContext, projectId: string, input: Input) {
 }
 
 async function revise(ctx: McpContext, projectId: string, input: Input) {
-  const ref = need(input, 'requirement', 'the requirement key, REQ-n');
-  const criteria = need(
-    input,
-    'criteria',
-    'the whole list, every criterion that stays with its code and the change',
-  );
+  const { requirement: ref, criteria } = need(input, input.action, 'requirement', 'criteria');
   const { reason, spec, kind, picture, tldr, changeSummary, writtenLang } = input;
   const write = { reason, spec, kind, picture, tldr, changeSummary, writtenLang, criteria };
   const actor = actorOf(ctx);
@@ -268,8 +260,9 @@ async function revise(ctx: McpContext, projectId: string, input: Input) {
     );
   }
   if (input.baseRevision === undefined) {
-    throw new Error(
-      'BAD_REQUEST: baseRevision is required for revise: the head you read (currentRevision from get), null where it has none; or name revision: n to rewrite a draft',
+    throw argumentRefusal(
+      '/baseRevision',
+      'action revise needs baseRevision, or revision: n to rewrite a draft',
     );
   }
   return written(
@@ -280,8 +273,7 @@ async function revise(ctx: McpContext, projectId: string, input: Input) {
 }
 
 async function propose(ctx: McpContext, projectId: string, input: Input) {
-  const ref = need(input, 'requirement', 'the requirement key, REQ-n');
-  const revision = need(input, 'revision', 'the draft revision to propose (openRevision from get)');
+  const { requirement: ref, revision } = need(input, input.action, 'requirement', 'revision');
   return written(
     ctx,
     projectId,
@@ -291,8 +283,7 @@ async function propose(ctx: McpContext, projectId: string, input: Input) {
 
 /** A question standing on the requirement, answered as the token's holder; one standing elsewhere is not found here. */
 async function answer(ctx: McpContext, projectId: string, input: Input) {
-  const key = need(input, 'requirement', 'the requirement key, REQ-n');
-  const questionId = need(input, 'questionId', 'a question standing on it, as get lists it');
+  const { requirement: key, questionId } = need(input, input.action, 'requirement', 'questionId');
   const detail = await readRequirementAs(actorOf(ctx), projectId, key, MCP_DOOR);
   if (!detail.questions.some((q) => q.id === questionId)) {
     throw new Error(
@@ -305,11 +296,7 @@ async function answer(ctx: McpContext, projectId: string, input: Input) {
     ...(input.optionId === undefined ? {} : { optionId: input.optionId }),
     ...(input.answer === undefined ? {} : { text: input.answer }),
   });
-  if (!body.success) {
-    throw new Error(
-      `BAD_REQUEST: ${body.error.issues.map((i) => i.message).join('; ')} — ${ANSWER_SHAPE}`,
-    );
-  }
+  if (!body.success) throw zodArgumentRefusal(body.error, { text: 'answer' });
   return answerWithToken({
     token: {
       questionId,

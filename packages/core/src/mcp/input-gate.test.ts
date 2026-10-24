@@ -5,6 +5,7 @@
 //
 // @direct-test-of packages/core/src/mcp/server.ts
 // @direct-test-of packages/core/src/lib/tool.ts
+// @direct-test-of packages/core/src/lib/tool-args.ts
 
 import { randomBytes } from 'node:crypto';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
@@ -12,8 +13,11 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { PAT_GRANT_EPOCH } from '../credentials/pat-permissions.js';
+import { RefusalError } from '../lib/refusal.js';
 import { type McpContext, type McpTool, zodToMcpSchema } from '../lib/tool.js';
+import { need } from '../lib/tool-args.js';
 import { provideChatWriteHold } from '../middleware/chat-write-hold.js';
+import { badRequest } from '../middleware/route-errors.js';
 import { gatedTool, JUDGES_OWN_ARGUMENTS, shapeOf } from './input-gate.js';
 import { MCP_TOOLS } from './registry.js';
 import { createMcpServer, mcpTools } from './server.js';
@@ -176,6 +180,31 @@ describe('every MCP tool answers a wrong argument in the named form (c2)', () =>
       expectNamedRefusal(name, await call(name, { action: anAction(tool), ...wrongTyped(tool) }));
     });
   }
+
+  // K74 on dev.307: these answered `Error: requirement is required for get: …`, no code, no shape
+  const omissions: [string, string, string][] = [
+    ['forge_requirements', 'get', 'requirement'],
+    ['forge_requirements', 'progress', 'requirement'],
+    ['forge_requirements', 'similar', 'text'],
+    ['forge_requirements', 'propose', 'requirement'],
+    ['project_feedback', 'get', 'feedback'],
+    ['project_feedback', 'clarify', 'feedback'],
+  ];
+  for (const [name, action, field] of omissions) {
+    it(`${name}: ${action} without ${field}, at /${field} with the shape`, async () => {
+      const answer = await call(name, {
+        action,
+        projectId: '6f1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b',
+      });
+      expectNamedRefusal(name, answer);
+      expect(answer.body.error?.code).toBe('BAD_REQUEST');
+      expect(answer.body.error?.refusals?.[0]?.path).toBe(`/${field}`);
+      expect(answer.body.error?.refusals?.[0]?.detail).toMatch(
+        new RegExp(`^action ${action} needs ${field} \\(.+\\); ${name} takes \\{ action`),
+      );
+      expect(answer.body.detail).toMatch(new RegExp(`^${name} takes \\{ action`));
+    });
+  }
 });
 
 describe('a refused call hands back no credential it carried (c3)', () => {
@@ -221,6 +250,46 @@ describe('the gate', () => {
     expect(err).toBeInstanceOf(Error);
     expect(String(err.message)).toMatch(/probe_tool could not read its own data: a fault in Forge/);
     expect(String(err.message)).not.toContain('invalid_type');
+  });
+
+  it('completes an argument refusal the handler throws with what the field is and the shape', async () => {
+    const described = z.strictObject({ id: z.uuid().optional().describe('the row to read') });
+    const gated = gatedTool(
+      tool(async (args) => need(args, 'get', 'id'), zodToMcpSchema(described)),
+    );
+    const err = (await gated.handler({}).catch((e: unknown) => e)) as RefusalError;
+    expect(err).toBeInstanceOf(RefusalError);
+    expect(err.refusals).toEqual([
+      {
+        code: 'BAD_REQUEST',
+        path: '/id',
+        detail: 'action get needs id (the row to read); probe_tool takes { id?: uuid }',
+      },
+    ]);
+    expect(err.detail).toBe('probe_tool takes { id?: uuid }');
+  });
+
+  it('names a route helper’s 400 by the reason its cause keeps, never as a bare "Invalid input"', async () => {
+    const gated = gatedTool(
+      tool(async () => {
+        throw badRequest('`ISS602` is not an issue key: write it like `ISS-12`');
+      }),
+    );
+    const err = (await gated
+      .handler({ id: '6f1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b' })
+      .catch((e: unknown) => e)) as RefusalError;
+    expect(err).toBeInstanceOf(RefusalError);
+    expect(err.refusals[0]).toEqual({
+      code: 'BAD_REQUEST',
+      path: '',
+      detail: '`ISS602` is not an issue key: write it like `ISS-12`; probe_tool takes { id: uuid }',
+    });
+  });
+
+  it('reads a field left out as required, not as a type', async () => {
+    const gated = gatedTool(tool(async (args) => input.parse(args)));
+    const err = (await gated.handler({}).catch((e: unknown) => e)) as RefusalError;
+    expect(err.refusals[0]?.detail).toBe('`id` is required; probe_tool takes { id: uuid }');
   });
 
   it('refuses at registration a tool whose input no validator stands behind', () => {

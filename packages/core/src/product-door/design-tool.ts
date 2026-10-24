@@ -23,6 +23,7 @@ import { egressAs, MCP_DOOR } from '../lib/data-egress.js';
 import type { Refusal } from '../lib/refusal.js';
 import { RefusalError } from '../lib/refusal.js';
 import { type ContextScopedMcpToolFactory, type McpContext, zodToMcpSchema } from '../lib/tool.js';
+import { keyArgument, need } from '../lib/tool-args.js';
 import { envelopeOf } from '../lib/write-envelope.js';
 import {
   acceptMockup,
@@ -58,7 +59,7 @@ import {
   workflowSummaryOf,
   workflowView,
 } from '../workflows/index.js';
-import { need, parseArgs } from './args.js';
+import { parseArgs } from './args.js';
 import { actorOf, forecastViewerOf, readAccess, readerOf } from './context.js';
 import { issueProgress } from './progress.js';
 import { agentStatesOf } from './work.js';
@@ -74,7 +75,7 @@ const input = z.strictObject({
   revision: z.number().int().min(1).optional(),
   stepFrom: z.number().int().min(1).optional(),
   stepTo: z.number().int().min(1).optional(),
-  issue: z.string().trim().min(1).max(200).optional(),
+  issue: z.string().trim().min(1).max(200).optional().describe('an issue key (ISS-12) or uuid'),
   decision: z.enum(DESIGN_DECISIONS).optional(),
   reason: z.string().optional(),
   body: z
@@ -83,13 +84,13 @@ const input = z.strictObject({
     .describe(
       'design_create/_revise, suggestion_create, mockup_propose, mockup_comment: the REST body',
     ),
-  requirement: z.string().max(64).optional(),
-  feedback: z.string().max(64).optional(),
+  requirement: keyArgument('REQ', 'a requirement').optional(),
+  feedback: keyArgument('FB', 'a feedback item').optional(),
   workflow: z.string().max(200).optional(),
   status: z.array(z.enum(SUGGESTION_STATUSES)).optional(),
   suggestionId: z.uuid().optional(),
   payload: z.unknown().optional(),
-  mockup: z.string().trim().min(1).max(64).optional().describe('a mockup key (MK-n) or uuid'),
+  mockup: keyArgument('MK', 'a mockup').optional(),
 });
 type Input = z.infer<typeof input>;
 

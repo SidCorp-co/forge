@@ -13,8 +13,9 @@ import { egressAs } from '../lib/data-egress.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { RefusalError, refuser } from '../lib/refusal.js';
 import { type ContextScopedMcpToolFactory, type McpContext, zodToMcpSchema } from '../lib/tool.js';
+import { argumentRefusal, need, readingArgument } from '../lib/tool-args.js';
 import { readQuestionsForIssue } from '../questions/index.js';
-import { need, parseArgs } from './args.js';
+import { parseArgs } from './args.js';
 import { forecastViewerOf, readAccess, readerOf } from './context.js';
 import { issueProgress } from './progress.js';
 import { agentStatesOf } from './work.js';
@@ -73,7 +74,7 @@ async function list(ctx: McpContext, i: Input) {
     { status: i.status, statusNot: i.statusNot, search: i.search },
     { sort: 'updatedAt:desc', limit: i.limit ?? 25, offset: i.offset ?? 0 },
   );
-  if (!listed.ok) throw new Error(`BAD_REQUEST: ${listed.field}: ${listed.message}`);
+  if (!listed.ok) throw argumentRefusal(`/${listed.field}`, listed.message);
   const out = await egressAs(readerOf(ctx), i.projectId, 'issue', listed.rows, 'the issue list');
   if (!out.ok) throw new RefusalError([out.refusal], out.refusal.code);
   const rows = out.value;
@@ -108,7 +109,9 @@ async function list(ctx: McpContext, i: Input) {
 async function get(ctx: McpContext, i: Input) {
   const { issue: ref } = need(i, 'get', 'issue');
   const access = await readAccess(ctx, i.projectId);
-  const row = await resolveIssueRouteRef(ref, i.projectId, ctx.principal.userId);
+  const row = await readingArgument('/issue', () =>
+    resolveIssueRouteRef(ref, i.projectId, ctx.principal.userId),
+  );
   if (row.projectId !== i.projectId) {
     throw new Error(`NOT_FOUND: issue ${ref} is not an issue of project ${i.projectId}`);
   }

@@ -18,6 +18,7 @@ import {
   refusedAnswer,
   zodToMcpSchema,
 } from '../lib/tool.js';
+import { need } from '../lib/tool-args.js';
 import { findProjectIdBySlug } from '../projects/index.js';
 import {
   type Answer,
@@ -158,13 +159,6 @@ function inputOf(
   return { ok: true, input: parsed.data };
 }
 
-function need(input: Input): string {
-  if (!input.feedback) {
-    throw new Error(`BAD_REQUEST: feedback is required for ${input.action}: the item key, FB-n`);
-  }
-  return input.feedback;
-}
-
 const out = <T>(answer: Answer<T>) =>
   answer.ok ? answer.value : refusedAnswer(answer.refusals, 'FORGE_FEEDBACK_REFUSED');
 
@@ -176,7 +170,11 @@ async function submit(ctx: McpContext, input: Input) {
 }
 
 async function progress(ctx: McpContext, input: Input) {
-  const one = await getForgeFeedback(await callerOf(ctx), need(input), MCP_DOOR);
+  const one = await getForgeFeedback(
+    await callerOf(ctx),
+    need(input, input.action, 'feedback').feedback,
+    MCP_DOOR,
+  );
   if (!one.ok) return out(one);
   const { key, title, phase } = one.value;
   return { key, title, phase, progress: one.value.progress };
@@ -186,7 +184,13 @@ const HANDLERS = {
   submit,
   list: async (ctx: McpContext) => out(await listOwnForgeFeedback(await callerOf(ctx), MCP_DOOR)),
   get: async (ctx: McpContext, input: Input) =>
-    out(await getForgeFeedback(await callerOf(ctx), need(input), MCP_DOOR)),
+    out(
+      await getForgeFeedback(
+        await callerOf(ctx),
+        need(input, input.action, 'feedback').feedback,
+        MCP_DOOR,
+      ),
+    ),
   progress,
 } as const;
 

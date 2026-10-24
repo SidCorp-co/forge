@@ -9,6 +9,7 @@ import { scrubLogText } from '@forge/observability';
 import { z } from 'zod';
 import { jsonPointer, type Refusal, RefusalError } from '../lib/refusal.js';
 import { declaredInputOf, type McpTool } from '../lib/tool.js';
+import { ArgumentRefusal, badRequestFaults } from '../lib/tool-args.js';
 
 /**
  * The tools whose published input is written by hand and whose handler judges every argument
@@ -33,6 +34,7 @@ type JsonSchema = {
   oneOf?: JsonSchema[];
   format?: string;
   default?: unknown;
+  description?: string;
 };
 
 const NESTING_SHOWN = 2;
@@ -80,7 +82,57 @@ export function argumentRefusals(
       ? issue.keys.map((key) =>
           row([...issue.path, key], `\`${key}\` is not an argument of ${tool}`),
         )
-      : [row(issue.path, issue.message)],
+      : [row(issue.path, faultOf(issue))],
+  );
+}
+
+/** A validator's message, except that a field left out reads as required rather than as a type. */
+function faultOf(issue: z.core.$ZodIssue): string {
+  const field = issue.path.at(-1);
+  if (
+    issue.code === 'invalid_type' &&
+    field !== undefined &&
+    /received undefined$/.test(issue.message)
+  ) {
+    return `\`${String(field)}\` is required`;
+  }
+  return issue.message;
+}
+
+/** What the published input says the argument at a JSON pointer is, where it says. */
+function describedAt(input: JsonSchema, path: string): string | undefined {
+  if (!path.startsWith('/')) return undefined;
+  let at: JsonSchema | undefined = input;
+  for (const segment of path.slice(1).split('/')) {
+    at = at?.properties?.[segment.replaceAll('~1', '/').replaceAll('~0', '~')];
+  }
+  return at === input ? undefined : at?.description;
+}
+
+/**
+ * A refusal of the tool's arguments that a handler threw (a `need`, a reference that does not
+ * resolve as one, a route helper's 400), completed as every argument refusal at this door is: each
+ * fault at its path, what the published input says that argument is, and the tool's valid shape.
+ */
+function shapedRefusal(
+  tool: string,
+  input: JsonSchema,
+  shape: string,
+  faults: readonly { code?: string; path: string; fault: string }[],
+): RefusalError {
+  return new RefusalError(
+    faults.map((f) => {
+      const described = describedAt(input, f.path);
+      return {
+        code: f.code ?? 'BAD_REQUEST',
+        path: scrubLogText(f.path),
+        detail: scrubLogText(
+          `${f.fault}${described ? ` (${described})` : ''}; ${tool} takes ${shape}`,
+        ),
+      };
+    }),
+    'BAD_REQUEST',
+    scrubLogText(`${tool} takes ${shape}`),
   );
 }
 
@@ -114,10 +166,12 @@ export function actionRefusal(tool: McpTool, args: Record<string, unknown>): Ref
 }
 
 /**
- * The tool the registry serves: its handler, behind the gate. A validator error escaping the
- * handler is judged against the tool's declared input: where that refuses the call, the caller is
- * answered by name (BAD_REQUEST at each fault's path, with the valid shape); where it does not, the
- * error came from Forge's own data, and it is logged and answered as Forge's fault, never dumped.
+ * The tool the registry serves: its handler, behind the gate. An argument refusal the handler threw
+ * (`lib/tool-args.ts`) or a route helper's 400 is answered with the tool's valid shape. A validator
+ * error escaping the handler is judged against the tool's declared input: where that refuses the
+ * call, the caller is answered by name (BAD_REQUEST at each fault's path, with the valid shape);
+ * where it does not, the error came from Forge's own data, and it is logged and answered as Forge's
+ * fault, never dumped.
  */
 export function gatedTool(tool: McpTool): McpTool {
   const declared = declaredInputOf(tool.inputSchema);
@@ -126,13 +180,24 @@ export function gatedTool(tool: McpTool): McpTool {
       `mcp registry: ${tool.name} publishes an input no validator stands behind, so a wrong argument would reach the caller unnamed; build its inputSchema with zodToMcpSchema (lib/tool.ts), or name it in JUDGES_OWN_ARGUMENTS (mcp/input-gate.ts) with the code its own refusal answers under`,
     );
   }
-  const shape = shapeOf(tool.inputSchema as JsonSchema);
+  const input = tool.inputSchema as JsonSchema;
+  const shape = shapeOf(input);
   return {
     ...tool,
     handler: async (args) => {
       try {
         return await tool.handler(args);
       } catch (err) {
+        if (err instanceof ArgumentRefusal) {
+          throw shapedRefusal(
+            tool.name,
+            input,
+            shape,
+            err.refusals.map((r) => ({ code: r.code, path: r.path, fault: r.detail })),
+          );
+        }
+        const faults = badRequestFaults(err);
+        if (faults) throw shapedRefusal(tool.name, input, shape, faults);
         if (!(err instanceof z.core.$ZodError)) throw err;
         const judged = declared?.safeParse(args);
         if (judged && !judged.success) {

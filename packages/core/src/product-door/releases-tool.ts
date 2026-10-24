@@ -9,6 +9,7 @@ import { readDraftReleaseForecast } from '../forecast/index.js';
 import { egressAs } from '../lib/data-egress.js';
 import { RefusalError } from '../lib/refusal.js';
 import { type ContextScopedMcpToolFactory, type McpContext, zodToMcpSchema } from '../lib/tool.js';
+import { need } from '../lib/tool-args.js';
 import { holds } from '../permissions/index.js';
 import {
   decideApprovalOfVersion,
@@ -21,7 +22,7 @@ import {
   type ViewerFacts,
 } from '../release-batch/index.js';
 import { nameInBackground, readReleasePage, refreshInBackground } from '../release-page/index.js';
-import { need, parseArgs } from './args.js';
+import { parseArgs } from './args.js';
 import { actorOf, forecastViewerOf, readAccess, readerOf } from './context.js';
 import { type Progress, scopeProgress } from './progress.js';
 import { runningKeysOf } from './work.js';

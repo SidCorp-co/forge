@@ -203,7 +203,7 @@ describe('forge_requirements over /mcp', () => {
       criteria: [],
     });
     expect(c.isError).toBe(true);
-    expect(c.text).toMatch(/baseRevision is required for revise/);
+    expect(c.text).toMatch(/action revise needs baseRevision/);
   });
 
   it('answers NOT_FOUND for a key the project does not hold', async () => {

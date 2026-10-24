@@ -27,6 +27,7 @@ import {
   refusedAnswer,
   zodToMcpSchema,
 } from '../lib/tool.js';
+import { ArgumentRefusal, keyArgument, need, zodArgumentRefusal } from '../lib/tool-args.js';
 import {
   type FeedbackReads,
   feedbackDetail,
@@ -58,6 +59,7 @@ const inputSchema = z.strictObject({
   phase: z.array(z.enum(FEEDBACK_PHASES)).min(1).optional().describe('list: keep these phases'),
   q: z.string().max(200).optional().describe('list: words the title holds'),
   ...createFeedbackRequestSchema.shape,
+  requirement: keyArgument('REQ', 'a requirement').optional(),
   kind: createFeedbackRequestSchema.shape.kind.optional(),
   title: createFeedbackRequestSchema.shape.title.optional(),
   ...feedbackClarificationRequestSchema.partial().shape,
@@ -95,14 +97,6 @@ const actorOf = (ctx: McpContext) => ({
   userId: ctx.principal.userId,
   agency: principalAgency(ctx.principal),
 });
-
-function need<K extends keyof Input>(input: Input, field: K, why: string): NonNullable<Input[K]> {
-  const value = input[field];
-  if (value === undefined || value === null) {
-    throw new Error(`BAD_REQUEST: ${String(field)} is required for ${input.action}: ${why}`);
-  }
-  return value as NonNullable<Input[K]>;
-}
 
 /** Every item of the project as the door may show it; a refusal leaves as one. */
 async function itemsOf(
@@ -169,19 +163,19 @@ async function readOne(ctx: McpContext, projectId: string, key: string) {
 }
 
 async function get(ctx: McpContext, projectId: string, input: Input) {
-  const one = await readOne(ctx, projectId, need(input, 'feedback', 'the item key, FB-n'));
+  const one = await readOne(ctx, projectId, need(input, input.action, 'feedback').feedback);
   return 'refused' in one ? one.refused : { feedback: one.item };
 }
 
 async function progress(ctx: McpContext, projectId: string, input: Input) {
-  const one = await readOne(ctx, projectId, need(input, 'feedback', 'the item key, FB-n'));
+  const one = await readOne(ctx, projectId, need(input, input.action, 'feedback').feedback);
   if ('refused' in one) return one.refused;
   const { key, title, phase } = one.item;
   return { key, title, phase, progress: one.item.progress };
 }
 
 async function similar(ctx: McpContext, projectId: string, input: Input) {
-  const key = need(input, 'feedback', 'the item key, FB-n');
+  const key = need(input, input.action, 'feedback').feedback;
   return similarFeedbackAs(actorOf(ctx), projectId, key, MCP_DOOR);
 }
 
@@ -204,21 +198,18 @@ async function submit(ctx: McpContext, projectId: string, input: Input) {
     feedback: _f,
     phase: _ph,
     q: _q,
-    prompt,
-    needed,
+    prompt: _pr,
+    needed: _n,
     ...rest
   } = input;
-  if (prompt !== undefined || needed !== undefined) {
-    throw new Error('BAD_REQUEST: prompt and needed belong to clarify, not submit');
-  }
-  const request = createFeedbackRequestSchema.safeParse(rest);
-  if (!request.success) {
-    throw new Error(
-      `BAD_REQUEST: submit takes ${CREATE_FEEDBACK_SHAPE}; ${request.error.issues
-        .map((i) => `${i.path.join('.') || '/'}: ${i.message}`)
-        .join('; ')}`,
+  const misplaced = (['prompt', 'needed'] as const).filter((k) => input[k] !== undefined);
+  if (misplaced.length > 0) {
+    throw new ArgumentRefusal(
+      misplaced.map((k) => ({ path: `/${k}`, fault: `${k} belongs to clarify, not submit` })),
     );
   }
+  const request = createFeedbackRequestSchema.safeParse(rest);
+  if (!request.success) throw zodArgumentRefusal(request.error);
   return written(
     ctx,
     projectId,
@@ -227,18 +218,12 @@ async function submit(ctx: McpContext, projectId: string, input: Input) {
 }
 
 async function clarify(ctx: McpContext, projectId: string, input: Input) {
-  const ref = need(input, 'feedback', 'the item key, FB-n');
+  const ref = need(input, input.action, 'feedback').feedback;
   const body = feedbackClarificationRequestSchema.safeParse({
     prompt: input.prompt,
     needed: input.needed,
   });
-  if (!body.success) {
-    throw new Error(
-      `BAD_REQUEST: clarify takes { feedback, prompt (5-2000 chars), needed (3-1000 chars) }; ${body.error.issues
-        .map((i) => `${i.path.join('.')}: ${i.message}`)
-        .join('; ')}`,
-    );
-  }
+  if (!body.success) throw zodArgumentRefusal(body.error);
   return written(
     ctx,
     projectId,
